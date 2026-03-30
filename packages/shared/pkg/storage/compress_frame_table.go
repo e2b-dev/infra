@@ -53,7 +53,7 @@ type FrameOffset struct {
 }
 
 func (o *FrameOffset) String() string {
-	return fmt.Sprintf("U:%#x/C:%#x", o.U, o.C)
+	return fmt.Sprintf("U:%d/C:%d", o.U, o.C)
 }
 
 func (o *FrameOffset) Add(f FrameSize) {
@@ -67,7 +67,7 @@ type FrameSize struct {
 }
 
 func (s FrameSize) String() string {
-	return fmt.Sprintf("U:%#x/C:%#x", s.U, s.C)
+	return fmt.Sprintf("U:%d/C:%d", s.U, s.C)
 }
 
 type Range struct {
@@ -76,7 +76,7 @@ type Range struct {
 }
 
 func (r Range) String() string {
-	return fmt.Sprintf("%#x/%#x", r.Start, r.Length)
+	return fmt.Sprintf("%d/%d", r.Start, r.Length)
 }
 
 type FrameTable struct {
@@ -196,7 +196,7 @@ func (ft *FrameTable) FrameFor(offset int64) (starts FrameOffset, size FrameSize
 		currentOffset.Add(frame)
 	}
 
-	return FrameOffset{}, FrameSize{}, fmt.Errorf("offset %#x is beyond the end of the frame table", offset)
+	return FrameOffset{}, FrameSize{}, fmt.Errorf("offset %d is beyond the end of the frame table", offset)
 }
 
 // GetFetchRange translates a U-space range to C-space using the frame table.
@@ -205,12 +205,12 @@ func (ft *FrameTable) GetFetchRange(rangeU Range) (Range, error) {
 	if ft.IsCompressed() {
 		start, size, err := ft.FrameFor(rangeU.Start)
 		if err != nil {
-			return Range{}, fmt.Errorf("getting frame for offset %#x: %w", rangeU.Start, err)
+			return Range{}, fmt.Errorf("getting frame for offset %d: %w", rangeU.Start, err)
 		}
 		endOffset := rangeU.Start + int64(rangeU.Length)
 		frameEnd := start.U + int64(size.U)
 		if endOffset > frameEnd {
-			return Range{}, fmt.Errorf("range %v spans beyond frame ending at %#x", rangeU, frameEnd)
+			return Range{}, fmt.Errorf("range %v spans beyond frame ending at %d", rangeU, frameEnd)
 		}
 		fetchRange = Range{
 			Start:  start.C,

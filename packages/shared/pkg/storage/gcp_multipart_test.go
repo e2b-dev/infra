@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"crypto/md5"
+	"encoding/base64"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -110,6 +112,42 @@ func TestMultipartUploader_UploadPart_Success(t *testing.T) {
 
 	uploader := createTestMultipartUploader(t, handler)
 	etag, err := uploader.uploadPart(t.Context(), "test-upload-id", 1, testData)
+
+	require.NoError(t, err)
+	require.Equal(t, expectedETag, etag)
+}
+
+func TestMultipartUploader_UploadPartSlices_Success(t *testing.T) {
+	t.Parallel()
+	expectedETag := `"slice-etag"`
+	slices := [][]byte{[]byte("hello "), []byte("world"), []byte("!")}
+
+	// Compute expected MD5 over all slices.
+	h := md5.New()
+	for _, s := range slices {
+		h.Write(s)
+	}
+	expectedMD5 := base64.StdEncoding.EncodeToString(h.Sum(nil))
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "PUT", r.Method)
+		assert.Contains(t, r.URL.RawQuery, "partNumber=3")
+		assert.Contains(t, r.URL.RawQuery, "uploadId=test-upload-id")
+
+		// Verify MD5 matches the expected hash of all slices.
+		assert.Equal(t, expectedMD5, r.Header.Get("Content-MD5"))
+
+		// Verify body is the concatenation of all slices.
+		body, err := io.ReadAll(r.Body)
+		assert.NoError(t, err)
+		assert.Equal(t, []byte("hello world!"), body)
+
+		w.Header().Set("ETag", expectedETag)
+		w.WriteHeader(http.StatusOK)
+	})
+
+	uploader := createTestMultipartUploader(t, handler)
+	etag, err := uploader.uploadPartSlices(t.Context(), "test-upload-id", 3, slices)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedETag, etag)

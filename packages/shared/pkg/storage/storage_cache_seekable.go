@@ -101,7 +101,7 @@ func (c *cachedFramedFile) GetFrame(ctx context.Context, offsetU int64, frameTab
 	// the cache layer must also verify since inner may return short reads
 	// that bypass ReadFrame (e.g. from NFS cache files).
 	if r.Length != len(buf) {
-		return r, fmt.Errorf("incomplete GetFrame: got %d bytes, expected %d (offset %#x)", r.Length, len(buf), offsetU)
+		return r, fmt.Errorf("incomplete GetFrame: got %d bytes, expected %d (offset %d)", r.Length, len(buf), offsetU)
 	}
 
 	return r, nil
@@ -120,7 +120,7 @@ func (c *cachedFramedFile) getFrameCompressed(ctx context.Context, offsetU int64
 
 	frameStart, frameSize, err := frameTable.FrameFor(offsetU)
 	if err != nil {
-		return Range{}, fmt.Errorf("cache GetFrame: frame lookup for offset %#x: %w", offsetU, err)
+		return Range{}, fmt.Errorf("cache GetFrame: frame lookup for offset %d: %w", offsetU, err)
 	}
 
 	framePath := makeFrameFilename(c.path, frameStart, frameSize)
@@ -176,7 +176,7 @@ func (c *cachedFramedFile) getFrameCompressed(ctx context.Context, offsetU int64
 	if err != nil {
 		timer.Failure(ctx, 0)
 
-		return Range{}, fmt.Errorf("cache GetFrame: inner fetch for offset %#x: %w", offsetU, err)
+		return Range{}, fmt.Errorf("cache GetFrame: inner fetch for offset %d: %w", offsetU, err)
 	}
 
 	recordCacheRead(ctx, false, int64(frameSize.C), cacheTypeFramedFile, cacheOpGetFrame)
@@ -272,11 +272,11 @@ func (c *cachedFramedFile) fetchAndDecompressProgressive(
 	<-done
 
 	if err != nil {
-		return r, fmt.Errorf("cache GetFrame: progressive decompress for offset %#x: %w", offsetU, err)
+		return r, fmt.Errorf("cache GetFrame: progressive decompress for offset %d: %w", offsetU, err)
 	}
 
 	if fetchErr != nil {
-		return r, fmt.Errorf("cache GetFrame: inner fetch for offset %#x: %w", offsetU, fetchErr)
+		return r, fmt.Errorf("cache GetFrame: inner fetch for offset %d: %w", offsetU, fetchErr)
 	}
 
 	// NFS write-back: only after confirming both fetch and decompress succeeded.
@@ -349,7 +349,7 @@ func (c *cachedFramedFile) getFrameUncompressed(ctx context.Context, offsetU int
 	if err != nil {
 		timer.Failure(ctx, 0)
 
-		return Range{}, fmt.Errorf("cache GetFrame uncompressed: inner fetch at %#x: %w", offsetU, err)
+		return Range{}, fmt.Errorf("cache GetFrame uncompressed: inner fetch at %d: %w", offsetU, err)
 	}
 
 	recordCacheRead(ctx, false, int64(r.Length), cacheTypeFramedFile, cacheOpGetFrame)
@@ -516,7 +516,7 @@ func (c *cachedFramedFile) validateGetFrameParams(off int64, length int, frameTa
 
 	// Uncompressed reads: enforce chunk alignment and bounds.
 	if off%c.chunkSize != 0 {
-		return fmt.Errorf("offset %#x is not aligned to chunk size %#x: %w", off, c.chunkSize, ErrOffsetUnaligned)
+		return fmt.Errorf("offset %d is not aligned to chunk size %d: %w", off, c.chunkSize, ErrOffsetUnaligned)
 	}
 
 	if int64(length) > c.chunkSize {

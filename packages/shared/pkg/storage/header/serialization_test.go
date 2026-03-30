@@ -48,7 +48,7 @@ func TestSerializeDeserialize_V3_RoundTrip(t *testing.T) {
 		},
 	}
 
-	data, err := serialize(metadata, nil, mappings)
+	data, err := serializeV3(metadata, mappings)
 	require.NoError(t, err)
 
 	got, err := DeserializeBytes(data)
@@ -90,7 +90,7 @@ func TestSerializeDeserialize_EmptyMappings_Defaults(t *testing.T) {
 		BaseBuildId: uuid.New(),
 	}
 
-	data, err := serialize(metadata, nil, nil)
+	data, err := serializeV3(metadata, nil)
 	require.NoError(t, err)
 
 	got, err := DeserializeBytes(data)
@@ -115,7 +115,7 @@ func TestDeserialize_BlockSizeZero(t *testing.T) {
 		BaseBuildId: uuid.New(),
 	}
 
-	data, err := serialize(metadata, nil, nil)
+	data, err := serializeV3(metadata, nil)
 	require.NoError(t, err)
 
 	_, err = DeserializeBytes(data)

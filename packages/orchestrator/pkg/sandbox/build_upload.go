@@ -390,8 +390,8 @@ func (p *PendingBuildInfo) applyToHeader(h *headers.Header, fileType string) err
 			continue
 		}
 
-		if err := mapping.AddFrames(info.ft); err != nil {
-			return fmt.Errorf("apply frames to mapping at offset %#x for build %s: %w",
+		if err := mapping.SetFrames(info.ft); err != nil {
+			return fmt.Errorf("apply frames to mapping at offset %d for build %s: %w",
 				mapping.Offset, mapping.BuildId.String(), err)
 		}
 	}

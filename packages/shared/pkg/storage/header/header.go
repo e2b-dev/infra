@@ -25,8 +25,14 @@ type BuildFileInfo struct {
 const NormalizeFixVersion = 3
 
 type Header struct {
-	Metadata    *Metadata
-	BuildFiles  map[uuid.UUID]BuildFileInfo // V4 only: per-build file size + checksum
+	Metadata *Metadata
+	// BuildFiles maps build IDs to their file metadata (size + checksum).
+	// NOTE: This is currently incomplete — it only contains entries for builds
+	// uploaded within the same layered upload session. Upstream dependency builds
+	// (from parent templates) are missing, causing a Size() RPC fallback on first
+	// access. TODO: populate from the orchestrator's template cache at upload time
+	// so all builds referenced in Mapping have entries here.
+	BuildFiles  map[uuid.UUID]BuildFileInfo
 	blockStarts *bitset.BitSet
 	startMap    map[int64]*BuildMap
 
@@ -135,7 +141,7 @@ func (t *Header) Mappings(all bool) string {
 		if m.FrameTable != nil {
 			frames = len(m.FrameTable.Frames)
 		}
-		result += fmt.Sprintf("  - Offset: %#x, Length: %#x, BuildId: %s, BuildStorageOffset: %#x, numFrames: %d\n",
+		result += fmt.Sprintf("  - Offset: %d, Length: %d, BuildId: %s, BuildStorageOffset: %d, numFrames: %d\n",
 			m.Offset,
 			m.Length,
 			m.BuildId.String(),
@@ -272,7 +278,7 @@ func ValidateHeader(h *Header) error {
 
 	// Check that first mapping starts at 0
 	if sortedMappings[0].Offset != 0 {
-		return fmt.Errorf("mappings don't start at 0: first mapping starts at %#x for buildId %s",
+		return fmt.Errorf("mappings don't start at 0: first mapping starts at %d for buildId %s",
 			sortedMappings[0].Offset, h.Metadata.BuildId.String())
 	}
 
@@ -282,11 +288,11 @@ func ValidateHeader(h *Header) error {
 		nextStart := sortedMappings[i+1].Offset
 
 		if currentEnd < nextStart {
-			return fmt.Errorf("gap in mappings: mapping[%d] ends at %#x but mapping[%d] starts at %#x (gap=%d bytes) for buildId %s",
+			return fmt.Errorf("gap in mappings: mapping[%d] ends at %d but mapping[%d] starts at %d (gap=%d bytes) for buildId %s",
 				i, currentEnd, i+1, nextStart, nextStart-currentEnd, h.Metadata.BuildId.String())
 		}
 		if currentEnd > nextStart {
-			return fmt.Errorf("overlap in mappings: mapping[%d] ends at %#x but mapping[%d] starts at %#x (overlap=%d bytes) for buildId %s",
+			return fmt.Errorf("overlap in mappings: mapping[%d] ends at %d but mapping[%d] starts at %d (overlap=%d bytes) for buildId %s",
 				i, currentEnd, i+1, nextStart, currentEnd-nextStart, h.Metadata.BuildId.String())
 		}
 	}
@@ -295,24 +301,24 @@ func ValidateHeader(h *Header) error {
 	lastMapping := sortedMappings[len(sortedMappings)-1]
 	lastEnd := lastMapping.Offset + lastMapping.Length
 	if lastEnd < h.Metadata.Size {
-		return fmt.Errorf("mappings don't cover entire file: last mapping ends at %#x but file size is %#x (missing %d bytes) for buildId %s",
+		return fmt.Errorf("mappings don't cover entire file: last mapping ends at %d but file size is %d (missing %d bytes) for buildId %s",
 			lastEnd, h.Metadata.Size, h.Metadata.Size-lastEnd, h.Metadata.BuildId.String())
 	}
 
 	// Allow last mapping to extend up to one block past size (for alignment)
 	if lastEnd > h.Metadata.Size+h.Metadata.BlockSize {
-		return fmt.Errorf("last mapping extends too far: ends at %#x but file size is %#x (overhang=%d bytes, max allowed=%d) for buildId %s",
+		return fmt.Errorf("last mapping extends too far: ends at %d but file size is %d (overhang=%d bytes, max allowed=%d) for buildId %s",
 			lastEnd, h.Metadata.Size, lastEnd-h.Metadata.Size, h.Metadata.BlockSize, h.Metadata.BuildId.String())
 	}
 
 	// Validate individual mapping bounds
 	for i, m := range h.Mapping {
 		if m.Offset > h.Metadata.Size {
-			return fmt.Errorf("mapping[%d] has Offset %#x beyond header size %#x for buildId %s",
+			return fmt.Errorf("mapping[%d] has Offset %d beyond header size %d for buildId %s",
 				i, m.Offset, h.Metadata.Size, m.BuildId.String())
 		}
 		if m.Length == 0 {
-			return fmt.Errorf("mapping[%d] has zero length at offset %#x for buildId %s",
+			return fmt.Errorf("mapping[%d] has zero length at offset %d for buildId %s",
 				i, m.Offset, m.BuildId.String())
 		}
 	}
@@ -320,17 +326,17 @@ func ValidateHeader(h *Header) error {
 	return nil
 }
 
-// AddFrames associates compression frame information with this header's mappings.
+// SetFrames associates compression frame information with this header's mappings.
 //
 // Only mappings matching this header's BuildId will be updated. Returns nil if frameTable is nil.
-func (t *Header) AddFrames(frameTable *storage.FrameTable) error {
+func (t *Header) SetFrames(frameTable *storage.FrameTable) error {
 	if frameTable == nil {
 		return nil
 	}
 
 	for _, mapping := range t.Mapping {
 		if mapping.BuildId == t.Metadata.BuildId {
-			if err := mapping.AddFrames(frameTable); err != nil {
+			if err := mapping.SetFrames(frameTable); err != nil {
 				return err
 			}
 		}

@@ -244,7 +244,7 @@ func ReadFrame(ctx context.Context, rangeRead RangeReadFunc, storageDetails stri
 	} else {
 		frameStart, frameSize, err := frameTable.FrameFor(offsetU)
 		if err != nil {
-			return Range{}, fmt.Errorf("get frame for offset %#x, %s: %w", offsetU, storageDetails, err)
+			return Range{}, fmt.Errorf("get frame for offset %d, %s: %w", offsetU, storageDetails, err)
 		}
 
 		expectedOut = int(frameSize.C)
@@ -261,7 +261,7 @@ func ReadFrame(ctx context.Context, rangeRead RangeReadFunc, storageDetails stri
 
 	respBody, err := rangeRead(ctx, fetchOffset, fetchSize)
 	if err != nil {
-		return Range{}, fmt.Errorf("reading at %#x from %s: %w", fetchOffset, storageDetails, err)
+		return Range{}, fmt.Errorf("reading at %d from %s: %w", fetchOffset, storageDetails, err)
 	}
 	defer respBody.Close()
 
@@ -281,7 +281,7 @@ func ReadFrame(ctx context.Context, rangeRead RangeReadFunc, storageDetails stri
 	// All sizes are known upfront (from header/frame table), so a short read
 	// always indicates truncation or corruption — never a valid result.
 	if r.Length != expectedOut {
-		return r, fmt.Errorf("incomplete ReadFrame from %s: got %d bytes, expected %d (offset %#x)", storageDetails, r.Length, expectedOut, offsetU)
+		return r, fmt.Errorf("incomplete ReadFrame from %s: got %d bytes, expected %d (offset %d)", storageDetails, r.Length, expectedOut, offsetU)
 	}
 
 	return r, nil

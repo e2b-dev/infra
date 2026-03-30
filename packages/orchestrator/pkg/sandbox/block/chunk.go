@@ -213,7 +213,7 @@ func (c *Chunker) fetch(ctx context.Context, off int64, ft *storage.FrameTable) 
 	if ft.IsCompressed() {
 		frameStarts, frameSize, err := ft.FrameFor(off)
 		if err != nil {
-			return fmt.Errorf("failed to get frame for offset %#x: %w", off, err)
+			return fmt.Errorf("failed to get frame for offset %d: %w", off, err)
 		}
 
 		chunkOff = frameStarts.U
@@ -302,7 +302,7 @@ func (c *Chunker) runFetch(ctx context.Context, session *fetchSession, offsetU i
 	_, err = file.GetFrame(ctx, offsetU, ft, compressed, mmapSlice[:session.chunkLen], readSize, onRead)
 	if err != nil {
 		timer.RecordRaw(ctx, session.chunkLen, attrs.remoteFailure)
-		session.setError(fmt.Errorf("failed to fetch data at %#x: %w", offsetU, err), false)
+		session.setError(fmt.Errorf("failed to fetch data at %d: %w", offsetU, err), false)
 
 		return
 	}

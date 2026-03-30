@@ -32,7 +32,7 @@ func (mapping *BuildMap) Copy() *BuildMap {
 	}
 }
 
-// AddFrames associates compression frame information with this mapping.
+// SetFrames associates compression frame information with this mapping.
 //
 // When a file is uploaded with compression, the compressor produces a FrameTable
 // that describes how the compressed data is organized into frames. This method
@@ -41,7 +41,7 @@ func (mapping *BuildMap) Copy() *BuildMap {
 //
 // Returns nil if frameTable is nil. Returns an error if the mapping's range
 // cannot be found in the frame table.
-func (mapping *BuildMap) AddFrames(frameTable *storage.FrameTable) error {
+func (mapping *BuildMap) SetFrames(frameTable *storage.FrameTable) error {
 	if frameTable == nil {
 		return nil
 	}
@@ -53,7 +53,7 @@ func (mapping *BuildMap) AddFrames(frameTable *storage.FrameTable) error {
 
 	subset, err := frameTable.Subset(mappedRange)
 	if err != nil {
-		return fmt.Errorf("mapping at virtual offset %#x (storage offset %#x, length %#x): %w",
+		return fmt.Errorf("mapping at virtual offset %d (storage offset %d, length %d): %w",
 			mapping.Offset, mapping.BuildStorageOffset, mapping.Length, err)
 	}
 
@@ -131,7 +131,6 @@ func MergeMappings(
 
 	mappings := make([]*BuildMap, 0)
 
-	var err error
 	var baseIdx int
 	var diffIdx int
 
@@ -195,9 +194,8 @@ func MergeMappings(
 					// the build storage offset is the same as the base mapping
 					BuildStorageOffset: base.BuildStorageOffset,
 				}
-				leftBase.FrameTable, err = base.FrameTable.Subset(storage.Range{Start: int64(leftBase.BuildStorageOffset), Length: int(leftBase.Length)})
-				if err != nil {
-					return nil, fmt.Errorf("subset frame table for left split at offset %#x: %w", leftBase.Offset, err)
+				if err := leftBase.SetFrames(base.FrameTable); err != nil {
+					return nil, fmt.Errorf("set frames for left split at offset %d: %w", leftBase.Offset, err)
 				}
 
 				mappings = append(mappings, leftBase)
@@ -217,9 +215,8 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
 				}
-				rightBase.FrameTable, err = base.FrameTable.Subset(storage.Range{Start: int64(rightBase.BuildStorageOffset), Length: int(rightBase.Length)})
-				if err != nil {
-					return nil, fmt.Errorf("subset frame table for right split at offset %#x: %w", rightBase.Offset, err)
+				if err := rightBase.SetFrames(base.FrameTable); err != nil {
+					return nil, fmt.Errorf("set frames for right split at offset %d: %w", rightBase.Offset, err)
 				}
 
 				baseMapping[baseIdx] = rightBase
@@ -248,9 +245,8 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
 				}
-				rightBase.FrameTable, err = base.FrameTable.Subset(storage.Range{Start: int64(rightBase.BuildStorageOffset), Length: int(rightBase.Length)})
-				if err != nil {
-					return nil, fmt.Errorf("subset frame table for right split at offset %#x: %w", rightBase.Offset, err)
+				if err := rightBase.SetFrames(base.FrameTable); err != nil {
+					return nil, fmt.Errorf("set frames for right split at offset %d: %w", rightBase.Offset, err)
 				}
 
 				baseMapping[baseIdx] = rightBase
@@ -273,9 +269,8 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset,
 				}
-				leftBase.FrameTable, err = base.FrameTable.Subset(storage.Range{Start: int64(leftBase.BuildStorageOffset), Length: int(leftBase.Length)})
-				if err != nil {
-					return nil, fmt.Errorf("subset frame table for left split at offset %#x: %w", leftBase.Offset, err)
+				if err := leftBase.SetFrames(base.FrameTable); err != nil {
+					return nil, fmt.Errorf("set frames for left split at offset %d: %w", leftBase.Offset, err)
 				}
 
 				mappings = append(mappings, leftBase)
