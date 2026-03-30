@@ -45,18 +45,18 @@ func ObserveConnection(ctx context.Context, conn *grpc.ClientConn, target string
 		return
 	}
 
-	if err := initConnectionMetrics(); err != nil {
-		logger.L().Warn(ctx, "failed to initialize gRPC connection observability metrics", zap.Error(err))
-
-		return
-	}
-
 	target = strings.TrimSpace(target)
 	if target == "" {
 		target = "unknown"
 	}
 
 	RegisterChannelzTarget(conn, target)
+
+	if err := initConnectionMetrics(); err != nil {
+		logger.L().Warn(ctx, "failed to initialize gRPC connection observability metrics", zap.Error(err))
+
+		return
+	}
 
 	observeCtx := context.WithoutCancel(ctx)
 
