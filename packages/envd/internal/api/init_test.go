@@ -660,21 +660,33 @@ func TestInstallCACerts(t *testing.T) {
 		assert.Equal(t, cert2, string(content))
 	})
 
-	t.Run("strips directory traversal from name", func(t *testing.T) {
+	t.Run("rejects name with path traversal", func(t *testing.T) {
 		t.Parallel()
 		api, certDir := newAPIWithTempCertDir(t)
 		certPEM := generateTestCACert(t)
 
 		api.installCACerts(ctx, []CACertificate{{Name: "../../../etc/evil", Cert: certPEM}})
 
-		// filepath.Base("../../../etc/evil") == "evil", so the file lands inside certDir
-		content, err := os.ReadFile(filepath.Join(certDir, "evil.crt"))
-		require.NoError(t, err)
-		assert.Equal(t, certPEM, string(content))
+		// The name is invalid so no file should be written anywhere.
+		_, err := os.ReadFile(filepath.Join(certDir, "evil.crt"))
+		assert.True(t, os.IsNotExist(err), "no file should be written for a traversal name")
 
-		// Nothing should have escaped the temp dir
 		_, err = os.ReadFile("/etc/evil.crt")
-		assert.True(t, os.IsNotExist(err))
+		assert.True(t, os.IsNotExist(err), "cert must not escape the cert directory")
+	})
+
+	t.Run("rejects name with dots or slashes", func(t *testing.T) {
+		t.Parallel()
+		api, certDir := newAPIWithTempCertDir(t)
+		certPEM := generateTestCACert(t)
+
+		for _, bad := range []string{"ca.bad", "ca/bad", "ca bad", ""} {
+			api.installCACerts(ctx, []CACertificate{{Name: bad, Cert: certPEM}})
+		}
+
+		entries, err := os.ReadDir(certDir)
+		require.NoError(t, err)
+		assert.Empty(t, entries, "no files should be written for invalid names")
 	})
 
 	t.Run("cert content is valid PEM", func(t *testing.T) {

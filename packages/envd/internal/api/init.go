@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sync"
 	"time"
 
@@ -262,6 +263,16 @@ func (a *API) setupNfs(ctx context.Context, nfsTarget, path string) {
 	}
 }
 
+// certNameRe matches safe filenames for CA certificates: lowercase letters,
+// digits, hyphens, and underscores only. No path separators or dots allowed.
+var certNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+// validCertName reports whether name is safe to use as a filename in the
+// CA certificate directory.
+func validCertName(name string) bool {
+	return name != "" && certNameRe.MatchString(name)
+}
+
 // installCACerts writes PEM-encoded CA certificates to the system trust store
 // and runs update-ca-certificates to register them with the OS.
 //
@@ -277,8 +288,13 @@ func (a *API) installCACerts(ctx context.Context, certs []CACertificate) {
 	}
 
 	for _, c := range certs {
-		// Use filepath.Base to strip any directory components from the name.
-		certPath := certDir + "/" + filepath.Base(c.Name) + ".crt"
+		if !validCertName(c.Name) {
+			a.logger.Error().Str("name", c.Name).Msg("skipping CA certificate with invalid name")
+
+			continue
+		}
+
+		certPath := filepath.Join(certDir, c.Name+".crt")
 		if err := os.WriteFile(certPath, []byte(c.Cert), 0o644); err != nil {
 			a.logger.Error().Err(err).Str("name", c.Name).Msg("failed to write CA certificate")
 
