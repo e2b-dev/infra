@@ -1011,7 +1011,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating NBD device pool...")
 	}
-	devicePool, err := nbd.NewDevicePool()
+	devicePool, err := nbd.NewDevicePool(64)
 	if err != nil {
 		return fmt.Errorf("nbd pool: %w", err)
 	}

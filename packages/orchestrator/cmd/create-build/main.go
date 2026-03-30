@@ -252,7 +252,7 @@ func doBuild(
 		return fmt.Errorf("build storage: %w", err)
 	}
 
-	devicePool, err := nbd.NewDevicePool()
+	devicePool, err := nbd.NewDevicePool(64)
 	if err != nil {
 		return fmt.Errorf("nbd pool: %w", err)
 	}
