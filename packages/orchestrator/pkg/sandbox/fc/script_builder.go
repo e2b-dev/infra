@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"path/filepath"
-	"runtime"
 	txtTemplate "text/template"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
@@ -26,7 +25,6 @@ type startScriptArgs struct {
 	NamespaceID       string
 	FirecrackerPath   string
 	FirecrackerSocket string
-	ExtraArgs         string
 }
 
 // StartScriptResult contains the generated script and computed paths
@@ -49,7 +47,7 @@ ln -s {{ .HostRootfsPath }} {{ .DeprecatedSandboxRootfsDir }}/{{ .SandboxRootfsF
 mount -t tmpfs tmpfs {{ .SandboxDir }}/{{ .SandboxKernelDir }} -o X-mount.mkdir &&
 ln -s {{ .HostKernelPath }} {{ .SandboxDir }}/{{ .SandboxKernelDir }}/{{ .SandboxKernelFile }} &&
 
-ip netns exec {{ .NamespaceID }} {{ .FirecrackerPath }} --api-sock {{ .FirecrackerSocket }}{{ .ExtraArgs }}`
+ip netns exec {{ .NamespaceID }} {{ .FirecrackerPath }} --api-sock {{ .FirecrackerSocket }}`
 
 const startScriptV2 = `mount --make-rprivate / &&
 mount -t tmpfs tmpfs {{ .SandboxDir }} -o X-mount.mkdir &&
@@ -59,7 +57,7 @@ ln -s {{ .HostRootfsPath }} {{ .SandboxDir }}/{{ .SandboxRootfsFile }} &&
 mkdir -p {{ .SandboxDir }}/{{ .SandboxKernelDir }} &&
 ln -s {{ .HostKernelPath }} {{ .SandboxDir }}/{{ .SandboxKernelDir }}/{{ .SandboxKernelFile }} &&
 
-ip netns exec {{ .NamespaceID }} {{ .FirecrackerPath }} --api-sock {{ .FirecrackerSocket }}{{ .ExtraArgs }}`
+ip netns exec {{ .NamespaceID }} {{ .FirecrackerPath }} --api-sock {{ .FirecrackerSocket }}`
 
 // StartScriptBuilder handles the creation and execution of firecracker start scripts
 type StartScriptBuilder struct {
@@ -87,15 +85,6 @@ func (sb *StartScriptBuilder) buildArgs(
 	rootfsPaths RootfsPaths,
 	namespaceID string,
 ) startScriptArgs {
-	// On ARM64, disable seccomp to allow userfaultfd syscall for snapshot restore.
-	// The upstream Firecracker seccomp filter for aarch64 does not include the
-	// userfaultfd syscall (nr 282), causing snapshot loading to fail with
-	// "Failed to UFFD object: System error".
-	var extraArgs string
-	if runtime.GOARCH == "arm64" {
-		extraArgs = " --no-seccomp"
-	}
-
 	return startScriptArgs{
 		// General
 		SandboxDir: sb.builderConfig.SandboxDir,
@@ -114,7 +103,6 @@ func (sb *StartScriptBuilder) buildArgs(
 		NamespaceID:       namespaceID,
 		FirecrackerPath:   versions.FirecrackerPath(sb.builderConfig),
 		FirecrackerSocket: files.SandboxFirecrackerSocketPath(),
-		ExtraArgs:         extraArgs,
 	}
 }
 
