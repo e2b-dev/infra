@@ -264,9 +264,9 @@ func createInProcessChannelzClient() (channelzpb.ChannelzClient, func(), error) 
 	return channelzpb.NewChannelzClient(conn), closeFn, nil
 }
 
-func sampleChannelzConnections(ctx context.Context, client channelzpb.ChannelzClient, state *channelzSamplerState) {
+func sampleChannelzConnections(ctx context.Context, client channelzpb.ChannelzClient, samplerState *channelzSamplerState) {
 	countsByType := map[string]map[channelzpb.ChannelConnectivityState_State]int64{}
-	for _, clientType := range state.registeredClientTypes() {
+	for _, clientType := range samplerState.registeredClientTypes() {
 		countsByType[clientType] = map[channelzpb.ChannelConnectivityState_State]int64{}
 	}
 
@@ -293,9 +293,9 @@ func sampleChannelzConnections(ctx context.Context, client channelzpb.ChannelzCl
 				continue
 			}
 
-			clientType := detectChannelzClientType(state, target)
+			clientType := detectChannelzClientType(samplerState, target)
 			if clientType == channelzClientTypeUnknown {
-				state.logUnknownTargetOnce(ctx, target)
+				samplerState.logUnknownTargetOnce(ctx, target)
 			}
 
 			if _, ok := countsByType[clientType]; !ok {
@@ -304,12 +304,12 @@ func sampleChannelzConnections(ctx context.Context, client channelzpb.ChannelzCl
 
 			subRefs := ch.GetSubchannelRef()
 			if len(subRefs) == 0 {
-				state := channelzpb.ChannelConnectivityState_UNKNOWN
+				connState := channelzpb.ChannelConnectivityState_UNKNOWN
 				if data := ch.GetData(); data != nil && data.GetState() != nil {
-					state = data.GetState().GetState()
+					connState = data.GetState().GetState()
 				}
 
-				countsByType[clientType][state]++
+				countsByType[clientType][connState]++
 			} else {
 				for _, subRef := range subRefs {
 					subResp, err := client.GetSubchannel(ctx, &channelzpb.GetSubchannelRequest{SubchannelId: subRef.GetSubchannelId()})
@@ -317,8 +317,8 @@ func sampleChannelzConnections(ctx context.Context, client channelzpb.ChannelzCl
 						continue
 					}
 
-					state := subResp.GetSubchannel().GetData().GetState().GetState()
-					countsByType[clientType][state]++
+					subchannelState := subResp.GetSubchannel().GetData().GetState().GetState()
+					countsByType[clientType][subchannelState]++
 				}
 			}
 		}
@@ -351,9 +351,9 @@ func sampleChannelzConnections(ctx context.Context, client channelzpb.ChannelzCl
 		}
 	}
 
-	state.mu.Lock()
-	state.counts = newCounts
-	state.mu.Unlock()
+	samplerState.mu.Lock()
+	samplerState.counts = newCounts
+	samplerState.mu.Unlock()
 }
 
 func isInProcessChannelzTarget(target string) bool {
