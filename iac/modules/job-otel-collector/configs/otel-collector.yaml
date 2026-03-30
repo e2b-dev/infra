@@ -231,7 +231,7 @@ processors:
           - "go\\..*"
           - "traefik.*"
           - "grpc\\..*"
-          - "rpc.client.*"
+          - "rpc\\.client.*"
 
   filter/only_client_allocs:
     metrics:
