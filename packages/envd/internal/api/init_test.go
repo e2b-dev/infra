@@ -624,6 +624,7 @@ func TestInstallCACerts(t *testing.T) {
 		t.Helper()
 		api := newTestAPI(nil, &mockMMDSClient{})
 		api.certDir = t.TempDir()
+
 		return api, api.certDir
 	}
 

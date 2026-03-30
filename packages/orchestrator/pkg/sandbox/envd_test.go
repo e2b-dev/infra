@@ -71,9 +71,9 @@ func TestConvertCACertificates(t *testing.T) {
 
 // TestEnvdInitSendsCACertificates verifies the full injection chain:
 // EgressProxy.CACertificates() → Sandbox.CACertificates → POST /init body.
-func TestEnvdInitSendsCACertificates(t *testing.T) {
-	// Not parallel: overrides the package-level sandboxHttpClient.
-
+//
+// Not parallel: overrides the package-level sandboxHttpClient.
+func TestEnvdInitSendsCACertificates(t *testing.T) { //nolint:paralleltest
 	proxy := &mockEgressProxy{
 		certs: []network.CACertificate{
 			{Name: "proxy-ca", Cert: "-----BEGIN CERTIFICATE-----\nPROXY\n-----END CERTIFICATE-----\n"},
@@ -86,11 +86,11 @@ func TestEnvdInitSendsCACertificates(t *testing.T) {
 
 	var captured envd.PostInitJSONBody
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, http.MethodPost, r.Method)
-		require.Equal(t, "/init", r.URL.Path)
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/init", r.URL.Path)
 
 		err := json.NewDecoder(r.Body).Decode(&captured)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		w.WriteHeader(http.StatusNoContent)
 	}))
@@ -104,8 +104,9 @@ func TestEnvdInitSendsCACertificates(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, _, err := sbx.doRequestWithInfiniteRetries(ctx, http.MethodPost, server.URL+"/init")
+	resp, _, err := sbx.doRequestWithInfiniteRetries(ctx, http.MethodPost, server.URL+"/init")
 	require.NoError(t, err)
+	defer resp.Body.Close()
 
 	require.Len(t, captured.CaCertificates, 2)
 	assert.Equal(t, proxy.certs[0].Name, captured.CaCertificates[0].Name)
