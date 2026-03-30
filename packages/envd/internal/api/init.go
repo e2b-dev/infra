@@ -217,12 +217,15 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 		a.defaults.Workdir = data.DefaultWorkdir
 	}
 
+	var wg sync.WaitGroup
+
 	if data.CaCertificates != nil && len(*data.CaCertificates) > 0 {
-		a.installCACerts(ctx, *data.CaCertificates)
+		wg.Go(func() {
+			a.installCACerts(ctx, *data.CaCertificates)
+		})
 	}
 
 	if data.VolumeMounts != nil {
-		var wg sync.WaitGroup
 		for _, volume := range *data.VolumeMounts {
 			logger.Debug().Msgf("Mounting %s at %q", volume.NfsTarget, volume.Path)
 
@@ -230,9 +233,9 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 				a.setupNfs(context.WithoutCancel(ctx), volume.NfsTarget, volume.Path)
 			})
 		}
-
-		wg.Wait()
 	}
+
+	wg.Wait()
 
 	return nil
 }
