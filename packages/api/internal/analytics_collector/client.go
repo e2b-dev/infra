@@ -12,7 +12,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type Analytics struct {
@@ -20,13 +19,12 @@ type Analytics struct {
 	connection *grpc.ClientConn
 }
 
-func NewAnalytics(ctx context.Context, host, grpcAPIKey string) (*Analytics, error) {
+func NewAnalytics(host, grpcAPIKey string) (*Analytics, error) {
 	var client AnalyticsCollectorClient
 	var connection *grpc.ClientConn
 
-	if host == "" {
-		logger.L().Info(ctx, "Running dummy implementation of analytics collector client, no host provided")
-	} else {
+	// Run dummy client if host is not provided
+	if host != "" {
 		systemRoots, err := x509.SystemCertPool()
 		if err != nil {
 			errMsg := fmt.Errorf("failed to read system root certificate pool: %w", err)
@@ -50,8 +48,6 @@ func NewAnalytics(ctx context.Context, host, grpcAPIKey string) (*Analytics, err
 			return nil, fmt.Errorf("failed to create GRPC client: %w", err)
 		}
 
-		e2bgrpc.ObserveConnection(ctx, conn, "analytics-collector")
-
 		connection = conn
 		client = NewAnalyticsCollectorClient(connection)
 	}
@@ -70,6 +66,10 @@ func (a *Analytics) Close() error {
 	}
 
 	return nil
+}
+
+func (a *Analytics) Init(ctx context.Context) {
+	e2bgrpc.ObserveConnection(ctx, a.connection, "analytics-collector")
 }
 
 func (a *Analytics) InstanceStarted(ctx context.Context, in *InstanceStartedEvent, opts ...grpc.CallOption) (*emptypb.Empty, error) {

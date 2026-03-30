@@ -1,7 +1,6 @@
 package nodemanager
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -14,7 +13,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
-	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
 
@@ -25,7 +23,7 @@ var OrchestratorToApiNodeStateMapper = map[orchestratorinfo.ServiceInfoStatus]ap
 	orchestratorinfo.ServiceInfoStatus_Standby:   api.NodeStatusStandby,
 }
 
-func NewClient(ctx context.Context, tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string) (*clusters.GRPCClient, error) {
+func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string) (*clusters.GRPCClient, error) {
 	conn, err := grpc.NewClient(host,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithStatsHandler(
@@ -46,7 +44,5 @@ func NewClient(ctx context.Context, tracerProvider trace.TracerProvider, meterPr
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}
 
-	e2bgrpc.ObserveConnection(ctx, conn, "orchestrator")
-
-	return clusters.NewGRPCClient(conn), nil
+	return clusters.NewGRPCClient(conn, "orchestrator"), nil
 }

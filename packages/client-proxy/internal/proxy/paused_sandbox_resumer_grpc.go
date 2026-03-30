@@ -20,7 +20,7 @@ type grpcPausedSandboxResumer struct {
 	client proxygrpc.SandboxServiceClient
 }
 
-func NewGrpcPausedSandboxResumer(ctx context.Context, address string) (PausedSandboxResumer, error) {
+func NewGrpcPausedSandboxResumer(address string) (PausedSandboxResumer, error) {
 	// Client-proxy uses this gRPC client to trigger ResumeSandbox when needed.
 	if strings.TrimSpace(address) == "" {
 		return nil, fmt.Errorf("api grpc address is required")
@@ -35,12 +35,14 @@ func NewGrpcPausedSandboxResumer(ctx context.Context, address string) (PausedSan
 		return nil, fmt.Errorf("create grpc client: %w", err)
 	}
 
-	e2bgrpc.ObserveConnection(ctx, conn, "api-resumer")
-
 	return &grpcPausedSandboxResumer{
 		conn:   conn,
 		client: proxygrpc.NewSandboxServiceClient(conn),
 	}, nil
+}
+
+func (c *grpcPausedSandboxResumer) Init(ctx context.Context) {
+	e2bgrpc.ObserveConnection(ctx, c.conn, "api-resumer")
 }
 
 func (c *grpcPausedSandboxResumer) Close(_ context.Context) error {

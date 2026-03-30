@@ -139,12 +139,14 @@ func run() int {
 
 	var pausedSandboxResumer e2bproxy.PausedSandboxResumer
 	if strings.TrimSpace(config.ApiGrpcAddress) != "" {
-		pausedSandboxResumer, err = e2bproxy.NewGrpcPausedSandboxResumer(ctx, config.ApiGrpcAddress)
+		pausedSandboxResumer, err = e2bproxy.NewGrpcPausedSandboxResumer(config.ApiGrpcAddress)
 		if err != nil {
 			l.Error(ctx, "Failed to create paused sandbox checker", zap.Error(err))
 
 			return 1
 		}
+
+		pausedSandboxResumer.Init(ctx)
 	} else {
 		l.Warn(ctx, "API gRPC address not set; paused sandbox checks disabled")
 	}
