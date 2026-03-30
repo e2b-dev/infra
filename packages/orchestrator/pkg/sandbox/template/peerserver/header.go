@@ -35,7 +35,7 @@ func (f *headerSource) Stream(ctx context.Context, sender Sender) error {
 		return ErrNotAvailable
 	}
 
-	data, err := header.Serialize(h)
+	data, err := header.SerializeHeader(h)
 	if err != nil {
 		span.RecordError(err)
 

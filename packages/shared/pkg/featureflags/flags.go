@@ -111,13 +111,15 @@ var (
 	CreateStorageCacheSpansFlag         = newBoolFlag("create-storage-cache-spans", env.IsDevelopment())
 	SandboxAutoResumeFlag               = newBoolFlag("sandbox-auto-resume", env.IsDevelopment())
 	SandboxCatalogLocalCacheFlag        = newBoolFlag("sandbox-catalog-local-cache", true)
-	PersistentVolumesFlag               = newBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
-	ExecutionMetricsOnWebhooksFlag      = newBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
+
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.
 	PeerToPeerChunkTransferFlag = newBoolFlag("peer-to-peer-chunk-transfer", false)
 	// PeerToPeerAsyncCheckpointFlag makes Checkpoint upload fire-and-forget instead
 	// of synchronous. Only safe to enable after PeerToPeerChunkTransferFlag is ON.
-	PeerToPeerAsyncCheckpointFlag   = newBoolFlag("peer-to-peer-async-checkpoint", false)
+	PeerToPeerAsyncCheckpointFlag = newBoolFlag("peer-to-peer-async-checkpoint", false)
+
+	PersistentVolumesFlag           = newBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
+	ExecutionMetricsOnWebhooksFlag  = newBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
 	SandboxLabelBasedSchedulingFlag = newBoolFlag("sandbox-label-based-scheduling", false)
 )
 
@@ -313,12 +315,18 @@ func GetTrackedTemplatesSet(ctx context.Context, ff *Client) map[string]struct{}
 	return result
 }
 
-// OverrideJSONFlag updates a JSON flag value in the offline store.
-// Intended for benchmarks and tests.
-func OverrideJSONFlag(flag JSONFlag, value ldvalue.Value) {
-	builder := launchDarklyOfflineStore.Flag(flag.Key()).ValueForAll(value)
-	launchDarklyOfflineStore.Update(builder)
-}
+// ChunkerConfigFlag is a JSON flag controlling the chunker implementation and tuning.
+//
+// NOTE: Changing useStreaming has no effect on chunkers already created for
+// cached templates. A service restart (redeploy) is required for that change
+// to take effect. minReadBatchSizeKB is checked just-in-time on each fetch,
+// so it takes effect immediately.
+//
+// JSON format: {"useStreaming": false, "minReadBatchSizeKB": 16}
+var ChunkerConfigFlag = newJSONFlag("chunker-config", ldvalue.FromJSONMarshal(map[string]any{
+	"useStreaming":       false,
+	"minReadBatchSizeKB": 16,
+}))
 
 // CompressConfigFlag controls compression during template builds.
 // When compressBuilds is true, builds upload exclusively compressed data
@@ -331,7 +339,6 @@ var CompressConfigFlag = newJSONFlag("compress-config", ldvalue.FromJSONMarshal(
 	"targetPartSizeMB":   50,
 	"frameEncodeWorkers": 4,
 	"encoderConcurrency": 1,
-	"decoderConcurrency": 1,
 }))
 
 // TCPFirewallEgressThrottleConfig controls per-sandbox egress throttling via Firecracker's

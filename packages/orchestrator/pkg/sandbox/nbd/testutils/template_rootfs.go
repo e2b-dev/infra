@@ -35,7 +35,7 @@ func TemplateRootfs(ctx context.Context, buildID string) (*BuildDevice, *Cleaner
 		return nil, &cleaner, fmt.Errorf("failed to open object: %w", err)
 	}
 
-	h, err := header.FromBlob(ctx, obj)
+	h, err := header.Deserialize(ctx, obj)
 	if err != nil {
 		id, err := uuid.Parse(buildID)
 		if err != nil {

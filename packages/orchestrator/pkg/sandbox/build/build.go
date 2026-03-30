@@ -175,7 +175,7 @@ func (b *File) swapHeader(transErr *storage.PeerTransitionedError) error {
 		return fmt.Errorf("no header bytes available")
 	}
 
-	newH, err := header.Deserialize(headerBytes)
+	newH, err := header.DeserializeBytes(headerBytes)
 	if err != nil {
 		b.swapFailed.Store(true)
 

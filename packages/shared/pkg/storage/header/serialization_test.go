@@ -51,7 +51,7 @@ func TestSerializeDeserialize_V3_RoundTrip(t *testing.T) {
 	data, err := serialize(metadata, nil, mappings)
 	require.NoError(t, err)
 
-	got, err := Deserialize(data)
+	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
 	require.Equal(t, metadata, got.Metadata)
@@ -73,7 +73,7 @@ func TestSerializeDeserialize_V3_RoundTrip(t *testing.T) {
 func TestDeserialize_TruncatedMetadata(t *testing.T) {
 	t.Parallel()
 
-	_, err := Deserialize([]byte{0x01, 0x02, 0x03})
+	_, err := DeserializeBytes([]byte{0x01, 0x02, 0x03})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "header too short")
 }
@@ -93,7 +93,7 @@ func TestSerializeDeserialize_EmptyMappings_Defaults(t *testing.T) {
 	data, err := serialize(metadata, nil, nil)
 	require.NoError(t, err)
 
-	got, err := Deserialize(data)
+	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
 	// NewHeader creates a default mapping when none provided
@@ -118,7 +118,7 @@ func TestDeserialize_BlockSizeZero(t *testing.T) {
 	data, err := serialize(metadata, nil, nil)
 	require.NoError(t, err)
 
-	_, err = Deserialize(data)
+	_, err = DeserializeBytes(data)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "block size cannot be zero")
 }
@@ -167,10 +167,10 @@ func TestSerializeDeserialize_V4_WithFrameTable(t *testing.T) {
 	h.BuildFiles = buildFiles
 
 	// Test with Serialize + Deserialize (unified path)
-	data, err := Serialize(h)
+	data, err := SerializeHeader(h)
 	require.NoError(t, err)
 
-	got, err := Deserialize(data)
+	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
 	require.Equal(t, uint64(4), got.Metadata.Version)
@@ -235,10 +235,10 @@ func TestSerializeDeserialize_V4_Zstd_NonZeroStartAt(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test with Serialize + Deserialize (unified path)
-	data, err := Serialize(h)
+	data, err := SerializeHeader(h)
 	require.NoError(t, err)
 
-	got, err := Deserialize(data)
+	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
 	require.Len(t, got.Mapping, 1)
@@ -294,10 +294,10 @@ func TestSerializeDeserialize_V4_CompressionNone_EmptyFrames(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test with Serialize + Deserialize (unified path)
-	data, err := Serialize(h)
+	data, err := SerializeHeader(h)
 	require.NoError(t, err)
 
-	got, err := Deserialize(data)
+	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
 	require.Len(t, got.Mapping, 2)
@@ -344,10 +344,10 @@ func TestSerializeDeserialize_V4_ManyFrames(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test with Serialize + Deserialize (unified path)
-	data, err := Serialize(h)
+	data, err := SerializeHeader(h)
 	require.NoError(t, err)
 
-	got, err := Deserialize(data)
+	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
 	require.Len(t, got.Mapping, 1)
@@ -386,10 +386,10 @@ func TestSerializeDeserialize_V4_EmptyBuildFiles(t *testing.T) {
 	require.NoError(t, err)
 	// No BuildFiles set (nil map)
 
-	data, err := Serialize(h)
+	data, err := SerializeHeader(h)
 	require.NoError(t, err)
 
-	got, err := Deserialize(data)
+	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
 	require.Len(t, got.Mapping, 1)

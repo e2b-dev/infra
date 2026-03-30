@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/bits"
 	"math/rand"
 	"os"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -49,7 +49,7 @@ type Cache struct {
 	blockSize int64
 	mmap      *mmap.MMap
 	mu        sync.RWMutex
-	dirty     []atomic.Uint64 // bitset indexed by off/blockSize — bit is set when block is present
+	dirty     sync.Map
 	dirtyFile bool
 	closed    atomic.Bool
 }
@@ -87,15 +87,12 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		return nil, fmt.Errorf("error mapping file: %w", err)
 	}
 
-	numBlocks := (size + blockSize - 1) / blockSize
-
 	return &Cache{
 		mmap:      &mm,
 		filePath:  filePath,
 		size:      size,
 		blockSize: blockSize,
 		dirtyFile: dirtyFile,
-		dirty:     make([]atomic.Uint64, (numBlocks+63)/64),
 	}, nil
 }
 
@@ -239,7 +236,7 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 		return nil, nil
 	}
 
-	if c.dirtyFile || c.isBlockCached(off/c.blockSize) {
+	if c.dirtyFile || c.isCached(off, length) {
 		end := min(off+length, c.size)
 
 		return (*c.mmap)[off:end], nil
@@ -248,25 +245,20 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 	return nil, BytesNotAvailableError{}
 }
 
-func (c *Cache) isBlockCached(i int64) bool {
-	if i < 0 || i >= int64(len(c.dirty))*64 {
-		return false
-	}
-
-	return c.dirty[i/64].Load()&(1<<uint(i%64)) != 0
-}
-
 func (c *Cache) isCached(off, length int64) bool {
+	// Make sure the offset is within the cache size
 	if off >= c.size {
 		return false
 	}
 
+	// Cap if the length goes beyond the cache size, so we don't check for blocks that are out of bounds.
 	end := min(off+length, c.size)
-	start := off / c.blockSize
-	n := (end + c.blockSize - 1) / c.blockSize
+	// Recalculate the length based on the capped end, so we check for the correct blocks in case of capping.
+	length = end - off
 
-	for i := start; i < n; i++ {
-		if !c.isBlockCached(i) {
+	for _, blockOff := range header.BlocksOffsets(length, c.blockSize) {
+		_, dirty := c.dirty.Load(off + blockOff)
+		if !dirty {
 			return false
 		}
 	}
@@ -274,31 +266,9 @@ func (c *Cache) isCached(off, length int64) bool {
 	return true
 }
 
-// markRangeCached marks all blocks in [off, off+length) as cached.
-// Uses atomic OR so concurrent callers for disjoint ranges are safe.
-func (c *Cache) markRangeCached(off, length int64) {
-	if length <= 0 {
-		return
-	}
-
-	start := off / c.blockSize
-	n := (off + length + c.blockSize - 1) / c.blockSize
-
-	for i := start; i < n; {
-		w := i / 64
-		lo := i % 64
-		hi := min(n-w*64, 64)
-
-		var mask uint64
-		if hi-lo == 64 {
-			mask = math.MaxUint64
-		} else {
-			mask = ((1 << uint(hi-lo)) - 1) << uint(lo)
-		}
-
-		c.dirty[w].Or(mask)
-
-		i = (w + 1) * 64
+func (c *Cache) setIsCached(off, length int64) {
+	for _, blockOff := range header.BlocksOffsets(length, c.blockSize) {
+		c.dirty.Store(off+blockOff, struct{}{})
 	}
 }
 
@@ -316,24 +286,21 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 
 	n := copy((*c.mmap)[off:end], b)
 
-	c.markRangeCached(off, end-off)
+	c.setIsCached(off, end-off)
 
 	return n, nil
 }
 
+// dirtySortedKeys returns a sorted list of dirty keys.
+// Key represents a block offset.
 func (c *Cache) dirtySortedKeys() []int64 {
 	var keys []int64
+	c.dirty.Range(func(key, _ any) bool {
+		keys = append(keys, key.(int64))
 
-	for wi := range c.dirty {
-		word := c.dirty[wi].Load()
-		base := int64(wi) * 64
-
-		for word != 0 {
-			bit := bits.TrailingZeros64(word)
-			keys = append(keys, (base+int64(bit))*c.blockSize)
-			word &= word - 1
-		}
-	}
+		return true
+	})
+	slices.Sort(keys)
 
 	return keys
 }
@@ -524,7 +491,9 @@ func (c *Cache) copyProcessMemory(
 				return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
 			}
 
-			c.markRangeCached(offset, segmentSize)
+			for _, blockOff := range header.BlocksOffsets(segmentSize, c.blockSize) {
+				c.dirty.Store(offset+blockOff, struct{}{})
+			}
 
 			offset += segmentSize
 

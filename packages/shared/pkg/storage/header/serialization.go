@@ -2,14 +2,16 @@ package header
 
 import (
 	"bytes"
+	"cmp"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
-
-	"context"
+	"slices"
 
 	"github.com/google/uuid"
+	lz4 "github.com/pierrec/lz4/v4"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -92,7 +94,18 @@ func serialize(metadata *Metadata, buildFiles map[uuid.UUID]BuildFileInfo, mappi
 		if err := binary.Write(&buf, binary.LittleEndian, uint32(len(buildFiles))); err != nil {
 			return nil, fmt.Errorf("failed to write build files count: %w", err)
 		}
-		for id, info := range buildFiles {
+
+		// Sort by UUID for deterministic serialization.
+		buildIDs := make([]uuid.UUID, 0, len(buildFiles))
+		for id := range buildFiles {
+			buildIDs = append(buildIDs, id)
+		}
+		slices.SortFunc(buildIDs, func(a, b uuid.UUID) int {
+			return cmp.Compare(a.String(), b.String())
+		})
+
+		for _, id := range buildIDs {
+			info := buildFiles[id]
 			entry := v4SerializableBuildFileInfo{
 				BuildId:  id,
 				Size:     info.Size,
@@ -268,14 +281,19 @@ func deserializeV4Block(reader *bytes.Reader) (map[uuid.UUID]BuildFileInfo, []*B
 	return buildFiles, mappings, nil
 }
 
-// Serialize serializes a header with optional LZ4 compression for V4.
+// Serialize serializes a V3 header from metadata and mappings (legacy API).
+func Serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
+	return serialize(metadata, nil, mappings)
+}
+
+// SerializeHeader serializes a header with optional LZ4 compression for V4.
 //
 // V3 (Version <= 3): [Metadata (raw binary)] [v3 mappings (raw binary)]
 //
 // V4 (Version >= 4):  [Metadata (raw binary)] [uint32 uncompressed block size] [LZ4-compressed block]
 //
 //	where the LZ4 block contains: BuildFiles + v4 mappings with FrameTables.
-func Serialize(h *Header) ([]byte, error) {
+func SerializeHeader(h *Header) ([]byte, error) {
 	raw, err := serialize(h.Metadata, h.BuildFiles, h.Mapping)
 	if err != nil {
 		return nil, err
@@ -285,9 +303,9 @@ func Serialize(h *Header) ([]byte, error) {
 		return raw, nil
 	}
 
-	// V4: keep Metadata prefix raw, then [uint32 uncompressed size] + [LZ4 block].
+	// V4: keep Metadata prefix raw, then [uint32 uncompressed size] + [LZ4 frame].
 	block := raw[metadataSize:]
-	compressed, err := storage.CompressLZ4(block)
+	compressed, err := compressLZ4(block)
 	if err != nil {
 		return nil, fmt.Errorf("failed to LZ4-compress v4 header mappings: %w", err)
 	}
@@ -303,23 +321,28 @@ func Serialize(h *Header) ([]byte, error) {
 // LoadHeader fetches a serialized header from storage and deserializes it.
 // Errors (including storage.ErrObjectNotExist) are returned as-is.
 func LoadHeader(ctx context.Context, s storage.StorageProvider, path string) (*Header, error) {
-	data, err := storage.LoadBlob(ctx, s, path)
+	blob, err := s.OpenBlob(ctx, path) // TODO: restore storage.MetadataObjectType param
+	if err != nil {
+		return nil, fmt.Errorf("open blob %s: %w", path, err)
+	}
+
+	data, err := storage.GetBlob(ctx, blob)
 	if err != nil {
 		return nil, err
 	}
 
-	return Deserialize(data)
+	return DeserializeBytes(data)
 }
 
 // StoreHeader serializes a header and uploads it to storage.
 // Inverse of LoadHeader.
 func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h *Header) error {
-	data, err := Serialize(h)
+	data, err := SerializeHeader(h)
 	if err != nil {
 		return fmt.Errorf("serialize header: %w", err)
 	}
 
-	blob, err := s.OpenBlob(ctx, path)
+	blob, err := s.OpenBlob(ctx, path) // TODO: restore storage.MetadataObjectType param
 	if err != nil {
 		return fmt.Errorf("open blob %s: %w", path, err)
 	}
@@ -327,11 +350,21 @@ func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h 
 	return blob.Put(ctx, data)
 }
 
-// Deserialize auto-detects the header version and deserializes accordingly.
-// See Serialize for the binary layout.
+// Deserialize reads a header from a storage Blob (legacy API).
+func Deserialize(ctx context.Context, in storage.Blob) (*Header, error) {
+	data, err := storage.GetBlob(ctx, in)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write to buffer: %w", err)
+	}
+
+	return DeserializeBytes(data)
+}
+
+// DeserializeBytes auto-detects the header version and deserializes accordingly.
+// See SerializeHeader for the binary layout.
 // The uint32 size prefix in V4 allows exact-size allocation for decompression
 // instead of a fixed upper-bound buffer.
-func Deserialize(data []byte) (*Header, error) {
+func DeserializeBytes(data []byte) (*Header, error) {
 	if len(data) < metadataSize {
 		return nil, fmt.Errorf("header too short: %d bytes", len(data))
 	}
@@ -353,7 +386,7 @@ func Deserialize(data []byte) (*Header, error) {
 			return nil, fmt.Errorf("v4 header uncompressed size %d exceeds maximum %d", uncompressedSize, storage.MaxCompressedHeaderSize)
 		}
 
-		blockData, err = storage.DecompressLZ4(blockData[4:], make([]byte, uncompressedSize))
+		blockData, err = decompressLZ4(blockData[4:])
 		if err != nil {
 			return nil, fmt.Errorf("failed to LZ4-decompress v4 header block: %w", err)
 		}
@@ -378,4 +411,41 @@ func Deserialize(data []byte) (*Header, error) {
 	}
 
 	return NewHeader(metadata, mappings)
+}
+
+// compressLZ4 compresses data for V4 header serialization using the LZ4
+// streaming API. Settings are fixed for the V4 wire format.
+func compressLZ4(data []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	buf.Grow(len(data))
+
+	w := lz4.NewWriter(&buf)
+	w.Apply(
+		lz4.BlockSizeOption(lz4.Block4Mb),
+		lz4.BlockChecksumOption(true),
+		lz4.ChecksumOption(true),
+		lz4.CompressionLevelOption(lz4.Fast),
+	)
+
+	if _, err := w.Write(data); err != nil {
+		return nil, fmt.Errorf("lz4 compress: %w", err)
+	}
+
+	if err := w.Close(); err != nil {
+		return nil, fmt.Errorf("lz4 compress close: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+// decompressLZ4 decompresses an LZ4 frame from V4 header data.
+func decompressLZ4(src []byte) ([]byte, error) {
+	r := lz4.NewReader(bytes.NewReader(src))
+
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("lz4 decompress: %w", err)
+	}
+
+	return data, nil
 }

@@ -289,15 +289,17 @@ func readFrameDecompress(respBody io.Reader, frameTable *FrameTable, offsetU, fe
 			return Range{}, fmt.Errorf("reading compressed lz4 frame: %w", err)
 		}
 
-		out, err := DecompressLZ4(cbuf, buf[:frameSize.U])
+		dec := getLZ4Decoder(bytes.NewReader(cbuf))
+		n, err := io.ReadFull(dec, buf[:frameSize.U])
+		putLZ4Decoder(dec)
 		if err != nil {
-			return Range{}, err
+			return Range{}, fmt.Errorf("lz4 decompress: %w", err)
 		}
 		if onRead != nil {
-			onRead(int64(len(out)))
+			onRead(int64(n))
 		}
 
-		return Range{Start: fetchOffset, Length: len(out)}, nil
+		return Range{Start: fetchOffset, Length: n}, nil
 
 	case CompressionZstd:
 		dec, err := getZstdDecoder(respBody)

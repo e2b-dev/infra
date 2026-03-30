@@ -268,7 +268,7 @@ func (c *Chunker) runFetch(ctx context.Context, session *fetchSession, offsetU i
 	var prevTotal int64
 	onRead := func(totalWritten int64) {
 		newBytes := totalWritten - prevTotal
-		c.cache.markRangeCached(session.chunkOff+prevTotal, newBytes)
+		c.cache.setIsCached(session.chunkOff+prevTotal, newBytes)
 		session.advance(totalWritten)
 		prevTotal = totalWritten
 	}
@@ -324,7 +324,7 @@ func (c *Chunker) getOrCreateFetchSession(off, length int64) (*fetchSession, boo
 	}
 
 	// Re-check cache under sessionsMu. A fetch can finish (marking blocks
-	// cached via markRangeCached) and remove itself from sessions between
+	// cached via setIsCached) and remove itself from sessions between
 	// the lock-free Slice() in GetBlock and the session scan above. The lock
 	// provides a happens-before guarantee that the bitmap writes are visible.
 	if c.cache.isCached(off, length) {

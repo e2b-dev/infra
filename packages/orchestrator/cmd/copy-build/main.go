@@ -20,7 +20,6 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -78,35 +77,82 @@ func NewDestinationFromPath(prefix, file string) (*Destination, error) {
 	}, nil
 }
 
-func getReferencedData(h *header.Header, artifactName string) []string {
-	builds := make(map[string]storage.CompressionType)
+func NewHeaderFromObject(ctx context.Context, bucketName string, headerPath string, _ storage.ObjectType) (*header.Header, error) {
+	b, err := storage.NewGCP(ctx, bucketName, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCS bucket storage provider: %w", err)
+	}
+
+	obj, err := b.OpenBlob(ctx, headerPath) // TODO: restore objectType param
+	if err != nil {
+		return nil, fmt.Errorf("failed to open object: %w", err)
+	}
+
+	h, err := header.Deserialize(ctx, obj)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deserialize header: %w", err)
+	}
+
+	return h, nil
+}
+
+type osFileBlob struct {
+	f *os.File
+}
+
+func (o *osFileBlob) WriteTo(_ context.Context, w io.Writer) (int64, error) {
+	return io.Copy(w, o.f)
+}
+
+func (o *osFileBlob) Exists(_ context.Context) (bool, error) {
+	return true, nil
+}
+
+func (o *osFileBlob) Put(_ context.Context, _ []byte) error {
+	return fmt.Errorf("not implemented")
+}
+
+func NewHeaderFromPath(ctx context.Context, from, headerPath string) (*header.Header, error) {
+	// Local storage uses templates subdirectory
+	f, err := os.Open(path.Join(from, "templates", headerPath))
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer f.Close()
+
+	h, err := header.Deserialize(ctx, &osFileBlob{f: f})
+	if err != nil {
+		return nil, fmt.Errorf("failed to deserialize header: %w", err)
+	}
+
+	return h, nil
+}
+
+func getReferencedData(h *header.Header, objectType storage.ObjectType) []string {
+	builds := make(map[string]struct{})
 
 	for _, mapping := range h.Mapping {
-		if mapping.BuildId == uuid.Nil {
-			continue
+		builds[mapping.BuildId.String()] = struct{}{}
+	}
+
+	delete(builds, uuid.Nil.String())
+
+	var dataReferences []string
+
+	for build := range builds {
+		template := storage.TemplateFiles{
+			BuildID: build,
 		}
 
-		bid := mapping.BuildId.String()
-		if _, ok := builds[bid]; !ok {
-			builds[bid] = mapping.FrameTable.CompressionType()
+		switch objectType {
+		case storage.MemfileHeaderObjectType:
+			dataReferences = append(dataReferences, template.StorageMemfilePath())
+		case storage.RootFSHeaderObjectType:
+			dataReferences = append(dataReferences, template.StorageRootfsPath())
 		}
 	}
 
-	var refs []string
-
-	for bid, ct := range builds {
-		tf := storage.TemplateFiles{BuildID: bid}
-
-		refs = append(refs, tf.HeaderPath(artifactName))
-
-		if ct != storage.CompressionNone {
-			refs = append(refs, tf.CompressedDataPath(artifactName, ct))
-		} else {
-			refs = append(refs, tf.DataPath(artifactName))
-		}
-	}
-
-	return refs
+	return dataReferences
 }
 
 func localCopy(ctx context.Context, from, to *Destination) error {
@@ -175,28 +221,61 @@ func main() {
 	}
 
 	ctx := context.Background()
+
 	var filesToCopy []string
 
-	provider, err := cmdutil.GetProvider(ctx, *from)
-	if err != nil {
-		log.Fatalf("failed to create storage provider: %s", err)
-	}
-
 	// Extract all files referenced by the build memfile header
-	memfileHeader, err := header.LoadHeader(ctx, provider, template.StorageMemfileHeaderPath())
-	if err != nil {
-		log.Fatalf("failed to load memfile header: %s", err)
+	buildMemfileHeaderPath := template.StorageMemfileHeaderPath()
+
+	var memfileHeader *header.Header
+	if strings.HasPrefix(*from, "gs://") {
+		bucketName, _ := strings.CutPrefix(*from, "gs://")
+
+		h, err := NewHeaderFromObject(ctx, bucketName, buildMemfileHeaderPath, storage.MemfileHeaderObjectType)
+		if err != nil {
+			log.Fatalf("failed to create header from object: %s", err)
+		}
+
+		memfileHeader = h
+	} else {
+		h, err := NewHeaderFromPath(ctx, *from, buildMemfileHeaderPath)
+		if err != nil {
+			log.Fatalf("failed to create header from path: %s", err)
+		}
+
+		memfileHeader = h
 	}
 
-	filesToCopy = append(filesToCopy, getReferencedData(memfileHeader, storage.MemfileName)...)
+	dataReferences := getReferencedData(memfileHeader, storage.MemfileHeaderObjectType)
+
+	filesToCopy = append(filesToCopy, buildMemfileHeaderPath)
+	filesToCopy = append(filesToCopy, dataReferences...)
 
 	// Extract all files referenced by the build rootfs header
-	rootfsHeader, err := header.LoadHeader(ctx, provider, template.StorageRootfsHeaderPath())
-	if err != nil {
-		log.Fatalf("failed to load rootfs header: %s", err)
+	buildRootfsHeaderPath := template.StorageRootfsHeaderPath()
+
+	var rootfsHeader *header.Header
+	if strings.HasPrefix(*from, "gs://") {
+		bucketName, _ := strings.CutPrefix(*from, "gs://")
+		h, err := NewHeaderFromObject(ctx, bucketName, buildRootfsHeaderPath, storage.RootFSHeaderObjectType)
+		if err != nil {
+			log.Fatalf("failed to create header from object: %s", err)
+		}
+
+		rootfsHeader = h
+	} else {
+		h, err := NewHeaderFromPath(ctx, *from, buildRootfsHeaderPath)
+		if err != nil {
+			log.Fatalf("failed to create header from path: %s", err)
+		}
+
+		rootfsHeader = h
 	}
 
-	filesToCopy = append(filesToCopy, getReferencedData(rootfsHeader, storage.RootfsName)...)
+	dataReferences = getReferencedData(rootfsHeader, storage.RootFSHeaderObjectType)
+
+	filesToCopy = append(filesToCopy, buildRootfsHeaderPath)
+	filesToCopy = append(filesToCopy, dataReferences...)
 
 	// Add the snapfile to the list of files to copy
 	snapfilePath := template.StorageSnapfilePath()

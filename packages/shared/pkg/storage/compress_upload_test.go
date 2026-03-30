@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	crand "crypto/rand"
 	"crypto/sha256"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
@@ -70,22 +72,23 @@ func decompressAll(ft *FrameTable, compressed []byte) ([]byte, error) {
 		}
 
 		frameData := compressed[cOff : cOff+int64(fs.C)]
+
 		var frame []byte
 		var err error
 
 		switch ft.CompressionType() {
 		case CompressionLZ4:
-			frame, err = DecompressLZ4(frameData, make([]byte, fs.U))
+			dec := getLZ4Decoder(bytes.NewReader(frameData))
+			frame, err = io.ReadAll(dec)
+			putLZ4Decoder(dec)
 		case CompressionZstd:
-			dec, derr := getZstdDecoder(bytes.NewReader(frameData))
-			if derr != nil {
-				return nil, fmt.Errorf("frame %d: zstd reader: %w", i, derr)
+			var dec *zstd.Decoder
+			dec, err = getZstdDecoder(bytes.NewReader(frameData))
+			if err == nil {
+				frame, err = io.ReadAll(dec)
+				putZstdDecoder(dec)
 			}
-			frame = make([]byte, fs.U)
-			_, err = io.ReadFull(dec, frame)
-			putZstdDecoder(dec)
 		}
-
 		if err != nil {
 			return nil, fmt.Errorf("frame %d: %w", i, err)
 		}
@@ -118,21 +121,24 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		dataSize  int
-		frameSize int
-		workers   int
-		codec     CompressionType
+		name           string
+		dataSize       int
+		frameSize      int
+		workers        int
+		codec          CompressionType
+		incompressible bool // use crypto/rand data that cannot be compressed
 	}{
-		{"basic", 10 * megabyte, 2 * megabyte, 4, CompressionZstd},
-		{"workers_1", 10 * megabyte, 2 * megabyte, 1, CompressionZstd},
-		{"workers_2", 10 * megabyte, 2 * megabyte, 2, CompressionZstd},
-		{"not_frame_aligned", 10*megabyte + 1, 2 * megabyte, 4, CompressionZstd},
-		{"smaller_than_frame", 100 * 1024, 2 * megabyte, 4, CompressionZstd},
-		{"smaller_than_part", 5 * megabyte, 2 * megabyte, 4, CompressionZstd},
-		{"empty", 0, 2 * megabyte, 4, CompressionZstd},
-		{"single_byte", 1, 2 * megabyte, 1, CompressionZstd},
-		{"lz4", 10 * megabyte, 2 * megabyte, 4, CompressionLZ4},
+		{"basic", 10 * megabyte, 2 * megabyte, 4, CompressionZstd, false},
+		{"workers_1", 10 * megabyte, 2 * megabyte, 1, CompressionZstd, false},
+		{"workers_2", 10 * megabyte, 2 * megabyte, 2, CompressionZstd, false},
+		{"not_frame_aligned", 10*megabyte + 1, 2 * megabyte, 4, CompressionZstd, false},
+		{"smaller_than_frame", 100 * 1024, 2 * megabyte, 4, CompressionZstd, false},
+		{"smaller_than_part", 5 * megabyte, 2 * megabyte, 4, CompressionZstd, false},
+		{"empty", 0, 2 * megabyte, 4, CompressionZstd, false},
+		{"single_byte", 1, 2 * megabyte, 1, CompressionZstd, false},
+		{"lz4", 10 * megabyte, 2 * megabyte, 4, CompressionLZ4, false},
+		{"lz4_incompressible", 10 * megabyte, 2 * megabyte, 4, CompressionLZ4, true},
+		{"zstd_incompressible", 10 * megabyte, 2 * megabyte, 4, CompressionZstd, true},
 	}
 
 	for _, tc := range tests {
@@ -141,7 +147,13 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 
 			var original []byte
 			if tc.dataSize > 0 {
-				original = generateSemiRandomData(tc.dataSize)
+				if tc.incompressible {
+					original = make([]byte, tc.dataSize)
+					_, err := crand.Read(original)
+					require.NoError(t, err)
+				} else {
+					original = generateSemiRandomData(tc.dataSize)
+				}
 			}
 
 			up := &memPartUploader{}
@@ -342,7 +354,7 @@ func BenchmarkCompress(b *testing.B) {
 			for range b.N {
 				up := &ThrottledPartUploader{bandwidth: bcfg.bandwidth}
 
-				ft, _, err := compressStream(
+				_, _, err := compressStream(
 					context.Background(),
 					bytes.NewReader(data),
 					compCfg,
@@ -352,11 +364,7 @@ func BenchmarkCompress(b *testing.B) {
 					b.Fatal(err)
 				}
 
-				uSize, cSize := ft.Size()
 				lastParts.Store(int32(len(up.parts)))
-
-				_ = uSize
-				_ = cSize
 			}
 
 			// Report after all iterations using last run's values.
@@ -369,7 +377,6 @@ func BenchmarkCompress(b *testing.B) {
 func BenchmarkStoreFile(b *testing.B) {
 	const dataSize = 1024 * megabyte // 1 GB
 
-	// Write input data to a temp file (once, shared across sub-benchmarks).
 	data := generateSemiRandomData(dataSize)
 	inputDir := b.TempDir()
 	inputPath := filepath.Join(inputDir, "input.bin")
@@ -422,7 +429,6 @@ func BenchmarkStoreFile(b *testing.B) {
 		}
 	}
 
-	// Uncompressed baseline: raw file copy (read + write, no compression).
 	b.Run("uncompressed", func(b *testing.B) {
 		b.SetBytes(int64(dataSize))
 		b.ResetTimer()

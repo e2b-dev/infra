@@ -116,28 +116,25 @@ func newPart(index int, parentCtx context.Context, workers int) (p *part, ctx co
 	return p, ctx
 }
 
-func (p *part) addFrame(ctx context.Context, uncompressedData []byte, borrow func() (frameCompressor, error), release func(frameCompressor)) {
+func (p *part) addFrame(ctx context.Context, uncompressedData []byte, pool *sync.Pool) {
 	if len(uncompressedData) == 0 {
 		return
 	}
 
-	pf := &frame{uncompressedSize: len(uncompressedData)}
-	p.frames = append(p.frames, pf)
+	frameInPart := &frame{uncompressedSize: len(uncompressedData)}
+	p.frames = append(p.frames, frameInPart)
 
 	p.eg.Go(func() error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		c, err := borrow()
+		c := pool.Get().(compressor)
+		out, err := c.compress(uncompressedData)
+		pool.Put(c)
 		if err != nil {
 			return err
 		}
-		out, err := c.Compress(uncompressedData)
-		release(c)
-		if err != nil {
-			return err
-		}
-		pf.compressed = out
+		frameInPart.compressed = out
 		p.compressedSize.Add(int64(len(out)))
 
 		return nil
@@ -159,7 +156,7 @@ func (p *part) submit(ctx context.Context, queue chan<- *part) {
 }
 
 // compressStream: read → compress (parallel) → emit metadata (ordered) → upload (concurrent).
-func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uploader partUploader, maxUploadConcurrency int) (ft *FrameTable, checksum [32]byte, err error) {
+func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uploader partUploader, maxUploadConcurrency int) (ft *FrameTable, checksum [32]byte, err error) { //nolint:unparam // callers in later PRs pass different values
 	frameSize := cfg.FrameSize()
 	targetPartSize := cfg.TargetPartSize()
 
@@ -168,7 +165,12 @@ func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uplo
 	}
 	defer uploader.Close()
 
-	borrow, release := newCompressorPool(cfg)
+	// for compression we create a pool per file since there are often enough
+	// frames to justify pooling.
+	compressors, err := newCompressorPool(cfg)
+	if err != nil {
+		return nil, [32]byte{}, err
+	}
 	hasher := sha256.New()
 
 	ft = &FrameTable{compressionType: cfg.CompressionType()}
@@ -232,7 +234,7 @@ func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uplo
 
 		if n > 0 {
 			hasher.Write(buf[:n])
-			part.addFrame(compressCtx, buf[:n], borrow, release)
+			part.addFrame(compressCtx, buf[:n], compressors)
 		}
 
 		if err != nil {
@@ -251,12 +253,10 @@ func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uplo
 
 	closeQ.Do(func() { close(q) })
 
-	if err := emitEG.Wait(); err != nil {
-		return nil, [32]byte{}, fmt.Errorf("emit: %w", err)
-	}
-
-	if err := uploadEG.Wait(); err != nil {
-		return nil, [32]byte{}, fmt.Errorf("upload: %w", err)
+	emitErr := emitEG.Wait()
+	uploadErr := uploadEG.Wait()
+	if err := errors.Join(emitErr, uploadErr); err != nil {
+		return nil, [32]byte{}, err
 	}
 
 	if err := uploader.Complete(ctx); err != nil {

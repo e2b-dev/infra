@@ -39,33 +39,50 @@ func main() {
 		log.Fatal("specify either -memfile or -rootfs, not both")
 	}
 
-	artifactName := storage.MemfileName
-	if *rootfs {
-		artifactName = storage.RootfsName
+	baseTemplate := storage.TemplateFiles{
+		BuildID: *fromBuild,
 	}
 
-	baseHeaderPath := storage.TemplateFiles{BuildID: *fromBuild}.HeaderPath(artifactName)
-	diffHeaderPath := storage.TemplateFiles{BuildID: *toBuild}.HeaderPath(artifactName)
+	diffTemplate := storage.TemplateFiles{
+		BuildID: *toBuild,
+	}
+
+	var baseHeaderFile string
+	var diffHeaderFile string
+
+	if *memfile {
+		baseHeaderFile = baseTemplate.StorageMemfileHeaderPath()
+		diffHeaderFile = diffTemplate.StorageMemfileHeaderPath()
+	} else {
+		baseHeaderFile = baseTemplate.StorageRootfsHeaderPath()
+		diffHeaderFile = diffTemplate.StorageRootfsHeaderPath()
+	}
 
 	ctx := context.Background()
 
-	provider, err := cmdutil.GetProvider(ctx, *storagePath)
+	// Read headers directly
+	baseData, baseSource, err := cmdutil.ReadHeader(ctx, *storagePath, baseHeaderFile)
 	if err != nil {
-		log.Fatalf("failed to create storage provider: %s", err)
+		log.Fatalf("failed to read base header: %s", err)
 	}
 
-	baseHeader, err := header.LoadHeader(ctx, provider, baseHeaderPath)
+	diffData, diffSource, err := cmdutil.ReadHeader(ctx, *storagePath, diffHeaderFile)
 	if err != nil {
-		log.Fatalf("failed to load base header: %s", err)
+		log.Fatalf("failed to read diff header: %s", err)
 	}
 
-	diffHeader, err := header.LoadHeader(ctx, provider, diffHeaderPath)
+	baseHeader, err := header.DeserializeBytes(baseData)
 	if err != nil {
-		log.Fatalf("failed to load diff header: %s", err)
+		log.Fatalf("failed to deserialize base header: %s", err)
+	}
+
+	diffHeader, err := header.DeserializeBytes(diffData)
+	if err != nil {
+		log.Fatalf("failed to deserialize diff header: %s", err)
 	}
 
 	fmt.Printf("\nBASE METADATA\n")
-	fmt.Printf("Storage path       %s/%s\n", *storagePath, baseHeaderPath)
+	fmt.Printf("Storage path       %s\n", baseSource)
 	fmt.Printf("========\n")
 
 	for _, mapping := range baseHeader.Mapping {
@@ -96,7 +113,7 @@ func main() {
 	}
 
 	fmt.Printf("\nDIFF METADATA\n")
-	fmt.Printf("Storage path       %s/%s\n", *storagePath, diffHeaderPath)
+	fmt.Printf("Storage path       %s\n", diffSource)
 	fmt.Printf("========\n")
 
 	onlyDiffMappings := make([]*header.BuildMap, 0)
@@ -127,7 +144,7 @@ func main() {
 
 	mergedHeader, err := header.MergeMappings(baseHeader.Mapping, onlyDiffMappings)
 	if err != nil {
-		log.Fatalf("failed to merge mappings: %v", err)
+		log.Fatalf("merge mappings: %v", err)
 	}
 
 	fmt.Printf("\n\nMERGED METADATA\n")

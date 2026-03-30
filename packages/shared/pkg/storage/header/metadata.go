@@ -46,9 +46,8 @@ func (d *DiffMetadata) toDiffMapping(
 
 	mappings, err := MergeMappings(dirtyMappings, emptyMappings)
 	if err != nil {
-		return nil, fmt.Errorf("merge diff mappings: %w", err)
+		return nil, fmt.Errorf("merge dirty+empty mappings: %w", err)
 	}
-
 	telemetry.ReportEvent(ctx, "merge mappings")
 
 	return mappings, nil
@@ -70,7 +69,7 @@ func (d *DiffMetadata) ToDiffHeader(
 
 	diffMapping, err := d.toDiffMapping(ctx, buildID)
 	if err != nil {
-		return nil, fmt.Errorf("create diff mapping: %w", err)
+		return nil, fmt.Errorf("toDiffMapping: %w", err)
 	}
 
 	m, err := MergeMappings(
@@ -78,9 +77,8 @@ func (d *DiffMetadata) ToDiffHeader(
 		diffMapping,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("merge mappings: %w", err)
+		return nil, fmt.Errorf("merge base+diff mappings: %w", err)
 	}
-
 	telemetry.ReportEvent(ctx, "merged mappings")
 
 	// TODO: We can run normalization only when empty mappings are not empty for this snapshot

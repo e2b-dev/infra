@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"sync"
@@ -9,111 +10,127 @@ import (
 	lz4 "github.com/pierrec/lz4/v4"
 )
 
-// --- Encoder pool (per-stream) ---
-
-// frameCompressor compresses individual frames. Implementations are pooled
-// and reused across frames within a single CompressStream call.
-type frameCompressor interface {
-	Compress(src []byte) ([]byte, error)
+// compressor compresses individual frames. Implementations are pooled and
+// reused across frames within a single CompressStream call.
+type compressor interface {
+	compress(src []byte) ([]byte, error)
 }
 
-// zstdFrameCompressor wraps a pooled zstd.Encoder using EncodeAll.
-type zstdFrameCompressor struct {
-	enc  *zstd.Encoder
-	pool *sync.Pool
+// lz4Compressor wraps a pooled lz4.Writer. The writer is reused via Reset
+// between frames to avoid re-allocating internal hash tables (~64KB).
+type lz4Compressor struct {
+	w *lz4.Writer
 }
 
-func (z *zstdFrameCompressor) Compress(src []byte) ([]byte, error) {
-	// EncodeAll is stateless on the encoder — safe to reuse without reset.
+func (c *lz4Compressor) compress(src []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	buf.Grow(lz4.CompressBlockBound(len(src)))
+	c.w.Reset(&buf)
+
+	if _, err := c.w.Write(src); err != nil {
+		return nil, fmt.Errorf("lz4 compress: %w", err)
+	}
+
+	if err := c.w.Close(); err != nil {
+		return nil, fmt.Errorf("lz4 compress close: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+// zstdCompressor wraps a pooled zstd.Encoder using EncodeAll.
+type zstdCompressor struct {
+	enc *zstd.Encoder
+}
+
+func (z *zstdCompressor) compress(src []byte) ([]byte, error) { //nolint:unparam // satisfies compressor interface
 	return z.enc.EncodeAll(src, make([]byte, 0, len(src))), nil
 }
 
-func (z *zstdFrameCompressor) release() {
-	z.pool.Put(z)
-}
+// newCompressorPool returns a pool of compressors for the given config.
+// Both LZ4 and zstd encoders are pooled and reused via Reset/EncodeAll.
+// The config is validated eagerly — if zstd options are invalid, an error
+// is returned immediately rather than deferred to pool.Get().
+func newCompressorPool(cfg *CompressConfig) (*sync.Pool, error) {
+	pool := &sync.Pool{}
 
-// lz4FrameCompressor uses raw LZ4 block compression (no frame headers/checksums).
-// Stateless — each call allocates a fresh destination buffer.
-type lz4FrameCompressor struct{}
-
-func (l *lz4FrameCompressor) Compress(src []byte) ([]byte, error) {
-	dst := make([]byte, lz4.CompressBlockBound(len(src)))
-
-	n, err := lz4.CompressBlock(src, dst, nil)
-	if err != nil {
-		return nil, fmt.Errorf("lz4 block compress: %w", err)
-	}
-
-	if n == 0 {
-		return nil, fmt.Errorf("lz4 block compress: incompressible data (%d bytes)", len(src))
-	}
-
-	return dst[:n], nil
-}
-
-// newCompressorPool returns a function that borrows a frameCompressor from a pool
-// and a release function to return it. All compressors in the pool share the same
-// settings from cfg. For zstd, encoders are created once and reused via EncodeAll.
-func newCompressorPool(cfg *CompressConfig) (borrow func() (frameCompressor, error), release func(frameCompressor)) {
 	switch cfg.CompressionType() {
 	case CompressionZstd:
-		pool := &sync.Pool{}
-		pool.New = func() any {
-			enc, err := newZstdEncoder(cfg.EncoderConcurrency, cfg.FrameSize(), zstd.EncoderLevel(cfg.Level))
-			if err != nil {
-				// Pool.New cannot return errors; store nil and check on borrow.
-				return err
-			}
-
-			return &zstdFrameCompressor{enc: enc, pool: pool}
+		zstdOpts := []zstd.EOption{
+			zstd.WithEncoderLevel(zstd.EncoderLevel(cfg.Level)),
+			zstd.WithEncoderCRC(true),
+		}
+		if cfg.FrameSize() > 0 {
+			zstdOpts = append(zstdOpts, zstd.WithWindowSize(cfg.FrameSize()))
+		}
+		if cfg.EncoderConcurrency > 0 {
+			zstdOpts = append(zstdOpts, zstd.WithEncoderConcurrency(cfg.EncoderConcurrency))
 		}
 
-		return func() (frameCompressor, error) {
-				v := pool.Get()
-				if err, ok := v.(error); ok {
-					return nil, fmt.Errorf("zstd encoder pool: %w", err)
-				}
+		// Validate options by creating one encoder upfront.
+		first, err := zstd.NewWriter(nil, zstdOpts...)
+		if err != nil {
+			return nil, fmt.Errorf("zstd encoder: %w", err)
+		}
+		pool.Put(&zstdCompressor{enc: first})
 
-				return v.(*zstdFrameCompressor), nil
-			}, func(c frameCompressor) {
-				if z, ok := c.(*zstdFrameCompressor); ok {
-					z.release()
-				}
-			}
+		pool.New = func() any {
+			// Options are already validated; NewWriter won't fail.
+			enc, _ := zstd.NewWriter(nil, zstdOpts...)
+
+			return &zstdCompressor{enc: enc}
+		}
+	case CompressionLZ4:
+		lz4Opts := []lz4.Option{
+			lz4.BlockSizeOption(lz4.Block4Mb),
+			lz4.BlockChecksumOption(true),
+			lz4.ChecksumOption(false),
+			lz4.ConcurrencyOption(1),
+			lz4.CompressionLevelOption(lz4.Fast),
+		}
+
+		// Validate options by creating one encoder upfront.
+		first := lz4.NewWriter(nil)
+		if err := first.Apply(lz4Opts...); err != nil {
+			return nil, fmt.Errorf("lz4 encoder: %w", err)
+		}
+		pool.Put(&lz4Compressor{w: first})
+
+		pool.New = func() any {
+			w := lz4.NewWriter(nil)
+			_ = w.Apply(lz4Opts...) //nolint:errcheck // options validated above
+
+			return &lz4Compressor{w: w}
+		}
 	default:
-		// LZ4 block compression is stateless — no pool needed.
-		return func() (frameCompressor, error) {
-				return &lz4FrameCompressor{}, nil
-			}, func(frameCompressor) {
-				// nothing to return
-			}
+		return nil, fmt.Errorf("unsupported compression type: %s", cfg.CompressionType())
 	}
+
+	return pool, nil
 }
 
-// --- Encoder creation ---
+var lz4DecoderPool sync.Pool
 
-// newZstdEncoder creates a zstd encoder for use with EncodeAll.
-// The encoder is created with a nil writer since EncodeAll doesn't use streaming output.
-func newZstdEncoder(concurrency int, windowSize int, compressionLevel zstd.EncoderLevel) (*zstd.Encoder, error) {
-	zstdOpts := []zstd.EOption{
-		zstd.WithEncoderLevel(compressionLevel),
-		zstd.WithEncoderCRC(true), // per-frame xxHash64 checksum (default true, explicit for clarity)
-	}
-	if windowSize > 0 {
-		zstdOpts = append(zstdOpts, zstd.WithWindowSize(windowSize))
-	}
-	if concurrency > 0 {
-		zstdOpts = append(zstdOpts, zstd.WithEncoderConcurrency(concurrency))
+func getLZ4Decoder(r io.Reader) *lz4.Reader {
+	if v := lz4DecoderPool.Get(); v != nil {
+		dec := v.(*lz4.Reader)
+		dec.Reset(r)
+
+		return dec
 	}
 
-	return zstd.NewWriter(nil, zstdOpts...)
+	dec := lz4.NewReader(r)
+
+	return dec
 }
 
-// --- Decoder pool (global) ---
+func putLZ4Decoder(dec *lz4.Reader) {
+	dec.Reset(nil)
+	lz4DecoderPool.Put(dec)
+}
 
-// zstd decoders are expensive to create (~360ns + 7 allocs) and safe to reuse
-// via Reset, so we keep a global pool. Concurrency is hardcoded to 1: benchmarks
-// show higher values hurt throughput for single 2MiB frame decodes.
+// zstd concurrency is hardcoded to 1: benchmarks show higher values hurt
+// throughput for single 2MiB frame decodes.
 var zstdDecoderPool sync.Pool
 
 func getZstdDecoder(r io.Reader) (*zstd.Decoder, error) {
@@ -128,9 +145,7 @@ func getZstdDecoder(r io.Reader) (*zstd.Decoder, error) {
 		return dec, nil
 	}
 
-	dec, err := zstd.NewReader(r,
-		zstd.WithDecoderConcurrency(1),
-	)
+	dec, err := zstd.NewReader(r)
 	if err != nil {
 		return nil, err
 	}
@@ -141,29 +156,4 @@ func getZstdDecoder(r io.Reader) (*zstd.Decoder, error) {
 func putZstdDecoder(dec *zstd.Decoder) {
 	dec.Reset(nil)
 	zstdDecoderPool.Put(dec)
-}
-
-func DecompressLZ4(src, dst []byte) ([]byte, error) {
-	n, err := lz4.UncompressBlock(src, dst)
-	if err != nil {
-		return nil, fmt.Errorf("lz4 block decompress: %w", err)
-	}
-
-	return dst[:n], nil
-}
-
-func CompressLZ4(data []byte) ([]byte, error) {
-	bound := lz4.CompressBlockBound(len(data))
-	dst := make([]byte, bound)
-
-	n, err := lz4.CompressBlock(data, dst, nil)
-	if err != nil {
-		return nil, fmt.Errorf("lz4 compress: %w", err)
-	}
-
-	if n == 0 {
-		return nil, fmt.Errorf("lz4 compress: data is incompressible (%d bytes)", len(data))
-	}
-
-	return dst[:n], nil
 }

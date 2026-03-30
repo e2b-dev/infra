@@ -71,7 +71,7 @@ func (s *fetchSession) registerAndWait(ctx context.Context, blockOff int64) erro
 			fetchErr := s.fetchErr
 			s.mu.Unlock()
 
-			if s.cache.isBlockCached(blockOff / blockSize) {
+			if s.cache.isCached(blockOff, blockSize) {
 				return nil
 			}
 

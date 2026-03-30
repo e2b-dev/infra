@@ -803,7 +803,7 @@ func serializeUploadedHeaders(snapshot *sandbox.Snapshot) (*uploadedBuildHeaders
 	var memHdrBytes, rootHdrBytes []byte
 
 	if snapshot.MemfileDiffHeader != nil {
-		data, err := header.Serialize(snapshot.MemfileDiffHeader)
+		data, err := header.SerializeHeader(snapshot.MemfileDiffHeader)
 		if err != nil {
 			return nil, fmt.Errorf("serialize memfile header: %w", err)
 		}
@@ -812,7 +812,7 @@ func serializeUploadedHeaders(snapshot *sandbox.Snapshot) (*uploadedBuildHeaders
 	}
 
 	if snapshot.RootfsDiffHeader != nil {
-		data, err := header.Serialize(snapshot.RootfsDiffHeader)
+		data, err := header.SerializeHeader(snapshot.RootfsDiffHeader)
 		if err != nil {
 			return nil, fmt.Errorf("serialize rootfs header: %w", err)
 		}
