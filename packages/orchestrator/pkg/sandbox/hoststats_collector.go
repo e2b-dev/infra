@@ -121,14 +121,26 @@ func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
 	return nil
 }
 
-// Start begins periodic collection of host statistics
+// Start begins periodic collection of host statistics.
 func (h *HostStatsCollector) Start(ctx context.Context) {
 	defer close(h.stoppedCh)
 
-	// Collect initial sample before starting periodic collection
-	if err := h.CollectSample(ctx); err != nil {
-		// Log error but continue with periodic sampling - don't kill the sandbox
-		logger.L().Error(ctx, "failed to collect initial host stats sample",
+	// Push the zero baseline as the first row. The first real CollectSample
+	// on the ticker tick will diff against prev (zero counters at prev.Timestamp),
+	// capturing all values accumulated since then without missing anything.
+	initial := hoststats.SandboxHostStat{
+		Timestamp:          h.prev.Timestamp,
+		SandboxID:          h.metadata.SandboxID,
+		SandboxExecutionID: h.metadata.ExecutionID,
+		SandboxTemplateID:  h.metadata.TemplateID,
+		SandboxBuildID:     h.metadata.BuildID,
+		SandboxTeamID:      h.metadata.TeamID,
+		SandboxVCPUCount:   h.metadata.VCPUCount,
+		SandboxMemoryMB:    h.metadata.MemoryMB,
+		SandboxType:        h.metadata.SandboxType.String(),
+	}
+	if err := h.delivery.Push(initial); err != nil {
+		logger.L().Error(ctx, "failed to push initial host stats baseline",
 			logger.WithSandboxID(h.metadata.SandboxID),
 			zap.Error(err))
 	}
