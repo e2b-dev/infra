@@ -479,9 +479,9 @@ func isOTELCollectorTarget(target string) bool {
 		return true
 	}
 
-	return strings.Contains(target, "localhost:4317") ||
-		strings.Contains(target, "127.0.0.1:4317") ||
-		strings.Contains(target, "otel-collector")
+	host := channelzTargetHost(target)
+
+	return host == "localhost" || host == "127.0.0.1" || host == "otel-collector"
 }
 
 func normalizeChannelzTarget(target string) string {
