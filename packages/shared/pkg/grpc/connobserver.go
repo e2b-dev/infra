@@ -17,6 +17,8 @@ import (
 )
 
 var (
+	meter = otel.Meter("github.com/e2b-dev/infra/packages/shared/pkg/grpc")
+
 	connectionMetricsOnce sync.Once
 
 	connectionStateDuration metric.Int64Histogram
@@ -25,7 +27,6 @@ var (
 
 func initConnectionMetrics() error {
 	connectionMetricsOnce.Do(func() {
-		meter := otel.Meter("github.com/e2b-dev/infra/packages/shared/pkg/grpc")
 
 		connectionStateDuration, errConnectionMetrics = meter.Int64Histogram(
 			"grpc.client.connection.state.duration",
@@ -40,14 +41,9 @@ func initConnectionMetrics() error {
 	return errConnectionMetrics
 }
 
-//nolint:contextcheck // long-lived connection observer intentionally decouples from request lifecycles
 func ObserveConnection(ctx context.Context, conn *grpc.ClientConn, target string) {
 	if conn == nil {
 		return
-	}
-
-	if ctx == nil {
-		ctx = context.TODO()
 	}
 
 	if err := initConnectionMetrics(); err != nil {
@@ -94,6 +90,6 @@ func observeConnection(ctx context.Context, conn *grpc.ClientConn, target string
 func recordStateDuration(ctx context.Context, target string, state connectivity.State, duration time.Duration) {
 	connectionStateDuration.Record(ctx, duration.Milliseconds(), metric.WithAttributes(
 		attribute.String("grpc.target", target),
-		attribute.String("grpc.connectivity.state", state.String()),
+		attribute.String(labelGRPCConnectivityState, state.String()),
 	))
 }

@@ -3,7 +3,6 @@ package grpc
 import (
 	"context"
 	"net"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -19,26 +18,28 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
-	channelzPollInterval = 10 * time.Second
-	channelzMaxResults   = 200
+	channelzPollInterval = 15 * time.Second
+	// channelzMaxResults controls page size for channelz GetTopChannels requests
+	// (maximum top-level channels returned per RPC call).
+	channelzMaxResults = 200
 
 	channelzClientTypeGCS           = "gcs"
 	channelzClientTypeOTELCollector = "otel-collector"
 	channelzClientTypeUnknown       = "unknown"
+
+	labelGRPCClientType        = "grpc.client.type"
+	labelGRPCConnectivityState = "grpc.connectivity.state"
 )
 
 var (
 	channelzInitOnce sync.Once
-	channelzCountsMu sync.RWMutex
+	channelzState    = newChannelzState()
 
-	channelzTargetClientTypes sync.Map
-
-	channelzCounts = map[string]stateCounts{}
-
-	otelCollectorTarget = normalizeChannelzTarget(os.Getenv("OTEL_COLLECTOR_GRPC_ENDPOINT"))
+	otelCollectorTarget = normalizeChannelzTarget(telemetry.OTELCollectorGRPCEndpoint())
 )
 
 type stateCounts struct {
@@ -48,6 +49,72 @@ type stateCounts struct {
 	transientFailure int64
 	shutdown         int64
 	unknown          int64
+}
+
+type channelzSamplerState struct {
+	mu                sync.RWMutex
+	counts            map[string]stateCounts
+	targetClientTypes sync.Map
+}
+
+func newChannelzState() *channelzSamplerState {
+	return &channelzSamplerState{
+		counts: map[string]stateCounts{},
+	}
+}
+
+func (s *channelzSamplerState) registerTargetClientType(target, clientType string) {
+	s.targetClientTypes.Store(target, clientType)
+}
+
+func (s *channelzSamplerState) lookupRegisteredClientType(normalizedTarget string) (string, bool) {
+	if normalizedTarget == "" {
+		return "", false
+	}
+
+	value, ok := s.targetClientTypes.Load(normalizedTarget)
+	if !ok {
+		return "", false
+	}
+
+	clientType, ok := value.(string)
+	if !ok {
+		return "", false
+	}
+
+	clientType = strings.TrimSpace(clientType)
+	if clientType == "" {
+		return "", false
+	}
+
+	return clientType, true
+}
+
+func (s *channelzSamplerState) registeredClientTypes() []string {
+	unique := map[string]struct{}{}
+
+	s.targetClientTypes.Range(func(_, value any) bool {
+		label, ok := value.(string)
+		if !ok {
+			return true
+		}
+
+		label = strings.TrimSpace(label)
+		if label == "" {
+			return true
+		}
+
+		unique[label] = struct{}{}
+
+		return true
+	})
+
+	clientTypes := make([]string, 0, len(unique))
+	for label := range unique {
+		clientTypes = append(clientTypes, label)
+	}
+
+	return clientTypes
 }
 
 func RegisterChannelzTarget(conn *grpc.ClientConn, clientType string) {
@@ -65,13 +132,11 @@ func RegisterChannelzTarget(conn *grpc.ClientConn, clientType string) {
 		return
 	}
 
-	channelzTargetClientTypes.Store(target, clientType)
+	channelzState.registerTargetClientType(target, clientType)
 }
 
 func StartChannelzSampler(ctx context.Context) {
 	channelzInitOnce.Do(func() {
-		initChannelzCounts()
-
 		meter := otel.Meter("github.com/e2b-dev/infra/packages/shared/pkg/grpc")
 		gauge, err := meter.Int64ObservableGauge(
 			"grpc.client.connections",
@@ -85,33 +150,33 @@ func StartChannelzSampler(ctx context.Context) {
 		}
 
 		_, err = meter.RegisterCallback(func(_ context.Context, observer metric.Observer) error {
-			channelzCountsMu.RLock()
-			defer channelzCountsMu.RUnlock()
+			channelzState.mu.RLock()
+			defer channelzState.mu.RUnlock()
 
-			for clientType, counts := range channelzCounts {
+			for clientType, counts := range channelzState.counts {
 				observer.ObserveInt64(gauge, counts.idle, metric.WithAttributes(
-					attribute.String("grpc.connectivity.state", "IDLE"),
-					attribute.String("grpc.client.type", clientType),
+					attribute.String(labelGRPCConnectivityState, "IDLE"),
+					attribute.String(labelGRPCClientType, clientType),
 				))
 				observer.ObserveInt64(gauge, counts.connecting, metric.WithAttributes(
-					attribute.String("grpc.connectivity.state", "CONNECTING"),
-					attribute.String("grpc.client.type", clientType),
+					attribute.String(labelGRPCConnectivityState, "CONNECTING"),
+					attribute.String(labelGRPCClientType, clientType),
 				))
 				observer.ObserveInt64(gauge, counts.ready, metric.WithAttributes(
-					attribute.String("grpc.connectivity.state", "READY"),
-					attribute.String("grpc.client.type", clientType),
+					attribute.String(labelGRPCConnectivityState, "READY"),
+					attribute.String(labelGRPCClientType, clientType),
 				))
 				observer.ObserveInt64(gauge, counts.transientFailure, metric.WithAttributes(
-					attribute.String("grpc.connectivity.state", "TRANSIENT_FAILURE"),
-					attribute.String("grpc.client.type", clientType),
+					attribute.String(labelGRPCConnectivityState, "TRANSIENT_FAILURE"),
+					attribute.String(labelGRPCClientType, clientType),
 				))
 				observer.ObserveInt64(gauge, counts.shutdown, metric.WithAttributes(
-					attribute.String("grpc.connectivity.state", "SHUTDOWN"),
-					attribute.String("grpc.client.type", clientType),
+					attribute.String(labelGRPCConnectivityState, "SHUTDOWN"),
+					attribute.String(labelGRPCClientType, clientType),
 				))
 				observer.ObserveInt64(gauge, counts.unknown, metric.WithAttributes(
-					attribute.String("grpc.connectivity.state", "UNKNOWN"),
-					attribute.String("grpc.client.type", clientType),
+					attribute.String(labelGRPCConnectivityState, "UNKNOWN"),
+					attribute.String(labelGRPCClientType, clientType),
 				))
 			}
 
@@ -136,7 +201,7 @@ func StartChannelzSampler(ctx context.Context) {
 			defer closeFn()
 
 			for {
-				sampleChannelzConnections(ctx, client)
+				sampleChannelzConnections(ctx, client, channelzState)
 
 				select {
 				case <-ctx.Done():
@@ -182,9 +247,9 @@ func createInProcessChannelzClient() (channelzpb.ChannelzClient, func(), error) 
 	return channelzpb.NewChannelzClient(conn), closeFn, nil
 }
 
-func sampleChannelzConnections(ctx context.Context, client channelzpb.ChannelzClient) {
+func sampleChannelzConnections(ctx context.Context, client channelzpb.ChannelzClient, state *channelzSamplerState) {
 	countsByType := map[string]map[channelzpb.ChannelConnectivityState_State]int64{}
-	for _, clientType := range registeredChannelzClientTypes() {
+	for _, clientType := range state.registeredClientTypes() {
 		countsByType[clientType] = map[channelzpb.ChannelConnectivityState_State]int64{}
 	}
 
@@ -202,12 +267,16 @@ func sampleChannelzConnections(ctx context.Context, client channelzpb.ChannelzCl
 		}
 
 		for _, ch := range resp.GetChannel() {
+			if ch.GetRef().GetChannelId() >= startID {
+				startID = ch.GetRef().GetChannelId() + 1
+			}
+
 			target := ch.GetData().GetTarget()
 			if isInProcessChannelzTarget(target) {
 				continue
 			}
 
-			clientType := detectChannelzClientType(target)
+			clientType := detectChannelzClientType(state, target)
 			if _, ok := countsByType[clientType]; !ok {
 				countsByType[clientType] = map[channelzpb.ChannelConnectivityState_State]int64{}
 			}
@@ -230,10 +299,6 @@ func sampleChannelzConnections(ctx context.Context, client channelzpb.ChannelzCl
 					state := subResp.GetSubchannel().GetData().GetState().GetState()
 					countsByType[clientType][state]++
 				}
-			}
-
-			if ch.GetRef().GetChannelId() >= startID {
-				startID = ch.GetRef().GetChannelId() + 1
 			}
 		}
 
@@ -265,61 +330,29 @@ func sampleChannelzConnections(ctx context.Context, client channelzpb.ChannelzCl
 		}
 	}
 
-	channelzCountsMu.Lock()
-	channelzCounts = newCounts
-	channelzCountsMu.Unlock()
-}
-
-func initChannelzCounts() {
-	channelzCountsMu.Lock()
-	defer channelzCountsMu.Unlock()
-
-	channelzCounts = map[string]stateCounts{}
-	for _, clientType := range registeredChannelzClientTypes() {
-		channelzCounts[clientType] = stateCounts{}
-	}
-}
-
-func registeredChannelzClientTypes() []string {
-	unique := map[string]struct{}{}
-
-	channelzTargetClientTypes.Range(func(_, value any) bool {
-		label, ok := value.(string)
-		if !ok {
-			return true
-		}
-
-		label = strings.TrimSpace(label)
-		if label == "" {
-			return true
-		}
-
-		unique[label] = struct{}{}
-
-		return true
-	})
-
-	clientTypes := make([]string, 0, len(unique))
-	for label := range unique {
-		clientTypes = append(clientTypes, label)
-	}
-
-	return clientTypes
+	state.mu.Lock()
+	state.counts = newCounts
+	state.mu.Unlock()
 }
 
 func isInProcessChannelzTarget(target string) bool {
 	target = normalizeChannelzTarget(target)
 
+	// The sampler talks to an in-process channelz server over bufconn using
+	// `passthrough:///bufnet`; skip that self-observation channel to avoid
+	// counting sampler internals as application gRPC connections.
 	return target == "bufnet"
 }
 
-func detectChannelzClientType(target string) string {
+func detectChannelzClientType(state *channelzSamplerState, target string) string {
 	normalizedTarget := normalizeChannelzTarget(target)
 
-	if clientType, ok := lookupRegisteredChannelzClientType(normalizedTarget); ok {
+	// For our grpc clients we set the target name
+	if clientType, ok := state.lookupRegisteredClientType(normalizedTarget); ok {
 		return clientType
 	}
 
+	// For clients not controlled by us we match based on target url patterns
 	if isGCSRelatedTarget(normalizedTarget) {
 		return channelzClientTypeGCS
 	}
@@ -336,40 +369,13 @@ func isGCSRelatedTarget(target string) bool {
 		return false
 	}
 
-	if strings.Contains(target, "storage.googleapis.com") {
-		return true
-	}
-
-	// GCS gRPC stack can open helper channels for DirectPath/xDS/RLS control
-	// plane. They are part of GCS connectivity and are most useful grouped with
-	// GCS instead of shown as unknown.
-	return strings.Contains(target, "googleapis.com") ||
-		strings.Contains(target, "google-c2p") ||
-		strings.Contains(target, "traffic-director") ||
-		strings.Contains(target, "rls")
-}
-
-func lookupRegisteredChannelzClientType(normalizedTarget string) (string, bool) {
-	if normalizedTarget == "" {
-		return "", false
-	}
-
-	value, ok := channelzTargetClientTypes.Load(normalizedTarget)
-	if !ok {
-		return "", false
-	}
-
-	clientType, ok := value.(string)
-	if !ok {
-		return "", false
-	}
-
-	clientType = strings.TrimSpace(clientType)
-	if clientType == "" {
-		return "", false
-	}
-
-	return clientType, true
+	// Match only GCS data-plane and known GCS helper/control-plane targets.
+	return strings.Contains(target, "storage.googleapis.com") ||
+		strings.Contains(target, "storage.mtls.googleapis.com") ||
+		strings.Contains(target, "rls.googleapis.com") ||
+		strings.Contains(target, "trafficdirector.googleapis.com") ||
+		(strings.Contains(target, "traffic-director") && strings.Contains(target, "googleapis.com")) ||
+		(strings.Contains(target, "google-c2p") && strings.Contains(target, "googleapis.com"))
 }
 
 func isOTELCollectorTarget(target string) bool {
