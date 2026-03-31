@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -50,6 +51,9 @@ type Node struct {
 
 	PlacementMetrics PlacementMetrics
 
+	// featureflags is the feature flags client for feature flag checks
+	featureflags *featureflags.Client
+
 	mutex sync.RWMutex
 }
 
@@ -58,6 +62,7 @@ func New(
 	tracerProvider trace.TracerProvider,
 	meterProvider metric.MeterProvider,
 	discoveredNode NomadServiceDiscovery,
+	ff *featureflags.Client,
 ) (*Node, error) {
 	client, err := NewClient(tracerProvider, meterProvider, discoveredNode.OrchestratorAddress)
 	if err != nil {
@@ -100,6 +105,8 @@ func New(
 			createSuccess:       atomic.Uint64{},
 			createFails:         atomic.Uint64{},
 		},
+
+		featureflags: ff,
 	}
 
 	n.UpdateMetricsFromServiceInfoResponse(nodeInfo)
@@ -109,7 +116,7 @@ func New(
 	return n, nil
 }
 
-func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID uuid.UUID, sandboxDomain *string, i *clusters.Instance) (*Node, error) {
+func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID uuid.UUID, sandboxDomain *string, i *clusters.Instance, ff *featureflags.Client) (*Node, error) {
 	info := i.GetInfo()
 	status, ok := OrchestratorToApiNodeStateMapper[info.Status]
 	if !ok {
@@ -136,9 +143,10 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 			createFails:         atomic.Uint64{},
 		},
 
-		client: client,
-		status: status,
-		meta:   nodeMetadata,
+		client:       client,
+		status:       status,
+		meta:         nodeMetadata,
+		featureflags: ff,
 	}
 
 	nodeClient, ctx := n.GetClient(ctx)
@@ -179,11 +187,28 @@ func (n *Node) IsNomadManaged() bool {
 	return n.NomadNodeShortID != UnknownNomadNodeShortID
 }
 
-func (n *Node) OptimisticAdd(res SandboxResources) {
-    n.metricsMu.Lock()
-    defer n.metricsMu.Unlock()
-    
-    // Directly accumulate to the current metrics view
-    n.metrics.CpuAllocated += uint32(res.CPUs)
-    n.metrics.MemoryAllocatedBytes += uint64(res.MiBMemory) * 1024 * 1024 // Note: CpuPercent is difficult to estimate, usually just updating Allocated is sufficient for the scheduling algorithm
+func (n *Node) OptimisticAdd(ctx context.Context, res SandboxResources) {
+	if n.featureflags != nil && !n.featureflags.BoolFlag(ctx, featureflags.OptimisticResourceAccountingFlag) {
+		return
+	}
+
+	n.metricsMu.Lock()
+	defer n.metricsMu.Unlock()
+
+	// Directly accumulate to the current metrics view
+	n.metrics.CpuAllocated += uint32(res.CPUs)
+	n.metrics.MemoryAllocatedBytes += uint64(res.MiBMemory) * 1024 * 1024 // Note: CpuPercent is difficult to estimate, usually just updating Allocated is sufficient for the scheduling algorithm
+}
+
+func (n *Node) OptimisticRemove(ctx context.Context, res SandboxResources) {
+	if n.featureflags != nil && !n.featureflags.BoolFlag(ctx, featureflags.OptimisticResourceAccountingFlag) {
+		return
+	}
+
+	n.metricsMu.Lock()
+	defer n.metricsMu.Unlock()
+
+	// Directly subtract from the current metrics view
+	n.metrics.CpuAllocated -= uint32(res.CPUs)
+	n.metrics.MemoryAllocatedBytes -= uint64(res.MiBMemory) * 1024 * 1024
 }
