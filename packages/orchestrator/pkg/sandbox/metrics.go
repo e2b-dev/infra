@@ -18,6 +18,7 @@ type Metrics struct {
 
 	MemTotal int64 `json:"mem_total"` // Total virtual memory in bytes
 	MemUsed  int64 `json:"mem_used"`  // Used virtual memory in bytes
+	MemCache int64 `json:"mem_cache"` // Cached memory (page cache) in bytes
 
 	DiskUsed  int64 `json:"disk_used"`  // Used disk space in bytes
 	DiskTotal int64 `json:"disk_total"` // Total disk space in bytes
