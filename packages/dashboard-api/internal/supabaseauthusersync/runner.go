@@ -18,20 +18,24 @@ type Runner struct {
 }
 
 func NewRunner(cfg Config, store *Store, lockOwner string, l logger.Logger) *Runner {
+	workerLogger := l.With(logger.WithServiceInstanceID(lockOwner))
+
 	return &Runner{
 		cfg:       cfg,
 		store:     store,
-		processor: NewProcessor(store, cfg.MaxAttempts, l),
+		processor: NewProcessor(store, cfg.MaxAttempts, workerLogger),
 		lockOwner: lockOwner,
-		l:         l,
+		l:         workerLogger,
 	}
 }
 
 func (r *Runner) Run(ctx context.Context) error {
 	r.l.Info(ctx, "starting supabase auth user sync worker",
-		zap.String("lock_owner", r.lockOwner),
-		zap.Duration("poll_interval", r.cfg.PollInterval),
-		zap.Int32("batch_size", r.cfg.BatchSize),
+		zap.String("worker.lock_owner", r.lockOwner),
+		zap.Duration("worker.poll_interval", r.cfg.PollInterval),
+		zap.Int32("worker.batch_size", r.cfg.BatchSize),
+		zap.Duration("worker.lock_timeout", r.cfg.LockTimeout),
+		zap.Int32("worker.max_attempts", r.cfg.MaxAttempts),
 	)
 
 	ticker := time.NewTicker(r.cfg.PollInterval)
@@ -40,7 +44,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			r.l.Info(ctx, "stopping supabase auth user sync worker")
+			r.l.Info(ctx, "stopping supabase auth user sync worker", zap.Error(ctx.Err()))
 
 			return ctx.Err()
 		case <-ticker.C:
@@ -50,9 +54,15 @@ func (r *Runner) Run(ctx context.Context) error {
 }
 
 func (r *Runner) poll(ctx context.Context) {
+	claimedAt := time.Now()
 	items, err := r.store.ClaimBatch(ctx, r.lockOwner, r.cfg.LockTimeout, r.cfg.BatchSize)
 	if err != nil {
-		r.l.Error(ctx, "failed to claim queue batch", zap.Error(err))
+		r.l.Error(ctx, "failed to claim supabase auth sync queue batch",
+			zap.String("worker.lock_owner", r.lockOwner),
+			zap.Duration("worker.lock_timeout", r.cfg.LockTimeout),
+			zap.Int32("worker.batch_size", r.cfg.BatchSize),
+			zap.Error(err),
+		)
 
 		return
 	}
@@ -61,9 +71,11 @@ func (r *Runner) poll(ctx context.Context) {
 		return
 	}
 
-	r.l.Debug(ctx, "claimed queue batch", zap.Int("count", len(items)))
+	summary := newBatchSummary(items, claimedAt)
 
 	for _, item := range items {
-		r.processor.Process(ctx, item)
+		summary.Add(r.processor.Process(ctx, item))
 	}
+
+	r.l.Log(ctx, summary.Level(), "processed supabase auth sync queue batch", summary.Fields(time.Since(claimedAt))...)
 }

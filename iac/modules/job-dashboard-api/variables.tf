@@ -44,6 +44,10 @@ variable "supabase_jwt_secrets" {
   sensitive = true
 }
 
+variable "supabase_auth_user_sync_enabled" {
+  type = string
+}
+
 variable "otel_collector_grpc_port" {
   type    = number
   default = 4317

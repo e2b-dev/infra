@@ -2,6 +2,13 @@ package supabaseauthusersync
 
 import "time"
 
+const (
+	defaultBatchSize    int32         = 50
+	defaultPollInterval time.Duration = 2 * time.Second
+	defaultLockTimeout  time.Duration = 2 * time.Minute
+	defaultMaxAttempts  int32         = 20
+)
+
 type Config struct {
 	Enabled      bool
 	BatchSize    int32
@@ -13,9 +20,9 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		Enabled:      false,
-		BatchSize:    50,
-		PollInterval: 2 * time.Second,
-		LockTimeout:  2 * time.Minute,
-		MaxAttempts:  20,
+		BatchSize:    defaultBatchSize,
+		PollInterval: defaultPollInterval,
+		LockTimeout:  defaultLockTimeout,
+		MaxAttempts:  defaultMaxAttempts,
 	}
 }

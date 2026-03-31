@@ -59,9 +59,10 @@ func supervise(ctx context.Context, l logger.Logger, cfg supervisorConfig, run f
 		delay := restartBackoff(restartAttempt, cfg.RestartDelay, cfg.MaxRestartDelay)
 		l.Error(ctx, "supabase auth user sync worker exited unexpectedly; restarting",
 			zap.Error(err),
-			zap.Int("restart_attempt", restartAttempt),
-			zap.Duration("restart_in", delay),
-			zap.Duration("runtime", runtime),
+			zap.Int("worker.restart_attempt", restartAttempt),
+			zap.Duration("worker.restart_in", delay),
+			zap.Duration("worker.runtime", runtime),
+			zap.Duration("worker.healthy_run_reset_after", cfg.HealthyRunResetAfter),
 		)
 
 		timer := time.NewTimer(delay)
@@ -78,8 +79,8 @@ func runRecovering(ctx context.Context, l logger.Logger, run func(context.Contex
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			l.Error(ctx, "supabase auth user sync worker panicked",
-				zap.String("panic", fmt.Sprint(recovered)),
-				zap.String("stack", string(debug.Stack())),
+				zap.String("worker.panic", fmt.Sprint(recovered)),
+				zap.String("worker.stack", string(debug.Stack())),
 			)
 
 			err = fmt.Errorf("worker panic: %v", recovered)

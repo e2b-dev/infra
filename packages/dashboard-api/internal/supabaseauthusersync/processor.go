@@ -37,57 +37,99 @@ func NewProcessor(store processorStore, maxAttempts int32, l logger.Logger) *Pro
 	}
 }
 
-func (p *Processor) Process(ctx context.Context, item QueueItem) {
-	err := p.processOnce(ctx, item)
+func (p *Processor) Process(ctx context.Context, item QueueItem) processResult {
+	startedAt := time.Now()
+	action, err := p.processOnce(ctx, item)
+	result := processResult{
+		Action:   action,
+		Duration: time.Since(startedAt),
+	}
 
 	if err == nil {
 		if ackErr := p.store.Ack(ctx, item.ID); ackErr != nil {
-			p.l.Error(ctx, "failed to ack queue item",
-				zap.Int64("queue_item_id", item.ID),
-				zap.String("user_id", item.UserID.String()),
-				zap.Error(ackErr),
+			result.Outcome = processOutcomeAckFailed
+
+			p.l.Error(ctx, "processed supabase auth sync queue item but failed to ack",
+				append(
+					processResultFields(item, result, time.Now()),
+					zap.NamedError("ack_error", ackErr),
+				)...,
 			)
+
+			return result
 		}
 
-		return
-	}
+		result.Outcome = processOutcomeAcked
+		p.l.Info(ctx, "processed supabase auth sync queue item", processResultFields(item, result, time.Now())...)
 
-	p.l.Warn(ctx, "failed to process queue item",
-		zap.Int64("queue_item_id", item.ID),
-		zap.String("user_id", item.UserID.String()),
-		zap.Int32("attempt", item.AttemptCount),
-		zap.Error(err),
-	)
+		return result
+	}
 
 	if item.AttemptCount >= p.maxAttempts {
 		if dlErr := p.store.DeadLetter(ctx, item.ID, err.Error()); dlErr != nil {
-			p.l.Error(ctx, "failed to dead-letter queue item",
-				zap.Int64("queue_item_id", item.ID),
-				zap.Error(dlErr),
+			result.Outcome = processOutcomeDeadLetterFailed
+
+			p.l.Error(ctx, "failed to dead-letter supabase auth sync queue item",
+				append(
+					processResultFields(item, result, time.Now()),
+					zap.Int32("queue_item.max_attempts", p.maxAttempts),
+					zap.NamedError("processing_error", err),
+					zap.NamedError("dead_letter_error", dlErr),
+				)...,
 			)
+
+			return result
 		}
 
-		return
+		result.Outcome = processOutcomeDeadLettered
+		p.l.Error(ctx, "dead-lettered supabase auth sync queue item after max attempts",
+			append(
+				processResultFields(item, result, time.Now()),
+				zap.Int32("queue_item.max_attempts", p.maxAttempts),
+				zap.NamedError("processing_error", err),
+			)...,
+		)
+
+		return result
 	}
 
 	backoff := retryBackoff(item.AttemptCount)
+	result.Outcome = processOutcomeRetried
+	result.Backoff = backoff
 
 	if retryErr := p.store.Retry(ctx, item.ID, backoff, err.Error()); retryErr != nil {
-		p.l.Error(ctx, "failed to retry queue item",
-			zap.Int64("queue_item_id", item.ID),
-			zap.Error(retryErr),
+		result.Outcome = processOutcomeRetryFailed
+
+		p.l.Error(ctx, "failed to schedule supabase auth sync queue item retry",
+			append(
+				processResultFields(item, result, time.Now()),
+				zap.NamedError("processing_error", err),
+				zap.NamedError("retry_error", retryErr),
+			)...,
 		)
+
+		return result
 	}
+
+	p.l.Warn(ctx, "retrying supabase auth sync queue item after processing error",
+		append(
+			processResultFields(item, result, time.Now()),
+			zap.NamedError("processing_error", err),
+		)...,
+	)
+
+	return result
 }
 
-func (p *Processor) processOnce(ctx context.Context, item QueueItem) (err error) {
+func (p *Processor) processOnce(ctx context.Context, item QueueItem) (action reconcileAction, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			p.l.Error(ctx, "panic while processing queue item",
-				zap.Int64("queue_item_id", item.ID),
-				zap.String("user_id", item.UserID.String()),
-				zap.String("panic", fmt.Sprint(recovered)),
-				zap.String("stack", string(debug.Stack())),
+			p.l.Error(ctx, "panic while processing supabase auth sync queue item",
+				append(
+					queueItemFields(item, time.Now()),
+					zap.String("worker.panic", fmt.Sprint(recovered)),
+					zap.String("worker.stack", string(debug.Stack())),
+				)...,
 			)
 
 			err = fmt.Errorf("panic while processing queue item: %v", recovered)
@@ -97,26 +139,26 @@ func (p *Processor) processOnce(ctx context.Context, item QueueItem) (err error)
 	return p.reconcile(ctx, item)
 }
 
-func (p *Processor) reconcile(ctx context.Context, item QueueItem) error {
+func (p *Processor) reconcile(ctx context.Context, item QueueItem) (reconcileAction, error) {
 	authUser, err := p.store.GetAuthUser(ctx, item.UserID)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		if delErr := p.store.DeletePublicUser(ctx, item.UserID); delErr != nil {
-			return fmt.Errorf("delete public.users %s: %w", item.UserID, delErr)
+			return "", fmt.Errorf("delete public.users %s: %w", item.UserID, delErr)
 		}
 
-		return nil
+		return reconcileActionDeletePublicUser, nil
 	}
 
 	if err != nil {
-		return fmt.Errorf("get auth.users %s: %w", item.UserID, err)
+		return "", fmt.Errorf("get auth.users %s: %w", item.UserID, err)
 	}
 
 	if err = p.store.UpsertPublicUser(ctx, authUser.ID, authUser.Email); err != nil {
-		return fmt.Errorf("upsert public.users %s: %w", authUser.ID, err)
+		return "", fmt.Errorf("upsert public.users %s: %w", authUser.ID, err)
 	}
 
-	return nil
+	return reconcileActionUpsertPublicUser, nil
 }
 
 func retryBackoff(attempt int32) time.Duration {
