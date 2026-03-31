@@ -44,6 +44,7 @@ func TestSupabaseAuthUserSyncRunner_EndToEnd(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
+	db.ApplyMigrations(t, "packages/db/pkg/auth/migrations")
 
 	runRepairsInsertUpdateDeleteDrift(t, db)
 	runReclaimsStaleQueueLocks(t, db)

@@ -38,6 +38,7 @@ type Database struct {
 	SqlcClient  *db.Client
 	AuthDb      *authdb.Client
 	TestQueries *queries.Queries
+	connStr     string
 }
 
 // SetupDatabase creates a fresh PostgreSQL container with migrations applied
@@ -103,11 +104,11 @@ func SetupDatabase(t *testing.T) *Database {
 		SqlcClient:  sqlcClient,
 		AuthDb:      authDb,
 		TestQueries: testQueries,
+		connStr:     connStr,
 	}
 }
 
-// runDatabaseMigrations executes all required database migrations
-func runDatabaseMigrations(t *testing.T, connStr string) {
+func (db *Database) ApplyMigrations(t *testing.T, migrationDirs ...string) {
 	t.Helper()
 
 	cmd := exec.CommandContext(t.Context(), "git", "rev-parse", "--show-toplevel")
@@ -115,25 +116,29 @@ func runDatabaseMigrations(t *testing.T, connStr string) {
 	require.NoError(t, err, "Failed to find git root")
 	repoRoot := strings.TrimSpace(string(output))
 
-	db, err := goose.OpenDBWithDriver("pgx", connStr)
+	sqlDB, err := goose.OpenDBWithDriver("pgx", db.connStr)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		err := db.Close()
+		err := sqlDB.Close()
 		assert.NoError(t, err)
 	})
 
-	// run the db migration
-	for _, migrationsDir := range []string{
-		filepath.Join(repoRoot, "packages", "db", "migrations"),
-		filepath.Join(repoRoot, "packages", "db", "pkg", "auth", "migrations"),
-	} {
+	for _, migrationsDir := range migrationDirs {
 		err = goose.RunWithOptionsContext(
 			t.Context(),
 			"up",
-			db,
-			migrationsDir,
+			sqlDB,
+			filepath.Join(repoRoot, migrationsDir),
 			nil,
 		)
 		require.NoError(t, err)
 	}
+}
+
+// runDatabaseMigrations executes all required database migrations
+func runDatabaseMigrations(t *testing.T, connStr string) {
+	t.Helper()
+
+	db := &Database{connStr: connStr}
+	db.ApplyMigrations(t, filepath.Join("packages", "db", "migrations"))
 }
