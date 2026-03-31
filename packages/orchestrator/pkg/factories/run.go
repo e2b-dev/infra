@@ -507,7 +507,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}
 
 	// device pool
-	devicePool, err := nbd.NewDevicePool()
+	devicePool, err := nbd.NewDevicePool(config.NBDPoolSize)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create device pool", zap.Error(err))
 	}

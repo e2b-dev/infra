@@ -254,7 +254,18 @@ func doBuild(
 		return fmt.Errorf("build storage: %w", err)
 	}
 
-	devicePool, err := nbd.NewDevicePool()
+	blockMetrics, _ := blockmetrics.NewMetrics(noop.NewMeterProvider())
+
+	if os.Getenv("NODE_IP") == "" {
+		os.Setenv("NODE_IP", "127.0.0.1")
+	}
+
+	c, err := cfg.Parse()
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
+
+	devicePool, err := nbd.NewDevicePool(c.NBDPoolSize)
 	if err != nil {
 		return fmt.Errorf("nbd pool: %w", err)
 	}
@@ -279,17 +290,6 @@ func doBuild(
 		return fmt.Errorf("dockerhub: %w", err)
 	}
 	defer dockerhubRepo.Close()
-
-	blockMetrics, _ := blockmetrics.NewMetrics(noop.NewMeterProvider())
-
-	if os.Getenv("NODE_IP") == "" {
-		os.Setenv("NODE_IP", "127.0.0.1")
-	}
-
-	c, err := cfg.Parse()
-	if err != nil {
-		return fmt.Errorf("config: %w", err)
-	}
 
 	templateCache, err := sbxtemplate.NewCache(c, featureFlags, persistenceTemplate, blockMetrics, peerclient.NopResolver())
 	if err != nil {
