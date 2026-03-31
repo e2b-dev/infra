@@ -7,6 +7,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/queries"
 )
 
@@ -24,15 +27,21 @@ type AuthUser struct {
 }
 
 type Store struct {
-	q *queries.Queries
+	authQueries *authqueries.Queries
+	mainQueries *queries.Queries
 }
 
-func NewStore(q *queries.Queries) *Store {
-	return &Store{q: q}
+var _ workerStore = (*Store)(nil)
+
+func NewStore(authDB *authdb.Client, mainDB *sqlcdb.Client) *Store {
+	return &Store{
+		authQueries: authDB.Write,
+		mainQueries: mainDB.Queries,
+	}
 }
 
 func (s *Store) ClaimBatch(ctx context.Context, lockOwner string, lockTimeout time.Duration, batchSize int32) ([]QueueItem, error) {
-	rows, err := s.q.ClaimUserSyncQueueBatch(ctx, queries.ClaimUserSyncQueueBatchParams{
+	rows, err := s.authQueries.ClaimUserSyncQueueBatch(ctx, authqueries.ClaimUserSyncQueueBatchParams{
 		LockOwner:   lockOwner,
 		LockTimeout: durationToInterval(lockTimeout),
 		BatchSize:   batchSize,
@@ -56,11 +65,11 @@ func (s *Store) ClaimBatch(ctx context.Context, lockOwner string, lockTimeout ti
 }
 
 func (s *Store) Ack(ctx context.Context, id int64) error {
-	return s.q.AckUserSyncQueueItem(ctx, id)
+	return s.authQueries.AckUserSyncQueueItem(ctx, id)
 }
 
 func (s *Store) Retry(ctx context.Context, id int64, backoff time.Duration, lastError string) error {
-	return s.q.RetryUserSyncQueueItem(ctx, queries.RetryUserSyncQueueItemParams{
+	return s.authQueries.RetryUserSyncQueueItem(ctx, authqueries.RetryUserSyncQueueItemParams{
 		ID:        id,
 		Backoff:   durationToInterval(backoff),
 		LastError: lastError,
@@ -68,14 +77,14 @@ func (s *Store) Retry(ctx context.Context, id int64, backoff time.Duration, last
 }
 
 func (s *Store) DeadLetter(ctx context.Context, id int64, lastError string) error {
-	return s.q.DeadLetterUserSyncQueueItem(ctx, queries.DeadLetterUserSyncQueueItemParams{
+	return s.authQueries.DeadLetterUserSyncQueueItem(ctx, authqueries.DeadLetterUserSyncQueueItemParams{
 		ID:        id,
 		LastError: lastError,
 	})
 }
 
 func (s *Store) GetAuthUser(ctx context.Context, userID uuid.UUID) (*AuthUser, error) {
-	row, err := s.q.GetAuthUserByID(ctx, userID)
+	row, err := s.authQueries.GetAuthUserByID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -84,14 +93,14 @@ func (s *Store) GetAuthUser(ctx context.Context, userID uuid.UUID) (*AuthUser, e
 }
 
 func (s *Store) UpsertPublicUser(ctx context.Context, id uuid.UUID, email string) error {
-	return s.q.UpsertPublicUser(ctx, queries.UpsertPublicUserParams{
+	return s.mainQueries.UpsertPublicUser(ctx, queries.UpsertPublicUserParams{
 		ID:    id,
 		Email: email,
 	})
 }
 
 func (s *Store) DeletePublicUser(ctx context.Context, id uuid.UUID) error {
-	return s.q.DeletePublicUser(ctx, id)
+	return s.mainQueries.DeletePublicUser(ctx, id)
 }
 
 func durationToInterval(d time.Duration) pgtype.Interval {

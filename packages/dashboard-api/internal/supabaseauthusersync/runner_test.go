@@ -206,7 +206,13 @@ func startRunnerProcess(t *testing.T, db *testutils.Database, cfg Config, lockOw
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	runner := NewRunner(cfg, NewStore(db.SqlcClient.Queries), lockOwner, logger.NewNopLogger())
+	runner := NewRunner(
+		cfg,
+		db.AuthDb,
+		db.SqlcClient,
+		lockOwner,
+		logger.NewNopLogger(),
+	)
 
 	go func() {
 		done <- runner.Run(ctx)

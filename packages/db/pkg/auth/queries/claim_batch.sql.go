@@ -3,7 +3,7 @@
 //   sqlc v1.29.0
 // source: claim_batch.sql
 
-package queries
+package authqueries
 
 import (
 	"context"

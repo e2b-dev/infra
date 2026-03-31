@@ -123,12 +123,17 @@ func runDatabaseMigrations(t *testing.T, connStr string) {
 	})
 
 	// run the db migration
-	err = goose.RunWithOptionsContext(
-		t.Context(),
-		"up",
-		db,
+	for _, migrationsDir := range []string{
 		filepath.Join(repoRoot, "packages", "db", "migrations"),
-		nil,
-	)
-	require.NoError(t, err)
+		filepath.Join(repoRoot, "packages", "db", "pkg", "auth", "migrations"),
+	} {
+		err = goose.RunWithOptionsContext(
+			t.Context(),
+			"up",
+			db,
+			migrationsDir,
+			nil,
+		)
+		require.NoError(t, err)
+	}
 }

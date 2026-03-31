@@ -6,19 +6,31 @@ import (
 
 	"go.uber.org/zap"
 
+	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+type runnerStore interface {
+	ClaimBatch(ctx context.Context, lockOwner string, lockTimeout time.Duration, batchSize int32) ([]QueueItem, error)
+}
+
+type workerStore interface {
+	runnerStore
+	processorStore
+}
+
 type Runner struct {
 	cfg       Config
-	store     *Store
+	store     runnerStore
 	processor *Processor
 	lockOwner string
 	l         logger.Logger
 }
 
-func NewRunner(cfg Config, store *Store, lockOwner string, l logger.Logger) *Runner {
+func NewRunner(cfg Config, authDB *authdb.Client, mainDB *sqlcdb.Client, lockOwner string, l logger.Logger) *Runner {
 	workerLogger := l.With(logger.WithServiceInstanceID(lockOwner))
+	store := NewStore(authDB, mainDB)
 
 	return &Runner{
 		cfg:       cfg,

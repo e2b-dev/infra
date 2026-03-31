@@ -232,12 +232,12 @@ func run() int {
 
 	if config.SupabaseAuthUserSyncEnabled {
 		workerLogger := l.With(zap.String("worker", "supabase_auth_user_sync"))
-		syncStore := supabaseauthusersync.NewStore(db.Queries)
 		syncConfig := supabaseauthusersync.DefaultConfig()
 		syncConfig.Enabled = true
 		syncRunner := supabaseauthusersync.NewRunner(
 			syncConfig,
-			syncStore,
+			authDB,
+			db,
 			serviceInstanceID,
 			workerLogger,
 		)
