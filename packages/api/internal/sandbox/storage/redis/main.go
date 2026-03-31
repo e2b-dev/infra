@@ -60,7 +60,7 @@ func (s *Storage) Close() {
 	s.subManager.close()
 }
 
-// Sync is here only for legacy reasons, redis backend doesn't need any sync
+// Sync returns a list of sandboxes that are considered orphans on the current node.
 func (s *Storage) Sync(ctx context.Context, sbxs []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
 	if len(sbxs) == 0 {
 		return nil
