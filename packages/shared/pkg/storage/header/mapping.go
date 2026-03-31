@@ -42,8 +42,17 @@ func (mapping *BuildMap) Copy() *BuildMap {
 // Returns nil if frameTable is nil. Returns an error if the mapping's range
 // cannot be found in the frame table.
 func (mapping *BuildMap) SetFrames(frameTable *storage.FrameTable) error {
+	_, err := mapping.SetFramesFrom(frameTable, 0)
+
+	return err
+}
+
+// SetFramesFrom is like SetFrames but starts scanning from frame index `from`,
+// returning the next cursor position. Use this when applying frames to a
+// sorted sequence of mappings to avoid O(N²) rescanning.
+func (mapping *BuildMap) SetFramesFrom(frameTable *storage.FrameTable, from int) (int, error) {
 	if frameTable == nil {
-		return nil
+		return from, nil
 	}
 
 	mappedRange := storage.Range{
@@ -51,15 +60,15 @@ func (mapping *BuildMap) SetFrames(frameTable *storage.FrameTable) error {
 		Length: int(mapping.Length),
 	}
 
-	subset, err := frameTable.Subset(mappedRange)
-	if err != nil {
-		return fmt.Errorf("mapping at virtual offset %d (storage offset %d, length %d): %w",
-			mapping.Offset, mapping.BuildStorageOffset, mapping.Length, err)
+	subset, next := frameTable.SubsetFrom(mappedRange, from)
+	if subset == nil && mapping.Length > 0 {
+		return next, fmt.Errorf("mapping at virtual offset %d (storage offset %d, length %d): no frames found from index %d",
+			mapping.Offset, mapping.BuildStorageOffset, mapping.Length, from)
 	}
 
 	mapping.FrameTable = subset
 
-	return nil
+	return next, nil
 }
 
 func CreateMapping(

@@ -140,7 +140,6 @@ func (ft *FrameTable) Size() (uncompressed, compressed int64) {
 }
 
 // Subset returns frames covering r. Whole frames only (can't split compressed).
-// Stops silently at the end of the frameset if r extends beyond.
 func (ft *FrameTable) Subset(r Range) (*FrameTable, error) {
 	if ft == nil || r.Length == 0 {
 		return nil, nil
@@ -148,17 +147,48 @@ func (ft *FrameTable) Subset(r Range) (*FrameTable, error) {
 	if r.Start < ft.StartAt.U {
 		return nil, fmt.Errorf("requested range starts before the beginning of the frame table")
 	}
-	newFrameTable := &FrameTable{
+
+	result, _ := ft.SubsetFrom(r, 0)
+	if result == nil {
+		return nil, fmt.Errorf("requested range is beyond the end of the frame table")
+	}
+
+	return result, nil
+}
+
+// SubsetFrom is like Subset but starts scanning from frame index `from`,
+// returning the index of the first frame past the result. Use this to
+// efficiently extract consecutive subsets from a sorted sequence of ranges
+// without re-scanning from the beginning each time.
+func (ft *FrameTable) SubsetFrom(r Range, from int) (*FrameTable, int) {
+	if ft == nil || r.Length == 0 {
+		return nil, from
+	}
+
+	result := &FrameTable{
 		compressionType: ft.compressionType,
 	}
 
-	startSet := false
+	// Advance currentOffset to frame `from`.
 	currentOffset := ft.StartAt
+	for i := range from {
+		if i >= len(ft.Frames) {
+			break
+		}
+		currentOffset.Add(ft.Frames[i])
+	}
+
+	startSet := false
 	requestedEnd := r.Start + int64(r.Length)
-	for _, frame := range ft.Frames {
+	nextFrom := from
+
+	for i := from; i < len(ft.Frames); i++ {
+		frame := ft.Frames[i]
 		frameEnd := currentOffset.U + int64(frame.U)
+
 		if frameEnd <= r.Start {
 			currentOffset.Add(frame)
+			nextFrom = i + 1
 
 			continue
 		}
@@ -167,18 +197,19 @@ func (ft *FrameTable) Subset(r Range) (*FrameTable, error) {
 		}
 
 		if !startSet {
-			newFrameTable.StartAt = currentOffset
+			result.StartAt = currentOffset
 			startSet = true
+			nextFrom = i
 		}
-		newFrameTable.Frames = append(newFrameTable.Frames, frame)
+		result.Frames = append(result.Frames, frame)
 		currentOffset.Add(frame)
 	}
 
 	if !startSet {
-		return nil, fmt.Errorf("requested range is beyond the end of the frame table")
+		return nil, nextFrom
 	}
 
-	return newFrameTable, nil
+	return result, nextFrom
 }
 
 // FrameFor finds the frame containing the given offset and returns its start position and full size.

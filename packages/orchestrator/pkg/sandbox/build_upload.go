@@ -380,6 +380,9 @@ func (p *PendingBuildInfo) applyToHeader(h *headers.Header, fileType string) err
 		return nil
 	}
 
+	// Track frame cursor per build to avoid O(N²) rescanning.
+	cursors := make(map[string]int)
+
 	for _, mapping := range h.Mapping {
 		key := pendingBuildInfoKey(mapping.BuildId.String(), fileType)
 		info := p.get(key)
@@ -388,20 +391,15 @@ func (p *PendingBuildInfo) applyToHeader(h *headers.Header, fileType string) err
 			continue
 		}
 
-		if err := mapping.SetFrames(info.ft); err != nil {
+		cursor := cursors[key]
+		next, err := mapping.SetFramesFrom(info.ft, cursor)
+		if err != nil {
 			return fmt.Errorf("apply frames to mapping at offset %d for build %s: %w",
 				mapping.Offset, mapping.BuildId.String(), err)
 		}
-	}
+		cursors[key] = next
 
-	// Populate BuildFiles with sizes and checksums for this fileType's builds.
-	for _, mapping := range h.Mapping {
-		key := pendingBuildInfoKey(mapping.BuildId.String(), fileType)
-		info := p.get(key)
-		if info == nil {
-			continue
-		}
-
+		// Populate BuildFiles with size and checksum for this build.
 		if h.BuildFiles == nil {
 			h.BuildFiles = make(map[uuid.UUID]headers.BuildFileInfo)
 		}

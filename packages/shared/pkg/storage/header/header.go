@@ -89,19 +89,12 @@ func NewHeader(metadata *Metadata, mapping []*BuildMap) (*Header, error) {
 		startMap[block] = m
 	}
 
-	h := &Header{
+	return &Header{
 		blockStarts: intervals,
 		Metadata:    metadata,
 		Mapping:     mapping,
 		startMap:    startMap,
-	}
-
-	// Validate header integrity at creation time
-	if err := ValidateHeader(h); err != nil {
-		return nil, fmt.Errorf("header validation failed: %w", err)
-	}
-
-	return h, nil
+	}, nil
 }
 
 func (t *Header) String() string {
