@@ -1,0 +1,35 @@
+[accessLog]
+
+[api]
+  dashboard = true
+  insecure = false
+
+[entryPoints]
+  [entryPoints.web]
+    address = ":${ingress_port}"
+  [entryPoints.traefik]
+    address = ":${control_port}"
+
+[metrics]
+  [metrics.otlp]
+    [metrics.otlp.grpc]
+      endpoint = "${otel_collector_grpc_endpoint}"
+      insecure = true
+
+[ping]
+  entryPoint = "web"
+
+[providers]
+  [providers.file]
+    directory = "/local/config"
+    watch = false
+  [providers.nomad]
+    exposedByDefault = false
+    [providers.nomad.endpoint]
+      address = "${nomad_endpoint}"
+      token = "${nomad_token}"
+  [providers.consulCatalog]
+    exposedByDefault = false
+    [providers.consulCatalog.endpoint]
+      address = "${consul_endpoint}"
+      token = "${consul_token}"

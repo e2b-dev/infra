@@ -329,3 +329,7 @@ variable "auth_db_max_open_connections" {
 variable "auth_db_min_idle_connections" {
   type = number
 }
+
+variable "traefik_config_files" {
+  type = map(string)
+}

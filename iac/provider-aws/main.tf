@@ -196,6 +196,7 @@ module "nomad" {
   ingress_port                 = local.ingress_port
   ingress_count                = var.ingress_count
   additional_traefik_arguments = var.additional_traefik_arguments
+  traefik_config_files         = var.traefik_config_files
 
   client_proxy_count           = var.client_proxy_count
   client_proxy_repository_name = module.init.client_proxy_repository_name

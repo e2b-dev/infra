@@ -63,6 +63,7 @@ module "ingress" {
   consul_token = var.consul_acl_token_secret
 
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
+  traefik_config_files = var.traefik_config_files
 }
 
 module "api" {

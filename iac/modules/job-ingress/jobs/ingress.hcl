@@ -81,40 +81,28 @@ job "ingress" {
         image        = "traefik:v3.5"
         ports        = ["control", "ingress"]
         args = [
-          # Entry-points that are set internally by Traefik
-          "--entrypoints.web.address=:${ingress_port}",
-          "--entrypoints.traefik.address=:${control_port}",
-
-          # Traefik internals (logging, metrics, ...)
-          "--api.dashboard=true",
-          "--api.insecure=false",
-
-          "--accesslog=true",
-          "--ping=true",
-          "--ping.entryPoint=web",
-          "--metrics=true",
-          "--metrics.otlp=true",
-          "--metrics.otlp.grpc=true",
-          "--metrics.otlp.grpc.endpoint=${otel_collector_grpc_endpoint}",
-          "--metrics.otlp.grpc.insecure=true",
-
+          "--configFile=/local/traefik.toml",
           %{ for arg in additional_args }
           "${ arg }",
           %{ endfor }
-
-          # Traefik Nomad provider
-          "--providers.nomad=true",
-          "--providers.nomad.exposedByDefault=false",
-          "--providers.nomad.endpoint.address=${nomad_endpoint}",
-          "--providers.nomad.endpoint.token=${nomad_token}",
-
-          # Traefik Consul provider
-          "--providers.consulcatalog=true",
-          "--providers.consulcatalog.exposedByDefault=false",
-          "--providers.consulcatalog.endpoint.address=${consul_endpoint}",
-          "--providers.consulcatalog.endpoint.token=${consul_token}",
         ]
       }
+
+      template {
+        data        = <<EOF
+${traefik_config}
+EOF
+        destination = "local/traefik.toml"
+      }
+
+%{ for filename, content in config_files }
+      template {
+        data        = <<EOF
+${content}
+EOF
+        destination = "local/config/${filename}"
+      }
+%{ endfor }
 
       resources {
         memory_max = ${memory_mb * 1.5}
