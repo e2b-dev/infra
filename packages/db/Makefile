@@ -5,9 +5,6 @@ PREFIX := $(strip $(subst ",,$(PREFIX)))
 goose := GOOSE_DRIVER=postgres GOOSE_DBSTRING=$(POSTGRES_CONNECTION_STRING) go tool goose -table "_migrations" -dir "migrations"
 goose-local := GOOSE_DBSTRING=postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable go tool goose -table "_migrations" -dir "migrations" postgres
 
-AUTH_USER_SYNC_SMOKE_COUNT ?= 15
-AUTH_USER_SYNC_SMOKE_WAIT ?= 10s
-
 
 .PHONY: migrate
 migrate:
@@ -64,7 +61,3 @@ test: build-tools
 seed-db:
 	@echo "Seeding database..."
 	@POSTGRES_CONNECTION_STRING=$(POSTGRES_CONNECTION_STRING) go run ./scripts/seed/postgres/seed-db.go
-
-.PHONY: auth-user-sync-smoke
-auth-user-sync-smoke:
-	@AUTH_DB_CONNECTION_STRING="$(AUTH_DB_CONNECTION_STRING)" POSTGRES_CONNECTION_STRING="$(POSTGRES_CONNECTION_STRING)" AUTH_USER_SYNC_SMOKE_COUNT="$(AUTH_USER_SYNC_SMOKE_COUNT)" AUTH_USER_SYNC_SMOKE_WAIT="$(AUTH_USER_SYNC_SMOKE_WAIT)" go run ./scripts/auth-user-sync-smoke
