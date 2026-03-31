@@ -143,7 +143,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		assert.NoError(b, err)
 	})
 
-	devicePool, err := nbd.NewDevicePool(64)
+	devicePool, err := nbd.NewDevicePool(config.NBDPoolSize)
 	require.NoError(b, err, "do you have the nbd kernel module installed?")
 	go func() {
 		devicePool.Populate(b.Context())
