@@ -60,8 +60,8 @@ func (s *Storage) Close() {
 	s.subManager.close()
 }
 
-// Sync returns a list of sandboxes that are considered orphans on the current node.
-func (s *Storage) Sync(ctx context.Context, sbxs []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
+// Reconcile returns a list of sandboxes that are considered orphans on the current node.
+func (s *Storage) Reconcile(ctx context.Context, sbxs []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
 	if len(sbxs) == 0 {
 		return nil
 	}
