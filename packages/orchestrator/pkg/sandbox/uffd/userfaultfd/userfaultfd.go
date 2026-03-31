@@ -250,23 +250,17 @@ func (u *Userfaultfd) Serve(
 		noDataCounter.Log(ctx)
 		eagainCounter.Log(ctx)
 
-		// Wait for all in-flight fault goroutines before processing REMOVE events.
-		// A goroutine from the previous batch could still be executing setState(faulted)
-		// at line 326 after its UFFDIO_COPY returned. If we process a REMOVE for the same
+		// First handle the UFFD_EVENT_REMOVE events. Take the settleRequests write lock to ensure that no
+		// other page or pre-fault operation is running concurrently.
+		// A goroutine from the previous batch or a prefault operation could still be executing
+		// setState(faulted) at line 326 after its UFFDIO_COPY returned. If we process a REMOVE for the same
 		// page before that goroutine finishes, the goroutine's setState(faulted) would
 		// overwrite the removed state we just set.
-		if len(removes) > 0 {
-			if waitErr := u.wg.Wait(); waitErr != nil {
-				u.logger.Error(ctx, "UFFD serve error waiting for goroutines before REMOVE", zap.Error(waitErr))
-
-				return fmt.Errorf("failed to handle uffd: %w", waitErr)
-			}
-		}
-
-		// First handle the UFFD_EVENT_REMOVE events
+		u.settleRequests.Lock()
 		for _, rm := range removes {
 			u.pageTracker.setState(uintptr(rm.start), uintptr(rm.end), removed)
 		}
+		u.settleRequests.Unlock()
 
 		// Collect deferred pagefaults from previous iteration's goroutines.
 		pagefaults = append(deferred.drain(), pagefaults...)
