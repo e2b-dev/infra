@@ -76,7 +76,7 @@ func (a *APIStore) PostAdminTeamsTeamIDSandboxesKill(c *gin.Context, teamID uuid
 	}
 
 	// Invalidate auth cache for this team so subsequent requests re-check against DB
-	if err := a.authService.InvalidateTeamCache(ctx, teamID.String()); err != nil {
+	if err := a.authService.InvalidateTeamCache(ctx, teamID); err != nil {
 		logger.L().Error(ctx, "Failed to invalidate auth cache for team",
 			logger.WithTeamID(teamID.String()),
 			zap.Error(err))
