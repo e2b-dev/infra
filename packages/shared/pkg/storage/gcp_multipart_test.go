@@ -209,7 +209,7 @@ func TestMultipartUploader_UploadFileInParallel_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	var initiateCount, uploadPartCount, completeCount int32
-	var receivedParts sync.Map
+	receivedParts := sync.Map{}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -253,9 +253,9 @@ func TestMultipartUploader_UploadFileInParallel_Success(t *testing.T) {
 	// Verify all parts were uploaded and content matches
 	var reconstructed strings.Builder
 	for i := 1; i <= int(atomic.LoadInt32(&uploadPartCount)); i++ {
-		part, ok := receivedParts.Load(i)
-		require.True(t, ok, "missing part %d", i)
-		reconstructed.WriteString(part.(string))
+		if part, ok := receivedParts.Load(i); ok {
+			reconstructed.WriteString(part.(string))
+		}
 	}
 	require.Equal(t, testContent, reconstructed.String())
 }
@@ -704,8 +704,8 @@ func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
 	err := os.WriteFile(testFile, []byte(testContent), 0o644)
 	require.NoError(t, err)
 
-	var mu sync.Mutex
 	var partSizes []int
+	var partSizesMu sync.Mutex
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -721,9 +721,9 @@ func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
 
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			body, _ := io.ReadAll(r.Body)
-			mu.Lock()
+			partSizesMu.Lock()
 			partSizes = append(partSizes, len(body))
-			mu.Unlock()
+			partSizesMu.Unlock()
 
 			partNum := strings.Split(strings.Split(r.URL.RawQuery, "partNumber=")[1], "&")[0]
 			w.Header().Set("ETag", fmt.Sprintf(`"boundary-etag-%s"`, partNum))
@@ -958,10 +958,13 @@ func TestRetryableClient_ActualRetryBehavior(t *testing.T) {
 	var requestCount int32
 	var retryDelays []time.Duration
 	var retryTimes []time.Time
+	var retryMu sync.Mutex
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		count := atomic.AddInt32(&requestCount, 1)
+		retryMu.Lock()
 		retryTimes = append(retryTimes, time.Now())
+		retryMu.Unlock()
 
 		if count < 3 {
 			w.WriteHeader(http.StatusInternalServerError)

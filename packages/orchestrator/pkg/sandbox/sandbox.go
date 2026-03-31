@@ -408,8 +408,12 @@ func (f *Factory) CreateSandbox(
 		}
 	}
 
-	cgroupHandle, cgroupFD := createCgroup(ctx, f.cgroupManager, sandboxFiles.SandboxCgroupName(), cleanup)
+	cgroupHandle, cgroupFD := createCgroup(ctx, f.cgroupManager, sandboxFiles.SandboxCgroupName())
 	defer releaseCgroupFD(ctx, cgroupHandle, runtime.SandboxID)
+
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		return cgroupHandle.Remove(ctx)
+	})
 
 	fcHandle, err := fc.NewProcess(
 		ctx,
@@ -473,6 +477,18 @@ func (f *Factory) CreateSandbox(
 		return nil
 	})
 
+	samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
+	initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery, samplingInterval)
+
+	// Collect a final stats sample on cleanup while the cgroup is still alive.
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		if sbx.hostStatsCollector != nil {
+			sbx.hostStatsCollector.Stop(ctx)
+		}
+
+		return nil
+	})
+
 	err = fcHandle.Create(
 		ctx,
 		sbxlogger.SandboxMetadata{
@@ -500,9 +516,6 @@ func (f *Factory) CreateSandbox(
 
 	// Stop the sandbox first if it is still running, otherwise do nothing
 	cleanup.AddPriority(ctx, sbx.Stop)
-
-	samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
-	initializeHostStatsCollector(execCtx, sbx, fcHandle, runtime, config, f.hostStatsDelivery, samplingInterval)
 
 	go func() {
 		defer execSpan.End()
@@ -716,8 +729,12 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	// Create cgroup for sandbox resource accounting
-	cgroupHandle, cgroupFD := createCgroup(ctx, f.cgroupManager, sandboxFiles.SandboxCgroupName(), cleanup)
+	cgroupHandle, cgroupFD := createCgroup(ctx, f.cgroupManager, sandboxFiles.SandboxCgroupName())
 	defer releaseCgroupFD(ctx, cgroupHandle, runtime.SandboxID)
+
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		return cgroupHandle.Remove(ctx)
+	})
 
 	fcHandle, fcErr := fc.NewProcess(
 		ctx,
@@ -813,6 +830,18 @@ func (f *Factory) ResumeSandbox(
 		return nil
 	})
 
+	samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
+	initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery, samplingInterval)
+
+	// Collect a final stats sample on cleanup while the cgroup is still alive.
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		if sbx.hostStatsCollector != nil {
+			sbx.hostStatsCollector.Stop(ctx)
+		}
+
+		return nil
+	})
+
 	uffdStartCtx, cancelUffdStartCtx := context.WithCancelCause(ctx)
 	defer cancelUffdStartCtx(fmt.Errorf("uffd finished starting"))
 	go func() {
@@ -857,9 +886,6 @@ func (f *Factory) ResumeSandbox(
 	f.Sandboxes.MarkRunning(ctx, sbx)
 
 	telemetry.ReportEvent(execCtx, "envd initialized")
-
-	samplingInterval := time.Duration(f.featureFlags.IntFlag(execCtx, featureflags.HostStatsSamplingInterval)) * time.Millisecond
-	initializeHostStatsCollector(execCtx, sbx, fcHandle, runtime, config, f.hostStatsDelivery, samplingInterval)
 
 	go sbx.Checks.Start(execCtx)
 
@@ -926,11 +952,6 @@ func (s *Sandbox) doStop(ctx context.Context) error {
 
 	var errs []error
 
-	// Stop host stats collector and collect final sample
-	if s.hostStatsCollector != nil {
-		s.hostStatsCollector.Stop(ctx)
-	}
-
 	// Stop the health checks before stopping the sandbox
 	s.Checks.Stop()
 
@@ -942,15 +963,6 @@ func (s *Sandbox) doStop(ctx context.Context) error {
 	// The process exited, we can continue with the rest of the cleanup.
 	// We could use select with ctx.Done() to wait for cancellation, but if the process is not exited the whole cleanup will be in a bad state and will result in unexpected behavior.
 	<-s.process.Exit.Done()
-
-	// Remove cgroup after process has exited
-	if s.cgroupHandle != nil {
-		if cgroupErr := s.cgroupHandle.Remove(ctx); cgroupErr != nil {
-			logger.L().Warn(ctx, "failed to remove cgroup during cleanup",
-				logger.WithSandboxID(s.Runtime.SandboxID),
-				zap.Error(cgroupErr))
-		}
-	}
 
 	uffdStopErr := s.Resources.memory.Stop()
 	if uffdStopErr != nil {
@@ -1206,21 +1218,16 @@ func pauseProcessRootfs(
 	return rootfsDiff, rootfsHeader, nil
 }
 
-// createCgroup creates a cgroup for sandbox resource accounting if cgroup
-// accounting is enabled (cgroupManager is non-nil). It registers cleanup with
-// the provided Cleanup so the cgroup is removed on error paths.
+// createCgroup creates a cgroup for sandbox resource accounting.
+// The caller is responsible for registering cleanup to remove the cgroup.
 //
 // Returns the CgroupHandle and the cgroup directory FD to pass to the
-// Firecracker process. If cgroup accounting is disabled, returns (nil, cgroup.NoCgroupFD).
-func createCgroup(ctx context.Context, cgroupManager cgroup.Manager, cgroupName string, cleanup *Cleanup) (*cgroup.CgroupHandle, int) {
+// Firecracker process or (nil, cgroup.NoCgroupFD) on error.
+func createCgroup(ctx context.Context, cgroupManager cgroup.Manager, cgroupName string) (*cgroup.CgroupHandle, int) {
 	ctx, span := tracer.Start(ctx, "sandbox-create-cgroup", trace.WithAttributes(
 		attribute.String("cgroup_name", cgroupName),
 	))
 	defer span.End()
-
-	if cgroupManager == nil {
-		return nil, cgroup.NoCgroupFD
-	}
 
 	handle, err := cgroupManager.Create(ctx, cgroupName)
 	if err != nil {
@@ -1232,10 +1239,6 @@ func createCgroup(ctx context.Context, cgroupManager cgroup.Manager, cgroupName 
 
 		return nil, cgroup.NoCgroupFD
 	}
-
-	cleanup.Add(ctx, func(ctx context.Context) error {
-		return handle.Remove(ctx)
-	})
 
 	return handle, handle.GetFD()
 }
@@ -1373,12 +1376,10 @@ func (s *Sandbox) WaitForEnvd(
 }
 
 func releaseCgroupFD(ctx context.Context, cgroupHandle *cgroup.CgroupHandle, sandboxID string) {
-	if cgroupHandle != nil {
-		if releaseErr := cgroupHandle.ReleaseCgroupFD(); releaseErr != nil {
-			logger.L().Warn(ctx, "failed to release cgroup directory FD",
-				logger.WithSandboxID(sandboxID),
-				zap.Error(releaseErr))
-		}
+	if releaseErr := cgroupHandle.ReleaseCgroupFD(); releaseErr != nil {
+		logger.L().Warn(ctx, "failed to release cgroup directory FD",
+			logger.WithSandboxID(sandboxID),
+			zap.Error(releaseErr))
 	}
 }
 
