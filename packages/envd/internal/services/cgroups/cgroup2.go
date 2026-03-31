@@ -59,7 +59,7 @@ func NewCgroup2Manager(opts ...Cgroup2ManagerOption) (*Cgroup2Manager, error) {
 	// Walk up to the nearest existing ancestor so that a custom rootPath
 	// pointing to a not-yet-created subdirectory (e.g. /sys/fs/cgroup/envd)
 	// still gets its filesystem type checked correctly.
-	checkPath := config.rootPath
+	checkPath := filepath.Clean(config.rootPath)
 	for {
 		if _, err := os.Stat(checkPath); err == nil {
 			break
@@ -74,8 +74,8 @@ func NewCgroup2Manager(opts ...Cgroup2ManagerOption) (*Cgroup2Manager, error) {
 	if err := unix.Statfs(checkPath, &st); err != nil {
 		return nil, fmt.Errorf("failed to statfs cgroup root %s: %w", checkPath, err)
 	}
-	// CGROUP2_SUPER_MAGIC = 0x63677270
-	if st.Type != 0x63677270 {
+	const cgroup2SuperMagic = 0x63677270
+	if st.Type != cgroup2SuperMagic {
 		return nil, fmt.Errorf("cgroup root %s is not a cgroup2 filesystem (type=0x%x)", config.rootPath, st.Type)
 	}
 
