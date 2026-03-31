@@ -77,10 +77,6 @@ variable "traefik_log_level" {
   type = string
 }
 
-variable "additional_traefik_arguments" {
-  type = list(string)
-}
-
 variable "ingress_count" {
   type = number
 }

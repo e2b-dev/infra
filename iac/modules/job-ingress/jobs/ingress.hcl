@@ -82,9 +82,6 @@ job "ingress" {
         ports        = ["control", "ingress"]
         args = [
           "--configFile=/local/traefik.toml",
-          %{ for arg in additional_args }
-          "${ arg }",
-          %{ endfor }
         ]
       }
 

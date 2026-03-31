@@ -1,10 +1,4 @@
-[accessLog]
-
-[log]
-  level = "${log_level}"
-
 [api]
-  dashboard = true
   insecure = false
 
 [entryPoints]

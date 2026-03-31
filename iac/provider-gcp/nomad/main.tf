@@ -52,10 +52,9 @@ data "google_secret_manager_secret_version" "redis_tls_ca_base64" {
 module "ingress" {
   source = "../../modules/job-ingress"
 
-  ingress_count                = var.ingress_count
-  ingress_proxy_port           = var.ingress_port.port
-  additional_traefik_arguments = var.additional_traefik_arguments
-  traefik_log_level            = var.traefik_log_level
+  ingress_count        = var.ingress_count
+  ingress_proxy_port   = var.ingress_port.port
+  traefik_config_files = var.traefik_config_files
 
   node_pool     = var.api_node_pool
   update_stanza = var.api_machine_count > 1
@@ -64,7 +63,6 @@ module "ingress" {
   consul_token = var.consul_acl_token_secret
 
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
-  traefik_config_files         = var.traefik_config_files
 }
 
 module "api" {

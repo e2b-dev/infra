@@ -140,11 +140,6 @@ variable "additional_api_paths_handled_by_ingress" {
   default     = []
 }
 
-variable "additional_traefik_arguments" {
-  type    = list(string)
-  default = []
-}
-
 variable "client_proxy_resources_memory_mb" {
   type    = number
   default = 1024
