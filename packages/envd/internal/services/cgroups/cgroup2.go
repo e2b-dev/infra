@@ -59,8 +59,7 @@ func NewCgroup2Manager(opts ...Cgroup2ManagerOption) (*Cgroup2Manager, error) {
 	if err := unix.Statfs(config.rootPath, &st); err != nil {
 		return nil, fmt.Errorf("failed to statfs cgroup root %s: %w", config.rootPath, err)
 	}
-	const cgroup2SuperMagic = 0x63677270
-	if st.Type != cgroup2SuperMagic {
+	if st.Type != unix.CGROUP2_SUPER_MAGIC {
 		return nil, fmt.Errorf("cgroup root %s is not a cgroup2 filesystem (type=0x%x)", config.rootPath, st.Type)
 	}
 
