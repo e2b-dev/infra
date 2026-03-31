@@ -59,7 +59,7 @@ variable "additional_traefik_arguments" {
 }
 
 variable "traefik_log_level" {
-  type        = string
+  type = string
 }
 
 variable "traefik_config_files" {

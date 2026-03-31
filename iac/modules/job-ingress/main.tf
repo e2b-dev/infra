@@ -1,8 +1,8 @@
 locals {
   traefik_config = templatefile("${path.module}/jobs/traefik.toml", {
-    ingress_port    = var.ingress_proxy_port
-    control_port    = var.ingress_control_port
-    log_level       = var.traefik_log_level
+    ingress_port = var.ingress_proxy_port
+    control_port = var.ingress_control_port
+    log_level    = var.traefik_log_level
 
     nomad_endpoint = var.nomad_endpoint
     nomad_token    = var.nomad_token
