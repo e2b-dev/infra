@@ -273,6 +273,7 @@ type Factory struct {
 	featureFlags      *featureflags.Client
 	hostStatsDelivery hoststats.Delivery
 	cgroupManager     cgroup.Manager
+	activeSandboxes   sync.Map
 }
 
 func NewFactory(
@@ -333,7 +334,11 @@ func (f *Factory) CreateSandbox(
 	}()
 
 	lifecycleID := uuid.NewString()
-	// We want to remove from the map as late as possible
+	cleanup.Add(ctx, func(context.Context) error {
+		f.activeSandboxes.Delete(lifecycleID)
+
+		return nil
+	})
 	cleanup.Add(ctx, func(ctx context.Context) error {
 		f.Sandboxes.Remove(ctx, runtime.SandboxID, lifecycleID)
 
@@ -514,6 +519,8 @@ func (f *Factory) CreateSandbox(
 	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlag)
 	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
 
+	f.activeSandboxes.Store(sbx.LifecycleID, sbx)
+
 	// Stop the sandbox first if it is still running, otherwise do nothing
 	cleanup.AddPriority(ctx, sbx.Stop)
 
@@ -574,7 +581,11 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	lifecycleID := uuid.NewString()
-	// We want to remove from the map as late as possible
+	cleanup.Add(ctx, func(context.Context) error {
+		f.activeSandboxes.Delete(lifecycleID)
+
+		return nil
+	})
 	cleanup.Add(ctx, func(ctx context.Context) error {
 		f.Sandboxes.Remove(ctx, runtime.SandboxID, lifecycleID)
 
@@ -884,6 +895,8 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	f.Sandboxes.MarkRunning(ctx, sbx)
+
+	f.activeSandboxes.Store(sbx.LifecycleID, sbx)
 
 	telemetry.ReportEvent(execCtx, "envd initialized")
 
@@ -1387,4 +1400,55 @@ func (f *Factory) GetEnvdInitRequestTimeout(ctx context.Context) time.Duration {
 	envdInitRequestTimeoutMs := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutMilliseconds)
 
 	return time.Duration(envdInitRequestTimeoutMs) * time.Millisecond
+}
+
+const stopAllTimeout = 30 * time.Second
+
+// StopAll stops every known active sandbox in parallel.
+// Cleanup (Close) is left to the normal per-sandbox exit-wait goroutine.
+func (f *Factory) StopAll(ctx context.Context) error {
+	var (
+		mu   sync.Mutex
+		errs []error
+		wg   sync.WaitGroup
+	)
+
+	f.activeSandboxes.Range(func(_, value any) bool {
+		sbx, ok := value.(*Sandbox)
+		if !ok || sbx == nil {
+			return true
+		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			f.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
+
+			if stopErr := sbx.Stop(ctx); stopErr != nil {
+				mu.Lock()
+				errs = append(errs, fmt.Errorf("sandbox %s stop failed: %w",
+					sbx.Runtime.SandboxID, stopErr))
+				mu.Unlock()
+			}
+		}()
+
+		return true
+	})
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(stopAllTimeout):
+		mu.Lock()
+		errs = append(errs, fmt.Errorf("timed out after %s waiting for sandboxes to stop", stopAllTimeout))
+		mu.Unlock()
+	}
+
+	return errors.Join(errs...)
 }

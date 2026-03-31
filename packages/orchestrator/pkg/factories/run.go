@@ -758,6 +758,12 @@ func run(config cfg.Config, opts Options) (success bool) {
 		}
 	}
 
+	logger.L().Info(ctx, "Stopping all active sandboxes")
+	if err := sandboxFactory.StopAll(closeCtx); err != nil {
+		logger.L().Error(ctx, "error while stopping active sandboxes", zap.Error(err))
+		success = false
+	}
+
 	slices.Reverse(closers)
 	for _, closer := range closers {
 		clog := globalLogger.With(zap.String("service", closer.name), zap.Bool("forced", config.ForceStop))

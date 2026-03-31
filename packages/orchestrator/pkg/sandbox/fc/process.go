@@ -181,7 +181,8 @@ func NewProcess(
 	)
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setsid: true, // Create a new session
+		Setsid:    true,
+		Pdeathsig: syscall.SIGKILL,
 	}
 
 	return &Process{
