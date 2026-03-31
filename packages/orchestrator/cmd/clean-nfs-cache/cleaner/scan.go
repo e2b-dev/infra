@@ -60,7 +60,7 @@ func (c *Cleaner) Statter(ctx context.Context, done *sync.WaitGroup) {
 		case <-ctx.Done():
 			return
 		case req := <-c.statRequestCh:
-			f, err := c.statInDir(req.df, req.name)
+			f, err := c.statInDir(req.dirPath, req.name)
 			req.f = f
 			req.err = err
 			req.response <- req
@@ -201,13 +201,16 @@ func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (out *Dir, err error
 		}
 	}
 
-	// submit all stat requests
+	// Submit stat requests using the directory path (not the *os.File).
+	// The file descriptor df is closed when scanDir returns (defer above),
+	// but Statter goroutines may still be processing requests concurrently.
+	// Passing the path avoids a race between df.Close() and df.Fd().
 	responseCh := make(chan *statReq, len(filenames))
 	for _, name := range filenames {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case c.statRequestCh <- &statReq{df: df, name: name, response: responseCh}:
+		case c.statRequestCh <- &statReq{dirPath: absPath, name: name, response: responseCh}:
 			// submitted
 		}
 	}
