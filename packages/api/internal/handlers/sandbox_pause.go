@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -21,6 +22,23 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+const (
+	pauseRequestTimeout     = 15 * time.Minute
+	pauseRequestWaitTimeout = 60 * time.Second
+)
+
+type pauseRequestResult struct {
+	statusCode int
+	clientMsg  string
+}
+
+func sendPauseInProgressResponse(c *gin.Context) {
+	c.JSON(http.StatusAccepted, gin.H{
+		"code":    int32(http.StatusAccepted),
+		"message": "Pause is still in progress. Check the sandbox info endpoint for the latest status.",
+	})
+}
 
 func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.SandboxID) {
 	ctx := c.Request.Context()
@@ -44,40 +62,38 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 
 	pause.LogInitiated(ctx, sandboxID, teamID.String(), pause.ReasonRequest)
 
-	err = a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
-	var transErr *sandbox.InvalidStateTransitionError
+	resultCh := make(chan pauseRequestResult, 1)
 
-	switch {
-	case err == nil:
-		pause.LogSuccess(ctx, sandboxID, teamID.String(), pause.ReasonRequest)
-	case errors.Is(err, orchestrator.ErrSandboxNotFound):
-		apiErr := pauseHandleNotRunningSandbox(ctx, a.snapshotCache, sandboxID, teamID)
-		switch apiErr.Code {
-		case http.StatusConflict:
-			pause.LogSkipped(ctx, sandboxID, teamID.String(), pause.ReasonRequest, pause.SkipReasonAlreadyPaused)
-		case http.StatusNotFound:
-			pause.LogSkipped(ctx, sandboxID, teamID.String(), pause.ReasonRequest, pause.SkipReasonNotFound)
-		default:
-			pause.LogFailure(ctx, sandboxID, teamID.String(), pause.ReasonRequest, err)
+	go func() {
+		// TODO: Track async pause work during shutdown once API deploys can safely
+		// wait for in-flight background work to finish. See main.go shutdown TODO.
+		pauseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), pauseRequestTimeout)
+		defer cancel()
+
+		resultCh <- a.pauseSandboxRequest(pauseCtx, sandboxID, teamID)
+		close(resultCh)
+	}()
+
+	select {
+	case result := <-resultCh:
+		if result.clientMsg == "" {
+			c.Status(result.statusCode)
+
+			return
 		}
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+
+		a.sendAPIStoreError(c, result.statusCode, result.clientMsg)
 
 		return
-	case errors.As(err, &transErr):
-		pause.LogFailure(ctx, sandboxID, teamID.String(), pause.ReasonRequest, err)
-		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox '%s' cannot be paused while in '%s' state", sandboxID, transErr.CurrentState))
+	case <-time.After(pauseRequestWaitTimeout):
+		sendPauseInProgressResponse(c)
 
 		return
-	default:
-		pause.LogFailure(ctx, sandboxID, teamID.String(), pause.ReasonRequest, err)
-		telemetry.ReportError(ctx, "error pausing sandbox", err)
-
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error pausing sandbox")
+	case <-ctx.Done():
+		sendPauseInProgressResponse(c)
 
 		return
 	}
-
-	c.Status(http.StatusNoContent)
 }
 
 func pauseHandleNotRunningSandbox(ctx context.Context, cache *snapshotcache.SnapshotCache, sandboxID string, teamID uuid.UUID) api.APIError {
@@ -115,5 +131,41 @@ func pauseHandleNotRunningSandbox(ctx context.Context, cache *snapshotcache.Snap
 	return api.APIError{
 		Code:      http.StatusInternalServerError,
 		ClientMsg: "Error pausing sandbox",
+	}
+}
+
+func (a *APIStore) pauseSandboxRequest(ctx context.Context, sandboxID string, teamID uuid.UUID) pauseRequestResult {
+	err := a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	var transErr *sandbox.InvalidStateTransitionError
+
+	switch {
+	case err == nil:
+		pause.LogSuccess(ctx, sandboxID, teamID.String(), pause.ReasonRequest)
+
+		return pauseRequestResult{statusCode: http.StatusNoContent}
+	case errors.Is(err, orchestrator.ErrSandboxNotFound):
+		apiErr := pauseHandleNotRunningSandbox(ctx, a.snapshotCache, sandboxID, teamID)
+		switch apiErr.Code {
+		case http.StatusConflict:
+			pause.LogSkipped(ctx, sandboxID, teamID.String(), pause.ReasonRequest, pause.SkipReasonAlreadyPaused)
+		case http.StatusNotFound:
+			pause.LogSkipped(ctx, sandboxID, teamID.String(), pause.ReasonRequest, pause.SkipReasonNotFound)
+		default:
+			pause.LogFailure(ctx, sandboxID, teamID.String(), pause.ReasonRequest, err)
+		}
+
+		return pauseRequestResult{statusCode: apiErr.Code, clientMsg: apiErr.ClientMsg}
+	case errors.As(err, &transErr):
+		pause.LogFailure(ctx, sandboxID, teamID.String(), pause.ReasonRequest, err)
+
+		return pauseRequestResult{
+			statusCode: http.StatusConflict,
+			clientMsg:  fmt.Sprintf("Sandbox '%s' cannot be paused while in '%s' state", sandboxID, transErr.CurrentState),
+		}
+	default:
+		pause.LogFailure(ctx, sandboxID, teamID.String(), pause.ReasonRequest, err)
+		telemetry.ReportError(ctx, "error pausing sandbox", err)
+
+		return pauseRequestResult{statusCode: http.StatusInternalServerError, clientMsg: "Error pausing sandbox"}
 	}
 }
