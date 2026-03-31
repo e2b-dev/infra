@@ -37,7 +37,7 @@ func NewProcessor(store processorStore, maxAttempts int32, l logger.Logger) *Pro
 	}
 }
 
-func (p *Processor) Process(ctx context.Context, item QueueItem) processResult {
+func (p *Processor) process(ctx context.Context, item QueueItem) processResult {
 	startedAt := time.Now()
 	action, err := p.processOnce(ctx, item)
 	result := processResult{

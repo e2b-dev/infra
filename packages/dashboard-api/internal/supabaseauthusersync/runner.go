@@ -86,7 +86,7 @@ func (r *Runner) poll(ctx context.Context) {
 	summary := newBatchSummary(items, claimedAt)
 
 	for _, item := range items {
-		summary.Add(r.processor.Process(ctx, item))
+		summary.Add(r.processor.process(ctx, item))
 	}
 
 	r.l.Log(ctx, summary.Level(), "processed supabase auth sync queue batch", summary.Fields(time.Since(claimedAt))...)

@@ -32,6 +32,7 @@ type fakeProcessorStore struct {
 
 func (s *fakeProcessorStore) Ack(_ context.Context, id int64) error {
 	s.ackCalls = append(s.ackCalls, id)
+
 	return nil
 }
 
@@ -41,6 +42,7 @@ func (s *fakeProcessorStore) Retry(_ context.Context, id int64, backoff time.Dur
 		backoff:   backoff,
 		lastError: lastError,
 	})
+
 	return nil
 }
 
@@ -49,6 +51,7 @@ func (s *fakeProcessorStore) DeadLetter(_ context.Context, id int64, lastError s
 		id:        id,
 		lastError: lastError,
 	})
+
 	return nil
 }
 
@@ -65,6 +68,8 @@ func (s *fakeProcessorStore) DeletePublicUser(_ context.Context, _ uuid.UUID) er
 }
 
 func TestProcessorProcessRetriesRecoveredPanic(t *testing.T) {
+	t.Parallel()
+
 	store := &fakeProcessorStore{
 		getAuthUserFn: func(context.Context, uuid.UUID) (*AuthUser, error) {
 			panic("boom")
@@ -78,7 +83,7 @@ func TestProcessorProcessRetriesRecoveredPanic(t *testing.T) {
 	}
 
 	require.NotPanics(t, func() {
-		processor.Process(context.Background(), item)
+		processor.process(context.Background(), item)
 	})
 	require.Empty(t, store.ackCalls)
 	require.Len(t, store.retryCalls, 1)
@@ -87,6 +92,8 @@ func TestProcessorProcessRetriesRecoveredPanic(t *testing.T) {
 }
 
 func TestProcessorProcessDeadLettersRecoveredPanicAtMaxAttempts(t *testing.T) {
+	t.Parallel()
+
 	store := &fakeProcessorStore{
 		getAuthUserFn: func(context.Context, uuid.UUID) (*AuthUser, error) {
 			panic("boom")
@@ -100,7 +107,7 @@ func TestProcessorProcessDeadLettersRecoveredPanicAtMaxAttempts(t *testing.T) {
 	}
 
 	require.NotPanics(t, func() {
-		processor.Process(context.Background(), item)
+		processor.process(context.Background(), item)
 	})
 	require.Empty(t, store.ackCalls)
 	require.Empty(t, store.retryCalls)

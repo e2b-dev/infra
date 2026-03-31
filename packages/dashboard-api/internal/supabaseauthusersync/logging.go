@@ -107,7 +107,7 @@ func (s *batchSummary) Add(result processResult) {
 	}
 }
 
-func (s batchSummary) Fields(totalDuration time.Duration) []zap.Field {
+func (s *batchSummary) Fields(totalDuration time.Duration) []zap.Field {
 	fields := []zap.Field{
 		zap.Int("queue_batch.claimed_count", s.ClaimedCount),
 		zap.Int("queue_batch.acked_count", s.AckedCount),
@@ -139,7 +139,7 @@ func (s batchSummary) Fields(totalDuration time.Duration) []zap.Field {
 	return fields
 }
 
-func (s batchSummary) Level() zapcore.Level {
+func (s *batchSummary) Level() zapcore.Level {
 	if s.AckFailedCount > 0 || s.RetryFailedCount > 0 || s.DeadLetteredCount > 0 || s.DeadLetterFailedCount > 0 {
 		return zap.ErrorLevel
 	}

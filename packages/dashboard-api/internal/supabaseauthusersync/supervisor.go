@@ -69,6 +69,7 @@ func supervise(ctx context.Context, l logger.Logger, cfg supervisorConfig, run f
 		select {
 		case <-ctx.Done():
 			timer.Stop()
+
 			return ctx.Err()
 		case <-timer.C:
 		}
@@ -95,18 +96,18 @@ func runRecovering(ctx context.Context, l logger.Logger, run func(context.Contex
 	return err
 }
 
-func restartBackoff(attempt int, base time.Duration, max time.Duration) time.Duration {
+func restartBackoff(attempt int, base time.Duration, maxDelay time.Duration) time.Duration {
 	if base <= 0 {
 		base = defaultRestartDelay
 	}
-	if max < base {
-		max = base
+	if maxDelay < base {
+		maxDelay = base
 	}
 
 	delay := base
 	for i := 1; i < attempt; i++ {
-		if delay >= max/2 {
-			return max
+		if delay >= maxDelay/2 {
+			return maxDelay
 		}
 
 		delay *= 2

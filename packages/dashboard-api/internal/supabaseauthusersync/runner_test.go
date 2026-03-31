@@ -41,153 +41,165 @@ type queueSnapshot struct {
 }
 
 func TestSupabaseAuthUserSyncRunner_EndToEnd(t *testing.T) {
+	t.Parallel()
+
 	db := testutils.SetupDatabase(t)
 
-	t.Run("repairs_insert_update_delete_drift", func(t *testing.T) {
-		ctx := t.Context()
-		userID := uuid.New()
-		initialEmail := fmt.Sprintf("auth-sync-%s-initial@example.com", userID.String()[:8])
-		updatedEmail := fmt.Sprintf("auth-sync-%s-updated@example.com", userID.String()[:8])
+	runRepairsInsertUpdateDeleteDrift(t, db)
+	runReclaimsStaleQueueLocks(t, db)
+	runDrainsBurstBacklogWithMultipleRunners(t, db)
+}
 
-		insertAuthUser(t, ctx, db, userID, initialEmail)
-		deletePublicUser(t, ctx, db, userID)
-		assertQueueBacklog(t, ctx, db, 1)
+func runRepairsInsertUpdateDeleteDrift(t *testing.T, db *testutils.Database) {
+	t.Helper()
 
-		insertRunner := startRunnerProcess(t, db, newTestRunnerConfig(4), "repair-insert")
-		t.Cleanup(func() {
-			insertRunner.Stop(t)
-		})
-		waitForPublicUsers(t, ctx, db, map[uuid.UUID]userExpectation{
-			userID: {
-				Email:  initialEmail,
-				Exists: true,
-			},
-		})
-		waitForQueueDrain(t, ctx, db)
+	ctx := t.Context()
+	userID := uuid.New()
+	initialEmail := fmt.Sprintf("auth-sync-%s-initial@example.com", userID.String()[:8])
+	updatedEmail := fmt.Sprintf("auth-sync-%s-updated@example.com", userID.String()[:8])
+
+	insertAuthUser(t, ctx, db, userID, initialEmail)
+	deletePublicUser(t, ctx, db, userID)
+	assertQueueBacklog(t, ctx, db, 1)
+
+	insertRunner := startRunnerProcess(t, db, newTestRunnerConfig(4), "repair-insert")
+	t.Cleanup(func() {
 		insertRunner.Stop(t)
+	})
+	waitForPublicUsers(t, ctx, db, map[uuid.UUID]userExpectation{
+		userID: {
+			Email:  initialEmail,
+			Exists: true,
+		},
+	})
+	waitForQueueDrain(t, ctx, db)
+	insertRunner.Stop(t)
 
-		updateAuthUserEmail(t, ctx, db, userID, updatedEmail)
-		setPublicUserEmail(t, ctx, db, userID, "stale@example.com")
-		assertQueueBacklog(t, ctx, db, 1)
+	updateAuthUserEmail(t, ctx, db, userID, updatedEmail)
+	setPublicUserEmail(t, ctx, db, userID, "stale@example.com")
+	assertQueueBacklog(t, ctx, db, 1)
 
-		updateRunner := startRunnerProcess(t, db, newTestRunnerConfig(4), "repair-update")
-		t.Cleanup(func() {
-			updateRunner.Stop(t)
-		})
-		waitForPublicUsers(t, ctx, db, map[uuid.UUID]userExpectation{
-			userID: {
-				Email:  updatedEmail,
-				Exists: true,
-			},
-		})
-		waitForQueueDrain(t, ctx, db)
+	updateRunner := startRunnerProcess(t, db, newTestRunnerConfig(4), "repair-update")
+	t.Cleanup(func() {
 		updateRunner.Stop(t)
+	})
+	waitForPublicUsers(t, ctx, db, map[uuid.UUID]userExpectation{
+		userID: {
+			Email:  updatedEmail,
+			Exists: true,
+		},
+	})
+	waitForQueueDrain(t, ctx, db)
+	updateRunner.Stop(t)
 
-		deleteAuthUser(t, ctx, db, userID)
-		insertPublicUser(t, ctx, db, userID, "ghost@example.com")
-		assertQueueBacklog(t, ctx, db, 1)
+	deleteAuthUser(t, ctx, db, userID)
+	insertPublicUser(t, ctx, db, userID, "ghost@example.com")
+	assertQueueBacklog(t, ctx, db, 1)
 
-		deleteRunner := startRunnerProcess(t, db, newTestRunnerConfig(4), "repair-delete")
-		t.Cleanup(func() {
-			deleteRunner.Stop(t)
-		})
-		waitForPublicUsers(t, ctx, db, map[uuid.UUID]userExpectation{
-			userID: {
-				Exists: false,
-			},
-		})
-		waitForQueueDrain(t, ctx, db)
+	deleteRunner := startRunnerProcess(t, db, newTestRunnerConfig(4), "repair-delete")
+	t.Cleanup(func() {
 		deleteRunner.Stop(t)
 	})
+	waitForPublicUsers(t, ctx, db, map[uuid.UUID]userExpectation{
+		userID: {
+			Exists: false,
+		},
+	})
+	waitForQueueDrain(t, ctx, db)
+	deleteRunner.Stop(t)
+}
 
-	t.Run("reclaims_stale_queue_locks", func(t *testing.T) {
-		ctx := t.Context()
-		userID := uuid.New()
-		email := fmt.Sprintf("auth-sync-%s-locked@example.com", userID.String()[:8])
+func runReclaimsStaleQueueLocks(t *testing.T, db *testutils.Database) {
+	t.Helper()
 
-		insertAuthUser(t, ctx, db, userID, email)
-		deletePublicUser(t, ctx, db, userID)
-		lockQueueItems(t, ctx, db, userID, time.Now().Add(-time.Minute), "stale-worker")
-		assertQueueBacklog(t, ctx, db, 1)
+	ctx := t.Context()
+	userID := uuid.New()
+	email := fmt.Sprintf("auth-sync-%s-locked@example.com", userID.String()[:8])
 
-		runner := startRunnerProcess(t, db, newTestRunnerConfig(2), "lock-reclaimer")
-		t.Cleanup(func() {
-			runner.Stop(t)
-		})
+	insertAuthUser(t, ctx, db, userID, email)
+	deletePublicUser(t, ctx, db, userID)
+	lockQueueItems(t, ctx, db, userID, time.Now().Add(-time.Minute), "stale-worker")
+	assertQueueBacklog(t, ctx, db, 1)
 
-		waitForPublicUsers(t, ctx, db, map[uuid.UUID]userExpectation{
-			userID: {
-				Email:  email,
-				Exists: true,
-			},
-		})
-		waitForQueueDrain(t, ctx, db)
+	runner := startRunnerProcess(t, db, newTestRunnerConfig(2), "lock-reclaimer")
+	t.Cleanup(func() {
 		runner.Stop(t)
 	})
 
-	t.Run("drains_burst_backlog_with_multiple_runners", func(t *testing.T) {
-		ctx := t.Context()
-		const userCount = 60
+	waitForPublicUsers(t, ctx, db, map[uuid.UUID]userExpectation{
+		userID: {
+			Email:  email,
+			Exists: true,
+		},
+	})
+	waitForQueueDrain(t, ctx, db)
+	runner.Stop(t)
+}
 
-		userIDs := make([]uuid.UUID, 0, userCount)
+func runDrainsBurstBacklogWithMultipleRunners(t *testing.T, db *testutils.Database) {
+	t.Helper()
 
-		for i := 0; i < userCount; i++ {
-			userID := uuid.New()
-			userIDs = append(userIDs, userID)
+	ctx := t.Context()
+	const userCount = 60
 
-			initialEmail := fmt.Sprintf("auth-sync-burst-%02d-initial@example.com", i)
-			insertAuthUser(t, ctx, db, userID, initialEmail)
+	userIDs := make([]uuid.UUID, 0, userCount)
 
-			if i%2 == 0 {
-				updateAuthUserEmail(t, ctx, db, userID, fmt.Sprintf("auth-sync-burst-%02d-v2@example.com", i))
-			}
-			if i%5 == 0 {
-				updateAuthUserEmail(t, ctx, db, userID, fmt.Sprintf("auth-sync-burst-%02d-v3@example.com", i))
-			}
+	for i := range userCount {
+		userID := uuid.New()
+		userIDs = append(userIDs, userID)
 
-			if i%3 == 0 {
-				deleteAuthUser(t, ctx, db, userID)
-				enqueueUserSyncItem(t, ctx, db, userID, "delete")
-				if i%6 == 0 {
-					insertPublicUser(t, ctx, db, userID, fmt.Sprintf("ghost-%02d@example.com", i))
-				}
+		initialEmail := fmt.Sprintf("auth-sync-burst-%02d-initial@example.com", i)
+		insertAuthUser(t, ctx, db, userID, initialEmail)
 
-				continue
-			}
-
-			if i%8 == 0 {
-				deletePublicUser(t, ctx, db, userID)
-			} else if i%7 == 0 {
-				setPublicUserEmail(t, ctx, db, userID, fmt.Sprintf("stale-%02d@example.com", i))
-			}
-
-			if i%4 == 0 {
-				enqueueUserSyncItem(t, ctx, db, userID, "upsert")
-			}
-			if i%9 == 0 {
-				enqueueUserSyncItem(t, ctx, db, userID, "upsert")
-			}
+		if i%2 == 0 {
+			updateAuthUserEmail(t, ctx, db, userID, fmt.Sprintf("auth-sync-burst-%02d-v2@example.com", i))
+		}
+		if i%5 == 0 {
+			updateAuthUserEmail(t, ctx, db, userID, fmt.Sprintf("auth-sync-burst-%02d-v3@example.com", i))
 		}
 
-		authUsers, err := loadAuthUsers(ctx, db)
-		require.NoError(t, err)
+		if i%3 == 0 {
+			deleteAuthUser(t, ctx, db, userID)
+			enqueueUserSyncItem(t, ctx, db, userID, "delete")
+			if i%6 == 0 {
+				insertPublicUser(t, ctx, db, userID, fmt.Sprintf("ghost-%02d@example.com", i))
+			}
 
-		want := expectedUsersForIDs(userIDs, authUsers)
-		assertQueueBacklog(t, ctx, db, userCount)
+			continue
+		}
 
-		runnerA := startRunnerProcess(t, db, newTestRunnerConfig(5), "burst-a")
-		runnerB := startRunnerProcess(t, db, newTestRunnerConfig(5), "burst-b")
-		t.Cleanup(func() {
-			runnerA.Stop(t)
-			runnerB.Stop(t)
-		})
+		if i%8 == 0 {
+			deletePublicUser(t, ctx, db, userID)
+		} else if i%7 == 0 {
+			setPublicUserEmail(t, ctx, db, userID, fmt.Sprintf("stale-%02d@example.com", i))
+		}
 
-		waitForPublicUsers(t, ctx, db, want)
-		waitForQueueDrain(t, ctx, db)
+		if i%4 == 0 {
+			enqueueUserSyncItem(t, ctx, db, userID, "upsert")
+		}
+		if i%9 == 0 {
+			enqueueUserSyncItem(t, ctx, db, userID, "upsert")
+		}
+	}
 
+	authUsers, err := loadAuthUsers(ctx, db)
+	require.NoError(t, err)
+
+	want := expectedUsersForIDs(userIDs, authUsers)
+	assertQueueBacklog(t, ctx, db, userCount)
+
+	runnerA := startRunnerProcess(t, db, newTestRunnerConfig(5), "burst-a")
+	runnerB := startRunnerProcess(t, db, newTestRunnerConfig(5), "burst-b")
+	t.Cleanup(func() {
 		runnerA.Stop(t)
 		runnerB.Stop(t)
 	})
+
+	waitForPublicUsers(t, ctx, db, want)
+	waitForQueueDrain(t, ctx, db)
+
+	runnerA.Stop(t)
+	runnerB.Stop(t)
 }
 
 func newTestRunnerConfig(batchSize int32) Config {

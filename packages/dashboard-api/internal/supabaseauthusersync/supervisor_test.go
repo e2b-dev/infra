@@ -13,6 +13,8 @@ import (
 )
 
 func TestSuperviseRestartsAfterUnexpectedError(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -32,6 +34,7 @@ func TestSuperviseRestartsAfterUnexpectedError(t *testing.T) {
 
 			cancel()
 			<-ctx.Done()
+
 			return ctx.Err()
 		})
 	}()
@@ -42,6 +45,8 @@ func TestSuperviseRestartsAfterUnexpectedError(t *testing.T) {
 }
 
 func TestSuperviseRestartsAfterPanic(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -61,6 +66,7 @@ func TestSuperviseRestartsAfterPanic(t *testing.T) {
 
 			cancel()
 			<-ctx.Done()
+
 			return ctx.Err()
 		})
 	}()
