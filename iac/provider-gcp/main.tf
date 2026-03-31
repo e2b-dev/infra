@@ -212,7 +212,6 @@ module "nomad" {
   ingress_port         = var.ingress_port
   ingress_count        = var.ingress_count
   traefik_config_files = var.traefik_config_files
-  traefik_log_level    = var.traefik_log_level
 
   # API
   api_server_count                                       = var.api_server_count

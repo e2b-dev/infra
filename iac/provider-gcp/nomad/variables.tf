@@ -73,10 +73,6 @@ variable "ingress_port" {
   })
 }
 
-variable "traefik_log_level" {
-  type = string
-}
-
 variable "ingress_count" {
   type = number
 }

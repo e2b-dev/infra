@@ -709,11 +709,6 @@ variable "traefik_config_files" {
   default     = {}
 }
 
-variable "traefik_log_level" {
-  type    = string
-  default = "ERROR"
-}
-
 variable "ingress_timeout_seconds" {
   type    = number
   default = 80
