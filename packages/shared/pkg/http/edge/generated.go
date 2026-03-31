@@ -184,7 +184,7 @@ type SandboxMetric struct {
 	DiskUsed int64 `json:"disk_used"`
 
 	// MemCache Cached memory (page cache) in bytes
-	MemCache *int64 `json:"mem_cache,omitempty"`
+	MemCache int64 `json:"mem_cache"`
 
 	// MemTotal Total memory in bytes
 	MemTotal int64 `json:"mem_total"`

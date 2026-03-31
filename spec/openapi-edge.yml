@@ -254,6 +254,7 @@ components:
         - cpu_count
         - mem_total
         - mem_used
+        - mem_cache
         - disk_total
         - disk_used
       properties:

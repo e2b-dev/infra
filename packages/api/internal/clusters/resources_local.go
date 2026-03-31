@@ -71,7 +71,6 @@ func (l *LocalClusterResourceProvider) GetSandboxMetrics(ctx context.Context, te
 
 	metrics := make([]api.SandboxMetric, len(rawMetrics))
 	for i, m := range rawMetrics {
-		memCache := int64(m.MemCache)
 		metrics[i] = api.SandboxMetric{
 			Timestamp:     m.Timestamp,
 			TimestampUnix: m.Timestamp.Unix(),
@@ -79,7 +78,7 @@ func (l *LocalClusterResourceProvider) GetSandboxMetrics(ctx context.Context, te
 			CpuCount:      int32(m.CPUCount),
 			MemTotal:      int64(m.MemTotal),
 			MemUsed:       int64(m.MemUsed),
-			MemCache:      &memCache,
+			MemCache:      int64(m.MemCache),
 			DiskTotal:     int64(m.DiskTotal),
 			DiskUsed:      int64(m.DiskUsed),
 		}
@@ -100,7 +99,6 @@ func (l *LocalClusterResourceProvider) GetSandboxesMetrics(ctx context.Context, 
 
 	metrics := make(map[string]api.SandboxMetric)
 	for _, m := range rawMetrics {
-		memCache := int64(m.MemCache)
 		metrics[m.SandboxID] = api.SandboxMetric{
 			Timestamp:     m.Timestamp,
 			TimestampUnix: m.Timestamp.Unix(),
@@ -108,7 +106,7 @@ func (l *LocalClusterResourceProvider) GetSandboxesMetrics(ctx context.Context, 
 			CpuCount:      int32(m.CPUCount),
 			MemTotal:      int64(m.MemTotal),
 			MemUsed:       int64(m.MemUsed),
-			MemCache:      &memCache,
+			MemCache:      int64(m.MemCache),
 			DiskTotal:     int64(m.DiskTotal),
 			DiskUsed:      int64(m.DiskUsed),
 		}
