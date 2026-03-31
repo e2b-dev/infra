@@ -55,9 +55,24 @@ func NewCgroup2Manager(opts ...Cgroup2ManagerOption) (*Cgroup2Manager, error) {
 	// On cgroup v1, /sys/fs/cgroup is a tmpfs and directories/files can be
 	// created freely, causing Cgroup2Manager to "succeed" with invalid fds
 	// that the kernel rejects with EBADF on clone3(CLONE_INTO_CGROUP).
+	//
+	// Walk up to the nearest existing ancestor so that a custom rootPath
+	// pointing to a not-yet-created subdirectory (e.g. /sys/fs/cgroup/envd)
+	// still gets its filesystem type checked correctly.
+	checkPath := config.rootPath
+	for {
+		if _, err := os.Stat(checkPath); err == nil {
+			break
+		}
+		parent := filepath.Dir(checkPath)
+		if parent == checkPath {
+			break
+		}
+		checkPath = parent
+	}
 	var st unix.Statfs_t
-	if err := unix.Statfs(config.rootPath, &st); err != nil {
-		return nil, fmt.Errorf("failed to statfs cgroup root %s: %w", config.rootPath, err)
+	if err := unix.Statfs(checkPath, &st); err != nil {
+		return nil, fmt.Errorf("failed to statfs cgroup root %s: %w", checkPath, err)
 	}
 	// CGROUP2_SUPER_MAGIC = 0x63677270
 	if st.Type != 0x63677270 {
