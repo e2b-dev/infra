@@ -36,7 +36,7 @@ Flags:
 - `-template <id>` - Template ID (default: `local-template`)
 - `-storage <path>` - Local path or `gs://bucket` (enables local mode with auto-download of kernel/FC)
 - `-sandbox-dir <path>` - Override `SANDBOX_DIR` (the rootfs path baked into the snapshot)
-- `-kernel <version>` - Kernel version (default: `vmlinux-6.1.102`)
+- `-kernel <version>` - Kernel version (default: `vmlinux-6.1.158`)
 - `-firecracker <version>` - Firecracker version (default: `v1.12.1_210cbac`)
 - `-vcpu <n>` - vCPUs (default: `1`)
 - `-memory <mb>` - Memory in MB (default: `512`)
@@ -240,8 +240,8 @@ fc-versions/v1.12.1_210cbac/amd64/firecracker
 fc-versions/v1.12.1_210cbac/arm64/firecracker
 
 # Kernels (GCS bucket or HOST_KERNELS_DIR)
-kernels/vmlinux-6.1.102/amd64/vmlinux.bin
-kernels/vmlinux-6.1.102/arm64/vmlinux.bin
+kernels/vmlinux-6.1.158/amd64/vmlinux.bin
+kernels/vmlinux-6.1.158/arm64/vmlinux.bin
 ```
 
 > **Note:** The [fc-kernels](https://github.com/e2b-dev/fc-kernels) repo currently uses `x86_64` instead of `amd64` for its directory names. This will be aligned in a follow-up change.
