@@ -156,6 +156,12 @@ variable "control_server_cluster_size" {
   default = 3
 }
 
+variable "traefik_config_files" {
+  type        = map(string)
+  description = "Map of filename => content for additional Traefik dynamic configuration files"
+  default     = {}
+}
+
 variable "db_max_open_connections" {
   type    = number
   default = 40
@@ -174,10 +180,4 @@ variable "auth_db_max_open_connections" {
 variable "auth_db_min_idle_connections" {
   type    = number
   default = 5
-}
-
-variable "traefik_config_files" {
-  type        = map(string)
-  description = "Map of filename => content for additional Traefik dynamic configuration files"
-  default     = {}
 }

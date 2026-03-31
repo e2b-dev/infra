@@ -73,6 +73,11 @@ variable "ingress_port" {
   })
 }
 
+variable "traefik_config_files" {
+  type        = map(string)
+  description = "Map of filename => content for additional Traefik dynamic configuration files"
+}
+
 variable "ingress_count" {
   type = number
 }
@@ -478,9 +483,3 @@ variable "orchestrator_env_vars" {
   type    = map(string)
   default = {}
 }
-
-variable "traefik_config_files" {
-  type        = map(string)
-  description = "Map of filename => content for additional Traefik dynamic configuration files"
-}
-
