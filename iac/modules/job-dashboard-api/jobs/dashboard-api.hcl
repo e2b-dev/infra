@@ -80,9 +80,12 @@ job "dashboard-api" {
         AUTH_DB_READ_REPLICA_CONNECTION_STRING = "${auth_db_read_replica_connection_string}"
         CLICKHOUSE_CONNECTION_STRING           = "${clickhouse_connection_string}"
         SUPABASE_JWT_SECRETS                   = "${supabase_jwt_secrets}"
-        SUPABASE_AUTH_USER_SYNC_ENABLED        = "${supabase_auth_user_sync_enabled}"
         OTEL_COLLECTOR_GRPC_ENDPOINT           = "${otel_collector_grpc_endpoint}"
         LOGS_COLLECTOR_ADDRESS                 = "${logs_collector_address}"
+
+        %{ for key, val in env }
+        ${ key }   = "${ val }"
+        %{ endfor }
       }
 
       config {

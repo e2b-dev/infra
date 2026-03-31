@@ -187,10 +187,6 @@ variable "supabase_jwt_secrets_secret_name" {
   type = string
 }
 
-variable "dashboard_api_supabase_auth_user_sync_enabled_secret_version" {
-  type = any
-}
-
 variable "client_proxy_count" {
   type = number
 }
@@ -459,6 +455,11 @@ variable "default_persistent_volume_type" {
 variable "dashboard_api_count" {
   type    = number
   default = 0
+}
+
+variable "dashboard_api_env_vars" {
+  type    = map(string)
+  default = {}
 }
 
 variable "volume_token_issuer" {

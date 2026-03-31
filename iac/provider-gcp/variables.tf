@@ -228,6 +228,11 @@ variable "dashboard_api_count" {
   default = 0
 }
 
+variable "dashboard_api_env_vars" {
+  type    = map(string)
+  default = {}
+}
+
 variable "docker_reverse_proxy_port" {
   type = object({
     name        = string

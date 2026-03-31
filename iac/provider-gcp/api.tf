@@ -44,23 +44,6 @@ resource "google_secret_manager_secret_version" "auth_db_connection_string" {
   }
 }
 
-resource "google_secret_manager_secret" "dashboard_api_supabase_auth_user_sync_enabled" {
-  secret_id = "${var.prefix}dashboard-api-supabase-auth-user-sync-enabled"
-
-  replication {
-    auto {}
-  }
-}
-
-resource "google_secret_manager_secret_version" "dashboard_api_supabase_auth_user_sync_enabled" {
-  secret      = google_secret_manager_secret.dashboard_api_supabase_auth_user_sync_enabled.name
-  secret_data = "false"
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-}
-
 resource "random_password" "api_secret" {
   length  = 32
   special = false

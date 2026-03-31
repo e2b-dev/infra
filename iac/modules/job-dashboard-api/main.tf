@@ -1,3 +1,7 @@
+locals {
+  env = { for key, value in var.env : key => value if value != null && value != "" }
+}
+
 resource "nomad_job" "dashboard_api" {
   jobspec = templatefile("${path.module}/jobs/dashboard-api.hcl", {
     update_stanza = var.update_stanza
@@ -15,7 +19,7 @@ resource "nomad_job" "dashboard_api" {
     auth_db_read_replica_connection_string = var.auth_db_read_replica_connection_string
     clickhouse_connection_string           = var.clickhouse_connection_string
     supabase_jwt_secrets                   = var.supabase_jwt_secrets
-    supabase_auth_user_sync_enabled        = var.supabase_auth_user_sync_enabled
+    env                                    = local.env
 
     subdomain = "dashboard-api"
 

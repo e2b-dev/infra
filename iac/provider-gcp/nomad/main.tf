@@ -22,10 +22,6 @@ data "google_secret_manager_secret_version" "supabase_jwt_secrets" {
   secret = var.supabase_jwt_secrets_secret_name
 }
 
-data "google_secret_manager_secret_version" "dashboard_api_supabase_auth_user_sync_enabled" {
-  secret = var.dashboard_api_supabase_auth_user_sync_enabled_secret_version.secret
-}
-
 data "google_secret_manager_secret_version" "posthog_api_key" {
   secret = var.posthog_api_key_secret_name
 }
@@ -143,7 +139,7 @@ module "dashboard_api" {
   auth_db_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
   clickhouse_connection_string           = local.clickhouse_connection_string
   supabase_jwt_secrets                   = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
-  supabase_auth_user_sync_enabled        = trimspace(data.google_secret_manager_secret_version.dashboard_api_supabase_auth_user_sync_enabled.secret_data)
+  env                                    = var.dashboard_api_env_vars
 
   otel_collector_grpc_port = var.otel_collector_grpc_port
   logs_proxy_port          = var.logs_proxy_port
