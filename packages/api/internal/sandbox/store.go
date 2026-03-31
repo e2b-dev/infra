@@ -168,7 +168,7 @@ func (s *Store) Sync(ctx context.Context, sandboxes []Sandbox, nodeID string) {
 		// Redis is the source of truth — divergent sandboxes are orphans running
 		// on the node but not present in the store. Kill them.
 		for _, sbx := range sbxsToBeSynced {
-			s.callbacks.RemoveSandboxFromNode(ctx, sbx)
+			go s.callbacks.RemoveSandboxFromNode(ctx, sbx)
 		}
 	} else {
 		// Memory backend — divergent sandboxes are ones discovered on the node
