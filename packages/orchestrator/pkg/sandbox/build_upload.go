@@ -27,9 +27,9 @@ type BuildUploader interface {
 // NewBuildUploader creates a BuildUploader for the given snapshot.
 // If cfg is non-nil, compression is used (V4 headers). Otherwise, uncompressed (V3 headers).
 // pending is shared across layers for multi-layer builds; nil is fine for single-layer.
-func NewBuildUploader(snapshot *Snapshot, persistence storage.StorageProvider, files storage.TemplateFiles, cfg *storage.CompressConfig, pending *PendingBuildInfo) BuildUploader {
+func NewBuildUploader(snapshot *Snapshot, persistence storage.StorageProvider, paths storage.Paths, cfg *storage.CompressConfig, pending *PendingBuildInfo) BuildUploader {
 	base := buildUploader{
-		files:       files,
+		paths:       paths,
 		persistence: persistence,
 		snapshot:    snapshot,
 	}
@@ -51,7 +51,7 @@ func NewBuildUploader(snapshot *Snapshot, persistence storage.StorageProvider, f
 
 // buildUploader contains fields and helpers shared by both implementations.
 type buildUploader struct {
-	files       storage.TemplateFiles
+	paths       storage.Paths
 	persistence storage.StorageProvider
 	snapshot    *Snapshot
 }
@@ -70,14 +70,14 @@ func diffPath(d build.Diff) (*string, error) {
 	return &p, nil
 }
 
-func (b *buildUploader) uploadUncompressedFile(ctx context.Context, localPath, fileName string) error {
-	object, err := b.persistence.OpenFramedFile(ctx, b.files.DataPath(fileName))
+func (b *buildUploader) uploadUncompressedFile(ctx context.Context, local, remote string) error {
+	object, err := b.persistence.OpenFramedFile(ctx, remote)
 	if err != nil {
 		return err
 	}
 
-	if _, _, err := object.StoreFile(ctx, localPath, nil); err != nil {
-		return fmt.Errorf("error when uploading %s: %w", fileName, err)
+	if _, _, err := object.StoreFile(ctx, local, nil); err != nil {
+		return fmt.Errorf("error when uploading %s: %w", remote, err)
 	}
 
 	return nil
@@ -85,7 +85,7 @@ func (b *buildUploader) uploadUncompressedFile(ctx context.Context, localPath, f
 
 // Snap-file is small enough so we don't use composite upload.
 func (b *buildUploader) uploadSnapfile(ctx context.Context, path string) error {
-	object, err := b.persistence.OpenBlob(ctx, b.files.StorageSnapfilePath(), storage.SnapfileObjectType)
+	object, err := b.persistence.OpenBlob(ctx, b.paths.Snapfile(), storage.SnapfileObjectType)
 	if err != nil {
 		return err
 	}
@@ -99,7 +99,7 @@ func (b *buildUploader) uploadSnapfile(ctx context.Context, path string) error {
 
 // Metadata is small enough so we don't use composite upload.
 func (b *buildUploader) uploadMetadata(ctx context.Context, path string) error {
-	object, err := b.persistence.OpenBlob(ctx, b.files.StorageMetadataPath(), storage.MetadataObjectType)
+	object, err := b.persistence.OpenBlob(ctx, b.paths.Metadata(), storage.MetadataObjectType)
 	if err != nil {
 		return err
 	}
@@ -131,17 +131,15 @@ func uploadFileAsBlob(ctx context.Context, b storage.Blob, path string) error {
 	return nil
 }
 
-func (b *buildUploader) uploadCompressedFile(ctx context.Context, localPath, fileName string, cfg *storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
-	objectPath := b.files.CompressedDataPath(fileName, cfg.CompressionType())
-
-	object, err := b.persistence.OpenFramedFile(ctx, objectPath)
+func (b *buildUploader) uploadCompressedFile(ctx context.Context, local, remote string, cfg *storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
+	object, err := b.persistence.OpenFramedFile(ctx, remote)
 	if err != nil {
-		return nil, [32]byte{}, fmt.Errorf("error opening framed file for %s: %w", objectPath, err)
+		return nil, [32]byte{}, fmt.Errorf("error opening framed file for %s: %w", remote, err)
 	}
 
-	ft, checksum, err := object.StoreFile(ctx, localPath, cfg)
+	ft, checksum, err := object.StoreFile(ctx, local, cfg)
 	if err != nil {
-		return nil, [32]byte{}, fmt.Errorf("error compressing %s to %s: %w", fileName, objectPath, err)
+		return nil, [32]byte{}, fmt.Errorf("error compressing %s to %s: %w", local, remote, err)
 	}
 
 	return ft, checksum, nil
@@ -182,7 +180,7 @@ func (u *uncompressedUploader) UploadData(ctx context.Context) error {
 			return nil
 		}
 
-		_, err := headers.StoreHeader(ctx, u.persistence, u.files.HeaderPath(storage.MemfileName), u.snapshot.MemfileDiffHeader)
+		_, err := headers.StoreHeader(ctx, u.persistence, u.paths.MemfileHeader(), u.snapshot.MemfileDiffHeader)
 
 		return err
 	})
@@ -192,7 +190,7 @@ func (u *uncompressedUploader) UploadData(ctx context.Context) error {
 			return nil
 		}
 
-		_, err := headers.StoreHeader(ctx, u.persistence, u.files.HeaderPath(storage.RootfsName), u.snapshot.RootfsDiffHeader)
+		_, err := headers.StoreHeader(ctx, u.persistence, u.paths.RootfsHeader(), u.snapshot.RootfsDiffHeader)
 
 		return err
 	})
@@ -203,7 +201,7 @@ func (u *uncompressedUploader) UploadData(ctx context.Context) error {
 			return nil
 		}
 
-		return u.uploadUncompressedFile(ctx, *memfilePath, storage.MemfileName)
+		return u.uploadUncompressedFile(ctx, *memfilePath, u.paths.Memfile())
 	})
 
 	eg.Go(func() error {
@@ -211,7 +209,7 @@ func (u *uncompressedUploader) UploadData(ctx context.Context) error {
 			return nil
 		}
 
-		return u.uploadUncompressedFile(ctx, *rootfsPath, storage.RootfsName)
+		return u.uploadUncompressedFile(ctx, *rootfsPath, u.paths.Rootfs())
 	})
 
 	u.scheduleAlwaysUploads(eg, ctx)
@@ -248,13 +246,13 @@ func (c *compressedUploader) UploadData(ctx context.Context) error {
 	if memfilePath != nil {
 		localPath := *memfilePath
 		eg.Go(func() error {
-			ft, checksum, err := c.uploadCompressedFile(ctx, localPath, storage.MemfileName, c.cfg)
+			ft, checksum, err := c.uploadCompressedFile(ctx, localPath, c.paths.MemfileCompressed(c.cfg.CompressionType()), c.cfg)
 			if err != nil {
 				return fmt.Errorf("compressed memfile upload: %w", err)
 			}
 
 			uncompressedSize, _ := ft.Size()
-			c.pending.add(pendingBuildInfoKey(c.files.BuildID, storage.MemfileName), ft, uncompressedSize, checksum)
+			c.pending.add(pendingBuildInfoKey(c.paths.BuildID, storage.MemfileName), ft, uncompressedSize, checksum)
 
 			return nil
 		})
@@ -263,13 +261,13 @@ func (c *compressedUploader) UploadData(ctx context.Context) error {
 	if rootfsPath != nil {
 		localPath := *rootfsPath
 		eg.Go(func() error {
-			ft, checksum, err := c.uploadCompressedFile(ctx, localPath, storage.RootfsName, c.cfg)
+			ft, checksum, err := c.uploadCompressedFile(ctx, localPath, c.paths.RootfsCompressed(c.cfg.CompressionType()), c.cfg)
 			if err != nil {
 				return fmt.Errorf("compressed rootfs upload: %w", err)
 			}
 
 			uncompressedSize, _ := ft.Size()
-			c.pending.add(pendingBuildInfoKey(c.files.BuildID, storage.RootfsName), ft, uncompressedSize, checksum)
+			c.pending.add(pendingBuildInfoKey(c.paths.BuildID, storage.RootfsName), ft, uncompressedSize, checksum)
 
 			return nil
 		})
@@ -298,7 +296,7 @@ func (c *compressedUploader) FinalizeHeaders(ctx context.Context) (memfileHeader
 
 			h.Metadata.Version = headers.MetadataVersionCompressed
 
-			data, err := headers.StoreHeader(ctx, c.persistence, c.files.HeaderPath(storage.MemfileName), h)
+			data, err := headers.StoreHeader(ctx, c.persistence, c.paths.MemfileHeader(), h)
 			if err != nil {
 				return err
 			}
@@ -319,7 +317,7 @@ func (c *compressedUploader) FinalizeHeaders(ctx context.Context) (memfileHeader
 
 			h.Metadata.Version = headers.MetadataVersionCompressed
 
-			data, err := headers.StoreHeader(ctx, c.persistence, c.files.HeaderPath(storage.RootfsName), h)
+			data, err := headers.StoreHeader(ctx, c.persistence, c.paths.RootfsHeader(), h)
 			if err != nil {
 				return err
 			}

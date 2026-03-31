@@ -49,7 +49,7 @@ func newTemplateFromStorage(
 	localSnapfile File,
 	localMetafile File,
 ) (*storageTemplate, error) {
-	files, err := storage.TemplateFiles{
+	files, err := storage.Paths{
 		BuildID: buildId,
 	}.CacheFiles(config.StorageConfig)
 	if err != nil {
@@ -91,7 +91,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		snapfile, snapfileErr := newStorageFile(
 			ctx,
 			t.persistence,
-			t.files.StorageSnapfilePath(),
+			t.files.Snapfile(),
 			t.files.CacheSnapfilePath(),
 			storage.SnapfileObjectType,
 		)
@@ -124,7 +124,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		meta, err := newStorageFile(
 			ctx,
 			t.persistence,
-			t.files.StorageMetadataPath(),
+			t.files.Metadata(),
 			t.files.CacheMetadataPath(),
 			storage.MetadataObjectType,
 		)

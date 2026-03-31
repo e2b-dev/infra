@@ -195,16 +195,16 @@ func FromFile(path string) (Template, error) {
 }
 
 func FromBuildID(ctx context.Context, s storage.StorageProvider, buildID string) (Template, error) {
-	return fromTemplate(ctx, s, storage.TemplateFiles{
+	return fromTemplate(ctx, s, storage.Paths{
 		BuildID: buildID,
 	})
 }
 
-func fromTemplate(ctx context.Context, s storage.StorageProvider, files storage.TemplateFiles) (Template, error) {
+func fromTemplate(ctx context.Context, s storage.StorageProvider, files storage.Paths) (Template, error) {
 	ctx, span := tracer.Start(ctx, "from template")
 	defer span.End()
 
-	obj, err := s.OpenBlob(ctx, files.StorageMetadataPath(), storage.MetadataObjectType)
+	obj, err := s.OpenBlob(ctx, files.Metadata(), storage.MetadataObjectType)
 	if err != nil {
 		return Template{}, fmt.Errorf("error opening object for template metadata: %w", err)
 	}

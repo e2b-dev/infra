@@ -293,7 +293,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 			FirecrackerVersion: fcVersion,
 		}
 
-		metadata := storage.TemplateFiles{
+		metadata := storage.Paths{
 			BuildID: buildID,
 		}
 		_, err = builder.Build(b.Context(), metadata, templateConfig, l.Detach(b.Context()).Core())

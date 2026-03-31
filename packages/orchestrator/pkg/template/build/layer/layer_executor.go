@@ -285,7 +285,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 
 	// Register this upload and get functions to signal completion and wait for previous uploads
 	completeUpload, waitForPreviousUploads := lb.uploadTracker.StartUpload()
-	uploader := sandbox.NewBuildUploader(snapshot, lb.templateStorage, storage.TemplateFiles{BuildID: meta.Template.BuildID}, lb.compressCfg, lb.uploadTracker.Pending())
+	uploader := sandbox.NewBuildUploader(snapshot, lb.templateStorage, storage.Paths{BuildID: meta.Template.BuildID}, lb.compressCfg, lb.uploadTracker.Pending())
 
 	lb.UploadErrGroup.Go(func() error {
 		ctx := context.WithoutCancel(ctx)

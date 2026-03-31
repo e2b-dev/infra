@@ -972,16 +972,16 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 	}
 
 	// This is required because the FC API doesn't support passing /dev/null
-	tf, err := storage.TemplateFiles{
+	cacheFiles, err := storage.Paths{
 		BuildID: uuid.New().String(),
 	}.CacheFiles(s.config.StorageConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create template files: %w", err)
 	}
-	defer tf.Close()
+	defer cacheFiles.Close()
 
 	// The snapfile is required only because the FC API doesn't support passing /dev/null
-	snapfile := template.NewLocalFileLink(tf.CacheSnapfilePath())
+	snapfile := template.NewLocalFileLink(cacheFiles.CacheSnapfilePath())
 	defer snapfile.Close()
 
 	err = s.process.CreateSnapshot(ctx, snapfile.Path())
@@ -1025,13 +1025,13 @@ func (s *Sandbox) Pause(
 		}
 	}()
 
-	snapshotTemplateFiles, err := storage.TemplateFiles{BuildID: m.Template.BuildID}.CacheFiles(s.config.StorageConfig)
+	cacheFiles, err := storage.Paths{BuildID: m.Template.BuildID}.CacheFiles(s.config.StorageConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template files: %w", err)
 	}
-	cleanup.AddNoContext(ctx, snapshotTemplateFiles.Close)
+	cleanup.AddNoContext(ctx, cacheFiles.Close)
 
-	buildID, err := uuid.Parse(snapshotTemplateFiles.BuildID)
+	buildID, err := uuid.Parse(cacheFiles.BuildID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse build id: %w", err)
 	}
@@ -1044,7 +1044,7 @@ func (s *Sandbox) Pause(
 	}
 
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
-	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath())
+	snapfile := template.NewLocalFileLink(cacheFiles.CacheSnapfilePath())
 	cleanup.AddNoContext(ctx, snapfile.Close)
 
 	err = s.process.CreateSnapshot(ctx, snapfile.Path())
@@ -1097,7 +1097,7 @@ func (s *Sandbox) Pause(
 	}
 	cleanup.AddNoContext(ctx, rootfsDiff.Close)
 
-	metadataFileLink := template.NewLocalFileLink(snapshotTemplateFiles.CacheMetadataPath())
+	metadataFileLink := template.NewLocalFileLink(cacheFiles.CacheMetadataPath())
 	cleanup.AddNoContext(ctx, metadataFileLink.Close)
 
 	err = m.ToFile(metadataFileLink.Path())

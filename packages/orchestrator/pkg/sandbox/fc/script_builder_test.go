@@ -143,12 +143,12 @@ func TestStartScriptBuilder_Build(t *testing.T) {
 
 // createTestSandboxFiles creates a SandboxFiles instance for testing
 func createTestSandboxFiles(sandboxID, staticID string) *storage.SandboxFiles {
-	templateFiles := storage.TemplateFiles{
+	paths := storage.Paths{
 		BuildID: "test-build",
 	}
 
 	templateCacheFiles := storage.TemplateCacheFiles{
-		TemplateFiles:   templateFiles,
+		Paths:           paths,
 		CacheIdentifier: "test-cache-id",
 	}
 

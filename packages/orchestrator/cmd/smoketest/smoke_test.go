@@ -75,7 +75,7 @@ func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests sh
 			force := true
 			_, err := infra.builder.Build(
 				ctx,
-				storage.TemplateFiles{BuildID: buildID},
+				storage.Paths{BuildID: buildID},
 				config.TemplateConfig{
 					Version:            templates.TemplateV2LatestVersion,
 					TemplateID:         "smoke-" + fcMajor,

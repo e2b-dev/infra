@@ -112,7 +112,7 @@ type Result struct {
 //
 // 8. Snapshot
 // 9. Upload template (and all not yet uploaded layers)
-func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg config.TemplateConfig, logsCore zapcore.Core) (r *Result, e error) {
+func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.TemplateConfig, logsCore zapcore.Core) (r *Result, e error) {
 	ctx, childSpan := tracer.Start(ctx, "build")
 	defer childSpan.End()
 
@@ -165,7 +165,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 
 	defer func() {
 		if r := recover(); r != nil {
-			telemetry.ReportCriticalError(ctx, "recovered from panic in template build", nil, attribute.String("panic", fmt.Sprintf("%v", r)), telemetry.WithTemplateID(cfg.TemplateID), telemetry.WithBuildID(template.BuildID))
+			telemetry.ReportCriticalError(ctx, "recovered from panic in template build", nil, attribute.String("panic", fmt.Sprintf("%v", r)), telemetry.WithTemplateID(cfg.TemplateID), telemetry.WithBuildID(paths.BuildID))
 			e = errors.New("fatal error occurred during template build, please contact us")
 		}
 	}()
@@ -184,7 +184,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 		l = logger.NewTracedLoggerFromCore(hookedCore)
 	}
 
-	l.Info(ctx, fmt.Sprintf("Building template %s/%s", cfg.TemplateID, template.BuildID))
+	l.Info(ctx, fmt.Sprintf("Building template %s/%s", cfg.TemplateID, paths.BuildID))
 
 	defer func(ctx context.Context) {
 		if e == nil {
@@ -192,7 +192,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 		}
 
 		// Remove build files if build fails
-		removeErr := b.templateStorage.DeleteObjectsWithPrefix(ctx, template.BuildID)
+		removeErr := b.templateStorage.DeleteObjectsWithPrefix(ctx, paths.BuildID)
 		if removeErr != nil {
 			e = errors.Join(e, fmt.Errorf("error removing build files: %w", removeErr))
 		}
@@ -215,7 +215,7 @@ func (b *Builder) Build(ctx context.Context, template storage.TemplateFiles, cfg
 	buildContext := buildcontext.BuildContext{
 		BuilderConfig:  b.config,
 		Config:         cfg,
-		Template:       template,
+		Template:       paths,
 		UploadErrGroup: uploadErrGroup,
 		EnvdVersion:    envdVersion,
 		CacheScope:     cacheScope,
@@ -372,7 +372,7 @@ func runBuild(
 	// Get the base rootfs size from the template files
 	// This is the size of the rootfs after provisioning and before building the layers
 	// (as they don't change the rootfs size)
-	rootfsSize, err := getRootfsSize(ctx, builder.templateStorage, storage.TemplateFiles{BuildID: lastLayerResult.Metadata.Template.BuildID})
+	rootfsSize, err := getRootfsSize(ctx, builder.templateStorage, storage.Paths{BuildID: lastLayerResult.Metadata.Template.BuildID})
 	if err != nil {
 		return nil, fmt.Errorf("error getting rootfs size: %w", err)
 	}
@@ -407,9 +407,9 @@ func forceSteps(template config.TemplateConfig) config.TemplateConfig {
 func getRootfsSize(
 	ctx context.Context,
 	s storage.StorageProvider,
-	metadata storage.TemplateFiles,
+	paths storage.Paths,
 ) (uint64, error) {
-	obj, err := s.OpenBlob(ctx, metadata.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
+	obj, err := s.OpenBlob(ctx, paths.RootfsHeader(), storage.RootFSHeaderObjectType)
 	if err != nil {
 		return 0, fmt.Errorf("error opening rootfs header object: %w", err)
 	}

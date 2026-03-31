@@ -288,7 +288,7 @@ func (c *Chunker) runFetch(ctx context.Context, session *fetchSession, offsetU i
 
 	path := c.storagePath
 	if compressed {
-		path = storage.CompressedPath(path, ft.CompressionType())
+		path = storage.AppendCompression(path, ft.CompressionType())
 	}
 
 	file, err := c.persistence.OpenFramedFile(ctx, path)

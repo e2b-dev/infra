@@ -81,13 +81,13 @@ func (p *routingProvider) resolveProvider(ctx context.Context, buildID string) s
 }
 
 func (p *routingProvider) OpenBlob(ctx context.Context, path string, objType storage.ObjectType) (storage.Blob, error) {
-	buildID, _ := storage.ParseStoragePath(path)
+	buildID, _ := storage.SplitUncompressedPath(path)
 
 	return p.resolveProvider(ctx, buildID).OpenBlob(ctx, path, objType)
 }
 
 func (p *routingProvider) OpenFramedFile(ctx context.Context, path string) (storage.FramedFile, error) {
-	buildID, _ := storage.ParseStoragePath(path)
+	buildID, _ := storage.SplitUncompressedPath(path)
 
 	return p.resolveProvider(ctx, buildID).OpenFramedFile(ctx, path)
 }
@@ -128,7 +128,7 @@ func newPeerStorageProvider(
 }
 
 func (p *peerStorageProvider) OpenBlob(_ context.Context, path string, objType storage.ObjectType) (storage.Blob, error) {
-	buildID, fileName := storage.ParseStoragePath(path)
+	buildID, fileName := storage.SplitUncompressedPath(path)
 
 	return &peerBlob{peerHandle: peerHandle[storage.Blob]{
 		client:   p.peerClient,
@@ -142,7 +142,7 @@ func (p *peerStorageProvider) OpenBlob(_ context.Context, path string, objType s
 }
 
 func (p *peerStorageProvider) OpenFramedFile(_ context.Context, path string) (storage.FramedFile, error) {
-	buildID, fileName := storage.ParseStoragePath(path)
+	buildID, fileName := storage.SplitUncompressedPath(path)
 
 	return &peerFramedFile{peerHandle: peerHandle[storage.FramedFile]{
 		client:   p.peerClient,

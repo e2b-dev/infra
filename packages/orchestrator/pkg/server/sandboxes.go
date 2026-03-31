@@ -700,7 +700,7 @@ func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
 type snapshotResult struct {
 	meta           metadata.Template
 	snapshot       *sandbox.Snapshot
-	templateFiles  storage.TemplateFiles
+	paths          storage.Paths
 	completeUpload func(ctx context.Context, memfileHdr, rootfsHdr []byte) error
 }
 
@@ -708,7 +708,7 @@ type snapshotResult struct {
 // header bytes for peer transition (nil for uncompressed builds).
 func (r *snapshotResult) uploadSnapshot(ctx context.Context, persistence storage.StorageProvider, baseCompressCfg storage.CompressConfig, flags *featureflags.Client) (memfileHdr, rootfsHdr []byte, err error) {
 	cfg := storage.ResolveCompressConfig(ctx, baseCompressCfg, flags, storage.FileTypeMemfile, storage.UseCasePause)
-	uploader := sandbox.NewBuildUploader(r.snapshot, persistence, r.templateFiles, cfg, nil)
+	uploader := sandbox.NewBuildUploader(r.snapshot, persistence, r.paths, cfg, nil)
 
 	if err := uploader.UploadData(ctx); err != nil {
 		return nil, nil, err
@@ -757,7 +757,7 @@ func (s *Server) snapshotAndCacheSandbox(
 
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
-	templateFiles := storage.TemplateFiles{BuildID: meta.Template.BuildID}
+	paths := storage.Paths{BuildID: meta.Template.BuildID}
 
 	// Register in Redis so other orchestrators can find us for peer routing.
 	if s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag) {
@@ -782,7 +782,7 @@ func (s *Server) snapshotAndCacheSandbox(
 		return &snapshotResult{
 			meta:           meta,
 			snapshot:       snapshot,
-			templateFiles:  templateFiles,
+			paths:          paths,
 			completeUpload: completeUpload,
 		}, nil
 	}
@@ -790,7 +790,7 @@ func (s *Server) snapshotAndCacheSandbox(
 	return &snapshotResult{
 		meta:           meta,
 		snapshot:       snapshot,
-		templateFiles:  templateFiles,
+		paths:          paths,
 		completeUpload: func(context.Context, []byte, []byte) error { return nil },
 	}, nil
 }
