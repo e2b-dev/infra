@@ -373,3 +373,7 @@ variable "additional_api_paths_handled_by_ingress" {
     timeout_sec = optional(number)
   }))
 }
+
+variable "ingress_timeout_seconds" {
+  type = number
+}

@@ -150,6 +150,7 @@ module "cluster" {
   nomad_port                   = var.nomad_port
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
+  ingress_timeout_seconds      = var.ingress_timeout_seconds
 
   additional_domains                      = local.additional_domains
   additional_api_paths_handled_by_ingress = var.additional_api_paths_handled_by_ingress
@@ -212,6 +213,7 @@ module "nomad" {
   ingress_count                = var.ingress_count
   additional_traefik_arguments = var.additional_traefik_arguments
   traefik_config_files         = var.traefik_config_files
+  traefik_log_level            = var.traefik_log_level
 
   # API
   api_server_count                                       = var.api_server_count

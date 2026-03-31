@@ -713,3 +713,13 @@ variable "traefik_config_files" {
   description = "Map of filename => content for additional Traefik dynamic configuration files"
   default     = {}
 }
+
+variable "traefik_log_level" {
+  type    = string
+  default = "ERROR"
+}
+
+variable "ingress_timeout_seconds" {
+  type    = number
+  default = 80
+}
