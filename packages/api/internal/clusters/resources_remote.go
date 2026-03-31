@@ -66,6 +66,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxMetrics(ctx context.Context, tea
 			CpuCount:      m.CpuCount,
 			MemTotal:      m.MemTotal,
 			MemUsed:       m.MemUsed,
+			MemCache:      m.MemCache,
 			DiskTotal:     m.DiskTotal,
 			DiskUsed:      m.DiskUsed,
 		}
@@ -98,6 +99,7 @@ func (r *ClusterResourceProviderImpl) GetSandboxesMetrics(ctx context.Context, t
 			CpuCount:      v.CpuCount,
 			MemTotal:      v.MemTotal,
 			MemUsed:       v.MemUsed,
+			MemCache:      v.MemCache,
 			DiskTotal:     v.DiskTotal,
 			DiskUsed:      v.DiskUsed,
 		}

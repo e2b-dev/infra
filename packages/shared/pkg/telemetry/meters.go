@@ -114,6 +114,7 @@ const (
 	// Sandbox metrics
 	SandboxRamUsedGaugeName   GaugeIntType = "e2b.sandbox.ram.used"
 	SandboxRamTotalGaugeName  GaugeIntType = "e2b.sandbox.ram.total"
+	SandboxRamCacheGaugeName  GaugeIntType = "e2b.sandbox.ram.cache"
 	SandboxCpuTotalGaugeName  GaugeIntType = "e2b.sandbox.cpu.total"
 	SandboxDiskUsedGaugeName  GaugeIntType = "e2b.sandbox.disk.used"
 	SandboxDiskTotalGaugeName GaugeIntType = "e2b.sandbox.disk.total"

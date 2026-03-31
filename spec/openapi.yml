@@ -416,6 +416,10 @@ components:
           type: integer
           format: int64
           description: Total memory in bytes
+        memCache:
+          type: integer
+          format: int64
+          description: Cached memory (page cache) in bytes
         diskUsed:
           type: integer
           format: int64
