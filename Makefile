@@ -68,6 +68,11 @@ move:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	$(MAKE) -C iac/provider-$(PROVIDER) move
 
+.PHONY: destroy
+destroy:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	$(MAKE) -C iac/provider-$(PROVIDER) destroy
+
 .PHONY: version
 version:
 	./scripts/increment-version.sh
