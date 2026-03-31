@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -160,7 +159,6 @@ func RegisterChannelzTarget(conn *grpc.ClientConn, clientType string) {
 
 func StartChannelzSampler(ctx context.Context) {
 	channelzInitOnce.Do(func() {
-		meter := otel.Meter("github.com/e2b-dev/infra/packages/shared/pkg/grpc")
 		gauge, err := meter.Int64ObservableGauge(
 			"grpc.client.connections",
 			metric.WithDescription("Current number of gRPC client connections by connectivity state"),
