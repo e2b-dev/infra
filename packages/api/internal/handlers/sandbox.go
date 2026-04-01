@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -111,6 +112,18 @@ func (a *APIStore) startSandboxInternal(
 	}
 
 	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "created_instance", props)
+
+	for _, vol := range sbx.VolumeMounts {
+		a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "attached_volume", posthog.NewProperties().
+			Set("volume_id", vol.ID).
+			Set("volume_name", vol.Name).
+			Set("volume_type", vol.Type).
+			Set("mount_path", vol.Path).
+			Set("instance_id", sbx.SandboxID).
+			Set("environment", sbx.TemplateID),
+		)
+	}
+
 	analyticsSpan.End()
 
 	telemetry.ReportEvent(ctx, "Created analytics event")

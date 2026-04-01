@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/posthog/posthog-go"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
@@ -35,6 +36,11 @@ func (a *APIStore) DeleteVolumesVolumeID(c *gin.Context, volumeID api.VolumeID) 
 
 		return
 	}
+
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "deleted_volume", posthog.NewProperties().
+		Set("volume_id", volume.ID.String()).
+		Set("volume_name", volume.Name),
+	)
 
 	go func(ctx context.Context) {
 		// if this fails, we can clean it up later
