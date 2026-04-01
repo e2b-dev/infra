@@ -1,6 +1,6 @@
 -- +goose Up
 ALTER TABLE sandbox_events_local
-    ADD INDEX idx_team_id sandbox_team_id TYPE bloom_filter GRANULARITY 4;
+    ADD INDEX idx_team_id sandbox_team_id TYPE bloom_filter(0.01) GRANULARITY 4;
 
 ALTER TABLE sandbox_events_local
     MATERIALIZE INDEX idx_team_id;
