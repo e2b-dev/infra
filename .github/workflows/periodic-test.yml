@@ -157,7 +157,7 @@ jobs:
                 project: $domain
               }
             }' \
-          | curl -s -X POST \
+          | curl -s --fail-with-body -X POST \
               -H 'Content-Type: application/json' \
               -H "Authorization: Bearer $ALERT_TOKEN" \
               -d @- "$WEBHOOK_URL"
