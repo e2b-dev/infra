@@ -22,6 +22,7 @@ type AuthStore[T TeamItem] interface {
 	GetTeamByHashedAPIKey(ctx context.Context, hashedKey string) (T, error)
 	GetTeamByIDAndUserID(ctx context.Context, userID uuid.UUID, teamID string) (T, error)
 	GetUserIDByHashedAccessToken(ctx context.Context, hashedToken string) (uuid.UUID, error)
+	GetTeamAPIKeyHashes(ctx context.Context, teamID uuid.UUID) ([]string, error)
 }
 
 // AuthService encapsulates the cache, store, and JWT secrets for auth validation.
@@ -194,6 +195,20 @@ func (s *AuthService[T]) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.C
 	)
 
 	return result, nil
+}
+
+// InvalidateTeamCache queries the team's API key hashes and removes their cached entries.
+func (s *AuthService[T]) InvalidateTeamCache(ctx context.Context, teamID uuid.UUID) error {
+	hashes, err := s.store.GetTeamAPIKeyHashes(ctx, teamID)
+	if err != nil {
+		return fmt.Errorf("failed to get team API key hashes: %w", err)
+	}
+
+	for _, hash := range hashes {
+		s.teamCache.Invalidate(hash)
+	}
+
+	return nil
 }
 
 // Close stops the underlying cache's background refresh goroutines.
