@@ -82,7 +82,7 @@ func TestSetIsCached_ZeroLengthAtNonZeroOffset(t *testing.T) {
 	cache.setIsCached(blockSize*5, 0)
 
 	// No blocks should be marked as cached
-	for i := int64(0); i < 10; i++ {
+	for i := range int64(10) {
 		result := cache.isCached(i*blockSize, blockSize)
 		assert.False(t, result, "block %d should not be cached after zero-length setIsCached", i)
 	}
@@ -126,7 +126,7 @@ func TestWriteAt_PartiallyBeyondCacheSize(t *testing.T) {
 	assert.Equal(t, int(blockSize), n, "should only write up to cache size")
 
 	// Only block 9 should be marked as cached (the portion that fit)
-	for i := int64(0); i < 10; i++ {
+	for i := range int64(10) {
 		if i == 9 {
 			assert.True(t, cache.isCached(i*blockSize, blockSize), "block 9 should be cached")
 		} else {
@@ -161,7 +161,7 @@ func TestDirtyTracking_NormalOperation(t *testing.T) {
 	defer cache.Close()
 
 	// Initially nothing is cached
-	for i := int64(0); i < 10; i++ {
+	for i := range int64(10) {
 		assert.False(t, cache.isCached(i*blockSize, blockSize), "block %d should not be initially cached", i)
 	}
 
@@ -172,7 +172,7 @@ func TestDirtyTracking_NormalOperation(t *testing.T) {
 	assert.Equal(t, int(blockSize), n)
 
 	// Only block 3 should be cached
-	for i := int64(0); i < 10; i++ {
+	for i := range int64(10) {
 		if i == 3 {
 			assert.True(t, cache.isCached(i*blockSize, blockSize), "block 3 should be cached")
 		} else {
@@ -188,7 +188,7 @@ func TestDirtyTracking_NormalOperation(t *testing.T) {
 
 	// Blocks 3, 5, 6, 7 should be cached
 	expected := map[int64]bool{3: true, 5: true, 6: true, 7: true}
-	for i := int64(0); i < 10; i++ {
+	for i := range int64(10) {
 		if expected[i] {
 			assert.True(t, cache.isCached(i*blockSize, blockSize), "block %d should be cached", i)
 		} else {

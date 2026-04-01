@@ -1,6 +1,7 @@
 package block
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -30,7 +31,7 @@ func BenchmarkDirtyTracking(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 
-		for i := 0; i < b.N; i++ {
+		for i := range b.N {
 			// Simulate marking a block as cached
 			off := int64(i%262144) * blockSize
 			cache.setIsCached(off, blockSize)
@@ -39,14 +40,14 @@ func BenchmarkDirtyTracking(b *testing.B) {
 
 	b.Run("IsCached_Hit", func(b *testing.B) {
 		// Pre-populate some blocks as cached
-		for i := int64(0); i < 1000; i++ {
+		for i := range int64(1000) {
 			cache.setIsCached(i*blockSize, blockSize)
 		}
 
 		b.ReportAllocs()
 		b.ResetTimer()
 
-		for i := 0; i < b.N; i++ {
+		for i := range b.N {
 			off := int64(i%1000) * blockSize
 			cache.isCached(off, blockSize)
 		}
@@ -56,7 +57,7 @@ func BenchmarkDirtyTracking(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 
-		for i := 0; i < b.N; i++ {
+		for i := range b.N {
 			// Check blocks that are definitely not cached (high offsets)
 			off := int64(100000+i%100000) * blockSize
 			cache.isCached(off, blockSize)
@@ -67,7 +68,7 @@ func BenchmarkDirtyTracking(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 
-		for i := 0; i < b.N; i++ {
+		for i := range b.N {
 			off := int64(i%262144) * blockSize
 			cache.WriteAt(data, off)
 		}
@@ -80,7 +81,7 @@ func BenchmarkDirtyTracking(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 
-		for i := 0; i < b.N; i++ {
+		for i := range b.N {
 			off := int64(i%65536) * blockSize * 4
 			cache.WriteAt(multiBlockData, off)
 		}
@@ -104,7 +105,7 @@ func BenchmarkDirtySortedKeys(b *testing.B) {
 	defer cache.Close()
 
 	// Mark 10% of blocks as dirty (26214 blocks)
-	for i := int64(0); i < 26214; i++ {
+	for i := range int64(26214) {
 		cache.setIsCached(i*blockSize, blockSize)
 	}
 
@@ -112,7 +113,7 @@ func BenchmarkDirtySortedKeys(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			keys := cache.dirtySortedKeys()
 			_ = keys
 		}
@@ -138,7 +139,7 @@ func BenchmarkCacheCreation(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				tmpFile := b.TempDir() + "/bench_cache"
 				cache, err := NewCache(size, blockSize, tmpFile, false)
 				if err != nil {
@@ -160,10 +161,10 @@ func formatSize(bytes int64) string {
 
 	switch {
 	case bytes >= GB:
-		return string(rune('0'+bytes/GB)) + "GB"
+		return fmt.Sprintf("%dGB", bytes/GB)
 	case bytes >= MB:
-		return string(rune('0'+bytes/MB)) + "MB"
+		return fmt.Sprintf("%dMB", bytes/MB)
 	default:
-		return string(rune('0'+bytes/KB)) + "KB"
+		return fmt.Sprintf("%dKB", bytes/KB)
 	}
 }

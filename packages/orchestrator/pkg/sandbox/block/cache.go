@@ -516,13 +516,7 @@ func (c *Cache) copyProcessMemory(
 				return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
 			}
 
-			startBlock := uint(header.BlockIdx(offset, c.blockSize))
-			endBlock := uint(header.BlockIdx(offset+segmentSize-1, c.blockSize))
-			c.dirtyMu.Lock()
-			for i := startBlock; i <= endBlock; i++ {
-				c.dirty.Set(i)
-			}
-			c.dirtyMu.Unlock()
+			c.setIsCached(offset, segmentSize)
 
 			offset += segmentSize
 
