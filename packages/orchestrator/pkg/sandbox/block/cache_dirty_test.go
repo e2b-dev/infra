@@ -120,7 +120,7 @@ func TestWriteAt_PartiallyBeyondCacheSize(t *testing.T) {
 
 	// Writing at the last block with data extending beyond cache size
 	// should only write up to cache size and mark appropriate blocks
-	data := make([]byte, blockSize*2) // 2 blocks of data
+	data := make([]byte, blockSize*2)          // 2 blocks of data
 	n, err := cache.WriteAt(data, blockSize*9) // Start at block 9, would extend to block 11
 	require.NoError(t, err)
 	assert.Equal(t, int(blockSize), n, "should only write up to cache size")
