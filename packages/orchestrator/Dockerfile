@@ -30,16 +30,17 @@ WORKDIR /build
 COPY ./shared/pkg ./shared/pkg
 COPY ./clickhouse/pkg ./clickhouse/pkg
 
+COPY ./orchestrator/pkg ./orchestrator/pkg
+
 # Download busybox from fc-busybox release for go:embed, verify against published SHA256SUMS.
+# Runs after COPY so the systeminit directory exists; overwrites any stale binary from build context.
 RUN RELEASE_URL="https://github.com/e2b-dev/fc-busybox/releases/download/v${BUSYBOX_VERSION}" \
     && BINARY="busybox_v${BUSYBOX_VERSION}_${TARGETARCH}" \
-    && curl -sfL -o /tmp/busybox "${RELEASE_URL}/${BINARY}" \
+    && curl -sfL -o /tmp/${BINARY} "${RELEASE_URL}/${BINARY}" \
     && curl -sfL -o /tmp/SHA256SUMS "${RELEASE_URL}/SHA256SUMS" \
     && cd /tmp && grep "${BINARY}" SHA256SUMS | sha256sum -c - \
-    && mv /tmp/busybox ./orchestrator/pkg/template/build/core/systeminit/busybox \
+    && mv /tmp/${BINARY} ./orchestrator/pkg/template/build/core/systeminit/busybox \
     && chmod +x ./orchestrator/pkg/template/build/core/systeminit/busybox
-
-COPY ./orchestrator/pkg ./orchestrator/pkg
 COPY ./orchestrator/cmd ./orchestrator/cmd
 COPY ./orchestrator/main.go ./orchestrator/main.go
 COPY ./orchestrator/Makefile ./orchestrator/Makefile
