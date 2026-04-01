@@ -16,7 +16,6 @@ const getSandboxRecordByTeamAndSandboxID = `-- name: GetSandboxRecordByTeamAndSa
 SELECT
     sl.sandbox_id,
     COALESCE(s.base_env_id, sl.env_id) AS template_id,
-    sl.env_id,
     sl.vcpu,
     sl.ram_mb,
     sl.total_disk_size_mb,
@@ -53,7 +52,6 @@ type GetSandboxRecordByTeamAndSandboxIDParams struct {
 type GetSandboxRecordByTeamAndSandboxIDRow struct {
 	SandboxID       string
 	TemplateID      string
-	EnvID           string
 	Vcpu            int64
 	RamMb           int64
 	TotalDiskSizeMb int64
@@ -69,7 +67,6 @@ func (q *Queries) GetSandboxRecordByTeamAndSandboxID(ctx context.Context, arg Ge
 	err := row.Scan(
 		&i.SandboxID,
 		&i.TemplateID,
-		&i.EnvID,
 		&i.Vcpu,
 		&i.RamMb,
 		&i.TotalDiskSizeMb,

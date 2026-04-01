@@ -2,7 +2,6 @@
 SELECT
     sl.sandbox_id,
     COALESCE(s.base_env_id, sl.env_id) AS template_id,
-    sl.env_id,
     sl.vcpu,
     sl.ram_mb,
     sl.total_disk_size_mb,

@@ -89,7 +89,7 @@ func (a *APIStore) startSandboxInternal(
 	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
 	properties := a.posthog.GetPackageToPosthogProperties(requestHeader)
 	props := properties.
-		Set("environment", sbx.TemplateID).
+		Set("environment", sbx.BaseTemplateID).
 		Set("instance_id", sbx.SandboxID).
 		Set("alias", sbx.Alias).
 		Set("resume", isResume).
