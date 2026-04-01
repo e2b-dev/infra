@@ -34,7 +34,6 @@ func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox sandbox.Sand
 		"closed_instance", posthog.NewProperties().
 			Set("instance_id", sandbox.SandboxID).
 			Set("environment", sandbox.TemplateID).
-			Set("env_id", sandbox.EnvID).
 			Set("state_action", stateAction.Name).
 			Set("duration", duration),
 	)

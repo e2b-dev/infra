@@ -90,7 +90,6 @@ func (a *APIStore) startSandboxInternal(
 	properties := a.posthog.GetPackageToPosthogProperties(requestHeader)
 	props := properties.
 		Set("environment", sbx.TemplateID).
-		Set("env_id", sbx.EnvID).
 		Set("instance_id", sbx.SandboxID).
 		Set("alias", sbx.Alias).
 		Set("resume", isResume).
@@ -130,7 +129,7 @@ func (a *APIStore) startSandboxInternal(
 	telemetry.ReportEvent(ctx, "Created analytics event")
 
 	go func() {
-		a.templateSpawnCounter.IncreaseTemplateSpawnCount(sbx.TemplateID, time.Now())
+		a.templateSpawnCounter.IncreaseTemplateSpawnCount(sbx.BaseTemplateID, time.Now())
 	}()
 
 	telemetry.SetAttributes(ctx,
@@ -155,7 +154,7 @@ func (a *APIStore) startSandboxInternal(
 		zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")),
 		zap.String("auto_resume_policy", autoResumePolicy),
 		zap.Bool("auto_pause", sbx.AutoPause),
-		zap.String("env_id", sbx.EnvID),
+		zap.String("template_id", sbx.TemplateID),
 	)
 
 	return sbx, nil

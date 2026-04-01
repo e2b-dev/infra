@@ -42,7 +42,7 @@ type SandboxMetadata struct {
 	Network             *types.SandboxNetworkConfig
 	Alias               string
 	TemplateID          string
-	EnvID               string
+	BaseTemplateID      string
 	AutoPause           bool
 	AutoResume          *types.SandboxAutoResumeConfig
 	VolumeMounts        []*orchestrator.SandboxVolumeMount
@@ -230,8 +230,8 @@ func (o *Orchestrator) CreateSandbox(
 
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
-			BaseTemplateId:      sbxData.TemplateID,
-			TemplateId:          sbxData.EnvID,
+			BaseTemplateId:      sbxData.BaseTemplateID,
+			TemplateId:          sbxData.TemplateID,
 			Alias:               &sbxData.Alias,
 			TeamId:              team.ID.String(),
 			BuildId:             sbxData.Build.ID.String(),
@@ -304,7 +304,6 @@ func (o *Orchestrator) CreateSandbox(
 	sbx = sandbox.NewSandbox(
 		sandboxID,
 		sbxData.TemplateID,
-		sbxData.EnvID,
 		consts.ClientID,
 		&sbxData.Alias,
 		executionID,
@@ -326,6 +325,7 @@ func (o *Orchestrator) CreateSandbox(
 		sbxData.AutoResume,
 		sbxData.EnvdAccessToken,
 		sbxData.AllowInternetAccess,
+		sbxData.BaseTemplateID,
 		sbxDomain,
 		sbxData.Network,
 		trafficAccessToken,

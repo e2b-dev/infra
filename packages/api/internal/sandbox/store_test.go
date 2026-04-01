@@ -147,7 +147,6 @@ func (m *MockStorage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 func createTestSandbox() sandbox.Sandbox {
 	return sandbox.NewSandbox(
 		"test-sandbox-"+uuid.New().String()[:8],
-		"base-template",
 		"test-template",
 		consts.ClientID,
 		nil, // alias
@@ -170,6 +169,7 @@ func createTestSandbox() sandbox.Sandbox {
 		nil,   // autoResume
 		nil,   // envdAccessToken
 		nil,   // allowInternetAccess
+		"base-template",
 		nil,   // domain
 		nil,   // network
 		nil,   // trafficAccessToken

@@ -57,7 +57,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	}
 
 	for _, sbx := range sandboxes {
-		if sbx.TemplateID == templateID {
+		if sbx.BaseTemplateID == templateID {
 			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("cannot delete template '%s' because there are running sandboxes using it", templateID))
 
 			return

@@ -116,7 +116,7 @@ func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) quer
 		// Used if there's no snapshot for this sandbox yet
 		TemplateID:     id.Generate(),
 		TeamID:         sbx.TeamID,
-		BaseTemplateID: sbx.TemplateID,
+		BaseTemplateID: sbx.BaseTemplateID,
 		SandboxID:      sbx.SandboxID,
 		StartedAt:      pgtype.Timestamptz{Time: sbx.StartTime, Valid: true},
 		Vcpu:           sbx.VCpu,

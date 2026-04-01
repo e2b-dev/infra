@@ -148,7 +148,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandboxID,
-		TemplateID: lastSnapshot.Snapshot.BaseEnvID,
+		TemplateID: lastSnapshot.Snapshot.EnvID,
 		TeamID:     teamID.String(),
 	}).Debug(ctx, "Started resuming sandbox")
 
@@ -239,8 +239,8 @@ func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *b
 			AllowInternetAccess: snap.AllowInternetAccess,
 			Network:             network,
 			Alias:               alias,
-			TemplateID:          snap.BaseEnvID,
-			EnvID:               snap.EnvID,
+			TemplateID:          snap.EnvID,
+			BaseTemplateID:      snap.BaseEnvID,
 			AutoPause:           autoPause,
 			AutoResume:          autoResume,
 			VolumeMounts:        convertDatabaseMountsToOrchestratorMounts(volumes),
