@@ -105,6 +105,7 @@ jobs:
 
       - name: Send incident.io alert
         if: always()
+        continue-on-error: true
         env:
           JOB_STATUS: ${{ job.status }}
           DOMAIN: ${{ matrix.e2b-domain }}
