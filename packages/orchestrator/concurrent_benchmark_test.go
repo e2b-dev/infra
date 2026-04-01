@@ -365,21 +365,39 @@ func BenchmarkConcurrentResume(b *testing.B) {
 
 	// run sub-benchmarks per concurrency level
 	//
-	// We use benchtime=1x so the Go benchmark framework runs each
-	// sub-benchmark exactly once. Each iteration launches N concurrent
-	// ResumeSandbox calls and records individual latencies.
+	// Latencies from every iteration are accumulated so that percentiles
+	// are computed over the full dataset (e.g. 100x at concurrency-5
+	// yields 500 latency samples). Wall-clock times are also accumulated
+	// and averaged.
 	for _, n := range levels {
 		b.Run(fmt.Sprintf("concurrency-%d", n), func(b *testing.B) {
+			var allLatencies []time.Duration
+			var allWallClocks []time.Duration
+			var totalOK, totalFail int
+
 			for b.Loop() {
-				results := runConcurrentResume(b, sandboxFactory, tmpl, sandboxConfig, templateID, n)
-				reportResults(b, n, results)
+				results, wall := runConcurrentResume(b, sandboxFactory, tmpl, sandboxConfig, templateID, n)
+				allWallClocks = append(allWallClocks, wall)
+
+				for _, r := range results {
+					if r.err != nil {
+						totalFail++
+						b.Logf("  FAIL sandbox %s: %v", r.sandboxID, r.err)
+					} else {
+						totalOK++
+						allLatencies = append(allLatencies, r.latency)
+					}
+				}
 			}
+
+			reportAggregateResults(b, n, allLatencies, allWallClocks, totalOK, totalFail)
 		})
 	}
 }
 
 // runConcurrentResume launches n goroutines that each create a sandbox simultaneously.
-// Returns a slice of results (one per goroutine). Sandboxes are cleaned up before returning.
+// Returns a slice of results (one per goroutine) and the wall-clock duration.
+// Sandboxes are cleaned up before returning.
 func runConcurrentResume(
 	b *testing.B,
 	factory *sandbox.Factory,
@@ -387,7 +405,7 @@ func runConcurrentResume(
 	config *sandbox.Config,
 	templateID string,
 	n int,
-) []concurrencyResult {
+) ([]concurrencyResult, time.Duration) {
 	b.Helper()
 
 	results := make([]concurrencyResult, n)
@@ -455,39 +473,34 @@ func runConcurrentResume(
 		}
 	}
 
-	// Report wall-clock time as a custom metric.
-	b.ReportMetric(float64(wallDuration.Milliseconds()), "wall-clock-ms")
-
 	b.StartTimer()
 
-	return results
+	return results, wallDuration
 }
 
-// reportResults computes and reports latency statistics for a batch of results.
-func reportResults(b *testing.B, n int, results []concurrencyResult) {
+// reportAggregateResults computes and reports latency statistics aggregated
+// across all benchmark iterations. This gives stable percentiles even at
+// high iteration counts (e.g. -benchtime=100x).
+func reportAggregateResults(b *testing.B, concurrency int, latencies []time.Duration, wallClocks []time.Duration, totalOK, totalFail int) {
 	b.Helper()
 
-	var (
-		successes int
-		failures  int
-		latencies []time.Duration
-	)
+	iterations := len(wallClocks)
 
-	for _, r := range results {
-		if r.err != nil {
-			failures++
-			b.Logf("  FAIL sandbox %s: %v", r.sandboxID, r.err)
-		} else {
-			successes++
-			latencies = append(latencies, r.latency)
+	b.ReportMetric(float64(totalOK)/float64(iterations), "ok")
+	b.ReportMetric(float64(totalFail)/float64(iterations), "fail")
+
+	// Average wall-clock across iterations.
+	if len(wallClocks) > 0 {
+		var totalWall time.Duration
+		for _, w := range wallClocks {
+			totalWall += w
 		}
+		avgWall := totalWall / time.Duration(len(wallClocks))
+		b.ReportMetric(float64(avgWall.Milliseconds()), "wall-clock-ms")
 	}
 
-	b.ReportMetric(float64(successes), "ok")
-	b.ReportMetric(float64(failures), "fail")
-
 	if len(latencies) == 0 {
-		b.Logf("concurrency=%d: all %d sandboxes failed", n, n)
+		b.Logf("concurrency=%d: all sandboxes failed across %d iterations", concurrency, iterations)
 		return
 	}
 
@@ -513,8 +526,8 @@ func reportResults(b *testing.B, n int, results []concurrencyResult) {
 	b.ReportMetric(float64(min.Milliseconds()), "min-ms")
 	b.ReportMetric(float64(max.Milliseconds()), "max-ms")
 
-	b.Logf("concurrency=%d: %d/%d ok | avg=%s p50=%s p95=%s p99=%s min=%s max=%s",
-		n, successes, n,
+	b.Logf("concurrency=%d: %d ok, %d fail across %d iterations (%d samples) | avg=%s p50=%s p95=%s p99=%s min=%s max=%s",
+		concurrency, totalOK, totalFail, iterations, len(latencies),
 		avg.Truncate(time.Millisecond),
 		p50.Truncate(time.Millisecond),
 		p95.Truncate(time.Millisecond),
