@@ -118,6 +118,22 @@ func SetupDatabase(t *testing.T) *Database {
 func (db *Database) ApplyMigrations(t *testing.T, migrationDirs ...string) {
 	t.Helper()
 
+	db.applyGooseMigrations(t, 0, migrationDirs...)
+}
+
+func (db *Database) ApplyMigrationsUpTo(t *testing.T, version int64, migrationDirs ...string) {
+	t.Helper()
+
+	db.applyGooseMigrations(t, version, migrationDirs...)
+}
+
+func (db *Database) ConnStr() string {
+	return db.connStr
+}
+
+func (db *Database) applyGooseMigrations(t *testing.T, upToVersion int64, migrationDirs ...string) {
+	t.Helper()
+
 	cmd := exec.CommandContext(t.Context(), "git", "rev-parse", "--show-toplevel")
 	output, err := cmd.Output()
 	require.NoError(t, err, "Failed to find git root")
@@ -134,13 +150,23 @@ func (db *Database) ApplyMigrations(t *testing.T, migrationDirs ...string) {
 	})
 
 	for _, migrationsDir := range migrationDirs {
-		err = goose.RunWithOptionsContext(
-			t.Context(),
-			"up",
-			sqlDB,
-			filepath.Join(repoRoot, migrationsDir),
-			nil,
-		)
+		if upToVersion > 0 {
+			err = goose.UpToContext(
+				t.Context(),
+				sqlDB,
+				filepath.Join(repoRoot, migrationsDir),
+				upToVersion,
+			)
+		} else {
+			err = goose.RunWithOptionsContext(
+				t.Context(),
+				"up",
+				sqlDB,
+				filepath.Join(repoRoot, migrationsDir),
+				nil,
+			)
+		}
+
 		require.NoError(t, err)
 	}
 }

@@ -220,19 +220,6 @@ type User struct {
 	Email     string
 }
 
-type UserSyncQueue struct {
-	ID             int64
-	UserID         uuid.UUID
-	Operation      string
-	CreatedAt      time.Time
-	NextAttemptAt  time.Time
-	LockedAt       *time.Time
-	LockOwner      *string
-	AttemptCount   int32
-	LastError      *string
-	DeadLetteredAt *time.Time
-}
-
 type UsersTeam struct {
 	ID        int64
 	UserID    uuid.UUID

@@ -13,6 +13,10 @@ endif
 HOSTNAME := $(shell hostname 2> /dev/null || hostnamectl hostname 2> /dev/null)
 $(if $(HOSTNAME),,$(error Failed to determine hostname: both 'hostname' and 'hostnamectl' failed))
 
+define DASHBOARD_API_EXTRA_ENV
+$$(printf '%s' "$${DASHBOARD_API_ENV_VARS:-}" | jq -r '(if .=="" then empty elif type=="string" then (fromjson? // empty) else . end) | to_entries? // [] | map("\(.key)=\(.value|tostring|@sh)") | join(" ")')
+endef
+
 .PHONY: generate
 generate:
 	go generate ./...
@@ -33,12 +37,14 @@ build-and-upload:
 .PHONY: run
 run:
 	make build
-	./bin/dashboard-api
+	@EXTRA_ENV=$(DASHBOARD_API_EXTRA_ENV); \
+	eval "env $$EXTRA_ENV ./bin/dashboard-api"
 
 .PHONY: run-local
 run-local:
 	make build
-	NODE_ID=$(HOSTNAME) ./bin/dashboard-api
+	@EXTRA_ENV=$(DASHBOARD_API_EXTRA_ENV); \
+	eval "env NODE_ID=$(HOSTNAME) $$EXTRA_ENV ./bin/dashboard-api"
 
 .PHONY: test
 test:

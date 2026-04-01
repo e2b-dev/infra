@@ -20,7 +20,9 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	middleware "github.com/oapi-codegen/gin-middleware"
+	"github.com/riverqueue/river"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -28,9 +30,9 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/backgroundworker"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/handlers"
-	"github.com/e2b-dev/infra/packages/dashboard-api/internal/supabaseauthusersync"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
@@ -230,24 +232,29 @@ func run() int {
 
 	wg := sync.WaitGroup{}
 
+	var riverClient *river.Client[pgx.Tx]
+
 	if config.SupabaseAuthUserSyncEnabled {
 		workerLogger := l.With(zap.String("worker", "supabase_auth_user_sync"))
-		syncConfig := supabaseauthusersync.DefaultConfig()
-		syncConfig.Enabled = true
-		syncRunner := supabaseauthusersync.NewRunner(
-			syncConfig,
-			authDB,
-			db,
-			serviceInstanceID,
-			workerLogger,
-		)
 
-		wg.Go(func() {
-			if err := syncRunner.RunWithRestart(signalCtx); err != nil && !errors.Is(err, context.Canceled) {
-				l.Error(ctx, "supabase auth user sync worker error", zap.Error(err))
-				errorCode.Add(1)
-			}
-		})
+		authPool := authDB.WritePool()
+		if err := backgroundworker.RunRiverMigrations(ctx, authPool); err != nil {
+			l.Fatal(ctx, "failed to run River migrations on auth DB", zap.Error(err))
+		}
+
+		workers := river.NewWorkers()
+		river.AddWorker(workers, backgroundworker.NewAuthUserSyncWorker(db, workerLogger))
+
+		riverClient, err = backgroundworker.NewRiverClient(authPool, workers)
+		if err != nil {
+			l.Fatal(ctx, "failed to create River client", zap.Error(err))
+		}
+
+		if err := riverClient.Start(signalCtx); err != nil {
+			l.Fatal(ctx, "failed to start River client", zap.Error(err))
+		}
+
+		l.Info(ctx, "background worker started (River auth_custom)", zap.String("queue", "auth_sync"))
 	}
 
 	wg.Go(func() {
@@ -256,6 +263,14 @@ func run() int {
 
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer shutdownCancel()
+
+		if riverClient != nil {
+			if err := riverClient.Stop(shutdownCtx); err != nil {
+				l.Error(ctx, "River client shutdown error", zap.Error(err))
+
+				errorCode.Add(1)
+			}
+		}
 
 		if err := s.Shutdown(shutdownCtx); err != nil {
 			l.Error(ctx, "HTTP server shutdown error", zap.Error(err))
