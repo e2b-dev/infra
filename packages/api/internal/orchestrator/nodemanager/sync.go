@@ -52,7 +52,7 @@ func (n *Node) Sync(ctx context.Context, store *sandbox.Store) {
 			continue
 		}
 
-		store.Sync(ctx, activeInstances, n.ID)
+		store.Reconcile(ctx, activeInstances, n.ID)
 
 		syncRetrySuccess = true
 
