@@ -40,7 +40,7 @@ func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox sandbox.Sand
 
 	_, err := o.analytics.InstanceStopped(ctx, &analyticscollector.InstanceStoppedEvent{
 		TeamId:        sandbox.TeamID.String(),
-		EnvironmentId: sandbox.BaseTemplateID,
+		EnvironmentId: sandbox.TemplateID,
 		InstanceId:    sandbox.SandboxID,
 		ExecutionId:   sandbox.ExecutionID,
 		Timestamp:     timestamppb.New(stopTime),
