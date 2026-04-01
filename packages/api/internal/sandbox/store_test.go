@@ -170,10 +170,10 @@ func createTestSandbox() sandbox.Sandbox {
 		nil,   // envdAccessToken
 		nil,   // allowInternetAccess
 		"base-template",
-		nil,   // domain
-		nil,   // network
-		nil,   // trafficAccessToken
-		nil,   // volumes
+		nil, // domain
+		nil, // network
+		nil, // trafficAccessToken
+		nil, // volumes
 	)
 }
 
