@@ -25,15 +25,9 @@ type deadLetterCall struct {
 type fakeProcessorStore struct {
 	getAuthUserFn func(context.Context, uuid.UUID) (*AuthUser, error)
 
-	ackCalls        []int64
-	retryCalls      []retryCall
-	deadLetterCalls []deadLetterCall
-}
-
-func (s *fakeProcessorStore) Ack(_ context.Context, id int64) error {
-	s.ackCalls = append(s.ackCalls, id)
-
-	return nil
+	deletePublicUserCalls int
+	retryCalls            []retryCall
+	deadLetterCalls       []deadLetterCall
 }
 
 func (s *fakeProcessorStore) Retry(_ context.Context, id int64, backoff time.Duration, lastError string) error {
@@ -64,6 +58,8 @@ func (s *fakeProcessorStore) UpsertPublicUser(_ context.Context, _ uuid.UUID, _ 
 }
 
 func (s *fakeProcessorStore) DeletePublicUser(_ context.Context, _ uuid.UUID) error {
+	s.deletePublicUserCalls++
+
 	return nil
 }
 
@@ -85,7 +81,6 @@ func TestProcessorProcessRetriesRecoveredPanic(t *testing.T) {
 	require.NotPanics(t, func() {
 		processor.process(context.Background(), item)
 	})
-	require.Empty(t, store.ackCalls)
 	require.Len(t, store.retryCalls, 1)
 	require.Contains(t, store.retryCalls[0].lastError, "panic while processing queue item")
 	require.Empty(t, store.deadLetterCalls)
@@ -109,8 +104,34 @@ func TestProcessorProcessDeadLettersRecoveredPanicAtMaxAttempts(t *testing.T) {
 	require.NotPanics(t, func() {
 		processor.process(context.Background(), item)
 	})
-	require.Empty(t, store.ackCalls)
 	require.Empty(t, store.retryCalls)
 	require.Len(t, store.deadLetterCalls, 1)
 	require.Contains(t, store.deadLetterCalls[0].lastError, "panic while processing queue item")
+}
+
+func TestProcessorProcessDeleteSkipsAuthLookup(t *testing.T) {
+	t.Parallel()
+
+	getAuthUserCalled := false
+	store := &fakeProcessorStore{
+		getAuthUserFn: func(context.Context, uuid.UUID) (*AuthUser, error) {
+			getAuthUserCalled = true
+
+			return nil, nil
+		},
+	}
+	processor := NewProcessor(store, 3, logger.NewNopLogger())
+	item := QueueItem{
+		ID:           1,
+		UserID:       uuid.New(),
+		Operation:    "delete",
+		AttemptCount: 1,
+	}
+
+	result := processor.process(context.Background(), item)
+
+	require.False(t, getAuthUserCalled)
+	require.Equal(t, 1, store.deletePublicUserCalls)
+	require.Equal(t, processOutcomeReadyToAck, result.Outcome)
+	require.Equal(t, reconcileActionDeletePublicUser, result.Action)
 }

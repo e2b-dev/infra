@@ -13,6 +13,7 @@ import (
 
 type runnerStore interface {
 	ClaimBatch(ctx context.Context, lockOwner string, lockTimeout time.Duration, batchSize int32) ([]QueueItem, error)
+	AckBatch(ctx context.Context, ids []int64) error
 }
 
 type workerStore interface {
@@ -26,6 +27,11 @@ type Runner struct {
 	processor *Processor
 	lockOwner string
 	l         logger.Logger
+}
+
+type ackCandidate struct {
+	item   QueueItem
+	result processResult
 }
 
 func NewRunner(cfg Config, authDB *authdb.Client, mainDB *sqlcdb.Client, lockOwner string, l logger.Logger) *Runner {
@@ -50,22 +56,39 @@ func (r *Runner) Run(ctx context.Context) error {
 		zap.Int32("worker.max_attempts", r.cfg.MaxAttempts),
 	)
 
-	ticker := time.NewTicker(r.cfg.PollInterval)
-	defer ticker.Stop()
-
 	for {
-		select {
-		case <-ctx.Done():
+		r.drain(ctx)
+		if ctx.Err() != nil {
 			r.l.Info(ctx, "stopping supabase auth user sync worker", zap.Error(ctx.Err()))
 
 			return ctx.Err()
-		case <-ticker.C:
-			r.poll(ctx)
+		}
+
+		timer := time.NewTimer(r.cfg.PollInterval)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+
+			r.l.Info(ctx, "stopping supabase auth user sync worker", zap.Error(ctx.Err()))
+
+			return ctx.Err()
+		case <-timer.C:
 		}
 	}
 }
 
-func (r *Runner) poll(ctx context.Context) {
+func (r *Runner) drain(ctx context.Context) {
+	for {
+		processed := r.pollOnce(ctx)
+		if processed == 0 {
+			return
+		}
+	}
+}
+
+func (r *Runner) pollOnce(ctx context.Context) int {
 	claimedAt := time.Now()
 	items, err := r.store.ClaimBatch(ctx, r.lockOwner, r.cfg.LockTimeout, r.cfg.BatchSize)
 	if err != nil {
@@ -76,18 +99,64 @@ func (r *Runner) poll(ctx context.Context) {
 			zap.Error(err),
 		)
 
-		return
+		return 0
 	}
 
 	if len(items) == 0 {
-		return
+		return 0
 	}
 
 	summary := newBatchSummary(items, claimedAt)
+	ackCandidates := make([]ackCandidate, 0, len(items))
 
 	for _, item := range items {
-		summary.Add(r.processor.process(ctx, item))
+		result := r.processor.process(ctx, item)
+		if result.Outcome == processOutcomeReadyToAck {
+			ackCandidates = append(ackCandidates, ackCandidate{
+				item:   item,
+				result: result,
+			})
+
+			continue
+		}
+
+		summary.Add(result)
+	}
+
+	if len(ackCandidates) > 0 {
+		r.finalizeAcks(ctx, ackCandidates, &summary)
 	}
 
 	r.l.Log(ctx, summary.Level(), "processed supabase auth sync queue batch", summary.Fields(time.Since(claimedAt))...)
+
+	return len(items)
+}
+
+func (r *Runner) finalizeAcks(ctx context.Context, candidates []ackCandidate, summary *batchSummary) {
+	ids := make([]int64, 0, len(candidates))
+	for _, candidate := range candidates {
+		ids = append(ids, candidate.item.ID)
+	}
+
+	if err := r.store.AckBatch(ctx, ids); err != nil {
+		for _, candidate := range candidates {
+			candidate.result.Outcome = processOutcomeAckFailed
+			summary.Add(candidate.result)
+
+			r.l.Error(ctx, "processed supabase auth sync queue item but failed to ack",
+				append(
+					processResultFields(candidate.item, candidate.result, time.Now()),
+					zap.NamedError("ack_error", err),
+				)...,
+			)
+		}
+
+		return
+	}
+
+	for _, candidate := range candidates {
+		candidate.result.Outcome = processOutcomeAcked
+		summary.Add(candidate.result)
+		r.l.Info(ctx, "processed supabase auth sync queue item", processResultFields(candidate.item, candidate.result, time.Now())...)
+	}
 }

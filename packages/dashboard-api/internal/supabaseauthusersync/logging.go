@@ -13,6 +13,7 @@ import (
 type processOutcome string
 
 const (
+	processOutcomeReadyToAck       processOutcome = "ready_to_ack"
 	processOutcomeAcked            processOutcome = "acked"
 	processOutcomeAckFailed        processOutcome = "ack_failed"
 	processOutcomeRetried          processOutcome = "retried"

@@ -15,7 +15,6 @@ import (
 )
 
 type processorStore interface {
-	Ack(ctx context.Context, id int64) error
 	Retry(ctx context.Context, id int64, backoff time.Duration, lastError string) error
 	DeadLetter(ctx context.Context, id int64, lastError string) error
 	GetAuthUser(ctx context.Context, userID uuid.UUID) (*AuthUser, error)
@@ -46,21 +45,7 @@ func (p *Processor) process(ctx context.Context, item QueueItem) processResult {
 	}
 
 	if err == nil {
-		if ackErr := p.store.Ack(ctx, item.ID); ackErr != nil {
-			result.Outcome = processOutcomeAckFailed
-
-			p.l.Error(ctx, "processed supabase auth sync queue item but failed to ack",
-				append(
-					processResultFields(item, result, time.Now()),
-					zap.NamedError("ack_error", ackErr),
-				)...,
-			)
-
-			return result
-		}
-
-		result.Outcome = processOutcomeAcked
-		p.l.Info(ctx, "processed supabase auth sync queue item", processResultFields(item, result, time.Now())...)
+		result.Outcome = processOutcomeReadyToAck
 
 		return result
 	}
@@ -140,6 +125,14 @@ func (p *Processor) processOnce(ctx context.Context, item QueueItem) (action rec
 }
 
 func (p *Processor) reconcile(ctx context.Context, item QueueItem) (reconcileAction, error) {
+	if item.Operation == "delete" {
+		if err := p.store.DeletePublicUser(ctx, item.UserID); err != nil {
+			return "", fmt.Errorf("delete public.users %s: %w", item.UserID, err)
+		}
+
+		return reconcileActionDeletePublicUser, nil
+	}
+
 	authUser, err := p.store.GetAuthUser(ctx, item.UserID)
 
 	if errors.Is(err, pgx.ErrNoRows) {

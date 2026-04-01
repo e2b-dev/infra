@@ -64,8 +64,12 @@ func (s *Store) ClaimBatch(ctx context.Context, lockOwner string, lockTimeout ti
 	return items, nil
 }
 
-func (s *Store) Ack(ctx context.Context, id int64) error {
-	return s.authQueries.AckUserSyncQueueItem(ctx, id)
+func (s *Store) AckBatch(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	return s.authQueries.AckUserSyncQueueItems(ctx, ids)
 }
 
 func (s *Store) Retry(ctx context.Context, id int64, backoff time.Duration, lastError string) error {
