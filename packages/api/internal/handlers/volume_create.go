@@ -141,6 +141,12 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		return
 	}
 
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "created_volume", posthog.NewProperties().
+		Set("volume_id", volume.ID.String()).
+		Set("volume_name", volume.Name).
+		Set("volume_type", volumeType),
+	)
+
 	token, err := generateVolumeContentToken(a.config.VolumesToken, volume, team)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Volume created, but failed to generate volume content token")
@@ -148,12 +154,6 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 
 		return
 	}
-
-	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "created_volume", posthog.NewProperties().
-		Set("volume_id", volume.ID.String()).
-		Set("volume_name", volume.Name).
-		Set("volume_type", volumeType),
-	)
 
 	result := api.VolumeAndToken{
 		VolumeID: volume.ID.String(),
