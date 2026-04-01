@@ -33,14 +33,15 @@ func (o *Orchestrator) analyticsRemove(ctx context.Context, sandbox sandbox.Sand
 		sandbox.TeamID.String(),
 		"closed_instance", posthog.NewProperties().
 			Set("instance_id", sandbox.SandboxID).
-			Set("environment", sandbox.TemplateID).
+			Set("environment", sandbox.BaseTemplateID).
+			Set("env_id", sandbox.TemplateID).
 			Set("state_action", stateAction.Name).
 			Set("duration", duration),
 	)
 
 	_, err := o.analytics.InstanceStopped(ctx, &analyticscollector.InstanceStoppedEvent{
 		TeamId:        sandbox.TeamID.String(),
-		EnvironmentId: sandbox.TemplateID,
+		EnvironmentId: sandbox.BaseTemplateID,
 		InstanceId:    sandbox.SandboxID,
 		ExecutionId:   sandbox.ExecutionID,
 		Timestamp:     timestamppb.New(stopTime),

@@ -276,6 +276,7 @@ func snapshotsToPaginatedSandboxes(ctx context.Context, snapshots []queries.GetS
 				ClientID:    consts.ClientID, // for backwards compatibility we need to return a client id
 				Alias:       alias,
 				TemplateID:  snapshot.BaseEnvID,
+				EnvID:       snapshot.EnvID,
 				SandboxID:   snapshot.SandboxID,
 				StartedAt:   snapshot.SandboxStartedAt.Time,
 				CpuCount:    int32(record.BuildVcpu),
@@ -318,6 +319,7 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []sandbox.Sandbox) []util
 			ListedSandbox: api.ListedSandbox{
 				ClientID:     info.ClientID,
 				TemplateID:   info.BaseTemplateID,
+				EnvID:        info.TemplateID,
 				Alias:        info.Alias,
 				SandboxID:    info.SandboxID,
 				StartedAt:    info.StartTime,

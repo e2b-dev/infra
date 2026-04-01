@@ -33,6 +33,8 @@ func TestSandboxConnect(t *testing.T) {
 		require.Equal(t, http.StatusCreated, sbxConnect.StatusCode())
 		require.NotNil(t, sbxConnect.JSON201)
 		assert.Equal(t, sbxConnect.JSON201.SandboxID, sbxId)
+		assert.Equal(t, sbx.TemplateID, sbxConnect.JSON201.TemplateID)
+		assert.NotEqual(t, sbxConnect.JSON201.TemplateID, sbxConnect.JSON201.EnvID)
 
 		// Check if the sandbox is running
 		res, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbxId, setup.WithAPIKey())
@@ -40,6 +42,8 @@ func TestSandboxConnect(t *testing.T) {
 		require.Equal(t, http.StatusOK, res.StatusCode())
 		require.NotNil(t, res.JSON200)
 		assert.Equal(t, api.Running, res.JSON200.State)
+		assert.Equal(t, sbx.TemplateID, res.JSON200.TemplateID)
+		assert.NotEqual(t, res.JSON200.TemplateID, res.JSON200.EnvID)
 	})
 
 	t.Run("connect to running sandbox", func(t *testing.T) {

@@ -30,6 +30,7 @@ func TestSandboxDetailRunning(t *testing.T) {
 	returnedSbx := response.JSON200
 	assert.Equal(t, sbx.SandboxID, returnedSbx.SandboxID)
 	assert.Equal(t, sbx.TemplateID, returnedSbx.TemplateID)
+	assert.Equal(t, returnedSbx.TemplateID, returnedSbx.EnvID)
 }
 
 func TestSandboxDetailReturnsLifecycleAndNetworkConfig(t *testing.T) {
@@ -62,6 +63,12 @@ func TestSandboxDetailReturnsLifecycleAndNetworkConfig(t *testing.T) {
 
 		returnedSbx := response.JSON200
 		assert.Equal(t, sbx.SandboxID, returnedSbx.SandboxID)
+		assert.Equal(t, sbx.TemplateID, returnedSbx.TemplateID)
+		if expectedState == api.Running {
+			assert.Equal(t, returnedSbx.TemplateID, returnedSbx.EnvID)
+		} else {
+			assert.NotEqual(t, returnedSbx.TemplateID, returnedSbx.EnvID)
+		}
 		assert.Equal(t, expectedState, returnedSbx.State)
 
 		require.NotNil(t, returnedSbx.AllowInternetAccess)
@@ -98,6 +105,8 @@ func TestSandboxDetailPaused(t *testing.T) {
 	require.Equal(t, http.StatusOK, response.StatusCode())
 	returnedSbx := response.JSON200
 	assert.Equal(t, sbx.SandboxID, returnedSbx.SandboxID)
+	assert.Equal(t, sbx.TemplateID, returnedSbx.TemplateID)
+	assert.NotEqual(t, returnedSbx.TemplateID, returnedSbx.EnvID)
 }
 
 func TestSandboxDetailPausingSandbox(t *testing.T) {

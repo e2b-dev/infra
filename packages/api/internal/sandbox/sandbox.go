@@ -111,7 +111,8 @@ type Sandbox struct {
 func (s Sandbox) ToAPISandbox() *api.Sandbox {
 	return &api.Sandbox{
 		SandboxID:          s.SandboxID,
-		TemplateID:         s.TemplateID,
+		TemplateID:         s.BaseTemplateID,
+		EnvID:              s.TemplateID,
 		ClientID:           s.ClientID,
 		Alias:              s.Alias,
 		EnvdVersion:        s.EnvdVersion,

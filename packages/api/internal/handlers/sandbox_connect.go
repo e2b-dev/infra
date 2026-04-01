@@ -140,7 +140,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandboxID,
-		TemplateID: lastSnapshot.Snapshot.EnvID,
+		TemplateID: lastSnapshot.Snapshot.BaseEnvID,
 		TeamID:     teamID.String(),
 	}).Debug(ctx, "Started resuming sandbox")
 
