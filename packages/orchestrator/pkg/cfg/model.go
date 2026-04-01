@@ -91,6 +91,7 @@ type Config struct {
 	RedisTLSCABase64           string            `env:"REDIS_TLS_CA_BASE64"`
 	RedisURL                   string            `env:"REDIS_URL"`
 	RedisPoolSize              int               `env:"REDIS_POOL_SIZE"               envDefault:"10"`
+	NBDPoolSize                int               `env:"NBD_POOL_SIZE"                 envDefault:"64"`
 	Services                   []string          `env:"ORCHESTRATOR_SERVICES"         envDefault:"orchestrator"`
 	PersistentVolumeMounts     map[string]string `env:"PERSISTENT_VOLUME_MOUNTS"`
 }

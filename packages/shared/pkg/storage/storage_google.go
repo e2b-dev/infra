@@ -15,6 +15,7 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/googleapis/gax-go/v2"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"google.golang.org/api/iterator"
@@ -101,6 +102,7 @@ func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (Sto
 		option.WithGRPCConnectionPool(grpcPoolSize),
 		option.WithGRPCDialOption(grpc.WithInitialConnWindowSize(32 * megabyte)),
 		option.WithGRPCDialOption(grpc.WithInitialWindowSize(4 * megabyte)),
+		option.WithGRPCDialOption(grpc.WithStatsHandler(otelgrpc.NewClientHandler())),
 		internaloption.EnableDirectPath(defaultGCSEnableDirectPath),
 	}
 

@@ -20,9 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-// maxSlotsReady is the number of slots that are ready to be used.
 const (
-	maxSlotsReady                 = 64
 	waitOnNBDError                = 50 * time.Millisecond
 	devicePoolCloseReleaseTimeout = 10 * time.Minute
 )
@@ -82,7 +80,11 @@ type DevicePool struct {
 	slots chan DeviceSlot
 }
 
-func NewDevicePool() (*DevicePool, error) {
+func NewDevicePool(maxSlotsReady int) (*DevicePool, error) {
+	if maxSlotsReady <= 0 {
+		return nil, fmt.Errorf("maxSlotsReady must be > 0, got %d", maxSlotsReady)
+	}
+
 	maxDevices, err := getMaxDevices()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get max devices: %w", err)
@@ -95,7 +97,7 @@ func NewDevicePool() (*DevicePool, error) {
 	pool := &DevicePool{
 		done:      make(chan struct{}),
 		usedSlots: bitset.New(maxDevices),
-		slots:     make(chan DeviceSlot, int(math.Min(maxSlotsReady, float64(maxDevices)))),
+		slots:     make(chan DeviceSlot, int(math.Min(float64(maxSlotsReady), float64(maxDevices)))),
 	}
 
 	return pool, nil

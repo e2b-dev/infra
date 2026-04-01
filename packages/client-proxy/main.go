@@ -25,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -63,6 +64,7 @@ func run() int {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create metrics exporter", zap.Error(err))
 	}
+	e2bgrpc.StartChannelzSampler(ctx)
 	defer func() {
 		err := tel.Shutdown(ctx)
 		if err != nil {
@@ -143,6 +145,8 @@ func run() int {
 
 			return 1
 		}
+
+		pausedSandboxResumer.Init(ctx)
 	} else {
 		l.Warn(ctx, "API gRPC address not set; paused sandbox checks disabled")
 	}
