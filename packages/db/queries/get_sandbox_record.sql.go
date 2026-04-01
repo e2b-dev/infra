@@ -15,7 +15,8 @@ import (
 const getSandboxRecordByTeamAndSandboxID = `-- name: GetSandboxRecordByTeamAndSandboxID :one
 SELECT
     sl.sandbox_id,
-    sl.env_id AS template_id,
+    COALESCE(s.base_env_id, sl.env_id) AS template_id,
+    sl.env_id,
     sl.vcpu,
     sl.ram_mb,
     sl.total_disk_size_mb,
@@ -26,10 +27,13 @@ SELECT
 FROM billing.sandbox_logs sl
 LEFT JOIN public.teams t ON t.id = sl.team_id
 LEFT JOIN public.clusters c ON c.id = t.cluster_id
+LEFT JOIN public.snapshots s
+    ON s.sandbox_id = sl.sandbox_id
+   AND s.team_id = sl.team_id
 LEFT JOIN LATERAL (
     SELECT ea.alias
     FROM public.env_aliases ea
-    WHERE ea.env_id = sl.env_id
+    WHERE ea.env_id = COALESCE(s.base_env_id, sl.env_id)
     ORDER BY ea.alias
     LIMIT 1
 ) template_alias ON TRUE
@@ -49,6 +53,7 @@ type GetSandboxRecordByTeamAndSandboxIDParams struct {
 type GetSandboxRecordByTeamAndSandboxIDRow struct {
 	SandboxID       string
 	TemplateID      string
+	EnvID           string
 	Vcpu            int64
 	RamMb           int64
 	TotalDiskSizeMb int64
@@ -64,6 +69,7 @@ func (q *Queries) GetSandboxRecordByTeamAndSandboxID(ctx context.Context, arg Ge
 	err := row.Scan(
 		&i.SandboxID,
 		&i.TemplateID,
+		&i.EnvID,
 		&i.Vcpu,
 		&i.RamMb,
 		&i.TotalDiskSizeMb,

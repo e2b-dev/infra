@@ -299,6 +299,7 @@ components:
       type: object
       required:
         - templateID
+        - envID
         - sandboxID
         - startedAt
         - cpuCount
@@ -308,6 +309,9 @@ components:
         templateID:
           type: string
           description: Identifier of the template from which is the sandbox created
+        envID:
+          type: string
+          description: Identifier of the environment used for the recorded sandbox execution. This can be a snapshot env ID.
         alias:
           type: string
           description: Alias of the template
