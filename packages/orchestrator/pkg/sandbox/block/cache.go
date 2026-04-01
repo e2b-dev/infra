@@ -258,6 +258,11 @@ func (c *Cache) isCached(off, length int64) bool {
 	// Cap if the length goes beyond the cache size, so we don't check for blocks that are out of bounds.
 	end := min(off+length, c.size)
 
+	// Handle zero-length or empty range (vacuously true - no blocks to check)
+	if end <= off {
+		return true
+	}
+
 	// Check all blocks in the range
 	startBlock := uint(header.BlockIdx(off, c.blockSize))
 	endBlock := uint(header.BlockIdx(end-1, c.blockSize))
@@ -275,6 +280,11 @@ func (c *Cache) isCached(off, length int64) bool {
 }
 
 func (c *Cache) setIsCached(off, length int64) {
+	// Handle zero-length - nothing to mark
+	if length <= 0 {
+		return
+	}
+
 	startBlock := uint(header.BlockIdx(off, c.blockSize))
 	endBlock := uint(header.BlockIdx(off+length-1, c.blockSize))
 
