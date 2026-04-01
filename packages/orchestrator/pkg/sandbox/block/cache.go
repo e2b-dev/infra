@@ -8,7 +8,6 @@ import (
 	"math"
 	"math/rand"
 	"os"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -49,7 +48,8 @@ type Cache struct {
 	blockSize int64
 	mmap      *mmap.MMap
 	mu        sync.RWMutex
-	dirty     sync.Map
+	dirty     *bitset.BitSet
+	dirtyMu   sync.RWMutex // protects dirty bitset for concurrent access
 	dirtyFile bool
 	closed    atomic.Bool
 }
@@ -68,6 +68,7 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 			filePath:  filePath,
 			size:      size,
 			blockSize: blockSize,
+			dirty:     bitset.New(0),
 			dirtyFile: dirtyFile,
 		}, nil
 	}
@@ -87,11 +88,14 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		return nil, fmt.Errorf("error mapping file: %w", err)
 	}
 
+	totalBlocks := uint(header.TotalBlocks(size, blockSize))
+
 	return &Cache{
 		mmap:      &mm,
 		filePath:  filePath,
 		size:      size,
 		blockSize: blockSize,
+		dirty:     bitset.New(totalBlocks),
 		dirtyFile: dirtyFile,
 	}, nil
 }
@@ -253,12 +257,16 @@ func (c *Cache) isCached(off, length int64) bool {
 
 	// Cap if the length goes beyond the cache size, so we don't check for blocks that are out of bounds.
 	end := min(off+length, c.size)
-	// Recalculate the length based on the capped end, so we check for the correct blocks in case of capping.
-	length = end - off
 
-	for _, blockOff := range header.BlocksOffsets(length, c.blockSize) {
-		_, dirty := c.dirty.Load(off + blockOff)
-		if !dirty {
+	// Check all blocks in the range
+	startBlock := uint(header.BlockIdx(off, c.blockSize))
+	endBlock := uint(header.BlockIdx(end-1, c.blockSize))
+
+	c.dirtyMu.RLock()
+	defer c.dirtyMu.RUnlock()
+
+	for i := startBlock; i <= endBlock; i++ {
+		if !c.dirty.Test(i) {
 			return false
 		}
 	}
@@ -267,9 +275,14 @@ func (c *Cache) isCached(off, length int64) bool {
 }
 
 func (c *Cache) setIsCached(off, length int64) {
-	for _, blockOff := range header.BlocksOffsets(length, c.blockSize) {
-		c.dirty.Store(off+blockOff, struct{}{})
+	startBlock := uint(header.BlockIdx(off, c.blockSize))
+	endBlock := uint(header.BlockIdx(off+length-1, c.blockSize))
+
+	c.dirtyMu.Lock()
+	for i := startBlock; i <= endBlock; i++ {
+		c.dirty.Set(i)
 	}
+	c.dirtyMu.Unlock()
 }
 
 // When using WriteAtWithoutLock you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
@@ -291,16 +304,18 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	return n, nil
 }
 
-// dirtySortedKeys returns a sorted list of dirty keys.
-// Key represents a block offset.
+// dirtySortedKeys returns a sorted list of dirty block offsets.
 func (c *Cache) dirtySortedKeys() []int64 {
-	var keys []int64
-	c.dirty.Range(func(key, _ any) bool {
-		keys = append(keys, key.(int64))
+	c.dirtyMu.RLock()
+	defer c.dirtyMu.RUnlock()
 
-		return true
-	})
-	slices.Sort(keys)
+	// Pre-allocate with estimated capacity
+	keys := make([]int64, 0, c.dirty.Count())
+
+	// Iterate set bits in order (bitset iteration is already sorted)
+	for i, ok := c.dirty.NextSet(0); ok; i, ok = c.dirty.NextSet(i + 1) {
+		keys = append(keys, header.BlockOffset(int64(i), c.blockSize))
+	}
 
 	return keys
 }
@@ -491,9 +506,13 @@ func (c *Cache) copyProcessMemory(
 				return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
 			}
 
-			for _, blockOff := range header.BlocksOffsets(segmentSize, c.blockSize) {
-				c.dirty.Store(offset+blockOff, struct{}{})
+			startBlock := uint(header.BlockIdx(offset, c.blockSize))
+			endBlock := uint(header.BlockIdx(offset+segmentSize-1, c.blockSize))
+			c.dirtyMu.Lock()
+			for i := startBlock; i <= endBlock; i++ {
+				c.dirty.Set(i)
 			}
+			c.dirtyMu.Unlock()
 
 			offset += segmentSize
 
