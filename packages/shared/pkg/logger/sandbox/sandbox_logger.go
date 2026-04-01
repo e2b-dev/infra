@@ -27,6 +27,7 @@ type SandboxMetricsFields struct {
 	CPUUsedPercent float32
 	MemTotalMiB    uint64
 	MemUsedMiB     uint64
+	MemCacheBytes  uint64
 }
 
 func (sl *SandboxLogger) Metrics(ctx context.Context, metrics SandboxMetricsFields) {
@@ -38,6 +39,7 @@ func (sl *SandboxLogger) Metrics(ctx context.Context, metrics SandboxMetricsFiel
 		zap.Uint32("cpuCount", metrics.CPUCount),
 		zap.Uint64("memTotalMiB", metrics.MemTotalMiB),
 		zap.Uint64("memUsedMiB", metrics.MemUsedMiB),
+		zap.Uint64("memCacheBytes", metrics.MemCacheBytes),
 	)
 }
 

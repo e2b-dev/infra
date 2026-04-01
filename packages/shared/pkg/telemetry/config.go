@@ -12,6 +12,10 @@ import (
 
 var otelCollectorGRPCEndpoint = os.Getenv("OTEL_COLLECTOR_GRPC_ENDPOINT")
 
+func OTELCollectorGRPCEndpoint() string {
+	return otelCollectorGRPCEndpoint
+}
+
 func GetResource(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID string, additional ...attribute.KeyValue) (*resource.Resource, error) {
 	attributes := []attribute.KeyValue{
 		semconv.ServiceName(serviceName),

@@ -188,7 +188,7 @@ func newTestInfra(t *testing.T, ctx context.Context) *testInfra {
 	require.NoError(t, err)
 
 	// NBD
-	devicePool, err := nbd.NewDevicePool()
+	devicePool, err := nbd.NewDevicePool(orcConfig.NBDPoolSize)
 	require.NoError(t, err)
 	go devicePool.Populate(ctx)
 	ti.closers = append(ti.closers, func(ctx context.Context) { devicePool.Close(ctx) })
