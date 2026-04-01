@@ -175,10 +175,6 @@ variable "postgres_connection_string_secret_name" {
   type = string
 }
 
-variable "auth_db_connection_string_secret_version" {
-  type = any
-}
-
 variable "postgres_read_replica_connection_string_secret_version" {
   type = any
 }
