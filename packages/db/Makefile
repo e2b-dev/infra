@@ -4,6 +4,8 @@ PREFIX := $(strip $(subst ",,$(PREFIX)))
 
 goose := GOOSE_DRIVER=postgres GOOSE_DBSTRING=$(POSTGRES_CONNECTION_STRING) go tool goose -table "_migrations" -dir "migrations"
 goose-local := GOOSE_DBSTRING=postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable go tool goose -table "_migrations" -dir "migrations" postgres
+goose-dashboard := GOOSE_DRIVER=postgres GOOSE_DBSTRING=$(POSTGRES_CONNECTION_STRING) go tool goose -table "_migrations_dashboard" -dir "pkg/dashboard/migrations"
+goose-dashboard-local := GOOSE_DBSTRING=postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable go tool goose -table "_migrations_dashboard" -dir "pkg/dashboard/migrations" postgres
 
 
 .PHONY: migrate
@@ -16,6 +18,18 @@ migrate:
 migrate-local:
 	@echo "Applying Postgres migration *$(notdir $@)* for ${ENV}"
 	@$(goose-local) up
+	@echo "Done"
+
+.PHONY: migrate-dashboard
+migrate-dashboard:
+	@echo "Applying Postgres migration *$(notdir $@)* for ${ENV}"
+	@$(goose-dashboard) up
+	@echo "Done"
+
+.PHONY: migrate-dashboard-local
+migrate-dashboard-local:
+	@echo "Applying Postgres migration *$(notdir $@)* for ${ENV}"
+	@$(goose-dashboard-local) up
 	@echo "Done"
 
 .PHONY: migrate/up
@@ -43,6 +57,10 @@ endif
 .PHONY: status
 status:
 	@$(goose) status
+
+.PHONY: status-dashboard
+status-dashboard:
+	@$(goose-dashboard) status
 
 .PHONY: generate
 generate:

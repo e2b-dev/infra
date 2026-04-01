@@ -32,6 +32,7 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/handlers"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
+	dashboarddb "github.com/e2b-dev/infra/packages/db/pkg/dashboard"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	e2benv "github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -50,8 +51,9 @@ const (
 )
 
 var (
-	commitSHA                  string
-	expectedMigrationTimestamp string
+	commitSHA                           string
+	expectedCoreMigrationTimestamp      string
+	expectedDashboardMigrationTimestamp string
 )
 
 func run() int {
@@ -93,22 +95,33 @@ func run() int {
 
 	l.Info(ctx, "Starting dashboard-api service...", zap.String("commit_sha", commitSHA), zap.String("instance_id", serviceInstanceID))
 
-	expectedMigration, err := strconv.ParseInt(expectedMigrationTimestamp, 10, 64)
+	expectedCoreMigration, err := strconv.ParseInt(expectedCoreMigrationTimestamp, 10, 64)
 	if err != nil {
-		l.Warn(ctx, "Failed to parse expected migration timestamp", zap.Error(err))
-		expectedMigration = 0
+		l.Warn(ctx, "Failed to parse expected core migration timestamp", zap.Error(err))
+		expectedCoreMigration = 0
 	}
 
-	err = sqlcdb.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)
+	expectedDashboardMigration, err := strconv.ParseInt(expectedDashboardMigrationTimestamp, 10, 64)
 	if err != nil {
-		l.Fatal(ctx, "failed to check migration version", zap.Error(err))
+		l.Warn(ctx, "Failed to parse expected dashboard migration timestamp", zap.Error(err))
+		expectedDashboardMigration = 0
+	}
+
+	err = sqlcdb.CheckMigrationVersionWithTable(ctx, config.PostgresConnectionString, "_migrations", expectedCoreMigration)
+	if err != nil {
+		l.Fatal(ctx, "failed to check core migration version", zap.Error(err))
+	}
+
+	err = sqlcdb.CheckMigrationVersionWithTable(ctx, config.PostgresConnectionString, "_migrations_dashboard", expectedDashboardMigration)
+	if err != nil {
+		l.Fatal(ctx, "failed to check dashboard migration version", zap.Error(err))
 	}
 
 	if !e2benv.IsDebug() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	db, err := sqlcdb.NewClient(
+	db, err := dashboarddb.NewClient(
 		ctx,
 		config.PostgresConnectionString,
 		pool.WithMaxConnections(8),

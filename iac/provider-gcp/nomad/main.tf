@@ -128,7 +128,8 @@ module "dashboard_api" {
   update_stanza   = var.dashboard_api_count > 1
   environment     = var.environment
 
-  image = data.google_artifact_registry_docker_image.dashboard_api_image[0].self_link
+  image                    = data.google_artifact_registry_docker_image.dashboard_api_image[0].self_link
+  db_migrator_docker_image = data.google_artifact_registry_docker_image.db_migrator_image.self_link
 
   postgres_connection_string             = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   auth_db_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data

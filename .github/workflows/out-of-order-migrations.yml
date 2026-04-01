@@ -15,24 +15,32 @@ jobs:
 
       - name: Compare migrations
         run: |
-          # Get all migration versions from main
-          git ls-tree -r origin/main --name-only | grep '^packages/db/migrations/' | grep -oE '[0-9]{14}' | sort -n > main_versions.txt
-          
-          # Find the highest version number from main
-          HIGHEST_MAIN=$(tail -n1 main_versions.txt)
-          echo "Highest main migration version: $HIGHEST_MAIN"
-        
-          # Find newly added migration files in this PR
-          NEW_FILES=$(git diff --name-status origin/main -- packages/db/migrations/ | grep '^A' | awk '{print $2}')
-          
-          for file in $NEW_FILES; do
-            version=$(basename "$file" | grep -oE '^[0-9]{14}')
-            echo "Checking new migration version: $version"
-            if [ "$version" -le "$HIGHEST_MAIN" ]; then
-              echo "❌ Migration $file is out of order! ($version <= $HIGHEST_MAIN)"
-              exit 1
-            fi
-          done
-          
+          check_stream() {
+            local dir="$1"
+            local stream="$2"
+            local versions_file="$3"
+
+            # Get all migration versions from main
+            git ls-tree -r origin/main --name-only | grep "^${dir}/" | grep -oE '[0-9]{14}' | sort -n > "$versions_file"
+
+            # Find the highest version number from main
+            HIGHEST_MAIN=$(tail -n1 "$versions_file")
+            echo "Highest main ${stream} migration version: $HIGHEST_MAIN"
+
+            # Find newly added migration files in this PR
+            NEW_FILES=$(git diff --name-status origin/main -- "${dir}/" | grep '^A' | awk '{print $2}')
+
+            for file in $NEW_FILES; do
+              version=$(basename "$file" | grep -oE '^[0-9]{14}')
+              echo "Checking new ${stream} migration version: $version"
+              if [ "$version" -le "$HIGHEST_MAIN" ]; then
+                echo "❌ Migration $file is out of order! ($version <= $HIGHEST_MAIN)"
+                exit 1
+              fi
+            done
+          }
+
+          check_stream "packages/db/migrations" "core" "core_main_versions.txt"
+          check_stream "packages/db/pkg/dashboard/migrations" "dashboard" "dashboard_main_versions.txt"
+
           echo "✅ All new migrations are in correct order."
-  

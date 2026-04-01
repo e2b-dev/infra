@@ -11,7 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	dashboardutils "github.com/e2b-dev/infra/packages/dashboard-api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/queries"
+	dashboardqueries "github.com/e2b-dev/infra/packages/db/pkg/dashboard/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -22,7 +22,7 @@ func (s *APIStore) GetBuildsBuildId(c *gin.Context, buildId api.BuildId) {
 	teamID := auth.MustGetTeamInfo(c).Team.ID
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamID.String()), telemetry.WithBuildID(buildId.String()))
 
-	row, err := s.db.GetBuildInfoByTeamAndBuildID(ctx, queries.GetBuildInfoByTeamAndBuildIDParams{
+	row, err := s.db.GetBuildInfoByTeamAndBuildID(ctx, dashboardqueries.GetBuildInfoByTeamAndBuildIDParams{
 		TeamID:  teamID,
 		BuildID: buildId,
 	})

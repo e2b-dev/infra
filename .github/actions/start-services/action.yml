@@ -37,6 +37,7 @@ runs:
         echo "SUPABASE_JWT_SECRETS=${SUPABASE_JWT_SECRET}" >> .env.test
         set -x
         make migrate
+        make -C packages/db migrate-dashboard
         make -C tests/integration seed
       shell: bash
 

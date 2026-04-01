@@ -12,8 +12,8 @@ import (
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
-	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
+	dashboarddb "github.com/e2b-dev/infra/packages/db/pkg/dashboard"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 )
 
@@ -21,13 +21,13 @@ var _ api.ServerInterface = (*APIStore)(nil)
 
 type APIStore struct {
 	config      cfg.Config
-	db          *sqlcdb.Client
+	db          *dashboarddb.Client
 	authDB      *authdb.Client
 	clickhouse  clickhouse.Clickhouse
 	authService *sharedauth.AuthService[*types.Team]
 }
 
-func NewAPIStore(config cfg.Config, db *sqlcdb.Client, authDB *authdb.Client, ch clickhouse.Clickhouse, authService *sharedauth.AuthService[*types.Team]) *APIStore {
+func NewAPIStore(config cfg.Config, db *dashboarddb.Client, authDB *authdb.Client, ch clickhouse.Clickhouse, authService *sharedauth.AuthService[*types.Team]) *APIStore {
 	return &APIStore{
 		config:      config,
 		db:          db,

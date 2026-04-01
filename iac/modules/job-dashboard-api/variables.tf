@@ -14,6 +14,10 @@ variable "image" {
   type = string
 }
 
+variable "db_migrator_docker_image" {
+  type = string
+}
+
 variable "count_instances" {
   type = number
 }

@@ -90,5 +90,29 @@ job "dashboard-api" {
         ports        = ["api"]
       }
     }
+
+    task "db-migrator" {
+      driver = "docker"
+
+      env {
+        POSTGRES_CONNECTION_STRING = "${postgres_connection_string}"
+        MIGRATIONS_DIR             = "./pkg/dashboard/migrations"
+        MIGRATIONS_TABLE           = "_migrations_dashboard"
+      }
+
+      config {
+        image = "${db_migrator_docker_image}"
+      }
+
+      resources {
+        cpu    = 250
+        memory = 128
+      }
+
+      lifecycle {
+        hook    = "prestart"
+        sidecar = false
+      }
+    }
   }
 }

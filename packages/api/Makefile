@@ -6,7 +6,7 @@ PREFIX := $(strip $(subst ",,$(PREFIX)))
 HOSTNAME := $(shell hostname 2> /dev/null || hostnamectl hostname 2> /dev/null)
 $(if $(HOSTNAME),,$(error Failed to determine hostname: both 'hostname' and 'hostnamectl' failed))
 
-expectedMigration := $(shell ./../../scripts/get-latest-migration.sh)
+expectedMigration := $(shell ./../../scripts/get-latest-migration.sh core)
 
 ifeq ($(PROVIDER),aws)
 	REGISTRY_PREFIX := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)core
