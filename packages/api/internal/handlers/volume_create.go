@@ -9,7 +9,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/posthog/posthog-go"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
@@ -141,7 +140,9 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		return
 	}
 
-	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "created_volume", posthog.NewProperties().
+	a.posthog.IdentifyAnalyticsTeam(ctx, team.ID.String(), team.Name)
+	properties := a.posthog.GetPackageToPosthogProperties(&c.Request.Header)
+	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "created_volume", properties.
 		Set("volume_id", volume.ID.String()).
 		Set("volume_name", volume.Name).
 		Set("volume_type", volumeType),
