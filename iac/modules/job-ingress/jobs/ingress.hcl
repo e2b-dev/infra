@@ -92,6 +92,11 @@ EOF
         destination = "local/traefik.toml"
       }
 
+      template {
+        data = ""
+        destination = "local/config/.keep"
+      }
+
 %{ for filename, content in config_files }
       template {
         data        = <<EOF
