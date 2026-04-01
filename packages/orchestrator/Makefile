@@ -29,17 +29,19 @@ build:
 
 BUSYBOX_VERSION ?= 1.36.1
 BUSYBOX_EMBED := pkg/template/build/core/systeminit/busybox
-BUSYBOX_VERSION_FILE := $(BUSYBOX_EMBED).version
+BUSYBOX_STAMP := $(BUSYBOX_EMBED).stamp
 
+# Download busybox if missing or version/arch changed. For Docker builds,
+# the Dockerfile downloads and verifies the binary separately — this target
+# is only used by build-local and build-debug (local dev / CI).
 .PHONY: fetch-busybox
 fetch-busybox:
-	@CURRENT=$$(cat $(BUSYBOX_VERSION_FILE) 2>/dev/null || echo ""); \
-	if [ ! -f $(BUSYBOX_EMBED) ] || [ "$$CURRENT" != "$(BUSYBOX_VERSION)-$(BUILD_ARCH)" ]; then \
+	@if [ ! -f $(BUSYBOX_EMBED) ] || [ "$$(cat $(BUSYBOX_STAMP) 2>/dev/null)" != "$(BUSYBOX_VERSION)-$(BUILD_ARCH)" ]; then \
 		echo "Downloading busybox v$(BUSYBOX_VERSION) ($(BUILD_ARCH))..."; \
 		curl -sfL -o $(BUSYBOX_EMBED).tmp "https://github.com/e2b-dev/fc-busybox/releases/download/v$(BUSYBOX_VERSION)/busybox_v$(BUSYBOX_VERSION)_$(BUILD_ARCH)" \
 			&& mv $(BUSYBOX_EMBED).tmp $(BUSYBOX_EMBED) \
 			&& chmod +x $(BUSYBOX_EMBED) \
-			&& echo "$(BUSYBOX_VERSION)-$(BUILD_ARCH)" > $(BUSYBOX_VERSION_FILE) \
+			&& echo "$(BUSYBOX_VERSION)-$(BUILD_ARCH)" > $(BUSYBOX_STAMP) \
 			|| { rm -f $(BUSYBOX_EMBED).tmp; echo "ERROR: failed to download busybox"; exit 1; }; \
 	fi
 

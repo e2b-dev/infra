@@ -48,7 +48,10 @@ COPY ./orchestrator/Makefile ./orchestrator/Makefile
 WORKDIR /build/orchestrator
 
 ARG COMMIT_SHA
-RUN --mount=type=cache,target=/root/.cache/go-build make build-local COMMIT_SHA=${COMMIT_SHA}
+# Build directly (not via make build-local) to skip fetch-busybox — binary is already downloaded above.
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=1 GOOS=linux go build -o bin/orchestrator -ldflags "-X=main.commitSHA=${COMMIT_SHA}" . \
+    && CGO_ENABLED=1 GOOS=linux go build -o bin/clean-nfs-cache -ldflags "-X=main.commitSHA=${COMMIT_SHA}" ./cmd/clean-nfs-cache
 
 FROM scratch
 
