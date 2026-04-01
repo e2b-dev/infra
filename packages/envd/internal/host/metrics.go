@@ -25,6 +25,7 @@ type Metrics struct {
 
 	MemTotal uint64 `json:"mem_total"` // Total virtual memory in bytes
 	MemUsed  uint64 `json:"mem_used"`  // Used virtual memory in bytes
+	MemCache uint64 `json:"mem_cache"` // Cached memory (page cache) in bytes
 
 	DiskUsed  uint64 `json:"disk_used"`  // Used disk space in bytes
 	DiskTotal uint64 `json:"disk_total"` // Total disk space in bytes
@@ -68,6 +69,7 @@ func GetMetrics() (*Metrics, error) {
 		MemTotalMiB:    memTotalMiB,
 		MemTotal:       v.Total,
 		MemUsed:        v.Used,
+		MemCache:       v.Cached,
 		DiskUsed:       diskMetrics.Total - diskMetrics.Available,
 		DiskTotal:      diskMetrics.Total,
 	}, nil

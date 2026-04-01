@@ -31,10 +31,10 @@ func (c *Cleaner) stat(path string) (*Candidate, error) {
 	}, nil
 }
 
-func (c *Cleaner) statInDir(df *os.File, filename string) (*File, error) {
+func (c *Cleaner) statInDir(dirPath string, filename string) (*File, error) {
 	c.StatxInDirC.Add(1)
-	// performance on OS X doeas not matter, so just use the full stat
-	cand, err := c.stat(filepath.Join(df.Name(), filename))
+	// performance on OS X does not matter, so just use the full stat
+	cand, err := c.stat(filepath.Join(dirPath, filename))
 	if err != nil {
 		return nil, err
 	}

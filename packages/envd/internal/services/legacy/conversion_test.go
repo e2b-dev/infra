@@ -2,6 +2,7 @@ package legacy
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -22,12 +23,19 @@ import (
 func TestFilesystemClient_FieldFormatter(t *testing.T) {
 	t.Parallel()
 	fsh := filesystemconnectmocks.NewMockFilesystemHandler(t)
-	fsh.EXPECT().Move(mock.Anything, mock.Anything).Return(connect.NewResponse(&filesystem.MoveResponse{
-		Entry: &filesystem.EntryInfo{
-			Name:  "test-name",
-			Owner: "new-extra-field",
+	// Use RunAndReturn to create a fresh response per call. Using Return()
+	// shares one Response across parallel subtests, causing a data race on
+	// the lazily-initialized header/trailer maps inside connect.Response.
+	fsh.EXPECT().Move(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, _ *connect.Request[filesystem.MoveRequest]) (*connect.Response[filesystem.MoveResponse], error) {
+			return connect.NewResponse(&filesystem.MoveResponse{
+				Entry: &filesystem.EntryInfo{
+					Name:  "test-name",
+					Owner: "new-extra-field",
+				},
+			}), nil
 		},
-	}), nil)
+	)
 
 	_, handler := filesystemconnect.NewFilesystemHandler(fsh,
 		connect.WithInterceptors(
