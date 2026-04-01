@@ -30,9 +30,15 @@ WORKDIR /build
 COPY ./shared/pkg ./shared/pkg
 COPY ./clickhouse/pkg ./clickhouse/pkg
 
-# Download busybox from fc-busybox release for go:embed
-ADD https://github.com/e2b-dev/fc-busybox/releases/download/v${BUSYBOX_VERSION}/busybox_v${BUSYBOX_VERSION}_${TARGETARCH} \
-    ./orchestrator/pkg/template/build/core/systeminit/busybox
+# Download busybox from fc-busybox release for go:embed and verify checksum.
+# Update checksums when bumping BUSYBOX_VERSION.
+ARG BUSYBOX_SHA256_amd64=e08b77a00854cc816032581fcdc44f2ae2b1387d2bc8043186c90815e6b8bf44
+ARG BUSYBOX_SHA256_arm64=03542aead28766c5df39fe33ee6db8df8d50d8f939a015403be700586db99306
+RUN EXPECTED=$(eval echo \$BUSYBOX_SHA256_${TARGETARCH}) \
+    && curl -sfL -o /tmp/busybox "https://github.com/e2b-dev/fc-busybox/releases/download/v${BUSYBOX_VERSION}/busybox_v${BUSYBOX_VERSION}_${TARGETARCH}" \
+    && echo "${EXPECTED}  /tmp/busybox" | sha256sum -c - \
+    && mv /tmp/busybox ./orchestrator/pkg/template/build/core/systeminit/busybox \
+    && chmod +x ./orchestrator/pkg/template/build/core/systeminit/busybox
 
 COPY ./orchestrator/pkg ./orchestrator/pkg
 COPY ./orchestrator/cmd ./orchestrator/cmd

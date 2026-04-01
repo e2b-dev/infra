@@ -29,13 +29,18 @@ build:
 
 BUSYBOX_VERSION ?= 1.36.1
 BUSYBOX_EMBED := pkg/template/build/core/systeminit/busybox
+BUSYBOX_VERSION_FILE := $(BUSYBOX_EMBED).version
 
 .PHONY: fetch-busybox
 fetch-busybox:
-	@if [ ! -f $(BUSYBOX_EMBED) ]; then \
+	@CURRENT=$$(cat $(BUSYBOX_VERSION_FILE) 2>/dev/null || echo ""); \
+	if [ ! -f $(BUSYBOX_EMBED) ] || [ "$$CURRENT" != "$(BUSYBOX_VERSION)-$(BUILD_ARCH)" ]; then \
 		echo "Downloading busybox v$(BUSYBOX_VERSION) ($(BUILD_ARCH))..."; \
-		curl -sL -o $(BUSYBOX_EMBED) "https://github.com/e2b-dev/fc-busybox/releases/download/v$(BUSYBOX_VERSION)/busybox_v$(BUSYBOX_VERSION)_$(BUILD_ARCH)"; \
-		chmod +x $(BUSYBOX_EMBED); \
+		curl -sfL -o $(BUSYBOX_EMBED).tmp "https://github.com/e2b-dev/fc-busybox/releases/download/v$(BUSYBOX_VERSION)/busybox_v$(BUSYBOX_VERSION)_$(BUILD_ARCH)" \
+			&& mv $(BUSYBOX_EMBED).tmp $(BUSYBOX_EMBED) \
+			&& chmod +x $(BUSYBOX_EMBED) \
+			&& echo "$(BUSYBOX_VERSION)-$(BUILD_ARCH)" > $(BUSYBOX_VERSION_FILE) \
+			|| { rm -f $(BUSYBOX_EMBED).tmp; echo "ERROR: failed to download busybox"; exit 1; }; \
 	fi
 
 .PHONY: build-local
