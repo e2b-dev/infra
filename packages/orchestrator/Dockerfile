@@ -38,9 +38,9 @@ RUN RELEASE_URL="https://github.com/e2b-dev/fc-busybox/releases/download/v${BUSY
     && BINARY="busybox_v${BUSYBOX_VERSION}_${TARGETARCH}" \
     && curl -sfL -o /tmp/${BINARY} "${RELEASE_URL}/${BINARY}" \
     && curl -sfL -o /tmp/SHA256SUMS "${RELEASE_URL}/SHA256SUMS" \
-    && cd /tmp && grep "${BINARY}" SHA256SUMS | sha256sum -c - \
-    && mv /tmp/${BINARY} ./orchestrator/pkg/template/build/core/systeminit/busybox \
-    && chmod +x ./orchestrator/pkg/template/build/core/systeminit/busybox
+    && (cd /tmp && grep "${BINARY}" SHA256SUMS | sha256sum -c -) \
+    && mv /tmp/${BINARY} /build/orchestrator/pkg/template/build/core/systeminit/busybox \
+    && chmod +x /build/orchestrator/pkg/template/build/core/systeminit/busybox
 COPY ./orchestrator/cmd ./orchestrator/cmd
 COPY ./orchestrator/main.go ./orchestrator/main.go
 COPY ./orchestrator/Makefile ./orchestrator/Makefile
