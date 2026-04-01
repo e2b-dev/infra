@@ -8,3 +8,6 @@ bin
 .shared
 /tmp
 .local-build
+
+# Downloaded at build time from fc-busybox release
+pkg/template/build/core/systeminit/busybox

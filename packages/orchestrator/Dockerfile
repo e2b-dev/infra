@@ -3,7 +3,13 @@ ARG GOLANG_VERSION=1.25.4
 # It has to match with the host OS version (Ubuntu 22.04 = bookworm)
 ARG DEBIAN_VERSION=bookworm
 
+# Busybox version from fc-busybox GitHub release.
+# TARGETARCH is set automatically by Docker --platform.
+ARG BUSYBOX_VERSION=1.36.1
+
 FROM golang:${GOLANG_VERSION}-${DEBIAN_VERSION} AS builder
+ARG BUSYBOX_VERSION
+ARG TARGETARCH
 
 # Cached golang dependencies
 WORKDIR /build/shared
@@ -23,6 +29,10 @@ WORKDIR /build
 
 COPY ./shared/pkg ./shared/pkg
 COPY ./clickhouse/pkg ./clickhouse/pkg
+
+# Download busybox from fc-busybox release for go:embed
+ADD https://github.com/e2b-dev/fc-busybox/releases/download/v${BUSYBOX_VERSION}/busybox_v${BUSYBOX_VERSION}_${TARGETARCH} \
+    ./orchestrator/pkg/template/build/core/systeminit/busybox
 
 COPY ./orchestrator/pkg ./orchestrator/pkg
 COPY ./orchestrator/cmd ./orchestrator/cmd
