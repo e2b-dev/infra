@@ -152,7 +152,7 @@ jobs:
               metadata: {
                 severity: "warning",
                 domain: $domain,
-                dev: $dev,
+                dev: ($dev == "true"),
                 image_url: $image_url,
                 project: $domain
               }
