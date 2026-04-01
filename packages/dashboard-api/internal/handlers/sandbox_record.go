@@ -55,7 +55,6 @@ func (s *APIStore) GetSandboxesSandboxIDRecord(c *gin.Context, sandboxID api.San
 
 	c.JSON(http.StatusOK, api.SandboxRecord{
 		TemplateID: row.TemplateID,
-		EnvID:      row.EnvID,
 		Alias:      alias,
 		SandboxID:  row.SandboxID,
 		StartedAt:  row.StartedAt,

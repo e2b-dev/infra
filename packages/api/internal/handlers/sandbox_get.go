@@ -110,7 +110,6 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		sandbox := api.SandboxDetail{
 			ClientID:            sbx.ClientID,
 			TemplateID:          sbx.TemplateID,
-			EnvID:               sbx.EnvID,
 			Alias:               sbx.Alias,
 			SandboxID:           sbx.SandboxID,
 			StartedAt:           sbx.StartTime,
@@ -204,7 +203,6 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	sandbox := api.SandboxDetail{
 		ClientID:            consts.ClientID, // for backwards compatibility we need to return a client id
 		TemplateID:          lastSnapshot.Snapshot.BaseEnvID,
-		EnvID:               lastSnapshot.Snapshot.EnvID,
 		SandboxID:           lastSnapshot.Snapshot.SandboxID,
 		StartedAt:           lastSnapshot.Snapshot.SandboxStartedAt.Time,
 		CpuCount:            cpuCount,

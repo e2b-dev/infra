@@ -446,7 +446,6 @@ components:
     Sandbox:
       required:
         - templateID
-        - envID
         - sandboxID
         - clientID
         - envdVersion
@@ -454,9 +453,6 @@ components:
         templateID:
           type: string
           description: Identifier of the template from which is the sandbox created
-        envID:
-          type: string
-          description: Identifier of the environment used for the current sandbox execution. For paused or resumed sandboxes, this can be a snapshot env ID.
         sandboxID:
           type: string
           description: Identifier of the sandbox
@@ -484,7 +480,6 @@ components:
     SandboxDetail:
       required:
         - templateID
-        - envID
         - sandboxID
         - clientID
         - startedAt
@@ -498,9 +493,6 @@ components:
         templateID:
           type: string
           description: Identifier of the template from which is the sandbox created
-        envID:
-          type: string
-          description: Identifier of the environment used for the current sandbox execution. For paused or resumed sandboxes, this can be a snapshot env ID.
         alias:
           type: string
           description: Alias of the template
@@ -554,7 +546,6 @@ components:
     ListedSandbox:
       required:
         - templateID
-        - envID
         - sandboxID
         - clientID
         - startedAt
@@ -568,9 +559,6 @@ components:
         templateID:
           type: string
           description: Identifier of the template from which is the sandbox created
-        envID:
-          type: string
-          description: Identifier of the environment used for the current sandbox execution. For paused or resumed sandboxes, this can be a snapshot env ID.
         alias:
           type: string
           description: Alias of the template

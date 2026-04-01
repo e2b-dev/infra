@@ -333,9 +333,6 @@ type ListedSandbox struct {
 	// EndAt Time when the sandbox will expire
 	EndAt time.Time `json:"endAt"`
 
-	// EnvID Identifier of the environment used for the current sandbox execution. For paused or resumed sandboxes, this can be a snapshot env ID.
-	EnvID string `json:"envID"`
-
 	// EnvdVersion Version of the envd running in the sandbox
 	EnvdVersion EnvdVersion `json:"envdVersion"`
 
@@ -586,9 +583,6 @@ type Sandbox struct {
 	// Domain Base domain where the sandbox traffic is accessible
 	Domain *string `json:"domain"`
 
-	// EnvID Identifier of the environment used for the current sandbox execution. For paused or resumed sandboxes, this can be a snapshot env ID.
-	EnvID string `json:"envID"`
-
 	// EnvdAccessToken Access token used for envd communication
 	EnvdAccessToken *string `json:"envdAccessToken,omitempty"`
 
@@ -637,9 +631,6 @@ type SandboxDetail struct {
 
 	// EndAt Time when the sandbox will expire
 	EndAt time.Time `json:"endAt"`
-
-	// EnvID Identifier of the environment used for the current sandbox execution. For paused or resumed sandboxes, this can be a snapshot env ID.
-	EnvID string `json:"envID"`
 
 	// EnvdAccessToken Access token used for envd communication
 	EnvdAccessToken *string `json:"envdAccessToken,omitempty"`
