@@ -234,7 +234,7 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 func (a *API) setupNfs(ctx context.Context, nfsTarget, path string) {
 	commands := [][]string{
 		{"mkdir", "-p", path},
-		{"mount", "-v", "-t", "nfs", "-o", "fg,hard,mountproto=tcp,mountport=2049,proto=tcp,port=2049,nfsvers=3,noacl", nfsTarget, path},
+		{"mount", "-v", "-t", "nfs", "-o", "fg,hard,async,rsize=1048576,wsize=1048576,mountproto=tcp,mountport=2049,proto=tcp,port=2049,nfsvers=3,noacl", nfsTarget, path},
 	}
 
 	for _, command := range commands {
