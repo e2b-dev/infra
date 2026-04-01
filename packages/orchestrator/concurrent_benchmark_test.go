@@ -251,10 +251,14 @@ func BenchmarkConcurrentResume(b *testing.B) {
 	templateCache.Start(b.Context())
 	b.Cleanup(templateCache.Stop)
 
+	cgroupManager, err := cgroup.NewManager()
+	require.NoError(b, err, "cgroups v2 not available - running as root?")
+	require.NoError(b, cgroupManager.Initialize(b.Context()), "failed to initialize root cgroup")
+
 	sandboxes := sandbox.NewSandboxesMap()
 	sandboxFactory := sandbox.NewFactory(
 		config.BuilderConfig, networkPool, devicePool,
-		featureFlags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), sandboxes,
+		featureFlags, hoststats.NewNoopDelivery(), cgroupManager, sandboxes,
 	)
 
 	dockerhubRepository, err := dockerhub.GetRemoteRepository(b.Context())
