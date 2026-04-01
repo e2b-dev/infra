@@ -6,10 +6,12 @@ import (
 	"strconv"
 	"strings"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
+	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 )
 
@@ -24,7 +26,11 @@ func NewGrpcPausedSandboxResumer(address string) (PausedSandboxResumer, error) {
 		return nil, fmt.Errorf("api grpc address is required")
 	}
 
-	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(
+		address,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("create grpc client: %w", err)
 	}
@@ -33,6 +39,10 @@ func NewGrpcPausedSandboxResumer(address string) (PausedSandboxResumer, error) {
 		conn:   conn,
 		client: proxygrpc.NewSandboxServiceClient(conn),
 	}, nil
+}
+
+func (c *grpcPausedSandboxResumer) Init(ctx context.Context) {
+	e2bgrpc.ObserveConnection(ctx, c.conn, "api-resumer")
 }
 
 func (c *grpcPausedSandboxResumer) Close(_ context.Context) error {

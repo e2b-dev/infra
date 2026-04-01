@@ -63,6 +63,7 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+	client.Init(ctx)
 
 	nodeInfo, err := client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 	if err != nil {

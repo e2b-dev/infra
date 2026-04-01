@@ -44,5 +44,5 @@ func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterPr
 		return nil, fmt.Errorf("failed to establish GRPC connection: %w", err)
 	}
 
-	return clusters.NewGRPCClient(conn), nil
+	return clusters.NewGRPCClient(conn, "orchestrator"), nil
 }
