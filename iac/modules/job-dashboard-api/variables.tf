@@ -44,7 +44,7 @@ variable "supabase_jwt_secrets" {
   sensitive = true
 }
 
-variable "env" {
+variable "extra_env" {
   type    = map(string)
   default = {}
 }
