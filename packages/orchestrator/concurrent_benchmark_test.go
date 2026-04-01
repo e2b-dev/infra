@@ -22,7 +22,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -101,7 +101,7 @@ func parseConcurrencyLevels() []int {
 		return defaultConcurrencyLevels
 	}
 
-	sort.Ints(levels)
+	slices.Sort(levels)
 
 	return levels
 }
@@ -112,14 +112,8 @@ func percentile(sorted []time.Duration, p float64) time.Duration {
 		return 0
 	}
 
-	idx := int(float64(len(sorted)-1) * p / 100.0)
-	if idx < 0 {
-		idx = 0
-	}
-
-	if idx >= len(sorted) {
-		idx = len(sorted) - 1
-	}
+	idx := max(0, int(float64(len(sorted)-1)*p/100.0))
+	idx = min(idx, len(sorted)-1)
 
 	return sorted[idx]
 }
@@ -418,11 +412,7 @@ func runConcurrentResume(
 	b.StopTimer()
 
 	for i := range n {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			runtime := sandbox.RuntimeMetadata{
 				TemplateID:  templateID,
 				SandboxID:   fmt.Sprintf("bench-%d-%s", i, uuid.NewString()[:8]),
@@ -451,7 +441,7 @@ func runConcurrentResume(
 				err:       err,
 			}
 			created[i] = sbx
-		}()
+		})
 	}
 
 	// Open the gate - start measuring.
@@ -501,13 +491,14 @@ func reportAggregateResults(b *testing.B, concurrency int, latencies []time.Dura
 
 	if len(latencies) == 0 {
 		b.Logf("concurrency=%d: all sandboxes failed across %d iterations", concurrency, iterations)
+
 		return
 	}
 
-	sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
+	slices.Sort(latencies)
 
-	min := latencies[0]
-	max := latencies[len(latencies)-1]
+	fastest := latencies[0]
+	slowest := latencies[len(latencies)-1]
 
 	var total time.Duration
 	for _, l := range latencies {
@@ -523,8 +514,8 @@ func reportAggregateResults(b *testing.B, concurrency int, latencies []time.Dura
 	b.ReportMetric(float64(p50.Milliseconds()), "p50-ms")
 	b.ReportMetric(float64(p95.Milliseconds()), "p95-ms")
 	b.ReportMetric(float64(p99.Milliseconds()), "p99-ms")
-	b.ReportMetric(float64(min.Milliseconds()), "min-ms")
-	b.ReportMetric(float64(max.Milliseconds()), "max-ms")
+	b.ReportMetric(float64(fastest.Milliseconds()), "min-ms")
+	b.ReportMetric(float64(slowest.Milliseconds()), "max-ms")
 
 	b.Logf("concurrency=%d: %d ok, %d fail across %d iterations (%d samples) | avg=%s p50=%s p95=%s p99=%s min=%s max=%s",
 		concurrency, totalOK, totalFail, iterations, len(latencies),
@@ -532,7 +523,7 @@ func reportAggregateResults(b *testing.B, concurrency int, latencies []time.Dura
 		p50.Truncate(time.Millisecond),
 		p95.Truncate(time.Millisecond),
 		p99.Truncate(time.Millisecond),
-		min.Truncate(time.Millisecond),
-		max.Truncate(time.Millisecond),
+		fastest.Truncate(time.Millisecond),
+		slowest.Truncate(time.Millisecond),
 	)
 }
