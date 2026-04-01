@@ -174,9 +174,9 @@ func (s *Store) Reconcile(ctx context.Context, sandboxes []Sandbox, nodeID strin
 		wg := sync.WaitGroup{}
 		for _, sbx := range sbxsToBeSynced {
 			wg.Go(func() {
-				ctx, cancel := context.WithTimeout(ctx, sbxRemoveTimeout)
+				ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sbxRemoveTimeout)
 				defer cancel()
-				s.callbacks.RemoveSandboxFromNode(context.WithoutCancel(ctx), sbx)
+				s.callbacks.RemoveSandboxFromNode(ctx, sbx)
 			})
 		}
 
