@@ -1,11 +1,11 @@
 -- +goose Up
 -- +goose StatementBegin
 
-CREATE SCHEMA IF NOT EXISTS auth_custom;
-
-CREATE OR REPLACE FUNCTION public.sync_insert_auth_users_to_public_users_trigger() RETURNS TRIGGER
+CREATE OR REPLACE FUNCTION auth_custom.enqueue_user_sync_on_insert()
+RETURNS TRIGGER
 LANGUAGE plpgsql
-AS $func$
+SECURITY DEFINER SET search_path = ''
+AS $$
 BEGIN
     INSERT INTO auth_custom.river_job (args, kind, max_attempts, queue, state)
     VALUES (
@@ -20,11 +20,13 @@ BEGIN
 
     RETURN NEW;
 END;
-$func$ SECURITY DEFINER SET search_path = public, auth_custom;
+$$;
 
-CREATE OR REPLACE FUNCTION public.sync_update_auth_users_to_public_users_trigger() RETURNS TRIGGER
+CREATE OR REPLACE FUNCTION auth_custom.enqueue_user_sync_on_update()
+RETURNS TRIGGER
 LANGUAGE plpgsql
-AS $func$
+SECURITY DEFINER SET search_path = ''
+AS $$
 BEGIN
     IF OLD.email IS DISTINCT FROM NEW.email THEN
         INSERT INTO auth_custom.river_job (args, kind, max_attempts, queue, state)
@@ -41,11 +43,13 @@ BEGIN
 
     RETURN NEW;
 END;
-$func$ SECURITY DEFINER SET search_path = public, auth_custom;
+$$;
 
-CREATE OR REPLACE FUNCTION public.sync_delete_auth_users_to_public_users_trigger() RETURNS TRIGGER
+CREATE OR REPLACE FUNCTION auth_custom.enqueue_user_sync_on_delete()
+RETURNS TRIGGER
 LANGUAGE plpgsql
-AS $func$
+SECURITY DEFINER SET search_path = ''
+AS $$
 BEGIN
     INSERT INTO auth_custom.river_job (args, kind, max_attempts, queue, state)
     VALUES (
@@ -60,28 +64,20 @@ BEGIN
 
     RETURN OLD;
 END;
-$func$ SECURITY DEFINER SET search_path = public, auth_custom;
+$$;
 
-ALTER FUNCTION public.sync_insert_auth_users_to_public_users_trigger() OWNER TO trigger_user;
-ALTER FUNCTION public.sync_update_auth_users_to_public_users_trigger() OWNER TO trigger_user;
-ALTER FUNCTION public.sync_delete_auth_users_to_public_users_trigger() OWNER TO trigger_user;
-
-DROP TRIGGER IF EXISTS sync_inserts_to_public_users ON auth.users;
-CREATE TRIGGER sync_inserts_to_public_users
+CREATE TRIGGER enqueue_user_sync_on_insert
     AFTER INSERT ON auth.users
-    FOR EACH ROW EXECUTE FUNCTION public.sync_insert_auth_users_to_public_users_trigger();
+    FOR EACH ROW EXECUTE FUNCTION auth_custom.enqueue_user_sync_on_insert();
 
-DROP TRIGGER IF EXISTS sync_updates_to_public_users ON auth.users;
-CREATE TRIGGER sync_updates_to_public_users
+CREATE TRIGGER enqueue_user_sync_on_update
     AFTER UPDATE ON auth.users
-    FOR EACH ROW EXECUTE FUNCTION public.sync_update_auth_users_to_public_users_trigger();
+    FOR EACH ROW EXECUTE FUNCTION auth_custom.enqueue_user_sync_on_update();
 
-DROP TRIGGER IF EXISTS sync_deletes_to_public_users ON auth.users;
-CREATE TRIGGER sync_deletes_to_public_users
+CREATE TRIGGER enqueue_user_sync_on_delete
     AFTER DELETE ON auth.users
-    FOR EACH ROW EXECUTE FUNCTION public.sync_delete_auth_users_to_public_users_trigger();
+    FOR EACH ROW EXECUTE FUNCTION auth_custom.enqueue_user_sync_on_delete();
 
-GRANT USAGE ON SCHEMA auth_custom TO trigger_user;
 GRANT INSERT ON auth_custom.river_job TO trigger_user;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA auth_custom TO trigger_user;
 
@@ -90,63 +86,14 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA auth_custom TO trigger_user;
 -- +goose Down
 -- +goose StatementBegin
 
-DROP TRIGGER IF EXISTS sync_inserts_to_public_users ON auth.users;
-DROP TRIGGER IF EXISTS sync_updates_to_public_users ON auth.users;
-DROP TRIGGER IF EXISTS sync_deletes_to_public_users ON auth.users;
+DROP TRIGGER IF EXISTS enqueue_user_sync_on_insert ON auth.users;
+DROP TRIGGER IF EXISTS enqueue_user_sync_on_update ON auth.users;
+DROP TRIGGER IF EXISTS enqueue_user_sync_on_delete ON auth.users;
 
-CREATE OR REPLACE FUNCTION public.sync_insert_auth_users_to_public_users_trigger() RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $func$
-BEGIN
-    INSERT INTO public.user_sync_queue (user_id, operation)
-    VALUES (NEW.id, 'upsert');
-
-    RETURN NEW;
-END;
-$func$ SECURITY DEFINER SET search_path = public;
-
-CREATE OR REPLACE FUNCTION public.sync_update_auth_users_to_public_users_trigger() RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $func$
-BEGIN
-    IF OLD.email IS DISTINCT FROM NEW.email THEN
-        INSERT INTO public.user_sync_queue (user_id, operation)
-        VALUES (NEW.id, 'upsert');
-    END IF;
-
-    RETURN NEW;
-END;
-$func$ SECURITY DEFINER SET search_path = public;
-
-CREATE OR REPLACE FUNCTION public.sync_delete_auth_users_to_public_users_trigger() RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $func$
-BEGIN
-    INSERT INTO public.user_sync_queue (user_id, operation)
-    VALUES (OLD.id, 'delete');
-
-    RETURN OLD;
-END;
-$func$ SECURITY DEFINER SET search_path = public;
-
-ALTER FUNCTION public.sync_insert_auth_users_to_public_users_trigger() OWNER TO trigger_user;
-ALTER FUNCTION public.sync_update_auth_users_to_public_users_trigger() OWNER TO trigger_user;
-ALTER FUNCTION public.sync_delete_auth_users_to_public_users_trigger() OWNER TO trigger_user;
-
-CREATE TRIGGER sync_inserts_to_public_users
-    AFTER INSERT ON auth.users
-    FOR EACH ROW EXECUTE FUNCTION public.sync_insert_auth_users_to_public_users_trigger();
-
-CREATE TRIGGER sync_updates_to_public_users
-    AFTER UPDATE ON auth.users
-    FOR EACH ROW EXECUTE FUNCTION public.sync_update_auth_users_to_public_users_trigger();
-
-CREATE TRIGGER sync_deletes_to_public_users
-    AFTER DELETE ON auth.users
-    FOR EACH ROW EXECUTE FUNCTION public.sync_delete_auth_users_to_public_users_trigger();
+DROP FUNCTION IF EXISTS auth_custom.enqueue_user_sync_on_insert();
+DROP FUNCTION IF EXISTS auth_custom.enqueue_user_sync_on_update();
+DROP FUNCTION IF EXISTS auth_custom.enqueue_user_sync_on_delete();
 
 REVOKE ALL ON SCHEMA auth_custom FROM trigger_user;
-
-DROP SCHEMA IF EXISTS auth_custom CASCADE;
 
 -- +goose StatementEnd
