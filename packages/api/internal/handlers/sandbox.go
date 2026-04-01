@@ -110,6 +110,19 @@ func (a *APIStore) startSandboxInternal(
 		props = props.Set("mcp_servers", slices.Collect(maps.Keys(mcp)))
 	}
 
+	if len(sbx.VolumeMounts) > 0 {
+		volumeNames := make([]string, 0, len(sbx.VolumeMounts))
+		volumeIDs := make([]string, 0, len(sbx.VolumeMounts))
+		for _, vol := range sbx.VolumeMounts {
+			volumeNames = append(volumeNames, vol.Name)
+			volumeIDs = append(volumeIDs, vol.ID)
+		}
+		props = props.
+			Set("volume_names", volumeNames).
+			Set("volume_ids", volumeIDs).
+			Set("volume_count", len(sbx.VolumeMounts))
+	}
+
 	a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "created_instance", props)
 	analyticsSpan.End()
 
