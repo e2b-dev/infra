@@ -13,6 +13,7 @@ import (
 func NewSandbox(
 	sandboxID string,
 	templateID string,
+	envID string,
 	clientID string,
 	alias *string,
 	executionID string,
@@ -34,7 +35,6 @@ func NewSandbox(
 	autoResume *types.SandboxAutoResumeConfig,
 	envdAccessToken *string,
 	allowInternetAccess *bool,
-	baseTemplateID string,
 	domain *string,
 	network *types.SandboxNetworkConfig,
 	trafficAccessToken *string,
@@ -43,6 +43,7 @@ func NewSandbox(
 	return Sandbox{
 		SandboxID:  sandboxID,
 		TemplateID: templateID,
+		EnvID:      envID,
 		ClientID:   clientID,
 		Alias:      alias,
 		Domain:     domain,
@@ -68,7 +69,6 @@ func NewSandbox(
 		AutoPause:           autoPause,
 		AutoResume:          autoResume,
 		State:               StateRunning,
-		BaseTemplateID:      baseTemplateID,
 		Network:             network,
 		VolumeMounts:        mounts,
 	}
@@ -77,6 +77,7 @@ func NewSandbox(
 type Sandbox struct {
 	SandboxID  string  `json:"sandboxID"`
 	TemplateID string  `json:"templateID"`
+	EnvID      string  `json:"envID"`
 	ClientID   string  `json:"clientID"`
 	Alias      *string `json:"alias,omitempty"`
 	Domain     *string `json:"domain,omitempty"`
@@ -84,7 +85,6 @@ type Sandbox struct {
 	ExecutionID         string                            `json:"executionID"`
 	TeamID              uuid.UUID                         `json:"teamID"`
 	BuildID             uuid.UUID                         `json:"buildID"`
-	BaseTemplateID      string                            `json:"baseTemplateID"`
 	Metadata            map[string]string                 `json:"metadata"`
 	MaxInstanceLength   time.Duration                     `json:"maxInstanceLength"`
 	StartTime           time.Time                         `json:"startTime"`
@@ -111,8 +111,8 @@ type Sandbox struct {
 func (s Sandbox) ToAPISandbox() *api.Sandbox {
 	return &api.Sandbox{
 		SandboxID:          s.SandboxID,
-		TemplateID:         s.BaseTemplateID,
-		EnvID:              s.TemplateID,
+		TemplateID:         s.TemplateID,
+		EnvID:              s.EnvID,
 		ClientID:           s.ClientID,
 		Alias:              s.Alias,
 		EnvdVersion:        s.EnvdVersion,

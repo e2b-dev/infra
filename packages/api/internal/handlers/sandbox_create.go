@@ -231,7 +231,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 			Network:             network,
 			Alias:               alias,
 			TemplateID:          env.TemplateID,
-			BaseTemplateID:      env.TemplateID,
+			EnvID:               env.TemplateID,
 			AutoPause:           autoPause,
 			AutoResume:          autoResume,
 			VolumeMounts:        sbxVolumeMounts,

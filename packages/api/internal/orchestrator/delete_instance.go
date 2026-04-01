@@ -129,7 +129,7 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 				killErr := o.killSandboxOnNode(ctx, node, sbx)
 				logger.L().Error(ctx, "Pause failed due to missing base template, killed sandbox as fallback",
 					logger.WithSandboxID(sbx.SandboxID),
-					zap.String("base_template_id", sbx.BaseTemplateID),
+					zap.String("template_id", sbx.TemplateID),
 					zap.NamedError("pause_error", err),
 					zap.NamedError("kill_error", killErr),
 				)

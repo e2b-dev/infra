@@ -125,10 +125,10 @@ func TestCreateSandbox_StaleDataAfterConcurrentPause(t *testing.T) {
 		makeFetcher := func() SandboxDataFetcher {
 			return func(_ context.Context) (SandboxMetadata, *api.APIError) {
 				return SandboxMetadata{
-					TemplateID:     snap.templateID,
-					BaseTemplateID: "base-tpl",
-					Metadata:       snap.metadata,
-					Build:          build,
+					TemplateID: "base-tpl",
+					EnvID:      snap.templateID,
+					Metadata:   snap.metadata,
+					Build:      build,
 				}, nil
 			}
 		}
@@ -146,8 +146,8 @@ func TestCreateSandbox_StaleDataAfterConcurrentPause(t *testing.T) {
 			true,
 		)
 		require.Nil(t, apiErr)
-		assert.Equal(t, "tpl-v1", sbx1.TemplateID)
-		assert.Equal(t, "base-tpl", sbx1.BaseTemplateID)
+		assert.Equal(t, "base-tpl", sbx1.TemplateID)
+		assert.Equal(t, "tpl-v1", sbx1.EnvID)
 
 		// Clean up reservation.
 		o.sandboxStore.Remove(t.Context(), team.Team.ID, sandboxID)
@@ -171,10 +171,10 @@ func TestCreateSandbox_StaleDataAfterConcurrentPause(t *testing.T) {
 		require.Nil(t, apiErr)
 
 		// The sandbox SHOULD have been created with V2 (fresh) data.
-		assert.Equal(t, "tpl-v2", sbx2.TemplateID,
-			"CreateSandbox must use the latest snapshot data, not stale pre-lock values")
-		assert.Equal(t, "base-tpl", sbx2.BaseTemplateID,
+		assert.Equal(t, "base-tpl", sbx2.TemplateID,
 			"CreateSandbox must preserve the base template ID")
+		assert.Equal(t, "tpl-v2", sbx2.EnvID,
+			"CreateSandbox must use the latest snapshot data, not stale pre-lock values")
 		assert.Equal(t, "v2", sbx2.Metadata["snapshot"],
 			"CreateSandbox must use the latest metadata, not stale pre-lock values")
 	})

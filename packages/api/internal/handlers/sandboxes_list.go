@@ -318,8 +318,8 @@ func instanceInfoToPaginatedSandboxes(runningSandboxes []sandbox.Sandbox) []util
 		sandbox := utils.PaginatedSandbox{
 			ListedSandbox: api.ListedSandbox{
 				ClientID:     info.ClientID,
-				TemplateID:   info.BaseTemplateID,
-				EnvID:        info.TemplateID,
+				TemplateID:   info.TemplateID,
+				EnvID:        info.EnvID,
 				Alias:        info.Alias,
 				SandboxID:    info.SandboxID,
 				StartedAt:    info.StartTime,
