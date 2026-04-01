@@ -124,7 +124,7 @@ build-and-upload/template-manager: build upload/template-manager
 
 
 .PHONY: test
-test: fetch-busybox
+test:
 	go test -race -v ./...
 
 .PHONY: test-docker
@@ -159,5 +159,5 @@ migrate:
 	./scripts/upload-envs.sh /mnt/disks/fc-envs/v1 $(TEMPLATE_BUCKET_NAME)
 
 .PHONY: lint
-lint: fetch-busybox
+lint:
 	golangci-lint run --fix ./...
