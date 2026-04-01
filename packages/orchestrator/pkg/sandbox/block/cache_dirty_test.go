@@ -196,3 +196,86 @@ func TestDirtyTracking_NormalOperation(t *testing.T) {
 		}
 	}
 }
+
+func TestIsCached_NegativeOffset(t *testing.T) {
+	t.Parallel()
+
+	const blockSize = int64(header.PageSize)
+	const cacheSize = blockSize * 10
+
+	cache, err := NewCache(cacheSize, blockSize, t.TempDir()+"/cache", false)
+	require.NoError(t, err)
+	defer cache.Close()
+
+	// Mark block 0 as cached
+	cache.setIsCached(0, blockSize)
+
+	// Negative offset should return false, not check block 0
+	// This prevents BlockIdx(-1, blockSize) = 0 from causing false positives
+	result := cache.isCached(-1, blockSize)
+	assert.False(t, result, "negative offset should return false, not check block 0")
+
+	result = cache.isCached(-blockSize+1, blockSize)
+	assert.False(t, result, "negative offset in (-blockSize, 0) should return false")
+}
+
+func TestSetIsCached_NegativeOffset(t *testing.T) {
+	t.Parallel()
+
+	const blockSize = int64(header.PageSize)
+	const cacheSize = blockSize * 10
+
+	cache, err := NewCache(cacheSize, blockSize, t.TempDir()+"/cache", false)
+	require.NoError(t, err)
+	defer cache.Close()
+
+	// Setting with negative offset should be a no-op
+	cache.setIsCached(-1, blockSize)
+
+	// Block 0 should NOT be marked as cached
+	result := cache.isCached(0, blockSize)
+	assert.False(t, result, "negative offset setIsCached should not mark block 0")
+}
+
+func TestWriteAt_NegativeOffset(t *testing.T) {
+	t.Parallel()
+
+	const blockSize = int64(header.PageSize)
+	const cacheSize = blockSize * 10
+
+	cache, err := NewCache(cacheSize, blockSize, t.TempDir()+"/cache", false)
+	require.NoError(t, err)
+	defer cache.Close()
+
+	// Writing at negative offset should return 0, no panic
+	data := make([]byte, blockSize)
+	n, err := cache.WriteAt(data, -1)
+	require.NoError(t, err)
+	assert.Equal(t, 0, n, "negative offset WriteAt should return 0 bytes")
+
+	// Block 0 should NOT be marked as cached
+	result := cache.isCached(0, blockSize)
+	assert.False(t, result, "negative offset WriteAt should not mark block 0")
+}
+
+func TestWriteAt_OffsetBeyondCacheSize(t *testing.T) {
+	t.Parallel()
+
+	const blockSize = int64(header.PageSize)
+	const cacheSize = blockSize * 10
+
+	cache, err := NewCache(cacheSize, blockSize, t.TempDir()+"/cache", false)
+	require.NoError(t, err)
+	defer cache.Close()
+
+	// Writing at offset beyond cache size should return 0 bytes written, no error, no panic
+	data := make([]byte, blockSize)
+	n, err := cache.WriteAt(data, cacheSize+blockSize)
+	require.NoError(t, err)
+	assert.Equal(t, 0, n, "should write 0 bytes when offset is beyond cache size")
+
+	// No blocks should be marked as cached
+	for i := range int64(10) {
+		assert.False(t, cache.isCached(i*blockSize, blockSize), "block %d should not be cached", i)
+	}
+}

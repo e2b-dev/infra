@@ -250,6 +250,11 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 }
 
 func (c *Cache) isCached(off, length int64) bool {
+	// Reject negative offsets
+	if off < 0 {
+		return false
+	}
+
 	// Make sure the offset is within the cache size
 	if off >= c.size {
 		return false
@@ -280,6 +285,11 @@ func (c *Cache) isCached(off, length int64) bool {
 }
 
 func (c *Cache) setIsCached(off, length int64) {
+	// Reject negative offsets
+	if off < 0 {
+		return
+	}
+
 	// Handle zero-length - nothing to mark
 	if length <= 0 {
 		return
@@ -302,6 +312,10 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	}
 
 	if c.mmap == nil {
+		return 0, nil
+	}
+
+	if off < 0 || off >= c.size {
 		return 0, nil
 	}
 

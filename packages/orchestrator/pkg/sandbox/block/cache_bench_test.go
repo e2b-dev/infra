@@ -54,13 +54,20 @@ func BenchmarkDirtyTracking(b *testing.B) {
 	})
 
 	b.Run("IsCached_Miss", func(b *testing.B) {
+		// Use a fresh cache to ensure we're measuring actual misses,
+		// not hits from blocks populated by previous sub-benchmarks
+		missCache, err := NewCache(cacheSize, blockSize, b.TempDir()+"/bench_cache_miss", false)
+		if err != nil {
+			b.Fatalf("failed to create miss cache: %v", err)
+		}
+		defer missCache.Close()
+
 		b.ReportAllocs()
 		b.ResetTimer()
 
 		for i := range b.N {
-			// Check blocks that are definitely not cached (high offsets)
-			off := int64(100000+i%100000) * blockSize
-			cache.isCached(off, blockSize)
+			off := int64(i%262144) * blockSize
+			missCache.isCached(off, blockSize)
 		}
 	})
 
