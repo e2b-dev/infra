@@ -602,7 +602,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	})
 	closers = append(closers, closer{"hyperloop server", hyperloopSrv.Shutdown})
 
-	grpcServer := e2bgrpc.NewGRPCServer(tel)
+	grpcServer := e2bgrpc.NewGRPCServer(tel, e2bgrpc.WithSandboxResumeMetrics())
 	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
 	orchestrator.RegisterVolumeServiceServer(grpcServer, volumeService)
 	orchestrator.RegisterChunkServiceServer(grpcServer, orchestratorService)
