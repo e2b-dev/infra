@@ -265,10 +265,6 @@ module "logs_collector" {
 
   vector_health_port = var.logs_health_proxy_port
   vector_api_port    = var.logs_proxy_port
-
-  grafana_logs_user     = var.grafana_logs_user
-  grafana_logs_endpoint = var.grafana_logs_endpoint
-  grafana_api_key       = var.grafana_logs_api_key
 }
 
 # ---
