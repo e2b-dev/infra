@@ -144,7 +144,7 @@ func startRiverWorker(t *testing.T, db *testutils.Database) *riverProcess {
 	authPool := db.AuthDb.WritePool()
 	l := logger.NewNopLogger()
 	tel := telemetry.NewNoopClient()
-	meter := tel.MeterProvider.Meter("dashboard-api.backgroundworker.auth_user_sync")
+	meter := tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/dashboard-api/internal/backgroundworker")
 
 	workers := river.NewWorkers()
 	river.AddWorker(workers, NewAuthUserSyncWorker(ctx, db.SqlcClient, meter, l))
