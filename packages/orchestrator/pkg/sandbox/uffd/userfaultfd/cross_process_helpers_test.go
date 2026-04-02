@@ -424,7 +424,7 @@ func crossProcessServe() error {
 		fdExit.SignalExit()
 		<-exitUffd
 	}
-	defer cleanup()
+	defer func() { cleanup() }()
 
 	if os.Getenv("GO_GATED") == "1" {
 		gateCmdFile := os.NewFile(uintptr(7), "gate-cmd")
