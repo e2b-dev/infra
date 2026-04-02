@@ -16,8 +16,10 @@ import (
 	"github.com/edsrzf/mmap-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -129,9 +131,10 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 
 	// Explicit mmap flush is not necessary, because the kernel will handle that as part of the copy_file_range syscall.
 	// Calling sync_file_range marks the range for writeback and starts it early.
+	// This is just an optimization, so if it fails just log a warning and let copy_file_range do the actual work.
 	err = unix.SyncFileRange(src, 0, c.size, unix.SYNC_FILE_RANGE_WRITE)
 	if err != nil {
-		return nil, fmt.Errorf("error syncing file: %w", err)
+		logger.L().Warn(ctx, "error syncing file", zap.Error(err))
 	}
 
 	buildStart := time.Now()
