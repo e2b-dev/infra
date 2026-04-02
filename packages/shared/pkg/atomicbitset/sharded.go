@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 )
 
-// DefaultShardBits: 128 MB / 4 KB = 32768 bits per shard (4 KB bitmap, one OS page).
+// DefaultShardBits is 128 MB / 4 KB = 32768 bits per shard (4 KB bitmap, one OS page).
 const DefaultShardBits uint = 32768
 
 type shard struct {
@@ -31,6 +31,7 @@ func NewSharded(n, bitsPerShard uint) *Sharded {
 		bitsPerShard = DefaultShardBits
 	}
 	numShards := (n + bitsPerShard - 1) / bitsPerShard
+
 	return &Sharded{
 		shards:       make([]atomic.Pointer[shard], numShards),
 		n:            n,
@@ -54,6 +55,7 @@ func (s *Sharded) getOrCreateShard(idx uint) *shard {
 	if p.CompareAndSwap(nil, candidate) {
 		return candidate
 	}
+
 	return p.Load()
 }
 
@@ -66,9 +68,12 @@ func (s *Sharded) Has(i uint) bool {
 		return false
 	}
 	local := i % s.bitsPerShard
-	w := local / 64
+	wordIndex := local / 64
+	bitIndex := local % 64
 
-	return sh.words[w].Load()&(1<<(local%64)) != 0
+	mask := uint64(1) << bitIndex
+
+	return sh.words[wordIndex].Load()&mask != 0
 }
 
 func (s *Sharded) HasRange(lo, hi uint) bool {
@@ -161,6 +166,7 @@ func shardHasRange(sh *shard, lo, hi uint) bool {
 		}
 		i = (w + 1) * 64
 	}
+
 	return true
 }
 

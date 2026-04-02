@@ -33,6 +33,7 @@ func New(n uint, impl string) Bitset {
 		if n <= autoThreshold {
 			return NewFlat(n)
 		}
+
 		return NewSharded(n, DefaultShardBits)
 	default:
 		panic(fmt.Sprintf("atomicbitset: unknown implementation %q", impl))

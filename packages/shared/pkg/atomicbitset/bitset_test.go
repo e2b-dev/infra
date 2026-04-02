@@ -256,6 +256,7 @@ func TestNew(t *testing.T) {
 const benchBits uint = 16384
 
 func benchmarkSetRange(b *testing.B, make func(uint) Bitset) {
+	b.Helper()
 	bs := make(benchBits)
 	const chunk uint = 1024
 	b.ResetTimer()
@@ -266,6 +267,7 @@ func benchmarkSetRange(b *testing.B, make func(uint) Bitset) {
 }
 
 func benchmarkHasRangeHit(b *testing.B, make func(uint) Bitset) {
+	b.Helper()
 	bs := make(benchBits)
 	bs.SetRange(0, benchBits)
 	const chunk uint = 1024
@@ -279,6 +281,7 @@ func benchmarkHasRangeHit(b *testing.B, make func(uint) Bitset) {
 }
 
 func benchmarkHasRangeMiss(b *testing.B, make func(uint) Bitset) {
+	b.Helper()
 	bs := make(benchBits)
 	const chunk uint = 1024
 	b.ResetTimer()
@@ -319,6 +322,7 @@ func BenchmarkShardedHasRange_Miss(b *testing.B) {
 var concurrencyLevels = []int{1, 4, 16, 64}
 
 func benchmarkHasRangeHitConcurrent(b *testing.B, make func(uint) Bitset) {
+	b.Helper()
 	for _, p := range concurrencyLevels {
 		b.Run(fmt.Sprintf("P%d", p), func(b *testing.B) {
 			bs := make(benchBits)

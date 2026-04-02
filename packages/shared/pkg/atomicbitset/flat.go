@@ -26,7 +26,12 @@ func (b *Flat) Has(i uint) bool {
 		return false
 	}
 
-	return b.words[i/64].Load()&(1<<(i%64)) != 0
+	wordIndex := i / 64
+	bitIndex := i % 64
+
+	mask := uint64(1) << bitIndex
+
+	return b.words[wordIndex].Load()&mask != 0
 }
 
 func (b *Flat) HasRange(lo, hi uint) bool {
