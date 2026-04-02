@@ -252,107 +252,94 @@ func TestNew(t *testing.T) {
 }
 
 // --- Benchmarks ---
+//
+// Realistic sizes:
+//   rootfs:  512 MB / 4 KB blocks  = 131072 bits
+//   memfile: 2 GB  / 2 MB hugepages = 1024 bits
 
-const benchBits uint = 16384
+// Realistic size: 512 MB rootfs / 4 KB blocks = 131072 bits.
+const (
+	benchBits  uint = 131072
+	benchChunk uint = 1024
+)
 
-func benchmarkSetRange(b *testing.B, newBitset func(uint) Bitset) {
-	b.Helper()
-	bs := newBitset(benchBits)
-	const chunk uint = 1024
-	b.ResetTimer()
-	for i := range b.N {
-		lo := uint(i) % (benchBits / chunk) * chunk
-		bs.SetRange(lo, lo+chunk)
+// benchImpls excludes Sharded/small (not a production config).
+var benchImpls = []implFactory{
+	{"Flat", func(n uint) Bitset { return NewFlat(n) }},
+	{"Roaring", func(n uint) Bitset { return NewRoaring(n) }},
+	{"Sharded", func(n uint) Bitset { return NewSharded(n, DefaultShardBits) }},
+}
+
+func BenchmarkSetRange(b *testing.B) {
+	for _, impl := range benchImpls {
+		b.Run(impl.name, func(b *testing.B) {
+			bs := impl.make(benchBits)
+			b.ResetTimer()
+			for i := range b.N {
+				lo := uint(i) % (benchBits / benchChunk) * benchChunk
+				bs.SetRange(lo, lo+benchChunk)
+			}
+		})
 	}
 }
 
-func benchmarkHasRangeHit(b *testing.B, newBitset func(uint) Bitset) {
-	b.Helper()
-	bs := newBitset(benchBits)
-	bs.SetRange(0, benchBits)
-	const chunk uint = 1024
-	b.ResetTimer()
-	for i := range b.N {
-		lo := uint(i) % (benchBits / chunk) * chunk
-		if !bs.HasRange(lo, lo+chunk) {
-			b.Fatal("expected set")
-		}
+func BenchmarkHasRange_Hit(b *testing.B) {
+	for _, impl := range benchImpls {
+		b.Run(impl.name, func(b *testing.B) {
+			bs := impl.make(benchBits)
+			bs.SetRange(0, benchBits)
+			b.ResetTimer()
+			for i := range b.N {
+				lo := uint(i) % (benchBits / benchChunk) * benchChunk
+				if !bs.HasRange(lo, lo+benchChunk) {
+					b.Fatal("expected set")
+				}
+			}
+		})
 	}
 }
 
-func benchmarkHasRangeMiss(b *testing.B, newBitset func(uint) Bitset) {
-	b.Helper()
-	bs := newBitset(benchBits)
-	const chunk uint = 1024
-	b.ResetTimer()
-	for i := range b.N {
-		lo := uint(i) % (benchBits / chunk) * chunk
-		if bs.HasRange(lo, lo+chunk) {
-			b.Fatal("expected unset")
-		}
+func BenchmarkHasRange_Miss(b *testing.B) {
+	for _, impl := range benchImpls {
+		b.Run(impl.name, func(b *testing.B) {
+			bs := impl.make(benchBits)
+			b.ResetTimer()
+			for i := range b.N {
+				lo := uint(i) % (benchBits / benchChunk) * benchChunk
+				if bs.HasRange(lo, lo+benchChunk) {
+					b.Fatal("expected unset")
+				}
+			}
+		})
 	}
-}
-
-func BenchmarkRoaringSetRange(b *testing.B) {
-	benchmarkSetRange(b, func(n uint) Bitset { return NewRoaring(n) })
-}
-
-func BenchmarkRoaringHasRange_Hit(b *testing.B) {
-	benchmarkHasRangeHit(b, func(n uint) Bitset { return NewRoaring(n) })
-}
-
-func BenchmarkRoaringHasRange_Miss(b *testing.B) {
-	benchmarkHasRangeMiss(b, func(n uint) Bitset { return NewRoaring(n) })
-}
-
-func BenchmarkShardedSetRange(b *testing.B) {
-	benchmarkSetRange(b, func(n uint) Bitset { return NewSharded(n, DefaultShardBits) })
-}
-
-func BenchmarkShardedHasRange_Hit(b *testing.B) {
-	benchmarkHasRangeHit(b, func(n uint) Bitset { return NewSharded(n, DefaultShardBits) })
-}
-
-func BenchmarkShardedHasRange_Miss(b *testing.B) {
-	benchmarkHasRangeMiss(b, func(n uint) Bitset { return NewSharded(n, DefaultShardBits) })
 }
 
 // --- Concurrent read benchmarks ---
 
 var concurrencyLevels = []int{1, 4, 16, 64}
 
-func benchmarkHasRangeHitConcurrent(b *testing.B, newBitset func(uint) Bitset) {
-	b.Helper()
-	for _, p := range concurrencyLevels {
-		b.Run(fmt.Sprintf("P%d", p), func(b *testing.B) {
-			bs := newBitset(benchBits)
-			bs.SetRange(0, benchBits)
-			const chunk uint = 1024
+func BenchmarkHasRange_HitConcurrent(b *testing.B) {
+	for _, impl := range benchImpls {
+		b.Run(impl.name, func(b *testing.B) {
+			for _, p := range concurrencyLevels {
+				b.Run(fmt.Sprintf("P%d", p), func(b *testing.B) {
+					bs := impl.make(benchBits)
+					bs.SetRange(0, benchBits)
 
-			b.SetParallelism(p)
-			b.ResetTimer()
-			b.RunParallel(func(pb *testing.PB) {
-				i := uint(0)
-				for pb.Next() {
-					lo := i % (benchBits / chunk) * chunk
-					if !bs.HasRange(lo, lo+chunk) {
-						b.Fatal("expected set")
-					}
-					i++
-				}
-			})
+					b.SetParallelism(p)
+					b.ResetTimer()
+					b.RunParallel(func(pb *testing.PB) {
+						i := uint(0)
+						for pb.Next() {
+							lo := i % (benchBits / benchChunk) * benchChunk
+							if !bs.HasRange(lo, lo+benchChunk) {
+								b.Fatal("expected set")
+							}
+							i++
+						}
+					})
+				})
+			}
 		})
 	}
-}
-
-func BenchmarkFlatHasRange_HitConcurrent(b *testing.B) {
-	benchmarkHasRangeHitConcurrent(b, func(n uint) Bitset { return NewFlat(n) })
-}
-
-func BenchmarkRoaringHasRange_HitConcurrent(b *testing.B) {
-	benchmarkHasRangeHitConcurrent(b, func(n uint) Bitset { return NewRoaring(n) })
-}
-
-func BenchmarkShardedHasRange_HitConcurrent(b *testing.B) {
-	benchmarkHasRangeHitConcurrent(b, func(n uint) Bitset { return NewSharded(n, DefaultShardBits) })
 }
