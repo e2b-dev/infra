@@ -16,15 +16,13 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const AuthUserSyncKind = "auth_user_sync"
-
 type AuthUserSyncArgs struct {
 	UserID    string `json:"user_id"`
 	Operation string `json:"operation"`
 	Email     string `json:"email,omitempty"`
 }
 
-func (AuthUserSyncArgs) Kind() string { return AuthUserSyncKind }
+func (AuthUserSyncArgs) Kind() string { return AuthUserProjectionKind }
 
 type AuthUserSyncWorker struct {
 	river.WorkerDefaults[AuthUserSyncArgs]
@@ -53,7 +51,7 @@ func NewAuthUserSyncWorker(ctx context.Context, mainDB *sqlcdb.Client, meter met
 
 func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSyncArgs]) error {
 	attrs := []attribute.KeyValue{
-		attribute.String("job.kind", AuthUserSyncKind),
+		attribute.String("job.kind", AuthUserProjectionKind),
 		attribute.String("job.operation", job.Args.Operation),
 		attribute.Int64("job.id", job.ID),
 		telemetry.WithUserID(job.Args.UserID),
@@ -69,7 +67,7 @@ func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSy
 	}
 
 	w.l.Info(ctx, "processing auth user sync job",
-		zap.String("job.kind", AuthUserSyncKind),
+		zap.String("job.kind", AuthUserProjectionKind),
 		zap.Int64("job.id", job.ID),
 		zap.String("job.operation", job.Args.Operation),
 		logger.WithUserID(job.Args.UserID),
@@ -113,7 +111,7 @@ func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSy
 	}
 
 	w.l.Info(ctx, "completed auth user sync job",
-		zap.String("job.kind", AuthUserSyncKind),
+		zap.String("job.kind", AuthUserProjectionKind),
 		zap.Int64("job.id", job.ID),
 		zap.String("job.operation", job.Args.Operation),
 		logger.WithUserID(job.Args.UserID),
@@ -130,8 +128,8 @@ func (w *AuthUserSyncWorker) observeJob(ctx context.Context, operation, result s
 	}
 
 	w.jobsCounter.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("worker", "supabase_auth_user_sync"),
-		attribute.String("job.kind", AuthUserSyncKind),
+		attribute.String("worker", AuthUserProjectionKind),
+		attribute.String("job.kind", AuthUserProjectionKind),
 		attribute.String("job.operation", operation),
 		attribute.String("result", result),
 	))

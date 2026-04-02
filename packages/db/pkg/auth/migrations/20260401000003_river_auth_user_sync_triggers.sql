@@ -10,13 +10,13 @@ BEGIN
     INSERT INTO auth_custom.river_job (args, kind, max_attempts, queue, state)
     VALUES (
         jsonb_build_object('user_id', NEW.id, 'operation', 'upsert', 'email', NEW.email),
-        'auth_user_sync',
+        'auth_user_projection',
         20,
-        'auth_sync',
+        'auth_user_projection',
         'available'
     );
 
-    PERFORM pg_notify('auth_custom.river_insert', '{"queue":"auth_sync"}');
+    PERFORM pg_notify('auth_custom.river_insert', '{"queue":"auth_user_projection"}');
 
     RETURN NEW;
 END;
@@ -32,13 +32,13 @@ BEGIN
         INSERT INTO auth_custom.river_job (args, kind, max_attempts, queue, state)
         VALUES (
             jsonb_build_object('user_id', NEW.id, 'operation', 'upsert', 'email', NEW.email),
-            'auth_user_sync',
+            'auth_user_projection',
             20,
-            'auth_sync',
+            'auth_user_projection',
             'available'
         );
 
-        PERFORM pg_notify('auth_custom.river_insert', '{"queue":"auth_sync"}');
+        PERFORM pg_notify('auth_custom.river_insert', '{"queue":"auth_user_projection"}');
     END IF;
 
     RETURN NEW;
@@ -54,13 +54,13 @@ BEGIN
     INSERT INTO auth_custom.river_job (args, kind, max_attempts, queue, state)
     VALUES (
         jsonb_build_object('user_id', OLD.id, 'operation', 'delete'),
-        'auth_user_sync',
+        'auth_user_projection',
         20,
-        'auth_sync',
+        'auth_user_projection',
         'available'
     );
 
-    PERFORM pg_notify('auth_custom.river_insert', '{"queue":"auth_sync"}');
+    PERFORM pg_notify('auth_custom.river_insert', '{"queue":"auth_user_projection"}');
 
     RETURN OLD;
 END;

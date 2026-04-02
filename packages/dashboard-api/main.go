@@ -235,7 +235,7 @@ func run() int {
 	var riverClient *river.Client[pgx.Tx]
 
 	if config.AuthUserSyncBackgroundWorkerEnabled {
-		workerLogger := l.With(zap.String("worker", "auth_user_sync"))
+		workerLogger := l.With(zap.String("worker", backgroundworker.AuthUserProjectionKind))
 		workerMeter := tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/dashboard-api/internal/backgroundworker")
 
 		authPool := authDB.WritePool()
@@ -255,7 +255,7 @@ func run() int {
 			l.Fatal(ctx, "failed to start River client", zap.Error(err))
 		}
 
-		l.Info(ctx, "background worker started", zap.String("queue", backgroundworker.AuthUserSyncQueue), zap.String("schema", backgroundworker.AuthCustomSchema))
+		l.Info(ctx, "background worker started", zap.String("queue", backgroundworker.AuthUserProjectionQueue), zap.String("schema", backgroundworker.AuthCustomSchema))
 	}
 
 	wg.Go(func() {
