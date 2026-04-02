@@ -270,8 +270,22 @@ echo "TARGET_ARCH=amd64" >> .env.local
 - OCI image platform for container pulls
 
 It does **not** affect:
-- Makefile compilation — use `BUILD_ARCH` for cross-compilation: `BUILD_ARCH=amd64 make build-local`
+- Makefile compilation (see `BUILD_ARCH` below)
 - Hardware-dependent runtime behavior (SMT detection, CPU info) which always uses the actual host architecture
+
+### Building for ARM64
+
+`BUILD_ARCH` defaults to `amd64`. To build ARM64 binaries:
+
+```bash
+# Single command
+BUILD_ARCH=arm64 make build-local
+
+# Or set in .env.local for persistent override
+echo "BUILD_ARCH=arm64" >> .env.local
+```
+
+This applies to all services: orchestrator, envd, client-proxy.
 
 ---
 
