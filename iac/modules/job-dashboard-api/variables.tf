@@ -54,6 +54,22 @@ variable "otel_collector_grpc_port" {
   default = 4317
 }
 
+variable "redis_url" {
+  type      = string
+  sensitive = true
+}
+
+variable "redis_cluster_url" {
+  type      = string
+  sensitive = true
+}
+
+variable "redis_tls_ca_base64" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
 variable "logs_proxy_port" {
   type = object({
     name = string

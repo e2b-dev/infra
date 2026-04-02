@@ -15,12 +15,14 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/launchdarkly/go-server-sdk/v7 v7.13.0
 	github.com/stretchr/testify v1.11.1
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.65.0
 	go.opentelemetry.io/otel/metric v1.41.0
 	go.uber.org/zap v1.27.1
 	google.golang.org/grpc v1.79.3
 )
 
 require (
+	connectrpc.com/connect v1.18.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect

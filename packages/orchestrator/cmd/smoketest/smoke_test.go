@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -285,7 +286,7 @@ func findOrBuildEnvd(t *testing.T) string {
 
 	cmd := exec.CommandContext(t.Context(), "go", "build", "-o", binPath, ".") //nolint:gosec // trusted input
 	cmd.Dir = envdDir
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH=amd64")
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+runtime.GOARCH)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Skipf("failed to build envd: %v\n%s", err, out)

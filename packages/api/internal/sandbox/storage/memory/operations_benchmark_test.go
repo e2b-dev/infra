@@ -131,7 +131,7 @@ func BenchmarkStorageSyncRemoveScan(b *testing.B) {
 		b.Helper()
 
 		for range b.N {
-			_ = f.storage.Sync(f.syncInput, f.syncNodeID)
+			_ = f.storage.Reconcile(b.Context(), f.syncInput, f.syncNodeID)
 		}
 	})
 }

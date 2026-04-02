@@ -6,8 +6,10 @@ import (
 
 	"github.com/bsm/redislock"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
@@ -16,6 +18,11 @@ const (
 	transitionResultKeyTTL = 30 * time.Second
 	lockRetryInterval      = 20 * time.Millisecond
 	pollInterval           = 1 * time.Second // fallback polling interval; PubSub is the primary notification mechanism
+
+	// orphanGracePeriod is the minimum age a sandbox must have before it can be
+	// considered an orphan and killed. This prevents killing sandboxes that are
+	// still in the process of being created (store write happens before the VM starts).
+	orphanGracePeriod = time.Minute
 )
 
 var _ sandbox.Storage = (*Storage)(nil)
@@ -53,7 +60,85 @@ func (s *Storage) Close() {
 	s.subManager.close()
 }
 
-// Sync is here only for legacy reasons, redis backend doesn't need any sync
-func (s *Storage) Sync(_ []sandbox.Sandbox, _ string) []sandbox.Sandbox {
-	return nil
+// Reconcile returns a list of sandboxes that are considered orphans on the current node.
+func (s *Storage) Reconcile(ctx context.Context, sbxs []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
+	if len(sbxs) == 0 {
+		return nil
+	}
+
+	now := time.Now()
+
+	// Filter out sandboxes that are too young to be considered orphans.
+	type candidate struct {
+		sbx sandbox.Sandbox
+		key string
+	}
+
+	// Group candidates by team for per-team MGET (Redis Cluster slot compatibility).
+	teamCandidates := make(map[string][]candidate)
+	for _, sbx := range sbxs {
+		if now.Sub(sbx.StartTime) < orphanGracePeriod {
+			continue
+		}
+
+		team := sbx.TeamID.String()
+		teamCandidates[team] = append(teamCandidates[team], candidate{
+			sbx: sbx,
+			key: getSandboxKey(team, sbx.SandboxID),
+		})
+	}
+	if len(teamCandidates) == 0 {
+		return nil
+	}
+
+	// Pipeline per-team MGET calls.
+	pipe := s.redisClient.Pipeline()
+
+	type batchInfo struct {
+		cmd        *redis.SliceCmd
+		candidates []candidate
+	}
+
+	var batches []batchInfo
+	for _, candidates := range teamCandidates {
+		keys := make([]string, len(candidates))
+		for i, c := range candidates {
+			keys[i] = c.key
+		}
+
+		cmd := pipe.MGet(ctx, keys...)
+		batches = append(batches, batchInfo{cmd: cmd, candidates: candidates})
+	}
+
+	_, err := pipe.Exec(ctx)
+	if err != nil {
+		// Pipeline error — skip entirely to avoid mass kills.
+		logger.L().Error(ctx, "Redis pipeline error during orphan sync, skipping",
+			zap.Error(err),
+			logger.WithNodeID(nodeID),
+		)
+
+		return nil
+	}
+
+	var orphans []sandbox.Sandbox
+	for _, batch := range batches {
+		results := batch.cmd.Val()
+		for i, raw := range results {
+			if raw != nil {
+				// Sandbox exists in store, not an orphan.
+				continue
+			}
+
+			sbx := batch.candidates[i].sbx
+			logger.L().Warn(ctx, "Killing orphaned sandbox not found in store",
+				logger.WithSandboxID(sbx.SandboxID),
+				logger.WithNodeID(nodeID),
+			)
+
+			orphans = append(orphans, sbx)
+		}
+	}
+
+	return orphans
 }

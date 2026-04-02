@@ -21,6 +21,8 @@ type stubResumer struct {
 	err    error
 }
 
+func (s stubResumer) Init(_ context.Context) {}
+
 func (s stubResumer) Resume(_ context.Context, _ string, _ uint64, _ string, _ string) (string, error) {
 	return s.nodeIP, s.err
 }
@@ -31,6 +33,8 @@ type recordingResumer struct {
 	trafficAccessToken string
 	envdAccessToken    string
 }
+
+func (r *recordingResumer) Init(_ context.Context) {}
 
 func (r *recordingResumer) Resume(_ context.Context, sandboxID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (string, error) {
 	r.sandboxID = sandboxID

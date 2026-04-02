@@ -116,6 +116,8 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/pressly/goose/v3 v3.26.0 // indirect
+	github.com/redis/go-redis/extra/rediscmd/v9 v9.17.3 // indirect
+	github.com/redis/go-redis/extra/redisotel/v9 v9.17.3 // indirect
 	github.com/redis/go-redis/v9 v9.17.3 // indirect
 	github.com/riverqueue/river/riverdriver v0.32.0 // indirect
 	github.com/riverqueue/river/rivershared v0.32.0 // indirect

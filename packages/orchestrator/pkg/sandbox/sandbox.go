@@ -1194,7 +1194,7 @@ func pauseProcessRootfs(
 		return nil, nil, fmt.Errorf("failed to create rootfs diff: %w", err)
 	}
 
-	rootfsDiffMetadata, err := diffCreator.process(ctx, rootfsDiffFile)
+	rootfsDiffMetadata, err := diffCreator.process(ctx, rootfsDiffFile.File)
 	if err != nil {
 		err = errors.Join(err, rootfsDiffFile.Close())
 
