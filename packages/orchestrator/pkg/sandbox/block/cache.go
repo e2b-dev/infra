@@ -90,15 +90,13 @@ func newCache(size, blockSize int64, filePath string, dirtyFile bool, bitsetImpl
 		return nil, fmt.Errorf("error mapping file: %w", err)
 	}
 
-	numBlocks := (size + blockSize - 1) / blockSize
-
 	return &Cache{
 		mmap:      &mm,
 		filePath:  filePath,
 		size:      size,
 		blockSize: blockSize,
 		dirtyFile: dirtyFile,
-		dirty:     atomicbitset.New(uint(numBlocks), bitsetImpl),
+		dirty:     atomicbitset.New(uint(header.TotalBlocks(size, blockSize)), bitsetImpl),
 	}, nil
 }
 
@@ -252,7 +250,7 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 }
 
 func (c *Cache) startBlock(off int64) uint {
-	return uint(off / c.blockSize)
+	return uint(header.BlockIdx(off, c.blockSize))
 }
 
 func (c *Cache) endBlock(off int64) uint {
@@ -260,10 +258,12 @@ func (c *Cache) endBlock(off int64) uint {
 }
 
 func (c *Cache) isCached(off, length int64) bool {
+	// Make sure the offset is within the cache size
 	if off >= c.size {
 		return false
 	}
 
+	// Cap if the length goes beyond the cache size, so we don't check for blocks that are out of bounds.
 	end := min(off+length, c.size)
 
 	return c.dirty.HasRange(c.startBlock(off), c.endBlock(end))
