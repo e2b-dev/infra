@@ -125,8 +125,6 @@ func (s *Sharded) SetRange(lo, hi uint) {
 	}
 }
 
-func (s *Sharded) UnsafeIterator() iter.Seq[uint] { return s.Iterator() }
-
 func (s *Sharded) Iterator() iter.Seq[uint] {
 	return func(yield func(uint) bool) {
 		for si := range s.shards {

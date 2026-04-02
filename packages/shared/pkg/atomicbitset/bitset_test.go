@@ -21,6 +21,13 @@ var impls = []implFactory{
 	{"Sharded/small", func(n uint) Bitset { return NewSharded(n, 64) }},
 }
 
+// atomicImpls are implementations safe for concurrent use without external locking.
+var atomicImpls = []implFactory{
+	{"Flat", func(n uint) Bitset { return NewFlat(n) }},
+	{"Sharded", func(n uint) Bitset { return NewSharded(n, DefaultShardBits) }},
+	{"Sharded/small", func(n uint) Bitset { return NewSharded(n, 64) }},
+}
+
 func TestHasRange(t *testing.T) {
 	t.Parallel()
 	for _, impl := range impls {
@@ -126,7 +133,9 @@ func TestSetRange_Overlapping(t *testing.T) {
 
 func TestSetRange_Concurrent(t *testing.T) {
 	t.Parallel()
-	for _, impl := range impls {
+
+	// Atomic impls are inherently safe for concurrent use.
+	for _, impl := range atomicImpls {
 		t.Run(impl.name, func(t *testing.T) {
 			t.Parallel()
 			b := impl.make(512)
@@ -145,6 +154,30 @@ func TestSetRange_Concurrent(t *testing.T) {
 			require.False(t, b.HasRange(last, last+1))
 		})
 	}
+
+	// Non-atomic impls (e.g. Roaring) need external locking, like Cache provides.
+	t.Run("Roaring/external_lock", func(t *testing.T) {
+		t.Parallel()
+		b := NewRoaring(512)
+		var mu sync.RWMutex
+
+		var wg sync.WaitGroup
+		for g := range 8 {
+			wg.Go(func() {
+				lo := uint(g) * 32
+				mu.Lock()
+				b.SetRange(lo, lo+128)
+				mu.Unlock()
+			})
+		}
+		wg.Wait()
+
+		last := uint(7*32 + 128)
+		mu.RLock()
+		require.True(t, b.HasRange(0, last))
+		require.False(t, b.HasRange(last, last+1))
+		mu.RUnlock()
+	})
 }
 
 func TestIterator_Empty(t *testing.T) {
@@ -319,7 +352,12 @@ func BenchmarkHasRange_Miss(b *testing.B) {
 var concurrencyLevels = []int{1, 4, 16, 64}
 
 func BenchmarkHasRange_HitConcurrent(b *testing.B) {
+	// Atomic impls (Flat, Sharded) need no external lock.
 	for _, impl := range benchImpls {
+		if impl.name == "Roaring" {
+			continue
+		}
+
 		b.Run(impl.name, func(b *testing.B) {
 			for _, p := range concurrencyLevels {
 				b.Run(fmt.Sprintf("P%d", p), func(b *testing.B) {
@@ -342,4 +380,31 @@ func BenchmarkHasRange_HitConcurrent(b *testing.B) {
 			}
 		})
 	}
+
+	// Roaring requires external locking (like Cache's dirtyMu).
+	b.Run("Roaring", func(b *testing.B) {
+		for _, p := range concurrencyLevels {
+			b.Run(fmt.Sprintf("P%d", p), func(b *testing.B) {
+				bs := NewRoaring(benchBits)
+				bs.SetRange(0, benchBits)
+				var mu sync.RWMutex
+
+				b.SetParallelism(p)
+				b.ResetTimer()
+				b.RunParallel(func(pb *testing.PB) {
+					i := uint(0)
+					for pb.Next() {
+						lo := i % (benchBits / benchChunk) * benchChunk
+						mu.RLock()
+						hit := bs.HasRange(lo, lo+benchChunk)
+						mu.RUnlock()
+						if !hit {
+							b.Fatal("expected set")
+						}
+						i++
+					}
+				})
+			})
+		}
+	})
 }

@@ -2,15 +2,13 @@ package atomicbitset
 
 import (
 	"iter"
-	"sync"
 
 	"github.com/RoaringBitmap/roaring/v2"
 )
 
-// Roaring wraps a roaring bitmap with an internal RWMutex.
-// Iterator is NOT locked — caller must prevent concurrent mutation.
+// Roaring wraps a roaring bitmap.
+// Caller must provide external synchronization for concurrent access.
 type Roaring struct {
-	mu sync.RWMutex
 	bm *roaring.Bitmap
 	n  uint
 }
@@ -29,11 +27,7 @@ func (r *Roaring) Has(i uint) bool {
 		return false
 	}
 
-	r.mu.RLock()
-	result := r.bm.ContainsInt(int(i))
-	r.mu.RUnlock()
-
-	return result
+	return r.bm.ContainsInt(int(i))
 }
 
 func (r *Roaring) HasRange(lo, hi uint) bool {
@@ -47,11 +41,7 @@ func (r *Roaring) HasRange(lo, hi uint) bool {
 		return false
 	}
 
-	r.mu.RLock()
-	result := r.bm.CardinalityInRange(uint64(lo), uint64(hi)) == uint64(hi-lo)
-	r.mu.RUnlock()
-
-	return result
+	return r.bm.CardinalityInRange(uint64(lo), uint64(hi)) == uint64(hi-lo)
 }
 
 func (r *Roaring) SetRange(lo, hi uint) {
@@ -62,29 +52,14 @@ func (r *Roaring) SetRange(lo, hi uint) {
 		return
 	}
 
-	r.mu.Lock()
 	r.bm.AddRange(uint64(lo), uint64(hi))
-	r.mu.Unlock()
-}
-
-func (r *Roaring) UnsafeIterator() iter.Seq[uint] {
-	return func(yield func(uint) bool) {
-		it := r.bm.Iterator()
-		for it.HasNext() {
-			if !yield(uint(it.Next())) {
-				return
-			}
-		}
-	}
 }
 
 func (r *Roaring) Iterator() iter.Seq[uint] {
 	return func(yield func(uint) bool) {
-		r.mu.RLock()
-		defer r.mu.RUnlock()
-
-		for v := range r.UnsafeIterator() {
-			if !yield(v) {
+		it := r.bm.Iterator()
+		for it.HasNext() {
+			if !yield(uint(it.Next())) {
 				return
 			}
 		}

@@ -12,7 +12,6 @@ type Bitset interface {
 	HasRange(lo, hi uint) bool
 	SetRange(lo, hi uint)
 	Iterator() iter.Seq[uint]
-	UnsafeIterator() iter.Seq[uint]
 	Len() uint
 }
 
@@ -27,9 +26,9 @@ const (
 
 func New(n uint, impl string) Bitset {
 	switch impl {
-	case BitsetRoaring:
+	case BitsetDefault, BitsetRoaring:
 		return NewRoaring(n)
-	case BitsetDefault, BitsetAtomic:
+	case BitsetAtomic:
 		if n <= autoThreshold {
 			return NewFlat(n)
 		}

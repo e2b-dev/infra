@@ -77,8 +77,6 @@ func (b *Flat) SetRange(lo, hi uint) {
 	}
 }
 
-func (b *Flat) UnsafeIterator() iter.Seq[uint] { return b.Iterator() }
-
 func (b *Flat) Iterator() iter.Seq[uint] {
 	return func(yield func(uint) bool) {
 		for wi := range b.words {

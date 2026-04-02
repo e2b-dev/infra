@@ -44,14 +44,16 @@ func NewErrCacheClosed(filePath string) *CacheClosedError {
 }
 
 type Cache struct {
-	filePath  string
-	size      int64
-	blockSize int64
-	mmap      *mmap.MMap
-	mu        sync.RWMutex
-	dirty     atomicbitset.Bitset
-	dirtyFile bool
-	closed    atomic.Bool
+	filePath      string
+	size          int64
+	blockSize     int64
+	mmap          *mmap.MMap
+	mu            sync.RWMutex
+	dirty         atomicbitset.Bitset
+	dirtyMu       sync.RWMutex // fences mmap writes for non-atomic bitset impls
+	dirtyNeedsLock bool        // true for impls that need external synchronization (e.g. roaring)
+	dirtyFile     bool
+	closed        atomic.Bool
 }
 
 func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, error) {
@@ -91,12 +93,13 @@ func newCache(size, blockSize int64, filePath string, dirtyFile bool, bitsetImpl
 	}
 
 	return &Cache{
-		mmap:      &mm,
-		filePath:  filePath,
-		size:      size,
-		blockSize: blockSize,
-		dirtyFile: dirtyFile,
-		dirty:     atomicbitset.New(uint(header.TotalBlocks(size, blockSize)), bitsetImpl),
+		mmap:           &mm,
+		filePath:       filePath,
+		size:           size,
+		blockSize:      blockSize,
+		dirtyFile:      dirtyFile,
+		dirty:          atomicbitset.New(uint(header.TotalBlocks(size, blockSize)), bitsetImpl),
+		dirtyNeedsLock: bitsetImpl != atomicbitset.BitsetAtomic,
 	}, nil
 }
 
@@ -266,12 +269,22 @@ func (c *Cache) isCached(off, length int64) bool {
 	// Cap if the length goes beyond the cache size, so we don't check for blocks that are out of bounds.
 	end := min(off+length, c.size)
 
+	if c.dirtyNeedsLock {
+		c.dirtyMu.RLock()
+		defer c.dirtyMu.RUnlock()
+	}
+
 	return c.dirty.HasRange(c.startBlock(off), c.endBlock(end))
 }
 
 func (c *Cache) setIsCached(off, length int64) {
 	if length <= 0 {
 		return
+	}
+
+	if c.dirtyNeedsLock {
+		c.dirtyMu.Lock()
+		defer c.dirtyMu.Unlock()
 	}
 
 	c.dirty.SetRange(c.startBlock(off), c.endBlock(off+length))
@@ -300,6 +313,11 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 func (c *Cache) dirtySortedKeys() []int64 {
 	if c.dirty == nil {
 		return nil
+	}
+
+	if c.dirtyNeedsLock {
+		c.dirtyMu.RLock()
+		defer c.dirtyMu.RUnlock()
 	}
 
 	var keys []int64
