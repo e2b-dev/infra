@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"os"
@@ -153,6 +154,7 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	dst := int(out.Fd())
 	var writeOffset int64
 	var totalRanges int64
+	fallback := false
 
 	copyStart := time.Now()
 	for r := range BitsetRanges(diffMetadata.Dirty, diffMetadata.BlockSize) {
@@ -163,24 +165,42 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 		// The kernel may return short writes (e.g. capped at MAX_RW_COUNT on non-reflink filesystems),
 		// so we loop until the full range is copied. The offset pointers are advanced by the kernel.
 		for remaining > 0 {
-			// On XFS this uses reflink automatically.
-			n, err := unix.CopyFileRange(
-				src,
-				&readOffset,
-				dst,
-				&writeOffset,
-				remaining,
-				0,
-			)
-			if err != nil {
-				return nil, fmt.Errorf("error copying file range: %w", err)
+			if !fallback {
+				// On XFS this uses reflink automatically.
+				n, err := unix.CopyFileRange(
+					src,
+					&readOffset,
+					dst,
+					&writeOffset,
+					remaining,
+					0,
+				)
+				switch {
+				case errors.Is(err, syscall.EXDEV) || errors.Is(err, syscall.EOPNOTSUPP) || errors.Is(err, syscall.ENOSYS):
+					fallback = true
+					logger.L().Warn(ctx, "copy_file_range unsupported, falling back to normal copy", zap.Error(err))
+				case err != nil:
+					return nil, fmt.Errorf("error copying file range: %w", err)
+				case n == 0:
+					return nil, fmt.Errorf("copy_file_range returned 0 with %d bytes remaining", remaining)
+				default:
+					remaining -= n
+				}
 			}
 
-			if n == 0 {
-				return nil, fmt.Errorf("copy_file_range returned 0 with %d bytes remaining", remaining)
-			}
+			// CopyFileRange failed. Falling back to normal copy
+			if fallback && remaining > 0 {
+				if _, err := out.Seek(writeOffset, io.SeekStart); err != nil {
+					return nil, fmt.Errorf("error seeking: %w", err)
+				}
+				sr := io.NewSectionReader(f, readOffset, int64(remaining))
+				if _, err := io.Copy(out, sr); err != nil {
+					return nil, fmt.Errorf("error copying file range. %w", err)
+				}
 
-			remaining -= n
+				writeOffset += int64(remaining)
+				remaining = 0
+			}
 		}
 	}
 
