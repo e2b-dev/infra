@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/cache"
 )
 
@@ -11,25 +13,25 @@ const (
 	authInfoExpiration = 5 * time.Minute
 	refreshInterval    = 1 * time.Minute
 	refreshTimeout     = 30 * time.Second
-	callbackTimeout    = 30 * time.Second
+
+	authCacheRedisPrefix = "auth:team"
 )
 
-// AuthCache is a generic TTL cache for authentication data (teams, users, etc.).
+// AuthCache is a Redis-backed TTL cache for authentication data (teams, users, etc.).
 type AuthCache[T any] struct {
-	cache *cache.MemoryCache[T]
+	cache *cache.RedisCache[T]
 }
 
-// NewAuthCache creates a new AuthCache with default TTL and refresh settings.
-func NewAuthCache[T any]() *AuthCache[T] {
-	config := cache.Config[T]{
-		TTL:             authInfoExpiration,
-		RefreshInterval: refreshInterval,
-		RefreshTimeout:  refreshTimeout,
-		CallbackTimeout: callbackTimeout,
-	}
-
+// NewAuthCache creates a new Redis-backed AuthCache with default TTL and refresh settings.
+func NewAuthCache[T any](redisClient redis.UniversalClient) *AuthCache[T] {
 	return &AuthCache[T]{
-		cache: cache.NewMemoryCache(config),
+		cache: cache.NewRedisCache(cache.RedisConfig[T]{
+			RedisClient:     redisClient,
+			TTL:             authInfoExpiration,
+			RefreshInterval: refreshInterval,
+			RefreshTimeout:  refreshTimeout,
+			RedisPrefix:     authCacheRedisPrefix,
+		}),
 	}
 }
 
@@ -39,11 +41,11 @@ func (c *AuthCache[T]) GetOrSet(ctx context.Context, key string, dataCallback fu
 }
 
 // Invalidate removes a single entry from the cache by key.
-func (c *AuthCache[T]) Invalidate(key string) {
-	c.cache.Delete(key)
+func (c *AuthCache[T]) Invalidate(ctx context.Context, key string) {
+	c.cache.Delete(ctx, key)
 }
 
-// Close stops the cache's background refresh goroutines.
+// Close is a no-op for the Redis-backed cache (no background goroutines).
 func (c *AuthCache[T]) Close(ctx context.Context) error {
 	return c.cache.Close(ctx)
 }

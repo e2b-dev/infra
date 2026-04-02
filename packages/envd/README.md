@@ -4,6 +4,12 @@ Daemon that runs inside a sandbox that allows interacting with the sandbox via c
 
 ## Development
 
+### Versioning
+
+The envd version in `pkg/version.go` must be bumped on every change that affects behavior (code changes, dependency updates, etc.). Pure comment or documentation changes that don't affect the compiled binary don't require a version bump.
+
+### Running locally
+
 Run the following command to (re)build the envd daemon and start a Docker container with envd running inside:
 
 ```bash

@@ -154,7 +154,7 @@ func (a *APIStore) startSandboxInternal(
 		zap.String("end_time", endTime.Format("2006-01-02 15:04:05 -07:00")),
 		zap.String("auto_resume_policy", autoResumePolicy),
 		zap.Bool("auto_pause", sbx.AutoPause),
-		zap.String("parent_template_id", sbx.BaseTemplateID),
+		zap.String("template_id", sbx.BaseTemplateID),
 	)
 
 	return sbx, nil

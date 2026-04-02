@@ -6,6 +6,12 @@ import (
 	"google.golang.org/grpc/stats"
 )
 
+// IsResumeMetadataKey is the gRPC metadata key used to pass the is_resume/snapshot
+// value from the API client to the orchestrator server. This allows the server-side
+// otelgrpc stats handler to include sandbox.resume in metric attributes during TagRPC,
+// before the request payload is available.
+const IsResumeMetadataKey = "x-sandbox-resume"
+
 type noTraceKey struct{}
 
 var noTrace = struct{}{}

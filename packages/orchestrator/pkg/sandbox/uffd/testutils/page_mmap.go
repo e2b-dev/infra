@@ -1,6 +1,7 @@
 package testutils
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"syscall"
@@ -20,7 +21,16 @@ func NewPageMmap(t *testing.T, size, pagesize uint64) ([]byte, uintptr, error) {
 	}
 
 	if pagesize == header.HugepageSize {
-		return newMmap(t, size, header.HugepageSize, unix.MAP_HUGETLB|unix.MAP_HUGE_2MB)
+		b, addr, err := newMmap(t, size, header.HugepageSize, unix.MAP_HUGETLB|unix.MAP_HUGE_2MB)
+		// Hugepage allocation can fail with ENOMEM on CI runners that don't
+		// have enough (or any) hugepages pre-allocated in /proc/sys/vm/nr_hugepages.
+		// Skip gracefully rather than failing the test.
+		if err != nil && errors.Is(err, syscall.ENOMEM) {
+			pages := int(math.Ceil(float64(size) / float64(header.HugepageSize)))
+			t.Skipf("skipping: hugepage mmap failed (need %d hugepages): %v", pages, err)
+		}
+
+		return b, addr, err
 	}
 
 	return nil, 0, fmt.Errorf("unsupported page size: %d", pagesize)
