@@ -68,6 +68,8 @@ func NewStorage(
 			hdrPath = paths.MemfileHeader()
 		case build.Rootfs:
 			hdrPath = paths.RootfsHeader()
+		default:
+			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
 
 		headerObject, err := persistence.OpenBlob(ctx, hdrPath, headerObjectType)
@@ -100,6 +102,8 @@ func NewStorage(
 			dataPath = paths.Memfile()
 		case build.Rootfs:
 			dataPath = paths.Rootfs()
+		default:
+			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
 
 		object, err := persistence.OpenSeekable(ctx, dataPath, objectType)

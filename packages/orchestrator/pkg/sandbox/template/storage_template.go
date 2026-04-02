@@ -53,7 +53,7 @@ func newTemplateFromStorage(
 		BuildID: buildId,
 	}.Cache(config.StorageConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create template cache files: %w", err)
+		return nil, fmt.Errorf("failed to create cache paths: %w", err)
 	}
 
 	return &storageTemplate{
@@ -231,7 +231,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 
-		logger.L().Error(ctx, "failed to fetch template files",
+		logger.L().Error(ctx, "failed to fetch template storage",
 			logger.WithBuildID(t.paths.BuildID),
 			zap.Error(err),
 		)

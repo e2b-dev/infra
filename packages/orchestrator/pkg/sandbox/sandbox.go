@@ -988,7 +988,7 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 		BuildID: uuid.New().String(),
 	}.Cache(s.config.StorageConfig)
 	if err != nil {
-		return fmt.Errorf("failed to create template files: %w", err)
+		return fmt.Errorf("failed to create cache paths: %w", err)
 	}
 	defer cachePaths.Close()
 
@@ -1039,7 +1039,7 @@ func (s *Sandbox) Pause(
 
 	cachePaths, err := storage.Paths{BuildID: m.Template.BuildID}.Cache(s.config.StorageConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get template files: %w", err)
+		return nil, fmt.Errorf("failed to create cache paths: %w", err)
 	}
 	cleanup.AddNoContext(ctx, cachePaths.Close)
 
