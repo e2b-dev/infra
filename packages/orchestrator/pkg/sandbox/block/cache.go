@@ -364,7 +364,6 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	return n, nil
 }
 
-
 // FileSize returns the size of the cache on disk.
 // The size might differ from the dirty size, as it may not be fully on disk.
 func (c *Cache) FileSize() (int64, error) {
