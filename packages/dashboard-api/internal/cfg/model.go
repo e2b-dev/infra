@@ -1,6 +1,8 @@
 package cfg
 
 import (
+	"fmt"
+
 	"github.com/caarlos0/env/v11"
 )
 
@@ -24,6 +26,10 @@ func Parse() (Config, error) {
 
 	if config.AuthDBConnectionString == "" {
 		config.AuthDBConnectionString = config.PostgresConnectionString
+	}
+
+	if err == nil && config.RedisURL == "" && config.RedisClusterURL == "" {
+		err = fmt.Errorf("at least one of REDIS_URL or REDIS_CLUSTER_URL must be set")
 	}
 
 	return config, err
