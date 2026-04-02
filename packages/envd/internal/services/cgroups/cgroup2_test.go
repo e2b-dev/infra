@@ -21,6 +21,15 @@ const (
 	megabyte = 1024 * kilobyte
 )
 
+func TestNewCgroup2Manager_NonCgroup2FS(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	_, err := NewCgroup2Manager(WithCgroup2RootSysFSPath(tmpDir))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not a cgroup2 filesystem")
+}
+
 func TestCgroupRoundTrip(t *testing.T) {
 	t.Parallel()
 
