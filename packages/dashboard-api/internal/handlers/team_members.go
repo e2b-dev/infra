@@ -107,6 +107,8 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 		return
 	}
 
+	s.authService.InvalidateTeamMemberCache(user.ID, teamInfo.Team.ID.String())
+
 	c.Status(http.StatusCreated)
 }
 
@@ -186,6 +188,8 @@ func (s *APIStore) DeleteTeamsTeamIDMembersUserId(c *gin.Context, teamID api.Tea
 
 		return
 	}
+
+	s.authService.InvalidateTeamMemberCache(userId, teamInfo.Team.ID.String())
 
 	c.Status(http.StatusNoContent)
 }

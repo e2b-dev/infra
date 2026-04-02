@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -155,7 +156,7 @@ func (s *AuthService[T]) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.C
 		}
 	}
 
-	cacheKey := fmt.Sprintf("%s-%s", userID.String(), teamID)
+	cacheKey := supabaseTeamCacheKey(userID, teamID)
 
 	result, err := s.teamCache.GetOrSet(ctx, cacheKey, func(ctx context.Context, _ string) (T, error) {
 		return s.store.GetTeamByIDAndUserID(ctx, userID, teamID)
@@ -197,6 +198,12 @@ func (s *AuthService[T]) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.C
 	return result, nil
 }
 
+// InvalidateTeamMemberCache removes the cached auth entry for a specific user-team pair.
+// This should be called when team membership changes (member added or removed).
+func (s *AuthService[T]) InvalidateTeamMemberCache(userID uuid.UUID, teamID string) {
+	s.teamCache.Invalidate(supabaseTeamCacheKey(userID, teamID))
+}
+
 // InvalidateTeamCache queries the team's API key hashes and removes their cached entries.
 func (s *AuthService[T]) InvalidateTeamCache(ctx context.Context, teamID uuid.UUID) error {
 	hashes, err := s.store.GetTeamAPIKeyHashes(ctx, teamID)
@@ -209,6 +216,10 @@ func (s *AuthService[T]) InvalidateTeamCache(ctx context.Context, teamID uuid.UU
 	}
 
 	return nil
+}
+
+func supabaseTeamCacheKey(userID uuid.UUID, teamID string) string {
+	return fmt.Sprintf("%s-%s", userID.String(), strings.ToLower(teamID))
 }
 
 // Close stops the underlying cache's background refresh goroutines.
