@@ -38,8 +38,8 @@ func (c *AuthCache[T]) GetOrSet(ctx context.Context, key string, dataCallback fu
 	return c.cache.GetOrSet(ctx, key, dataCallback)
 }
 
-// Delete removes a cached entry by key.
-func (c *AuthCache[T]) Delete(key string) {
+// Invalidate removes a single entry from the cache by key.
+func (c *AuthCache[T]) Invalidate(key string) {
 	c.cache.Delete(key)
 }
 

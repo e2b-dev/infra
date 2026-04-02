@@ -254,6 +254,7 @@ components:
         - cpu_count
         - mem_total
         - mem_used
+        - mem_cache
         - disk_total
         - disk_used
       properties:
@@ -281,6 +282,10 @@ components:
           type: integer
           format: int64
           description: Used memory in bytes
+        mem_cache:
+          type: integer
+          format: int64
+          description: Cached memory (page cache) in bytes
         disk_total:
           type: integer
           format: int64

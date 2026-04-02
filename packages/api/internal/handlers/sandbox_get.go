@@ -109,7 +109,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		// Sandbox exists and belongs to the team - return running sandbox sbx
 		sandbox := api.SandboxDetail{
 			ClientID:            sbx.ClientID,
-			TemplateID:          sbx.TemplateID,
+			TemplateID:          sbx.BaseTemplateID,
 			Alias:               sbx.Alias,
 			SandboxID:           sbx.SandboxID,
 			StartedAt:           sbx.StartTime,
@@ -200,9 +200,11 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		networkConfig = lastSnapshot.Snapshot.Config.Network
 	}
 
+	pausedAlias := firstAlias(lastSnapshot.Aliases)
+
 	sandbox := api.SandboxDetail{
 		ClientID:            consts.ClientID, // for backwards compatibility we need to return a client id
-		TemplateID:          lastSnapshot.Snapshot.EnvID,
+		TemplateID:          lastSnapshot.Snapshot.BaseEnvID,
 		SandboxID:           lastSnapshot.Snapshot.SandboxID,
 		StartedAt:           lastSnapshot.Snapshot.SandboxStartedAt.Time,
 		CpuCount:            cpuCount,
@@ -217,6 +219,8 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		Network:             dbNetworkConfigToAPI(networkConfig),
 		Lifecycle:           sandboxLifecycleToAPI(lastSnapshot.Snapshot.AutoPause, autoResumeConfig),
 	}
+
+	sandbox.Alias = &pausedAlias
 
 	if lastSnapshot.Snapshot.Metadata != nil {
 		metadata := api.SandboxMetadata(lastSnapshot.Snapshot.Metadata)

@@ -80,6 +80,9 @@ type Metrics struct {
 	// DiskUsed Used disk space in bytes
 	DiskUsed *int `json:"disk_used,omitempty"`
 
+	// MemCache Cached memory (page cache) in bytes
+	MemCache *int `json:"mem_cache,omitempty"`
+
 	// MemTotal Total virtual memory in bytes
 	MemTotal *int `json:"mem_total,omitempty"`
 

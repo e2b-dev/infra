@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"context"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -11,7 +12,7 @@ import (
 // This is to prevent remove instances that are still being started
 const syncSandboxRemoveGracePeriod = 10 * time.Second
 
-func (s *Storage) Sync(sandboxes []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
+func (s *Storage) Reconcile(_ context.Context, sandboxes []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
 	sandboxMap := make(map[string]sandbox.Sandbox)
 	now := time.Now()
 

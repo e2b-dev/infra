@@ -22,6 +22,7 @@ type AuthStore[T TeamItem] interface {
 	GetTeamByHashedAPIKey(ctx context.Context, hashedKey string) (T, error)
 	GetTeamByIDAndUserID(ctx context.Context, userID uuid.UUID, teamID string) (T, error)
 	GetUserIDByHashedAccessToken(ctx context.Context, hashedToken string) (uuid.UUID, error)
+	GetTeamAPIKeyHashes(ctx context.Context, teamID uuid.UUID) ([]string, error)
 }
 
 // AuthService encapsulates the cache, store, and JWT secrets for auth validation.
@@ -199,7 +200,21 @@ func (s *AuthService[T]) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.C
 // InvalidateTeamMemberCache removes the cached auth entry for a specific user-team pair.
 // This should be called when team membership changes (member added or removed).
 func (s *AuthService[T]) InvalidateTeamMemberCache(userID uuid.UUID, teamID string) {
-	s.teamCache.Delete(supabaseTeamCacheKey(userID, teamID))
+	s.teamCache.Invalidate(supabaseTeamCacheKey(userID, teamID))
+}
+
+// InvalidateTeamCache queries the team's API key hashes and removes their cached entries.
+func (s *AuthService[T]) InvalidateTeamCache(ctx context.Context, teamID uuid.UUID) error {
+	hashes, err := s.store.GetTeamAPIKeyHashes(ctx, teamID)
+	if err != nil {
+		return fmt.Errorf("failed to get team API key hashes: %w", err)
+	}
+
+	for _, hash := range hashes {
+		s.teamCache.Invalidate(hash)
+	}
+
+	return nil
 }
 
 func supabaseTeamCacheKey(userID uuid.UUID, teamID string) string {

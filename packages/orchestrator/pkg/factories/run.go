@@ -251,6 +251,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to init telemetry", zap.Error(err))
 	}
+	e2bgrpc.StartChannelzSampler(ctx)
 	defer func() {
 		err := tel.Shutdown(ctx)
 		if err != nil {
@@ -410,7 +411,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 	sbxEventsDeliveryTargets := make([]event.Delivery[event.SandboxEvent], 0)
 
-	var hostStatsDelivery clickhousehoststats.Delivery
+	hostStatsDelivery := clickhousehoststats.NewNoopDelivery()
 
 	// Clickhouse sandbox events and host stats delivery
 	if config.ClickhouseConnectionString != "" {
@@ -507,7 +508,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}
 
 	// device pool
-	devicePool, err := nbd.NewDevicePool()
+	devicePool, err := nbd.NewDevicePool(config.NBDPoolSize)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create device pool", zap.Error(err))
 	}

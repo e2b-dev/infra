@@ -230,6 +230,8 @@ processors:
           - "pgxpool.*"
           - "go\\..*"
           - "traefik.*"
+          - "grpc\\..*"
+          - "rpc\\.client.*"
 
   filter/only_client_allocs:
     metrics:

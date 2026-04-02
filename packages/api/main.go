@@ -259,6 +259,7 @@ func run() int {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create metrics exporter", zap.Error(err))
 	}
+	e2bgrpc.StartChannelzSampler(ctx)
 	defer func() {
 		err := tel.Shutdown(ctx)
 		if err != nil {
