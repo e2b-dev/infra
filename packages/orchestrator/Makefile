@@ -14,6 +14,12 @@ BUILD_ARCH ?= $(shell go env GOARCH)
 #   BUILD_PLATFORM=linux/arm64 make build
 BUILD_PLATFORM ?= linux/$(BUILD_ARCH)
 
+# Busybox version — single source of truth for both Docker and local builds.
+BUSYBOX_VERSION ?= 1.36.1
+BUSYBOX_EMBED := pkg/template/build/core/systeminit/busybox
+BUSYBOX_STAMP := $(BUSYBOX_EMBED).stamp
+BUSYBOX_RELEASE_URL := https://github.com/e2b-dev/fc-busybox/releases/download/v$(BUSYBOX_VERSION)
+
 .PHONY: init
 init:
 	brew install protobuf
@@ -25,12 +31,7 @@ generate:
 .PHONY: build
 build:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
-	@docker build --platform $(BUILD_PLATFORM) --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
-
-BUSYBOX_VERSION ?= 1.36.1
-BUSYBOX_EMBED := pkg/template/build/core/systeminit/busybox
-BUSYBOX_STAMP := $(BUSYBOX_EMBED).stamp
-BUSYBOX_RELEASE_URL := https://github.com/e2b-dev/fc-busybox/releases/download/v$(BUSYBOX_VERSION)
+	@docker build --platform $(BUILD_PLATFORM) --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" --build-arg BUSYBOX_VERSION="$(BUSYBOX_VERSION)" -f ./Dockerfile ..
 
 # Download busybox and verify SHA256 against published checksums.
 # Skips if binary exists and version/arch match the stamp file.

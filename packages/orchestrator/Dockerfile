@@ -4,8 +4,9 @@ ARG GOLANG_VERSION=1.25.4
 ARG DEBIAN_VERSION=bookworm
 
 # Busybox version from fc-busybox GitHub release.
+# Passed via --build-arg from Makefile (single source of truth).
 # TARGETARCH is set automatically by Docker --platform.
-ARG BUSYBOX_VERSION=1.36.1
+ARG BUSYBOX_VERSION
 
 FROM golang:${GOLANG_VERSION}-${DEBIAN_VERSION} AS builder
 ARG BUSYBOX_VERSION
