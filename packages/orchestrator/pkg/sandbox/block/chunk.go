@@ -100,6 +100,8 @@ func NewChunker(
 ) (Chunker, error) {
 	useStreaming, minReadBatchSizeKB, bitsetImpl := getChunkerConfig(ctx, featureFlags)
 
+	fmt.Printf("[DEBUG block.NewChunker] bitsetImpl=%q useStreaming=%v size=%d blockSize=%d cachePath=%s\n", bitsetImpl, useStreaming, size, blockSize, cachePath)
+
 	if useStreaming {
 		return newStreamingChunker(size, blockSize, upstream, cachePath, metrics, int64(minReadBatchSizeKB)*1024, featureFlags, bitsetImpl)
 	}

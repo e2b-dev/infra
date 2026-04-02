@@ -36,7 +36,7 @@ build-local:
 
 .PHONY: build-debug
 build-debug:
-	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -race -gcflags=all="-N -l" -o bin/orchestrator .
+	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -gcflags=all="-N -l" -o bin/orchestrator .
 
 .PHONY: run-debug
 run-debug:
