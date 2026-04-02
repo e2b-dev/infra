@@ -31,28 +31,20 @@ WORKDIR /build
 COPY ./shared/pkg ./shared/pkg
 COPY ./clickhouse/pkg ./clickhouse/pkg
 
+COPY ./orchestrator/scripts ./orchestrator/scripts
 COPY ./orchestrator/pkg ./orchestrator/pkg
-
-# Download busybox from fc-busybox release for go:embed, verify against published SHA256SUMS.
-# Runs after COPY so the systeminit directory exists; overwrites any stale binary from build context.
-RUN RELEASE_URL="https://github.com/e2b-dev/fc-busybox/releases/download/v${BUSYBOX_VERSION}" \
-    && BINARY="busybox_v${BUSYBOX_VERSION}_${TARGETARCH}" \
-    && curl -sfL -o /tmp/${BINARY} "${RELEASE_URL}/${BINARY}" \
-    && curl -sfL -o /tmp/SHA256SUMS "${RELEASE_URL}/SHA256SUMS" \
-    && (cd /tmp && grep "${BINARY}" SHA256SUMS | sha256sum -c -) \
-    && mv /tmp/${BINARY} /build/orchestrator/pkg/template/build/core/systeminit/busybox \
-    && chmod +x /build/orchestrator/pkg/template/build/core/systeminit/busybox
 COPY ./orchestrator/cmd ./orchestrator/cmd
 COPY ./orchestrator/main.go ./orchestrator/main.go
 COPY ./orchestrator/Makefile ./orchestrator/Makefile
 
+# Download busybox and verify SHA256 against published checksums.
+RUN ./orchestrator/scripts/fetch-busybox.sh "${BUSYBOX_VERSION}" "${TARGETARCH}" \
+    ./orchestrator/pkg/template/build/core/systeminit/busybox
+
 WORKDIR /build/orchestrator
 
 ARG COMMIT_SHA
-# Build directly (not via make build-local) to skip fetch-busybox — binary is already downloaded above.
-RUN --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=1 GOOS=linux go build -o bin/orchestrator -ldflags "-X=main.commitSHA=${COMMIT_SHA}" . \
-    && CGO_ENABLED=1 GOOS=linux go build -o bin/clean-nfs-cache -ldflags "-X=main.commitSHA=${COMMIT_SHA}" ./cmd/clean-nfs-cache
+RUN --mount=type=cache,target=/root/.cache/go-build make build-local COMMIT_SHA=${COMMIT_SHA}
 
 FROM scratch
 

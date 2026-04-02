@@ -17,8 +17,6 @@ BUILD_PLATFORM ?= linux/$(BUILD_ARCH)
 # Busybox version — single source of truth for both Docker and local builds.
 BUSYBOX_VERSION ?= 1.36.1
 BUSYBOX_EMBED := pkg/template/build/core/systeminit/busybox
-BUSYBOX_STAMP := $(BUSYBOX_EMBED).stamp
-BUSYBOX_RELEASE_URL := https://github.com/e2b-dev/fc-busybox/releases/download/v$(BUSYBOX_VERSION)
 
 .PHONY: init
 init:
@@ -37,18 +35,7 @@ build:
 # Skips if binary exists and version/arch match the stamp file.
 .PHONY: fetch-busybox
 fetch-busybox:
-	@if [ ! -f $(BUSYBOX_EMBED) ] || [ "$$(cat $(BUSYBOX_STAMP) 2>/dev/null)" != "$(BUSYBOX_VERSION)-$(BUILD_ARCH)" ]; then \
-		BINARY="busybox_v$(BUSYBOX_VERSION)_$(BUILD_ARCH)"; \
-		echo "Downloading busybox v$(BUSYBOX_VERSION) ($(BUILD_ARCH))..."; \
-		curl -sfL -o /tmp/$$BINARY "$(BUSYBOX_RELEASE_URL)/$$BINARY" \
-			&& curl -sfL -o /tmp/SHA256SUMS "$(BUSYBOX_RELEASE_URL)/SHA256SUMS" \
-			&& (cd /tmp && grep "$$BINARY" SHA256SUMS | sha256sum -c -) \
-			&& mv /tmp/$$BINARY $(BUSYBOX_EMBED) \
-			&& chmod +x $(BUSYBOX_EMBED) \
-			&& echo "$(BUSYBOX_VERSION)-$(BUILD_ARCH)" > $(BUSYBOX_STAMP) \
-			&& rm -f /tmp/SHA256SUMS \
-			|| { rm -f /tmp/$$BINARY /tmp/SHA256SUMS; echo "ERROR: failed to download or verify busybox"; exit 1; }; \
-	fi
+	@./scripts/fetch-busybox.sh "$(BUSYBOX_VERSION)" "$(BUILD_ARCH)" "$(BUSYBOX_EMBED)"
 
 .PHONY: build-local
 build-local: fetch-busybox
