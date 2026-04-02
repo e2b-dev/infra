@@ -99,7 +99,15 @@ func extractSandboxResumeAttrs(ctx context.Context) []attribute.KeyValue {
 		return nil
 	}
 
-	return []attribute.KeyValue{
+	attrs := []attribute.KeyValue{
 		attribute.Bool("sandbox.resume", values[0] == "true"),
 	}
+
+	if timestamps := md.Get(PausedAtMetadataKey); len(timestamps) > 0 {
+		if pausedAt, err := time.Parse(time.RFC3339Nano, timestamps[0]); err == nil {
+			attrs = append(attrs, attribute.Int64("sandbox.resume.duration_from_pause_ms", time.Since(pausedAt).Milliseconds()))
+		}
+	}
+
+	return attrs
 }

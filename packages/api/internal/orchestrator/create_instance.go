@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -23,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	grpcshared "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
@@ -48,6 +50,8 @@ type SandboxMetadata struct {
 	VolumeMounts        []*orchestrator.SandboxVolumeMount
 	EnvdAccessToken     *string
 	NodeID              *string
+	// PausedAt is set for resume operations to the time the snapshot was created.
+	PausedAt *time.Time
 }
 
 // buildEgressConfig constructs the orchestrator egress configuration from
@@ -257,6 +261,14 @@ func (o *Orchestrator) CreateSandbox(
 		},
 		StartTime: timestamppb.New(startTime),
 		EndTime:   timestamppb.New(endTime),
+	}
+
+	// Pass paused-at timestamp via gRPC metadata so the orchestrator can
+	// compute pause duration locally (avoids clock skew from pre-computing).
+	if isResume && sbxData.PausedAt != nil {
+		ctx = metadata.AppendToOutgoingContext(ctx,
+			grpcshared.PausedAtMetadataKey, sbxData.PausedAt.Format(time.RFC3339Nano),
+		)
 	}
 
 	var node *nodemanager.Node

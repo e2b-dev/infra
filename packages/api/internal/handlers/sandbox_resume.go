@@ -233,6 +233,7 @@ func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *b
 			volumes = snap.Config.VolumeMounts
 		}
 
+		pausedAt := build.CreatedAt
 		return orchestrator.SandboxMetadata{
 			Metadata:            snap.Metadata,
 			Build:               build,
@@ -246,6 +247,7 @@ func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *b
 			VolumeMounts:        convertDatabaseMountsToOrchestratorMounts(volumes),
 			EnvdAccessToken:     envdAccessToken,
 			NodeID:              &nodeID,
+			PausedAt:            &pausedAt,
 		}, nil
 	}
 }

@@ -12,6 +12,10 @@ import (
 // before the request payload is available.
 const IsResumeMetadataKey = "x-sandbox-resume"
 
+// PausedAtMetadataKey carries the RFC3339Nano timestamp of when the sandbox
+// was paused (env_build created_at). The orchestrator computes the duration.
+const PausedAtMetadataKey = "x-sandbox-paused-at"
+
 type noTraceKey struct{}
 
 var noTrace = struct{}{}
