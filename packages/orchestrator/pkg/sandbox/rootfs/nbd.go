@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 
 	"go.uber.org/zap"
@@ -71,7 +70,7 @@ func (o *NBDProvider) Start(ctx context.Context) error {
 
 func (o *NBDProvider) ExportDiff(
 	ctx context.Context,
-	out io.Writer,
+	out *os.File,
 	closeSandbox func(ctx context.Context) error,
 ) (*header.DiffMetadata, error) {
 	ctx, span := tracer.Start(ctx, "cow-export")
@@ -93,12 +92,26 @@ func (o *NBDProvider) ExportDiff(
 	select {
 	case <-o.finishedOperations:
 	case <-ctx.Done():
+		// Close the cache to avoid leaking the mmaped memory. Log an error
+		// if that failed
+		closeErr := cache.Close()
+		if closeErr != nil {
+			logger.L().Warn(ctx, "error closing cache", zap.Error(closeErr))
+		}
+
 		return nil, fmt.Errorf("timeout waiting for overlay device to be released")
 	}
 	telemetry.ReportEvent(ctx, "sandbox stopped")
 
 	m, err := cache.ExportToDiff(ctx, out)
 	if err != nil {
+		// Close the cache to avoid leaking the mmaped memory. Log an error
+		// if that failed
+		closeErr := cache.Close()
+		if closeErr != nil {
+			logger.L().Warn(ctx, "error closing cache", zap.Error(closeErr))
+		}
+
 		return nil, fmt.Errorf("error exporting cache: %w", err)
 	}
 

@@ -16,7 +16,7 @@ COPY .shared/pkg pkg
 
 WORKDIR /build/clickhouse
 
-# Copy clickhouse package dependencies  
+# Copy clickhouse package dependencies
 COPY .clickhouse/go.mod .clickhouse/go.sum ./
 RUN go mod download
 
@@ -30,7 +30,9 @@ RUN go mod download
 
 # Copy source code
 COPY main.go Makefile ./
-COPY internal internal
+COPY scripts scripts
+COPY pkg pkg
+COPY cmd cmd
 
 FROM base AS runner
 

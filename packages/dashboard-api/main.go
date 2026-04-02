@@ -34,6 +34,7 @@ import (
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	e2benv "github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -140,7 +141,21 @@ func run() int {
 		defer clickhouseClient.Close(ctx)
 	}
 
-	authCache := sharedauth.NewAuthCache[*types.Team]()
+	redisClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
+		RedisURL:         config.RedisURL,
+		RedisClusterURL:  config.RedisClusterURL,
+		RedisTLSCABase64: config.RedisTLSCABase64,
+	})
+	if err != nil {
+		l.Fatal(ctx, "Initializing Redis client", zap.Error(err))
+	}
+	defer func() {
+		if err := factories.CloseCleanly(redisClient); err != nil {
+			l.Error(ctx, "Failed to close Redis client", zap.Error(err))
+		}
+	}()
+
+	authCache := sharedauth.NewAuthCache[*types.Team](redisClient)
 	authStore := sharedauth.NewAuthStore(authDB)
 	authService := sharedauth.NewAuthService[*types.Team](authStore, authCache, config.SupabaseJWTSecrets)
 	defer authService.Close(ctx)
