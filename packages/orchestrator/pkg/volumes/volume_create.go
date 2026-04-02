@@ -31,5 +31,7 @@ func (s *Service) CreateVolume(ctx context.Context, request *orchestrator.Create
 		return nil, fmt.Errorf("failed to create volume: %w", err)
 	}
 
-	return &orchestrator.CreateVolumeResponse{}, nil
+	return &orchestrator.CreateVolumeResponse{
+		VolumePath: fullPath,
+	}, nil
 }

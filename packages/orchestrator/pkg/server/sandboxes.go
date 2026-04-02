@@ -273,10 +273,11 @@ func createVolumeMountModelsFromAPI(volumeMounts []*orchestrator.SandboxVolumeMo
 		}
 
 		results = append(results, sandbox.VolumeMountConfig{
-			ID:   volumeID,
-			Name: v.GetName(),
-			Path: v.GetPath(),
-			Type: v.GetType(),
+			ID:         volumeID,
+			Name:       v.GetName(),
+			Path:       v.GetPath(),
+			Type:       v.GetType(),
+			VolumePath: v.GetVolumePath(),
 		})
 	}
 

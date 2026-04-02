@@ -28,6 +28,7 @@ func toVolumeKey(volume queries.Volume) *orchestrator.VolumeInfo {
 		VolumeId:   volume.ID.String(),
 		VolumeType: volume.VolumeType,
 		TeamId:     volume.TeamID.String(),
+		VolumePath: volume.VolumePath,
 	}
 }
 

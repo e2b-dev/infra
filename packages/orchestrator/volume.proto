@@ -8,6 +8,7 @@ message VolumeInfo {
   string volume_id = 1;
   string volume_type = 2;
   string team_id = 3;
+  optional string volume_path = 4;
 }
 
 message EntryInfo {
@@ -50,6 +51,7 @@ message CreateVolumeRequest {
 }
 
 message CreateVolumeResponse {
+  string volume_path = 1;
 }
 
 message DeleteVolumeRequest {
