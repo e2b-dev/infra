@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/shirou/gopsutil/v4/process"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
@@ -16,15 +15,15 @@ import (
 )
 
 // CgroupStatsFunc is a function that returns current cgroup resource usage statistics.
-// Returns (nil, nil) if cgroup accounting is not available.
 type CgroupStatsFunc func(ctx context.Context) (*cgroup.Stats, error)
 
 type HostStatsCollector struct {
 	metadata         HostStatsMetadata
 	delivery         hoststats.Delivery
-	proc             *process.Process
 	samplingInterval time.Duration
 	cgroupStats      CgroupStatsFunc
+
+	prev hoststats.SandboxHostStat // previous sample; seeded with zero counters at construction
 
 	stopCh    chan struct{}
 	stoppedCh chan struct{}
@@ -44,48 +43,56 @@ type HostStatsMetadata struct {
 
 func NewHostStatsCollector(
 	metadata HostStatsMetadata,
-	firecrackerPID int32,
 	delivery hoststats.Delivery,
 	samplingInterval time.Duration,
 	cgroupStats CgroupStatsFunc,
-) (*HostStatsCollector, error) {
+) *HostStatsCollector {
 	// Validate and enforce minimum interval
 	if samplingInterval < 100*time.Millisecond {
 		samplingInterval = 100 * time.Millisecond
 	}
 
-	proc, err := process.NewProcess(firecrackerPID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create process handle: %w", err)
-	}
-
 	return &HostStatsCollector{
 		metadata:         metadata,
 		delivery:         delivery,
-		proc:             proc,
 		samplingInterval: samplingInterval,
 		cgroupStats:      cgroupStats,
-		stopCh:           make(chan struct{}),
-		stoppedCh:        make(chan struct{}),
-	}, nil
+		// Zero baseline so the first sample produces real deltas and interval.
+		prev: hoststats.SandboxHostStat{
+			Timestamp: time.Now(),
+		},
+		stopCh:    make(chan struct{}),
+		stoppedCh: make(chan struct{}),
+	}
 }
 
-// CollectSample collects a single host statistics sample for the Firecracker process
-func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
-	// Get CPU times (user and system)
-	times, err := h.proc.TimesWithContext(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get CPU times: %w", err)
+// saturatingSub returns a - b, or 0 if b > a.
+// This prevents uint64 underflow wrapping when cgroup counters reset
+// (e.g. after sandbox resume from snapshot or cgroup migration).
+func saturatingSub(a, b uint64) uint64 {
+	if a < b {
+		return 0
 	}
 
-	// Get memory info (RSS and VMS)
-	memInfo, err := h.proc.MemoryInfoWithContext(ctx)
+	return a - b
+}
+
+// CollectSample collects a single cgroup statistics sample for the sandbox,
+// computes deltas from the previous sample, and delivers the row.
+func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
+	cgroupStats, err := h.cgroupStats(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get memory info: %w", err)
+		return fmt.Errorf("failed to get cgroup stats: %w", err)
 	}
+
+	if cgroupStats == nil {
+		return nil
+	}
+
+	now := time.Now()
 
 	stat := hoststats.SandboxHostStat{
-		Timestamp:                time.Now(),
+		Timestamp:                now,
 		SandboxID:                h.metadata.SandboxID,
 		SandboxExecutionID:       h.metadata.ExecutionID,
 		SandboxTemplateID:        h.metadata.TemplateID,
@@ -93,43 +100,47 @@ func (h *HostStatsCollector) CollectSample(ctx context.Context) error {
 		SandboxTeamID:            h.metadata.TeamID,
 		SandboxVCPUCount:         h.metadata.VCPUCount,
 		SandboxMemoryMB:          h.metadata.MemoryMB,
-		FirecrackerCPUUserTime:   times.User,   // seconds
-		FirecrackerCPUSystemTime: times.System, // seconds
-		FirecrackerMemoryRSS:     memInfo.RSS,  // bytes
-		FirecrackerMemoryVMS:     memInfo.VMS,  // bytes
+		CgroupCPUUsageUsec:       cgroupStats.CPUUsageUsec,
+		CgroupCPUUserUsec:        cgroupStats.CPUUserUsec,
+		CgroupCPUSystemUsec:      cgroupStats.CPUSystemUsec,
+		CgroupMemoryUsage:        cgroupStats.MemoryUsageBytes,
+		CgroupMemoryPeak:         cgroupStats.MemoryPeakBytes,
+		DeltaCgroupCPUUsageUsec:  saturatingSub(cgroupStats.CPUUsageUsec, h.prev.CgroupCPUUsageUsec),
+		DeltaCgroupCPUUserUsec:   saturatingSub(cgroupStats.CPUUserUsec, h.prev.CgroupCPUUserUsec),
+		DeltaCgroupCPUSystemUsec: saturatingSub(cgroupStats.CPUSystemUsec, h.prev.CgroupCPUSystemUsec),
+		IntervalUs:               uint64(now.Sub(h.prev.Timestamp).Microseconds()),
 		SandboxType:              h.metadata.SandboxType.String(),
-	}
-
-	if h.cgroupStats != nil {
-		cgroupStats, err := h.cgroupStats(ctx)
-		if err != nil {
-			logger.L().Debug(ctx, "could not collect cgroup stats",
-				logger.WithSandboxID(h.metadata.SandboxID),
-				zap.Error(err))
-		} else if cgroupStats != nil {
-			stat.CgroupCPUUsageUsec = cgroupStats.CPUUsageUsec
-			stat.CgroupCPUUserUsec = cgroupStats.CPUUserUsec
-			stat.CgroupCPUSystemUsec = cgroupStats.CPUSystemUsec
-			stat.CgroupMemoryUsage = cgroupStats.MemoryUsageBytes
-			stat.CgroupMemoryPeak = cgroupStats.MemoryPeakBytes
-		}
 	}
 
 	if err := h.delivery.Push(stat); err != nil {
 		return fmt.Errorf("failed to push stat to delivery: %w", err)
 	}
 
+	h.prev = stat
+
 	return nil
 }
 
-// Start begins periodic collection of host statistics
+// Start begins periodic collection of host statistics.
 func (h *HostStatsCollector) Start(ctx context.Context) {
 	defer close(h.stoppedCh)
 
-	// Collect initial sample before starting periodic collection
-	if err := h.CollectSample(ctx); err != nil {
-		// Log error but continue with periodic sampling - don't kill the sandbox
-		logger.L().Error(ctx, "failed to collect initial host stats sample",
+	// Push the zero baseline as the first row. The first real CollectSample
+	// on the ticker tick will diff against prev (zero counters at prev.Timestamp),
+	// capturing all values accumulated since then without missing anything.
+	initial := hoststats.SandboxHostStat{
+		Timestamp:          h.prev.Timestamp,
+		SandboxID:          h.metadata.SandboxID,
+		SandboxExecutionID: h.metadata.ExecutionID,
+		SandboxTemplateID:  h.metadata.TemplateID,
+		SandboxBuildID:     h.metadata.BuildID,
+		SandboxTeamID:      h.metadata.TeamID,
+		SandboxVCPUCount:   h.metadata.VCPUCount,
+		SandboxMemoryMB:    h.metadata.MemoryMB,
+		SandboxType:        h.metadata.SandboxType.String(),
+	}
+	if err := h.delivery.Push(initial); err != nil {
+		logger.L().Error(ctx, "failed to push initial host stats baseline",
 			logger.WithSandboxID(h.metadata.SandboxID),
 			zap.Error(err))
 	}

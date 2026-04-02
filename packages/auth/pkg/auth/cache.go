@@ -40,6 +40,11 @@ func (c *AuthCache[T]) GetOrSet(ctx context.Context, key string, dataCallback fu
 	return c.cache.GetOrSet(ctx, key, dataCallback)
 }
 
+// Invalidate removes a single entry from the cache by key.
+func (c *AuthCache[T]) Invalidate(ctx context.Context, key string) {
+	c.cache.Delete(ctx, key)
+}
+
 // Close is a no-op for the Redis-backed cache (no background goroutines).
 func (c *AuthCache[T]) Close(ctx context.Context) error {
 	return c.cache.Close(ctx)
