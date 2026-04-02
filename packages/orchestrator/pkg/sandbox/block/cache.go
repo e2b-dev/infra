@@ -85,7 +85,7 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		return nil, fmt.Errorf("size too big: %d > %d", size, math.MaxInt)
 	}
 
-	mm, err := mmap.MapRegion(f, int(size), unix.PROT_READ|unix.PROT_WRITE, 0, 0)
+	mm, err := mmap.MapRegion(f, int(size), mmap.RDWR, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("error mapping file: %w", err)
 	}
