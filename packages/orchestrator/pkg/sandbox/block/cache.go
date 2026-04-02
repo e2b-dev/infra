@@ -150,11 +150,9 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	builder := header.NewDiffMetadataBuilder(c.size, c.blockSize)
 
 	// We don't need to sort the keys as the bitset handles the ordering.
-	c.dirty.Range(func(key, _ any) bool {
-		builder.AddDirtyOffset(key.(int64))
-
-		return true
-	})
+	for blockIdx := range c.dirty.Iterator() {
+		builder.AddDirtyOffset(int64(blockIdx) * c.blockSize)
+	}
 
 	diffMetadata := builder.Build()
 	telemetry.SetAttributes(ctx, attribute.Int64("build_metadata_ms", time.Since(buildStart).Milliseconds()))
@@ -366,25 +364,6 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	return n, nil
 }
 
-// dirtySortedKeys returns a sorted list of dirty block offsets.
-func (c *Cache) dirtySortedKeys() []int64 {
-	if c.dirty == nil {
-		return nil
-	}
-
-	if c.dirtyNeedsLock {
-		c.dirtyMu.RLock()
-		defer c.dirtyMu.RUnlock()
-	}
-
-	var keys []int64
-
-	for i := range c.dirty.Iterator() {
-		keys = append(keys, int64(i)*c.blockSize)
-	}
-
-	return keys
-}
 
 // FileSize returns the size of the cache on disk.
 // The size might differ from the dirty size, as it may not be fully on disk.
