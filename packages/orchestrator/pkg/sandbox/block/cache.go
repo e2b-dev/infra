@@ -44,16 +44,16 @@ func NewErrCacheClosed(filePath string) *CacheClosedError {
 }
 
 type Cache struct {
-	filePath      string
-	size          int64
-	blockSize     int64
-	mmap          *mmap.MMap
-	mu            sync.RWMutex
-	dirty         atomicbitset.Bitset
-	dirtyMu       sync.RWMutex // fences mmap writes for non-atomic bitset impls
-	dirtyNeedsLock bool        // true for impls that need external synchronization (e.g. roaring)
-	dirtyFile     bool
-	closed        atomic.Bool
+	filePath       string
+	size           int64
+	blockSize      int64
+	mmap           *mmap.MMap
+	mu             sync.RWMutex
+	dirty          atomicbitset.Bitset
+	dirtyMu        sync.RWMutex // fences mmap writes for non-atomic bitset impls
+	dirtyNeedsLock bool         // true for impls that need external synchronization (e.g. roaring)
+	dirtyFile      bool
+	closed         atomic.Bool
 }
 
 func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, error) {
