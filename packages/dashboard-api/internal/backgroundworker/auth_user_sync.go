@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/riverqueue/river"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -35,14 +34,14 @@ type AuthUserSyncWorker struct {
 	jobsCounter metric.Int64Counter
 }
 
-func NewAuthUserSyncWorker(mainDB *sqlcdb.Client, l logger.Logger) *AuthUserSyncWorker {
-	jobsCounter, err := otel.Meter("github.com/e2b-dev/infra/packages/dashboard-api/internal/backgroundworker")
-		"dashboard_api.auth_user_sync.jobs_total",
+func NewAuthUserSyncWorker(ctx context.Context, mainDB *sqlcdb.Client, meter metric.Meter,  l logger.Logger) *AuthUserSyncWorker {
+	jobsCounter, err := meter.Int64Counter(
+		"jobs_total",
 		metric.WithDescription("Total auth user sync jobs by operation and result."),
 		metric.WithUnit("{job}"),
 	)
 	if err != nil {
-		l.Warn(context.Background(), "failed to initialize auth user sync metric", zap.Error(err))
+		l.Warn(ctx, "failed to initialize auth user sync metric", zap.Error(err))
 	}
 
 	return &AuthUserSyncWorker{

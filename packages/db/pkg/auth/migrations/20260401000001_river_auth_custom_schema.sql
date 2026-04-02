@@ -8,6 +8,6 @@ CREATE SCHEMA IF NOT EXISTS auth_custom;
 -- +goose Down
 -- +goose StatementBegin
 
-/* We don't want to drop the schema, as it is used by other services. */
+DROP SCHEMA IF EXISTS auth_custom CASCADE;
 
 -- +goose StatementEnd

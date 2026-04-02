@@ -236,14 +236,15 @@ func run() int {
 
 	if config.SupabaseAuthUserSyncEnabled {
 		workerLogger := l.With(zap.String("worker", "supabase_auth_user_sync"))
-
+		workerMeter := tel.MeterProvider.Meter("dashboard-api.backgroundworker.auth_user_sync")
+		
 		authPool := authDB.WritePool()
 		if err := backgroundworker.RunRiverMigrations(ctx, authPool); err != nil {
 			l.Fatal(ctx, "failed to run River migrations on auth DB", zap.Error(err))
 		}
 
 		workers := river.NewWorkers()
-		river.AddWorker(workers, backgroundworker.NewAuthUserSyncWorker(db, workerLogger))
+		river.AddWorker(workers, backgroundworker.NewAuthUserSyncWorker(ctx, db, workerMeter, workerLogger))
 
 		riverClient, err = backgroundworker.NewRiverClient(authPool, workers)
 		if err != nil {
