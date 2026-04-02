@@ -105,9 +105,20 @@ func extractSandboxResumeAttrs(ctx context.Context) []attribute.KeyValue {
 
 	if timestamps := md.Get(PausedAtMetadataKey); len(timestamps) > 0 {
 		if pausedAt, err := time.Parse(time.RFC3339Nano, timestamps[0]); err == nil {
-			attrs = append(attrs, attribute.Int64("sandbox.resume.duration_from_pause_ms", time.Since(pausedAt).Milliseconds()))
+			attrs = append(attrs, attribute.String("sandbox.resume.pause_duration_bucket", pauseDurationBucket(time.Since(pausedAt))))
 		}
 	}
 
 	return attrs
+}
+
+func pauseDurationBucket(d time.Duration) string {
+	switch {
+	case d < time.Hour:
+		return "<1h"
+	case d < 24*time.Hour:
+		return "1h-24h"
+	default:
+		return ">24h"
+	}
 }
