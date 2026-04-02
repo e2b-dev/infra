@@ -54,8 +54,11 @@ type Cache struct {
 	closed    atomic.Bool
 }
 
-// When we are passing filePath that is a file that has content we want to server want to use dirtyFile = true.
 func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, error) {
+	return newCache(size, blockSize, filePath, dirtyFile, "")
+}
+
+func newCache(size, blockSize int64, filePath string, dirtyFile bool, bitsetImpl string) (*Cache, error) {
 	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("error opening file: %w", err)
@@ -95,7 +98,7 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		size:      size,
 		blockSize: blockSize,
 		dirtyFile: dirtyFile,
-		dirty:     atomicbitset.New(uint(numBlocks)),
+		dirty:     atomicbitset.New(uint(numBlocks), bitsetImpl),
 	}, nil
 }
 
@@ -295,6 +298,10 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 
 // dirtySortedKeys returns a sorted list of dirty block offsets.
 func (c *Cache) dirtySortedKeys() []int64 {
+	if c.dirty == nil {
+		return nil
+	}
+
 	var keys []int64
 
 	for i := range c.dirty.Iterator() {

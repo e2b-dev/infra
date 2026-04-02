@@ -98,17 +98,17 @@ func NewChunker(
 	cachePath string,
 	metrics metrics.Metrics,
 ) (Chunker, error) {
-	useStreaming, minReadBatchSizeKB := getChunkerConfig(ctx, featureFlags)
+	useStreaming, minReadBatchSizeKB, bitsetImpl := getChunkerConfig(ctx, featureFlags)
 
 	if useStreaming {
-		return NewStreamingChunker(size, blockSize, upstream, cachePath, metrics, int64(minReadBatchSizeKB)*1024, featureFlags)
+		return newStreamingChunker(size, blockSize, upstream, cachePath, metrics, int64(minReadBatchSizeKB)*1024, featureFlags, bitsetImpl)
 	}
 
-	return NewFullFetchChunker(size, blockSize, upstream, cachePath, metrics)
+	return newFullFetchChunker(size, blockSize, upstream, cachePath, metrics, bitsetImpl)
 }
 
 // getChunkerConfig fetches the chunker-config feature flag and returns the parsed values.
-func getChunkerConfig(ctx context.Context, ff *featureflags.Client) (useStreaming bool, minReadBatchSizeKB int) {
+func getChunkerConfig(ctx context.Context, ff *featureflags.Client) (useStreaming bool, minReadBatchSizeKB int, bitsetImpl string) {
 	value := ff.JSONFlag(ctx, featureflags.ChunkerConfigFlag)
 
 	if v := value.GetByKey("useStreaming"); v.IsDefined() {
@@ -119,7 +119,11 @@ func getChunkerConfig(ctx context.Context, ff *featureflags.Client) (useStreamin
 		minReadBatchSizeKB = v.IntValue()
 	}
 
-	return useStreaming, minReadBatchSizeKB
+	if v := value.GetByKey("bitset"); v.IsDefined() {
+		bitsetImpl = v.StringValue()
+	}
+
+	return useStreaming, minReadBatchSizeKB, bitsetImpl
 }
 
 type FullFetchChunker struct {
@@ -138,7 +142,17 @@ func NewFullFetchChunker(
 	cachePath string,
 	metrics metrics.Metrics,
 ) (*FullFetchChunker, error) {
-	cache, err := NewCache(size, blockSize, cachePath, false)
+	return newFullFetchChunker(size, blockSize, base, cachePath, metrics, "")
+}
+
+func newFullFetchChunker(
+	size, blockSize int64,
+	base storage.SeekableReader,
+	cachePath string,
+	metrics metrics.Metrics,
+	bitsetImpl string,
+) (*FullFetchChunker, error) {
+	cache, err := newCache(size, blockSize, cachePath, false, bitsetImpl)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}

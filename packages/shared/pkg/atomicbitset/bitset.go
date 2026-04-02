@@ -1,115 +1,40 @@
-// Package atomicbitset provides a fixed-size bitset with atomic set operations.
+// Package atomicbitset provides fixed-size bitset implementations.
+// All implementations are safe for concurrent HasRange and SetRange.
 package atomicbitset
 
 import (
+	"fmt"
 	"iter"
-	"math"
-	"math/bits"
-	"sync/atomic"
 )
 
-// Bitset is a fixed-size bitset backed by atomic uint64 words.
-// SetRange uses atomic OR, so concurrent writers are safe without
-// external locking.
-//
-// A Bitset must not be copied after first use (copies share the
-// underlying array).
-type Bitset struct {
-	words []atomic.Uint64
-	n     uint
+type Bitset interface {
+	Has(i uint) bool
+	HasRange(lo, hi uint) bool
+	SetRange(lo, hi uint)
+	Iterator() iter.Seq[uint]
+	UnsafeIterator() iter.Seq[uint]
+	Len() uint
 }
 
-// New returns a Bitset with capacity for n bits, all initially zero.
-func New(n uint) Bitset {
-	return Bitset{
-		words: make([]atomic.Uint64, (n+63)/64),
-		n:     n,
-	}
-}
+const (
+	autoThreshold uint = 524_288 // 64 KB flat bitmap
 
-// Len returns the capacity in bits.
-func (b *Bitset) Len() uint { return b.n }
+	// Valid impl values for New.
+	BitsetDefault = ""
+	BitsetRoaring = "roaring"
+	BitsetAtomic  = "atomic"
+)
 
-// Has reports whether bit i is set. Out-of-range returns false.
-func (b *Bitset) Has(i uint) bool {
-	if i >= b.n {
-		return false
-	}
-
-	return b.words[i/64].Load()&(1<<(i%64)) != 0
-}
-
-// wordMask returns a bitmask covering bits [lo, hi) within a single uint64 word.
-func wordMask(lo, hi uint) uint64 {
-	if hi-lo == 64 {
-		return math.MaxUint64
-	}
-
-	return ((1 << (hi - lo)) - 1) << lo
-}
-
-// HasRange reports whether every bit in [lo, hi) is set.
-// An empty range returns true. hi is capped to Len().
-// Returns false if lo is out of range and the range is non-empty.
-func (b *Bitset) HasRange(lo, hi uint) bool {
-	if lo >= hi {
-		return true
-	}
-	if hi > b.n {
-		hi = b.n
-	}
-	if lo >= hi {
-		return false
-	}
-	for i := lo; i < hi; {
-		w := i / 64
-		bit := i % 64
-		top := min(hi-w*64, 64)
-		mask := wordMask(bit, top)
-
-		if b.words[w].Load()&mask != mask {
-			return false
+func New(n uint, impl string) Bitset {
+	switch impl {
+	case BitsetDefault, BitsetRoaring:
+		return NewRoaring(n)
+	case BitsetAtomic:
+		if n <= autoThreshold {
+			return NewFlat(n)
 		}
-		i = (w + 1) * 64
-	}
-
-	return true
-}
-
-// SetRange sets every bit in [lo, hi) using atomic OR.
-// hi is capped to Len().
-func (b *Bitset) SetRange(lo, hi uint) {
-	if hi > b.n {
-		hi = b.n
-	}
-	if lo >= hi {
-		return
-	}
-	for i := lo; i < hi; {
-		w := i / 64
-		bit := i % 64
-		top := min(hi-w*64, 64)
-
-		b.words[w].Or(wordMask(bit, top))
-
-		i = (w + 1) * 64
-	}
-}
-
-// Iterator returns an iterator over the indices of set bits
-// in ascending order.
-func (b *Bitset) Iterator() iter.Seq[uint] {
-	return func(yield func(uint) bool) {
-		for wi := range b.words {
-			word := b.words[wi].Load()
-			base := uint(wi) * 64
-			for word != 0 {
-				tz := uint(bits.TrailingZeros64(word))
-				if !yield(base + tz) {
-					return
-				}
-				word &= word - 1
-			}
-		}
+		return NewSharded(n, DefaultShardBits)
+	default:
+		panic(fmt.Sprintf("atomicbitset: unknown implementation %q", impl))
 	}
 }

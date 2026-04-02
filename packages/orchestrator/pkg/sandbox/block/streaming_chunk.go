@@ -172,7 +172,19 @@ func NewStreamingChunker(
 	minReadBatchSize int64,
 	ff *featureflags.Client,
 ) (*StreamingChunker, error) {
-	cache, err := NewCache(size, blockSize, cachePath, false)
+	return newStreamingChunker(size, blockSize, upstream, cachePath, metrics, minReadBatchSize, ff, "")
+}
+
+func newStreamingChunker(
+	size, blockSize int64,
+	upstream storage.StreamingReader,
+	cachePath string,
+	metrics metrics.Metrics,
+	minReadBatchSize int64,
+	ff *featureflags.Client,
+	bitsetImpl string,
+) (*StreamingChunker, error) {
+	cache, err := newCache(size, blockSize, cachePath, false, bitsetImpl)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}
@@ -441,7 +453,7 @@ func (c *StreamingChunker) progressiveRead(ctx context.Context, s *fetchSession,
 // it can be tuned without restarting the service.
 func (c *StreamingChunker) getMinReadBatchSize(ctx context.Context) int64 {
 	if c.featureFlags != nil {
-		_, minKB := getChunkerConfig(ctx, c.featureFlags)
+		_, minKB, _ := getChunkerConfig(ctx, c.featureFlags)
 		if minKB > 0 {
 			return int64(minKB) * 1024
 		}
