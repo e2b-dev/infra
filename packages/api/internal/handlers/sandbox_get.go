@@ -200,6 +200,8 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		networkConfig = lastSnapshot.Snapshot.Config.Network
 	}
 
+	pausedAlias := firstAlias(lastSnapshot.Aliases)
+
 	sandbox := api.SandboxDetail{
 		ClientID:            consts.ClientID, // for backwards compatibility we need to return a client id
 		TemplateID:          lastSnapshot.Snapshot.BaseEnvID,
@@ -217,6 +219,8 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		Network:             dbNetworkConfigToAPI(networkConfig),
 		Lifecycle:           sandboxLifecycleToAPI(lastSnapshot.Snapshot.AutoPause, autoResumeConfig),
 	}
+
+	sandbox.Alias = &pausedAlias
 
 	if lastSnapshot.Snapshot.Metadata != nil {
 		metadata := api.SandboxMetadata(lastSnapshot.Snapshot.Metadata)
