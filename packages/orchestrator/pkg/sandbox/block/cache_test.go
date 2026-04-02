@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"crypto/rand"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"syscall"
 	"testing"
 	"unsafe"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
@@ -216,6 +218,183 @@ func TestEmptyRanges(t *testing.T) {
 	t.Cleanup(func() {
 		c.Close()
 	})
+}
+
+func TestCacheExportToDiff_ZeroDirtyBlockEmittedAsDirtyPayload(t *testing.T) {
+	t.Parallel()
+
+	const blockSize = header.RootfsBlockSize
+	cache, err := NewCache(blockSize, blockSize, t.TempDir()+"/cache", false)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		require.NoError(t, cache.Close())
+	})
+
+	zeroBlock := make([]byte, blockSize)
+	n, err := cache.WriteAt(zeroBlock, 0)
+	require.NoError(t, err)
+	require.Equal(t, int(blockSize), n)
+
+	out, err := os.CreateTemp(t.TempDir(), "diff-*")
+	require.NoError(t, err)
+	defer out.Close()
+
+	diffMetadata, err := cache.ExportToDiff(t.Context(), out)
+	require.NoError(t, err)
+
+	require.EqualValues(t, 1, diffMetadata.Dirty.Count(), "zero-filled dirty block should be emitted as dirty payload")
+	require.EqualValues(t, 0, diffMetadata.Empty.Count(), "zero-filled dirty block should not be tracked in empty metadata")
+
+	stat, err := out.Stat()
+	require.NoError(t, err)
+	require.EqualValues(t, blockSize, stat.Size(), "zero-filled dirty block should write block payload bytes")
+}
+
+func TestCacheExportToDiff_ZeroDirtyBlockMapsToSnapshotBuild(t *testing.T) {
+	t.Parallel()
+
+	const blockSize = header.RootfsBlockSize
+	cache, err := NewCache(blockSize, blockSize, t.TempDir()+"/cache", false)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		require.NoError(t, cache.Close())
+	})
+
+	zeroBlock := make([]byte, blockSize)
+	n, err := cache.WriteAt(zeroBlock, 0)
+	require.NoError(t, err)
+	require.Equal(t, int(blockSize), n)
+
+	out, err := os.CreateTemp(t.TempDir(), "diff-*")
+	require.NoError(t, err)
+	defer out.Close()
+
+	diffMetadata, err := cache.ExportToDiff(t.Context(), out)
+	require.NoError(t, err)
+
+	baseBuildID := uuid.New()
+	originalHeader, err := header.NewHeader(
+		header.NewTemplateMetadata(baseBuildID, uint64(blockSize), uint64(blockSize)),
+		nil,
+	)
+	require.NoError(t, err)
+
+	snapshotBuildID := uuid.New()
+	diffHeader, err := diffMetadata.ToDiffHeader(t.Context(), originalHeader, snapshotBuildID)
+	require.NoError(t, err)
+
+	_, _, mappedBuildID, err := diffHeader.GetShiftedMapping(t.Context(), 0)
+	require.NoError(t, err)
+
+	require.NotNil(t, mappedBuildID)
+	require.Equal(t, snapshotBuildID, *mappedBuildID, "zero-filled dirty block should map to the snapshot diff when empty detection is skipped")
+	require.NotEqual(t, uuid.Nil, *mappedBuildID, "zero-filled dirty block should no longer be represented as an empty mapping")
+}
+
+func TestCacheExportToDiff_MixedDirtyBlocksKeepsZeroBlockInDiff(t *testing.T) {
+	t.Parallel()
+
+	const blockSize = header.RootfsBlockSize
+	const size = blockSize * 3
+
+	cache, err := NewCache(size, blockSize, t.TempDir()+"/cache", false)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, cache.Close())
+	})
+
+	zeroBlock := make([]byte, blockSize)
+	nonZeroBlock := bytes.Repeat([]byte{0xAB}, int(blockSize))
+
+	_, err = cache.WriteAt(zeroBlock, 0)
+	require.NoError(t, err)
+
+	_, err = cache.WriteAt(nonZeroBlock, blockSize)
+	require.NoError(t, err)
+
+	out, err := os.CreateTemp(t.TempDir(), "diff-*")
+	require.NoError(t, err)
+	defer out.Close()
+
+	diffMetadata, err := cache.ExportToDiff(t.Context(), out)
+	require.NoError(t, err)
+
+	require.EqualValues(t, 2, diffMetadata.Dirty.Count())
+	require.EqualValues(t, 0, diffMetadata.Empty.Count(), "mixed export should still skip empty tracking for zero-filled dirty blocks")
+
+	_, err = out.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+	exported, err := io.ReadAll(out)
+	require.NoError(t, err)
+	expected := make([]byte, 0, len(zeroBlock)+len(nonZeroBlock))
+	expected = append(expected, zeroBlock...)
+	expected = append(expected, nonZeroBlock...)
+	require.Equal(t, expected, exported)
+
+	baseBuildID := uuid.New()
+	originalHeader, err := header.NewHeader(
+		header.NewTemplateMetadata(baseBuildID, uint64(blockSize), uint64(size)),
+		nil,
+	)
+	require.NoError(t, err)
+
+	snapshotBuildID := uuid.New()
+	diffHeader, err := diffMetadata.ToDiffHeader(t.Context(), originalHeader, snapshotBuildID)
+	require.NoError(t, err)
+
+	_, _, firstBlockBuildID, err := diffHeader.GetShiftedMapping(t.Context(), 0)
+	require.NoError(t, err)
+	require.Equal(t, snapshotBuildID, *firstBlockBuildID, "zero-filled dirty block should still map to the snapshot diff")
+
+	_, _, secondBlockBuildID, err := diffHeader.GetShiftedMapping(t.Context(), blockSize)
+	require.NoError(t, err)
+	require.Equal(t, snapshotBuildID, *secondBlockBuildID)
+
+	_, _, thirdBlockBuildID, err := diffHeader.GetShiftedMapping(t.Context(), 2*blockSize)
+	require.NoError(t, err)
+	require.Equal(t, baseBuildID, *thirdBlockBuildID, "clean blocks should keep the base mapping")
+}
+
+func TestCacheExportToDiff_NonContiguousDirtyBlocksPreserveRangeOrder(t *testing.T) {
+	t.Parallel()
+
+	const blockSize = header.RootfsBlockSize
+	const size = blockSize * 5
+
+	cache, err := NewCache(size, blockSize, t.TempDir()+"/cache", false)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, cache.Close())
+	})
+
+	firstBlock := bytes.Repeat([]byte{0x11}, int(blockSize))
+	secondBlock := bytes.Repeat([]byte{0x22}, int(blockSize))
+
+	_, err = cache.WriteAt(firstBlock, 0)
+	require.NoError(t, err)
+
+	_, err = cache.WriteAt(secondBlock, 3*blockSize)
+	require.NoError(t, err)
+
+	out, err := os.CreateTemp(t.TempDir(), "diff-*")
+	require.NoError(t, err)
+	defer out.Close()
+
+	diffMetadata, err := cache.ExportToDiff(t.Context(), out)
+	require.NoError(t, err)
+
+	require.EqualValues(t, 2, diffMetadata.Dirty.Count())
+	require.True(t, diffMetadata.Dirty.Test(0))
+	require.True(t, diffMetadata.Dirty.Test(3))
+	require.EqualValues(t, 0, diffMetadata.Empty.Count())
+
+	_, err = out.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+	exported, err := io.ReadAll(out)
+	require.NoError(t, err)
+	require.Equal(t, append(firstBlock, secondBlock...), exported)
 }
 
 func compareData(readBytes []byte, expectedBytes []byte) error {
