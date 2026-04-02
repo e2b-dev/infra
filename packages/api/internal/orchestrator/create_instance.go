@@ -30,6 +30,26 @@ import (
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+// SandboxDataFetcher is a callback that fetches sandbox metadata.
+// It is called after the concurrency lock is acquired to ensure fresh data.
+type SandboxDataFetcher func(ctx context.Context) (SandboxMetadata, *api.APIError)
+
+type SandboxMetadata struct {
+	Metadata            map[string]string
+	EnvVars             map[string]string
+	Build               queries.EnvBuild
+	AllowInternetAccess *bool
+	Network             *types.SandboxNetworkConfig
+	Alias               string
+	TemplateID          string
+	BaseTemplateID      string
+	AutoPause           bool
+	AutoResume          *types.SandboxAutoResumeConfig
+	VolumeMounts        []*orchestrator.SandboxVolumeMount
+	EnvdAccessToken     *string
+	NodeID              *string
+}
+
 // buildEgressConfig constructs the orchestrator egress configuration from
 // allow/deny entry lists. It splits allowed entries into CIDRs and domains,
 // and adds the default nameserver when domains are present so the sandbox can
@@ -78,25 +98,13 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 func (o *Orchestrator) CreateSandbox(
 	ctx context.Context,
 	sandboxID,
-	executionID,
-	alias string,
+	executionID string,
 	team *teamtypes.Team,
-	build queries.EnvBuild,
-	metadata map[string]string,
-	envVars map[string]string,
+	getSandboxData SandboxDataFetcher,
 	startTime time.Time,
 	endTime time.Time,
 	timeout time.Duration,
 	isResume bool,
-	nodeID *string,
-	templateID string,
-	baseTemplateID string,
-	autoPause bool,
-	autoResume *types.SandboxAutoResumeConfig,
-	envdAuthToken *string,
-	allowInternetAccess *bool,
-	network *types.SandboxNetworkConfig,
-	volumeMounts []*orchestrator.SandboxVolumeMount,
 ) (sbx sandbox.Sandbox, apiErr *api.APIError) {
 	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -162,9 +170,14 @@ func (o *Orchestrator) CreateSandbox(
 		}
 	}()
 
-	fcSemver, err := sandbox.NewVersionInfo(build.FirecrackerVersion)
+	sbxData, fetchErr := getSandboxData(ctx)
+	if fetchErr != nil {
+		return sandbox.Sandbox{}, fetchErr
+	}
+
+	fcSemver, err := sandbox.NewVersionInfo(sbxData.Build.FirecrackerVersion)
 	if err != nil {
-		errMsg := fmt.Errorf("failed to get fcSemver for firecracker fcSemver '%s': %w", build.FirecrackerVersion, err)
+		errMsg := fmt.Errorf("failed to get fcSemver for firecracker fcSemver '%s': %w", sbxData.Build.FirecrackerVersion, err)
 
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
@@ -174,7 +187,6 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	hasHugePages := fcSemver.HasHugePages()
-	firecrackerVersion := featureflags.ResolveFirecrackerVersion(ctx, o.featureFlagsClient, build.FirecrackerVersion)
 	telemetry.ReportEvent(ctx, "Got FC info")
 
 	var sbxDomain *string
@@ -192,6 +204,7 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	var trafficAccessToken *string = nil
+	network := sbxData.Network
 	if network != nil && network.Ingress != nil && network.Ingress.AllowPublicAccess != nil && !*network.Ingress.AllowPublicAccess {
 		accessToken, err := o.accessTokenGenerator.GenerateTrafficAccessToken(sandboxID)
 		if err != nil {
@@ -205,42 +218,42 @@ func (o *Orchestrator) CreateSandbox(
 		trafficAccessToken = &accessToken
 	}
 
-	sbxNetwork := buildNetworkConfig(network, allowInternetAccess, trafficAccessToken)
+	sbxNetwork := buildNetworkConfig(network, sbxData.AllowInternetAccess, trafficAccessToken)
 
 	var orchAutoResume *orchestrator.SandboxAutoResumeConfig
-	if autoResume != nil {
-		policy := string(autoResume.Policy)
+	if sbxData.AutoResume != nil {
 		orchAutoResume = &orchestrator.SandboxAutoResumeConfig{
-			Policy: policy,
+			Policy:         string(sbxData.AutoResume.Policy),
+			TimeoutSeconds: sbxData.AutoResume.Timeout,
 		}
 	}
 
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
-			BaseTemplateId:      baseTemplateID,
-			TemplateId:          templateID,
-			Alias:               &alias,
+			BaseTemplateId:      sbxData.BaseTemplateID,
+			TemplateId:          sbxData.TemplateID,
+			Alias:               &sbxData.Alias,
 			TeamId:              team.ID.String(),
-			BuildId:             build.ID.String(),
+			BuildId:             sbxData.Build.ID.String(),
 			SandboxId:           sandboxID,
 			ExecutionId:         executionID,
-			KernelVersion:       build.KernelVersion,
-			FirecrackerVersion:  firecrackerVersion,
-			EnvdVersion:         *build.EnvdVersion,
-			Metadata:            metadata,
-			EnvVars:             envVars,
-			EnvdAccessToken:     envdAuthToken,
+			KernelVersion:       sbxData.Build.KernelVersion,
+			FirecrackerVersion:  sbxData.Build.FirecrackerVersion,
+			EnvdVersion:         *sbxData.Build.EnvdVersion,
+			Metadata:            sbxData.Metadata,
+			EnvVars:             sbxData.EnvVars,
+			EnvdAccessToken:     sbxData.EnvdAccessToken,
 			MaxSandboxLength:    team.Limits.MaxLengthHours,
 			HugePages:           hasHugePages,
-			RamMb:               build.RamMb,
-			Vcpu:                build.Vcpu,
+			RamMb:               sbxData.Build.RamMb,
+			Vcpu:                sbxData.Build.Vcpu,
 			Snapshot:            isResume,
-			AutoPause:           autoPause,
+			AutoPause:           sbxData.AutoPause,
 			AutoResume:          orchAutoResume,
-			AllowInternetAccess: allowInternetAccess,
+			AllowInternetAccess: sbxData.AllowInternetAccess,
 			Network:             sbxNetwork,
-			TotalDiskSizeMb:     ut.FromPtr(build.TotalDiskSizeMb),
-			VolumeMounts:        volumeMounts,
+			TotalDiskSizeMb:     ut.FromPtr(sbxData.Build.TotalDiskSizeMb),
+			VolumeMounts:        sbxData.VolumeMounts,
 		},
 		StartTime: timestamppb.New(startTime),
 		EndTime:   timestamppb.New(endTime),
@@ -248,11 +261,11 @@ func (o *Orchestrator) CreateSandbox(
 
 	var node *nodemanager.Node
 
-	if isResume && nodeID != nil {
+	if isResume && sbxData.NodeID != nil {
 		telemetry.ReportEvent(ctx, "Placing sandbox on the node where the snapshot was taken")
 
 		clusterID := clusters.WithClusterFallback(team.ClusterID)
-		node = o.GetNode(clusterID, *nodeID)
+		node = o.GetNode(clusterID, *sbxData.NodeID)
 		if node != nil && node.Status() != api.NodeStatusReady {
 			node = nil
 		}
@@ -263,7 +276,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
 
-	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(build), labelFilteringEnabled, team.SandboxSchedulingLabels)
+	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels)
 	if err != nil {
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
@@ -275,8 +288,8 @@ func (o *Orchestrator) CreateSandbox(
 	// The sandbox was created successfully
 	attributes := []attribute.KeyValue{
 		attribute.Bool("is_resume", isResume),
-		attribute.Bool("node_affinity_requested", nodeID != nil),
-		attribute.Bool("node_affinity_success", nodeID != nil && node.ID == *nodeID),
+		attribute.Bool("node_affinity_requested", sbxData.NodeID != nil),
+		attribute.Bool("node_affinity_success", sbxData.NodeID != nil && node.ID == *sbxData.NodeID),
 	}
 	o.createdSandboxesCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
 
@@ -290,33 +303,33 @@ func (o *Orchestrator) CreateSandbox(
 
 	sbx = sandbox.NewSandbox(
 		sandboxID,
-		templateID,
+		sbxData.TemplateID,
 		consts.ClientID,
-		&alias,
+		&sbxData.Alias,
 		executionID,
 		team.ID,
-		build.ID,
-		metadata,
+		sbxData.Build.ID,
+		sbxData.Metadata,
 		time.Duration(team.Limits.MaxLengthHours)*time.Hour,
 		startTime,
 		endTime,
-		build.Vcpu,
-		*build.TotalDiskSizeMb,
-		build.RamMb,
-		build.KernelVersion,
-		firecrackerVersion,
-		*build.EnvdVersion,
+		sbxData.Build.Vcpu,
+		*sbxData.Build.TotalDiskSizeMb,
+		sbxData.Build.RamMb,
+		sbxData.Build.KernelVersion,
+		sbxData.Build.FirecrackerVersion,
+		*sbxData.Build.EnvdVersion,
 		node.ID,
 		node.ClusterID,
-		autoPause,
-		autoResume,
-		envdAuthToken,
-		allowInternetAccess,
-		baseTemplateID,
+		sbxData.AutoPause,
+		sbxData.AutoResume,
+		sbxData.EnvdAccessToken,
+		sbxData.AllowInternetAccess,
+		sbxData.BaseTemplateID,
 		sbxDomain,
-		network,
+		sbxData.Network,
 		trafficAccessToken,
-		nodemanager.ConvertOrchestratorMountsToDatabaseMounts(volumeMounts),
+		nodemanager.ConvertOrchestratorMountsToDatabaseMounts(sbxData.VolumeMounts),
 	)
 
 	err = o.sandboxStore.Add(ctx, sbx, true)

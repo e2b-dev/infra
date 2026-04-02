@@ -277,14 +277,6 @@ resource "google_compute_url_map" "orch_map" {
         service = google_compute_backend_service.ingress.self_link
       }
     }
-
-    dynamic "path_rule" {
-      for_each = var.additional_api_path_rules
-      content {
-        paths   = path_rule.value.paths
-        service = path_rule.value.service_id
-      }
-    }
   }
 
   path_matcher {
@@ -462,15 +454,6 @@ resource "google_compute_firewall" "default-hc" {
   allow {
     protocol = "tcp"
     ports    = [var.ingress_port.port]
-  }
-
-  dynamic "allow" {
-    for_each = toset(var.additional_ports)
-
-    content {
-      protocol = "tcp"
-      ports    = [allow.value]
-    }
   }
 }
 

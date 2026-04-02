@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
@@ -19,6 +20,8 @@ type stubResumer struct {
 	nodeIP string
 	err    error
 }
+
+func (s stubResumer) Init(_ context.Context) {}
 
 func (s stubResumer) Resume(_ context.Context, _ string, _ uint64, _ string, _ string) (string, error) {
 	return s.nodeIP, s.err
@@ -30,6 +33,8 @@ type recordingResumer struct {
 	trafficAccessToken string
 	envdAccessToken    string
 }
+
+func (r *recordingResumer) Init(_ context.Context) {}
 
 func (r *recordingResumer) Resume(_ context.Context, sandboxID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (string, error) {
 	r.sandboxID = sandboxID
@@ -163,6 +168,31 @@ func TestHandlePausedSandbox_ResourceExhausted(t *testing.T) {
 	require.Equal(t, "sbx", exhaustedErr.SandboxId)
 	require.Equal(t, "rate limit hit", exhaustedErr.Message)
 	require.Equal(t, autoResumeResourceExhausted, res)
+}
+
+func TestHandlePausedSandbox_FailedPrecondition(t *testing.T) {
+	t.Parallel()
+
+	ff := newFF(t, true)
+
+	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.FailedPrecondition, proxygrpc.SandboxStillTransitioningMessage)}, ff)
+	require.Error(t, err)
+	var transitioningErr *reverseproxy.SandboxStillTransitioningError
+	require.ErrorAs(t, err, &transitioningErr)
+	require.Equal(t, "sbx", transitioningErr.SandboxId)
+	require.Equal(t, autoResumeErrored, res)
+}
+
+func TestHandlePausedSandbox_FailedPrecondition_OtherMessage(t *testing.T) {
+	t.Parallel()
+
+	ff := newFF(t, true)
+
+	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.FailedPrecondition, "sandbox resume precondition failed")}, ff)
+	require.Error(t, err)
+	var transitioningErr *reverseproxy.SandboxStillTransitioningError
+	require.NotErrorAs(t, err, &transitioningErr)
+	require.Equal(t, autoResumeErrored, res)
 }
 
 func TestHandlePausedSandbox_SnapshotNotFound(t *testing.T) {

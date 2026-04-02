@@ -34,10 +34,6 @@ const (
 )
 
 const (
-	SandboxCountMeterName UpDownCounterType = "api.env.instance.running"
-)
-
-const (
 	OrchestratorSandboxCountMeterName ObservableUpDownCounterType = "orchestrator.env.sandbox.running"
 
 	ClientProxyServerConnectionsMeterCounterName ObservableUpDownCounterType = "client_proxy.proxy.server.connections.open"
@@ -118,12 +114,15 @@ const (
 	// Sandbox metrics
 	SandboxRamUsedGaugeName   GaugeIntType = "e2b.sandbox.ram.used"
 	SandboxRamTotalGaugeName  GaugeIntType = "e2b.sandbox.ram.total"
+	SandboxRamCacheGaugeName  GaugeIntType = "e2b.sandbox.ram.cache"
 	SandboxCpuTotalGaugeName  GaugeIntType = "e2b.sandbox.cpu.total"
 	SandboxDiskUsedGaugeName  GaugeIntType = "e2b.sandbox.disk.used"
 	SandboxDiskTotalGaugeName GaugeIntType = "e2b.sandbox.disk.total"
 
 	// Team metrics
 	TeamSandboxRunningGaugeName GaugeIntType = "e2b.team.sandbox.running"
+
+	SandboxCountGaugeName GaugeIntType = "api.env.instance.running"
 
 	// Build resource metrics
 	BuildRootfsSizeHistogramName HistogramType = "template.build.rootfs.size"
@@ -177,13 +176,9 @@ var observableCounterUnits = map[ObservableCounterType]string{
 	ApiOrchestratorSbxCreateFailure: "{sandbox}",
 }
 
-var upDownCounterDesc = map[UpDownCounterType]string{
-	SandboxCountMeterName: "Counter of started instances.",
-}
+var upDownCounterDesc = map[UpDownCounterType]string{}
 
-var upDownCounterUnits = map[UpDownCounterType]string{
-	SandboxCountMeterName: "{sandbox}",
-}
+var upDownCounterUnits = map[UpDownCounterType]string{}
 
 var observableUpDownCounterDesc = map[ObservableUpDownCounterType]string{
 	OrchestratorSandboxCountMeterName:                  "Counter of running sandboxes on the orchestrator.",
@@ -223,20 +218,24 @@ var gaugeIntDesc = map[GaugeIntType]string{
 	ApiOrchestratorCountMeterName: "Counter of running orchestrators.",
 	SandboxRamUsedGaugeName:       "Amount of RAM used by the sandbox.",
 	SandboxRamTotalGaugeName:      "Amount of RAM available to the sandbox.",
+	SandboxRamCacheGaugeName:      "Amount of RAM used by the page cache in the sandbox.",
 	SandboxCpuTotalGaugeName:      "Amount of CPU available to the sandbox.",
 	SandboxDiskUsedGaugeName:      "Amount of disk space used by the sandbox.",
 	SandboxDiskTotalGaugeName:     "Amount of disk space available to the sandbox.",
 	TeamSandboxRunningGaugeName:   "The number of sandboxes running for the team in the interval.",
+	SandboxCountGaugeName:         "Number of running sandbox instances per team.",
 }
 
 var gaugeIntUnits = map[GaugeIntType]string{
 	ApiOrchestratorCountMeterName: "{orchestrator}",
 	SandboxRamUsedGaugeName:       "{By}",
 	SandboxRamTotalGaugeName:      "{By}",
+	SandboxRamCacheGaugeName:      "{By}",
 	SandboxCpuTotalGaugeName:      "{count}",
 	SandboxDiskUsedGaugeName:      "{By}",
 	SandboxDiskTotalGaugeName:     "{By}",
 	TeamSandboxRunningGaugeName:   "{sandbox}",
+	SandboxCountGaugeName:         "{sandbox}",
 }
 
 func GetCounter(meter metric.Meter, name CounterType) (metric.Int64Counter, error) {
@@ -415,6 +414,12 @@ const (
 	resultTypeFailure = "failure"
 )
 
+var (
+	// Pre-allocated result attributes for use with PrecomputeAttrs.
+	Success = attribute.String(resultAttr, resultTypeSuccess)
+	Failure = attribute.String(resultAttr, resultTypeFailure)
+)
+
 func (t Stopwatch) Success(ctx context.Context, total int64, kv ...attribute.KeyValue) {
 	t.end(ctx, resultTypeSuccess, total, kv...)
 }
@@ -426,9 +431,23 @@ func (t Stopwatch) Failure(ctx context.Context, total int64, kv ...attribute.Key
 func (t Stopwatch) end(ctx context.Context, result string, total int64, kv ...attribute.KeyValue) {
 	kv = append(kv, attribute.KeyValue{Key: resultAttr, Value: attribute.StringValue(result)})
 	kv = append(t.kv, kv...)
+	opt := metric.WithAttributeSet(attribute.NewSet(kv...))
+	t.RecordRaw(ctx, total, opt)
+}
 
+// PrecomputeAttrs builds a reusable MeasurementOption from the given attribute
+// key-values. The option must include all attributes (including "result").
+// Use with Stopwatch.Record to avoid per-call attribute allocation.
+func PrecomputeAttrs(kv ...attribute.KeyValue) metric.MeasurementOption {
+	return metric.WithAttributeSet(attribute.NewSet(kv...))
+}
+
+// RecordRaw records an operation using a precomputed attribute option, it does
+// not include any previous attributes passed at Begin(). Zero-allocation
+// alternative to Success/Failure for hot paths.
+func (t Stopwatch) RecordRaw(ctx context.Context, total int64, precomputedAttrs metric.MeasurementOption) {
 	amount := time.Since(t.start).Milliseconds()
-	t.histogram.Record(ctx, amount, metric.WithAttributes(kv...))
-	t.sum.Add(ctx, total, metric.WithAttributes(kv...))
-	t.count.Add(ctx, 1, metric.WithAttributes(kv...))
+	t.histogram.Record(ctx, amount, precomputedAttrs)
+	t.sum.Add(ctx, total, precomputedAttrs)
+	t.count.Add(ctx, 1, precomputedAttrs)
 }

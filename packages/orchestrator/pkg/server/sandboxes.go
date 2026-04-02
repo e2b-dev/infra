@@ -426,12 +426,11 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	sbxlogger.E(sbx).Info(ctx, "Killing sandbox")
 
-	// Remove the sandbox from the cache to prevent loading it again in API during the time the instance is stopping.
-	// Old comment:
-	// 	Ensure the sandbox is removed from cache.
-	// 	Ideally we would rely only on the goroutine defer.
-	// Don't allow connecting to the sandbox anymore.
-	s.sandboxFactory.Sandboxes.Remove(ctx, in.GetSandboxId())
+	// Mark the sandbox as stopping so it is excluded from live queries (Get, Items,
+	// Count) but remains findable by IP (GetByHostPort) while the Firecracker
+	// process finishes shutting down.
+	// This prevents the sandbox to be synced to API again
+	s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
 
 	// Check health metrics before stopping the sandbox
 	sbx.Checks.Healthcheck(ctx, true)
@@ -584,7 +583,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	// Resume the sandbox keeping the same ExecutionID (stable identity for
 	// the API, routing catalog, and analytics) but with a fresh LifecycleID
-	// so the old sandbox's cleanup goroutine (RemoveByLifecycleID) won't
+	// so the old sandbox's cleanup goroutine won't
 	// accidentally evict the resumed sandbox from the map.
 	resumedSbx, err := s.sandboxFactory.ResumeSandbox(
 		ctx,
@@ -645,7 +644,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		if err := res.snapshot.Upload(uploadCtx, s.persistence, res.templateFiles); err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
-			s.sandboxFactory.Sandboxes.Remove(ctx, resumedSbx.Runtime.SandboxID)
+			s.sandboxFactory.Sandboxes.MarkStopping(ctx, resumedSbx.Runtime.SandboxID, resumedSbx.LifecycleID)
 			s.stopSandboxAsync(context.WithoutCancel(ctx), resumedSbx)
 
 			return nil, status.Errorf(codes.Internal, "error uploading snapshot for checkpoint '%s': %s", in.GetSandboxId(), err)
@@ -832,7 +831,7 @@ func (s *Server) acquireSandboxForSnapshot(ctx context.Context, sandboxID string
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
-	s.sandboxFactory.Sandboxes.Remove(ctx, sandboxID)
+	s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
 
 	return sbx, nil
 }

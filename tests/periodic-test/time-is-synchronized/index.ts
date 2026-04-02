@@ -1,4 +1,4 @@
-import { Sandbox } from "@e2b/code-interpreter";
+import Sandbox from "e2b";
 import { readFile, rm } from "fs/promises";
 
 import { DEBUG_TIMEOUT_MS, log, runTestWithSandbox } from "../utils.ts";

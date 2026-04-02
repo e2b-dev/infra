@@ -87,6 +87,9 @@ linters:
         - pattern: 'zap\.NewNop$'
           pkg: '^go\.uber\.org/zap$'
           msg: "Use github.com/e2b-dev/infra/packages/shared/pkg/logger.NewNopLogger() instead of zap.NewNop()"
+        - pattern: 'zap\.Time$'
+          pkg: '^go\.uber\.org/zap$'
+          msg: "Use github.com/e2b-dev/infra/packages/shared/pkg/logger.Time() instead of zap.Time()"
 
         # prefer methods that take a context to those that don't
         - pattern: '^retryablehttp\.NewRequest$'

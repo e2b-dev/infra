@@ -108,7 +108,6 @@ var (
 	EdgeProvidedSandboxMetricsFlag      = newBoolFlag("edge-provided-sandbox-metrics", false)
 	CreateStorageCacheSpansFlag         = newBoolFlag("create-storage-cache-spans", env.IsDevelopment())
 	SandboxAutoResumeFlag               = newBoolFlag("sandbox-auto-resume", env.IsDevelopment())
-	SandboxCatalogLocalCacheFlag        = newBoolFlag("sandbox-catalog-local-cache", true)
 
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.
 	PeerToPeerChunkTransferFlag = newBoolFlag("peer-to-peer-chunk-transfer", false)
@@ -187,6 +186,10 @@ var (
 	// BuildBaseRootfsSizeLimitMB is the maximum size of the base rootfs filesystem created from the OCI image, in MB.
 	BuildBaseRootfsSizeLimitMB = newIntFlag("build-base-rootfs-size-limit-mb", 25000)
 
+	// MinAutoResumeTimeoutSeconds is the minimum auto-resume timeout in seconds.
+	// This prevents thrashing from very short timeouts.
+	MinAutoResumeTimeoutSeconds = newIntFlag("minimum-autoresume-timeout", 300)
+
 	// BuildReservedDiskSpaceMB is the amount of disk space in MB reserved for root on the guest filesystem.
 	// Reserved blocks are only usable by root (uid 0), protecting the guest OS from disk-full conditions.
 	BuildReservedDiskSpaceMB = newIntFlag("build-reserved-disk-space-mb", 0)
@@ -236,7 +239,7 @@ const (
 // TODO: The short tag here has only 7 characters — the one from our build pipeline will likely have exactly 8 so this will break.
 const (
 	DefaultFirecackerV1_10Version = "v1.10.1_30cbb07"
-	DefaultFirecackerV1_12Version = "v1.12.1_a41d3fb"
+	DefaultFirecackerV1_12Version = "v1.12.1_210cbac"
 	DefaultFirecrackerVersion     = DefaultFirecackerV1_12Version
 )
 
@@ -255,7 +258,7 @@ var (
 )
 
 // ResolveFirecrackerVersion resolves the firecracker version using the FirecrackerVersions feature flag.
-// The buildVersion format is "v1.12.1_a41d3fb" — we extract "v1.12" as the lookup key.
+// The buildVersion format is "v1.12.1_210cbac" — we extract "v1.12" as the lookup key.
 func ResolveFirecrackerVersion(ctx context.Context, ff *Client, buildVersion string) string {
 	parts := strings.Split(buildVersion, "_")
 	if len(parts) < 2 {

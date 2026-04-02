@@ -263,3 +263,10 @@ func (c *Cluster) GetOrchestrators() []*Instance {
 func (c *Cluster) GetResources() ClusterResource {
 	return c.resources
 }
+
+// SyncInstances performs an immediate synchronization of cluster instances from
+// the service discovery source. It is called on-demand when a node lookup fails,
+// to handle newly joined orchestrators that may not yet be in the in-memory pool.
+func (c *Cluster) SyncInstances(ctx context.Context) error {
+	return c.synchronization.Sync(ctx)
+}

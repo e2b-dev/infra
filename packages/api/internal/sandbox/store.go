@@ -3,6 +3,8 @@ package sandbox
 import (
 	"context"
 	"errors"
+	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -11,12 +13,17 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
-type InsertCallback func(ctx context.Context, sbx Sandbox)
+type (
+	InsertCallback func(ctx context.Context, sbx Sandbox)
+	RemoveCallback func(ctx context.Context, sbx Sandbox)
+)
 
 const (
 	StorageNameMemory        = "memory"
 	StorageNameRedis         = "redis"
 	StorageNamePopulateRedis = "populate_redis"
+
+	sbxRemoveTimeout = 10 * time.Second
 )
 
 type ReservationStorage interface {
@@ -38,16 +45,17 @@ type Storage interface { //nolint: interfacebloat
 	Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error)
 	StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts RemoveOpts) (Sandbox, bool, func(context.Context, error), error)
 	WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error
-	Sync(sandboxes []Sandbox, nodeID string) []Sandbox
+	Reconcile(ctx context.Context, sandboxes []Sandbox, nodeID string) []Sandbox
 }
 
 type Callbacks struct {
 	// AddSandboxToRoutingTable should be called sync to prevent race conditions where we would know where to route the sandbox
 	AddSandboxToRoutingTable InsertCallback
-	// AsyncSandboxCounter should be called async to prevent blocking the main goroutine
-	AsyncSandboxCounter InsertCallback
 	// AsyncNewlyCreatedSandbox should be called async to prevent blocking the main goroutine
 	AsyncNewlyCreatedSandbox InsertCallback
+	// RemoveSandboxFromNode kills an orphaned sandbox on the orchestrator node via gRPC.
+	// Used during sync when the Redis backend detects sandboxes running on a node but not present in the store.
+	RemoveSandboxFromNode RemoveCallback
 }
 
 type Store struct {
@@ -72,8 +80,8 @@ func NewStore(
 func (s *Store) Add(ctx context.Context, sandbox Sandbox, newlyCreated bool) error {
 	sbxlogger.I(sandbox).Debug(ctx, "Adding sandbox to cache",
 		zap.Bool("newly_created", newlyCreated),
-		zap.Time("start_time", sandbox.StartTime),
-		zap.Time("end_time", sandbox.EndTime),
+		logger.Time("start_time", sandbox.StartTime),
+		logger.Time("end_time", sandbox.EndTime),
 	)
 
 	endTime := sandbox.EndTime
@@ -86,7 +94,6 @@ func (s *Store) Add(ctx context.Context, sandbox Sandbox, newlyCreated bool) err
 	if err == nil {
 		// Count only newly added sandboxes to the store
 		s.callbacks.AddSandboxToRoutingTable(ctx, sandbox)
-		go s.callbacks.AsyncSandboxCounter(context.WithoutCancel(ctx), sandbox)
 	} else {
 		// TODO [ENG-3514]: Remove once migrated to Redis
 		// There's a race condition when the sandbox is added from node sync
@@ -158,12 +165,30 @@ func (s *Store) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandbo
 	return s.storage.WaitForStateChange(ctx, teamID, sandboxID)
 }
 
-func (s *Store) Sync(ctx context.Context, sandboxes []Sandbox, nodeID string) {
-	sbxs := s.storage.Sync(sandboxes, nodeID)
-	for _, sbx := range sbxs {
-		err := s.Add(ctx, sbx, false)
-		if err != nil {
-			logger.L().Error(ctx, "Failed to re-add sandbox during sync", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
+func (s *Store) Reconcile(ctx context.Context, sandboxes []Sandbox, nodeID string) {
+	sbxsToBeSynced := s.storage.Reconcile(ctx, sandboxes, nodeID)
+
+	if s.storage.Name() == StorageNameRedis {
+		// Redis is the source of truth — divergent sandboxes are orphans running
+		// on the node but not present in the store. Kill them.
+		wg := sync.WaitGroup{}
+		for _, sbx := range sbxsToBeSynced {
+			wg.Go(func() {
+				ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sbxRemoveTimeout)
+				defer cancel()
+				s.callbacks.RemoveSandboxFromNode(ctx, sbx)
+			})
+		}
+
+		wg.Wait()
+	} else {
+		// Memory backend — divergent sandboxes are ones discovered on the node
+		// that aren't in the local cache yet. Re-add them.
+		for _, sbx := range sbxsToBeSynced {
+			err := s.Add(ctx, sbx, false)
+			if err != nil {
+				logger.L().Error(ctx, "Failed to re-add sandbox during sync", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
+			}
 		}
 	}
 }

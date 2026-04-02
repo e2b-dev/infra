@@ -130,15 +130,6 @@ module "network" {
 
   labels = var.labels
   prefix = var.prefix
-
-  additional_api_path_rules = [
-    for service in var.additional_api_services : {
-      paths      = service.paths
-      service_id = service.service_id
-    }
-  ]
-
-  additional_ports = [for service in var.additional_api_services : service.api_node_group_port]
 }
 
 module "filestore" {
@@ -197,7 +188,7 @@ module "build_cluster" {
   nfs_mount_path          = local.nfs_mount_path
   nfs_mount_subdir        = local.nfs_mount_subdir
   nfs_mount_opts          = local.nfs_mount_opts
-  persistent_volume_types = var.persistent_volume_types
+  persistent_volume_types = {} // don't need to access persistent volumes when building templates
 
   environment = var.environment
   labels      = var.labels

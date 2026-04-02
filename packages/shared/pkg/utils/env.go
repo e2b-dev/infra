@@ -3,8 +3,39 @@ package utils
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
+	"sync"
 )
+
+// archAliases normalizes common architecture names to Go convention.
+var archAliases = map[string]string{
+	"amd64":   "amd64",
+	"x86_64":  "amd64",
+	"arm64":   "arm64",
+	"aarch64": "arm64",
+}
+
+var archWarningOnce sync.Once
+
+// TargetArch returns the target architecture for binary paths and OCI platform.
+// If TARGET_ARCH is set, it is normalized to Go convention ("amd64" or "arm64");
+// otherwise defaults to the host architecture (runtime.GOARCH).
+func TargetArch() string {
+	if arch := os.Getenv("TARGET_ARCH"); arch != "" {
+		if normalized, ok := archAliases[arch]; ok {
+			return normalized
+		}
+
+		archWarningOnce.Do(func() {
+			fmt.Fprintf(os.Stderr, "WARNING: unrecognized TARGET_ARCH=%q, falling back to %s\n", arch, runtime.GOARCH)
+		})
+
+		return runtime.GOARCH
+	}
+
+	return runtime.GOARCH
+}
 
 // RequiredEnv returns the value of the environment variable for key if it is set, non-empty and not only whitespace.
 // It panics otherwise.

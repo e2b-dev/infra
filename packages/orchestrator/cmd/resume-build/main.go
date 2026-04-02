@@ -21,11 +21,13 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
@@ -49,6 +51,7 @@ func main() {
 	fromBuild := flag.String("from-build", "", "build ID (UUID) to resume from (required)")
 	toBuild := flag.String("to-build", "", "output build ID (UUID) for pause snapshot (auto-generated if not specified)")
 	storagePath := flag.String("storage", ".local-build", "storage: local path or gs://bucket")
+	sandboxDir := flag.String("sandbox-dir", "", "override SANDBOX_DIR (the rootfs path baked into the snapshot)")
 	iterations := flag.Int("iterations", 0, "run N iterations (0 = interactive)")
 	coldStart := flag.Bool("cold", false, "clear cache between iterations (cold start each time)")
 	noPrefetch := flag.Bool("no-prefetch", false, "disable memory prefetching")
@@ -123,7 +126,7 @@ func main() {
 		outputBuildID = uuid.New().String()
 	}
 
-	if err := setupEnv(*storagePath); err != nil {
+	if err := setupEnv(*storagePath, *sandboxDir); err != nil {
 		log.Fatal(err)
 	}
 
@@ -204,8 +207,12 @@ type cmdTimings struct {
 	err     error
 }
 
-func setupEnv(from string) error {
+func setupEnv(from string, sandboxDir string) error {
 	abs := func(s string) string { return utils.Must(filepath.Abs(s)) }
+
+	if sandboxDir != "" {
+		os.Setenv("SANDBOX_DIR", sandboxDir)
+	}
 
 	// Derive dataDir from 'from' when it's a local path
 	var dataDir string
@@ -233,7 +240,6 @@ func setupEnv(from string) error {
 		"HOST_ENVD_PATH":              abs(filepath.Join(dataDir, "envd", "envd")),
 		"HOST_KERNELS_DIR":            abs(filepath.Join(dataDir, "kernels")),
 		"ORCHESTRATOR_BASE_PATH":      abs(filepath.Join(dataDir, "orchestrator")),
-		"SANDBOX_DIR":                 abs(filepath.Join(dataDir, "sandbox")),
 		"SNAPSHOT_CACHE_DIR":          abs(filepath.Join(dataDir, "snapshot-cache")),
 		"USE_LOCAL_NAMESPACE_STORAGE": "true",
 	}
@@ -1007,7 +1013,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating NBD device pool...")
 	}
-	devicePool, err := nbd.NewDevicePool()
+	devicePool, err := nbd.NewDevicePool(config.NBDPoolSize)
 	if err != nil {
 		return fmt.Errorf("nbd pool: %w", err)
 	}
@@ -1046,7 +1052,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating sandbox factory...")
 	}
-	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, nil, nil, sandboxes)
+	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), sandboxes)
 
 	fmt.Printf("📦 Loading %s...\n", buildID)
 	tmpl, err := cache.GetTemplate(ctx, buildID, false, false)
