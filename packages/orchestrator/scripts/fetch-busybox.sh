@@ -29,7 +29,7 @@ echo "Downloading busybox v${VERSION} (${ARCH})..."
 curl -sfL -o "/tmp/${BINARY}" "${RELEASE_URL}/${BINARY}"
 curl -sfL -o "/tmp/SHA256SUMS" "${RELEASE_URL}/SHA256SUMS"
 
-(cd /tmp && grep "${BINARY}" SHA256SUMS | sha256sum -c -)
+(cd /tmp && grep -wF "${BINARY}" SHA256SUMS | sha256sum -c -)
 
 mkdir -p "$(dirname "$OUTPUT")"
 mv "/tmp/${BINARY}" "$OUTPUT"
