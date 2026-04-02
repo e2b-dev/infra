@@ -1,3 +1,5 @@
+[accessLog]
+
 [api]
   insecure = false
 
