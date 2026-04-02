@@ -98,7 +98,7 @@ func (b *StorageDiff) Init(ctx context.Context) error {
 		return errMsg
 	}
 
-	c, err := block.NewChunker(ctx, b.featureFlags, size, b.blockSize, obj, b.cachePath, b.metrics)
+	c, err := block.NewChunker(ctx, b.featureFlags, size, b.blockSize, obj, b.storageObjectType, b.cachePath, b.metrics)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to create chunker: %w", err)
 		b.chunker.SetError(errMsg)

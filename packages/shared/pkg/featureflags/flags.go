@@ -118,6 +118,7 @@ var (
 	PersistentVolumesFlag           = newBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
 	ExecutionMetricsOnWebhooksFlag  = newBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
 	SandboxLabelBasedSchedulingFlag = newBoolFlag("sandbox-label-based-scheduling", false)
+	MemfileBlockSizedFetchFlag      = newBoolFlag("memfile-block-sized-fetch", env.GetEnv("MEMFILE_BLOCK_SIZED_FETCH", "false") == "true")
 )
 
 type IntFlag struct {

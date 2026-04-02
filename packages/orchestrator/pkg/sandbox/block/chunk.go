@@ -95,6 +95,7 @@ func NewChunker(
 	featureFlags *featureflags.Client,
 	size, blockSize int64,
 	upstream storage.Seekable,
+	objectType storage.SeekableObjectType,
 	cachePath string,
 	metrics metrics.Metrics,
 ) (Chunker, error) {
@@ -104,7 +105,12 @@ func NewChunker(
 		return NewStreamingChunker(size, blockSize, upstream, cachePath, metrics, int64(minReadBatchSizeKB)*1024, featureFlags)
 	}
 
-	return NewFullFetchChunker(size, blockSize, upstream, cachePath, metrics)
+	var fetchSize int64 = storage.MemoryChunkSize
+	if objectType == storage.MemfileObjectType && featureFlags.BoolFlag(ctx, featureflags.MemfileBlockSizedFetchFlag) {
+		fetchSize = blockSize
+	}
+
+	return newFullFetchChunker(size, blockSize, fetchSize, upstream, cachePath, metrics)
 }
 
 // getChunkerConfig fetches the chunker-config feature flag and returns the parsed values.
@@ -127,7 +133,8 @@ type FullFetchChunker struct {
 	cache   *Cache
 	metrics metrics.Metrics
 
-	size int64
+	size      int64
+	fetchSize int64
 
 	fetchers singleflight.Group
 }
@@ -138,16 +145,30 @@ func NewFullFetchChunker(
 	cachePath string,
 	metrics metrics.Metrics,
 ) (*FullFetchChunker, error) {
+	return newFullFetchChunker(size, blockSize, storage.MemoryChunkSize, base, cachePath, metrics)
+}
+
+func newFullFetchChunker(
+	size, blockSize, fetchSize int64,
+	base storage.SeekableReader,
+	cachePath string,
+	metrics metrics.Metrics,
+) (*FullFetchChunker, error) {
 	cache, err := NewCache(size, blockSize, cachePath, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}
 
+	if fetchSize <= 0 {
+		fetchSize = storage.MemoryChunkSize
+	}
+
 	chunker := &FullFetchChunker{
-		size:    size,
-		base:    base,
-		cache:   cache,
-		metrics: metrics,
+		size:      size,
+		fetchSize: fetchSize,
+		base:      base,
+		cache:     cache,
+		metrics:   metrics,
 	}
 
 	return chunker, nil
@@ -163,12 +184,12 @@ func (c *FullFetchChunker) ReadAt(ctx context.Context, b []byte, off int64) (int
 }
 
 func (c *FullFetchChunker) WriteTo(ctx context.Context, w io.Writer) (int64, error) {
-	for i := int64(0); i < c.size; i += storage.MemoryChunkSize {
-		chunk := make([]byte, storage.MemoryChunkSize)
+	for i := int64(0); i < c.size; i += c.fetchSize {
+		chunk := make([]byte, c.fetchSize)
 
 		n, err := c.ReadAt(ctx, chunk, i)
 		if err != nil {
-			return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", i, i+storage.MemoryChunkSize, err)
+			return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", i, i+c.fetchSize, err)
 		}
 
 		_, err = w.Write(chunk[:n])
@@ -219,10 +240,10 @@ func (c *FullFetchChunker) Slice(ctx context.Context, off, length int64) ([]byte
 func (c *FullFetchChunker) fetchToCache(ctx context.Context, off, length int64) error {
 	var eg errgroup.Group
 
-	chunks := header.BlocksOffsets(length, storage.MemoryChunkSize)
+	chunks := header.BlocksOffsets(length, c.fetchSize)
 
-	startingChunk := header.BlockIdx(off, storage.MemoryChunkSize)
-	startingChunkOffset := header.BlockOffset(startingChunk, storage.MemoryChunkSize)
+	startingChunk := header.BlockIdx(off, c.fetchSize)
+	startingChunkOffset := header.BlockOffset(startingChunk, c.fetchSize)
 
 	for _, chunkOff := range chunks {
 		// Ensure the closure captures the correct block offset.
@@ -240,18 +261,18 @@ func (c *FullFetchChunker) fetchToCache(ctx context.Context, off, length int64) 
 
 			_, err, _ = c.fetchers.Do(key, func() (any, error) {
 				// Check early to prevent overwriting data, Slice requires thread safety
-				if c.cache.isCached(fetchOff, storage.MemoryChunkSize) {
+				if c.cache.isCached(fetchOff, c.fetchSize) {
 					return nil, nil
 				}
 
 				select {
 				case <-ctx.Done():
-					return nil, fmt.Errorf("error fetching range %d-%d: %w", fetchOff, fetchOff+storage.MemoryChunkSize, ctx.Err())
+					return nil, fmt.Errorf("error fetching range %d-%d: %w", fetchOff, fetchOff+c.fetchSize, ctx.Err())
 				default:
 				}
 
 				// The size of the buffer is adjusted if the last chunk is not a multiple of the block size.
-				b, releaseCacheCloseLock, err := c.cache.addressBytes(fetchOff, storage.MemoryChunkSize)
+				b, releaseCacheCloseLock, err := c.cache.addressBytes(fetchOff, c.fetchSize)
 				if err != nil {
 					return nil, err
 				}
