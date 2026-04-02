@@ -6,28 +6,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
-func TestRedisCatalog_LocalCacheFlagServiceContext(t *testing.T) {
-	t.Parallel()
+func seedRedisCatalogEntry(t *testing.T) (context.Context, redis.UniversalClient, string, *SandboxInfo) {
+	t.Helper()
 
 	ctx := t.Context()
 	redisClient := redis_utils.SetupInstance(t)
 
-	source := ldtestdata.DataSource()
-	source.Update(
-		source.Flag(featureflags.SandboxCatalogLocalCacheFlag.Key()).
-			VariationForAll(true).
-			VariationForKey(featureflags.ServiceKind, "client-proxy", false),
-	)
-
-	sbxID := "sbx-service-context"
+	sbxID := "sbx-local-cache"
 	expected := &SandboxInfo{
 		OrchestratorID:   "orch-1",
 		OrchestratorIP:   "10.0.0.1",
@@ -40,52 +32,43 @@ func TestRedisCatalog_LocalCacheFlagServiceContext(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, redisClient.Set(ctx, "sandbox:catalog:"+sbxID, data, time.Minute).Err())
 
-	t.Run("service-targeted disable prevents local cache write", func(t *testing.T) {
-		t.Parallel()
-		ctx := t.Context()
+	return ctx, redisClient, sbxID, expected
+}
 
-		ff, err := featureflags.NewClientWithDatasource(source)
-		require.NoError(t, err)
-		ff.SetServiceName("client-proxy")
-		t.Cleanup(func() {
-			assert.NoError(t, ff.Close(context.Background()))
-		})
+func TestRedisCatalog_NoopCacheRemainsEmpty(t *testing.T) {
+	t.Parallel()
 
-		catalog := NewRedisSandboxesCatalog(redisClient, ff)
-		t.Cleanup(func() {
-			assert.NoError(t, catalog.Close(context.Background()))
-		})
+	ctx, redisClient, sbxID, expected := seedRedisCatalogEntry(t)
 
-		got, err := catalog.GetSandbox(ctx, sbxID)
-		require.NoError(t, err)
-		require.Equal(t, expected.OrchestratorID, got.OrchestratorID)
-		require.Equal(t, expected.ExecutionID, got.ExecutionID)
-
-		assert.Nil(t, catalog.cache.Get(sbxID), "local cache should remain empty when flag is disabled for this service")
+	cache := NewNoopSandboxCache()
+	noCacheCatalog := NewRedisSandboxCatalog(redisClient, cache)
+	t.Cleanup(func() {
+		assert.NoError(t, noCacheCatalog.Close(context.Background()))
 	})
 
-	t.Run("other service uses local cache", func(t *testing.T) {
-		t.Parallel()
-		ctx := t.Context()
+	got, err := noCacheCatalog.GetSandbox(ctx, sbxID)
+	require.NoError(t, err)
+	require.Equal(t, expected.OrchestratorID, got.OrchestratorID)
+	require.Equal(t, expected.ExecutionID, got.ExecutionID)
+	assert.Nil(t, cache.Get(sbxID))
+}
 
-		ff, err := featureflags.NewClientWithDatasource(source)
-		require.NoError(t, err)
-		ff.SetServiceName("orchestration-api")
-		t.Cleanup(func() {
-			assert.NoError(t, ff.Close(context.Background()))
-		})
+func TestRedisCatalog_ReadThroughCachePopulatesLocalCache(t *testing.T) {
+	t.Parallel()
 
-		catalog := NewRedisSandboxesCatalog(redisClient, ff)
-		t.Cleanup(func() {
-			assert.NoError(t, catalog.Close(context.Background()))
-		})
+	ctx, redisClient, sbxID, expected := seedRedisCatalogEntry(t)
 
-		got, err := catalog.GetSandbox(ctx, sbxID)
-		require.NoError(t, err)
-		require.Equal(t, expected.OrchestratorIP, got.OrchestratorIP)
-
-		item := catalog.cache.Get(sbxID)
-		require.NotNil(t, item, "local cache should be populated when flag is enabled")
-		require.Equal(t, expected.ExecutionID, item.Value().ExecutionID)
+	cache := NewReadThroughSandboxCache()
+	cachedCatalog := NewRedisSandboxCatalog(redisClient, cache)
+	t.Cleanup(func() {
+		assert.NoError(t, cachedCatalog.Close(context.Background()))
 	})
+
+	got, err := cachedCatalog.GetSandbox(ctx, sbxID)
+	require.NoError(t, err)
+	require.Equal(t, expected.OrchestratorIP, got.OrchestratorIP)
+
+	item := cache.Get(sbxID)
+	require.NotNil(t, item, "local cache should be populated when enabled")
+	require.Equal(t, expected.ExecutionID, item.Value().ExecutionID)
 }

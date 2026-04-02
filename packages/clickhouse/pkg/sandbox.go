@@ -19,6 +19,7 @@ type Metrics struct {
 	CPUUsedPercent float64   `ch:"cpu_used"`
 	MemTotal       float64   `ch:"ram_total"`
 	MemUsed        float64   `ch:"ram_used"`
+	MemCache       float64   `ch:"ram_cache"`
 	DiskTotal      float64   `ch:"disk_total"`
 	DiskUsed       float64   `ch:"disk_used"`
 }
@@ -30,6 +31,7 @@ SELECT sandbox_id,
        argMaxIf(value, timestamp, metric_name = '%s')  AS cpu_used,
        argMaxIf(value, timestamp, metric_name = '%s')  AS ram_total,
        argMaxIf(value, timestamp, metric_name = '%s')  AS ram_used,
+       argMaxIf(value, timestamp, metric_name = '%s')  AS ram_cache,
        argMaxIf(value, timestamp, metric_name = '%s')  AS disk_total,
        argMaxIf(value, timestamp, metric_name = '%s')  AS disk_used,
        -- All metrics are recorded at the same time, so we can use max(timestamp) to get the latest one
@@ -39,7 +41,7 @@ WHERE  sandbox_id IN ?
        AND team_id = ?
 GROUP  BY sandbox_id,
           team_id; 
-`, telemetry.SandboxCpuTotalGaugeName, telemetry.SandboxCpuUsedGaugeName, telemetry.SandboxRamTotalGaugeName, telemetry.SandboxRamUsedGaugeName, telemetry.SandboxDiskTotalGaugeName, telemetry.SandboxDiskUsedGaugeName)
+`, telemetry.SandboxCpuTotalGaugeName, telemetry.SandboxCpuUsedGaugeName, telemetry.SandboxRamTotalGaugeName, telemetry.SandboxRamUsedGaugeName, telemetry.SandboxRamCacheGaugeName, telemetry.SandboxDiskTotalGaugeName, telemetry.SandboxDiskUsedGaugeName)
 
 // QueryLatestMetrics returns rows ordered by timestamp, paged by limit.
 func (c *Client) QueryLatestMetrics(ctx context.Context, sandboxIDs []string, teamID string) ([]Metrics, error) {
@@ -82,6 +84,7 @@ SELECT   toStartOfInterval(timestamp, interval {step:UInt32} second) AS ts,
          maxIf(value, metric_name = '%s')				          	 AS cpu_used,
          maxIf(value, metric_name = '%s')         					 AS ram_total,
          maxIf(value, metric_name = '%s')          					 AS ram_used,
+         maxIf(value, metric_name = '%s')          					 AS ram_cache,
          maxIf(value, metric_name = '%s')        					 AS disk_total,
          maxIf(value, metric_name = '%s')         					 AS disk_used
 FROM     sandbox_metrics_gauge s
@@ -91,7 +94,7 @@ AND      timestamp >= {start_time:DateTime64}
 AND      timestamp <= {end_time:DateTime64}
 GROUP BY ts
 ORDER BY ts;
-`, telemetry.SandboxCpuTotalGaugeName, telemetry.SandboxCpuUsedGaugeName, telemetry.SandboxRamTotalGaugeName, telemetry.SandboxRamUsedGaugeName, telemetry.SandboxDiskTotalGaugeName, telemetry.SandboxDiskUsedGaugeName)
+`, telemetry.SandboxCpuTotalGaugeName, telemetry.SandboxCpuUsedGaugeName, telemetry.SandboxRamTotalGaugeName, telemetry.SandboxRamUsedGaugeName, telemetry.SandboxRamCacheGaugeName, telemetry.SandboxDiskTotalGaugeName, telemetry.SandboxDiskUsedGaugeName)
 
 func (c *Client) QuerySandboxTimeRange(ctx context.Context, sandboxID string, teamID string) (time.Time, time.Time, error) {
 	var start, end time.Time

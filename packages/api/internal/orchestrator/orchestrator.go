@@ -100,7 +100,6 @@ func New(
 	snapshotUpsertSem *utils.AdjustableSemaphore,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics(
-		ctx,
 		config.AnalyticsCollectorHost,
 		config.AnalyticsCollectorAPIToken,
 	)
@@ -109,10 +108,11 @@ func New(
 
 		return nil, err
 	}
+	analyticsInstance.Init(ctx)
 
 	var routingCatalog e2bcatalog.SandboxesCatalog
 	if redisClient != nil {
-		routingCatalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient, featureFlags)
+		routingCatalog = e2bcatalog.NewRedisSandboxCatalog(redisClient, e2bcatalog.NewReadThroughSandboxCache())
 	} else {
 		routingCatalog = e2bcatalog.NewMemorySandboxesCatalog()
 	}
@@ -180,6 +180,7 @@ func New(
 		sandbox.Callbacks{
 			AddSandboxToRoutingTable: o.addSandboxToRoutingTable,
 			AsyncNewlyCreatedSandbox: o.handleNewlyCreatedSandbox,
+			RemoveSandboxFromNode:    o.killOrphanSandbox,
 		},
 	)
 

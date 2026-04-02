@@ -21,11 +21,13 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
@@ -1011,7 +1013,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating NBD device pool...")
 	}
-	devicePool, err := nbd.NewDevicePool()
+	devicePool, err := nbd.NewDevicePool(config.NBDPoolSize)
 	if err != nil {
 		return fmt.Errorf("nbd pool: %w", err)
 	}
@@ -1050,7 +1052,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating sandbox factory...")
 	}
-	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, nil, nil, sandboxes)
+	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), sandboxes)
 
 	fmt.Printf("📦 Loading %s...\n", buildID)
 	tmpl, err := cache.GetTemplate(ctx, buildID, false, false)

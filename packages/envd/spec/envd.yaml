@@ -349,6 +349,9 @@ components:
         mem_used:
           type: integer
           description: Used virtual memory in bytes
+        mem_cache:
+          type: integer
+          description: Cached memory (page cache) in bytes
         mem_total_mib:
           type: integer
           description: Total virtual memory in MiB

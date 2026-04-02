@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,10 +17,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
+	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
@@ -184,7 +187,7 @@ func newTestInfra(t *testing.T, ctx context.Context) *testInfra {
 	require.NoError(t, err)
 
 	// NBD
-	devicePool, err := nbd.NewDevicePool()
+	devicePool, err := nbd.NewDevicePool(orcConfig.NBDPoolSize)
 	require.NoError(t, err)
 	go devicePool.Populate(ctx)
 	ti.closers = append(ti.closers, func(ctx context.Context) { devicePool.Close(ctx) })
@@ -225,7 +228,7 @@ func newTestInfra(t *testing.T, ctx context.Context) *testInfra {
 	ti.closers = append(ti.closers, func(ctx context.Context) { sandboxProxy.Close(ctx) })
 
 	// Factory + Builder
-	factory := sandbox.NewFactory(orcConfig.BuilderConfig, networkPool, devicePool, flags, nil, nil, sandboxes)
+	factory := sandbox.NewFactory(orcConfig.BuilderConfig, networkPool, devicePool, flags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), sandboxes)
 	ti.factory = factory
 
 	buildMetrics, _ := metrics.NewBuildMetrics(noop.MeterProvider{})
@@ -362,8 +365,18 @@ func downloadKernel(t *testing.T, dataDir string) {
 
 func downloadFC(t *testing.T, dataDir, version string) {
 	t.Helper()
+
+	// Old releases in https://github.com/e2b-dev/fc-versions/releases don't build
+	// x86_64 and aarch64 binaries. They just build the former and the asset's name
+	// is just 'firecracker'
+	// TODO: Drop this work-around once we remove support for Firecracker v1.10
+	assetName := "firecracker-amd64"
+	if strings.HasPrefix(version, "v1.10") {
+		assetName = "firecracker"
+	}
+
 	dst := filepath.Join(dataDir, "fc-versions", version, "firecracker")
-	url := fmt.Sprintf("https://github.com/e2b-dev/fc-versions/releases/download/%s/firecracker", version)
+	url := fmt.Sprintf("https://github.com/e2b-dev/fc-versions/releases/download/%s/%s", version, assetName)
 	downloadFile(t, url, dst, 0o755)
 }
 
