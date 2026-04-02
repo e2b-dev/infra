@@ -28,8 +28,10 @@ jobs:
     uses: ./.github/workflows/out-of-order-migrations.yml
   unit-tests:
     uses: ./.github/workflows/pr-tests.yml
+  build:
+    uses: ./.github/workflows/pr-build.yml
   integration-tests:
-    needs: [out-of-order-migrations]
+    needs: [out-of-order-migrations, build]
     uses: ./.github/workflows/integration_tests.yml
     with:
       # Only publish the results for same-repo PRs

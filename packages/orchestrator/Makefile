@@ -119,6 +119,15 @@ test-docker:
 
 .PHONY: build-template
 build-template:
+	echo "--- which go:"
+	which go
+	echo "--- go version:"
+	go version
+	echo "--- go env:"
+	go env
+	echo "--- env:"
+	env
+
 	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
 	GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) \
 	DOCKER_AUTH_BASE64=$(DOCKER_AUTH_BASE64) \

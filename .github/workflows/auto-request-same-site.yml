@@ -25,7 +25,7 @@ jobs:
     steps:
       - name: Get GitHub App installation token
         id: app
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.E2B_GH_APP_AUTO_REQUEST_SAME_SITE_APP_ID }}
           private-key: ${{ secrets.E2B_GH_APP_AUTO_REQUEST_SAME_SITE_APP_PRIVATE_KEY }}

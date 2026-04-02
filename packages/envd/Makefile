@@ -30,7 +30,7 @@ build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(BUILD_ARCH) go build -a -o bin/envd ${LDFLAGS}
 
 build-debug:
-	CGO_ENABLED=1 go build -race -gcflags=all="-N -l" -o bin/debug/envd ${LDFLAGS}
+	CGO_ENABLED=1 go build -race -gcflags=all="-N -l" -o bin/envd ${LDFLAGS}
 
 start-docker:
 	make build

@@ -1,0 +1,37 @@
+name: Build all packages
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build-package:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        package:
+          - name: orchestrator
+          - name: api
+          - name: envd
+          - name: client-proxy
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: ./.github/actions/go-setup-cache
+        with:
+          cache-dependency-paths: |
+            go.work
+            packages/${{ matrix.package.name }}/go.mod
+            packages/${{ matrix.package.name }}/go.sum
+
+      - name: Build package
+        run: make -C packages/${{ matrix.package.name }} build-debug
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.package.name }}-build
+          path: packages/${{ matrix.package.name }}/bin/${{ matrix.package.name }}

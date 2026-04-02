@@ -75,7 +75,7 @@ mkdir -p /fc-vm
 envd_dir="/fc-envd"
 mkdir -p $envd_dir
 
-cp packages/envd/bin/debug/envd "${envd_dir}/."
+cp packages/envd/bin/envd "${envd_dir}/."
 
 chmod -R 755 $envd_dir
 ls -lh $envd_dir

@@ -25,7 +25,7 @@ jobs:
       - name: Generate GitHub App installation token
         id: app-token
         if: ${{ inputs.commit == true }}
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.app_id }}
           private-key: ${{ secrets.app_secret }}
@@ -47,7 +47,7 @@ jobs:
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "${{ env.TERRAFORM }}"
 
