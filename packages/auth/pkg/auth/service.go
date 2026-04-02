@@ -200,8 +200,8 @@ func (s *AuthService[T]) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.C
 
 // InvalidateTeamMemberCache removes the cached auth entry for a specific user-team pair.
 // This should be called when team membership changes (member added or removed).
-func (s *AuthService[T]) InvalidateTeamMemberCache(userID uuid.UUID, teamID string) {
-	s.teamCache.Invalidate(supabaseTeamCacheKey(userID, teamID))
+func (s *AuthService[T]) InvalidateTeamMemberCache(ctx context.Context, userID uuid.UUID, teamID string) {
+	s.teamCache.Invalidate(ctx, supabaseTeamCacheKey(userID, teamID))
 }
 
 // InvalidateTeamCache queries the team's API key hashes and removes their cached entries.
@@ -212,7 +212,7 @@ func (s *AuthService[T]) InvalidateTeamCache(ctx context.Context, teamID uuid.UU
 	}
 
 	for _, hash := range hashes {
-		s.teamCache.Invalidate(hash)
+		s.teamCache.Invalidate(ctx, hash)
 	}
 
 	return nil
