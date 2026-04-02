@@ -20,12 +20,18 @@ type SandboxHostStat struct {
 	SandboxVCPUCount int64 `ch:"sandbox_vcpu_count"` // number of virtual CPUs allocated to the sandbox
 	SandboxMemoryMB  int64 `ch:"sandbox_memory_mb"`  // total memory allocated to the sandbox in megabytes
 
-	// Cgroup v2 accounting — cumulative CPU values, deltas calculated in queries
+	// Cgroup v2 accounting — cumulative CPU counters
 	CgroupCPUUsageUsec  uint64 `ch:"cgroup_cpu_usage_usec"`     // cumulative, microseconds
 	CgroupCPUUserUsec   uint64 `ch:"cgroup_cpu_user_usec"`      // cumulative, microseconds
 	CgroupCPUSystemUsec uint64 `ch:"cgroup_cpu_system_usec"`    // cumulative, microseconds
 	CgroupMemoryUsage   uint64 `ch:"cgroup_memory_usage_bytes"` // current, bytes
 	CgroupMemoryPeak    uint64 `ch:"cgroup_memory_peak_bytes"`  // lifetime peak, bytes
+
+	// Pre-computed deltas between consecutive samples.
+	DeltaCgroupCPUUsageUsec  uint64 `ch:"delta_cgroup_cpu_usage_usec"`
+	DeltaCgroupCPUUserUsec   uint64 `ch:"delta_cgroup_cpu_user_usec"`
+	DeltaCgroupCPUSystemUsec uint64 `ch:"delta_cgroup_cpu_system_usec"`
+	IntervalUs               uint64 `ch:"interval_us"` // microseconds since previous sample
 
 	SandboxType string `ch:"sandbox_type"` // "sandbox" or "build"
 }

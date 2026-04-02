@@ -13,7 +13,7 @@ import (
 func GetNBDDevice(ctx context.Context, backend block.Device, featureFlags *featureflags.Client) (nbd.DevicePath, *Cleaner, error) {
 	var cleaner Cleaner
 
-	devicePool, err := nbd.NewDevicePool()
+	devicePool, err := nbd.NewDevicePool(64)
 	if err != nil {
 		return "", &cleaner, fmt.Errorf("failed to create device pool: %w", err)
 	}

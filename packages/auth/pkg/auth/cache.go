@@ -38,6 +38,11 @@ func (c *AuthCache[T]) GetOrSet(ctx context.Context, key string, dataCallback fu
 	return c.cache.GetOrSet(ctx, key, dataCallback)
 }
 
+// Invalidate removes a single entry from the cache by key.
+func (c *AuthCache[T]) Invalidate(key string) {
+	c.cache.Delete(key)
+}
+
 // Close stops the cache's background refresh goroutines.
 func (c *AuthCache[T]) Close(ctx context.Context) error {
 	return c.cache.Close(ctx)

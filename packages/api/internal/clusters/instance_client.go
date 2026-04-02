@@ -64,5 +64,5 @@ func createClient(tel *telemetry.Client, auth *instanceAuthorization, endpoint s
 		return nil, fmt.Errorf("failed to create client client: %w", err)
 	}
 
-	return NewGRPCClient(conn), nil
+	return NewGRPCClient(conn, "cluster-orchestrator"), nil
 }

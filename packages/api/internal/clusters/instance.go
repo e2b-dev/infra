@@ -75,6 +75,8 @@ func newInstance(
 		return nil, fmt.Errorf("failed to create cluster instance client client: %w", err)
 	}
 
+	client.Init(ctx)
+
 	// Create with default values that will be updated on sync before returning the instance,
 	// so we will never have uninitialized instance status or roles.
 	//

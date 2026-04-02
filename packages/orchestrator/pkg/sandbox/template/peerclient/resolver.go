@@ -7,11 +7,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/singleflight"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
@@ -66,7 +68,7 @@ func (r *peerResolver) readPeerAddress(ctx context.Context, buildID string) (str
 }
 
 // getOrDialPeer deduplicates concurrent dials via singleflight.
-func (r *peerResolver) getOrDialPeer(address string) (*grpc.ClientConn, error) {
+func (r *peerResolver) getOrDialPeer(ctx context.Context, address string) (*grpc.ClientConn, error) {
 	if conn, ok := r.peerConns.Load(address); ok {
 		return conn.(*grpc.ClientConn), nil
 	}
@@ -78,11 +80,14 @@ func (r *peerResolver) getOrDialPeer(address string) (*grpc.ClientConn, error) {
 
 		conn, err := grpc.NewClient(address,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 			grpc.WithConnectParams(grpc.ConnectParams{MinConnectTimeout: peerConnectTimeout}),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to dial peer %s: %w", address, err)
 		}
+
+		e2bgrpc.ObserveConnection(ctx, conn, "peer-orchestrator")
 
 		r.peerConns.Store(address, conn)
 
@@ -141,7 +146,7 @@ func (r *peerResolver) resolve(ctx context.Context, buildID string) (attribute.K
 		return attrResolveSelf, resolveResult{}
 	}
 
-	conn, err := r.getOrDialPeer(addr)
+	conn, err := r.getOrDialPeer(ctx, addr)
 	if err != nil {
 		return attrResolveDialError, resolveResult{}
 	}

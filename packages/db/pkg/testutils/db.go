@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -106,6 +107,12 @@ func SetupDatabase(t *testing.T) *Database {
 	}
 }
 
+// gooseMu serializes goose operations across parallel tests.
+// goose.OpenDBWithDriver calls goose.SetDialect which writes to package-level
+// globals (dialect, store) without synchronization. Concurrent test goroutines
+// race on these globals, triggering the race detector on ARM64.
+var gooseMu sync.Mutex
+
 // runDatabaseMigrations executes all required database migrations
 func runDatabaseMigrations(t *testing.T, connStr string) {
 	t.Helper()
@@ -114,6 +121,9 @@ func runDatabaseMigrations(t *testing.T, connStr string) {
 	output, err := cmd.Output()
 	require.NoError(t, err, "Failed to find git root")
 	repoRoot := strings.TrimSpace(string(output))
+
+	gooseMu.Lock()
+	defer gooseMu.Unlock()
 
 	db, err := goose.OpenDBWithDriver("pgx", connStr)
 	require.NoError(t, err)
