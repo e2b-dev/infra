@@ -220,7 +220,9 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		Lifecycle:           sandboxLifecycleToAPI(lastSnapshot.Snapshot.AutoPause, autoResumeConfig),
 	}
 
-	sandbox.Alias = &pausedAlias
+	if pausedAlias != "" {
+		sandbox.Alias = &pausedAlias
+	}
 
 	if lastSnapshot.Snapshot.Metadata != nil {
 		metadata := api.SandboxMetadata(lastSnapshot.Snapshot.Metadata)
