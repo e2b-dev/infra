@@ -132,11 +132,15 @@ variable "ingress_count" {
 }
 
 variable "additional_api_paths_handled_by_ingress" {
-  type = list(object({
-    paths       = list(string)
-    timeout_sec = optional(number)
-  }))
-  description = "Additional path rules to forward to nomad's ingress. Each entry creates a separate path_rule with an optional per-route timeout (overrides the ingress backend default of 80s)."
+  type        = any
+  description = <<-EOT
+    Additional path rules to forward to nomad's ingress. Each entry creates a separate path_rule.
+    Accepts two formats for backward compatibility:
+    - Legacy: list(string) - e.g. ["/path1/*", "/path2/*"]
+    - New: list(object({paths = list(string), timeout_sec = optional(number)}))
+      e.g. [{paths = ["/path1/*", "/path2/*"], timeout_sec = 120}]
+    Per-route timeout_sec overrides the ingress backend default (see ingress_timeout_seconds).
+  EOT
   default     = []
 }
 

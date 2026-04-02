@@ -52,6 +52,15 @@ data "google_secret_manager_secret_version" "routing_domains" {
 locals {
   additional_domains = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
 
+  # Normalize additional_api_paths_handled_by_ingress to support both legacy (list of strings)
+  # and new (list of objects) formats. Strings are converted to objects with paths = [string].
+  normalized_api_paths_handled_by_ingress = [
+    for item in var.additional_api_paths_handled_by_ingress : {
+      paths       = try(item.paths, [item])
+      timeout_sec = try(item.timeout_sec, null)
+    }
+  ]
+
   // Check if all clusters has size greater than 1
   template_manages_clusters_size_gt_1 = alltrue([for c in var.build_clusters_config : (c.cluster_size > 1)])
 
@@ -153,7 +162,7 @@ module "cluster" {
   ingress_timeout_seconds      = var.ingress_timeout_seconds
 
   additional_domains                      = local.additional_domains
-  additional_api_paths_handled_by_ingress = var.additional_api_paths_handled_by_ingress
+  additional_api_paths_handled_by_ingress = local.normalized_api_paths_handled_by_ingress
 
   docker_contexts_bucket_name = module.init.envs_docker_context_bucket_name
   cluster_setup_bucket_name   = module.init.cluster_setup_bucket_name
