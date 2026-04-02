@@ -31,7 +31,6 @@ resource "nomad_job" "dashboard_api" {
     update_stanza = var.update_stanza
     node_pool     = var.node_pool
     image_name    = var.image
-    environment   = var.environment
 
     count = var.count_instances
 

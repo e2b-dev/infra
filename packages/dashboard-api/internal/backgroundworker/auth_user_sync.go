@@ -64,9 +64,9 @@ func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSy
 	userID, err := uuid.Parse(job.Args.UserID)
 	if err != nil {
 		telemetry.ReportError(ctx, "auth user sync parse user_id", err, attrs...)
-		w.observeJob(ctx, job.Args.Operation, "error")
+		w.observeJob(ctx, job.Args.Operation, "cancelled")
 
-		return fmt.Errorf("parse user_id %q: %w", job.Args.UserID, err)
+		return river.JobCancel(fmt.Errorf("parse user_id %q: %w", job.Args.UserID, err))
 	}
 
 	w.l.Info(ctx, "processing auth user sync job",
@@ -88,11 +88,11 @@ func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSy
 
 	case "upsert":
 		if job.Args.Email == "" {
-			err := fmt.Errorf("missing email in job args")
+			err := fmt.Errorf("missing email in job args for user %s", userID)
 			telemetry.ReportError(ctx, "auth user sync missing email", err, attrs...)
-			w.observeJob(ctx, job.Args.Operation, "error")
+			w.observeJob(ctx, job.Args.Operation, "cancelled")
 
-			return fmt.Errorf("upsert public.users %s: missing email in job args", userID)
+			return river.JobCancel(err)
 		}
 
 		if err := w.mainDB.UpsertPublicUser(ctx, queries.UpsertPublicUserParams{
@@ -106,11 +106,11 @@ func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSy
 		}
 
 	default:
-		err := fmt.Errorf("unknown operation %q", job.Args.Operation)
+		err := fmt.Errorf("unknown operation %q for user %s", job.Args.Operation, userID)
 		telemetry.ReportError(ctx, "auth user sync unknown operation", err, attrs...)
-		w.observeJob(ctx, job.Args.Operation, "error")
+		w.observeJob(ctx, job.Args.Operation, "cancelled")
 
-		return fmt.Errorf("unknown operation %q for user %s", job.Args.Operation, userID)
+		return river.JobCancel(err)
 	}
 
 	w.l.Info(ctx, "completed auth user sync job",
