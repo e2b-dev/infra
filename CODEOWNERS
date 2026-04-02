@@ -3,4 +3,4 @@
 * @ValentaTomas @jakubno @dobrac
 
 # AWS infrastructure
-iac/provider-aws/* @sitole
+iac/provider-aws/ @sitole
