@@ -143,3 +143,13 @@ variable "scripts_path" {
   description = "Path to the directory containing startup scripts. Defaults to in-module scripts."
   default     = ""
 }
+
+variable "set_orchestrator_version_metadata" {
+  description = "Whether to set orchestrator_version node metadata from Nomad variable on startup"
+  type        = bool
+}
+
+variable "nomad_acl_token_secret" {
+  description = "Nomad ACL token used to fetch orchestrator version from Nomad API"
+  type        = string
+}

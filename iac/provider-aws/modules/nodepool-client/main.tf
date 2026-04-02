@@ -20,6 +20,9 @@ locals {
 
     RUN_CONSUL_FILE_HASH = var.setup_files_hash["run-consul"]
     RUN_NOMAD_FILE_HASH  = var.setup_files_hash["run-nomad"]
+
+    SET_ORCHESTRATOR_VERSION_METADATA = var.set_orchestrator_version_metadata ? "true" : "false"
+    NOMAD_TOKEN                       = var.nomad_acl_token_secret
   })
 }
 
