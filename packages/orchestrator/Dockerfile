@@ -44,7 +44,8 @@ RUN ./orchestrator/scripts/fetch-busybox.sh "${BUSYBOX_VERSION}" "${TARGETARCH}"
 WORKDIR /build/orchestrator
 
 ARG COMMIT_SHA
-RUN --mount=type=cache,target=/root/.cache/go-build make build-local COMMIT_SHA=${COMMIT_SHA}
+# Use Docker's TARGETARCH (set by --platform) so GOARCH matches the container platform.
+RUN --mount=type=cache,target=/root/.cache/go-build make build-local COMMIT_SHA=${COMMIT_SHA} BUILD_ARCH=${TARGETARCH}
 
 FROM scratch
 
