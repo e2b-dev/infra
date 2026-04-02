@@ -34,7 +34,7 @@ type LayerExecutor struct {
 	buildStorage    storage.StorageProvider
 	index           cache.Index
 	uploadTracker   *UploadTracker
-	compressConfig     *storage.CompressConfig // nil = no compression
+	compressConfig  *storage.CompressConfig // nil = no compression
 }
 
 func NewLayerExecutor(
@@ -61,7 +61,7 @@ func NewLayerExecutor(
 		buildStorage:    buildStorage,
 		index:           index,
 		uploadTracker:   uploadTracker,
-		compressConfig:     compressConfig,
+		compressConfig:  compressConfig,
 	}
 }
 

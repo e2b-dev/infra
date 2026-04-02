@@ -3,7 +3,6 @@ package rootfs
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"syscall"
 
@@ -22,7 +21,7 @@ type Provider interface {
 	Start(ctx context.Context) error
 	Close(ctx context.Context) error
 	Path() (string, error)
-	ExportDiff(ctx context.Context, out io.Writer, closeSandbox func(context.Context) error) (*header.DiffMetadata, error)
+	ExportDiff(ctx context.Context, out *os.File, closeSandbox func(context.Context) error) (*header.DiffMetadata, error)
 }
 
 // flush flushes the data to the operating system's buffer.

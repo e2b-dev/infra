@@ -3,6 +3,7 @@ package fc
 import (
 	"context"
 	"fmt"
+	"runtime"
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/firecracker-microvm/firecracker-go-sdk"
@@ -17,6 +18,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+const archARM64 = "arm64"
 
 type apiClient struct {
 	client *client.Firecracker
@@ -326,7 +329,14 @@ func (c *apiClient) setMachineConfig(
 	memoryMB int64,
 	hugePages bool,
 ) error {
-	smt := true
+	// SMT (Simultaneous Multi-Threading / Hyper-Threading) must be disabled on
+	// ARM64 because ARM processors use a different core topology (big.LITTLE,
+	// efficiency/performance cores) rather than hardware threads per core.
+	// Firecracker validates this against the host CPU and rejects SMT=true on ARM.
+	// See: https://github.com/firecracker-microvm/firecracker/blob/main/docs/cpu_templates/cpu-features.md
+	// We use runtime.GOARCH (not TARGET_ARCH) because the orchestrator binary
+	// always runs on the same architecture as Firecracker.
+	smt := runtime.GOARCH != archARM64
 	trackDirtyPages := false
 	machineConfig := &models.MachineConfiguration{
 		VcpuCount:       &vCPUCount,

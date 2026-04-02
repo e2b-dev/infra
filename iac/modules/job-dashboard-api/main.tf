@@ -15,6 +15,9 @@ resource "nomad_job" "dashboard_api" {
     auth_db_read_replica_connection_string = var.auth_db_read_replica_connection_string
     clickhouse_connection_string           = var.clickhouse_connection_string
     supabase_jwt_secrets                   = var.supabase_jwt_secrets
+    redis_url                              = var.redis_url
+    redis_cluster_url                      = var.redis_cluster_url
+    redis_tls_ca_base64                    = var.redis_tls_ca_base64
 
     subdomain = "dashboard-api"
 

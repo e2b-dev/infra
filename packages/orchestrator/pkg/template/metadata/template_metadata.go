@@ -200,11 +200,11 @@ func FromBuildID(ctx context.Context, s storage.StorageProvider, buildID string)
 	})
 }
 
-func fromTemplate(ctx context.Context, s storage.StorageProvider, files storage.Paths) (Template, error) {
+func fromTemplate(ctx context.Context, s storage.StorageProvider, paths storage.Paths) (Template, error) {
 	ctx, span := tracer.Start(ctx, "from template")
 	defer span.End()
 
-	obj, err := s.OpenBlob(ctx, files.Metadata(), storage.MetadataObjectType)
+	obj, err := s.OpenBlob(ctx, paths.Metadata(), storage.MetadataObjectType)
 	if err != nil {
 		return Template{}, fmt.Errorf("error opening object for template metadata: %w", err)
 	}

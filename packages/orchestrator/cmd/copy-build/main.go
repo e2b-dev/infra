@@ -140,15 +140,15 @@ func getReferencedData(h *header.Header, objectType storage.ObjectType) []string
 	var dataReferences []string
 
 	for build := range builds {
-		template := storage.Paths{
+		paths := storage.Paths{
 			BuildID: build,
 		}
 
 		switch objectType {
 		case storage.MemfileHeaderObjectType:
-			dataReferences = append(dataReferences, template.Memfile())
+			dataReferences = append(dataReferences, paths.Memfile())
 		case storage.RootFSHeaderObjectType:
-			dataReferences = append(dataReferences, template.Rootfs())
+			dataReferences = append(dataReferences, paths.Rootfs())
 		}
 	}
 

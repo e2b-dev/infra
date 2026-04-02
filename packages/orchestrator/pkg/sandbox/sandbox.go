@@ -984,16 +984,16 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 	}
 
 	// This is required because the FC API doesn't support passing /dev/null
-	cacheFiles, err := storage.Paths{
+	cachePaths, err := storage.Paths{
 		BuildID: uuid.New().String(),
-	}.CacheFiles(s.config.StorageConfig)
+	}.Cache(s.config.StorageConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create template files: %w", err)
 	}
-	defer cacheFiles.Close()
+	defer cachePaths.Close()
 
 	// The snapfile is required only because the FC API doesn't support passing /dev/null
-	snapfile := template.NewLocalFileLink(cacheFiles.CacheSnapfilePath())
+	snapfile := template.NewLocalFileLink(cachePaths.CacheSnapfile())
 	defer snapfile.Close()
 
 	err = s.process.CreateSnapshot(ctx, snapfile.Path())
@@ -1037,13 +1037,13 @@ func (s *Sandbox) Pause(
 		}
 	}()
 
-	cacheFiles, err := storage.Paths{BuildID: m.Template.BuildID}.CacheFiles(s.config.StorageConfig)
+	cachePaths, err := storage.Paths{BuildID: m.Template.BuildID}.Cache(s.config.StorageConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template files: %w", err)
 	}
-	cleanup.AddNoContext(ctx, cacheFiles.Close)
+	cleanup.AddNoContext(ctx, cachePaths.Close)
 
-	buildID, err := uuid.Parse(cacheFiles.BuildID)
+	buildID, err := uuid.Parse(cachePaths.BuildID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse build id: %w", err)
 	}
@@ -1056,7 +1056,7 @@ func (s *Sandbox) Pause(
 	}
 
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
-	snapfile := template.NewLocalFileLink(cacheFiles.CacheSnapfilePath())
+	snapfile := template.NewLocalFileLink(cachePaths.CacheSnapfile())
 	cleanup.AddNoContext(ctx, snapfile.Close)
 
 	err = s.process.CreateSnapshot(ctx, snapfile.Path())
@@ -1109,7 +1109,7 @@ func (s *Sandbox) Pause(
 	}
 	cleanup.AddNoContext(ctx, rootfsDiff.Close)
 
-	metadataFileLink := template.NewLocalFileLink(cacheFiles.CacheMetadataPath())
+	metadataFileLink := template.NewLocalFileLink(cachePaths.CacheMetadata())
 	cleanup.AddNoContext(ctx, metadataFileLink.Close)
 
 	err = m.ToFile(metadataFileLink.Path())
@@ -1194,7 +1194,7 @@ func pauseProcessRootfs(
 		return nil, nil, fmt.Errorf("failed to create rootfs diff: %w", err)
 	}
 
-	rootfsDiffMetadata, err := diffCreator.process(ctx, rootfsDiffFile)
+	rootfsDiffMetadata, err := diffCreator.process(ctx, rootfsDiffFile.File)
 	if err != nil {
 		err = errors.Join(err, rootfsDiffFile.Close())
 

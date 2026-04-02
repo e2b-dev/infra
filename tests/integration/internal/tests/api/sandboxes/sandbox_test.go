@@ -38,6 +38,8 @@ func TestSandboxCreate(t *testing.T) {
 	})
 
 	assert.Equal(t, http.StatusCreated, resp.StatusCode())
+	require.NotNil(t, resp.JSON201)
+	assert.Equal(t, setup.SandboxTemplateID, resp.JSON201.TemplateID)
 }
 
 func TestSandboxResumeUnknownSandbox(t *testing.T) {
@@ -96,6 +98,7 @@ func TestSandboxResumeWithSecuredEnvd(t *testing.T) {
 	})
 
 	assert.Equal(t, sbxResume.JSON201.SandboxID, sbxCreate.JSON201.SandboxID)
+	assert.Equal(t, sbxCreate.JSON201.TemplateID, sbxResume.JSON201.TemplateID)
 	assert.Equal(t, sbxResume.JSON201.EnvdAccessToken, sbxCreate.JSON201.EnvdAccessToken)
 }
 
