@@ -150,8 +150,16 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	builder := header.NewDiffMetadataBuilder(c.size, c.blockSize)
 
 	// We don't need to sort the keys as the bitset handles the ordering.
+	if c.dirtyNeedsLock {
+		c.dirtyMu.RLock()
+	}
+
 	for blockIdx := range c.dirty.Iterator() {
 		builder.AddDirtyOffset(int64(blockIdx) * c.blockSize)
+	}
+
+	if c.dirtyNeedsLock {
+		c.dirtyMu.RUnlock()
 	}
 
 	diffMetadata := builder.Build()
