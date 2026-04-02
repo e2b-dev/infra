@@ -326,6 +326,7 @@ module "build" {
   custom_environments_repo_arn     = data.aws_ecr_repository.custom_environments.arn
 
   set_orchestrator_version_metadata = false
+  nomad_acl_token_secret            = "" // node needed as we are not setting up orchestrator metadata
 }
 
 module "client" {
