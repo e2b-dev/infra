@@ -71,7 +71,7 @@ func diffPath(d build.Diff) (*string, error) {
 }
 
 func (b *buildUploader) uploadUncompressedFile(ctx context.Context, local, remote string) error {
-	object, err := b.persistence.OpenFramedFile(ctx, remote)
+	object, err := b.persistence.OpenSeekable(ctx, remote)
 	if err != nil {
 		return err
 	}
@@ -132,7 +132,7 @@ func uploadFileAsBlob(ctx context.Context, b storage.Blob, path string) error {
 }
 
 func (b *buildUploader) uploadCompressedFile(ctx context.Context, local, remote string, cfg *storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
-	object, err := b.persistence.OpenFramedFile(ctx, remote)
+	object, err := b.persistence.OpenSeekable(ctx, remote)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("error opening framed file for %s: %w", remote, err)
 	}

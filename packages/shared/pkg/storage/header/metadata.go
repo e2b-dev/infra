@@ -157,7 +157,17 @@ func (d *DiffMetadata) ToDiffHeader(
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}
 
-	header.BuildFiles = originalHeader.BuildFiles
+	// Copy only BuildFiles referenced by the merged mappings.
+	referenced := make(map[uuid.UUID]struct{}, len(m))
+	for _, mapping := range m {
+		referenced[mapping.BuildId] = struct{}{}
+	}
+	header.BuildFiles = make(map[uuid.UUID]BuildFileInfo, len(referenced))
+	for id := range referenced {
+		if info, ok := originalHeader.BuildFiles[id]; ok {
+			header.BuildFiles[id] = info
+		}
+	}
 
 	err = ValidateMappings(header.Mapping, header.Metadata.Size, header.Metadata.BlockSize)
 	if err != nil {

@@ -28,9 +28,10 @@ var (
 type cacheOp string
 
 const (
-	cacheOpWriteTo  cacheOp = "write_to"
-	cacheOpGetFrame cacheOp = "get_frame"
-	cacheOpSize     cacheOp = "size"
+	cacheOpWriteTo             cacheOp = "write_to"
+	cacheOpOpenRangeReader     cacheOp = "open_range_reader"
+	cacheOpSize                cacheOp = "size"
+	cacheOpWriteFromFileSystem cacheOp = "write_from_filesystem"
 
 	cacheOpPut cacheOp = "put"
 )
@@ -38,8 +39,8 @@ const (
 type cacheType string
 
 const (
-	cacheTypeBlob       cacheType = "blob"
-	cacheTypeFramedFile cacheType = "framed_file"
+	cacheTypeBlob     cacheType = "blob"
+	cacheTypeSeekable cacheType = "seekable"
 )
 
 func recordCacheRead(ctx context.Context, isHit bool, bytesRead int64, t cacheType, op cacheOp) {

@@ -71,7 +71,7 @@ func NewStorage(
 			dataPath = paths.Rootfs()
 		}
 
-		object, err := persistence.OpenFramedFile(ctx, dataPath)
+		object, err := persistence.OpenSeekable(ctx, dataPath)
 		if err != nil {
 			return nil, err
 		}

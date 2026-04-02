@@ -364,7 +364,7 @@ func doBuild(
 }
 
 func printArtifactSizes(ctx context.Context, persistence storage.StorageProvider, buildID string, _ *build.Result) {
-	files := storage.Paths{BuildID: buildID}
+	paths := storage.Paths{BuildID: buildID}
 	basePath := os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH")
 
 	fmt.Printf("\n📦 Artifacts:\n")
@@ -374,7 +374,7 @@ func printArtifactSizes(ctx context.Context, persistence storage.StorageProvider
 		printLocalFileSizes(basePath, buildID)
 	} else {
 		// For remote storage, get sizes from storage provider
-		if memfile, err := persistence.OpenFramedFile(ctx, files.Memfile()); err == nil {
+		if memfile, err := persistence.OpenSeekable(ctx, paths.Memfile()); err == nil {
 			if size, err := memfile.Size(ctx); err == nil {
 				fmt.Printf("   Memfile: %d MB\n", size>>20)
 			}

@@ -34,7 +34,7 @@ type LayerExecutor struct {
 	buildStorage    storage.StorageProvider
 	index           cache.Index
 	uploadTracker   *UploadTracker
-	compressCfg     *storage.CompressConfig // nil = no compression
+	compressConfig     *storage.CompressConfig // nil = no compression
 }
 
 func NewLayerExecutor(
@@ -47,7 +47,7 @@ func NewLayerExecutor(
 	buildStorage storage.StorageProvider,
 	index cache.Index,
 	uploadTracker *UploadTracker,
-	compressCfg *storage.CompressConfig,
+	compressConfig *storage.CompressConfig,
 ) *LayerExecutor {
 	return &LayerExecutor{
 		BuildContext: buildContext,
@@ -61,7 +61,7 @@ func NewLayerExecutor(
 		buildStorage:    buildStorage,
 		index:           index,
 		uploadTracker:   uploadTracker,
-		compressCfg:     compressCfg,
+		compressConfig:     compressConfig,
 	}
 }
 
@@ -277,7 +277,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 	}
 
 	// Upload snapshot async, it's added to the template cache immediately
-	if c := lb.compressCfg; c != nil {
+	if c := lb.compressConfig; c != nil {
 		userLogger.Debug(ctx, fmt.Sprintf("Saving: %s (compress=%s level=%d)", meta.Template.BuildID, c.Type, c.Level))
 	} else {
 		userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
@@ -285,7 +285,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 
 	// Register this upload and get functions to signal completion and wait for previous uploads
 	completeUpload, waitForPreviousUploads := lb.uploadTracker.StartUpload()
-	uploader := sandbox.NewBuildUploader(snapshot, lb.templateStorage, storage.Paths{BuildID: meta.Template.BuildID}, lb.compressCfg, lb.uploadTracker.Pending())
+	uploader := sandbox.NewBuildUploader(snapshot, lb.templateStorage, storage.Paths{BuildID: meta.Template.BuildID}, lb.compressConfig, lb.uploadTracker.Pending())
 
 	lb.UploadErrGroup.Go(func() error {
 		ctx := context.WithoutCancel(ctx)

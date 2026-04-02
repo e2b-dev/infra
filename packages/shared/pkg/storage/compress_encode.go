@@ -2,8 +2,8 @@ package storage
 
 import (
 	"bytes"
+	"context"
 	"fmt"
-	"io"
 	"sync"
 
 	"github.com/klauspost/compress/zstd"
@@ -109,51 +109,13 @@ func newCompressorPool(cfg *CompressConfig) (*sync.Pool, error) {
 	return pool, nil
 }
 
-var lz4DecoderPool sync.Pool
+func CompressBytes(ctx context.Context, data []byte, cfg *CompressConfig) (*FrameTable, []byte, [32]byte, error) {
+	up := &memPartUploader{}
 
-func getLZ4Decoder(r io.Reader) *lz4.Reader {
-	if v := lz4DecoderPool.Get(); v != nil {
-		dec := v.(*lz4.Reader)
-		dec.Reset(r)
-
-		return dec
-	}
-
-	dec := lz4.NewReader(r)
-
-	return dec
-}
-
-func putLZ4Decoder(dec *lz4.Reader) {
-	dec.Reset(nil)
-	lz4DecoderPool.Put(dec)
-}
-
-// zstd concurrency is hardcoded to 1: benchmarks show higher values hurt
-// throughput for single 2MiB frame decodes.
-var zstdDecoderPool sync.Pool
-
-func getZstdDecoder(r io.Reader) (*zstd.Decoder, error) {
-	if v := zstdDecoderPool.Get(); v != nil {
-		dec := v.(*zstd.Decoder)
-		if err := dec.Reset(r); err != nil {
-			dec.Close()
-
-			return nil, err
-		}
-
-		return dec, nil
-	}
-
-	dec, err := zstd.NewReader(r)
+	ft, checksum, err := compressStream(ctx, bytes.NewReader(data), cfg, up, 4)
 	if err != nil {
-		return nil, err
+		return nil, nil, [32]byte{}, err
 	}
 
-	return dec, nil
-}
-
-func putZstdDecoder(dec *zstd.Decoder) {
-	dec.Reset(nil)
-	zstdDecoderPool.Put(dec)
+	return ft, up.Assemble(), checksum, nil
 }

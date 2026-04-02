@@ -89,12 +89,12 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 		}
 
 		size := b.buildFileSize(h, mappedToBuild.BuildId)
-		mappedBuild, err := b.getBuild(ctx, mappedToBuild.BuildId, size)
+		mappedBuild, err := b.getBuild(ctx, mappedToBuild.BuildId, size, mappedToBuild.FrameTable.CompressionType())
 		if err != nil {
 			return 0, fmt.Errorf("failed to get build: %w", err)
 		}
 
-		buildN, err := mappedBuild.ReadBlock(ctx,
+		buildN, err := mappedBuild.ReadAt(ctx,
 			p[n:int64(n)+readLength],
 			int64(mappedToBuild.Offset),
 			mappedToBuild.FrameTable,
@@ -134,12 +134,12 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 		}
 
 		size := b.buildFileSize(h, mappedBuild.BuildId)
-		diff, err := b.getBuild(ctx, mappedBuild.BuildId, size)
+		diff, err := b.getBuild(ctx, mappedBuild.BuildId, size, mappedBuild.FrameTable.CompressionType())
 		if err != nil {
 			return nil, fmt.Errorf("failed to get build: %w", err)
 		}
 
-		result, err := diff.SliceBlock(ctx, int64(mappedBuild.Offset), int64(h.Metadata.BlockSize), mappedBuild.FrameTable)
+		result, err := diff.Slice(ctx, int64(mappedBuild.Offset), int64(h.Metadata.BlockSize), mappedBuild.FrameTable)
 		if err != nil {
 			var transErr *storage.PeerTransitionedError
 			if errors.As(err, &transErr) && !b.swapFailed.Load() {
@@ -188,9 +188,9 @@ func (b *File) swapHeader(transErr *storage.PeerTransitionedError) error {
 	return nil
 }
 
-// buildFileSize returns the uncompressed file size for buildID from the header's
-// BuildFiles map. Returns 0 if unknown (V3/legacy), which signals the read path
-// to fall back to a Size() call.
+// buildFileSize returns the uncompressed file size for buildID from the
+// header's BuildFiles map. Returns 0 for V3 headers (no BuildFiles), which
+// signals the read path to fall back to a Size() RPC.
 func (b *File) buildFileSize(h *header.Header, buildID uuid.UUID) int64 {
 	if info, ok := h.BuildFiles[buildID]; ok {
 		return info.Size
@@ -199,7 +199,7 @@ func (b *File) buildFileSize(h *header.Header, buildID uuid.UUID) int64 {
 	return 0
 }
 
-func (b *File) getBuild(ctx context.Context, buildID uuid.UUID, uncompressedSize int64) (Diff, error) {
+func (b *File) getBuild(ctx context.Context, buildID uuid.UUID, uncompressedSize int64, ct storage.CompressionType) (Diff, error) {
 	storageDiff, err := newStorageDiff(
 		b.store.cachePath,
 		buildID.String(),
@@ -207,7 +207,8 @@ func (b *File) getBuild(ctx context.Context, buildID uuid.UUID, uncompressedSize
 		int64(b.Header().Metadata.BlockSize),
 		b.metrics,
 		b.persistence,
-		uncompressedSize,
+		uncompressedSize, ct,
+		b.store.flags,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create storage diff: %w", err)

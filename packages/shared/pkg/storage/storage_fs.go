@@ -29,8 +29,8 @@ type fsObject struct {
 }
 
 var (
-	_ FramedFile = (*fsObject)(nil)
-	_ Blob       = (*fsObject)(nil)
+	_ Seekable = (*fsObject)(nil)
+	_ Blob     = (*fsObject)(nil)
 )
 
 type fsRangeReadCloser struct {
@@ -75,7 +75,7 @@ func (s *fsStorage) UploadSignedURL(_ context.Context, path string, ttl time.Dur
 	return u, nil
 }
 
-func (s *fsStorage) OpenFramedFile(_ context.Context, path string) (FramedFile, error) {
+func (s *fsStorage) OpenSeekable(_ context.Context, path string) (Seekable, error) {
 	dir := filepath.Dir(s.getPath(path))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -279,6 +279,27 @@ func (u *fsPartUploader) Complete(_ context.Context) error {
 	return os.WriteFile(u.fullPath, u.Assemble(), 0o644)
 }
 
-func (o *fsObject) GetFrame(ctx context.Context, offsetU int64, frameTable *FrameTable, decompress bool, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
-	return ReadFrame(ctx, o.openRangeReader, "FS:"+o.path, offsetU, frameTable, decompress, buf, readSize, onRead)
+func (o *fsObject) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
+	if frameTable.IsCompressed() {
+		frameStart, frameSize, err := frameTable.FrameFor(offsetU)
+		if err != nil {
+			return nil, fmt.Errorf("get frame for offset %d, FS:%s: %w", offsetU, o.path, err)
+		}
+
+		raw, err := o.openRangeReader(ctx, frameStart.C, int(frameSize.C))
+		if err != nil {
+			return nil, err
+		}
+
+		dec, decErr := NewDecompressingReader(raw, frameTable.CompressionType())
+		if decErr != nil {
+			raw.Close()
+
+			return nil, decErr
+		}
+
+		return compositeReadCloser{dec, raw}, nil
+	}
+
+	return o.openRangeReader(ctx, offsetU, int(length))
 }

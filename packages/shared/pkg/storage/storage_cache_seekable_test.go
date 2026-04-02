@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"os"
@@ -12,15 +13,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCachedFramedFile_MakeChunkFilename(t *testing.T) {
+func TestCachedSeekable_MakeChunkFilename(t *testing.T) {
 	t.Parallel()
 
-	c := cachedFramedFile{path: "/a/b/c", chunkSize: 1024, tracer: noopTracer}
+	c := cachedSeekable{path: "/a/b/c", chunkSize: 1024, tracer: noopTracer}
 	filename := c.makeChunkFilename(1024 * 4)
 	assert.Equal(t, "/a/b/c/000000000004-1024.bin", filename)
 }
 
-func TestCachedFramedFile_Size(t *testing.T) {
+func TestCachedSeekable_Size(t *testing.T) {
 	t.Parallel()
 
 	t.Run("can be cached successfully", func(t *testing.T) {
@@ -28,10 +29,10 @@ func TestCachedFramedFile_Size(t *testing.T) {
 
 		const expectedSize int64 = 1024
 
-		inner := NewMockFramedFile(t)
+		inner := NewMockSeekable(t)
 		inner.EXPECT().Size(mock.Anything).Return(expectedSize, nil)
 
-		c := cachedFramedFile{path: t.TempDir(), inner: inner, tracer: noopTracer}
+		c := cachedSeekable{path: t.TempDir(), inner: inner, tracer: noopTracer}
 
 		// first call will write to cache
 		size, err := c.Size(t.Context())
@@ -50,7 +51,7 @@ func TestCachedFramedFile_Size(t *testing.T) {
 	})
 }
 
-func TestCachedFramedFile_WriteFromFileSystem(t *testing.T) {
+func TestCachedSeekable_WriteFromFileSystem(t *testing.T) {
 	t.Parallel()
 
 	t.Run("delegates to inner", func(t *testing.T) {
@@ -67,21 +68,22 @@ func TestCachedFramedFile_WriteFromFileSystem(t *testing.T) {
 		err = os.WriteFile(tempFilename, data, 0o644)
 		require.NoError(t, err)
 
-		inner := NewMockFramedFile(t)
+		inner := NewMockSeekable(t)
 		inner.EXPECT().
 			StoreFile(mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, [32]byte{}, nil)
 
 		featureFlags := NewMockFeatureFlagsClient(t)
+		featureFlags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(false)
 
-		c := cachedFramedFile{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags, tracer: noopTracer}
+		c := cachedSeekable{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags, tracer: noopTracer}
 
 		_, _, err = c.StoreFile(t.Context(), tempFilename, nil)
 		require.NoError(t, err)
 	})
 }
 
-func TestCachedFramedFile_GetFrame_Uncompressed(t *testing.T) {
+func TestCachedSeekable_OpenRangeReader_Uncompressed(t *testing.T) {
 	t.Parallel()
 
 	t.Run("cache hit from chunk file", func(t *testing.T) {
@@ -89,7 +91,7 @@ func TestCachedFramedFile_GetFrame_Uncompressed(t *testing.T) {
 
 		tempDir := t.TempDir()
 		tempPath := filepath.Join(tempDir, "a", "b", "c")
-		c := cachedFramedFile{path: tempPath, chunkSize: 3, tracer: noopTracer}
+		c := cachedSeekable{path: tempPath, chunkSize: 3, tracer: noopTracer}
 
 		// create cache file
 		cacheFilename := c.makeChunkFilename(0)
@@ -99,50 +101,30 @@ func TestCachedFramedFile_GetFrame_Uncompressed(t *testing.T) {
 		err = os.WriteFile(cacheFilename, []byte{1, 2, 3}, 0o600)
 		require.NoError(t, err)
 
-		buffer := make([]byte, 3)
-		r, err := c.GetFrame(t.Context(), 0, nil, false, buffer, 0, nil)
+		rc, err := c.OpenRangeReader(t.Context(), 0, 3, nil)
 		require.NoError(t, err)
-		assert.Equal(t, []byte{1, 2, 3}, buffer)
-		assert.Equal(t, 3, r.Length)
-	})
+		defer rc.Close()
 
-	t.Run("truncated cache file is rejected", func(t *testing.T) {
-		t.Parallel()
-
-		tempDir := t.TempDir()
-		tempPath := filepath.Join(tempDir, "a", "b", "c")
-		c := cachedFramedFile{path: tempPath, chunkSize: 10, tracer: noopTracer}
-
-		// Plant a 3-byte cache file when the chunk expects 10 bytes.
-		cacheFilename := c.makeChunkFilename(0)
-		require.NoError(t, os.MkdirAll(filepath.Dir(cacheFilename), 0o755))
-		require.NoError(t, os.WriteFile(cacheFilename, []byte{1, 2, 3}, 0o600))
-
-		buffer := make([]byte, 10)
-		_, err := c.GetFrame(t.Context(), 0, nil, false, buffer, 0, nil)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "incomplete")
+		got, err := io.ReadAll(rc)
+		require.NoError(t, err)
+		require.Equal(t, []byte{1, 2, 3}, got)
 	})
 
 	t.Run("cache miss then write-back", func(t *testing.T) {
 		t.Parallel()
 
 		fakeData := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-		inner := NewMockFramedFile(t)
+		inner := NewMockSeekable(t)
 		inner.EXPECT().
-			GetFrame(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-			RunAndReturn(func(_ context.Context, offsetU int64, _ *FrameTable, _ bool, buf []byte, _ int64, onRead func(int64)) (Range, error) {
-				end := min(int(offsetU)+len(buf), len(fakeData))
-				n := copy(buf, fakeData[offsetU:end])
-				if onRead != nil {
-					onRead(int64(n))
-				}
+			OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			RunAndReturn(func(_ context.Context, offsetU int64, length int64, _ *FrameTable) (io.ReadCloser, error) {
+				end := min(int(offsetU)+int(length), len(fakeData))
 
-				return Range{Start: offsetU, Length: n}, nil
+				return io.NopCloser(bytes.NewReader(fakeData[offsetU:end])), nil
 			})
 
 		tempDir := t.TempDir()
-		c := cachedFramedFile{
+		c := cachedSeekable{
 			path:      tempDir,
 			chunkSize: 3,
 			inner:     inner,
@@ -150,54 +132,64 @@ func TestCachedFramedFile_GetFrame_Uncompressed(t *testing.T) {
 		}
 
 		// first read goes to source
-		buffer := make([]byte, 3)
-		r, err := c.GetFrame(t.Context(), 3, nil, false, buffer, 0, nil)
+		rc, err := c.OpenRangeReader(t.Context(), 3, 3, nil)
 		require.NoError(t, err)
-		assert.Equal(t, []byte{4, 5, 6}, buffer[:r.Length])
+		got, err := io.ReadAll(rc)
+		require.NoError(t, err)
+		rc.Close()
+		require.Equal(t, []byte{4, 5, 6}, got)
 
 		// wait for write-back
 		c.wg.Wait()
 
 		// second read from cache
 		c.inner = nil
-		buffer = make([]byte, 3)
-		r, err = c.GetFrame(t.Context(), 3, nil, false, buffer, 0, nil)
+		rc, err = c.OpenRangeReader(t.Context(), 3, 3, nil)
 		require.NoError(t, err)
-		assert.Equal(t, []byte{4, 5, 6}, buffer[:r.Length])
+		got, err = io.ReadAll(rc)
+		require.NoError(t, err)
+		rc.Close()
+		require.Equal(t, []byte{4, 5, 6}, got)
 	})
 }
 
-func TestCachedFramedFile_GetFrame_Uncompressed_Validation(t *testing.T) {
+func TestCachedSeekable_OpenRangeReader_SkipWriteback(t *testing.T) {
 	t.Parallel()
 
-	c := cachedFramedFile{path: "/tmp/test", chunkSize: 1024, tracer: noopTracer}
+	fakeData := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	inner := NewMockSeekable(t)
+	inner.EXPECT().
+		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, offsetU int64, length int64, _ *FrameTable) (io.ReadCloser, error) {
+			end := min(int(offsetU)+int(length), len(fakeData))
 
-	t.Run("rejects empty buffer", func(t *testing.T) {
-		t.Parallel()
+			return io.NopCloser(bytes.NewReader(fakeData[offsetU:end])), nil
+		})
 
-		buf := make([]byte, 0)
-		_, err := c.GetFrame(t.Context(), 0, nil, false, buf, 0, nil)
-		assert.ErrorIs(t, err, ErrBufferTooSmall)
-	})
+	tempDir := t.TempDir()
+	c := cachedSeekable{
+		path:      tempDir,
+		chunkSize: 10,
+		inner:     inner,
+		tracer:    noopTracer,
+	}
 
-	t.Run("rejects unaligned offset", func(t *testing.T) {
-		t.Parallel()
+	ctx := WithSkipCacheWriteback(t.Context())
+	rc, err := c.OpenRangeReader(ctx, 0, 10, nil)
+	require.NoError(t, err)
+	got, err := io.ReadAll(rc)
+	require.NoError(t, err)
+	rc.Close()
+	require.Equal(t, fakeData, got)
 
-		buf := make([]byte, 512)
-		_, err := c.GetFrame(t.Context(), 100, nil, false, buf, 0, nil)
-		assert.ErrorIs(t, err, ErrOffsetUnaligned)
-	})
+	c.wg.Wait()
 
-	t.Run("rejects oversized buffer", func(t *testing.T) {
-		t.Parallel()
-
-		buf := make([]byte, 2048)
-		_, err := c.GetFrame(t.Context(), 0, nil, false, buf, 0, nil)
-		assert.ErrorIs(t, err, ErrBufferTooLarge)
-	})
+	chunkPath := c.makeChunkFilename(0)
+	_, statErr := os.Stat(chunkPath)
+	require.True(t, os.IsNotExist(statErr), "cache writeback should be skipped")
 }
 
-func TestCachedFramedFile_WriteTo(t *testing.T) {
+func TestCachedSeekable_WriteTo(t *testing.T) {
 	t.Parallel()
 
 	t.Run("WriteTo calls should read from cache", func(t *testing.T) {
@@ -235,112 +227,5 @@ func TestCachedFramedFile_WriteTo(t *testing.T) {
 		data, err = GetBlob(t.Context(), &c)
 		require.NoError(t, err)
 		assert.Equal(t, fakeData, data)
-	})
-}
-
-func TestCachedFramedFile_GetFrame_Uncompressed_Truncation(t *testing.T) {
-	t.Parallel()
-
-	t.Run("truncated inner read returns error and is not cached", func(t *testing.T) {
-		t.Parallel()
-
-		tempDir := t.TempDir()
-		inner := NewMockFramedFile(t)
-		inner.EXPECT().
-			GetFrame(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-			RunAndReturn(func(_ context.Context, _ int64, _ *FrameTable, _ bool, buf []byte, _ int64, _ func(int64)) (Range, error) {
-				// Simulate truncated upstream: only fill 2 of 10 bytes, no error.
-				copy(buf[:2], []byte{0xAA, 0xBB})
-
-				return Range{Start: 0, Length: 2}, nil
-			})
-
-		c := cachedFramedFile{
-			path:      tempDir,
-			chunkSize: 10,
-			inner:     inner,
-			tracer:    noopTracer,
-		}
-
-		buf := make([]byte, 10)
-		_, err := c.GetFrame(t.Context(), 0, nil, false, buf, 0, nil)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "incomplete GetFrame")
-
-		c.wg.Wait()
-
-		// Verify no cache file was written.
-		chunkPath := c.makeChunkFilename(0)
-		_, statErr := os.Stat(chunkPath)
-		require.True(t, os.IsNotExist(statErr), "truncated data should not be cached")
-	})
-
-	t.Run("full inner read succeeds and is cached", func(t *testing.T) {
-		t.Parallel()
-
-		tempDir := t.TempDir()
-		data := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-		inner := NewMockFramedFile(t)
-		inner.EXPECT().
-			GetFrame(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-			RunAndReturn(func(_ context.Context, _ int64, _ *FrameTable, _ bool, buf []byte, _ int64, _ func(int64)) (Range, error) {
-				n := copy(buf, data)
-
-				return Range{Start: 0, Length: n}, nil
-			})
-
-		c := cachedFramedFile{
-			path:      tempDir,
-			chunkSize: 10,
-			inner:     inner,
-			tracer:    noopTracer,
-		}
-
-		buf := make([]byte, 10)
-		r, err := c.GetFrame(t.Context(), 0, nil, false, buf, 0, nil)
-		require.NoError(t, err)
-		require.Equal(t, 10, r.Length)
-		require.Equal(t, data, buf)
-
-		c.wg.Wait()
-
-		// Verify the data was cached.
-		chunkPath := c.makeChunkFilename(0)
-		cached, readErr := os.ReadFile(chunkPath)
-		require.NoError(t, readErr)
-		require.Equal(t, data, cached)
-	})
-
-	t.Run("skip cache writeback does not write to NFS", func(t *testing.T) {
-		t.Parallel()
-
-		tempDir := t.TempDir()
-		data := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-		inner := NewMockFramedFile(t)
-		inner.EXPECT().
-			GetFrame(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-			RunAndReturn(func(_ context.Context, _ int64, _ *FrameTable, _ bool, buf []byte, _ int64, _ func(int64)) (Range, error) {
-				n := copy(buf, data)
-
-				return Range{Start: 0, Length: n}, nil
-			})
-
-		c := cachedFramedFile{
-			path:      tempDir,
-			chunkSize: 10,
-			inner:     inner,
-			tracer:    noopTracer,
-		}
-
-		ctx := WithSkipCacheWriteback(t.Context())
-		buf := make([]byte, 10)
-		_, err := c.GetFrame(ctx, 0, nil, false, buf, 0, nil)
-		require.NoError(t, err)
-
-		c.wg.Wait()
-
-		chunkPath := c.makeChunkFilename(0)
-		_, statErr := os.Stat(chunkPath)
-		require.True(t, os.IsNotExist(statErr), "cache writeback should be skipped")
 	})
 }

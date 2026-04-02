@@ -39,7 +39,7 @@ func TestPeerStorageProvider_OpenBlob_ExtractsFileName(t *testing.T) {
 	assert.Equal(t, "data", buf.String())
 }
 
-func TestPeerStorageProvider_OpenFramedFile_ExtractsFileName(t *testing.T) {
+func TestPeerStorageProvider_OpenSeekable_ExtractsFileName(t *testing.T) {
 	t.Parallel()
 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
@@ -50,7 +50,7 @@ func TestPeerStorageProvider_OpenFramedFile_ExtractsFileName(t *testing.T) {
 	base := storage.NewMockStorageProvider(t)
 
 	p := newPeerStorageProvider(base, client, &atomic.Pointer[UploadedHeaders]{})
-	ff, err := p.OpenFramedFile(t.Context(), "build-1/memfile")
+	ff, err := p.OpenSeekable(t.Context(), "build-1/memfile")
 	require.NoError(t, err)
 
 	size, err := ff.Size(t.Context())

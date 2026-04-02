@@ -15,13 +15,13 @@ const (
 )
 
 type Metrics struct {
-	// BlocksTimerFactory measures page-fault / GetBlock latency.
-	BlocksTimerFactory telemetry.TimerFactory
+	// SlicesMetric is used to measure page faulting performance.
+	SlicesTimerFactory telemetry.TimerFactory
 
-	// RemoteReadsTimerFactory measures the time taken to download chunks from remote storage.
+	// WriteChunksMetric is used to measure the time taken to download chunks from remote storage
 	RemoteReadsTimerFactory telemetry.TimerFactory
 
-	// WriteChunksTimerFactory measures performance of writing chunks to disk.
+	// WriteChunksMetric is used to measure performance of writing chunks to disk.
 	WriteChunksTimerFactory telemetry.TimerFactory
 }
 
@@ -31,7 +31,7 @@ func NewMetrics(meterProvider metric.MeterProvider) (Metrics, error) {
 	blocksMeter := meterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics")
 
 	var err error
-	if m.BlocksTimerFactory, err = telemetry.NewTimerFactory(
+	if m.SlicesTimerFactory, err = telemetry.NewTimerFactory(
 		blocksMeter, orchestratorBlockSlices,
 		"Time taken to retrieve memory slices",
 		"Total bytes requested",

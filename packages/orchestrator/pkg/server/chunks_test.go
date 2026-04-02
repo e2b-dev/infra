@@ -11,14 +11,14 @@ import (
 	orchestratormocks "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator/mocks"
 )
 
-func TestGetBuildFrame_RejectsNegativeRange(t *testing.T) {
+func TestReadAtBuildSeekable_RejectsNegativeRange(t *testing.T) {
 	t.Parallel()
 
-	stream := orchestratormocks.NewMockChunkService_GetBuildFrameServer(t)
+	stream := orchestratormocks.NewMockChunkService_ReadAtBuildSeekableServer(t)
 	stream.EXPECT().Context().Return(t.Context())
 
 	s := &Server{}
-	err := s.GetBuildFrame(&orchestrator.GetBuildFrameRequest{
+	err := s.ReadAtBuildSeekable(&orchestrator.ReadAtBuildSeekableRequest{
 		BuildId:  "build-1",
 		FileName: "memfile",
 		Offset:   -1,

@@ -641,11 +641,9 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		defer cancel()
 
 		memHdr, rootHdr, err := res.uploadSnapshot(uploadCtx, s.persistence, s.config.CompressConfig, s.featureFlags)
-		defer func() {
-			if err := res.completeUpload(uploadCtx, memHdr, rootHdr); err != nil {
-				telemetry.ReportCriticalError(uploadCtx, "error completing upload", err, telemetry.WithSandboxID(in.GetSandboxId()))
-			}
-		}()
+		if completeErr := res.completeUpload(uploadCtx, memHdr, rootHdr); completeErr != nil {
+			telemetry.ReportCriticalError(uploadCtx, "error completing upload", completeErr, telemetry.WithSandboxID(in.GetSandboxId()))
+		}
 
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
@@ -766,6 +764,7 @@ func (s *Server) snapshotAndCacheSandbox(
 		}
 
 		completeUpload := func(ctx context.Context, memfileHdr, rootfsHdr []byte) error {
+			// Signal in-flight peer streams to switch to GCS.
 			s.uploadedBuilds.Set(meta.Template.BuildID, &uploadedBuildHeaders{
 				memfileHeader: memfileHdr,
 				rootfsHeader:  rootfsHdr,

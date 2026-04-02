@@ -14,6 +14,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -46,9 +47,6 @@ const (
 	// returns the uncompressed size for compressed objects.
 	MetadataKeyUncompressedSize = "uncompressed-size"
 )
-
-// RangeReadFunc is a callback for reading a byte range from storage.
-type RangeReadFunc func(ctx context.Context, offset int64, length int) (io.ReadCloser, error)
 
 // GetProviderType returns the configured storage provider type from the
 // STORAGE_PROVIDER environment variable, defaulting to GCPBucket.
@@ -86,7 +84,7 @@ type StorageProvider interface {
 	DeleteObjectsWithPrefix(ctx context.Context, prefix string) error
 	UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error)
 	OpenBlob(ctx context.Context, path string, objectType ObjectType) (Blob, error)
-	OpenFramedFile(ctx context.Context, path string) (FramedFile, error)
+	OpenSeekable(ctx context.Context, path string) (Seekable, error)
 	GetDetails() string
 }
 
@@ -96,26 +94,27 @@ type Blob interface {
 	Exists(ctx context.Context) (bool, error)
 }
 
-// FramedFile supports frame-based reads and compressed/uncompressed uploads.
-type FramedFile interface {
-	// GetFrame reads a single frame into buf. nil frameTable = uncompressed read.
-	// readSize is the number of uncompressed bytes to fetch (the chunker typically
-	// passes its block size so each progressive callback covers at least one block).
-	// onRead is an optional progressive callback invoked as decompressed bytes
-	// become available — the chunker uses this to mark mmap regions as cached
-	// before the full frame is fetched, enabling concurrent readers to proceed.
-	GetFrame(ctx context.Context, offsetU int64, frameTable *FrameTable, decompress bool,
-		buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error)
-
-	// Size returns the uncompressed size of the object.
+type SeekableReader interface {
+	ReadAt(ctx context.Context, p []byte, off int64, ft *FrameTable) (int, error)
 	Size(ctx context.Context) (int64, error)
+}
 
-	// StoreFile uploads a local file. When cfg is non-nil, compresses and
-	// returns the FrameTable + SHA-256 checksum of compressed data.
+// StreamingReader supports progressive reads via a streaming range reader.
+type StreamingReader interface {
+	OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error)
+}
+
+type SeekableWriter interface {
 	StoreFile(ctx context.Context, path string, cfg *CompressConfig) (*FrameTable, [32]byte, error)
 }
 
-// PeerTransitionedError is returned by the peer FramedFile when the GCS upload
+type Seekable interface {
+	StreamingReader
+	SeekableWriter
+	Size(ctx context.Context) (int64, error)
+}
+
+// PeerTransitionedError is returned by the peer Seekable when the GCS upload
 // has completed and serialized V4 headers are available.
 type PeerTransitionedError struct {
 	MemfileHeader []byte
@@ -223,135 +222,35 @@ func LoadBlob(ctx context.Context, s StorageProvider, path string, objectType Ob
 	return GetBlob(ctx, blob)
 }
 
-// ReadFrame is the shared implementation for reading a single frame from storage.
-// Each backend (GCP, AWS, FS) calls this with their own rangeRead callback.
-// Exported for use by CLI tools (inspect-build) and tests that
-// need to read frames outside the normal StorageProvider stack.
-func ReadFrame(ctx context.Context, rangeRead RangeReadFunc, storageDetails string, offsetU int64, frameTable *FrameTable, decompress bool, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
-	// Resolve fetch coordinates: for uncompressed data (nil frameTable) they
-	// map 1:1; for compressed data we translate U → C via the frame table.
-	var (
-		fetchOffset int64
-		fetchSize   int
-		expectedOut int // bytes the caller should receive on success
-	)
-
-	compressed := frameTable.IsCompressed()
-	if !compressed {
-		fetchOffset = offsetU
-		fetchSize = len(buf)
-		expectedOut = len(buf)
-	} else {
-		frameStart, frameSize, err := frameTable.FrameFor(offsetU)
-		if err != nil {
-			return Range{}, fmt.Errorf("get frame for offset %d, %s: %w", offsetU, storageDetails, err)
-		}
-
-		expectedOut = int(frameSize.C)
-		if decompress {
-			expectedOut = int(frameSize.U)
-		}
-		if len(buf) < expectedOut {
-			return Range{}, fmt.Errorf("buffer too small: got %d bytes, need %d bytes for frame", len(buf), expectedOut)
-		}
-
-		fetchOffset = frameStart.C
-		fetchSize = int(frameSize.C)
-	}
-
-	respBody, err := rangeRead(ctx, fetchOffset, fetchSize)
-	if err != nil {
-		return Range{}, fmt.Errorf("reading at %d from %s: %w", fetchOffset, storageDetails, err)
-	}
-	defer respBody.Close()
-
-	var r Range
-
-	// No decompression needed: stream raw bytes (uncompressed or compressed passthrough).
-	if !compressed || !decompress {
-		r, err = readInto(respBody, buf, fetchSize, fetchOffset, readSize, onRead)
-	} else {
-		r, err = readFrameDecompress(respBody, frameTable, offsetU, fetchOffset, buf, readSize, onRead)
-	}
-
-	if err != nil {
-		return r, err
-	}
-
-	// All sizes are known upfront (from header/frame table), so a short read
-	// always indicates truncation or corruption — never a valid result.
-	if r.Length != expectedOut {
-		return r, fmt.Errorf("incomplete ReadFrame from %s: got %d bytes, expected %d (offset %d)", storageDetails, r.Length, expectedOut, offsetU)
-	}
-
-	return r, nil
+// timedReadCloser wraps a reader with OTEL timer metrics.
+// Close records success (with total bytes read) or failure on the timer.
+type timedReadCloser struct {
+	inner     io.ReadCloser
+	timer     *telemetry.Stopwatch
+	ctx       context.Context //nolint:containedctx // needed for timer recording in Close
+	bytesRead int64
+	closeErr  error
 }
 
-// readFrameDecompress handles the decompress=true path for compressed frames.
-func readFrameDecompress(respBody io.Reader, frameTable *FrameTable, offsetU, fetchOffset int64, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
-	_, frameSize, _ := frameTable.FrameFor(offsetU) // already validated by caller
+func (r *timedReadCloser) Read(p []byte) (int, error) {
+	n, err := r.inner.Read(p)
+	r.bytesRead += int64(n)
 
-	var dec io.Reader
-	switch frameTable.CompressionType() {
-	case CompressionLZ4:
-		lz4dec := getLZ4Decoder(respBody)
-		defer putLZ4Decoder(lz4dec)
-		dec = lz4dec
-
-	case CompressionZstd:
-		zstddec, err := getZstdDecoder(respBody)
-		if err != nil {
-			return Range{}, fmt.Errorf("failed to create zstd decoder: %w", err)
-		}
-		defer putZstdDecoder(zstddec)
-		dec = zstddec
-
-	default:
-		return Range{}, fmt.Errorf("unsupported compression type: %s", frameTable.CompressionType())
+	if err != nil && err != io.EOF {
+		r.closeErr = err
 	}
 
-	return readInto(dec, buf, int(frameSize.U), fetchOffset, readSize, onRead)
+	return n, err
 }
 
-// minProgressiveReadSize is the floor for progressive reads to avoid
-// tiny I/O when the caller's block size is small (e.g. 4 KB rootfs).
-const minProgressiveReadSize = 256 * 1024 // 256 KB
+func (r *timedReadCloser) Close() error {
+	err := r.inner.Close()
 
-// readInto reads totalSize bytes from src into buf, returning the range read.
-// When onRead is non-nil, reads in readSize-aligned blocks and calls onRead
-// after each block with cumulative bytes written. When onRead is nil, reads
-// all totalSize bytes at once.
-func readInto(src io.Reader, buf []byte, totalSize int, rangeStart int64, readSize int64, onRead func(totalWritten int64)) (Range, error) {
-	if onRead == nil {
-		n, err := io.ReadFull(src, buf[:totalSize])
-		if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
-			err = nil
-		}
-
-		return Range{Start: rangeStart, Length: n}, err
+	if r.closeErr != nil || err != nil {
+		r.timer.Failure(r.ctx, r.bytesRead)
+	} else {
+		r.timer.Success(r.ctx, r.bytesRead)
 	}
 
-	readSize = max(readSize, minProgressiveReadSize)
-
-	var total int64
-
-	for total < int64(totalSize) {
-		end := min(total+readSize, int64(totalSize))
-		n, err := io.ReadFull(src, buf[total:end])
-		total += int64(n)
-
-		if int64(n) > 0 {
-			onRead(total)
-		}
-
-		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-			break
-		}
-
-		if err != nil {
-			return Range{}, fmt.Errorf("progressive read error after %d bytes: %w", total, err)
-		}
-	}
-
-	return Range{Start: rangeStart, Length: int(total)}, nil
+	return err
 }

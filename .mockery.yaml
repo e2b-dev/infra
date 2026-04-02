@@ -14,15 +14,15 @@ packages:
           dir: packages/shared/pkg/grpc/orchestrator/mocks
           filename: mockchunkserviceclient.go
           pkgname: orchestratormocks
-      ChunkService_GetBuildFrameClient:
+      ChunkService_ReadAtBuildSeekableClient:
         config:
           dir: packages/shared/pkg/grpc/orchestrator/mocks
-          filename: mockchunkservicegetbuildframeclient.go
+          filename: mockchunkservicereadatbuildseekableclient.go
           pkgname: orchestratormocks
-      ChunkService_GetBuildFrameServer:
+      ChunkService_ReadAtBuildSeekableServer:
         config:
           dir: packages/shared/pkg/grpc/orchestrator/mocks
-          filename: mockchunkservicegetbuildframeserver.go
+          filename: mockchunkservicereadatbuildseekableserver.go
           pkgname: orchestratormocks
       ChunkService_GetBuildBlobClient:
         config:
@@ -50,10 +50,10 @@ packages:
           filename: mock_blob.go
           pkgname: storage
           inpackage: true
-      FramedFile:
+      Seekable:
         config:
           dir: packages/shared/pkg/storage
-          filename: mock_framedfile.go
+          filename: mock_seekable.go
           pkgname: storage
           inpackage: true
       StorageProvider:

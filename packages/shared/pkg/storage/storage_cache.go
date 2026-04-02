@@ -27,7 +27,7 @@ type skipCacheWritebackKeyType struct{}
 
 // WithSkipCacheWriteback returns a context that signals the NFS cache layer to
 // skip writing fetched data back to the local cache. This is used by the
-// peer prefetcher to avoid polluting the shared NFS cache with peer-specific reads.
+// prefetcher to avoid polluting the shared NFS cache with prefetch-specific reads.
 func WithSkipCacheWriteback(ctx context.Context) context.Context {
 	return context.WithValue(ctx, skipCacheWritebackKeyType{}, true)
 }
@@ -105,8 +105,8 @@ func (c cache) OpenBlob(ctx context.Context, path string, objectType ObjectType)
 	}, nil
 }
 
-func (c cache) OpenFramedFile(ctx context.Context, path string) (FramedFile, error) {
-	innerObject, err := c.inner.OpenFramedFile(ctx, path)
+func (c cache) OpenSeekable(ctx context.Context, path string) (Seekable, error) {
+	innerObject, err := c.inner.OpenSeekable(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}
@@ -116,7 +116,7 @@ func (c cache) OpenFramedFile(ctx context.Context, path string) (FramedFile, err
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	return &cachedFramedFile{
+	return &cachedSeekable{
 		path:      localPath,
 		chunkSize: c.chunkSize,
 		inner:     innerObject,
@@ -146,4 +146,11 @@ func ignoreEOF(err error) error {
 	}
 
 	return err
+}
+
+// isCompleteRead reports whether a read of n bytes into a buffer of expected
+// size represents a valid, cacheable result. A read is complete when the full
+// buffer was filled and n > 0.
+func isCompleteRead(n, expected int) bool {
+	return n > 0 && n == expected
 }

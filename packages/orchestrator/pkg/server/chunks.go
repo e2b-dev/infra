@@ -15,13 +15,13 @@ import (
 
 var peerNotAvailable = &orchestrator.PeerAvailability{NotAvailable: true}
 
-// framedStreamSender implements peerserver.Sender over a gRPC server stream (for framed files).
-type framedStreamSender struct {
-	stream orchestrator.ChunkService_GetBuildFrameServer
+// seekableStreamSender implements peerserver.Sender over a gRPC server stream (for seekable files).
+type seekableStreamSender struct {
+	stream orchestrator.ChunkService_ReadAtBuildSeekableServer
 }
 
-func (s *framedStreamSender) Send(data []byte) error {
-	return s.stream.Send(&orchestrator.GetBuildFrameResponse{Data: data})
+func (s *seekableStreamSender) Send(data []byte) error {
+	return s.stream.Send(&orchestrator.ReadAtBuildSeekableResponse{Data: data})
 }
 
 // blobStreamSender implements peerserver.Sender over a gRPC server stream (for blob files).
@@ -45,12 +45,12 @@ func toGRPCError(err error) error {
 }
 
 func (s *Server) buildUploadedResponse(buildID string) *orchestrator.PeerAvailability {
-	item := s.uploadedBuilds.Get(buildID)
-	if item == nil {
+	cacheItem := s.uploadedBuilds.Get(buildID)
+	if cacheItem == nil {
 		return nil
 	}
 
-	hdrs := item.Value()
+	hdrs := cacheItem.Value()
 
 	return &orchestrator.PeerAvailability{
 		UseStorage:    true,
@@ -68,7 +68,7 @@ func (s *Server) GetBuildFileSize(ctx context.Context, req *orchestrator.GetBuil
 		return &orchestrator.GetBuildFileSizeResponse{Availability: avail}, nil
 	}
 
-	src, err := peerserver.ResolveFramed(s.templateCache, req.GetBuildId(), req.GetFileName())
+	src, err := peerserver.ResolveSeekable(s.templateCache, req.GetBuildId(), req.GetFileName())
 	if err != nil {
 		if errors.Is(err, peerserver.ErrNotAvailable) {
 			return &orchestrator.GetBuildFileSizeResponse{Availability: peerNotAvailable}, nil
@@ -117,8 +117,8 @@ func (s *Server) GetBuildFileExists(ctx context.Context, req *orchestrator.GetBu
 	return &orchestrator.GetBuildFileExistsResponse{}, nil
 }
 
-// GetBuildFrame streams a range from a framed diff file (memfile, rootfs.ext4).
-func (s *Server) GetBuildFrame(req *orchestrator.GetBuildFrameRequest, stream orchestrator.ChunkService_GetBuildFrameServer) error {
+// ReadAtBuildSeekable streams a range from a seekable diff file (memfile, rootfs.ext4).
+func (s *Server) ReadAtBuildSeekable(req *orchestrator.ReadAtBuildSeekableRequest, stream orchestrator.ChunkService_ReadAtBuildSeekableServer) error {
 	ctx := stream.Context()
 	offset := req.GetOffset()
 	length := req.GetLength()
@@ -137,21 +137,21 @@ func (s *Server) GetBuildFrame(req *orchestrator.GetBuildFrameRequest, stream or
 	if avail := s.buildUploadedResponse(req.GetBuildId()); avail != nil {
 		telemetry.SetAttributes(ctx, attribute.Bool("uploaded", true))
 
-		return stream.Send(&orchestrator.GetBuildFrameResponse{Availability: avail})
+		return stream.Send(&orchestrator.ReadAtBuildSeekableResponse{Availability: avail})
 	}
 
-	src, err := peerserver.ResolveFramed(s.templateCache, req.GetBuildId(), req.GetFileName())
+	src, err := peerserver.ResolveSeekable(s.templateCache, req.GetBuildId(), req.GetFileName())
 	if err != nil {
 		if errors.Is(err, peerserver.ErrNotAvailable) {
-			return stream.Send(&orchestrator.GetBuildFrameResponse{Availability: peerNotAvailable})
+			return stream.Send(&orchestrator.ReadAtBuildSeekableResponse{Availability: peerNotAvailable})
 		}
 
 		return toGRPCError(err)
 	}
 
-	if err := src.Stream(ctx, offset, length, &framedStreamSender{stream}); err != nil {
+	if err := src.Stream(ctx, offset, length, &seekableStreamSender{stream}); err != nil {
 		if errors.Is(err, peerserver.ErrNotAvailable) {
-			return stream.Send(&orchestrator.GetBuildFrameResponse{Availability: peerNotAvailable})
+			return stream.Send(&orchestrator.ReadAtBuildSeekableResponse{Availability: peerNotAvailable})
 		}
 
 		return toGRPCError(err)

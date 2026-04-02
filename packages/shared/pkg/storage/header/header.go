@@ -27,11 +27,11 @@ const NormalizeFixVersion = 3
 type Header struct {
 	Metadata *Metadata
 	// BuildFiles maps build IDs to their file metadata (size + checksum).
-	// NOTE: This is currently incomplete — it only contains entries for builds
-	// uploaded within the same layered upload session. Upstream dependency builds
-	// (from parent templates) are missing, causing a Size() RPC fallback on first
-	// access. TODO: populate from the orchestrator's template cache at upload time
-	// so all builds referenced in Mapping have entries here.
+	// Each layer's upload adds its own entry via applyToHeader, and inherits
+	// all parent entries via ToDiffHeader (which copies originalHeader.BuildFiles).
+	// This means every V4 header has a complete map of all builds referenced
+	// in its Mapping. V3 headers have no BuildFiles; the read path falls back
+	// to a Size() RPC for those.
 	BuildFiles  map[uuid.UUID]BuildFileInfo
 	blockStarts *bitset.BitSet
 	startMap    map[int64]*BuildMap

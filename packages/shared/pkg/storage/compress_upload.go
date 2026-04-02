@@ -262,14 +262,3 @@ func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uplo
 
 	return ft, checksum, nil
 }
-
-func CompressBytes(ctx context.Context, data []byte, cfg *CompressConfig) (*FrameTable, []byte, [32]byte, error) {
-	up := &memPartUploader{}
-
-	ft, checksum, err := compressStream(ctx, bytes.NewReader(data), cfg, up, 4)
-	if err != nil {
-		return nil, nil, [32]byte{}, err
-	}
-
-	return ft, up.Assemble(), checksum, nil
-}

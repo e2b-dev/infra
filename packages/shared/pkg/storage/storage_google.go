@@ -52,7 +52,7 @@ const (
 	gcsOperationAttrWriteTo                    = "WriteTo"
 	gcsOperationAttrSize                       = "Size"
 	gcsOperationAttrReadAt                     = "ReadAt"
-	gcsOperationAttrGetFrame                   = "GetFrame"
+	gcsOperationAttrOpenReader                 = "OpenRangeReader"
 )
 
 var (
@@ -88,8 +88,8 @@ type gcpObject struct {
 }
 
 var (
-	_ FramedFile = (*gcpObject)(nil)
-	_ Blob       = (*gcpObject)(nil)
+	_ Seekable = (*gcpObject)(nil)
+	_ Blob     = (*gcpObject)(nil)
 )
 
 func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (StorageProvider, error) {
@@ -165,7 +165,7 @@ func (s *gcpStorage) UploadSignedURL(_ context.Context, path string, ttl time.Du
 	return url, nil
 }
 
-func (s *gcpStorage) OpenFramedFile(_ context.Context, path string) (FramedFile, error) {
+func (s *gcpStorage) OpenSeekable(_ context.Context, path string) (Seekable, error) {
 	handle := s.bucket.Object(path).Retryer(
 		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),
@@ -542,19 +542,43 @@ func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) 
 	return &sa, nil
 }
 
-func (o *gcpObject) GetFrame(ctx context.Context, offsetU int64, frameTable *FrameTable, decompress bool, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
-	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrGetFrame))
+func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
+	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrOpenReader))
 
-	r, err := ReadFrame(ctx, o.openRangeReader, "GCS:"+o.path, offsetU, frameTable, decompress, buf, readSize, onRead)
-	if err != nil {
-		timer.Failure(ctx, int64(r.Length))
+	if !frameTable.IsCompressed() {
+		rc, err := o.openRangeReader(ctx, offsetU, int(length))
+		if err != nil {
+			timer.Failure(ctx, 0)
 
-		return r, err
+			return nil, err
+		}
+
+		return &timedReadCloser{inner: rc, timer: timer, ctx: ctx}, nil
 	}
 
-	timer.Success(ctx, int64(r.Length))
+	frameStart, frameSize, err := frameTable.FrameFor(offsetU)
+	if err != nil {
+		timer.Failure(ctx, 0)
 
-	return r, nil
+		return nil, fmt.Errorf("get frame for offset %d, GCS:%s: %w", offsetU, o.path, err)
+	}
+
+	raw, err := o.openRangeReader(ctx, frameStart.C, int(frameSize.C))
+	if err != nil {
+		timer.Failure(ctx, 0)
+
+		return nil, err
+	}
+
+	dec, err := NewDecompressingReader(raw, frameTable.CompressionType())
+	if err != nil {
+		raw.Close()
+		timer.Failure(ctx, 0)
+
+		return nil, err
+	}
+
+	return &timedReadCloser{inner: compositeReadCloser{dec, raw}, timer: timer, ctx: ctx}, nil
 }
 
 func isResourceExhausted(err error) bool {

@@ -213,24 +213,24 @@ func (_c *MockStorageProvider_OpenBlob_Call) RunAndReturn(run func(ctx context.C
 	return _c
 }
 
-// OpenFramedFile provides a mock function for the type MockStorageProvider
-func (_mock *MockStorageProvider) OpenFramedFile(ctx context.Context, path string) (FramedFile, error) {
+// OpenSeekable provides a mock function for the type MockStorageProvider
+func (_mock *MockStorageProvider) OpenSeekable(ctx context.Context, path string) (Seekable, error) {
 	ret := _mock.Called(ctx, path)
 
 	if len(ret) == 0 {
-		panic("no return value specified for OpenFramedFile")
+		panic("no return value specified for OpenSeekable")
 	}
 
-	var r0 FramedFile
+	var r0 Seekable
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (FramedFile, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (Seekable, error)); ok {
 		return returnFunc(ctx, path)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) FramedFile); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) Seekable); ok {
 		r0 = returnFunc(ctx, path)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(FramedFile)
+			r0 = ret.Get(0).(Seekable)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
@@ -241,19 +241,19 @@ func (_mock *MockStorageProvider) OpenFramedFile(ctx context.Context, path strin
 	return r0, r1
 }
 
-// MockStorageProvider_OpenFramedFile_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OpenFramedFile'
-type MockStorageProvider_OpenFramedFile_Call struct {
+// MockStorageProvider_OpenSeekable_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OpenSeekable'
+type MockStorageProvider_OpenSeekable_Call struct {
 	*mock.Call
 }
 
-// OpenFramedFile is a helper method to define mock.On call
+// OpenSeekable is a helper method to define mock.On call
 //   - ctx context.Context
 //   - path string
-func (_e *MockStorageProvider_Expecter) OpenFramedFile(ctx interface{}, path interface{}) *MockStorageProvider_OpenFramedFile_Call {
-	return &MockStorageProvider_OpenFramedFile_Call{Call: _e.mock.On("OpenFramedFile", ctx, path)}
+func (_e *MockStorageProvider_Expecter) OpenSeekable(ctx interface{}, path interface{}) *MockStorageProvider_OpenSeekable_Call {
+	return &MockStorageProvider_OpenSeekable_Call{Call: _e.mock.On("OpenSeekable", ctx, path)}
 }
 
-func (_c *MockStorageProvider_OpenFramedFile_Call) Run(run func(ctx context.Context, path string)) *MockStorageProvider_OpenFramedFile_Call {
+func (_c *MockStorageProvider_OpenSeekable_Call) Run(run func(ctx context.Context, path string)) *MockStorageProvider_OpenSeekable_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -271,12 +271,12 @@ func (_c *MockStorageProvider_OpenFramedFile_Call) Run(run func(ctx context.Cont
 	return _c
 }
 
-func (_c *MockStorageProvider_OpenFramedFile_Call) Return(framedFile FramedFile, err error) *MockStorageProvider_OpenFramedFile_Call {
-	_c.Call.Return(framedFile, err)
+func (_c *MockStorageProvider_OpenSeekable_Call) Return(seekable Seekable, err error) *MockStorageProvider_OpenSeekable_Call {
+	_c.Call.Return(seekable, err)
 	return _c
 }
 
-func (_c *MockStorageProvider_OpenFramedFile_Call) RunAndReturn(run func(ctx context.Context, path string) (FramedFile, error)) *MockStorageProvider_OpenFramedFile_Call {
+func (_c *MockStorageProvider_OpenSeekable_Call) RunAndReturn(run func(ctx context.Context, path string) (Seekable, error)) *MockStorageProvider_OpenSeekable_Call {
 	_c.Call.Return(run)
 	return _c
 }

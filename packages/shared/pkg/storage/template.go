@@ -61,6 +61,16 @@ func (p Paths) RootfsCompressed(ct CompressionType) string {
 	return fmt.Sprintf("%s/%s%s", p.BuildID, RootfsName, ct.Suffix())
 }
 
+// DataFile returns the storage path for a data file (e.g. "memfile", "rootfs.ext4"),
+// with compression suffix appended if ct is not CompressionNone.
+func (p Paths) DataFile(name string, ct CompressionType) string {
+	if ct == CompressionNone {
+		return fmt.Sprintf("%s/%s", p.BuildID, name)
+	}
+
+	return fmt.Sprintf("%s/%s%s", p.BuildID, name, ct.Suffix())
+}
+
 // SplitUncompressedPath splits a storage path of the form
 // "{buildID}/{fileName}" back into its components.
 func SplitUncompressedPath(path string) (buildID, fileName string) {

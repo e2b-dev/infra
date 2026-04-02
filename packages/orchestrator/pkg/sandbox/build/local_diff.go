@@ -115,12 +115,16 @@ func (b *localDiff) Close() error {
 	return b.cache.Close()
 }
 
-func (b *localDiff) ReadBlock(_ context.Context, p []byte, off int64, _ *storage.FrameTable) (int, error) {
+func (b *localDiff) ReadAt(_ context.Context, p []byte, off int64, _ *storage.FrameTable) (int, error) {
 	return b.cache.ReadAt(p, off)
 }
 
-func (b *localDiff) SliceBlock(_ context.Context, off, length int64, _ *storage.FrameTable) ([]byte, error) {
+func (b *localDiff) Slice(_ context.Context, off, length int64, _ *storage.FrameTable) ([]byte, error) {
 	return b.cache.Slice(off, length)
+}
+
+func (b *localDiff) Size(_ context.Context) (int64, error) {
+	return b.FileSize()
 }
 
 func (b *localDiff) FileSize() (int64, error) {

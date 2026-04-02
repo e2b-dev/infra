@@ -42,8 +42,8 @@ type awsObject struct {
 }
 
 var (
-	_ FramedFile = (*awsObject)(nil)
-	_ Blob       = (*awsObject)(nil)
+	_ Seekable = (*awsObject)(nil)
+	_ Blob     = (*awsObject)(nil)
 )
 
 func newAWSStorage(ctx context.Context, bucketName string) (*awsStorage, error) {
@@ -128,7 +128,7 @@ func (s *awsStorage) UploadSignedURL(ctx context.Context, path string, ttl time.
 	return resp.URL, nil
 }
 
-func (s *awsStorage) OpenFramedFile(_ context.Context, path string) (FramedFile, error) {
+func (s *awsStorage) OpenSeekable(_ context.Context, path string) (Seekable, error) {
 	return &awsObject{
 		client:     s.client,
 		bucketName: s.bucketName,
@@ -288,6 +288,27 @@ func ignoreNotExists(err error) error {
 	return err
 }
 
-func (o *awsObject) GetFrame(ctx context.Context, offsetU int64, frameTable *FrameTable, decompress bool, buf []byte, readSize int64, onRead func(totalWritten int64)) (Range, error) {
-	return ReadFrame(ctx, o.openRangeReader, "S3:"+o.path, offsetU, frameTable, decompress, buf, readSize, onRead)
+func (o *awsObject) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
+	if frameTable.IsCompressed() {
+		frameStart, frameSize, err := frameTable.FrameFor(offsetU)
+		if err != nil {
+			return nil, fmt.Errorf("get frame for offset %d, S3:%s: %w", offsetU, o.path, err)
+		}
+
+		raw, err := o.openRangeReader(ctx, frameStart.C, int(frameSize.C))
+		if err != nil {
+			return nil, err
+		}
+
+		dec, decErr := NewDecompressingReader(raw, frameTable.CompressionType())
+		if decErr != nil {
+			raw.Close()
+
+			return nil, decErr
+		}
+
+		return compositeReadCloser{dec, raw}, nil
+	}
+
+	return o.openRangeReader(ctx, offsetU, int(length))
 }
