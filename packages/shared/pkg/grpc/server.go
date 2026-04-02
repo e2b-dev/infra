@@ -78,6 +78,7 @@ func extractIsResume(ctx context.Context) []attribute.KeyValue {
 	}
 
 	isResume := values[0] == "true"
+
 	return []attribute.KeyValue{
 		attribute.Bool("sandbox.resume", isResume),
 	}
