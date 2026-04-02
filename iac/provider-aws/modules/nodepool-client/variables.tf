@@ -152,4 +152,5 @@ variable "set_orchestrator_version_metadata" {
 variable "nomad_acl_token_secret" {
   description = "Nomad ACL token used to fetch orchestrator version from Nomad API"
   type        = string
+  sensitive   = false
 }

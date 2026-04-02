@@ -19,19 +19,23 @@ variable "vpc_public_subnets" {
 }
 
 variable "nomad_acl_token_secret" {
-  type = string
+  type      = string
+  sensitive = false
 }
 
 variable "consul_acl_token_secret" {
-  type = string
+  type      = string
+  sensitive = false
 }
 
 variable "consul_gossip_encryption_key" {
-  type = string
+  type      = string
+  sensitive = false
 }
 
 variable "consul_dns_request_token_secret" {
-  type = string
+  type      = string
+  sensitive = false
 }
 
 // ---
