@@ -147,10 +147,10 @@ func createTestSandboxFiles(sandboxID, staticID string) *storage.SandboxFiles {
 		BuildID: "test-build",
 	}
 
-	templateCacheFiles := storage.TemplateCacheFiles{
+	cachePaths := storage.CachePaths{
 		Paths:           paths,
 		CacheIdentifier: "test-cache-id",
 	}
 
-	return templateCacheFiles.NewSandboxFilesWithStaticID(sandboxID, staticID)
+	return cachePaths.NewSandboxFilesWithStaticID(sandboxID, staticID)
 }
