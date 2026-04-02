@@ -36,7 +36,7 @@ type AuthUserSyncWorker struct {
 }
 
 func NewAuthUserSyncWorker(mainDB *sqlcdb.Client, l logger.Logger) *AuthUserSyncWorker {
-	jobsCounter, err := otel.Meter("github.com/e2b-dev/infra/packages/dashboard-api/internal/backgroundworker")
+	jobsCounter, err := otel.Meter("dashboard-api.backgroundworker.auth_user_sync").Int64Counter(
 		"dashboard_api.auth_user_sync.jobs_total",
 		metric.WithDescription("Total auth user sync jobs by operation and result."),
 		metric.WithUnit("{job}"),
