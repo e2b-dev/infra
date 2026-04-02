@@ -10,7 +10,10 @@ import (
 	"github.com/riverqueue/river/rivermigrate"
 )
 
-const AuthCustomSchema = "auth_custom"
+const (
+	AuthCustomSchema   = "auth_custom"
+	AuthUserSyncQueue  = "auth_user_sync"
+)
 
 func RunRiverMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	driver := riverpgxv5.New(pool)
@@ -31,7 +34,7 @@ func NewRiverClient(pool *pgxpool.Pool, workers *river.Workers) (*river.Client[p
 	return river.NewClient(riverpgxv5.New(pool), &river.Config{
 		Schema: AuthCustomSchema,
 		Queues: map[string]river.QueueConfig{
-			"auth_sync": {MaxWorkers: 10},
+			AuthUserSyncQueue: {MaxWorkers: 10},
 		},
 		Workers: workers,
 	})

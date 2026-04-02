@@ -234,10 +234,10 @@ func run() int {
 
 	var riverClient *river.Client[pgx.Tx]
 
-	if config.SupabaseAuthUserSyncEnabled {
-		workerLogger := l.With(zap.String("worker", "supabase_auth_user_sync"))
-		workerMeter := tel.MeterProvider.Meter("dashboard-api.backgroundworker.auth_user_sync")
-		
+	if config.AuthUserSyncBackgroundWorkerEnabled {
+		workerLogger := l.With(zap.String("worker", "auth_user_sync"))
+		workerMeter := tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/dashboard-api/internal/backgroundworker")
+
 		authPool := authDB.WritePool()
 		if err := backgroundworker.RunRiverMigrations(ctx, authPool); err != nil {
 			l.Fatal(ctx, "failed to run River migrations on auth DB", zap.Error(err))
@@ -255,7 +255,7 @@ func run() int {
 			l.Fatal(ctx, "failed to start River client", zap.Error(err))
 		}
 
-		l.Info(ctx, "background worker started (River auth_custom)", zap.String("queue", "auth_sync"))
+		l.Info(ctx, "background worker started", zap.String("queue", backgroundworker.AuthUserSyncQueue), zap.String("schema", backgroundworker.AuthCustomSchema))
 	}
 
 	wg.Go(func() {

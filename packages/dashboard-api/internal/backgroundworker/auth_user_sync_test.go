@@ -15,6 +15,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -138,17 +139,20 @@ func runBurstBacklog(t *testing.T, db *testutils.Database) {
 
 func startRiverWorker(t *testing.T, db *testutils.Database) *riverProcess {
 	t.Helper()
+	ctx := t.Context()
 
 	authPool := db.AuthDb.WritePool()
 	l := logger.NewNopLogger()
+	tel := telemetry.NewNoopClient()
+	meter := tel.MeterProvider.Meter("dashboard-api.backgroundworker.auth_user_sync")
 
 	workers := river.NewWorkers()
-	river.AddWorker(workers, NewAuthUserSyncWorker(db.SqlcClient, l))
+	river.AddWorker(workers, NewAuthUserSyncWorker(ctx, db.SqlcClient, meter, l))
 
 	client, err := NewRiverClient(authPool, workers)
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	require.NoError(t, client.Start(ctx))
 
 	done := make(chan struct{})

@@ -34,7 +34,7 @@ type AuthUserSyncWorker struct {
 	jobsCounter metric.Int64Counter
 }
 
-func NewAuthUserSyncWorker(ctx context.Context, mainDB *sqlcdb.Client, meter metric.Meter,  l logger.Logger) *AuthUserSyncWorker {
+func NewAuthUserSyncWorker(ctx context.Context, mainDB *sqlcdb.Client, meter metric.Meter, l logger.Logger) *AuthUserSyncWorker {
 	jobsCounter, err := meter.Int64Counter(
 		"jobs_total",
 		metric.WithDescription("Total auth user sync jobs by operation and result."),

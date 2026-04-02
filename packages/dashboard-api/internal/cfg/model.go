@@ -11,7 +11,7 @@ type Config struct {
 	AuthDBConnectionString            string `env:"AUTH_DB_CONNECTION_STRING"`
 	AuthDBReadReplicaConnectionString string `env:"AUTH_DB_READ_REPLICA_CONNECTION_STRING"`
 
-	SupabaseAuthUserSyncEnabled bool `env:"SUPABASE_AUTH_USER_SYNC_ENABLED" envDefault:"false"`
+	AuthUserSyncBackgroundWorkerEnabled bool `env:"AUTH_USER_SYNC_BACKGROUND_WORKER_ENABLED" envDefault:"false"`
 }
 
 func Parse() (Config, error) {
