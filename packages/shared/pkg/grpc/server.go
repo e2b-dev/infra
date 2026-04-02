@@ -1,14 +1,17 @@
 package grpc
 
 import (
+	"context"
 	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -42,6 +45,7 @@ func NewGRPCServer(tel *telemetry.Client) *grpc.Server {
 				otelgrpc.NewServerHandler(
 					otelgrpc.WithTracerProvider(tel.TracerProvider),
 					otelgrpc.WithMeterProvider(tel.MeterProvider),
+					otelgrpc.WithMetricAttributesFn(extractIsResume),
 				))),
 		grpc.ChainUnaryInterceptor(
 			recovery.UnaryServerInterceptor(),
@@ -57,4 +61,24 @@ func NewGRPCServer(tel *telemetry.Client) *grpc.Server {
 			),
 		),
 	)
+}
+
+// extractIsResume reads the sandbox.resume value from gRPC metadata that was
+// set by the API client. This is called by otelgrpc during TagRPC, before the
+// request payload is deserialized — so we use metadata instead of the payload.
+func extractIsResume(ctx context.Context) []attribute.KeyValue {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return nil
+	}
+
+	values := md.Get(IsResumeMetadataKey)
+	if len(values) == 0 {
+		return nil
+	}
+
+	isResume := values[0] == "true"
+	return []attribute.KeyValue{
+		attribute.Bool("sandbox.resume", isResume),
+	}
 }
