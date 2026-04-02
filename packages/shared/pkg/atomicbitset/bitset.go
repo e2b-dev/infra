@@ -27,9 +27,9 @@ const (
 
 func New(n uint, impl string) Bitset {
 	switch impl {
-	case BitsetDefault, BitsetRoaring:
+	case BitsetRoaring:
 		return NewRoaring(n)
-	case BitsetAtomic:
+	case BitsetDefault, BitsetAtomic:
 		if n <= autoThreshold {
 			return NewFlat(n)
 		}
