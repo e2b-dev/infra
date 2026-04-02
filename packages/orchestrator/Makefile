@@ -112,7 +112,7 @@ build-and-upload/template-manager: build upload/template-manager
 
 
 .PHONY: test
-test:
+test: fetch-busybox
 	go test -race -v ./...
 
 .PHONY: test-docker
@@ -128,7 +128,7 @@ test-docker:
 	@echo "Done"
 
 .PHONY: build-template
-build-template:
+build-template: fetch-busybox
 	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
 	GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) \
 	DOCKER_AUTH_BASE64=$(DOCKER_AUTH_BASE64) \
@@ -147,5 +147,5 @@ migrate:
 	./scripts/upload-envs.sh /mnt/disks/fc-envs/v1 $(TEMPLATE_BUCKET_NAME)
 
 .PHONY: lint
-lint:
+lint: fetch-busybox
 	golangci-lint run --fix ./...
