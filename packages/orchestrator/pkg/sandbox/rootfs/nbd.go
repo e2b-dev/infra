@@ -92,12 +92,26 @@ func (o *NBDProvider) ExportDiff(
 	select {
 	case <-o.finishedOperations:
 	case <-ctx.Done():
+		// Close the cache to avoid leaking the mmaped memory. Log an error
+		// if that failed
+		closeErr := cache.Close()
+		if closeErr != nil {
+			logger.L().Warn(ctx, "error closing cache", zap.Error(closeErr))
+		}
+
 		return nil, fmt.Errorf("timeout waiting for overlay device to be released")
 	}
 	telemetry.ReportEvent(ctx, "sandbox stopped")
 
 	m, err := cache.ExportToDiff(ctx, out)
 	if err != nil {
+		// Close the cache to avoid leaking the mmaped memory. Log an error
+		// if that failed
+		closeErr := cache.Close()
+		if closeErr != nil {
+			logger.L().Warn(ctx, "error closing cache", zap.Error(closeErr))
+		}
+
 		return nil, fmt.Errorf("error exporting cache: %w", err)
 	}
 
