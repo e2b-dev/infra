@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -218,7 +219,7 @@ func (s *AuthService[T]) InvalidateTeamCache(ctx context.Context, teamID uuid.UU
 }
 
 func supabaseTeamCacheKey(userID uuid.UUID, teamID string) string {
-	return fmt.Sprintf("%s-%s", userID.String(), teamID)
+	return fmt.Sprintf("%s-%s", userID.String(), strings.ToLower(teamID))
 }
 
 // Close stops the underlying cache's background refresh goroutines.
