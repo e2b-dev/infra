@@ -135,6 +135,9 @@ module "dashboard_api" {
   auth_db_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
   clickhouse_connection_string           = local.clickhouse_connection_string
   supabase_jwt_secrets                   = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
+  redis_url                              = local.redis_url
+  redis_cluster_url                      = local.redis_cluster_url
+  redis_tls_ca_base64                    = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
 
   otel_collector_grpc_port = var.otel_collector_grpc_port
   logs_proxy_port          = var.logs_proxy_port
