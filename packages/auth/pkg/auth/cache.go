@@ -38,6 +38,11 @@ func (c *AuthCache[T]) GetOrSet(ctx context.Context, key string, dataCallback fu
 	return c.cache.GetOrSet(ctx, key, dataCallback)
 }
 
+// Delete removes a cached entry by key.
+func (c *AuthCache[T]) Delete(key string) {
+	c.cache.Delete(key)
+}
+
 // Close stops the cache's background refresh goroutines.
 func (c *AuthCache[T]) Close(ctx context.Context) error {
 	return c.cache.Close(ctx)
