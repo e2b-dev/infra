@@ -9,7 +9,7 @@ import (
 )
 
 type TemplateCacheFiles struct {
-	TemplateFiles
+	Paths
 
 	// CacheIdentifier is used to distinguish between each entry in the cache to prevent deleting the cache files when the template cache entry is being closed and a new one is being created.
 	CacheIdentifier string
@@ -17,14 +17,14 @@ type TemplateCacheFiles struct {
 	config Config
 }
 
-func (t TemplateFiles) CacheFiles(config Config) (TemplateCacheFiles, error) {
+func (p Paths) CacheFiles(config Config) (TemplateCacheFiles, error) {
 	identifier, err := uuid.NewRandom()
 	if err != nil {
 		return TemplateCacheFiles{}, fmt.Errorf("failed to generate identifier: %w", err)
 	}
 
 	tcf := TemplateCacheFiles{
-		TemplateFiles:   t,
+		Paths:           p,
 		CacheIdentifier: identifier.String(),
 		config:          config,
 	}

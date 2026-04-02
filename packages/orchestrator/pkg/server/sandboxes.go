@@ -641,7 +641,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		defer cancel()
 		defer res.completeUpload(uploadCtx)
 
-		if err := res.snapshot.Upload(uploadCtx, s.persistence, res.templateFiles); err != nil {
+		if err := res.snapshot.Upload(uploadCtx, s.persistence, res.paths); err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
 			s.sandboxFactory.Sandboxes.MarkStopping(ctx, resumedSbx.Runtime.SandboxID, resumedSbx.LifecycleID)
@@ -694,7 +694,7 @@ func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
 type snapshotResult struct {
 	meta           metadata.Template
 	snapshot       *sandbox.Snapshot
-	templateFiles  storage.TemplateFiles
+	paths          storage.Paths
 	completeUpload func(ctx context.Context)
 }
 
@@ -738,7 +738,7 @@ func (s *Server) snapshotAndCacheSandbox(
 
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
-	templateFiles := storage.TemplateFiles{BuildID: meta.Template.BuildID}
+	paths := storage.Paths{BuildID: meta.Template.BuildID}
 
 	// Register in Redis so other orchestrators can find us for peer routing.
 	if s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag) {
@@ -759,7 +759,7 @@ func (s *Server) snapshotAndCacheSandbox(
 		return &snapshotResult{
 			meta:           meta,
 			snapshot:       snapshot,
-			templateFiles:  templateFiles,
+			paths:          paths,
 			completeUpload: completeUpload,
 		}, nil
 	}
@@ -767,7 +767,7 @@ func (s *Server) snapshotAndCacheSandbox(
 	return &snapshotResult{
 		meta:           meta,
 		snapshot:       snapshot,
-		templateFiles:  templateFiles,
+		paths:          paths,
 		completeUpload: func(context.Context) {},
 	}, nil
 }
@@ -782,7 +782,7 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 		defer cancel()
 		defer res.completeUpload(ctx)
 
-		err := res.snapshot.Upload(ctx, s.persistence, res.templateFiles)
+		err := res.snapshot.Upload(ctx, s.persistence, res.paths)
 		if err != nil {
 			sbxlogger.I(sbx).Error(ctx, "error uploading snapshot files", zap.Error(err))
 

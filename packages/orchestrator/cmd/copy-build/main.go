@@ -140,15 +140,15 @@ func getReferencedData(h *header.Header, objectType storage.ObjectType) []string
 	var dataReferences []string
 
 	for build := range builds {
-		template := storage.TemplateFiles{
+		paths := storage.Paths{
 			BuildID: build,
 		}
 
 		switch objectType {
 		case storage.MemfileHeaderObjectType:
-			dataReferences = append(dataReferences, template.StorageMemfilePath())
+			dataReferences = append(dataReferences, paths.Memfile())
 		case storage.RootFSHeaderObjectType:
-			dataReferences = append(dataReferences, template.StorageRootfsPath())
+			dataReferences = append(dataReferences, paths.Rootfs())
 		}
 	}
 
@@ -216,7 +216,7 @@ func main() {
 
 	fmt.Fprintf(os.Stderr, "Copying build '%s' from '%s' to '%s'\n", *buildId, *from, *to)
 
-	template := storage.TemplateFiles{
+	template := storage.Paths{
 		BuildID: *buildId,
 	}
 
@@ -225,7 +225,7 @@ func main() {
 	var filesToCopy []string
 
 	// Extract all files referenced by the build memfile header
-	buildMemfileHeaderPath := template.StorageMemfileHeaderPath()
+	buildMemfileHeaderPath := template.MemfileHeader()
 
 	var memfileHeader *header.Header
 	if strings.HasPrefix(*from, "gs://") {
@@ -252,7 +252,7 @@ func main() {
 	filesToCopy = append(filesToCopy, dataReferences...)
 
 	// Extract all files referenced by the build rootfs header
-	buildRootfsHeaderPath := template.StorageRootfsHeaderPath()
+	buildRootfsHeaderPath := template.RootfsHeader()
 
 	var rootfsHeader *header.Header
 	if strings.HasPrefix(*from, "gs://") {
@@ -278,10 +278,10 @@ func main() {
 	filesToCopy = append(filesToCopy, dataReferences...)
 
 	// Add the snapfile to the list of files to copy
-	snapfilePath := template.StorageSnapfilePath()
+	snapfilePath := template.Snapfile()
 	filesToCopy = append(filesToCopy, snapfilePath)
 
-	metadataPath := template.StorageMetadataPath()
+	metadataPath := template.Metadata()
 	filesToCopy = append(filesToCopy, metadataPath)
 
 	// sort files to copy
