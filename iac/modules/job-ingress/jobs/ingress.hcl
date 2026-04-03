@@ -93,7 +93,7 @@ EOF
       }
 
       template {
-        data = ""
+        data = "# content ignored, ensures the directory exists"
         destination = "local/config/.keep"
       }
 
