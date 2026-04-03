@@ -27,7 +27,9 @@ const (
 
 func New(n uint, impl string) Bitset {
 	switch impl {
-	case BitsetDefault, BitsetBitsAndBlooms:
+	case BitsetDefault, BitsetRoaring:
+		return NewRoaring(n)
+	case BitsetBitsAndBlooms:
 		return NewBitsAndBlooms(n)
 	case BitsetAtomic:
 		if n <= autoThreshold {
@@ -35,8 +37,6 @@ func New(n uint, impl string) Bitset {
 		}
 
 		return NewSharded(n, DefaultShardBits)
-	case BitsetRoaring:
-		return NewRoaring(n)
 	default:
 		panic(fmt.Sprintf("atomicbitset: unknown implementation %q", impl))
 	}

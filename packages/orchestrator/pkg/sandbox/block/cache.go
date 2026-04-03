@@ -53,10 +53,8 @@ type Cache struct {
 	blockSize      int64
 	mmap           *mmap.MMap
 	mu             sync.RWMutex
-	dirty          atomicbitset.Bitset
-	dirtyMu        sync.RWMutex // fences mmap writes for non-atomic bitset impls
-	dirtyNeedsLock bool         // true for impls that need external synchronization (e.g. roaring)
-	dirtyFile      bool
+	dirty     atomicbitset.Bitset
+	dirtyFile bool
 	closed         atomic.Bool
 }
 
@@ -102,8 +100,7 @@ func newCache(size, blockSize int64, filePath string, dirtyFile bool, bitsetImpl
 		size:           size,
 		blockSize:      blockSize,
 		dirtyFile:      dirtyFile,
-		dirty:          atomicbitset.New(uint(header.TotalBlocks(size, blockSize)), bitsetImpl),
-		dirtyNeedsLock: bitsetImpl != atomicbitset.BitsetAtomic,
+		dirty: atomicbitset.New(uint(header.TotalBlocks(size, blockSize)), bitsetImpl),
 	}, nil
 }
 
@@ -150,16 +147,9 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	builder := header.NewDiffMetadataBuilder(c.size, c.blockSize)
 
 	// We don't need to sort the keys as the bitset handles the ordering.
-	if c.dirtyNeedsLock {
-		c.dirtyMu.RLock()
-	}
-
+	// The bitset's Iterator holds its own lock if needed.
 	for blockIdx := range c.dirty.Iterator() {
 		builder.AddDirtyOffset(int64(blockIdx) * c.blockSize)
-	}
-
-	if c.dirtyNeedsLock {
-		c.dirtyMu.RUnlock()
 	}
 
 	diffMetadata := builder.Build()
@@ -332,22 +322,12 @@ func (c *Cache) isCached(off, length int64) bool {
 	// Cap if the length goes beyond the cache size, so we don't check for blocks that are out of bounds.
 	end := min(off+length, c.size)
 
-	if c.dirtyNeedsLock {
-		c.dirtyMu.RLock()
-		defer c.dirtyMu.RUnlock()
-	}
-
 	return c.dirty.HasRange(c.startBlock(off), c.endBlock(end))
 }
 
 func (c *Cache) setIsCached(off, length int64) {
 	if length <= 0 {
 		return
-	}
-
-	if c.dirtyNeedsLock {
-		c.dirtyMu.Lock()
-		defer c.dirtyMu.Unlock()
 	}
 
 	c.dirty.SetRange(c.startBlock(off), c.endBlock(off+length))

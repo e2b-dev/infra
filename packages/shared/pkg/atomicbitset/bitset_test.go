@@ -22,13 +22,6 @@ var impls = []implFactory{
 	{"Sharded/small", func(n uint) Bitset { return NewSharded(n, 64) }},
 }
 
-// atomicImpls are implementations safe for concurrent use without external locking.
-var atomicImpls = []implFactory{
-	{"Flat", func(n uint) Bitset { return NewFlat(n) }},
-	{"Sharded", func(n uint) Bitset { return NewSharded(n, DefaultShardBits) }},
-	{"Sharded/small", func(n uint) Bitset { return NewSharded(n, 64) }},
-}
-
 func TestHasRange(t *testing.T) {
 	t.Parallel()
 	for _, impl := range impls {
@@ -135,8 +128,8 @@ func TestSetRange_Overlapping(t *testing.T) {
 func TestSetRange_Concurrent(t *testing.T) {
 	t.Parallel()
 
-	// Atomic impls are inherently safe for concurrent use.
-	for _, impl := range atomicImpls {
+	// All impls are safe for concurrent use (atomic via atomic ops, others via internal mutex).
+	for _, impl := range impls {
 		t.Run(impl.name, func(t *testing.T) {
 			t.Parallel()
 			b := impl.make(512)
@@ -153,38 +146,6 @@ func TestSetRange_Concurrent(t *testing.T) {
 			last := uint(7*32 + 128)
 			require.True(t, b.HasRange(0, last))
 			require.False(t, b.HasRange(last, last+1))
-		})
-	}
-
-	// Non-atomic impls need external locking, like Cache provides.
-	for _, tc := range []struct {
-		name string
-		make func(uint) Bitset
-	}{
-		{"Roaring", func(n uint) Bitset { return NewRoaring(n) }},
-		{"BitsAndBlooms", func(n uint) Bitset { return NewBitsAndBlooms(n) }},
-	} {
-		t.Run(tc.name+"/external_lock", func(t *testing.T) {
-			t.Parallel()
-			b := tc.make(512)
-			var mu sync.RWMutex
-
-			var wg sync.WaitGroup
-			for g := range 8 {
-				wg.Go(func() {
-					lo := uint(g) * 32
-					mu.Lock()
-					b.SetRange(lo, lo+128)
-					mu.Unlock()
-				})
-			}
-			wg.Wait()
-
-			last := uint(7*32 + 128)
-			mu.RLock()
-			require.True(t, b.HasRange(0, last))
-			require.False(t, b.HasRange(last, last+1))
-			mu.RUnlock()
 		})
 	}
 }
@@ -284,13 +245,12 @@ func TestLen(t *testing.T) {
 func TestNew(t *testing.T) {
 	t.Parallel()
 
-	require.IsType(t, (*BitsAndBlooms)(nil), New(1000, ""))
+	require.IsType(t, (*Roaring)(nil), New(1000, ""))
+	require.IsType(t, (*Roaring)(nil), New(1000, "roaring"))
 	require.IsType(t, (*BitsAndBlooms)(nil), New(1000, "bits-and-blooms"))
 
 	require.IsType(t, (*Flat)(nil), New(1000, "atomic"))
 	require.IsType(t, (*Sharded)(nil), New(autoThreshold+1, "atomic"))
-
-	require.IsType(t, (*Roaring)(nil), New(1000, "roaring"))
 
 	require.Panics(t, func() { New(1000, "bogus") })
 }
