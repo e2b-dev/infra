@@ -258,13 +258,13 @@ func TestLen(t *testing.T) {
 func TestNew(t *testing.T) {
 	t.Parallel()
 
-	require.IsType(t, (*SyncMap)(nil), New(1000, ""))
-	require.IsType(t, (*SyncMap)(nil), New(1000, "syncmap"))
-	require.IsType(t, (*Roaring)(nil), New(1000, "roaring"))
-	require.IsType(t, (*BitsAndBlooms)(nil), New(1000, "bits-and-blooms"))
-
+	require.IsType(t, (*BitsAndBlooms)(nil), New(1000, ""))
+	require.IsType(t, (*BitsAndBlooms)(nil), New(autoThreshold+1, ""))
 	require.IsType(t, (*Flat)(nil), New(1000, "atomic"))
 	require.IsType(t, (*Sharded)(nil), New(autoThreshold+1, "atomic"))
+	require.IsType(t, (*Roaring)(nil), New(1000, "roaring"))
+	require.IsType(t, (*BitsAndBlooms)(nil), New(1000, "bits-and-blooms"))
+	require.IsType(t, (*SyncMap)(nil), New(1000, "syncmap"))
 
 	require.Panics(t, func() { New(1000, "bogus") })
 }
