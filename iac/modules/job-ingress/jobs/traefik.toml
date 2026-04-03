@@ -1,6 +1,7 @@
 [accessLog]
 
 [api]
+  dashboard = true
   insecure = false
 
 [entryPoints]
@@ -19,6 +20,11 @@
   entryPoint = "web"
 
 [providers]
+  [providers.consulCatalog]
+    exposedByDefault = false
+    [providers.consulCatalog.endpoint]
+      address = "${consul_endpoint}"
+      token = "${consul_token}"
   [providers.file]
     directory = "/local/config"
     watch = false
@@ -27,8 +33,3 @@
     [providers.nomad.endpoint]
       address = "${nomad_endpoint}"
       token = "${nomad_token}"
-  [providers.consulCatalog]
-    exposedByDefault = false
-    [providers.consulCatalog.endpoint]
-      address = "${consul_endpoint}"
-      token = "${consul_token}"
