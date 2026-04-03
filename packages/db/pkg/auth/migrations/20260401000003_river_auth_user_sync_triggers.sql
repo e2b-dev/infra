@@ -94,6 +94,7 @@ DROP FUNCTION IF EXISTS auth_custom.enqueue_user_sync_on_insert();
 DROP FUNCTION IF EXISTS auth_custom.enqueue_user_sync_on_update();
 DROP FUNCTION IF EXISTS auth_custom.enqueue_user_sync_on_delete();
 
-REVOKE ALL ON SCHEMA auth_custom FROM trigger_user;
+REVOKE INSERT ON auth_custom.river_job FROM trigger_user;
+REVOKE USAGE, SELECT ON ALL SEQUENCES IN SCHEMA auth_custom FROM trigger_user;
 
 -- +goose StatementEnd
