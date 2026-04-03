@@ -251,7 +251,7 @@ func run() int {
 
 	if config.AuthUserSyncBackgroundWorkerEnabled {
 		workerLogger := l.With(zap.String("worker", backgroundworker.AuthUserProjectionKind))
-		workerMeter := tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/dashboard-api/internal/backgroundworker")
+		workerMeter := tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/dashboard-api")
 
 		authPool := authDB.WritePool()
 		if err := backgroundworker.RunRiverMigrations(ctx, authPool); err != nil {
