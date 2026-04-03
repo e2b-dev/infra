@@ -179,4 +179,5 @@ var (
 	_ Bitset = (*Flat)(nil)
 	_ Bitset = (*Roaring)(nil)
 	_ Bitset = (*Sharded)(nil)
+	_ Bitset = (*SyncMap)(nil)
 )

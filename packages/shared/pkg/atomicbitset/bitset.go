@@ -24,11 +24,14 @@ const (
 	BitsetRoaring       = "roaring"
 	BitsetAtomic        = "atomic"
 	BitsetBitsAndBlooms = "bits-and-blooms"
+	BitsetSyncMap       = "syncmap"
 )
 
 func New(n uint, impl string) Bitset {
 	switch impl {
-	case BitsetDefault, BitsetRoaring:
+	case BitsetDefault, BitsetSyncMap:
+		return NewSyncMap(n)
+	case BitsetRoaring:
 		return NewRoaring(n)
 	case BitsetBitsAndBlooms:
 		return NewBitsAndBlooms(n)

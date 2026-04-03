@@ -19,6 +19,7 @@ var impls = []implFactory{
 	{"BitsAndBlooms", func(n uint) Bitset { return NewBitsAndBlooms(n) }},
 	{"Sharded", func(n uint) Bitset { return NewSharded(n, DefaultShardBits) }},
 	{"Sharded/small", func(n uint) Bitset { return NewSharded(n, 64) }},
+	{"SyncMap", func(n uint) Bitset { return NewSyncMap(n) }},
 }
 
 func TestHasRange(t *testing.T) {
@@ -257,7 +258,8 @@ func TestLen(t *testing.T) {
 func TestNew(t *testing.T) {
 	t.Parallel()
 
-	require.IsType(t, (*Roaring)(nil), New(1000, ""))
+	require.IsType(t, (*SyncMap)(nil), New(1000, ""))
+	require.IsType(t, (*SyncMap)(nil), New(1000, "syncmap"))
 	require.IsType(t, (*Roaring)(nil), New(1000, "roaring"))
 	require.IsType(t, (*BitsAndBlooms)(nil), New(1000, "bits-and-blooms"))
 
