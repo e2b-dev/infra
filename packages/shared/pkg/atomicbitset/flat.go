@@ -1,10 +1,10 @@
 package atomicbitset
 
 import (
-	"iter"
 	"math"
-	"math/bits"
 	"sync/atomic"
+
+	"github.com/bits-and-blooms/bitset"
 )
 
 type Flat struct {
@@ -77,20 +77,13 @@ func (b *Flat) SetRange(lo, hi uint) {
 	}
 }
 
-func (b *Flat) Iterator() iter.Seq[uint] {
-	return func(yield func(uint) bool) {
-		for wi := range b.words {
-			word := b.words[wi].Load()
-			base := uint(wi) * 64
-			for word != 0 {
-				tz := uint(bits.TrailingZeros64(word))
-				if !yield(base + tz) {
-					return
-				}
-				word &= word - 1
-			}
-		}
+func (b *Flat) BitSet() *bitset.BitSet {
+	words := make([]uint64, len(b.words))
+	for i := range b.words {
+		words[i] = b.words[i].Load()
 	}
+
+	return bitset.FromWithLength(b.n, words)
 }
 
 func wordMask(lo, hi uint) uint64 {

@@ -143,14 +143,10 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 		logger.L().Warn(ctx, "error syncing file", zap.Error(err))
 	}
 
-	buildStart := time.Now()
-	builder := header.NewDiffMetadataBuilder(c.size, c.blockSize)
+	dirty := c.dirty.BitSet()
 
-	// We don't need to sort the keys as the bitset handles the ordering.
-	// The bitset's Iterator holds its own lock if needed.
-	for blockIdx := range c.dirty.Iterator() {
-		builder.AddDirtyOffset(int64(blockIdx) * c.blockSize)
-	}
+	buildStart := time.Now()
+	builder := header.NewDiffMetadataBuilderFromDirtyBitSet(c.size, c.blockSize, dirty)
 
 	diffMetadata := builder.Build()
 	telemetry.SetAttributes(ctx, attribute.Int64("build_metadata_ms", time.Since(buildStart).Milliseconds()))

@@ -2,7 +2,6 @@ package atomicbitset
 
 import (
 	"fmt"
-	"slices"
 	"sync"
 	"testing"
 
@@ -104,7 +103,9 @@ func TestSetRange_Idempotent(t *testing.T) {
 			b.SetRange(5, 6)
 			b.SetRange(5, 6)
 
-			require.Equal(t, []uint{5}, slices.Collect(b.Iterator()))
+			require.True(t, b.Has(5))
+			require.False(t, b.Has(4))
+			require.False(t, b.Has(6))
 		})
 	}
 }
@@ -150,39 +151,50 @@ func TestSetRange_Concurrent(t *testing.T) {
 	}
 }
 
-func TestIterator_Empty(t *testing.T) {
+func TestHas_Empty(t *testing.T) {
 	t.Parallel()
 	for _, impl := range impls {
 		t.Run(impl.name, func(t *testing.T) {
 			t.Parallel()
 			b := impl.make(128)
-			require.Empty(t, slices.Collect(b.Iterator()))
+			for i := range uint(128) {
+				require.False(t, b.Has(i), "bit %d should be unset", i)
+			}
+			require.False(t, b.HasRange(0, 128))
 		})
 	}
 }
 
-func TestIterator_Sorted(t *testing.T) {
+func TestHas_Individual(t *testing.T) {
 	t.Parallel()
 	for _, impl := range impls {
 		t.Run(impl.name, func(t *testing.T) {
 			t.Parallel()
 			b := impl.make(256)
-			for _, i := range []uint{100, 5, 200, 63, 64} {
+			set := []uint{100, 5, 200, 63, 64}
+			for _, i := range set {
 				b.SetRange(i, i+1)
 			}
-			require.Equal(t, []uint{5, 63, 64, 100, 200}, slices.Collect(b.Iterator()))
+			for _, i := range set {
+				require.True(t, b.Has(i), "bit %d should be set", i)
+			}
+			for _, i := range []uint{0, 4, 6, 62, 65, 99, 101, 199, 201, 255} {
+				require.False(t, b.Has(i), "bit %d should be unset", i)
+			}
 		})
 	}
 }
 
-func TestIterator_Contiguous(t *testing.T) {
+func TestHasRange_Contiguous(t *testing.T) {
 	t.Parallel()
 	for _, impl := range impls {
 		t.Run(impl.name, func(t *testing.T) {
 			t.Parallel()
 			b := impl.make(128)
 			b.SetRange(10, 15)
-			require.Equal(t, []uint{10, 11, 12, 13, 14}, slices.Collect(b.Iterator()))
+			require.True(t, b.HasRange(10, 15))
+			require.False(t, b.Has(9))
+			require.False(t, b.Has(15))
 		})
 	}
 }
@@ -194,7 +206,7 @@ func TestZero(t *testing.T) {
 			t.Parallel()
 			b := impl.make(0)
 			require.Equal(t, uint(0), b.Len())
-			require.Empty(t, slices.Collect(b.Iterator()))
+			require.False(t, b.Has(0))
 			b.SetRange(0, 1) // should not panic
 		})
 	}

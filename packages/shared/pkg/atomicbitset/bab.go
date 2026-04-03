@@ -1,7 +1,6 @@
 package atomicbitset
 
 import (
-	"iter"
 	"sync"
 
 	"github.com/bits-and-blooms/bitset"
@@ -73,15 +72,6 @@ func (b *BitsAndBlooms) SetRange(lo, hi uint) {
 	b.mu.Unlock()
 }
 
-func (b *BitsAndBlooms) Iterator() iter.Seq[uint] {
-	return func(yield func(uint) bool) {
-		b.mu.RLock()
-		defer b.mu.RUnlock()
-
-		for i, ok := b.bs.NextSet(0); ok; i, ok = b.bs.NextSet(i + 1) {
-			if !yield(i) {
-				return
-			}
-		}
-	}
+func (b *BitsAndBlooms) BitSet() *bitset.BitSet {
+	return b.bs.Clone()
 }

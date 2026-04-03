@@ -4,14 +4,15 @@ package atomicbitset
 
 import (
 	"fmt"
-	"iter"
+
+	"github.com/bits-and-blooms/bitset"
 )
 
 type Bitset interface {
 	Has(i uint) bool
 	HasRange(lo, hi uint) bool
 	SetRange(lo, hi uint)
-	Iterator() iter.Seq[uint]
+	BitSet() *bitset.BitSet
 	Len() uint
 }
 

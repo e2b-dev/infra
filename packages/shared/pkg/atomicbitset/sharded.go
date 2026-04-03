@@ -1,9 +1,9 @@
 package atomicbitset
 
 import (
-	"iter"
-	"math/bits"
 	"sync/atomic"
+
+	"github.com/bits-and-blooms/bitset"
 )
 
 // DefaultShardBits is 128 MB / 4 KB = 32768 bits per shard (4 KB bitmap, one OS page).
@@ -125,31 +125,26 @@ func (s *Sharded) SetRange(lo, hi uint) {
 	}
 }
 
-func (s *Sharded) Iterator() iter.Seq[uint] {
-	return func(yield func(uint) bool) {
-		for si := range s.shards {
-			sh := s.shards[si].Load()
-			if sh == nil {
-				continue
+func (s *Sharded) BitSet() *bitset.BitSet {
+	totalWords := (s.n + 63) / 64
+	words := make([]uint64, totalWords)
+
+	for si := range s.shards {
+		sh := s.shards[si].Load()
+		if sh == nil {
+			continue
+		}
+		baseWord := uint(si) * s.bitsPerShard / 64
+		for wi := range sh.words {
+			dst := baseWord + uint(wi)
+			if dst >= totalWords {
+				break
 			}
-			base := uint(si) * s.bitsPerShard
-			for wi := range sh.words {
-				word := sh.words[wi].Load()
-				wordBase := base + uint(wi)*64
-				for word != 0 {
-					tz := uint(bits.TrailingZeros64(word))
-					idx := wordBase + tz
-					if idx >= s.n {
-						return
-					}
-					if !yield(idx) {
-						return
-					}
-					word &= word - 1
-				}
-			}
+			words[dst] = sh.words[wi].Load()
 		}
 	}
+
+	return bitset.FromWithLength(s.n, words)
 }
 
 func shardHasRange(sh *shard, lo, hi uint) bool {
