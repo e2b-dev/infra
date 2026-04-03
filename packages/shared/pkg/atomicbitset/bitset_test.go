@@ -17,6 +17,7 @@ type implFactory struct {
 var impls = []implFactory{
 	{"Flat", func(n uint) Bitset { return NewFlat(n) }},
 	{"Roaring", func(n uint) Bitset { return NewRoaring(n) }},
+	{"BitsAndBlooms", func(n uint) Bitset { return NewBitsAndBlooms(n) }},
 	{"Sharded", func(n uint) Bitset { return NewSharded(n, DefaultShardBits) }},
 	{"Sharded/small", func(n uint) Bitset { return NewSharded(n, 64) }},
 }
@@ -155,29 +156,37 @@ func TestSetRange_Concurrent(t *testing.T) {
 		})
 	}
 
-	// Non-atomic impls (e.g. Roaring) need external locking, like Cache provides.
-	t.Run("Roaring/external_lock", func(t *testing.T) {
-		t.Parallel()
-		b := NewRoaring(512)
-		var mu sync.RWMutex
+	// Non-atomic impls need external locking, like Cache provides.
+	for _, tc := range []struct {
+		name string
+		make func(uint) Bitset
+	}{
+		{"Roaring", func(n uint) Bitset { return NewRoaring(n) }},
+		{"BitsAndBlooms", func(n uint) Bitset { return NewBitsAndBlooms(n) }},
+	} {
+		t.Run(tc.name+"/external_lock", func(t *testing.T) {
+			t.Parallel()
+			b := tc.make(512)
+			var mu sync.RWMutex
 
-		var wg sync.WaitGroup
-		for g := range 8 {
-			wg.Go(func() {
-				lo := uint(g) * 32
-				mu.Lock()
-				b.SetRange(lo, lo+128)
-				mu.Unlock()
-			})
-		}
-		wg.Wait()
+			var wg sync.WaitGroup
+			for g := range 8 {
+				wg.Go(func() {
+					lo := uint(g) * 32
+					mu.Lock()
+					b.SetRange(lo, lo+128)
+					mu.Unlock()
+				})
+			}
+			wg.Wait()
 
-		last := uint(7*32 + 128)
-		mu.RLock()
-		require.True(t, b.HasRange(0, last))
-		require.False(t, b.HasRange(last, last+1))
-		mu.RUnlock()
-	})
+			last := uint(7*32 + 128)
+			mu.RLock()
+			require.True(t, b.HasRange(0, last))
+			require.False(t, b.HasRange(last, last+1))
+			mu.RUnlock()
+		})
+	}
 }
 
 func TestIterator_Empty(t *testing.T) {
@@ -275,13 +284,74 @@ func TestLen(t *testing.T) {
 func TestNew(t *testing.T) {
 	t.Parallel()
 
-	require.IsType(t, (*Roaring)(nil), New(1000, ""))
-	require.IsType(t, (*Roaring)(nil), New(1000, "roaring"))
+	require.IsType(t, (*BitsAndBlooms)(nil), New(1000, ""))
+	require.IsType(t, (*BitsAndBlooms)(nil), New(1000, "bits-and-blooms"))
 
 	require.IsType(t, (*Flat)(nil), New(1000, "atomic"))
 	require.IsType(t, (*Sharded)(nil), New(autoThreshold+1, "atomic"))
 
+	require.IsType(t, (*Roaring)(nil), New(1000, "roaring"))
+
 	require.Panics(t, func() { New(1000, "bogus") })
+}
+
+// TestCachePattern reproduces the exact SetRange/HasRange sequence that the
+// block cache uses: chunk-aligned writes followed by arbitrary sub-block reads.
+// Parameters mirror a real 6.5 MB rootfs with 4 KB blocks and 4 MB chunks.
+func TestCachePattern(t *testing.T) {
+	t.Parallel()
+
+	const (
+		fileSize   int64 = 6_815_744  // bytes
+		blockSize  int64 = 4096       // bytes
+		chunkSize  int64 = 4_194_304  // 4 MB
+	)
+
+	totalBlocks := uint((fileSize + blockSize - 1) / blockSize) // ceil
+	startBlock := func(off int64) uint { return uint(off / blockSize) }
+	endBlock := func(off int64) uint { return uint((off + blockSize - 1) / blockSize) }
+
+	for _, impl := range impls {
+		t.Run(impl.name, func(t *testing.T) {
+			t.Parallel()
+			b := impl.make(totalBlocks)
+
+			// Simulate chunk fetcher writing all chunks.
+			for fetchOff := int64(0); fetchOff < fileSize; fetchOff += chunkSize {
+				readBytes := min(chunkSize, fileSize-fetchOff)
+				lo := startBlock(fetchOff)
+				hi := endBlock(fetchOff + readBytes)
+				b.SetRange(lo, hi)
+			}
+
+			// Every individual block should now be cached.
+			for blk := uint(0); blk < totalBlocks; blk++ {
+				require.True(t, b.Has(blk), "block %d not set", blk)
+			}
+
+			// Full-range check.
+			require.True(t, b.HasRange(0, totalBlocks), "full range not set")
+
+			// Simulate NBD reads: 4K-aligned reads across the entire file.
+			for off := int64(0); off < fileSize; off += blockSize {
+				end := min(off+blockSize, fileSize)
+				lo := startBlock(off)
+				hi := endBlock(end)
+				require.True(t, b.HasRange(lo, hi),
+					"HasRange(%d, %d) false for read at offset %d", lo, hi, off)
+			}
+
+			// Simulate isCached(fetchOff, MemoryChunkSize) — the exact call
+			// the chunker makes to check whether a chunk is already cached.
+			for fetchOff := int64(0); fetchOff < fileSize; fetchOff += chunkSize {
+				end := min(fetchOff+chunkSize, fileSize)
+				lo := startBlock(fetchOff)
+				hi := endBlock(end)
+				require.True(t, b.HasRange(lo, hi),
+					"chunk HasRange(%d, %d) false for fetchOff %d", lo, hi, fetchOff)
+			}
+		})
+	}
 }
 
 // --- Benchmarks ---

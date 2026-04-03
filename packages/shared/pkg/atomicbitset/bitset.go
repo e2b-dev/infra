@@ -19,21 +19,24 @@ const (
 	autoThreshold uint = 524_288 // 64 KB flat bitmap
 
 	// Valid impl values for New.
-	BitsetDefault = ""
-	BitsetRoaring = "roaring"
-	BitsetAtomic  = "atomic"
+	BitsetDefault       = ""
+	BitsetRoaring       = "roaring"
+	BitsetAtomic        = "atomic"
+	BitsetBitsAndBlooms = "bits-and-blooms"
 )
 
 func New(n uint, impl string) Bitset {
 	switch impl {
-	case BitsetDefault, BitsetRoaring:
-		return NewRoaring(n)
+	case BitsetDefault, BitsetBitsAndBlooms:
+		return NewBitsAndBlooms(n)
 	case BitsetAtomic:
 		if n <= autoThreshold {
 			return NewFlat(n)
 		}
 
 		return NewSharded(n, DefaultShardBits)
+	case BitsetRoaring:
+		return NewRoaring(n)
 	default:
 		panic(fmt.Sprintf("atomicbitset: unknown implementation %q", impl))
 	}
