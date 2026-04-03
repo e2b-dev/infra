@@ -63,6 +63,7 @@ func (s *SyncMap) BitSet() *bitset.BitSet {
 	bs := bitset.New(s.n)
 	s.m.Range(func(key, _ any) bool {
 		bs.Set(key.(uint))
+
 		return true
 	})
 
