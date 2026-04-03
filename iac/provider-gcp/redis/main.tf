@@ -70,7 +70,7 @@ resource "google_memorystore_instance" "valkey_cluster" {
   location    = var.gcp_region
   instance_id = "${var.prefix}redis-valkey-cluster"
 
-  engine_version = "VALKEY_8_0"
+  engine_version = var.engine_version
   mode           = "CLUSTER"
 
   desired_auto_created_endpoints {
