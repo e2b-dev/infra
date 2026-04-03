@@ -378,6 +378,12 @@ variable "redis_shard_count" {
   default = 1
 }
 
+variable "gcp_redis_engine_version" {
+  type        = string
+  description = "The engine version for managed GCP Redis/Valkey. Can be set via TF_VAR_gcp_redis_engine_version or GCP_REDIS_ENGINE_VERSION env var."
+  default     = "VALKEY_8_0"
+}
+
 variable "filestore_cache_enabled" {
   type        = bool
   description = "Set to true to enable Filestore cache. Can be set via TF_VAR_use_filestore_cache or USE_FILESTORE_CACHE env var."
