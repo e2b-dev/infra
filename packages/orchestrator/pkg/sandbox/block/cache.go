@@ -322,7 +322,15 @@ func (c *Cache) isCached(off, length int64) bool {
 	// Cap if the length goes beyond the cache size, so we don't check for blocks that are out of bounds.
 	end := min(off+length, c.size)
 
-	return c.dirty.HasRange(c.startBlock(off), c.endBlock(end))
+	lo := c.startBlock(off)
+	hi := c.endBlock(end)
+
+	// Fast path: single-block check (common case for NBD reads).
+	if hi-lo == 1 {
+		return c.dirty.Has(lo)
+	}
+
+	return c.dirty.HasRange(lo, hi)
 }
 
 func (c *Cache) setIsCached(off, length int64) {

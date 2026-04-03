@@ -320,9 +320,11 @@ func TestCachePattern(t *testing.T) {
 //   rootfs:  512 MB / 4 KB blocks  = 131072 bits
 //   memfile: 2 GB  / 2 MB hugepages = 1024 bits
 
-// Realistic size: 512 MB rootfs / 4 KB blocks = 131072 bits.
+// Realistic size: 1 GB rootfs / 4 KB blocks = 262144 bits.
+// Chunk = 1024 blocks (4 MB chunk at 4 KB block size).
+// Sharded: DefaultShardBits=32768 → 8 shards (128 MB / 4 KB each).
 const (
-	benchBits  uint = 131072
+	benchBits  uint = 262144
 	benchChunk uint = 1024
 )
 
@@ -330,6 +332,7 @@ const (
 var benchImpls = []implFactory{
 	{"Flat", func(n uint) Bitset { return NewFlat(n) }},
 	{"Roaring", func(n uint) Bitset { return NewRoaring(n) }},
+	{"BitsAndBlooms", func(n uint) Bitset { return NewBitsAndBlooms(n) }},
 	{"Sharded", func(n uint) Bitset { return NewSharded(n, DefaultShardBits) }},
 }
 
@@ -341,6 +344,37 @@ func BenchmarkSetRange(b *testing.B) {
 			for i := range b.N {
 				lo := uint(i) % (benchBits / benchChunk) * benchChunk
 				bs.SetRange(lo, lo+benchChunk)
+			}
+		})
+	}
+}
+
+func BenchmarkHas_Hit(b *testing.B) {
+	for _, impl := range benchImpls {
+		b.Run(impl.name, func(b *testing.B) {
+			bs := impl.make(benchBits)
+			bs.SetRange(0, benchBits)
+			b.ResetTimer()
+			for i := range b.N {
+				bit := uint(i) % benchBits
+				if !bs.Has(bit) {
+					b.Fatal("expected set")
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkHas_Miss(b *testing.B) {
+	for _, impl := range benchImpls {
+		b.Run(impl.name, func(b *testing.B) {
+			bs := impl.make(benchBits)
+			b.ResetTimer()
+			for i := range b.N {
+				bit := uint(i) % benchBits
+				if bs.Has(bit) {
+					b.Fatal("expected unset")
+				}
 			}
 		})
 	}
@@ -381,13 +415,8 @@ func BenchmarkHasRange_Miss(b *testing.B) {
 
 var concurrencyLevels = []int{1, 4, 16, 64}
 
-func BenchmarkHasRange_HitConcurrent(b *testing.B) {
-	// Atomic impls (Flat, Sharded) need no external lock.
+func BenchmarkHas_HitConcurrent(b *testing.B) {
 	for _, impl := range benchImpls {
-		if impl.name == "Roaring" {
-			continue
-		}
-
 		b.Run(impl.name, func(b *testing.B) {
 			for _, p := range concurrencyLevels {
 				b.Run(fmt.Sprintf("P%d", p), func(b *testing.B) {
@@ -399,8 +428,8 @@ func BenchmarkHasRange_HitConcurrent(b *testing.B) {
 					b.RunParallel(func(pb *testing.PB) {
 						i := uint(0)
 						for pb.Next() {
-							lo := i % (benchBits / benchChunk) * benchChunk
-							if !bs.HasRange(lo, lo+benchChunk) {
+							bit := i % benchBits
+							if !bs.Has(bit) {
 								b.Fatal("expected set")
 							}
 							i++
@@ -410,31 +439,5 @@ func BenchmarkHasRange_HitConcurrent(b *testing.B) {
 			}
 		})
 	}
-
-	// Roaring requires external locking (like Cache's dirtyMu).
-	b.Run("Roaring", func(b *testing.B) {
-		for _, p := range concurrencyLevels {
-			b.Run(fmt.Sprintf("P%d", p), func(b *testing.B) {
-				bs := NewRoaring(benchBits)
-				bs.SetRange(0, benchBits)
-				var mu sync.RWMutex
-
-				b.SetParallelism(p)
-				b.ResetTimer()
-				b.RunParallel(func(pb *testing.PB) {
-					i := uint(0)
-					for pb.Next() {
-						lo := i % (benchBits / benchChunk) * benchChunk
-						mu.RLock()
-						hit := bs.HasRange(lo, lo+benchChunk)
-						mu.RUnlock()
-						if !hit {
-							b.Fatal("expected set")
-						}
-						i++
-					}
-				})
-			})
-		}
-	})
 }
+
