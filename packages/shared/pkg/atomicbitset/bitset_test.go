@@ -302,9 +302,9 @@ func TestCachePattern(t *testing.T) {
 	t.Parallel()
 
 	const (
-		fileSize   int64 = 6_815_744  // bytes
-		blockSize  int64 = 4096       // bytes
-		chunkSize  int64 = 4_194_304  // 4 MB
+		fileSize  int64 = 6_815_744 // bytes
+		blockSize int64 = 4096      // bytes
+		chunkSize int64 = 4_194_304 // 4 MB
 	)
 
 	totalBlocks := uint((fileSize + blockSize - 1) / blockSize) // ceil
@@ -325,7 +325,7 @@ func TestCachePattern(t *testing.T) {
 			}
 
 			// Every individual block should now be cached.
-			for blk := uint(0); blk < totalBlocks; blk++ {
+			for blk := range totalBlocks {
 				require.True(t, b.Has(blk), "block %d not set", blk)
 			}
 
