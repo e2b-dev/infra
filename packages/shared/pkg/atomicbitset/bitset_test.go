@@ -302,9 +302,9 @@ func TestCachePattern(t *testing.T) {
 	t.Parallel()
 
 	const (
-		fileSize   int64 = 6_815_744  // bytes
-		blockSize  int64 = 4096       // bytes
-		chunkSize  int64 = 4_194_304  // 4 MB
+		fileSize  int64 = 6_815_744 // bytes
+		blockSize int64 = 4096      // bytes
+		chunkSize int64 = 4_194_304 // 4 MB
 	)
 
 	totalBlocks := uint((fileSize + blockSize - 1) / blockSize) // ceil
