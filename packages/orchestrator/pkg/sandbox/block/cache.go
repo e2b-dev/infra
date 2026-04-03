@@ -75,17 +75,17 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		}, nil
 	}
 
+	if size > math.MaxInt {
+		return nil, fmt.Errorf("size too big: %d > %d", size, math.MaxInt)
+	}
+
 	// This should create a sparse file on Linux.
 	err = f.Truncate(size)
 	if err != nil {
 		return nil, fmt.Errorf("error allocating file: %w", err)
 	}
 
-	if size > math.MaxInt {
-		return nil, fmt.Errorf("size too big: %d > %d", size, math.MaxInt)
-	}
-
-	mm, err := mmap.MapRegion(f, int(size), unix.PROT_READ|unix.PROT_WRITE, 0, 0)
+	mm, err := mmap.MapRegion(f, int(size), mmap.RDWR, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("error mapping file: %w", err)
 	}
