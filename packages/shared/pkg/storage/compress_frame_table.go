@@ -34,9 +34,9 @@ func (ct CompressionType) String() string {
 	}
 }
 
-// ParseCompressionType converts a string to CompressionType.
+// parseCompressionType converts a string to CompressionType.
 // Returns CompressionNone for unrecognised values.
-func ParseCompressionType(s string) CompressionType {
+func parseCompressionType(s string) CompressionType {
 	switch s {
 	case "lz4":
 		return CompressionLZ4

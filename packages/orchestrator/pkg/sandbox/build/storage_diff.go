@@ -12,10 +12,11 @@ import (
 )
 
 type StorageDiff struct {
-	chunker     *utils.SetOnce[*block.Chunker]
-	cachePath   string
-	cacheKey    DiffStoreKey
-	storagePath string
+	chunker           *utils.SetOnce[*block.Chunker]
+	cachePath         string
+	cacheKey          DiffStoreKey
+	storagePath       string
+	storageObjectType storage.SeekableObjectType
 
 	blockSize        int64
 	metrics          blockmetrics.Metrics
@@ -45,27 +46,36 @@ func newStorageDiff(
 	ct storage.CompressionType,
 	ff *featureflags.Client,
 ) (*StorageDiff, error) {
-	if !isKnownDiffType(diffType) {
+	storageObjectType, ok := storageObjectType(diffType)
+	if !ok {
 		return nil, UnknownDiffTypeError{diffType}
 	}
 
 	cachePath := GenerateDiffCachePath(basePath, buildId, diffType)
 
 	return &StorageDiff{
-		storagePath:      storage.Paths{BuildID: buildId}.DataFile(string(diffType), ct),
-		cachePath:        cachePath,
-		chunker:          utils.NewSetOnce[*block.Chunker](),
-		blockSize:        blockSize,
-		metrics:          metrics,
-		persistence:      persistence,
-		featureFlags:     ff,
-		uncompressedSize: uncompressedSize,
-		cacheKey:         GetDiffStoreKey(buildId, diffType),
+		storagePath:       storage.Paths{BuildID: buildId}.DataFile(string(diffType), ct),
+		storageObjectType: storageObjectType,
+		cachePath:         cachePath,
+		chunker:           utils.NewSetOnce[*block.Chunker](),
+		blockSize:         blockSize,
+		metrics:           metrics,
+		persistence:       persistence,
+		featureFlags:      ff,
+		uncompressedSize:  uncompressedSize,
+		cacheKey:          GetDiffStoreKey(buildId, diffType),
 	}, nil
 }
 
-func isKnownDiffType(diffType DiffType) bool {
-	return diffType == Memfile || diffType == Rootfs
+func storageObjectType(diffType DiffType) (storage.SeekableObjectType, bool) {
+	switch diffType {
+	case Memfile:
+		return storage.MemfileObjectType, true
+	case Rootfs:
+		return storage.RootFSObjectType, true
+	default:
+		return storage.UnknownSeekableObjectType, false
+	}
 }
 
 func (b *StorageDiff) CacheKey() DiffStoreKey {
@@ -73,7 +83,7 @@ func (b *StorageDiff) CacheKey() DiffStoreKey {
 }
 
 func (b *StorageDiff) Init(ctx context.Context) error {
-	obj, err := b.persistence.OpenSeekable(ctx, b.storagePath)
+	obj, err := b.persistence.OpenSeekable(ctx, b.storagePath, b.storageObjectType)
 	if err != nil {
 		return err
 	}

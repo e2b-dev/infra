@@ -34,7 +34,7 @@ func (c *compressedUploader) UploadData(ctx context.Context) error {
 	if memfilePath != nil {
 		localPath := *memfilePath
 		eg.Go(func() error {
-			ft, checksum, err := c.uploadCompressedFile(ctx, localPath, c.paths.MemfileCompressed(c.cfg.CompressionType()), c.cfg)
+			ft, checksum, err := c.uploadCompressedFile(ctx, localPath, c.paths.MemfileCompressed(c.cfg.CompressionType()), storage.MemfileObjectType, c.cfg)
 			if err != nil {
 				return fmt.Errorf("compressed memfile upload: %w", err)
 			}
@@ -49,9 +49,12 @@ func (c *compressedUploader) UploadData(ctx context.Context) error {
 	if rootfsPath != nil {
 		localPath := *rootfsPath
 		eg.Go(func() error {
-			ft, checksum, err := c.uploadCompressedFile(ctx, localPath, c.paths.RootfsCompressed(c.cfg.CompressionType()), c.cfg)
+			ft, checksum, err := c.uploadCompressedFile(ctx, localPath, c.paths.RootfsCompressed(c.cfg.CompressionType()), storage.RootFSObjectType, c.cfg)
 			if err != nil {
 				return fmt.Errorf("compressed rootfs upload: %w", err)
+			}
+			if ft == nil {
+				return fmt.Errorf("compressed rootfs upload returned nil FrameTable")
 			}
 
 			uncompressedSize, _ := ft.Size()

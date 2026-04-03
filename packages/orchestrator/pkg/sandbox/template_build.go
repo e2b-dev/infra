@@ -39,6 +39,118 @@ func (t *TemplateBuild) Remove(ctx context.Context) error {
 	return nil
 }
 
+func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Header) error {
+	object, err := t.persistence.OpenBlob(ctx, t.paths.MemfileHeader(), storage.MemfileHeaderObjectType)
+	if err != nil {
+		return err
+	}
+
+	serialized, err := headers.SerializeHeader(h)
+	if err != nil {
+		return fmt.Errorf("error when serializing memfile header: %w", err)
+	}
+
+	err = object.Put(ctx, serialized)
+	if err != nil {
+		return fmt.Errorf("error when uploading memfile header: %w", err)
+	}
+
+	return nil
+}
+
+func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) error {
+	object, err := t.persistence.OpenSeekable(ctx, t.paths.Memfile(), storage.MemfileObjectType)
+	if err != nil {
+		return err
+	}
+
+	if _, _, err = object.StoreFile(ctx, memfilePath, nil); err != nil {
+		return fmt.Errorf("error when uploading memfile: %w", err)
+	}
+
+	return nil
+}
+
+func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Header) error {
+	object, err := t.persistence.OpenBlob(ctx, t.paths.RootfsHeader(), storage.RootFSHeaderObjectType)
+	if err != nil {
+		return err
+	}
+
+	serialized, err := headers.SerializeHeader(h)
+	if err != nil {
+		return fmt.Errorf("error when serializing rootfs header: %w", err)
+	}
+
+	err = object.Put(ctx, serialized)
+	if err != nil {
+		return fmt.Errorf("error when uploading rootfs header: %w", err)
+	}
+
+	return nil
+}
+
+func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) error {
+	object, err := t.persistence.OpenSeekable(ctx, t.paths.Rootfs(), storage.RootFSObjectType)
+	if err != nil {
+		return err
+	}
+
+	if _, _, err = object.StoreFile(ctx, rootfsPath, nil); err != nil {
+		return fmt.Errorf("error when uploading rootfs: %w", err)
+	}
+
+	return nil
+}
+
+// Snap-file is small enough so we don't use composite upload.
+func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
+	object, err := t.persistence.OpenBlob(ctx, t.paths.Snapfile(), storage.SnapfileObjectType)
+	if err != nil {
+		return err
+	}
+
+	if err = uploadFileAsBlob(ctx, object, path); err != nil {
+		return fmt.Errorf("error when uploading snapfile: %w", err)
+	}
+
+	return nil
+}
+
+// Metadata is small enough so we don't use composite upload.
+func (t *TemplateBuild) uploadMetadata(ctx context.Context, path string) error {
+	object, err := t.persistence.OpenBlob(ctx, t.paths.Metadata(), storage.MetadataObjectType)
+	if err != nil {
+		return err
+	}
+
+	if err := uploadFileAsBlob(ctx, object, path); err != nil {
+		return fmt.Errorf("error when uploading metadata: %w", err)
+	}
+
+	return nil
+}
+
+func uploadFileAsBlob(ctx context.Context, b storage.Blob, path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("failed to open file %s: %w", path, err)
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return fmt.Errorf("failed to read file %s: %w", path, err)
+	}
+
+	err = b.Put(ctx, data)
+	if err != nil {
+		return fmt.Errorf("failed to write data to object: %w", err)
+	}
+
+	return nil
+}
+
 func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapfilePath string, memfilePath *string, rootfsPath *string) error {
 	eg, ctx := errgroup.WithContext(ctx)
 
@@ -47,7 +159,7 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		return t.uploadHeader(ctx, t.paths.MemfileHeader(), t.memfileHeader, storage.MemfileHeaderObjectType)
+		return t.uploadMemfileHeader(ctx, t.memfileHeader)
 	})
 
 	eg.Go(func() error {
@@ -55,7 +167,7 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		return t.uploadHeader(ctx, t.paths.RootfsHeader(), t.rootfsHeader, storage.RootFSHeaderObjectType)
+		return t.uploadRootfsHeader(ctx, t.rootfsHeader)
 	})
 
 	eg.Go(func() error {
@@ -63,7 +175,7 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		return t.uploadSeekable(ctx, t.paths.Rootfs(), *rootfsPath)
+		return t.uploadRootfs(ctx, *rootfsPath)
 	})
 
 	eg.Go(func() error {
@@ -71,71 +183,16 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 			return nil
 		}
 
-		return t.uploadSeekable(ctx, t.paths.Memfile(), *memfilePath)
+		return t.uploadMemfile(ctx, *memfilePath)
 	})
 
 	eg.Go(func() error {
-		return t.uploadBlob(ctx, t.paths.Snapfile(), fcSnapfilePath, storage.SnapfileObjectType)
+		return t.uploadSnapfile(ctx, fcSnapfilePath)
 	})
 
 	eg.Go(func() error {
-		return t.uploadBlob(ctx, t.paths.Metadata(), metadataPath, storage.MetadataObjectType)
+		return t.uploadMetadata(ctx, metadataPath)
 	})
 
 	return eg.Wait()
-}
-
-func (t *TemplateBuild) uploadHeader(ctx context.Context, path string, h *headers.Header, objType storage.ObjectType) error {
-	object, err := t.persistence.OpenBlob(ctx, path, objType)
-	if err != nil {
-		return err
-	}
-
-	serialized, err := headers.SerializeHeader(h)
-	if err != nil {
-		return fmt.Errorf("error serializing header for %s: %w", path, err)
-	}
-
-	if err := object.Put(ctx, serialized); err != nil {
-		return fmt.Errorf("error uploading header for %s: %w", path, err)
-	}
-
-	return nil
-}
-
-func (t *TemplateBuild) uploadSeekable(ctx context.Context, remotePath, localPath string) error {
-	object, err := t.persistence.OpenSeekable(ctx, remotePath)
-	if err != nil {
-		return err
-	}
-
-	if _, _, err = object.StoreFile(ctx, localPath, nil); err != nil {
-		return fmt.Errorf("error uploading %s: %w", remotePath, err)
-	}
-
-	return nil
-}
-
-func (t *TemplateBuild) uploadBlob(ctx context.Context, remotePath, localPath string, objType storage.ObjectType) error {
-	object, err := t.persistence.OpenBlob(ctx, remotePath, objType)
-	if err != nil {
-		return err
-	}
-
-	f, err := os.Open(localPath)
-	if err != nil {
-		return fmt.Errorf("failed to open file %s: %w", localPath, err)
-	}
-	defer f.Close()
-
-	data, err := io.ReadAll(f)
-	if err != nil {
-		return fmt.Errorf("failed to read file %s: %w", localPath, err)
-	}
-
-	if err := object.Put(ctx, data); err != nil {
-		return fmt.Errorf("failed to write data to %s: %w", remotePath, err)
-	}
-
-	return nil
 }

@@ -84,7 +84,7 @@ type StorageProvider interface {
 	DeleteObjectsWithPrefix(ctx context.Context, prefix string) error
 	UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error)
 	OpenBlob(ctx context.Context, path string, objectType ObjectType) (Blob, error)
-	OpenSeekable(ctx context.Context, path string) (Seekable, error)
+	OpenSeekable(ctx context.Context, path string, seekableObjectType SeekableObjectType) (Seekable, error)
 	GetDetails() string
 }
 
@@ -95,7 +95,8 @@ type Blob interface {
 }
 
 type SeekableReader interface {
-	ReadAt(ctx context.Context, p []byte, off int64, ft *FrameTable) (int, error)
+	// Random slice access, off and buffer length must be aligned to block size
+	ReadAt(ctx context.Context, buffer []byte, off int64, ft *FrameTable) (int, error)
 	Size(ctx context.Context) (int64, error)
 }
 
@@ -105,6 +106,7 @@ type StreamingReader interface {
 }
 
 type SeekableWriter interface {
+	// Store entire file
 	StoreFile(ctx context.Context, path string, cfg *CompressConfig) (*FrameTable, [32]byte, error)
 }
 

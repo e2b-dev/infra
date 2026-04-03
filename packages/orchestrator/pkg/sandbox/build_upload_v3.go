@@ -6,6 +6,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -54,7 +55,7 @@ func (u *uncompressedUploader) UploadData(ctx context.Context) error {
 			return nil
 		}
 
-		return u.uploadUncompressedFile(ctx, *memfilePath, u.paths.Memfile())
+		return u.uploadUncompressedFile(ctx, *memfilePath, u.paths.Memfile(), storage.MemfileObjectType)
 	})
 
 	eg.Go(func() error {
@@ -62,7 +63,7 @@ func (u *uncompressedUploader) UploadData(ctx context.Context) error {
 			return nil
 		}
 
-		return u.uploadUncompressedFile(ctx, *rootfsPath, u.paths.Rootfs())
+		return u.uploadUncompressedFile(ctx, *rootfsPath, u.paths.Rootfs(), storage.RootFSObjectType)
 	})
 
 	u.scheduleAlwaysUploads(eg, ctx)

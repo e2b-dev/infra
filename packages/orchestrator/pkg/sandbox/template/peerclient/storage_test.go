@@ -50,7 +50,7 @@ func TestPeerStorageProvider_OpenSeekable_ExtractsFileName(t *testing.T) {
 	base := storage.NewMockStorageProvider(t)
 
 	p := newPeerStorageProvider(base, client, &atomic.Pointer[UploadedHeaders]{})
-	ff, err := p.OpenSeekable(t.Context(), "build-1/memfile")
+	ff, err := p.OpenSeekable(t.Context(), "build-1/memfile", storage.MemfileObjectType)
 	require.NoError(t, err)
 
 	size, err := ff.Size(t.Context())

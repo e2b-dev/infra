@@ -94,18 +94,29 @@ func (r *pooledDecoder) Close() error {
 	return nil
 }
 
-// compositeReadCloser reads from the decompressor and closes both the
-// decompressor (returning it to the pool) and the underlying raw reader.
-type compositeReadCloser struct {
+// newDecompressingReadCloser wraps raw with the appropriate decompressor and
+// takes ownership: Close releases the decompressor back to the pool AND closes raw.
+func newDecompressingReadCloser(raw io.ReadCloser, ct CompressionType) (io.ReadCloser, error) {
+	dec, err := NewDecompressingReader(raw, ct)
+	if err != nil {
+		return nil, err
+	}
+
+	return &decompressingReadCloser{dec: dec, raw: raw}, nil
+}
+
+// decompressingReadCloser reads from the decompressor and closes both the
+// decompressor (returning it to the pool) and the underlying raw stream.
+type decompressingReadCloser struct {
 	dec io.ReadCloser // decompressor — reads from raw
 	raw io.Closer     // underlying stream
 }
 
-func (c compositeReadCloser) Read(p []byte) (int, error) {
+func (c *decompressingReadCloser) Read(p []byte) (int, error) {
 	return c.dec.Read(p)
 }
 
-func (c compositeReadCloser) Close() error {
+func (c *decompressingReadCloser) Close() error {
 	decErr := c.dec.Close()
 	rawErr := c.raw.Close()
 

@@ -87,10 +87,10 @@ func (p *routingProvider) OpenBlob(ctx context.Context, path string, objType sto
 	return p.resolveProvider(ctx, buildID).OpenBlob(ctx, path, objType)
 }
 
-func (p *routingProvider) OpenSeekable(ctx context.Context, path string) (storage.Seekable, error) {
+func (p *routingProvider) OpenSeekable(ctx context.Context, path string, objType storage.SeekableObjectType) (storage.Seekable, error) {
 	buildID, _ := storage.SplitPath(path)
 
-	return p.resolveProvider(ctx, buildID).OpenSeekable(ctx, path)
+	return p.resolveProvider(ctx, buildID).OpenSeekable(ctx, path, objType)
 }
 
 func (p *routingProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
@@ -142,7 +142,7 @@ func (p *peerStorageProvider) OpenBlob(_ context.Context, path string, objType s
 	}}, nil
 }
 
-func (p *peerStorageProvider) OpenSeekable(_ context.Context, path string) (storage.Seekable, error) {
+func (p *peerStorageProvider) OpenSeekable(_ context.Context, path string, objType storage.SeekableObjectType) (storage.Seekable, error) {
 	buildID, fileName := storage.SplitPath(path)
 
 	return &peerSeekable{peerHandle: peerHandle[storage.Seekable]{
@@ -151,7 +151,7 @@ func (p *peerStorageProvider) OpenSeekable(_ context.Context, path string) (stor
 		fileName: fileName,
 		uploaded: p.uploaded,
 		openFn: func(ctx context.Context) (storage.Seekable, error) {
-			return p.base.OpenSeekable(ctx, path)
+			return p.base.OpenSeekable(ctx, path, objType)
 		},
 	}}, nil
 }
@@ -305,43 +305,29 @@ func newPeerStreamReader(recv func() ([]byte, error), cancel context.CancelFunc)
 }
 
 func (r *peerStreamReader) Read(p []byte) (int, error) {
-	n := 0
-
-	for n < len(p) {
-		// Drain any leftover data from the previous gRPC message.
+	for {
 		if r.current != nil && r.current.Len() > 0 {
-			nn, _ := r.current.Read(p[n:])
-			n += nn
-
-			continue
+			return r.current.Read(p)
 		}
 
 		if r.done {
-			break
+			return 0, io.EOF
 		}
 
+		// gRPC Recv returns (nil, io.EOF) separately from the last data message,
+		// so no data is lost here.
 		data, err := r.recv()
 		if errors.Is(err, io.EOF) {
 			r.done = true
 
-			break
+			return 0, io.EOF
 		}
 		if err != nil {
-			if n > 0 {
-				return n, fmt.Errorf("failed to receive chunk from peer: %w", err)
-			}
-
 			return 0, fmt.Errorf("failed to receive chunk from peer: %w", err)
 		}
 
 		r.current = bytes.NewReader(data)
 	}
-
-	if n == 0 && r.done {
-		return 0, io.EOF
-	}
-
-	return n, nil
 }
 
 func (r *peerStreamReader) Close() error {

@@ -88,8 +88,9 @@ type gcpObject struct {
 }
 
 var (
-	_ Seekable = (*gcpObject)(nil)
-	_ Blob     = (*gcpObject)(nil)
+	_ Seekable        = (*gcpObject)(nil)
+	_ Blob            = (*gcpObject)(nil)
+	_ StreamingReader = (*gcpObject)(nil)
 )
 
 func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (StorageProvider, error) {
@@ -165,7 +166,7 @@ func (s *gcpStorage) UploadSignedURL(_ context.Context, path string, ttl time.Du
 	return url, nil
 }
 
-func (s *gcpStorage) OpenSeekable(_ context.Context, path string) (Seekable, error) {
+func (s *gcpStorage) OpenSeekable(_ context.Context, path string, _ SeekableObjectType) (Seekable, error) {
 	handle := s.bucket.Object(path).Retryer(
 		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),
@@ -256,10 +257,10 @@ func (o *gcpObject) Size(ctx context.Context) (int64, error) {
 	return attrs.Size, nil
 }
 
-func (o *gcpObject) openRangeReader(ctx context.Context, off int64, length int) (io.ReadCloser, error) {
+func (o *gcpObject) openRangeReader(ctx context.Context, off, length int64) (io.ReadCloser, error) {
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
 
-	reader, err := o.handle.NewRangeReader(ctx, off, int64(length))
+	reader, err := o.handle.NewRangeReader(ctx, off, length)
 	if err != nil {
 		cancel()
 
@@ -393,23 +394,6 @@ func (o *gcpObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 }
 
 func (o *gcpObject) StoreFile(ctx context.Context, path string, cfg *CompressConfig) (_ *FrameTable, _ [32]byte, e error) {
-	maxConcurrency := gcloudDefaultUploadConcurrency
-	if o.limiter != nil {
-		uploadLimiter := o.limiter.GCloudUploadLimiter()
-		if uploadLimiter != nil {
-			if err := uploadLimiter.Acquire(ctx, 1); err != nil {
-				return nil, [32]byte{}, fmt.Errorf("failed to acquire upload semaphore: %w", err)
-			}
-			defer uploadLimiter.Release(1)
-		}
-
-		maxConcurrency = o.limiter.GCloudMaxTasks(ctx)
-	}
-
-	if cfg.IsEnabled() {
-		return o.storeFileCompressed(ctx, path, cfg, maxConcurrency)
-	}
-
 	ctx, span := tracer.Start(ctx, "write to gcp from file system")
 	defer func() {
 		recordError(span, e)
@@ -421,9 +405,33 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, cfg *CompressCon
 
 	fileInfo, err := os.Stat(path)
 	if err != nil {
-		e = fmt.Errorf("failed to get file size: %w", err)
+		return nil, [32]byte{}, fmt.Errorf("failed to get file size: %w", err)
+	}
 
-		return nil, [32]byte{}, e
+	timer := googleWriteTimerFactory.Begin(
+		attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystem),
+	)
+
+	maxConcurrency := gcloudDefaultUploadConcurrency
+	if o.limiter != nil {
+		uploadLimiter := o.limiter.GCloudUploadLimiter()
+		if uploadLimiter != nil {
+			semaphoreErr := uploadLimiter.Acquire(ctx, 1)
+			if semaphoreErr != nil {
+				timer.Failure(ctx, 0)
+
+				return nil, [32]byte{}, fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
+			}
+			defer uploadLimiter.Release(1)
+		}
+
+		maxConcurrency = o.limiter.GCloudMaxTasks(ctx)
+	}
+
+	// Compressed uploads always go through the multipart compressed path,
+	// regardless of file size.
+	if cfg.IsEnabled() {
+		return o.storeFileCompressed(ctx, path, cfg, maxConcurrency)
 	}
 
 	// If the file is too small, the overhead of writing in parallel isn't worth the effort.
@@ -436,27 +444,21 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, cfg *CompressCon
 		data, err := os.ReadFile(path)
 		if err != nil {
 			timer.Failure(ctx, 0)
-			e = fmt.Errorf("failed to read file: %w", err)
 
-			return nil, [32]byte{}, e
+			return nil, [32]byte{}, fmt.Errorf("failed to read file: %w", err)
 		}
 
 		err = o.Put(ctx, data)
 		if err != nil {
 			timer.Failure(ctx, int64(len(data)))
-			e = fmt.Errorf("failed to write file (%d bytes): %w", len(data), err)
 
-			return nil, [32]byte{}, e
+			return nil, [32]byte{}, fmt.Errorf("failed to write file (%d bytes): %w", len(data), err)
 		}
 
 		timer.Success(ctx, int64(len(data)))
 
 		return nil, [32]byte{}, e
 	}
-
-	timer := googleWriteTimerFactory.Begin(
-		attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystem),
-	)
 
 	uploader, err := NewMultipartUploaderWithRetryConfig(
 		ctx,
@@ -467,18 +469,16 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, cfg *CompressCon
 	)
 	if err != nil {
 		timer.Failure(ctx, 0)
-		e = fmt.Errorf("failed to create multipart uploader: %w", err)
 
-		return nil, [32]byte{}, e
+		return nil, [32]byte{}, fmt.Errorf("failed to create multipart uploader: %w", err)
 	}
 
 	start := time.Now()
 	count, err := uploader.UploadFileInParallel(ctx, path, maxConcurrency)
 	if err != nil {
 		timer.Failure(ctx, count)
-		e = fmt.Errorf("failed to upload file in parallel: %w", err)
 
-		return nil, [32]byte{}, e
+		return nil, [32]byte{}, fmt.Errorf("failed to upload file in parallel: %w", err)
 	}
 
 	logger.L().Debug(ctx, "Uploaded file in parallel",
@@ -546,7 +546,7 @@ func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length i
 	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrOpenReader))
 
 	if !frameTable.IsCompressed() {
-		rc, err := o.openRangeReader(ctx, offsetU, int(length))
+		rc, err := o.openRangeReader(ctx, offsetU, length)
 		if err != nil {
 			timer.Failure(ctx, 0)
 
@@ -563,14 +563,14 @@ func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length i
 		return nil, fmt.Errorf("get frame for offset %d, GCS:%s: %w", offsetU, o.path, err)
 	}
 
-	raw, err := o.openRangeReader(ctx, frameStart.C, int(frameSize.C))
+	raw, err := o.openRangeReader(ctx, frameStart.C, int64(frameSize.C))
 	if err != nil {
 		timer.Failure(ctx, 0)
 
 		return nil, err
 	}
 
-	dec, err := NewDecompressingReader(raw, frameTable.CompressionType())
+	decompressed, err := newDecompressingReadCloser(raw, frameTable.CompressionType())
 	if err != nil {
 		raw.Close()
 		timer.Failure(ctx, 0)
@@ -578,7 +578,7 @@ func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length i
 		return nil, err
 	}
 
-	return &timedReadCloser{inner: compositeReadCloser{dec, raw}, timer: timer, ctx: ctx}, nil
+	return &timedReadCloser{inner: decompressed, timer: timer, ctx: ctx}, nil
 }
 
 func isResourceExhausted(err error) bool {

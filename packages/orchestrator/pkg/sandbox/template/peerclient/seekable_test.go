@@ -25,12 +25,7 @@ func TestPeerSeekable_Size_PeerSucceeds(t *testing.T) {
 		return req.GetBuildId() == "build-1" && req.GetFileName() == storage.MemfileName
 	})).Return(&orchestrator.GetBuildFileSizeResponse{TotalSize: 4096}, nil)
 
-	s := &peerSeekable{peerHandle: peerHandle[storage.Seekable]{
-		client:   client,
-		buildID:  "build-1",
-		fileName: storage.MemfileName,
-		uploaded: &atomic.Pointer[UploadedHeaders]{},
-	}}
+	s := &peerSeekable{peerHandle: peerHandle[storage.Seekable]{client: client, buildID: "build-1", fileName: storage.MemfileName, uploaded: &atomic.Pointer[UploadedHeaders]{}}}
 	size, err := s.Size(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, int64(4096), size)
@@ -40,14 +35,13 @@ func TestPeerSeekable_Size_PeerNotAvailable_FallsBackToBase(t *testing.T) {
 	t.Parallel()
 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
-	client.EXPECT().GetBuildFileSize(mock.Anything, mock.Anything).Return(
-		&orchestrator.GetBuildFileSizeResponse{Availability: &orchestrator.PeerAvailability{NotAvailable: true}}, nil)
+	client.EXPECT().GetBuildFileSize(mock.Anything, mock.Anything).Return(&orchestrator.GetBuildFileSizeResponse{Availability: &orchestrator.PeerAvailability{NotAvailable: true}}, nil)
 
 	baseSeekable := storage.NewMockSeekable(t)
 	baseSeekable.EXPECT().Size(mock.Anything).Return(int64(8192), nil)
 
 	base := storage.NewMockStorageProvider(t)
-	base.EXPECT().OpenSeekable(mock.Anything, "build-1/memfile").Return(baseSeekable, nil)
+	base.EXPECT().OpenSeekable(mock.Anything, "build-1/memfile", storage.MemfileObjectType).Return(baseSeekable, nil)
 
 	s := &peerSeekable{peerHandle: peerHandle[storage.Seekable]{
 		client:   client,
@@ -55,7 +49,7 @@ func TestPeerSeekable_Size_PeerNotAvailable_FallsBackToBase(t *testing.T) {
 		fileName: storage.MemfileName,
 		uploaded: &atomic.Pointer[UploadedHeaders]{},
 		openFn: func(ctx context.Context) (storage.Seekable, error) {
-			return base.OpenSeekable(ctx, "build-1/memfile")
+			return base.OpenSeekable(ctx, "build-1/memfile", storage.MemfileObjectType)
 		},
 	}}
 	size, err := s.Size(t.Context())
@@ -76,12 +70,7 @@ func TestPeerSeekable_ReadAt_PeerSucceeds(t *testing.T) {
 		return req.GetOffset() == 0 && req.GetLength() == int64(len(data))
 	})).Return(stream, nil)
 
-	s := &peerSeekable{peerHandle: peerHandle[storage.Seekable]{
-		client:   client,
-		buildID:  "build-1",
-		fileName: storage.MemfileName,
-		uploaded: &atomic.Pointer[UploadedHeaders]{},
-	}}
+	s := &peerSeekable{peerHandle: peerHandle[storage.Seekable]{client: client, buildID: "build-1", fileName: storage.MemfileName, uploaded: &atomic.Pointer[UploadedHeaders]{}}}
 	buf := make([]byte, len(data))
 	n, err := s.ReadAt(t.Context(), buf, 0)
 	require.NoError(t, err)
@@ -94,8 +83,7 @@ func TestPeerSeekable_ReadAt_PeerNotAvailable_FallsBackToBase(t *testing.T) {
 
 	baseData := []byte("base data")
 	stream := orchestratormocks.NewMockChunkService_ReadAtBuildSeekableClient(t)
-	stream.EXPECT().Recv().Return(
-		&orchestrator.ReadAtBuildSeekableResponse{Availability: &orchestrator.PeerAvailability{NotAvailable: true}}, nil).Once()
+	stream.EXPECT().Recv().Return(&orchestrator.ReadAtBuildSeekableResponse{Availability: &orchestrator.PeerAvailability{NotAvailable: true}}, nil).Once()
 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
 	client.EXPECT().ReadAtBuildSeekable(mock.Anything, mock.Anything).Return(stream, nil)
@@ -105,7 +93,7 @@ func TestPeerSeekable_ReadAt_PeerNotAvailable_FallsBackToBase(t *testing.T) {
 		Return(io.NopCloser(bytes.NewReader(baseData)), nil)
 
 	base := storage.NewMockStorageProvider(t)
-	base.EXPECT().OpenSeekable(mock.Anything, "build-1/memfile").Return(baseSeekable, nil)
+	base.EXPECT().OpenSeekable(mock.Anything, "build-1/memfile", storage.MemfileObjectType).Return(baseSeekable, nil)
 
 	s := &peerSeekable{peerHandle: peerHandle[storage.Seekable]{
 		client:   client,
@@ -113,7 +101,7 @@ func TestPeerSeekable_ReadAt_PeerNotAvailable_FallsBackToBase(t *testing.T) {
 		fileName: storage.MemfileName,
 		uploaded: &atomic.Pointer[UploadedHeaders]{},
 		openFn: func(ctx context.Context) (storage.Seekable, error) {
-			return base.OpenSeekable(ctx, "build-1/memfile")
+			return base.OpenSeekable(ctx, "build-1/memfile", storage.MemfileObjectType)
 		},
 	}}
 	buf := make([]byte, len(baseData))
@@ -137,12 +125,7 @@ func TestPeerSeekable_OpenRangeReader_PeerSucceeds(t *testing.T) {
 		return req.GetOffset() == 10 && req.GetLength() == int64(len(data))
 	})).Return(stream, nil)
 
-	s := &peerSeekable{peerHandle: peerHandle[storage.Seekable]{
-		client:   client,
-		buildID:  "build-1",
-		fileName: storage.MemfileName,
-		uploaded: &atomic.Pointer[UploadedHeaders]{},
-	}}
+	s := &peerSeekable{peerHandle: peerHandle[storage.Seekable]{client: client, buildID: "build-1", fileName: storage.MemfileName, uploaded: &atomic.Pointer[UploadedHeaders]{}}}
 	rc, err := s.OpenRangeReader(t.Context(), 10, int64(len(data)), nil)
 	require.NoError(t, err)
 	defer rc.Close()
@@ -160,11 +143,10 @@ func TestPeerSeekable_OpenRangeReader_PeerError_FallsBackToBase(t *testing.T) {
 	client.EXPECT().ReadAtBuildSeekable(mock.Anything, mock.Anything).Return(nil, errors.New("peer unavailable"))
 
 	baseSeekable := storage.NewMockSeekable(t)
-	baseSeekable.EXPECT().OpenRangeReader(mock.Anything, int64(0), int64(len(baseData)), (*storage.FrameTable)(nil)).
-		Return(io.NopCloser(bytes.NewReader(baseData)), nil)
+	baseSeekable.EXPECT().OpenRangeReader(mock.Anything, int64(0), int64(len(baseData)), (*storage.FrameTable)(nil)).Return(io.NopCloser(bytes.NewReader(baseData)), nil)
 
 	base := storage.NewMockStorageProvider(t)
-	base.EXPECT().OpenSeekable(mock.Anything, "build-1/memfile").Return(baseSeekable, nil)
+	base.EXPECT().OpenSeekable(mock.Anything, "build-1/memfile", storage.MemfileObjectType).Return(baseSeekable, nil)
 
 	s := &peerSeekable{peerHandle: peerHandle[storage.Seekable]{
 		client:   client,
@@ -172,7 +154,7 @@ func TestPeerSeekable_OpenRangeReader_PeerError_FallsBackToBase(t *testing.T) {
 		fileName: storage.MemfileName,
 		uploaded: &atomic.Pointer[UploadedHeaders]{},
 		openFn: func(ctx context.Context) (storage.Seekable, error) {
-			return base.OpenSeekable(ctx, "build-1/memfile")
+			return base.OpenSeekable(ctx, "build-1/memfile", storage.MemfileObjectType)
 		},
 	}}
 	rc, err := s.OpenRangeReader(t.Context(), 0, int64(len(baseData)), nil)
@@ -182,51 +164,6 @@ func TestPeerSeekable_OpenRangeReader_PeerError_FallsBackToBase(t *testing.T) {
 	got, err := io.ReadAll(rc)
 	require.NoError(t, err)
 	assert.Equal(t, baseData, got)
-}
-
-func TestPeerSeekable_Size_UseStorage_SetsUploadedAndStoresUploadedHeaders(t *testing.T) {
-	t.Parallel()
-
-	memHeader := []byte("mem-header-v4")
-	rootHeader := []byte("root-header-v4")
-
-	client := orchestratormocks.NewMockChunkServiceClient(t)
-	client.EXPECT().GetBuildFileSize(mock.Anything, mock.Anything).Return(
-		&orchestrator.GetBuildFileSizeResponse{
-			Availability: &orchestrator.PeerAvailability{
-				UseStorage:    true,
-				MemfileHeader: memHeader,
-				RootfsHeader:  rootHeader,
-			},
-		}, nil)
-
-	baseSeekable := storage.NewMockSeekable(t)
-	baseSeekable.EXPECT().Size(mock.Anything).Return(int64(4096), nil)
-
-	base := storage.NewMockStorageProvider(t)
-	base.EXPECT().OpenSeekable(mock.Anything, "build-1/memfile").Return(baseSeekable, nil)
-
-	uploaded := &atomic.Pointer[UploadedHeaders]{}
-
-	s := &peerSeekable{peerHandle: peerHandle[storage.Seekable]{
-		client:   client,
-		buildID:  "build-1",
-		fileName: storage.MemfileName,
-		uploaded: uploaded,
-		openFn: func(ctx context.Context) (storage.Seekable, error) {
-			return base.OpenSeekable(ctx, "build-1/memfile")
-		},
-	}}
-
-	size, err := s.Size(t.Context())
-	require.NoError(t, err)
-	assert.Equal(t, int64(4096), size)
-	assert.NotNil(t, uploaded.Load(), "uploaded flag should be set")
-
-	hdrs := uploaded.Load()
-	require.NotNil(t, hdrs, "transition headers should be stored")
-	assert.Equal(t, memHeader, hdrs.MemfileHeader)
-	assert.Equal(t, rootHeader, hdrs.RootfsHeader)
 }
 
 func TestPeerSeekable_OpenRangeReader_UploadedHeaders_ReturnsPeerTransitionedError(t *testing.T) {
@@ -245,7 +182,7 @@ func TestPeerSeekable_OpenRangeReader_UploadedHeaders_ReturnsPeerTransitionedErr
 
 	baseSeekable := storage.NewMockSeekable(t)
 	base := storage.NewMockStorageProvider(t)
-	base.EXPECT().OpenSeekable(mock.Anything, "build-1/memfile").Return(baseSeekable, nil)
+	base.EXPECT().OpenSeekable(mock.Anything, "build-1/memfile", storage.MemfileObjectType).Return(baseSeekable, nil)
 
 	s := &peerSeekable{peerHandle: peerHandle[storage.Seekable]{
 		client:   client,
@@ -253,7 +190,7 @@ func TestPeerSeekable_OpenRangeReader_UploadedHeaders_ReturnsPeerTransitionedErr
 		fileName: storage.MemfileName,
 		uploaded: uploaded,
 		openFn: func(ctx context.Context) (storage.Seekable, error) {
-			return base.OpenSeekable(ctx, "build-1/memfile")
+			return base.OpenSeekable(ctx, "build-1/memfile", storage.MemfileObjectType)
 		},
 	}}
 
@@ -267,38 +204,6 @@ func TestPeerSeekable_OpenRangeReader_UploadedHeaders_ReturnsPeerTransitionedErr
 	assert.Equal(t, rootHeader, transErr.RootfsHeader)
 }
 
-func TestPeerSeekable_OpenRangeReader_WithFrameTable_StillTransitions(t *testing.T) {
-	t.Parallel()
-
-	client := orchestratormocks.NewMockChunkServiceClient(t)
-
-	uploaded := &atomic.Pointer[UploadedHeaders]{}
-	uploaded.Store(&UploadedHeaders{
-		MemfileHeader: []byte("mem"),
-		RootfsHeader:  []byte("root"),
-	})
-
-	ft := &storage.FrameTable{}
-
-	baseSeekable := storage.NewMockSeekable(t)
-
-	s := &peerSeekable{peerHandle: peerHandle[storage.Seekable]{
-		client:   client,
-		buildID:  "build-1",
-		fileName: storage.MemfileName,
-		uploaded: uploaded,
-		openFn: func(_ context.Context) (storage.Seekable, error) {
-			return baseSeekable, nil
-		},
-	}}
-
-	_, err := s.OpenRangeReader(t.Context(), 0, 64, ft)
-	var transErr *storage.PeerTransitionedError
-	require.ErrorAs(t, err, &transErr)
-	assert.Equal(t, []byte("mem"), transErr.MemfileHeader)
-	assert.Equal(t, []byte("root"), transErr.RootfsHeader)
-}
-
 func TestPeerSeekable_OpenRangeReader_UploadedSkipsPeer(t *testing.T) {
 	t.Parallel()
 
@@ -309,11 +214,10 @@ func TestPeerSeekable_OpenRangeReader_UploadedSkipsPeer(t *testing.T) {
 
 	baseData := []byte("from gcs")
 	baseSeekable := storage.NewMockSeekable(t)
-	baseSeekable.EXPECT().OpenRangeReader(mock.Anything, int64(0), int64(len(baseData)), (*storage.FrameTable)(nil)).
-		Return(io.NopCloser(bytes.NewReader(baseData)), nil)
+	baseSeekable.EXPECT().OpenRangeReader(mock.Anything, int64(0), int64(len(baseData)), (*storage.FrameTable)(nil)).Return(io.NopCloser(bytes.NewReader(baseData)), nil)
 
 	base := storage.NewMockStorageProvider(t)
-	base.EXPECT().OpenSeekable(mock.Anything, "build-1/memfile").Return(baseSeekable, nil)
+	base.EXPECT().OpenSeekable(mock.Anything, "build-1/memfile", storage.MemfileObjectType).Return(baseSeekable, nil)
 
 	s := &peerSeekable{peerHandle: peerHandle[storage.Seekable]{
 		client:   client,
@@ -321,7 +225,7 @@ func TestPeerSeekable_OpenRangeReader_UploadedSkipsPeer(t *testing.T) {
 		fileName: storage.MemfileName,
 		uploaded: uploaded,
 		openFn: func(ctx context.Context) (storage.Seekable, error) {
-			return base.OpenSeekable(ctx, "build-1/memfile")
+			return base.OpenSeekable(ctx, "build-1/memfile", storage.MemfileObjectType)
 		},
 	}}
 

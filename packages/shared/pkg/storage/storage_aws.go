@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -128,7 +127,7 @@ func (s *awsStorage) UploadSignedURL(ctx context.Context, path string, ttl time.
 	return resp.URL, nil
 }
 
-func (s *awsStorage) OpenSeekable(_ context.Context, path string) (Seekable, error) {
+func (s *awsStorage) OpenSeekable(_ context.Context, path string, _ SeekableObjectType) (Seekable, error) {
 	return &awsObject{
 		client:     s.client,
 		bucketName: s.bucketName,
@@ -216,8 +215,12 @@ func (o *awsObject) Put(ctx context.Context, data []byte) error {
 	return nil
 }
 
-func (o *awsObject) openRangeReader(ctx context.Context, off int64, length int) (io.ReadCloser, error) {
-	readRange := aws.String(fmt.Sprintf("bytes=%d-%d", off, off+int64(length)-1))
+func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
+	if frameTable.IsCompressed() {
+		return nil, fmt.Errorf("compressed reads are not supported on AWS")
+	}
+
+	readRange := aws.String(fmt.Sprintf("bytes=%d-%d", off, off+length-1))
 	resp, err := o.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(o.bucketName),
 		Key:    aws.String(o.path),
@@ -250,13 +253,6 @@ func (o *awsObject) Size(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 
-	if v, ok := resp.Metadata[MetadataKeyUncompressedSize]; ok {
-		parsed, parseErr := strconv.ParseInt(v, 10, 64)
-		if parseErr == nil {
-			return parsed, nil
-		}
-	}
-
 	return *resp.ContentLength, nil
 }
 
@@ -286,29 +282,4 @@ func ignoreNotExists(err error) error {
 	}
 
 	return err
-}
-
-func (o *awsObject) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
-	if frameTable.IsCompressed() {
-		frameStart, frameSize, err := frameTable.FrameFor(offsetU)
-		if err != nil {
-			return nil, fmt.Errorf("get frame for offset %d, S3:%s: %w", offsetU, o.path, err)
-		}
-
-		raw, err := o.openRangeReader(ctx, frameStart.C, int(frameSize.C))
-		if err != nil {
-			return nil, err
-		}
-
-		dec, decErr := NewDecompressingReader(raw, frameTable.CompressionType())
-		if decErr != nil {
-			raw.Close()
-
-			return nil, decErr
-		}
-
-		return compositeReadCloser{dec, raw}, nil
-	}
-
-	return o.openRangeReader(ctx, offsetU, int(length))
 }

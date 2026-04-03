@@ -105,8 +105,8 @@ func (c cache) OpenBlob(ctx context.Context, path string, objectType ObjectType)
 	}, nil
 }
 
-func (c cache) OpenSeekable(ctx context.Context, path string) (Seekable, error) {
-	innerObject, err := c.inner.OpenSeekable(ctx, path)
+func (c cache) OpenSeekable(ctx context.Context, path string, objectType SeekableObjectType) (Seekable, error) {
+	innerObject, err := c.inner.OpenSeekable(ctx, path, objectType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open object: %w", err)
 	}
@@ -149,8 +149,8 @@ func ignoreEOF(err error) error {
 }
 
 // isCompleteRead reports whether a read of n bytes into a buffer of expected
-// size represents a valid, cacheable result. A read is complete when the full
-// buffer was filled and n > 0.
-func isCompleteRead(n, expected int) bool {
-	return n > 0 && n == expected
+// size represents a valid, cacheable result. A read is complete when either
+// the full buffer was filled or io.EOF explains a non-empty short read (last chunk).
+func isCompleteRead(n, expected int, err error) bool {
+	return n == expected || (n > 0 && errors.Is(err, io.EOF))
 }

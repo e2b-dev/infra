@@ -26,7 +26,7 @@ func (c *CompressConfig) CompressionType() CompressionType {
 		return CompressionNone
 	}
 
-	return ParseCompressionType(c.Type)
+	return parseCompressionType(c.Type)
 }
 
 // FrameSize returns the frame size in bytes.
@@ -79,35 +79,6 @@ func (c *CompressConfig) Resolve() *CompressConfig {
 	return c
 }
 
-// CompressConfigFromLDValue parses the LaunchDarkly CompressConfigFlag JSON
-// into a CompressConfig. Returns nil if the flag disables compression.
-func CompressConfigFromLDValue(ctx context.Context, ff *featureflags.Client) *CompressConfig {
-	if ff == nil {
-		return nil
-	}
-
-	v := ff.JSONFlag(ctx, featureflags.CompressConfigFlag).AsValueMap()
-
-	if !v.Get("compressBuilds").BoolValue() {
-		return nil
-	}
-
-	ct := v.Get("compressionType").StringValue()
-	if ParseCompressionType(ct) == CompressionNone {
-		return nil
-	}
-
-	return &CompressConfig{
-		Enabled:            true,
-		Type:               ct,
-		Level:              v.Get("compressionLevel").IntValue(),
-		FrameSizeKB:        v.Get("frameSizeKB").IntValue(),
-		TargetPartSizeMB:   v.Get("targetPartSizeMB").IntValue(),
-		FrameEncodeWorkers: v.Get("frameEncodeWorkers").IntValue(),
-		EncoderConcurrency: v.Get("encoderConcurrency").IntValue(),
-	}
-}
-
 // ResolveCompressConfig returns the effective compression config for a given
 // file type and use case. Feature flags override the base config when active.
 // Returns nil when compression is disabled.
@@ -122,8 +93,21 @@ func ResolveCompressConfig(ctx context.Context, base CompressConfig, ff *feature
 			featureflags.CompressUseCaseContext(useCase),
 		)
 
-		if override := CompressConfigFromLDValue(ctx, ff); override != nil {
-			return override
+		v := ff.JSONFlag(ctx, featureflags.CompressConfigFlag).AsValueMap()
+
+		if v.Get("compressBuilds").BoolValue() {
+			ct := v.Get("compressionType").StringValue()
+			if parseCompressionType(ct) != CompressionNone {
+				return &CompressConfig{
+					Enabled:            true,
+					Type:               ct,
+					Level:              v.Get("compressionLevel").IntValue(),
+					FrameSizeKB:        v.Get("frameSizeKB").IntValue(),
+					TargetPartSizeMB:   v.Get("targetPartSizeMB").IntValue(),
+					FrameEncodeWorkers: v.Get("frameEncodeWorkers").IntValue(),
+					EncoderConcurrency: v.Get("encoderConcurrency").IntValue(),
+				}
+			}
 		}
 	}
 

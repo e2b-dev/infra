@@ -3,8 +3,6 @@ package sandbox
 import (
 	"context"
 	"fmt"
-	"io"
-	"os"
 	"sync"
 
 	"github.com/google/uuid"
@@ -70,8 +68,8 @@ func diffPath(d build.Diff) (*string, error) {
 	return &p, nil
 }
 
-func (b *buildUploader) uploadUncompressedFile(ctx context.Context, local, remote string) error {
-	object, err := b.persistence.OpenSeekable(ctx, remote)
+func (b *buildUploader) uploadUncompressedFile(ctx context.Context, local, remote string, objType storage.SeekableObjectType) error {
+	object, err := b.persistence.OpenSeekable(ctx, remote, objType)
 	if err != nil {
 		return err
 	}
@@ -111,28 +109,8 @@ func (b *buildUploader) uploadMetadata(ctx context.Context, path string) error {
 	return nil
 }
 
-func uploadFileAsBlob(ctx context.Context, b storage.Blob, path string) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("failed to open file %s: %w", path, err)
-	}
-	defer f.Close()
-
-	data, err := io.ReadAll(f)
-	if err != nil {
-		return fmt.Errorf("failed to read file %s: %w", path, err)
-	}
-
-	err = b.Put(ctx, data)
-	if err != nil {
-		return fmt.Errorf("failed to write data to object: %w", err)
-	}
-
-	return nil
-}
-
-func (b *buildUploader) uploadCompressedFile(ctx context.Context, local, remote string, cfg *storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
-	object, err := b.persistence.OpenSeekable(ctx, remote)
+func (b *buildUploader) uploadCompressedFile(ctx context.Context, local, remote string, objType storage.SeekableObjectType, cfg *storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
+	object, err := b.persistence.OpenSeekable(ctx, remote, objType)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("error opening framed file for %s: %w", remote, err)
 	}
