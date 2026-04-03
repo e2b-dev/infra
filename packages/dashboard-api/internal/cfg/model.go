@@ -2,6 +2,7 @@ package cfg
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/caarlos0/env/v11"
 )
@@ -19,7 +20,10 @@ type Config struct {
 	RedisClusterURL  string `env:"REDIS_CLUSTER_URL"`
 	RedisTLSCABase64 string `env:"REDIS_TLS_CA_BASE64"`
 
-	AuthUserSyncBackgroundWorkerEnabled bool `env:"AUTH_USER_SYNC_BACKGROUND_WORKER_ENABLED" envDefault:"false"`
+	AuthUserSyncBackgroundWorkerEnabled bool          `env:"AUTH_USER_SYNC_BACKGROUND_WORKER_ENABLED" envDefault:"false"`
+	BillingServerURL                    string        `env:"BILLING_SERVER_URL"`
+	BillingServerAPIToken               string        `env:"BILLING_SERVER_API_TOKEN"`
+	BillingServerTimeout                time.Duration `env:"BILLING_SERVER_TIMEOUT" envDefault:"15s"`
 }
 
 func Parse() (Config, error) {

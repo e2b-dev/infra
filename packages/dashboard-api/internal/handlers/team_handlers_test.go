@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,9 +15,11 @@ import (
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	authtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/teambilling"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 )
 
 func TestParseUpdateTeamBody_ProfilePictureNullClearsValue(t *testing.T) {
@@ -282,4 +287,159 @@ VALUES ($1, $2, $3)
 	if err != nil {
 		t.Fatalf("failed to create team member relation: %v", err)
 	}
+}
+
+func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	userID := createHandlerTestUser(t, testDB)
+	sink := &fakeTeamProvisionSink{}
+
+	existingTeam, err := testDB.SqlcClient.GetDefaultTeamByUserID(ctx, userID)
+	if err != nil {
+		t.Fatalf("expected trigger-created default team: %v", err)
+	}
+	if err := testDB.SqlcClient.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
+		t.Fatalf("failed to remove trigger-created default team: %v", err)
+	}
+	if err := testDB.SqlcClient.DeletePublicUser(ctx, userID); err != nil {
+		t.Fatalf("failed to remove trigger-created public user: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", nil)
+	auth.SetUserID(ginCtx, userID)
+
+	store := &APIStore{
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDb,
+		teamProvisionSink: sink,
+	}
+	store.PostUsersBootstrap(ginCtx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", recorder.Code)
+	}
+
+	team, err := testDB.SqlcClient.GetDefaultTeamByUserID(ctx, userID)
+	if err != nil {
+		t.Fatalf("expected default team to be created: %v", err)
+	}
+
+	if len(sink.requests) != 1 {
+		t.Fatalf("expected one billing provisioning call, got %d", len(sink.requests))
+	}
+
+	req := sink.requests[0]
+	if req.TeamID != team.ID {
+		t.Fatalf("expected sink team id %s, got %s", team.ID, req.TeamID)
+	}
+	if req.Reason != teamprovision.ReasonDefaultSignupTeam {
+		t.Fatalf("expected default signup reason, got %s", req.Reason)
+	}
+
+	var responseBody map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &responseBody); err != nil {
+		t.Fatalf("failed to parse response body: %v", err)
+	}
+	if responseBody["slug"] != team.Slug {
+		t.Fatalf("expected slug %s, got %v", team.Slug, responseBody["slug"])
+	}
+}
+
+func TestCreateTeam_NoProvisionSinkLeavesCreatedTeam(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	userID := createHandlerTestUser(t, testDB)
+
+	store := &APIStore{
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDb,
+		teamProvisionSink: &fakeTeamProvisionSink{},
+	}
+
+	team, err := store.createTeam(ctx, userID, "Acme")
+	if err != nil {
+		t.Fatalf("expected team creation to succeed without external provisioning, got %v", err)
+	}
+
+	rows, err := testDB.AuthDb.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+	if err != nil {
+		t.Fatalf("failed to query user teams: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("expected default team and created team, got %d rows", len(rows))
+	}
+
+	found := false
+	for _, row := range rows {
+		if row.Team.ID == team.ID {
+			found = true
+			if row.IsDefault {
+				t.Fatal("expected manually created team not to be default")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected created team to remain in local state")
+	}
+}
+
+func TestCreateTeam_BillingBadRequestCleansUpCreatedTeam(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	userID := createHandlerTestUser(t, testDB)
+
+	store := &APIStore{
+		db:     testDB.SqlcClient,
+		authDB: testDB.AuthDb,
+		teamProvisionSink: &fakeTeamProvisionSink{
+			err: &teambilling.ProvisionError{
+				StatusCode: http.StatusBadRequest,
+				Message:    "limit reached",
+			},
+		},
+	}
+
+	_, err := store.createTeam(ctx, userID, "Acme")
+	if err == nil {
+		t.Fatal("expected billing error")
+	}
+
+	var provisionErr *teambilling.ProvisionError
+	if !errors.As(err, &provisionErr) {
+		t.Fatalf("expected provisioning error, got %T: %v", err, err)
+	}
+	if provisionErr.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", provisionErr.StatusCode)
+	}
+
+	rows, err := testDB.AuthDb.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+	if err != nil {
+		t.Fatalf("failed to query user teams: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected only the default team to remain, got %d rows", len(rows))
+	}
+	if !rows[0].IsDefault {
+		t.Fatal("expected remaining team to be the default team")
+	}
+}
+
+type fakeTeamProvisionSink struct {
+	requests []teamprovision.TeamBillingProvisionRequestedV1
+	err      error
+}
+
+func (s *fakeTeamProvisionSink) ProvisionTeam(_ context.Context, req teamprovision.TeamBillingProvisionRequestedV1) error {
+	s.requests = append(s.requests, req)
+
+	return s.err
 }

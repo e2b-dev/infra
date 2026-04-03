@@ -493,6 +493,16 @@ components:
           type: string
           format: email
 
+    CreateTeamRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+
     DefaultTemplateAlias:
       type: object
       required:
@@ -710,6 +720,48 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserTeamsResponse"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+    post:
+      summary: Create team
+      tags: [teams]
+      security:
+        - Supabase1TokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTeamRequest"
+      responses:
+        "200":
+          description: Successfully created team.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamResolveResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /users/bootstrap:
+    post:
+      summary: Bootstrap user
+      tags: [teams]
+      security:
+        - Supabase1TokenAuth: []
+      responses:
+        "200":
+          description: Successfully bootstrapped user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamResolveResponse"
         "401":
           $ref: "#/components/responses/401"
         "500":

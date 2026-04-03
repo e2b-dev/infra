@@ -33,6 +33,7 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/backgroundworker"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/handlers"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/teambilling"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
@@ -163,7 +164,16 @@ func run() int {
 	authService := sharedauth.NewAuthService[*types.Team](authStore, authCache, config.SupabaseJWTSecrets)
 	defer authService.Close(ctx)
 
-	apiStore := handlers.NewAPIStore(config, db, authDB, clickhouseClient, authService)
+	teamProvisionSink, err := teambilling.NewProvisionSink(
+		config.BillingServerURL,
+		config.BillingServerAPIToken,
+		config.BillingServerTimeout,
+	)
+	if err != nil {
+		l.Fatal(ctx, "initializing team provision sink", zap.Error(err))
+	}
+
+	apiStore := handlers.NewAPIStore(config, db, authDB, clickhouseClient, authService, teamProvisionSink)
 
 	swagger, err := api.GetSwagger()
 	if err != nil {
