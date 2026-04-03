@@ -48,14 +48,14 @@ func NewErrCacheClosed(filePath string) *CacheClosedError {
 }
 
 type Cache struct {
-	filePath       string
-	size           int64
-	blockSize      int64
-	mmap           *mmap.MMap
-	mu             sync.RWMutex
+	filePath  string
+	size      int64
+	blockSize int64
+	mmap      *mmap.MMap
+	mu        sync.RWMutex
 	dirty     atomicbitset.Bitset
 	dirtyFile bool
-	closed         atomic.Bool
+	closed    atomic.Bool
 }
 
 func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, error) {
@@ -95,12 +95,12 @@ func newCache(size, blockSize int64, filePath string, dirtyFile bool, bitsetImpl
 	}
 
 	return &Cache{
-		mmap:           &mm,
-		filePath:       filePath,
-		size:           size,
-		blockSize:      blockSize,
-		dirtyFile:      dirtyFile,
-		dirty: atomicbitset.New(uint(header.TotalBlocks(size, blockSize)), bitsetImpl),
+		mmap:      &mm,
+		filePath:  filePath,
+		size:      size,
+		blockSize: blockSize,
+		dirtyFile: dirtyFile,
+		dirty:     atomicbitset.New(uint(header.TotalBlocks(size, blockSize)), bitsetImpl),
 	}, nil
 }
 
