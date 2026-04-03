@@ -22,6 +22,7 @@ const (
 	// Valid impl values for New.
 	BitsetDefault       = ""
 	BitsetRoaring       = "roaring"
+	BitsetRoaring64     = "roaring64"
 	BitsetAtomic        = "atomic"
 	BitsetBitsAndBlooms = "bits-and-blooms"
 	BitsetSyncMap       = "syncmap"
@@ -29,7 +30,9 @@ const (
 
 func New(n uint, impl string) Bitset {
 	switch impl {
-	case BitsetDefault, BitsetBitsAndBlooms:
+	case BitsetDefault, BitsetRoaring64:
+		return NewRoaring64(n)
+	case BitsetBitsAndBlooms:
 		return NewBitsAndBlooms(n)
 	case BitsetRoaring:
 		return NewRoaring(n)

@@ -16,6 +16,7 @@ type implFactory struct {
 var impls = []implFactory{
 	{"Flat", func(n uint) Bitset { return NewFlat(n) }},
 	{"Roaring", func(n uint) Bitset { return NewRoaring(n) }},
+	{"Roaring64", func(n uint) Bitset { return NewRoaring64(n) }},
 	{"BitsAndBlooms", func(n uint) Bitset { return NewBitsAndBlooms(n) }},
 	{"Sharded", func(n uint) Bitset { return NewSharded(n, DefaultShardBits) }},
 	{"Sharded/small", func(n uint) Bitset { return NewSharded(n, 64) }},
@@ -258,8 +259,8 @@ func TestLen(t *testing.T) {
 func TestNew(t *testing.T) {
 	t.Parallel()
 
-	require.IsType(t, (*BitsAndBlooms)(nil), New(1000, ""))
-	require.IsType(t, (*BitsAndBlooms)(nil), New(autoThreshold+1, ""))
+	require.IsType(t, (*Roaring64)(nil), New(1000, ""))
+	require.IsType(t, (*Roaring64)(nil), New(autoThreshold+1, ""))
 	require.IsType(t, (*Flat)(nil), New(1000, "atomic"))
 	require.IsType(t, (*Sharded)(nil), New(autoThreshold+1, "atomic"))
 	require.IsType(t, (*Roaring)(nil), New(1000, "roaring"))

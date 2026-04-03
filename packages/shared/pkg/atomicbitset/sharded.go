@@ -178,6 +178,7 @@ func shardSetRange(sh *shard, lo, hi uint) {
 var (
 	_ Bitset = (*Flat)(nil)
 	_ Bitset = (*Roaring)(nil)
+	_ Bitset = (*Roaring64)(nil)
 	_ Bitset = (*Sharded)(nil)
 	_ Bitset = (*SyncMap)(nil)
 )

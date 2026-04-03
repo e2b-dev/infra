@@ -7,11 +7,7 @@ import (
 	"github.com/bits-and-blooms/bitset"
 )
 
-// Roaring wraps a roaring bitmap with an internal RWMutex.
-// The read operations used here (Contains, CardinalityInRange, Iterator/BitSet)
-// do not mutate internal state — the array→bitmap conversion that roaring
-// can do only happens in getFastContainerAtIndex, which is used by binary
-// set operations (And, Or, …), none of which are exposed by this wrapper.
+// Roaring wraps a roaring bitmap (32-bit) with an internal RWMutex.
 type Roaring struct {
 	mu sync.RWMutex
 	bm *roaring.Bitmap
@@ -33,7 +29,7 @@ func (r *Roaring) Has(i uint) bool {
 	}
 
 	r.mu.RLock()
-	v := r.bm.ContainsInt(int(i))
+	v := r.bm.Contains(uint32(i))
 	r.mu.RUnlock()
 
 	return v
@@ -51,10 +47,15 @@ func (r *Roaring) HasRange(lo, hi uint) bool {
 	}
 
 	r.mu.RLock()
-	v := r.bm.CardinalityInRange(uint64(lo), uint64(hi)) == uint64(hi-lo)
-	r.mu.RUnlock()
+	defer r.mu.RUnlock()
 
-	return v
+	for i := lo; i < hi; i++ {
+		if !r.bm.Contains(uint32(i)) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (r *Roaring) SetRange(lo, hi uint) {
