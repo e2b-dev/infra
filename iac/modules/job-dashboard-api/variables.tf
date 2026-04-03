@@ -44,6 +44,11 @@ variable "supabase_jwt_secrets" {
   sensitive = true
 }
 
+variable "extra_env" {
+  type    = map(string)
+  default = {}
+}
+
 variable "otel_collector_grpc_port" {
   type    = number
   default = 4317

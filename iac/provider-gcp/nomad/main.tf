@@ -138,6 +138,7 @@ module "dashboard_api" {
   redis_url                              = local.redis_url
   redis_cluster_url                      = local.redis_cluster_url
   redis_tls_ca_base64                    = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+  extra_env                              = var.dashboard_api_env_vars
 
   otel_collector_grpc_port = var.otel_collector_grpc_port
   logs_proxy_port          = var.logs_proxy_port

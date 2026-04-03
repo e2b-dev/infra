@@ -39,7 +39,14 @@ type Database struct {
 	SqlcClient  *db.Client
 	AuthDb      *authdb.Client
 	TestQueries *queries.Queries
+	connStr     string
 }
+
+// gooseMu serializes goose operations across parallel tests.
+// goose.OpenDBWithDriver calls goose.SetDialect which writes to package-level
+// globals (dialect, store) without synchronization. Concurrent test goroutines
+// race on these globals, triggering the race detector on ARM64.
+var gooseMu sync.Mutex
 
 // SetupDatabase creates a fresh PostgreSQL container with migrations applied
 func SetupDatabase(t *testing.T) *Database {
@@ -104,17 +111,27 @@ func SetupDatabase(t *testing.T) *Database {
 		SqlcClient:  sqlcClient,
 		AuthDb:      authDb,
 		TestQueries: testQueries,
+		connStr:     connStr,
 	}
 }
 
-// gooseMu serializes goose operations across parallel tests.
-// goose.OpenDBWithDriver calls goose.SetDialect which writes to package-level
-// globals (dialect, store) without synchronization. Concurrent test goroutines
-// race on these globals, triggering the race detector on ARM64.
-var gooseMu sync.Mutex
+func (db *Database) ApplyMigrations(t *testing.T, migrationDirs ...string) {
+	t.Helper()
 
-// runDatabaseMigrations executes all required database migrations
-func runDatabaseMigrations(t *testing.T, connStr string) {
+	db.applyGooseMigrations(t, 0, migrationDirs...)
+}
+
+func (db *Database) ApplyMigrationsUpTo(t *testing.T, version int64, migrationDirs ...string) {
+	t.Helper()
+
+	db.applyGooseMigrations(t, version, migrationDirs...)
+}
+
+func (db *Database) ConnStr() string {
+	return db.connStr
+}
+
+func (db *Database) applyGooseMigrations(t *testing.T, upToVersion int64, migrationDirs ...string) {
 	t.Helper()
 
 	cmd := exec.CommandContext(t.Context(), "git", "rev-parse", "--show-toplevel")
@@ -125,20 +142,39 @@ func runDatabaseMigrations(t *testing.T, connStr string) {
 	gooseMu.Lock()
 	defer gooseMu.Unlock()
 
-	db, err := goose.OpenDBWithDriver("pgx", connStr)
+	sqlDB, err := goose.OpenDBWithDriver("pgx", db.connStr)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		err := db.Close()
+		err := sqlDB.Close()
 		assert.NoError(t, err)
 	})
 
-	// run the db migration
-	err = goose.RunWithOptionsContext(
-		t.Context(),
-		"up",
-		db,
-		filepath.Join(repoRoot, "packages", "db", "migrations"),
-		nil,
-	)
-	require.NoError(t, err)
+	for _, migrationsDir := range migrationDirs {
+		if upToVersion > 0 {
+			err = goose.UpToContext(
+				t.Context(),
+				sqlDB,
+				filepath.Join(repoRoot, migrationsDir),
+				upToVersion,
+			)
+		} else {
+			err = goose.RunWithOptionsContext(
+				t.Context(),
+				"up",
+				sqlDB,
+				filepath.Join(repoRoot, migrationsDir),
+				nil,
+			)
+		}
+
+		require.NoError(t, err)
+	}
+}
+
+// runDatabaseMigrations executes all required database migrations
+func runDatabaseMigrations(t *testing.T, connStr string) {
+	t.Helper()
+
+	db := &Database{connStr: connStr}
+	db.ApplyMigrations(t, filepath.Join("packages", "db", "migrations"))
 }

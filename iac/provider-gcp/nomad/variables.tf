@@ -453,6 +453,11 @@ variable "dashboard_api_count" {
   default = 0
 }
 
+variable "dashboard_api_env_vars" {
+  type    = map(string)
+  default = {}
+}
+
 variable "volume_token_issuer" {
   type = string
 }
