@@ -11,7 +11,8 @@ import (
 type Roaring struct {
 	mu sync.RWMutex
 	bm *roaring.Bitmap
-	n  uint
+
+	n uint
 }
 
 func NewRoaring(n uint) *Roaring {
@@ -21,7 +22,9 @@ func NewRoaring(n uint) *Roaring {
 	}
 }
 
-func (r *Roaring) Len() uint { return r.n }
+func (r *Roaring) Len() uint {
+	return r.n
+}
 
 func (r *Roaring) Has(i uint) bool {
 	if i >= r.n {
@@ -29,7 +32,7 @@ func (r *Roaring) Has(i uint) bool {
 	}
 
 	r.mu.RLock()
-	v := r.bm.Contains(uint32(i))
+	v := r.bm.ContainsInt(int(i))
 	r.mu.RUnlock()
 
 	return v
@@ -39,11 +42,9 @@ func (r *Roaring) HasRange(lo, hi uint) bool {
 	if lo >= hi {
 		return true
 	}
+
 	if hi > r.n {
 		hi = r.n
-	}
-	if lo >= hi {
-		return false
 	}
 
 	r.mu.RLock()
@@ -59,11 +60,12 @@ func (r *Roaring) HasRange(lo, hi uint) bool {
 }
 
 func (r *Roaring) SetRange(lo, hi uint) {
-	if hi > r.n {
-		hi = r.n
-	}
 	if lo >= hi {
 		return
+	}
+
+	if hi > r.n {
+		hi = r.n
 	}
 
 	r.mu.Lock()
