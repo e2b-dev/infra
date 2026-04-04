@@ -48,8 +48,8 @@ func BenchmarkChunkerSlice_CacheHit(b *testing.B) {
 
 	b.ResetTimer()
 	for i := range b.N {
-		off := int64(i%int(cbChunkCount)) * cbChunkSize
-		s, sliceErr := chunker.Slice(ctx, off, cbChunkSize)
+		off := int64(i%int(cbNumBlocks)) * cbBlockSize
+		s, sliceErr := chunker.Slice(ctx, off, cbBlockSize)
 		if sliceErr != nil {
 			b.Fatal(sliceErr)
 		}
