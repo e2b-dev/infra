@@ -259,8 +259,8 @@ func TestLen(t *testing.T) {
 func TestNew(t *testing.T) {
 	t.Parallel()
 
-	require.IsType(t, (*Roaring64)(nil), New(1000, ""))
-	require.IsType(t, (*Roaring64)(nil), New(autoThreshold+1, ""))
+	require.IsType(t, (*Roaring)(nil), New(1000, ""))
+	require.IsType(t, (*Roaring)(nil), New(autoThreshold+1, ""))
 	require.IsType(t, (*Flat)(nil), New(1000, "atomic"))
 	require.IsType(t, (*Sharded)(nil), New(autoThreshold+1, "atomic"))
 	require.IsType(t, (*Roaring)(nil), New(1000, "roaring"))
