@@ -192,7 +192,7 @@ PY`, filePath))
 	expectedHash := exec(`sha256sum "` + filePath + `" | awk '{print $1}'`)
 	expectedSize := exec(`stat -c %s "` + filePath + `"`)
 
-	cycles := getenvInt(t, "TESTS_FS_INTEGRITY_TRUNCATE_CYCLES", 1)
+	cycles := getenvInt(t, "TESTS_FS_INTEGRITY_TRUNCATE_CYCLES", 10)
 
 	for i := range cycles {
 		pause()

@@ -32,7 +32,7 @@ func (r *Roaring) Has(i uint) bool {
 	}
 
 	r.mu.RLock()
-	v := r.bm.ContainsInt(int(i))
+	v := r.bm.Contains(uint32(i))
 	r.mu.RUnlock()
 
 	return v
@@ -60,12 +60,12 @@ func (r *Roaring) HasRange(lo, hi uint) bool {
 }
 
 func (r *Roaring) SetRange(lo, hi uint) {
-	if lo >= hi {
-		return
-	}
-
 	if hi > r.n {
 		hi = r.n
+	}
+
+	if lo >= hi {
+		return
 	}
 
 	r.mu.Lock()
