@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
@@ -13,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
