@@ -396,6 +396,38 @@ func TestCacheExportToDiff_NonContiguousDirtyBlocksPreserveRangeOrder(t *testing
 	require.Equal(t, append(firstBlock, secondBlock...), exported)
 }
 
+func TestCache_ZeroLengthIsCachedAndSetIsCached(t *testing.T) {
+	t.Parallel()
+
+	const blockSize int64 = 4096
+	const size int64 = blockSize * 10
+
+	cache, err := NewCache(size, blockSize, t.TempDir()+"/cache", false)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, cache.Close())
+	})
+
+	// Before any writes, isCached(0, blockSize) should be false
+	require.False(t, cache.isCached(0, blockSize), "block 0 should not be cached initially")
+
+	// Zero-length isCached should return true (vacuous truth) and NOT check dirty map
+	require.True(t, cache.isCached(0, 0), "zero-length isCached should return true (no-op)")
+
+	// Zero-length setIsCached should be a no-op and NOT mark anything as cached
+	cache.setIsCached(0, 0)
+
+	// Block 0 should still not be cached after zero-length setIsCached
+	require.False(t, cache.isCached(0, blockSize), "block 0 should still not be cached after zero-length setIsCached")
+
+	// Test with various offsets to ensure zero-length is always a no-op
+	cache.setIsCached(blockSize, 0)
+	require.False(t, cache.isCached(blockSize, blockSize), "block 1 should not be cached after zero-length setIsCached")
+
+	cache.setIsCached(blockSize*5, 0)
+	require.False(t, cache.isCached(blockSize*5, blockSize), "block 5 should not be cached after zero-length setIsCached")
+}
+
 func compareData(readBytes []byte, expectedBytes []byte) error {
 	// The bytes.Equal is the first place in this flow that actually touches the uffd managed memory and triggers the pagefault, so any deadlocks will manifest here.
 	if !bytes.Equal(readBytes, expectedBytes) {

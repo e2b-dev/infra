@@ -54,7 +54,7 @@ func NewChunker(
 	cachePath string,
 	metrics metrics.Metrics,
 ) (*Chunker, error) {
-	cache, err := NewCache(size, blockSize, cachePath, false)
+	cache, err := NewCacheWithDirtyGranularity(size, blockSize, storage.DefaultCompressFrameSize, cachePath, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}

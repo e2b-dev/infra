@@ -47,18 +47,26 @@ func NewErrCacheClosed(filePath string) *CacheClosedError {
 }
 
 type Cache struct {
-	filePath  string
-	size      int64
-	blockSize int64
-	mmap      *mmap.MMap
-	mu        sync.RWMutex
-	dirty     sync.Map
-	dirtyFile bool
-	closed    atomic.Bool
+	filePath         string
+	size             int64
+	blockSize        int64
+	dirtyGranularity int64
+	mmap             *mmap.MMap
+	mu               sync.RWMutex
+	dirty            sync.Map
+	dirtyFile        bool
+	closed           atomic.Bool
 }
 
-// When we are passing filePath that is a file that has content we want to server want to use dirtyFile = true.
+// NewCache creates a cache with dirty tracking at blockSize granularity.
+// When we are passing filePath that is a file that has content we want to serve, use dirtyFile = true.
 func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, error) {
+	return NewCacheWithDirtyGranularity(size, blockSize, blockSize, filePath, dirtyFile)
+}
+
+// NewCacheWithDirtyGranularity creates a cache with dirty tracking at the specified granularity.
+// For chunker caches, dirtyGranularity can be larger than blockSize to reduce dirty map overhead.
+func NewCacheWithDirtyGranularity(size, blockSize, dirtyGranularity int64, filePath string, dirtyFile bool) (*Cache, error) {
 	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("error opening file: %w", err)
@@ -68,10 +76,11 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 
 	if size == 0 {
 		return &Cache{
-			filePath:  filePath,
-			size:      size,
-			blockSize: blockSize,
-			dirtyFile: dirtyFile,
+			filePath:         filePath,
+			size:             size,
+			blockSize:        blockSize,
+			dirtyGranularity: dirtyGranularity,
+			dirtyFile:        dirtyFile,
 		}, nil
 	}
 
@@ -91,11 +100,12 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 	}
 
 	return &Cache{
-		mmap:      &mm,
-		filePath:  filePath,
-		size:      size,
-		blockSize: blockSize,
-		dirtyFile: dirtyFile,
+		mmap:             &mm,
+		filePath:         filePath,
+		size:             size,
+		blockSize:        blockSize,
+		dirtyGranularity: dirtyGranularity,
+		dirtyFile:        dirtyFile,
 	}, nil
 }
 
@@ -106,6 +116,10 @@ func (c *Cache) isClosed() bool {
 func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMetadata, error) {
 	ctx, childSpan := tracer.Start(ctx, "export-to-diff")
 	defer childSpan.End()
+
+	if c.dirtyGranularity != c.blockSize {
+		return nil, fmt.Errorf("ExportToDiff requires block-level dirty tracking (granularity %d != blockSize %d)", c.dirtyGranularity, c.blockSize)
+	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -302,19 +316,17 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 }
 
 func (c *Cache) isCached(off, length int64) bool {
-	// Make sure the offset is within the cache size
-	if off >= c.size {
+	if off >= c.size || length <= 0 {
 		return false
 	}
 
-	// Cap if the length goes beyond the cache size, so we don't check for blocks that are out of bounds.
 	end := min(off+length, c.size)
-	// Recalculate the length based on the capped end, so we check for the correct blocks in case of capping.
-	length = end - off
 
-	for _, blockOff := range header.BlocksOffsets(length, c.blockSize) {
-		_, dirty := c.dirty.Load(off + blockOff)
-		if !dirty {
+	startKey := (off / c.dirtyGranularity) * c.dirtyGranularity
+	endKey := ((end - 1) / c.dirtyGranularity) * c.dirtyGranularity
+
+	for key := startKey; key <= endKey; key += c.dirtyGranularity {
+		if _, ok := c.dirty.Load(key); !ok {
 			return false
 		}
 	}
@@ -323,8 +335,17 @@ func (c *Cache) isCached(off, length int64) bool {
 }
 
 func (c *Cache) setIsCached(off, length int64) {
-	for _, blockOff := range header.BlocksOffsets(length, c.blockSize) {
-		c.dirty.Store(off+blockOff, struct{}{})
+	if length <= 0 {
+		return
+	}
+
+	end := off + length
+
+	startKey := (off / c.dirtyGranularity) * c.dirtyGranularity
+	endKey := ((end - 1) / c.dirtyGranularity) * c.dirtyGranularity
+
+	for key := startKey; key <= endKey; key += c.dirtyGranularity {
+		c.dirty.Store(key, struct{}{})
 	}
 }
 
@@ -533,9 +554,7 @@ func (c *Cache) copyProcessMemory(
 				return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
 			}
 
-			for _, blockOff := range header.BlocksOffsets(segmentSize, c.blockSize) {
-				c.dirty.Store(offset+blockOff, struct{}{})
-			}
+			c.setIsCached(offset, segmentSize)
 
 			offset += segmentSize
 
