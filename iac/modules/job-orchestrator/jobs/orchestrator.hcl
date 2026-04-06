@@ -134,7 +134,9 @@ job "orchestrator-${latest_orchestrator_job_id}" {
       }
 
       artifact {
-        source = "${artifact_source}"
+        source      = "${artifact_source}"
+        destination = "local/orchestrator"
+        mode        = "file"
       }
     }
   }
