@@ -61,6 +61,7 @@ tf_vars := \
 	$(call tfvar, ENVD_TIMEOUT) \
 	$(call tfvar, REDIS_MANAGED) \
 	$(call tfvar, REDIS_SHARD_COUNT) \
+	$(call tfvar, GCP_REDIS_ENGINE_VERSION) \
 	$(call tfvar, GRAFANA_MANAGED) \
 	$(call tfvar, FILESTORE_CACHE_ENABLED) \
 	$(call tfvar, FILESTORE_CACHE_TIER) \
