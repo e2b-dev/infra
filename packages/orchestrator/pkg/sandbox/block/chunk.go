@@ -22,6 +22,11 @@ import (
 )
 
 const (
+	// ChunkerDirtyGranularity is the dirty tracking resolution for chunker caches.
+	// Fetches happen in MemoryChunkSize (4MB) chunks, so tracking at blockSize (4KB)
+	// is wasteful. 2MB gives 2 entries per fetch instead of 1024.
+	ChunkerDirtyGranularity = 2 * 1024 * 1024 // 2 MiB
+
 	pullType       = "pull-type"
 	pullTypeLocal  = "local"
 	pullTypeRemote = "remote"
@@ -138,7 +143,7 @@ func NewFullFetchChunker(
 	cachePath string,
 	metrics metrics.Metrics,
 ) (*FullFetchChunker, error) {
-	cache, err := NewCache(size, blockSize, cachePath, false)
+	cache, err := NewCacheWithDirtyGranularity(size, blockSize, ChunkerDirtyGranularity, cachePath, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}
