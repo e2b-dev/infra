@@ -706,6 +706,14 @@ type snapshotResult struct {
 // header bytes for peer transition (nil for uncompressed builds).
 func (r *snapshotResult) uploadSnapshot(ctx context.Context, persistence storage.StorageProvider, baseCompressCfg storage.CompressConfig, flags *featureflags.Client) (memfileHdr, rootfsHdr []byte, err error) {
 	cfg := storage.ResolveCompressConfig(ctx, baseCompressCfg, flags, storage.FileTypeMemfile, storage.UseCasePause)
+	if cfg != nil {
+		logger.L().Info(ctx, "uploading snapshot",
+			zap.String("build_id", r.paths.BuildID),
+			zap.String("compress", cfg.Type),
+			zap.Int("level", cfg.Level),
+			zap.Int("frame_size_kb", cfg.FrameSizeKB),
+		)
+	}
 	uploader := sandbox.NewBuildUploader(r.snapshot, persistence, r.paths, cfg, nil)
 
 	if err := uploader.UploadData(ctx); err != nil {

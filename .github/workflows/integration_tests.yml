@@ -78,12 +78,12 @@ jobs:
         if: ${{ always() && inputs.publish == true }}
         uses: actions/upload-artifact@v6
         with:
-          name: ${{ inputs.compression && 'Compressed ' || '' }}Integration Tests Results
+          name: Integration Tests Results
           path: ./tests/integration/test-results*.xml
 
       - name: Upload Service Logs
         if: ${{ always() && inputs.publish == true }}
         uses: actions/upload-artifact@v6
         with:
-          name: ${{ inputs.compression && 'Compressed ' || '' }}Service Logs
+          name: Service Logs
           path: ~/logs/*.log

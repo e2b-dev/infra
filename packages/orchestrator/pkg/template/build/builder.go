@@ -260,6 +260,13 @@ func runBuild(
 	uploadTracker := layer.NewUploadTracker()
 
 	compressCfg := storage.ResolveCompressConfig(ctx, builder.config.CompressConfig, builder.featureFlags, storage.FileTypeMemfile, storage.UseCaseBuild)
+	if compressCfg != nil {
+		logger.L().Info(ctx, "build compression config",
+			zap.String("compress", compressCfg.Type),
+			zap.Int("level", compressCfg.Level),
+			zap.Int("frame_size_kb", compressCfg.FrameSizeKB),
+		)
+	}
 
 	layerExecutor := layer.NewLayerExecutor(
 		bc,
