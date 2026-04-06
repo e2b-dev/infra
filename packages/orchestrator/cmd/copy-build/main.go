@@ -216,7 +216,7 @@ func main() {
 
 	fmt.Fprintf(os.Stderr, "Copying build '%s' from '%s' to '%s'\n", *buildId, *from, *to)
 
-	template := storage.Paths{
+	paths := storage.Paths{
 		BuildID: *buildId,
 	}
 
@@ -225,7 +225,7 @@ func main() {
 	var filesToCopy []string
 
 	// Extract all files referenced by the build memfile header
-	buildMemfileHeaderPath := template.MemfileHeader()
+	buildMemfileHeaderPath := paths.MemfileHeader()
 
 	var memfileHeader *header.Header
 	if strings.HasPrefix(*from, "gs://") {
@@ -252,7 +252,7 @@ func main() {
 	filesToCopy = append(filesToCopy, dataReferences...)
 
 	// Extract all files referenced by the build rootfs header
-	buildRootfsHeaderPath := template.RootfsHeader()
+	buildRootfsHeaderPath := paths.RootfsHeader()
 
 	var rootfsHeader *header.Header
 	if strings.HasPrefix(*from, "gs://") {
@@ -278,10 +278,10 @@ func main() {
 	filesToCopy = append(filesToCopy, dataReferences...)
 
 	// Add the snapfile to the list of files to copy
-	snapfilePath := template.Snapfile()
+	snapfilePath := paths.Snapfile()
 	filesToCopy = append(filesToCopy, snapfilePath)
 
-	metadataPath := template.Metadata()
+	metadataPath := paths.Metadata()
 	filesToCopy = append(filesToCopy, metadataPath)
 
 	// sort files to copy
