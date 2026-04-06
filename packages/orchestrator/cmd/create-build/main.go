@@ -471,7 +471,7 @@ func setupFC(ctx context.Context, dir, version string) error {
 	}
 
 	// Download from GCS bucket with {version}/{arch}/firecracker path
-	fcURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/fc-versions/", version, arch, "firecracker")
+	fcURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/firecrackers/", version, arch, "firecracker")
 	if err != nil {
 		return fmt.Errorf("invalid Firecracker URL: %w", err)
 	}
@@ -489,7 +489,7 @@ func setupFC(ctx context.Context, dir, version string) error {
 		return fmt.Errorf("firecracker %s not found for %s (no legacy fallback for non-amd64)", version, arch)
 	}
 
-	legacyURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/fc-versions/", version, "firecracker")
+	legacyURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/firecrackers/", version, "firecracker")
 	if err != nil {
 		return fmt.Errorf("invalid Firecracker legacy URL: %w", err)
 	}
