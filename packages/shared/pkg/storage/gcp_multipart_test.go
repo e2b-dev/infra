@@ -1008,14 +1008,14 @@ func TestRetryableClient_ActualRetryBehavior(t *testing.T) {
 	// Verify we had some delays due to backoff (but jittered, so variable)
 	require.Len(t, retryDelays, 2)
 
-	// First retry delay should be around 50ms (jittered) plus scheduling overhead.
-	// CI runners can add significant latency, so use generous upper bounds.
+	// First retry delay should be jittered version of 50ms (0-50ms range)
+	// But in practice, with network overhead, it might be slightly higher
 	require.Greater(t, retryDelays[0], time.Duration(0))
-	require.Less(t, retryDelays[0], 2*time.Second)
+	require.Less(t, retryDelays[0], 200*time.Millisecond) // Allow some overhead
 
-	// Second retry delay should be around 100ms (jittered) plus scheduling overhead.
+	// Second retry delay should be jittered version of 100ms (0-100ms range)
 	require.Greater(t, retryDelays[1], time.Duration(0))
-	require.Less(t, retryDelays[1], 2*time.Second)
+	require.Less(t, retryDelays[1], 300*time.Millisecond) // Allow some overhead
 
 	totalTime := time.Since(startTime)
 	t.Logf("Total time: %v, Retry delays: %v", totalTime, retryDelays)
