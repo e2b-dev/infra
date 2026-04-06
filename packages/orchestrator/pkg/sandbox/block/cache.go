@@ -332,6 +332,11 @@ func (c *Cache) sliceDirect(off, length int64) ([]byte, error) {
 }
 
 func (c *Cache) isCached(off, length int64) bool {
+	// Zero-length is vacuously true (no-op)
+	if length <= 0 {
+		return true
+	}
+
 	// Make sure the offset is within the cache size
 	if off >= c.size {
 		return false
@@ -353,6 +358,11 @@ func (c *Cache) isCached(off, length int64) bool {
 }
 
 func (c *Cache) setIsCached(off, length int64) {
+	// Zero-length is a no-op
+	if length <= 0 {
+		return
+	}
+
 	end := off + length
 
 	startKey := (off / c.dirtyGranularity) * c.dirtyGranularity

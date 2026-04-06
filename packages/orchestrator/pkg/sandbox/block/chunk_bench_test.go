@@ -11,11 +11,9 @@ import (
 )
 
 const (
-	cbBlockSize  int64 = 4096
-	cbNumBlocks  int64 = 16384 // 64 MiB
-	cbCacheSize  int64 = cbNumBlocks * cbBlockSize
-	cbChunkSize  int64 = 4 * 1024 * 1024 // 4 MiB — MemoryChunkSize
-	cbChunkCount int64 = cbCacheSize / cbChunkSize
+	cbBlockSize int64 = 4096
+	cbNumBlocks int64 = 16384 // 64 MiB
+	cbCacheSize int64 = cbNumBlocks * cbBlockSize
 )
 
 // BenchmarkChunkerSlice_CacheHit benchmarks the full FullFetchChunker.Slice
