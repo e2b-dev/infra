@@ -292,7 +292,14 @@ func (o *fsObject) OpenRangeReader(ctx context.Context, offsetU int64, length in
 			return nil, err
 		}
 
-		return newDecompressingReadCloser(raw, frameTable.CompressionType())
+		decompressed, err := newDecompressingReadCloser(raw, frameTable.CompressionType())
+		if err != nil {
+			raw.Close()
+
+			return nil, err
+		}
+
+		return decompressed, nil
 	}
 
 	return o.openRangeReader(ctx, offsetU, length)

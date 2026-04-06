@@ -398,7 +398,14 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, cfg *CompressCon
 	// Compressed uploads always go through the multipart compressed path,
 	// regardless of file size.
 	if cfg.IsEnabled() {
-		return o.storeFileCompressed(ctx, path, cfg, maxConcurrency)
+		ft, checksum, err := o.storeFileCompressed(ctx, path, cfg, maxConcurrency)
+		if err != nil {
+			timer.Failure(ctx, fileInfo.Size())
+		} else {
+			timer.Success(ctx, fileInfo.Size())
+		}
+
+		return ft, checksum, err
 	}
 
 	// If the file is too small, the overhead of writing in parallel isn't worth the effort.

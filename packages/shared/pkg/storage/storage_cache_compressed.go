@@ -24,7 +24,7 @@ func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64
 	timer := cacheSlabReadTimerFactory.Begin(
 		attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrRead),
 		attribute.Bool("compressed", true),
-		attribute.String("compression_type", string(frameTable.CompressionType())),
+		attribute.String("compression_type", frameTable.CompressionType().String()),
 	)
 
 	// Cache hit: open compressed frame from NFS and wrap with decompressor.
