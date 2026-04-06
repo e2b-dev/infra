@@ -13,9 +13,11 @@ type fetchSession struct {
 	chunkLen int64
 	cache    *Cache
 
-	mu       sync.Mutex
+	mu   sync.Mutex
+	cond sync.Cond // broadcast on progress; lazily initialized with mu
+
 	fetchErr error
-	signal   chan struct{} // closed on each advance; nil when terminated
+	done     bool // true once terminated (success or error)
 
 	// bytesReady is the byte count (from chunkOff) up to which all blocks
 	// are fully written and marked cached. Atomic so registerAndWait can
@@ -26,16 +28,18 @@ type fetchSession struct {
 // terminated reports whether the session reached a terminal state.
 // Must be called with mu held.
 func (s *fetchSession) terminated() bool {
-	return s.fetchErr != nil || s.bytesReady.Load() == s.chunkLen
+	return s.done
 }
 
 func newFetchSession(chunkOff, chunkLen int64, cache *Cache) *fetchSession {
-	return &fetchSession{
+	s := &fetchSession{
 		chunkOff: chunkOff,
 		chunkLen: chunkLen,
 		cache:    cache,
-		signal:   make(chan struct{}),
 	}
+	s.cond.L = &s.mu
+
+	return s
 }
 
 // registerAndWait blocks until the block at blockOff is cached, the session
@@ -48,19 +52,23 @@ func (s *fetchSession) registerAndWait(ctx context.Context, blockOff int64) erro
 	relEnd := blockOff + blockSize - s.chunkOff
 	endByte := min(relEnd, s.chunkLen)
 
+	// Lock-free fast path: bytesReady only increases, so >= endByte
+	// guarantees data is available.
+	if s.bytesReady.Load() >= endByte {
+		return nil
+	}
+
+	// Set up context cancellation to unblock cond.Wait.
+	stop := context.AfterFunc(ctx, func() {
+		s.cond.Broadcast()
+	})
+	defer stop()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	for {
-		// Lock-free fast path: bytesReady only increases, so >= endByte
-		// guarantees data is available.
 		if s.bytesReady.Load() >= endByte {
-			return nil
-		}
-
-		s.mu.Lock()
-
-		// Re-check under lock.
-		if s.bytesReady.Load() >= endByte {
-			s.mu.Unlock()
-
 			return nil
 		}
 
@@ -71,7 +79,11 @@ func (s *fetchSession) registerAndWait(ctx context.Context, blockOff int64) erro
 			fetchErr := s.fetchErr
 			s.mu.Unlock()
 
-			if s.cache.isCached(blockOff, blockSize) {
+			cached := s.cache.isCached(blockOff, blockSize)
+
+			s.mu.Lock()
+
+			if cached {
 				return nil
 			}
 
@@ -83,45 +95,34 @@ func (s *fetchSession) registerAndWait(ctx context.Context, blockOff int64) erro
 			return fmt.Errorf("fetch failed: %w", fetchErr)
 		}
 
-		ch := s.signal
-		s.mu.Unlock()
-
-		select {
-		case <-ch:
-			continue
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+
+		s.cond.Wait()
 	}
 }
 
-// advance updates progress and wakes all waiters by closing the current
-// broadcast channel and replacing it with a fresh one.
+// advance updates progress and wakes all waiters.
 func (s *fetchSession) advance(bytesReady int64) {
-	s.mu.Lock()
 	s.bytesReady.Store(bytesReady)
-	old := s.signal
-	s.signal = make(chan struct{})
-	s.mu.Unlock()
-
-	close(old)
+	s.cond.Broadcast()
 }
 
 // setDone marks the session as successfully completed and wakes all waiters.
 func (s *fetchSession) setDone() {
 	s.mu.Lock()
 	s.bytesReady.Store(s.chunkLen)
-	old := s.signal
-	s.signal = nil
+	s.done = true
 	s.mu.Unlock()
 
-	close(old)
+	s.cond.Broadcast()
 }
 
 // setError records the error and wakes all waiters.
 // When onlyIfRunning is true, it is a no-op if the session already
 // terminated (used for panic recovery to avoid overriding a successful
-// completion or double-closing the broadcast channel).
+// completion).
 func (s *fetchSession) setError(err error, onlyIfRunning bool) {
 	s.mu.Lock()
 	if onlyIfRunning && s.terminated() {
@@ -131,11 +132,8 @@ func (s *fetchSession) setError(err error, onlyIfRunning bool) {
 	}
 
 	s.fetchErr = err
-	old := s.signal
-	s.signal = nil
+	s.done = true
 	s.mu.Unlock()
 
-	if old != nil {
-		close(old)
-	}
+	s.cond.Broadcast()
 }
