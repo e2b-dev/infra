@@ -40,6 +40,8 @@ func TestAuthUserSync_EndToEnd(t *testing.T) {
 	applyAuthUserSyncMigrations(t, db)
 
 	t.Run("upsert projects auth users into public users", func(t *testing.T) {
+		t.Parallel()
+
 		ctx := t.Context()
 		userID := uuid.New()
 		email := fmt.Sprintf("river-sync-%s@example.com", userID.String()[:8])
@@ -56,6 +58,8 @@ func TestAuthUserSync_EndToEnd(t *testing.T) {
 	})
 
 	t.Run("delete removes projected public users", func(t *testing.T) {
+		t.Parallel()
+
 		ctx := t.Context()
 		userID := uuid.New()
 		email := fmt.Sprintf("river-del-%s@example.com", userID.String()[:8])
@@ -71,6 +75,8 @@ func TestAuthUserSync_EndToEnd(t *testing.T) {
 	})
 
 	t.Run("burst backlog drains mixed upsert and delete work", func(t *testing.T) {
+		t.Parallel()
+
 		ctx := t.Context()
 		const userCount = 40
 
@@ -107,6 +113,7 @@ func TestAuthUserSync_EndToEnd(t *testing.T) {
 		for _, u := range users {
 			if u.shouldDel {
 				waitForPublicUserGone(t, ctx, db, u.id)
+
 				continue
 			}
 

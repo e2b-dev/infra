@@ -38,7 +38,7 @@ func TestQueryNotExistingTemplateAlias(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/templates/aliases/%s", alias), nil)
+	c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, fmt.Sprintf("/templates/aliases/%s", alias), nil)
 	auth.SetTeamInfo(c, &types.Team{
 		Team: &authqueries.Team{
 			ID:   teamID,
@@ -75,7 +75,7 @@ func TestQueryExistingTemplateAlias(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/templates/aliases/%s", alias), nil)
+	c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, fmt.Sprintf("/templates/aliases/%s", alias), nil)
 	auth.SetTeamInfo(c, &types.Team{
 		Team: &authqueries.Team{
 			ID:   teamID,
@@ -120,7 +120,7 @@ func TestQueryExistingTemplateAliasAsNotOwnerTeam(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/templates/aliases/%s", alias), nil)
+	c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, fmt.Sprintf("/templates/aliases/%s", alias), nil)
 	auth.SetTeamInfo(c,
 		&types.Team{
 			Team: &authqueries.Team{
