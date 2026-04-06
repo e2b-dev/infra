@@ -175,7 +175,6 @@ func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uplo
 
 	q := make(chan *part, maxUploadConcurrency)
 	var closeQ sync.Once
-	defer closeQ.Do(func() { close(q) })
 
 	uploadEG, uploadCtx := errgroup.WithContext(ctx)
 	uploadEG.SetLimit(maxUploadConcurrency)
@@ -209,10 +208,21 @@ func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uplo
 		return nil
 	})
 
+	// drainPipeline closes the part queue and waits for the emit and upload
+	// goroutines to finish. Must be called on every return path so that
+	// uploader.Close() (deferred above) never races with in-flight UploadPart calls.
+	drainPipeline := func() error {
+		closeQ.Do(func() { close(q) })
+
+		return errors.Join(emitEG.Wait(), uploadEG.Wait())
+	}
+
 	part, compressCtx := newPart(1, ctx, cfg.FrameEncodeWorkers)
 	for {
 		if err := ctx.Err(); err != nil {
-			return nil, [32]byte{}, err
+			pipelineErr := drainPipeline()
+
+			return nil, [32]byte{}, errors.Join(err, pipelineErr)
 		}
 
 		buf := make([]byte, frameSize)
@@ -224,7 +234,9 @@ func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uplo
 		case errors.Is(err, io.ErrUnexpectedEOF):
 			// fall through
 		default:
-			return nil, [32]byte{}, fmt.Errorf("read frame: %w", err)
+			pipelineErr := drainPipeline()
+
+			return nil, [32]byte{}, errors.Join(fmt.Errorf("read frame: %w", err), pipelineErr)
 		}
 
 		if n > 0 {
@@ -246,11 +258,7 @@ func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uplo
 		part.submit(ctx, q)
 	}
 
-	closeQ.Do(func() { close(q) })
-
-	emitErr := emitEG.Wait()
-	uploadErr := uploadEG.Wait()
-	if err := errors.Join(emitErr, uploadErr); err != nil {
+	if err := drainPipeline(); err != nil {
 		return nil, [32]byte{}, err
 	}
 

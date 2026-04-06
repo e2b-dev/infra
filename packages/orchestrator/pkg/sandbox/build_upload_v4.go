@@ -53,9 +53,6 @@ func (c *compressedUploader) UploadData(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("compressed rootfs upload: %w", err)
 			}
-			if ft == nil {
-				return fmt.Errorf("compressed rootfs upload returned nil FrameTable")
-			}
 
 			uncompressedSize, _ := ft.Size()
 			c.pending.add(pendingBuildInfoKey(c.paths.BuildID, storage.RootfsName), ft, uncompressedSize, checksum)
