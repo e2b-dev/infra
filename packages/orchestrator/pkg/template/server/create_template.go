@@ -36,7 +36,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		attribute.Bool("env.huge_pages", cfg.GetHugePages()),
 	)
 
-	metadata := storage.TemplateFiles{
+	metadata := storage.Paths{
 		BuildID: cfg.GetBuildID(),
 	}
 
