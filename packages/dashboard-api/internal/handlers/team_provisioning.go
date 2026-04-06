@@ -167,7 +167,7 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 }
 
 func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string) (provisionedTeam, error) {
-	authUser, err := s.authDB.Read.GetUser(ctx, userID)
+	authUser, err := s.authDB.Write.GetUser(ctx, userID)
 	if err != nil {
 		return provisionedTeam{}, fmt.Errorf("get auth user: %w", err)
 	}
