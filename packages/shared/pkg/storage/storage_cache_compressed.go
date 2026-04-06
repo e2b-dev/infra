@@ -116,19 +116,19 @@ func (r *decompressingCacheReader) Read(p []byte) (int, error) {
 }
 
 func (r *decompressingCacheReader) Close() error {
-	if err := r.decompressor.Close(); err != nil {
-		r.raw.Close()
+	decErr := r.decompressor.Close()
+	rawErr := r.raw.Close()
 
-		return err
+	if decErr != nil {
+		return decErr
 	}
-
-	if err := r.raw.Close(); err != nil {
-		return err
+	if rawErr != nil {
+		return rawErr
 	}
 
 	if !skipCacheWriteback(r.ctx) && isCompleteRead(r.compressedBuf.Len(), r.expectedSize, nil) {
-		data := make([]byte, r.compressedBuf.Len())
-		copy(data, r.compressedBuf.Bytes())
+		data := r.compressedBuf.Bytes()
+		r.compressedBuf = nil
 
 		r.cache.goCtx(r.ctx, func(ctx context.Context) {
 			ctx, span := r.cache.tracer.Start(ctx, "write compressed frame back to cache")
