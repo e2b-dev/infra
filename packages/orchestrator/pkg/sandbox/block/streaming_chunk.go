@@ -437,6 +437,10 @@ func (c *StreamingChunker) progressiveRead(ctx context.Context, s *fetchSession,
 		}
 	}
 
+	if totalRead < s.chunkLen {
+		return fmt.Errorf("short read: expected %d bytes, got %d", s.chunkLen, totalRead)
+	}
+
 	return nil
 }
 
