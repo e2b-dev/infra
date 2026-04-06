@@ -6,9 +6,16 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 
 	"go.opentelemetry.io/otel/attribute"
 )
+
+// Precomputed OTEL attributes for compressed cache reads (avoids per-read allocation).
+var compressedCacheReadAttrs = []attribute.KeyValue{
+	attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrRead),
+	attribute.Bool("compressed", true),
+}
 
 // openReaderCompressed handles the compressed cache path for OpenRangeReader.
 // NFS stores compressed frames (.frm); on hit we decompress, on miss we fetch
@@ -21,11 +28,7 @@ func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64
 
 	framePath := makeFrameFilename(c.path, frameStart, frameSize)
 
-	timer := cacheSlabReadTimerFactory.Begin(
-		attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrRead),
-		attribute.Bool("compressed", true),
-		attribute.String("compression_type", frameTable.CompressionType().String()),
-	)
+	timer := cacheSlabReadTimerFactory.Begin(compressedCacheReadAttrs...)
 
 	// Cache hit: open compressed frame from NFS and wrap with decompressor.
 	f, err := os.Open(framePath)
@@ -146,6 +149,22 @@ func (r *decompressingCacheReader) Close() error {
 
 // makeFrameFilename returns the NFS cache path for a compressed frame.
 // Format: {cacheBasePath}/{016xC}-{xC}.frm
+// Uses strconv to avoid fmt.Sprintf allocation on the hot path.
 func makeFrameFilename(cacheBasePath string, offset FrameOffset, size FrameSize) string {
-	return fmt.Sprintf("%s/%016x-%x.frm", cacheBasePath, offset.C, size.C)
+	buf := make([]byte, 0, len(cacheBasePath)+32)
+	buf = append(buf, cacheBasePath...)
+	buf = append(buf, '/')
+
+	const hexWidth = 16
+	h := strconv.AppendUint(nil, uint64(offset.C), 16)
+	for i := len(h); i < hexWidth; i++ {
+		buf = append(buf, '0')
+	}
+	buf = append(buf, h...)
+
+	buf = append(buf, '-')
+	buf = strconv.AppendUint(buf, uint64(uint32(size.C)), 16)
+	buf = append(buf, ".frm"...)
+
+	return string(buf)
 }

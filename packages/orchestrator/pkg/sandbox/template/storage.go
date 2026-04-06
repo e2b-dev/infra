@@ -61,6 +61,7 @@ func NewStorage(
 		if !ok {
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
+
 		switch fileType {
 		case build.Memfile:
 			hdrPath = paths.MemfileHeader()
