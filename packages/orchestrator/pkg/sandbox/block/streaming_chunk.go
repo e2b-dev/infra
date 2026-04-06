@@ -54,7 +54,7 @@ func NewChunker(
 	cachePath string,
 	metrics metrics.Metrics,
 ) (*Chunker, error) {
-	cache, err := NewCacheWithDirtyGranularity(size, blockSize, storage.DefaultCompressFrameSize, cachePath, false)
+	cache, err := NewCache(size, blockSize, cachePath, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}
@@ -105,7 +105,10 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64, ft *storage.Fram
 		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, err)
 	}
 
-	b, cacheErr := c.cache.Slice(off, length)
+	// Use sliceDirect (no isCached check) since the waiter mechanism guarantees data is in the mmap.
+	// With coarse dirty granularity, isCached may return false during an active fetch even though
+	// the requested bytes have been written to the mmap.
+	b, cacheErr := c.cache.sliceDirect(off, length)
 	if cacheErr != nil {
 		timer.RecordRaw(ctx, length, attrs.failLocalReadAgain)
 
@@ -218,6 +221,11 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, offsetU int64, 
 		return
 	}
 
+	// Mark entire chunk as cached BEFORE releasing waiters.
+	// This ensures isCached returns true before the session is removed from fetchSessions,
+	// closing the TOCTOU window in getOrCreateSession.
+	c.cache.setIsCached(s.chunkOff, s.chunkLen)
+
 	fetchTimer.RecordRaw(ctx, readBytes, attrs.remoteSuccess)
 	s.setDone()
 }
@@ -241,7 +249,8 @@ func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, mmapSlic
 		totalRead += int64(n)
 
 		if n > 0 {
-			c.cache.setIsCached(s.chunkOff+totalRead-int64(n), int64(n))
+			// Dirty marking is deferred to runFetch after the full chunk is fetched.
+			// With coarse dirty granularity, marking here would expose partially-written data.
 			s.advance(totalRead)
 		}
 

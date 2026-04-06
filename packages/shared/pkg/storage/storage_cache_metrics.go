@@ -28,12 +28,13 @@ var (
 type cacheOp string
 
 const (
-	cacheOpWriteTo             cacheOp = "write_to"
-	cacheOpOpenRangeReader     cacheOp = "open_range_reader"
-	cacheOpSize                cacheOp = "size"
-	cacheOpWriteFromFileSystem cacheOp = "write_from_filesystem"
+	cacheOpWriteTo cacheOp = "write_to"
+	cacheOpPut     cacheOp = "put"
+	cacheOpSize    cacheOp = "size"
 
-	cacheOpPut cacheOp = "put"
+	cacheOpOpenRangeReader cacheOp = "open_range_reader"
+
+	cacheOpWriteFromFileSystem cacheOp = "write_from_filesystem"
 )
 
 type cacheType string

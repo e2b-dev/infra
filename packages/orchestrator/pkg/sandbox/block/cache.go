@@ -50,16 +50,16 @@ type Cache struct {
 	filePath         string
 	size             int64
 	blockSize        int64
-	dirtyGranularity int64
 	mmap             *mmap.MMap
 	mu               sync.RWMutex
 	dirty            sync.Map
+	dirtyGranularity int64
 	dirtyFile        bool
 	closed           atomic.Bool
 }
 
 // NewCache creates a cache with dirty tracking at blockSize granularity.
-// When we are passing filePath that is a file that has content we want to serve, use dirtyFile = true.
+// When we are passing filePath that is a file that has content we want to server want to use dirtyFile = true.
 func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, error) {
 	return NewCacheWithDirtyGranularity(size, blockSize, blockSize, filePath, dirtyFile)
 }
@@ -315,11 +315,34 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 	return nil, BytesNotAvailableError{}
 }
 
+// sliceDirect returns a slice of the mmap without checking isCached.
+// Used by the streaming chunker after the waiter mechanism has confirmed data availability.
+func (c *Cache) sliceDirect(off, length int64) ([]byte, error) {
+	if c.isClosed() {
+		return nil, NewErrCacheClosed(c.filePath)
+	}
+
+	if c.mmap == nil {
+		return nil, nil
+	}
+
+	end := min(off+length, c.size)
+
+	return (*c.mmap)[off:end], nil
+}
+
 func (c *Cache) isCached(off, length int64) bool {
-	if off >= c.size || length <= 0 {
+	// Zero-length is vacuously true (no-op)
+	if length <= 0 {
+		return true
+	}
+
+	// Make sure the offset is within the cache size
+	if off >= c.size {
 		return false
 	}
 
+	// Cap if the length goes beyond the cache size, so we don't check for blocks that are out of bounds.
 	end := min(off+length, c.size)
 
 	startKey := (off / c.dirtyGranularity) * c.dirtyGranularity
@@ -335,6 +358,7 @@ func (c *Cache) isCached(off, length int64) bool {
 }
 
 func (c *Cache) setIsCached(off, length int64) {
+	// Zero-length is a no-op
 	if length <= 0 {
 		return
 	}

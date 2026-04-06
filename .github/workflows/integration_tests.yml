@@ -43,7 +43,9 @@ jobs:
           TESTS_ORCHESTRATOR_HOST: "localhost:5008"
           TESTS_ENVD_PROXY: "http://localhost:3002"
           TESTS_CLIENT_PROXY: "http://localhost:3002"
-        run: make test-integration
+        run: |
+          # Run the integration tests
+          make test-integration
 
       - name: Check for Data Races in Service Logs
         if: always()
@@ -79,7 +81,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: Integration Tests Results
-          path: ./tests/integration/test-results*.xml
+          path: ./tests/integration/test-results.xml
 
       - name: Upload Service Logs
         if: ${{ always() && inputs.publish == true }}
