@@ -27,13 +27,15 @@ runs:
 
     - name: Transform infisical secrets into make include file, load a few as environment variables
       id: load-env
+      env:
+        ENVIRONMENT: ${{ inputs.environment }}
       run: |
-        echo ${{ inputs.environment }} > .last_used_env
-        cat .env.infisical | sed "s/='\(.*\)'$/=\1/g" > .env.${{ inputs.environment }}
+        echo "${ENVIRONMENT}" > .last_used_env
+        cat .env.infisical | sed "s/='\(.*\)'$/=\1/g" > ".env.${ENVIRONMENT}"
 
         # Load environment variables from .env
         set -a
-        . .env.${{ inputs.environment }}
+        . ".env.${ENVIRONMENT}"
         set +a
 
         echo "GCP_REGION=${GCP_REGION}" >> $GITHUB_ENV
