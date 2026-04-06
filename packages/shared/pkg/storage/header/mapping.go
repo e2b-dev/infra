@@ -195,6 +195,10 @@ func MergeMappings(
 		if diff.Offset >= base.Offset && diff.Offset+diff.Length <= base.Offset+base.Length {
 			leftBaseLength := int64(diff.Offset) - int64(base.Offset)
 
+			// Track frame cursor so the right split starts scanning where the left stopped,
+			// avoiding O(N²) rescanning of the base's FrameTable.
+			frameCursor := 0
+
 			if leftBaseLength > 0 {
 				leftBase := &BuildMap{
 					Offset:  base.Offset,
@@ -203,7 +207,9 @@ func MergeMappings(
 					// the build storage offset is the same as the base mapping
 					BuildStorageOffset: base.BuildStorageOffset,
 				}
-				if err := leftBase.SetFrames(base.FrameTable); err != nil {
+				var err error
+				frameCursor, err = leftBase.SetFramesFrom(base.FrameTable, 0)
+				if err != nil {
 					return nil, fmt.Errorf("set frames for left split at offset %d: %w", leftBase.Offset, err)
 				}
 
@@ -224,7 +230,7 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
 				}
-				if err := rightBase.SetFrames(base.FrameTable); err != nil {
+				if _, err := rightBase.SetFramesFrom(base.FrameTable, frameCursor); err != nil {
 					return nil, fmt.Errorf("set frames for right split at offset %d: %w", rightBase.Offset, err)
 				}
 
@@ -254,7 +260,7 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
 				}
-				if err := rightBase.SetFrames(base.FrameTable); err != nil {
+				if _, err := rightBase.SetFramesFrom(base.FrameTable, 0); err != nil {
 					return nil, fmt.Errorf("set frames for right split at offset %d: %w", rightBase.Offset, err)
 				}
 
@@ -278,7 +284,7 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset,
 				}
-				if err := leftBase.SetFrames(base.FrameTable); err != nil {
+				if _, err := leftBase.SetFramesFrom(base.FrameTable, 0); err != nil {
 					return nil, fmt.Errorf("set frames for left split at offset %d: %w", leftBase.Offset, err)
 				}
 
