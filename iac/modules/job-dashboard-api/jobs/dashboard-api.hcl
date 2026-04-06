@@ -71,8 +71,8 @@ job "dashboard-api" {
       }
 
       env {
-        %{ for key in sort(keys(env)) ~}
-        ${key} = "${env[key]}"
+        %{ for key, value in env ~}
+        ${key} = "${value}"
         %{ endfor ~}
       }
 

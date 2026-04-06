@@ -19,7 +19,7 @@ type Config struct {
 	RedisClusterURL  string `env:"REDIS_CLUSTER_URL"`
 	RedisTLSCABase64 string `env:"REDIS_TLS_CA_BASE64"`
 
-	AuthUserSyncBackgroundWorkerEnabled bool `env:"AUTH_USER_SYNC_BACKGROUND_WORKER_ENABLED" envDefault:"false"`
+	EnableAuthUserSyncBackgroundWorker bool `env:"ENABLE_AUTH_USER_SYNC_BACKGROUND_WORKER" envDefault:"false"`
 }
 
 func Parse() (Config, error) {
