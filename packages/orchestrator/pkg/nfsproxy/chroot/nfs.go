@@ -17,6 +17,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/chrooted"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/quota"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -36,6 +37,7 @@ type NFSHandler struct {
 
 	builder   *chrooted.Builder
 	sandboxes *sandbox.Map
+	tracker   *quota.Tracker
 
 	chrootsByLifecycleID  map[string][]*chrooted.Chrooted
 	chrootMountsCounter   metric.Int64Counter
@@ -47,6 +49,7 @@ var _ nfs.Handler = (*NFSHandler)(nil)
 func NewNFSHandler(
 	builder *chrooted.Builder,
 	sandboxes *sandbox.Map,
+	tracker *quota.Tracker,
 ) (*NFSHandler, error) {
 	chrootMountsCounter, err := meter.Int64Counter("nfs.chroot.mounts")
 	if err != nil {
@@ -61,6 +64,7 @@ func NewNFSHandler(
 	h := &NFSHandler{
 		builder:               builder,
 		sandboxes:             sandboxes,
+		tracker:               tracker,
 		chrootsByLifecycleID:  make(map[string][]*chrooted.Chrooted),
 		chrootMountsCounter:   chrootMountsCounter,
 		chrootUnmountsCounter: chrootUnmountsCounter,
@@ -117,7 +121,7 @@ func (h *NFSHandler) Mount(
 	conn net.Conn,
 	request nfs.MountRequest,
 ) (nfs.MountStatus, billy.Filesystem, []nfs.AuthFlavor) {
-	fs, err := h.getChroot(ctx, conn.RemoteAddr(), request)
+	fs, vol, err := h.getChroot(ctx, conn.RemoteAddr(), request)
 	if err != nil {
 		logger.L().Warn(ctx, "failed to get path",
 			zap.String("request", string(request.Dirpath)),
@@ -126,22 +130,22 @@ func (h *NFSHandler) Mount(
 		return nfs.MountStatusErrAcces, mountFailedFS{}, nil
 	}
 
-	return nfs.MountStatusOk, wrapChrooted(fs), nil
+	return nfs.MountStatusOk, wrapChrooted(fs, ctx, h.tracker, vol), nil
 }
 
 var mountPath = regexp.MustCompile(`^/[^/]+$`)
 
-func (h *NFSHandler) getChroot(ctx context.Context, remoteAddr net.Addr, request nfs.MountRequest) (*chrooted.Chrooted, error) {
+func (h *NFSHandler) getChroot(ctx context.Context, remoteAddr net.Addr, request nfs.MountRequest) (*chrooted.Chrooted, quota.VolumeInfo, error) {
 	sbx, err := h.sandboxes.GetByHostPort(remoteAddr.String())
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrUnknownSandbox, err)
+		return nil, quota.VolumeInfo{}, fmt.Errorf("%w: %w", ErrUnknownSandbox, err)
 	}
 
 	// normalize the mount path
 	requestedPath := string(request.Dirpath)
 	regexpMatch := mountPath.MatchString(requestedPath)
 	if !regexpMatch {
-		return nil, fmt.Errorf(`%w: expected "/volume_name", got %q`, ErrInvalidMountPath, requestedPath)
+		return nil, quota.VolumeInfo{}, fmt.Errorf(`%w: expected "/volume_name", got %q`, ErrInvalidMountPath, requestedPath)
 	}
 
 	volumeName := requestedPath[1:]
@@ -156,21 +160,26 @@ func (h *NFSHandler) getChroot(ctx context.Context, remoteAddr net.Addr, request
 		}
 	}
 	if volumeMount == nil {
-		return nil, fmt.Errorf("failed to mount %q: %w", volumeName, ErrVolumeNotFound)
+		return nil, quota.VolumeInfo{}, fmt.Errorf("failed to mount %q: %w", volumeName, ErrVolumeNotFound)
 	}
 
 	teamID, ok := pkg.TryParseUUID(sbx.Metadata.Runtime.TeamID)
 	if !ok {
-		return nil, ErrInvalidTeamID
+		return nil, quota.VolumeInfo{}, ErrInvalidTeamID
 	}
 
 	if volumeMount.ID == uuid.Nil {
-		return nil, ErrVolumeID
+		return nil, quota.VolumeInfo{}, ErrVolumeID
+	}
+
+	vol := quota.VolumeInfo{
+		TeamID:   teamID,
+		VolumeID: volumeMount.ID,
 	}
 
 	fs, err := h.builder.Chroot(ctx, volumeMount.Type, teamID, volumeMount.ID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to mount %q: %w", volumeName, err)
+		return nil, quota.VolumeInfo{}, fmt.Errorf("failed to mount %q: %w", volumeName, err)
 	}
 
 	lifecycleID := sbx.LifecycleID
@@ -180,7 +189,7 @@ func (h *NFSHandler) getChroot(ctx context.Context, remoteAddr net.Addr, request
 
 	h.chrootMountsCounter.Add(ctx, 1)
 
-	return fs, nil
+	return fs, vol, nil
 }
 
 func (h *NFSHandler) Change(_ context.Context, filesystem billy.Filesystem) billy.Change {

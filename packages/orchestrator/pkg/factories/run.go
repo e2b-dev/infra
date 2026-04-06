@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/soheilhy/cmux"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -28,6 +29,7 @@ import (
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	clickhouseevents "github.com/e2b-dev/infra/packages/clickhouse/pkg/events"
 	clickhousehoststats "github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
+	clickhousevolumeusage "github.com/e2b-dev/infra/packages/clickhouse/pkg/volumeusage"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/chrooted"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/events"
@@ -37,6 +39,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy"
 	nfscfg "github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/quota"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/portmap"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
@@ -412,6 +415,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	sbxEventsDeliveryTargets := make([]event.Delivery[event.SandboxEvent], 0)
 
 	hostStatsDelivery := clickhousehoststats.NewNoopDelivery()
+	volumeUsageDelivery := clickhousevolumeusage.NewNoopDelivery()
 
 	// Clickhouse sandbox events and host stats delivery
 	if config.ClickhouseConnectionString != "" {
@@ -438,6 +442,14 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 		hostStatsDelivery = hostStatsDeliveryClickhouse
 		closers = append(closers, closer{"sandbox host stats delivery", hostStatsDeliveryClickhouse.Close})
+
+		volumeUsageDeliveryClickhouse, err := clickhousevolumeusage.NewDefaultClickhouseVolumeUsageDelivery(ctx, clickhouseConn, featureFlags)
+		if err != nil {
+			logger.L().Fatal(ctx, "failed to create clickhouse volume usage delivery", zap.Error(err))
+		}
+
+		volumeUsageDelivery = volumeUsageDeliveryClickhouse
+		closers = append(closers, closer{"volume usage delivery", volumeUsageDeliveryClickhouse.Close})
 	}
 
 	// cgroup manager for resource accounting
@@ -588,7 +600,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 	// nfs proxy server
 	if len(config.PersistentVolumeMounts) > 0 {
-		nfsClosers, err := startNFSProxy(ctx, config, builder, startService, sandboxes)
+		nfsClosers, err := startNFSProxy(ctx, config, builder, startService, sandboxes, redisClient, volumeUsageDelivery, globalLogger)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to start nfs proxy", zap.Error(err))
 		}
@@ -793,6 +805,9 @@ func startNFSProxy(
 	builder *chrooted.Builder,
 	startService func(name string, f func() error),
 	sandboxes *sandbox.Map,
+	redisClient redis.UniversalClient,
+	volumeUsageDelivery clickhousevolumeusage.Delivery,
+	zapLogger logger.Logger,
 ) ([]closer, error) {
 	var closers []closer
 
@@ -818,8 +833,14 @@ func startNFSProxy(
 		return nil, fmt.Errorf("failed to listen on nfs port: %w", err)
 	}
 
+	// quota tracker (nil if Redis is unavailable - quota tracking will be disabled)
+	var tracker *quota.Tracker
+	if redisClient != nil {
+		tracker = quota.NewTracker(redisClient, zapLogger.Detach(ctx).Named("quota"))
+	}
+
 	// nfs proxy implementation
-	nfsServer, err := nfsproxy.NewProxy(ctx, builder, sandboxes, nfscfg.Config{
+	nfsServer, err := nfsproxy.NewProxy(ctx, builder, sandboxes, tracker, nfscfg.Config{
 		Logging:           config.NFSProxyLogging,
 		Tracing:           config.NFSProxyTracing,
 		Metrics:           config.NFSProxyMetrics,
@@ -838,6 +859,23 @@ func startNFSProxy(
 			return lis.Close()
 		},
 	})
+
+	// volume scanner (only if quota tracking is enabled)
+	if tracker != nil {
+		pathBuilder := &quota.SimplePathBuilder{
+			MountPoints: config.PersistentVolumeMounts,
+		}
+		scanner := quota.NewScanner(tracker, pathBuilder, "default", zapLogger.Detach(ctx).Named("quota-scanner"))
+		startService("quota scanner", func() error {
+			return scanner.Run(ctx)
+		})
+
+		// volume usage snapshotter (writes hourly snapshots to ClickHouse for billing)
+		snapshotter := quota.NewSnapshotter(redisClient, volumeUsageDelivery, zapLogger.Detach(ctx).Named("quota-snapshotter"))
+		startService("quota snapshotter", func() error {
+			return snapshotter.Run(ctx)
+		})
+	}
 
 	return closers, nil
 }

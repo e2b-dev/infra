@@ -1,6 +1,7 @@
 package chroot
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,11 +10,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/quota"
 )
 
 // makeBF mimics the behavior of maybeWrap, by possibly casting *wrappedFile to billy.File
 func makeBF(f *os.File) billy.File {
-	return maybeWrap(f)
+	return maybeWrap(f, context.Background(), nil, quota.VolumeInfo{})
 }
 
 func TestWrappedFile(t *testing.T) {
@@ -39,7 +42,7 @@ func TestWrappedFile_LockUnlock(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
-	w1 := maybeWrap(f1)
+	w1 := maybeWrap(f1, context.Background(), nil, quota.VolumeInfo{})
 	require.NotNil(t, w1)
 
 	// Test basic Lock and Unlock
@@ -57,7 +60,7 @@ func TestWrappedFile_LockUnlock(t *testing.T) {
 	require.NoError(t, err)
 	defer f2.Close()
 
-	w2 := maybeWrap(f2)
+	w2 := maybeWrap(f2, context.Background(), nil, quota.VolumeInfo{})
 	require.NotNil(t, w2)
 
 	// Non-blocking lock on second handle should fail

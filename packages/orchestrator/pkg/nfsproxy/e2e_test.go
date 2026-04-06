@@ -140,7 +140,7 @@ func TestIntegrationTest(t *testing.T) {
 
 	createVolumeDir(t, builder, volumeType, teamID, volumeID)
 
-	s, err := NewProxy(t.Context(), builder, sandboxes, nfscfg.Config{})
+	s, err := NewProxy(t.Context(), builder, sandboxes, nil, nfscfg.Config{})
 	require.NoError(t, err)
 	go func() {
 		err := s.Serve(nfsListener)

@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/chroot"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/logged"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/quota"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/recovery"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/tracing"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
@@ -29,7 +30,7 @@ type Proxy struct {
 	server *nfs.Server
 }
 
-func NewProxy(ctx context.Context, builder *chrooted.Builder, sandboxes *sandbox.Map, config cfg.Config) (*Proxy, error) {
+func NewProxy(ctx context.Context, builder *chrooted.Builder, sandboxes *sandbox.Map, tracker *quota.Tracker, config cfg.Config) (*Proxy, error) {
 	setLogLevelOnce.Do(func() {
 		nfs.Log.SetLevel(config.NFSLogLevel)
 	})
@@ -39,7 +40,7 @@ func NewProxy(ctx context.Context, builder *chrooted.Builder, sandboxes *sandbox
 		handler nfs.Handler
 		err     error
 	)
-	handler, err = chroot.NewNFSHandler(builder, sandboxes)
+	handler, err = chroot.NewNFSHandler(builder, sandboxes, tracker)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create chroot NFS handler: %w", err)
 	}
