@@ -57,60 +57,6 @@ func TestPeerSeekable_Size_PeerNotAvailable_FallsBackToBase(t *testing.T) {
 	assert.Equal(t, int64(8192), size)
 }
 
-func TestPeerSeekable_ReadAt_PeerSucceeds(t *testing.T) {
-	t.Parallel()
-
-	data := []byte("block data")
-	stream := orchestratormocks.NewMockChunkService_ReadAtBuildSeekableClient(t)
-	// ReadAt copies the first message directly into buf; the inner loop is skipped when buf is full.
-	stream.EXPECT().Recv().Return(&orchestrator.ReadAtBuildSeekableResponse{Data: data}, nil).Once()
-
-	client := orchestratormocks.NewMockChunkServiceClient(t)
-	client.EXPECT().ReadAtBuildSeekable(mock.Anything, mock.MatchedBy(func(req *orchestrator.ReadAtBuildSeekableRequest) bool {
-		return req.GetOffset() == 0 && req.GetLength() == int64(len(data))
-	})).Return(stream, nil)
-
-	s := &peerSeekable{peerHandle: peerHandle[storage.Seekable]{client: client, buildID: "build-1", fileName: storage.MemfileName, uploaded: &atomic.Pointer[UploadedHeaders]{}}}
-	buf := make([]byte, len(data))
-	n, err := s.ReadAt(t.Context(), buf, 0)
-	require.NoError(t, err)
-	assert.Equal(t, len(data), n)
-	assert.Equal(t, data, buf)
-}
-
-func TestPeerSeekable_ReadAt_PeerNotAvailable_FallsBackToBase(t *testing.T) {
-	t.Parallel()
-
-	baseData := []byte("base data")
-	stream := orchestratormocks.NewMockChunkService_ReadAtBuildSeekableClient(t)
-	stream.EXPECT().Recv().Return(&orchestrator.ReadAtBuildSeekableResponse{Availability: &orchestrator.PeerAvailability{NotAvailable: true}}, nil).Once()
-
-	client := orchestratormocks.NewMockChunkServiceClient(t)
-	client.EXPECT().ReadAtBuildSeekable(mock.Anything, mock.Anything).Return(stream, nil)
-
-	baseSeekable := storage.NewMockSeekable(t)
-	baseSeekable.EXPECT().OpenRangeReader(mock.Anything, int64(0), int64(len(baseData)), (*storage.FrameTable)(nil)).
-		Return(io.NopCloser(bytes.NewReader(baseData)), nil)
-
-	base := storage.NewMockStorageProvider(t)
-	base.EXPECT().OpenSeekable(mock.Anything, "build-1/memfile", storage.MemfileObjectType).Return(baseSeekable, nil)
-
-	s := &peerSeekable{peerHandle: peerHandle[storage.Seekable]{
-		client:   client,
-		buildID:  "build-1",
-		fileName: storage.MemfileName,
-		uploaded: &atomic.Pointer[UploadedHeaders]{},
-		openFn: func(ctx context.Context) (storage.Seekable, error) {
-			return base.OpenSeekable(ctx, "build-1/memfile", storage.MemfileObjectType)
-		},
-	}}
-	buf := make([]byte, len(baseData))
-	n, err := s.ReadAt(t.Context(), buf, 0)
-	require.NoError(t, err)
-	assert.Equal(t, len(baseData), n)
-	assert.Equal(t, baseData, buf)
-}
-
 func TestPeerSeekable_OpenRangeReader_PeerSucceeds(t *testing.T) {
 	t.Parallel()
 

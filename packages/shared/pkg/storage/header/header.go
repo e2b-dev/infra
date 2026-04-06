@@ -12,7 +12,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 // BuildFileInfo holds metadata about a build's data file, stored in the header
@@ -110,40 +109,6 @@ func (t *Header) String() string {
 		t.Metadata.BuildId.String(),
 		len(t.Mapping),
 	)
-}
-
-func (t *Header) Mappings(all bool) string {
-	if t == nil {
-		return "[nil Header, no mappings]"
-	}
-	n := 0
-	for _, m := range t.Mapping {
-		if all || m.BuildId == t.Metadata.BuildId {
-			n++
-		}
-	}
-	result := fmt.Sprintf("All mappings: %d\n", n)
-	if !all {
-		result = fmt.Sprintf("Mappings for build %s: %d\n", t.Metadata.BuildId.String(), n)
-	}
-	for _, m := range t.Mapping {
-		if !all && m.BuildId != t.Metadata.BuildId {
-			continue
-		}
-		frames := 0
-		if m.FrameTable != nil {
-			frames = len(m.FrameTable.Frames)
-		}
-		result += fmt.Sprintf("  - Offset: %d, Length: %d, BuildId: %s, BuildStorageOffset: %d, numFrames: %d\n",
-			m.Offset,
-			m.Length,
-			m.BuildId.String(),
-			m.BuildStorageOffset,
-			frames,
-		)
-	}
-
-	return result
 }
 
 // IsNormalizeFixApplied is a helper method to soft fail for older versions of the header where fix for normalization was not applied.
@@ -313,25 +278,6 @@ func ValidateHeader(h *Header) error {
 		if m.Length == 0 {
 			return fmt.Errorf("mapping[%d] has zero length at offset %d for buildId %s",
 				i, m.Offset, m.BuildId.String())
-		}
-	}
-
-	return nil
-}
-
-// SetFrames associates compression frame information with this header's mappings.
-//
-// Only mappings matching this header's BuildId will be updated. Returns nil if frameTable is nil.
-func (t *Header) SetFrames(frameTable *storage.FrameTable) error {
-	if frameTable == nil {
-		return nil
-	}
-
-	for _, mapping := range t.Mapping {
-		if mapping.BuildId == t.Metadata.BuildId {
-			if err := mapping.SetFrames(frameTable); err != nil {
-				return err
-			}
 		}
 	}
 

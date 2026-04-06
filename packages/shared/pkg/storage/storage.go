@@ -214,16 +214,6 @@ func GetBlob(ctx context.Context, b Blob) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// LoadBlob opens a blob by path and reads its contents.
-func LoadBlob(ctx context.Context, s StorageProvider, path string, objectType ObjectType) ([]byte, error) {
-	blob, err := s.OpenBlob(ctx, path, objectType)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open blob %s: %w", path, err)
-	}
-
-	return GetBlob(ctx, blob)
-}
-
 // timedReadCloser wraps a reader with OTEL timer metrics.
 // Close records success (with total bytes read) or failure on the timer.
 type timedReadCloser struct {

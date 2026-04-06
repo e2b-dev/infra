@@ -104,32 +104,6 @@ func (ft *FrameTable) IsCompressed() bool {
 	return ft != nil && ft.compressionType != CompressionNone
 }
 
-// Range calls fn for each frame overlapping [start, start+length).
-func (ft *FrameTable) Range(start, length int64, fn func(offset FrameOffset, frame FrameSize) error) error {
-	currentOffset := ft.StartAt
-	for _, frame := range ft.Frames {
-		frameEnd := currentOffset.U + int64(frame.U)
-		requestEnd := start + length
-		if frameEnd <= start {
-			currentOffset.U += int64(frame.U)
-			currentOffset.C += int64(frame.C)
-
-			continue
-		}
-		if currentOffset.U >= requestEnd {
-			break
-		}
-
-		if err := fn(currentOffset, frame); err != nil {
-			return err
-		}
-		currentOffset.U += int64(frame.U)
-		currentOffset.C += int64(frame.C)
-	}
-
-	return nil
-}
-
 func (ft *FrameTable) Size() (uncompressed, compressed int64) {
 	for _, frame := range ft.Frames {
 		uncompressed += int64(frame.U)
@@ -139,28 +113,11 @@ func (ft *FrameTable) Size() (uncompressed, compressed int64) {
 	return uncompressed, compressed
 }
 
-// Subset returns frames covering r. Whole frames only (can't split compressed).
-func (ft *FrameTable) Subset(r Range) (*FrameTable, error) {
-	if ft == nil || r.Length == 0 {
-		return nil, nil
-	}
-	if r.Start < ft.StartAt.U {
-		return nil, fmt.Errorf("requested range starts before the beginning of the frame table")
-	}
-
-	result, _ := ft.SubsetFrom(r, 0)
-	if result == nil {
-		return nil, fmt.Errorf("requested range is beyond the end of the frame table")
-	}
-
-	return result, nil
-}
-
-// SubsetFrom is like Subset but starts scanning from frame index `from`,
+// Subset is like Subset but starts scanning from frame index `from`,
 // returning the index of the first frame past the result. Use this to
 // efficiently extract consecutive subsets from a sorted sequence of ranges
 // without re-scanning from the beginning each time.
-func (ft *FrameTable) SubsetFrom(r Range, from int) (*FrameTable, int) {
+func (ft *FrameTable) Subset(r Range, from int) (*FrameTable, int) {
 	if ft == nil || r.Length == 0 {
 		return nil, from
 	}
@@ -228,26 +185,4 @@ func (ft *FrameTable) FrameFor(offset int64) (starts FrameOffset, size FrameSize
 	}
 
 	return FrameOffset{}, FrameSize{}, fmt.Errorf("offset %d is beyond the end of the frame table", offset)
-}
-
-// GetFetchRange translates a U-space range to C-space using the frame table.
-func (ft *FrameTable) GetFetchRange(rangeU Range) (Range, error) {
-	fetchRange := rangeU
-	if ft.IsCompressed() {
-		start, size, err := ft.FrameFor(rangeU.Start)
-		if err != nil {
-			return Range{}, fmt.Errorf("getting frame for offset %d: %w", rangeU.Start, err)
-		}
-		endOffset := rangeU.Start + int64(rangeU.Length)
-		frameEnd := start.U + int64(size.U)
-		if endOffset > frameEnd {
-			return Range{}, fmt.Errorf("range %v spans beyond frame ending at %d", rangeU, frameEnd)
-		}
-		fetchRange = Range{
-			Start:  start.C,
-			Length: int(size.C),
-		}
-	}
-
-	return fetchRange, nil
 }

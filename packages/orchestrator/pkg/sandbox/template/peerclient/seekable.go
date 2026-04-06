@@ -2,7 +2,6 @@ package peerclient
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"sync/atomic"
@@ -41,55 +40,6 @@ func (s *peerSeekable) Size(ctx context.Context) (int64, error) {
 		},
 		func(ctx context.Context, base storage.Seekable) (int64, error) {
 			return base.Size(ctx)
-		},
-	)
-}
-
-func (s *peerSeekable) ReadAt(ctx context.Context, buf []byte, off int64) (int, error) {
-	return withPeerFallback(ctx, &s.peerHandle, "read-at peer-seekable", attrOpReadAt,
-		func(ctx context.Context) (peerAttempt[int], error) {
-			recv, err := openPeerSeekableStream(ctx, s.client, &orchestrator.ReadAtBuildSeekableRequest{
-				BuildId:  s.buildID,
-				FileName: s.fileName,
-				Offset:   off,
-				Length:   int64(len(buf)),
-			}, s.uploaded)
-			if err != nil {
-				logger.L().Warn(ctx, "failed to read build file from peer", logger.WithBuildID(s.buildID), zap.Int64("off", off), zap.Int("buf_len", len(buf)), zap.Error(err))
-
-				return peerAttempt[int]{}, nil
-			}
-
-			n := 0
-
-			for n < len(buf) {
-				data, recvErr := recv()
-				if errors.Is(recvErr, io.EOF) {
-					break
-				}
-
-				if recvErr != nil {
-					return peerAttempt[int]{value: n, bytes: int64(n), hit: true},
-						fmt.Errorf("failed to receive chunk from peer: %w", recvErr)
-				}
-
-				n += copy(buf[n:], data)
-			}
-
-			if n < len(buf) {
-				return peerAttempt[int]{value: n, bytes: int64(n), hit: true}, io.ErrUnexpectedEOF
-			}
-
-			return peerAttempt[int]{value: n, bytes: int64(n), hit: true}, nil
-		},
-		func(ctx context.Context, base storage.Seekable) (int, error) {
-			rc, err := base.OpenRangeReader(ctx, off, int64(len(buf)), nil)
-			if err != nil {
-				return 0, err
-			}
-			defer rc.Close()
-
-			return io.ReadFull(rc, buf)
 		},
 	)
 }

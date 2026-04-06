@@ -34,7 +34,6 @@ var (
 	attrOpWriteTo     = attribute.String("operation", "WriteTo")
 	attrOpExists      = attribute.String("operation", "Exists")
 	attrOpSize        = attribute.String("operation", "Size")
-	attrOpReadAt      = attribute.String("operation", "ReadAt")
 	attrOpRangeReader = attribute.String("operation", "OpenRangeReader")
 
 	attrResolveRedisError = attribute.String("peer_resolve", "redis_error")

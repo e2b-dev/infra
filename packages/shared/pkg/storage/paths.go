@@ -92,10 +92,4 @@ func StripCompression(name string) string {
 	return name
 }
 
-// AppendCompression adds a compression suffix to a path.
-// For example: "buildId/memfile" → "buildId/memfile.zstd".
-func AppendCompression(path string, ct CompressionType) string {
-	return path + ct.Suffix()
-}
-
 var knownCompressionSuffixes = []string{".lz4", ".zstd"}
