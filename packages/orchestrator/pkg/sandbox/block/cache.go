@@ -50,8 +50,8 @@ type Cache struct {
 	filePath         string
 	size             int64
 	blockSize        int64
-	mu               sync.RWMutex
 	mmap             *mmap.MMap
+	mu               sync.RWMutex
 	dirty            sync.Map
 	dirtyGranularity int64
 	dirtyFile        bool
