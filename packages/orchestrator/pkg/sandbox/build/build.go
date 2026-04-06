@@ -17,7 +17,6 @@ import (
 
 type File struct {
 	header      atomic.Pointer[header.Header]
-	swapFailed  atomic.Bool // set if header deserialization fails during P2P transition
 	store       *DiffStore
 	fileType    DiffType
 	persistence storage.StorageProvider
@@ -48,7 +47,15 @@ func (b *File) Header() *header.Header {
 	return b.header.Load()
 }
 
+// maxTransitionRetries caps the number of header-swap retries when the peer
+// signals upload completion via PeerTransitionedError. After a successful CAS,
+// subsequent swapHeader calls are no-ops, so without a limit the loop would
+// retry the same failing read forever.
+const maxTransitionRetries = 2
+
 func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
+	transitionRetries := 0
+
 	for n < len(p) {
 		h := b.header.Load()
 
@@ -101,7 +108,9 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 		)
 		if err != nil {
 			var transErr *storage.PeerTransitionedError
-			if errors.As(err, &transErr) && !b.swapFailed.Load() {
+			if errors.As(err, &transErr) && transitionRetries < maxTransitionRetries {
+				transitionRetries++
+
 				if swapErr := b.swapHeader(transErr); swapErr != nil {
 					return 0, fmt.Errorf("failed to swap header: %w", swapErr)
 				}
@@ -120,6 +129,8 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 
 // The slice access must be in the predefined blocksize of the build.
 func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
+	transitionRetries := 0
+
 	for {
 		h := b.header.Load()
 
@@ -142,7 +153,9 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 		result, err := diff.Slice(ctx, int64(mappedBuild.Offset), int64(h.Metadata.BlockSize), mappedBuild.FrameTable)
 		if err != nil {
 			var transErr *storage.PeerTransitionedError
-			if errors.As(err, &transErr) && !b.swapFailed.Load() {
+			if errors.As(err, &transErr) && transitionRetries < maxTransitionRetries {
+				transitionRetries++
+
 				if swapErr := b.swapHeader(transErr); swapErr != nil {
 					return nil, fmt.Errorf("failed to swap header: %w", swapErr)
 				}
@@ -159,8 +172,8 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 
 // swapHeader atomically replaces the header when the peer signals upload
 // completion. Only the first goroutine to CAS succeeds; others just retry
-// with the already-swapped header. On deserialization failure, marks the
-// swap as failed so the ReadAt/Slice loop doesn't retry indefinitely.
+// with the already-swapped header. The caller's retry counter bounds
+// repeated attempts.
 func (b *File) swapHeader(transErr *storage.PeerTransitionedError) error {
 	var headerBytes []byte
 
@@ -177,8 +190,6 @@ func (b *File) swapHeader(transErr *storage.PeerTransitionedError) error {
 
 	newH, err := header.DeserializeBytes(headerBytes)
 	if err != nil {
-		b.swapFailed.Store(true)
-
 		return fmt.Errorf("failed to swap header: %w", err)
 	}
 

@@ -144,8 +144,11 @@ type pendingBuildInfo struct {
 // PendingBuildInfo collects FrameTables and file sizes from compressed data
 // uploads across all layers. After all data files are uploaded, the collected
 // tables are applied to headers before the compressed headers are serialized
-// and uploaded.
-type PendingBuildInfo sync.Map
+// and uploaded. Safe for concurrent use from errgroup goroutines.
+type PendingBuildInfo struct {
+	mu sync.Mutex
+	m  map[string]pendingBuildInfo
+}
 
 func pendingBuildInfoKey(buildID, fileType string) string {
 	return buildID + "/" + fileType
@@ -156,16 +159,21 @@ func (p *PendingBuildInfo) add(key string, ft *storage.FrameTable, fileSize int6
 		return
 	}
 
-	(*sync.Map)(p).Store(key, pendingBuildInfo{ft: ft, fileSize: fileSize, checksum: checksum})
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.m == nil {
+		p.m = make(map[string]pendingBuildInfo)
+	}
+
+	p.m[key] = pendingBuildInfo{ft: ft, fileSize: fileSize, checksum: checksum}
 }
 
 func (p *PendingBuildInfo) get(key string) *pendingBuildInfo {
-	v, ok := (*sync.Map)(p).Load(key)
-	if !ok {
-		return nil
-	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
-	info, ok := v.(pendingBuildInfo)
+	info, ok := p.m[key]
 	if !ok {
 		return nil
 	}
