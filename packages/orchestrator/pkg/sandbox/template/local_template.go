@@ -10,19 +10,19 @@ import (
 )
 
 type LocalTemplate struct {
-	files storage.TemplateCacheFiles
+	paths storage.CachePaths
 
 	memfile block.ReadonlyDevice
 	rootfs  block.ReadonlyDevice
 }
 
 func NewLocalTemplate(
-	files storage.TemplateCacheFiles,
+	paths storage.CachePaths,
 	rootfs block.ReadonlyDevice,
 	memfile block.ReadonlyDevice,
 ) *LocalTemplate {
 	return &LocalTemplate{
-		files:   files,
+		paths:   paths,
 		memfile: memfile,
 		rootfs:  rootfs,
 	}
@@ -32,8 +32,8 @@ func (t *LocalTemplate) Close(ctx context.Context) error {
 	return closeTemplate(ctx, t)
 }
 
-func (t *LocalTemplate) Files() storage.TemplateCacheFiles {
-	return t.files
+func (t *LocalTemplate) Files() storage.CachePaths {
+	return t.paths
 }
 
 func (t *LocalTemplate) Memfile(ctx context.Context) (block.ReadonlyDevice, error) {

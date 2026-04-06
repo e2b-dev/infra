@@ -368,5 +368,12 @@ variable "persistent_volume_types" {
 }
 
 variable "additional_api_paths_handled_by_ingress" {
-  type = list(string)
+  type = list(object({
+    paths       = list(string)
+    timeout_sec = optional(number)
+  }))
+}
+
+variable "ingress_timeout_seconds" {
+  type = number
 }

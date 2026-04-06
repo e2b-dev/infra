@@ -156,9 +156,10 @@ variable "control_server_cluster_size" {
   default = 3
 }
 
-variable "additional_traefik_arguments" {
-  type    = list(string)
-  default = []
+variable "traefik_config_files" {
+  type        = map(string)
+  description = "Map of filename => content for additional Traefik dynamic configuration files"
+  default     = {}
 }
 
 variable "db_max_open_connections" {
