@@ -1,5 +1,5 @@
 job "logs-collector" {
-  type      = "system"
+type      = "system"
   node_pool = "all"
 
   priority = 85

@@ -1,5 +1,5 @@
 job "otel-collector-nomad-server" {
-  type        = "service"
+type        = "service"
   node_pool   = "${node_pool}"
 
   priority = 95

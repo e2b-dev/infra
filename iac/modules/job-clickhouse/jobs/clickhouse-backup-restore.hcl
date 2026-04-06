@@ -1,5 +1,5 @@
 job "clickhouse-backup-restore" {
-  type        = "batch"
+type        = "batch"
   node_pool   = "${node_pool}"
 
   parameterized {

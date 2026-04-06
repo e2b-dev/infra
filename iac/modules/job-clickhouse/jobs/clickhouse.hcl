@@ -1,5 +1,5 @@
 job "clickhouse" {
-  type        = "service"
+type        = "service"
   node_pool   = "${node_pool}"
 
 %{ for i in range("${server_count}") }

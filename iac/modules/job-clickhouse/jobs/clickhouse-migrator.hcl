@@ -1,5 +1,5 @@
 job "clickhouse-migrator" {
-  type        = "batch"
+type        = "batch"
   node_pool   = "${node_pool}"
 
 %{ for i in range("${server_count}") }

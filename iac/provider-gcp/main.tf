@@ -187,6 +187,8 @@ module "cluster" {
 module "nomad" {
   source = "./nomad"
 
+  git_commit_sha = var.git_commit_sha
+
   prefix         = var.prefix
   gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region

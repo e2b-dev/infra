@@ -1,3 +1,5 @@
+
+
 variable "update_stanza" {
   type = bool
 }

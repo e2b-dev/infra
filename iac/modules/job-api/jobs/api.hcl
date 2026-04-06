@@ -1,8 +1,7 @@
 job "api" {
   node_pool = "${node_pool}"
   priority = 90
-
-  group "api-service" {
+group "api-service" {
     count = ${count}
 
     // Try to restart the task indefinitely

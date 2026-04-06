@@ -1,5 +1,5 @@
 job "client-proxy" {
-  node_pool = "${node_pool}"
+node_pool = "${node_pool}"
   priority  = 80
 
   group "client-proxy" {

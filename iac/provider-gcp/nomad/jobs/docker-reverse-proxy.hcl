@@ -3,8 +3,7 @@ job "docker-reverse-proxy" {
   node_pool   = "${node_pool}"
   type        = "service"
   priority    = 85
-
-  group "reverse-proxy" {
+group "reverse-proxy" {
     // Try to restart the task indefinitely
     // Tries to restart every 5 seconds
     restart {

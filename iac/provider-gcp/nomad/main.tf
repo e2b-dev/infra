@@ -5,6 +5,14 @@ locals {
   loki_url                     = "http://loki.service.consul:${var.loki_service_port.port}"
 }
 
+resource "nomad_variable" "deployment_info" {
+  path      = "deployments/metadata"
+  namespace = "default"
+  items = {
+    git_commit_sha = var.git_commit_sha
+  }
+}
+
 # API
 data "google_secret_manager_secret_version" "postgres_connection_string" {
   secret = var.postgres_connection_string_secret_name
@@ -174,6 +182,7 @@ resource "nomad_job" "docker_reverse_proxy" {
 module "client_proxy" {
   source = "../../modules/job-client-proxy"
 
+
   update_stanza                    = var.api_machine_count > 1
   client_proxy_count               = var.client_proxy_count
   client_proxy_cpu_count           = var.client_proxy_resources_cpu_count
@@ -275,6 +284,7 @@ data "google_secret_manager_secret_version" "grafana_username" {
 module "otel_collector" {
   source = "../../modules/job-otel-collector"
 
+
   provider_name = "gcp"
 
   memory_mb = var.otel_collector_resources_memory_mb
@@ -295,6 +305,7 @@ module "otel_collector" {
 
 module "otel_collector_nomad_server" {
   source = "../../modules/job-otel-collector-nomad-server"
+
 
   provider_name = "gcp"
   node_pool     = var.api_node_pool
@@ -379,6 +390,7 @@ data "google_secret_manager_secret_version" "grafana_logs_collector_api_token" {
 module "logs_collector" {
   source = "../../modules/job-logs-collector"
 
+
   loki_endpoint = "http://loki.service.consul:${var.loki_service_port.port}"
 
   vector_health_port = var.logs_health_proxy_port.port
@@ -408,6 +420,7 @@ locals {
 
 module "orchestrator" {
   source = "../../modules/job-orchestrator"
+
 
   provider_name = "gcp"
   provider_gcp_config = {
@@ -454,6 +467,7 @@ data "external" "template_manager" {
     base64 = data.google_storage_bucket_object.template_manager.md5hash
   }
 }
+
 
 data "google_storage_bucket_object" "nomad_nodepool_apm" {
   count = var.template_manages_clusters_size_gt_1 ? 1 : 0
@@ -521,6 +535,7 @@ module "template_manager_autoscaler" {
 
 module "loki" {
   source = "../../modules/job-loki"
+
 
   provider_name = "gcp"
 
@@ -598,6 +613,7 @@ resource "google_service_account_key" "clickhouse_service_account_key" {
 
 module "clickhouse" {
   source = "../../modules/job-clickhouse"
+
 
   provider_name = "gcp"
 

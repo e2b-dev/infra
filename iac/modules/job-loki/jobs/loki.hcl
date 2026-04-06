@@ -1,5 +1,5 @@
 job "loki" {
-  type      = "service"
+type      = "service"
   node_pool = "${node_pool}"
   priority  = 75
 

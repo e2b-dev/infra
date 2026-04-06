@@ -1,5 +1,5 @@
 job "clickhouse-backup" {
-  type        = "batch"
+type        = "batch"
   node_pool   = "${node_pool}"
 
   periodic {

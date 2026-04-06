@@ -62,6 +62,8 @@ jobs:
           make copy-public-builds
 
       - name: Plan infrastructure
+        env:
+          GIT_COMMIT_SHA: ${{ inputs.commit_sha }}
         run: |
           make plan-without-jobs
 
@@ -69,5 +71,6 @@ jobs:
         if: inputs.plan_only == 'false'
         env:
           AUTO_CONFIRM_DEPLOY: true
+          GIT_COMMIT_SHA: ${{ inputs.commit_sha }}
         run: |
           make apply

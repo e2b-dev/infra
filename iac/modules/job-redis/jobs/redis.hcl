@@ -2,8 +2,7 @@ job "redis" {
   node_pool = "${node_pool}"
   type = "service"
   priority = 95
-
-  group "redis" {
+group "redis" {
     // Try to restart the task indefinitely
     // Tries to restart every 5 seconds
     restart {

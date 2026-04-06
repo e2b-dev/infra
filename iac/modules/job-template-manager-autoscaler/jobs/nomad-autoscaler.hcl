@@ -1,8 +1,7 @@
 job "nomad-autoscaler" {
   type     = "service"
   node_pool = "${node_pool}"
-
-  group "autoscaler" {
+group "autoscaler" {
     count = 1
 
     network {

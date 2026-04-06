@@ -1,5 +1,5 @@
 job "otel-collector" {
-  type        = "system"
+type        = "system"
   node_pool   = "all"
 
   priority = 95
