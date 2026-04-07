@@ -33,8 +33,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/metric/noop"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
@@ -423,9 +425,17 @@ func runConcurrentResume(
 			// Wait for the barrier.
 			<-gate
 
+			ctx, span := tracer.Start(b.Context(), "bench-resume",
+				trace.WithAttributes(
+					attribute.Int("concurrency", n),
+					attribute.Int("sandbox.index", i),
+					attribute.String("sandbox.id", runtime.SandboxID),
+				),
+			)
+
 			start := time.Now()
 			sbx, err := factory.ResumeSandbox(
-				b.Context(),
+				ctx,
 				tmpl,
 				config,
 				runtime,
@@ -434,6 +444,7 @@ func runConcurrentResume(
 				nil,
 			)
 			elapsed := time.Since(start)
+			span.End()
 
 			results[i] = concurrencyResult{
 				sandboxID: runtime.SandboxID,
