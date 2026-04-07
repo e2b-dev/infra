@@ -30,6 +30,9 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/handlers"
+	custommiddleware "github.com/e2b-dev/infra/packages/dashboard-api/internal/middleware"
+	metricsmiddleware "github.com/e2b-dev/infra/packages/dashboard-api/internal/middleware/otel/metrics"
+	tracingmiddleware "github.com/e2b-dev/infra/packages/dashboard-api/internal/middleware/otel/tracing"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
@@ -189,20 +192,32 @@ func run() int {
 		sharedauth.HeaderSupabaseTeam,
 	}
 	r.Use(cors.New(corsConfig))
+	r.Use(
+		custommiddleware.ExcludeRoutes(
+			tracingmiddleware.Middleware(tel.TracerProvider, serviceName),
+			"/health",
+		),
+		metricsmiddleware.Middleware(
+			tel.MeterProvider,
+			serviceName,
+			metricsmiddleware.WithShouldRecordFunc(func(_ string, route string, _ *http.Request) bool {
+				return route != "/health"
+			}),
+		),
+		sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{
+			TimeFormat:   time.RFC3339Nano,
+			UTC:          true,
+			DefaultLevel: zap.InfoLevel,
+			SkipPaths:    []string{"/health"},
+			Context: func(c *gin.Context) []zapcore.Field {
+				if teamInfo, ok := sharedauth.GetTeamInfo(c); ok {
+					return []zapcore.Field{logger.WithTeamID(teamInfo.ID.String())}
+				}
 
-	r.Use(sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{
-		TimeFormat:   time.RFC3339Nano,
-		UTC:          true,
-		DefaultLevel: zap.InfoLevel,
-		SkipPaths:    []string{"/health"},
-		Context: func(c *gin.Context) []zapcore.Field {
-			if teamInfo, ok := sharedauth.GetTeamInfo(c); ok {
-				return []zapcore.Field{logger.WithTeamID(teamInfo.ID.String())}
-			}
-
-			return nil
-		},
-	}))
+				return nil
+			},
+		}),
+	)
 
 	r.Use(
 		middleware.OapiRequestValidatorWithOptions(swagger,
