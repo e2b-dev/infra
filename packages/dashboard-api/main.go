@@ -30,9 +30,6 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/handlers"
-	custommiddleware "github.com/e2b-dev/infra/packages/dashboard-api/internal/middleware"
-	metricsmiddleware "github.com/e2b-dev/infra/packages/dashboard-api/internal/middleware/otel/metrics"
-	tracingmiddleware "github.com/e2b-dev/infra/packages/dashboard-api/internal/middleware/otel/tracing"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
@@ -40,6 +37,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
+	metricsmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/metrics"
+	tracingmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -193,7 +192,7 @@ func run() int {
 	}
 	r.Use(cors.New(corsConfig))
 	r.Use(
-		custommiddleware.ExcludeRoutes(
+		sharedmiddleware.ExcludeRoutes(
 			tracingmiddleware.Middleware(tel.TracerProvider, serviceName),
 			"/health",
 		),

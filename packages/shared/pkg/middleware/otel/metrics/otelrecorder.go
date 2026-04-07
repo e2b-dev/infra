@@ -8,6 +8,9 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
+// Recorder knows how to record and measure the metrics. This
+// has the required methods to be used with the HTTP
+// middlewares.
 type otelRecorder struct {
 	totalDuration metric.Float64Histogram
 }
@@ -21,7 +24,7 @@ func GetRecorder(meterProvider metric.MeterProvider, metricsPrefix string) Recor
 		return metricName
 	}
 
-	meter := meterProvider.Meter("github.com/e2b-dev/infra/packages/dashboard-api/internal/middleware/otel/metrics")
+	meter := meterProvider.Meter("github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/metrics")
 	totalDuration, _ := meter.Float64Histogram(
 		metricName("http.server.duration"),
 		metric.WithDescription("Time Taken by request"),
@@ -33,6 +36,7 @@ func GetRecorder(meterProvider metric.MeterProvider, metricsPrefix string) Recor
 	}
 }
 
+// ObserveHTTPRequestDuration measures the duration of an HTTP request.
 func (r *otelRecorder) ObserveHTTPRequestDuration(ctx context.Context, duration time.Duration, attributes []attribute.KeyValue) {
 	r.totalDuration.Record(ctx, float64(duration/time.Millisecond), metric.WithAttributes(attributes...))
 }
