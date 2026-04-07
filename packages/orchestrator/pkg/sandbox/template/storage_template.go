@@ -23,7 +23,7 @@ import (
 )
 
 type storageTemplate struct {
-	files storage.TemplateCacheFiles
+	paths storage.CachePaths
 
 	memfile  *utils.SetOnce[block.ReadonlyDevice]
 	rootfs   *utils.SetOnce[block.ReadonlyDevice]
@@ -49,15 +49,15 @@ func newTemplateFromStorage(
 	localSnapfile File,
 	localMetafile File,
 ) (*storageTemplate, error) {
-	files, err := storage.TemplateFiles{
+	paths, err := storage.Paths{
 		BuildID: buildId,
-	}.CacheFiles(config.StorageConfig)
+	}.Cache(config.StorageConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create template cache files: %w", err)
+		return nil, fmt.Errorf("failed to create cache paths: %w", err)
 	}
 
 	return &storageTemplate{
-		files:         files,
+		paths:         paths,
 		localSnapfile: localSnapfile,
 		localMetafile: localMetafile,
 		memfileHeader: memfileHeader,
@@ -73,7 +73,7 @@ func newTemplateFromStorage(
 
 func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore) {
 	ctx, span := tracer.Start(ctx, "fetch storage template", trace.WithAttributes(
-		telemetry.WithBuildID(t.files.BuildID),
+		telemetry.WithBuildID(t.paths.BuildID),
 	))
 	defer span.End()
 
@@ -91,8 +91,8 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		snapfile, snapfileErr := newStorageFile(
 			ctx,
 			t.persistence,
-			t.files.StorageSnapfilePath(),
-			t.files.CacheSnapfilePath(),
+			t.paths.Snapfile(),
+			t.paths.CacheSnapfile(),
 			storage.SnapfileObjectType,
 		)
 		if snapfileErr != nil {
@@ -124,8 +124,8 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		meta, err := newStorageFile(
 			ctx,
 			t.persistence,
-			t.files.StorageMetadataPath(),
-			t.files.CacheMetadataPath(),
+			t.paths.Metadata(),
+			t.paths.CacheMetadata(),
 			storage.MetadataObjectType,
 		)
 		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
@@ -141,11 +141,11 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			// If we can't find the metadata, we still want to return the metafile.
 			// This is used for templates that don't have metadata, like v1 templates.
 			logger.L().Info(ctx, "failed to fetch metafile, falling back to v1 template metadata",
-				logger.WithBuildID(t.files.BuildID),
+				logger.WithBuildID(t.paths.BuildID),
 				zap.Error(err),
 			)
 			oldTemplateMetadata := metadata.V1TemplateVersion()
-			err := oldTemplateMetadata.ToFile(t.files.CacheMetadataPath())
+			err := oldTemplateMetadata.ToFile(t.paths.CacheMetadata())
 			if err != nil {
 				sourceErr := fmt.Errorf("failed to write v1 template metadata to a file: %w", err)
 				if err := t.metafile.SetError(sourceErr); err != nil {
@@ -156,7 +156,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			}
 
 			if err := t.metafile.SetValue(&storageFile{
-				path: t.files.CacheMetadataPath(),
+				path: t.paths.CacheMetadata(),
 			}); err != nil {
 				return fmt.Errorf("failed to set metafile v1: %w", err)
 			}
@@ -175,7 +175,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		memfileStorage, memfileErr := NewStorage(
 			ctx,
 			buildStore,
-			t.files.BuildID,
+			t.paths.BuildID,
 			build.Memfile,
 			t.memfileHeader,
 			t.persistence,
@@ -203,7 +203,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		rootfsStorage, rootfsErr := NewStorage(
 			ctx,
 			buildStore,
-			t.files.BuildID,
+			t.paths.BuildID,
 			build.Rootfs,
 			t.rootfsHeader,
 			t.persistence,
@@ -231,8 +231,8 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 
-		logger.L().Error(ctx, "failed to fetch template files",
-			logger.WithBuildID(t.files.BuildID),
+		logger.L().Error(ctx, "failed to fetch template storage",
+			logger.WithBuildID(t.paths.BuildID),
 			zap.Error(err),
 		)
 
@@ -244,8 +244,8 @@ func (t *storageTemplate) Close(ctx context.Context) error {
 	return closeTemplate(ctx, t)
 }
 
-func (t *storageTemplate) Files() storage.TemplateCacheFiles {
-	return t.files
+func (t *storageTemplate) Files() storage.CachePaths {
+	return t.paths
 }
 
 func (t *storageTemplate) Memfile(ctx context.Context) (block.ReadonlyDevice, error) {

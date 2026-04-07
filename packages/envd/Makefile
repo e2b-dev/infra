@@ -7,9 +7,9 @@ LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD)"
 AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
 GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
 
-# Architecture for builds. Defaults to local arch; override for cross-compilation
-# (e.g., BUILD_ARCH=amd64 make build from an ARM64 host).
-BUILD_ARCH ?= $(shell go env GOARCH)
+# Architecture for builds. Defaults to amd64; override for ARM64 builds.
+# (e.g., BUILD_ARCH=arm64 make build-local)
+BUILD_ARCH ?= amd64
 # Docker platform string. Override for cross-platform builds:
 #   BUILD_PLATFORM=linux/arm64 make start-docker
 BUILD_PLATFORM ?= linux/$(BUILD_ARCH)

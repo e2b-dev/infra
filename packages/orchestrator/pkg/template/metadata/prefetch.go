@@ -48,8 +48,7 @@ func UploadMetadata(ctx context.Context, persistence storage.StorageProvider, t 
 	ctx, span := tracer.Start(ctx, "upload-metadata")
 	defer span.End()
 
-	templateFiles := storage.TemplateFiles{BuildID: t.Template.BuildID}
-	metadataPath := templateFiles.StorageMetadataPath()
+	metadataPath := storage.Paths{BuildID: t.Template.BuildID}.Metadata()
 
 	object, err := persistence.OpenBlob(ctx, metadataPath, storage.MetadataObjectType)
 	if err != nil {

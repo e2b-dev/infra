@@ -54,6 +54,7 @@ variable "otel_collector_grpc_endpoint" {
   description = "OpenTelemetry collector gRPC endpoint (e.g., localhost:4317)"
 }
 
-variable "additional_traefik_arguments" {
-  type = list(string)
+variable "traefik_config_files" {
+  type        = map(string)
+  description = "Map of filename => content for additional Traefik dynamic configuration files"
 }

@@ -309,9 +309,8 @@ variable "launch_darkly_api_key" {
   sensitive = true
 }
 
-variable "additional_traefik_arguments" {
-  type    = list(string)
-  default = []
+variable "traefik_config_files" {
+  type = map(string)
 }
 
 variable "db_max_open_connections" {

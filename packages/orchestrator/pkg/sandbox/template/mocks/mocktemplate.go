@@ -93,18 +93,18 @@ func (_c *MockTemplate_Close_Call) RunAndReturn(run func(ctx context.Context) er
 }
 
 // Files provides a mock function for the type MockTemplate
-func (_mock *MockTemplate) Files() storage.TemplateCacheFiles {
+func (_mock *MockTemplate) Files() storage.CachePaths {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for Files")
 	}
 
-	var r0 storage.TemplateCacheFiles
-	if returnFunc, ok := ret.Get(0).(func() storage.TemplateCacheFiles); ok {
+	var r0 storage.CachePaths
+	if returnFunc, ok := ret.Get(0).(func() storage.CachePaths); ok {
 		r0 = returnFunc()
 	} else {
-		r0 = ret.Get(0).(storage.TemplateCacheFiles)
+		r0 = ret.Get(0).(storage.CachePaths)
 	}
 	return r0
 }
@@ -126,12 +126,12 @@ func (_c *MockTemplate_Files_Call) Run(run func()) *MockTemplate_Files_Call {
 	return _c
 }
 
-func (_c *MockTemplate_Files_Call) Return(templateCacheFiles storage.TemplateCacheFiles) *MockTemplate_Files_Call {
-	_c.Call.Return(templateCacheFiles)
+func (_c *MockTemplate_Files_Call) Return(cachePaths storage.CachePaths) *MockTemplate_Files_Call {
+	_c.Call.Return(cachePaths)
 	return _c
 }
 
-func (_c *MockTemplate_Files_Call) RunAndReturn(run func() storage.TemplateCacheFiles) *MockTemplate_Files_Call {
+func (_c *MockTemplate_Files_Call) RunAndReturn(run func() storage.CachePaths) *MockTemplate_Files_Call {
 	_c.Call.Return(run)
 	return _c
 }
