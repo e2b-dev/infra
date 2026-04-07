@@ -128,20 +128,27 @@ func (r *decompressingCacheReader) Close() error {
 		return rawErr
 	}
 
-	if !skipCacheWriteback(r.ctx) && isCompleteRead(r.compressedBuf.Len(), r.expectedSize, nil) {
-		data := r.compressedBuf.Bytes()
-		r.compressedBuf = nil
-
-		r.cache.goCtx(r.ctx, func(ctx context.Context) {
-			ctx, span := r.cache.tracer.Start(ctx, "write compressed frame back to cache")
-			defer span.End()
-
-			if err := r.cache.writeToCache(ctx, r.offset, r.framePath, data); err != nil {
-				recordError(span, err)
-				recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpOpenRangeReader, err)
-			}
-		})
+	got := r.compressedBuf.Len()
+	if skipCacheWriteback(r.ctx) {
+		return nil
 	}
+
+	if !isCompleteRead(got, r.expectedSize, nil) {
+		return fmt.Errorf("compressed frame cache writeback: got %d bytes, expected %d for %s", got, r.expectedSize, r.framePath)
+	}
+
+	data := r.compressedBuf.Bytes()
+	r.compressedBuf = nil
+
+	r.cache.goCtx(r.ctx, func(ctx context.Context) {
+		ctx, span := r.cache.tracer.Start(ctx, "write compressed frame back to cache")
+		defer span.End()
+
+		if err := r.cache.writeToCache(ctx, r.offset, r.framePath, data); err != nil {
+			recordError(span, err)
+			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpOpenRangeReader, err)
+		}
+	})
 
 	return nil
 }

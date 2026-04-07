@@ -230,16 +230,19 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, offsetU int64, 
 	s.setDone()
 }
 
-func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, mmapSlice []byte, offsetU int64, ft *storage.FrameTable) (int64, error) {
+func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, mmapSlice []byte, offsetU int64, ft *storage.FrameTable) (totalRead int64, err error) {
 	reader, err := c.upstream.OpenRangeReader(ctx, offsetU, s.chunkLen, ft)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open range reader at %d: %w", offsetU, err)
 	}
-	defer reader.Close()
+	defer func() {
+		if closeErr := reader.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
 
 	blockSize := c.cache.BlockSize()
 	readBatch := max(blockSize, c.getMinReadBatchSize(ctx))
-	var totalRead int64
 
 	for totalRead < s.chunkLen {
 		// Read in batches of max(blockSize, minReadBatchSize) to align notification
