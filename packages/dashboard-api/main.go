@@ -191,6 +191,8 @@ func run() int {
 		sharedauth.HeaderSupabaseToken,
 		sharedauth.HeaderSupabaseTeam,
 	}
+	r.Use(cors.New(corsConfig))
+
 	r.Use(
 		sharedmiddleware.ExcludeRoutes(
 			tracingmiddleware.Middleware(tel.TracerProvider, serviceName),
@@ -218,7 +220,6 @@ func run() int {
 		}),
 		sharedmiddleware.RequestTimeout(requestTimeout),
 	)
-	r.Use(cors.New(corsConfig))
 
 	r.Use(
 		middleware.OapiRequestValidatorWithOptions(swagger,
