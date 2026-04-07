@@ -49,6 +49,7 @@ const (
 	readHeaderTimeout = 5 * time.Second
 	readTimeout       = 10 * time.Second
 	writeTimeout      = 75 * time.Second
+	requestTimeout    = 70 * time.Second
 	idleTimeout       = 620 * time.Second
 )
 
@@ -190,7 +191,6 @@ func run() int {
 		sharedauth.HeaderSupabaseToken,
 		sharedauth.HeaderSupabaseTeam,
 	}
-	r.Use(cors.New(corsConfig))
 	r.Use(
 		sharedmiddleware.ExcludeRoutes(
 			tracingmiddleware.Middleware(tel.TracerProvider, serviceName),
@@ -216,7 +216,9 @@ func run() int {
 				return nil
 			},
 		}),
+		sharedmiddleware.RequestTimeout(requestTimeout),
 	)
+	r.Use(cors.New(corsConfig))
 
 	r.Use(
 		middleware.OapiRequestValidatorWithOptions(swagger,
