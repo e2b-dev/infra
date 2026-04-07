@@ -53,6 +53,8 @@ job "filestore-cleanup" {
                 %{ else }
                 source      = "gcs::https://www.googleapis.com/storage/v1/${bucket_name}/clean-nfs-cache"
                 %{ endif }
+                destination = "local/clean-nfs-cache"
+                mode        = "file"
               }
 
         }
