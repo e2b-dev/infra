@@ -217,19 +217,7 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	}
 
 	if data.VolumeMounts != nil {
-		nfsCtx, cancel := context.WithTimeout(ctx, nfsMountTimeout)
-		defer cancel()
-
-		var wg sync.WaitGroup
-		for _, volume := range *data.VolumeMounts {
-			logger.Debug().Msgf("Mounting %s at %q", volume.NfsTarget, volume.Path)
-
-			wg.Go(func() {
-				a.setupNfs(nfsCtx, volume.NfsTarget, volume.Path)
-			})
-		}
-
-		wg.Wait()
+		a.setupNFS(ctx, logger, *data.VolumeMounts)
 	}
 
 	return nil
@@ -252,7 +240,28 @@ var nfsOptions = strings.Join([]string{
 
 const nfsMountTimeout = 5 * time.Second
 
-func (a *API) setupNfs(ctx context.Context, nfsTarget, path string) {
+func (a *API) setupNFS(ctx context.Context, logger zerolog.Logger, mounts []VolumeMount) {
+	a.setupNFSOnce.Do(func() {
+		logger.Debug().Msg("Mounting NFS volumes")
+
+		ctx = context.WithoutCancel(ctx)
+		ctx, cancel := context.WithTimeout(ctx, nfsMountTimeout)
+		defer cancel()
+
+		var wg sync.WaitGroup
+		for _, volume := range *data.VolumeMounts {
+			logger.Debug().Msgf("Mounting %s at %q", volume.NfsTarget, volume.Path)
+
+			wg.Go(func() {
+				a.mountNFS(ctx, volume.NfsTarget, volume.Path)
+			})
+		}
+
+		wg.Wait()
+	})
+}
+
+func (a *API) mountNFS(ctx context.Context, nfsTarget, path string) {
 	commands := [][]string{
 		{"mkdir", "-p", path},
 		{"mount", "-v", "-t", "nfs", "-o", "fg,hard," + nfsOptions, nfsTarget, path},

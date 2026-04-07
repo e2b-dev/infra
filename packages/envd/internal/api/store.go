@@ -37,6 +37,8 @@ type API struct {
 
 	lastSetTime *utils.AtomicMax
 	initLock    sync.Mutex
+
+	setupNFSOnce sync.Once
 }
 
 func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
