@@ -79,6 +79,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 	childSpan.SetAttributes(
 		telemetry.WithBuildID(req.GetSandbox().GetBuildId()),
+		telemetry.WithTeamID(req.GetSandbox().GetTeamId()),
 		telemetry.WithTemplateID(req.GetSandbox().GetTemplateId()),
 		telemetry.WithKernelVersion(req.GetSandbox().GetKernelVersion()),
 		telemetry.WithSandboxID(req.GetSandbox().GetSandboxId()),
