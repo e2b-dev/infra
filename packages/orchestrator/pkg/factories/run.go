@@ -466,6 +466,14 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}
 	closers = append(closers, closer{"sandbox observer", sandboxObserver.Close})
 
+	// host metrics — samples CPU in the background so GetCPUMetrics is a
+	// non-blocking cache read on the request path.
+	hostMetrics := metrics.NewHostMetrics()
+	startService("host metrics poller", func() error {
+		return hostMetrics.Start(ctx)
+	})
+	closers = append(closers, closer{"host metrics poller", hostMetrics.Close})
+
 	// sandbox proxy
 	sandboxProxy, err := proxy.NewSandboxProxy(tel.MeterProvider, config.ProxyPort, sandboxes, featureFlags)
 	if err != nil {
@@ -640,7 +648,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		closers = append(closers, closer{"template server", tmpl.Close})
 	}
 
-	infoService := service.NewInfoService(serviceInfo, sandboxes)
+	infoService := service.NewInfoService(serviceInfo, sandboxes, hostMetrics)
 	orchestratorinfo.RegisterInfoServiceServer(grpcServer, infoService)
 
 	grpcHealth := health.NewServer()
