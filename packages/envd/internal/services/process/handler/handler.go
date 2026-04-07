@@ -221,7 +221,7 @@ func New(
 				}
 
 				if readErr != nil {
-					fmt.Fprintf(os.Stderr, "error reading from pty: %s\n", readErr)
+					logger.Error().Err(readErr).Msg("error reading from pty")
 
 					break
 				}
@@ -265,7 +265,7 @@ func New(
 				}
 
 				if readErr != nil {
-					fmt.Fprintf(os.Stderr, "error reading from stdout: %s\n", readErr)
+					logger.Error().Err(readErr).Msg("error reading from stdout")
 
 					break
 				}
@@ -307,7 +307,7 @@ func New(
 				}
 
 				if readErr != nil {
-					fmt.Fprintf(os.Stderr, "error reading from stderr: %s\n", readErr)
+					logger.Error().Err(readErr).Msg("error reading from stderr")
 
 					break
 				}
