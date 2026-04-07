@@ -52,6 +52,7 @@ func NewDefaultClickhouseHostStatsDelivery(
 
 	return NewClickhouseHostStatsDelivery(
 		ctx, conn, batcher.BatcherOptions{
+			Name:         "sandbox-host-stats",
 			MaxBatchSize: maxBatchSize,
 			MaxDelay:     maxDelay,
 			QueueSize:    batcherQueueSize,
