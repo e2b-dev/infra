@@ -61,6 +61,7 @@ tf_vars := \
 	$(call tfvar, ENVD_TIMEOUT) \
 	$(call tfvar, REDIS_MANAGED) \
 	$(call tfvar, REDIS_SHARD_COUNT) \
+	$(call tfvar, GCP_REDIS_ENGINE_VERSION) \
 	$(call tfvar, GRAFANA_MANAGED) \
 	$(call tfvar, FILESTORE_CACHE_ENABLED) \
 	$(call tfvar, FILESTORE_CACHE_TIER) \
@@ -111,10 +112,6 @@ init:
 .PHONY: state-migrate
 state-migrate:
 	@ printf "Running Terraform state migrations for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
-	@ $(tf_vars) $(TF) state mv 'module.nomad.nomad_job.api' 'module.nomad.module.api.nomad_job.api' || true
-	@ $(tf_vars) $(TF) state mv 'module.nomad.nomad_job.template_manager' 'module.nomad.module.template_manager.nomad_job.template_manager' || true
-	@ $(tf_vars) $(TF) state mv 'module.nomad.nomad_job.nomad_nodepool_apm[0]' 'module.nomad.module.template_manager_autoscaler[0].nomad_job.nomad_nodepool_apm' || true
-	@ $(tf_vars) $(TF) state mv 'module.nomad.nomad_job.redis[0]' 'module.nomad.module.redis[0].nomad_job.redis' || true
 
 .PHONY: apply-init
 apply-init:

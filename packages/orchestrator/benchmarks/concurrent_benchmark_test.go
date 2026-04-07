@@ -333,7 +333,7 @@ func BenchmarkConcurrentResume(b *testing.B) {
 			FirecrackerVersion: fcVersion,
 		}
 
-		metadata := storage.TemplateFiles{BuildID: buildID}
+		metadata := storage.Paths{BuildID: buildID}
 		_, err = builder.Build(b.Context(), metadata, templateConfig, l.Detach(b.Context()).Core())
 		require.NoError(b, err)
 	}

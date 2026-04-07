@@ -2,11 +2,13 @@ package nodemanager
 
 import (
 	"context"
+	"strconv"
 
 	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/edge"
+	grpcshared "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
@@ -48,6 +50,10 @@ func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.Sandbo
 			},
 		)
 	}
+
+	// Pass snapshot (is_resume) via metadata so the server-side stats handler
+	// can include it in otelgrpc metric attributes during TagRPC.
+	md.Set(grpcshared.IsResumeMetadataKey, strconv.FormatBool(req.GetSandbox().GetSnapshot()))
 
 	// Merge medata from client (auth, routing with service instance id) and event metadata.
 	return n.client, appendMetadataCtx(ctx, md)

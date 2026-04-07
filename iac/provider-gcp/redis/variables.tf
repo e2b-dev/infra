@@ -25,6 +25,10 @@ variable "shard_count" {
   default = 1
 }
 
+variable "engine_version" {
+  type = string
+}
+
 // https://registry.terraform.io/providers/hashicorp/google/6.38.0/docs/resources/memorystore_instance#replica_count-1
 variable "replica_count" {
   type    = number

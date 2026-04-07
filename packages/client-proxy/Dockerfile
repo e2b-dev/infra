@@ -2,6 +2,7 @@ ARG GOLANG_VERSION=1.25.4
 ARG ALPINE_VERSION=3.22
 
 FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
+ARG TARGETARCH
 
 RUN apk add --no-cache make
 
@@ -32,7 +33,8 @@ COPY ./client-proxy/Makefile ./client-proxy/Makefile
 WORKDIR /build/client-proxy
 
 ARG COMMIT_SHA
-RUN --mount=type=cache,target=/root/.cache/go-build make build COMMIT_SHA=${COMMIT_SHA}
+# Use Docker's TARGETARCH so GOARCH matches the container platform.
+RUN --mount=type=cache,target=/root/.cache/go-build make build COMMIT_SHA=${COMMIT_SHA} BUILD_ARCH=${TARGETARCH}
 RUN chmod +x /build/client-proxy/bin/client-proxy
 
 FROM alpine:${ALPINE_VERSION}

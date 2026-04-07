@@ -35,8 +35,16 @@ jobs:
       - name: Parse .tool-versions
         uses: wistia/parse-tool-versions@v2.1.1
 
+      - name: Fetch busybox for orchestrator embed
+        if: contains(matrix.modules, 'orchestrator')
+        run: make -C packages/orchestrator fetch-busybox
+
       - name: golangci-lint ${{ matrix.modules }}
         uses: golangci/golangci-lint-action@v8
         with:
           version: "v${{ env.GOLANGCI_LINT }}"
           working-directory: ${{ matrix.modules }}
+
+          # disable, as it randomly fails with the following error:
+          # The command is terminated due to an error: [../../.golangci.yml] validate: compile schema: failing loading "https://golangci-lint.run/jsonschema/golangci.v2.11.jsonschema.json": Get "https://golangci-lint.run/jsonschema/golangci.v2.11.jsonschema.json": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+          verify: 'false'

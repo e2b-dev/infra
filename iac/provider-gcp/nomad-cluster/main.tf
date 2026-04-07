@@ -117,6 +117,7 @@ module "network" {
   domain_name                             = var.domain_name
   additional_domains                      = var.additional_domains
   additional_api_paths_handled_by_ingress = var.additional_api_paths_handled_by_ingress
+  ingress_timeout_seconds                 = var.ingress_timeout_seconds
 
   client_proxy_port        = var.client_proxy_port
   client_proxy_health_port = var.client_proxy_health_port
