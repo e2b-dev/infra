@@ -216,6 +216,7 @@ func (b *Batcher[T]) processBatches(ctx context.Context) {
 		mQueueLen.Record(ctx, int64(len(b.ch)), b.attrs)
 
 		batch = batch[:0]
+		ticker.Reset(b.MaxDelay)
 	}
 
 	for {
