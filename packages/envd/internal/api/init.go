@@ -244,12 +244,12 @@ func (a *API) setupNFS(ctx context.Context, logger zerolog.Logger, mounts []Volu
 	a.setupNFSOnce.Do(func() {
 		logger.Debug().Msg("Mounting NFS volumes")
 
-		ctx = context.WithoutCancel(ctx)
+		ctx := context.WithoutCancel(ctx)
 		ctx, cancel := context.WithTimeout(ctx, nfsMountTimeout)
 		defer cancel()
 
 		var wg sync.WaitGroup
-		for _, volume := range *data.VolumeMounts {
+		for _, volume := range mounts {
 			logger.Debug().Msgf("Mounting %s at %q", volume.NfsTarget, volume.Path)
 
 			wg.Go(func() {
