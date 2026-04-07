@@ -52,7 +52,7 @@ func NewDefaultClickhouseSandboxEventsDelivery(ctx context.Context, conn driver.
 
 	maxDelay := time.Duration(featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherMaxDelay)) * time.Millisecond
 
-	batcherQueueSize := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherQueueSize, featureflags.SandboxContext("clickhouse-batcher"))
+	batcherQueueSize := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherQueueSize)
 
 	return NewClickhouseSandboxEventsDelivery(
 		ctx, conn, batcher.BatcherOptions{
