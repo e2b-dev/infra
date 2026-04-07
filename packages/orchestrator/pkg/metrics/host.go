@@ -73,6 +73,7 @@ func (h *HostMetrics) Start() error {
 
 func (h *HostMetrics) Close(_ context.Context) error {
 	h.closedOnce.Do(func() { close(h.closed) })
+
 	return nil
 }
 
@@ -86,7 +87,8 @@ func (h *HostMetrics) GetCPUMetrics() (*CPUMetrics, error) {
 		return &CPUMetrics{}, h.cpuErr
 	}
 
-	return h.cpu, h.cpuErr
+	// Valid cache exists — serve it regardless of transient errors.
+	return h.cpu, nil
 }
 
 func (h *HostMetrics) sampleCPU() {
