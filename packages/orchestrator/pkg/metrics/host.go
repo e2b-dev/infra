@@ -51,9 +51,11 @@ func NewHostMetrics() *HostMetrics {
 	return &HostMetrics{}
 }
 
-// Start samples CPU every cpuPollInterval until ctx is cancelled.
-// Intended to be run via startService.
+// Start primes the CPU cache immediately then resamples every cpuPollInterval
+// until ctx is cancelled. Intended to be run via startService.
 func (h *HostMetrics) Start(ctx context.Context) error {
+	h.sampleCPU()
+
 	ticker := time.NewTicker(cpuPollInterval)
 	defer ticker.Stop()
 
