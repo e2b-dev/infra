@@ -15,9 +15,11 @@ import (
 	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
 )
 
-const MetricPrefix = "metric."
-const processingStartTimeKey = "metrics.processingStartTime"
-const HTTPStatusCodeGranularKey = attribute.Key("http.status_code_granular")
+const (
+	MetricPrefix              = "metric."
+	processingStartTimeKey    = "metrics.processingStartTime"
+	HTTPStatusCodeGranularKey = attribute.Key("http.status_code_granular")
+)
 
 func SetProcessingStartTime(c *gin.Context) {
 	c.Set(processingStartTimeKey, time.Now())
