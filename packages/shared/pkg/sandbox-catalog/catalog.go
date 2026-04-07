@@ -14,6 +14,7 @@ type SandboxInfo struct {
 
 	ExecutionID      string    `json:"execution_id"`
 	StartedAt        time.Time `json:"sandbox_started_at"`          // when sandbox was started
+	EndAt            time.Time `json:"sandbox_end_at"`              // when sandbox is currently set to expire
 	MaxLengthInHours int64     `json:"sandbox_max_length_in_hours"` // how long can sandbox can possibly run (in hours)
 }
 

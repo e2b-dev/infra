@@ -20,6 +20,7 @@ const (
 	sbxOrchestratorIdHeader   = "orchestrator-id"
 	sbxMaxLengthInHoursHeader = "sandbox-max-length-in-hours"
 	sbxStartTimeHeader        = "sandbox-start-time"
+	sbxEndTimeHeader          = "sandbox-end-time"
 )
 
 var (
@@ -42,6 +43,7 @@ type SandboxCatalogCreateEvent struct {
 	OrchestratorID          string
 	SandboxMaxLengthInHours int64
 	SandboxStartTime        time.Time // Formatted as RFC3339 (ISO 8601)
+	SandboxEndTime          time.Time // Formatted as RFC3339 (ISO 8601)
 }
 
 type SandboxCatalogDeleteEvent struct {
@@ -58,6 +60,7 @@ func SerializeSandboxCatalogCreateEvent(e SandboxCatalogCreateEvent) metadata.MD
 			sbxExecutionIdHeader:      e.ExecutionID,
 			sbxOrchestratorIdHeader:   e.OrchestratorID,
 			sbxStartTimeHeader:        e.SandboxStartTime.Format(time.RFC3339),
+			sbxEndTimeHeader:          e.SandboxEndTime.Format(time.RFC3339),
 			sbxMaxLengthInHoursHeader: strconv.Itoa(int(e.SandboxMaxLengthInHours)),
 		},
 	)
@@ -110,12 +113,21 @@ func ParseSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEven
 		return nil, ErrSandboxCreationParse
 	}
 
+	sandboxEndTime := sandboxStartTime.Add(time.Duration(maxLengthInHours) * time.Hour)
+	if sandboxEndTimeStr, found := getMetadataValue(md, sbxEndTimeHeader); found {
+		sandboxEndTime, err = time.Parse(time.RFC3339, sandboxEndTimeStr)
+		if err != nil {
+			return nil, ErrSandboxCreationParse
+		}
+	}
+
 	return &SandboxCatalogCreateEvent{
 		SandboxID:               sandboxID,
 		ExecutionID:             executionID,
 		OrchestratorID:          orchestratorID,
 		SandboxMaxLengthInHours: int64(maxLengthInHours),
 		SandboxStartTime:        sandboxStartTime,
+		SandboxEndTime:          sandboxEndTime,
 	}, nil
 }
 

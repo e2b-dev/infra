@@ -25,6 +25,7 @@ func seedRedisCatalogEntry(t *testing.T) (context.Context, redis.UniversalClient
 		OrchestratorIP:   "10.0.0.1",
 		ExecutionID:      "exec-1",
 		StartedAt:        time.Now().UTC().Truncate(time.Second),
+		EndAt:            time.Now().UTC().Truncate(time.Second).Add(30 * time.Minute),
 		MaxLengthInHours: 2,
 	}
 
