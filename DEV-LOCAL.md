@@ -9,9 +9,9 @@
 | OS | Linux (bare metal or VM with nested virtualization) | KVM support required for Firecracker |
 | CPU | 4+ cores recommended | Firecracker spawns microVMs |
 | RAM | 8 GB minimum, 16 GB recommended | Huge pages alone reserve ~4 GB |
-| Go | 1.25.4+ | See `go.work` for the exact version |
+| Go | - | See `go.work` for the exact version |
 | Docker / Docker Compose | Docker Engine 24+ with Compose v2 | `docker compose version` to verify |
-| Node.js / npm | Required for building envd and base template | `node --version` |
+| Node.js / npm | Required for building base template | `node --version` |
 | gsutil | Google Cloud SDK CLI | Used to download prebuilt kernels and firecrackers |
 
 **KVM check** — the orchestrator runs Firecracker microVMs, which require `/dev/kvm`:
@@ -88,7 +88,6 @@ Verify: `docker compose -f packages/local-dev/docker-compose.yaml ps` — all se
    ```bash
    make -C packages/db migrate-local
    ```
-   Verify: no errors, output ends with `Done`.
 
 2. Initialize the ClickHouse database:
    ```bash
@@ -129,7 +128,7 @@ These commands launch each service in the foreground. You need multiple terminal
    ```bash
    make -C packages/client-proxy run-local
    ```
-   Verify: `curl -s http://localhost:3002/health` returns a response.
+   Verify: `curl -s http://localhost:3003/health` returns a response.
 
 ## Build the base template
 
@@ -260,4 +259,4 @@ If you see memory allocation errors from Firecracker, verify huge pages are allo
 grep HugePages /proc/meminfo
 ```
 
-`HugePages_Total` should be 2048. If `HugePages_Free` is 0, the system may not have enough free memory. Stop other applications or increase RAM.
+If `HugePages_Free` is 0, the system may not have enough free memory. Stop other applications or increase RAM.
