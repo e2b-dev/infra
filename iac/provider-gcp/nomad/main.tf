@@ -493,7 +493,6 @@ module "template_manager_autoscaler" {
   autoscaler_version         = var.nomad_autoscaler_version
   nomad_token                = var.nomad_acl_token_secret
   apm_plugin_artifact_source = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/nomad-nodepool-apm?version=${data.google_storage_bucket_object.nomad_nodepool_apm[0].generation}"
-  apm_plugin_checksum        = data.google_storage_bucket_object.nomad_nodepool_apm[0].generation
 }
 
 module "loki" {
@@ -609,7 +608,7 @@ data "google_storage_bucket_object" "filestore_cleanup" {
 }
 
 locals {
-  clean_nfs_cache_artifact_source = var.environment == "dev" ? "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/clean-nfs-cache?version=${data.google_storage_bucket_object.filestore_cleanup.generation}" : "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/clean-nfs-cache"
+  clean_nfs_cache_artifact_source = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/clean-nfs-cache?version=${data.google_storage_bucket_object.filestore_cleanup.generation}"
 }
 
 resource "nomad_job" "clean_nfs_cache" {
