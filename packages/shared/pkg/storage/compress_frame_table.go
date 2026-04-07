@@ -113,10 +113,10 @@ func (ft *FrameTable) Size() (uncompressed, compressed int64) {
 	return uncompressed, compressed
 }
 
-// Subset is like Subset but starts scanning from frame index `from`,
-// returning the index of the first frame past the result. Use this to
-// efficiently extract consecutive subsets from a sorted sequence of ranges
-// without re-scanning from the beginning each time.
+// Subset extracts frames overlapping range r, starting the scan at frame
+// index `from`. It returns the index of the first included frame (not one
+// past it) so that consecutive calls re-check the boundary frame — this is
+// correct because a frame straddling two ranges must appear in both subsets.
 func (ft *FrameTable) Subset(r Range, from int) (*FrameTable, int) {
 	if ft == nil || r.Length == 0 {
 		return nil, from

@@ -217,12 +217,14 @@ func compressLZ4(data []byte) ([]byte, error) {
 	buf.Grow(len(data))
 
 	w := lz4.NewWriter(&buf)
-	w.Apply(
+	if err := w.Apply(
 		lz4.BlockSizeOption(lz4.Block4Mb),
 		lz4.BlockChecksumOption(true),
 		lz4.ChecksumOption(true),
 		lz4.CompressionLevelOption(lz4.Fast),
-	)
+	); err != nil {
+		return nil, fmt.Errorf("lz4 options: %w", err)
+	}
 
 	if _, err := w.Write(data); err != nil {
 		return nil, fmt.Errorf("lz4 compress: %w", err)
