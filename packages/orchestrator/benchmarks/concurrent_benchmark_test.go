@@ -139,10 +139,18 @@ func BenchmarkConcurrentResume(b *testing.B) {
 		kernelVersion   = "vmlinux-6.1.158"
 		fcVersion       = featureflags.DefaultFirecrackerVersion
 		templateID      = "fcb33d09-3141-42c4-8d3b-c2df411681db"
-		buildID         = "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
-		useHugePages    = false
 		templateVersion = "v2.0.0"
+
+		buildIDNormal    = "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
+		buildIDHugePages = "ba6aae36-74f7-487a-b6f7-74fd7c94e480"
 	)
+
+	useHugePages := os.Getenv("DISABLE_HUGE_PAGES") != "true"
+	buildID := buildIDHugePages
+	if !useHugePages {
+		buildID = buildIDNormal
+		b.Log("huge pages disabled")
+	}
 
 	// cache & ephemeral paths
 	persistenceDir := getPersistenceDir()
