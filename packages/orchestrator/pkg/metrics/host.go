@@ -104,6 +104,7 @@ func (h *HostMetrics) sampleCPU() {
 }
 
 func (h *HostMetrics) GetMemoryMetrics() (*MemoryMetrics, error) {
+	// Get memory usage and total
 	memInfo, err := mem.VirtualMemory()
 	if err != nil {
 		return nil, err
@@ -116,6 +117,7 @@ func (h *HostMetrics) GetMemoryMetrics() (*MemoryMetrics, error) {
 }
 
 func (h *HostMetrics) GetDiskMetrics() ([]DiskInfo, error) {
+	// Get all disk partitions
 	partitions, err := disk.Partitions(false) // false = exclude pseudo filesystems
 	if err != nil {
 		return nil, err
