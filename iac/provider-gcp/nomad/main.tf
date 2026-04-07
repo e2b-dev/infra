@@ -394,16 +394,9 @@ data "google_storage_bucket_object" "orchestrator" {
   bucket = var.fc_env_pipeline_bucket_name
 }
 
-data "external" "orchestrator_checksum" {
-  program = ["bash", "${path.module}/scripts/checksum.sh"]
-
-  query = {
-    base64 = data.google_storage_bucket_object.orchestrator.md5hash
-  }
-}
-
 locals {
-  orchestrator_artifact_source = var.environment == "dev" ? "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/orchestrator?version=${data.external.orchestrator_checksum.result.hex}" : "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/orchestrator"
+  orchestrator_checksum        = data.google_storage_bucket_object.orchestrator.generation
+  orchestrator_artifact_source = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/orchestrator?version=${local.orchestrator_checksum}"
 }
 
 module "orchestrator" {
@@ -420,7 +413,7 @@ module "orchestrator" {
 
   environment           = var.environment
   artifact_source       = local.orchestrator_artifact_source
-  orchestrator_checksum = data.external.orchestrator_checksum.result.hex
+  orchestrator_checksum = local.orchestrator_checksum
 
   logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
@@ -446,30 +439,8 @@ data "google_storage_bucket_object" "template_manager" {
   bucket = var.fc_env_pipeline_bucket_name
 }
 
-
-data "external" "template_manager" {
-  program = ["bash", "${path.module}/scripts/checksum.sh"]
-
-  query = {
-    base64 = data.google_storage_bucket_object.template_manager.md5hash
-  }
-}
-
-data "google_storage_bucket_object" "nomad_nodepool_apm" {
-  count = var.template_manages_clusters_size_gt_1 ? 1 : 0
-
-  name   = "nomad-nodepool-apm"
-  bucket = var.fc_env_pipeline_bucket_name
-}
-
-data "external" "nomad_nodepool_apm_checksum" {
-  count = var.template_manages_clusters_size_gt_1 ? 1 : 0
-
-  program = ["bash", "${path.module}/scripts/checksum.sh"]
-
-  query = {
-    base64 = data.google_storage_bucket_object.nomad_nodepool_apm[0].md5hash
-  }
+locals {
+  template_manager_artifact_source = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/template-manager?version=${data.google_storage_bucket_object.template_manager.generation}"
 }
 
 module "template_manager" {
@@ -493,7 +464,7 @@ module "template_manager" {
   domain_name      = var.domain_name
 
   api_secret                      = var.api_secret
-  artifact_source                 = var.environment == "dev" ? "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/template-manager?version=${data.external.template_manager.result.hex}" : "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/template-manager"
+  artifact_source                 = local.template_manager_artifact_source
   template_bucket_name            = var.template_bucket_name
   build_cache_bucket_name         = var.build_cache_bucket_name
   otel_collector_grpc_endpoint    = "localhost:${var.otel_collector_grpc_port}"
@@ -507,6 +478,13 @@ module "template_manager" {
   nomad_token = var.nomad_acl_token_secret
 }
 
+data "google_storage_bucket_object" "nomad_nodepool_apm" {
+  count = var.template_manages_clusters_size_gt_1 ? 1 : 0
+
+  name   = "nomad-nodepool-apm"
+  bucket = var.fc_env_pipeline_bucket_name
+}
+
 module "template_manager_autoscaler" {
   source = "../../modules/job-template-manager-autoscaler"
   count  = var.template_manages_clusters_size_gt_1 ? 1 : 0
@@ -514,8 +492,8 @@ module "template_manager_autoscaler" {
   node_pool                  = var.api_node_pool
   autoscaler_version         = var.nomad_autoscaler_version
   nomad_token                = var.nomad_acl_token_secret
-  apm_plugin_artifact_source = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/nomad-nodepool-apm"
-  apm_plugin_checksum        = data.external.nomad_nodepool_apm_checksum[0].result.hex
+  apm_plugin_artifact_source = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/nomad-nodepool-apm?version=${data.google_storage_bucket_object.nomad_nodepool_apm[0].generation}"
+  apm_plugin_checksum        = data.google_storage_bucket_object.nomad_nodepool_apm[0].generation
 }
 
 module "loki" {

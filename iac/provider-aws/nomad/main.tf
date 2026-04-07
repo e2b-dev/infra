@@ -9,7 +9,6 @@ resource "random_password" "volume_token_key" {
 
 locals {
   clickhouse_connection_string = var.clickhouse_cluster_size > 0 ? "clickhouse://${var.clickhouse_username}:${var.clickhouse_password}@clickhouse.service.consul:${var.clickhouse_port}/${var.clickhouse_database}" : ""
-  orchestrator_artifact_source = "s3::https://${var.fc_env_pipeline_bucket_name}.s3.${var.aws_region}.amazonaws.com/orchestrator?etag=${data.aws_s3_object.orchestrator.etag}"
 }
 
 data "aws_ecr_image" "api" {
@@ -155,6 +154,10 @@ data "aws_s3_object" "orchestrator" {
   key    = "orchestrator"
 }
 
+locals {
+  orchestrator_artifact_source = "s3::https://${var.fc_env_pipeline_bucket_name}.s3.${var.aws_region}.amazonaws.com/orchestrator?etag=${data.aws_s3_object.orchestrator.etag}"
+}
+
 module "orchestrator" {
   source = "../../modules/job-orchestrator"
 
@@ -193,6 +196,10 @@ data "aws_s3_object" "template_manager" {
   key    = "template-manager"
 }
 
+locals {
+  template_manager_artifact_source = "s3::https://${var.fc_env_pipeline_bucket_name}.s3.${var.aws_region}.amazonaws.com/template-manager?etag=${data.aws_s3_object.template_manager.etag}"
+}
+
 module "template_manager" {
   source = "../../modules/job-template-manager"
 
@@ -211,7 +218,7 @@ module "template_manager" {
   domain_name      = var.domain_name
 
   api_secret                   = var.api_secret
-  artifact_source              = "s3::https://${var.fc_env_pipeline_bucket_name}.s3.${var.aws_region}.amazonaws.com/template-manager"
+  artifact_source              = local.template_manager_artifact_source
   template_manager_checksum    = ""
   template_bucket_name         = var.template_bucket_name
   build_cache_bucket_name      = var.build_cache_bucket_name
@@ -230,13 +237,17 @@ data "aws_s3_object" "nomad_nodepool_apm" {
   key    = "nomad-nodepool-apm"
 }
 
+locals {
+  template_manager_autoscaler_artifact_source = "s3::https://${var.fc_env_pipeline_bucket_name}.s3.${var.aws_region}.amazonaws.com/nomad-nodepool-apm?etag=${data.aws_s3_object.nomad_nodepool_apm.etag}"
+}
+
 module "template_manager_autoscaler" {
   source = "../../modules/job-template-manager-autoscaler"
   count  = var.build_cluster_size > 1 ? 1 : 0
 
   node_pool                  = var.api_node_pool
   nomad_token                = var.nomad_acl_token
-  apm_plugin_artifact_source = "s3::https://${var.fc_env_pipeline_bucket_name}.s3.${var.aws_region}.amazonaws.com/nomad-nodepool-apm"
+  apm_plugin_artifact_source = locals.template_manager_autoscaler_artifact_source
   apm_plugin_checksum        = data.aws_s3_object.nomad_nodepool_apm[0].etag
 }
 
