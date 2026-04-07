@@ -3,6 +3,7 @@ package batcher
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -57,6 +58,7 @@ type Batcher[T any] struct {
 	ErrorHandler func(error)
 
 	// Synchronization primitives.
+	mu      sync.RWMutex
 	ch      chan T
 	doneCh  chan struct{}
 	started bool
@@ -84,7 +86,7 @@ type BatcherOptions struct {
 	MaxDelay time.Duration
 
 	// QueueSize is the size of the channel buffer used to queue incoming items.
-	// Items pushed when the queue is full are silently dropped (Push returns false, nil).
+	// Items pushed when the queue is full are dropped (Push returns ErrBatcherQueueFull).
 	QueueSize int
 
 	// ErrorHandler is called when BatcherFunc returns an error.
@@ -125,6 +127,9 @@ func NewBatcher[T any](fn BatcherFunc[T], cfg BatcherOptions) (*Batcher[T], erro
 
 // Start begins batch processing.
 func (b *Batcher[T]) Start(ctx context.Context) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	if b.started {
 		return ErrBatcherAlreadyStarted
 	}
@@ -143,12 +148,17 @@ func (b *Batcher[T]) Start(ctx context.Context) error {
 
 // Stop stops batch processing and flushes remaining items.
 func (b *Batcher[T]) Stop() error {
+	b.mu.Lock()
 	if !b.started {
+		b.mu.Unlock()
+
 		return ErrBatcherNotStarted
 	}
 
 	b.started = false
 	close(b.ch)
+	b.mu.Unlock()
+
 	<-b.doneCh
 
 	return nil
@@ -157,6 +167,9 @@ func (b *Batcher[T]) Stop() error {
 // Push enqueues an item for batching.
 // Returns ErrBatcherQueueFull immediately if the queue is full.
 func (b *Batcher[T]) Push(item T) error {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
 	if !b.started {
 		return ErrBatcherNotStarted
 	}
