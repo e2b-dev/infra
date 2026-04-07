@@ -1,12 +1,12 @@
 #!/usr/bin/awk -f
-# bench2md.awk - Convert Go benchmark results to a Markdown table.
+# benchmark-to-markdown.awk - Convert Go benchmark results to a Markdown table.
 #
 # The output of benchmark needs to be grepped first
 # grep 'BenchmarkConcurrentResume/concurrency-[0-9]\+-' bench.log | column -t > results.log
 #
 # Usage:
-#   awk -f bench2md.awk results.log
-#   cat results.log | awk -f bench2md.awk
+#   awk -f benchmark-to-markdown.awk results.log
+#   cat results.log | awk -f benchmark-to-markdown.awk
 
 BEGIN {
     printf "| %-11s | %-4s | %-8s | %-8s | %-8s | %-8s | %-8s | %-8s | %-14s | %-14s | %-4s |\n",
