@@ -3,12 +3,8 @@ data "google_storage_bucket_object" "filestore_cleanup" {
   bucket = var.fc_env_pipeline_bucket_name
 }
 
-data "external" "filestore_cleanup_checksum" {
-  program = ["bash", "${path.module}/scripts/checksum.sh"]
-
-  query = {
-    base64 = data.google_storage_bucket_object.filestore_cleanup.md5hash
-  }
+locals {
+  clean_nfs_cache_artifact_source = var.environment == "dev" ? "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/clean-nfs-cache?version=${data.google_storage_bucket_object.filestore_cleanup.generation}" : "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/clean-nfs-cache"
 }
 
 resource "nomad_job" "clean_nfs_cache" {
@@ -16,9 +12,7 @@ resource "nomad_job" "clean_nfs_cache" {
 
   jobspec = templatefile("${path.module}/jobs/clean-nfs-cache.hcl", {
     node_pool                    = var.builder_node_pool
-    bucket_name                  = var.fc_env_pipeline_bucket_name
-    environment                  = var.environment
-    clean_nfs_cache_checksum     = data.external.filestore_cleanup_checksum.result.hex
+    artifact_source              = local.clean_nfs_cache_artifact_source
     nfs_cache_mount_path         = var.shared_chunk_cache_path
     max_disk_usage_target        = var.filestore_cache_cleanup_disk_usage_target
     dry_run                      = var.filestore_cache_cleanup_dry_run

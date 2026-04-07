@@ -144,11 +144,6 @@ job "template-manager" {
         source      = "${artifact_source}"
         destination = "local/template-manager"
         mode        = "file"
-%{ if template_manager_checksum != "" }
-        options {
-            checksum    = "md5:${template_manager_checksum}"
-        }
-%{ endif }
       }
     }
   }

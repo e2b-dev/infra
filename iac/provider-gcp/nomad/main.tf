@@ -493,8 +493,7 @@ module "template_manager" {
   domain_name      = var.domain_name
 
   api_secret                      = var.api_secret
-  artifact_source                 = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/template-manager"
-  template_manager_checksum       = data.external.template_manager.result.hex
+  artifact_source                 = var.environment == "dev" ? "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/template-manager?version=${data.external.template_manager.result.hex}" : "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/template-manager"
   template_bucket_name            = var.template_bucket_name
   build_cache_bucket_name         = var.build_cache_bucket_name
   otel_collector_grpc_endpoint    = "localhost:${var.otel_collector_grpc_port}"
