@@ -27,7 +27,7 @@ type DiffMetadata struct {
 func (d *DiffMetadata) toDiffMapping(
 	ctx context.Context,
 	buildID uuid.UUID,
-) (mapping []*BuildMap) {
+) (mapping []BuildMap) {
 	dirtyMappings := CreateMapping(
 		&buildID,
 		d.Dirty,
@@ -43,7 +43,8 @@ func (d *DiffMetadata) toDiffMapping(
 	)
 	telemetry.ReportEvent(ctx, "created empty mapping")
 
-	mappings := MergeMappings(dirtyMappings, emptyMappings)
+	var mappings []BuildMap
+	mappings = MergeMappings(dirtyMappings, emptyMappings)
 	telemetry.ReportEvent(ctx, "merge mappings")
 
 	return mappings
