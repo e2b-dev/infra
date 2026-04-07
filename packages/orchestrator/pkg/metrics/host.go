@@ -42,18 +42,20 @@ type DiskInfo struct {
 // HostMetrics samples host-level CPU utilisation in the background so that
 // callers on the request path never block on a cpu.Percent call.
 type HostMetrics struct {
-	mu     sync.RWMutex
-	cpu    *CPUMetrics
-	cpuErr error
+	mu         sync.RWMutex
+	cpu        *CPUMetrics
+	cpuErr     error
+	closed     chan struct{}
+	closedOnce sync.Once
 }
 
 func NewHostMetrics() *HostMetrics {
-	return &HostMetrics{}
+	return &HostMetrics{closed: make(chan struct{})}
 }
 
 // Start primes the CPU cache immediately then resamples every cpuPollInterval
-// until ctx is cancelled. Intended to be run via startService.
-func (h *HostMetrics) Start(ctx context.Context) error {
+// until Close is called. Intended to be run via startService.
+func (h *HostMetrics) Start() error {
 	h.sampleCPU()
 
 	ticker := time.NewTicker(cpuPollInterval)
@@ -61,7 +63,7 @@ func (h *HostMetrics) Start(ctx context.Context) error {
 
 	for {
 		select {
-		case <-ctx.Done():
+		case <-h.closed:
 			return nil
 		case <-ticker.C:
 			h.sampleCPU()
@@ -70,13 +72,19 @@ func (h *HostMetrics) Start(ctx context.Context) error {
 }
 
 func (h *HostMetrics) Close(_ context.Context) error {
+	h.closedOnce.Do(func() { close(h.closed) })
 	return nil
 }
 
 // GetCPUMetrics returns the most recent CPU sample. Non-blocking.
+// Returns zero-value CPUMetrics if no sample has been taken yet or on error.
 func (h *HostMetrics) GetCPUMetrics() (*CPUMetrics, error) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
+
+	if h.cpu == nil {
+		return &CPUMetrics{}, h.cpuErr
+	}
 
 	return h.cpu, h.cpuErr
 }
@@ -100,7 +108,9 @@ func (h *HostMetrics) sampleCPU() {
 	}
 
 	h.mu.Lock()
-	h.cpu = result
+	if err == nil {
+		h.cpu = result
+	}
 	h.cpuErr = err
 	h.mu.Unlock()
 }

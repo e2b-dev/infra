@@ -470,7 +470,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	// non-blocking cache read on the request path.
 	hostMetrics := metrics.NewHostMetrics()
 	startService("host metrics poller", func() error {
-		return hostMetrics.Start(ctx)
+		return hostMetrics.Start()
 	})
 	closers = append(closers, closer{"host metrics poller", hostMetrics.Close})
 
