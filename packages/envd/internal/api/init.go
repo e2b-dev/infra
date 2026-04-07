@@ -217,12 +217,15 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	}
 
 	if data.VolumeMounts != nil {
+		nfsCtx, cancel := context.WithTimeout(ctx, nfsMountTimeout)
+		defer cancel()
+
 		var wg sync.WaitGroup
 		for _, volume := range *data.VolumeMounts {
 			logger.Debug().Msgf("Mounting %s at %q", volume.NfsTarget, volume.Path)
 
 			wg.Go(func() {
-				a.setupNfs(context.WithoutCancel(ctx), volume.NfsTarget, volume.Path)
+				a.setupNfs(nfsCtx, volume.NfsTarget, volume.Path)
 			})
 		}
 
@@ -246,6 +249,8 @@ var nfsOptions = strings.Join([]string{
 	"nfsvers=3",      // nfs proxy is nfs version 3
 	"noacl",          // no reason for acl in the sandbox
 }, ",")
+
+const nfsMountTimeout = 5 * time.Second
 
 func (a *API) setupNfs(ctx context.Context, nfsTarget, path string) {
 	commands := [][]string{
