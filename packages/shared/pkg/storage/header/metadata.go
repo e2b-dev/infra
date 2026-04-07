@@ -43,8 +43,7 @@ func (d *DiffMetadata) toDiffMapping(
 	)
 	telemetry.ReportEvent(ctx, "created empty mapping")
 
-	var mappings []BuildMap
-	mappings = MergeMappings(dirtyMappings, emptyMappings)
+	mappings := MergeMappings(dirtyMappings, emptyMappings)
 	telemetry.ReportEvent(ctx, "merge mappings")
 
 	return mappings

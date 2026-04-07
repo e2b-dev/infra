@@ -12,7 +12,7 @@ import (
 // startBlock-endBlock [offset, offset+length) := [buildStorageOffset, buildStorageOffset+length) ⊂ buildId, length in bytes
 //
 // It is used for debugging and visualization.
-func (mapping *BuildMap) Format(blockSize uint64) string {
+func (mapping BuildMap) Format(blockSize uint64) string {
 	rangeMessage := fmt.Sprintf("%d-%d", mapping.Offset/blockSize, (mapping.Offset+mapping.Length)/blockSize)
 
 	return fmt.Sprintf(
