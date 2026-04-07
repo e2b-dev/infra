@@ -307,23 +307,26 @@ func TestChunker_EarlyReturn(t *testing.T) {
 		lateDone <- result{data: bytes.Clone(slice), err: sliceErr}
 	}()
 
-	// Release reads, wait for one block to be consumed.
-	close(chunker.advance)
+	// Advance exactly one read step (16KB). This covers offset 0 but is
+	// far from the last block, and no further reads can proceed until we
+	// send more signals — eliminating the scheduling race.
+	chunker.advance <- struct{}{}
 	<-chunker.consumed
 
-	// Offset 0 is within the first readSize — should be available now.
+	// Offset 0 is within the first readBatch — should be available now.
 	r := <-earlyDone
 	require.NoError(t, r.err)
 	require.Equal(t, data[:testBlockSize], r.data)
 
-	// Last offset hasn't been reached yet.
+	// No more reads have been allowed, so the last offset is unreachable.
 	select {
 	case <-lateDone:
 		t.Fatal("late reader completed before its data was delivered")
 	default:
 	}
 
-	// Fetch completes (advance is closed), late reader unblocks.
+	// Release all remaining reads so the late reader can complete.
+	close(chunker.advance)
 	r = <-lateDone
 	require.NoError(t, r.err)
 	require.Equal(t, data[lastOff:lastOff+testBlockSize], r.data)
