@@ -134,24 +134,28 @@ func (h *HostMetrics) GetDiskMetrics() ([]DiskInfo, error) {
 			continue
 		}
 
-		disks = append(disks, DiskInfo{
+		diskInfo := DiskInfo{
 			MountPoint:     partition.Mountpoint,
 			Device:         partition.Device,
 			FilesystemType: partition.Fstype,
 			UsedBytes:      usage.Used,
 			TotalBytes:     usage.Total,
 			UsedPercent:    usage.UsedPercent,
-		})
+		}
+
+		disks = append(disks, diskInfo)
 	}
 
 	return disks, nil
 }
 
 func isRealDisk(p disk.PartitionStat) bool {
+	// Must not be a boot partition
 	if strings.HasPrefix(p.Mountpoint, "/boot/") {
 		return false
 	}
 
+	// Drop obvious virtuals
 	if strings.HasPrefix(p.Device, "/dev/loop") || strings.HasPrefix(p.Device, "/dev/zram") {
 		return false
 	}
