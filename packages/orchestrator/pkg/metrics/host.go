@@ -124,61 +124,68 @@ func (h *HostMetrics) GetDiskMetrics() ([]DiskInfo, error) {
 	return h.disks, nil
 }
 
-// sample resamples all host metrics and updates the cache.
+// sample resamples all host metrics and writes them atomically so that
+// readers always see a consistent snapshot (all metrics from the same tick).
 func (h *HostMetrics) sample() {
-	h.sampleCPU()
-	h.sampleMemory()
-	h.sampleDisk()
+	cpu, cpuErr := readCPU()
+	memory, memErr := readMemory()
+	disks, disksErr := readDisk()
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if cpuErr == nil {
+		h.cpu = cpu
+	}
+	h.cpuErr = cpuErr
+
+	if memErr == nil {
+		h.memory = memory
+	}
+	h.memoryErr = memErr
+
+	if disksErr == nil {
+		h.disks = disks
+	}
+	h.disksErr = disksErr
 }
 
-func (h *HostMetrics) sampleCPU() {
+func readCPU() (*CPUMetrics, error) {
 	// cpu.Percent(0) is non-blocking: it diffs kernel CPU counters against
 	// the previous call. The ticker spacing (hostPollInterval) keeps the
 	// inter-sample window wide enough for the delta to be meaningful.
 	percents, err := cpu.Percent(0, false)
-
-	var result *CPUMetrics
-	if err == nil {
-		usedPercent := float64(0)
-		if len(percents) > 0 {
-			usedPercent = percents[0]
-		}
-		result = &CPUMetrics{
-			UsedPercent: usedPercent,
-			Count:       uint32(runtime.NumCPU()),
-		}
+	if err != nil {
+		return nil, err
 	}
 
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if err == nil {
-		h.cpu = result
+	usedPercent := float64(0)
+	if len(percents) > 0 {
+		usedPercent = percents[0]
 	}
-	h.cpuErr = err
+
+	return &CPUMetrics{
+		UsedPercent: usedPercent,
+		Count:       uint32(runtime.NumCPU()),
+	}, nil
 }
 
-func (h *HostMetrics) sampleMemory() {
+func readMemory() (*MemoryMetrics, error) {
 	memInfo, err := mem.VirtualMemory()
-
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if err == nil {
-		h.memory = &MemoryMetrics{
-			UsedBytes:  memInfo.Used,
-			TotalBytes: memInfo.Total,
-		}
+	if err != nil {
+		return nil, err
 	}
-	h.memoryErr = err
+
+	return &MemoryMetrics{
+		UsedBytes:  memInfo.Used,
+		TotalBytes: memInfo.Total,
+	}, nil
 }
 
-func (h *HostMetrics) sampleDisk() {
+func readDisk() ([]DiskInfo, error) {
 	partitions, err := disk.Partitions(false)
 	if err != nil {
-		h.mu.Lock()
-		defer h.mu.Unlock()
-		h.disksErr = err
-
-		return
+		return nil, err
 	}
 
 	var disks []DiskInfo
@@ -203,10 +210,7 @@ func (h *HostMetrics) sampleDisk() {
 		})
 	}
 
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.disks = disks
-	h.disksErr = nil
+	return disks, nil
 }
 
 func isRealDisk(p disk.PartitionStat) bool {
