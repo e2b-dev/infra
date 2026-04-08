@@ -1,0 +1,10 @@
+{
+  "name": "pr-slack-notify",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Post new PRs to #code-review-requests Slack channel",
+  "main": "script.js",
+  "dependencies": {
+    "@slack/web-api": "^7.0.0"
+  }
+}
