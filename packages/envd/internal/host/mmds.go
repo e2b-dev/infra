@@ -146,20 +146,20 @@ func PollForMMDSOpts(ctx context.Context, logger *zerolog.Logger, mmdsChan chan<
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Debug().Msg("context cancelled while waiting for mmds opts")
+			logger.Error().Msg("context cancelled while waiting for mmds opts")
 
 			return
 		case <-ticker.C:
 			token, err := getMMDSToken(ctx, httpClient)
 			if err != nil {
-				logger.Debug().Err(err).Msg("error getting mmds token")
+				logger.Error().Err(err).Msg("error getting mmds token")
 
 				continue
 			}
 
 			mmdsOpts, err := getMMDSOpts(ctx, httpClient, token)
 			if err != nil {
-				logger.Debug().Err(err).Msg("error getting mmds opts")
+				logger.Error().Err(err).Msg("error getting mmds opts")
 
 				continue
 			}
