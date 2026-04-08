@@ -3,7 +3,6 @@ package host
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,30 +30,23 @@ const (
 // Must be called once at startup, before any /init handler runs. No-op if the
 // bind mount is already in place (safe to call after a process restart).
 func BindMountCABundle() error {
-	// Copy current bundle to tmpfs destination.
-	src, err := os.Open(CaBundlePath)
+	// Read the full bundle into memory before any write. On process restart the
+	// bind mount is already in place, meaning CaBundlePath and caBundleTmpfsPath
+	// are the same inode. Opening caBundleTmpfsPath with O_TRUNC while a read fd
+	// is open on CaBundlePath would zero the file before io.Copy runs, destroying
+	// the bundle. os.ReadFile completes the read atomically before we write.
+	content, err := os.ReadFile(CaBundlePath)
 	if err != nil {
 		return err
 	}
-	defer src.Close()
 
 	if err := os.MkdirAll(filepath.Dir(caBundleTmpfsPath), 0o755); err != nil {
 		return err
 	}
 
-	dst, err := os.OpenFile(caBundleTmpfsPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-	if err != nil {
+	if err := os.WriteFile(caBundleTmpfsPath, content, 0o644); err != nil {
 		return err
 	}
-	defer dst.Close()
-
-	if _, err := io.Copy(dst, src); err != nil {
-		return err
-	}
-
-	// Flush and close before mounting.
-	dst.Close()
-	src.Close()
 
 	// Bind-mount the tmpfs file over the original bundle path.
 	// MS_BIND makes the target appear as the source; the underlying NBD file
