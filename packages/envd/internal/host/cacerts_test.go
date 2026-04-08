@@ -64,8 +64,11 @@ func waitForFile(t *testing.T, path string) {
 	t.Fatalf("timed out waiting for %s to appear", path)
 }
 
-// waitForBundleChange polls until the bundle no longer contains certPEM.
-func waitForBundleChange(t *testing.T, bundlePath, certPEM string) {
+// waitForBundleChange polls until the bundle no longer contains removedPEM
+// and does contain keptPEM. Using only the absence check is racy against the
+// atomic rename in removeCertFromBundle: the file briefly disappears between
+// unlink and rename, satisfying the absence condition prematurely.
+func waitForBundleChange(t *testing.T, bundlePath, removedPEM, keptPEM string) {
 	t.Helper()
 
 	deadline := time.Now().Add(2 * time.Second)
@@ -73,14 +76,15 @@ func waitForBundleChange(t *testing.T, bundlePath, certPEM string) {
 		bundle, err := os.ReadFile(bundlePath)
 		require.NoError(t, err)
 
-		if !strings.Contains(string(bundle), certPEM) {
+		content := string(bundle)
+		if !strings.Contains(content, removedPEM) && strings.Contains(content, keptPEM) {
 			return
 		}
 
 		time.Sleep(5 * time.Millisecond)
 	}
 
-	t.Fatalf("timed out waiting for cert to be removed from bundle")
+	t.Fatalf("timed out waiting for cert rotation in bundle")
 }
 
 func TestInstallCACert_FirstTime(t *testing.T) {
@@ -132,7 +136,7 @@ func TestInstallCACert_DifferentCert(t *testing.T) {
 	normalizedA := strings.TrimRight(certA, "\n") + "\n"
 	normalizedB := strings.TrimRight(certB, "\n") + "\n"
 
-	waitForBundleChange(t, bundlePath, normalizedA)
+	waitForBundleChange(t, bundlePath, normalizedA, normalizedB)
 
 	bundle, err := os.ReadFile(bundlePath)
 	require.NoError(t, err)
@@ -198,7 +202,7 @@ func TestInstallCACert_RestartDifferentCert(t *testing.T) {
 
 	c.install(context.Background(), certB, bundlePath, statePath)
 
-	waitForBundleChange(t, bundlePath, normalizedA)
+	waitForBundleChange(t, bundlePath, normalizedA, normalizedB)
 
 	bundle, err := os.ReadFile(bundlePath)
 	require.NoError(t, err)

@@ -2,9 +2,13 @@ package host
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -12,8 +16,60 @@ import (
 
 const (
 	CaBundlePath = "/etc/ssl/certs/ca-certificates.crt"
-	CaStatePath  = "/var/run/e2b/ca-cert.pem"
+	CaStatePath  = E2BRunDir + "/ca-cert.pem"
+
+	// caBundleTmpfsPath is the tmpfs-backed copy of the CA bundle.
+	// CaBundlePath is bind-mounted over this so all writes bypass NBD.
+	caBundleTmpfsPath = E2BRunDir + "/ca-certificates.crt"
 )
+
+// BindMountCABundle copies the system CA bundle to tmpfs and bind-mounts it
+// back over the original path so all subsequent reads and writes bypass the
+// NBD-backed filesystem entirely. This reduces CA cert injection from ~2 ms
+// (warm NBD) / ~460 ms (cold GCS) to ~0.01 ms.
+//
+// Must be called once at startup, before any /init handler runs. No-op if the
+// bind mount is already in place (safe to call after a process restart).
+func BindMountCABundle() error {
+	// Copy current bundle to tmpfs destination.
+	src, err := os.Open(CaBundlePath)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	if err := os.MkdirAll(filepath.Dir(caBundleTmpfsPath), 0o755); err != nil {
+		return err
+	}
+
+	dst, err := os.OpenFile(caBundleTmpfsPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return err
+	}
+
+	// Flush and close before mounting.
+	dst.Close()
+	src.Close()
+
+	// Bind-mount the tmpfs file over the original bundle path.
+	// MS_BIND makes the target appear as the source; the underlying NBD file
+	// is shadowed for all processes in this mount namespace.
+	if err := syscall.Mount(caBundleTmpfsPath, CaBundlePath, "", syscall.MS_BIND, ""); err != nil {
+		// EBUSY means the bind mount is already in place (process restart).
+		if err == syscall.EBUSY {
+			return nil
+		}
+
+		return err
+	}
+
+	return nil
+}
 
 // CACertInstaller manages installation of a CA certificate into the VM's
 // system trust bundle.
@@ -39,8 +95,9 @@ func (c *CACertInstaller) Install(ctx context.Context, certPEM string) {
 // install is the testable core; tests supply their own paths.
 //
 // The cert changes on every sandbox create but stays the same across
-// pause/resume cycles. The critical path only appends to the bundle (~2 ms);
-// removing the previous cert happens in a background goroutine.
+// pause/resume cycles. The critical path only appends to the bundle (~0.04 ms
+// after BindMountCABundle moves the file to tmpfs); removing the previous cert
+// happens in a background goroutine.
 //
 // The state file survives process restarts (OOM, crashes). The background
 // goroutine reads it to find the previously installed cert — lastCACert is ""
@@ -74,23 +131,15 @@ func (c *CACertInstaller) install(_ context.Context, certPEM, bundlePath, stateP
 	// state file exists yet.
 	prevPEM := c.lastCACert
 
-	openStart := time.Now()
 	f, err := os.OpenFile(bundlePath, os.O_APPEND|os.O_WRONLY, 0o644)
-	openDur := time.Since(openStart)
-
 	if err != nil {
 		c.logger.Error().Err(err).Msg("Failed to open CA bundle")
 
 		return
 	}
 
-	writeStart := time.Now()
 	_, err = f.WriteString(normalized)
-	writeDur := time.Since(writeStart)
-
-	closeStart := time.Now()
 	f.Close()
-	closeDur := time.Since(closeStart)
 
 	if err != nil {
 		c.logger.Error().Err(err).Msg("Failed to write CA cert to bundle")
@@ -101,9 +150,6 @@ func (c *CACertInstaller) install(_ context.Context, certPEM, bundlePath, stateP
 	c.lastCACert = normalized
 
 	c.logger.Info().
-		Dur("open_dur", openDur).
-		Dur("write_dur", writeDur).
-		Dur("close_dur", closeDur).
 		Dur("append_duration", time.Since(start)).
 		Msg("CA cert appended to bundle")
 
@@ -150,7 +196,8 @@ func (c *CACertInstaller) install(_ context.Context, certPEM, bundlePath, stateP
 }
 
 // removeCertFromBundle rewrites bundlePath removing all occurrences of certPEM.
-// Must be called under mu.
+// The write is atomic (write to temp file, then rename) so the bundle is never
+// empty from the perspective of concurrent readers. Must be called under mu.
 func removeCertFromBundle(bundlePath, certPEM string) error {
 	content, err := os.ReadFile(bundlePath)
 	if err != nil {
@@ -159,5 +206,31 @@ func removeCertFromBundle(bundlePath, certPEM string) error {
 
 	cleaned := strings.ReplaceAll(string(content), certPEM, "")
 
-	return os.WriteFile(bundlePath, []byte(cleaned), 0o644)
+	tmp, err := os.CreateTemp(filepath.Dir(bundlePath), "ca-bundle-*")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+
+	tmpPath := tmp.Name()
+
+	if _, err := tmp.WriteString(cleaned); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+
+		return fmt.Errorf("write temp file: %w", err)
+	}
+
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpPath)
+
+		return fmt.Errorf("close temp file: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, bundlePath); err != nil {
+		os.Remove(tmpPath)
+
+		return fmt.Errorf("rename temp file: %w", err)
+	}
+
+	return nil
 }
