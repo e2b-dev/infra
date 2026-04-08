@@ -1,6 +1,6 @@
 locals {
   ingress_logs_path_prefix   = "ingress"
-  ingress_logs_path_location = "s3://${data.aws_s3_bucket.load_balancer_logs.id}/${local.ingress_logs_path_prefix}/AWSLogs/${data.aws_caller_identity.current.account_id}/elasticloadbalancing/${data.aws_region.current.name}"
+  ingress_logs_path_location = "s3://${data.aws_s3_bucket.load_balancer_logs.id}/${local.ingress_logs_path_prefix}/AWSLogs/${data.aws_caller_identity.current.account_id}/elasticloadbalancing/${data.aws_region.current.id}"
 }
 
 data "aws_s3_bucket" "load_balancer_logs" {
