@@ -244,12 +244,8 @@ func run() int {
 	//     work has completed (waitgroup, counter, etc.) to avoid
 	//     exiting early.
 
-	var (
-		port  int
-		debug string
-	)
+	var port int
 	flag.IntVar(&port, "port", defaultPort, "Port for test HTTP server")
-	flag.StringVar(&debug, "debug", "false", "is debug")
 	flag.Parse()
 
 	serviceInstanceID := uuid.New().String()
@@ -325,9 +321,6 @@ func run() int {
 	}
 
 	l.Info(ctx, "Starting API service...", zap.String("commit_sha", commitSHA), logger.WithServiceInstanceID(serviceInstanceID))
-	if debug != "true" {
-		gin.SetMode(gin.ReleaseMode)
-	}
 
 	swagger, err := api.GetSwagger()
 	if err != nil {
