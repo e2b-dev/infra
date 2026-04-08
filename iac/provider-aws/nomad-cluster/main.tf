@@ -369,4 +369,6 @@ module "client" {
   templates_build_cache_bucket_arn = data.aws_s3_bucket.templates_build_cache_bucket.arn
   custom_environments_repo_arn     = data.aws_ecr_repository.custom_environments.arn
 
+  nomad_acl_token                   = var.nomad_acl_token_secret
+  set_orchestrator_version_metadata = true
 }

@@ -138,6 +138,18 @@ variable "custom_environments_repo_arn" {
   type = string
 }
 
+variable "nomad_acl_token" {
+  type        = string
+  default     = ""
+  description = "Nomad ACL token for querying orchestrator version from Nomad variable store"
+}
+
+variable "set_orchestrator_version_metadata" {
+  type        = bool
+  default     = false
+  description = "Whether to fetch and set orchestrator_job_version in Nomad node metadata"
+}
+
 variable "scripts_path" {
   type        = string
   description = "Path to the directory containing startup scripts. Defaults to in-module scripts."
