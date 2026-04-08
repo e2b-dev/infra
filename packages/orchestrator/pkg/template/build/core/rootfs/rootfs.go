@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"runtime"
 	"text/template"
 
 	"github.com/dustin/go-humanize"
@@ -18,7 +20,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/buildcontext"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/oci"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/systeminit"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/phases"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/units"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
@@ -201,16 +202,22 @@ func additionalOCILayers(
 		return nil, fmt.Errorf("error reading envd file: %w", err)
 	}
 
+	busyboxPath := filepath.Join(buildContext.BuilderConfig.HostBusyboxDir, runtime.GOARCH, "busybox")
+	busyboxData, err := os.ReadFile(busyboxPath)
+	if err != nil {
+		return nil, fmt.Errorf("error reading busybox file %s: %w", busyboxPath, err)
+	}
+
 	filesMap := map[string]oci.File{
 		storage.GuestEnvdPath: {Bytes: envdFileData, Mode: 0o777},
 
 		// Provision script
 		"usr/local/bin/provision.sh": {Bytes: []byte(provisionScript), Mode: 0o777},
 		// Setup init system
-		BusyBoxPath: {Bytes: systeminit.BusyboxBinary, Mode: 0o755},
+		BusyBoxPath: {Bytes: busyboxData, Mode: 0o755},
 		// Set to bin/init so it's not in conflict with systemd
 		// Any rewrite of the init file when booted from it will corrupt the filesystem
-		BusyBoxInitPath: {Bytes: systeminit.BusyboxBinary, Mode: 0o755},
+		BusyBoxInitPath: {Bytes: busyboxData, Mode: 0o755},
 	}
 
 	// add templates

@@ -25,6 +25,10 @@ output "fc_versions_bucket_name" {
   value = aws_s3_bucket.fc_versions.bucket
 }
 
+output "fc_busybox_bucket_name" {
+  value = aws_s3_bucket.fc_busybox.bucket
+}
+
 output "load_balancer_logs_bucket_name" {
   value = aws_s3_bucket.load_balancer_logs.bucket
 }

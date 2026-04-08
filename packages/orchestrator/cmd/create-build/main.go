@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -161,6 +162,20 @@ func setupEnv(ctx context.Context, storagePath, sandboxDir, kernel, fc string, l
 		}
 		if _, err := os.Stat(envdPath); err == nil {
 			fmt.Printf("✓ Envd: %s\n", envdPath)
+		}
+
+		// HOST_BUSYBOX_DIR: use env if set, otherwise default to local .busybox dir.
+		// Run "make fetch-busybox" in packages/orchestrator to download the binary.
+		busyboxDir := os.Getenv("HOST_BUSYBOX_DIR")
+		if busyboxDir == "" {
+			busyboxDir = abs(".busybox")
+			os.Setenv("HOST_BUSYBOX_DIR", busyboxDir)
+		}
+		busyboxBin := filepath.Join(busyboxDir, runtime.GOARCH, "busybox")
+		if _, err := os.Stat(busyboxBin); err == nil {
+			fmt.Printf("✓ Busybox: %s\n", busyboxBin)
+		} else {
+			fmt.Printf("⚠ Busybox not found at %s — run 'make fetch-busybox' in packages/orchestrator\n", busyboxBin)
 		}
 
 		fmt.Printf("✓ Storage: %s (local)\n", dataDir)

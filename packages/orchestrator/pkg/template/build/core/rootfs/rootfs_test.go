@@ -7,6 +7,8 @@ import (
 	"io"
 	"maps"
 	"os"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -29,9 +31,16 @@ func TestAdditionalOCILayers(t *testing.T) {
 		err := os.WriteFile(envdPath, []byte("echo hello"), 0o755)
 		require.NoError(t, err)
 
+		busyboxDir := tempDir + "/busybox"
+		err = os.MkdirAll(filepath.Join(busyboxDir, runtime.GOARCH), 0o755)
+		require.NoError(t, err)
+		err = os.WriteFile(filepath.Join(busyboxDir, runtime.GOARCH, "busybox"), []byte("busybox-binary"), 0o755)
+		require.NoError(t, err)
+
 		buildContext := buildcontext.BuildContext{
 			BuilderConfig: cfg.BuilderConfig{
-				HostEnvdPath: envdPath,
+				HostEnvdPath:   envdPath,
+				HostBusyboxDir: busyboxDir,
 			},
 			Config: config.TemplateConfig{
 				MemoryMB: 100,

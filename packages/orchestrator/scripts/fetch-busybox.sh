@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #
-# Download busybox from e2b-dev/fc-busybox GitHub release and verify SHA256.
+# Download busybox from GCS public builds bucket.
 # Skips download if binary exists and version/arch match the stamp file.
 #
 # Usage:
 #   ./scripts/fetch-busybox.sh <version> <arch> <output_path>
 #
 # Example:
-#   ./scripts/fetch-busybox.sh 1.36.1 amd64 pkg/template/build/core/systeminit/busybox
+#   ./scripts/fetch-busybox.sh 1.36.1 amd64 .busybox/amd64/busybox
 
 set -euo pipefail
 
@@ -21,18 +21,11 @@ if [ -f "$OUTPUT" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "${VERSION}-${ARCH}" ];
   exit 0
 fi
 
-RELEASE_URL="https://github.com/e2b-dev/fc-busybox/releases/download/v${VERSION}"
-BINARY="busybox_v${VERSION}_${ARCH}"
+GCS_URL="https://storage.googleapis.com/e2b-prod-public-builds/busybox/${ARCH}/busybox"
 
-echo "Downloading busybox v${VERSION} (${ARCH})..."
-
-curl -sfL -o "/tmp/${BINARY}" "${RELEASE_URL}/${BINARY}"
-curl -sfL -o "/tmp/SHA256SUMS" "${RELEASE_URL}/SHA256SUMS"
-
-(cd /tmp && grep -wF "${BINARY}" SHA256SUMS | sha256sum -c -)
+echo "Downloading busybox v${VERSION} (${ARCH}) from GCS..."
 
 mkdir -p "$(dirname "$OUTPUT")"
-mv "/tmp/${BINARY}" "$OUTPUT"
+curl -sfL -o "$OUTPUT" "$GCS_URL"
 chmod +x "$OUTPUT"
 echo "${VERSION}-${ARCH}" > "$STAMP"
-rm -f /tmp/SHA256SUMS

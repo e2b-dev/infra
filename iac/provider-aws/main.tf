@@ -122,6 +122,7 @@ module "cluster" {
   fc_env_pipeline_bucket_name       = module.init.fc_env_pipeline_bucket_name
   fc_kernels_bucket_name            = module.init.fc_kernels_bucket_name
   fc_versions_bucket_name           = module.init.fc_versions_bucket_name
+  fc_busybox_bucket_name            = module.init.fc_busybox_bucket_name
   templates_bucket_name             = module.init.fc_template_bucket_name
   templates_build_cache_bucket_name = module.init.fc_template_build_cache_bucket_name
   loki_bucket_name                  = module.init.loki_bucket_name

@@ -58,7 +58,7 @@ jobs:
 
       - name: Setup orchestrator tests
         run: |
-          # Download busybox for go:embed
+          # Download busybox binary (read from disk at runtime)
           make -C packages/orchestrator fetch-busybox
 
           # Enable unprivileged uffd mode

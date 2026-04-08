@@ -18,6 +18,11 @@ resource "aws_s3_bucket" "fc_env_pipeline" {
   force_destroy = var.allow_force_destroy
 }
 
+resource "aws_s3_bucket" "fc_busybox" {
+  bucket        = "${var.bucket_prefix}fc-busybox"
+  force_destroy = var.allow_force_destroy
+}
+
 resource "aws_s3_bucket" "fc_templates" {
   bucket        = "${var.bucket_prefix}fc-templates"
   force_destroy = var.allow_force_destroy
