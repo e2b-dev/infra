@@ -87,9 +87,6 @@ jobs:
 
       - name: Setup orchestrator tests
         run: |
-          # Download busybox binary (read from disk at runtime)
-          make -C packages/orchestrator fetch-busybox BUILD_ARCH=arm64
-
           # Enable unprivileged uffd (Ubuntu defaults to 0)
           echo 1 | sudo tee /proc/sys/vm/unprivileged_userfaultfd
 
