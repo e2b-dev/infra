@@ -33,7 +33,7 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/backgroundworker"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/handlers"
-	"github.com/e2b-dev/infra/packages/dashboard-api/internal/teambilling"
+	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
@@ -164,7 +164,7 @@ func run() int {
 	authService := sharedauth.NewAuthService[*types.Team](authStore, authCache, config.SupabaseJWTSecrets)
 	defer authService.Close(ctx)
 
-	teamProvisionSink, err := teambilling.NewProvisionSink(
+	teamProvisionSink, err := internalteamprovision.NewProvisionSink(
 		config.BillingServerURL,
 		config.BillingServerAPIToken,
 		config.BillingServerTimeout,

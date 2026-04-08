@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
+	sharedteamprovision "github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 )
 
 type TeamProvisionSink interface {
-	ProvisionTeam(ctx context.Context, req teamprovision.TeamBillingProvisionRequestedV1) error
+	ProvisionTeam(ctx context.Context, req sharedteamprovision.TeamBillingProvisionRequestedV1) error
 }
 
 type ProvisionError struct {
@@ -25,5 +25,5 @@ func (e *ProvisionError) Error() string {
 }
 
 func (e *ProvisionError) IsBadRequest() bool {
-	return e.StatusCode >= 400 && e.StatusCode < 500
+	return e.StatusCode == 400
 }

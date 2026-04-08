@@ -1,4 +1,4 @@
-package teambilling
+package teamprovision
 
 import (
 	"errors"

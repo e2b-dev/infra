@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
+	sharedteamprovision "github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 )
 
 const billingServerAPIKeyHeader = "X-Billing-Server-API-Key"
@@ -38,7 +38,7 @@ func NewHTTPProvisionSink(baseURL, apiToken string, timeout time.Duration) *HTTP
 	}
 }
 
-func (s *HTTPProvisionSink) ProvisionTeam(ctx context.Context, req teamprovision.TeamBillingProvisionRequestedV1) error {
+func (s *HTTPProvisionSink) ProvisionTeam(ctx context.Context, req sharedteamprovision.TeamBillingProvisionRequestedV1) error {
 	if s.baseURL == "" || s.apiToken == "" {
 		return &ProvisionError{
 			StatusCode: http.StatusServiceUnavailable,
@@ -54,7 +54,7 @@ func (s *HTTPProvisionSink) ProvisionTeam(ctx context.Context, req teamprovision
 	httpReq, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
-		s.baseURL+"/internal/team-billing-provision",
+		s.baseURL+"/internal/teams/provision",
 		bytes.NewReader(body),
 	)
 	if err != nil {

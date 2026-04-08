@@ -12,7 +12,7 @@ import (
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
-	"github.com/e2b-dev/infra/packages/dashboard-api/internal/teambilling"
+	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
@@ -26,10 +26,10 @@ type APIStore struct {
 	authDB            *authdb.Client
 	clickhouse        clickhouse.Clickhouse
 	authService       *sharedauth.AuthService[*types.Team]
-	teamProvisionSink teambilling.TeamProvisionSink
+	teamProvisionSink internalteamprovision.TeamProvisionSink
 }
 
-func NewAPIStore(config cfg.Config, db *sqlcdb.Client, authDB *authdb.Client, ch clickhouse.Clickhouse, authService *sharedauth.AuthService[*types.Team], teamProvisionSink teambilling.TeamProvisionSink) *APIStore {
+func NewAPIStore(config cfg.Config, db *sqlcdb.Client, authDB *authdb.Client, ch clickhouse.Clickhouse, authService *sharedauth.AuthService[*types.Team], teamProvisionSink internalteamprovision.TeamProvisionSink) *APIStore {
 	return &APIStore{
 		config:            config,
 		db:                db,

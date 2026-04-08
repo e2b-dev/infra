@@ -8,7 +8,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
-	"github.com/e2b-dev/infra/packages/dashboard-api/internal/teambilling"
+	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
+	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
@@ -21,6 +22,8 @@ import (
 )
 
 const baseTierID = "base_v1"
+const maxTeamsPerUser = 3
+const maxTeamsPerUserWithProTier = 10
 
 type provisionedTeam struct {
 	ID    uuid.UUID
@@ -187,6 +190,14 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 		return provisionedTeam{}, fmt.Errorf("upsert public user: %w", err)
 	}
 
+	if _, err := txDB.LockUserTeamMembershipsForUpdate(ctx, userID); err != nil {
+		return provisionedTeam{}, fmt.Errorf("lock user team memberships: %w", err)
+	}
+
+	if err := validateTeamCreationAllowed(ctx, txDB, userID); err != nil {
+		return provisionedTeam{}, err
+	}
+
 	team, err := txDB.CreateTeam(ctx, queries.CreateTeamParams{
 		Name:  name,
 		Tier:  baseTierID,
@@ -209,6 +220,13 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 		return provisionedTeam{}, fmt.Errorf("commit team creation transaction: %w", err)
 	}
 
+	logger.L().Info(ctx, "team created locally",
+		zap.String("user_id", userID.String()),
+		zap.String("team_id", team.ID.String()),
+		zap.String("reason", teamprovision.ReasonAdditionalTeam),
+		zap.String("result", "created"),
+	)
+
 	err = s.teamProvisionSink.ProvisionTeam(ctx, teamprovision.TeamBillingProvisionRequestedV1{
 		TeamID:      team.ID,
 		TeamName:    team.Name,
@@ -217,12 +235,26 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 		Reason:      teamprovision.ReasonAdditionalTeam,
 	})
 	if err != nil {
+		logger.L().Error(ctx, "team billing provisioning failed",
+			zap.String("user_id", userID.String()),
+			zap.String("team_id", team.ID.String()),
+			zap.String("reason", teamprovision.ReasonAdditionalTeam),
+			zap.String("result", "failed"),
+			zap.Error(err),
+		)
 		if cleanupErr := s.cleanupCreatedTeam(ctx, team.ID); cleanupErr != nil {
 			return provisionedTeam{}, fmt.Errorf("cleanup created team: %w", cleanupErr)
 		}
 
 		return provisionedTeam{}, err
 	}
+
+	logger.L().Info(ctx, "team billing provisioning succeeded",
+		zap.String("user_id", userID.String()),
+		zap.String("team_id", team.ID.String()),
+		zap.String("reason", teamprovision.ReasonAdditionalTeam),
+		zap.String("result", "provisioned"),
+	)
 
 	return provisionedTeam{
 		ID:    team.ID,
@@ -236,6 +268,7 @@ func (s *APIStore) cleanupCreatedTeam(ctx context.Context, teamID uuid.UUID) err
 	if err := s.db.DeleteTeamByID(ctx, teamID); err != nil {
 		logger.L().Error(ctx, "failed to cleanup created team",
 			zap.String("teamID", teamID.String()),
+			zap.String("result", "cleanup_failed"),
 			zap.Error(err),
 		)
 
@@ -251,11 +284,58 @@ func (s *APIStore) cleanupCreatedTeam(ctx context.Context, teamID uuid.UUID) err
 		}
 	}
 
+	logger.L().Info(ctx, "cleaned up created team",
+		zap.String("teamID", teamID.String()),
+		zap.String("result", "cleanup_succeeded"),
+	)
+
+	return nil
+}
+
+func validateTeamCreationAllowed(ctx context.Context, txDB *sqlcdb.Client, ownerUserID uuid.UUID) error {
+	teams, err := txDB.GetTeamsWithUsersTeamsWithTierForUpdate(ctx, ownerUserID)
+	if err != nil {
+		return fmt.Errorf("query user teams for limit check: %w", err)
+	}
+
+	hasProTier := false
+	for _, row := range teams {
+		if row.Tier != baseTierID {
+			hasProTier = true
+		}
+		if row.IsBanned {
+			return &internalteamprovision.ProvisionError{
+				StatusCode: http.StatusBadRequest,
+				Message:    "You're unable to create a team right now. Please contact support if this persists.",
+			}
+		}
+	}
+
+	if hasProTier {
+		if len(teams) >= maxTeamsPerUserWithProTier {
+			return &internalteamprovision.ProvisionError{
+				StatusCode: http.StatusBadRequest,
+				Message:    fmt.Sprintf("You can't create more than %d teams", maxTeamsPerUserWithProTier),
+			}
+		}
+	} else {
+		if len(teams) >= maxTeamsPerUser {
+			return &internalteamprovision.ProvisionError{
+				StatusCode: http.StatusBadRequest,
+				Message: fmt.Sprintf(
+					"You can't create more than %d teams, you can upgrade to Pro tier to create up to %d teams",
+					maxTeamsPerUser,
+					maxTeamsPerUserWithProTier,
+				),
+			}
+		}
+	}
+
 	return nil
 }
 
 func (s *APIStore) handleProvisioningError(ctx context.Context, c *gin.Context, operation string, err error) {
-	var provisionErr *teambilling.ProvisionError
+	var provisionErr *internalteamprovision.ProvisionError
 	if errors.As(err, &provisionErr) && provisionErr.IsBadRequest() {
 		s.sendAPIStoreError(c, http.StatusBadRequest, provisionErr.Error())
 
