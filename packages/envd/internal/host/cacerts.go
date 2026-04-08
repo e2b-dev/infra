@@ -183,7 +183,7 @@ func (c *CACertInstaller) install(_ context.Context, certPEM, bundlePath, stateP
 			return
 		}
 
-		if err := removeCertFromBundle(bundlePath, effectivePrev); err != nil {
+		if err := removeCertFromBundle(bundlePath, statePath, effectivePrev); err != nil {
 			c.logger.Error().Err(err).Msg("Failed to remove old CA cert from bundle")
 
 			return
@@ -197,8 +197,17 @@ func (c *CACertInstaller) install(_ context.Context, certPEM, bundlePath, stateP
 
 // removeCertFromBundle rewrites bundlePath removing all occurrences of certPEM.
 // The write is atomic (write to temp file, then rename) so the bundle is never
-// empty from the perspective of concurrent readers. Must be called under mu.
-func removeCertFromBundle(bundlePath, certPEM string) error {
+// empty from the perspective of concurrent readers.
+//
+// tmpDir must be on the same filesystem as bundlePath. In production bundlePath
+// is a bind-mounted file whose parent directory is on the NBD-backed filesystem;
+// a temp file created there would be on a different device and os.Rename would
+// fail with EXDEV. Passing filepath.Dir(statePath) (which is E2BRunDir — the
+// same tmpfs as the bind mount source) keeps both files on the same device.
+//
+// Must be called under mu.
+func removeCertFromBundle(bundlePath, statePath, certPEM string) error {
+	tmpDir := filepath.Dir(statePath)
 	content, err := os.ReadFile(bundlePath)
 	if err != nil {
 		return err
@@ -206,12 +215,21 @@ func removeCertFromBundle(bundlePath, certPEM string) error {
 
 	cleaned := strings.ReplaceAll(string(content), certPEM, "")
 
-	tmp, err := os.CreateTemp(filepath.Dir(bundlePath), "ca-bundle-*")
+	tmp, err := os.CreateTemp(tmpDir, "ca-bundle-*")
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
 	}
 
 	tmpPath := tmp.Name()
+
+	// os.CreateTemp creates with 0600; restore world-readable so non-root
+	// processes can still verify TLS after the rename replaces the bundle.
+	if err := tmp.Chmod(0o644); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+
+		return fmt.Errorf("chmod temp file: %w", err)
+	}
 
 	if _, err := tmp.WriteString(cleaned); err != nil {
 		tmp.Close()

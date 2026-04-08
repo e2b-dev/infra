@@ -241,13 +241,15 @@ func TestInstallCACert_ConcurrentResume(t *testing.T) {
 
 func TestRemoveCertFromBundle(t *testing.T) {
 	t.Parallel()
-	bundlePath := filepath.Join(t.TempDir(), "bundle.crt")
+	dir := t.TempDir()
+	bundlePath := filepath.Join(dir, "bundle.crt")
+	statePath := filepath.Join(dir, "ca-cert.pem")
 
 	normalizedA := strings.TrimRight(certA, "\n") + "\n"
 	normalizedB := strings.TrimRight(certB, "\n") + "\n"
 
 	require.NoError(t, os.WriteFile(bundlePath, []byte(baseBundle+normalizedA+normalizedB), 0o644))
-	require.NoError(t, removeCertFromBundle(bundlePath, normalizedA))
+	require.NoError(t, removeCertFromBundle(bundlePath, statePath, normalizedA))
 
 	result, err := os.ReadFile(bundlePath)
 	require.NoError(t, err)
