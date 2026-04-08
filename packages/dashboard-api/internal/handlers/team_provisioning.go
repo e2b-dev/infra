@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
@@ -16,14 +20,13 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"go.uber.org/zap"
 )
 
-const baseTierID = "base_v1"
-const maxTeamsPerUser = 3
-const maxTeamsPerUserWithProTier = 10
+const (
+	baseTierID                 = "base_v1"
+	maxTeamsPerUser            = 3
+	maxTeamsPerUserWithProTier = 10
+)
 
 type provisionedTeam struct {
 	ID    uuid.UUID
