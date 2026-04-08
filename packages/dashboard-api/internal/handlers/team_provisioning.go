@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -23,16 +24,20 @@ import (
 )
 
 const (
-	baseTierID                 = "base_v1"
-	maxTeamsPerUser            = 3
-	maxTeamsPerUserWithProTier = 10
+	baseTierID                                  = "base_v1"
+	maxTeamsPerUser                             = 3
+	maxTeamsPerUserWithProTier                  = 10
+	newUserNewTeamRequireBillingMethodThreshold = 3 * 24 * time.Hour
+	blockedReasonMissingPayment                 = "missing_payment"
 )
 
 type provisionedTeam struct {
-	ID    uuid.UUID
-	Name  string
-	Email string
-	Slug  string
+	ID            uuid.UUID
+	Name          string
+	Email         string
+	Slug          string
+	IsBlocked     bool
+	BlockedReason *string
 }
 
 func (s *APIStore) PostUsersBootstrap(c *gin.Context) {
@@ -117,10 +122,12 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 		}
 
 		return provisionedTeam{
-			ID:    existingTeam.ID,
-			Name:  existingTeam.Name,
-			Email: existingTeam.Email,
-			Slug:  existingTeam.Slug,
+			ID:            existingTeam.ID,
+			Name:          existingTeam.Name,
+			Email:         existingTeam.Email,
+			Slug:          existingTeam.Slug,
+			IsBlocked:     existingTeam.IsBlocked,
+			BlockedReason: existingTeam.BlockedReason,
 		}, nil
 	}
 	if !dberrors.IsNotFoundError(err) {
@@ -128,9 +135,11 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 	}
 
 	team, err := txDB.CreateTeam(ctx, queries.CreateTeamParams{
-		Name:  authUser.Email,
-		Tier:  baseTierID,
-		Email: authUser.Email,
+		Name:          authUser.Email,
+		Tier:          baseTierID,
+		Email:         authUser.Email,
+		IsBlocked:     false,
+		BlockedReason: nil,
 	})
 	if err != nil {
 		return provisionedTeam{}, fmt.Errorf("create default team: %w", err)
@@ -165,10 +174,12 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 	}
 
 	return provisionedTeam{
-		ID:    team.ID,
-		Name:  team.Name,
-		Email: team.Email,
-		Slug:  team.Slug,
+		ID:            team.ID,
+		Name:          team.Name,
+		Email:         team.Email,
+		Slug:          team.Slug,
+		IsBlocked:     team.IsBlocked,
+		BlockedReason: team.BlockedReason,
 	}, nil
 }
 
@@ -201,10 +212,14 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 		return provisionedTeam{}, err
 	}
 
+	isBlocked, blockedReason := teamBlockPolicy(authUser.CreatedAt, time.Now())
+
 	team, err := txDB.CreateTeam(ctx, queries.CreateTeamParams{
-		Name:  name,
-		Tier:  baseTierID,
-		Email: authUser.Email,
+		Name:          name,
+		Tier:          baseTierID,
+		Email:         authUser.Email,
+		IsBlocked:     isBlocked,
+		BlockedReason: blockedReason,
 	})
 	if err != nil {
 		return provisionedTeam{}, fmt.Errorf("create team: %w", err)
@@ -260,10 +275,12 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 	)
 
 	return provisionedTeam{
-		ID:    team.ID,
-		Name:  team.Name,
-		Email: team.Email,
-		Slug:  team.Slug,
+		ID:            team.ID,
+		Name:          team.Name,
+		Email:         team.Email,
+		Slug:          team.Slug,
+		IsBlocked:     team.IsBlocked,
+		BlockedReason: team.BlockedReason,
 	}, nil
 }
 
@@ -335,6 +352,16 @@ func validateTeamCreationAllowed(ctx context.Context, txDB *sqlcdb.Client, owner
 	}
 
 	return nil
+}
+
+func teamBlockPolicy(userCreatedAt, now time.Time) (bool, *string) {
+	if userCreatedAt.After(now.Add(-newUserNewTeamRequireBillingMethodThreshold)) {
+		reason := blockedReasonMissingPayment
+
+		return true, &reason
+	}
+
+	return false, nil
 }
 
 func (s *APIStore) handleProvisioningError(ctx context.Context, c *gin.Context, operation string, err error) {

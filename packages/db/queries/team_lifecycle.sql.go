@@ -13,8 +13,14 @@ import (
 )
 
 const createTeam = `-- name: CreateTeam :one
-INSERT INTO public.teams (name, tier, email)
-VALUES ($1::text, $2::text, $3::text)
+INSERT INTO public.teams (name, tier, email, is_blocked, blocked_reason)
+VALUES (
+    $1::text,
+    $2::text,
+    $3::text,
+    $4::boolean,
+    $5::text
+)
 RETURNING
     id,
     created_at,
@@ -30,9 +36,11 @@ RETURNING
 `
 
 type CreateTeamParams struct {
-	Name  string
-	Tier  string
-	Email string
+	Name          string
+	Tier          string
+	Email         string
+	IsBlocked     bool
+	BlockedReason *string
 }
 
 type CreateTeamRow struct {
@@ -50,7 +58,13 @@ type CreateTeamRow struct {
 }
 
 func (q *Queries) CreateTeam(ctx context.Context, arg CreateTeamParams) (CreateTeamRow, error) {
-	row := q.db.QueryRow(ctx, createTeam, arg.Name, arg.Tier, arg.Email)
+	row := q.db.QueryRow(ctx, createTeam,
+		arg.Name,
+		arg.Tier,
+		arg.Email,
+		arg.IsBlocked,
+		arg.BlockedReason,
+	)
 	var i CreateTeamRow
 	err := row.Scan(
 		&i.ID,

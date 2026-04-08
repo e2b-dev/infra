@@ -1,6 +1,12 @@
 -- name: CreateTeam :one
-INSERT INTO public.teams (name, tier, email)
-VALUES (sqlc.arg(name)::text, sqlc.arg(tier)::text, sqlc.arg(email)::text)
+INSERT INTO public.teams (name, tier, email, is_blocked, blocked_reason)
+VALUES (
+    sqlc.arg(name)::text,
+    sqlc.arg(tier)::text,
+    sqlc.arg(email)::text,
+    sqlc.arg(is_blocked)::boolean,
+    sqlc.narg(blocked_reason)::text
+)
 RETURNING
     id,
     created_at,

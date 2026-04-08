@@ -16,6 +16,7 @@ GRANT EXECUTE ON FUNCTION auth.uid() TO postgres;
 CREATE TABLE auth.users (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
     email text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (id)
 );
 -- +goose StatementEnd
