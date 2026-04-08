@@ -145,7 +145,8 @@ func BenchmarkConcurrentResume(b *testing.B) {
 		buildIDHugePages = "ba6aae36-74f7-487a-b6f7-74fd7c94e480"
 	)
 
-	useHugePages := os.Getenv("DISABLE_HUGE_PAGES") != "true"
+	disableHP, _ := strconv.ParseBool(os.Getenv("DISABLE_HUGE_PAGES"))
+	useHugePages := !disableHP
 	buildID := buildIDHugePages
 	if !useHugePages {
 		buildID = buildIDNormal
