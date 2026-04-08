@@ -150,17 +150,18 @@ func (h *HostMetrics) sampleCPU() {
 	}
 
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	if err == nil {
 		h.cpu = result
 	}
 	h.cpuErr = err
-	h.mu.Unlock()
 }
 
 func (h *HostMetrics) sampleMemory() {
 	memInfo, err := mem.VirtualMemory()
 
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	if err == nil {
 		h.memory = &MemoryMetrics{
 			UsedBytes:  memInfo.Used,
@@ -168,15 +169,14 @@ func (h *HostMetrics) sampleMemory() {
 		}
 	}
 	h.memoryErr = err
-	h.mu.Unlock()
 }
 
 func (h *HostMetrics) sampleDisk() {
 	partitions, err := disk.Partitions(false)
 	if err != nil {
 		h.mu.Lock()
+		defer h.mu.Unlock()
 		h.disksErr = err
-		h.mu.Unlock()
 
 		return
 	}
@@ -204,9 +204,9 @@ func (h *HostMetrics) sampleDisk() {
 	}
 
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.disks = disks
 	h.disksErr = nil
-	h.mu.Unlock()
 }
 
 func isRealDisk(p disk.PartitionStat) bool {
