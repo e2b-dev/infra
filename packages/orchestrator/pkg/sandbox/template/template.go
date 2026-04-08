@@ -12,7 +12,7 @@ import (
 )
 
 type Template interface {
-	Files() storage.TemplateCacheFiles
+	Files() storage.CachePaths
 	Memfile(ctx context.Context) (block.ReadonlyDevice, error)
 	Rootfs() (block.ReadonlyDevice, error)
 	Snapfile() (File, error)

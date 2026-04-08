@@ -78,7 +78,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 
 	telemetry.ReportEvent(ctx, "got backend size")
 
-	deviceIndex := uint32(math.MaxUint32)
+	var deviceIndex uint32
 
 	for {
 		deviceIndex, err = d.devicePool.GetDevice(ctx)
@@ -119,13 +119,17 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			server.Close()
 
 			dispatch := NewDispatch(serverc, d.Backend)
+			// Capture deviceIndex for the goroutine closure — it's reassigned on
+			// each retry iteration of the outer for-loop (not a range loop, so
+			// Go 1.22+ loop variable fix doesn't apply).
+			devIdx := deviceIndex
 			// Start reading commands on the socket and dispatching them to our provider
 			d.handlersWg.Go(func() {
 				handleErr := dispatch.Handle(ctx)
 				// The error is expected to happen if the nbd (socket connection) is closed
 				logger.L().Info(ctx, "closing handler for NBD commands",
 					zap.Error(handleErr),
-					zap.Uint32("device_index", deviceIndex),
+					zap.Uint32("device_index", devIdx),
 					zap.Int("socket_index", i),
 				)
 			})

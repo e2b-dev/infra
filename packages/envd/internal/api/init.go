@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/netip"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -231,10 +232,25 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	return nil
 }
 
+var nfsOptions = strings.Join([]string{
+	// wait for data to be sent to proxy server before returning.
+	// async might cause issues if the sandbox is shut down suddenly.
+	"sync",
+
+	"rsize=1048576",  // 1 MB read buffer
+	"wsize=1048576",  // 1 MB write buffer
+	"mountproto=tcp", // nfs proxy only supports tcp
+	"mountport=2049", // nfs proxy only supports mounting on port 2049
+	"proto=tcp",      // nfs proxy only supports tcp
+	"port=2049",      // nfs proxy only supports mounting on port 2049
+	"nfsvers=3",      // nfs proxy is nfs version 3
+	"noacl",          // no reason for acl in the sandbox
+}, ",")
+
 func (a *API) setupNfs(ctx context.Context, nfsTarget, path string) {
 	commands := [][]string{
 		{"mkdir", "-p", path},
-		{"mount", "-v", "-t", "nfs", "-o", "fg,hard,mountproto=tcp,mountport=2049,proto=tcp,port=2049,nfsvers=3,noacl", nfsTarget, path},
+		{"mount", "-v", "-t", "nfs", "-o", "fg,hard," + nfsOptions, nfsTarget, path},
 	}
 
 	for _, command := range commands {

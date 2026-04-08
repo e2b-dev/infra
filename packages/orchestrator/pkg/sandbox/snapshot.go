@@ -24,7 +24,7 @@ type Snapshot struct {
 func (s *Snapshot) Upload(
 	ctx context.Context,
 	persistence storage.StorageProvider,
-	templateFiles storage.TemplateFiles,
+	paths storage.Paths,
 ) error {
 	var memfilePath *string
 	switch r := s.MemfileDiff.(type) {
@@ -54,7 +54,7 @@ func (s *Snapshot) Upload(
 		s.MemfileDiffHeader,
 		s.RootfsDiffHeader,
 		persistence,
-		templateFiles,
+		paths,
 	)
 
 	if err := templateBuild.Upload(

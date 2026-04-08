@@ -1,0 +1,124 @@
+name: ARM64 tests on PRs
+
+on: [workflow_call]
+
+permissions:
+  contents: read
+
+jobs:
+  cross-compile:
+    name: Cross-compile all packages for ARM64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: ./.github/actions/go-setup-cache
+
+      - name: Install ARM64 cross-compiler
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Build and vet packages (pure Go)
+        run: |
+          for pkg in api client-proxy envd shared db docker-reverse-proxy; do
+            echo "::group::packages/$pkg"
+            pushd "packages/$pkg" > /dev/null
+            GOARCH=arm64 go build ./...
+            GOARCH=arm64 go vet ./...
+            popd > /dev/null
+            echo "::endgroup::"
+          done
+
+      - name: Fetch busybox for orchestrator embed
+        run: make -C packages/orchestrator fetch-busybox BUILD_ARCH=arm64
+
+      - name: Build and vet orchestrator (CGO)
+        run: |
+          CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc GOARCH=arm64 go build ./...
+          CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc GOARCH=arm64 go vet ./...
+        working-directory: packages/orchestrator
+
+  arm64-unit-tests:
+    name: ARM64 tests for ${{ matrix.package }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    env:
+      GIN_MODE: test
+    strategy:
+      matrix:
+        include:
+          - package: packages/api
+            test_path: ./...
+            sudo: false
+          - package: packages/client-proxy
+            test_path: ./...
+            sudo: false
+          - package: packages/db
+            test_path: ./...
+            sudo: false
+          - package: packages/docker-reverse-proxy
+            test_path: ./...
+            sudo: false
+          - package: packages/envd
+            test_path: ./...
+            sudo: true
+          - package: packages/orchestrator
+            test_path: ./...
+            sudo: true
+          - package: packages/shared
+            test_path: ./pkg/...
+            sudo: false
+      fail-fast: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: ./.github/actions/go-setup-cache
+        with:
+          cache-dependency-paths: |
+            go.work
+            ${{ matrix.package }}/go.mod
+            ${{ matrix.package }}/go.sum
+
+      - name: Setup envd tests
+        run: |
+          sudo apt-get update && sudo apt-get install -y bindfs
+        if: matrix.package == 'packages/envd'
+
+      - name: Setup orchestrator tests
+        run: |
+          # Download busybox for go:embed
+          make -C packages/orchestrator fetch-busybox
+
+          # Enable unprivileged uffd (Ubuntu defaults to 0)
+          echo 1 | sudo tee /proc/sys/vm/unprivileged_userfaultfd
+
+          # Enable hugepages (256 × 2MB = 512MB).
+          # Tests that need more hugepages than available will skip gracefully.
+          sudo mkdir -p /mnt/hugepages
+          sudo mount -t hugetlbfs none /mnt/hugepages
+          echo 256 | sudo tee /proc/sys/vm/nr_hugepages
+
+          # Install extra kernel modules (nbd is not in base modules on GitHub-hosted runners)
+          sudo apt-get update
+          sudo apt-get install -y linux-modules-extra-$(uname -r)
+          sudo modprobe nbd nbds_max=256
+
+          # Disable inotify watching of change events for NBD devices
+          echo 'ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"' | sudo tee /etc/udev/rules.d/97-nbd-device.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger
+        if: matrix.package == 'packages/orchestrator'
+
+      - name: Run tests that require sudo
+        working-directory: ${{ matrix.package }}
+        run: sudo -E `which go` test -race -v ${{ matrix.test_path }}
+        if: matrix.sudo == true
+
+      - name: Run tests
+        working-directory: ${{ matrix.package }}
+        run: go test -race -v ${{ matrix.test_path }}
+        if: matrix.sudo == false

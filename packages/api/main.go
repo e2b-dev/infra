@@ -31,8 +31,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
-	metricsMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
-	tracingMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/ratelimit"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -45,6 +43,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
+	metricsMiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/metrics"
+	tracingMiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -93,14 +93,14 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 
 	r.Use(
 		// We use custom otel gin middleware because we want to log 4xx errors in the otel
-		customMiddleware.ExcludeRoutes(
+		sharedmiddleware.ExcludeRoutes(
 			tracingMiddleware.Middleware(tel.TracerProvider, serviceName), //nolint:contextcheck // TODO: fix this later
 			"/health",
 			"/sandboxes/:sandboxID/refreshes",
 			"/templates/:templateID/builds/:buildID/logs",
 			"/templates/:templateID/builds/:buildID/status",
 		),
-		customMiddleware.IncludeRoutes(
+		sharedmiddleware.IncludeRoutes(
 			metricsMiddleware.Middleware(tel.MeterProvider, serviceName), //nolint:contextcheck // TODO: fix this later
 			"/sandboxes",
 			"/sandboxes/:sandboxID",
@@ -244,12 +244,8 @@ func run() int {
 	//     work has completed (waitgroup, counter, etc.) to avoid
 	//     exiting early.
 
-	var (
-		port  int
-		debug string
-	)
+	var port int
 	flag.IntVar(&port, "port", defaultPort, "Port for test HTTP server")
-	flag.StringVar(&debug, "debug", "false", "is debug")
 	flag.Parse()
 
 	serviceInstanceID := uuid.New().String()
@@ -325,9 +321,6 @@ func run() int {
 	}
 
 	l.Info(ctx, "Starting API service...", zap.String("commit_sha", commitSHA), logger.WithServiceInstanceID(serviceInstanceID))
-	if debug != "true" {
-		gin.SetMode(gin.ReleaseMode)
-	}
 
 	swagger, err := api.GetSwagger()
 	if err != nil {
