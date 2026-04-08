@@ -2,7 +2,6 @@ package internal
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"testing"
 
@@ -13,12 +12,6 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
-
-func TestMain(m *testing.M) {
-	log.Println("Setting up test environment")
-	m.Run()
-	log.Println("Environment set up")
-}
 
 // TestCacheTemplate starts a sandbox before all tests to cache the necessary files for the base template.
 func TestCacheTemplate(t *testing.T) {
