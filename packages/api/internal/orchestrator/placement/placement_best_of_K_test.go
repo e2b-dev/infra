@@ -90,7 +90,7 @@ func TestBestOfK_Score_WithPendingResources(t *testing.T) {
 	scoreNormal := algo.Score(nodeNormal, reqResources, config)
 	scorePending := algo.Score(nodeWithPending, reqResources, config)
 
-	// A node with pending resources has a higher 'reserved' CPU count, 
+	// A node with pending resources has a higher 'reserved' CPU count,
 	// so its calculated Score should be greater (meaning worse/lower priority)
 	assert.Greater(t, scorePending, scoreNormal, "Node with pending resources should receive a higher (worse) score")
 }

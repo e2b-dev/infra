@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/rand"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -69,6 +70,7 @@ type NodeFactory func(id string, config BenchmarkConfig) NodeSimulator
 // StandardNode implements the original SimulatedNode logic (real-time metric synchronization)
 type StandardNode struct {
 	*nodemanager.Node
+
 	mu                 sync.RWMutex
 	sandboxes          map[string]*LiveSandbox
 	totalPlacements    int64
@@ -103,6 +105,7 @@ func (n *StandardNode) PlaceSandbox(sbx *LiveSandbox) bool {
 	// Check capacity with overcommit (Original Logic)
 	if metrics.CpuAllocated+uint32(sbx.RequestedCPU) > metrics.CpuCount*4 {
 		atomic.AddInt64(&n.rejectedPlacements, 1)
+
 		return false
 	}
 
@@ -118,6 +121,7 @@ func (n *StandardNode) PlaceSandbox(sbx *LiveSandbox) bool {
 	})
 	n.sandboxes[sbx.ID] = sbx
 	atomic.AddInt64(&n.totalPlacements, 1)
+
 	return true
 }
 
@@ -151,12 +155,14 @@ func (n *StandardNode) GetUtilization() (float64, float64) {
 	if metrics.MemoryTotalBytes > 0 {
 		memUtil = (float64(metrics.MemoryUsedBytes) / float64(metrics.MemoryTotalBytes)) * 100
 	}
+
 	return cpuUtil, memUtil
 }
 
 func (n *StandardNode) GetSandboxCount() int {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
+
 	return len(n.sandboxes)
 }
 
@@ -174,6 +180,7 @@ type LaggyNode struct {
 
 func NewLaggyNode(id string, config BenchmarkConfig) NodeSimulator {
 	base := NewStandardNode(id, config).(*StandardNode)
+
 	return &LaggyNode{
 		StandardNode: base,
 	}
@@ -189,6 +196,7 @@ func (n *LaggyNode) PlaceSandbox(sbx *LiveSandbox) bool {
 	metrics := n.Node.Metrics()
 	if n.realCpuAllocated+uint32(sbx.RequestedCPU) > metrics.CpuCount*4 {
 		atomic.AddInt64(&n.rejectedPlacements, 1)
+
 		return false
 	}
 
@@ -282,6 +290,7 @@ func createSimulatedNodes(config BenchmarkConfig, factory NodeFactory) []NodeSim
 	for i := range config.NumNodes {
 		nodes[i] = factory(fmt.Sprintf("node-%d", i), config)
 	}
+
 	return nodes
 }
 
@@ -291,6 +300,7 @@ func toNodeManagerNodes(simNodes []NodeSimulator) []*nodemanager.Node {
 	for i, n := range simNodes {
 		nodes[i] = n.GetNode()
 	}
+
 	return nodes
 }
 
@@ -300,7 +310,7 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig, nod
 
 	parentCtx := b.Context()
 	if parentCtx == nil {
-    	parentCtx = context.Background()
+		parentCtx = context.Background()
 	}
 	ctx, cancel := context.WithTimeout(parentCtx, config.BenchmarkDuration)
 	defer cancel()
@@ -411,8 +421,8 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig, nod
 						placementStart := time.Now()
 						node, err := PlaceSandbox(ctx, algorithm, nodes, nil, &orchestratorgrpc.SandboxCreateRequest{Sandbox: &orchestratorgrpc.SandboxConfig{
 							SandboxId: sbx.ID,
-							Vcpu:       sbx.RequestedCPU,
-							RamMb:      sbx.RequestedMemory,
+							Vcpu:      sbx.RequestedCPU,
+							RamMb:     sbx.RequestedMemory,
 						}}, machineinfo.MachineInfo{}, false, nil)
 
 						placementTime := time.Since(placementStart)
@@ -610,13 +620,13 @@ func BenchmarkPlacementDistribution(b *testing.B) {
 	// Scenario config: “thundering herd” test under extremely high concurrency
 	// Use LaggyNode to simulate metric reporting delay: Orchestrator always sees stale metrics
 	config := BenchmarkConfig{
-		NumNodes:              10,                       // Fewer nodes to make load hotspots more apparent
-		SandboxStartRate:      20,                       // 20 requests per second (burst traffic)
-		AvgSandboxCPU:         1,                        // 1 vCPU per Sandbox
-		AvgSandboxMemory:      1024,                     // 1024 MiB
-		CPUVariance:           0.0,                      // Fixed spec for easier distribution observation
+		NumNodes:              10,   // Fewer nodes to make load hotspots more apparent
+		SandboxStartRate:      20,   // 20 requests per second (burst traffic)
+		AvgSandboxCPU:         1,    // 1 vCPU per Sandbox
+		AvgSandboxMemory:      1024, // 1024 MiB
+		CPUVariance:           0.0,  // Fixed spec for easier distribution observation
 		MemoryVariance:        0.0,
-		ActualUsageRatio:      1.0,                      // Assume full utilization
+		ActualUsageRatio:      1.0, // Assume full utilization
 		ActualUsageVariance:   0.0,
 		SandboxDuration:       1 * time.Minute,          // Long enough to ensure no release during test
 		BenchmarkDuration:     25 * time.Second,         // Run long enough to trigger at least one heartbeat sync (20s ticker)
@@ -684,9 +694,7 @@ func BenchmarkPlacementDistribution(b *testing.B) {
 
 			// 4. Concurrently generate Sandbox requests
 			var wg sync.WaitGroup
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				ticker := time.NewTicker(time.Second / time.Duration(config.SandboxStartRate))
 				defer ticker.Stop()
 
@@ -708,14 +716,12 @@ func BenchmarkPlacementDistribution(b *testing.B) {
 
 						wg.Add(1)
 						go func(s *LiveSandbox) {
-							defer wg.Done()
-
 							// Execute placement algorithm
 							node, err := PlaceSandbox(ctx, alg.algo, nodes, nil, &orchestratorgrpc.SandboxCreateRequest{
 								Sandbox: &orchestratorgrpc.SandboxConfig{
 									SandboxId: s.ID,
-									Vcpu:       s.RequestedCPU,
-									RamMb:      s.RequestedMemory,
+									Vcpu:      s.RequestedCPU,
+									RamMb:     s.RequestedMemory,
 								},
 							}, machineinfo.MachineInfo{}, false, nil)
 
@@ -728,7 +734,7 @@ func BenchmarkPlacementDistribution(b *testing.B) {
 						}(sbx)
 					}
 				}
-			}()
+			})
 
 			<-ctx.Done()
 			wg.Wait()
@@ -748,6 +754,7 @@ func BenchmarkPlacementDistribution(b *testing.B) {
 
 			if totalCount == 0 {
 				b.Log("No sandboxes placed.")
+
 				return
 			}
 
@@ -759,9 +766,9 @@ func BenchmarkPlacementDistribution(b *testing.B) {
 					barLen = int(float64(count) / float64(maxCount) * 40) // Max 40 characters
 				}
 
-				bar := ""
-				for k := 0; k < barLen; k++ {
-					bar += "█"
+				var bar strings.Builder
+				for range barLen {
+					bar.WriteString("█")
 				}
 
 				// Force Sync before printing to ensure we see the final real values
@@ -770,7 +777,7 @@ func BenchmarkPlacementDistribution(b *testing.B) {
 				}
 				cpuUtil, _ := n.GetUtilization()
 
-				b.Logf("Node %02d |%s| %d (CPU: %.1f%%)", i, fmt.Sprintf("%-40s", bar), count, cpuUtil)
+				b.Logf("Node %02d |%s| %d (CPU: %.1f%%)", i, fmt.Sprintf("%-40s", bar.String()), count, cpuUtil)
 			}
 
 			// Calculate distribution statistics (CV coefficient of variation)
