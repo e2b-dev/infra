@@ -110,11 +110,12 @@ func (h *HostMetrics) sampleCPU() {
 	}
 
 	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	if err == nil {
 		h.cpu = result
 	}
 	h.cpuErr = err
-	h.mu.Unlock()
 }
 
 func (h *HostMetrics) GetMemoryMetrics() (*MemoryMetrics, error) {
