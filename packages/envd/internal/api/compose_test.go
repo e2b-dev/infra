@@ -32,7 +32,7 @@ func newComposeTestAPI(t *testing.T) (*API, *user.User) {
 		User:    currentUser.Username,
 	}
 
-	return New(&logger, defaults, nil, false), currentUser
+	return New(logger, defaults, nil, false), currentUser
 }
 
 func writeSourceFile(t *testing.T, dir string, name string, data []byte) string {

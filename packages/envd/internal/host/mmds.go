@@ -136,7 +136,7 @@ func GetAccessTokenHashFromMMDS(ctx context.Context) (string, error) {
 	return opts.AccessTokenHash, nil
 }
 
-func PollForMMDSOpts(ctx context.Context, logger *zerolog.Logger, mmdsChan chan<- *MMDSOpts, envVars *utils.Map[string, string]) {
+func PollForMMDSOpts(ctx context.Context, logger zerolog.Logger, mmdsChan chan<- *MMDSOpts, envVars *utils.Map[string, string]) {
 	httpClient := &http.Client{}
 	defer httpClient.CloseIdleConnections()
 

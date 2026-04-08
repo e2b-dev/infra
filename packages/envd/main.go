@@ -168,7 +168,7 @@ func main() {
 	}
 
 	if !isNotFC {
-		go host.PollForMMDSOpts(ctx, l, mmdsChan, defaults.EnvVars)
+		go host.PollForMMDSOpts(ctx, l.With().Str("logger", "mmds-poller").Logger(), mmdsChan, defaults.EnvVars)
 	}
 
 	m := chi.NewRouter()
@@ -188,7 +188,7 @@ func main() {
 	processLogger := l.With().Str("logger", "process").Logger()
 	processService := processRpc.Handle(m, &processLogger, defaults, cgroupManager)
 
-	service := api.New(&envLogger, defaults, mmdsChan, isNotFC)
+	service := api.New(envLogger, defaults, mmdsChan, isNotFC)
 	handler := api.HandlerFromMux(service, m)
 	middleware := authn.NewMiddleware(permissions.AuthenticateUsername)
 
