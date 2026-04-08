@@ -6,6 +6,10 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/batcher"
@@ -41,6 +45,8 @@ type ClickhouseDelivery struct {
 	conn    driver.Conn
 }
 
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats")
+
 func NewDefaultClickhouseHostStatsDelivery(
 	ctx context.Context,
 	conn driver.Conn,
@@ -52,6 +58,7 @@ func NewDefaultClickhouseHostStatsDelivery(
 
 	return NewClickhouseHostStatsDelivery(
 		ctx, conn, batcher.BatcherOptions{
+			Name:         "sandbox-host-stats",
 			MaxBatchSize: maxBatchSize,
 			MaxDelay:     maxDelay,
 			QueueSize:    batcherQueueSize,
@@ -67,9 +74,9 @@ func NewClickhouseHostStatsDelivery(
 	conn driver.Conn,
 	opts batcher.BatcherOptions,
 ) (*ClickhouseDelivery, error) {
-	var err error
-
 	delivery := &ClickhouseDelivery{conn: conn}
+
+	var err error
 	delivery.batcher, err = batcher.NewBatcher(delivery.batchInserter, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create batcher: %w", err)
@@ -83,16 +90,7 @@ func NewClickhouseHostStatsDelivery(
 }
 
 func (c *ClickhouseDelivery) Push(stat SandboxHostStat) error {
-	ok, err := c.batcher.Push(stat)
-	if err != nil {
-		return err
-	}
-
-	if !ok {
-		return batcher.ErrBatcherQueueFull
-	}
-
-	return nil
+	return c.batcher.Push(stat)
 }
 
 func (c *ClickhouseDelivery) Close(context.Context) error {
@@ -100,8 +98,15 @@ func (c *ClickhouseDelivery) Close(context.Context) error {
 }
 
 func (c *ClickhouseDelivery) batchInserter(ctx context.Context, stats []SandboxHostStat) error {
+	attrs := trace.WithAttributes(attribute.Int("batch.size", len(stats)))
+	ctx, span := tracer.Start(ctx, "Flush host stats batch to Clickhouse", attrs)
+	defer span.End()
+
 	batch, err := c.conn.PrepareBatch(ctx, InsertSandboxHostStatQuery, driver.WithReleaseConnection())
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "prepare batch failed")
+
 		return fmt.Errorf("error preparing batch: %w", err)
 	}
 
@@ -127,12 +132,17 @@ func (c *ClickhouseDelivery) batchInserter(ctx context.Context, stats []SandboxH
 			stat.SandboxType,
 		)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "append failed")
+
 			return fmt.Errorf("error appending %d host stat to batch: %w", len(stats), err)
 		}
 	}
 
-	err = batch.Send()
-	if err != nil {
+	if err = batch.Send(); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "send failed")
+
 		return fmt.Errorf("error sending %d host stats batch: %w", len(stats), err)
 	}
 
