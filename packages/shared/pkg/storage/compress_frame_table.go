@@ -114,13 +114,14 @@ func (ft *FrameTable) IsCompressed() bool {
 	return ft != nil && ft.compressionType != CompressionNone
 }
 
-func (ft *FrameTable) Size() (uncompressed, compressed int64) {
+// UncompressedSize returns the total uncompressed byte size across all frames.
+func (ft *FrameTable) UncompressedSize() int64 {
+	var total int64
 	for _, frame := range ft.Frames {
-		uncompressed += int64(frame.U)
-		compressed += int64(frame.C)
+		total += int64(frame.U)
 	}
 
-	return uncompressed, compressed
+	return total
 }
 
 // Subset extracts frames overlapping range r, starting the scan at frame

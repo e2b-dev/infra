@@ -39,7 +39,7 @@ func (c *compressedUploader) UploadData(ctx context.Context) error {
 				return fmt.Errorf("compressed memfile upload: %w", err)
 			}
 
-			uncompressedSize, _ := ft.Size()
+			uncompressedSize := ft.UncompressedSize()
 			c.pending.add(pendingBuildInfoKey(c.paths.BuildID, storage.MemfileName), ft, uncompressedSize, checksum)
 
 			return nil
@@ -54,7 +54,7 @@ func (c *compressedUploader) UploadData(ctx context.Context) error {
 				return fmt.Errorf("compressed rootfs upload: %w", err)
 			}
 
-			uncompressedSize, _ := ft.Size()
+			uncompressedSize := ft.UncompressedSize()
 			c.pending.add(pendingBuildInfoKey(c.paths.BuildID, storage.RootfsName), ft, uncompressedSize, checksum)
 
 			return nil

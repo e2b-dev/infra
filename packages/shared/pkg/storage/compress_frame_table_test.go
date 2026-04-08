@@ -22,7 +22,7 @@ func threeFrameFT(startU, startC int64) *FrameTable {
 	return ft
 }
 
-func TestFrameFor(t *testing.T) {
+func TestLocate(t *testing.T) {
 	t.Parallel()
 	ft := threeFrameFT(0, 0)
 

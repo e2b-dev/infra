@@ -422,8 +422,11 @@ func BenchmarkStoreFile(b *testing.B) {
 						b.Fatal(err)
 					}
 
-					uSize, cSize := ft.Size()
-					b.ReportMetric(float64(cSize)/float64(uSize), "ratio")
+					var cSize int64
+					for _, f := range ft.Frames {
+						cSize += int64(f.C)
+					}
+					b.ReportMetric(float64(cSize)/float64(ft.UncompressedSize()), "ratio")
 				}
 			})
 		}

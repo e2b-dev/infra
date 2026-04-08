@@ -10,7 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-// Start, Length and SourceStart are in bytes of the data file
+// Offset, Length and BuildStorage are in bytes of the data file
 // Length will be a multiple of BlockSize
 // The list of block mappings will be in order of increasing Start, covering the entire file
 type BuildMap struct {
