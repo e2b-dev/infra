@@ -187,14 +187,15 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, offsetU int64, 
 
 	defer c.releaseSession(s)
 
-	// Panic recovery: ensure waiters are always notified even if the fetch
-	// goroutine panics (e.g. nil pointer in upstream reader, mmap fault).
-	// Without this, waiters would block forever on their channels.
+	// Unconditionally terminate the session on exit so registerAndWait
+	// never blocks forever — whether the fetch succeeded, failed, or panicked.
 	defer func() {
 		if r := recover(); r != nil {
-			err := fmt.Errorf("fetch panicked: %v", r)
-			s.setError(err, true)
+			s.setError(fmt.Errorf("fetch panicked: %v", r), true)
 		}
+
+		// Safety net: if no code path called setDone/setError, terminate now.
+		s.setError(fmt.Errorf("fetch exited without completing"), true)
 	}()
 
 	mmapSlice, releaseLock, err := c.cache.addressBytes(s.chunkOff, s.chunkLen)

@@ -145,7 +145,7 @@ func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uplo
 	}
 	hasher := sha256.New()
 
-	ft = &FrameTable{compressionType: cfg.CompressionType()}
+	var frames []FrameSize
 
 	ctx, cancel := context.WithCancel(ctx) // pipeline errors cancel the read loop
 	defer cancel()
@@ -172,7 +172,7 @@ func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uplo
 
 			var compressed [][]byte
 			for _, f := range p.frames {
-				ft.Frames = append(ft.Frames, FrameSize{U: int32(f.uncompressedSize), C: int32(len(f.compressed))})
+				frames = append(frames, FrameSize{U: int32(f.uncompressedSize), C: int32(len(f.compressed))})
 				compressed = append(compressed, f.compressed)
 			}
 
@@ -195,7 +195,8 @@ func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uplo
 	}
 
 	part, compressCtx := newPart(1, ctx, cfg.FrameEncodeWorkers)
-	for {
+	eofReached := false
+	for !eofReached {
 		if err := ctx.Err(); err != nil {
 			pipelineErr := drainPipeline()
 
@@ -205,12 +206,8 @@ func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uplo
 		buf := make([]byte, frameSize)
 		n, err := io.ReadFull(in, buf)
 
-		switch {
-		case err == nil:
-		case errors.Is(err, io.EOF):
-		case errors.Is(err, io.ErrUnexpectedEOF):
-			// fall through
-		default:
+		eofReached = errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
+		if err != nil && !eofReached {
 			pipelineErr := drainPipeline()
 
 			return nil, [32]byte{}, errors.Join(fmt.Errorf("read frame: %w", err), pipelineErr)
@@ -221,11 +218,7 @@ func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uplo
 			part.addFrame(compressCtx, buf[:n], compressors)
 		}
 
-		if err != nil {
-			break
-		}
-
-		if part.compressedSize.Load() >= targetPartSize {
+		if !eofReached && part.compressedSize.Load() >= targetPartSize {
 			part.submit(ctx, q)
 			part, compressCtx = newPart(part.index+1, ctx, cfg.FrameEncodeWorkers)
 		}
@@ -244,6 +237,8 @@ func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uplo
 	}
 
 	copy(checksum[:], hasher.Sum(nil))
+
+	ft = &FrameTable{compressionType: cfg.CompressionType(), Frames: frames}
 
 	return ft, checksum, nil
 }
