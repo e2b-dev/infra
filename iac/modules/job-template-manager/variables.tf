@@ -62,11 +62,6 @@ variable "artifact_source" {
   description = "Full artifact URL for the template-manager binary (e.g. gcs::https://... or s3::https://...)"
 }
 
-variable "template_manager_checksum" {
-  type        = string
-  description = "Hex checksum of the template-manager binary"
-}
-
 variable "api_secret" {
   type      = string
   sensitive = true

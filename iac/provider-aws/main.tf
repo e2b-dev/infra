@@ -52,7 +52,7 @@ module "init" {
   prefix        = var.prefix
   bucket_prefix = var.bucket_prefix
 
-  region = data.aws_region.current.name
+  region = data.aws_region.current.id
   endpoint_ingress_subnet_ids = [
     aws_security_group.cluster_node.id
   ]
@@ -153,7 +153,7 @@ module "cluster" {
   client_server_nested_virtualization = var.client_server_nested_virtualization
   client_node_labels                  = var.client_node_labels
 
-  clickhouse_az                    = "${data.aws_region.current.name}a"
+  clickhouse_az                    = "${data.aws_region.current.id}a"
   clickhouse_cluster_size          = var.clickhouse_cluster_size
   clickhouse_image_family_prefix   = var.clickhouse_image_family_prefix != "" ? var.clickhouse_image_family_prefix : local.ami_family_prefix
   clickhouse_machine_type          = var.clickhouse_server_machine_type
@@ -168,7 +168,7 @@ module "nomad" {
 
   domain_name = var.domain_name
   environment = var.environment
-  aws_region  = data.aws_region.current.name
+  aws_region  = data.aws_region.current.id
 
   nomad_acl_token  = module.init.cluster.nomad_acl_token
   consul_acl_token = module.init.cluster.consul_acl_token

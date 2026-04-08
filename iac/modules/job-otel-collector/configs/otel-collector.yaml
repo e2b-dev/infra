@@ -217,6 +217,7 @@ processors:
           - "orchestrator.*"
           - "template.*"
           - "api.*"
+          - "batcher.*"
           - "db.sql.connection.*"
           - "db.client.*"
           - "vault.*"
