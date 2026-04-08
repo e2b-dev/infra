@@ -59,6 +59,9 @@ func (c *CACertInstaller) install(_ context.Context, certPEM, bundlePath, stateP
 	// consistent regardless of how the caller formatted the PEM.
 	normalized := strings.TrimRight(certPEM, "\n") + "\n"
 
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if c.lastCACert == normalized {
 		c.logger.Debug().
 			Dur("duration", time.Since(start)).
@@ -67,15 +70,30 @@ func (c *CACertInstaller) install(_ context.Context, certPEM, bundlePath, stateP
 		return
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	// Snapshot the previous cert before overwriting; used as fallback when no
 	// state file exists yet.
 	prevPEM := c.lastCACert
 
-	if err := appendToFile(bundlePath, normalized); err != nil {
-		c.logger.Error().Err(err).Msg("Failed to append CA cert to bundle")
+	openStart := time.Now()
+	f, err := os.OpenFile(bundlePath, os.O_APPEND|os.O_WRONLY, 0o644)
+	openDur := time.Since(openStart)
+
+	if err != nil {
+		c.logger.Error().Err(err).Msg("Failed to open CA bundle")
+
+		return
+	}
+
+	writeStart := time.Now()
+	_, err = f.WriteString(normalized)
+	writeDur := time.Since(writeStart)
+
+	closeStart := time.Now()
+	f.Close()
+	closeDur := time.Since(closeStart)
+
+	if err != nil {
+		c.logger.Error().Err(err).Msg("Failed to write CA cert to bundle")
 
 		return
 	}
@@ -83,6 +101,9 @@ func (c *CACertInstaller) install(_ context.Context, certPEM, bundlePath, stateP
 	c.lastCACert = normalized
 
 	c.logger.Info().
+		Dur("open_dur", openDur).
+		Dur("write_dur", writeDur).
+		Dur("close_dur", closeDur).
 		Dur("append_duration", time.Since(start)).
 		Msg("CA cert appended to bundle")
 
@@ -91,6 +112,11 @@ func (c *CACertInstaller) install(_ context.Context, certPEM, bundlePath, stateP
 
 		c.mu.Lock()
 		defer c.mu.Unlock()
+
+		// A newer install has taken over; let that goroutine handle cleanup.
+		if c.lastCACert != normalized {
+			return
+		}
 
 		// State file takes priority over the in-memory prevPEM: it holds the
 		// cert from the previous process lifetime after a restart.
@@ -121,19 +147,6 @@ func (c *CACertInstaller) install(_ context.Context, certPEM, bundlePath, stateP
 			Dur("cleanup_duration", time.Since(cleanStart)).
 			Msg("Old CA cert removed from bundle")
 	}()
-}
-
-// appendToFile opens path in append mode and writes data without truncating.
-func appendToFile(path, data string) error {
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	_, err = f.WriteString(data)
-
-	return err
 }
 
 // removeCertFromBundle rewrites bundlePath removing all occurrences of certPEM.
