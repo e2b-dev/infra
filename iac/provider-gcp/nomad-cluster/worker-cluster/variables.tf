@@ -2,8 +2,8 @@ variable "cluster_size" {
   type = number
 
   validation {
-    condition     = var.cluster_size >= 0
-    error_message = "cluster_size must be >= 0"
+    condition     = var.cluster_size >= 1
+    error_message = "Cluster size must be at least 1."
   }
 }
 
