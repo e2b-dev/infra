@@ -33,6 +33,12 @@ type LoggerConfig struct {
 	Cores []zapcore.Core
 	// EnableConsole enables console logging.
 	EnableConsole bool
+
+	// Encoding sets the logger's encoding. If empty, defaults to "console".
+	Encoding string
+	// EncoderConfig optionally overrides the default encoder config.
+	// If nil, defaults to GetConsoleEncoderConfig()
+	EncoderConfig *zapcore.EncoderConfig
 }
 
 func NewLogger(loggerConfig LoggerConfig) (Logger, error) {
@@ -43,15 +49,26 @@ func NewLogger(loggerConfig LoggerConfig) (Logger, error) {
 		level = zap.NewAtomicLevelAt(zap.InfoLevel)
 	}
 
-	// Console logging configuration
+	encoding := loggerConfig.Encoding
+	if encoding == "" {
+		encoding = "console"
+	}
+
+	var encoderConfig zapcore.EncoderConfig
+	if loggerConfig.EncoderConfig != nil {
+		encoderConfig = *loggerConfig.EncoderConfig
+	} else {
+		encoderConfig = GetConsoleEncoderConfig()
+	}
+
 	config := zap.Config{
 		DisableStacktrace: loggerConfig.DisableStacktrace,
 		// Takes stacktraces more liberally
 		Development: true,
 		Sampling:    nil,
 
-		Encoding:         "console",
-		EncoderConfig:    GetConsoleEncoderConfig(),
+		Encoding:         encoding,
+		EncoderConfig:    encoderConfig,
 		Level:            level,
 		OutputPaths:      []string{},
 		ErrorOutputPaths: []string{},
