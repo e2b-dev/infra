@@ -46,7 +46,3 @@ func GetEnvAsInt(key string, defaultValue int) (int, error) {
 func GetNodeID() string {
 	return utils.RequiredEnv("NODE_ID", "Node ID of the instance node is required")
 }
-
-func LogsCollectorAddress() string {
-	return os.Getenv("LOGS_COLLECTOR_ADDRESS")
-}

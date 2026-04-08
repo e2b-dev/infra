@@ -47,7 +47,9 @@ func (h *APIStore) Logs(c *gin.Context) {
 	payload["teamID"] = teamID
 	payload["source"] = "envd"
 
-	h.logEnvdPayload(ctx, payload, sbxID, teamID)
+	if h.writeEnvdMessagesToLog {
+		h.logEnvdPayload(ctx, payload, sbxID, teamID)
+	}
 
 	if h.collectorAddr != "" {
 		logs, err := json.Marshal(payload)
