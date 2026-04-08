@@ -16,7 +16,7 @@ BUILD_PLATFORM ?= linux/$(BUILD_ARCH)
 
 # Busybox version — single source of truth for both Docker and local builds.
 BUSYBOX_VERSION ?= 1.36.1
-BUSYBOX_LOCAL := .busybox/$(BUILD_ARCH)/busybox
+BUSYBOX_LOCAL := .busybox/$(BUSYBOX_VERSION)/$(BUILD_ARCH)/busybox
 
 .PHONY: init
 init:

@@ -20,6 +20,7 @@ type BuilderConfig struct {
 	DomainName             string        `env:"DOMAIN_NAME"              envDefault:""`
 	EnvdTimeout            time.Duration `env:"ENVD_TIMEOUT"             envDefault:"10s"`
 	FirecrackerVersionsDir string        `env:"FIRECRACKER_VERSIONS_DIR" envDefault:"/fc-versions"`
+	BusyboxVersion         string        `env:"BUSYBOX_VERSION"          envDefault:"1.36.1"`
 	HostBusyboxDir         string        `env:"HOST_BUSYBOX_DIR"         envDefault:"/fc-busybox"`
 	HostEnvdPath           string        `env:"HOST_ENVD_PATH"           envDefault:"/fc-envd/envd"`
 	HostKernelsDir         string        `env:"HOST_KERNELS_DIR"         envDefault:"/fc-kernels"`

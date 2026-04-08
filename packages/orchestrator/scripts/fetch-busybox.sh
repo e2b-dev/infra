@@ -7,7 +7,7 @@
 #   ./scripts/fetch-busybox.sh <version> <arch> <output_path>
 #
 # Example:
-#   ./scripts/fetch-busybox.sh 1.36.1 amd64 .busybox/amd64/busybox
+#   ./scripts/fetch-busybox.sh 1.36.1 amd64 .busybox/1.36.1/amd64/busybox
 
 set -euo pipefail
 
@@ -21,7 +21,7 @@ if [ -f "$OUTPUT" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "${VERSION}-${ARCH}" ];
   exit 0
 fi
 
-GCS_URL="https://storage.googleapis.com/e2b-prod-public-builds/busybox/${ARCH}/busybox"
+GCS_URL="https://storage.googleapis.com/e2b-prod-public-builds/busybox/${VERSION}/${ARCH}/busybox"
 
 echo "Downloading busybox v${VERSION} (${ARCH}) from GCS..."
 

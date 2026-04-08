@@ -31,16 +31,18 @@ func TestAdditionalOCILayers(t *testing.T) {
 		err := os.WriteFile(envdPath, []byte("echo hello"), 0o755)
 		require.NoError(t, err)
 
+		busyboxVersion := "1.36.1"
 		busyboxDir := tempDir + "/busybox"
-		err = os.MkdirAll(filepath.Join(busyboxDir, runtime.GOARCH), 0o755)
+		err = os.MkdirAll(filepath.Join(busyboxDir, busyboxVersion, runtime.GOARCH), 0o755)
 		require.NoError(t, err)
-		err = os.WriteFile(filepath.Join(busyboxDir, runtime.GOARCH, "busybox"), []byte("busybox-binary"), 0o755)
+		err = os.WriteFile(filepath.Join(busyboxDir, busyboxVersion, runtime.GOARCH, "busybox"), []byte("busybox-binary"), 0o755)
 		require.NoError(t, err)
 
 		buildContext := buildcontext.BuildContext{
 			BuilderConfig: cfg.BuilderConfig{
 				HostEnvdPath:   envdPath,
 				HostBusyboxDir: busyboxDir,
+				BusyboxVersion: busyboxVersion,
 			},
 			Config: config.TemplateConfig{
 				MemoryMB: 100,

@@ -202,7 +202,7 @@ func additionalOCILayers(
 		return nil, fmt.Errorf("error reading envd file: %w", err)
 	}
 
-	busyboxPath := filepath.Join(buildContext.BuilderConfig.HostBusyboxDir, runtime.GOARCH, "busybox")
+	busyboxPath := filepath.Join(buildContext.BuilderConfig.HostBusyboxDir, buildContext.BuilderConfig.BusyboxVersion, runtime.GOARCH, "busybox")
 	busyboxData, err := os.ReadFile(busyboxPath)
 	if err != nil {
 		return nil, fmt.Errorf("error reading busybox file %s: %w", busyboxPath, err)

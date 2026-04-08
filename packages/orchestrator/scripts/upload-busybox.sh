@@ -17,7 +17,7 @@ ARCH="${2:?Usage: upload-busybox.sh <version> <arch>}"
 
 RELEASE_URL="https://github.com/e2b-dev/fc-busybox/releases/download/v${VERSION}"
 BINARY="busybox_v${VERSION}_${ARCH}"
-GCS_PATH="gs://e2b-prod-public-builds/busybox/${ARCH}/busybox"
+GCS_PATH="gs://e2b-prod-public-builds/busybox/${VERSION}/${ARCH}/busybox"
 
 echo "Downloading busybox v${VERSION} (${ARCH}) from GitHub..."
 

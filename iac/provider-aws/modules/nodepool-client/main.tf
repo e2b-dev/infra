@@ -66,6 +66,9 @@ data "aws_iam_policy_document" "client_node_policy" {
 
       "${var.fc_versions_bucket_arn}/*",
       var.fc_versions_bucket_arn,
+
+      "${var.fc_busybox_bucket_arn}/*",
+      var.fc_busybox_bucket_arn,
     ]
   }
 
