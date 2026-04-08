@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -96,14 +96,8 @@ func (h *APIStore) logEnvdPayload(ctx context.Context, payload map[string]any, s
 	}
 
 	level, _ := payload["level"].(string)
-	switch strings.ToLower(level) {
-	case "debug":
-		h.logger.Debug(ctx, message, fields...)
-	case "warn", "warning":
-		h.logger.Warn(ctx, message, fields...)
-	case "error", "fatal", "panic":
-		h.logger.Error(ctx, message, fields...)
-	default:
-		h.logger.Info(ctx, message, fields...)
-	}
+	zapLevel, _ := zapcore.ParseLevel(level) // defaults to info if invalid
+	h.logger.
+		WithOptions(zap.AddStacktrace(zapcore.FatalLevel)). // stack trace only points to hyperloop, useless
+		Log(ctx, zapLevel, message, fields...)
 }
