@@ -80,6 +80,7 @@ func (h *HostMetrics) Start() error {
 
 func (h *HostMetrics) Close(_ context.Context) error {
 	h.closedOnce.Do(func() { close(h.closed) })
+
 	return nil
 }
 
@@ -176,6 +177,7 @@ func (h *HostMetrics) sampleDisk() {
 		h.mu.Lock()
 		h.disksErr = err
 		h.mu.Unlock()
+
 		return
 	}
 
