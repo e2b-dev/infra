@@ -189,7 +189,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 					statusCode := max(c.Writer.Status(), fallbackStatusCode)
 					utils.ErrorHandler(c, message, statusCode)
 				},
-				MultiErrorHandler: utils.MultiErrorHandler,
+				MultiErrorHandler: auth.MultiErrorHandler,
 				Options: openapi3filter.Options{
 					AuthenticationFunc: AuthenticationFunc,
 					// Handle multiple errors as MultiError type
