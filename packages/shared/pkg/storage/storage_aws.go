@@ -163,7 +163,7 @@ func (o *awsObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 }
 
 func (o *awsObject) StoreFile(ctx context.Context, path string, cfg *CompressConfig) (*FrameTable, [32]byte, error) {
-	if cfg.IsEnabled() {
+	if cfg.IsCompressionEnabled() {
 		return nil, [32]byte{}, fmt.Errorf("compressed uploads are not supported on AWS (builds target GCP only)")
 	}
 

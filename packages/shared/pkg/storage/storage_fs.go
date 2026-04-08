@@ -126,7 +126,7 @@ func (o *fsObject) Put(_ context.Context, data []byte) error {
 }
 
 func (o *fsObject) StoreFile(ctx context.Context, path string, cfg *CompressConfig) (*FrameTable, [32]byte, error) {
-	if cfg.IsEnabled() {
+	if cfg.IsCompressionEnabled() {
 		return o.storeFileCompressed(ctx, path, cfg)
 	}
 
@@ -282,12 +282,12 @@ func (u *fsPartUploader) Complete(_ context.Context) error {
 
 func (o *fsObject) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
 	if frameTable.IsCompressed() {
-		frameStart, frameSize, err := frameTable.FrameFor(offsetU)
+		r, err := frameTable.LocateCompressed(offsetU)
 		if err != nil {
 			return nil, fmt.Errorf("get frame for offset %d, FS:%s: %w", offsetU, o.path, err)
 		}
 
-		raw, err := o.openRangeReader(ctx, frameStart.C, int64(frameSize.C))
+		raw, err := o.openRangeReader(ctx, r.Offset, int64(r.Length))
 		if err != nil {
 			return nil, err
 		}

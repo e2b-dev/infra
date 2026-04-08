@@ -42,7 +42,7 @@ func (mapping *BuildMap) SetFrames(frameTable *storage.FrameTable, from int) (in
 	}
 
 	mappedRange := storage.Range{
-		Start:  int64(mapping.BuildStorageOffset),
+		Offset: int64(mapping.BuildStorageOffset),
 		Length: int(mapping.Length),
 	}
 
@@ -348,13 +348,13 @@ func mergeFrameTables(ft1, ft2 *storage.FrameTable) *storage.FrameTable {
 	}
 
 	// Calculate where ft1 ends (uncompressed offset)
-	ft1EndU := ft1.StartAt.U
+	ft1EndU := ft1.Offset.U
 	for _, frame := range ft1.Frames {
 		ft1EndU += int64(frame.U)
 	}
 
 	// Find where to start appending from ft2 (skip frames already covered by ft1)
-	ft2CurrentU := ft2.StartAt.U
+	ft2CurrentU := ft2.Offset.U
 	startIdx := 0
 	for i, frame := range ft2.Frames {
 		frameEndU := ft2CurrentU + int64(frame.U)
@@ -384,7 +384,7 @@ func mergeFrameTables(ft1, ft2 *storage.FrameTable) *storage.FrameTable {
 		newFrames = append(newFrames, ft2.Frames[startIdx:]...)
 
 		result := storage.NewFrameTable(ft1.CompressionType())
-		result.StartAt = ft1.StartAt
+		result.Offset = ft1.Offset
 		result.Frames = newFrames
 
 		return result

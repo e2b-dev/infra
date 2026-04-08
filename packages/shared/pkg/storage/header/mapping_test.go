@@ -719,7 +719,7 @@ func TestNormalizeMappingsDoesNotModifyInput(t *testing.T) {
 // frameU, compressed size frameC, starting at offset 0.
 func makeFrameTable(n int, frameU, frameC int32) *storage.FrameTable {
 	ft := storage.NewFrameTable(storage.CompressionZstd)
-	ft.StartAt = storage.FrameOffset{U: 0, C: 0}
+	ft.Offset = storage.FrameOffset{U: 0, C: 0}
 	for range n {
 		ft.Frames = append(ft.Frames, storage.FrameSize{U: frameU, C: frameC})
 	}
@@ -731,8 +731,8 @@ func assertFrameTable(t *testing.T, label string, m *BuildMap, startU, startC in
 	t.Helper()
 
 	require.NotNil(t, m.FrameTable, "%s: FrameTable should not be nil", label)
-	assert.Equal(t, startU, m.FrameTable.StartAt.U, "%s: StartAt.U", label)
-	assert.Equal(t, startC, m.FrameTable.StartAt.C, "%s: StartAt.C", label)
+	assert.Equal(t, startU, m.FrameTable.Offset.U, "%s: Offset.U", label)
+	assert.Equal(t, startC, m.FrameTable.Offset.C, "%s: Offset.C", label)
 	require.Len(t, m.FrameTable.Frames, nFrames, "%s: frame count", label)
 	for i, f := range m.FrameTable.Frames {
 		assert.Equal(t, frameU, f.U, "%s: frame[%d].U", label, i)
@@ -951,9 +951,10 @@ func TestMergeMappings_FrameTableSplits(t *testing.T) {
 			tc.validate(t, merged)
 
 			// Verify the invariant that the read path depends on:
-			// for every mapping with a FrameTable, FrameFor must be able to
-			// find frames at both the start and end of the mapping's storage
-			// range. This is what GetShiftedMapping + Chunker.fetch rely on.
+			// for every mapping with a FrameTable, LocateCompressed must be
+			// able to find frames at both the start and end of the mapping's
+			// storage range. This is what GetShiftedMapping + Chunker.fetch
+			// rely on.
 			for i, m := range merged {
 				ft := m.FrameTable
 				if ft == nil {
@@ -963,19 +964,19 @@ func TestMergeMappings_FrameTableSplits(t *testing.T) {
 				label := fmt.Sprintf("mapping[%d] offset=%d storage=%d len=%d",
 					i, m.Offset, m.BuildStorageOffset, m.Length)
 
-				// StartAt must be at or before the mapping's storage offset.
-				require.LessOrEqual(t, ft.StartAt.U, int64(m.BuildStorageOffset),
-					"%s: FrameTable.StartAt.U must be <= BuildStorageOffset", label)
+				// Offset must be at or before the mapping's storage offset.
+				require.LessOrEqual(t, ft.Offset.U, int64(m.BuildStorageOffset),
+					"%s: FrameTable.Offset.U must be <= BuildStorageOffset", label)
 
-				// FrameFor must find the first block.
-				_, _, err := ft.FrameFor(int64(m.BuildStorageOffset))
-				require.NoError(t, err, "%s: FrameFor(start)", label)
+				// LocateCompressed must find the first block.
+				_, err := ft.LocateCompressed(int64(m.BuildStorageOffset))
+				require.NoError(t, err, "%s: LocateCompressed(start)", label)
 
-				// FrameFor must find the last block.
+				// LocateCompressed must find the last block.
 				if m.Length > 0 {
 					lastByte := int64(m.BuildStorageOffset + m.Length - 1)
-					_, _, err := ft.FrameFor(lastByte)
-					require.NoError(t, err, "%s: FrameFor(last byte)", label)
+					_, err := ft.LocateCompressed(lastByte)
+					require.NoError(t, err, "%s: LocateCompressed(last byte)", label)
 				}
 			}
 		})

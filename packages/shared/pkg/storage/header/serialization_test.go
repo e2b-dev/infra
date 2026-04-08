@@ -11,9 +11,9 @@ import (
 )
 
 // newFT creates a FrameTable for test fixtures.
-func newFT(ct storage.CompressionType, startAt storage.FrameOffset, frames []storage.FrameSize) *storage.FrameTable {
+func newFT(ct storage.CompressionType, offset storage.FrameOffset, frames []storage.FrameSize) *storage.FrameTable {
 	ft := storage.NewFrameTable(ct)
-	ft.StartAt = startAt
+	ft.Offset = offset
 	ft.Frames = frames
 
 	return ft
@@ -183,8 +183,8 @@ func TestSerializeDeserialize_V4_WithFrameTable(t *testing.T) {
 	require.Equal(t, buildID, m0.BuildId)
 	require.NotNil(t, m0.FrameTable)
 	require.Equal(t, storage.CompressionLZ4, m0.FrameTable.CompressionType())
-	require.Equal(t, int64(0), m0.FrameTable.StartAt.U)
-	require.Equal(t, int64(0), m0.FrameTable.StartAt.C)
+	require.Equal(t, int64(0), m0.FrameTable.Offset.U)
+	require.Equal(t, int64(0), m0.FrameTable.Offset.C)
 	require.Len(t, m0.FrameTable.Frames, 2)
 	require.Equal(t, int32(2048), m0.FrameTable.Frames[0].U)
 	require.Equal(t, int32(1024), m0.FrameTable.Frames[0].C)
@@ -245,8 +245,8 @@ func TestSerializeDeserialize_V4_Zstd_NonZeroStartAt(t *testing.T) {
 	m := got.Mapping[0]
 	require.NotNil(t, m.FrameTable)
 	require.Equal(t, storage.CompressionZstd, m.FrameTable.CompressionType())
-	require.Equal(t, int64(8192), m.FrameTable.StartAt.U)
-	require.Equal(t, int64(4000), m.FrameTable.StartAt.C)
+	require.Equal(t, int64(8192), m.FrameTable.Offset.U)
+	require.Equal(t, int64(4000), m.FrameTable.Offset.C)
 	require.Len(t, m.FrameTable.Frames, 1)
 	require.Equal(t, int32(4096), m.FrameTable.Frames[0].U)
 	require.Equal(t, int32(3500), m.FrameTable.Frames[0].C)
@@ -257,7 +257,7 @@ func TestSerializeDeserialize_V4_Zstd_NonZeroStartAt(t *testing.T) {
 
 // TestSerializeDeserialize_V4_CompressionNone_EmptyFrames verifies that a
 // FrameTable with CompressionNone and zero frames does not corrupt the stream.
-// Before the fix, the serializer wrote a StartAt offset (16 bytes) but the
+// Before the fix, the serializer wrote a Offset offset (16 bytes) but the
 // deserializer skipped it because the packed value was 0.
 func TestSerializeDeserialize_V4_CompressionNone_EmptyFrames(t *testing.T) {
 	t.Parallel()
@@ -305,7 +305,7 @@ func TestSerializeDeserialize_V4_CompressionNone_EmptyFrames(t *testing.T) {
 	// First mapping: FrameTable was effectively empty, deserializer should treat as nil.
 	require.Nil(t, got.Mapping[0].FrameTable)
 
-	// Second mapping must not be corrupted by stray StartAt bytes.
+	// Second mapping must not be corrupted by stray Offset bytes.
 	require.Equal(t, uint64(4096), got.Mapping[1].Offset)
 	require.Equal(t, uint64(4096), got.Mapping[1].Length)
 	require.Equal(t, baseID, got.Mapping[1].BuildId)

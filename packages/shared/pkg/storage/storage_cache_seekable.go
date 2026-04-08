@@ -280,7 +280,7 @@ func (c *cachedSeekable) StoreFile(ctx context.Context, path string, cfg *Compre
 	// write the file to the disk and the remote system at the same time.
 	// this opens the file twice, but the API makes it difficult to use a MultiWriter
 
-	if !cfg.IsEnabled() && c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
+	if !cfg.IsCompressionEnabled() && c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
 		c.goCtx(ctx, func(ctx context.Context) {
 			ctx, span := c.tracer.Start(ctx, "write cache object from file system",
 				trace.WithAttributes(attribute.String("path", path)))

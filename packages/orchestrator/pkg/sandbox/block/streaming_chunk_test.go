@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -65,7 +66,7 @@ type testControl struct {
 
 func newTestChunker(t *testing.T, file storage.Seekable, size int64) *Chunker {
 	t.Helper()
-	c, err := NewChunker(context.Background(), nil, size, testBlockSize, file, t.TempDir()+"/cache", newTestMetrics(t))
+	c, err := NewChunker(&featureflags.Client{}, size, testBlockSize, file, t.TempDir()+"/cache", newTestMetrics(t))
 	require.NoError(t, err)
 
 	return c
@@ -105,13 +106,13 @@ func (s *fakeSeekable) OpenRangeReader(_ context.Context, offsetU int64, length 
 
 	var fetchOff, fetchLen int64
 	if frameTable.IsCompressed() {
-		frameStart, frameSize, err := frameTable.FrameFor(offsetU)
+		r, err := frameTable.LocateCompressed(offsetU)
 		if err != nil {
 			return nil, fmt.Errorf("frame lookup: %w", err)
 		}
 
-		fetchOff = frameStart.C
-		fetchLen = int64(frameSize.C)
+		fetchOff = r.Offset
+		fetchLen = int64(r.Length)
 	} else {
 		fetchOff = offsetU
 		fetchLen = length

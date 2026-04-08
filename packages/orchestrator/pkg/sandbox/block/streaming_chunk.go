@@ -47,7 +47,6 @@ var (
 )
 
 func NewChunker(
-	_ context.Context,
 	ff *featureflags.Client,
 	size, blockSize int64,
 	upstream storage.StreamingReader,
@@ -161,13 +160,13 @@ func (c *Chunker) getOrCreateSession(ctx context.Context, off, length int64, ft 
 func (c *Chunker) fetch(ctx context.Context, off int64, ft *storage.FrameTable) error {
 	var chunkOff, chunkLen int64
 	if ft.IsCompressed() {
-		frameStarts, frameSize, err := ft.FrameFor(off)
+		r, err := ft.LocateUncompressed(off)
 		if err != nil {
 			return fmt.Errorf("failed to get frame for offset %d: %w", off, err)
 		}
 
-		chunkOff = frameStarts.U
-		chunkLen = int64(frameSize.U)
+		chunkOff = r.Offset
+		chunkLen = int64(r.Length)
 	} else {
 		chunkOff = (off / storage.MemoryChunkSize) * storage.MemoryChunkSize
 		chunkLen = min(int64(storage.MemoryChunkSize), c.size-chunkOff)
@@ -288,10 +287,8 @@ func (c *Chunker) releaseSession(s *fetchSession) {
 // getMinReadBatchSize returns the effective min read batch size.
 // Queried per-fetch so it can be tuned via feature flags without a restart.
 func (c *Chunker) getMinReadBatchSize(ctx context.Context) int64 {
-	if c.featureFlags != nil {
-		if v := c.featureFlags.IntFlag(ctx, featureflags.MinChunkerReadSizeKB); v > 0 {
-			return int64(v) * 1024
-		}
+	if v := c.featureFlags.IntFlag(ctx, featureflags.MinChunkerReadSizeKB); v > 0 {
+		return int64(v) * 1024
 	}
 
 	return defaultMinReadBatchSize

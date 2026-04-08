@@ -90,7 +90,7 @@ func serializeV4(metadata *Metadata, buildFiles map[uuid.UUID]BuildFileInfo, map
 			v4.CompressionType = uint32(mapping.FrameTable.CompressionType())
 			v4.NumFrames = uint32(len(mapping.FrameTable.Frames))
 			if v4.CompressionType != 0 && v4.NumFrames > 0 {
-				offset = &mapping.FrameTable.StartAt
+				offset = &mapping.FrameTable.Offset
 				frames = mapping.FrameTable.Frames
 			}
 		}
@@ -183,11 +183,11 @@ func deserializeV4(metadata *Metadata, blockData []byte) (*Header, error) {
 			m.FrameTable = storage.NewFrameTable(storage.CompressionType(v4.CompressionType))
 			numFrames := v4.NumFrames
 
-			var startAt storage.FrameOffset
-			if err := binary.Read(reader, binary.LittleEndian, &startAt); err != nil {
+			var offset storage.FrameOffset
+			if err := binary.Read(reader, binary.LittleEndian, &offset); err != nil {
 				return nil, fmt.Errorf("failed to read compression frames starting offset: %w", err)
 			}
-			m.FrameTable.StartAt = startAt
+			m.FrameTable.Offset = offset
 
 			for range numFrames {
 				var frame storage.FrameSize

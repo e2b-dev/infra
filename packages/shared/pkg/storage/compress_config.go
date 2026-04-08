@@ -47,14 +47,14 @@ func (c *CompressConfig) TargetPartSize() int64 {
 	return int64(c.TargetPartSizeMB) * (1 << 20)
 }
 
-// IsEnabled reports whether compression is configured and active.
-func (c *CompressConfig) IsEnabled() bool {
+// IsCompressionEnabled reports whether compression is configured and active.
+func (c *CompressConfig) IsCompressionEnabled() bool {
 	return c != nil && c.Enabled && c.CompressionType() != CompressionNone
 }
 
 // Validate checks that the config is internally consistent.
 func (c *CompressConfig) Validate() error {
-	if c == nil || !c.IsEnabled() {
+	if !c.IsCompressionEnabled() {
 		return nil
 	}
 
@@ -72,7 +72,7 @@ func (c *CompressConfig) Validate() error {
 // Resolve returns a pointer to this config if compression is enabled, or nil.
 // Callers use nil to mean "no compression".
 func (c *CompressConfig) Resolve() *CompressConfig {
-	if c == nil || !c.IsEnabled() {
+	if !c.IsCompressionEnabled() {
 		return nil
 	}
 

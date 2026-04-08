@@ -12,41 +12,46 @@ const (
 	CompressionLZ4
 )
 
-func (ct CompressionType) Suffix() string {
-	switch ct {
-	case CompressionZstd:
-		return ".zstd"
-	case CompressionLZ4:
-		return ".lz4"
-	default:
-		return ""
-	}
-}
+// # Compression Layout
+//
+// Dirty blocks (4 KiB rootfs, 2 MiB memfile) are packed into a diff file,
+// grouped into frames (default 2 MiB), and each frame compressed independently.
+// Two address spaces describe the same data:
+//
+//     |blk|...|blk | blk|...|blk |
+//     |- f0 (2M) - | ---  f1 --- |
+//	U: 0             2M            4M
+//     |- f0 -|- f1 -|- f2 -|
+//	C: 0     .6M    1.3M   1.7M
+//
+// # BuildMaps and FrameTable Subsets
+//
+// The header maps virtual offsets to builds via BuildMap entries. Each
+// mapping carries a FrameTable subset covering just its byte range:
+//
+//	Virtual:  ──[━━━━ M0 ━━━━]──[━━━━━━ M1 ━━━━━━]──[━━ M2 ━━]──
+//	            BuildId=aa         BuildId=bb            BuildId=aa
+//	            BuildStorageOffset=0  BuildStorageOffset=0  BuildStorageOffset=8M
+//	            Length=4M          Length=6M            Length=2M
+//	            ft: frames 0-1  ft: frames 0-2       ft: frames 4-4
+//
+// # Read Path: Virtual Offset → C-Space Fetch
+//
+//	read virtual offset V=5M
+//	  │
+//	  ├─ find mapping: M1 {Build=bb, BuildStorageOffset=0, Length=6M}
+//	  │
+//	  ├─ diff offset = V - M1.Offset + M1.BuildStorageOffset = 5M
+//	  │
+//	  ├─ M1.ft: frame 0: U:[0,2M)  frame 1: U:[2M,4M)  frame 2: U:[4M,6M)
+//    │  LocateCompressed(5M) → frame2, C:[2.0M, 3.3M)
+//	  ├─ fetch C bytes [2.0M, 3.3M) from build "bb"
+//	  ├─ decompress → 2 MiB frame, cache
+//	  └─ return block at offset 5M - 4M = 1M within frame
 
-func (ct CompressionType) String() string {
-	switch ct {
-	case CompressionZstd:
-		return "zstd"
-	case CompressionLZ4:
-		return "lz4"
-	default:
-		return "none"
-	}
-}
-
-// parseCompressionType converts a string to CompressionType.
-// Returns CompressionNone for unrecognised values.
-func parseCompressionType(s string) CompressionType {
-	switch s {
-	case "lz4":
-		return CompressionLZ4
-	case "zstd":
-		return CompressionZstd
-	default:
-		return CompressionNone
-	}
-}
-
+// FrameOffset holds a position in both address spaces.
+// U is the byte offset in the uncompressed diff file.
+// C is the byte offset in the compressed diff file.
 type FrameOffset struct {
 	U int64
 	C int64
@@ -61,6 +66,8 @@ func (o *FrameOffset) Add(f FrameSize) {
 	o.C += int64(f.C)
 }
 
+// FrameSize holds the uncompressed (U) and compressed (C) byte size of a
+// single frame.
 type FrameSize struct {
 	U int32
 	C int32
@@ -71,17 +78,20 @@ func (s FrameSize) String() string {
 }
 
 type Range struct {
-	Start  int64
+	Offset int64
 	Length int
 }
 
 func (r Range) String() string {
-	return fmt.Sprintf("%d/%d", r.Start, r.Length)
+	return fmt.Sprintf("%d/%d", r.Offset, r.Length)
 }
 
+// FrameTable is the decompression index for a compressed diff file (or a
+// contiguous subset of one). Offset is the position of the first frame in
+// both address spaces; Frames lists each frame's U and C sizes in order.
 type FrameTable struct {
 	compressionType CompressionType
-	StartAt         FrameOffset
+	Offset          FrameOffset
 	Frames          []FrameSize
 }
 
@@ -127,7 +137,7 @@ func (ft *FrameTable) Subset(r Range, from int) (*FrameTable, int) {
 	}
 
 	// Advance currentOffset to frame `from`.
-	currentOffset := ft.StartAt
+	currentOffset := ft.Offset
 	for i := range from {
 		if i >= len(ft.Frames) {
 			break
@@ -136,14 +146,14 @@ func (ft *FrameTable) Subset(r Range, from int) (*FrameTable, int) {
 	}
 
 	startSet := false
-	requestedEnd := r.Start + int64(r.Length)
+	requestedEnd := r.Offset + int64(r.Length)
 	nextFrom := from
 
 	for i := from; i < len(ft.Frames); i++ {
 		frame := ft.Frames[i]
 		frameEnd := currentOffset.U + int64(frame.U)
 
-		if frameEnd <= r.Start {
+		if frameEnd <= r.Offset {
 			currentOffset.Add(frame)
 			nextFrom = i + 1
 
@@ -154,7 +164,7 @@ func (ft *FrameTable) Subset(r Range, from int) (*FrameTable, int) {
 		}
 
 		if !startSet {
-			result.StartAt = currentOffset
+			result.Offset = currentOffset
 			startSet = true
 			nextFrom = i
 		}
@@ -169,13 +179,14 @@ func (ft *FrameTable) Subset(r Range, from int) (*FrameTable, int) {
 	return result, nextFrom
 }
 
-// FrameFor finds the frame containing the given offset and returns its start position and full size.
-func (ft *FrameTable) FrameFor(offset int64) (starts FrameOffset, size FrameSize, err error) {
+// locate finds the frame containing the given uncompressed offset and returns
+// its start position (in both address spaces) and full size.
+func (ft *FrameTable) locate(offset int64) (frameOffset FrameOffset, frameSize FrameSize, err error) {
 	if ft == nil {
-		return FrameOffset{}, FrameSize{}, fmt.Errorf("FrameFor called with nil frame table - data is not compressed")
+		return FrameOffset{}, FrameSize{}, fmt.Errorf("locate called with nil frame table - data is not compressed")
 	}
 
-	currentOffset := ft.StartAt
+	currentOffset := ft.Offset
 	for _, frame := range ft.Frames {
 		frameEnd := currentOffset.U + int64(frame.U)
 		if offset >= currentOffset.U && offset < frameEnd {
@@ -185,4 +196,63 @@ func (ft *FrameTable) FrameFor(offset int64) (starts FrameOffset, size FrameSize
 	}
 
 	return FrameOffset{}, FrameSize{}, fmt.Errorf("offset %d is beyond the end of the frame table", offset)
+}
+
+// LocateCompressed returns the compressed (C-space) byte range for the frame
+// containing the given uncompressed offset. Use this when you need to fetch
+// raw compressed bytes from storage.
+func (ft *FrameTable) LocateCompressed(offset int64) (Range, error) {
+	start, size, err := ft.locate(offset)
+	if err != nil {
+		return Range{}, err
+	}
+
+	return Range{Offset: start.C, Length: int(size.C)}, nil
+}
+
+// LocateUncompressed returns the uncompressed (U-space) byte range for the
+// frame containing the given uncompressed offset. Use this when you need to
+// know the logical frame boundaries for cache alignment or chunk management.
+func (ft *FrameTable) LocateUncompressed(offset int64) (Range, error) {
+	start, size, err := ft.locate(offset)
+	if err != nil {
+		return Range{}, err
+	}
+
+	return Range{Offset: start.U, Length: int(size.U)}, nil
+}
+
+func (ct CompressionType) Suffix() string {
+	switch ct {
+	case CompressionZstd:
+		return ".zstd"
+	case CompressionLZ4:
+		return ".lz4"
+	default:
+		return ""
+	}
+}
+
+func (ct CompressionType) String() string {
+	switch ct {
+	case CompressionZstd:
+		return "zstd"
+	case CompressionLZ4:
+		return "lz4"
+	default:
+		return "none"
+	}
+}
+
+// parseCompressionType converts a string to CompressionType.
+// Returns CompressionNone for unrecognised values.
+func parseCompressionType(s string) CompressionType {
+	switch s {
+	case "lz4":
+		return CompressionLZ4
+	case "zstd":
+		return CompressionZstd
+	default:
+		return CompressionNone
+	}
 }

@@ -397,7 +397,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, cfg *CompressCon
 
 	// Compressed uploads always go through the multipart compressed path,
 	// regardless of file size.
-	if cfg.IsEnabled() {
+	if cfg.IsCompressionEnabled() {
 		ft, checksum, err := o.storeFileCompressed(ctx, path, cfg, maxConcurrency)
 		if err != nil {
 			timer.Failure(ctx, fileInfo.Size())
@@ -530,14 +530,14 @@ func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length i
 		return &timedReadCloser{inner: rc, timer: timer, ctx: ctx}, nil
 	}
 
-	frameStart, frameSize, err := frameTable.FrameFor(offsetU)
+	r, err := frameTable.LocateCompressed(offsetU)
 	if err != nil {
 		timer.Failure(ctx, 0)
 
 		return nil, fmt.Errorf("get frame for offset %d, GCS:%s: %w", offsetU, o.path, err)
 	}
 
-	raw, err := o.openRangeReader(ctx, frameStart.C, int64(frameSize.C))
+	raw, err := o.openRangeReader(ctx, r.Offset, int64(r.Length))
 	if err != nil {
 		timer.Failure(ctx, 0)
 

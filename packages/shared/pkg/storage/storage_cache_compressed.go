@@ -20,22 +20,22 @@ var compressedCacheReadAttrs = []attribute.KeyValue{
 // NFS stores compressed frames (.frm); on hit we decompress, on miss we fetch
 // raw compressed bytes and tee them to NFS on Close.
 func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64, frameTable *FrameTable) (io.ReadCloser, error) {
-	frameStart, frameSize, err := frameTable.FrameFor(offsetU)
+	r, err := frameTable.LocateCompressed(offsetU)
 	if err != nil {
 		return nil, fmt.Errorf("cache OpenRangeReader: frame lookup for offset %d: %w", offsetU, err)
 	}
 
-	framePath := makeFrameFilename(c.path, frameStart, frameSize)
+	path := makeFrameFilename(c.path, r)
 
 	timer := cacheSlabReadTimerFactory.Begin(compressedCacheReadAttrs...)
 
 	// Cache hit: open compressed frame from NFS and wrap with decompressor.
-	f, err := os.Open(framePath)
+	f, err := os.Open(path)
 
 	switch {
 	case err == nil:
-		recordCacheRead(ctx, true, int64(frameSize.C), cacheTypeSeekable, cacheOpOpenRangeReader)
-		timer.Success(ctx, int64(frameSize.C))
+		recordCacheRead(ctx, true, int64(r.Length), cacheTypeSeekable, cacheOpOpenRangeReader)
+		timer.Success(ctx, int64(r.Length))
 
 		decompressed, err := newDecompressingReadCloser(f, frameTable.CompressionType())
 		if err != nil {
@@ -52,14 +52,14 @@ func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64
 	timer.Failure(ctx, 0)
 
 	// Cache miss: fetch raw compressed bytes via OpenRangeReader(nil frameTable).
-	raw, err := c.inner.OpenRangeReader(ctx, frameStart.C, int64(frameSize.C), nil)
+	raw, err := c.inner.OpenRangeReader(ctx, r.Offset, int64(r.Length), nil)
 	if err != nil {
-		return nil, fmt.Errorf("cache OpenRangeReader: raw fetch at C=%d: %w", frameStart.C, err)
+		return nil, fmt.Errorf("cache OpenRangeReader: raw fetch at C=%d: %w", r.Offset, err)
 	}
 
-	recordCacheRead(ctx, false, int64(frameSize.C), cacheTypeSeekable, cacheOpOpenRangeReader)
+	recordCacheRead(ctx, false, int64(r.Length), cacheTypeSeekable, cacheOpOpenRangeReader)
 
-	rc, err := newDecompressingCacheReader(raw, frameTable.CompressionType(), int(frameSize.C), c, ctx, framePath, offsetU)
+	rc, err := newDecompressingCacheReader(raw, frameTable.CompressionType(), r.Length, c, ctx, path, offsetU)
 	if err != nil {
 		raw.Close()
 
@@ -154,7 +154,7 @@ func (r *decompressingCacheReader) Close() error {
 }
 
 // makeFrameFilename returns the NFS cache path for a compressed frame.
-// Format: {cacheBasePath}/{016xC}-{xC}.frm
-func makeFrameFilename(cacheBasePath string, offset FrameOffset, size FrameSize) string {
-	return fmt.Sprintf("%s/%016x-%x.frm", cacheBasePath, offset.C, uint32(size.C))
+// Format: {cacheBasePath}/{016xStart}-{xLength}.frm
+func makeFrameFilename(cacheBasePath string, r Range) string {
+	return fmt.Sprintf("%s/%016x-%x.frm", cacheBasePath, r.Offset, uint32(r.Length))
 }

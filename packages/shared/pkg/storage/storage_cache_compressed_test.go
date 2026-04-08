@@ -44,7 +44,7 @@ func TestDecompressingCacheReader(t *testing.T) {
 		t.Parallel()
 
 		c := newTestCache(t)
-		framePath := makeFrameFilename(c.path, FrameOffset{C: 0}, FrameSize{C: int32(len(compressed))})
+		framePath := makeFrameFilename(c.path, Range{Offset: 0, Length: len(compressed)})
 
 		rc, err := newDecompressingCacheReader(
 			io.NopCloser(bytes.NewReader(compressed)),
@@ -70,7 +70,7 @@ func TestDecompressingCacheReader(t *testing.T) {
 		t.Parallel()
 
 		c := newTestCache(t)
-		framePath := makeFrameFilename(c.path, FrameOffset{C: 0}, FrameSize{C: int32(len(compressed))})
+		framePath := makeFrameFilename(c.path, Range{Offset: 0, Length: len(compressed)})
 
 		rc, err := newDecompressingCacheReader(
 			io.NopCloser(bytes.NewReader(compressed)),
