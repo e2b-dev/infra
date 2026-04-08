@@ -25,7 +25,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	oteltrace "go.opentelemetry.io/otel/trace"
 
@@ -73,20 +75,17 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 
 	return func(c *gin.Context) {
 		c.Set(tracerKey, tracer)
-		ctx := c.Request.Context()
+		savedCtx := c.Request.Context()
+		ctx := otel.GetTextMapPropagator().Extract(savedCtx, propagation.HeaderCarrier(c.Request.Header))
 
 		// Store the server receive time as the request start time
 		// This allows us to calculate the whole request duration from server receive to completion
 		ctx = WithRequestStartTime(ctx, time.Now())
 
 		defer func() {
-			c.Request = c.Request.WithContext(ctx)
+			c.Request = c.Request.WithContext(savedCtx)
 		}()
 
-		// Remove traceparent (it's coming from our users and it can cause multiple calls share the same trace ID)
-		if c.Request.Header.Get("traceparent") != "" {
-			c.Request.Header.Del("traceparent")
-		}
 		if edgeTraceID, ok := telemetry.ParseEdgeTraceID(
 			c.Request.Header.Get(telemetry.GCPTraceContextHeader),
 			c.Request.Header.Get(telemetry.AWSTraceContextHeader),

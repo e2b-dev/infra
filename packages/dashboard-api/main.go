@@ -187,6 +187,9 @@ func run() int {
 		"Content-Type",
 		sharedauth.HeaderSupabaseToken,
 		sharedauth.HeaderSupabaseTeam,
+		"traceparent",
+		"tracestate",
+		"baggage",
 	}
 	r.Use(cors.New(corsConfig))
 

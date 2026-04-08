@@ -163,6 +163,9 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 		"release",
 		"sdk_runtime",
 		"system",
+		"traceparent",
+		"tracestate",
+		"baggage",
 	}
 	r.Use(cors.New(corsConfig))
 
