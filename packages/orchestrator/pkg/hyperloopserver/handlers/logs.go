@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -37,13 +36,9 @@ func (h *APIStore) Logs(c *gin.Context) {
 		return
 	}
 
-	if payload["instanceID"] != nil {
-		err = h.validatePayloadSandboxID(payload, sbxID)
-		if err != nil {
-			h.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandboxID in logs payload")
-			h.logger.Error(ctx, "error when parsing sandbox logs request", zap.Error(err), logger.WithSandboxID(sbxID), logger.WithTeamID(teamID))
-
-			return
+	if rawInstanceID, ok := payload["instanceID"]; ok {
+		if existing, ok := rawInstanceID.(string); ok && existing != "" && existing != sbxID {
+			payload["invalid-instance-id"] = existing
 		}
 	}
 
@@ -111,22 +106,4 @@ func (h *APIStore) logEnvdPayload(ctx context.Context, payload map[string]any, s
 	default:
 		h.logger.Info(ctx, message, fields...)
 	}
-}
-
-// validatePayloadSandboxID checks if the payload contains correct instanceID to prevent slow requests to contaminating the logs of other sandboxes.
-func (h *APIStore) validatePayloadSandboxID(payload map[string]any, sbxID string) error {
-	if payload["instanceID"] == nil {
-		return fmt.Errorf("missing sandboxID in logs payload")
-	}
-
-	payloadSandboxID, ok := payload["instanceID"].(string)
-	if !ok {
-		return fmt.Errorf("instanceID in logs payload is not a string: %v", payload["instanceID"])
-	}
-
-	if payloadSandboxID != sbxID {
-		return fmt.Errorf("sandboxID in logs payload does not match the sandboxID of the source sandbox (%s != %s)", payloadSandboxID, sbxID)
-	}
-
-	return nil
 }
