@@ -95,6 +95,9 @@ linters:
         - pattern: '^retryablehttp\.NewRequest$'
           pkg: ^github\.com/hashicorp/go-retryablehttp$
           msg: "Use github.com/hashicorp/go-retryablehttp.NewRequestWithContext instead of retryablehttp.NewRequest"
+        - pattern: 'gin\.SetMode\(gin\.TestMode\)'
+          pkg: '^github\.com/gin-gonic/gin$'
+          msg: "Do not use gin.SetMode(gin.TestMode) - it causes race conditions. GIN_MODE=test is set in CI workflows."
       analyze-types: true
 
     depguard:
