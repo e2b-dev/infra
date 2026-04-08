@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -116,6 +117,13 @@ func WithSandboxCreateError(err error) TestOptions {
 		node.client.Sandbox = &mockSandboxClientWithError{
 			err: err,
 		}
+	}
+}
+
+// WithFeatureFlags sets a custom feature flags client for the test node
+func WithFeatureFlags(ff *featureflags.Client) TestOptions {
+	return func(node *TestNode) {
+		node.featureflags = ff
 	}
 }
 
