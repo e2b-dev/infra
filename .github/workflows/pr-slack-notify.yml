@@ -41,7 +41,7 @@ jobs:
           node-version: 24
 
       - name: Install deps
-        run: npm install
+        run: npm ci
         working-directory: .github/actions/pr-slack-notify
 
       - name: Post to Slack
