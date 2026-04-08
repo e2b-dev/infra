@@ -12,10 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func init() {
-	gin.SetMode(gin.TestMode)
-}
-
 func TestRequestTimeout_SetsDeadline(t *testing.T) {
 	t.Parallel()
 

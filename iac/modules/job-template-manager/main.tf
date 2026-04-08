@@ -29,7 +29,6 @@ resource "nomad_job" "template_manager" {
 
     api_secret                      = var.api_secret
     artifact_source                 = var.artifact_source
-    template_manager_checksum       = var.template_manager_checksum
     template_bucket_name            = var.template_bucket_name
     build_cache_bucket_name         = var.build_cache_bucket_name
     otel_collector_grpc_endpoint    = var.otel_collector_grpc_endpoint
