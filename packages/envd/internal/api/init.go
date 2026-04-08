@@ -245,12 +245,14 @@ func (a *API) setupNFS(ctx context.Context, logger zerolog.Logger, mounts []Volu
 	// Already fully mounted, nothing to do
 	if a.isMountedNFS.Load() {
 		logger.Debug().Msg("NFS volumes already mounted")
+
 		return
 	}
 
 	// Prevent concurrent mounting attempts
 	if !a.isMountingNFS.CompareAndSwap(false, true) {
 		logger.Debug().Msg("NFS volumes already mounting")
+
 		return
 	}
 	defer a.isMountingNFS.Store(false)
@@ -269,6 +271,7 @@ func (a *API) setupNFS(ctx context.Context, logger zerolog.Logger, mounts []Volu
 		// Skip already mounted paths
 		if _, ok := a.mountedPaths.Load(volume.Path); ok {
 			logger.Debug().Msgf("Skipping already mounted %q", volume.Path)
+
 			continue
 		}
 
