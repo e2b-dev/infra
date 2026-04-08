@@ -6,16 +6,21 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 // compressedUploader implements BuildUploader for V4 (compressed) builds.
+// Per-file config is resolved in UploadData (tier 2) using the upload-level
+// config from NewBuildUploader (tier 1) as the base.
 type compressedUploader struct {
 	buildUploader
 
 	pending *PendingBuildInfo
 	cfg     *storage.CompressConfig
+	ff      *featureflags.Client // to override cfg on a per-file basis in UploadData
+	useCase string
 }
 
 func (c *compressedUploader) UploadData(ctx context.Context) error {
@@ -29,18 +34,25 @@ func (c *compressedUploader) UploadData(ctx context.Context) error {
 		return fmt.Errorf("error getting rootfs diff path: %w", err)
 	}
 
+	// Tier 2: resolve per file with use-case and file-type context.
+	memCfg := storage.ResolveCompressConfig(ctx, c.cfg, c.ff, storage.MemfileName, c.useCase)
+	rootfsCfg := storage.ResolveCompressConfig(ctx, c.cfg, c.ff, storage.RootfsName, c.useCase)
+
 	eg, ctx := errgroup.WithContext(ctx)
 
 	if memfilePath != nil {
 		localPath := *memfilePath
 		eg.Go(func() error {
-			ft, checksum, err := c.uploadCompressedFile(ctx, localPath, c.paths.MemfileCompressed(c.cfg.CompressionType()), storage.MemfileObjectType, c.cfg)
+			if memCfg == nil {
+				return c.uploadUncompressedFile(ctx, localPath, c.paths.Memfile(), storage.MemfileObjectType)
+			}
+
+			ft, checksum, err := c.uploadCompressedFile(ctx, localPath, c.paths.MemfileCompressed(memCfg.CompressionType()), storage.MemfileObjectType, memCfg)
 			if err != nil {
 				return fmt.Errorf("compressed memfile upload: %w", err)
 			}
 
-			uncompressedSize := ft.UncompressedSize()
-			c.pending.add(pendingBuildInfoKey(c.paths.BuildID, storage.MemfileName), ft, uncompressedSize, checksum)
+			c.pending.add(pendingBuildInfoKey(c.paths.BuildID, storage.MemfileName), ft, ft.UncompressedSize(), checksum)
 
 			return nil
 		})
@@ -49,13 +61,16 @@ func (c *compressedUploader) UploadData(ctx context.Context) error {
 	if rootfsPath != nil {
 		localPath := *rootfsPath
 		eg.Go(func() error {
-			ft, checksum, err := c.uploadCompressedFile(ctx, localPath, c.paths.RootfsCompressed(c.cfg.CompressionType()), storage.RootFSObjectType, c.cfg)
+			if rootfsCfg == nil {
+				return c.uploadUncompressedFile(ctx, localPath, c.paths.Rootfs(), storage.RootFSObjectType)
+			}
+
+			ft, checksum, err := c.uploadCompressedFile(ctx, localPath, c.paths.RootfsCompressed(rootfsCfg.CompressionType()), storage.RootFSObjectType, rootfsCfg)
 			if err != nil {
 				return fmt.Errorf("compressed rootfs upload: %w", err)
 			}
 
-			uncompressedSize := ft.UncompressedSize()
-			c.pending.add(pendingBuildInfoKey(c.paths.BuildID, storage.RootfsName), ft, uncompressedSize, checksum)
+			c.pending.add(pendingBuildInfoKey(c.paths.BuildID, storage.RootfsName), ft, ft.UncompressedSize(), checksum)
 
 			return nil
 		})

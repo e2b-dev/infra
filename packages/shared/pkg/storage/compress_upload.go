@@ -14,29 +14,6 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const (
-	// DefaultCompressFrameSize is the default uncompressed size of each compression
-	// frame (2 MiB). Overridable via CompressConfig.FrameSizeKB.
-	// The last frame in a file may be shorter.
-	//
-	// The chunker fetches one frame at a time from storage on a cache miss.
-	// Larger frame sizes mean more data cached per fetch (faster warm-up and
-	// fewer GCS round-trips), but higher memory and I/O cost per miss.
-	//
-	// This MUST be multiple of every block/page size:
-	//   - header.HugepageSize (2 MiB) — UFFD huge-page size, also used by prefetch
-	//   - header.RootfsBlockSize (4 KiB) — NBD / rootfs block size
-	DefaultCompressFrameSize = 2 * 1024 * 1024
-
-	// File type identifiers for per-file-type compression targeting.
-	FileTypeMemfile = "memfile"
-	FileTypeRootfs  = "rootfs"
-
-	// Use case identifiers for per-use-case compression targeting.
-	UseCaseBuild = "build"
-	UseCasePause = "pause"
-)
-
 // partUploader is the interface for uploading data in parts.
 // Implementations exist for GCS multipart uploads and local file writes.
 type partUploader interface {

@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -34,7 +35,8 @@ type LayerExecutor struct {
 	buildStorage    storage.StorageProvider
 	index           cache.Index
 	uploadTracker   *UploadTracker
-	compressConfig  *storage.CompressConfig // nil = no compression
+	compressConfig  *storage.CompressConfig // can be overridden by FF
+	ff              *featureflags.Client
 }
 
 func NewLayerExecutor(
@@ -48,6 +50,7 @@ func NewLayerExecutor(
 	index cache.Index,
 	uploadTracker *UploadTracker,
 	compressConfig *storage.CompressConfig,
+	ff *featureflags.Client,
 ) *LayerExecutor {
 	return &LayerExecutor{
 		BuildContext: buildContext,
@@ -62,6 +65,7 @@ func NewLayerExecutor(
 		index:           index,
 		uploadTracker:   uploadTracker,
 		compressConfig:  compressConfig,
+		ff:              ff,
 	}
 }
 
@@ -277,15 +281,11 @@ func (lb *LayerExecutor) PauseAndUpload(
 	}
 
 	// Upload snapshot async, it's added to the template cache immediately
-	if c := lb.compressConfig; c != nil {
-		userLogger.Debug(ctx, fmt.Sprintf("Saving: %s (compress=%s level=%d)", meta.Template.BuildID, c.Type, c.Level))
-	} else {
-		userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
-	}
+	userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
 
 	// Register this upload and get functions to signal completion and wait for previous uploads
 	completeUpload, waitForPreviousUploads := lb.uploadTracker.StartUpload()
-	uploader := sandbox.NewBuildUploader(snapshot, lb.templateStorage, storage.Paths{BuildID: meta.Template.BuildID}, lb.compressConfig, lb.uploadTracker.Pending())
+	uploader := sandbox.NewBuildUploader(ctx, snapshot, lb.templateStorage, storage.Paths{BuildID: meta.Template.BuildID}, lb.compressConfig, lb.ff, storage.UseCaseBuild, lb.uploadTracker.Pending())
 
 	lb.UploadErrGroup.Go(func() error {
 		ctx := context.WithoutCancel(ctx)

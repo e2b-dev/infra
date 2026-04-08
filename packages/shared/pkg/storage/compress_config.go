@@ -7,6 +7,25 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 )
 
+const (
+	// DefaultCompressFrameSize is the default uncompressed size of each compression
+	// frame (2 MiB). Overridable via CompressConfig.FrameSizeKB.
+	// The last frame in a file may be shorter.
+	//
+	// The chunker fetches one frame at a time from storage on a cache miss.
+	// Larger frame sizes mean more data cached per fetch (faster warm-up and
+	// fewer GCS round-trips), but higher memory and I/O cost per miss.
+	//
+	// This MUST be multiple of every block/page size:
+	//   - header.HugepageSize (2 MiB) — UFFD huge-page size, also used by prefetch
+	//   - header.RootfsBlockSize (4 KiB) — NBD / rootfs block size
+	DefaultCompressFrameSize = 2 * 1024 * 1024
+
+	// Use case identifiers for per-use-case compression targeting via LaunchDarkly.
+	UseCaseBuild = "build"
+	UseCasePause = "pause"
+)
+
 // CompressConfig is the base compression configuration, loaded from environment
 // variables at startup. Feature flags can override individual fields at runtime
 // via ResolveCompressConfig.
@@ -86,7 +105,7 @@ func (c *CompressConfig) Resolve() *CompressConfig {
 // fileType and useCase are added to the LD evaluation context so that
 // LaunchDarkly targeting rules can differentiate (e.g. compress memfile
 // but not rootfs, or compress builds but not pauses).
-func ResolveCompressConfig(ctx context.Context, base CompressConfig, ff *featureflags.Client, fileType, useCase string) *CompressConfig {
+func ResolveCompressConfig(ctx context.Context, base *CompressConfig, ff *featureflags.Client, fileType, useCase string) *CompressConfig {
 	if ff != nil {
 		ctx = featureflags.AddToContext(ctx,
 			featureflags.CompressFileTypeContext(fileType),

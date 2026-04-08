@@ -9,6 +9,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -23,28 +24,38 @@ type BuildUploader interface {
 }
 
 // NewBuildUploader creates a BuildUploader for the given snapshot.
-// If cfg is non-nil, compression is used (V4 headers). Otherwise, uncompressed (V3 headers).
-// pending is shared across layers for multi-layer builds; nil is fine for single-layer.
-func NewBuildUploader(snapshot *Snapshot, persistence storage.StorageProvider, paths storage.Paths, cfg *storage.CompressConfig, pending *PendingBuildInfo) BuildUploader {
+//
+// Compression config is resolved in two tiers:
+//  1. Here: LD is evaluated without use-case or file-type context to get the
+//     upload-level default (targeted by team/env only). If nil, V3 (uncompressed).
+//  2. Inside UploadData: LD is re-evaluated per file with use-case and file-type
+//     context, using the upload-level config as the base.
+//
+// pending is shared across layers for multi-layer builds; nil is fine for
+// single-layer.
+func NewBuildUploader(ctx context.Context, snapshot *Snapshot, persistence storage.StorageProvider, paths storage.Paths, cfg *storage.CompressConfig, ff *featureflags.Client, useCase string, pending *PendingBuildInfo) BuildUploader {
 	base := buildUploader{
 		paths:       paths,
 		persistence: persistence,
 		snapshot:    snapshot,
 	}
 
-	if cfg != nil {
-		if pending == nil {
-			pending = &PendingBuildInfo{}
-		}
-
-		return &compressedUploader{
-			buildUploader: base,
-			pending:       pending,
-			cfg:           cfg,
-		}
+	cfg = storage.ResolveCompressConfig(ctx, cfg, ff, "", "")
+	if !cfg.IsCompressionEnabled() {
+		return &uncompressedUploader{buildUploader: base}
 	}
 
-	return &uncompressedUploader{buildUploader: base}
+	if pending == nil {
+		pending = &PendingBuildInfo{}
+	}
+
+	return &compressedUploader{
+		buildUploader: base,
+		pending:       pending,
+		cfg:           cfg,
+		ff:            ff,
+		useCase:       useCase,
+	}
 }
 
 // buildUploader contains fields and helpers shared by both implementations.
