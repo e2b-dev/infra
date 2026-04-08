@@ -102,6 +102,19 @@ func (q *Queries) GetTeamsWithUsersTeamsWithTierForUpdate(ctx context.Context, u
 	return items, nil
 }
 
+const lockPublicUserForUpdate = `-- name: LockPublicUserForUpdate :one
+SELECT id
+FROM public.users
+WHERE id = $1::uuid
+FOR UPDATE
+`
+
+func (q *Queries) LockPublicUserForUpdate(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockPublicUserForUpdate, id)
+	err := row.Scan(&id)
+	return id, err
+}
+
 const lockUserTeamMembershipsForUpdate = `-- name: LockUserTeamMembershipsForUpdate :many
 SELECT team_id
 FROM public.users_teams

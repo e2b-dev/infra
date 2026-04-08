@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	authtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
@@ -355,6 +356,91 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 	}
 }
 
+func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	userID := createHandlerTestUser(t, testDB)
+	sink := &fakeTeamProvisionSink{}
+
+	existingTeam, err := testDB.SqlcClient.GetDefaultTeamByUserID(ctx, userID)
+	if err != nil {
+		t.Fatalf("expected trigger-created default team: %v", err)
+	}
+	if err := testDB.SqlcClient.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
+		t.Fatalf("failed to remove trigger-created default team: %v", err)
+	}
+
+	store := &APIStore{
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDb,
+		teamProvisionSink: sink,
+	}
+
+	var wg sync.WaitGroup
+	results := make(chan provisionedTeam, 2)
+	errs := make(chan error, 2)
+
+	for range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			team, err := store.bootstrapUser(ctx, userID)
+			if err != nil {
+				errs <- err
+
+				return
+			}
+
+			results <- team
+		}()
+	}
+
+	wg.Wait()
+	close(results)
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("expected bootstrap to succeed, got %v", err)
+		}
+	}
+
+	var teamIDs []uuid.UUID
+	for team := range results {
+		teamIDs = append(teamIDs, team.ID)
+	}
+	if len(teamIDs) != 2 {
+		t.Fatalf("expected two bootstrap results, got %d", len(teamIDs))
+	}
+	if teamIDs[0] != teamIDs[1] {
+		t.Fatalf("expected both bootstrap requests to resolve to the same team, got %s and %s", teamIDs[0], teamIDs[1])
+	}
+
+	var defaultTeamCount int
+	err = testDB.AuthDb.TestsRawSQLQuery(ctx,
+		`SELECT count(*)
+		FROM public.users_teams
+		WHERE user_id = $1 AND is_default = true`,
+		func(rows pgx.Rows) error {
+			if !rows.Next() {
+				return errors.New("missing default team count row")
+			}
+
+			return rows.Scan(&defaultTeamCount)
+		},
+		userID,
+	)
+	if err != nil {
+		t.Fatalf("failed to count default team memberships: %v", err)
+	}
+	if defaultTeamCount != 1 {
+		t.Fatalf("expected exactly one default team membership, got %d", defaultTeamCount)
+	}
+}
+
 func TestCreateTeam_NoProvisionSinkLeavesCreatedTeam(t *testing.T) {
 	t.Parallel()
 
@@ -672,11 +758,15 @@ func TestCreateTeam_ConcurrentRequestsRespectLocalPolicy(t *testing.T) {
 }
 
 type fakeTeamProvisionSink struct {
+	mu       sync.Mutex
 	requests []teamprovision.TeamBillingProvisionRequestedV1
 	err      error
 }
 
 func (s *fakeTeamProvisionSink) ProvisionTeam(_ context.Context, req teamprovision.TeamBillingProvisionRequestedV1) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.requests = append(s.requests, req)
 
 	return s.err

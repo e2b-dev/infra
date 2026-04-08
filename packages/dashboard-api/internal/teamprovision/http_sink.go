@@ -20,6 +20,8 @@ type HTTPProvisionSink struct {
 	client   *http.Client
 }
 
+var _ TeamProvisionSink = (*HTTPProvisionSink)(nil)
+
 type errorResponse struct {
 	Message string `json:"message"`
 }

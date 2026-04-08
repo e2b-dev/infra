@@ -8,6 +8,8 @@ import (
 
 type NoopProvisionSink struct{}
 
+var _ TeamProvisionSink = (*NoopProvisionSink)(nil)
+
 func NewNoopProvisionSink() *NoopProvisionSink {
 	return &NoopProvisionSink{}
 }

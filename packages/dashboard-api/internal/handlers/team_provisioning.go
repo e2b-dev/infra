@@ -104,6 +104,11 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 		return provisionedTeam{}, fmt.Errorf("upsert public user: %w", err)
 	}
 
+	// Serialize bootstrap for a user even when they have no team memberships yet.
+	if _, err := txDB.LockPublicUserForUpdate(ctx, authUser.ID); err != nil {
+		return provisionedTeam{}, fmt.Errorf("lock public user: %w", err)
+	}
+
 	existingTeam, err := txDB.GetDefaultTeamByUserID(ctx, userID)
 	if err == nil {
 		if err := tx.Commit(ctx); err != nil {
