@@ -113,7 +113,7 @@ func ParseSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEven
 		return nil, ErrSandboxCreationParse
 	}
 
-	sandboxEndTime := sandboxStartTime.Add(time.Duration(maxLengthInHours) * time.Hour)
+	var sandboxEndTime time.Time
 	if sandboxEndTimeStr, found := getMetadataValue(md, sbxEndTimeHeader); found {
 		sandboxEndTime, err = time.Parse(time.RFC3339, sandboxEndTimeStr)
 		if err != nil {

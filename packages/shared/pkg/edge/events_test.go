@@ -28,7 +28,7 @@ func TestParseSandboxCatalogCreateEvent_WithEndTime(t *testing.T) {
 	assert.Equal(t, end, got.SandboxEndTime)
 }
 
-func TestParseSandboxCatalogCreateEvent_WithoutEndTimeFallsBackToMaxLength(t *testing.T) {
+func TestParseSandboxCatalogCreateEvent_WithoutEndTimeLeavesZeroValue(t *testing.T) {
 	t.Parallel()
 
 	start := time.Date(2026, 4, 7, 10, 0, 0, 0, time.UTC)
@@ -45,5 +45,5 @@ func TestParseSandboxCatalogCreateEvent_WithoutEndTimeFallsBackToMaxLength(t *te
 
 	got, err := ParseSandboxCatalogCreateEvent(md)
 	require.NoError(t, err)
-	assert.Equal(t, start.Add(2*time.Hour), got.SandboxEndTime)
+	assert.True(t, got.SandboxEndTime.IsZero())
 }
