@@ -58,6 +58,10 @@ jobs:
 
       - name: Setup orchestrator tests
         run: |
+          # Download busybox for smoketest (non-fatal until GCS is populated)
+          make -C packages/orchestrator fetch-busybox || true
+          echo "HOST_BUSYBOX_DIR=$(pwd)/packages/orchestrator/.busybox" >> "$GITHUB_ENV"
+
           # Enable unprivileged uffd mode
           echo 1 | sudo tee /proc/sys/vm/unprivileged_userfaultfd
 
