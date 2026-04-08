@@ -227,8 +227,7 @@ func MergeMappings(
 	return mappings
 }
 
-// NormalizeMappings joins adjacent mappings that have the same buildId
-// and contiguous BuildStorageOffset.
+// NormalizeMappings joins adjacent mappings that have the same buildId.
 func NormalizeMappings(mappings []BuildMap) []BuildMap {
 	if len(mappings) == 0 {
 		return nil
@@ -240,7 +239,7 @@ func NormalizeMappings(mappings []BuildMap) []BuildMap {
 
 	for i := 1; i < len(mappings); i++ {
 		mp := mappings[i]
-		if mp.BuildId == current.BuildId && mp.BuildStorageOffset == current.BuildStorageOffset+current.Length {
+		if mp.BuildId == current.BuildId {
 			current.Length += mp.Length
 		} else {
 			result = append(result, current)
