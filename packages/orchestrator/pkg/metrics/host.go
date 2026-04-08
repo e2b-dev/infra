@@ -1,12 +1,24 @@
 package metrics
 
 import (
+	"context"
 	"runtime"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/shirou/gopsutil/v4/mem"
+)
+
+const (
+	// hostPollInterval is how often HostMetrics resamples all host metrics.
+	// cpu.Percent(0, ...) is non-blocking but stateful — it diffs CPU counters
+	// against the previous call — so the interval must be wide enough for the
+	// delta to be meaningful. Memory and disk share the same interval so all
+	// metrics come from a consistent snapshot.
+	hostPollInterval = 10 * time.Second
 )
 
 type CPUMetrics struct {
@@ -28,28 +40,137 @@ type DiskInfo struct {
 	UsedPercent    float64
 }
 
-func GetCPUMetrics() (*CPUMetrics, error) {
-	// Get CPU count
-	cpuCount := runtime.NumCPU()
+// HostMetrics samples host-level metrics in the background so that
+// callers on the request path never block on expensive OS calls.
+// All metrics are sampled together on the same tick, producing a
+// consistent snapshot.
+type HostMetrics struct {
+	mu         sync.RWMutex
+	cpu        *CPUMetrics
+	cpuErr     error
+	memory     *MemoryMetrics
+	memoryErr  error
+	disks      []DiskInfo
+	disksErr   error
+	closed     chan struct{}
+	closedOnce sync.Once
+}
 
-	// Get CPU usage percentage
-	cpuPercents, err := cpu.Percent(0, false)
+func NewHostMetrics() *HostMetrics {
+	return &HostMetrics{closed: make(chan struct{})}
+}
+
+// Start primes the cache immediately then resamples every hostPollInterval
+// until Close is called. Intended to be run via startService.
+func (h *HostMetrics) Start() error {
+	h.sample()
+
+	ticker := time.NewTicker(hostPollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-h.closed:
+			return nil
+		case <-ticker.C:
+			h.sample()
+		}
+	}
+}
+
+func (h *HostMetrics) Close(_ context.Context) error {
+	h.closedOnce.Do(func() { close(h.closed) })
+
+	return nil
+}
+
+// GetCPUMetrics returns the most recent CPU sample. Non-blocking.
+// Returns zero-value CPUMetrics if no sample has been taken yet.
+func (h *HostMetrics) GetCPUMetrics() (*CPUMetrics, error) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	if h.cpu == nil {
+		return &CPUMetrics{}, h.cpuErr
+	}
+
+	// Valid cache exists — serve it regardless of transient errors.
+	return h.cpu, nil
+}
+
+// GetMemoryMetrics returns the most recent memory sample. Non-blocking.
+// Returns zero-value MemoryMetrics if no sample has been taken yet.
+func (h *HostMetrics) GetMemoryMetrics() (*MemoryMetrics, error) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	if h.memory == nil {
+		return &MemoryMetrics{}, h.memoryErr
+	}
+
+	return h.memory, nil
+}
+
+// GetDiskMetrics returns the most recent disk sample. Non-blocking.
+// Returns an empty slice if no sample has been taken yet.
+func (h *HostMetrics) GetDiskMetrics() ([]DiskInfo, error) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	if h.disks == nil {
+		return []DiskInfo{}, h.disksErr
+	}
+
+	return h.disks, nil
+}
+
+// sample resamples all host metrics and writes them atomically so that
+// readers always see a consistent snapshot (all metrics from the same tick).
+func (h *HostMetrics) sample() {
+	cpu, cpuErr := readCPU()
+	memory, memErr := readMemory()
+	disks, disksErr := readDisk()
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if cpuErr == nil {
+		h.cpu = cpu
+	}
+	h.cpuErr = cpuErr
+
+	if memErr == nil {
+		h.memory = memory
+	}
+	h.memoryErr = memErr
+
+	if disksErr == nil {
+		h.disks = disks
+	}
+	h.disksErr = disksErr
+}
+
+func readCPU() (*CPUMetrics, error) {
+	// cpu.Percent(0) is non-blocking: it diffs kernel CPU counters against
+	// the previous call. The ticker spacing (hostPollInterval) keeps the
+	// inter-sample window wide enough for the delta to be meaningful.
+	percents, err := cpu.Percent(0, false)
 	if err != nil {
 		return nil, err
 	}
-	cpuUsedPercent := float64(0)
-	if len(cpuPercents) > 0 {
-		cpuUsedPercent = cpuPercents[0]
+
+	usedPercent := float64(0)
+	if len(percents) > 0 {
+		usedPercent = percents[0]
 	}
 
 	return &CPUMetrics{
-		UsedPercent: cpuUsedPercent,
-		Count:       uint32(cpuCount),
+		UsedPercent: usedPercent,
+		Count:       uint32(runtime.NumCPU()),
 	}, nil
 }
 
-func GetMemoryMetrics() (*MemoryMetrics, error) {
-	// Get memory usage and total
+func readMemory() (*MemoryMetrics, error) {
 	memInfo, err := mem.VirtualMemory()
 	if err != nil {
 		return nil, err
@@ -61,15 +182,13 @@ func GetMemoryMetrics() (*MemoryMetrics, error) {
 	}, nil
 }
 
-func GetDiskMetrics() ([]DiskInfo, error) {
-	// Get all disk partitions
-	partitions, err := disk.Partitions(false) // false = exclude pseudo filesystems
+func readDisk() ([]DiskInfo, error) {
+	partitions, err := disk.Partitions(false)
 	if err != nil {
 		return nil, err
 	}
 
 	var disks []DiskInfo
-
 	for _, partition := range partitions {
 		if !isRealDisk(partition) {
 			continue
@@ -77,20 +196,18 @@ func GetDiskMetrics() ([]DiskInfo, error) {
 
 		usage, err := disk.Usage(partition.Mountpoint)
 		if err != nil {
-			// Skip partitions we can't read
+			// Skip partitions we can't read.
 			continue
 		}
 
-		diskInfo := DiskInfo{
+		disks = append(disks, DiskInfo{
 			MountPoint:     partition.Mountpoint,
 			Device:         partition.Device,
 			FilesystemType: partition.Fstype,
 			UsedBytes:      usage.Used,
 			TotalBytes:     usage.Total,
 			UsedPercent:    usage.UsedPercent,
-		}
-
-		disks = append(disks, diskInfo)
+		})
 	}
 
 	return disks, nil
