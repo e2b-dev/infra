@@ -53,7 +53,15 @@ function getPR(ev) {
     return;
   }
 
-  const message = `<!subteam^${reviewGroup}> — new PR needs review\n*<${pr.html_url}|#${pr.number} — ${pr.title}>* by ${pr.user.login}`;
+  // Escape Slack mrkdwn control characters to prevent injection via PR title.
+  // A fork contributor could craft a title with > or <!everyone> to break
+  // formatting or trigger channel-wide pings.
+  const safeTitle = pr.title
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  const message = `<!subteam^${reviewGroup}> — new PR needs review\n*<${pr.html_url}|#${pr.number} — ${safeTitle}>* by ${pr.user.login}`;
 
   await slack.chat.postMessage({
     channel: channelId,
