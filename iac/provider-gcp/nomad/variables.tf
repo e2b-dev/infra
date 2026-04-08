@@ -73,8 +73,9 @@ variable "ingress_port" {
   })
 }
 
-variable "additional_traefik_arguments" {
-  type = list(string)
+variable "traefik_config_files" {
+  type        = map(string)
+  description = "Map of filename => content for additional Traefik dynamic configuration files"
 }
 
 variable "ingress_count" {

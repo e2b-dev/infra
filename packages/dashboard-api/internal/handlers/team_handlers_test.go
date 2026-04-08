@@ -62,7 +62,6 @@ func TestParseUpdateTeamBody_NameNullRejected(t *testing.T) {
 func TestRequireAuthedTeamMatchesPath_Success(t *testing.T) {
 	t.Parallel()
 
-	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 
@@ -81,7 +80,6 @@ func TestRequireAuthedTeamMatchesPath_Success(t *testing.T) {
 func TestRequireAuthedTeamMatchesPath_Mismatch(t *testing.T) {
 	t.Parallel()
 
-	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 

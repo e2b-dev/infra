@@ -132,14 +132,16 @@ variable "ingress_count" {
 }
 
 variable "additional_api_paths_handled_by_ingress" {
-  type        = list(string)
-  description = "Additional paths to forward to nomad's ingress"
+  type        = any
+  description = <<-EOT
+    Additional path rules to forward to nomad's ingress. Each entry creates a separate path_rule.
+    Accepts two formats for backward compatibility:
+    - Legacy: list(string) - e.g. ["/path1/*", "/path2/*"]
+    - New: list(object({paths = list(string), timeout_sec = optional(number)}))
+      e.g. [{paths = ["/path1/*", "/path2/*"], timeout_sec = 120}]
+    Per-route timeout_sec overrides the ingress backend default (see ingress_timeout_seconds).
+  EOT
   default     = []
-}
-
-variable "additional_traefik_arguments" {
-  type    = list(string)
-  default = []
 }
 
 variable "client_proxy_resources_memory_mb" {
@@ -714,4 +716,15 @@ variable "gcs_grpc_connection_pool_size" {
 variable "orchestrator_env_vars" {
   type    = map(string)
   default = {}
+}
+
+variable "traefik_config_files" {
+  type        = map(string)
+  description = "Map of filename => content for additional Traefik dynamic configuration files"
+  default     = {}
+}
+
+variable "ingress_timeout_seconds" {
+  type    = number
+  default = 80
 }

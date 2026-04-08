@@ -17,36 +17,36 @@ import (
 type Server struct {
 	orchestratorinfo.UnimplementedInfoServiceServer
 
-	info      *ServiceInfo
-	sandboxes *sandbox.Map
+	info        *ServiceInfo
+	sandboxes   *sandbox.Map
+	hostMetrics *metrics.HostMetrics
 }
 
-func NewInfoService(info *ServiceInfo, sandboxes *sandbox.Map) *Server {
-	s := &Server{
-		info:      info,
-		sandboxes: sandboxes,
+func NewInfoService(info *ServiceInfo, sandboxes *sandbox.Map, hostMetrics *metrics.HostMetrics) *Server {
+	return &Server{
+		info:        info,
+		sandboxes:   sandboxes,
+		hostMetrics: hostMetrics,
 	}
-
-	return s
 }
 
 func (s *Server) ServiceInfo(ctx context.Context, _ *emptypb.Empty) (*orchestratorinfo.ServiceInfoResponse, error) {
 	info := s.info
 
 	// Get host metrics for the orchestrator
-	cpuMetrics, err := metrics.GetCPUMetrics()
+	cpuMetrics, err := s.hostMetrics.GetCPUMetrics()
 	if err != nil {
 		logger.L().Warn(ctx, "Failed to get host metrics", zap.Error(err))
 		cpuMetrics = &metrics.CPUMetrics{}
 	}
 
-	memoryMetrics, err := metrics.GetMemoryMetrics()
+	memoryMetrics, err := s.hostMetrics.GetMemoryMetrics()
 	if err != nil {
 		logger.L().Warn(ctx, "Failed to get host metrics", zap.Error(err))
 		memoryMetrics = &metrics.MemoryMetrics{}
 	}
 
-	diskMetrics, err := metrics.GetDiskMetrics()
+	diskMetrics, err := s.hostMetrics.GetDiskMetrics()
 	if err != nil {
 		logger.L().Warn(ctx, "Failed to get host metrics", zap.Error(err))
 		diskMetrics = []metrics.DiskInfo{}

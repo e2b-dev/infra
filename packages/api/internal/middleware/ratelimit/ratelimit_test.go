@@ -25,11 +25,6 @@ import (
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
-func TestMain(m *testing.M) {
-	gin.SetMode(gin.TestMode)
-	m.Run()
-}
-
 // newTestFF creates a feature flags client with optional route config overrides.
 func newTestFF(t *testing.T, routeConfigs ...map[string]map[string]int) *featureflags.Client {
 	t.Helper()

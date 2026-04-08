@@ -172,7 +172,7 @@ func NewStreamingChunker(
 	minReadBatchSize int64,
 	ff *featureflags.Client,
 ) (*StreamingChunker, error) {
-	cache, err := NewCache(size, blockSize, cachePath, false)
+	cache, err := NewCacheWithDirtyGranularity(size, blockSize, ChunkerDirtyGranularity, cachePath, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}
@@ -270,7 +270,10 @@ func (c *StreamingChunker) Slice(ctx context.Context, off, length int64) ([]byte
 		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, err)
 	}
 
-	b, cacheErr := c.cache.Slice(off, length)
+	// Use sliceDirect (no isCached check) since the waiter mechanism guarantees data is in the mmap.
+	// With coarse dirty granularity, isCached may return false during an active fetch even though
+	// the requested bytes have been written to the mmap.
+	b, cacheErr := c.cache.sliceDirect(off, length)
 	if cacheErr != nil {
 		timer.RecordRaw(ctx, length, chunkerAttrs.failLocalReadAgain)
 
@@ -384,6 +387,11 @@ func (c *StreamingChunker) runFetch(ctx context.Context, s *fetchSession) {
 		return
 	}
 
+	// Mark entire chunk as cached BEFORE releasing waiters.
+	// This ensures isCached returns true before the session is removed from fetchMap,
+	// closing the TOCTOU window in getOrCreateSession.
+	c.cache.setIsCached(s.chunkOff, s.chunkLen)
+
 	fetchTimer.RecordRaw(ctx, s.chunkLen, chunkerAttrs.remoteSuccess)
 	s.setDone()
 }
@@ -409,10 +417,10 @@ func (c *StreamingChunker) progressiveRead(ctx context.Context, s *fetchSession,
 
 		completedBlocks := totalRead / blockSize
 		if completedBlocks > prevCompleted {
-			newBytes := (completedBlocks - prevCompleted) * blockSize
-			c.cache.setIsCached(s.chunkOff+prevCompleted*blockSize, newBytes)
 			prevCompleted = completedBlocks
 
+			// Notify waiters at block granularity via bytesReady.
+			// Dirty marking is deferred to runFetch after the full chunk is fetched.
 			s.mu.Lock()
 			s.bytesReady.Store(completedBlocks * blockSize)
 			s.notifyWaiters(nil)
@@ -420,10 +428,6 @@ func (c *StreamingChunker) progressiveRead(ctx context.Context, s *fetchSession,
 		}
 
 		if errors.Is(readErr, io.EOF) {
-			// Mark final partial block if any
-			if totalRead > prevCompleted*blockSize {
-				c.cache.setIsCached(s.chunkOff+prevCompleted*blockSize, totalRead-prevCompleted*blockSize)
-			}
 			// Remaining waiters are notified in runFetch via the Done state.
 			break
 		}
@@ -431,6 +435,10 @@ func (c *StreamingChunker) progressiveRead(ctx context.Context, s *fetchSession,
 		if readErr != nil {
 			return fmt.Errorf("failed reading at offset %d after %d bytes: %w", s.chunkOff, totalRead, readErr)
 		}
+	}
+
+	if totalRead < s.chunkLen {
+		return fmt.Errorf("short read: expected %d bytes, got %d", s.chunkLen, totalRead)
 	}
 
 	return nil
