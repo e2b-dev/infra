@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -65,6 +66,11 @@ func (s *APIStore) PostTeams(c *gin.Context) {
 	body, err := ginutils.ParseBody[api.CreateTeamRequest](ctx, c)
 	if err != nil {
 		s.sendAPIStoreError(c, http.StatusBadRequest, "Invalid request body")
+
+		return
+	}
+	if strings.TrimSpace(body.Name) == "" {
+		s.sendAPIStoreError(c, http.StatusBadRequest, "Team name is required")
 
 		return
 	}

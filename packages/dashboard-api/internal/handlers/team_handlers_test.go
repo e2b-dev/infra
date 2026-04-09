@@ -749,6 +749,37 @@ func TestPostTeams_ProvisioningSuccessReturnsTeam(t *testing.T) {
 	}
 }
 
+func TestPostTeams_InvalidNameReturnsBadRequest(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	userID := createHandlerTestUser(t, testDB)
+
+	for _, body := range []string{`{}`, `{"name":""}`, `{"name":"   "}`} {
+		recorder := httptest.NewRecorder()
+		ginCtx, _ := gin.CreateTestContext(recorder)
+		ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(body))
+		ginCtx.Request.Header.Set("Content-Type", "application/json")
+		auth.SetUserID(ginCtx, userID)
+
+		sink := &fakeTeamProvisionSink{}
+		store := &APIStore{
+			db:                testDB.SqlcClient,
+			authDB:            testDB.AuthDB,
+			teamProvisionSink: sink,
+		}
+		store.PostTeams(ginCtx)
+
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400 for body %s, got %d", body, recorder.Code)
+		}
+		if len(sink.requests) != 0 {
+			t.Fatalf("expected no provisioning call for body %s, got %d", body, len(sink.requests))
+		}
+	}
+}
+
 func TestPostTeams_ProvisioningFailureStillReturnsTeam(t *testing.T) {
 	t.Parallel()
 

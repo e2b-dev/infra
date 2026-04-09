@@ -1,9 +1,3 @@
--- name: LockUserTeamMembershipsForUpdate :many
-SELECT team_id
-FROM public.users_teams
-WHERE user_id = sqlc.arg(user_id)::uuid
-FOR UPDATE;
-
 -- name: LockPublicUserForUpdate :one
 SELECT id
 FROM public.users

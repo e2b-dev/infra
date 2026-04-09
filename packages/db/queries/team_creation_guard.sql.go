@@ -114,30 +114,3 @@ func (q *Queries) LockPublicUserForUpdate(ctx context.Context, id uuid.UUID) (uu
 	err := row.Scan(&id)
 	return id, err
 }
-
-const lockUserTeamMembershipsForUpdate = `-- name: LockUserTeamMembershipsForUpdate :many
-SELECT team_id
-FROM public.users_teams
-WHERE user_id = $1::uuid
-FOR UPDATE
-`
-
-func (q *Queries) LockUserTeamMembershipsForUpdate(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, lockUserTeamMembershipsForUpdate, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []uuid.UUID
-	for rows.Next() {
-		var team_id uuid.UUID
-		if err := rows.Scan(&team_id); err != nil {
-			return nil, err
-		}
-		items = append(items, team_id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
