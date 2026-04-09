@@ -167,7 +167,6 @@ func run() int {
 		config.EnableBillingHTTPTeamProvisionSink,
 		config.BillingServerURL,
 		config.BillingServerAPIToken,
-		config.BillingServerTimeout,
 	)
 	if err != nil {
 		l.Fatal(ctx, "initializing team provision sink", zap.Error(err))

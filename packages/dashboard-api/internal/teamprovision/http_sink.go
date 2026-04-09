@@ -1,15 +1,18 @@
 package teamprovision
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/hashicorp/go-retryablehttp"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
@@ -20,10 +23,19 @@ import (
 
 const billingServerAPIKeyHeader = "X-Billing-Server-API-Key"
 
+const (
+	defaultProvisionTimeout          = 30 * time.Second
+	defaultProvisionRetryMaxAttempts = 3
+	defaultProvisionRetryInitialWait = 100 * time.Millisecond
+	defaultProvisionRetryWaitCeiling = 2 * time.Second
+	provisionBackoffMultiplier       = 2.0
+)
+
 type HTTPProvisionSink struct {
 	baseURL  string
 	apiToken string
-	client   *http.Client
+	client   *retryablehttp.Client
+	timeout  time.Duration
 }
 
 var _ TeamProvisionSink = (*HTTPProvisionSink)(nil)
@@ -32,17 +44,12 @@ type errorResponse struct {
 	Message string `json:"message"`
 }
 
-func NewHTTPProvisionSink(baseURL, apiToken string, timeout time.Duration) *HTTPProvisionSink {
-	if timeout <= 0 {
-		timeout = 15 * time.Second
-	}
-
+func NewHTTPProvisionSink(baseURL, apiToken string) *HTTPProvisionSink {
 	return &HTTPProvisionSink{
 		baseURL:  strings.TrimRight(baseURL, "/"),
 		apiToken: apiToken,
-		client: &http.Client{
-			Timeout: timeout,
-		},
+		client:   newRetryableProvisionClient(defaultProvisionTimeout),
+		timeout:  defaultProvisionTimeout,
 	}
 }
 
@@ -72,42 +79,26 @@ func (s *HTTPProvisionSink) ProvisionTeam(ctx context.Context, req sharedteampro
 		return fmt.Errorf("marshal billing provisioning request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(
-		ctx,
-		http.MethodPost,
-		s.baseURL+"/internal/teams/provision",
-		bytes.NewReader(body),
-	)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "create billing provisioning request", err, baseAttrs...)
-
-		return fmt.Errorf("create billing provisioning request: %w", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set(billingServerAPIKeyHeader, s.apiToken)
-
+	retryCtx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
 	startedAt := time.Now()
-	resp, err := s.client.Do(httpReq)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "call billing provisioning endpoint", err, baseAttrs...)
-
-		return fmt.Errorf("call billing provisioning endpoint: %w", err)
+	resp, err := s.provisionTeamOnce(retryCtx, body)
+	if resp != nil {
+		defer resp.Body.Close()
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusOK {
-		duration := time.Since(startedAt)
+	duration := time.Since(startedAt)
+	if err == nil && resp != nil && resp.StatusCode == http.StatusOK {
 		successAttrs := provisionTelemetryAttrs(req, provisionSinkHTTP,
 			attribute.String("team.provision.result", "success"),
-			attribute.Int64("http.response.status_code", int64(resp.StatusCode)),
+			attribute.Int64("http.response.status_code", int64(http.StatusOK)),
 			attribute.Int64("team.provision.duration_ms", duration.Milliseconds()),
 		)
 		telemetry.ReportEvent(ctx, "team_provision.completed", successAttrs...)
 
 		fields := append(provisionLogFields(req, provisionSinkHTTP),
 			zap.String("team.provision.result", "success"),
-			zap.Int("http.response.status_code", resp.StatusCode),
+			zap.Int("http.response.status_code", http.StatusOK),
 			zap.Duration("team.provision.duration", duration),
 		)
 		logger.L().Info(ctx, "team provisioning completed", fields...)
@@ -115,26 +106,106 @@ func (s *HTTPProvisionSink) ProvisionTeam(ctx context.Context, req sharedteampro
 		return nil
 	}
 
-	message, err := readProvisionErrorMessage(resp)
-	if err != nil {
-		telemetry.ReportCriticalError(ctx, "read billing provisioning error response", err, baseAttrs...)
-
-		return fmt.Errorf("read billing provisioning error response: %w", err)
-	}
-
-	duration := time.Since(startedAt)
-	provisionErr := &ProvisionError{
-		StatusCode: resp.StatusCode,
-		Message:    message,
-	}
+	provisionErr := buildProvisionError(resp, err)
 	failureAttrs := provisionTelemetryAttrs(req, provisionSinkHTTP,
 		attribute.String("team.provision.result", "failed"),
-		attribute.Int64("http.response.status_code", int64(resp.StatusCode)),
 		attribute.Int64("team.provision.duration_ms", duration.Milliseconds()),
+		attribute.Int64("http.response.status_code", int64(provisionErr.StatusCode)),
 	)
-	telemetry.ReportErrorByCode(ctx, resp.StatusCode, "team provisioning failed", provisionErr, failureAttrs...)
+	telemetry.ReportErrorByCode(ctx, provisionErr.StatusCode, "team provisioning failed", provisionErr, failureAttrs...)
 
 	return provisionErr
+}
+
+func (s *HTTPProvisionSink) provisionTeamOnce(ctx context.Context, body []byte) (*http.Response, error) {
+	httpReq, err := retryablehttp.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		s.baseURL+"/internal/teams/provision",
+		body,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create billing provisioning request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set(billingServerAPIKeyHeader, s.apiToken)
+
+	return s.client.Do(httpReq)
+}
+
+func buildProvisionError(resp *http.Response, err error) *ProvisionError {
+	if resp != nil {
+		message, readErr := readProvisionErrorMessage(resp)
+		if readErr != nil {
+			return &ProvisionError{
+				StatusCode: http.StatusBadGateway,
+				Message:    "billing provisioning response was unreadable",
+				Err:        fmt.Errorf("read billing provisioning error response: %w", readErr),
+			}
+		}
+
+		return &ProvisionError{
+			StatusCode: resp.StatusCode,
+			Message:    message,
+			Err:        err,
+		}
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		return &ProvisionError{
+			StatusCode: http.StatusGatewayTimeout,
+			Message:    "billing provisioning request timed out",
+			Err:        err,
+		}
+	}
+	if errors.Is(err, context.Canceled) {
+		return &ProvisionError{
+			StatusCode: http.StatusServiceUnavailable,
+			Message:    "billing provisioning request was canceled",
+			Err:        err,
+		}
+	}
+
+	return &ProvisionError{
+		StatusCode: http.StatusServiceUnavailable,
+		Message:    "billing provisioning request failed",
+		Err:        err,
+	}
+}
+
+func newRetryableProvisionClient(timeout time.Duration) *retryablehttp.Client {
+	client := retryablehttp.NewClient()
+	client.Logger = nil
+	client.RetryMax = defaultProvisionRetryMaxAttempts - 1
+	client.RetryWaitMin = defaultProvisionRetryInitialWait
+	client.RetryWaitMax = defaultProvisionRetryWaitCeiling
+	client.ErrorHandler = retryablehttp.PassthroughErrorHandler
+	client.Backoff = func(minWait, maxWait time.Duration, attemptNum int, resp *http.Response) time.Duration {
+		if resp != nil && (resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable) {
+			return retryablehttp.DefaultBackoff(minWait, maxWait, attemptNum, resp)
+		}
+
+		backoff := minWait
+		for range attemptNum {
+			backoff = time.Duration(float64(backoff) * provisionBackoffMultiplier)
+			if backoff > maxWait {
+				backoff = maxWait
+
+				break
+			}
+		}
+
+		if backoff > 0 {
+			return time.Duration(rand.Int63n(int64(backoff)))
+		}
+
+		return backoff
+	}
+	client.HTTPClient.Timeout = timeout
+	client.HTTPClient.Transport = otelhttp.NewTransport(client.HTTPClient.Transport)
+
+	return client
 }
 
 func readProvisionErrorMessage(resp *http.Response) (string, error) {

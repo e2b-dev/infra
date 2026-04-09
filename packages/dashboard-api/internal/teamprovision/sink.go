@@ -25,6 +25,7 @@ const (
 type ProvisionError struct {
 	StatusCode int
 	Message    string
+	Err        error
 }
 
 func (e *ProvisionError) Error() string {
@@ -33,6 +34,14 @@ func (e *ProvisionError) Error() string {
 	}
 
 	return fmt.Sprintf("billing provisioning failed with status %d", e.StatusCode)
+}
+
+func (e *ProvisionError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+
+	return e.Err
 }
 
 func (e *ProvisionError) IsBadRequest() bool {

@@ -3,7 +3,6 @@ package teamprovision
 import (
 	"context"
 	"errors"
-	"time"
 
 	"go.uber.org/zap"
 
@@ -15,7 +14,7 @@ var (
 	ErrMissingAPIToken = errors.New("billing server api token is required when billing http team provision sink is enabled")
 )
 
-func NewProvisionSink(enabled bool, baseURL, apiToken string, timeout time.Duration) (TeamProvisionSink, error) {
+func NewProvisionSink(enabled bool, baseURL, apiToken string) (TeamProvisionSink, error) {
 	if !enabled {
 		logger.L().Info(context.Background(), "team provision sink configured",
 			zap.String("sink", "noop"),
@@ -39,5 +38,5 @@ func NewProvisionSink(enabled bool, baseURL, apiToken string, timeout time.Durat
 		zap.String("base_url", baseURL),
 	)
 
-	return NewHTTPProvisionSink(baseURL, apiToken, timeout), nil
+	return NewHTTPProvisionSink(baseURL, apiToken), nil
 }
