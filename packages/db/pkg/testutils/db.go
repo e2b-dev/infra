@@ -60,6 +60,7 @@ func SetupDatabase(t *testing.T) *Database {
 	dblock.RLock()
 	if oneDB != nil {
 		dblock.RUnlock()
+
 		return oneDB
 	}
 	dblock.RUnlock()
