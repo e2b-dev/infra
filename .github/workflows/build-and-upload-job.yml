@@ -47,10 +47,10 @@ jobs:
         with:
           sparse-checkout: |
             .github/actions
-          path: actions
+          path: actions-from-ref
 
       - name: Setup environment
-        uses: ./.github/actions/deploy-setup
+        uses: ./actions-from-ref/.github/actions/deploy-setup
         with:
           environment: ${{ inputs.environment }}
           install_gcloud: "true"
