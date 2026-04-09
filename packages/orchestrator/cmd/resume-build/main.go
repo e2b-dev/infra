@@ -971,7 +971,11 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if err != nil {
 		return fmt.Errorf("telemetry: %w", err)
 	}
-	defer tel.Shutdown(context.WithoutCancel(ctx))
+	defer func() {
+		if err := tel.Shutdown(context.WithoutCancel(ctx)); err != nil {
+			log.Printf("error shutting down telemetry: %v", err)
+		}
+	}()
 
 	if os.Getenv("NODE_IP") == "" {
 		os.Setenv("NODE_IP", "127.0.0.1")
