@@ -22,16 +22,21 @@ if [ -f "$OUTPUT" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "${VERSION}-${ARCH}" ];
 fi
 
 GCS_PREFIX="https://storage.googleapis.com/e2b-prod-public-builds/busybox/${VERSION}/${ARCH}"
+TMP_BIN=$(mktemp)
+TMP_SHA=$(mktemp)
+
+cleanup() { rm -f "$TMP_BIN" "$TMP_SHA"; }
+trap cleanup EXIT
 
 echo "Downloading busybox v${VERSION} (${ARCH}) from GCS..."
 
-mkdir -p "$(dirname "$OUTPUT")"
-curl -sfL -o "$OUTPUT" "${GCS_PREFIX}/busybox"
-curl -sfL -o "${OUTPUT}.sha256" "${GCS_PREFIX}/busybox.sha256"
+curl -sfL -o "$TMP_BIN" "${GCS_PREFIX}/busybox"
+curl -sfL -o "$TMP_SHA" "${GCS_PREFIX}/busybox.sha256"
 
 echo "Verifying SHA256..."
-(cd "$(dirname "$OUTPUT")" && sha256sum -c "$(basename "$OUTPUT").sha256")
+(cd "$(dirname "$TMP_BIN")" && sed "s|busybox|$(basename "$TMP_BIN")|" "$TMP_SHA" | sha256sum -c -)
 
+mkdir -p "$(dirname "$OUTPUT")"
+mv "$TMP_BIN" "$OUTPUT"
 chmod +x "$OUTPUT"
 echo "${VERSION}-${ARCH}" > "$STAMP"
-rm -f "${OUTPUT}.sha256"
