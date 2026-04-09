@@ -134,7 +134,6 @@ func run() int {
 	supabaseDB, err := supabasedb.NewClient(
 		ctx,
 		config.AuthDBConnectionString,
-		config.AuthDBReadReplicaConnectionString,
 		pool.WithMaxConnections(8),
 	)
 	if err != nil {

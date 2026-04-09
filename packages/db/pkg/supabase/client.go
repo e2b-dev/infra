@@ -2,7 +2,6 @@ package supabasedb
 
 import (
 	"context"
-	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -10,52 +9,28 @@ import (
 
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	supabasequeries "github.com/e2b-dev/infra/packages/db/pkg/supabase/queries"
-	"github.com/e2b-dev/infra/packages/db/pkg/types"
 )
 
-const (
-	poolName = "supabase"
-	replica  = "replica"
-)
+const poolName = "supabase"
 
 type Client struct {
-	Read      *supabasequeries.Queries
 	Write     *supabasequeries.Queries
 	writeConn *pgxpool.Pool
-	readConn  *pgxpool.Pool
 }
 
-func NewClient(ctx context.Context, databaseURL, replicaURL string, options ...pool.Option) (*Client, error) {
+func NewClient(ctx context.Context, databaseURL string, options ...pool.Option) (*Client, error) {
 	writeClient, writePool, err := pool.New(ctx, databaseURL, poolName, options...)
 	if err != nil {
 		return nil, err
 	}
 
 	writeQueries := supabasequeries.New(writeClient)
-	readPool := writePool
-	readQueries := writeQueries
 
-	if strings.TrimSpace(replicaURL) != "" {
-		var readClient types.DBTX
-		readClient, readPool, err = pool.New(ctx, replicaURL, strings.Join([]string{poolName, replica}, "-"), options...)
-		if err != nil {
-			writePool.Close()
-
-			return nil, err
-		}
-
-		readQueries = supabasequeries.New(readClient)
-	}
-
-	return &Client{Read: readQueries, Write: writeQueries, writeConn: writePool, readConn: readPool}, nil
+	return &Client{Write: writeQueries, writeConn: writePool}, nil
 }
 
 func (db *Client) Close() error {
 	db.writeConn.Close()
-
-	if db.readConn != nil {
-		db.readConn.Close()
-	}
 
 	return nil
 }

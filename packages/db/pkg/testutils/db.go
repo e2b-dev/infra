@@ -109,7 +109,7 @@ func SetupDatabase(t *testing.T) *Database {
 		assert.NoError(t, err)
 	})
 
-	supabaseDB, err := supabasedb.NewClient(t.Context(), connStr, connStr)
+	supabaseDB, err := supabasedb.NewClient(t.Context(), connStr)
 	require.NoError(t, err, "Failed to create supabase db client")
 	t.Cleanup(func() {
 		err := supabaseDB.Close()
