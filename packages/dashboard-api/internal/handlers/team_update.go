@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -17,6 +18,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+var teamNamePattern = regexp.MustCompile(`^[a-zA-Z0-9]+(?:[ _.-][a-zA-Z0-9]+)*$`)
 
 func (s *APIStore) PatchTeamsTeamID(c *gin.Context, teamID api.TeamID) {
 	ctx := c.Request.Context()
@@ -42,10 +45,15 @@ func (s *APIStore) PatchTeamsTeamID(c *gin.Context, teamID api.TeamID) {
 		return
 	}
 
-	if body.NameSet && strings.TrimSpace(body.Name) == "" {
-		s.sendAPIStoreError(c, http.StatusBadRequest, "Name must not be empty")
+	if body.NameSet {
+		name, err := validateUpdateTeamName(body.Name)
+		if err != nil {
+			s.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
 
-		return
+			return
+		}
+
+		body.Name = name
 	}
 
 	row, err := s.db.UpdateTeam(ctx, queries.UpdateTeamParams{
@@ -82,6 +90,23 @@ func (b updateTeamBody) NamePtr() *string {
 	}
 
 	return &b.Name
+}
+
+func validateUpdateTeamName(name string) (string, error) {
+	trimmedName := strings.TrimSpace(name)
+	if trimmedName == "" {
+		return "", errors.New("Team name cannot be empty")
+	}
+
+	if len(trimmedName) > 32 {
+		return "", errors.New("Team name cannot be longer than 32 characters")
+	}
+
+	if !teamNamePattern.MatchString(trimmedName) {
+		return "", errors.New("Names can only contain letters and numbers, separated by spaces, underscores, hyphens, or dots")
+	}
+
+	return trimmedName, nil
 }
 
 func parseUpdateTeamBody(bodyReader io.Reader) (updateTeamBody, error) {

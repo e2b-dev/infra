@@ -53,6 +53,69 @@ func TestParseUpdateTeamBody_NameNullRejected(t *testing.T) {
 	}
 }
 
+func TestValidateUpdateTeamName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		input       string
+		expected    string
+		expectedErr string
+	}{
+		{
+			name:     "trimmed valid name",
+			input:    "  Acme Inc  ",
+			expected: "Acme Inc",
+		},
+		{
+			name:        "empty after trim",
+			input:       "   ",
+			expectedErr: "Team name cannot be empty",
+		},
+		{
+			name:        "too long",
+			input:       "123456789012345678901234567890123",
+			expectedErr: "Team name cannot be longer than 32 characters",
+		},
+		{
+			name:        "invalid characters",
+			input:       "Acme!",
+			expectedErr: "Names can only contain letters and numbers, separated by spaces, underscores, hyphens, or dots",
+		},
+		{
+			name:     "valid separators",
+			input:    "Acme_Inc-1.0",
+			expected: "Acme_Inc-1.0",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := validateUpdateTeamName(tt.input)
+			if tt.expectedErr != "" {
+				if err == nil {
+					t.Fatalf("expected error %q, got nil", tt.expectedErr)
+				}
+				if err.Error() != tt.expectedErr {
+					t.Fatalf("expected error %q, got %q", tt.expectedErr, err.Error())
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			if got != tt.expected {
+				t.Fatalf("expected %q, got %q", tt.expected, got)
+			}
+		})
+	}
+}
+
 func TestRequireAuthedTeamMatchesPath_Success(t *testing.T) {
 	t.Parallel()
 
