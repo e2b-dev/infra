@@ -189,7 +189,7 @@ func run() int {
 		supabaseDB, err = supabasedb.NewClient(
 			ctx,
 			config.AuthDBConnectionString,
-			pool.WithMaxConnections(8),
+			pool.WithMaxConnections(4),
 		)
 		if err != nil {
 			l.Fatal(ctx, "Initializing supabase database client", zap.Error(err))
