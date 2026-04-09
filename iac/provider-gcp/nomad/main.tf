@@ -7,13 +7,9 @@ locals {
     var.dashboard_api_count > 0 &&
     lower(trimspace(lookup(var.dashboard_api_env_vars, "ENABLE_BILLING_HTTP_TEAM_PROVISION_SINK", "false"))) == "true"
   )
-  dashboard_api_extra_env = merge(
-    local.enable_billing_http_team_provision_sink ? {
-      BILLING_SERVER_URL       = data.google_cloud_run_v2_service.billing_server[0].uri
-      BILLING_SERVER_API_TOKEN = data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data
-    } : {},
-    var.dashboard_api_env_vars,
-  )
+  dashboard_api_extra_env                = var.dashboard_api_env_vars
+  dashboard_api_billing_server_url       = local.enable_billing_http_team_provision_sink ? data.google_cloud_run_v2_service.billing_server[0].uri : ""
+  dashboard_api_billing_server_api_token = local.enable_billing_http_team_provision_sink ? data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data : ""
 }
 
 # API
@@ -164,6 +160,8 @@ module "dashboard_api" {
   redis_url                              = local.redis_url
   redis_cluster_url                      = local.redis_cluster_url
   redis_tls_ca_base64                    = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+  billing_server_url                     = local.dashboard_api_billing_server_url
+  billing_server_api_token               = local.dashboard_api_billing_server_api_token
   extra_env                              = local.dashboard_api_extra_env
 
   otel_collector_grpc_port = var.otel_collector_grpc_port
