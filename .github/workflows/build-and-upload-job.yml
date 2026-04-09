@@ -42,6 +42,13 @@ jobs:
         with:
           ref: ${{ inputs.commit_sha }}
 
+      - name: Checkout actions
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            .github/actions
+          path: actions
+
       - name: Setup environment
         uses: ./.github/actions/deploy-setup
         with:
