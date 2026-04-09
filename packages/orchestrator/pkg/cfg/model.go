@@ -15,6 +15,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
+const DefaultBusyboxVersion = "1.36.1"
+
 type BuilderConfig struct {
 	AllowSandboxInternet   bool          `env:"ALLOW_SANDBOX_INTERNET"   envDefault:"true"`
 	DomainName             string        `env:"DOMAIN_NAME"              envDefault:""`

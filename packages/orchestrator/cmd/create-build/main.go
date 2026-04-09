@@ -173,7 +173,7 @@ func setupEnv(ctx context.Context, storagePath, sandboxDir, kernel, fc string, l
 		}
 		busyboxVersion := os.Getenv("BUSYBOX_VERSION")
 		if busyboxVersion == "" {
-			busyboxVersion = "1.36.1"
+			busyboxVersion = cfg.DefaultBusyboxVersion
 		}
 		busyboxBin := filepath.Join(busyboxDir, busyboxVersion, runtime.GOARCH, "busybox")
 		if _, err := os.Stat(busyboxBin); err == nil {
