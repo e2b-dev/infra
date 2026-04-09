@@ -15,7 +15,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -143,11 +142,9 @@ func startRiverWorker(t *testing.T, db *testutils.Database) *riverProcess {
 
 	authPool := db.AuthDB.WritePool()
 	l := logger.NewNopLogger()
-	tel := telemetry.NewNoopClient()
-	meter := tel.MeterProvider.Meter(workerMeterName)
 
 	workers := river.NewWorkers()
-	river.AddWorker(workers, NewAuthUserSyncWorker(ctx, db.SqlcClient, meter, l))
+	river.AddWorker(workers, NewAuthUserSyncWorker(ctx, db.SqlcClient, l))
 
 	client, err := NewRiverClient(authPool, workers)
 	require.NoError(t, err)

@@ -268,7 +268,6 @@ func run() int {
 			signalCtx,
 			authDB.WritePool(),
 			db,
-			tel.MeterProvider,
 			l,
 		)
 		if err != nil {

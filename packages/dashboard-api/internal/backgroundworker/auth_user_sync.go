@@ -6,14 +6,21 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/riverqueue/river"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+)
+
+var (
+	workerMeter  = otel.Meter(workerMeterName)
+	workerTracer = otel.Tracer(workerMeterName)
 )
 
 type AuthUserSyncArgs struct {
@@ -24,6 +31,8 @@ type AuthUserSyncArgs struct {
 
 func (AuthUserSyncArgs) Kind() string { return authUserProjectionKind }
 
+var _ river.Worker[AuthUserSyncArgs] = (*AuthUserSyncWorker)(nil)
+
 type AuthUserSyncWorker struct {
 	river.WorkerDefaults[AuthUserSyncArgs]
 
@@ -32,8 +41,8 @@ type AuthUserSyncWorker struct {
 	jobsCounter metric.Int64Counter
 }
 
-func NewAuthUserSyncWorker(ctx context.Context, mainDB *sqlcdb.Client, meter metric.Meter, l logger.Logger) *AuthUserSyncWorker {
-	jobsCounter, err := meter.Int64Counter(
+func NewAuthUserSyncWorker(ctx context.Context, mainDB *sqlcdb.Client, l logger.Logger) *AuthUserSyncWorker {
+	jobsCounter, err := workerMeter.Int64Counter(
 		"jobs_total",
 		metric.WithDescription("Total auth user sync jobs by operation and result."),
 		metric.WithUnit("{job}"),
@@ -56,7 +65,10 @@ func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSy
 		attribute.Int64("job.id", job.ID),
 		telemetry.WithUserID(job.Args.UserID),
 	}
-	telemetry.ReportEvent(ctx, "auth_user_sync.job.started", attrs...)
+	ctx, span := workerTracer.Start(ctx, "auth_user_sync.work", trace.WithAttributes(attrs...))
+	defer span.End()
+
+	telemetry.ReportEvent(ctx, "auth_user_sync.job.started")
 
 	userID, err := uuid.Parse(job.Args.UserID)
 	if err != nil {
@@ -116,7 +128,7 @@ func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSy
 		zap.String("job.operation", job.Args.Operation),
 		logger.WithUserID(job.Args.UserID),
 	)
-	telemetry.ReportEvent(ctx, "auth_user_sync.job.completed", attrs...)
+	telemetry.ReportEvent(ctx, "auth_user_sync.job.completed")
 	w.observeJob(ctx, job.Args.Operation, jobResultSuccess)
 
 	return nil
