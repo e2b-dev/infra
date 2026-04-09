@@ -5,8 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 var (
