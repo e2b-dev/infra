@@ -24,8 +24,8 @@ func TestHTTPProvisionSink_ReturnsJSONErrorMessage(t *testing.T) {
 	err := sink.ProvisionTeam(t.Context(), testProvisionRequest())
 	require.Error(t, err)
 
-	provisionErr, ok := err.(*ProvisionError)
-	require.True(t, ok)
+	var provisionErr *ProvisionError
+	require.ErrorAs(t, err, &provisionErr)
 	require.Equal(t, http.StatusBadRequest, provisionErr.StatusCode)
 	require.Equal(t, "invalid payload", provisionErr.Message)
 }
@@ -43,8 +43,8 @@ func TestHTTPProvisionSink_FallsBackToPlainTextResponse(t *testing.T) {
 	err := sink.ProvisionTeam(t.Context(), testProvisionRequest())
 	require.Error(t, err)
 
-	provisionErr, ok := err.(*ProvisionError)
-	require.True(t, ok)
+	var provisionErr *ProvisionError
+	require.ErrorAs(t, err, &provisionErr)
 	require.Equal(t, http.StatusBadGateway, provisionErr.StatusCode)
 	require.Equal(t, "upstream gateway exploded", provisionErr.Message)
 }
@@ -61,8 +61,8 @@ func TestHTTPProvisionSink_FallsBackToStatusTextForEmptyBody(t *testing.T) {
 	err := sink.ProvisionTeam(t.Context(), testProvisionRequest())
 	require.Error(t, err)
 
-	provisionErr, ok := err.(*ProvisionError)
-	require.True(t, ok)
+	var provisionErr *ProvisionError
+	require.ErrorAs(t, err, &provisionErr)
 	require.Equal(t, http.StatusServiceUnavailable, provisionErr.StatusCode)
 	require.Equal(t, http.StatusText(http.StatusServiceUnavailable), provisionErr.Message)
 }

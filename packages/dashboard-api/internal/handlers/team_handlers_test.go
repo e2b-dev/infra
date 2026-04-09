@@ -490,10 +490,7 @@ func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
 	errs := make(chan error, 2)
 
 	for range 2 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			team, err := store.bootstrapUser(ctx, userID)
 			if err != nil {
 				errs <- err
@@ -502,7 +499,7 @@ func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
 			}
 
 			results <- team
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -846,6 +843,7 @@ func TestCreateTeam_ConcurrentRequestsRespectLocalPolicy(t *testing.T) {
 	for err := range results {
 		if err == nil {
 			successCount++
+
 			continue
 		}
 
@@ -855,6 +853,7 @@ func TestCreateTeam_ConcurrentRequestsRespectLocalPolicy(t *testing.T) {
 		}
 		if provisionErr.StatusCode == http.StatusBadRequest {
 			badRequestCount++
+
 			continue
 		}
 
