@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sharedteamprovision "github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/zap"
 )
 
 type TeamProvisionSink interface {
