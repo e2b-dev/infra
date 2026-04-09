@@ -122,6 +122,7 @@ module "cluster" {
   fc_env_pipeline_bucket_name       = module.init.fc_env_pipeline_bucket_name
   fc_kernels_bucket_name            = module.init.fc_kernels_bucket_name
   fc_versions_bucket_name           = module.init.fc_versions_bucket_name
+  fc_busybox_bucket_name            = module.init.fc_busybox_bucket_name
   templates_bucket_name             = module.init.fc_template_bucket_name
   templates_build_cache_bucket_name = module.init.fc_template_build_cache_bucket_name
   loki_bucket_name                  = module.init.loki_bucket_name
@@ -176,10 +177,6 @@ module "nomad" {
   grafana_otel_collector_token = module.init.grafana.otel_collector_token
   grafana_otlp_url             = module.init.grafana.otlp_url
   grafana_username             = module.init.grafana.username
-
-  grafana_logs_user     = module.init.grafana.logs_user
-  grafana_logs_endpoint = module.init.grafana.logs_url
-  grafana_logs_api_key  = module.init.grafana.logs_collector_api_token
 
   api_node_pool          = local.api_pool_name
   clickhouse_node_pool   = local.clickhouse_pool_name

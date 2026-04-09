@@ -108,10 +108,6 @@ func run() int {
 		l.Fatal(ctx, "failed to check migration version", zap.Error(err))
 	}
 
-	if !e2benv.IsDebug() {
-		gin.SetMode(gin.ReleaseMode)
-	}
-
 	db, err := sqlcdb.NewClient(
 		ctx,
 		config.PostgresConnectionString,

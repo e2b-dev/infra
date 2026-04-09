@@ -9,6 +9,8 @@ jobs:
   run-tests:
     name: Run tests for ${{ matrix.package }}
     runs-on: infra-tests
+    env:
+      GIN_MODE: test
     strategy:
       matrix:
         include:
@@ -56,8 +58,8 @@ jobs:
 
       - name: Setup orchestrator tests
         run: |
-          # Download busybox for go:embed
           make -C packages/orchestrator fetch-busybox
+          echo "HOST_BUSYBOX_DIR=$(pwd)/packages/orchestrator/.busybox" >> "$GITHUB_ENV"
 
           # Enable unprivileged uffd mode
           echo 1 | sudo tee /proc/sys/vm/unprivileged_userfaultfd
