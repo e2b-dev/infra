@@ -71,6 +71,23 @@ func NewProxy(ctx context.Context, builder *chrooted.Builder, sandboxes *sandbox
 		skipOps["Handler.InvalidateHandle"] = true
 	}
 
+	interceptors := buildInterceptors(config, skipOps)
+	handler = middleware.WrapHandler(handler, interceptors)
+
+	s := &nfs.Server{
+		Handler:      handler,
+		Context:      ctx,
+		OnConnect:    onConnect,
+		OnDisconnect: onDisconnect,
+	}
+
+	return &Proxy{
+		config: config,
+		server: s,
+	}, nil
+}
+
+func buildInterceptors(config cfg.Config, skipOps map[string]bool) *middleware.Chain {
 	// build interceptor chain (order matters: recovery should be first to catch panics from all others)
 	var interceptors []middleware.Interceptor
 	interceptors = append(interceptors, middleware.Recovery())
@@ -88,19 +105,8 @@ func NewProxy(ctx context.Context, builder *chrooted.Builder, sandboxes *sandbox
 	}
 
 	chain := middleware.NewChain(interceptors...)
-	handler = middleware.WrapHandler(handler, chain)
 
-	s := &nfs.Server{
-		Handler:      handler,
-		Context:      ctx,
-		OnConnect:    onConnect,
-		OnDisconnect: onDisconnect,
-	}
-
-	return &Proxy{
-		config: config,
-		server: s,
-	}, nil
+	return chain
 }
 
 func (p *Proxy) Serve(lis net.Listener) error {

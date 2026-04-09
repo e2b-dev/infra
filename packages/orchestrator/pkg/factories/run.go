@@ -833,11 +833,8 @@ func startNFSProxy(
 		return nil, fmt.Errorf("failed to listen on nfs port: %w", err)
 	}
 
-	// quota tracker (nil if Redis is unavailable - quota tracking will be disabled)
-	var tracker *quota.Tracker
-	if redisClient != nil {
-		tracker = quota.NewTracker(redisClient, zapLogger.Detach(ctx).Named("quota"))
-	}
+	// volume quota tracker
+	tracker := quota.NewTracker(redisClient, zapLogger.Detach(ctx).Named("quota"))
 
 	// nfs proxy implementation
 	nfsServer, err := nfsproxy.NewProxy(ctx, builder, sandboxes, tracker, nfscfg.Config{
@@ -860,22 +857,17 @@ func startNFSProxy(
 		},
 	})
 
-	// volume scanner (only if quota tracking is enabled)
-	if tracker != nil {
-		pathBuilder := &quota.SimplePathBuilder{
-			MountPoints: config.PersistentVolumeMounts,
-		}
-		scanner := quota.NewScanner(tracker, pathBuilder, "default", zapLogger.Detach(ctx).Named("quota-scanner"))
-		startService("quota scanner", func() error {
-			return scanner.Run(ctx)
-		})
+	// volume scanner
+	scanner := quota.NewScanner(tracker, builder, "default", zapLogger.Detach(ctx).Named("quota-scanner"))
+	startService("quota scanner", func() error {
+		return scanner.Run(ctx)
+	})
 
-		// volume usage snapshotter (writes hourly snapshots to ClickHouse for billing)
-		snapshotter := quota.NewSnapshotter(redisClient, volumeUsageDelivery, zapLogger.Detach(ctx).Named("quota-snapshotter"))
-		startService("quota snapshotter", func() error {
-			return snapshotter.Run(ctx)
-		})
-	}
+	// volume usage snapshotter (writes hourly snapshots to ClickHouse for billing)
+	snapshotter := quota.NewSnapshotter(redisClient, volumeUsageDelivery, zapLogger.Detach(ctx).Named("quota-snapshotter"))
+	startService("quota snapshotter", func() error {
+		return snapshotter.Run(ctx)
+	})
 
 	return closers, nil
 }

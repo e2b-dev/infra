@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/chrooted"
 )
 
 const (
@@ -19,16 +19,10 @@ const (
 	defaultBackoffDelay = 1 * time.Second
 )
 
-// VolumePathBuilder constructs filesystem paths for volumes.
-type VolumePathBuilder interface {
-	// BuildVolumePath returns the filesystem path for a volume.
-	BuildVolumePath(volumeType string, teamID, volumeID uuid.UUID) string
-}
-
 // Scanner processes dirty volumes and measures their disk usage.
 type Scanner struct {
 	tracker     *Tracker
-	pathBuilder VolumePathBuilder
+	pathBuilder *chrooted.Builder
 	logger      *zap.Logger
 
 	// volumeType is used when building paths (e.g., "default")
@@ -38,7 +32,7 @@ type Scanner struct {
 // NewScanner creates a new volume scanner.
 func NewScanner(
 	tracker *Tracker,
-	pathBuilder VolumePathBuilder,
+	pathBuilder *chrooted.Builder,
 	volumeType string,
 	logger *zap.Logger,
 ) *Scanner {
@@ -58,6 +52,7 @@ func (s *Scanner) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			s.logger.Info("volume quota scanner stopped")
+
 			return ctx.Err()
 		default:
 			if err := s.processNext(ctx); err != nil {
@@ -88,7 +83,10 @@ func (s *Scanner) processNext(ctx context.Context) error {
 
 // scanVolume measures disk usage for a volume and updates quota status.
 func (s *Scanner) scanVolume(ctx context.Context, vol VolumeInfo) error {
-	volPath := s.pathBuilder.BuildVolumePath(s.volumeType, vol.TeamID, vol.VolumeID)
+	volPath, err := s.pathBuilder.BuildVolumePath(s.volumeType, vol.TeamID, vol.VolumeID)
+	if err != nil {
+		return fmt.Errorf("failed to build volume path: %w", err)
+	}
 
 	s.logger.Debug("scanning volume",
 		zap.String("team_id", vol.TeamID.String()),
@@ -102,6 +100,7 @@ func (s *Scanner) scanVolume(ctx context.Context, vol VolumeInfo) error {
 			zap.String("volume", vol.String()),
 			zap.String("path", volPath),
 			zap.Error(err))
+
 		return nil // Don't return error - this is expected for deleted volumes
 	}
 
@@ -117,6 +116,7 @@ func (s *Scanner) scanVolume(ctx context.Context, vol VolumeInfo) error {
 		if err := s.tracker.SetBlocked(ctx, vol, false); err != nil {
 			return fmt.Errorf("set blocked for %s: %w", vol.String(), err)
 		}
+
 		return nil
 	}
 
@@ -159,21 +159,4 @@ func (s *Scanner) measureDiskUsage(ctx context.Context, path string) (int64, err
 	}
 
 	return usage, nil
-}
-
-// SimplePathBuilder is a basic implementation of VolumePathBuilder.
-type SimplePathBuilder struct {
-	// MountPoints maps volume type to base mount path
-	// e.g., {"default": "/volumes", "cache": "/cache_volumes"}
-	MountPoints map[string]string
-}
-
-// BuildVolumePath constructs the path for a volume.
-func (b *SimplePathBuilder) BuildVolumePath(volumeType string, teamID, volumeID uuid.UUID) string {
-	basePath, ok := b.MountPoints[volumeType]
-	if !ok {
-		basePath = b.MountPoints["default"]
-	}
-
-	return filepath.Join(basePath, fmt.Sprintf("team-%s", teamID.String()), fmt.Sprintf("vol-%s", volumeID.String()))
 }

@@ -53,6 +53,7 @@ func (s *Snapshotter) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			s.logger.Info("volume usage snapshotter stopped")
+
 			return ctx.Err()
 		case <-ticker.C:
 			s.captureSnapshots(ctx)
@@ -80,6 +81,7 @@ func (s *Snapshotter) captureSnapshots(ctx context.Context) {
 			s.logger.Warn("failed to parse volume info from key",
 				zap.String("key", key),
 				zap.Error(err))
+
 			continue
 		}
 
@@ -88,6 +90,7 @@ func (s *Snapshotter) captureSnapshots(ctx context.Context) {
 			s.logger.Warn("failed to get usage",
 				zap.String("volume", volStr),
 				zap.Error(err))
+
 			continue
 		}
 
@@ -112,6 +115,7 @@ func (s *Snapshotter) captureSnapshots(ctx context.Context) {
 			s.logger.Warn("failed to push snapshot",
 				zap.String("volume", volStr),
 				zap.Error(err))
+
 			continue
 		}
 
