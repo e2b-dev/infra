@@ -40,7 +40,7 @@ func NewBuildUploader(ctx context.Context, snapshot *Snapshot, persistence stora
 		snapshot:    snapshot,
 	}
 
-	cfg = storage.ResolveCompressConfig(ctx, cfg, ff, "", "")
+	cfg = storage.ResolveCompressConfig(ctx, cfg, ff, storage.DefaultFileType, useCase)
 	if !cfg.IsCompressionEnabled() {
 		return &uncompressedUploader{buildUploader: base}
 	}
