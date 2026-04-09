@@ -164,6 +164,7 @@ func run() int {
 	defer authService.Close(ctx)
 
 	teamProvisionSink, err := internalteamprovision.NewProvisionSink(
+		config.EnableBillingHTTPTeamProvisionSink,
 		config.BillingServerURL,
 		config.BillingServerAPIToken,
 		config.BillingServerTimeout,
