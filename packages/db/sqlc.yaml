@@ -63,7 +63,6 @@ sql:
     schema:
       - "migrations"
       - "schema"
-      - "pkg/auth/migrations"
     gen:
       go:
         emit_pointers_for_null_types: true
@@ -108,6 +107,38 @@ sql:
             nullable: true
           - db_type: "jsonb"
             go_type: "github.com/e2b-dev/infra/packages/db/pkg/types.JSONBStringMap"
+
+  - engine: "postgresql"
+    queries: "pkg/supabase/sql_queries/**"
+    schema:
+      - "migrations"
+      - "schema"
+    gen:
+      go:
+        emit_pointers_for_null_types: true
+        package: "supabasequeries"
+        out: "pkg/supabase/queries/"
+        sql_package: "pgx/v5"
+        overrides:
+          - db_type: "uuid"
+            go_type:
+              import: "github.com/google/uuid"
+              type: "UUID"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/google/uuid"
+              type: "UUID"
+              pointer: true
+
+          - db_type: "timestamptz"
+            go_type: "time.Time"
+          - db_type: "timestamptz"
+            go_type:
+              import: "time"
+              type: "Time"
+              pointer: true
+            nullable: true
 
   - engine: "postgresql"
     queries: "pkg/testutils/*.sql"

@@ -2,9 +2,11 @@ package backgroundworker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -13,6 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -26,7 +29,6 @@ var (
 type AuthUserSyncArgs struct {
 	UserID    string `json:"user_id"`
 	Operation string `json:"operation"`
-	Email     string `json:"email,omitempty"`
 }
 
 func (AuthUserSyncArgs) Kind() string { return authUserProjectionKind }
@@ -36,12 +38,13 @@ var _ river.Worker[AuthUserSyncArgs] = (*AuthUserSyncWorker)(nil)
 type AuthUserSyncWorker struct {
 	river.WorkerDefaults[AuthUserSyncArgs]
 
-	mainDB      *sqlcdb.Client
+	supabaseDB  *supabasedb.Client
+	authDB      *sqlcdb.Client
 	l           logger.Logger
 	jobsCounter metric.Int64Counter
 }
 
-func NewAuthUserSyncWorker(ctx context.Context, mainDB *sqlcdb.Client, l logger.Logger) *AuthUserSyncWorker {
+func NewAuthUserSyncWorker(ctx context.Context, supabaseDB *supabasedb.Client, authDB *sqlcdb.Client, l logger.Logger) *AuthUserSyncWorker {
 	jobsCounter, err := workerMeter.Int64Counter(
 		"jobs_total",
 		metric.WithDescription("Total auth user sync jobs by operation and result."),
@@ -52,7 +55,8 @@ func NewAuthUserSyncWorker(ctx context.Context, mainDB *sqlcdb.Client, l logger.
 	}
 
 	return &AuthUserSyncWorker{
-		mainDB:      mainDB,
+		supabaseDB:  supabaseDB,
+		authDB:      authDB,
 		l:           l,
 		jobsCounter: jobsCounter,
 	}
@@ -88,7 +92,7 @@ func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSy
 
 	switch job.Args.Operation {
 	case "delete":
-		if err := w.mainDB.DeletePublicUser(ctx, userID); err != nil {
+		if err := w.authDB.DeletePublicUser(ctx, userID); err != nil {
 			telemetry.ReportError(ctx, "auth user sync delete public user", err, attrs...)
 			w.observeJob(ctx, job.Args.Operation, jobResultError)
 
@@ -96,17 +100,38 @@ func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSy
 		}
 
 	case "upsert":
-		if job.Args.Email == "" {
-			err := fmt.Errorf("missing email in job args for user %s", userID)
-			telemetry.ReportError(ctx, "auth user sync missing email", err, attrs...)
+		supabaseUser, err := w.supabaseDB.Read.GetAuthUserByID(ctx, userID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			if err := w.authDB.DeletePublicUser(ctx, userID); err != nil {
+				telemetry.ReportError(ctx, "auth user sync delete stale public user", err, attrs...)
+				w.observeJob(ctx, job.Args.Operation, jobResultError)
+
+				return fmt.Errorf("delete stale public.users %s: %w", userID, err)
+			}
+
+			telemetry.ReportEvent(ctx, "auth_user_sync.job.source_user_missing")
+			w.observeJob(ctx, job.Args.Operation, jobResultSuccess)
+
+			return nil
+		}
+		if err != nil {
+			telemetry.ReportError(ctx, "auth user sync get source user", err, attrs...)
+			w.observeJob(ctx, job.Args.Operation, jobResultError)
+
+			return fmt.Errorf("get source auth.users %s: %w", userID, err)
+		}
+
+		if supabaseUser.Email == "" {
+			err := fmt.Errorf("missing email in source user %s", userID)
+			telemetry.ReportError(ctx, "auth user sync missing source email", err, attrs...)
 			w.observeJob(ctx, job.Args.Operation, jobResultInvalidArgument)
 
 			return river.JobCancel(err)
 		}
 
-		if err := w.mainDB.UpsertPublicUser(ctx, queries.UpsertPublicUserParams{
+		if err := w.authDB.UpsertPublicUser(ctx, queries.UpsertPublicUserParams{
 			ID:    userID,
-			Email: job.Args.Email,
+			Email: supabaseUser.Email,
 		}); err != nil {
 			telemetry.ReportError(ctx, "auth user sync upsert public user", err, attrs...)
 			w.observeJob(ctx, job.Args.Operation, jobResultError)

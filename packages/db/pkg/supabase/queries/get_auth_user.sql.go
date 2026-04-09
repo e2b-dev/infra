@@ -3,7 +3,7 @@
 //   sqlc v1.29.0
 // source: get_auth_user.sql
 
-package authqueries
+package supabasequeries
 
 import (
 	"context"
@@ -12,13 +12,13 @@ import (
 )
 
 const getAuthUserByID = `-- name: GetAuthUserByID :one
-SELECT id, email
+SELECT id, COALESCE(email, '') AS email
 FROM auth.users
 WHERE id = $1::uuid
 `
 
-func (q *Queries) GetAuthUserByID(ctx context.Context, userID uuid.UUID) (AuthUser, error) {
-	row := q.db.QueryRow(ctx, getAuthUserByID, userID)
+func (q *Queries) GetAuthUserByID(ctx context.Context, dollar_1 uuid.UUID) (AuthUser, error) {
+	row := q.db.QueryRow(ctx, getAuthUserByID, dollar_1)
 	var i AuthUser
 	err := row.Scan(&i.ID, &i.Email)
 	return i, err

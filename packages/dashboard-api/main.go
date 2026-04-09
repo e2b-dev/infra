@@ -36,6 +36,7 @@ import (
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
+	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	e2benv "github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -131,6 +132,17 @@ func run() int {
 		l.Fatal(ctx, "Initializing auth database client", zap.Error(err))
 	}
 	defer authDB.Close()
+
+	supabaseDB, err := supabasedb.NewClient(
+		ctx,
+		config.AuthDBConnectionString,
+		config.AuthDBReadReplicaConnectionString,
+		pool.WithMaxConnections(8),
+	)
+	if err != nil {
+		l.Fatal(ctx, "Initializing supabase database client", zap.Error(err))
+	}
+	defer supabaseDB.Close()
 
 	var clickhouseClient clickhouse.Clickhouse
 	if config.ClickhouseConnectionString == "" {
@@ -266,7 +278,7 @@ func run() int {
 		riverClient, err = backgroundworker.StartAuthUserSyncWorker(
 			ctx,
 			signalCtx,
-			authDB.WritePool(),
+			supabaseDB,
 			db,
 			l,
 		)

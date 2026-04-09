@@ -9,7 +9,7 @@ AS $$
 BEGIN
     INSERT INTO auth_custom.river_job (args, kind, max_attempts, queue, state)
     VALUES (
-        jsonb_build_object('user_id', NEW.id, 'operation', 'upsert', 'email', NEW.email),
+        jsonb_build_object('user_id', NEW.id, 'operation', 'upsert'),
         'auth_user_projection',
         20,
         'auth_user_projection',
@@ -31,7 +31,7 @@ BEGIN
     IF OLD.email IS DISTINCT FROM NEW.email THEN
         INSERT INTO auth_custom.river_job (args, kind, max_attempts, queue, state)
         VALUES (
-            jsonb_build_object('user_id', NEW.id, 'operation', 'upsert', 'email', NEW.email),
+            jsonb_build_object('user_id', NEW.id, 'operation', 'upsert'),
             'auth_user_projection',
             20,
             'auth_user_projection',

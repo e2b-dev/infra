@@ -22,7 +22,7 @@ const (
 	testEventuallyTick    = 50 * time.Millisecond
 	testStopTimeout       = 5 * time.Second
 
-	authMigrationsDir             = "packages/db/pkg/auth/migrations"
+	supabaseMigrationsDir         = "packages/db/pkg/supabase/migrations"
 	authCustomSchemaVersion int64 = 20260401000001
 )
 
@@ -128,25 +128,23 @@ func applyAuthUserSyncMigrations(t *testing.T, db *testutils.Database) {
 	// 1. goose migration 20260401000001 creates the shared schema
 	// 2. River library migrations create River tables inside that schema
 	// 3. the remaining auth migrations add triggers that enqueue into River
-	db.ApplyMigrationsUpTo(t, authCustomSchemaVersion, authMigrationsDir)
+	db.ApplyMigrationsUpTo(t, authCustomSchemaVersion, supabaseMigrationsDir)
 
-	authPool := db.AuthDB.WritePool()
-	require.NoError(t, RunRiverMigrations(t.Context(), authPool))
+	require.NoError(t, RunRiverMigrations(t.Context(), db.SupabaseDB.WritePool()))
 
-	db.ApplyMigrations(t, authMigrationsDir)
+	db.ApplyMigrations(t, supabaseMigrationsDir)
 }
 
 func startRiverWorker(t *testing.T, db *testutils.Database) *riverProcess {
 	t.Helper()
 	ctx := t.Context()
 
-	authPool := db.AuthDB.WritePool()
 	l := logger.NewNopLogger()
 
 	workers := river.NewWorkers()
-	river.AddWorker(workers, NewAuthUserSyncWorker(ctx, db.SqlcClient, l))
+	river.AddWorker(workers, NewAuthUserSyncWorker(ctx, db.SupabaseDB, db.SqlcClient, l))
 
-	client, err := NewRiverClient(authPool, workers)
+	client, err := NewRiverClient(db.SupabaseDB.WritePool(), workers)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -183,7 +181,7 @@ func (p *riverProcess) Stop(t *testing.T) {
 func insertAuthUser(t *testing.T, ctx context.Context, db *testutils.Database, userID uuid.UUID, email string) {
 	t.Helper()
 
-	err := db.AuthDB.TestsRawSQL(ctx,
+	err := db.SupabaseDB.TestsRawSQL(ctx,
 		"INSERT INTO auth.users (id, email) VALUES ($1, $2)", userID, email)
 	require.NoError(t, err)
 }
@@ -191,7 +189,7 @@ func insertAuthUser(t *testing.T, ctx context.Context, db *testutils.Database, u
 func updateAuthUserEmail(t *testing.T, ctx context.Context, db *testutils.Database, userID uuid.UUID, email string) {
 	t.Helper()
 
-	err := db.AuthDB.TestsRawSQL(ctx,
+	err := db.SupabaseDB.TestsRawSQL(ctx,
 		"UPDATE auth.users SET email = $1 WHERE id = $2", email, userID)
 	require.NoError(t, err)
 }
@@ -199,7 +197,7 @@ func updateAuthUserEmail(t *testing.T, ctx context.Context, db *testutils.Databa
 func deleteAuthUser(t *testing.T, ctx context.Context, db *testutils.Database, userID uuid.UUID) {
 	t.Helper()
 
-	err := db.AuthDB.TestsRawSQL(ctx,
+	err := db.SupabaseDB.TestsRawSQL(ctx,
 		"DELETE FROM auth.users WHERE id = $1", userID)
 	require.NoError(t, err)
 }
