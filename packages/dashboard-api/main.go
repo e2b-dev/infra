@@ -187,10 +187,7 @@ func run() int {
 		nil,
 	)
 
-	s, err := newHTTPServer(config.Port, l, tel, swagger, authenticationFunc, apiStore)
-	if err != nil {
-		l.Fatal(ctx, "failed to create HTTP server", zap.Error(err))
-	}
+	s := newHTTPServer(config.Port, l, tel, swagger, authenticationFunc, apiStore)
 
 	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer sigCancel()
@@ -247,7 +244,7 @@ func newHTTPServer(
 	swagger *openapi3.T,
 	authenticationFunc openapi3filter.AuthenticationFunc,
 	apiStore *handlers.APIStore,
-) (*http.Server, error) {
+) *http.Server {
 	r := gin.New()
 	r.Use(gin.Recovery())
 
@@ -323,7 +320,7 @@ func newHTTPServer(
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,
 		IdleTimeout:       idleTimeout,
-	}, nil
+	}
 }
 
 func startHTTPServer(s *http.Server) <-chan error {
