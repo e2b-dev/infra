@@ -2,11 +2,9 @@ package backgroundworker
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -15,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -101,7 +100,7 @@ func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSy
 
 	case "upsert":
 		supabaseUser, err := w.supabaseDB.Read.GetAuthUserByID(ctx, userID)
-		if errors.Is(err, pgx.ErrNoRows) {
+		if dberrors.IsNotFoundError(err) {
 			if err := w.authDB.DeletePublicUser(ctx, userID); err != nil {
 				telemetry.ReportError(ctx, "auth user sync delete stale public user", err, attrs...)
 				w.observeJob(ctx, job.Args.Operation, jobResultError)

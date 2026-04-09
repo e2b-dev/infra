@@ -1,7 +1,7 @@
 version: "2"
 sql:
   - engine: "postgresql"
-    queries: 
+    queries:
       - "queries/**"
       - "pkg/dashboard/sql_queries/**"
     schema:
@@ -111,8 +111,8 @@ sql:
   - engine: "postgresql"
     queries: "pkg/supabase/sql_queries/**"
     schema:
-      - "migrations"
-      - "schema"
+      - "pkg/supabase/schema"
+      - "pkg/supabase/migrations"
     gen:
       go:
         emit_pointers_for_null_types: true
