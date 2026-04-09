@@ -455,8 +455,9 @@ variable "dashboard_api_count" {
 }
 
 variable "dashboard_api_env_vars" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "volume_token_issuer" {

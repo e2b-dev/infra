@@ -45,8 +45,9 @@ variable "supabase_jwt_secrets" {
 }
 
 variable "extra_env" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "otel_collector_grpc_port" {
