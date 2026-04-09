@@ -1,6 +1,7 @@
 package testutils
 
 import (
+	"context"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -42,26 +43,31 @@ type Database struct {
 
 var (
 	oneDB  *Database
-	dblock sync.Mutex
+	dblock sync.RWMutex
 )
 
 // SetupDatabase creates a fresh PostgreSQL container with migrations applied
 func SetupDatabase(t *testing.T) *Database {
 	t.Helper()
 
+	ctx := context.WithoutCancel(t.Context())
+
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
 	// cheap lookup
+	dblock.RLock()
 	if oneDB != nil {
+		dblock.RUnlock()
 		return oneDB
 	}
+	dblock.RUnlock()
 
+	// expensive lookup
 	dblock.Lock()
 	defer dblock.Unlock()
 
-	// locked lookup
 	if oneDB != nil {
 		return oneDB
 	}
@@ -70,7 +76,7 @@ func SetupDatabase(t *testing.T) *Database {
 
 	// Start PostgreSQL container
 	container, err := postgres.Run(
-		t.Context(),
+		ctx,
 		testPostgresImage,
 		postgres.WithDatabase(testDatabaseName),
 		postgres.WithUsername(testUsername),
@@ -83,23 +89,23 @@ func SetupDatabase(t *testing.T) *Database {
 	)
 	require.NoError(t, err, "Failed to start postgres container")
 
-	connStr, err := container.ConnectionString(t.Context(), "sslmode=disable")
+	connStr, err := container.ConnectionString(ctx, "sslmode=disable")
 	require.NoError(t, err, "Failed to get connection string")
 
 	// Setup environment and run migrations
 	runDatabaseMigrations(t, connStr)
 
 	// create test queries client
-	dbClient, _, err := pool.New(t.Context(), connStr, "tests")
+	dbClient, _, err := pool.New(ctx, connStr, "tests")
 	require.NoError(t, err)
 	testQueries := queries.New(dbClient)
 
 	// Create app db client
-	sqlcClient, err := db.NewClient(t.Context(), connStr)
+	sqlcClient, err := db.NewClient(ctx, connStr)
 	require.NoError(t, err, "Failed to create sqlc client")
 
 	// Create the auth db client
-	authDb, err := authdb.NewClient(t.Context(), connStr, connStr)
+	authDb, err := authdb.NewClient(ctx, connStr, connStr)
 	require.NoError(t, err, "Failed to create auth db client")
 
 	oneDB = &Database{
