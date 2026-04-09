@@ -63,7 +63,6 @@ func (t *Tracker) MarkDirty(ctx context.Context, vol VolumeInfo) {
 		Score:  score,
 		Member: member,
 	}).Err()
-
 	if err != nil {
 		t.logger.Warn("failed to mark volume dirty",
 			zap.String("volume", member),

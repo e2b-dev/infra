@@ -14,9 +14,9 @@ import (
 )
 
 const (
-	defaultScanTimeout   = 5 * time.Minute
-	defaultPopTimeout    = 5 * time.Second
-	defaultBackoffDelay  = 1 * time.Second
+	defaultScanTimeout  = 5 * time.Minute
+	defaultPopTimeout   = 5 * time.Second
+	defaultBackoffDelay = 1 * time.Second
 )
 
 // VolumePathBuilder constructs filesystem paths for volumes.

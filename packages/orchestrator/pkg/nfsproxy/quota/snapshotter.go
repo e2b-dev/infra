@@ -126,4 +126,3 @@ func (s *Snapshotter) captureSnapshots(ctx context.Context) {
 		zap.Int("count", count),
 		zap.Duration("duration", time.Since(now)))
 }
-

@@ -34,5 +34,5 @@ func NewNoopDelivery() Delivery {
 	return &noopDelivery{}
 }
 
-func (d *noopDelivery) Push(_ VolumeUsageSnapshot) error  { return nil }
+func (d *noopDelivery) Push(_ VolumeUsageSnapshot) error { return nil }
 func (d *noopDelivery) Close(_ context.Context) error    { return nil }
