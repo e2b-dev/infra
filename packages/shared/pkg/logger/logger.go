@@ -37,7 +37,7 @@ type LoggerConfig struct {
 	// Encoding sets the logger's encoding. If empty, defaults to "console".
 	Encoding string
 	// EncoderConfig optionally overrides the default encoder config.
-	// If nil, defaults to GetConsoleEncoderConfig()
+	// If the encoding is set to "console," it defaults to GetConsoleEncoderConfig(); otherwise, it needs to be specified.
 	EncoderConfig *zapcore.EncoderConfig
 }
 
