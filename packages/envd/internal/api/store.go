@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sync"
+	"sync/atomic"
 
 	"github.com/rs/zerolog"
 
@@ -39,6 +40,9 @@ type API struct {
 	initLock    sync.Mutex
 
 	caCertInstaller *host.CACertInstaller
+	isMountingNFS atomic.Bool
+	isMountedNFS  atomic.Bool
+	mountedPaths  sync.Map // tracks successfully mounted paths
 }
 
 func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {

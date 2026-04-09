@@ -42,7 +42,6 @@ func (r noRowsRow) Scan(...any) error {
 
 func TestGetSandboxesSandboxIDRecordReturns404WhenRecordRetentionNotMet(t *testing.T) {
 	t.Parallel()
-	gin.SetMode(gin.TestMode)
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)

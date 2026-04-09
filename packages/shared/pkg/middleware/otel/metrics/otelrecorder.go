@@ -24,7 +24,7 @@ func GetRecorder(meterProvider metric.MeterProvider, metricsPrefix string) Recor
 		return metricName
 	}
 
-	meter := meterProvider.Meter("github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics")
+	meter := meterProvider.Meter("github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/metrics")
 	totalDuration, _ := meter.Float64Histogram(
 		metricName("http.server.duration"),
 		metric.WithDescription("Time Taken by request"),

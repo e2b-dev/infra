@@ -31,6 +31,7 @@ jobs:
   deploy:
     name: Build and upload job to the ${{ inputs.environment }} environment
     runs-on: ci-builder
+    environment: ${{ inputs.environment }}
     permissions:
       contents: read
       id-token: write
@@ -45,9 +46,8 @@ jobs:
         uses: ./.github/actions/deploy-setup
         with:
           environment: ${{ inputs.environment }}
-          infisical_client_id: ${{ secrets.INFISICAL_CLIENT_ID }}
-          infisical_client_secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
           install_gcloud: "true"
+          infisical_machine_identity_id: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
 
       - name: Set up Docker
         env:

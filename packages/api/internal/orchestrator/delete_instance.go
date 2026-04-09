@@ -178,5 +178,10 @@ func (o *Orchestrator) killSandboxOnNode(ctx context.Context, node *nodemanager.
 		return fmt.Errorf("failed to delete sandbox '%s': %w", sbx.SandboxID, err)
 	}
 
+	node.OptimisticRemove(ctx, nodemanager.SandboxResources{
+		CPUs:      sbx.VCpu,
+		MiBMemory: sbx.RamMB,
+	})
+
 	return nil
 }
