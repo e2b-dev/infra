@@ -135,7 +135,6 @@ build-template: fetch-busybox
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) \
 	GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) \
 	GCP_REGION=$(GCP_REGION) \
-	HOST_BUSYBOX_DIR=$(CURDIR)/.busybox \
 	ENVIRONMENT=local \
 	go run cmd/create-build/main.go \
 	-template $(TEMPLATE_ID) \
