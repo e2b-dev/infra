@@ -8,7 +8,7 @@ permissions:
 jobs:
   cross-compile:
     name: Cross-compile all packages for ARM64
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
       - name: Checkout repository
@@ -39,7 +39,7 @@ jobs:
 
   arm64-unit-tests:
     name: ARM64 tests for ${{ matrix.package }}
-    runs-on: ubuntu-24.04-arm
+    runs-on: blacksmith-4vcpu-ubuntu-2404-arm
     timeout-minutes: 30
     env:
       GIN_MODE: test

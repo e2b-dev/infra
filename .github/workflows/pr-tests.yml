@@ -8,7 +8,7 @@ permissions:
 jobs:
   run-tests:
     name: Run tests for ${{ matrix.package }}
-    runs-on: infra-tests
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       GIN_MODE: test
     strategy:
@@ -93,7 +93,7 @@ jobs:
 
   validate-iac:
     name: Validate terraform
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
