@@ -268,7 +268,7 @@ func createHandlerTestUserAt(t *testing.T, db *testutils.Database, createdAt tim
 	userID := uuid.New()
 	email := handlerTestUserEmail(userID)
 
-	err := db.AuthDb.TestsRawSQL(t.Context(), `
+	err := db.AuthDB.TestsRawSQL(t.Context(), `
 INSERT INTO auth.users (id, email, created_at)
 VALUES ($1, $2, $3)
 `, userID, email, createdAt)
@@ -286,7 +286,7 @@ func handlerTestUserEmail(userID uuid.UUID) string {
 func insertHandlerTestTeamMember(t *testing.T, db *testutils.Database, userID, teamID uuid.UUID, isDefault bool) {
 	t.Helper()
 
-	err := db.AuthDb.TestsRawSQL(t.Context(), `
+	err := db.AuthDB.TestsRawSQL(t.Context(), `
 INSERT INTO public.users_teams (user_id, team_id, is_default)
 VALUES ($1, $2, $3)
 `, userID, teamID, isDefault)
@@ -321,7 +321,7 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDb,
+		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 	}
 	store.PostUsersBootstrap(ginCtx)
@@ -387,7 +387,7 @@ func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testin
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDb,
+		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 	}
 	store.PostUsersBootstrap(ginCtx)
@@ -404,7 +404,7 @@ func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testin
 		t.Fatalf("expected default team to remain after provisioning failure: %v", err)
 	}
 
-	rows, err := testDB.AuthDb.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+	rows, err := testDB.AuthDB.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
 	if err != nil {
 		t.Fatalf("failed to query user teams: %v", err)
 	}
@@ -439,7 +439,7 @@ func TestBootstrapUser_ProvisioningFailureWithExistingDefaultTeamStillSucceeds(t
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDb,
+		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 	}
 
@@ -454,7 +454,7 @@ func TestBootstrapUser_ProvisioningFailureWithExistingDefaultTeamStillSucceeds(t
 		t.Fatalf("expected existing default team %s, got %s", existingTeam.ID, team.ID)
 	}
 
-	rows, err := testDB.AuthDb.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+	rows, err := testDB.AuthDB.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
 	if err != nil {
 		t.Fatalf("failed to query user teams: %v", err)
 	}
@@ -481,7 +481,7 @@ func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDb,
+		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 	}
 
@@ -527,7 +527,7 @@ func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
 	}
 
 	var defaultTeamCount int
-	err = testDB.AuthDb.TestsRawSQLQuery(ctx,
+	err = testDB.AuthDB.TestsRawSQLQuery(ctx,
 		`SELECT count(*)
 		FROM public.users_teams
 		WHERE user_id = $1 AND is_default = true`,
@@ -557,7 +557,7 @@ func TestCreateTeam_NoProvisionSinkLeavesCreatedTeam(t *testing.T) {
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDb,
+		authDB:            testDB.AuthDB,
 		teamProvisionSink: &fakeTeamProvisionSink{},
 	}
 
@@ -566,7 +566,7 @@ func TestCreateTeam_NoProvisionSinkLeavesCreatedTeam(t *testing.T) {
 		t.Fatalf("expected team creation to succeed without external provisioning, got %v", err)
 	}
 
-	rows, err := testDB.AuthDb.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+	rows, err := testDB.AuthDB.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
 	if err != nil {
 		t.Fatalf("failed to query user teams: %v", err)
 	}
@@ -603,7 +603,7 @@ func TestCreateTeam_RecentUserCreatesBlockedTeam(t *testing.T) {
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDb,
+		authDB:            testDB.AuthDB,
 		teamProvisionSink: &fakeTeamProvisionSink{},
 	}
 
@@ -628,7 +628,7 @@ func TestCreateTeam_BillingBadRequestStillReturnsCreatedTeam(t *testing.T) {
 
 	store := &APIStore{
 		db:     testDB.SqlcClient,
-		authDB: testDB.AuthDb,
+		authDB: testDB.AuthDB,
 		teamProvisionSink: &fakeTeamProvisionSink{
 			err: &internalteamprovision.ProvisionError{
 				StatusCode: http.StatusBadRequest,
@@ -645,7 +645,7 @@ func TestCreateTeam_BillingBadRequestStillReturnsCreatedTeam(t *testing.T) {
 		t.Fatalf("expected one provisioning call, got %d", len(store.teamProvisionSink.(*fakeTeamProvisionSink).requests))
 	}
 
-	rows, err := testDB.AuthDb.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+	rows, err := testDB.AuthDB.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
 	if err != nil {
 		t.Fatalf("failed to query user teams: %v", err)
 	}
@@ -702,7 +702,7 @@ func TestPostTeams_LocalPolicyDeniedReturnsBadRequestWithoutCreatingTeam(t *test
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDb,
+		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 	}
 	store.PostTeams(ginCtx)
@@ -714,7 +714,7 @@ func TestPostTeams_LocalPolicyDeniedReturnsBadRequestWithoutCreatingTeam(t *test
 		t.Fatalf("expected no provisioning call, got %d", len(sink.requests))
 	}
 
-	rows, err := testDB.AuthDb.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+	rows, err := testDB.AuthDB.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
 	if err != nil {
 		t.Fatalf("failed to query user teams: %v", err)
 	}
@@ -739,7 +739,7 @@ func TestPostTeams_ProvisioningSuccessReturnsTeam(t *testing.T) {
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDb,
+		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 	}
 	store.PostTeams(ginCtx)
@@ -773,7 +773,7 @@ func TestPostTeams_ProvisioningFailureStillReturnsTeam(t *testing.T) {
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDb,
+		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 	}
 	store.PostTeams(ginCtx)
@@ -785,7 +785,7 @@ func TestPostTeams_ProvisioningFailureStillReturnsTeam(t *testing.T) {
 		t.Fatalf("expected one provisioning call, got %d", len(sink.requests))
 	}
 
-	rows, err := testDB.AuthDb.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+	rows, err := testDB.AuthDB.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
 	if err != nil {
 		t.Fatalf("failed to query user teams: %v", err)
 	}
@@ -822,7 +822,7 @@ func TestCreateTeam_ConcurrentRequestsRespectLocalPolicy(t *testing.T) {
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDb,
+		authDB:            testDB.AuthDB,
 		teamProvisionSink: &fakeTeamProvisionSink{},
 	}
 

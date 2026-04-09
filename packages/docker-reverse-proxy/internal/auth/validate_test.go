@@ -111,27 +111,27 @@ func setupValidateTest(tb testing.TB, db *testutils.Database, userID, teamID uui
 	tb.Helper()
 
 	// Create team
-	err := db.AuthDb.TestsRawSQL(tb.Context(), `
+	err := db.AuthDB.TestsRawSQL(tb.Context(), `
 		INSERT INTO "auth"."users" (id, email)
 		VALUES ($1, 'test@e2b.dev')
 	`, userID)
 	require.NoError(tb, err)
 
-	err = db.AuthDb.TestsRawSQL(tb.Context(), `
+	err = db.AuthDB.TestsRawSQL(tb.Context(), `
 		INSERT INTO teams (id, name, email, tier, slug)
 		VALUES ($1, 'test-team', 'test@e2b.dev', 'base_v1', 'test-team-slug')
 	`, teamID)
 	require.NoError(tb, err)
 
 	// Link user to team
-	err = db.AuthDb.TestsRawSQL(tb.Context(), `
+	err = db.AuthDB.TestsRawSQL(tb.Context(), `
 		INSERT INTO users_teams (user_id, team_id, is_default)
 		VALUES ($1, $2, true)
 	`, userID, teamID)
 	require.NoError(tb, err)
 
 	// Create access token
-	_, err = db.AuthDb.Write.CreateAccessToken(tb.Context(), authqueries.CreateAccessTokenParams{
+	_, err = db.AuthDB.Write.CreateAccessToken(tb.Context(), authqueries.CreateAccessTokenParams{
 		ID:                    uuid.New(),
 		UserID:                userID,
 		AccessTokenHash:       accessToken.HashedValue,

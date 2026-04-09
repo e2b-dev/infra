@@ -37,7 +37,7 @@ func init() {
 // Database encapsulates the test database container and clients
 type Database struct {
 	SqlcClient  *db.Client
-	AuthDb      *authdb.Client
+	AuthDB      *authdb.Client
 	TestQueries *queries.Queries
 	connStr     string
 }
@@ -100,16 +100,16 @@ func SetupDatabase(t *testing.T) *Database {
 	})
 
 	// Create the auth db client
-	authDb, err := authdb.NewClient(t.Context(), connStr, connStr)
+	authDB, err := authdb.NewClient(t.Context(), connStr, connStr)
 	require.NoError(t, err, "Failed to create auth db client")
 	t.Cleanup(func() {
-		err := authDb.Close()
+		err := authDB.Close()
 		assert.NoError(t, err)
 	})
 
 	return &Database{
 		SqlcClient:  sqlcClient,
-		AuthDb:      authDb,
+		AuthDB:      authDB,
 		TestQueries: testQueries,
 		connStr:     connStr,
 	}
@@ -124,6 +124,8 @@ func (db *Database) ApplyMigrations(t *testing.T, migrationDirs ...string) {
 func (db *Database) ApplyMigrationsUpTo(t *testing.T, version int64, migrationDirs ...string) {
 	t.Helper()
 
+	// This is only used for staged bootstrap flows that must interleave
+	// third-party migrations with goose-managed SQL migrations.
 	db.applyGooseMigrations(t, version, migrationDirs...)
 }
 

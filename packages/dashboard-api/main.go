@@ -272,28 +272,18 @@ func run() int {
 
 	var riverClient *river.Client[pgx.Tx]
 
-	if config.AuthUserSyncBackgroundWorkerEnabled {
-		workerLogger := l.With(zap.String("worker", backgroundworker.AuthUserProjectionKind))
-		workerMeter := tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/dashboard-api")
-
-		authPool := authDB.WritePool()
-		if err := backgroundworker.RunRiverMigrations(ctx, authPool); err != nil {
-			l.Fatal(ctx, "failed to run River migrations on auth DB", zap.Error(err))
-		}
-
-		workers := river.NewWorkers()
-		river.AddWorker(workers, backgroundworker.NewAuthUserSyncWorker(ctx, db, workerMeter, workerLogger))
-
-		riverClient, err = backgroundworker.NewRiverClient(authPool, workers)
+	if config.EnableAuthUserSyncBackgroundWorker {
+		riverClient, err = backgroundworker.StartAuthUserSyncWorker(
+			ctx,
+			signalCtx,
+			authDB.WritePool(),
+			db,
+			tel.MeterProvider,
+			l,
+		)
 		if err != nil {
-			l.Fatal(ctx, "failed to create River client", zap.Error(err))
+			l.Fatal(ctx, "failed to start auth user sync worker", zap.Error(err))
 		}
-
-		if err := riverClient.Start(signalCtx); err != nil {
-			l.Fatal(ctx, "failed to start River client", zap.Error(err))
-		}
-
-		l.Info(ctx, "background worker started", zap.String("queue", backgroundworker.AuthUserProjectionQueue), zap.String("schema", backgroundworker.AuthCustomSchema))
 	}
 
 	wg.Go(func() {

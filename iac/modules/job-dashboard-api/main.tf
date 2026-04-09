@@ -16,17 +16,7 @@ locals {
     LOGS_COLLECTOR_ADDRESS                 = "http://localhost:${var.logs_proxy_port.port}"
   }
 
-  extra_env = {
-    for key, value in var.extra_env : key => value
-    if value != null && trimspace(value) != ""
-  }
-
-  conflicting_extra_env_keys = sort(tolist(setintersection(
-    toset(keys(local.base_env)),
-    toset(keys(local.extra_env)),
-  )))
-
-  env = merge(local.base_env, local.extra_env)
+  env = merge(local.base_env, var.extra_env)
 }
 
 resource "nomad_job" "dashboard_api" {
@@ -44,11 +34,4 @@ resource "nomad_job" "dashboard_api" {
 
     subdomain = "dashboard-api"
   })
-
-  lifecycle {
-    precondition {
-      condition     = length(local.conflicting_extra_env_keys) == 0
-      error_message = "dashboard-api extra_env contains reserved keys: ${join(", ", local.conflicting_extra_env_keys)}"
-    }
-  }
 }
