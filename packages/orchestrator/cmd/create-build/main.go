@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -161,6 +162,24 @@ func setupEnv(ctx context.Context, storagePath, sandboxDir, kernel, fc string, l
 		}
 		if _, err := os.Stat(envdPath); err == nil {
 			fmt.Printf("✓ Envd: %s\n", envdPath)
+		}
+
+		// HOST_BUSYBOX_DIR: use env if set, otherwise default to local .busybox dir.
+		// Run "make fetch-busybox" in packages/orchestrator to download the binary.
+		busyboxDir := os.Getenv("HOST_BUSYBOX_DIR")
+		if busyboxDir == "" {
+			busyboxDir = abs(".busybox")
+			os.Setenv("HOST_BUSYBOX_DIR", busyboxDir)
+		}
+		busyboxVersion := os.Getenv("BUSYBOX_VERSION")
+		if busyboxVersion == "" {
+			busyboxVersion = cfg.DefaultBusyboxVersion
+		}
+		busyboxBin := filepath.Join(busyboxDir, busyboxVersion, runtime.GOARCH, "busybox")
+		if _, err := os.Stat(busyboxBin); err == nil {
+			fmt.Printf("✓ Busybox: %s\n", busyboxBin)
+		} else {
+			fmt.Printf("⚠ Busybox not found at %s — run 'make fetch-busybox' in packages/orchestrator\n", busyboxBin)
 		}
 
 		fmt.Printf("✓ Storage: %s (local)\n", dataDir)
@@ -350,7 +369,7 @@ func doBuild(
 		tmpl.FromImage = baseImage
 	}
 
-	result, err := builder.Build(ctx, storage.TemplateFiles{BuildID: buildID}, tmpl, l.Detach(ctx).Core())
+	result, err := builder.Build(ctx, storage.Paths{BuildID: buildID}, tmpl, l.Detach(ctx).Core())
 	if err != nil {
 		return fmt.Errorf("build: %w", err)
 	}
@@ -364,7 +383,7 @@ func doBuild(
 }
 
 func printArtifactSizes(ctx context.Context, persistence storage.StorageProvider, buildID string, _ *build.Result) {
-	files := storage.TemplateFiles{BuildID: buildID}
+	paths := storage.Paths{BuildID: buildID}
 	basePath := os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH")
 
 	fmt.Printf("\n📦 Artifacts:\n")
@@ -374,7 +393,7 @@ func printArtifactSizes(ctx context.Context, persistence storage.StorageProvider
 		printLocalFileSizes(basePath, buildID)
 	} else {
 		// For remote storage, get sizes from storage provider
-		if memfile, err := persistence.OpenSeekable(ctx, files.StorageMemfilePath(), storage.MemfileObjectType); err == nil {
+		if memfile, err := persistence.OpenSeekable(ctx, paths.Memfile(), storage.MemfileObjectType); err == nil {
 			if size, err := memfile.Size(ctx); err == nil {
 				fmt.Printf("   Memfile: %d MB\n", size>>20)
 			}
@@ -471,7 +490,7 @@ func setupFC(ctx context.Context, dir, version string) error {
 	}
 
 	// Download from GCS bucket with {version}/{arch}/firecracker path
-	fcURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/fc-versions/", version, arch, "firecracker")
+	fcURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/firecrackers/", version, arch, "firecracker")
 	if err != nil {
 		return fmt.Errorf("invalid Firecracker URL: %w", err)
 	}
@@ -489,7 +508,7 @@ func setupFC(ctx context.Context, dir, version string) error {
 		return fmt.Errorf("firecracker %s not found for %s (no legacy fallback for non-amd64)", version, arch)
 	}
 
-	legacyURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/fc-versions/", version, "firecracker")
+	legacyURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/firecrackers/", version, "firecracker")
 	if err != nil {
 		return fmt.Errorf("invalid Firecracker legacy URL: %w", err)
 	}

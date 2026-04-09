@@ -31,7 +31,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, discovered nodemanager
 		connectCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), nodeConnectTimeout)
 		defer cancel()
 
-		orchestratorNode, err := nodemanager.New(connectCtx, o.tel.TracerProvider, o.tel.MeterProvider, discovered)
+		orchestratorNode, err := nodemanager.New(connectCtx, o.tel.TracerProvider, o.tel.MeterProvider, discovered, o.featureFlagsClient)
 		if err != nil {
 			return nil, err
 		}
@@ -61,7 +61,7 @@ func (o *Orchestrator) connectToClusterNode(ctx context.Context, cluster *cluste
 		connectCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), nodeConnectTimeout)
 		defer cancel()
 
-		orchestratorNode, err := nodemanager.NewClusterNode(connectCtx, i.GetClient(), cluster.ID, cluster.SandboxDomain, i)
+		orchestratorNode, err := nodemanager.NewClusterNode(connectCtx, i.GetClient(), cluster.ID, cluster.SandboxDomain, i, o.featureFlagsClient)
 		if err != nil {
 			logger.L().Error(ctx, "Failed to create node", zap.Error(err))
 

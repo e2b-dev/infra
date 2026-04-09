@@ -11,11 +11,9 @@ import (
 )
 
 const (
-	cbBlockSize  int64 = 4096
-	cbNumBlocks  int64 = 16384 // 64 MiB
-	cbCacheSize  int64 = cbNumBlocks * cbBlockSize
-	cbChunkSize  int64 = 4 * 1024 * 1024 // 4 MiB — MemoryChunkSize
-	cbChunkCount int64 = cbCacheSize / cbChunkSize
+	cbBlockSize int64 = 4096
+	cbNumBlocks int64 = 16384 // 64 MiB
+	cbCacheSize int64 = cbNumBlocks * cbBlockSize
 )
 
 // BenchmarkChunkerSlice_CacheHit benchmarks the full FullFetchChunker.Slice
@@ -48,8 +46,8 @@ func BenchmarkChunkerSlice_CacheHit(b *testing.B) {
 
 	b.ResetTimer()
 	for i := range b.N {
-		off := int64(i%int(cbChunkCount)) * cbChunkSize
-		s, sliceErr := chunker.Slice(ctx, off, cbChunkSize)
+		off := int64(i%int(cbNumBlocks)) * cbBlockSize
+		s, sliceErr := chunker.Slice(ctx, off, cbBlockSize)
 		if sliceErr != nil {
 			b.Fatal(sliceErr)
 		}
