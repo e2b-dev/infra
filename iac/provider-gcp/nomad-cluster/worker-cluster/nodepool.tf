@@ -6,6 +6,7 @@ locals {
     FC_KERNELS_BUCKET_NAME            = var.fc_kernels_bucket_name
     FC_VERSIONS_BUCKET_NAME           = var.fc_versions_bucket_name
     FC_ENV_PIPELINE_BUCKET_NAME       = var.fc_env_pipeline_bucket_name
+    FC_BUSYBOX_BUCKET_NAME            = var.fc_busybox_bucket_name
     DOCKER_CONTEXTS_BUCKET_NAME       = var.docker_contexts_bucket_name
     GCP_REGION                        = var.gcp_region
     GOOGLE_SERVICE_ACCOUNT_KEY        = var.google_service_account_key

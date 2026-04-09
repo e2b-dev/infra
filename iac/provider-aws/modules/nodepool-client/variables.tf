@@ -114,6 +114,10 @@ variable "fc_env_pipeline_bucket_name" {
   type = string
 }
 
+variable "fc_busybox_bucket_name" {
+  type = string
+}
+
 variable "fc_env_pipeline_bucket_arn" {
   type = string
 }
@@ -123,6 +127,10 @@ variable "fc_kernels_bucket_arn" {
 }
 
 variable "fc_versions_bucket_arn" {
+  type = string
+}
+
+variable "fc_busybox_bucket_arn" {
   type = string
 }
 

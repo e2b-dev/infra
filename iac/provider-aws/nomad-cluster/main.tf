@@ -36,6 +36,10 @@ data "aws_s3_bucket" "fc_versions" {
   bucket = var.fc_versions_bucket_name
 }
 
+data "aws_s3_bucket" "fc_busybox" {
+  bucket = var.fc_busybox_bucket_name
+}
+
 data "aws_s3_bucket" "templates_build_cache_bucket" {
   bucket = var.templates_build_cache_bucket_name
 }
@@ -118,6 +122,9 @@ data "aws_iam_policy_document" "cluster_node_policy" {
 
       "${data.aws_s3_bucket.fc_versions.arn}/*",
       data.aws_s3_bucket.fc_versions.arn,
+
+      "${data.aws_s3_bucket.fc_busybox.arn}/*",
+      data.aws_s3_bucket.fc_busybox.arn,
     ]
   }
 
@@ -317,10 +324,12 @@ module "build" {
   fc_kernels_bucket_name      = var.fc_kernels_bucket_name
   fc_versions_bucket_name     = var.fc_versions_bucket_name
   fc_env_pipeline_bucket_name = var.fc_env_pipeline_bucket_name
+  fc_busybox_bucket_name      = var.fc_busybox_bucket_name
 
   fc_env_pipeline_bucket_arn       = data.aws_s3_bucket.fc_env_pipeline.arn
   fc_kernels_bucket_arn            = data.aws_s3_bucket.fc_kernels.arn
   fc_versions_bucket_arn           = data.aws_s3_bucket.fc_versions.arn
+  fc_busybox_bucket_arn            = data.aws_s3_bucket.fc_busybox.arn
   templates_bucket_arn             = data.aws_s3_bucket.templates_bucket.arn
   templates_build_cache_bucket_arn = data.aws_s3_bucket.templates_build_cache_bucket.arn
   custom_environments_repo_arn     = data.aws_ecr_repository.custom_environments.arn
@@ -361,10 +370,12 @@ module "client" {
   fc_kernels_bucket_name      = var.fc_kernels_bucket_name
   fc_versions_bucket_name     = var.fc_versions_bucket_name
   fc_env_pipeline_bucket_name = var.fc_env_pipeline_bucket_name
+  fc_busybox_bucket_name      = var.fc_busybox_bucket_name
 
   fc_env_pipeline_bucket_arn       = data.aws_s3_bucket.fc_env_pipeline.arn
   fc_kernels_bucket_arn            = data.aws_s3_bucket.fc_kernels.arn
   fc_versions_bucket_arn           = data.aws_s3_bucket.fc_versions.arn
+  fc_busybox_bucket_arn            = data.aws_s3_bucket.fc_busybox.arn
   templates_bucket_arn             = data.aws_s3_bucket.templates_bucket.arn
   templates_build_cache_bucket_arn = data.aws_s3_bucket.templates_build_cache_bucket.arn
   custom_environments_repo_arn     = data.aws_ecr_repository.custom_environments.arn

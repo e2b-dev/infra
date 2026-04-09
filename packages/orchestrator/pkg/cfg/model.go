@@ -15,11 +15,15 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
+const DefaultBusyboxVersion = "1.36.1"
+
 type BuilderConfig struct {
 	AllowSandboxInternet   bool          `env:"ALLOW_SANDBOX_INTERNET"   envDefault:"true"`
 	DomainName             string        `env:"DOMAIN_NAME"              envDefault:""`
 	EnvdTimeout            time.Duration `env:"ENVD_TIMEOUT"             envDefault:"10s"`
 	FirecrackerVersionsDir string        `env:"FIRECRACKER_VERSIONS_DIR" envDefault:"/fc-versions"`
+	BusyboxVersion         string        `env:"BUSYBOX_VERSION"          envDefault:"1.36.1"`
+	HostBusyboxDir         string        `env:"HOST_BUSYBOX_DIR"         envDefault:"/fc-busybox"`
 	HostEnvdPath           string        `env:"HOST_ENVD_PATH"           envDefault:"/fc-envd/envd"`
 	HostKernelsDir         string        `env:"HOST_KERNELS_DIR"         envDefault:"/fc-kernels"`
 	OrchestratorBaseDir    string        `env:"ORCHESTRATOR_BASE_PATH"   envDefault:"/orchestrator"`
@@ -37,6 +41,7 @@ func makePathsAbsolute(c *BuilderConfig) error {
 	for _, item := range []*string{
 		&c.DefaultCacheDir,
 		&c.FirecrackerVersionsDir,
+		&c.HostBusyboxDir,
 		&c.HostEnvdPath,
 		&c.HostKernelsDir,
 		&c.OrchestratorBaseDir,
