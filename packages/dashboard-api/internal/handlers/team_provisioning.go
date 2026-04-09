@@ -115,15 +115,15 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 			return provisionedTeam{}, fmt.Errorf("commit existing user bootstrap transaction: %w", err)
 		}
 
-		err = s.teamProvisionSink.ProvisionTeam(ctx, teamprovision.TeamBillingProvisionRequestedV1{
+		req := teamprovision.TeamBillingProvisionRequestedV1{
 			TeamID:      existingTeam.ID,
 			TeamName:    existingTeam.Name,
 			TeamEmail:   existingTeam.Email,
 			OwnerUserID: userID,
 			Reason:      teamprovision.ReasonDefaultSignupTeam,
-		})
-		if err != nil {
-			return provisionedTeam{}, err
+		}
+		if err := s.teamProvisionSink.ProvisionTeam(ctx, req); err != nil {
+			logTeamProvisioningFailure(ctx, req, err)
 		}
 
 		return provisionedTeam{
@@ -163,19 +163,15 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 		return provisionedTeam{}, fmt.Errorf("commit user bootstrap transaction: %w", err)
 	}
 
-	err = s.teamProvisionSink.ProvisionTeam(ctx, teamprovision.TeamBillingProvisionRequestedV1{
+	req := teamprovision.TeamBillingProvisionRequestedV1{
 		TeamID:      team.ID,
 		TeamName:    team.Name,
 		TeamEmail:   team.Email,
 		OwnerUserID: userID,
 		Reason:      teamprovision.ReasonDefaultSignupTeam,
-	})
-	if err != nil {
-		if cleanupErr := s.cleanupCreatedTeam(ctx, team.ID); cleanupErr != nil {
-			return provisionedTeam{}, fmt.Errorf("cleanup created default team: %w", cleanupErr)
-		}
-
-		return provisionedTeam{}, err
+	}
+	if err := s.teamProvisionSink.ProvisionTeam(ctx, req); err != nil {
+		logTeamProvisioningFailure(ctx, req, err)
 	}
 
 	return provisionedTeam{
@@ -250,34 +246,23 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 		zap.String("result", "created"),
 	)
 
-	err = s.teamProvisionSink.ProvisionTeam(ctx, teamprovision.TeamBillingProvisionRequestedV1{
+	req := teamprovision.TeamBillingProvisionRequestedV1{
 		TeamID:      team.ID,
 		TeamName:    team.Name,
 		TeamEmail:   team.Email,
 		OwnerUserID: userID,
 		Reason:      teamprovision.ReasonAdditionalTeam,
-	})
-	if err != nil {
-		logger.L().Error(ctx, "team billing provisioning failed",
+	}
+	if err := s.teamProvisionSink.ProvisionTeam(ctx, req); err != nil {
+		logTeamProvisioningFailure(ctx, req, err)
+	} else {
+		logger.L().Info(ctx, "team billing provisioning succeeded",
 			zap.String("user_id", userID.String()),
 			zap.String("team_id", team.ID.String()),
 			zap.String("reason", teamprovision.ReasonAdditionalTeam),
-			zap.String("result", "failed"),
-			zap.Error(err),
+			zap.String("result", "provisioned"),
 		)
-		if cleanupErr := s.cleanupCreatedTeam(ctx, team.ID); cleanupErr != nil {
-			return provisionedTeam{}, fmt.Errorf("cleanup created team: %w", cleanupErr)
-		}
-
-		return provisionedTeam{}, err
 	}
-
-	logger.L().Info(ctx, "team billing provisioning succeeded",
-		zap.String("user_id", userID.String()),
-		zap.String("team_id", team.ID.String()),
-		zap.String("reason", teamprovision.ReasonAdditionalTeam),
-		zap.String("result", "provisioned"),
-	)
 
 	return provisionedTeam{
 		ID:            team.ID,
@@ -289,32 +274,14 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 	}, nil
 }
 
-func (s *APIStore) cleanupCreatedTeam(ctx context.Context, teamID uuid.UUID) error {
-	if err := s.db.DeleteTeamByID(ctx, teamID); err != nil {
-		logger.L().Error(ctx, "failed to cleanup created team",
-			zap.String("teamID", teamID.String()),
-			zap.String("result", "cleanup_failed"),
-			zap.Error(err),
-		)
-
-		return err
-	}
-
-	if s.authService != nil {
-		if err := s.authService.InvalidateTeamCache(ctx, teamID); err != nil {
-			logger.L().Warn(ctx, "failed to invalidate team cache after cleanup",
-				zap.String("teamID", teamID.String()),
-				zap.Error(err),
-			)
-		}
-	}
-
-	logger.L().Info(ctx, "cleaned up created team",
-		zap.String("teamID", teamID.String()),
-		zap.String("result", "cleanup_succeeded"),
+func logTeamProvisioningFailure(ctx context.Context, req teamprovision.TeamBillingProvisionRequestedV1, err error) {
+	logger.L().Error(ctx, "team billing provisioning failed",
+		zap.String("user_id", req.OwnerUserID.String()),
+		zap.String("team_id", req.TeamID.String()),
+		zap.String("reason", req.Reason),
+		zap.String("result", "failed"),
+		zap.Error(err),
 	)
-
-	return nil
 }
 
 func validateTeamCreationAllowed(ctx context.Context, txDB *sqlcdb.Client, ownerUserID uuid.UUID) error {

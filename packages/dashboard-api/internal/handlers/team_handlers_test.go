@@ -356,6 +356,113 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 	}
 }
 
+func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	userID := createHandlerTestUser(t, testDB)
+	sink := &fakeTeamProvisionSink{
+		err: &internalteamprovision.ProvisionError{
+			StatusCode: http.StatusInternalServerError,
+			Message:    "boom",
+		},
+	}
+
+	existingTeam, err := testDB.SqlcClient.GetDefaultTeamByUserID(ctx, userID)
+	if err != nil {
+		t.Fatalf("expected trigger-created default team: %v", err)
+	}
+	if err := testDB.SqlcClient.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
+		t.Fatalf("failed to remove trigger-created default team: %v", err)
+	}
+	if err := testDB.SqlcClient.DeletePublicUser(ctx, userID); err != nil {
+		t.Fatalf("failed to remove trigger-created public user: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", nil)
+	auth.SetUserID(ginCtx, userID)
+
+	store := &APIStore{
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDb,
+		teamProvisionSink: sink,
+	}
+	store.PostUsersBootstrap(ginCtx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", recorder.Code)
+	}
+	if len(sink.requests) != 1 {
+		t.Fatalf("expected one provisioning call, got %d", len(sink.requests))
+	}
+
+	team, err := testDB.SqlcClient.GetDefaultTeamByUserID(ctx, userID)
+	if err != nil {
+		t.Fatalf("expected default team to remain after provisioning failure: %v", err)
+	}
+
+	rows, err := testDB.AuthDb.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+	if err != nil {
+		t.Fatalf("failed to query user teams: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected one default team to remain, got %d rows", len(rows))
+	}
+	if rows[0].Team.ID != team.ID {
+		t.Fatalf("expected remaining team %s, got %s", team.ID, rows[0].Team.ID)
+	}
+	if !rows[0].IsDefault {
+		t.Fatal("expected remaining team to be the default team")
+	}
+}
+
+func TestBootstrapUser_ProvisioningFailureWithExistingDefaultTeamStillSucceeds(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	userID := createHandlerTestUser(t, testDB)
+	sink := &fakeTeamProvisionSink{
+		err: &internalteamprovision.ProvisionError{
+			StatusCode: http.StatusInternalServerError,
+			Message:    "boom",
+		},
+	}
+
+	existingTeam, err := testDB.SqlcClient.GetDefaultTeamByUserID(ctx, userID)
+	if err != nil {
+		t.Fatalf("expected trigger-created default team: %v", err)
+	}
+
+	store := &APIStore{
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDb,
+		teamProvisionSink: sink,
+	}
+
+	team, err := store.bootstrapUser(ctx, userID)
+	if err != nil {
+		t.Fatalf("expected bootstrap to succeed, got %v", err)
+	}
+	if len(sink.requests) != 1 {
+		t.Fatalf("expected one provisioning call, got %d", len(sink.requests))
+	}
+	if team.ID != existingTeam.ID {
+		t.Fatalf("expected existing default team %s, got %s", existingTeam.ID, team.ID)
+	}
+
+	rows, err := testDB.AuthDb.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+	if err != nil {
+		t.Fatalf("failed to query user teams: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected existing team to remain unchanged, got %d rows", len(rows))
+	}
+}
+
 func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
 	t.Parallel()
 
@@ -512,7 +619,7 @@ func TestCreateTeam_RecentUserCreatesBlockedTeam(t *testing.T) {
 	}
 }
 
-func TestCreateTeam_BillingBadRequestCleansUpCreatedTeam(t *testing.T) {
+func TestCreateTeam_BillingBadRequestStillReturnsCreatedTeam(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
@@ -530,28 +637,33 @@ func TestCreateTeam_BillingBadRequestCleansUpCreatedTeam(t *testing.T) {
 		},
 	}
 
-	_, err := store.createTeam(ctx, userID, "Acme")
-	if err == nil {
-		t.Fatal("expected billing error")
+	team, err := store.createTeam(ctx, userID, "Acme")
+	if err != nil {
+		t.Fatalf("expected createTeam to succeed, got %v", err)
 	}
-
-	var provisionErr *internalteamprovision.ProvisionError
-	if !errors.As(err, &provisionErr) {
-		t.Fatalf("expected provisioning error, got %T: %v", err, err)
-	}
-	if provisionErr.StatusCode != http.StatusBadRequest {
-		t.Fatalf("expected status 400, got %d", provisionErr.StatusCode)
+	if len(store.teamProvisionSink.(*fakeTeamProvisionSink).requests) != 1 {
+		t.Fatalf("expected one provisioning call, got %d", len(store.teamProvisionSink.(*fakeTeamProvisionSink).requests))
 	}
 
 	rows, err := testDB.AuthDb.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
 	if err != nil {
 		t.Fatalf("failed to query user teams: %v", err)
 	}
-	if len(rows) != 1 {
-		t.Fatalf("expected only the default team to remain, got %d rows", len(rows))
+	if len(rows) != 2 {
+		t.Fatalf("expected default team and created team to remain, got %d rows", len(rows))
 	}
-	if !rows[0].IsDefault {
-		t.Fatal("expected remaining team to be the default team")
+
+	foundCreatedTeam := false
+	for _, row := range rows {
+		if row.Team.ID == team.ID {
+			foundCreatedTeam = true
+			if row.IsDefault {
+				t.Fatal("expected created team not to be default")
+			}
+		}
+	}
+	if !foundCreatedTeam {
+		t.Fatalf("expected created team %s to remain", team.ID)
 	}
 }
 
@@ -640,7 +752,7 @@ func TestPostTeams_ProvisioningSuccessReturnsTeam(t *testing.T) {
 	}
 }
 
-func TestPostTeams_ProvisioningFailureCleansUpTeam(t *testing.T) {
+func TestPostTeams_ProvisioningFailureStillReturnsTeam(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
@@ -666,8 +778,8 @@ func TestPostTeams_ProvisioningFailureCleansUpTeam(t *testing.T) {
 	}
 	store.PostTeams(ginCtx)
 
-	if recorder.Code != http.StatusInternalServerError {
-		t.Fatalf("expected status 500, got %d", recorder.Code)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", recorder.Code)
 	}
 	if len(sink.requests) != 1 {
 		t.Fatalf("expected one provisioning call, got %d", len(sink.requests))
@@ -677,8 +789,8 @@ func TestPostTeams_ProvisioningFailureCleansUpTeam(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to query user teams: %v", err)
 	}
-	if len(rows) != 1 {
-		t.Fatalf("expected only default team to remain, got %d rows", len(rows))
+	if len(rows) != 2 {
+		t.Fatalf("expected default team and created team to remain, got %d rows", len(rows))
 	}
 }
 
