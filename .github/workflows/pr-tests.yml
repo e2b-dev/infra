@@ -9,6 +9,8 @@ jobs:
   run-tests:
     name: Run tests for ${{ matrix.package }}
     runs-on: infra-tests
+    env:
+      GIN_MODE: test
     strategy:
       matrix:
         include:

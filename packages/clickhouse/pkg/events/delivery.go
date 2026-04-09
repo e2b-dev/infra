@@ -8,6 +8,10 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/batcher"
@@ -19,7 +23,7 @@ import (
 const InsertSandboxEventQuery = `INSERT INTO sandbox_events
 (
     timestamp,
-    sandbox_id, 
+    sandbox_id,
     sandbox_execution_id,
     sandbox_template_id,
     sandbox_build_id,
@@ -47,15 +51,18 @@ type ClickhouseDelivery struct {
 	conn    driver.Conn
 }
 
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/clickhouse/pkg/events")
+
 func NewDefaultClickhouseSandboxEventsDelivery(ctx context.Context, conn driver.Conn, featureFlags *featureflags.Client) (*ClickhouseDelivery, error) {
 	maxBatchSize := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherMaxBatchSize)
 
 	maxDelay := time.Duration(featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherMaxDelay)) * time.Millisecond
 
-	batcherQueueSize := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherQueueSize, featureflags.SandboxContext("clickhouse-batcher"))
+	batcherQueueSize := featureFlags.IntFlag(ctx, featureflags.ClickhouseBatcherQueueSize)
 
 	return NewClickhouseSandboxEventsDelivery(
 		ctx, conn, batcher.BatcherOptions{
+			Name:         "sandbox-events",
 			MaxBatchSize: maxBatchSize,
 			MaxDelay:     maxDelay,
 			QueueSize:    batcherQueueSize,
@@ -89,7 +96,8 @@ func (c *ClickhouseDelivery) Publish(_ context.Context, _ string, event events.S
 	}
 
 	eventData := string(eventDataJson)
-	ok, err := c.batcher.Push(SandboxEvent{
+
+	return c.batcher.Push(SandboxEvent{
 		Version:   event.Version,
 		ID:        event.ID,
 		Type:      event.Type,
@@ -102,15 +110,6 @@ func (c *ClickhouseDelivery) Publish(_ context.Context, _ string, event events.S
 		SandboxTeamID:      event.SandboxTeamID,
 		SandboxExecutionID: event.SandboxExecutionID,
 	})
-	if err != nil {
-		return err
-	}
-
-	if !ok {
-		return batcher.ErrBatcherQueueFull
-	}
-
-	return nil
 }
 
 func (c *ClickhouseDelivery) Close(context.Context) error {
@@ -118,8 +117,15 @@ func (c *ClickhouseDelivery) Close(context.Context) error {
 }
 
 func (c *ClickhouseDelivery) batchInserter(ctx context.Context, events []SandboxEvent) error {
+	attr := trace.WithAttributes(attribute.Int("batch.size", len(events)))
+	ctx, span := tracer.Start(ctx, "Flush sandbox events batch to Clickhouse", attr)
+	defer span.End()
+
 	batch, err := c.conn.PrepareBatch(ctx, InsertSandboxEventQuery, driver.WithReleaseConnection())
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "prepare batch failed")
+
 		return fmt.Errorf("error preparing batch: %w", err)
 	}
 
@@ -137,12 +143,17 @@ func (c *ClickhouseDelivery) batchInserter(ctx context.Context, events []Sandbox
 			event.ID,
 		)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "append failed")
+
 			return fmt.Errorf("error appending %d event to batch: %w", len(events), err)
 		}
 	}
 
-	err = batch.Send()
-	if err != nil {
+	if err = batch.Send(); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "send failed")
+
 		return fmt.Errorf("error sending %d events batch: %w", len(events), err)
 	}
 

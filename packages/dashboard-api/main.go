@@ -37,6 +37,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
+	metricsmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/metrics"
+	tracingmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -47,6 +49,7 @@ const (
 	readHeaderTimeout = 5 * time.Second
 	readTimeout       = 10 * time.Second
 	writeTimeout      = 75 * time.Second
+	requestTimeout    = 70 * time.Second
 	idleTimeout       = 620 * time.Second
 )
 
@@ -103,10 +106,6 @@ func run() int {
 	err = sqlcdb.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)
 	if err != nil {
 		l.Fatal(ctx, "failed to check migration version", zap.Error(err))
-	}
-
-	if !e2benv.IsDebug() {
-		gin.SetMode(gin.ReleaseMode)
 	}
 
 	db, err := sqlcdb.NewClient(
@@ -193,19 +192,33 @@ func run() int {
 	}
 	r.Use(cors.New(corsConfig))
 
-	r.Use(sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{
-		TimeFormat:   time.RFC3339Nano,
-		UTC:          true,
-		DefaultLevel: zap.InfoLevel,
-		SkipPaths:    []string{"/health"},
-		Context: func(c *gin.Context) []zapcore.Field {
-			if teamInfo, ok := sharedauth.GetTeamInfo(c); ok {
-				return []zapcore.Field{logger.WithTeamID(teamInfo.ID.String())}
-			}
+	r.Use(
+		sharedmiddleware.ExcludeRoutes(
+			tracingmiddleware.Middleware(tel.TracerProvider, serviceName),
+			"/health",
+		),
+		metricsmiddleware.Middleware(
+			tel.MeterProvider,
+			serviceName,
+			metricsmiddleware.WithShouldRecordFunc(func(_ string, route string, _ *http.Request) bool {
+				return route != "/health"
+			}),
+		),
+		sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{
+			TimeFormat:   time.RFC3339Nano,
+			UTC:          true,
+			DefaultLevel: zap.InfoLevel,
+			SkipPaths:    []string{"/health"},
+			Context: func(c *gin.Context) []zapcore.Field {
+				if teamInfo, ok := sharedauth.GetTeamInfo(c); ok {
+					return []zapcore.Field{logger.WithTeamID(teamInfo.ID.String())}
+				}
 
-			return nil
-		},
-	}))
+				return nil
+			},
+		}),
+		sharedmiddleware.RequestTimeout(requestTimeout),
+	)
 
 	r.Use(
 		middleware.OapiRequestValidatorWithOptions(swagger,

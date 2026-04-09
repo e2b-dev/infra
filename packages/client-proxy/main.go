@@ -122,7 +122,7 @@ func run() int {
 				l.Error(ctx, "Failed to close redis client", zap.Error(err))
 			}
 		}()
-		catalog = e2bcatalog.NewRedisSandboxCatalog(redisClient, e2bcatalog.NewNoopSandboxCache())
+		catalog = e2bcatalog.NewRedisSandboxCatalog(redisClient)
 	} else {
 		if !errors.Is(err, factories.ErrRedisDisabled) {
 			l.Error(ctx, "Failed to create redis client", zap.Error(err))

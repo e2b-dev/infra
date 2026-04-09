@@ -70,7 +70,7 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 	}
 	tracer := cfg.TracerProvider.Tracer(
 		tracerName,
-		oteltrace.WithInstrumentationVersion(otelgin.Version()),
+		oteltrace.WithInstrumentationVersion(otelgin.Version),
 	)
 
 	return func(c *gin.Context) {

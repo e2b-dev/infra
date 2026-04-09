@@ -32,6 +32,7 @@ jobs:
   deploy:
     name: Deploy job to the ${{ inputs.environment }} environment
     runs-on: ubuntu-22.04
+    environment: ${{ inputs.environment }}
     permissions:
       contents: read
       id-token: write
@@ -46,8 +47,7 @@ jobs:
         uses: ./.github/actions/deploy-setup
         with:
           environment: ${{ inputs.environment }}
-          infisical_client_id: ${{ secrets.INFISICAL_CLIENT_ID }}
-          infisical_client_secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          infisical_machine_identity_id: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
 
       - name: Run Terraform state migrations
         if: inputs.plan_only == 'false'
