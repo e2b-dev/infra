@@ -18,7 +18,6 @@ import (
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldlog"
-	"go.opentelemetry.io/otel/metric/noop"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
@@ -44,6 +43,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -965,6 +965,14 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	}
 	sbxlogger.SetSandboxLoggerInternal(logger.NewNopLogger())
 
+	// Initialize telemetry (traces, metrics) if OTEL_COLLECTOR_GRPC_ENDPOINT is set.
+	// When unset, telemetry.New() returns a noop client with zero overhead.
+	tel, err := telemetry.New(ctx, "resume-build", "resume-build", "", "dev", uuid.NewString())
+	if err != nil {
+		return fmt.Errorf("telemetry: %w", err)
+	}
+	defer tel.Shutdown(context.WithoutCancel(ctx))
+
 	if os.Getenv("NODE_IP") == "" {
 		os.Setenv("NODE_IP", "127.0.0.1")
 	}
@@ -991,7 +999,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Starting TCP firewall...")
 	}
-	tcpFw := tcpfirewall.New(l, config.NetworkConfig, sandboxes, noop.NewMeterProvider(), flags)
+	tcpFw := tcpfirewall.New(l, config.NetworkConfig, sandboxes, tel.MeterProvider, flags)
 	go tcpFw.Start(ctx)
 	defer tcpFw.Close(context.WithoutCancel(ctx))
 
@@ -1037,7 +1045,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating block metrics...")
 	}
-	blockMetrics, _ := blockmetrics.NewMetrics(&noop.MeterProvider{})
+	blockMetrics, _ := blockmetrics.NewMetrics(tel.MeterProvider)
 
 	if verbose {
 		fmt.Println("🔧 Creating template cache...")
