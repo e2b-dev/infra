@@ -28,6 +28,7 @@ const (
 	defaultProvisionRetryMaxAttempts = 3
 	defaultProvisionRetryInitialWait = 100 * time.Millisecond
 	defaultProvisionRetryWaitCeiling = 2 * time.Second
+	defaultProvisionAttemptTimeout   = defaultProvisionTimeout / defaultProvisionRetryMaxAttempts
 	provisionBackoffMultiplier       = 2.0
 )
 
@@ -48,7 +49,7 @@ func NewHTTPProvisionSink(baseURL, apiToken string) *HTTPProvisionSink {
 	return &HTTPProvisionSink{
 		baseURL:  strings.TrimRight(baseURL, "/"),
 		apiToken: apiToken,
-		client:   newRetryableProvisionClient(defaultProvisionTimeout),
+		client:   newRetryableProvisionClient(defaultProvisionAttemptTimeout),
 		timeout:  defaultProvisionTimeout,
 	}
 }

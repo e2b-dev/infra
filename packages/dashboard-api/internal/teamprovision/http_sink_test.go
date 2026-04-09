@@ -136,6 +136,31 @@ func TestHTTPProvisionSink_RetriesTransportErrorsAndSucceeds(t *testing.T) {
 	require.EqualValues(t, 2, attemptCount.Load())
 }
 
+func TestHTTPProvisionSink_RetriesRequestTimeoutWithinOverallBudget(t *testing.T) {
+	t.Parallel()
+
+	var requestCount atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempt := requestCount.Add(1)
+		if attempt == 1 {
+			time.Sleep(40 * time.Millisecond)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	sink := NewHTTPProvisionSink(server.URL, "token")
+	sink.timeout = 80 * time.Millisecond
+	sink.client.HTTPClient.Timeout = 25 * time.Millisecond
+	sink.client.RetryWaitMin = time.Millisecond
+	sink.client.RetryWaitMax = time.Millisecond
+
+	err := sink.ProvisionTeam(t.Context(), testProvisionRequest())
+	require.NoError(t, err)
+	require.EqualValues(t, 2, requestCount.Load())
+}
+
 func testProvisionRequest() sharedteamprovision.TeamBillingProvisionRequestedV1 {
 	return sharedteamprovision.TeamBillingProvisionRequestedV1{
 		TeamID:      uuid.New(),

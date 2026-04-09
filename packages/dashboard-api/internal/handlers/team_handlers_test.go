@@ -868,6 +868,72 @@ func TestCreateTeam_ConcurrentRequestsRespectLocalPolicy(t *testing.T) {
 	}
 }
 
+func TestCreateTeam_ConcurrentRequestsRespectLocalPolicyWithZeroMemberships(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	userID := createHandlerTestUser(t, testDB)
+
+	existingTeam, err := testDB.SqlcClient.GetDefaultTeamByUserID(ctx, userID)
+	if err != nil {
+		t.Fatalf("expected trigger-created default team: %v", err)
+	}
+	if err := testDB.SqlcClient.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
+		t.Fatalf("failed to remove default team: %v", err)
+	}
+
+	store := &APIStore{
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		teamProvisionSink: &fakeTeamProvisionSink{},
+	}
+
+	var wg sync.WaitGroup
+	results := make(chan error, 4)
+
+	for _, name := range []string{"Acme-1", "Acme-2", "Acme-3", "Acme-4"} {
+		wg.Add(1)
+		go func(teamName string) {
+			defer wg.Done()
+			_, err := store.createTeam(ctx, userID, teamName)
+			results <- err
+		}(name)
+	}
+
+	wg.Wait()
+	close(results)
+
+	var successCount int
+	var badRequestCount int
+	for err := range results {
+		if err == nil {
+			successCount++
+
+			continue
+		}
+
+		var provisionErr *internalteamprovision.ProvisionError
+		if !errors.As(err, &provisionErr) {
+			t.Fatalf("expected provisioning error, got %T: %v", err, err)
+		}
+		if provisionErr.StatusCode == http.StatusBadRequest {
+			badRequestCount++
+
+			continue
+		}
+
+		t.Fatalf("expected bad request or success, got %d", provisionErr.StatusCode)
+	}
+
+	if successCount != maxTeamsPerUser {
+		t.Fatalf("expected %d successes, got %d", maxTeamsPerUser, successCount)
+	}
+	if badRequestCount != 1 {
+		t.Fatalf("expected one bad request, got %d", badRequestCount)
+	}
+}
+
 type fakeTeamProvisionSink struct {
 	mu       sync.Mutex
 	requests []teamprovision.TeamBillingProvisionRequestedV1

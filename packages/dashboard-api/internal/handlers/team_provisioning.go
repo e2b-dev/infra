@@ -200,8 +200,9 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 		return provisionedTeam{}, fmt.Errorf("upsert public user: %w", err)
 	}
 
-	if _, err := txDB.LockUserTeamMembershipsForUpdate(ctx, userID); err != nil {
-		return provisionedTeam{}, fmt.Errorf("lock user team memberships: %w", err)
+	// Serialize team creation even when the user currently has no team memberships.
+	if _, err := txDB.LockPublicUserForUpdate(ctx, authUser.ID); err != nil {
+		return provisionedTeam{}, fmt.Errorf("lock public user: %w", err)
 	}
 
 	if err := validateTeamCreationAllowed(ctx, txDB, userID); err != nil {
