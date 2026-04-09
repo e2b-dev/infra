@@ -25,6 +25,44 @@ func TestValidate(t *testing.T) {
 	teamID := uuid.New()
 	envID := "test-env-id"
 
+	dbClient := testutils.SetupDatabase(t)
+
+	// Create team
+	err = dbClient.AuthDb.TestsRawSQL(t.Context(), `
+		INSERT INTO "auth"."users" (id, email)
+		VALUES ($1, 'test@e2b.dev')
+		ON CONFLICT DO NOTHING
+	`, userID)
+	require.NoError(t, err)
+
+	err = dbClient.AuthDb.TestsRawSQL(t.Context(), `
+		INSERT INTO teams (id, name, email, tier, slug)
+		VALUES ($1, 'test-team', 'test@e2b.dev', 'base_v1', 'test-team-slug')
+		ON CONFLICT DO NOTHING
+	`, teamID)
+	require.NoError(t, err)
+
+	// Link user to team
+	err = dbClient.AuthDb.TestsRawSQL(t.Context(), `
+		INSERT INTO users_teams (user_id, team_id, is_default)
+		VALUES ($1, $2, true)
+		ON CONFLICT DO NOTHING
+	`, userID, teamID)
+	require.NoError(t, err)
+
+	// Create access token
+	_, err = dbClient.AuthDb.Write.CreateAccessToken(t.Context(), authqueries.CreateAccessTokenParams{
+		ID:                    uuid.New(),
+		UserID:                userID,
+		AccessTokenHash:       accessToken.HashedValue,
+		AccessTokenPrefix:     accessToken.Masked.Prefix,
+		AccessTokenLength:     int32(accessToken.Masked.ValueLength),
+		AccessTokenMaskPrefix: accessToken.Masked.MaskedValuePrefix,
+		AccessTokenMaskSuffix: accessToken.Masked.MaskedValueSuffix,
+		Name:                  "Test token",
+	})
+	require.NoError(t, err)
+
 	testcases := []struct {
 		name             string
 		valid            bool
@@ -71,15 +109,6 @@ func TestValidate(t *testing.T) {
 			error:            false,
 		},
 		{
-			name:             "completed build status",
-			valid:            false,
-			createdEnvId:     envID,
-			createdEnvStatus: "uploaded",
-			validateEnvId:    envID,
-			accessTokenUsed:  accessToken.PrefixedRawValue,
-			error:            false,
-		},
-		{
 			name:             "invalid access token",
 			valid:            false,
 			createdEnvId:     envID,
@@ -93,8 +122,7 @@ func TestValidate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			dbClient := testutils.SetupDatabase(t)
-			setupValidateTest(t, dbClient, userID, teamID, accessToken, tc.createdEnvId, tc.createdEnvStatus)
+			setupValidateTest(t, dbClient, teamID, tc.createdEnvId, tc.createdEnvStatus)
 
 			valid, err := Validate(t.Context(), dbClient.SqlcClient, tc.accessTokenUsed, tc.validateEnvId)
 			if tc.error {
@@ -105,48 +133,24 @@ func TestValidate(t *testing.T) {
 			assert.Equal(t, tc.valid, valid)
 		})
 	}
+
+	t.Run("completed build status", func(t *testing.T) {
+		envID := uuid.NewString()
+		setupValidateTest(t, dbClient, teamID, envID, "uploaded")
+		valid, err := Validate(t.Context(), dbClient.SqlcClient, accessToken.PrefixedRawValue, envID)
+		assert.False(t, valid)
+		assert.NoError(t, err)
+	})
 }
 
-func setupValidateTest(tb testing.TB, db *testutils.Database, userID, teamID uuid.UUID, accessToken keys.Key, envID, createdEnvStatus string) {
+func setupValidateTest(tb testing.TB, db *testutils.Database, teamID uuid.UUID, envID, createdEnvStatus string) {
 	tb.Helper()
 
-	// Create team
-	err := db.AuthDb.TestsRawSQL(tb.Context(), `
-		INSERT INTO "auth"."users" (id, email)
-		VALUES ($1, 'test@e2b.dev')
-	`, userID)
-	require.NoError(tb, err)
-
-	err = db.AuthDb.TestsRawSQL(tb.Context(), `
-		INSERT INTO teams (id, name, email, tier, slug)
-		VALUES ($1, 'test-team', 'test@e2b.dev', 'base_v1', 'test-team-slug')
-	`, teamID)
-	require.NoError(tb, err)
-
-	// Link user to team
-	err = db.AuthDb.TestsRawSQL(tb.Context(), `
-		INSERT INTO users_teams (user_id, team_id, is_default)
-		VALUES ($1, $2, true)
-	`, userID, teamID)
-	require.NoError(tb, err)
-
-	// Create access token
-	_, err = db.AuthDb.Write.CreateAccessToken(tb.Context(), authqueries.CreateAccessTokenParams{
-		ID:                    uuid.New(),
-		UserID:                userID,
-		AccessTokenHash:       accessToken.HashedValue,
-		AccessTokenPrefix:     accessToken.Masked.Prefix,
-		AccessTokenLength:     int32(accessToken.Masked.ValueLength),
-		AccessTokenMaskPrefix: accessToken.Masked.MaskedValuePrefix,
-		AccessTokenMaskSuffix: accessToken.Masked.MaskedValueSuffix,
-		Name:                  "Test token",
-	})
-	require.NoError(tb, err)
-
 	// Create env
-	err = db.SqlcClient.TestsRawSQL(tb.Context(), `
+	err := db.SqlcClient.TestsRawSQL(tb.Context(), `
 		INSERT INTO envs (id, team_id, updated_at, source)
 		VALUES ($1, $2, NOW(), 'template')
+		ON CONFLICT DO NOTHING
 	`, envID, teamID)
 	require.NoError(tb, err)
 
