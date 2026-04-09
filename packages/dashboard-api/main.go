@@ -186,10 +186,8 @@ func run() int {
 		"Content-Type",
 		sharedauth.HeaderSupabaseToken,
 		sharedauth.HeaderSupabaseTeam,
-		"traceparent",
-		"tracestate",
-		"baggage",
 	}
+	corsConfig.AllowHeaders = append(corsConfig.AllowHeaders, telemetry.ContextPropagationHeaders()...)
 	r.Use(cors.New(corsConfig))
 
 	r.Use(
