@@ -128,13 +128,14 @@ test-docker:
 	@echo "Done"
 
 .PHONY: build-template
-build-template:
+build-template: fetch-busybox
 	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
 	GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) \
 	DOCKER_AUTH_BASE64=$(DOCKER_AUTH_BASE64) \
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) \
 	GCP_DOCKER_REPOSITORY_NAME=$(GCP_DOCKER_REPOSITORY_NAME) \
 	GCP_REGION=$(GCP_REGION) \
+	HOST_BUSYBOX_DIR=$(CURDIR)/.busybox \
 	ENVIRONMENT=local \
 	go run cmd/create-build/main.go \
 	-template $(TEMPLATE_ID) \
