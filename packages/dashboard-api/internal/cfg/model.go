@@ -24,7 +24,7 @@ type Config struct {
 	EnableBillingHTTPTeamProvisionSink bool          `env:"ENABLE_BILLING_HTTP_TEAM_PROVISION_SINK" envDefault:"false"`
 	BillingServerURL                   string        `env:"BILLING_SERVER_URL"`
 	BillingServerAPIToken              string        `env:"BILLING_SERVER_API_TOKEN"`
-	BillingServerTimeout               time.Duration `env:"BILLING_SERVER_TIMEOUT" envDefault:"15s"`
+	BillingServerTimeout               time.Duration `env:"BILLING_SERVER_TIMEOUT"                  envDefault:"30s"`
 }
 
 func Parse() (Config, error) {
