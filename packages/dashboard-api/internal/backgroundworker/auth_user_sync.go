@@ -99,7 +99,7 @@ func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSy
 		}
 
 	case "upsert":
-		supabaseUser, err := w.supabaseDB.Read.GetAuthUserByID(ctx, userID)
+		supabaseUser, err := w.supabaseDB.Write.GetAuthUserByID(ctx, userID)
 		if dberrors.IsNotFoundError(err) {
 			if err := w.authDB.DeletePublicUser(ctx, userID); err != nil {
 				telemetry.ReportError(ctx, "auth user sync delete stale public user", err, attrs...)
