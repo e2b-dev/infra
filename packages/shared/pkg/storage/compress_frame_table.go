@@ -139,7 +139,7 @@ func (ft *FrameTable) locate(offset int64) (frameEntry, error) {
 		return ft.entries[i].StartU > offset
 	}) - 1
 
-	if i < 0 || i >= len(ft.entries) {
+	if i < 0 {
 		return frameEntry{}, fmt.Errorf("offset %d not found in frame table", offset)
 	}
 
