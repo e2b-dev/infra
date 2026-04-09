@@ -1,7 +1,6 @@
 package testutils
 
 import (
-	"context"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -41,6 +40,11 @@ type Database struct {
 	TestQueries *queries.Queries
 }
 
+var (
+	oneDB  *Database
+	dblock sync.Mutex
+)
+
 // SetupDatabase creates a fresh PostgreSQL container with migrations applied
 func SetupDatabase(t *testing.T) *Database {
 	t.Helper()
@@ -48,6 +52,21 @@ func SetupDatabase(t *testing.T) *Database {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
+
+	// cheap lookup
+	if oneDB != nil {
+		return oneDB
+	}
+
+	dblock.Lock()
+	defer dblock.Unlock()
+
+	// locked lookup
+	if oneDB != nil {
+		return oneDB
+	}
+
+	// lookup failed, create new
 
 	// Start PostgreSQL container
 	container, err := postgres.Run(
@@ -63,12 +82,6 @@ func SetupDatabase(t *testing.T) *Database {
 		),
 	)
 	require.NoError(t, err, "Failed to start postgres container")
-	t.Cleanup(func() {
-		ctx := t.Context()
-		ctx = context.WithoutCancel(ctx)
-		err := container.Terminate(ctx)
-		assert.NoError(t, err)
-	})
 
 	connStr, err := container.ConnectionString(t.Context(), "sslmode=disable")
 	require.NoError(t, err, "Failed to get connection string")
@@ -77,34 +90,25 @@ func SetupDatabase(t *testing.T) *Database {
 	runDatabaseMigrations(t, connStr)
 
 	// create test queries client
-	dbClient, connPool, err := pool.New(t.Context(), connStr, "tests")
+	dbClient, _, err := pool.New(t.Context(), connStr, "tests")
 	require.NoError(t, err)
-	t.Cleanup(func() {
-		connPool.Close()
-	})
 	testQueries := queries.New(dbClient)
 
 	// Create app db client
 	sqlcClient, err := db.NewClient(t.Context(), connStr)
 	require.NoError(t, err, "Failed to create sqlc client")
-	t.Cleanup(func() {
-		err := sqlcClient.Close()
-		assert.NoError(t, err)
-	})
 
 	// Create the auth db client
 	authDb, err := authdb.NewClient(t.Context(), connStr, connStr)
 	require.NoError(t, err, "Failed to create auth db client")
-	t.Cleanup(func() {
-		err := authDb.Close()
-		assert.NoError(t, err)
-	})
 
-	return &Database{
+	oneDB = &Database{
 		SqlcClient:  sqlcClient,
 		AuthDb:      authDb,
 		TestQueries: testQueries,
 	}
+
+	return oneDB
 }
 
 // gooseMu serializes goose operations across parallel tests.
@@ -125,10 +129,10 @@ func runDatabaseMigrations(t *testing.T, connStr string) {
 	gooseMu.Lock()
 	defer gooseMu.Unlock()
 
-	db, err := goose.OpenDBWithDriver("pgx", connStr)
+	gooseDB, err := goose.OpenDBWithDriver("pgx", connStr)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		err := db.Close()
+		err := gooseDB.Close()
 		assert.NoError(t, err)
 	})
 
@@ -136,7 +140,7 @@ func runDatabaseMigrations(t *testing.T, connStr string) {
 	err = goose.RunWithOptionsContext(
 		t.Context(),
 		"up",
-		db,
+		gooseDB,
 		filepath.Join(repoRoot, "packages", "db", "migrations"),
 		nil,
 	)
