@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -9,17 +10,23 @@ import (
 // threeFrameFT returns a FrameTable with three 1MB uncompressed frames
 // and varying compressed sizes, starting at the given offset.
 func threeFrameFT(startU, startC int64) *FrameTable {
-	ft := &FrameTable{
+	return &FrameTable{
 		compressionType: CompressionLZ4,
-		Offset:          FrameOffset{U: startU, C: startC},
-		Frames: []FrameSize{
-			{U: 1 << 20, C: 500_000}, // frame 0
-			{U: 1 << 20, C: 600_000}, // frame 1
-			{U: 1 << 20, C: 400_000}, // frame 2
+		entries: []frameEntry{
+			{
+				StartU: startU, EndU: startU + 1<<20,
+				StartC: startC, EndC: startC + 500_000,
+			},
+			{
+				StartU: startU + 1<<20, EndU: startU + 2<<20,
+				StartC: startC + 500_000, EndC: startC + 1_100_000,
+			},
+			{
+				StartU: startU + 2<<20, EndU: startU + 3<<20,
+				StartC: startC + 1_100_000, EndC: startC + 1_500_000,
+			},
 		},
 	}
-
-	return ft
 }
 
 func TestLocate(t *testing.T) {
@@ -74,7 +81,7 @@ func TestLocate(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("respects Offset", func(t *testing.T) {
+	t.Run("non-zero start offset", func(t *testing.T) {
 		t.Parallel()
 		sub := threeFrameFT(1<<20, 500_000)
 
@@ -86,8 +93,142 @@ func TestLocate(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, int64(500_000), r.Offset)
 
-		// Before Offset — no frame should contain offset 0.
+		// Before first entry — no frame should contain offset 0.
 		_, err = sub.LocateUncompressed(0)
 		require.Error(t, err)
+	})
+}
+
+func TestNewFrameTable(t *testing.T) {
+	t.Parallel()
+
+	ft := NewFrameTable(CompressionZstd, []FrameSize{
+		{U: 1 << 20, C: 500_000},
+		{U: 1 << 20, C: 600_000},
+	})
+
+	require.Equal(t, 2, ft.NumFrames())
+	require.Equal(t, CompressionZstd, ft.CompressionType())
+	require.True(t, ft.IsCompressed())
+	require.Equal(t, int64(2<<20), ft.UncompressedSize())
+	require.Equal(t, int64(1_100_000), ft.CompressedSize())
+
+	startU, endU, startC, endC := ft.FrameAt(0)
+	require.Equal(t, int64(0), startU)
+	require.Equal(t, int64(1<<20), endU)
+	require.Equal(t, int64(0), startC)
+	require.Equal(t, int64(500_000), endC)
+
+	startU, _, startC, _ = ft.FrameAt(1)
+	require.Equal(t, int64(1<<20), startU)
+	require.Equal(t, int64(500_000), startC)
+}
+
+func TestFrameTable_TrimToRanges(t *testing.T) {
+	t.Parallel()
+
+	ft := NewFrameTable(CompressionLZ4, []FrameSize{
+		{U: 1 << 20, C: 500_000},
+		{U: 1 << 20, C: 600_000},
+		{U: 1 << 20, C: 400_000},
+		{U: 1 << 20, C: 700_000},
+	})
+
+	t.Run("all frames retained", func(t *testing.T) {
+		t.Parallel()
+		trimmed := ft.TrimToRanges([][2]int64{{0, 4 << 20}})
+		require.Same(t, ft, trimmed)
+	})
+
+	t.Run("single range trims to subset", func(t *testing.T) {
+		t.Parallel()
+		trimmed := ft.TrimToRanges([][2]int64{{1 << 20, 3 << 20}})
+		require.Equal(t, 2, trimmed.NumFrames())
+
+		startU, _, _, _ := trimmed.FrameAt(0)
+		require.Equal(t, int64(1<<20), startU)
+
+		startU, _, _, _ = trimmed.FrameAt(1)
+		require.Equal(t, int64(2<<20), startU)
+	})
+
+	t.Run("two disjoint ranges", func(t *testing.T) {
+		t.Parallel()
+		trimmed := ft.TrimToRanges([][2]int64{
+			{0, 1 << 20},
+			{3 << 20, 4 << 20},
+		})
+		require.Equal(t, 2, trimmed.NumFrames())
+
+		startU, _, _, _ := trimmed.FrameAt(0)
+		require.Equal(t, int64(0), startU)
+
+		startU, _, _, _ = trimmed.FrameAt(1)
+		require.Equal(t, int64(3<<20), startU)
+	})
+
+	t.Run("nil table", func(t *testing.T) {
+		t.Parallel()
+		var nilFT *FrameTable
+		require.Nil(t, nilFT.TrimToRanges([][2]int64{{0, 100}}))
+	})
+
+	t.Run("sparse lookup works", func(t *testing.T) {
+		t.Parallel()
+		trimmed := ft.TrimToRanges([][2]int64{
+			{0, 1 << 20},
+			{3 << 20, 4 << 20},
+		})
+
+		r, err := trimmed.LocateCompressed(0)
+		require.NoError(t, err)
+		require.Equal(t, int64(0), r.Offset)
+
+		r, err = trimmed.LocateCompressed(3 << 20)
+		require.NoError(t, err)
+		require.Equal(t, int64(500_000+600_000+400_000), r.Offset)
+
+		// Gap lookup fails
+		_, err = trimmed.LocateCompressed(1 << 20)
+		require.Error(t, err)
+	})
+}
+
+func TestSerializeDeserializeFrameTable(t *testing.T) {
+	t.Parallel()
+
+	t.Run("round-trip", func(t *testing.T) {
+		t.Parallel()
+		ft := NewFrameTable(CompressionZstd, []FrameSize{
+			{U: 2048, C: 1024},
+			{U: 4096, C: 3500},
+		})
+
+		var buf bytes.Buffer
+		require.NoError(t, ft.Serialize(&buf))
+
+		got, err := DeserializeFrameTable(&buf)
+		require.NoError(t, err)
+		require.Equal(t, ft.NumFrames(), got.NumFrames())
+		require.Equal(t, ft.CompressionType(), got.CompressionType())
+
+		for i := range ft.NumFrames() {
+			wSU, wEU, wSC, wEC := ft.FrameAt(i)
+			gSU, gEU, gSC, gEC := got.FrameAt(i)
+			require.Equal(t, wSU, gSU, "frame %d StartU", i)
+			require.Equal(t, wEU, gEU, "frame %d EndU", i)
+			require.Equal(t, wSC, gSC, "frame %d StartC", i)
+			require.Equal(t, wEC, gEC, "frame %d EndC", i)
+		}
+	})
+
+	t.Run("nil writes zeros", func(t *testing.T) {
+		t.Parallel()
+		var buf bytes.Buffer
+		require.NoError(t, (*FrameTable)(nil).Serialize(&buf))
+
+		got, err := DeserializeFrameTable(&buf)
+		require.NoError(t, err)
+		require.Nil(t, got)
 	})
 }

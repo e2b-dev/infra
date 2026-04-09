@@ -64,14 +64,16 @@ func (t *ThrottledPartUploader) UploadPart(ctx context.Context, partIndex int, d
 // concatenated compressed blob, returning the original uncompressed data.
 func decompressAll(ft *FrameTable, compressed []byte) ([]byte, error) {
 	var result []byte
-	var cOff int64
 
-	for i, fs := range ft.Frames {
-		if cOff+int64(fs.C) > int64(len(compressed)) {
-			return nil, fmt.Errorf("frame %d: compressed data truncated (need %d, have %d)", i, cOff+int64(fs.C), len(compressed))
+	for i := range ft.NumFrames() {
+		_, _, startC, endC := ft.FrameAt(i)
+		cLen := endC - startC
+
+		if startC+cLen > int64(len(compressed)) {
+			return nil, fmt.Errorf("frame %d: compressed data truncated (need %d, have %d)", i, startC+cLen, len(compressed))
 		}
 
-		frameData := compressed[cOff : cOff+int64(fs.C)]
+		frameData := compressed[startC:endC]
 
 		var frame []byte
 		var err error
@@ -93,7 +95,6 @@ func decompressAll(ft *FrameTable, compressed []byte) ([]byte, error) {
 			return nil, fmt.Errorf("frame %d: %w", i, err)
 		}
 		result = append(result, frame...)
-		cOff += int64(fs.C)
 	}
 
 	return result, nil
@@ -169,7 +170,7 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 			require.NoError(t, err)
 
 			if tc.dataSize == 0 {
-				require.Empty(t, ft.Frames)
+				require.Equal(t, 0, ft.NumFrames())
 				require.Equal(t, sha256.Sum256(nil), checksum)
 
 				return
@@ -177,7 +178,7 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 
 			// Verify frame count.
 			expectedFrames := (tc.dataSize + tc.frameSize - 1) / tc.frameSize
-			require.Len(t, ft.Frames, expectedFrames)
+			require.Equal(t, expectedFrames, ft.NumFrames())
 
 			// Verify checksum.
 			require.Equal(t, sha256.Sum256(original), checksum)
@@ -422,11 +423,7 @@ func BenchmarkStoreFile(b *testing.B) {
 						b.Fatal(err)
 					}
 
-					var cSize int64
-					for _, f := range ft.Frames {
-						cSize += int64(f.C)
-					}
-					b.ReportMetric(float64(cSize)/float64(ft.UncompressedSize()), "ratio")
+					b.ReportMetric(float64(ft.CompressedSize())/float64(ft.UncompressedSize()), "ratio")
 				}
 			})
 		}

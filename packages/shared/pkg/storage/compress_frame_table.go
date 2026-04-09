@@ -1,7 +1,10 @@
 package storage
 
 import (
+	"encoding/binary"
 	"fmt"
+	"io"
+	"sort"
 )
 
 type CompressionType byte
@@ -11,60 +14,6 @@ const (
 	CompressionZstd
 	CompressionLZ4
 )
-
-// # Compression Layout
-//
-// Dirty blocks (4 KiB rootfs, 2 MiB memfile) are packed into a diff file,
-// grouped into frames (default 2 MiB), and each frame compressed independently.
-// Two address spaces describe the same data:
-//
-//     |blk|...|blk | blk|...|blk |
-//     |- f0 (2M) - | ---  f1 --- |
-//	U: 0             2M            4M
-//     |- f0 -|- f1 -|- f2 -|
-//	C: 0     .6M    1.3M   1.7M
-//
-// # BuildMaps and FrameTable Subsets
-//
-// The header maps virtual offsets to builds via BuildMap entries. Each
-// mapping carries a FrameTable subset covering just its byte range:
-//
-//	Virtual:  ──[━━━━ M0 ━━━━]──[━━━━━━ M1 ━━━━━━]──[━━ M2 ━━]──
-//	            BuildId=aa         BuildId=bb            BuildId=aa
-//	            BuildStorageOffset=0  BuildStorageOffset=0  BuildStorageOffset=8M
-//	            Length=4M          Length=6M            Length=2M
-//	            ft: frames 0-1  ft: frames 0-2       ft: frames 4-4
-//
-// # Read Path: Virtual Offset → C-Space Fetch
-//
-//	read virtual offset V=5M
-//	  │
-//	  ├─ find mapping: M1 {Build=bb, BuildStorageOffset=0, Length=6M}
-//	  │
-//	  ├─ diff offset = V - M1.Offset + M1.BuildStorageOffset = 5M
-//	  │
-//	  ├─ M1.ft: frame 0: U:[0,2M)  frame 1: U:[2M,4M)  frame 2: U:[4M,6M)
-//    │  LocateCompressed(5M) → frame2, C:[2.0M, 3.3M)
-//	  ├─ fetch C bytes [2.0M, 3.3M) from build "bb"
-//	  ├─ decompress → 2 MiB frame, cache
-//	  └─ return block at offset 5M - 4M = 1M within frame
-
-// FrameOffset holds a position in both address spaces.
-// U is the byte offset in the uncompressed diff file.
-// C is the byte offset in the compressed diff file.
-type FrameOffset struct {
-	U int64
-	C int64
-}
-
-func (o *FrameOffset) String() string {
-	return fmt.Sprintf("U:%d/C:%d", o.U, o.C)
-}
-
-func (o *FrameOffset) Add(f FrameSize) {
-	o.U += int64(f.U)
-	o.C += int64(f.C)
-}
 
 // FrameSize holds the uncompressed (U) and compressed (C) byte size of a
 // single frame.
@@ -86,18 +35,45 @@ func (r Range) String() string {
 	return fmt.Sprintf("%d/%d", r.Offset, r.Length)
 }
 
-// FrameTable is the decompression index for a compressed diff file (or a
-// contiguous subset of one). Offset is the position of the first frame in
-// both address spaces; Frames lists each frame's U and C sizes in order.
-type FrameTable struct {
-	compressionType CompressionType
-	Offset          FrameOffset
-	Frames          []FrameSize
+// frameEntry stores one frame as absolute [Start, End) byte offsets in both
+// address spaces.
+type frameEntry struct {
+	StartU int64
+	EndU   int64
+	StartC int64
+	EndC   int64
 }
 
-// NewFrameTable creates a FrameTable with the given compression type.
-func NewFrameTable(ct CompressionType) *FrameTable {
-	return &FrameTable{compressionType: ct}
+// FrameTable is the decompression index for a compressed diff file.
+// Immutable after construction; safe to share across goroutines.
+// Sparse tables (gaps between entries) are supported.
+type FrameTable struct {
+	compressionType CompressionType
+	entries         []frameEntry // sorted by StartU
+}
+
+// NewFrameTable creates a FrameTable from consecutive frame sizes, computing
+// absolute offsets starting from zero.
+func NewFrameTable(ct CompressionType, sizes []FrameSize) *FrameTable {
+	if len(sizes) == 0 {
+		return &FrameTable{compressionType: ct}
+	}
+
+	entries := make([]frameEntry, len(sizes))
+
+	var u, c int64
+	for i, s := range sizes {
+		entries[i] = frameEntry{
+			StartU: u,
+			EndU:   u + int64(s.U),
+			StartC: c,
+			EndC:   c + int64(s.C),
+		}
+		u += int64(s.U)
+		c += int64(s.C)
+	}
+
+	return &FrameTable{compressionType: ct, entries: entries}
 }
 
 // CompressionType returns the compression type. Nil-safe: returns CompressionNone for nil.
@@ -109,118 +85,191 @@ func (ft *FrameTable) CompressionType() CompressionType {
 	return ft.compressionType
 }
 
-// IsCompressed reports whether ft is non-nil and has a compression type set.
+// IsCompressed reports whether ft is non-nil, has a compression type set, and
+// contains at least one frame.
 func (ft *FrameTable) IsCompressed() bool {
-	return ft != nil && ft.compressionType != CompressionNone
+	return ft != nil && ft.compressionType != CompressionNone && len(ft.entries) > 0
 }
 
-// UncompressedSize returns the total uncompressed byte size across all frames.
+func (ft *FrameTable) NumFrames() int {
+	if ft == nil {
+		return 0
+	}
+
+	return len(ft.entries)
+}
+
+func (ft *FrameTable) FrameAt(i int) (startU, endU, startC, endC int64) {
+	e := ft.entries[i]
+
+	return e.StartU, e.EndU, e.StartC, e.EndC
+}
+
+// UncompressedSize returns the total uncompressed size across all frames.
 func (ft *FrameTable) UncompressedSize() int64 {
 	var total int64
-	for _, frame := range ft.Frames {
-		total += int64(frame.U)
+	for _, e := range ft.entries {
+		total += e.EndU - e.StartU
 	}
 
 	return total
 }
 
-// Subset extracts frames overlapping range r, starting the scan at frame
-// index `from`. It returns the index of the first included frame (not one
-// past it) so that consecutive calls re-check the boundary frame — this is
-// correct because a frame straddling two ranges must appear in both subsets.
-func (ft *FrameTable) Subset(r Range, from int) (*FrameTable, int) {
-	if ft == nil || r.Length == 0 {
-		return nil, from
+// CompressedSize returns the total compressed size across all frames.
+func (ft *FrameTable) CompressedSize() int64 {
+	var total int64
+	for _, e := range ft.entries {
+		total += e.EndC - e.StartC
 	}
 
-	result := &FrameTable{
-		compressionType: ft.compressionType,
-	}
-
-	// Advance currentOffset to frame `from`.
-	currentOffset := ft.Offset
-	for i := range from {
-		if i >= len(ft.Frames) {
-			break
-		}
-		currentOffset.Add(ft.Frames[i])
-	}
-
-	startSet := false
-	requestedEnd := r.Offset + int64(r.Length)
-	nextFrom := from
-
-	for i := from; i < len(ft.Frames); i++ {
-		frame := ft.Frames[i]
-		frameEnd := currentOffset.U + int64(frame.U)
-
-		if frameEnd <= r.Offset {
-			currentOffset.Add(frame)
-			nextFrom = i + 1
-
-			continue
-		}
-		if currentOffset.U >= requestedEnd {
-			break
-		}
-
-		if !startSet {
-			result.Offset = currentOffset
-			startSet = true
-			nextFrom = i
-		}
-		result.Frames = append(result.Frames, frame)
-		currentOffset.Add(frame)
-	}
-
-	if !startSet {
-		return nil, nextFrom
-	}
-
-	return result, nextFrom
+	return total
 }
 
-// locate finds the frame containing the given uncompressed offset and returns
-// its start position (in both address spaces) and full size.
-func (ft *FrameTable) locate(offset int64) (frameOffset FrameOffset, frameSize FrameSize, err error) {
+// locate finds the frame containing the given uncompressed offset.
+func (ft *FrameTable) locate(offset int64) (frameEntry, error) {
 	if ft == nil {
-		return FrameOffset{}, FrameSize{}, fmt.Errorf("locate called with nil frame table - data is not compressed")
+		return frameEntry{}, fmt.Errorf("locate called with nil frame table — data is not compressed")
 	}
 
-	currentOffset := ft.Offset
-	for _, frame := range ft.Frames {
-		frameEnd := currentOffset.U + int64(frame.U)
-		if offset >= currentOffset.U && offset < frameEnd {
-			return currentOffset, frame, nil
-		}
-		currentOffset.Add(frame)
+	// Binary search: find the last entry whose StartU <= offset.
+	i := sort.Search(len(ft.entries), func(i int) bool {
+		return ft.entries[i].StartU > offset
+	}) - 1
+
+	if i < 0 || i >= len(ft.entries) {
+		return frameEntry{}, fmt.Errorf("offset %d not found in frame table", offset)
 	}
 
-	return FrameOffset{}, FrameSize{}, fmt.Errorf("offset %d is beyond the end of the frame table", offset)
+	e := ft.entries[i]
+	if offset >= e.EndU {
+		return frameEntry{}, fmt.Errorf("offset %d is in a gap (not covered by any frame)", offset)
+	}
+
+	return e, nil
 }
 
-// LocateCompressed returns the compressed (C-space) byte range for the frame
-// containing the given uncompressed offset. Use this when you need to fetch
-// raw compressed bytes from storage.
+// LocateCompressed returns the compressed byte range for the frame containing
+// the given uncompressed offset.
 func (ft *FrameTable) LocateCompressed(offset int64) (Range, error) {
-	start, size, err := ft.locate(offset)
+	e, err := ft.locate(offset)
 	if err != nil {
 		return Range{}, err
 	}
 
-	return Range{Offset: start.C, Length: int(size.C)}, nil
+	return Range{Offset: e.StartC, Length: int(e.EndC - e.StartC)}, nil
 }
 
-// LocateUncompressed returns the uncompressed (U-space) byte range for the
-// frame containing the given uncompressed offset. Use this when you need to
-// know the logical frame boundaries for cache alignment or chunk management.
+// LocateUncompressed returns the uncompressed byte range for the frame
+// containing the given uncompressed offset.
 func (ft *FrameTable) LocateUncompressed(offset int64) (Range, error) {
-	start, size, err := ft.locate(offset)
+	e, err := ft.locate(offset)
 	if err != nil {
 		return Range{}, err
 	}
 
-	return Range{Offset: start.U, Length: int(size.U)}, nil
+	return Range{Offset: e.StartU, Length: int(e.EndU - e.StartU)}, nil
+}
+
+// Serialize writes the frame table to w in binary little-endian format.
+// Nil-safe: writes zeros for type and count.
+func (ft *FrameTable) Serialize(w io.Writer) error {
+	if !ft.IsCompressed() {
+		z := [8]byte{} // two uint32 zeros: CompressionType=0, NumFrames=0
+		_, err := w.Write(z[:])
+
+		return err
+	}
+
+	if err := binary.Write(w, binary.LittleEndian, uint32(ft.compressionType)); err != nil {
+		return err
+	}
+
+	if err := binary.Write(w, binary.LittleEndian, uint32(len(ft.entries))); err != nil {
+		return err
+	}
+
+	for _, e := range ft.entries {
+		if err := binary.Write(w, binary.LittleEndian, e); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// DeserializeFrameTable reads a FrameTable from r. Returns nil for
+// uncompressed builds (compressionType=0 or numFrames=0).
+func DeserializeFrameTable(r io.Reader) (*FrameTable, error) {
+	var ct uint32
+
+	if err := binary.Read(r, binary.LittleEndian, &ct); err != nil {
+		return nil, fmt.Errorf("read compression type: %w", err)
+	}
+
+	var n uint32
+
+	if err := binary.Read(r, binary.LittleEndian, &n); err != nil {
+		return nil, fmt.Errorf("read frame count: %w", err)
+	}
+
+	if ct == 0 || n == 0 {
+		return nil, nil
+	}
+
+	// Cap to prevent OOM from corrupted headers. 1<<20 frames × 32 bytes = 32 MiB.
+	const maxFrames = 1 << 20
+	if n > maxFrames {
+		return nil, fmt.Errorf("frame count %d exceeds maximum %d", n, maxFrames)
+	}
+
+	entries := make([]frameEntry, n)
+	for i := range n {
+		if err := binary.Read(r, binary.LittleEndian, &entries[i]); err != nil {
+			return nil, fmt.Errorf("read frame entry %d: %w", i, err)
+		}
+	}
+
+	return &FrameTable{compressionType: CompressionType(ct), entries: entries}, nil
+}
+
+// TrimToRanges returns a new FrameTable containing only the frames that
+// overlap with at least one of the given [startU, endU) byte ranges.
+func (ft *FrameTable) TrimToRanges(ranges [][2]int64) *FrameTable {
+	if ft == nil || len(ft.entries) == 0 || len(ranges) == 0 {
+		return ft
+	}
+
+	keep := make([]bool, len(ft.entries))
+	kept := 0
+
+	for _, r := range ranges {
+		startU, endU := r[0], r[1]
+
+		// Binary search: first frame whose EndU > startU.
+		lo := sort.Search(len(ft.entries), func(i int) bool {
+			return ft.entries[i].EndU > startU
+		})
+
+		for i := lo; i < len(ft.entries) && ft.entries[i].StartU < endU; i++ {
+			if !keep[i] {
+				keep[i] = true
+				kept++
+			}
+		}
+	}
+
+	if kept == len(ft.entries) {
+		return ft // nothing trimmed
+	}
+
+	trimmed := make([]frameEntry, 0, kept)
+	for i, e := range ft.entries {
+		if keep[i] {
+			trimmed = append(trimmed, e)
+		}
+	}
+
+	return &FrameTable{compressionType: ft.compressionType, entries: trimmed}
 }
 
 func (ct CompressionType) Suffix() string {

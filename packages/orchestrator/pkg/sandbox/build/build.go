@@ -96,15 +96,16 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 		}
 
 		size := b.buildFileSize(h, mappedToBuild.BuildId)
-		mappedBuild, err := b.getBuild(ctx, mappedToBuild.BuildId, size, mappedToBuild.FrameTable.CompressionType())
+		ft := h.GetBuildFrameData(mappedToBuild.BuildId)
+		layer, err := b.getBuild(ctx, mappedToBuild.BuildId, size, ft.CompressionType())
 		if err != nil {
 			return 0, fmt.Errorf("failed to get build: %w", err)
 		}
 
-		buildN, err := mappedBuild.ReadAt(ctx,
+		buildN, err := layer.ReadAt(ctx,
 			p[n:int64(n)+readLength],
 			int64(mappedToBuild.Offset),
-			mappedToBuild.FrameTable,
+			ft,
 		)
 		if err != nil {
 			var transErr *storage.PeerTransitionedError
@@ -145,12 +146,13 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 		}
 
 		size := b.buildFileSize(h, mappedBuild.BuildId)
-		diff, err := b.getBuild(ctx, mappedBuild.BuildId, size, mappedBuild.FrameTable.CompressionType())
+		ft := h.GetBuildFrameData(mappedBuild.BuildId)
+		diff, err := b.getBuild(ctx, mappedBuild.BuildId, size, ft.CompressionType())
 		if err != nil {
 			return nil, fmt.Errorf("failed to get build: %w", err)
 		}
 
-		result, err := diff.Slice(ctx, int64(mappedBuild.Offset), int64(h.Metadata.BlockSize), mappedBuild.FrameTable)
+		result, err := diff.Slice(ctx, int64(mappedBuild.Offset), int64(h.Metadata.BlockSize), ft)
 		if err != nil {
 			var transErr *storage.PeerTransitionedError
 			if errors.As(err, &transErr) && transitionRetries < maxTransitionRetries {
@@ -199,12 +201,14 @@ func (b *File) swapHeader(transErr *storage.PeerTransitionedError) error {
 	return nil
 }
 
-// buildFileSize returns the uncompressed file size for buildID from the
-// header's BuildFiles map. Returns 0 for V3 headers (no BuildFiles), which
-// signals the read path to fall back to a Size() RPC.
+// buildFileSize returns the uncompressed file size for a build. Returns 0 for
+// V3 headers, which signals the read path to fall back to a Size() RPC.
 func (b *File) buildFileSize(h *header.Header, buildID uuid.UUID) int64 {
-	if info, ok := h.BuildFiles[buildID]; ok {
-		return info.Size
+	if h.Builds == nil {
+		return 0
+	}
+	if bd, ok := h.Builds[buildID]; ok {
+		return bd.Size
 	}
 
 	return 0

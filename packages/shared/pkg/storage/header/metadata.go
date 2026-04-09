@@ -157,15 +157,17 @@ func (d *DiffMetadata) ToDiffHeader(
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}
 
-	// Copy only BuildFiles referenced by the merged mappings.
-	referenced := make(map[uuid.UUID]struct{}, len(m))
-	for _, mapping := range m {
-		referenced[mapping.BuildId] = struct{}{}
-	}
-	header.BuildFiles = make(map[uuid.UUID]BuildFileInfo, len(referenced))
-	for id := range referenced {
-		if info, ok := originalHeader.BuildFiles[id]; ok {
-			header.BuildFiles[id] = info
+	// Copy Builds referenced by the merged mappings.
+	if originalHeader.Builds != nil {
+		referenced := make(map[uuid.UUID]struct{}, len(m))
+		for _, mapping := range m {
+			referenced[mapping.BuildId] = struct{}{}
+		}
+		header.Builds = make(map[uuid.UUID]BuildData, len(referenced))
+		for id := range referenced {
+			if bd, ok := originalHeader.Builds[id]; ok {
+				header.Builds[id] = bd
+			}
 		}
 	}
 

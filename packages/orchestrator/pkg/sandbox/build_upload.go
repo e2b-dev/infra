@@ -1,8 +1,10 @@
 package sandbox
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/google/uuid"
@@ -144,18 +146,14 @@ func (b *buildUploader) scheduleAlwaysUploads(eg *errgroup.Group, ctx context.Co
 	})
 }
 
-// pendingBuildInfo pairs a FrameTable with the uncompressed file size and
-// uncompressed-data checksum so all can be stored in the header after uploads complete.
 type pendingBuildInfo struct {
 	ft       *storage.FrameTable
 	fileSize int64
 	checksum [32]byte
 }
 
-// PendingBuildInfo collects FrameTables and file sizes from compressed data
-// uploads across all layers. After all data files are uploaded, the collected
-// tables are applied to headers before the compressed headers are serialized
-// and uploaded. Safe for concurrent use from errgroup goroutines.
+// PendingBuildInfo collects frame tables and file sizes from compressed
+// uploads, applied to headers before serialization. Safe for concurrent use.
 type PendingBuildInfo struct {
 	mu sync.Mutex
 	m  map[string]pendingBuildInfo
@@ -192,39 +190,40 @@ func (p *PendingBuildInfo) get(key string) *pendingBuildInfo {
 	return &info
 }
 
-func (p *PendingBuildInfo) applyToHeader(h *headers.Header, fileType string) error {
+func (p *PendingBuildInfo) applyToHeader(h *headers.Header, fileType string) {
 	if h == nil {
-		return nil
+		return
 	}
 
-	// Track frame cursor per build to avoid O(N²) rescanning.
-	cursors := make(map[string]int)
-
+	var buildIDs []uuid.UUID
 	for _, mapping := range h.Mapping {
-		key := pendingBuildInfoKey(mapping.BuildId.String(), fileType)
+		if _, found := slices.BinarySearchFunc(buildIDs, mapping.BuildId, func(a, b uuid.UUID) int {
+			return bytes.Compare(a[:], b[:])
+		}); !found {
+			buildIDs = append(buildIDs, mapping.BuildId)
+			slices.SortFunc(buildIDs, func(a, b uuid.UUID) int { return bytes.Compare(a[:], b[:]) })
+		}
+	}
+
+	for _, buildID := range buildIDs {
+		key := pendingBuildInfoKey(buildID.String(), fileType)
 		info := p.get(key)
 
 		if info == nil {
 			continue
 		}
 
-		cursor := cursors[key]
-		next, err := mapping.SetFrames(info.ft, cursor)
-		if err != nil {
-			return fmt.Errorf("apply frames to mapping at offset %d for build %s: %w",
-				mapping.Offset, mapping.BuildId.String(), err)
+		if h.Builds == nil {
+			h.Builds = make(map[uuid.UUID]headers.BuildData)
 		}
-		cursors[key] = next
 
-		// Populate BuildFiles with size and checksum for this build.
-		if h.BuildFiles == nil {
-			h.BuildFiles = make(map[uuid.UUID]headers.BuildFileInfo)
-		}
-		h.BuildFiles[mapping.BuildId] = headers.BuildFileInfo{
+		bd := headers.BuildData{
 			Size:     info.fileSize,
 			Checksum: info.checksum,
 		}
+		if info.ft != nil && info.ft.IsCompressed() {
+			bd.FrameData = info.ft
+		}
+		h.Builds[buildID] = bd
 	}
-
-	return nil
 }

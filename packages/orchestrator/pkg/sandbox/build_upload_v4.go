@@ -93,9 +93,7 @@ func (c *compressedUploader) FinalizeHeaders(ctx context.Context) (memfileHeader
 		eg.Go(func() error {
 			h := c.snapshot.MemfileDiffHeader.CloneForUpload()
 
-			if err := c.pending.applyToHeader(h, storage.MemfileName); err != nil {
-				return fmt.Errorf("apply frames to memfile header: %w", err)
-			}
+			c.pending.applyToHeader(h, storage.MemfileName)
 
 			h.Metadata.Version = headers.MetadataVersionCompressed
 
@@ -114,9 +112,7 @@ func (c *compressedUploader) FinalizeHeaders(ctx context.Context) (memfileHeader
 		eg.Go(func() error {
 			h := c.snapshot.RootfsDiffHeader.CloneForUpload()
 
-			if err := c.pending.applyToHeader(h, storage.RootfsName); err != nil {
-				return fmt.Errorf("apply frames to rootfs header: %w", err)
-			}
+			c.pending.applyToHeader(h, storage.RootfsName)
 
 			h.Metadata.Version = headers.MetadataVersionCompressed
 

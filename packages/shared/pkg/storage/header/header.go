@@ -12,41 +12,34 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-// BuildFileInfo holds metadata about a build's data file, stored in the header
-// so the read path can avoid network round-trips (e.g. Size() calls to GCS).
-type BuildFileInfo struct {
-	Size     int64    // uncompressed file size
-	Checksum [32]byte // SHA-256 of uncompressed data; zero value means unknown
+// BuildData holds per-build metadata stored in V4 headers.
+type BuildData struct {
+	Size      int64               // uncompressed file size
+	Checksum  [32]byte            // SHA-256 of uncompressed data; zero value means unknown
+	FrameData *storage.FrameTable // nil for uncompressed builds
 }
 
 const NormalizeFixVersion = 3
 
 type Header struct {
 	Metadata *Metadata
-	// BuildFiles maps build IDs to their file metadata (size + checksum).
-	// Each layer's upload adds its own entry via applyToHeader, and inherits
-	// all parent entries via ToDiffHeader (which copies originalHeader.BuildFiles).
-	// This means every V4 header has a complete map of all builds referenced
-	// in its Mapping. V3 headers have no BuildFiles; the read path falls back
-	// to a Size() RPC for those.
-	BuildFiles  map[uuid.UUID]BuildFileInfo
+	// Builds maps build IDs to per-build metadata. V3 headers have nil Builds;
+	// the read path falls back to a Size() RPC for those.
+	Builds      map[uuid.UUID]BuildData
 	blockStarts *bitset.BitSet
 	startMap    map[int64]*BuildMap
 
 	Mapping []*BuildMap
 }
 
-// CloneForUpload returns a clone with copied Mapping and BuildFiles, safe to
-// mutate for serialization without racing with concurrent readers of the
-// original. Only serialization-relevant fields are populated (Metadata,
-// Mapping, BuildFiles); lookup indices (blockStarts, startMap) are left nil.
+// CloneForUpload returns a shallow clone safe for serialization without
+// racing with concurrent readers.
 func (t *Header) CloneForUpload() *Header {
 	mappings := make([]*BuildMap, len(t.Mapping))
-	for i, m := range t.Mapping {
-		mappings[i] = m.Copy()
-	}
+	copy(mappings, t.Mapping)
 
 	metaCopy := *t.Metadata
 	clone := &Header{
@@ -54,9 +47,9 @@ func (t *Header) CloneForUpload() *Header {
 		Mapping:  mappings,
 	}
 
-	if t.BuildFiles != nil {
-		clone.BuildFiles = make(map[uuid.UUID]BuildFileInfo, len(t.BuildFiles))
-		maps.Copy(clone.BuildFiles, t.BuildFiles)
+	if t.Builds != nil {
+		clone.Builds = make(map[uuid.UUID]BuildData, len(t.Builds))
+		maps.Copy(clone.Builds, t.Builds)
 	}
 
 	return clone
@@ -125,10 +118,9 @@ func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (BuildMap,
 	mappedLength := int64(mapping.Length) - shift
 
 	b := BuildMap{
-		Offset:     mapping.BuildStorageOffset + uint64(shift),
-		Length:     uint64(mappedLength),
-		BuildId:    mapping.BuildId,
-		FrameTable: mapping.FrameTable,
+		Offset:  mapping.BuildStorageOffset + uint64(shift),
+		Length:  uint64(mappedLength),
+		BuildId: mapping.BuildId,
 	}
 
 	if mappedLength < 0 {
@@ -145,6 +137,15 @@ func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (BuildMap,
 	}
 
 	return b, nil
+}
+
+// GetBuildFrameData returns the frame table for a build, or nil.
+func (t *Header) GetBuildFrameData(buildID uuid.UUID) *storage.FrameTable {
+	if t.Builds == nil {
+		return nil
+	}
+
+	return t.Builds[buildID].FrameData
 }
 
 // TODO: Maybe we can optimize mapping by automatically assuming the mapping is uuid.Nil if we don't find it + stopping storing the nil mapping.
