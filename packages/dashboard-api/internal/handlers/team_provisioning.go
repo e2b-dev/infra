@@ -9,7 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"go.uber.org/zap"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
@@ -18,7 +18,6 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -307,13 +306,18 @@ func teamBlockPolicy(userCreatedAt, now time.Time) (bool, *string) {
 }
 
 func (s *APIStore) handleProvisioningError(ctx context.Context, c *gin.Context, operation string, err error) {
+	attrs := []attribute.KeyValue{
+		attribute.String("team.provision.operation", operation),
+	}
+
 	var provisionErr *internalteamprovision.ProvisionError
 	if errors.As(err, &provisionErr) && provisionErr.IsBadRequest() {
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, operation+" failed", err, attrs...)
 		s.sendAPIStoreError(c, http.StatusBadRequest, provisionErr.Error())
 
 		return
 	}
 
-	logger.L().Error(ctx, operation+" failed", zap.Error(err))
+	telemetry.ReportErrorByCode(ctx, http.StatusInternalServerError, operation+" failed", err, attrs...)
 	s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to "+operation)
 }

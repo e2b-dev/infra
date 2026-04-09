@@ -23,8 +23,9 @@ const (
 	testEventuallyTick    = 50 * time.Millisecond
 	testStopTimeout       = 5 * time.Second
 
-	authMigrationsDir             = "packages/db/pkg/auth/migrations"
-	authCustomSchemaVersion int64 = 20260401000001
+	authMigrationsDir                 = "packages/db/pkg/auth/migrations"
+	authCustomSchemaVersion     int64 = 20260401000001
+	authTriggerMigrationVersion int64 = 20260401000003
 )
 
 type riverProcess struct {
@@ -120,6 +121,23 @@ func TestAuthUserSync_EndToEnd(t *testing.T) {
 			waitForPublicUser(t, ctx, db, u.id, u.email)
 		}
 	})
+}
+
+func TestAuthUserSyncMigrations_AuthWritesSucceedBeforeRiverTablesExist(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	db.ApplyMigrationsUpTo(t, authTriggerMigrationVersion, authMigrationsDir)
+
+	ctx := t.Context()
+	userID := uuid.New()
+
+	require.NoError(t, db.AuthDB.TestsRawSQL(ctx,
+		"INSERT INTO auth.users (id, email) VALUES ($1, $2)", userID, "before-river@example.com"))
+	require.NoError(t, db.AuthDB.TestsRawSQL(ctx,
+		"UPDATE auth.users SET email = $1 WHERE id = $2", "before-river-updated@example.com", userID))
+	require.NoError(t, db.AuthDB.TestsRawSQL(ctx,
+		"DELETE FROM auth.users WHERE id = $1", userID))
 }
 
 func applyAuthUserSyncMigrations(t *testing.T, db *testutils.Database) {

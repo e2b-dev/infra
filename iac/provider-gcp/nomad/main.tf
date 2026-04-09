@@ -8,11 +8,11 @@ locals {
     lower(trimspace(lookup(var.dashboard_api_env_vars, "ENABLE_BILLING_HTTP_TEAM_PROVISION_SINK", "false"))) == "true"
   )
   dashboard_api_extra_env = merge(
-    var.dashboard_api_env_vars,
     local.enable_billing_http_team_provision_sink ? {
       BILLING_SERVER_URL       = data.google_cloud_run_v2_service.billing_server[0].uri
       BILLING_SERVER_API_TOKEN = data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data
     } : {},
+    var.dashboard_api_env_vars,
   )
 }
 
