@@ -37,12 +37,6 @@ build:
 fetch-busybox:
 	@./scripts/fetch-busybox.sh "$(BUSYBOX_VERSION)" "$(BUILD_ARCH)" "$(BUSYBOX_LOCAL)"
 
-# Upload busybox to GCS public builds bucket (one-time per version/arch).
-# Downloads from GitHub release, then uploads to GCS.
-.PHONY: upload-busybox
-upload-busybox:
-	@./scripts/upload-busybox.sh "$(BUSYBOX_VERSION)" "$(BUILD_ARCH)"
-
 .PHONY: build-local
 build-local:
 	# Allow for passing commit sha directly for docker builds
