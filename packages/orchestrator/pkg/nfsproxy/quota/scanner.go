@@ -14,9 +14,12 @@ import (
 )
 
 const (
-	defaultScanTimeout  = 5 * time.Minute
-	defaultPopTimeout   = 5 * time.Second
-	defaultBackoffDelay = 1 * time.Second
+	defaultScanTimeout = 5 * time.Minute
+	defaultPopTimeout  = 5 * time.Second
+
+	failedToFindVolumeDelay = 1 * time.Second
+	noVolumeFoundDelay      = 5 * time.Second
+	failedToScanVolumeDelay = 5 * time.Second
 )
 
 // Scanner processes dirty volumes and measures their disk usage.
@@ -55,30 +58,26 @@ func (s *Scanner) Run(ctx context.Context) error {
 
 			return ctx.Err()
 		default:
-			if err := s.processNext(ctx); err != nil {
-				s.logger.Warn("error processing dirty volume", zap.Error(err))
-				// Backoff on error
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case <-time.After(defaultBackoffDelay):
-				}
+			var delay time.Duration
+
+			vol, found, err := s.tracker.BlockingPopDirtyVolume(ctx, defaultPopTimeout)
+			if err != nil {
+				s.logger.Warn("error finding dirty volume", zap.Error(err))
+				delay = failedToFindVolumeDelay
+			} else if !found {
+				delay = noVolumeFoundDelay
+			} else if err := s.scanVolume(ctx, vol); err != nil {
+				delay = failedToScanVolumeDelay
+			}
+
+			// Backoff on error
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delay):
 			}
 		}
 	}
-}
-
-// processNext pops and processes the next dirty volume.
-func (s *Scanner) processNext(ctx context.Context) error {
-	vol, found, err := s.tracker.BlockingPopDirtyVolume(ctx, defaultPopTimeout)
-	if err != nil {
-		return fmt.Errorf("pop dirty volume: %w", err)
-	}
-	if !found {
-		return nil // No work, loop will continue
-	}
-
-	return s.scanVolume(ctx, vol)
 }
 
 // scanVolume measures disk usage for a volume and updates quota status.
