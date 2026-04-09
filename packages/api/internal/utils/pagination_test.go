@@ -379,8 +379,6 @@ func TestPagination_ProcessResultsWithGin(t *testing.T) {
 		return item.Timestamp, item.ID
 	}
 
-	gin.SetMode(gin.TestMode)
-
 	t.Run("sets header when has more results", func(t *testing.T) {
 		t.Parallel()
 		p, err := NewPagination[testItem](PaginationParams{}, config)
@@ -436,8 +434,6 @@ func TestPagination_SetHeader(t *testing.T) {
 		MaxLimit:     100,
 		DefaultID:    "default-id",
 	}
-
-	gin.SetMode(gin.TestMode)
 
 	t.Run("sets header when next token exists", func(t *testing.T) {
 		t.Parallel()
