@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -76,11 +77,32 @@ func (s *HTTPProvisionSink) ProvisionTeam(ctx context.Context, req sharedteampro
 		return nil
 	}
 
-	var apiErr errorResponse
-	_ = json.NewDecoder(resp.Body).Decode(&apiErr)
+	message, err := readProvisionErrorMessage(resp)
+	if err != nil {
+		return fmt.Errorf("read billing provisioning error response: %w", err)
+	}
 
 	return &ProvisionError{
 		StatusCode: resp.StatusCode,
-		Message:    apiErr.Message,
+		Message:    message,
 	}
+}
+
+func readProvisionErrorMessage(resp *http.Response) (string, error) {
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2048))
+	if err != nil {
+		return "", err
+	}
+
+	var apiErr errorResponse
+	if err := json.Unmarshal(body, &apiErr); err == nil && apiErr.Message != "" {
+		return apiErr.Message, nil
+	}
+
+	message := strings.TrimSpace(string(body))
+	if message != "" {
+		return message, nil
+	}
+
+	return http.StatusText(resp.StatusCode), nil
 }
