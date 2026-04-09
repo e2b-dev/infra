@@ -384,6 +384,196 @@ func TestSerializeDeserialize_V4_NoBuilds(t *testing.T) {
 	require.Nil(t, got.Builds)
 }
 
+func TestSerializeDeserialize_V4_MultiBuild_LocateCompressed(t *testing.T) {
+	t.Parallel()
+
+	buildA := uuid.New()
+	buildB := uuid.New()
+
+	// Build A: 3 frames, each 4096 uncompressed.
+	//   Frame 0: U=[0,4096)   C=[0,1000)
+	//   Frame 1: U=[4096,8192) C=[1000,2800)
+	//   Frame 2: U=[8192,12288) C=[2800,5100)
+	ftA := storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+		{U: 4096, C: 1000},
+		{U: 4096, C: 1800},
+		{U: 4096, C: 2300},
+	})
+
+	// Build B: 2 frames, each 4096 uncompressed.
+	//   Frame 0: U=[0,4096)   C=[0,500)
+	//   Frame 1: U=[4096,8192) C=[500,1700)
+	ftB := storage.NewFrameTable(storage.CompressionLZ4, []storage.FrameSize{
+		{U: 4096, C: 500},
+		{U: 4096, C: 1200},
+	})
+
+	// Virtual layout (20480 bytes total):
+	//   [0,4096)     → buildA offset 0
+	//   [4096,12288) → buildB offset 0 (8192 bytes = both frames of B)
+	//   [12288,20480)→ buildA offset 4096 (8192 bytes = frames 1..2 of A)
+	metadata := &Metadata{
+		Version:     4,
+		BlockSize:   4096,
+		Size:        20480,
+		Generation:  2,
+		BuildId:     buildA,
+		BaseBuildId: buildA,
+	}
+
+	mappings := []*BuildMap{
+		{Offset: 0, Length: 4096, BuildId: buildA, BuildStorageOffset: 0},
+		{Offset: 4096, Length: 8192, BuildId: buildB, BuildStorageOffset: 0},
+		{Offset: 12288, Length: 8192, BuildId: buildA, BuildStorageOffset: 4096},
+	}
+
+	checksumA := sha256.Sum256([]byte("build-a"))
+	checksumB := sha256.Sum256([]byte("build-b"))
+
+	h, err := NewHeader(metadata, mappings)
+	require.NoError(t, err)
+	h.Builds = map[uuid.UUID]BuildData{
+		buildA: {Size: 12288, Checksum: checksumA, FrameData: ftA},
+		buildB: {Size: 8192, Checksum: checksumB, FrameData: ftB},
+	}
+
+	data, err := SerializeHeader(h)
+	require.NoError(t, err)
+
+	got, err := DeserializeBytes(data)
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(4), got.Metadata.Version)
+	require.Len(t, got.Mapping, 3)
+	require.Len(t, got.Builds, 2)
+
+	// Verify checksums round-trip.
+	require.Equal(t, checksumA, got.Builds[buildA].Checksum)
+	require.Equal(t, checksumB, got.Builds[buildB].Checksum)
+
+	// --- Build A frame lookups via GetBuildFrameData ---
+	fdA := got.GetBuildFrameData(buildA)
+	require.NotNil(t, fdA)
+	require.Equal(t, storage.CompressionZstd, fdA.CompressionType())
+	// All 3 frames should survive trimming: frame 0 referenced by mapping 0,
+	// frames 1-2 referenced by mapping 2.
+	require.Equal(t, 3, fdA.NumFrames())
+
+	// Frame 0 of A: U=0, C offset=0, C length=1000.
+	r, err := fdA.LocateCompressed(0)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), r.Offset)
+	require.Equal(t, 1000, r.Length)
+
+	// Frame 1 of A: U=4096, C offset=1000, C length=1800.
+	r, err = fdA.LocateCompressed(4096)
+	require.NoError(t, err)
+	require.Equal(t, int64(1000), r.Offset)
+	require.Equal(t, 1800, r.Length)
+
+	// Frame 2 of A: U=8192, C offset=2800, C length=2300.
+	r, err = fdA.LocateCompressed(8192)
+	require.NoError(t, err)
+	require.Equal(t, int64(2800), r.Offset)
+	require.Equal(t, 2300, r.Length)
+
+	// --- Build B frame lookups via GetBuildFrameData ---
+	fdB := got.GetBuildFrameData(buildB)
+	require.NotNil(t, fdB)
+	require.Equal(t, storage.CompressionLZ4, fdB.CompressionType())
+	require.Equal(t, 2, fdB.NumFrames())
+
+	// Frame 0 of B: U=0, C offset=0, C length=500.
+	r, err = fdB.LocateCompressed(0)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), r.Offset)
+	require.Equal(t, 500, r.Length)
+
+	// Frame 1 of B: U=4096, C offset=500, C length=1200.
+	r, err = fdB.LocateCompressed(4096)
+	require.NoError(t, err)
+	require.Equal(t, int64(500), r.Offset)
+	require.Equal(t, 1200, r.Length)
+
+	// Beyond end of B's frames.
+	_, err = fdB.LocateCompressed(8192)
+	require.Error(t, err)
+}
+
+func TestSerializeDeserialize_V4_TrimmedOffsets_Error(t *testing.T) {
+	t.Parallel()
+
+	buildID := uuid.New()
+
+	// 4 frames, each 4096 uncompressed.
+	// Frame 0: U=[0,4096)     C=[0,2000)
+	// Frame 1: U=[4096,8192)  C=[2000,5000)
+	// Frame 2: U=[8192,12288) C=[5000,8500)
+	// Frame 3: U=[12288,16384) C=[8500,10300)
+	ft := storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+		{U: 4096, C: 2000},
+		{U: 4096, C: 3000},
+		{U: 4096, C: 3500},
+		{U: 4096, C: 1800},
+	})
+
+	metadata := &Metadata{
+		Version:     4,
+		BlockSize:   4096,
+		Size:        4096,
+		Generation:  0,
+		BuildId:     buildID,
+		BaseBuildId: buildID,
+	}
+
+	// Mapping references only frame 2 (BuildStorageOffset=8192, Length=4096).
+	// Frames 0, 1, and 3 should be trimmed away.
+	mappings := []*BuildMap{
+		{
+			Offset:             0,
+			Length:             4096,
+			BuildId:            buildID,
+			BuildStorageOffset: 8192,
+		},
+	}
+
+	h, err := NewHeader(metadata, mappings)
+	require.NoError(t, err)
+	h.Builds = map[uuid.UUID]BuildData{
+		buildID: {FrameData: ft},
+	}
+
+	data, err := SerializeHeader(h)
+	require.NoError(t, err)
+
+	got, err := DeserializeBytes(data)
+	require.NoError(t, err)
+
+	fd := got.Builds[buildID].FrameData
+	require.NotNil(t, fd)
+	require.Equal(t, 1, fd.NumFrames(), "only frame 2 should survive trimming")
+
+	// The surviving frame covers U=[8192,12288). Lookup should succeed.
+	r, err := fd.LocateCompressed(8192)
+	require.NoError(t, err)
+	require.Equal(t, int64(5000), r.Offset)
+	require.Equal(t, 3500, r.Length)
+
+	// Trimmed offsets should return errors.
+	_, err = fd.LocateCompressed(0)
+	require.Error(t, err, "frame at offset 0 was trimmed, should error")
+
+	_, err = fd.LocateCompressed(4096)
+	require.Error(t, err, "frame at offset 4096 was trimmed, should error")
+
+	_, err = fd.LocateCompressed(12288)
+	require.Error(t, err, "frame at offset 12288 was trimmed, should error")
+
+	// Completely beyond original range.
+	_, err = fd.LocateCompressed(16384)
+	require.Error(t, err, "offset beyond all frames should error")
+}
+
 func TestFrameTable_LocateCompressed(t *testing.T) {
 	t.Parallel()
 

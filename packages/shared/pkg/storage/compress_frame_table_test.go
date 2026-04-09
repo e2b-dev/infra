@@ -13,18 +13,9 @@ func threeFrameFT(startU, startC int64) *FrameTable {
 	return &FrameTable{
 		compressionType: CompressionLZ4,
 		entries: []frameEntry{
-			{
-				StartU: startU, EndU: startU + 1<<20,
-				StartC: startC, EndC: startC + 500_000,
-			},
-			{
-				StartU: startU + 1<<20, EndU: startU + 2<<20,
-				StartC: startC + 500_000, EndC: startC + 1_100_000,
-			},
-			{
-				StartU: startU + 2<<20, EndU: startU + 3<<20,
-				StartC: startC + 1_100_000, EndC: startC + 1_500_000,
-			},
+			{StartU: startU, StartC: startC, SizeU: 1 << 20, SizeC: 500_000},                     // frame 0
+			{StartU: startU + 1<<20, StartC: startC + 500_000, SizeU: 1 << 20, SizeC: 600_000},   // frame 1
+			{StartU: startU + 2<<20, StartC: startC + 1_100_000, SizeU: 1 << 20, SizeC: 400_000}, // frame 2
 		},
 	}
 }

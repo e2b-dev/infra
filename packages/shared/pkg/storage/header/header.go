@@ -35,8 +35,9 @@ type Header struct {
 	Mapping []*BuildMap
 }
 
-// CloneForUpload returns a shallow clone safe for serialization without
-// racing with concurrent readers.
+// CloneForUpload returns a shallow clone safe for serialization without racing
+// with concurrent readers. BuildMap pointers and BuildData.FrameData pointers
+// are shared (both are immutable after construction).
 func (t *Header) CloneForUpload() *Header {
 	mappings := make([]*BuildMap, len(t.Mapping))
 	copy(mappings, t.Mapping)

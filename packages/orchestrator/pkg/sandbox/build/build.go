@@ -97,12 +97,12 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 
 		size := b.buildFileSize(h, mappedToBuild.BuildId)
 		ft := h.GetBuildFrameData(mappedToBuild.BuildId)
-		layer, err := b.getBuild(ctx, mappedToBuild.BuildId, size, ft.CompressionType())
+		mappedBuild, err := b.getBuild(ctx, mappedToBuild.BuildId, size, ft.CompressionType())
 		if err != nil {
 			return 0, fmt.Errorf("failed to get build: %w", err)
 		}
 
-		buildN, err := layer.ReadAt(ctx,
+		buildN, err := mappedBuild.ReadAt(ctx,
 			p[n:int64(n)+readLength],
 			int64(mappedToBuild.Offset),
 			ft,
@@ -204,9 +204,6 @@ func (b *File) swapHeader(transErr *storage.PeerTransitionedError) error {
 // buildFileSize returns the uncompressed file size for a build. Returns 0 for
 // V3 headers, which signals the read path to fall back to a Size() RPC.
 func (b *File) buildFileSize(h *header.Header, buildID uuid.UUID) int64 {
-	if h.Builds == nil {
-		return 0
-	}
 	if bd, ok := h.Builds[buildID]; ok {
 		return bd.Size
 	}

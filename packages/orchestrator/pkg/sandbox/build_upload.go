@@ -164,10 +164,6 @@ func pendingBuildInfoKey(buildID, fileType string) string {
 }
 
 func (p *PendingBuildInfo) add(key string, ft *storage.FrameTable, fileSize int64, checksum [32]byte) {
-	if ft == nil {
-		return
-	}
-
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -195,21 +191,21 @@ func (p *PendingBuildInfo) applyToHeader(h *headers.Header, fileType string) {
 		return
 	}
 
-	var buildIDs []uuid.UUID
-	for _, mapping := range h.Mapping {
-		if _, found := slices.BinarySearchFunc(buildIDs, mapping.BuildId, func(a, b uuid.UUID) int {
-			return bytes.Compare(a[:], b[:])
-		}); !found {
-			buildIDs = append(buildIDs, mapping.BuildId)
-			slices.SortFunc(buildIDs, func(a, b uuid.UUID) int { return bytes.Compare(a[:], b[:]) })
-		}
+	buildIDs := make([]uuid.UUID, len(h.Mapping))
+	for i, m := range h.Mapping {
+		buildIDs[i] = m.BuildId
 	}
+	slices.SortFunc(buildIDs, func(a, b uuid.UUID) int { return bytes.Compare(a[:], b[:]) })
+	buildIDs = slices.CompactFunc(buildIDs, func(a, b uuid.UUID) bool { return a == b })
 
 	for _, buildID := range buildIDs {
 		key := pendingBuildInfoKey(buildID.String(), fileType)
 		info := p.get(key)
 
 		if info == nil {
+			// Parent builds and uuid.Nil (empty blocks) have no pending entry.
+			// Parent builds are either already in h.Builds (copied by ToDiffHeader),
+			// or h.Builds is nil (V3 base with no Builds map at all).
 			continue
 		}
 

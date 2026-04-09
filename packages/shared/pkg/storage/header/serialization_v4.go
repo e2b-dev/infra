@@ -2,7 +2,6 @@ package header
 
 import (
 	"bytes"
-	"cmp"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -45,7 +44,7 @@ func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings []
 		buildIDs = append(buildIDs, id)
 	}
 	slices.SortFunc(buildIDs, func(a, b uuid.UUID) int {
-		return cmp.Compare(a.String(), b.String())
+		return bytes.Compare(a[:], b[:])
 	})
 
 	// U-space ranges per build for sparse trimming.

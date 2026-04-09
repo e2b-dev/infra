@@ -35,13 +35,14 @@ func (r Range) String() string {
 	return fmt.Sprintf("%d/%d", r.Offset, r.Length)
 }
 
-// frameEntry stores one frame as absolute [Start, End) byte offsets in both
-// address spaces.
+// frameEntry stores one frame as an absolute start offset plus size in both
+// address spaces. Fields must be exported for encoding/binary (Read/Write use reflection).
+// Field order chosen for optimal alignment: two int64 then two uint32 = 24 bytes, no padding.
 type frameEntry struct {
 	StartU int64
-	EndU   int64
 	StartC int64
-	EndC   int64
+	SizeU  int32
+	SizeC  int32
 }
 
 // FrameTable is the decompression index for a compressed diff file.
@@ -65,9 +66,9 @@ func NewFrameTable(ct CompressionType, sizes []FrameSize) *FrameTable {
 	for i, s := range sizes {
 		entries[i] = frameEntry{
 			StartU: u,
-			EndU:   u + int64(s.U),
 			StartC: c,
-			EndC:   c + int64(s.C),
+			SizeU:  s.U,
+			SizeC:  s.C,
 		}
 		u += int64(s.U)
 		c += int64(s.C)
@@ -85,10 +86,9 @@ func (ft *FrameTable) CompressionType() CompressionType {
 	return ft.compressionType
 }
 
-// IsCompressed reports whether ft is non-nil, has a compression type set, and
-// contains at least one frame.
+// IsCompressed reports whether ft is non-nil and has a compression type set.
 func (ft *FrameTable) IsCompressed() bool {
-	return ft != nil && ft.compressionType != CompressionNone && len(ft.entries) > 0
+	return ft != nil && ft.compressionType != CompressionNone
 }
 
 func (ft *FrameTable) NumFrames() int {
@@ -99,17 +99,20 @@ func (ft *FrameTable) NumFrames() int {
 	return len(ft.entries)
 }
 
+func (e frameEntry) endU() int64 { return e.StartU + int64(e.SizeU) }
+func (e frameEntry) endC() int64 { return e.StartC + int64(e.SizeC) }
+
 func (ft *FrameTable) FrameAt(i int) (startU, endU, startC, endC int64) {
 	e := ft.entries[i]
 
-	return e.StartU, e.EndU, e.StartC, e.EndC
+	return e.StartU, e.endU(), e.StartC, e.endC()
 }
 
 // UncompressedSize returns the total uncompressed size across all frames.
 func (ft *FrameTable) UncompressedSize() int64 {
 	var total int64
 	for _, e := range ft.entries {
-		total += e.EndU - e.StartU
+		total += int64(e.SizeU)
 	}
 
 	return total
@@ -119,7 +122,7 @@ func (ft *FrameTable) UncompressedSize() int64 {
 func (ft *FrameTable) CompressedSize() int64 {
 	var total int64
 	for _, e := range ft.entries {
-		total += e.EndC - e.StartC
+		total += int64(e.SizeC)
 	}
 
 	return total
@@ -141,7 +144,7 @@ func (ft *FrameTable) locate(offset int64) (frameEntry, error) {
 	}
 
 	e := ft.entries[i]
-	if offset >= e.EndU {
+	if offset >= e.endU() {
 		return frameEntry{}, fmt.Errorf("offset %d is in a gap (not covered by any frame)", offset)
 	}
 
@@ -156,7 +159,7 @@ func (ft *FrameTable) LocateCompressed(offset int64) (Range, error) {
 		return Range{}, err
 	}
 
-	return Range{Offset: e.StartC, Length: int(e.EndC - e.StartC)}, nil
+	return Range{Offset: e.StartC, Length: int(e.SizeC)}, nil
 }
 
 // LocateUncompressed returns the uncompressed byte range for the frame
@@ -167,7 +170,7 @@ func (ft *FrameTable) LocateUncompressed(offset int64) (Range, error) {
 		return Range{}, err
 	}
 
-	return Range{Offset: e.StartU, Length: int(e.EndU - e.StartU)}, nil
+	return Range{Offset: e.StartU, Length: int(e.SizeU)}, nil
 }
 
 // Serialize writes the frame table to w in binary little-endian format.
@@ -212,11 +215,14 @@ func DeserializeFrameTable(r io.Reader) (*FrameTable, error) {
 		return nil, fmt.Errorf("read frame count: %w", err)
 	}
 
+	if ct == 0 && n > 0 {
+		return nil, fmt.Errorf("compression type is 0 but frame count is %d: corrupted header", n)
+	}
 	if ct == 0 || n == 0 {
 		return nil, nil
 	}
 
-	// Cap to prevent OOM from corrupted headers. 1<<20 frames × 32 bytes = 32 MiB.
+	// Cap to prevent OOM from corrupted headers. 1<<20 frames × 24 bytes = 24 MiB.
 	const maxFrames = 1 << 20
 	if n > maxFrames {
 		return nil, fmt.Errorf("frame count %d exceeds maximum %d", n, maxFrames)
@@ -226,6 +232,15 @@ func DeserializeFrameTable(r io.Reader) (*FrameTable, error) {
 	for i := range n {
 		if err := binary.Read(r, binary.LittleEndian, &entries[i]); err != nil {
 			return nil, fmt.Errorf("read frame entry %d: %w", i, err)
+		}
+		if entries[i].SizeU <= 0 || entries[i].SizeC <= 0 {
+			return nil, fmt.Errorf("frame %d has zero or negative size: SizeU=%d SizeC=%d", i, entries[i].SizeU, entries[i].SizeC)
+		}
+		if i > 0 && entries[i].StartU < entries[i-1].endU() {
+			return nil, fmt.Errorf("frame %d StartU %d < previous endU %d: U-entries not sorted", i, entries[i].StartU, entries[i-1].endU())
+		}
+		if i > 0 && entries[i].StartC < entries[i-1].endC() {
+			return nil, fmt.Errorf("frame %d StartC %d < previous endC %d: C-entries not sorted", i, entries[i].StartC, entries[i-1].endC())
 		}
 	}
 
@@ -247,7 +262,7 @@ func (ft *FrameTable) TrimToRanges(ranges [][2]int64) *FrameTable {
 
 		// Binary search: first frame whose EndU > startU.
 		lo := sort.Search(len(ft.entries), func(i int) bool {
-			return ft.entries[i].EndU > startU
+			return ft.entries[i].endU() > startU
 		})
 
 		for i := lo; i < len(ft.entries) && ft.entries[i].StartU < endU; i++ {
