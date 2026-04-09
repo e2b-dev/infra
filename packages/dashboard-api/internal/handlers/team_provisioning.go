@@ -235,13 +235,6 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 		return provisionedTeam{}, fmt.Errorf("commit team creation transaction: %w", err)
 	}
 
-	logger.L().Info(ctx, "team created locally",
-		zap.String("user_id", userID.String()),
-		zap.String("team_id", team.ID.String()),
-		zap.String("reason", teamprovision.ReasonAdditionalTeam),
-		zap.String("result", "created"),
-	)
-
 	req := teamprovision.TeamBillingProvisionRequestedV1{
 		TeamID:      team.ID,
 		TeamName:    team.Name,
@@ -249,13 +242,7 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 		OwnerUserID: userID,
 		Reason:      teamprovision.ReasonAdditionalTeam,
 	}
-	if err := s.teamProvisionSink.ProvisionTeam(ctx, req); err != nil {
-		if cleanupErr := s.cleanupCreatedTeam(ctx, team.ID); cleanupErr != nil {
-			return provisionedTeam{}, fmt.Errorf("cleanup created team: %w", cleanupErr)
-		}
-
-		return provisionedTeam{}, err
-	}
+	_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
 
 	return provisionedTeam{
 		ID:            team.ID,
