@@ -7,6 +7,9 @@ import (
 
 	"github.com/go-git/go-billy/v5"
 	"github.com/willscott/go-nfs"
+	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type wrappedHandler struct {
@@ -26,7 +29,8 @@ func (w *wrappedHandler) Mount(ctx context.Context, conn net.Conn, req nfs.Mount
 	var fs billy.Filesystem
 	var auth []nfs.AuthFlavor
 
-	_ = w.interceptors.Exec(ctx, "Handler.Mount", []any{conn.RemoteAddr().String(), string(req.Dirpath)},
+	err := w.interceptors.Exec(
+		ctx, "Handler.Mount", []any{conn.RemoteAddr().String(), string(req.Dirpath)},
 		func(ctx context.Context) error {
 			status, fs, auth = w.inner.Mount(ctx, conn, req)
 			if status != nfs.MountStatusOk {
@@ -34,7 +38,13 @@ func (w *wrappedHandler) Mount(ctx context.Context, conn net.Conn, req nfs.Mount
 			}
 
 			return nil
-		})
+		},
+	)
+	if err != nil {
+		logger.L().Error(ctx, "Handler.Mount interceptor error", zap.Error(err))
+
+		return nfs.MountStatusErrServerFault, nil, nil
+	}
 
 	return status, WrapFilesystem(ctx, fs, w.interceptors), auth
 }
@@ -47,6 +57,8 @@ func (w *wrappedHandler) Change(ctx context.Context, fs billy.Filesystem) (chang
 			return nil
 		})
 	if err != nil {
+		logger.L().Error(ctx, "Handler.Change interceptor error", zap.Error(err))
+
 		return nil
 	}
 
@@ -64,12 +76,17 @@ func (w *wrappedHandler) FSStat(ctx context.Context, fs billy.Filesystem, stat *
 func (w *wrappedHandler) ToHandle(ctx context.Context, fs billy.Filesystem, path []string) []byte {
 	var result []byte
 
-	_ = w.interceptors.Exec(ctx, "Handler.ToHandle", []any{path},
+	err := w.interceptors.Exec(ctx, "Handler.ToHandle", []any{path},
 		func(ctx context.Context) error {
 			result = w.inner.ToHandle(ctx, fs, path)
 
 			return nil
 		})
+	if err != nil {
+		logger.L().Error(ctx, "Handler.ToHandle interceptor error",
+			zap.Error(err),
+			zap.Strings("path", path))
+	}
 
 	return result
 }
