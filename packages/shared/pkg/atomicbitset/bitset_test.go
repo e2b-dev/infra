@@ -20,7 +20,6 @@ var impls = []implFactory{
 	{"BitsAndBlooms", func(n uint) Bitset { return NewBitsAndBlooms(n) }},
 	{"Sharded", func(n uint) Bitset { return NewSharded(n, DefaultShardBits) }},
 	{"Sharded/small", func(n uint) Bitset { return NewSharded(n, 64) }},
-	{"SyncMap", func(n uint) Bitset { return NewSyncMap(n) }},
 }
 
 func TestHasRange(t *testing.T) {

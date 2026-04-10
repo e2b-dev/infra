@@ -7,6 +7,8 @@ import (
 	"github.com/bits-and-blooms/bitset"
 )
 
+var _ Bitset = (*Flat)(nil)
+
 type Flat struct {
 	words []atomic.Uint64
 	n     uint

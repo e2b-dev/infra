@@ -116,11 +116,7 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	}
 
 	if c.mmap == nil {
-		return &header.DiffMetadata{
-			Dirty:     bitset.New(0),
-			Empty:     bitset.New(0),
-			BlockSize: c.blockSize,
-		}, nil
+		return header.NewDiffMetadata(c.blockSize, bitset.New(0)), nil
 	}
 
 	f, err := os.Open(c.filePath)
@@ -140,9 +136,7 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	}
 
 	buildStart := time.Now()
-	builder := header.NewDiffMetadataBuilderFromDirty(c.blockSize, c.dirty.BitSet())
-
-	diffMetadata := builder.Build()
+	diffMetadata := header.NewDiffMetadata(c.blockSize, c.dirty.BitSet())
 	telemetry.SetAttributes(ctx, attribute.Int64("build_metadata_ms", time.Since(buildStart).Milliseconds()))
 
 	dst := int(out.Fd())

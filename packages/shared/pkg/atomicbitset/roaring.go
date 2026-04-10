@@ -7,7 +7,8 @@ import (
 	"github.com/bits-and-blooms/bitset"
 )
 
-// Roaring wraps a roaring bitmap (32-bit) with an internal RWMutex.
+var _ Bitset = (*Roaring)(nil)
+
 type Roaring struct {
 	mu sync.RWMutex
 	bm *roaring.Bitmap

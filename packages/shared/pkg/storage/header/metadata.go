@@ -24,6 +24,14 @@ type DiffMetadata struct {
 	BlockSize int64
 }
 
+func NewDiffMetadata(blockSize int64, dirty *bitset.BitSet) *DiffMetadata {
+	return &DiffMetadata{
+		Dirty:     dirty,
+		Empty:     bitset.New(0),
+		BlockSize: blockSize,
+	}
+}
+
 func (d *DiffMetadata) toDiffMapping(
 	ctx context.Context,
 	buildID uuid.UUID,
@@ -118,14 +126,6 @@ func NewDiffMetadataBuilder(size, blockSize int64) *DiffMetadataBuilder {
 		dirty: bitset.New(uint(TotalBlocks(size, blockSize))),
 		empty: bitset.New(0),
 
-		blockSize: blockSize,
-	}
-}
-
-func NewDiffMetadataBuilderFromDirty(blockSize int64, dirty *bitset.BitSet) *DiffMetadataBuilder {
-	return &DiffMetadataBuilder{
-		dirty:     dirty,
-		empty:     bitset.New(0),
 		blockSize: blockSize,
 	}
 }

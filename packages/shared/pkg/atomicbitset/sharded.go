@@ -6,7 +6,6 @@ import (
 	"github.com/bits-and-blooms/bitset"
 )
 
-// DefaultShardBits is 128 MB / 4 KB = 32768 bits per shard (4 KB bitmap, one OS page).
 const DefaultShardBits uint = 32768
 
 type shard struct {
@@ -19,7 +18,6 @@ func newShard(bitsPerShard uint) *shard {
 	}
 }
 
-// Sharded is a two-level lock-free bitset with lazily allocated shard bitmaps.
 type Sharded struct {
 	shards       []atomic.Pointer[shard]
 	n            uint
@@ -173,10 +171,4 @@ func shardSetRange(sh *shard, lo, hi uint) {
 	}
 }
 
-var (
-	_ Bitset = (*Flat)(nil)
-	_ Bitset = (*Roaring)(nil)
-	_ Bitset = (*Roaring64)(nil)
-	_ Bitset = (*Sharded)(nil)
-	_ Bitset = (*SyncMap)(nil)
-)
+var _ Bitset = (*Sharded)(nil)

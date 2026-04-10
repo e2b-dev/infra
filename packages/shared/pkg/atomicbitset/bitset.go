@@ -1,5 +1,3 @@
-// Package atomicbitset provides fixed-size bitset implementations.
-// All implementations are safe for concurrent HasRange and SetRange.
 package atomicbitset
 
 import (

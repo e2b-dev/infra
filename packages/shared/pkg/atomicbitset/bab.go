@@ -6,7 +6,8 @@ import (
 	"github.com/bits-and-blooms/bitset"
 )
 
-// BitsAndBlooms wraps a bits-and-blooms/bitset.BitSet with an internal RWMutex.
+var _ Bitset = (*BitsAndBlooms)(nil)
+
 type BitsAndBlooms struct {
 	mu sync.RWMutex
 	bs *bitset.BitSet
