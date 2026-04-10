@@ -49,14 +49,15 @@ resource "google_compute_region_instance_group_manager" "server_pool" {
     port = var.nomad_port
   }
 
-  # Server is a stateful cluster, so the update strategy used to roll out a new GCE Instance Template must be
-  # a rolling update.
+  # Server is a stateful cluster. In non-dev environments, use OPPORTUNISTIC updates so instance template
+  # changes are only applied when instances are recreated for other reasons (e.g., auto-healing).
+  # Proactive rolling replacements of servers can cause missed client heartbeats and secret revocations:
+  # https://github.com/hashicorp/nomad/issues/9390
   update_policy {
-    type           = "OPPORTUNISTIC"
+    type           = var.environment == "dev" ? "PROACTIVE" : "OPPORTUNISTIC"
     minimal_action = "REPLACE"
 
-    // We want to keep the instance distribution even
-    instance_redistribution_type = "PROACTIVE"
+    instance_redistribution_type = var.environment == "dev" ? "PROACTIVE" : "NONE"
     max_unavailable_fixed        = 0
 
     // The number has to be a multiple of the number of zones in the region
