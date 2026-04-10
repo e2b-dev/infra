@@ -4,13 +4,11 @@ go 1.25.4
 
 tool github.com/go-swagger/go-swagger/cmd/swagger
 
-replace github.com/RoaringBitmap/roaring/v2 => github.com/e2b-dev/roaring/v2 v2.16.1-0.20260410073213-00ee8aef09f9
-
 require (
 	cloud.google.com/go/artifactregistry v1.17.1
 	cloud.google.com/go/storage v1.59.2
 	connectrpc.com/connect v1.18.1
-	github.com/RoaringBitmap/roaring/v2 v2.16.0
+	github.com/RoaringBitmap/roaring/v2 v2.16.1
 	github.com/aws/aws-sdk-go-v2 v1.41.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.6
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.74

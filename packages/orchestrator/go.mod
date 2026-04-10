@@ -13,8 +13,6 @@ tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
 tool github.com/vektra/mockery/v3
 
-replace github.com/RoaringBitmap/roaring/v2 => github.com/e2b-dev/roaring/v2 v2.16.1-0.20260410073213-00ee8aef09f9
-
 require (
 	cloud.google.com/go/storage v1.59.2
 	connectrpc.com/connect v1.18.1
@@ -99,7 +97,7 @@ require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.54.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.54.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/RoaringBitmap/roaring/v2 v2.16.0 // indirect
+	github.com/RoaringBitmap/roaring/v2 v2.16.1 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.41.0 // indirect
