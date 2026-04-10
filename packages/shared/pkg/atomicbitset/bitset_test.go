@@ -244,7 +244,6 @@ func TestHasRange_OutOfBounds(t *testing.T) {
 	}
 }
 
-
 // TestCachePattern reproduces the exact SetRange/HasRange sequence that the
 // block cache uses: chunk-aligned writes followed by arbitrary sub-block reads.
 // Parameters mirror a real 6.5 MB rootfs with 4 KB blocks and 4 MB chunks.

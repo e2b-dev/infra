@@ -20,8 +20,6 @@ func NewBitsAndBlooms(n uint) *BitsAndBlooms {
 	}
 }
 
-
-
 func (b *BitsAndBlooms) Has(i uint) bool {
 	if i >= b.n {
 		return false

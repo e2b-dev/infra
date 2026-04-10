@@ -19,8 +19,6 @@ func NewFlat(n uint) *Flat {
 	}
 }
 
-
-
 func (b *Flat) Has(i uint) bool {
 	if i >= b.n {
 		return false
