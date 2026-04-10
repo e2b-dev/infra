@@ -18,6 +18,10 @@ func BlockIdx(off, blockSize int64) int64 {
 	return off / blockSize
 }
 
+func BlockEnd(off, blockSize int64) int64 {
+	return (off + blockSize - 1) / blockSize
+}
+
 func BlockOffset(idx, blockSize int64) int64 {
 	return idx * blockSize
 }
