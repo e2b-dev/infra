@@ -16,7 +16,7 @@ type v3SerializableBuildMap struct {
 }
 
 // serializeV3 writes [Metadata] [v3 mappings…] with no length prefix.
-func serializeV3(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
+func serializeV3(metadata *Metadata, mappings []BuildMap) ([]byte, error) {
 	var buf bytes.Buffer
 
 	if err := binary.Write(&buf, binary.LittleEndian, metadata); err != nil {
@@ -41,7 +41,7 @@ func serializeV3(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
 // deserializeV3 reads V3 mappings (read until EOF, no count prefix).
 func deserializeV3(metadata *Metadata, blockData []byte) (*Header, error) {
 	reader := bytes.NewReader(blockData)
-	var mappings []*BuildMap
+	var mappings []BuildMap
 
 	for {
 		var v3 v3SerializableBuildMap
@@ -53,7 +53,7 @@ func deserializeV3(metadata *Metadata, blockData []byte) (*Header, error) {
 			return nil, fmt.Errorf("failed to read block mapping: %w", err)
 		}
 
-		mappings = append(mappings, &BuildMap{
+		mappings = append(mappings, BuildMap{
 			Offset:             v3.Offset,
 			Length:             v3.Length,
 			BuildId:            v3.BuildId,

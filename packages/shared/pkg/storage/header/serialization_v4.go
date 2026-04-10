@@ -35,7 +35,7 @@ type v4SerializableBuildFileInfo struct {
 }
 
 // serializeV4 writes [Metadata] [uint32 uncompressedSize] [LZ4( BuildFiles + counted mappings + FrameTables )].
-func serializeV4(metadata *Metadata, buildFiles map[uuid.UUID]BuildFileInfo, mappings []*BuildMap) ([]byte, error) {
+func serializeV4(metadata *Metadata, buildFiles map[uuid.UUID]BuildFileInfo, mappings []BuildMap) ([]byte, error) {
 	// --- raw metadata prefix (not compressed) ---
 	var metaBuf bytes.Buffer
 	if err := binary.Write(&metaBuf, binary.LittleEndian, metadata); err != nil {
@@ -165,14 +165,14 @@ func deserializeV4(metadata *Metadata, blockData []byte) (*Header, error) {
 		return nil, fmt.Errorf("failed to read mappings count: %w", err)
 	}
 
-	mappings := make([]*BuildMap, 0, numMappings)
+	mappings := make([]BuildMap, 0, numMappings)
 	for range numMappings {
 		var v4 v4SerializableBuildMap
 		if err := binary.Read(reader, binary.LittleEndian, &v4); err != nil {
 			return nil, fmt.Errorf("failed to read block mapping: %w", err)
 		}
 
-		m := &BuildMap{
+		m := BuildMap{
 			Offset:             v4.Offset,
 			Length:             v4.Length,
 			BuildId:            v4.BuildId,

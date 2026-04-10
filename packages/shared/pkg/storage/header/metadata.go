@@ -82,11 +82,7 @@ type DiffMetadata struct {
 func (d *DiffMetadata) toDiffMapping(
 	ctx context.Context,
 	buildID uuid.UUID,
-<<<<<<< HEAD
-) ([]*BuildMap, error) {
-=======
-) (mapping []BuildMap) {
->>>>>>> f98f20f7d1f207b34d12f6e8b570e4c10c35aa31
+) ([]BuildMap, error) {
 	dirtyMappings := CreateMapping(
 		&buildID,
 		d.Dirty,

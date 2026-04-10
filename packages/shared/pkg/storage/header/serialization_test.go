@@ -33,7 +33,7 @@ func TestSerializeDeserialize_V3_RoundTrip(t *testing.T) {
 		BaseBuildId: baseID,
 	}
 
-	mappings := []*BuildMap{
+	mappings := []BuildMap{
 		{
 			Offset:             0,
 			Length:             4096,
@@ -137,7 +137,7 @@ func TestSerializeDeserialize_V4_WithFrameTable(t *testing.T) {
 		BaseBuildId: baseID,
 	}
 
-	mappings := []*BuildMap{
+	mappings := []BuildMap{
 		{
 			Offset:             0,
 			Length:             4096,
@@ -219,7 +219,7 @@ func TestSerializeDeserialize_V4_Zstd_NonZeroStartAt(t *testing.T) {
 		BaseBuildId: buildID,
 	}
 
-	mappings := []*BuildMap{
+	mappings := []BuildMap{
 		{
 			Offset:             0,
 			Length:             4096,
@@ -273,7 +273,7 @@ func TestSerializeDeserialize_V4_CompressionNone_EmptyFrames(t *testing.T) {
 		BaseBuildId: buildID,
 	}
 
-	mappings := []*BuildMap{
+	mappings := []BuildMap{
 		{
 			Offset:             0,
 			Length:             4096,
@@ -330,7 +330,7 @@ func TestSerializeDeserialize_V4_ManyFrames(t *testing.T) {
 		BaseBuildId: buildID,
 	}
 
-	mappings := []*BuildMap{
+	mappings := []BuildMap{
 		{
 			Offset:             0,
 			Length:             4096 * numFrames,
@@ -374,7 +374,7 @@ func TestSerializeDeserialize_V4_EmptyBuildFiles(t *testing.T) {
 		BaseBuildId: buildID,
 	}
 
-	mappings := []*BuildMap{
+	mappings := []BuildMap{
 		{
 			Offset:  0,
 			Length:  4096,

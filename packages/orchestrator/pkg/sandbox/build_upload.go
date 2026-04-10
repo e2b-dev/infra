@@ -200,7 +200,8 @@ func (p *PendingBuildInfo) applyToHeader(h *headers.Header, fileType string) err
 	// Track frame cursor per build to avoid O(N²) rescanning.
 	cursors := make(map[string]int)
 
-	for _, mapping := range h.Mapping {
+	for i := range h.Mapping {
+		mapping := &h.Mapping[i]
 		key := pendingBuildInfoKey(mapping.BuildId.String(), fileType)
 		info := p.get(key)
 
@@ -209,7 +210,7 @@ func (p *PendingBuildInfo) applyToHeader(h *headers.Header, fileType string) err
 		}
 
 		cursor := cursors[key]
-		next, err := mapping.SetFrames(info.ft, cursor)
+		next, err := headers.ApplyFrames(mapping, info.ft, cursor)
 		if err != nil {
 			return fmt.Errorf("apply frames to mapping at offset %d for build %s: %w",
 				mapping.Offset, mapping.BuildId.String(), err)

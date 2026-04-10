@@ -727,7 +727,7 @@ func makeFrameTable(n int, frameU, frameC int32) *storage.FrameTable {
 	return ft
 }
 
-func assertFrameTable(t *testing.T, label string, m *BuildMap, startU, startC int64, nFrames int, frameU, frameC int32) {
+func assertFrameTable(t *testing.T, label string, m BuildMap, startU, startC int64, nFrames int, frameU, frameC int32) {
 	t.Helper()
 
 	require.NotNil(t, m.FrameTable, "%s: FrameTable should not be nil", label)
@@ -756,21 +756,21 @@ func TestMergeMappings_FrameTableSplits(t *testing.T) {
 	baseFT := makeFrameTable(6, frameU, frameC)
 
 	tests := map[string]struct {
-		base     []*BuildMap
-		diff     []*BuildMap
-		validate func(t *testing.T, merged []*BuildMap)
+		base     []BuildMap
+		diff     []BuildMap
+		validate func(t *testing.T, merged []BuildMap)
 	}{
 		"diff inside base — left and right get correct frame subsets": {
-			base: []*BuildMap{{
+			base: []BuildMap{{
 				Offset: 0, Length: 6 * blockSize,
 				BuildId: compBaseID, BuildStorageOffset: 0,
 				FrameTable: baseFT,
 			}},
-			diff: []*BuildMap{{
+			diff: []BuildMap{{
 				Offset: 2 * blockSize, Length: 2 * blockSize,
 				BuildId: compDiffID,
 			}},
-			validate: func(t *testing.T, m []*BuildMap) {
+			validate: func(t *testing.T, m []BuildMap) {
 				t.Helper()
 				require.Len(t, m, 3)
 
@@ -788,7 +788,7 @@ func TestMergeMappings_FrameTableSplits(t *testing.T) {
 		},
 
 		"base after diff with overlap — right split keeps tail frames": {
-			base: []*BuildMap{
+			base: []BuildMap{
 				{Offset: 0, Length: 1 * blockSize, BuildId: plainID},
 				{
 					Offset: 1 * blockSize, Length: 4 * blockSize,
@@ -796,11 +796,11 @@ func TestMergeMappings_FrameTableSplits(t *testing.T) {
 					FrameTable: makeFrameTable(4, frameU, frameC),
 				},
 			},
-			diff: []*BuildMap{{
+			diff: []BuildMap{{
 				Offset: 0, Length: 3 * blockSize,
 				BuildId: compDiffID,
 			}},
-			validate: func(t *testing.T, m []*BuildMap) {
+			validate: func(t *testing.T, m []BuildMap) {
 				t.Helper()
 				require.Len(t, m, 2)
 
@@ -814,7 +814,7 @@ func TestMergeMappings_FrameTableSplits(t *testing.T) {
 		},
 
 		"diff after base with overlap — left split keeps head frames": {
-			base: []*BuildMap{
+			base: []BuildMap{
 				{
 					Offset: 0, Length: 4 * blockSize,
 					BuildId: compBaseID, BuildStorageOffset: 0,
@@ -822,11 +822,11 @@ func TestMergeMappings_FrameTableSplits(t *testing.T) {
 				},
 				{Offset: 4 * blockSize, Length: 2 * blockSize, BuildId: plainID},
 			},
-			diff: []*BuildMap{{
+			diff: []BuildMap{{
 				Offset: 2 * blockSize, Length: 4 * blockSize,
 				BuildId: compDiffID,
 			}},
-			validate: func(t *testing.T, m []*BuildMap) {
+			validate: func(t *testing.T, m []BuildMap) {
 				t.Helper()
 				require.Len(t, m, 2)
 
@@ -839,16 +839,16 @@ func TestMergeMappings_FrameTableSplits(t *testing.T) {
 		},
 
 		"two diffs split same base into three pieces": {
-			base: []*BuildMap{{
+			base: []BuildMap{{
 				Offset: 0, Length: 6 * blockSize,
 				BuildId: compBaseID, BuildStorageOffset: 0,
 				FrameTable: baseFT,
 			}},
-			diff: []*BuildMap{
+			diff: []BuildMap{
 				{Offset: 1 * blockSize, Length: 1 * blockSize, BuildId: compDiffID},
 				{Offset: 4 * blockSize, Length: 1 * blockSize, BuildId: compDiffID},
 			},
-			validate: func(t *testing.T, m []*BuildMap) {
+			validate: func(t *testing.T, m []BuildMap) {
 				t.Helper()
 				require.Len(t, m, 5)
 
@@ -863,15 +863,15 @@ func TestMergeMappings_FrameTableSplits(t *testing.T) {
 		},
 
 		"nil FrameTable base — splits work without frames": {
-			base: []*BuildMap{{
+			base: []BuildMap{{
 				Offset: 0, Length: 4 * blockSize,
 				BuildId: compBaseID, BuildStorageOffset: 0,
 			}},
-			diff: []*BuildMap{{
+			diff: []BuildMap{{
 				Offset: 1 * blockSize, Length: 2 * blockSize,
 				BuildId: compDiffID,
 			}},
-			validate: func(t *testing.T, m []*BuildMap) {
+			validate: func(t *testing.T, m []BuildMap) {
 				t.Helper()
 				require.Len(t, m, 3)
 				assert.Nil(t, m[0].FrameTable)
@@ -883,12 +883,12 @@ func TestMergeMappings_FrameTableSplits(t *testing.T) {
 			// Simulates a real multi-layer header: three builds (A, B, C) each
 			// with their own FrameTable. A diff lands inside build B, splitting
 			// it. Builds A and C must pass through with FrameTables intact.
-			base: func() []*BuildMap {
+			base: func() []BuildMap {
 				buildA := uuid.New()
 				buildB := compBaseID
 				buildC := uuid.New()
 
-				return []*BuildMap{
+				return []BuildMap{
 					{
 						Offset: 0, Length: 2 * blockSize,
 						BuildId: buildA, BuildStorageOffset: 0,
@@ -906,11 +906,11 @@ func TestMergeMappings_FrameTableSplits(t *testing.T) {
 					},
 				}
 			}(),
-			diff: []*BuildMap{{
+			diff: []BuildMap{{
 				Offset: 3 * blockSize, Length: 2 * blockSize,
 				BuildId: compDiffID,
 			}},
-			validate: func(t *testing.T, m []*BuildMap) {
+			validate: func(t *testing.T, m []BuildMap) {
 				t.Helper()
 				// Expected: A(untouched) | B-left[0..1) | diff | B-right[3..4) | C(untouched)
 				require.Len(t, m, 5)

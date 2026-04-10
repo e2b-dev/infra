@@ -26,30 +26,15 @@ func DeserializeBytes(data []byte) (*Header, error) {
 		return nil, fmt.Errorf("header too short: %d bytes", len(data))
 	}
 
-<<<<<<< HEAD
 	metadata, err := deserializeMetadata(data[:metadataSize])
-=======
-func Serialize(metadata *Metadata, mappings []BuildMap) ([]byte, error) {
-	var buf bytes.Buffer
-
-	err := binary.Write(&buf, binary.LittleEndian, metadata)
->>>>>>> f98f20f7d1f207b34d12f6e8b570e4c10c35aa31
 	if err != nil {
 		return nil, err
 	}
 
-<<<<<<< HEAD
 	blockData := data[metadataSize:]
 
 	if metadata.Version >= 4 {
 		return deserializeV4(metadata, blockData)
-=======
-	for i := range mappings {
-		err := binary.Write(&buf, binary.LittleEndian, &mappings[i])
-		if err != nil {
-			return nil, fmt.Errorf("failed to write block mapping: %w", err)
-		}
->>>>>>> f98f20f7d1f207b34d12f6e8b570e4c10c35aa31
 	}
 
 	return deserializeV3(metadata, blockData)
@@ -96,33 +81,3 @@ func Deserialize(ctx context.Context, in storage.Blob) (*Header, error) {
 
 	return DeserializeBytes(data)
 }
-<<<<<<< HEAD
-=======
-
-func DeserializeBytes(data []byte) (*Header, error) {
-	reader := bytes.NewReader(data)
-	var metadata Metadata
-	err := binary.Read(reader, binary.LittleEndian, &metadata)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read metadata: %w", err)
-	}
-
-	mappings := make([]BuildMap, 0)
-
-	for {
-		var m BuildMap
-		err := binary.Read(reader, binary.LittleEndian, &m)
-		if errors.Is(err, io.EOF) {
-			break
-		}
-
-		if err != nil {
-			return nil, fmt.Errorf("failed to read block mapping: %w", err)
-		}
-
-		mappings = append(mappings, m)
-	}
-
-	return NewHeader(&metadata, mappings)
-}
->>>>>>> f98f20f7d1f207b34d12f6e8b570e4c10c35aa31
