@@ -96,7 +96,7 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		size:      size,
 		blockSize: blockSize,
 		dirtyFile: dirtyFile,
-		dirty:     atomicbitset.NewRoaring(uint(header.TotalBlocks(size, blockSize))),
+		dirty:     atomicbitset.NewRoaring(),
 	}, nil
 }
 

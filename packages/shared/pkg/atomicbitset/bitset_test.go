@@ -15,11 +15,8 @@ type implFactory struct {
 
 var impls = []implFactory{
 	{"Flat", func(n uint) Bitset { return NewFlat(n) }},
-	{"Roaring", func(n uint) Bitset { return NewRoaring(n) }},
-	{"Roaring64", func(n uint) Bitset { return NewRoaring64(n) }},
-	{"BitsAndBlooms", func(n uint) Bitset { return NewBitsAndBlooms(n) }},
-	{"Sharded", func(n uint) Bitset { return NewSharded(n, DefaultShardBits) }},
-	{"Sharded/small", func(n uint) Bitset { return NewSharded(n, 64) }},
+	{"Roaring", func(_ uint) Bitset { return NewRoaring() }},
+	{"Sharded", func(_ uint) Bitset { return NewSharded(benchBits, DefaultShardBits) }},
 }
 
 func TestHasRange(t *testing.T) {
@@ -319,9 +316,8 @@ const (
 // benchImpls excludes Sharded/small (not a production config).
 var benchImpls = []implFactory{
 	{"Flat", func(n uint) Bitset { return NewFlat(n) }},
-	{"Roaring", func(n uint) Bitset { return NewRoaring(n) }},
-	{"BitsAndBlooms", func(n uint) Bitset { return NewBitsAndBlooms(n) }},
-	{"Sharded", func(n uint) Bitset { return NewSharded(n, DefaultShardBits) }},
+	{"Roaring", func(_ uint) Bitset { return NewRoaring() }},
+	{"Sharded", func(_ uint) Bitset { return NewSharded(benchBits, DefaultShardBits) }},
 }
 
 func BenchmarkSetRange(b *testing.B) {

@@ -6,7 +6,7 @@ import (
 
 type Bitset interface {
 	Has(i uint) bool
-	HasRange(lo, hi uint) bool
-	SetRange(lo, hi uint)
+	HasRange(start, end uint) bool
+	SetRange(start, end uint)
 	BitSet() *bitset.BitSet
 }
