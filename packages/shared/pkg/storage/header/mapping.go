@@ -22,6 +22,7 @@ type BuildMap struct {
 	FrameTable         *storage.FrameTable
 }
 
+<<<<<<< HEAD
 func (mapping *BuildMap) Copy() *BuildMap {
 	return &BuildMap{
 		Offset:             mapping.Offset,
@@ -57,12 +58,14 @@ func (mapping *BuildMap) SetFrames(frameTable *storage.FrameTable, from int) (in
 	return next, nil
 }
 
+=======
+>>>>>>> f98f20f7d1f207b34d12f6e8b570e4c10c35aa31
 func CreateMapping(
 	buildId *uuid.UUID,
 	dirty *bitset.BitSet,
 	blockSize int64,
-) []*BuildMap {
-	var mappings []*BuildMap
+) []BuildMap {
+	var mappings []BuildMap
 
 	var startBlock uint
 	var blockLength uint
@@ -76,7 +79,7 @@ func CreateMapping(
 		}
 
 		if blockLength > 0 {
-			m := &BuildMap{
+			m := BuildMap{
 				Offset:             uint64(startBlock) * uint64(blockSize),
 				BuildId:            *buildId,
 				Length:             uint64(blockLength) * uint64(blockSize),
@@ -93,7 +96,7 @@ func CreateMapping(
 	}
 
 	if blockLength > 0 {
-		mappings = append(mappings, &BuildMap{
+		mappings = append(mappings, BuildMap{
 			Offset:             uint64(startBlock) * uint64(blockSize),
 			BuildId:            *buildId,
 			Length:             uint64(blockLength) * uint64(blockSize),
@@ -111,26 +114,32 @@ func CreateMapping(
 //
 // It returns a new set of mappings that covers the whole size.
 func MergeMappings(
+<<<<<<< HEAD
 	baseMapping []*BuildMap,
 	diffMapping []*BuildMap,
 ) ([]*BuildMap, error) {
+=======
+	baseMapping []BuildMap,
+	diffMapping []BuildMap,
+) []BuildMap {
+>>>>>>> f98f20f7d1f207b34d12f6e8b570e4c10c35aa31
 	if len(diffMapping) == 0 {
 		return baseMapping, nil
 	}
 
-	baseMappingCopy := make([]*BuildMap, len(baseMapping))
+	baseMappingCopy := make([]BuildMap, len(baseMapping))
 
 	copy(baseMappingCopy, baseMapping)
 
 	baseMapping = baseMappingCopy
 
-	mappings := make([]*BuildMap, 0)
+	mappings := make([]BuildMap, 0)
 
 	var baseIdx int
 	var diffIdx int
 
 	for baseIdx < len(baseMapping) && diffIdx < len(diffMapping) {
-		base := baseMapping[baseIdx]
+		base := &baseMapping[baseIdx]
 		diff := diffMapping[diffIdx]
 
 		if base.Length == 0 {
@@ -148,7 +157,7 @@ func MergeMappings(
 		// base is before diff and there is no overlap
 		// add base to the result, because it will not be overlapping by any diff
 		if base.Offset+base.Length <= diff.Offset {
-			mappings = append(mappings, base)
+			mappings = append(mappings, *base)
 
 			baseIdx++
 
@@ -186,12 +195,13 @@ func MergeMappings(
 			frameCursor := 0
 
 			if leftBaseLength > 0 {
-				leftBase := &BuildMap{
+				mappings = append(mappings, BuildMap{
 					Offset:  base.Offset,
 					Length:  uint64(leftBaseLength),
 					BuildId: base.BuildId,
 					// the build storage offset is the same as the base mapping
 					BuildStorageOffset: base.BuildStorageOffset,
+<<<<<<< HEAD
 				}
 				var err error
 				frameCursor, err = leftBase.SetFrames(base.FrameTable, 0)
@@ -200,6 +210,9 @@ func MergeMappings(
 				}
 
 				mappings = append(mappings, leftBase)
+=======
+				})
+>>>>>>> f98f20f7d1f207b34d12f6e8b570e4c10c35aa31
 			}
 
 			mappings = append(mappings, diff)
@@ -210,17 +223,20 @@ func MergeMappings(
 			rightBaseLength := int64(base.Length) - rightBaseShift
 
 			if rightBaseLength > 0 {
-				rightBase := &BuildMap{
+				baseMapping[baseIdx] = BuildMap{
 					Offset:             base.Offset + uint64(rightBaseShift),
 					Length:             uint64(rightBaseLength),
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
 				}
+<<<<<<< HEAD
 				if _, err := rightBase.SetFrames(base.FrameTable, frameCursor); err != nil {
 					return nil, fmt.Errorf("set frames for right split at offset %d: %w", rightBase.Offset, err)
 				}
 
 				baseMapping[baseIdx] = rightBase
+=======
+>>>>>>> f98f20f7d1f207b34d12f6e8b570e4c10c35aa31
 			} else {
 				baseIdx++
 			}
@@ -240,17 +256,20 @@ func MergeMappings(
 			rightBaseLength := int64(base.Length) - rightBaseShift
 
 			if rightBaseLength > 0 {
-				rightBase := &BuildMap{
+				baseMapping[baseIdx] = BuildMap{
 					Offset:             base.Offset + uint64(rightBaseShift),
 					Length:             uint64(rightBaseLength),
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
 				}
+<<<<<<< HEAD
 				if _, err := rightBase.SetFrames(base.FrameTable, 0); err != nil {
 					return nil, fmt.Errorf("set frames for right split at offset %d: %w", rightBase.Offset, err)
 				}
 
 				baseMapping[baseIdx] = rightBase
+=======
+>>>>>>> f98f20f7d1f207b34d12f6e8b570e4c10c35aa31
 			} else {
 				baseIdx++
 			}
@@ -264,17 +283,21 @@ func MergeMappings(
 			leftBaseLength := int64(diff.Offset) - int64(base.Offset)
 
 			if leftBaseLength > 0 {
-				leftBase := &BuildMap{
+				mappings = append(mappings, BuildMap{
 					Offset:             base.Offset,
 					Length:             uint64(leftBaseLength),
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset,
+<<<<<<< HEAD
 				}
 				if _, err := leftBase.SetFrames(base.FrameTable, 0); err != nil {
 					return nil, fmt.Errorf("set frames for left split at offset %d: %w", leftBase.Offset, err)
 				}
 
 				mappings = append(mappings, leftBase)
+=======
+				})
+>>>>>>> f98f20f7d1f207b34d12f6e8b570e4c10c35aa31
 			}
 
 			baseIdx++
@@ -292,15 +315,20 @@ func MergeMappings(
 }
 
 // NormalizeMappings joins adjacent mappings that have the same buildId.
+<<<<<<< HEAD
 // When merging mappings, FrameTables are also merged by extending the first
 // mapping's FrameTable with frames from subsequent mappings.
 func NormalizeMappings(mappings []*BuildMap) []*BuildMap {
+=======
+func NormalizeMappings(mappings []BuildMap) []BuildMap {
+>>>>>>> f98f20f7d1f207b34d12f6e8b570e4c10c35aa31
 	if len(mappings) == 0 {
 		return nil
 	}
 
-	result := make([]*BuildMap, 0, len(mappings))
+	result := make([]BuildMap, 0, len(mappings))
 
+<<<<<<< HEAD
 	// Start with a copy of the first mapping (Copy() now includes FrameTable)
 	current := mappings[0].Copy()
 
@@ -325,10 +353,20 @@ func NormalizeMappings(mappings []*BuildMap) []*BuildMap {
 					current.FrameTable = mergeFrameTables(current.FrameTable, mp.FrameTable)
 				}
 			}
+=======
+	current := mappings[0]
+
+	for i := 1; i < len(mappings); i++ {
+		mp := mappings[i]
+		if mp.BuildId == current.BuildId {
+			current.Length += mp.Length
+		} else {
+			result = append(result, current)
+			current = mp
+>>>>>>> f98f20f7d1f207b34d12f6e8b570e4c10c35aa31
 		}
 	}
 
-	// Add the last mapping
 	result = append(result, current)
 
 	return result

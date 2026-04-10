@@ -12,7 +12,7 @@ import (
 // startBlock-endBlock [offset, offset+length) := [buildStorageOffset, buildStorageOffset+length) ⊂ buildId, length in bytes
 //
 // It is used for debugging and visualization.
-func (mapping *BuildMap) Format(blockSize uint64) string {
+func (mapping BuildMap) Format(blockSize uint64) string {
 	rangeMessage := fmt.Sprintf("%d-%d", mapping.Offset/blockSize, (mapping.Offset+mapping.Length)/blockSize)
 
 	return fmt.Sprintf(
@@ -30,7 +30,7 @@ const (
 )
 
 // Layers returns a map of buildIds that are present in the mappings.
-func Layers(mappings []*BuildMap) *map[uuid.UUID]struct{} {
+func Layers(mappings []BuildMap) *map[uuid.UUID]struct{} {
 	layers := make(map[uuid.UUID]struct{})
 
 	for _, mapping := range mappings {
@@ -44,7 +44,7 @@ func Layers(mappings []*BuildMap) *map[uuid.UUID]struct{} {
 // It is used for debugging and visualization.
 //
 // You can pass maps to visualize different groups of buildIds.
-func Visualize(mappings []*BuildMap, size, blockSize, cols uint64, bottomGroup, topGroup *map[uuid.UUID]struct{}) string {
+func Visualize(mappings []BuildMap, size, blockSize, cols uint64, bottomGroup, topGroup *map[uuid.UUID]struct{}) string {
 	output := make([]rune, size/blockSize)
 
 	for outputIdx := range output {
@@ -85,7 +85,7 @@ func Visualize(mappings []*BuildMap, size, blockSize, cols uint64, bottomGroup, 
 //
 // It checks if the mappings are contiguous and if the length of each mapping is a multiple of the block size.
 // It also checks if the mappings cover the whole size.
-func ValidateMappings(mappings []*BuildMap, size, blockSize uint64) error {
+func ValidateMappings(mappings []BuildMap, size, blockSize uint64) error {
 	var currentOffset uint64
 
 	for _, mapping := range mappings {
@@ -111,11 +111,11 @@ func ValidateMappings(mappings []*BuildMap, size, blockSize uint64) error {
 	return nil
 }
 
-func (mapping *BuildMap) Equal(other *BuildMap) bool {
+func (mapping BuildMap) Equal(other BuildMap) bool {
 	return mapping.Offset == other.Offset && mapping.Length == other.Length && mapping.BuildId == other.BuildId
 }
 
-func Equal(a, b []*BuildMap) bool {
+func Equal(a, b []BuildMap) bool {
 	if len(a) != len(b) {
 		return false
 	}

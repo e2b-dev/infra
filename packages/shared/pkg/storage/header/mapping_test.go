@@ -21,7 +21,7 @@ var blockSize = uint64(2 << 20)
 
 var size = 8 * blockSize
 
-var simpleBase = []*BuildMap{
+var simpleBase = []BuildMap{
 	{
 		Offset:  0,
 		Length:  2 * blockSize,
@@ -41,7 +41,7 @@ var simpleBase = []*BuildMap{
 
 func TestMergeMappingsRemoveEmpty(t *testing.T) {
 	t.Parallel()
-	diff := []*BuildMap{
+	diff := []BuildMap{
 		{
 			Offset:  0,
 			Length:  0,
@@ -61,7 +61,7 @@ func TestMergeMappingsRemoveEmpty(t *testing.T) {
 
 func TestMergeMappingsBaseBeforeDiffNoOverlap(t *testing.T) {
 	t.Parallel()
-	diff := []*BuildMap{
+	diff := []BuildMap{
 		{
 			Offset:  7 * blockSize,
 			Length:  1 * blockSize,
@@ -72,7 +72,7 @@ func TestMergeMappingsBaseBeforeDiffNoOverlap(t *testing.T) {
 	m, err := MergeMappings(simpleBase, diff)
 	require.NoError(t, err)
 
-	require.True(t, Equal(m, []*BuildMap{
+	require.True(t, Equal(m, []BuildMap{
 		{
 			Offset:  0,
 			Length:  2 * blockSize,
@@ -102,7 +102,7 @@ func TestMergeMappingsBaseBeforeDiffNoOverlap(t *testing.T) {
 
 func TestMergeMappingsDiffBeforeBaseNoOverlap(t *testing.T) {
 	t.Parallel()
-	diff := []*BuildMap{
+	diff := []BuildMap{
 		{
 			Offset:  0,
 			Length:  1 * blockSize,
@@ -113,7 +113,7 @@ func TestMergeMappingsDiffBeforeBaseNoOverlap(t *testing.T) {
 	m, err := MergeMappings(simpleBase, diff)
 	require.NoError(t, err)
 
-	require.True(t, Equal(m, []*BuildMap{
+	require.True(t, Equal(m, []BuildMap{
 		{
 			Offset:  0,
 			Length:  1 * blockSize,
@@ -143,7 +143,7 @@ func TestMergeMappingsDiffBeforeBaseNoOverlap(t *testing.T) {
 
 func TestMergeMappingsBaseInsideDiff(t *testing.T) {
 	t.Parallel()
-	diff := []*BuildMap{
+	diff := []BuildMap{
 		{
 			Offset:  1 * blockSize,
 			Length:  5 * blockSize,
@@ -154,7 +154,7 @@ func TestMergeMappingsBaseInsideDiff(t *testing.T) {
 	m, err := MergeMappings(simpleBase, diff)
 	require.NoError(t, err)
 
-	require.True(t, Equal(m, []*BuildMap{
+	require.True(t, Equal(m, []BuildMap{
 		{
 			Offset:  0,
 			Length:  1 * blockSize,
@@ -179,7 +179,7 @@ func TestMergeMappingsBaseInsideDiff(t *testing.T) {
 
 func TestMergeMappingsDiffInsideBase(t *testing.T) {
 	t.Parallel()
-	diff := []*BuildMap{
+	diff := []BuildMap{
 		{
 			Offset:  3 * blockSize,
 			Length:  1 * blockSize,
@@ -190,7 +190,7 @@ func TestMergeMappingsDiffInsideBase(t *testing.T) {
 	m, err := MergeMappings(simpleBase, diff)
 	require.NoError(t, err)
 
-	require.True(t, Equal(m, []*BuildMap{
+	require.True(t, Equal(m, []BuildMap{
 		{
 			Offset:  0,
 			Length:  2 * blockSize,
@@ -225,7 +225,7 @@ func TestMergeMappingsDiffInsideBase(t *testing.T) {
 
 func TestMergeMappingsBaseAfterDiffWithOverlap(t *testing.T) {
 	t.Parallel()
-	diff := []*BuildMap{
+	diff := []BuildMap{
 		{
 			Offset:  1 * blockSize,
 			Length:  4 * blockSize,
@@ -236,7 +236,7 @@ func TestMergeMappingsBaseAfterDiffWithOverlap(t *testing.T) {
 	m, err := MergeMappings(simpleBase, diff)
 	require.NoError(t, err)
 
-	require.True(t, Equal(m, []*BuildMap{
+	require.True(t, Equal(m, []BuildMap{
 		{
 			Offset:  0,
 			Length:  1 * blockSize,
@@ -266,7 +266,7 @@ func TestMergeMappingsBaseAfterDiffWithOverlap(t *testing.T) {
 
 func TestMergeMappingsDiffAfterBaseWithOverlap(t *testing.T) {
 	t.Parallel()
-	diff := []*BuildMap{
+	diff := []BuildMap{
 		{
 			Offset:  3 * blockSize,
 			Length:  4 * blockSize,
@@ -277,7 +277,7 @@ func TestMergeMappingsDiffAfterBaseWithOverlap(t *testing.T) {
 	m, err := MergeMappings(simpleBase, diff)
 	require.NoError(t, err)
 
-	require.True(t, Equal(m, []*BuildMap{
+	require.True(t, Equal(m, []BuildMap{
 		{
 			Offset:  0,
 			Length:  2 * blockSize,
@@ -307,13 +307,13 @@ func TestMergeMappingsDiffAfterBaseWithOverlap(t *testing.T) {
 
 func TestNormalizeMappingsEmptySlice(t *testing.T) {
 	t.Parallel()
-	m := NormalizeMappings([]*BuildMap{})
+	m := NormalizeMappings([]BuildMap{})
 	assert.Empty(t, m)
 }
 
 func TestNormalizeMappingsSingleMapping(t *testing.T) {
 	t.Parallel()
-	input := []*BuildMap{
+	input := []BuildMap{
 		{
 			Offset:             0,
 			Length:             2 * blockSize,
@@ -339,7 +339,7 @@ func TestNormalizeMappingsNoAdjacentSameBuildId(t *testing.T) {
 	id2 := uuid.New()
 	id3 := uuid.New()
 
-	input := []*BuildMap{
+	input := []BuildMap{
 		{
 			Offset:             0,
 			Length:             2 * blockSize,
@@ -373,7 +373,7 @@ func TestNormalizeMappingsNoAdjacentSameBuildId(t *testing.T) {
 
 func TestNormalizeMappingsTwoAdjacentSameBuildId(t *testing.T) {
 	t.Parallel()
-	input := []*BuildMap{
+	input := []BuildMap{
 		{
 			Offset:             0,
 			Length:             2 * blockSize,
@@ -402,7 +402,7 @@ func TestNormalizeMappingsTwoAdjacentSameBuildId(t *testing.T) {
 
 func TestNormalizeMappingsAllSameBuildId(t *testing.T) {
 	t.Parallel()
-	input := []*BuildMap{
+	input := []BuildMap{
 		{
 			Offset:             0,
 			Length:             2 * blockSize,
@@ -446,7 +446,7 @@ func TestNormalizeMappingsMultipleGroupsSameBuildId(t *testing.T) {
 	id1 := uuid.New()
 	id2 := uuid.New()
 
-	input := []*BuildMap{
+	input := []BuildMap{
 		{
 			Offset:             0,
 			Length:             2 * blockSize,
@@ -492,7 +492,7 @@ func TestNormalizeMappingsAlternatingBuildIds(t *testing.T) {
 	id1 := uuid.New()
 	id2 := uuid.New()
 
-	input := []*BuildMap{
+	input := []BuildMap{
 		{
 			Offset:             0,
 			Length:             2 * blockSize,
@@ -534,7 +534,7 @@ func TestNormalizeMappingsAlternatingBuildIds(t *testing.T) {
 
 func TestNormalizeMappingsThreeConsecutiveSameBuildId(t *testing.T) {
 	t.Parallel()
-	input := []*BuildMap{
+	input := []BuildMap{
 		{
 			Offset:             0,
 			Length:             2 * blockSize,
@@ -573,7 +573,7 @@ func TestNormalizeMappingsMixedPattern(t *testing.T) {
 	id2 := uuid.New()
 	id3 := uuid.New()
 
-	input := []*BuildMap{
+	input := []BuildMap{
 		{
 			Offset:             0,
 			Length:             1 * blockSize,
@@ -634,7 +634,7 @@ func TestNormalizeMappingsMixedPattern(t *testing.T) {
 
 func TestNormalizeMappingsZeroLengthMapping(t *testing.T) {
 	t.Parallel()
-	input := []*BuildMap{
+	input := []BuildMap{
 		{
 			Offset:             0,
 			Length:             2 * blockSize,
@@ -669,7 +669,7 @@ func TestNormalizeMappingsZeroLengthMapping(t *testing.T) {
 
 func TestNormalizeMappingsDoesNotModifyInput(t *testing.T) {
 	t.Parallel()
-	input := []*BuildMap{
+	input := []BuildMap{
 		{
 			Offset:             0,
 			Length:             2 * blockSize,
