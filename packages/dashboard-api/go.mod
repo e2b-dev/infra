@@ -131,7 +131,6 @@ require (
 	github.com/redis/go-redis/v9 v9.17.3 // indirect
 	github.com/riverqueue/river/riverdriver v0.33.0 // indirect
 	github.com/riverqueue/river/rivershared v0.33.0 // indirect
-	github.com/riverqueue/river/rivertype v0.33.0 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/sethvargo/go-retry v0.3.0 // indirect
 	github.com/shirou/gopsutil/v4 v4.25.9 // indirect
@@ -169,7 +168,6 @@ require (
 	golang.org/x/crypto v0.49.0 // indirect
 	golang.org/x/mod v0.34.0 // indirect
 	golang.org/x/net v0.52.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20251213004720-97cd9d5aeac2 // indirect
