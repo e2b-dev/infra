@@ -301,6 +301,7 @@ func (p *Process) Create(
 	hugePages bool,
 	options ProcessOptions,
 	txRateLimit TxRateLimiterConfig,
+	driveRateLimit TxRateLimiterConfig,
 	cgroupFD int,
 ) error {
 	ctx, childSpan := tracer.Start(ctx, "create-fc")
@@ -405,7 +406,7 @@ func (p *Process) Create(
 	}
 	telemetry.ReportEvent(ctx, "symlinked rootfs")
 
-	err = p.client.setRootfsDrive(ctx, p.rootfsPath, options.IoEngine)
+	err = p.client.setRootfsDrive(ctx, p.rootfsPath, options.IoEngine, buildTxRateLimiter(driveRateLimit))
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 
@@ -458,6 +459,7 @@ func (p *Process) Resume(
 	accessToken *string,
 	cgroupFD int,
 	txRateLimit TxRateLimiterConfig,
+	driveRateLimit TxRateLimiterConfig,
 ) error {
 	ctx, span := tracer.Start(ctx, "resume-fc")
 	defer span.End()
@@ -545,14 +547,21 @@ func (p *Process) Resume(
 		return errors.Join(fmt.Errorf("error loading snapshot: %w", err), fcStopErr)
 	}
 
-	// Always apply/reset the TX rate limit before resuming so any rate limit
-	// persisted in the snapshot is overwritten by the current config.
+	// Always apply/reset rate limits before resuming so any limits
+	// persisted in the snapshot are overwritten by the current config.
 	if setErr := p.client.setTxRateLimit(ctx, p.slot.VpeerName(), txRateLimit); setErr != nil {
 		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error setting TX rate limit: %w", setErr), fcStopErr)
 	}
 	telemetry.ReportEvent(ctx, "configured tx rate limit")
+
+	if setErr := p.client.setDriveRateLimit(ctx, "rootfs", driveRateLimit); setErr != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error setting drive rate limit: %w", setErr), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "configured drive rate limit")
 
 	err = p.client.resumeVM(ctx)
 	if err != nil {

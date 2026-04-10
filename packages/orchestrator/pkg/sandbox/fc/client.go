@@ -205,7 +205,7 @@ func (c *apiClient) setBootSource(ctx context.Context, kernelArgs string, kernel
 	return err
 }
 
-func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string, ioEngine *string) error {
+func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string, ioEngine *string, rateLimiter *models.RateLimiter) error {
 	rootfs := "rootfs"
 
 	isRootDevice := true
@@ -218,6 +218,7 @@ func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string, ioEng
 			IsRootDevice: &isRootDevice,
 			IsReadOnly:   false,
 			IoEngine:     ioEngine,
+			RateLimiter:  rateLimiter,
 		},
 	}
 
@@ -284,6 +285,33 @@ func (c *apiClient) setTxRateLimit(ctx context.Context, ifaceID string, config T
 	_, err := c.client.Operations.PatchGuestNetworkInterfaceByID(&params)
 	if err != nil {
 		return fmt.Errorf("error setting TX rate limit: %w", err)
+	}
+
+	return nil
+}
+
+// setDriveRateLimit applies or clears a Firecracker VMM-level block device rate limit.
+// Both buckets are disabled when their BucketSize < 0; if all are disabled an empty
+// RateLimiter is sent to reset any limit persisted in a snapshot.
+// This always sends a PATCH so snapshot-persisted limits are overwritten.
+func (c *apiClient) setDriveRateLimit(ctx context.Context, driveID string, config TxRateLimiterConfig) error {
+	limiter := buildTxRateLimiter(config)
+	if limiter == nil {
+		limiter = &models.RateLimiter{} // empty = reset
+	}
+
+	params := operations.PatchGuestDriveByIDParams{
+		Context: ctx,
+		DriveID: driveID,
+		Body: &models.PartialDrive{
+			DriveID:     &driveID,
+			RateLimiter: limiter,
+		},
+	}
+
+	_, err := c.client.Operations.PatchGuestDriveByID(&params)
+	if err != nil {
+		return fmt.Errorf("error setting drive rate limit: %w", err)
 	}
 
 	return nil

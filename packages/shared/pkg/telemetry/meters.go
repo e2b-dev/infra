@@ -93,6 +93,11 @@ const (
 	SandboxFCNetFails         CounterType = "orchestrator.sandbox.fc.net.fails"
 	SandboxFCNetNoAvailBuffer CounterType = "orchestrator.sandbox.fc.net.no_avail_buffer"
 	SandboxFCNetTapIOFails    CounterType = "orchestrator.sandbox.fc.net.tap_io_fails"
+
+	// Firecracker block counters — global totals, no sandbox_id (low cardinality).
+	// Carry a direction=read/write attribute where applicable.
+	SandboxFCBlockFails         CounterType = "orchestrator.sandbox.fc.block.fails"
+	SandboxFCBlockNoAvailBuffer CounterType = "orchestrator.sandbox.fc.block.no_avail_buffer"
 )
 
 const (
@@ -106,6 +111,15 @@ const (
 	// TX-only: no RX equivalent in Firecracker metrics.
 	SandboxFCNetRateLimiterEventCount HistogramType = "orchestrator.sandbox.fc.net.rate_limiter_event_count"
 	SandboxFCNetRemainingReqs         HistogramType = "orchestrator.sandbox.fc.net.remaining_reqs"
+
+	// Firecracker block histograms — per-sandbox distribution per metrics flush, no sandbox_id.
+	// Symmetric read/write metrics carry a direction=read/write attribute.
+	SandboxFCBlockBytes                 HistogramType = "orchestrator.sandbox.fc.block.bytes"
+	SandboxFCBlockCount                 HistogramType = "orchestrator.sandbox.fc.block.count"
+	SandboxFCBlockRateLimiterThrottled  HistogramType = "orchestrator.sandbox.fc.block.rate_limiter_throttled"
+	SandboxFCBlockRateLimiterEventCount HistogramType = "orchestrator.sandbox.fc.block.rate_limiter_event_count"
+	SandboxFCBlockIOEngineThrottled     HistogramType = "orchestrator.sandbox.fc.block.io_engine_throttled"
+	SandboxFCBlockRemainingReqs         HistogramType = "orchestrator.sandbox.fc.block.remaining_reqs"
 )
 
 const (
@@ -145,6 +159,9 @@ var counterDesc = map[CounterType]string{
 	SandboxFCNetFails:         "Total Firecracker VMM errors transmitting or receiving data (direction=tx/rx)",
 	SandboxFCNetNoAvailBuffer: "Total Firecracker VMM events where no virtqueue buffer was available (direction=tx/rx)",
 	SandboxFCNetTapIOFails:    "Total Firecracker VMM TAP I/O failures (direction=tx/rx)",
+
+	SandboxFCBlockFails:         "Total Firecracker VMM block device execution/event failures (direction=read/write)",
+	SandboxFCBlockNoAvailBuffer: "Total Firecracker VMM block events where no virtqueue buffer was available",
 }
 
 var counterUnits = map[CounterType]string{
@@ -164,6 +181,9 @@ var counterUnits = map[CounterType]string{
 	SandboxFCNetFails:         "{error}",
 	SandboxFCNetNoAvailBuffer: "{event}",
 	SandboxFCNetTapIOFails:    "{error}",
+
+	SandboxFCBlockFails:         "{error}",
+	SandboxFCBlockNoAvailBuffer: "{event}",
 }
 
 var observableCounterDesc = map[ObservableCounterType]string{
@@ -321,6 +341,14 @@ var histogramDesc = map[HistogramType]string{
 	SandboxFCNetRateLimiterThrottled:  "Distribution of Firecracker VMM ops throttled by rate limiter per metrics flush",
 	SandboxFCNetRateLimiterEventCount: "Distribution of Firecracker VMM TX rate limiter events per metrics flush",
 	SandboxFCNetRemainingReqs:         "Distribution of Firecracker VMM TX queue remaining-request events per metrics flush",
+
+	// Firecracker block histograms (direction=read/write attribute)
+	SandboxFCBlockBytes:                 "Distribution of Firecracker VMM block bytes per metrics flush",
+	SandboxFCBlockCount:                 "Distribution of Firecracker VMM block I/O operations per metrics flush",
+	SandboxFCBlockRateLimiterThrottled:  "Distribution of Firecracker VMM block ops throttled by rate limiter per metrics flush",
+	SandboxFCBlockRateLimiterEventCount: "Distribution of Firecracker VMM block rate limiter events per metrics flush",
+	SandboxFCBlockIOEngineThrottled:     "Distribution of Firecracker VMM block ops throttled by io_uring engine per metrics flush",
+	SandboxFCBlockRemainingReqs:         "Distribution of Firecracker VMM block queue remaining-request events per metrics flush",
 }
 
 var histogramUnits = map[HistogramType]string{
@@ -343,6 +371,14 @@ var histogramUnits = map[HistogramType]string{
 	SandboxFCNetRateLimiterThrottled:  "{op}",
 	SandboxFCNetRateLimiterEventCount: "{event}",
 	SandboxFCNetRemainingReqs:         "{event}",
+
+	// Firecracker block histograms
+	SandboxFCBlockBytes:                 "{By}",
+	SandboxFCBlockCount:                 "{op}",
+	SandboxFCBlockRateLimiterThrottled:  "{op}",
+	SandboxFCBlockRateLimiterEventCount: "{event}",
+	SandboxFCBlockIOEngineThrottled:     "{op}",
+	SandboxFCBlockRemainingReqs:         "{event}",
 }
 
 func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram, error) {
