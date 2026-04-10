@@ -2,13 +2,11 @@ package header
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 
 	"github.com/google/uuid"
 
@@ -99,14 +97,6 @@ func DeserializeBytes(data []byte) (*Header, error) {
 
 		mappings = append(mappings, m)
 	}
-
-	// Ensure mappings are sorted by offset. All code paths that create
-	// mappings produce sorted output, but legacy (Version < 3) headers
-	// deserialized from storage may not satisfy this invariant. The sort
-	// is O(n) on already-sorted input.
-	slices.SortFunc(mappings, func(a, b BuildMap) int {
-		return cmp.Compare(a.Offset, b.Offset)
-	})
 
 	return NewHeader(&metadata, mappings)
 }
