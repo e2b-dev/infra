@@ -491,16 +491,16 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 	sbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId())
 	if !ok {
-		telemetry.ReportCriticalError(ctx, "sandbox not found", nil)
+		telemetry.ReportCriticalError(ctx, "sandbox not found", nil, telemetry.WithSandboxID(in.GetSandboxId()))
 
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
 	marked := s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
 	if !marked {
-		telemetry.ReportCriticalError(ctx, "failed to mark sandbox as stopping", nil)
+		telemetry.ReportCriticalError(ctx, "failed to mark sandbox as stopping", nil, telemetry.WithSandboxID(in.GetSandboxId()))
 
-		return nil, status.Errorf(codes.Internal, "failed to pause sandbox '%s'", in.GetSandboxId())
+		return nil, status.Error(codes.Internal, "failed to pause sandbox")
 	}
 
 	sbxlogger.E(sbx).Info(ctx, "Pausing sandbox")
@@ -558,12 +558,12 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	sbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId())
 	if !ok {
-		telemetry.ReportCriticalError(ctx, "sandbox not found", nil)
+		telemetry.ReportCriticalError(ctx, "sandbox not found", nil, telemetry.WithSandboxID(in.GetSandboxId()))
 
-		return nil, status.Error(codes.NotFound, "sandbox not found")
+		return nil, status.Errorf(codes.NotFound, "sandbox '%s' not found", in.GetSandboxId())
 	}
 
-	// Check envd version before acquiring (which removes the sandbox from the map).
+	// Check envd version before snapshotting.
 	if err := utils.CheckEnvdVersionForSnapshot(sbx.Config.Envd.Version); err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "%s", err.Error())
 	}
@@ -576,7 +576,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	marked := s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
 	if !marked {
-		telemetry.ReportCriticalError(ctx, "failed to mark sandbox as stopping", nil)
+		telemetry.ReportCriticalError(ctx, "failed to mark sandbox as stopping", nil, telemetry.WithSandboxID(in.GetSandboxId()))
 
 		return nil, status.Errorf(codes.Internal, "failed to checkpoint sandbox '%s'", in.GetSandboxId())
 	}
