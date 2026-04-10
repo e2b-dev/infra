@@ -69,13 +69,14 @@ func (s *APIStore) PostTeams(c *gin.Context) {
 
 		return
 	}
-	if strings.TrimSpace(body.Name) == "" {
+	name := strings.TrimSpace(body.Name)
+	if name == "" {
 		s.sendAPIStoreError(c, http.StatusBadRequest, "Team name is required")
 
 		return
 	}
 
-	team, err := s.createTeam(ctx, userID, body.Name)
+	team, err := s.createTeam(ctx, userID, name)
 	if err != nil {
 		s.handleProvisioningError(ctx, c, "create team", err)
 

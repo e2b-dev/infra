@@ -780,6 +780,52 @@ func TestPostTeams_InvalidNameReturnsBadRequest(t *testing.T) {
 	}
 }
 
+func TestPostTeams_TrimsNameBeforeCreate(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	userID := createHandlerTestUser(t, testDB)
+	sink := &fakeTeamProvisionSink{}
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"name":"  Acme  "}`))
+	ginCtx.Request.Header.Set("Content-Type", "application/json")
+	auth.SetUserID(ginCtx, userID)
+
+	store := &APIStore{
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		teamProvisionSink: sink,
+	}
+	store.PostTeams(ginCtx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", recorder.Code)
+	}
+
+	rows, err := testDB.AuthDB.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+	if err != nil {
+		t.Fatalf("failed to query user teams: %v", err)
+	}
+
+	foundCreatedTeam := false
+	for _, row := range rows {
+		if row.IsDefault {
+			continue
+		}
+
+		foundCreatedTeam = true
+		if row.Team.Name != "Acme" {
+			t.Fatalf("expected trimmed team name %q, got %q", "Acme", row.Team.Name)
+		}
+	}
+	if !foundCreatedTeam {
+		t.Fatal("expected created team to exist")
+	}
+}
+
 func TestPostTeams_ProvisioningFailureStillReturnsTeam(t *testing.T) {
 	t.Parallel()
 
