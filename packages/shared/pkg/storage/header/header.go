@@ -15,16 +15,16 @@ const NormalizeFixVersion = 3
 
 type Header struct {
 	Metadata *Metadata
-	Mapping  []*BuildMap
+	Mapping  []BuildMap
 }
 
-func NewHeader(metadata *Metadata, mapping []*BuildMap) (*Header, error) {
+func NewHeader(metadata *Metadata, mapping []BuildMap) (*Header, error) {
 	if metadata.BlockSize == 0 {
 		return nil, fmt.Errorf("block size cannot be zero")
 	}
 
 	if len(mapping) == 0 {
-		mapping = []*BuildMap{{
+		mapping = []BuildMap{{
 			Offset:             0,
 			Length:             metadata.Size,
 			BuildId:            metadata.BuildId,
@@ -69,7 +69,6 @@ func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (mappedOff
 	return mappedOffset, mappedLength, buildID, nil
 }
 
-// TODO: Maybe we can optimize mapping by automatically assuming the mapping is uuid.Nil if we don't find it + stopping storing the nil mapping.
 func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64, error) {
 	if offset < 0 || offset >= int64(t.Metadata.Size) {
 		if t.IsNormalizeFixApplied() {
@@ -102,7 +101,7 @@ func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64
 		return nil, 0, fmt.Errorf("no source found for offset %d", offset)
 	}
 
-	mapping := t.Mapping[i-1]
+	mapping := &t.Mapping[i-1]
 	shift := offset - int64(mapping.Offset)
 
 	// Verify that the offset falls within this mapping's range
