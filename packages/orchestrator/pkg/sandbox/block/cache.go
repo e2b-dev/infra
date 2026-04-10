@@ -136,9 +136,7 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 		logger.L().Warn(ctx, "error syncing file", zap.Error(err))
 	}
 
-	buildStart := time.Now()
 	diffMetadata := header.NewDiffMetadata(c.blockSize, c.dirty.BitSet())
-	telemetry.SetAttributes(ctx, attribute.Int64("build_metadata_ms", time.Since(buildStart).Milliseconds()))
 
 	dst := int(out.Fd())
 	var writeOffset int64
