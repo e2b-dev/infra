@@ -31,7 +31,13 @@ func (r *Roaring) HasRange(start, end uint) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	return r.bm.CardinalityInRange(uint64(start), uint64(end)) == uint64(end-start)
+	for i := start; i < end; i++ {
+		if !r.bm.Contains(uint32(i)) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (r *Roaring) SetRange(start, end uint) {
