@@ -131,7 +131,9 @@ func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) {
 
 // MarkStopping transitions a sandbox to the stopping state. It stays in in the map
 // so that IP-based lookups still resolve while the Firecracker process finishes shutting down.
-func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) {
+// Returns true if the sandbox was successfully marked as stopping, false if it was not found or already stopping.
+func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) bool {
+	marked := false
 	// Use RemoveCb to update the sandbox atomically
 	m.sandboxes.RemoveCb(sandboxID, func(_ string, sbx *Sandbox, exists bool) bool {
 		if !exists {
@@ -153,8 +155,12 @@ func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) {
 			logger.WithSandboxIP(sbx.Slot.HostIPString()),
 		)
 
+		marked = true
+
 		return false
 	})
+
+	return marked
 }
 
 func (m *Map) Remove(ctx context.Context, sandboxID, lifecycleID string) {
