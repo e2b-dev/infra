@@ -313,19 +313,17 @@ func GetTrackedTemplatesSet(ctx context.Context, ff *Client) map[string]struct{}
 	return result
 }
 
-// ChunkerConfigFlag is a JSON flag controlling the chunker implementation and
-// tuning.
+// ChunkerConfigFlag is a JSON flag controlling the chunker implementation and tuning.
 //
-// NOTE: Changing useStreaming or bitset has no effect on chunkers already
-// created for cached templates. A service restart (redeploy) is required for
-// those changes to take effect. minReadBatchSizeKB is checked just-in-time on
-// each fetch, so it takes effect immediately.
+// NOTE: Changing useStreaming has no effect on chunkers already created for
+// cached templates. A service restart (redeploy) is required for that change
+// to take effect. minReadBatchSizeKB is checked just-in-time on each fetch,
+// so it takes effect immediately.
 //
-// JSON format: {"useStreaming": false, "minReadBatchSizeKB": 16, "bitset": ""}
+// JSON format: {"useStreaming": false, "minReadBatchSizeKB": 16}
 var ChunkerConfigFlag = newJSONFlag("chunker-config", ldvalue.FromJSONMarshal(map[string]any{
 	"useStreaming":       false,
 	"minReadBatchSizeKB": 16,
-	"bitset":             "",
 }))
 
 // TCPFirewallEgressThrottleConfig controls per-sandbox egress throttling via Firecracker's

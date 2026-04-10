@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/shared/pkg/atomicbitset"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -98,19 +99,18 @@ func NewChunker(
 	cachePath string,
 	metrics metrics.Metrics,
 ) (Chunker, error) {
-	useStreaming, minReadBatchSizeKB, bitsetImpl := getChunkerConfig(ctx, featureFlags)
-
-	fmt.Printf("[DEBUG block.NewChunker] bitsetImpl=%q useStreaming=%v size=%d blockSize=%d cachePath=%s\n", bitsetImpl, useStreaming, size, blockSize, cachePath)
+	useStreaming, minReadBatchSizeKB := getChunkerConfig(ctx, featureFlags)
+	dirty := atomicbitset.NewRoaring(uint(header.TotalBlocks(size, blockSize)))
 
 	if useStreaming {
-		return newStreamingChunker(size, blockSize, upstream, cachePath, metrics, int64(minReadBatchSizeKB)*1024, featureFlags, bitsetImpl)
+		return newStreamingChunker(size, blockSize, upstream, cachePath, metrics, int64(minReadBatchSizeKB)*1024, featureFlags, dirty)
 	}
 
-	return newFullFetchChunker(size, blockSize, upstream, cachePath, metrics, bitsetImpl)
+	return newFullFetchChunker(size, blockSize, upstream, cachePath, metrics, dirty)
 }
 
 // getChunkerConfig fetches the chunker-config feature flag and returns the parsed values.
-func getChunkerConfig(ctx context.Context, ff *featureflags.Client) (useStreaming bool, minReadBatchSizeKB int, bitsetImpl string) {
+func getChunkerConfig(ctx context.Context, ff *featureflags.Client) (useStreaming bool, minReadBatchSizeKB int) {
 	value := ff.JSONFlag(ctx, featureflags.ChunkerConfigFlag)
 
 	if v := value.GetByKey("useStreaming"); v.IsDefined() {
@@ -121,11 +121,7 @@ func getChunkerConfig(ctx context.Context, ff *featureflags.Client) (useStreamin
 		minReadBatchSizeKB = v.IntValue()
 	}
 
-	if v := value.GetByKey("bitset"); v.IsDefined() {
-		bitsetImpl = v.StringValue()
-	}
-
-	return useStreaming, minReadBatchSizeKB, bitsetImpl
+	return useStreaming, minReadBatchSizeKB
 }
 
 type FullFetchChunker struct {
@@ -144,7 +140,8 @@ func NewFullFetchChunker(
 	cachePath string,
 	metrics metrics.Metrics,
 ) (*FullFetchChunker, error) {
-	return newFullFetchChunker(size, blockSize, base, cachePath, metrics, "")
+	dirty := atomicbitset.NewRoaring(uint(header.TotalBlocks(size, blockSize)))
+	return newFullFetchChunker(size, blockSize, base, cachePath, metrics, dirty)
 }
 
 func newFullFetchChunker(
@@ -152,9 +149,9 @@ func newFullFetchChunker(
 	base storage.SeekableReader,
 	cachePath string,
 	metrics metrics.Metrics,
-	bitsetImpl string,
+	dirty atomicbitset.Bitset,
 ) (*FullFetchChunker, error) {
-	cache, err := newCache(size, blockSize, cachePath, false, bitsetImpl)
+	cache, err := newCache(size, blockSize, cachePath, false, dirty)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}

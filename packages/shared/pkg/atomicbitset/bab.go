@@ -20,7 +20,7 @@ func NewBitsAndBlooms(n uint) *BitsAndBlooms {
 	}
 }
 
-func (b *BitsAndBlooms) Len() uint { return b.n }
+
 
 func (b *BitsAndBlooms) Has(i uint) bool {
 	if i >= b.n {

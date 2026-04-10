@@ -112,14 +112,6 @@ type DiffMetadataBuilder struct {
 	blockSize int64
 }
 
-func NewDiffMetadataBuilderFromDirtyBitSet(_, blockSize int64, dirty *bitset.BitSet) *DiffMetadataBuilder {
-	return &DiffMetadataBuilder{
-		dirty:     dirty,
-		empty:     bitset.New(0),
-		blockSize: blockSize,
-	}
-}
-
 func NewDiffMetadataBuilder(size, blockSize int64) *DiffMetadataBuilder {
 	return &DiffMetadataBuilder{
 		// TODO: We might be able to start with 0 as preallocating here actually takes space.

@@ -207,7 +207,6 @@ func TestZero(t *testing.T) {
 		t.Run(impl.name, func(t *testing.T) {
 			t.Parallel()
 			b := impl.make(0)
-			require.Equal(t, uint(0), b.Len())
 			require.False(t, b.Has(0))
 			b.SetRange(0, 1) // should not panic
 		})
@@ -245,30 +244,6 @@ func TestHasRange_OutOfBounds(t *testing.T) {
 	}
 }
 
-func TestLen(t *testing.T) {
-	t.Parallel()
-	for _, impl := range impls {
-		t.Run(impl.name, func(t *testing.T) {
-			t.Parallel()
-			b := impl.make(100)
-			require.Equal(t, uint(100), b.Len())
-		})
-	}
-}
-
-func TestNew(t *testing.T) {
-	t.Parallel()
-
-	require.IsType(t, (*Roaring)(nil), New(1000, ""))
-	require.IsType(t, (*Roaring)(nil), New(autoThreshold+1, ""))
-	require.IsType(t, (*Flat)(nil), New(1000, "atomic"))
-	require.IsType(t, (*Sharded)(nil), New(autoThreshold+1, "atomic"))
-	require.IsType(t, (*Roaring)(nil), New(1000, "roaring"))
-	require.IsType(t, (*BitsAndBlooms)(nil), New(1000, "bits-and-blooms"))
-	require.IsType(t, (*SyncMap)(nil), New(1000, "syncmap"))
-
-	require.Panics(t, func() { New(1000, "bogus") })
-}
 
 // TestCachePattern reproduces the exact SetRange/HasRange sequence that the
 // block cache uses: chunk-aligned writes followed by arbitrary sub-block reads.

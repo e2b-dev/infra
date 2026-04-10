@@ -21,7 +21,7 @@ func NewRoaring64(n uint) *Roaring64 {
 	}
 }
 
-func (r *Roaring64) Len() uint { return r.n }
+
 
 func (r *Roaring64) Has(i uint) bool {
 	if i >= r.n {

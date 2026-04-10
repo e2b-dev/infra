@@ -39,7 +39,7 @@ func NewSharded(n, bitsPerShard uint) *Sharded {
 	}
 }
 
-func (s *Sharded) Len() uint { return s.n }
+
 
 func (s *Sharded) getShard(idx uint) *shard {
 	return s.shards[idx].Load()

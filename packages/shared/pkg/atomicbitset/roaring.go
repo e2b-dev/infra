@@ -22,10 +22,6 @@ func NewRoaring(n uint) *Roaring {
 	}
 }
 
-func (r *Roaring) Len() uint {
-	return r.n
-}
-
 func (r *Roaring) Has(i uint) bool {
 	if i >= r.n {
 		return false

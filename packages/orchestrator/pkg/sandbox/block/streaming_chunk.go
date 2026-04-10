@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/shared/pkg/atomicbitset"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -172,7 +173,8 @@ func NewStreamingChunker(
 	minReadBatchSize int64,
 	ff *featureflags.Client,
 ) (*StreamingChunker, error) {
-	return newStreamingChunker(size, blockSize, upstream, cachePath, metrics, minReadBatchSize, ff, "")
+	dirty := atomicbitset.NewRoaring(uint(header.TotalBlocks(size, blockSize)))
+	return newStreamingChunker(size, blockSize, upstream, cachePath, metrics, minReadBatchSize, ff, dirty)
 }
 
 func newStreamingChunker(
@@ -182,9 +184,9 @@ func newStreamingChunker(
 	metrics metrics.Metrics,
 	minReadBatchSize int64,
 	ff *featureflags.Client,
-	bitsetImpl string,
+	dirty atomicbitset.Bitset,
 ) (*StreamingChunker, error) {
-	cache, err := newCache(size, blockSize, cachePath, false, bitsetImpl)
+	cache, err := newCache(size, blockSize, cachePath, false, dirty)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}
@@ -461,7 +463,7 @@ func (c *StreamingChunker) progressiveRead(ctx context.Context, s *fetchSession,
 // it can be tuned without restarting the service.
 func (c *StreamingChunker) getMinReadBatchSize(ctx context.Context) int64 {
 	if c.featureFlags != nil {
-		_, minKB, _ := getChunkerConfig(ctx, c.featureFlags)
+		_, minKB := getChunkerConfig(ctx, c.featureFlags)
 		if minKB > 0 {
 			return int64(minKB) * 1024
 		}
