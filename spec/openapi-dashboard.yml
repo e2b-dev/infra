@@ -460,11 +460,13 @@ components:
     UpdateTeamRequest:
       type: object
       minProperties: 1
+      additionalProperties: false
       properties:
         name:
           type: string
           minLength: 1
-          maxLength: 255
+          maxLength: 32
+          pattern: '^[a-zA-Z0-9]+(?:[ _.-][a-zA-Z0-9]+)*$'
         profilePictureUrl:
           type: string
           nullable: true
