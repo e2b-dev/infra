@@ -198,7 +198,7 @@ func run() int {
 
 		riverClient, err = backgroundworker.StartAuthUserSyncWorker(
 			ctx,
-			ctx,
+			signalCtx,
 			supabaseDB,
 			db,
 			l,
