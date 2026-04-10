@@ -152,6 +152,7 @@ module "dashboard_api" {
 
   image = data.google_artifact_registry_docker_image.dashboard_api_image[0].self_link
 
+  admin_token                            = var.dashboard_api_admin_token
   postgres_connection_string             = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   auth_db_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   auth_db_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)

@@ -274,8 +274,9 @@ module "nomad" {
   otel_collector_resources_cpu_count = var.otel_collector_resources_cpu_count
 
   # Dashboard API
-  dashboard_api_count    = var.dashboard_api_count
-  dashboard_api_env_vars = var.dashboard_api_env_vars
+  dashboard_api_count       = var.dashboard_api_count
+  dashboard_api_admin_token = random_password.dashboard_api_admin_secret.result
+  dashboard_api_env_vars    = var.dashboard_api_env_vars
 
   # Docker reverse proxy
   docker_reverse_proxy_port                = var.docker_reverse_proxy_port

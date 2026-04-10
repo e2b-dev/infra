@@ -23,6 +23,11 @@ variable "postgres_connection_string" {
   sensitive = true
 }
 
+variable "admin_token" {
+  type      = string
+  sensitive = true
+}
+
 variable "auth_db_connection_string" {
   type      = string
   sensitive = true

@@ -324,7 +324,7 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 	}
-	store.PostUsersBootstrap(ginCtx)
+	store.PostAdminUsersBootstrap(ginCtx)
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", recorder.Code)
@@ -390,7 +390,7 @@ func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testin
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 	}
-	store.PostUsersBootstrap(ginCtx)
+	store.PostAdminUsersBootstrap(ginCtx)
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", recorder.Code)

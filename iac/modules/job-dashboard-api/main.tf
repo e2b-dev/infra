@@ -4,6 +4,7 @@ locals {
     ENVIRONMENT                            = var.environment
     NODE_ID                                = "$${node.unique.id}"
     PORT                                   = "$${NOMAD_PORT_api}"
+    ADMIN_TOKEN                            = var.admin_token
     POSTGRES_CONNECTION_STRING             = var.postgres_connection_string
     AUTH_DB_CONNECTION_STRING              = var.auth_db_connection_string
     AUTH_DB_READ_REPLICA_CONNECTION_STRING = var.auth_db_read_replica_connection_string

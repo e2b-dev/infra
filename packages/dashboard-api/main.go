@@ -182,6 +182,7 @@ func run() int {
 
 	authenticationFunc := sharedauth.CreateAuthenticationFunc(
 		[]sharedauth.Authenticator{
+			sharedauth.NewAdminTokenAuthenticator(config.AdminToken),
 			sharedauth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromSupabaseToken),
 			sharedauth.NewSupabaseTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
 		},
@@ -197,6 +198,7 @@ func run() int {
 		"Origin",
 		"Content-Length",
 		"Content-Type",
+		sharedauth.HeaderAdminToken,
 		sharedauth.HeaderSupabaseToken,
 		sharedauth.HeaderSupabaseTeam,
 	}

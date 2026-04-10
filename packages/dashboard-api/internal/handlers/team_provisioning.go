@@ -40,7 +40,7 @@ type provisionedTeam struct {
 	BlockedReason *string
 }
 
-func (s *APIStore) PostUsersBootstrap(c *gin.Context) {
+func (s *APIStore) PostAdminUsersBootstrap(c *gin.Context) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "bootstrap user")
 
