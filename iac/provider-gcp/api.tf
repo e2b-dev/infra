@@ -66,7 +66,7 @@ resource "google_secret_manager_secret_version" "api_admin_token_value" {
 
 resource "random_password" "dashboard_api_admin_secret" {
   length  = 32
-  special = true
+  special = false
 }
 
 resource "google_secret_manager_secret" "dashboard_api_admin_token" {
