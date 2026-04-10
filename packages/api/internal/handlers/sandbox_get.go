@@ -49,6 +49,18 @@ func dbNetworkConfigToAPI(network *dbtypes.SandboxNetworkConfig) *api.SandboxNet
 		if egress.DeniedAddresses != nil {
 			result.DenyOut = &egress.DeniedAddresses
 		}
+		if egress.EgressProxyAddress != "" {
+			result.EgressProxy = &struct {
+				Address  string  `json:"address"`
+				Password *string `json:"password,omitempty"`
+				Username *string `json:"username,omitempty"`
+			}{
+				Address: egress.EgressProxyAddress,
+			}
+			if egress.EgressProxyUsername != "" {
+				result.EgressProxy.Username = &egress.EgressProxyUsername
+			}
+		}
 	}
 
 	return result

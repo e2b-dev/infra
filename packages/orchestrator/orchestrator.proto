@@ -77,6 +77,10 @@ message SandboxNetworkEgressConfig {
   repeated string denied_cidrs = 2;
 
   repeated string allowed_domains = 3;
+
+  optional string egress_proxy_address = 4;
+  optional string egress_proxy_username = 5;
+  optional string egress_proxy_password = 6;
 }
 
 message SandboxNetworkIngressConfig {

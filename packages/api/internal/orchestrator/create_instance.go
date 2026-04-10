@@ -54,18 +54,30 @@ type SandboxMetadata struct {
 // allow/deny entry lists. It splits allowed entries into CIDRs and domains,
 // and adds the default nameserver when domains are present so the sandbox can
 // resolve them.
-func buildEgressConfig(allowedEntries, deniedEntries []string) *orchestrator.SandboxNetworkEgressConfig {
-	allowedAddresses, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowedEntries)
+func buildEgressConfig(egress *types.SandboxNetworkEgressConfig) *orchestrator.SandboxNetworkEgressConfig {
+	allowedAddresses, allowedDomains := sandbox_network.ParseAddressesAndDomains(egress.AllowedAddresses)
 
 	if len(allowedDomains) > 0 {
 		allowedAddresses = append(allowedAddresses, sandbox_network.DefaultNameserver)
 	}
 
-	return &orchestrator.SandboxNetworkEgressConfig{
+	cfg := &orchestrator.SandboxNetworkEgressConfig{
 		AllowedCidrs:   sandbox_network.AddressStringsToCIDRs(allowedAddresses),
-		DeniedCidrs:    sandbox_network.AddressStringsToCIDRs(deniedEntries),
+		DeniedCidrs:    sandbox_network.AddressStringsToCIDRs(egress.DeniedAddresses),
 		AllowedDomains: allowedDomains,
 	}
+
+	if egress.EgressProxyAddress != "" {
+		cfg.EgressProxyAddress = &egress.EgressProxyAddress
+		if egress.EgressProxyUsername != "" {
+			cfg.EgressProxyUsername = &egress.EgressProxyUsername
+		}
+		if egress.EgressProxyPassword != "" {
+			cfg.EgressProxyPassword = &egress.EgressProxyPassword
+		}
+	}
+
+	return cfg
 }
 
 // buildNetworkConfig constructs the orchestrator network configuration from the input parameters
@@ -78,7 +90,7 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 	}
 
 	if network != nil && network.Egress != nil {
-		orchNetwork.Egress = buildEgressConfig(network.Egress.AllowedAddresses, network.Egress.DeniedAddresses)
+		orchNetwork.Egress = buildEgressConfig(network.Egress)
 	}
 
 	if network != nil && network.Ingress != nil {

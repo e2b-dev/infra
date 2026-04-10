@@ -64,8 +64,11 @@ func (r BuildReason) Value() (driver.Value, error) {
 const PausedSandboxConfigVersion = "v1"
 
 type SandboxNetworkEgressConfig struct {
-	AllowedAddresses []string `json:"allowedAddresses,omitempty"`
-	DeniedAddresses  []string `json:"deniedAddresses,omitempty"`
+	AllowedAddresses    []string `json:"allowedAddresses,omitempty"`
+	DeniedAddresses     []string `json:"deniedAddresses,omitempty"`
+	EgressProxyAddress  string   `json:"egressProxyAddress,omitempty"`
+	EgressProxyUsername string   `json:"egressProxyUsername,omitempty"`
+	EgressProxyPassword string   `json:"egressProxyPassword,omitempty"`
 }
 
 const AllowPublicAccessDefault = true
