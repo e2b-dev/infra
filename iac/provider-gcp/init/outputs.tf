@@ -91,6 +91,10 @@ output "fc_versions_bucket_name" {
   value = google_storage_bucket.fc_versions_bucket.name
 }
 
+output "fc_busybox_bucket_name" {
+  value = google_storage_bucket.fc_busybox_bucket.name
+}
+
 output "fc_template_bucket_name" {
   value = google_storage_bucket.fc_template_bucket.name
 }

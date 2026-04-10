@@ -79,6 +79,17 @@ resource "google_storage_bucket" "fc_env_pipeline_bucket" {
   labels = var.labels
 }
 
+resource "google_storage_bucket" "fc_busybox_bucket" {
+  location = var.gcp_region
+  name     = "${var.bucket_prefix}fc-busybox"
+
+  public_access_prevention    = "enforced"
+  storage_class               = "STANDARD"
+  uniform_bucket_level_access = true
+
+  labels = var.labels
+}
+
 resource "google_storage_bucket" "clickhouse_backups_bucket" {
   name     = "${var.bucket_prefix}clickhouse-backups"
   location = var.gcp_region
@@ -202,6 +213,12 @@ resource "google_storage_bucket_iam_member" "fc_kernels_bucket_iam" {
 
 resource "google_storage_bucket_iam_member" "fc_versions_bucket_iam" {
   bucket = google_storage_bucket.fc_versions_bucket.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+}
+
+resource "google_storage_bucket_iam_member" "fc_busybox_bucket_iam" {
+  bucket = google_storage_bucket.fc_busybox_bucket.name
   role   = "roles/storage.objectViewer"
   member = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
 }

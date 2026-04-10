@@ -52,7 +52,7 @@ module "init" {
   prefix        = var.prefix
   bucket_prefix = var.bucket_prefix
 
-  region = data.aws_region.current.name
+  region = data.aws_region.current.id
   endpoint_ingress_subnet_ids = [
     aws_security_group.cluster_node.id
   ]
@@ -122,6 +122,7 @@ module "cluster" {
   fc_env_pipeline_bucket_name       = module.init.fc_env_pipeline_bucket_name
   fc_kernels_bucket_name            = module.init.fc_kernels_bucket_name
   fc_versions_bucket_name           = module.init.fc_versions_bucket_name
+  fc_busybox_bucket_name            = module.init.fc_busybox_bucket_name
   templates_bucket_name             = module.init.fc_template_bucket_name
   templates_build_cache_bucket_name = module.init.fc_template_build_cache_bucket_name
   loki_bucket_name                  = module.init.loki_bucket_name
@@ -153,7 +154,7 @@ module "cluster" {
   client_server_nested_virtualization = var.client_server_nested_virtualization
   client_node_labels                  = var.client_node_labels
 
-  clickhouse_az                    = "${data.aws_region.current.name}a"
+  clickhouse_az                    = "${data.aws_region.current.id}a"
   clickhouse_cluster_size          = var.clickhouse_cluster_size
   clickhouse_image_family_prefix   = var.clickhouse_image_family_prefix != "" ? var.clickhouse_image_family_prefix : local.ami_family_prefix
   clickhouse_machine_type          = var.clickhouse_server_machine_type
@@ -168,7 +169,7 @@ module "nomad" {
 
   domain_name = var.domain_name
   environment = var.environment
-  aws_region  = data.aws_region.current.name
+  aws_region  = data.aws_region.current.id
 
   nomad_acl_token  = module.init.cluster.nomad_acl_token
   consul_acl_token = module.init.cluster.consul_acl_token
@@ -176,10 +177,6 @@ module "nomad" {
   grafana_otel_collector_token = module.init.grafana.otel_collector_token
   grafana_otlp_url             = module.init.grafana.otlp_url
   grafana_username             = module.init.grafana.username
-
-  grafana_logs_user     = module.init.grafana.logs_user
-  grafana_logs_endpoint = module.init.grafana.logs_url
-  grafana_logs_api_key  = module.init.grafana.logs_collector_api_token
 
   api_node_pool          = local.api_pool_name
   clickhouse_node_pool   = local.clickhouse_pool_name

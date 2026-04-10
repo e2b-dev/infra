@@ -169,6 +169,7 @@ module "cluster" {
   fc_env_pipeline_bucket_name = module.init.fc_env_pipeline_bucket_name
   fc_kernels_bucket_name      = module.init.fc_kernels_bucket_name
   fc_versions_bucket_name     = module.init.fc_versions_bucket_name
+  fc_busybox_bucket_name      = module.init.fc_busybox_bucket_name
 
   clickhouse_job_constraint_prefix = var.clickhouse_job_constraint_prefix
   clickhouse_health_port           = var.clickhouse_health_port

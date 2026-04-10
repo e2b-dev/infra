@@ -93,16 +93,15 @@ func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64
 		)
 	}
 
-	// Binary search: find the last mapping whose Offset <= offset.
 	i := sort.Search(len(t.Mapping), func(i int) bool {
 		return int64(t.Mapping[i].Offset) > offset
-	}) - 1
+	})
 
-	if i < 0 {
+	if i == 0 {
 		return nil, 0, fmt.Errorf("no source found for offset %d", offset)
 	}
 
-	mapping := &t.Mapping[i]
+	mapping := &t.Mapping[i-1]
 	shift := offset - int64(mapping.Offset)
 
 	// Verify that the offset falls within this mapping's range
