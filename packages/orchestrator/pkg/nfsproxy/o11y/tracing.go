@@ -12,7 +12,7 @@ import (
 
 // Tracing creates OpenTelemetry spans for each operation.
 func Tracing(skipOps map[string]bool) middleware.Interceptor {
-	tracer := otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/middleware")
+	tracer := otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/o11y")
 
 	return func(ctx context.Context, op string, args []any, next func(context.Context) ([]any, error)) ([]any, error) {
 		if skipOps[op] {
