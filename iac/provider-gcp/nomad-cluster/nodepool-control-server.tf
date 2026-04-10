@@ -52,7 +52,7 @@ resource "google_compute_region_instance_group_manager" "server_pool" {
   # Server is a stateful cluster, so the update strategy used to roll out a new GCE Instance Template must be
   # a rolling update.
   update_policy {
-    type           = "PROACTIVE"
+    type           = "OPPORTUNISTIC"
     minimal_action = "REPLACE"
 
     // We want to keep the instance distribution even
