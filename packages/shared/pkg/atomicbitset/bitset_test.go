@@ -38,13 +38,13 @@ func TestSetRange_Concurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	for g := range 8 {
 		wg.Go(func() {
-			start := uint(g) * 32
+			start := int64(g) * 32
 			b.SetRange(start, start+128)
 		})
 	}
 	wg.Wait()
 
-	last := uint(7*32 + 128)
+	last := int64(7*32 + 128)
 	require.True(t, b.HasRange(0, last))
 	require.False(t, b.HasRange(last, last+1))
 }
@@ -68,9 +68,9 @@ func TestCachePattern(t *testing.T) {
 		chunkSize int64 = 4_194_304
 	)
 
-	totalBlocks := uint((fileSize + blockSize - 1) / blockSize)
-	startBlock := func(off int64) uint { return uint(off / blockSize) }
-	endBlock := func(off int64) uint { return uint((off + blockSize - 1) / blockSize) }
+	totalBlocks := (fileSize + blockSize - 1) / blockSize
+	startBlock := func(off int64) int64 { return off / blockSize }
+	endBlock := func(off int64) int64 { return (off + blockSize - 1) / blockSize }
 
 	b := New()
 
@@ -114,15 +114,15 @@ func TestCardinalityInRange_GapFix(t *testing.T) {
 }
 
 const (
-	benchBits  uint = 262144
-	benchChunk uint = 1024
+	benchBits  int64 = 262144
+	benchChunk int64 = 1024
 )
 
 func BenchmarkSetRange(b *testing.B) {
 	bs := New()
 	b.ResetTimer()
 	for i := range b.N {
-		start := uint(i) % (benchBits / benchChunk) * benchChunk
+		start := int64(i) % (benchBits / benchChunk) * benchChunk
 		bs.SetRange(start, start+benchChunk)
 	}
 }
@@ -132,7 +132,7 @@ func BenchmarkHasRange_Hit(b *testing.B) {
 	bs.SetRange(0, benchBits)
 	b.ResetTimer()
 	for i := range b.N {
-		start := uint(i) % (benchBits / benchChunk) * benchChunk
+		start := int64(i) % (benchBits / benchChunk) * benchChunk
 		if !bs.HasRange(start, start+benchChunk) {
 			b.Fatal("expected set")
 		}
@@ -143,7 +143,7 @@ func BenchmarkHasRange_Miss(b *testing.B) {
 	bs := New()
 	b.ResetTimer()
 	for i := range b.N {
-		start := uint(i) % (benchBits / benchChunk) * benchChunk
+		start := int64(i) % (benchBits / benchChunk) * benchChunk
 		if bs.HasRange(start, start+benchChunk) {
 			b.Fatal("expected unset")
 		}
@@ -156,7 +156,7 @@ func BenchmarkHasRange_HitConcurrent(b *testing.B) {
 	b.SetParallelism(16)
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
-		i := uint(0)
+		i := int64(0)
 		for pb.Next() {
 			start := i % (benchBits / benchChunk) * benchChunk
 			if !bs.HasRange(start, start+benchChunk) {

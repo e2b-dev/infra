@@ -309,15 +309,15 @@ func (c *Cache) sliceDirect(off, length int64) ([]byte, error) {
 }
 
 func (c *Cache) isCached(off, length int64) bool {
-	start := uint(header.BlockIdx(off, c.blockSize))
-	end := uint(header.BlockEndIdx(min(off+length, c.size), c.blockSize))
+	start := header.BlockIdx(off, c.blockSize)
+	end := header.BlockEndIdx(min(off+length, c.size), c.blockSize)
 
 	return c.dirty.HasRange(start, end)
 }
 
 func (c *Cache) setIsCached(off, length int64) {
-	start := uint(header.BlockIdx(off, c.blockSize))
-	end := uint(header.BlockEndIdx(off+length, c.blockSize))
+	start := header.BlockIdx(off, c.blockSize)
+	end := header.BlockEndIdx(off+length, c.blockSize)
 
 	c.dirty.SetRange(start, end)
 }

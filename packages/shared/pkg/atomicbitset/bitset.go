@@ -18,14 +18,14 @@ func New() *Bitset {
 	}
 }
 
-func (b *Bitset) HasRange(start, end uint) bool {
+func (b *Bitset) HasRange(start, end int64) bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
 	return b.bm.CardinalityInRange(uint64(start), uint64(end)) == uint64(end-start)
 }
 
-func (b *Bitset) SetRange(start, end uint) {
+func (b *Bitset) SetRange(start, end int64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
