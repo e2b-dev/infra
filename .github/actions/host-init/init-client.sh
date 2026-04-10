@@ -66,13 +66,20 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger
 
 # Load kernel modules — skip if built into kernel
-for mod in nbd nfs nfsv3; do
+for mod in nfs nfsv3; do
   if [ -e /sys/module/${mod} ]; then
     echo "${mod} is built into kernel"
   else
     sudo modprobe ${mod} 2>/dev/null && echo "${mod} loaded" || echo "WARNING: ${mod} not available"
   fi
 done
+
+# NBD needs nbds_max parameter
+if [ -e /sys/module/nbd ]; then
+  echo "nbd is built into kernel"
+else
+  sudo modprobe nbd nbds_max=4096 2>/dev/null && echo "nbd loaded" || echo "WARNING: nbd not available"
+fi
 
 # Create the directory for the fc mounts
 mkdir -p /fc-vm
