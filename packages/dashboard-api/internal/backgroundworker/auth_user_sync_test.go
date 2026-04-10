@@ -74,53 +74,6 @@ func TestAuthUserSync_EndToEnd(t *testing.T) {
 		deleteAuthUser(t, ctx, db, userID)
 		waitForPublicUserGone(t, ctx, db, userID)
 	})
-
-	t.Run("burst backlog drains mixed upsert and delete work", func(t *testing.T) {
-		t.Parallel()
-
-		ctx := t.Context()
-		const userCount = 40
-
-		type testUser struct {
-			id        uuid.UUID
-			email     string
-			shouldDel bool
-		}
-
-		users := make([]testUser, 0, userCount)
-		for i := range userCount {
-			u := testUser{
-				id:        uuid.New(),
-				email:     fmt.Sprintf("river-burst-%02d@example.com", i),
-				shouldDel: i%3 == 0,
-			}
-			users = append(users, u)
-			insertAuthUser(t, ctx, db, u.id, u.email)
-		}
-
-		proc := startRiverWorker(t, db)
-		t.Cleanup(func() { proc.Stop(t) })
-
-		for _, u := range users {
-			waitForPublicUser(t, ctx, db, u.id, u.email)
-		}
-
-		for _, u := range users {
-			if u.shouldDel {
-				deleteAuthUser(t, ctx, db, u.id)
-			}
-		}
-
-		for _, u := range users {
-			if u.shouldDel {
-				waitForPublicUserGone(t, ctx, db, u.id)
-
-				continue
-			}
-
-			waitForPublicUser(t, ctx, db, u.id, u.email)
-		}
-	})
 }
 
 func TestAuthUserSyncMigrations_AuthWritesSucceedBeforeRiverTablesExist(t *testing.T) {

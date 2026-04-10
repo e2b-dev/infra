@@ -6,34 +6,57 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewProvisionSink_DisabledReturnsNoop(t *testing.T) {
+func TestNewProvisionSink(t *testing.T) {
 	t.Parallel()
 
-	sink, err := NewProvisionSink(false, "", "")
-	require.NoError(t, err)
-	require.IsType(t, &NoopProvisionSink{}, sink)
-}
+	tests := []struct {
+		name     string
+		enabled  bool
+		baseURL  string
+		apiToken string
+		wantErr  error
+		wantType any
+	}{
+		{
+			name:     "disabled returns noop",
+			enabled:  false,
+			wantType: &NoopProvisionSink{},
+		},
+		{
+			name:     "enabled requires base url",
+			enabled:  true,
+			apiToken: "token",
+			wantErr:  ErrMissingBaseURL,
+		},
+		{
+			name:    "enabled requires api token",
+			enabled: true,
+			baseURL: "https://billing.example.com",
+			wantErr: ErrMissingAPIToken,
+		},
+		{
+			name:     "enabled returns http sink",
+			enabled:  true,
+			baseURL:  "https://billing.example.com",
+			apiToken: "token",
+			wantType: &HTTPProvisionSink{},
+		},
+	}
 
-func TestNewProvisionSink_EnabledRequiresBaseURL(t *testing.T) {
-	t.Parallel()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	sink, err := NewProvisionSink(true, "", "token")
-	require.Nil(t, sink)
-	require.ErrorIs(t, err, ErrMissingBaseURL)
-}
+			sink, err := NewProvisionSink(tt.enabled, tt.baseURL, tt.apiToken)
+			if tt.wantErr != nil {
+				require.Nil(t, sink)
+				require.ErrorIs(t, err, tt.wantErr)
 
-func TestNewProvisionSink_EnabledRequiresAPIToken(t *testing.T) {
-	t.Parallel()
+				return
+			}
 
-	sink, err := NewProvisionSink(true, "https://billing.example.com", "")
-	require.Nil(t, sink)
-	require.ErrorIs(t, err, ErrMissingAPIToken)
-}
-
-func TestNewProvisionSink_EnabledReturnsHTTPSink(t *testing.T) {
-	t.Parallel()
-
-	sink, err := NewProvisionSink(true, "https://billing.example.com", "token")
-	require.NoError(t, err)
-	require.IsType(t, &HTTPProvisionSink{}, sink)
+			require.NoError(t, err)
+			require.IsType(t, tt.wantType, sink)
+		})
+	}
 }
