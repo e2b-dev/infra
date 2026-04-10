@@ -43,7 +43,12 @@ func (w *wrappedHandler) Mount(ctx context.Context, conn net.Conn, req nfs.Mount
 	if err != nil {
 		logger.L().Error(ctx, "Handler.Mount interceptor error", zap.Error(err))
 
-		return nfs.MountStatusErrServerFault, nil, nil
+		// only override the status if the interceptor returns OK
+		if status == nfs.MountStatusOk {
+			status = nfs.MountStatusErrServerFault
+		}
+
+		return status, nil, nil
 	}
 
 	return status, WrapFilesystem(ctx, fs, w.interceptors), auth
