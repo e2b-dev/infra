@@ -386,6 +386,7 @@ components:
         - blockedReason
         - isDefault
         - limits
+        - createdAt
       properties:
         id:
           type: string
@@ -412,6 +413,9 @@ components:
           type: boolean
         limits:
           $ref: "#/components/schemas/UserTeamLimits"
+        createdAt:
+          type: string
+          format: date-time
 
     UserTeamsResponse:
       type: object
