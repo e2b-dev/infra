@@ -1,15 +1,11 @@
 locals {
-  clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
-  redis_url                    = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
-  redis_cluster_url            = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
-  loki_url                     = "http://loki.service.consul:${var.loki_service_port.port}"
-  enable_billing_http_team_provision_sink = (
-    var.dashboard_api_count > 0 &&
-    lower(trimspace(lookup(var.dashboard_api_env_vars, "ENABLE_BILLING_HTTP_TEAM_PROVISION_SINK", "false"))) == "true"
-  )
-  dashboard_api_extra_env                = var.dashboard_api_env_vars
-  dashboard_api_billing_server_url       = local.enable_billing_http_team_provision_sink ? data.google_cloud_run_v2_service.billing_server[0].uri : ""
-  dashboard_api_billing_server_api_token = local.enable_billing_http_team_provision_sink ? data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data : ""
+  clickhouse_connection_string            = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
+  redis_url                               = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
+  redis_cluster_url                       = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
+  loki_url                                = "http://loki.service.consul:${var.loki_service_port.port}"
+  enable_billing_http_team_provision_sink = var.enable_billing_http_team_provision_sink
+  dashboard_api_billing_server_url        = local.enable_billing_http_team_provision_sink ? data.google_cloud_run_v2_service.billing_server[0].uri : ""
+  dashboard_api_billing_server_api_token  = local.enable_billing_http_team_provision_sink ? data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data : ""
 }
 
 # API
@@ -163,9 +159,9 @@ module "dashboard_api" {
   redis_cluster_url                       = local.redis_cluster_url
   redis_tls_ca_base64                     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
   enable_auth_user_sync_background_worker = var.enable_auth_user_sync_background_worker
+  enable_billing_http_team_provision_sink = var.enable_billing_http_team_provision_sink
   billing_server_url                      = local.dashboard_api_billing_server_url
   billing_server_api_token                = local.dashboard_api_billing_server_api_token
-  extra_env                               = local.dashboard_api_extra_env
 
   otel_collector_grpc_port = var.otel_collector_grpc_port
   logs_proxy_port          = var.logs_proxy_port

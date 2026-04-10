@@ -55,13 +55,12 @@ variable "supabase_jwt_secrets" {
   sensitive = true
 }
 
-variable "extra_env" {
-  type      = map(string)
-  default   = {}
-  sensitive = true
+variable "enable_auth_user_sync_background_worker" {
+  type    = bool
+  default = false
 }
 
-variable "enable_auth_user_sync_background_worker" {
+variable "enable_billing_http_team_provision_sink" {
   type    = bool
   default = false
 }

@@ -2,8 +2,6 @@ locals {
   base_env = {
     GIN_MODE                                = "release"
     ENVIRONMENT                             = var.environment
-    NODE_ID                                 = "$${node.unique.id}"
-    PORT                                    = "$${NOMAD_PORT_api}"
     ADMIN_TOKEN                             = var.admin_token
     POSTGRES_CONNECTION_STRING              = var.postgres_connection_string
     AUTH_DB_CONNECTION_STRING               = var.auth_db_connection_string
@@ -15,13 +13,12 @@ locals {
     REDIS_CLUSTER_URL                       = var.redis_cluster_url
     REDIS_TLS_CA_BASE64                     = var.redis_tls_ca_base64
     ENABLE_AUTH_USER_SYNC_BACKGROUND_WORKER = tostring(var.enable_auth_user_sync_background_worker)
+    ENABLE_BILLING_HTTP_TEAM_PROVISION_SINK = tostring(var.enable_billing_http_team_provision_sink)
     BILLING_SERVER_URL                      = var.billing_server_url
     BILLING_SERVER_API_TOKEN                = var.billing_server_api_token
     OTEL_COLLECTOR_GRPC_ENDPOINT            = "localhost:${var.otel_collector_grpc_port}"
     LOGS_COLLECTOR_ADDRESS                  = "http://localhost:${var.logs_proxy_port.port}"
   }
-
-  env = merge(local.base_env, var.extra_env)
 }
 
 resource "nomad_job" "dashboard_api" {
@@ -35,7 +32,7 @@ resource "nomad_job" "dashboard_api" {
     memory_mb = 512
     cpu_count = 1
 
-    env = local.env
+    env = local.base_env
 
     subdomain = "dashboard-api"
   })
