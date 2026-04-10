@@ -53,7 +53,7 @@ type Cache struct {
 	blockSize int64
 	mmap      *mmap.MMap
 	mu        sync.RWMutex
-	dirty     atomicbitset.Bitset
+	dirty     *atomicbitset.Bitset
 	dirtyFile bool
 	closed    atomic.Bool
 }
@@ -96,7 +96,7 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		size:      size,
 		blockSize: blockSize,
 		dirtyFile: dirtyFile,
-		dirty:     atomicbitset.NewRoaring(),
+		dirty:     atomicbitset.New(),
 	}, nil
 }
 
