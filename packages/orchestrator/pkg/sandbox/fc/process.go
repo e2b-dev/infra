@@ -108,9 +108,9 @@ type TokenBucketConfig struct {
 	RefillTimeMs int64
 }
 
-// TxRateLimiterConfig holds TX rate limit parameters for a VM's network interface.
+// RateLimiterConfig holds rate limit parameters for a Firecracker device (network or block).
 // Mirrors the Firecracker RateLimiter structure: two independent token buckets.
-type TxRateLimiterConfig struct {
+type RateLimiterConfig struct {
 	Ops       TokenBucketConfig // packets; effective rate = BucketSize * 1000 / RefillTimeMs ops/s
 	Bandwidth TokenBucketConfig // bytes;   effective rate = BucketSize * 1000 / RefillTimeMs bytes/s
 }
@@ -300,8 +300,8 @@ func (p *Process) Create(
 	memoryMB int64,
 	hugePages bool,
 	options ProcessOptions,
-	txRateLimit TxRateLimiterConfig,
-	driveRateLimit TxRateLimiterConfig,
+	txRateLimit RateLimiterConfig,
+	driveRateLimit RateLimiterConfig,
 	cgroupFD int,
 ) error {
 	ctx, childSpan := tracer.Start(ctx, "create-fc")
@@ -406,7 +406,7 @@ func (p *Process) Create(
 	}
 	telemetry.ReportEvent(ctx, "symlinked rootfs")
 
-	err = p.client.setRootfsDrive(ctx, p.rootfsPath, options.IoEngine, buildTxRateLimiter(driveRateLimit))
+	err = p.client.setRootfsDrive(ctx, p.rootfsPath, options.IoEngine, buildRateLimiter(driveRateLimit))
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 
@@ -414,7 +414,7 @@ func (p *Process) Create(
 	}
 	telemetry.ReportEvent(ctx, "set fc drivers config")
 
-	err = p.client.setNetworkInterface(ctx, p.slot.VpeerName(), p.slot.TapName(), p.slot.TapMAC(), buildTxRateLimiter(txRateLimit))
+	err = p.client.setNetworkInterface(ctx, p.slot.VpeerName(), p.slot.TapName(), p.slot.TapMAC(), buildRateLimiter(txRateLimit))
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 
@@ -458,8 +458,8 @@ func (p *Process) Resume(
 	uffdReady chan struct{},
 	accessToken *string,
 	cgroupFD int,
-	txRateLimit TxRateLimiterConfig,
-	driveRateLimit TxRateLimiterConfig,
+	txRateLimit RateLimiterConfig,
+	driveRateLimit RateLimiterConfig,
 ) error {
 	ctx, span := tracer.Start(ctx, "resume-fc")
 	defer span.End()

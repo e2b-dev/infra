@@ -501,11 +501,11 @@ func (f *Factory) CreateSandbox(
 		config.RamMB,
 		config.HugePages,
 		processOptions,
-		fc.TxRateLimiterConfig{
+		fc.RateLimiterConfig{
 			Ops:       fc.TokenBucketConfig(throttleConfig.Ops),
 			Bandwidth: fc.TokenBucketConfig(throttleConfig.Bandwidth),
 		},
-		fc.TxRateLimiterConfig{
+		fc.RateLimiterConfig{
 			Ops:       fc.TokenBucketConfig(driveThrottleConfig.Ops),
 			Bandwidth: fc.TokenBucketConfig(driveThrottleConfig.Bandwidth),
 		},
@@ -867,11 +867,11 @@ func (f *Factory) ResumeSandbox(
 		fcUffd.Ready(),
 		config.Envd.AccessToken,
 		cgroupFD,
-		fc.TxRateLimiterConfig{
+		fc.RateLimiterConfig{
 			Ops:       fc.TokenBucketConfig(resumeThrottleConfig.Ops),
 			Bandwidth: fc.TokenBucketConfig(resumeThrottleConfig.Bandwidth),
 		},
-		fc.TxRateLimiterConfig{
+		fc.RateLimiterConfig{
 			Ops:       fc.TokenBucketConfig(resumeDriveThrottleConfig.Ops),
 			Bandwidth: fc.TokenBucketConfig(resumeDriveThrottleConfig.Bandwidth),
 		},

@@ -249,10 +249,10 @@ func buildTokenBucket(b TokenBucketConfig) *models.TokenBucket {
 	return bucket
 }
 
-// buildTxRateLimiter constructs a Firecracker RateLimiter from a TxRateLimiterConfig.
+// buildRateLimiter constructs a Firecracker RateLimiter from a RateLimiterConfig.
 // Either bucket is omitted when its BucketSize is < 0.
 // Returns nil only when both buckets are disabled.
-func buildTxRateLimiter(config TxRateLimiterConfig) *models.RateLimiter {
+func buildRateLimiter(config RateLimiterConfig) *models.RateLimiter {
 	ops := buildTokenBucket(config.Ops)
 	bw := buildTokenBucket(config.Bandwidth)
 
@@ -267,8 +267,8 @@ func buildTxRateLimiter(config TxRateLimiterConfig) *models.RateLimiter {
 // Both buckets are disabled when their BucketSize < 0; if all are disabled an empty
 // RateLimiter is sent to reset any limit persisted in a snapshot.
 // This always sends a PATCH so snapshot-persisted limits are overwritten.
-func (c *apiClient) setTxRateLimit(ctx context.Context, ifaceID string, config TxRateLimiterConfig) error {
-	limiter := buildTxRateLimiter(config)
+func (c *apiClient) setTxRateLimit(ctx context.Context, ifaceID string, config RateLimiterConfig) error {
+	limiter := buildRateLimiter(config)
 	if limiter == nil {
 		limiter = &models.RateLimiter{} // empty = reset
 	}
@@ -294,8 +294,8 @@ func (c *apiClient) setTxRateLimit(ctx context.Context, ifaceID string, config T
 // Both buckets are disabled when their BucketSize < 0; if all are disabled an empty
 // RateLimiter is sent to reset any limit persisted in a snapshot.
 // This always sends a PATCH so snapshot-persisted limits are overwritten.
-func (c *apiClient) setDriveRateLimit(ctx context.Context, driveID string, config TxRateLimiterConfig) error {
-	limiter := buildTxRateLimiter(config)
+func (c *apiClient) setDriveRateLimit(ctx context.Context, driveID string, config RateLimiterConfig) error {
+	limiter := buildRateLimiter(config)
 	if limiter == nil {
 		limiter = &models.RateLimiter{} // empty = reset
 	}
