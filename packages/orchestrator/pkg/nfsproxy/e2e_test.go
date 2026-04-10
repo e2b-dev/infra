@@ -12,8 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/docker/docker/api/types/container"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -25,6 +27,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/chrooted"
 	nfscfg "github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/quota"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/portmap"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
@@ -141,7 +144,24 @@ func TestIntegrationTest(t *testing.T) {
 
 	createVolumeDir(t, builder, volumeType, teamID, volumeID)
 
-	s, err := NewProxy(t.Context(), builder, sandboxes, nfscfg.Config{
+	redisServer := miniredis.NewMiniRedis()
+	err = redisServer.Start()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		redisServer.Close()
+	})
+
+	redisAddr := redisServer.Addr()
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: redisAddr,
+	})
+	t.Cleanup(func() {
+		err := redisClient.Close()
+		assert.NoError(t, err)
+	})
+	tracker := quota.NewTracker(redisClient, logger)
+
+	s, err := NewProxy(t.Context(), builder, sandboxes, tracker, nfscfg.Config{
 		Logging:     true,
 		NFSLogLevel: nfs.DebugLevel,
 	})
