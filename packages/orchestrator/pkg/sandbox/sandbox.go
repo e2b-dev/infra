@@ -430,6 +430,7 @@ func (f *Factory) CreateSandbox(
 	}
 
 	throttleConfig := featureflags.GetTCPFirewallEgressThrottleConfig(ctx, f.featureFlags)
+	driveThrottleConfig := featureflags.GetBlockDriveThrottleConfig(ctx, f.featureFlags)
 
 	telemetry.ReportEvent(ctx, "created fc client")
 
@@ -500,9 +501,13 @@ func (f *Factory) CreateSandbox(
 		config.RamMB,
 		config.HugePages,
 		processOptions,
-		fc.TxRateLimiterConfig{
+		fc.RateLimiterConfig{
 			Ops:       fc.TokenBucketConfig(throttleConfig.Ops),
 			Bandwidth: fc.TokenBucketConfig(throttleConfig.Bandwidth),
+		},
+		fc.RateLimiterConfig{
+			Ops:       fc.TokenBucketConfig(driveThrottleConfig.Ops),
+			Bandwidth: fc.TokenBucketConfig(driveThrottleConfig.Bandwidth),
 		},
 		cgroupFD,
 	)
@@ -756,6 +761,7 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	resumeThrottleConfig := featureflags.GetTCPFirewallEgressThrottleConfig(ctx, f.featureFlags)
+	resumeDriveThrottleConfig := featureflags.GetBlockDriveThrottleConfig(ctx, f.featureFlags)
 
 	telemetry.ReportEvent(ctx, "created FC process")
 
@@ -861,9 +867,13 @@ func (f *Factory) ResumeSandbox(
 		fcUffd.Ready(),
 		config.Envd.AccessToken,
 		cgroupFD,
-		fc.TxRateLimiterConfig{
+		fc.RateLimiterConfig{
 			Ops:       fc.TokenBucketConfig(resumeThrottleConfig.Ops),
 			Bandwidth: fc.TokenBucketConfig(resumeThrottleConfig.Bandwidth),
+		},
+		fc.RateLimiterConfig{
+			Ops:       fc.TokenBucketConfig(resumeDriveThrottleConfig.Ops),
+			Bandwidth: fc.TokenBucketConfig(resumeDriveThrottleConfig.Bandwidth),
 		},
 	)
 
