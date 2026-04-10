@@ -459,6 +459,12 @@ variable "dashboard_api_env_vars" {
   default = {}
 }
 
+variable "supabase_db_connection_string" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
 variable "volume_token_issuer" {
   type = string
 }

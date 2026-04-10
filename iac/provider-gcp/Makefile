@@ -77,6 +77,7 @@ tf_vars := \
 	$(call tfvar, LOKI_USE_V13_SCHEMA_FROM) \
 	$(call tfvar, DASHBOARD_API_COUNT) \
 	$(call tfvar, DASHBOARD_API_ENV_VARS) \
+	$(call tfvar, SUPABASE_DB_CONNECTION_STRING) \
 	$(call tfvar, DEFAULT_PERSISTENT_VOLUME_TYPE) \
 	$(call tfvar, PERSISTENT_VOLUME_TYPES) \
 	$(call tfvar, DB_MAX_OPEN_CONNECTIONS) \

@@ -14,6 +14,7 @@ type Config struct {
 
 	AuthDBConnectionString            string `env:"AUTH_DB_CONNECTION_STRING"`
 	AuthDBReadReplicaConnectionString string `env:"AUTH_DB_READ_REPLICA_CONNECTION_STRING"`
+	SupabaseDBConnectionString        string `env:"SUPABASE_DB_CONNECTION_STRING"`
 
 	RedisURL         string `env:"REDIS_URL"`
 	RedisClusterURL  string `env:"REDIS_CLUSTER_URL"`
@@ -28,6 +29,10 @@ func Parse() (Config, error) {
 
 	if config.AuthDBConnectionString == "" {
 		config.AuthDBConnectionString = config.PostgresConnectionString
+	}
+
+	if config.SupabaseDBConnectionString == "" {
+		config.SupabaseDBConnectionString = config.PostgresConnectionString
 	}
 
 	if err == nil && config.RedisURL == "" && config.RedisClusterURL == "" {

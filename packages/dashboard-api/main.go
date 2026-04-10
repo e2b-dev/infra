@@ -188,7 +188,7 @@ func run() int {
 	if config.EnableAuthUserSyncBackgroundWorker {
 		supabaseDB, err = supabasedb.NewClient(
 			ctx,
-			config.AuthDBConnectionString,
+			config.SupabaseDBConnectionString,
 			pool.WithMaxConnections(4),
 		)
 		if err != nil {
