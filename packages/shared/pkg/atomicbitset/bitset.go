@@ -18,13 +18,6 @@ func New() *Bitset {
 	}
 }
 
-func (b *Bitset) Has(i uint) bool {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	return b.bm.Contains(uint32(i))
-}
-
 func (b *Bitset) HasRange(start, end uint) bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()

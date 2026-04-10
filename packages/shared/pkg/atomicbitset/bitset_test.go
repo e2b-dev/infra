@@ -162,7 +162,7 @@ func BenchmarkHasRange_Miss(b *testing.B) {
 	}
 }
 
-func BenchmarkHas_HitConcurrent(b *testing.B) {
+func BenchmarkHasRange_HitConcurrent(b *testing.B) {
 	bs := New()
 	bs.SetRange(0, benchBits)
 	b.SetParallelism(16)
@@ -170,7 +170,8 @@ func BenchmarkHas_HitConcurrent(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		i := uint(0)
 		for pb.Next() {
-			if !bs.Has(i % benchBits) {
+			lo := i % (benchBits / benchChunk) * benchChunk
+			if !bs.HasRange(lo, lo+benchChunk) {
 				b.Fatal("expected set")
 			}
 			i++

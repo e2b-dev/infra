@@ -290,14 +290,6 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 	return nil, BytesNotAvailableError{}
 }
 
-func (c *Cache) startBlock(off int64) uint {
-	return uint(header.BlockIdx(off, c.blockSize))
-}
-
-func (c *Cache) endBlock(off int64) uint {
-	return uint((off + c.blockSize - 1) / c.blockSize)
-}
-
 // sliceDirect returns a slice of the mmap without checking isCached.
 // Used by the streaming chunker after the waiter mechanism has confirmed data availability.
 func (c *Cache) sliceDirect(off, length int64) ([]byte, error) {
@@ -319,36 +311,19 @@ func (c *Cache) sliceDirect(off, length int64) ([]byte, error) {
 }
 
 func (c *Cache) isCached(off, length int64) bool {
-	// Zero-length is vacuously true (no-op)
-	if length <= 0 {
-		return true
-	}
-
-	// Make sure the offset is within the cache size
-	if off >= c.size {
-		return false
-	}
-
-	// Cap if the length goes beyond the cache size, so we don't check for blocks that are out of bounds.
 	end := min(off+length, c.size)
-
-	lo := c.startBlock(off)
-	hi := c.endBlock(end)
-
-	// Fast path: single-block check (common case for NBD reads).
-	if hi-lo == 1 {
-		return c.dirty.Has(lo)
-	}
+	lo := uint(off / c.blockSize)
+	hi := uint((end + c.blockSize - 1) / c.blockSize)
 
 	return c.dirty.HasRange(lo, hi)
 }
 
 func (c *Cache) setIsCached(off, length int64) {
-	if length <= 0 {
-		return
-	}
+	end := off + length
+	lo := uint(off / c.blockSize)
+	hi := uint((end + c.blockSize - 1) / c.blockSize)
 
-	c.dirty.SetRange(c.startBlock(off), c.endBlock(off+length))
+	c.dirty.SetRange(lo, hi)
 }
 
 // When using WriteAtWithoutLock you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
