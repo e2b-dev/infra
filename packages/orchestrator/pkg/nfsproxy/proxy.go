@@ -83,7 +83,7 @@ func buildInterceptors(config cfg.Config, skipOps map[string]bool) *middleware.C
 	}
 
 	if config.Metrics {
-		interceptors = append(interceptors, o11y.Metrics())
+		interceptors = append(interceptors, o11y.Metrics(skipOps))
 	}
 
 	if config.Logging {

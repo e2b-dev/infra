@@ -27,16 +27,16 @@ func Logging(skipOps map[string]bool) middleware.Interceptor {
 
 		err := next(ctx)
 
-		logArgs := []zap.Field{
+		logFields := []zap.Field{
 			zap.Duration("dur", time.Since(start)),
-			zap.Any("args", args),
 		}
+		logFields = append(logFields, argsToZapFields(op, args)...)
 
 		if err == nil {
-			l.Debug(ctx, fmt.Sprintf("[nfs proxy] %s: end", op), logArgs...)
+			l.Debug(ctx, fmt.Sprintf("[nfs proxy] %s: end", op), logFields...)
 		} else {
-			logArgs = append(logArgs, zap.Error(err))
-			l.Warn(ctx, fmt.Sprintf("[nfs proxy] %s: end", op), logArgs...)
+			logFields = append(logFields, zap.Error(err))
+			l.Warn(ctx, fmt.Sprintf("[nfs proxy] %s: end", op), logFields...)
 		}
 
 		return err

@@ -24,8 +24,12 @@ var (
 )
 
 // Metrics records call counts and durations.
-func Metrics() middleware.Interceptor {
+func Metrics(skipOps map[string]bool) middleware.Interceptor {
 	return func(ctx context.Context, op string, _ []any, next func(context.Context) error) error {
+		if skipOps[op] {
+			return next(ctx)
+		}
+
 		start := time.Now()
 		err := next(ctx)
 		durationMs := time.Since(start).Milliseconds()
