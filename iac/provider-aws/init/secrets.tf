@@ -82,13 +82,10 @@ locals {
 
 output "grafana" {
   value = {
-    api_key                  = local.grafana_raw["API_KEY"]
-    otlp_url                 = local.grafana_raw["OTLP_URL"]
-    otel_collector_token     = local.grafana_raw["OTEL_COLLECTOR_TOKEN"]
-    username                 = local.grafana_raw["USERNAME"]
-    logs_user                = local.grafana_raw["LOGS_USER"]
-    logs_url                 = local.grafana_raw["LOGS_URL"]
-    logs_collector_api_token = local.grafana_raw["LOGS_COLLECTOR_API_TOKEN"]
+    api_key              = local.grafana_raw["API_KEY"]
+    otlp_url             = local.grafana_raw["OTLP_URL"]
+    otel_collector_token = local.grafana_raw["OTEL_COLLECTOR_TOKEN"]
+    username             = local.grafana_raw["USERNAME"]
   }
   sensitive = true
 }
@@ -326,4 +323,3 @@ output "redis_cluster_url_secret_name" {
 output "redis_tls_ca_base64_secret_name" {
   value = aws_secretsmanager_secret.redis_tls_ca_base64.name
 }
-

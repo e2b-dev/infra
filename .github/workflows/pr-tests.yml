@@ -39,8 +39,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.commit_sha }}
 
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
