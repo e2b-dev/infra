@@ -7,10 +7,6 @@ LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = ''
 AS $$
 BEGIN
-    IF to_regclass('auth_custom.river_job') IS NULL THEN
-        RETURN NEW;
-    END IF;
-
     INSERT INTO auth_custom.river_job (args, kind, max_attempts, queue, state)
     VALUES (
         jsonb_build_object('user_id', NEW.id, 'operation', 'upsert'),
@@ -32,10 +28,6 @@ LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = ''
 AS $$
 BEGIN
-    IF to_regclass('auth_custom.river_job') IS NULL THEN
-        RETURN NEW;
-    END IF;
-
     IF OLD.email IS DISTINCT FROM NEW.email THEN
         INSERT INTO auth_custom.river_job (args, kind, max_attempts, queue, state)
         VALUES (
@@ -59,10 +51,6 @@ LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = ''
 AS $$
 BEGIN
-    IF to_regclass('auth_custom.river_job') IS NULL THEN
-        RETURN OLD;
-    END IF;
-
     INSERT INTO auth_custom.river_job (args, kind, max_attempts, queue, state)
     VALUES (
         jsonb_build_object('user_id', OLD.id, 'operation', 'delete'),
@@ -90,15 +78,6 @@ CREATE TRIGGER enqueue_user_sync_on_delete
     AFTER DELETE ON auth.users
     FOR EACH ROW EXECUTE FUNCTION auth_custom.enqueue_user_sync_on_delete();
 
-DO $grant$
-BEGIN
-    IF to_regclass('auth_custom.river_job') IS NOT NULL THEN
-        EXECUTE 'GRANT INSERT ON auth_custom.river_job TO trigger_user';
-        EXECUTE 'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA auth_custom TO trigger_user';
-    END IF;
-END;
-$grant$;
-
 -- +goose StatementEnd
 
 -- +goose Down
@@ -111,14 +90,5 @@ DROP TRIGGER IF EXISTS enqueue_user_sync_on_delete ON auth.users;
 DROP FUNCTION IF EXISTS auth_custom.enqueue_user_sync_on_insert();
 DROP FUNCTION IF EXISTS auth_custom.enqueue_user_sync_on_update();
 DROP FUNCTION IF EXISTS auth_custom.enqueue_user_sync_on_delete();
-
-DO $revoke$
-BEGIN
-    IF to_regclass('auth_custom.river_job') IS NOT NULL THEN
-        EXECUTE 'REVOKE INSERT ON auth_custom.river_job FROM trigger_user';
-        EXECUTE 'REVOKE USAGE, SELECT ON ALL SEQUENCES IN SCHEMA auth_custom FROM trigger_user';
-    END IF;
-END;
-$revoke$;
 
 -- +goose StatementEnd
