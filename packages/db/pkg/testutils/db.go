@@ -20,6 +20,7 @@ import (
 	db "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
+	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils/queries"
 )
 
@@ -37,7 +38,9 @@ func init() {
 // Database encapsulates the test database container and clients
 type Database struct {
 	SqlcClient  *db.Client
+	AuthDb      *authdb.Client
 	AuthDB      *authdb.Client
+	SupabaseDB  *supabasedb.Client
 	TestQueries *queries.Queries
 	connStr     string
 }
@@ -107,9 +110,18 @@ func SetupDatabase(t *testing.T) *Database {
 		assert.NoError(t, err)
 	})
 
+	supabaseDB, err := supabasedb.NewClient(t.Context(), connStr)
+	require.NoError(t, err, "Failed to create supabase db client")
+	t.Cleanup(func() {
+		err := supabaseDB.Close()
+		assert.NoError(t, err)
+	})
+
 	return &Database{
 		SqlcClient:  sqlcClient,
+		AuthDb:      authDB,
 		AuthDB:      authDB,
+		SupabaseDB:  supabaseDB,
 		TestQueries: testQueries,
 		connStr:     connStr,
 	}
@@ -118,22 +130,14 @@ func SetupDatabase(t *testing.T) *Database {
 func (db *Database) ApplyMigrations(t *testing.T, migrationDirs ...string) {
 	t.Helper()
 
-	db.applyGooseMigrations(t, 0, migrationDirs...)
-}
-
-func (db *Database) ApplyMigrationsUpTo(t *testing.T, version int64, migrationDirs ...string) {
-	t.Helper()
-
-	// This is only used for staged bootstrap flows that must interleave
-	// third-party migrations with goose-managed SQL migrations.
-	db.applyGooseMigrations(t, version, migrationDirs...)
+	db.applyGooseMigrations(t, migrationDirs...)
 }
 
 func (db *Database) ConnStr() string {
 	return db.connStr
 }
 
-func (db *Database) applyGooseMigrations(t *testing.T, upToVersion int64, migrationDirs ...string) {
+func (db *Database) applyGooseMigrations(t *testing.T, migrationDirs ...string) {
 	t.Helper()
 
 	cmd := exec.CommandContext(t.Context(), "git", "rev-parse", "--show-toplevel")
@@ -152,22 +156,13 @@ func (db *Database) applyGooseMigrations(t *testing.T, upToVersion int64, migrat
 	})
 
 	for _, migrationsDir := range migrationDirs {
-		if upToVersion > 0 {
-			err = goose.UpToContext(
-				t.Context(),
-				sqlDB,
-				filepath.Join(repoRoot, migrationsDir),
-				upToVersion,
-			)
-		} else {
-			err = goose.RunWithOptionsContext(
-				t.Context(),
-				"up",
-				sqlDB,
-				filepath.Join(repoRoot, migrationsDir),
-				nil,
-			)
-		}
+		err = goose.RunWithOptionsContext(
+			t.Context(),
+			"up",
+			sqlDB,
+			filepath.Join(repoRoot, migrationsDir),
+			nil,
+		)
 
 		require.NoError(t, err)
 	}

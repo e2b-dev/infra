@@ -169,6 +169,7 @@ module "cluster" {
   fc_env_pipeline_bucket_name = module.init.fc_env_pipeline_bucket_name
   fc_kernels_bucket_name      = module.init.fc_kernels_bucket_name
   fc_versions_bucket_name     = module.init.fc_versions_bucket_name
+  fc_busybox_bucket_name      = module.init.fc_busybox_bucket_name
 
   clickhouse_job_constraint_prefix = var.clickhouse_job_constraint_prefix
   clickhouse_health_port           = var.clickhouse_health_port
@@ -274,9 +275,11 @@ module "nomad" {
   otel_collector_resources_cpu_count = var.otel_collector_resources_cpu_count
 
   # Dashboard API
-  dashboard_api_count       = var.dashboard_api_count
-  dashboard_api_admin_token = random_password.dashboard_api_admin_secret.result
-  dashboard_api_env_vars    = var.dashboard_api_env_vars
+  dashboard_api_count                     = var.dashboard_api_count
+  dashboard_api_admin_token               = random_password.dashboard_api_admin_secret.result
+  dashboard_api_env_vars                  = var.dashboard_api_env_vars
+  supabase_db_connection_string           = var.supabase_db_connection_string
+  enable_auth_user_sync_background_worker = var.enable_auth_user_sync_background_worker
 
   # Docker reverse proxy
   docker_reverse_proxy_port                = var.docker_reverse_proxy_port

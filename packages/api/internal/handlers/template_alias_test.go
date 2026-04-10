@@ -28,7 +28,7 @@ func TestQueryNotExistingTemplateAlias(t *testing.T) {
 
 	store := &APIStore{
 		sqlcDB:        testDB.SqlcClient,
-		authDB:        testDB.AuthDB,
+		authDB:        testDB.AuthDb,
 		templateCache: templatecache.NewTemplateCache(testDB.SqlcClient, redis),
 	}
 
@@ -38,7 +38,7 @@ func TestQueryNotExistingTemplateAlias(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, fmt.Sprintf("/templates/aliases/%s", alias), nil)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/templates/aliases/%s", alias), nil)
 	auth.SetTeamInfo(c, &types.Team{
 		Team: &authqueries.Team{
 			ID:   teamID,
@@ -69,13 +69,13 @@ func TestQueryExistingTemplateAlias(t *testing.T) {
 
 	store := &APIStore{
 		sqlcDB:        testDB.SqlcClient,
-		authDB:        testDB.AuthDB,
+		authDB:        testDB.AuthDb,
 		templateCache: templatecache.NewTemplateCache(testDB.SqlcClient, redis),
 	}
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, fmt.Sprintf("/templates/aliases/%s", alias), nil)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/templates/aliases/%s", alias), nil)
 	auth.SetTeamInfo(c, &types.Team{
 		Team: &authqueries.Team{
 			ID:   teamID,
@@ -114,13 +114,13 @@ func TestQueryExistingTemplateAliasAsNotOwnerTeam(t *testing.T) {
 
 	store := &APIStore{
 		sqlcDB:        testDB.SqlcClient,
-		authDB:        testDB.AuthDB,
+		authDB:        testDB.AuthDb,
 		templateCache: templatecache.NewTemplateCache(testDB.SqlcClient, redis),
 	}
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, fmt.Sprintf("/templates/aliases/%s", alias), nil)
+	c.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/templates/aliases/%s", alias), nil)
 	auth.SetTeamInfo(c,
 		&types.Team{
 			Team: &authqueries.Team{

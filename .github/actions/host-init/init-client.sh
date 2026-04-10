@@ -95,6 +95,13 @@ gsutil -m cp -r gs://e2b-prod-public-builds/firecrackers/* "${fc_versions_dir}"
 chmod -R 755 $fc_versions_dir
 ls -lh $fc_versions_dir
 
+# Download busybox
+busybox_dir="/fc-busybox"
+mkdir -p $busybox_dir
+gsutil -m cp -r gs://e2b-prod-public-builds/busybox/* "${busybox_dir}"
+chmod -R 755 $busybox_dir
+ls -lh $busybox_dir
+
 # Set up huge pages
 # We are not enabling Transparent Huge Pages for now, as they are not swappable and may result in slowdowns + we are not using swap right now.
 # The THP are by default set to madvise

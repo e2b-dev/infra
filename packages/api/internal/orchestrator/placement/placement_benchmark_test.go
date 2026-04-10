@@ -334,12 +334,12 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig, nod
 		mu               sync.Mutex
 		placementTimes   []time.Duration
 		activeSandboxes  sync.Map // sandboxID -> *LiveSandbox
-		sandboxIDCounter atomic.Int64
+		sandboxIDCounter int64
 
 		// Metrics for time series
 		recentPlacements []time.Duration
-		recentSuccesses  atomic.Int64
-		recentFailures   atomic.Int64
+		recentSuccesses  int64
+		recentFailures   int64
 	)
 
 	// Start sandbox cleanup goroutine
@@ -384,7 +384,7 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig, nod
 			select {
 			case <-ticker.C:
 				// Generate sandbox with variance
-				sandboxID := sandboxIDCounter.Add(1)
+				sandboxID := atomic.AddInt64(&sandboxIDCounter, 1)
 
 				cpuVariance := (rand.Float64()*2 - 1) * config.CPUVariance
 				requestedCPU := max(int64(float64(config.AvgSandboxCPU)*(1+cpuVariance)), 1)
@@ -448,7 +448,7 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig, nod
 								if simNode.PlaceSandbox(sbx) {
 									activeSandboxes.Store(sbx.ID, sbx)
 									metrics.SuccessfulPlacements++
-									recentSuccesses.Add(1)
+									atomic.AddInt64(&recentSuccesses, 1)
 									success = true
 								}
 							}
@@ -456,7 +456,7 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig, nod
 
 						if !success {
 							metrics.FailedPlacements++
-							recentFailures.Add(1)
+							atomic.AddInt64(&recentFailures, 1)
 						}
 						mu.Unlock()
 					}

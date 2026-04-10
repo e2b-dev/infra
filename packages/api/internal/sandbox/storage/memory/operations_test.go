@@ -832,8 +832,8 @@ func TestConcurrency_StressTest(t *testing.T) {
 	stopCh := make(chan struct{})
 
 	// Metrics
-	var opsCompleted atomic.Uint64
-	var errorCount atomic.Uint64
+	var opsCompleted uint64
+	var errorCount uint64
 
 	// Launch workers that continuously perform random operations
 	for i := range 200 {
@@ -857,21 +857,21 @@ func TestConcurrency_StressTest(t *testing.T) {
 							if finish != nil {
 								finish(t.Context(), nil)
 							}
-							opsCompleted.Add(1)
+							atomic.AddUint64(&opsCompleted, 1)
 						} else if err != nil {
-							errorCount.Add(1)
+							atomic.AddUint64(&errorCount, 1)
 						}
 					case 1: // Read state
 						_ = sbx.State()
-						opsCompleted.Add(1)
+						atomic.AddUint64(&opsCompleted, 1)
 					case 2: // Wait with timeout
 						waitCtx, cancel := context.WithTimeout(t.Context(), time.Microsecond*10)
 						_ = waitForStateChange(waitCtx, sbx)
 						cancel()
-						opsCompleted.Add(1)
+						atomic.AddUint64(&opsCompleted, 1)
 					case 3: // Read _data
 						_ = sbx.Data()
-						opsCompleted.Add(1)
+						atomic.AddUint64(&opsCompleted, 1)
 					}
 				}
 
@@ -887,8 +887,8 @@ func TestConcurrency_StressTest(t *testing.T) {
 	close(stopCh)
 	wg.Wait()
 
-	finalOps := opsCompleted.Load()
-	finalErrors := errorCount.Load()
+	finalOps := atomic.LoadUint64(&opsCompleted)
+	finalErrors := atomic.LoadUint64(&errorCount)
 	t.Logf("Stress test completed: %d operations, %d errors", finalOps, finalErrors)
 
 	// Should have completed many operations without panic

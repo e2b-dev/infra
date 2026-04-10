@@ -326,6 +326,10 @@ func (c *Cache) sliceDirect(off, length int64) ([]byte, error) {
 		return nil, nil
 	}
 
+	if off < 0 || off >= c.size {
+		return nil, BytesNotAvailableError{}
+	}
+
 	end := min(off+length, c.size)
 
 	return (*c.mmap)[off:end], nil

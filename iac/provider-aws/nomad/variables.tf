@@ -154,22 +154,6 @@ variable "grafana_username" {
   sensitive = true
 }
 
-variable "grafana_logs_user" {
-  type    = string
-  default = ""
-}
-
-variable "grafana_logs_endpoint" {
-  type    = string
-  default = ""
-}
-
-variable "grafana_logs_api_key" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
 # API
 variable "api_port" {
   type    = number

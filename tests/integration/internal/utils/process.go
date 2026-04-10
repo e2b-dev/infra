@@ -3,7 +3,6 @@ package utils
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -83,7 +82,7 @@ func ExecCommandWithOutput(tb testing.TB, ctx context.Context, sbx *api.Sandbox,
 		}
 	}()
 
-	var output strings.Builder
+	var output string
 	for stream.Receive() {
 		select {
 		case <-ctx.Done():
@@ -96,28 +95,28 @@ func ExecCommandWithOutput(tb testing.TB, ctx context.Context, sbx *api.Sandbox,
 			// Capture stdout
 			if msg.GetEvent().GetData() != nil {
 				if stdout := msg.GetEvent().GetData().GetStdout(); stdout != nil {
-					output.Write(stdout)
+					output += string(stdout)
 				}
 
 				if stderr := msg.GetEvent().GetData().GetStderr(); stderr != nil {
-					output.Write(stderr)
+					output += string(stderr)
 				}
 			}
 
 			if msg.GetEvent().GetEnd() != nil {
 				if msg.GetEvent().GetEnd().GetExitCode() != 0 {
-					return output.String(), fmt.Errorf("command %s in sandbox %s failed with exit code %d", command, sbx.SandboxID, msg.GetEvent().GetEnd().GetExitCode())
+					return output, fmt.Errorf("command %s in sandbox %s failed with exit code %d", command, sbx.SandboxID, msg.GetEvent().GetEnd().GetExitCode())
 				}
 				tb.Logf("Command [%s] completed successfully in sandbox %s", command, sbx.SandboxID)
 
-				return output.String(), nil
+				return output, nil
 			}
 		}
 	}
 
 	if err := stream.Err(); err != nil {
-		return output.String(), fmt.Errorf("failed to execute command %s in sandbox %s: %w", command, sbx.SandboxID, err)
+		return output, fmt.Errorf("failed to execute command %s in sandbox %s: %w", command, sbx.SandboxID, err)
 	}
 
-	return output.String(), nil
+	return output, nil
 }

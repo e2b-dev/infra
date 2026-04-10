@@ -9,10 +9,10 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
-	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -41,18 +41,17 @@ func NewRiverClient(pool *pgxpool.Pool, workers *river.Workers) (*river.Client[p
 	})
 }
 
-func StartAuthUserSyncWorker(setupCtx, runCtx context.Context, authPool *pgxpool.Pool, mainDB *sqlcdb.Client, meterProvider metric.MeterProvider, l logger.Logger) (*river.Client[pgx.Tx], error) {
-	if err := RunRiverMigrations(setupCtx, authPool); err != nil {
-		return nil, fmt.Errorf("run River migrations on auth DB: %w", err)
+func StartAuthUserSyncWorker(setupCtx, runCtx context.Context, supabaseDB *supabasedb.Client, authDB *sqlcdb.Client, l logger.Logger) (*river.Client[pgx.Tx], error) {
+	if err := RunRiverMigrations(setupCtx, supabaseDB.WritePool()); err != nil {
+		return nil, fmt.Errorf("run River migrations on supabase DB: %w", err)
 	}
 
 	workerLogger := l.With(zap.String("worker", authUserProjectionKind))
-	workerMeter := meterProvider.Meter(workerMeterName)
 
 	workers := river.NewWorkers()
-	river.AddWorker(workers, NewAuthUserSyncWorker(setupCtx, mainDB, workerMeter, workerLogger))
+	river.AddWorker(workers, NewAuthUserSyncWorker(setupCtx, supabaseDB, authDB, workerLogger))
 
-	riverClient, err := NewRiverClient(authPool, workers)
+	riverClient, err := NewRiverClient(supabaseDB.WritePool(), workers)
 	if err != nil {
 		return nil, fmt.Errorf("create River client: %w", err)
 	}

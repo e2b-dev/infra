@@ -60,10 +60,6 @@ func (db *Client) Close() error {
 	return nil
 }
 
-func (db *Client) WritePool() *pgxpool.Pool {
-	return db.writeConn
-}
-
 // WithTx runs the given function in a transaction.
 func (db *Client) WithTx(ctx context.Context) (*authqueries.Queries, pgx.Tx, error) {
 	tx, err := db.writeConn.BeginTx(ctx, pgx.TxOptions{})

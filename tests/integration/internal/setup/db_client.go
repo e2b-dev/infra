@@ -12,7 +12,7 @@ import (
 
 type Database struct {
 	Db     *client.Client
-	AuthDB *authdb.Client
+	AuthDb *authdb.Client
 }
 
 func GetTestDBClient(tb testing.TB) *Database {
@@ -33,6 +33,6 @@ func GetTestDBClient(tb testing.TB) *Database {
 
 	return &Database{
 		Db:     db,
-		AuthDB: authDb,
+		AuthDb: authDb,
 	}
 }

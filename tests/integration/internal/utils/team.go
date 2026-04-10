@@ -28,7 +28,7 @@ func CreateTeamWithUser(
 	teamID := uuid.New()
 	slug := fmt.Sprintf("test-%s", teamID.String()[:8])
 
-	err := db.AuthDB.TestsRawSQL(t.Context(), `
+	err := db.AuthDb.TestsRawSQL(t.Context(), `
 INSERT INTO teams (id, email, name, tier, is_blocked, slug)
 VALUES ($1, $2, $3, $4, $5, $6)
 `, teamID, fmt.Sprintf("test-integration-%s@e2b.dev", teamID), teamName, "base_v1", false, slug)
@@ -39,7 +39,7 @@ VALUES ($1, $2, $3, $4, $5, $6)
 	}
 
 	t.Cleanup(func() {
-		db.AuthDB.TestsRawSQL(t.Context(), `
+		db.AuthDb.TestsRawSQL(t.Context(), `
 DELETE FROM teams WHERE id = $1
 `, teamID)
 	})
@@ -53,14 +53,14 @@ func AddUserToTeam(t *testing.T, db *setup.Database, teamID uuid.UUID, userID st
 	userUUID, err := uuid.Parse(userID)
 	require.NoError(t, err)
 
-	err = db.AuthDB.TestsRawSQL(t.Context(), `
+	err = db.AuthDb.TestsRawSQL(t.Context(), `
 INSERT INTO users_teams (user_id, team_id, is_default)
 VALUES ($1, $2, $3)
 `, userUUID, teamID, false)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		db.AuthDB.TestsRawSQL(t.Context(), `
+		db.AuthDb.TestsRawSQL(t.Context(), `
 DELETE FROM users_teams WHERE user_id = $1 and team_id = $2
 `, userUUID, teamID)
 	})

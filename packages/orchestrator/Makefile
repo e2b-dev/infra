@@ -16,7 +16,7 @@ BUILD_PLATFORM ?= linux/$(BUILD_ARCH)
 
 # Busybox version — single source of truth for both Docker and local builds.
 BUSYBOX_VERSION ?= 1.36.1
-BUSYBOX_EMBED := pkg/template/build/core/systeminit/busybox
+BUSYBOX_LOCAL := .busybox/$(BUSYBOX_VERSION)/$(BUILD_ARCH)/busybox
 
 .PHONY: init
 init:
@@ -29,23 +29,23 @@ generate:
 .PHONY: build
 build:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
-	@docker build --platform $(BUILD_PLATFORM) --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" --build-arg BUSYBOX_VERSION="$(BUSYBOX_VERSION)" -f ./Dockerfile ..
+	@docker build --platform $(BUILD_PLATFORM) --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
 
-# Download busybox and verify SHA256 against published checksums.
+# Download busybox from GCS public builds bucket.
 # Skips if binary exists and version/arch match the stamp file.
 .PHONY: fetch-busybox
 fetch-busybox:
-	@./scripts/fetch-busybox.sh "$(BUSYBOX_VERSION)" "$(BUILD_ARCH)" "$(BUSYBOX_EMBED)"
+	@./scripts/fetch-busybox.sh "$(BUSYBOX_VERSION)" "$(BUILD_ARCH)" "$(BUSYBOX_LOCAL)"
 
 .PHONY: build-local
-build-local: fetch-busybox
+build-local:
 	# Allow for passing commit sha directly for docker builds
 	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
 	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/orchestrator -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
 	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/clean-nfs-cache -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" ./cmd/clean-nfs-cache
 
 .PHONY: build-debug
-build-debug: fetch-busybox
+build-debug:
 	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -race -gcflags=all="-N -l" -o bin/orchestrator .
 
 .PHONY: run-debug
@@ -112,7 +112,7 @@ build-and-upload/template-manager: build upload/template-manager
 
 
 .PHONY: test
-test: fetch-busybox
+test:
 	go test -race -v ./...
 
 .PHONY: test-docker
@@ -147,5 +147,5 @@ migrate:
 	./scripts/upload-envs.sh /mnt/disks/fc-envs/v1 $(TEMPLATE_BUCKET_NAME)
 
 .PHONY: lint
-lint: fetch-busybox
+lint:
 	golangci-lint run --fix ./...

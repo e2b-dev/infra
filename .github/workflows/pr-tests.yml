@@ -39,8 +39,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.commit_sha }}
 
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
@@ -58,8 +56,8 @@ jobs:
 
       - name: Setup orchestrator tests
         run: |
-          # Download busybox for go:embed
           make -C packages/orchestrator fetch-busybox
+          echo "HOST_BUSYBOX_DIR=$(pwd)/packages/orchestrator/.busybox" >> "$GITHUB_ENV"
 
           # Enable unprivileged uffd mode
           echo 1 | sudo tee /proc/sys/vm/unprivileged_userfaultfd

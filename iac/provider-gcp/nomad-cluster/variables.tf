@@ -224,6 +224,11 @@ variable "fc_versions_bucket_name" {
   type = string
 }
 
+variable "fc_busybox_bucket_name" {
+  type        = string
+  description = "The name of the bucket to store the busybox binary"
+}
+
 variable "consul_acl_token_secret" {
   type = string
 }

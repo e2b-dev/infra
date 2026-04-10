@@ -10,8 +10,6 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -25,6 +23,7 @@ import (
 	"github.com/riverqueue/river"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/sync/errgroup"
 
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
@@ -37,6 +36,7 @@ import (
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
+	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	e2benv "github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -55,6 +55,7 @@ const (
 	writeTimeout      = 75 * time.Second
 	requestTimeout    = 70 * time.Second
 	idleTimeout       = 620 * time.Second
+	shutdownTimeout   = 30 * time.Second
 )
 
 var (
@@ -65,8 +66,6 @@ var (
 func run() int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	errorCode := atomic.Int32{}
 
 	serviceInstanceID := uuid.New().String()
 	nodeID := e2benv.GetNodeID()
@@ -189,6 +188,75 @@ func run() int {
 		nil,
 	)
 
+	s := newHTTPServer(config.Port, l, tel, swagger, authenticationFunc, apiStore)
+
+	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
+	defer sigCancel()
+
+	var riverClient *river.Client[pgx.Tx]
+	var supabaseDB *supabasedb.Client
+
+	if config.EnableAuthUserSyncBackgroundWorker {
+		supabaseDB, err = supabasedb.NewClient(
+			ctx,
+			config.SupabaseDBConnectionString,
+			pool.WithMaxConnections(4),
+		)
+		if err != nil {
+			l.Fatal(ctx, "Initializing supabase database client", zap.Error(err))
+		}
+		defer supabaseDB.Close()
+
+		riverClient, err = backgroundworker.StartAuthUserSyncWorker(
+			ctx,
+			ctx,
+			supabaseDB,
+			db,
+			l,
+		)
+		if err != nil {
+			l.Fatal(ctx, "failed to start auth user sync worker", zap.Error(err))
+		}
+	}
+
+	l.Info(ctx, "HTTP service starting", zap.Int("port", config.Port))
+	runErr := waitForServiceStop(signalCtx, startHTTPServer(s), riverStoppedChan(riverClient))
+	if runErr != nil {
+		l.Error(ctx, "dashboard-api runtime error", zap.Error(runErr))
+	} else {
+		l.Info(ctx, "Shutting down dashboard-api service...")
+	}
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
+	defer shutdownCancel()
+
+	if err := shutdownService(shutdownCtx, s, riverClient); err != nil {
+		l.Error(ctx, "dashboard-api shutdown error", zap.Error(err))
+
+		return 1
+	}
+
+	if runErr != nil {
+		return 1
+	}
+
+	l.Info(ctx, "dashboard-api service stopped")
+
+	return 0
+}
+
+func main() {
+	os.Exit(run())
+}
+
+func newHTTPServer(
+	port int,
+	l logger.Logger,
+	tel *telemetry.Client,
+	swagger *openapi3.T,
+	authenticationFunc openapi3filter.AuthenticationFunc,
+	apiStore *handlers.APIStore,
+) *http.Server {
 	r := gin.New()
 	r.Use(gin.Recovery())
 
@@ -258,72 +326,76 @@ func run() int {
 
 	api.RegisterHandlers(r, apiStore)
 
-	s := &http.Server{
+	return &http.Server{
 		Handler:           r,
-		Addr:              fmt.Sprintf("0.0.0.0:%d", config.Port),
+		Addr:              fmt.Sprintf("0.0.0.0:%d", port),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,
 		IdleTimeout:       idleTimeout,
 	}
-
-	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
-	defer sigCancel()
-
-	wg := sync.WaitGroup{}
-
-	var riverClient *river.Client[pgx.Tx]
-
-	if config.EnableAuthUserSyncBackgroundWorker {
-		riverClient, err = backgroundworker.StartAuthUserSyncWorker(
-			ctx,
-			signalCtx,
-			authDB.WritePool(),
-			db,
-			tel.MeterProvider,
-			l,
-		)
-		if err != nil {
-			l.Fatal(ctx, "failed to start auth user sync worker", zap.Error(err))
-		}
-	}
-
-	wg.Go(func() {
-		<-signalCtx.Done()
-		l.Info(ctx, "Shutting down dashboard-api service...")
-
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-		defer shutdownCancel()
-
-		if riverClient != nil {
-			if err := riverClient.Stop(shutdownCtx); err != nil {
-				l.Error(ctx, "River client shutdown error", zap.Error(err))
-
-				errorCode.Add(1)
-			}
-		}
-
-		if err := s.Shutdown(shutdownCtx); err != nil {
-			l.Error(ctx, "HTTP server shutdown error", zap.Error(err))
-
-			errorCode.Add(1)
-		}
-	})
-
-	l.Info(ctx, "HTTP service starting", zap.Int("port", config.Port))
-	if err := s.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		l.Error(ctx, "HTTP service error", zap.Error(err))
-
-		errorCode.Add(1)
-	} else {
-		l.Info(ctx, "HTTP service stopped")
-	}
-
-	wg.Wait()
-
-	return int(errorCode.Load())
 }
 
-func main() {
-	os.Exit(run())
+func startHTTPServer(s *http.Server) <-chan error {
+	errCh := make(chan error, 1)
+
+	go func() {
+		err := s.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
+			errCh <- nil
+
+			return
+		}
+
+		errCh <- err
+	}()
+
+	return errCh
+}
+
+func waitForServiceStop(signalCtx context.Context, httpErrCh <-chan error, riverStoppedCh <-chan struct{}) error {
+	select {
+	case <-signalCtx.Done():
+		return nil
+	case err := <-httpErrCh:
+		if err == nil {
+			return errors.New("http service stopped unexpectedly")
+		}
+
+		return fmt.Errorf("http service error: %w", err)
+	case <-riverStoppedCh:
+		return errors.New("auth user sync worker stopped unexpectedly")
+	}
+}
+
+func riverStoppedChan(riverClient *river.Client[pgx.Tx]) <-chan struct{} {
+	if riverClient == nil {
+		return nil
+	}
+
+	return riverClient.Stopped()
+}
+
+func shutdownService(ctx context.Context, s *http.Server, riverClient *river.Client[pgx.Tx]) error {
+	var g errgroup.Group
+
+	g.Go(func() error {
+		if err := s.Shutdown(ctx); err != nil {
+			return fmt.Errorf("shutdown HTTP server: %w", err)
+		}
+
+		return nil
+	})
+
+	if riverClient != nil {
+		g.Go(func() error {
+			if err := riverClient.Stop(ctx); err != nil {
+				return fmt.Errorf("shutdown River client: %w", err)
+			}
+
+			return nil
+		})
+	}
+
+	return g.Wait()
 }
