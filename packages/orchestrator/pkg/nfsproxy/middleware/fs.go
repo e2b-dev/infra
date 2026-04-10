@@ -31,11 +31,8 @@ func (w *wrappedFS) Create(filename string) (billy.File, error) {
 
 			return []any{f}, err
 		})
-	if err != nil {
-		return nil, err
-	}
 
-	return WrapFile(w.ctx, results[0].(billy.File), w.chain), nil
+	return WrapFile(w.ctx, results[0].(billy.File), w.chain), err
 }
 
 func (w *wrappedFS) Open(filename string) (billy.File, error) {
@@ -45,11 +42,8 @@ func (w *wrappedFS) Open(filename string) (billy.File, error) {
 
 			return []any{f}, err
 		})
-	if err != nil {
-		return nil, err
-	}
 
-	return WrapFile(w.ctx, results[0].(billy.File), w.chain), nil
+	return WrapFile(w.ctx, results[0].(billy.File), w.chain), err
 }
 
 func (w *wrappedFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.File, error) {
@@ -59,11 +53,8 @@ func (w *wrappedFS) OpenFile(filename string, flag int, perm os.FileMode) (billy
 
 			return []any{f}, err
 		})
-	if err != nil {
-		return nil, err
-	}
 
-	return WrapFile(w.ctx, results[0].(billy.File), w.chain), nil
+	return WrapFile(w.ctx, results[0].(billy.File), w.chain), err
 }
 
 func (w *wrappedFS) Stat(filename string) (os.FileInfo, error) {
@@ -73,11 +64,8 @@ func (w *wrappedFS) Stat(filename string) (os.FileInfo, error) {
 
 			return []any{info}, err
 		})
-	if err != nil {
-		return nil, err
-	}
 
-	return results[0].(os.FileInfo), nil
+	return results[0].(os.FileInfo), err
 }
 
 func (w *wrappedFS) Rename(oldpath, newpath string) error {
@@ -109,11 +97,8 @@ func (w *wrappedFS) TempFile(dir, prefix string) (billy.File, error) {
 
 			return []any{f}, err
 		})
-	if err != nil {
-		return nil, err
-	}
 
-	return WrapFile(w.ctx, results[0].(billy.File), w.chain), nil
+	return WrapFile(w.ctx, results[0].(billy.File), w.chain), err
 }
 
 func (w *wrappedFS) ReadDir(path string) ([]os.FileInfo, error) {
@@ -123,11 +108,8 @@ func (w *wrappedFS) ReadDir(path string) ([]os.FileInfo, error) {
 
 			return []any{infos}, err
 		})
-	if err != nil {
-		return nil, err
-	}
 
-	return results[0].([]os.FileInfo), nil
+	return results[0].([]os.FileInfo), err
 }
 
 func (w *wrappedFS) MkdirAll(filename string, perm os.FileMode) error {
@@ -146,11 +128,8 @@ func (w *wrappedFS) Lstat(filename string) (os.FileInfo, error) {
 
 			return []any{info}, err
 		})
-	if err != nil {
-		return nil, err
-	}
 
-	return results[0].(os.FileInfo), nil
+	return results[0].(os.FileInfo), err
 }
 
 func (w *wrappedFS) Symlink(target, link string) error {
@@ -169,11 +148,8 @@ func (w *wrappedFS) Readlink(link string) (string, error) {
 
 			return []any{target}, err
 		})
-	if err != nil {
-		return "", err
-	}
 
-	return results[0].(string), nil
+	return results[0].(string), err
 }
 
 func (w *wrappedFS) Chroot(path string) (billy.Filesystem, error) {
@@ -183,11 +159,8 @@ func (w *wrappedFS) Chroot(path string) (billy.Filesystem, error) {
 
 			return []any{fs}, err
 		})
-	if err != nil {
-		return nil, err
-	}
 
-	return WrapFilesystem(w.ctx, results[0].(billy.Filesystem), w.chain), nil
+	return WrapFilesystem(w.ctx, results[0].(billy.Filesystem), w.chain), err
 }
 
 func (w *wrappedFS) Root() string {

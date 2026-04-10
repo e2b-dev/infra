@@ -34,11 +34,8 @@ func (w *wrappedFile) Write(p []byte) (int, error) {
 
 			return []any{n}, err
 		})
-	if err != nil {
-		return 0, err
-	}
 
-	return results[0].(int), nil
+	return results[0].(int), err
 }
 
 func (w *wrappedFile) Read(p []byte) (int, error) {
@@ -48,11 +45,8 @@ func (w *wrappedFile) Read(p []byte) (int, error) {
 
 			return []any{n}, err
 		})
-	if err != nil {
-		return 0, err
-	}
 
-	return results[0].(int), nil
+	return results[0].(int), err
 }
 
 func (w *wrappedFile) ReadAt(p []byte, off int64) (int, error) {
@@ -62,11 +56,8 @@ func (w *wrappedFile) ReadAt(p []byte, off int64) (int, error) {
 
 			return []any{n}, err
 		})
-	if err != nil {
-		return 0, err
-	}
 
-	return results[0].(int), nil
+	return results[0].(int), err
 }
 
 func (w *wrappedFile) Seek(offset int64, whence int) (int64, error) {
@@ -76,11 +67,8 @@ func (w *wrappedFile) Seek(offset int64, whence int) (int64, error) {
 
 			return []any{n}, err
 		})
-	if err != nil {
-		return 0, err
-	}
 
-	return results[0].(int64), nil
+	return results[0].(int64), err
 }
 
 func (w *wrappedFile) Close() error {
