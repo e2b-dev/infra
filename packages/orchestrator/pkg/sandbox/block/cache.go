@@ -309,19 +309,17 @@ func (c *Cache) sliceDirect(off, length int64) ([]byte, error) {
 }
 
 func (c *Cache) isCached(off, length int64) bool {
-	end := min(off+length, c.size)
-	lo := uint(off / c.blockSize)
-	hi := uint((end + c.blockSize - 1) / c.blockSize)
+	start := uint(header.BlockIdx(off, c.blockSize))
+	end := uint(header.TotalBlocks(min(off+length, c.size), c.blockSize))
 
-	return c.dirty.HasRange(lo, hi)
+	return c.dirty.HasRange(start, end)
 }
 
 func (c *Cache) setIsCached(off, length int64) {
-	end := off + length
-	lo := uint(off / c.blockSize)
-	hi := uint((end + c.blockSize - 1) / c.blockSize)
+	start := uint(header.BlockIdx(off, c.blockSize))
+	end := uint(header.TotalBlocks(off+length, c.blockSize))
 
-	c.dirty.SetRange(lo, hi)
+	c.dirty.SetRange(start, end)
 }
 
 // When using WriteAtWithoutLock you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
