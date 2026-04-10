@@ -152,8 +152,10 @@ type pendingBuildInfo struct {
 	checksum [32]byte
 }
 
-// PendingBuildInfo collects frame tables and file sizes from compressed
-// uploads, applied to headers before serialization. Safe for concurrent use.
+// PendingBuildInfo collects FrameTables and file sizes from compressed data
+// uploads across all layers. After all data files are uploaded, the collected
+// tables are applied to headers before the compressed headers are serialized
+// and uploaded. Safe for concurrent use from errgroup goroutines.
 type PendingBuildInfo struct {
 	mu sync.Mutex
 	m  map[string]pendingBuildInfo

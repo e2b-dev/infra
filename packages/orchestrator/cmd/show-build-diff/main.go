@@ -116,7 +116,7 @@ func main() {
 	fmt.Printf("Storage path       %s\n", diffSource)
 	fmt.Printf("========\n")
 
-	onlyDiffMappings := make([]*header.BuildMap, 0)
+	onlyDiffMappings := make([]header.BuildMap, 0)
 
 	for _, mapping := range diffHeader.Mapping {
 		if mapping.BuildId == diffHeader.Metadata.BuildId {

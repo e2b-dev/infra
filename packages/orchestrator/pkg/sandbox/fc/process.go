@@ -489,7 +489,10 @@ func (p *Process) Resume(
 	})
 
 	eg.Go(func() error {
-		err := socket.Wait(egCtx, uffdSocketPath)
+		ctx, uffdSpan := tracer.Start(egCtx, "wait-uffd-socket")
+		err := socket.Wait(ctx, uffdSocketPath)
+		uffdSpan.End()
+
 		if err != nil {
 			return fmt.Errorf("error waiting for uffd socket: %w", err)
 		}
@@ -500,7 +503,10 @@ func (p *Process) Resume(
 	})
 
 	eg.Go(func() error {
+		_, rootfsSpan := tracer.Start(egCtx, "wait-rootfs-path")
 		rootfsPath, err := p.rootfsProvider.Path()
+		rootfsSpan.End()
+
 		if err != nil {
 			return fmt.Errorf("error getting rootfs path: %w", err)
 		}

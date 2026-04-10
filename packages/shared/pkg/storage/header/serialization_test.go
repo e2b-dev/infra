@@ -24,7 +24,7 @@ func TestSerializeDeserialize_V3_RoundTrip(t *testing.T) {
 		BaseBuildId: baseID,
 	}
 
-	mappings := []*BuildMap{
+	mappings := []BuildMap{
 		{
 			Offset:             0,
 			Length:             4096,
@@ -128,7 +128,7 @@ func TestSerializeDeserialize_V4_WithFrameTable(t *testing.T) {
 		BaseBuildId: baseID,
 	}
 
-	mappings := []*BuildMap{
+	mappings := []BuildMap{
 		{
 			Offset:             0,
 			Length:             4096,
@@ -208,7 +208,7 @@ func TestSerializeDeserialize_V4_Zstd(t *testing.T) {
 		BaseBuildId: buildID,
 	}
 
-	mappings := []*BuildMap{
+	mappings := []BuildMap{
 		{
 			Offset:             0,
 			Length:             4096,
@@ -265,7 +265,7 @@ func TestSerializeDeserialize_V4_NoFrames(t *testing.T) {
 		BaseBuildId: buildID,
 	}
 
-	mappings := []*BuildMap{
+	mappings := []BuildMap{
 		{
 			Offset:             0,
 			Length:             4096,
@@ -312,7 +312,7 @@ func TestSerializeDeserialize_V4_ManyFrames(t *testing.T) {
 		BaseBuildId: buildID,
 	}
 
-	mappings := []*BuildMap{
+	mappings := []BuildMap{
 		{
 			Offset:             0,
 			Length:             4096 * numFrames,
@@ -362,7 +362,7 @@ func TestSerializeDeserialize_V4_NoBuilds(t *testing.T) {
 		BaseBuildId: buildID,
 	}
 
-	mappings := []*BuildMap{
+	mappings := []BuildMap{
 		{
 			Offset:  0,
 			Length:  4096,
@@ -421,7 +421,7 @@ func TestSerializeDeserialize_V4_MultiBuild_LocateCompressed(t *testing.T) {
 		BaseBuildId: buildA,
 	}
 
-	mappings := []*BuildMap{
+	mappings := []BuildMap{
 		{Offset: 0, Length: 4096, BuildId: buildA, BuildStorageOffset: 0},
 		{Offset: 4096, Length: 8192, BuildId: buildB, BuildStorageOffset: 0},
 		{Offset: 12288, Length: 8192, BuildId: buildA, BuildStorageOffset: 4096},
@@ -506,10 +506,6 @@ func TestSerializeDeserialize_V4_TrimmedOffsets_Error(t *testing.T) {
 	buildID := uuid.New()
 
 	// 4 frames, each 4096 uncompressed.
-	// Frame 0: U=[0,4096)     C=[0,2000)
-	// Frame 1: U=[4096,8192)  C=[2000,5000)
-	// Frame 2: U=[8192,12288) C=[5000,8500)
-	// Frame 3: U=[12288,16384) C=[8500,10300)
 	ft := storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
 		{U: 4096, C: 2000},
 		{U: 4096, C: 3000},
@@ -528,7 +524,7 @@ func TestSerializeDeserialize_V4_TrimmedOffsets_Error(t *testing.T) {
 
 	// Mapping references only frame 2 (BuildStorageOffset=8192, Length=4096).
 	// Frames 0, 1, and 3 should be trimmed away.
-	mappings := []*BuildMap{
+	mappings := []BuildMap{
 		{
 			Offset:             0,
 			Length:             4096,
@@ -659,7 +655,7 @@ func TestSerializeDeserialize_V4_SparseTrimming(t *testing.T) {
 	}
 
 	// Mapping only references frames 0 and 3 (gap at 1,2 due to otherID).
-	mappings := []*BuildMap{
+	mappings := []BuildMap{
 		{Offset: 0, Length: 4096, BuildId: buildID, BuildStorageOffset: 0},
 		{Offset: 4096, Length: 8192, BuildId: otherID, BuildStorageOffset: 0},
 		{Offset: 12288, Length: 4096, BuildId: buildID, BuildStorageOffset: 12288},
