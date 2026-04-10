@@ -198,24 +198,3 @@ func argsToAttrs(op string, args []any) []attribute.KeyValue {
 
 	return attrs
 }
-
-func resultsToAttrs(op string, results []any) []attribute.KeyValue {
-	var attrs []attribute.KeyValue
-
-	switch op {
-	case "File.Write", "File.Read", "File.ReadAt":
-		if len(results) > 0 {
-			if n, ok := results[0].(int); ok {
-				attrs = append(attrs, attribute.Int("nfs.n", n))
-			}
-		}
-	case "File.Seek":
-		if len(results) > 0 {
-			if n, ok := results[0].(int64); ok {
-				attrs = append(attrs, attribute.Int64("nfs.n", n))
-			}
-		}
-	}
-
-	return attrs
-}

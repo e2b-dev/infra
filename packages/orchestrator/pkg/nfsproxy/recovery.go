@@ -15,7 +15,7 @@ var ErrPanic = fmt.Errorf("panic")
 
 // Recovery intercepts panics and converts them to errors.
 func Recovery() middleware.Interceptor {
-	return func(ctx context.Context, op string, _ []any, next func(context.Context) ([]any, error)) (results []any, err error) {
+	return func(ctx context.Context, op string, _ []any, next func(context.Context) error) (err error) {
 		defer func() {
 			if r := recover(); r != nil { //nolint:revive // always called via defer
 				logger.L().Error(ctx, fmt.Sprintf("panic in %q nfs operation", op),

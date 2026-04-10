@@ -25,9 +25,9 @@ var (
 
 // Metrics records call counts and durations.
 func Metrics() middleware.Interceptor {
-	return func(ctx context.Context, op string, _ []any, next func(context.Context) ([]any, error)) ([]any, error) {
+	return func(ctx context.Context, op string, _ []any, next func(context.Context) error) error {
 		start := time.Now()
-		results, err := next(ctx)
+		err := next(ctx)
 		durationMs := time.Since(start).Milliseconds()
 
 		attrs := metric.WithAttributes(
@@ -37,6 +37,6 @@ func Metrics() middleware.Interceptor {
 		callsCounter.Add(ctx, 1, attrs)
 		durationHistogram.Record(ctx, durationMs, attrs)
 
-		return results, err
+		return err
 	}
 }

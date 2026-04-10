@@ -14,7 +14,7 @@ import (
 
 // Logging logs operation start/end with durations.
 func Logging(skipOps map[string]bool) middleware.Interceptor {
-	return func(ctx context.Context, op string, args []any, next func(context.Context) ([]any, error)) ([]any, error) {
+	return func(ctx context.Context, op string, args []any, next func(context.Context) error) error {
 		if skipOps[op] {
 			return next(ctx)
 		}
@@ -25,12 +25,11 @@ func Logging(skipOps map[string]bool) middleware.Interceptor {
 		l := logger.L().With(zap.String("requestID", requestID))
 		l.Debug(ctx, fmt.Sprintf("[nfs proxy] %s: start", op), zap.String("operation", op))
 
-		results, err := next(ctx)
+		err := next(ctx)
 
 		logArgs := []zap.Field{
 			zap.Duration("dur", time.Since(start)),
 			zap.Any("args", args),
-			zap.Any("result", results),
 		}
 
 		if err == nil {
@@ -40,6 +39,6 @@ func Logging(skipOps map[string]bool) middleware.Interceptor {
 			l.Warn(ctx, fmt.Sprintf("[nfs proxy] %s: end", op), logArgs...)
 		}
 
-		return results, err
+		return err
 	}
 }
