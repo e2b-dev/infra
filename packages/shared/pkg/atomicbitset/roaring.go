@@ -44,6 +44,10 @@ func (r *Roaring) HasRange(lo, hi uint) bool {
 		hi = r.n
 	}
 
+	if lo >= hi {
+		return false
+	}
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
