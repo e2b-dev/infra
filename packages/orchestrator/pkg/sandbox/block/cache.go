@@ -59,10 +59,6 @@ type Cache struct {
 }
 
 func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, error) {
-	return newCache(size, blockSize, filePath, dirtyFile, atomicbitset.NewRoaring(uint(header.TotalBlocks(size, blockSize))))
-}
-
-func newCache(size, blockSize int64, filePath string, dirtyFile bool, dirty atomicbitset.Bitset) (*Cache, error) {
 	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("error opening file: %w", err)
@@ -100,7 +96,7 @@ func newCache(size, blockSize int64, filePath string, dirtyFile bool, dirty atom
 		size:      size,
 		blockSize: blockSize,
 		dirtyFile: dirtyFile,
-		dirty:     dirty,
+		dirty:     atomicbitset.NewRoaring(uint(header.TotalBlocks(size, blockSize))),
 	}, nil
 }
 
@@ -144,12 +140,7 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	}
 
 	buildStart := time.Now()
-	builder := header.NewDiffMetadataBuilder(c.size, c.blockSize)
-
-	dirty := c.dirty.BitSet()
-	for i, ok := dirty.NextSet(0); ok; i, ok = dirty.NextSet(i + 1) {
-		builder.AddDirtyOffset(int64(i) * c.blockSize)
-	}
+	builder := header.NewDiffMetadataBuilderFromDirty(c.blockSize, c.dirty.BitSet())
 
 	diffMetadata := builder.Build()
 	telemetry.SetAttributes(ctx, attribute.Int64("build_metadata_ms", time.Since(buildStart).Milliseconds()))

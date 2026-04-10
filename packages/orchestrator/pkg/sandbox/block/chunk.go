@@ -14,7 +14,6 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
-	"github.com/e2b-dev/infra/packages/shared/pkg/atomicbitset"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -100,13 +99,12 @@ func NewChunker(
 	metrics metrics.Metrics,
 ) (Chunker, error) {
 	useStreaming, minReadBatchSizeKB := getChunkerConfig(ctx, featureFlags)
-	dirty := atomicbitset.NewRoaring(uint(header.TotalBlocks(size, blockSize)))
 
 	if useStreaming {
-		return newStreamingChunker(size, blockSize, upstream, cachePath, metrics, int64(minReadBatchSizeKB)*1024, featureFlags, dirty)
+		return NewStreamingChunker(size, blockSize, upstream, cachePath, metrics, int64(minReadBatchSizeKB)*1024, featureFlags)
 	}
 
-	return newFullFetchChunker(size, blockSize, upstream, cachePath, metrics, dirty)
+	return NewFullFetchChunker(size, blockSize, upstream, cachePath, metrics)
 }
 
 // getChunkerConfig fetches the chunker-config feature flag and returns the parsed values.
@@ -140,18 +138,7 @@ func NewFullFetchChunker(
 	cachePath string,
 	metrics metrics.Metrics,
 ) (*FullFetchChunker, error) {
-	dirty := atomicbitset.NewRoaring(uint(header.TotalBlocks(size, blockSize)))
-	return newFullFetchChunker(size, blockSize, base, cachePath, metrics, dirty)
-}
-
-func newFullFetchChunker(
-	size, blockSize int64,
-	base storage.SeekableReader,
-	cachePath string,
-	metrics metrics.Metrics,
-	dirty atomicbitset.Bitset,
-) (*FullFetchChunker, error) {
-	cache, err := newCache(size, blockSize, cachePath, false, dirty)
+	cache, err := NewCache(size, blockSize, cachePath, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}

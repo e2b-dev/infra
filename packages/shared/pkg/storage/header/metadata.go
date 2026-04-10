@@ -122,8 +122,12 @@ func NewDiffMetadataBuilder(size, blockSize int64) *DiffMetadataBuilder {
 	}
 }
 
-func (b *DiffMetadataBuilder) AddDirtyOffset(offset int64) {
-	b.dirty.Set(uint(BlockIdx(offset, b.blockSize)))
+func NewDiffMetadataBuilderFromDirty(blockSize int64, dirty *bitset.BitSet) *DiffMetadataBuilder {
+	return &DiffMetadataBuilder{
+		dirty:     dirty,
+		empty:     bitset.New(0),
+		blockSize: blockSize,
+	}
 }
 
 func (b *DiffMetadataBuilder) Process(ctx context.Context, block []byte, out io.Writer, offset int64) error {

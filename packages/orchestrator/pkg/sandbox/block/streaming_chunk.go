@@ -14,7 +14,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
-	"github.com/e2b-dev/infra/packages/shared/pkg/atomicbitset"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -173,20 +172,7 @@ func NewStreamingChunker(
 	minReadBatchSize int64,
 	ff *featureflags.Client,
 ) (*StreamingChunker, error) {
-	dirty := atomicbitset.NewRoaring(uint(header.TotalBlocks(size, blockSize)))
-	return newStreamingChunker(size, blockSize, upstream, cachePath, metrics, minReadBatchSize, ff, dirty)
-}
-
-func newStreamingChunker(
-	size, blockSize int64,
-	upstream storage.StreamingReader,
-	cachePath string,
-	metrics metrics.Metrics,
-	minReadBatchSize int64,
-	ff *featureflags.Client,
-	dirty atomicbitset.Bitset,
-) (*StreamingChunker, error) {
-	cache, err := newCache(size, blockSize, cachePath, false, dirty)
+	cache, err := NewCache(size, blockSize, cachePath, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}
