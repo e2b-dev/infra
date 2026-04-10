@@ -17,15 +17,15 @@ sudo mkdir -p /orchestrator/sandbox
 sudo mkdir -p /orchestrator/template
 sudo mkdir -p /orchestrator/build
 
-# Add swapfile
+# Add swapfile (skip if already active)
 SWAPFILE="/swapfile"
-sudo fallocate -l 1G $SWAPFILE
-sudo chmod 600 $SWAPFILE
-sudo mkswap $SWAPFILE
-sudo swapon $SWAPFILE
-
-# Make swapfile persistent
-echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
+if ! swapon --show | grep -q "$SWAPFILE"; then
+  sudo fallocate -l 1G $SWAPFILE
+  sudo chmod 600 $SWAPFILE
+  sudo mkswap $SWAPFILE
+  sudo swapon $SWAPFILE
+  echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
+fi
 
 # Set swap settings
 sudo sysctl vm.swappiness=10
