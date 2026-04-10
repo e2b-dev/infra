@@ -9,13 +9,11 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
-	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -227,14 +225,7 @@ func run() int {
 						"message": message,
 					})
 				},
-				MultiErrorHandler: func(me openapi3.MultiError) error {
-					msgs := make([]string, 0, len(me))
-					for _, e := range me {
-						msgs = append(msgs, e.Error())
-					}
-
-					return fmt.Errorf("%s", strings.Join(msgs, "; "))
-				},
+				MultiErrorHandler: sharedauth.MultiErrorHandler,
 				Options: openapi3filter.Options{
 					AuthenticationFunc: authenticationFunc,
 				},

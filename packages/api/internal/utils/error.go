@@ -1,25 +1,15 @@
 package utils
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
-	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/db"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-)
-
-const (
-	securityErrPrefix  = "error in openapi3filter.SecurityRequirementsError: security requirements failed: "
-	forbiddenErrPrefix = "team forbidden: "
-	blockedErrPrefix   = "team blocked: "
 )
 
 func ErrorHandler(c *gin.Context, message string, statusCode int) {
@@ -49,7 +39,7 @@ func ErrorHandler(c *gin.Context, message string, statusCode int) {
 	c.Error(errMsg)
 
 	// Handle forbidden errors
-	if after, ok := strings.CutPrefix(message, forbiddenErrPrefix); ok {
+	if after, ok := strings.CutPrefix(message, auth.ForbiddenErrPrefix); ok {
 		c.AbortWithStatusJSON(
 			http.StatusForbidden,
 			gin.H{
@@ -62,7 +52,7 @@ func ErrorHandler(c *gin.Context, message string, statusCode int) {
 	}
 
 	// Handle blocked errors
-	if after, ok := strings.CutPrefix(message, blockedErrPrefix); ok {
+	if after, ok := strings.CutPrefix(message, auth.BlockedErrPrefix); ok {
 		c.AbortWithStatusJSON(
 			http.StatusForbidden,
 			gin.H{
@@ -75,7 +65,7 @@ func ErrorHandler(c *gin.Context, message string, statusCode int) {
 	}
 
 	// Handle security requirements errors from the openapi3filter
-	if after, ok := strings.CutPrefix(message, securityErrPrefix); ok {
+	if after, ok := strings.CutPrefix(message, auth.SecurityErrPrefix); ok {
 		// Keep the original status code as it can be also timeout (read body timeout) error code.
 		// The securityErrPrefix is added for all errors going through the processCustomErrors function.
 		c.AbortWithStatusJSON(
@@ -90,59 +80,4 @@ func ErrorHandler(c *gin.Context, message string, statusCode int) {
 	}
 
 	c.AbortWithStatusJSON(statusCode, gin.H{"code": statusCode, "message": fmt.Errorf("validation error: %s", message).Error()})
-}
-
-// MultiErrorHandler handles wrapped SecurityRequirementsError, so there are no multiple errors returned to the user.
-func MultiErrorHandler(me openapi3.MultiError) error {
-	if len(me) == 0 {
-		return nil
-	}
-	err := me[0]
-
-	// Recreate logic from oapi-codegen/gin-middleware to handle the error
-	// Source: https://github.com/oapi-codegen/gin-middleware/blob/main/oapi_validate.go
-	switch e := err.(type) { //nolint:errorlint  // we copied this and don't want it to change
-	case *openapi3filter.RequestError:
-		// We've got a bad request
-		// Split up the verbose error by lines and return the first one
-		// openapi errors seem to be multi-line with a decent message on the first
-		errorLines := strings.Split(e.Error(), "\n")
-
-		return fmt.Errorf("error in openapi3filter.RequestError: %s", errorLines[0])
-	case *openapi3filter.SecurityRequirementsError:
-		return processCustomErrors(e) // custom implementation
-	default:
-		// This should never happen today, but if our upstream code changes,
-		// we don't want to crash the server, so handle the unexpected error.
-		return fmt.Errorf("error validating request: %w", err)
-	}
-}
-
-func processCustomErrors(e *openapi3filter.SecurityRequirementsError) error {
-	// Return only one security requirement error (there may be multiple securitySchemes)
-	unwrapped := e.Errors
-	err := unwrapped[0]
-
-	var teamForbidden *db.TeamForbiddenError
-	var teamBlocked *db.TeamBlockedError
-	// Return only the first non-missing authorization header error (if possible)
-	for _, errW := range unwrapped {
-		if errors.Is(errW, auth.ErrNoAuthHeader) {
-			continue
-		}
-
-		if errors.As(errW, &teamForbidden) {
-			return fmt.Errorf("%s%s", forbiddenErrPrefix, err.Error())
-		}
-
-		if errors.As(errW, &teamBlocked) {
-			return fmt.Errorf("%s%s", blockedErrPrefix, err.Error())
-		}
-
-		err = errW
-
-		break
-	}
-
-	return fmt.Errorf("%s%s", securityErrPrefix, err.Error())
 }
