@@ -752,6 +752,18 @@ type SandboxNetworkConfig struct {
 	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
 	DenyOut *[]string `json:"denyOut,omitempty"`
 
+	// EgressProxy Route all egress traffic through a SOCKS5 proxy.
+	EgressProxy *struct {
+		// Address SOCKS5 proxy address in host:port format
+		Address string `json:"address"`
+
+		// Password Optional SOCKS5 authentication password
+		Password *string `json:"password,omitempty"`
+
+		// Username Optional SOCKS5 authentication username
+		Username *string `json:"username,omitempty"`
+	} `json:"egressProxy,omitempty"`
+
 	// MaskRequestHost Specify host mask which will be used for all sandbox requests
 	MaskRequestHost *string `json:"maskRequestHost,omitempty"`
 }
