@@ -25,47 +25,55 @@ func WrapFilesystem(ctx context.Context, fs billy.Filesystem, chain *Chain) bill
 }
 
 func (w *wrappedFS) Create(filename string) (billy.File, error) {
-	results, err := w.chain.Exec(w.ctx, "FS.Create", []any{filename},
+	var file billy.File
+	_, err := w.chain.Exec(w.ctx, "FS.Create", []any{filename},
 		func(_ context.Context) ([]any, error) {
-			f, err := w.inner.Create(filename)
+			var err error
+			file, err = w.inner.Create(filename)
 
-			return []any{f}, err
+			return []any{file}, err
 		})
 
-	return WrapFile(w.ctx, results[0].(billy.File), w.chain), err
+	return WrapFile(w.ctx, file, w.chain), err
 }
 
 func (w *wrappedFS) Open(filename string) (billy.File, error) {
-	results, err := w.chain.Exec(w.ctx, "FS.Open", []any{filename},
+	var file billy.File
+	_, err := w.chain.Exec(w.ctx, "FS.Open", []any{filename},
 		func(_ context.Context) ([]any, error) {
-			f, err := w.inner.Open(filename)
+			var err error
+			file, err = w.inner.Open(filename)
 
-			return []any{f}, err
+			return []any{file}, err
 		})
 
-	return WrapFile(w.ctx, results[0].(billy.File), w.chain), err
+	return WrapFile(w.ctx, file, w.chain), err
 }
 
 func (w *wrappedFS) OpenFile(filename string, flag int, perm os.FileMode) (billy.File, error) {
-	results, err := w.chain.Exec(w.ctx, "FS.OpenFile", []any{filename, flag, perm},
+	var file billy.File
+	_, err := w.chain.Exec(w.ctx, "FS.OpenFile", []any{filename, flag, perm},
 		func(_ context.Context) ([]any, error) {
-			f, err := w.inner.OpenFile(filename, flag, perm)
+			var err error
+			file, err = w.inner.OpenFile(filename, flag, perm)
 
-			return []any{f}, err
+			return []any{file}, err
 		})
 
-	return WrapFile(w.ctx, results[0].(billy.File), w.chain), err
+	return WrapFile(w.ctx, file, w.chain), err
 }
 
 func (w *wrappedFS) Stat(filename string) (os.FileInfo, error) {
-	results, err := w.chain.Exec(w.ctx, "FS.Stat", []any{filename},
+	var info os.FileInfo
+	_, err := w.chain.Exec(w.ctx, "FS.Stat", []any{filename},
 		func(_ context.Context) ([]any, error) {
-			info, err := w.inner.Stat(filename)
+			var err error
+			info, err = w.inner.Stat(filename)
 
 			return []any{info}, err
 		})
 
-	return results[0].(os.FileInfo), err
+	return info, err
 }
 
 func (w *wrappedFS) Rename(oldpath, newpath string) error {
@@ -91,25 +99,29 @@ func (w *wrappedFS) Join(elem ...string) string {
 }
 
 func (w *wrappedFS) TempFile(dir, prefix string) (billy.File, error) {
-	results, err := w.chain.Exec(w.ctx, "FS.TempFile", []any{dir, prefix},
+	var file billy.File
+	_, err := w.chain.Exec(w.ctx, "FS.TempFile", []any{dir, prefix},
 		func(_ context.Context) ([]any, error) {
-			f, err := w.inner.TempFile(dir, prefix)
+			var err error
+			file, err = w.inner.TempFile(dir, prefix)
 
-			return []any{f}, err
+			return []any{file}, err
 		})
 
-	return WrapFile(w.ctx, results[0].(billy.File), w.chain), err
+	return WrapFile(w.ctx, file, w.chain), err
 }
 
 func (w *wrappedFS) ReadDir(path string) ([]os.FileInfo, error) {
-	results, err := w.chain.Exec(w.ctx, "FS.ReadDir", []any{path},
+	var infos []os.FileInfo
+	_, err := w.chain.Exec(w.ctx, "FS.ReadDir", []any{path},
 		func(_ context.Context) ([]any, error) {
-			infos, err := w.inner.ReadDir(path)
+			var err error
+			infos, err = w.inner.ReadDir(path)
 
 			return []any{infos}, err
 		})
 
-	return results[0].([]os.FileInfo), err
+	return infos, err
 }
 
 func (w *wrappedFS) MkdirAll(filename string, perm os.FileMode) error {
@@ -122,14 +134,16 @@ func (w *wrappedFS) MkdirAll(filename string, perm os.FileMode) error {
 }
 
 func (w *wrappedFS) Lstat(filename string) (os.FileInfo, error) {
-	results, err := w.chain.Exec(w.ctx, "FS.Lstat", []any{filename},
+	var info os.FileInfo
+	_, err := w.chain.Exec(w.ctx, "FS.Lstat", []any{filename},
 		func(_ context.Context) ([]any, error) {
-			info, err := w.inner.Lstat(filename)
+			var err error
+			info, err = w.inner.Lstat(filename)
 
 			return []any{info}, err
 		})
 
-	return results[0].(os.FileInfo), err
+	return info, err
 }
 
 func (w *wrappedFS) Symlink(target, link string) error {
@@ -142,25 +156,29 @@ func (w *wrappedFS) Symlink(target, link string) error {
 }
 
 func (w *wrappedFS) Readlink(link string) (string, error) {
-	results, err := w.chain.Exec(w.ctx, "FS.Readlink", []any{link},
+	var target string
+	_, err := w.chain.Exec(w.ctx, "FS.Readlink", []any{link},
 		func(_ context.Context) ([]any, error) {
-			target, err := w.inner.Readlink(link)
+			var err error
+			target, err = w.inner.Readlink(link)
 
 			return []any{target}, err
 		})
 
-	return results[0].(string), err
+	return target, err
 }
 
 func (w *wrappedFS) Chroot(path string) (billy.Filesystem, error) {
-	results, err := w.chain.Exec(w.ctx, "FS.Chroot", []any{path},
+	var fs billy.Filesystem
+	_, err := w.chain.Exec(w.ctx, "FS.Chroot", []any{path},
 		func(_ context.Context) ([]any, error) {
-			fs, err := w.inner.Chroot(path)
+			var err error
+			fs, err = w.inner.Chroot(path)
 
 			return []any{fs}, err
 		})
 
-	return WrapFilesystem(w.ctx, results[0].(billy.Filesystem), w.chain), err
+	return WrapFilesystem(w.ctx, fs, w.chain), err
 }
 
 func (w *wrappedFS) Root() string {

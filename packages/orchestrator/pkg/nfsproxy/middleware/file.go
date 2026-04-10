@@ -28,47 +28,55 @@ func (w *wrappedFile) Name() string {
 }
 
 func (w *wrappedFile) Write(p []byte) (int, error) {
-	results, err := w.chain.Exec(w.ctx, "File.Write", []any{p},
+	var n int
+	_, err := w.chain.Exec(w.ctx, "File.Write", []any{p},
 		func(_ context.Context) ([]any, error) {
-			n, err := w.inner.Write(p)
+			var err error
+			n, err = w.inner.Write(p)
 
 			return []any{n}, err
 		})
 
-	return results[0].(int), err
+	return n, err
 }
 
 func (w *wrappedFile) Read(p []byte) (int, error) {
-	results, err := w.chain.Exec(w.ctx, "File.Read", []any{p},
+	var n int
+	_, err := w.chain.Exec(w.ctx, "File.Read", []any{p},
 		func(_ context.Context) ([]any, error) {
-			n, err := w.inner.Read(p)
+			var err error
+			n, err = w.inner.Read(p)
 
 			return []any{n}, err
 		})
 
-	return results[0].(int), err
+	return n, err
 }
 
 func (w *wrappedFile) ReadAt(p []byte, off int64) (int, error) {
-	results, err := w.chain.Exec(w.ctx, "File.ReadAt", []any{p, off},
+	var n int
+	_, err := w.chain.Exec(w.ctx, "File.ReadAt", []any{p, off},
 		func(_ context.Context) ([]any, error) {
-			n, err := w.inner.ReadAt(p, off)
+			var err error
+			n, err = w.inner.ReadAt(p, off)
 
 			return []any{n}, err
 		})
 
-	return results[0].(int), err
+	return n, err
 }
 
 func (w *wrappedFile) Seek(offset int64, whence int) (int64, error) {
-	results, err := w.chain.Exec(w.ctx, "File.Seek", []any{offset, whence},
+	var n int64
+	_, err := w.chain.Exec(w.ctx, "File.Seek", []any{offset, whence},
 		func(_ context.Context) ([]any, error) {
-			n, err := w.inner.Seek(offset, whence)
+			var err error
+			n, err = w.inner.Seek(offset, whence)
 
 			return []any{n}, err
 		})
 
-	return results[0].(int64), err
+	return n, err
 }
 
 func (w *wrappedFile) Close() error {
