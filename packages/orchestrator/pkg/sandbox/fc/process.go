@@ -108,9 +108,9 @@ type TokenBucketConfig struct {
 	RefillTimeMs int64
 }
 
-// TxRateLimiterConfig holds TX rate limit parameters for a VM's network interface.
+// RateLimiterConfig holds rate limit parameters for a Firecracker device (network or block).
 // Mirrors the Firecracker RateLimiter structure: two independent token buckets.
-type TxRateLimiterConfig struct {
+type RateLimiterConfig struct {
 	Ops       TokenBucketConfig // packets; effective rate = BucketSize * 1000 / RefillTimeMs ops/s
 	Bandwidth TokenBucketConfig // bytes;   effective rate = BucketSize * 1000 / RefillTimeMs bytes/s
 }
@@ -300,7 +300,8 @@ func (p *Process) Create(
 	memoryMB int64,
 	hugePages bool,
 	options ProcessOptions,
-	txRateLimit TxRateLimiterConfig,
+	txRateLimit RateLimiterConfig,
+	driveRateLimit RateLimiterConfig,
 	cgroupFD int,
 ) error {
 	ctx, childSpan := tracer.Start(ctx, "create-fc")
@@ -405,7 +406,7 @@ func (p *Process) Create(
 	}
 	telemetry.ReportEvent(ctx, "symlinked rootfs")
 
-	err = p.client.setRootfsDrive(ctx, p.rootfsPath, options.IoEngine)
+	err = p.client.setRootfsDrive(ctx, p.rootfsPath, options.IoEngine, buildRateLimiter(driveRateLimit))
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 
@@ -413,7 +414,7 @@ func (p *Process) Create(
 	}
 	telemetry.ReportEvent(ctx, "set fc drivers config")
 
-	err = p.client.setNetworkInterface(ctx, p.slot.VpeerName(), p.slot.TapName(), p.slot.TapMAC(), buildTxRateLimiter(txRateLimit))
+	err = p.client.setNetworkInterface(ctx, p.slot.VpeerName(), p.slot.TapName(), p.slot.TapMAC(), buildRateLimiter(txRateLimit))
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
 
@@ -457,7 +458,8 @@ func (p *Process) Resume(
 	uffdReady chan struct{},
 	accessToken *string,
 	cgroupFD int,
-	txRateLimit TxRateLimiterConfig,
+	txRateLimit RateLimiterConfig,
+	driveRateLimit RateLimiterConfig,
 ) error {
 	ctx, span := tracer.Start(ctx, "resume-fc")
 	defer span.End()
@@ -489,7 +491,10 @@ func (p *Process) Resume(
 	})
 
 	eg.Go(func() error {
-		err := socket.Wait(egCtx, uffdSocketPath)
+		ctx, uffdSpan := tracer.Start(egCtx, "wait-uffd-socket")
+		err := socket.Wait(ctx, uffdSocketPath)
+		uffdSpan.End()
+
 		if err != nil {
 			return fmt.Errorf("error waiting for uffd socket: %w", err)
 		}
@@ -500,7 +505,10 @@ func (p *Process) Resume(
 	})
 
 	eg.Go(func() error {
+		_, rootfsSpan := tracer.Start(egCtx, "wait-rootfs-path")
 		rootfsPath, err := p.rootfsProvider.Path()
+		rootfsSpan.End()
+
 		if err != nil {
 			return fmt.Errorf("error getting rootfs path: %w", err)
 		}
@@ -545,14 +553,21 @@ func (p *Process) Resume(
 		return errors.Join(fmt.Errorf("error loading snapshot: %w", err), fcStopErr)
 	}
 
-	// Always apply/reset the TX rate limit before resuming so any rate limit
-	// persisted in the snapshot is overwritten by the current config.
+	// Always apply/reset rate limits before resuming so any limits
+	// persisted in the snapshot are overwritten by the current config.
 	if setErr := p.client.setTxRateLimit(ctx, p.slot.VpeerName(), txRateLimit); setErr != nil {
 		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error setting TX rate limit: %w", setErr), fcStopErr)
 	}
 	telemetry.ReportEvent(ctx, "configured tx rate limit")
+
+	if setErr := p.client.setDriveRateLimit(ctx, rootfsDriveID, driveRateLimit); setErr != nil {
+		fcStopErr := p.Stop(ctx)
+
+		return errors.Join(fmt.Errorf("error setting drive rate limit: %w", setErr), fcStopErr)
+	}
+	telemetry.ReportEvent(ctx, "configured drive rate limit")
 
 	err = p.client.resumeVM(ctx)
 	if err != nil {
