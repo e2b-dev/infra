@@ -7,6 +7,8 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 func isUserError(err error) bool {
@@ -255,7 +257,7 @@ func argsToZapFields(op string, args []any) []zap.Field {
 		case []string:
 			zapFields = append(zapFields, zap.Strings(f.key, v))
 		case time.Time:
-			zapFields = append(zapFields, zap.Time(f.key, v))
+			zapFields = append(zapFields, logger.Time(f.key, v))
 		}
 	}
 
