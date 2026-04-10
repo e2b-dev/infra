@@ -13,10 +13,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/chrooted"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/chroot"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/logged"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/metrics"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/recovery"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/tracing"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/middleware"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/o11y"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 )
 
@@ -44,22 +42,23 @@ func NewProxy(ctx context.Context, builder *chrooted.Builder, sandboxes *sandbox
 		return nil, fmt.Errorf("failed to create chroot NFS handler: %w", err)
 	}
 
-	// wrap the handler in middleware
+	// wrap the handler in caching
 	handler = helpers.NewCachingHandler(handler, cacheLimit)
 
-	if config.Tracing {
-		handler = tracing.WrapWithTracing(handler, config)
+	// build skip maps for conditional tracing/logging
+	skipOps := make(map[string]bool)
+	if !config.RecordStatCalls {
+		skipOps["FS.Stat"] = true
+		skipOps["FS.Lstat"] = true
+	}
+	if !config.RecordHandleCalls {
+		skipOps["Handler.ToHandle"] = true
+		skipOps["Handler.FromHandle"] = true
+		skipOps["Handler.InvalidateHandle"] = true
 	}
 
-	if config.Metrics {
-		handler = metrics.WrapWithMetrics(handler, config)
-	}
-
-	if config.Logging {
-		handler = logged.WrapWithLogging(ctx, handler, config)
-	}
-
-	handler = recovery.WrapWithRecovery(ctx, handler)
+	interceptors := buildInterceptors(config, skipOps)
+	handler = middleware.WrapHandler(handler, interceptors)
 
 	s := &nfs.Server{
 		Handler:      handler,
@@ -72,6 +71,28 @@ func NewProxy(ctx context.Context, builder *chrooted.Builder, sandboxes *sandbox
 		config: config,
 		server: s,
 	}, nil
+}
+
+func buildInterceptors(config cfg.Config, skipOps map[string]bool) *middleware.Chain {
+	// build interceptor chain (order matters: recovery should be first to catch panics from all others)
+	var interceptors []middleware.Interceptor
+	interceptors = append(interceptors, Recovery())
+
+	if config.Tracing {
+		interceptors = append(interceptors, o11y.Tracing(skipOps))
+	}
+
+	if config.Metrics {
+		interceptors = append(interceptors, o11y.Metrics())
+	}
+
+	if config.Logging {
+		interceptors = append(interceptors, o11y.Logging(skipOps))
+	}
+
+	chain := middleware.NewChain(interceptors...)
+
+	return chain
 }
 
 func (p *Proxy) Serve(lis net.Listener) error {

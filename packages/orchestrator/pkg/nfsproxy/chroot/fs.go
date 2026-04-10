@@ -1,6 +1,7 @@
 package chroot
 
 import (
+	"context"
 	"os"
 
 	"github.com/go-git/go-billy/v5"
@@ -10,6 +11,9 @@ import (
 
 type wrappedFS struct {
 	chroot *chrooted.Chrooted
+
+	// Quota tracking (optional - nil tracker means disabled)
+	ctx context.Context //nolint:containedctx
 }
 
 func (f *wrappedFS) Create(filename string) (billy.File, error) {
@@ -82,6 +86,9 @@ func (f *wrappedFS) Root() string {
 
 var _ billy.Filesystem = (*wrappedFS)(nil)
 
-func wrapChrooted(chroot *chrooted.Chrooted) *wrappedFS {
-	return &wrappedFS{chroot: chroot}
+func wrapChrooted(chroot *chrooted.Chrooted, ctx context.Context) *wrappedFS {
+	return &wrappedFS{
+		chroot: chroot,
+		ctx:    ctx,
+	}
 }

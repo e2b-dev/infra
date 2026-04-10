@@ -126,7 +126,7 @@ func (h *NFSHandler) Mount(
 		return nfs.MountStatusErrAcces, mountFailedFS{}, nil
 	}
 
-	return nfs.MountStatusOk, wrapChrooted(fs), nil
+	return nfs.MountStatusOk, wrapChrooted(fs, ctx), nil
 }
 
 var mountPath = regexp.MustCompile(`^/[^/]+$`)
