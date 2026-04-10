@@ -62,20 +62,19 @@ func NewAuthUserSyncWorker(ctx context.Context, supabaseDB *supabasedb.Client, a
 }
 
 func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSyncArgs]) error {
-	attrs := []attribute.KeyValue{
+	ctx, span := workerTracer.Start(ctx, "auth_user_sync.work", trace.WithAttributes(
 		attribute.String("job.kind", authUserProjectionKind),
 		attribute.String("job.operation", job.Args.Operation),
 		attribute.Int64("job.id", job.ID),
 		telemetry.WithUserID(job.Args.UserID),
-	}
-	ctx, span := workerTracer.Start(ctx, "auth_user_sync.work", trace.WithAttributes(attrs...))
+	))
 	defer span.End()
 
 	telemetry.ReportEvent(ctx, "auth_user_sync.job.started")
 
 	userID, err := uuid.Parse(job.Args.UserID)
 	if err != nil {
-		telemetry.ReportError(ctx, "auth user sync parse user_id", err, attrs...)
+		telemetry.ReportError(ctx, "auth user sync parse user_id", err)
 		w.observeJob(ctx, job.Args.Operation, jobResultInvalidArgument)
 
 		return river.JobCancel(fmt.Errorf("parse user_id %q: %w", job.Args.UserID, err))
@@ -92,7 +91,7 @@ func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSy
 	switch job.Args.Operation {
 	case "delete":
 		if err := w.authDB.DeletePublicUser(ctx, userID); err != nil {
-			telemetry.ReportError(ctx, "auth user sync delete public user", err, attrs...)
+			telemetry.ReportError(ctx, "auth user sync delete public user", err)
 			w.observeJob(ctx, job.Args.Operation, jobResultError)
 
 			return fmt.Errorf("delete public.users %s: %w", userID, err)
@@ -102,7 +101,7 @@ func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSy
 		supabaseUser, err := w.supabaseDB.Write.GetAuthUserByID(ctx, userID)
 		if dberrors.IsNotFoundError(err) {
 			if err := w.authDB.DeletePublicUser(ctx, userID); err != nil {
-				telemetry.ReportError(ctx, "auth user sync delete stale public user", err, attrs...)
+				telemetry.ReportError(ctx, "auth user sync delete stale public user", err)
 				w.observeJob(ctx, job.Args.Operation, jobResultError)
 
 				return fmt.Errorf("delete stale public.users %s: %w", userID, err)
@@ -114,7 +113,7 @@ func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSy
 			return nil
 		}
 		if err != nil {
-			telemetry.ReportError(ctx, "auth user sync get source user", err, attrs...)
+			telemetry.ReportError(ctx, "auth user sync get source user", err)
 			w.observeJob(ctx, job.Args.Operation, jobResultError)
 
 			return fmt.Errorf("get source auth.users %s: %w", userID, err)
@@ -122,7 +121,7 @@ func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSy
 
 		if supabaseUser.Email == "" {
 			err := fmt.Errorf("missing email in source user %s", userID)
-			telemetry.ReportError(ctx, "auth user sync missing source email", err, attrs...)
+			telemetry.ReportError(ctx, "auth user sync missing source email", err)
 			w.observeJob(ctx, job.Args.Operation, jobResultInvalidArgument)
 
 			return river.JobCancel(err)
@@ -132,7 +131,7 @@ func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSy
 			ID:    userID,
 			Email: supabaseUser.Email,
 		}); err != nil {
-			telemetry.ReportError(ctx, "auth user sync upsert public user", err, attrs...)
+			telemetry.ReportError(ctx, "auth user sync upsert public user", err)
 			w.observeJob(ctx, job.Args.Operation, jobResultError)
 
 			return fmt.Errorf("upsert public.users %s: %w", userID, err)
@@ -140,7 +139,7 @@ func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSy
 
 	default:
 		err := fmt.Errorf("unknown operation %q for user %s", job.Args.Operation, userID)
-		telemetry.ReportError(ctx, "auth user sync unknown operation", err, attrs...)
+		telemetry.ReportError(ctx, "auth user sync unknown operation", err)
 		w.observeJob(ctx, job.Args.Operation, jobResultInvalidArgument)
 
 		return river.JobCancel(err)

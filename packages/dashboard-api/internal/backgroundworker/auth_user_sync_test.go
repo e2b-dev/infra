@@ -24,8 +24,7 @@ const (
 	testEventuallyTick    = 50 * time.Millisecond
 	testStopTimeout       = 5 * time.Second
 
-	supabaseMigrationsDir         = "packages/db/pkg/supabase/migrations"
-	authCustomSchemaVersion int64 = 20260401000001
+	supabaseMigrationsDir = "packages/db/pkg/supabase/migrations"
 )
 
 type riverProcess struct {
@@ -109,10 +108,29 @@ func applyAuthUserSyncMigrations(t *testing.T, db *testutils.Database) {
 	t.Helper()
 
 	// The auth user sync bootstraps `auth_custom` in three steps:
-	// 1. goose migration 20260401000001 creates the shared schema
+	// 1. create the shared schema and role needed by River migrations
 	// 2. River library migrations create River tables inside that schema
 	// 3. the remaining auth migrations add triggers that enqueue into River
-	db.ApplyMigrationsUpTo(t, authCustomSchemaVersion, supabaseMigrationsDir)
+	require.NoError(t, db.SupabaseDB.TestsRawSQL(t.Context(), `
+CREATE SCHEMA IF NOT EXISTS auth_custom;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'trigger_user') THEN
+        CREATE ROLE trigger_user NOLOGIN;
+    END IF;
+END;
+$$;
+
+GRANT USAGE ON SCHEMA auth_custom TO trigger_user;
+GRANT CREATE ON SCHEMA auth_custom TO trigger_user;
+
+DO $$
+BEGIN
+    EXECUTE format('GRANT TEMP ON DATABASE %I TO trigger_user', current_database());
+END;
+$$;
+`))
 
 	require.NoError(t, RunRiverMigrations(t.Context(), db.SupabaseDB.WritePool()))
 

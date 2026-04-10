@@ -1,15 +1,16 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	dashboardutils "github.com/e2b-dev/infra/packages/dashboard-api/internal/utils"
-	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -26,7 +27,7 @@ func (s *APIStore) GetBuildsBuildId(c *gin.Context, buildId api.BuildId) {
 		BuildID: buildId,
 	})
 	if err != nil {
-		if dberrors.IsNotFoundError(err) {
+		if errors.Is(err, pgx.ErrNoRows) {
 			s.sendAPIStoreError(c, http.StatusNotFound, "Build not found or you don't have access to it")
 
 			return

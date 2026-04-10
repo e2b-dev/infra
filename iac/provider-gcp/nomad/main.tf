@@ -130,16 +130,16 @@ module "dashboard_api" {
 
   image = data.google_artifact_registry_docker_image.dashboard_api_image[0].self_link
 
-  postgres_connection_string             = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-  auth_db_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-  auth_db_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
-  supabase_db_connection_string          = var.supabase_db_connection_string
-  clickhouse_connection_string           = local.clickhouse_connection_string
-  supabase_jwt_secrets                   = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
-  redis_url                              = local.redis_url
-  redis_cluster_url                      = local.redis_cluster_url
-  redis_tls_ca_base64                    = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-  extra_env                              = var.dashboard_api_env_vars
+  postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+  auth_db_connection_string               = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+  auth_db_read_replica_connection_string  = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
+  supabase_db_connection_string           = var.supabase_db_connection_string
+  clickhouse_connection_string            = local.clickhouse_connection_string
+  supabase_jwt_secrets                    = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
+  redis_url                               = local.redis_url
+  redis_cluster_url                       = local.redis_cluster_url
+  redis_tls_ca_base64                     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+  enable_auth_user_sync_background_worker = var.enable_auth_user_sync_background_worker
 
   otel_collector_grpc_port = var.otel_collector_grpc_port
   logs_proxy_port          = var.logs_proxy_port

@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
-	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -36,7 +36,7 @@ func (s *APIStore) GetSandboxesSandboxIDRecord(c *gin.Context, sandboxID api.San
 		CreatedAfter: time.Now().UTC().Add(-sandboxRecordRetention),
 	})
 	if err != nil {
-		if dberrors.IsNotFoundError(err) || isUndefinedTableError(err) {
+		if errors.Is(err, pgx.ErrNoRows) || isUndefinedTableError(err) {
 			s.sendAPIStoreError(c, http.StatusNotFound, "Sandbox not found or you don't have access to it")
 
 			return

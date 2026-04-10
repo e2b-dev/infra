@@ -255,7 +255,7 @@ func createHandlerTestUser(t *testing.T, db *testutils.Database) uuid.UUID {
 	userID := uuid.New()
 	email := handlerTestUserEmail(userID)
 
-	err := db.AuthDB.TestsRawSQL(t.Context(), `
+	err := db.AuthDb.TestsRawSQL(t.Context(), `
 INSERT INTO auth.users (id, email)
 VALUES ($1, $2)
 `, userID, email)
@@ -273,7 +273,7 @@ func handlerTestUserEmail(userID uuid.UUID) string {
 func insertHandlerTestTeamMember(t *testing.T, db *testutils.Database, userID, teamID uuid.UUID, isDefault bool) {
 	t.Helper()
 
-	err := db.AuthDB.TestsRawSQL(t.Context(), `
+	err := db.AuthDb.TestsRawSQL(t.Context(), `
 INSERT INTO public.users_teams (user_id, team_id, is_default)
 VALUES ($1, $2, $3)
 `, userID, teamID, isDefault)

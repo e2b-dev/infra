@@ -71,6 +71,9 @@ job "dashboard-api" {
       }
 
       env {
+        NODE_ID = "$${node.unique.id}"
+        PORT    = "$${NOMAD_PORT_api}"
+
         %{ for key, value in env ~}
         ${key} = "${value}"
         %{ endfor ~}

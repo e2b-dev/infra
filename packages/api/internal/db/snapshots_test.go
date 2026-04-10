@@ -23,7 +23,7 @@ func createTestTeam(t *testing.T, db *testutils.Database) uuid.UUID {
 
 	// Insert a team directly into the database using raw SQL
 	// Using the default tier 'base_v1' that is created in migrations
-	err := db.AuthDB.TestsRawSQL(t.Context(),
+	err := db.AuthDb.TestsRawSQL(t.Context(),
 		"INSERT INTO public.teams (id, name, tier, email, slug) VALUES ($1, $2, $3, $4, $5)",
 		teamID, "Test Team "+teamID.String(), "base_v1", "test-"+teamID.String()+"@example.com", slug,
 	)

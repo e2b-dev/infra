@@ -230,15 +230,15 @@ variable "dashboard_api_count" {
   default = 0
 }
 
-variable "dashboard_api_env_vars" {
-  type    = map(string)
-  default = {}
-}
-
 variable "supabase_db_connection_string" {
   type      = string
   default   = ""
   sensitive = true
+}
+
+variable "enable_auth_user_sync_background_worker" {
+  type    = bool
+  default = false
 }
 
 variable "docker_reverse_proxy_port" {

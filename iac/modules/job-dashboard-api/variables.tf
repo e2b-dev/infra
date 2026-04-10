@@ -50,9 +50,9 @@ variable "supabase_jwt_secrets" {
   sensitive = true
 }
 
-variable "extra_env" {
-  type    = map(string)
-  default = {}
+variable "enable_auth_user_sync_background_worker" {
+  type    = bool
+  default = false
 }
 
 variable "otel_collector_grpc_port" {
