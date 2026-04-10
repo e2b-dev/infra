@@ -1049,7 +1049,10 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating block metrics...")
 	}
-	blockMetrics, _ := blockmetrics.NewMetrics(tel.MeterProvider)
+	blockMetrics, err := blockmetrics.NewMetrics(tel.MeterProvider)
+	if err != nil {
+		return fmt.Errorf("block metrics: %w", err)
+	}
 
 	if verbose {
 		fmt.Println("🔧 Creating template cache...")
