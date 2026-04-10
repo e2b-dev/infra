@@ -17,8 +17,6 @@ func NewSyncMap(n uint) *SyncMap {
 	return &SyncMap{n: n}
 }
 
-
-
 func (s *SyncMap) Has(i uint) bool {
 	if i >= s.n {
 		return false
