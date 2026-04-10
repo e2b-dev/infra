@@ -69,8 +69,12 @@ jobs:
           sudo mount -t hugetlbfs none /mnt/hugepages
           echo 2000 | sudo tee /proc/sys/vm/nr_hugepages
 
-          # Enable NBD
-          sudo modprobe nbd nbds_max=256
+          # Enable NBD — skip modprobe if built into kernel
+          if [ -e /sys/module/nbd ]; then
+            echo "nbd is built into kernel, skipping modprobe"
+          else
+            sudo modprobe nbd nbds_max=256
+          fi
 
           # Disable inotify watching of change events for NBD devices
           echo 'ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"' | sudo tee /etc/udev/rules.d/97-nbd-device.rules
