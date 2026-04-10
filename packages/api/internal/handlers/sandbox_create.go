@@ -553,6 +553,16 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 		}
 	}
 
+	if p := network.EgressProxy; p != nil {
+		if _, _, err := net.SplitHostPort(p.Address); err != nil {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("invalid egress proxy address %q: %w", p.Address, err),
+				ClientMsg: fmt.Sprintf("egress proxy address must be in host:port format, got %q", p.Address),
+			}
+		}
+	}
+
 	denyOut := sharedUtils.DerefOrDefault(network.DenyOut, nil)
 	allowOut := sharedUtils.DerefOrDefault(network.AllowOut, nil)
 

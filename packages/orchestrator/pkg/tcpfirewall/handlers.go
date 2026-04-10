@@ -25,16 +25,17 @@ const (
 )
 
 // egressDialContext returns a SOCKS5 dial function if the sandbox has an egress proxy
-// configured, or nil for direct connections.
-func egressDialContext(sbx *sandbox.Sandbox, l logger.Logger, ctx context.Context, metrics *Metrics, protocol Protocol) dialContextFunc {
+// configured. Returns (nil, false) for direct connections, (nil, true) if the proxy is
+// configured but failed to initialize (caller should block the connection).
+func egressDialContext(sbx *sandbox.Sandbox, l logger.Logger, ctx context.Context, metrics *Metrics, protocol Protocol) (dialContextFunc, bool) {
 	egress := sbx.Config.GetNetworkEgress()
 	if egress == nil {
-		return nil
+		return nil, false
 	}
 
 	addr := egress.GetEgressProxyAddress()
 	if addr == "" {
-		return nil
+		return nil, false
 	}
 
 	auth := socks5AuthFromEgress(egress, sbx.Runtime.SandboxID)
@@ -46,10 +47,10 @@ func egressDialContext(sbx *sandbox.Sandbox, l logger.Logger, ctx context.Contex
 			zap.Error(err))
 		metrics.RecordError(ctx, ErrorTypeSOCKS5Dial, protocol)
 
-		return nil
+		return nil, true
 	}
 
-	return dialFn
+	return dialFn, true
 }
 
 // domainHandler handles connections with hostname information (HTTP Host header or TLS SNI).
@@ -79,10 +80,14 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 
 	metrics.RecordDecision(ctx, DecisionAllowed, protocol, matchType)
 
-	dialFn := egressDialContext(sbx, logger, ctx, metrics, protocol)
+	dialFn, hasProxy := egressDialContext(sbx, logger, ctx, metrics, protocol)
+	if hasProxy {
+		if dialFn == nil {
+			conn.Close()
 
-	// When using a SOCKS5 proxy, always dial the hostname so the proxy resolves it.
-	if dialFn != nil {
+			return
+		}
+
 		target := hostname
 		if target == "" {
 			target = dstIP.String()
@@ -133,7 +138,14 @@ func cidrOnlyHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort i
 
 	upstreamAddr := net.JoinHostPort(dstIP.String(), fmt.Sprintf("%d", dstPort))
 
-	if dialFn := egressDialContext(sbx, logger, ctx, metrics, protocol); dialFn != nil {
+	dialFn, hasProxy := egressDialContext(sbx, logger, ctx, metrics, protocol)
+	if hasProxy {
+		if dialFn == nil {
+			conn.Close()
+
+			return
+		}
+
 		proxyWith(ctx, conn, upstreamAddr, dialFn, metrics, protocol)
 
 		return
