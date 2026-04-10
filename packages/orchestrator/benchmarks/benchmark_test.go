@@ -80,7 +80,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		return utils.Must(filepath.Abs(s))
 	}
 
-	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	endpoint := os.Getenv("OTEL_COLLECTOR_GRPC_ENDPOINT")
 	if endpoint != "" {
 		spanExporter, err := telemetry.NewSpanExporter(b.Context(),
 			otlptracegrpc.WithEndpoint(endpoint),

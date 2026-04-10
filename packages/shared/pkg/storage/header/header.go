@@ -3,8 +3,8 @@ package header
 import (
 	"context"
 	"fmt"
+	"sort"
 
-	"github.com/bits-and-blooms/bitset"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
@@ -14,20 +14,17 @@ import (
 const NormalizeFixVersion = 3
 
 type Header struct {
-	Metadata    *Metadata
-	blockStarts *bitset.BitSet
-	startMap    map[int64]*BuildMap
-
-	Mapping []*BuildMap
+	Metadata *Metadata
+	Mapping  []BuildMap
 }
 
-func NewHeader(metadata *Metadata, mapping []*BuildMap) (*Header, error) {
+func NewHeader(metadata *Metadata, mapping []BuildMap) (*Header, error) {
 	if metadata.BlockSize == 0 {
 		return nil, fmt.Errorf("block size cannot be zero")
 	}
 
 	if len(mapping) == 0 {
-		mapping = []*BuildMap{{
+		mapping = []BuildMap{{
 			Offset:             0,
 			Length:             metadata.Size,
 			BuildId:            metadata.BuildId,
@@ -35,23 +32,9 @@ func NewHeader(metadata *Metadata, mapping []*BuildMap) (*Header, error) {
 		}}
 	}
 
-	blocks := TotalBlocks(int64(metadata.Size), int64(metadata.BlockSize))
-
-	intervals := bitset.New(uint(blocks))
-	startMap := make(map[int64]*BuildMap, len(mapping))
-
-	for _, mapping := range mapping {
-		block := BlockIdx(int64(mapping.Offset), int64(metadata.BlockSize))
-
-		intervals.Set(uint(block))
-		startMap[block] = mapping
-	}
-
 	return &Header{
-		blockStarts: intervals,
-		Metadata:    metadata,
-		Mapping:     mapping,
-		startMap:    startMap,
+		Metadata: metadata,
+		Mapping:  mapping,
 	}, nil
 }
 
@@ -86,7 +69,6 @@ func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (mappedOff
 	return mappedOffset, mappedLength, buildID, nil
 }
 
-// TODO: Maybe we can optimize mapping by automatically assuming the mapping is uuid.Nil if we don't find it + stopping storing the nil mapping.
 func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64, error) {
 	if offset < 0 || offset >= int64(t.Metadata.Size) {
 		if t.IsNormalizeFixApplied() {
@@ -111,30 +93,26 @@ func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64
 		)
 	}
 
-	block := BlockIdx(offset, int64(t.Metadata.BlockSize))
+	i := sort.Search(len(t.Mapping), func(i int) bool {
+		return int64(t.Mapping[i].Offset) > offset
+	})
 
-	start, ok := t.blockStarts.PreviousSet(uint(block))
-	if !ok {
+	if i == 0 {
 		return nil, 0, fmt.Errorf("no source found for offset %d", offset)
 	}
 
-	mapping, ok := t.startMap[int64(start)]
-	if !ok {
-		return nil, 0, fmt.Errorf("no mapping found for offset %d", offset)
-	}
-
-	shift := (block - int64(start)) * int64(t.Metadata.BlockSize)
+	mapping := &t.Mapping[i-1]
+	shift := offset - int64(mapping.Offset)
 
 	// Verify that the offset falls within this mapping's range
 	if shift >= int64(mapping.Length) {
 		if t.IsNormalizeFixApplied() {
-			return nil, 0, fmt.Errorf("offset %d (block %d) is beyond the end of mapping at offset %d (ends at %d)",
-				offset, block, mapping.Offset, mapping.Offset+mapping.Length)
+			return nil, 0, fmt.Errorf("offset %d is beyond the end of mapping at offset %d (ends at %d)",
+				offset, mapping.Offset, mapping.Offset+mapping.Length)
 		}
 
 		logger.L().Warn(ctx, "offset is beyond the end of mapping, but normalize fix is not applied",
 			zap.Int64("offset", offset),
-			zap.Int64("block", block),
 			zap.Uint64("mappingOffset", mapping.Offset),
 			zap.Uint64("mappingEnd", mapping.Offset+mapping.Length),
 			logger.WithBuildID(t.Metadata.BuildId.String()),
