@@ -71,16 +71,7 @@ func NewClickhouseVolumeUsageDelivery(
 }
 
 func (c *ClickhouseDelivery) Push(snapshot VolumeUsageSnapshot) error {
-	ok, err := c.batcher.Push(snapshot)
-	if err != nil {
-		return err
-	}
-
-	if !ok {
-		return batcher.ErrBatcherQueueFull
-	}
-
-	return nil
+	return c.batcher.Push(snapshot)
 }
 
 func (c *ClickhouseDelivery) Close(context.Context) error {

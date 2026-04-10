@@ -65,6 +65,8 @@ message SandboxVolumeMount {
   string path = 2;
   string type = 3;
   string name = 4;
+  // Quota in bytes. 0 means unlimited.
+  int64 quota = 5;
 }
 
 message SandboxNetworkConfig {

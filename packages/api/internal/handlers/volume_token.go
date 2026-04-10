@@ -19,6 +19,12 @@ func generateVolumeContentToken(config cfg.VolumesTokenConfig, volume queries.Vo
 	now := time.Now()
 	expiration := now.Add(config.Duration)
 
+	// Extract quota (0 means unlimited)
+	var quota int64
+	if volume.Quota != nil {
+		quota = *volume.Quota
+	}
+
 	claims := jwt.MapClaims{
 		// registered
 		"aud": clusterID.String(),
@@ -33,6 +39,7 @@ func generateVolumeContentToken(config cfg.VolumesTokenConfig, volume queries.Vo
 		"teamid":  team.ID.String(),
 		"volid":   volume.ID.String(),
 		"voltype": volume.VolumeType,
+		"quota":   quota, // quota in bytes, 0 means unlimited
 	}
 
 	token := jwt.NewWithClaims(config.SigningMethod, claims)

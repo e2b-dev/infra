@@ -1,6 +1,6 @@
 -- name: CreateVolume :one
-INSERT INTO volumes (team_id, volume_type, name)
-VALUES (@team_id, @volume_type, @name)
+INSERT INTO volumes (team_id, volume_type, name, quota)
+VALUES (@team_id, @volume_type, @name, @quota)
 RETURNING *;
 
 -- name: GetVolume :one

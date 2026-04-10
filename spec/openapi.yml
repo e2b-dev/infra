@@ -1792,6 +1792,10 @@ components:
           type: string
           description: Name of the volume
           pattern: "^[a-zA-Z0-9_-]+$"
+        size:
+          type: integer
+          format: int64
+          description: Size of the volume in bytes. If omitted, the default size will be used.
       required:
         - name
 

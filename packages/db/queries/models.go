@@ -242,4 +242,5 @@ type Volume struct {
 	Name       string
 	VolumeType string
 	CreatedAt  pgtype.Timestamptz
+	Quota      *int64
 }

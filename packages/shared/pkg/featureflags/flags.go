@@ -204,6 +204,11 @@ var (
 	// MaxConcurrentSnapshotBuildQueries limits concurrent GetSnapshotBuilds calls (e.g. sandbox delete).
 	// 0 or negative disables throttling (unlimited concurrency).
 	MaxConcurrentSnapshotBuildQueries = newIntFlag("max-concurrent-snapshot-build-queries", 0)
+
+	// DefaultVolumeQuota is the default amount of data that can be written to any volume.
+	DefaultVolumeQuota = newIntFlag("volume-quota-default", 0)
+	// MaxVolumeQuota is the maximum amount of data that can be written to any volume.
+	MaxVolumeQuota = newIntFlag("volume-quota-max", 0)
 )
 
 type StringFlag struct {

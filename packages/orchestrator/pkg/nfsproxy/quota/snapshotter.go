@@ -8,7 +8,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/volumeusage"
-	sharedquota "github.com/e2b-dev/infra/packages/shared/pkg/quota"
 )
 
 const (
@@ -18,6 +17,7 @@ const (
 // Snapshotter periodically captures volume usage snapshots to ClickHouse for billing.
 type Snapshotter struct {
 	redis    redis.UniversalClient
+	tracker  *Tracker
 	delivery volumeusage.Delivery
 	logger   *zap.Logger
 
@@ -27,11 +27,13 @@ type Snapshotter struct {
 // NewSnapshotter creates a new volume usage snapshotter.
 func NewSnapshotter(
 	redisClient redis.UniversalClient,
+	tracker *Tracker,
 	delivery volumeusage.Delivery,
 	logger *zap.Logger,
 ) *Snapshotter {
 	return &Snapshotter{
 		redis:            redisClient,
+		tracker:          tracker,
 		delivery:         delivery,
 		logger:           logger,
 		snapshotInterval: defaultSnapshotInterval,
@@ -67,16 +69,16 @@ func (s *Snapshotter) captureSnapshots(ctx context.Context) {
 	s.logger.Debug("capturing volume usage snapshots")
 
 	// Scan for all volume usage keys
-	usagePattern := sharedquota.VolumeUsageKey + ":*"
+	usagePattern := VolumeUsageKey + ":*"
 	iter := s.redis.Scan(ctx, 0, usagePattern, 1000).Iterator()
 
 	var count int
 	for iter.Next(ctx) {
 		key := iter.Val()
 		// Extract volume info from key: quota:volume:usage:{teamID}/{volumeID}
-		volStr := key[len(sharedquota.VolumeUsageKey)+1:] // +1 for the separator
+		volStr := key[len(VolumeUsageKey)+1:] // +1 for the separator
 
-		vol, err := sharedquota.ParseVolumeInfo(volStr)
+		vol, err := ParseVolumeInfo(volStr)
 		if err != nil {
 			s.logger.Warn("failed to parse volume info from key",
 				zap.String("key", key),
@@ -94,13 +96,11 @@ func (s *Snapshotter) captureSnapshots(ctx context.Context) {
 			continue
 		}
 
-		// Get quota (may not exist)
-		quotaKey := sharedquota.VolumeQuotaKey + ":" + volStr
-		quota, _ := s.redis.Get(ctx, quotaKey).Int64() // Ignore error, default to 0
+		// Get quota from tracker's memory (0 means unlimited)
+		quota := s.tracker.GetQuota(vol)
 
-		// Get blocked status
-		blockedKey := sharedquota.VolumeBlockedKey + ":" + volStr
-		blocked, _ := s.redis.Get(ctx, blockedKey).Bool() // Ignore error, default to false
+		// Calculate blocked status: blocked if quota > 0 and usage >= quota
+		blocked := quota > 0 && usage >= quota
 
 		snapshot := volumeusage.VolumeUsageSnapshot{
 			Timestamp:  now,

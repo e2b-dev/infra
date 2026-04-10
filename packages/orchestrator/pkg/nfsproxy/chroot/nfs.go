@@ -175,12 +175,16 @@ func (h *NFSHandler) getChroot(ctx context.Context, remoteAddr net.Addr, request
 	vol := quota.VolumeInfo{
 		TeamID:   teamID,
 		VolumeID: volumeMount.ID,
+		Quota:    volumeMount.Quota,
 	}
 
 	fs, err := h.builder.Chroot(ctx, volumeMount.Type, teamID, volumeMount.ID)
 	if err != nil {
 		return nil, quota.VolumeInfo{}, fmt.Errorf("failed to mount %q: %w", volumeName, err)
 	}
+
+	// Register the volume's quota with the tracker for blocking checks
+	h.tracker.RegisterVolume(vol)
 
 	lifecycleID := sbx.LifecycleID
 	h.mu.Lock()

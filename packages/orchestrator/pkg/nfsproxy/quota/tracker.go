@@ -3,51 +3,106 @@ package quota
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
-	sharedquota "github.com/e2b-dev/infra/packages/shared/pkg/quota"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
+)
+
+// Redis key prefixes for quota management
+const (
+	DirtyVolumesKey = "quota:dirty_volumes"
+	VolumeUsageKey  = "quota:volume:usage"
 )
 
 const (
 	// Default intervals
-	defaultBlockedCacheRefresh = 30 * time.Second
+	defaultUsageCacheRefresh = 30 * time.Second
 )
 
-// Re-export shared types for convenience
-type VolumeInfo = sharedquota.VolumeInfo
+// VolumeInfo identifies a volume for quota tracking.
+type VolumeInfo struct {
+	TeamID   uuid.UUID
+	VolumeID uuid.UUID
+	Quota    int64 // Quota in bytes. 0 means unlimited.
+}
 
-// ParseVolumeInfo is re-exported for convenience
-var ParseVolumeInfo = sharedquota.ParseVolumeInfo
+// String returns the canonical string representation for Redis keys.
+func (v VolumeInfo) String() string {
+	return fmt.Sprintf("%s/%s", v.TeamID.String(), v.VolumeID.String())
+}
+
+// ParseVolumeInfo parses a "teamID/volumeID" string into a VolumeInfo.
+// Note: Quota is not included in the string representation and will be zero.
+func ParseVolumeInfo(s string) (VolumeInfo, error) {
+	parts := strings.SplitN(s, "/", 2)
+	if len(parts) != 2 {
+		return VolumeInfo{}, fmt.Errorf("invalid format: expected 'teamID/volumeID', got %q", s)
+	}
+
+	teamID, err := uuid.Parse(parts[0])
+	if err != nil {
+		return VolumeInfo{}, fmt.Errorf("invalid team ID: %w", err)
+	}
+
+	volumeID, err := uuid.Parse(parts[1])
+	if err != nil {
+		return VolumeInfo{}, fmt.Errorf("invalid volume ID: %w", err)
+	}
+
+	return VolumeInfo{TeamID: teamID, VolumeID: volumeID}, nil
+}
 
 // Tracker handles dirty volume tracking and quota enforcement.
 type Tracker struct {
 	redis  redis.UniversalClient
 	logger *zap.Logger
 
-	// Local cache for blocked status
-	mu           sync.RWMutex
-	blockedCache map[string]bool
-	cacheExpiry  time.Time
+	// Local cache for usage values (refreshed periodically from Redis)
+	mu          sync.RWMutex
+	usageCache  map[string]int64 // volume string -> usage bytes
+	quotaCache  map[string]int64 // volume string -> quota bytes (0 = unlimited)
+	cacheExpiry time.Time
 
-	blockedCacheRefresh time.Duration
+	usageCacheRefresh time.Duration
 }
 
 // NewTracker creates a new quota tracker.
 // If redis is nil, tracking is disabled (noop mode).
 func NewTracker(redisClient redis.UniversalClient, logger *zap.Logger) *Tracker {
 	t := &Tracker{
-		redis:               redisClient,
-		logger:              logger,
-		blockedCache:        make(map[string]bool),
-		blockedCacheRefresh: defaultBlockedCacheRefresh,
+		redis:             redisClient,
+		logger:            logger,
+		usageCache:        make(map[string]int64),
+		quotaCache:        make(map[string]int64),
+		usageCacheRefresh: defaultUsageCacheRefresh,
 	}
 
 	return t
+}
+
+// RegisterVolume registers a volume's quota for blocking checks.
+// This should be called when a volume is mounted.
+func (t *Tracker) RegisterVolume(vol VolumeInfo) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.quotaCache[vol.String()] = vol.Quota
+}
+
+// UnregisterVolume removes a volume from quota tracking.
+// This should be called when a volume is unmounted.
+func (t *Tracker) UnregisterVolume(vol VolumeInfo) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	delete(t.quotaCache, vol.String())
 }
 
 // MarkDirty marks a volume as needing a usage scan.
@@ -61,7 +116,7 @@ func (t *Tracker) MarkDirty(ctx context.Context, vol VolumeInfo) {
 	member := vol.String()
 	score := float64(time.Now().Unix())
 
-	err := t.redis.ZAddNX(ctx, sharedquota.DirtyVolumesKey, redis.Z{
+	err := t.redis.ZAddNX(ctx, DirtyVolumesKey, redis.Z{
 		Score:  score,
 		Member: member,
 	}).Err()
@@ -74,33 +129,44 @@ func (t *Tracker) MarkDirty(ctx context.Context, vol VolumeInfo) {
 
 // IsBlocked checks if a volume is blocked due to quota exceeded.
 // Uses local cache to avoid Redis round-trips on every write.
-// Returns false (allow) on any error (fail open).
+// Returns false (allow) on any error or if quota is 0 (unlimited).
 func (t *Tracker) IsBlocked(ctx context.Context, vol VolumeInfo) bool {
 	if t.redis == nil {
 		return false
 	}
 
 	t.mu.RLock()
-	if time.Now().Before(t.cacheExpiry) {
-		blocked := t.blockedCache[vol.String()]
+	quota, hasQuota := t.quotaCache[vol.String()]
+	if !hasQuota || quota == 0 {
+		// No quota registered or unlimited - not blocked
 		t.mu.RUnlock()
+		return false
+	}
 
-		return blocked
+	if time.Now().Before(t.cacheExpiry) {
+		usage := t.usageCache[vol.String()]
+		t.mu.RUnlock()
+		return usage >= quota
 	}
 	t.mu.RUnlock()
 
 	// Cache expired, refresh it
-	t.refreshBlockedCache(ctx)
+	t.refreshUsageCache(ctx)
 
 	t.mu.RLock()
-	blocked := t.blockedCache[vol.String()]
+	usage := t.usageCache[vol.String()]
+	// Re-read quota in case it changed
+	quota = t.quotaCache[vol.String()]
 	t.mu.RUnlock()
 
-	return blocked
+	if quota == 0 {
+		return false
+	}
+	return usage >= quota
 }
 
-// refreshBlockedCache fetches all blocked flags from Redis.
-func (t *Tracker) refreshBlockedCache(ctx context.Context) {
+// refreshUsageCache fetches all usage values from Redis.
+func (t *Tracker) refreshUsageCache(ctx context.Context) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -109,45 +175,33 @@ func (t *Tracker) refreshBlockedCache(ctx context.Context) {
 		return
 	}
 
-	// Scan for all blocked keys
-	pattern := redis_utils.CreateKey(sharedquota.VolumeBlockedKey, "*")
+	// Scan for all usage keys
+	pattern := redis_utils.CreateKey(VolumeUsageKey, "*")
 	iter := t.redis.Scan(ctx, 0, pattern, 1000).Iterator()
 
-	newCache := make(map[string]bool)
+	newCache := make(map[string]int64)
 	for iter.Next(ctx) {
 		key := iter.Val()
-		// Extract volume info from key: quota:volume:blocked:{teamID}/{volumeID}
-		volStr := key[len(sharedquota.VolumeBlockedKey)+1:] // +1 for the separator
+		// Extract volume info from key: quota:volume:usage:{teamID}/{volumeID}
+		volStr := key[len(VolumeUsageKey)+1:] // +1 for the separator
 
-		blocked, err := t.redis.Get(ctx, key).Bool()
+		usage, err := t.redis.Get(ctx, key).Int64()
 		if err != nil {
-			continue // fail open
+			continue
 		}
-		newCache[volStr] = blocked
+		newCache[volStr] = usage
 	}
 
 	if err := iter.Err(); err != nil {
-		t.logger.Warn("failed to scan blocked keys", zap.Error(err))
+		t.logger.Warn("failed to scan usage keys", zap.Error(err))
 		// Keep old cache on error, just extend expiry slightly
 		t.cacheExpiry = time.Now().Add(5 * time.Second)
 
 		return
 	}
 
-	t.blockedCache = newCache
-	t.cacheExpiry = time.Now().Add(t.blockedCacheRefresh)
-}
-
-// SetBlocked sets the blocked status for a volume.
-// Called by the scanner after checking usage against quota.
-func (t *Tracker) SetBlocked(ctx context.Context, vol VolumeInfo, blocked bool) error {
-	if t.redis == nil {
-		return nil
-	}
-
-	key := redis_utils.CreateKey(sharedquota.VolumeBlockedKey, vol.String())
-
-	return t.redis.Set(ctx, key, blocked, 0).Err()
+	t.usageCache = newCache
+	t.cacheExpiry = time.Now().Add(t.usageCacheRefresh)
 }
 
 // SetUsage sets the current usage for a volume.
@@ -157,7 +211,7 @@ func (t *Tracker) SetUsage(ctx context.Context, vol VolumeInfo, usageBytes int64
 		return nil
 	}
 
-	key := redis_utils.CreateKey(sharedquota.VolumeUsageKey, vol.String())
+	key := redis_utils.CreateKey(VolumeUsageKey, vol.String())
 
 	return t.redis.Set(ctx, key, usageBytes, 0).Err()
 }
@@ -168,31 +222,17 @@ func (t *Tracker) GetUsage(ctx context.Context, vol VolumeInfo) (int64, error) {
 		return 0, nil
 	}
 
-	key := redis_utils.CreateKey(sharedquota.VolumeUsageKey, vol.String())
+	key := redis_utils.CreateKey(VolumeUsageKey, vol.String())
 
 	return t.redis.Get(ctx, key).Int64()
 }
 
-// GetQuota gets the quota limit for a volume.
-func (t *Tracker) GetQuota(ctx context.Context, vol VolumeInfo) (int64, error) {
-	if t.redis == nil {
-		return 0, nil
-	}
+// GetQuota gets the quota limit for a volume from memory.
+func (t *Tracker) GetQuota(vol VolumeInfo) int64 {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
 
-	key := redis_utils.CreateKey(sharedquota.VolumeQuotaKey, vol.String())
-
-	return t.redis.Get(ctx, key).Int64()
-}
-
-// SetQuota sets the quota limit for a volume.
-func (t *Tracker) SetQuota(ctx context.Context, vol VolumeInfo, quotaBytes int64) error {
-	if t.redis == nil {
-		return nil
-	}
-
-	key := redis_utils.CreateKey(sharedquota.VolumeQuotaKey, vol.String())
-
-	return t.redis.Set(ctx, key, quotaBytes, 0).Err()
+	return t.quotaCache[vol.String()]
 }
 
 // PopDirtyVolume atomically pops the oldest dirty volume from the queue.
@@ -203,7 +243,7 @@ func (t *Tracker) PopDirtyVolume(ctx context.Context) (VolumeInfo, bool, error) 
 	}
 
 	// ZPOPMIN returns the member with lowest score (oldest timestamp)
-	result, err := t.redis.ZPopMin(ctx, sharedquota.DirtyVolumesKey, 1).Result()
+	result, err := t.redis.ZPopMin(ctx, DirtyVolumesKey, 1).Result()
 	if err != nil {
 		return VolumeInfo{}, false, err
 	}
@@ -234,7 +274,7 @@ func (t *Tracker) BlockingPopDirtyVolume(ctx context.Context, timeout time.Durat
 		}
 	}
 
-	result, err := t.redis.BZPopMin(ctx, timeout, sharedquota.DirtyVolumesKey).Result()
+	result, err := t.redis.BZPopMin(ctx, timeout, DirtyVolumesKey).Result()
 	if errors.Is(err, redis.Nil) {
 		return VolumeInfo{}, false, nil
 	}

@@ -80,7 +80,8 @@ func (s *Scanner) Run(ctx context.Context) error {
 	}
 }
 
-// scanVolume measures disk usage for a volume and updates quota status.
+// scanVolume measures disk usage for a volume and updates usage in Redis.
+// Blocked status is calculated on-the-fly by comparing usage to quota.
 func (s *Scanner) scanVolume(ctx context.Context, vol VolumeInfo) error {
 	volPath, err := s.pathBuilder.BuildVolumePath(s.volumeType, vol.TeamID, vol.VolumeID)
 	if err != nil {
@@ -108,21 +109,9 @@ func (s *Scanner) scanVolume(ctx context.Context, vol VolumeInfo) error {
 		return fmt.Errorf("set usage for %s: %w", vol.String(), err)
 	}
 
-	// Check quota and update blocked status
-	quota, err := s.tracker.GetQuota(ctx, vol)
-	if err != nil {
-		// No quota set - not blocked
-		if err := s.tracker.SetBlocked(ctx, vol, false); err != nil {
-			return fmt.Errorf("set blocked for %s: %w", vol.String(), err)
-		}
-
-		return nil
-	}
-
-	blocked := usage >= quota
-	if err := s.tracker.SetBlocked(ctx, vol, blocked); err != nil {
-		return fmt.Errorf("set blocked for %s: %w", vol.String(), err)
-	}
+	// Get quota from memory (0 means unlimited)
+	quota := s.tracker.GetQuota(vol)
+	blocked := quota > 0 && usage >= quota
 
 	s.logger.Debug("volume scan complete",
 		zap.String("volume", vol.String()),

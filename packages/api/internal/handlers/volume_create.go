@@ -73,6 +73,14 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		return
 	}
 
+	quota, err := a.getVolumeSize(ctx, body.Size)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
+		telemetry.ReportError(ctx, "invalid volume size", nil)
+
+		return
+	}
+
 	clusterID := clustershared.WithClusterFallback(team.ClusterID)
 
 	client, tx, err := a.sqlcDB.WithTx(ctx)
@@ -86,11 +94,15 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		_ = tx.Rollback(ctx)
 	}(context.WithoutCancel(ctx))
 
-	volume, err := client.CreateVolume(ctx, queries.CreateVolumeParams{
+	params := queries.CreateVolumeParams{
 		TeamID:     team.ID,
 		Name:       body.Name,
 		VolumeType: volumeType,
-	})
+	}
+	if quota != 0 {
+		params.Quota = &quota
+	}
+	volume, err := client.CreateVolume(ctx, params)
 
 	switch {
 	case dberrors.IsUniqueConstraintViolation(err):
@@ -188,4 +200,24 @@ func (a *APIStore) createVolume(ctx context.Context, clusterID uuid.UUID, volume
 
 		return err
 	})
+}
+
+func (a *APIStore) getVolumeSize(ctx context.Context, size *int64) (int64, error) {
+	var quota int64
+	if size != nil {
+		quota = *size
+	} else {
+		quota = int64(a.featureFlags.IntFlag(ctx, featureflags.DefaultVolumeQuota))
+	}
+
+	maxQuota := a.featureFlags.IntFlag(ctx, featureflags.MaxVolumeQuota)
+	if maxQuota != 0 && int64(maxQuota) > quota {
+		return 0, fmt.Errorf("quota cannot be greater than %d", maxQuota)
+	}
+
+	if quota < 0 {
+		return 0, fmt.Errorf("quota cannot be negative")
+	}
+
+	return quota, nil
 }

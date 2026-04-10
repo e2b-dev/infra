@@ -374,11 +374,17 @@ func convertAPIVolumesToOrchestratorVolumes(ctx context.Context, sqlClient *sqlc
 		}
 		usedPaths[v.Path] = struct{}{}
 
+		var quota int64
+		if actualVolume.Quota != nil {
+			quota = *actualVolume.Quota
+		}
+
 		results = append(results, &orchestrator.SandboxVolumeMount{
-			Id:   actualVolume.ID.String(),
-			Path: v.Path,
-			Type: actualVolume.VolumeType,
-			Name: actualVolume.Name,
+			Id:    actualVolume.ID.String(),
+			Path:  v.Path,
+			Type:  actualVolume.VolumeType,
+			Name:  actualVolume.Name,
+			Quota: quota,
 		})
 	}
 

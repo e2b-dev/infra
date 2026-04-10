@@ -864,7 +864,7 @@ func startNFSProxy(
 	})
 
 	// volume usage snapshotter (writes hourly snapshots to ClickHouse for billing)
-	snapshotter := quota.NewSnapshotter(redisClient, volumeUsageDelivery, zapLogger.Detach(ctx).Named("quota-snapshotter"))
+	snapshotter := quota.NewSnapshotter(redisClient, tracker, volumeUsageDelivery, zapLogger.Detach(ctx).Named("quota-snapshotter"))
 	startService("quota snapshotter", func() error {
 		return snapshotter.Run(ctx)
 	})
