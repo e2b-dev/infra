@@ -112,7 +112,7 @@ jobs:
           if [ -e /sys/module/nbd ]; then
             echo "nbd is built into kernel"
           else
-            sudo modprobe nbd nbds_max=256
+            sudo modprobe nbd nbds_max=256 || echo "WARNING: nbd not available — NBD tests will fail"
           fi
 
           # Disable inotify watching of change events for NBD devices
