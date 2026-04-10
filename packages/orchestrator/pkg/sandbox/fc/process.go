@@ -556,7 +556,7 @@ func (p *Process) Resume(
 	}
 	telemetry.ReportEvent(ctx, "configured tx rate limit")
 
-	if setErr := p.client.setDriveRateLimit(ctx, "rootfs", driveRateLimit); setErr != nil {
+	if setErr := p.client.setDriveRateLimit(ctx, rootfsDriveID, driveRateLimit); setErr != nil {
 		fcStopErr := p.Stop(ctx)
 
 		return errors.Join(fmt.Errorf("error setting drive rate limit: %w", setErr), fcStopErr)

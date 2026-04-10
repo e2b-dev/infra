@@ -206,14 +206,14 @@ func (c *apiClient) setBootSource(ctx context.Context, kernelArgs string, kernel
 }
 
 func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string, ioEngine *string, rateLimiter *models.RateLimiter) error {
-	rootfs := "rootfs"
+	driveID := rootfsDriveID
 
 	isRootDevice := true
 	driversConfig := operations.PutGuestDriveByIDParams{
 		Context: ctx,
-		DriveID: rootfs,
+		DriveID: driveID,
 		Body: &models.Drive{
-			DriveID:      &rootfs,
+			DriveID:      &driveID,
 			PathOnHost:   rootfsPath,
 			IsRootDevice: &isRootDevice,
 			IsReadOnly:   false,

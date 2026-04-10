@@ -160,7 +160,7 @@ var counterDesc = map[CounterType]string{
 	SandboxFCNetNoAvailBuffer: "Total Firecracker VMM events where no virtqueue buffer was available (direction=tx/rx)",
 	SandboxFCNetTapIOFails:    "Total Firecracker VMM TAP I/O failures (direction=tx/rx)",
 
-	SandboxFCBlockFails:         "Total Firecracker VMM block device execution/event failures (direction=read/write)",
+	SandboxFCBlockFails:         "Total Firecracker VMM block device execution/event failures",
 	SandboxFCBlockNoAvailBuffer: "Total Firecracker VMM block events where no virtqueue buffer was available",
 }
 
