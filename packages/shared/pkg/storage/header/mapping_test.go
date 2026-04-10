@@ -1,14 +1,11 @@
 package header
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 var (
@@ -715,56 +712,22 @@ func TestNormalizeMappingsDoesNotModifyInput(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// makeFrameTable builds a FrameTable with n frames of uniform uncompressed size
-// frameU, compressed size frameC, starting at offset 0.
-func makeFrameTable(n int, frameU, frameC int32) *storage.FrameTable {
-	ft := storage.NewFrameTable(storage.CompressionZstd)
-	ft.Offset = storage.FrameOffset{U: 0, C: 0}
-	for range n {
-		ft.Frames = append(ft.Frames, storage.FrameSize{U: frameU, C: frameC})
-	}
-
-	return ft
-}
-
-func assertFrameTable(t *testing.T, label string, m BuildMap, startU, startC int64, nFrames int, frameU, frameC int32) {
-	t.Helper()
-
-	require.NotNil(t, m.FrameTable, "%s: FrameTable should not be nil", label)
-	assert.Equal(t, startU, m.FrameTable.Offset.U, "%s: Offset.U", label)
-	assert.Equal(t, startC, m.FrameTable.Offset.C, "%s: Offset.C", label)
-	require.Len(t, m.FrameTable.Frames, nFrames, "%s: frame count", label)
-	for i, f := range m.FrameTable.Frames {
-		assert.Equal(t, frameU, f.U, "%s: frame[%d].U", label, i)
-		assert.Equal(t, frameC, f.C, "%s: frame[%d].C", label, i)
-	}
-}
-
-func TestMergeMappings_FrameTableSplits(t *testing.T) {
+func TestMergeMappings_Splits(t *testing.T) {
 	t.Parallel()
-
-	// Frame geometry: each frame = 1 block uncompressed, compressed to 1 MiB.
-	frameU := int32(blockSize)
-	frameC := int32(1 << 20)
 
 	compBaseID := uuid.New()
 	compDiffID := uuid.New()
 	plainID := uuid.New()
-
-	// 6-frame base FrameTable covering blocks [0..6).
-	//   frame i: U=[i*2M, (i+1)*2M)  C=[i*1M, (i+1)*1M)
-	baseFT := makeFrameTable(6, frameU, frameC)
 
 	tests := map[string]struct {
 		base     []BuildMap
 		diff     []BuildMap
 		validate func(t *testing.T, merged []BuildMap)
 	}{
-		"diff inside base — left and right get correct frame subsets": {
+		"diff inside base — left and right split correctly": {
 			base: []BuildMap{{
 				Offset: 0, Length: 6 * blockSize,
 				BuildId: compBaseID, BuildStorageOffset: 0,
-				FrameTable: baseFT,
 			}},
 			diff: []BuildMap{{
 				Offset: 2 * blockSize, Length: 2 * blockSize,
@@ -776,24 +739,22 @@ func TestMergeMappings_FrameTableSplits(t *testing.T) {
 
 				assert.Equal(t, uint64(0), m[0].Offset)
 				assert.Equal(t, 2*blockSize, m[0].Length)
-				assertFrameTable(t, "left", m[0], 0, 0, 2, frameU, frameC)
+				assert.Equal(t, compBaseID, m[0].BuildId)
 
 				assert.Equal(t, compDiffID, m[1].BuildId)
 
 				assert.Equal(t, 4*blockSize, m[2].Offset)
 				assert.Equal(t, 4*blockSize, m[2].BuildStorageOffset)
-				assertFrameTable(t, "right", m[2],
-					4*int64(frameU), 4*int64(frameC), 2, frameU, frameC)
+				assert.Equal(t, compBaseID, m[2].BuildId)
 			},
 		},
 
-		"base after diff with overlap — right split keeps tail frames": {
+		"base after diff with overlap — right split keeps tail": {
 			base: []BuildMap{
 				{Offset: 0, Length: 1 * blockSize, BuildId: plainID},
 				{
 					Offset: 1 * blockSize, Length: 4 * blockSize,
 					BuildId: compBaseID, BuildStorageOffset: 0,
-					FrameTable: makeFrameTable(4, frameU, frameC),
 				},
 			},
 			diff: []BuildMap{{
@@ -808,17 +769,15 @@ func TestMergeMappings_FrameTableSplits(t *testing.T) {
 
 				assert.Equal(t, 3*blockSize, m[1].Offset)
 				assert.Equal(t, 2*blockSize, m[1].BuildStorageOffset)
-				assertFrameTable(t, "right-tail", m[1],
-					2*int64(frameU), 2*int64(frameC), 2, frameU, frameC)
+				assert.Equal(t, compBaseID, m[1].BuildId)
 			},
 		},
 
-		"diff after base with overlap — left split keeps head frames": {
+		"diff after base with overlap — left split keeps head": {
 			base: []BuildMap{
 				{
 					Offset: 0, Length: 4 * blockSize,
 					BuildId: compBaseID, BuildStorageOffset: 0,
-					FrameTable: makeFrameTable(4, frameU, frameC),
 				},
 				{Offset: 4 * blockSize, Length: 2 * blockSize, BuildId: plainID},
 			},
@@ -832,7 +791,7 @@ func TestMergeMappings_FrameTableSplits(t *testing.T) {
 
 				assert.Equal(t, uint64(0), m[0].Offset)
 				assert.Equal(t, 2*blockSize, m[0].Length)
-				assertFrameTable(t, "left-head", m[0], 0, 0, 2, frameU, frameC)
+				assert.Equal(t, compBaseID, m[0].BuildId)
 
 				assert.Equal(t, compDiffID, m[1].BuildId)
 			},
@@ -842,7 +801,6 @@ func TestMergeMappings_FrameTableSplits(t *testing.T) {
 			base: []BuildMap{{
 				Offset: 0, Length: 6 * blockSize,
 				BuildId: compBaseID, BuildStorageOffset: 0,
-				FrameTable: baseFT,
 			}},
 			diff: []BuildMap{
 				{Offset: 1 * blockSize, Length: 1 * blockSize, BuildId: compDiffID},
@@ -852,37 +810,24 @@ func TestMergeMappings_FrameTableSplits(t *testing.T) {
 				t.Helper()
 				require.Len(t, m, 5)
 
-				assertFrameTable(t, "piece-0", m[0], 0, 0, 1, frameU, frameC)
+				assert.Equal(t, compBaseID, m[0].BuildId)
+				assert.Equal(t, 1*blockSize, m[0].Length)
+
 				assert.Equal(t, compDiffID, m[1].BuildId)
-				assertFrameTable(t, "piece-2", m[2],
-					2*int64(frameU), 2*int64(frameC), 2, frameU, frameC)
+
+				assert.Equal(t, compBaseID, m[2].BuildId)
+				assert.Equal(t, 2*blockSize, m[2].Length)
+				assert.Equal(t, 2*blockSize, m[2].BuildStorageOffset)
+
 				assert.Equal(t, compDiffID, m[3].BuildId)
-				assertFrameTable(t, "piece-4", m[4],
-					5*int64(frameU), 5*int64(frameC), 1, frameU, frameC)
+
+				assert.Equal(t, compBaseID, m[4].BuildId)
+				assert.Equal(t, 1*blockSize, m[4].Length)
+				assert.Equal(t, 5*blockSize, m[4].BuildStorageOffset)
 			},
 		},
 
-		"nil FrameTable base — splits work without frames": {
-			base: []BuildMap{{
-				Offset: 0, Length: 4 * blockSize,
-				BuildId: compBaseID, BuildStorageOffset: 0,
-			}},
-			diff: []BuildMap{{
-				Offset: 1 * blockSize, Length: 2 * blockSize,
-				BuildId: compDiffID,
-			}},
-			validate: func(t *testing.T, m []BuildMap) {
-				t.Helper()
-				require.Len(t, m, 3)
-				assert.Nil(t, m[0].FrameTable)
-				assert.Nil(t, m[2].FrameTable)
-			},
-		},
-
-		"multi-layer base with three compressed builds — diff splits middle build": {
-			// Simulates a real multi-layer header: three builds (A, B, C) each
-			// with their own FrameTable. A diff lands inside build B, splitting
-			// it. Builds A and C must pass through with FrameTables intact.
+		"multi-layer base — diff splits middle build": {
 			base: func() []BuildMap {
 				buildA := uuid.New()
 				buildB := compBaseID
@@ -892,17 +837,14 @@ func TestMergeMappings_FrameTableSplits(t *testing.T) {
 					{
 						Offset: 0, Length: 2 * blockSize,
 						BuildId: buildA, BuildStorageOffset: 0,
-						FrameTable: makeFrameTable(2, frameU, frameC),
 					},
 					{
 						Offset: 2 * blockSize, Length: 4 * blockSize,
 						BuildId: buildB, BuildStorageOffset: 0,
-						FrameTable: makeFrameTable(4, frameU, frameC),
 					},
 					{
 						Offset: 6 * blockSize, Length: 2 * blockSize,
 						BuildId: buildC, BuildStorageOffset: 0,
-						FrameTable: makeFrameTable(2, frameU, frameC),
 					},
 				}
 			}(),
@@ -912,31 +854,20 @@ func TestMergeMappings_FrameTableSplits(t *testing.T) {
 			}},
 			validate: func(t *testing.T, m []BuildMap) {
 				t.Helper()
-				// Expected: A(untouched) | B-left[0..1) | diff | B-right[3..4) | C(untouched)
 				require.Len(t, m, 5)
 
-				// Build A: untouched, full 2-frame FT.
-				assertFrameTable(t, "build-A", m[0], 0, 0, 2, frameU, frameC)
-
-				// Build B left: block [2*bs..3*bs), storage offset 0, frame 0 only.
+				// Build B left
 				assert.Equal(t, 2*blockSize, m[1].Offset)
 				assert.Equal(t, 1*blockSize, m[1].Length)
 				assert.Equal(t, uint64(0), m[1].BuildStorageOffset)
-				assertFrameTable(t, "build-B-left", m[1], 0, 0, 1, frameU, frameC)
 
 				// Diff
 				assert.Equal(t, compDiffID, m[2].BuildId)
 
-				// Build B right: block [5*bs..6*bs), storage offset 3*bs, frame 3.
+				// Build B right
 				assert.Equal(t, 5*blockSize, m[3].Offset)
 				assert.Equal(t, 1*blockSize, m[3].Length)
 				assert.Equal(t, 3*blockSize, m[3].BuildStorageOffset)
-				assertFrameTable(t, "build-B-right", m[3],
-					3*int64(frameU), 3*int64(frameC), 1, frameU, frameC)
-
-				// Build C: untouched, full 2-frame FT.
-				assert.Equal(t, 6*blockSize, m[4].Offset)
-				assertFrameTable(t, "build-C", m[4], 0, 0, 2, frameU, frameC)
 			},
 		},
 	}
@@ -949,36 +880,6 @@ func TestMergeMappings_FrameTableSplits(t *testing.T) {
 			require.NoError(t, err)
 
 			tc.validate(t, merged)
-
-			// Verify the invariant that the read path depends on:
-			// for every mapping with a FrameTable, LocateCompressed must be
-			// able to find frames at both the start and end of the mapping's
-			// storage range. This is what GetShiftedMapping + Chunker.fetch
-			// rely on.
-			for i, m := range merged {
-				ft := m.FrameTable
-				if ft == nil {
-					continue
-				}
-
-				label := fmt.Sprintf("mapping[%d] offset=%d storage=%d len=%d",
-					i, m.Offset, m.BuildStorageOffset, m.Length)
-
-				// Offset must be at or before the mapping's storage offset.
-				require.LessOrEqual(t, ft.Offset.U, int64(m.BuildStorageOffset),
-					"%s: FrameTable.Offset.U must be <= BuildStorageOffset", label)
-
-				// LocateCompressed must find the first block.
-				_, err := ft.LocateCompressed(int64(m.BuildStorageOffset))
-				require.NoError(t, err, "%s: LocateCompressed(start)", label)
-
-				// LocateCompressed must find the last block.
-				if m.Length > 0 {
-					lastByte := int64(m.BuildStorageOffset + m.Length - 1)
-					_, err := ft.LocateCompressed(lastByte)
-					require.NoError(t, err, "%s: LocateCompressed(last byte)", label)
-				}
-			}
 		})
 	}
 }
