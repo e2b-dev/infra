@@ -757,10 +757,10 @@ type SandboxNetworkConfig struct {
 		// Address SOCKS5 proxy address in host:port format
 		Address string `json:"address"`
 
-		// Password Optional SOCKS5 authentication password
+		// Password Optional SOCKS5 authentication password. Supports {{sandboxID}} placeholder.
 		Password *string `json:"password,omitempty"`
 
-		// Username Optional SOCKS5 authentication username
+		// Username Optional SOCKS5 authentication username. Supports {{sandboxID}} placeholder for per-sandbox identity.
 		Username *string `json:"username,omitempty"`
 	} `json:"egressProxy,omitempty"`
 
