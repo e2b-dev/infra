@@ -25,7 +25,7 @@ func TestChain_ExecutesInterceptorsInOrder(t *testing.T) {
 
 	var order []int
 
-	interceptor1 := func(ctx context.Context, op string, args []any, next func(context.Context) error) error {
+	interceptor1 := func(ctx context.Context, _ string, _ []any, next func(context.Context) error) error {
 		order = append(order, 1)
 		err := next(ctx)
 		order = append(order, -1)
@@ -33,7 +33,7 @@ func TestChain_ExecutesInterceptorsInOrder(t *testing.T) {
 		return err
 	}
 
-	interceptor2 := func(ctx context.Context, op string, args []any, next func(context.Context) error) error {
+	interceptor2 := func(ctx context.Context, _ string, _ []any, next func(context.Context) error) error {
 		order = append(order, 2)
 		err := next(ctx)
 		order = append(order, -2)
@@ -43,7 +43,7 @@ func TestChain_ExecutesInterceptorsInOrder(t *testing.T) {
 
 	chain := middleware.NewChain(interceptor1, interceptor2)
 
-	err := chain.Exec(context.Background(), "test.op", nil, func(ctx context.Context) error {
+	err := chain.Exec(context.Background(), "test.op", nil, func(_ context.Context) error {
 		order = append(order, 0)
 
 		return nil
@@ -60,7 +60,7 @@ func TestChain_PropagatesErrors(t *testing.T) {
 
 	var interceptorSawError bool
 
-	interceptor := func(ctx context.Context, op string, args []any, next func(context.Context) error) error {
+	interceptor := func(ctx context.Context, _ string, _ []any, next func(context.Context) error) error {
 		err := next(ctx)
 		interceptorSawError = err != nil
 
@@ -69,7 +69,7 @@ func TestChain_PropagatesErrors(t *testing.T) {
 
 	chain := middleware.NewChain(interceptor)
 
-	err := chain.Exec(context.Background(), "test.op", nil, func(ctx context.Context) error {
+	err := chain.Exec(context.Background(), "test.op", nil, func(_ context.Context) error {
 		return errTest
 	})
 
@@ -84,7 +84,7 @@ func TestChain_InterceptorCanModifyError(t *testing.T) {
 
 	wrappedErr := errors.New("wrapped error")
 
-	interceptor := func(ctx context.Context, op string, args []any, next func(context.Context) error) error {
+	interceptor := func(ctx context.Context, _ string, _ []any, next func(context.Context) error) error {
 		err := next(ctx)
 		if err != nil {
 			return wrappedErr
@@ -95,7 +95,7 @@ func TestChain_InterceptorCanModifyError(t *testing.T) {
 
 	chain := middleware.NewChain(interceptor)
 
-	err := chain.Exec(context.Background(), "test.op", nil, func(ctx context.Context) error {
+	err := chain.Exec(context.Background(), "test.op", nil, func(_ context.Context) error {
 		return errTest
 	})
 
@@ -120,7 +120,7 @@ func TestChain_PassesOpAndArgs(t *testing.T) {
 	chain := middleware.NewChain(interceptor)
 	args := []any{"arg1", 42, true}
 
-	err := chain.Exec(context.Background(), "File.Read", args, func(ctx context.Context) error {
+	err := chain.Exec(context.Background(), "File.Read", args, func(_ context.Context) error {
 		return nil
 	})
 
@@ -136,7 +136,7 @@ func TestChain_EmptyChain(t *testing.T) {
 	chain := middleware.NewChain()
 	called := false
 
-	err := chain.Exec(context.Background(), "test.op", nil, func(ctx context.Context) error {
+	err := chain.Exec(context.Background(), "test.op", nil, func(_ context.Context) error {
 		called = true
 
 		return nil
@@ -212,7 +212,7 @@ func TestWrappedFile_Read(t *testing.T) {
 	}).Return(5, nil)
 
 	var interceptorCalled bool
-	interceptor := func(ctx context.Context, op string, args []any, next func(context.Context) error) error {
+	interceptor := func(ctx context.Context, op string, _ []any, next func(context.Context) error) error {
 		interceptorCalled = true
 		assert.Equal(t, "File.Read", op)
 
@@ -236,12 +236,12 @@ func TestWrappedFile_ReadAt(t *testing.T) {
 	t.Parallel()
 
 	mockFile := nfsproxymocks.NewMockFile(t)
-	mockFile.EXPECT().ReadAt(mock.Anything, int64(10)).Run(func(p []byte, off int64) {
+	mockFile.EXPECT().ReadAt(mock.Anything, int64(10)).Run(func(p []byte, _ int64) {
 		copy(p, "world")
 	}).Return(5, nil)
 
 	var capturedArgs []any
-	interceptor := func(ctx context.Context, op string, args []any, next func(context.Context) error) error {
+	interceptor := func(ctx context.Context, _ string, args []any, next func(context.Context) error) error {
 		capturedArgs = args
 
 		return next(ctx)
@@ -283,7 +283,7 @@ func TestWrappedFile_Close(t *testing.T) {
 	mockFile.EXPECT().Close().Return(nil)
 
 	var interceptorCalled bool
-	interceptor := func(ctx context.Context, op string, args []any, next func(context.Context) error) error {
+	interceptor := func(ctx context.Context, op string, _ []any, next func(context.Context) error) error {
 		interceptorCalled = true
 		assert.Equal(t, "File.Close", op)
 
@@ -337,7 +337,7 @@ func TestWrappedFile_Truncate(t *testing.T) {
 	mockFile.EXPECT().Truncate(int64(1024)).Return(nil)
 
 	var capturedArgs []any
-	interceptor := func(ctx context.Context, op string, args []any, next func(context.Context) error) error {
+	interceptor := func(ctx context.Context, _ string, args []any, next func(context.Context) error) error {
 		capturedArgs = args
 
 		return next(ctx)
@@ -450,7 +450,7 @@ func TestWrappedFS_OpenFile(t *testing.T) {
 	mockFS.EXPECT().OpenFile("/test.txt", os.O_RDWR, os.FileMode(0o644)).Return(mockFile, nil)
 
 	var capturedArgs []any
-	interceptor := func(ctx context.Context, op string, args []any, next func(context.Context) error) error {
+	interceptor := func(ctx context.Context, _ string, args []any, next func(context.Context) error) error {
 		capturedArgs = args
 
 		return next(ctx)
@@ -494,7 +494,7 @@ func TestWrappedFS_Rename(t *testing.T) {
 	mockFS.EXPECT().Rename("/old.txt", "/new.txt").Return(nil)
 
 	var capturedArgs []any
-	interceptor := func(ctx context.Context, op string, args []any, next func(context.Context) error) error {
+	interceptor := func(ctx context.Context, _ string, args []any, next func(context.Context) error) error {
 		capturedArgs = args
 
 		return next(ctx)
@@ -695,7 +695,7 @@ func TestWrappedChange_Chmod(t *testing.T) {
 	mockChange.EXPECT().Chmod("/test.txt", os.FileMode(0o755)).Return(nil)
 
 	var capturedArgs []any
-	interceptor := func(ctx context.Context, op string, args []any, next func(context.Context) error) error {
+	interceptor := func(ctx context.Context, _ string, args []any, next func(context.Context) error) error {
 		capturedArgs = args
 
 		return next(ctx)
@@ -751,7 +751,7 @@ func TestWrappedChange_Chtimes(t *testing.T) {
 	mockChange.EXPECT().Chtimes("/test.txt", atime, mtime).Return(nil)
 
 	var capturedArgs []any
-	interceptor := func(ctx context.Context, op string, args []any, next func(context.Context) error) error {
+	interceptor := func(ctx context.Context, _ string, args []any, next func(context.Context) error) error {
 		capturedArgs = args
 
 		return next(ctx)
@@ -780,7 +780,7 @@ func TestWrappedFS_NestedOperations(t *testing.T) {
 	mockFile.EXPECT().Close().Return(nil)
 
 	var ops []string
-	interceptor := func(ctx context.Context, op string, args []any, next func(context.Context) error) error {
+	interceptor := func(ctx context.Context, op string, _ []any, next func(context.Context) error) error {
 		ops = append(ops, op)
 
 		return next(ctx)
@@ -816,6 +816,100 @@ func TestWrappedFS_Unwrap(t *testing.T) {
 
 	inner := unwrapper.Unwrap()
 	assert.Equal(t, mockFS, inner)
+}
+
+// TestWrappedHandler_FromHandle_DoesNotDoubleWrap verifies that FromHandle
+// does not wrap an already-wrapped filesystem. This is critical because:
+// 1. Mount wraps the filesystem before returning to the NFS server
+// 2. The NFS server passes the wrapped filesystem to ToHandle
+// 3. The caching handler stores the wrapped filesystem
+// 4. FromHandle returns the cached (already wrapped) filesystem
+// 5. If we wrap again, operations would go through interceptors twice
+func TestWrappedHandler_FromHandle_DoesNotDoubleWrap(t *testing.T) {
+	t.Parallel()
+
+	// Create a mock inner filesystem (simulating what chroot returns)
+	mockInnerFS := nfsproxymocks.NewMockFilesystem(t)
+
+	// Create a wrapped filesystem (simulating what Mount returns)
+	chain := middleware.NewChain()
+	alreadyWrappedFS := middleware.WrapFilesystem(context.Background(), mockInnerFS, chain)
+
+	// Create a mock handler that returns the already-wrapped filesystem
+	// (simulating what the caching handler would do)
+	mockHandler := nfsproxymocks.NewMockHandler(t)
+	mockHandler.EXPECT().
+		FromHandle(mock.Anything, []byte("test-handle")).
+		Return(alreadyWrappedFS, []string{"path", "to", "file"}, nil)
+
+	// Wrap the mock handler with our middleware
+	wrappedHandler := middleware.WrapHandler(mockHandler, chain)
+
+	// Call FromHandle
+	resultFS, paths, err := wrappedHandler.FromHandle(context.Background(), []byte("test-handle"))
+
+	// Verify no error
+	require.NoError(t, err)
+	assert.Equal(t, []string{"path", "to", "file"}, paths)
+
+	// CRITICAL: Verify the filesystem is the SAME object, not a new wrapper
+	// If this fails, it means FromHandle is double-wrapping
+	assert.Same(t, alreadyWrappedFS, resultFS,
+		"FromHandle should return the filesystem as-is, not wrap it again")
+}
+
+// TestWrappedHandler_FromHandle_PreservesInterceptorChain verifies that
+// filesystem operations on the returned filesystem still go through the
+// interceptor chain (because the filesystem was wrapped during Mount).
+func TestWrappedHandler_FromHandle_PreservesInterceptorChain(t *testing.T) {
+	t.Parallel()
+
+	// Track interceptor calls
+	var interceptorOps []string
+	interceptor := func(ctx context.Context, op string, _ []any, next func(context.Context) error) error {
+		interceptorOps = append(interceptorOps, op)
+
+		return next(ctx)
+	}
+	chain := middleware.NewChain(interceptor)
+
+	// Create a mock inner filesystem
+	mockInnerFS := nfsproxymocks.NewMockFilesystem(t)
+	mockInnerFS.EXPECT().Rename("/old", "/new").Return(nil)
+
+	// Wrap it (simulating what Mount does)
+	wrappedFS := middleware.WrapFilesystem(context.Background(), mockInnerFS, chain)
+
+	// Create a mock handler that returns the wrapped filesystem
+	mockHandler := nfsproxymocks.NewMockHandler(t)
+	mockHandler.EXPECT().
+		FromHandle(mock.Anything, []byte("handle")).
+		Return(wrappedFS, []string{}, nil)
+
+	// Wrap the handler
+	wrappedHandler := middleware.WrapHandler(mockHandler, chain)
+
+	// Get filesystem via FromHandle
+	resultFS, _, err := wrappedHandler.FromHandle(context.Background(), []byte("handle"))
+	require.NoError(t, err)
+
+	// Clear the interceptor ops (FromHandle itself calls interceptors)
+	interceptorOps = nil
+
+	// Perform an operation on the filesystem
+	err = resultFS.Rename("/old", "/new")
+	require.NoError(t, err)
+
+	// Verify the interceptor was called exactly ONCE for FS.Rename
+	// If double-wrapped, we'd see it twice
+	renameCount := 0
+	for _, op := range interceptorOps {
+		if op == "FS.Rename" {
+			renameCount++
+		}
+	}
+	assert.Equal(t, 1, renameCount,
+		"FS.Rename should be intercepted exactly once, not %d times (double-wrap bug)", renameCount)
 }
 
 // mockFileInfo implements os.FileInfo for testing.

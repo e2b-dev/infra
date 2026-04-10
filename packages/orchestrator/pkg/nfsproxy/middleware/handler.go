@@ -86,7 +86,11 @@ func (w *wrappedHandler) FromHandle(ctx context.Context, fh []byte) (billy.Files
 			return err
 		})
 
-	return WrapFilesystem(ctx, fs, w.interceptors), paths, err
+	// Note: We intentionally do NOT wrap the filesystem here.
+	// The caching handler (inner) returns the already-wrapped filesystem
+	// that was stored during ToHandle (which received the wrapped fs from Mount).
+	// Wrapping again would cause double-interception of filesystem operations.
+	return fs, paths, err
 }
 
 func (w *wrappedHandler) InvalidateHandle(ctx context.Context, fs billy.Filesystem, fh []byte) error {
