@@ -176,7 +176,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 				AllowPublicAccess: n.AllowPublicTraffic,
 				MaskRequestHost:   n.MaskRequestHost,
 			},
-		Egress: buildSandboxEgressConfig(n),
+			Egress: buildSandboxEgressConfig(n),
 		}
 
 		// Make sure envd seucre access is enforced when public access is disabled,
