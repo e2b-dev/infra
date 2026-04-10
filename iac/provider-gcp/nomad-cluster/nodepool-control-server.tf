@@ -57,7 +57,8 @@ resource "google_compute_region_instance_group_manager" "server_pool" {
     type           = var.environment == "dev" ? "PROACTIVE" : "OPPORTUNISTIC"
     minimal_action = "REPLACE"
 
-    instance_redistribution_type = var.environment == "dev" ? "PROACTIVE" : "NONE"
+    // Keep PROACTIVE redistribution to maintain even server distribution across zones for Raft quorum resilience.
+    instance_redistribution_type = "PROACTIVE"
     max_unavailable_fixed        = 0
 
     // The number has to be a multiple of the number of zones in the region
