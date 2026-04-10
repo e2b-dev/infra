@@ -489,8 +489,8 @@ func (p *Process) Resume(
 	})
 
 	eg.Go(func() error {
-		_, uffdSpan := tracer.Start(egCtx, "wait-uffd-socket")
-		err := socket.Wait(egCtx, uffdSocketPath)
+		ctx, uffdSpan := tracer.Start(egCtx, "wait-uffd-socket")
+		err := socket.Wait(ctx, uffdSocketPath)
 		uffdSpan.End()
 
 		if err != nil {
