@@ -166,7 +166,7 @@ func BenchmarkConcurrentResume(b *testing.B) {
 	}
 
 	// optional OTEL tracing
-	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	endpoint := os.Getenv("OTEL_COLLECTOR_GRPC_ENDPOINT")
 	if endpoint != "" {
 		spanExporter, err := telemetry.NewSpanExporter(b.Context(),
 			otlptracegrpc.WithEndpoint(endpoint),
