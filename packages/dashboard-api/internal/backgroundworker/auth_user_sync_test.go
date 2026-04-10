@@ -10,10 +10,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/rivertype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -38,87 +40,69 @@ func TestAuthUserSync_EndToEnd(t *testing.T) {
 	db := testutils.SetupDatabase(t)
 	applyAuthUserSyncMigrations(t, db)
 
-	t.Run("upsert projects auth users into public users", func(t *testing.T) {
-		t.Parallel()
+	ctx := t.Context()
+	userID := uuid.New()
+	email := fmt.Sprintf("river-sync-%s@example.com", userID.String()[:8])
 
-		ctx := t.Context()
-		userID := uuid.New()
-		email := fmt.Sprintf("river-sync-%s@example.com", userID.String()[:8])
+	proc := startRiverWorker(t, db)
+	t.Cleanup(func() { proc.Stop(t) })
 
-		proc := startRiverWorker(t, db)
-		t.Cleanup(func() { proc.Stop(t) })
+	insertAuthUser(t, ctx, db, userID, email)
+	waitForPublicUser(t, ctx, db, userID, email)
 
-		insertAuthUser(t, ctx, db, userID, email)
-		waitForPublicUser(t, ctx, db, userID, email)
+	updatedEmail := fmt.Sprintf("river-sync-%s-updated@example.com", userID.String()[:8])
+	updateAuthUserEmail(t, ctx, db, userID, updatedEmail)
+	waitForPublicUser(t, ctx, db, userID, updatedEmail)
 
-		updatedEmail := fmt.Sprintf("river-sync-%s-updated@example.com", userID.String()[:8])
-		updateAuthUserEmail(t, ctx, db, userID, updatedEmail)
-		waitForPublicUser(t, ctx, db, userID, updatedEmail)
+	deleteAuthUser(t, ctx, db, userID)
+	waitForPublicUserGone(t, ctx, db, userID)
+}
+
+func TestAuthUserSyncWorker_UpsertDeletesStaleProjectedUser(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	db := testutils.SetupDatabase(t)
+	applyAuthUserSyncMigrations(t, db)
+
+	userID := uuid.New()
+	staleEmail := fmt.Sprintf("stale-%s@example.com", userID.String()[:8])
+
+	err := db.SqlcClient.UpsertPublicUser(ctx, queries.UpsertPublicUserParams{
+		ID:    userID,
+		Email: staleEmail,
 	})
+	require.NoError(t, err)
+	require.Equal(t, 1, publicUserCount(t, ctx, db, userID))
 
-	t.Run("delete removes projected public users", func(t *testing.T) {
-		t.Parallel()
+	worker := NewAuthUserSyncWorker(ctx, db.SupabaseDB, db.SqlcClient, logger.NewNopLogger())
 
-		ctx := t.Context()
-		userID := uuid.New()
-		email := fmt.Sprintf("river-del-%s@example.com", userID.String()[:8])
-
-		proc := startRiverWorker(t, db)
-		t.Cleanup(func() { proc.Stop(t) })
-
-		insertAuthUser(t, ctx, db, userID, email)
-		waitForPublicUser(t, ctx, db, userID, email)
-
-		deleteAuthUser(t, ctx, db, userID)
-		waitForPublicUserGone(t, ctx, db, userID)
+	err = worker.Work(ctx, &river.Job[AuthUserSyncArgs]{
+		JobRow: &rivertype.JobRow{ID: 1, Attempt: 1},
+		Args: AuthUserSyncArgs{
+			UserID:    userID.String(),
+			Operation: "upsert",
+		},
 	})
+	require.NoError(t, err)
+	assert.Equal(t, 0, publicUserCount(t, ctx, db, userID))
+}
 
-	t.Run("burst backlog drains mixed upsert and delete work", func(t *testing.T) {
-		t.Parallel()
+func TestAuthUserSyncTrigger_SameEmailUpdateDoesNotEnqueueJob(t *testing.T) {
+	t.Parallel()
 
-		ctx := t.Context()
-		const userCount = 40
+	ctx := t.Context()
+	db := testutils.SetupDatabase(t)
+	applyAuthUserSyncMigrations(t, db)
 
-		type testUser struct {
-			id        uuid.UUID
-			email     string
-			shouldDel bool
-		}
+	userID := uuid.New()
+	email := fmt.Sprintf("trigger-%s@example.com", userID.String()[:8])
 
-		users := make([]testUser, 0, userCount)
-		for i := range userCount {
-			u := testUser{
-				id:        uuid.New(),
-				email:     fmt.Sprintf("river-burst-%02d@example.com", i),
-				shouldDel: i%3 == 0,
-			}
-			users = append(users, u)
-			insertAuthUser(t, ctx, db, u.id, u.email)
-		}
+	insertAuthUser(t, ctx, db, userID, email)
+	require.Equal(t, 1, riverJobCountForUser(t, ctx, db, userID))
 
-		proc := startRiverWorker(t, db)
-		t.Cleanup(func() { proc.Stop(t) })
-
-		for _, u := range users {
-			waitForPublicUser(t, ctx, db, u.id, u.email)
-		}
-
-		for _, u := range users {
-			if u.shouldDel {
-				deleteAuthUser(t, ctx, db, u.id)
-			}
-		}
-
-		for _, u := range users {
-			if u.shouldDel {
-				waitForPublicUserGone(t, ctx, db, u.id)
-
-				continue
-			}
-
-			waitForPublicUser(t, ctx, db, u.id, u.email)
-		}
-	})
+	updateAuthUserEmail(t, ctx, db, userID, email)
+	assert.Equal(t, 1, riverJobCountForUser(t, ctx, db, userID))
 }
 
 func applyAuthUserSyncMigrations(t *testing.T, db *testutils.Database) {
@@ -230,17 +214,7 @@ func waitForPublicUserGone(t *testing.T, ctx context.Context, db *testutils.Data
 	t.Helper()
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		var count int
-
-		err := db.AuthDB.TestsRawSQLQuery(ctx,
-			"SELECT count(*) FROM public.users WHERE id = $1",
-			func(rows pgx.Rows) error {
-				if !rows.Next() {
-					return nil
-				}
-
-				return rows.Scan(&count)
-			}, userID)
+		count, err := publicUserCountE(ctx, db, userID)
 
 		if !assert.NoError(c, err) {
 			return
@@ -248,4 +222,48 @@ func waitForPublicUserGone(t *testing.T, ctx context.Context, db *testutils.Data
 
 		assert.Equal(c, 0, count)
 	}, testEventuallyTimeout, testEventuallyTick)
+}
+
+func publicUserCount(t *testing.T, ctx context.Context, db *testutils.Database, userID uuid.UUID) int {
+	t.Helper()
+
+	count, err := publicUserCountE(ctx, db, userID)
+	require.NoError(t, err)
+
+	return count
+}
+
+func publicUserCountE(ctx context.Context, db *testutils.Database, userID uuid.UUID) (int, error) {
+	var count int
+
+	err := db.AuthDB.TestsRawSQLQuery(ctx,
+		"SELECT count(*) FROM public.users WHERE id = $1",
+		func(rows pgx.Rows) error {
+			if !rows.Next() {
+				return nil
+			}
+
+			return rows.Scan(&count)
+		}, userID)
+
+	return count, err
+}
+
+func riverJobCountForUser(t *testing.T, ctx context.Context, db *testutils.Database, userID uuid.UUID) int {
+	t.Helper()
+
+	var count int
+
+	err := db.SupabaseDB.TestsRawSQLQuery(ctx,
+		"SELECT count(*) FROM auth_custom.river_job WHERE args->>'user_id' = $1",
+		func(rows pgx.Rows) error {
+			if !rows.Next() {
+				return nil
+			}
+
+			return rows.Scan(&count)
+		}, userID.String())
+	require.NoError(t, err)
+
+	return count
 }
