@@ -65,10 +65,9 @@ var (
 	fcBlockRemainingReqs         = utils.Must(telemetry.GetHistogram(fcMeter, telemetry.SandboxFCBlockRemainingReqs))
 )
 
-// firecrackerNetMetrics holds the Firecracker net metrics fields we care about.
-// Firecracker serializes SharedIncMetric fields as per-flush deltas (not cumulative totals):
-// each JSON line contains the increment since the previous flush.
-// Flush interval defaults to 60 s; additional flushes are triggered by FlushMetrics API calls.
+// firecrackerNetMetrics is a subset of Firecracker's NetDeviceMetrics we export via OTEL.
+// Full metric list: https://github.com/firecracker-microvm/firecracker/blob/main/docs/metrics.md
+// Values are per-flush deltas; flush defaults to 60 s, additional flushes via FlushMetrics API.
 type firecrackerNetMetrics struct {
 	// TX
 	TxBytesCount            uint64 `json:"tx_bytes_count"`
@@ -90,9 +89,9 @@ type firecrackerNetMetrics struct {
 	TapReadFails           uint64 `json:"tap_read_fails"`
 }
 
-// firecrackerBlockMetrics holds the Firecracker aggregate block device metrics.
-// Fields match Firecracker's BlockDeviceMetrics (per-flush deltas).
-// The aggregate "block" key sums over all drives; we only have one (rootfs).
+// firecrackerBlockMetrics is a subset of Firecracker's BlockDeviceMetrics we export via OTEL.
+// Full metric list: https://github.com/firecracker-microvm/firecracker/blob/main/docs/metrics.md
+// Values are per-flush deltas. The aggregate "block" key sums over all drives; we only have one (rootfs).
 type firecrackerBlockMetrics struct {
 	ReadBytes                  uint64 `json:"read_bytes"`
 	WriteBytes                 uint64 `json:"write_bytes"`
