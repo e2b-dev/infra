@@ -13,7 +13,64 @@ const (
 	CompressionNone = CompressionType(iota)
 	CompressionZstd
 	CompressionLZ4
+
+	// maxDeserializedFrames caps the number of frames read from a serialized
+	// FrameTable to prevent OOM from corrupted headers. 1M frames = 2 TiB
+	// uncompressed at 2 MiB frame size.
+	maxDeserializedFrames = 1024 * 1024
 )
+
+// # Compression: files, frames, and two address spaces (U/C)
+//
+// Dirty blocks (4 KiB rootfs, 2 MiB memfile) are packed into a diff file,
+// grouped into frames (default 2 MiB), and each frame compressed independently.
+// Two address spaces describe the same data:
+//
+//	U-space (uncompressed):  |-- frame 0 (2M) --|-- frame 1 (2M) --| ...
+//	C-space (compressed):    |-- f0 (.6M) --|-- f1 (.7M) --| ...
+//
+// Each frame's position is recorded as a frameEntry with absolute offsets
+// (StartU, StartC) and sizes (SizeU, SizeC). A FrameTable is a sorted
+// slice of these entries — lookups are a single binary search on StartU.
+//
+// # Read path: virtual offset → build mapping → frame lookup → C-space fetch
+//
+// The header maps virtual offsets to builds via BuildMap entries. Each
+// mapping says "virtual range [Offset, Offset+Length) lives in build X
+// starting at BuildStorageOffset". The read path:
+//
+//  1. GetShiftedMapping(virtualOff) → {BuildId, U-offset within build, length}
+//  2. header.GetBuildFrameData(BuildId) → build's FrameTable
+//  3. ft.LocateCompressed(U-offset) → C-space byte range
+//  4. Fetch compressed bytes from GCS, decompress, cache, return block
+//
+// # Build chain: how Builds propagates through layered templates
+//
+// Each V4 header carries a Builds map (Header.Builds) with per-build
+// metadata: file size, checksum, and FrameTable. When a child template
+// is built on a parent, ToDiffHeader merges mappings and copies the
+// parent's Builds entries for all still-referenced build IDs. Then
+// applyToHeader adds the current build's own entry:
+//
+//	base (build=aa)          → Builds: {aa: {ft, size, checksum}}
+//	  └─ child (build=bb)    → Builds: {aa: ..., bb: ...}
+//	       └─ grandchild (cc)→ Builds: {aa: ..., bb: ..., cc: ...}
+//
+// # Sparse trimming: serialization compacts frame tables
+//
+// During V4 header serialization, each build's FrameTable is trimmed to
+// only the frames overlapping that build's mappings (TrimToRanges). This
+// keeps headers compact when a build has many frames but only a few are
+// referenced in the current layer.
+//
+// # V3/V4 interop: uncompressed layers in the chain
+//
+// V3 (uncompressed) headers have Builds == nil and do not serialize build
+// metadata. A V3 layer in the middle of a chain drops all ancestor build
+// metadata. The read path degrades gracefully: nil FrameTable means read
+// uncompressed; missing build size falls back to a Size() RPC. In
+// practice all layers use the same format (all V3 or all V4); mixed
+// chains arise only during transitions.
 
 // FrameSize holds the uncompressed (U) and compressed (C) byte size of a
 // single frame.
@@ -53,11 +110,16 @@ type FrameTable struct {
 	entries         []frameEntry // sorted by StartU
 }
 
+// newFrameTableFromEntries creates a FrameTable from pre-computed absolute-offset entries.
+func newFrameTableFromEntries(ct CompressionType, entries []frameEntry) *FrameTable {
+	return &FrameTable{compressionType: ct, entries: entries}
+}
+
 // NewFrameTable creates a FrameTable from consecutive frame sizes, computing
 // absolute offsets starting from zero.
 func NewFrameTable(ct CompressionType, sizes []FrameSize) *FrameTable {
 	if len(sizes) == 0 {
-		return &FrameTable{compressionType: ct}
+		return newFrameTableFromEntries(ct, nil)
 	}
 
 	entries := make([]frameEntry, len(sizes))
@@ -74,7 +136,7 @@ func NewFrameTable(ct CompressionType, sizes []FrameSize) *FrameTable {
 		c += int64(s.C)
 	}
 
-	return &FrameTable{compressionType: ct, entries: entries}
+	return newFrameTableFromEntries(ct, entries)
 }
 
 // CompressionType returns the compression type. Nil-safe: returns CompressionNone for nil.
@@ -176,23 +238,23 @@ func (ft *FrameTable) LocateUncompressed(offset int64) (Range, error) {
 // Serialize writes the frame table to w in binary little-endian format.
 // Nil-safe: writes zeros for type and count.
 func (ft *FrameTable) Serialize(w io.Writer) error {
-	if !ft.IsCompressed() {
-		z := [8]byte{} // two uint32 zeros: CompressionType=0, NumFrames=0
-		_, err := w.Write(z[:])
+	var ct CompressionType
+	var n int
+	if ft != nil && ft.compressionType != CompressionNone {
+		ct = ft.compressionType
+		n = len(ft.entries)
+	}
 
+	if err := binary.Write(w, binary.LittleEndian, uint32(ct)); err != nil {
 		return err
 	}
 
-	if err := binary.Write(w, binary.LittleEndian, uint32(ft.compressionType)); err != nil {
+	if err := binary.Write(w, binary.LittleEndian, uint32(n)); err != nil {
 		return err
 	}
 
-	if err := binary.Write(w, binary.LittleEndian, uint32(len(ft.entries))); err != nil {
-		return err
-	}
-
-	for _, e := range ft.entries {
-		if err := binary.Write(w, binary.LittleEndian, e); err != nil {
+	for i := range n {
+		if err := binary.Write(w, binary.LittleEndian, ft.entries[i]); err != nil {
 			return err
 		}
 	}
@@ -222,10 +284,8 @@ func DeserializeFrameTable(r io.Reader) (*FrameTable, error) {
 		return nil, nil
 	}
 
-	// Cap to prevent OOM from corrupted headers. 1<<20 frames × 24 bytes = 24 MiB.
-	const maxFrames = 1 << 20
-	if n > maxFrames {
-		return nil, fmt.Errorf("frame count %d exceeds maximum %d", n, maxFrames)
+	if n > maxDeserializedFrames {
+		return nil, fmt.Errorf("frame count %d exceeds maximum %d", n, maxDeserializedFrames)
 	}
 
 	entries := make([]frameEntry, n)
@@ -244,7 +304,7 @@ func DeserializeFrameTable(r io.Reader) (*FrameTable, error) {
 		}
 	}
 
-	return &FrameTable{compressionType: CompressionType(ct), entries: entries}, nil
+	return newFrameTableFromEntries(CompressionType(ct), entries), nil
 }
 
 // TrimToRanges returns a new FrameTable containing only the frames that
@@ -284,7 +344,7 @@ func (ft *FrameTable) TrimToRanges(ranges [][2]int64) *FrameTable {
 		}
 	}
 
-	return &FrameTable{compressionType: ft.compressionType, entries: trimmed}
+	return newFrameTableFromEntries(ft.compressionType, trimmed)
 }
 
 func (ct CompressionType) Suffix() string {
