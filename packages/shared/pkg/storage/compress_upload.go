@@ -238,7 +238,7 @@ func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uplo
 
 	copy(checksum[:], hasher.Sum(nil))
 
-	ft = &FrameTable{compressionType: cfg.CompressionType(), Frames: frames}
+	ft = NewFrameTable(cfg.CompressionType(), frames)
 
 	return ft, checksum, nil
 }

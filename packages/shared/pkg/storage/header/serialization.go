@@ -10,13 +10,13 @@ import (
 // SerializeHeader serializes a header, dispatching to the version-specific format.
 //
 // V3 (Version <= 3): [Metadata] [v3 mappings…]
-// V4 (Version >= 4): [Metadata] [uint32 uncompressedSize] [LZ4( BuildFiles + v4 mappings + FrameTables )]
+// V4 (Version >= 4): [Metadata] [uint32 uncompressedSize] [LZ4( Builds + v4 mappings )]
 func SerializeHeader(h *Header) ([]byte, error) {
 	if h.Metadata.Version <= 3 {
 		return serializeV3(h.Metadata, h.Mapping)
 	}
 
-	return serializeV4(h.Metadata, h.BuildFiles, h.Mapping)
+	return serializeV4(h.Metadata, h.Builds, h.Mapping)
 }
 
 // DeserializeBytes auto-detects the header version and deserializes accordingly.

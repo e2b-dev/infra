@@ -6,8 +6,6 @@ import (
 
 	"github.com/bits-and-blooms/bitset"
 	"github.com/google/uuid"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 // Offset, Length and BuildStorage are in bytes of the data file
@@ -19,33 +17,6 @@ type BuildMap struct {
 	Length             uint64
 	BuildId            uuid.UUID
 	BuildStorageOffset uint64
-	FrameTable         *storage.FrameTable
-}
-
-// setFrames associates compression frame information with mapping,
-// ApplyFrames extracts the FrameTable subset that covers mapping's storage range,
-// assigns it to mapping.FrameTable, and returns the next cursor position.
-// Use cursor-chaining when applying frames to a sorted sequence of mappings
-// to avoid O(N²) rescanning.
-func ApplyFrames(mapping *BuildMap, frameTable *storage.FrameTable, from int) (int, error) {
-	if frameTable == nil {
-		return from, nil
-	}
-
-	mappedRange := storage.Range{
-		Offset: int64(mapping.BuildStorageOffset),
-		Length: int(mapping.Length),
-	}
-
-	subset, next := frameTable.Subset(mappedRange, from)
-	if subset == nil && mapping.Length > 0 {
-		return next, fmt.Errorf("mapping at virtual offset %d (storage offset %d, length %d): no frames found from index %d",
-			mapping.Offset, mapping.BuildStorageOffset, mapping.Length, from)
-	}
-
-	mapping.FrameTable = subset
-
-	return next, nil
 }
 
 func CreateMapping(
@@ -172,21 +143,12 @@ func MergeMappings(
 		if diff.Offset >= base.Offset && diff.Offset+diff.Length <= base.Offset+base.Length {
 			leftBaseLength := int64(diff.Offset) - int64(base.Offset)
 
-			// Track frame cursor so the right split starts scanning where the left stopped,
-			// avoiding O(N²) rescanning of the base's FrameTable.
-			frameCursor := 0
-
 			if leftBaseLength > 0 {
 				leftBase := BuildMap{
 					Offset:             base.Offset,
 					Length:             uint64(leftBaseLength),
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset,
-				}
-				var err error
-				frameCursor, err = ApplyFrames(&leftBase, base.FrameTable, 0)
-				if err != nil {
-					return nil, fmt.Errorf("set frames for left split at offset %d: %w", leftBase.Offset, err)
 				}
 
 				mappings = append(mappings, leftBase)
@@ -205,9 +167,6 @@ func MergeMappings(
 					Length:             uint64(rightBaseLength),
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
-				}
-				if _, err := ApplyFrames(&rightBase, base.FrameTable, frameCursor); err != nil {
-					return nil, fmt.Errorf("set frames for right split at offset %d: %w", rightBase.Offset, err)
 				}
 
 				baseMapping[baseIdx] = rightBase
@@ -236,9 +195,6 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
 				}
-				if _, err := ApplyFrames(&rightBase, base.FrameTable, 0); err != nil {
-					return nil, fmt.Errorf("set frames for right split at offset %d: %w", rightBase.Offset, err)
-				}
 
 				baseMapping[baseIdx] = rightBase
 			} else {
@@ -260,9 +216,6 @@ func MergeMappings(
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset,
 				}
-				if _, err := ApplyFrames(&leftBase, base.FrameTable, 0); err != nil {
-					return nil, fmt.Errorf("set frames for left split at offset %d: %w", leftBase.Offset, err)
-				}
 
 				mappings = append(mappings, leftBase)
 			}
@@ -282,8 +235,6 @@ func MergeMappings(
 }
 
 // NormalizeMappings joins adjacent mappings that have the same buildId.
-// When merging mappings, FrameTables are also merged by extending the first
-// mapping's FrameTable with frames from subsequent mappings.
 func NormalizeMappings(mappings []BuildMap) []BuildMap {
 	if len(mappings) == 0 {
 		return nil
@@ -299,81 +250,11 @@ func NormalizeMappings(mappings []BuildMap) []BuildMap {
 			result = append(result, current)
 			current = mp
 		} else {
-			// Same BuildId, merge: add the length and extend FrameTable
 			current.Length += mp.Length
-
-			// Extend FrameTable if the mapping being merged has one
-			if mp.FrameTable != nil {
-				if current.FrameTable == nil {
-					current.FrameTable = mp.FrameTable
-				} else {
-					current.FrameTable = mergeFrameTables(current.FrameTable, mp.FrameTable)
-				}
-			}
 		}
 	}
 
 	result = append(result, current)
 
 	return result
-}
-
-// mergeFrameTables extends ft1 with frames from ft2. The FrameTables are
-// assumed to be contiguous subsets from the same original, so ft2's frames
-// follow ft1's frames (with possible overlap at the boundary). this function
-// returns either an reference to one of the input tables, unchanged, or a new
-// FrameTable with frames from both tables.
-func mergeFrameTables(ft1, ft2 *storage.FrameTable) *storage.FrameTable {
-	if ft1 == nil {
-		return ft2
-	}
-	if ft2 == nil {
-		return ft1
-	}
-
-	// Calculate where ft1 ends (uncompressed offset)
-	ft1EndU := ft1.Offset.U
-	for _, frame := range ft1.Frames {
-		ft1EndU += int64(frame.U)
-	}
-
-	// Find where to start appending from ft2 (skip frames already covered by ft1)
-	ft2CurrentU := ft2.Offset.U
-	startIdx := 0
-	for i, frame := range ft2.Frames {
-		frameEndU := ft2CurrentU + int64(frame.U)
-		if frameEndU <= ft1EndU {
-			// This frame is already covered by ft1
-			ft2CurrentU = frameEndU
-			startIdx = i + 1
-
-			continue
-		}
-		if ft2CurrentU < ft1EndU {
-			// This frame overlaps with ft1's last frame - it's the same frame, skip it
-			ft2CurrentU = frameEndU
-			startIdx = i + 1
-
-			continue
-		}
-		// This frame is beyond ft1's coverage
-		break
-	}
-
-	// Append remaining frames from ft2
-	if startIdx < len(ft2.Frames) {
-		// Create a new FrameTable with extended frames
-		newFrames := make([]storage.FrameSize, len(ft1.Frames), len(ft1.Frames)+len(ft2.Frames)-startIdx)
-		copy(newFrames, ft1.Frames)
-		newFrames = append(newFrames, ft2.Frames[startIdx:]...)
-
-		result := storage.NewFrameTable(ft1.CompressionType())
-		result.Offset = ft1.Offset
-		result.Frames = newFrames
-
-		return result
-	}
-
-	// All of ft2's frames were already covered by ft1
-	return ft1
 }

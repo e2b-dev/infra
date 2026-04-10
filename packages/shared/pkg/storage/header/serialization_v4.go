@@ -2,7 +2,6 @@ package header
 
 import (
 	"bytes"
-	"cmp"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -19,59 +18,74 @@ type v4SerializableBuildMap struct {
 	Length             uint64
 	BuildId            [16]byte // uuid.UUID
 	BuildStorageOffset uint64
-	CompressionType    uint32
-	NumFrames          uint32
-
-	// if CompressionType != CompressionNone and NumFrames > 0:
-	// - followed by FrameOffset (16 bytes)
-	// - followed by FrameSize × NumFrames (8 bytes each)
 }
 
-// v4SerializableBuildFileInfo is the on-disk format for a BuildFileInfo entry.
-type v4SerializableBuildFileInfo struct {
+// v4SerializableBuildInfo is the on-disk format for a build's fixed fields,
+// followed by a serialized FrameTable.
+type v4SerializableBuildInfo struct {
 	BuildId  uuid.UUID
-	Size     int64
+	FileSize int64
 	Checksum [32]byte
 }
 
-// serializeV4 writes [Metadata] [uint32 uncompressedSize] [LZ4( BuildFiles + counted mappings + FrameTables )].
-func serializeV4(metadata *Metadata, buildFiles map[uuid.UUID]BuildFileInfo, mappings []BuildMap) ([]byte, error) {
-	// --- raw metadata prefix (not compressed) ---
+// serializeV4 writes [Metadata] [uint32 uncompressedSize] [LZ4( Builds[] + mappings[] )].
+// Frame tables are sparse-trimmed to only frames referenced by mappings.
+func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings []BuildMap) ([]byte, error) {
 	var metaBuf bytes.Buffer
 	if err := binary.Write(&metaBuf, binary.LittleEndian, metadata); err != nil {
 		return nil, fmt.Errorf("failed to write metadata: %w", err)
 	}
 
-	// --- compressed block: build-info + mappings + frame tables ---
 	var block bytes.Buffer
 
-	// Build-info section.
-	if err := binary.Write(&block, binary.LittleEndian, uint32(len(buildFiles))); err != nil {
-		return nil, fmt.Errorf("failed to write build files count: %w", err)
-	}
-
 	// Sort by UUID for deterministic serialization.
-	buildIDs := make([]uuid.UUID, 0, len(buildFiles))
-	for id := range buildFiles {
+	buildIDs := make([]uuid.UUID, 0, len(builds))
+	for id := range builds {
 		buildIDs = append(buildIDs, id)
 	}
 	slices.SortFunc(buildIDs, func(a, b uuid.UUID) int {
-		return cmp.Compare(a.String(), b.String())
+		return bytes.Compare(a[:], b[:])
 	})
 
+	// U-space ranges per build for sparse trimming.
+	buildRanges := make(map[uuid.UUID][][2]int64, len(buildIDs))
+	for _, m := range mappings {
+		buildRanges[m.BuildId] = append(buildRanges[m.BuildId], [2]int64{
+			int64(m.BuildStorageOffset),
+			int64(m.BuildStorageOffset + m.Length),
+		})
+	}
+
+	if err := binary.Write(&block, binary.LittleEndian, uint32(len(buildIDs))); err != nil {
+		return nil, fmt.Errorf("failed to write build count: %w", err)
+	}
+
 	for _, id := range buildIDs {
-		info := buildFiles[id]
-		entry := v4SerializableBuildFileInfo{
+		bd := builds[id]
+
+		entry := v4SerializableBuildInfo{
 			BuildId:  id,
-			Size:     info.Size,
-			Checksum: info.Checksum,
+			FileSize: bd.Size,
+			Checksum: bd.Checksum,
 		}
+
 		if err := binary.Write(&block, binary.LittleEndian, &entry); err != nil {
-			return nil, fmt.Errorf("failed to write build file info: %w", err)
+			return nil, fmt.Errorf("failed to write build info: %w", err)
+		}
+
+		// Sparse-trim, then serialize.
+		ft := bd.FrameData
+		if ft != nil {
+			if ranges, ok := buildRanges[id]; ok {
+				ft = ft.TrimToRanges(ranges)
+			}
+		}
+
+		if err := ft.Serialize(&block); err != nil {
+			return nil, fmt.Errorf("failed to write build frame data: %w", err)
 		}
 	}
 
-	// Counted mappings with inline FrameTables.
 	if err := binary.Write(&block, binary.LittleEndian, uint32(len(mappings))); err != nil {
 		return nil, fmt.Errorf("failed to write mappings count: %w", err)
 	}
@@ -84,29 +98,8 @@ func serializeV4(metadata *Metadata, buildFiles map[uuid.UUID]BuildFileInfo, map
 			BuildStorageOffset: mapping.BuildStorageOffset,
 		}
 
-		var offset *storage.FrameOffset
-		var frames []storage.FrameSize
-		if mapping.FrameTable != nil {
-			v4.CompressionType = uint32(mapping.FrameTable.CompressionType())
-			v4.NumFrames = uint32(len(mapping.FrameTable.Frames))
-			if v4.CompressionType != 0 && v4.NumFrames > 0 {
-				offset = &mapping.FrameTable.Offset
-				frames = mapping.FrameTable.Frames
-			}
-		}
-
 		if err := binary.Write(&block, binary.LittleEndian, v4); err != nil {
 			return nil, fmt.Errorf("failed to write block mapping: %w", err)
-		}
-		if offset != nil {
-			if err := binary.Write(&block, binary.LittleEndian, offset); err != nil {
-				return nil, fmt.Errorf("failed to write compression frames starting offset: %w", err)
-			}
-		}
-		for _, frame := range frames {
-			if err := binary.Write(&block, binary.LittleEndian, frame); err != nil {
-				return nil, fmt.Errorf("failed to write compression frame: %w", err)
-			}
 		}
 	}
 
@@ -125,7 +118,7 @@ func serializeV4(metadata *Metadata, buildFiles map[uuid.UUID]BuildFileInfo, map
 	return result, nil
 }
 
-// deserializeV4 decompresses and reads the V4 block: build-info + counted mappings + FrameTables.
+// deserializeV4 decompresses and reads the V4 block.
 func deserializeV4(metadata *Metadata, blockData []byte) (*Header, error) {
 	if len(blockData) < 4 {
 		return nil, fmt.Errorf("v4 header block too short for size prefix: %d bytes", len(blockData))
@@ -138,28 +131,37 @@ func deserializeV4(metadata *Metadata, blockData []byte) (*Header, error) {
 
 	reader := bytes.NewReader(decompressed)
 
-	// Build-info section.
 	var numBuilds uint32
 	if err := binary.Read(reader, binary.LittleEndian, &numBuilds); err != nil {
-		return nil, fmt.Errorf("failed to read build files count: %w", err)
+		return nil, fmt.Errorf("failed to read build count: %w", err)
 	}
 
-	var buildFiles map[uuid.UUID]BuildFileInfo
+	var builds map[uuid.UUID]BuildData
+
 	if numBuilds > 0 {
-		buildFiles = make(map[uuid.UUID]BuildFileInfo, numBuilds)
+		builds = make(map[uuid.UUID]BuildData, numBuilds)
+
 		for range numBuilds {
-			var entry v4SerializableBuildFileInfo
+			var entry v4SerializableBuildInfo
 			if err := binary.Read(reader, binary.LittleEndian, &entry); err != nil {
-				return nil, fmt.Errorf("failed to read build file info: %w", err)
+				return nil, fmt.Errorf("failed to read build info: %w", err)
 			}
-			buildFiles[entry.BuildId] = BuildFileInfo{
-				Size:     entry.Size,
+
+			bd := BuildData{
+				Size:     entry.FileSize,
 				Checksum: entry.Checksum,
 			}
+
+			ft, err := storage.DeserializeFrameTable(reader)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read frame table for build %s: %w", entry.BuildId, err)
+			}
+
+			bd.FrameData = ft
+			builds[entry.BuildId] = bd
 		}
 	}
 
-	// Counted mappings with inline FrameTables.
 	var numMappings uint32
 	if err := binary.Read(reader, binary.LittleEndian, &numMappings); err != nil {
 		return nil, fmt.Errorf("failed to read mappings count: %w", err)
@@ -179,25 +181,6 @@ func deserializeV4(metadata *Metadata, blockData []byte) (*Header, error) {
 			BuildStorageOffset: v4.BuildStorageOffset,
 		}
 
-		if v4.CompressionType != 0 && v4.NumFrames > 0 {
-			m.FrameTable = storage.NewFrameTable(storage.CompressionType(v4.CompressionType))
-			numFrames := v4.NumFrames
-
-			var offset storage.FrameOffset
-			if err := binary.Read(reader, binary.LittleEndian, &offset); err != nil {
-				return nil, fmt.Errorf("failed to read compression frames starting offset: %w", err)
-			}
-			m.FrameTable.Offset = offset
-
-			for range numFrames {
-				var frame storage.FrameSize
-				if err := binary.Read(reader, binary.LittleEndian, &frame); err != nil {
-					return nil, fmt.Errorf("failed to read the expected compression frame: %w", err)
-				}
-				m.FrameTable.Frames = append(m.FrameTable.Frames, frame)
-			}
-		}
-
 		mappings = append(mappings, m)
 	}
 
@@ -205,7 +188,7 @@ func deserializeV4(metadata *Metadata, blockData []byte) (*Header, error) {
 	if err != nil {
 		return nil, err
 	}
-	h.BuildFiles = buildFiles
+	h.Builds = builds
 
 	return h, nil
 }
