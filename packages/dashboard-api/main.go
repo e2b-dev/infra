@@ -72,7 +72,9 @@ func run() int {
 
 	tel, err := telemetry.New(ctx, nodeID, serviceName, commitSHA, serviceVersion, serviceInstanceID)
 	if err != nil {
-		logger.L().Fatal(ctx, "failed to create telemetry", zap.Error(err))
+		log.Printf("failed to create telemetry: %v\n", err)
+
+		return 1
 	}
 	defer func() {
 		if err := tel.Shutdown(ctx); err != nil {
@@ -88,14 +90,18 @@ func run() int {
 		EnableConsole: true,
 	})
 	if err != nil {
-		logger.L().Fatal(ctx, "failed to create logger", zap.Error(err))
+		log.Printf("failed to create logger: %v\n", err)
+
+		return 1
 	}
 	defer l.Sync()
 	logger.ReplaceGlobals(ctx, l)
 
 	config, err := cfg.Parse()
 	if err != nil {
-		l.Fatal(ctx, "failed to parse config", zap.Error(err))
+		l.Error(ctx, "failed to parse config", zap.Error(err))
+
+		return 1
 	}
 
 	l.Info(ctx, "Starting dashboard-api service...", zap.String("commit_sha", commitSHA), zap.String("instance_id", serviceInstanceID))
@@ -108,7 +114,9 @@ func run() int {
 
 	err = sqlcdb.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)
 	if err != nil {
-		l.Fatal(ctx, "failed to check migration version", zap.Error(err))
+		l.Error(ctx, "failed to check migration version", zap.Error(err))
+
+		return 1
 	}
 
 	db, err := sqlcdb.NewClient(
@@ -117,7 +125,9 @@ func run() int {
 		pool.WithMaxConnections(8),
 	)
 	if err != nil {
-		l.Fatal(ctx, "Initializing database client", zap.Error(err))
+		l.Error(ctx, "Initializing database client", zap.Error(err))
+
+		return 1
 	}
 	defer db.Close()
 
@@ -128,7 +138,9 @@ func run() int {
 		pool.WithMaxConnections(8),
 	)
 	if err != nil {
-		l.Fatal(ctx, "Initializing auth database client", zap.Error(err))
+		l.Error(ctx, "Initializing auth database client", zap.Error(err))
+
+		return 1
 	}
 	defer authDB.Close()
 
@@ -138,7 +150,9 @@ func run() int {
 	} else {
 		clickhouseClient, err = clickhouse.New(config.ClickhouseConnectionString)
 		if err != nil {
-			l.Fatal(ctx, "Initializing ClickHouse client", zap.Error(err))
+			l.Error(ctx, "Initializing ClickHouse client", zap.Error(err))
+
+			return 1
 		}
 		defer clickhouseClient.Close(ctx)
 	}
@@ -149,7 +163,9 @@ func run() int {
 		RedisTLSCABase64: config.RedisTLSCABase64,
 	})
 	if err != nil {
-		l.Fatal(ctx, "Initializing Redis client", zap.Error(err))
+		l.Error(ctx, "Initializing Redis client", zap.Error(err))
+
+		return 1
 	}
 	defer func() {
 		if err := factories.CloseCleanly(redisClient); err != nil {
@@ -168,14 +184,18 @@ func run() int {
 		config.BillingServerAPIToken,
 	)
 	if err != nil {
-		l.Fatal(ctx, "initializing team provision sink", zap.Error(err))
+		l.Error(ctx, "initializing team provision sink", zap.Error(err))
+
+		return 1
 	}
 
 	apiStore := handlers.NewAPIStore(config, db, authDB, clickhouseClient, authService, teamProvisionSink)
 
 	swagger, err := api.GetSwagger()
 	if err != nil {
-		l.Fatal(ctx, "Error loading swagger spec", zap.Error(err))
+		l.Error(ctx, "Error loading swagger spec", zap.Error(err))
+
+		return 1
 	}
 	swagger.Servers = nil
 
@@ -203,7 +223,9 @@ func run() int {
 			pool.WithMaxConnections(4),
 		)
 		if err != nil {
-			l.Fatal(ctx, "Initializing supabase database client", zap.Error(err))
+			l.Error(ctx, "Initializing supabase database client", zap.Error(err))
+
+			return 1
 		}
 		defer supabaseDB.Close()
 
@@ -215,7 +237,9 @@ func run() int {
 			l,
 		)
 		if err != nil {
-			l.Fatal(ctx, "failed to start auth user sync worker", zap.Error(err))
+			l.Error(ctx, "failed to start auth user sync worker", zap.Error(err))
+
+			return 1
 		}
 	}
 
