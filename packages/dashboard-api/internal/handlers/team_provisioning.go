@@ -29,6 +29,7 @@ const (
 	maxTeamsPerUserWithProTier                  = 10
 	newUserNewTeamRequireBillingMethodThreshold = 3 * 24 * time.Hour
 	blockedReasonMissingPayment                 = "missing_payment"
+	teamProvisionRollbackTimeout                = 5 * time.Second
 )
 
 type provisionedTeam struct {
@@ -249,7 +250,16 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 		OwnerUserID: userID,
 		Reason:      teamprovision.ReasonAdditionalTeam,
 	}
-	_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
+	if err := s.teamProvisionSink.ProvisionTeam(ctx, req); err != nil {
+		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), teamProvisionRollbackTimeout)
+		defer cancel()
+
+		if deleteErr := s.db.DeleteTeamByID(rollbackCtx, team.ID); deleteErr != nil {
+			return provisionedTeam{}, fmt.Errorf("delete team after provisioning failure: provision=%s delete=%w", err.Error(), deleteErr)
+		}
+
+		return provisionedTeam{}, err
+	}
 
 	return provisionedTeam{
 		ID:            team.ID,

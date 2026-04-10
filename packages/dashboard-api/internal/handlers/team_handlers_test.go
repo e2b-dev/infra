@@ -659,6 +659,51 @@ func TestPostTeams_TrimsNameBeforeCreate(t *testing.T) {
 	}
 }
 
+func TestPostTeams_ProvisioningFailureRollsBackCreatedTeam(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	userID := createHandlerTestUser(t, testDB)
+	sink := &fakeTeamProvisionSink{
+		err: &internalteamprovision.ProvisionError{
+			StatusCode: http.StatusBadRequest,
+			Message:    "limit reached",
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"name":"Acme"}`))
+	ginCtx.Request.Header.Set("Content-Type", "application/json")
+	auth.SetUserID(ginCtx, userID)
+
+	store := &APIStore{
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		teamProvisionSink: sink,
+	}
+	store.PostTeams(ginCtx)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", recorder.Code)
+	}
+	if len(sink.requests) != 1 {
+		t.Fatalf("expected one provisioning call, got %d", len(sink.requests))
+	}
+
+	rows, err := testDB.AuthDB.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+	if err != nil {
+		t.Fatalf("failed to query user teams: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected only the default team to remain, got %d rows", len(rows))
+	}
+	if !rows[0].IsDefault {
+		t.Fatal("expected remaining team to be the default team")
+	}
+}
+
 func TestCreateTeam_ConcurrentRequestsRespectLocalPolicyWithZeroMemberships(t *testing.T) {
 	t.Parallel()
 
