@@ -104,9 +104,7 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64, ft *storage.Fram
 		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, err)
 	}
 
-	// Use sliceDirect (no isCached check) since the waiter mechanism guarantees data is in the mmap.
-	// With coarse dirty granularity, isCached may return false during an active fetch even though
-	// the requested bytes have been written to the mmap.
+	// sliceDirect skips isCached — the waiter already confirmed the data is in the mmap.
 	b, cacheErr := c.cache.sliceDirect(off, length)
 	if cacheErr != nil {
 		timer.RecordRaw(ctx, length, attrs.failLocalReadAgain)

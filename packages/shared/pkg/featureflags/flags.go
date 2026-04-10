@@ -356,10 +356,8 @@ type TCPFirewallEgressThrottleConfigValue struct {
 	Bandwidth TokenBucketConfig
 }
 
-// GetTCPFirewallEgressThrottleConfig fetches and parses the TCPFirewallEgressThrottleConfig flag.
-func GetTCPFirewallEgressThrottleConfig(ctx context.Context, ff *Client) TCPFirewallEgressThrottleConfigValue {
-	value := ff.JSONFlag(ctx, TCPFirewallEgressThrottleConfig)
-
+// parseThrottleBuckets parses "ops" and "bandwidth" token bucket configs from a JSON flag value.
+func parseThrottleBuckets(value ldvalue.Value) (ops, bandwidth TokenBucketConfig) {
 	parseBucket := func(key string) TokenBucketConfig {
 		b := value.GetByKey(key)
 		if b.IsNull() {
@@ -379,8 +377,45 @@ func GetTCPFirewallEgressThrottleConfig(ctx context.Context, ff *Client) TCPFire
 		}
 	}
 
+	return parseBucket("ops"), parseBucket("bandwidth")
+}
+
+// GetTCPFirewallEgressThrottleConfig fetches and parses the TCPFirewallEgressThrottleConfig flag.
+func GetTCPFirewallEgressThrottleConfig(ctx context.Context, ff *Client) TCPFirewallEgressThrottleConfigValue {
+	value := ff.JSONFlag(ctx, TCPFirewallEgressThrottleConfig)
+	ops, bw := parseThrottleBuckets(value)
+
 	return TCPFirewallEgressThrottleConfigValue{
-		Ops:       parseBucket("ops"),
-		Bandwidth: parseBucket("bandwidth"),
+		Ops:       ops,
+		Bandwidth: bw,
+	}
+}
+
+// BlockDriveThrottleConfig controls per-sandbox block device (disk) throttling via Firecracker's
+// VMM-level token bucket rate limiters on the rootfs drive.
+// Structure mirrors the Firecracker RateLimiter API: two independent token buckets.
+// Set bucketSize to -1 to disable a bucket.
+//
+// Ops bucket (IOPS):       effective rate = ops.bucketSize * 1000 / ops.refillTimeMs ops/s.
+// Bandwidth bucket (bytes): effective rate = bandwidth.bucketSize * 1000 / bandwidth.refillTimeMs bytes/s.
+var BlockDriveThrottleConfig = newJSONFlag("block-drive-throttle-config", ldvalue.FromJSONMarshal(map[string]any{
+	"ops":       map[string]any{"bucketSize": -1, "oneTimeBurst": 0, "refillTimeMs": 1000},
+	"bandwidth": map[string]any{"bucketSize": -1, "oneTimeBurst": 0, "refillTimeMs": 1000},
+}))
+
+// BlockDriveThrottleConfigValue holds the parsed values of BlockDriveThrottleConfig.
+type BlockDriveThrottleConfigValue struct {
+	Ops       TokenBucketConfig
+	Bandwidth TokenBucketConfig
+}
+
+// GetBlockDriveThrottleConfig fetches and parses the BlockDriveThrottleConfig flag.
+func GetBlockDriveThrottleConfig(ctx context.Context, ff *Client) BlockDriveThrottleConfigValue {
+	value := ff.JSONFlag(ctx, BlockDriveThrottleConfig)
+	ops, bw := parseThrottleBuckets(value)
+
+	return BlockDriveThrottleConfigValue{
+		Ops:       ops,
+		Bandwidth: bw,
 	}
 }

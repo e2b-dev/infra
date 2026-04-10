@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -44,7 +43,6 @@ type Server struct {
 	proxy                 *proxy.SandboxProxy
 	networkPool           *network.Pool
 	templateCache         *template.Cache
-	pauseMu               sync.Mutex
 	devicePool            *nbd.DevicePool
 	persistence           storage.StorageProvider
 	featureFlags          *featureflags.Client
