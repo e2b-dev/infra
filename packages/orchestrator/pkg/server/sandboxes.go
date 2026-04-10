@@ -490,6 +490,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	}
 
 	sbxlogger.E(sbx).Info(ctx, "Pausing sandbox")
+	s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
 
 	// Stop the old sandbox in background after we're done
 	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
@@ -549,16 +550,16 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		}
 	}
 
+	sbx, err := s.acquireSandboxForSnapshot(ctx, in.GetSandboxId())
+	if err != nil {
+		return nil, err
+	}
+
 	// Acquire the starting semaphore before resuming, same as Create/Pause.
 	if err := s.waitForAcquire(ctx); err != nil {
 		return nil, err
 	}
 	defer s.startingSandboxes.Release(1)
-
-	sbx, err := s.acquireSandboxForSnapshot(ctx, in.GetSandboxId())
-	if err != nil {
-		return nil, err
-	}
 
 	// Always stop the old sandbox when done — on success the resumed sandbox
 	// takes over, on failure this prevents a leaked sandbox that is running
@@ -566,6 +567,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
 
 	sbxlogger.E(sbx).Info(ctx, "Checkpointing sandbox")
+	s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
 
 	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId())
 	if err != nil {
@@ -831,8 +833,6 @@ func (s *Server) acquireSandboxForSnapshot(ctx context.Context, sandboxID string
 
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
-
-	s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
 
 	return sbx, nil
 }
