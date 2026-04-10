@@ -363,6 +363,15 @@ func (u *Userfaultfd) faultPage(
 		return nil
 	}
 
+	if errors.Is(copyErr, unix.ESRCH) {
+		// The process that triggered the fault no longer exists — FC was killed
+		// or crashed while the page fetch was in flight. This is expected during
+		// sandbox teardown; treat it as benign.
+		u.logger.Debug(ctx, "UFFD serve copy error: process no longer exists", zap.Error(copyErr))
+
+		return nil
+	}
+
 	if copyErr != nil {
 		var signalErr error
 		if onFailure != nil {
