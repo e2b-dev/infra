@@ -34,6 +34,12 @@ variable "auth_db_read_replica_connection_string" {
   default   = ""
 }
 
+variable "supabase_db_connection_string" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
 variable "clickhouse_connection_string" {
   type      = string
   sensitive = true
@@ -42,6 +48,11 @@ variable "clickhouse_connection_string" {
 variable "supabase_jwt_secrets" {
   type      = string
   sensitive = true
+}
+
+variable "enable_auth_user_sync_background_worker" {
+  type    = bool
+  default = false
 }
 
 variable "otel_collector_grpc_port" {

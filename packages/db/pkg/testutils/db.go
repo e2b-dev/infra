@@ -20,6 +20,7 @@ import (
 	db "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
+	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils/queries"
 )
 
@@ -38,8 +39,17 @@ func init() {
 type Database struct {
 	SqlcClient  *db.Client
 	AuthDb      *authdb.Client
+	AuthDB      *authdb.Client
+	SupabaseDB  *supabasedb.Client
 	TestQueries *queries.Queries
+	connStr     string
 }
+
+// gooseMu serializes goose operations across parallel tests.
+// goose.OpenDBWithDriver calls goose.SetDialect which writes to package-level
+// globals (dialect, store) without synchronization. Concurrent test goroutines
+// race on these globals, triggering the race detector on ARM64.
+var gooseMu sync.Mutex
 
 // SetupDatabase creates a fresh PostgreSQL container with migrations applied
 func SetupDatabase(t *testing.T) *Database {
@@ -93,28 +103,41 @@ func SetupDatabase(t *testing.T) *Database {
 	})
 
 	// Create the auth db client
-	authDb, err := authdb.NewClient(t.Context(), connStr, connStr)
+	authDB, err := authdb.NewClient(t.Context(), connStr, connStr)
 	require.NoError(t, err, "Failed to create auth db client")
 	t.Cleanup(func() {
-		err := authDb.Close()
+		err := authDB.Close()
+		assert.NoError(t, err)
+	})
+
+	supabaseDB, err := supabasedb.NewClient(t.Context(), connStr)
+	require.NoError(t, err, "Failed to create supabase db client")
+	t.Cleanup(func() {
+		err := supabaseDB.Close()
 		assert.NoError(t, err)
 	})
 
 	return &Database{
 		SqlcClient:  sqlcClient,
-		AuthDb:      authDb,
+		AuthDb:      authDB,
+		AuthDB:      authDB,
+		SupabaseDB:  supabaseDB,
 		TestQueries: testQueries,
+		connStr:     connStr,
 	}
 }
 
-// gooseMu serializes goose operations across parallel tests.
-// goose.OpenDBWithDriver calls goose.SetDialect which writes to package-level
-// globals (dialect, store) without synchronization. Concurrent test goroutines
-// race on these globals, triggering the race detector on ARM64.
-var gooseMu sync.Mutex
+func (db *Database) ApplyMigrations(t *testing.T, migrationDirs ...string) {
+	t.Helper()
 
-// runDatabaseMigrations executes all required database migrations
-func runDatabaseMigrations(t *testing.T, connStr string) {
+	db.applyGooseMigrations(t, migrationDirs...)
+}
+
+func (db *Database) ConnStr() string {
+	return db.connStr
+}
+
+func (db *Database) applyGooseMigrations(t *testing.T, migrationDirs ...string) {
 	t.Helper()
 
 	cmd := exec.CommandContext(t.Context(), "git", "rev-parse", "--show-toplevel")
@@ -125,20 +148,30 @@ func runDatabaseMigrations(t *testing.T, connStr string) {
 	gooseMu.Lock()
 	defer gooseMu.Unlock()
 
-	db, err := goose.OpenDBWithDriver("pgx", connStr)
+	sqlDB, err := goose.OpenDBWithDriver("pgx", db.connStr)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		err := db.Close()
+		err := sqlDB.Close()
 		assert.NoError(t, err)
 	})
 
-	// run the db migration
-	err = goose.RunWithOptionsContext(
-		t.Context(),
-		"up",
-		db,
-		filepath.Join(repoRoot, "packages", "db", "migrations"),
-		nil,
-	)
-	require.NoError(t, err)
+	for _, migrationsDir := range migrationDirs {
+		err = goose.RunWithOptionsContext(
+			t.Context(),
+			"up",
+			sqlDB,
+			filepath.Join(repoRoot, migrationsDir),
+			nil,
+		)
+
+		require.NoError(t, err)
+	}
+}
+
+// runDatabaseMigrations executes all required database migrations
+func runDatabaseMigrations(t *testing.T, connStr string) {
+	t.Helper()
+
+	db := &Database{connStr: connStr}
+	db.ApplyMigrations(t, filepath.Join("packages", "db", "migrations"))
 }
