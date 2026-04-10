@@ -549,16 +549,16 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		}
 	}
 
-	sbx, err := s.acquireSandboxForSnapshot(ctx, in.GetSandboxId())
-	if err != nil {
-		return nil, err
-	}
-
 	// Acquire the starting semaphore before resuming, same as Create/Pause.
 	if err := s.waitForAcquire(ctx); err != nil {
 		return nil, err
 	}
 	defer s.startingSandboxes.Release(1)
+
+	sbx, err := s.acquireSandboxForSnapshot(ctx, in.GetSandboxId())
+	if err != nil {
+		return nil, err
+	}
 
 	// Always stop the old sandbox when done — on success the resumed sandbox
 	// takes over, on failure this prevents a leaked sandbox that is running
