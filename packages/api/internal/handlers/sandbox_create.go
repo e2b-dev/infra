@@ -176,10 +176,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 				AllowPublicAccess: n.AllowPublicTraffic,
 				MaskRequestHost:   n.MaskRequestHost,
 			},
-			Egress: &types.SandboxNetworkEgressConfig{
-				AllowedAddresses: sharedUtils.DerefOrDefault(n.AllowOut, nil),
-				DeniedAddresses:  sharedUtils.DerefOrDefault(n.DenyOut, nil),
-			},
+		Egress: buildSandboxEgressConfig(n),
 		}
 
 		// Make sure envd seucre access is enforced when public access is disabled,
@@ -502,6 +499,25 @@ func splitHostPortOptional(hostport string) (host string, port string, err error
 	}
 
 	return host, port, nil
+}
+
+func buildSandboxEgressConfig(n *api.SandboxNetworkConfig) *types.SandboxNetworkEgressConfig {
+	cfg := &types.SandboxNetworkEgressConfig{
+		AllowedAddresses: sharedUtils.DerefOrDefault(n.AllowOut, nil),
+		DeniedAddresses:  sharedUtils.DerefOrDefault(n.DenyOut, nil),
+	}
+
+	if p := n.EgressProxy; p != nil {
+		cfg.EgressProxyAddress = p.Address
+		if p.Username != nil {
+			cfg.EgressProxyUsername = *p.Username
+		}
+		if p.Password != nil {
+			cfg.EgressProxyPassword = *p.Password
+		}
+	}
+
+	return cfg
 }
 
 func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {

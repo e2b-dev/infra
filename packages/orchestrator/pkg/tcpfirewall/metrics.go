@@ -49,6 +49,7 @@ const (
 	ErrorTypeConnectionMeta    ErrorType = "connection_meta"
 	ErrorTypeResolvedIPBlocked ErrorType = "resolved_ip_blocked"
 	ErrorTypeLimitExceeded     ErrorType = "limit_exceeded"
+	ErrorTypeSOCKS5Dial        ErrorType = "socks5_dial"
 )
 
 // Metrics holds all TCP firewall metrics.

@@ -282,6 +282,21 @@ components:
         maskRequestHost:
           type: string
           description: Specify host mask which will be used for all sandbox requests
+        egressProxy:
+          type: object
+          description: Route all egress traffic through a SOCKS5 proxy.
+          required:
+            - address
+          properties:
+            address:
+              type: string
+              description: "SOCKS5 proxy address in host:port format"
+            username:
+              type: string
+              description: Optional SOCKS5 authentication username
+            password:
+              type: string
+              description: Optional SOCKS5 authentication password
 
     SandboxAutoResumeEnabled:
       type: boolean

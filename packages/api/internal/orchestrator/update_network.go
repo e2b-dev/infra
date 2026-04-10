@@ -27,7 +27,10 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 	allowedEntries []string,
 	deniedEntries []string,
 ) *api.APIError {
-	egress := buildEgressConfig(allowedEntries, deniedEntries)
+	egress := buildEgressConfig(&types.SandboxNetworkEgressConfig{
+		AllowedAddresses: allowedEntries,
+		DeniedAddresses:  deniedEntries,
+	})
 
 	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
 		if sbx.State != sandbox.StateRunning {

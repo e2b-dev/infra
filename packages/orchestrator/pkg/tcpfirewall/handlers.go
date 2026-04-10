@@ -24,6 +24,34 @@ const (
 	noHostnameValue = ""
 )
 
+// egressDialContext returns a SOCKS5 dial function if the sandbox has an egress proxy
+// configured, or nil for direct connections.
+func egressDialContext(sbx *sandbox.Sandbox, l logger.Logger, ctx context.Context, metrics *Metrics, protocol Protocol) dialContextFunc {
+	egress := sbx.Config.GetNetworkEgress()
+	if egress == nil {
+		return nil
+	}
+
+	addr := egress.GetEgressProxyAddress()
+	if addr == "" {
+		return nil
+	}
+
+	auth := socks5AuthFromEgress(egress)
+
+	dialFn, err := newSOCKS5DialContext(addr, auth)
+	if err != nil {
+		l.Error(ctx, "failed to create SOCKS5 dialer, blocking connection",
+			zap.String("proxy_addr", addr),
+			zap.Error(err))
+		metrics.RecordError(ctx, ErrorTypeSOCKS5Dial, protocol)
+
+		return nil
+	}
+
+	return dialFn
+}
+
 // domainHandler handles connections with hostname information (HTTP Host header or TLS SNI).
 func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol) {
 	// Get hostname from tcpproxy's wrapped connection (HTTP Host or TLS SNI).
@@ -51,6 +79,20 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 
 	metrics.RecordDecision(ctx, DecisionAllowed, protocol, matchType)
 
+	dialFn := egressDialContext(sbx, logger, ctx, metrics, protocol)
+
+	// When using a SOCKS5 proxy, always dial the hostname so the proxy resolves it.
+	if dialFn != nil {
+		target := hostname
+		if target == "" {
+			target = dstIP.String()
+		}
+		upstreamAddr := net.JoinHostPort(target, fmt.Sprintf("%d", dstPort))
+		proxyWith(ctx, conn, upstreamAddr, dialFn, metrics, protocol)
+
+		return
+	}
+
 	// When allowed by domain match, dial the hostname directly (not the sandbox's resolved IP).
 	// This prevents DNS spoofing attacks where the sandbox modifies /etc/hosts to redirect
 	// an allowed domain to an arbitrary IP. We use Go's net.Dialer which provides built-in
@@ -65,7 +107,7 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 
 	// For non-domain matches, use the original destination IP
 	upstreamAddr := net.JoinHostPort(dstIP.String(), fmt.Sprintf("%d", dstPort))
-	proxy(ctx, conn, upstreamAddr, metrics, protocol)
+	proxyDirect(ctx, conn, upstreamAddr, metrics, protocol)
 }
 
 // cidrOnlyHandler handles connections without hostname information.
@@ -91,17 +133,36 @@ func cidrOnlyHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort i
 
 	upstreamAddr := net.JoinHostPort(dstIP.String(), fmt.Sprintf("%d", dstPort))
 
-	proxy(ctx, conn, upstreamAddr, metrics, protocol)
+	if dialFn := egressDialContext(sbx, logger, ctx, metrics, protocol); dialFn != nil {
+		proxyWith(ctx, conn, upstreamAddr, dialFn, metrics, protocol)
+
+		return
+	}
+
+	proxyDirect(ctx, conn, upstreamAddr, metrics, protocol)
 }
 
-// proxy proxies the connection to the upstream address.
-func proxy(ctx context.Context, conn net.Conn, upstreamAddr string, metrics *Metrics, protocol Protocol) {
+// proxyDirect proxies the connection directly to the upstream address.
+func proxyDirect(ctx context.Context, conn net.Conn, upstreamAddr string, metrics *Metrics, protocol Protocol) {
 	tracker := metrics.TrackConnection(protocol)
 	defer tracker.Close(ctx)
 
 	dp := &tcpproxy.DialProxy{
 		Addr:        upstreamAddr,
 		DialTimeout: upstreamDialTimeout,
+	}
+	dp.HandleConn(conn)
+}
+
+// proxyWith proxies the connection through a custom dialer (e.g. SOCKS5).
+func proxyWith(ctx context.Context, conn net.Conn, upstreamAddr string, dialFn dialContextFunc, metrics *Metrics, protocol Protocol) {
+	tracker := metrics.TrackConnection(protocol)
+	defer tracker.Close(ctx)
+
+	dp := &tcpproxy.DialProxy{
+		Addr:        upstreamAddr,
+		DialTimeout: upstreamDialTimeout,
+		DialContext: dialFn,
 	}
 	dp.HandleConn(conn)
 }
