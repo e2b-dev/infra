@@ -29,17 +29,7 @@ func (b *Bitset) HasRange(start, end uint) bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	if start >= end {
-		return true
-	}
-
-	rankEnd := b.bm.Rank(uint32(end - 1))
-	var rankBefore uint64
-	if start > 0 {
-		rankBefore = b.bm.Rank(uint32(start - 1))
-	}
-
-	return rankEnd-rankBefore == uint64(end-start)
+	return b.bm.CardinalityInRange(uint64(start), uint64(end)) == uint64(end-start)
 }
 
 func (b *Bitset) SetRange(start, end uint) {

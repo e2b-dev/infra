@@ -72,6 +72,7 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 			size:      size,
 			blockSize: blockSize,
 			dirtyFile: dirtyFile,
+			dirty:     atomicbitset.New(),
 		}, nil
 	}
 

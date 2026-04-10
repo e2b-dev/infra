@@ -271,8 +271,8 @@ func (c *StreamingChunker) Slice(ctx context.Context, off, length int64) ([]byte
 	}
 
 	// Use sliceDirect (no isCached check) since the waiter mechanism guarantees data is in the mmap.
-	// With coarse dirty granularity, isCached may return false during an active fetch even though
-	// the requested bytes have been written to the mmap.
+	// setIsCached is called once per chunk after fetch completes, so isCached may return false
+	// for bytes already written during an active fetch.
 	b, cacheErr := c.cache.sliceDirect(off, length)
 	if cacheErr != nil {
 		timer.RecordRaw(ctx, length, chunkerAttrs.failLocalReadAgain)

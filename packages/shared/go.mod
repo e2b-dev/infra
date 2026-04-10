@@ -4,6 +4,8 @@ go 1.25.4
 
 tool github.com/go-swagger/go-swagger/cmd/swagger
 
+replace github.com/RoaringBitmap/roaring/v2 => github.com/e2b-dev/roaring/v2 v2.16.1-0.20260410073213-00ee8aef09f9
+
 require (
 	cloud.google.com/go/artifactregistry v1.17.1
 	cloud.google.com/go/storage v1.59.2

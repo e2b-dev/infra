@@ -107,24 +107,19 @@ func TestHasRange_GapBetweenRanges(t *testing.T) {
 	require.False(t, b.HasRange(1023, 1025), "crossing into gap must not be reported as set")
 }
 
-// TestCardinalityInRange_LibraryBug documents an off-by-one in
-// roaring v2.16.0 runContainer16.getCardinalityInRange (line 2546):
-// "lastIdx < firstIdx-1" should be "lastIdx < firstIdx".
-// When the library fixes this, this test will fail and we can switch
-// HasRange from Rank() to CardinalityInRange().
-func TestCardinalityInRange_LibraryBug(t *testing.T) {
+// TestCardinalityInRange_GapFix verifies the fix for an off-by-one in
+// roaring v2.16.0 runContainer16.getCardinalityInRange (line 2546).
+// We use e2b-dev/roaring which includes the fix (upstream PR #521).
+// If this test breaks after switching back to upstream, the fix was
+// reverted or not yet merged.
+func TestCardinalityInRange_GapFix(t *testing.T) {
 	t.Parallel()
 	bm := roaring.New()
 	bm.AddRange(0, 1024)
 	bm.AddRange(2048, 3072)
 
-	card := bm.CardinalityInRange(1024, 2048)
-
-	// BUG: CardinalityInRange returns 1024 for a range with zero set bits.
-	// When this assertion fails, the library has been fixed and HasRange
-	// can be switched to use CardinalityInRange for O(k) instead of O(C).
-	require.Equal(t, uint64(1024), card,
-		"CardinalityInRange bug appears fixed — update HasRange to use it")
+	require.Equal(t, uint64(0), bm.CardinalityInRange(1024, 2048),
+		"gap between runs must have zero cardinality")
 }
 
 // --- Benchmarks ---

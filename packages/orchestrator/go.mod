@@ -13,6 +13,8 @@ tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
 tool github.com/vektra/mockery/v3
 
+replace github.com/RoaringBitmap/roaring/v2 => github.com/e2b-dev/roaring/v2 v2.16.1-0.20260410073213-00ee8aef09f9
+
 require (
 	cloud.google.com/go/storage v1.59.2
 	connectrpc.com/connect v1.18.1
