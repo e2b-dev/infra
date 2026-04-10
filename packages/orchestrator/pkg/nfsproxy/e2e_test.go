@@ -19,6 +19,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/exec"
 	"github.com/testcontainers/testcontainers-go/log"
+	"github.com/willscott/go-nfs"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
@@ -140,7 +141,10 @@ func TestIntegrationTest(t *testing.T) {
 
 	createVolumeDir(t, builder, volumeType, teamID, volumeID)
 
-	s, err := NewProxy(t.Context(), builder, sandboxes, nil, nfscfg.Config{})
+	s, err := NewProxy(t.Context(), builder, sandboxes, nfscfg.Config{
+		Logging:     true,
+		NFSLogLevel: nfs.DebugLevel,
+	})
 	require.NoError(t, err)
 	go func() {
 		err := s.Serve(nfsListener)
