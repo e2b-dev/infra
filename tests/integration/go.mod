@@ -25,7 +25,7 @@ require (
 	github.com/e2b-dev/infra/packages/envd v0.0.0-00010101000000-000000000000
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.7.5
+	github.com/jackc/pgx/v5 v5.9.1
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/sync v0.20.0
