@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/awnumar/memguard"
@@ -217,16 +218,7 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	}
 
 	if data.VolumeMounts != nil {
-		var wg sync.WaitGroup
-		for _, volume := range *data.VolumeMounts {
-			logger.Debug().Msgf("Mounting %s at %q", volume.NfsTarget, volume.Path)
-
-			wg.Go(func() {
-				a.setupNfs(context.WithoutCancel(ctx), volume.NfsTarget, volume.Path)
-			})
-		}
-
-		wg.Wait()
+		a.setupNFS(ctx, logger, *data.VolumeMounts)
 	}
 
 	return nil
@@ -247,7 +239,61 @@ var nfsOptions = strings.Join([]string{
 	"noacl",          // no reason for acl in the sandbox
 }, ",")
 
-func (a *API) setupNfs(ctx context.Context, nfsTarget, path string) {
+const nfsMountTimeout = 5 * time.Second
+
+func (a *API) setupNFS(ctx context.Context, logger zerolog.Logger, mounts []VolumeMount) {
+	// Already fully mounted, nothing to do
+	if a.isMountedNFS.Load() {
+		logger.Debug().Msg("NFS volumes already mounted")
+
+		return
+	}
+
+	// Prevent concurrent mounting attempts
+	if !a.isMountingNFS.CompareAndSwap(false, true) {
+		logger.Debug().Msg("NFS volumes already mounting")
+
+		return
+	}
+	defer a.isMountingNFS.Store(false)
+
+	logger.Debug().Msg("Mounting NFS volumes")
+
+	ctx = context.WithoutCancel(ctx)
+	ctx, cancel := context.WithTimeout(ctx, nfsMountTimeout)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	var allSucceeded atomic.Bool
+	allSucceeded.Store(true)
+
+	for _, volume := range mounts {
+		// Skip already mounted paths
+		if _, ok := a.mountedPaths.Load(volume.Path); ok {
+			logger.Debug().Msgf("Skipping already mounted %q", volume.Path)
+
+			continue
+		}
+
+		logger.Debug().Msgf("Mounting %s at %q", volume.NfsTarget, volume.Path)
+
+		wg.Go(func() {
+			if a.mountNFS(ctx, volume.NfsTarget, volume.Path) {
+				a.mountedPaths.Store(volume.Path, true)
+			} else {
+				allSucceeded.Store(false)
+			}
+		})
+	}
+
+	wg.Wait()
+
+	if allSucceeded.Load() {
+		a.isMountedNFS.Store(true)
+	}
+}
+
+func (a *API) mountNFS(ctx context.Context, nfsTarget, path string) bool {
 	commands := [][]string{
 		{"mkdir", "-p", path},
 		{"mount", "-v", "-t", "nfs", "-o", "fg,hard," + nfsOptions, nfsTarget, path},
@@ -264,9 +310,11 @@ func (a *API) setupNfs(ctx context.Context, nfsTarget, path string) {
 			Msg("Mount NFS")
 
 		if err != nil {
-			return
+			return false
 		}
 	}
+
+	return true
 }
 
 func (a *API) SetupHyperloop(address string) {

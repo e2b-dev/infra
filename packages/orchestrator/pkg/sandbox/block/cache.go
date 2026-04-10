@@ -309,7 +309,32 @@ func (c *Cache) endBlock(off int64) uint {
 	return uint((off + c.blockSize - 1) / c.blockSize)
 }
 
+// sliceDirect returns a slice of the mmap without checking isCached.
+// Used by the streaming chunker after the waiter mechanism has confirmed data availability.
+func (c *Cache) sliceDirect(off, length int64) ([]byte, error) {
+	if c.isClosed() {
+		return nil, NewErrCacheClosed(c.filePath)
+	}
+
+	if c.mmap == nil {
+		return nil, nil
+	}
+
+	if off < 0 || off >= c.size {
+		return nil, BytesNotAvailableError{}
+	}
+
+	end := min(off+length, c.size)
+
+	return (*c.mmap)[off:end], nil
+}
+
 func (c *Cache) isCached(off, length int64) bool {
+	// Zero-length is vacuously true (no-op)
+	if length <= 0 {
+		return true
+	}
+
 	// Make sure the offset is within the cache size
 	if off >= c.size {
 		return false

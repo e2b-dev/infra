@@ -82,13 +82,13 @@ func (p *routingProvider) resolveProvider(ctx context.Context, buildID string) s
 }
 
 func (p *routingProvider) OpenBlob(ctx context.Context, path string, objType storage.ObjectType) (storage.Blob, error) {
-	buildID, _ := storage.ParseStoragePath(path)
+	buildID, _ := storage.SplitPath(path)
 
 	return p.resolveProvider(ctx, buildID).OpenBlob(ctx, path, objType)
 }
 
 func (p *routingProvider) OpenSeekable(ctx context.Context, path string, objType storage.SeekableObjectType) (storage.Seekable, error) {
-	buildID, _ := storage.ParseStoragePath(path)
+	buildID, _ := storage.SplitPath(path)
 
 	return p.resolveProvider(ctx, buildID).OpenSeekable(ctx, path, objType)
 }
@@ -129,7 +129,7 @@ func newPeerStorageProvider(
 }
 
 func (p *peerStorageProvider) OpenBlob(_ context.Context, path string, objType storage.ObjectType) (storage.Blob, error) {
-	buildID, fileName := storage.ParseStoragePath(path)
+	buildID, fileName := storage.SplitPath(path)
 
 	return &peerBlob{peerHandle: peerHandle[storage.Blob]{
 		client:   p.peerClient,
@@ -143,7 +143,7 @@ func (p *peerStorageProvider) OpenBlob(_ context.Context, path string, objType s
 }
 
 func (p *peerStorageProvider) OpenSeekable(_ context.Context, path string, objType storage.SeekableObjectType) (storage.Seekable, error) {
-	buildID, fileName := storage.ParseStoragePath(path)
+	buildID, fileName := storage.SplitPath(path)
 
 	return &peerSeekable{peerHandle: peerHandle[storage.Seekable]{
 		client:   p.peerClient,

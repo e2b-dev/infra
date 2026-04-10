@@ -31,12 +31,8 @@ func TestBatcherPushNotStarted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ok, err := b.Push(123)
-	if !errors.Is(err, ErrBatcherNotStarted) {
+	if err := b.Push(123); !errors.Is(err, ErrBatcherNotStarted) {
 		t.Fatalf("expected ErrBatcherNotStarted, got %v", err)
-	}
-	if ok {
-		t.Fatal("expected Push to fail")
 	}
 }
 
@@ -97,12 +93,8 @@ func TestBatcherPushStop(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := range 10 {
-		ok, err := b.Push(i)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !ok {
-			t.Fatalf("cannot add item %d to batch", i)
+		if err := b.Push(i); err != nil {
+			t.Fatalf("cannot add item %d to batch: %v", i, err)
 		}
 	}
 	if err := b.Stop(); err != nil {
@@ -188,46 +180,32 @@ func TestBatcherQueueSize(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := range 3 {
-		ok, err := b.Push(i)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !ok {
-			t.Fatalf("cannot add item %d to batch", i)
+		if err := b.Push(i); err != nil {
+			t.Fatalf("cannot add item %d to batch: %v", i, err)
 		}
 	}
 	time.Sleep(time.Millisecond)
 	for i := range 10 {
-		ok, err := b.Push(i)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !ok {
-			t.Fatalf("cannot add item %d to batch", i)
+		if err := b.Push(i); err != nil {
+			t.Fatalf("cannot add item %d to batch: %v", i, err)
 		}
 	}
 	if b.QueueLen() != b.QueueSize {
 		t.Fatalf("Unexpected queue size %d. Expecting %d", b.QueueLen(), b.QueueSize)
 	}
+
+	// Queue is full: Push must return immediately with ErrBatcherQueueFull.
 	for range 10 {
-		ok, err := b.Push(123)
-		if err != nil {
-			t.Fatal(err)
+		if err := b.Push(123); !errors.Is(err, ErrBatcherQueueFull) {
+			t.Fatalf("expected ErrBatcherQueueFull on full queue, got %v", err)
 		}
-		if ok {
-			t.Fatalf("expecting queue overflow")
-		}
-		time.Sleep(time.Millisecond)
 	}
+
 	close(ch)
 	time.Sleep(time.Millisecond)
 	for i := range 5 {
-		ok, err := b.Push(i)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !ok {
-			t.Fatalf("cannot add item %d to batch", i)
+		if err := b.Push(i); err != nil {
+			t.Fatalf("cannot add item %d to batch: %v", i, err)
 		}
 	}
 	if err := b.Stop(); err != nil {
@@ -266,12 +244,8 @@ func testBatcherPushMaxDelay(t *testing.T, itemsCount int, maxDelay time.Duratio
 		t.Fatal(err)
 	}
 	for i := range itemsCount {
-		ok, err := b.Push(i)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !ok {
-			t.Fatalf("cannot add item %d to batch", i)
+		if err := b.Push(i); err != nil {
+			t.Fatalf("cannot add item %d to batch: %v", i, err)
 		}
 		time.Sleep(time.Millisecond)
 	}
@@ -317,12 +291,8 @@ func testBatcherPushMaxBatchSize(t *testing.T, itemsCount, batchSize int) {
 		t.Fatal(err)
 	}
 	for i := range itemsCount {
-		ok, err := b.Push(i)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !ok {
-			t.Fatalf("cannot add item %d to batch", i)
+		if err := b.Push(i); err != nil {
+			t.Fatalf("cannot add item %d to batch: %v", i, err)
 		}
 	}
 	if err := b.Stop(); err != nil {

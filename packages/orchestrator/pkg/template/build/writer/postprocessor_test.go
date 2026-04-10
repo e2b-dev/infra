@@ -2,6 +2,7 @@ package writer
 
 import (
 	"bytes"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,14 +13,37 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func newTestCore(buf *bytes.Buffer) zapcore.Core {
+// syncBuffer wraps bytes.Buffer with a mutex for concurrent writes from
+// the PostProcessor goroutine and the test goroutine.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) Sync() error { return nil }
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buf.String()
+}
+
+func newTestCore(buf *syncBuffer) zapcore.Core {
 	encoderCfg := zap.NewDevelopmentEncoderConfig()
 	encoderCfg.TimeKey = ""
 	encoder := zapcore.NewConsoleEncoder(encoderCfg)
 
 	core := zapcore.NewCore(
 		encoder,
-		zapcore.AddSync(buf),
+		buf,
 		zapcore.DebugLevel,
 	)
 
@@ -29,7 +53,7 @@ func newTestCore(buf *bytes.Buffer) zapcore.Core {
 func TestPostProcessor_Start(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	var buf bytes.Buffer
+	var buf syncBuffer
 	core := newTestCore(&buf)
 
 	interval := time.Millisecond * 100

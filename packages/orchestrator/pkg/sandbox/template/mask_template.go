@@ -46,7 +46,7 @@ func (c *MaskTemplate) Close(_ context.Context) error {
 	return nil
 }
 
-func (c *MaskTemplate) Files() storage.TemplateCacheFiles {
+func (c *MaskTemplate) Files() storage.CachePaths {
 	return c.template.Files()
 }
 
