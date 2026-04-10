@@ -58,6 +58,8 @@ resource "google_compute_region_instance_group_manager" "server_pool" {
     minimal_action = "REPLACE"
 
     // Keep PROACTIVE redistribution to maintain even server distribution across zones for Raft quorum resilience.
+    // Note: redistributed instances will pick up the current instance template, which may apply pending template
+    // changes as a side effect of zone rebalancing. This is an acceptable trade-off for server quorum safety.
     instance_redistribution_type = "PROACTIVE"
     max_unavailable_fixed        = 0
 
