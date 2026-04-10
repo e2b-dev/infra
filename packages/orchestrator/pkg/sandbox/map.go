@@ -101,7 +101,7 @@ func (m *Map) GetByHostPort(hostPort string) (*Sandbox, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("sandbox with address %s not found", hostPort)
+	return nil, fmt.Errorf("sandbox not found")
 }
 
 func (m *Map) Insert(ctx context.Context, sbx *Sandbox) {
