@@ -46,8 +46,7 @@ Recommended for monitoring and logging
   - Used for managing the infrastructure on Google Cloud
   - Be sure to authenticate:
     ```sh
-    gcloud auth login
-    gcloud auth application-default login
+    gcloud auth login --update-adc
     ```
 - GCP account + project
 
