@@ -183,13 +183,13 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		return metadata.Template{}, fmt.Errorf("error building environment: %w", err)
 	}
 
-	cacheFiles, err := storage.TemplateFiles{BuildID: baseMetadata.Template.BuildID}.CacheFiles(bb.BuildContext.BuilderConfig.StorageConfig)
+	cachePaths, err := storage.Paths{BuildID: baseMetadata.Template.BuildID}.Cache(bb.BuildContext.BuilderConfig.StorageConfig)
 	if err != nil {
 		err = errors.Join(err, rootfs.Close(), memfile.Close())
 
 		return metadata.Template{}, fmt.Errorf("error creating template files: %w", err)
 	}
-	localTemplate := sbxtemplate.NewLocalTemplate(cacheFiles, rootfs, memfile)
+	localTemplate := sbxtemplate.NewLocalTemplate(cachePaths, rootfs, memfile)
 	defer localTemplate.Close(ctx)
 
 	// Env variables from the Docker image

@@ -1,3 +1,11 @@
+locals {
+  default_job_env_vars = {
+    GIN_MODE : "release"
+  }
+
+  job_env_vars = merge(local.default_job_env_vars, var.job_env_vars)
+}
+
 resource "nomad_job" "api" {
   jobspec = templatefile("${path.module}/jobs/api.hcl", {
     update_stanza      = var.update_stanza
@@ -40,6 +48,6 @@ resource "nomad_job" "api" {
     db_migrator_docker_image                = var.db_migrator_docker_image
     launch_darkly_api_key                   = trimspace(var.launch_darkly_api_key)
     default_persistent_volume_type          = var.default_persistent_volume_type
-    job_env_vars                            = var.job_env_vars
+    job_env_vars                            = local.job_env_vars
   })
 }

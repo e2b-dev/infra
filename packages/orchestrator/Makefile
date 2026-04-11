@@ -7,12 +7,16 @@ GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
 HOSTNAME := $(shell hostname 2> /dev/null || hostnamectl hostname 2> /dev/null)
 $(if $(HOSTNAME),,$(error Failed to determine hostname: both 'hostname' and 'hostnamectl' failed))
 
-# Architecture for builds. Defaults to local arch; override for cross-compilation
-# (e.g., BUILD_ARCH=amd64 make build from an ARM64 host).
-BUILD_ARCH ?= $(shell go env GOARCH)
+# Architecture for builds. Defaults to amd64; override for ARM64 builds.
+# (e.g., BUILD_ARCH=arm64 make build-local)
+BUILD_ARCH ?= amd64
 # Docker platform string. Override for cross-platform builds:
 #   BUILD_PLATFORM=linux/arm64 make build
 BUILD_PLATFORM ?= linux/$(BUILD_ARCH)
+
+# Busybox version — single source of truth for both Docker and local builds.
+BUSYBOX_VERSION ?= 1.36.1
+BUSYBOX_LOCAL := .busybox/$(BUSYBOX_VERSION)/$(BUILD_ARCH)/busybox
 
 .PHONY: init
 init:
@@ -26,6 +30,12 @@ generate:
 build:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	@docker build --platform $(BUILD_PLATFORM) --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
+
+# Download busybox from GCS public builds bucket.
+# Skips if binary exists and version/arch match the stamp file.
+.PHONY: fetch-busybox
+fetch-busybox:
+	@./scripts/fetch-busybox.sh "$(BUSYBOX_VERSION)" "$(BUILD_ARCH)" "$(BUSYBOX_LOCAL)"
 
 .PHONY: build-local
 build-local:
@@ -118,7 +128,7 @@ test-docker:
 	@echo "Done"
 
 .PHONY: build-template
-build-template:
+build-template: fetch-busybox
 	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
 	GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) \
 	DOCKER_AUTH_BASE64=$(DOCKER_AUTH_BASE64) \

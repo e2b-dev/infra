@@ -224,6 +224,11 @@ variable "fc_versions_bucket_name" {
   type = string
 }
 
+variable "fc_busybox_bucket_name" {
+  type        = string
+  description = "The name of the bucket to store the busybox binary"
+}
+
 variable "consul_acl_token_secret" {
   type = string
 }
@@ -368,5 +373,12 @@ variable "persistent_volume_types" {
 }
 
 variable "additional_api_paths_handled_by_ingress" {
-  type = list(string)
+  type = list(object({
+    paths       = list(string)
+    timeout_sec = optional(number)
+  }))
+}
+
+variable "ingress_timeout_seconds" {
+  type = number
 }

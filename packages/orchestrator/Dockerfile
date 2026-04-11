@@ -4,6 +4,7 @@ ARG GOLANG_VERSION=1.25.4
 ARG DEBIAN_VERSION=bookworm
 
 FROM golang:${GOLANG_VERSION}-${DEBIAN_VERSION} AS builder
+ARG TARGETARCH
 
 # Cached golang dependencies
 WORKDIR /build/shared
@@ -32,7 +33,8 @@ COPY ./orchestrator/Makefile ./orchestrator/Makefile
 WORKDIR /build/orchestrator
 
 ARG COMMIT_SHA
-RUN --mount=type=cache,target=/root/.cache/go-build make build-local COMMIT_SHA=${COMMIT_SHA}
+# Use Docker's TARGETARCH (set by --platform) so GOARCH matches the container platform.
+RUN --mount=type=cache,target=/root/.cache/go-build make build-local COMMIT_SHA=${COMMIT_SHA} BUILD_ARCH=${TARGETARCH}
 
 FROM scratch
 

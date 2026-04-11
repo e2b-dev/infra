@@ -52,6 +52,15 @@ data "google_secret_manager_secret_version" "routing_domains" {
 locals {
   additional_domains = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
 
+  # Normalize additional_api_paths_handled_by_ingress to support both legacy (list of strings)
+  # and new (list of objects) formats. Strings are converted to objects with paths = [string].
+  normalized_api_paths_handled_by_ingress = [
+    for item in var.additional_api_paths_handled_by_ingress : {
+      paths       = try(item.paths, [item])
+      timeout_sec = try(item.timeout_sec, null)
+    }
+  ]
+
   // Check if all clusters has size greater than 1
   template_manages_clusters_size_gt_1 = alltrue([for c in var.build_clusters_config : (c.cluster_size > 1)])
 
@@ -150,15 +159,17 @@ module "cluster" {
   nomad_port                   = var.nomad_port
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
+  ingress_timeout_seconds      = var.ingress_timeout_seconds
 
   additional_domains                      = local.additional_domains
-  additional_api_paths_handled_by_ingress = var.additional_api_paths_handled_by_ingress
+  additional_api_paths_handled_by_ingress = local.normalized_api_paths_handled_by_ingress
 
   docker_contexts_bucket_name = module.init.envs_docker_context_bucket_name
   cluster_setup_bucket_name   = module.init.cluster_setup_bucket_name
   fc_env_pipeline_bucket_name = module.init.fc_env_pipeline_bucket_name
   fc_kernels_bucket_name      = module.init.fc_kernels_bucket_name
   fc_versions_bucket_name     = module.init.fc_versions_bucket_name
+  fc_busybox_bucket_name      = module.init.fc_busybox_bucket_name
 
   clickhouse_job_constraint_prefix = var.clickhouse_job_constraint_prefix
   clickhouse_health_port           = var.clickhouse_health_port
@@ -208,9 +219,9 @@ module "nomad" {
   clickhouse_node_pool             = var.clickhouse_node_pool
 
   # Ingress
-  ingress_port                 = var.ingress_port
-  ingress_count                = var.ingress_count
-  additional_traefik_arguments = var.additional_traefik_arguments
+  ingress_port         = var.ingress_port
+  ingress_count        = var.ingress_count
+  traefik_config_files = var.traefik_config_files
 
   # API
   api_server_count                                       = var.api_server_count
@@ -264,7 +275,9 @@ module "nomad" {
   otel_collector_resources_cpu_count = var.otel_collector_resources_cpu_count
 
   # Dashboard API
-  dashboard_api_count = var.dashboard_api_count
+  dashboard_api_count                     = var.dashboard_api_count
+  supabase_db_connection_string           = var.supabase_db_connection_string
+  enable_auth_user_sync_background_worker = var.enable_auth_user_sync_background_worker
 
   # Docker reverse proxy
   docker_reverse_proxy_port                = var.docker_reverse_proxy_port
@@ -328,8 +341,9 @@ module "redis" {
   redis_cluster_url_secret_version   = module.init.redis_cluster_url_secret_version
   redis_tls_ca_base64_secret_version = module.init.redis_tls_ca_base64_secret_version
 
-  shard_count = var.redis_shard_count
-  prefix      = var.prefix
+  shard_count    = var.redis_shard_count
+  engine_version = var.gcp_redis_engine_version
+  prefix         = var.prefix
 }
 
 module "remote_repository" {

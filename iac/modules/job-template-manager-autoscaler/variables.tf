@@ -18,7 +18,3 @@ variable "apm_plugin_artifact_source" {
   description = "Full artifact URL for the nomad-nodepool-apm plugin"
 }
 
-variable "apm_plugin_checksum" {
-  type        = string
-  description = "Hex checksum of the nomad-nodepool-apm plugin"
-}

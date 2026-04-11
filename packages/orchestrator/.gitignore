@@ -8,3 +8,4 @@ bin
 .shared
 /tmp
 .local-build
+.busybox

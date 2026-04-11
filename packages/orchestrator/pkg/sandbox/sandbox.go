@@ -433,6 +433,7 @@ func (f *Factory) CreateSandbox(
 	}
 
 	throttleConfig := featureflags.GetTCPFirewallEgressThrottleConfig(ctx, f.featureFlags)
+	driveThrottleConfig := featureflags.GetBlockDriveThrottleConfig(ctx, f.featureFlags)
 
 	telemetry.ReportEvent(ctx, "created fc client")
 
@@ -504,9 +505,13 @@ func (f *Factory) CreateSandbox(
 		config.HugePages,
 		config.FreePageReporting,
 		processOptions,
-		fc.TxRateLimiterConfig{
+		fc.RateLimiterConfig{
 			Ops:       fc.TokenBucketConfig(throttleConfig.Ops),
 			Bandwidth: fc.TokenBucketConfig(throttleConfig.Bandwidth),
+		},
+		fc.RateLimiterConfig{
+			Ops:       fc.TokenBucketConfig(driveThrottleConfig.Ops),
+			Bandwidth: fc.TokenBucketConfig(driveThrottleConfig.Bandwidth),
 		},
 		cgroupFD,
 	)
@@ -760,6 +765,7 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	resumeThrottleConfig := featureflags.GetTCPFirewallEgressThrottleConfig(ctx, f.featureFlags)
+	resumeDriveThrottleConfig := featureflags.GetBlockDriveThrottleConfig(ctx, f.featureFlags)
 
 	telemetry.ReportEvent(ctx, "created FC process")
 
@@ -865,9 +871,13 @@ func (f *Factory) ResumeSandbox(
 		fcUffd.Ready(),
 		config.Envd.AccessToken,
 		cgroupFD,
-		fc.TxRateLimiterConfig{
+		fc.RateLimiterConfig{
 			Ops:       fc.TokenBucketConfig(resumeThrottleConfig.Ops),
 			Bandwidth: fc.TokenBucketConfig(resumeThrottleConfig.Bandwidth),
+		},
+		fc.RateLimiterConfig{
+			Ops:       fc.TokenBucketConfig(resumeDriveThrottleConfig.Ops),
+			Bandwidth: fc.TokenBucketConfig(resumeDriveThrottleConfig.Bandwidth),
 		},
 	)
 
@@ -988,16 +998,16 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 	}
 
 	// This is required because the FC API doesn't support passing /dev/null
-	tf, err := storage.TemplateFiles{
+	cachePaths, err := storage.Paths{
 		BuildID: uuid.New().String(),
-	}.CacheFiles(s.config.StorageConfig)
+	}.Cache(s.config.StorageConfig)
 	if err != nil {
-		return fmt.Errorf("failed to create template files: %w", err)
+		return fmt.Errorf("failed to create cache paths: %w", err)
 	}
-	defer tf.Close()
+	defer cachePaths.Close()
 
 	// The snapfile is required only because the FC API doesn't support passing /dev/null
-	snapfile := template.NewLocalFileLink(tf.CacheSnapfilePath())
+	snapfile := template.NewLocalFileLink(cachePaths.CacheSnapfile())
 	defer snapfile.Close()
 
 	err = s.process.CreateSnapshot(ctx, snapfile.Path())
@@ -1041,13 +1051,13 @@ func (s *Sandbox) Pause(
 		}
 	}()
 
-	snapshotTemplateFiles, err := storage.TemplateFiles{BuildID: m.Template.BuildID}.CacheFiles(s.config.StorageConfig)
+	cachePaths, err := storage.Paths{BuildID: m.Template.BuildID}.Cache(s.config.StorageConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get template files: %w", err)
+		return nil, fmt.Errorf("failed to create cache paths: %w", err)
 	}
-	cleanup.AddNoContext(ctx, snapshotTemplateFiles.Close)
+	cleanup.AddNoContext(ctx, cachePaths.Close)
 
-	buildID, err := uuid.Parse(snapshotTemplateFiles.BuildID)
+	buildID, err := uuid.Parse(cachePaths.BuildID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse build id: %w", err)
 	}
@@ -1060,7 +1070,7 @@ func (s *Sandbox) Pause(
 	}
 
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
-	snapfile := template.NewLocalFileLink(snapshotTemplateFiles.CacheSnapfilePath())
+	snapfile := template.NewLocalFileLink(cachePaths.CacheSnapfile())
 	cleanup.AddNoContext(ctx, snapfile.Close)
 
 	err = s.process.CreateSnapshot(ctx, snapfile.Path())
@@ -1113,7 +1123,7 @@ func (s *Sandbox) Pause(
 	}
 	cleanup.AddNoContext(ctx, rootfsDiff.Close)
 
-	metadataFileLink := template.NewLocalFileLink(snapshotTemplateFiles.CacheMetadataPath())
+	metadataFileLink := template.NewLocalFileLink(cachePaths.CacheMetadata())
 	cleanup.AddNoContext(ctx, metadataFileLink.Close)
 
 	err = m.ToFile(metadataFileLink.Path())
@@ -1198,7 +1208,7 @@ func pauseProcessRootfs(
 		return nil, nil, fmt.Errorf("failed to create rootfs diff: %w", err)
 	}
 
-	rootfsDiffMetadata, err := diffCreator.process(ctx, rootfsDiffFile)
+	rootfsDiffMetadata, err := diffCreator.process(ctx, rootfsDiffFile.File)
 	if err != nil {
 		err = errors.Join(err, rootfsDiffFile.Close())
 

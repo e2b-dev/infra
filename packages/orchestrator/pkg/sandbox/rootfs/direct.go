@@ -69,7 +69,7 @@ func (o *DirectProvider) Start(_ context.Context) error {
 
 func (o *DirectProvider) ExportDiff(
 	ctx context.Context,
-	out io.Writer,
+	out *os.File,
 	stopSandbox func(context.Context) error,
 ) (*header.DiffMetadata, error) {
 	ctx, childSpan := tracer.Start(ctx, "direct-provider-export")

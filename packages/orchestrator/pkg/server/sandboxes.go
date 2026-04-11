@@ -79,6 +79,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 	childSpan.SetAttributes(
 		telemetry.WithBuildID(req.GetSandbox().GetBuildId()),
+		telemetry.WithTeamID(req.GetSandbox().GetTeamId()),
 		telemetry.WithTemplateID(req.GetSandbox().GetTemplateId()),
 		telemetry.WithKernelVersion(req.GetSandbox().GetKernelVersion()),
 		telemetry.WithSandboxID(req.GetSandbox().GetSandboxId()),
@@ -424,13 +425,18 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		return nil, status.Errorf(codes.NotFound, "sandbox '%s' not found", in.GetSandboxId())
 	}
 
-	sbxlogger.E(sbx).Info(ctx, "Killing sandbox")
-
 	// Mark the sandbox as stopping so it is excluded from live queries (Get, Items,
 	// Count) but remains findable by IP (GetByHostPort) while the Firecracker
 	// process finishes shutting down.
 	// This prevents the sandbox to be synced to API again
-	s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
+	marked := s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
+	if !marked {
+		telemetry.ReportCriticalError(ctx, "failed to mark sandbox as stopping", nil, telemetry.WithSandboxID(in.GetSandboxId()))
+
+		return nil, status.Errorf(codes.Internal, "failed to delete sandbox '%s'", in.GetSandboxId())
+	}
+
+	sbxlogger.E(sbx).Info(ctx, "Killing sandbox")
 
 	// Check health metrics before stopping the sandbox
 	sbx.Checks.Healthcheck(ctx, true)
@@ -483,9 +489,18 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 			Build(),
 	)
 
-	sbx, err := s.acquireSandboxForSnapshot(ctx, in.GetSandboxId())
-	if err != nil {
-		return nil, err
+	sbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId())
+	if !ok {
+		telemetry.ReportCriticalError(ctx, "sandbox not found", nil, telemetry.WithSandboxID(in.GetSandboxId()))
+
+		return nil, status.Error(codes.NotFound, "sandbox not found")
+	}
+
+	marked := s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
+	if !marked {
+		telemetry.ReportCriticalError(ctx, "failed to mark sandbox as stopping", nil, telemetry.WithSandboxID(in.GetSandboxId()))
+
+		return nil, status.Error(codes.Internal, "failed to pause sandbox")
 	}
 
 	sbxlogger.E(sbx).Info(ctx, "Pausing sandbox")
@@ -541,16 +556,16 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 			Build(),
 	)
 
-	// Check envd version before acquiring (which removes the sandbox from the map).
-	if preSbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId()); ok {
-		if err := utils.CheckEnvdVersionForSnapshot(preSbx.Config.Envd.Version); err != nil {
-			return nil, status.Errorf(codes.FailedPrecondition, "%s", err.Error())
-		}
+	sbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId())
+	if !ok {
+		telemetry.ReportCriticalError(ctx, "sandbox not found", nil, telemetry.WithSandboxID(in.GetSandboxId()))
+
+		return nil, status.Errorf(codes.NotFound, "sandbox '%s' not found", in.GetSandboxId())
 	}
 
-	sbx, err := s.acquireSandboxForSnapshot(ctx, in.GetSandboxId())
-	if err != nil {
-		return nil, err
+	// Check envd version before snapshotting.
+	if err := utils.CheckEnvdVersionForSnapshot(sbx.Config.Envd.Version); err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "%s", err.Error())
 	}
 
 	// Acquire the starting semaphore before resuming, same as Create/Pause.
@@ -558,6 +573,13 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		return nil, err
 	}
 	defer s.startingSandboxes.Release(1)
+
+	marked := s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
+	if !marked {
+		telemetry.ReportCriticalError(ctx, "failed to mark sandbox as stopping", nil, telemetry.WithSandboxID(in.GetSandboxId()))
+
+		return nil, status.Errorf(codes.Internal, "failed to checkpoint sandbox '%s'", in.GetSandboxId())
+	}
 
 	// Always stop the old sandbox when done — on success the resumed sandbox
 	// takes over, on failure this prevents a leaked sandbox that is running
@@ -641,7 +663,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		defer cancel()
 		defer res.completeUpload(uploadCtx)
 
-		if err := res.snapshot.Upload(uploadCtx, s.persistence, res.templateFiles); err != nil {
+		if err := res.snapshot.Upload(uploadCtx, s.persistence, res.paths); err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
 			s.sandboxFactory.Sandboxes.MarkStopping(ctx, resumedSbx.Runtime.SandboxID, resumedSbx.LifecycleID)
@@ -694,7 +716,7 @@ func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
 type snapshotResult struct {
 	meta           metadata.Template
 	snapshot       *sandbox.Snapshot
-	templateFiles  storage.TemplateFiles
+	paths          storage.Paths
 	completeUpload func(ctx context.Context)
 }
 
@@ -738,7 +760,7 @@ func (s *Server) snapshotAndCacheSandbox(
 
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
-	templateFiles := storage.TemplateFiles{BuildID: meta.Template.BuildID}
+	paths := storage.Paths{BuildID: meta.Template.BuildID}
 
 	// Register in Redis so other orchestrators can find us for peer routing.
 	if s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag) {
@@ -759,7 +781,7 @@ func (s *Server) snapshotAndCacheSandbox(
 		return &snapshotResult{
 			meta:           meta,
 			snapshot:       snapshot,
-			templateFiles:  templateFiles,
+			paths:          paths,
 			completeUpload: completeUpload,
 		}, nil
 	}
@@ -767,7 +789,7 @@ func (s *Server) snapshotAndCacheSandbox(
 	return &snapshotResult{
 		meta:           meta,
 		snapshot:       snapshot,
-		templateFiles:  templateFiles,
+		paths:          paths,
 		completeUpload: func(context.Context) {},
 	}, nil
 }
@@ -782,7 +804,7 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 		defer cancel()
 		defer res.completeUpload(ctx)
 
-		err := res.snapshot.Upload(ctx, s.persistence, res.templateFiles)
+		err := res.snapshot.Upload(ctx, s.persistence, res.paths)
 		if err != nil {
 			sbxlogger.I(sbx).Error(ctx, "error uploading snapshot files", zap.Error(err))
 
@@ -816,24 +838,6 @@ func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox
 
 		sbxlogger.E(sbx).Info(ctx, "Sandbox stopped")
 	}()
-}
-
-// acquireSandboxForSnapshot locks the pause mutex, retrieves the sandbox, removes it from the map,
-// and unlocks. Returns the sandbox for snapshotting or an error if not found.
-func (s *Server) acquireSandboxForSnapshot(ctx context.Context, sandboxID string) (*sandbox.Sandbox, error) {
-	s.pauseMu.Lock()
-	defer s.pauseMu.Unlock()
-
-	sbx, ok := s.sandboxFactory.Sandboxes.Get(sandboxID)
-	if !ok {
-		telemetry.ReportCriticalError(ctx, "sandbox not found", nil)
-
-		return nil, status.Error(codes.NotFound, "sandbox not found")
-	}
-
-	s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
-
-	return sbx, nil
 }
 
 // stopSandboxAsync stops the sandbox in a background goroutine.

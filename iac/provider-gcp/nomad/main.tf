@@ -52,9 +52,9 @@ data "google_secret_manager_secret_version" "redis_tls_ca_base64" {
 module "ingress" {
   source = "../../modules/job-ingress"
 
-  ingress_count                = var.ingress_count
-  ingress_proxy_port           = var.ingress_port.port
-  additional_traefik_arguments = var.additional_traefik_arguments
+  ingress_count        = var.ingress_count
+  ingress_proxy_port   = var.ingress_port.port
+  traefik_config_files = var.traefik_config_files
 
   node_pool     = var.api_node_pool
   update_stanza = var.api_machine_count > 1
@@ -130,11 +130,16 @@ module "dashboard_api" {
 
   image = data.google_artifact_registry_docker_image.dashboard_api_image[0].self_link
 
-  postgres_connection_string             = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-  auth_db_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-  auth_db_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
-  clickhouse_connection_string           = local.clickhouse_connection_string
-  supabase_jwt_secrets                   = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
+  postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+  auth_db_connection_string               = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+  auth_db_read_replica_connection_string  = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
+  supabase_db_connection_string           = var.supabase_db_connection_string
+  clickhouse_connection_string            = local.clickhouse_connection_string
+  supabase_jwt_secrets                    = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
+  redis_url                               = local.redis_url
+  redis_cluster_url                       = local.redis_cluster_url
+  redis_tls_ca_base64                     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+  enable_auth_user_sync_background_worker = var.enable_auth_user_sync_background_worker
 
   otel_collector_grpc_port = var.otel_collector_grpc_port
   logs_proxy_port          = var.logs_proxy_port
@@ -391,16 +396,9 @@ data "google_storage_bucket_object" "orchestrator" {
   bucket = var.fc_env_pipeline_bucket_name
 }
 
-data "external" "orchestrator_checksum" {
-  program = ["bash", "${path.module}/scripts/checksum.sh"]
-
-  query = {
-    base64 = data.google_storage_bucket_object.orchestrator.md5hash
-  }
-}
-
 locals {
-  orchestrator_artifact_source = var.environment == "dev" ? "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/orchestrator?version=${data.external.orchestrator_checksum.result.hex}" : "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/orchestrator"
+  orchestrator_checksum        = data.google_storage_bucket_object.orchestrator.generation
+  orchestrator_artifact_source = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/orchestrator?version=${local.orchestrator_checksum}"
 }
 
 module "orchestrator" {
@@ -417,7 +415,7 @@ module "orchestrator" {
 
   environment           = var.environment
   artifact_source       = local.orchestrator_artifact_source
-  orchestrator_checksum = data.external.orchestrator_checksum.result.hex
+  orchestrator_checksum = local.orchestrator_checksum
 
   logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
@@ -443,30 +441,8 @@ data "google_storage_bucket_object" "template_manager" {
   bucket = var.fc_env_pipeline_bucket_name
 }
 
-
-data "external" "template_manager" {
-  program = ["bash", "${path.module}/scripts/checksum.sh"]
-
-  query = {
-    base64 = data.google_storage_bucket_object.template_manager.md5hash
-  }
-}
-
-data "google_storage_bucket_object" "nomad_nodepool_apm" {
-  count = var.template_manages_clusters_size_gt_1 ? 1 : 0
-
-  name   = "nomad-nodepool-apm"
-  bucket = var.fc_env_pipeline_bucket_name
-}
-
-data "external" "nomad_nodepool_apm_checksum" {
-  count = var.template_manages_clusters_size_gt_1 ? 1 : 0
-
-  program = ["bash", "${path.module}/scripts/checksum.sh"]
-
-  query = {
-    base64 = data.google_storage_bucket_object.nomad_nodepool_apm[0].md5hash
-  }
+locals {
+  template_manager_artifact_source = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/template-manager?version=${data.google_storage_bucket_object.template_manager.generation}"
 }
 
 module "template_manager" {
@@ -490,8 +466,7 @@ module "template_manager" {
   domain_name      = var.domain_name
 
   api_secret                      = var.api_secret
-  artifact_source                 = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/template-manager"
-  template_manager_checksum       = data.external.template_manager.result.hex
+  artifact_source                 = local.template_manager_artifact_source
   template_bucket_name            = var.template_bucket_name
   build_cache_bucket_name         = var.build_cache_bucket_name
   otel_collector_grpc_endpoint    = "localhost:${var.otel_collector_grpc_port}"
@@ -505,6 +480,13 @@ module "template_manager" {
   nomad_token = var.nomad_acl_token_secret
 }
 
+data "google_storage_bucket_object" "nomad_nodepool_apm" {
+  count = var.template_manages_clusters_size_gt_1 ? 1 : 0
+
+  name   = "nomad-nodepool-apm"
+  bucket = var.fc_env_pipeline_bucket_name
+}
+
 module "template_manager_autoscaler" {
   source = "../../modules/job-template-manager-autoscaler"
   count  = var.template_manages_clusters_size_gt_1 ? 1 : 0
@@ -512,8 +494,7 @@ module "template_manager_autoscaler" {
   node_pool                  = var.api_node_pool
   autoscaler_version         = var.nomad_autoscaler_version
   nomad_token                = var.nomad_acl_token_secret
-  apm_plugin_artifact_source = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/nomad-nodepool-apm"
-  apm_plugin_checksum        = data.external.nomad_nodepool_apm_checksum[0].result.hex
+  apm_plugin_artifact_source = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/nomad-nodepool-apm?version=${data.google_storage_bucket_object.nomad_nodepool_apm[0].generation}"
 }
 
 module "loki" {
@@ -621,4 +602,33 @@ module "clickhouse" {
 
   # Migrator
   clickhouse_migrator_image = data.google_artifact_registry_docker_image.clickhouse_migrator_image.self_link
+}
+
+data "google_storage_bucket_object" "filestore_cleanup" {
+  name   = "clean-nfs-cache"
+  bucket = var.fc_env_pipeline_bucket_name
+}
+
+locals {
+  clean_nfs_cache_artifact_source = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/clean-nfs-cache?version=${data.google_storage_bucket_object.filestore_cleanup.generation}"
+}
+
+resource "nomad_job" "clean_nfs_cache" {
+  count = var.shared_chunk_cache_path != "" ? 1 : 0
+
+  jobspec = templatefile("${path.module}/jobs/clean-nfs-cache.hcl", {
+    node_pool                    = var.builder_node_pool
+    artifact_source              = local.clean_nfs_cache_artifact_source
+    nfs_cache_mount_path         = var.shared_chunk_cache_path
+    max_disk_usage_target        = var.filestore_cache_cleanup_disk_usage_target
+    dry_run                      = var.filestore_cache_cleanup_dry_run
+    deletions_per_loop           = var.filestore_cache_cleanup_deletions_per_loop
+    files_per_loop               = var.filestore_cache_cleanup_files_per_loop
+    max_concurrent_stat          = var.filestore_cache_cleanup_max_concurrent_stat
+    max_concurrent_scan          = var.filestore_cache_cleanup_max_concurrent_scan
+    max_concurrent_delete        = var.filestore_cache_cleanup_max_concurrent_delete
+    max_retries                  = var.filestore_cache_cleanup_max_retries
+    otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
+    launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+  })
 }

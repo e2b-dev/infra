@@ -132,14 +132,16 @@ variable "ingress_count" {
 }
 
 variable "additional_api_paths_handled_by_ingress" {
-  type        = list(string)
-  description = "Additional paths to forward to nomad's ingress"
+  type        = any
+  description = <<-EOT
+    Additional path rules to forward to nomad's ingress. Each entry creates a separate path_rule.
+    Accepts two formats for backward compatibility:
+    - Legacy: list(string) - e.g. ["/path1/*", "/path2/*"]
+    - New: list(object({paths = list(string), timeout_sec = optional(number)}))
+      e.g. [{paths = ["/path1/*", "/path2/*"], timeout_sec = 120}]
+    Per-route timeout_sec overrides the ingress backend default (see ingress_timeout_seconds).
+  EOT
   default     = []
-}
-
-variable "additional_traefik_arguments" {
-  type    = list(string)
-  default = []
 }
 
 variable "client_proxy_resources_memory_mb" {
@@ -226,6 +228,17 @@ variable "ingress_port" {
 variable "dashboard_api_count" {
   type    = number
   default = 0
+}
+
+variable "supabase_db_connection_string" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "enable_auth_user_sync_background_worker" {
+  type    = bool
+  default = false
 }
 
 variable "docker_reverse_proxy_port" {
@@ -376,6 +389,12 @@ variable "redis_managed" {
 variable "redis_shard_count" {
   type    = number
   default = 1
+}
+
+variable "gcp_redis_engine_version" {
+  type        = string
+  description = "The engine version for managed GCP Redis/Valkey. Can be set via TF_VAR_gcp_redis_engine_version or GCP_REDIS_ENGINE_VERSION env var."
+  default     = "VALKEY_8_0"
 }
 
 variable "filestore_cache_enabled" {
@@ -703,4 +722,15 @@ variable "gcs_grpc_connection_pool_size" {
 variable "orchestrator_env_vars" {
   type    = map(string)
   default = {}
+}
+
+variable "traefik_config_files" {
+  type        = map(string)
+  description = "Map of filename => content for additional Traefik dynamic configuration files"
+  default     = {}
+}
+
+variable "ingress_timeout_seconds" {
+  type    = number
+  default = 80
 }

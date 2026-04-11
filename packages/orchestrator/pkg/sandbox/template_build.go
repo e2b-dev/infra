@@ -13,17 +13,17 @@ import (
 )
 
 type TemplateBuild struct {
-	files       storage.TemplateFiles
+	paths       storage.Paths
 	persistence storage.StorageProvider
 
 	memfileHeader *headers.Header
 	rootfsHeader  *headers.Header
 }
 
-func NewTemplateBuild(memfileHeader *headers.Header, rootfsHeader *headers.Header, persistence storage.StorageProvider, files storage.TemplateFiles) *TemplateBuild {
+func NewTemplateBuild(memfileHeader *headers.Header, rootfsHeader *headers.Header, persistence storage.StorageProvider, paths storage.Paths) *TemplateBuild {
 	return &TemplateBuild{
 		persistence: persistence,
-		files:       files,
+		paths:       paths,
 
 		memfileHeader: memfileHeader,
 		rootfsHeader:  rootfsHeader,
@@ -31,16 +31,16 @@ func NewTemplateBuild(memfileHeader *headers.Header, rootfsHeader *headers.Heade
 }
 
 func (t *TemplateBuild) Remove(ctx context.Context) error {
-	err := t.persistence.DeleteObjectsWithPrefix(ctx, t.files.StorageDir())
+	err := t.persistence.DeleteObjectsWithPrefix(ctx, t.paths.StorageDir())
 	if err != nil {
-		return fmt.Errorf("error when removing template build '%s': %w", t.files.StorageDir(), err)
+		return fmt.Errorf("error when removing template build '%s': %w", t.paths.StorageDir(), err)
 	}
 
 	return nil
 }
 
 func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Header) error {
-	object, err := t.persistence.OpenBlob(ctx, t.files.StorageMemfileHeaderPath(), storage.MemfileHeaderObjectType)
+	object, err := t.persistence.OpenBlob(ctx, t.paths.MemfileHeader(), storage.MemfileHeaderObjectType)
 	if err != nil {
 		return err
 	}
@@ -59,7 +59,7 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 }
 
 func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) error {
-	object, err := t.persistence.OpenSeekable(ctx, t.files.StorageMemfilePath(), storage.MemfileObjectType)
+	object, err := t.persistence.OpenSeekable(ctx, t.paths.Memfile(), storage.MemfileObjectType)
 	if err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) e
 }
 
 func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Header) error {
-	object, err := t.persistence.OpenBlob(ctx, t.files.StorageRootfsHeaderPath(), storage.RootFSHeaderObjectType)
+	object, err := t.persistence.OpenBlob(ctx, t.paths.RootfsHeader(), storage.RootFSHeaderObjectType)
 	if err != nil {
 		return err
 	}
@@ -92,7 +92,7 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Heade
 }
 
 func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) error {
-	object, err := t.persistence.OpenSeekable(ctx, t.files.StorageRootfsPath(), storage.RootFSObjectType)
+	object, err := t.persistence.OpenSeekable(ctx, t.paths.Rootfs(), storage.RootFSObjectType)
 	if err != nil {
 		return err
 	}
@@ -107,7 +107,7 @@ func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) err
 
 // Snap-file is small enough so we don't use composite upload.
 func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
-	object, err := t.persistence.OpenBlob(ctx, t.files.StorageSnapfilePath(), storage.SnapfileObjectType)
+	object, err := t.persistence.OpenBlob(ctx, t.paths.Snapfile(), storage.SnapfileObjectType)
 	if err != nil {
 		return err
 	}
@@ -121,7 +121,7 @@ func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
 
 // Metadata is small enough so we don't use composite upload.
 func (t *TemplateBuild) uploadMetadata(ctx context.Context, path string) error {
-	object, err := t.persistence.OpenBlob(ctx, t.files.StorageMetadataPath(), storage.MetadataObjectType)
+	object, err := t.persistence.OpenBlob(ctx, t.paths.Metadata(), storage.MetadataObjectType)
 	if err != nil {
 		return err
 	}

@@ -39,11 +39,11 @@ func main() {
 		log.Fatal("specify either -memfile or -rootfs, not both")
 	}
 
-	baseTemplate := storage.TemplateFiles{
+	baseTemplate := storage.Paths{
 		BuildID: *fromBuild,
 	}
 
-	diffTemplate := storage.TemplateFiles{
+	diffTemplate := storage.Paths{
 		BuildID: *toBuild,
 	}
 
@@ -51,11 +51,11 @@ func main() {
 	var diffHeaderFile string
 
 	if *memfile {
-		baseHeaderFile = baseTemplate.StorageMemfileHeaderPath()
-		diffHeaderFile = diffTemplate.StorageMemfileHeaderPath()
+		baseHeaderFile = baseTemplate.MemfileHeader()
+		diffHeaderFile = diffTemplate.MemfileHeader()
 	} else {
-		baseHeaderFile = baseTemplate.StorageRootfsHeaderPath()
-		diffHeaderFile = diffTemplate.StorageRootfsHeaderPath()
+		baseHeaderFile = baseTemplate.RootfsHeader()
+		diffHeaderFile = diffTemplate.RootfsHeader()
 	}
 
 	ctx := context.Background()
@@ -116,7 +116,7 @@ func main() {
 	fmt.Printf("Storage path       %s\n", diffSource)
 	fmt.Printf("========\n")
 
-	onlyDiffMappings := make([]*header.BuildMap, 0)
+	onlyDiffMappings := make([]header.BuildMap, 0)
 
 	for _, mapping := range diffHeader.Mapping {
 		if mapping.BuildId == diffHeader.Metadata.BuildId {

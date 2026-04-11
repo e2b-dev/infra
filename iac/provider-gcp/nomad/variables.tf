@@ -73,8 +73,9 @@ variable "ingress_port" {
   })
 }
 
-variable "additional_traefik_arguments" {
-  type = list(string)
+variable "traefik_config_files" {
+  type        = map(string)
+  description = "Map of filename => content for additional Traefik dynamic configuration files"
 }
 
 variable "ingress_count" {
@@ -451,6 +452,17 @@ variable "default_persistent_volume_type" {
 variable "dashboard_api_count" {
   type    = number
   default = 0
+}
+
+variable "supabase_db_connection_string" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "enable_auth_user_sync_background_worker" {
+  type    = bool
+  default = false
 }
 
 variable "volume_token_issuer" {
