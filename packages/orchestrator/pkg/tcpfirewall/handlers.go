@@ -24,35 +24,6 @@ const (
 	noHostnameValue = ""
 )
 
-// egressDialContext returns a SOCKS5 dial function if the sandbox has an egress proxy
-// configured. Returns (nil, false) for direct connections, (nil, true) if the proxy is
-// configured but failed to initialize (caller should block the connection).
-func egressDialContext(sbx *sandbox.Sandbox, l logger.Logger, ctx context.Context, metrics *Metrics, protocol Protocol) (dialContextFunc, bool) {
-	egress := sbx.Config.GetNetworkEgress()
-	if egress == nil {
-		return nil, false
-	}
-
-	addr := egress.GetEgressProxyAddress()
-	if addr == "" {
-		return nil, false
-	}
-
-	auth := socks5AuthFromEgress(egress, sbx.Runtime.SandboxID)
-
-	dialFn, err := newSOCKS5DialContext(addr, auth)
-	if err != nil {
-		l.Error(ctx, "failed to create SOCKS5 dialer, blocking connection",
-			zap.String("proxy_addr", addr),
-			zap.Error(err))
-		metrics.RecordError(ctx, ErrorTypeSOCKS5Dial, protocol)
-
-		return nil, true
-	}
-
-	return dialFn, true
-}
-
 // domainHandler handles connections with hostname information (HTTP Host header or TLS SNI).
 func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol) {
 	// Get hostname from tcpproxy's wrapped connection (HTTP Host or TLS SNI).
@@ -80,20 +51,13 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 
 	metrics.RecordDecision(ctx, DecisionAllowed, protocol, matchType)
 
-	dialFn, hasProxy := egressDialContext(sbx, logger, ctx, metrics, protocol)
-	if hasProxy {
-		if dialFn == nil {
-			conn.Close()
-
-			return
-		}
-
+	// SOCKS5 egress proxy: route through proxy when configured.
+	if proxyAddr := sbx.Config.GetNetworkEgress().GetEgressProxyAddress(); proxyAddr != "" {
 		target := hostname
 		if target == "" {
 			target = dstIP.String()
 		}
-		upstreamAddr := net.JoinHostPort(target, fmt.Sprintf("%d", dstPort))
-		proxyWith(ctx, conn, upstreamAddr, dialFn, metrics, protocol)
+		proxyViaSocks5(ctx, conn, proxyAddr, net.JoinHostPort(target, fmt.Sprintf("%d", dstPort)), sbx, logger, metrics, protocol)
 
 		return
 	}
@@ -138,20 +102,40 @@ func cidrOnlyHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort i
 
 	upstreamAddr := net.JoinHostPort(dstIP.String(), fmt.Sprintf("%d", dstPort))
 
-	dialFn, hasProxy := egressDialContext(sbx, logger, ctx, metrics, protocol)
-	if hasProxy {
-		if dialFn == nil {
-			conn.Close()
-
-			return
-		}
-
-		proxyWith(ctx, conn, upstreamAddr, dialFn, metrics, protocol)
+	// SOCKS5 egress proxy: route through proxy when configured.
+	if proxyAddr := sbx.Config.GetNetworkEgress().GetEgressProxyAddress(); proxyAddr != "" {
+		proxyViaSocks5(ctx, conn, proxyAddr, upstreamAddr, sbx, logger, metrics, protocol)
 
 		return
 	}
 
 	proxy(ctx, conn, upstreamAddr, metrics, protocol)
+}
+
+// proxyViaSocks5 dials the upstream through a SOCKS5 proxy. Blocks on failure.
+func proxyViaSocks5(ctx context.Context, conn net.Conn, proxyAddr, upstreamAddr string, sbx *sandbox.Sandbox, l logger.Logger, metrics *Metrics, protocol Protocol) {
+	auth := socks5AuthFromEgress(sbx.Config.GetNetworkEgress(), sbx.Runtime.SandboxID)
+
+	dialFn, err := newSOCKS5DialContext(proxyAddr, auth)
+	if err != nil {
+		l.Error(ctx, "SOCKS5 dialer failed, blocking connection",
+			zap.String("proxy_addr", proxyAddr),
+			zap.Error(err))
+		metrics.RecordError(ctx, ErrorTypeSOCKS5Dial, protocol)
+		conn.Close()
+
+		return
+	}
+
+	tracker := metrics.TrackConnection(protocol)
+	defer tracker.Close(ctx)
+
+	dp := &tcpproxy.DialProxy{
+		Addr:        upstreamAddr,
+		DialTimeout: upstreamDialTimeout,
+		DialContext: dialFn,
+	}
+	dp.HandleConn(conn)
 }
 
 // proxy proxies the connection to the upstream address.
@@ -162,19 +146,6 @@ func proxy(ctx context.Context, conn net.Conn, upstreamAddr string, metrics *Met
 	dp := &tcpproxy.DialProxy{
 		Addr:        upstreamAddr,
 		DialTimeout: upstreamDialTimeout,
-	}
-	dp.HandleConn(conn)
-}
-
-// proxyWith proxies the connection through a custom dialer (e.g. SOCKS5).
-func proxyWith(ctx context.Context, conn net.Conn, upstreamAddr string, dialFn dialContextFunc, metrics *Metrics, protocol Protocol) {
-	tracker := metrics.TrackConnection(protocol)
-	defer tracker.Close(ctx)
-
-	dp := &tcpproxy.DialProxy{
-		Addr:        upstreamAddr,
-		DialTimeout: upstreamDialTimeout,
-		DialContext: dialFn,
 	}
 	dp.HandleConn(conn)
 }
