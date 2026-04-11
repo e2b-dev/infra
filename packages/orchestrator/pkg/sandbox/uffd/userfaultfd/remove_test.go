@@ -20,6 +20,7 @@ func TestRemove(t *testing.T) {
 			operations: []operation{
 				{offset: 0, mode: operationModeRead},
 				{offset: 0, mode: operationModeRemove},
+				{mode: operationModeSleep},
 			},
 		},
 		{
@@ -29,6 +30,7 @@ func TestRemove(t *testing.T) {
 			operations: []operation{
 				{offset: 0, mode: operationModeRead},
 				{offset: 0, mode: operationModeRemove},
+				{mode: operationModeSleep},
 			},
 		},
 		{
@@ -38,6 +40,7 @@ func TestRemove(t *testing.T) {
 			operations: []operation{
 				{offset: 0, mode: operationModeWrite},
 				{offset: 0, mode: operationModeRemove},
+				{mode: operationModeSleep},
 			},
 		},
 		{
@@ -47,6 +50,7 @@ func TestRemove(t *testing.T) {
 			operations: []operation{
 				{offset: 0, mode: operationModeWrite},
 				{offset: 0, mode: operationModeRemove},
+				{mode: operationModeSleep},
 			},
 		},
 		{
@@ -57,6 +61,7 @@ func TestRemove(t *testing.T) {
 				{offset: 0, mode: operationModeRead},
 				{offset: int64(header.PageSize), mode: operationModeWrite},
 				{offset: 0, mode: operationModeRemove},
+				{mode: operationModeSleep},
 			},
 		},
 		{
@@ -67,6 +72,7 @@ func TestRemove(t *testing.T) {
 				{offset: 0, mode: operationModeRead},
 				{offset: int64(header.HugepageSize), mode: operationModeWrite},
 				{offset: 0, mode: operationModeRemove},
+				{mode: operationModeSleep},
 			},
 		},
 	}
