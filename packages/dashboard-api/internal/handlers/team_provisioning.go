@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
@@ -100,6 +101,7 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 	if err != nil {
 		return provisionedTeam{}, fmt.Errorf("start transaction: %w", err)
 	}
+	authTxDB := authqueries.New(tx)
 	defer func() {
 		_ = tx.Rollback(ctx)
 	}()
@@ -112,7 +114,7 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 	}
 
 	// Serialize bootstrap for a user even when they have no team memberships yet.
-	if _, err := txDB.LockPublicUserForUpdate(ctx, authUser.ID); err != nil {
+	if _, err := authTxDB.LockPublicUserForUpdate(ctx, authUser.ID); err != nil {
 		return provisionedTeam{}, fmt.Errorf("lock public user: %w", err)
 	}
 
@@ -197,6 +199,7 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 	if err != nil {
 		return provisionedTeam{}, fmt.Errorf("start transaction: %w", err)
 	}
+	authTxDB := authqueries.New(tx)
 	defer func() {
 		_ = tx.Rollback(ctx)
 	}()
@@ -209,7 +212,7 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 	}
 
 	// Serialize team creation even when the user currently has no team memberships.
-	if _, err := txDB.LockPublicUserForUpdate(ctx, authUser.ID); err != nil {
+	if _, err := authTxDB.LockPublicUserForUpdate(ctx, authUser.ID); err != nil {
 		return provisionedTeam{}, fmt.Errorf("lock public user: %w", err)
 	}
 

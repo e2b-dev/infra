@@ -14,9 +14,9 @@ var (
 	ErrMissingAPIToken = errors.New("billing server api token is required when billing http team provision sink is enabled")
 )
 
-func NewProvisionSink(enabled bool, baseURL, apiToken string) (TeamProvisionSink, error) {
+func NewProvisionSink(ctx context.Context, enabled bool, baseURL, apiToken string) (TeamProvisionSink, error) {
 	if !enabled {
-		logger.L().Info(context.Background(), "team provision sink configured",
+		logger.L().Info(ctx, "team provision sink configured",
 			zap.String("sink", "noop"),
 			zap.String("result", "disabled"),
 		)
@@ -32,7 +32,7 @@ func NewProvisionSink(enabled bool, baseURL, apiToken string) (TeamProvisionSink
 		return nil, ErrMissingAPIToken
 	}
 
-	logger.L().Info(context.Background(), "team provision sink configured",
+	logger.L().Info(ctx, "team provision sink configured",
 		zap.String("sink", "http"),
 		zap.String("result", "enabled"),
 		zap.String("base_url", baseURL),

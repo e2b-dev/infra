@@ -30,6 +30,8 @@ const (
 	defaultProvisionRetryWaitCeiling = 2 * time.Second
 	defaultProvisionAttemptTimeout   = defaultProvisionTimeout / defaultProvisionRetryMaxAttempts
 	provisionBackoffMultiplier       = 2.0
+	// Error responses only need enough body to extract a short API message without buffering large upstream payloads.
+	provisionErrorMessageReadLimit = 2 * 1024
 )
 
 type HTTPProvisionSink struct {
@@ -210,7 +212,7 @@ func newRetryableProvisionClient(timeout time.Duration) *retryablehttp.Client {
 }
 
 func readProvisionErrorMessage(resp *http.Response) (string, error) {
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2048))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, provisionErrorMessageReadLimit))
 	if err != nil {
 		return "", err
 	}
