@@ -87,6 +87,7 @@ func (b *peerBlob) Put(ctx context.Context, data []byte) error {
 
 // openPeerBlobStream opens a GetBuildBlob stream, checks peer availability,
 // and returns a recv function that yields data chunks starting with the first message's data.
+// The passed context HAS to be canceled by the caller when done with the stream to avoid leaks.
 func openPeerBlobStream(
 	ctx context.Context,
 	client orchestrator.ChunkServiceClient,
