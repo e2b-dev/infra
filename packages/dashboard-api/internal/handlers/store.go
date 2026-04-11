@@ -15,6 +15,7 @@ import (
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
+	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 )
 
@@ -24,16 +25,18 @@ type APIStore struct {
 	config            cfg.Config
 	db                *sqlcdb.Client
 	authDB            *authdb.Client
+	supabaseDB        *supabasedb.Client
 	clickhouse        clickhouse.Clickhouse
 	authService       *sharedauth.AuthService[*types.Team]
 	teamProvisionSink internalteamprovision.TeamProvisionSink
 }
 
-func NewAPIStore(config cfg.Config, db *sqlcdb.Client, authDB *authdb.Client, ch clickhouse.Clickhouse, authService *sharedauth.AuthService[*types.Team], teamProvisionSink internalteamprovision.TeamProvisionSink) *APIStore {
+func NewAPIStore(config cfg.Config, db *sqlcdb.Client, authDB *authdb.Client, supabaseDB *supabasedb.Client, ch clickhouse.Clickhouse, authService *sharedauth.AuthService[*types.Team], teamProvisionSink internalteamprovision.TeamProvisionSink) *APIStore {
 	return &APIStore{
 		config:            config,
 		db:                db,
 		authDB:            authDB,
+		supabaseDB:        supabaseDB,
 		clickhouse:        ch,
 		authService:       authService,
 		teamProvisionSink: teamProvisionSink,

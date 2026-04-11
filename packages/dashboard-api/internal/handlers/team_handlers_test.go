@@ -268,7 +268,7 @@ func createHandlerTestUserAt(t *testing.T, db *testutils.Database, createdAt tim
 	userID := uuid.New()
 	email := handlerTestUserEmail(userID)
 
-	err := db.AuthDB.TestsRawSQL(t.Context(), `
+	err := db.SupabaseDB.TestsRawSQL(t.Context(), `
 INSERT INTO auth.users (id, email, created_at)
 VALUES ($1, $2, $3)
 `, userID, email, createdAt)
@@ -322,6 +322,7 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 	store := &APIStore{
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
 	}
 	store.PostAdminUsersBootstrap(ginCtx)
@@ -388,6 +389,7 @@ func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testin
 	store := &APIStore{
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
 	}
 	store.PostAdminUsersBootstrap(ginCtx)
@@ -438,6 +440,7 @@ func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
 	store := &APIStore{
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
 	}
 
@@ -511,6 +514,7 @@ func TestCreateTeam_RecentUserCreatesBlockedTeam(t *testing.T) {
 	store := &APIStore{
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: &fakeTeamProvisionSink{},
 	}
 
@@ -562,6 +566,7 @@ func TestPostTeams_LocalPolicyDeniedReturnsBadRequestWithoutCreatingTeam(t *test
 	store := &APIStore{
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
 	}
 	store.PostTeams(ginCtx)
@@ -600,6 +605,7 @@ func TestPostTeams_InvalidNameReturnsBadRequest(t *testing.T) {
 		store := &APIStore{
 			db:                testDB.SqlcClient,
 			authDB:            testDB.AuthDB,
+			supabaseDB:        testDB.SupabaseDB,
 			teamProvisionSink: sink,
 		}
 		store.PostTeams(ginCtx)
@@ -630,6 +636,7 @@ func TestPostTeams_TrimsNameBeforeCreate(t *testing.T) {
 	store := &APIStore{
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
 	}
 	store.PostTeams(ginCtx)
@@ -681,6 +688,7 @@ func TestPostTeams_ProvisioningFailureRollsBackCreatedTeam(t *testing.T) {
 	store := &APIStore{
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
 	}
 	store.PostTeams(ginCtx)
@@ -722,6 +730,7 @@ func TestCreateTeam_ConcurrentRequestsRespectLocalPolicyWithZeroMemberships(t *t
 	store := &APIStore{
 		db:                testDB.SqlcClient,
 		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: &fakeTeamProvisionSink{},
 	}
 

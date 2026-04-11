@@ -91,7 +91,7 @@ func (s *APIStore) PostTeams(c *gin.Context) {
 }
 
 func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisionedTeam, error) {
-	authUser, err := s.authDB.Write.GetUser(ctx, userID)
+	authUser, err := s.supabaseDB.Write.GetAuthUserByID(ctx, userID)
 	if err != nil {
 		return provisionedTeam{}, fmt.Errorf("get auth user: %w", err)
 	}
@@ -188,7 +188,7 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 }
 
 func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string) (provisionedTeam, error) {
-	authUser, err := s.authDB.Write.GetUser(ctx, userID)
+	authUser, err := s.supabaseDB.Write.GetAuthUserByID(ctx, userID)
 	if err != nil {
 		return provisionedTeam{}, fmt.Errorf("get auth user: %w", err)
 	}

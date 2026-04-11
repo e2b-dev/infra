@@ -144,6 +144,18 @@ func run() int {
 	}
 	defer authDB.Close()
 
+	supabaseDB, err := supabasedb.NewClient(
+		ctx,
+		config.SupabaseDBConnectionString,
+		pool.WithMaxConnections(4),
+	)
+	if err != nil {
+		l.Error(ctx, "Initializing supabase database client", zap.Error(err))
+
+		return 1
+	}
+	defer supabaseDB.Close()
+
 	var clickhouseClient clickhouse.Clickhouse
 	if config.ClickhouseConnectionString == "" {
 		clickhouseClient = clickhouse.NewNoopClient()
@@ -189,7 +201,7 @@ func run() int {
 		return 1
 	}
 
-	apiStore := handlers.NewAPIStore(config, db, authDB, clickhouseClient, authService, teamProvisionSink)
+	apiStore := handlers.NewAPIStore(config, db, authDB, supabaseDB, clickhouseClient, authService, teamProvisionSink)
 
 	swagger, err := api.GetSwagger()
 	if err != nil {
@@ -214,21 +226,7 @@ func run() int {
 	defer sigCancel()
 
 	var riverClient *river.Client[pgx.Tx]
-	var supabaseDB *supabasedb.Client
-
 	if config.EnableAuthUserSyncBackgroundWorker {
-		supabaseDB, err = supabasedb.NewClient(
-			ctx,
-			config.SupabaseDBConnectionString,
-			pool.WithMaxConnections(4),
-		)
-		if err != nil {
-			l.Error(ctx, "Initializing supabase database client", zap.Error(err))
-
-			return 1
-		}
-		defer supabaseDB.Close()
-
 		riverClient, err = backgroundworker.StartAuthUserSyncWorker(
 			ctx,
 			signalCtx,
