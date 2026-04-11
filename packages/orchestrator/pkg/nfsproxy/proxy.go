@@ -62,10 +62,14 @@ func NewProxy(ctx context.Context, builder *chrooted.Builder, sandboxes *sandbox
 	handler = middleware.WrapHandler(handler, interceptors)
 
 	s := &nfs.Server{
-		Handler:      handler,
-		Context:      ctx,
-		OnConnect:    onConnect,
-		OnDisconnect: onDisconnect,
+		Handler: handler,
+		Context: ctx,
+		Hooks: []nfs.Hook{
+			{
+				OnConnect:    onConnect,
+				OnDisconnect: onDisconnect,
+			},
+		},
 	}
 
 	return &Proxy{

@@ -2,8 +2,8 @@ package chroot
 
 import (
 	"context"
-	"errors"
 	"os"
+	"syscall"
 
 	"github.com/go-git/go-billy/v5"
 	"golang.org/x/sys/unix"
@@ -12,7 +12,8 @@ import (
 )
 
 // ErrQuotaExceeded is returned when a write is blocked due to quota exceeded.
-var ErrQuotaExceeded = errors.New("quota exceeded")
+// We use syscall.EDQUOT so go-nfs properly translates it to NFS3ERR_DQUOT.
+var ErrQuotaExceeded = syscall.EDQUOT
 
 type wrappedFile struct {
 	file *os.File

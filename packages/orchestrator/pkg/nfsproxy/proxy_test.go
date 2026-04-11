@@ -10,8 +10,11 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/willscott/go-nfs-client/nfs"
@@ -21,7 +24,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/chrooted"
-	nfscfg "github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/cfg"
+nfscfg "github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/quota"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/portmap"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
@@ -277,4 +281,201 @@ func mkdir(t *testing.T, target *nfs.Target, path string, perm os.FileMode) []by
 	require.NoError(t, err)
 
 	return fh
+}
+
+func TestQuotaEnforcement(t *testing.T) {
+	t.Parallel()
+
+	if syscall.Geteuid() != 0 {
+		t.Skip("skipping test as it requires root privileges")
+	}
+
+	// setup logging
+	logCfg := zap.NewDevelopmentConfig()
+	logCfg.DisableStacktrace = true
+	logger, err := logCfg.Build(zap.AddStacktrace(zap.ErrorLevel))
+	require.NoError(t, err)
+	zap.ReplaceGlobals(logger)
+
+	// setup miniredis for quota tracking
+	redisServer := miniredis.NewMiniRedis()
+	err = redisServer.Start()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		redisServer.Close()
+	})
+
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: redisServer.Addr(),
+	})
+	t.Cleanup(func() {
+		err := redisClient.Close()
+		assert.NoError(t, err)
+	})
+
+	// create quota tracker with short cache refresh for testing
+	tracker := quota.NewTracker(redisClient, logger)
+	tracker.SetUsageCacheRefresh(10 * time.Millisecond)
+
+	// setup data
+	const quotaBytes int64 = 10 * 1024 * 1024 // 10 MB
+	sandboxID := uuid.NewString()
+	teamID := uuid.New()
+	volPath := t.TempDir()
+	volType := "volume-type-quota"
+	volID := uuid.New()
+	volName := "quota-volume"
+
+	// set up paths
+	config := cfg.Config{
+		PersistentVolumeMounts: map[string]string{
+			volType: volPath,
+		},
+	}
+
+	builder := chrooted.NewBuilder(config)
+	createVolumeDir(t, builder, volType, teamID, volID)
+
+	slot := &network.Slot{Key: "quota-test", HostIP: net.IPv4(127, 0, 0, 1)}
+
+	sandboxes := sandbox.NewSandboxesMap()
+	sandboxes.Insert(t.Context(), &sandbox.Sandbox{
+		Metadata: &sandbox.Metadata{
+			Config: sandbox.NewConfig(sandbox.Config{
+				VolumeMounts: []sandbox.VolumeMountConfig{
+					{ID: volID, Name: volName, Path: "/mnt/quota", Type: volType, Quota: quotaBytes},
+				},
+			}),
+			Runtime: sandbox.RuntimeMetadata{
+				SandboxID: sandboxID,
+				TeamID:    teamID.String(),
+			},
+		},
+		Resources: &sandbox.Resources{
+			Slot: slot,
+		},
+	})
+
+	// setup nfs proxy server with quota tracker
+	nfsConfig := net.ListenConfig{}
+	nfsListener, err := nfsConfig.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		err := nfsListener.Close()
+		assert.NoError(t, err)
+	})
+
+	nfsProxy, err := NewProxy(t.Context(), builder, sandboxes, tracker, nfscfg.Config{})
+	require.NoError(t, err)
+	go func() {
+		err := nfsProxy.Serve(nfsListener)
+		assert.NoError(t, err)
+	}()
+
+	// get nfs server's dynamic port
+	nfsAddr := nfsListener.Addr().String()
+	host, portText, err := net.SplitHostPort(nfsAddr)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+
+	// setup portmap server
+	portmapConfig := net.ListenConfig{}
+	pmListener, err := portmapConfig.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		err := pmListener.Close()
+		assert.NoError(t, err)
+	})
+
+	pm := portmap.NewPortMap(t.Context())
+	pm.RegisterPort(t.Context(), uint32(port))
+	go func() {
+		err := pm.Serve(t.Context(), pmListener)
+		assert.NoError(t, err)
+	}()
+
+	// connect via nfs client
+	auth := rpc.NewAuthUnix("", 100, 101)
+
+	portmapperTCPClient, err := rpc.DialTCP("tcp", pmListener.Addr().String(), false)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		portmapperTCPClient.Close()
+	})
+	portmapperClient := &rpc.Portmapper{Client: portmapperTCPClient}
+	t.Cleanup(func() {
+		portmapperClient.Close()
+	})
+
+	retrievedPort, err := portmapperClient.Getport(rpc.Mapping{
+		Prog: nfs.Nfs3Prog,
+		Vers: nfs.Nfs3Vers,
+		Prot: rfc1057.IPPROTO_TCP,
+	})
+	require.NoError(t, err)
+
+	nfsClient, err := nfs.DialServiceAtPort(host, retrievedPort)
+	require.NoError(t, err)
+
+	// mount the volume
+	mount := &nfs.Mount{
+		Client: nfsClient,
+	}
+	target, err := mount.Mount("/"+volName, auth.Auth())
+	require.NoError(t, err)
+
+	// Step 1: Write initial file (should succeed - quota not exceeded yet)
+	t.Log("Writing initial file (should succeed)")
+	fp, err := target.OpenFile("/initial.txt", 0o644)
+	require.NoError(t, err, "initial write should succeed")
+	_, err = fp.Write([]byte("initial content"))
+	require.NoError(t, err, "initial write should succeed")
+	err = fp.Close()
+	require.NoError(t, err)
+
+	// Step 2: Set usage to exactly the quota limit via the tracker
+	vol := quota.VolumeInfo{
+		TeamID:   teamID,
+		VolumeID: volID,
+		Quota:    quotaBytes,
+	}
+	t.Log("Setting usage to quota limit (10 MB)")
+	err = tracker.SetUsage(t.Context(), vol, quotaBytes)
+	require.NoError(t, err)
+
+	// Step 3: Expire the cache to force refresh from Redis
+	tracker.ExpireCacheForTesting()
+
+	// Step 4: Attempt to write - should be blocked
+	t.Log("Attempting write after quota exceeded (should fail)")
+	fp2, err := target.OpenFile("/blocked.txt", 0o644)
+	// OpenFile with write flags should fail when quota is exceeded
+	require.Error(t, err, "write should be blocked after quota exceeded")
+	// Check for NFS3ERR_DQUOT (error code 69)
+	nfsErr, ok := err.(*nfs.Error)
+	require.True(t, ok, "error should be an NFS error, got: %T", err)
+	assert.Equal(t, uint32(nfs.NFS3ErrDQuot), nfsErr.ErrorNum, "error should be NFS3ERR_DQUOT")
+	assert.Nil(t, fp2)
+
+	// Step 5: Attempt to read - should succeed
+	t.Log("Attempting read after quota exceeded (should succeed)")
+	readFp, err := target.Open("/initial.txt")
+	require.NoError(t, err, "read should succeed even when quota exceeded")
+	content, err := io.ReadAll(readFp)
+	require.NoError(t, err, "reading file should succeed")
+	assert.Equal(t, "initial content", string(content))
+	err = readFp.Close()
+	require.NoError(t, err)
+
+	// Step 6: Verify stat also works (reads are not blocked)
+	t.Log("Attempting stat after quota exceeded (should succeed)")
+	_, _, err = target.Lookup("/initial.txt")
+	require.NoError(t, err, "stat should succeed even when quota exceeded")
+
+	// Step 7: Verify ReadDirPlus works (reads are not blocked)
+	t.Log("Attempting ReadDirPlus after quota exceeded (should succeed)")
+	entries, err := target.ReadDirPlus("/")
+	require.NoError(t, err, "ReadDirPlus should succeed even when quota exceeded")
+	assert.NotEmpty(t, entries, "should see at least the initial.txt file")
 }

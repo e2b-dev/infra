@@ -87,6 +87,22 @@ func NewTracker(redisClient redis.UniversalClient, logger *zap.Logger) *Tracker 
 	return t
 }
 
+// SetUsageCacheRefresh sets the cache refresh duration.
+// This is primarily useful for testing with shorter durations.
+func (t *Tracker) SetUsageCacheRefresh(d time.Duration) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.usageCacheRefresh = d
+}
+
+// ExpireCacheForTesting immediately expires the usage cache.
+// This forces the next IsBlocked call to refresh from Redis.
+func (t *Tracker) ExpireCacheForTesting() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.cacheExpiry = time.Time{}
+}
+
 // RegisterVolume registers a volume's quota for blocking checks.
 // This should be called when a volume is mounted.
 func (t *Tracker) RegisterVolume(vol VolumeInfo) {
@@ -140,12 +156,14 @@ func (t *Tracker) IsBlocked(ctx context.Context, vol VolumeInfo) bool {
 	if !hasQuota || quota == 0 {
 		// No quota registered or unlimited - not blocked
 		t.mu.RUnlock()
+
 		return false
 	}
 
 	if time.Now().Before(t.cacheExpiry) {
 		usage := t.usageCache[vol.String()]
 		t.mu.RUnlock()
+
 		return usage >= quota
 	}
 	t.mu.RUnlock()
@@ -162,6 +180,7 @@ func (t *Tracker) IsBlocked(ctx context.Context, vol VolumeInfo) bool {
 	if quota == 0 {
 		return false
 	}
+
 	return usage >= quota
 }
 
