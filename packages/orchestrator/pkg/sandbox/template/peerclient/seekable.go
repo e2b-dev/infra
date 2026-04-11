@@ -48,7 +48,10 @@ func (s *peerSeekable) Size(ctx context.Context) (int64, error) {
 func (s *peerSeekable) ReadAt(ctx context.Context, buf []byte, off int64) (int, error) {
 	return withPeerFallback(ctx, &s.peerHandle, "read-at peer-seekable", attrOpReadAt,
 		func(ctx context.Context) (peerAttempt[int], error) {
-			recv, err := openPeerSeekableStream(ctx, s.client, &orchestrator.ReadAtBuildSeekableRequest{
+			streamCtx, cancel := context.WithCancel(ctx)
+			defer cancel()
+
+			recv, err := openPeerSeekableStream(streamCtx, s.client, &orchestrator.ReadAtBuildSeekableRequest{
 				BuildId:  s.buildID,
 				FileName: s.fileName,
 				Offset:   off,
@@ -129,6 +132,7 @@ func (s *peerSeekable) StoreFile(ctx context.Context, path string) error {
 
 // openPeerSeekableStream opens a ReadAtBuildSeekable stream, checks peer availability,
 // and returns a recv function that yields data chunks starting with the first message's data.
+// The passed context HAS to be canceled by the caller when done with the stream to avoid leaks.
 func openPeerSeekableStream(
 	ctx context.Context,
 	client orchestrator.ChunkServiceClient,
