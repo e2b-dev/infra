@@ -44,6 +44,7 @@ const (
 	UFFDIO_API        = C.UFFDIO_API
 	UFFDIO_REGISTER   = C.UFFDIO_REGISTER
 	UFFDIO_UNREGISTER = C.UFFDIO_UNREGISTER
+	UFFDIO_WAKE       = C.UFFDIO_WAKE
 	UFFDIO_COPY       = C.UFFDIO_COPY
 
 	UFFD_PAGEFAULT_FLAG_WRITE = C.UFFD_PAGEFAULT_FLAG_WRITE
@@ -125,6 +126,20 @@ func (f Fd) copy(addr, pagesize uintptr, data []byte, mode CULong) error {
 	// Check if the copied size matches the requested pagesize
 	if cpy.copy != CLong(pagesize) {
 		return fmt.Errorf("UFFDIO_COPY copied %d bytes, expected %d", cpy.copy, pagesize)
+	}
+
+	return nil
+}
+
+// wake wakes threads waiting on page faults in the given address range
+// without resolving the fault. The woken threads will re-execute the
+// faulting instruction, triggering a new page fault that will be
+// delivered as a fresh message on the uffd fd.
+func (f Fd) wake(addr, pagesize uintptr) error {
+	r := newUffdioRange(CULong(addr)&^CULong(pagesize-1), CULong(pagesize))
+
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(f), UFFDIO_WAKE, uintptr(unsafe.Pointer(&r))); errno != 0 {
+		return errno
 	}
 
 	return nil

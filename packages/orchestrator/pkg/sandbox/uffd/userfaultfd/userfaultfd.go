@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 
@@ -23,7 +24,13 @@ import (
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/userfaultfd")
 
-const maxRequestsInProgress = 4096
+const (
+	maxRequestsInProgress = 4096
+	// maxFaultRetries is the number of times a page fault can be retried via
+	// UFFDIO_WAKE before giving up. Each retry releases the goroutine and
+	// lets the kernel re-deliver the fault as a fresh message.
+	maxFaultRetries = 3
+)
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
@@ -47,6 +54,10 @@ type Userfaultfd struct {
 	prefetchTracker *block.PrefetchTracker
 
 	wg errgroup.Group
+
+	// faultRetries tracks how many times each page address has been retried
+	// via UFFDIO_WAKE. Key is page-aligned address, value is *atomic.Int32.
+	faultRetries sync.Map
 
 	logger logger.Logger
 }
@@ -333,6 +344,28 @@ func (u *Userfaultfd) faultPage(
 
 	b, dataErr := source.Slice(ctx, offset, int64(pagesize))
 	if dataErr != nil {
+		retryVal, _ := u.faultRetries.LoadOrStore(addr, &atomic.Int32{})
+		retries := retryVal.(*atomic.Int32)
+		attempt := int(retries.Add(1))
+
+		if attempt <= maxFaultRetries {
+			u.logger.Warn(ctx, "UFFD serve data fetch failed, waking for retry",
+				zap.Int("attempt", attempt),
+				zap.Int("max_retries", maxFaultRetries),
+				zap.Int64("offset", offset),
+				zap.Uintptr("addr", addr),
+				zap.Error(dataErr),
+			)
+
+			if wakeErr := u.fd.wake(addr, pagesize); wakeErr != nil {
+				u.logger.Error(ctx, "UFFD wake failed", zap.Uintptr("addr", addr), zap.Error(wakeErr))
+			} else {
+				return nil
+			}
+		}
+
+		u.faultRetries.Delete(addr)
+
 		var signalErr error
 		if onFailure != nil {
 			signalErr = onFailure()
@@ -345,6 +378,8 @@ func (u *Userfaultfd) faultPage(
 
 		return fmt.Errorf("failed to read from source: %w", joinedErr)
 	}
+
+	u.faultRetries.Delete(addr)
 
 	var copyMode CULong
 
