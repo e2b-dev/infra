@@ -63,6 +63,11 @@ type Userfaultfd struct {
 
 	wg errgroup.Group
 
+	// wakeupPipe is a self-pipe used to wake the poll loop when a goroutine
+	// defers a page fault. Without this, a deferred fault could be orphaned
+	// if no new UFFD events arrive to wake poll.
+	wakeupPipe [2]int
+
 	logger logger.Logger
 }
 
@@ -76,6 +81,11 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 		}
 	}
 
+	var wakeupPipe [2]int
+	if err := syscall.Pipe2(wakeupPipe[:], syscall.O_NONBLOCK|syscall.O_CLOEXEC); err != nil {
+		return nil, fmt.Errorf("failed to create wakeup pipe: %w", err)
+	}
+
 	u := &Userfaultfd{
 		fd:              Fd(fd),
 		src:             src,
@@ -83,6 +93,7 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 		pageTracker:     newPageTracker(uintptr(blockSize)),
 		prefetchTracker: block.NewPrefetchTracker(blockSize),
 		ma:              m,
+		wakeupPipe:      wakeupPipe,
 		logger:          logger,
 	}
 
@@ -158,13 +169,8 @@ func (u *Userfaultfd) Serve(
 	pollFds := []unix.PollFd{
 		{Fd: int32(u.fd), Events: unix.POLLIN},
 		{Fd: fdExit.Reader(), Events: unix.POLLIN},
+		{Fd: int32(u.wakeupPipe[0]), Events: unix.POLLIN},
 	}
-
-	eagainCounter := newCounterReporter(u.logger, "uffd: eagain during fd read (accumulated)")
-	defer eagainCounter.Close(ctx)
-
-	noDataCounter := newCounterReporter(u.logger, "uffd: no data in fd (accumulated)")
-	defer noDataCounter.Close(ctx)
 
 	exitFdErrorCounter := newCounterReporter(u.logger, "uffd: exit fd poll errors (accumulated)")
 	defer exitFdErrorCounter.Close(ctx)
@@ -221,6 +227,11 @@ func (u *Userfaultfd) Serve(
 			}
 		}
 
+		// Drain the wakeup pipe if it fired (a goroutine deferred a fault).
+		if hasEvent(pollFds[2].Revents, unix.POLLIN) {
+			u.drainWakeupPipe()
+		}
+
 		uffdFd := pollFds[0]
 
 		// Track uffd error events
@@ -230,55 +241,41 @@ func (u *Userfaultfd) Serve(
 			}
 		}
 
-		if !hasEvent(uffdFd.Revents, unix.POLLIN) {
-			// Uffd is not ready for reading as there is nothing to read on the fd.
-			// https://github.com/firecracker-microvm/firecracker/issues/5056
-			// https://elixir.bootlin.com/linux/v6.8.12/source/fs/userfaultfd.c#L1149
-			// TODO: Check for all the errors
-			// - https://docs.kernel.org/admin-guide/mm/userfaultfd.html
-			// - https://elixir.bootlin.com/linux/v6.8.12/source/fs/userfaultfd.c
-			// - https://man7.org/linux/man-pages/man2/userfaultfd.2.html
-			// It might be possible to just check for data != 0 in the syscall.Read loop
-			// but I don't feel confident about doing that.
-			noDataCounter.Increase("POLLIN")
+		var removes []*UffdRemove
+		var pagefaults []*UffdPagefault
 
-			continue
+		if hasEvent(uffdFd.Revents, unix.POLLIN) {
+			var err error
+			removes, pagefaults, err = u.readEvents(ctx)
+			if err != nil {
+				u.logger.Error(ctx, "uffd: read error", zap.Error(err))
+
+				return fmt.Errorf("failed to read: %w", err)
+			}
 		}
-
-		removes, pagefaults, err := u.readEvents(ctx)
-		if err != nil {
-			u.logger.Error(ctx, "uffd: read error", zap.Error(err))
-
-			return fmt.Errorf("failed to read: %w", err)
-		}
-
-		// No events were found which is weird since, if we are here,
-		// poll() returned with an event indicating that UFFD had something
-		// for us to read. Log an error and continue
-		if len(removes) == 0 && len(pagefaults) == 0 {
-			eagainCounter.Increase("EAGAIN")
-
-			continue
-		}
-
-		// We successfully read all available UFFD events.
-		noDataCounter.Log(ctx)
-		eagainCounter.Log(ctx)
 
 		// First handle the UFFD_EVENT_REMOVE events. Take the settleRequests write lock to ensure that no
 		// other page or pre-fault operation is running concurrently.
 		// A goroutine from the previous batch or a prefault operation could still be executing
-		// setState(faulted) at line 326 after its UFFDIO_COPY returned. If we process a REMOVE for the same
+		// setState(faulted) after its UFFDIO_COPY returned. If we process a REMOVE for the same
 		// page before that goroutine finishes, the goroutine's setState(faulted) would
 		// overwrite the removed state we just set.
-		u.settleRequests.Lock()
-		for _, rm := range removes {
-			u.pageTracker.setState(uintptr(rm.start), uintptr(rm.end), removed)
+		if len(removes) > 0 {
+			u.settleRequests.Lock()
+			for _, rm := range removes {
+				u.pageTracker.setState(uintptr(rm.start), uintptr(rm.end), removed)
+			}
+			u.settleRequests.Unlock()
 		}
-		u.settleRequests.Unlock()
 
-		// Collect deferred pagefaults from previous iteration's goroutines.
+		// Collect deferred pagefaults from previous goroutines that got EAGAIN.
+		// The wakeup pipe ensures we don't sleep through these.
 		pagefaults = append(deferred.drain(), pagefaults...)
+
+		if len(pagefaults) == 0 {
+			// Woke up but nothing to do (e.g., only REMOVE events, or spurious wakeup).
+			continue
+		}
 
 		for _, pf := range pagefaults {
 			// We don't handle minor page faults.
@@ -349,6 +346,7 @@ func (u *Userfaultfd) Serve(
 					u.prefetchTracker.Add(offset, accessType)
 				} else {
 					deferred.push(pf)
+					u.signalWakeup()
 				}
 
 				return nil
@@ -501,6 +499,27 @@ func (u *Userfaultfd) PrefetchData() block.PrefetchData {
 	return u.prefetchTracker.PrefetchData()
 }
 
+// signalWakeup writes a byte to the wakeup pipe to unblock poll.
+// Safe to call from any goroutine; spurious writes are harmless.
+func (u *Userfaultfd) signalWakeup() {
+	syscall.Write(u.wakeupPipe[1], []byte{1}) //nolint:errcheck // best-effort; pipe is non-blocking
+}
+
+// drainWakeupPipe consumes all bytes from the wakeup pipe so it doesn't
+// keep firing on the next poll.
+func (u *Userfaultfd) drainWakeupPipe() {
+	var buf [64]byte
+	for {
+		_, err := syscall.Read(u.wakeupPipe[0], buf[:])
+		if err != nil {
+			break
+		}
+	}
+}
+
 func (u *Userfaultfd) Close() error {
+	syscall.Close(u.wakeupPipe[0])
+	syscall.Close(u.wakeupPipe[1])
+
 	return u.fd.close()
 }
