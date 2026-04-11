@@ -138,9 +138,11 @@ func (u *Userfaultfd) readEvents(ctx context.Context) ([]*UffdRemove, []*UffdPag
 
 		switch event {
 		case UFFD_EVENT_PAGEFAULT:
-			pagefaults = append(pagefaults, (*UffdPagefault)(unsafe.Pointer(&arg[0])))
+			v := *(*UffdPagefault)(unsafe.Pointer(&arg[0]))
+			pagefaults = append(pagefaults, &v)
 		case UFFD_EVENT_REMOVE:
-			removes = append(removes, (*UffdRemove)(unsafe.Pointer(&arg[0])))
+			v := *(*UffdRemove)(unsafe.Pointer(&arg[0]))
+			removes = append(removes, &v)
 		default:
 			return nil, nil, ErrUnexpectedEventType
 		}
