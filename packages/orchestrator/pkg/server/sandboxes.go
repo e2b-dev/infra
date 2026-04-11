@@ -24,6 +24,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
+	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/events"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -131,6 +132,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		req.GetSandbox().GetBuildId(),
 		req.GetSandbox().GetSnapshot(),
 		false,
+		sbxtemplate.GetTemplateOpts{MaxSandboxLengthHours: req.GetSandbox().GetMaxSandboxLength()},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
@@ -183,7 +185,8 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			FirecrackerVersion: resolvedFCVersion,
 		},
 
-		VolumeMounts: volumeMounts,
+		VolumeMounts:          volumeMounts,
+		MaxSandboxLengthHours: req.GetSandbox().GetMaxSandboxLength(),
 	})
 	childSpan.SetAttributes(
 		telemetry.WithFirecrackerVersion(config.FirecrackerConfig.FirecrackerVersion),
@@ -596,7 +599,8 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	}
 
 	// Get the template for resume
-	template, err := s.templateCache.GetTemplate(ctx, in.GetBuildId(), true, false)
+	template, err := s.templateCache.GetTemplate(ctx, in.GetBuildId(), true, false,
+		sbxtemplate.GetTemplateOpts{MaxSandboxLengthHours: sbx.Config.MaxSandboxLengthHours})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error getting template for resume after checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 

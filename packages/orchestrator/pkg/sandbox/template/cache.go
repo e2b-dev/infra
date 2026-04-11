@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -29,7 +30,8 @@ import (
 // How long to keep the template in the cache since the last access.
 // Should be longer than the maximum possible sandbox lifetime.
 const (
-	templateExpiration = time.Hour * 25
+	templateExpiration       = time.Hour * 25
+	templateExpirationBuffer = time.Hour
 
 	buildCacheTTL           = time.Hour * 25
 	buildCacheDelayEviction = time.Second * 60
@@ -53,6 +55,7 @@ type Cache struct {
 	blockMetrics  blockmetrics.Metrics
 	rootCachePath string
 	peers         peerclient.Resolver
+	extendMu      sync.Mutex
 }
 
 // NewCache initializes a template new cache.
@@ -145,11 +148,17 @@ func (c *Cache) InvalidateAll() {
 	c.buildStore.RemoveCache()
 }
 
+// GetTemplateOpts configures optional behavior for GetTemplate.
+type GetTemplateOpts struct {
+	MaxSandboxLengthHours int64
+}
+
 func (c *Cache) GetTemplate(
 	ctx context.Context,
 	buildID string,
 	isSnapshot bool,
 	isBuilding bool,
+	opts ...GetTemplateOpts,
 ) (Template, error) {
 	ctx, span := tracer.Start(ctx, "get template", trace.WithAttributes(
 		attribute.Bool("is_snapshot", isSnapshot),
@@ -189,7 +198,12 @@ func (c *Cache) GetTemplate(
 		return nil, fmt.Errorf("failed to create template cache from storage: %w", err)
 	}
 
-	return c.getTemplateWithFetch(ctx, storageTemplate), nil
+	var maxLen int64
+	if len(opts) > 0 {
+		maxLen = opts[0].MaxSandboxLengthHours
+	}
+
+	return c.getTemplateWithFetch(ctx, storageTemplate, maxLen), nil
 }
 
 func (c *Cache) AddSnapshot(
@@ -228,7 +242,7 @@ func (c *Cache) AddSnapshot(
 		return fmt.Errorf("failed to create template cache from storage: %w", err)
 	}
 
-	c.getTemplateWithFetch(ctx, storageTemplate)
+	c.getTemplateWithFetch(ctx, storageTemplate, 0)
 
 	return nil
 }
@@ -298,12 +312,21 @@ func cleanDir(path string) error {
 	return nil
 }
 
-func (c *Cache) getTemplateWithFetch(ctx context.Context, tmpl *storageTemplate) Template {
-	t, found := c.cache.GetOrSet(
-		tmpl.Files().CacheKey(),
-		tmpl,
-		ttlcache.WithTTL[string, Template](templateExpiration),
-	)
+func (c *Cache) getTemplateWithFetch(ctx context.Context, tmpl *storageTemplate, maxSandboxLengthHours int64) Template {
+	ttl := templateExpiration
+	if maxSandboxLengthHours > 0 {
+		ttl = max(ttl, time.Duration(maxSandboxLengthHours)*time.Hour+templateExpirationBuffer)
+	}
+
+	key := tmpl.Files().CacheKey()
+
+	c.extendMu.Lock()
+	t, found := c.cache.GetOrSet(key, tmpl, ttlcache.WithTTL[string, Template](ttl))
+	if found && t.TTL() < ttl {
+		// Another team with a shorter max length cached this entry; extend it.
+		c.cache.Set(key, t.Value(), ttl)
+	}
+	c.extendMu.Unlock()
 
 	if !found {
 		missesMetric.Add(ctx, 1)
