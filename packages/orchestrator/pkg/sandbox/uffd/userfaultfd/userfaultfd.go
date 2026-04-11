@@ -239,19 +239,6 @@ func (u *Userfaultfd) Serve(
 			return fmt.Errorf("failed to read: %w", err)
 		}
 
-		// No events were found which is weird since, if we are here,
-		// poll() returned with an event indicating that UFFD had something
-		// for us to read. Log an error and continue
-		if len(removes) == 0 && len(pagefaults) == 0 {
-			eagainCounter.Increase("EAGAIN")
-
-			continue
-		}
-
-		// We successfully read all available UFFD events.
-		noDataCounter.Log(ctx)
-		eagainCounter.Log(ctx)
-
 		// First handle the UFFD_EVENT_REMOVE events. Take the settleRequests write lock to ensure that no
 		// other page or pre-fault operation is running concurrently.
 		// A goroutine from the previous batch or a prefault operation could still be executing
@@ -266,6 +253,21 @@ func (u *Userfaultfd) Serve(
 
 		// Collect deferred pagefaults from previous iteration's goroutines.
 		pagefaults = append(deferred.drain(), pagefaults...)
+
+		// No events were found which is weird since, if we are here,
+		// poll() returned with an event indicating that UFFD had something
+		// for us to read. Log an error and continue.
+		// This check must happen after the settleRequests barrier and deferred drain
+		// so deferred faults from previous iteration are retried promptly.
+		if len(removes) == 0 && len(pagefaults) == 0 {
+			eagainCounter.Increase("EAGAIN")
+
+			continue
+		}
+
+		// We successfully read all available UFFD events.
+		noDataCounter.Log(ctx)
+		eagainCounter.Log(ctx)
 
 		for _, pf := range pagefaults {
 			// We don't handle minor page faults.
