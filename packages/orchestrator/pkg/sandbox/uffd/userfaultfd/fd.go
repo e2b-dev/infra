@@ -12,8 +12,8 @@ package userfaultfd
 #include <sys/ioctl.h>
 
 struct uffd_pagefault {
-	__u64	flags;
-	__u64	address;
+	__u64 flags;
+	__u64 address;
 	__u32 ptid;
 };
 
