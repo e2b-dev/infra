@@ -153,6 +153,14 @@ generate-tests/%:
 migrate:
 	$(MAKE) -C packages/db migrate
 
+.PHONY: prep-cluster
+prep-cluster:
+	$(MAKE) -C packages/shared prep-cluster
+
+.PHONY: seed-db
+seed-db:
+	$(MAKE) -C packages/db seed-db
+
 .PHONY: set-env
 set-env:
 	@ touch .last_used_env
