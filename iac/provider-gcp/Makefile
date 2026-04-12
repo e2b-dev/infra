@@ -209,7 +209,6 @@ move:
 # Login for Terraform (uses application default creds)
 .PHONY: provider-login
 provider-login:
-	gcloud --quiet auth login
+	gcloud --quiet auth login --update-adc
 	gcloud config set project "$(GCP_PROJECT_ID)"
 	gcloud --quiet auth configure-docker "$(GCP_REGION)-docker.pkg.dev"
-	gcloud --quiet auth application-default login
