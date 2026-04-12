@@ -276,8 +276,8 @@ func RemoveFile(ctx context.Context, rootfsPath string, filePath string) error {
 }
 
 // MountOverlayFS mounts an overlay filesystem with the specified layers at the given mount point.
-// Uses the fsconfig interface (kernel 6.8+) which supports unlimited lowerdir entries.
-// Falls back to the traditional mount syscall for older kernels (limited to ~4096 chars for lowerdirs).
+// It requires kernel version 6.8 or later to use the fsconfig interface for overlayfs.
+// Older mount syscall is not used because it has lowerdirs character limit (4096 characters).
 func MountOverlayFS(ctx context.Context, layers []string, mountPoint string) error {
 	_, mountSpan := tracer.Start(ctx, "mount-overlay-fs", trace.WithAttributes(
 		attribute.String("mount", mountPoint),
@@ -285,55 +285,36 @@ func MountOverlayFS(ctx context.Context, layers []string, mountPoint string) err
 	))
 	defer mountSpan.End()
 
-	err := mountOverlayFsconfig(layers, mountPoint)
-	if err == nil {
-		return nil
-	}
-
-	// Fallback to legacy mount for kernels < 6.8
-	return mountOverlayLegacy(layers, mountPoint)
-}
-
-// mountOverlayFsconfig uses the fsconfig/fsopen/fsmount API (kernel 6.8+).
-// Supports unlimited lowerdir entries via repeated "lowerdir+" keys.
-func mountOverlayFsconfig(layers []string, mountPoint string) error {
+	// Open the filesystem for configuration
 	fsfd, err := unix.Fsopen("overlay", unix.FSOPEN_CLOEXEC)
 	if err != nil {
 		return fmt.Errorf("fsopen failed: %w", err)
 	}
 	defer unix.Close(fsfd)
 
+	// Set lowerdir using FSCONFIG_SET_STRING
 	for _, layer := range layers {
+		// https://docs.kernel.org/filesystems/overlayfs.html
 		if err := unix.FsconfigSetString(fsfd, "lowerdir+", layer); err != nil {
 			return fmt.Errorf("fsconfig lowerdir failed: %w", err)
 		}
 	}
 
+	// Finalize configuration
 	if err := unix.FsconfigCreate(fsfd); err != nil {
 		return fmt.Errorf("fsconfig create failed: %w", err)
 	}
 
+	// Create the mount
 	mfd, err := unix.Fsmount(fsfd, 0, 0)
 	if err != nil {
 		return fmt.Errorf("fsmount failed: %w", err)
 	}
 	defer unix.Close(mfd)
 
+	// Mount to target
 	if err := unix.MoveMount(mfd, "", -1, mountPoint, unix.MOVE_MOUNT_F_EMPTY_PATH); err != nil {
 		return fmt.Errorf("move mount failed: %w", err)
-	}
-
-	return nil
-}
-
-// mountOverlayLegacy uses the traditional mount syscall.
-// Limited to ~4096 characters for the lowerdir option string.
-func mountOverlayLegacy(layers []string, mountPoint string) error {
-	lowerdir := strings.Join(layers, ":")
-
-	opts := fmt.Sprintf("lowerdir=%s", lowerdir)
-	if err := unix.Mount("overlay", mountPoint, "overlay", 0, opts); err != nil {
-		return fmt.Errorf("legacy overlay mount failed (opts length %d): %w", len(opts), err)
 	}
 
 	return nil
