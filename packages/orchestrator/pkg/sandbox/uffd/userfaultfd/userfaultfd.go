@@ -357,11 +357,12 @@ func (u *Userfaultfd) faultPage(
 				zap.Error(dataErr),
 			)
 
-			if wakeErr := u.fd.wake(addr, pagesize); wakeErr != nil {
-				u.logger.Error(ctx, "UFFD wake failed", zap.Uintptr("addr", addr), zap.Error(wakeErr))
-			} else {
+			wakeErr := u.fd.wake(addr, pagesize)
+			if wakeErr == nil {
 				return nil
 			}
+
+			u.logger.Error(ctx, "UFFD wake failed", zap.Uintptr("addr", addr), zap.Error(wakeErr))
 		}
 
 		u.faultRetries.Delete(addr)
