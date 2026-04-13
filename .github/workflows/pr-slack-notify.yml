@@ -5,6 +5,24 @@ on:
     types:
       - opened
       - ready_for_review
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number'
+        required: true
+        type: string
+      pr_title:
+        description: 'PR title'
+        required: true
+        type: string
+      pr_url:
+        description: 'PR URL'
+        required: true
+        type: string
+      pr_author:
+        description: 'PR author'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -17,3 +35,7 @@ jobs:
     with:
       channel_id: ${{ vars.SLACK_CHANNEL_ID }}
       review_group: ${{ vars.SLACK_REVIEW_GROUP }}
+      pr_number: ${{ inputs.pr_number || '' }}
+      pr_title: ${{ inputs.pr_title || '' }}
+      pr_url: ${{ inputs.pr_url || '' }}
+      pr_author: ${{ inputs.pr_author || '' }}
