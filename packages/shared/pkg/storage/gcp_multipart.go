@@ -11,9 +11,9 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
-	"os"
 	"sort"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/hashicorp/go-retryablehttp"
@@ -28,13 +28,6 @@ import (
 const (
 	gcpMultipartUploadChunkSize = 50 * 1024 * 1024 // 50MB chunks
 )
-
-var chunkPool = sync.Pool{
-	New: func() any {
-		b := make([]byte, gcpMultipartUploadChunkSize)
-		return &b
-	},
-}
 
 // RetryConfig holds the configuration for retry logic
 type RetryConfig struct {
@@ -279,33 +272,63 @@ func (m *MultipartUploader) completeUpload(ctx context.Context, uploadID string,
 }
 
 func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath string, maxConcurrency int) (int64, error) {
-	// Open file
-	file, err := os.Open(filePath)
+	f, err := syscall.Open(filePath, syscall.O_RDONLY, 0)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer syscall.Close(f)
 
-	// Get file size
-	fileInfo, err := file.Stat()
+	var stat syscall.Stat_t
+	if err := syscall.Fstat(f, &stat); err != nil {
+		return 0, fmt.Errorf("failed to stat file: %w", err)
+	}
+
+	fileSize := stat.Size
+	if fileSize == 0 {
+		return m.uploadEmpty(ctx)
+	}
+
+	data, err := syscall.Mmap(f, 0, int(fileSize), syscall.PROT_READ, syscall.MAP_PRIVATE)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get file info: %w", err)
+		return 0, fmt.Errorf("failed to mmap file: %w", err)
 	}
-	fileSize := fileInfo.Size()
+	defer syscall.Munmap(data)
 
-	// Calculate number of parts
-	numParts := int(math.Ceil(float64(fileSize) / float64(gcpMultipartUploadChunkSize)))
-	if numParts == 0 {
-		numParts = 1 // Always upload at least 1 part, even for empty files
-	}
+	return m.UploadDataInParallel(ctx, data, maxConcurrency)
+}
 
-	// Initiate multipart upload
+func (m *MultipartUploader) uploadEmpty(ctx context.Context) (int64, error) {
 	uploadID, err := m.initiateUpload(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("failed to initiate upload: %w", err)
 	}
 
-	parts, err := m.uploadParts(ctx, maxConcurrency, numParts, fileSize, file, uploadID)
+	etag, err := m.uploadPart(ctx, uploadID, 1, []byte{})
+	if err != nil {
+		return 0, fmt.Errorf("failed to upload empty part: %w", err)
+	}
+
+	if err := m.completeUpload(ctx, uploadID, []Part{{PartNumber: 1, ETag: etag}}); err != nil {
+		return 0, fmt.Errorf("failed to complete upload: %w", err)
+	}
+
+	return 0, nil
+}
+
+func (m *MultipartUploader) UploadDataInParallel(ctx context.Context, data []byte, maxConcurrency int) (int64, error) {
+	fileSize := int64(len(data))
+
+	numParts := int(math.Ceil(float64(fileSize) / float64(gcpMultipartUploadChunkSize)))
+	if numParts == 0 {
+		numParts = 1
+	}
+
+	uploadID, err := m.initiateUpload(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to initiate upload: %w", err)
+	}
+
+	parts, err := m.uploadParts(ctx, maxConcurrency, numParts, data, uploadID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to upload parts: %w", err)
 	}
@@ -317,15 +340,15 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 	return fileSize, nil
 }
 
-func (m *MultipartUploader) uploadParts(ctx context.Context, maxConcurrency int, numParts int, fileSize int64, file *os.File, uploadID string) ([]Part, error) {
-	g, ctx := errgroup.WithContext(ctx) // Context ONLY for waitgroup goroutines; canceled after errgroup finishes
-	g.SetLimit(maxConcurrency)          // Limit concurrent goroutines
+func (m *MultipartUploader) uploadParts(ctx context.Context, maxConcurrency int, numParts int, data []byte, uploadID string) ([]Part, error) {
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(maxConcurrency)
 
-	// Thread-safe map to collect parts
 	var partsMu sync.Mutex
 	parts := make([]Part, numParts)
 
-	// Upload each part concurrently
+	fileSize := int64(len(data))
+
 	for partNumber := 1; partNumber <= numParts; partNumber++ {
 		g.Go(func() error {
 			select {
@@ -335,22 +358,14 @@ func (m *MultipartUploader) uploadParts(ctx context.Context, maxConcurrency int,
 			}
 
 			offset := int64(partNumber-1) * gcpMultipartUploadChunkSize
-			chunkSize := gcpMultipartUploadChunkSize
-			if offset+int64(chunkSize) > fileSize {
-				chunkSize = int(fileSize - offset)
+			end := offset + gcpMultipartUploadChunkSize
+			if end > fileSize {
+				end = fileSize
 			}
 
-			poolBuf := chunkPool.Get().(*[]byte)
-			chunk := (*poolBuf)[:chunkSize]
-
-			_, err := file.ReadAt(chunk, offset)
-			if err != nil {
-				chunkPool.Put(poolBuf)
-				return fmt.Errorf("failed to read chunk for part %d: %w", partNumber, err)
-			}
+			chunk := data[offset:end]
 
 			etag, err := m.uploadPart(ctx, uploadID, partNumber, chunk)
-			chunkPool.Put(poolBuf)
 			if err != nil {
 				return fmt.Errorf("failed to upload part %d: %w", partNumber, err)
 			}
@@ -366,7 +381,6 @@ func (m *MultipartUploader) uploadParts(ctx context.Context, maxConcurrency int,
 		})
 	}
 
-	// Wait for all parts to complete or first error
 	if err := g.Wait(); err != nil {
 		return nil, fmt.Errorf("upload failed: %w", err)
 	}
