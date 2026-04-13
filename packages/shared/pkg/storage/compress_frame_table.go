@@ -253,8 +253,8 @@ func (ft *FrameTable) Serialize(w io.Writer) error {
 		return err
 	}
 
-	for i := range n {
-		if err := binary.Write(w, binary.LittleEndian, ft.entries[i]); err != nil {
+	if n > 0 {
+		if err := binary.Write(w, binary.LittleEndian, ft.entries); err != nil {
 			return err
 		}
 	}
@@ -289,10 +289,11 @@ func DeserializeFrameTable(r io.Reader) (*FrameTable, error) {
 	}
 
 	entries := make([]frameEntry, n)
-	for i := range n {
-		if err := binary.Read(r, binary.LittleEndian, &entries[i]); err != nil {
-			return nil, fmt.Errorf("read frame entry %d: %w", i, err)
-		}
+	if err := binary.Read(r, binary.LittleEndian, entries); err != nil {
+		return nil, fmt.Errorf("read frame entries: %w", err)
+	}
+
+	for i := range entries {
 		if entries[i].SizeU <= 0 || entries[i].SizeC <= 0 {
 			return nil, fmt.Errorf("frame %d has zero or negative size: SizeU=%d SizeC=%d", i, entries[i].SizeU, entries[i].SizeC)
 		}

@@ -147,7 +147,7 @@ func (c *Chunker) getOrCreateSession(ctx context.Context, off, length int64, ft 
 	// Detach from the caller's cancel signal so the shared fetch goroutine
 	// continues even if the first caller's context is cancelled. Trace/value
 	// context is preserved for metrics.
-	go c.runFetch(context.WithoutCancel(ctx), s, off, ft)
+	go c.runFetch(context.WithoutCancel(ctx), s, ft)
 
 	return s, false
 }
@@ -179,7 +179,7 @@ func (c *Chunker) fetch(ctx context.Context, off int64, ft *storage.FrameTable) 
 }
 
 // runFetch fetches data from storage into the mmap cache. Runs in a background goroutine.
-func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, offsetU int64, ft *storage.FrameTable) {
+func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, ft *storage.FrameTable) {
 	ctx, cancel := context.WithTimeout(ctx, c.fetchTimeout)
 	defer cancel()
 
@@ -210,7 +210,7 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, offsetU int64, 
 	}
 	fetchTimer := c.metrics.RemoteReadsTimerFactory.Begin()
 
-	readBytes, err := c.progressiveRead(ctx, s, mmapSlice, offsetU, ft)
+	readBytes, err := c.progressiveRead(ctx, s, mmapSlice, ft)
 	if err != nil {
 		fetchTimer.RecordRaw(ctx, readBytes, attrs.remoteFailure)
 
@@ -228,10 +228,10 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, offsetU int64, 
 	s.setDone()
 }
 
-func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, mmapSlice []byte, offsetU int64, ft *storage.FrameTable) (totalRead int64, err error) {
-	reader, err := c.upstream.OpenRangeReader(ctx, offsetU, s.chunkLen, ft)
+func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, mmapSlice []byte, ft *storage.FrameTable) (totalRead int64, err error) {
+	reader, err := c.upstream.OpenRangeReader(ctx, s.chunkOff, s.chunkLen, ft)
 	if err != nil {
-		return 0, fmt.Errorf("failed to open range reader at %d: %w", offsetU, err)
+		return 0, fmt.Errorf("failed to open range reader at %d: %w", s.chunkOff, err)
 	}
 	defer func() {
 		if closeErr := reader.Close(); closeErr != nil && err == nil {
@@ -260,7 +260,7 @@ func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, mmapSlic
 				break // all bytes received; trailing EOF is expected
 			}
 
-			return totalRead, fmt.Errorf("failed reading at offset %d after %d bytes: %w", offsetU, totalRead, readErr)
+			return totalRead, fmt.Errorf("failed reading at offset %d after %d bytes: %w", s.chunkOff, totalRead, readErr)
 		}
 	}
 

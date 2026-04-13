@@ -76,23 +76,17 @@ func (s *fetchSession) registerAndWait(ctx context.Context, blockOff int64) erro
 		// setDone sets bytesReady=chunkLen, so terminated() with bytesReady < endByte
 		// means fetchErr != nil. Check cache in case a prior session already fetched this block.
 		if s.terminated() {
-			fetchErr := s.fetchErr
-			s.mu.Unlock()
-
-			cached := s.cache.isCached(blockOff, blockSize)
-
-			s.mu.Lock()
-
-			if cached {
+			// isCached reads an atomic bitset — safe to call under mu.
+			if s.cache.isCached(blockOff, blockSize) {
 				return nil
 			}
 
-			if fetchErr == nil {
+			if s.fetchErr == nil {
 				return fmt.Errorf("fetch session terminated without error but block %d not cached (bytesReady=%d, endByte=%d)",
 					blockOff/blockSize, s.bytesReady.Load(), endByte)
 			}
 
-			return fmt.Errorf("fetch failed: %w", fetchErr)
+			return fmt.Errorf("fetch failed: %w", s.fetchErr)
 		}
 
 		if ctx.Err() != nil {
