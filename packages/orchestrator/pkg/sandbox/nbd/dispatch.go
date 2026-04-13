@@ -23,6 +23,10 @@ var (
 		metric.WithDescription("Duration of NBD dispatch handler ReadAt calls to the backend."),
 		metric.WithUnit("ms"),
 	))
+	nbdReadsInFlight = utils.Must(meter.Int64UpDownCounter("orchestrator.nbd.dispatch.reads_in_flight",
+		metric.WithDescription("Number of NBD read requests currently waiting for a response. A sustained high value indicates reads stuck in kernel I/O."),
+		metric.WithUnit("{read}"),
+	))
 	nbdReadSuccess = metric.WithAttributeSet(attribute.NewSet(attribute.Bool("success", true)))
 	nbdReadFailure = metric.WithAttributeSet(attribute.NewSet(attribute.Bool("success", false)))
 )
@@ -260,6 +264,8 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 		errchan := make(chan error, 1)
 		data := make([]byte, length)
 
+		nbdReadsInFlight.Add(ctx, 1)
+
 		go func() {
 			start := time.Now()
 			_, err := d.prov.ReadAt(ctx, data, int64(from))
@@ -273,13 +279,17 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 		}()
 
 		// Wait until either the ReadAt completed, or our context is cancelled...
+		var readErr error
 		select {
 		case <-ctx.Done():
+			readErr = ctx.Err()
+		case readErr = <-errchan:
+		}
+
+		nbdReadsInFlight.Add(ctx, -1)
+
+		if readErr != nil {
 			return d.writeResponse(1, handle, []byte{})
-		case err := <-errchan:
-			if err != nil {
-				return d.writeResponse(1, handle, []byte{})
-			}
 		}
 
 		// read was successful
