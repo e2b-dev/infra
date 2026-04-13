@@ -6,7 +6,7 @@
 -- This projection should be removed once we migrate the table's ORDER BY to
 -- (sandbox_team_id, sandbox_id, timestamp) via a CREATE + RENAME swap.
 ALTER TABLE sandbox_events_local
-    ADD PROJECTION proj_team_id (
+    ADD PROJECTION IF NOT EXISTS proj_team_id (
         SELECT * ORDER BY sandbox_team_id, sandbox_id, timestamp
     );
 
