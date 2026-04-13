@@ -53,6 +53,7 @@ type DeleteTemplateRow struct {
 
 // Deletes a template and returns alias cache keys and active builds.
 // Both are captured via CTEs before the cascade delete removes them.
+// Active builds are returned so the caller can stop them on the orchestrator.
 func (q *Queries) DeleteTemplate(ctx context.Context, arg DeleteTemplateParams) ([]DeleteTemplateRow, error) {
 	rows, err := q.db.Query(ctx, deleteTemplate, arg.TemplateID, arg.TeamID)
 	if err != nil {

@@ -25,6 +25,8 @@ func (a *APIStore) deleteSnapshot(ctx context.Context, sandboxID string, teamID 
 		return err
 	}
 
+	// Snapshot builds are not tracked in active_template_builds, so there are
+	// no in-progress builds to cancel on the orchestrator here.
 	deleteRows, dbErr := a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
 		TeamID:     teamID,
 		TemplateID: snapshot.TemplateID,

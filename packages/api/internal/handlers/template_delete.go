@@ -129,7 +129,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	c.Status(http.StatusNoContent)
 }
 
-// cancelActiveBuilds stops in-progress builds on the orchestrator and marks them as failed in the DB.
+// cancelActiveBuilds stops in-progress builds on the orchestrator.
 func (a *APIStore) cancelActiveBuilds(ctx context.Context, templateID string, builds []queries.DeleteTemplateRow) {
 	if len(builds) == 0 {
 		return

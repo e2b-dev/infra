@@ -1,6 +1,7 @@
 -- name: DeleteTemplate :many
 -- Deletes a template and returns alias cache keys and active builds.
 -- Both are captured via CTEs before the cascade delete removes them.
+-- Active builds are returned so the caller can stop them on the orchestrator.
 WITH alias_keys AS (
   SELECT CASE
     WHEN namespace IS NOT NULL THEN namespace || '/' || alias
