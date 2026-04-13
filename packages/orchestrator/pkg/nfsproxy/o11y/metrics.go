@@ -25,7 +25,8 @@ var (
 
 // Metrics records call counts and durations.
 func Metrics(skipOps map[string]bool) middleware.Interceptor {
-	return func(ctx context.Context, op string, _ []any, next func(context.Context) error) error {
+	return func(ctx context.Context, req middleware.Request, next func(context.Context) error) error {
+		op := req.Op()
 		if skipOps[op] {
 			return next(ctx)
 		}

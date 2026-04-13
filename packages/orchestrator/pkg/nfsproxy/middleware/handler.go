@@ -30,7 +30,7 @@ func (w *wrappedHandler) Mount(ctx context.Context, conn net.Conn, req nfs.Mount
 	var auth []nfs.AuthFlavor
 
 	err := w.interceptors.Exec(
-		ctx, "Handler.Mount", []any{conn.RemoteAddr().String(), string(req.Dirpath)},
+		ctx, HandlerMountRequest{RemoteAddr: conn.RemoteAddr().String(), Dirpath: string(req.Dirpath)},
 		func(ctx context.Context) error {
 			status, fs, auth = w.inner.Mount(ctx, conn, req)
 			if status != nfs.MountStatusOk {
@@ -55,7 +55,7 @@ func (w *wrappedHandler) Mount(ctx context.Context, conn net.Conn, req nfs.Mount
 }
 
 func (w *wrappedHandler) Change(ctx context.Context, fs billy.Filesystem) (change billy.Change) {
-	err := w.interceptors.Exec(ctx, "Handler.Change", nil,
+	err := w.interceptors.Exec(ctx, HandlerChangeRequest{},
 		func(ctx context.Context) error {
 			change = w.inner.Change(ctx, fs)
 
@@ -71,7 +71,7 @@ func (w *wrappedHandler) Change(ctx context.Context, fs billy.Filesystem) (chang
 }
 
 func (w *wrappedHandler) FSStat(ctx context.Context, fs billy.Filesystem, stat *nfs.FSStat) error {
-	return w.interceptors.Exec(ctx, "Handler.FSStat", nil,
+	return w.interceptors.Exec(ctx, HandlerFSStatRequest{},
 		func(ctx context.Context) error {
 			return w.inner.FSStat(ctx, fs, stat)
 		},
@@ -81,7 +81,7 @@ func (w *wrappedHandler) FSStat(ctx context.Context, fs billy.Filesystem, stat *
 func (w *wrappedHandler) ToHandle(ctx context.Context, fs billy.Filesystem, path []string) []byte {
 	var result []byte
 
-	err := w.interceptors.Exec(ctx, "Handler.ToHandle", []any{path},
+	err := w.interceptors.Exec(ctx, HandlerToHandleRequest{Path: path},
 		func(ctx context.Context) error {
 			result = w.inner.ToHandle(ctx, fs, path)
 
@@ -100,7 +100,7 @@ func (w *wrappedHandler) FromHandle(ctx context.Context, fh []byte) (billy.Files
 	var fs billy.Filesystem
 	var paths []string
 
-	err := w.interceptors.Exec(ctx, "Handler.FromHandle", nil,
+	err := w.interceptors.Exec(ctx, HandlerFromHandleRequest{},
 		func(ctx context.Context) error {
 			var err error
 			fs, paths, err = w.inner.FromHandle(ctx, fh)
@@ -116,7 +116,7 @@ func (w *wrappedHandler) FromHandle(ctx context.Context, fh []byte) (billy.Files
 }
 
 func (w *wrappedHandler) InvalidateHandle(ctx context.Context, fs billy.Filesystem, fh []byte) error {
-	return w.interceptors.Exec(ctx, "Handler.InvalidateHandle", nil,
+	return w.interceptors.Exec(ctx, HandlerInvalidateHandleRequest{},
 		func(ctx context.Context) error {
 			return w.inner.InvalidateHandle(ctx, fs, fh)
 		})

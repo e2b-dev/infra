@@ -18,6 +18,14 @@ import (
 
 var errTest = errors.New("test error")
 
+// testRequest is a simple request type for testing the chain.
+type testRequest struct {
+	op   string
+	data string
+}
+
+func (r testRequest) Op() string { return r.op }
+
 // TestChain_ExecutesInterceptorsInOrder verifies that interceptors are executed
 // in the order they were added to the chain.
 func TestChain_ExecutesInterceptorsInOrder(t *testing.T) {
@@ -25,7 +33,7 @@ func TestChain_ExecutesInterceptorsInOrder(t *testing.T) {
 
 	var order []int
 
-	interceptor1 := func(ctx context.Context, _ string, _ []any, next func(context.Context) error) error {
+	interceptor1 := func(ctx context.Context, _ middleware.Request, next func(context.Context) error) error {
 		order = append(order, 1)
 		err := next(ctx)
 		order = append(order, -1)
@@ -33,7 +41,7 @@ func TestChain_ExecutesInterceptorsInOrder(t *testing.T) {
 		return err
 	}
 
-	interceptor2 := func(ctx context.Context, _ string, _ []any, next func(context.Context) error) error {
+	interceptor2 := func(ctx context.Context, _ middleware.Request, next func(context.Context) error) error {
 		order = append(order, 2)
 		err := next(ctx)
 		order = append(order, -2)
@@ -43,7 +51,7 @@ func TestChain_ExecutesInterceptorsInOrder(t *testing.T) {
 
 	chain := middleware.NewChain(interceptor1, interceptor2)
 
-	err := chain.Exec(context.Background(), "test.op", nil, func(_ context.Context) error {
+	err := chain.Exec(context.Background(), testRequest{op: "test.op"}, func(_ context.Context) error {
 		order = append(order, 0)
 
 		return nil
@@ -60,7 +68,7 @@ func TestChain_PropagatesErrors(t *testing.T) {
 
 	var interceptorSawError bool
 
-	interceptor := func(ctx context.Context, _ string, _ []any, next func(context.Context) error) error {
+	interceptor := func(ctx context.Context, _ middleware.Request, next func(context.Context) error) error {
 		err := next(ctx)
 		interceptorSawError = err != nil
 
@@ -69,7 +77,7 @@ func TestChain_PropagatesErrors(t *testing.T) {
 
 	chain := middleware.NewChain(interceptor)
 
-	err := chain.Exec(context.Background(), "test.op", nil, func(_ context.Context) error {
+	err := chain.Exec(context.Background(), testRequest{op: "test.op"}, func(_ context.Context) error {
 		return errTest
 	})
 
@@ -84,7 +92,7 @@ func TestChain_InterceptorCanModifyError(t *testing.T) {
 
 	wrappedErr := errors.New("wrapped error")
 
-	interceptor := func(ctx context.Context, _ string, _ []any, next func(context.Context) error) error {
+	interceptor := func(ctx context.Context, _ middleware.Request, next func(context.Context) error) error {
 		err := next(ctx)
 		if err != nil {
 			return wrappedErr
@@ -95,38 +103,37 @@ func TestChain_InterceptorCanModifyError(t *testing.T) {
 
 	chain := middleware.NewChain(interceptor)
 
-	err := chain.Exec(context.Background(), "test.op", nil, func(_ context.Context) error {
+	err := chain.Exec(context.Background(), testRequest{op: "test.op"}, func(_ context.Context) error {
 		return errTest
 	})
 
 	require.ErrorIs(t, err, wrappedErr)
 }
 
-// TestChain_PassesOpAndArgs verifies that the operation name and arguments
-// are correctly passed to interceptors.
-func TestChain_PassesOpAndArgs(t *testing.T) {
+// TestChain_PassesRequest verifies that the request is correctly passed to interceptors.
+func TestChain_PassesRequest(t *testing.T) {
 	t.Parallel()
 
-	var capturedOp string
-	var capturedArgs []any
+	var capturedReq middleware.Request
 
-	interceptor := func(ctx context.Context, op string, args []any, next func(context.Context) error) error {
-		capturedOp = op
-		capturedArgs = args
+	interceptor := func(ctx context.Context, req middleware.Request, next func(context.Context) error) error {
+		capturedReq = req
 
 		return next(ctx)
 	}
 
 	chain := middleware.NewChain(interceptor)
-	args := []any{"arg1", 42, true}
+	req := testRequest{op: "File.Read", data: "test-data"}
 
-	err := chain.Exec(context.Background(), "File.Read", args, func(_ context.Context) error {
+	err := chain.Exec(context.Background(), req, func(_ context.Context) error {
 		return nil
 	})
 
 	require.NoError(t, err)
-	assert.Equal(t, "File.Read", capturedOp)
-	assert.Equal(t, args, capturedArgs)
+	assert.Equal(t, "File.Read", capturedReq.Op())
+	tr, ok := capturedReq.(testRequest)
+	require.True(t, ok)
+	assert.Equal(t, "test-data", tr.data)
 }
 
 // TestChain_EmptyChain verifies that an empty chain just executes the function.
@@ -136,7 +143,7 @@ func TestChain_EmptyChain(t *testing.T) {
 	chain := middleware.NewChain()
 	called := false
 
-	err := chain.Exec(context.Background(), "test.op", nil, func(_ context.Context) error {
+	err := chain.Exec(context.Background(), testRequest{op: "test.op"}, func(_ context.Context) error {
 		called = true
 
 		return nil
@@ -166,10 +173,12 @@ func TestWrappedFile_Write(t *testing.T) {
 	mockFile.EXPECT().Write([]byte("hello")).Return(5, nil)
 
 	var interceptorCalled bool
-	interceptor := func(ctx context.Context, op string, args []any, next func(context.Context) error) error {
+	interceptor := func(ctx context.Context, req middleware.Request, next func(context.Context) error) error {
 		interceptorCalled = true
-		assert.Equal(t, "File.Write", op)
-		assert.Len(t, args, 1)
+		assert.Equal(t, "File.Write", req.Op())
+		writeReq, ok := req.(middleware.FileWriteRequest)
+		assert.True(t, ok)
+		assert.Equal(t, []byte("hello"), writeReq.Data)
 
 		return next(ctx)
 	}
@@ -212,9 +221,9 @@ func TestWrappedFile_Read(t *testing.T) {
 	}).Return(5, nil)
 
 	var interceptorCalled bool
-	interceptor := func(ctx context.Context, op string, _ []any, next func(context.Context) error) error {
+	interceptor := func(ctx context.Context, req middleware.Request, next func(context.Context) error) error {
 		interceptorCalled = true
-		assert.Equal(t, "File.Read", op)
+		assert.Equal(t, "File.Read", req.Op())
 
 		return next(ctx)
 	}
@@ -240,9 +249,9 @@ func TestWrappedFile_ReadAt(t *testing.T) {
 		copy(p, "world")
 	}).Return(5, nil)
 
-	var capturedArgs []any
-	interceptor := func(ctx context.Context, _ string, args []any, next func(context.Context) error) error {
-		capturedArgs = args
+	var capturedReq middleware.Request
+	interceptor := func(ctx context.Context, req middleware.Request, next func(context.Context) error) error {
+		capturedReq = req
 
 		return next(ctx)
 	}
@@ -255,8 +264,9 @@ func TestWrappedFile_ReadAt(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, 5, n)
-	assert.Len(t, capturedArgs, 2)
-	assert.Equal(t, int64(10), capturedArgs[1])
+	readAtReq, ok := capturedReq.(middleware.FileReadAtRequest)
+	require.True(t, ok)
+	assert.Equal(t, int64(10), readAtReq.Offset)
 }
 
 // TestWrappedFile_Seek verifies that Seek calls the inner file correctly.
@@ -283,9 +293,9 @@ func TestWrappedFile_Close(t *testing.T) {
 	mockFile.EXPECT().Close().Return(nil)
 
 	var interceptorCalled bool
-	interceptor := func(ctx context.Context, op string, _ []any, next func(context.Context) error) error {
+	interceptor := func(ctx context.Context, req middleware.Request, next func(context.Context) error) error {
 		interceptorCalled = true
-		assert.Equal(t, "File.Close", op)
+		assert.Equal(t, "File.Close", req.Op())
 
 		return next(ctx)
 	}
@@ -336,9 +346,9 @@ func TestWrappedFile_Truncate(t *testing.T) {
 	mockFile := nfsproxymocks.NewMockFile(t)
 	mockFile.EXPECT().Truncate(int64(1024)).Return(nil)
 
-	var capturedArgs []any
-	interceptor := func(ctx context.Context, _ string, args []any, next func(context.Context) error) error {
-		capturedArgs = args
+	var capturedReq middleware.Request
+	interceptor := func(ctx context.Context, req middleware.Request, next func(context.Context) error) error {
+		capturedReq = req
 
 		return next(ctx)
 	}
@@ -349,7 +359,9 @@ func TestWrappedFile_Truncate(t *testing.T) {
 	err := wrapped.Truncate(1024)
 
 	require.NoError(t, err)
-	assert.Equal(t, []any{int64(1024)}, capturedArgs)
+	truncReq, ok := capturedReq.(middleware.FileTruncateRequest)
+	require.True(t, ok)
+	assert.Equal(t, int64(1024), truncReq.Size)
 }
 
 // TestWrappedFile_Name verifies that Name returns the inner file's name
@@ -389,10 +401,12 @@ func TestWrappedFS_Create(t *testing.T) {
 	mockFS.EXPECT().Create("/test.txt").Return(mockFile, nil)
 
 	var interceptorCalled bool
-	interceptor := func(ctx context.Context, op string, args []any, next func(context.Context) error) error {
+	interceptor := func(ctx context.Context, req middleware.Request, next func(context.Context) error) error {
 		interceptorCalled = true
-		assert.Equal(t, "FS.Create", op)
-		assert.Equal(t, []any{"/test.txt"}, args)
+		assert.Equal(t, "FS.Create", req.Op())
+		createReq, ok := req.(middleware.FSCreateRequest)
+		assert.True(t, ok)
+		assert.Equal(t, "/test.txt", createReq.Filename)
 
 		return next(ctx)
 	}
@@ -449,9 +463,9 @@ func TestWrappedFS_OpenFile(t *testing.T) {
 	mockFile := nfsproxymocks.NewMockFile(t)
 	mockFS.EXPECT().OpenFile("/test.txt", os.O_RDWR, os.FileMode(0o644)).Return(mockFile, nil)
 
-	var capturedArgs []any
-	interceptor := func(ctx context.Context, _ string, args []any, next func(context.Context) error) error {
-		capturedArgs = args
+	var capturedReq middleware.Request
+	interceptor := func(ctx context.Context, req middleware.Request, next func(context.Context) error) error {
+		capturedReq = req
 
 		return next(ctx)
 	}
@@ -463,9 +477,11 @@ func TestWrappedFS_OpenFile(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.NotNil(t, file)
-	assert.Equal(t, "/test.txt", capturedArgs[0])
-	assert.Equal(t, os.O_RDWR, capturedArgs[1])
-	assert.Equal(t, os.FileMode(0o644), capturedArgs[2])
+	openFileReq, ok := capturedReq.(middleware.FSOpenFileRequest)
+	require.True(t, ok)
+	assert.Equal(t, "/test.txt", openFileReq.Filename)
+	assert.Equal(t, os.O_RDWR, openFileReq.Flag)
+	assert.Equal(t, os.FileMode(0o644), openFileReq.Perm)
 }
 
 // TestWrappedFS_Stat verifies that Stat calls the inner filesystem.
@@ -493,9 +509,9 @@ func TestWrappedFS_Rename(t *testing.T) {
 	mockFS := nfsproxymocks.NewMockFilesystem(t)
 	mockFS.EXPECT().Rename("/old.txt", "/new.txt").Return(nil)
 
-	var capturedArgs []any
-	interceptor := func(ctx context.Context, _ string, args []any, next func(context.Context) error) error {
-		capturedArgs = args
+	var capturedReq middleware.Request
+	interceptor := func(ctx context.Context, req middleware.Request, next func(context.Context) error) error {
+		capturedReq = req
 
 		return next(ctx)
 	}
@@ -506,7 +522,10 @@ func TestWrappedFS_Rename(t *testing.T) {
 	err := wrapped.Rename("/old.txt", "/new.txt")
 
 	require.NoError(t, err)
-	assert.Equal(t, []any{"/old.txt", "/new.txt"}, capturedArgs)
+	renameReq, ok := capturedReq.(middleware.FSRenameRequest)
+	require.True(t, ok)
+	assert.Equal(t, "/old.txt", renameReq.OldPath)
+	assert.Equal(t, "/new.txt", renameReq.NewPath)
 }
 
 // TestWrappedFS_Remove verifies that Remove calls the inner filesystem.
@@ -694,9 +713,9 @@ func TestWrappedChange_Chmod(t *testing.T) {
 	mockChange := nfsproxymocks.NewMockChange(t)
 	mockChange.EXPECT().Chmod("/test.txt", os.FileMode(0o755)).Return(nil)
 
-	var capturedArgs []any
-	interceptor := func(ctx context.Context, _ string, args []any, next func(context.Context) error) error {
-		capturedArgs = args
+	var capturedReq middleware.Request
+	interceptor := func(ctx context.Context, req middleware.Request, next func(context.Context) error) error {
+		capturedReq = req
 
 		return next(ctx)
 	}
@@ -707,8 +726,10 @@ func TestWrappedChange_Chmod(t *testing.T) {
 	err := wrapped.Chmod("/test.txt", 0o755)
 
 	require.NoError(t, err)
-	assert.Equal(t, "/test.txt", capturedArgs[0])
-	assert.Equal(t, os.FileMode(0o755), capturedArgs[1])
+	chmodReq, ok := capturedReq.(middleware.ChangeChmodRequest)
+	require.True(t, ok)
+	assert.Equal(t, "/test.txt", chmodReq.Name)
+	assert.Equal(t, os.FileMode(0o755), chmodReq.Mode)
 }
 
 // TestWrappedChange_Lchown verifies that Lchown calls the inner change.
@@ -750,9 +771,9 @@ func TestWrappedChange_Chtimes(t *testing.T) {
 	mtime := time.Now().Add(-time.Hour)
 	mockChange.EXPECT().Chtimes("/test.txt", atime, mtime).Return(nil)
 
-	var capturedArgs []any
-	interceptor := func(ctx context.Context, _ string, args []any, next func(context.Context) error) error {
-		capturedArgs = args
+	var capturedReq middleware.Request
+	interceptor := func(ctx context.Context, req middleware.Request, next func(context.Context) error) error {
+		capturedReq = req
 
 		return next(ctx)
 	}
@@ -763,9 +784,11 @@ func TestWrappedChange_Chtimes(t *testing.T) {
 	err := wrapped.Chtimes("/test.txt", atime, mtime)
 
 	require.NoError(t, err)
-	assert.Equal(t, "/test.txt", capturedArgs[0])
-	assert.Equal(t, atime, capturedArgs[1])
-	assert.Equal(t, mtime, capturedArgs[2])
+	chtimesReq, ok := capturedReq.(middleware.ChangeChtimesRequest)
+	require.True(t, ok)
+	assert.Equal(t, "/test.txt", chtimesReq.Name)
+	assert.Equal(t, atime, chtimesReq.ATime)
+	assert.Equal(t, mtime, chtimesReq.MTime)
 }
 
 // TestWrappedFS_NestedOperations verifies that operations on wrapped files
@@ -780,8 +803,8 @@ func TestWrappedFS_NestedOperations(t *testing.T) {
 	mockFile.EXPECT().Close().Return(nil)
 
 	var ops []string
-	interceptor := func(ctx context.Context, op string, _ []any, next func(context.Context) error) error {
-		ops = append(ops, op)
+	interceptor := func(ctx context.Context, req middleware.Request, next func(context.Context) error) error {
+		ops = append(ops, req.Op())
 
 		return next(ctx)
 	}
@@ -866,8 +889,8 @@ func TestWrappedHandler_FromHandle_PreservesInterceptorChain(t *testing.T) {
 
 	// Track interceptor calls
 	var interceptorOps []string
-	interceptor := func(ctx context.Context, op string, _ []any, next func(context.Context) error) error {
-		interceptorOps = append(interceptorOps, op)
+	interceptor := func(ctx context.Context, req middleware.Request, next func(context.Context) error) error {
+		interceptorOps = append(interceptorOps, req.Op())
 
 		return next(ctx)
 	}

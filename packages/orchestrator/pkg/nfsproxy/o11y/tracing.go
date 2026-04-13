@@ -14,12 +14,13 @@ import (
 func Tracing(skipOps map[string]bool) middleware.Interceptor {
 	tracer := otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/o11y")
 
-	return func(ctx context.Context, op string, args []any, next func(context.Context) error) (err error) {
+	return func(ctx context.Context, req middleware.Request, next func(context.Context) error) (err error) {
+		op := req.Op()
 		if skipOps[op] {
 			return next(ctx)
 		}
 
-		ctx, span := tracer.Start(ctx, op, trace.WithAttributes(argsToAttrs(op, args)...))
+		ctx, span := tracer.Start(ctx, op, trace.WithAttributes(argsToAttrs(req)...))
 		defer func() {
 			if err != nil {
 				span.RecordError(err)

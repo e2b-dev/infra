@@ -3,7 +3,7 @@ package middleware
 import "context"
 
 // Interceptor wraps an operation, calling next() to proceed to the next interceptor or the actual operation.
-type Interceptor func(ctx context.Context, op string, args []any, next func(context.Context) error) error
+type Interceptor func(ctx context.Context, req Request, next func(context.Context) error) error
 
 // Chain holds the interceptor stack.
 type Chain struct {
@@ -16,13 +16,13 @@ func NewChain(interceptors ...Interceptor) *Chain {
 }
 
 // Exec runs the operation through all interceptors.
-func (c *Chain) Exec(ctx context.Context, op string, args []any, fn func(context.Context) error) error {
+func (c *Chain) Exec(ctx context.Context, req Request, fn func(context.Context) error) error {
 	wrapped := fn
 	for i := len(c.interceptors) - 1; i >= 0; i-- {
 		interceptor := c.interceptors[i]
 		inner := wrapped
 		wrapped = func(ctx context.Context) error {
-			return interceptor(ctx, op, args, inner)
+			return interceptor(ctx, req, inner)
 		}
 	}
 

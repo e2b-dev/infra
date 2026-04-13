@@ -28,7 +28,7 @@ func (w *wrappedFile) Name() string {
 }
 
 func (w *wrappedFile) Write(p []byte) (n int, err error) {
-	err = w.chain.Exec(w.ctx, "File.Write", []any{p},
+	err = w.chain.Exec(w.ctx, FileWriteRequest{Data: p},
 		func(_ context.Context) error {
 			n, err = w.inner.Write(p)
 
@@ -39,7 +39,7 @@ func (w *wrappedFile) Write(p []byte) (n int, err error) {
 }
 
 func (w *wrappedFile) Read(p []byte) (n int, err error) {
-	err = w.chain.Exec(w.ctx, "File.Read", []any{p},
+	err = w.chain.Exec(w.ctx, FileReadRequest{Buffer: p},
 		func(_ context.Context) error {
 			n, err = w.inner.Read(p)
 
@@ -50,7 +50,7 @@ func (w *wrappedFile) Read(p []byte) (n int, err error) {
 }
 
 func (w *wrappedFile) ReadAt(p []byte, off int64) (n int, err error) {
-	err = w.chain.Exec(w.ctx, "File.ReadAt", []any{p, off},
+	err = w.chain.Exec(w.ctx, FileReadAtRequest{Buffer: p, Offset: off},
 		func(_ context.Context) error {
 			n, err = w.inner.ReadAt(p, off)
 
@@ -61,7 +61,7 @@ func (w *wrappedFile) ReadAt(p []byte, off int64) (n int, err error) {
 }
 
 func (w *wrappedFile) Seek(offset int64, whence int) (n int64, err error) {
-	err = w.chain.Exec(w.ctx, "File.Seek", []any{offset, whence},
+	err = w.chain.Exec(w.ctx, FileSeekRequest{Offset: offset, Whence: whence},
 		func(_ context.Context) error {
 			n, err = w.inner.Seek(offset, whence)
 
@@ -72,28 +72,28 @@ func (w *wrappedFile) Seek(offset int64, whence int) (n int64, err error) {
 }
 
 func (w *wrappedFile) Close() error {
-	return w.chain.Exec(w.ctx, "File.Close", nil,
+	return w.chain.Exec(w.ctx, FileCloseRequest{},
 		func(_ context.Context) error {
 			return w.inner.Close()
 		})
 }
 
 func (w *wrappedFile) Lock() error {
-	return w.chain.Exec(w.ctx, "File.Lock", nil,
+	return w.chain.Exec(w.ctx, FileLockRequest{},
 		func(_ context.Context) error {
 			return w.inner.Lock()
 		})
 }
 
 func (w *wrappedFile) Unlock() error {
-	return w.chain.Exec(w.ctx, "File.Unlock", nil,
+	return w.chain.Exec(w.ctx, FileUnlockRequest{},
 		func(_ context.Context) error {
 			return w.inner.Unlock()
 		})
 }
 
 func (w *wrappedFile) Truncate(size int64) error {
-	return w.chain.Exec(w.ctx, "File.Truncate", []any{size},
+	return w.chain.Exec(w.ctx, FileTruncateRequest{Size: size},
 		func(_ context.Context) error {
 			return w.inner.Truncate(size)
 		})

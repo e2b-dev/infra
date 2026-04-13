@@ -25,7 +25,7 @@ func WrapFilesystem(ctx context.Context, fs billy.Filesystem, chain *Chain) bill
 }
 
 func (w *wrappedFS) Create(filename string) (f billy.File, err error) {
-	err = w.chain.Exec(w.ctx, "FS.Create", []any{filename},
+	err = w.chain.Exec(w.ctx, FSCreateRequest{Filename: filename},
 		func(_ context.Context) error {
 			f, err = w.inner.Create(filename)
 
@@ -36,7 +36,7 @@ func (w *wrappedFS) Create(filename string) (f billy.File, err error) {
 }
 
 func (w *wrappedFS) Open(filename string) (f billy.File, err error) {
-	err = w.chain.Exec(w.ctx, "FS.Open", []any{filename},
+	err = w.chain.Exec(w.ctx, FSOpenRequest{Filename: filename},
 		func(_ context.Context) error {
 			f, err = w.inner.Open(filename)
 
@@ -47,7 +47,7 @@ func (w *wrappedFS) Open(filename string) (f billy.File, err error) {
 }
 
 func (w *wrappedFS) OpenFile(filename string, flag int, perm os.FileMode) (f billy.File, err error) {
-	err = w.chain.Exec(w.ctx, "FS.OpenFile", []any{filename, flag, perm},
+	err = w.chain.Exec(w.ctx, FSOpenFileRequest{Filename: filename, Flag: flag, Perm: perm},
 		func(_ context.Context) error {
 			f, err = w.inner.OpenFile(filename, flag, perm)
 
@@ -58,7 +58,7 @@ func (w *wrappedFS) OpenFile(filename string, flag int, perm os.FileMode) (f bil
 }
 
 func (w *wrappedFS) Stat(filename string) (info os.FileInfo, err error) {
-	err = w.chain.Exec(w.ctx, "FS.Stat", []any{filename},
+	err = w.chain.Exec(w.ctx, FSStatRequest{Filename: filename},
 		func(_ context.Context) error {
 			info, err = w.inner.Stat(filename)
 
@@ -69,14 +69,14 @@ func (w *wrappedFS) Stat(filename string) (info os.FileInfo, err error) {
 }
 
 func (w *wrappedFS) Rename(oldpath, newpath string) error {
-	return w.chain.Exec(w.ctx, "FS.Rename", []any{oldpath, newpath},
+	return w.chain.Exec(w.ctx, FSRenameRequest{OldPath: oldpath, NewPath: newpath},
 		func(_ context.Context) error {
 			return w.inner.Rename(oldpath, newpath)
 		})
 }
 
 func (w *wrappedFS) Remove(filename string) error {
-	return w.chain.Exec(w.ctx, "FS.Remove", []any{filename},
+	return w.chain.Exec(w.ctx, FSRemoveRequest{Filename: filename},
 		func(_ context.Context) error {
 			return w.inner.Remove(filename)
 		})
@@ -87,7 +87,7 @@ func (w *wrappedFS) Join(elem ...string) string {
 }
 
 func (w *wrappedFS) TempFile(dir, prefix string) (f billy.File, err error) {
-	err = w.chain.Exec(w.ctx, "FS.TempFile", []any{dir, prefix},
+	err = w.chain.Exec(w.ctx, FSTempFileRequest{Dir: dir, Prefix: prefix},
 		func(_ context.Context) error {
 			f, err = w.inner.TempFile(dir, prefix)
 
@@ -98,7 +98,7 @@ func (w *wrappedFS) TempFile(dir, prefix string) (f billy.File, err error) {
 }
 
 func (w *wrappedFS) ReadDir(path string) (infos []os.FileInfo, err error) {
-	err = w.chain.Exec(w.ctx, "FS.ReadDir", []any{path},
+	err = w.chain.Exec(w.ctx, FSReadDirRequest{Path: path},
 		func(_ context.Context) error {
 			infos, err = w.inner.ReadDir(path)
 
@@ -109,14 +109,14 @@ func (w *wrappedFS) ReadDir(path string) (infos []os.FileInfo, err error) {
 }
 
 func (w *wrappedFS) MkdirAll(filename string, perm os.FileMode) error {
-	return w.chain.Exec(w.ctx, "FS.MkdirAll", []any{filename, perm},
+	return w.chain.Exec(w.ctx, FSMkdirAllRequest{Filename: filename, Perm: perm},
 		func(_ context.Context) error {
 			return w.inner.MkdirAll(filename, perm)
 		})
 }
 
 func (w *wrappedFS) Lstat(filename string) (info os.FileInfo, err error) {
-	err = w.chain.Exec(w.ctx, "FS.Lstat", []any{filename},
+	err = w.chain.Exec(w.ctx, FSLstatRequest{Filename: filename},
 		func(_ context.Context) error {
 			info, err = w.inner.Lstat(filename)
 
@@ -127,14 +127,14 @@ func (w *wrappedFS) Lstat(filename string) (info os.FileInfo, err error) {
 }
 
 func (w *wrappedFS) Symlink(target, link string) error {
-	return w.chain.Exec(w.ctx, "FS.Symlink", []any{target, link},
+	return w.chain.Exec(w.ctx, FSSymlinkRequest{Target: target, Link: link},
 		func(_ context.Context) error {
 			return w.inner.Symlink(target, link)
 		})
 }
 
 func (w *wrappedFS) Readlink(link string) (target string, err error) {
-	err = w.chain.Exec(w.ctx, "FS.Readlink", []any{link},
+	err = w.chain.Exec(w.ctx, FSReadlinkRequest{Link: link},
 		func(_ context.Context) error {
 			target, err = w.inner.Readlink(link)
 
@@ -145,7 +145,7 @@ func (w *wrappedFS) Readlink(link string) (target string, err error) {
 }
 
 func (w *wrappedFS) Chroot(path string) (fs billy.Filesystem, err error) {
-	err = w.chain.Exec(w.ctx, "FS.Chroot", []any{path},
+	err = w.chain.Exec(w.ctx, FSChrootRequest{Path: path},
 		func(_ context.Context) error {
 			fs, err = w.inner.Chroot(path)
 
