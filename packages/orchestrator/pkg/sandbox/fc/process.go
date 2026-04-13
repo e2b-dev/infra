@@ -670,19 +670,19 @@ func (p *Process) Stop(ctx context.Context) error {
 		select {
 		// Wait 10 sec for the FC process to exit, if it doesn't, send SIGKILL.
 		case <-time.After(10 * time.Second):
+			logger.L().Info(ctx, "sending SIGKILL to fc process because it was not responding to SIGTERM for 10 seconds", logger.WithSandboxID(p.files.SandboxID), zap.String("state", state))
+
 			err := p.cmd.Process.Kill()
 			if err != nil {
 				logger.L().Warn(ctx, "failed to send SIGKILL to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
-			} else {
-				logger.L().Info(ctx, "sent SIGKILL to fc process because it was not responding to SIGTERM for 10 seconds", logger.WithSandboxID(p.files.SandboxID))
 			}
 
 			state, err := getProcessState(ctx, p.cmd.Process.Pid)
 			if err != nil {
 				logger.L().Warn(ctx, "failed to get fc process state after sending SIGKILL", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
-			} else if state == "D" {
-				logger.L().Info(ctx, "fc process is in the D state after we call SIGKILL", logger.WithSandboxID(p.files.SandboxID))
 			}
+
+			logger.L().Info(ctx, "sent SIGKILL to fc process", logger.WithSandboxID(p.files.SandboxID), zap.String("state", state))
 
 		// If the FC process exited, we can return.
 		case <-p.Exit.Done():
