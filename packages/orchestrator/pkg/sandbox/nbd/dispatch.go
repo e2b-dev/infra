@@ -27,8 +27,9 @@ var (
 		metric.WithDescription("Number of NBD read requests currently waiting for a response. A sustained high value indicates reads stuck in kernel I/O."),
 		metric.WithUnit("{read}"),
 	))
-	nbdReadSuccess = metric.WithAttributeSet(attribute.NewSet(attribute.Bool("success", true)))
-	nbdReadFailure = metric.WithAttributeSet(attribute.NewSet(attribute.Bool("success", false)))
+	nbdReadSuccess   = metric.WithAttributeSet(attribute.NewSet(attribute.String("result", "success")))
+	nbdReadFailure   = metric.WithAttributeSet(attribute.NewSet(attribute.String("result", "failure")))
+	nbdReadCancelled = metric.WithAttributeSet(attribute.NewSet(attribute.String("result", "cancelled")))
 )
 
 var ErrShuttingDown = errors.New("shutting down. Cannot serve any new requests")
@@ -269,9 +270,14 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 		go func() {
 			start := time.Now()
 			_, err := d.prov.ReadAt(ctx, data, int64(from))
+
 			attrs := nbdReadSuccess
 			if err != nil {
-				attrs = nbdReadFailure
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					attrs = nbdReadCancelled
+				} else {
+					attrs = nbdReadFailure
+				}
 			}
 
 			nbdReadDuration.Record(ctx, time.Since(start).Milliseconds(), attrs)
