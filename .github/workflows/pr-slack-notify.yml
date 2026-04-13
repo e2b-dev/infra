@@ -5,52 +5,15 @@ on:
     types:
       - opened
       - ready_for_review
-  # Manual trigger for testing
-  workflow_dispatch:
-    inputs:
-      pr_number:
-        description: 'PR number'
-        required: true
-        type: number
-      pr_title:
-        description: 'PR title'
-        required: true
-        type: string
-      pr_url:
-        description: 'PR URL'
-        required: true
-        type: string
-      pr_author:
-        description: 'PR author'
-        required: true
-        type: string
 
 permissions:
   contents: read
 
 jobs:
   notify:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v5
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
-      - name: Install deps
-        run: npm ci
-        working-directory: .github/actions/pr-slack-notify
-
-      - name: Post to Slack
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL_ID: ${{ vars.SLACK_CHANNEL_ID }}
-          SLACK_REVIEW_GROUP: ${{ vars.SLACK_REVIEW_GROUP }}
-          PR_NUMBER: ${{ inputs.pr_number }}
-          PR_TITLE: ${{ inputs.pr_title }}
-          PR_URL: ${{ inputs.pr_url }}
-          PR_AUTHOR: ${{ inputs.pr_author }}
-        run: node .github/actions/pr-slack-notify/script.js
+    uses: e2b-dev/.github/.github/workflows/pr-slack-notify.yml@main
+    secrets:
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+    with:
+      channel_id: ${{ vars.SLACK_CHANNEL_ID }}
+      review_group: ${{ vars.SLACK_REVIEW_GROUP }}
