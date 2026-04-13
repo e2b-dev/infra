@@ -5,15 +5,23 @@ on:
     types:
       - opened
       - ready_for_review
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to test with'
+        required: true
+        type: number
 
 permissions:
   contents: read
 
 jobs:
   notify:
+    if: github.event.pull_request.draft == false
     uses: e2b-dev/.github/.github/workflows/pr-slack-notify.yml@main
     secrets:
       SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
     with:
       channel_id: ${{ vars.SLACK_CHANNEL_ID }}
       review_group: ${{ vars.SLACK_REVIEW_GROUP }}
+      pr_number: ${{ inputs.pr_number }}
