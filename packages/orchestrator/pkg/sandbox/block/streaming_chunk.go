@@ -460,6 +460,10 @@ func (c *StreamingChunker) Close() error {
 	return c.cache.Close()
 }
 
+func (c *StreamingChunker) Data() []byte {
+	return c.cache.Data()
+}
+
 func (c *StreamingChunker) FileSize() (int64, error) {
 	return c.cache.FileSize()
 }

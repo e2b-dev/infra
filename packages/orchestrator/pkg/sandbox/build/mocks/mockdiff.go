@@ -223,6 +223,52 @@ func (_c *MockDiff_Close_Call) RunAndReturn(run func() error) *MockDiff_Close_Ca
 	return _c
 }
 
+// Data provides a mock function for the type MockDiff
+func (_mock *MockDiff) Data() []byte {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Data")
+	}
+
+	var r0 []byte
+	if returnFunc, ok := ret.Get(0).(func() []byte); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]byte)
+		}
+	}
+	return r0
+}
+
+// MockDiff_Data_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Data'
+type MockDiff_Data_Call struct {
+	*mock.Call
+}
+
+// Data is a helper method to define mock.On call
+func (_e *MockDiff_Expecter) Data() *MockDiff_Data_Call {
+	return &MockDiff_Data_Call{Call: _e.mock.On("Data")}
+}
+
+func (_c *MockDiff_Data_Call) Run(run func()) *MockDiff_Data_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockDiff_Data_Call) Return(bytes []byte) *MockDiff_Data_Call {
+	_c.Call.Return(bytes)
+	return _c
+}
+
+func (_c *MockDiff_Data_Call) RunAndReturn(run func() []byte) *MockDiff_Data_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // FileSize provides a mock function for the type MockDiff
 func (_mock *MockDiff) FileSize() (int64, error) {
 	ret := _mock.Called()

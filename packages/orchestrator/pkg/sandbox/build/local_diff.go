@@ -110,6 +110,10 @@ func (b *localDiff) CachePath() (string, error) {
 	return b.cache.Path(), nil
 }
 
+func (b *localDiff) Data() []byte {
+	return b.cache.Data()
+}
+
 func (b *localDiff) Close() error {
 	return b.cache.Close()
 }

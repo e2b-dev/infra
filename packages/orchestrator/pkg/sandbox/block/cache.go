@@ -410,6 +410,17 @@ func (c *Cache) Path() string {
 	return c.filePath
 }
 
+func (c *Cache) Data() []byte {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.mmap == nil {
+		return nil
+	}
+
+	return []byte(*c.mmap)
+}
+
 func NewCacheFromProcessMemory(
 	ctx context.Context,
 	blockSize int64,

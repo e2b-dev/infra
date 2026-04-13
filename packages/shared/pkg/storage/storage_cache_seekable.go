@@ -304,6 +304,16 @@ func (c *cachedSeekable) StoreFile(ctx context.Context, path string) (e error) {
 	return c.inner.StoreFile(ctx, path)
 }
 
+func (c *cachedSeekable) StoreData(ctx context.Context, data []byte) (e error) {
+	ctx, span := c.tracer.Start(ctx, "write object from data")
+	defer func() {
+		recordError(span, e)
+		span.End()
+	}()
+
+	return c.inner.StoreData(ctx, data)
+}
+
 func (c *cachedSeekable) goCtx(ctx context.Context, fn func(context.Context)) {
 	c.wg.Go(func() {
 		fn(context.WithoutCancel(ctx))

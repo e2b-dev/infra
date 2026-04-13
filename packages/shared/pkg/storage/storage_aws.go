@@ -192,6 +192,10 @@ func (o *awsObject) StoreFile(ctx context.Context, path string) error {
 	return err
 }
 
+func (o *awsObject) StoreData(ctx context.Context, data []byte) error {
+	return o.Put(ctx, data)
+}
+
 func (o *awsObject) Put(ctx context.Context, data []byte) error {
 	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
 	defer cancel()

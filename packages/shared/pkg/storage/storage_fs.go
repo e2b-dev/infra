@@ -145,6 +145,18 @@ func (o *fsObject) StoreFile(_ context.Context, path string) error {
 	return nil
 }
 
+func (o *fsObject) StoreData(_ context.Context, data []byte) error {
+	handle, err := o.getHandle(false)
+	if err != nil {
+		return err
+	}
+	defer handle.Close()
+
+	_, err = handle.Write(data)
+
+	return err
+}
+
 func (o *fsObject) OpenRangeReader(_ context.Context, off, length int64) (io.ReadCloser, error) {
 	f, err := o.getHandle(true)
 	if err != nil {

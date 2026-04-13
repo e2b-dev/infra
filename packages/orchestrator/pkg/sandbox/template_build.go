@@ -8,6 +8,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -58,13 +59,13 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 	return nil
 }
 
-func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) error {
+func (t *TemplateBuild) uploadMemfile(ctx context.Context, data []byte) error {
 	object, err := t.persistence.OpenSeekable(ctx, t.paths.Memfile(), storage.MemfileObjectType)
 	if err != nil {
 		return err
 	}
 
-	err = object.StoreFile(ctx, memfilePath)
+	err = object.StoreData(ctx, data)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile: %w", err)
 	}
@@ -91,13 +92,13 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Heade
 	return nil
 }
 
-func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) error {
+func (t *TemplateBuild) uploadRootfs(ctx context.Context, data []byte) error {
 	object, err := t.persistence.OpenSeekable(ctx, t.paths.Rootfs(), storage.RootFSObjectType)
 	if err != nil {
 		return err
 	}
 
-	err = object.StoreFile(ctx, rootfsPath)
+	err = object.StoreData(ctx, data)
 	if err != nil {
 		return fmt.Errorf("error when uploading rootfs: %w", err)
 	}
@@ -153,7 +154,7 @@ func uploadFileAsBlob(ctx context.Context, b storage.Blob, path string) error {
 	return nil
 }
 
-func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapfilePath string, memfilePath *string, rootfsPath *string) error {
+func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapfilePath string, memfileDiff build.Diff, rootfsDiff build.Diff) error {
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
@@ -173,19 +174,21 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 	})
 
 	eg.Go(func() error {
-		if rootfsPath == nil {
+		data := rootfsDiff.Data()
+		if data == nil {
 			return nil
 		}
 
-		return t.uploadRootfs(ctx, *rootfsPath)
+		return t.uploadRootfs(ctx, data)
 	})
 
 	eg.Go(func() error {
-		if memfilePath == nil {
+		data := memfileDiff.Data()
+		if data == nil {
 			return nil
 		}
 
-		return t.uploadMemfile(ctx, *memfilePath)
+		return t.uploadMemfile(ctx, data)
 	})
 
 	eg.Go(func() error {

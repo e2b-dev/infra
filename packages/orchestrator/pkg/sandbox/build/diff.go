@@ -30,6 +30,7 @@ type Diff interface {
 	block.Slicer
 	CacheKey() DiffStoreKey
 	CachePath() (string, error)
+	Data() []byte
 	FileSize() (int64, error)
 	Init(ctx context.Context) error
 }
@@ -40,6 +41,10 @@ var _ Diff = (*NoDiff)(nil)
 
 func (n *NoDiff) CachePath() (string, error) {
 	return "", NoDiffError{}
+}
+
+func (n *NoDiff) Data() []byte {
+	return nil
 }
 
 func (n *NoDiff) Slice(_ context.Context, _, _ int64) ([]byte, error) {
