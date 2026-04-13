@@ -40,10 +40,11 @@ job "clickhouse-backup" {
       }
 
       env {
-        CLICKHOUSE_HOST         = "localhost"
-        CLICKHOUSE_PORT         = "${clickhouse_port}"
-        CLICKHOUSE_USERNAME     = "${clickhouse_username}"
-        CLICKHOUSE_PASSWORD     = "${clickhouse_password}"
+        CLICKHOUSE_HOST            = "localhost"
+        CLICKHOUSE_PORT            = "${clickhouse_port}"
+        CLICKHOUSE_USERNAME        = "${clickhouse_username}"
+        CLICKHOUSE_PASSWORD        = "${clickhouse_password}"
+        CLICKHOUSE_MAX_CONNECTIONS = "2"
 
 %{ if cloud_provider == "gcp" }
         REMOTE_STORAGE               = "gcs"
