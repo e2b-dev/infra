@@ -7,11 +7,21 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+)
+
+var (
+	nbdReadDuration = utils.Must(meter.Int64Histogram("orchestrator.nbd.dispatch.read_duration",
+		metric.WithDescription("Duration of NBD dispatch handler ReadAt calls to the backend."),
+		metric.WithUnit("ms"),
+	))
 )
 
 var ErrShuttingDown = errors.New("shutting down. Cannot serve any new requests")
@@ -248,7 +258,9 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 		data := make([]byte, length)
 
 		go func() {
+			start := time.Now()
 			_, err := d.prov.ReadAt(ctx, data, int64(from))
+			nbdReadDuration.Record(ctx, time.Since(start).Milliseconds())
 			errchan <- err
 		}()
 
