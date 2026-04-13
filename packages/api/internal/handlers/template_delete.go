@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
@@ -116,7 +117,7 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	a.templateCache.InvalidateAliasesByTemplateID(context.WithoutCancel(ctx), templateID, aliasKeys)
 
 	// Cancel any active builds that were running for this template.
-	a.cancelActiveBuilds(ctx, templateID, activeBuilds)
+	a.cancelActiveBuilds(context.WithoutCancel(ctx), templateID, activeBuilds)
 
 	telemetry.ReportEvent(ctx, "deleted template from db")
 
@@ -134,6 +135,12 @@ func (a *APIStore) cancelActiveBuilds(ctx context.Context, templateID string, bu
 	if len(builds) == 0 {
 		return
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	ctx, span := tracer.Start(ctx, "cancel active-builds")
+	defer span.End()
 
 	for _, b := range builds {
 		clusterID := clusters.WithClusterFallback(b.ClusterID)
