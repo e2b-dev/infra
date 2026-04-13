@@ -34,8 +34,9 @@ type Config struct {
 	LokiURL      string `env:"LOKI_URL,required"`
 	LokiUser     string `env:"LOKI_USER"`
 
-	NomadAddress string `env:"NOMAD_ADDRESS" envDefault:"http://localhost:4646"`
-	NomadToken   string `env:"NOMAD_TOKEN"`
+	NomadAddress  string `env:"NOMAD_ADDRESS"   envDefault:"http://localhost:4646"`
+	NomadToken    string `env:"NOMAD_TOKEN"`
+	NomadNodePool string `env:"NOMAD_NODE_POOL" envDefault:"default"`
 
 	PostgresConnectionString string `env:"POSTGRES_CONNECTION_STRING,required,notEmpty"`
 	DBMaxOpenConnections     int32  `env:"DB_MAX_OPEN_CONNECTIONS"                      envDefault:"40"`
