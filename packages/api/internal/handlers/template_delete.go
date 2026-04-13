@@ -7,10 +7,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -81,11 +83,11 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	}
 
 	// Delete the template from DB (cascades to env_build_assignments, env_aliases, snapshot_templates).
-	// Returns alias cache keys captured before cascade deletion for cache invalidation.
+	// Returns alias cache keys and active builds captured before the cascade delete.
 	// Build artifacts are intentionally NOT deleted from storage here because builds are layered diffs
 	// that may be referenced by other builds' header mappings.
 	// [ENG-3477] a future GC mechanism will handle orphaned storage.
-	aliasKeys, err := a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
+	deleteRows, err := a.sqlcDB.DeleteTemplate(ctx, queries.DeleteTemplateParams{
 		TemplateID: templateID,
 		TeamID:     team.ID,
 	})
@@ -96,8 +98,25 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		return
 	}
 
+	// Split results into alias keys (for cache invalidation) and active builds (for cancellation).
+	var aliasKeys []string
+	var activeBuilds []queries.DeleteTemplateRow
+
+	for _, row := range deleteRows {
+		if row.AliasKey != "" {
+			aliasKeys = append(aliasKeys, row.AliasKey)
+		}
+
+		if row.BuildID != nil {
+			activeBuilds = append(activeBuilds, row)
+		}
+	}
+
 	a.templateCache.InvalidateAllTags(context.WithoutCancel(ctx), templateID)
 	a.templateCache.InvalidateAliasesByTemplateID(context.WithoutCancel(ctx), templateID, aliasKeys)
+
+	// Cancel any active builds that were running for this template.
+	a.cancelActiveBuilds(ctx, templateID, activeBuilds)
 
 	telemetry.ReportEvent(ctx, "deleted template from db")
 
@@ -108,4 +127,28 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 	logger.L().Info(ctx, "Deleted template", logger.WithTemplateID(templateID), logger.WithTeamID(team.ID.String()))
 
 	c.Status(http.StatusNoContent)
+}
+
+// cancelActiveBuilds stops in-progress builds on the orchestrator and marks them as failed in the DB.
+func (a *APIStore) cancelActiveBuilds(ctx context.Context, templateID string, builds []queries.DeleteTemplateRow) {
+	if len(builds) == 0 {
+		return
+	}
+
+	for _, b := range builds {
+		clusterID := clusters.WithClusterFallback(b.ClusterID)
+
+		// Stop the build on the orchestrator node if it's running.
+		if b.ClusterNodeID != nil {
+			deleteErr := a.templateManager.DeleteBuild(ctx, *b.BuildID, templateID, clusterID, *b.ClusterNodeID)
+			if deleteErr != nil {
+				logger.L().Error(ctx, "Failed to cancel build on node during template deletion",
+					zap.String("buildID", b.BuildID.String()),
+					logger.WithTemplateID(templateID),
+					zap.Error(deleteErr))
+			}
+		}
+	}
+
+	logger.L().Info(ctx, "Cancelled active builds after template deletion", zap.Int("count", len(builds)))
 }
