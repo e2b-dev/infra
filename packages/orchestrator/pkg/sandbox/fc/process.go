@@ -8,11 +8,11 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
 
+	"github.com/shirou/gopsutil/v4/process"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -612,17 +612,16 @@ func (p *Process) Pid() (int, error) {
 	return p.cmd.Process.Pid, nil
 }
 
-// getProcessState returns the state of the process.
-// It's used to check if the process is in the D state, because gopsutil doesn't show that.
-func getProcessState(ctx context.Context, pid int) (string, error) {
-	output, err := exec.CommandContext(ctx, "ps", "-o", "stat=", "-p", fmt.Sprint(pid)).Output()
+// getProcessStatus returns the process status using gopsutil.
+// Return values: R (running), S (sleep), T (stop), I (idle),
+// Z (zombie), W (wait), L (lock), D (disk sleep / uninterruptible).
+func getProcessStatus(pid int) ([]string, error) {
+	proc, err := process.NewProcess(int32(pid))
 	if err != nil {
-		return "", fmt.Errorf("error getting state of pid=%d: %w", pid, err)
+		return nil, fmt.Errorf("process %d not found: %w", pid, err)
 	}
 
-	state := strings.TrimSpace(string(output))
-
-	return state, nil
+	return proc.Status()
 }
 
 func (p *Process) Stop(ctx context.Context) error {
@@ -648,14 +647,7 @@ func (p *Process) Stop(ctx context.Context) error {
 	// this function should never fail b/c a previous context was canceled.
 	ctx = context.WithoutCancel(ctx)
 
-	state, err := getProcessState(ctx, p.cmd.Process.Pid)
-	if err != nil {
-		logger.L().Warn(ctx, "failed to get fc process state", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
-	} else if state == "D" {
-		logger.L().Info(ctx, "fc process is in the D state before we call SIGTERM", logger.WithSandboxID(p.files.SandboxID))
-	}
-
-	err = p.cmd.Process.Signal(syscall.SIGTERM)
+	err := p.cmd.Process.Signal(syscall.SIGTERM)
 	if err != nil {
 		if errors.Is(err, os.ErrProcessDone) {
 			logger.L().Info(ctx, "fc process already exited", logger.WithSandboxID(p.files.SandboxID))
@@ -670,19 +662,23 @@ func (p *Process) Stop(ctx context.Context) error {
 		select {
 		// Wait 10 sec for the FC process to exit, if it doesn't, send SIGKILL.
 		case <-time.After(10 * time.Second):
-			logger.L().Info(ctx, "sending SIGKILL to fc process because it was not responding to SIGTERM for 10 seconds", logger.WithSandboxID(p.files.SandboxID), zap.String("state", state))
+			// Check process status right before Kill — the pre-SIGTERM status
+			// captured above is 10s stale and no longer useful here.
+			status, stateErr := getProcessStatus(p.cmd.Process.Pid)
+			if stateErr != nil && !errors.Is(stateErr, process.ErrorProcessNotRunning) {
+				logger.L().Warn(ctx, "failed to get fc process status before SIGKILL", zap.Error(stateErr), logger.WithSandboxID(p.files.SandboxID))
+			}
 
 			err := p.cmd.Process.Kill()
-			if err != nil {
+			if err == nil {
+				logger.L().Info(ctx, "sent SIGKILL to fc process because it was not responding to SIGTERM for 10 seconds",
+					zap.Strings("status", status),
+					logger.WithSandboxID(p.files.SandboxID),
+				)
+			}
+			if err != nil && !errors.Is(err, os.ErrProcessDone) {
 				logger.L().Warn(ctx, "failed to send SIGKILL to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 			}
-
-			state, err := getProcessState(ctx, p.cmd.Process.Pid)
-			if err != nil {
-				logger.L().Warn(ctx, "failed to get fc process state after sending SIGKILL", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
-			}
-
-			logger.L().Info(ctx, "sent SIGKILL to fc process", logger.WithSandboxID(p.files.SandboxID), zap.String("state", state))
 
 		// If the FC process exited, we can return.
 		case <-p.Exit.Done():
