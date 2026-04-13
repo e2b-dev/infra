@@ -29,6 +29,13 @@ const (
 	gcpMultipartUploadChunkSize = 50 * 1024 * 1024 // 50MB chunks
 )
 
+var chunkPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, gcpMultipartUploadChunkSize)
+		return &b
+	},
+}
+
 // RetryConfig holds the configuration for retry logic
 type RetryConfig struct {
 	MaxAttempts       int
@@ -321,33 +328,33 @@ func (m *MultipartUploader) uploadParts(ctx context.Context, maxConcurrency int,
 	// Upload each part concurrently
 	for partNumber := 1; partNumber <= numParts; partNumber++ {
 		g.Go(func() error {
-			// Check if context was cancelled
 			select {
 			case <-ctx.Done():
 				return fmt.Errorf("part %d failed: %w", partNumber, ctx.Err())
 			default:
 			}
 
-			// Read chunk from file
 			offset := int64(partNumber-1) * gcpMultipartUploadChunkSize
 			chunkSize := gcpMultipartUploadChunkSize
 			if offset+int64(chunkSize) > fileSize {
 				chunkSize = int(fileSize - offset)
 			}
 
-			chunk := make([]byte, chunkSize)
+			poolBuf := chunkPool.Get().(*[]byte)
+			chunk := (*poolBuf)[:chunkSize]
+
 			_, err := file.ReadAt(chunk, offset)
 			if err != nil {
+				chunkPool.Put(poolBuf)
 				return fmt.Errorf("failed to read chunk for part %d: %w", partNumber, err)
 			}
 
-			// Upload part
 			etag, err := m.uploadPart(ctx, uploadID, partNumber, chunk)
+			chunkPool.Put(poolBuf)
 			if err != nil {
 				return fmt.Errorf("failed to upload part %d: %w", partNumber, err)
 			}
 
-			// Store result thread-safely
 			partsMu.Lock()
 			parts[partNumber-1] = Part{
 				PartNumber: partNumber,
