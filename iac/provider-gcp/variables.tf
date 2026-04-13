@@ -708,6 +708,12 @@ variable "gcs_grpc_connection_pool_size" {
   }
 }
 
+variable "anywhere_cache_enabled" {
+  type        = bool
+  description = "Enable GCS Anywhere Cache on the template bucket for all zones in the deploy region. Requires gcloud CLI during apply."
+  default     = false
+}
+
 variable "orchestrator_env_vars" {
   type    = map(string)
   default = {}

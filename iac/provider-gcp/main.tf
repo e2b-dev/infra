@@ -113,6 +113,8 @@ module "init" {
 
   template_bucket_location = var.template_bucket_location
   template_bucket_name     = var.template_bucket_name
+
+  anywhere_cache_enabled = var.anywhere_cache_enabled
 }
 
 module "cluster" {
