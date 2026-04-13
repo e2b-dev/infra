@@ -19,11 +19,11 @@ import (
 )
 
 var (
-	nbdReadDuration = utils.Must(meter.Int64Histogram("orchestrator.nbd.dispatch.read_duration",
+	nbdReadDuration = utils.Must(meter.Int64Histogram("orchestrator.nbd.dispatch.read.duration",
 		metric.WithDescription("Duration of NBD dispatch handler ReadAt calls to the backend."),
 		metric.WithUnit("ms"),
 	))
-	nbdReadsInFlight = utils.Must(meter.Int64UpDownCounter("orchestrator.nbd.dispatch.reads_in_flight",
+	nbdReadConncurent = utils.Must(meter.Int64UpDownCounter("orchestrator.nbd.dispatch.read.concurrent",
 		metric.WithDescription("Number of NBD read requests currently waiting for a response. A sustained high value indicates reads stuck in kernel I/O."),
 		metric.WithUnit("{read}"),
 	))
@@ -265,7 +265,7 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 		errchan := make(chan error, 1)
 		data := make([]byte, length)
 
-		nbdReadsInFlight.Add(ctx, 1)
+		nbdReadConncurent.Add(ctx, 1)
 
 		go func() {
 			start := time.Now()
@@ -292,7 +292,7 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 		case readErr = <-errchan:
 		}
 
-		nbdReadsInFlight.Add(ctx, -1)
+		nbdReadConncurent.Add(ctx, -1)
 
 		if readErr != nil {
 			return d.writeResponse(1, handle, []byte{})
