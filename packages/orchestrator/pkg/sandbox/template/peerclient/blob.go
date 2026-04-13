@@ -22,17 +22,23 @@ type peerBlob struct {
 func (b *peerBlob) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	return withPeerFallback(ctx, &b.peerHandle, "peer-blob-write-to", attrOpWriteTo,
 		func(ctx context.Context) (peerAttempt[int64], error) {
-			recv, err := openPeerBlobStream(ctx, b.client, &orchestrator.GetBuildBlobRequest{
+			streamCtx, cancel := context.WithCancel(ctx)
+
+			recv, err := openPeerBlobStream(streamCtx, b.client, &orchestrator.GetBuildBlobRequest{
 				BuildId:  b.buildID,
 				FileName: b.fileName,
 			}, b.uploaded)
 			if err != nil {
+				cancel()
 				logger.L().Warn(ctx, "failed to open peer blob stream", logger.WithBuildID(b.buildID), zap.String("file_name", b.fileName), zap.Error(err))
 
 				return peerAttempt[int64]{}, nil
 			}
 
-			n, err := io.Copy(dst, newPeerStreamReader(recv, func() {}))
+			reader := newPeerStreamReader(recv, cancel)
+			defer reader.Close()
+
+			n, err := io.Copy(dst, reader)
 			if err != nil {
 				return peerAttempt[int64]{value: n, bytes: n, hit: true},
 					fmt.Errorf("failed to stream file %q from peer: %w", b.fileName, err)
@@ -81,6 +87,7 @@ func (b *peerBlob) Put(ctx context.Context, data []byte) error {
 
 // openPeerBlobStream opens a GetBuildBlob stream, checks peer availability,
 // and returns a recv function that yields data chunks starting with the first message's data.
+// The passed context HAS to be canceled by the caller when done with the stream to avoid leaks.
 func openPeerBlobStream(
 	ctx context.Context,
 	client orchestrator.ChunkServiceClient,

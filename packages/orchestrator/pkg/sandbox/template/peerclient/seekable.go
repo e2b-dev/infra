@@ -95,6 +95,7 @@ func (s *peerSeekable) StoreFile(ctx context.Context, path string, cfg *storage.
 
 // openPeerSeekableStream opens a ReadAtBuildSeekable stream, checks peer availability,
 // and returns a recv function that yields data chunks starting with the first message's data.
+// The passed context HAS to be canceled by the caller when done with the stream to avoid leaks.
 func openPeerSeekableStream(
 	ctx context.Context,
 	client orchestrator.ChunkServiceClient,

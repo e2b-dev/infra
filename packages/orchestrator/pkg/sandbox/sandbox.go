@@ -78,6 +78,8 @@ type Config struct {
 
 	VolumeMounts []VolumeMountConfig
 
+	MaxSandboxLengthHours int64
+
 	// mu protects mutable sub-fields of Network (Egress, Ingress).
 	// The Network pointer itself is set once at construction and never replaced.
 	mu      *sync.RWMutex

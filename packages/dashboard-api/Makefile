@@ -19,16 +19,15 @@ generate:
 
 .PHONY: build
 build:
-	# Allow for passing commit sha directly for docker builds
 	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
 	$(eval EXPECTED_MIGRATION_TIMESTAMP ?= $(expectedMigration))
 	CGO_ENABLED=0 go build -o bin/dashboard-api -ldflags "-X=main.commitSHA=$(COMMIT_SHA) -X=main.expectedMigrationTimestamp=$(EXPECTED_MIGRATION_TIMESTAMP)" .
 
 .PHONY: build-and-upload
 build-and-upload:
-		$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
-		$(eval EXPECTED_MIGRATION_TIMESTAMP := $(expectedMigration))
-		@ docker build --platform linux/amd64 --tag $(IMAGE_REGISTRY) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" --build-arg EXPECTED_MIGRATION_TIMESTAMP="$(EXPECTED_MIGRATION_TIMESTAMP)"  -f ./Dockerfile ..
+	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
+	$(eval EXPECTED_MIGRATION_TIMESTAMP := $(expectedMigration))
+	@docker build --platform linux/amd64 --tag $(IMAGE_REGISTRY) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" --build-arg EXPECTED_MIGRATION_TIMESTAMP="$(EXPECTED_MIGRATION_TIMESTAMP)" -f ./Dockerfile ..
 
 .PHONY: run
 run:
