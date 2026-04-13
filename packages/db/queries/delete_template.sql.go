@@ -25,7 +25,6 @@ WITH alias_keys AS (
   JOIN public.env_builds b ON b.id = atb.build_id
   JOIN public.envs e ON e.id = atb.template_id
   WHERE atb.template_id = $1
-    AND atb.created_at > NOW() - INTERVAL '1 day'
 ), deleted AS (
   DELETE FROM "public"."envs" envs_del
   WHERE envs_del.id = $1
