@@ -17,12 +17,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var (
-	nbdReadDuration = utils.Must(meter.Int64Histogram("orchestrator.nbd.dispatch.read_duration",
-		metric.WithDescription("Duration of NBD dispatch handler ReadAt calls to the backend."),
-		metric.WithUnit("ms"),
-	))
-)
+var nbdReadDuration = utils.Must(meter.Int64Histogram("orchestrator.nbd.dispatch.read_duration",
+	metric.WithDescription("Duration of NBD dispatch handler ReadAt calls to the backend."),
+	metric.WithUnit("ms"),
+))
 
 var ErrShuttingDown = errors.New("shutting down. Cannot serve any new requests")
 
