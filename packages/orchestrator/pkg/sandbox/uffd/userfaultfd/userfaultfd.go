@@ -348,6 +348,8 @@ func (u *Userfaultfd) faultPage(
 		retries := retryVal.(*atomic.Int32)
 		attempt := int(retries.Add(1))
 
+		var wakeErr error
+
 		if attempt <= maxFaultRetries {
 			u.logger.Warn(ctx, "UFFD serve data fetch failed, waking for retry",
 				zap.Int("attempt", attempt),
@@ -357,7 +359,7 @@ func (u *Userfaultfd) faultPage(
 				zap.Error(dataErr),
 			)
 
-			wakeErr := u.fd.wake(addr, pagesize)
+			wakeErr = u.fd.wake(addr, pagesize)
 			if wakeErr == nil {
 				return nil
 			}
@@ -372,7 +374,7 @@ func (u *Userfaultfd) faultPage(
 			signalErr = onFailure()
 		}
 
-		joinedErr := errors.Join(dataErr, signalErr)
+		joinedErr := errors.Join(dataErr, wakeErr, signalErr)
 
 		span.RecordError(joinedErr)
 		u.logger.Error(ctx, "UFFD serve data fetch error", zap.Error(joinedErr))
