@@ -37,6 +37,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy"
 	nfscfg "github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/middleware"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/portmap"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
@@ -99,9 +100,10 @@ type EgressFactory func(ctx context.Context, deps *Deps) (*EgressSetup, error)
 
 // Options configures the orchestrator with edition-specific behavior.
 type Options struct {
-	Version       string
-	CommitSHA     string
-	EgressFactory EgressFactory
+	Version         string
+	CommitSHA       string
+	EgressFactory   EgressFactory
+	NFSInterceptors []middleware.Interceptor
 }
 
 type closer struct {
@@ -588,7 +590,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 	// nfs proxy server
 	if len(config.PersistentVolumeMounts) > 0 {
-		nfsClosers, err := startNFSProxy(ctx, config, builder, startService, sandboxes)
+		nfsClosers, err := startNFSProxy(ctx, config, builder, startService, sandboxes, opts)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to start nfs proxy", zap.Error(err))
 		}
@@ -787,13 +789,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	return success
 }
 
-func startNFSProxy(
-	ctx context.Context,
-	config cfg.Config,
-	builder *chrooted.Builder,
-	startService func(name string, f func() error),
-	sandboxes *sandbox.Map,
-) ([]closer, error) {
+func startNFSProxy(ctx context.Context, config cfg.Config, builder *chrooted.Builder, startService func(name string, f func() error), sandboxes *sandbox.Map, opts Options) ([]closer, error) {
 	var closers []closer
 
 	// portmapper listener
@@ -826,6 +822,7 @@ func startNFSProxy(
 		RecordHandleCalls: config.NFSProxyRecordHandleCalls,
 		RecordStatCalls:   config.NFSProxyRecordStatCalls,
 		NFSLogLevel:       config.NFSProxyLogLevel,
+		Interceptors:      opts.NFSInterceptors,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create nfs proxy: %w", err)

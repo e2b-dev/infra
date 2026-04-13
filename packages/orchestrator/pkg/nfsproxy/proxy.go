@@ -27,7 +27,12 @@ type Proxy struct {
 	server *nfs.Server
 }
 
-func NewProxy(ctx context.Context, builder *chrooted.Builder, sandboxes *sandbox.Map, config cfg.Config) (*Proxy, error) {
+func NewProxy(
+	ctx context.Context,
+	builder *chrooted.Builder,
+	sandboxes *sandbox.Map,
+	config cfg.Config,
+) (*Proxy, error) {
 	setLogLevelOnce.Do(func() {
 		nfs.Log.SetLevel(config.NFSLogLevel)
 	})
@@ -58,7 +63,9 @@ func NewProxy(ctx context.Context, builder *chrooted.Builder, sandboxes *sandbox
 	}
 
 	interceptors := buildInterceptors(config, skipOps)
-	handler = middleware.WrapHandler(handler, interceptors)
+	interceptors = append(interceptors, config.Interceptors...)
+	chain := middleware.NewChain(interceptors...)
+	handler = middleware.WrapHandler(handler, chain)
 
 	s := &nfs.Server{
 		Handler:      handler,
@@ -73,7 +80,7 @@ func NewProxy(ctx context.Context, builder *chrooted.Builder, sandboxes *sandbox
 	}, nil
 }
 
-func buildInterceptors(config cfg.Config, skipOps map[string]bool) *middleware.Chain {
+func buildInterceptors(config cfg.Config, skipOps map[string]bool) []middleware.Interceptor {
 	// build interceptor chain (order matters: recovery should be first to catch panics from all others)
 	var interceptors []middleware.Interceptor
 	interceptors = append(interceptors, Recovery())
@@ -90,9 +97,7 @@ func buildInterceptors(config cfg.Config, skipOps map[string]bool) *middleware.C
 		interceptors = append(interceptors, o11y.Logging(skipOps))
 	}
 
-	chain := middleware.NewChain(interceptors...)
-
-	return chain
+	return interceptors
 }
 
 func (p *Proxy) Serve(lis net.Listener) error {
