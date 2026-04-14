@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bits-and-blooms/bitset"
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/google/uuid"
 )
 
@@ -21,46 +21,23 @@ type BuildMap struct {
 
 func CreateMapping(
 	buildId *uuid.UUID,
-	dirty *bitset.BitSet,
+	dirty *roaring.Bitmap,
 	blockSize int64,
 ) []BuildMap {
 	var mappings []BuildMap
-
-	var startBlock uint
-	var blockLength uint
 	var buildStorageOffset uint64
 
-	for blockIdx, e := dirty.NextSet(0); e; blockIdx, e = dirty.NextSet(blockIdx + 1) {
-		if startBlock+blockLength == blockIdx {
-			blockLength++
-
-			continue
-		}
-
-		if blockLength > 0 {
-			m := BuildMap{
-				Offset:             uint64(startBlock) * uint64(blockSize),
-				BuildId:            *buildId,
-				Length:             uint64(blockLength) * uint64(blockSize),
-				BuildStorageOffset: buildStorageOffset,
-			}
-
-			mappings = append(mappings, m)
-
-			buildStorageOffset += m.Length
-		}
-
-		startBlock = blockIdx
-		blockLength = 1
-	}
-
-	if blockLength > 0 {
-		mappings = append(mappings, BuildMap{
-			Offset:             uint64(startBlock) * uint64(blockSize),
+	for start, endExcl := range dirty.Ranges() {
+		blockLength := int64(endExcl) - int64(start)
+		m := BuildMap{
+			Offset:             uint64(BlockOffset(int64(start), blockSize)),
 			BuildId:            *buildId,
-			Length:             uint64(blockLength) * uint64(blockSize),
+			Length:             uint64(BlockOffset(blockLength, blockSize)),
 			BuildStorageOffset: buildStorageOffset,
-		})
+		}
+
+		mappings = append(mappings, m)
+		buildStorageOffset += m.Length
 	}
 
 	return mappings
