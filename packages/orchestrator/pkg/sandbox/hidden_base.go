@@ -19,6 +19,7 @@ const (
 	hiddenBaseHealthTimeout = 30 * time.Second
 	hiddenBaseHealthDelay   = 50 * time.Millisecond
 	fsResumeTimeout         = 10 * time.Second
+	fsSyncTimeout           = 10 * time.Second
 )
 
 // requestEnvdPrepareBase tells the guest agent to set up a tmpfs root and
@@ -121,6 +122,39 @@ func (s *Sandbox) requestEnvdFSResume(ctx context.Context) error {
 	}
 
 	telemetry.ReportEvent(ctx, "envd fs-resume completed")
+
+	return nil
+}
+
+// requestEnvdSync tells the guest agent to flush all pending filesystem
+// writes to disk. Used before FS-only pause to ensure the CoW diff
+// captures a consistent filesystem state.
+func (s *Sandbox) requestEnvdSync(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "envd-fs-sync")
+	defer span.End()
+
+	address := fmt.Sprintf("http://%s:%d/fs-snapshot/sync", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
+
+	reqCtx, cancel := context.WithTimeout(ctx, fsSyncTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, address, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create sync request: %w", err)
+	}
+
+	resp, err := sandboxHttpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("sync request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("sync returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	telemetry.ReportEvent(ctx, "envd filesystem synced")
 
 	return nil
 }

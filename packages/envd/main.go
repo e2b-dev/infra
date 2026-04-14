@@ -154,7 +154,7 @@ func main() {
 		return
 	}
 
-	if fsMode == "hidden-base" {
+	if fsMode == "hidden-base" || fssnapshot.IsHiddenBaseMode() {
 		runHiddenBaseMode()
 		return
 	}
@@ -204,11 +204,21 @@ func main() {
 	m.Post("/fs-snapshot/prepare-base", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 
-		if err := fssnapshot.PrepareBase("/usr/bin/envd", int(port)); err != nil {
+		if err := fssnapshot.PrepareBase("/usr/bin/envd"); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
+		// Flush the response before switch-root kills this process.
+		w.WriteHeader(http.StatusOK)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	})
+
+	m.Post("/fs-snapshot/sync", func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		fssnapshot.Sync()
 		w.WriteHeader(http.StatusOK)
 	})
 

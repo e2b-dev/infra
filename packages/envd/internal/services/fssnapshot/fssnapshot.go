@@ -6,67 +6,75 @@ import (
 	"os/exec"
 	"path/filepath"
 	"syscall"
-	"time"
 
 	"golang.org/x/sys/unix"
 )
 
 const (
-	tmpfsRoot = "/run/fs-snapshot-root"
-	oldRoot   = "/oldroot"
+	TmpfsRoot = "/run/fs-snapshot-root"
+	OldRoot   = "/oldroot"
 	newRoot   = "/newroot"
 	blockDev  = "/dev/vda"
+
+	// Marker file written to tmpfs before switch-root.
+	// If envd starts as PID 1 and this file exists, it enters hidden-base mode.
+	MarkerFile = "/.hidden-base"
 )
 
-// PrepareBase sets up a tmpfs root with the envd binary and calls
-// systemctl switch-root. After switch-root, systemd kills all services,
-// pivots to the tmpfs root, and execs envd in hidden-base mode as PID 1.
-//
-// This function responds to the HTTP caller, then systemd asynchronously
-// tears down the old root. The orchestrator must poll /health until the
-// new envd (hidden-base mode) is ready.
-func PrepareBase(envdBinaryPath string, port int) error {
-	dirs := []string{
-		tmpfsRoot,
-		filepath.Join(tmpfsRoot, "proc"),
-		filepath.Join(tmpfsRoot, "sys"),
-		filepath.Join(tmpfsRoot, "dev"),
-		filepath.Join(tmpfsRoot, "run"),
-		filepath.Join(tmpfsRoot, "tmp"),
-		filepath.Join(tmpfsRoot, "oldroot"),
-		filepath.Join(tmpfsRoot, "newroot"),
+// IsHiddenBaseMode returns true if envd should run in hidden-base mode.
+// This is detected by: (1) running as PID 1, and (2) the marker file exists,
+// OR the -fs-mode=hidden-base flag was passed explicitly.
+func IsHiddenBaseMode() bool {
+	if os.Getpid() == 1 {
+		if _, err := os.Stat(MarkerFile); err == nil {
+			return true
+		}
 	}
-	for _, d := range dirs {
-		if err := os.MkdirAll(d, 0o755); err != nil {
+
+	return false
+}
+
+// PrepareBase sets up a tmpfs root with the envd binary and invokes
+// systemctl switch-root. After switch-root, systemd:
+//  1. Stops all services (killing envd and everything else)
+//  2. Pivots root to the tmpfs
+//  3. Execs /sbin/init (our envd binary, symlinked) as PID 1
+//
+// The orchestrator must poll /health until the new envd is ready.
+// The caller should flush the HTTP response before calling this, because
+// systemd will SIGTERM this process shortly after.
+func PrepareBase(envdBinaryPath string) error {
+	if err := os.MkdirAll(TmpfsRoot, 0o755); err != nil {
+		return fmt.Errorf("failed to create %s: %w", TmpfsRoot, err)
+	}
+
+	if err := unix.Mount("tmpfs", TmpfsRoot, "tmpfs", 0, "size=64m"); err != nil {
+		return fmt.Errorf("failed to mount tmpfs on %s: %w", TmpfsRoot, err)
+	}
+
+	subdirs := []string{"proc", "sys", "dev", "run", "tmp", "sbin", OldRoot, "newroot", "mnt"}
+	for _, d := range subdirs {
+		if err := os.MkdirAll(filepath.Join(TmpfsRoot, d), 0o755); err != nil {
 			return fmt.Errorf("failed to create dir %s: %w", d, err)
 		}
 	}
 
-	if err := unix.Mount("tmpfs", tmpfsRoot, "tmpfs", 0, "size=64m"); err != nil {
-		return fmt.Errorf("failed to mount tmpfs on %s: %w", tmpfsRoot, err)
-	}
-
-	for _, d := range dirs[1:] {
-		if err := os.MkdirAll(d, 0o755); err != nil {
-			return fmt.Errorf("failed to create dir %s on tmpfs: %w", d, err)
-		}
-	}
-
-	agentDst := filepath.Join(tmpfsRoot, "envd")
+	agentDst := filepath.Join(TmpfsRoot, "sbin", "init")
 	if err := copyFile(envdBinaryPath, agentDst); err != nil {
 		return fmt.Errorf("failed to copy envd binary: %w", err)
 	}
 	if err := os.Chmod(agentDst, 0o755); err != nil {
-		return fmt.Errorf("failed to chmod envd binary: %w", err)
+		return fmt.Errorf("failed to chmod: %w", err)
 	}
 
-	cmd := exec.Command(
-		"systemctl", "switch-root",
-		tmpfsRoot,
-		"/envd",
-		fmt.Sprintf("-fs-mode=hidden-base"),
-		fmt.Sprintf("-port=%d", port),
-	)
+	if err := os.WriteFile(filepath.Join(TmpfsRoot, MarkerFile), []byte("1"), 0o644); err != nil {
+		return fmt.Errorf("failed to write marker: %w", err)
+	}
+
+	// systemctl switch-root tells systemd (PID 1) to:
+	//   stop all services → pivot_root → exec /sbin/init
+	// The INIT arg defaults to /sbin/init when omitted.
+	cmd := exec.Command("systemctl", "switch-root", TmpfsRoot)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -80,46 +88,54 @@ func PrepareBase(envdBinaryPath string, port int) error {
 // UnmountOldRoot attempts to unmount the old ext4 root after switch-root.
 // Tries a regular unmount first, then falls back to lazy unmount.
 func UnmountOldRoot() error {
-	err := unix.Unmount(oldRoot, 0)
-	if err == nil {
+	path := OldRoot
+	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil
 	}
 
-	err = unix.Unmount(oldRoot, unix.MNT_DETACH)
-	if err != nil {
-		return fmt.Errorf("failed to lazy-unmount %s: %w", oldRoot, err)
+	if err := unix.Unmount(path, 0); err == nil {
+		return nil
+	}
+
+	if err := unix.Unmount(path, unix.MNT_DETACH); err != nil {
+		return fmt.Errorf("failed to lazy-unmount %s: %w", path, err)
 	}
 
 	return nil
 }
 
+// Sync flushes all pending filesystem writes to disk.
+func Sync() {
+	unix.Sync()
+}
+
 // MountAndPivot mounts the block device, moves pseudo-filesystems,
 // and pivots into the new root. Used on FS-only resume after the
 // hidden base snapshot is restored with NBD serving base + CoW diff.
+//
+// After this call, the process is in the ext4 rootfs. The old tmpfs
+// is lazily unmounted (the running binary is still mapped from it but
+// Go's static binary doesn't need re-reads).
 func MountAndPivot() error {
 	if err := os.MkdirAll(newRoot, 0o755); err != nil {
 		return fmt.Errorf("failed to create %s: %w", newRoot, err)
 	}
 
-	if err := unix.Mount(blockDev, newRoot, "ext4", 0, ""); err != nil {
+	if err := unix.Mount(blockDev, newRoot, "ext4", unix.MS_NOATIME, ""); err != nil {
 		return fmt.Errorf("failed to mount %s on %s: %w", blockDev, newRoot, err)
 	}
 
-	pseudoFS := []struct {
-		src string
-		dst string
-	}{
+	pseudoFS := []struct{ src, dst string }{
 		{"/proc", filepath.Join(newRoot, "proc")},
 		{"/sys", filepath.Join(newRoot, "sys")},
 		{"/dev", filepath.Join(newRoot, "dev")},
 	}
-
 	for _, pfs := range pseudoFS {
 		if err := os.MkdirAll(pfs.dst, 0o755); err != nil {
 			return fmt.Errorf("failed to create %s: %w", pfs.dst, err)
 		}
 		if err := unix.Mount(pfs.src, pfs.dst, "", unix.MS_MOVE, ""); err != nil {
-			return fmt.Errorf("failed to move %s to %s: %w", pfs.src, pfs.dst, err)
+			return fmt.Errorf("failed to move %s → %s: %w", pfs.src, pfs.dst, err)
 		}
 	}
 
@@ -136,10 +152,9 @@ func MountAndPivot() error {
 		return fmt.Errorf("chdir / failed: %w", err)
 	}
 
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		_ = unix.Unmount("/mnt/old", unix.MNT_DETACH)
-	}()
+	// Lazy unmount the old tmpfs — safe because the static Go binary
+	// is fully loaded in memory and doesn't re-read from disk.
+	_ = unix.Unmount("/mnt/old", unix.MNT_DETACH)
 
 	return nil
 }

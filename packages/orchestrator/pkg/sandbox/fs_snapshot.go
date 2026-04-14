@@ -41,6 +41,15 @@ func (s *Sandbox) PauseFS(ctx context.Context) (d *FSDiff, e error) {
 
 	s.Checks.Stop()
 
+	// Flush filesystem writes before pausing (Strategy 2: sync + freeze).
+	// Best-effort: if envd is unreachable the VM pause + FC snapshot still
+	// flushes the block device.
+	if syncErr := s.requestEnvdSync(ctx); syncErr != nil {
+		logger.L().Warn(ctx, "envd sync failed, continuing with VM pause",
+			zap.String("sandbox_id", s.Runtime.SandboxID),
+			zap.Error(syncErr))
+	}
+
 	if err := s.process.Pause(ctx); err != nil {
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
