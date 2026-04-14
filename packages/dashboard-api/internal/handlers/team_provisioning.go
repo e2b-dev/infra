@@ -15,10 +15,8 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
-	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -102,16 +100,15 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 		return provisionedTeam{}, fmt.Errorf("get auth user: %w", err)
 	}
 
-	txDB, tx, err := s.db.WithTx(ctx)
+	authTxDB, tx, err := s.authDB.WithTx(ctx)
 	if err != nil {
 		return provisionedTeam{}, fmt.Errorf("start transaction: %w", err)
 	}
-	authTxDB := authqueries.New(tx)
 	defer func() {
 		_ = tx.Rollback(ctx)
 	}()
 
-	if err := txDB.UpsertPublicUser(ctx, queries.UpsertPublicUserParams{
+	if err := authTxDB.UpsertPublicUser(ctx, authqueries.UpsertPublicUserParams{
 		ID:    authUser.ID,
 		Email: authUser.Email,
 	}); err != nil {
@@ -123,7 +120,7 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 		return provisionedTeam{}, fmt.Errorf("lock public user: %w", err)
 	}
 
-	existingTeam, err := txDB.GetDefaultTeamByUserID(ctx, userID)
+	existingTeam, err := authTxDB.GetDefaultTeamByUserID(ctx, userID)
 	if err == nil {
 		if err := tx.Commit(ctx); err != nil {
 			return provisionedTeam{}, fmt.Errorf("commit existing user bootstrap transaction: %w", err)
@@ -151,7 +148,7 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 		return provisionedTeam{}, fmt.Errorf("get default team: %w", err)
 	}
 
-	team, err := txDB.CreateTeam(ctx, queries.CreateTeamParams{
+	team, err := authTxDB.CreateTeam(ctx, authqueries.CreateTeamParams{
 		Name:          authUser.Email,
 		Tier:          baseTierID,
 		Email:         authUser.Email,
@@ -162,7 +159,7 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 		return provisionedTeam{}, fmt.Errorf("create default team: %w", err)
 	}
 
-	if err := txDB.CreateTeamMembership(ctx, queries.CreateTeamMembershipParams{
+	if err := authTxDB.CreateTeamMembership(ctx, authqueries.CreateTeamMembershipParams{
 		UserID:    userID,
 		TeamID:    team.ID,
 		IsDefault: true,
@@ -200,16 +197,15 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 		return provisionedTeam{}, fmt.Errorf("get auth user: %w", err)
 	}
 
-	txDB, tx, err := s.db.WithTx(ctx)
+	authTxDB, tx, err := s.authDB.WithTx(ctx)
 	if err != nil {
 		return provisionedTeam{}, fmt.Errorf("start transaction: %w", err)
 	}
-	authTxDB := authqueries.New(tx)
 	defer func() {
 		_ = tx.Rollback(ctx)
 	}()
 
-	if err := txDB.UpsertPublicUser(ctx, queries.UpsertPublicUserParams{
+	if err := authTxDB.UpsertPublicUser(ctx, authqueries.UpsertPublicUserParams{
 		ID:    authUser.ID,
 		Email: authUser.Email,
 	}); err != nil {
@@ -221,13 +217,13 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 		return provisionedTeam{}, fmt.Errorf("lock public user: %w", err)
 	}
 
-	if err := validateTeamCreationAllowed(ctx, txDB, userID); err != nil {
+	if err := validateTeamCreationAllowed(ctx, authTxDB, userID); err != nil {
 		return provisionedTeam{}, err
 	}
 
 	isBlocked, blockedReason := teamBlockPolicy(authUser.CreatedAt, time.Now())
 
-	team, err := txDB.CreateTeam(ctx, queries.CreateTeamParams{
+	team, err := authTxDB.CreateTeam(ctx, authqueries.CreateTeamParams{
 		Name:          name,
 		Tier:          baseTierID,
 		Email:         authUser.Email,
@@ -238,7 +234,7 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 		return provisionedTeam{}, fmt.Errorf("create team: %w", err)
 	}
 
-	if err := txDB.CreateTeamMembership(ctx, queries.CreateTeamMembershipParams{
+	if err := authTxDB.CreateTeamMembership(ctx, authqueries.CreateTeamMembershipParams{
 		UserID:    userID,
 		TeamID:    team.ID,
 		IsDefault: false,
@@ -262,7 +258,7 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), teamProvisionRollbackTimeout)
 		defer cancel()
 
-		if deleteErr := s.db.DeleteTeamByID(rollbackCtx, team.ID); deleteErr != nil {
+		if deleteErr := s.authDB.Write.DeleteTeamByID(rollbackCtx, team.ID); deleteErr != nil {
 			return provisionedTeam{}, fmt.Errorf("delete team after provisioning failure: provision=%s delete=%w", err.Error(), deleteErr)
 		}
 
@@ -279,8 +275,8 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 	}, nil
 }
 
-func validateTeamCreationAllowed(ctx context.Context, txDB *sqlcdb.Client, ownerUserID uuid.UUID) error {
-	teams, err := txDB.GetTeamsWithUsersTeamsWithTierForUpdate(ctx, ownerUserID)
+func validateTeamCreationAllowed(ctx context.Context, authTxDB *authqueries.Queries, ownerUserID uuid.UUID) error {
+	teams, err := authTxDB.GetTeamsWithUsersTeamsWithTierForUpdate(ctx, ownerUserID)
 	if err != nil {
 		return fmt.Errorf("query user teams for limit check: %w", err)
 	}

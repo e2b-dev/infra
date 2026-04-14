@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -66,14 +66,14 @@ func TestAuthUserSyncWorker_UpsertDeletesStaleProjectedUser(t *testing.T) {
 	userID := uuid.New()
 	staleEmail := fmt.Sprintf("stale-%s@example.com", userID.String()[:8])
 
-	err := db.SqlcClient.UpsertPublicUser(ctx, queries.UpsertPublicUserParams{
+	err := db.AuthDB.Write.UpsertPublicUser(ctx, authqueries.UpsertPublicUserParams{
 		ID:    userID,
 		Email: staleEmail,
 	})
 	require.NoError(t, err)
 	require.Equal(t, 1, publicUserCount(t, ctx, db, userID))
 
-	worker := NewAuthUserSyncWorker(ctx, db.SupabaseDB, db.SqlcClient, logger.NewNopLogger())
+	worker := NewAuthUserSyncWorker(ctx, db.SupabaseDB, db.AuthDB, logger.NewNopLogger())
 
 	err = worker.Work(ctx, &river.Job[AuthUserSyncArgs]{
 		JobRow: &rivertype.JobRow{ID: 1, Attempt: 1},
@@ -126,7 +126,7 @@ func startRiverWorker(t *testing.T, db *testutils.Database) *riverProcess {
 	l := logger.NewNopLogger()
 
 	workers := river.NewWorkers()
-	river.AddWorker(workers, NewAuthUserSyncWorker(ctx, db.SupabaseDB, db.SqlcClient, l))
+	river.AddWorker(workers, NewAuthUserSyncWorker(ctx, db.SupabaseDB, db.AuthDB, l))
 
 	client, err := NewRiverClient(db.SupabaseDB.WritePool(), workers)
 	require.NoError(t, err)

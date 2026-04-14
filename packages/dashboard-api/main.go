@@ -232,7 +232,7 @@ func run() int {
 			ctx,
 			signalCtx,
 			supabaseDB,
-			db,
+			authDB,
 			l,
 		)
 		if err != nil {

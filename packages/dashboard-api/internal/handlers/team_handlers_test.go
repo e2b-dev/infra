@@ -303,14 +303,14 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 	userID := createHandlerTestUser(t, testDB)
 	sink := &fakeTeamProvisionSink{}
 
-	existingTeam, err := testDB.SqlcClient.GetDefaultTeamByUserID(ctx, userID)
+	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
 		t.Fatalf("expected trigger-created default team: %v", err)
 	}
-	if err := testDB.SqlcClient.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
+	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
 		t.Fatalf("failed to remove trigger-created default team: %v", err)
 	}
-	if err := testDB.SqlcClient.DeletePublicUser(ctx, userID); err != nil {
+	if err := testDB.AuthDB.Write.DeletePublicUser(ctx, userID); err != nil {
 		t.Fatalf("failed to remove trigger-created public user: %v", err)
 	}
 
@@ -331,7 +331,7 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", recorder.Code)
 	}
 
-	team, err := testDB.SqlcClient.GetDefaultTeamByUserID(ctx, userID)
+	team, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
 		t.Fatalf("expected default team to be created: %v", err)
 	}
@@ -370,14 +370,14 @@ func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testin
 		},
 	}
 
-	existingTeam, err := testDB.SqlcClient.GetDefaultTeamByUserID(ctx, userID)
+	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
 		t.Fatalf("expected trigger-created default team: %v", err)
 	}
-	if err := testDB.SqlcClient.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
+	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
 		t.Fatalf("failed to remove trigger-created default team: %v", err)
 	}
-	if err := testDB.SqlcClient.DeletePublicUser(ctx, userID); err != nil {
+	if err := testDB.AuthDB.Write.DeletePublicUser(ctx, userID); err != nil {
 		t.Fatalf("failed to remove trigger-created public user: %v", err)
 	}
 
@@ -401,7 +401,7 @@ func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testin
 		t.Fatalf("expected one provisioning call, got %d", len(sink.requests))
 	}
 
-	team, err := testDB.SqlcClient.GetDefaultTeamByUserID(ctx, userID)
+	team, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
 		t.Fatalf("expected default team to remain after provisioning failure: %v", err)
 	}
@@ -429,11 +429,11 @@ func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
 	userID := createHandlerTestUser(t, testDB)
 	sink := &fakeTeamProvisionSink{}
 
-	existingTeam, err := testDB.SqlcClient.GetDefaultTeamByUserID(ctx, userID)
+	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
 		t.Fatalf("expected trigger-created default team: %v", err)
 	}
-	if err := testDB.SqlcClient.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
+	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
 		t.Fatalf("failed to remove trigger-created default team: %v", err)
 	}
 
@@ -539,7 +539,7 @@ func TestPostTeams_LocalPolicyDeniedReturnsBadRequestWithoutCreatingTeam(t *test
 	sink := &fakeTeamProvisionSink{}
 
 	for range 2 {
-		team, err := testDB.SqlcClient.CreateTeam(ctx, queries.CreateTeamParams{
+		team, err := testDB.AuthDB.Write.CreateTeam(ctx, authqueries.CreateTeamParams{
 			Name:  "extra",
 			Tier:  baseTierID,
 			Email: handlerTestUserEmail(userID),
@@ -547,7 +547,7 @@ func TestPostTeams_LocalPolicyDeniedReturnsBadRequestWithoutCreatingTeam(t *test
 		if err != nil {
 			t.Fatalf("failed to create extra team: %v", err)
 		}
-		if err := testDB.SqlcClient.CreateTeamMembership(ctx, queries.CreateTeamMembershipParams{
+		if err := testDB.AuthDB.Write.CreateTeamMembership(ctx, authqueries.CreateTeamMembershipParams{
 			UserID:    userID,
 			TeamID:    team.ID,
 			IsDefault: false,
@@ -834,11 +834,11 @@ func TestCreateTeam_ConcurrentRequestsRespectLocalPolicyWithZeroMemberships(t *t
 	ctx := t.Context()
 	userID := createHandlerTestUser(t, testDB)
 
-	existingTeam, err := testDB.SqlcClient.GetDefaultTeamByUserID(ctx, userID)
+	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
 		t.Fatalf("expected trigger-created default team: %v", err)
 	}
-	if err := testDB.SqlcClient.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
+	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
 		t.Fatalf("failed to remove default team: %v", err)
 	}
 
