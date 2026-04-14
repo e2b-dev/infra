@@ -114,7 +114,7 @@ func defaultCfg(ct CompressionType, workers, frameSize int) *CompressConfig {
 		EncoderConcurrency: 1,
 		FrameEncodeWorkers: workers,
 		FrameSizeKB:        frameSize / 1024,
-		TargetPartSizeMB:   50,
+		MinPartSizeMB:      50,
 	}
 }
 
@@ -218,10 +218,10 @@ func TestCompressStreamPartSizeMinimum(t *testing.T) {
 	sharedData := generateSemiRandomData(100 * megabyte)
 
 	tests := []struct {
-		name             string
-		dataSize         int
-		frameSize        int
-		targetPartSizeMB int
+		name          string
+		dataSize      int
+		frameSize     int
+		minPartSizeMB int
 	}{
 		{"large_file", 100 * megabyte, 2 * megabyte, 50},
 		{"small_file_one_part", 5 * megabyte, 2 * megabyte, 50},
@@ -235,7 +235,7 @@ func TestCompressStreamPartSizeMinimum(t *testing.T) {
 			data := sharedData[:tc.dataSize]
 			up := &memPartUploader{}
 			cfg := defaultCfg(CompressionZstd, 4, tc.frameSize)
-			cfg.TargetPartSizeMB = tc.targetPartSizeMB
+			cfg.MinPartSizeMB = tc.minPartSizeMB
 
 			_, _, err := compressStream(context.Background(), bytes.NewReader(data), cfg, up, 4)
 			require.NoError(t, err)
@@ -267,11 +267,11 @@ func TestCompressStreamRace(t *testing.T) {
 	t.Parallel()
 
 	const (
-		streams          = 8            // concurrent CompressStream calls
-		dataSize         = 4 * megabyte // small enough to be fast, big enough to exercise batching
-		frameSize        = 128 * 1024   // 128 KB — many frames per part
-		workers          = 8            // high worker count to maximise contention
-		targetPartSizeMB = 1            // small parts → many parts per stream
+		streams       = 8            // concurrent CompressStream calls
+		dataSize      = 4 * megabyte // small enough to be fast, big enough to exercise batching
+		frameSize     = 128 * 1024   // 128 KB — many frames per part
+		workers       = 8            // high worker count to maximise contention
+		minPartSizeMB = 1            // small parts → many parts per stream
 	)
 
 	data := generateSemiRandomData(dataSize)
@@ -288,7 +288,7 @@ func TestCompressStreamRace(t *testing.T) {
 		eg.Go(func() error {
 			up := &memPartUploader{}
 			cfg := defaultCfg(codec, workers, frameSize)
-			cfg.TargetPartSizeMB = targetPartSizeMB
+			cfg.MinPartSizeMB = minPartSizeMB
 			if codec == CompressionZstd {
 				cfg.EncoderConcurrency = 4 // multi-threaded zstd encoders for more contention
 			}
@@ -344,7 +344,7 @@ func BenchmarkCompress(b *testing.B) {
 				EncoderConcurrency: 1,
 				FrameEncodeWorkers: bcfg.workers,
 				FrameSizeKB:        2 * 1024,
-				TargetPartSizeMB:   50,
+				MinPartSizeMB:      50,
 			}
 
 			var lastParts atomic.Int32
@@ -407,7 +407,7 @@ func BenchmarkStoreFile(b *testing.B) {
 					EncoderConcurrency: 1,
 					FrameEncodeWorkers: workers,
 					FrameSizeKB:        2 * 1024,
-					TargetPartSizeMB:   50,
+					MinPartSizeMB:      50,
 				}
 
 				b.SetBytes(int64(dataSize))

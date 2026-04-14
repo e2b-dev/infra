@@ -34,7 +34,7 @@ type CompressConfig struct {
 	Type               string `env:"COMPRESS_TYPE"                 envDefault:"zstd"`
 	Level              int    `env:"COMPRESS_LEVEL"                envDefault:"2"`
 	FrameSizeKB        int    `env:"COMPRESS_FRAME_SIZE_KB"        envDefault:"2048"`
-	TargetPartSizeMB   int    `env:"COMPRESS_TARGET_PART_SIZE_MB"  envDefault:"50"`
+	MinPartSizeMB      int    `env:"COMPRESS_MIN_PART_SIZE_MB"     envDefault:"50"`
 	FrameEncodeWorkers int    `env:"COMPRESS_FRAME_ENCODE_WORKERS" envDefault:"4"`
 	EncoderConcurrency int    `env:"COMPRESS_ENCODER_CONCURRENCY"  envDefault:"1"`
 }
@@ -57,13 +57,14 @@ func (c *CompressConfig) FrameSize() int {
 	return c.FrameSizeKB * 1024
 }
 
-// TargetPartSize returns the target part size in bytes.
-func (c *CompressConfig) TargetPartSize() int64 {
-	if c == nil || c.TargetPartSizeMB <= 0 {
+// MinPartSize returns the minimum compressed part size in bytes.
+// Parts accumulate frames until they reach this threshold.
+func (c *CompressConfig) MinPartSize() int64 {
+	if c == nil || c.MinPartSizeMB <= 0 {
 		return int64(gcpMultipartUploadChunkSize)
 	}
 
-	return int64(c.TargetPartSizeMB) * (1 << 20)
+	return int64(c.MinPartSizeMB) * (1 << 20)
 }
 
 // IsCompressionEnabled reports whether compression is configured and active.
@@ -122,7 +123,7 @@ func ResolveCompressConfig(ctx context.Context, base *CompressConfig, ff *featur
 					Type:               ct,
 					Level:              v.Get("compressionLevel").IntValue(),
 					FrameSizeKB:        v.Get("frameSizeKB").IntValue(),
-					TargetPartSizeMB:   v.Get("targetPartSizeMB").IntValue(),
+					MinPartSizeMB:      v.Get("minPartSizeMB").IntValue(),
 					FrameEncodeWorkers: v.Get("frameEncodeWorkers").IntValue(),
 					EncoderConcurrency: v.Get("encoderConcurrency").IntValue(),
 				}

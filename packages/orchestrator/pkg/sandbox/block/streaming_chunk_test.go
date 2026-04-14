@@ -140,7 +140,7 @@ func makeCompressedTestData(tb testing.TB, data []byte) (*storage.FrameTable, *f
 		EncoderConcurrency: 1,
 		FrameEncodeWorkers: 1,
 		FrameSizeKB:        testFrameSize / 1024,
-		TargetPartSizeMB:   50,
+		MinPartSizeMB:      50,
 	})
 	require.NoError(tb, err)
 

@@ -325,7 +325,7 @@ var CompressConfigFlag = newJSONFlag("compress-config", ldvalue.FromJSONMarshal(
 	"compressionType":    "zstd",
 	"compressionLevel":   2,
 	"frameSizeKB":        2048,
-	"targetPartSizeMB":   50,
+	"minPartSizeMB":      50,
 	"frameEncodeWorkers": 4,
 	"encoderConcurrency": 1,
 }))

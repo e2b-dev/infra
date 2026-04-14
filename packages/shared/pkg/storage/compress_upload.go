@@ -14,8 +14,6 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// partUploader is the interface for uploading data in parts.
-// Implementations exist for GCS multipart uploads and local file writes.
 type partUploader interface {
 	Start(ctx context.Context) error
 	UploadPart(ctx context.Context, partIndex int, data ...[]byte) error
@@ -23,8 +21,6 @@ type partUploader interface {
 	Close() error
 }
 
-// memPartUploader collects compressed parts in memory. Thread-safe.
-// Useful for tests and benchmarks that need CompressStream output as bytes.
 type memPartUploader struct {
 	mu    sync.Mutex
 	parts map[int][]byte
@@ -51,7 +47,6 @@ func (m *memPartUploader) UploadPart(_ context.Context, partIndex int, data ...[
 func (m *memPartUploader) Complete(context.Context) error { return nil }
 func (m *memPartUploader) Close() error                   { return nil }
 
-// Assemble returns the concatenated parts in index order.
 func (m *memPartUploader) Assemble() []byte {
 	keys := make([]int, 0, len(m.parts))
 	for k := range m.parts {
@@ -76,36 +71,32 @@ type part struct {
 	index          int
 	frames         []*frame
 	compressedSize atomic.Int64
-	eg             *errgroup.Group
-	readyToUpload  chan error
+	compress       *errgroup.Group
 }
 
-func newPart(index int, parentCtx context.Context, workers int) (p *part, ctx context.Context) {
-	p = &part{index: index}
-	p.eg, ctx = errgroup.WithContext(parentCtx)
-	p.eg.SetLimit(workers)
+func newPart(index int, parentCtx context.Context, workers int) (*part, context.Context) {
+	p := &part{index: index}
+	var ctx context.Context
+	p.compress, ctx = errgroup.WithContext(parentCtx)
+	p.compress.SetLimit(workers)
 
 	return p, ctx
 }
 
 func (p *part) addFrame(ctx context.Context, uncompressedData []byte, pool *sync.Pool) {
-	if len(uncompressedData) == 0 {
-		return
-	}
-
 	frameInPart := &frame{uncompressedSize: len(uncompressedData)}
 	p.frames = append(p.frames, frameInPart)
 
-	p.eg.Go(func() error {
+	p.compress.Go(func() error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		c := pool.Get().(compressor)
 		out, err := c.compress(uncompressedData)
-		pool.Put(c)
 		if err != nil {
 			return err
 		}
+		pool.Put(c)
 		frameInPart.compressed = out
 		p.compressedSize.Add(int64(len(out)))
 
@@ -113,132 +104,121 @@ func (p *part) addFrame(ctx context.Context, uncompressedData []byte, pool *sync
 	})
 }
 
-func (p *part) submit(ctx context.Context, queue chan<- *part) {
-	p.readyToUpload = make(chan error, 1)
-
-	go func() {
-		p.readyToUpload <- p.eg.Wait()
-		close(p.readyToUpload)
-	}()
-
-	select {
-	case queue <- p:
-	case <-ctx.Done():
-	}
-}
-
-// compressStream: read → compress (parallel) → emit metadata (ordered) → upload (concurrent).
-func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uploader partUploader, maxUploadConcurrency int) (ft *FrameTable, checksum [32]byte, err error) { //nolint:unparam // callers in later PRs pass different values
-	frameSize := cfg.FrameSize()
-	targetPartSize := cfg.TargetPartSize()
+func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uploader partUploader, maxUploadConcurrency int) (*FrameTable, [32]byte, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	if err := uploader.Start(ctx); err != nil {
-		return nil, [32]byte{}, fmt.Errorf("failed to start framed upload: %w", err)
+		return nil, [32]byte{}, fmt.Errorf("start upload: %w", err)
 	}
 	defer uploader.Close()
 
-	// for compression we create a pool per file since there are often enough
-	// frames to justify pooling.
-	compressors, err := newCompressorPool(cfg)
-	if err != nil {
-		return nil, [32]byte{}, err
-	}
+	// +1: read loop goroutine + up to maxUploadConcurrency concurrent uploads.
+	work, workCtx := errgroup.WithContext(ctx)
+	work.SetLimit(maxUploadConcurrency + 1)
+
+	// Start the read loop.
+	q := make(chan *part, 2)
 	hasher := sha256.New()
+	work.Go(func() error {
+		defer close(q)
 
-	var frames []FrameSize
-
-	ctx, cancel := context.WithCancel(ctx) // pipeline errors cancel the read loop
-	defer cancel()
-
-	q := make(chan *part, maxUploadConcurrency)
-	var closeQ sync.Once
-
-	uploadEG, uploadCtx := errgroup.WithContext(ctx)
-	uploadEG.SetLimit(maxUploadConcurrency)
-
-	var emitEG errgroup.Group
-	emitEG.Go(func() error {
-		for p := range q {
-			select {
-			case compressErr := <-p.readyToUpload:
-				if compressErr != nil {
-					cancel()
-
-					return compressErr
-				}
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-
-			var compressed [][]byte
-			for _, f := range p.frames {
-				frames = append(frames, FrameSize{U: int32(f.uncompressedSize), C: int32(len(f.compressed))})
-				compressed = append(compressed, f.compressed)
-			}
-
-			pi := p.index
-			uploadEG.Go(func() error {
-				return uploader.UploadPart(uploadCtx, pi, compressed...)
-			})
-		}
-
-		return nil
+		return readLoop(workCtx, in, cfg, hasher, q)
 	})
 
-	// drainPipeline closes the part queue and waits for the emit and upload
-	// goroutines to finish. Must be called on every return path so that
-	// uploader.Close() (deferred above) never races with in-flight UploadPart calls.
-	drainPipeline := func() error {
-		closeQ.Do(func() { close(q) })
+	// Upload loop.
+	var frameSizes []FrameSize
+	var loopErr error
+	for p := range q {
+		if err := p.compress.Wait(); err != nil {
+			loopErr = fmt.Errorf("compress frames: %w", err)
+			cancel()
 
-		return errors.Join(emitEG.Wait(), uploadEG.Wait())
+			break
+		}
+
+		var compressed [][]byte
+		for _, f := range p.frames {
+			frameSizes = append(frameSizes, FrameSize{U: int32(f.uncompressedSize), C: int32(len(f.compressed))})
+			compressed = append(compressed, f.compressed)
+		}
+
+		pi := p.index
+		work.Go(func() error {
+			return uploader.UploadPart(workCtx, pi, compressed...)
+		})
 	}
 
-	part, compressCtx := newPart(1, ctx, cfg.FrameEncodeWorkers)
-	eofReached := false
-	for !eofReached {
-		if err := ctx.Err(); err != nil {
-			pipelineErr := drainPipeline()
+	// Drain q so the read loop can exit and close it, then wait for all
+	// in-flight uploads to finish before the deferred uploader.Close().
+	for range q { //nolint:revive // intentional drain
+	}
+	workErr := work.Wait()
 
-			return nil, [32]byte{}, errors.Join(err, pipelineErr)
+	if err := errors.Join(loopErr, workErr); err != nil {
+		return nil, [32]byte{}, err
+	}
+
+	if err := uploader.Complete(ctx); err != nil {
+		return nil, [32]byte{}, fmt.Errorf("complete upload: %w", err)
+	}
+
+	var checksum [32]byte
+	copy(checksum[:], hasher.Sum(nil))
+	ft := NewFrameTable(cfg.CompressionType(), frameSizes)
+
+	return ft, checksum, nil
+}
+
+func readLoop(ctx context.Context, in io.Reader, cfg *CompressConfig, hasher io.Writer, q chan<- *part) error {
+	compressors, err := newCompressorPool(cfg)
+	if err != nil {
+		return err
+	}
+
+	frameSize := cfg.FrameSize()
+	minPartSize := cfg.MinPartSize()
+	workers := cfg.FrameEncodeWorkers
+	p, compressCtx := newPart(1, ctx, workers)
+
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 
 		buf := make([]byte, frameSize)
 		n, err := io.ReadFull(in, buf)
 
-		eofReached = errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
-		if err != nil && !eofReached {
-			pipelineErr := drainPipeline()
-
-			return nil, [32]byte{}, errors.Join(fmt.Errorf("read frame: %w", err), pipelineErr)
+		eof := errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
+		if err != nil && !eof {
+			return fmt.Errorf("read frame: %w", err)
 		}
 
 		if n > 0 {
 			hasher.Write(buf[:n])
-			part.addFrame(compressCtx, buf[:n], compressors)
+			p.addFrame(compressCtx, buf[:n], compressors)
 		}
 
-		if !eofReached && part.compressedSize.Load() >= targetPartSize {
-			part.submit(ctx, q)
-			part, compressCtx = newPart(part.index+1, ctx, cfg.FrameEncodeWorkers)
+		if eof {
+			if len(p.frames) > 0 {
+				select {
+				case q <- p:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+
+			return nil
+		}
+
+		if p.compressedSize.Load() >= minPartSize {
+			select {
+			case q <- p:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+
+			p, compressCtx = newPart(p.index+1, ctx, workers)
 		}
 	}
-
-	if len(part.frames) > 0 {
-		part.submit(ctx, q)
-	}
-
-	if err := drainPipeline(); err != nil {
-		return nil, [32]byte{}, err
-	}
-
-	if err := uploader.Complete(ctx); err != nil {
-		return nil, [32]byte{}, fmt.Errorf("failed to finish uploading frames: %w", err)
-	}
-
-	copy(checksum[:], hasher.Sum(nil))
-
-	ft = NewFrameTable(cfg.CompressionType(), frames)
-
-	return ft, checksum, nil
 }
