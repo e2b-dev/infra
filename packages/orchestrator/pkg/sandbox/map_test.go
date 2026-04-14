@@ -10,6 +10,8 @@ import (
 )
 
 func TestGetByHostPortPrefersRunningSandbox(t *testing.T) {
+	t.Parallel()
+
 	m := NewSandboxesMap()
 
 	stopping := &Sandbox{
@@ -34,6 +36,8 @@ func TestGetByHostPortPrefersRunningSandbox(t *testing.T) {
 }
 
 func TestGetByHostPortPrefersStartingOverStopping(t *testing.T) {
+	t.Parallel()
+
 	m := NewSandboxesMap()
 
 	stopping := &Sandbox{
@@ -58,6 +62,8 @@ func TestGetByHostPortPrefersStartingOverStopping(t *testing.T) {
 }
 
 func TestGetByHostPortFallsBackToStoppingSandbox(t *testing.T) {
+	t.Parallel()
+
 	m := NewSandboxesMap()
 
 	stopping := &Sandbox{
