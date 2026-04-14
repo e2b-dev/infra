@@ -181,6 +181,8 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, ft *storage.Fra
 	defer func() {
 		if r := recover(); r != nil {
 			s.failIfRunning(fmt.Errorf("fetch panicked: %v", r))
+
+			return
 		}
 
 		// Safety net: if no code path called setDone/fail, terminate now.
