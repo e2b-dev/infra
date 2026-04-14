@@ -29,6 +29,9 @@ type Client struct {
 	LogsProvider    LogProvider
 }
 
+// New creates a telemetry client that exports traces, metrics, and logs via gRPC.
+// Telemetry is enabled when the OTEL_COLLECTOR_GRPC_ENDPOINT environment variable is set
+// (e.g. "localhost:4317"). When unset, a noop client is returned with zero overhead.
 func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID string, additional ...attribute.KeyValue) (*Client, error) {
 	if otelCollectorGRPCEndpoint == "" {
 		return NewNoopClient(), nil

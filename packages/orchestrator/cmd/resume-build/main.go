@@ -965,8 +965,6 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	}
 	sbxlogger.SetSandboxLoggerInternal(logger.NewNopLogger())
 
-	// Initialize telemetry (traces, metrics) if OTEL_COLLECTOR_GRPC_ENDPOINT is set.
-	// When unset, telemetry.New() returns a noop client with zero overhead.
 	tel, err := telemetry.New(ctx, "resume-build", "resume-build", "", "dev", uuid.NewString())
 	if err != nil {
 		return fmt.Errorf("telemetry: %w", err)
