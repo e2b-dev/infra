@@ -28,9 +28,9 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/san
 const maxRequestsInProgress = 4096
 
 const (
-	// sliceMaxAttempts is the number of times to retry source.Slice() after the initial attempt.
-	// Total attempts = sliceMaxAttempts + 1.
-	sliceMaxAttempts = 3
+	// sliceMaxRetries is the number of times to retry source.Slice() after the initial attempt.
+	// Total attempts = sliceMaxRetries + 1.
+	sliceMaxRetries = 3
 	// sliceRetryBaseDelay is the initial backoff delay before the first retry.
 	// Subsequent retries double the delay (exponential backoff), capped at sliceRetryMaxDelay.
 	sliceRetryBaseDelay = 50 * time.Millisecond
@@ -349,19 +349,19 @@ func (u *Userfaultfd) faultPage(
 	var attempt int
 
 retryLoop:
-	for attempt = range sliceMaxAttempts {
+	for attempt = range sliceMaxRetries + 1 {
 		b, dataErr = source.Slice(ctx, offset, int64(pagesize))
 		if dataErr == nil {
 			break
 		}
 
-		if attempt >= sliceMaxAttempts-1 {
+		if attempt >= sliceMaxRetries {
 			break
 		}
 
 		u.logger.Warn(ctx, "UFFD serve slice error, retrying",
 			zap.Int("attempt", attempt+1),
-			zap.Int("max_attempts", sliceMaxAttempts),
+			zap.Int("max_attempts", sliceMaxRetries+1),
 			zap.Error(dataErr),
 		)
 
@@ -387,7 +387,7 @@ retryLoop:
 
 		span.RecordError(joinedErr)
 		u.logger.Error(ctx, "UFFD serve data fetch error after retries",
-			zap.Int("attempts", sliceMaxAttempts),
+			zap.Int("attempts", attempt+1),
 			zap.Error(joinedErr),
 		)
 
