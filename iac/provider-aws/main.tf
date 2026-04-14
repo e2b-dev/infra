@@ -29,7 +29,7 @@ terraform {
 }
 
 provider "cloudflare" {
-  api_token = module.init.cloudflare.token
+  api_token = var.dns_provider == "cloudflare" ? module.init.cloudflare[0].token : "unused"
 }
 
 provider "aws" {}
@@ -58,6 +58,7 @@ module "init" {
   ]
 
   allow_force_destroy = var.allow_force_destroy
+  dns_provider        = var.dns_provider
 }
 
 locals {

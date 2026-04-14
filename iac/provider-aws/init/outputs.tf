@@ -68,7 +68,7 @@ output "db_migrator_repository_name" {
 // Cloudflare
 // ---
 output "cloudflare" {
-  value = module.cloudflare.cloudflare
+  value = var.dns_provider == "cloudflare" ? module.cloudflare : []
 }
 
 // ---

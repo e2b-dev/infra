@@ -2,6 +2,23 @@ variable "domain_name" {
   type = string
 }
 
+variable "dns_provider" {
+  type        = string
+  description = "DNS provider to use for domain management. Supported values: cloudflare, route53"
+  default     = "cloudflare"
+
+  validation {
+    condition     = contains(["cloudflare", "route53"], var.dns_provider)
+    error_message = "dns_provider must be one of: cloudflare, route53"
+  }
+}
+
+variable "route53_zone_id" {
+  type        = string
+  description = "Route53 hosted zone ID. Required when dns_provider is route53"
+  default     = ""
+}
+
 variable "allow_force_destroy" {
   default = false
 }
