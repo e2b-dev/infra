@@ -665,7 +665,10 @@ func (p *Process) Stop(ctx context.Context) error {
 			// Check process status right before Kill — the pre-SIGTERM status
 			// captured above is 10s stale and no longer useful here.
 			status, stateErr := getProcessStatus(p.cmd.Process.Pid)
-			if stateErr != nil && !errors.Is(stateErr, process.ErrorProcessNotRunning) {
+			if errors.Is(stateErr, process.ErrorProcessNotRunning) {
+				// Process already exited, no need to send SIGKILL.
+				return
+			} else if stateErr != nil {
 				logger.L().Warn(ctx, "failed to get fc process status before SIGKILL", zap.Error(stateErr), logger.WithSandboxID(p.files.SandboxID))
 			}
 
