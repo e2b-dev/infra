@@ -35,7 +35,7 @@ type BuildUploader interface {
 //
 // pending is shared across layers for multi-layer builds; nil is fine for
 // single-layer.
-func NewBuildUploader(ctx context.Context, snapshot *Snapshot, persistence storage.StorageProvider, paths storage.Paths, cfg *storage.CompressConfig, ff *featureflags.Client, useCase string, pending *PendingBuildInfo) BuildUploader {
+func NewBuildUploader(ctx context.Context, snapshot *Snapshot, persistence storage.StorageProvider, paths storage.Paths, cfg storage.CompressConfig, ff *featureflags.Client, useCase string, pending *PendingBuildInfo) BuildUploader {
 	base := buildUploader{
 		paths:       paths,
 		persistence: persistence,
@@ -87,7 +87,7 @@ func (b *buildUploader) uploadUncompressedFile(ctx context.Context, local, remot
 		return err
 	}
 
-	if _, _, err := object.StoreFile(ctx, local, nil); err != nil {
+	if _, _, err := object.StoreFile(ctx, local, storage.CompressConfig{}); err != nil {
 		return fmt.Errorf("error when uploading %s: %w", remote, err)
 	}
 
@@ -122,7 +122,7 @@ func (b *buildUploader) uploadMetadata(ctx context.Context, path string) error {
 	return nil
 }
 
-func (b *buildUploader) uploadCompressedFile(ctx context.Context, local, remote string, objType storage.SeekableObjectType, cfg *storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
+func (b *buildUploader) uploadCompressedFile(ctx context.Context, local, remote string, objType storage.SeekableObjectType, cfg storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
 	object, err := b.persistence.OpenSeekable(ctx, remote, objType)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("error opening framed file for %s: %w", remote, err)

@@ -64,7 +64,7 @@ func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) e
 		return err
 	}
 
-	if _, _, err = object.StoreFile(ctx, memfilePath, nil); err != nil {
+	if _, _, err = object.StoreFile(ctx, memfilePath, storage.CompressConfig{}); err != nil {
 		return fmt.Errorf("error when uploading memfile: %w", err)
 	}
 
@@ -96,7 +96,7 @@ func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) err
 		return err
 	}
 
-	if _, _, err = object.StoreFile(ctx, rootfsPath, nil); err != nil {
+	if _, _, err = object.StoreFile(ctx, rootfsPath, storage.CompressConfig{}); err != nil {
 		return fmt.Errorf("error when uploading rootfs: %w", err)
 	}
 

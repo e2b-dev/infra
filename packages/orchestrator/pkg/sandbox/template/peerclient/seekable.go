@@ -83,7 +83,7 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length in
 	)
 }
 
-func (s *peerSeekable) StoreFile(ctx context.Context, path string, cfg *storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
+func (s *peerSeekable) StoreFile(ctx context.Context, path string, cfg storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
 	// Writes always go to the base provider (GCS/S3); the peer is read-only.
 	fallback, err := s.getOrOpenBase(ctx)
 	if err != nil {

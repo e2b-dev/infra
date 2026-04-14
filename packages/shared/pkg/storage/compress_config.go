@@ -28,7 +28,7 @@ const (
 
 // CompressConfig is the base compression configuration, loaded from environment
 // variables at startup. Feature flags can override individual fields at runtime
-// via ResolveCompressConfig.
+// via ResolveCompressConfig. Zero value means compression disabled.
 type CompressConfig struct {
 	Enabled            bool   `env:"COMPRESS_ENABLED"              envDefault:"false"`
 	Type               string `env:"COMPRESS_TYPE"                 envDefault:"zstd"`
@@ -40,17 +40,13 @@ type CompressConfig struct {
 }
 
 // CompressionType returns the parsed CompressionType.
-func (c *CompressConfig) CompressionType() CompressionType {
-	if c == nil {
-		return CompressionNone
-	}
-
+func (c CompressConfig) CompressionType() CompressionType {
 	return parseCompressionType(c.Type)
 }
 
 // FrameSize returns the frame size in bytes.
-func (c *CompressConfig) FrameSize() int {
-	if c == nil || c.FrameSizeKB <= 0 {
+func (c CompressConfig) FrameSize() int {
+	if c.FrameSizeKB <= 0 {
 		return DefaultCompressFrameSize
 	}
 
@@ -59,8 +55,8 @@ func (c *CompressConfig) FrameSize() int {
 
 // MinPartSize returns the minimum compressed part size in bytes.
 // Parts accumulate frames until they reach this threshold.
-func (c *CompressConfig) MinPartSize() int64 {
-	if c == nil || c.MinPartSizeMB <= 0 {
+func (c CompressConfig) MinPartSize() int64 {
+	if c.MinPartSizeMB <= 0 {
 		return int64(gcpMultipartUploadChunkSize)
 	}
 
@@ -68,12 +64,12 @@ func (c *CompressConfig) MinPartSize() int64 {
 }
 
 // IsCompressionEnabled reports whether compression is configured and active.
-func (c *CompressConfig) IsCompressionEnabled() bool {
-	return c != nil && c.Enabled && c.CompressionType() != CompressionNone
+func (c CompressConfig) IsCompressionEnabled() bool {
+	return c.Enabled && c.CompressionType() != CompressionNone
 }
 
 // Validate checks that the config is internally consistent.
-func (c *CompressConfig) Validate() error {
+func (c CompressConfig) Validate() error {
 	if !c.IsCompressionEnabled() {
 		return nil
 	}
@@ -89,24 +85,14 @@ func (c *CompressConfig) Validate() error {
 	return nil
 }
 
-// Resolve returns a pointer to this config if compression is enabled, or nil.
-// Callers use nil to mean "no compression".
-func (c *CompressConfig) Resolve() *CompressConfig {
-	if !c.IsCompressionEnabled() {
-		return nil
-	}
-
-	return c
-}
-
 // ResolveCompressConfig returns the effective compression config for a given
 // file type and use case. Feature flags override the base config when active.
-// Returns nil when compression is disabled.
+// Returns zero-value CompressConfig when compression is disabled.
 //
 // fileType and useCase are added to the LD evaluation context so that
 // LaunchDarkly targeting rules can differentiate (e.g. compress memfile
 // but not rootfs, or compress builds but not pauses).
-func ResolveCompressConfig(ctx context.Context, base *CompressConfig, ff *featureflags.Client, fileType, useCase string) *CompressConfig {
+func ResolveCompressConfig(ctx context.Context, base CompressConfig, ff *featureflags.Client, fileType, useCase string) CompressConfig {
 	if ff != nil {
 		ctx = featureflags.AddToContext(ctx,
 			featureflags.CompressFileTypeContext(fileType),
@@ -118,7 +104,7 @@ func ResolveCompressConfig(ctx context.Context, base *CompressConfig, ff *featur
 		if v.Get("compressBuilds").BoolValue() {
 			ct := v.Get("compressionType").StringValue()
 			if parseCompressionType(ct) != CompressionNone {
-				return &CompressConfig{
+				return CompressConfig{
 					Enabled:            true,
 					Type:               ct,
 					Level:              v.Get("compressionLevel").IntValue(),
@@ -131,5 +117,9 @@ func ResolveCompressConfig(ctx context.Context, base *CompressConfig, ff *featur
 		}
 	}
 
-	return base.Resolve()
+	if !base.IsCompressionEnabled() {
+		return CompressConfig{}
+	}
+
+	return base
 }

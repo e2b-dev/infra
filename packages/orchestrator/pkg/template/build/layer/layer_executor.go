@@ -35,7 +35,7 @@ type LayerExecutor struct {
 	buildStorage    storage.StorageProvider
 	index           cache.Index
 	uploadTracker   *UploadTracker
-	compressConfig  *storage.CompressConfig // can be overridden by FF
+	compressConfig  storage.CompressConfig // can be overridden by FF
 	ff              *featureflags.Client
 }
 
@@ -49,7 +49,7 @@ func NewLayerExecutor(
 	buildStorage storage.StorageProvider,
 	index cache.Index,
 	uploadTracker *UploadTracker,
-	compressConfig *storage.CompressConfig,
+	compressConfig storage.CompressConfig,
 	ff *featureflags.Client,
 ) *LayerExecutor {
 	return &LayerExecutor{

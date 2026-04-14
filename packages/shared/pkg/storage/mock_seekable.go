@@ -179,7 +179,7 @@ func (_c *MockSeekable_Size_Call) RunAndReturn(run func(ctx context.Context) (in
 }
 
 // StoreFile provides a mock function for the type MockSeekable
-func (_mock *MockSeekable) StoreFile(ctx context.Context, path string, cfg *CompressConfig) (*FrameTable, [32]byte, error) {
+func (_mock *MockSeekable) StoreFile(ctx context.Context, path string, cfg CompressConfig) (*FrameTable, [32]byte, error) {
 	ret := _mock.Called(ctx, path, cfg)
 
 	if len(ret) == 0 {
@@ -189,24 +189,24 @@ func (_mock *MockSeekable) StoreFile(ctx context.Context, path string, cfg *Comp
 	var r0 *FrameTable
 	var r1 [32]byte
 	var r2 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *CompressConfig) (*FrameTable, [32]byte, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, CompressConfig) (*FrameTable, [32]byte, error)); ok {
 		return returnFunc(ctx, path, cfg)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *CompressConfig) *FrameTable); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, CompressConfig) *FrameTable); ok {
 		r0 = returnFunc(ctx, path, cfg)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*FrameTable)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *CompressConfig) [32]byte); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, CompressConfig) [32]byte); ok {
 		r1 = returnFunc(ctx, path, cfg)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).([32]byte)
 		}
 	}
-	if returnFunc, ok := ret.Get(2).(func(context.Context, string, *CompressConfig) error); ok {
+	if returnFunc, ok := ret.Get(2).(func(context.Context, string, CompressConfig) error); ok {
 		r2 = returnFunc(ctx, path, cfg)
 	} else {
 		r2 = ret.Error(2)
@@ -222,12 +222,12 @@ type MockSeekable_StoreFile_Call struct {
 // StoreFile is a helper method to define mock.On call
 //   - ctx context.Context
 //   - path string
-//   - cfg *CompressConfig
+//   - cfg CompressConfig
 func (_e *MockSeekable_Expecter) StoreFile(ctx interface{}, path interface{}, cfg interface{}) *MockSeekable_StoreFile_Call {
 	return &MockSeekable_StoreFile_Call{Call: _e.mock.On("StoreFile", ctx, path, cfg)}
 }
 
-func (_c *MockSeekable_StoreFile_Call) Run(run func(ctx context.Context, path string, cfg *CompressConfig)) *MockSeekable_StoreFile_Call {
+func (_c *MockSeekable_StoreFile_Call) Run(run func(ctx context.Context, path string, cfg CompressConfig)) *MockSeekable_StoreFile_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -237,9 +237,9 @@ func (_c *MockSeekable_StoreFile_Call) Run(run func(ctx context.Context, path st
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 *CompressConfig
+		var arg2 CompressConfig
 		if args[2] != nil {
-			arg2 = args[2].(*CompressConfig)
+			arg2 = args[2].(CompressConfig)
 		}
 		run(
 			arg0,
@@ -255,7 +255,7 @@ func (_c *MockSeekable_StoreFile_Call) Return(frameTable *FrameTable, bytes [32]
 	return _c
 }
 
-func (_c *MockSeekable_StoreFile_Call) RunAndReturn(run func(ctx context.Context, path string, cfg *CompressConfig) (*FrameTable, [32]byte, error)) *MockSeekable_StoreFile_Call {
+func (_c *MockSeekable_StoreFile_Call) RunAndReturn(run func(ctx context.Context, path string, cfg CompressConfig) (*FrameTable, [32]byte, error)) *MockSeekable_StoreFile_Call {
 	_c.Call.Return(run)
 	return _c
 }

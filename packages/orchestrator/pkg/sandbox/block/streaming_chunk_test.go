@@ -76,7 +76,7 @@ func (s *fakeSeekable) Size(_ context.Context) (int64, error) {
 	return int64(len(s.data)), nil
 }
 
-func (s *fakeSeekable) StoreFile(context.Context, string, *storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
+func (s *fakeSeekable) StoreFile(context.Context, string, storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
 	panic("not used")
 }
 
@@ -134,7 +134,7 @@ func (s *fakeSeekable) OpenRangeReader(_ context.Context, offsetU int64, length 
 func makeCompressedTestData(tb testing.TB, data []byte) (*storage.FrameTable, *fakeSeekable) {
 	tb.Helper()
 
-	ft, compressed, _, err := storage.CompressBytes(context.Background(), data, &storage.CompressConfig{
+	ft, compressed, _, err := storage.CompressBytes(context.Background(), data, storage.CompressConfig{
 		Enabled:            true,
 		Type:               "lz4",
 		EncoderConcurrency: 1,
@@ -422,7 +422,7 @@ func (s *panicSeekable) Size(_ context.Context) (int64, error) {
 	return int64(len(s.data)), nil
 }
 
-func (s *panicSeekable) StoreFile(context.Context, string, *storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
+func (s *panicSeekable) StoreFile(context.Context, string, storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
 	panic("not used")
 }
 

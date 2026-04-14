@@ -18,7 +18,7 @@ type compressedUploader struct {
 	buildUploader
 
 	pending *PendingBuildInfo
-	cfg     *storage.CompressConfig
+	cfg     storage.CompressConfig
 	ff      *featureflags.Client // to override cfg on a per-file basis in UploadData
 	useCase string
 }
@@ -43,7 +43,7 @@ func (c *compressedUploader) UploadData(ctx context.Context) error {
 	if memfilePath != nil {
 		localPath := *memfilePath
 		eg.Go(func() error {
-			if memCfg == nil {
+			if !memCfg.IsCompressionEnabled() {
 				return c.uploadUncompressedFile(ctx, localPath, c.paths.Memfile(), storage.MemfileObjectType)
 			}
 
@@ -61,7 +61,7 @@ func (c *compressedUploader) UploadData(ctx context.Context) error {
 	if rootfsPath != nil {
 		localPath := *rootfsPath
 		eg.Go(func() error {
-			if rootfsCfg == nil {
+			if !rootfsCfg.IsCompressionEnabled() {
 				return c.uploadUncompressedFile(ctx, localPath, c.paths.Rootfs(), storage.RootFSObjectType)
 			}
 

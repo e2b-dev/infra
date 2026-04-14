@@ -107,7 +107,7 @@ type StreamingReader interface {
 
 type SeekableWriter interface {
 	// Store entire file
-	StoreFile(ctx context.Context, path string, cfg *CompressConfig) (*FrameTable, [32]byte, error)
+	StoreFile(ctx context.Context, path string, cfg CompressConfig) (*FrameTable, [32]byte, error)
 }
 
 type Seekable interface {

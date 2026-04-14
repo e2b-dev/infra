@@ -731,7 +731,7 @@ type snapshotResult struct {
 // uploadSnapshot uploads snapshot files to GCS and returns serialized V4
 // header bytes for peer transition (nil for uncompressed builds).
 func (r *snapshotResult) uploadSnapshot(ctx context.Context, persistence storage.StorageProvider, baseCompressCfg storage.CompressConfig, flags *featureflags.Client) (memfileHdr, rootfsHdr []byte, err error) {
-	uploader := sandbox.NewBuildUploader(ctx, r.snapshot, persistence, r.paths, &baseCompressCfg, flags, storage.UseCasePause, nil)
+	uploader := sandbox.NewBuildUploader(ctx, r.snapshot, persistence, r.paths, baseCompressCfg, flags, storage.UseCasePause, nil)
 
 	if err := uploader.UploadData(ctx); err != nil {
 		return nil, nil, err

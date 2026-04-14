@@ -101,13 +101,13 @@ func decompressAll(ft *FrameTable, compressed []byte) ([]byte, error) {
 }
 
 // defaultCfg returns a CompressConfig with the given overrides applied.
-func defaultCfg(ct CompressionType, workers, frameSize int) *CompressConfig {
+func defaultCfg(ct CompressionType, workers, frameSize int) CompressConfig {
 	level := 2 // zstd default
 	if ct == CompressionLZ4 {
 		level = 0
 	}
 
-	return &CompressConfig{
+	return CompressConfig{
 		Enabled:            true,
 		Type:               ct.String(),
 		Level:              level,
@@ -337,7 +337,7 @@ func BenchmarkCompress(b *testing.B) {
 
 	for _, bcfg := range configs {
 		b.Run(bcfg.name, func(b *testing.B) {
-			compCfg := &CompressConfig{
+			compCfg := CompressConfig{
 				Enabled:            true,
 				Type:               "zstd",
 				Level:              2,
@@ -400,7 +400,7 @@ func BenchmarkStoreFile(b *testing.B) {
 		for _, workers := range workerCounts {
 			name := fmt.Sprintf("%s/w%d", codec.name, workers)
 			b.Run(name, func(b *testing.B) {
-				compCfg := &CompressConfig{
+				compCfg := CompressConfig{
 					Enabled:            true,
 					Type:               codec.codec.String(),
 					Level:              codec.level,

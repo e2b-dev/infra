@@ -104,7 +104,7 @@ func (p *part) addFrame(ctx context.Context, uncompressedData []byte, pool *sync
 	})
 }
 
-func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uploader partUploader, maxUploadConcurrency int) (*FrameTable, [32]byte, error) {
+func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploader partUploader, maxUploadConcurrency int) (*FrameTable, [32]byte, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -170,7 +170,7 @@ func compressStream(ctx context.Context, in io.Reader, cfg *CompressConfig, uplo
 	return ft, checksum, nil
 }
 
-func readLoop(ctx context.Context, in io.Reader, cfg *CompressConfig, hasher io.Writer, q chan<- *part) error {
+func readLoop(ctx context.Context, in io.Reader, cfg CompressConfig, hasher io.Writer, q chan<- *part) error {
 	compressors, err := newCompressorPool(cfg)
 	if err != nil {
 		return err

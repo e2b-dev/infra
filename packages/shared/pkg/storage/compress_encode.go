@@ -51,7 +51,7 @@ func (z *zstdCompressor) compress(src []byte) ([]byte, error) { //nolint:unparam
 // Both LZ4 and zstd encoders are pooled and reused via Reset/EncodeAll.
 // The config is validated eagerly — if zstd options are invalid, an error
 // is returned immediately rather than deferred to pool.Get().
-func newCompressorPool(cfg *CompressConfig) (*sync.Pool, error) {
+func newCompressorPool(cfg CompressConfig) (*sync.Pool, error) {
 	pool := &sync.Pool{}
 
 	switch cfg.CompressionType() {
@@ -109,7 +109,7 @@ func newCompressorPool(cfg *CompressConfig) (*sync.Pool, error) {
 	return pool, nil
 }
 
-func CompressBytes(ctx context.Context, data []byte, cfg *CompressConfig) (*FrameTable, []byte, [32]byte, error) {
+func CompressBytes(ctx context.Context, data []byte, cfg CompressConfig) (*FrameTable, []byte, [32]byte, error) {
 	up := &memPartUploader{}
 
 	ft, checksum, err := compressStream(ctx, bytes.NewReader(data), cfg, up, 4)
