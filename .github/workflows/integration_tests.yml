@@ -32,8 +32,8 @@ jobs:
         uses: ./.github/actions/start-services
         with:
           compress_enabled: "true"
-          compress_type: "lz4"
-          compress_level: "0"
+          compress_type: "zstd"
+          compress_level: "1"
           compress_workers: "8"
 
       - name: Run Integration Tests

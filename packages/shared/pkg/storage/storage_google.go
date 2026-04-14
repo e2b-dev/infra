@@ -398,11 +398,23 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, cfg *CompressCon
 	// Compressed uploads always go through the multipart compressed path,
 	// regardless of file size.
 	if cfg.IsCompressionEnabled() {
+		start := time.Now()
 		ft, checksum, err := o.storeFileCompressed(ctx, path, cfg, maxConcurrency)
 		if err != nil {
 			timer.Failure(ctx, fileInfo.Size())
 		} else {
 			timer.Success(ctx, fileInfo.Size())
+
+			logger.L().Debug(ctx, "Uploaded file to GCS",
+				zap.String("bucket", bucketName),
+				zap.String("object", objectName),
+				zap.String("source", path),
+				zap.Int64("size_uncompressed", fileInfo.Size()),
+				zap.Int64("size_compressed", ft.CompressedSize()),
+				zap.String("compression", cfg.CompressionType().String()),
+				zap.Int("frames", ft.NumFrames()),
+				zap.Int64("duration_ms", time.Since(start).Milliseconds()),
+			)
 		}
 
 		return ft, checksum, err
@@ -431,6 +443,14 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, cfg *CompressCon
 
 		timer.Success(ctx, int64(len(data)))
 
+		logger.L().Debug(ctx, "Uploaded file to GCS",
+			zap.String("bucket", bucketName),
+			zap.String("object", objectName),
+			zap.String("source", path),
+			zap.Int64("size_uncompressed", int64(len(data))),
+			zap.String("compression", "none"),
+		)
+
 		return nil, [32]byte{}, e
 	}
 
@@ -455,13 +475,14 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, cfg *CompressCon
 		return nil, [32]byte{}, fmt.Errorf("failed to upload file in parallel: %w", err)
 	}
 
-	logger.L().Debug(ctx, "Uploaded file in parallel",
+	logger.L().Debug(ctx, "Uploaded file to GCS",
 		zap.String("bucket", bucketName),
 		zap.String("object", objectName),
-		zap.String("path", path),
+		zap.String("source", path),
+		zap.Int64("size_uncompressed", fileInfo.Size()),
+		zap.String("compression", "none"),
 		zap.Int("max_concurrency", maxConcurrency),
-		zap.Int64("file_size", fileInfo.Size()),
-		zap.Int64("duration", time.Since(start).Milliseconds()),
+		zap.Int64("duration_ms", time.Since(start).Milliseconds()),
 	)
 
 	timer.Success(ctx, count)

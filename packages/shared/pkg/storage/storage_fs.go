@@ -14,6 +14,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type fsStorage struct {
@@ -127,7 +131,19 @@ func (o *fsObject) Put(_ context.Context, data []byte) error {
 
 func (o *fsObject) StoreFile(ctx context.Context, path string, cfg *CompressConfig) (*FrameTable, [32]byte, error) {
 	if cfg.IsCompressionEnabled() {
-		return o.storeFileCompressed(ctx, path, cfg)
+		ft, checksum, err := o.storeFileCompressed(ctx, path, cfg)
+		if err == nil {
+			logger.L().Debug(ctx, "Stored file to filesystem",
+				zap.String("object", o.path),
+				zap.String("source", path),
+				zap.Int64("size_uncompressed", ft.UncompressedSize()),
+				zap.Int64("size_compressed", ft.CompressedSize()),
+				zap.String("compression", cfg.CompressionType().String()),
+				zap.Int("frames", ft.NumFrames()),
+			)
+		}
+
+		return ft, checksum, err
 	}
 
 	r, err := os.Open(path)
@@ -142,7 +158,15 @@ func (o *fsObject) StoreFile(ctx context.Context, path string, cfg *CompressConf
 	}
 	defer handle.Close()
 
-	_, err = io.Copy(handle, r)
+	n, err := io.Copy(handle, r)
+	if err == nil {
+		logger.L().Debug(ctx, "Stored file to filesystem",
+			zap.String("object", o.path),
+			zap.String("source", path),
+			zap.Int64("size_uncompressed", n),
+			zap.String("compression", "none"),
+		)
+	}
 
 	return nil, [32]byte{}, err
 }

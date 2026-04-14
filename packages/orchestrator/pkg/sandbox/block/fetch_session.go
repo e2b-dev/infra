@@ -113,20 +113,26 @@ func (s *fetchSession) setDone() {
 	s.cond.Broadcast()
 }
 
-// setError records the error and wakes all waiters.
-// When onlyIfRunning is true, it is a no-op if the session already
-// terminated (used for panic recovery to avoid overriding a successful
-// completion).
-func (s *fetchSession) setError(err error, onlyIfRunning bool) {
+// fail records the error unconditionally and wakes all waiters.
+func (s *fetchSession) fail(err error) {
 	s.mu.Lock()
-	if onlyIfRunning && s.terminated() {
-		s.mu.Unlock()
-
-		return
-	}
-
 	s.fetchErr = err
 	s.done = true
+	s.mu.Unlock()
+
+	s.cond.Broadcast()
+}
+
+// failIfRunning records the error only if the session has not already
+// terminated — used in panic recovery and safety-net defers to avoid
+// overriding a successful completion. Always broadcasts to ensure no
+// waiter blocks forever.
+func (s *fetchSession) failIfRunning(err error) {
+	s.mu.Lock()
+	if !s.terminated() {
+		s.fetchErr = err
+		s.done = true
+	}
 	s.mu.Unlock()
 
 	s.cond.Broadcast()

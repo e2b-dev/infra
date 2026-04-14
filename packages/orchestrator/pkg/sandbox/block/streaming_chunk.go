@@ -189,16 +189,16 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, ft *storage.Fra
 	// never blocks forever — whether the fetch succeeded, failed, or panicked.
 	defer func() {
 		if r := recover(); r != nil {
-			s.setError(fmt.Errorf("fetch panicked: %v", r), true)
+			s.failIfRunning(fmt.Errorf("fetch panicked: %v", r))
 		}
 
-		// Safety net: if no code path called setDone/setError, terminate now.
-		s.setError(fmt.Errorf("fetch exited without completing"), true)
+		// Safety net: if no code path called setDone/fail, terminate now.
+		s.failIfRunning(fmt.Errorf("fetch exited without completing"))
 	}()
 
 	mmapSlice, releaseLock, err := c.cache.addressBytes(s.chunkOff, s.chunkLen)
 	if err != nil {
-		s.setError(err, false)
+		s.fail(err)
 
 		return
 	}
@@ -214,7 +214,7 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, ft *storage.Fra
 	if err != nil {
 		fetchTimer.RecordRaw(ctx, readBytes, attrs.remoteFailure)
 
-		s.setError(err, false)
+		s.fail(err)
 
 		return
 	}

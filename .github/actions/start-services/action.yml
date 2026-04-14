@@ -129,6 +129,7 @@ runs:
         COMPRESS_TYPE: ${{ inputs.compress_type }}
         COMPRESS_LEVEL: ${{ inputs.compress_level }}
         COMPRESS_FRAME_ENCODE_WORKERS: ${{ inputs.compress_workers }}
+        E2B_DEBUG: "true"
       run: |
         mkdir -p $SHARED_CHUNK_CACHE_PATH
         mkdir -p ~/logs

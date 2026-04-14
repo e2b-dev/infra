@@ -192,6 +192,21 @@ func (o *awsObject) StoreFile(ctx context.Context, path string, cfg *CompressCon
 			Body:   f,
 		},
 	)
+	if err == nil {
+		fi, _ := f.Stat()
+		var size int64
+		if fi != nil {
+			size = fi.Size()
+		}
+
+		logger.L().Debug(ctx, "Uploaded file to S3",
+			zap.String("bucket", o.bucketName),
+			zap.String("object", o.path),
+			zap.String("source", path),
+			zap.Int64("size_uncompressed", size),
+			zap.String("compression", "none"),
+		)
+	}
 
 	return nil, [32]byte{}, err
 }
