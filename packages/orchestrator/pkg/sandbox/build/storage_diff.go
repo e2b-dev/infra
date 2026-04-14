@@ -22,7 +22,7 @@ type StorageDiff struct {
 	metrics          blockmetrics.Metrics
 	persistence      storage.StorageProvider
 	featureFlags     *featureflags.Client
-	uncompressedSize int64 // 0 means unknown (fall back to Size() call)
+	uncompressedSize int64
 }
 
 var _ Diff = (*StorageDiff)(nil)
