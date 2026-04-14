@@ -3,7 +3,6 @@ package teamprovision
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -42,10 +41,6 @@ func (e *ProvisionError) Unwrap() error {
 	}
 
 	return e.Err
-}
-
-func (e *ProvisionError) IsBadRequest() bool {
-	return e.StatusCode == http.StatusBadRequest
 }
 
 func provisionLogFields(req sharedteamprovision.TeamBillingProvisionRequestedV1, sink string) []zap.Field {
