@@ -101,7 +101,6 @@ type StreamingReader interface {
 }
 
 type SeekableWriter interface {
-	// Store entire file
 	StoreFile(ctx context.Context, path string) error
 }
 

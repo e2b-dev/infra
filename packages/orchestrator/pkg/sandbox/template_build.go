@@ -8,6 +8,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -58,18 +59,33 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 	return nil
 }
 
-func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) error {
-	object, err := t.persistence.OpenSeekable(ctx, t.paths.Memfile(), storage.MemfileObjectType)
+func (t *TemplateBuild) uploadDiff(ctx context.Context, diff build.Diff, path string, objectType storage.SeekableObjectType) error {
+	data, release, err := diff.Data()
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	if data == nil {
+		return nil
+	}
+
+	object, err := t.persistence.OpenSeekable(ctx, path, objectType)
 	if err != nil {
 		return err
 	}
 
-	err = object.StoreFile(ctx, memfilePath)
-	if err != nil {
-		return fmt.Errorf("error when uploading memfile: %w", err)
+	type dataStorer interface{ StoreData(ctx context.Context, data []byte) error }
+	if ds, ok := object.(dataStorer); ok {
+		return ds.StoreData(ctx, data)
 	}
 
-	return nil
+	cachePath, err := diff.CachePath()
+	if err != nil {
+		return err
+	}
+
+	return object.StoreFile(ctx, cachePath)
 }
 
 func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Header) error {
@@ -86,20 +102,6 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Heade
 	err = object.Put(ctx, serialized)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile header: %w", err)
-	}
-
-	return nil
-}
-
-func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) error {
-	object, err := t.persistence.OpenSeekable(ctx, t.paths.Rootfs(), storage.RootFSObjectType)
-	if err != nil {
-		return err
-	}
-
-	err = object.StoreFile(ctx, rootfsPath)
-	if err != nil {
-		return fmt.Errorf("error when uploading rootfs: %w", err)
 	}
 
 	return nil
@@ -153,7 +155,7 @@ func uploadFileAsBlob(ctx context.Context, b storage.Blob, path string) error {
 	return nil
 }
 
-func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapfilePath string, memfilePath *string, rootfsPath *string) error {
+func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapfilePath string, memfileDiff build.Diff, rootfsDiff build.Diff) error {
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
@@ -173,19 +175,11 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 	})
 
 	eg.Go(func() error {
-		if rootfsPath == nil {
-			return nil
-		}
-
-		return t.uploadRootfs(ctx, *rootfsPath)
+		return t.uploadDiff(ctx, rootfsDiff, t.paths.Rootfs(), storage.RootFSObjectType)
 	})
 
 	eg.Go(func() error {
-		if memfilePath == nil {
-			return nil
-		}
-
-		return t.uploadMemfile(ctx, *memfilePath)
+		return t.uploadDiff(ctx, memfileDiff, t.paths.Memfile(), storage.MemfileObjectType)
 	})
 
 	eg.Go(func() error {

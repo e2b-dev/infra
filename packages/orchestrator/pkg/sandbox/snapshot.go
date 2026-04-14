@@ -26,30 +26,6 @@ func (s *Snapshot) Upload(
 	persistence storage.StorageProvider,
 	paths storage.Paths,
 ) error {
-	var memfilePath *string
-	switch r := s.MemfileDiff.(type) {
-	case *build.NoDiff:
-	default:
-		memfileLocalPath, err := r.CachePath()
-		if err != nil {
-			return fmt.Errorf("error getting memfile diff path: %w", err)
-		}
-
-		memfilePath = &memfileLocalPath
-	}
-
-	var rootfsPath *string
-	switch r := s.RootfsDiff.(type) {
-	case *build.NoDiff:
-	default:
-		rootfsLocalPath, err := r.CachePath()
-		if err != nil {
-			return fmt.Errorf("error getting rootfs diff path: %w", err)
-		}
-
-		rootfsPath = &rootfsLocalPath
-	}
-
 	templateBuild := NewTemplateBuild(
 		s.MemfileDiffHeader,
 		s.RootfsDiffHeader,
@@ -61,8 +37,8 @@ func (s *Snapshot) Upload(
 		ctx,
 		s.Metafile.Path(),
 		s.Snapfile.Path(),
-		memfilePath,
-		rootfsPath,
+		s.MemfileDiff,
+		s.RootfsDiff,
 	); err != nil {
 		return fmt.Errorf("error uploading template files: %w", err)
 	}

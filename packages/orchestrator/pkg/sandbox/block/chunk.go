@@ -85,6 +85,7 @@ type Chunker interface {
 	ReadAt(ctx context.Context, b []byte, off int64) (int, error)
 	WriteTo(ctx context.Context, w io.Writer) (int64, error)
 	Close() error
+	Data() ([]byte, func(), error)
 	FileSize() (int64, error)
 }
 
@@ -294,6 +295,10 @@ func (c *FullFetchChunker) fetchToCache(ctx context.Context, off, length int64) 
 
 func (c *FullFetchChunker) Close() error {
 	return c.cache.Close()
+}
+
+func (c *FullFetchChunker) Data() ([]byte, func(), error) {
+	return c.cache.Data()
 }
 
 func (c *FullFetchChunker) FileSize() (int64, error) {

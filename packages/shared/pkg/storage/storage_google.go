@@ -479,6 +479,74 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string) (e error) {
 	return nil
 }
 
+func (o *gcpObject) StoreData(ctx context.Context, data []byte) (e error) {
+	ctx, span := tracer.Start(ctx, "store data to gcp")
+	defer func() {
+		recordError(span, e)
+		span.End()
+	}()
+
+	if int64(len(data)) < gcpMultipartUploadChunkSize {
+		timer := googleWriteTimerFactory.Begin(
+			attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystemOneShot),
+		)
+
+		if err := o.Put(ctx, data); err != nil {
+			timer.Failure(ctx, int64(len(data)))
+
+			return fmt.Errorf("failed to write data (%d bytes): %w", len(data), err)
+		}
+
+		timer.Success(ctx, int64(len(data)))
+
+		return nil
+	}
+
+	timer := googleWriteTimerFactory.Begin(
+		attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystem),
+	)
+
+	maxConcurrency := gcloudDefaultUploadConcurrency
+	if o.limiter != nil {
+		if uploadLimiter := o.limiter.GCloudUploadLimiter(); uploadLimiter != nil {
+			if err := uploadLimiter.Acquire(ctx, 1); err != nil {
+				timer.Failure(ctx, 0)
+
+				return fmt.Errorf("failed to acquire semaphore: %w", err)
+			}
+			defer uploadLimiter.Release(1)
+		}
+
+		maxConcurrency = o.limiter.GCloudMaxTasks(ctx)
+	}
+
+	uploader, err := NewMultipartUploaderWithRetryConfig(ctx, o.storage.bucket.BucketName(), o.path, DefaultRetryConfig())
+	if err != nil {
+		timer.Failure(ctx, 0)
+
+		return fmt.Errorf("failed to create multipart uploader: %w", err)
+	}
+
+	start := time.Now()
+	count, err := uploader.UploadData(ctx, data, maxConcurrency)
+	if err != nil {
+		timer.Failure(ctx, count)
+
+		return fmt.Errorf("failed to upload data in parallel: %w", err)
+	}
+
+	logger.L().Debug(ctx, "Uploaded data in parallel",
+		zap.String("object", o.path),
+		zap.Int("max_concurrency", maxConcurrency),
+		zap.Int64("size", int64(len(data))),
+		zap.Int64("duration_ms", time.Since(start).Milliseconds()),
+	)
+
+	timer.Success(ctx, count)
+
+	return nil
+}
+
 type gcpServiceToken struct {
 	ClientEmail string `json:"client_email"`
 	PrivateKey  string `json:"private_key"`

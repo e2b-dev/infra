@@ -150,6 +150,15 @@ func (b *StorageDiff) CachePath() (string, error) {
 	return b.cachePath, nil
 }
 
+func (b *StorageDiff) Data() ([]byte, func(), error) {
+	c, err := b.chunker.Wait()
+	if err != nil {
+		return nil, func() {}, fmt.Errorf("chunker not ready: %w", err)
+	}
+
+	return c.Data()
+}
+
 func (b *StorageDiff) FileSize() (int64, error) {
 	c, err := b.chunker.Wait()
 	if err != nil {

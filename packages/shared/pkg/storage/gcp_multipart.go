@@ -366,3 +366,49 @@ func (m *MultipartUploader) uploadParts(ctx context.Context, maxConcurrency int,
 
 	return parts, nil
 }
+
+// UploadData uploads from a byte slice, slicing directly into the caller's
+// buffer without allocating per-part copies. Intended for mmap-backed data.
+func (m *MultipartUploader) UploadData(ctx context.Context, data []byte, maxConcurrency int) (int64, error) {
+	dataLen := len(data)
+	numParts := int(math.Ceil(float64(dataLen) / float64(gcpMultipartUploadChunkSize)))
+	if numParts == 0 {
+		numParts = 1
+	}
+
+	uploadID, err := m.initiateUpload(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to initiate upload: %w", err)
+	}
+
+	parts := make([]Part, numParts)
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(maxConcurrency)
+
+	for i := range numParts {
+		g.Go(func() error {
+			start := i * gcpMultipartUploadChunkSize
+			end := min(start+gcpMultipartUploadChunkSize, dataLen)
+			partNum := i + 1
+
+			etag, uploadErr := m.uploadPart(gCtx, uploadID, partNum, data[start:end])
+			if uploadErr != nil {
+				return fmt.Errorf("failed to upload part %d: %w", partNum, uploadErr)
+			}
+
+			parts[i] = Part{PartNumber: partNum, ETag: etag}
+
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return 0, fmt.Errorf("upload failed: %w", err)
+	}
+
+	if err := m.completeUpload(ctx, uploadID, parts); err != nil {
+		return 0, fmt.Errorf("failed to complete upload: %w", err)
+	}
+
+	return int64(dataLen), nil
+}

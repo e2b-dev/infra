@@ -410,6 +410,26 @@ func (c *Cache) Path() string {
 	return c.filePath
 }
 
+// Data returns the full mmap contents and a release function that holds the
+// RLock to prevent Cache.Close() from unmapping the memory while in use.
+func (c *Cache) Data() ([]byte, func(), error) {
+	c.mu.RLock()
+
+	if c.isClosed() {
+		c.mu.RUnlock()
+
+		return nil, func() {}, NewErrCacheClosed(c.filePath)
+	}
+
+	if c.mmap == nil {
+		c.mu.RUnlock()
+
+		return nil, func() {}, nil
+	}
+
+	return []byte(*c.mmap), func() { c.mu.RUnlock() }, nil
+}
+
 func NewCacheFromProcessMemory(
 	ctx context.Context,
 	blockSize int64,
