@@ -212,6 +212,12 @@ func (o *Orchestrator) discoverClusterNode(ctx context.Context, clusterID uuid.U
 	ctx, span := tracer.Start(ctx, "discover-cluster-node")
 	defer span.End()
 
+	if o.clusters == nil {
+		logger.L().Error(ctx, "Cluster pool not initialized during on-demand node discovery", logger.WithClusterID(clusterID))
+
+		return
+	}
+
 	cluster, found := o.clusters.GetClusterById(clusterID)
 	if !found {
 		logger.L().Error(ctx, "Cluster not found during on-demand node discovery", logger.WithClusterID(clusterID))

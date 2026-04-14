@@ -7,6 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -17,7 +19,7 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
-func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) error {
+func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) (err error) {
 	ctx, span := tracer.Start(ctx, "remove-sandbox")
 	defer span.End()
 
@@ -83,14 +85,17 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 		return nil
 	}
 
-	defer func() { go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action) }()
-	defer o.sandboxStore.Remove(ctx, teamID, sandboxID)
 	err = o.removeSandboxFromNode(ctx, sbx, opts.Action)
-	if err != nil {
-		logger.L().Error(ctx, "Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
+	if errors.Is(err, ErrSandboxNotFound) {
+		logger.L().Warn(ctx, "Sandbox not found during removal, treating as not found", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
+	} else if err != nil {
+		logger.L().Error(ctx, "Error removing sandbox from node", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
 
 		return ErrSandboxOperationFailed
 	}
+
+	o.sandboxStore.Remove(context.WithoutCancel(ctx), teamID, sandboxID)
+	go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action)
 
 	return nil
 }
@@ -175,6 +180,11 @@ func (o *Orchestrator) killSandboxOnNode(ctx context.Context, node *nodemanager.
 	client, ctx := node.GetSandboxDeleteCtx(ctx, sbx.SandboxID, sbx.ExecutionID)
 	_, err := client.Sandbox.Delete(ctx, req)
 	if err != nil {
+		grpcErr, ok := status.FromError(err)
+		if ok && grpcErr.Code() == codes.NotFound {
+			return ErrSandboxNotFound
+		}
+
 		return fmt.Errorf("failed to delete sandbox '%s': %w", sbx.SandboxID, err)
 	}
 

@@ -113,6 +113,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, alreadyDone)
 		require.NotNil(t, finish)
+
 		finish(t.Context(), nil)
 
 		pausingSandbox, err := o.GetSandbox(t.Context(), sbx.TeamID, sbx.SandboxID)
@@ -125,7 +126,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		assert.ErrorIs(t, err, ErrSandboxStillTransitioning)
 	})
 
-	t.Run("pausing sandbox wait failure returns internal error", func(t *testing.T) {
+	t.Run("concurrently pausing sandbox returns internal error", func(t *testing.T) {
 		t.Parallel()
 
 		o := newTestAutoResumeOrchestrator()
@@ -136,10 +137,15 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, alreadyDone)
 		require.NotNil(t, finish)
-		finish(t.Context(), errors.New("boom"))
 
 		pausingSandbox, err := o.GetSandbox(t.Context(), sbx.TeamID, sbx.SandboxID)
 		require.NoError(t, err)
+		assert.Equal(t, sandbox.StatePausing, pausingSandbox.State)
+
+		go func() {
+			time.Sleep(50 * time.Millisecond)
+			finish(t.Context(), errors.New("boom"))
+		}()
 
 		_, handled, err := o.HandleExistingSandboxAutoResume(t.Context(), sbx.TeamID, sbx.SandboxID, pausingSandbox, time.Minute)
 		require.Error(t, err)
