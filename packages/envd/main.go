@@ -15,6 +15,7 @@ import (
 	connectcors "connectrpc.com/cors"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/cors"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/api"
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
@@ -23,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	publicport "github.com/e2b-dev/infra/packages/envd/internal/port"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/fssnapshot"
 	filesystemRpc "github.com/e2b-dev/infra/packages/envd/internal/services/filesystem"
 	processRpc "github.com/e2b-dev/infra/packages/envd/internal/services/process"
 	processSpec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
@@ -57,6 +59,7 @@ var (
 	commitFlag   bool
 	startCmdFlag string
 	cgroupRoot   string
+	fsMode       string
 )
 
 func parseFlags() {
@@ -102,6 +105,13 @@ func parseFlags() {
 		"cgroup root directory",
 	)
 
+	flag.StringVar(
+		&fsMode,
+		"fs-mode",
+		"",
+		"FS snapshot mode: 'hidden-base' runs as PID 1 from tmpfs with ext4 unmounted",
+	)
+
 	flag.Parse()
 }
 
@@ -141,6 +151,11 @@ func main() {
 	if commitFlag {
 		fmt.Printf("%s\n", commitSHA)
 
+		return
+	}
+
+	if fsMode == "hidden-base" {
+		runHiddenBaseMode()
 		return
 	}
 
@@ -185,6 +200,17 @@ func main() {
 
 	processLogger := l.With().Str("logger", "process").Logger()
 	processService := processRpc.Handle(m, &processLogger, defaults, cgroupManager)
+
+	m.Post("/fs-snapshot/prepare-base", func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+
+		if err := fssnapshot.PrepareBase("/usr/bin/envd", int(port)); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	})
 
 	service := api.New(&envLogger, defaults, mmdsChan, isNotFC)
 	handler := api.HandlerFromMux(service, m)
@@ -239,6 +265,91 @@ func main() {
 	if err != nil {
 		log.Fatalf("error starting server: %v", err)
 	}
+}
+
+// runHiddenBaseMode runs envd as PID 1 from tmpfs after systemctl switch-root.
+// It unmounts the old ext4 root and serves a minimal HTTP server with only
+// health check and fs-snapshot/resume endpoints.
+func runHiddenBaseMode() {
+	fmt.Println("envd: hidden-base mode starting")
+
+	if err := mountPseudoFS(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to mount pseudo-filesystems: %v\n", err)
+	}
+
+	if err := fssnapshot.UnmountOldRoot(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to unmount old root: %v\n", err)
+	}
+	fmt.Println("envd: old root unmounted, ext4 is released")
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /fs-snapshot/resume", func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+
+		if err := fssnapshot.MountAndPivot(); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	})
+
+	addr := fmt.Sprintf("0.0.0.0:%d", port)
+	fmt.Printf("envd: hidden-base server listening on %s\n", addr)
+
+	s := &http.Server{
+		Handler: mux,
+		Addr:    addr,
+	}
+
+	if err := s.ListenAndServe(); err != nil {
+		log.Fatalf("hidden-base server error: %v", err)
+	}
+}
+
+// mountPseudoFS mounts /proc, /sys, /dev if not already mounted.
+// Needed after switch-root when running as PID 1 from tmpfs.
+func mountPseudoFS() error {
+	mounts := []struct {
+		source string
+		target string
+		fstype string
+		flags  uintptr
+	}{
+		{"proc", "/proc", "proc", 0},
+		{"sysfs", "/sys", "sysfs", 0},
+		{"devtmpfs", "/dev", "devtmpfs", 0},
+	}
+
+	for _, m := range mounts {
+		if err := os.MkdirAll(m.target, 0o755); err != nil {
+			return fmt.Errorf("mkdir %s: %w", m.target, err)
+		}
+		if isMounted(m.target) {
+			continue
+		}
+		if err := unix.Mount(m.source, m.target, m.fstype, m.flags, ""); err != nil {
+			return fmt.Errorf("mount %s on %s: %w", m.fstype, m.target, err)
+		}
+	}
+
+	return nil
+}
+
+func isMounted(path string) bool {
+	var st1, st2 unix.Stat_t
+	if err := unix.Stat(path, &st1); err != nil {
+		return false
+	}
+	parent := filepath.Dir(path)
+	if err := unix.Stat(parent, &st2); err != nil {
+		return false
+	}
+
+	return st1.Dev != st2.Dev
 }
 
 func createCgroupManager() (m cgroups.Manager) {

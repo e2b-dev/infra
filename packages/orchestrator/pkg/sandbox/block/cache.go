@@ -341,6 +341,49 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	return n, nil
 }
 
+// ImportFromDiff loads packed dirty blocks from a diff file into the cache.
+// This is the inverse of ExportToDiff: it reads sequentially from the diff file
+// and writes each dirty block to the correct device offset in the cache, then
+// marks those blocks as cached so the overlay returns them on read.
+func (c *Cache) ImportFromDiff(ctx context.Context, diffFile io.ReaderAt, dirty *bitset.BitSet) error {
+	_, childSpan := tracer.Start(ctx, "import-from-diff")
+	defer childSpan.End()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.isClosed() {
+		return NewErrCacheClosed(c.filePath)
+	}
+
+	if c.mmap == nil {
+		return fmt.Errorf("cache mmap is nil, cannot import diff")
+	}
+
+	var readOffset int64
+
+	for r := range BitsetRanges(dirty, c.blockSize) {
+		end := min(r.Start+r.Size, c.size)
+		buf := (*c.mmap)[r.Start:end]
+
+		n, err := diffFile.ReadAt(buf, readOffset)
+		if err != nil && err != io.EOF {
+			return fmt.Errorf("error reading diff at offset %d: %w", readOffset, err)
+		}
+
+		c.setIsCached(r.Start, int64(n))
+
+		readOffset += int64(n)
+	}
+
+	telemetry.SetAttributes(ctx,
+		attribute.Int64("imported_bytes", readOffset),
+		attribute.Int64("dirty_blocks", int64(dirty.Count())),
+	)
+
+	return nil
+}
+
 // FileSize returns the size of the cache on disk.
 // The size might differ from the dirty size, as it may not be fully on disk.
 func (c *Cache) FileSize() (int64, error) {

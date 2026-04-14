@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/bits-and-blooms/bitset"
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
@@ -42,6 +43,52 @@ func NewNBDProvider(ctx context.Context, rootfs block.ReadonlyDevice, cachePath 
 	cache, err := block.NewCache(size, blockSize, cachePath, false)
 	if err != nil {
 		return nil, fmt.Errorf("error creating cache: %w", err)
+	}
+
+	overlay := block.NewOverlay(rootfs, cache)
+
+	mnt := nbd.NewDirectPathMount(overlay, devicePool, featureFlags)
+
+	return &NBDProvider{
+		mnt:                mnt,
+		overlay:            overlay,
+		featureFlags:       featureFlags,
+		ready:              utils.NewSetOnce[string](),
+		finishedOperations: make(chan struct{}, 1),
+		blockSize:          blockSize,
+		devicePool:         devicePool,
+	}, nil
+}
+
+// NewNBDProviderWithDiff creates an NBD rootfs provider with a cache
+// pre-populated from a saved CoW diff. Used for FS-only resume: the base
+// rootfs is the original template and the diff contains user mutations
+// from a previous FS-only pause.
+func NewNBDProviderWithDiff(
+	ctx context.Context,
+	rootfs block.ReadonlyDevice,
+	cachePath string,
+	devicePool *nbd.DevicePool,
+	featureFlags *featureflags.Client,
+	diffFile *os.File,
+	dirtyBits *bitset.BitSet,
+) (Provider, error) {
+	size, err := rootfs.Size(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting device size: %w", err)
+	}
+
+	blockSize := rootfs.BlockSize()
+
+	cache, err := block.NewCache(size, blockSize, cachePath, false)
+	if err != nil {
+		return nil, fmt.Errorf("error creating cache: %w", err)
+	}
+
+	if err := cache.ImportFromDiff(ctx, diffFile, dirtyBits); err != nil {
+		closeErr := cache.Close()
+
+		return nil, fmt.Errorf("error importing diff into cache: %w", errors.Join(err, closeErr))
 	}
 
 	overlay := block.NewOverlay(rootfs, cache)
