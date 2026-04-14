@@ -7,7 +7,7 @@
 -- (sandbox_team_id, sandbox_id, timestamp) via a CREATE + RENAME swap.
 ALTER TABLE sandbox_events_local
     ADD PROJECTION IF NOT EXISTS proj_team_id (
-        SELECT * ORDER BY sandbox_team_id, sandbox_id, timestamp
+        SELECT * ORDER BY sandbox_team_id, timestamp
     );
 
 ALTER TABLE sandbox_events_local
