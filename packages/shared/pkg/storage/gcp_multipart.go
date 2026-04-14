@@ -3,8 +3,6 @@ package storage
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
-	"encoding/base64"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -13,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"sort"
-	"sync"
 	"time"
 
 	"github.com/hashicorp/go-retryablehttp"
@@ -195,11 +192,6 @@ func (m *MultipartUploader) initiateUpload(ctx context.Context) (string, error) 
 }
 
 func (m *MultipartUploader) uploadPart(ctx context.Context, uploadID string, partNumber int, data []byte) (string, error) {
-	// Calculate MD5 for data integrity
-	hasher := md5.New()
-	hasher.Write(data)
-	md5Sum := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
-
 	url := fmt.Sprintf("%s/%s?partNumber=%d&uploadId=%s",
 		m.baseURL, m.objectName, partNumber, uploadID)
 
@@ -210,7 +202,6 @@ func (m *MultipartUploader) uploadPart(ctx context.Context, uploadID string, par
 
 	req.Header.Set("Authorization", "Bearer "+m.token)
 	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(data)))
-	req.Header.Set("Content-MD5", md5Sum)
 
 	resp, err := m.client.Do(req)
 	if err != nil {
@@ -314,8 +305,6 @@ func (m *MultipartUploader) uploadParts(ctx context.Context, maxConcurrency int,
 	g, ctx := errgroup.WithContext(ctx) // Context ONLY for waitgroup goroutines; canceled after errgroup finishes
 	g.SetLimit(maxConcurrency)          // Limit concurrent goroutines
 
-	// Thread-safe map to collect parts
-	var partsMu sync.Mutex
 	parts := make([]Part, numParts)
 
 	// Upload each part concurrently
@@ -347,13 +336,10 @@ func (m *MultipartUploader) uploadParts(ctx context.Context, maxConcurrency int,
 				return fmt.Errorf("failed to upload part %d: %w", partNumber, err)
 			}
 
-			// Store result thread-safely
-			partsMu.Lock()
 			parts[partNumber-1] = Part{
 				PartNumber: partNumber,
 				ETag:       etag,
 			}
-			partsMu.Unlock()
 
 			return nil
 		})
