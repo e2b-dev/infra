@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/bits-and-blooms/bitset"
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/firecracker-microvm/firecracker-go-sdk"
 	"github.com/go-openapi/strfmt"
 
@@ -451,8 +451,8 @@ func (c *apiClient) memoryInfo(ctx context.Context, blockSize int64) (*header.Di
 	}
 
 	return &header.DiffMetadata{
-		Dirty:     bitset.From(res.Payload.Resident),
-		Empty:     bitset.From(res.Payload.Empty),
+		Dirty:     roaring.FromDense(res.Payload.Resident, false),
+		Empty:     roaring.FromDense(res.Payload.Empty, false),
 		BlockSize: blockSize,
 	}, nil
 }
@@ -468,8 +468,8 @@ func (c *apiClient) dirtyMemory(ctx context.Context, blockSize int64) (*header.D
 	}
 
 	return &header.DiffMetadata{
-		Dirty:     bitset.From(res.Payload.Bitmap),
-		Empty:     bitset.New(0),
+		Dirty:     roaring.FromDense(res.Payload.Bitmap, false),
+		Empty:     roaring.New(),
 		BlockSize: blockSize,
 	}, nil
 }

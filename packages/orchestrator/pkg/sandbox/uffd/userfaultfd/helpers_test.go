@@ -4,10 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"slices"
 	"sync"
 
-	"github.com/bits-and-blooms/bitset"
+	"github.com/RoaringBitmap/roaring/v2"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils"
 )
@@ -81,15 +80,21 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 	return nil
 }
 
-// Get a bitset of the offsets of the operations for the given mode.
 func getOperationsOffsets(ops []operation, m operationMode) []uint {
-	b := bitset.New(0)
+	b := roaring.New()
 
 	for _, operation := range ops {
 		if operation.mode&m != 0 {
-			b.Set(uint(operation.offset))
+			b.Add(uint32(operation.offset))
 		}
 	}
 
-	return slices.Collect(b.EachSet())
+	result := make([]uint, 0, b.GetCardinality())
+	b.Iterate(func(x uint32) bool {
+		result = append(result, uint(x))
+
+		return true
+	})
+
+	return result
 }
