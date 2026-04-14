@@ -666,7 +666,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		uploadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadTimeout)
 		defer cancel()
 
-		memHdr, rootHdr, err := res.uploadSnapshot(uploadCtx, s.persistence, s.config.CompressConfig, s.featureFlags)
+		memHdr, rootHdr, err := res.uploadSnapshot(uploadCtx, s.persistence, s.config.StorageConfig.CompressConfig, s.featureFlags)
 		if completeErr := res.completeUpload(uploadCtx, memHdr, rootHdr); completeErr != nil {
 			telemetry.ReportCriticalError(uploadCtx, "error completing upload", completeErr, telemetry.WithSandboxID(in.GetSandboxId()))
 		}
@@ -828,7 +828,7 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 	go func() {
 		defer cancel()
 
-		memHdr, rootHdr, err := res.uploadSnapshot(ctx, s.persistence, s.config.CompressConfig, s.featureFlags)
+		memHdr, rootHdr, err := res.uploadSnapshot(ctx, s.persistence, s.config.StorageConfig.CompressConfig, s.featureFlags)
 		if err != nil {
 			sbxlogger.I(sbx).Error(ctx, "error uploading snapshot files", zap.Error(err))
 		} else {

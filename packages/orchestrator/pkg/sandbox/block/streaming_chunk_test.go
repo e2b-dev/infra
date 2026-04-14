@@ -97,7 +97,7 @@ func (s *fakeSeekable) OpenRangeReader(_ context.Context, offsetU int64, length 
 
 		return &controlledReader{
 			data:     s.data[offsetU:end],
-			step:     max(16 * 1024, testBlockSize),
+			step:     max(16*1024, testBlockSize),
 			advance:  s.ctrl.advance,
 			consumed: s.ctrl.consumed,
 			closed:   s.ctrl.closed,

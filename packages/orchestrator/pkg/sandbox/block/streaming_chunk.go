@@ -21,7 +21,6 @@ const (
 	// defaultFetchTimeout is the maximum time a single 4MB chunk fetch may take.
 	// Acts as a safety net: if the upstream hangs, the goroutine won't live forever.
 	defaultFetchTimeout = 60 * time.Second
-
 )
 
 type Chunker struct {

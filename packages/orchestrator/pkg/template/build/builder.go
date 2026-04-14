@@ -269,7 +269,7 @@ func runBuild(
 		builder.buildStorage,
 		index,
 		uploadTracker,
-		&builder.config.CompressConfig,
+		&builder.config.StorageConfig.CompressConfig,
 		builder.featureFlags,
 	)
 

@@ -35,9 +35,8 @@ type BuilderConfig struct {
 
 	Provider string `env:"PROVIDER" envDefault:"gcp"`
 
-	StorageConfig  storage.Config
-	CompressConfig storage.CompressConfig
-	NetworkConfig  network.Config
+	StorageConfig storage.Config
+	NetworkConfig network.Config
 }
 
 func makePathsAbsolute(c *BuilderConfig) error {
