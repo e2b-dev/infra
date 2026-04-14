@@ -147,18 +147,9 @@ func (c *Chunker) getOrCreateSession(ctx context.Context, off, length int64, ft 
 // then waits until the block at off is available. Deduplicates concurrent
 // requests for the same region via the session list.
 func (c *Chunker) fetch(ctx context.Context, off int64, ft *storage.FrameTable) error {
-	var chunkOff, chunkLen int64
-	if ft.IsCompressed() {
-		r, err := ft.LocateUncompressed(off)
-		if err != nil {
-			return fmt.Errorf("failed to get frame for offset %d: %w", off, err)
-		}
-
-		chunkOff = r.Offset
-		chunkLen = int64(r.Length)
-	} else {
-		chunkOff = (off / storage.MemoryChunkSize) * storage.MemoryChunkSize
-		chunkLen = min(int64(storage.MemoryChunkSize), c.size-chunkOff)
+	chunkOff, chunkLen, err := c.locateChunk(off, ft)
+	if err != nil {
+		return fmt.Errorf("failed to locate chunk for offset %d: %w", off, err)
 	}
 
 	session, justGotCached := c.getOrCreateSession(ctx, chunkOff, chunkLen, ft)
@@ -274,6 +265,25 @@ func (c *Chunker) releaseSession(s *fetchSession) {
 			return
 		}
 	}
+}
+
+// locateChunk returns the aligned (offset, length) of the chunk containing off.
+// For compressed data the frame table defines chunk boundaries; for
+// uncompressed data chunks are MemoryChunkSize-aligned (for backwards
+// compatibility) and clamped to file size.
+func (c *Chunker) locateChunk(off int64, ft *storage.FrameTable) (chunkOff, chunkLen int64, err error) {
+	if ft.IsCompressed() {
+		r, err := ft.LocateUncompressed(off)
+		if err != nil {
+			return 0, 0, err
+		}
+
+		return r.Offset, int64(r.Length), nil
+	}
+
+	chunkOff = (off / storage.MemoryChunkSize) * storage.MemoryChunkSize
+
+	return chunkOff, min(int64(storage.MemoryChunkSize), c.size-chunkOff), nil
 }
 
 // getMinReadBatchSize returns the effective min read batch size.
