@@ -151,12 +151,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error creating E2B run directory: %v\n", err)
 	}
 
-	if !isNotFC {
-		if err := host.BindMountCABundle(); err != nil {
-			fmt.Fprintf(os.Stderr, "failed to bind-mount CA bundle to tmpfs: %v\n", err)
-		}
-	}
-
 	defaults := &execcontext.Defaults{
 		User:    defaultUser,
 		EnvVars: utils.NewMap[string, string](),

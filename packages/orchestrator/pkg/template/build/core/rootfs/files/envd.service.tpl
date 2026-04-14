@@ -12,6 +12,7 @@ User=root
 Group=root
 Environment=GOTRACEBACK=all
 LimitCORE=infinity
+ExecStartPre=/bin/sh -c 'mountpoint -q /etc/ssl/certs || (mkdir -p /run/e2b/certs && cp -a /etc/ssl/certs.orig/. /run/e2b/certs/ && mount --bind /run/e2b/certs /etc/ssl/certs)'
 ExecStart=/bin/bash -l -c "/usr/bin/envd"
 Nice=-20
 OOMPolicy=continue
