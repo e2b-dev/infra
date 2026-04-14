@@ -6,15 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sync"
+	"net"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -23,37 +20,22 @@ var (
 		metric.WithDescription("Duration of NBD dispatch handler ReadAt calls to the backend."),
 		metric.WithUnit("ms"),
 	))
-	nbdReadConncurent = utils.Must(meter.Int64UpDownCounter("orchestrator.nbd.dispatch.read.concurrent",
-		metric.WithDescription("Number of NBD read requests currently waiting for a response. A sustained high value indicates reads stuck in kernel I/O."),
-		metric.WithUnit("{read}"),
-	))
 	nbdReadSuccess   = metric.WithAttributeSet(attribute.NewSet(attribute.String("result", "success")))
 	nbdReadFailure   = metric.WithAttributeSet(attribute.NewSet(attribute.String("result", "failure")))
 	nbdReadCancelled = metric.WithAttributeSet(attribute.NewSet(attribute.String("result", "cancelled")))
 )
 
-var ErrShuttingDown = errors.New("shutting down. Cannot serve any new requests")
-
-var dispatchBufPool = sync.Pool{
-	New: func() any {
-		b := make([]byte, dispatchBufferSize)
-
-		return &b
-	},
-}
-
 type Provider interface {
-	storage.SeekableReader
-	io.WriterAt
+	ReadSlices(ctx context.Context, off, length int64, dest [][]byte) ([][]byte, error)
+	WriteSlice(off, length int64) (dest []byte, done func(commit bool), err error)
+	Size(ctx context.Context) (int64, error)
+	BlockSize() int64
 }
 
 const (
-	// TODO: Look into optimizing the buffer reads by increasing the buffer size by 28 bytes,
-	// to account for a request that is 28 bytes of header + 4MB of data (this seems to be preferred kernel buffer size).
-	dispatchBufferSize = 4 * 1024 * 1024
-	// https://sourceforge.net/p/nbd/mailman/message/35081223/
-	// 32MB is the maximum buffer size for a single request that should be universally supported.
-	dispatchMaxWriteBufferSize = 32 * 1024 * 1024
+	// With zero-copy writes going directly into the mmap, the dispatch buffer
+	// only needs to hold NBD request headers (28 bytes each).
+	dispatchBufferSize = 4 * 1024
 )
 
 // NBD Commands
@@ -87,53 +69,34 @@ type Response struct {
 }
 
 type Dispatch struct {
-	fp               io.ReadWriter
-	responseHeader   []byte
-	writeLock        sync.Mutex
-	prov             Provider
-	pendingResponses sync.WaitGroup
-	shuttingDown     bool
-	shuttingDownLock sync.Mutex
-	fatal            chan error
+	fp       io.ReadWriter
+	respHdr  [16]byte
+	prov     Provider
+	readBufs [][]byte // persistent per-block slice storage, reused across reads
+	writeBuf []byte   // reused across writes to avoid per-request allocation
+	buffer   []byte
 }
 
 func NewDispatch(fp io.ReadWriter, prov Provider) *Dispatch {
-	d := &Dispatch{
-		responseHeader: make([]byte, 16),
-		fp:             fp,
-		prov:           prov,
-		fatal:          make(chan error, 1),
+	return &Dispatch{
+		fp:     fp,
+		prov:   prov,
+		buffer: make([]byte, dispatchBufferSize),
 	}
-
-	binary.BigEndian.PutUint32(d.responseHeader, NBDResponseMagic)
-
-	return d
 }
 
-func (d *Dispatch) Drain() {
-	d.shuttingDownLock.Lock()
-	d.shuttingDown = true
-	defer d.shuttingDownLock.Unlock()
+func (d *Dispatch) Drain() {}
 
-	// Wait for any pending responses
-	d.pendingResponses.Wait()
-}
-
-/**
- * Write a response...
- *
- */
 func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []byte) error {
-	d.writeLock.Lock()
-	defer d.writeLock.Unlock()
+	binary.BigEndian.PutUint32(d.respHdr[0:4], NBDResponseMagic)
+	binary.BigEndian.PutUint32(d.respHdr[4:8], respError)
+	binary.BigEndian.PutUint64(d.respHdr[8:16], respHandle)
 
-	binary.BigEndian.PutUint32(d.responseHeader[4:], respError)
-	binary.BigEndian.PutUint64(d.responseHeader[8:], respHandle)
-
-	_, err := d.fp.Write(d.responseHeader)
+	_, err := d.fp.Write(d.respHdr[:])
 	if err != nil {
 		return err
 	}
+
 	if len(chunk) > 0 {
 		_, err = d.fp.Write(chunk)
 		if err != nil {
@@ -144,14 +107,28 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
 	return nil
 }
 
+func (d *Dispatch) writeReadResponse(respHandle uint64, slices [][]byte) error {
+	binary.BigEndian.PutUint32(d.respHdr[0:4], NBDResponseMagic)
+	binary.BigEndian.PutUint32(d.respHdr[4:8], 0)
+	binary.BigEndian.PutUint64(d.respHdr[8:16], respHandle)
+
+	_, err := d.fp.Write(d.respHdr[:])
+	if err != nil {
+		return err
+	}
+
+	bufs := net.Buffers(slices)
+	_, err = bufs.WriteTo(d.fp)
+
+	return err
+}
+
 /**
- * This dispatches incoming NBD requests sequentially to the provider.
+ * This dispatches incoming NBD requests synchronously to the provider.
  *
  */
 func (d *Dispatch) Handle(ctx context.Context) error {
-	poolBuf := dispatchBufPool.Get().(*[]byte)
-	defer dispatchBufPool.Put(poolBuf)
-	buffer := *poolBuf
+	buffer := d.buffer
 	wp := 0
 
 	request := Request{}
@@ -166,10 +143,7 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 		// Now go through processing complete packets
 		rp := 0
 		for {
-			// Check if there is a fatal error from an async read/write to return
 			select {
-			case err := <-d.fatal:
-				return err
 			case <-ctx.Done():
 				return ctx.Err()
 			default:
@@ -180,7 +154,7 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 				break // Try again when we have more data...
 			}
 
-			// We can read the neader...
+			// We can read the header...
 
 			header := buffer[rp : rp+28]
 			request.Magic = binary.BigEndian.Uint32(header)
@@ -207,43 +181,44 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 			case NBDCmdWrite:
 				rp += 28
 
-				if request.Length > dispatchMaxWriteBufferSize {
-					return fmt.Errorf("nbd write request length %d exceeds maximum %d", request.Length, dispatchMaxWriteBufferSize)
+				writeLen := int(request.Length)
+
+				// Ensure write buffer is large enough
+				if cap(d.writeBuf) < writeLen {
+					d.writeBuf = make([]byte, writeLen)
 				}
+				writeBuf := d.writeBuf[:writeLen]
 
-				data := make([]byte, request.Length)
-
-				dataCopied := copy(data, buffer[rp:wp])
-
+				// Copy any data already in the dispatch buffer
+				dataCopied := copy(writeBuf, buffer[rp:wp])
 				rp += dataCopied
 
-				// We need to wait for more data here, otherwise we will deadlock if the buffer is Xmb and the length is Xmb because of the header's extra 28 bytes needed.
-				// At the same time we don't want to increase the default buffer size as the max would be 32mb which is too large for hundreds of sandbox connections.
-
-				for dataCopied < int(request.Length) {
-					n, err := d.fp.Read(data[dataCopied:])
+				// Read remaining data from socket
+				for dataCopied < writeLen {
+					n, err := d.fp.Read(writeBuf[dataCopied:])
 					if err != nil {
 						return fmt.Errorf("nbd write read error: %w", err)
 					}
 
 					dataCopied += n
-
-					select {
-					case err := <-d.fatal:
-						return err
-					case <-ctx.Done():
-						return ctx.Err()
-					default:
-					}
 				}
 
-				err := d.cmdWrite(ctx, request.Handle, request.From, data)
+				// Acquire mmap lock briefly to copy data in
+				dest, done, err := d.prov.WriteSlice(int64(request.From), int64(request.Length))
+				if err != nil {
+					return fmt.Errorf("nbd write slice error: %w", err)
+				}
+
+				copy(dest, writeBuf)
+				done(true)
+
+				err = d.writeResponse(0, request.Handle, nil)
 				if err != nil {
 					return err
 				}
 			case NBDCmdTrim:
 				rp += 28
-				err := d.cmdTrim(request.Handle, request.From, request.Length)
+				err := d.writeResponse(0, request.Handle, nil)
 				if err != nil {
 					return err
 				}
@@ -260,140 +235,25 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 }
 
 func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
-	d.shuttingDownLock.Lock()
-	if d.shuttingDown {
-		d.shuttingDownLock.Unlock()
+	start := time.Now()
 
-		return ErrShuttingDown
-	}
+	slices, err := d.prov.ReadSlices(ctx, int64(cmdFrom), int64(cmdLength), d.readBufs)
+	d.readBufs = slices
 
-	d.pendingResponses.Add(1)
-	d.shuttingDownLock.Unlock()
-
-	performRead := func(handle uint64, from uint64, length uint32) error {
-		// buffered to avoid goroutine leak
-		errchan := make(chan error, 1)
-		data := make([]byte, length)
-
-		nbdReadConncurent.Add(ctx, 1)
-
-		go func() {
-			start := time.Now()
-			_, err := d.prov.ReadAt(ctx, data, int64(from))
-
-			attrs := nbdReadSuccess
-			if err != nil {
-				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-					attrs = nbdReadCancelled
-				} else {
-					attrs = nbdReadFailure
-				}
-			}
-
-			nbdReadDuration.Record(ctx, time.Since(start).Milliseconds(), attrs)
-			errchan <- err
-		}()
-
-		// Wait until either the ReadAt completed, or our context is cancelled...
-		var readErr error
-		select {
-		case <-ctx.Done():
-			readErr = ctx.Err()
-		case readErr = <-errchan:
-		}
-
-		nbdReadConncurent.Add(ctx, -1)
-
-		if readErr != nil {
-			return d.writeResponse(1, handle, []byte{})
-		}
-
-		// read was successful
-		return d.writeResponse(0, handle, data)
-	}
-
-	go func() {
-		err := performRead(cmdHandle, cmdFrom, cmdLength)
-		if err != nil {
-			select {
-			case d.fatal <- err:
-			default:
-				logger.L().Error(ctx, "nbd error cmd read", zap.Error(err))
-			}
-		}
-		d.pendingResponses.Done()
-	}()
-
-	return nil
-}
-
-func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
-	d.shuttingDownLock.Lock()
-	if d.shuttingDown {
-		d.shuttingDownLock.Unlock()
-
-		return ErrShuttingDown
-	}
-
-	d.pendingResponses.Add(1)
-	d.shuttingDownLock.Unlock()
-
-	performWrite := func(handle uint64, from uint64, data []byte) error {
-		// buffered to avoid goroutine leak
-		errchan := make(chan error, 1)
-		go func() {
-			_, err := d.prov.WriteAt(data, int64(from))
-			errchan <- err
-		}()
-
-		// Wait until either the WriteAt completed, or our context is cancelled...
-		select {
-		case <-ctx.Done():
-			return d.writeResponse(1, handle, []byte{})
-		case err := <-errchan:
-			if err != nil {
-				return d.writeResponse(1, handle, []byte{})
-			}
-		}
-
-		// write was successful
-		return d.writeResponse(0, handle, []byte{})
-	}
-
-	go func() {
-		err := performWrite(cmdHandle, cmdFrom, cmdData)
-		if err != nil {
-			select {
-			case d.fatal <- err:
-			default:
-				logger.L().Error(ctx, "nbd error cmd write", zap.Error(err))
-			}
-		}
-		d.pendingResponses.Done()
-	}()
-
-	return nil
-}
-
-/**
- * cmdTrim
- *
- */
-func (d *Dispatch) cmdTrim(handle uint64, _ uint64, _ uint32) error {
-	// TODO: Ask the provider
-	/*
-		e := d.prov.Trim(from, length)
-		if e != storage.StorageError_SUCCESS {
-			err := d.writeResponse(1, handle, []byte{})
-			if err != nil {
-				return err
-			}
-		} else {
-	*/
-	err := d.writeResponse(0, handle, []byte{})
+	attrs := nbdReadSuccess
 	if err != nil {
-		return err
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			attrs = nbdReadCancelled
+		} else {
+			attrs = nbdReadFailure
+		}
 	}
-	//	}
-	return nil
+
+	nbdReadDuration.Record(ctx, time.Since(start).Milliseconds(), attrs)
+
+	if err != nil {
+		return d.writeResponse(1, cmdHandle, nil)
+	}
+
+	return d.writeReadResponse(cmdHandle, slices)
 }

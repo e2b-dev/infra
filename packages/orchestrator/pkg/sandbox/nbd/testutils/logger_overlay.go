@@ -72,3 +72,11 @@ func (l *LoggerOverlay) EjectCache() (*block.Cache, error) {
 func (l *LoggerOverlay) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	return l.overlay.Slice(ctx, off, length)
 }
+
+func (l *LoggerOverlay) ReadSlices(ctx context.Context, off, length int64, dest [][]byte) ([][]byte, error) {
+	return l.overlay.ReadSlices(ctx, off, length, dest)
+}
+
+func (l *LoggerOverlay) WriteSlice(off, length int64) ([]byte, func(bool), error) {
+	return l.overlay.WriteSlice(off, length)
+}

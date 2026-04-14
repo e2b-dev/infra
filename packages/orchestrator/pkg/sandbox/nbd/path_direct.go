@@ -17,7 +17,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -45,7 +44,7 @@ type DirectPathMount struct {
 	devicePool   *DevicePool
 	featureFlags *featureflags.Client
 
-	Backend         block.Device
+	Backend         Provider
 	deviceIndex     uint32
 	blockSize       uint64
 	ioTimeout       time.Duration
@@ -71,7 +70,7 @@ func WithDeadconnTimeout(d time.Duration) MountOption {
 	return func(m *DirectPathMount) { m.deadconnTimeout = d }
 }
 
-func NewDirectPathMount(b block.Device, devicePool *DevicePool, featureFlags *featureflags.Client, opts ...MountOption) *DirectPathMount {
+func NewDirectPathMount(b Provider, devicePool *DevicePool, featureFlags *featureflags.Client, opts ...MountOption) *DirectPathMount {
 	m := &DirectPathMount{
 		Backend:         b,
 		blockSize:       4096,

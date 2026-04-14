@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 )
 
-func GetNBDDevice(ctx context.Context, backend block.Device, featureFlags *featureflags.Client, mountOpts ...nbd.MountOption) (nbd.DevicePath, *Cleaner, error) {
+func GetNBDDevice(ctx context.Context, backend nbd.Provider, featureFlags *featureflags.Client, mountOpts ...nbd.MountOption) (nbd.DevicePath, *Cleaner, error) {
 	var cleaner Cleaner
 
 	devicePool, err := nbd.NewDevicePool(64)

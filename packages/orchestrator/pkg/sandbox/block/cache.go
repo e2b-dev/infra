@@ -341,6 +341,36 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	return n, nil
 }
 
+// WriteSlice returns a writable reference to the cache's mmap at [off, off+length).
+// The caller writes into the returned slice, then calls done exactly once:
+// done(true) marks the blocks as dirty and releases the write lock;
+// done(false) releases the write lock without marking dirty (use on write failure).
+func (c *Cache) WriteSlice(off, length int64) ([]byte, func(bool), error) {
+	c.mu.Lock()
+
+	if c.mmap == nil {
+		c.mu.Unlock()
+
+		return nil, nil, fmt.Errorf("cache has no mmap")
+	}
+
+	if c.isClosed() {
+		c.mu.Unlock()
+
+		return nil, nil, NewErrCacheClosed(c.filePath)
+	}
+
+	end := min(off+length, c.size)
+
+	return (*c.mmap)[off:end], func(commit bool) {
+		if commit {
+			c.setIsCached(off, end-off)
+		}
+
+		c.mu.Unlock()
+	}, nil
+}
+
 // FileSize returns the size of the cache on disk.
 // The size might differ from the dirty size, as it may not be fully on disk.
 func (c *Cache) FileSize() (int64, error) {

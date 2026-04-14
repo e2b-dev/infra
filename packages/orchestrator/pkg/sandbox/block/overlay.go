@@ -70,6 +70,49 @@ func (o *Overlay) WriteAt(p []byte, off int64) (int, error) {
 	return o.cache.WriteAt(p, off)
 }
 
+// ReadSlices returns per-block mmap slices for the range [off, off+length).
+// Each slice references mmap'd memory from either the overlay cache (for blocks
+// written by the guest) or the backing device cache (for template blocks).
+// dest is reused across calls to avoid allocations.
+func (o *Overlay) ReadSlices(ctx context.Context, off, length int64, dest [][]byte) ([][]byte, error) {
+	if length%o.blockSize != 0 {
+		return nil, fmt.Errorf("length %d is not aligned to block size %d", length, o.blockSize)
+	}
+
+	dest = dest[:0]
+	numBlocks := length / o.blockSize
+
+	for i := range numBlocks {
+		blockOff := off + i*o.blockSize
+
+		slice, err := o.cache.Slice(blockOff, o.blockSize)
+		if err == nil {
+			dest = append(dest, slice)
+
+			continue
+		}
+
+		if !errors.As(err, &BytesNotAvailableError{}) {
+			return dest, fmt.Errorf("error reading from cache: %w", err)
+		}
+
+		slice, err = o.device.Slice(ctx, blockOff, o.blockSize)
+		if err != nil {
+			return dest, fmt.Errorf("error reading from device: %w", err)
+		}
+
+		dest = append(dest, slice)
+	}
+
+	return dest, nil
+}
+
+// WriteSlice returns a writable reference to the overlay cache's mmap.
+// See Cache.WriteSlice for usage details.
+func (o *Overlay) WriteSlice(off, length int64) ([]byte, func(bool), error) {
+	return o.cache.WriteSlice(off, length)
+}
+
 func (o *Overlay) Size(_ context.Context) (int64, error) {
 	return o.cache.Size()
 }
