@@ -25,6 +25,11 @@ type fetchSession struct {
 	bytesReady atomic.Int64
 }
 
+// contains reports whether the session covers the byte range [off, off+length).
+func (s *fetchSession) contains(off, length int64) bool {
+	return s.chunkOff <= off && s.chunkOff+s.chunkLen >= off+length
+}
+
 // terminated reports whether the session reached a terminal state.
 // Must be called with mu held.
 func (s *fetchSession) terminated() bool {
@@ -46,6 +51,14 @@ func newFetchSession(chunkOff, chunkLen int64, cache *Cache) *fetchSession {
 // terminates, or ctx is cancelled. Each caller requests exactly one block.
 func (s *fetchSession) registerAndWait(ctx context.Context, blockOff int64) error {
 	blockSize := s.cache.blockSize
+
+	if blockOff%blockSize != 0 {
+		return fmt.Errorf("blockOff %d is not aligned to block size %d", blockOff, blockSize)
+	}
+
+	if blockOff < s.chunkOff || blockOff >= s.chunkOff+s.chunkLen {
+		return fmt.Errorf("blockOff %d is outside session range [%d, %d)", blockOff, s.chunkOff, s.chunkOff+s.chunkLen)
+	}
 
 	// endByte is the byte offset (relative to chunkOff) that must be ready
 	// for our block to be fully written.

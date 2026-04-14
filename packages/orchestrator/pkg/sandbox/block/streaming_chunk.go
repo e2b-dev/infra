@@ -119,7 +119,7 @@ func (c *Chunker) getOrCreateSession(ctx context.Context, off, length int64, ft 
 	defer c.fetchMu.Unlock()
 
 	for _, s := range c.fetchSessions {
-		if s.chunkOff <= off && s.chunkOff+s.chunkLen >= off+length {
+		if s.contains(off, length) {
 			return s, false
 		}
 	}
@@ -157,7 +157,10 @@ func (c *Chunker) fetch(ctx context.Context, off int64, ft *storage.FrameTable) 
 		return nil
 	}
 
-	return session.registerAndWait(ctx, off)
+	blockSize := c.cache.BlockSize()
+	blockOff := (off / blockSize) * blockSize
+
+	return session.registerAndWait(ctx, blockOff)
 }
 
 // runFetch fetches data from storage into the mmap cache. Runs in a background goroutine.
