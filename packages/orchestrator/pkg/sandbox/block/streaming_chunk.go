@@ -22,10 +22,6 @@ const (
 	// Acts as a safety net: if the upstream hangs, the goroutine won't live forever.
 	defaultFetchTimeout = 60 * time.Second
 
-	// defaultMinReadBatchSize is the floor for the read batch size when blockSize
-	// is very small (e.g. 4KB rootfs). The actual batch is max(blockSize, minReadBatchSize).
-	defaultMinReadBatchSize = 16 * 1024 // 16 KB
-
 )
 
 type Chunker struct {
@@ -121,11 +117,10 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64, ft *storage.Fram
 // or (nil, true) if the data is already fully cached.
 func (c *Chunker) getOrCreateSession(ctx context.Context, off, length int64, ft *storage.FrameTable) (_ *fetchSession, cached bool) {
 	c.fetchMu.Lock()
+	defer c.fetchMu.Unlock()
 
 	for _, s := range c.fetchSessions {
 		if s.chunkOff <= off && s.chunkOff+s.chunkLen >= off+length {
-			c.fetchMu.Unlock()
-
 			return s, false
 		}
 	}
@@ -135,14 +130,11 @@ func (c *Chunker) getOrCreateSession(ctx context.Context, off, length int64, ft 
 	// the lock-free Slice() and the session scan above. The lock
 	// provides a happens-before guarantee that the bitmap writes are visible.
 	if c.cache.isCached(off, length) {
-		c.fetchMu.Unlock()
-
 		return nil, true
 	}
 
 	s := newFetchSession(off, length, c.cache)
 	c.fetchSessions = append(c.fetchSessions, s)
-	c.fetchMu.Unlock()
 
 	// Detach from the caller's cancel signal so the shared fetch goroutine
 	// continues even if the first caller's context is cancelled. Trace/value
@@ -286,11 +278,7 @@ func (c *Chunker) releaseSession(s *fetchSession) {
 // getMinReadBatchSize returns the effective min read batch size.
 // Queried per-fetch so it can be tuned via feature flags without a restart.
 func (c *Chunker) getMinReadBatchSize(ctx context.Context) int64 {
-	if v := c.featureFlags.IntFlag(ctx, featureflags.MinChunkerReadSizeKB); v > 0 {
-		return int64(v) * 1024
-	}
-
-	return defaultMinReadBatchSize
+	return int64(c.featureFlags.IntFlag(ctx, featureflags.MinChunkerReadSizeKB)) * 1024
 }
 
 func (c *Chunker) Close() error {

@@ -207,7 +207,7 @@ var (
 	// 0 or negative disables throttling (unlimited concurrency).
 	MaxConcurrentSnapshotBuildQueries = newIntFlag("max-concurrent-snapshot-build-queries", 0)
 
-	MinChunkerReadSizeKB = newIntFlag("min-chunker-read-size-kb", 0) // 0 = default (16 KB)
+	MinChunkerReadSizeKB = newIntFlag("min-chunker-read-size-kb", 16)
 )
 
 type StringFlag struct {
