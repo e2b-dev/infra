@@ -83,6 +83,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 
 		if time.Since(sbx.EndTime) > sandbox.StaleCutoff && opts.Action.Effect == sandbox.TransitionExpires {
 			o.sandboxStore.Remove(context.WithoutCancel(ctx), teamID, sandboxID)
+			go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action)
 		}
 
 		return nil
