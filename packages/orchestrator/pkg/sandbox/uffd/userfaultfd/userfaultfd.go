@@ -460,12 +460,14 @@ func (u *Userfaultfd) faultPage(
 		writeErr = u.fd.copy(addr, u.pageSize, b, mode)
 	}
 
-	// Page is already mapped.
-	// Probably because we have already pre-faulted it. Otherwise, we should not
-	// try to handle a page fault for the same address twice, since we are now
-	// tracking the state of pages.
+	// Page is already mapped (e.g. pre-faulted, or a previous DONTWAKE zero succeeded
+	// but the subsequent writeProtect/wake step failed with EAGAIN and the fault was deferred).
+	// Wake the thread unconditionally: if the thread is sleeping due to DONTWAKE this
+	// unblocks it; if it was already woken the wake is a harmless no-op.
 	if errors.Is(writeErr, unix.EEXIST) {
 		span.SetAttributes(attribute.Bool("uffd.already_mapped", true))
+
+		u.fd.wake(addr, u.pageSize) //nolint:errcheck // best-effort; thread may already be awake
 
 		return true, nil
 	}
