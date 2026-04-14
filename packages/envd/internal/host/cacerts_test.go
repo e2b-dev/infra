@@ -36,16 +36,16 @@ func newTestInstaller(t *testing.T) *CACertInstaller {
 
 // testPaths returns bundle and state paths inside a fresh temp dir, with the
 // bundle pre-populated with baseBundle.
-func testPaths(t *testing.T) (bundlePath, statePath string) {
+func testPaths(t *testing.T) (bundlePath, extraPath string) {
 	t.Helper()
 
 	dir := t.TempDir()
 	bundlePath = filepath.Join(dir, "ca-certificates.crt")
-	statePath = filepath.Join(dir, "ca-cert.pem")
+	extraPath = filepath.Join(dir, "extra", "e2b-ca.crt")
 
 	require.NoError(t, os.WriteFile(bundlePath, []byte(baseBundle), 0o644))
 
-	return bundlePath, statePath
+	return bundlePath, extraPath
 }
 
 // waitForFile polls until path exists or the deadline is exceeded.
@@ -89,32 +89,28 @@ func waitForBundleChange(t *testing.T, bundlePath, removedPEM, keptPEM string) {
 
 func TestInstallCACert_FirstTime(t *testing.T) {
 	t.Parallel()
-	bundlePath, statePath := testPaths(t)
+	bundlePath, extraPath := testPaths(t)
 	c := newTestInstaller(t)
 
-	c.install(context.Background(), certA, bundlePath, statePath)
-
-	// State file is written by the background goroutine — wait for it.
-	waitForFile(t, statePath)
+	c.install(context.Background(), certA, bundlePath, extraPath)
+	waitForFile(t, extraPath)
 
 	bundle, err := os.ReadFile(bundlePath)
 	require.NoError(t, err)
 	assert.Contains(t, string(bundle), strings.TrimRight(certA, "\n"))
 
-	state, err := os.ReadFile(statePath)
+	extra, err := os.ReadFile(extraPath)
 	require.NoError(t, err)
-	assert.Equal(t, strings.TrimRight(certA, "\n")+"\n", string(state))
+	assert.Equal(t, strings.TrimRight(certA, "\n")+"\n", string(extra))
 }
 
 func TestInstallCACert_SameCert(t *testing.T) {
 	t.Parallel()
-	bundlePath, statePath := testPaths(t)
+	bundlePath, extraPath := testPaths(t)
 	c := newTestInstaller(t)
 
-	c.install(context.Background(), certA, bundlePath, statePath)
-	c.install(context.Background(), certA, bundlePath, statePath) // resume — hot path hit
-
-	waitForFile(t, statePath)
+	c.install(context.Background(), certA, bundlePath, extraPath)
+	c.install(context.Background(), certA, bundlePath, extraPath) // resume — hot path hit
 
 	bundle, err := os.ReadFile(bundlePath)
 	require.NoError(t, err)
@@ -125,13 +121,12 @@ func TestInstallCACert_SameCert(t *testing.T) {
 
 func TestInstallCACert_DifferentCert(t *testing.T) {
 	t.Parallel()
-	bundlePath, statePath := testPaths(t)
+	bundlePath, extraPath := testPaths(t)
 	c := newTestInstaller(t)
 
-	c.install(context.Background(), certA, bundlePath, statePath)
-	waitForFile(t, statePath) // ensure state file is written before second install
+	c.install(context.Background(), certA, bundlePath, extraPath)
 
-	c.install(context.Background(), certB, bundlePath, statePath)
+	c.install(context.Background(), certB, bundlePath, extraPath)
 
 	normalizedA := strings.TrimRight(certA, "\n") + "\n"
 	normalizedB := strings.TrimRight(certB, "\n") + "\n"
@@ -146,37 +141,34 @@ func TestInstallCACert_DifferentCert(t *testing.T) {
 
 func TestInstallCACert_EmptyCert(t *testing.T) {
 	t.Parallel()
-	bundlePath, statePath := testPaths(t)
+	bundlePath, extraPath := testPaths(t)
 	c := newTestInstaller(t)
 
-	c.install(context.Background(), "", bundlePath, statePath)
+	c.install(context.Background(), "", bundlePath, extraPath)
 
 	bundle, err := os.ReadFile(bundlePath)
 	require.NoError(t, err)
 	assert.Equal(t, baseBundle, string(bundle), "bundle should be untouched")
 
-	_, err = os.Stat(statePath)
-	assert.True(t, os.IsNotExist(err), "state file should not be created for empty cert")
+	_, err = os.Stat(extraPath)
+	assert.True(t, os.IsNotExist(err), "extra cert file should not be created for empty cert")
 }
 
 func TestInstallCACert_RestartSameCert(t *testing.T) {
 	t.Parallel()
 	// Simulate envd restarting under OOM and receiving the same cert again.
-	// Pre-populate both the bundle and the state file as a real previous run
-	// would leave them — the goroutine should skip removal since the cert is
-	// unchanged.
-	bundlePath, statePath := testPaths(t)
+	// lastCACert is empty after restart so the cert is appended again; the
+	// goroutine skips removal (prevPEM == "") leaving a temporary duplicate.
+	bundlePath, extraPath := testPaths(t)
 	c := newTestInstaller(t)
 
 	normalizedA := strings.TrimRight(certA, "\n") + "\n"
 
 	// State of the VM after a previous envd run.
 	require.NoError(t, os.WriteFile(bundlePath, []byte(baseBundle+normalizedA), 0o644))
-	require.NoError(t, os.WriteFile(statePath, []byte(normalizedA), 0o644))
-	// lastCACert is empty — the process was restarted.
 
-	c.install(context.Background(), certA, bundlePath, statePath)
-	waitForFile(t, statePath)
+	c.install(context.Background(), certA, bundlePath, extraPath)
+	waitForFile(t, extraPath)
 
 	bundle, err := os.ReadFile(bundlePath)
 	require.NoError(t, err)
@@ -186,10 +178,11 @@ func TestInstallCACert_RestartSameCert(t *testing.T) {
 
 func TestInstallCACert_RestartDifferentCert(t *testing.T) {
 	t.Parallel()
-	// Simulate envd restarting and receiving a new cert. The state file must
-	// be used to identify and remove the old cert even though lastCACert is
-	// empty.
-	bundlePath, statePath := testPaths(t)
+	// Simulate envd restarting and receiving a new cert. Without a state file,
+	// prevPEM is "" so the old cert is NOT removed from the bundle immediately —
+	// it stays until update-ca-certificates rebuilds from extraPath (which holds
+	// only the new cert).
+	bundlePath, extraPath := testPaths(t)
 	c := newTestInstaller(t)
 
 	normalizedA := strings.TrimRight(certA, "\n") + "\n"
@@ -197,32 +190,31 @@ func TestInstallCACert_RestartDifferentCert(t *testing.T) {
 
 	// State of the VM after a previous envd run that installed certA.
 	require.NoError(t, os.WriteFile(bundlePath, []byte(baseBundle+normalizedA), 0o644))
-	require.NoError(t, os.WriteFile(statePath, []byte(normalizedA), 0o644))
-	// lastCACert is empty — the process was restarted.
 
-	c.install(context.Background(), certB, bundlePath, statePath)
-
-	waitForBundleChange(t, bundlePath, normalizedA, normalizedB)
+	c.install(context.Background(), certB, bundlePath, extraPath)
+	waitForFile(t, extraPath)
 
 	bundle, err := os.ReadFile(bundlePath)
 	require.NoError(t, err)
-	assert.NotContains(t, string(bundle), normalizedA, "old cert should be removed using state file")
-	assert.Contains(t, string(bundle), normalizedB, "new cert should be present")
+	assert.Contains(t, string(bundle), normalizedB, "new cert should be appended")
+
+	extra, err := os.ReadFile(extraPath)
+	require.NoError(t, err)
+	assert.Equal(t, normalizedB, string(extra), "extra dir should hold only the new cert")
 }
 
 func TestInstallCACert_ConcurrentResume(t *testing.T) {
 	t.Parallel()
-	bundlePath, statePath := testPaths(t)
+	bundlePath, extraPath := testPaths(t)
 	c := newTestInstaller(t)
 
-	c.install(context.Background(), certA, bundlePath, statePath)
-	waitForFile(t, statePath)
+	c.install(context.Background(), certA, bundlePath, extraPath)
 
 	var wg sync.WaitGroup
 
 	for range 10 {
 		wg.Go(func() {
-			c.install(context.Background(), certA, bundlePath, statePath)
+			c.install(context.Background(), certA, bundlePath, extraPath)
 		})
 	}
 

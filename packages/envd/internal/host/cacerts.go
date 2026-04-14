@@ -14,7 +14,11 @@ import (
 
 const (
 	CaBundlePath = "/etc/ssl/certs/ca-certificates.crt"
-	CaStatePath  = E2BRunDir + "/ca-cert.pem"
+
+	// caExtraPath is where the injected cert is persisted on the NBD-backed
+	// filesystem so that running update-ca-certificates later re-includes it
+	// when rebuilding the bundle.
+	caExtraPath = "/usr/local/share/ca-certificates/e2b-ca.crt"
 )
 
 // CACertInstaller manages installation of a CA certificate into the VM's
@@ -29,7 +33,9 @@ type CACertInstaller struct {
 
 	// lastCACert caches the most recently installed PEM so that resume (same
 	// cert, same process) is a zero-I/O hot-path hit. Empty on process start;
-	// the state file at CaStatePath is the durable record across restarts.
+	// lost on OOM restart, which is acceptable — the old cert stays in the
+	// bundle temporarily until update-ca-certificates rebuilds it from
+	// caExtraPath (which always holds the latest cert).
 	lastCACert string
 }
 
@@ -41,22 +47,24 @@ func NewCACertInstaller(logger *zerolog.Logger) *CACertInstaller {
 // foreground append fails so the caller can signal init failure to the
 // orchestrator.
 func (c *CACertInstaller) Install(ctx context.Context, certPEM string) error {
-	return c.install(ctx, certPEM, CaBundlePath, CaStatePath)
+	return c.install(ctx, certPEM, CaBundlePath, caExtraPath)
 }
 
 // install is the testable core; tests supply their own paths.
 //
 // The cert changes on every sandbox create but stays the same across
 // pause/resume cycles. The critical path only appends to the bundle (fast on
-// tmpfs); removing the previous cert happens in a background goroutine.
+// tmpfs); removing the previous cert and persisting to the extra-certs dir
+// happens in a background goroutine.
 //
-// The state file survives process restarts (OOM, crashes). The background
-// goroutine reads it to find the previously installed cert — lastCACert is ""
-// after a restart and cannot be used for that purpose.
+// On OOM restart lastCACert is empty, so prevPEM will be "" and the background
+// goroutine skips bundle cleanup. The stale cert remains until the next
+// rotation or until update-ca-certificates is run (which rebuilds the bundle
+// from extraPath, which always holds the current cert).
 //
-// All goroutine work runs under mu to keep the bundle and state file
+// All goroutine work runs under mu to keep the bundle and extra-certs file
 // consistent with concurrent foreground appends.
-func (c *CACertInstaller) install(_ context.Context, certPEM, bundlePath, statePath string) error {
+func (c *CACertInstaller) install(_ context.Context, certPEM, bundlePath, extraPath string) error {
 	if certPEM == "" {
 		return nil
 	}
@@ -78,8 +86,7 @@ func (c *CACertInstaller) install(_ context.Context, certPEM, bundlePath, stateP
 		return nil
 	}
 
-	// Snapshot the previous cert before overwriting; used as fallback when no
-	// state file exists yet.
+	// Snapshot the previous cert before overwriting.
 	prevPEM := c.lastCACert
 
 	f, err := os.OpenFile(bundlePath, os.O_APPEND|os.O_WRONLY, 0o644)
@@ -111,26 +118,22 @@ func (c *CACertInstaller) install(_ context.Context, certPEM, bundlePath, stateP
 			return
 		}
 
-		// State file takes priority over the in-memory prevPEM: it holds the
-		// cert from the previous process lifetime after a restart.
-		stateRaw, _ := os.ReadFile(statePath)
-		effectivePrev := string(stateRaw)
-		if effectivePrev == "" {
-			effectivePrev = prevPEM
+		// Persist the cert on the NBD-backed filesystem so that
+		// update-ca-certificates picks it up when rebuilding the bundle.
+		if err := os.MkdirAll(filepath.Dir(extraPath), 0o755); err != nil {
+			c.logger.Error().Err(err).Msg("Failed to create CA extra dir")
+		} else if err := os.WriteFile(extraPath, []byte(normalized), 0o644); err != nil {
+			c.logger.Error().Err(err).Msg("Failed to write CA cert to extra dir")
 		}
 
-		if err := os.WriteFile(statePath, []byte(normalized), 0o644); err != nil {
-			c.logger.Error().Err(err).Msg("Failed to write CA cert state file")
-
+		// prevPEM is "" on first install or after an OOM restart — skip cleanup.
+		// The stale cert (if any) is removed on the next rotation or when
+		// update-ca-certificates regenerates the bundle from extraPath.
+		if prevPEM == "" {
 			return
 		}
 
-		// No prior cert, or same cert received again after a restart.
-		if effectivePrev == "" || effectivePrev == normalized {
-			return
-		}
-
-		if err := removeCertFromBundle(bundlePath, effectivePrev); err != nil {
+		if err := removeCertFromBundle(bundlePath, prevPEM); err != nil {
 			c.logger.Error().Err(err).Msg("Failed to remove old CA cert from bundle")
 
 			return

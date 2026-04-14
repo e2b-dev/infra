@@ -219,8 +219,9 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 
 	if data.CaBundle != nil && *data.CaBundle != "" {
 		err := a.caCertInstaller.Install(context.WithoutCancel(ctx), *data.CaBundle)
-
-		return fmt.Errorf("failed to install CA bundle: %w", err)
+		if err != nil {
+			return fmt.Errorf("failed to install CA bundle: %w", err)
+		}
 	}
 
 	if data.VolumeMounts != nil {
