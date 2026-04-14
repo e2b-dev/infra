@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
@@ -92,6 +94,20 @@ func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion
 		TracePropagator: propagator,
 		LogsProvider:    logProvider,
 	}, nil
+}
+
+// NewAnonymous creates a telemetry client for tools and CLI commands that don't
+// have build-time injected metadata (commitSHA, version, nodeID).
+// serviceName is the primary identifier used for filtering traces and metrics
+// in observability tools (e.g. Grafana). The remaining resource attributes
+// are filled with sensible defaults (hostname, "unknown" commit, "dev" version).
+func NewAnonymous(ctx context.Context, serviceName string) (*Client, error) {
+	nodeID, _ := os.Hostname()
+	if nodeID == "" {
+		nodeID = "unknown"
+	}
+
+	return New(ctx, nodeID, serviceName, "unknown", "dev", uuid.NewString())
 }
 
 func (t *Client) Shutdown(ctx context.Context) error {

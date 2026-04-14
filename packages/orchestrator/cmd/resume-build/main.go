@@ -965,7 +965,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	}
 	sbxlogger.SetSandboxLoggerInternal(logger.NewNopLogger())
 
-	tel, err := telemetry.New(ctx, "resume-build", "resume-build", "", "dev", uuid.NewString())
+	tel, err := telemetry.NewAnonymous(ctx, "resume-build")
 	if err != nil {
 		return fmt.Errorf("telemetry: %w", err)
 	}
