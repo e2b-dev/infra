@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
-	"github.com/googleapis/gax-go/v2"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -33,16 +32,32 @@ import (
 )
 
 const (
-	googleReadTimeout              = 10 * time.Second
 	googleOperationTimeout         = 5 * time.Second
 	googleBufferSize               = 4 << 20 // 4 MiB
-	googleInitialBackoff           = 10 * time.Millisecond
-	googleMaxBackoff               = 10 * time.Second
-	googleBackoffMultiplier        = 2
-	googleMaxAttempts              = 10
 	defaultGRPCConnectionPoolSize  = 4
 	defaultGCSEnableDirectPath     = false
 	gcloudDefaultUploadConcurrency = 16
+
+	// Read retry configuration.
+	//
+	// We handle retries ourselves with a fresh context.WithTimeout per attempt
+	// instead of relying on the GCS client library's built-in retry. The library
+	// retries within the caller's context, so a single 10s timeout shared across
+	// 10 retry attempts left later attempts with almost no time to complete.
+	//
+	// With this configuration each attempt gets a full googlePerAttemptTimeout
+	// to succeed, and we apply exponential backoff between attempts.
+	// Worst-case total time: 3 × 3s + ~0.6s backoff ≈ 10s per ReadAt call.
+	//
+	// These values are intentionally moderate because the UFFD page fault path
+	// (the primary consumer) has its own retry loop around source.Slice() with
+	// up to 4 total attempts. The combined worst-case is ~42s, which keeps
+	// goroutine slot hold time bounded.
+	googlePerAttemptTimeout    = 3 * time.Second
+	googleMaxReadAttempts      = 3
+	googleRetryInitialBackoff  = 200 * time.Millisecond
+	googleRetryMaxBackoff      = 2 * time.Second
+	googleRetryBackoffMultiply = 2
 
 	gcsOperationAttr                           = "operation"
 	gcsOperationAttrReadAt                     = "ReadAt"
@@ -165,16 +180,11 @@ func (s *gcpStorage) UploadSignedURL(_ context.Context, path string, ttl time.Du
 }
 
 func (s *gcpStorage) OpenSeekable(_ context.Context, path string, _ SeekableObjectType) (Seekable, error) {
+	// Disable the GCS client library's built-in retry — we handle retries
+	// ourselves with a fresh context per attempt (see ReadAt).
 	handle := s.bucket.Object(path).Retryer(
-		storage.WithMaxAttempts(googleMaxAttempts),
+		storage.WithMaxAttempts(1),
 		storage.WithPolicy(storage.RetryAlways),
-		storage.WithBackoff(
-			gax.Backoff{
-				Initial:    googleInitialBackoff,
-				Max:        googleMaxBackoff,
-				Multiplier: googleBackoffMultiplier,
-			},
-		),
 	)
 
 	return &gcpObject{
@@ -187,16 +197,11 @@ func (s *gcpStorage) OpenSeekable(_ context.Context, path string, _ SeekableObje
 }
 
 func (s *gcpStorage) OpenBlob(_ context.Context, path string, _ ObjectType) (Blob, error) {
+	// Disable the GCS client library's built-in retry — we handle retries
+	// ourselves with a fresh context per attempt (see ReadAt).
 	handle := s.bucket.Object(path).Retryer(
-		storage.WithMaxAttempts(googleMaxAttempts),
+		storage.WithMaxAttempts(1),
 		storage.WithPolicy(storage.RetryAlways),
-		storage.WithBackoff(
-			gax.Backoff{
-				Initial:    googleInitialBackoff,
-				Max:        googleMaxBackoff,
-				Multiplier: googleBackoffMultiplier,
-			},
-		),
 	)
 
 	return &gcpObject{
@@ -248,63 +253,62 @@ func (o *gcpObject) Size(ctx context.Context) (int64, error) {
 	return attrs.Size, nil
 }
 
+// OpenRangeReader opens a streaming reader for the given byte range.
+//
+// The reader's lifetime is governed by the caller's context — no extra timeout
+// is added here. Callers that need a deadline (e.g. StreamingChunker with its
+// 60 s fetch timeout) should set one on ctx before calling.
+//
+// Previously a 10 s timeout was applied to both the open and all subsequent
+// reads, which caused progressive reads of large chunks (4 MiB) to be
+// cancelled mid-stream.
 func (o *gcpObject) OpenRangeReader(ctx context.Context, off, length int64) (io.ReadCloser, error) {
-	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
-
 	reader, err := o.handle.NewRangeReader(ctx, off, length)
 	if err != nil {
-		cancel()
-
 		return nil, fmt.Errorf("failed to create GCS range reader for %q at %d+%d: %w", o.path, off, length, err)
 	}
 
-	return &cancelOnCloseReader{ReadCloser: reader, cancel: cancel}, nil
-}
-
-// cancelOnCloseReader wraps a ReadCloser and calls a CancelFunc on Close,
-// ensuring the context used to create the reader is cleaned up.
-type cancelOnCloseReader struct {
-	io.ReadCloser
-
-	cancel context.CancelFunc
-}
-
-func (r *cancelOnCloseReader) Close() error {
-	defer r.cancel()
-
-	return r.ReadCloser.Close()
+	return reader, nil
 }
 
 func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
 	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrReadAt))
 
-	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
-	defer cancel()
+	n, err = retryWithBackoff(ctx, func() (int, error) {
+		return o.readAtOnce(ctx, buff, off)
+	})
 
-	// The file should not be gzip compressed
-	reader, err := o.handle.NewRangeReader(ctx, off, int64(len(buff)))
 	if err != nil {
 		timer.Failure(ctx, int64(n))
+	} else {
+		timer.Success(ctx, int64(n))
+	}
 
+	return n, err
+}
+
+// readAtOnce performs a single GCS read attempt with its own timeout context.
+func (o *gcpObject) readAtOnce(ctx context.Context, buff []byte, off int64) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, googlePerAttemptTimeout)
+	defer cancel()
+
+	reader, err := o.handle.NewRangeReader(ctx, off, int64(len(buff)))
+	if err != nil {
 		return 0, fmt.Errorf("failed to create GCS reader for %q: %w", o.path, err)
 	}
 
 	defer reader.Close()
 
-	n, err = io.ReadFull(reader, buff)
+	n, err := io.ReadFull(reader, buff)
 	if errors.Is(err, io.ErrUnexpectedEOF) {
 		err = io.EOF
 	}
 
 	if ignoreEOF(err) != nil {
-		timer.Failure(ctx, int64(n))
-
 		return n, fmt.Errorf("failed to read %q: %w", o.path, err)
 	}
 
-	timer.Success(ctx, int64(n))
-
-	return n, err
+	return n, nil
 }
 
 func (o *gcpObject) Put(ctx context.Context, data []byte) error {
@@ -352,11 +356,11 @@ func (o *gcpObject) Put(ctx context.Context, data []byte) error {
 	return nil
 }
 
+// WriteTo downloads the full object into dst. The caller's context governs the
+// entire operation — no additional timeout is added because object sizes vary
+// widely and a fixed deadline would truncate large reads.
 func (o *gcpObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrWriteTo))
-
-	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
-	defer cancel()
 
 	reader, err := o.handle.NewReader(ctx)
 	if err != nil {

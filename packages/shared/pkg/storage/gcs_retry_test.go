@@ -1,0 +1,169 @@
+package storage
+
+import (
+	"context"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+// transientErr returns a gRPC UNAVAILABLE error that storage.ShouldRetry
+// considers retryable.
+func transientErr() error {
+	return status.Error(codes.Unavailable, "transient")
+}
+
+// permanentErr returns an error that storage.ShouldRetry does NOT retry.
+func permanentErr() error {
+	return fmt.Errorf("permanent: object not found")
+}
+
+func TestRetryWithBackoff_SuccessOnFirstAttempt(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+
+	n, err := retryWithBackoff(t.Context(), func() (int, error) {
+		calls++
+		return 42, nil
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 42, n)
+	assert.Equal(t, 1, calls)
+}
+
+func TestRetryWithBackoff_SuccessAfterTransientFailures(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+
+	n, err := retryWithBackoff(t.Context(), func() (int, error) {
+		calls++
+		if calls < 3 {
+			return 0, transientErr()
+		}
+		return 100, nil
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 100, n)
+	assert.Equal(t, 3, calls)
+}
+
+func TestRetryWithBackoff_ExhaustsAllAttempts(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+
+	_, err := retryWithBackoff(t.Context(), func() (int, error) {
+		calls++
+		return 0, transientErr()
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, googleMaxReadAttempts, calls)
+}
+
+func TestRetryWithBackoff_StopsOnPermanentError(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+
+	_, err := retryWithBackoff(t.Context(), func() (int, error) {
+		calls++
+		return 0, permanentErr()
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, 1, calls, "should not retry permanent errors")
+}
+
+func TestRetryWithBackoff_StopsOnContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+
+	calls := 0
+
+	_, err := retryWithBackoff(ctx, func() (int, error) {
+		calls++
+		if calls == 2 {
+			cancel()
+		}
+		return 0, transientErr()
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, 2, calls, "should stop after context is cancelled")
+}
+
+func TestRetryWithBackoff_RespectsDeadlineDuringBackoff(t *testing.T) {
+	t.Parallel()
+
+	// Context that expires well before all retries can complete.
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	calls := 0
+
+	_, err := retryWithBackoff(ctx, func() (int, error) {
+		calls++
+		return 0, transientErr()
+	})
+
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	// Should not have run all attempts — the context deadline should have
+	// cut the backoff sleep short.
+	assert.Less(t, calls, googleMaxReadAttempts)
+	assert.Less(t, elapsed, 5*time.Second, "should not wait for full backoff sequence")
+}
+
+func TestRetryWithBackoff_BackoffIncreases(t *testing.T) {
+	t.Parallel()
+
+	attempts := make([]time.Time, 0, googleMaxReadAttempts)
+
+	_, _ = retryWithBackoff(t.Context(), func() (int, error) {
+		attempts = append(attempts, time.Now())
+		return 0, transientErr()
+	})
+
+	require.Len(t, attempts, googleMaxReadAttempts)
+
+	// Verify that gaps between attempts increase (exponential backoff).
+	// First gap should be ~200ms, second ~400ms, etc. Allow generous margins.
+	for i := 2; i < len(attempts); i++ {
+		prevGap := attempts[i-1].Sub(attempts[i-2])
+		thisGap := attempts[i].Sub(attempts[i-1])
+
+		// Each gap should be at least 1.5x the previous (2x minus some scheduling jitter).
+		assert.Greaterf(t, thisGap, prevGap*3/4,
+			"gap %d (%v) should be roughly larger than gap %d (%v)",
+			i-1, thisGap, i-2, prevGap)
+	}
+}
+
+func TestRetryWithBackoff_PreservesLastNValue(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+
+	n, err := retryWithBackoff(t.Context(), func() (int, error) {
+		calls++
+		// Return partial read count even on error.
+		return calls * 10, transientErr()
+	})
+
+	require.Error(t, err)
+	// n should reflect the value from the last attempt.
+	assert.Equal(t, googleMaxReadAttempts*10, n)
+}
