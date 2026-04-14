@@ -33,6 +33,8 @@ type BuilderConfig struct {
 
 	DefaultCacheDir string `env:"DEFAULT_CACHE_DIR,expand" envDefault:"${ORCHESTRATOR_BASE_PATH}/build"`
 
+	Provider string `env:"PROVIDER" envDefault:"gcp"`
+
 	StorageConfig  storage.Config
 	CompressConfig storage.CompressConfig
 	NetworkConfig  network.Config

@@ -33,6 +33,14 @@ var (
 
 var ErrShuttingDown = errors.New("shutting down. Cannot serve any new requests")
 
+var dispatchBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, dispatchBufferSize)
+
+		return &b
+	},
+}
+
 type Provider interface {
 	ReadAt(ctx context.Context, p []byte, off int64) (int, error)
 	Size(ctx context.Context) (int64, error)
@@ -141,7 +149,9 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
  *
  */
 func (d *Dispatch) Handle(ctx context.Context) error {
-	buffer := make([]byte, dispatchBufferSize)
+	poolBuf := dispatchBufPool.Get().(*[]byte)
+	defer dispatchBufPool.Put(poolBuf)
+	buffer := *poolBuf
 	wp := 0
 
 	request := Request{}

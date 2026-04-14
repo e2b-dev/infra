@@ -50,6 +50,7 @@ const (
 type ProvisionScriptParams struct {
 	BusyBox    string
 	ResultPath string
+	Provider   string
 }
 
 func getProvisionScript(
