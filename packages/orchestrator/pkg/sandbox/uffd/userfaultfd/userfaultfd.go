@@ -368,12 +368,16 @@ retryLoop:
 		delay := min(sliceRetryBaseDelay<<attempt, sliceRetryMaxDelay)
 		jitter := time.Duration(rand.Int63n(int64(delay) / 2))
 
+		backoff := time.NewTimer(delay + jitter)
+
 		select {
 		case <-ctx.Done():
+			backoff.Stop()
+
 			dataErr = errors.Join(dataErr, ctx.Err())
 
 			break retryLoop
-		case <-time.After(delay + jitter):
+		case <-backoff.C:
 		}
 	}
 
