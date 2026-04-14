@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"path/filepath"
+	"runtime"
 	txtTemplate "text/template"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
@@ -25,6 +26,7 @@ type startScriptArgs struct {
 	NamespaceID       string
 	FirecrackerPath   string
 	FirecrackerSocket string
+	ExtraArgs         string
 }
 
 // StartScriptResult contains the generated script and computed paths
@@ -47,7 +49,7 @@ ln -s {{ .HostRootfsPath }} {{ .DeprecatedSandboxRootfsDir }}/{{ .SandboxRootfsF
 mount -t tmpfs tmpfs {{ .SandboxDir }}/{{ .SandboxKernelDir }} -o X-mount.mkdir &&
 ln -s {{ .HostKernelPath }} {{ .SandboxDir }}/{{ .SandboxKernelDir }}/{{ .SandboxKernelFile }} &&
 
-ip netns exec {{ .NamespaceID }} {{ .FirecrackerPath }} --api-sock {{ .FirecrackerSocket }}`
+ip netns exec {{ .NamespaceID }} {{ .FirecrackerPath }} --api-sock {{ .FirecrackerSocket }}{{ .ExtraArgs }}`
 
 const startScriptV2 = `mount --make-rprivate / &&
 mount -t tmpfs tmpfs {{ .SandboxDir }} -o X-mount.mkdir &&
@@ -57,7 +59,7 @@ ln -s {{ .HostRootfsPath }} {{ .SandboxDir }}/{{ .SandboxRootfsFile }} &&
 mkdir -p {{ .SandboxDir }}/{{ .SandboxKernelDir }} &&
 ln -s {{ .HostKernelPath }} {{ .SandboxDir }}/{{ .SandboxKernelDir }}/{{ .SandboxKernelFile }} &&
 
-ip netns exec {{ .NamespaceID }} {{ .FirecrackerPath }} --api-sock {{ .FirecrackerSocket }}`
+ip netns exec {{ .NamespaceID }} {{ .FirecrackerPath }} --api-sock {{ .FirecrackerSocket }}{{ .ExtraArgs }}`
 
 // StartScriptBuilder handles the creation and execution of firecracker start scripts
 type StartScriptBuilder struct {
@@ -85,6 +87,17 @@ func (sb *StartScriptBuilder) buildArgs(
 	rootfsPaths RootfsPaths,
 	namespaceID string,
 ) startScriptArgs {
+	// On ARM64, disable seccomp to work around a missing syscall in Firecracker's
+	// aarch64 seccomp filter. The blocked syscall occurs during UFFD-based snapshot
+	// restore (FC exit code 148 = BadSyscall). Basic boot and file-based restore
+	// work fine; only the UFFD path triggers the violation.
+	// Tracked upstream: https://github.com/firecracker-microvm/firecracker/issues/XXXX
+	// TODO: remove once upstream adds the missing syscall to the aarch64 filter.
+	var extraArgs string
+	if runtime.GOARCH == "arm64" {
+		extraArgs = " --no-seccomp"
+	}
+
 	return startScriptArgs{
 		// General
 		SandboxDir: sb.builderConfig.SandboxDir,
@@ -103,6 +116,7 @@ func (sb *StartScriptBuilder) buildArgs(
 		NamespaceID:       namespaceID,
 		FirecrackerPath:   versions.FirecrackerPath(sb.builderConfig),
 		FirecrackerSocket: files.SandboxFirecrackerSocketPath(),
+		ExtraArgs:         extraArgs,
 	}
 }
 
