@@ -8,11 +8,10 @@ import (
 const (
 	GuestEnvdPath = "/usr/bin/envd"
 
-	MemfileName     = "memfile"
-	RootfsName      = "rootfs.ext4"
-	DefaultFileType = MemfileName
-	SnapfileName    = "snapfile"
-	MetadataName    = "metadata.json"
+	MemfileName  = "memfile"
+	RootfsName   = "rootfs.ext4"
+	SnapfileName = "snapfile"
+	MetadataName = "metadata.json"
 
 	HeaderSuffix = ".header"
 )

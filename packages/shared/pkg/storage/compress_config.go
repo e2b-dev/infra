@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 )
 
@@ -94,10 +96,14 @@ func (c CompressConfig) Validate() error {
 // but not rootfs, or compress builds but not pauses).
 func ResolveCompressConfig(ctx context.Context, base CompressConfig, ff *featureflags.Client, fileType, useCase string) CompressConfig {
 	if ff != nil {
-		ctx = featureflags.AddToContext(ctx,
-			featureflags.CompressFileTypeContext(fileType),
-			featureflags.CompressUseCaseContext(useCase),
-		)
+		var extra []ldcontext.Context
+		if fileType != "" {
+			extra = append(extra, featureflags.CompressFileTypeContext(fileType))
+		}
+		if useCase != "" {
+			extra = append(extra, featureflags.CompressUseCaseContext(useCase))
+		}
+		ctx = featureflags.AddToContext(ctx, extra...)
 
 		v := ff.JSONFlag(ctx, featureflags.CompressConfigFlag).AsValueMap()
 
