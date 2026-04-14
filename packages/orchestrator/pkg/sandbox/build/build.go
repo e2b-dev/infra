@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -108,7 +109,7 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 			ft,
 		)
 		if err != nil {
-			if retry, swapErr := b.retryOnTransition(err, &transitionRetries); retry {
+			if retry, swapErr := b.retryOnTransition(ctx, err, &transitionRetries); retry {
 				continue
 			} else if swapErr != nil {
 				return 0, swapErr
@@ -149,7 +150,7 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 
 		result, err := diff.Slice(ctx, int64(mappedBuild.Offset), int64(h.Metadata.BlockSize), ft)
 		if err != nil {
-			if retry, swapErr := b.retryOnTransition(err, &transitionRetries); retry {
+			if retry, swapErr := b.retryOnTransition(ctx, err, &transitionRetries); retry {
 				continue
 			} else if swapErr != nil {
 				return nil, swapErr
@@ -165,13 +166,18 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 // retryOnTransition checks if err is a PeerTransitionedError and swaps the
 // header if the retry budget allows. Returns (true, nil) to signal the caller
 // should continue the loop, or (false, swapErr) if the swap itself failed.
-func (b *File) retryOnTransition(err error, retries *int) (retry bool, swapErr error) {
+func (b *File) retryOnTransition(ctx context.Context, err error, retries *int) (retry bool, swapErr error) {
 	var transErr *storage.PeerTransitionedError
 	if !errors.As(err, &transErr) || *retries >= maxTransitionRetries {
 		return false, nil
 	}
 
 	*retries++
+
+	logger.L().Info(ctx, "peer transition detected, swapping header",
+		zap.String("file_type", string(b.fileType)),
+		zap.Int("retry", *retries),
+	)
 
 	if swapErr := b.swapHeader(transErr); swapErr != nil {
 		return false, fmt.Errorf("failed to swap header: %w", swapErr)
