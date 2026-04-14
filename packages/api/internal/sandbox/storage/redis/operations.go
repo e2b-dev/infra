@@ -224,11 +224,6 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 	return updatedSbx, nil
 }
 
-// staleCutoff is how long a team entry must be idle (no Add calls) before it
-// can be pruned from the global teams ZSET when its sandbox count is zero.
-// This prevents races where a Remove sees SCARD==0 right before an Add.
-const staleCutoff = time.Hour
-
 func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int64, error) {
 	members, err := s.redisClient.ZRangeWithScores(ctx, globalTeamsSet, 0, -1).Result()
 	if err != nil {
@@ -269,7 +264,7 @@ func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int6
 	}
 
 	now := time.Now().Unix()
-	cutoff := now - int64(staleCutoff.Seconds())
+	cutoff := now - int64(sandbox.StaleCutoff.Seconds())
 
 	teams := make(map[uuid.UUID]int64, len(entries))
 	var stale []any
