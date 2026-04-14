@@ -112,10 +112,10 @@ jobs:
 
       - name: Run tests that require sudo
         working-directory: ${{ matrix.package }}
-        run: sudo -E `which go` test -race -v ${{ matrix.test_path }}
+        run: sudo -E `which go` test -race -v -timeout 20m ${{ matrix.test_path }}
         if: matrix.sudo == true
 
       - name: Run tests
         working-directory: ${{ matrix.package }}
-        run: go test -race -v ${{ matrix.test_path }}
+        run: go test -race -v -timeout 20m ${{ matrix.test_path }}
         if: matrix.sudo == false
