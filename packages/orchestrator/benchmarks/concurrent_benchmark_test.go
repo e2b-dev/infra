@@ -33,8 +33,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/metric/noop"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
@@ -137,10 +139,19 @@ func BenchmarkConcurrentResume(b *testing.B) {
 		kernelVersion   = "vmlinux-6.1.158"
 		fcVersion       = featureflags.DefaultFirecrackerVersion
 		templateID      = "fcb33d09-3141-42c4-8d3b-c2df411681db"
-		buildID         = "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
-		useHugePages    = false
 		templateVersion = "v2.0.0"
+
+		buildIDNormal    = "ba6aae36-74f7-487a-b6f7-74fd7c94e479"
+		buildIDHugePages = "ba6aae36-74f7-487a-b6f7-74fd7c94e480"
 	)
+
+	disableHP, _ := strconv.ParseBool(os.Getenv("DISABLE_HUGE_PAGES"))
+	useHugePages := !disableHP
+	buildID := buildIDHugePages
+	if !useHugePages {
+		buildID = buildIDNormal
+		b.Log("huge pages disabled")
+	}
 
 	// cache & ephemeral paths
 	persistenceDir := getPersistenceDir()
@@ -155,7 +166,7 @@ func BenchmarkConcurrentResume(b *testing.B) {
 	}
 
 	// optional OTEL tracing
-	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	endpoint := os.Getenv("OTEL_COLLECTOR_GRPC_ENDPOINT")
 	if endpoint != "" {
 		spanExporter, err := telemetry.NewSpanExporter(b.Context(),
 			otlptracegrpc.WithEndpoint(endpoint),
@@ -423,9 +434,17 @@ func runConcurrentResume(
 			// Wait for the barrier.
 			<-gate
 
+			ctx, span := tracer.Start(b.Context(), "bench-resume",
+				trace.WithAttributes(
+					attribute.Int("concurrency", n),
+					attribute.Int("sandbox.index", i),
+					attribute.String("sandbox.id", runtime.SandboxID),
+				),
+			)
+
 			start := time.Now()
 			sbx, err := factory.ResumeSandbox(
-				b.Context(),
+				ctx,
 				tmpl,
 				config,
 				runtime,
@@ -434,6 +453,7 @@ func runConcurrentResume(
 				nil,
 			)
 			elapsed := time.Since(start)
+			span.End()
 
 			results[i] = concurrencyResult{
 				sandboxID: runtime.SandboxID,

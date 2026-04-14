@@ -15,11 +15,15 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
+const DefaultBusyboxVersion = "1.36.1"
+
 type BuilderConfig struct {
 	AllowSandboxInternet   bool          `env:"ALLOW_SANDBOX_INTERNET"   envDefault:"true"`
 	DomainName             string        `env:"DOMAIN_NAME"              envDefault:""`
 	EnvdTimeout            time.Duration `env:"ENVD_TIMEOUT"             envDefault:"10s"`
 	FirecrackerVersionsDir string        `env:"FIRECRACKER_VERSIONS_DIR" envDefault:"/fc-versions"`
+	BusyboxVersion         string        `env:"BUSYBOX_VERSION"          envDefault:"1.36.1"`
+	HostBusyboxDir         string        `env:"HOST_BUSYBOX_DIR"         envDefault:"/fc-busybox"`
 	HostEnvdPath           string        `env:"HOST_ENVD_PATH"           envDefault:"/fc-envd/envd"`
 	HostKernelsDir         string        `env:"HOST_KERNELS_DIR"         envDefault:"/fc-kernels"`
 	OrchestratorBaseDir    string        `env:"ORCHESTRATOR_BASE_PATH"   envDefault:"/orchestrator"`
@@ -29,6 +33,8 @@ type BuilderConfig struct {
 
 	DefaultCacheDir string `env:"DEFAULT_CACHE_DIR,expand" envDefault:"${ORCHESTRATOR_BASE_PATH}/build"`
 
+	Provider string `env:"PROVIDER" envDefault:"gcp"`
+
 	StorageConfig storage.Config
 	NetworkConfig network.Config
 }
@@ -37,6 +43,7 @@ func makePathsAbsolute(c *BuilderConfig) error {
 	for _, item := range []*string{
 		&c.DefaultCacheDir,
 		&c.FirecrackerVersionsDir,
+		&c.HostBusyboxDir,
 		&c.HostEnvdPath,
 		&c.HostKernelsDir,
 		&c.OrchestratorBaseDir,
@@ -89,7 +96,8 @@ type Config struct {
 	RedisClusterURL            string            `env:"REDIS_CLUSTER_URL"`
 	RedisTLSCABase64           string            `env:"REDIS_TLS_CA_BASE64"`
 	RedisURL                   string            `env:"REDIS_URL"`
-	RedisPoolSize              int               `env:"REDIS_POOL_SIZE"               envDefault:"10"`
+	RedisPoolSize              int               `env:"REDIS_POOL_SIZE"               envDefault:"5"`
+	RedisMinIdleConns          int               `env:"REDIS_MIN_IDLE_CONNS"          envDefault:"2"`
 	NBDPoolSize                int               `env:"NBD_POOL_SIZE"                 envDefault:"64"`
 	Services                   []string          `env:"ORCHESTRATOR_SERVICES"         envDefault:"orchestrator"`
 	PersistentVolumeMounts     map[string]string `env:"PERSISTENT_VOLUME_MOUNTS"`

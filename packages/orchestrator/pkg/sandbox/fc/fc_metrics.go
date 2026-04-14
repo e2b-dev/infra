@@ -35,6 +35,8 @@ var (
 	directionKey = attribute.Key("direction")
 	attrTX       = metric.WithAttributes(directionKey.String("tx"))
 	attrRX       = metric.WithAttributes(directionKey.String("rx"))
+	attrRead     = metric.WithAttributes(directionKey.String("read"))
+	attrWrite    = metric.WithAttributes(directionKey.String("write"))
 
 	// Counters — global totals, no sandbox_id to avoid high cardinality.
 	fcNetFails         = utils.Must(telemetry.GetCounter(fcMeter, telemetry.SandboxFCNetFails))
@@ -49,12 +51,23 @@ var (
 	// TX-only: no RX equivalent in Firecracker metrics.
 	fcNetRateLimiterEventCount = utils.Must(telemetry.GetHistogram(fcMeter, telemetry.SandboxFCNetRateLimiterEventCount))
 	fcNetRemainingReqs         = utils.Must(telemetry.GetHistogram(fcMeter, telemetry.SandboxFCNetRemainingReqs))
+
+	// Block counters.
+	fcBlockFails         = utils.Must(telemetry.GetCounter(fcMeter, telemetry.SandboxFCBlockFails))
+	fcBlockNoAvailBuffer = utils.Must(telemetry.GetCounter(fcMeter, telemetry.SandboxFCBlockNoAvailBuffer))
+
+	// Block histograms.
+	fcBlockBytes                 = utils.Must(telemetry.GetHistogram(fcMeter, telemetry.SandboxFCBlockBytes))
+	fcBlockCount                 = utils.Must(telemetry.GetHistogram(fcMeter, telemetry.SandboxFCBlockCount))
+	fcBlockRateLimiterThrottled  = utils.Must(telemetry.GetHistogram(fcMeter, telemetry.SandboxFCBlockRateLimiterThrottled))
+	fcBlockRateLimiterEventCount = utils.Must(telemetry.GetHistogram(fcMeter, telemetry.SandboxFCBlockRateLimiterEventCount))
+	fcBlockIOEngineThrottled     = utils.Must(telemetry.GetHistogram(fcMeter, telemetry.SandboxFCBlockIOEngineThrottled))
+	fcBlockRemainingReqs         = utils.Must(telemetry.GetHistogram(fcMeter, telemetry.SandboxFCBlockRemainingReqs))
 )
 
-// firecrackerNetMetrics holds the Firecracker net metrics fields we care about.
-// Firecracker serializes SharedIncMetric fields as per-flush deltas (not cumulative totals):
-// each JSON line contains the increment since the previous flush.
-// Flush interval defaults to 60 s; additional flushes are triggered by FlushMetrics API calls.
+// firecrackerNetMetrics is a subset of Firecracker's NetDeviceMetrics we export via OTEL.
+// Full metric list: https://github.com/firecracker-microvm/firecracker/blob/main/docs/metrics.md
+// Values are per-flush deltas; flush defaults to 60 s, additional flushes via FlushMetrics API.
 type firecrackerNetMetrics struct {
 	// TX
 	TxBytesCount            uint64 `json:"tx_bytes_count"`
@@ -76,13 +89,31 @@ type firecrackerNetMetrics struct {
 	TapReadFails           uint64 `json:"tap_read_fails"`
 }
 
+// firecrackerBlockMetrics is a subset of Firecracker's BlockDeviceMetrics we export via OTEL.
+// Full metric list: https://github.com/firecracker-microvm/firecracker/blob/main/docs/metrics.md
+// Values are per-flush deltas. The aggregate "block" key sums over all drives; we only have one (rootfs).
+type firecrackerBlockMetrics struct {
+	ReadBytes                  uint64 `json:"read_bytes"`
+	WriteBytes                 uint64 `json:"write_bytes"`
+	ReadCount                  uint64 `json:"read_count"`
+	WriteCount                 uint64 `json:"write_count"`
+	RateLimiterThrottledEvents uint64 `json:"rate_limiter_throttled_events"`
+	RateLimiterEventCount      uint64 `json:"rate_limiter_event_count"`
+	IOEngineThrottledEvents    uint64 `json:"io_engine_throttled_events"`
+	NoAvailBuffer              uint64 `json:"no_avail_buffer"`
+	ExecuteFails               uint64 `json:"execute_fails"`
+	EventFails                 uint64 `json:"event_fails"`
+	RemainingReqsCount         uint64 `json:"remaining_reqs_count"`
+}
+
 // firecrackerMetrics is the top-level structure of one Firecracker metrics JSON line.
 type firecrackerMetrics struct {
-	Net firecrackerNetMetrics `json:"net"`
+	Net   firecrackerNetMetrics   `json:"net"`
+	Block firecrackerBlockMetrics `json:"block"`
 }
 
 // startMetricsReader opens the metrics FIFO and starts a goroutine that reads
-// Firecracker metrics lines and exports net device metrics via OTEL.
+// Firecracker metrics lines and exports metrics via OTEL.
 // It must be called before setMetrics so that the FIFO is open for reading
 // before Firecracker opens the write end in response to PUT /metrics.
 func (p *Process) startMetricsReader(ctx context.Context) {
@@ -203,6 +234,31 @@ func (p *Process) startMetricsReader(ctx context.Context) {
 			}
 			if n.TapReadFails > 0 {
 				fcNetTapIOFails.Add(ctx, int64(n.TapReadFails), attrRX)
+			}
+
+			// Block histograms — values are already per-flush deltas from Firecracker.
+			b := &m.Block
+
+			fcBlockBytes.Record(ctx, int64(b.ReadBytes), attrRead)
+			fcBlockBytes.Record(ctx, int64(b.WriteBytes), attrWrite)
+			fcBlockCount.Record(ctx, int64(b.ReadCount), attrRead)
+			fcBlockCount.Record(ctx, int64(b.WriteCount), attrWrite)
+			fcBlockRateLimiterEventCount.Record(ctx, int64(b.RateLimiterEventCount))
+			fcBlockRemainingReqs.Record(ctx, int64(b.RemainingReqsCount))
+
+			if b.RateLimiterThrottledEvents > 0 {
+				fcBlockRateLimiterThrottled.Record(ctx, int64(b.RateLimiterThrottledEvents))
+			}
+			if b.IOEngineThrottledEvents > 0 {
+				fcBlockIOEngineThrottled.Record(ctx, int64(b.IOEngineThrottledEvents))
+			}
+
+			// Block global error/event counters.
+			if b.ExecuteFails > 0 || b.EventFails > 0 {
+				fcBlockFails.Add(ctx, int64(b.ExecuteFails)+int64(b.EventFails))
+			}
+			if b.NoAvailBuffer > 0 {
+				fcBlockNoAvailBuffer.Add(ctx, int64(b.NoAvailBuffer))
 			}
 		}
 

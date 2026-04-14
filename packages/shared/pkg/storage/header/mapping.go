@@ -19,21 +19,12 @@ type BuildMap struct {
 	BuildStorageOffset uint64
 }
 
-func (mapping *BuildMap) Copy() *BuildMap {
-	return &BuildMap{
-		Offset:             mapping.Offset,
-		Length:             mapping.Length,
-		BuildId:            mapping.BuildId,
-		BuildStorageOffset: mapping.BuildStorageOffset,
-	}
-}
-
 func CreateMapping(
 	buildId *uuid.UUID,
 	dirty *bitset.BitSet,
 	blockSize int64,
-) []*BuildMap {
-	var mappings []*BuildMap
+) []BuildMap {
+	var mappings []BuildMap
 
 	var startBlock uint
 	var blockLength uint
@@ -47,7 +38,7 @@ func CreateMapping(
 		}
 
 		if blockLength > 0 {
-			m := &BuildMap{
+			m := BuildMap{
 				Offset:             uint64(startBlock) * uint64(blockSize),
 				BuildId:            *buildId,
 				Length:             uint64(blockLength) * uint64(blockSize),
@@ -64,7 +55,7 @@ func CreateMapping(
 	}
 
 	if blockLength > 0 {
-		mappings = append(mappings, &BuildMap{
+		mappings = append(mappings, BuildMap{
 			Offset:             uint64(startBlock) * uint64(blockSize),
 			BuildId:            *buildId,
 			Length:             uint64(blockLength) * uint64(blockSize),
@@ -82,26 +73,26 @@ func CreateMapping(
 //
 // It returns a new set of mappings that covers the whole size.
 func MergeMappings(
-	baseMapping []*BuildMap,
-	diffMapping []*BuildMap,
-) []*BuildMap {
+	baseMapping []BuildMap,
+	diffMapping []BuildMap,
+) []BuildMap {
 	if len(diffMapping) == 0 {
 		return baseMapping
 	}
 
-	baseMappingCopy := make([]*BuildMap, len(baseMapping))
+	baseMappingCopy := make([]BuildMap, len(baseMapping))
 
 	copy(baseMappingCopy, baseMapping)
 
 	baseMapping = baseMappingCopy
 
-	mappings := make([]*BuildMap, 0)
+	mappings := make([]BuildMap, 0)
 
 	var baseIdx int
 	var diffIdx int
 
 	for baseIdx < len(baseMapping) && diffIdx < len(diffMapping) {
-		base := baseMapping[baseIdx]
+		base := &baseMapping[baseIdx]
 		diff := diffMapping[diffIdx]
 
 		if base.Length == 0 {
@@ -119,7 +110,7 @@ func MergeMappings(
 		// base is before diff and there is no overlap
 		// add base to the result, because it will not be overlapping by any diff
 		if base.Offset+base.Length <= diff.Offset {
-			mappings = append(mappings, base)
+			mappings = append(mappings, *base)
 
 			baseIdx++
 
@@ -153,15 +144,13 @@ func MergeMappings(
 			leftBaseLength := int64(diff.Offset) - int64(base.Offset)
 
 			if leftBaseLength > 0 {
-				leftBase := &BuildMap{
+				mappings = append(mappings, BuildMap{
 					Offset:  base.Offset,
 					Length:  uint64(leftBaseLength),
 					BuildId: base.BuildId,
 					// the build storage offset is the same as the base mapping
 					BuildStorageOffset: base.BuildStorageOffset,
-				}
-
-				mappings = append(mappings, leftBase)
+				})
 			}
 
 			mappings = append(mappings, diff)
@@ -172,14 +161,12 @@ func MergeMappings(
 			rightBaseLength := int64(base.Length) - rightBaseShift
 
 			if rightBaseLength > 0 {
-				rightBase := &BuildMap{
+				baseMapping[baseIdx] = BuildMap{
 					Offset:             base.Offset + uint64(rightBaseShift),
 					Length:             uint64(rightBaseLength),
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
 				}
-
-				baseMapping[baseIdx] = rightBase
 			} else {
 				baseIdx++
 			}
@@ -199,14 +186,12 @@ func MergeMappings(
 			rightBaseLength := int64(base.Length) - rightBaseShift
 
 			if rightBaseLength > 0 {
-				rightBase := &BuildMap{
+				baseMapping[baseIdx] = BuildMap{
 					Offset:             base.Offset + uint64(rightBaseShift),
 					Length:             uint64(rightBaseLength),
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset + uint64(rightBaseShift),
 				}
-
-				baseMapping[baseIdx] = rightBase
 			} else {
 				baseIdx++
 			}
@@ -220,14 +205,12 @@ func MergeMappings(
 			leftBaseLength := int64(diff.Offset) - int64(base.Offset)
 
 			if leftBaseLength > 0 {
-				leftBase := &BuildMap{
+				mappings = append(mappings, BuildMap{
 					Offset:             base.Offset,
 					Length:             uint64(leftBaseLength),
 					BuildId:            base.BuildId,
 					BuildStorageOffset: base.BuildStorageOffset,
-				}
-
-				mappings = append(mappings, leftBase)
+				})
 			}
 
 			baseIdx++
@@ -245,29 +228,25 @@ func MergeMappings(
 }
 
 // NormalizeMappings joins adjacent mappings that have the same buildId.
-func NormalizeMappings(mappings []*BuildMap) []*BuildMap {
+func NormalizeMappings(mappings []BuildMap) []BuildMap {
 	if len(mappings) == 0 {
 		return nil
 	}
 
-	result := make([]*BuildMap, 0, len(mappings))
+	result := make([]BuildMap, 0, len(mappings))
 
-	// Start with a copy of the first mapping
-	current := mappings[0].Copy()
+	current := mappings[0]
 
 	for i := 1; i < len(mappings); i++ {
 		mp := mappings[i]
-		if mp.BuildId != current.BuildId {
-			// BuildId changed, add the current map to results and start a new one
-			result = append(result, current)
-			current = mp.Copy() // New copy
-		} else {
-			// Same BuildId, just add the length
+		if mp.BuildId == current.BuildId {
 			current.Length += mp.Length
+		} else {
+			result = append(result, current)
+			current = mp
 		}
 	}
 
-	// Add the last mapping
 	result = append(result, current)
 
 	return result

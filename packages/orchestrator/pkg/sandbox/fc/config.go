@@ -19,6 +19,8 @@ const (
 
 	SandboxRootfsFile = "rootfs.ext4"
 
+	rootfsDriveID = "rootfs"
+
 	entropyBytesSize    int64 = 1024 // 1 KB
 	entropyRefillTime   int64 = 100
 	entropyOneTimeBurst int64 = 0

@@ -31,9 +31,6 @@ jobs:
             echo "::endgroup::"
           done
 
-      - name: Fetch busybox for orchestrator embed
-        run: make -C packages/orchestrator fetch-busybox BUILD_ARCH=arm64
-
       - name: Build and vet orchestrator (CGO)
         run: |
           CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc GOARCH=arm64 go build ./...
@@ -90,8 +87,8 @@ jobs:
 
       - name: Setup orchestrator tests
         run: |
-          # Download busybox for go:embed
-          make -C packages/orchestrator fetch-busybox
+          make -C packages/orchestrator fetch-busybox BUILD_ARCH=arm64
+          echo "HOST_BUSYBOX_DIR=$(pwd)/packages/orchestrator/.busybox" >> "$GITHUB_ENV"
 
           # Enable unprivileged uffd (Ubuntu defaults to 0)
           echo 1 | sudo tee /proc/sys/vm/unprivileged_userfaultfd

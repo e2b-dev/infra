@@ -24,7 +24,7 @@ func NewZeroDevice(size int64, blockSize int64) (*ZeroDevice, error) {
 		uint64(blockSize),
 		uint64(size),
 	),
-		[]*header.BuildMap{
+		[]header.BuildMap{
 			{
 				Offset:             0,
 				Length:             uint64(size),

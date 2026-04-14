@@ -35,10 +35,6 @@ jobs:
       - name: Parse .tool-versions
         uses: wistia/parse-tool-versions@v2.1.1
 
-      - name: Fetch busybox for orchestrator embed
-        if: contains(matrix.modules, 'orchestrator')
-        run: make -C packages/orchestrator fetch-busybox
-
       - name: golangci-lint ${{ matrix.modules }}
         uses: golangci/golangci-lint-action@v8
         with:

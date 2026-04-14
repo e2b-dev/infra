@@ -169,6 +169,11 @@ variable "fc_versions_bucket_name" {
   type        = string
 }
 
+variable "fc_busybox_bucket_name" {
+  description = "GCS bucket name for busybox binary"
+  type        = string
+}
+
 # NFS CONFIGURATION
 
 variable "filestore_cache_enabled" {

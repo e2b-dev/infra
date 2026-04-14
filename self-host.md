@@ -46,8 +46,7 @@ Recommended for monitoring and logging
   - Used for managing the infrastructure on Google Cloud
   - Be sure to authenticate:
     ```sh
-    gcloud auth login
-    gcloud auth application-default login
+    gcloud auth login --update-adc
     ```
 - GCP account + project
 
@@ -82,8 +81,8 @@ Check if you can use config for terraform state management
   - e2b-posthog-api-key (optional, for monitoring)
 9. Run `make plan-without-jobs` and then `make apply`
 10. Run `make plan` and then `make apply`. Note: This will work after the TLS certificates was issued. It can take some time; you can check the status in the Google Cloud Console. Database migrations run automatically via the API's db-migrator task.
-11. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template.
-  - You can also run `make seed-db` in `packages/db` to create more users and teams.
+11. Setup data in the cluster by running `make prep-cluster` to create an initial user, team, and build a base template.
+  - You can also run `make seed-db` to create more users and teams.
 
 ### GCP Troubleshooting
 
@@ -150,7 +149,7 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
 8. Run `make copy-public-builds` to copy Firecracker kernels and rootfs to your S3 buckets
 9. Run `make plan-without-jobs` and then `make apply` to provision the cluster infrastructure
 10. Run `make plan` and then `make apply` to deploy all Nomad jobs (this also runs database migrations automatically via the API's db-migrator task)
-11. Setup data in the cluster by running `make prep-cluster` in `packages/shared` to create an initial user, team, and build a base template
+11. Setup data in the cluster by running `make prep-cluster` to create an initial user, team, and build a base template
 
 ### AWS Architecture
 
@@ -240,3 +239,5 @@ You can build your own kernel and Firecracker version from source by running `ma
 - `make import TARGET={resource} ID={resource_id}` - imports the already created resources into the terraform state
 - `make setup-ssh` - sets up the ssh key for the environment (useful for remote-debugging)
 - `make connect-orchestrator` - establish the ssh connection to the remote orchestrator (for testing API locally)
+- `make prep-cluster` - creates an initial user, team, seeds the database, and builds a base template
+- `make seed-db` - seeds the database with users and teams

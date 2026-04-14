@@ -119,8 +119,11 @@ func (h *NFSHandler) Mount(
 ) (nfs.MountStatus, billy.Filesystem, []nfs.AuthFlavor) {
 	fs, err := h.getChroot(ctx, conn.RemoteAddr(), request)
 	if err != nil {
+		sourceIP, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
+
 		logger.L().Warn(ctx, "failed to get path",
 			zap.String("request", string(request.Dirpath)),
+			logger.WithSandboxIP(sourceIP),
 			zap.Error(err))
 
 		return nfs.MountStatusErrAcces, mountFailedFS{}, nil
