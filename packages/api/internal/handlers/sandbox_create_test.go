@@ -454,7 +454,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 
 			actual, err := convertAPIVolumesToOrchestratorVolumes(
 				t.Context(), db.SqlcClient, ffClient,
-				teamID, tc.input, &queries.EnvBuild{EnvdVersion: utils.ToPtr("0.5.8")},
+				teamID, tc.input, &queries.EnvBuild{EnvdVersion: utils.ToPtr("0.5.12")},
 			)
 			assert.Equal(t, tc.err, err)
 			assert.Equal(t, tc.expected, actual)
