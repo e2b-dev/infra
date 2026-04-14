@@ -88,17 +88,31 @@ func (m *Map) Get(sandboxID string) (*Sandbox, bool) {
 }
 
 // GetByHostPort looks up a sandbox by its host IP address parsed from hostPort.
-// It matches any sandbox in the map (starting, running, or stopping).
+// It prefers a running sandbox and only falls back to a non-running one when
+// no running sandbox matches.
 func (m *Map) GetByHostPort(hostPort string) (*Sandbox, error) {
 	reqIP, _, err := net.SplitHostPort(hostPort)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing remote address %s: %w", hostPort, err)
 	}
 
+	var fallback *Sandbox
 	for _, sbx := range m.sandboxes.Items() {
-		if sbx.Slot.HostIPString() == reqIP {
+		if sbx.Slot.HostIPString() != reqIP {
+			continue
+		}
+
+		if sbx.IsRunning() {
 			return sbx, nil
 		}
+
+		if fallback == nil {
+			fallback = sbx
+		}
+	}
+
+	if fallback != nil {
+		return fallback, nil
 	}
 
 	return nil, fmt.Errorf("sandbox with address %s not found", hostPort)
