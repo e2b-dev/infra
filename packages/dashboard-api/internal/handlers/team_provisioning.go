@@ -65,14 +65,19 @@ func (s *APIStore) PostTeams(c *gin.Context) {
 	telemetry.ReportEvent(ctx, "create team")
 
 	userID := auth.MustGetUserID(c)
+	attrs := []attribute.KeyValue{
+		attribute.String("team.provision.operation", "create team"),
+	}
 	body, err := ginutils.ParseBody[api.CreateTeamRequest](ctx, c)
 	if err != nil {
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "create team failed", fmt.Errorf("parse create team request: %w", err), attrs...)
 		s.sendAPIStoreError(c, http.StatusBadRequest, "Invalid request body")
 
 		return
 	}
 	name := strings.TrimSpace(body.Name)
 	if name == "" {
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "create team failed", errors.New("team name is required"), attrs...)
 		s.sendAPIStoreError(c, http.StatusBadRequest, "Team name is required")
 
 		return
@@ -332,9 +337,16 @@ func (s *APIStore) handleProvisioningError(ctx context.Context, c *gin.Context, 
 	}
 
 	var provisionErr *internalteamprovision.ProvisionError
-	if errors.As(err, &provisionErr) && provisionErr.IsBadRequest() {
-		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, operation+" failed", err, attrs...)
-		s.sendAPIStoreError(c, http.StatusBadRequest, provisionErr.Error())
+	if errors.As(err, &provisionErr) {
+		if provisionErr.StatusCode < http.StatusBadRequest || provisionErr.StatusCode >= 600 {
+			telemetry.ReportErrorByCode(ctx, http.StatusInternalServerError, operation+" failed", err, attrs...)
+			s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to "+operation)
+
+			return
+		}
+
+		telemetry.ReportErrorByCode(ctx, provisionErr.StatusCode, operation+" failed", err, attrs...)
+		s.sendAPIStoreError(c, provisionErr.StatusCode, provisionErr.Error())
 
 		return
 	}

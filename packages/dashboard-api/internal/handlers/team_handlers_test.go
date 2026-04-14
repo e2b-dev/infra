@@ -619,6 +619,39 @@ func TestPostTeams_InvalidNameReturnsBadRequest(t *testing.T) {
 	}
 }
 
+func TestPostTeams_InvalidRequestBodyReturnsBadRequest(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	userID := createHandlerTestUser(t, testDB)
+	sink := &fakeTeamProvisionSink{}
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"name":`))
+	ginCtx.Request.Header.Set("Content-Type", "application/json")
+	auth.SetUserID(ginCtx, userID)
+
+	store := &APIStore{
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
+		teamProvisionSink: sink,
+	}
+	store.PostTeams(ginCtx)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("PostTeams(invalid JSON) status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(recorder.Body.String(), "Invalid request body") {
+		t.Fatalf("PostTeams(invalid JSON) body = %q, want message containing %q", recorder.Body.String(), "Invalid request body")
+	}
+	if len(sink.requests) != 0 {
+		t.Fatalf("PostTeams(invalid JSON) provisioning calls = %d, want %d", len(sink.requests), 0)
+	}
+}
+
 func TestPostTeams_TrimsNameBeforeCreate(t *testing.T) {
 	t.Parallel()
 
@@ -709,6 +742,86 @@ func TestPostTeams_ProvisioningFailureRollsBackCreatedTeam(t *testing.T) {
 	}
 	if !rows[0].IsDefault {
 		t.Fatal("expected remaining team to be the default team")
+	}
+}
+
+func TestPostTeams_ProvisioningFailurePreservesProvisionErrorStatus(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		status  int
+		message string
+	}{
+		{name: "too_many_requests", status: http.StatusTooManyRequests, message: "rate limited"},
+		{name: "service_unavailable", status: http.StatusServiceUnavailable, message: "billing unavailable"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testDB := testutils.SetupDatabase(t)
+			ctx := t.Context()
+			userID := createHandlerTestUser(t, testDB)
+			sink := &fakeTeamProvisionSink{
+				err: &internalteamprovision.ProvisionError{
+					StatusCode: tt.status,
+					Message:    tt.message,
+				},
+			}
+
+			recorder := httptest.NewRecorder()
+			ginCtx, _ := gin.CreateTestContext(recorder)
+			ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"name":"Acme"}`))
+			ginCtx.Request.Header.Set("Content-Type", "application/json")
+			auth.SetUserID(ginCtx, userID)
+
+			store := &APIStore{
+				db:                testDB.SqlcClient,
+				authDB:            testDB.AuthDB,
+				supabaseDB:        testDB.SupabaseDB,
+				teamProvisionSink: sink,
+			}
+			store.PostTeams(ginCtx)
+
+			if recorder.Code != tt.status {
+				t.Fatalf("PostTeams(provision status %d) status = %d, want %d", tt.status, recorder.Code, tt.status)
+			}
+			if len(sink.requests) != 1 {
+				t.Fatalf("PostTeams(provision status %d) provisioning calls = %d, want %d", tt.status, len(sink.requests), 1)
+			}
+
+			var responseBody map[string]any
+			if err := json.Unmarshal(recorder.Body.Bytes(), &responseBody); err != nil {
+				t.Fatalf("json.Unmarshal(PostTeams response) error = %v, want nil", err)
+			}
+
+			codeValue, ok := responseBody["code"].(float64)
+			if !ok {
+				t.Fatalf("PostTeams(provision status %d) response code type = %T, want float64", tt.status, responseBody["code"])
+			}
+			if got := int(codeValue); got != tt.status {
+				t.Fatalf("PostTeams(provision status %d) response code = %d, want %d", tt.status, got, tt.status)
+			}
+
+			messageValue, ok := responseBody["message"].(string)
+			if !ok {
+				t.Fatalf("PostTeams(provision status %d) response message type = %T, want string", tt.status, responseBody["message"])
+			}
+			if messageValue != tt.message {
+				t.Fatalf("PostTeams(provision status %d) response message = %q, want %q", tt.status, messageValue, tt.message)
+			}
+
+			rows, err := testDB.AuthDB.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+			if err != nil {
+				t.Fatalf("GetTeamsWithUsersTeamsWithTier(userID=%s) error = %v, want nil", userID, err)
+			}
+			if len(rows) != 1 {
+				t.Fatalf("GetTeamsWithUsersTeamsWithTier(userID=%s) rows = %d, want %d", userID, len(rows), 1)
+			}
+			if !rows[0].IsDefault {
+				t.Fatal("expected remaining team to be the default team")
+			}
+		})
 	}
 }
 
