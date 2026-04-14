@@ -106,7 +106,10 @@ func (m *Map) GetByHostPort(hostPort string) (*Sandbox, error) {
 			return sbx, nil
 		}
 
-		if fallback == nil {
+		// Prefer a starting sandbox over a stopping one so that when an IP
+		// slot is freed by a stopping sandbox and immediately reused by a
+		// new starting sandbox, we route to the new sandbox.
+		if fallback == nil || SandboxStatus(sbx.status.Load()) == StatusStarting {
 			fallback = sbx
 		}
 	}

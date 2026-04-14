@@ -4,6 +4,8 @@ import (
 	"net"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 )
 
@@ -27,13 +29,32 @@ func TestGetByHostPortPrefersRunningSandbox(t *testing.T) {
 	m.sandboxes.Insert("running", running)
 
 	sbx, err := m.GetByHostPort("10.11.0.2:2049")
-	if err != nil {
-		t.Fatalf("GetByHostPort returned error: %v", err)
-	}
+	require.NoError(t, err)
+	require.Same(t, running, sbx)
+}
 
-	if sbx != running {
-		t.Fatalf("expected running sandbox, got %#v", sbx)
+func TestGetByHostPortPrefersStartingOverStopping(t *testing.T) {
+	m := NewSandboxesMap()
+
+	stopping := &Sandbox{
+		Resources: &Resources{
+			Slot: &network.Slot{HostIP: net.ParseIP("10.11.0.2")},
+		},
 	}
+	stopping.status.Store(int32(StatusStopping))
+	m.sandboxes.Insert("stopping", stopping)
+
+	starting := &Sandbox{
+		Resources: &Resources{
+			Slot: &network.Slot{HostIP: net.ParseIP("10.11.0.2")},
+		},
+	}
+	starting.status.Store(int32(StatusStarting))
+	m.sandboxes.Insert("starting", starting)
+
+	sbx, err := m.GetByHostPort("10.11.0.2:2049")
+	require.NoError(t, err)
+	require.Same(t, starting, sbx)
 }
 
 func TestGetByHostPortFallsBackToStoppingSandbox(t *testing.T) {
@@ -48,11 +69,6 @@ func TestGetByHostPortFallsBackToStoppingSandbox(t *testing.T) {
 	m.sandboxes.Insert("stopping", stopping)
 
 	sbx, err := m.GetByHostPort("10.11.0.3:2049")
-	if err != nil {
-		t.Fatalf("GetByHostPort returned error: %v", err)
-	}
-
-	if sbx != stopping {
-		t.Fatalf("expected stopping sandbox, got %#v", sbx)
-	}
+	require.NoError(t, err)
+	require.Same(t, stopping, sbx)
 }
