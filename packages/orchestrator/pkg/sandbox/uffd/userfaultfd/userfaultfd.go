@@ -355,7 +355,7 @@ retryLoop:
 			break
 		}
 
-		if attempt >= sliceMaxRetries {
+		if attempt >= sliceMaxRetries || ctx.Err() != nil {
 			break
 		}
 
