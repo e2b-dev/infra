@@ -232,33 +232,39 @@ func (_mock *MockDiff) Data() ([]byte, func(), error) {
 	}
 
 	var r0 []byte
+	var r1 func()
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func() ([]byte, func(), error)); ok {
+		return returnFunc()
+	}
 	if returnFunc, ok := ret.Get(0).(func() []byte); ok {
 		r0 = returnFunc()
-	} else if ret.Get(0) != nil {
-		r0 = ret.Get(0).([]byte)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]byte)
+		}
 	}
-
-	var r1 func()
 	if returnFunc, ok := ret.Get(1).(func() func()); ok {
 		r1 = returnFunc()
-	} else if ret.Get(1) != nil {
-		r1 = ret.Get(1).(func())
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(func())
+		}
 	}
-
-	var r2 error
 	if returnFunc, ok := ret.Get(2).(func() error); ok {
 		r2 = returnFunc()
 	} else {
 		r2 = ret.Error(2)
 	}
-
 	return r0, r1, r2
 }
 
+// MockDiff_Data_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Data'
 type MockDiff_Data_Call struct {
 	*mock.Call
 }
 
+// Data is a helper method to define mock.On call
 func (_e *MockDiff_Expecter) Data() *MockDiff_Data_Call {
 	return &MockDiff_Data_Call{Call: _e.mock.On("Data")}
 }
@@ -270,8 +276,8 @@ func (_c *MockDiff_Data_Call) Run(run func()) *MockDiff_Data_Call {
 	return _c
 }
 
-func (_c *MockDiff_Data_Call) Return(data []byte, release func(), err error) *MockDiff_Data_Call {
-	_c.Call.Return(data, release, err)
+func (_c *MockDiff_Data_Call) Return(bytes []byte, fn func(), err error) *MockDiff_Data_Call {
+	_c.Call.Return(bytes, fn, err)
 	return _c
 }
 

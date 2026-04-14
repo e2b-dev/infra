@@ -75,7 +75,9 @@ func (t *TemplateBuild) uploadDiff(ctx context.Context, diff build.Diff, path st
 		return err
 	}
 
-	type dataStorer interface{ StoreData(ctx context.Context, data []byte) error }
+	type dataStorer interface {
+		StoreData(ctx context.Context, data []byte) error
+	}
 	if ds, ok := object.(dataStorer); ok {
 		return ds.StoreData(ctx, data)
 	}
