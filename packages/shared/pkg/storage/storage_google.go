@@ -185,10 +185,12 @@ func (s *gcpStorage) UploadSignedURL(_ context.Context, path string, ttl time.Du
 	return url, nil
 }
 
-func (s *gcpStorage) OpenSeekable(_ context.Context, path string, _ SeekableObjectType) (Seekable, error) {
+// newObject creates a gcpObject with both the default (library-retried) handle
+// and the ReadAt handle (library retries disabled, retryWithBackoff instead).
+func (s *gcpStorage) newObject(path string) *gcpObject {
 	obj := s.bucket.Object(path)
 
-	// Default handle with library-level retries for Size, OpenRangeReader, StoreFile, etc.
+	// Default handle with library-level retries for Size, OpenRangeReader, WriteTo, etc.
 	handle := obj.Retryer(
 		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),
@@ -210,39 +212,16 @@ func (s *gcpStorage) OpenSeekable(_ context.Context, path string, _ SeekableObje
 		path:         path,
 		handle:       handle,
 		readAtHandle: readAtHandle,
+		limiter:      s.limiter,
+	}
+}
 
-		limiter: s.limiter,
-	}, nil
+func (s *gcpStorage) OpenSeekable(_ context.Context, path string, _ SeekableObjectType) (Seekable, error) {
+	return s.newObject(path), nil
 }
 
 func (s *gcpStorage) OpenBlob(_ context.Context, path string, _ ObjectType) (Blob, error) {
-	obj := s.bucket.Object(path)
-
-	// Default handle with library-level retries for WriteTo, Put, Exists, etc.
-	handle := obj.Retryer(
-		storage.WithMaxAttempts(googleMaxAttempts),
-		storage.WithPolicy(storage.RetryAlways),
-		storage.WithBackoff(gax.Backoff{
-			Initial:    googleInitialBackoff,
-			Max:        googleMaxBackoff,
-			Multiplier: googleBackoffMultiplier,
-		}),
-	)
-
-	// ReadAt handle with library retries disabled — retryWithBackoff gives
-	// each attempt a fresh context.WithTimeout instead.
-	readAtHandle := obj.Retryer(
-		storage.WithMaxAttempts(1),
-	)
-
-	return &gcpObject{
-		storage:      s,
-		path:         path,
-		handle:       handle,
-		readAtHandle: readAtHandle,
-
-		limiter: s.limiter,
-	}, nil
+	return s.newObject(path), nil
 }
 
 func (o *gcpObject) Delete(ctx context.Context) error {
