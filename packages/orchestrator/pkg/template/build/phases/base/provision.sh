@@ -85,11 +85,6 @@ systemctl mask systemd-firstboot.service
 # Clean machine-id from Docker
 rm -rf /etc/machine-id
 
-echo "Backing up CA certs dir for clean source on system boot"
-# Backing up CA certs dir so envd ExecStartPre can restore it from a clean source on each system boot.
-# This is usefull when extending existing template that already mounted certs directory as tmpfs.
-cp -a /etc/ssl/certs /etc/ssl/certs.orig
-
 echo "Linking systemd to init"
 ln -sf /lib/systemd/systemd /usr/sbin/init
 
