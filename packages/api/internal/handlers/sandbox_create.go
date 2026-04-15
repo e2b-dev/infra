@@ -316,7 +316,7 @@ var errVolumesNotSupported = errors.New("volumes are not supported")
 
 var errNoEnvdVersion = errors.New("no envd version provided")
 
-const minEnvdVersionForVolumes = "0.5.12"
+const minEnvdVersionForVolumes = "0.5.13"
 
 func convertAPIVolumesToOrchestratorVolumes(ctx context.Context, sqlClient *sqlcdb.Client, featureFlags featureFlagsClient, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount, env *queries.EnvBuild) ([]*orchestrator.SandboxVolumeMount, error) {
 	// are any volumes configured?

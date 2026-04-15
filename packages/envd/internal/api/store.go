@@ -42,7 +42,7 @@ type API struct {
 	caCertInstaller    *host.CACertInstaller
 	isMountingNFS      atomic.Bool
 	isMountedNFS       atomic.Bool
-	mountedPaths       sync.Map // tracks successfully mounted paths
+	mountedPaths       sync.Map     // tracks successfully mounted paths
 	mountedLifecycleID atomic.Value // tracks the lifecycleID when NFS was mounted
 }
 
