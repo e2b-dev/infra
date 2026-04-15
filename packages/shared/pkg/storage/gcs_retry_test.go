@@ -29,7 +29,7 @@ func TestRetryWithBackoff_SuccessOnFirstAttempt(t *testing.T) {
 
 	calls := 0
 
-	n, err := retryWithBackoff(t.Context(), func() (int, error) {
+	n, attempts, err := retryWithBackoff(t.Context(), func() (int, error) {
 		calls++
 		return 42, nil
 	})
@@ -37,6 +37,7 @@ func TestRetryWithBackoff_SuccessOnFirstAttempt(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 42, n)
 	assert.Equal(t, 1, calls)
+	assert.Equal(t, 1, attempts)
 }
 
 func TestRetryWithBackoff_SuccessAfterTransientFailures(t *testing.T) {
@@ -44,7 +45,7 @@ func TestRetryWithBackoff_SuccessAfterTransientFailures(t *testing.T) {
 
 	calls := 0
 
-	n, err := retryWithBackoff(t.Context(), func() (int, error) {
+	n, attempts, err := retryWithBackoff(t.Context(), func() (int, error) {
 		calls++
 		if calls < 3 {
 			return 0, transientErr()
@@ -55,6 +56,7 @@ func TestRetryWithBackoff_SuccessAfterTransientFailures(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 100, n)
 	assert.Equal(t, 3, calls)
+	assert.Equal(t, 3, attempts)
 }
 
 func TestRetryWithBackoff_ExhaustsAllAttempts(t *testing.T) {
@@ -62,13 +64,14 @@ func TestRetryWithBackoff_ExhaustsAllAttempts(t *testing.T) {
 
 	calls := 0
 
-	_, err := retryWithBackoff(t.Context(), func() (int, error) {
+	_, attempts, err := retryWithBackoff(t.Context(), func() (int, error) {
 		calls++
 		return 0, transientErr()
 	})
 
 	require.Error(t, err)
 	assert.Equal(t, googleMaxReadAttempts, calls)
+	assert.Equal(t, googleMaxReadAttempts, attempts)
 }
 
 func TestRetryWithBackoff_StopsOnPermanentError(t *testing.T) {
@@ -76,13 +79,14 @@ func TestRetryWithBackoff_StopsOnPermanentError(t *testing.T) {
 
 	calls := 0
 
-	_, err := retryWithBackoff(t.Context(), func() (int, error) {
+	_, attempts, err := retryWithBackoff(t.Context(), func() (int, error) {
 		calls++
 		return 0, permanentErr()
 	})
 
 	require.Error(t, err)
 	assert.Equal(t, 1, calls, "should not retry permanent errors")
+	assert.Equal(t, 1, attempts)
 }
 
 func TestRetryWithBackoff_StopsOnContextCancellation(t *testing.T) {
@@ -92,7 +96,7 @@ func TestRetryWithBackoff_StopsOnContextCancellation(t *testing.T) {
 
 	calls := 0
 
-	_, err := retryWithBackoff(ctx, func() (int, error) {
+	_, attempts, err := retryWithBackoff(ctx, func() (int, error) {
 		calls++
 		if calls == 2 {
 			cancel()
@@ -102,6 +106,7 @@ func TestRetryWithBackoff_StopsOnContextCancellation(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Equal(t, 2, calls, "should stop after context is cancelled")
+	assert.Equal(t, 2, attempts)
 }
 
 func TestRetryWithBackoff_RespectsDeadlineDuringBackoff(t *testing.T) {
@@ -114,7 +119,7 @@ func TestRetryWithBackoff_RespectsDeadlineDuringBackoff(t *testing.T) {
 	start := time.Now()
 	calls := 0
 
-	_, err := retryWithBackoff(ctx, func() (int, error) {
+	_, attempts, err := retryWithBackoff(ctx, func() (int, error) {
 		calls++
 		return 0, transientErr()
 	})
@@ -125,6 +130,7 @@ func TestRetryWithBackoff_RespectsDeadlineDuringBackoff(t *testing.T) {
 	// Should not have run all attempts — the context deadline should have
 	// cut the backoff sleep short.
 	assert.Less(t, calls, googleMaxReadAttempts)
+	assert.Equal(t, calls, attempts)
 	assert.Less(t, elapsed, 5*time.Second, "should not wait for full backoff sequence")
 }
 
@@ -133,7 +139,7 @@ func TestRetryWithBackoff_BackoffIncreases(t *testing.T) {
 
 	attempts := make([]time.Time, 0, googleMaxReadAttempts)
 
-	_, _ = retryWithBackoff(t.Context(), func() (int, error) {
+	_, _, _ = retryWithBackoff(t.Context(), func() (int, error) {
 		attempts = append(attempts, time.Now())
 		return 0, transientErr()
 	})
@@ -158,7 +164,7 @@ func TestRetryWithBackoff_PreservesLastNValue(t *testing.T) {
 
 	calls := 0
 
-	n, err := retryWithBackoff(t.Context(), func() (int, error) {
+	n, attempts, err := retryWithBackoff(t.Context(), func() (int, error) {
 		calls++
 		// Return partial read count even on error.
 		return calls * 10, transientErr()
@@ -167,6 +173,7 @@ func TestRetryWithBackoff_PreservesLastNValue(t *testing.T) {
 	require.Error(t, err)
 	// n should reflect the value from the last attempt.
 	assert.Equal(t, googleMaxReadAttempts*10, n)
+	assert.Equal(t, googleMaxReadAttempts, attempts)
 }
 
 func TestRetryWithBackoff_EOFTreatedAsSuccess(t *testing.T) {
@@ -176,7 +183,7 @@ func TestRetryWithBackoff_EOFTreatedAsSuccess(t *testing.T) {
 
 	// io.EOF signals a successful short read (last chunk of a file).
 	// retryWithBackoff must not retry it.
-	n, err := retryWithBackoff(t.Context(), func() (int, error) {
+	n, attempts, err := retryWithBackoff(t.Context(), func() (int, error) {
 		calls++
 		return 512, io.EOF
 	})
@@ -184,4 +191,5 @@ func TestRetryWithBackoff_EOFTreatedAsSuccess(t *testing.T) {
 	assert.ErrorIs(t, err, io.EOF)
 	assert.Equal(t, 512, n)
 	assert.Equal(t, 1, calls, "should not retry io.EOF")
+	assert.Equal(t, 1, attempts)
 }

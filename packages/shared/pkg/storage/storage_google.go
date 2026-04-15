@@ -71,6 +71,7 @@ const (
 	gcsOperationAttrWriteFromFileSystemOneShot = "WriteFromFileSystemOneShot"
 	gcsOperationAttrWriteTo                    = "WriteTo"
 	gcsOperationAttrSize                       = "Size"
+	gcsRetryAttemptsAttr                       = "retry.attempts"
 )
 
 var (
@@ -285,14 +286,18 @@ func (o *gcpObject) OpenRangeReader(ctx context.Context, off, length int64) (io.
 func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
 	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrReadAt))
 
-	n, err = retryWithBackoff(ctx, func() (int, error) {
+	var attempts int
+
+	n, attempts, err = retryWithBackoff(ctx, func() (int, error) {
 		return o.readAtOnce(ctx, buff, off)
 	})
 
+	attemptsAttr := attribute.Int(gcsRetryAttemptsAttr, attempts)
+
 	if ignoreEOF(err) != nil {
-		timer.Failure(ctx, int64(n))
+		timer.Failure(ctx, int64(n), attemptsAttr)
 	} else {
-		timer.Success(ctx, int64(n))
+		timer.Success(ctx, int64(n), attemptsAttr)
 	}
 
 	return n, err
