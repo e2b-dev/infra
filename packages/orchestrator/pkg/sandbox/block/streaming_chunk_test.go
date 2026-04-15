@@ -234,7 +234,7 @@ func TestChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 			_, err := chunker.Block(t.Context(), 0, ft)
 			require.NoError(t, err)
 
-			// The second Slice joins the in-flight session (or hits
+			// The second Block joins the in-flight session (or hits
 			// cache if the fetch already completed). Either way it blocks
 			// until the data is available — no polling needed.
 			lastOff := int64(testFileSize) - testBlockSize

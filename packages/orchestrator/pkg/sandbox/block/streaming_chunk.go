@@ -272,7 +272,7 @@ func (c *Chunker) releaseSession(s *fetchSession) {
 // For compressed data the frame table defines chunk boundaries; for
 // uncompressed data chunks are MemoryChunkSize-aligned (for backwards
 // compatibility) and clamped to file size.
-func (c *Chunker) getFetchRange(off int64, ft *storage.FrameTable) (chunkOff, chunkLen int64, err error) {
+func (c *Chunker) getFetchRange(off int64, ft *storage.FrameTable) (int64, int64, error) {
 	if ft.IsCompressed() {
 		r, err := ft.LocateUncompressed(off)
 		if err != nil {
@@ -282,9 +282,9 @@ func (c *Chunker) getFetchRange(off int64, ft *storage.FrameTable) (chunkOff, ch
 		return r.Offset, int64(r.Length), nil
 	}
 
-	chunkOff = (off / storage.MemoryChunkSize) * storage.MemoryChunkSize
+	fetchOff := (off / storage.MemoryChunkSize) * storage.MemoryChunkSize
 
-	return chunkOff, min(int64(storage.MemoryChunkSize), c.size-chunkOff), nil
+	return fetchOff, min(int64(storage.MemoryChunkSize), c.size-fetchOff), nil
 }
 
 // getMinReadBatchSize returns the effective min read batch size.

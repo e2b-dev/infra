@@ -2,11 +2,11 @@ package peerserver
 
 import (
 	"context"
-	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 )
 
@@ -34,28 +34,10 @@ func (f *seekableSource) Stream(ctx context.Context, offset, length int64, sende
 	defer span.End()
 
 	// P2P always serves uncompressed bytes — pass nil FrameTable.
-	// Loop over blocks to serve the full requested length.
-	for sent := int64(0); sent < length; {
-		data, err := f.diff.Block(ctx, offset+sent, nil)
-		if err != nil {
-			span.RecordError(err)
-
-			return fmt.Errorf("block diff at offset %d: %w", offset+sent, err)
-		}
-
-		// Clamp to remaining requested length.
-		if remaining := length - sent; int64(len(data)) > remaining {
-			data = data[:remaining]
-		}
-
-		sent += int64(len(data))
-
-		if err := sender.Send(data); err != nil {
-			span.RecordError(err)
-
-			return fmt.Errorf("send diff chunk: %w", err)
-		}
+	err := block.IterBlocks(ctx, f.diff, offset, length, nil, sender.Send)
+	if err != nil {
+		span.RecordError(err)
 	}
 
-	return nil
+	return err
 }

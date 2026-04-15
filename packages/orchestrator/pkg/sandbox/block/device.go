@@ -19,19 +19,39 @@ type Blocker interface {
 	Block(ctx context.Context, off int64, ft *storage.FrameTable) ([]byte, error)
 }
 
+// IterBlocks calls fn for each block in [off, off+length), clamping
+// the last block to the requested range.
+func IterBlocks(ctx context.Context, b Blocker, off, length int64, ft *storage.FrameTable, fn func([]byte) error) error {
+	for n := int64(0); n < length; {
+		data, err := b.Block(ctx, off+n, ft)
+		if err != nil {
+			return err
+		}
+
+		if rem := length - n; int64(len(data)) > rem {
+			data = data[:rem]
+		}
+
+		n += int64(len(data))
+
+		if err := fn(data); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // ReadBlocks fills p by reading consecutive blocks from b.
 func ReadBlocks(ctx context.Context, b Blocker, p []byte, off int64, ft *storage.FrameTable) (int, error) {
 	n := 0
-	for n < len(p) {
-		slice, err := b.Block(ctx, off+int64(n), ft)
-		if err != nil {
-			return n, err
-		}
+	err := IterBlocks(ctx, b, off, int64(len(p)), ft, func(data []byte) error {
+		n += copy(p[n:], data)
 
-		n += copy(p[n:], slice)
-	}
+		return nil
+	})
 
-	return n, nil
+	return n, err
 }
 
 // Slicer provides plain block reads (no FrameTable). Used by UFFD/NBD.
