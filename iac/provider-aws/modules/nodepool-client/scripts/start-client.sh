@@ -89,6 +89,11 @@ fc_versions_dir="/fc-versions"
 mkdir -p $fc_versions_dir
 s3fs "${FC_VERSIONS_BUCKET_NAME}" "$fc_versions_dir" -o allow_other -o umask=000 -o nonempty -o iam_role -o enable_noobj_cache
 
+# Mount busybox
+busybox_dir="/fc-busybox"
+mkdir -p $busybox_dir
+s3fs "${FC_BUSYBOX_BUCKET_NAME}" "$busybox_dir" -o allow_other -o umask=000 -o nonempty -o iam_role -o enable_noobj_cache
+
 # These variables are passed in via Terraform template interpolation
 aws s3 cp "s3://${SCRIPTS_BUCKET}/run-consul-${RUN_CONSUL_FILE_HASH}.sh" /opt/consul/bin/run-consul.sh
 aws s3 cp "s3://${SCRIPTS_BUCKET}/run-nomad-${RUN_NOMAD_FILE_HASH}.sh" /opt/nomad/bin/run-nomad.sh

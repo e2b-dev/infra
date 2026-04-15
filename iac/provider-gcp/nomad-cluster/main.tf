@@ -183,6 +183,7 @@ module "build_cluster" {
   fc_env_pipeline_bucket_name = var.fc_env_pipeline_bucket_name
   fc_kernels_bucket_name      = var.fc_kernels_bucket_name
   fc_versions_bucket_name     = var.fc_versions_bucket_name
+  fc_busybox_bucket_name      = var.fc_busybox_bucket_name
 
   filestore_cache_enabled = var.filestore_cache_enabled
   nfs_ip_addresses        = var.filestore_cache_enabled ? module.filestore[0].nfs_ip_addresses : []
@@ -241,6 +242,7 @@ module "client_cluster" {
   fc_env_pipeline_bucket_name = var.fc_env_pipeline_bucket_name
   fc_kernels_bucket_name      = var.fc_kernels_bucket_name
   fc_versions_bucket_name     = var.fc_versions_bucket_name
+  fc_busybox_bucket_name      = var.fc_busybox_bucket_name
 
   filestore_cache_enabled = var.filestore_cache_enabled
   nfs_ip_addresses        = var.filestore_cache_enabled ? module.filestore[0].nfs_ip_addresses : []

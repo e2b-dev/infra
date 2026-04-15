@@ -7,14 +7,40 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+)
+
+var (
+	nbdReadDuration = utils.Must(meter.Int64Histogram("orchestrator.nbd.dispatch.read.duration",
+		metric.WithDescription("Duration of NBD dispatch handler ReadAt calls to the backend."),
+		metric.WithUnit("ms"),
+	))
+	nbdReadConncurent = utils.Must(meter.Int64UpDownCounter("orchestrator.nbd.dispatch.read.concurrent",
+		metric.WithDescription("Number of NBD read requests currently waiting for a response. A sustained high value indicates reads stuck in kernel I/O."),
+		metric.WithUnit("{read}"),
+	))
+	nbdReadSuccess   = metric.WithAttributeSet(attribute.NewSet(attribute.String("result", "success")))
+	nbdReadFailure   = metric.WithAttributeSet(attribute.NewSet(attribute.String("result", "failure")))
+	nbdReadCancelled = metric.WithAttributeSet(attribute.NewSet(attribute.String("result", "cancelled")))
 )
 
 var ErrShuttingDown = errors.New("shutting down. Cannot serve any new requests")
+
+var dispatchBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, dispatchBufferSize)
+
+		return &b
+	},
+}
 
 type Provider interface {
 	storage.SeekableReader
@@ -123,7 +149,9 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
  *
  */
 func (d *Dispatch) Handle(ctx context.Context) error {
-	buffer := make([]byte, dispatchBufferSize)
+	poolBuf := dispatchBufPool.Get().(*[]byte)
+	defer dispatchBufPool.Put(poolBuf)
+	buffer := *poolBuf
 	wp := 0
 
 	request := Request{}
@@ -247,19 +275,37 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 		errchan := make(chan error, 1)
 		data := make([]byte, length)
 
+		nbdReadConncurent.Add(ctx, 1)
+
 		go func() {
+			start := time.Now()
 			_, err := d.prov.ReadAt(ctx, data, int64(from))
+
+			attrs := nbdReadSuccess
+			if err != nil {
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					attrs = nbdReadCancelled
+				} else {
+					attrs = nbdReadFailure
+				}
+			}
+
+			nbdReadDuration.Record(ctx, time.Since(start).Milliseconds(), attrs)
 			errchan <- err
 		}()
 
 		// Wait until either the ReadAt completed, or our context is cancelled...
+		var readErr error
 		select {
 		case <-ctx.Done():
+			readErr = ctx.Err()
+		case readErr = <-errchan:
+		}
+
+		nbdReadConncurent.Add(ctx, -1)
+
+		if readErr != nil {
 			return d.writeResponse(1, handle, []byte{})
-		case err := <-errchan:
-			if err != nil {
-				return d.writeResponse(1, handle, []byte{})
-			}
 		}
 
 		// read was successful

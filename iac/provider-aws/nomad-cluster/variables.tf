@@ -215,6 +215,10 @@ variable "fc_versions_bucket_name" {
   type = string
 }
 
+variable "fc_busybox_bucket_name" {
+  type = string
+}
+
 variable "templates_build_cache_bucket_name" {
   type = string
 }

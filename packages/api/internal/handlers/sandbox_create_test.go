@@ -454,7 +454,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 
 			actual, err := convertAPIVolumesToOrchestratorVolumes(
 				t.Context(), db.SqlcClient, ffClient,
-				teamID, tc.input, &queries.EnvBuild{EnvdVersion: utils.ToPtr("0.5.8")},
+				teamID, tc.input, &queries.EnvBuild{EnvdVersion: utils.ToPtr(minEnvdVersionForVolumes)},
 			)
 			assert.Equal(t, tc.err, err)
 			assert.Equal(t, tc.expected, actual)
@@ -484,7 +484,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 			t.Context(), db.SqlcClient, ffClient,
 			teamID, []api.SandboxVolumeMount{
 				{Name: "vol1", Path: "/vol1"},
-			}, &queries.EnvBuild{EnvdVersion: utils.ToPtr("0.5.8")},
+			}, &queries.EnvBuild{EnvdVersion: utils.ToPtr(minEnvdVersionForVolumes)},
 		)
 		require.NoError(t, err)
 		assert.Equal(t, []*orchestrator.SandboxVolumeMount{
