@@ -225,7 +225,7 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	}
 
 	if data.VolumeMounts != nil {
-		a.setupNFS(ctx, logger, *data.VolumeMounts)
+		a.setupNFS(ctx, logger, data.LifecycleID, *data.VolumeMounts)
 	}
 
 	return nil
@@ -244,18 +244,15 @@ var nfsOptions = strings.Join([]string{
 	"port=2049",      // nfs proxy only supports mounting on port 2049
 	"nfsvers=3",      // nfs proxy is nfs version 3
 	"noacl",          // no reason for acl in the sandbox
+
+	// disable caching so that pause/resume works correctly
+	"noac",
+	"lookupcache=none",
 }, ",")
 
 const nfsMountTimeout = 5 * time.Second
 
-func (a *API) setupNFS(ctx context.Context, logger zerolog.Logger, mounts []VolumeMount) {
-	// Already fully mounted, nothing to do
-	if a.isMountedNFS.Load() {
-		logger.Debug().Msg("NFS volumes already mounted")
-
-		return
-	}
-
+func (a *API) setupNFS(ctx context.Context, logger zerolog.Logger, lifecycleID string, mounts []VolumeMount) {
 	// Prevent concurrent mounting attempts
 	if !a.isMountingNFS.CompareAndSwap(false, true) {
 		logger.Debug().Msg("NFS volumes already mounting")
@@ -264,7 +261,22 @@ func (a *API) setupNFS(ctx context.Context, logger zerolog.Logger, mounts []Volu
 	}
 	defer a.isMountingNFS.Store(false)
 
-	logger.Debug().Msg("Mounting NFS volumes")
+	// Check if lifecycleID changed (indicates resume to potentially different server)
+	prevLifecycleID, _ := a.mountedLifecycleID.Load().(string)
+	lifecycleChanged := prevLifecycleID != "" && prevLifecycleID != lifecycleID
+
+	if lifecycleChanged {
+		logger.Debug().Msgf("Lifecycle changed from %q to %q, will remount NFS volumes", prevLifecycleID, lifecycleID)
+	}
+
+	// Already fully mounted for this lifecycle, nothing to do
+	if a.isMountedNFS.Load() && !lifecycleChanged {
+		logger.Debug().Msg("NFS volumes already mounted for this lifecycle")
+
+		return
+	}
+
+	logger.Debug().Msg("Setting up NFS volumes")
 
 	ctx = context.WithoutCancel(ctx)
 	ctx, cancel := context.WithTimeout(ctx, nfsMountTimeout)
@@ -275,16 +287,23 @@ func (a *API) setupNFS(ctx context.Context, logger zerolog.Logger, mounts []Volu
 	allSucceeded.Store(true)
 
 	for _, volume := range mounts {
-		// Skip already mounted paths
-		if _, ok := a.mountedPaths.Load(volume.Path); ok {
-			logger.Debug().Msgf("Skipping already mounted %q", volume.Path)
+		// Skip already mounted paths unless lifecycle changed
+		if !lifecycleChanged {
+			if _, ok := a.mountedPaths.Load(volume.Path); ok {
+				logger.Debug().Msgf("Skipping already mounted %q", volume.Path)
 
-			continue
+				continue
+			}
 		}
 
-		logger.Debug().Msgf("Mounting %s at %q", volume.NfsTarget, volume.Path)
+		logger.Debug().Msgf("Setting up %s at %q", volume.NfsTarget, volume.Path)
 
 		wg.Go(func() {
+			// Unmount first if lifecycle changed (stale handles from previous server)
+			if lifecycleChanged {
+				a.unmountNFS(ctx, logger, volume.Path)
+			}
+
 			if a.mountNFS(ctx, volume.NfsTarget, volume.Path) {
 				a.mountedPaths.Store(volume.Path, true)
 			} else {
@@ -297,7 +316,37 @@ func (a *API) setupNFS(ctx context.Context, logger zerolog.Logger, mounts []Volu
 
 	if allSucceeded.Load() {
 		a.isMountedNFS.Store(true)
+		a.mountedLifecycleID.Store(lifecycleID)
 	}
+}
+
+func (a *API) unmountNFS(ctx context.Context, logger zerolog.Logger, path string) {
+	// Check if actually mounted before trying to unmount
+	data, err := exec.CommandContext(ctx, "findmnt", "--noheadings", "--output", "SOURCE", path).CombinedOutput()
+	if err != nil {
+		// Not mounted or error checking - nothing to unmount
+		return
+	}
+
+	source := strings.TrimSpace(string(data))
+	if source == "" {
+		return
+	}
+
+	logger.Debug().Msgf("Unmounting stale NFS mount at %q (was: %s)", path, source)
+
+	// Clear our tracking state for this path
+	a.mountedPaths.Delete(path)
+	a.isMountedNFS.Store(false)
+
+	// Force unmount since the handles are stale anyway
+	data, err = exec.CommandContext(ctx, "umount", "--force", path).CombinedOutput()
+
+	logFn := a.getLogger(err)
+	logFn.
+		Strs("command", []string{"umount", "--force", path}).
+		Str("output", string(data)).
+		Msg("Unmount NFS")
 }
 
 func (a *API) mountNFS(ctx context.Context, nfsTarget, path string) bool {

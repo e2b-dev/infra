@@ -48,6 +48,9 @@ paths:
                 hyperloopIP:
                   type: string
                   description: IP address of the hyperloop server to connect to
+                lifecycleID:
+                  type: string
+                  description: Lifecycle ID of the sandbox
                 envVars:
                   $ref: "#/components/schemas/EnvVars"
                 accessToken:
@@ -67,6 +70,9 @@ paths:
                 caBundle:
                   type: string
                   description: PEM-encoded CA certificates to install into the system trust store (may contain multiple concatenated PEM blocks)
+              required:
+                - lifecycleID
+
       responses:
         "204":
           description: Env vars set, the time and metadata is synced with the host

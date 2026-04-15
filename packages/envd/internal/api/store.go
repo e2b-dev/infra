@@ -39,10 +39,11 @@ type API struct {
 	lastSetTime *utils.AtomicMax
 	initLock    sync.Mutex
 
-	caCertInstaller *host.CACertInstaller
-	isMountingNFS   atomic.Bool
-	isMountedNFS    atomic.Bool
-	mountedPaths    sync.Map // tracks successfully mounted paths
+	caCertInstaller    *host.CACertInstaller
+	isMountingNFS      atomic.Bool
+	isMountedNFS       atomic.Bool
+	mountedPaths       sync.Map // tracks successfully mounted paths
+	mountedLifecycleID atomic.Value // tracks the lifecycleID when NFS was mounted
 }
 
 func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
