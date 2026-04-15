@@ -2,6 +2,8 @@ package storage
 
 import (
 	"context"
+	"errors"
+	"io"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -24,8 +26,8 @@ func retryWithBackoff(ctx context.Context, fn func() (int, error)) (int, error) 
 
 	for attempt := range googleMaxReadAttempts {
 		n, err = fn()
-		if err == nil {
-			return n, nil
+		if err == nil || errors.Is(err, io.EOF) {
+			return n, err
 		}
 
 		// Don't retry if the caller's context is done.
@@ -40,9 +42,11 @@ func retryWithBackoff(ctx context.Context, fn func() (int, error)) (int, error) 
 
 		// Don't sleep after the last attempt.
 		if attempt < googleMaxReadAttempts-1 {
+			t := time.NewTimer(backoff)
 			select {
-			case <-time.After(backoff):
+			case <-t.C:
 			case <-ctx.Done():
+				t.Stop()
 			}
 
 			backoff = min(backoff*googleRetryBackoffMultiply, googleRetryMaxBackoff)

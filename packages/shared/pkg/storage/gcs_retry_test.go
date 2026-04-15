@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"io"
 	"testing"
 	"time"
 
@@ -166,4 +167,21 @@ func TestRetryWithBackoff_PreservesLastNValue(t *testing.T) {
 	require.Error(t, err)
 	// n should reflect the value from the last attempt.
 	assert.Equal(t, googleMaxReadAttempts*10, n)
+}
+
+func TestRetryWithBackoff_EOFTreatedAsSuccess(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+
+	// io.EOF signals a successful short read (last chunk of a file).
+	// retryWithBackoff must not retry it.
+	n, err := retryWithBackoff(t.Context(), func() (int, error) {
+		calls++
+		return 512, io.EOF
+	})
+
+	assert.ErrorIs(t, err, io.EOF)
+	assert.Equal(t, 512, n)
+	assert.Equal(t, 1, calls, "should not retry io.EOF")
 }

@@ -27,12 +27,6 @@ import (
 
 const (
 	gcpMultipartUploadChunkSize = 50 * 1024 * 1024 // 50MB chunks
-
-	// Multipart upload retry defaults.
-	googleMultipartMaxAttempts       = 10
-	googleMultipartInitialBackoff    = 10 * time.Millisecond
-	googleMultipartMaxBackoff        = 10 * time.Second
-	googleMultipartBackoffMultiplier = 2
 )
 
 // RetryConfig holds the configuration for retry logic
@@ -46,10 +40,10 @@ type RetryConfig struct {
 // DefaultRetryConfig returns the default retry configuration for multipart uploads.
 func DefaultRetryConfig() RetryConfig {
 	return RetryConfig{
-		MaxAttempts:       googleMultipartMaxAttempts,
-		InitialBackoff:    googleMultipartInitialBackoff,
-		MaxBackoff:        googleMultipartMaxBackoff,
-		BackoffMultiplier: googleMultipartBackoffMultiplier,
+		MaxAttempts:       googleMaxAttempts,
+		InitialBackoff:    googleInitialBackoff,
+		MaxBackoff:        googleMaxBackoff,
+		BackoffMultiplier: googleBackoffMultiplier,
 	}
 }
 

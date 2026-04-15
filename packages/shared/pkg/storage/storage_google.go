@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	"github.com/googleapis/gax-go/v2"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -34,6 +35,10 @@ import (
 const (
 	googleOperationTimeout         = 5 * time.Second
 	googleBufferSize               = 4 << 20 // 4 MiB
+	googleInitialBackoff           = 10 * time.Millisecond
+	googleMaxBackoff               = 10 * time.Second
+	googleBackoffMultiplier        = 2
+	googleMaxAttempts              = 10
 	defaultGRPCConnectionPoolSize  = 4
 	defaultGCSEnableDirectPath     = false
 	gcloudDefaultUploadConcurrency = 16
@@ -93,9 +98,10 @@ type gcpStorage struct {
 var _ StorageProvider = (*gcpStorage)(nil)
 
 type gcpObject struct {
-	storage *gcpStorage
-	path    string
-	handle  *storage.ObjectHandle
+	storage      *gcpStorage
+	path         string
+	handle       *storage.ObjectHandle // default handle with library retries for most operations
+	readAtHandle *storage.ObjectHandle // handle with retries disabled — ReadAt uses retryWithBackoff instead
 
 	limiter *limit.Limiter
 }
@@ -180,34 +186,60 @@ func (s *gcpStorage) UploadSignedURL(_ context.Context, path string, ttl time.Du
 }
 
 func (s *gcpStorage) OpenSeekable(_ context.Context, path string, _ SeekableObjectType) (Seekable, error) {
-	// Disable the GCS client library's built-in retry — we handle retries
-	// ourselves with a fresh context per attempt (see ReadAt).
-	handle := s.bucket.Object(path).Retryer(
-		storage.WithMaxAttempts(1),
+	obj := s.bucket.Object(path)
+
+	// Default handle with library-level retries for Size, OpenRangeReader, StoreFile, etc.
+	handle := obj.Retryer(
+		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),
+		storage.WithBackoff(gax.Backoff{
+			Initial:    googleInitialBackoff,
+			Max:        googleMaxBackoff,
+			Multiplier: googleBackoffMultiplier,
+		}),
+	)
+
+	// ReadAt handle with library retries disabled — retryWithBackoff gives
+	// each attempt a fresh context.WithTimeout instead.
+	readAtHandle := obj.Retryer(
+		storage.WithMaxAttempts(1),
 	)
 
 	return &gcpObject{
-		storage: s,
-		path:    path,
-		handle:  handle,
+		storage:      s,
+		path:         path,
+		handle:       handle,
+		readAtHandle: readAtHandle,
 
 		limiter: s.limiter,
 	}, nil
 }
 
 func (s *gcpStorage) OpenBlob(_ context.Context, path string, _ ObjectType) (Blob, error) {
-	// Disable the GCS client library's built-in retry — we handle retries
-	// ourselves with a fresh context per attempt (see ReadAt).
-	handle := s.bucket.Object(path).Retryer(
-		storage.WithMaxAttempts(1),
+	obj := s.bucket.Object(path)
+
+	// Default handle with library-level retries for WriteTo, Put, Exists, etc.
+	handle := obj.Retryer(
+		storage.WithMaxAttempts(googleMaxAttempts),
 		storage.WithPolicy(storage.RetryAlways),
+		storage.WithBackoff(gax.Backoff{
+			Initial:    googleInitialBackoff,
+			Max:        googleMaxBackoff,
+			Multiplier: googleBackoffMultiplier,
+		}),
+	)
+
+	// ReadAt handle with library retries disabled — retryWithBackoff gives
+	// each attempt a fresh context.WithTimeout instead.
+	readAtHandle := obj.Retryer(
+		storage.WithMaxAttempts(1),
 	)
 
 	return &gcpObject{
-		storage: s,
-		path:    path,
-		handle:  handle,
+		storage:      s,
+		path:         path,
+		handle:       handle,
+		readAtHandle: readAtHandle,
 
 		limiter: s.limiter,
 	}, nil
@@ -278,7 +310,7 @@ func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, 
 		return o.readAtOnce(ctx, buff, off)
 	})
 
-	if err != nil {
+	if ignoreEOF(err) != nil {
 		timer.Failure(ctx, int64(n))
 	} else {
 		timer.Success(ctx, int64(n))
@@ -292,7 +324,7 @@ func (o *gcpObject) readAtOnce(ctx context.Context, buff []byte, off int64) (int
 	ctx, cancel := context.WithTimeout(ctx, googlePerAttemptTimeout)
 	defer cancel()
 
-	reader, err := o.handle.NewRangeReader(ctx, off, int64(len(buff)))
+	reader, err := o.readAtHandle.NewRangeReader(ctx, off, int64(len(buff)))
 	if err != nil {
 		return 0, fmt.Errorf("failed to create GCS reader for %q: %w", o.path, err)
 	}
@@ -308,7 +340,7 @@ func (o *gcpObject) readAtOnce(ctx context.Context, buff []byte, off int64) (int
 		return n, fmt.Errorf("failed to read %q: %w", o.path, err)
 	}
 
-	return n, nil
+	return n, err // preserve io.EOF for callers (e.g. cache layer's isCompleteRead)
 }
 
 func (o *gcpObject) Put(ctx context.Context, data []byte) error {
