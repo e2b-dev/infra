@@ -148,7 +148,7 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 			return nil, fmt.Errorf("failed to get build: %w", err)
 		}
 
-		result, err := diff.Slice(ctx, int64(mappedBuild.Offset), int64(h.Metadata.BlockSize), ft)
+		result, err := diff.Block(ctx, int64(mappedBuild.Offset), ft)
 		if err != nil {
 			if retry, swapErr := b.retryOnTransition(ctx, err, &transitionRetries); retry {
 				continue

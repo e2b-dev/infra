@@ -15,12 +15,8 @@ func (BytesNotAvailableError) Error() string {
 	return "The requested bytes are not available on the device"
 }
 
-type FramedReader interface {
-	ReadAt(ctx context.Context, p []byte, off int64, ft *storage.FrameTable) (int, error)
-}
-
-type FramedSlicer interface {
-	Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error)
+type Blocker interface {
+	Block(ctx context.Context, off int64, ft *storage.FrameTable) ([]byte, error)
 }
 
 // Slicer provides plain block reads (no FrameTable). Used by UFFD/NBD.

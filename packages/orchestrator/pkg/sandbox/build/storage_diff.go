@@ -125,16 +125,21 @@ func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64, ft *stora
 		return 0, err
 	}
 
-	return c.ReadAt(ctx, p, off, ft)
+	slice, err := c.Block(ctx, off, ft)
+	if err != nil {
+		return 0, err
+	}
+
+	return copy(p, slice), nil
 }
 
-func (b *StorageDiff) Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
+func (b *StorageDiff) Block(ctx context.Context, off int64, ft *storage.FrameTable) ([]byte, error) {
 	c, err := b.chunker.Wait()
 	if err != nil {
 		return nil, err
 	}
 
-	return c.Slice(ctx, off, length, ft)
+	return c.Block(ctx, off, ft)
 }
 
 // The local file might not be synced.

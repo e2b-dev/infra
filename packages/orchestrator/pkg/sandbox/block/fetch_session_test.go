@@ -209,7 +209,7 @@ func TestFetchSession_TerminatedNoErrorBlockNotCached(t *testing.T) {
 
 	err := s.registerAndWait(context.Background(), 2*blockSize)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "terminated without error but block")
+	require.Contains(t, err.Error(), "terminated without error")
 }
 
 func TestFetchSession_FailIfRunning_NoOpAfterSetDone(t *testing.T) {

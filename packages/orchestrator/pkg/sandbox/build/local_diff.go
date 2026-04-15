@@ -119,7 +119,14 @@ func (b *localDiff) ReadAt(_ context.Context, p []byte, off int64, _ *storage.Fr
 	return b.cache.ReadAt(p, off)
 }
 
-func (b *localDiff) Slice(_ context.Context, off, length int64, _ *storage.FrameTable) ([]byte, error) {
+func (b *localDiff) Block(_ context.Context, off int64, _ *storage.FrameTable) ([]byte, error) {
+	size, err := b.cache.FileSize()
+	if err != nil {
+		return nil, err
+	}
+
+	length := min(b.cache.BlockSize(), size-off)
+
 	return b.cache.Slice(off, length)
 }
 
