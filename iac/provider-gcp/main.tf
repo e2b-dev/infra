@@ -113,6 +113,12 @@ module "init" {
 
   template_bucket_location = var.template_bucket_location
   template_bucket_name     = var.template_bucket_name
+
+  anywhere_cache = {
+    enabled          = var.anywhere_cache_enabled
+    admission_policy = var.anywhere_cache_admission_policy
+    ttl              = var.anywhere_cache_ttl
+  }
 }
 
 module "cluster" {

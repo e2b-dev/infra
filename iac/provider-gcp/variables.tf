@@ -719,6 +719,23 @@ variable "gcs_grpc_connection_pool_size" {
   }
 }
 
+variable "anywhere_cache_enabled" {
+  type        = bool
+  description = "Enable GCS Anywhere Cache on the template bucket for all zones in the deploy region."
+  default     = false
+}
+
+variable "anywhere_cache_admission_policy" {
+  type        = string
+  description = "Configure anywhere cache policy. One of: admit-on-first-miss, admit-on-second-miss"
+  default     = null
+}
+
+variable "anywhere_cache_ttl" {
+  type    = string
+  default = null
+}
+
 variable "orchestrator_env_vars" {
   type    = map(string)
   default = {}
