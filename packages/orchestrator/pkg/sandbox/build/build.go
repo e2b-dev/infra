@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -103,7 +104,8 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 			return 0, fmt.Errorf("failed to get build: %w", err)
 		}
 
-		buildN, err := mappedBuild.ReadAt(ctx,
+		buildN, err := block.ReadBlocks(ctx,
+			mappedBuild,
 			p[n:int64(n)+readLength],
 			int64(mappedToBuild.Offset),
 			ft,

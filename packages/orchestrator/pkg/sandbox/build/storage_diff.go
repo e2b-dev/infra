@@ -119,20 +119,6 @@ func (b *StorageDiff) Close() error {
 	return c.Close()
 }
 
-func (b *StorageDiff) ReadAt(ctx context.Context, p []byte, off int64, ft *storage.FrameTable) (int, error) {
-	c, err := b.chunker.Wait()
-	if err != nil {
-		return 0, err
-	}
-
-	slice, err := c.Block(ctx, off, ft)
-	if err != nil {
-		return 0, err
-	}
-
-	return copy(p, slice), nil
-}
-
 func (b *StorageDiff) Block(ctx context.Context, off int64, ft *storage.FrameTable) ([]byte, error) {
 	c, err := b.chunker.Wait()
 	if err != nil {
@@ -154,10 +140,6 @@ func (b *StorageDiff) FileSize() (int64, error) {
 	}
 
 	return c.FileSize()
-}
-
-func (b *StorageDiff) Size(_ context.Context) (int64, error) {
-	return b.FileSize()
 }
 
 func (b *StorageDiff) BlockSize() int64 {

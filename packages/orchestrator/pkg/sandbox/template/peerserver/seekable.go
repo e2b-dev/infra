@@ -34,24 +34,27 @@ func (f *seekableSource) Stream(ctx context.Context, offset, length int64, sende
 	defer span.End()
 
 	// P2P always serves uncompressed bytes — pass nil FrameTable.
-	data, err := f.diff.Block(ctx, offset, nil)
-	if err != nil {
-		span.RecordError(err)
+	// Loop over blocks to serve the full requested length.
+	for sent := int64(0); sent < length; {
+		data, err := f.diff.Block(ctx, offset+sent, nil)
+		if err != nil {
+			span.RecordError(err)
 
-		return fmt.Errorf("slice diff at offset %d: %w", offset, err)
-	}
+			return fmt.Errorf("block diff at offset %d: %w", offset+sent, err)
+		}
 
-	blockSize := int(f.diff.BlockSize())
+		// Clamp to remaining requested length.
+		if remaining := length - sent; int64(len(data)) > remaining {
+			data = data[:remaining]
+		}
 
-	for len(data) > 0 {
-		take := min(len(data), blockSize)
-		if err := sender.Send(data[:take]); err != nil {
+		sent += int64(len(data))
+
+		if err := sender.Send(data); err != nil {
 			span.RecordError(err)
 
 			return fmt.Errorf("send diff chunk: %w", err)
 		}
-
-		data = data[take:]
 	}
 
 	return nil

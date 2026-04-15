@@ -19,6 +19,21 @@ type Blocker interface {
 	Block(ctx context.Context, off int64, ft *storage.FrameTable) ([]byte, error)
 }
 
+// ReadBlocks fills p by reading consecutive blocks from b.
+func ReadBlocks(ctx context.Context, b Blocker, p []byte, off int64, ft *storage.FrameTable) (int, error) {
+	n := 0
+	for n < len(p) {
+		slice, err := b.Block(ctx, off+int64(n), ft)
+		if err != nil {
+			return n, err
+		}
+
+		n += copy(p[n:], slice)
+	}
+
+	return n, nil
+}
+
 // Slicer provides plain block reads (no FrameTable). Used by UFFD/NBD.
 type Slicer interface {
 	Slice(ctx context.Context, off, length int64) ([]byte, error)
