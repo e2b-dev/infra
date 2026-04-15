@@ -667,9 +667,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		defer cancel()
 
 		memHdr, rootHdr, err := res.uploadSnapshot(uploadCtx, s.persistence, s.config.StorageConfig.CompressConfig, s.featureFlags)
-		if completeErr := res.completeUpload(uploadCtx, memHdr, rootHdr); completeErr != nil {
-			telemetry.ReportCriticalError(uploadCtx, "error completing upload", completeErr, telemetry.WithSandboxID(in.GetSandboxId()))
-		}
+		defer res.completeUpload(uploadCtx, memHdr, rootHdr)
 
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
@@ -722,10 +720,10 @@ func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
 // snapshotResult holds the data produced by snapshotAndCacheSandbox that callers
 // need to start the background GCS upload.
 type snapshotResult struct {
-	meta           metadata.Template
-	snapshot       *sandbox.Snapshot
-	paths          storage.Paths
-	completeUpload func(ctx context.Context, memfileHdr, rootfsHdr []byte) error
+	meta     metadata.Template
+	snapshot *sandbox.Snapshot
+	paths    storage.Paths
+	completeUpload func(ctx context.Context, memfileHdr, rootfsHdr []byte)
 }
 
 // uploadSnapshot uploads snapshot files to GCS and returns serialized V4
@@ -788,7 +786,7 @@ func (s *Server) snapshotAndCacheSandbox(
 			logger.L().Warn(ctx, "failed to register peer address for routing", zap.String("build_id", meta.Template.BuildID), zap.Error(err))
 		}
 
-		completeUpload := func(ctx context.Context, memfileHdr, rootfsHdr []byte) error {
+		completeUpload := func(ctx context.Context, memfileHdr, rootfsHdr []byte) {
 			// Signal in-flight peer streams to switch to GCS.
 			s.uploadedBuilds.Set(meta.Template.BuildID, &uploadedBuildHeaders{
 				memfileHeader: memfileHdr,
@@ -799,23 +797,21 @@ func (s *Server) snapshotAndCacheSandbox(
 			if err := s.peerRegistry.Unregister(ctx, meta.Template.BuildID); err != nil {
 				logger.L().Warn(ctx, "failed to unregister peer address from routing", zap.String("build_id", meta.Template.BuildID), zap.Error(err))
 			}
-
-			return nil
 		}
 
 		return &snapshotResult{
-			meta:           meta,
-			snapshot:       snapshot,
-			paths:          paths,
+			meta:     meta,
+			snapshot: snapshot,
+			paths:    paths,
 			completeUpload: completeUpload,
 		}, nil
 	}
 
 	return &snapshotResult{
-		meta:           meta,
-		snapshot:       snapshot,
-		paths:          paths,
-		completeUpload: func(context.Context, []byte, []byte) error { return nil },
+		meta:     meta,
+		snapshot: snapshot,
+		paths:    paths,
+		completeUpload: func(context.Context, []byte, []byte) {},
 	}, nil
 }
 
@@ -835,9 +831,7 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 			sbxlogger.E(sbx).Info(ctx, "Snapshot files uploaded to GCS")
 		}
 
-		if completeErr := res.completeUpload(ctx, memHdr, rootHdr); completeErr != nil {
-			sbxlogger.I(sbx).Error(ctx, "error completing upload", zap.Error(completeErr))
-		}
+		res.completeUpload(ctx, memHdr, rootHdr)
 	}()
 }
 
