@@ -241,6 +241,10 @@ variable "enable_auth_user_sync_background_worker" {
   default = false
 }
 
+variable "enable_billing_http_team_provision_sink" {
+  type    = bool
+  default = false
+}
 variable "docker_reverse_proxy_port" {
   type = object({
     name        = string

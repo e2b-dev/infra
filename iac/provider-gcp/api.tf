@@ -64,6 +64,24 @@ resource "google_secret_manager_secret_version" "api_admin_token_value" {
   secret_data = random_password.api_admin_secret.result
 }
 
+resource "random_password" "dashboard_api_admin_secret" {
+  length  = 32
+  special = false
+}
+
+resource "google_secret_manager_secret" "dashboard_api_admin_token" {
+  secret_id = "${var.prefix}dashboard-api-admin-token"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "dashboard_api_admin_token_value" {
+  secret      = google_secret_manager_secret.dashboard_api_admin_token.id
+  secret_data = random_password.dashboard_api_admin_secret.result
+}
+
 resource "random_password" "sandbox_access_token_hash_seed" {
   length  = 32
   special = false

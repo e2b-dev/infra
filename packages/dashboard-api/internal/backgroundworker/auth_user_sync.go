@@ -12,10 +12,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -38,12 +38,12 @@ type AuthUserSyncWorker struct {
 	river.WorkerDefaults[AuthUserSyncArgs]
 
 	supabaseDB  *supabasedb.Client
-	authDB      *sqlcdb.Client
+	authDB      *authdb.Client
 	l           logger.Logger
 	jobsCounter metric.Int64Counter
 }
 
-func NewAuthUserSyncWorker(ctx context.Context, supabaseDB *supabasedb.Client, authDB *sqlcdb.Client, l logger.Logger) *AuthUserSyncWorker {
+func NewAuthUserSyncWorker(ctx context.Context, supabaseDB *supabasedb.Client, authDB *authdb.Client, l logger.Logger) *AuthUserSyncWorker {
 	jobsCounter, err := workerMeter.Int64Counter(
 		"jobs_total",
 		metric.WithDescription("Total auth user sync jobs by operation and result."),
@@ -90,7 +90,7 @@ func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSy
 
 	switch job.Args.Operation {
 	case "delete":
-		if err := w.authDB.DeletePublicUser(ctx, userID); err != nil {
+		if err := w.authDB.Write.DeletePublicUser(ctx, userID); err != nil {
 			telemetry.ReportError(ctx, "auth user sync delete public user", err)
 			w.observeJob(ctx, job.Args.Operation, jobResultError)
 
@@ -100,7 +100,7 @@ func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSy
 	case "upsert":
 		supabaseUser, err := w.supabaseDB.Write.GetAuthUserByID(ctx, userID)
 		if dberrors.IsNotFoundError(err) {
-			if err := w.authDB.DeletePublicUser(ctx, userID); err != nil {
+			if err := w.authDB.Write.DeletePublicUser(ctx, userID); err != nil {
 				telemetry.ReportError(ctx, "auth user sync delete stale public user", err)
 				w.observeJob(ctx, job.Args.Operation, jobResultError)
 
@@ -127,7 +127,7 @@ func (w *AuthUserSyncWorker) Work(ctx context.Context, job *river.Job[AuthUserSy
 			return river.JobCancel(err)
 		}
 
-		if err := w.authDB.UpsertPublicUser(ctx, queries.UpsertPublicUserParams{
+		if err := w.authDB.Write.UpsertPublicUser(ctx, authqueries.UpsertPublicUserParams{
 			ID:    userID,
 			Email: supabaseUser.Email,
 		}); err != nil {

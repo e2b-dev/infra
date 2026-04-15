@@ -282,8 +282,10 @@ module "nomad" {
 
   # Dashboard API
   dashboard_api_count                     = var.dashboard_api_count
+  dashboard_api_admin_token               = random_password.dashboard_api_admin_secret.result
   supabase_db_connection_string           = var.supabase_db_connection_string
   enable_auth_user_sync_background_worker = var.enable_auth_user_sync_background_worker
+  enable_billing_http_team_provision_sink = var.enable_billing_http_team_provision_sink
 
   # Docker reverse proxy
   docker_reverse_proxy_port                = var.docker_reverse_proxy_port

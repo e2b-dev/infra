@@ -1,4 +1,4 @@
-package utils
+package buildutils
 
 import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
