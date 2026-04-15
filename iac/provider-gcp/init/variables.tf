@@ -31,8 +31,11 @@ variable "template_bucket_name" {
   default     = ""
 }
 
-variable "anywhere_cache_enabled" {
-  type        = bool
-  description = "Enable GCS Anywhere Cache on the template bucket for all zones in the region"
-  default     = false
+variable "anywhere_cache" {
+  type = object({
+    enabled          = bool
+    admission_policy = string
+    ttl              = string
+  })
+  description = "Configure GCS Anywhere Cache on the template bucket for all zones in the region"
 }

@@ -725,6 +725,17 @@ variable "anywhere_cache_enabled" {
   default     = false
 }
 
+variable "anywhere_cache_admission_policy" {
+  type        = string
+  description = "Configure anywhere cache policy. One of: admit-on-first-miss, admit-on-second-miss"
+  default     = null
+}
+
+variable "anywhere_cache_ttl" {
+  type    = string
+  default = null
+}
+
 variable "orchestrator_env_vars" {
   type    = map(string)
   default = {}
