@@ -148,6 +148,8 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 		// API Key header
 		"Authorization",
 		"X-API-Key",
+		// MPP headers
+		"Accept-Payment",
 		// Supabase headers
 		auth.HeaderSupabaseToken,
 		auth.HeaderSupabaseTeam,
@@ -167,14 +169,22 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	r.Use(cors.New(corsConfig))
 
 	// Create a team API Key auth validator
+	authenticators := []auth.Authenticator{
+		auth.NewApiKeyAuthenticator(apiStore.GetTeamFromAPIKey),
+		auth.NewAccessTokenAuthenticator(apiStore.GetUserFromAccessToken),
+		auth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromSupabaseToken),
+		auth.NewSupabaseTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
+		auth.NewAdminTokenAuthenticator(config.AdminToken),
+	}
+
+	if config.MPPEnabled {
+		authenticators = append(authenticators,
+			handlers.NewPaymentAuthenticator(config.MPPEnabled, config.MPPTeamID, apiStore.GetTeamByID),
+		)
+	}
+
 	AuthenticationFunc := auth.CreateAuthenticationFunc(
-		[]auth.Authenticator{
-			auth.NewApiKeyAuthenticator(apiStore.GetTeamFromAPIKey),
-			auth.NewAccessTokenAuthenticator(apiStore.GetUserFromAccessToken),
-			auth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromSupabaseToken),
-			auth.NewSupabaseTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
-			auth.NewAdminTokenAuthenticator(config.AdminToken),
-		},
+		authenticators,
 		metricsMiddleware.SetProcessingStartTime,
 	)
 
@@ -199,6 +209,18 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	)
 
 	r.Use(customMiddleware.InitLaunchDarklyContext)
+
+	// MPP (Machine Payments Protocol) middleware for 402 payment support.
+	if config.MPPEnabled {
+		tempoMethod := handlers.NewTempoMethod(config.MPPCurrency, config.MPPRecipient)
+		r.Use(customMiddleware.MPPMiddleware(customMiddleware.MPPConfig{
+			Enabled:   true,
+			SecretKey: config.MPPSecretKey,
+			Realm:     config.MPPRealm,
+			Currency:  config.MPPCurrency,
+			Recipient: config.MPPRecipient,
+		}, tempoMethod))
+	}
 
 	// Per-team rate limiting (after auth + LD context, before handlers).
 	// Only applied to connect and resume endpoints. Gated by feature flag.

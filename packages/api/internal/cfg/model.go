@@ -73,6 +73,16 @@ type Config struct {
 	SandboxStorageBackend string `env:"SANDBOX_STORAGE_BACKEND" envDefault:"memory"`
 
 	DomainName string `env:"DOMAIN_NAME" envDefault:""`
+
+	// MPP (Machine Payments Protocol) configuration for 402 payment support.
+	// When enabled, agents can pay for sandbox usage via the HTTP 402 flow
+	// instead of using API keys.
+	MPPEnabled   bool   `env:"MPP_ENABLED"    envDefault:"false"`
+	MPPSecretKey string `env:"MPP_SECRET_KEY"`
+	MPPRealm     string `env:"MPP_REALM"`
+	MPPCurrency  string `env:"MPP_CURRENCY"`
+	MPPRecipient string `env:"MPP_RECIPIENT"`
+	MPPTeamID    string `env:"MPP_TEAM_ID"` // Team ID to map MPP-authenticated requests to
 }
 
 type JWTSigningKey any

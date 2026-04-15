@@ -31,6 +31,10 @@ components:
       type: apiKey
       in: header
       name: X-Admin-Token
+    PaymentAuth:
+      type: http
+      scheme: payment
+      description: Machine Payments Protocol (MPP) - pay per request via HTTP 402
 
   parameters:
     templateID:
@@ -1961,6 +1965,7 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - PaymentAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
       requestBody:
@@ -2186,6 +2191,7 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - PaymentAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
       parameters:
@@ -2305,6 +2311,7 @@ paths:
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
+        - PaymentAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
       parameters:
@@ -2342,6 +2349,7 @@ paths:
       description: Set the timeout for the sandbox. The sandbox will expire x seconds from the time of the request. Calling this method multiple times overwrites the TTL, each time using the current timestamp as the starting point to measure the timeout duration.
       security:
         - ApiKeyAuth: []
+        - PaymentAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
       tags: [sandboxes]
@@ -2414,6 +2422,7 @@ paths:
       description: Refresh the sandbox extending its time to live
       security:
         - ApiKeyAuth: []
+        - PaymentAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
       tags: [sandboxes]

@@ -327,3 +327,14 @@ func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, ginCtx *gin.Con
 
 	return a.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID)
 }
+
+// GetTeamByID looks up a team directly by its UUID. Used by the MPP
+// payment authenticator to map paid requests to the configured team.
+func (a *APIStore) GetTeamByID(ctx context.Context, teamID uuid.UUID) (*types.Team, error) {
+	result, err := a.authDB.Read.GetTeamWithTierByTeamID(ctx, teamID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get team by ID: %w", err)
+	}
+
+	return types.NewTeam(&result.Team, &result.TeamLimit), nil
+}
