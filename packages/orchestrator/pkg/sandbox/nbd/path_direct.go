@@ -51,6 +51,8 @@ type DirectPathMount struct {
 	ioTimeout       time.Duration
 	deadconnTimeout time.Duration
 
+	socketBufSize int // 0 = use OS default
+
 	dispatchers []*Dispatch
 	socksClient []*os.File
 	socksServer []io.Closer
@@ -69,6 +71,12 @@ func WithIOTimeout(d time.Duration) MountOption {
 // WithDeadconnTimeout overrides the kernel NBD dead-connection timeout (default 30s).
 func WithDeadconnTimeout(d time.Duration) MountOption {
 	return func(m *DirectPathMount) { m.deadconnTimeout = d }
+}
+
+// WithSocketBufferSize sets SO_SNDBUF and SO_RCVBUF on the NBD socket pair.
+// Only used in tests to force sock_sendmsg to block on small buffers.
+func WithSocketBufferSize(bytes int) MountOption {
+	return func(m *DirectPathMount) { m.socketBufSize = bytes }
 }
 
 func NewDirectPathMount(b block.Device, devicePool *DevicePool, featureFlags *featureflags.Client, opts ...MountOption) *DirectPathMount {
@@ -133,6 +141,13 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 				releaseErr := d.devicePool.ReleaseDevice(ctx, deviceIndex)
 
 				return math.MaxUint32, errors.Join(err, closeErr, releaseErr)
+			}
+
+			if d.socketBufSize > 0 {
+				for _, fd := range sockPair {
+					_ = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_SNDBUF, d.socketBufSize)
+					_ = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_RCVBUF, d.socketBufSize)
+				}
 			}
 
 			client := os.NewFile(uintptr(sockPair[0]), "client")
