@@ -64,23 +64,34 @@ func (t *TemplateBuild) uploadDiff(ctx context.Context, diff build.Diff, path st
 	if err != nil {
 		return err
 	}
-	defer release()
 
 	if data == nil {
+		release()
+
 		return nil
 	}
 
 	object, err := t.persistence.OpenSeekable(ctx, path, objectType)
 	if err != nil {
+		release()
+
 		return err
 	}
 
+	// Zero-copy upload from the mmap'd diff data. The wrappers (cachedSeekable,
+	// peerSeekable) forward StoreData to the inner gcpObject.
 	type dataStorer interface {
 		StoreData(ctx context.Context, data []byte) error
 	}
 	if ds, ok := object.(dataStorer); ok {
-		return ds.StoreData(ctx, data)
+		err := ds.StoreData(ctx, data)
+		release()
+
+		return err
 	}
+
+	// Fallback: release the mmap lock and upload from the file on disk.
+	release()
 
 	cachePath, err := diff.CachePath()
 	if err != nil {

@@ -130,6 +130,24 @@ func (s *peerSeekable) StoreFile(ctx context.Context, path string) error {
 	return fallback.StoreFile(ctx, path)
 }
 
+func (s *peerSeekable) StoreData(ctx context.Context, data []byte) error {
+	fallback, err := s.getOrOpenBase(ctx)
+	if err != nil {
+		return err
+	}
+
+	type dataStorer interface {
+		StoreData(ctx context.Context, data []byte) error
+	}
+
+	ds, ok := fallback.(dataStorer)
+	if !ok {
+		return fmt.Errorf("base storage does not support StoreData")
+	}
+
+	return ds.StoreData(ctx, data)
+}
+
 // openPeerSeekableStream opens a ReadAtBuildSeekable stream, checks peer availability,
 // and returns a recv function that yields data chunks starting with the first message's data.
 // The passed context HAS to be canceled by the caller when done with the stream to avoid leaks.
