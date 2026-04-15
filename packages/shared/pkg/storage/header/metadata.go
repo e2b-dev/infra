@@ -90,7 +90,7 @@ func NewDiffMetadata(blockSize int64, dirty *roaring.Bitmap) *DiffMetadata {
 func (d *DiffMetadata) toDiffMapping(
 	ctx context.Context,
 	buildID uuid.UUID,
-) ([]BuildMap, error) {
+) (mapping []BuildMap) {
 	dirtyMappings := CreateMapping(
 		&buildID,
 		d.Dirty,
@@ -106,13 +106,10 @@ func (d *DiffMetadata) toDiffMapping(
 	)
 	telemetry.ReportEvent(ctx, "created empty mapping")
 
-	mappings, err := MergeMappings(dirtyMappings, emptyMappings)
-	if err != nil {
-		return nil, fmt.Errorf("merge dirty+empty mappings: %w", err)
-	}
+	mappings := MergeMappings(dirtyMappings, emptyMappings)
 	telemetry.ReportEvent(ctx, "merge mappings")
 
-	return mappings, nil
+	return mappings
 }
 
 func (d *DiffMetadata) ToDiffHeader(
@@ -129,18 +126,12 @@ func (d *DiffMetadata) ToDiffHeader(
 		}
 	}()
 
-	diffMapping, err := d.toDiffMapping(ctx, buildID)
-	if err != nil {
-		return nil, fmt.Errorf("toDiffMapping: %w", err)
-	}
+	diffMapping := d.toDiffMapping(ctx, buildID)
 
-	m, err := MergeMappings(
+	m := MergeMappings(
 		originalHeader.Mapping,
 		diffMapping,
 	)
-	if err != nil {
-		return nil, fmt.Errorf("merge base+diff mappings: %w", err)
-	}
 	telemetry.ReportEvent(ctx, "merged mappings")
 
 	// TODO: We can run normalization only when empty mappings are not empty for this snapshot

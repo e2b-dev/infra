@@ -46,12 +46,11 @@ func TestMergeMappingsRemoveEmpty(t *testing.T) {
 		},
 	}
 
-	m, err := MergeMappings(simpleBase, diff)
-	require.NoError(t, err)
+	m := MergeMappings(simpleBase, diff)
 
 	require.True(t, Equal(m, simpleBase))
 
-	err = ValidateMappings(m, size, blockSize)
+	err := ValidateMappings(m, size, blockSize)
 
 	require.NoError(t, err)
 }
@@ -66,8 +65,7 @@ func TestMergeMappingsBaseBeforeDiffNoOverlap(t *testing.T) {
 		},
 	}
 
-	m, err := MergeMappings(simpleBase, diff)
-	require.NoError(t, err)
+	m := MergeMappings(simpleBase, diff)
 
 	require.True(t, Equal(m, []BuildMap{
 		{
@@ -92,7 +90,7 @@ func TestMergeMappingsBaseBeforeDiffNoOverlap(t *testing.T) {
 		},
 	}))
 
-	err = ValidateMappings(m, size, blockSize)
+	err := ValidateMappings(m, size, blockSize)
 
 	require.NoError(t, err)
 }
@@ -107,8 +105,7 @@ func TestMergeMappingsDiffBeforeBaseNoOverlap(t *testing.T) {
 		},
 	}
 
-	m, err := MergeMappings(simpleBase, diff)
-	require.NoError(t, err)
+	m := MergeMappings(simpleBase, diff)
 
 	require.True(t, Equal(m, []BuildMap{
 		{
@@ -133,7 +130,7 @@ func TestMergeMappingsDiffBeforeBaseNoOverlap(t *testing.T) {
 		},
 	}))
 
-	err = ValidateMappings(m, size, blockSize)
+	err := ValidateMappings(m, size, blockSize)
 
 	require.NoError(t, err)
 }
@@ -148,8 +145,7 @@ func TestMergeMappingsBaseInsideDiff(t *testing.T) {
 		},
 	}
 
-	m, err := MergeMappings(simpleBase, diff)
-	require.NoError(t, err)
+	m := MergeMappings(simpleBase, diff)
 
 	require.True(t, Equal(m, []BuildMap{
 		{
@@ -169,7 +165,7 @@ func TestMergeMappingsBaseInsideDiff(t *testing.T) {
 		},
 	}))
 
-	err = ValidateMappings(m, size, blockSize)
+	err := ValidateMappings(m, size, blockSize)
 
 	require.NoError(t, err)
 }
@@ -184,8 +180,7 @@ func TestMergeMappingsDiffInsideBase(t *testing.T) {
 		},
 	}
 
-	m, err := MergeMappings(simpleBase, diff)
-	require.NoError(t, err)
+	m := MergeMappings(simpleBase, diff)
 
 	require.True(t, Equal(m, []BuildMap{
 		{
@@ -215,7 +210,7 @@ func TestMergeMappingsDiffInsideBase(t *testing.T) {
 		},
 	}))
 
-	err = ValidateMappings(m, size, blockSize)
+	err := ValidateMappings(m, size, blockSize)
 
 	require.NoError(t, err)
 }
@@ -230,8 +225,7 @@ func TestMergeMappingsBaseAfterDiffWithOverlap(t *testing.T) {
 		},
 	}
 
-	m, err := MergeMappings(simpleBase, diff)
-	require.NoError(t, err)
+	m := MergeMappings(simpleBase, diff)
 
 	require.True(t, Equal(m, []BuildMap{
 		{
@@ -256,7 +250,7 @@ func TestMergeMappingsBaseAfterDiffWithOverlap(t *testing.T) {
 		},
 	}))
 
-	err = ValidateMappings(m, size, blockSize)
+	err := ValidateMappings(m, size, blockSize)
 
 	require.NoError(t, err)
 }
@@ -271,8 +265,7 @@ func TestMergeMappingsDiffAfterBaseWithOverlap(t *testing.T) {
 		},
 	}
 
-	m, err := MergeMappings(simpleBase, diff)
-	require.NoError(t, err)
+	m := MergeMappings(simpleBase, diff)
 
 	require.True(t, Equal(m, []BuildMap{
 		{
@@ -297,7 +290,7 @@ func TestMergeMappingsDiffAfterBaseWithOverlap(t *testing.T) {
 		},
 	}))
 
-	err = ValidateMappings(m, size, blockSize)
+	err := ValidateMappings(m, size, blockSize)
 
 	require.NoError(t, err)
 }
@@ -712,6 +705,13 @@ func TestNormalizeMappingsDoesNotModifyInput(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestMergeMappings_Splits verifies that MergeMappings preserves
+// BuildStorageOffset through splits. When a diff lands in the middle of a
+// base mapping the base is split into left/right pieces; each piece must
+// keep the correct BuildStorageOffset so the read path fetches data from
+// the right position within each build's data blob. Without this,
+// compressed builds whose frame tables are keyed by BuildStorageOffset
+// would decompress the wrong frames.
 func TestMergeMappings_Splits(t *testing.T) {
 	t.Parallel()
 
@@ -876,8 +876,7 @@ func TestMergeMappings_Splits(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			merged, err := MergeMappings(tc.base, tc.diff)
-			require.NoError(t, err)
+			merged := MergeMappings(tc.base, tc.diff)
 
 			tc.validate(t, merged)
 		})
