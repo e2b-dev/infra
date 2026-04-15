@@ -35,7 +35,7 @@ type LayerExecutor struct {
 	buildStorage    storage.StorageProvider
 	index           cache.Index
 	uploadTracker   *UploadTracker
-	compressConfig  storage.CompressConfig // can be overridden by FF
+	compressConfig  storage.CompressConfig
 	ff              *featureflags.Client
 }
 
