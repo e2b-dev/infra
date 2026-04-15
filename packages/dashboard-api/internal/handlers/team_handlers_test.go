@@ -259,10 +259,18 @@ func TestDeleteTeamsTeamIDMembersUserId_RechecksDefaultAfterLock(t *testing.T) {
 func createHandlerTestUser(t *testing.T, db *testutils.Database) uuid.UUID {
 	t.Helper()
 
-	return createHandlerTestUserAt(t, db, time.Now().Add(-newUserNewTeamRequireBillingMethodThreshold-time.Hour))
+	createdAt := time.Now().Add(-newUserNewTeamRequireBillingMethodThreshold - time.Hour)
+
+	return createHandlerTestUserWithCreatedAt(t, db, &createdAt)
 }
 
 func createHandlerTestUserAt(t *testing.T, db *testutils.Database, createdAt time.Time) uuid.UUID {
+	t.Helper()
+
+	return createHandlerTestUserWithCreatedAt(t, db, &createdAt)
+}
+
+func createHandlerTestUserWithCreatedAt(t *testing.T, db *testutils.Database, createdAt *time.Time) uuid.UUID {
 	t.Helper()
 
 	userID := uuid.New()
@@ -527,6 +535,32 @@ func TestCreateTeam_RecentUserCreatesBlockedTeam(t *testing.T) {
 	}
 	if team.BlockedReason == nil || *team.BlockedReason != blockedReasonMissingPayment {
 		t.Fatalf("expected blocked reason %q, got %v", blockedReasonMissingPayment, team.BlockedReason)
+	}
+}
+
+func TestCreateTeam_NullCreatedAtLeavesTeamUnblocked(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	userID := createHandlerTestUserWithCreatedAt(t, testDB, nil)
+
+	store := &APIStore{
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
+		teamProvisionSink: &fakeTeamProvisionSink{},
+	}
+
+	team, err := store.createTeam(ctx, userID, "Acme")
+	if err != nil {
+		t.Fatalf("expected team creation to succeed with nil created_at, got %v", err)
+	}
+	if team.IsBlocked {
+		t.Fatal("expected nil created_at team to remain unblocked")
+	}
+	if team.BlockedReason != nil {
+		t.Fatalf("expected nil blocked reason, got %v", team.BlockedReason)
 	}
 }
 

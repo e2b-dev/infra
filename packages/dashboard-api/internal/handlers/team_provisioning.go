@@ -317,8 +317,9 @@ func validateTeamCreationAllowed(ctx context.Context, authTxDB *authqueries.Quer
 	return nil
 }
 
-func teamBlockPolicy(userCreatedAt, now time.Time) (bool, *string) {
-	if userCreatedAt.After(now.Add(-newUserNewTeamRequireBillingMethodThreshold)) {
+func teamBlockPolicy(userCreatedAt *time.Time, now time.Time) (bool, *string) {
+	// Some Supabase users have a NULL created_at; unknown age should not trigger the new-user block.
+	if userCreatedAt != nil && userCreatedAt.After(now.Add(-newUserNewTeamRequireBillingMethodThreshold)) {
 		reason := blockedReasonMissingPayment
 
 		return true, &reason

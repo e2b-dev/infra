@@ -13,5 +13,5 @@ import (
 type AuthUser struct {
 	ID        uuid.UUID
 	Email     string
-	CreatedAt time.Time
+	CreatedAt *time.Time
 }
