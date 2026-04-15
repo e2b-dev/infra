@@ -85,7 +85,8 @@ tf_vars := \
 	$(call tfvar, AUTH_DB_MAX_OPEN_CONNECTIONS) \
 	$(call tfvar, AUTH_DB_MIN_IDLE_CONNECTIONS) \
 	$(call tfvar, GCS_GRPC_CONNECTION_POOL_SIZE) \
-	$(call tfvar, ADDITIONAL_API_PATHS_HANDLED_BY_INGRESS)
+	$(call tfvar, ADDITIONAL_API_PATHS_HANDLED_BY_INGRESS) \
+	$(call tfvar, ANYWHERE_CACHE_ENABLED)
 
 .PHONY: init
 init:
