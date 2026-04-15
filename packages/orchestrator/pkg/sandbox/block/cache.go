@@ -13,16 +13,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bits-and-blooms/bitset"
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/edsrzf/mmap-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/atomicbitset"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/syncroaring"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -53,7 +53,7 @@ type Cache struct {
 	blockSize int64
 	mmap      *mmap.MMap
 	mu        sync.RWMutex
-	dirty     *atomicbitset.Bitset
+	dirty     *syncroaring.Bitset
 	dirtyFile bool
 	closed    atomic.Bool
 }
@@ -72,7 +72,7 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 			size:      size,
 			blockSize: blockSize,
 			dirtyFile: dirtyFile,
-			dirty:     atomicbitset.New(),
+			dirty:     syncroaring.New(),
 		}, nil
 	}
 
@@ -97,7 +97,7 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		size:      size,
 		blockSize: blockSize,
 		dirtyFile: dirtyFile,
-		dirty:     atomicbitset.New(),
+		dirty:     syncroaring.New(),
 	}, nil
 }
 
@@ -117,7 +117,7 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	}
 
 	if c.mmap == nil {
-		return header.NewDiffMetadata(c.blockSize, bitset.New(0)), nil
+		return header.NewDiffMetadata(c.blockSize, roaring.New()), nil
 	}
 
 	f, err := os.Open(c.filePath)
@@ -136,7 +136,7 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 		logger.L().Warn(ctx, "error syncing file", zap.Error(err))
 	}
 
-	diffMetadata := header.NewDiffMetadata(c.blockSize, c.dirty.BitSet())
+	diffMetadata := header.NewDiffMetadata(c.blockSize, c.dirty.Clone())
 
 	dst := int(out.Fd())
 	var writeOffset int64
@@ -194,7 +194,7 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	telemetry.SetAttributes(ctx,
 		attribute.Int64("copy_ms", time.Since(copyStart).Milliseconds()),
 		attribute.Int64("total_size_bytes", c.size),
-		attribute.Int64("dirty_size_bytes", int64(diffMetadata.Dirty.Count())*c.blockSize),
+		attribute.Int64("dirty_size_bytes", int64(diffMetadata.Dirty.GetCardinality())*c.blockSize),
 		attribute.Int64("total_ranges", totalRanges),
 	)
 

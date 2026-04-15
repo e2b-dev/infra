@@ -50,8 +50,9 @@ type Addon struct {
 }
 
 type AuthUser struct {
-	ID    uuid.UUID
-	Email string
+	ID        uuid.UUID
+	Email     string
+	CreatedAt time.Time
 }
 
 type BillingSandboxLog struct {

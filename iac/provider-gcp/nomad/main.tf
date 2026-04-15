@@ -1,8 +1,11 @@
 locals {
-  clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
-  redis_url                    = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
-  redis_cluster_url            = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
-  loki_url                     = "http://loki.service.consul:${var.loki_service_port.port}"
+  clickhouse_connection_string            = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
+  redis_url                               = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
+  redis_cluster_url                       = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
+  loki_url                                = "http://loki.service.consul:${var.loki_service_port.port}"
+  enable_billing_http_team_provision_sink = var.enable_billing_http_team_provision_sink
+  dashboard_api_billing_server_url        = local.enable_billing_http_team_provision_sink ? data.google_cloud_run_v2_service.billing_server[0].uri : ""
+  dashboard_api_billing_server_api_token  = local.enable_billing_http_team_provision_sink ? data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data : ""
 }
 
 # API
@@ -33,6 +36,21 @@ data "google_secret_manager_secret_version" "analytics_collector_api_token" {
 
 data "google_secret_manager_secret_version" "launch_darkly_api_key" {
   secret = var.launch_darkly_api_key_secret_name
+}
+
+data "google_secret_manager_secret_version" "billing_server_api_token" {
+  count = local.enable_billing_http_team_provision_sink ? 1 : 0
+
+  project = var.gcp_project_id
+  secret  = "${var.prefix}billing-server-api-token"
+}
+
+data "google_cloud_run_v2_service" "billing_server" {
+  count = local.enable_billing_http_team_provision_sink ? 1 : 0
+
+  project  = var.gcp_project_id
+  location = var.gcp_region
+  name     = "${var.prefix}billing-server"
 }
 
 provider "nomad" {
@@ -130,6 +148,7 @@ module "dashboard_api" {
 
   image = data.google_artifact_registry_docker_image.dashboard_api_image[0].self_link
 
+  admin_token                             = var.dashboard_api_admin_token
   postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   auth_db_connection_string               = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   auth_db_read_replica_connection_string  = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
@@ -140,6 +159,9 @@ module "dashboard_api" {
   redis_cluster_url                       = local.redis_cluster_url
   redis_tls_ca_base64                     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
   enable_auth_user_sync_background_worker = var.enable_auth_user_sync_background_worker
+  enable_billing_http_team_provision_sink = var.enable_billing_http_team_provision_sink
+  billing_server_url                      = local.dashboard_api_billing_server_url
+  billing_server_api_token                = local.dashboard_api_billing_server_api_token
 
   otel_collector_grpc_port = var.otel_collector_grpc_port
   logs_proxy_port          = var.logs_proxy_port

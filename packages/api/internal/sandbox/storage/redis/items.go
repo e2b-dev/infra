@@ -114,7 +114,8 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
 
 			// Only evict running sandboxes
 			if sbx.State != sandbox.StateRunning {
-				if time.Since(sbx.EndTime) <= staleCutoff {
+				// If the sandbox is in transitioning state for more than stale cutoff, it's likely failed removal. Let it be cleaned up by the regular expiration process.
+				if time.Since(sbx.EndTime) <= sandbox.StaleCutoff {
 					// Let the current removal finish
 
 					continue
