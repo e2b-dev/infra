@@ -828,7 +828,7 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 		if err != nil {
 			sbxlogger.I(sbx).Error(ctx, "error uploading snapshot files", zap.Error(err))
 		} else {
-			sbxlogger.E(sbx).Info(ctx, "Snapshot files uploaded to GCS")
+			sbxlogger.I(sbx).Info(ctx, "snapshot finished uploading successfully")
 		}
 
 		res.completeUpload(ctx, memHdr, rootHdr)
