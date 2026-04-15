@@ -191,24 +191,32 @@ func (r *Rootfs) CreateExt4Filesystem(
 	return config.Config, nil
 }
 
-func additionalOCILayers(
+// ProvisioningFile represents a file to be written to the rootfs during provisioning.
+type ProvisioningFile struct {
+	Bytes []byte
+	Mode  int64
+}
+
+// ProvisioningFiles returns the set of files and symlinks needed for provisioning.
+// Files are keyed by their path (without leading slash), symlinks map link path → target path.
+func ProvisioningFiles(
 	buildContext buildcontext.BuildContext,
 	provisionScript string,
 	provisionLogPrefix string,
 	provisionResultPath string,
-) ([]containerregistry.Layer, error) {
+) (files map[string]ProvisioningFile, symlinks map[string]string, err error) {
 	envdFileData, err := os.ReadFile(buildContext.BuilderConfig.HostEnvdPath)
 	if err != nil {
-		return nil, fmt.Errorf("error reading envd file: %w", err)
+		return nil, nil, fmt.Errorf("error reading envd file: %w", err)
 	}
 
 	busyboxPath := filepath.Join(buildContext.BuilderConfig.HostBusyboxDir, buildContext.BuilderConfig.BusyboxVersion, runtime.GOARCH, "busybox")
 	busyboxData, err := os.ReadFile(busyboxPath)
 	if err != nil {
-		return nil, fmt.Errorf("error reading busybox file %s: %w", busyboxPath, err)
+		return nil, nil, fmt.Errorf("error reading busybox file %s: %w", busyboxPath, err)
 	}
 
-	filesMap := map[string]oci.File{
+	filesMap := map[string]ProvisioningFile{
 		storage.GuestEnvdPath: {Bytes: envdFileData, Mode: 0o777},
 
 		// Provision script
@@ -225,30 +233,50 @@ func additionalOCILayers(
 		model := newTemplateModel(buildContext, provisionLogPrefix, provisionResultPath)
 		data, err := generateFile(t, model)
 		if err != nil {
-			return nil, fmt.Errorf("error generating file from %q: %w", t.Name(), err)
+			return nil, nil, fmt.Errorf("error generating file from %q: %w", t.Name(), err)
 		}
 
 		for _, path := range model.paths {
-			filesMap[path.path] = oci.File{
+			filesMap[path.path] = ProvisioningFile{
 				Bytes: data,
 				Mode:  path.mode,
 			}
 		}
 	}
 
-	filesLayer, err := oci.LayerFile(filesMap)
+	symlinksMap := map[string]string{
+		// Enable envd service autostart
+		"etc/systemd/system/multi-user.target.wants/envd.service": "etc/systemd/system/envd.service",
+		// Enable chrony service autostart
+		"etc/systemd/system/multi-user.target.wants/chrony.service": "etc/systemd/system/chrony.service",
+	}
+
+	return filesMap, symlinksMap, nil
+}
+
+func additionalOCILayers(
+	buildContext buildcontext.BuildContext,
+	provisionScript string,
+	provisionLogPrefix string,
+	provisionResultPath string,
+) ([]containerregistry.Layer, error) {
+	provFiles, symlinksMap, err := ProvisioningFiles(buildContext, provisionScript, provisionLogPrefix, provisionResultPath)
+	if err != nil {
+		return nil, fmt.Errorf("error getting provisioning files: %w", err)
+	}
+
+	// Convert ProvisioningFile to oci.File
+	ociFilesMap := make(map[string]oci.File, len(provFiles))
+	for path, f := range provFiles {
+		ociFilesMap[path] = oci.File{Bytes: f.Bytes, Mode: f.Mode}
+	}
+
+	filesLayer, err := oci.LayerFile(ociFilesMap)
 	if err != nil {
 		return nil, fmt.Errorf("error creating layer from files: %w", err)
 	}
 
-	symlinkLayer, err := oci.LayerSymlink(
-		map[string]string{
-			// Enable envd service autostart
-			"etc/systemd/system/multi-user.target.wants/envd.service": "etc/systemd/system/envd.service",
-			// Enable chrony service autostart
-			"etc/systemd/system/multi-user.target.wants/chrony.service": "etc/systemd/system/chrony.service",
-		},
-	)
+	symlinkLayer, err := oci.LayerSymlink(symlinksMap)
 	if err != nil {
 		return nil, fmt.Errorf("error creating layer from symlinks: %w", err)
 	}

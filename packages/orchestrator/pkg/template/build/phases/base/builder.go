@@ -140,12 +140,24 @@ func (bb *BaseBuilder) Build(
 	))
 	defer span.End()
 
-	baseMetadata, err := bb.buildLayerFromOCI(
-		ctx,
-		userLogger,
-		currentLayer.Metadata,
-		currentLayer.Hash,
-	)
+	var baseMetadata metadata.Template
+	var err error
+
+	if bb.Config.FromTemplate != nil {
+		baseMetadata, err = bb.buildLayerFromTemplate(
+			ctx,
+			userLogger,
+			currentLayer.Metadata,
+			currentLayer.Hash,
+		)
+	} else {
+		baseMetadata, err = bb.buildLayerFromOCI(
+			ctx,
+			userLogger,
+			currentLayer.Metadata,
+			currentLayer.Hash,
+		)
+	}
 	if err != nil {
 		return phases.LayerResult{}, err
 	}
@@ -328,11 +340,47 @@ func (bb *BaseBuilder) Layer(
 			return phases.LayerResult{}, fmt.Errorf("error getting base template: %w", err)
 		}
 
-		// From template is always cached, never needs to be built
-		return phases.LayerResult{
-			Metadata: tm.BasedOn(sourceMeta),
+		meta := metadata.Template{
+			Version: metadata.CurrentVersion,
+			Template: metadata.TemplateMetadata{
+				BuildID:            uuid.New().String(),
+				KernelVersion:      bb.Config.KernelVersion,
+				FirecrackerVersion: bb.Config.FirecrackerVersion,
+			},
+			Context:      tm.Context,
+			FromTemplate: &sourceMeta,
+		}
+
+		notCachedResult := phases.LayerResult{
+			Metadata: meta,
+			Cached:   false,
 			Hash:     hash,
+		}
+
+		// Invalidate base cache if forced
+		if bb.Config.Force != nil && *bb.Config.Force {
+			return notCachedResult, nil
+		}
+
+		// Check hash-based layer cache (hash includes DiskSizeMB + template buildID)
+		bm, err := bb.index.LayerMetaFromHash(ctx, hash)
+		if err != nil {
+			bb.logger.Info(ctx, "from-template base layer not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
+
+			return notCachedResult, nil
+		}
+
+		cachedMeta, err := bb.index.Cached(ctx, bm.Template.BuildID)
+		if err != nil {
+			bb.logger.Info(ctx, "from-template base layer metadata not found in cache, building new base layer", zap.Error(err), zap.String("hash", hash))
+
+			return notCachedResult, nil
+		}
+
+		return phases.LayerResult{
+			Metadata: cachedMeta,
 			Cached:   true,
+			Hash:     hash,
 		}, nil
 	default:
 		cmdMeta := metadata.Context{
