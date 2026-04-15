@@ -76,7 +76,7 @@ func NewDiffStore(
 		pdDelay:   delay,
 	}
 
-	cache.OnEviction(func(ctx context.Context, reason ttlcache.EvictionReason, item *ttlcache.Item[DiffStoreKey, Diff]) {
+	cache.OnEviction(func(ctx context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[DiffStoreKey, Diff]) {
 		if insertedAt, ok := ds.insertionTimes.LoadAndDelete(item.Key()); ok {
 			duration := time.Since(insertedAt.(time.Time))
 			residenceDurationMetric.Record(ctx, int64(duration.Seconds()))
@@ -141,8 +141,8 @@ func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
 
 func (s *DiffStore) Add(d Diff) {
 	s.resetDelete(d.CacheKey())
-	s.insertionTimes.Store(d.CacheKey(), time.Now())
 	s.cache.Set(d.CacheKey(), d, ttlcache.DefaultTTL)
+	s.insertionTimes.LoadOrStore(d.CacheKey(), time.Now())
 }
 
 func (s *DiffStore) Has(d Diff) bool {
