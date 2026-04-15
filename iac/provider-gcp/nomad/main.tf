@@ -4,7 +4,7 @@ locals {
   redis_cluster_url                       = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
   loki_url                                = "http://loki.service.consul:${var.loki_service_port.port}"
   enable_billing_http_team_provision_sink = var.enable_billing_http_team_provision_sink
-  dashboard_api_billing_server_url        = local.enable_billing_http_team_provision_sink ? data.google_cloud_run_v2_service.billing_server[0].uri : ""
+  dashboard_api_billing_server_url        = local.enable_billing_http_team_provision_sink ? trimspace(data.google_secret_manager_secret_version.billing_server_url[0].secret_data) : ""
   dashboard_api_billing_server_api_token  = local.enable_billing_http_team_provision_sink ? data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data : ""
 }
 
@@ -45,12 +45,11 @@ data "google_secret_manager_secret_version" "billing_server_api_token" {
   secret  = "${var.prefix}billing-server-api-token"
 }
 
-data "google_cloud_run_v2_service" "billing_server" {
+data "google_secret_manager_secret_version" "billing_server_url" {
   count = local.enable_billing_http_team_provision_sink ? 1 : 0
 
-  project  = var.gcp_project_id
-  location = var.gcp_region
-  name     = "${var.prefix}billing-server"
+  project = var.gcp_project_id
+  secret  = "${var.prefix}billing-server-url"
 }
 
 provider "nomad" {
