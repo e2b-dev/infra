@@ -427,7 +427,7 @@ func (c *Cache) Data() ([]byte, func(), error) {
 		return nil, func() {}, nil
 	}
 
-	return []byte(*c.mmap), func() { c.mu.RUnlock() }, nil
+	return *c.mmap, func() { c.mu.RUnlock() }, nil
 }
 
 func NewCacheFromProcessMemory(

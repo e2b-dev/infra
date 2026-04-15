@@ -110,6 +110,12 @@ type Seekable interface {
 	StreamingReader
 }
 
+// DataStorer is an optional interface that Seekable implementations may support
+// for zero-copy upload directly from an in-memory buffer (e.g. mmap'd data).
+type DataStorer interface {
+	StoreData(ctx context.Context, data []byte) error
+}
+
 // StorageConfig holds the configuration for creating a storage provider.
 // Both GetLocalBasePath and GetBucketName are evaluated lazily so that
 // callers who set environment variables at runtime (e.g. via os.Setenv

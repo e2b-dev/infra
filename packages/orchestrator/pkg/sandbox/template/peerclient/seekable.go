@@ -136,13 +136,9 @@ func (s *peerSeekable) StoreData(ctx context.Context, data []byte) error {
 		return err
 	}
 
-	type dataStorer interface {
-		StoreData(ctx context.Context, data []byte) error
-	}
-
-	ds, ok := fallback.(dataStorer)
+	ds, ok := fallback.(storage.DataStorer)
 	if !ok {
-		return fmt.Errorf("base storage does not support StoreData")
+		return fmt.Errorf("base storage (%T) does not support StoreData", fallback)
 	}
 
 	return ds.StoreData(ctx, data)

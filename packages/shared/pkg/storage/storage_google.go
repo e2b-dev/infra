@@ -49,6 +49,8 @@ const (
 	gcsOperationAttrWrite                      = "Write"
 	gcsOperationAttrWriteFromFileSystem        = "WriteFromFileSystem"
 	gcsOperationAttrWriteFromFileSystemOneShot = "WriteFromFileSystemOneShot"
+	gcsOperationAttrWriteFromData              = "WriteFromData"
+	gcsOperationAttrWriteFromDataOneShot       = "WriteFromDataOneShot"
 	gcsOperationAttrWriteTo                    = "WriteTo"
 	gcsOperationAttrSize                       = "Size"
 )
@@ -488,7 +490,7 @@ func (o *gcpObject) StoreData(ctx context.Context, data []byte) (e error) {
 
 	if int64(len(data)) < gcpMultipartUploadChunkSize {
 		timer := googleWriteTimerFactory.Begin(
-			attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystemOneShot),
+			attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromDataOneShot),
 		)
 
 		if err := o.Put(ctx, data); err != nil {
@@ -503,7 +505,7 @@ func (o *gcpObject) StoreData(ctx context.Context, data []byte) (e error) {
 	}
 
 	timer := googleWriteTimerFactory.Begin(
-		attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystem),
+		attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromData),
 	)
 
 	maxConcurrency := gcloudDefaultUploadConcurrency

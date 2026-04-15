@@ -60,45 +60,57 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 }
 
 func (t *TemplateBuild) uploadDiff(ctx context.Context, diff build.Diff, path string, objectType storage.SeekableObjectType) error {
-	data, release, err := diff.Data()
+	uploaded, err := t.tryZeroCopyUpload(ctx, diff, path, objectType)
 	if err != nil {
 		return err
 	}
 
-	if data == nil {
-		release()
-
+	if uploaded {
 		return nil
 	}
 
-	object, err := t.persistence.OpenSeekable(ctx, path, objectType)
-	if err != nil {
-		release()
-
-		return err
-	}
-
-	// Zero-copy upload from the mmap'd diff data. The wrappers (cachedSeekable,
-	// peerSeekable) forward StoreData to the inner gcpObject.
-	type dataStorer interface {
-		StoreData(ctx context.Context, data []byte) error
-	}
-	if ds, ok := object.(dataStorer); ok {
-		err := ds.StoreData(ctx, data)
-		release()
-
-		return err
-	}
-
-	// Fallback: release the mmap lock and upload from the file on disk.
-	release()
-
+	// Fallback: upload from the file on disk.
 	cachePath, err := diff.CachePath()
 	if err != nil {
 		return err
 	}
 
+	object, err := t.persistence.OpenSeekable(ctx, path, objectType)
+	if err != nil {
+		return err
+	}
+
 	return object.StoreFile(ctx, cachePath)
+}
+
+// tryZeroCopyUpload attempts to upload diff data directly from mmap.
+// Returns (true, nil) on success, (false, nil) when the object doesn't
+// support DataStorer or the diff has no mmap data, or (false, err) on error.
+// The mmap RLock is acquired and released within this function, so callers
+// can safely proceed with file-based I/O after it returns.
+func (t *TemplateBuild) tryZeroCopyUpload(ctx context.Context, diff build.Diff, path string, objectType storage.SeekableObjectType) (bool, error) {
+	data, release, err := diff.Data()
+	if err != nil {
+		release()
+
+		return false, err
+	}
+	defer release()
+
+	if data == nil {
+		return false, nil
+	}
+
+	object, err := t.persistence.OpenSeekable(ctx, path, objectType)
+	if err != nil {
+		return false, err
+	}
+
+	if ds, ok := object.(storage.DataStorer); ok {
+		return true, ds.StoreData(ctx, data)
+	}
+
+	return false, nil
 }
 
 func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Header) error {
