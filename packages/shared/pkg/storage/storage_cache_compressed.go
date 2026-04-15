@@ -12,7 +12,7 @@ import (
 
 // Precomputed OTEL attributes for compressed cache reads (avoids per-read allocation).
 var compressedCacheReadAttrs = []attribute.KeyValue{
-	attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrRead),
+	attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrReadAt),
 	attribute.Bool("compressed", true),
 }
 

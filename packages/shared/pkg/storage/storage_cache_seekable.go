@@ -32,9 +32,12 @@ var (
 )
 
 const (
-	nfsCacheOperationAttr     = "operation"
-	nfsCacheOperationAttrRead = "Read"
-	nfsCacheOperationAttrSize = "Size"
+	nfsCacheOperationAttr = "operation"
+	// nfsCacheOperationAttrReadAt tags NFS slab timer metrics for OpenRangeReader
+	// (both compressed and uncompressed paths; the method was renamed from ReadAt;
+	// value kept for dashboard compatibility).
+	nfsCacheOperationAttrReadAt = "ReadAt"
+	nfsCacheOperationAttrSize   = "Size"
 )
 
 var (
@@ -103,7 +106,7 @@ func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off int64, length 
 	}
 
 	timer := cacheSlabReadTimerFactory.Begin(
-		attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrRead),
+		attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrReadAt),
 		attribute.Bool("compressed", false),
 	)
 

@@ -29,7 +29,7 @@ type cacheOp string
 
 const (
 	cacheOpWriteTo cacheOp = "write_to"
-	cacheOpPut     cacheOp = "put"
+	cacheOpWrite   cacheOp = "write"
 	cacheOpSize    cacheOp = "size"
 
 	cacheOpOpenRangeReader cacheOp = "open_range_reader"
@@ -40,7 +40,7 @@ const (
 type cacheType string
 
 const (
-	cacheTypeBlob     cacheType = "blob"
+	cacheTypeObject   cacheType = "object"
 	cacheTypeSeekable cacheType = "seekable"
 )
 

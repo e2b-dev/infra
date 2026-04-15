@@ -720,9 +720,9 @@ func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
 // snapshotResult holds the data produced by snapshotAndCacheSandbox that callers
 // need to start the background GCS upload.
 type snapshotResult struct {
-	meta     metadata.Template
-	snapshot *sandbox.Snapshot
-	paths    storage.Paths
+	meta           metadata.Template
+	snapshot       *sandbox.Snapshot
+	paths          storage.Paths
 	completeUpload func(ctx context.Context, memfileHdr, rootfsHdr []byte)
 }
 
@@ -800,17 +800,17 @@ func (s *Server) snapshotAndCacheSandbox(
 		}
 
 		return &snapshotResult{
-			meta:     meta,
-			snapshot: snapshot,
-			paths:    paths,
+			meta:           meta,
+			snapshot:       snapshot,
+			paths:          paths,
 			completeUpload: completeUpload,
 		}, nil
 	}
 
 	return &snapshotResult{
-		meta:     meta,
-		snapshot: snapshot,
-		paths:    paths,
+		meta:           meta,
+		snapshot:       snapshot,
+		paths:          paths,
 		completeUpload: func(context.Context, []byte, []byte) {},
 	}, nil
 }

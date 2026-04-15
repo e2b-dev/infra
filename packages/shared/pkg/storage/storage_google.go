@@ -51,7 +51,9 @@ const (
 	gcsOperationAttrWriteFromFileSystemOneShot = "WriteFromFileSystemOneShot"
 	gcsOperationAttrWriteTo                    = "WriteTo"
 	gcsOperationAttrSize                       = "Size"
-	gcsOperationAttrOpenReader                 = "OpenRangeReader"
+	// gcsOperationAttrReadAt tags GCS read timer metrics for OpenRangeReader
+	// (the method was renamed from ReadAt; value kept for dashboard compatibility).
+	gcsOperationAttrReadAt = "ReadAt"
 )
 
 var (
@@ -538,7 +540,7 @@ func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) 
 }
 
 func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
-	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrOpenReader))
+	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrReadAt))
 
 	if !frameTable.IsCompressed() {
 		rc, err := o.openRangeReader(ctx, offsetU, length)

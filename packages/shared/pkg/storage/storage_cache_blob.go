@@ -45,12 +45,12 @@ func (b *cachedBlob) WriteTo(ctx context.Context, dst io.Writer) (n int64, e err
 
 	bytesRead, err := b.copyFullFileFromCache(ctx, dst)
 	if err == nil {
-		recordCacheRead(ctx, true, bytesRead, cacheTypeBlob, cacheOpWriteTo)
+		recordCacheRead(ctx, true, bytesRead, cacheTypeObject, cacheOpWriteTo)
 
 		return bytesRead, nil
 	}
 
-	recordCacheReadError(ctx, cacheTypeBlob, cacheOpWriteTo, err)
+	recordCacheReadError(ctx, cacheTypeObject, cacheOpWriteTo, err)
 
 	// This is semi-arbitrary. this code path is called for files that tend to be less than 1 MB (headers, metadata, etc),
 	// so 2 MB allows us to read the file without needing to allocate more memory, with some room for growth. If the
@@ -73,13 +73,13 @@ func (b *cachedBlob) WriteTo(ctx context.Context, dst io.Writer) (n int64, e err
 
 			count, err := b.writeFileToCache(ctx, buffer)
 			if err != nil {
-				recordCacheWriteError(ctx, cacheTypeBlob, cacheOpWriteTo, err)
+				recordCacheWriteError(ctx, cacheTypeObject, cacheOpWriteTo, err)
 				recordError(span, err)
 
 				return
 			}
 
-			recordCacheWrite(ctx, count, cacheTypeBlob, cacheOpWriteTo)
+			recordCacheWrite(ctx, count, cacheTypeObject, cacheOpWriteTo)
 		})
 	}
 
@@ -88,7 +88,7 @@ func (b *cachedBlob) WriteTo(ctx context.Context, dst io.Writer) (n int64, e err
 		return int64(written), fmt.Errorf("failed to write object: %w", err)
 	}
 
-	recordCacheRead(ctx, false, int64(written), cacheTypeBlob, cacheOpWriteTo)
+	recordCacheRead(ctx, false, int64(written), cacheTypeObject, cacheOpWriteTo)
 
 	return int64(written), err // in case  err == EOF
 }
@@ -110,9 +110,9 @@ func (b *cachedBlob) Put(ctx context.Context, data []byte) (e error) {
 			count, err := b.writeFileToCache(ctx, bytes.NewReader(data))
 			if err != nil {
 				recordError(span, err)
-				recordCacheWriteError(ctx, cacheTypeBlob, cacheOpPut, err)
+				recordCacheWriteError(ctx, cacheTypeObject, cacheOpWrite, err)
 			} else {
-				recordCacheWrite(ctx, count, cacheTypeBlob, cacheOpPut)
+				recordCacheWrite(ctx, count, cacheTypeObject, cacheOpWrite)
 			}
 		})
 	}
