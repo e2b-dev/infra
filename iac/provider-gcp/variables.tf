@@ -710,7 +710,7 @@ variable "gcs_grpc_connection_pool_size" {
 
 variable "anywhere_cache_enabled" {
   type        = bool
-  description = "Enable GCS Anywhere Cache on the template bucket for all zones in the deploy region. Requires gcloud CLI during apply."
+  description = "Enable GCS Anywhere Cache on the template bucket for all zones in the deploy region."
   default     = false
 }
 
