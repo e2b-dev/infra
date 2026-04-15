@@ -11,7 +11,7 @@ import (
 	"github.com/riverqueue/river/rivermigrate"
 	"go.uber.org/zap"
 
-	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -41,7 +41,7 @@ func NewRiverClient(pool *pgxpool.Pool, workers *river.Workers) (*river.Client[p
 	})
 }
 
-func StartAuthUserSyncWorker(setupCtx, runCtx context.Context, supabaseDB *supabasedb.Client, authDB *sqlcdb.Client, l logger.Logger) (*river.Client[pgx.Tx], error) {
+func StartAuthUserSyncWorker(setupCtx, runCtx context.Context, supabaseDB *supabasedb.Client, authDB *authdb.Client, l logger.Logger) (*river.Client[pgx.Tx], error) {
 	if err := RunRiverMigrations(setupCtx, supabaseDB.WritePool()); err != nil {
 		return nil, fmt.Errorf("run River migrations on supabase DB: %w", err)
 	}

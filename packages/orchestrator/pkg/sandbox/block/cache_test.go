@@ -257,8 +257,8 @@ func TestCacheExportToDiff_ZeroDirtyBlockEmittedAsDirtyPayload(t *testing.T) {
 	diffMetadata, err := cache.ExportToDiff(t.Context(), out)
 	require.NoError(t, err)
 
-	require.EqualValues(t, 1, diffMetadata.Dirty.Count(), "zero-filled dirty block should be emitted as dirty payload")
-	require.EqualValues(t, 0, diffMetadata.Empty.Count(), "zero-filled dirty block should not be tracked in empty metadata")
+	require.EqualValues(t, 1, diffMetadata.Dirty.GetCardinality(), "zero-filled dirty block should be emitted as dirty payload")
+	require.EqualValues(t, 0, diffMetadata.Empty.GetCardinality(), "zero-filled dirty block should not be tracked in empty metadata")
 
 	stat, err := out.Stat()
 	require.NoError(t, err)
@@ -334,8 +334,8 @@ func TestCacheExportToDiff_MixedDirtyBlocksKeepsZeroBlockInDiff(t *testing.T) {
 	diffMetadata, err := cache.ExportToDiff(t.Context(), out)
 	require.NoError(t, err)
 
-	require.EqualValues(t, 2, diffMetadata.Dirty.Count())
-	require.EqualValues(t, 0, diffMetadata.Empty.Count(), "mixed export should still skip empty tracking for zero-filled dirty blocks")
+	require.EqualValues(t, 2, diffMetadata.Dirty.GetCardinality())
+	require.EqualValues(t, 0, diffMetadata.Empty.GetCardinality(), "mixed export should still skip empty tracking for zero-filled dirty blocks")
 
 	_, err = out.Seek(0, io.SeekStart)
 	require.NoError(t, err)
@@ -398,10 +398,10 @@ func TestCacheExportToDiff_NonContiguousDirtyBlocksPreserveRangeOrder(t *testing
 	diffMetadata, err := cache.ExportToDiff(t.Context(), out)
 	require.NoError(t, err)
 
-	require.EqualValues(t, 2, diffMetadata.Dirty.Count())
-	require.True(t, diffMetadata.Dirty.Test(0))
-	require.True(t, diffMetadata.Dirty.Test(3))
-	require.EqualValues(t, 0, diffMetadata.Empty.Count())
+	require.EqualValues(t, 2, diffMetadata.Dirty.GetCardinality())
+	require.True(t, diffMetadata.Dirty.Contains(0))
+	require.True(t, diffMetadata.Dirty.Contains(3))
+	require.EqualValues(t, 0, diffMetadata.Empty.GetCardinality())
 
 	_, err = out.Seek(0, io.SeekStart)
 	require.NoError(t, err)

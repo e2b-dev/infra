@@ -241,6 +241,10 @@ variable "enable_auth_user_sync_background_worker" {
   default = false
 }
 
+variable "enable_billing_http_team_provision_sink" {
+  type    = bool
+  default = false
+}
 variable "docker_reverse_proxy_port" {
   type = object({
     name        = string
@@ -717,6 +721,23 @@ variable "gcs_grpc_connection_pool_size" {
     condition     = floor(var.gcs_grpc_connection_pool_size) == var.gcs_grpc_connection_pool_size && var.gcs_grpc_connection_pool_size >= 0
     error_message = "gcs_grpc_connection_pool_size must be a positive integer or 0 for using default specified in code."
   }
+}
+
+variable "anywhere_cache_enabled" {
+  type        = bool
+  description = "Enable GCS Anywhere Cache on the template bucket for all zones in the deploy region."
+  default     = false
+}
+
+variable "anywhere_cache_admission_policy" {
+  type        = string
+  description = "Configure anywhere cache policy. One of: admit-on-first-miss, admit-on-second-miss"
+  default     = null
+}
+
+variable "anywhere_cache_ttl" {
+  type    = string
+  default = null
 }
 
 variable "orchestrator_env_vars" {

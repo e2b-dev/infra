@@ -8,13 +8,12 @@ require (
 	cloud.google.com/go/artifactregistry v1.17.1
 	cloud.google.com/go/storage v1.59.2
 	connectrpc.com/connect v1.18.1
-	github.com/RoaringBitmap/roaring/v2 v2.16.1
+	github.com/RoaringBitmap/roaring/v2 v2.18.0
 	github.com/aws/aws-sdk-go-v2 v1.41.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.6
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.74
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.44.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.79.3
-	github.com/bits-and-blooms/bitset v1.24.2
 	github.com/bsm/redislock v0.9.4
 	github.com/dchest/uniuri v1.2.0
 	github.com/gin-gonic/gin v1.12.0
@@ -114,6 +113,7 @@ require (
 	github.com/axiomhq/hyperloglog v0.2.5 // indirect
 	github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/bits-and-blooms/bitset v1.24.2 // indirect
 	github.com/bits-and-blooms/bloom/v3 v3.7.0 // indirect
 	github.com/bytedance/gopkg v0.1.4 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect

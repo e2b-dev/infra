@@ -30,3 +30,12 @@ variable "template_bucket_name" {
   description = "The name of the FC template bucket"
   default     = ""
 }
+
+variable "anywhere_cache" {
+  type = object({
+    enabled          = bool
+    admission_policy = string
+    ttl              = string
+  })
+  description = "Configure GCS Anywhere Cache on the template bucket for all zones in the region"
+}

@@ -231,6 +231,8 @@ type Sandbox struct {
 	// It was used to store the config to allow API restarts
 	APIStoredConfig *orchestrator.SandboxConfig
 
+	CABundle string
+
 	exit *utils.ErrorOnce
 
 	stop utils.Lazy[error]
@@ -275,6 +277,7 @@ type Factory struct {
 	featureFlags      *featureflags.Client
 	hostStatsDelivery hoststats.Delivery
 	cgroupManager     cgroup.Manager
+	egressProxy       network.EgressProxy
 }
 
 func NewFactory(
@@ -284,6 +287,7 @@ func NewFactory(
 	featureFlags *featureflags.Client,
 	hostStatsDelivery hoststats.Delivery,
 	cgroupManager cgroup.Manager,
+	egressProxy network.EgressProxy,
 	sandboxes *Map,
 ) *Factory {
 	return &Factory{
@@ -294,6 +298,7 @@ func NewFactory(
 		featureFlags:      featureFlags,
 		hostStatsDelivery: hostStatsDelivery,
 		cgroupManager:     cgroupManager,
+		egressProxy:       egressProxy,
 	}
 }
 
@@ -469,6 +474,8 @@ func (f *Factory) CreateSandbox(
 		cleanup: cleanup,
 
 		APIStoredConfig: apiConfigToStore,
+
+		CABundle: f.egressProxy.CABundle(),
 
 		exit: exit,
 	}
@@ -813,6 +820,7 @@ func (f *Factory) ResumeSandbox(
 		cleanup: cleanup,
 
 		APIStoredConfig: apiConfigToStore,
+		CABundle:        f.egressProxy.CABundle(),
 
 		exit: exit,
 	}

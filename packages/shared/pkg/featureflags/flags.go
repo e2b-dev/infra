@@ -168,7 +168,7 @@ var (
 	BuildProvisionVersion        = newIntFlag("build-provision-version", 0)
 
 	// NBDConnectionsPerDevice the number of NBD socket connections per device
-	NBDConnectionsPerDevice = newIntFlag("nbd-connections-per-device", 4)
+	NBDConnectionsPerDevice = newIntFlag("nbd-connections-per-device", 1)
 
 	// MemoryPrefetchMaxFetchWorkers is the maximum number of parallel fetch workers per sandbox for memory prefetching.
 	// Fetching is I/O bound so we can have more parallelism.
