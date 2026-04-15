@@ -71,6 +71,31 @@ func NewHeader(metadata *Metadata, mapping []BuildMap) (*Header, error) {
 	}, nil
 }
 
+// NewHeaderWithBuilds creates a header and copies the subset of sourceBuilds
+// referenced by the mappings. Returns nil builds when sourceBuilds is nil (V3).
+func NewHeaderWithBuilds(metadata *Metadata, mapping []BuildMap, sourceBuilds map[uuid.UUID]BuildData) (*Header, error) {
+	h, err := NewHeader(metadata, mapping)
+	if err != nil {
+		return nil, err
+	}
+
+	if sourceBuilds != nil {
+		referenced := make(map[uuid.UUID]struct{}, len(h.Mapping))
+		for _, m := range h.Mapping {
+			referenced[m.BuildId] = struct{}{}
+		}
+
+		h.Builds = make(map[uuid.UUID]BuildData, len(referenced))
+		for id := range referenced {
+			if bd, ok := sourceBuilds[id]; ok {
+				h.Builds[id] = bd
+			}
+		}
+	}
+
+	return h, nil
+}
+
 func (t *Header) String() string {
 	if t == nil {
 		return "[nil Header]"

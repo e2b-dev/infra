@@ -151,23 +151,9 @@ func (d *DiffMetadata) ToDiffHeader(
 		attribute.String("snapshot.metadata.base_build_id", metadata.BaseBuildId.String()),
 	)
 
-	header, err := NewHeader(metadata, m)
+	header, err := NewHeaderWithBuilds(metadata, m, originalHeader.Builds)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create header: %w", err)
-	}
-
-	// Copy Builds referenced by the merged mappings.
-	if originalHeader.Builds != nil {
-		referenced := make(map[uuid.UUID]struct{}, len(m))
-		for _, mapping := range m {
-			referenced[mapping.BuildId] = struct{}{}
-		}
-		header.Builds = make(map[uuid.UUID]BuildData, len(referenced))
-		for id := range referenced {
-			if bd, ok := originalHeader.Builds[id]; ok {
-				header.Builds[id] = bd
-			}
-		}
 	}
 
 	err = ValidateMappings(header.Mapping, header.Metadata.Size, header.Metadata.BlockSize)

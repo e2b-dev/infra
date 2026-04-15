@@ -227,7 +227,7 @@ func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, mmapSlic
 	}()
 
 	blockSize := c.cache.BlockSize()
-	readBatch := max(blockSize, c.getMinReadBatchSize(ctx))
+	readBatch := max(blockSize, int64(c.featureFlags.IntFlag(ctx, featureflags.MinChunkerReadSizeKB))*1024)
 
 	for totalRead < s.chunkLen {
 		// Read in batches of max(blockSize, minReadBatchSize) to align notification
@@ -287,12 +287,6 @@ func (c *Chunker) locateChunk(off int64, ft *storage.FrameTable) (chunkOff, chun
 	chunkOff = (off / storage.MemoryChunkSize) * storage.MemoryChunkSize
 
 	return chunkOff, min(int64(storage.MemoryChunkSize), c.size-chunkOff), nil
-}
-
-// getMinReadBatchSize returns the effective min read batch size.
-// Queried per-fetch so it can be tuned via feature flags without a restart.
-func (c *Chunker) getMinReadBatchSize(ctx context.Context) int64 {
-	return int64(c.featureFlags.IntFlag(ctx, featureflags.MinChunkerReadSizeKB)) * 1024
 }
 
 func (c *Chunker) Close() error {

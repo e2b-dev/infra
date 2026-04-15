@@ -184,7 +184,7 @@ func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, cf
 	}
 
 	// Write .uncompressed-size sidecar so Size() returns the correct value.
-	sidecarPath := o.path + "." + MetadataKeyUncompressedSize
+	sidecarPath := SizeSidecar(o.path)
 	if writeErr := os.WriteFile(sidecarPath, []byte(strconv.FormatInt(fi.Size(), 10)), 0o644); writeErr != nil {
 		return nil, [32]byte{}, fmt.Errorf("failed to write uncompressed-size sidecar for %s: %w", o.path, writeErr)
 	}
@@ -228,7 +228,7 @@ func (o *fsObject) Size(_ context.Context) (int64, error) {
 	}
 
 	// Check for .uncompressed-size sidecar file
-	sidecarPath := o.path + "." + MetadataKeyUncompressedSize
+	sidecarPath := SizeSidecar(o.path)
 	if sidecarData, sidecarErr := os.ReadFile(sidecarPath); sidecarErr == nil {
 		if parsed, parseErr := strconv.ParseInt(strings.TrimSpace(string(sidecarData)), 10, 64); parseErr == nil {
 			return parsed, nil

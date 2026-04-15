@@ -22,7 +22,7 @@ var compressedCacheReadAttrs = []attribute.KeyValue{
 func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64, frameTable *FrameTable) (io.ReadCloser, error) {
 	r, err := frameTable.LocateCompressed(offsetU)
 	if err != nil {
-		return nil, fmt.Errorf("cache OpenRangeReader: frame lookup for offset %d: %w", offsetU, err)
+		return nil, fmt.Errorf("frame lookup for offset %d: %w", offsetU, err)
 	}
 
 	path := makeFrameFilename(c.path, r)
@@ -41,7 +41,7 @@ func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64
 		if err != nil {
 			f.Close()
 
-			return nil, fmt.Errorf("cache OpenRangeReader: decompress cached frame: %w", err)
+			return nil, fmt.Errorf("decompress cached frame: %w", err)
 		}
 
 		return decompressed, nil
@@ -54,7 +54,7 @@ func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64
 	// Cache miss: fetch raw compressed bytes via OpenRangeReader(nil frameTable).
 	raw, err := c.inner.OpenRangeReader(ctx, r.Offset, int64(r.Length), nil)
 	if err != nil {
-		return nil, fmt.Errorf("cache OpenRangeReader: raw fetch at C=%d: %w", r.Offset, err)
+		return nil, fmt.Errorf("raw fetch at C=%d: %w", r.Offset, err)
 	}
 
 	recordCacheRead(ctx, false, int64(r.Length), cacheTypeSeekable, cacheOpOpenRangeReader)
@@ -63,7 +63,7 @@ func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64
 	if err != nil {
 		raw.Close()
 
-		return nil, fmt.Errorf("cache OpenRangeReader: create decompressor: %w", err)
+		return nil, fmt.Errorf("create decompressor: %w", err)
 	}
 
 	return rc, nil

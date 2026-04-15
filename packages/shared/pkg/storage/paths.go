@@ -93,3 +93,11 @@ func StripCompression(name string) string {
 }
 
 var knownCompressionSuffixes = []string{".lz4", ".zstd"}
+
+// SizeSidecar returns the sidecar path that stores the original
+// uncompressed size for a compressed object (e.g. "/data/memfile.zstd" →
+// "/data/memfile.zstd.uncompressed-size"). Used by the FS backend where
+// GCS-style object metadata is unavailable.
+func SizeSidecar(objectPath string) string {
+	return objectPath + "." + MetadataKeyUncompressedSize
+}
