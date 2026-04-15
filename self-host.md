@@ -71,7 +71,7 @@ Check if you can use config for terraform state management
    - [Stackdriver Logging API](https://console.cloud.google.com/apis/library/logging.googleapis.com)
    - [Filestore API](https://console.cloud.google.com/apis/library/file.googleapis.com)
 6. Run `make build-and-upload`
-7. Run `make copy-public-builds`. This will copy kernel and rootfs builds for Firecracker to your bucket. You can [build your own](#building-firecracker-and-uffd-from-source) kernel and Firecracker roots.
+7. Run `make copy-public-builds`. This will copy kernel, rootfs, and busybox builds for Firecracker to your bucket. You can [build your own](#building-firecracker-and-uffd-from-source) kernel and Firecracker roots.
 8. For following secrets terraform creates only an empty secret containers in GCP Secrets Manager. You need to add a **secret version** with the actual value. Go to [GCP Secrets Manager](https://console.cloud.google.com/security/secret-manager), click on the secret, then click "New Version" to add the value for the following secrets:
   - e2b-cloudflare-api-token
       > Get Cloudflare API Token: go to the [Cloudflare dashboard](https://dash.cloudflare.com/) -> Manage Account -> Account API Tokens -> Create Token -> Edit Zone DNS -> in "Zone Resources" select your domain and generate the token
@@ -146,7 +146,7 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
     make build  # build the AMI (~5 min, launches a t3.large)
     ```
 7. Run `make build-and-upload` to build and push container images and binaries
-8. Run `make copy-public-builds` to copy Firecracker kernels and rootfs to your S3 buckets
+8. Run `make copy-public-builds` to copy Firecracker kernels, rootfs, and busybox to your S3 buckets
 9. Run `make plan-without-jobs` and then `make apply` to provision the cluster infrastructure
 10. Run `make plan` and then `make apply` to deploy all Nomad jobs (this also runs database migrations automatically via the API's db-migrator task)
 11. Setup data in the cluster by running `make prep-cluster` to create an initial user, team, and build a base template
@@ -232,7 +232,7 @@ You can build your own kernel and Firecracker version from source by running `ma
 - `make destroy` - destroys the cluster
 - `make version` - increments the repo version
 - `make build-and-upload` - builds and uploads the docker images, binaries, and cluster disk image
-- `make copy-public-builds` - copies the old envd binary, kernels, and firecracker versions from the public bucket to your bucket
+- `make copy-public-builds` - copies busybox, kernels, and firecracker versions from the public bucket to your bucket
 - `make migrate` - runs the migrations for your database
 - `make provider-login` - logs in to cloud provider
 - `make switch-env ENV={prod,staging,dev}` - switches the environment
