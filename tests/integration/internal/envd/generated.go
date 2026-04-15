@@ -181,6 +181,9 @@ type PostInitJSONBody struct {
 	// AccessToken Access token for secure access to envd service
 	AccessToken *SecureToken `json:"accessToken,omitempty"`
 
+	// CaBundle PEM-encoded CA certificates to install into the system trust store (may contain multiple concatenated PEM blocks)
+	CaBundle *string `json:"caBundle,omitempty"`
+
 	// DefaultUser The default user to use for operations
 	DefaultUser *string `json:"defaultUser,omitempty"`
 
