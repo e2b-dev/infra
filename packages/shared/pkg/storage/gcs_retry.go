@@ -47,6 +47,7 @@ func retryWithBackoff(ctx context.Context, fn func() (int, error)) (int, error) 
 			case <-t.C:
 			case <-ctx.Done():
 				t.Stop()
+				return n, err
 			}
 
 			backoff = min(backoff*googleRetryBackoffMultiply, googleRetryMaxBackoff)
