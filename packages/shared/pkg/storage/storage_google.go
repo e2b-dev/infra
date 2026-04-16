@@ -43,22 +43,12 @@ const (
 	defaultGCSEnableDirectPath     = false
 	gcloudDefaultUploadConcurrency = 16
 
-	// Read retry configuration.
-	//
-	// We handle retries ourselves with a fresh context.WithTimeout per attempt
-	// instead of relying on the GCS client library's built-in retry. The library
-	// retries within the caller's context, so a single 10s timeout shared across
-	// 10 retry attempts left later attempts with almost no time to complete.
-	//
-	// With this configuration each attempt gets a full googlePerAttemptTimeout
-	// to succeed, and we apply exponential backoff between attempts.
-	// Worst-case total time: 3 × 3s + ~0.6s backoff ≈ 10s per ReadAt call.
-	//
-	// These values are intentionally moderate because the UFFD page fault path
-	// (the primary consumer) has its own retry loop around source.Slice() with
-	// up to 4 total attempts. The combined worst-case is ~42s, which keeps
-	// goroutine slot hold time bounded.
-	googlePerAttemptTimeout    = 3 * time.Second
+	// ReadAt retry: fresh context.WithTimeout per attempt instead of the
+	// library's built-in retry which shared a single 10s context across all
+	// attempts. Slow GCS responses exhausted that shared deadline, leaving
+	// only 1-2 truncated attempts — the failure mode behind sandbox kills.
+	// Worst case: 3 × 10s + ~0.6s backoff ≈ 31s per ReadAt call.
+	googlePerAttemptTimeout    = 10 * time.Second
 	googleMaxReadAttempts      = 3
 	googleRetryInitialBackoff  = 200 * time.Millisecond
 	googleRetryMaxBackoff      = 2 * time.Second
