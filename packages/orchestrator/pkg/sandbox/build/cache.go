@@ -112,6 +112,8 @@ func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
 	if !found {
 		err := diff.Init(ctx)
 		if err != nil {
+			s.cache.Delete(diff.CacheKey())
+
 			return nil, fmt.Errorf("failed to init source: %w", err)
 		}
 	}
