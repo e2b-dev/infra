@@ -3,7 +3,7 @@ import { template } from "./template.js";
 
 async function main() {
   // default to not using cache, unless they ask for it
-  const useCache = process.env.SKIP_CACHE === 'true';
+  const useCache = process.env.USE_CACHE === 'true';
 
   console.log(`cache = ${useCache ? 'enabled' : 'disabled'}`);
 
