@@ -418,14 +418,10 @@ func (p *Process) Create(
 	}
 	telemetry.ReportEvent(ctx, "set fc drivers config")
 
-	if p.OverlayPath != "" {
-		err = p.client.setOverlayDrive(ctx, p.OverlayPath, options.IoEngine)
-		if err != nil {
-			fcStopErr := p.Stop(ctx)
+	if err := p.setupOverlayDrive(ctx, options.IoEngine); err != nil {
+		fcStopErr := p.Stop(ctx)
 
-			return errors.Join(fmt.Errorf("error setting overlay drive: %w", err), fcStopErr)
-		}
-		telemetry.ReportEvent(ctx, "set overlay drive")
+		return errors.Join(err, fcStopErr)
 	}
 
 	err = p.client.setNetworkInterface(ctx, p.slot.VpeerName(), p.slot.TapName(), p.slot.TapMAC(), buildRateLimiter(txRateLimit))
