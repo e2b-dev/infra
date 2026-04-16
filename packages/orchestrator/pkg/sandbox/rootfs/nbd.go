@@ -30,6 +30,10 @@ type NBDProvider struct {
 
 	finishedOperations chan struct{}
 	devicePool         *nbd.DevicePool
+
+	// composite is set when the provider serves a composite device
+	// (rootfs + overlay upper via single NBD). Nil for single-device mode.
+	composite *block.CompositeDevice
 }
 
 func NewNBDProvider(ctx context.Context, rootfs block.ReadonlyDevice, cachePath string, devicePool *nbd.DevicePool, featureFlags *featureflags.Client) (Provider, error) {
@@ -105,6 +109,82 @@ func NewNBDProviderWithDiff(
 		devicePool:         devicePool,
 	}, nil
 }
+
+// NewNBDProviderComposite creates an NBD provider that serves a composite
+// device: rootfs (device A) + overlay upper (device B) as a single block
+// device. The guest sees one /dev/vda; with a GPT partition table the kernel
+// exposes /dev/vda1 (rootfs) and /dev/vda2 (overlay).
+//
+// The overlayCache is the per-sandbox cache for disk B. For a fresh sandbox
+// it starts empty. For FS-only resume, pre-populate it via ImportFromDiff.
+func NewNBDProviderComposite(
+	ctx context.Context,
+	rootfs block.ReadonlyDevice,
+	rootfsCachePath string,
+	overlayCache *block.Cache,
+	overlaySizeBytes int64,
+	devicePool *nbd.DevicePool,
+	featureFlags *featureflags.Client,
+) (Provider, error) {
+	rootfsSize, err := rootfs.Size(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting rootfs size: %w", err)
+	}
+
+	blockSize := rootfs.BlockSize()
+
+	rootfsCache, err := block.NewCache(rootfsSize, blockSize, rootfsCachePath, false)
+	if err != nil {
+		return nil, fmt.Errorf("error creating rootfs cache: %w", err)
+	}
+
+	rootfsOverlay := block.NewOverlay(rootfs, rootfsCache)
+
+	overlayOverlay := block.NewOverlay(&emptyDevice{size: overlaySizeBytes, blockSize: blockSize}, overlayCache)
+
+	composite := block.NewCompositeDevice(rootfsOverlay, overlayOverlay, rootfsSize, overlaySizeBytes)
+
+	mnt := nbd.NewDirectPathMount(composite, devicePool, featureFlags)
+
+	return &NBDProvider{
+		mnt:                mnt,
+		overlay:            rootfsOverlay,
+		composite:          composite,
+		featureFlags:       featureFlags,
+		ready:              utils.NewSetOnce[string](),
+		finishedOperations: make(chan struct{}, 1),
+		blockSize:          blockSize,
+		devicePool:         devicePool,
+	}, nil
+}
+
+// OverlayDevice returns the overlay (disk B) device from a composite provider.
+// Returns nil if this is not a composite provider.
+func (o *NBDProvider) OverlayDevice() *block.CompositeDevice {
+	return o.composite
+}
+
+// emptyDevice is a ReadonlyDevice that returns zeros for all reads.
+// Used as the base layer for disk B (overlay upper starts empty).
+type emptyDevice struct {
+	size      int64
+	blockSize int64
+}
+
+func (e *emptyDevice) ReadAt(_ context.Context, p []byte, _ int64) (int, error) {
+	clear(p)
+
+	return len(p), nil
+}
+
+func (e *emptyDevice) Slice(_ context.Context, _, _ int64) ([]byte, error) {
+	return nil, block.BytesNotAvailableError{}
+}
+
+func (e *emptyDevice) Size(_ context.Context) (int64, error) { return e.size, nil }
+func (e *emptyDevice) BlockSize() int64                      { return e.blockSize }
+func (e *emptyDevice) Header() *header.Header                { return nil }
+func (e *emptyDevice) Close() error                          { return nil }
 
 func (o *NBDProvider) Start(ctx context.Context) error {
 	deviceIndex, err := o.mnt.Open(ctx)

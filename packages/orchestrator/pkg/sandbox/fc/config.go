@@ -19,8 +19,7 @@ const (
 
 	SandboxRootfsFile = "rootfs.ext4"
 
-	rootfsDriveID  = "rootfs"
-	OverlayDriveID = "overlay"
+	rootfsDriveID = "rootfs"
 
 	entropyBytesSize    int64 = 1024 // 1 KB
 	entropyRefillTime   int64 = 100
