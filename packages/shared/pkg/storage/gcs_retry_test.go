@@ -31,6 +31,7 @@ func TestRetryWithBackoff_SuccessOnFirstAttempt(t *testing.T) {
 
 	n, attempts, err := retryWithBackoff(t.Context(), func() (int, error) {
 		calls++
+
 		return 42, nil
 	})
 
@@ -50,6 +51,7 @@ func TestRetryWithBackoff_SuccessAfterTransientFailures(t *testing.T) {
 		if calls < 3 {
 			return 0, transientErr()
 		}
+
 		return 100, nil
 	})
 
@@ -66,6 +68,7 @@ func TestRetryWithBackoff_ExhaustsAllAttempts(t *testing.T) {
 
 	_, attempts, err := retryWithBackoff(t.Context(), func() (int, error) {
 		calls++
+
 		return 0, transientErr()
 	})
 
@@ -81,6 +84,7 @@ func TestRetryWithBackoff_StopsOnPermanentError(t *testing.T) {
 
 	_, attempts, err := retryWithBackoff(t.Context(), func() (int, error) {
 		calls++
+
 		return 0, permanentErr()
 	})
 
@@ -101,6 +105,7 @@ func TestRetryWithBackoff_StopsOnContextCancellation(t *testing.T) {
 		if calls == 2 {
 			cancel()
 		}
+
 		return 0, transientErr()
 	})
 
@@ -121,6 +126,7 @@ func TestRetryWithBackoff_RespectsDeadlineDuringBackoff(t *testing.T) {
 
 	_, attempts, err := retryWithBackoff(ctx, func() (int, error) {
 		calls++
+
 		return 0, transientErr()
 	})
 
@@ -139,11 +145,13 @@ func TestRetryWithBackoff_BackoffIncreases(t *testing.T) {
 
 	attempts := make([]time.Time, 0, googleMaxReadAttempts)
 
-	_, _, _ = retryWithBackoff(t.Context(), func() (int, error) {
+	_, _, err := retryWithBackoff(t.Context(), func() (int, error) {
 		attempts = append(attempts, time.Now())
+
 		return 0, transientErr()
 	})
 
+	require.Error(t, err)
 	require.Len(t, attempts, googleMaxReadAttempts)
 
 	// Verify that gaps between attempts increase (exponential backoff).
@@ -166,6 +174,7 @@ func TestRetryWithBackoff_PreservesLastNValue(t *testing.T) {
 
 	n, attempts, err := retryWithBackoff(t.Context(), func() (int, error) {
 		calls++
+
 		// Return partial read count even on error.
 		return calls * 10, transientErr()
 	})
@@ -185,10 +194,11 @@ func TestRetryWithBackoff_EOFTreatedAsSuccess(t *testing.T) {
 	// retryWithBackoff must not retry it.
 	n, attempts, err := retryWithBackoff(t.Context(), func() (int, error) {
 		calls++
+
 		return 512, io.EOF
 	})
 
-	assert.ErrorIs(t, err, io.EOF)
+	require.ErrorIs(t, err, io.EOF)
 	assert.Equal(t, 512, n)
 	assert.Equal(t, 1, calls, "should not retry io.EOF")
 	assert.Equal(t, 1, attempts)

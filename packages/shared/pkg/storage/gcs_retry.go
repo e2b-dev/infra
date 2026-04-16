@@ -50,6 +50,7 @@ func retryWithBackoff(ctx context.Context, fn func() (int, error)) (int, int, er
 			case <-t.C:
 			case <-ctx.Done():
 				t.Stop()
+
 				return n, attempt + 1, err
 			}
 
