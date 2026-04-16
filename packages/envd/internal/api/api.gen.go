@@ -193,7 +193,7 @@ type PostInitJSONBody struct {
 	HyperloopIP *string `json:"hyperloopIP,omitempty"`
 
 	// LifecycleID Lifecycle ID of the sandbox
-	LifecycleID string `json:"lifecycleID"`
+	LifecycleID *string `json:"lifecycleID,omitempty"`
 
 	// Timestamp The current timestamp in RFC3339 format
 	Timestamp    *time.Time     `json:"timestamp,omitempty"`

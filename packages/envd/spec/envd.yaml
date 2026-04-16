@@ -70,8 +70,6 @@ paths:
                 caBundle:
                   type: string
                   description: PEM-encoded CA certificates to install into the system trust store (may contain multiple concatenated PEM blocks)
-              required:
-                - lifecycleID
 
       responses:
         "204":
