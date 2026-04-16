@@ -41,13 +41,11 @@ func (s *Sandbox) PauseFS(ctx context.Context) (d *FSDiff, e error) {
 
 	s.Checks.Stop()
 
-	// Flush filesystem writes before pausing (Strategy 2: sync + freeze).
-	// Best-effort: if envd is unreachable the VM pause + FC snapshot still
-	// flushes the block device.
-	if syncErr := s.requestEnvdSync(ctx); syncErr != nil {
-		logger.L().Warn(ctx, "envd sync failed, continuing with VM pause",
-			zap.String("sandbox_id", s.Runtime.SandboxID),
-			zap.Error(syncErr))
+	// Unmount the overlay from inside the guest: this syncs, pivots back
+	// to the base rootfs, and cleanly unmounts disk B's ext4. After this,
+	// the CoW diff captures a consistent partition-2 state.
+	if err := s.requestEnvdUnmountOverlay(ctx); err != nil {
+		return nil, fmt.Errorf("failed to unmount overlay: %w", err)
 	}
 
 	if err := s.process.Pause(ctx); err != nil {
@@ -329,12 +327,13 @@ func (f *Factory) ResumeFSSandbox(
 
 	cleanup.AddPriority(ctx, sbx.Stop)
 
-	// Tell envd to mount /dev/vda and pivot_root into the ext4 rootfs.
-	// ext4 reads ALL metadata fresh from the CoW device — zero stale state.
-	if err := sbx.requestEnvdFSResume(ctx); err != nil {
-		return nil, fmt.Errorf("fs-resume failed: %w", err)
+	// Tell envd to mount disk B (overlay upper) and set up OverlayFS.
+	// Disk B's ext4 is mounted fresh — all metadata read from the CoW device,
+	// zero stale state since it was never mounted in the hidden base.
+	if err := sbx.requestEnvdMountOverlay(ctx); err != nil {
+		return nil, fmt.Errorf("mount-overlay failed: %w", err)
 	}
-	telemetry.ReportEvent(ctx, "envd mounted rootfs and pivoted")
+	telemetry.ReportEvent(ctx, "overlay mounted with user files")
 
 	// Configure envd (time sync, env vars, etc.)
 	if err := sbx.WaitForEnvd(ctx, f.config.EnvdTimeout); err != nil {
