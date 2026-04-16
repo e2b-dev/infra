@@ -28,9 +28,13 @@ type deleteDiff struct {
 type DiffStore struct {
 	cachePath string
 	cache     *ttlcache.Cache[DiffStoreKey, Diff]
-	cancel    func()
-	config    cfg.Config
-	flags     *featureflags.Client
+	// cacheMu serializes cache insertions (GetOrSet, Set) with the
+	// identity-guarded Delete in Get, preventing a failed-Init cleanup
+	// from evicting a valid replacement stored by a concurrent goroutine.
+	cacheMu sync.Mutex
+	cancel  func()
+	config  cfg.Config
+	flags   *featureflags.Client
 
 	// pdSizes is used to keep track of the diff sizes
 	// that are scheduled for deletion, as this won't show up in the disk usage.
@@ -98,11 +102,14 @@ func (s *DiffStore) Close() {
 
 func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
 	s.resetDelete(diff.CacheKey())
+
+	s.cacheMu.Lock()
 	source, found := s.cache.GetOrSet(
 		diff.CacheKey(),
 		diff,
 		ttlcache.WithTTL[DiffStoreKey, Diff](ttlcache.DefaultTTL),
 	)
+	s.cacheMu.Unlock()
 
 	value := source.Value()
 	if value == nil {
@@ -112,7 +119,11 @@ func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
 	if !found {
 		err := diff.Init(ctx)
 		if err != nil {
-			s.cache.Delete(diff.CacheKey())
+			s.cacheMu.Lock()
+			if item := s.cache.Get(diff.CacheKey()); item != nil && item.Value() == diff {
+				s.cache.Delete(diff.CacheKey())
+			}
+			s.cacheMu.Unlock()
 
 			return nil, fmt.Errorf("failed to init source: %w", err)
 		}
@@ -123,7 +134,10 @@ func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
 
 func (s *DiffStore) Add(d Diff) {
 	s.resetDelete(d.CacheKey())
+
+	s.cacheMu.Lock()
 	s.cache.Set(d.CacheKey(), d, ttlcache.DefaultTTL)
+	s.cacheMu.Unlock()
 }
 
 func (s *DiffStore) Has(d Diff) bool {

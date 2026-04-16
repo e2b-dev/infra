@@ -112,7 +112,8 @@ func (b *StorageDiff) Init(ctx context.Context) (e error) {
 func (b *StorageDiff) Close() error {
 	c, err := b.chunker.Wait()
 	if err != nil {
-		return err
+		// Init failed or never completed; no resources were allocated.
+		return nil
 	}
 
 	return c.Close()
