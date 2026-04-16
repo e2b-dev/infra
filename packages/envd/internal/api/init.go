@@ -10,13 +10,12 @@ import (
 	"net/netip"
 	"os/exec"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/awnumar/memguard"
 	"github.com/rs/zerolog"
 	"github.com/txn2/txeh"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
@@ -250,106 +249,92 @@ var nfsOptions = strings.Join([]string{
 	"lookupcache=none",
 }, ",")
 
-const nfsMountTimeout = 5 * time.Second
+const nfsMountTimeout = 10 * time.Second
 
-func (a *API) setupNFS(ctx context.Context, logger zerolog.Logger, lifecycleID string, mounts []VolumeMount) {
+func (a *API) setupNFS(ctx context.Context, logger zerolog.Logger, lifecycleID string, mounts []VolumeMount) (e error) {
 	// Prevent concurrent mounting attempts
 	if !a.isMountingNFS.CompareAndSwap(false, true) {
 		logger.Debug().Msg("NFS volumes already mounting")
 
-		return
+		return e
 	}
 	defer a.isMountingNFS.Store(false)
 
-	// Check if lifecycleID changed (indicates resume to potentially different server)
-	prevLifecycleID, _ := a.mountedLifecycleID.Load().(string)
-	lifecycleChanged := prevLifecycleID != "" && prevLifecycleID != lifecycleID
-
-	if lifecycleChanged {
-		logger.Debug().Msgf("Lifecycle changed from %q to %q, will remount NFS volumes", prevLifecycleID, lifecycleID)
-	}
-
-	// Already fully mounted for this lifecycle, nothing to do
-	if a.isMountedNFS.Load() && !lifecycleChanged {
-		logger.Debug().Msg("NFS volumes already mounted for this lifecycle")
-
-		return
-	}
-
 	logger.Debug().Msg("Setting up NFS volumes")
 
-	ctx = context.WithoutCancel(ctx)
-	ctx, cancel := context.WithTimeout(ctx, nfsMountTimeout)
+	ctx = context.WithoutCancel(ctx)                         // don't allow request context cancellation to propagate
+	ctx, cancel := context.WithTimeout(ctx, nfsMountTimeout) // don't let the nfs mount run forever
 	defer cancel()
 
-	var wg sync.WaitGroup
-	var allSucceeded atomic.Bool
-	allSucceeded.Store(true)
+	wg, wgCtx := errgroup.WithContext(ctx)
 
 	for _, volume := range mounts {
-		// Skip already mounted paths unless lifecycle changed
-		if !lifecycleChanged {
-			if _, ok := a.mountedPaths.Load(volume.Path); ok {
-				logger.Debug().Msgf("Skipping already mounted %q", volume.Path)
+		// Check if this path is already mounted for the current lifecycle
+		if mountedLifecycle, ok := a.mountedPaths.Load(volume.Path); ok {
+			if mountedLifecycle == lifecycleID {
+				logger.Debug().Msgf("Skipping %q, already mounted for lifecycle %s", volume.Path, lifecycleID)
 
 				continue
 			}
+
+			logger.Debug().Msgf("Lifecycle changed for %q: %s -> %s", volume.Path, mountedLifecycle, lifecycleID)
 		}
 
 		logger.Debug().Msgf("Setting up %s at %q", volume.NfsTarget, volume.Path)
 
-		wg.Go(func() {
-			// Unmount first if lifecycle changed (stale handles from previous server)
-			if lifecycleChanged {
-				a.unmountNFS(ctx, logger, volume.Path)
+		wg.Go(func() error {
+			// Unmount if currently mounted (handles stale mounts from previous lifecycle)
+			if err := a.unmountNFS(wgCtx, logger, volume.Path); err != nil {
+				return fmt.Errorf("failed to unmount stale NFS mount at %q: %w", volume.Path, err)
 			}
 
-			if a.mountNFS(ctx, volume.NfsTarget, volume.Path) {
-				a.mountedPaths.Store(volume.Path, true)
-			} else {
-				allSucceeded.Store(false)
+			if err := a.mountNFS(wgCtx, volume.NfsTarget, volume.Path); err != nil {
+				return fmt.Errorf("failed to mount NFS at %q: %w", volume.Path, err)
 			}
+
+			a.mountedPaths.Store(volume.Path, lifecycleID)
+
+			return nil
 		})
 	}
 
-	wg.Wait()
-
-	if allSucceeded.Load() {
-		a.isMountedNFS.Store(true)
-		a.mountedLifecycleID.Store(lifecycleID)
-	}
+	return wg.Wait()
 }
 
-func (a *API) unmountNFS(ctx context.Context, logger zerolog.Logger, path string) {
-	// Check if actually mounted before trying to unmount
+func (a *API) unmountNFS(ctx context.Context, logger zerolog.Logger, path string) error {
+	// Check if actually mounted before trying to unmount.
+	// findmnt returns exit code 1 when path is not a mount point - that's not an error.
 	data, err := exec.CommandContext(ctx, "findmnt", "--noheadings", "--output", "SOURCE", path).CombinedOutput()
 	if err != nil {
-		// Not mounted or error checking - nothing to unmount
-		return
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			// Not mounted - nothing to unmount
+			return nil
+		}
+
+		return fmt.Errorf("failed to check if %q is mounted: %w", path, err)
 	}
 
 	source := strings.TrimSpace(string(data))
 	if source == "" {
-		return
+		return nil // already unmounted
 	}
 
 	logger.Debug().Msgf("Unmounting stale NFS mount at %q (was: %s)", path, source)
 
-	// Clear our tracking state for this path
-	a.mountedPaths.Delete(path)
-	a.isMountedNFS.Store(false)
-
 	// Force unmount since the handles are stale anyway
 	data, err = exec.CommandContext(ctx, "umount", "--force", path).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to unmount stale NFS mount at %q: %w\n%s", path, err, string(data))
+	}
 
-	logFn := a.getLogger(err)
-	logFn.
-		Strs("command", []string{"umount", "--force", path}).
-		Str("output", string(data)).
-		Msg("Unmount NFS")
+	// Clear our tracking state for this path
+	a.mountedPaths.Delete(path)
+
+	return nil
 }
 
-func (a *API) mountNFS(ctx context.Context, nfsTarget, path string) bool {
+func (a *API) mountNFS(ctx context.Context, nfsTarget, path string) error {
 	commands := [][]string{
 		{"mkdir", "-p", path},
 		{"mount", "-v", "-t", "nfs", "-o", "fg,hard," + nfsOptions, nfsTarget, path},
@@ -357,20 +342,12 @@ func (a *API) mountNFS(ctx context.Context, nfsTarget, path string) bool {
 
 	for _, command := range commands {
 		data, err := exec.CommandContext(ctx, command[0], command[1:]...).CombinedOutput()
-
-		logger := a.getLogger(err)
-
-		logger.
-			Strs("command", command).
-			Str("output", string(data)).
-			Msg("Mount NFS")
-
 		if err != nil {
-			return false
+			return fmt.Errorf("`%s` failed: %w\n%s", strings.Join(command, " "), err, string(data))
 		}
 	}
 
-	return true
+	return nil
 }
 
 func (a *API) SetupHyperloop(address string) {
