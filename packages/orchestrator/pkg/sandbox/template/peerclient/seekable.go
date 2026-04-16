@@ -120,28 +120,14 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off, length int64) (
 	)
 }
 
-func (s *peerSeekable) StoreFile(ctx context.Context, path string) error {
+func (s *peerSeekable) Store(ctx context.Context, data []byte) error {
 	// Writes always go to the base provider (GCS/S3); the peer is read-only.
 	fallback, err := s.getOrOpenBase(ctx)
 	if err != nil {
 		return err
 	}
 
-	return fallback.StoreFile(ctx, path)
-}
-
-func (s *peerSeekable) StoreData(ctx context.Context, data []byte) error {
-	fallback, err := s.getOrOpenBase(ctx)
-	if err != nil {
-		return err
-	}
-
-	if ds, ok := fallback.(storage.DataStorer); ok {
-		return ds.StoreData(ctx, data)
-	}
-
-	// Fallback: write data to a temp file and use StoreFile.
-	return storage.StoreDataViaFile(ctx, fallback, data)
+	return fallback.Store(ctx, data)
 }
 
 // openPeerSeekableStream opens a ReadAtBuildSeekable stream, checks peer availability,

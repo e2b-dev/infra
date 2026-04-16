@@ -124,25 +124,16 @@ func (o *fsObject) Put(_ context.Context, data []byte) error {
 	return err
 }
 
-func (o *fsObject) StoreFile(_ context.Context, path string) error {
-	r, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("failed to open file %s: %w", path, err)
-	}
-	defer r.Close()
-
+func (o *fsObject) Store(_ context.Context, data []byte) error {
 	handle, err := o.getHandle(false)
 	if err != nil {
 		return err
 	}
 	defer handle.Close()
 
-	_, err = io.Copy(handle, r)
-	if err != nil {
-		return err
-	}
+	_, err = handle.Write(data)
 
-	return nil
+	return err
 }
 
 func (o *fsObject) OpenRangeReader(_ context.Context, off, length int64) (io.ReadCloser, error) {

@@ -59,62 +59,8 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 	return nil
 }
 
-func (t *TemplateBuild) uploadDiff(ctx context.Context, diff build.Diff, path string, objectType storage.SeekableObjectType) error {
-	if _, ok := diff.(*build.NoDiff); ok {
-		return nil
-	}
-
-	uploaded, err := t.tryZeroCopyUpload(ctx, diff, path, objectType)
-	if err != nil {
-		return err
-	}
-
-	if uploaded {
-		return nil
-	}
-
-	// Fallback: upload from the file on disk.
-	cachePath, err := diff.CachePath()
-	if err != nil {
-		return err
-	}
-
-	object, err := t.persistence.OpenSeekable(ctx, path, objectType)
-	if err != nil {
-		return err
-	}
-
-	return object.StoreFile(ctx, cachePath)
-}
-
-// tryZeroCopyUpload attempts to upload diff data directly from mmap.
-// Returns (true, nil) on success, (false, nil) when the object doesn't
-// support DataStorer or the diff has no mmap data, or (false, err) on error.
-// The mmap RLock is acquired and released within this function, so callers
-// can safely proceed with file-based I/O after it returns.
-func (t *TemplateBuild) tryZeroCopyUpload(ctx context.Context, diff build.Diff, path string, objectType storage.SeekableObjectType) (bool, error) {
-	data, release, err := diff.Data()
-	if err != nil {
-		release()
-
-		return false, err
-	}
-	defer release()
-
-	if data == nil {
-		return false, nil
-	}
-
-	object, err := t.persistence.OpenSeekable(ctx, path, objectType)
-	if err != nil {
-		return false, err
-	}
-
-	if ds, ok := object.(storage.DataStorer); ok {
-		return true, ds.StoreData(ctx, data)
-	}
-
-	return false, nil
+func (t *TemplateBuild) uploadMemfile(ctx context.Context, diff build.Diff) error {
+	return t.uploadDiff(ctx, diff, t.paths.Memfile(), storage.MemfileObjectType)
 }
 
 func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Header) error {
@@ -134,6 +80,35 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Heade
 	}
 
 	return nil
+}
+
+func (t *TemplateBuild) uploadRootfs(ctx context.Context, diff build.Diff) error {
+	return t.uploadDiff(ctx, diff, t.paths.Rootfs(), storage.RootFSObjectType)
+}
+
+func (t *TemplateBuild) uploadDiff(ctx context.Context, diff build.Diff, path string, objectType storage.SeekableObjectType) error {
+	if _, ok := diff.(*build.NoDiff); ok {
+		return nil
+	}
+
+	data, release, err := diff.Data()
+	if err != nil {
+		release()
+
+		return err
+	}
+	defer release()
+
+	if data == nil {
+		return nil
+	}
+
+	object, err := t.persistence.OpenSeekable(ctx, path, objectType)
+	if err != nil {
+		return err
+	}
+
+	return object.Store(ctx, data)
 }
 
 // Snap-file is small enough so we don't use composite upload.
@@ -204,11 +179,11 @@ func (t *TemplateBuild) Upload(ctx context.Context, metadataPath string, fcSnapf
 	})
 
 	eg.Go(func() error {
-		return t.uploadDiff(ctx, rootfsDiff, t.paths.Rootfs(), storage.RootFSObjectType)
+		return t.uploadRootfs(ctx, rootfsDiff)
 	})
 
 	eg.Go(func() error {
-		return t.uploadDiff(ctx, memfileDiff, t.paths.Memfile(), storage.MemfileObjectType)
+		return t.uploadMemfile(ctx, memfileDiff)
 	})
 
 	eg.Go(func() error {

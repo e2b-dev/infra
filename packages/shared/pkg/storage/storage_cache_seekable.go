@@ -266,35 +266,23 @@ func (c *cachedSeekable) Size(ctx context.Context) (n int64, e error) {
 	return size, nil
 }
 
-// StoreData forwards to the inner storage provider for zero-copy upload from mmap'd data.
-func (c *cachedSeekable) StoreData(ctx context.Context, data []byte) error {
-	if ds, ok := c.inner.(DataStorer); ok {
-		return ds.StoreData(ctx, data)
-	}
-
-	// Fallback: write data to a temp file and use StoreFile.
-	return StoreDataViaFile(ctx, c.inner, data)
-}
-
-func (c *cachedSeekable) StoreFile(ctx context.Context, path string) (e error) {
-	ctx, span := c.tracer.Start(ctx, "write object from file system",
-		trace.WithAttributes(attribute.String("path", path)),
-	)
+func (c *cachedSeekable) Store(ctx context.Context, data []byte) (e error) {
+	ctx, span := c.tracer.Start(ctx, "store object")
 	defer func() {
 		recordError(span, e)
 		span.End()
 	}()
 
-	// write the file to the disk and the remote system at the same time.
-	// this opens the file twice, but the API makes it difficult to use a MultiWriter
-
 	if c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
+		// Copy data since the goroutine may outlive the caller's mmap lock.
+		dataCopy := make([]byte, len(data))
+		copy(dataCopy, data)
+
 		c.goCtx(ctx, func(ctx context.Context) {
-			ctx, span := c.tracer.Start(ctx, "write cache object from file system",
-				trace.WithAttributes(attribute.String("path", path)))
+			ctx, span := c.tracer.Start(ctx, "write cache object")
 			defer span.End()
 
-			size, err := c.createCacheBlocksFromFile(ctx, path)
+			size, err := c.createCacheBlocks(ctx, dataCopy)
 			if err != nil {
 				recordError(span, err)
 				recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpWriteFromFileSystem, fmt.Errorf("failed to create cache blocks: %w", err))
@@ -311,7 +299,7 @@ func (c *cachedSeekable) StoreFile(ctx context.Context, path string) (e error) {
 		})
 	}
 
-	return c.inner.StoreFile(ctx, path)
+	return c.inner.Store(ctx, data)
 }
 
 func (c *cachedSeekable) goCtx(ctx context.Context, fn func(context.Context)) {
@@ -473,25 +461,14 @@ func (c *cachedSeekable) writeLocalSize(ctx context.Context, size int64) error {
 	return nil
 }
 
-func (c *cachedSeekable) createCacheBlocksFromFile(ctx context.Context, inputPath string) (count int64, err error) {
-	ctx, span := c.tracer.Start(ctx, "create cache blocks from filesystem")
+func (c *cachedSeekable) createCacheBlocks(ctx context.Context, data []byte) (count int64, err error) {
+	ctx, span := c.tracer.Start(ctx, "create cache blocks")
 	defer func() {
 		recordError(span, err)
 		span.End()
 	}()
 
-	input, err := os.Open(inputPath)
-	if err != nil {
-		return 0, fmt.Errorf("failed to open input file: %w", err)
-	}
-	defer utils.Cleanup(ctx, "failed to close file", input.Close)
-
-	stat, err := input.Stat()
-	if err != nil {
-		return 0, fmt.Errorf("failed to stat input file: %w", err)
-	}
-
-	totalSize := stat.Size()
+	totalSize := int64(len(data))
 
 	maxConcurrency := c.flags.IntFlag(ctx, featureflags.MaxCacheWriterConcurrencyFlag)
 	if maxConcurrency <= 0 {
@@ -503,7 +480,12 @@ func (c *cachedSeekable) createCacheBlocksFromFile(ctx context.Context, inputPat
 	ec := utils.NewErrorCollector(maxConcurrency)
 	for offset := int64(0); offset < totalSize; offset += c.chunkSize {
 		ec.Go(ctx, func() error {
-			if err := c.writeChunkFromFile(ctx, offset, input); err != nil {
+			end := min(offset+c.chunkSize, totalSize)
+			chunkPath := c.makeChunkFilename(offset)
+
+			if err := os.WriteFile(chunkPath, data[offset:end], cacheFilePermissions); err != nil {
+				safelyRemoveFile(ctx, chunkPath)
+
 				return fmt.Errorf("failed to write chunk file at offset %d: %w", offset, err)
 			}
 
@@ -514,45 +496,6 @@ func (c *cachedSeekable) createCacheBlocksFromFile(ctx context.Context, inputPat
 	err = ec.Wait()
 
 	return totalSize, err
-}
-
-// writeChunkFromFile writes a piece of a local file. It does not need to worry about race conditions, as it will only
-// be called in the build layer, which cannot be built on multiple machines at the same time, or multiple times on the
-// same machine..
-func (c *cachedSeekable) writeChunkFromFile(ctx context.Context, offset int64, input *os.File) (err error) {
-	_, span := c.tracer.Start(ctx, "write chunk from file at offset", trace.WithAttributes(
-		attribute.Int64("offset", offset),
-	))
-	defer func() {
-		recordError(span, err)
-		span.End()
-	}()
-
-	writeTimer := cacheSlabWriteTimerFactory.Begin()
-
-	chunkPath := c.makeChunkFilename(offset)
-	span.SetAttributes(attribute.String("chunk_path", chunkPath))
-
-	output, err := os.OpenFile(chunkPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, cacheFilePermissions)
-	if err != nil {
-		writeTimer.Failure(ctx, 0)
-
-		return fmt.Errorf("failed to open file %s: %w", chunkPath, err)
-	}
-	defer utils.Cleanup(ctx, "failed to close file", output.Close)
-
-	offsetReader := newOffsetReader(input, offset)
-	count, err := io.CopyN(output, offsetReader, c.chunkSize)
-	if ignoreEOF(err) != nil {
-		writeTimer.Failure(ctx, count)
-		safelyRemoveFile(ctx, chunkPath)
-
-		return fmt.Errorf("failed to copy chunk: %w", err)
-	}
-
-	writeTimer.Success(ctx, count)
-
-	return nil
 }
 
 func safelyRemoveFile(ctx context.Context, path string) {

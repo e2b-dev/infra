@@ -54,7 +54,7 @@ func TestCachedFileObjectProvider_Size(t *testing.T) {
 	})
 }
 
-func TestCachedFileObjectProvider_WriteFromFileSystem(t *testing.T) {
+func TestCachedFileObjectProvider_Store(t *testing.T) {
 	t.Parallel()
 
 	t.Run("can be cached successfully", func(t *testing.T) {
@@ -62,18 +62,14 @@ func TestCachedFileObjectProvider_WriteFromFileSystem(t *testing.T) {
 
 		tempDir := t.TempDir()
 		cacheDir := filepath.Join(tempDir, "cache")
-		tempFilename := filepath.Join(tempDir, "temp.bin")
 		data := []byte("hello world")
 
 		err := os.MkdirAll(cacheDir, os.ModePerm)
 		require.NoError(t, err)
 
-		err = os.WriteFile(tempFilename, data, 0o644)
-		require.NoError(t, err)
-
 		inner := storagemocks.NewMockSeekable(t)
 		inner.EXPECT().
-			StoreFile(mock.Anything, mock.Anything).
+			Store(mock.Anything, mock.Anything).
 			Return(nil)
 
 		featureFlags := storagemocks.NewMockFeatureFlagsClient(t)
@@ -82,11 +78,10 @@ func TestCachedFileObjectProvider_WriteFromFileSystem(t *testing.T) {
 
 		c := cachedSeekable{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags, tracer: noopTracer}
 
-		// write temp file
-		err = c.StoreFile(t.Context(), tempFilename)
+		err = c.Store(t.Context(), data)
 		require.NoError(t, err)
 
-		// file is written asynchronously, wait for it to finish
+		// cache blocks are written asynchronously, wait for them to finish
 		c.wg.Wait()
 
 		c.inner = nil
@@ -96,7 +91,7 @@ func TestCachedFileObjectProvider_WriteFromFileSystem(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, int64(len(data)), size)
 
-		// verify that the size has been cached
+		// verify that the data has been cached
 		buff := make([]byte, len(data))
 		bytesRead, err := c.ReadAt(t.Context(), buff, 0)
 		require.NoError(t, err)

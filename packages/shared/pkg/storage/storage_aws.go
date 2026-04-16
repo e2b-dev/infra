@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -162,15 +161,9 @@ func (o *awsObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	return io.Copy(dst, resp.Body)
 }
 
-func (o *awsObject) StoreFile(ctx context.Context, path string) error {
+func (o *awsObject) Store(ctx context.Context, data []byte) error {
 	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
 	defer cancel()
-
-	f, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("failed to open file %s: %w", path, err)
-	}
-	defer f.Close()
 
 	uploader := manager.NewUploader(
 		o.client,
@@ -180,12 +173,12 @@ func (o *awsObject) StoreFile(ctx context.Context, path string) error {
 		},
 	)
 
-	_, err = uploader.Upload(
+	_, err := uploader.Upload(
 		ctx,
 		&s3.PutObjectInput{
 			Bucket: &o.bucketName,
 			Key:    &o.path,
-			Body:   f,
+			Body:   bytes.NewReader(data),
 		},
 	)
 

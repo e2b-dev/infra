@@ -244,44 +244,44 @@ func (_c *MockSeekable_Size_Call) RunAndReturn(run func(ctx context.Context) (in
 	return _c
 }
 
-// StoreFile provides a mock function for the type MockSeekable
-func (_mock *MockSeekable) StoreFile(ctx context.Context, path string) error {
-	ret := _mock.Called(ctx, path)
+// Store provides a mock function for the type MockSeekable
+func (_mock *MockSeekable) Store(ctx context.Context, data []byte) error {
+	ret := _mock.Called(ctx, data)
 
 	if len(ret) == 0 {
-		panic("no return value specified for StoreFile")
+		panic("no return value specified for Store")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = returnFunc(ctx, path)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte) error); ok {
+		r0 = returnFunc(ctx, data)
 	} else {
 		r0 = ret.Error(0)
 	}
 	return r0
 }
 
-// MockSeekable_StoreFile_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'StoreFile'
-type MockSeekable_StoreFile_Call struct {
+// MockSeekable_Store_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Store'
+type MockSeekable_Store_Call struct {
 	*mock.Call
 }
 
-// StoreFile is a helper method to define mock.On call
+// Store is a helper method to define mock.On call
 //   - ctx context.Context
-//   - path string
-func (_e *MockSeekable_Expecter) StoreFile(ctx interface{}, path interface{}) *MockSeekable_StoreFile_Call {
-	return &MockSeekable_StoreFile_Call{Call: _e.mock.On("StoreFile", ctx, path)}
+//   - data []byte
+func (_e *MockSeekable_Expecter) Store(ctx interface{}, data interface{}) *MockSeekable_Store_Call {
+	return &MockSeekable_Store_Call{Call: _e.mock.On("Store", ctx, data)}
 }
 
-func (_c *MockSeekable_StoreFile_Call) Run(run func(ctx context.Context, path string)) *MockSeekable_StoreFile_Call {
+func (_c *MockSeekable_Store_Call) Run(run func(ctx context.Context, data []byte)) *MockSeekable_Store_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 string
+		var arg1 []byte
 		if args[1] != nil {
-			arg1 = args[1].(string)
+			arg1 = args[1].([]byte)
 		}
 		run(
 			arg0,
@@ -291,12 +291,12 @@ func (_c *MockSeekable_StoreFile_Call) Run(run func(ctx context.Context, path st
 	return _c
 }
 
-func (_c *MockSeekable_StoreFile_Call) Return(err error) *MockSeekable_StoreFile_Call {
+func (_c *MockSeekable_Store_Call) Return(err error) *MockSeekable_Store_Call {
 	_c.Call.Return(err)
 	return _c
 }
 
-func (_c *MockSeekable_StoreFile_Call) RunAndReturn(run func(ctx context.Context, path string) error) *MockSeekable_StoreFile_Call {
+func (_c *MockSeekable_Store_Call) RunAndReturn(run func(ctx context.Context, data []byte) error) *MockSeekable_Store_Call {
 	_c.Call.Return(run)
 	return _c
 }

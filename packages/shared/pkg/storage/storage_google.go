@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -49,8 +48,6 @@ const (
 	gcsOperationAttrWrite                      = "Write"
 	gcsOperationAttrWriteFromFileSystem        = "WriteFromFileSystem"
 	gcsOperationAttrWriteFromFileSystemOneShot = "WriteFromFileSystemOneShot"
-	gcsOperationAttrWriteFromData              = "WriteFromData"
-	gcsOperationAttrWriteFromDataOneShot       = "WriteFromDataOneShot"
 	gcsOperationAttrWriteTo                    = "WriteTo"
 	gcsOperationAttrSize                       = "Size"
 )
@@ -386,8 +383,8 @@ func (o *gcpObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	return n, nil
 }
 
-func (o *gcpObject) StoreFile(ctx context.Context, path string) (e error) {
-	ctx, span := tracer.Start(ctx, "write to gcp from file system")
+func (o *gcpObject) Store(ctx context.Context, data []byte) (e error) {
+	ctx, span := tracer.Start(ctx, "write to gcp")
 	defer func() {
 		recordError(span, e)
 		span.End()
@@ -396,26 +393,14 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string) (e error) {
 	bucketName := o.storage.bucket.BucketName()
 	objectName := o.path
 
-	fileInfo, err := os.Stat(path)
-	if err != nil {
-		return fmt.Errorf("failed to get file size: %w", err)
-	}
-
 	// If the file is too small, the overhead of writing in parallel isn't worth the effort.
 	// Write it in one shot instead.
-	if fileInfo.Size() < gcpMultipartUploadChunkSize {
+	if int64(len(data)) < gcpMultipartUploadChunkSize {
 		timer := googleWriteTimerFactory.Begin(
 			attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystemOneShot),
 		)
 
-		data, err := os.ReadFile(path)
-		if err != nil {
-			timer.Failure(ctx, 0)
-
-			return fmt.Errorf("failed to read file: %w", err)
-		}
-
-		err = o.Put(ctx, data)
+		err := o.Put(ctx, data)
 		if err != nil {
 			timer.Failure(ctx, int64(len(data)))
 
@@ -460,7 +445,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string) (e error) {
 	}
 
 	start := time.Now()
-	count, err := uploader.UploadFileInParallel(ctx, path, maxConcurrency)
+	count, err := uploader.Upload(ctx, data, maxConcurrency)
 	if err != nil {
 		timer.Failure(ctx, count)
 
@@ -470,78 +455,9 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string) (e error) {
 	logger.L().Debug(ctx, "Uploaded file in parallel",
 		zap.String("bucket", bucketName),
 		zap.String("object", objectName),
-		zap.String("path", path),
 		zap.Int("max_concurrency", maxConcurrency),
-		zap.Int64("file_size", fileInfo.Size()),
+		zap.Int64("file_size", int64(len(data))),
 		zap.Int64("duration", time.Since(start).Milliseconds()),
-	)
-
-	timer.Success(ctx, count)
-
-	return nil
-}
-
-func (o *gcpObject) StoreData(ctx context.Context, data []byte) (e error) {
-	ctx, span := tracer.Start(ctx, "store data to gcp")
-	defer func() {
-		recordError(span, e)
-		span.End()
-	}()
-
-	if int64(len(data)) < gcpMultipartUploadChunkSize {
-		timer := googleWriteTimerFactory.Begin(
-			attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromDataOneShot),
-		)
-
-		if err := o.Put(ctx, data); err != nil {
-			timer.Failure(ctx, int64(len(data)))
-
-			return fmt.Errorf("failed to write data (%d bytes): %w", len(data), err)
-		}
-
-		timer.Success(ctx, int64(len(data)))
-
-		return nil
-	}
-
-	timer := googleWriteTimerFactory.Begin(
-		attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromData),
-	)
-
-	maxConcurrency := gcloudDefaultUploadConcurrency
-	if o.limiter != nil {
-		if uploadLimiter := o.limiter.GCloudUploadLimiter(); uploadLimiter != nil {
-			if err := uploadLimiter.Acquire(ctx, 1); err != nil {
-				timer.Failure(ctx, 0)
-
-				return fmt.Errorf("failed to acquire semaphore: %w", err)
-			}
-			defer uploadLimiter.Release(1)
-		}
-
-		maxConcurrency = o.limiter.GCloudMaxTasks(ctx)
-	}
-
-	uploader, err := NewMultipartUploaderWithRetryConfig(ctx, o.storage.bucket.BucketName(), o.path, DefaultRetryConfig())
-	if err != nil {
-		timer.Failure(ctx, 0)
-
-		return fmt.Errorf("failed to create multipart uploader: %w", err)
-	}
-
-	start := time.Now()
-	count, err := uploader.UploadData(ctx, data, maxConcurrency)
-	if err != nil {
-		timer.Failure(ctx, count)
-
-		return fmt.Errorf("failed to upload data in parallel: %w", err)
-	}
-
-	logger.L().Debug(ctx, "Uploaded data in parallel",
-		zap.String("object", o.path),
-		zap.Int("max_concurrency", maxConcurrency),
-		zap.Int64("size", int64(len(data))),
-		zap.Int64("duration_ms", time.Since(start).Milliseconds()),
 	)
 
 	timer.Success(ctx, count)

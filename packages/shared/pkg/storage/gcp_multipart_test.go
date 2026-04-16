@@ -1,10 +1,10 @@
 package storage
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
 	"io"
-	"math"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
@@ -161,7 +161,7 @@ func TestMultipartUploader_CompleteUpload_Success(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestMultipartUploader_UploadFileInParallel_Success(t *testing.T) {
+func TestMultipartUploader_Upload_Success(t *testing.T) {
 	t.Parallel()
 	// Create a test file
 	tempDir := t.TempDir()
@@ -207,7 +207,7 @@ func TestMultipartUploader_UploadFileInParallel_Success(t *testing.T) {
 	})
 
 	uploader := createTestMultipartUploader(t, handler)
-	_, err = uploader.UploadFileInParallel(t.Context(), testFile, 2)
+	_, err = uploader.Upload(t.Context(), []byte(testContent), 2)
 	require.NoError(t, err)
 
 	require.Equal(t, int32(1), atomic.LoadInt32(&initiateCount))
@@ -323,7 +323,7 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 	uploader := createTestMultipartUploader(t, handler)
 
 	// Use high concurrency to stress test
-	_, err = uploader.UploadFileInParallel(t.Context(), testFile, 50)
+	_, err = uploader.Upload(t.Context(), []byte(testContent), 50)
 	require.NoError(t, err)
 
 	// Verify all calls were made
@@ -394,7 +394,7 @@ func TestMultipartUploader_RandomFailures_ChaosTest(t *testing.T) {
 	}
 
 	uploader := createTestMultipartUploader(t, handler, config)
-	_, err = uploader.UploadFileInParallel(t.Context(), testFile, 10)
+	_, err = uploader.Upload(t.Context(), []byte(testContent), 10)
 	require.NoError(t, err)
 
 	t.Logf("Chaos test: %d total attempts, %d successes",
@@ -459,7 +459,7 @@ func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
 	}
 
 	uploader := createTestMultipartUploader(t, handler, config)
-	_, err = uploader.UploadFileInParallel(t.Context(), testFile, 5)
+	_, err = uploader.Upload(t.Context(), []byte(testContent), 5)
 	require.NoError(t, err)
 
 	// Verify that all parts eventually succeeded after retries
@@ -508,7 +508,7 @@ func TestMultipartUploader_EdgeCases_EmptyFile(t *testing.T) {
 	})
 
 	uploader := createTestMultipartUploader(t, handler)
-	_, err = uploader.UploadFileInParallel(t.Context(), emptyFile, 5)
+	_, err = uploader.Upload(t.Context(), []byte(""), 5)
 	require.NoError(t, err)
 
 	require.Equal(t, int32(1), atomic.LoadInt32(&initiateCalls))
@@ -551,50 +551,16 @@ func TestMultipartUploader_EdgeCases_VerySmallFile(t *testing.T) {
 	})
 
 	uploader := createTestMultipartUploader(t, handler)
-	_, err = uploader.UploadFileInParallel(t.Context(), smallFile, 10) // High concurrency for small file
+	_, err = uploader.Upload(t.Context(), []byte(smallContent), 10) // High concurrency for small file
 	require.NoError(t, err)
 	require.Equal(t, smallContent, receivedData)
-}
-
-type repeatReader struct {
-	char      byte
-	remaining int
-}
-
-var _ io.Reader = (*repeatReader)(nil)
-
-func (r *repeatReader) Read(p []byte) (n int, err error) {
-	toWrite := int(math.Min(float64(len(p)), float64(r.remaining)))
-	if toWrite <= 0 {
-		return 0, io.EOF
-	}
-	r.remaining -= toWrite
-
-	for index := range p[:toWrite] {
-		p[index] = r.char
-	}
-
-	return toWrite, nil
-}
-
-func newRepeatReader(b byte, count int) io.Reader {
-	return &repeatReader{char: b, remaining: count}
 }
 
 func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testing.T) {
 	t.Parallel()
 
 	totalChunks := 10
-
-	tempDir := t.TempDir()
-	testFile := filepath.Join(tempDir, "resource.txt")
-	file, err := os.Create(testFile)
-	require.NoError(t, err)
-	count, err := io.Copy(file, newRepeatReader('a', gcpMultipartUploadChunkSize*totalChunks))
-	require.NoError(t, err)
-	assert.GreaterOrEqual(t, count, int64(gcpMultipartUploadChunkSize*totalChunks))
-	err = file.Close()
-	require.NoError(t, err)
+	testData := bytes.Repeat([]byte{'a'}, gcpMultipartUploadChunkSize*totalChunks)
 
 	var activeConcurrency atomic.Int32
 	var maxObservedConcurrency atomic.Int32
@@ -638,7 +604,7 @@ func TestMultipartUploader_ResourceExhaustion_TooManyConcurrentUploads(t *testin
 	uploader := createTestMultipartUploader(t, handler)
 
 	// Try with extremely high concurrency
-	_, err = uploader.UploadFileInParallel(t.Context(), testFile, 1000)
+	_, err := uploader.Upload(t.Context(), testData, 1000)
 	require.NoError(t, err)
 
 	// Should have observed significant concurrency but not necessarily 1000
@@ -687,24 +653,13 @@ func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
 	})
 
 	uploader := createTestMultipartUploader(t, handler)
-	_, err = uploader.UploadFileInParallel(t.Context(), testFile, 5)
+	_, err = uploader.Upload(t.Context(), []byte(testContent), 5)
 	require.NoError(t, err)
 
 	// Should have exactly 2 parts, each of ChunkSize
 	require.Len(t, partSizes, 2)
 	require.Equal(t, gcpMultipartUploadChunkSize, partSizes[0])
 	require.Equal(t, gcpMultipartUploadChunkSize, partSizes[1])
-}
-
-func TestMultipartUploader_FileNotFound_Error(t *testing.T) {
-	t.Parallel()
-	uploader := createTestMultipartUploader(t, func(http.ResponseWriter, *http.Request) {
-		t.Error("Should not make any HTTP requests for missing file")
-	})
-
-	_, err := uploader.UploadFileInParallel(t.Context(), "/nonexistent/file.txt", 5)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "failed to open file")
 }
 
 func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
@@ -765,7 +720,7 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 	}
 
 	uploader := createTestMultipartUploader(t, handler, config)
-	_, err = uploader.UploadFileInParallel(t.Context(), testFile, 20) // High concurrency
+	_, err = uploader.Upload(t.Context(), []byte(testContent), 20) // High concurrency
 	require.NoError(t, err)
 
 	t.Logf("Total HTTP requests made: %d", atomic.LoadInt32(&totalRequests))
