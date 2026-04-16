@@ -214,7 +214,7 @@ components:
         nextCursor:
           type: string
           nullable: true
-          description: Cursor to pass to the next list request, or `null` if there is no next page.
+          description: Cursor to pass to the next list request, or `null` if there is no next page. 
 
     BuildStatusItem:
       type: object
