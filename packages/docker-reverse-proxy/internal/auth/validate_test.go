@@ -23,7 +23,6 @@ func TestValidate(t *testing.T) {
 
 	userID := uuid.New()
 	teamID := uuid.New()
-	envID := "test-env-id"
 
 	dbClient := testutils.SetupDatabase(t)
 
@@ -63,10 +62,15 @@ func TestValidate(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	const (
+		validEnvID   = "valid-env-id"
+		invalidEnvID = "invalid-env-id"
+		noEnvID      = ""
+	)
+
 	testcases := []struct {
 		name             string
 		valid            bool
-		createdEnvId     string
 		createdEnvStatus string
 		validateEnvId    string
 		accessTokenUsed  string
@@ -75,45 +79,40 @@ func TestValidate(t *testing.T) {
 		{
 			name:             "valid token",
 			valid:            true,
-			createdEnvId:     envID,
 			createdEnvStatus: "waiting",
-			validateEnvId:    envID,
+			validateEnvId:    validEnvID,
 			accessTokenUsed:  accessToken.PrefixedRawValue,
 			error:            false,
 		},
 		{
 			name:             "random access token",
 			valid:            false,
-			createdEnvId:     envID,
 			createdEnvStatus: "waiting",
-			validateEnvId:    envID,
+			validateEnvId:    validEnvID,
 			accessTokenUsed:  fmt.Sprintf("%s123abc", keys.AccessTokenPrefix),
 			error:            false,
 		},
 		{
 			name:             "wrong env ID",
 			valid:            false,
-			createdEnvId:     envID,
 			createdEnvStatus: "waiting",
-			validateEnvId:    "non-existent-env-id",
+			validateEnvId:    invalidEnvID,
 			accessTokenUsed:  accessToken.PrefixedRawValue,
 			error:            false,
 		},
 		{
 			name:             "no env ID",
 			valid:            false,
-			createdEnvId:     envID,
 			createdEnvStatus: "waiting",
-			validateEnvId:    "",
+			validateEnvId:    noEnvID,
 			accessTokenUsed:  accessToken.PrefixedRawValue,
 			error:            false,
 		},
 		{
 			name:             "invalid access token",
 			valid:            false,
-			createdEnvId:     envID,
 			createdEnvStatus: "waiting",
-			validateEnvId:    envID,
+			validateEnvId:    validEnvID,
 			accessTokenUsed:  "invalid-access-token",
 			error:            true,
 		},
@@ -122,9 +121,20 @@ func TestValidate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			setupValidateTest(t, dbClient, teamID, tc.createdEnvId, tc.createdEnvStatus)
+			envID := uuid.NewString()
 
-			valid, err := Validate(t.Context(), dbClient.SqlcClient, tc.accessTokenUsed, tc.validateEnvId)
+			setupValidateTest(t, dbClient, teamID, envID, tc.createdEnvStatus)
+
+			var validateEnvID string
+			switch tc.validateEnvId {
+			case validEnvID:
+				validateEnvID = envID
+			case invalidEnvID:
+				validateEnvID = uuid.NewString()
+			default:
+			}
+
+			valid, err := Validate(t.Context(), dbClient.SqlcClient, tc.accessTokenUsed, validateEnvID)
 			if tc.error {
 				require.Error(t, err)
 			} else {

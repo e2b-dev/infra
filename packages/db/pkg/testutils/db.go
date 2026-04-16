@@ -138,10 +138,10 @@ func runDatabaseMigrations(t *testing.T, connStr string) {
 
 	gooseDB, err := goose.OpenDBWithDriver("pgx", connStr)
 	require.NoError(t, err)
-	t.Cleanup(func() {
+	defer func() {
 		err := gooseDB.Close()
 		assert.NoError(t, err)
-	})
+	}()
 
 	// run the db migration
 	err = goose.RunWithOptionsContext(
