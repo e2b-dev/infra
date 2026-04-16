@@ -37,7 +37,7 @@ Flags:
 - `-storage <path>` - Local path or `gs://bucket` (enables local mode with auto-download of kernel/FC)
 - `-sandbox-dir <path>` - Override `SANDBOX_DIR` (the rootfs path baked into the snapshot)
 - `-kernel <version>` - Kernel version (default: `vmlinux-6.1.158`)
-- `-firecracker <version>` - Firecracker version (default: `v1.14.1_76f16f0`)
+- `-firecracker <version>` - Firecracker version (default: `v1.14.1_458ca91`)
 - `-vcpu <n>` - vCPUs (default: `1`)
 - `-memory <mb>` - Memory in MB (default: `512`)
 - `-disk <mb>` - Disk in MB (default: `1000`)
