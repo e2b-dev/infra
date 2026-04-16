@@ -50,6 +50,12 @@ func (s *SlowDevice) BlockSize() int64 {
 }
 
 func (s *SlowDevice) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+	select {
+	case <-time.After(s.readDelay):
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
 	return s.inner.Slice(ctx, off, length)
 }
 
