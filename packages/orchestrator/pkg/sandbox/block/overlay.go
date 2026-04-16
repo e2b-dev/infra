@@ -75,6 +75,10 @@ func (o *Overlay) WriteAt(p []byte, off int64) (int, error) {
 // written by the guest) or the backing device cache (for template blocks).
 // dest is reused across calls to avoid allocations.
 func (o *Overlay) ReadSlices(ctx context.Context, off, length int64, dest [][]byte) ([][]byte, error) {
+	if off%o.blockSize != 0 {
+		return nil, fmt.Errorf("offset %d is not aligned to block size %d", off, o.blockSize)
+	}
+
 	if length%o.blockSize != 0 {
 		return nil, fmt.Errorf("length %d is not aligned to block size %d", length, o.blockSize)
 	}

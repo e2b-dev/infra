@@ -36,6 +36,11 @@ const (
 	// With zero-copy writes going directly into the mmap, the dispatch buffer
 	// only needs to hold NBD request headers (28 bytes each).
 	dispatchBufferSize = 4 * 1024
+
+	// https://sourceforge.net/p/nbd/mailman/message/35081223/
+	// 32 MB is the maximum request size universally supported by the kernel NBD driver.
+	// Reject anything larger to protect against OOM from a corrupted header.
+	dispatchMaxWriteBufferSize = 32 * 1024 * 1024
 )
 
 // NBD Commands
@@ -182,6 +187,10 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 				rp += 28
 
 				writeLen := int(request.Length)
+
+				if writeLen > dispatchMaxWriteBufferSize {
+					return fmt.Errorf("nbd write request length %d exceeds maximum %d", writeLen, dispatchMaxWriteBufferSize)
+				}
 
 				// Ensure write buffer is large enough
 				if cap(d.writeBuf) < writeLen {
