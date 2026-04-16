@@ -27,14 +27,14 @@ func TestValidate(t *testing.T) {
 	dbClient := testutils.SetupDatabase(t)
 
 	// Create team
-	err = dbClient.AuthDB.TestsRawSQL(t.Context(), `
+	err = dbClient.AuthDb.TestsRawSQL(t.Context(), `
 		INSERT INTO "auth"."users" (id, email)
 		VALUES ($1, 'test@e2b.dev')
 		ON CONFLICT DO NOTHING
 	`, userID)
 	require.NoError(t, err)
 
-	err = dbClient.AuthDB.TestsRawSQL(t.Context(), `
+	err = dbClient.AuthDb.TestsRawSQL(t.Context(), `
 		INSERT INTO teams (id, name, email, tier, slug)
 		VALUES ($1, 'test-team', 'test@e2b.dev', 'base_v1', 'test-team-slug')
 		ON CONFLICT DO NOTHING
@@ -42,7 +42,7 @@ func TestValidate(t *testing.T) {
 	require.NoError(t, err)
 
 	// Link user to team
-	err = dbClient.AuthDB.TestsRawSQL(t.Context(), `
+	err = dbClient.AuthDb.TestsRawSQL(t.Context(), `
 		INSERT INTO users_teams (user_id, team_id, is_default)
 		VALUES ($1, $2, true)
 		ON CONFLICT DO NOTHING
@@ -50,7 +50,7 @@ func TestValidate(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create access token
-	_, err = dbClient.AuthDB.Write.CreateAccessToken(t.Context(), authqueries.CreateAccessTokenParams{
+	_, err = dbClient.AuthDb.Write.CreateAccessToken(t.Context(), authqueries.CreateAccessTokenParams{
 		ID:                    uuid.New(),
 		UserID:                userID,
 		AccessTokenHash:       accessToken.HashedValue,

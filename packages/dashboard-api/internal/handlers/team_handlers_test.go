@@ -294,7 +294,7 @@ func handlerTestUserEmail(userID uuid.UUID) string {
 func insertHandlerTestTeamMember(t *testing.T, db *testutils.Database, userID, teamID uuid.UUID, isDefault bool) {
 	t.Helper()
 
-	err := db.AuthDB.TestsRawSQL(t.Context(), `
+	err := db.AuthDb.TestsRawSQL(t.Context(), `
 INSERT INTO public.users_teams (user_id, team_id, is_default)
 VALUES ($1, $2, $3)
 `, userID, teamID, isDefault)
@@ -311,14 +311,14 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 	userID := createHandlerTestUser(t, testDB)
 	sink := &fakeTeamProvisionSink{}
 
-	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
+	existingTeam, err := testDB.AuthDb.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
 		t.Fatalf("expected trigger-created default team: %v", err)
 	}
-	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
+	if err := testDB.AuthDb.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
 		t.Fatalf("failed to remove trigger-created default team: %v", err)
 	}
-	if err := testDB.AuthDB.Write.DeletePublicUser(ctx, userID); err != nil {
+	if err := testDB.AuthDb.Write.DeletePublicUser(ctx, userID); err != nil {
 		t.Fatalf("failed to remove trigger-created public user: %v", err)
 	}
 
@@ -329,7 +329,7 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDB,
+		authDB:            testDB.AuthDb,
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
 	}
@@ -339,7 +339,7 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", recorder.Code)
 	}
 
-	team, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
+	team, err := testDB.AuthDb.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
 		t.Fatalf("expected default team to be created: %v", err)
 	}
@@ -378,14 +378,14 @@ func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testin
 		},
 	}
 
-	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
+	existingTeam, err := testDB.AuthDb.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
 		t.Fatalf("expected trigger-created default team: %v", err)
 	}
-	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
+	if err := testDB.AuthDb.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
 		t.Fatalf("failed to remove trigger-created default team: %v", err)
 	}
-	if err := testDB.AuthDB.Write.DeletePublicUser(ctx, userID); err != nil {
+	if err := testDB.AuthDb.Write.DeletePublicUser(ctx, userID); err != nil {
 		t.Fatalf("failed to remove trigger-created public user: %v", err)
 	}
 
@@ -396,7 +396,7 @@ func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testin
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDB,
+		authDB:            testDB.AuthDb,
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
 	}
@@ -409,12 +409,12 @@ func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testin
 		t.Fatalf("expected one provisioning call, got %d", len(sink.requests))
 	}
 
-	team, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
+	team, err := testDB.AuthDb.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
 		t.Fatalf("expected default team to remain after provisioning failure: %v", err)
 	}
 
-	rows, err := testDB.AuthDB.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+	rows, err := testDB.AuthDb.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
 	if err != nil {
 		t.Fatalf("failed to query user teams: %v", err)
 	}
@@ -437,17 +437,17 @@ func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
 	userID := createHandlerTestUser(t, testDB)
 	sink := &fakeTeamProvisionSink{}
 
-	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
+	existingTeam, err := testDB.AuthDb.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
 		t.Fatalf("expected trigger-created default team: %v", err)
 	}
-	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
+	if err := testDB.AuthDb.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
 		t.Fatalf("failed to remove trigger-created default team: %v", err)
 	}
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDB,
+		authDB:            testDB.AuthDb,
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
 	}
@@ -491,7 +491,7 @@ func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
 	}
 
 	var defaultTeamCount int
-	err = testDB.AuthDB.TestsRawSQLQuery(ctx,
+	err = testDB.AuthDb.TestsRawSQLQuery(ctx,
 		`SELECT count(*)
 		FROM public.users_teams
 		WHERE user_id = $1 AND is_default = true`,
@@ -521,7 +521,7 @@ func TestCreateTeam_RecentUserCreatesBlockedTeam(t *testing.T) {
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDB,
+		authDB:            testDB.AuthDb,
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: &fakeTeamProvisionSink{},
 	}
@@ -547,7 +547,7 @@ func TestCreateTeam_NullCreatedAtLeavesTeamUnblocked(t *testing.T) {
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDB,
+		authDB:            testDB.AuthDb,
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: &fakeTeamProvisionSink{},
 	}
@@ -573,7 +573,7 @@ func TestPostTeams_LocalPolicyDeniedReturnsBadRequestWithoutCreatingTeam(t *test
 	sink := &fakeTeamProvisionSink{}
 
 	for range 2 {
-		team, err := testDB.AuthDB.Write.CreateTeam(ctx, authqueries.CreateTeamParams{
+		team, err := testDB.AuthDb.Write.CreateTeam(ctx, authqueries.CreateTeamParams{
 			Name:  "extra",
 			Tier:  baseTierID,
 			Email: handlerTestUserEmail(userID),
@@ -581,7 +581,7 @@ func TestPostTeams_LocalPolicyDeniedReturnsBadRequestWithoutCreatingTeam(t *test
 		if err != nil {
 			t.Fatalf("failed to create extra team: %v", err)
 		}
-		if err := testDB.AuthDB.Write.CreateTeamMembership(ctx, authqueries.CreateTeamMembershipParams{
+		if err := testDB.AuthDb.Write.CreateTeamMembership(ctx, authqueries.CreateTeamMembershipParams{
 			UserID:    userID,
 			TeamID:    team.ID,
 			IsDefault: false,
@@ -599,7 +599,7 @@ func TestPostTeams_LocalPolicyDeniedReturnsBadRequestWithoutCreatingTeam(t *test
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDB,
+		authDB:            testDB.AuthDb,
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
 	}
@@ -612,7 +612,7 @@ func TestPostTeams_LocalPolicyDeniedReturnsBadRequestWithoutCreatingTeam(t *test
 		t.Fatalf("expected no provisioning call, got %d", len(sink.requests))
 	}
 
-	rows, err := testDB.AuthDB.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+	rows, err := testDB.AuthDb.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
 	if err != nil {
 		t.Fatalf("failed to query user teams: %v", err)
 	}
@@ -638,7 +638,7 @@ func TestPostTeams_InvalidNameReturnsBadRequest(t *testing.T) {
 		sink := &fakeTeamProvisionSink{}
 		store := &APIStore{
 			db:                testDB.SqlcClient,
-			authDB:            testDB.AuthDB,
+			authDB:            testDB.AuthDb,
 			supabaseDB:        testDB.SupabaseDB,
 			teamProvisionSink: sink,
 		}
@@ -669,7 +669,7 @@ func TestPostTeams_InvalidRequestBodyReturnsBadRequest(t *testing.T) {
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDB,
+		authDB:            testDB.AuthDb,
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
 	}
@@ -702,7 +702,7 @@ func TestPostTeams_TrimsNameBeforeCreate(t *testing.T) {
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDB,
+		authDB:            testDB.AuthDb,
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
 	}
@@ -712,7 +712,7 @@ func TestPostTeams_TrimsNameBeforeCreate(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", recorder.Code)
 	}
 
-	rows, err := testDB.AuthDB.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+	rows, err := testDB.AuthDb.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
 	if err != nil {
 		t.Fatalf("failed to query user teams: %v", err)
 	}
@@ -754,7 +754,7 @@ func TestPostTeams_ProvisioningFailureRollsBackCreatedTeam(t *testing.T) {
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDB,
+		authDB:            testDB.AuthDb,
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
 	}
@@ -767,7 +767,7 @@ func TestPostTeams_ProvisioningFailureRollsBackCreatedTeam(t *testing.T) {
 		t.Fatalf("expected one provisioning call, got %d", len(sink.requests))
 	}
 
-	rows, err := testDB.AuthDB.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+	rows, err := testDB.AuthDb.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
 	if err != nil {
 		t.Fatalf("failed to query user teams: %v", err)
 	}
@@ -813,7 +813,7 @@ func TestPostTeams_ProvisioningFailurePreservesProvisionErrorStatus(t *testing.T
 
 			store := &APIStore{
 				db:                testDB.SqlcClient,
-				authDB:            testDB.AuthDB,
+				authDB:            testDB.AuthDb,
 				supabaseDB:        testDB.SupabaseDB,
 				teamProvisionSink: sink,
 			}
@@ -847,7 +847,7 @@ func TestPostTeams_ProvisioningFailurePreservesProvisionErrorStatus(t *testing.T
 				t.Fatalf("PostTeams(provision status %d) response message = %q, want %q", tt.status, messageValue, tt.message)
 			}
 
-			rows, err := testDB.AuthDB.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
+			rows, err := testDB.AuthDb.Read.GetTeamsWithUsersTeamsWithTier(ctx, userID)
 			if err != nil {
 				t.Fatalf("GetTeamsWithUsersTeamsWithTier(userID=%s) error = %v, want nil", userID, err)
 			}
@@ -868,17 +868,17 @@ func TestCreateTeam_ConcurrentRequestsRespectLocalPolicyWithZeroMemberships(t *t
 	ctx := t.Context()
 	userID := createHandlerTestUser(t, testDB)
 
-	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
+	existingTeam, err := testDB.AuthDb.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
 		t.Fatalf("expected trigger-created default team: %v", err)
 	}
-	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
+	if err := testDB.AuthDb.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
 		t.Fatalf("failed to remove default team: %v", err)
 	}
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDB,
+		authDB:            testDB.AuthDb,
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: &fakeTeamProvisionSink{},
 	}

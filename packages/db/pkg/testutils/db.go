@@ -38,19 +38,35 @@ func init() {
 // Database encapsulates the test database container and clients
 type Database struct {
 	SqlcClient  *db.Client
-	AuthDB      *authdb.Client
+	AuthDb      *authdb.Client
 	SupabaseDB  *supabasedb.Client
 	TestQueries *queries.Queries
 	connStr     string
 }
 
+type container struct {
+	db   *Database
+	lock sync.Mutex
+}
+
 var (
-	oneDB  *Database
-	dblock sync.RWMutex
+	databases  sync.Map
+	globalLock sync.Mutex
 )
 
-// SetupDatabase creates a fresh PostgreSQL container with migrations applied
 func SetupDatabase(t *testing.T) *Database {
+	t.Helper()
+
+	db := SetupNamedDatabase(t, testDatabaseName)
+
+	// Setup environment and run migrations
+	db.ApplyMigrations(t, filepath.Join("packages", "db", "migrations"))
+
+	return db
+}
+
+// SetupDatabase creates a fresh PostgreSQL container with migrations applied
+func SetupNamedDatabase(t *testing.T, name string) *Database {
 	t.Helper()
 
 	ctx := context.WithoutCancel(t.Context())
@@ -59,30 +75,31 @@ func SetupDatabase(t *testing.T) *Database {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	// cheap lookup
-	dblock.RLock()
-	if oneDB != nil {
-		dblock.RUnlock()
-
-		return oneDB
+	globalLock.Lock()
+	var containerPtr *container
+	blob, ok := databases.Load(name)
+	if ok {
+		containerPtr, ok = blob.(*container)
 	}
-	dblock.RUnlock()
+	if !ok || containerPtr == nil {
+		containerPtr = &container{}
+		databases.Store(name, containerPtr)
+	}
+	containerPtr.lock.Lock()
+	defer containerPtr.lock.Unlock()
+	globalLock.Unlock()
 
-	// expensive lookup
-	dblock.Lock()
-	defer dblock.Unlock()
-
-	if oneDB != nil {
-		return oneDB
+	if containerPtr.db != nil {
+		return containerPtr.db
 	}
 
 	// lookup failed, create new
 
 	// Start PostgreSQL container
-	container, err := postgres.Run(
+	c, err := postgres.Run(
 		ctx,
 		testPostgresImage,
-		postgres.WithDatabase(testDatabaseName),
+		postgres.WithDatabase(name),
 		postgres.WithUsername(testUsername),
 		postgres.WithPassword(testPassword),
 		testcontainers.WithWaitStrategy(
@@ -93,11 +110,8 @@ func SetupDatabase(t *testing.T) *Database {
 	)
 	require.NoError(t, err, "Failed to start postgres container")
 
-	connStr, err := container.ConnectionString(ctx, "sslmode=disable")
+	connStr, err := c.ConnectionString(ctx, "sslmode=disable")
 	require.NoError(t, err, "Failed to get connection string")
-
-	// Setup environment and run migrations
-	runDatabaseMigrations(t, connStr)
 
 	// create test queries client
 	dbClient, _, err := pool.New(ctx, connStr, "tests")
@@ -115,28 +129,23 @@ func SetupDatabase(t *testing.T) *Database {
 	supabaseDB, err := supabasedb.NewClient(t.Context(), connStr)
 	require.NoError(t, err, "Failed to create supabase db client")
 
-	oneDB = &Database{
+	containerPtr.db = &Database{
 		SqlcClient:  sqlcClient,
-		AuthDB:      authDB,
+		AuthDb:      authDB,
 		SupabaseDB:  supabaseDB,
 		TestQueries: testQueries,
 		connStr:     connStr,
 	}
 
-	return oneDB
+	return containerPtr.db
 }
 
 func (db *Database) ConnStr() string {
 	return db.connStr
 }
 
-var migrationsDir = []string{
-	filepath.Join("packages", "db", "migrations"),
-	filepath.Join("packages", "db", "pkg", "supabase", "migrations"),
-}
-
 // runDatabaseMigrations executes all required database migrations
-func runDatabaseMigrations(t *testing.T, connStr string) {
+func (db *Database) ApplyMigrations(t *testing.T, migrationDir string) {
 	t.Helper()
 
 	cmd := exec.CommandContext(t.Context(), "git", "rev-parse", "--show-toplevel")
@@ -144,7 +153,7 @@ func runDatabaseMigrations(t *testing.T, connStr string) {
 	require.NoError(t, err, "Failed to find git root")
 	repoRoot := strings.TrimSpace(string(output))
 
-	sqlDB, err := goose.OpenDBWithDriver("pgx", connStr)
+	sqlDB, err := goose.OpenDBWithDriver("pgx", db.connStr)
 	require.NoError(t, err)
 
 	defer func() {
@@ -152,15 +161,13 @@ func runDatabaseMigrations(t *testing.T, connStr string) {
 		assert.NoError(t, err)
 	}()
 
-	for _, dir := range migrationsDir {
-		err = goose.RunWithOptionsContext(
-			t.Context(),
-			"up",
-			sqlDB,
-			filepath.Join(repoRoot, dir),
-			nil,
-		)
+	err = goose.RunWithOptionsContext(
+		t.Context(),
+		"up",
+		sqlDB,
+		filepath.Join(repoRoot, migrationDir),
+		nil,
+	)
 
-		require.NoError(t, err)
-	}
+	require.NoError(t, err)
 }

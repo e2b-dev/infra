@@ -35,7 +35,7 @@ type riverProcess struct {
 func TestAuthUserSync_EndToEnd(t *testing.T) {
 	t.Parallel()
 
-	db := testutils.SetupDatabase(t)
+	db := setupDatabase(t)
 
 	ctx := t.Context()
 	userID := uuid.New()
@@ -59,19 +59,19 @@ func TestAuthUserSyncWorker_UpsertDeletesStaleProjectedUser(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	db := testutils.SetupDatabase(t)
+	db := setupDatabase(t)
 
 	userID := uuid.New()
 	staleEmail := fmt.Sprintf("stale-%s@example.com", userID.String()[:8])
 
-	err := db.AuthDB.Write.UpsertPublicUser(ctx, authqueries.UpsertPublicUserParams{
+	err := db.AuthDb.Write.UpsertPublicUser(ctx, authqueries.UpsertPublicUserParams{
 		ID:    userID,
 		Email: staleEmail,
 	})
 	require.NoError(t, err)
 	require.Equal(t, 1, publicUserCount(t, ctx, db, userID))
 
-	worker := NewAuthUserSyncWorker(ctx, db.SupabaseDB, db.AuthDB, logger.NewNopLogger())
+	worker := NewAuthUserSyncWorker(ctx, db.SupabaseDB, db.AuthDb, logger.NewNopLogger())
 
 	err = worker.Work(ctx, &river.Job[AuthUserSyncArgs]{
 		JobRow: &rivertype.JobRow{ID: 1, Attempt: 1},
@@ -88,7 +88,7 @@ func TestAuthUserSyncTrigger_SameEmailUpdateDoesNotEnqueueJob(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	db := testutils.SetupDatabase(t)
+	db := setupDatabase(t)
 
 	userID := uuid.New()
 	email := fmt.Sprintf("trigger-%s@example.com", userID.String()[:8])
@@ -100,6 +100,43 @@ func TestAuthUserSyncTrigger_SameEmailUpdateDoesNotEnqueueJob(t *testing.T) {
 	assert.Equal(t, 1, riverJobCountForUser(t, ctx, db, userID))
 }
 
+var (
+	migrateLock sync.Mutex
+	hasMigrated bool
+)
+
+func setupDatabase(t *testing.T) *testutils.Database {
+	t.Helper()
+
+	db := testutils.SetupNamedDatabase(t, "supabase")
+
+	migrateLock.Lock()
+	defer migrateLock.Unlock()
+
+	if hasMigrated {
+		return db
+	}
+
+	db.ApplyMigrations(t, "packages/db/pkg/supabase/migrations")
+
+	// The auth user sync bootstraps `auth_custom` in three steps:
+	// 1. create the shared schema needed by River migrations
+	// 2. River library migrations create River tables inside that schema
+	// 3. the remaining auth migrations add triggers that enqueue into River
+	require.NoError(t, db.SupabaseDB.TestsRawSQL(t.Context(), `
+CREATE SCHEMA IF NOT EXISTS auth_custom;
+`))
+
+	err := RunRiverMigrations(t.Context(), db.SupabaseDB.WritePool())
+	require.NoError(t, err)
+
+	db.ApplyMigrations(t, supabaseMigrationsDir)
+
+	hasMigrated = true
+
+	return db
+}
+
 func startRiverWorker(t *testing.T, db *testutils.Database) *riverProcess {
 	t.Helper()
 	ctx := t.Context()
@@ -107,7 +144,7 @@ func startRiverWorker(t *testing.T, db *testutils.Database) *riverProcess {
 	l := logger.NewNopLogger()
 
 	workers := river.NewWorkers()
-	river.AddWorker(workers, NewAuthUserSyncWorker(ctx, db.SupabaseDB, db.AuthDB, l))
+	river.AddWorker(workers, NewAuthUserSyncWorker(ctx, db.SupabaseDB, db.AuthDb, l))
 
 	client, err := NewRiverClient(db.SupabaseDB.WritePool(), workers)
 	require.NoError(t, err)
@@ -173,7 +210,7 @@ func waitForPublicUser(t *testing.T, ctx context.Context, db *testutils.Database
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		var email string
 
-		err := db.AuthDB.TestsRawSQLQuery(ctx,
+		err := db.AuthDb.TestsRawSQLQuery(ctx,
 			"SELECT email FROM public.users WHERE id = $1",
 			func(rows pgx.Rows) error {
 				if !rows.Next() {
@@ -217,7 +254,7 @@ func publicUserCount(t *testing.T, ctx context.Context, db *testutils.Database, 
 func publicUserCountE(ctx context.Context, db *testutils.Database, userID uuid.UUID) (int, error) {
 	var count int
 
-	err := db.AuthDB.TestsRawSQLQuery(ctx,
+	err := db.AuthDb.TestsRawSQLQuery(ctx,
 		"SELECT count(*) FROM public.users WHERE id = $1",
 		func(rows pgx.Rows) error {
 			if !rows.Next() {
