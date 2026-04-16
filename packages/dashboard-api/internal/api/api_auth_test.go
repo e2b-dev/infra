@@ -24,66 +24,64 @@ type authTestServer struct {
 
 func (s *authTestServer) PostAdminUsersUserIdBootstrap(c *gin.Context, userId UserId) {
 	s.hitBootstrap = true
-	s.receivedUserID = uuid.UUID(userId)
+	s.receivedUserID = userId
 	c.Status(http.StatusNoContent)
 }
 
-func (s *authTestServer) GetBuilds(c *gin.Context, params GetBuildsParams) {
+func (s *authTestServer) GetBuilds(_ *gin.Context, _ GetBuildsParams) {
 	panic("unexpected call to GetBuilds")
 }
 
-func (s *authTestServer) GetBuildsStatuses(c *gin.Context, params GetBuildsStatusesParams) {
+func (s *authTestServer) GetBuildsStatuses(_ *gin.Context, _ GetBuildsStatusesParams) {
 	panic("unexpected call to GetBuildsStatuses")
 }
 
-func (s *authTestServer) GetBuildsBuildId(c *gin.Context, buildId BuildId) {
+func (s *authTestServer) GetBuildsBuildId(_ *gin.Context, _ BuildId) {
 	panic("unexpected call to GetBuildsBuildId")
 }
 
-func (s *authTestServer) GetHealth(c *gin.Context) {
+func (s *authTestServer) GetHealth(_ *gin.Context) {
 	panic("unexpected call to GetHealth")
 }
 
-func (s *authTestServer) GetSandboxesSandboxIDRecord(c *gin.Context, sandboxID SandboxID) {
+func (s *authTestServer) GetSandboxesSandboxIDRecord(_ *gin.Context, _ SandboxID) {
 	panic("unexpected call to GetSandboxesSandboxIDRecord")
 }
 
-func (s *authTestServer) GetTeams(c *gin.Context) {
+func (s *authTestServer) GetTeams(_ *gin.Context) {
 	panic("unexpected call to GetTeams")
 }
 
-func (s *authTestServer) PostTeams(c *gin.Context) {
+func (s *authTestServer) PostTeams(_ *gin.Context) {
 	panic("unexpected call to PostTeams")
 }
 
-func (s *authTestServer) GetTeamsResolve(c *gin.Context, params GetTeamsResolveParams) {
+func (s *authTestServer) GetTeamsResolve(_ *gin.Context, _ GetTeamsResolveParams) {
 	panic("unexpected call to GetTeamsResolve")
 }
 
-func (s *authTestServer) PatchTeamsTeamID(c *gin.Context, teamID TeamID) {
+func (s *authTestServer) PatchTeamsTeamID(_ *gin.Context, _ TeamID) {
 	panic("unexpected call to PatchTeamsTeamID")
 }
 
-func (s *authTestServer) GetTeamsTeamIDMembers(c *gin.Context, teamID TeamID) {
+func (s *authTestServer) GetTeamsTeamIDMembers(_ *gin.Context, _ TeamID) {
 	panic("unexpected call to GetTeamsTeamIDMembers")
 }
 
-func (s *authTestServer) PostTeamsTeamIDMembers(c *gin.Context, teamID TeamID) {
+func (s *authTestServer) PostTeamsTeamIDMembers(_ *gin.Context, _ TeamID) {
 	panic("unexpected call to PostTeamsTeamIDMembers")
 }
 
-func (s *authTestServer) DeleteTeamsTeamIDMembersUserId(c *gin.Context, teamID TeamID, userId UserId) {
+func (s *authTestServer) DeleteTeamsTeamIDMembersUserId(_ *gin.Context, _ TeamID, _ UserId) {
 	panic("unexpected call to DeleteTeamsTeamIDMembersUserId")
 }
 
-func (s *authTestServer) GetTemplatesDefaults(c *gin.Context) {
+func (s *authTestServer) GetTemplatesDefaults(_ *gin.Context) {
 	panic("unexpected call to GetTemplatesDefaults")
 }
 
 func TestAdminBootstrapRoute_AcceptsAdminTokenOnly(t *testing.T) {
 	t.Parallel()
-
-	gin.SetMode(gin.TestMode)
 
 	server := &authTestServer{}
 	swagger, err := GetSwagger()
@@ -98,6 +96,7 @@ func TestAdminBootstrapRoute_AcceptsAdminTokenOnly(t *testing.T) {
 			sharedauth.NewAdminTokenAuthenticator("super-secret-token"),
 			sharedauth.NewSupabaseTokenAuthenticator(func(_ context.Context, _ *gin.Context, _ string) (uuid.UUID, *sharedauth.APIError) {
 				supabaseCalled = true
+
 				return uuid.Nil, &sharedauth.APIError{Code: http.StatusUnauthorized, ClientMsg: "unexpected", Err: fmt.Errorf("unexpected supabase auth call")}
 			}),
 		},
