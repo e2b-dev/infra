@@ -224,7 +224,9 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	}
 
 	if data.VolumeMounts != nil {
-		a.setupNFS(ctx, logger, data.LifecycleID, *data.VolumeMounts)
+		if err := a.setupNFS(ctx, logger, data.LifecycleID, *data.VolumeMounts); err != nil {
+			return fmt.Errorf("failed to setup NFS volumes: %w", err)
+		}
 	}
 
 	return nil
