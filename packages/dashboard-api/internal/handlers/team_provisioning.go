@@ -95,6 +95,12 @@ func (s *APIStore) PostTeams(c *gin.Context) {
 
 func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisionedTeam, error) {
 	authUser, err := s.supabaseDB.Write.GetAuthUserByID(ctx, userID)
+	if dberrors.IsNotFoundError(err) {
+		return provisionedTeam{}, &internalteamprovision.ProvisionError{
+			StatusCode: http.StatusNotFound,
+			Message:    "User not found",
+		}
+	}
 	if err != nil {
 		return provisionedTeam{}, fmt.Errorf("get auth user: %w", err)
 	}

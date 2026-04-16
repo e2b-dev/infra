@@ -427,6 +427,42 @@ func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testin
 	}
 }
 
+func TestPostUsersBootstrap_UnknownUserReturnsNotFound(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	userID := uuid.New()
+	sink := &fakeTeamProvisionSink{}
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", nil)
+
+	store := &APIStore{
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
+		teamProvisionSink: sink,
+	}
+	store.PostAdminUsersUserIdBootstrap(ginCtx, userID)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d", recorder.Code)
+	}
+	if len(sink.requests) != 0 {
+		t.Fatalf("expected no provisioning calls, got %d", len(sink.requests))
+	}
+
+	var responseBody map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &responseBody); err != nil {
+		t.Fatalf("failed to parse response body: %v", err)
+	}
+	if responseBody["message"] != "User not found" {
+		t.Fatalf("expected message %q, got %v", "User not found", responseBody["message"])
+	}
+}
+
 func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
 	t.Parallel()
 
