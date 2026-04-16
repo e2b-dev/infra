@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math/rand/v2"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -88,7 +89,10 @@ func retryWithBackoff(ctx context.Context, maxAttempts int, fn func() (int, erro
 
 		// Don't sleep after the last attempt.
 		if attempt < maxAttempts-1 {
-			t := time.NewTimer(backoff)
+			// Add ±25% jitter to spread out concurrent retries.
+			quarter := backoff / 4
+			jitteredBackoff := backoff - quarter + time.Duration(rand.Int64N(int64(quarter*2+1)))
+			t := time.NewTimer(jitteredBackoff)
 			select {
 			case <-t.C:
 			case <-ctx.Done():
