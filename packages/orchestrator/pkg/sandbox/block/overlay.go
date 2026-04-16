@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sync/atomic"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -70,10 +71,6 @@ func (o *Overlay) WriteAt(p []byte, off int64) (int, error) {
 	return o.cache.WriteAt(p, off)
 }
 
-// ReadSlices returns per-block mmap slices for the range [off, off+length).
-// Each slice references mmap'd memory from either the overlay cache (for blocks
-// written by the guest) or the backing device cache (for template blocks).
-// dest is reused across calls to avoid allocations.
 func (o *Overlay) ReadSlices(ctx context.Context, off, length int64, dest [][]byte) ([][]byte, error) {
 	if off%o.blockSize != 0 {
 		return nil, fmt.Errorf("offset %d is not aligned to block size %d", off, o.blockSize)
@@ -111,10 +108,16 @@ func (o *Overlay) ReadSlices(ctx context.Context, off, length int64, dest [][]by
 	return dest, nil
 }
 
-// WriteSlice returns a writable reference to the overlay cache's mmap.
-// See Cache.WriteSlice for usage details.
-func (o *Overlay) WriteSlice(off, length int64) ([]byte, func(bool), error) {
-	return o.cache.WriteSlice(off, length)
+func (o *Overlay) WriteFrom(r io.Reader, off, length int64) error {
+	dest, done, err := o.cache.WriteSlice(off, length)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.ReadFull(r, dest)
+	done(err == nil)
+
+	return err
 }
 
 func (o *Overlay) Size(_ context.Context) (int64, error) {

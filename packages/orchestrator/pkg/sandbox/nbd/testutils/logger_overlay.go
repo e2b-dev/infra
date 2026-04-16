@@ -3,6 +3,7 @@ package testutils
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
@@ -77,6 +78,6 @@ func (l *LoggerOverlay) ReadSlices(ctx context.Context, off, length int64, dest 
 	return l.overlay.ReadSlices(ctx, off, length, dest)
 }
 
-func (l *LoggerOverlay) WriteSlice(off, length int64) ([]byte, func(bool), error) {
-	return l.overlay.WriteSlice(off, length)
+func (l *LoggerOverlay) WriteFrom(r io.Reader, off, length int64) error {
+	return l.overlay.WriteFrom(r, off, length)
 }

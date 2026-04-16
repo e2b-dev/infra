@@ -1,16 +1,20 @@
 package nbd
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -19,26 +23,29 @@ var (
 		metric.WithDescription("Duration of NBD dispatch handler ReadAt calls to the backend."),
 		metric.WithUnit("ms"),
 	))
+	nbdReadConncurent = utils.Must(meter.Int64UpDownCounter("orchestrator.nbd.dispatch.read.concurrent",
+		metric.WithDescription("Number of NBD read requests currently waiting for a response. A sustained high value indicates reads stuck in kernel I/O."),
+		metric.WithUnit("{read}"),
+	))
 	nbdReadSuccess   = metric.WithAttributeSet(attribute.NewSet(attribute.String("result", "success")))
 	nbdReadFailure   = metric.WithAttributeSet(attribute.NewSet(attribute.String("result", "failure")))
 	nbdReadCancelled = metric.WithAttributeSet(attribute.NewSet(attribute.String("result", "cancelled")))
 )
 
+var ErrShuttingDown = errors.New("shutting down. Cannot serve any new requests")
+
 type Provider interface {
 	ReadSlices(ctx context.Context, off, length int64, dest [][]byte) ([][]byte, error)
-	WriteSlice(off, length int64) (dest []byte, done func(commit bool), err error)
+	WriteFrom(r io.Reader, off, length int64) error
 	Size(ctx context.Context) (int64, error)
 	BlockSize() int64
 }
 
 const (
-	// With zero-copy writes going directly into the mmap, the dispatch buffer
-	// only needs to hold NBD request headers (28 bytes each).
+	// Only needs to hold NBD request headers (28 bytes each).
 	dispatchBufferSize = 4 * 1024
-
 	// https://sourceforge.net/p/nbd/mailman/message/35081223/
-	// 32 MB is the maximum request size universally supported by the kernel NBD driver.
-	// Reject anything larger to protect against OOM from a corrupted header.
+	// 32MB is the maximum buffer size for a single request that should be universally supported.
 	dispatchMaxWriteBufferSize = 32 * 1024 * 1024
 )
 
@@ -73,35 +80,53 @@ type Response struct {
 }
 
 type Dispatch struct {
-	fp       io.ReadWriter
-	respHdr  [16]byte
-	prov     Provider
-	readBufs [][]byte // persistent per-block slice storage, reused across reads
-	readBuf  []byte   // reused across reads for contiguous response data
-	writeBuf []byte   // reused across writes to avoid per-request allocation
-	buffer   []byte
+	fp               io.ReadWriter
+	responseHeader   []byte
+	writeLock        sync.Mutex
+	prov             Provider
+	pendingResponses sync.WaitGroup
+	shuttingDown     bool
+	shuttingDownLock sync.Mutex
+	fatal            chan error
 }
 
 func NewDispatch(fp io.ReadWriter, prov Provider) *Dispatch {
-	return &Dispatch{
-		fp:     fp,
-		prov:   prov,
-		buffer: make([]byte, dispatchBufferSize),
+	d := &Dispatch{
+		responseHeader: make([]byte, 16),
+		fp:             fp,
+		prov:           prov,
+		fatal:          make(chan error, 1),
 	}
+
+	binary.BigEndian.PutUint32(d.responseHeader, NBDResponseMagic)
+
+	return d
 }
 
-func (d *Dispatch) Drain() {}
+func (d *Dispatch) Drain() {
+	d.shuttingDownLock.Lock()
+	d.shuttingDown = true
+	defer d.shuttingDownLock.Unlock()
 
+	// Wait for any pending responses
+	d.pendingResponses.Wait()
+}
+
+/**
+ * Write a response...
+ *
+ */
 func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []byte) error {
-	binary.BigEndian.PutUint32(d.respHdr[0:4], NBDResponseMagic)
-	binary.BigEndian.PutUint32(d.respHdr[4:8], respError)
-	binary.BigEndian.PutUint64(d.respHdr[8:16], respHandle)
+	d.writeLock.Lock()
+	defer d.writeLock.Unlock()
 
-	_, err := d.fp.Write(d.respHdr[:])
+	binary.BigEndian.PutUint32(d.responseHeader[4:], respError)
+	binary.BigEndian.PutUint64(d.responseHeader[8:], respHandle)
+
+	_, err := d.fp.Write(d.responseHeader)
 	if err != nil {
 		return err
 	}
-
 	if len(chunk) > 0 {
 		_, err = d.fp.Write(chunk)
 		if err != nil {
@@ -112,12 +137,14 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
 	return nil
 }
 
-func (d *Dispatch) writeReadResponse(respHandle uint64, slices [][]byte) error {
-	binary.BigEndian.PutUint32(d.respHdr[0:4], NBDResponseMagic)
-	binary.BigEndian.PutUint32(d.respHdr[4:8], 0)
-	binary.BigEndian.PutUint64(d.respHdr[8:16], respHandle)
+func (d *Dispatch) writeSlices(respHandle uint64, slices [][]byte) error {
+	d.writeLock.Lock()
+	defer d.writeLock.Unlock()
 
-	_, err := d.fp.Write(d.respHdr[:])
+	binary.BigEndian.PutUint32(d.responseHeader[4:], 0)
+	binary.BigEndian.PutUint64(d.responseHeader[8:], respHandle)
+
+	_, err := d.fp.Write(d.responseHeader)
 	if err != nil {
 		return err
 	}
@@ -132,11 +159,11 @@ func (d *Dispatch) writeReadResponse(respHandle uint64, slices [][]byte) error {
 }
 
 /**
- * This dispatches incoming NBD requests synchronously to the provider.
+ * This dispatches incoming NBD requests sequentially to the provider.
  *
  */
 func (d *Dispatch) Handle(ctx context.Context) error {
-	buffer := d.buffer
+	buffer := make([]byte, dispatchBufferSize)
 	wp := 0
 
 	request := Request{}
@@ -151,7 +178,10 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 		// Now go through processing complete packets
 		rp := 0
 		for {
+			// Check if there is a fatal error from an async read/write to return
 			select {
+			case err := <-d.fatal:
+				return err
 			case <-ctx.Done():
 				return ctx.Err()
 			default:
@@ -162,7 +192,7 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 				break // Try again when we have more data...
 			}
 
-			// We can read the header...
+			// We can read the neader...
 
 			header := buffer[rp : rp+28]
 			request.Magic = binary.BigEndian.Uint32(header)
@@ -189,40 +219,20 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 			case NBDCmdWrite:
 				rp += 28
 
-				writeLen := int(request.Length)
-
-				if writeLen > dispatchMaxWriteBufferSize {
-					return fmt.Errorf("nbd write request length %d exceeds maximum %d", writeLen, dispatchMaxWriteBufferSize)
+				if request.Length > dispatchMaxWriteBufferSize {
+					return fmt.Errorf("nbd write request length %d exceeds maximum %d", request.Length, dispatchMaxWriteBufferSize)
 				}
 
-				// Ensure write buffer is large enough
-				if cap(d.writeBuf) < writeLen {
-					d.writeBuf = make([]byte, writeLen)
-				}
-				writeBuf := d.writeBuf[:writeLen]
+				// Feed leftover buffer bytes + socket into the provider, which
+				// reads directly into the mmap page — zero intermediate buffer.
+				leftover := min(wp-rp, int(request.Length))
+				reader := io.MultiReader(bytes.NewReader(buffer[rp:rp+leftover]), d.fp)
+				rp += leftover
 
-				// Copy any data already in the dispatch buffer
-				dataCopied := copy(writeBuf, buffer[rp:wp])
-				rp += dataCopied
-
-				// Read remaining data from socket
-				for dataCopied < writeLen {
-					n, err := d.fp.Read(writeBuf[dataCopied:])
-					if err != nil {
-						return fmt.Errorf("nbd write read error: %w", err)
-					}
-
-					dataCopied += n
-				}
-
-				// Acquire mmap lock briefly to copy data in
-				dest, done, err := d.prov.WriteSlice(int64(request.From), int64(request.Length))
+				err := d.prov.WriteFrom(reader, int64(request.From), int64(request.Length))
 				if err != nil {
-					return fmt.Errorf("nbd write slice error: %w", err)
+					return fmt.Errorf("nbd write error: %w", err)
 				}
-
-				copy(dest, writeBuf)
-				done(true)
 
 				err = d.writeResponse(0, request.Handle, nil)
 				if err != nil {
@@ -230,7 +240,7 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 				}
 			case NBDCmdTrim:
 				rp += 28
-				err := d.writeResponse(0, request.Handle, nil)
+				err := d.cmdTrim(request.Handle, request.From, request.Length)
 				if err != nil {
 					return err
 				}
@@ -247,35 +257,95 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 }
 
 func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
-	start := time.Now()
+	d.shuttingDownLock.Lock()
+	if d.shuttingDown {
+		d.shuttingDownLock.Unlock()
 
-	slices, err := d.prov.ReadSlices(ctx, int64(cmdFrom), int64(cmdLength), d.readBufs)
-	d.readBufs = slices
+		return ErrShuttingDown
+	}
 
-	attrs := nbdReadSuccess
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			attrs = nbdReadCancelled
-		} else {
-			attrs = nbdReadFailure
+	d.pendingResponses.Add(1)
+	d.shuttingDownLock.Unlock()
+
+	performRead := func(handle uint64, from uint64, length uint32) error {
+		// buffered to avoid goroutine leak
+		errchan := make(chan error, 1)
+
+		var slices [][]byte
+
+		nbdReadConncurent.Add(ctx, 1)
+
+		go func() {
+			start := time.Now()
+			var err error
+
+			slices, err = d.prov.ReadSlices(ctx, int64(from), int64(length), nil)
+
+			attrs := nbdReadSuccess
+			if err != nil {
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					attrs = nbdReadCancelled
+				} else {
+					attrs = nbdReadFailure
+				}
+			}
+
+			nbdReadDuration.Record(ctx, time.Since(start).Milliseconds(), attrs)
+			errchan <- err
+		}()
+
+		// Wait until either the ReadAt completed, or our context is cancelled...
+		var readErr error
+		select {
+		case <-ctx.Done():
+			readErr = ctx.Err()
+		case readErr = <-errchan:
 		}
+
+		nbdReadConncurent.Add(ctx, -1)
+
+		if readErr != nil {
+			return d.writeResponse(1, handle, []byte{})
+		}
+
+		// read was successful — write each mmap slice directly to the socket
+		return d.writeSlices(handle, slices)
 	}
 
-	nbdReadDuration.Record(ctx, time.Since(start).Milliseconds(), attrs)
+	go func() {
+		err := performRead(cmdHandle, cmdFrom, cmdLength)
+		if err != nil {
+			select {
+			case d.fatal <- err:
+			default:
+				logger.L().Error(ctx, "nbd error cmd read", zap.Error(err))
+			}
+		}
+		d.pendingResponses.Done()
+	}()
 
+	return nil
+}
+
+/**
+ * cmdTrim
+ *
+ */
+func (d *Dispatch) cmdTrim(handle uint64, _ uint64, _ uint32) error {
+	// TODO: Ask the provider
+	/*
+		e := d.prov.Trim(from, length)
+		if e != storage.StorageError_SUCCESS {
+			err := d.writeResponse(1, handle, []byte{})
+			if err != nil {
+				return err
+			}
+		} else {
+	*/
+	err := d.writeResponse(0, handle, []byte{})
 	if err != nil {
-		return d.writeResponse(1, cmdHandle, nil)
+		return err
 	}
-
-	readLen := int(cmdLength)
-	if cap(d.readBuf) < readLen {
-		d.readBuf = make([]byte, readLen)
-	}
-	buf := d.readBuf[:readLen]
-	off := 0
-	for _, s := range slices {
-		off += copy(buf[off:], s)
-	}
-
-	return d.writeResponse(0, cmdHandle, buf)
+	//	}
+	return nil
 }

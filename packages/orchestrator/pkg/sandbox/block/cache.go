@@ -341,10 +341,6 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	return n, nil
 }
 
-// WriteSlice returns a writable reference to the cache's mmap at [off, off+length).
-// The caller writes into the returned slice, then calls done exactly once:
-// done(true) marks the blocks as dirty and releases the write lock;
-// done(false) releases the write lock without marking dirty (use on write failure).
 func (c *Cache) WriteSlice(off, length int64) ([]byte, func(bool), error) {
 	c.mu.Lock()
 
