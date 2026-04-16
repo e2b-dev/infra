@@ -119,7 +119,7 @@ module "api" {
   analytics_collector_host                = trimspace(data.google_secret_manager_secret_version.analytics_collector_host.secret_data)
   analytics_collector_api_token           = trimspace(data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data)
   nomad_acl_token                         = var.nomad_acl_token_secret
-  admin_token                             = data.google_secret_manager_secret_version.api_admin_token.secret_data
+  admin_token                             = trimspace(data.google_secret_manager_secret_version.api_admin_token.secret_data)
   redis_url                               = local.redis_url
   redis_cluster_url                       = local.redis_cluster_url
   redis_tls_ca_base64                     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
@@ -155,7 +155,7 @@ module "dashboard_api" {
 
   image = data.google_artifact_registry_docker_image.dashboard_api_image[0].self_link
 
-  admin_token                             = data.google_secret_manager_secret_version.dashboard_api_admin_token.secret_data
+  admin_token                             = trimspace(data.google_secret_manager_secret_version.dashboard_api_admin_token.secret_data)
   postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   auth_db_connection_string               = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   auth_db_read_replica_connection_string  = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
