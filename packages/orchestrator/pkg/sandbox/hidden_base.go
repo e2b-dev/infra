@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -26,24 +27,27 @@ func (s *Sandbox) setEnvdAccessToken(req *http.Request) {
 	}
 }
 
-// requestEnvdMountOverlay tells the guest agent to mount the overlay
-// upper device (/dev/vdb), set up OverlayFS merging it with the rootfs,
-// and pivot_root into the overlay. After this, the user sees a single
-// writable filesystem.
-func (s *Sandbox) requestEnvdMountOverlay(ctx context.Context) error {
+// requestEnvdMountOverlay tells the guest agent to create a loop device
+// from the overlay region of /dev/vda, mount it as ext4, set up OverlayFS,
+// and pivot_root into it. overlayOffsetBytes is the byte offset within
+// /dev/vda where the overlay ext4 region starts (= rootfs size).
+func (s *Sandbox) requestEnvdMountOverlay(ctx context.Context, overlayOffsetBytes int64) error {
 	ctx, span := tracer.Start(ctx, "envd-mount-overlay")
 	defer span.End()
 
 	address := fmt.Sprintf("http://%s:%d/fs-snapshot/mount-overlay", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
 
+	body := fmt.Sprintf(`{"overlay_offset_bytes":%d}`, overlayOffsetBytes)
+
 	reqCtx, cancel := context.WithTimeout(ctx, fsMountTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, address, nil)
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, address, strings.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
+	req.Header.Set("Content-Type", "application/json")
 	s.setEnvdAccessToken(req)
 
 	resp, err := sandboxHttpClient.Do(req)
@@ -53,8 +57,8 @@ func (s *Sandbox) requestEnvdMountOverlay(ctx context.Context) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("mount-overlay returned %d: %s", resp.StatusCode, string(body))
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("mount-overlay returned %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	telemetry.ReportEvent(ctx, "overlay mounted and pivoted")

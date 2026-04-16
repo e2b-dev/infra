@@ -335,10 +335,14 @@ func (f *Factory) ResumeFSSandbox(
 
 	cleanup.AddPriority(ctx, sbx.Stop)
 
-	// Tell envd to mount disk B (overlay upper) and set up OverlayFS.
-	// Disk B's ext4 is mounted fresh — all metadata read from the CoW device,
-	// zero stale state since it was never mounted in the hidden base.
-	if err := sbx.requestEnvdMountOverlay(ctx); err != nil {
+	// Tell envd to mount the overlay region of /dev/vda.
+	// The overlay starts right after the rootfs in the composite device.
+	rootfsSize, err := rootFS.Size(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rootfs size: %w", err)
+	}
+
+	if err := sbx.requestEnvdMountOverlay(ctx, rootfsSize); err != nil {
 		return nil, fmt.Errorf("mount-overlay failed: %w", err)
 	}
 	telemetry.ReportEvent(ctx, "overlay mounted with user files")

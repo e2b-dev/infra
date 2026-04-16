@@ -3,6 +3,7 @@ package fssnapshot
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"syscall"
 
@@ -10,8 +11,8 @@ import (
 )
 
 const (
-	// UpperDev is the block device for the overlay upper layer (partition 2 / disk B).
-	UpperDev = "/dev/vdb"
+	blockDev = "/dev/vda"
+	loopDev  = "/dev/loop0"
 
 	upperMount   = "/mnt/upper"
 	overlayMount = "/mnt/overlay"
@@ -23,27 +24,35 @@ const (
 
 var pseudoFS = []string{"/proc", "/sys", "/dev", "/run"}
 
-// SetupOverlay mounts the overlay upper device, creates the OverlayFS
-// merge of the current rootfs (lower) with the upper device, and pivots
-// into the overlay so all processes see a single writable filesystem.
+// SetupOverlay carves out the overlay region from the block device using
+// losetup, mounts it as ext4, creates the OverlayFS merge with the current
+// rootfs, and pivots into it.
 //
-// Call this after restoring a hidden base snapshot or on normal sandbox
-// start. The lower rootfs (partition 1 / disk A) must already be mounted
-// as the current root.
-func SetupOverlay() error {
-	for _, dir := range []string{upperMount, overlayMount, lowerMount, upperDataDir, upperWorkDir} {
+// overlayOffsetBytes is the byte offset where the overlay ext4 starts within
+// /dev/vda (= rootfs size). The orchestrator passes this in the request.
+func SetupOverlay(overlayOffsetBytes int64) error {
+	for _, dir := range []string{upperMount, overlayMount, lowerMount} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("mkdir %s: %w", dir, err)
 		}
 	}
 
-	if err := unix.Mount(UpperDev, upperMount, "ext4", unix.MS_NOATIME, ""); err != nil {
-		return fmt.Errorf("mount %s on %s: %w", UpperDev, upperMount, err)
+	// Create a loop device that exposes the overlay region of /dev/vda
+	cmd := exec.Command("losetup",
+		"--offset", fmt.Sprintf("%d", overlayOffsetBytes),
+		loopDev, blockDev,
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("losetup: %w (%s)", err, string(out))
+	}
+
+	if err := unix.Mount(loopDev, upperMount, "ext4", unix.MS_NOATIME, ""); err != nil {
+		return fmt.Errorf("mount %s on %s: %w", loopDev, upperMount, err)
 	}
 
 	for _, dir := range []string{upperDataDir, upperWorkDir} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return fmt.Errorf("mkdir %s on upper: %w", dir, err)
+			return fmt.Errorf("mkdir %s: %w", dir, err)
 		}
 	}
 
@@ -78,9 +87,7 @@ func SetupOverlay() error {
 }
 
 // TeardownOverlay reverses SetupOverlay: pivots back to the original
-// rootfs (partition 1), moves pseudo-filesystems back, and unmounts the
-// overlay and the upper device. Call this before FS-only pause so the
-// host can safely persist only the upper device data.
+// rootfs, unmounts the overlay, upper mount, and loop device.
 //
 // The caller should kill user processes and sync before calling this.
 func TeardownOverlay() error {
@@ -105,6 +112,12 @@ func TeardownOverlay() error {
 
 	if err := unix.Unmount(upperMount, 0); err != nil {
 		return fmt.Errorf("unmount upper: %w", err)
+	}
+
+	// Detach the loop device
+	cmd := exec.Command("losetup", "-d", loopDev)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("losetup detach: %w (%s)", err, string(out))
 	}
 
 	return nil

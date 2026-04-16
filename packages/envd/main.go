@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -190,7 +191,20 @@ func main() {
 	m.Post("/fs-snapshot/mount-overlay", func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 
-		if err := fssnapshot.SetupOverlay(); err != nil {
+		var req struct {
+			OverlayOffsetBytes int64 `json:"overlay_offset_bytes"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, fmt.Sprintf("bad request: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		if req.OverlayOffsetBytes <= 0 {
+			http.Error(w, "overlay_offset_bytes must be > 0", http.StatusBadRequest)
+			return
+		}
+
+		if err := fssnapshot.SetupOverlay(req.OverlayOffsetBytes); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
