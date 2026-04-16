@@ -461,6 +461,85 @@ func (c *Cache) Path() string {
 	return c.filePath
 }
 
+// NewCacheFromMemfd creates a cache by copying guest memory directly from a
+// memfd file descriptor (Firecracker with memfd-backed guest RAM). The memfd
+// is mmap'd and dirty ranges are copied straight into the cache mmap — no
+// intermediate buffer, no process_vm_readv. After each 2 MiB chunk is copied,
+// the source region is hole-punched to free the hugepage immediately.
+func NewCacheFromMemfd(
+	ctx context.Context,
+	blockSize int64,
+	filePath string,
+	memfd int,
+	ranges []Range,
+) (*Cache, error) {
+	size := GetSize(ranges)
+
+	cache, err := NewCache(size, blockSize, filePath, false)
+	if err != nil {
+		return nil, err
+	}
+
+	if size == 0 {
+		return cache, nil
+	}
+
+	err = cache.copyFromMemfd(ctx, memfd, ranges)
+	if err != nil {
+		return nil, fmt.Errorf("failed to copy from memfd: %w", errors.Join(err, cache.Close()))
+	}
+
+	return cache, nil
+}
+
+// punchSize is the granularity at which we punch holes in the memfd after
+// copying. Aligned to 2 MiB hugepages so each punch frees a whole hugepage.
+const punchSize = 2 * 1024 * 1024
+
+func (c *Cache) copyFromMemfd(ctx context.Context, memfd int, ranges []Range) error {
+	var st unix.Stat_t
+	if err := unix.Fstat(memfd, &st); err != nil {
+		return fmt.Errorf("fstat memfd: %w", err)
+	}
+
+	src, err := unix.Mmap(memfd, 0, int(st.Size), unix.PROT_READ, unix.MAP_SHARED)
+	if err != nil {
+		return fmt.Errorf("mmap memfd: %w", err)
+	}
+	defer unix.Munmap(src)
+
+	var cacheOff int64
+
+	for _, r := range ranges {
+		srcOff := r.Start
+		remaining := r.Size
+
+		for remaining > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			n := min(remaining, punchSize)
+			copy((*c.mmap)[cacheOff:cacheOff+n], src[srcOff:srcOff+n])
+
+			// Free the hugepage now that data is in the cache file.
+			_ = unix.Fallocate(memfd,
+				unix.FALLOC_FL_PUNCH_HOLE|unix.FALLOC_FL_KEEP_SIZE,
+				srcOff, n)
+
+			srcOff += n
+			cacheOff += n
+			remaining -= n
+		}
+
+		c.setIsCached(cacheOff-r.Size, r.Size)
+	}
+
+	return nil
+}
+
 func NewCacheFromProcessMemory(
 	ctx context.Context,
 	blockSize int64,
