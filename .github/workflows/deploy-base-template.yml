@@ -15,7 +15,7 @@ on:
         description: Skip build cache
         required: false
         type: boolean
-        default: false
+        default: true
 
 concurrency:
   group: Base-Template-Release-${{ github.ref }}-${{ inputs.target_environment }}
@@ -45,4 +45,6 @@ jobs:
       - name: Build template
         working-directory: ./packages/shared/scripts
         run: bun run ./build.prod.ts
+        env:
+          SKIP_CACHE: ${{ inputs.skip_cache }}
 

@@ -5,7 +5,7 @@ async function main() {
   await Template.build(template, {
     alias: "base",
     memoryMB: 512,
-    skipCache: true,
+    skipCache: process.env.SKIP_CACHE !== 'false',
     onBuildLogs: (it) => console.log(it.toString()),
   });
 }
