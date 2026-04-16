@@ -33,12 +33,12 @@ const (
 // via ResolveCompressConfig. Zero value means compression disabled.
 type CompressConfig struct {
 	Enabled            bool   `env:"COMPRESS_ENABLED"              envDefault:"false"`
-	Type               string `env:"COMPRESS_TYPE"                 envDefault:"zstd"`
-	Level              int    `env:"COMPRESS_LEVEL"                envDefault:"2"`
-	FrameSizeKB        int    `env:"COMPRESS_FRAME_SIZE_KB"        envDefault:"2048"`
-	MinPartSizeMB      int    `env:"COMPRESS_MIN_PART_SIZE_MB"     envDefault:"50"`
-	FrameEncodeWorkers int    `env:"COMPRESS_FRAME_ENCODE_WORKERS" envDefault:"4"`
-	EncoderConcurrency int    `env:"COMPRESS_ENCODER_CONCURRENCY"  envDefault:"1"`
+	Type               string `env:"COMPRESS_TYPE"                 envDefault:""`
+	Level              int    `env:"COMPRESS_LEVEL"                envDefault:"0"`
+	FrameSizeKB        int    `env:"COMPRESS_FRAME_SIZE_KB"        envDefault:"0"`
+	MinPartSizeMB      int    `env:"COMPRESS_MIN_PART_SIZE_MB"     envDefault:"0"`
+	FrameEncodeWorkers int    `env:"COMPRESS_FRAME_ENCODE_WORKERS" envDefault:"0"`
+	EncoderConcurrency int    `env:"COMPRESS_ENCODER_CONCURRENCY"  envDefault:"0"`
 }
 
 // CompressionType returns the parsed CompressionType.

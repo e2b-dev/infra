@@ -40,7 +40,7 @@ type NoDiff struct{}
 var _ Diff = (*NoDiff)(nil)
 
 func (n *NoDiff) CachePath() (string, error) {
-	return "", NoDiffError{}
+	return "", nil
 }
 
 func (n *NoDiff) Slice(_ context.Context, _, _ int64, _ *storage.FrameTable) ([]byte, error) {

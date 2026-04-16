@@ -322,12 +322,12 @@ func GetTrackedTemplatesSet(ctx context.Context, ff *Client) map[string]struct{}
 // (no uncompressed fallback). When false, exclusively uncompressed with V3 headers.
 var CompressConfigFlag = newJSONFlag("compress-config", ldvalue.FromJSONMarshal(map[string]any{
 	"compressBuilds":     false,
-	"compressionType":    "zstd",
-	"compressionLevel":   2,
-	"frameSizeKB":        2048,
-	"minPartSizeMB":      50,
-	"frameEncodeWorkers": 4,
-	"encoderConcurrency": 1,
+	"compressionType":    "",
+	"compressionLevel":   0,
+	"frameSizeKB":        0,
+	"minPartSizeMB":      0,
+	"frameEncodeWorkers": 0,
+	"encoderConcurrency": 0,
 }))
 
 // TCPFirewallEgressThrottleConfig controls per-sandbox egress throttling via Firecracker's

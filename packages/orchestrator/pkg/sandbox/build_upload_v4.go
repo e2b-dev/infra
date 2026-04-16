@@ -6,21 +6,18 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 // compressedUploader implements BuildUploader for V4 (compressed) builds.
-// Per-file config is resolved in UploadData (tier 2) using the upload-level
-// config from NewBuildUploader (tier 1) as the base.
+// Per-file configs are resolved in NewBuildUploader and passed in directly.
 type compressedUploader struct {
 	buildUploader
 
-	pending *PendingBuildInfo
-	cfg     storage.CompressConfig
-	ff      *featureflags.Client // to override cfg on a per-file basis in UploadData
-	useCase string
+	pending   *PendingBuildInfo
+	memCfg    storage.CompressConfig
+	rootfsCfg storage.CompressConfig
 }
 
 func (c *compressedUploader) UploadData(ctx context.Context) error {
@@ -34,21 +31,17 @@ func (c *compressedUploader) UploadData(ctx context.Context) error {
 		return fmt.Errorf("error getting rootfs diff path: %w", err)
 	}
 
-	// Tier 2: resolve per file with use-case and file-type context.
-	memCfg := storage.ResolveCompressConfig(ctx, c.cfg, c.ff, storage.MemfileName, c.useCase)
-	rootfsCfg := storage.ResolveCompressConfig(ctx, c.cfg, c.ff, storage.RootfsName, c.useCase)
-
 	eg, ctx := errgroup.WithContext(ctx)
 
 	if memfilePath != "" {
 		eg.Go(func() error {
-			if !memCfg.IsCompressionEnabled() {
+			if !c.memCfg.IsCompressionEnabled() {
 				_, _, err := storage.UploadFramed(ctx, c.persistence, c.paths.Memfile(), storage.MemfileObjectType, memfilePath, storage.CompressConfig{})
 
 				return err
 			}
 
-			ft, checksum, err := storage.UploadFramed(ctx, c.persistence, c.paths.MemfileCompressed(memCfg.CompressionType()), storage.MemfileObjectType, memfilePath, memCfg)
+			ft, checksum, err := storage.UploadFramed(ctx, c.persistence, c.paths.MemfileCompressed(c.memCfg.CompressionType()), storage.MemfileObjectType, memfilePath, c.memCfg)
 			if err != nil {
 				return fmt.Errorf("compressed memfile upload: %w", err)
 			}
@@ -61,13 +54,13 @@ func (c *compressedUploader) UploadData(ctx context.Context) error {
 
 	if rootfsPath != "" {
 		eg.Go(func() error {
-			if !rootfsCfg.IsCompressionEnabled() {
+			if !c.rootfsCfg.IsCompressionEnabled() {
 				_, _, err := storage.UploadFramed(ctx, c.persistence, c.paths.Rootfs(), storage.RootFSObjectType, rootfsPath, storage.CompressConfig{})
 
 				return err
 			}
 
-			ft, checksum, err := storage.UploadFramed(ctx, c.persistence, c.paths.RootfsCompressed(rootfsCfg.CompressionType()), storage.RootFSObjectType, rootfsPath, rootfsCfg)
+			ft, checksum, err := storage.UploadFramed(ctx, c.persistence, c.paths.RootfsCompressed(c.rootfsCfg.CompressionType()), storage.RootFSObjectType, rootfsPath, c.rootfsCfg)
 			if err != nil {
 				return fmt.Errorf("compressed rootfs upload: %w", err)
 			}

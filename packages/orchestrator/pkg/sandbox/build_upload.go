@@ -24,11 +24,10 @@ type BuildUploader interface {
 
 // NewBuildUploader creates a BuildUploader for the given snapshot.
 //
-// Compression config is resolved in two tiers:
-//  1. Here: LD is evaluated without use-case or file-type context to get the
-//     upload-level default (targeted by team/env only). If nil, V3 (uncompressed).
-//  2. Inside UploadData: LD is re-evaluated per file with use-case and file-type
-//     context, using the upload-level config as the base.
+// Compression config is resolved per file (memfile, rootfs) using the base
+// config, feature flags, and use case. If neither file has compression enabled,
+// returns a V3 (uncompressed) uploader; otherwise a V4 (compressed) uploader
+// with the two resolved configs.
 //
 // pending is shared across layers for multi-layer builds; nil is fine for
 // single-layer.
@@ -39,8 +38,10 @@ func NewBuildUploader(ctx context.Context, snapshot *Snapshot, persistence stora
 		snapshot:    snapshot,
 	}
 
-	cfg = storage.ResolveCompressConfig(ctx, cfg, ff, "", useCase)
-	if !cfg.IsCompressionEnabled() {
+	memCfg := storage.ResolveCompressConfig(ctx, cfg, ff, storage.MemfileName, useCase)
+	rootfsCfg := storage.ResolveCompressConfig(ctx, cfg, ff, storage.RootfsName, useCase)
+
+	if !memCfg.IsCompressionEnabled() && !rootfsCfg.IsCompressionEnabled() {
 		return &uncompressedUploader{buildUploader: base}
 	}
 
@@ -51,9 +52,8 @@ func NewBuildUploader(ctx context.Context, snapshot *Snapshot, persistence stora
 	return &compressedUploader{
 		buildUploader: base,
 		pending:       pending,
-		cfg:           cfg,
-		ff:            ff,
-		useCase:       useCase,
+		memCfg:        memCfg,
+		rootfsCfg:     rootfsCfg,
 	}
 }
 
