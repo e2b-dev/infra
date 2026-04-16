@@ -136,12 +136,12 @@ func (s *peerSeekable) StoreData(ctx context.Context, data []byte) error {
 		return err
 	}
 
-	ds, ok := fallback.(storage.DataStorer)
-	if !ok {
-		return fmt.Errorf("base storage (%T) does not support StoreData", fallback)
+	if ds, ok := fallback.(storage.DataStorer); ok {
+		return ds.StoreData(ctx, data)
 	}
 
-	return ds.StoreData(ctx, data)
+	// Fallback: write data to a temp file and use StoreFile.
+	return storage.StoreDataViaFile(ctx, fallback, data)
 }
 
 // openPeerSeekableStream opens a ReadAtBuildSeekable stream, checks peer availability,

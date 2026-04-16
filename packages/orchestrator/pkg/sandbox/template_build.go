@@ -60,6 +60,10 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 }
 
 func (t *TemplateBuild) uploadDiff(ctx context.Context, diff build.Diff, path string, objectType storage.SeekableObjectType) error {
+	if _, ok := diff.(*build.NoDiff); ok {
+		return nil
+	}
+
 	uploaded, err := t.tryZeroCopyUpload(ctx, diff, path, objectType)
 	if err != nil {
 		return err

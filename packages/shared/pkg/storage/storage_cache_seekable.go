@@ -268,12 +268,12 @@ func (c *cachedSeekable) Size(ctx context.Context) (n int64, e error) {
 
 // StoreData forwards to the inner storage provider for zero-copy upload from mmap'd data.
 func (c *cachedSeekable) StoreData(ctx context.Context, data []byte) error {
-	ds, ok := c.inner.(DataStorer)
-	if !ok {
-		return fmt.Errorf("inner storage (%T) does not support StoreData", c.inner)
+	if ds, ok := c.inner.(DataStorer); ok {
+		return ds.StoreData(ctx, data)
 	}
 
-	return ds.StoreData(ctx, data)
+	// Fallback: write data to a temp file and use StoreFile.
+	return StoreDataViaFile(ctx, c.inner, data)
 }
 
 func (c *cachedSeekable) StoreFile(ctx context.Context, path string) (e error) {

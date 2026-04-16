@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -114,6 +115,29 @@ type Seekable interface {
 // for zero-copy upload directly from an in-memory buffer (e.g. mmap'd data).
 type DataStorer interface {
 	StoreData(ctx context.Context, data []byte) error
+}
+
+// StoreDataViaFile writes data to a temporary file and uploads it via StoreFile.
+// Used as a fallback when the underlying Seekable does not implement DataStorer.
+func StoreDataViaFile(ctx context.Context, s SeekableWriter, data []byte) error {
+	f, err := os.CreateTemp("", "store-data-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file for StoreData fallback: %w", err)
+	}
+
+	path := f.Name()
+	defer os.Remove(path)
+
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return fmt.Errorf("failed to write temp file for StoreData fallback: %w", err)
+	}
+
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file for StoreData fallback: %w", err)
+	}
+
+	return s.StoreFile(ctx, path)
 }
 
 // StorageConfig holds the configuration for creating a storage provider.
