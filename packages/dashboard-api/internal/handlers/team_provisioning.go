@@ -40,11 +40,12 @@ type provisionedTeam struct {
 	BlockedReason *string
 }
 
-func (s *APIStore) PostAdminUsersUserIdBootstrap(c *gin.Context, userId api.UserId) {
+func (s *APIStore) PostAdminUsersBootstrap(c *gin.Context) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "bootstrap user")
 
-	team, err := s.bootstrapUser(ctx, userId)
+	userID := auth.MustGetUserID(c)
+	team, err := s.bootstrapUser(ctx, userID)
 	if err != nil {
 		s.handleProvisioningError(ctx, c, "bootstrap user", err)
 
