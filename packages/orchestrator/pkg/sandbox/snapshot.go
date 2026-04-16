@@ -6,6 +6,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -21,53 +22,23 @@ type Snapshot struct {
 	cleanup *Cleanup
 }
 
+// Upload uploads snapshot files to storage and returns serialized V4 header
+// bytes for peer transition (nil for uncompressed builds).
 func (s *Snapshot) Upload(
 	ctx context.Context,
 	persistence storage.StorageProvider,
 	paths storage.Paths,
-) error {
-	var memfilePath *string
-	switch r := s.MemfileDiff.(type) {
-	case *build.NoDiff:
-	default:
-		memfileLocalPath, err := r.CachePath()
-		if err != nil {
-			return fmt.Errorf("error getting memfile diff path: %w", err)
-		}
+	cfg storage.CompressConfig,
+	ff *featureflags.Client,
+	useCase string,
+) (memfileHdr, rootfsHdr []byte, err error) {
+	uploader := NewBuildUploader(ctx, s, persistence, paths, cfg, ff, useCase, nil)
 
-		memfilePath = &memfileLocalPath
+	if err := uploader.UploadData(ctx); err != nil {
+		return nil, nil, fmt.Errorf("error uploading template files: %w", err)
 	}
 
-	var rootfsPath *string
-	switch r := s.RootfsDiff.(type) {
-	case *build.NoDiff:
-	default:
-		rootfsLocalPath, err := r.CachePath()
-		if err != nil {
-			return fmt.Errorf("error getting rootfs diff path: %w", err)
-		}
-
-		rootfsPath = &rootfsLocalPath
-	}
-
-	templateBuild := NewTemplateBuild(
-		s.MemfileDiffHeader,
-		s.RootfsDiffHeader,
-		persistence,
-		paths,
-	)
-
-	if err := templateBuild.Upload(
-		ctx,
-		s.Metafile.Path(),
-		s.Snapfile.Path(),
-		memfilePath,
-		rootfsPath,
-	); err != nil {
-		return fmt.Errorf("error uploading template files: %w", err)
-	}
-
-	return nil
+	return uploader.FinalizeHeaders(ctx)
 }
 
 func (s *Snapshot) Close(ctx context.Context) error {

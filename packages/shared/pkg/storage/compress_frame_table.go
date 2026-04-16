@@ -20,57 +20,16 @@ const (
 	maxDeserializedFrames = 1024 * 1024
 )
 
-// # Compression: files, frames, and two address spaces (U/C)
+// FrameTable is a decompression index for compressed diff files.
 //
-// Dirty blocks (4 KiB rootfs, 2 MiB memfile) are packed into a diff file,
-// grouped into frames (default 2 MiB), and each frame compressed independently.
-// Two address spaces describe the same data:
+// Dirty blocks are grouped into frames and each frame is compressed
+// independently. Two address spaces describe the same data:
 //
 //	U-space (uncompressed):  |-- frame 0 (2M) --|-- frame 1 (2M) --| ...
 //	C-space (compressed):    |-- f0 (.6M) --|-- f1 (.7M) --| ...
 //
-// Each frame's position is recorded as a frameEntry with absolute offsets
-// (StartU, StartC) and sizes (SizeU, SizeC). A FrameTable is a sorted
-// slice of these entries — lookups are a single binary search on StartU.
-//
-// # Read path: virtual offset → build mapping → frame lookup → C-space fetch
-//
-// The header maps virtual offsets to builds via BuildMap entries. Each
-// mapping says "virtual range [Offset, Offset+Length) lives in build X
-// starting at BuildStorageOffset". The read path:
-//
-//  1. GetShiftedMapping(virtualOff) → {BuildId, U-offset within build, length}
-//  2. header.GetBuildFrameData(BuildId) → build's FrameTable
-//  3. ft.LocateCompressed(U-offset) → C-space byte range
-//  4. Fetch compressed bytes from GCS, decompress, cache, return block
-//
-// # Build chain: how Builds propagates through layered templates
-//
-// Each V4 header carries a Builds map (Header.Builds) with per-build
-// metadata: file size, checksum, and FrameTable. When a child template
-// is built on a parent, ToDiffHeader merges mappings and copies the
-// parent's Builds entries for all still-referenced build IDs. Then
-// applyToHeader adds the current build's own entry:
-//
-//	base (build=aa)          → Builds: {aa: {ft, size, checksum}}
-//	  └─ child (build=bb)    → Builds: {aa: ..., bb: ...}
-//	       └─ grandchild (cc)→ Builds: {aa: ..., bb: ..., cc: ...}
-//
-// # Sparse trimming: serialization compacts frame tables
-//
-// During V4 header serialization, each build's FrameTable is trimmed to
-// only the frames overlapping that build's mappings (TrimToRanges). This
-// keeps headers compact when a build has many frames but only a few are
-// referenced in the current layer.
-//
-// # V3/V4 interop: uncompressed layers in the chain
-//
-// V3 (uncompressed) headers have Builds == nil and do not serialize build
-// metadata. A V3 layer in the middle of a chain drops all ancestor build
-// metadata. The read path degrades gracefully: nil FrameTable means read
-// uncompressed; missing build size falls back to a Size() RPC. In
-// practice all layers use the same format (all V3 or all V4); mixed
-// chains arise only during transitions.
+// Each frame is a frameEntry with absolute offsets (StartU, StartC) and
+// sizes (SizeU, SizeC). Lookups are a binary search on StartU.
 
 // FrameSize holds the uncompressed (U) and compressed (C) byte size of a
 // single frame.
@@ -213,8 +172,10 @@ func (ft *FrameTable) locate(offset int64) (frameEntry, error) {
 	return e, nil
 }
 
-// LocateCompressed returns the compressed byte range for the frame containing
-// the given uncompressed offset.
+// LocateCompressed maps a U-space offset to its C-space byte range.
+// This is the final step of the read path: after GetShiftedMapping resolves
+// the virtual offset to a build-local U-offset, this locates the compressed
+// bytes to fetch from storage.
 func (ft *FrameTable) LocateCompressed(offset int64) (Range, error) {
 	e, err := ft.locate(offset)
 	if err != nil {
@@ -309,8 +270,11 @@ func DeserializeFrameTable(r io.Reader) (*FrameTable, error) {
 }
 
 // TrimToRanges returns a new FrameTable containing only the frames that
-// overlap with at least one of the given [startU, endU) byte ranges.
-func (ft *FrameTable) TrimToRanges(ranges [][2]int64) *FrameTable {
+// overlap with at least one of the given U-space byte ranges.
+// Used during V4 header serialization to keep headers compact when a build
+// has many frames but only a few are referenced in the current layer.
+// Nil-safe: returns ft unchanged when ft is nil or ranges is empty.
+func (ft *FrameTable) TrimToRanges(ranges []Range) *FrameTable {
 	if ft == nil || len(ft.entries) == 0 || len(ranges) == 0 {
 		return ft
 	}
@@ -319,7 +283,7 @@ func (ft *FrameTable) TrimToRanges(ranges [][2]int64) *FrameTable {
 	kept := 0
 
 	for _, r := range ranges {
-		startU, endU := r[0], r[1]
+		startU, endU := r.Offset, r.Offset+int64(r.Length)
 
 		// Binary search: first frame whose EndU > startU.
 		lo := sort.Search(len(ft.entries), func(i int) bool {

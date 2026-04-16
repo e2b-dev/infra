@@ -3,14 +3,11 @@ package sandbox
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"slices"
 	"sync"
 
 	"github.com/google/uuid"
-	"golang.org/x/sync/errgroup"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -65,85 +62,6 @@ type buildUploader struct {
 	paths       storage.Paths
 	persistence storage.StorageProvider
 	snapshot    *Snapshot
-}
-
-// diffPath returns the cache path for a diff, or nil if the diff is NoDiff.
-func diffPath(d build.Diff) (*string, error) {
-	if _, ok := d.(*build.NoDiff); ok {
-		return nil, nil
-	}
-
-	p, err := d.CachePath()
-	if err != nil {
-		return nil, err
-	}
-
-	return &p, nil
-}
-
-func (b *buildUploader) uploadUncompressedFile(ctx context.Context, local, remote string, objType storage.SeekableObjectType) error {
-	object, err := b.persistence.OpenSeekable(ctx, remote, objType)
-	if err != nil {
-		return err
-	}
-
-	if _, _, err := object.StoreFile(ctx, local, storage.CompressConfig{}); err != nil {
-		return fmt.Errorf("error when uploading %s: %w", remote, err)
-	}
-
-	return nil
-}
-
-// Snap-file is small enough so we don't use composite upload.
-func (b *buildUploader) uploadSnapfile(ctx context.Context, path string) error {
-	object, err := b.persistence.OpenBlob(ctx, b.paths.Snapfile(), storage.SnapfileObjectType)
-	if err != nil {
-		return err
-	}
-
-	if err = uploadFileAsBlob(ctx, object, path); err != nil {
-		return fmt.Errorf("error when uploading snapfile: %w", err)
-	}
-
-	return nil
-}
-
-// Metadata is small enough so we don't use composite upload.
-func (b *buildUploader) uploadMetadata(ctx context.Context, path string) error {
-	object, err := b.persistence.OpenBlob(ctx, b.paths.Metadata(), storage.MetadataObjectType)
-	if err != nil {
-		return err
-	}
-
-	if err := uploadFileAsBlob(ctx, object, path); err != nil {
-		return fmt.Errorf("error when uploading metadata: %w", err)
-	}
-
-	return nil
-}
-
-func (b *buildUploader) uploadCompressedFile(ctx context.Context, local, remote string, objType storage.SeekableObjectType, cfg storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
-	object, err := b.persistence.OpenSeekable(ctx, remote, objType)
-	if err != nil {
-		return nil, [32]byte{}, fmt.Errorf("error opening framed file for %s: %w", remote, err)
-	}
-
-	ft, checksum, err := object.StoreFile(ctx, local, cfg)
-	if err != nil {
-		return nil, [32]byte{}, fmt.Errorf("error compressing %s to %s: %w", local, remote, err)
-	}
-
-	return ft, checksum, nil
-}
-
-func (b *buildUploader) scheduleAlwaysUploads(eg *errgroup.Group, ctx context.Context) {
-	eg.Go(func() error {
-		return b.uploadSnapfile(ctx, b.snapshot.Snapfile.Path())
-	})
-
-	eg.Go(func() error {
-		return b.uploadMetadata(ctx, b.snapshot.Metafile.Path())
-	})
 }
 
 type pendingBuildInfo struct {

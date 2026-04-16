@@ -24,12 +24,12 @@ type compressedUploader struct {
 }
 
 func (c *compressedUploader) UploadData(ctx context.Context) error {
-	memfilePath, err := diffPath(c.snapshot.MemfileDiff)
+	memfilePath, err := c.snapshot.MemfileDiff.CachePath()
 	if err != nil {
 		return fmt.Errorf("error getting memfile diff path: %w", err)
 	}
 
-	rootfsPath, err := diffPath(c.snapshot.RootfsDiff)
+	rootfsPath, err := c.snapshot.RootfsDiff.CachePath()
 	if err != nil {
 		return fmt.Errorf("error getting rootfs diff path: %w", err)
 	}
@@ -40,14 +40,15 @@ func (c *compressedUploader) UploadData(ctx context.Context) error {
 
 	eg, ctx := errgroup.WithContext(ctx)
 
-	if memfilePath != nil {
-		localPath := *memfilePath
+	if memfilePath != "" {
 		eg.Go(func() error {
 			if !memCfg.IsCompressionEnabled() {
-				return c.uploadUncompressedFile(ctx, localPath, c.paths.Memfile(), storage.MemfileObjectType)
+				_, _, err := storage.UploadFramed(ctx, c.persistence, c.paths.Memfile(), storage.MemfileObjectType, memfilePath, storage.CompressConfig{})
+
+				return err
 			}
 
-			ft, checksum, err := c.uploadCompressedFile(ctx, localPath, c.paths.MemfileCompressed(memCfg.CompressionType()), storage.MemfileObjectType, memCfg)
+			ft, checksum, err := storage.UploadFramed(ctx, c.persistence, c.paths.MemfileCompressed(memCfg.CompressionType()), storage.MemfileObjectType, memfilePath, memCfg)
 			if err != nil {
 				return fmt.Errorf("compressed memfile upload: %w", err)
 			}
@@ -58,14 +59,15 @@ func (c *compressedUploader) UploadData(ctx context.Context) error {
 		})
 	}
 
-	if rootfsPath != nil {
-		localPath := *rootfsPath
+	if rootfsPath != "" {
 		eg.Go(func() error {
 			if !rootfsCfg.IsCompressionEnabled() {
-				return c.uploadUncompressedFile(ctx, localPath, c.paths.Rootfs(), storage.RootFSObjectType)
+				_, _, err := storage.UploadFramed(ctx, c.persistence, c.paths.Rootfs(), storage.RootFSObjectType, rootfsPath, storage.CompressConfig{})
+
+				return err
 			}
 
-			ft, checksum, err := c.uploadCompressedFile(ctx, localPath, c.paths.RootfsCompressed(rootfsCfg.CompressionType()), storage.RootFSObjectType, rootfsCfg)
+			ft, checksum, err := storage.UploadFramed(ctx, c.persistence, c.paths.RootfsCompressed(rootfsCfg.CompressionType()), storage.RootFSObjectType, rootfsPath, rootfsCfg)
 			if err != nil {
 				return fmt.Errorf("compressed rootfs upload: %w", err)
 			}
@@ -76,7 +78,13 @@ func (c *compressedUploader) UploadData(ctx context.Context) error {
 		})
 	}
 
-	c.scheduleAlwaysUploads(eg, ctx)
+	eg.Go(func() error {
+		return storage.UploadBlob(ctx, c.persistence, c.paths.Snapfile(), storage.SnapfileObjectType, c.snapshot.Snapfile.Path())
+	})
+
+	eg.Go(func() error {
+		return storage.UploadBlob(ctx, c.persistence, c.paths.Metadata(), storage.MetadataObjectType, c.snapshot.Metafile.Path())
+	})
 
 	return eg.Wait()
 }
@@ -95,7 +103,7 @@ func (c *compressedUploader) FinalizeHeaders(ctx context.Context) (memfileHeader
 
 			c.pending.applyToHeader(h, storage.MemfileName)
 
-			h.Metadata.Version = headers.MetadataVersionCompressed
+			h.Metadata.Version = headers.MetadataVersionV4
 
 			data, err := headers.StoreHeader(ctx, c.persistence, c.paths.MemfileHeader(), h)
 			if err != nil {
@@ -114,7 +122,7 @@ func (c *compressedUploader) FinalizeHeaders(ctx context.Context) (memfileHeader
 
 			c.pending.applyToHeader(h, storage.RootfsName)
 
-			h.Metadata.Version = headers.MetadataVersionCompressed
+			h.Metadata.Version = headers.MetadataVersionV4
 
 			data, err := headers.StoreHeader(ctx, c.persistence, c.paths.RootfsHeader(), h)
 			if err != nil {

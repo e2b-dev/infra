@@ -16,12 +16,12 @@ type uncompressedUploader struct {
 }
 
 func (u *uncompressedUploader) UploadData(ctx context.Context) error {
-	memfilePath, err := diffPath(u.snapshot.MemfileDiff)
+	memfilePath, err := u.snapshot.MemfileDiff.CachePath()
 	if err != nil {
 		return fmt.Errorf("error getting memfile diff path: %w", err)
 	}
 
-	rootfsPath, err := diffPath(u.snapshot.RootfsDiff)
+	rootfsPath, err := u.snapshot.RootfsDiff.CachePath()
 	if err != nil {
 		return fmt.Errorf("error getting rootfs diff path: %w", err)
 	}
@@ -51,22 +51,32 @@ func (u *uncompressedUploader) UploadData(ctx context.Context) error {
 
 	// Uncompressed data
 	eg.Go(func() error {
-		if memfilePath == nil {
+		if memfilePath == "" {
 			return nil
 		}
 
-		return u.uploadUncompressedFile(ctx, *memfilePath, u.paths.Memfile(), storage.MemfileObjectType)
+		_, _, err := storage.UploadFramed(ctx, u.persistence, u.paths.Memfile(), storage.MemfileObjectType, memfilePath, storage.CompressConfig{})
+
+		return err
 	})
 
 	eg.Go(func() error {
-		if rootfsPath == nil {
+		if rootfsPath == "" {
 			return nil
 		}
 
-		return u.uploadUncompressedFile(ctx, *rootfsPath, u.paths.Rootfs(), storage.RootFSObjectType)
+		_, _, err := storage.UploadFramed(ctx, u.persistence, u.paths.Rootfs(), storage.RootFSObjectType, rootfsPath, storage.CompressConfig{})
+
+		return err
 	})
 
-	u.scheduleAlwaysUploads(eg, ctx)
+	eg.Go(func() error {
+		return storage.UploadBlob(ctx, u.persistence, u.paths.Snapfile(), storage.SnapfileObjectType, u.snapshot.Snapfile.Path())
+	})
+
+	eg.Go(func() error {
+		return storage.UploadBlob(ctx, u.persistence, u.paths.Metadata(), storage.MetadataObjectType, u.snapshot.Metafile.Path())
+	})
 
 	return eg.Wait()
 }

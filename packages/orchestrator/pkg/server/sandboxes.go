@@ -666,7 +666,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		uploadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadTimeout)
 		defer cancel()
 
-		memHdr, rootHdr, err := res.uploadSnapshot(uploadCtx, s.persistence, s.config.StorageConfig.CompressConfig, s.featureFlags)
+		memHdr, rootHdr, err := res.snapshot.Upload(uploadCtx, s.persistence, res.paths, s.config.StorageConfig.CompressConfig, s.featureFlags, storage.UseCasePause)
 		defer res.completeUpload(uploadCtx, memHdr, rootHdr)
 
 		if err != nil {
@@ -724,18 +724,6 @@ type snapshotResult struct {
 	snapshot       *sandbox.Snapshot
 	paths          storage.Paths
 	completeUpload func(ctx context.Context, memfileHdr, rootfsHdr []byte)
-}
-
-// uploadSnapshot uploads snapshot files to GCS and returns serialized V4
-// header bytes for peer transition (nil for uncompressed builds).
-func (r *snapshotResult) uploadSnapshot(ctx context.Context, persistence storage.StorageProvider, baseCompressCfg storage.CompressConfig, flags *featureflags.Client) (memfileHdr, rootfsHdr []byte, err error) {
-	uploader := sandbox.NewBuildUploader(ctx, r.snapshot, persistence, r.paths, baseCompressCfg, flags, storage.UseCasePause, nil)
-
-	if err := uploader.UploadData(ctx); err != nil {
-		return nil, nil, err
-	}
-
-	return uploader.FinalizeHeaders(ctx)
 }
 
 // snapshotAndCacheSandbox creates a snapshot of a sandbox and adds it to the local
@@ -824,7 +812,7 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 	go func() {
 		defer cancel()
 
-		memHdr, rootHdr, err := res.uploadSnapshot(ctx, s.persistence, s.config.StorageConfig.CompressConfig, s.featureFlags)
+		memHdr, rootHdr, err := res.snapshot.Upload(ctx, s.persistence, res.paths, s.config.StorageConfig.CompressConfig, s.featureFlags, storage.UseCasePause)
 		if err != nil {
 			sbxlogger.I(sbx).Error(ctx, "error uploading snapshot files", zap.Error(err))
 		} else {

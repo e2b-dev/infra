@@ -28,7 +28,7 @@ type v4SerializableBuildInfo struct {
 	Checksum [32]byte
 }
 
-// serializeV4 writes [Metadata] [uint32 uncompressedSize] [LZ4( Builds[] + mappings[] )].
+// serializeV4 writes [Metadata] [uint32 LZ4 size] [LZ4( Builds[] + Mappings[] )].
 // Frame tables are sparse-trimmed to only frames referenced by mappings.
 func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings []BuildMap) ([]byte, error) {
 	var metaBuf bytes.Buffer
@@ -47,19 +47,11 @@ func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings []
 		return bytes.Compare(a[:], b[:])
 	})
 
-	// U-space ranges per build for sparse trimming.
-	buildRanges := make(map[uuid.UUID][][2]int64, len(buildIDs))
-	for _, m := range mappings {
-		buildRanges[m.BuildId] = append(buildRanges[m.BuildId], [2]int64{
-			int64(m.BuildStorageOffset),
-			int64(m.BuildStorageOffset + m.Length),
-		})
-	}
-
 	if err := binary.Write(&block, binary.LittleEndian, uint32(len(buildIDs))); err != nil {
 		return nil, fmt.Errorf("failed to write build count: %w", err)
 	}
 
+	buildRanges := extractRelevantRanges(mappings)
 	for _, id := range buildIDs {
 		bd := builds[id]
 
@@ -73,15 +65,8 @@ func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings []
 			return nil, fmt.Errorf("failed to write build info: %w", err)
 		}
 
-		// Sparse-trim, then serialize.
-		ft := bd.FrameData
-		if ft != nil {
-			if ranges, ok := buildRanges[id]; ok {
-				ft = ft.TrimToRanges(ranges)
-			}
-		}
-
-		if err := ft.Serialize(&block); err != nil {
+		trimmed := bd.FrameData.TrimToRanges(buildRanges[id])
+		if err := trimmed.Serialize(&block); err != nil {
 			return nil, fmt.Errorf("failed to write build frame data: %w", err)
 		}
 	}
@@ -110,21 +95,23 @@ func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings []
 		return nil, fmt.Errorf("failed to LZ4-compress v4 header block: %w", err)
 	}
 
-	result := make([]byte, metadataSize+4+len(compressed))
+	const Uint32Len = 4
+	result := make([]byte, metadataSize+Uint32Len+len(compressed))
 	copy(result, metaBuf.Bytes())
 	binary.LittleEndian.PutUint32(result[metadataSize:], uint32(len(blockBytes)))
-	copy(result[metadataSize+4:], compressed)
+	copy(result[metadataSize+Uint32Len:], compressed)
 
 	return result, nil
 }
 
 // deserializeV4 decompresses and reads the V4 block.
 func deserializeV4(metadata *Metadata, blockData []byte) (*Header, error) {
-	if len(blockData) < 4 {
+	const v4SizePrefixLen = 4
+	if len(blockData) < v4SizePrefixLen {
 		return nil, fmt.Errorf("v4 header block too short for size prefix: %d bytes", len(blockData))
 	}
 
-	decompressed, err := decompressLZ4(blockData[4:])
+	decompressed, err := decompressLZ4(blockData[v4SizePrefixLen:])
 	if err != nil {
 		return nil, fmt.Errorf("failed to LZ4-decompress v4 header block: %w", err)
 	}
@@ -218,6 +205,20 @@ func compressLZ4(data []byte) ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
+}
+
+// extractRelevantRanges groups mappings into per-build U-space [start, end) ranges
+// for sparse frame table trimming during serialization.
+func extractRelevantRanges(mappings []BuildMap) map[uuid.UUID][]storage.Range {
+	ranges := make(map[uuid.UUID][]storage.Range)
+	for _, m := range mappings {
+		ranges[m.BuildId] = append(ranges[m.BuildId], storage.Range{
+			Offset: int64(m.BuildStorageOffset),
+			Length: int(m.Length),
+		})
+	}
+
+	return ranges
 }
 
 // decompressLZ4 decompresses an LZ4 frame from V4 header data.

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -113,6 +114,29 @@ type Seekable interface {
 	StreamingReader
 	SeekableWriter
 	Size(ctx context.Context) (int64, error)
+}
+
+func UploadFramed(ctx context.Context, provider StorageProvider, remotePath string, objType SeekableObjectType, localPath string, cfg CompressConfig) (*FrameTable, [32]byte, error) {
+	object, err := provider.OpenSeekable(ctx, remotePath, objType)
+	if err != nil {
+		return nil, [32]byte{}, err
+	}
+
+	return object.StoreFile(ctx, localPath, cfg)
+}
+
+func UploadBlob(ctx context.Context, provider StorageProvider, remotePath string, objType ObjectType, localPath string) error {
+	blob, err := provider.OpenBlob(ctx, remotePath, objType)
+	if err != nil {
+		return err
+	}
+
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		return fmt.Errorf("failed to read file %s: %w", localPath, err)
+	}
+
+	return blob.Put(ctx, data)
 }
 
 // PeerTransitionedError is returned by the peer Seekable when the GCS upload

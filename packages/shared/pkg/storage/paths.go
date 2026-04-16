@@ -79,6 +79,8 @@ func SplitPath(path string) (buildID, fileName string) {
 	return buildID, fileName
 }
 
+var knownCompressionSuffixes = []string{CompressionLZ4.Suffix(), CompressionZstd.Suffix()}
+
 // StripCompression removes a known compression suffix from a file name.
 // For example: "memfile.zstd" → "memfile".
 // If no known suffix is present, the name is returned unchanged.
@@ -91,8 +93,6 @@ func StripCompression(name string) string {
 
 	return name
 }
-
-var knownCompressionSuffixes = []string{".lz4", ".zstd"}
 
 // SizeSidecar returns the sidecar path that stores the original
 // uncompressed size for a compressed object (e.g. "/data/memfile.zstd" →

@@ -16,6 +16,8 @@ import (
 )
 
 // BuildData holds per-build metadata stored in V4 headers.
+// Each layer's header carries a Builds map; child headers inherit parent
+// entries for still-referenced build IDs via NewHeaderWithBuilds.
 type BuildData struct {
 	Size      int64               // uncompressed file size
 	Checksum  [32]byte            // SHA-256 of uncompressed data; zero value means unknown
@@ -26,8 +28,9 @@ const NormalizeFixVersion = 3
 
 type Header struct {
 	Metadata *Metadata
-	// Builds maps build IDs to per-build metadata. V3 headers have nil Builds;
-	// the read path falls back to a Size() RPC for those.
+	// Builds maps build IDs to per-build metadata (size, checksum, FrameTable).
+	// nil for V3 (uncompressed) headers; the read path falls back to a Size()
+	// RPC and reads uncompressed data when nil.
 	Builds map[uuid.UUID]BuildData
 
 	Mapping []BuildMap
@@ -72,7 +75,9 @@ func NewHeader(metadata *Metadata, mapping []BuildMap) (*Header, error) {
 }
 
 // NewHeaderWithBuilds creates a header and copies the subset of sourceBuilds
-// referenced by the mappings. Returns nil builds when sourceBuilds is nil (V3).
+// referenced by the mappings. This propagates ancestor build metadata through
+// the template chain (parent → child → grandchild).
+// Returns nil Builds when sourceBuilds is nil (V3 / uncompressed).
 func NewHeaderWithBuilds(metadata *Metadata, mapping []BuildMap, sourceBuilds map[uuid.UUID]BuildData) (*Header, error) {
 	h, err := NewHeader(metadata, mapping)
 	if err != nil {
@@ -117,6 +122,9 @@ func (t *Header) IsNormalizeFixApplied() bool {
 	return t.Metadata.Version >= NormalizeFixVersion
 }
 
+// GetShiftedMapping resolves a virtual offset to a build-local range.
+// The read path uses this to find which build owns the data, then calls
+// GetBuildFrameData to get the FrameTable for C-space lookup.
 func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (BuildMap, error) {
 	mapping, shift, err := t.getMapping(ctx, offset)
 	if err != nil {
@@ -146,7 +154,8 @@ func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (BuildMap,
 	return b, nil
 }
 
-// GetBuildFrameData returns the frame table for a build, or nil.
+// GetBuildFrameData returns the FrameTable for a build, or nil.
+// nil means the build is uncompressed — the caller reads raw bytes instead.
 func (t *Header) GetBuildFrameData(buildID uuid.UUID) *storage.FrameTable {
 	if t.Builds == nil {
 		return nil

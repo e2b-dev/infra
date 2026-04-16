@@ -127,13 +127,13 @@ func TestFrameTable_TrimToRanges(t *testing.T) {
 
 	t.Run("all frames retained", func(t *testing.T) {
 		t.Parallel()
-		trimmed := ft.TrimToRanges([][2]int64{{0, 4 << 20}})
+		trimmed := ft.TrimToRanges([]Range{{Offset: 0, Length: 4 << 20}})
 		require.Same(t, ft, trimmed)
 	})
 
 	t.Run("single range trims to subset", func(t *testing.T) {
 		t.Parallel()
-		trimmed := ft.TrimToRanges([][2]int64{{1 << 20, 3 << 20}})
+		trimmed := ft.TrimToRanges([]Range{{Offset: 1 << 20, Length: 2 << 20}})
 		require.Equal(t, 2, trimmed.NumFrames())
 
 		startU, _, _, _ := trimmed.FrameAt(0)
@@ -145,9 +145,9 @@ func TestFrameTable_TrimToRanges(t *testing.T) {
 
 	t.Run("two disjoint ranges", func(t *testing.T) {
 		t.Parallel()
-		trimmed := ft.TrimToRanges([][2]int64{
-			{0, 1 << 20},
-			{3 << 20, 4 << 20},
+		trimmed := ft.TrimToRanges([]Range{
+			{Offset: 0, Length: 1 << 20},
+			{Offset: 3 << 20, Length: 1 << 20},
 		})
 		require.Equal(t, 2, trimmed.NumFrames())
 
@@ -161,14 +161,14 @@ func TestFrameTable_TrimToRanges(t *testing.T) {
 	t.Run("nil table", func(t *testing.T) {
 		t.Parallel()
 		var nilFT *FrameTable
-		require.Nil(t, nilFT.TrimToRanges([][2]int64{{0, 100}}))
+		require.Nil(t, nilFT.TrimToRanges([]Range{{Offset: 0, Length: 100}}))
 	})
 
 	t.Run("sparse lookup works", func(t *testing.T) {
 		t.Parallel()
-		trimmed := ft.TrimToRanges([][2]int64{
-			{0, 1 << 20},
-			{3 << 20, 4 << 20},
+		trimmed := ft.TrimToRanges([]Range{
+			{Offset: 0, Length: 1 << 20},
+			{Offset: 3 << 20, Length: 1 << 20},
 		})
 
 		r, err := trimmed.LocateCompressed(0)

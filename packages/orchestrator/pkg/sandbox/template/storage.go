@@ -22,17 +22,6 @@ type Storage struct {
 	source *build.File
 }
 
-func storageHeaderObjectType(diffType build.DiffType) (storage.ObjectType, bool) {
-	switch diffType {
-	case build.Memfile:
-		return storage.MemfileHeaderObjectType, true
-	case build.Rootfs:
-		return storage.RootFSHeaderObjectType, true
-	default:
-		return storage.UnknownObjectType, false
-	}
-}
-
 func objectType(diffType build.DiffType) (storage.SeekableObjectType, bool) {
 	switch diffType {
 	case build.Memfile:
@@ -57,11 +46,6 @@ func NewStorage(
 
 	if h == nil {
 		var hdrPath string
-		_, ok := storageHeaderObjectType(fileType)
-		if !ok {
-			return nil, build.UnknownDiffTypeError{DiffType: fileType}
-		}
-
 		switch fileType {
 		case build.Memfile:
 			hdrPath = paths.MemfileHeader()

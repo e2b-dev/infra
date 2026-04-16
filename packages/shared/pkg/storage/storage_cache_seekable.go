@@ -33,9 +33,8 @@ var (
 
 const (
 	nfsCacheOperationAttr = "operation"
-	// nfsCacheOperationAttrReadAt tags NFS slab timer metrics for OpenRangeReader
-	// (both compressed and uncompressed paths; the method was renamed from ReadAt;
-	// value kept for dashboard compatibility).
+	// Value kept as "ReadAt"  dashboard compatibility after the method was
+	// renamed to OpenRangeReader.
 	nfsCacheOperationAttrReadAt = "ReadAt"
 	nfsCacheOperationAttrSize   = "Size"
 )

@@ -339,7 +339,7 @@ func BenchmarkCompress(b *testing.B) {
 		b.Run(bcfg.name, func(b *testing.B) {
 			compCfg := CompressConfig{
 				Enabled:            true,
-				Type:               "zstd",
+				Type:               CompressionZstd.String(),
 				Level:              2,
 				EncoderConcurrency: 1,
 				FrameEncodeWorkers: bcfg.workers,
