@@ -41,6 +41,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+const (
+	// networkReturnDelay is the delay before returning the network slot to the pool
+	// so all network connections is properly closed.
+	networkReturnDelay = 5 * time.Second
+)
+
 var (
 	meter                        = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox")
 	envdInitCalls                = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitCalls))
@@ -1281,6 +1287,9 @@ func getNetworkSlot(
 		cleanup.Add(ctx, func(ctx context.Context) error {
 			ctx, span := tracer.Start(ctx, "clean network-slot")
 			defer span.End()
+
+			// Buffer before returning the network slot to the pool to allow in-flight requests to complete.
+			time.Sleep(networkReturnDelay)
 
 			// We can run this cleanup asynchronously, as it is not important for the sandbox lifecycle
 			go func(ctx context.Context) {
