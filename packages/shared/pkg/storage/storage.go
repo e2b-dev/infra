@@ -130,6 +130,7 @@ func StoreDataViaFile(ctx context.Context, s SeekableWriter, data []byte) error 
 
 	if _, err := f.Write(data); err != nil {
 		f.Close()
+
 		return fmt.Errorf("failed to write temp file for StoreData fallback: %w", err)
 	}
 
