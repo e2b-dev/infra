@@ -9,6 +9,7 @@ import (
 
 	"github.com/jellydator/ttlcache/v3"
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
@@ -28,13 +29,10 @@ type deleteDiff struct {
 type DiffStore struct {
 	cachePath string
 	cache     *ttlcache.Cache[DiffStoreKey, Diff]
-	// cacheMu serializes cache insertions (GetOrSet, Set) with the
-	// identity-guarded Delete in Get, preventing a failed-Init cleanup
-	// from evicting a valid replacement stored by a concurrent goroutine.
-	cacheMu sync.Mutex
-	cancel  func()
-	config  cfg.Config
-	flags   *featureflags.Client
+	initGroup singleflight.Group
+	cancel    func()
+	config    cfg.Config
+	flags     *featureflags.Client
 
 	// pdSizes is used to keep track of the diff sizes
 	// that are scheduled for deletion, as this won't show up in the disk usage.
@@ -101,43 +99,37 @@ func (s *DiffStore) Close() {
 }
 
 func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
-	s.resetDelete(diff.CacheKey())
+	key := diff.CacheKey()
+	s.resetDelete(key)
 
-	s.cacheMu.Lock()
-	source, found := s.cache.GetOrSet(
-		diff.CacheKey(),
-		diff,
-		ttlcache.WithTTL[DiffStoreKey, Diff](ttlcache.DefaultTTL),
-	)
-	s.cacheMu.Unlock()
-
-	value := source.Value()
-	if value == nil {
-		return nil, fmt.Errorf("failed to get source from cache: %s", diff.CacheKey())
+	if item := s.cache.Get(key); item != nil {
+		return item.Value(), nil
 	}
 
-	if !found {
-		err := diff.Init(ctx)
-		if err != nil {
-			s.cacheMu.Lock()
-			if item := s.cache.Get(diff.CacheKey()); item != nil && item.Value() == diff {
-				s.cache.Delete(diff.CacheKey())
-			}
-			s.cacheMu.Unlock()
-
-			return nil, fmt.Errorf("failed to init source: %w", err)
+	v, err, _ := s.initGroup.Do(string(key), func() (any, error) {
+		// Double-check: another goroutine may have cached it while we waited.
+		if item := s.cache.Get(key); item != nil {
+			return item.Value(), nil
 		}
+
+		if err := diff.Init(ctx); err != nil {
+			return nil, err
+		}
+
+		s.cache.Set(key, diff, ttlcache.DefaultTTL)
+
+		return diff, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to init source: %w", err)
 	}
 
-	return value, nil
+	return v.(Diff), nil
 }
 
 func (s *DiffStore) Add(d Diff) {
 	s.resetDelete(d.CacheKey())
-
-	s.cacheMu.Lock()
 	s.cache.Set(d.CacheKey(), d, ttlcache.DefaultTTL)
-	s.cacheMu.Unlock()
 }
 
 func (s *DiffStore) Has(d Diff) bool {
