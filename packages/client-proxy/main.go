@@ -124,14 +124,9 @@ func run() int {
 		}()
 		catalog = e2bcatalog.NewRedisSandboxCatalog(redisClient)
 	} else {
-		if !errors.Is(err, factories.ErrRedisDisabled) {
-			l.Error(ctx, "Failed to create redis client", zap.Error(err))
+		l.Error(ctx, "Failed to create redis client", zap.Error(err))
 
-			return 1
-		}
-
-		l.Warn(ctx, "Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
-		catalog = e2bcatalog.NewMemorySandboxesCatalog()
+		return 1
 	}
 
 	info := &internal.ServiceInfo{}
