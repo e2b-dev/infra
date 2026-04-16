@@ -130,6 +130,10 @@ type Process struct {
 	kernelPath     string
 	files          *storage.SandboxFiles
 
+	// OverlayPath is the host path to a file-backed overlay drive (/dev/vdb in guest).
+	// When set, FC attaches it as a second non-root drive before boot.
+	OverlayPath string
+
 	Exit *utils.ErrorOnce
 
 	client *apiClient
@@ -413,6 +417,16 @@ func (p *Process) Create(
 		return errors.Join(fmt.Errorf("error setting fc drivers config: %w", err), fcStopErr)
 	}
 	telemetry.ReportEvent(ctx, "set fc drivers config")
+
+	if p.OverlayPath != "" {
+		err = p.client.setOverlayDrive(ctx, p.OverlayPath, options.IoEngine)
+		if err != nil {
+			fcStopErr := p.Stop(ctx)
+
+			return errors.Join(fmt.Errorf("error setting overlay drive: %w", err), fcStopErr)
+		}
+		telemetry.ReportEvent(ctx, "set overlay drive")
+	}
 
 	err = p.client.setNetworkInterface(ctx, p.slot.VpeerName(), p.slot.TapName(), p.slot.TapMAC(), buildRateLimiter(txRateLimit))
 	if err != nil {

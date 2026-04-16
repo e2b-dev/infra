@@ -63,6 +63,10 @@ func (s *SandboxFiles) SandboxMetricsFifoPath() string {
 	return filepath.Join(s.tmpDir, fmt.Sprintf("fc-metrics-%s-%s.fifo", s.SandboxID, s.randomID))
 }
 
+func (s *SandboxFiles) SandboxOverlayPath(config Config) string {
+	return filepath.Join(config.SandboxCacheDir, fmt.Sprintf("overlay-%s-%s.ext4", s.SandboxID, s.randomID))
+}
+
 func (s *SandboxFiles) SandboxCgroupName() string {
 	return fmt.Sprintf("sbx-%s-%s", s.SandboxID, s.randomID)
 }

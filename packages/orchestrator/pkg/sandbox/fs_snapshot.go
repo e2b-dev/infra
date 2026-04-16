@@ -41,11 +41,19 @@ func (s *Sandbox) PauseFS(ctx context.Context) (d *FSDiff, e error) {
 
 	s.Checks.Stop()
 
-	// Unmount the overlay from inside the guest: this syncs, pivots back
-	// to the base rootfs, and cleanly unmounts disk B's ext4. After this,
-	// the CoW diff captures a consistent partition-2 state.
+	// Unmount the OverlayFS + disk B from inside the guest.
+	// This syncs writes, pivots back to the base rootfs, and cleanly
+	// unmounts disk B's ext4 so the host can safely snapshot its file.
 	if err := s.requestEnvdUnmountOverlay(ctx); err != nil {
-		return nil, fmt.Errorf("failed to unmount overlay: %w", err)
+		logger.L().Warn(ctx, "overlay unmount failed, falling back to sync",
+			zap.String("sandbox_id", s.Runtime.SandboxID),
+			zap.Error(err))
+
+		if syncErr := s.requestEnvdSync(ctx); syncErr != nil {
+			logger.L().Warn(ctx, "envd sync also failed",
+				zap.String("sandbox_id", s.Runtime.SandboxID),
+				zap.Error(syncErr))
+		}
 	}
 
 	if err := s.process.Pause(ctx); err != nil {

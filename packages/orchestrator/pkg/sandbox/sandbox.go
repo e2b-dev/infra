@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -431,6 +432,16 @@ func (f *Factory) CreateSandbox(
 		return nil, fmt.Errorf("failed to init FC: %w", err)
 	}
 
+	// Create the overlay file (disk B / /dev/vdb) for OverlayFS upper layer.
+	overlayPath := sandboxFiles.SandboxOverlayPath(f.config.StorageConfig)
+	if err := CreateOverlayFile(ctx, overlayPath, config.TotalDiskSizeMB); err != nil {
+		return nil, fmt.Errorf("failed to create overlay file: %w", err)
+	}
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		return os.Remove(overlayPath)
+	})
+	fcHandle.OverlayPath = overlayPath
+
 	throttleConfig := featureflags.GetTCPFirewallEgressThrottleConfig(ctx, f.featureFlags)
 	driveThrottleConfig := featureflags.GetBlockDriveThrottleConfig(ctx, f.featureFlags)
 
@@ -761,6 +772,16 @@ func (f *Factory) ResumeSandbox(
 	if fcErr != nil {
 		return nil, fmt.Errorf("failed to create FC: %w", fcErr)
 	}
+
+	// Create overlay file (disk B / /dev/vdb) for OverlayFS upper layer.
+	overlayPath := sandboxFiles.SandboxOverlayPath(f.config.StorageConfig)
+	if err := CreateOverlayFile(ctx, overlayPath, config.TotalDiskSizeMB); err != nil {
+		return nil, fmt.Errorf("failed to create overlay file: %w", err)
+	}
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		return os.Remove(overlayPath)
+	})
+	fcHandle.OverlayPath = overlayPath
 
 	resumeThrottleConfig := featureflags.GetTCPFirewallEgressThrottleConfig(ctx, f.featureFlags)
 	resumeDriveThrottleConfig := featureflags.GetBlockDriveThrottleConfig(ctx, f.featureFlags)

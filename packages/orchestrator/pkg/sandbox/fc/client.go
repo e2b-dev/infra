@@ -230,6 +230,30 @@ func (c *apiClient) setRootfsDrive(ctx context.Context, rootfsPath string, ioEng
 	return nil
 }
 
+func (c *apiClient) setOverlayDrive(ctx context.Context, overlayPath string, ioEngine *string) error {
+	driveID := OverlayDriveID
+	isRootDevice := false
+
+	driversConfig := operations.PutGuestDriveByIDParams{
+		Context: ctx,
+		DriveID: driveID,
+		Body: &models.Drive{
+			DriveID:      &driveID,
+			PathOnHost:   overlayPath,
+			IsRootDevice: &isRootDevice,
+			IsReadOnly:   false,
+			IoEngine:     ioEngine,
+		},
+	}
+
+	_, err := c.client.Operations.PutGuestDriveByID(&driversConfig)
+	if err != nil {
+		return fmt.Errorf("error setting overlay drive config: %w", err)
+	}
+
+	return nil
+}
+
 // buildTokenBucket constructs a Firecracker TokenBucket from a TokenBucketConfig.
 // Returns nil when BucketSize < 0 (disabled).
 func buildTokenBucket(b TokenBucketConfig) *models.TokenBucket {

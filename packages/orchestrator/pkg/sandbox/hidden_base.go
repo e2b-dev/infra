@@ -15,10 +15,16 @@ import (
 )
 
 const (
-	fsMountTimeout  = 10 * time.Second
+	fsMountTimeout   = 10 * time.Second
 	fsUnmountTimeout = 10 * time.Second
-	fsSyncTimeout   = 10 * time.Second
+	fsSyncTimeout    = 10 * time.Second
 )
+
+func (s *Sandbox) setEnvdAccessToken(req *http.Request) {
+	if s.Config.Envd.AccessToken != nil {
+		req.Header.Set("X-Access-Token", *s.Config.Envd.AccessToken)
+	}
+}
 
 // requestEnvdMountOverlay tells the guest agent to mount the overlay
 // upper device (/dev/vdb), set up OverlayFS merging it with the rootfs,
@@ -37,6 +43,8 @@ func (s *Sandbox) requestEnvdMountOverlay(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
+
+	s.setEnvdAccessToken(req)
 
 	resp, err := sandboxHttpClient.Do(req)
 	if err != nil {
@@ -72,6 +80,8 @@ func (s *Sandbox) requestEnvdUnmountOverlay(ctx context.Context) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
+	s.setEnvdAccessToken(req)
+
 	resp, err := sandboxHttpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("unmount-overlay request failed: %w", err)
@@ -103,6 +113,8 @@ func (s *Sandbox) requestEnvdSync(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create sync request: %w", err)
 	}
+
+	s.setEnvdAccessToken(req)
 
 	resp, err := sandboxHttpClient.Do(req)
 	if err != nil {

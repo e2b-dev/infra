@@ -7,7 +7,7 @@
 //
 // Usage:
 //
-//	sudo go run ./cmd/test-fs-pause -from-build <BUILD_ID> -storage .local-build
+//	sudo `which go` run ./cmd/test-fs-pause -from-build <BUILD_ID> -storage .local-build
 //
 // The -from-build must be a local build created with cmd/create-build.
 package main
