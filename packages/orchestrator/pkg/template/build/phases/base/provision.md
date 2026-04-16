@@ -1,4 +1,4 @@
-The provison.sh script file sets up any base dependencies required for running envd and sdk commands.
+The provision.sh script file sets up any base dependencies required for running envd and sdk commands.
 
 # change rollout process
 
@@ -13,6 +13,6 @@ There are two considerations to be made when rolling out new versions of the tem
 Current process:
 
 1. Deploy template managers with the new version of `provision.sh`.
-2. Increment the `build-provision-version` environment variable in the template manager deployment.
+2. Increment the `build-provision-version` launch darkly flag.
 3. Bump the envd version number and release it. Gate the release of new envd/sdk features with the new envd version.
 4. (optional) Update the dashboard to alert users to rebuild their templates to take advantage of the new features.
