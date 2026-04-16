@@ -110,7 +110,10 @@ func TestInstallCACert_SameCert(t *testing.T) {
 	c := newTestInstaller(t)
 
 	c.install(context.Background(), certA, bundlePath, extraPath)
+	waitForFile(t, extraPath) // drain the background goroutine before the hot-path call
+
 	c.install(context.Background(), certA, bundlePath, extraPath) // resume — hot path hit
+	waitForFile(t, extraPath)                                     // drain the background goroutine before the hot-path call
 
 	bundle, err := os.ReadFile(bundlePath)
 	require.NoError(t, err)
