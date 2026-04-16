@@ -7,10 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 )
 
 // transientErr returns a gRPC UNAVAILABLE error that storage.ShouldRetry
@@ -29,7 +32,7 @@ func TestRetryWithBackoff_SuccessOnFirstAttempt(t *testing.T) {
 
 	calls := 0
 
-	n, attempts, err := retryWithBackoff(t.Context(), func() (int, error) {
+	n, attempts, err := retryWithBackoff(t.Context(), googleMaxReadAttempts, func() (int, error) {
 		calls++
 
 		return 42, nil
@@ -46,7 +49,7 @@ func TestRetryWithBackoff_SuccessAfterTransientFailures(t *testing.T) {
 
 	calls := 0
 
-	n, attempts, err := retryWithBackoff(t.Context(), func() (int, error) {
+	n, attempts, err := retryWithBackoff(t.Context(), googleMaxReadAttempts, func() (int, error) {
 		calls++
 		if calls < 3 {
 			return 0, transientErr()
@@ -66,7 +69,7 @@ func TestRetryWithBackoff_ExhaustsAllAttempts(t *testing.T) {
 
 	calls := 0
 
-	_, attempts, err := retryWithBackoff(t.Context(), func() (int, error) {
+	_, attempts, err := retryWithBackoff(t.Context(), googleMaxReadAttempts, func() (int, error) {
 		calls++
 
 		return 0, transientErr()
@@ -82,7 +85,7 @@ func TestRetryWithBackoff_StopsOnPermanentError(t *testing.T) {
 
 	calls := 0
 
-	_, attempts, err := retryWithBackoff(t.Context(), func() (int, error) {
+	_, attempts, err := retryWithBackoff(t.Context(), googleMaxReadAttempts, func() (int, error) {
 		calls++
 
 		return 0, permanentErr()
@@ -100,7 +103,7 @@ func TestRetryWithBackoff_StopsOnContextCancellation(t *testing.T) {
 
 	calls := 0
 
-	_, attempts, err := retryWithBackoff(ctx, func() (int, error) {
+	_, attempts, err := retryWithBackoff(ctx, googleMaxReadAttempts, func() (int, error) {
 		calls++
 		if calls == 2 {
 			cancel()
@@ -124,7 +127,7 @@ func TestRetryWithBackoff_RespectsDeadlineDuringBackoff(t *testing.T) {
 	start := time.Now()
 	calls := 0
 
-	_, attempts, err := retryWithBackoff(ctx, func() (int, error) {
+	_, attempts, err := retryWithBackoff(ctx, googleMaxReadAttempts, func() (int, error) {
 		calls++
 
 		return 0, transientErr()
@@ -145,7 +148,7 @@ func TestRetryWithBackoff_BackoffIncreases(t *testing.T) {
 
 	attempts := make([]time.Time, 0, googleMaxReadAttempts)
 
-	_, _, err := retryWithBackoff(t.Context(), func() (int, error) {
+	_, _, err := retryWithBackoff(t.Context(), googleMaxReadAttempts, func() (int, error) {
 		attempts = append(attempts, time.Now())
 
 		return 0, transientErr()
@@ -172,7 +175,7 @@ func TestRetryWithBackoff_PreservesLastNValue(t *testing.T) {
 
 	calls := 0
 
-	n, attempts, err := retryWithBackoff(t.Context(), func() (int, error) {
+	n, attempts, err := retryWithBackoff(t.Context(), googleMaxReadAttempts, func() (int, error) {
 		calls++
 
 		// Return partial read count even on error.
@@ -192,7 +195,7 @@ func TestRetryWithBackoff_EOFTreatedAsSuccess(t *testing.T) {
 
 	// io.EOF signals a successful short read (last chunk of a file).
 	// retryWithBackoff must not retry it.
-	n, attempts, err := retryWithBackoff(t.Context(), func() (int, error) {
+	n, attempts, err := retryWithBackoff(t.Context(), googleMaxReadAttempts, func() (int, error) {
 		calls++
 
 		return 512, io.EOF
@@ -202,4 +205,93 @@ func TestRetryWithBackoff_EOFTreatedAsSuccess(t *testing.T) {
 	assert.Equal(t, 512, n)
 	assert.Equal(t, 1, calls, "should not retry io.EOF")
 	assert.Equal(t, 1, attempts)
+}
+
+// stubFlags is a minimal featureFlagsClient for testing. It returns the
+// configured values for the two GCS retry flags and zero for everything else.
+type stubFlags struct {
+	perAttemptTimeoutMs int
+	maxReadAttempts     int
+}
+
+func (s *stubFlags) BoolFlag(_ context.Context, _ featureflags.BoolFlag, _ ...ldcontext.Context) bool {
+	return false
+}
+
+func (s *stubFlags) IntFlag(_ context.Context, flag featureflags.IntFlag, _ ...ldcontext.Context) int {
+	switch flag {
+	case featureflags.GCSPerAttemptTimeoutMs:
+		return s.perAttemptTimeoutMs
+	case featureflags.GCSMaxReadAttempts:
+		return s.maxReadAttempts
+	default:
+		return 0
+	}
+}
+
+func TestGetReadRetryConfig_Defaults(t *testing.T) {
+	t.Parallel()
+
+	timeout, maxAttempts := getReadRetryConfig(t.Context())
+
+	assert.Equal(t, googlePerAttemptTimeout, timeout)
+	assert.Equal(t, googleMaxReadAttempts, maxAttempts)
+}
+
+func TestGetReadRetryConfig_FlagsOverride(t *testing.T) {
+	t.Parallel()
+
+	ctx := WithReadRetryConfig(t.Context(), &stubFlags{
+		perAttemptTimeoutMs: 42000,
+		maxReadAttempts:     7,
+	})
+
+	timeout, maxAttempts := getReadRetryConfig(ctx)
+
+	assert.Equal(t, 42*time.Second, timeout)
+	assert.Equal(t, 7, maxAttempts)
+}
+
+func TestGetReadRetryConfig_PartialOverride(t *testing.T) {
+	t.Parallel()
+
+	// Only set MaxAttempts, leave PerAttemptTimeoutMs zero → should fall back to default.
+	ctx := WithReadRetryConfig(t.Context(), &stubFlags{
+		maxReadAttempts: 5,
+	})
+
+	timeout, maxAttempts := getReadRetryConfig(ctx)
+
+	assert.Equal(t, googlePerAttemptTimeout, timeout, "zero timeout should fall back to default")
+	assert.Equal(t, 5, maxAttempts)
+}
+
+func TestGetReadRetryConfig_TooSmallTimeoutClampedToMin(t *testing.T) {
+	t.Parallel()
+
+	ctx := WithReadRetryConfig(t.Context(), &stubFlags{
+		perAttemptTimeoutMs: 1, // 1ms — below minPerAttemptTimeout
+		maxReadAttempts:     2,
+	})
+
+	timeout, maxAttempts := getReadRetryConfig(ctx)
+
+	assert.Equal(t, minPerAttemptTimeout, timeout, "timeout below minimum should be clamped")
+	assert.Equal(t, 2, maxAttempts)
+}
+
+func TestRetryWithBackoff_RespectsCustomMaxAttempts(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+
+	_, attempts, err := retryWithBackoff(t.Context(), 5, func() (int, error) {
+		calls++
+
+		return 0, transientErr()
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, 5, calls)
+	assert.Equal(t, 5, attempts)
 }

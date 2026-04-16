@@ -53,6 +53,7 @@ const (
 	googleRetryInitialBackoff  = 200 * time.Millisecond
 	googleRetryMaxBackoff      = 2 * time.Second
 	googleRetryBackoffMultiply = 2
+	minPerAttemptTimeout       = 1 * time.Second
 
 	gcsOperationAttr                           = "operation"
 	gcsOperationAttrReadAt                     = "ReadAt"
@@ -276,10 +277,12 @@ func (o *gcpObject) OpenRangeReader(ctx context.Context, off, length int64) (io.
 func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
 	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrReadAt))
 
+	perAttemptTimeout, maxAttempts := getReadRetryConfig(ctx)
+
 	var attempts int
 
-	n, attempts, err = retryWithBackoff(ctx, func() (int, error) {
-		return o.readAtOnce(ctx, buff, off)
+	n, attempts, err = retryWithBackoff(ctx, maxAttempts, func() (int, error) {
+		return o.readAtOnce(ctx, buff, off, perAttemptTimeout)
 	})
 
 	attemptsAttr := attribute.Int(gcsRetryAttemptsAttr, attempts)
@@ -294,8 +297,8 @@ func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, 
 }
 
 // readAtOnce performs a single GCS read attempt with its own timeout context.
-func (o *gcpObject) readAtOnce(ctx context.Context, buff []byte, off int64) (int, error) {
-	ctx, cancel := context.WithTimeout(ctx, googlePerAttemptTimeout)
+func (o *gcpObject) readAtOnce(ctx context.Context, buff []byte, off int64, timeout time.Duration) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	reader, err := o.readAtHandle.NewRangeReader(ctx, off, int64(len(buff)))
