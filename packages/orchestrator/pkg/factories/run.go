@@ -384,7 +384,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		PoolSize:         config.RedisPoolSize,
 	})
 	if err != nil {
-		logger.L().Fatal(ctx, "Could not connect to Redis", zap.Error(err))
+		logger.L().Fatal(ctx, "Failed to create redis client", zap.Error(err))
 	}
 
 	closers = append(closers, closer{"redis client", func(context.Context) error {
