@@ -98,6 +98,10 @@ variable "api_admin_token" {
   type = string
 }
 
+variable "dashboard_api_admin_token" {
+  type = string
+}
+
 variable "sandbox_access_token_hash_seed" {
   type = string
 }
@@ -454,6 +458,21 @@ variable "dashboard_api_count" {
   default = 0
 }
 
+variable "supabase_db_connection_string" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "enable_auth_user_sync_background_worker" {
+  type    = bool
+  default = false
+}
+
+variable "enable_billing_http_team_provision_sink" {
+  type    = bool
+  default = false
+}
 variable "volume_token_issuer" {
   type = string
 }

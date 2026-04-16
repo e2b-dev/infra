@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bits-and-blooms/bitset"
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/edsrzf/mmap-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -22,6 +22,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/syncroaring"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -47,26 +48,17 @@ func NewErrCacheClosed(filePath string) *CacheClosedError {
 }
 
 type Cache struct {
-	filePath         string
-	size             int64
-	blockSize        int64
-	mmap             *mmap.MMap
-	mu               sync.RWMutex
-	dirty            sync.Map
-	dirtyGranularity int64
-	dirtyFile        bool
-	closed           atomic.Bool
+	filePath  string
+	size      int64
+	blockSize int64
+	mmap      *mmap.MMap
+	mu        sync.RWMutex
+	dirty     *syncroaring.Bitset
+	dirtyFile bool
+	closed    atomic.Bool
 }
 
-// NewCache creates a cache with dirty tracking at blockSize granularity.
-// When we are passing filePath that is a file that has content we want to server want to use dirtyFile = true.
 func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, error) {
-	return NewCacheWithDirtyGranularity(size, blockSize, blockSize, filePath, dirtyFile)
-}
-
-// NewCacheWithDirtyGranularity creates a cache with dirty tracking at the specified granularity.
-// For chunker caches, dirtyGranularity can be larger than blockSize to reduce dirty map overhead.
-func NewCacheWithDirtyGranularity(size, blockSize, dirtyGranularity int64, filePath string, dirtyFile bool) (*Cache, error) {
 	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("error opening file: %w", err)
@@ -76,11 +68,11 @@ func NewCacheWithDirtyGranularity(size, blockSize, dirtyGranularity int64, fileP
 
 	if size == 0 {
 		return &Cache{
-			filePath:         filePath,
-			size:             size,
-			blockSize:        blockSize,
-			dirtyGranularity: dirtyGranularity,
-			dirtyFile:        dirtyFile,
+			filePath:  filePath,
+			size:      size,
+			blockSize: blockSize,
+			dirtyFile: dirtyFile,
+			dirty:     syncroaring.New(),
 		}, nil
 	}
 
@@ -100,12 +92,12 @@ func NewCacheWithDirtyGranularity(size, blockSize, dirtyGranularity int64, fileP
 	}
 
 	return &Cache{
-		mmap:             &mm,
-		filePath:         filePath,
-		size:             size,
-		blockSize:        blockSize,
-		dirtyGranularity: dirtyGranularity,
-		dirtyFile:        dirtyFile,
+		mmap:      &mm,
+		filePath:  filePath,
+		size:      size,
+		blockSize: blockSize,
+		dirtyFile: dirtyFile,
+		dirty:     syncroaring.New(),
 	}, nil
 }
 
@@ -117,10 +109,6 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	ctx, childSpan := tracer.Start(ctx, "export-to-diff")
 	defer childSpan.End()
 
-	if c.dirtyGranularity != c.blockSize {
-		return nil, fmt.Errorf("ExportToDiff requires block-level dirty tracking (granularity %d != blockSize %d)", c.dirtyGranularity, c.blockSize)
-	}
-
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -129,11 +117,7 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	}
 
 	if c.mmap == nil {
-		return &header.DiffMetadata{
-			Dirty:     bitset.New(0),
-			Empty:     bitset.New(0),
-			BlockSize: c.blockSize,
-		}, nil
+		return header.NewDiffMetadata(c.blockSize, roaring.New()), nil
 	}
 
 	f, err := os.Open(c.filePath)
@@ -152,18 +136,7 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 		logger.L().Warn(ctx, "error syncing file", zap.Error(err))
 	}
 
-	buildStart := time.Now()
-	builder := header.NewDiffMetadataBuilder(c.size, c.blockSize)
-
-	// We don't need to sort the keys as the bitset handles the ordering.
-	c.dirty.Range(func(key, _ any) bool {
-		builder.AddDirtyOffset(key.(int64))
-
-		return true
-	})
-
-	diffMetadata := builder.Build()
-	telemetry.SetAttributes(ctx, attribute.Int64("build_metadata_ms", time.Since(buildStart).Milliseconds()))
+	diffMetadata := header.NewDiffMetadata(c.blockSize, c.dirty.Clone())
 
 	dst := int(out.Fd())
 	var writeOffset int64
@@ -221,7 +194,7 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	telemetry.SetAttributes(ctx,
 		attribute.Int64("copy_ms", time.Since(copyStart).Milliseconds()),
 		attribute.Int64("total_size_bytes", c.size),
-		attribute.Int64("dirty_size_bytes", int64(diffMetadata.Dirty.Count())*c.blockSize),
+		attribute.Int64("dirty_size_bytes", int64(diffMetadata.Dirty.GetCardinality())*c.blockSize),
 		attribute.Int64("total_ranges", totalRanges),
 	)
 
@@ -336,45 +309,17 @@ func (c *Cache) sliceDirect(off, length int64) ([]byte, error) {
 }
 
 func (c *Cache) isCached(off, length int64) bool {
-	// Zero-length is vacuously true (no-op)
-	if length <= 0 {
-		return true
-	}
+	start := uint64(header.BlockIdx(off, c.blockSize))
+	end := uint64(header.BlockCeilIdx(min(off+length, c.size), c.blockSize))
 
-	// Make sure the offset is within the cache size
-	if off >= c.size {
-		return false
-	}
-
-	// Cap if the length goes beyond the cache size, so we don't check for blocks that are out of bounds.
-	end := min(off+length, c.size)
-
-	startKey := (off / c.dirtyGranularity) * c.dirtyGranularity
-	endKey := ((end - 1) / c.dirtyGranularity) * c.dirtyGranularity
-
-	for key := startKey; key <= endKey; key += c.dirtyGranularity {
-		if _, ok := c.dirty.Load(key); !ok {
-			return false
-		}
-	}
-
-	return true
+	return c.dirty.HasRange(start, end)
 }
 
 func (c *Cache) setIsCached(off, length int64) {
-	// Zero-length is a no-op
-	if length <= 0 {
-		return
-	}
+	start := uint64(header.BlockIdx(off, c.blockSize))
+	end := uint64(header.BlockCeilIdx(off+length, c.blockSize))
 
-	end := off + length
-
-	startKey := (off / c.dirtyGranularity) * c.dirtyGranularity
-	endKey := ((end - 1) / c.dirtyGranularity) * c.dirtyGranularity
-
-	for key := startKey; key <= endKey; key += c.dirtyGranularity {
-		c.dirty.Store(key, struct{}{})
-	}
+	c.dirty.SetRange(start, end)
 }
 
 // When using WriteAtWithoutLock you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.

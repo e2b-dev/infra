@@ -4,14 +4,13 @@ import (
 	"iter"
 	"sync"
 
-	"github.com/bits-and-blooms/bitset"
+	"github.com/RoaringBitmap/roaring/v2"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type Tracker struct {
-	b  *bitset.BitSet
+	b  *roaring.Bitmap
 	mu sync.RWMutex
 
 	blockSize int64
@@ -19,8 +18,7 @@ type Tracker struct {
 
 func NewTracker(blockSize int64) *Tracker {
 	return &Tracker{
-		// The bitset resizes automatically based on the maximum set bit.
-		b:         bitset.New(0),
+		b:         roaring.New(),
 		blockSize: blockSize,
 	}
 }
@@ -29,27 +27,21 @@ func (t *Tracker) Has(off int64) bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
-	return t.b.Test(uint(header.BlockIdx(off, t.blockSize)))
+	return t.b.Contains(uint32(header.BlockIdx(off, t.blockSize)))
 }
 
 func (t *Tracker) Add(off int64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	t.b.Set(uint(header.BlockIdx(off, t.blockSize)))
+	t.b.Add(uint32(header.BlockIdx(off, t.blockSize)))
 }
 
 func (t *Tracker) Reset() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	t.b.ClearAll()
-}
-
-// BitSet returns the bitset.
-// This is not safe to use concurrently.
-func (t *Tracker) BitSet() *bitset.BitSet {
-	return t.b
+	t.b.Clear()
 }
 
 func (t *Tracker) BlockSize() int64 {
@@ -70,11 +62,11 @@ func (t *Tracker) Offsets() iter.Seq[int64] {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
-	return bitsetOffsets(t.b.Clone(), t.BlockSize())
-}
+	snapshot := t.b.Clone()
 
-func bitsetOffsets(b *bitset.BitSet, blockSize int64) iter.Seq[int64] {
-	return utils.TransformTo(b.EachSet(), func(idx uint) int64 {
-		return header.BlockOffset(int64(idx), blockSize)
-	})
+	return func(yield func(int64) bool) {
+		snapshot.Iterate(func(idx uint32) bool {
+			return yield(header.BlockOffset(int64(idx), t.blockSize))
+		})
+	}
 }

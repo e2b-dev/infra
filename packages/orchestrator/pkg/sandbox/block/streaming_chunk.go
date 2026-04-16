@@ -172,7 +172,7 @@ func NewStreamingChunker(
 	minReadBatchSize int64,
 	ff *featureflags.Client,
 ) (*StreamingChunker, error) {
-	cache, err := NewCacheWithDirtyGranularity(size, blockSize, ChunkerDirtyGranularity, cachePath, false)
+	cache, err := NewCache(size, blockSize, cachePath, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file cache: %w", err)
 	}
@@ -270,9 +270,7 @@ func (c *StreamingChunker) Slice(ctx context.Context, off, length int64) ([]byte
 		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, err)
 	}
 
-	// Use sliceDirect (no isCached check) since the waiter mechanism guarantees data is in the mmap.
-	// With coarse dirty granularity, isCached may return false during an active fetch even though
-	// the requested bytes have been written to the mmap.
+	// sliceDirect skips isCached — the waiter already confirmed the data is in the mmap.
 	b, cacheErr := c.cache.sliceDirect(off, length)
 	if cacheErr != nil {
 		timer.RecordRaw(ctx, length, chunkerAttrs.failLocalReadAgain)

@@ -28,7 +28,7 @@ func TestQueryNotExistingTemplateAlias(t *testing.T) {
 
 	store := &APIStore{
 		sqlcDB:        testDB.SqlcClient,
-		authDB:        testDB.AuthDb,
+		authDB:        testDB.AuthDB,
 		templateCache: templatecache.NewTemplateCache(testDB.SqlcClient, redis),
 	}
 
@@ -69,7 +69,7 @@ func TestQueryExistingTemplateAlias(t *testing.T) {
 
 	store := &APIStore{
 		sqlcDB:        testDB.SqlcClient,
-		authDB:        testDB.AuthDb,
+		authDB:        testDB.AuthDB,
 		templateCache: templatecache.NewTemplateCache(testDB.SqlcClient, redis),
 	}
 
@@ -114,7 +114,7 @@ func TestQueryExistingTemplateAliasAsNotOwnerTeam(t *testing.T) {
 
 	store := &APIStore{
 		sqlcDB:        testDB.SqlcClient,
-		authDB:        testDB.AuthDb,
+		authDB:        testDB.AuthDB,
 		templateCache: templatecache.NewTemplateCache(testDB.SqlcClient, redis),
 	}
 

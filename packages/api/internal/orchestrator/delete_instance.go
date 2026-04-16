@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -80,11 +81,17 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 	if alreadyDone {
 		logger.L().Info(ctx, "Sandbox was already in the process of being removed", logger.WithSandboxID(sandboxID), zap.String("state", string(sbx.State)))
 
+		if time.Since(sbx.EndTime) > sandbox.StaleCutoff && opts.Action.Effect == sandbox.TransitionExpires {
+			o.sandboxStore.Remove(context.WithoutCancel(ctx), teamID, sandboxID)
+			go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action)
+		}
+
 		return nil
 	}
 
 	defer func() { go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action) }()
-	defer o.sandboxStore.Remove(ctx, teamID, sandboxID)
+	// Once we start the removal process, we want to make sure it gets removed from the store
+	defer o.sandboxStore.Remove(context.WithoutCancel(ctx), teamID, sandboxID)
 	err = o.removeSandboxFromNode(ctx, sbx, opts.Action)
 	if err != nil {
 		logger.L().Error(ctx, "Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))

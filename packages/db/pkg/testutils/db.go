@@ -20,6 +20,7 @@ import (
 	db "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
+	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils/queries"
 )
 
@@ -37,8 +38,10 @@ func init() {
 // Database encapsulates the test database container and clients
 type Database struct {
 	SqlcClient  *db.Client
-	AuthDb      *authdb.Client
+	AuthDB      *authdb.Client
+	SupabaseDB  *supabasedb.Client
 	TestQueries *queries.Queries
+	connStr     string
 }
 
 var (
@@ -106,23 +109,31 @@ func SetupDatabase(t *testing.T) *Database {
 	require.NoError(t, err, "Failed to create sqlc client")
 
 	// Create the auth db client
-	authDb, err := authdb.NewClient(ctx, connStr, connStr)
+	authDB, err := authdb.NewClient(ctx, connStr, connStr)
 	require.NoError(t, err, "Failed to create auth db client")
+
+	supabaseDB, err := supabasedb.NewClient(t.Context(), connStr)
+	require.NoError(t, err, "Failed to create supabase db client")
 
 	oneDB = &Database{
 		SqlcClient:  sqlcClient,
-		AuthDb:      authDb,
+		AuthDB:      authDB,
+		SupabaseDB:  supabaseDB,
 		TestQueries: testQueries,
+		connStr:     connStr,
 	}
 
 	return oneDB
 }
 
-// gooseMu serializes goose operations across parallel tests.
-// goose.OpenDBWithDriver calls goose.SetDialect which writes to package-level
-// globals (dialect, store) without synchronization. Concurrent test goroutines
-// race on these globals, triggering the race detector on ARM64.
-var gooseMu sync.Mutex
+func (db *Database) ConnStr() string {
+	return db.connStr
+}
+
+var migrationsDir = []string{
+	filepath.Join("packages", "db", "migrations"),
+	filepath.Join("packages", "db", "pkg", "supabase", "migrations"),
+}
 
 // runDatabaseMigrations executes all required database migrations
 func runDatabaseMigrations(t *testing.T, connStr string) {
@@ -133,23 +144,23 @@ func runDatabaseMigrations(t *testing.T, connStr string) {
 	require.NoError(t, err, "Failed to find git root")
 	repoRoot := strings.TrimSpace(string(output))
 
-	gooseMu.Lock()
-	defer gooseMu.Unlock()
-
-	gooseDB, err := goose.OpenDBWithDriver("pgx", connStr)
+	sqlDB, err := goose.OpenDBWithDriver("pgx", connStr)
 	require.NoError(t, err)
+
 	defer func() {
-		err := gooseDB.Close()
+		err := sqlDB.Close()
 		assert.NoError(t, err)
 	}()
 
-	// run the db migration
-	err = goose.RunWithOptionsContext(
-		t.Context(),
-		"up",
-		gooseDB,
-		filepath.Join(repoRoot, "packages", "db", "migrations"),
-		nil,
-	)
-	require.NoError(t, err)
+	for _, dir := range migrationsDir {
+		err = goose.RunWithOptionsContext(
+			t.Context(),
+			"up",
+			sqlDB,
+			filepath.Join(repoRoot, dir),
+			nil,
+		)
+
+		require.NoError(t, err)
+	}
 }
