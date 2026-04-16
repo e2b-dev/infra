@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -78,6 +77,7 @@ type Dispatch struct {
 	respHdr  [16]byte
 	prov     Provider
 	readBufs [][]byte // persistent per-block slice storage, reused across reads
+	readBuf  []byte   // reused across reads for contiguous response data
 	writeBuf []byte   // reused across writes to avoid per-request allocation
 	buffer   []byte
 }
@@ -122,10 +122,13 @@ func (d *Dispatch) writeReadResponse(respHandle uint64, slices [][]byte) error {
 		return err
 	}
 
-	bufs := net.Buffers(slices)
-	_, err = bufs.WriteTo(d.fp)
+	for _, s := range slices {
+		if _, err := d.fp.Write(s); err != nil {
+			return err
+		}
+	}
 
-	return err
+	return nil
 }
 
 /**
@@ -264,5 +267,15 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 		return d.writeResponse(1, cmdHandle, nil)
 	}
 
-	return d.writeReadResponse(cmdHandle, slices)
+	readLen := int(cmdLength)
+	if cap(d.readBuf) < readLen {
+		d.readBuf = make([]byte, readLen)
+	}
+	buf := d.readBuf[:readLen]
+	off := 0
+	for _, s := range slices {
+		off += copy(buf[off:], s)
+	}
+
+	return d.writeResponse(0, cmdHandle, buf)
 }
