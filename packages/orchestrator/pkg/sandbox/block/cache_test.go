@@ -11,6 +11,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/bits-and-blooms/bitset"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
@@ -441,6 +442,133 @@ func TestCache_ZeroLengthIsCachedAndSetIsCached(t *testing.T) {
 
 	cache.setIsCached(blockSize*5, 0)
 	require.False(t, cache.isCached(blockSize*5, blockSize), "block 5 should not be cached after zero-length setIsCached")
+}
+
+func TestImportFromDiff_Roundtrip(t *testing.T) {
+	t.Parallel()
+
+	const blockSize int64 = header.RootfsBlockSize
+	const numBlocks int64 = 8
+	const size = blockSize * numBlocks
+
+	// Create a source cache and write some non-contiguous blocks.
+	srcCache, err := NewCache(size, blockSize, t.TempDir()+"/src", false)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = srcCache.Close() })
+
+	block0 := bytes.Repeat([]byte{0xAA}, int(blockSize))
+	block2 := bytes.Repeat([]byte{0xBB}, int(blockSize))
+	block5 := bytes.Repeat([]byte{0xCC}, int(blockSize))
+
+	_, err = srcCache.WriteAt(block0, 0)
+	require.NoError(t, err)
+	_, err = srcCache.WriteAt(block2, 2*blockSize)
+	require.NoError(t, err)
+	_, err = srcCache.WriteAt(block5, 5*blockSize)
+	require.NoError(t, err)
+
+	// Export to diff file.
+	diffFile, err := os.CreateTemp(t.TempDir(), "diff-*")
+	require.NoError(t, err)
+	defer diffFile.Close()
+
+	diffMeta, err := srcCache.ExportToDiff(t.Context(), diffFile)
+	require.NoError(t, err)
+	require.EqualValues(t, 3, diffMeta.Dirty.Count())
+
+	// Create a destination cache and import the diff.
+	dstCache, err := NewCache(size, blockSize, t.TempDir()+"/dst", false)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dstCache.Close() })
+
+	err = dstCache.ImportFromDiff(t.Context(), diffFile, diffMeta.Dirty)
+	require.NoError(t, err)
+
+	// Verify the imported blocks match the originals.
+	got := make([]byte, blockSize)
+
+	n, err := dstCache.ReadAt(got, 0)
+	require.NoError(t, err)
+	require.Equal(t, int(blockSize), n)
+	require.Equal(t, block0, got)
+
+	n, err = dstCache.ReadAt(got, 2*blockSize)
+	require.NoError(t, err)
+	require.Equal(t, int(blockSize), n)
+	require.Equal(t, block2, got)
+
+	n, err = dstCache.ReadAt(got, 5*blockSize)
+	require.NoError(t, err)
+	require.Equal(t, int(blockSize), n)
+	require.Equal(t, block5, got)
+
+	// Verify clean blocks return BytesNotAvailableError.
+	_, err = dstCache.Slice(blockSize, blockSize)
+	require.ErrorAs(t, err, &BytesNotAvailableError{}, "unwritten block should not be available")
+
+	_, err = dstCache.Slice(3*blockSize, blockSize)
+	require.ErrorAs(t, err, &BytesNotAvailableError{}, "unwritten block should not be available")
+}
+
+func TestImportFromDiff_EmptyDiff(t *testing.T) {
+	t.Parallel()
+
+	const blockSize int64 = 4096
+	const size = blockSize * 4
+
+	cache, err := NewCache(size, blockSize, t.TempDir()+"/cache", false)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	emptyDiff, err := os.CreateTemp(t.TempDir(), "empty-*")
+	require.NoError(t, err)
+	defer emptyDiff.Close()
+
+	emptyBitset := bitset.New(0)
+	err = cache.ImportFromDiff(t.Context(), emptyDiff, emptyBitset)
+	require.NoError(t, err)
+}
+
+func TestImportFromDiff_AllBlocksDirty(t *testing.T) {
+	t.Parallel()
+
+	const blockSize int64 = 4096
+	const numBlocks int64 = 4
+	const size = blockSize * numBlocks
+
+	srcCache, err := NewCache(size, blockSize, t.TempDir()+"/src", false)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = srcCache.Close() })
+
+	allData := make([]byte, size)
+	_, err = rand.Read(allData)
+	require.NoError(t, err)
+
+	for i := int64(0); i < numBlocks; i++ {
+		_, err = srcCache.WriteAt(allData[i*blockSize:(i+1)*blockSize], i*blockSize)
+		require.NoError(t, err)
+	}
+
+	diffFile, err := os.CreateTemp(t.TempDir(), "diff-*")
+	require.NoError(t, err)
+	defer diffFile.Close()
+
+	diffMeta, err := srcCache.ExportToDiff(t.Context(), diffFile)
+	require.NoError(t, err)
+	require.EqualValues(t, numBlocks, diffMeta.Dirty.Count())
+
+	dstCache, err := NewCache(size, blockSize, t.TempDir()+"/dst", false)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dstCache.Close() })
+
+	err = dstCache.ImportFromDiff(t.Context(), diffFile, diffMeta.Dirty)
+	require.NoError(t, err)
+
+	got := make([]byte, size)
+	n, err := dstCache.ReadAt(got, 0)
+	require.NoError(t, err)
+	require.Equal(t, int(size), n)
+	require.Equal(t, allData, got)
 }
 
 func compareData(readBytes []byte, expectedBytes []byte) error {
