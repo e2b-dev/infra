@@ -5,7 +5,7 @@ on: [workflow_call]
 jobs:
   check:
     name: Check for out of order migrations
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5

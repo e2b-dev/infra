@@ -17,15 +17,15 @@ sudo mkdir -p /orchestrator/sandbox
 sudo mkdir -p /orchestrator/template
 sudo mkdir -p /orchestrator/build
 
-# Add swapfile
+# Add swapfile (skip if already active)
 SWAPFILE="/swapfile"
-sudo fallocate -l 1G $SWAPFILE
-sudo chmod 600 $SWAPFILE
-sudo mkswap $SWAPFILE
-sudo swapon $SWAPFILE
-
-# Make swapfile persistent
-echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
+if ! swapon --show | grep -q "$SWAPFILE"; then
+  sudo fallocate -l 1G $SWAPFILE
+  sudo chmod 600 $SWAPFILE
+  sudo mkswap $SWAPFILE
+  sudo swapon $SWAPFILE
+  echo "$SWAPFILE none swap sw 0 0" | sudo tee -a /etc/fstab
+fi
 
 # Set swap settings
 sudo sysctl vm.swappiness=10
@@ -65,8 +65,21 @@ EOH
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 
-# Load the nbd module with 4096 devices
-sudo modprobe nbd nbds_max=4096
+# Load kernel modules — skip if built into kernel
+for mod in nfs nfsv3; do
+  if [ -e /sys/module/${mod} ]; then
+    echo "${mod} is built into kernel"
+  else
+    sudo modprobe ${mod} 2>/dev/null && echo "${mod} loaded" || echo "WARNING: ${mod} not available"
+  fi
+done
+
+# NBD needs nbds_max parameter
+if [ -e /sys/module/nbd ]; then
+  echo "nbd is built into kernel"
+else
+  sudo modprobe nbd nbds_max=4096 2>/dev/null && echo "nbd loaded" || echo "WARNING: nbd not available"
+fi
 
 # Create the directory for the fc mounts
 mkdir -p /fc-vm

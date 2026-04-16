@@ -8,7 +8,7 @@ permissions:
 jobs:
   cross-compile:
     name: Cross-compile all packages for ARM64
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
       - name: Checkout repository
@@ -39,7 +39,7 @@ jobs:
 
   arm64-unit-tests:
     name: ARM64 tests for ${{ matrix.package }}
-    runs-on: ubuntu-24.04-arm
+    runs-on: blacksmith-4vcpu-ubuntu-2404-arm
     timeout-minutes: 30
     env:
       GIN_MODE: test
@@ -99,10 +99,21 @@ jobs:
           sudo mount -t hugetlbfs none /mnt/hugepages
           echo 256 | sudo tee /proc/sys/vm/nr_hugepages
 
-          # Install extra kernel modules (nbd is not in base modules on GitHub-hosted runners)
-          sudo apt-get update
-          sudo apt-get install -y linux-modules-extra-$(uname -r)
-          sudo modprobe nbd nbds_max=256
+          # Load kernel modules — skip if built into kernel
+          for mod in nfs nfsv3; do
+            if [ -e /sys/module/${mod} ]; then
+              echo "${mod} is built into kernel"
+            else
+              sudo modprobe ${mod} 2>/dev/null && echo "${mod} loaded" || echo "WARNING: ${mod} not available"
+            fi
+          done
+
+          # NBD needs nbds_max parameter
+          if [ -e /sys/module/nbd ]; then
+            echo "nbd is built into kernel"
+          else
+            sudo modprobe nbd nbds_max=256 || echo "WARNING: nbd not available — NBD tests will fail"
+          fi
 
           # Disable inotify watching of change events for NBD devices
           echo 'ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"' | sudo tee /etc/udev/rules.d/97-nbd-device.rules

@@ -8,7 +8,7 @@ permissions:
 jobs:
   run-tests:
     name: Run tests for ${{ matrix.package }}
-    runs-on: infra-tests
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       GIN_MODE: test
     strategy:
@@ -67,8 +67,21 @@ jobs:
           sudo mount -t hugetlbfs none /mnt/hugepages
           echo 2000 | sudo tee /proc/sys/vm/nr_hugepages
 
-          # Enable NBD
-          sudo modprobe nbd nbds_max=256
+          # Load kernel modules — skip if built into kernel
+          for mod in nfs nfsv3; do
+            if [ -e /sys/module/${mod} ]; then
+              echo "${mod} is built into kernel"
+            else
+              sudo modprobe ${mod} 2>/dev/null && echo "${mod} loaded" || echo "WARNING: ${mod} not available"
+            fi
+          done
+
+          # NBD needs nbds_max parameter
+          if [ -e /sys/module/nbd ]; then
+            echo "nbd is built into kernel"
+          else
+            sudo modprobe nbd nbds_max=256
+          fi
 
           # Disable inotify watching of change events for NBD devices
           echo 'ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"' | sudo tee /etc/udev/rules.d/97-nbd-device.rules
@@ -91,7 +104,7 @@ jobs:
 
   validate-iac:
     name: Validate terraform
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
