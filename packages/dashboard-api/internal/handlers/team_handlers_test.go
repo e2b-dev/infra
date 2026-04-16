@@ -17,6 +17,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	authtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
@@ -336,7 +337,6 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", nil)
-	auth.SetUserID(ginCtx, userID)
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
@@ -344,7 +344,7 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
 	}
-	store.PostAdminUsersBootstrap(ginCtx)
+	store.PostAdminUsersUserIdBootstrap(ginCtx, api.UserId(userID))
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", recorder.Code)
@@ -392,7 +392,6 @@ func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testin
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", nil)
-	auth.SetUserID(ginCtx, userID)
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
@@ -400,7 +399,7 @@ func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testin
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
 	}
-	store.PostAdminUsersBootstrap(ginCtx)
+	store.PostAdminUsersUserIdBootstrap(ginCtx, api.UserId(userID))
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", recorder.Code)

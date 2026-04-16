@@ -757,13 +757,14 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /admin/users/bootstrap:
+  /admin/users/{userId}/bootstrap:
     post:
       summary: Bootstrap user
       tags: [teams]
       security:
         - AdminTokenAuth: []
-          Supabase1TokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/userId"
       responses:
         "200":
           description: Successfully bootstrapped user.
