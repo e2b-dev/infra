@@ -44,7 +44,11 @@ jobs:
 
       - name: Build template
         working-directory: ./packages/shared/scripts
-        run: bun run ./build.prod.ts
+        run: |
+          bun install
+          bun run ./build.prod.ts
         env:
+          E2B_ACCESS_TOKEN: ${{ secrets.E2B_ACCESS_TOKEN }}
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
           USE_CACHE: ${{ inputs.use_cache }}
 
