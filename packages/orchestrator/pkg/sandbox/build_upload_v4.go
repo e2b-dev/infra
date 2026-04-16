@@ -92,11 +92,7 @@ func (c *compressedUploader) FinalizeHeaders(ctx context.Context) (memfileHeader
 
 	if c.snapshot.MemfileDiffHeader != nil {
 		eg.Go(func() error {
-			h := c.snapshot.MemfileDiffHeader.CloneForUpload()
-
-			c.pending.applyToHeader(h, storage.MemfileName)
-
-			h.Metadata.Version = headers.MetadataVersionV4
+			h := c.pending.PrepareV4Header(c.snapshot.MemfileDiffHeader, storage.MemfileName)
 
 			data, err := headers.StoreHeader(ctx, c.persistence, c.paths.MemfileHeader(), h)
 			if err != nil {
@@ -111,11 +107,7 @@ func (c *compressedUploader) FinalizeHeaders(ctx context.Context) (memfileHeader
 
 	if c.snapshot.RootfsDiffHeader != nil {
 		eg.Go(func() error {
-			h := c.snapshot.RootfsDiffHeader.CloneForUpload()
-
-			c.pending.applyToHeader(h, storage.RootfsName)
-
-			h.Metadata.Version = headers.MetadataVersionV4
+			h := c.pending.PrepareV4Header(c.snapshot.RootfsDiffHeader, storage.RootfsName)
 
 			data, err := headers.StoreHeader(ctx, c.persistence, c.paths.RootfsHeader(), h)
 			if err != nil {

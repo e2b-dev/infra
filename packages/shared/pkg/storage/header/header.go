@@ -38,9 +38,11 @@ type Header struct {
 
 // CloneForUpload returns a clone with copied Mapping and Builds, safe to
 // mutate for serialization without racing with concurrent readers of the
-// original.
-func (t *Header) CloneForUpload() *Header {
+// original. The version is set on the clone.
+func (t *Header) CloneForUpload(version uint64) *Header {
 	metaCopy := *t.Metadata
+	metaCopy.Version = version
+
 	clone := &Header{
 		Metadata: &metaCopy,
 		Mapping:  slices.Clone(t.Mapping),
@@ -52,6 +54,15 @@ func (t *Header) CloneForUpload() *Header {
 	}
 
 	return clone
+}
+
+// SetBuild adds or replaces build metadata for the given build ID.
+func (t *Header) SetBuild(buildID uuid.UUID, bd BuildData) {
+	if t.Builds == nil {
+		t.Builds = make(map[uuid.UUID]BuildData)
+	}
+
+	t.Builds[buildID] = bd
 }
 
 func NewHeader(metadata *Metadata, mapping []BuildMap) (*Header, error) {

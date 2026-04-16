@@ -1,9 +1,7 @@
 package sandbox
 
 import (
-	"bytes"
 	"context"
-	"slices"
 	"sync"
 
 	"github.com/google/uuid"
@@ -106,31 +104,27 @@ func (p *PendingBuildInfo) get(key string) *pendingBuildInfo {
 	return &info
 }
 
-func (p *PendingBuildInfo) applyToHeader(h *headers.Header, fileType string) {
-	if h == nil {
-		return
-	}
+// PrepareV4Header clones src for upload, applies pending build metadata for
+// fileType, and sets the V4 version. The clone is safe to serialize without
+// racing with concurrent readers of the original (e.g. UFFD handlers).
+func (p *PendingBuildInfo) PrepareV4Header(h *headers.Header, fileType string) *headers.Header {
+	h = h.CloneForUpload(headers.MetadataVersionV4)
 
-	buildIDs := make([]uuid.UUID, len(h.Mapping))
-	for i, m := range h.Mapping {
-		buildIDs[i] = m.BuildId
-	}
-	slices.SortFunc(buildIDs, func(a, b uuid.UUID) int { return bytes.Compare(a[:], b[:]) })
-	buildIDs = slices.CompactFunc(buildIDs, func(a, b uuid.UUID) bool { return a == b })
+	seen := make(map[uuid.UUID]struct{}, len(h.Mapping))
 
-	for _, buildID := range buildIDs {
-		key := pendingBuildInfoKey(buildID.String(), fileType)
+	for _, m := range h.Mapping {
+		if _, ok := seen[m.BuildId]; ok {
+			continue
+		}
+		seen[m.BuildId] = struct{}{}
+
+		key := pendingBuildInfoKey(m.BuildId.String(), fileType)
 		info := p.get(key)
-
 		if info == nil {
 			// Parent builds and uuid.Nil (empty blocks) have no pending entry.
 			// Parent builds are either already in h.Builds (copied by ToDiffHeader),
 			// or h.Builds is nil (V3 base with no Builds map at all).
 			continue
-		}
-
-		if h.Builds == nil {
-			h.Builds = make(map[uuid.UUID]headers.BuildData)
 		}
 
 		bd := headers.BuildData{
@@ -140,6 +134,9 @@ func (p *PendingBuildInfo) applyToHeader(h *headers.Header, fileType string) {
 		if info.ft != nil && info.ft.IsCompressed() {
 			bd.FrameData = info.ft
 		}
-		h.Builds[buildID] = bd
+
+		h.SetBuild(m.BuildId, bd)
 	}
+
+	return h
 }
