@@ -3,7 +3,7 @@
 //   sqlc v1.29.0
 // source: delete_public_user.sql
 
-package queries
+package authqueries
 
 import (
 	"context"

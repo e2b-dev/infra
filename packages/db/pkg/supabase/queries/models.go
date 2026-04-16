@@ -5,10 +5,13 @@
 package supabasequeries
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 )
 
 type AuthUser struct {
-	ID    uuid.UUID
-	Email string
+	ID        uuid.UUID
+	Email     string
+	CreatedAt *time.Time
 }

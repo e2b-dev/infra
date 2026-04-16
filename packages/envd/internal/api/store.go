@@ -39,20 +39,22 @@ type API struct {
 	lastSetTime *utils.AtomicMax
 	initLock    sync.Mutex
 
-	isMountingNFS atomic.Bool
-	isMountedNFS  atomic.Bool
-	mountedPaths  sync.Map // tracks successfully mounted paths
+	caCertInstaller *host.CACertInstaller
+	isMountingNFS   atomic.Bool
+	isMountedNFS    atomic.Bool
+	mountedPaths    sync.Map // tracks successfully mounted paths
 }
 
 func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
 	return &API{
-		logger:      l,
-		defaults:    defaults,
-		mmdsChan:    mmdsChan,
-		isNotFC:     isNotFC,
-		mmdsClient:  &DefaultMMDSClient{},
-		lastSetTime: utils.NewAtomicMax(),
-		accessToken: &SecureToken{},
+		logger:          l,
+		defaults:        defaults,
+		mmdsChan:        mmdsChan,
+		isNotFC:         isNotFC,
+		mmdsClient:      &DefaultMMDSClient{},
+		lastSetTime:     utils.NewAtomicMax(),
+		accessToken:     &SecureToken{},
+		caCertInstaller: host.NewCACertInstaller(l),
 	}
 }
 

@@ -175,6 +175,10 @@ func (p *Proxy) Close(_ context.Context) error {
 	return nil
 }
 
+func (p *Proxy) CABundle() string {
+	return ""
+}
+
 // handlerFunc is the signature for connection handlers.
 type handlerFunc func(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol)
 

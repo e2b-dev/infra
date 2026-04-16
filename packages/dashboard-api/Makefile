@@ -32,12 +32,12 @@ build-and-upload:
 .PHONY: run
 run:
 	make build
-	./bin/dashboard-api
+	@./bin/dashboard-api
 
 .PHONY: run-local
 run-local:
 	make build
-	NODE_ID=$(HOSTNAME) ./bin/dashboard-api
+	@NODE_ID=$(HOSTNAME) ./bin/dashboard-api
 
 .PHONY: test
 test:

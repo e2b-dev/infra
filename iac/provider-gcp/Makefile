@@ -78,6 +78,7 @@ tf_vars := \
 	$(call tfvar, DASHBOARD_API_COUNT) \
 	$(call tfvar, SUPABASE_DB_CONNECTION_STRING) \
 	$(call tfvar, ENABLE_AUTH_USER_SYNC_BACKGROUND_WORKER) \
+	$(call tfvar, ENABLE_BILLING_HTTP_TEAM_PROVISION_SINK) \
 	$(call tfvar, DEFAULT_PERSISTENT_VOLUME_TYPE) \
 	$(call tfvar, PERSISTENT_VOLUME_TYPES) \
 	$(call tfvar, DB_MAX_OPEN_CONNECTIONS) \
@@ -85,7 +86,8 @@ tf_vars := \
 	$(call tfvar, AUTH_DB_MAX_OPEN_CONNECTIONS) \
 	$(call tfvar, AUTH_DB_MIN_IDLE_CONNECTIONS) \
 	$(call tfvar, GCS_GRPC_CONNECTION_POOL_SIZE) \
-	$(call tfvar, ADDITIONAL_API_PATHS_HANDLED_BY_INGRESS)
+	$(call tfvar, ADDITIONAL_API_PATHS_HANDLED_BY_INGRESS) \
+	$(call tfvar, ANYWHERE_CACHE_ENABLED)
 
 .PHONY: init
 init:
