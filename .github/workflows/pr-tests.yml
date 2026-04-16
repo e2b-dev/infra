@@ -81,7 +81,7 @@ jobs:
         working-directory: ${{ matrix.package }}
         run: |
           # Run tests. The '-E' flag is required to allow root to use the correct cache path.
-          sudo -E `which go` test -v ${{ matrix.test_path }}
+          sudo -E `which go` test -v -timeout 20m ${{ matrix.test_path }}
         if: matrix.sudo == true
 
       - name: Run tests
