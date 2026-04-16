@@ -79,7 +79,7 @@ func main() {
 
 	// Clean up existing data for idempotent re-seeding.
 	// Delete child rows that have ON DELETE NO ACTION constraints
-	// before deleting the team and user rows.
+	// before deleting the team and user.
 	err = authDb.TestsRawSQL(ctx, `
 DELETE FROM envs WHERE team_id IN (SELECT id FROM teams WHERE email = $1)
 `, email)
@@ -102,13 +102,13 @@ DELETE FROM volumes WHERE team_id IN (SELECT id FROM teams WHERE email = $1)
 	}
 
 	err = authDb.TestsRawSQL(ctx, `
-DELETE FROM addons WHERE added_by IN (SELECT id FROM public.users WHERE email = $1)
+DELETE FROM addons WHERE added_by IN (SELECT id FROM auth.users WHERE email = $1)
 `, email)
 	if err != nil {
 		panic(err)
 	}
 
-	// Now safe to delete team (team_api_keys cascade automatically).
+	// Now safe to delete team (team_api_keys, users_teams cascade automatically)
 	err = authDb.TestsRawSQL(ctx, `
 DELETE FROM teams WHERE email = $1
 `, email)
@@ -116,15 +116,7 @@ DELETE FROM teams WHERE email = $1
 		panic(err)
 	}
 
-	// Delete the projected user row so access_tokens and users_teams cascade.
-	err = authDb.TestsRawSQL(ctx, `
-DELETE FROM public.users WHERE email = $1
-`, email)
-	if err != nil {
-		panic(err)
-	}
-
-	// Delete the auth user separately.
+	// Now safe to delete user (access_tokens cascade automatically)
 	err = authDb.TestsRawSQL(ctx, `
 DELETE FROM auth.users WHERE email = $1
 `, email)
@@ -132,7 +124,11 @@ DELETE FROM auth.users WHERE email = $1
 		panic(err)
 	}
 
-	// Create the auth user and its projected public user row explicitly.
+	// Create the user
+	// NOTE: Inserting into auth.users fires the sync_inserts_to_public_users trigger,
+	// which inserts into public.users, which fires the post_user_signup trigger,
+	// which auto-creates a default team + users_teams row. We delete that
+	// trigger-created team below so we can create our own with a known ID/name.
 	userID := uuid.New()
 	err = authDb.TestsRawSQL(ctx, `
 INSERT INTO auth.users (id, email)
@@ -142,10 +138,11 @@ VALUES ($1, $2)
 		panic(err)
 	}
 
-	err = authDb.Write.UpsertPublicUser(ctx, authqueries.UpsertPublicUserParams{
-		ID:    userID,
-		Email: email,
-	})
+	// Remove the team auto-created by the post_user_signup trigger so we can
+	// create our own seed team with a deterministic ID and custom name/slug.
+	err = authDb.TestsRawSQL(ctx, `
+DELETE FROM teams WHERE email = $1
+`, email)
 	if err != nil {
 		panic(err)
 	}

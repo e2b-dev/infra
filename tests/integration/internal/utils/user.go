@@ -25,14 +25,7 @@ VALUES ($1, $2)
 `, userID, fmt.Sprintf("user-test-integration-%s@e2b.dev", userID))
 	require.NoError(t, err)
 
-	err = db.AuthDb.Write.UpsertPublicUser(t.Context(), authqueries.UpsertPublicUserParams{
-		ID:    userID,
-		Email: fmt.Sprintf("user-test-integration-%s@e2b.dev", userID),
-	})
-	require.NoError(t, err)
-
 	t.Cleanup(func() {
-		_ = db.AuthDb.Write.DeletePublicUser(t.Context(), userID)
 		db.AuthDb.TestsRawSQL(t.Context(), `
 DELETE FROM auth.users WHERE id = $1
 `, userID)

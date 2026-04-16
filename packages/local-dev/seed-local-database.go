@@ -181,14 +181,6 @@ ON CONFLICT (id) DO UPDATE SET
 		return fmt.Errorf("failed to upsert user: %w", err)
 	}
 
-	err = db.Write.UpsertPublicUser(ctx, authqueries.UpsertPublicUserParams{
-		ID:    userID,
-		Email: "user@e2b-dev.local",
-	})
-	if err != nil {
-		return fmt.Errorf("failed to upsert public user: %w", err)
-	}
-
 	return nil
 }
 
