@@ -305,7 +305,7 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 		nbdReadConncurent.Add(ctx, -1)
 
 		if readErr != nil {
-			return d.writeResponse(1, handle, []byte{})
+			return errors.Join(readErr, d.writeResponse(1, handle, []byte{}))
 		}
 
 		// read was successful
@@ -347,13 +347,16 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 		}()
 
 		// Wait until either the WriteAt completed, or our context is cancelled...
+		var writeErr error
 		select {
 		case <-ctx.Done():
-			return d.writeResponse(1, handle, []byte{})
+			writeErr = ctx.Err()
 		case err := <-errchan:
-			if err != nil {
-				return d.writeResponse(1, handle, []byte{})
-			}
+			writeErr = err
+		}
+
+		if writeErr != nil {
+			return errors.Join(writeErr, d.writeResponse(1, handle, []byte{}))
 		}
 
 		// write was successful
