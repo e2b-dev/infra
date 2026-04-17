@@ -18,18 +18,21 @@ func NewLogger(ctx context.Context, isNotFC bool, mmdsChan <-chan *host.MMDSOpts
 
 	exporters := []io.Writer{}
 
+	var level zerolog.Level
 	if isNotFC {
 		exporters = append(exporters, os.Stdout)
 	} else {
-		exporters = append(exporters, exporter.NewHTTPLogsExporter(ctx, isNotFC, mmdsChan), os.Stdout)
+		// HTTP exporter only — stdout goes to journald which dirties guest memory pages.
+		exporters = append(exporters, exporter.NewHTTPLogsExporter(ctx, isNotFC, mmdsChan))
 	}
+	level = zerolog.DebugLevel
 
 	l := zerolog.
 		New(io.MultiWriter(exporters...)).
 		With().
 		Timestamp().
 		Logger().
-		Level(zerolog.DebugLevel)
+		Level(level)
 
 	return &l
 }

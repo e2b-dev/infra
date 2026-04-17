@@ -88,7 +88,7 @@ func TestAdditionalOCILayers(t *testing.T) {
 
 		keysIter := maps.Keys(actualFiles)
 		keys := slices.Collect(keysIter)
-		assert.Len(t, keys, 13)
+		assert.Len(t, keys, 14)
 		assert.Equal(t, "e2b.local", actualFiles["etc/hostname"])
 		assert.Equal(t, "nameserver 8.8.8.8", actualFiles["etc/resolv.conf"])
 
@@ -101,5 +101,9 @@ func TestAdditionalOCILayers(t *testing.T) {
 WatchdogSec=0`)
 		assert.Equal(t, disabledContent, actualFiles["etc/systemd/system/systemd-journald.service.d/override.conf"])
 		assert.Equal(t, disabledContent, actualFiles["etc/systemd/system/systemd-networkd.service.d/override.conf"])
+
+		journaldConf := strings.TrimSpace(actualFiles["etc/systemd/journald.conf.d/e2b.conf"])
+		assert.Contains(t, journaldConf, "Storage=none")
+		assert.Contains(t, journaldConf, "MaxLevelConsole=warning")
 	})
 }
