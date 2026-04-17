@@ -72,6 +72,7 @@ build {
   # Install gcsfuse using signed-by keyring (required for Ubuntu 24.04+).
   # See https://cloud.google.com/storage/docs/gcsfuse-install
   provisioner "shell" {
+    inline_shebang = "/bin/bash -e"
     inline = [
       "set -o pipefail",
       "export GCSFUSE_REPO=gcsfuse-$(lsb_release -c -s)",
