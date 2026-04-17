@@ -73,6 +73,7 @@ build {
   # See https://cloud.google.com/storage/docs/gcsfuse-install
   provisioner "shell" {
     inline = [
+      "set -o pipefail",
       "export GCSFUSE_REPO=gcsfuse-$(lsb_release -c -s)",
       "curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo tee /usr/share/keyrings/cloud.google.asc > /dev/null",
       "echo \"deb [signed-by=/usr/share/keyrings/cloud.google.asc] https://packages.cloud.google.com/apt $GCSFUSE_REPO main\" | sudo tee /etc/apt/sources.list.d/gcsfuse.list",
