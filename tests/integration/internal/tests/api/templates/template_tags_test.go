@@ -310,7 +310,6 @@ func TestMultipleTagsOnSameTemplate(t *testing.T) {
 		if resp.JSON201 != nil {
 			testutils.TeardownSandbox(t, c, resp.JSON201.SandboxID)
 		}
-		testutils.ReleaseSandboxSlot()
 
 		assert.Equal(t, http.StatusCreated, resp.StatusCode(), "Failed to create sandbox with tag: %s", tag)
 	}
@@ -414,7 +413,6 @@ func TestTemplateBuildWithTags(t *testing.T) {
 		if sbxResp.JSON201 != nil {
 			testutils.TeardownSandbox(t, c, sbxResp.JSON201.SandboxID)
 		}
-		testutils.ReleaseSandboxSlot()
 
 		assert.Equal(t, http.StatusCreated, sbxResp.StatusCode(), "Failed to create sandbox with tag: %s", name)
 	}

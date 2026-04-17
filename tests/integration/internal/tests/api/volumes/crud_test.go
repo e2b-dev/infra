@@ -133,7 +133,6 @@ func TestVolumeRoundTrip(t *testing.T) {
 
 	// kill the sandbox
 	utils.TeardownSandbox(t, client, sbx.SandboxID)
-	utils.ReleaseSandboxSlot()
 
 	// start a new sandbox
 	utils.AcquireSandboxSlot(t)
@@ -211,7 +210,6 @@ func TestVolumeRoundTrip(t *testing.T) {
 
 	// kill the sandbox
 	utils.TeardownSandbox(t, client, sbx2.SandboxID)
-	utils.ReleaseSandboxSlot()
 
 	// delete volume
 	deleteVolume, err := client.DeleteVolumesVolumeIDWithResponse(t.Context(), volume.VolumeID, setup.WithAPIKey())
