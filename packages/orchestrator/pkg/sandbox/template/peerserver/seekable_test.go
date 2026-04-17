@@ -36,8 +36,7 @@ func TestSeekableSource_Stream(t *testing.T) {
 	data := []byte("diff bytes")
 
 	diff := buildmocks.NewMockDiff(t)
-	diff.EXPECT().Slice(mock.Anything, int64(0), int64(len(data)), (*storage.FrameTable)(nil)).Return(data, nil)
-	diff.EXPECT().BlockSize().Return(int64(len(data)))
+	diff.EXPECT().Block(mock.Anything, int64(0), (*storage.FrameTable)(nil)).Return(data, nil)
 
 	cache := peerservermocks.NewMockCache(t)
 	cache.EXPECT().LookupDiff("build-1", build.DiffType(storage.MemfileName)).Return(diff, true)
@@ -49,4 +48,28 @@ func TestSeekableSource_Stream(t *testing.T) {
 	err = src.Stream(t.Context(), 0, int64(len(data)), sender)
 	require.NoError(t, err)
 	assert.Equal(t, data, sender.data)
+}
+
+func TestSeekableSource_Stream_MultiBlock(t *testing.T) {
+	t.Parallel()
+
+	// 3 full blocks (4 bytes each) + partial last block.
+	fullData := []byte("AAAABBBBCCCCdd")
+
+	diff := buildmocks.NewMockDiff(t)
+	diff.EXPECT().Block(mock.Anything, int64(0), (*storage.FrameTable)(nil)).Return(fullData[0:4], nil)
+	diff.EXPECT().Block(mock.Anything, int64(4), (*storage.FrameTable)(nil)).Return(fullData[4:8], nil)
+	diff.EXPECT().Block(mock.Anything, int64(8), (*storage.FrameTable)(nil)).Return(fullData[8:12], nil)
+	diff.EXPECT().Block(mock.Anything, int64(12), (*storage.FrameTable)(nil)).Return(fullData[12:14], nil)
+
+	cache := peerservermocks.NewMockCache(t)
+	cache.EXPECT().LookupDiff("build-1", build.DiffType(storage.MemfileName)).Return(diff, true)
+
+	src, err := ResolveSeekable(cache, "build-1", storage.MemfileName)
+	require.NoError(t, err)
+
+	sender := &collectSender{}
+	err = src.Stream(t.Context(), 0, int64(len(fullData)), sender)
+	require.NoError(t, err)
+	require.Equal(t, fullData, sender.data)
 }

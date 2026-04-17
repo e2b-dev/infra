@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -103,7 +104,8 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 			return 0, fmt.Errorf("failed to get build: %w", err)
 		}
 
-		buildN, err := mappedBuild.ReadAt(ctx,
+		buildN, err := block.ReadBlocks(ctx,
+			mappedBuild,
 			p[n:int64(n)+readLength],
 			int64(mappedToBuild.Offset),
 			ft,
@@ -148,7 +150,7 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 			return nil, fmt.Errorf("failed to get build: %w", err)
 		}
 
-		result, err := diff.Slice(ctx, int64(mappedBuild.Offset), int64(h.Metadata.BlockSize), ft)
+		result, err := diff.Block(ctx, int64(mappedBuild.Offset), ft)
 		if err != nil {
 			if retry, swapErr := b.retryOnTransition(ctx, err, &transitionRetries); retry {
 				continue
