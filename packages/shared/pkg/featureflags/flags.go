@@ -121,6 +121,7 @@ var (
 	ExecutionMetricsOnWebhooksFlag   = newBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
 	SandboxLabelBasedSchedulingFlag  = newBoolFlag("sandbox-label-based-scheduling", false)
 	OptimisticResourceAccountingFlag = newBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
+	ConcurrentNFSCacheCheckFlag      = newBoolFlag("concurrent-nfs-cache-check", false)
 )
 
 type IntFlag struct {

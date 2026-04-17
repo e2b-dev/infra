@@ -24,12 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var (
-	ErrOffsetUnaligned = errors.New("offset must be a multiple of chunk size")
-	ErrBufferTooSmall  = errors.New("buffer is too small")
-	ErrMultipleChunks  = errors.New("cannot read multiple chunks")
-	ErrBufferTooLarge  = errors.New("buffer is too large")
-)
+var ErrInvalidRead = errors.New("invalid read: offset and length must be positive")
 
 const (
 	nfsCacheOperationAttr = "operation"
@@ -75,7 +70,12 @@ var (
 )
 
 func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
+	if off < 0 || length <= 0 {
+		return nil, ErrInvalidRead
+	}
+
 	compressed := frameTable.IsCompressed()
+	concurrent := c.flags != nil && c.flags.BoolFlag(ctx, featureflags.ConcurrentNFSCacheCheckFlag)
 
 	ctx, span := c.tracer.Start(ctx, "read", trace.WithAttributes(
 		attribute.Int64("offset", off),
@@ -83,32 +83,40 @@ func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off int64, length 
 		attribute.Bool("compressed", compressed),
 	))
 
-	if compressed {
-		rc, err := c.openReaderCompressed(ctx, off, frameTable)
-		if err != nil {
-			recordError(span, err)
-			span.End()
+	timer := cacheSlabReadTimerFactory.Begin(
+		attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrReadAt),
+		attribute.Bool("compressed", compressed),
+	)
 
-			return nil, err
-		}
+	var (
+		rc  io.ReadCloser
+		err error
+	)
 
-		rc = withSpan(rc, span)
-
-		return rc, nil
+	switch {
+	case compressed && concurrent:
+		rc, err = c.openReaderCompressedConcurrent(ctx, off, frameTable, timer)
+	case compressed:
+		rc, err = c.openReaderCompressed(ctx, off, frameTable, timer)
+	case concurrent:
+		rc, err = c.openReaderUncompressedConcurrent(ctx, off, length, timer)
+	default:
+		rc, err = c.openReaderUncompressed(ctx, off, length, timer)
 	}
 
-	if err := c.validateReadParams(length, off); err != nil {
+	if err != nil {
 		recordError(span, err)
 		span.End()
 
 		return nil, err
 	}
 
-	timer := cacheSlabReadTimerFactory.Begin(
-		attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrReadAt),
-		attribute.Bool("compressed", false),
-	)
+	return withSpan(rc, span), nil
+}
 
+// openReaderUncompressed is the sequential NFS-then-remote path for
+// uncompressed chunks.
+func (c *cachedSeekable) openReaderUncompressed(ctx context.Context, off, length int64, timer *telemetry.Stopwatch) (io.ReadCloser, error) {
 	chunkPath := c.makeChunkFilename(off)
 
 	fp, err := os.Open(chunkPath)
@@ -116,10 +124,7 @@ func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off int64, length 
 		recordCacheRead(ctx, true, length, cacheTypeSeekable, cacheOpOpenRangeReader)
 		timer.Success(ctx, length)
 
-		rc := io.ReadCloser(&fsRangeReadCloser{Reader: io.NewSectionReader(fp, 0, length), file: fp})
-		rc = withSpan(rc, span)
-
-		return rc, nil
+		return &fsRangeReadCloser{Reader: io.NewSectionReader(fp, 0, length), file: fp}, nil
 	}
 
 	if !os.IsNotExist(err) {
@@ -130,9 +135,6 @@ func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off int64, length 
 
 	rc, err := c.inner.OpenRangeReader(ctx, off, length, nil)
 	if err != nil {
-		recordError(span, err)
-		span.End()
-
 		return nil, fmt.Errorf("failed to open inner range reader: %w", err)
 	}
 
@@ -141,8 +143,6 @@ func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off int64, length 
 	if !skipCacheWriteback(ctx) {
 		rc = newCacheWriteThroughReader(rc, c, ctx, off, length, chunkPath)
 	}
-
-	rc = withSpan(rc, span)
 
 	return rc, nil
 }
@@ -339,23 +339,6 @@ func (c *cachedSeekable) readLocalSize(context.Context) (int64, error) {
 	}
 
 	return size, nil
-}
-
-func (c *cachedSeekable) validateReadParams(buffSize, offset int64) error {
-	if buffSize == 0 {
-		return ErrBufferTooSmall
-	}
-	if buffSize > c.chunkSize {
-		return ErrBufferTooLarge
-	}
-	if offset%c.chunkSize != 0 {
-		return ErrOffsetUnaligned
-	}
-	if (offset%c.chunkSize)+buffSize > c.chunkSize {
-		return ErrMultipleChunks
-	}
-
-	return nil
 }
 
 func (c *cachedSeekable) writeToCache(ctx context.Context, offset int64, finalPath string, bytes []byte) error {

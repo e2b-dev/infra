@@ -7,27 +7,19 @@ import (
 	"io"
 	"os"
 
-	"go.opentelemetry.io/otel/attribute"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
-
-// Precomputed OTEL attributes for compressed cache reads (avoids per-read allocation).
-var compressedCacheReadAttrs = []attribute.KeyValue{
-	attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrReadAt),
-	attribute.Bool("compressed", true),
-}
 
 // openReaderCompressed handles the compressed cache path for OpenRangeReader.
 // NFS stores compressed frames (.frm); on hit we decompress, on miss we fetch
 // raw compressed bytes and tee them to NFS on Close.
-func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64, frameTable *FrameTable) (io.ReadCloser, error) {
+func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64, frameTable *FrameTable, timer *telemetry.Stopwatch) (io.ReadCloser, error) {
 	r, err := frameTable.LocateCompressed(offsetU)
 	if err != nil {
 		return nil, fmt.Errorf("frame lookup for offset %d: %w", offsetU, err)
 	}
 
 	path := makeFrameFilename(c.path, r)
-
-	timer := cacheSlabReadTimerFactory.Begin(compressedCacheReadAttrs...)
 
 	// Cache hit: open compressed frame from NFS and wrap with decompressor.
 	f, err := os.Open(path)
