@@ -87,10 +87,14 @@ type Response struct {
 }
 
 type Dispatch struct {
-	fp               io.ReadWriter
-	responseHeader   []byte
-	writeLock        sync.Mutex
-	prov             Provider
+	fp             io.ReadWriter
+	responseHeader []byte
+	writeLock      sync.Mutex
+	prov           Provider
+	// provName is the concrete backend type name, cached at construction so
+	// error logs can identify which storage layer failed without reflection
+	// on every call.
+	provName         string
 	pendingResponses sync.WaitGroup
 	shuttingDown     bool
 	shuttingDownLock sync.Mutex
@@ -102,6 +106,7 @@ func NewDispatch(fp io.ReadWriter, prov Provider) *Dispatch {
 		responseHeader: make([]byte, 16),
 		fp:             fp,
 		prov:           prov,
+		provName:       fmt.Sprintf("%T", prov),
 		fatal:          make(chan error, 1),
 	}
 
@@ -305,7 +310,19 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 		nbdReadConncurent.Add(ctx, -1)
 
 		if readErr != nil {
-			return errors.Join(readErr, d.writeResponse(1, handle, []byte{}))
+			// Per-request backend failure: signal it to the NBD client via the
+			// response error byte and keep the dispatch loop alive. Only
+			// writeResponse errors (dead NBD socket) escalate through d.fatal.
+			logger.L().Error(ctx, "nbd backend read failed",
+				zap.Error(readErr),
+				zap.String("nbd_op", "read"),
+				zap.String("nbd_provider", d.provName),
+				zap.Uint64("nbd_handle", handle),
+				zap.Uint64("nbd_offset", from),
+				zap.Uint32("nbd_length", length),
+			)
+
+			return d.writeResponse(1, handle, []byte{})
 		}
 
 		// read was successful
@@ -318,7 +335,14 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 			select {
 			case d.fatal <- err:
 			default:
-				logger.L().Error(ctx, "nbd error cmd read", zap.Error(err))
+				logger.L().Error(ctx, "nbd error cmd read",
+					zap.Error(err),
+					zap.String("nbd_op", "read"),
+					zap.String("nbd_provider", d.provName),
+					zap.Uint64("nbd_handle", cmdHandle),
+					zap.Uint64("nbd_offset", cmdFrom),
+					zap.Uint32("nbd_length", cmdLength),
+				)
 			}
 		}
 		d.pendingResponses.Done()
@@ -356,7 +380,16 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 		}
 
 		if writeErr != nil {
-			return errors.Join(writeErr, d.writeResponse(1, handle, []byte{}))
+			logger.L().Error(ctx, "nbd backend write failed",
+				zap.Error(writeErr),
+				zap.String("nbd_op", "write"),
+				zap.String("nbd_provider", d.provName),
+				zap.Uint64("nbd_handle", handle),
+				zap.Uint64("nbd_offset", from),
+				zap.Int("nbd_length", len(data)),
+			)
+
+			return d.writeResponse(1, handle, []byte{})
 		}
 
 		// write was successful
@@ -369,7 +402,14 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 			select {
 			case d.fatal <- err:
 			default:
-				logger.L().Error(ctx, "nbd error cmd write", zap.Error(err))
+				logger.L().Error(ctx, "nbd error cmd write",
+					zap.Error(err),
+					zap.String("nbd_op", "write"),
+					zap.String("nbd_provider", d.provName),
+					zap.Uint64("nbd_handle", cmdHandle),
+					zap.Uint64("nbd_offset", cmdFrom),
+					zap.Int("nbd_length", len(cmdData)),
+				)
 			}
 		}
 		d.pendingResponses.Done()
