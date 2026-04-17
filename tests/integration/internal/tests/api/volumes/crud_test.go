@@ -36,6 +36,7 @@ func TestVolumeRoundTrip(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, createVolume.StatusCode(), string(createVolume.Body))
+	require.NotNil(t, createVolume.JSON201)
 	assert.Equal(t, volumeName, createVolume.JSON201.Name)
 	assert.NotEmpty(t, createVolume.JSON201.VolumeID)
 	volume := createVolume.JSON201

@@ -46,12 +46,14 @@ func TestCreateSandboxWithSecuredEnvd(t *testing.T) {
 	})
 
 	require.Equal(t, http.StatusCreated, resp.StatusCode())
+	require.NotNil(t, resp.JSON201)
 	assert.NotNil(t, resp.JSON201.EnvdAccessToken)
 
 	getResp, getErr := c.GetSandboxesSandboxIDWithResponse(ctx, resp.JSON201.SandboxID, setup.WithAPIKey())
 	require.NoError(t, getErr, "Failed to get sandbox after creation")
+	require.Equal(t, http.StatusOK, getResp.StatusCode())
+	require.NotNil(t, getResp.JSON200)
 
-	require.Equal(t, http.StatusCreated, resp.StatusCode())
 	assert.Equal(t, *resp.JSON201.EnvdAccessToken, *getResp.JSON200.EnvdAccessToken)
 }
 
@@ -92,6 +94,6 @@ func TestCreateSandboxWithDisabledPublicTrafficAndDisabledEnvdSecure(t *testing.
 	})
 
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
-	assert.NotNil(t, resp.JSON400.Message)
+	require.NotNil(t, resp.JSON400)
 	assert.Equal(t, "You cannot create a sandbox without public access unless you enable secure envd access via 'secure' flag.", resp.JSON400.Message)
 }

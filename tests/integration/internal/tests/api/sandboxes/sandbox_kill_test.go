@@ -49,7 +49,7 @@ func TestSandboxKill(t *testing.T) {
 		listSandboxesResponse, err := c.GetSandboxesWithResponse(t.Context(), &api.GetSandboxesParams{}, setup.WithAPIKey())
 
 		require.NoError(t, err)
-		assert.Equal(t, http.StatusOK, listSandboxesResponse.StatusCode())
+		require.Equal(t, http.StatusOK, listSandboxesResponse.StatusCode())
 
 		runningSandboxes := listSandboxesResponse.JSON200
 		require.NotNil(t, runningSandboxes)
@@ -87,7 +87,7 @@ func TestSandboxKill(t *testing.T) {
 		listSandboxesResponse, err := c.GetSandboxesWithResponse(t.Context(), &api.GetSandboxesParams{}, setup.WithAPIKey())
 
 		require.NoError(t, err)
-		assert.Equal(t, http.StatusOK, listSandboxesResponse.StatusCode())
+		require.Equal(t, http.StatusOK, listSandboxesResponse.StatusCode())
 
 		runningSandboxes := listSandboxesResponse.JSON200
 		require.NotNil(t, runningSandboxes)

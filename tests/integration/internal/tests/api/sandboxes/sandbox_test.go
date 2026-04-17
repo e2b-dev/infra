@@ -40,7 +40,7 @@ func TestSandboxCreate(t *testing.T) {
 		}
 	})
 
-	assert.Equal(t, http.StatusCreated, resp.StatusCode())
+	require.Equal(t, http.StatusCreated, resp.StatusCode())
 	require.NotNil(t, resp.JSON201)
 	assert.Equal(t, setup.SandboxTemplateID, resp.JSON201.TemplateID)
 }
@@ -88,7 +88,7 @@ func TestSandboxResumeWithSecuredEnvd(t *testing.T) {
 	sbxCreate, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{TemplateID: setup.SandboxTemplateID, Secure: &sbxSecure}, setup.WithAPIKey())
 	require.NoError(t, err)
 
-	assert.Equal(t, http.StatusCreated, sbxCreate.StatusCode())
+	require.Equal(t, http.StatusCreated, sbxCreate.StatusCode())
 	require.NotNil(t, sbxCreate.JSON201)
 
 	_, err = c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbxCreate.JSON201.SandboxID, setup.WithAPIKey())
@@ -99,7 +99,7 @@ func TestSandboxResumeWithSecuredEnvd(t *testing.T) {
 	sbxResume, err := c.PostSandboxesSandboxIDResumeWithResponse(ctx, sbxIdWithClient, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 
-	assert.Equal(t, http.StatusCreated, sbxResume.StatusCode())
+	require.Equal(t, http.StatusCreated, sbxResume.StatusCode())
 	require.NotNil(t, sbxResume.JSON201)
 
 	t.Cleanup(func() {
@@ -121,6 +121,6 @@ func TestSandboxPauseNonFound(t *testing.T) {
 	r, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, "not-found", setup.WithAPIKey())
 	require.NoError(t, err)
 
-	assert.Equal(t, http.StatusNotFound, r.StatusCode())
+	require.Equal(t, http.StatusNotFound, r.StatusCode())
 	require.NotNil(t, r.JSON404)
 }
