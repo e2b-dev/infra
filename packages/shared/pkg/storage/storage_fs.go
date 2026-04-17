@@ -38,16 +38,6 @@ var (
 	_ StreamingReader = (*fsObject)(nil)
 )
 
-type fsRangeReadCloser struct {
-	io.Reader
-
-	file *os.File
-}
-
-func (r *fsRangeReadCloser) Close() error {
-	return r.file.Close()
-}
-
 func newFileSystemStorage(cfg StorageConfig) *fsStorage {
 	return &fsStorage{
 		basePath:  cfg.GetLocalBasePath(),
@@ -200,7 +190,7 @@ func (o *fsObject) openRangeReader(_ context.Context, off, length int64) (io.Rea
 		return nil, err
 	}
 
-	return &fsRangeReadCloser{
+	return &sectionReader{
 		Reader: io.NewSectionReader(f, off, length),
 		file:   f,
 	}, nil

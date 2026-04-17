@@ -46,7 +46,7 @@ func TestDecompressingCacheReader(t *testing.T) {
 		c := newTestCache(t)
 		framePath := makeFrameFilename(c.path, Range{Offset: 0, Length: len(compressed)})
 
-		rc, err := newDecompressingCacheReader(
+		rc, err := newDecompressWritebackReader(
 			io.NopCloser(bytes.NewReader(compressed)),
 			CompressionLZ4,
 			len(compressed),
@@ -72,7 +72,7 @@ func TestDecompressingCacheReader(t *testing.T) {
 		c := newTestCache(t)
 		framePath := makeFrameFilename(c.path, Range{Offset: 0, Length: len(compressed)})
 
-		rc, err := newDecompressingCacheReader(
+		rc, err := newDecompressWritebackReader(
 			io.NopCloser(bytes.NewReader(compressed)),
 			CompressionLZ4,
 			len(compressed)+100, // wrong size

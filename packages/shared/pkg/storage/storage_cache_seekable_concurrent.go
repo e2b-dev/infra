@@ -1,32 +1,30 @@
 package storage
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+// nfsRaceOutcome holds the result of concurrentOpen.
+// Exactly one of NFS or Remote is set on success.
 type nfsRaceOutcome struct {
 	NFS    *os.File
 	Remote io.ReadCloser
 	Cancel context.CancelFunc
 }
 
-// raceNFSvsRemote fires a remote fetch in a goroutine, then tries an NFS
+// concurrentOpen fires a remote fetch in a goroutine, then tries an NFS
 // os.Open. If NFS hits first, the in-flight remote is cancelled and drained.
 // If NFS misses, it waits for the remote result.
 //
 // c.inner must be non-nil (guaranteed by testCache / production constructors).
-func (c *cachedSeekable) raceNFSvsRemote(
+func (c *cachedSeekable) concurrentOpen(
 	ctx context.Context,
 	nfsPath string,
 	off, length int64,
-	timer *telemetry.Stopwatch,
 ) (nfsRaceOutcome, error) {
 	type result struct {
 		reader io.ReadCloser
@@ -42,9 +40,8 @@ func (c *cachedSeekable) raceNFSvsRemote(
 		innerCh <- result{reader: r, err: err}
 	}()
 
-	// NFS cache — os.Open is a single syscall, hit or miss.
 	fp, nfsErr := os.Open(nfsPath)
-	if fp != nil {
+	if nfsErr == nil {
 		cancel()
 		// Drain the losing goroutine asynchronously.
 		go func() {
@@ -54,7 +51,6 @@ func (c *cachedSeekable) raceNFSvsRemote(
 		}()
 
 		recordCacheRead(ctx, true, length, cacheTypeSeekable, cacheOpOpenRangeReader)
-		timer.Success(ctx, length)
 
 		return nfsRaceOutcome{NFS: fp}, nil
 	}
@@ -64,8 +60,6 @@ func (c *cachedSeekable) raceNFSvsRemote(
 	} else {
 		recordCacheReadError(ctx, cacheTypeSeekable, cacheOpOpenRangeReader, nfsErr)
 	}
-
-	timer.Failure(ctx, 0)
 
 	// NFS missed — wait for the remote (which got a head start).
 	inner := <-innerCh
@@ -82,39 +76,31 @@ func (c *cachedSeekable) raceNFSvsRemote(
 
 // openReaderUncompressedConcurrent races NFS cache open against the remote
 // backend. If NFS hits, the in-flight remote request is cancelled.
-func (c *cachedSeekable) openReaderUncompressedConcurrent(ctx context.Context, off, length int64, timer *telemetry.Stopwatch) (io.ReadCloser, error) {
+func (c *cachedSeekable) openReaderUncompressedConcurrent(ctx context.Context, off, length int64) (io.ReadCloser, error) {
 	chunkPath := c.makeChunkFilename(off)
 
-	outcome, err := c.raceNFSvsRemote(ctx, chunkPath, off, length, timer)
+	outcome, err := c.concurrentOpen(ctx, chunkPath, off, length)
 	if err != nil {
 		return nil, err
 	}
 
 	if outcome.NFS != nil {
-		return &fsRangeReadCloser{Reader: io.NewSectionReader(outcome.NFS, 0, length), file: outcome.NFS}, nil
+		return &sectionReader{Reader: io.NewSectionReader(outcome.NFS, 0, length), file: outcome.NFS}, nil
 	}
 
-	rc := io.ReadCloser(&cancelOnCloseReader{ReadCloser: outcome.Remote, cancel: outcome.Cancel})
+	rc := &cancelReader{ReadCloser: outcome.Remote, cancel: outcome.Cancel}
 
 	if skipCacheWriteback(ctx) {
 		return rc, nil
 	}
 
-	return &cacheWriteThroughReader{
-		inner:       rc,
-		buf:         bytes.NewBuffer(make([]byte, 0, length)),
-		cache:       c,
-		ctx:         ctx,
-		off:         off,
-		expectedLen: length,
-		chunkPath:   chunkPath,
-	}, nil
+	return newWritebackReader(rc, c, ctx, off, length, chunkPath), nil
 }
 
 // openReaderCompressedConcurrent races NFS cache open against the remote
 // backend for compressed frames. If NFS hits, the in-flight remote request
 // is cancelled and the cached frame is decompressed locally.
-func (c *cachedSeekable) openReaderCompressedConcurrent(ctx context.Context, offsetU int64, frameTable *FrameTable, timer *telemetry.Stopwatch) (io.ReadCloser, error) {
+func (c *cachedSeekable) openReaderCompressedConcurrent(ctx context.Context, offsetU int64, frameTable *FrameTable) (io.ReadCloser, error) {
 	r, err := frameTable.LocateCompressed(offsetU)
 	if err != nil {
 		return nil, fmt.Errorf("frame lookup for offset %d: %w", offsetU, err)
@@ -122,7 +108,7 @@ func (c *cachedSeekable) openReaderCompressedConcurrent(ctx context.Context, off
 
 	path := makeFrameFilename(c.path, r)
 
-	outcome, err := c.raceNFSvsRemote(ctx, path, r.Offset, int64(r.Length), timer)
+	outcome, err := c.concurrentOpen(ctx, path, r.Offset, int64(r.Length))
 	if err != nil {
 		return nil, err
 	}
@@ -138,9 +124,9 @@ func (c *cachedSeekable) openReaderCompressedConcurrent(ctx context.Context, off
 		return decompressed, nil
 	}
 
-	raw := io.ReadCloser(&cancelOnCloseReader{ReadCloser: outcome.Remote, cancel: outcome.Cancel})
+	raw := &cancelReader{ReadCloser: outcome.Remote, cancel: outcome.Cancel}
 
-	rc, err := newDecompressingCacheReader(raw, frameTable.CompressionType(), r.Length, c, ctx, path, offsetU)
+	rc, err := newDecompressWritebackReader(raw, frameTable.CompressionType(), r.Length, c, ctx, path, offsetU)
 	if err != nil {
 		raw.Close()
 

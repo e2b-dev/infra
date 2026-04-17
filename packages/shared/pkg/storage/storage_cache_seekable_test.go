@@ -598,7 +598,7 @@ func TestCacheWriteThroughReader(t *testing.T) {
 		data := []byte("hello")
 		inner := io.NopCloser(bytes.NewReader(data))
 
-		r := &cacheWriteThroughReader{
+		r := &writebackReader{
 			inner:       inner,
 			buf:         bytes.NewBuffer(make([]byte, 0, len(data))),
 			cache:       &c,
@@ -629,7 +629,7 @@ func TestCacheWriteThroughReader(t *testing.T) {
 		// the expected length so it must not be cached.
 		inner := io.NopCloser(bytes.NewReader([]byte{0xAA, 0xBB}))
 
-		r := &cacheWriteThroughReader{
+		r := &writebackReader{
 			inner:       inner,
 			buf:         bytes.NewBuffer(make([]byte, 0, 5)),
 			cache:       &c,
@@ -657,7 +657,7 @@ func TestCacheWriteThroughReader(t *testing.T) {
 		data := []byte("hello")
 		inner := io.NopCloser(bytes.NewReader(data))
 
-		r := &cacheWriteThroughReader{
+		r := &writebackReader{
 			inner:       inner,
 			buf:         bytes.NewBuffer(make([]byte, 0, len(data))),
 			cache:       &c,
