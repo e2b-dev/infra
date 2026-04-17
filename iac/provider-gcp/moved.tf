@@ -33,3 +33,4 @@ moved {
   from = google_secret_manager_secret_version.supabase_jwt_secrets
   to   = module.init.google_secret_manager_secret_version.supabase_jwt_secrets
 }
+

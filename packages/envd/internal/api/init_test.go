@@ -585,3 +585,75 @@ func TestSetData(t *testing.T) {
 		assert.Equal(t, "value", val)
 	})
 }
+
+func TestShouldRemountNFS(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name               string
+		isMounted          bool
+		mountedLifecycleID string
+		requestLifecycleID string
+		wantRemount        bool
+	}{
+		{
+			name:               "not mounted: should mount",
+			isMounted:          false,
+			mountedLifecycleID: "",
+			requestLifecycleID: "",
+			wantRemount:        true,
+		},
+		{
+			name:               "not mounted with request lifecycle: should mount",
+			isMounted:          false,
+			mountedLifecycleID: "",
+			requestLifecycleID: "abc",
+			wantRemount:        true,
+		},
+		{
+			name:               "mounted empty + request empty: no remount (would cause infinite loop)",
+			isMounted:          true,
+			mountedLifecycleID: "",
+			requestLifecycleID: "",
+			wantRemount:        false,
+		},
+		{
+			name:               "mounted with lifecycle + request empty: remount (lifecycle cleared)",
+			isMounted:          true,
+			mountedLifecycleID: "abc",
+			requestLifecycleID: "",
+			wantRemount:        true,
+		},
+		{
+			name:               "mounted empty + request with lifecycle: remount (new lifecycle)",
+			isMounted:          true,
+			mountedLifecycleID: "",
+			requestLifecycleID: "abc",
+			wantRemount:        true,
+		},
+		{
+			name:               "mounted + request same lifecycle: no remount",
+			isMounted:          true,
+			mountedLifecycleID: "abc",
+			requestLifecycleID: "abc",
+			wantRemount:        false,
+		},
+		{
+			name:               "mounted + request different lifecycle: remount",
+			isMounted:          true,
+			mountedLifecycleID: "abc",
+			requestLifecycleID: "xyz",
+			wantRemount:        true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := shouldRemountNFS(tt.isMounted, tt.mountedLifecycleID, tt.requestLifecycleID)
+
+			assert.Equal(t, tt.wantRemount, got)
+		})
+	}
+}
