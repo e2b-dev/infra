@@ -28,7 +28,6 @@ func TestSandboxKill(t *testing.T) {
 		t.Parallel()
 
 		utils.AcquireSandboxSlot(t)
-		defer utils.ReleaseSandboxSlot()
 
 		// create a new samdbox
 		createSandboxResponse, err := c.PostSandboxesWithResponse(t.Context(), api.NewSandbox{
@@ -61,7 +60,6 @@ func TestSandboxKill(t *testing.T) {
 		t.Parallel()
 
 		utils.AcquireSandboxSlot(t)
-		defer utils.ReleaseSandboxSlot()
 
 		// create a new sandbox
 		createSandboxResponse, err := c.PostSandboxesWithResponse(t.Context(), api.NewSandbox{
@@ -100,7 +98,6 @@ func TestSandboxKill(t *testing.T) {
 		t.Parallel()
 
 		utils.AcquireSandboxSlot(t)
-		defer utils.ReleaseSandboxSlot()
 
 		// create a new sandbox
 		createSandboxResponse, err := c.PostSandboxesWithResponse(t.Context(), api.NewSandbox{

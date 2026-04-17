@@ -39,7 +39,6 @@ func TestCacheTemplate(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, sbx.StatusCode())
 
 	t.Cleanup(func() {
-		defer utils.ReleaseSandboxSlot()
 		switch {
 		case sbx == nil:
 			t.Logf("Error: %v", err)

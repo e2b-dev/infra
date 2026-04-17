@@ -235,7 +235,6 @@ func TestSnapshotTemplateCreateSandbox(t *testing.T) {
 		newSandbox := createResp.JSON201
 		t.Cleanup(func() {
 			c.DeleteSandboxesSandboxIDWithResponse(t.Context(), newSandbox.SandboxID, setup.WithAPIKey())
-			utils.ReleaseSandboxSlot()
 		})
 
 		assert.NotEqual(t, sbx.SandboxID, newSandbox.SandboxID)
@@ -266,7 +265,6 @@ func TestSnapshotTemplateCreateSandbox(t *testing.T) {
 		newSandbox := createResp.JSON201
 		t.Cleanup(func() {
 			c.DeleteSandboxesSandboxIDWithResponse(t.Context(), newSandbox.SandboxID, setup.WithAPIKey())
-			utils.ReleaseSandboxSlot()
 		})
 
 		assert.NotEqual(t, sbx.SandboxID, newSandbox.SandboxID)

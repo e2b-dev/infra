@@ -132,7 +132,6 @@ func TestSandboxCreateWithTag(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		defer testutils.ReleaseSandboxSlot()
 		if t.Failed() {
 			t.Logf("Response: %s", string(resp.Body))
 		}
@@ -164,7 +163,6 @@ func TestSandboxCreateWithDefaultTag(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		defer testutils.ReleaseSandboxSlot()
 		if t.Failed() {
 			t.Logf("Response: %s", string(resp.Body))
 		}
@@ -187,7 +185,6 @@ func TestSandboxCreateWithNonExistentTag(t *testing.T) {
 
 	// Try to create a sandbox with a non-existent tag
 	testutils.AcquireSandboxSlot(t)
-	defer testutils.ReleaseSandboxSlot()
 	sbxTimeout := int32(60)
 	resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 		TemplateID: setup.SandboxTemplateID + ":nonexistent-tag",
@@ -228,7 +225,6 @@ func TestSandboxCreateWithAliasAndTag(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		defer testutils.ReleaseSandboxSlot()
 		if t.Failed() {
 			t.Logf("Response: %s", string(resp.Body))
 		}
@@ -302,7 +298,7 @@ func TestMultipleTagsOnSameTemplate(t *testing.T) {
 	}
 
 	// Verify we can create sandboxes with each tag
-	testutils.AcquireSandboxSlot(t)
+	release := testutils.AcquireSandboxSlot(t)
 	for _, tag := range tags {
 		sbxTimeout := int32(60)
 		resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
@@ -317,7 +313,7 @@ func TestMultipleTagsOnSameTemplate(t *testing.T) {
 
 		assert.Equal(t, http.StatusCreated, resp.StatusCode(), "Failed to create sandbox with tag: %s", tag)
 	}
-	testutils.ReleaseSandboxSlot()
+	release()
 }
 
 func TestTagReassignment(t *testing.T) {
@@ -406,7 +402,7 @@ func TestTemplateBuildWithTags(t *testing.T) {
 	})
 
 	// Verify we can create sandboxes with each tag that was specified during creation
-	testutils.AcquireSandboxSlot(t)
+	release := testutils.AcquireSandboxSlot(t)
 	for _, tag := range tags {
 		sbxTimeout := int32(60)
 		sbxResp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
@@ -421,7 +417,7 @@ func TestTemplateBuildWithTags(t *testing.T) {
 
 		assert.Equal(t, http.StatusCreated, sbxResp.StatusCode(), "Failed to create sandbox with tag: %s", name)
 	}
-	testutils.ReleaseSandboxSlot()
+	release()
 }
 
 func TestTemplateBuildWithTagsAndSandboxCreation(t *testing.T) {
@@ -453,7 +449,6 @@ func TestTemplateBuildWithTagsAndSandboxCreation(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		defer testutils.ReleaseSandboxSlot()
 		if t.Failed() {
 			t.Logf("Response: %s", string(sbxResp.Body))
 		}
@@ -497,7 +492,6 @@ func TestTemplateBuildWithTagInAlias(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		defer testutils.ReleaseSandboxSlot()
 		if t.Failed() {
 			t.Logf("Response: %s", string(sbxResp.Body))
 		}

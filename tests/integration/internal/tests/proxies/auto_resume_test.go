@@ -140,7 +140,6 @@ func TestSandboxAutoResumeWithoutExplicitTimeoutUsesMinimumTimeout(t *testing.T)
 	sbx := createResp.JSON201
 	t.Cleanup(func() {
 		utils.TeardownSandbox(t, c, sbx.SandboxID)
-		utils.ReleaseSandboxSlot()
 	})
 
 	envdClient := setup.GetEnvdClient(t, ctx)
