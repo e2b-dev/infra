@@ -85,6 +85,7 @@ func TestMaskRequestHostIncorrectUrl(t *testing.T) {
 
 	// Create sandbox without maskRequestHost
 	utils.AcquireSandboxSlot(t)
+	defer utils.ReleaseSandboxSlot()
 	sbxNet := &api.SandboxNetworkConfig{
 		MaskRequestHost: sharedUtils.ToPtr("-https://abcd"),
 	}

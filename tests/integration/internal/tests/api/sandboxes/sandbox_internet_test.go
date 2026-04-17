@@ -49,6 +49,7 @@ func TestInternetAccess(t *testing.T) {
 
 			t.Cleanup(func() {
 				utils.TeardownSandbox(t, client, resp.JSON201.SandboxID)
+				utils.ReleaseSandboxSlot()
 			})
 
 			envdClient := setup.GetEnvdClient(t, ctx)
@@ -102,6 +103,7 @@ func TestInternetAccessResumedSbx(t *testing.T) {
 
 			t.Cleanup(func() {
 				utils.TeardownSandbox(t, client, resp.JSON201.SandboxID)
+				utils.ReleaseSandboxSlot()
 			})
 
 			// Pause and resume the sandbox

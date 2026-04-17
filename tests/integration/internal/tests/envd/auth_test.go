@@ -41,6 +41,7 @@ func createSandbox(t *testing.T, sbxWithAuth bool, reqEditors ...api.RequestEdit
 	require.Equal(t, http.StatusCreated, resp.StatusCode())
 
 	t.Cleanup(func() {
+		defer utils.ReleaseSandboxSlot()
 		if t.Failed() {
 			t.Logf("Response: %s", string(resp.Body))
 		}

@@ -31,6 +31,7 @@ func createSandbox(t *testing.T, reqEditors ...api.RequestEditorFn) *api.PostSan
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
+		defer utils.ReleaseSandboxSlot()
 		if t.Failed() {
 			t.Logf("Response: %s", string(resp.Body))
 		}

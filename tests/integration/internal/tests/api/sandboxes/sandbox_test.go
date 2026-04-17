@@ -31,6 +31,7 @@ func TestSandboxCreate(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
+		defer utils.ReleaseSandboxSlot()
 		if t.Failed() {
 			t.Logf("Response: %s", string(resp.Body))
 		}
@@ -68,6 +69,7 @@ func TestSandboxResumeUnknownSandbox(t *testing.T) {
 
 	t.Cleanup(func() {
 		utils.TeardownSandbox(t, c, sbxCreate.JSON201.SandboxID)
+		utils.ReleaseSandboxSlot()
 	})
 
 	assert.Equal(t, http.StatusNotFound, sbxResume.StatusCode())
@@ -104,6 +106,7 @@ func TestSandboxResumeWithSecuredEnvd(t *testing.T) {
 
 	t.Cleanup(func() {
 		utils.TeardownSandbox(t, c, sbxCreate.JSON201.SandboxID)
+		utils.ReleaseSandboxSlot()
 	})
 
 	assert.Equal(t, sbxResume.JSON201.SandboxID, sbxCreate.JSON201.SandboxID)

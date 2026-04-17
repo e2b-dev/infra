@@ -24,13 +24,12 @@ const MaxConcurrentSandboxes = 15
 // released after teardown in t.Cleanup.
 var sandboxSemaphore = make(chan struct{}, MaxConcurrentSandboxes)
 
-// AcquireSandboxSlot blocks until a sandbox slot is available. The slot is
-// automatically released when the test's cleanup runs. Use this in any test
-// code that creates sandboxes outside of SetupSandboxWithCleanup.
+// AcquireSandboxSlot blocks until a sandbox slot is available.
+// The caller is responsible for calling ReleaseSandboxSlot when
+// the sandbox is torn down.
 func AcquireSandboxSlot(t *testing.T) {
 	t.Helper()
 	sandboxSemaphore <- struct{}{}
-	t.Cleanup(ReleaseSandboxSlot)
 }
 
 // ReleaseSandboxSlot frees one sandbox slot.

@@ -36,6 +36,7 @@ func TestCreateSandboxWithSecuredEnvd(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
+		defer utils.ReleaseSandboxSlot()
 		if t.Failed() {
 			t.Logf("Response: %s", string(resp.Body))
 		}
@@ -82,6 +83,7 @@ func TestCreateSandboxWithDisabledPublicTrafficAndDisabledEnvdSecure(t *testing.
 	}
 
 	t.Cleanup(func() {
+		defer utils.ReleaseSandboxSlot()
 		if t.Failed() {
 			t.Logf("Response: %s", string(resp.Body))
 		}
