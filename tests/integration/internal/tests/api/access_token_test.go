@@ -50,7 +50,7 @@ func TestDeleteAccessToken(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, http.StatusCreated, respC.StatusCode())
+		require.Equal(t, http.StatusCreated, respC.StatusCode())
 
 		respD, err := c.DeleteAccessTokensAccessTokenIDWithResponse(ctx, respC.JSON201.Id.String(), setup.WithSupabaseToken(t))
 		if err != nil {

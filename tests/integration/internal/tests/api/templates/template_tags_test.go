@@ -123,6 +123,7 @@ func TestSandboxCreateWithTag(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a sandbox using the tagged template (templateID:tag format)
+	testutils.AcquireSandboxSlot(t)
 	sbxTimeout := int32(60)
 	resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 		TemplateID: template.TemplateID + ":v1.0",
@@ -153,6 +154,7 @@ func TestSandboxCreateWithDefaultTag(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Create a sandbox using explicit :default tag - should work same as without tag
+	testutils.AcquireSandboxSlot(t)
 	sbxTimeout := int32(60)
 	resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 		TemplateID: setup.SandboxTemplateID + ":" + id.DefaultTag,
@@ -182,6 +184,7 @@ func TestSandboxCreateWithNonExistentTag(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	// Try to create a sandbox with a non-existent tag
+	testutils.AcquireSandboxSlot(t)
 	sbxTimeout := int32(60)
 	resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 		TemplateID: setup.SandboxTemplateID + ":nonexistent-tag",
@@ -213,6 +216,7 @@ func TestSandboxCreateWithAliasAndTag(t *testing.T) {
 	require.Equal(t, http.StatusCreated, tagResp.StatusCode())
 
 	// Create a sandbox using alias:tag format (API should resolve alias to templateID)
+	testutils.AcquireSandboxSlot(t)
 	sbxTimeout := int32(60)
 	resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 		TemplateID: alias + ":stable",
@@ -289,12 +293,13 @@ func TestMultipleTagsOnSameTemplate(t *testing.T) {
 			Tags:   []string{tag},
 		}, setup.WithAPIKey())
 		require.NoError(t, err)
-		assert.Equal(t, http.StatusCreated, tagResp.StatusCode())
+		require.Equal(t, http.StatusCreated, tagResp.StatusCode())
 		assert.Equal(t, template.BuildID, tagResp.JSON201.BuildID.String())
 	}
 
 	// Verify we can create sandboxes with each tag
 	for _, tag := range tags {
+		testutils.AcquireSandboxSlot(t)
 		sbxTimeout := int32(60)
 		resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 			TemplateID: template.TemplateID + ":" + tag,
@@ -305,6 +310,7 @@ func TestMultipleTagsOnSameTemplate(t *testing.T) {
 		if resp.JSON201 != nil {
 			testutils.TeardownSandbox(t, c, resp.JSON201.SandboxID)
 		}
+		testutils.ReleaseSandboxSlot()
 
 		assert.Equal(t, http.StatusCreated, resp.StatusCode(), "Failed to create sandbox with tag: %s", tag)
 	}
@@ -397,6 +403,7 @@ func TestTemplateBuildWithTags(t *testing.T) {
 
 	// Verify we can create sandboxes with each tag that was specified during creation
 	for _, tag := range tags {
+		testutils.AcquireSandboxSlot(t)
 		sbxTimeout := int32(60)
 		sbxResp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 			TemplateID: name + ":" + tag,
@@ -407,6 +414,7 @@ func TestTemplateBuildWithTags(t *testing.T) {
 		if sbxResp.JSON201 != nil {
 			testutils.TeardownSandbox(t, c, sbxResp.JSON201.SandboxID)
 		}
+		testutils.ReleaseSandboxSlot()
 
 		assert.Equal(t, http.StatusCreated, sbxResp.StatusCode(), "Failed to create sandbox with tag: %s", name)
 	}
@@ -432,6 +440,7 @@ func TestTemplateBuildWithTagsAndSandboxCreation(t *testing.T) {
 	})
 
 	// Create sandbox using alias:tag format
+	testutils.AcquireSandboxSlot(t)
 	sbxTimeout := int32(60)
 	sbxResp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 		TemplateID: name,
@@ -474,6 +483,7 @@ func TestTemplateBuildWithTagInAlias(t *testing.T) {
 	})
 
 	// Create sandbox using the tag that was embedded in the alias
+	testutils.AcquireSandboxSlot(t)
 	sbxTimeout := int32(60)
 	sbxResp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 		TemplateID: template.TemplateID + ":v2.0",
