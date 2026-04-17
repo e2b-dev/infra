@@ -40,12 +40,11 @@ type provisionedTeam struct {
 	BlockedReason *string
 }
 
-func (s *APIStore) PostAdminUsersBootstrap(c *gin.Context) {
+func (s *APIStore) PostAdminUsersUserIdBootstrap(c *gin.Context, userId api.UserId) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "bootstrap user")
 
-	userID := auth.MustGetUserID(c)
-	team, err := s.bootstrapUser(ctx, userID)
+	team, err := s.bootstrapUser(ctx, userId)
 	if err != nil {
 		s.handleProvisioningError(ctx, c, "bootstrap user", err)
 
@@ -96,6 +95,12 @@ func (s *APIStore) PostTeams(c *gin.Context) {
 
 func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisionedTeam, error) {
 	authUser, err := s.supabaseDB.Write.GetAuthUserByID(ctx, userID)
+	if dberrors.IsNotFoundError(err) {
+		return provisionedTeam{}, &internalteamprovision.ProvisionError{
+			StatusCode: http.StatusNotFound,
+			Message:    "User not found",
+		}
+	}
 	if err != nil {
 		return provisionedTeam{}, fmt.Errorf("get auth user: %w", err)
 	}

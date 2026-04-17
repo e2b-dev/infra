@@ -41,8 +41,7 @@ type API struct {
 
 	caCertInstaller *host.CACertInstaller
 	isMountingNFS   atomic.Bool
-	isMountedNFS    atomic.Bool
-	mountedPaths    sync.Map // tracks successfully mounted paths
+	mountedPaths    sync.Map // map[path]lifecycleID - tracks which lifecycle each path was mounted for
 }
 
 func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
@@ -89,12 +88,4 @@ func (a *API) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(metrics); err != nil {
 		a.logger.Error().Err(err).Msg("Failed to encode metrics")
 	}
-}
-
-func (a *API) getLogger(err error) *zerolog.Event {
-	if err != nil {
-		return a.logger.Error().Err(err) //nolint:zerologlint // this is only prep
-	}
-
-	return a.logger.Info() //nolint:zerologlint // this is only prep
 }
