@@ -72,9 +72,9 @@ build {
   # Install gcsfuse using signed-by keyring (required for Ubuntu 24.04+).
   # See https://cloud.google.com/storage/docs/gcsfuse-install
   provisioner "shell" {
-    inline_shebang = "/bin/bash -e"
+    inline_shebang = "/bin/bash"
     inline = [
-      "set -o pipefail",
+      "set -eo pipefail",
       "export GCSFUSE_REPO=gcsfuse-$(lsb_release -c -s)",
       "curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo tee /usr/share/keyrings/cloud.google.asc > /dev/null",
       "echo \"deb [signed-by=/usr/share/keyrings/cloud.google.asc] https://packages.cloud.google.com/apt $GCSFUSE_REPO main\" | sudo tee /etc/apt/sources.list.d/gcsfuse.list",
