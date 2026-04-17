@@ -23,12 +23,10 @@ import (
 )
 
 const (
-	baseTierID                                  = "base_v1"
-	maxTeamsPerUser                             = 3
-	maxTeamsPerUserWithProTier                  = 10
-	newUserNewTeamRequireBillingMethodThreshold = 3 * 24 * time.Hour
-	blockedReasonMissingPayment                 = "missing_payment"
-	teamProvisionRollbackTimeout                = 5 * time.Second
+	baseTierID                   = "base_v1"
+	maxTeamsPerUser              = 3
+	maxTeamsPerUserWithProTier   = 10
+	teamProvisionRollbackTimeout = 5 * time.Second
 )
 
 type provisionedTeam struct {
@@ -226,14 +224,12 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 		return provisionedTeam{}, err
 	}
 
-	isBlocked, blockedReason := teamBlockPolicy(authUser.CreatedAt, time.Now())
-
 	team, err := authTxDB.CreateTeam(ctx, authqueries.CreateTeamParams{
 		Name:          name,
 		Tier:          baseTierID,
 		Email:         authUser.Email,
-		IsBlocked:     isBlocked,
-		BlockedReason: blockedReason,
+		IsBlocked:     false,
+		BlockedReason: nil,
 	})
 	if err != nil {
 		return provisionedTeam{}, fmt.Errorf("create team: %w", err)
@@ -321,18 +317,6 @@ func validateTeamCreationAllowed(ctx context.Context, authTxDB *authqueries.Quer
 
 	return nil
 }
-
-func teamBlockPolicy(userCreatedAt *time.Time, now time.Time) (bool, *string) {
-	// Some Supabase users have a NULL created_at; unknown age should not trigger the new-user block.
-	if userCreatedAt != nil && userCreatedAt.After(now.Add(-newUserNewTeamRequireBillingMethodThreshold)) {
-		reason := blockedReasonMissingPayment
-
-		return true, &reason
-	}
-
-	return false, nil
-}
-
 func (s *APIStore) handleProvisioningError(ctx context.Context, c *gin.Context, operation string, err error) {
 	attrs := []attribute.KeyValue{
 		attribute.String("team.provision.operation", operation),
