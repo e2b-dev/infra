@@ -136,7 +136,7 @@ func TestRetryWithBackoff_RespectsDeadlineDuringBackoff(t *testing.T) {
 	elapsed := time.Since(start)
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, context.DeadlineExceeded, "should return context error, not stale GCS error")
+	require.ErrorIs(t, err, context.DeadlineExceeded, "should return context error, not stale GCS error")
 	// Should not have run all attempts — the context deadline should have
 	// cut the backoff sleep short.
 	assert.Less(t, calls, googleMaxReadAttempts)
