@@ -72,6 +72,11 @@ type Config struct {
 	TotalDiskSizeMB int64
 	HugePages       bool
 
+	// OverlaySizeMB, when > 0, appends an overlay region to the NBD device.
+	// The guest sees one /dev/vda; envd uses losetup to carve out the overlay
+	// and sets up OverlayFS. Enables FS-only pause/resume.
+	OverlaySizeMB int64
+
 	Envd EnvdMetadata
 
 	FirecrackerConfig fc.Config
@@ -353,21 +358,38 @@ func (f *Factory) CreateSandbox(
 	}
 
 	var rootfsProvider rootfs.Provider
-	if rootfsCachePath == "" {
+	if rootfsCachePath != "" {
+		rootfsProvider, err = rootfs.NewDirectProvider(
+			ctx,
+			rootFS,
+			rootfsCachePath,
+		)
+	} else if config.OverlaySizeMB > 0 {
+		overlaySizeBytes := config.OverlaySizeMB * 1024 * 1024
+		overlayBlockSize := rootFS.BlockSize()
+		overlayCachePath := sandboxFiles.SandboxOverlayPath(f.config.StorageConfig)
+
+		overlayCache, cacheErr := block.NewEmptyExt4Cache(ctx, config.OverlaySizeMB, overlayBlockSize, overlayCachePath)
+		if cacheErr != nil {
+			return nil, fmt.Errorf("failed to create overlay ext4 cache: %w", cacheErr)
+		}
+
+		rootfsProvider, err = rootfs.NewNBDProviderComposite(
+			ctx,
+			rootFS,
+			sandboxFiles.SandboxCacheRootfsPath(f.config.StorageConfig),
+			overlayCache,
+			overlaySizeBytes,
+			f.devicePool,
+			f.featureFlags,
+		)
+	} else {
 		rootfsProvider, err = rootfs.NewNBDProvider(
 			ctx,
 			rootFS,
 			sandboxFiles.SandboxCacheRootfsPath(f.config.StorageConfig),
 			f.devicePool,
 			f.featureFlags,
-		)
-	} else {
-		rootfsProvider, err = rootfs.NewDirectProvider(
-			ctx,
-			rootFS,
-			// Populate direct cache directly from the source file
-			// This is needed for marking all blocks as dirty and being able to read them directly
-			rootfsCachePath,
 		)
 	}
 	if err != nil {
@@ -659,13 +681,36 @@ func (f *Factory) ResumeSandbox(
 
 		telemetry.ReportEvent(ctx, "got template rootfs")
 
-		overlay, err := rootfs.NewNBDProvider(
-			ctx,
-			readonlyRootfs,
-			sandboxFiles.SandboxCacheRootfsPath(f.config.StorageConfig),
-			f.devicePool,
-			f.featureFlags,
-		)
+		var overlay rootfs.Provider
+
+		if config.OverlaySizeMB > 0 {
+			overlaySizeBytes := config.OverlaySizeMB * 1024 * 1024
+			overlayBlockSize := readonlyRootfs.BlockSize()
+			overlayCachePath := sandboxFiles.SandboxOverlayPath(f.config.StorageConfig)
+
+			overlayCache, err := block.NewEmptyExt4Cache(ctx, config.OverlaySizeMB, overlayBlockSize, overlayCachePath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create overlay ext4 cache: %w", err)
+			}
+
+			overlay, err = rootfs.NewNBDProviderComposite(
+				ctx,
+				readonlyRootfs,
+				sandboxFiles.SandboxCacheRootfsPath(f.config.StorageConfig),
+				overlayCache,
+				overlaySizeBytes,
+				f.devicePool,
+				f.featureFlags,
+			)
+		} else {
+			overlay, err = rootfs.NewNBDProvider(
+				ctx,
+				readonlyRootfs,
+				sandboxFiles.SandboxCacheRootfsPath(f.config.StorageConfig),
+				f.devicePool,
+				f.featureFlags,
+			)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to create rootfs overlay: %w", err)
 		}
@@ -893,6 +938,25 @@ func (f *Factory) ResumeSandbox(
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
+	}
+
+	// If using composite device, tell envd to mount the overlay region.
+	if config.OverlaySizeMB > 0 {
+		readonlyRootfs, rootfsErr := t.Rootfs()
+		if rootfsErr != nil {
+			return nil, fmt.Errorf("failed to get rootfs for overlay offset: %w", rootfsErr)
+		}
+
+		rootfsSize, rootfsSizeErr := readonlyRootfs.Size(ctx)
+		if rootfsSizeErr != nil {
+			return nil, fmt.Errorf("failed to get rootfs size: %w", rootfsSizeErr)
+		}
+
+		if mountErr := sbx.requestEnvdMountOverlay(ctx, rootfsSize); mountErr != nil {
+			return nil, fmt.Errorf("failed to mount overlay: %w", mountErr)
+		}
+
+		telemetry.ReportEvent(ctx, "overlay mounted")
 	}
 
 	f.Sandboxes.MarkRunning(ctx, sbx)

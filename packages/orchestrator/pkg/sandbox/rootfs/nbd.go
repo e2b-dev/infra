@@ -140,7 +140,7 @@ func NewNBDProviderComposite(
 
 	rootfsOverlay := block.NewOverlay(rootfs, rootfsCache)
 
-	overlayOverlay := block.NewOverlay(&emptyDevice{size: overlaySizeBytes, blockSize: blockSize}, overlayCache)
+	overlayOverlay := block.NewOverlay(block.NewEmptyBaseDevice(overlaySizeBytes, blockSize), overlayCache)
 
 	composite := block.NewCompositeDevice(rootfsOverlay, overlayOverlay, rootfsSize, overlaySizeBytes)
 
@@ -163,28 +163,6 @@ func NewNBDProviderComposite(
 func (o *NBDProvider) OverlayDevice() *block.CompositeDevice {
 	return o.composite
 }
-
-// emptyDevice is a ReadonlyDevice that returns zeros for all reads.
-// Used as the base layer for disk B (overlay upper starts empty).
-type emptyDevice struct {
-	size      int64
-	blockSize int64
-}
-
-func (e *emptyDevice) ReadAt(_ context.Context, p []byte, _ int64) (int, error) {
-	clear(p)
-
-	return len(p), nil
-}
-
-func (e *emptyDevice) Slice(_ context.Context, _, _ int64) ([]byte, error) {
-	return nil, block.BytesNotAvailableError{}
-}
-
-func (e *emptyDevice) Size(_ context.Context) (int64, error) { return e.size, nil }
-func (e *emptyDevice) BlockSize() int64                      { return e.blockSize }
-func (e *emptyDevice) Header() *header.Header                { return nil }
-func (e *emptyDevice) Close() error                          { return nil }
 
 func (o *NBDProvider) Start(ctx context.Context) error {
 	deviceIndex, err := o.mnt.Open(ctx)

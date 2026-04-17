@@ -153,6 +153,11 @@ func (ppb *PostProcessingBuilder) Build(
 		RamMB:     ppb.Config.MemoryMB,
 		HugePages: ppb.Config.HugePages,
 
+		// Append an overlay region to the NBD device for FS-only pause/resume.
+		// The snapshot captures the full composite device size so the guest
+		// kernel sees the right capacity on resume.
+		OverlaySizeMB: 512,
+
 		Envd: sandbox.EnvdMetadata{
 			Version:        ppb.EnvdVersion,
 			DefaultUser:    defaultUser,

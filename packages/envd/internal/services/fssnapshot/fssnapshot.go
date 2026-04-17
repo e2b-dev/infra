@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"golang.org/x/sys/unix"
@@ -35,6 +36,19 @@ func SetupOverlay(overlayOffsetBytes int64) error {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("mkdir %s: %w", dir, err)
 		}
+	}
+
+	// Tell the kernel to re-read the block device size. After snapshot
+	// restore, the NBD may be serving a larger composite device but the
+	// kernel still has the old (smaller) size cached.
+	rereadCmd := exec.Command("blockdev", "--rereadpt", blockDev)
+	rereadCmd.CombinedOutput() // best-effort, ignore errors
+
+	// Also explicitly get the size to verify the device is big enough
+	sizeCmd := exec.Command("blockdev", "--getsize64", blockDev)
+	if sizeOut, err := sizeCmd.Output(); err == nil {
+		fmt.Printf("fssnapshot: block device size: %s bytes, overlay offset: %d\n",
+			strings.TrimSpace(string(sizeOut)), overlayOffsetBytes)
 	}
 
 	// Create a loop device that exposes the overlay region of /dev/vda
