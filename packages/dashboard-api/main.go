@@ -147,7 +147,7 @@ func run() int {
 	supabaseDB, err := supabasedb.NewClient(
 		ctx,
 		config.SupabaseDBConnectionString,
-		pool.WithMaxConnections(2),
+		pool.WithMaxConnections(3),
 	)
 	if err != nil {
 		l.Error(ctx, "Initializing supabase database client", zap.Error(err))
