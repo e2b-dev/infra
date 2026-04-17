@@ -3,6 +3,7 @@ package featureflags
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
@@ -34,8 +35,9 @@ const (
 // All flags must be defined here: https://app.launchdarkly.com/projects/default/flags/
 
 type JSONFlag struct {
-	name     string
-	fallback ldvalue.Value
+	name           string
+	fallback       ldvalue.Value
+	fallbackOnZero bool
 }
 
 func (f JSONFlag) Key() string {
@@ -48,6 +50,10 @@ func (f JSONFlag) String() string {
 
 func (f JSONFlag) Fallback() ldvalue.Value {
 	return f.fallback
+}
+
+func (f JSONFlag) FallbackOnZero() bool {
+	return f.fallbackOnZero
 }
 
 func newJSONFlag(name string, fallback ldvalue.Value) JSONFlag {
@@ -88,6 +94,10 @@ func (f BoolFlag) Fallback() bool {
 	return f.fallback
 }
 
+func (f BoolFlag) FallbackOnZero() bool {
+	return false
+}
+
 func newBoolFlag(name string, fallback bool) BoolFlag {
 	flag := BoolFlag{name: name, fallback: fallback}
 	builder := launchDarklyOfflineStore.Flag(flag.name).VariationForAll(fallback)
@@ -122,8 +132,9 @@ var (
 )
 
 type IntFlag struct {
-	name     string
-	fallback int
+	name           string
+	fallback       int
+	fallbackOnZero bool
 }
 
 func (f IntFlag) Key() string {
@@ -136,6 +147,10 @@ func (f IntFlag) String() string {
 
 func (f IntFlag) Fallback() int {
 	return f.fallback
+}
+
+func (f IntFlag) FallbackOnZero() bool {
+	return f.fallbackOnZero
 }
 
 func newIntFlag(name string, fallback int) IntFlag {
@@ -207,8 +222,9 @@ var (
 )
 
 type StringFlag struct {
-	name     string
-	fallback string
+	name                  string
+	fallback              string
+	fallbackOnEmptyString bool
 }
 
 func (f StringFlag) Key() string {
@@ -223,10 +239,21 @@ func (f StringFlag) Fallback() string {
 	return f.fallback
 }
 
+func (f StringFlag) FallbackOnZero() bool {
+	return f.fallbackOnEmptyString
+}
+
 func newStringFlag(name string, fallback string) StringFlag {
 	flag := StringFlag{name: name, fallback: fallback}
 	builder := launchDarklyOfflineStore.Flag(flag.name).ValueForAll(ldvalue.String(fallback))
 	launchDarklyOfflineStore.Update(builder)
+
+	return flag
+}
+
+func newStringFlagFallbackOnEmptyString(name string, fallback string) StringFlag {
+	flag := newStringFlag(name, fallback)
+	flag.fallbackOnEmptyString = true
 
 	return flag
 }
@@ -251,9 +278,9 @@ var FirecrackerVersionMap = map[string]string{
 
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
 var (
-	BuildFirecrackerVersion     = newStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
+	BuildFirecrackerVersion     = newStringFlagFallbackOnEmptyString("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
 	BuildIoEngine               = newStringFlag("build-io-engine", "Sync")
-	DefaultPersistentVolumeType = newStringFlag("default-persistent-volume-type", "")
+	DefaultPersistentVolumeType = newStringFlagFallbackOnEmptyString("default-persistent-volume-type", os.Getenv("DEFAULT_PERSISTENT_VOLUME_TYPE"))
 	BuildNodeInfo               = newJSONFlag("preferred-build-node", ldvalue.Null())
 	FirecrackerVersions         = newJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
 )

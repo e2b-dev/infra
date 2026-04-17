@@ -66,8 +66,6 @@ type Config struct {
 
 	DefaultKernelVersion string `env:"DEFAULT_KERNEL_VERSION"`
 
-	DefaultPersistentVolumeType string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`
-
 	// SandboxStorageBackend selects the sandbox storage implementation.
 	// "redis" uses Redis directly; "populate_redis" uses in-memory with Redis shadow writes.
 	SandboxStorageBackend string `env:"SANDBOX_STORAGE_BACKEND" envDefault:"memory"`

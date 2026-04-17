@@ -65,7 +65,7 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 
 	ctx = featureflags.AddToContext(ctx, featureflags.VolumeContext(body.Name))
 
-	volumeType := a.getVolumeType(ctx)
+	volumeType := a.featureFlags.StringFlag(ctx, featureflags.DefaultPersistentVolumeType)
 	if volumeType == "" {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "No persistent volume type is configured")
 		telemetry.ReportCriticalError(ctx, "default persistent volume type is not configured", nil)
@@ -163,15 +163,6 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, result)
-}
-
-func (a *APIStore) getVolumeType(ctx context.Context) string {
-	volumeType := a.featureFlags.StringFlag(ctx, featureflags.DefaultPersistentVolumeType)
-	if volumeType == "" {
-		volumeType = a.config.DefaultPersistentVolumeType
-	}
-
-	return volumeType
 }
 
 var validVolumeNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
