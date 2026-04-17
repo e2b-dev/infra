@@ -45,6 +45,7 @@ github.com/hashicorp/go-rootcerts v1.0.2/go.mod h1:pqUvnprVnM5bf7AOirdbb01K4ccR3
 github.com/hashicorp/nomad-autoscaler v0.4.5 h1:qN59xm+mYqQfekLsXKi+Y6PAMtVTRrNnmlloMJ3oX8U=
 github.com/hashicorp/nomad-autoscaler v0.4.5/go.mod h1:xp++iOk5PHzkVYOrtOytlkP02PDLDlsSdZREKBEJBY8=
 github.com/hashicorp/nomad/api v0.0.0-20260324203407-b27b0c2e019a h1:HGwfgBNl90YBiHdbzZ/+8aMxO1UL9B/yNTAXa8iB8z8=
+github.com/hashicorp/nomad/api v0.0.0-20260324203407-b27b0c2e019a/go.mod h1:KkLNLU0Nyfh5jWsFoF/PsmMbKpRIAoIV4lmQoJWgKCk=
 github.com/hashicorp/yamux v0.1.1 h1:yrQxtgseBDrq9Y652vSRDvsKCJKOUD+GzTS4Y0Y8pvE=
 github.com/hashicorp/yamux v0.1.1/go.mod h1:CtWFDAQgb7dxtzFs4tWbplKIe2jSi3+5vKbgIO0SLnQ=
 github.com/jhump/protoreflect v1.15.1 h1:HUMERORf3I3ZdX05WaQ6MIpd/NJ434hTp5YiKgfCL6c=
