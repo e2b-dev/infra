@@ -362,4 +362,35 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 			{"https://1.1.1.1", false},
 		})
 	})
+
+	t.Run("pause_resume_preserves_allow_internet_access_false", func(t *testing.T) { //nolint:paralleltest // sequential
+		// Block all via allow_internet_access=false
+		resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+			AllowInternetAccess: ptrB(false),
+		})
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
+		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+			{"https://8.8.8.8", false},
+			{"https://1.1.1.1", false},
+		})
+
+		// Pause
+		pauseResp, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
+
+		// Resume
+		resumeResp, err := client.PostSandboxesSandboxIDResumeWithResponse(ctx, sbx.SandboxID,
+			api.PostSandboxesSandboxIDResumeJSONRequestBody{},
+			setup.WithAPIKey(),
+		)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusCreated, resumeResp.StatusCode())
+
+		// Verify block survived pause/resume
+		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+			{"https://8.8.8.8", false},
+			{"https://1.1.1.1", false},
+		})
+	})
 }

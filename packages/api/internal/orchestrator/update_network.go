@@ -51,6 +51,10 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 			DeniedAddresses:  deniedEntries,
 		}
 
+		if allowInternetAccess != nil {
+			sbx.AllowInternetAccess = allowInternetAccess
+		}
+
 		return sbx, nil
 	}
 
