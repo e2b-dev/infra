@@ -40,7 +40,9 @@ func TestSandboxAutoPausePauseResume(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		res, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbxId, setup.WithAPIKey())
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return false
+		}
 
 		return res.StatusCode() == http.StatusOK && res.JSON200 != nil && res.JSON200.State == api.Paused
 	}, 10*time.Second, 10*time.Millisecond, "Sandbox is not stopped")
@@ -76,9 +78,15 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		res, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbxId, setup.WithAPIKey())
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, res.StatusCode())
-		require.NotNil(t, res.JSON200)
+		if !assert.NoError(t, err) {
+			return false
+		}
+		if !assert.Equal(t, http.StatusOK, res.StatusCode()) {
+			return false
+		}
+		if !assert.NotNil(t, res.JSON200) {
+			return false
+		}
 
 		return res.JSON200.State == api.Paused
 	}, 10*time.Second, 10*time.Millisecond, "Sandbox is not paused")
@@ -112,9 +120,15 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		res, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbxId, setup.WithAPIKey())
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, res.StatusCode())
-		require.NotNil(t, res.JSON200)
+		if !assert.NoError(t, err) {
+			return false
+		}
+		if !assert.Equal(t, http.StatusOK, res.StatusCode()) {
+			return false
+		}
+		if !assert.NotNil(t, res.JSON200) {
+			return false
+		}
 
 		return res.JSON200.State == api.Paused
 	}, 10*time.Second, 10*time.Millisecond, "Sandbox is not paused")
@@ -158,7 +172,9 @@ func TestSandboxNotAutoPause(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		res, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbxId, setup.WithAPIKey())
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return false
+		}
 
 		return res.StatusCode() == http.StatusNotFound
 	}, 10*time.Second, 10*time.Millisecond, "Sandbox is not stopped")

@@ -55,7 +55,9 @@ func TestWatcher(t *testing.T) {
 	var events []*filesystem.FilesystemEvent
 	require.Eventually(t, func() bool {
 		getResp, err := envdClient.FilesystemClient.GetWatcherEvents(t.Context(), getReq)
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return false
+		}
 		events = getResp.Msg.GetEvents()
 
 		return len(events) > 0

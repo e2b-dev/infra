@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
@@ -27,10 +28,15 @@ func TestTeamMetrics(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		response, err := c.GetTeamsTeamIDMetricsWithResponse(t.Context(), setup.TeamID, nil, setup.WithAPIKey())
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, response.StatusCode())
-
-		require.NotNil(t, response.JSON200)
+		if !assert.NoError(t, err) {
+			return false
+		}
+		if !assert.Equal(t, http.StatusOK, response.StatusCode()) {
+			return false
+		}
+		if !assert.NotNil(t, response.JSON200) {
+			return false
+		}
 		if len(*response.JSON200) == 0 {
 			return false
 		}
@@ -84,9 +90,15 @@ func TestTeamMetricsWithTimeRange(t *testing.T) {
 			&api.GetTeamsTeamIDMetricsParams{Start: &start, End: &end},
 			setup.WithAPIKey(),
 		)
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, resp.StatusCode())
-		require.NotNil(t, resp.JSON200)
+		if !assert.NoError(t, err) {
+			return false
+		}
+		if !assert.Equal(t, http.StatusOK, resp.StatusCode()) {
+			return false
+		}
+		if !assert.NotNil(t, resp.JSON200) {
+			return false
+		}
 		if len(*resp.JSON200) == 0 {
 			return false
 		}
