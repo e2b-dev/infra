@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
@@ -36,12 +35,8 @@ func TestTeamMetricsMaxConcurrentSandboxes(t *testing.T) {
 			},
 			setup.WithAPIKey(),
 		)
-		if !assert.NoError(t, err) {
-			return false
-		}
-		if !assert.Equal(t, http.StatusOK, response.StatusCode()) {
-			return false
-		}
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, response.StatusCode())
 
 		if response.JSON200 == nil {
 			return false
@@ -81,12 +76,8 @@ func TestTeamMetricsMaxSandboxStartRate(t *testing.T) {
 			},
 			setup.WithAPIKey(),
 		)
-		if !assert.NoError(t, err) {
-			return false
-		}
-		if !assert.Equal(t, http.StatusOK, response.StatusCode()) {
-			return false
-		}
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, response.StatusCode())
 
 		if response.JSON200 == nil {
 			return false

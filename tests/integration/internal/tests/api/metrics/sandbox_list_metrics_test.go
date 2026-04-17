@@ -27,18 +27,11 @@ func TestSandboxListMetrics(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		response, err := c.GetSandboxesMetricsWithResponse(t.Context(), &api.GetSandboxesMetricsParams{SandboxIds: []string{sbx1.SandboxID, sbx2.SandboxID}}, setup.WithAPIKey())
-		if !assert.NoError(t, err) {
-			return false
-		}
-		if !assert.Equal(t, http.StatusOK, response.StatusCode()) {
-			return false
-		}
-		if !assert.NotNil(t, response.JSON200) {
-			return false
-		}
-		if !assert.NotNil(t, response.JSON200.Sandboxes) {
-			return false
-		}
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, response.StatusCode())
+
+		require.NotNil(t, response.JSON200)
+		require.NotNil(t, response.JSON200.Sandboxes)
 		if len(response.JSON200.Sandboxes) < 2 {
 			return false
 		}

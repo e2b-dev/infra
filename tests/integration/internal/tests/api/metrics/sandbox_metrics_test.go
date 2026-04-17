@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
@@ -26,15 +25,10 @@ func TestSandboxMetrics(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		response, err := c.GetSandboxesSandboxIDMetricsWithResponse(t.Context(), sbx.SandboxID, &api.GetSandboxesSandboxIDMetricsParams{}, setup.WithAPIKey())
-		if !assert.NoError(t, err) {
-			return false
-		}
-		if !assert.Equal(t, http.StatusOK, response.StatusCode()) {
-			return false
-		}
-		if !assert.NotNil(t, response.JSON200) {
-			return false
-		}
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, response.StatusCode())
+
+		require.NotNil(t, response.JSON200)
 		if len(*response.JSON200) == 0 {
 			return false
 		}

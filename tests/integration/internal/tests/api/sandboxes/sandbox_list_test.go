@@ -193,15 +193,9 @@ func TestSandboxListPausing(t *testing.T) {
 			State:    &[]api.SandboxState{api.Running, api.Paused},
 			Metadata: &metadataString,
 		}, setup.WithAPIKey())
-		if !assert.NoError(t, err) {
-			return false
-		}
-		if !assert.Equal(t, http.StatusOK, listResponse.StatusCode()) {
-			return false
-		}
-		if len(*listResponse.JSON200) < 1 {
-			return false
-		}
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, listResponse.StatusCode())
+		assert.GreaterOrEqual(t, len(*listResponse.JSON200), 1)
 
 		// Verify our paused sandbox is in the list
 		found := false
@@ -215,9 +209,7 @@ func TestSandboxListPausing(t *testing.T) {
 		}
 
 		// The sandbox has to be always present
-		if !assert.True(t, found) {
-			return false
-		}
+		require.True(t, found)
 
 		return false
 	}, 10*time.Second, 100*time.Millisecond, "Sandbox did not reach paused state in time")

@@ -328,15 +328,9 @@ func TestAPIKeyLastUsedUpdated(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		resp, err := c.GetApiKeysWithResponse(t.Context(), setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
-		if !assert.NoError(t, err) {
-			return false
-		}
-		if !assert.Equal(t, http.StatusOK, resp.StatusCode()) {
-			return false
-		}
-		if !assert.NotNil(t, resp.JSON200) {
-			return false
-		}
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode())
+		require.NotNil(t, resp.JSON200)
 
 		for _, key := range *resp.JSON200 {
 			if strings.HasPrefix(setup.APIKey, fmt.Sprintf("%s%s", key.Mask.Prefix, key.Mask.MaskedValuePrefix)) && strings.HasSuffix(setup.APIKey, key.Mask.MaskedValueSuffix) {
