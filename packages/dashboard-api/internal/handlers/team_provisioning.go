@@ -317,6 +317,7 @@ func validateTeamCreationAllowed(ctx context.Context, authTxDB *authqueries.Quer
 
 	return nil
 }
+
 func (s *APIStore) handleProvisioningError(ctx context.Context, c *gin.Context, operation string, err error) {
 	attrs := []attribute.KeyValue{
 		attribute.String("team.provision.operation", operation),
