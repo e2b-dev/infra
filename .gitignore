@@ -18,3 +18,4 @@ go.work.sum
 .vscode/mise-tools
 /packages/fc-kernels
 /packages/fc-versions
+packages/orchestrator/test-fs-pause
