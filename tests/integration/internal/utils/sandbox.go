@@ -14,6 +14,30 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 )
 
+// MaxConcurrentSandboxes is the maximum number of sandboxes that can exist
+// simultaneously, the base tier's concurrent_instances limit is 20, leaveing
+// some headroom
+const MaxConcurrentSandboxes = 15
+
+// sandboxSemaphore gates sandbox creation so parallel tests don't exceed the
+// tier's concurrent instance limit. A slot is acquired before creation and
+// released after teardown in t.Cleanup.
+var sandboxSemaphore = make(chan struct{}, MaxConcurrentSandboxes)
+
+// AcquireSandboxSlot blocks until a sandbox slot is available. The slot is
+// automatically released when the test's cleanup runs. Use this in any test
+// code that creates sandboxes outside of SetupSandboxWithCleanup.
+func AcquireSandboxSlot(t *testing.T) {
+	t.Helper()
+	sandboxSemaphore <- struct{}{}
+	t.Cleanup(ReleaseSandboxSlot)
+}
+
+// ReleaseSandboxSlot frees one sandbox slot.
+func ReleaseSandboxSlot() {
+	<-sandboxSemaphore
+}
+
 type SandboxConfig struct {
 	templateID          string
 	metadata            api.SandboxMetadata
@@ -81,9 +105,14 @@ func WithTemplateID(templateID string) SandboxOption {
 	}
 }
 
-// SetupSandboxWithCleanup creates a new sandbox and returns its data
+// SetupSandboxWithCleanup creates a new sandbox and returns its data.
+// It acquires a semaphore slot to stay within the tier's concurrent instance
+// limit; the slot is released after the sandbox is torn down in t.Cleanup.
 func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options ...SandboxOption) *api.Sandbox {
 	t.Helper()
+
+	// Block until a sandbox slot is available.
+	sandboxSemaphore <- struct{}{}
 
 	// t.Context() doesn't work with go vet, so we use our own context
 	ctx, cancel := context.WithCancel(t.Context())
@@ -136,10 +165,14 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 
 		t.Cleanup(func() {
 			TeardownSandbox(t, c, sbx.SandboxID)
+			ReleaseSandboxSlot()
 		})
 
 		return sbx
 	}
+
+	// Release the slot since we never created a sandbox.
+	ReleaseSandboxSlot()
 
 	t.Logf("Sandbox creation failed after 10 retries")
 	t.FailNow()

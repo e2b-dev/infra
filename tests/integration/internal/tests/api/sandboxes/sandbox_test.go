@@ -15,6 +15,9 @@ import (
 
 func TestSandboxCreate(t *testing.T) {
 	t.Parallel()
+
+	utils.AcquireSandboxSlot(t)
+
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -44,6 +47,9 @@ func TestSandboxCreate(t *testing.T) {
 
 func TestSandboxResumeUnknownSandbox(t *testing.T) {
 	t.Parallel()
+
+	utils.AcquireSandboxSlot(t)
+
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -70,6 +76,9 @@ func TestSandboxResumeUnknownSandbox(t *testing.T) {
 
 func TestSandboxResumeWithSecuredEnvd(t *testing.T) {
 	t.Parallel()
+
+	utils.AcquireSandboxSlot(t)
+
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 

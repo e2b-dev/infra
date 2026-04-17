@@ -35,6 +35,9 @@ func TestInternetAccess(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
+			utils.AcquireSandboxSlot(t)
+
 			resp, err := client.PostSandboxesWithResponse(ctx, api.NewSandbox{
 				TemplateID:          setup.SandboxTemplateID,
 				Timeout:             &sbxTimeout,
@@ -43,6 +46,10 @@ func TestInternetAccess(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, http.StatusCreated, resp.StatusCode(), "Expected status code 201 Created, got %d", resp.StatusCode())
 			require.NotNil(t, resp.JSON201, "Expected non-nil response body")
+
+			t.Cleanup(func() {
+				utils.TeardownSandbox(t, client, resp.JSON201.SandboxID)
+			})
 
 			envdClient := setup.GetEnvdClient(t, ctx)
 
@@ -81,6 +88,9 @@ func TestInternetAccessResumedSbx(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
+			utils.AcquireSandboxSlot(t)
+
 			resp, err := client.PostSandboxesWithResponse(ctx, api.NewSandbox{
 				TemplateID:          setup.SandboxTemplateID,
 				Timeout:             &sbxTimeout,
@@ -89,6 +99,10 @@ func TestInternetAccessResumedSbx(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, http.StatusCreated, resp.StatusCode(), "Expected status code 201 Created, got %d", resp.StatusCode())
 			require.NotNil(t, resp.JSON201, "Expected non-nil response body")
+
+			t.Cleanup(func() {
+				utils.TeardownSandbox(t, client, resp.JSON201.SandboxID)
+			})
 
 			// Pause and resume the sandbox
 			respPause, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, resp.JSON201.SandboxID, setup.WithAPIKey())

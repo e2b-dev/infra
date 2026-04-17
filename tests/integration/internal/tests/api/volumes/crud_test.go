@@ -75,6 +75,7 @@ func TestVolumeRoundTrip(t *testing.T) {
 	filePath := filepath.Join(volumeMountPath, "hello.txt")
 
 	// create a sandbox with the volume
+	utils.AcquireSandboxSlot(t)
 	timeout := int32(30)
 	createSandbox, err := client.PostSandboxesWithResponse(
 		t.Context(),
@@ -132,8 +133,10 @@ func TestVolumeRoundTrip(t *testing.T) {
 
 	// kill the sandbox
 	utils.TeardownSandbox(t, client, sbx.SandboxID)
+	utils.ReleaseSandboxSlot()
 
 	// start a new sandbox
+	utils.AcquireSandboxSlot(t)
 	createSandbox2, err := client.PostSandboxesWithResponse(
 		t.Context(),
 		api.NewSandbox{
@@ -208,6 +211,7 @@ func TestVolumeRoundTrip(t *testing.T) {
 
 	// kill the sandbox
 	utils.TeardownSandbox(t, client, sbx2.SandboxID)
+	utils.ReleaseSandboxSlot()
 
 	// delete volume
 	deleteVolume, err := client.DeleteVolumesVolumeIDWithResponse(t.Context(), volume.VolumeID, setup.WithAPIKey())
