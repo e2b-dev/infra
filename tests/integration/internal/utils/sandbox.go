@@ -36,6 +36,7 @@ func AcquireSandboxSlot(t *testing.T) func() {
 	sandboxSemaphore <- struct{}{}
 	release := sync.OnceFunc(func() { <-sandboxSemaphore })
 	t.Cleanup(release)
+
 	return release
 }
 
