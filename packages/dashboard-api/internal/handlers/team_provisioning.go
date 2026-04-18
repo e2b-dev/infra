@@ -23,12 +23,10 @@ import (
 )
 
 const (
-	baseTierID                                  = "base_v1"
-	maxTeamsPerUser                             = 3
-	maxTeamsPerUserWithProTier                  = 10
-	newUserNewTeamRequireBillingMethodThreshold = 3 * 24 * time.Hour
-	blockedReasonMissingPayment                 = "missing_payment"
-	teamProvisionRollbackTimeout                = 5 * time.Second
+	baseTierID                   = "base_v1"
+	maxTeamsPerUser              = 3
+	maxTeamsPerUserWithProTier   = 10
+	teamProvisionRollbackTimeout = 5 * time.Second
 )
 
 type provisionedTeam struct {
@@ -40,12 +38,11 @@ type provisionedTeam struct {
 	BlockedReason *string
 }
 
-func (s *APIStore) PostAdminUsersBootstrap(c *gin.Context) {
+func (s *APIStore) PostAdminUsersUserIdBootstrap(c *gin.Context, userId api.UserId) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "bootstrap user")
 
-	userID := auth.MustGetUserID(c)
-	team, err := s.bootstrapUser(ctx, userID)
+	team, err := s.bootstrapUser(ctx, userId)
 	if err != nil {
 		s.handleProvisioningError(ctx, c, "bootstrap user", err)
 
@@ -96,6 +93,12 @@ func (s *APIStore) PostTeams(c *gin.Context) {
 
 func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisionedTeam, error) {
 	authUser, err := s.supabaseDB.Write.GetAuthUserByID(ctx, userID)
+	if dberrors.IsNotFoundError(err) {
+		return provisionedTeam{}, &internalteamprovision.ProvisionError{
+			StatusCode: http.StatusNotFound,
+			Message:    "User not found",
+		}
+	}
 	if err != nil {
 		return provisionedTeam{}, fmt.Errorf("get auth user: %w", err)
 	}
@@ -221,14 +224,12 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 		return provisionedTeam{}, err
 	}
 
-	isBlocked, blockedReason := teamBlockPolicy(authUser.CreatedAt, time.Now())
-
 	team, err := authTxDB.CreateTeam(ctx, authqueries.CreateTeamParams{
 		Name:          name,
 		Tier:          baseTierID,
 		Email:         authUser.Email,
-		IsBlocked:     isBlocked,
-		BlockedReason: blockedReason,
+		IsBlocked:     false,
+		BlockedReason: nil,
 	})
 	if err != nil {
 		return provisionedTeam{}, fmt.Errorf("create team: %w", err)
@@ -315,17 +316,6 @@ func validateTeamCreationAllowed(ctx context.Context, authTxDB *authqueries.Quer
 	}
 
 	return nil
-}
-
-func teamBlockPolicy(userCreatedAt *time.Time, now time.Time) (bool, *string) {
-	// Some Supabase users have a NULL created_at; unknown age should not trigger the new-user block.
-	if userCreatedAt != nil && userCreatedAt.After(now.Add(-newUserNewTeamRequireBillingMethodThreshold)) {
-		reason := blockedReasonMissingPayment
-
-		return true, &reason
-	}
-
-	return false, nil
 }
 
 func (s *APIStore) handleProvisioningError(ctx context.Context, c *gin.Context, operation string, err error) {

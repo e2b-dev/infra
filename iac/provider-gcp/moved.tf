@@ -34,32 +34,3 @@ moved {
   to   = module.init.google_secret_manager_secret_version.supabase_jwt_secrets
 }
 
-moved {
-  from = random_password.api_admin_secret
-  to   = module.init.random_password.api_admin_secret
-}
-
-moved {
-  from = google_secret_manager_secret.api_admin_token
-  to   = module.init.google_secret_manager_secret.api_admin_token
-}
-
-moved {
-  from = google_secret_manager_secret_version.api_admin_token_value
-  to   = module.init.google_secret_manager_secret_version.api_admin_token_value
-}
-
-moved {
-  from = random_password.dashboard_api_admin_secret
-  to   = module.init.random_password.dashboard_api_admin_secret
-}
-
-moved {
-  from = google_secret_manager_secret.dashboard_api_admin_token
-  to   = module.init.google_secret_manager_secret.dashboard_api_admin_token
-}
-
-moved {
-  from = google_secret_manager_secret_version.dashboard_api_admin_token_value
-  to   = module.init.google_secret_manager_secret_version.dashboard_api_admin_token_value
-}

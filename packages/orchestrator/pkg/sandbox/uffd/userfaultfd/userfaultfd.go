@@ -472,6 +472,16 @@ func (u *Userfaultfd) faultPage(
 		return true, nil
 	}
 
+	if errors.Is(writeErr, unix.ESRCH) {
+		// The faulting thread/process no longer exists — it exited or was killed
+		// while the page fetch was in flight. This is expected during sandbox
+		// teardown; treat it as benign.
+		span.SetAttributes(attribute.Bool("uffd.process_exited", true))
+		u.logger.Debug(ctx, "UFFD serve copy error: process no longer exists", zap.Error(writeErr))
+
+		return true, nil
+	}
+
 	if errors.Is(writeErr, unix.EAGAIN) {
 		// This happens when a remove event arrives in the UFFD file descriptor while
 		// we are trying to copy()/zero() a page. We need to read all the events from
