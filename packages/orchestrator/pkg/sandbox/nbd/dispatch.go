@@ -12,9 +12,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -257,74 +255,51 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 }
 
 func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
-	d.shuttingDownLock.Lock()
-	if d.shuttingDown {
-		d.shuttingDownLock.Unlock()
+	// Process synchronously so the returned mmap slices are written to the
+	// socket before the dispatch loop accepts a write request that could
+	// mutate the same mmap pages. Concurrency across requests is preserved by
+	// running multiple NBD socket connections per device (FlagCanMulticonn).
+	// buffered to avoid goroutine leak
+	errchan := make(chan error, 1)
 
-		return ErrShuttingDown
-	}
+	var slices [][]byte
 
-	d.pendingResponses.Add(1)
-	d.shuttingDownLock.Unlock()
-
-	performRead := func(handle uint64, from uint64, length uint32) error {
-		// buffered to avoid goroutine leak
-		errchan := make(chan error, 1)
-
-		var slices [][]byte
-
-		nbdReadConncurent.Add(ctx, 1)
-
-		go func() {
-			start := time.Now()
-			var err error
-
-			slices, err = d.prov.ReadSlices(ctx, int64(from), int64(length), nil)
-
-			attrs := nbdReadSuccess
-			if err != nil {
-				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-					attrs = nbdReadCancelled
-				} else {
-					attrs = nbdReadFailure
-				}
-			}
-
-			nbdReadDuration.Record(ctx, time.Since(start).Milliseconds(), attrs)
-			errchan <- err
-		}()
-
-		// Wait until either the ReadAt completed, or our context is cancelled...
-		var readErr error
-		select {
-		case <-ctx.Done():
-			readErr = ctx.Err()
-		case readErr = <-errchan:
-		}
-
-		nbdReadConncurent.Add(ctx, -1)
-
-		if readErr != nil {
-			return d.writeResponse(1, handle, []byte{})
-		}
-
-		// read was successful — write each mmap slice directly to the socket
-		return d.writeSlices(handle, slices)
-	}
+	nbdReadConncurent.Add(ctx, 1)
+	defer nbdReadConncurent.Add(ctx, -1)
 
 	go func() {
-		err := performRead(cmdHandle, cmdFrom, cmdLength)
+		start := time.Now()
+		var err error
+
+		slices, err = d.prov.ReadSlices(ctx, int64(cmdFrom), int64(cmdLength), nil)
+
+		attrs := nbdReadSuccess
 		if err != nil {
-			select {
-			case d.fatal <- err:
-			default:
-				logger.L().Error(ctx, "nbd error cmd read", zap.Error(err))
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				attrs = nbdReadCancelled
+			} else {
+				attrs = nbdReadFailure
 			}
 		}
-		d.pendingResponses.Done()
+
+		nbdReadDuration.Record(ctx, time.Since(start).Milliseconds(), attrs)
+		errchan <- err
 	}()
 
-	return nil
+	// Wait until either the ReadSlices completed, or our context is cancelled...
+	var readErr error
+	select {
+	case <-ctx.Done():
+		readErr = ctx.Err()
+	case readErr = <-errchan:
+	}
+
+	if readErr != nil {
+		return d.writeResponse(1, cmdHandle, []byte{})
+	}
+
+	// read was successful — write each mmap slice directly to the socket
+	return d.writeSlices(cmdHandle, slices)
 }
 
 /**
