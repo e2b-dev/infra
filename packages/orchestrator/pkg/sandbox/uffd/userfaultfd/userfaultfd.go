@@ -48,8 +48,9 @@ func hasEvent(revents, event int16) bool {
 type Userfaultfd struct {
 	fd Fd
 
-	src block.Slicer
-	ma  *memory.Mapping
+	src      block.Slicer
+	ma       *memory.Mapping
+	pageSize uintptr
 
 	// We don't skip the already mapped pages, because if the memory is swappable the page *might* under some conditions be mapped out.
 	// For hugepages this should not be a problem, but might theoretically happen to normal pages with swap
@@ -77,6 +78,7 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 	u := &Userfaultfd{
 		fd:              Fd(fd),
 		src:             src,
+		pageSize:        uintptr(blockSize),
 		missingRequests: block.NewTracker(blockSize),
 		prefetchTracker: block.NewPrefetchTracker(blockSize),
 		ma:              m,
@@ -233,7 +235,7 @@ outerLoop:
 
 		addr := getPagefaultAddress(&pagefault)
 
-		offset, pagesize, err := u.ma.GetOffset(addr)
+		offset, err := u.ma.GetOffset(addr)
 		if err != nil {
 			u.logger.Error(ctx, "UFFD serve get mapping error", zap.Error(err))
 
@@ -245,7 +247,7 @@ outerLoop:
 		// For the write to be executed, we first need to copy the page from the source to the guest memory.
 		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
 			u.wg.Go(func() error {
-				return u.faultPage(ctx, addr, offset, pagesize, u.src, fdExit.SignalExit, block.Write)
+				return u.faultPage(ctx, addr, offset, u.src, fdExit.SignalExit, block.Write)
 			})
 
 			continue
@@ -255,7 +257,7 @@ outerLoop:
 		// If the event has no flags, it was a read to a missing page and we need to copy the page from the source to the guest memory.
 		if flags == 0 {
 			u.wg.Go(func() error {
-				return u.faultPage(ctx, addr, offset, pagesize, u.src, fdExit.SignalExit, block.Read)
+				return u.faultPage(ctx, addr, offset, u.src, fdExit.SignalExit, block.Read)
 			})
 
 			continue
@@ -290,7 +292,6 @@ func (u *Userfaultfd) faultPage(
 	ctx context.Context,
 	addr uintptr,
 	offset int64,
-	pagesize uintptr,
 	source block.Slicer,
 	onFailure func() error,
 	accessType block.AccessType,
@@ -306,7 +307,7 @@ func (u *Userfaultfd) faultPage(
 
 	defer func() {
 		if r := recover(); r != nil {
-			u.logger.Error(ctx, "UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
+			u.logger.Error(ctx, "UFFD serve panic", zap.Any("pagesize", u.pageSize), zap.Any("panic", r))
 		}
 	}()
 
@@ -316,7 +317,7 @@ func (u *Userfaultfd) faultPage(
 
 retryLoop:
 	for attempt = range sliceMaxRetries + 1 {
-		b, dataErr = source.Slice(ctx, offset, int64(pagesize))
+		b, dataErr = source.Slice(ctx, offset, int64(u.pageSize))
 		if dataErr == nil {
 			break
 		}
@@ -348,10 +349,7 @@ retryLoop:
 	}
 
 	if dataErr != nil {
-		var signalErr error
-		if onFailure != nil {
-			signalErr = onFailure()
-		}
+		signalErr := safeInvoke(onFailure)
 
 		joinedErr := errors.Join(dataErr, signalErr)
 
@@ -373,7 +371,7 @@ retryLoop:
 		copyMode |= UFFDIO_COPY_MODE_WP
 	}
 
-	copyErr := u.fd.copy(addr, pagesize, b, copyMode)
+	copyErr := u.fd.copy(addr, u.pageSize, b, copyMode)
 	if errors.Is(copyErr, unix.EEXIST) {
 		// Page is already mapped
 		span.SetAttributes(attribute.Bool("uffd.already_mapped", true))
@@ -392,10 +390,7 @@ retryLoop:
 	}
 
 	if copyErr != nil {
-		var signalErr error
-		if onFailure != nil {
-			signalErr = onFailure()
-		}
+		signalErr := safeInvoke(onFailure)
 
 		joinedErr := errors.Join(copyErr, signalErr)
 

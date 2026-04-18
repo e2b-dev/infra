@@ -14,17 +14,16 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 	ctx, span := tracer.Start(ctx, "prefault page")
 	defer span.End()
 
-	// Get host virtual address and page size for this offset
-	addr, pagesize, err := u.ma.GetHostVirtAddr(offset)
+	addr, err := u.ma.GetHostVirtAddr(offset)
 	if err != nil {
 		return fmt.Errorf("failed to get host virtual address: %w", err)
 	}
 
-	if len(data) != int(pagesize) {
-		return fmt.Errorf("data length (%d) is less than pagesize (%d)", len(data), pagesize)
+	if len(data) != int(u.pageSize) {
+		return fmt.Errorf("data length (%d) does not match pagesize (%d)", len(data), u.pageSize)
 	}
 
-	return u.faultPage(ctx, addr, offset, pagesize, directDataSource{data, int64(pagesize)}, nil, block.Prefetch)
+	return u.faultPage(ctx, addr, offset, directDataSource{data, int64(u.pageSize)}, nil, block.Prefetch)
 }
 
 // directDataSource wraps a byte slice to implement block.Slicer for prefaulting.
