@@ -196,6 +196,9 @@ type PostInitJSONBody struct {
 	// HyperloopIP IP address of the hyperloop server to connect to
 	HyperloopIP *string `json:"hyperloopIP,omitempty"`
 
+	// LifecycleID Lifecycle ID of the sandbox
+	LifecycleID *string `json:"lifecycleID,omitempty"`
+
 	// Timestamp The current timestamp in RFC3339 format
 	Timestamp    *time.Time     `json:"timestamp,omitempty"`
 	VolumeMounts *[]VolumeMount `json:"volumeMounts,omitempty"`

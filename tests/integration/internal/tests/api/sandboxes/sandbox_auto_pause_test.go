@@ -49,7 +49,7 @@ func TestSandboxAutoPausePauseResume(t *testing.T) {
 	sbxResume, err := c.PostSandboxesSandboxIDResumeWithResponse(t.Context(), sbxId, api.PostSandboxesSandboxIDResumeJSONRequestBody{}, setup.WithAPIKey())
 	require.NoError(t, err)
 
-	assert.Equal(t, http.StatusCreated, sbxResume.StatusCode())
+	require.Equal(t, http.StatusCreated, sbxResume.StatusCode())
 	require.NotNil(t, sbxResume.JSON201)
 	assert.Equal(t, sbxResume.JSON201.SandboxID, sbxId)
 }

@@ -48,8 +48,9 @@ func hasEvent(revents, event int16) bool {
 type Userfaultfd struct {
 	fd Fd
 
-	src block.Slicer
-	ma  *memory.Mapping
+	src      block.Slicer
+	ma       *memory.Mapping
+	pageSize uintptr
 
 	// We don't skip the already mapped pages, because if the memory is swappable the page *might* under some conditions be mapped out.
 	// For hugepages this should not be a problem, but might theoretically happen to normal pages with swap
@@ -77,6 +78,7 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 	u := &Userfaultfd{
 		fd:              Fd(fd),
 		src:             src,
+		pageSize:        uintptr(blockSize),
 		missingRequests: block.NewTracker(blockSize),
 		prefetchTracker: block.NewPrefetchTracker(blockSize),
 		ma:              m,
@@ -233,7 +235,7 @@ outerLoop:
 
 		addr := getPagefaultAddress(&pagefault)
 
-		offset, pagesize, err := u.ma.GetOffset(addr)
+		offset, err := u.ma.GetOffset(addr)
 		if err != nil {
 			u.logger.Error(ctx, "UFFD serve get mapping error", zap.Error(err))
 
@@ -245,7 +247,7 @@ outerLoop:
 		// For the write to be executed, we first need to copy the page from the source to the guest memory.
 		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
 			u.wg.Go(func() error {
-				return u.faultPage(ctx, addr, offset, pagesize, u.src, fdExit.SignalExit, block.Write)
+				return u.faultPage(ctx, addr, offset, u.src, fdExit.SignalExit, block.Write)
 			})
 
 			continue
@@ -255,7 +257,7 @@ outerLoop:
 		// If the event has no flags, it was a read to a missing page and we need to copy the page from the source to the guest memory.
 		if flags == 0 {
 			u.wg.Go(func() error {
-				return u.faultPage(ctx, addr, offset, pagesize, u.src, fdExit.SignalExit, block.Read)
+				return u.faultPage(ctx, addr, offset, u.src, fdExit.SignalExit, block.Read)
 			})
 
 			continue
@@ -286,45 +288,10 @@ func (u *Userfaultfd) PrefetchData() block.PrefetchData {
 	return u.prefetchTracker.PrefetchData()
 }
 
-// Prefault proactively copies a page to guest memory at the given offset.
-// This is used to speed up sandbox starts by prefetching pages that are known to be needed.
-// Returns nil on success, or if the page is already mapped (EEXIST is handled gracefully).
-func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) error {
-	ctx, span := tracer.Start(ctx, "prefault page")
-	defer span.End()
-
-	// Get host virtual address and page size for this offset
-	addr, pagesize, err := u.ma.GetHostVirtAddr(offset)
-	if err != nil {
-		return fmt.Errorf("failed to get host virtual address: %w", err)
-	}
-
-	if len(data) != int(pagesize) {
-		return fmt.Errorf("data length (%d) is less than pagesize (%d)", len(data), pagesize)
-	}
-
-	return u.faultPage(ctx, addr, offset, pagesize, directDataSource{data, int64(pagesize)}, nil, block.Prefetch)
-}
-
-// directDataSource wraps a byte slice to implement block.Slicer for prefaulting.
-type directDataSource struct {
-	data     []byte
-	pagesize int64
-}
-
-func (d directDataSource) Slice(_ context.Context, _, _ int64) ([]byte, error) {
-	return d.data, nil
-}
-
-func (d directDataSource) BlockSize() int64 {
-	return d.pagesize
-}
-
 func (u *Userfaultfd) faultPage(
 	ctx context.Context,
 	addr uintptr,
 	offset int64,
-	pagesize uintptr,
 	source block.Slicer,
 	onFailure func() error,
 	accessType block.AccessType,
@@ -340,7 +307,7 @@ func (u *Userfaultfd) faultPage(
 
 	defer func() {
 		if r := recover(); r != nil {
-			u.logger.Error(ctx, "UFFD serve panic", zap.Any("pagesize", pagesize), zap.Any("panic", r))
+			u.logger.Error(ctx, "UFFD serve panic", zap.Any("pagesize", u.pageSize), zap.Any("panic", r))
 		}
 	}()
 
@@ -350,7 +317,7 @@ func (u *Userfaultfd) faultPage(
 
 retryLoop:
 	for attempt = range sliceMaxRetries + 1 {
-		b, dataErr = source.Slice(ctx, offset, int64(pagesize))
+		b, dataErr = source.Slice(ctx, offset, int64(u.pageSize))
 		if dataErr == nil {
 			break
 		}
@@ -382,10 +349,7 @@ retryLoop:
 	}
 
 	if dataErr != nil {
-		var signalErr error
-		if onFailure != nil {
-			signalErr = onFailure()
-		}
+		signalErr := safeInvoke(onFailure)
 
 		joinedErr := errors.Join(dataErr, signalErr)
 
@@ -407,7 +371,7 @@ retryLoop:
 		copyMode |= UFFDIO_COPY_MODE_WP
 	}
 
-	copyErr := u.fd.copy(addr, pagesize, b, copyMode)
+	copyErr := u.fd.copy(addr, u.pageSize, b, copyMode)
 	if errors.Is(copyErr, unix.EEXIST) {
 		// Page is already mapped
 		span.SetAttributes(attribute.Bool("uffd.already_mapped", true))
@@ -415,11 +379,18 @@ retryLoop:
 		return nil
 	}
 
+	if errors.Is(copyErr, unix.ESRCH) {
+		// The faulting thread/process no longer exists — it exited or was killed
+		// while the page fetch was in flight. This is expected during sandbox
+		// teardown; treat it as benign.
+		span.SetAttributes(attribute.Bool("uffd.process_exited", true))
+		u.logger.Debug(ctx, "UFFD serve copy error: process no longer exists", zap.Error(copyErr))
+
+		return nil
+	}
+
 	if copyErr != nil {
-		var signalErr error
-		if onFailure != nil {
-			signalErr = onFailure()
-		}
+		signalErr := safeInvoke(onFailure)
 
 		joinedErr := errors.Join(copyErr, signalErr)
 

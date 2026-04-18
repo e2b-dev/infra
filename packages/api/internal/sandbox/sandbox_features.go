@@ -29,7 +29,9 @@ func NewVersionInfo(fcVersion string) (info VersionInfo, err error) {
 	}
 
 	info.lastReleaseVersion = *version
-	info.commitHash = parts[1]
+	if len(parts) > 1 {
+		info.commitHash = parts[1]
+	}
 
 	return info, nil
 }
@@ -39,7 +41,7 @@ func (v *VersionInfo) Version() semver.Version {
 }
 
 func (v *VersionInfo) HasHugePages() bool {
-	if v.lastReleaseVersion.Major() >= 1 && v.lastReleaseVersion.Minor() >= 7 {
+	if v.lastReleaseVersion.Major() > 1 || (v.lastReleaseVersion.Major() == 1 && v.lastReleaseVersion.Minor() >= 7) {
 		return true
 	}
 
