@@ -36,6 +36,7 @@ func TestVolumeRoundTrip(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, createVolume.StatusCode(), string(createVolume.Body))
+	require.NotNil(t, createVolume.JSON201)
 	assert.Equal(t, volumeName, createVolume.JSON201.Name)
 	assert.NotEmpty(t, createVolume.JSON201.VolumeID)
 	volume := createVolume.JSON201
@@ -74,7 +75,8 @@ func TestVolumeRoundTrip(t *testing.T) {
 	volumeMountPath := "/home/user/vol"
 	filePath := filepath.Join(volumeMountPath, "hello.txt")
 
-	// create a sandbox with the volume
+	// Acquire a single sandbox slot for the entire test — sandboxes are sequential.
+	utils.AcquireSandboxSlot(t)
 	timeout := int32(30)
 	createSandbox, err := client.PostSandboxesWithResponse(
 		t.Context(),
@@ -133,7 +135,7 @@ func TestVolumeRoundTrip(t *testing.T) {
 	// kill the sandbox
 	utils.TeardownSandbox(t, client, sbx.SandboxID)
 
-	// start a new sandbox
+	// start a new sandbox (reusing the same semaphore slot)
 	createSandbox2, err := client.PostSandboxesWithResponse(
 		t.Context(),
 		api.NewSandbox{
