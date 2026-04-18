@@ -58,10 +58,10 @@ func (c *apiClient) loadSnapshot(
 	snapshotConfig := operations.LoadSnapshotParams{
 		Context: ctx,
 		Body: &models.SnapshotLoadParams{
-			ResumeVM:            false,
+			ResumeVM:        false,
 			TrackDirtyPages: false,
-			MemBackend:          backend,
-			SnapshotPath:        &snapfilePath,
+			MemBackend:      backend,
+			SnapshotPath:    &snapfilePath,
 		},
 	}
 

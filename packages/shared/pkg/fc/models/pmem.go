@@ -16,7 +16,7 @@ import (
 // swagger:model Pmem
 type Pmem struct {
 
-	// Identificator for this device.
+	// Identifier for this device.
 	// Required: true
 	ID *string `json:"id"`
 
