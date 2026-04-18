@@ -12,7 +12,9 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -78,10 +80,14 @@ type Response struct {
 }
 
 type Dispatch struct {
-	fp               io.ReadWriter
-	responseHeader   []byte
-	writeLock        sync.Mutex
-	prov             Provider
+	fp             io.ReadWriter
+	responseHeader []byte
+	writeLock      sync.Mutex
+	prov           Provider
+	// provName is the concrete backend type name, cached at construction so
+	// error logs can identify which storage layer failed without reflection
+	// on every call.
+	provName         string
 	pendingResponses sync.WaitGroup
 	shuttingDown     bool
 	shuttingDownLock sync.Mutex
@@ -93,6 +99,7 @@ func NewDispatch(fp io.ReadWriter, prov Provider) *Dispatch {
 		responseHeader: make([]byte, 16),
 		fp:             fp,
 		prov:           prov,
+		provName:       fmt.Sprintf("%T", prov),
 		fatal:          make(chan error, 1),
 	}
 
@@ -229,7 +236,24 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 
 				err := d.prov.WriteFrom(reader, int64(request.From), int64(request.Length))
 				if err != nil {
-					return fmt.Errorf("nbd write error: %w", err)
+					// Per-request backend failure: signal it to the NBD client
+					// via the response error byte and keep the dispatch loop
+					// alive. Only writeResponse errors (dead NBD socket)
+					// escalate by being returned from Handle.
+					logger.L().Error(ctx, "nbd backend write failed",
+						zap.Error(err),
+						zap.String("nbd_op", "write"),
+						zap.String("nbd_provider", d.provName),
+						zap.Uint64("nbd_handle", request.Handle),
+						zap.Uint64("nbd_offset", request.From),
+						zap.Uint32("nbd_length", request.Length),
+					)
+
+					if respErr := d.writeResponse(1, request.Handle, nil); respErr != nil {
+						return respErr
+					}
+
+					continue
 				}
 
 				err = d.writeResponse(0, request.Handle, nil)
@@ -295,7 +319,20 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 	}
 
 	if readErr != nil {
-		return d.writeResponse(1, cmdHandle, []byte{})
+		// Per-request backend failure: signal it to the NBD client via the
+		// response error byte and keep the dispatch loop alive. Only
+		// writeResponse errors (dead NBD socket) escalate by being returned
+		// from Handle.
+		logger.L().Error(ctx, "nbd backend read failed",
+			zap.Error(readErr),
+			zap.String("nbd_op", "read"),
+			zap.String("nbd_provider", d.provName),
+			zap.Uint64("nbd_handle", cmdHandle),
+			zap.Uint64("nbd_offset", cmdFrom),
+			zap.Uint32("nbd_length", cmdLength),
+		)
+
+		return d.writeResponse(1, cmdHandle, nil)
 	}
 
 	// read was successful — write each mmap slice directly to the socket
