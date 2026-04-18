@@ -216,7 +216,7 @@ func (m *managerImpl) Create(ctx context.Context, cgroupName string) (*CgroupHan
 	memoryPeakFile, peakErr := os.OpenFile(memPeakPath, os.O_RDWR, 0)
 	if peakErr != nil {
 		// Not fatal — memory.peak may not exist on older kernels
-		logger.L().Debug(ctx, "failed to open memory.peak for reset (will track lifetime peak)",
+		logger.L().Warn(ctx, "failed to open memory.peak for reset",
 			zap.String("cgroup_name", cgroupName),
 			zap.String("path", memPeakPath),
 			zap.Error(peakErr))
