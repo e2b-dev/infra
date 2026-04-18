@@ -16,6 +16,8 @@ import (
 func createSandbox(t *testing.T, reqEditors ...api.RequestEditorFn) *api.PostSandboxesResponse {
 	t.Helper()
 
+	utils.AcquireSandboxSlot(t)
+
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
