@@ -222,17 +222,20 @@ func (c *FullFetchChunker) Slice(ctx context.Context, off, length int64) ([]byte
 
 // fetchToCache ensures that the data at the given offset and length is available in the cache.
 func (c *FullFetchChunker) fetchToCache(ctx context.Context, off, length int64) error {
+	if length <= 0 {
+		return nil
+	}
+
 	var eg errgroup.Group
 
-	chunks := header.BlocksOffsets(length, storage.MemoryChunkSize)
+	// Determine which 4 MiB chunks overlap the requested range. The request can be
+	// unaligned and shorter than a chunk yet still straddle a chunk boundary, so we
+	// must iterate from the chunk containing `off` to the chunk containing the last
+	// requested byte (`off+length-1`).
+	firstChunkOff := header.BlockOffset(header.BlockIdx(off, storage.MemoryChunkSize), storage.MemoryChunkSize)
+	lastChunkOff := header.BlockOffset(header.BlockIdx(off+length-1, storage.MemoryChunkSize), storage.MemoryChunkSize)
 
-	startingChunk := header.BlockIdx(off, storage.MemoryChunkSize)
-	startingChunkOffset := header.BlockOffset(startingChunk, storage.MemoryChunkSize)
-
-	for _, chunkOff := range chunks {
-		// Ensure the closure captures the correct block offset.
-		fetchOff := startingChunkOffset + chunkOff
-
+	for fetchOff := firstChunkOff; fetchOff <= lastChunkOff; fetchOff += storage.MemoryChunkSize {
 		eg.Go(func() (err error) {
 			defer func() {
 				if r := recover(); r != nil {
