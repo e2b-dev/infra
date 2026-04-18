@@ -34,6 +34,34 @@ var (
 
 var ErrShuttingDown = errors.New("shutting down. Cannot serve any new requests")
 
+// dispatchPayloadPool reuses byte buffers across NBD read responses and write
+// payloads. Buffers are allocated on demand per request, so the pool simply
+// recycles them to avoid the per-request allocation overhead the pre-zero-copy
+// dispatch had.
+var dispatchPayloadPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 0)
+
+		return &b
+	},
+}
+
+func getPayloadBuf(length int) *[]byte {
+	bp := dispatchPayloadPool.Get().(*[]byte)
+	if cap(*bp) < length {
+		*bp = make([]byte, length)
+	} else {
+		*bp = (*bp)[:length]
+	}
+
+	return bp
+}
+
+func putPayloadBuf(bp *[]byte) {
+	*bp = (*bp)[:0]
+	dispatchPayloadPool.Put(bp)
+}
+
 type Provider interface {
 	ReadSlices(ctx context.Context, off, length int64, dest [][]byte) ([][]byte, error)
 	WriteFrom(r io.Reader, off, length int64) error
@@ -87,20 +115,7 @@ type Dispatch struct {
 	// provName is the concrete backend type name, cached at construction so
 	// error logs can identify which storage layer failed without reflection
 	// on every call.
-	provName string
-	// readBuf is a reusable buffer used to copy read response data out of
-	// mmap slices before writing it to the NBD socket. Decoupling the
-	// socket write from the mmap means the underlying pages may be modified
-	// by concurrent writes (across NBD connections, snapshot/diff export,
-	// etc.) without corrupting in-flight responses.
-	readBuf []byte
-	// writeBuf is a reusable buffer used to stage NBD write payloads from
-	// the socket before handing them to the backend. Reading the socket
-	// first (instead of feeding it into Provider.WriteFrom directly) keeps
-	// the cache write lock held only for the in-memory copy, not for the
-	// duration of the network read — which would otherwise serialize
-	// every other cache operation behind a slow socket.
-	writeBuf         []byte
+	provName         string
 	pendingResponses sync.WaitGroup
 	shuttingDown     bool
 	shuttingDownLock sync.Mutex
@@ -155,27 +170,10 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
 	return nil
 }
 
-// copySlicesToReadBuf assembles slices into the reusable read buffer so the
-// caller can hand a stable []byte to writeResponse. Returning a copy (instead
-// of writing the mmap slices straight to the socket) guarantees the bytes
-// sent on the wire match a single point-in-time snapshot of the backend, even
-// if the underlying mmap pages are mutated concurrently while we're writing.
-func (d *Dispatch) copySlicesToReadBuf(length int, slices [][]byte) []byte {
-	if cap(d.readBuf) < length {
-		d.readBuf = make([]byte, length)
-	}
-	buf := d.readBuf[:length]
-
-	off := 0
-	for _, s := range slices {
-		off += copy(buf[off:], s)
-	}
-
-	return buf
-}
-
 /**
- * This dispatches incoming NBD requests sequentially to the provider.
+ * This dispatches incoming NBD requests to the provider, dispatching reads
+ * and writes asynchronously so a single slow backend operation cannot stall
+ * pipelined requests on the same NBD connection.
  *
  */
 func (d *Dispatch) Handle(ctx context.Context) error {
@@ -239,15 +237,12 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 					return fmt.Errorf("nbd write request length %d exceeds maximum %d", request.Length, dispatchMaxWriteBufferSize)
 				}
 
-				// Stage the payload in a reusable buffer before handing it to
-				// the backend. Reading the socket up front (rather than
-				// streaming it through Provider.WriteFrom) ensures the cache
-				// write lock is held only for the in-memory copy into mmap,
-				// not for the duration of a potentially slow network read.
-				if cap(d.writeBuf) < int(request.Length) {
-					d.writeBuf = make([]byte, request.Length)
-				}
-				payload := d.writeBuf[:request.Length]
+				// Stage the payload into a pooled buffer so the dispatch loop
+				// (and the cache write lock inside WriteFrom) is not held
+				// during the socket read. The async cmdWrite below then
+				// hands the in-memory buffer to the backend.
+				payloadBuf := getPayloadBuf(int(request.Length))
+				payload := *payloadBuf
 
 				leftover := min(wp-rp, int(request.Length))
 				copy(payload, buffer[rp:rp+leftover])
@@ -255,33 +250,13 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 
 				if leftover < int(request.Length) {
 					if _, readErr := io.ReadFull(d.fp, payload[leftover:]); readErr != nil {
+						putPayloadBuf(payloadBuf)
+
 						return fmt.Errorf("nbd write read error: %w", readErr)
 					}
 				}
 
-				err := d.prov.WriteFrom(bytes.NewReader(payload), int64(request.From), int64(request.Length))
-				if err != nil {
-					// Per-request backend failure: signal it to the NBD client
-					// via the response error byte and keep the dispatch loop
-					// alive. Only writeResponse errors (dead NBD socket)
-					// escalate by being returned from Handle.
-					logger.L().Error(ctx, "nbd backend write failed",
-						zap.Error(err),
-						zap.String("nbd_op", "write"),
-						zap.String("nbd_provider", d.provName),
-						zap.Uint64("nbd_handle", request.Handle),
-						zap.Uint64("nbd_offset", request.From),
-						zap.Uint32("nbd_length", request.Length),
-					)
-
-					if respErr := d.writeResponse(1, request.Handle, nil); respErr != nil {
-						return respErr
-					}
-
-					continue
-				}
-
-				err = d.writeResponse(0, request.Handle, nil)
+				err := d.cmdWrite(ctx, request.Handle, request.From, payloadBuf)
 				if err != nil {
 					return err
 				}
@@ -303,12 +278,53 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 	}
 }
 
+// fatalIfFirst publishes the first non-recoverable dispatch error so the
+// Handle loop can return it. Subsequent errors are logged but not propagated:
+// once the first failure is queued the connection is being torn down anyway,
+// and writing additional errors would block on the unbuffered channel.
+func (d *Dispatch) fatalIfFirst(ctx context.Context, op string, handle uint64, from uint64, length uint32, err error) {
+	select {
+	case d.fatal <- err:
+	default:
+		logger.L().Error(ctx, "nbd dispatch error",
+			zap.Error(err),
+			zap.String("nbd_op", op),
+			zap.String("nbd_provider", d.provName),
+			zap.Uint64("nbd_handle", handle),
+			zap.Uint64("nbd_offset", from),
+			zap.Uint32("nbd_length", length),
+		)
+	}
+}
+
 func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
-	// Process synchronously so we hold the dispatch loop until the read
-	// response has been copied out of the mmap slices and written to the
-	// socket. Concurrency across requests is preserved by running multiple
-	// NBD socket connections per device (FlagCanMulticonn).
-	// buffered to avoid goroutine leak
+	d.shuttingDownLock.Lock()
+	if d.shuttingDown {
+		d.shuttingDownLock.Unlock()
+
+		return ErrShuttingDown
+	}
+
+	d.pendingResponses.Add(1)
+	d.shuttingDownLock.Unlock()
+
+	go func() {
+		defer d.pendingResponses.Done()
+
+		err := d.performRead(ctx, cmdHandle, cmdFrom, cmdLength)
+		if err != nil {
+			d.fatalIfFirst(ctx, "read", cmdHandle, cmdFrom, cmdLength, err)
+		}
+	}()
+
+	return nil
+}
+
+// performRead executes a single NBD read against the backend and writes the
+// response to the socket. Backend failures are reported per-request via the
+// NBD response error byte; only socket-write failures are returned, since
+// those mean the connection is unusable.
+func (d *Dispatch) performRead(ctx context.Context, handle uint64, from uint64, length uint32) error {
 	errchan := make(chan error, 1)
 
 	var slices [][]byte
@@ -320,7 +336,7 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 		start := time.Now()
 		var err error
 
-		slices, err = d.prov.ReadSlices(ctx, int64(cmdFrom), int64(cmdLength), nil)
+		slices, err = d.prov.ReadSlices(ctx, int64(from), int64(length), nil)
 
 		attrs := nbdReadSuccess
 		if err != nil {
@@ -335,7 +351,6 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 		errchan <- err
 	}()
 
-	// Wait until either the ReadSlices completed, or our context is cancelled...
 	var readErr error
 	select {
 	case <-ctx.Done():
@@ -344,27 +359,88 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 	}
 
 	if readErr != nil {
-		// Per-request backend failure: signal it to the NBD client via the
-		// response error byte and keep the dispatch loop alive. Only
-		// writeResponse errors (dead NBD socket) escalate by being returned
-		// from Handle.
 		logger.L().Error(ctx, "nbd backend read failed",
 			zap.Error(readErr),
 			zap.String("nbd_op", "read"),
 			zap.String("nbd_provider", d.provName),
-			zap.Uint64("nbd_handle", cmdHandle),
-			zap.Uint64("nbd_offset", cmdFrom),
-			zap.Uint32("nbd_length", cmdLength),
+			zap.Uint64("nbd_handle", handle),
+			zap.Uint64("nbd_offset", from),
+			zap.Uint32("nbd_length", length),
 		)
 
-		return d.writeResponse(1, cmdHandle, nil)
+		return d.writeResponse(1, handle, nil)
 	}
 
-	// Copy mmap slices into a stable buffer before writing to the socket.
+	// Copy mmap slices into a pooled buffer before writing to the socket.
 	// Mirrors the original ReadAt behavior so concurrent mutations of the
 	// underlying mmap (e.g. another connection's write, snapshot/diff
 	// export, chunker eviction) cannot corrupt an in-flight response.
-	return d.writeResponse(0, cmdHandle, d.copySlicesToReadBuf(int(cmdLength), slices))
+	bufp := getPayloadBuf(int(length))
+	defer putPayloadBuf(bufp)
+	buf := *bufp
+
+	off := 0
+	for _, s := range slices {
+		off += copy(buf[off:], s)
+	}
+
+	return d.writeResponse(0, handle, buf)
+}
+
+func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint64, payloadBuf *[]byte) error {
+	d.shuttingDownLock.Lock()
+	if d.shuttingDown {
+		d.shuttingDownLock.Unlock()
+
+		putPayloadBuf(payloadBuf)
+
+		return ErrShuttingDown
+	}
+
+	d.pendingResponses.Add(1)
+	d.shuttingDownLock.Unlock()
+
+	go func() {
+		defer d.pendingResponses.Done()
+		defer putPayloadBuf(payloadBuf)
+
+		err := d.performWrite(ctx, cmdHandle, cmdFrom, *payloadBuf)
+		if err != nil {
+			d.fatalIfFirst(ctx, "write", cmdHandle, cmdFrom, uint32(len(*payloadBuf)), err)
+		}
+	}()
+
+	return nil
+}
+
+func (d *Dispatch) performWrite(ctx context.Context, handle uint64, from uint64, payload []byte) error {
+	errchan := make(chan error, 1)
+
+	go func() {
+		errchan <- d.prov.WriteFrom(bytes.NewReader(payload), int64(from), int64(len(payload)))
+	}()
+
+	var writeErr error
+	select {
+	case <-ctx.Done():
+		writeErr = ctx.Err()
+	case writeErr = <-errchan:
+	}
+
+	if writeErr != nil {
+		logger.L().Error(ctx, "nbd backend write failed",
+			zap.Error(writeErr),
+			zap.String("nbd_op", "write"),
+			zap.String("nbd_provider", d.provName),
+			zap.Uint64("nbd_handle", handle),
+			zap.Uint64("nbd_offset", from),
+			zap.Int("nbd_length", len(payload)),
+		)
+
+		return d.writeResponse(1, handle, nil)
+	}
+
+	return d.writeResponse(0, handle, nil)
 }
 
 /**
