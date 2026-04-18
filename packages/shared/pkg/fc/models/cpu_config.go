@@ -212,7 +212,7 @@ func (m *CPUConfig) contextValidateCpuidModifiers(ctx context.Context, formats s
 		if m.CpuidModifiers[i] != nil {
 
 			if swag.IsZero(m.CpuidModifiers[i]) { // not required
-				continue
+				return nil
 			}
 
 			if err := m.CpuidModifiers[i].ContextValidate(ctx, formats); err != nil {
@@ -241,7 +241,7 @@ func (m *CPUConfig) contextValidateMsrModifiers(ctx context.Context, formats str
 		if m.MsrModifiers[i] != nil {
 
 			if swag.IsZero(m.MsrModifiers[i]) { // not required
-				continue
+				return nil
 			}
 
 			if err := m.MsrModifiers[i].ContextValidate(ctx, formats); err != nil {
@@ -270,7 +270,7 @@ func (m *CPUConfig) contextValidateRegModifiers(ctx context.Context, formats str
 		if m.RegModifiers[i] != nil {
 
 			if swag.IsZero(m.RegModifiers[i]) { // not required
-				continue
+				return nil
 			}
 
 			if err := m.RegModifiers[i].ContextValidate(ctx, formats); err != nil {
@@ -299,7 +299,7 @@ func (m *CPUConfig) contextValidateVcpuFeatures(ctx context.Context, formats str
 		if m.VcpuFeatures[i] != nil {
 
 			if swag.IsZero(m.VcpuFeatures[i]) { // not required
-				continue
+				return nil
 			}
 
 			if err := m.VcpuFeatures[i].ContextValidate(ctx, formats); err != nil {

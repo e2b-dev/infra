@@ -140,7 +140,7 @@ func (m *CpuidLeafModifier) contextValidateModifiers(ctx context.Context, format
 		if m.Modifiers[i] != nil {
 
 			if swag.IsZero(m.Modifiers[i]) { // not required
-				continue
+				return nil
 			}
 
 			if err := m.Modifiers[i].ContextValidate(ctx, formats); err != nil {
