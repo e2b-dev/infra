@@ -116,6 +116,12 @@ init:
 .PHONY: state-migrate
 state-migrate:
 	@ printf "Running Terraform state migrations for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ $(tf_vars) $(TF) state mv 'random_password.api_admin_secret' 'module.init.random_password.api_admin_secret' || true
+	@ $(tf_vars) $(TF) state mv 'google_secret_manager_secret.api_admin_token' 'module.init.google_secret_manager_secret.api_admin_token' || true
+	@ $(tf_vars) $(TF) state mv 'google_secret_manager_secret_version.api_admin_token_value' 'module.init.google_secret_manager_secret_version.api_admin_token_value' || true
+	@ $(tf_vars) $(TF) state mv 'random_password.dashboard_api_admin_secret' 'module.init.random_password.dashboard_api_admin_secret' || true
+	@ $(tf_vars) $(TF) state mv 'google_secret_manager_secret.dashboard_api_admin_token' 'module.init.google_secret_manager_secret.dashboard_api_admin_token' || true
+	@ $(tf_vars) $(TF) state mv 'google_secret_manager_secret_version.dashboard_api_admin_token_value' 'module.init.google_secret_manager_secret_version.dashboard_api_admin_token_value' || true
 
 .PHONY: apply-init
 apply-init:

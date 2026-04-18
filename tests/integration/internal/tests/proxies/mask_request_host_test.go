@@ -84,6 +84,7 @@ func TestMaskRequestHostIncorrectUrl(t *testing.T) {
 	ctx := t.Context()
 
 	// Create sandbox without maskRequestHost
+	utils.AcquireSandboxSlot(t)
 	sbxNet := &api.SandboxNetworkConfig{
 		MaskRequestHost: sharedUtils.ToPtr("-https://abcd"),
 	}
@@ -93,6 +94,6 @@ func TestMaskRequestHostIncorrectUrl(t *testing.T) {
 	}, setup.WithAPIKey())
 	require.NoError(t, err)
 
-	assert.Equal(t, http.StatusBadRequest, createSandboxResponse.StatusCode())
+	require.Equal(t, http.StatusBadRequest, createSandboxResponse.StatusCode())
 	require.NotNil(t, createSandboxResponse.JSON400)
 }
