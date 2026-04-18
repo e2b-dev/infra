@@ -124,7 +124,6 @@ func (u *Userfaultfd) Serve(
 		unix.POLLNVAL: "POLLNVAL",
 	}
 
-outerLoop:
 	for {
 		if _, err := unix.Poll(
 			pollFds,
@@ -192,6 +191,10 @@ outerLoop:
 
 		buf := make([]byte, unsafe.Sizeof(UffdMsg{}))
 
+		// Drain all queued events into a batch. The fd is non-blocking, so
+		// EAGAIN means "queue empty" and is the normal termination signal.
+		var pagefaults []*UffdPagefault
+	readLoop:
 		for {
 			_, err := syscall.Read(int(u.fd), buf)
 			if err == syscall.EINTR {
@@ -200,71 +203,73 @@ outerLoop:
 				continue
 			}
 
-			if err == nil {
-				// There is no error so we can proceed.
-
-				eagainCounter.Log(ctx)
-				noDataCounter.Log(ctx)
-
-				break
-			}
-
 			if err == syscall.EAGAIN {
 				eagainCounter.Increase("EAGAIN")
 
-				// Continue polling the fd.
-				continue outerLoop
+				break readLoop
 			}
 
-			u.logger.Error(ctx, "uffd: read error", zap.Error(err))
+			if err != nil {
+				u.logger.Error(ctx, "uffd: read error", zap.Error(err))
 
-			return fmt.Errorf("failed to read: %w", err)
+				return fmt.Errorf("failed to read: %w", err)
+			}
+
+			msg := *(*UffdMsg)(unsafe.Pointer(&buf[0]))
+
+			if msgEvent := getMsgEvent(&msg); msgEvent != UFFD_EVENT_PAGEFAULT {
+				u.logger.Error(ctx, "UFFD serve unexpected event type", zap.Any("event_type", msgEvent))
+
+				return ErrUnexpectedEventType
+			}
+
+			arg := getMsgArg(&msg)
+			pagefault := *(*UffdPagefault)(unsafe.Pointer(&arg[0]))
+			pagefaults = append(pagefaults, &pagefault)
 		}
 
-		msg := *(*UffdMsg)(unsafe.Pointer(&buf[0]))
+		eagainCounter.Log(ctx)
+		noDataCounter.Log(ctx)
 
-		if msgEvent := getMsgEvent(&msg); msgEvent != UFFD_EVENT_PAGEFAULT {
-			u.logger.Error(ctx, "UFFD serve unexpected event type", zap.Any("event_type", msgEvent))
+		for _, pagefault := range pagefaults {
+			flags := pagefault.flags
 
-			return ErrUnexpectedEventType
+			addr := getPagefaultAddress(pagefault)
+
+			offset, err := u.ma.GetOffset(addr)
+			if err != nil {
+				u.logger.Error(ctx, "UFFD serve get mapping error", zap.Error(err))
+
+				return fmt.Errorf("failed to map: %w", err)
+			}
+
+			// Handle write to missing page (WRITE flag)
+			// If the event has WRITE flag, it was a write to a missing page.
+			// For the write to be executed, we first need to copy the page from the source to the guest memory.
+			if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
+				u.wg.Go(func() error {
+					return u.faultPage(ctx, addr, offset, u.src, fdExit.SignalExit, block.Write)
+				})
+
+				continue
+			}
+
+			// Handle read to missing page ("MISSING" flag)
+			// If the event has no flags, it was a read to a missing page and we need to copy the page from the source to the guest memory.
+			if flags == 0 {
+				u.wg.Go(func() error {
+					return u.faultPage(ctx, addr, offset, u.src, fdExit.SignalExit, block.Read)
+				})
+
+				continue
+			}
+
+			// MINOR and WP page-fault events are not expected. MINOR is never
+			// registered. WP is registered by Firecracker but handled
+			// asynchronously (UFFDIO_WRITEPROTECT), so the kernel does not
+			// deliver synchronous WP page-faults to us.
+			return fmt.Errorf("unexpected event type: %d, closing uffd", flags)
 		}
-
-		arg := getMsgArg(&msg)
-		pagefault := (*(*UffdPagefault)(unsafe.Pointer(&arg[0])))
-		flags := pagefault.flags
-
-		addr := getPagefaultAddress(&pagefault)
-
-		offset, err := u.ma.GetOffset(addr)
-		if err != nil {
-			u.logger.Error(ctx, "UFFD serve get mapping error", zap.Error(err))
-
-			return fmt.Errorf("failed to map: %w", err)
-		}
-
-		// Handle write to missing page (WRITE flag)
-		// If the event has WRITE flag, it was a write to a missing page.
-		// For the write to be executed, we first need to copy the page from the source to the guest memory.
-		if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
-			u.wg.Go(func() error {
-				return u.faultPage(ctx, addr, offset, u.src, fdExit.SignalExit, block.Write)
-			})
-
-			continue
-		}
-
-		// Handle read to missing page ("MISSING" flag)
-		// If the event has no flags, it was a read to a missing page and we need to copy the page from the source to the guest memory.
-		if flags == 0 {
-			u.wg.Go(func() error {
-				return u.faultPage(ctx, addr, offset, u.src, fdExit.SignalExit, block.Read)
-			})
-
-			continue
-		}
-
-		// MINOR and WP flags are not expected as we don't register the uffd with these flags.
-		return fmt.Errorf("unexpected event type: %d, closing uffd", flags)
 	}
 }
 
