@@ -30,47 +30,40 @@ func TestMapping_GetOffset(t *testing.T) {
 	mapping := NewMapping(regions)
 
 	tests := []struct {
-		name             string
-		hostVirtAddr     uintptr
-		expectedOffset   int64
-		expectedPagesize uintptr
-		expectError      error
+		name           string
+		hostVirtAddr   uintptr
+		expectedOffset int64
+		expectError    error
 	}{
 		{
-			name:             "valid address in first region",
-			hostVirtAddr:     0x1500,
-			expectedOffset:   0x5500, // 0x5000 + (0x1500 - 0x1000)
-			expectedPagesize: 0x1000,
+			name:           "valid address in first region",
+			hostVirtAddr:   0x1500,
+			expectedOffset: 0x5500, // 0x5000 + (0x1500 - 0x1000)
 		},
 		{
-			name:             "valid address at start of first region",
-			hostVirtAddr:     0x1000,
-			expectedOffset:   0x5000,
-			expectedPagesize: 0x1000,
+			name:           "valid address at start of first region",
+			hostVirtAddr:   0x1000,
+			expectedOffset: 0x5000,
 		},
 		{
-			name:             "valid address at end-1 of first region",
-			hostVirtAddr:     0x2FFF, // 0x1000 + 0x2000 - 1
-			expectedOffset:   0x6FFF, // 0x5000 + (0x2FFF - 0x1000)
-			expectedPagesize: 0x1000,
+			name:           "valid address at end-1 of first region",
+			hostVirtAddr:   0x2FFF, // 0x1000 + 0x2000 - 1
+			expectedOffset: 0x6FFF, // 0x5000 + (0x2FFF - 0x1000)
 		},
 		{
-			name:             "valid address in second region",
-			hostVirtAddr:     0x5500,
-			expectedOffset:   0x8500, // 0x8000 + (0x5500 - 0x5000)
-			expectedPagesize: 0x1000,
+			name:           "valid address in second region",
+			hostVirtAddr:   0x5500,
+			expectedOffset: 0x8500, // 0x8000 + (0x5500 - 0x5000)
 		},
 		{
-			name:             "valid address at start of second region",
-			hostVirtAddr:     0x5000,
-			expectedOffset:   0x8000,
-			expectedPagesize: 0x1000,
+			name:           "valid address at start of second region",
+			hostVirtAddr:   0x5000,
+			expectedOffset: 0x8000,
 		},
 		{
-			name:             "valid address at end-1 of second region",
-			hostVirtAddr:     0x5FFF,
-			expectedOffset:   0x8FFF, // 0x8000 + (0x5FFF - 0x5000)
-			expectedPagesize: 0x1000,
+			name:           "valid address at end-1 of second region",
+			hostVirtAddr:   0x5FFF,
+			expectedOffset: 0x8FFF, // 0x8000 + (0x5FFF - 0x5000)
 		},
 		{
 			name:         "address before first region",

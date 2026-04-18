@@ -9,6 +9,7 @@ import (
 
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
+	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
 
 func TestSandboxKill(t *testing.T) {
@@ -25,6 +26,9 @@ func TestSandboxKill(t *testing.T) {
 
 	t.Run("start and kill a sandbox", func(t *testing.T) {
 		t.Parallel()
+
+		utils.AcquireSandboxSlot(t)
+
 		// create a new samdbox
 		createSandboxResponse, err := c.PostSandboxesWithResponse(t.Context(), api.NewSandbox{
 			TemplateID: setup.SandboxTemplateID,
@@ -45,7 +49,7 @@ func TestSandboxKill(t *testing.T) {
 		listSandboxesResponse, err := c.GetSandboxesWithResponse(t.Context(), &api.GetSandboxesParams{}, setup.WithAPIKey())
 
 		require.NoError(t, err)
-		assert.Equal(t, http.StatusOK, listSandboxesResponse.StatusCode())
+		require.Equal(t, http.StatusOK, listSandboxesResponse.StatusCode())
 
 		runningSandboxes := listSandboxesResponse.JSON200
 		require.NotNil(t, runningSandboxes)
@@ -54,6 +58,9 @@ func TestSandboxKill(t *testing.T) {
 
 	t.Run("start and kill a paused sandbox", func(t *testing.T) {
 		t.Parallel()
+
+		utils.AcquireSandboxSlot(t)
+
 		// create a new sandbox
 		createSandboxResponse, err := c.PostSandboxesWithResponse(t.Context(), api.NewSandbox{
 			TemplateID: setup.SandboxTemplateID,
@@ -80,7 +87,7 @@ func TestSandboxKill(t *testing.T) {
 		listSandboxesResponse, err := c.GetSandboxesWithResponse(t.Context(), &api.GetSandboxesParams{}, setup.WithAPIKey())
 
 		require.NoError(t, err)
-		assert.Equal(t, http.StatusOK, listSandboxesResponse.StatusCode())
+		require.Equal(t, http.StatusOK, listSandboxesResponse.StatusCode())
 
 		runningSandboxes := listSandboxesResponse.JSON200
 		require.NotNil(t, runningSandboxes)
@@ -89,6 +96,9 @@ func TestSandboxKill(t *testing.T) {
 
 	t.Run("start and kill a subsequently paused sandbox", func(t *testing.T) {
 		t.Parallel()
+
+		utils.AcquireSandboxSlot(t)
+
 		// create a new sandbox
 		createSandboxResponse, err := c.PostSandboxesWithResponse(t.Context(), api.NewSandbox{
 			TemplateID: setup.SandboxTemplateID,

@@ -95,7 +95,7 @@ func (m *Mapping) getHostVirtRegion(off int64) (*Region, error) {
 	return nil, OffsetNotFoundError{offset: off}
 }
 
-// GetHostVirtAddr returns the host virtual address the given offset.
+// GetHostVirtAddr returns the host virtual address for the given offset.
 func (m *Mapping) GetHostVirtAddr(off int64) (uintptr, error) {
 	region, err := m.getHostVirtRegion(off)
 	if err != nil {
