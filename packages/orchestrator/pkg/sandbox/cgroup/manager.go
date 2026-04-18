@@ -305,7 +305,10 @@ func (m *managerImpl) readAndResetMemoryPeak(ctx context.Context, memoryPeakFile
 		return 0, fmt.Errorf("failed to read memory.peak: %w", err)
 	}
 
-	peakBytes, _ := strconv.ParseUint(strings.TrimSpace(string(buf[:n])), 10, 64)
+	peakBytes, parseErr := strconv.ParseUint(strings.TrimSpace(string(buf[:n])), 10, 64)
+	if parseErr != nil {
+		return 0, fmt.Errorf("failed to parse memory.peak value %q: %w", strings.TrimSpace(string(buf[:n])), parseErr)
+	}
 
 	// Reset per-FD peak for next interval
 	if _, err := memoryPeakFile.WriteString("0"); err != nil {
