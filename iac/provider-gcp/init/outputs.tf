@@ -14,6 +14,14 @@ output "nomad_acl_token_secret" {
   value = google_secret_manager_secret_version.nomad_acl_token.secret_data
 }
 
+output "api_admin_token_secret_name" {
+  value = google_secret_manager_secret_version.api_admin_token_value.secret
+}
+
+output "dashboard_api_admin_token_secret_name" {
+  value = google_secret_manager_secret_version.dashboard_api_admin_token_value.secret
+}
+
 output "grafana_api_key_secret_name" {
   value = google_secret_manager_secret.grafana_api_key.name
 }

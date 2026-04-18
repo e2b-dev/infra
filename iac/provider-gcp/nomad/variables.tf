@@ -94,11 +94,11 @@ variable "api_secret" {
   type = string
 }
 
-variable "api_admin_token" {
+variable "api_admin_token_secret_name" {
   type = string
 }
 
-variable "dashboard_api_admin_token" {
+variable "dashboard_api_admin_token_secret_name" {
   type = string
 }
 

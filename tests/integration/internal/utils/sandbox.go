@@ -4,6 +4,7 @@ import (
 	"context"
 	"maps"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,6 +14,31 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 )
+
+// MaxConcurrentSandboxes is the maximum number of sandboxes that can exist
+// simultaneously, the base tier's concurrent_instances limit is 20, leaveing
+// some headroom
+const MaxConcurrentSandboxes = 15
+
+// sandboxSemaphore gates sandbox creation so parallel tests don't exceed the
+// tier's concurrent instance limit. A slot is acquired before creation and
+// released after teardown in t.Cleanup.
+var sandboxSemaphore = make(chan struct{}, MaxConcurrentSandboxes)
+
+// AcquireSandboxSlot blocks until a sandbox slot is available and
+// returns an idempotent release function. The slot is also released
+// automatically via t.Cleanup, so callers that tie the sandbox
+// lifetime to the test can simply ignore the return value. Callers
+// that tear down sandboxes inline (loops, sequential creates) can
+// call the returned function early to free the slot sooner.
+func AcquireSandboxSlot(t *testing.T) func() {
+	t.Helper()
+	sandboxSemaphore <- struct{}{}
+	release := sync.OnceFunc(func() { <-sandboxSemaphore })
+	t.Cleanup(release)
+
+	return release
+}
 
 type SandboxConfig struct {
 	templateID          string
@@ -81,9 +107,13 @@ func WithTemplateID(templateID string) SandboxOption {
 	}
 }
 
-// SetupSandboxWithCleanup creates a new sandbox and returns its data
+// SetupSandboxWithCleanup creates a new sandbox and returns its data.
+// It acquires a semaphore slot to stay within the tier's concurrent instance
+// limit; the slot is released after the sandbox is torn down in t.Cleanup.
 func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options ...SandboxOption) *api.Sandbox {
 	t.Helper()
+
+	release := AcquireSandboxSlot(t)
 
 	// t.Context() doesn't work with go vet, so we use our own context
 	ctx, cancel := context.WithCancel(t.Context())
@@ -136,10 +166,14 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 
 		t.Cleanup(func() {
 			TeardownSandbox(t, c, sbx.SandboxID)
+			release()
 		})
 
 		return sbx
 	}
+
+	// Release the slot since we never created a sandbox.
+	release()
 
 	t.Logf("Sandbox creation failed after 10 retries")
 	t.FailNow()
