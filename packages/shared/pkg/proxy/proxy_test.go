@@ -911,11 +911,6 @@ func TestChangeResponseHeader(t *testing.T) {
 	proxyURL, err := url.Parse(fmt.Sprintf("http://%s", proxyAddr.String()))
 	require.NoError(t, err)
 
-	// The proxy created via New() uses ListenAndServe with a fixed port. Close
-	// the placeholder listener so the proxy can bind, accepting that there's
-	// a tiny TOCTOU window — the request retry below covers it.
-	require.NoError(t, proxyListener.Close())
-
 	client := &http.Client{}
 
 	proxy := New(proxyPort, 1, time.Second, func(_ *http.Request) (*pool.Destination, error) {
@@ -932,7 +927,7 @@ func TestChangeResponseHeader(t *testing.T) {
 	}, nil, false)
 
 	go func() {
-		err := proxy.ListenAndServe(t.Context())
+		err := proxy.Serve(proxyListener)
 		assert.ErrorIs(t, err, http.ErrServerClosed)
 	}()
 
@@ -973,7 +968,7 @@ func TestChangeResponseHeader(t *testing.T) {
 
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, proxyURL.String(), nil)
 	require.NoError(t, err)
-	req.Header.Set("Host", fmt.Sprintf("localhost:%d", proxyPort))
+	req.Host = fmt.Sprintf("localhost:%d", proxyPort)
 	req.Header.Set("e2b-testing", "test123")
 
 	// Retry while the proxy goroutine is still binding to the port. Once the
@@ -1011,7 +1006,7 @@ func TestChangeResponseHeader(t *testing.T) {
 	assert.Equal(t, "internal", data.Tag)
 	assert.Equal(t, maskedHost, data.Host)
 	assert.Equal(t, "test123", data.Headers.Get("E2b-Testing"))
-	assert.Equal(t, fmt.Sprintf("127.0.0.1:%d", proxyPort), data.Headers.Get("X-Forwarded-Host"))
+	assert.Equal(t, fmt.Sprintf("localhost:%d", proxyPort), data.Headers.Get("X-Forwarded-Host"))
 }
 
 func TestConnectionLimitBlocksExcessConnections(t *testing.T) {
