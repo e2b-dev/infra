@@ -382,10 +382,7 @@ retryLoop:
 	}
 
 	if dataErr != nil {
-		var signalErr error
-		if onFailure != nil {
-			signalErr = onFailure()
-		}
+		signalErr := safeInvoke(onFailure)
 
 		joinedErr := errors.Join(dataErr, signalErr)
 
@@ -416,10 +413,7 @@ retryLoop:
 	}
 
 	if copyErr != nil {
-		var signalErr error
-		if onFailure != nil {
-			signalErr = onFailure()
-		}
+		signalErr := safeInvoke(onFailure)
 
 		joinedErr := errors.Join(copyErr, signalErr)
 
