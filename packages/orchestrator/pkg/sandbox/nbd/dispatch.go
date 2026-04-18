@@ -87,7 +87,13 @@ type Dispatch struct {
 	// provName is the concrete backend type name, cached at construction so
 	// error logs can identify which storage layer failed without reflection
 	// on every call.
-	provName         string
+	provName string
+	// readBuf is a reusable buffer used to copy read response data out of
+	// mmap slices before writing it to the NBD socket. Decoupling the
+	// socket write from the mmap means the underlying pages may be modified
+	// by concurrent writes (across NBD connections, snapshot/diff export,
+	// etc.) without corrupting in-flight responses.
+	readBuf          []byte
 	pendingResponses sync.WaitGroup
 	shuttingDown     bool
 	shuttingDownLock sync.Mutex
@@ -142,25 +148,23 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
 	return nil
 }
 
-func (d *Dispatch) writeSlices(respHandle uint64, slices [][]byte) error {
-	d.writeLock.Lock()
-	defer d.writeLock.Unlock()
-
-	binary.BigEndian.PutUint32(d.responseHeader[4:], 0)
-	binary.BigEndian.PutUint64(d.responseHeader[8:], respHandle)
-
-	_, err := d.fp.Write(d.responseHeader)
-	if err != nil {
-		return err
+// copySlicesToReadBuf assembles slices into the reusable read buffer so the
+// caller can hand a stable []byte to writeResponse. Returning a copy (instead
+// of writing the mmap slices straight to the socket) guarantees the bytes
+// sent on the wire match a single point-in-time snapshot of the backend, even
+// if the underlying mmap pages are mutated concurrently while we're writing.
+func (d *Dispatch) copySlicesToReadBuf(length int, slices [][]byte) []byte {
+	if cap(d.readBuf) < length {
+		d.readBuf = make([]byte, length)
 	}
+	buf := d.readBuf[:length]
 
+	off := 0
 	for _, s := range slices {
-		if _, err := d.fp.Write(s); err != nil {
-			return err
-		}
+		off += copy(buf[off:], s)
 	}
 
-	return nil
+	return buf
 }
 
 /**
@@ -279,10 +283,10 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 }
 
 func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength uint32) error {
-	// Process synchronously so the returned mmap slices are written to the
-	// socket before the dispatch loop accepts a write request that could
-	// mutate the same mmap pages. Concurrency across requests is preserved by
-	// running multiple NBD socket connections per device (FlagCanMulticonn).
+	// Process synchronously so we hold the dispatch loop until the read
+	// response has been copied out of the mmap slices and written to the
+	// socket. Concurrency across requests is preserved by running multiple
+	// NBD socket connections per device (FlagCanMulticonn).
 	// buffered to avoid goroutine leak
 	errchan := make(chan error, 1)
 
@@ -335,8 +339,11 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 		return d.writeResponse(1, cmdHandle, nil)
 	}
 
-	// read was successful — write each mmap slice directly to the socket
-	return d.writeSlices(cmdHandle, slices)
+	// Copy mmap slices into a stable buffer before writing to the socket.
+	// Mirrors the original ReadAt behavior so concurrent mutations of the
+	// underlying mmap (e.g. another connection's write, snapshot/diff
+	// export, chunker eviction) cannot corrupt an in-flight response.
+	return d.writeResponse(0, cmdHandle, d.copySlicesToReadBuf(int(cmdLength), slices))
 }
 
 /**
