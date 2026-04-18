@@ -1,6 +1,6 @@
 module github.com/e2b-dev/infra/packages/orchestrator
 
-go 1.25.4
+go 1.25.9
 
 replace (
 	github.com/e2b-dev/infra/packages/clickhouse v0.0.0 => ../clickhouse
