@@ -93,7 +93,14 @@ type Dispatch struct {
 	// socket write from the mmap means the underlying pages may be modified
 	// by concurrent writes (across NBD connections, snapshot/diff export,
 	// etc.) without corrupting in-flight responses.
-	readBuf          []byte
+	readBuf []byte
+	// writeBuf is a reusable buffer used to stage NBD write payloads from
+	// the socket before handing them to the backend. Reading the socket
+	// first (instead of feeding it into Provider.WriteFrom directly) keeps
+	// the cache write lock held only for the in-memory copy, not for the
+	// duration of the network read — which would otherwise serialize
+	// every other cache operation behind a slow socket.
+	writeBuf         []byte
 	pendingResponses sync.WaitGroup
 	shuttingDown     bool
 	shuttingDownLock sync.Mutex
@@ -232,13 +239,27 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 					return fmt.Errorf("nbd write request length %d exceeds maximum %d", request.Length, dispatchMaxWriteBufferSize)
 				}
 
-				// Feed leftover buffer bytes + socket into the provider, which
-				// reads directly into the mmap page — zero intermediate buffer.
+				// Stage the payload in a reusable buffer before handing it to
+				// the backend. Reading the socket up front (rather than
+				// streaming it through Provider.WriteFrom) ensures the cache
+				// write lock is held only for the in-memory copy into mmap,
+				// not for the duration of a potentially slow network read.
+				if cap(d.writeBuf) < int(request.Length) {
+					d.writeBuf = make([]byte, request.Length)
+				}
+				payload := d.writeBuf[:request.Length]
+
 				leftover := min(wp-rp, int(request.Length))
-				reader := io.MultiReader(bytes.NewReader(buffer[rp:rp+leftover]), d.fp)
+				copy(payload, buffer[rp:rp+leftover])
 				rp += leftover
 
-				err := d.prov.WriteFrom(reader, int64(request.From), int64(request.Length))
+				if leftover < int(request.Length) {
+					if _, readErr := io.ReadFull(d.fp, payload[leftover:]); readErr != nil {
+						return fmt.Errorf("nbd write read error: %w", readErr)
+					}
+				}
+
+				err := d.prov.WriteFrom(bytes.NewReader(payload), int64(request.From), int64(request.Length))
 				if err != nil {
 					// Per-request backend failure: signal it to the NBD client
 					// via the response error byte and keep the dispatch loop
