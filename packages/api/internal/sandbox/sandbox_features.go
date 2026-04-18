@@ -45,3 +45,11 @@ func (v *VersionInfo) HasHugePages() bool {
 
 	return false
 }
+
+func (v *VersionInfo) HasFreePageReporting() bool {
+	if v.lastReleaseVersion.Major() > 1 || (v.lastReleaseVersion.Major() == 1 && v.lastReleaseVersion.Minor() >= 14) {
+		return true
+	}
+
+	return false
+}
