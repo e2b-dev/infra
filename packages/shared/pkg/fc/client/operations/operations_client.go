@@ -609,7 +609,7 @@ func (a *Client) GetMemory(params *GetMemoryParams, opts ...ClientOption) (*GetM
 /*
 GetMemoryHotplug retrieves the status of the hotpluggable memory
 
-Return the status of the hotpluggable memory. This can be used to follow the progress of the guest after a PATCH API.
+Reuturn the status of the hotpluggable memory. This can be used to follow the progress of the guest after a PATCH API.
 */
 func (a *Client) GetMemoryHotplug(params *GetMemoryHotplugParams, opts ...ClientOption) (*GetMemoryHotplugOK, error) {
 	// NOTE: parameters are not validated before sending
