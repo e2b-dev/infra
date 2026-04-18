@@ -33,6 +33,10 @@ data "google_secret_manager_secret_version" "dashboard_api_admin_token" {
   secret = var.dashboard_api_admin_token_secret_name
 }
 
+data "google_secret_manager_secret_version" "supabase_db_connection_string" {
+  secret = var.supabase_db_connection_string_secret_version.secret
+}
+
 # Telemetry
 data "google_secret_manager_secret_version" "analytics_collector_host" {
   secret = var.analytics_collector_host_secret_name
@@ -159,7 +163,7 @@ module "dashboard_api" {
   postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   auth_db_connection_string               = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   auth_db_read_replica_connection_string  = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
-  supabase_db_connection_string           = var.supabase_db_connection_string
+  supabase_db_connection_string           = trimspace(data.google_secret_manager_secret_version.supabase_db_connection_string.secret_data)
   clickhouse_connection_string            = local.clickhouse_connection_string
   supabase_jwt_secrets                    = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
   redis_url                               = local.redis_url

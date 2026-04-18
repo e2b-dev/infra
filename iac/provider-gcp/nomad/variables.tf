@@ -458,10 +458,8 @@ variable "dashboard_api_count" {
   default = 0
 }
 
-variable "supabase_db_connection_string" {
-  type      = string
-  default   = ""
-  sensitive = true
+variable "supabase_db_connection_string_secret_version" {
+  type = any
 }
 
 variable "enable_auth_user_sync_background_worker" {

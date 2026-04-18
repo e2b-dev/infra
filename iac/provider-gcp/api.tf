@@ -27,6 +27,23 @@ resource "google_secret_manager_secret_version" "postgres_read_replica_connectio
   }
 }
 
+resource "google_secret_manager_secret" "supabase_db_connection_string" {
+  secret_id = "${var.prefix}supabase-db-connection-string"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "supabase_db_connection_string" {
+  secret      = google_secret_manager_secret.supabase_db_connection_string.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
 resource "random_password" "api_secret" {
   length  = 32
   special = false
