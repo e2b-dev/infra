@@ -663,7 +663,7 @@ paths:
       summary: Retrieves the status of the hotpluggable memory
       operationId: getMemoryHotplug
       description:
-        Return the status of the hotpluggable memory. This can be used to follow the progress of the guest
+        Reuturn the status of the hotpluggable memory. This can be used to follow the progress of the guest
         after a PATCH API.
       responses:
         200:
@@ -1289,7 +1289,7 @@ definitions:
       id:
         type: string
         description:
-          Identifier for this device.
+          Identificator for this device.
       path_on_host:
         type: string
         description:
