@@ -22,6 +22,10 @@
 
 - [Docker](https://docs.docker.com/engine/install/)
 
+- [Docker Buildx](https://github.com/docker/buildx#installing) plugin
+  - Required by `make build-and-upload` targets. Bundled with Docker Desktop; must be installed separately if you use Docker Engine/CLI without Desktop.
+  - If `docker buildx version` errors after install, Docker can't find the plugin. Add its directory (e.g. `/opt/homebrew/lib/docker/cli-plugins` for Homebrew) to `cliPluginsExtraDirs` in `~/.docker/config.json`.
+
 - [NPM](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 
 **Accounts**
