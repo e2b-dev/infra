@@ -259,7 +259,7 @@ func TestDeleteTeamsTeamIDMembersUserId_RechecksDefaultAfterLock(t *testing.T) {
 func createHandlerTestUser(t *testing.T, db *testutils.Database) uuid.UUID {
 	t.Helper()
 
-	createdAt := time.Now().Add(-newUserNewTeamRequireBillingMethodThreshold - time.Hour)
+	createdAt := time.Now()
 
 	return createHandlerTestUserWithCreatedAt(t, db, &createdAt)
 }
@@ -325,7 +325,6 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", nil)
-	auth.SetUserID(ginCtx, userID)
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
@@ -333,7 +332,7 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
 	}
-	store.PostAdminUsersBootstrap(ginCtx)
+	store.PostAdminUsersUserIdBootstrap(ginCtx, userID)
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", recorder.Code)
@@ -392,7 +391,6 @@ func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testin
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", nil)
-	auth.SetUserID(ginCtx, userID)
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
@@ -400,7 +398,7 @@ func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testin
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
 	}
-	store.PostAdminUsersBootstrap(ginCtx)
+	store.PostAdminUsersUserIdBootstrap(ginCtx, userID)
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", recorder.Code)
@@ -426,6 +424,42 @@ func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testin
 	}
 	if !rows[0].IsDefault {
 		t.Fatal("expected remaining team to be the default team")
+	}
+}
+
+func TestPostUsersBootstrap_UnknownUserReturnsNotFound(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	userID := uuid.New()
+	sink := &fakeTeamProvisionSink{}
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", nil)
+
+	store := &APIStore{
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
+		teamProvisionSink: sink,
+	}
+	store.PostAdminUsersUserIdBootstrap(ginCtx, userID)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d", recorder.Code)
+	}
+	if len(sink.requests) != 0 {
+		t.Fatalf("expected no provisioning calls, got %d", len(sink.requests))
+	}
+
+	var responseBody map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &responseBody); err != nil {
+		t.Fatalf("failed to parse response body: %v", err)
+	}
+	if responseBody["message"] != "User not found" {
+		t.Fatalf("expected message %q, got %v", "User not found", responseBody["message"])
 	}
 }
 
@@ -512,7 +546,7 @@ func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
 	}
 }
 
-func TestCreateTeam_RecentUserCreatesBlockedTeam(t *testing.T) {
+func TestCreateTeam_RecentUserCreatesUnblockedTeam(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
@@ -530,34 +564,8 @@ func TestCreateTeam_RecentUserCreatesBlockedTeam(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected team creation to succeed for recent user, got %v", err)
 	}
-	if !team.IsBlocked {
-		t.Fatal("expected recent user team to be blocked")
-	}
-	if team.BlockedReason == nil || *team.BlockedReason != blockedReasonMissingPayment {
-		t.Fatalf("expected blocked reason %q, got %v", blockedReasonMissingPayment, team.BlockedReason)
-	}
-}
-
-func TestCreateTeam_NullCreatedAtLeavesTeamUnblocked(t *testing.T) {
-	t.Parallel()
-
-	testDB := testutils.SetupDatabase(t)
-	ctx := t.Context()
-	userID := createHandlerTestUserWithCreatedAt(t, testDB, nil)
-
-	store := &APIStore{
-		db:                testDB.SqlcClient,
-		authDB:            testDB.AuthDB,
-		supabaseDB:        testDB.SupabaseDB,
-		teamProvisionSink: &fakeTeamProvisionSink{},
-	}
-
-	team, err := store.createTeam(ctx, userID, "Acme")
-	if err != nil {
-		t.Fatalf("expected team creation to succeed with nil created_at, got %v", err)
-	}
 	if team.IsBlocked {
-		t.Fatal("expected nil created_at team to remain unblocked")
+		t.Fatal("expected recent user team to remain unblocked")
 	}
 	if team.BlockedReason != nil {
 		t.Fatalf("expected nil blocked reason, got %v", team.BlockedReason)

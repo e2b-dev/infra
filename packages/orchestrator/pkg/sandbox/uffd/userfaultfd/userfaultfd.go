@@ -412,6 +412,16 @@ retryLoop:
 		return nil
 	}
 
+	if errors.Is(copyErr, unix.ESRCH) {
+		// The faulting thread/process no longer exists — it exited or was killed
+		// while the page fetch was in flight. This is expected during sandbox
+		// teardown; treat it as benign.
+		span.SetAttributes(attribute.Bool("uffd.process_exited", true))
+		u.logger.Debug(ctx, "UFFD serve copy error: process no longer exists", zap.Error(copyErr))
+
+		return nil
+	}
+
 	if copyErr != nil {
 		signalErr := safeInvoke(onFailure)
 
