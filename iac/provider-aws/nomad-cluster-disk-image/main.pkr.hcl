@@ -17,10 +17,10 @@ source "amazon-ebs" "ubuntu" {
   ami_name      = "${var.prefix}orch-${formatdate("YYYY-MM-DD-hh-mm-ss", timestamp())}"
   ssh_username  = "ubuntu"
 
-  // Ubuntu Server 22.04 LTS (HVM), SSD Volume Type
+  // Ubuntu Server 24.04 LTS (HVM), SSD Volume Type
   source_ami_filter {
     filters = {
-      name                = "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"
+      name                = "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"
       root-device-type    = "ebs"
       virtualization-type = "hvm"
     }
