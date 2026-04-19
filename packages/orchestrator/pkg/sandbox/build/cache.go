@@ -129,7 +129,7 @@ func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
 		if item := s.cache.Get(key); item != nil {
 			return item.Value(), nil
 		}
-    
+
 		s.insertionTimes.Store(diff.CacheKey(), time.Now())
 
 		if err := diff.Init(ctx); err != nil {
