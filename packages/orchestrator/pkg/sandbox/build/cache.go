@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
@@ -38,6 +39,7 @@ type deleteDiff struct {
 type DiffStore struct {
 	cachePath string
 	cache     *ttlcache.Cache[DiffStoreKey, Diff]
+	initGroup singleflight.Group
 	cancel    func()
 	config    cfg.Config
 	flags     *featureflags.Client
@@ -115,28 +117,35 @@ func (s *DiffStore) Close() {
 }
 
 func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
-	s.resetDelete(diff.CacheKey())
-	source, found := s.cache.GetOrSet(
-		diff.CacheKey(),
-		diff,
-		ttlcache.WithTTL[DiffStoreKey, Diff](ttlcache.DefaultTTL),
-	)
+	key := diff.CacheKey()
+	s.resetDelete(key)
 
-	value := source.Value()
-	if value == nil {
-		return nil, fmt.Errorf("failed to get source from cache: %s", diff.CacheKey())
+	if item := s.cache.Get(key); item != nil {
+		return item.Value(), nil
 	}
 
-	if !found {
-		s.insertionTimes.Store(diff.CacheKey(), time.Now())
-
-		err := diff.Init(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to init source: %w", err)
+	v, err, _ := s.initGroup.Do(string(key), func() (any, error) {
+		// Double-check: another goroutine may have cached it while we waited.
+		if item := s.cache.Get(key); item != nil {
+			return item.Value(), nil
 		}
+
+		insertTime := time.Now()
+
+		if err := diff.Init(ctx); err != nil {
+			return nil, err
+		}
+
+		s.cache.Set(key, diff, ttlcache.DefaultTTL)
+		s.insertionTimes.Store(diff.CacheKey(), insertTime)
+
+		return diff, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to init source: %w", err)
 	}
 
-	return value, nil
+	return v.(Diff), nil
 }
 
 func (s *DiffStore) Add(d Diff) {
