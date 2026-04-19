@@ -56,6 +56,13 @@ func getTransitionResultKey(teamID, sandboxID, transitionID string) string {
 	return redis_utils.CreateKey(getTransitionKey(teamID, sandboxID), transitionID)
 }
 
+// getTransitionTraceKey returns the key that carries the primary transition
+// initiator's W3C traceparent, so concurrent waiters can add a span link back
+// to the main transition trace. TTL = transitionKeyTTL.
+func getTransitionTraceKey(teamID, sandboxID string) string {
+	return redis_utils.CreateKey(getTransitionKey(teamID, sandboxID), "trace")
+}
+
 // getTransitionRoutingKey returns the per-transition routing key embedded in the
 // payload of messages published to globalTransitionNotifyChannel. Including
 // transitionID ensures that notifications for one transition can never wake

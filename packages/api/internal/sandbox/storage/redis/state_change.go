@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 // StartRemoving initiates a state transition for a sandbox using atomic Lua scripts.
@@ -128,12 +129,17 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 	// Generate transition ID
 	transitionID := uuid.New().String()
 	resultKey := getTransitionResultKey(teamID.String(), sandboxID, transitionID)
+	traceKey := getTransitionTraceKey(teamID.String(), sandboxID)
 
-	// Use atomic Lua script to update sandbox and set transition key with UUID
+	// Use atomic Lua script to update sandbox and set transition key with UUID.
 	ttlSeconds := int(transitionKeyTTL.Seconds())
 	resultTtlSeconds := int(transitionResultKeyTTL.Seconds())
+	traceparent := telemetry.InjectTraceparent(ctx)
 
-	err = startTransitionScript.Run(ctx, s.redisClient, []string{key, transitionKey, resultKey}, newData, transitionID, ttlSeconds, resultTtlSeconds).Err()
+	err = startTransitionScript.Run(ctx, s.redisClient,
+		[]string{key, transitionKey, resultKey, traceKey},
+		newData, transitionID, ttlSeconds, resultTtlSeconds, traceparent,
+	).Err()
 	if err != nil {
 		return sbx, false, nil, fmt.Errorf("failed to update sandbox state: %w", err)
 	}
@@ -187,8 +193,10 @@ func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, res
 			logger.L().Warn(cbCtx, "Failed to set transition result", logger.WithSandboxID(sandboxID), zap.String("transitionID", transitionID), zap.Error(setErr))
 		}
 
-		// Delete transition key
-		delErr := s.redisClient.Del(cbCtx, transitionKey).Err()
+		// Delete transition key and its sibling trace key (tracing hint for
+		// span linking; lives and dies with the transition).
+		traceKey := getTransitionTraceKey(teamID.String(), sandboxID)
+		delErr := s.redisClient.Del(cbCtx, transitionKey, traceKey).Err()
 		if delErr != nil {
 			logger.L().Warn(cbCtx, "Failed to delete transition key", logger.WithSandboxID(sandboxID), zap.Error(delErr))
 		}
@@ -250,6 +258,8 @@ func (s *Storage) waitForTransition(
 	routingKey := getTransitionRoutingKey(teamID.String(), sandboxID, transitionID)
 	transitionKey := getTransitionKey(teamID.String(), sandboxID)
 	resultKey := getTransitionResultKey(teamID.String(), sandboxID, transitionID)
+
+	s.linkSpans(ctx, teamID, sandboxID)
 
 	// Subscribe to this specific transition's routing key so notifications
 	// from other transitions for the same sandbox cannot wake us.
@@ -340,4 +350,14 @@ func (s *Storage) handleExistingTransition(
 
 	// Retry with new state after transition completes
 	return s.StartRemoving(ctx, teamID, sbx.SandboxID, sandbox.RemoveOpts{Action: stateAction})
+}
+
+// linkSpans reads the traceparent from Redis and adds a span Link on the caller's span.
+func (s *Storage) linkSpans(ctx context.Context, teamID uuid.UUID, sandboxID string) {
+	traceparent, err := s.redisClient.Get(ctx, getTransitionTraceKey(teamID.String(), sandboxID)).Result()
+	if err != nil {
+		return
+	}
+
+	telemetry.LinkSpans(ctx, telemetry.ExtractPrimarySpanContext(traceparent))
 }

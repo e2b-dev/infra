@@ -11,9 +11,13 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func setupTestStorage(t *testing.T) (*Storage, redis.UniversalClient) {
@@ -1261,4 +1265,92 @@ func TestStartRemoving_CompletedTransitionAllowsNewTransition(t *testing.T) {
 	assert.Equal(t, sandbox.StateKilling, updated.State)
 
 	callback2(ctx, nil)
+}
+
+// TestStartRemoving_TraceKeyWrittenAndDeleted verifies the Redis transition
+// trace-key lifecycle: the Lua script writes the primary's traceparent
+// alongside the transition key when the caller has a valid span, and the
+// callback deletes it on completion.
+func TestStartRemoving_TraceKeyWrittenAndDeleted(t *testing.T) {
+	t.Parallel()
+
+	otel.SetTextMapPropagator(telemetry.NewTextPropagator())
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(tracetest.NewInMemoryExporter()))
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+	tracer := tp.Tracer("test")
+
+	ctx := t.Context()
+	storage, client := setupTestStorage(t)
+
+	sbx := createTestSandbox("trace-kv-sandbox")
+	require.NoError(t, storage.Add(ctx, sbx))
+
+	primaryCtx, primary := tracer.Start(ctx, "primary")
+	defer primary.End()
+
+	_, alreadyDone, cb, err := storage.StartRemoving(primaryCtx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	require.NoError(t, err)
+	require.False(t, alreadyDone)
+	require.NotNil(t, cb)
+
+	traceKey := getTransitionTraceKey(sbx.TeamID.String(), sbx.SandboxID)
+	traceparent, err := client.Get(ctx, traceKey).Result()
+	require.NoError(t, err)
+	assert.NotEmpty(t, traceparent, "trace key should be written when primary has a valid span")
+
+	cb(ctx, nil)
+
+	// Callback must clean up the trace key alongside the transition key.
+	_, err = client.Get(ctx, traceKey).Result()
+	assert.ErrorIs(t, err, redis.Nil, "trace key should be deleted in callback")
+}
+
+// TestStartRemoving_WaiterLinksToPrimarySpan verifies a second StartRemoving
+// on the same sandbox receives a span link back to the primary's trace via
+// the trace key written in Redis.
+func TestStartRemoving_WaiterLinksToPrimarySpan(t *testing.T) {
+	t.Parallel()
+
+	otel.SetTextMapPropagator(telemetry.NewTextPropagator())
+	exp := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+	tracer := tp.Tracer("test")
+
+	ctx := t.Context()
+	storage, _ := setupTestStorage(t)
+
+	sbx := createTestSandbox("waiter-link-sandbox")
+	require.NoError(t, storage.Add(ctx, sbx))
+
+	primaryCtx, primary := tracer.Start(ctx, "primary")
+	primarySC := primary.SpanContext()
+	_, _, cb, err := storage.StartRemoving(primaryCtx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	require.NoError(t, err)
+	require.NotNil(t, cb)
+
+	waiterCtx, waiter := tracer.Start(ctx, "waiter")
+	waiterDone := make(chan struct{})
+	go func() {
+		defer close(waiterDone)
+		_, _, _, _ = storage.StartRemoving(waiterCtx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	}()
+
+	// Allow the waiter to enter waitForTransition and link.
+	time.Sleep(100 * time.Millisecond)
+
+	cb(ctx, nil)
+	<-waiterDone
+	waiter.End()
+	primary.End()
+
+	var waiterSpan tracetest.SpanStub
+	for _, s := range exp.GetSpans() {
+		if s.Name == "waiter" {
+			waiterSpan = s
+		}
+	}
+	require.Len(t, waiterSpan.Links, 1, "waiter span should have one link to the primary")
+	assert.Equal(t, primarySC.TraceID(), waiterSpan.Links[0].SpanContext.TraceID())
+	assert.Equal(t, primarySC.SpanID(), waiterSpan.Links[0].SpanContext.SpanID())
 }

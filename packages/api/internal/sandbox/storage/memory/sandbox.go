@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -14,7 +15,10 @@ type memorySandbox struct {
 	_data sandbox.Sandbox
 
 	transition *utils.ErrorOnce
-	mu         sync.RWMutex
+
+	// transitionSapnContext is the SpanContext of the caller that started the current transition.
+	transitionSapnContext trace.SpanContext
+	mu                    sync.RWMutex
 }
 
 func newMemorySandbox(data sandbox.Sandbox) *memorySandbox {

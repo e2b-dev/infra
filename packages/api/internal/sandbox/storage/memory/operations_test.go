@@ -12,6 +12,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 )
@@ -893,4 +895,96 @@ func TestConcurrency_StressTest(t *testing.T) {
 
 	// Should have completed many operations without panic
 	assert.Greater(t, finalOps, uint64(100), "Should complete many operations")
+}
+
+// TestStartRemoving_WaiterLinksToPrimarySpan asserts that when a second
+// StartRemoving call finds an existing transition, its span receives a link
+// to the primary caller's span.
+func TestStartRemoving_WaiterLinksToPrimarySpan(t *testing.T) {
+	t.Parallel()
+
+	exp := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+	tracer := tp.Tracer("test")
+
+	sbx := createTestSandbox()
+
+	// Primary: start a Pause transition with a real span on ctx.
+	primaryCtx, primary := tracer.Start(t.Context(), "primary")
+	primarySC := primary.SpanContext()
+	alreadyDone, finish, err := startRemoving(primaryCtx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	require.NoError(t, err)
+	require.False(t, alreadyDone)
+	require.NotNil(t, finish)
+
+	// Waiter: another Pause on the same sandbox blocks on the existing transition.
+	waiterCtx, waiter := tracer.Start(t.Context(), "waiter")
+	waiterDone := make(chan struct{})
+	go func() {
+		defer close(waiterDone)
+		_, _, _ = startRemoving(waiterCtx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	}()
+
+	// Give the waiter time to enter the existing-transition branch and link.
+	time.Sleep(50 * time.Millisecond)
+
+	// Complete the primary transition so the waiter can return.
+	finish(primaryCtx, nil)
+	<-waiterDone
+	waiter.End()
+	primary.End()
+
+	var waiterSpan tracetest.SpanStub
+	for _, s := range exp.GetSpans() {
+		if s.Name == "waiter" {
+			waiterSpan = s
+		}
+	}
+	require.Len(t, waiterSpan.Links, 1, "waiter should have exactly one link to primary")
+	assert.Equal(t, primarySC.TraceID(), waiterSpan.Links[0].SpanContext.TraceID())
+	assert.Equal(t, primarySC.SpanID(), waiterSpan.Links[0].SpanContext.SpanID())
+}
+
+// TestWaitForStateChange_LinksToPrimarySpan asserts that waitForStateChange
+// callers blocking on an in-progress transition get a span link back to the
+// primary initiator's trace.
+func TestWaitForStateChange_LinksToPrimarySpan(t *testing.T) {
+	t.Parallel()
+
+	exp := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+	tracer := tp.Tracer("test")
+
+	sbx := createTestSandbox()
+
+	primaryCtx, primary := tracer.Start(t.Context(), "primary")
+	primarySC := primary.SpanContext()
+	_, finish, err := startRemoving(primaryCtx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	require.NoError(t, err)
+
+	waiterCtx, waiter := tracer.Start(t.Context(), "waiter")
+	waiterDone := make(chan struct{})
+	go func() {
+		defer close(waiterDone)
+		_ = waitForStateChange(waiterCtx, sbx)
+	}()
+
+	// Give the waiter time to register on the transition and add the link.
+	time.Sleep(50 * time.Millisecond)
+
+	finish(primaryCtx, nil)
+	<-waiterDone
+	waiter.End()
+	primary.End()
+
+	var waiterSpan tracetest.SpanStub
+	for _, s := range exp.GetSpans() {
+		if s.Name == "waiter" {
+			waiterSpan = s
+		}
+	}
+	require.Len(t, waiterSpan.Links, 1)
+	assert.Equal(t, primarySC.TraceID(), waiterSpan.Links[0].SpanContext.TraceID())
 }

@@ -13,11 +13,15 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -513,4 +517,81 @@ func TestReservation_StalePendingCleanup(t *testing.T) {
 	// Verify the orphaned sandbox is no longer in the set
 	score := client.ZScore(t.Context(), pendingSetKey, "orphaned-sandbox")
 	assert.ErrorIs(t, score.Err(), goredis.Nil)
+}
+
+// TestReservation_TraceKeyWrittenAndReadByWaiter verifies the cross-instance
+// linking path: the primary's traceparent lands in Redis, a waiter reads it,
+// and the waiter's span gets a link back to the primary. finishStart must
+// delete the trace key afterwards.
+func TestReservation_TraceKeyWrittenAndReadByWaiter(t *testing.T) {
+	t.Parallel()
+
+	// Use the production propagator so Inject/Extract shapes match prod.
+	otel.SetTextMapPropagator(telemetry.NewTextPropagator())
+
+	exp := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+	tracer := tp.Tracer("test")
+
+	storage, client := setupTestReservationStorage(t)
+	teamID := uuid.New()
+	sbxID := "trace-link-sandbox"
+
+	// Primary reservation: a real span is attached so the Lua script writes
+	// the trace key.
+	primaryCtx, primary := tracer.Start(t.Context(), "primary")
+	primarySC := primary.SpanContext()
+	finishStart, _, err := storage.Reserve(primaryCtx, teamID, sbxID, 10)
+	require.NoError(t, err)
+	require.NotNil(t, finishStart)
+
+	// Trace key should exist and hold a non-empty W3C traceparent.
+	traceKeyStr := getTraceKey(teamID.String(), sbxID)
+	traceparent, err := client.Get(t.Context(), traceKeyStr).Result()
+	require.NoError(t, err)
+	assert.NotEmpty(t, traceparent)
+
+	// The second reserver hits the already-pending branch and gets a waiter
+	// closure that reads the trace key and links before polling.
+	waiterCtx, waiter := tracer.Start(t.Context(), "waiter")
+	_, waitForStart, err := storage.Reserve(waiterCtx, teamID, sbxID, 10)
+	require.NoError(t, err)
+	require.NotNil(t, waitForStart)
+
+	waiterDone := make(chan struct{})
+	go func() {
+		defer close(waiterDone)
+		_, _ = waitForStart(waiterCtx)
+	}()
+	// Give the waiter a moment to read the trace key and add the link.
+	time.Sleep(50 * time.Millisecond)
+	waiter.End()
+
+	// Finish the primary reservation so the waiter goroutine returns.
+	finishStart(sandbox.Sandbox{
+		ClientID:          consts.ClientID,
+		SandboxID:         sbxID,
+		TemplateID:        "test",
+		TeamID:            teamID,
+		StartTime:         time.Now(),
+		EndTime:           time.Now().Add(time.Hour),
+		MaxInstanceLength: time.Hour,
+	}, nil)
+	<-waiterDone
+
+	// The waiter's span must have one link to the primary's span.
+	var waiterSpan tracetest.SpanStub
+	for _, s := range exp.GetSpans() {
+		if s.Name == "waiter" {
+			waiterSpan = s
+		}
+	}
+	require.Len(t, waiterSpan.Links, 1)
+	assert.Equal(t, primarySC.TraceID(), waiterSpan.Links[0].SpanContext.TraceID())
+	assert.Equal(t, primarySC.SpanID(), waiterSpan.Links[0].SpanContext.SpanID())
+
+	// And the trace key must be cleaned up by finishStartScript.
+	_, err = client.Get(t.Context(), traceKeyStr).Result()
+	assert.ErrorIs(t, err, goredis.Nil, "trace key should be deleted on finishStart")
 }

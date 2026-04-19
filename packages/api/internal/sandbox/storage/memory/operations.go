@@ -7,10 +7,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -155,6 +157,8 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 	sbx.mu.Lock()
 	transition := sbx.transition
 
+	primarySpan := sbx.transitionSapnContext
+
 	// Resolve eviction under the lock + re-check expiry
 	if opts.Eviction {
 		// If there's a transition already in place, don't evict.
@@ -181,6 +185,9 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 		if currentState != newState && !sandbox.AllowedTransitions[currentState][newState] {
 			return false, nil, &sandbox.InvalidStateTransitionError{CurrentState: currentState, TargetState: newState}
 		}
+
+		// Waiter path: link caller's span to the primary's span before blocking.
+		telemetry.LinkSpans(ctx, primarySpan)
 
 		logger.L().Debug(ctx, "State transition already in progress to the same state, waiting", logger.WithSandboxID(sbx.SandboxID()), zap.String("state", string(newState)))
 		err = transition.WaitWithContext(ctx)
@@ -216,6 +223,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 
 	sbx._data.State = newState
 	sbx.transition = utils.NewErrorOnce()
+	sbx.transitionSapnContext = trace.SpanContextFromContext(ctx)
 
 	callback = func(ctx context.Context, err error) {
 		logger.L().Debug(ctx, "Transition complete", logger.WithSandboxID(sbx.SandboxID()), zap.String("state", string(newState)), zap.Error(err))
@@ -242,8 +250,10 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 			return
 		}
 
-		// The transition is completed and the next transition can be started
+		// The transition is completed and the next transition can be started;
+		// the primary SpanContext is paired with it and is cleared together.
 		sbx.transition = nil
+		sbx.transitionSapnContext = trace.SpanContext{}
 	}
 
 	return false, callback, nil
@@ -261,10 +271,13 @@ func (s *Storage) WaitForStateChange(ctx context.Context, _ uuid.UUID, sandboxID
 func waitForStateChange(ctx context.Context, sbx *memorySandbox) error {
 	sbx.mu.RLock()
 	transition := sbx.transition
+	primarySpan := sbx.transitionSapnContext
 	sbx.mu.RUnlock()
 	if transition == nil {
 		return nil
 	}
+
+	telemetry.LinkSpans(ctx, primarySpan)
 
 	return transition.WaitWithContext(ctx)
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -41,13 +42,17 @@ func (s *ReservationStorage) Reserve(ctx context.Context, teamID uuid.UUID, sand
 	storageIndexKey := getStorageIndexKey(teamIDStr)
 	pendingSetKey := getPendingSetKey(teamIDStr)
 	resultKeyStr := getResultKey(teamIDStr, sandboxID)
+	traceKeyStr := getTraceKey(teamIDStr, sandboxID)
 
 	now := float64(time.Now().Unix())
 	staleCutoff := float64(time.Now().Add(-staleTTL).Unix())
 
+	traceparent := telemetry.InjectTraceparent(ctx)
+	traceTTLSeconds := int(staleTTL.Seconds())
+
 	result, err := reserveScript.Run(ctx, s.redisClient,
-		[]string{storageIndexKey, pendingSetKey, resultKeyStr},
-		sandboxID, limit, now, staleCutoff,
+		[]string{storageIndexKey, pendingSetKey, resultKeyStr, traceKeyStr},
+		sandboxID, limit, now, staleCutoff, traceparent, traceTTLSeconds,
 	).Int()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to run reserve script: %w", err)
@@ -75,8 +80,9 @@ func (s *ReservationStorage) Release(ctx context.Context, teamID uuid.UUID, sand
 	teamIDStr := teamID.String()
 	pendingSetKey := getPendingSetKey(teamIDStr)
 	resultKeyStr := getResultKey(teamIDStr, sandboxID)
+	traceKeyStr := getTraceKey(teamIDStr, sandboxID)
 
-	err := releaseScript.Run(ctx, s.redisClient, []string{pendingSetKey, resultKeyStr}, sandboxID).Err()
+	err := releaseScript.Run(ctx, s.redisClient, []string{pendingSetKey, resultKeyStr, traceKeyStr}, sandboxID).Err()
 	if err != nil {
 		return fmt.Errorf("failed to run release script: %w", err)
 	}
@@ -91,6 +97,7 @@ func (s *ReservationStorage) createFinishStart(ctx context.Context, teamID uuid.
 		teamIDStr := teamID.String()
 		pendingSetKey := getPendingSetKey(teamIDStr)
 		resultKeyStr := getResultKey(teamIDStr, sandboxID)
+		traceKeyStr := getTraceKey(teamIDStr, sandboxID)
 
 		resultData, encodeErr := encodeResult(sbx, startErr)
 		if encodeErr != nil {
@@ -107,7 +114,7 @@ func (s *ReservationStorage) createFinishStart(ctx context.Context, teamID uuid.
 
 		ttlSeconds := int(resultTTL.Seconds())
 		err := finishStartScript.Run(context.WithoutCancel(ctx), s.redisClient,
-			[]string{pendingSetKey, resultKeyStr},
+			[]string{pendingSetKey, resultKeyStr, traceKeyStr},
 			sandboxID, resultData, ttlSeconds,
 		).Err()
 		if err != nil {
@@ -119,6 +126,17 @@ func (s *ReservationStorage) createFinishStart(ctx context.Context, teamID uuid.
 	}
 }
 
+// linkSapns reads the the sandbox traceID from Redis and adds
+// a span Link on the caller's span.
+func (s *ReservationStorage) linkSapns(ctx context.Context, traceKey string) {
+	traceparent, err := s.redisClient.Get(ctx, traceKey).Result()
+	if err != nil {
+		return // includes redis.Nil (rolling deploy, primary finished, etc.)
+	}
+
+	telemetry.LinkSpans(ctx, telemetry.ExtractPrimarySpanContext(traceparent))
+}
+
 // createWaitForStart returns a function that polls Redis for the result of a sandbox creation
 // initiated by another instance.
 func (s *ReservationStorage) createWaitForStart(teamID uuid.UUID, sandboxID string) func(ctx context.Context) (sandbox.Sandbox, error) {
@@ -126,6 +144,10 @@ func (s *ReservationStorage) createWaitForStart(teamID uuid.UUID, sandboxID stri
 		teamIDStr := teamID.String()
 		resultKeyStr := getResultKey(teamIDStr, sandboxID)
 		pendingSetKey := getPendingSetKey(teamIDStr)
+		traceKeyStr := getTraceKey(teamIDStr, sandboxID)
+
+		// Link to the creation trace
+		s.linkSapns(ctx, traceKeyStr)
 
 		for {
 			// Check for result

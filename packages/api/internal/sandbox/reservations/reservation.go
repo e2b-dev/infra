@@ -4,22 +4,22 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+// sandboxReservation tracks an in-flight sandbox creation. primarySpan holds
+// the SpanContext of the caller that won the reservation race so concurrent
+// waiters can attach a span link back to the main creation trace.
 type sandboxReservation struct {
-	start *utils.SetOnce[sandbox.Sandbox]
-}
-
-func newSandboxReservation(start *utils.SetOnce[sandbox.Sandbox]) *sandboxReservation {
-	return &sandboxReservation{
-		start: start,
-	}
+	start       *utils.SetOnce[sandbox.Sandbox]
+	primarySpan trace.SpanContext
 }
 
 type TeamSandboxes map[string]*sandboxReservation
@@ -40,6 +40,7 @@ func (s *ReservationStorage) Reserve(ctx context.Context, teamID uuid.UUID, sand
 	alreadyPresent := false
 	limitExceeded := false
 	var startResult *utils.SetOnce[sandbox.Sandbox]
+	var primarySpan trace.SpanContext
 
 	teamIDStr := teamID.String()
 	s.reservations.Upsert(teamIDStr, nil, func(exist bool, teamSandboxes, _ TeamSandboxes) TeamSandboxes {
@@ -50,6 +51,7 @@ func (s *ReservationStorage) Reserve(ctx context.Context, teamID uuid.UUID, sand
 		if sbx, ok := teamSandboxes[sandboxID]; ok {
 			alreadyPresent = true
 			startResult = sbx.start
+			primarySpan = sbx.primarySpan
 
 			return teamSandboxes
 		}
@@ -61,7 +63,13 @@ func (s *ReservationStorage) Reserve(ctx context.Context, teamID uuid.UUID, sand
 		}
 
 		startResult = utils.NewSetOnce[sandbox.Sandbox]()
-		teamSandboxes[sandboxID] = newSandboxReservation(startResult)
+
+		// Snapshot the primary caller's SpanContext once, under the map lock.
+		// Zero value when the caller has no span — waiters then no-op.
+		teamSandboxes[sandboxID] = &sandboxReservation{
+			start:       startResult,
+			primarySpan: trace.SpanContextFromContext(ctx),
+		}
 
 		return teamSandboxes
 	})
@@ -71,7 +79,14 @@ func (s *ReservationStorage) Reserve(ctx context.Context, teamID uuid.UUID, sand
 	}
 
 	if alreadyPresent {
-		return nil, startResult.WaitWithContext, nil
+		// Waiter path: link the caller's span (on the ctx passed to the
+		// waitForStart closure, not the Reserve ctx) to the primary's span
+		// before blocking.
+		return nil, func(wctx context.Context) (sandbox.Sandbox, error) {
+			telemetry.LinkSpans(wctx, primarySpan)
+
+			return startResult.WaitWithContext(wctx)
+		}, nil
 	}
 
 	return func(sbx sandbox.Sandbox, err error) {

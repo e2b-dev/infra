@@ -12,6 +12,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -551,4 +554,52 @@ func TestReservation_RaceConditionStressTest(t *testing.T) {
 	wg.Wait()
 
 	assert.Equal(t, operationCount.Load(), int32(numOperations))
+}
+
+// TestReservation_WaiterLinksToPrimarySpan verifies that a concurrent waiter
+// on the same sandbox gets its span linked back to the primary reserver's
+// span — enabling Tempo navigation from the waiter trace to the real work.
+func TestReservation_WaiterLinksToPrimarySpan(t *testing.T) {
+	t.Parallel()
+
+	exp := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+	tracer := tp.Tracer("test")
+
+	cache := newReservationStorage()
+	team := uuid.New()
+	sbxID := "primary-span-sandbox"
+
+	// Primary reservation: a span on ctx becomes the link target.
+	primaryCtx, primary := tracer.Start(t.Context(), "primary")
+	primarySC := primary.SpanContext()
+	_, _, err := cache.Reserve(primaryCtx, team, sbxID, 10)
+	require.NoError(t, err)
+
+	// Waiter: different span, invokes waitForStart with its own ctx.
+	waiterCtx, waiter := tracer.Start(t.Context(), "waiter")
+	_, waitForStart, err := cache.Reserve(waiterCtx, team, sbxID, 10)
+	require.NoError(t, err)
+	require.NotNil(t, waitForStart, "second reservation should return a waiter")
+
+	// Trigger link-add; the waitForStart call will block until SetResult is
+	// called, so do that in a goroutine. We only need AddLink to run.
+	go func() { _, _ = waitForStart(waiterCtx) }()
+
+	// Give the goroutine a moment to enter waitForStart and add the link.
+	time.Sleep(50 * time.Millisecond)
+	waiter.End()
+
+	var waiterSpan tracetest.SpanStub
+	for _, s := range exp.GetSpans() {
+		if s.Name == "waiter" {
+			waiterSpan = s
+		}
+	}
+	require.Len(t, waiterSpan.Links, 1, "waiter span should have exactly one link to the primary")
+	assert.Equal(t, primarySC.TraceID(), waiterSpan.Links[0].SpanContext.TraceID())
+	assert.Equal(t, primarySC.SpanID(), waiterSpan.Links[0].SpanContext.SpanID())
+
+	_ = trace.SpanContext{} // keep import used on some paths
 }

@@ -22,10 +22,13 @@ var (
 	// KEYS[1] = storage index key (sandbox:storage:{teamID}:index)
 	// KEYS[2] = pending zset key (sandbox:storage:{teamID}:reservations:pending)
 	// KEYS[3] = result key (sandbox:storage:{teamID}:reservations:sandboxID:result)
+	// KEYS[4] = trace key  (sandbox:storage:{teamID}:reservations:sandboxID:trace)
 	// ARGV[1] = sandboxID
 	// ARGV[2] = limit (-1 means no limit)
 	// ARGV[3] = current Unix timestamp (seconds, float)
 	// ARGV[4] = stale cutoff Unix timestamp (now - staleTTL)
+	// ARGV[5] = creators traceparent
+	// ARGV[6] = trace key TTL in seconds
 	//
 	// Returns:
 	//   0 = RESERVED (sandbox added to pending zset)
@@ -58,30 +61,42 @@ var (
 
 		-- Delete stale result key from a previous failed attempt
 		redis.call('DEL', KEYS[3])
+
 		-- Reserve: add to pending zset with current timestamp as score
 		redis.call('ZADD', KEYS[2], ARGV[3], ARGV[1])
+
+		-- Store creator's traceparent (for span linking).
+		redis.call('SET', KEYS[4], ARGV[5], 'EX', tonumber(ARGV[6]))
+
 		return %d
 	`, reserveResultAlreadyInStorage, reserveResultAlreadyPending, reserveResultLimitExceeded, reserveResultReserved))
 
-	// finishStartScript removes a sandbox from the pending zset and sets the result key.
+	// finishStartScript removes a sandbox from the pending zset, writes the
+	// final result, and deletes the trace key (no longer needed once the
+	// result is available).
 	// KEYS[1] = pending zset key
 	// KEYS[2] = result key
+	// KEYS[3] = trace key
 	// ARGV[1] = sandboxID
 	// ARGV[2] = result JSON
 	// ARGV[3] = TTL in seconds
 	finishStartScript = redis.NewScript(`
 		redis.call('ZREM', KEYS[1], ARGV[1])
 		redis.call('SET', KEYS[2], ARGV[2], 'EX', tonumber(ARGV[3]))
+		redis.call('DEL', KEYS[3])
 		return 1
 	`)
 
-	// releaseScript removes a sandbox from the pending zset and deletes the result key.
+	// releaseScript removes a sandbox from the pending zset and deletes the
+	// result and trace keys.
 	// KEYS[1] = pending zset key
 	// KEYS[2] = result key
+	// KEYS[3] = trace key
 	// ARGV[1] = sandboxID
 	releaseScript = redis.NewScript(`
 		redis.call('ZREM', KEYS[1], ARGV[1])
 		redis.call('DEL', KEYS[2])
+		redis.call('DEL', KEYS[3])
 		return 1
 	`)
 )

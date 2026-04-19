@@ -9,6 +9,7 @@ const (
 	reservationsKey = "reservations"
 	pendingKey      = "pending"
 	resultKey       = "result"
+	traceKey        = "trace"
 )
 
 // getStorageIndexKey returns the existing storage team index key (read-only).
@@ -32,4 +33,10 @@ func getPendingSetKey(teamID string) string {
 // e.g. sandbox:storage:{teamID}:reservations:sandboxID:result
 func getResultKey(teamID, sandboxID string) string {
 	return redis_utils.CreateKey(getReservationPrefix(teamID), sandboxID, resultKey)
+}
+
+// getTraceKey returns the key that stores the traceparent of the primary caller
+// e.g. sandbox:storage:{teamID}:reservations:sandboxID:trace
+func getTraceKey(teamID, sandboxID string) string {
+	return redis_utils.CreateKey(getReservationPrefix(teamID), sandboxID, traceKey)
 }
