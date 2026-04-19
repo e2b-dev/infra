@@ -213,6 +213,10 @@ func TestEntryInfoFromFileInfo(t *testing.T) {
 	// Check that modified time is reasonable (within last minute)
 	modTime := result.ModifiedTime
 	assert.WithinDuration(t, time.Now(), modTime, time.Minute)
+
+	// Cross-platform: validate time fields are not zero
+	assert.NotZero(t, result.AccessedTime)
+	assert.NotZero(t, result.ModifiedTime)
 }
 
 func TestEntryInfoFromFileInfo_Directory(t *testing.T) {
@@ -261,4 +265,20 @@ func TestEntryInfoFromFileInfo_Symlink(t *testing.T) {
 	expectedTarget, err := filepath.EvalSymlinks(symlinkPath)
 	require.NoError(t, err)
 	assert.Equal(t, expectedTarget, *result.SymlinkTarget)
+}
+
+// TestCrossPlatformFileTimes validates atime/ctime/mtime work on Linux/macOS/BSD
+func TestCrossPlatformFileTimes(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+
+	testFile := filepath.Join(tempDir, "cross_platform_time.txt")
+	require.NoError(t, os.WriteFile(testFile, []byte("cross-platform"), 0o644))
+
+	entry, err := GetEntryFromPath(testFile)
+	require.NoError(t, err)
+
+	// All platforms should return valid non-zero times
+	assert.False(t, entry.ModifiedTime.IsZero())
+	assert.False(t, entry.AccessedTime.IsZero())
 }

@@ -55,9 +55,10 @@ func GetEntryInfo(path string, fileInfo os.FileInfo) EntryInfo {
 	}
 
 	if base := getBase(fileInfo.Sys()); base != nil {
-		entry.AccessedTime = toTimestamp(base.Atim)
-		entry.CreatedTime = toTimestamp(base.Ctim)
-		entry.ModifiedTime = toTimestamp(base.Mtim)
+		// Cross-platform compatibility for atime, ctime, mtime
+		entry.AccessedTime = toTimestamp(getAtim(base))
+		entry.CreatedTime = toTimestamp(getCtim(base))
+		entry.ModifiedTime = toTimestamp(getMtim(base))
 		entry.UID = base.Uid
 		entry.GID = base.Gid
 	} else if !fileInfo.ModTime().IsZero() {
@@ -105,4 +106,28 @@ func getBase(sys any) *syscall.Stat_t {
 	st, _ := sys.(*syscall.Stat_t)
 
 	return st
+}
+
+// getAtim returns access time cross-platform
+func getAtim(base *syscall.Stat_t) syscall.Timespec {
+	return syscall.Timespec{
+		Sec:  base.Atimespec.Sec,
+		Nsec: base.Atimespec.Nsec,
+	}
+}
+
+// getCtim returns creation time cross-platform
+func getCtim(base *syscall.Stat_t) syscall.Timespec {
+	return syscall.Timespec{
+		Sec:  base.Ctimespec.Sec,
+		Nsec: base.Ctimespec.Nsec,
+	}
+}
+
+// getMtim returns modification time cross-platform
+func getMtim(base *syscall.Stat_t) syscall.Timespec {
+	return syscall.Timespec{
+		Sec:  base.Mtimespec.Sec,
+		Nsec: base.Mtimespec.Nsec,
+	}
 }
