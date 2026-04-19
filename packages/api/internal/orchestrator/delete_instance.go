@@ -94,7 +94,11 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 	defer o.sandboxStore.Remove(context.WithoutCancel(ctx), teamID, sandboxID)
 	err = o.removeSandboxFromNode(ctx, sbx, opts.Action)
 	if err != nil {
-		logger.L().Error(ctx, "Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
+		logger.L().Error(ctx, "Error removing sandbox",
+			zap.String("state_action", opts.Action.Name),
+			zap.Error(err),
+			logger.WithSandboxID(sbx.SandboxID),
+		)
 
 		return ErrSandboxOperationFailed
 	}
