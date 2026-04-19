@@ -130,12 +130,11 @@ func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
 			return item.Value(), nil
 		}
 
-		s.insertionTimes.Store(diff.CacheKey(), time.Now())
-
 		if err := diff.Init(ctx); err != nil {
-			return nil, fmt.Errorf("failed to init source: %w", err)
+			return nil, err
 		}
 
+		s.insertionTimes.Store(diff.CacheKey(), time.Now())
 		s.cache.Set(key, diff, ttlcache.DefaultTTL)
 
 		return diff, nil
