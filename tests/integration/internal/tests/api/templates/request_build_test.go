@@ -35,6 +35,7 @@ func TestRequestTemplateTooLowCPU(t *testing.T) {
 	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
+	require.NotNil(t, resp.JSON400)
 	assert.True(t, strings.HasPrefix(resp.JSON400.Message, "validation error"), "error should have prefix 'validation error', the error is '%s'", resp.JSON400.Message)
 }
 
@@ -48,6 +49,7 @@ func TestRequestTemplateTooLowRAM(t *testing.T) {
 	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
+	require.NotNil(t, resp.JSON400)
 	assert.True(t, strings.HasPrefix(resp.JSON400.Message, "validation error"), "error should have prefix 'validation error', the error is '%s'", resp.JSON400.Message)
 }
 
@@ -61,6 +63,7 @@ func TestRequestTemplateTooHighCPU(t *testing.T) {
 	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
+	require.NotNil(t, resp.JSON400)
 	assert.Equal(t, "CPU count must be at most 32", resp.JSON400.Message)
 }
 
@@ -74,6 +77,7 @@ func TestRequestTemplateOddCPU(t *testing.T) {
 	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
+	require.NotNil(t, resp.JSON400)
 	assert.Equal(t, "CPU count must be 1 or an even number", resp.JSON400.Message)
 }
 
@@ -87,6 +91,7 @@ func TestRequestTemplateTooHighMemory(t *testing.T) {
 	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
+	require.NotNil(t, resp.JSON400)
 	assert.True(t, strings.HasPrefix(resp.JSON400.Message, "Memory can't be higher than"), "error should have prefix 'Memory can't be higher than', the error is '%s'", resp.JSON400.Message)
 }
 
@@ -100,5 +105,6 @@ func TestRequestTemplateMemoryNonDivisibleBy2(t *testing.T) {
 	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
+	require.NotNil(t, resp.JSON400)
 	assert.Equal(t, "Memory must be divisible by 2", resp.JSON400.Message)
 }

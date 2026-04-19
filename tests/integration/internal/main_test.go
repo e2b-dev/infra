@@ -24,6 +24,8 @@ func TestMain(m *testing.M) {
 func TestCacheTemplate(t *testing.T) {
 	t.Parallel()
 
+	utils.AcquireSandboxSlot(t)
+
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 

@@ -110,7 +110,10 @@ func TestInstallCACert_SameCert(t *testing.T) {
 	c := newTestInstaller(t)
 
 	c.install(context.Background(), certA, bundlePath, extraPath)
+	waitForFile(t, extraPath) // drain the background goroutine before the hot-path call
+
 	c.install(context.Background(), certA, bundlePath, extraPath) // resume — hot path hit
+	waitForFile(t, extraPath)                                     // file already written by first goroutine; guards TempDir cleanup
 
 	bundle, err := os.ReadFile(bundlePath)
 	require.NoError(t, err)
@@ -220,9 +223,11 @@ func TestInstallCACert_ConcurrentResume(t *testing.T) {
 
 	wg.Wait()
 
-	// Acquire mu to drain any in-flight background goroutines.
-	c.mu.Lock()
-	c.mu.Unlock() //nolint:staticcheck
+	// Wait for the background goroutine spawned by the first install to finish
+	// its I/O. The mu.Lock/Unlock drain is unreliable: if the goroutine has not
+	// yet been scheduled, no one holds mu and the lock succeeds immediately —
+	// leaving the goroutine to run against the already-cleaning TempDir.
+	waitForFile(t, extraPath)
 
 	bundle, err := os.ReadFile(bundlePath)
 	require.NoError(t, err)
