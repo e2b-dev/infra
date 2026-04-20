@@ -8,16 +8,27 @@ import (
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-var fallbackDiffSize = units.MBToBytes(100)
+var (
+	fallbackDiffSize = units.MBToBytes(100)
+
+	meter                   = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build")
+	residenceDurationMetric = utils.Must(meter.Int64Histogram("orchestrator.build.cache.residence_duration",
+		metric.WithDescription("How long a diff was kept in the local build cache before eviction"),
+		metric.WithUnit("s")))
+)
 
 type deleteDiff struct {
 	size      int64
@@ -28,6 +39,7 @@ type deleteDiff struct {
 type DiffStore struct {
 	cachePath string
 	cache     *ttlcache.Cache[DiffStoreKey, Diff]
+	initGroup singleflight.Group
 	cancel    func()
 	config    cfg.Config
 	flags     *featureflags.Client
@@ -37,6 +49,8 @@ type DiffStore struct {
 	pdSizes map[DiffStoreKey]*deleteDiff
 	pdMu    sync.RWMutex
 	pdDelay time.Duration
+
+	insertionTimes sync.Map // map[DiffStoreKey]time.Time — tracks when each diff was cached
 }
 
 func NewDiffStore(
@@ -65,7 +79,13 @@ func NewDiffStore(
 	}
 
 	cache.OnEviction(func(ctx context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[DiffStoreKey, Diff]) {
+		if insertedAt, ok := ds.insertionTimes.LoadAndDelete(item.Key()); ok {
+			duration := time.Since(insertedAt.(time.Time))
+			residenceDurationMetric.Record(ctx, int64(duration.Seconds()))
+		}
+
 		buildData := item.Value()
+
 		// buildData will be deleted by calling buildData.Close()
 		defer ds.resetDelete(item.Key())
 
@@ -97,31 +117,41 @@ func (s *DiffStore) Close() {
 }
 
 func (s *DiffStore) Get(ctx context.Context, diff Diff) (Diff, error) {
-	s.resetDelete(diff.CacheKey())
-	source, found := s.cache.GetOrSet(
-		diff.CacheKey(),
-		diff,
-		ttlcache.WithTTL[DiffStoreKey, Diff](ttlcache.DefaultTTL),
-	)
+	key := diff.CacheKey()
+	s.resetDelete(key)
 
-	value := source.Value()
-	if value == nil {
-		return nil, fmt.Errorf("failed to get source from cache: %s", diff.CacheKey())
+	if item := s.cache.Get(key); item != nil {
+		return item.Value(), nil
 	}
 
-	if !found {
-		err := diff.Init(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to init source: %w", err)
+	v, err, _ := s.initGroup.Do(string(key), func() (any, error) {
+		// Double-check: another goroutine may have cached it while we waited.
+		if item := s.cache.Get(key); item != nil {
+			return item.Value(), nil
 		}
+
+		insertTime := time.Now()
+
+		if err := diff.Init(ctx); err != nil {
+			return nil, err
+		}
+
+		s.cache.Set(key, diff, ttlcache.DefaultTTL)
+		s.insertionTimes.Store(diff.CacheKey(), insertTime)
+
+		return diff, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to init source: %w", err)
 	}
 
-	return value, nil
+	return v.(Diff), nil
 }
 
 func (s *DiffStore) Add(d Diff) {
 	s.resetDelete(d.CacheKey())
 	s.cache.Set(d.CacheKey(), d, ttlcache.DefaultTTL)
+	s.insertionTimes.LoadOrStore(d.CacheKey(), time.Now())
 }
 
 func (s *DiffStore) Has(d Diff) bool {

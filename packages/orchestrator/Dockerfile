@@ -1,4 +1,4 @@
-ARG GOLANG_VERSION=1.25.4
+ARG GOLANG_VERSION=1.25.9
 
 # It has to match with the host OS version (Ubuntu 22.04 = bookworm)
 ARG DEBIAN_VERSION=bookworm

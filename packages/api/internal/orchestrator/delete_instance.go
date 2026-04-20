@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gogo/status"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -94,7 +96,11 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 	defer o.sandboxStore.Remove(context.WithoutCancel(ctx), teamID, sandboxID)
 	err = o.removeSandboxFromNode(ctx, sbx, opts.Action)
 	if err != nil {
-		logger.L().Error(ctx, "Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
+		logger.L().Error(ctx, "Error removing sandbox",
+			zap.String("state_action", opts.Action.Name),
+			zap.Error(err),
+			logger.WithSandboxID(sbx.SandboxID),
+		)
 
 		return ErrSandboxOperationFailed
 	}
@@ -181,8 +187,11 @@ func (o *Orchestrator) killSandboxOnNode(ctx context.Context, node *nodemanager.
 
 	client, ctx := node.GetSandboxDeleteCtx(ctx, sbx.SandboxID, sbx.ExecutionID)
 	_, err := client.Sandbox.Delete(ctx, req)
-	if err != nil {
-		return fmt.Errorf("failed to delete sandbox '%s': %w", sbx.SandboxID, err)
+	st, ok := status.FromError(err)
+	if ok && st.Code() == codes.NotFound {
+		logger.L().Info(ctx, "Sandbox not found during kill", logger.WithSandboxID(sbx.SandboxID), logger.WithNodeID(node.ID))
+	} else if err != nil {
+		return fmt.Errorf("failed to delete sandbox: %w", err)
 	}
 
 	node.OptimisticRemove(ctx, nodemanager.SandboxResources{
