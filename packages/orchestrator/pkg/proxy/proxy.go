@@ -113,12 +113,8 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				SandboxPort:                        port,
 				DefaultToPortError:                 true,
 				IncludeSandboxIdInProxyErrorLogger: true,
-				// LifecycleID uniquely identifies a single sandbox lifecycle.
-				// Reused by the shared proxy for both keepalive connection
-				// pool isolation (so a recycled IP:port pair doesn't leak
-				// connections across sandboxes) and ingress limiter
-				// accounting (so a late Release from an old lifecycle can't
-				// clobber a new lifecycle's counter).
+				// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
+				// We are not using sandbox id to prevent removing connections based on sandbox id (pause/resume race condition).
 				ConnectionKey:   sbx.LifecycleID,
 				RequestLogger:   logger,
 				MaskRequestHost: maskRequestHost,
@@ -200,10 +196,7 @@ func (p *SandboxProxy) GetAddr() string {
 func (p *SandboxProxy) OnInsert(_ context.Context, _ *sandbox.Sandbox) {}
 
 // OnNetworkRelease is called when a sandbox's network slot is released.
-// It cleans up the connection limiter entry, keyed by LifecycleID so the
-// removal is scoped to this sandbox lifecycle and cannot clobber a new
-// lifecycle that reuses the SandboxId (checkpoint/resume) or the IP
-// (network slot pool).
+// Keyed by LifecycleID so the removal is scoped to this sandbox lifecycle.
 func (p *SandboxProxy) OnNetworkRelease(_ context.Context, sbx *sandbox.Sandbox) {
 	p.limiter.Remove(sbx.LifecycleID)
 }

@@ -23,9 +23,7 @@ type Destination struct {
 	//   1. keepalive connection pool isolation, so connections to a reused
 	//      IP:port pair are not accidentally shared across sandboxes;
 	//   2. per-sandbox ingress connection limiter accounting.
-	// Embedders should pick a value that is unique per lifecycle. Neither
-	// SandboxId (reused on checkpoint/resume) nor sandbox IP (reused via
-	// the network slot pool) is safe on its own.
+	// Embedders should pick a value that is unique per lifecycle.
 	ConnectionKey                      string
 	IncludeSandboxIdInProxyErrorLogger bool
 	// MaskRequestHost is used to mask the request host.
