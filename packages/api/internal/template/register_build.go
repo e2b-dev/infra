@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -86,7 +87,8 @@ func RegisterBuild(
 		telemetry.ReportError(ctx, "team has reached max concurrent template builds", nil, telemetry.WithTeamID(data.Team.ID.String()), attribute.Int64("total.concurrent_template_builds", totalConcurrentTemplateBuilds))
 
 		return nil, &api.APIError{
-			Code: http.StatusTooManyRequests,
+			Code:      http.StatusTooManyRequests,
+			ErrorCode: apierrors.ErrCodeConcurrencyLimitExceeded,
 			ClientMsg: fmt.Sprintf(
 				"you have reached the maximum number of concurrent template builds (%d). Please wait for existing builds to complete or contact support if you need more concurrent builds.",
 				totalConcurrentTemplateBuilds),

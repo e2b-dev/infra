@@ -290,6 +290,14 @@ func (a *APIStore) sendAPIStoreError(c *gin.Context, code int, message string) {
 	apierrors.SendAPIStoreError(c, code, message)
 }
 
+// sendAPIStoreAPIError sends an APIError, forwarding its structured
+// ErrorCode to the wire when set. Prefer this over sendAPIStoreError when
+// the APIError is available, so SDKs can programmatically distinguish
+// failure modes (e.g. concurrency_limit_exceeded) from generic 4xx/5xx.
+func (a *APIStore) sendAPIStoreAPIError(c *gin.Context, err *apierrors.APIError) {
+	apierrors.SendAPIStoreErrorWithCode(c, err.Code, err.ErrorCode, err.ClientMsg)
+}
+
 func (a *APIStore) GetHealth(c *gin.Context) {
 	if a.Healthy.Load() {
 		c.String(http.StatusOK, "Health check successful")

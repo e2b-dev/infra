@@ -250,7 +250,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		mcp,
 	)
 	if createErr != nil {
-		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
+		a.sendAPIStoreAPIError(c, createErr)
 
 		return
 	}

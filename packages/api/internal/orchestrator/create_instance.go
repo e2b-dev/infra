@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/builds"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -120,7 +121,8 @@ func (o *Orchestrator) CreateSandbox(
 		switch {
 		case errors.As(err, &limitErr):
 			return sandbox.Sandbox{}, &api.APIError{
-				Code: http.StatusTooManyRequests,
+				Code:      http.StatusTooManyRequests,
+				ErrorCode: apierrors.ErrCodeConcurrencyLimitExceeded,
 				ClientMsg: fmt.Sprintf(
 					"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
 						"please visit 'https://e2b.dev/docs/billing'", totalConcurrentInstances),

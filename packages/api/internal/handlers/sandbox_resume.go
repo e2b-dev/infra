@@ -163,7 +163,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		nil, // mcp
 	)
 	if createErr != nil {
-		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
+		a.sendAPIStoreAPIError(c, createErr)
 
 		return
 	}
