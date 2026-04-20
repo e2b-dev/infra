@@ -161,6 +161,7 @@ module "cluster" {
 
   ingress_port                 = var.ingress_port
   api_port                     = var.api_port
+  api_grpc_port                = var.api_grpc_port
   docker_reverse_proxy_port    = var.docker_reverse_proxy_port
   nomad_port                   = var.nomad_port
   google_service_account_email = module.init.service_account_email
@@ -236,9 +237,11 @@ module "nomad" {
   api_machine_count                                      = var.api_cluster_size
   api_node_pool                                          = var.api_node_pool
   api_port                                               = var.api_port
+  api_grpc_port                                          = var.api_grpc_port
   environment                                            = var.environment
   google_service_account_key                             = module.init.google_service_account_key
   api_secret                                             = random_password.api_secret.result
+  sandbox_resume_auth_token                              = var.sandbox_resume_auth_token
   custom_envs_repository_name                            = google_artifact_registry_repository.custom_environments_repository.name
   postgres_connection_string_secret_name                 = module.init.postgres_connection_string_secret_name
   postgres_read_replica_connection_string_secret_version = google_secret_manager_secret_version.postgres_read_replica_connection_string

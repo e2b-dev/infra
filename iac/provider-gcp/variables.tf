@@ -56,6 +56,12 @@ variable "api_server_count" {
   default = 1
 }
 
+variable "sandbox_resume_auth_token" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
 variable "api_resources_cpu_count" {
   type    = number
   default = 2
@@ -210,6 +216,11 @@ variable "api_port" {
     port        = 50001
     health_path = "/health"
   }
+}
+
+variable "api_grpc_port" {
+  type    = number
+  default = 5009
 }
 
 variable "ingress_port" {

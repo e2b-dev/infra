@@ -94,6 +94,12 @@ variable "api_secret" {
   type = string
 }
 
+variable "sandbox_resume_auth_token" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
 variable "api_admin_token_secret_name" {
   type = string
 }

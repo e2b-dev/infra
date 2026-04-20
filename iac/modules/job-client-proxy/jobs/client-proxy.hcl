@@ -114,8 +114,12 @@ job "client-proxy" {
         REDIS_URL                = "${redis_url}"
 
         %{ if api_grpc_address != "" }
-        # used only when client-proxy is deployed directly in the cluster next to the API
-        API_GRPC_ADDRESS = "${api_grpc_address}"
+        # used by client-proxy to call API ResumeSandbox over gRPC
+        API_GRPC_ADDRESS             = "${api_grpc_address}"
+        API_GRPC_TLS                 = "${api_grpc_tls}"
+        %{ if sandbox_resume_auth_token != "" }
+        SANDBOX_RESUME_AUTH_TOKEN    = "${sandbox_resume_auth_token}"
+        %{ endif }
         %{ endif }
 
         %{ if launch_darkly_api_key != "" }

@@ -68,6 +68,17 @@ variable "api_grpc_address" {
   default = ""
 }
 
+variable "api_grpc_tls" {
+  type    = bool
+  default = false
+}
+
+variable "sandbox_resume_auth_token" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
 variable "otel_collector_grpc_endpoint" {
   type = string
 }

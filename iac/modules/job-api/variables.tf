@@ -99,6 +99,12 @@ variable "admin_token" {
   sensitive = true
 }
 
+variable "sandbox_resume_auth_token" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
 variable "sandbox_access_token_hash_seed" {
   type      = string
   sensitive = true

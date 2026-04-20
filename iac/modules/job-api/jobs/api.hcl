@@ -65,6 +65,16 @@ job "api" {
       port = "grpc"
       task = "start"
 
+      tags = [
+        "traefik.enable=true",
+
+        "traefik.http.routers.api-grpc.rule=HostRegexp(`api-grpc.{domain:.+}`)",
+        "traefik.http.routers.api-grpc.ruleSyntax=v2",
+        "traefik.http.routers.api-grpc.priority=500",
+        "traefik.http.routers.api-grpc.service=api-grpc",
+        "traefik.http.services.api-grpc.loadbalancer.server.scheme=h2c"
+      ]
+
       check {
         type     = "tcp"
         name     = "grpc"
@@ -117,6 +127,9 @@ job "api" {
         API_GRPC_PORT                  = "${api_grpc_port}"
         ADMIN_TOKEN                    = "${admin_token}"
         SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
+%{ if sandbox_resume_auth_token != "" }
+        SANDBOX_RESUME_AUTH_TOKEN      = "${sandbox_resume_auth_token}"
+%{ endif }
 
         POSTGRES_CONNECTION_STRING              = "${postgres_connection_string}"
         DB_MAX_OPEN_CONNECTIONS                = "${db_max_open_connections}"

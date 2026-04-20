@@ -66,6 +66,21 @@ locals {
       }
       groups = [{ group = var.api_instance_group }]
     }
+    api-grpc = {
+      protocol                        = "H2C"
+      port                            = var.api_grpc_port
+      port_name                       = "api-grpc"
+      timeout_sec                     = 80
+      connection_draining_timeout_sec = 1
+      http_health_check = {
+        protocol           = "HTTP"
+        request_path       = var.api_port.health_path
+        port               = var.api_port.port
+        timeout_sec        = 3
+        check_interval_sec = 3
+      }
+      groups = [{ group = var.api_instance_group }]
+    }
     docker-reverse-proxy = {
       protocol                        = "HTTP"
       port                            = var.docker_reverse_proxy_port.port
@@ -251,6 +266,11 @@ resource "google_compute_url_map" "orch_map" {
   }
 
   host_rule {
+    hosts        = concat(["api-grpc.${var.domain_name}"], [for d in var.additional_domains : "api-grpc.${d}"])
+    path_matcher = "api-grpc-paths"
+  }
+
+  host_rule {
     hosts        = concat(["docker.${var.domain_name}"], [for d in var.additional_domains : "docker.${d}"])
     path_matcher = "docker-reverse-proxy-paths"
   }
@@ -292,6 +312,11 @@ resource "google_compute_url_map" "orch_map" {
   path_matcher {
     name            = "docker-reverse-proxy-paths"
     default_service = google_compute_backend_service.default["docker-reverse-proxy"].self_link
+  }
+
+  path_matcher {
+    name            = "api-grpc-paths"
+    default_service = google_compute_backend_service.default["api-grpc"].self_link
   }
 
   path_matcher {
@@ -464,6 +489,11 @@ resource "google_compute_firewall" "default-hc" {
   allow {
     protocol = "tcp"
     ports    = [var.ingress_port.port]
+  }
+
+  allow {
+    protocol = "tcp"
+    ports    = [var.api_grpc_port]
   }
 }
 
