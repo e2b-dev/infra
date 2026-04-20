@@ -66,7 +66,7 @@ func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.
 func (p *Proxy) OnInsert(_ context.Context, _ *sandbox.Sandbox) {}
 
 func (p *Proxy) OnNetworkRelease(_ context.Context, sbx *sandbox.Sandbox) {
-	p.limiter.Remove(sbx.Slot.HostIPString())
+	p.limiter.Remove(sbx.LifecycleID)
 }
 
 func (p *Proxy) Start(ctx context.Context) error {
@@ -233,9 +233,10 @@ func (t *connectionHandler) HandleConn(conn net.Conn) {
 	}
 
 	sandboxID := sbx.Runtime.SandboxID
-	// Scope the limiter to the sandbox's current IP so checkpoint/resume
-	// (same SandboxID, new IP) and slot reuse are both isolated.
-	limiterKey := sbx.Slot.HostIPString()
+	// Scope the limiter to this sandbox lifecycle: SandboxID is reused on
+	// checkpoint/resume and the IP is reused via the network slot pool, so
+	// only LifecycleID is unique per lifecycle.
+	limiterKey := sbx.LifecycleID
 	sbxLogger := t.logger.With(logger.WithSandboxID(sandboxID))
 
 	// Check per-sandbox connection limit

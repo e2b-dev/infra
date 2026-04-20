@@ -16,9 +16,10 @@ type Destination struct {
 	SandboxId string
 	// LimiterKey is the key under which per-sandbox ingress connections are
 	// accounted in the connection limiter. Optional: embedders that do not
-	// use the limiter may leave this empty. Embedders choose the key
-	// semantics (e.g. the orchestrator proxy uses the sandbox host IP so
-	// limiter state is scoped to a single sandbox lifecycle).
+	// use the limiter may leave this empty. Embedders should choose a key
+	// that is unique per sandbox lifecycle — neither SandboxId (reused on
+	// checkpoint/resume) nor sandbox IP (reused via the network slot pool)
+	// is safe on its own.
 	LimiterKey  string
 	SandboxPort uint64
 	// Should we return the error about closed port if there is a problem with a connection to upstream?
