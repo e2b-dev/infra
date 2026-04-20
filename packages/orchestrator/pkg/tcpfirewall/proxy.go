@@ -220,7 +220,7 @@ func (t *connectionHandler) HandleConn(conn net.Conn) {
 
 	// Look up sandbox by source address
 	sourceAddr := rawConn.RemoteAddr().String()
-	sbx, err := t.sandboxes.NetworkMap.GetByHostPort(sourceAddr)
+	sbx, err := t.sandboxes.GetByHostPort(sourceAddr)
 	if err != nil {
 		sourceIP, _, _ := net.SplitHostPort(sourceAddr)
 		t.logger.Error(ctx, "failed to find sandbox for connection",

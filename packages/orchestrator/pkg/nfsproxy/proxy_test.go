@@ -79,7 +79,7 @@ func TestRoundTrip(t *testing.T) {
 	require.Equal(t, "127.0.0.1", slot.HostIP.String(), "required for the test to work")
 
 	sandboxes := sandbox.NewSandboxesMap()
-	sandboxes.NetworkMap.AssignNetwork(t.Context(), &sandbox.Sandbox{
+	sandboxes.AssignNetwork(t.Context(), &sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
 			Config: sandbox.NewConfig(sandbox.Config{
 				VolumeMounts: []sandbox.VolumeMountConfig{

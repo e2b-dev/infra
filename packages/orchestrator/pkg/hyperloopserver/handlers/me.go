@@ -13,7 +13,7 @@ import (
 
 func (h *APIStore) Me(c *gin.Context) {
 	ctx := c.Request.Context()
-	sbx, err := h.sandboxes.NetworkMap.GetByHostPort(c.Request.RemoteAddr)
+	sbx, err := h.sandboxes.GetByHostPort(c.Request.RemoteAddr)
 	if err != nil {
 		h.sendAPIStoreError(c, http.StatusBadRequest, "Error when finding source sandbox")
 		ip, _, _ := net.SplitHostPort(c.Request.RemoteAddr)

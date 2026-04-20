@@ -333,17 +333,7 @@ func (f *Factory) CreateSandbox(
 
 	lifecycleID := uuid.NewString()
 
-	var sbx *Sandbox
-	// We want to remove from the map as late as possible
-	cleanup.Add(ctx, func(ctx context.Context) error {
-		if sbx != nil {
-			f.Sandboxes.NetworkMap.NetworkReleased(ctx, sbx)
-		}
-
-		return nil
-	})
-
-	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
+	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network, f.Sandboxes.NetworkReleased)
 
 	sandboxFiles := template.Files().NewSandboxFiles(runtime.SandboxID)
 	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
@@ -455,7 +445,7 @@ func (f *Factory) CreateSandbox(
 		endAt:     time.Now().Add(sandboxTimeout),
 	}
 
-	sbx = &Sandbox{
+	sbx := &Sandbox{
 		LifecycleID: lifecycleID,
 
 		Resources:    resources,
@@ -476,9 +466,9 @@ func (f *Factory) CreateSandbox(
 		exit: exit,
 	}
 
-	f.Sandboxes.NetworkMap.AssignNetwork(ctx, sbx)
+	f.Sandboxes.AssignNetwork(ctx, sbx)
 	cleanup.Add(ctx, func(ctx context.Context) error {
-		f.Sandboxes.MarkStopped(ctx, runtime.SandboxID, sbx.LifecycleID)
+		f.Sandboxes.MarkStopping(ctx, runtime.SandboxID, sbx.LifecycleID)
 
 		return nil
 	})
@@ -585,16 +575,6 @@ func (f *Factory) ResumeSandbox(
 
 	lifecycleID := uuid.NewString()
 
-	var sbx *Sandbox
-	// We want to remove from the map as late as possible
-	cleanup.Add(ctx, func(ctx context.Context) error {
-		if sbx != nil {
-			f.Sandboxes.NetworkMap.NetworkReleased(ctx, sbx)
-		}
-
-		return nil
-	})
-
 	sandboxFiles := t.Files().NewSandboxFiles(runtime.SandboxID)
 	cleanup.Add(ctx, cleanupFiles(f.config, sandboxFiles))
 
@@ -655,7 +635,7 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	// Slot initialization
-	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network)
+	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network, f.Sandboxes.NetworkReleased)
 
 	// Rootfs initialization
 	overlayPromise := utils.NewPromise(func() (rootfs.Provider, error) {
@@ -805,7 +785,7 @@ func (f *Factory) ResumeSandbox(
 		endAt:     endAt,
 	}
 
-	sbx = &Sandbox{
+	sbx := &Sandbox{
 		LifecycleID: lifecycleID,
 
 		Resources:    resources,
@@ -839,9 +819,9 @@ func (f *Factory) ResumeSandbox(
 	// Register the sandbox IP before Resume so it is findable by source address
 	// during the resume (e.g. for TCP firewall lookups). On failure the deferred cleanup
 	// will remove it.
-	f.Sandboxes.NetworkMap.AssignNetwork(ctx, sbx)
+	f.Sandboxes.AssignNetwork(ctx, sbx)
 	cleanup.Add(ctx, func(ctx context.Context) error {
-		f.Sandboxes.MarkStopped(ctx, runtime.SandboxID, sbx.LifecycleID)
+		f.Sandboxes.MarkStopping(ctx, runtime.SandboxID, sbx.LifecycleID)
 
 		return nil
 	})
@@ -1268,6 +1248,7 @@ func getNetworkSlot(
 	networkPool *network.Pool,
 	cleanup *Cleanup,
 	networkConfig *orchestrator.SandboxNetworkConfig,
+	networkReleased func(ctx context.Context, ip string),
 ) *utils.Promise[*network.Slot] {
 	return utils.NewPromise(func() (*network.Slot, error) {
 		ctx, span := tracer.Start(ctx, "get network-slot")
@@ -1284,6 +1265,8 @@ func getNetworkSlot(
 
 			// We can run this cleanup asynchronously, as it is not important for the sandbox lifecycle
 			go func(ctx context.Context) {
+				networkReleased(ctx, slot.HostIPString())
+
 				returnErr := networkPool.Return(ctx, slot)
 				if returnErr != nil {
 					logger.L().Error(ctx, "failed to return network slot", zap.Error(returnErr))

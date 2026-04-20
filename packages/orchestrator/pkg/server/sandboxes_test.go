@@ -83,7 +83,7 @@ func Test_server_List(t *testing.T) {
 			for _, sbx := range tt.data {
 				sbx.SetStartedAt(startTime)
 				sbx.SetEndAt(tt.endAt)
-				sandboxes.NetworkMap.AssignNetwork(t.Context(), sbx)
+				sandboxes.AssignNetwork(t.Context(), sbx)
 				sandboxes.MarkRunning(t.Context(), sbx)
 			}
 			got, err := s.List(t.Context(), tt.args.in1)

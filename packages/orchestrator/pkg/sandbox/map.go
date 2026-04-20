@@ -10,73 +10,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
-// OnRemoveFn is invoked after a sandbox's network slot is released.
-type OnRemoveFn func(ctx context.Context, sbx *Sandbox)
-
-// NetworkMap provides O(1) lookups from host IP to sandbox.
-// It is managed independently of the live sandbox map — Insert is called
-// when a network slot is assigned, Remove when the slot is released.
-type NetworkMap struct {
-	m        *smap.Map[*Sandbox]
-	onRemove OnRemoveFn
-}
-
-func NewNetworkMap(onRemove OnRemoveFn) *NetworkMap {
-	return &NetworkMap{m: smap.New[*Sandbox](), onRemove: onRemove}
-}
-
-// AssignNetwork registers a sandbox's IP so it is findable by GetByHostPort.
-func (nm *NetworkMap) AssignNetwork(ctx context.Context, sbx *Sandbox) {
-	ip := sbx.Slot.HostIPString()
-	nm.m.Insert(ip, sbx)
-
-	logger.L().Info(ctx, "sandbox network map entry added",
-		logger.WithSandboxID(sbx.Runtime.SandboxID),
-		logger.WithLifecycleID(sbx.LifecycleID),
-		logger.WithSandboxIP(ip),
-	)
-}
-
-// NetworkReleased unregisters a sandbox's IP, guarding against the slot
-// having been reused by a new sandbox, and invokes the onRemove callback
-// after a successful removal.
-func (nm *NetworkMap) NetworkReleased(ctx context.Context, sbx *Sandbox) {
-	ip := sbx.Slot.HostIPString()
-
-	removed := nm.m.RemoveCb(ip, func(_ string, v *Sandbox, exists bool) bool {
-		return exists && v == sbx
-	})
-
-	if !removed {
-		return
-	}
-
-	logger.L().Info(ctx, "sandbox network map entry removed",
-		logger.WithSandboxID(sbx.Runtime.SandboxID),
-		logger.WithLifecycleID(sbx.LifecycleID),
-		logger.WithSandboxIP(ip),
-	)
-
-	if nm.onRemove != nil {
-		nm.onRemove(ctx, sbx)
-	}
-}
-
-// GetByHostPort looks up a sandbox by its host IP address parsed from hostPort.
-func (nm *NetworkMap) GetByHostPort(hostPort string) (*Sandbox, error) {
-	reqIP, _, err := net.SplitHostPort(hostPort)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing remote address %s: %w", hostPort, err)
-	}
-
-	sbx, ok := nm.m.Get(reqIP)
-	if !ok {
-		return nil, fmt.Errorf("sandbox not found")
-	}
-
-	return sbx, nil
-}
-
 // MapSubscriber receives lifecycle notifications from the sandbox Map.
 type MapSubscriber interface {
 	// OnInsert is triggered when a sandbox transitions to the running state.
@@ -85,16 +18,23 @@ type MapSubscriber interface {
 	OnRemove(ctx context.Context, sbx *Sandbox)
 }
 
-// Map holds sandboxes that are live (running). It is independent of the
-// NetworkMap — the two are managed through separate Insert/Remove calls.
+// Map holds sandboxes that are live (running) together with a private
+// host-IP-to-sandbox index used for O(1) reverse lookups. The two indexes
+// are managed independently: AssignNetwork/NetworkReleased manage the IP
+// index, MarkRunning/MarkStopping manage the live set.
 type Map struct {
-	live *smap.Map[*Sandbox]
-	// NetworkMap maps host IP string to sandbox for O(1) reverse lookups.
-	// Managed independently: Insert when slot is assigned, Remove when released.
-	NetworkMap *NetworkMap
+	live    *smap.Map[*Sandbox]
+	network *smap.Map[*Sandbox]
 
 	subs     []MapSubscriber
 	subsLock sync.RWMutex
+}
+
+func NewSandboxesMap() *Map {
+	return &Map{
+		live:    smap.New[*Sandbox](),
+		network: smap.New[*Sandbox](),
+	}
 }
 
 func (m *Map) Subscribe(subscriber MapSubscriber) {
@@ -125,6 +65,63 @@ func (m *Map) Get(sandboxID string) (*Sandbox, bool) {
 	return m.live.Get(sandboxID)
 }
 
+// AssignNetwork registers a sandbox's IP so it is findable by GetByHostPort.
+func (m *Map) AssignNetwork(ctx context.Context, sbx *Sandbox) {
+	ip := sbx.Slot.HostIPString()
+	m.network.Insert(ip, sbx)
+
+	logger.L().Info(ctx, "sandbox network map entry added",
+		logger.WithSandboxID(sbx.Runtime.SandboxID),
+		logger.WithLifecycleID(sbx.LifecycleID),
+		logger.WithSandboxIP(ip),
+	)
+}
+
+// NetworkReleased unregisters a sandbox's IP, guarding against the slot
+// having been reused by a new sandbox, and notifies OnRemove subscribers
+// after a successful removal.
+func (m *Map) NetworkReleased(ctx context.Context, ip string) {
+	var sbx *Sandbox
+	removed := m.network.RemoveCb(ip, func(_ string, v *Sandbox, exists bool) bool {
+		if !exists {
+			return false
+		}
+
+		sbx = v
+
+		return exists
+	})
+
+	if !removed {
+		return
+	}
+
+	logger.L().Info(ctx, "sandbox network map entry removed",
+		logger.WithSandboxID(sbx.Runtime.SandboxID),
+		logger.WithLifecycleID(sbx.LifecycleID),
+		logger.WithSandboxIP(ip),
+	)
+
+	go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
+		s.OnRemove(ctx, sbx)
+	})
+}
+
+// GetByHostPort looks up a sandbox by its host IP address parsed from hostPort.
+func (m *Map) GetByHostPort(hostPort string) (*Sandbox, error) {
+	reqIP, _, err := net.SplitHostPort(hostPort)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing remote address %s: %w", hostPort, err)
+	}
+
+	sbx, ok := m.network.Get(reqIP)
+	if !ok {
+		return nil, fmt.Errorf("sandbox not found")
+	}
+
+	return sbx, nil
+}
+
 // MarkRunning makes the sandbox visible to Get/Items/Count and notifies OnInsert subscribers.
 func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) {
 	if !m.live.InsertIfAbsent(sbx.Runtime.SandboxID, sbx) {
@@ -136,9 +133,9 @@ func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) {
 	})
 }
 
-// MarkStopped removes the sandbox from live queries (Get, Items, Count).
+// MarkStopping removes the sandbox from live queries (Get, Items, Count).
 // Returns true if the sandbox was successfully removed.
-func (m *Map) MarkStopped(ctx context.Context, sandboxID, lifecycleID string) bool {
+func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) bool {
 	stopped := false
 
 	m.live.RemoveCb(sandboxID, func(_ string, sbx *Sandbox, exists bool) bool {
@@ -162,17 +159,4 @@ func (m *Map) MarkStopped(ctx context.Context, sandboxID, lifecycleID string) bo
 	})
 
 	return stopped
-}
-
-func NewSandboxesMap() *Map {
-	m := &Map{
-		live: smap.New[*Sandbox](),
-	}
-	m.NetworkMap = NewNetworkMap(func(ctx context.Context, sbx *Sandbox) {
-		go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
-			s.OnRemove(ctx, sbx)
-		})
-	})
-
-	return m
 }
