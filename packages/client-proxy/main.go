@@ -115,19 +115,18 @@ func run() int {
 		RedisTLSCABase64: config.RedisTLSCABase64,
 		PoolSize:         config.RedisPoolSize,
 	})
-	if err == nil {
-		defer func() {
-			err := factories.CloseCleanly(redisClient)
-			if err != nil {
-				l.Error(ctx, "Failed to close redis client", zap.Error(err))
-			}
-		}()
-		catalog = e2bcatalog.NewRedisSandboxCatalog(redisClient)
-	} else {
+	if err != nil {
 		l.Error(ctx, "Failed to create redis client", zap.Error(err))
 
 		return 1
 	}
+	defer func() {
+		err := factories.CloseCleanly(redisClient)
+		if err != nil {
+			l.Error(ctx, "Failed to close redis client", zap.Error(err))
+		}
+	}()
+	catalog = e2bcatalog.NewRedisSandboxCatalog(redisClient)
 
 	info := &internal.ServiceInfo{}
 	info.SetStatus(ctx, internal.Healthy)
