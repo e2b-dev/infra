@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -97,7 +98,7 @@ func TestAdminBootstrapRoute_AcceptsAdminTokenOnly(t *testing.T) {
 			sharedauth.NewSupabaseTokenAuthenticator(func(_ context.Context, _ *gin.Context, _ string) (uuid.UUID, *sharedauth.APIError) {
 				supabaseCalled = true
 
-				return uuid.Nil, &sharedauth.APIError{Code: http.StatusUnauthorized, ClientMsg: "unexpected", Err: fmt.Errorf("unexpected supabase auth call")}
+				return uuid.Nil, &sharedauth.APIError{Code: http.StatusUnauthorized, ClientMsg: "unexpected", Err: errors.New("unexpected supabase auth call")}
 			}),
 		},
 		nil,

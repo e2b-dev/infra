@@ -1,7 +1,7 @@
 package tcpfirewall
 
 import (
-	"fmt"
+	"errors"
 	"net"
 	"syscall"
 	"unsafe"
@@ -12,7 +12,7 @@ import (
 func getOriginalDst(conn net.Conn) (net.IP, int, error) {
 	tcpConn, ok := conn.(*net.TCPConn)
 	if !ok {
-		return nil, 0, fmt.Errorf("not a TCP connection")
+		return nil, 0, errors.New("not a TCP connection")
 	}
 
 	rawConn, err := tcpConn.SyscallConn()

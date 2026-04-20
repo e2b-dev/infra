@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -101,7 +102,7 @@ func (m *Map) GetByHostPort(hostPort string) (*Sandbox, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("sandbox not found")
+	return nil, errors.New("sandbox not found")
 }
 
 func (m *Map) Insert(ctx context.Context, sbx *Sandbox) {

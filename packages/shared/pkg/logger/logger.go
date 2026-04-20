@@ -2,6 +2,7 @@ package logger
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -55,7 +56,7 @@ func NewLogger(loggerConfig LoggerConfig) (Logger, error) {
 	}
 
 	if encoding != "console" && loggerConfig.EncoderConfig == nil {
-		return nil, fmt.Errorf("encoder config has to be provided when encoding is not console")
+		return nil, errors.New("encoder config has to be provided when encoding is not console")
 	}
 
 	var encoderConfig zapcore.EncoderConfig

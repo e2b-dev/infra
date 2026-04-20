@@ -2,7 +2,7 @@ package storage
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"io"
 	"testing"
 	"time"
@@ -24,7 +24,7 @@ func transientErr() error {
 
 // permanentErr returns an error that storage.ShouldRetry does NOT retry.
 func permanentErr() error {
-	return fmt.Errorf("permanent: object not found")
+	return errors.New("permanent: object not found")
 }
 
 func TestRetryWithBackoff_SuccessOnFirstAttempt(t *testing.T) {

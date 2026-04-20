@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"testing"
@@ -338,7 +339,7 @@ func TestRedisCache_RedisRefresh_ErrorKeepsStaleValue(t *testing.T) {
 	result, err := rc.GetOrSet(t.Context(), key, func(_ context.Context, _ string) (testValue, error) {
 		callCount.Add(1)
 
-		return testValue{}, fmt.Errorf("database unavailable")
+		return testValue{}, errors.New("database unavailable")
 	})
 
 	require.NoError(t, err)

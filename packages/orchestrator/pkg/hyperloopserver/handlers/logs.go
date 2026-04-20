@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -78,7 +79,7 @@ func (h *APIStore) Logs(c *gin.Context) {
 // validatePayloadSandboxID checks if the payload contains correct instanceID to prevent slow requests to contaminating the logs of other sandboxes.
 func (h *APIStore) validatePayloadSandboxID(payload map[string]any, sbxID string) error {
 	if payload["instanceID"] == nil {
-		return fmt.Errorf("missing sandboxID in logs payload")
+		return errors.New("missing sandboxID in logs payload")
 	}
 
 	payloadSandboxID, ok := payload["instanceID"].(string)

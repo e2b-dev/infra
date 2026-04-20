@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"math/rand"
@@ -61,7 +62,7 @@ type files struct {
 
 func (f *files) selectFile() (string, error) {
 	if len(f.paths) == 0 {
-		return "", fmt.Errorf("no files found")
+		return "", errors.New("no files found")
 	}
 
 	idx := f.rand.Intn(len(f.paths))

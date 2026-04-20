@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -168,7 +169,7 @@ func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.No
 
 	cluster, clusterFound := o.clusters.GetClusterById(node.ClusterID)
 	if !clusterFound {
-		return fmt.Errorf("cluster not found")
+		return errors.New("cluster not found")
 	}
 
 	// We want to find not just node, but explicitly node with expected service instance ID

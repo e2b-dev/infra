@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"fmt"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,7 +13,7 @@ func TestErrorOnce(t *testing.T) {
 	errorOnce := NewErrorOnce()
 
 	// Test setting error
-	expectedErr := fmt.Errorf("test error")
+	expectedErr := errors.New("test error")
 	err := errorOnce.SetError(expectedErr)
 	require.NoError(t, err)
 
@@ -23,7 +23,7 @@ func TestErrorOnce(t *testing.T) {
 	assert.Equal(t, expectedErr, err)
 
 	// Trying to set again should return ErrAlreadySet
-	err = errorOnce.SetError(fmt.Errorf("another error"))
+	err = errorOnce.SetError(errors.New("another error"))
 	require.ErrorIs(t, err, ErrAlreadySet)
 
 	// Wait should still return the original error
@@ -45,7 +45,7 @@ func TestErrorOnceSetSuccess(t *testing.T) {
 	require.NoError(t, err)
 
 	// Trying to set error after success should return ErrAlreadySet
-	err = errorOnce.SetError(fmt.Errorf("test error"))
+	err = errorOnce.SetError(errors.New("test error"))
 	require.ErrorIs(t, err, ErrAlreadySet)
 
 	// Wait should still return nil
