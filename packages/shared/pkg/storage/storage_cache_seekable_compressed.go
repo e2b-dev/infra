@@ -6,15 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-
-	"go.opentelemetry.io/otel/attribute"
 )
 
-// Precomputed OTEL attributes for compressed cache reads (avoids per-read allocation).
-var compressedCacheReadAttrs = []attribute.KeyValue{
-	attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrReadAt),
-	attribute.Bool("compressed", true),
-}
+var _ io.ReadCloser = (*decompressWritebackReader)(nil) // decompress on Read, cache compressed bytes on Close
 
 // openReaderCompressed handles the compressed cache path for OpenRangeReader.
 // NFS stores compressed frames (.frm); on hit we decompress, on miss we fetch
@@ -27,15 +21,12 @@ func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64
 
 	path := makeFrameFilename(c.path, r)
 
-	timer := cacheSlabReadTimerFactory.Begin(compressedCacheReadAttrs...)
-
 	// Cache hit: open compressed frame from NFS and wrap with decompressor.
 	f, err := os.Open(path)
 
 	switch {
 	case err == nil:
 		recordCacheRead(ctx, true, int64(r.Length), cacheTypeSeekable, cacheOpOpenRangeReader)
-		timer.Success(ctx, int64(r.Length))
 
 		decompressed, err := newDecompressingReadCloser(f, frameTable.CompressionType())
 		if err != nil {
@@ -49,8 +40,6 @@ func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64
 		recordCacheReadError(ctx, cacheTypeSeekable, cacheOpOpenRangeReader, err)
 	}
 
-	timer.Failure(ctx, 0)
-
 	// Cache miss: fetch raw compressed bytes via OpenRangeReader(nil frameTable).
 	raw, err := c.inner.OpenRangeReader(ctx, r.Offset, int64(r.Length), nil)
 	if err != nil {
@@ -59,7 +48,7 @@ func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64
 
 	recordCacheRead(ctx, false, int64(r.Length), cacheTypeSeekable, cacheOpOpenRangeReader)
 
-	rc, err := newDecompressingCacheReader(raw, frameTable.CompressionType(), r.Length, c, ctx, path, offsetU)
+	rc, err := newDecompressWritebackReader(raw, frameTable.CompressionType(), r.Length, c, ctx, path, offsetU)
 	if err != nil {
 		raw.Close()
 
@@ -69,9 +58,9 @@ func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64
 	return rc, nil
 }
 
-// newDecompressingCacheReader creates a reader that decompresses on Read and
-// writes the accumulated compressed bytes to the NFS cache on Close.
-func newDecompressingCacheReader(
+// decompressWritebackReader decompresses on Read and writes the accumulated
+// compressed bytes to the NFS cache on Close.
+func newDecompressWritebackReader(
 	raw io.ReadCloser,
 	ct CompressionType,
 	expectedSize int,
@@ -90,7 +79,7 @@ func newDecompressingCacheReader(
 		return nil, err
 	}
 
-	return &decompressingCacheReader{
+	return &decompressWritebackReader{
 		decompressor:  dec,
 		raw:           raw,
 		compressedBuf: &compressedBuf,
@@ -102,7 +91,7 @@ func newDecompressingCacheReader(
 	}, nil
 }
 
-type decompressingCacheReader struct {
+type decompressWritebackReader struct {
 	decompressor  io.ReadCloser // decompresses on Read
 	raw           io.ReadCloser // underlying compressed stream (must be closed)
 	compressedBuf *bytes.Buffer
@@ -113,11 +102,11 @@ type decompressingCacheReader struct {
 	offset        int64
 }
 
-func (r *decompressingCacheReader) Read(p []byte) (int, error) {
+func (r *decompressWritebackReader) Read(p []byte) (int, error) {
 	return r.decompressor.Read(p)
 }
 
-func (r *decompressingCacheReader) Close() error {
+func (r *decompressWritebackReader) Close() error {
 	decErr := r.decompressor.Close()
 	rawErr := r.raw.Close()
 
