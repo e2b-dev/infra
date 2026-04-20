@@ -338,8 +338,7 @@ func (f *Factory) CreateSandbox(
 	// We want to remove from the map as late as possible
 	cleanup.Add(ctx, func(ctx context.Context) error {
 		if sbx != nil {
-			f.Sandboxes.NetworkMap.Remove(sbx)
-			f.Sandboxes.SandboxRemoved(ctx, sbx)
+			f.Sandboxes.NetworkMap.NetworkReleased(ctx, sbx)
 		}
 
 		return nil
@@ -478,7 +477,7 @@ func (f *Factory) CreateSandbox(
 		exit: exit,
 	}
 
-	f.Sandboxes.NetworkMap.Insert(sbx)
+	f.Sandboxes.NetworkMap.AssignNetwork(ctx, sbx)
 	cleanup.Add(ctx, func(ctx context.Context) error {
 		f.Sandboxes.MarkStopped(ctx, runtime.SandboxID, sbx.LifecycleID)
 
@@ -542,7 +541,7 @@ func (f *Factory) CreateSandbox(
 		exit.SetError(errors.Join(err, fcErr))
 	}()
 
-	f.Sandboxes.SandboxStarted(ctx, sbx)
+	f.Sandboxes.MarkRunning(ctx, sbx)
 
 	return sbx, nil
 }
@@ -591,8 +590,7 @@ func (f *Factory) ResumeSandbox(
 	// We want to remove from the map as late as possible
 	cleanup.Add(ctx, func(ctx context.Context) error {
 		if sbx != nil {
-			f.Sandboxes.NetworkMap.Remove(sbx)
-			f.Sandboxes.SandboxRemoved(ctx, sbx)
+			f.Sandboxes.NetworkMap.NetworkReleased(ctx, sbx)
 		}
 
 		return nil
@@ -842,7 +840,7 @@ func (f *Factory) ResumeSandbox(
 	// Register the sandbox IP before Resume so it is findable by source address
 	// during the resume (e.g. for TCP firewall lookups). On failure the deferred cleanup
 	// will remove it.
-	f.Sandboxes.NetworkMap.Insert(sbx)
+	f.Sandboxes.NetworkMap.AssignNetwork(ctx, sbx)
 	cleanup.Add(ctx, func(ctx context.Context) error {
 		f.Sandboxes.MarkStopped(ctx, runtime.SandboxID, sbx.LifecycleID)
 
@@ -906,7 +904,7 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
 
-	f.Sandboxes.SandboxStarted(ctx, sbx)
+	f.Sandboxes.MarkRunning(ctx, sbx)
 
 	telemetry.ReportEvent(execCtx, "envd initialized")
 
