@@ -325,6 +325,7 @@ func (f *Factory) CreateSandbox(
 	preBootFn PreBootFn,
 ) (s *Sandbox, e error) {
 	ctx, span := tracer.Start(ctx, "create sandbox")
+	ctx = storage.WithReadRetryConfig(ctx, f.featureFlags)
 	defer span.End()
 	defer handleSpanError(span, &e)
 
@@ -574,6 +575,7 @@ func (f *Factory) ResumeSandbox(
 	apiConfigToStore *orchestrator.SandboxConfig,
 ) (s *Sandbox, e error) {
 	ctx, span := tracer.Start(ctx, "resume sandbox")
+	ctx = storage.WithReadRetryConfig(ctx, f.featureFlags)
 	defer span.End()
 	defer handleSpanError(span, &e)
 

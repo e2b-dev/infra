@@ -886,19 +886,33 @@ type data struct {
 // should return the "internal" server and not "masked" server.
 func TestChangeResponseHeader(t *testing.T) {
 	t.Parallel()
-	proxyPort := uint16(30092)
-	internalPort := uint64(30090)
-	maskedPort := uint16(30091)
+
+	var lisCfg net.ListenConfig
+
+	// Pre-listen on ephemeral ports so we know the servers are accepting
+	// connections before the test starts firing requests, and to avoid
+	// hardcoded-port collisions between parallel test runs.
+	internalListener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	internalAddr := internalListener.Addr().(*net.TCPAddr)
+	internalPort := uint64(internalAddr.Port) //nolint:gosec // test-only port number always fits
+	internalURL, err := url.Parse(fmt.Sprintf("http://%s", internalAddr.String()))
+	require.NoError(t, err)
+
+	maskedListener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	maskedAddr := maskedListener.Addr().(*net.TCPAddr)
+	maskedHost := maskedAddr.String()
+
+	proxyListener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	proxyAddr := proxyListener.Addr().(*net.TCPAddr)
+	proxyPort := uint16(proxyAddr.Port) //nolint:gosec // test-only port number always fits
+	proxyURL, err := url.Parse(fmt.Sprintf("http://%s", proxyAddr.String()))
+	require.NoError(t, err)
 
 	client := &http.Client{}
 
-	proxyURL, err := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
-	require.NoError(t, err)
-	maskedHost := fmt.Sprintf("127.0.0.1:%d", maskedPort)
-	internalURL, err := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", internalPort))
-	require.NoError(t, err)
-
-	// start proxy
 	proxy := New(proxyPort, 1, time.Second, func(_ *http.Request) (*pool.Destination, error) {
 		return &pool.Destination{
 			Url:                                internalURL,
@@ -913,7 +927,7 @@ func TestChangeResponseHeader(t *testing.T) {
 	}, nil, false)
 
 	go func() {
-		err = proxy.ListenAndServe(t.Context())
+		err := proxy.Serve(proxyListener)
 		assert.ErrorIs(t, err, http.ErrServerClosed)
 	}()
 
@@ -922,54 +936,57 @@ func TestChangeResponseHeader(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
-	// start internal server
-	internalServer := http.Server{
-		Addr: fmt.Sprintf("127.0.0.1:%d", internalPort),
+	internalServer := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			err = json.NewEncoder(w).Encode(data{"internal", r.Host, r.Header})
-			assert.NoError(t, err)
+			encErr := json.NewEncoder(w).Encode(data{"internal", r.Host, r.Header})
+			assert.NoError(t, encErr)
 		}),
 	}
 	go func() {
-		err = internalServer.ListenAndServe()
-		assert.NoError(t, err)
+		serveErr := internalServer.Serve(internalListener)
+		assert.ErrorIs(t, serveErr, http.ErrServerClosed)
 	}()
+	t.Cleanup(func() {
+		assert.NoError(t, internalServer.Close())
+	})
 
-	// start fake server
-	maskedServer := http.Server{
-		Addr: fmt.Sprintf("127.0.0.1:%d", maskedPort),
+	maskedServer := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			err = json.NewEncoder(w).Encode(data{"masked", r.Host, r.Header})
-			assert.NoError(t, err)
+			encErr := json.NewEncoder(w).Encode(data{"masked", r.Host, r.Header})
+			assert.NoError(t, encErr)
 		}),
 	}
 	go func() {
-		err = maskedServer.ListenAndServe()
-		assert.NoError(t, err)
+		serveErr := maskedServer.Serve(maskedListener)
+		assert.ErrorIs(t, serveErr, http.ErrServerClosed)
 	}()
+	t.Cleanup(func() {
+		assert.NoError(t, maskedServer.Close())
+	})
 
-	// create request
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, proxyURL.String(), nil)
-	req.Header.Set("Host", fmt.Sprintf("localhost:%d", proxyPort))
-	req.Header.Set("e2b-testing", "test123")
 	require.NoError(t, err)
+	req.Host = fmt.Sprintf("localhost:%d", proxyPort)
+	req.Header.Set("e2b-testing", "test123")
 
+	// Retry while the proxy goroutine is still binding to the port. Once the
+	// proxy is up, the internal server is guaranteed listening (we pre-bound
+	// its listener above), so we don't need to retry on bad status.
 	var rsp *http.Response
-	for range 10 {
+	for range 50 {
 		rsp, err = client.Do(req)
 		if err == nil {
 			t.Cleanup(func() {
-				err = rsp.Body.Close()
-				assert.NoError(t, err)
+				assert.NoError(t, rsp.Body.Close())
 			})
 
 			break
 		}
 
 		if errors.Is(err, syscall.ECONNREFUSED) {
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(20 * time.Millisecond)
 
 			continue
 		}
@@ -987,9 +1004,9 @@ func TestChangeResponseHeader(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "internal", data.Tag)
-	assert.Equal(t, fmt.Sprintf("127.0.0.1:%d", maskedPort), data.Host)
+	assert.Equal(t, maskedHost, data.Host)
 	assert.Equal(t, "test123", data.Headers.Get("E2b-Testing"))
-	assert.Equal(t, fmt.Sprintf("127.0.0.1:%d", proxyPort), data.Headers.Get("X-Forwarded-Host"))
+	assert.Equal(t, fmt.Sprintf("localhost:%d", proxyPort), data.Headers.Get("X-Forwarded-Host"))
 }
 
 func TestConnectionLimitBlocksExcessConnections(t *testing.T) {
