@@ -42,8 +42,9 @@ type Stats struct {
 // Lifecycle: Create → GetFD → cmd.Start() → ReleaseCgroupFD → GetStats (repeatedly) → Remove
 //
 // The caller MUST call ReleaseCgroupFD() right after cmd.Start() (regardless of
-// whether Start succeeded or failed). Remove() only closes the memory.peak FD
-// and deletes the cgroup directory — it does not release the cgroup directory FD.
+// whether Start succeeded or failed). Remove() closes the memory.peak FD,
+// closes the cgroup directory FD as a safety net if ReleaseCgroupFD() was not
+// called, and deletes the cgroup directory.
 type CgroupHandle struct {
 	cgroupName     string
 	path           string
