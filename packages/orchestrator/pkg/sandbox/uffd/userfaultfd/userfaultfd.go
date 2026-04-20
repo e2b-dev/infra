@@ -107,9 +107,6 @@ func (u *Userfaultfd) Serve(
 		{Fd: fdExit.Reader(), Events: unix.POLLIN},
 	}
 
-	eagainCounter := newCounterReporter(u.logger, "uffd: eagain during fd read (accumulated)")
-	defer eagainCounter.Close(ctx)
-
 	noDataCounter := newCounterReporter(u.logger, "uffd: no data in fd (accumulated)")
 	defer noDataCounter.Close(ctx)
 
@@ -202,8 +199,6 @@ func (u *Userfaultfd) Serve(
 			}
 
 			if err == syscall.EAGAIN {
-				eagainCounter.Increase("EAGAIN")
-
 				break
 			}
 
@@ -226,7 +221,6 @@ func (u *Userfaultfd) Serve(
 			pagefaults = append(pagefaults, &pagefault)
 		}
 
-		eagainCounter.Log(ctx)
 		noDataCounter.Log(ctx)
 
 		for _, pagefault := range pagefaults {
