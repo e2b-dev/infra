@@ -221,6 +221,10 @@ func (u *Userfaultfd) Serve(
 			pagefaults = append(pagefaults, &pagefault)
 		}
 
+		if len(pagefaults) == 0 {
+			continue
+		}
+
 		noDataCounter.Log(ctx)
 
 		for _, pagefault := range pagefaults {
