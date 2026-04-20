@@ -164,11 +164,11 @@ func TestWithRemoteIP(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "X-Forwarded-For header",
+			name: "X-Forwarded-For header (only first IP)",
 			setup: func(req *http.Request) {
 				req.Header.Set("X-Forwarded-For", "203.0.113.1, 203.0.113.2")
 			},
-			expected: "203.0.113.1, 203.0.113.2",
+			expected: "203.0.113.1",
 		},
 		{
 			name: "X-Real-IP header fallback",
@@ -178,11 +178,11 @@ func TestWithRemoteIP(t *testing.T) {
 			expected: "192.0.2.1",
 		},
 		{
-			name: "RemoteAddr fallback",
+			name: "RemoteAddr fallback (strip port)",
 			setup: func(req *http.Request) {
 				req.RemoteAddr = "10.0.0.1:12345"
 			},
-			expected: "10.0.0.1:12345",
+			expected: "10.0.0.1",
 		},
 		{
 			name: "X-Forwarded-For takes priority",
@@ -242,7 +242,7 @@ func TestHTTPStatusToErrorCode(t *testing.T) {
 		{http.StatusGatewayTimeout, "TIMEOUT"},
 		{http.StatusOK, "SUCCESS"},
 		{http.StatusCreated, "SUCCESS"},
-		{http.StatusTeapot, "CLIENT_ERROR"}, // 418
+		{http.StatusTeapot, "CLIENT_ERROR"},
 		{http.StatusNotImplemented, "SERVER_ERROR"},
 	}
 
@@ -270,10 +270,9 @@ func TestWithRequestSize_NoContentLength(t *testing.T) {
 	t.Parallel()
 
 	req := httptest.NewRequest("GET", "/test", nil)
-	// ContentLength defaults to 0 for GET requests
-	req.ContentLength = -1 // Indicates unknown size
+	req.ContentLength = -1
 
 	field := WithRequestSize(req)
 	assert.Equal(t, "request.size_bytes", field.Key)
-	assert.Equal(t, int64(0), field.Integer)
+	assert.Equal(t, int64(-1), field.Integer)
 }

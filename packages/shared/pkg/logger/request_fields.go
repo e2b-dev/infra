@@ -1,7 +1,9 @@
 package logger
 
 import (
+	"net"
 	"net/http"
+	"strings"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -27,10 +29,7 @@ func WithHTTPVersion(r *http.Request) zap.Field {
 
 // WithRequestSize adds the request body size in bytes.
 func WithRequestSize(r *http.Request) zap.Field {
-	size := int64(0)
-	if r.ContentLength > 0 {
-		size = r.ContentLength
-	}
+	size := r.ContentLength
 	return zap.Int64("request.size_bytes", size)
 }
 
@@ -47,16 +46,26 @@ func WithAPIOperation(method, path string) zap.Field {
 	return zap.String("api.operation", operation)
 }
 
-// WithRemoteIP extracts the real client IP from X-Forwarded-For or RemoteAddr.
+// WithRemoteIP extracts the real client IP from X-Forwarded-For, X-Real-IP, or RemoteAddr.
 func WithRemoteIP(r *http.Request) zap.Field {
-	clientIP := r.Header.Get("X-Forwarded-For")
-	if clientIP == "" {
-		clientIP = r.Header.Get("X-Real-IP")
+	// 1. Get from X-Forwarded-For (take only first IP)
+	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
+		parts := strings.SplitN(ip, ",", 2)
+		firstIP := strings.TrimSpace(parts[0])
+		return zap.String("request.remote_ip", firstIP)
 	}
-	if clientIP == "" {
-		clientIP = r.RemoteAddr
+
+	// 2. Get from X-Real-IP
+	if ip := r.Header.Get("X-Real-IP"); ip != "" {
+		return zap.String("request.remote_ip", ip)
 	}
-	return zap.String("request.remote_ip", clientIP)
+
+	// 3. Get from RemoteAddr (strip port)
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return zap.String("request.remote_ip", r.RemoteAddr)
+	}
+	return zap.String("request.remote_ip", host)
 }
 
 // WithCacheStatus indicates cache behavior (HIT, MISS, BYPASS, etc).
