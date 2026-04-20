@@ -142,8 +142,7 @@ func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) b
 	return stopped
 }
 
-// NetworkReleased unregisters a sandbox's IP, guarding against the slot
-// having been reused by a new sandbox, and notifies OnNetworkRelease
+// NetworkReleased unregisters a sandbox's IP, and notifies OnNetworkRelease
 // subscribers after a successful removal.
 func (m *Map) NetworkReleased(ctx context.Context, ip string) {
 	var sbx *Sandbox
