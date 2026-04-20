@@ -1959,6 +1959,7 @@ paths:
     post:
       description: Create a sandbox from the template
       tags: [sandboxes]
+      x-disable-team-blocked: true
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
@@ -2184,6 +2185,7 @@ paths:
     delete:
       description: Kill a sandbox
       tags: [sandboxes]
+      x-disable-team-blocked: true
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
@@ -2248,6 +2250,7 @@ paths:
     post:
       description: Pause the sandbox
       tags: [sandboxes]
+      x-disable-team-blocked: true
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
@@ -2271,6 +2274,7 @@ paths:
       deprecated: true
       description: Resume the sandbox
       tags: [sandboxes]
+      x-disable-team-blocked: true
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
@@ -2303,6 +2307,7 @@ paths:
     post:
       description: Returns sandbox details. If the sandbox is paused, it will be resumed. TTL is only extended.
       tags: [sandboxes]
+      x-disable-team-blocked: true
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
@@ -2340,6 +2345,7 @@ paths:
   /sandboxes/{sandboxID}/timeout:
     post:
       description: Set the timeout for the sandbox. The sandbox will expire x seconds from the time of the request. Calling this method multiple times overwrites the TTL, each time using the current timestamp as the starting point to measure the timeout duration.
+      x-disable-team-blocked: true
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
@@ -2373,6 +2379,7 @@ paths:
   /sandboxes/{sandboxID}/network:
     put:
       description: Update the network configuration for a running sandbox. Replaces the current egress rules with the provided configuration. Omitting both fields clears all egress rules.
+      x-disable-team-blocked: true
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
@@ -2412,6 +2419,7 @@ paths:
   /sandboxes/{sandboxID}/refreshes:
     post:
       description: Refresh the sandbox extending its time to live
+      x-disable-team-blocked: true
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
@@ -2442,6 +2450,7 @@ paths:
     post:
       description: Create a persistent snapshot from the sandbox's current state. Snapshots can be used to create new sandboxes and persist beyond the original sandbox's lifetime.
       tags: [sandboxes]
+      x-disable-team-blocked: true
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
@@ -2509,6 +2518,7 @@ paths:
     post:
       description: Create a new template
       tags: [templates]
+      x-disable-team-blocked: true
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
@@ -2539,6 +2549,7 @@ paths:
       description: Create a new template
       deprecated: true
       tags: [templates]
+      x-disable-team-blocked: true
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
@@ -2632,6 +2643,7 @@ paths:
       description: Create a new template
       deprecated: true
       tags: [templates]
+      x-disable-team-blocked: true
       security:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
@@ -2684,6 +2696,7 @@ paths:
       description: Rebuild an template
       deprecated: true
       tags: [templates]
+      x-disable-team-blocked: true
       security:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
@@ -2729,6 +2742,7 @@ paths:
       description: Update template
       deprecated: true
       tags: [templates]
+      x-disable-team-blocked: true
       security:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
@@ -2757,6 +2771,7 @@ paths:
       description: Start the build
       deprecated: true
       tags: [templates]
+      x-disable-team-blocked: true
       security:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
@@ -2776,6 +2791,7 @@ paths:
     post:
       description: Start the build
       tags: [templates]
+      x-disable-team-blocked: true
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
@@ -2801,6 +2817,7 @@ paths:
     patch:
       description: Update template
       tags: [templates]
+      x-disable-team-blocked: true
       security:
         - ApiKeyAuth: []
         - AccessTokenAuth: []
@@ -3325,6 +3342,7 @@ paths:
     post:
       description: Create a new team volume
       tags: [volumes]
+      x-disable-team-blocked: true
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
