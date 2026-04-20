@@ -46,10 +46,9 @@ jobs:
         working-directory: ./packages/shared/scripts
         run: |
           bun install
-          bun run ./build.prod.ts
+          bun --no-env-file run ./build.prod.ts
         env:
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-          E2B_DEBUG: "false"
           E2B_DOMAIN: ${{ vars.E2B_DOMAIN }}
           USE_CACHE: ${{ inputs.use_cache }}
 
