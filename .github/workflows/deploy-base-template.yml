@@ -8,9 +8,9 @@ on:
         required: true
         type: choice
         options:
-          - foxtrot
           - staging
           - juliett
+          - foxtrot
       use_cache:
         description: Use the build cache when available
         required: false
@@ -45,11 +45,12 @@ jobs:
       - name: Build template
         working-directory: ./packages/shared/scripts
         run: |
+          rm .env.local  # auto read by bun, which we don't want
+          echo "building base template for ${E2B_DOMAIN} ... "
           bun install
           bun run ./build.prod.ts
         env:
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
-          E2B_DEBUG: "false"
           E2B_DOMAIN: ${{ vars.E2B_DOMAIN }}
           USE_CACHE: ${{ inputs.use_cache }}
 
