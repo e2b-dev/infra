@@ -108,20 +108,17 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 			)
 
 			return &pool.Destination{
-				Url:       url,
-				SandboxId: sbx.Runtime.SandboxID,
-				// Use LifecycleID so the limiter is scoped to a single
-				// sandbox lifecycle. SandboxId is reused across checkpoint
-				// /resume and the sandbox IP is reused via the network slot
-				// pool, so neither is safe as a limiter key — a late
-				// Release from an old lifecycle would clobber a new
-				// lifecycle's counter.
-				LimiterKey:                         sbx.LifecycleID,
+				Url:                                url,
+				SandboxId:                          sbx.Runtime.SandboxID,
 				SandboxPort:                        port,
 				DefaultToPortError:                 true,
 				IncludeSandboxIdInProxyErrorLogger: true,
-				// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
-				// We are not using sandbox id to prevent removing connections based on sandbox id (pause/resume race condition).
+				// LifecycleID uniquely identifies a single sandbox lifecycle.
+				// Reused by the shared proxy for both keepalive connection
+				// pool isolation (so a recycled IP:port pair doesn't leak
+				// connections across sandboxes) and ingress limiter
+				// accounting (so a late Release from an old lifecycle can't
+				// clobber a new lifecycle's counter).
 				ConnectionKey:   sbx.LifecycleID,
 				RequestLogger:   logger,
 				MaskRequestHost: maskRequestHost,
