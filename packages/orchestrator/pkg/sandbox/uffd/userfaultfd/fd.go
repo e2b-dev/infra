@@ -172,7 +172,7 @@ func (f Fd) zero(addr, pagesize uintptr, mode CULong) error {
 
 	// Check if the bytes actually zeroed out by the kernel match the page size
 	if zero.zeropage != CLong(pagesize) {
-		return fmt.Errorf("UFFDIO_ZEROPAGE zeroed %d bytes, expected %d", zero.zeropage, pagesize)
+		return fmt.Errorf("UFFDIO_ZEROPAGE copied %d bytes, expected %d", zero.zeropage, pagesize)
 	}
 
 	return nil
