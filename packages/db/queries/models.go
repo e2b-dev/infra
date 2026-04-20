@@ -12,61 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type AccessToken struct {
-	UserID    uuid.UUID
-	CreatedAt time.Time
-	ID        uuid.UUID
-	// sensitive
-	AccessTokenHash       string
-	Name                  string
-	AccessTokenPrefix     string
-	AccessTokenLength     int32
-	AccessTokenMaskPrefix string
-	AccessTokenMaskSuffix string
-}
-
-type ActiveTemplateBuild struct {
-	BuildID    uuid.UUID
-	TeamID     uuid.UUID
-	TemplateID string
-	Tags       []string
-	CreatedAt  time.Time
-}
-
-type Addon struct {
-	ID                            uuid.UUID
-	TeamID                        uuid.UUID
-	Name                          string
-	Description                   *string
-	ExtraConcurrentSandboxes      int64
-	ExtraConcurrentTemplateBuilds int64
-	ExtraMaxVcpu                  int64
-	ExtraMaxRamMb                 int64
-	ExtraDiskMb                   int64
-	ValidFrom                     time.Time
-	ValidTo                       *time.Time
-	AddedBy                       uuid.UUID
-	IdempotencyKey                *string
-}
-
-type AuthUser struct {
-	ID        uuid.UUID
-	Email     string
-	CreatedAt time.Time
-}
-
-type BillingSandboxLog struct {
-	SandboxID       string
-	EnvID           string
-	Vcpu            int64
-	RamMb           int64
-	TotalDiskSizeMb int64
-	StartedAt       time.Time
-	StoppedAt       *time.Time
-	CreatedAt       time.Time
-	TeamID          uuid.UUID
-}
-
 type Cluster struct {
 	ID                 uuid.UUID
 	Endpoint           string
@@ -128,20 +73,6 @@ type EnvBuild struct {
 	TeamID             *uuid.UUID
 }
 
-type EnvBuildAssignment struct {
-	ID        uuid.UUID
-	EnvID     string
-	BuildID   uuid.UUID
-	Tag       string
-	Source    string
-	CreatedAt pgtype.Timestamptz
-}
-
-type EnvDefault struct {
-	EnvID       string
-	Description *string
-}
-
 type Snapshot struct {
 	CreatedAt           pgtype.Timestamptz
 	EnvID               string
@@ -156,14 +87,6 @@ type Snapshot struct {
 	AutoPause           bool
 	TeamID              uuid.UUID
 	Config              *types.PausedSandboxConfig
-}
-
-type SnapshotTemplate struct {
-	EnvID        string
-	SandboxID    string
-	CreatedAt    pgtype.Timestamptz
-	OriginNodeID *string
-	BuildID      *uuid.UUID
 }
 
 type Team struct {
@@ -181,22 +104,6 @@ type Team struct {
 	ProfilePictureUrl       *string
 }
 
-type TeamApiKey struct {
-	CreatedAt time.Time
-	TeamID    uuid.UUID
-	UpdatedAt *time.Time
-	Name      string
-	LastUsed  *time.Time
-	CreatedBy *uuid.UUID
-	ID        uuid.UUID
-	// sensitive
-	ApiKeyHash       string
-	ApiKeyPrefix     string
-	ApiKeyLength     int32
-	ApiKeyMaskPrefix string
-	ApiKeyMaskSuffix string
-}
-
 type TeamLimit struct {
 	ID                       uuid.UUID
 	MaxLengthHours           int64
@@ -205,26 +112,6 @@ type TeamLimit struct {
 	MaxVcpu                  int32
 	MaxRamMb                 int32
 	DiskMb                   int32
-}
-
-type Tier struct {
-	ID     string
-	Name   string
-	DiskMb int64
-	// The number of instances the team can run concurrently
-	ConcurrentInstances int64
-	MaxLengthHours      int64
-	MaxVcpu             int64
-	MaxRamMb            int64
-	// The number of concurrent template builds the team can run
-	ConcurrentTemplateBuilds int64
-}
-
-type User struct {
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	ID        uuid.UUID
-	Email     string
 }
 
 type UsersTeam struct {

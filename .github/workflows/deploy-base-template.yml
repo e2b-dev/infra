@@ -1,0 +1,53 @@
+name: Deploy Base Template
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: Target environment
+        required: true
+        type: choice
+        options:
+          - foxtrot
+          - staging
+          - juliett
+      use_cache:
+        description: Use the build cache when available
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: Base-Template-Release-${{ github.ref }}-${{ inputs.target_environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-template:
+    name: Build E2B template
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.target_environment }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Parse .tool-versions
+        uses: wistia/parse-tool-versions@32f568a4ffd4bfa7720ebf93f171597d1ebc979a  # v2.1.1
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "${{ env.BUN }}"
+
+      - name: Build template
+        working-directory: ./packages/shared/scripts
+        run: |
+          bun install
+          bun run ./build.prod.ts
+        env:
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+          USE_CACHE: ${{ inputs.use_cache }}
+
