@@ -166,3 +166,49 @@ func TestTokensMatch(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateClientProxyAuth(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		md          metadata.MD
+		expected    string
+		wantErrCode bool
+	}{
+		{
+			name:     "disabled when expected token empty",
+			md:       metadata.MD{},
+			expected: "",
+		},
+		{
+			name:     "valid token",
+			md:       metadata.Pairs(proxygrpc.MetadataClientProxyAuthToken, "secret"),
+			expected: "secret",
+		},
+		{
+			name:        "missing token",
+			md:          metadata.MD{},
+			expected:    "secret",
+			wantErrCode: true,
+		},
+		{
+			name:        "wrong token",
+			md:          metadata.Pairs(proxygrpc.MetadataClientProxyAuthToken, "wrong"),
+			expected:    "secret",
+			wantErrCode: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateClientProxyAuth(tt.md, tt.expected)
+			if tt.wantErrCode {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}

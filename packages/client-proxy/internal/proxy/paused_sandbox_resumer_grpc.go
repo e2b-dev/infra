@@ -2,12 +2,14 @@ package proxy
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
@@ -16,19 +18,28 @@ import (
 )
 
 type grpcPausedSandboxResumer struct {
-	conn   *grpc.ClientConn
-	client proxygrpc.SandboxServiceClient
+	conn      *grpc.ClientConn
+	client    proxygrpc.SandboxServiceClient
+	authToken string
 }
 
-func NewGrpcPausedSandboxResumer(address string) (PausedSandboxResumer, error) {
+func NewGrpcPausedSandboxResumer(address string, authToken string, tlsEnabled bool) (PausedSandboxResumer, error) {
 	// Client-proxy uses this gRPC client to trigger ResumeSandbox when needed.
 	if strings.TrimSpace(address) == "" {
 		return nil, fmt.Errorf("api grpc address is required")
 	}
+	if tlsEnabled && strings.TrimSpace(authToken) == "" {
+		return nil, fmt.Errorf("sandbox resume auth token is required when api grpc tls is enabled")
+	}
+
+	var creds credentials.TransportCredentials = insecure.NewCredentials()
+	if tlsEnabled {
+		creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
+	}
 
 	conn, err := grpc.NewClient(
 		address,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(creds),
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 	)
 	if err != nil {
@@ -36,8 +47,9 @@ func NewGrpcPausedSandboxResumer(address string) (PausedSandboxResumer, error) {
 	}
 
 	return &grpcPausedSandboxResumer{
-		conn:   conn,
-		client: proxygrpc.NewSandboxServiceClient(conn),
+		conn:      conn,
+		client:    proxygrpc.NewSandboxServiceClient(conn),
+		authToken: strings.TrimSpace(authToken),
 	}, nil
 }
 
@@ -58,6 +70,9 @@ func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string,
 
 	if envdAccessToken != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataEnvdAccessToken, envdAccessToken)
+	}
+	if c.authToken != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataClientProxyAuthToken, c.authToken)
 	}
 
 	resp, err := c.client.ResumeSandbox(ctx, &proxygrpc.SandboxResumeRequest{

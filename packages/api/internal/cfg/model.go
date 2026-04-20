@@ -55,6 +55,8 @@ type Config struct {
 
 	APIGrpcPort uint16 `env:"API_GRPC_PORT" envDefault:"5009"`
 
+	SandboxResumeAuthToken string `env:"SANDBOX_RESUME_AUTH_TOKEN"`
+
 	SandboxAccessTokenHashSeed string `env:"SANDBOX_ACCESS_TOKEN_HASH_SEED"`
 
 	VolumesToken VolumesTokenConfig

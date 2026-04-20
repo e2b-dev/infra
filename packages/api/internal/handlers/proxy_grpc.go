@@ -87,6 +87,19 @@ func denyResumePermission() error {
 	return status.Error(codes.PermissionDenied, "permission denied")
 }
 
+func validateClientProxyAuth(incomingMetadata metadata.MD, expectedToken string) error {
+	if expectedToken == "" {
+		return nil
+	}
+
+	providedToken, _ := metadataFirstValue(incomingMetadata, proxygrpc.MetadataClientProxyAuthToken)
+	if !tokensMatch(providedToken, expectedToken) {
+		return denyResumePermission()
+	}
+
+	return nil
+}
+
 const autoResumeTransitionWaitBudget = time.Minute
 
 func (s *SandboxService) getAutoResumeSnapshot(ctx context.Context, sandboxID string) (*snapshotcache.SnapshotInfo, *dbtypes.SandboxAutoResumeConfig, error) {
@@ -111,6 +124,11 @@ func (s *SandboxService) getAutoResumeSnapshot(ctx context.Context, sandboxID st
 }
 
 func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*proxygrpc.SandboxResumeResponse, error) {
+	incomingMetadata := metadataFromIncomingContext(ctx)
+	if err := validateClientProxyAuth(incomingMetadata, s.api.config.SandboxResumeAuthToken); err != nil {
+		return nil, err
+	}
+
 	sandboxID, err := utils.ShortID(req.GetSandboxId())
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid sandbox ID")
@@ -179,7 +197,6 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		network = snap.Snapshot.Config.Network
 	}
 
-	incomingMetadata := metadataFromIncomingContext(ctx)
 	isNonEnvdTraffic := isNonEnvdTrafficRequest(ctx, incomingMetadata, sandboxID)
 
 	// Validate traffic access token for sandboxes with private ingress.
