@@ -45,8 +45,9 @@ jobs:
       - name: Build template
         working-directory: ./packages/shared/scripts
         run: |
+          rm .env.local  # auto read by bun, which we don't want 
           bun install
-          bun --no-env-file run ./build.prod.ts
+          bun run ./build.prod.ts
         env:
           E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
           E2B_DOMAIN: ${{ vars.E2B_DOMAIN }}
