@@ -63,9 +63,7 @@ type Userfaultfd struct {
 
 	wg errgroup.Group
 
-	// defaultCopyMode is OR-ed into the copy mode of every UFFDIO_COPY.
-	// Production leaves this at 0; tests can set it to UFFDIO_COPY_MODE_WP to
-	// validate prefault-style flows that always copy with the WP bit asserted.
+	// defaultCopyMode overrides the UFFDIO_COPY mode for all faults when non-zero.
 	defaultCopyMode CULong
 
 	logger logger.Logger

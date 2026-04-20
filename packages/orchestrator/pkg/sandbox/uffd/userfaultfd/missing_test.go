@@ -132,6 +132,8 @@ func TestMissing(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+
+			h.checkDirtiness(t, tt.operations)
 		})
 	}
 }
@@ -139,8 +141,6 @@ func TestMissing(t *testing.T) {
 func TestParallelMissing(t *testing.T) {
 	t.Parallel()
 
-	// 10_000 reads is enough to exercise parallel pagefault handling without
-	// pushing the helper child into multi-minute runtime under -race.
 	parallelOperations := 10_000
 
 	tt := testConfig{

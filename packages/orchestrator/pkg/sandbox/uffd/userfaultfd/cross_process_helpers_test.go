@@ -102,10 +102,6 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	err = register(uffdFd, memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
 	require.NoError(t, err)
 
-	// -test.timeout=0 disables the helper's own per-test timeout. The parent test's
-	// context (t.Context()) is the sole authority on how long the helper may run;
-	// without this the helper can be killed by `go test`'s default timeout while the
-	// parent is still doing meaningful work, producing confusing "test killed" output.
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestHelperServingProcess", "-test.timeout=0")
 	cmd.Env = append(os.Environ(), "GO_TEST_HELPER_PROCESS=1")
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_START=%d", memoryStart))
