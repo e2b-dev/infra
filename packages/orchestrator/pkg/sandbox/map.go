@@ -102,6 +102,16 @@ func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) {
 	go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
 		s.OnInsert(ctx, sbx)
 	})
+
+	logger.L().Info(ctx, "adding sandbox to map",
+		logger.WithSandboxID(sbx.Runtime.SandboxID),
+		logger.WithTemplateID(sbx.Runtime.TemplateID),
+		logger.WithBuildID(sbx.Runtime.BuildID),
+		logger.WithSandboxIP(sbx.Slot.HostIPString()),
+		logger.WithEnvdVersion(sbx.Config.Envd.Version),
+		logger.WithKernelVersion(sbx.Config.FirecrackerConfig.KernelVersion),
+		logger.WithFirecrackerVersion(sbx.Config.FirecrackerConfig.FirecrackerVersion),
+	)
 }
 
 // MarkStopping removes the sandbox from live queries (Get, Items, Count).
@@ -118,7 +128,7 @@ func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) b
 			return false
 		}
 
-		logger.L().Info(ctx, "sandbox stopped",
+		logger.L().Info(ctx, "marking sandbox as stopping",
 			logger.WithSandboxID(sandboxID),
 			logger.WithLifecycleID(lifecycleID),
 			logger.WithSandboxIP(sbx.Slot.HostIPString()),
