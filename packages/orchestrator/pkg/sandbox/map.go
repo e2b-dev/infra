@@ -142,8 +142,11 @@ func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) b
 	return stopped
 }
 
-// NetworkReleased unregisters a sandbox's IP, and notifies OnNetworkRelease
+// NetworkReleased unregisters a sandbox's IP and notifies OnNetworkRelease
 // subscribers after a successful removal.
+//
+// Subscribers are invoked synchronously so the caller can rely on them
+// having completed before taking any follow-up action.
 func (m *Map) NetworkReleased(ctx context.Context, ip string) {
 	var sbx *Sandbox
 	removed := m.network.RemoveCb(ip, func(_ string, v *Sandbox, exists bool) bool {
@@ -166,7 +169,7 @@ func (m *Map) NetworkReleased(ctx context.Context, ip string) {
 		logger.WithSandboxIP(ip),
 	)
 
-	go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
+	m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
 		s.OnNetworkRelease(ctx, sbx)
 	})
 }
