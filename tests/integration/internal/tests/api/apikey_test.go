@@ -31,7 +31,7 @@ func TestCreateAPIKey(t *testing.T) {
 	}, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
 	require.NoError(t, err)
 
-	assert.Equal(t, http.StatusCreated, resp.StatusCode())
+	require.Equal(t, http.StatusCreated, resp.StatusCode())
 	assert.Equal(t, "test", resp.JSON201.Name)
 	assert.NotEmpty(t, resp.JSON201.Key)
 	assert.Regexp(t, fmt.Sprintf("^%s.+$", keys.ApiKeyPrefix), resp.JSON201.Key)
@@ -93,7 +93,7 @@ func TestDeleteAPIKey(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, http.StatusCreated, respC.StatusCode())
+		require.Equal(t, http.StatusCreated, respC.StatusCode())
 
 		// Delete the API key
 		respD, err := c.DeleteApiKeysApiKeyIDWithResponse(ctx, respC.JSON201.Id.String(), setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
@@ -204,6 +204,7 @@ func TestPatchAPIKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	require.Equal(t, http.StatusCreated, respC.StatusCode())
 
 	respList1, err := c.GetApiKeysWithResponse(ctx, setup.WithSupabaseToken(t), setup.WithSupabaseTeam(t))
 	if err != nil {
@@ -234,7 +235,7 @@ func TestPatchAPIKey(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, http.StatusOK, respList1.StatusCode())
+		require.Equal(t, http.StatusOK, respList2.StatusCode())
 
 		// Extract names from API keys
 		apiKeyNames = []string{}

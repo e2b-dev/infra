@@ -4,6 +4,10 @@ import (
 	"time"
 )
 
+// StaleCutoff is how long a team entry must be expired before it can be pruned
+// This prevents races where TTL is extended, but the sandbox would still be removed
+const StaleCutoff = 10 * time.Minute
+
 // TransitionEffect describes what happens to the sandbox when a state action completes.
 type TransitionEffect int
 

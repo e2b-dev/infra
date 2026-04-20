@@ -180,6 +180,7 @@ function generate_nomad_config {
 server {
   enabled = true
   bootstrap_expect = $num_servers
+  heartbeat_grace = "1m"
 }
 
 EOF

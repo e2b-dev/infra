@@ -47,7 +47,7 @@ func (m *Metadata) NextGeneration(buildID uuid.UUID) *Metadata {
 	}
 }
 
-func Serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
+func Serialize(metadata *Metadata, mappings []BuildMap) ([]byte, error) {
 	var buf bytes.Buffer
 
 	err := binary.Write(&buf, binary.LittleEndian, metadata)
@@ -55,8 +55,8 @@ func Serialize(metadata *Metadata, mappings []*BuildMap) ([]byte, error) {
 		return nil, fmt.Errorf("failed to write metadata: %w", err)
 	}
 
-	for _, mapping := range mappings {
-		err := binary.Write(&buf, binary.LittleEndian, mapping)
+	for i := range mappings {
+		err := binary.Write(&buf, binary.LittleEndian, &mappings[i])
 		if err != nil {
 			return nil, fmt.Errorf("failed to write block mapping: %w", err)
 		}
@@ -82,7 +82,7 @@ func DeserializeBytes(data []byte) (*Header, error) {
 		return nil, fmt.Errorf("failed to read metadata: %w", err)
 	}
 
-	mappings := make([]*BuildMap, 0)
+	mappings := make([]BuildMap, 0)
 
 	for {
 		var m BuildMap
@@ -95,7 +95,7 @@ func DeserializeBytes(data []byte) (*Header, error) {
 			return nil, fmt.Errorf("failed to read block mapping: %w", err)
 		}
 
-		mappings = append(mappings, &m)
+		mappings = append(mappings, m)
 	}
 
 	return NewHeader(&metadata, mappings)

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/bits-and-blooms/bitset"
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -18,16 +18,24 @@ import (
 var ignoreBuildID = uuid.Nil
 
 type DiffMetadata struct {
-	Dirty *bitset.BitSet
-	Empty *bitset.BitSet
+	Dirty *roaring.Bitmap
+	Empty *roaring.Bitmap
 
 	BlockSize int64
+}
+
+func NewDiffMetadata(blockSize int64, dirty *roaring.Bitmap) *DiffMetadata {
+	return &DiffMetadata{
+		Dirty:     dirty,
+		Empty:     roaring.New(),
+		BlockSize: blockSize,
+	}
 }
 
 func (d *DiffMetadata) toDiffMapping(
 	ctx context.Context,
 	buildID uuid.UUID,
-) (mapping []*BuildMap) {
+) (mapping []BuildMap) {
 	dirtyMappings := CreateMapping(
 		&buildID,
 		d.Dirty,
@@ -79,7 +87,7 @@ func (d *DiffMetadata) ToDiffHeader(
 
 	telemetry.SetAttributes(ctx,
 		attribute.Int64("snapshot.header.mappings.length", int64(len(m))),
-		attribute.Int64("snapshot.diff.size", int64(d.Dirty.Count()*uint(originalHeader.Metadata.BlockSize))),
+		attribute.Int64("snapshot.diff.size", int64(d.Dirty.GetCardinality())*int64(originalHeader.Metadata.BlockSize)),
 		attribute.Int64("snapshot.mapped_size", int64(metadata.Size)),
 		attribute.Int64("snapshot.block_size", int64(metadata.BlockSize)),
 		attribute.Int64("snapshot.metadata.version", int64(metadata.Version)),
@@ -106,24 +114,19 @@ func (d *DiffMetadata) ToDiffHeader(
 }
 
 type DiffMetadataBuilder struct {
-	dirty *bitset.BitSet
-	empty *bitset.BitSet
+	dirty *roaring.Bitmap
+	empty *roaring.Bitmap
 
 	blockSize int64
 }
 
-func NewDiffMetadataBuilder(size, blockSize int64) *DiffMetadataBuilder {
+func NewDiffMetadataBuilder(blockSize int64) *DiffMetadataBuilder {
 	return &DiffMetadataBuilder{
-		// TODO: We might be able to start with 0 as preallocating here actually takes space.
-		dirty: bitset.New(uint(TotalBlocks(size, blockSize))),
-		empty: bitset.New(0),
+		dirty: roaring.New(),
+		empty: roaring.New(),
 
 		blockSize: blockSize,
 	}
-}
-
-func (b *DiffMetadataBuilder) AddDirtyOffset(offset int64) {
-	b.dirty.Set(uint(BlockIdx(offset, b.blockSize)))
 }
 
 func (b *DiffMetadataBuilder) Process(ctx context.Context, block []byte, out io.Writer, offset int64) error {
@@ -134,12 +137,12 @@ func (b *DiffMetadataBuilder) Process(ctx context.Context, block []byte, out io.
 		return fmt.Errorf("error checking empty block: %w", err)
 	}
 	if isEmpty {
-		b.empty.Set(uint(blockIdx))
+		b.empty.Add(uint32(blockIdx))
 
 		return nil
 	}
 
-	b.dirty.Set(uint(blockIdx))
+	b.dirty.Add(uint32(blockIdx))
 	n, err := out.Write(block)
 	if err != nil {
 		logger.L().Error(ctx, "error writing to out", zap.Error(err))

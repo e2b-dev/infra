@@ -113,6 +113,12 @@ module "init" {
 
   template_bucket_location = var.template_bucket_location
   template_bucket_name     = var.template_bucket_name
+
+  anywhere_cache = {
+    enabled          = var.anywhere_cache_enabled
+    admission_policy = var.anywhere_cache_admission_policy
+    ttl              = var.anywhere_cache_ttl
+  }
 }
 
 module "cluster" {
@@ -240,7 +246,7 @@ module "nomad" {
   posthog_api_key_secret_name                            = module.init.posthog_api_key_secret_name
   analytics_collector_host_secret_name                   = module.init.analytics_collector_host_secret_name
   analytics_collector_api_token_secret_name              = module.init.analytics_collector_api_token_secret_name
-  api_admin_token                                        = random_password.api_admin_secret.result
+  api_admin_token_secret_name                            = module.init.api_admin_token_secret_name
   redis_cluster_url_secret_version                       = module.init.redis_cluster_url_secret_version
   redis_tls_ca_base64_secret_version                     = module.init.redis_tls_ca_base64_secret_version
   sandbox_access_token_hash_seed                         = random_password.sandbox_access_token_hash_seed.result
@@ -275,7 +281,11 @@ module "nomad" {
   otel_collector_resources_cpu_count = var.otel_collector_resources_cpu_count
 
   # Dashboard API
-  dashboard_api_count = var.dashboard_api_count
+  dashboard_api_count                     = var.dashboard_api_count
+  dashboard_api_admin_token_secret_name   = module.init.dashboard_api_admin_token_secret_name
+  supabase_db_connection_string           = var.supabase_db_connection_string
+  enable_auth_user_sync_background_worker = var.enable_auth_user_sync_background_worker
+  enable_billing_http_team_provision_sink = var.enable_billing_http_team_provision_sink
 
   # Docker reverse proxy
   docker_reverse_proxy_port                = var.docker_reverse_proxy_port

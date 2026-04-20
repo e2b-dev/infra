@@ -127,6 +127,7 @@ func TestSandboxAutoResumeWithoutExplicitTimeoutUsesMinimumTimeout(t *testing.T)
 	autoResume := api.SandboxAutoResumeConfig{Enabled: true}
 
 	// Create sandbox without passing timeout so API default is used.
+	utils.AcquireSandboxSlot(t)
 	createResp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 		TemplateID: setup.SandboxTemplateID,
 		AutoPause:  &autoPause,

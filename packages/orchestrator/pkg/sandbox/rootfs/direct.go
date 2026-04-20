@@ -131,7 +131,7 @@ func (o *DirectProvider) exportToDiff(ctx context.Context, out io.Writer) (*head
 		return nil, fmt.Errorf("error flushing path: %w", err)
 	}
 
-	builder := header.NewDiffMetadataBuilder(int64(o.header.Metadata.Size), o.blockSize)
+	builder := header.NewDiffMetadataBuilder(o.blockSize)
 
 	f, err := os.Open(o.path)
 	if err != nil {

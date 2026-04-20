@@ -76,6 +76,9 @@ tf_vars := \
 	$(call tfvar, LOKI_BOOT_DISK_TYPE) \
 	$(call tfvar, LOKI_USE_V13_SCHEMA_FROM) \
 	$(call tfvar, DASHBOARD_API_COUNT) \
+	$(call tfvar, SUPABASE_DB_CONNECTION_STRING) \
+	$(call tfvar, ENABLE_AUTH_USER_SYNC_BACKGROUND_WORKER) \
+	$(call tfvar, ENABLE_BILLING_HTTP_TEAM_PROVISION_SINK) \
 	$(call tfvar, DEFAULT_PERSISTENT_VOLUME_TYPE) \
 	$(call tfvar, PERSISTENT_VOLUME_TYPES) \
 	$(call tfvar, DB_MAX_OPEN_CONNECTIONS) \
@@ -83,7 +86,8 @@ tf_vars := \
 	$(call tfvar, AUTH_DB_MAX_OPEN_CONNECTIONS) \
 	$(call tfvar, AUTH_DB_MIN_IDLE_CONNECTIONS) \
 	$(call tfvar, GCS_GRPC_CONNECTION_POOL_SIZE) \
-	$(call tfvar, ADDITIONAL_API_PATHS_HANDLED_BY_INGRESS)
+	$(call tfvar, ADDITIONAL_API_PATHS_HANDLED_BY_INGRESS) \
+	$(call tfvar, ANYWHERE_CACHE_ENABLED)
 
 .PHONY: init
 init:
@@ -112,6 +116,12 @@ init:
 .PHONY: state-migrate
 state-migrate:
 	@ printf "Running Terraform state migrations for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
+	@ $(tf_vars) $(TF) state mv 'random_password.api_admin_secret' 'module.init.random_password.api_admin_secret' || true
+	@ $(tf_vars) $(TF) state mv 'google_secret_manager_secret.api_admin_token' 'module.init.google_secret_manager_secret.api_admin_token' || true
+	@ $(tf_vars) $(TF) state mv 'google_secret_manager_secret_version.api_admin_token_value' 'module.init.google_secret_manager_secret_version.api_admin_token_value' || true
+	@ $(tf_vars) $(TF) state mv 'random_password.dashboard_api_admin_secret' 'module.init.random_password.dashboard_api_admin_secret' || true
+	@ $(tf_vars) $(TF) state mv 'google_secret_manager_secret.dashboard_api_admin_token' 'module.init.google_secret_manager_secret.dashboard_api_admin_token' || true
+	@ $(tf_vars) $(TF) state mv 'google_secret_manager_secret_version.dashboard_api_admin_token_value' 'module.init.google_secret_manager_secret_version.dashboard_api_admin_token_value' || true
 
 .PHONY: apply-init
 apply-init:
@@ -207,7 +217,6 @@ move:
 # Login for Terraform (uses application default creds)
 .PHONY: provider-login
 provider-login:
-	gcloud --quiet auth login
+	gcloud --quiet auth login --update-adc
 	gcloud config set project "$(GCP_PROJECT_ID)"
 	gcloud --quiet auth configure-docker "$(GCP_REGION)-docker.pkg.dev"
-	gcloud --quiet auth application-default login

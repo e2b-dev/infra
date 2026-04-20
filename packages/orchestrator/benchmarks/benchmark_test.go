@@ -80,7 +80,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		return utils.Must(filepath.Abs(s))
 	}
 
-	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	endpoint := os.Getenv("OTEL_COLLECTOR_GRPC_ENDPOINT")
 	if endpoint != "" {
 		spanExporter, err := telemetry.NewSpanExporter(b.Context(),
 			otlptracegrpc.WithEndpoint(endpoint),
@@ -185,7 +185,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 	b.Cleanup(templateCache.Stop)
 
 	sandboxes := sandbox.NewSandboxesMap()
-	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), sandboxes)
+	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), network.NewNoopEgressProxy(), sandboxes)
 
 	dockerhubRepository, err := dockerhub.GetRemoteRepository(b.Context())
 	require.NoError(b, err)

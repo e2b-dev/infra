@@ -3,7 +3,7 @@ package block
 import (
 	"iter"
 
-	"github.com/bits-and-blooms/bitset"
+	"github.com/RoaringBitmap/roaring/v2"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -36,24 +36,13 @@ func NewRangeFromBlocks(startIdx, numberOfBlocks, blockSize int64) Range {
 	}
 }
 
-// bitsetRanges returns a sequence of the ranges of the set bits of the bitset.
-func BitsetRanges(b *bitset.BitSet, blockSize int64) iter.Seq[Range] {
+// BitsetRanges returns a sequence of the ranges of the set bits of the bitmap.
+func BitsetRanges(b *roaring.Bitmap, blockSize int64) iter.Seq[Range] {
 	return func(yield func(Range) bool) {
-		start, found := b.NextSet(0)
-
-		for found {
-			end, endOk := b.NextClear(start)
-			if !endOk {
-				yield(NewRangeFromBlocks(int64(start), int64(b.Len()-start), blockSize))
-
+		for start, endExcl := range b.Ranges() {
+			if !yield(NewRangeFromBlocks(int64(start), int64(endExcl)-int64(start), blockSize)) {
 				return
 			}
-
-			if !yield(NewRangeFromBlocks(int64(start), int64(end-start), blockSize)) {
-				return
-			}
-
-			start, found = b.NextSet(end + 1)
 		}
 	}
 }

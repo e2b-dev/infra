@@ -12,28 +12,34 @@ import (
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
+	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
+	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 )
 
 var _ api.ServerInterface = (*APIStore)(nil)
 
 type APIStore struct {
-	config      cfg.Config
-	db          *sqlcdb.Client
-	authDB      *authdb.Client
-	clickhouse  clickhouse.Clickhouse
-	authService *sharedauth.AuthService[*types.Team]
+	config            cfg.Config
+	db                *sqlcdb.Client
+	authDB            *authdb.Client
+	supabaseDB        *supabasedb.Client
+	clickhouse        clickhouse.Clickhouse
+	authService       *sharedauth.AuthService[*types.Team]
+	teamProvisionSink internalteamprovision.TeamProvisionSink
 }
 
-func NewAPIStore(config cfg.Config, db *sqlcdb.Client, authDB *authdb.Client, ch clickhouse.Clickhouse, authService *sharedauth.AuthService[*types.Team]) *APIStore {
+func NewAPIStore(config cfg.Config, db *sqlcdb.Client, authDB *authdb.Client, supabaseDB *supabasedb.Client, ch clickhouse.Clickhouse, authService *sharedauth.AuthService[*types.Team], teamProvisionSink internalteamprovision.TeamProvisionSink) *APIStore {
 	return &APIStore{
-		config:      config,
-		db:          db,
-		authDB:      authDB,
-		clickhouse:  ch,
-		authService: authService,
+		config:            config,
+		db:                db,
+		authDB:            authDB,
+		supabaseDB:        supabaseDB,
+		clickhouse:        ch,
+		authService:       authService,
+		teamProvisionSink: teamProvisionSink,
 	}
 }
 
