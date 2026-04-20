@@ -15,6 +15,7 @@ readonly SYSTEMD_CONFIG_PATH="/etc/systemd/system/consul.service"
 
 readonly EC2_INSTANCE_METADATA_URL="http://169.254.169.254/latest/meta-data"
 readonly EC2_DYNAMIC_METADATA_URL="http://169.254.169.254/latest/dynamic/instance-identity/document"
+readonly EC2_METADATA_TOKEN_URL="http://169.254.169.254/latest/api/token"
 readonly CLUSTER_SIZE_INSTANCE_METADATA_KEY_NAME="cluster-size"
 
 readonly DEFAULT_RAFT_PROTOCOL="3"
@@ -86,15 +87,38 @@ function print_usage {
 # Get the value at a specific Instance Metadata path.
 function get_instance_metadata_value {
   local -r path="$1"
+  local token=""
+  local -a token_header=()
+
+  token=$(get_instance_metadata_token)
+  if [[ -n "$token" ]]; then
+    token_header=(--header "X-aws-ec2-metadata-token: $token")
+  fi
 
   log_info "Looking up Metadata value at $EC2_INSTANCE_METADATA_URL/$path"
-  curl --silent --show-error --location "$EC2_INSTANCE_METADATA_URL/$path"
+  curl --silent --show-error --location "${token_header[@]}" "$EC2_INSTANCE_METADATA_URL/$path"
+}
+
+# Get an IMDSv2 token for Instance Metadata calls.
+function get_instance_metadata_token {
+  curl --silent --show-error --location --fail \
+    --request PUT \
+    --header "X-aws-ec2-metadata-token-ttl-seconds: 21600" \
+    "$EC2_METADATA_TOKEN_URL" || true
 }
 
 # Get dynamic instance metadata (includes region, account-id, etc.)
 function get_instance_dynamic_metadata {
+  local token=""
+  local -a token_header=()
+
+  token=$(get_instance_metadata_token)
+  if [[ -n "$token" ]]; then
+    token_header=(--header "X-aws-ec2-metadata-token: $token")
+  fi
+
   log_info "Looking up dynamic instance metadata"
-  curl --silent --show-error --location "$EC2_DYNAMIC_METADATA_URL"
+  curl --silent --show-error --location "${token_header[@]}" "$EC2_DYNAMIC_METADATA_URL"
 }
 
 # Get the value of the given tag from EC2 instance tags
