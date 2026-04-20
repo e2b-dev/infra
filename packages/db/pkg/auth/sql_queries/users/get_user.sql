@@ -1,2 +1,2 @@
 -- name: GetUser :one
-SELECT * FROM "auth"."users" where id = @user_id;
+SELECT id, email FROM "public"."users" where id = @user_id;
