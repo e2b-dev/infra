@@ -73,7 +73,7 @@ func buildTemplate(
 		setup.WithTestsUserAgent(),
 	)
 	require.NoError(tb, err)
-	assert.Equal(tb, http.StatusAccepted, startResp.StatusCode())
+	require.Equal(tb, http.StatusAccepted, startResp.StatusCode())
 
 	logLevel := api.LogLevelInfo
 	if EnableDebugLogs {
@@ -95,7 +95,7 @@ func buildTemplate(
 			setup.WithTestsUserAgent(),
 		)
 		require.NoError(tb, err)
-		assert.Equal(tb, http.StatusOK, statusResp.StatusCode(), string(statusResp.Body))
+		require.Equal(tb, http.StatusOK, statusResp.StatusCode(), string(statusResp.Body))
 		require.NotNil(tb, statusResp.JSON200, string(statusResp.Body))
 
 		offset += len(statusResp.JSON200.LogEntries)
