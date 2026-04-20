@@ -70,6 +70,10 @@ output "supabase_jwt_secret_name" {
   value = google_secret_manager_secret_version.supabase_jwt_secrets.secret
 }
 
+output "supabase_db_connection_string_secret_version" {
+  value = google_secret_manager_secret_version.supabase_db_connection_string
+}
+
 output "postgres_connection_string_secret_name" {
   value = google_secret_manager_secret.postgres_connection_string.name
 }

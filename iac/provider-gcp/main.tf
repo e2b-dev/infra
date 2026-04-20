@@ -283,7 +283,7 @@ module "nomad" {
   # Dashboard API
   dashboard_api_count                          = var.dashboard_api_count
   dashboard_api_admin_token_secret_name        = module.init.dashboard_api_admin_token_secret_name
-  supabase_db_connection_string_secret_version = google_secret_manager_secret_version.supabase_db_connection_string
+  supabase_db_connection_string_secret_version = module.init.supabase_db_connection_string_secret_version
   enable_auth_user_sync_background_worker      = var.enable_auth_user_sync_background_worker
   enable_billing_http_team_provision_sink      = var.enable_billing_http_team_provision_sink
 
