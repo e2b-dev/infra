@@ -32,7 +32,7 @@ while [[ $SECONDS_WAITED -lt $TIMEOUT ]]; do
    # We are using EBS volume ID to find device name (that is random in new EC2 instances)
    # and then mount this drive to clickhouse data directory.
    # Volume ID is used in nvme device metadata but without "-" so we need to strip it first.
-  DISK=$(nvme list 2>/dev/null | awk -v vol="$EBS_VOLUME_ID" '$2 == vol { print $1 }')
+  DISK=$(nvme list 2>/dev/null | awk -v vol="$EBS_VOLUME_ID" '$2 == vol || $3 == vol { print $1 }')
 
   if [[ -n "$DISK" ]]; then
     echo "Found disk: $DISK"
