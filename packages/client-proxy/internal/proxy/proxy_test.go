@@ -45,6 +45,26 @@ func (r *recordingResumer) Resume(_ context.Context, sandboxID string, sandboxPo
 	return "10.0.0.1", nil
 }
 
+type catalogStoringResumer struct {
+	catalog catalog.SandboxesCatalog
+	nodeIP  string
+}
+
+func (r catalogStoringResumer) Init(_ context.Context) {}
+
+func (r catalogStoringResumer) Resume(ctx context.Context, sandboxID string, _ uint64, _ string, _ string) (string, error) {
+	err := r.catalog.StoreSandbox(ctx, sandboxID, &catalog.SandboxInfo{
+		OrchestratorIP: r.nodeIP,
+		ExecutionID:    "exec",
+		StartedAt:      time.Now(),
+	}, time.Minute)
+	if err != nil {
+		return "", err
+	}
+
+	return "", nil
+}
+
 func newFF(t *testing.T, autoResumeEnabled bool) *featureflags.Client {
 	t.Helper()
 
@@ -101,6 +121,27 @@ func TestCatalogResolution_CatalogMiss(t *testing.T) {
 	ff := newFF(t, true)
 
 	_, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
+	require.ErrorIs(t, err, ErrNodeNotFound)
+}
+
+func TestCatalogResolution_CatalogMiss_ResumeEmptyIPUsesCatalog(t *testing.T) {
+	t.Parallel()
+
+	c := catalog.NewMemorySandboxesCatalog()
+	ff := newFF(t, true)
+
+	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, catalogStoringResumer{catalog: c, nodeIP: "10.0.0.1"}, ff)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.1", nodeIP)
+}
+
+func TestCatalogResolution_CatalogMiss_ResumeEmptyIPWithoutCatalogReturnsNotFound(t *testing.T) {
+	t.Parallel()
+
+	c := catalog.NewMemorySandboxesCatalog()
+	ff := newFF(t, true)
+
+	_, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, stubResumer{nodeIP: ""}, ff)
 	require.ErrorIs(t, err, ErrNodeNotFound)
 }
 

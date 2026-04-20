@@ -53,7 +53,23 @@ func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64
 				return "", pausedErr
 			}
 			if res == autoResumeSucceeded {
-				return nodeIP, nil
+				if nodeIP != "" {
+					return nodeIP, nil
+				}
+
+				resumedSandbox, catalogErr := c.GetSandbox(ctx, sandboxId)
+				if catalogErr != nil {
+					if errors.Is(catalogErr, catalog.ErrSandboxNotFound) {
+						return "", ErrNodeNotFound
+					}
+
+					return "", fmt.Errorf("failed to get resumed sandbox from catalog: %w", catalogErr)
+				}
+				if resumedSandbox.OrchestratorIP == "" {
+					return "", ErrNodeNotFound
+				}
+
+				return resumedSandbox.OrchestratorIP, nil
 			}
 
 			return "", ErrNodeNotFound
