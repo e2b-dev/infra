@@ -108,7 +108,7 @@ func TestIntegrationTest(t *testing.T) {
 	volumeName := "test-volume-1"
 	volumeID := uuid.New()
 	sandboxes := sandbox.NewSandboxesMap()
-	sandboxes.Insert(t.Context(), &sandbox.Sandbox{
+	sandboxes.NetworkMap.Insert(&sandbox.Sandbox{
 		Metadata: &sandbox.Metadata{
 			Runtime: sandbox.RuntimeMetadata{
 				SandboxID: sandboxID,

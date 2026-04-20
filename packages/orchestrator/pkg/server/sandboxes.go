@@ -428,11 +428,11 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		return nil, status.Errorf(codes.NotFound, "sandbox '%s' not found", in.GetSandboxId())
 	}
 
-	// Mark the sandbox as stopping so it is excluded from live queries (Get, Items,
+	// Mark the sandbox as stopped so it is excluded from live queries (Get, Items,
 	// Count) but remains findable by IP (GetByHostPort) while the Firecracker
 	// process finishes shutting down.
-	// This prevents the sandbox to be synced to API again
-	marked := s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
+	// This prevents the sandbox from being synced to API again.
+	marked := s.sandboxFactory.Sandboxes.MarkStopped(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
 	if !marked {
 		telemetry.ReportCriticalError(ctx, "failed to mark sandbox as stopping", nil, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -499,7 +499,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
-	marked := s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
+	marked := s.sandboxFactory.Sandboxes.MarkStopped(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
 	if !marked {
 		telemetry.ReportCriticalError(ctx, "failed to mark sandbox as stopping", nil, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -577,7 +577,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	}
 	defer s.startingSandboxes.Release(1)
 
-	marked := s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
+	marked := s.sandboxFactory.Sandboxes.MarkStopped(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
 	if !marked {
 		telemetry.ReportCriticalError(ctx, "failed to mark sandbox as stopping", nil, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -670,7 +670,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		if err := res.snapshot.Upload(uploadCtx, s.persistence, res.paths); err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
-			s.sandboxFactory.Sandboxes.MarkStopping(ctx, resumedSbx.Runtime.SandboxID, resumedSbx.LifecycleID)
+			s.sandboxFactory.Sandboxes.MarkStopped(ctx, resumedSbx.Runtime.SandboxID, resumedSbx.LifecycleID)
 			s.stopSandboxAsync(context.WithoutCancel(ctx), resumedSbx)
 
 			return nil, status.Errorf(codes.Internal, "error uploading snapshot for checkpoint '%s': %s", in.GetSandboxId(), err)

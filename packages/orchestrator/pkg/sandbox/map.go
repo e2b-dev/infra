@@ -10,30 +10,60 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
-// SandboxStatus represents the lifecycle state of a sandbox.
-type SandboxStatus int32
+// NetworkMap provides O(1) lookups from host IP to sandbox.
+// It is managed independently of the live sandbox map — Insert is called
+// when a network slot is assigned, Remove when the slot is released.
+type NetworkMap struct {
+	m *smap.Map[*Sandbox]
+}
 
-const (
-	// StatusStarting is the initial state: the sandbox is being created but
-	// is not yet ready to serve traffic.
-	StatusStarting SandboxStatus = 0
-	// StatusRunning means the sandbox is fully initialised and healthy.
-	StatusRunning SandboxStatus = 1
-	// StatusStopping means the sandbox has been killed or paused. It remains in
-	// the map briefly so that IP-based lookups (logs, NFS, TCP firewall)
-	// still resolve, but it is excluded from all "live" queries.
-	StatusStopping SandboxStatus = 2
-)
+func NewNetworkMap() *NetworkMap {
+	return &NetworkMap{m: smap.New[*Sandbox]()}
+}
 
+// Insert registers a sandbox's IP so it is findable by GetByHostPort.
+func (idx *NetworkMap) Insert(sbx *Sandbox) {
+	idx.m.Insert(sbx.Slot.HostIPString(), sbx)
+}
+
+// Remove unregisters a sandbox's IP, guarding against the slot having
+// been reused by a new sandbox.
+func (idx *NetworkMap) Remove(sbx *Sandbox) {
+	idx.m.RemoveCb(sbx.Slot.HostIPString(), func(_ string, v *Sandbox, exists bool) bool {
+		return exists && v == sbx
+	})
+}
+
+// GetByHostPort looks up a sandbox by its host IP address parsed from hostPort.
+func (idx *NetworkMap) GetByHostPort(hostPort string) (*Sandbox, error) {
+	reqIP, _, err := net.SplitHostPort(hostPort)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing remote address %s: %w", hostPort, err)
+	}
+
+	sbx, ok := idx.m.Get(reqIP)
+	if !ok {
+		return nil, fmt.Errorf("sandbox not found")
+	}
+
+	return sbx, nil
+}
+
+// MapSubscriber receives lifecycle notifications from the sandbox Map.
 type MapSubscriber interface {
-	// OnInsert is triggered when a sandbox transitions to the running state
+	// OnInsert is triggered when a sandbox transitions to the running state.
 	OnInsert(ctx context.Context, sandbox *Sandbox)
-	// OnRemove is triggered when a sandbox is completely stopped and remove from the map
+	// OnRemove is triggered when a sandbox's network slot is released.
 	OnRemove(ctx context.Context, sandbox *Sandbox)
 }
 
+// Map holds sandboxes that are live (running). It is independent of the
+// NetworkMap — the two are managed through separate Insert/Remove calls.
 type Map struct {
-	sandboxes *smap.Map[*Sandbox]
+	live *smap.Map[*Sandbox]
+	// NetworkMap maps host IP string to sandbox for O(1) reverse lookups.
+	// Managed independently: Insert when slot is assigned, Remove when released.
+	NetworkMap *NetworkMap
 
 	subs     []MapSubscriber
 	subsLock sync.RWMutex
@@ -56,71 +86,20 @@ func (m *Map) trigger(ctx context.Context, fn func(context.Context, MapSubscribe
 }
 
 func (m *Map) Items() map[string]*Sandbox {
-	all := m.sandboxes.Items()
-	result := make(map[string]*Sandbox, len(all))
-	for k, v := range all {
-		if v.IsRunning() {
-			result[k] = v
-		}
-	}
-
-	return result
+	return m.live.Items()
 }
 
 func (m *Map) Count() int {
-	count := 0
-	for _, v := range m.sandboxes.Items() {
-		if v.IsRunning() {
-			count++
-		}
-	}
-
-	return count
+	return m.live.Count()
 }
 
 func (m *Map) Get(sandboxID string) (*Sandbox, bool) {
-	sbx, ok := m.sandboxes.Get(sandboxID)
-	if !ok || !sbx.IsRunning() {
-		return nil, false
-	}
-
-	return sbx, true
+	return m.live.Get(sandboxID)
 }
 
-// GetByHostPort looks up a sandbox by its host IP address parsed from hostPort.
-// It matches any sandbox in the map (starting, running, or stopping).
-func (m *Map) GetByHostPort(hostPort string) (*Sandbox, error) {
-	reqIP, _, err := net.SplitHostPort(hostPort)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing remote address %s: %w", hostPort, err)
-	}
-
-	for _, sbx := range m.sandboxes.Items() {
-		if sbx.Slot.HostIPString() == reqIP {
-			return sbx, nil
-		}
-	}
-
-	return nil, fmt.Errorf("sandbox not found")
-}
-
-func (m *Map) Insert(ctx context.Context, sbx *Sandbox) {
-	logger.L().Info(ctx, "adding sandbox to map",
-		logger.WithSandboxID(sbx.Runtime.SandboxID),
-		logger.WithTemplateID(sbx.Runtime.TemplateID),
-		logger.WithBuildID(sbx.Runtime.BuildID),
-		logger.WithSandboxIP(sbx.Slot.HostIPString()),
-		logger.WithEnvdVersion(sbx.Config.Envd.Version),
-		logger.WithKernelVersion(sbx.Config.FirecrackerConfig.KernelVersion),
-		logger.WithFirecrackerVersion(sbx.Config.FirecrackerConfig.FirecrackerVersion),
-	)
-
-	m.sandboxes.Insert(sbx.Runtime.SandboxID, sbx)
-}
-
-// MarkRunning transitions a sandbox from starting to running and notifies OnInsert subscribers.
-func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) {
-	if !sbx.status.CompareAndSwap(int32(StatusStarting), int32(StatusRunning)) {
+// SandboxStarted makes the sandbox visible to Get/Items/Count and notifies OnInsert subscribers.
+func (m *Map) SandboxStarted(ctx context.Context, sbx *Sandbox) {
+	if !m.live.InsertIfAbsent(sbx.Runtime.SandboxID, sbx) {
 		return
 	}
 
@@ -129,13 +108,12 @@ func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) {
 	})
 }
 
-// MarkStopping transitions a sandbox to the stopping state. It stays in in the map
-// so that IP-based lookups still resolve while the Firecracker process finishes shutting down.
-// Returns true if the sandbox was successfully marked as stopping, false if it was not found or already stopping.
-func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) bool {
-	marked := false
-	// Use RemoveCb to update the sandbox atomically
-	m.sandboxes.RemoveCb(sandboxID, func(_ string, sbx *Sandbox, exists bool) bool {
+// MarkStopped removes the sandbox from live queries (Get, Items, Count).
+// Returns true if the sandbox was successfully removed.
+func (m *Map) MarkStopped(ctx context.Context, sandboxID, lifecycleID string) bool {
+	stopped := false
+
+	m.live.RemoveCb(sandboxID, func(_ string, sbx *Sandbox, exists bool) bool {
 		if !exists {
 			return false
 		}
@@ -144,55 +122,37 @@ func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) b
 			return false
 		}
 
-		// It was already marked as stopping, no need to log again
-		if !sbx.status.CompareAndSwap(int32(StatusRunning), int32(StatusStopping)) {
-			return false
-		}
-
-		logger.L().Info(ctx, "marking sandbox as stopping by lifecycle ID",
+		logger.L().Info(ctx, "sandbox stopped",
 			logger.WithSandboxID(sandboxID),
 			logger.WithLifecycleID(lifecycleID),
 			logger.WithSandboxIP(sbx.Slot.HostIPString()),
 		)
 
-		marked = true
-
-		return false
-	})
-
-	return marked
-}
-
-func (m *Map) Remove(ctx context.Context, sandboxID, lifecycleID string) {
-	var sbx *Sandbox
-
-	removed := m.sandboxes.RemoveCb(sandboxID, func(_ string, v *Sandbox, exists bool) bool {
-		if !exists {
-			return false
-		}
-
-		if v.LifecycleID != lifecycleID {
-			return false
-		}
-
-		sbx = v
-
-		logger.L().Info(ctx, "removing sandbox by lifecycle ID",
-			logger.WithSandboxID(sandboxID),
-			logger.WithLifecycleID(lifecycleID),
-			logger.WithSandboxIP(sbx.Slot.HostIPString()),
-		)
+		stopped = true
 
 		return true
 	})
 
-	if removed {
-		go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
-			s.OnRemove(ctx, sbx)
-		})
-	}
+	return stopped
+}
+
+// SandboxRemoved notifies OnRemove subscribers. Called after all sandbox
+// resources (network slot, files, etc.) have been released.
+func (m *Map) SandboxRemoved(ctx context.Context, sbx *Sandbox) {
+	logger.L().Info(ctx, "sandbox removed",
+		logger.WithSandboxID(sbx.Runtime.SandboxID),
+		logger.WithLifecycleID(sbx.LifecycleID),
+		logger.WithSandboxIP(sbx.Slot.HostIPString()),
+	)
+
+	go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
+		s.OnRemove(ctx, sbx)
+	})
 }
 
 func NewSandboxesMap() *Map {
-	return &Map{sandboxes: smap.New[*Sandbox]()}
+	return &Map{
+		live:       smap.New[*Sandbox](),
+		NetworkMap: NewNetworkMap(),
+	}
 }

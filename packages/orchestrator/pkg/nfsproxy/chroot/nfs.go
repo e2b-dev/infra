@@ -135,7 +135,7 @@ func (h *NFSHandler) Mount(
 var mountPath = regexp.MustCompile(`^/[^/]+$`)
 
 func (h *NFSHandler) getChroot(ctx context.Context, remoteAddr net.Addr, request nfs.MountRequest) (*chrooted.Chrooted, error) {
-	sbx, err := h.sandboxes.GetByHostPort(remoteAddr.String())
+	sbx, err := h.sandboxes.NetworkMap.GetByHostPort(remoteAddr.String())
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrUnknownSandbox, err)
 	}

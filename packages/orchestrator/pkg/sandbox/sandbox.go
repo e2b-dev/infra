@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
-	"sync/atomic"
+
 	"time"
 
 	"github.com/google/uuid"
@@ -236,8 +236,6 @@ type Sandbox struct {
 	exit *utils.ErrorOnce
 
 	stop utils.Lazy[error]
-
-	status atomic.Int32
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -246,11 +244,6 @@ func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 		TemplateID: s.Runtime.TemplateID,
 		TeamID:     s.Runtime.TeamID,
 	}
-}
-
-// IsRunning returns whether the sandbox has finished starting and is running.
-func (s *Sandbox) IsRunning() bool {
-	return SandboxStatus(s.status.Load()) == StatusRunning
 }
 
 // GetStartedAt returns the sandbox start time in a thread-safe manner.
@@ -340,9 +333,14 @@ func (f *Factory) CreateSandbox(
 	}()
 
 	lifecycleID := uuid.NewString()
+
+	var sbx *Sandbox
 	// We want to remove from the map as late as possible
 	cleanup.Add(ctx, func(ctx context.Context) error {
-		f.Sandboxes.Remove(ctx, runtime.SandboxID, lifecycleID)
+		if sbx != nil {
+			f.Sandboxes.NetworkMap.Remove(sbx)
+			f.Sandboxes.SandboxRemoved(ctx, sbx)
+		}
 
 		return nil
 	})
@@ -459,7 +457,7 @@ func (f *Factory) CreateSandbox(
 		endAt:     time.Now().Add(sandboxTimeout),
 	}
 
-	sbx := &Sandbox{
+	sbx = &Sandbox{
 		LifecycleID: lifecycleID,
 
 		Resources:    resources,
@@ -480,9 +478,9 @@ func (f *Factory) CreateSandbox(
 		exit: exit,
 	}
 
-	f.Sandboxes.Insert(ctx, sbx)
+	f.Sandboxes.NetworkMap.Insert(sbx)
 	cleanup.Add(ctx, func(ctx context.Context) error {
-		f.Sandboxes.MarkStopping(ctx, runtime.SandboxID, sbx.LifecycleID)
+		f.Sandboxes.MarkStopped(ctx, runtime.SandboxID, sbx.LifecycleID)
 
 		return nil
 	})
@@ -544,7 +542,7 @@ func (f *Factory) CreateSandbox(
 		exit.SetError(errors.Join(err, fcErr))
 	}()
 
-	f.Sandboxes.MarkRunning(ctx, sbx)
+	f.Sandboxes.SandboxStarted(ctx, sbx)
 
 	return sbx, nil
 }
@@ -588,9 +586,14 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	lifecycleID := uuid.NewString()
+
+	var sbx *Sandbox
 	// We want to remove from the map as late as possible
 	cleanup.Add(ctx, func(ctx context.Context) error {
-		f.Sandboxes.Remove(ctx, runtime.SandboxID, lifecycleID)
+		if sbx != nil {
+			f.Sandboxes.NetworkMap.Remove(sbx)
+			f.Sandboxes.SandboxRemoved(ctx, sbx)
+		}
 
 		return nil
 	})
@@ -805,7 +808,7 @@ func (f *Factory) ResumeSandbox(
 		endAt:     endAt,
 	}
 
-	sbx := &Sandbox{
+	sbx = &Sandbox{
 		LifecycleID: lifecycleID,
 
 		Resources:    resources,
@@ -836,12 +839,12 @@ func (f *Factory) ResumeSandbox(
 		return sbx.Stop(ctx)
 	})
 
-	// Insert the sandbox into the map before Resume so it is findable by source address
+	// Register the sandbox IP before Resume so it is findable by source address
 	// during the resume (e.g. for TCP firewall lookups). On failure the deferred cleanup
 	// will remove it.
-	f.Sandboxes.Insert(ctx, sbx)
+	f.Sandboxes.NetworkMap.Insert(sbx)
 	cleanup.Add(ctx, func(ctx context.Context) error {
-		f.Sandboxes.MarkStopping(ctx, runtime.SandboxID, sbx.LifecycleID)
+		f.Sandboxes.MarkStopped(ctx, runtime.SandboxID, sbx.LifecycleID)
 
 		return nil
 	})
@@ -903,7 +906,7 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
 	}
 
-	f.Sandboxes.MarkRunning(ctx, sbx)
+	f.Sandboxes.SandboxStarted(ctx, sbx)
 
 	telemetry.ReportEvent(execCtx, "envd initialized")
 
