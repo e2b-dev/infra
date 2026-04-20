@@ -192,10 +192,7 @@ func (u *Userfaultfd) Serve(
 
 		buf := make([]byte, unsafe.Sizeof(UffdMsg{}))
 
-		// Drain all queued events into a batch. The fd is non-blocking, so
-		// EAGAIN means "queue empty" and is the normal termination signal.
 		var pagefaults []*UffdPagefault
-	readLoop:
 		for {
 			_, err := syscall.Read(int(u.fd), buf)
 			if err == syscall.EINTR {
@@ -207,7 +204,7 @@ func (u *Userfaultfd) Serve(
 			if err == syscall.EAGAIN {
 				eagainCounter.Increase("EAGAIN")
 
-				break readLoop
+				break
 			}
 
 			if err != nil {
@@ -265,10 +262,7 @@ func (u *Userfaultfd) Serve(
 				continue
 			}
 
-			// MINOR and WP page-fault events are not expected. MINOR is never
-			// registered. WP is registered by Firecracker but handled
-			// asynchronously (UFFDIO_WRITEPROTECT), so the kernel does not
-			// deliver synchronous WP page-faults to us.
+			// MINOR and WP flags are not expected as we don't register the uffd with these flags.
 			return fmt.Errorf("unexpected event type: %d, closing uffd", flags)
 		}
 	}
