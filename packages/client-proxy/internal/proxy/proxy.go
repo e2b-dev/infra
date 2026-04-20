@@ -57,6 +57,7 @@ func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64
 					return nodeIP, nil
 				}
 
+				// when deployed to edge, need to refetch the sandbox info from the catalog
 				resumedSandbox, catalogErr := c.GetSandbox(ctx, sandboxId)
 				if catalogErr != nil {
 					if errors.Is(catalogErr, catalog.ErrSandboxNotFound) {
