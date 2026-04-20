@@ -8,9 +8,9 @@ on:
         required: true
         type: choice
         options:
-          - foxtrot
           - staging
           - juliett
+          - foxtrot
       use_cache:
         description: Use the build cache when available
         required: false
@@ -45,7 +45,8 @@ jobs:
       - name: Build template
         working-directory: ./packages/shared/scripts
         run: |
-          rm .env.local  # auto read by bun, which we don't want 
+          rm .env.local  # auto read by bun, which we don't want
+          echo "building base template for ${{ inputs.target_environment }} ... "
           bun install
           bun run ./build.prod.ts
         env:
