@@ -18,10 +18,11 @@ type MapSubscriber interface {
 	OnRemove(ctx context.Context, sbx *Sandbox)
 }
 
-// Map holds sandboxes that are live (running) together with a private
-// host-IP-to-sandbox index used for O(1) reverse lookups. The two indexes
-// are managed independently: AssignNetwork/NetworkReleased manage the IP
-// index, MarkRunning/MarkStopping manage the live set.
+// Map holds sandboxes that are live (running) together with a IP-to-sandbox index
+// The two maps are managed independently.
+//
+// AssignNetwork/NetworkReleased manage the IP map,
+// MarkRunning/MarkStopping manage the live set.
 type Map struct {
 	live    *smap.Map[*Sandbox]
 	network *smap.Map[*Sandbox]
@@ -65,48 +66,6 @@ func (m *Map) Get(sandboxID string) (*Sandbox, bool) {
 	return m.live.Get(sandboxID)
 }
 
-// AssignNetwork registers a sandbox's IP so it is findable by GetByHostPort.
-func (m *Map) AssignNetwork(ctx context.Context, sbx *Sandbox) {
-	ip := sbx.Slot.HostIPString()
-	m.network.Insert(ip, sbx)
-
-	logger.L().Info(ctx, "sandbox network map entry added",
-		logger.WithSandboxID(sbx.Runtime.SandboxID),
-		logger.WithLifecycleID(sbx.LifecycleID),
-		logger.WithSandboxIP(ip),
-	)
-}
-
-// NetworkReleased unregisters a sandbox's IP, guarding against the slot
-// having been reused by a new sandbox, and notifies OnRemove subscribers
-// after a successful removal.
-func (m *Map) NetworkReleased(ctx context.Context, ip string) {
-	var sbx *Sandbox
-	removed := m.network.RemoveCb(ip, func(_ string, v *Sandbox, exists bool) bool {
-		if !exists {
-			return false
-		}
-
-		sbx = v
-
-		return exists
-	})
-
-	if !removed {
-		return
-	}
-
-	logger.L().Info(ctx, "sandbox network map entry removed",
-		logger.WithSandboxID(sbx.Runtime.SandboxID),
-		logger.WithLifecycleID(sbx.LifecycleID),
-		logger.WithSandboxIP(ip),
-	)
-
-	go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
-		s.OnRemove(ctx, sbx)
-	})
-}
-
 // GetByHostPort looks up a sandbox by its host IP address parsed from hostPort.
 func (m *Map) GetByHostPort(hostPort string) (*Sandbox, error) {
 	reqIP, _, err := net.SplitHostPort(hostPort)
@@ -120,6 +79,18 @@ func (m *Map) GetByHostPort(hostPort string) (*Sandbox, error) {
 	}
 
 	return sbx, nil
+}
+
+// AssignNetwork registers a sandbox's IP so it is findable by GetByHostPort.
+func (m *Map) AssignNetwork(ctx context.Context, sbx *Sandbox) {
+	ip := sbx.Slot.HostIPString()
+	m.network.Insert(ip, sbx)
+
+	logger.L().Info(ctx, "sandbox network map entry added",
+		logger.WithSandboxID(sbx.Runtime.SandboxID),
+		logger.WithLifecycleID(sbx.LifecycleID),
+		logger.WithSandboxIP(ip),
+	)
 }
 
 // MarkRunning makes the sandbox visible to Get/Items/Count and notifies OnInsert subscribers.
@@ -159,4 +130,34 @@ func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) b
 	})
 
 	return stopped
+}
+
+// NetworkReleased unregisters a sandbox's IP, guarding against the slot
+// having been reused by a new sandbox, and notifies OnRemove subscribers
+// after a successful removal.
+func (m *Map) NetworkReleased(ctx context.Context, ip string) {
+	var sbx *Sandbox
+	removed := m.network.RemoveCb(ip, func(_ string, v *Sandbox, exists bool) bool {
+		if !exists {
+			return false
+		}
+
+		sbx = v
+
+		return exists
+	})
+
+	if !removed {
+		return
+	}
+
+	logger.L().Info(ctx, "sandbox network map entry removed",
+		logger.WithSandboxID(sbx.Runtime.SandboxID),
+		logger.WithLifecycleID(sbx.LifecycleID),
+		logger.WithSandboxIP(ip),
+	)
+
+	go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
+		s.OnRemove(ctx, sbx)
+	})
 }
