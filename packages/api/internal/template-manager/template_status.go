@@ -2,13 +2,12 @@ package template_manager
 
 import (
 	"context"
-	stderrors "errors"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/flowchartsman/retry"
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
@@ -52,7 +51,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 				logger.L().Error(ctx, "error when setting build status to failed after waiting for too long", zap.Error(err), logger.WithBuildID(buildID.String()), logger.WithTemplateID(templateID))
 			}
 
-			return stderrors.New("build is in waiting state for too long, failing it")
+			return errors.New("build is in waiting state for too long, failing it")
 		}
 
 		// just wait for next sync
@@ -60,7 +59,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 	}
 
 	if nodeID == nil {
-		return stderrors.New("build is not assigned to a node, but it should be")
+		return errors.New("build is not assigned to a node, but it should be")
 	}
 
 	checker := &PollBuildStatus{
@@ -155,14 +154,14 @@ func (e terminalError) Error() string {
 
 func newTerminalError(err error) error {
 	return terminalError{
-		err: retry.Stop(errors.WithStack(err)),
+		err: retry.Stop(err),
 	}
 }
 
 func (c *PollBuildStatus) setStatus(ctx context.Context) error {
 	status, err := c.client.GetStatus(ctx, c.buildID, c.templateID, c.clusterID, c.nodeID)
 	if err != nil && errors.Is(err, context.DeadlineExceeded) {
-		return errors.Wrap(err, "context deadline exceeded")
+		return fmt.Errorf("context deadline exceeded: %w", err)
 	} else if err != nil { // retry only on context deadline exceeded
 		c.logger.Error(ctx, "terminal error when polling build status", zap.Error(err))
 
@@ -170,7 +169,7 @@ func (c *PollBuildStatus) setStatus(ctx context.Context) error {
 	}
 
 	if status == nil {
-		return stderrors.New("nil status") // this should never happen
+		return errors.New("nil status") // this should never happen
 	}
 
 	// debug log the status
@@ -183,14 +182,14 @@ func (c *PollBuildStatus) setStatus(ctx context.Context) error {
 
 func (c *PollBuildStatus) dispatchBasedOnStatus(ctx context.Context, status *templatemanagergrpc.TemplateBuildStatusResponse) (bool, error) {
 	if status == nil {
-		return false, stderrors.New("nil status")
+		return false, errors.New("nil status")
 	}
 	switch status.GetStatus() {
 	case templatemanagergrpc.TemplateBuildState_Failed:
 		// build failed
 		err := c.client.SetStatus(ctx, c.buildID, types.BuildStatusGroupFailed, status.GetReason())
 		if err != nil {
-			return false, errors.Wrap(err, "error when setting build status")
+			return false, fmt.Errorf("error when setting build status: %w", err)
 		}
 
 		return true, nil
@@ -198,12 +197,12 @@ func (c *PollBuildStatus) dispatchBasedOnStatus(ctx context.Context, status *tem
 		// build completed
 		meta := status.GetMetadata()
 		if meta == nil {
-			return false, stderrors.New("nil metadata")
+			return false, errors.New("nil metadata")
 		}
 
 		err := c.client.SetFinished(ctx, c.buildID, int64(meta.GetRootfsSizeKey()), meta.GetEnvdVersionKey())
 		if err != nil {
-			return false, errors.Wrap(err, "error when finishing build")
+			return false, fmt.Errorf("error when finishing build: %w", err)
 		}
 
 		return true, nil
@@ -234,7 +233,7 @@ func (c *PollBuildStatus) checkBuildStatus(ctx context.Context) (bool, error) {
 
 	buildCompleted, err := c.dispatchBasedOnStatus(ctx, c.status)
 	if err != nil {
-		return false, errors.Wrap(err, "error when dispatching build status")
+		return false, fmt.Errorf("error when dispatching build status: %w", err)
 	}
 
 	return buildCompleted, nil
