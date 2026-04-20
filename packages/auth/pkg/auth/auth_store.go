@@ -31,9 +31,8 @@ func validateTeamUsage(team authqueries.Team) error {
 		return &TeamForbiddenError{Message: "team is banned"}
 	}
 
-	if team.IsBlocked {
-		return &TeamBlockedError{Message: "team is blocked"}
-	}
+	// Blocked teams are allowed to authenticate; per-endpoint enforcement happens
+	// downstream via the `x-disable-team-blocked` OpenAPI extension.
 
 	return nil
 }

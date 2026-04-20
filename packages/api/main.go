@@ -200,6 +200,10 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 
 	r.Use(customMiddleware.InitLaunchDarklyContext)
 
+	// Deny blocked teams from endpoints marked `x-disable-team-blocked: true`
+	// in the OpenAPI spec (e.g. sandbox/template mutations).
+	r.Use(customMiddleware.BlockedTeam(customMiddleware.BuildBlockedTeamRoutes(swagger)))
+
 	// Per-team rate limiting (after auth + LD context, before handlers).
 	// Only applied to connect and resume endpoints. Gated by feature flag.
 	limiter := ratelimit.NewLimiter(redisClient)
