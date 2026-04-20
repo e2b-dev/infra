@@ -17,6 +17,32 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
 
+func startHTTPServerInSandbox(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, port int) {
+	t.Helper()
+
+	serverCtx, serverCancel := context.WithCancel(ctx)
+	serverReq := connect.NewRequest(&process.StartRequest{
+		Process: &process.ProcessConfig{
+			Cmd:  "python",
+			Args: []string{"-m", "http.server", fmt.Sprintf("%d", port)},
+		},
+	})
+	setup.SetSandboxHeader(t, serverReq.Header(), sbx.SandboxID)
+	setup.SetUserHeader(t, serverReq.Header(), "user")
+	serverStream, err := envdClient.ProcessClient.Start(serverCtx, serverReq)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		serverCancel()
+		if streamErr := serverStream.Close(); streamErr != nil {
+			t.Logf("Error closing server stream: %v", streamErr)
+		}
+	})
+
+	// Wait for server to start.
+	time.Sleep(time.Second)
+}
+
 func TestSandboxAutoResumeViaExec(t *testing.T) {
 	t.Parallel()
 
@@ -60,27 +86,8 @@ func TestSandboxAutoResumeViaProxy(t *testing.T) {
 	envdClient := setup.GetEnvdClient(t, ctx)
 
 	// Start an HTTP server inside the sandbox.
-	serverCtx, serverCancel := context.WithCancel(ctx)
 	port := 8000
-	serverReq := connect.NewRequest(&process.StartRequest{
-		Process: &process.ProcessConfig{
-			Cmd:  "python",
-			Args: []string{"-m", "http.server", fmt.Sprintf("%d", port)},
-		},
-	})
-	setup.SetSandboxHeader(t, serverReq.Header(), sbx.SandboxID)
-	setup.SetUserHeader(t, serverReq.Header(), "user")
-	serverStream, err := envdClient.ProcessClient.Start(serverCtx, serverReq)
-	require.NoError(t, err)
-	defer func() {
-		serverCancel()
-		if streamErr := serverStream.Close(); streamErr != nil {
-			t.Logf("Error closing server stream: %v", streamErr)
-		}
-	}()
-
-	// Wait for server to start.
-	time.Sleep(time.Second)
+	startHTTPServerInSandbox(t, ctx, sbx, envdClient, port)
 
 	proxyURL, err := url.Parse(setup.EnvdProxy)
 	require.NoError(t, err)
@@ -115,6 +122,54 @@ func TestSandboxAutoResumeViaProxy(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
 	require.Equal(t, api.Running, res.JSON200.State, "sandbox should be running after auto-resume")
+}
+
+func TestSandboxNoAutoResumeViaProxyWithoutFlag(t *testing.T) {
+	t.Parallel()
+
+	c := setup.GetAPIClient()
+	ctx := t.Context()
+
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(true))
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	// Start an HTTP server inside the sandbox.
+	port := 8000
+	startHTTPServerInSandbox(t, ctx, sbx, envdClient, port)
+
+	proxyURL, err := url.Parse(setup.EnvdProxy)
+	require.NoError(t, err)
+
+	// Verify the server is accessible before pausing.
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp := utils.WaitForStatus(t, client, sbx, proxyURL, port, nil, http.StatusOK)
+	require.NotNil(t, resp)
+	require.NoError(t, resp.Body.Close())
+
+	// Pause the sandbox.
+	pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
+
+	// Verify sandbox is paused.
+	res, err := c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
+	require.Equal(t, api.Paused, res.JSON200.State)
+
+	// Make a proxy request. It should not auto-resume without the flag.
+	resumeClient := &http.Client{Timeout: 10 * time.Second}
+	req := utils.NewRequest(sbx, proxyURL, port, nil)
+	resp, err = resumeClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.NotEqual(t, http.StatusOK, resp.StatusCode, "sandbox without auto-resume should not serve proxy traffic after pause")
+
+	// Verify the sandbox is still paused.
+	res, err = c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.NotNil(t, res.JSON200, "expected 200 response, got status %d", res.StatusCode())
+	require.Equal(t, api.Paused, res.JSON200.State, "sandbox should still be paused without auto-resume")
 }
 
 func TestSandboxAutoResumeWithoutExplicitTimeoutUsesMinimumTimeout(t *testing.T) {
