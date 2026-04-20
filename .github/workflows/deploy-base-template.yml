@@ -46,7 +46,7 @@ jobs:
         working-directory: ./packages/shared/scripts
         run: |
           rm .env.local  # auto read by bun, which we don't want
-          echo "building base template for ${{ inputs.target_environment }} ... "
+          echo "building base template for ${E2B_DOMAIN} ... "
           bun install
           bun run ./build.prod.ts
         env:
