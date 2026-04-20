@@ -65,7 +65,7 @@ func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.
 
 func (p *Proxy) OnInsert(_ context.Context, _ *sandbox.Sandbox) {}
 
-func (p *Proxy) OnRemove(_ context.Context, sbx *sandbox.Sandbox) {
+func (p *Proxy) OnNetworkRelease(_ context.Context, sbx *sandbox.Sandbox) {
 	p.limiter.Remove(sbx.Runtime.SandboxID)
 }
 

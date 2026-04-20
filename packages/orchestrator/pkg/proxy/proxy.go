@@ -195,8 +195,8 @@ func (p *SandboxProxy) GetAddr() string {
 // OnInsert is called when a sandbox is inserted into the map.
 func (p *SandboxProxy) OnInsert(_ context.Context, _ *sandbox.Sandbox) {}
 
-// OnRemove is called when a sandbox is removed from the map.
+// OnNetworkRelease is called when a sandbox's network slot is released.
 // It cleans up the connection limiter entry for the sandbox.
-func (p *SandboxProxy) OnRemove(_ context.Context, sbx *sandbox.Sandbox) {
+func (p *SandboxProxy) OnNetworkRelease(_ context.Context, sbx *sandbox.Sandbox) {
 	p.limiter.Remove(sbx.Runtime.SandboxID)
 }

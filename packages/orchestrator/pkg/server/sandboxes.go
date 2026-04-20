@@ -431,7 +431,7 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	// Mark the sandbox as stopping so it is excluded from live queries (Get, Items,
 	// Count) but remains findable by IP (GetByHostPort) while the Firecracker
 	// process finishes shutting down.
-	// This prevents the sandbox to be synced to API again
+	// This prevents the sandbox from being synced to API again.
 	marked := s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
 	if !marked {
 		telemetry.ReportCriticalError(ctx, "failed to mark sandbox as stopping", nil, telemetry.WithSandboxID(in.GetSandboxId()))
