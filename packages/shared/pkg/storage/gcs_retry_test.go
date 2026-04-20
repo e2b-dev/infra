@@ -1,7 +1,9 @@
 package storage
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"testing"
@@ -16,6 +18,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 )
 
+const testPerAttemptTimeout = 100 * time.Millisecond
+
 // transientErr returns a gRPC UNAVAILABLE error that storage.ShouldRetry
 // considers retryable.
 func transientErr() error {
@@ -25,187 +29,6 @@ func transientErr() error {
 // permanentErr returns an error that storage.ShouldRetry does NOT retry.
 func permanentErr() error {
 	return fmt.Errorf("permanent: object not found")
-}
-
-func TestRetryWithBackoff_SuccessOnFirstAttempt(t *testing.T) {
-	t.Parallel()
-
-	calls := 0
-
-	n, attempts, err := retryWithBackoff(t.Context(), googleMaxReadAttempts, func() (int, error) {
-		calls++
-
-		return 42, nil
-	})
-
-	require.NoError(t, err)
-	assert.Equal(t, 42, n)
-	assert.Equal(t, 1, calls)
-	assert.Equal(t, 1, attempts)
-}
-
-func TestRetryWithBackoff_SuccessAfterTransientFailures(t *testing.T) {
-	t.Parallel()
-
-	calls := 0
-
-	n, attempts, err := retryWithBackoff(t.Context(), googleMaxReadAttempts, func() (int, error) {
-		calls++
-		if calls < 3 {
-			return 0, transientErr()
-		}
-
-		return 100, nil
-	})
-
-	require.NoError(t, err)
-	assert.Equal(t, 100, n)
-	assert.Equal(t, 3, calls)
-	assert.Equal(t, 3, attempts)
-}
-
-func TestRetryWithBackoff_ExhaustsAllAttempts(t *testing.T) {
-	t.Parallel()
-
-	calls := 0
-
-	_, attempts, err := retryWithBackoff(t.Context(), googleMaxReadAttempts, func() (int, error) {
-		calls++
-
-		return 0, transientErr()
-	})
-
-	require.Error(t, err)
-	assert.Equal(t, googleMaxReadAttempts, calls)
-	assert.Equal(t, googleMaxReadAttempts, attempts)
-}
-
-func TestRetryWithBackoff_StopsOnPermanentError(t *testing.T) {
-	t.Parallel()
-
-	calls := 0
-
-	_, attempts, err := retryWithBackoff(t.Context(), googleMaxReadAttempts, func() (int, error) {
-		calls++
-
-		return 0, permanentErr()
-	})
-
-	require.Error(t, err)
-	assert.Equal(t, 1, calls, "should not retry permanent errors")
-	assert.Equal(t, 1, attempts)
-}
-
-func TestRetryWithBackoff_StopsOnContextCancellation(t *testing.T) {
-	t.Parallel()
-
-	ctx, cancel := context.WithCancel(t.Context())
-
-	calls := 0
-
-	_, attempts, err := retryWithBackoff(ctx, googleMaxReadAttempts, func() (int, error) {
-		calls++
-		if calls == 2 {
-			cancel()
-		}
-
-		return 0, transientErr()
-	})
-
-	require.Error(t, err)
-	assert.Equal(t, 2, calls, "should stop after context is cancelled")
-	assert.Equal(t, 2, attempts)
-}
-
-func TestRetryWithBackoff_RespectsDeadlineDuringBackoff(t *testing.T) {
-	t.Parallel()
-
-	// Context that expires well before all retries can complete.
-	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
-	defer cancel()
-
-	start := time.Now()
-	calls := 0
-
-	_, attempts, err := retryWithBackoff(ctx, googleMaxReadAttempts, func() (int, error) {
-		calls++
-
-		return 0, transientErr()
-	})
-
-	elapsed := time.Since(start)
-
-	require.Error(t, err)
-	require.ErrorIs(t, err, context.DeadlineExceeded, "should return context error, not stale GCS error")
-	// Should not have run all attempts — the context deadline should have
-	// cut the backoff sleep short.
-	assert.Less(t, calls, googleMaxReadAttempts)
-	assert.Equal(t, calls, attempts)
-	assert.Less(t, elapsed, 5*time.Second, "should not wait for full backoff sequence")
-}
-
-func TestRetryWithBackoff_BackoffIncreases(t *testing.T) {
-	t.Parallel()
-
-	attempts := make([]time.Time, 0, googleMaxReadAttempts)
-
-	_, _, err := retryWithBackoff(t.Context(), googleMaxReadAttempts, func() (int, error) {
-		attempts = append(attempts, time.Now())
-
-		return 0, transientErr()
-	})
-
-	require.Error(t, err)
-	require.Len(t, attempts, googleMaxReadAttempts)
-
-	// Verify that gaps between attempts increase (exponential backoff).
-	// First gap should be ~200ms, second ~400ms, etc. Allow generous margins.
-	for i := 2; i < len(attempts); i++ {
-		prevGap := attempts[i-1].Sub(attempts[i-2])
-		thisGap := attempts[i].Sub(attempts[i-1])
-
-		// Each gap should be at least 1.5x the previous (2x minus some scheduling jitter).
-		assert.Greaterf(t, thisGap, prevGap*3/4,
-			"gap %d (%v) should be roughly larger than gap %d (%v)",
-			i-1, thisGap, i-2, prevGap)
-	}
-}
-
-func TestRetryWithBackoff_PreservesLastNValue(t *testing.T) {
-	t.Parallel()
-
-	calls := 0
-
-	n, attempts, err := retryWithBackoff(t.Context(), googleMaxReadAttempts, func() (int, error) {
-		calls++
-
-		// Return partial read count even on error.
-		return calls * 10, transientErr()
-	})
-
-	require.Error(t, err)
-	// n should reflect the value from the last attempt.
-	assert.Equal(t, googleMaxReadAttempts*10, n)
-	assert.Equal(t, googleMaxReadAttempts, attempts)
-}
-
-func TestRetryWithBackoff_EOFTreatedAsSuccess(t *testing.T) {
-	t.Parallel()
-
-	calls := 0
-
-	// io.EOF signals a successful short read (last chunk of a file).
-	// retryWithBackoff must not retry it.
-	n, attempts, err := retryWithBackoff(t.Context(), googleMaxReadAttempts, func() (int, error) {
-		calls++
-
-		return 512, io.EOF
-	})
-
-	require.ErrorIs(t, err, io.EOF)
-	assert.Equal(t, 512, n)
-	assert.Equal(t, 1, calls, "should not retry io.EOF")
-	assert.Equal(t, 1, attempts)
 }
 
 // stubFlags is a minimal featureFlagsClient for testing. It returns the
@@ -281,18 +104,314 @@ func TestGetReadRetryConfig_TooSmallTimeoutClampedToMin(t *testing.T) {
 	assert.Equal(t, 2, maxAttempts)
 }
 
-func TestRetryWithBackoff_RespectsCustomMaxAttempts(t *testing.T) {
-	t.Parallel()
+// --- retryingRangeReader tests -------------------------------------------
 
-	calls := 0
+// scriptedOpen builds an openFn that returns responses in order. Each call
+// advances the script by one entry. If more opens happen than entries, the
+// test fails loudly.
+type openResponse struct {
+	reader io.ReadCloser
+	err    error
+}
 
-	_, attempts, err := retryWithBackoff(t.Context(), 5, func() (int, error) {
+func scriptedOpen(t *testing.T, responses ...openResponse) (func(ctx context.Context, off, length int64) (io.ReadCloser, error), *int) {
+	t.Helper()
+
+	var calls int
+
+	return func(_ context.Context, _, _ int64) (io.ReadCloser, error) {
+		if calls >= len(responses) {
+			t.Fatalf("openFn called %d times, script only has %d entries", calls+1, len(responses))
+		}
+		r := responses[calls]
 		calls++
 
-		return 0, transientErr()
-	})
+		return r.reader, r.err
+	}, &calls
+}
 
+// stepReader delivers bytes and optionally returns an error after delivering a
+// configured number of bytes.
+type stepReader struct {
+	data       []byte
+	pos        int
+	failAfter  int // 0 means "don't inject failure"
+	failErr    error
+	closed     bool
+	closeCalls int
+}
+
+func (r *stepReader) Read(p []byte) (int, error) {
+	if r.closed {
+		return 0, io.ErrClosedPipe
+	}
+	if r.pos >= len(r.data) {
+		return 0, io.EOF
+	}
+
+	// When failAfter is set, cap the effective data boundary at failAfter so
+	// we can't accidentally deliver past it and miss the injection point.
+	end := len(r.data)
+	if r.failAfter > 0 && r.failAfter < end {
+		end = r.failAfter
+	}
+
+	want := len(p)
+	if rem := end - r.pos; want > rem {
+		want = rem
+	}
+
+	n := copy(p[:want], r.data[r.pos:r.pos+want])
+	r.pos += n
+
+	if r.failAfter > 0 && r.pos >= r.failAfter {
+		return n, r.failErr
+	}
+
+	if r.pos >= len(r.data) {
+		return n, io.EOF
+	}
+
+	return n, nil
+}
+
+func (r *stepReader) Close() error {
+	r.closeCalls++
+	r.closed = true
+
+	return nil
+}
+
+// newRetryingReader builds a retryingRangeReader wired to the given openFn.
+// Uses testPerAttemptTimeout so reads don't wait on real deadlines. Tests that
+// want fast retries should set r.backoff = time.Microsecond after construction.
+func newRetryingReader(
+	ctx context.Context,
+	openFn func(context.Context, int64, int64) (io.ReadCloser, error),
+	off, length int64,
+	maxAttempts int,
+) *retryingRangeReader {
+	return &retryingRangeReader{
+		openFn:            openFn,
+		path:              "test/obj",
+		parentCtx:         ctx,
+		baseOff:           off,
+		totalLen:          length,
+		perAttemptTimeout: testPerAttemptTimeout,
+		maxAttempts:       maxAttempts,
+	}
+}
+
+// readAll drains a reader into a byte slice, treating io.EOF as success.
+func readAll(t *testing.T, r io.Reader) ([]byte, error) {
+	t.Helper()
+	var buf []byte
+	tmp := make([]byte, 64)
+	for {
+		n, err := r.Read(tmp)
+		buf = append(buf, tmp[:n]...)
+		if errors.Is(err, io.EOF) {
+			return buf, nil
+		}
+		if err != nil {
+			return buf, err
+		}
+	}
+}
+
+func TestRetryingRangeReader_OpenSucceedsFirstTry(t *testing.T) {
+	t.Parallel()
+	payload := []byte("hello, world")
+	reader := &stepReader{data: append([]byte(nil), payload...)}
+	openFn, calls := scriptedOpen(t, openResponse{reader: reader})
+
+	r := newRetryingReader(t.Context(), openFn, 0, int64(len(payload)), 3)
+	require.NoError(t, r.openWithRetry(t.Context()))
+
+	got, err := readAll(t, r)
+	require.NoError(t, err)
+	assert.Equal(t, payload, got)
+	assert.Equal(t, 1, *calls, "no retries should happen on success")
+	require.NoError(t, r.Close())
+	assert.Equal(t, 1, reader.closeCalls)
+}
+
+func TestRetryingRangeReader_OpenRetriesTransient(t *testing.T) {
+	t.Parallel()
+	payload := []byte("retry-then-ok")
+	good := &stepReader{data: append([]byte(nil), payload...)}
+	openFn, calls := scriptedOpen(t,
+		openResponse{err: transientErr()},
+		openResponse{err: transientErr()},
+		openResponse{reader: good},
+	)
+
+	r := newRetryingReader(t.Context(), openFn, 0, int64(len(payload)), 3)
+	r.backoff = time.Microsecond
+
+	require.NoError(t, r.openWithRetry(t.Context()))
+
+	got, err := readAll(t, r)
+	require.NoError(t, err)
+	assert.Equal(t, payload, got)
+	assert.Equal(t, 3, *calls, "openFn should be called exactly 3 times")
+	assert.Equal(t, 3, r.attemptsUsed)
+	require.NoError(t, r.Close())
+}
+
+func TestRetryingRangeReader_OpenExhaustsAttempts(t *testing.T) {
+	t.Parallel()
+	openFn, calls := scriptedOpen(t,
+		openResponse{err: transientErr()},
+		openResponse{err: transientErr()},
+		openResponse{err: transientErr()},
+	)
+
+	r := newRetryingReader(t.Context(), openFn, 0, 100, 3)
+	r.backoff = time.Microsecond
+
+	err := r.openWithRetry(t.Context())
 	require.Error(t, err)
-	assert.Equal(t, 5, calls)
-	assert.Equal(t, 5, attempts)
+	assert.Contains(t, err.Error(), "after 3 attempts")
+	assert.Equal(t, 3, *calls)
+	assert.Nil(t, r.current, "no current reader when all attempts fail")
+}
+
+func TestRetryingRangeReader_OpenNonTransientNotRetried(t *testing.T) {
+	t.Parallel()
+	openFn, calls := scriptedOpen(t, openResponse{err: permanentErr()})
+
+	r := newRetryingReader(t.Context(), openFn, 0, 100, 5)
+	r.backoff = time.Microsecond
+
+	err := r.openWithRetry(t.Context())
+	require.Error(t, err)
+	assert.Equal(t, 1, *calls, "permanent error should not be retried")
+	assert.Equal(t, 1, r.attemptsUsed)
+}
+
+func TestRetryingRangeReader_ResumesAfterMidStreamError(t *testing.T) {
+	t.Parallel()
+	// Non-zero baseOff mirrors a real chunk fetch so we also exercise the
+	// wrapper's offset arithmetic on retry (second open must be at baseOff+6).
+	const baseOff int64 = 1024
+	payload := []byte("0123456789ABCDEF") // 16 bytes
+	// First reader delivers 6 bytes, then a transient mid-stream error.
+	first := &stepReader{
+		data:      append([]byte(nil), payload...),
+		failAfter: 6,
+		failErr:   transientErr(),
+	}
+	// Second reader delivers the remaining 10 bytes.
+	second := &stepReader{data: append([]byte(nil), payload[6:]...)}
+
+	var reopenOff, reopenLen int64
+	reopenCalls := 0
+	openFn := func(_ context.Context, off, length int64) (io.ReadCloser, error) {
+		reopenCalls++
+		if reopenCalls == 1 {
+			return first, nil
+		}
+		reopenOff, reopenLen = off, length
+
+		return second, nil
+	}
+
+	r := newRetryingReader(t.Context(), openFn, baseOff, int64(len(payload)), 3)
+	r.backoff = time.Microsecond
+
+	require.NoError(t, r.openWithRetry(t.Context()))
+
+	got, err := readAll(t, r)
+	require.NoError(t, err)
+	assert.Equal(t, payload, got, "caller receives the full range despite mid-stream error")
+	assert.Equal(t, 2, reopenCalls)
+	assert.Equal(t, 1, first.closeCalls, "first reader should be closed when retry kicks in")
+	assert.Equal(t, baseOff+6, reopenOff, "reopen must target baseOff + bytesRead")
+	assert.Equal(t, int64(10), reopenLen, "reopen must request the remaining bytes")
+}
+
+func TestRetryingRangeReader_MidStreamNonTransientSurfaces(t *testing.T) {
+	t.Parallel()
+	payload := []byte("0123456789")
+	bad := &stepReader{
+		data:      append([]byte(nil), payload...),
+		failAfter: 4,
+		failErr:   permanentErr(),
+	}
+	openFn, calls := scriptedOpen(t, openResponse{reader: bad})
+
+	r := newRetryingReader(t.Context(), openFn, 0, int64(len(payload)), 5)
+	r.backoff = time.Microsecond
+
+	require.NoError(t, r.openWithRetry(t.Context()))
+	_, err := readAll(t, r)
+	require.ErrorIs(t, err, bad.failErr, "non-transient error should surface verbatim")
+	assert.Equal(t, 1, *calls, "no reopen on non-transient mid-stream failure")
+}
+
+func TestRetryingRangeReader_ShortStreamIsTransient(t *testing.T) {
+	t.Parallel()
+	payload := []byte("complete-payload") // 16 bytes
+	// First reader delivers 7 bytes and then EOF — short stream (totalLen=16).
+	truncated := &stepReader{data: append([]byte(nil), payload[:7]...)}
+	// Retry supplies the remaining 9 bytes at off=7, length=9.
+	rest := &stepReader{data: append([]byte(nil), payload[7:]...)}
+
+	openFn, calls := scriptedOpen(t,
+		openResponse{reader: truncated},
+		openResponse{reader: rest},
+	)
+
+	r := newRetryingReader(t.Context(), openFn, 0, int64(len(payload)), 3)
+	r.backoff = time.Microsecond
+
+	require.NoError(t, r.openWithRetry(t.Context()))
+	got, err := readAll(t, r)
+	require.NoError(t, err)
+	assert.Equal(t, payload, got)
+	assert.Equal(t, 2, *calls)
+}
+
+func TestRetryingRangeReader_ParentCtxCancelStopsRetry(t *testing.T) {
+	t.Parallel()
+	// openFn always returns transient; test cancels parent ctx after the first
+	// failure to prove the retry loop exits via ctx, not via budget.
+	parent, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	calls := 0
+	openFn := func(_ context.Context, _, _ int64) (io.ReadCloser, error) {
+		calls++
+		if calls == 1 {
+			cancel() // parent is cancelled mid-retry
+		}
+
+		return nil, transientErr()
+	}
+
+	r := newRetryingReader(parent, openFn, 0, 100, 5)
+	r.backoff = 10 * time.Millisecond
+
+	err := r.openWithRetry(parent)
+	require.Error(t, err)
+	assert.LessOrEqual(t, calls, 2, "loop should exit quickly after parent cancel; got %d calls", calls)
+	assert.Less(t, r.attemptsUsed, 5, "budget should not be exhausted when ctx cancels first")
+}
+
+func TestRetryingRangeReader_CloseCancelsAndClosesUnderlying(t *testing.T) {
+	t.Parallel()
+	reader := &stepReader{data: bytes.Repeat([]byte{0xAB}, 32)}
+	openFn, _ := scriptedOpen(t, openResponse{reader: reader})
+
+	r := newRetryingReader(t.Context(), openFn, 0, 32, 3)
+	require.NoError(t, r.openWithRetry(t.Context()))
+
+	require.NoError(t, r.Close())
+	assert.Equal(t, 1, reader.closeCalls, "underlying reader closed exactly once")
+	assert.Nil(t, r.current, "current reader cleared after Close")
+
+	// Second Close is a no-op.
+	require.NoError(t, r.Close())
+	assert.Equal(t, 1, reader.closeCalls, "Close is idempotent")
 }

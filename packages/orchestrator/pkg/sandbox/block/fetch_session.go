@@ -112,6 +112,9 @@ func (s *fetchSession) registerAndWait(ctx context.Context, blockOff int64) erro
 
 // advance updates progress and wakes all waiters.
 func (s *fetchSession) advance(bytesReady int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.bytesReady.Store(bytesReady)
 	s.cond.Broadcast()
 }
