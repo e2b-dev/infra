@@ -112,7 +112,7 @@ func setupValidateTest(tb testing.TB, db *testutils.Database, userID, teamID uui
 
 	// Create team
 	err := db.AuthDb.TestsRawSQL(tb.Context(), `
-		INSERT INTO "auth"."users" (id, email)
+		INSERT INTO "public"."users" (id, email)
 		VALUES ($1, 'test@e2b.dev')
 	`, userID)
 	require.NoError(tb, err)
