@@ -63,6 +63,11 @@ type Userfaultfd struct {
 
 	wg errgroup.Group
 
+	// defaultCopyMode is OR-ed into the copy mode of every UFFDIO_COPY.
+	// Production leaves this at 0; tests can set it to UFFDIO_COPY_MODE_WP to
+	// validate prefault-style flows that always copy with the WP bit asserted.
+	defaultCopyMode CULong
+
 	logger logger.Logger
 }
 
@@ -363,7 +368,7 @@ retryLoop:
 		return fmt.Errorf("failed to read from source after %d attempts: %w", attempt+1, joinedErr)
 	}
 
-	var copyMode CULong
+	copyMode := u.defaultCopyMode
 
 	// Performing copy() on UFFD clears the WP bit unless we explicitly tell
 	// it not to. We do that for faults caused by a read access. Write accesses

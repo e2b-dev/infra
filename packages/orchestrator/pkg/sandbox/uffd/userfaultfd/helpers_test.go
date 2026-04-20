@@ -5,8 +5,10 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"testing"
 
 	"github.com/RoaringBitmap/roaring/v2"
+	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils"
 )
@@ -19,6 +21,8 @@ type testConfig struct {
 	numberOfPages uint64
 	// Operations to trigger on the memory area.
 	operations []operation
+	// alwaysWP makes the handler copy with UFFDIO_COPY_MODE_WP for all faults.
+	alwaysWP bool
 }
 
 type operationMode uint32
@@ -42,6 +46,29 @@ type testHandler struct {
 	// It can only be called once.
 	offsetsOnce func() ([]uint, error)
 	mutex       sync.Mutex
+}
+
+// executeAll runs the operations sequentially against the cross-process UFFD handler,
+// failing the test on the first error. It centralizes the read/write dispatch that was
+// previously duplicated across every test body.
+func (h *testHandler) executeAll(t *testing.T, operations []operation) {
+	t.Helper()
+
+	for i, op := range operations {
+		err := h.executeOperation(t.Context(), op)
+		require.NoError(t, err, "step %d: mode=%d at offset %d", i, op.mode, op.offset)
+	}
+}
+
+func (h *testHandler) executeOperation(ctx context.Context, op operation) error {
+	switch op.mode {
+	case operationModeRead:
+		return h.executeRead(ctx, op)
+	case operationModeWrite:
+		return h.executeWrite(ctx, op)
+	default:
+		return fmt.Errorf("invalid operation mode: %d", op.mode)
+	}
 }
 
 func (h *testHandler) executeRead(ctx context.Context, op operation) error {

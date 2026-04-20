@@ -124,12 +124,7 @@ func TestMissing(t *testing.T) {
 			h, err := configureCrossProcessTest(t, tt)
 			require.NoError(t, err)
 
-			for _, operation := range tt.operations {
-				if operation.mode == operationModeRead {
-					err := h.executeRead(t.Context(), operation)
-					require.NoError(t, err, "for operation %+v", operation)
-				}
-			}
+			h.executeAll(t, tt.operations)
 
 			expectedAccessedOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
 
@@ -144,7 +139,9 @@ func TestMissing(t *testing.T) {
 func TestParallelMissing(t *testing.T) {
 	t.Parallel()
 
-	parallelOperations := 1_000_000
+	// 10_000 reads is enough to exercise parallel pagefault handling without
+	// pushing the helper child into multi-minute runtime under -race.
+	parallelOperations := 10_000
 
 	tt := testConfig{
 		pagesize:      header.PageSize,

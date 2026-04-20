@@ -102,10 +102,17 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	err = register(uffdFd, memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
 	require.NoError(t, err)
 
-	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestHelperServingProcess")
+	// -test.timeout=0 disables the helper's own per-test timeout. The parent test's
+	// context (t.Context()) is the sole authority on how long the helper may run;
+	// without this the helper can be killed by `go test`'s default timeout while the
+	// parent is still doing meaningful work, producing confusing "test killed" output.
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestHelperServingProcess", "-test.timeout=0")
 	cmd.Env = append(os.Environ(), "GO_TEST_HELPER_PROCESS=1")
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_START=%d", memoryStart))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_PAGE_SIZE=%d", tt.pagesize))
+	if tt.alwaysWP {
+		cmd.Env = append(cmd.Env, "GO_ALWAYS_WP=1")
+	}
 
 	dup, err := syscall.Dup(int(uffdFd))
 	require.NoError(t, err)
@@ -291,6 +298,10 @@ func crossProcessServe() error {
 	uffd, err := NewUserfaultfdFromFd(uffdFd, data, m, l)
 	if err != nil {
 		return fmt.Errorf("exit creating uffd: %w", err)
+	}
+
+	if os.Getenv("GO_ALWAYS_WP") == "1" {
+		uffd.defaultCopyMode = UFFDIO_COPY_MODE_WP
 	}
 
 	offsetsFile := os.NewFile(uintptr(5), "offsets")
