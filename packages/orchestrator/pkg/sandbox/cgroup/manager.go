@@ -312,7 +312,7 @@ func (m *managerImpl) readAndResetMemoryPeak(ctx context.Context, memoryPeakFile
 
 	// Reset per-FD peak for next interval
 	if _, err := memoryPeakFile.WriteString("0"); err != nil {
-		logger.L().Debug(ctx, "failed to reset memory.peak", zap.Error(err))
+		logger.L().Warn(ctx, "failed to reset memory.peak, interval peak semantics degraded", zap.Error(err))
 	}
 
 	return peakBytes, nil
