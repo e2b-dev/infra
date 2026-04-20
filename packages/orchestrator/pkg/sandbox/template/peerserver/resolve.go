@@ -2,6 +2,7 @@ package peerserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
@@ -10,7 +11,7 @@ import (
 )
 
 // ErrUnknownFile is returned when the requested file name is not recognised.
-var ErrUnknownFile = fmt.Errorf("unknown file")
+var ErrUnknownFile = errors.New("unknown file")
 
 // ResolveSeekable maps (buildID, fileName) to a SeekableSource.
 // Supported file names: memfile, rootfs.ext4.

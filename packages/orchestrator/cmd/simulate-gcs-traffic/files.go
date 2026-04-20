@@ -82,7 +82,7 @@ func newFiles(paths []fileInfo, chunkSize int64, allowRepeatReads bool) *files {
 
 func (f *files) nextRead() (string, int64, error) {
 	if len(f.paths) == 0 {
-		return "", 0, fmt.Errorf("no files found")
+		return "", 0, errors.New("no files found")
 	}
 
 	idx := f.rand.Intn(len(f.paths))

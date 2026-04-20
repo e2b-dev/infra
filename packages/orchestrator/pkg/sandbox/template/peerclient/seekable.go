@@ -150,7 +150,7 @@ func openPeerSeekableStream(
 	}
 
 	if !checkPeerAvailability(msg.GetAvailability(), uploaded) {
-		return nil, fmt.Errorf("peer not available for seekable stream")
+		return nil, errors.New("peer not available for seekable stream")
 	}
 
 	first := msg.GetData()

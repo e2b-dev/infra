@@ -2,6 +2,7 @@ package block
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -68,5 +69,5 @@ func (e *Empty) Header() *header.Header {
 }
 
 func (e *Empty) UpdateSize() error {
-	return fmt.Errorf("update size not supported for empty block")
+	return errors.New("update size not supported for empty block")
 }

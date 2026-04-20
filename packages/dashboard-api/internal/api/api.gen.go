@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -494,7 +495,7 @@ func (siw *ServerInterfaceWrapper) GetBuildsStatuses(c *gin.Context) {
 	if paramValue := c.Query("build_ids"); paramValue != "" {
 
 	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Query argument build_ids is required, but not found"), http.StatusBadRequest)
+		siw.ErrorHandler(c, errors.New("Query argument build_ids is required, but not found"), http.StatusBadRequest)
 		return
 	}
 
@@ -628,7 +629,7 @@ func (siw *ServerInterfaceWrapper) GetTeamsResolve(c *gin.Context) {
 	if paramValue := c.Query("slug"); paramValue != "" {
 
 	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Query argument slug is required, but not found"), http.StatusBadRequest)
+		siw.ErrorHandler(c, errors.New("Query argument slug is required, but not found"), http.StatusBadRequest)
 		return
 	}
 

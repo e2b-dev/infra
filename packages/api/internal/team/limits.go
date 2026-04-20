@@ -1,6 +1,7 @@
 package team
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -33,7 +34,7 @@ func LimitResources(limits *types.TeamLimits, cpuCount, memoryMB *int32) (int64,
 
 		if cpu != 1 && cpu%2 != 0 {
 			return 0, 0, &api.APIError{
-				Err:       fmt.Errorf("CPU count must be 1 or an even number"),
+				Err:       errors.New("CPU count must be 1 or an even number"),
 				ClientMsg: "CPU count must be 1 or an even number",
 				Code:      http.StatusBadRequest,
 			}
@@ -61,7 +62,7 @@ func LimitResources(limits *types.TeamLimits, cpuCount, memoryMB *int32) (int64,
 
 		if ramMB%2 != 0 {
 			return 0, 0, &api.APIError{
-				Err:       fmt.Errorf("user provided memory size isn't divisible by 2"),
+				Err:       errors.New("user provided memory size isn't divisible by 2"),
 				ClientMsg: "Memory must be divisible by 2",
 				Code:      http.StatusBadRequest,
 			}

@@ -10603,7 +10603,7 @@ func (siw *ServerInterfaceWrapper) GetSandboxesMetrics(c *gin.Context) {
 	if paramValue := c.Query("sandbox_ids"); paramValue != "" {
 
 	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Query argument sandbox_ids is required, but not found"), http.StatusBadRequest)
+		siw.ErrorHandler(c, errors.New("Query argument sandbox_ids is required, but not found"), http.StatusBadRequest)
 		return
 	}
 
@@ -11149,7 +11149,7 @@ func (siw *ServerInterfaceWrapper) GetTeamsTeamIDMetricsMax(c *gin.Context) {
 	if paramValue := c.Query("metric"); paramValue != "" {
 
 	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Query argument metric is required, but not found"), http.StatusBadRequest)
+		siw.ErrorHandler(c, errors.New("Query argument metric is required, but not found"), http.StatusBadRequest)
 		return
 	}
 

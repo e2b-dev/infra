@@ -150,7 +150,7 @@ func (s *AuthService[T]) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.C
 		var zero T
 
 		return zero, &APIError{
-			Err:       fmt.Errorf("user ID has invalid type"),
+			Err:       errors.New("user ID has invalid type"),
 			ClientMsg: "Backend authentication failed",
 			Code:      http.StatusInternalServerError,
 		}

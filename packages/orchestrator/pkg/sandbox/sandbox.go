@@ -859,7 +859,7 @@ func (f *Factory) ResumeSandbox(
 	})
 
 	uffdStartCtx, cancelUffdStartCtx := context.WithCancelCause(ctx)
-	defer cancelUffdStartCtx(fmt.Errorf("uffd finished starting"))
+	defer cancelUffdStartCtx(errors.New("uffd finished starting"))
 	go func() {
 		uffdWaitErr := fcUffd.Exit().Wait()
 
@@ -1336,7 +1336,7 @@ func (s *Sandbox) WaitForExit(ctx context.Context) error {
 
 	select {
 	case <-time.After(timeout):
-		return fmt.Errorf("waiting for exit took too long")
+		return errors.New("waiting for exit took too long")
 	case <-ctx.Done():
 		return nil
 	case <-s.exit.Done():
@@ -1376,7 +1376,7 @@ func (s *Sandbox) WaitForEnvd(
 		select {
 		// Ensure the syncing takes at most timeout seconds.
 		case <-time.After(timeout):
-			cancel(fmt.Errorf("syncing took too long"))
+			cancel(errors.New("syncing took too long"))
 		case <-ctx.Done():
 			return
 		case <-s.process.Exit.Done():

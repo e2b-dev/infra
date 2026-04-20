@@ -2,6 +2,7 @@ package filesystem
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -90,13 +91,13 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 			return ctx.Err()
 		case chErr, ok := <-w.Errors:
 			if !ok {
-				return connect.NewError(connect.CodeInternal, fmt.Errorf("watcher error channel closed"))
+				return connect.NewError(connect.CodeInternal, errors.New("watcher error channel closed"))
 			}
 
 			return connect.NewError(connect.CodeInternal, fmt.Errorf("watcher error: %w", chErr))
 		case e, ok := <-w.Events:
 			if !ok {
-				return connect.NewError(connect.CodeInternal, fmt.Errorf("watcher event channel closed"))
+				return connect.NewError(connect.CodeInternal, errors.New("watcher event channel closed"))
 			}
 
 			// One event can have multiple operations.

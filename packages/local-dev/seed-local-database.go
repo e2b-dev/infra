@@ -189,12 +189,12 @@ func createTokenHash(prefix, accessToken string) (string, keys.MaskedIdentifier,
 	tokenWithoutPrefix := strings.TrimPrefix(accessToken, prefix)
 	accessTokenBytes, err := hex.DecodeString(tokenWithoutPrefix)
 	if err != nil {
-		return "", keys.MaskedIdentifier{}, fmt.Errorf("failed to hex decode string")
+		return "", keys.MaskedIdentifier{}, errors.New("failed to hex decode string")
 	}
 	accessTokenHash := hasher.Hash(accessTokenBytes)
 	accessTokenMask, err := keys.MaskKey(prefix, tokenWithoutPrefix)
 	if err != nil {
-		return "", keys.MaskedIdentifier{}, fmt.Errorf("failed to mask key")
+		return "", keys.MaskedIdentifier{}, errors.New("failed to mask key")
 	}
 
 	return accessTokenHash, accessTokenMask, nil
