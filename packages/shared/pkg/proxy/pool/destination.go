@@ -12,8 +12,14 @@ type DestinationContextKey struct{}
 
 // Destination contains information about where to route the request.
 type Destination struct {
-	Url         *url.URL
-	SandboxId   string
+	Url       *url.URL
+	SandboxId string
+	// LimiterKey is the key under which per-sandbox ingress connections are
+	// accounted in the connection limiter. Optional: embedders that do not
+	// use the limiter may leave this empty. Embedders choose the key
+	// semantics (e.g. the orchestrator proxy uses the sandbox host IP so
+	// limiter state is scoped to a single sandbox lifecycle).
+	LimiterKey  string
 	SandboxPort uint64
 	// Should we return the error about closed port if there is a problem with a connection to upstream?
 	DefaultToPortError bool

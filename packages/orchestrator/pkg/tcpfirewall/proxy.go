@@ -66,7 +66,7 @@ func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.
 func (p *Proxy) OnInsert(_ context.Context, _ *sandbox.Sandbox) {}
 
 func (p *Proxy) OnNetworkRelease(_ context.Context, sbx *sandbox.Sandbox) {
-	p.limiter.Remove(sbx.Runtime.SandboxID)
+	p.limiter.Remove(sbx.Slot.HostIPString())
 }
 
 func (p *Proxy) Start(ctx context.Context) error {
@@ -233,11 +233,14 @@ func (t *connectionHandler) HandleConn(conn net.Conn) {
 	}
 
 	sandboxID := sbx.Runtime.SandboxID
+	// Scope the limiter to the sandbox's current IP so checkpoint/resume
+	// (same SandboxID, new IP) and slot reuse are both isolated.
+	limiterKey := sbx.Slot.HostIPString()
 	sbxLogger := t.logger.With(logger.WithSandboxID(sandboxID))
 
 	// Check per-sandbox connection limit
 	maxLimit := t.featureFlags.IntFlag(ctx, featureflags.TCPFirewallMaxConnectionsPerSandbox)
-	count, acquired := t.limiter.TryAcquire(sandboxID, maxLimit)
+	count, acquired := t.limiter.TryAcquire(limiterKey, maxLimit)
 	if !acquired {
 		t.metrics.RecordError(ctx, ErrorTypeLimitExceeded, t.protocol)
 		conn.Close()
@@ -250,7 +253,7 @@ func (t *connectionHandler) HandleConn(conn net.Conn) {
 	if err != nil {
 		sbxLogger.Error(ctx, "failed to get original destination", zap.Error(err))
 		t.metrics.RecordError(ctx, ErrorTypeOrigDst, t.protocol)
-		t.limiter.Release(sandboxID)
+		t.limiter.Release(limiterKey)
 		conn.Close()
 
 		return
@@ -261,7 +264,7 @@ func (t *connectionHandler) HandleConn(conn net.Conn) {
 
 	// Wrap the handler to release the connection slot when done
 	wrappedHandler := func(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, l logger.Logger, metrics *Metrics, protocol Protocol) {
-		defer t.limiter.Release(sandboxID)
+		defer t.limiter.Release(limiterKey)
 		t.handler(ctx, conn, dstIP, dstPort, sbx, l, metrics, protocol)
 	}
 

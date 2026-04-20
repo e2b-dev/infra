@@ -108,8 +108,13 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 			)
 
 			return &pool.Destination{
-				Url:                                url,
-				SandboxId:                          sbx.Runtime.SandboxID,
+				Url:       url,
+				SandboxId: sbx.Runtime.SandboxID,
+				// Use the sandbox host IP as the limiter key so limiter state
+				// is scoped to a single sandbox lifecycle. A checkpoint/resume
+				// keeps SandboxId but allocates a new IP, so the old
+				// lifecycle's cleanup cannot alter the new one's counters.
+				LimiterKey:                         sbx.Slot.HostIPString(),
 				SandboxPort:                        port,
 				DefaultToPortError:                 true,
 				IncludeSandboxIdInProxyErrorLogger: true,
@@ -196,7 +201,8 @@ func (p *SandboxProxy) GetAddr() string {
 func (p *SandboxProxy) OnInsert(_ context.Context, _ *sandbox.Sandbox) {}
 
 // OnNetworkRelease is called when a sandbox's network slot is released.
-// It cleans up the connection limiter entry for the sandbox.
+// It cleans up the connection limiter entry, keyed by the released IP so
+// a checkpoint/resume of the same SandboxId (but new IP) is not affected.
 func (p *SandboxProxy) OnNetworkRelease(_ context.Context, sbx *sandbox.Sandbox) {
-	p.limiter.Remove(sbx.Runtime.SandboxID)
+	p.limiter.Remove(sbx.Slot.HostIPString())
 }
