@@ -2,6 +2,7 @@ package template_manager
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"time"
 
@@ -51,7 +52,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 				logger.L().Error(ctx, "error when setting build status to failed after waiting for too long", zap.Error(err), logger.WithBuildID(buildID.String()), logger.WithTemplateID(templateID))
 			}
 
-			return errors.New("build is in waiting state for too long, failing it")
+			return stderrors.New("build is in waiting state for too long, failing it")
 		}
 
 		// just wait for next sync
@@ -59,7 +60,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 	}
 
 	if nodeID == nil {
-		return errors.New("build is not assigned to a node, but it should be")
+		return stderrors.New("build is not assigned to a node, but it should be")
 	}
 
 	checker := &PollBuildStatus{
@@ -169,7 +170,7 @@ func (c *PollBuildStatus) setStatus(ctx context.Context) error {
 	}
 
 	if status == nil {
-		return errors.New("nil status") // this should never happen
+		return stderrors.New("nil status") // this should never happen
 	}
 
 	// debug log the status
@@ -182,7 +183,7 @@ func (c *PollBuildStatus) setStatus(ctx context.Context) error {
 
 func (c *PollBuildStatus) dispatchBasedOnStatus(ctx context.Context, status *templatemanagergrpc.TemplateBuildStatusResponse) (bool, error) {
 	if status == nil {
-		return false, errors.New("nil status")
+		return false, stderrors.New("nil status")
 	}
 	switch status.GetStatus() {
 	case templatemanagergrpc.TemplateBuildState_Failed:
@@ -197,7 +198,7 @@ func (c *PollBuildStatus) dispatchBasedOnStatus(ctx context.Context, status *tem
 		// build completed
 		meta := status.GetMetadata()
 		if meta == nil {
-			return false, errors.New("nil metadata")
+			return false, stderrors.New("nil metadata")
 		}
 
 		err := c.client.SetFinished(ctx, c.buildID, int64(meta.GetRootfsSizeKey()), meta.GetEnvdVersionKey())
