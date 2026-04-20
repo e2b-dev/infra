@@ -280,7 +280,7 @@ func (m *managerImpl) getStatsForPath(ctx context.Context, cgroupPath string, me
 	if memoryPeakFile != nil {
 		peakBytes, err := m.readAndResetMemoryPeak(ctx, memoryPeakFile)
 		if err != nil {
-			logger.L().Debug(ctx, "failed to read memory.peak", zap.Error(err))
+			logger.L().Warn(ctx, "failed to read memory.peak", zap.Error(err))
 		} else {
 			stats.MemoryPeakBytes = peakBytes
 		}
