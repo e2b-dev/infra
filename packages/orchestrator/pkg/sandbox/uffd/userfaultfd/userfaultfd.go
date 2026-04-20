@@ -256,7 +256,10 @@ func (u *Userfaultfd) Serve(
 				continue
 			}
 
-			// MINOR and WP flags are not expected as we don't register the uffd with these flags.
+			// MINOR and WP page-fault events are not expected. MINOR is never
+			// registered. WP is registered by Firecracker but handled
+			// asynchronously (UFFDIO_WRITEPROTECT), so the kernel does not
+			// deliver synchronous WP page-faults to us.
 			return fmt.Errorf("unexpected event type: %d, closing uffd", flags)
 		}
 	}
