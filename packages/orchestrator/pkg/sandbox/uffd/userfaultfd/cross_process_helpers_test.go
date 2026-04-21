@@ -197,24 +197,25 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 			return handlerPageStates{}, err
 		}
 
-		data, err := io.ReadAll(offsetsReader)
-		if err != nil {
-			return handlerPageStates{}, err
-		}
-
-		const entrySize = 1 + 8 // uint8 state + uint64 offset
-		if len(data)%entrySize != 0 {
-			return handlerPageStates{}, fmt.Errorf("invalid page state data length: %d", len(data))
-		}
-
 		var result handlerPageStates
 
-		for i := 0; i < len(data); i += entrySize {
-			state := pageState(data[i])
-			offset := uint(binary.LittleEndian.Uint64(data[i+1 : i+entrySize]))
+		for {
+			var entry pageStateEntry
 
-			if state == faulted {
-				result.faulted = append(result.faulted, offset)
+			// binary.Read uses the same field layout as binary.Write on
+			// the producer side (sum of fixed-size fields, no struct
+			// padding), so we never have to hard-code the wire size.
+			err := binary.Read(offsetsReader, binary.LittleEndian, &entry)
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			if err != nil {
+				return handlerPageStates{}, fmt.Errorf("decoding page state entry: %w", err)
+			}
+
+			if pageState(entry.State) == faulted {
+				result.faulted = append(result.faulted, uint(entry.Offset))
 			}
 		}
 
