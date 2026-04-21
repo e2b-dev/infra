@@ -10,7 +10,6 @@ import (
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/v2"
-	"github.com/bits-and-blooms/bitset"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -54,13 +53,15 @@ type handlerPageStates struct {
 // allAccessed returns the sorted union of offsets that the handler touched
 // in any non-missing state. Tests that only care about "which pages did the
 // handler see" can compare directly against this.
+//
+// pageStatesOnce already returns each per-state slice sorted, and a page
+// has exactly one state at a time in pageTracker, so the per-state slices
+// are disjoint. Follow-up PRs that add more state-specific fields should
+// sorted-merge them here instead of reaching for a bitset — byte offsets
+// make poor bit indices (a single hugepage offset would force ~1.8 MB of
+// backing storage).
 func (s handlerPageStates) allAccessed() []uint {
-	b := bitset.New(0)
-	for _, o := range s.faulted {
-		b.Set(o)
-	}
-
-	return slices.Collect(b.EachSet())
+	return slices.Clone(s.faulted)
 }
 
 type testHandler struct {
