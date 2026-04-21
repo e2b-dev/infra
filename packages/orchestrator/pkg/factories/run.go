@@ -384,17 +384,17 @@ func run(config cfg.Config, opts Options) (success bool) {
 		PoolSize:         config.RedisPoolSize,
 		MinIdleConns:     config.RedisMinIdleConns,
 	})
-	if err != nil && !errors.Is(err, sharedFactories.ErrRedisDisabled) {
-		logger.L().Fatal(ctx, "Could not connect to Redis", zap.Error(err))
-	} else if err == nil {
-		closers = append(closers, closer{"redis client", func(context.Context) error {
-			return sharedFactories.CloseCleanly(redisClient)
-		}})
+	if err != nil {
+		logger.L().Fatal(ctx, "Failed to create redis client", zap.Error(err))
 	}
+
+	closers = append(closers, closer{"redis client", func(context.Context) error {
+		return sharedFactories.CloseCleanly(redisClient)
+	}})
 
 	peerRegistry := peerclient.NopRegistry()
 	peerResolver := peerclient.NopResolver()
-	if nodeAddress := config.NodeAddress(); redisClient != nil && nodeAddress != nil {
+	if nodeAddress := config.NodeAddress(); nodeAddress != nil {
 		peerRegistry = peerclient.NewRedisRegistry(redisClient, *nodeAddress)
 		peerResolver = peerclient.NewResolver(peerRegistry, *nodeAddress)
 	}
@@ -454,11 +454,9 @@ func run(config cfg.Config, opts Options) (success bool) {
 	logger.L().Info(ctx, "cgroup accounting enabled", zap.String("root", cgroup.RootCgroupPath))
 
 	// Redis sandbox events delivery target
-	if redisClient != nil {
-		sbxEventsDeliveryRedis := event.NewRedisStreamsDelivery[event.SandboxEvent](redisClient, event.SandboxEventsStreamName)
-		sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryRedis)
-		closers = append(closers, closer{"sandbox events delivery for redis", sbxEventsDeliveryRedis.Close})
-	}
+	sbxEventsDeliveryRedis := event.NewRedisStreamsDelivery[event.SandboxEvent](redisClient, event.SandboxEventsStreamName)
+	sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryRedis)
+	closers = append(closers, closer{"sandbox events delivery for redis", sbxEventsDeliveryRedis.Close})
 
 	// sandbox observer
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID, sandboxes)
