@@ -184,6 +184,12 @@ variable "client_proxy_port" {
   }
 }
 
+variable "supabase_db_connection_string" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
 variable "loki_cluster_size" {
   type    = number
   default = 0
@@ -228,12 +234,6 @@ variable "ingress_port" {
 variable "dashboard_api_count" {
   type    = number
   default = 0
-}
-
-variable "supabase_db_connection_string" {
-  type      = string
-  default   = ""
-  sensitive = true
 }
 
 variable "enable_auth_user_sync_background_worker" {
