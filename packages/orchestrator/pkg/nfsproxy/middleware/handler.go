@@ -1,0 +1,127 @@
+package middleware
+
+import (
+	"context"
+	"fmt"
+	"net"
+
+	"github.com/go-git/go-billy/v5"
+	"github.com/willscott/go-nfs"
+	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+)
+
+type wrappedHandler struct {
+	inner        nfs.Handler
+	interceptors *Chain
+}
+
+var _ nfs.Handler = (*wrappedHandler)(nil)
+
+// WrapHandler wraps an nfs.Handler with the interceptor chain.
+func WrapHandler(handler nfs.Handler, interceptors *Chain) nfs.Handler {
+	return &wrappedHandler{inner: handler, interceptors: interceptors}
+}
+
+func (w *wrappedHandler) Mount(ctx context.Context, conn net.Conn, req nfs.MountRequest) (nfs.MountStatus, billy.Filesystem, []nfs.AuthFlavor) {
+	var status nfs.MountStatus
+	var fs billy.Filesystem
+	var auth []nfs.AuthFlavor
+
+	err := w.interceptors.Exec(
+		ctx, HandlerMountRequest{RemoteAddr: conn.RemoteAddr().String(), Dirpath: string(req.Dirpath)},
+		func(ctx context.Context) error {
+			status, fs, auth = w.inner.Mount(ctx, conn, req)
+			if status != nfs.MountStatusOk {
+				return fmt.Errorf("mount status: %d", status)
+			}
+
+			return nil
+		},
+	)
+	if err != nil {
+		logger.L().Error(ctx, "Handler.Mount interceptor error", zap.Error(err))
+
+		// only override the status if the interceptor returns OK
+		if status == nfs.MountStatusOk {
+			status = nfs.MountStatusErrServerFault
+		}
+
+		return status, nil, nil
+	}
+
+	return status, WrapFilesystem(ctx, fs, w.interceptors), auth
+}
+
+func (w *wrappedHandler) Change(ctx context.Context, fs billy.Filesystem) (change billy.Change) {
+	err := w.interceptors.Exec(ctx, HandlerChangeRequest{},
+		func(ctx context.Context) error {
+			change = w.inner.Change(ctx, fs)
+
+			return nil
+		})
+	if err != nil {
+		logger.L().Error(ctx, "Handler.Change interceptor error", zap.Error(err))
+
+		return nil
+	}
+
+	return WrapChange(ctx, change, w.interceptors)
+}
+
+func (w *wrappedHandler) FSStat(ctx context.Context, fs billy.Filesystem, stat *nfs.FSStat) error {
+	return w.interceptors.Exec(ctx, HandlerFSStatRequest{},
+		func(ctx context.Context) error {
+			return w.inner.FSStat(ctx, fs, stat)
+		},
+	)
+}
+
+func (w *wrappedHandler) ToHandle(ctx context.Context, fs billy.Filesystem, path []string) []byte {
+	var result []byte
+
+	err := w.interceptors.Exec(ctx, HandlerToHandleRequest{Path: path},
+		func(ctx context.Context) error {
+			result = w.inner.ToHandle(ctx, fs, path)
+
+			return nil
+		})
+	if err != nil {
+		logger.L().Error(ctx, "Handler.ToHandle interceptor error",
+			zap.Error(err),
+			zap.Strings("path", path))
+	}
+
+	return result
+}
+
+func (w *wrappedHandler) FromHandle(ctx context.Context, fh []byte) (billy.Filesystem, []string, error) {
+	var fs billy.Filesystem
+	var paths []string
+
+	err := w.interceptors.Exec(ctx, HandlerFromHandleRequest{},
+		func(ctx context.Context) error {
+			var err error
+			fs, paths, err = w.inner.FromHandle(ctx, fh)
+
+			return err
+		})
+
+	// Note: We intentionally do NOT wrap the filesystem here.
+	// The caching handler (inner) returns the already-wrapped filesystem
+	// that was stored during ToHandle (which received the wrapped fs from Mount).
+	// Wrapping again would cause double-interception of filesystem operations.
+	return fs, paths, err
+}
+
+func (w *wrappedHandler) InvalidateHandle(ctx context.Context, fs billy.Filesystem, fh []byte) error {
+	return w.interceptors.Exec(ctx, HandlerInvalidateHandleRequest{},
+		func(ctx context.Context) error {
+			return w.inner.InvalidateHandle(ctx, fs, fh)
+		})
+}
+
+func (w *wrappedHandler) HandleLimit() int {
+	return w.inner.HandleLimit()
+}
