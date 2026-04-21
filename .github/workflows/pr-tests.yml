@@ -14,7 +14,10 @@ jobs:
       # Disable Testcontainers' Ryuk reaper. Parallel test binaries from
       # `go test ./...` derive the same session-id-based reaper container
       # name and race on creation, causing flaky "container name already
-      # in use" failures. Per-test t.Cleanup already terminates containers.
+      # in use" failures. Per-test t.Cleanup already terminates containers
+      # on the normal exit path; the "Reap orphaned Testcontainers" step
+      # below handles the abnormal-termination case (timeout / SIGKILL /
+      # OOM) on the persistent self-hosted runner.
       TESTCONTAINERS_RYUK_DISABLED: "true"
     strategy:
       matrix:
@@ -52,6 +55,21 @@ jobs:
             go.work
             ${{ matrix.package }}/go.mod
             ${{ matrix.package }}/go.sum
+
+      - name: Reap orphaned Testcontainers from previous runs
+        # Self-hosted runner is persistent and Ryuk is disabled, so a
+        # SIGKILL / timeout / OOM in a previous job can leave behind
+        # postgres / redis / reaper containers. Force-remove anything
+        # carrying the Testcontainers label or the reaper_* name prefix
+        # before tests start.
+        run: |
+          set -euo pipefail
+          orphans=$(docker ps -aq --filter "label=org.testcontainers=true")
+          reapers=$(docker ps -aq --filter "name=^reaper_")
+          if [ -n "${orphans}${reapers}" ]; then
+            # shellcheck disable=SC2086
+            docker rm -f ${orphans} ${reapers}
+          fi
 
       - name: Setup envd tests
         run: |
