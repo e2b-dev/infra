@@ -8,6 +8,13 @@
     <!-- Use up 80% of available RAM to be on the safer side, default is 90% -->
     <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
 
+    <!-- Allow replicas to recover from a larger number/size of broken parts without
+         manual intervention. Defaults: 100 parts, 1 GiB (1073741824 bytes) total. -->
+    <merge_tree>
+        <max_suspicious_broken_parts>20000</max_suspicious_broken_parts>
+        <max_suspicious_broken_parts_bytes>107374182400</max_suspicious_broken_parts_bytes>
+    </merge_tree>
+
     <logger>
         <formatting>
             <type>json</type>
