@@ -75,10 +75,10 @@ resource "google_compute_disk" "clickhouse_stateful_disk" {
   for_each = toset([for i in range(1, var.clickhouse_cluster_size + 1) : tostring(i)])
 
   name = "${local.clickhouse_pool_name}-${each.key}-disk"
-  type = "pd-ssd"
+  type = var.clickhouse_stateful_disk_type
   zone = var.gcp_zone
 
-  size = 100
+  size = var.clickhouse_stateful_disk_size_gb
 
   lifecycle {
     ignore_changes = [size]
