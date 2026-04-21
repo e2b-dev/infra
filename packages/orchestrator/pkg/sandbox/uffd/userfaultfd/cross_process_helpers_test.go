@@ -93,6 +93,10 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	uffdFd, err := newFd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	require.NoError(t, err)
 
+	t.Cleanup(func() {
+		uffdFd.close()
+	})
+
 	err = configureApi(uffdFd, tt.pagesize)
 	require.NoError(t, err)
 
@@ -213,11 +217,11 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 			"unexpected error: %v", waitErr,
 		)
 
-		// Unregister the uffd range before closing the fd. This is a
-		// no-op for the existing tests but is required by the upcoming
-		// REMOVE event tests so munmap doesn't block on un-acked events.
+		// Unregister the uffd range before the fd-close cleanup runs.
+		// This is a no-op for the existing tests but is required by the
+		// upcoming REMOVE event tests so munmap doesn't block on
+		// un-acked events.
 		unregister(uffdFd, memoryStart, uint64(size))
-		uffdFd.close()
 	})
 
 	// pageStatesOnce asks the serving process for a snapshot of its pageTracker
