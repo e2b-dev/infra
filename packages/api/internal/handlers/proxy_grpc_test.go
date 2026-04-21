@@ -173,29 +173,40 @@ func TestValidateClientProxyAuth(t *testing.T) {
 	tests := []struct {
 		name        string
 		md          metadata.MD
-		expected    string
+		expected    []string
 		wantErrCode bool
 	}{
 		{
 			name:     "disabled when expected token empty",
 			md:       metadata.MD{},
-			expected: "",
+			expected: []string{""},
 		},
 		{
 			name:     "valid token",
 			md:       metadata.Pairs(proxygrpc.MetadataClientProxyAuthToken, "secret"),
-			expected: "secret",
+			expected: []string{"secret"},
+		},
+		{
+			name:     "valid alternate token",
+			md:       metadata.Pairs(proxygrpc.MetadataClientProxyAuthToken, "cluster-secret"),
+			expected: []string{"api-secret", "cluster-secret"},
 		},
 		{
 			name:        "missing token",
 			md:          metadata.MD{},
-			expected:    "secret",
+			expected:    []string{"secret"},
 			wantErrCode: true,
 		},
 		{
 			name:        "wrong token",
 			md:          metadata.Pairs(proxygrpc.MetadataClientProxyAuthToken, "wrong"),
-			expected:    "secret",
+			expected:    []string{"secret"},
+			wantErrCode: true,
+		},
+		{
+			name:        "empty alternate does not disable configured token",
+			md:          metadata.MD{},
+			expected:    []string{"secret", ""},
 			wantErrCode: true,
 		},
 	}
@@ -203,7 +214,7 @@ func TestValidateClientProxyAuth(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := validateClientProxyAuth(tt.md, tt.expected)
+			err := validateClientProxyAuth(tt.md, tt.expected...)
 			if tt.wantErrCode {
 				assert.Error(t, err)
 				return

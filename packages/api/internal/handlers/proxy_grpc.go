@@ -87,17 +87,26 @@ func denyResumePermission() error {
 	return status.Error(codes.PermissionDenied, "permission denied")
 }
 
-func validateClientProxyAuth(incomingMetadata metadata.MD, expectedToken string) error {
-	if expectedToken == "" {
+func validateClientProxyAuth(incomingMetadata metadata.MD, expectedTokens ...string) error {
+	providedToken, _ := metadataFirstValue(incomingMetadata, proxygrpc.MetadataClientProxyAuthToken)
+
+	hasExpectedToken := false
+	for _, expectedToken := range expectedTokens {
+		if expectedToken == "" {
+			continue
+		}
+
+		hasExpectedToken = true
+		if tokensMatch(providedToken, expectedToken) {
+			return nil
+		}
+	}
+
+	if !hasExpectedToken {
 		return nil
 	}
 
-	providedToken, _ := metadataFirstValue(incomingMetadata, proxygrpc.MetadataClientProxyAuthToken)
-	if !tokensMatch(providedToken, expectedToken) {
-		return denyResumePermission()
-	}
-
-	return nil
+	return denyResumePermission()
 }
 
 const autoResumeTransitionWaitBudget = time.Minute
@@ -125,9 +134,6 @@ func (s *SandboxService) getAutoResumeSnapshot(ctx context.Context, sandboxID st
 
 func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*proxygrpc.SandboxResumeResponse, error) {
 	incomingMetadata := metadataFromIncomingContext(ctx)
-	if err := validateClientProxyAuth(incomingMetadata, s.api.config.APISecret); err != nil {
-		return nil, err
-	}
 
 	sandboxID, err := utils.ShortID(req.GetSandboxId())
 	if err != nil {
@@ -140,6 +146,22 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	}
 
 	teamID := snap.Snapshot.TeamID
+
+	team, err := dbapi.GetTeamByID(ctx, s.api.authDB, teamID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
+	}
+
+	clusterAuthToken := ""
+	if team.ClusterID != nil {
+		if cluster, found := s.api.clusters.GetClusterById(*team.ClusterID); found {
+			clusterAuthToken = cluster.AuthToken
+		}
+	}
+
+	if err := validateClientProxyAuth(incomingMetadata, s.api.config.APISecret, clusterAuthToken); err != nil {
+		return nil, err
+	}
 
 	sandboxData, sandboxErr := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if sandboxErr != nil {
@@ -172,10 +194,6 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		}
 	}
 
-	team, err := dbapi.GetTeamByID(ctx, s.api.authDB, teamID)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
-	}
 	minAutoResumeTimeout := time.Duration(s.api.featureFlags.IntFlag(ctx, featureflags.MinAutoResumeTimeoutSeconds)) * time.Second
 
 	timeout := calculateAutoResumeTimeout(autoResume, minAutoResumeTimeout, team)
