@@ -51,6 +51,12 @@ type volumePathRequest interface {
 }
 
 func (s *Service) getVolumeRootPath(ctx context.Context, volume *orchestrator.VolumeInfo) (string, error) {
+	// If the volume already has a persisted path, use it directly.
+	if vp := volume.GetVolumePath(); vp != "" {
+		return vp, nil
+	}
+
+	// Fall back to computing the path from volume type, team ID, and volume ID.
 	volumeType := volume.GetVolumeType()
 
 	teamID, ok := pkg.TryParseUUID(volume.GetTeamId())
@@ -77,17 +83,6 @@ func (s *Service) getVolumeRootPath(ctx context.Context, volume *orchestrator.Vo
 
 func (s *Service) getFilesystemAndPath(ctx context.Context, request volumePathRequest) (*chrooted.Chrooted, string, *status.Status) {
 	volume := request.GetVolume()
-	volumeType := volume.GetVolumeType()
-
-	teamID, ok := pkg.TryParseUUID(volume.GetTeamId())
-	if !ok {
-		return nil, "", newAPIError(ctx,
-			codes.InvalidArgument,
-			http.StatusBadRequest,
-			orchestrator.UserErrorCode_INVALID_REQUEST,
-			"invalid team ID %q", volume.GetTeamId(),
-		)
-	}
 
 	volumeID, ok := pkg.TryParseUUID(volume.GetVolumeId())
 	if !ok {
@@ -99,7 +94,30 @@ func (s *Service) getFilesystemAndPath(ctx context.Context, request volumePathRe
 		)
 	}
 
-	chroot, err := s.builder.Chroot(ctx, volumeType, teamID, volumeID)
+	var (
+		chroot *chrooted.Chrooted
+		err    error
+	)
+
+	// If the volume has a persisted path, use it directly instead of looking up by type.
+	if vp := volume.GetVolumePath(); vp != "" {
+		chroot, err = s.builder.ChrootPath(ctx, vp, volumeID)
+	} else {
+		volumeType := volume.GetVolumeType()
+
+		teamID, ok := pkg.TryParseUUID(volume.GetTeamId())
+		if !ok {
+			return nil, "", newAPIError(ctx,
+				codes.InvalidArgument,
+				http.StatusBadRequest,
+				orchestrator.UserErrorCode_INVALID_REQUEST,
+				"invalid team ID %q", volume.GetTeamId(),
+			)
+		}
+
+		chroot, err = s.builder.Chroot(ctx, volumeType, teamID, volumeID)
+	}
+
 	if err != nil {
 		if errors.Is(err, chrooted.ErrVolumeTypeNotFound) {
 			return nil, "", newAPIError(ctx,

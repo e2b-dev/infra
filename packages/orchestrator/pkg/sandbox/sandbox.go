@@ -122,10 +122,11 @@ func (c *Config) GetNetworkIngress() *orchestrator.SandboxNetworkIngressConfig {
 }
 
 type VolumeMountConfig struct {
-	ID   uuid.UUID
-	Name string
-	Path string
-	Type string
+	ID         uuid.UUID
+	Name       string
+	Path       string
+	Type       string
+	VolumePath string
 }
 
 type EnvdMetadata struct {

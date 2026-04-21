@@ -171,7 +171,14 @@ func (h *NFSHandler) getChroot(ctx context.Context, remoteAddr net.Addr, request
 		return nil, ErrVolumeID
 	}
 
-	fs, err := h.builder.Chroot(ctx, volumeMount.Type, teamID, volumeMount.ID)
+	var fs *chrooted.Chrooted
+	if volumeMount.VolumePath != "" {
+		// Use the persisted volume path directly, bypassing type lookup.
+		fs, err = h.builder.ChrootPath(ctx, volumeMount.VolumePath, volumeMount.ID)
+	} else {
+		// Fall back to building the path from volume type, team ID, and volume ID.
+		fs, err = h.builder.Chroot(ctx, volumeMount.Type, teamID, volumeMount.ID)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to mount %q: %w", volumeName, err)
 	}

@@ -35,6 +35,16 @@ func (b *Builder) Chroot(ctx context.Context, volumeType string, teamID, volumeI
 	return fs, nil
 }
 
+// ChrootPath creates a chrooted filesystem at the given path directly, bypassing volume type lookup.
+func (b *Builder) ChrootPath(ctx context.Context, fullPath string, volumeID uuid.UUID) (*Chrooted, error) {
+	fs, err := Chroot(ctx, fullPath, WithMetadata("volume-id", volumeID.String()))
+	if err != nil {
+		return nil, err
+	}
+
+	return fs, nil
+}
+
 func (b *Builder) BuildVolumePath(volumeType string, teamID, volumeID uuid.UUID) (string, error) {
 	volumeTypeRoot, ok := b.config.PersistentVolumeMounts[volumeType]
 	if !ok {

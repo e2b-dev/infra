@@ -175,12 +175,16 @@ func convertDatabaseMountsToOrchestratorMounts(volumes []*types.SandboxVolumeMou
 	results := make([]*orchestratorgrpc.SandboxVolumeMount, 0, len(volumes))
 
 	for _, item := range volumes {
-		results = append(results, &orchestratorgrpc.SandboxVolumeMount{
+		mount := &orchestratorgrpc.SandboxVolumeMount{
 			Id:   item.ID,
 			Type: item.Type,
 			Name: item.Name,
 			Path: item.Path,
-		})
+		}
+		if item.VolumePath != "" {
+			mount.VolumePath = &item.VolumePath
+		}
+		results = append(results, mount)
 	}
 
 	return results

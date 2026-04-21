@@ -106,7 +106,8 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 	default:
 	}
 
-	if err := a.createVolume(ctx, clusterID, volume); err != nil {
+	volumePath, err := a.createVolume(ctx, clusterID, volume)
+	if err != nil {
 		if errors.Is(err, ErrClusterNotFound) {
 			a.sendAPIStoreError(c, http.StatusServiceUnavailable, "Cluster not found")
 			telemetry.ReportError(ctx, "cluster not found", err)
@@ -125,6 +126,20 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 		telemetry.ReportCriticalError(ctx, "error when creating directory", err)
 
 		return
+	}
+
+	// Persist the volume path returned by the orchestrator.
+	if volumePath != "" {
+		if err := client.UpdateVolumePath(ctx, queries.UpdateVolumePathParams{
+			VolumePath: &volumePath,
+			VolumeID:   volume.ID,
+			TeamID:     volume.TeamID,
+		}); err != nil {
+			telemetry.ReportCriticalError(ctx, "failed to update volume path", err)
+			// Non-fatal: the volume was created successfully, path is optional.
+		} else {
+			volume.VolumePath = &volumePath
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -180,12 +195,20 @@ func isValidVolumeName(name string) bool {
 	return validVolumeNameRegex.MatchString(name)
 }
 
-func (a *APIStore) createVolume(ctx context.Context, clusterID uuid.UUID, volume queries.Volume) error {
-	return a.executeOnOrchestratorByClusterID(ctx, clusterID, func(ctx context.Context, client *clusters.GRPCClient) error {
-		_, err := client.Volumes.CreateVolume(ctx, &orchestrator.CreateVolumeRequest{
+func (a *APIStore) createVolume(ctx context.Context, clusterID uuid.UUID, volume queries.Volume) (string, error) {
+	var volumePath string
+	err := a.executeOnOrchestratorByClusterID(ctx, clusterID, func(ctx context.Context, client *clusters.GRPCClient) error {
+		resp, err := client.Volumes.CreateVolume(ctx, &orchestrator.CreateVolumeRequest{
 			Volume: toVolumeKey(volume),
 		})
+		if err != nil {
+			return err
+		}
 
-		return err
+		volumePath = resp.GetVolumePath()
+
+		return nil
 	})
+
+	return volumePath, err
 }

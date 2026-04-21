@@ -375,10 +375,11 @@ func convertAPIVolumesToOrchestratorVolumes(ctx context.Context, sqlClient *sqlc
 		usedPaths[v.Path] = struct{}{}
 
 		results = append(results, &orchestrator.SandboxVolumeMount{
-			Id:   actualVolume.ID.String(),
-			Path: v.Path,
-			Type: actualVolume.VolumeType,
-			Name: actualVolume.Name,
+			Id:         actualVolume.ID.String(),
+			Path:       v.Path,
+			Type:       actualVolume.VolumeType,
+			Name:       actualVolume.Name,
+			VolumePath: actualVolume.VolumePath,
 		})
 	}
 

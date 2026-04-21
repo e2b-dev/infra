@@ -81,10 +81,11 @@ type SandboxNetworkConfig struct {
 }
 
 type SandboxVolumeMountConfig struct {
-	ID   string `json:"id"`
-	Type string `json:"type"`
-	Name string `json:"name"`
-	Path string `json:"path"`
+	ID         string `json:"id"`
+	Type       string `json:"type"`
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	VolumePath string `json:"volume_path,omitempty"`
 }
 
 type SandboxAutoResumePolicy string

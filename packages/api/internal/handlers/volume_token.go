@@ -35,6 +35,11 @@ func generateVolumeContentToken(config cfg.VolumesTokenConfig, volume queries.Vo
 		"voltype": volume.VolumeType,
 	}
 
+	// Include volume path in the token only if it's been persisted.
+	if volume.VolumePath != nil && *volume.VolumePath != "" {
+		claims["volpath"] = *volume.VolumePath
+	}
+
 	token := jwt.NewWithClaims(config.SigningMethod, claims)
 	token.Header["tokid"] = config.SigningKeyName
 	signedToken, err := token.SignedString(config.SigningKey)

@@ -65,6 +65,7 @@ message SandboxVolumeMount {
   string path = 2;
   string type = 3;
   string name = 4;
+  optional string volume_path = 5;
 }
 
 message SandboxNetworkConfig {
