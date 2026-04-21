@@ -81,7 +81,7 @@ resource "google_compute_disk" "clickhouse_stateful_disk" {
   size = var.clickhouse_stateful_disk_size_gb
 
   lifecycle {
-    ignore_changes = [size]
+    ignore_changes = [size, type]
   }
 }
 
