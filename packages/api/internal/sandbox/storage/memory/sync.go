@@ -13,7 +13,7 @@ import (
 // This is to prevent remove instances that are still being started
 const syncSandboxRemoveGracePeriod = 10 * time.Second
 
-func (s *Storage) Sync(sandboxes []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
+func (s *Storage) Sync(ctx context.Context, sandboxes []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
 	sandboxMap := make(map[string]sandbox.Sandbox)
 	now := time.Now()
 
@@ -40,7 +40,7 @@ func (s *Storage) Sync(sandboxes []sandbox.Sandbox, nodeID string) []sandbox.San
 		_, found := sandboxMap[data.SandboxID]
 		if !found {
 			logger.L().Debug(
-				context.Background(),
+				ctx,
 				"sync expiring sandbox missing from node report",
 				logger.WithSandboxID(data.SandboxID),
 				logger.WithTeamID(data.TeamID.String()),
@@ -58,7 +58,7 @@ func (s *Storage) Sync(sandboxes []sandbox.Sandbox, nodeID string) []sandbox.San
 		}
 
 		logger.L().Debug(
-			context.Background(),
+			ctx,
 			"sync discovered sandbox missing from cache",
 			logger.WithSandboxID(sandbox.SandboxID),
 			logger.WithTeamID(sandbox.TeamID.String()),

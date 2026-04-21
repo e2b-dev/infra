@@ -54,6 +54,6 @@ func (s *Storage) Close() {
 }
 
 // Sync is here only for legacy reasons, redis backend doesn't need any sync
-func (s *Storage) Sync(_ []sandbox.Sandbox, _ string) []sandbox.Sandbox {
+func (s *Storage) Sync(_ context.Context, _ []sandbox.Sandbox, _ string) []sandbox.Sandbox {
 	return nil
 }

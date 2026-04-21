@@ -127,11 +127,13 @@ func BenchmarkStorageTeamsWithSandboxCount(b *testing.B) {
 }
 
 func BenchmarkStorageSyncRemoveScan(b *testing.B) {
+	ctx := context.Background()
+
 	benchmarkSizes(b, func(b *testing.B, f benchFixture) {
 		b.Helper()
 
 		for range b.N {
-			_ = f.storage.Sync(f.syncInput, f.syncNodeID)
+			_ = f.storage.Sync(ctx, f.syncInput, f.syncNodeID)
 		}
 	})
 }

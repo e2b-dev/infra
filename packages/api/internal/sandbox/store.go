@@ -38,7 +38,7 @@ type Storage interface { //nolint: interfacebloat
 	Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error)
 	StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts RemoveOpts) (Sandbox, bool, func(context.Context, error), error)
 	WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error
-	Sync(sandboxes []Sandbox, nodeID string) []Sandbox
+	Sync(ctx context.Context, sandboxes []Sandbox, nodeID string) []Sandbox
 }
 
 type Callbacks struct {
@@ -156,7 +156,7 @@ func (s *Store) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandbo
 }
 
 func (s *Store) Sync(ctx context.Context, sandboxes []Sandbox, nodeID string) {
-	sbxs := s.storage.Sync(sandboxes, nodeID)
+	sbxs := s.storage.Sync(ctx, sandboxes, nodeID)
 	for _, sbx := range sbxs {
 		logger.L().Debug(
 			ctx,
