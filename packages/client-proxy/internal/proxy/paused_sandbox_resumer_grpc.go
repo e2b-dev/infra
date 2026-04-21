@@ -49,7 +49,7 @@ func (c *grpcPausedSandboxResumer) Close(_ context.Context) error {
 	return c.conn.Close()
 }
 
-func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (string, error) {
+func appendProxyTrafficMetadata(ctx context.Context, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) context.Context {
 	ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataSandboxRequestPort, strconv.FormatUint(sandboxPort, 10))
 
 	if trafficAccessToken != "" {
@@ -60,6 +60,12 @@ func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string,
 		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataEnvdAccessToken, envdAccessToken)
 	}
 
+	return ctx
+}
+
+func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (string, error) {
+	ctx = appendProxyTrafficMetadata(ctx, sandboxPort, trafficAccessToken, envdAccessToken)
+
 	resp, err := c.client.ResumeSandbox(ctx, &proxygrpc.SandboxResumeRequest{
 		SandboxId: sandboxId,
 	})
@@ -68,4 +74,18 @@ func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string,
 	}
 
 	return strings.TrimSpace(resp.GetOrchestratorIp()), nil
+}
+
+func (c *grpcPausedSandboxResumer) KeepAlive(ctx context.Context, sandboxId string, teamID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) error {
+	ctx = appendProxyTrafficMetadata(ctx, sandboxPort, trafficAccessToken, envdAccessToken)
+
+	_, err := c.client.KeepAliveSandbox(ctx, &proxygrpc.SandboxKeepAliveRequest{
+		SandboxId: sandboxId,
+		TeamId:    teamID,
+	})
+	if err != nil {
+		return fmt.Errorf("grpc keepalive: %w", err)
+	}
+
+	return nil
 }

@@ -18,7 +18,18 @@ message SandboxResumeResponse {
   string orchestrator_ip = 1;
 }
 
-// SandboxService is used by the client-proxy to resume sandboxes.
+// Request to refresh the timeout of a running sandbox.
+message SandboxKeepAliveRequest {
+  // Sandbox ID to keep alive.
+  string sandbox_id = 1;
+  // Team ID owning the sandbox, sourced from the internal routing catalog.
+  string team_id = 2;
+}
+
+message SandboxKeepAliveResponse {}
+
+// SandboxService is used by the client-proxy to resume or keep alive sandboxes.
 service SandboxService {
   rpc ResumeSandbox(SandboxResumeRequest) returns (SandboxResumeResponse);
+  rpc KeepAliveSandbox(SandboxKeepAliveRequest) returns (SandboxKeepAliveResponse);
 }

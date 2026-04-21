@@ -19,16 +19,18 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SandboxService_ResumeSandbox_FullMethodName = "/proxy.SandboxService/ResumeSandbox"
+	SandboxService_ResumeSandbox_FullMethodName    = "/proxy.SandboxService/ResumeSandbox"
+	SandboxService_KeepAliveSandbox_FullMethodName = "/proxy.SandboxService/KeepAliveSandbox"
 )
 
 // SandboxServiceClient is the client API for SandboxService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// SandboxService is used by the client-proxy to resume sandboxes.
+// SandboxService is used by the client-proxy to resume or keep alive sandboxes.
 type SandboxServiceClient interface {
 	ResumeSandbox(ctx context.Context, in *SandboxResumeRequest, opts ...grpc.CallOption) (*SandboxResumeResponse, error)
+	KeepAliveSandbox(ctx context.Context, in *SandboxKeepAliveRequest, opts ...grpc.CallOption) (*SandboxKeepAliveResponse, error)
 }
 
 type sandboxServiceClient struct {
@@ -49,13 +51,24 @@ func (c *sandboxServiceClient) ResumeSandbox(ctx context.Context, in *SandboxRes
 	return out, nil
 }
 
+func (c *sandboxServiceClient) KeepAliveSandbox(ctx context.Context, in *SandboxKeepAliveRequest, opts ...grpc.CallOption) (*SandboxKeepAliveResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SandboxKeepAliveResponse)
+	err := c.cc.Invoke(ctx, SandboxService_KeepAliveSandbox_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SandboxServiceServer is the server API for SandboxService service.
 // All implementations must embed UnimplementedSandboxServiceServer
 // for forward compatibility.
 //
-// SandboxService is used by the client-proxy to resume sandboxes.
+// SandboxService is used by the client-proxy to resume or keep alive sandboxes.
 type SandboxServiceServer interface {
 	ResumeSandbox(context.Context, *SandboxResumeRequest) (*SandboxResumeResponse, error)
+	KeepAliveSandbox(context.Context, *SandboxKeepAliveRequest) (*SandboxKeepAliveResponse, error)
 	mustEmbedUnimplementedSandboxServiceServer()
 }
 
@@ -68,6 +81,9 @@ type UnimplementedSandboxServiceServer struct{}
 
 func (UnimplementedSandboxServiceServer) ResumeSandbox(context.Context, *SandboxResumeRequest) (*SandboxResumeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ResumeSandbox not implemented")
+}
+func (UnimplementedSandboxServiceServer) KeepAliveSandbox(context.Context, *SandboxKeepAliveRequest) (*SandboxKeepAliveResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method KeepAliveSandbox not implemented")
 }
 func (UnimplementedSandboxServiceServer) mustEmbedUnimplementedSandboxServiceServer() {}
 func (UnimplementedSandboxServiceServer) testEmbeddedByValue()                        {}
@@ -108,6 +124,24 @@ func _SandboxService_ResumeSandbox_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SandboxService_KeepAliveSandbox_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SandboxKeepAliveRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SandboxServiceServer).KeepAliveSandbox(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SandboxService_KeepAliveSandbox_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SandboxServiceServer).KeepAliveSandbox(ctx, req.(*SandboxKeepAliveRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SandboxService_ServiceDesc is the grpc.ServiceDesc for SandboxService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -118,6 +152,10 @@ var SandboxService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ResumeSandbox",
 			Handler:    _SandboxService_ResumeSandbox_Handler,
+		},
+		{
+			MethodName: "KeepAliveSandbox",
+			Handler:    _SandboxService_KeepAliveSandbox_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
