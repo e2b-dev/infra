@@ -12,6 +12,10 @@ import (
 )
 
 // MapSubscriber receives lifecycle notifications from the sandbox Map.
+//
+// Callbacks are invoked synchronously from the goroutine that performed the
+// state change. Implementations must be non-blocking; if async work is needed,
+// the subscriber is responsible for dispatching it.
 type MapSubscriber interface {
 	// OnInsert is triggered when a sandbox transitions to the running state.
 	OnInsert(ctx context.Context, sandbox *Sandbox)
@@ -100,7 +104,7 @@ func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) {
 		return
 	}
 
-	go m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
+	m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
 		s.OnInsert(ctx, sbx)
 	})
 
@@ -146,9 +150,6 @@ func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) b
 
 // NetworkReleased unregisters a sandbox's IP and notifies OnNetworkRelease
 // subscribers after a successful removal.
-//
-// Subscribers are invoked synchronously so the caller can rely on them
-// having completed before taking any follow-up action.
 func (m *Map) NetworkReleased(ctx context.Context, ip string) {
 	var sbx *Sandbox
 	removed := m.network.RemoveCb(ip, func(_ string, v *Sandbox, exists bool) bool {
