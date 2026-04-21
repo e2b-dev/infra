@@ -105,6 +105,7 @@ func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) {
 
 	logger.L().Info(ctx, "adding sandbox to map",
 		logger.WithSandboxID(sbx.Runtime.SandboxID),
+		logger.WithLifecycleID(sbx.LifecycleID),
 		logger.WithTemplateID(sbx.Runtime.TemplateID),
 		logger.WithBuildID(sbx.Runtime.BuildID),
 		logger.WithSandboxIP(sbx.Slot.HostIPString()),
