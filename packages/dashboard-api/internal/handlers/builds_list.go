@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -208,7 +209,7 @@ func parseBuildsCursor(cursor *api.BuildsCursor) (time.Time, uuid.UUID, error) {
 
 	parts := strings.SplitN(*cursor, "|", 2)
 	if len(parts) != 2 {
-		return time.Time{}, uuid.Nil, fmt.Errorf("invalid cursor format")
+		return time.Time{}, uuid.Nil, errors.New("invalid cursor format")
 	}
 
 	cursorTime, err := parseCursorTime(parts[0])

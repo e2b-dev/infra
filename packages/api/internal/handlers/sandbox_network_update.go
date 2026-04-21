@@ -53,7 +53,7 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(
 		return
 	}
 
-	if apiErr := a.orchestrator.UpdateSandboxNetworkConfig(ctx, team.ID, sandboxID, allowedEntries, deniedEntries); apiErr != nil {
+	if apiErr := a.orchestrator.UpdateSandboxNetworkConfig(ctx, team.ID, sandboxID, allowedEntries, deniedEntries, body.AllowInternetAccess); apiErr != nil {
 		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error updating sandbox network config", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 

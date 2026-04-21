@@ -17,7 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-var ErrRedisDisabled = errors.New("redis is disabled")
+var ErrRedisUnconfigured = errors.New("redis is not configured")
 
 type RedisConfig struct {
 	RedisURL         string
@@ -97,7 +97,7 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 			if !certPool.AppendCertsFromPEM(cert) {
 				logger.L().Error(ctx, "Failed to parse Redis cluster TLS CA certificate")
 
-				return nil, fmt.Errorf("failed to parse Redis cluster TLS CA certificate")
+				return nil, errors.New("failed to parse Redis cluster TLS CA certificate")
 			}
 
 			// Remove the port if present
@@ -124,7 +124,7 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 
 		redisClient = redis.NewClient(opts)
 	default:
-		return nil, ErrRedisDisabled
+		return nil, ErrRedisUnconfigured
 	}
 
 	// Enable tracing

@@ -90,7 +90,7 @@ func NewNFSHandler(
 
 func (h *NFSHandler) OnInsert(_ context.Context, _ *sandbox.Sandbox) {}
 
-func (h *NFSHandler) OnRemove(ctx context.Context, sbx *sandbox.Sandbox) {
+func (h *NFSHandler) OnNetworkRelease(ctx context.Context, sbx *sandbox.Sandbox) {
 	lifecycleID := sbx.LifecycleID
 
 	h.mu.Lock()

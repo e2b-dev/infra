@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -34,7 +35,7 @@ func (w *Workdir) Execute(
 	args := step.GetArgs()
 	// args: [path]
 	if len(args) < 1 {
-		return metadata.Context{}, fmt.Errorf("WORKDIR requires a path argument")
+		return metadata.Context{}, errors.New("WORKDIR requires a path argument")
 	}
 
 	workDir := defaultRelativeToAbsoluteWorkdir

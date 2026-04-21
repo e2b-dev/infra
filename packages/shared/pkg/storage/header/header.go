@@ -3,6 +3,7 @@ package header
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -67,7 +68,7 @@ func (t *Header) SetBuild(buildID uuid.UUID, bd BuildData) {
 
 func NewHeader(metadata *Metadata, mapping []BuildMap) (*Header, error) {
 	if metadata.BlockSize == 0 {
-		return nil, fmt.Errorf("block size cannot be zero")
+		return nil, errors.New("block size cannot be zero")
 	}
 
 	if len(mapping) == 0 {

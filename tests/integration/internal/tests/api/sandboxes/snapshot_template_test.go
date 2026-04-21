@@ -220,6 +220,7 @@ func TestSnapshotTemplateCreateSandbox(t *testing.T) {
 
 		snapshot := createSnapshotTemplateWithCleanup(t, c, sbx.SandboxID, nil)
 
+		utils.AcquireSandboxSlot(t)
 		createResp, err := c.PostSandboxesWithResponse(
 			t.Context(),
 			api.PostSandboxesJSONRequestBody{
@@ -249,6 +250,7 @@ func TestSnapshotTemplateCreateSandbox(t *testing.T) {
 		snapshot := createSnapshotTemplateWithCleanup(t, c, sbx.SandboxID, &name)
 
 		require.NotEmpty(t, snapshot.Names)
+		utils.AcquireSandboxSlot(t)
 		createResp, err := c.PostSandboxesWithResponse(
 			t.Context(),
 			api.PostSandboxesJSONRequestBody{
