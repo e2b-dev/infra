@@ -10,13 +10,12 @@ import (
 	"net/netip"
 	"os/exec"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/awnumar/memguard"
 	"github.com/rs/zerolog"
 	"github.com/txn2/txeh"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
@@ -225,7 +224,9 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	}
 
 	if data.VolumeMounts != nil {
-		a.setupNFS(ctx, logger, *data.VolumeMounts)
+		if err := a.setupNFS(ctx, logger, data.LifecycleID, *data.VolumeMounts); err != nil {
+			return fmt.Errorf("failed to setup NFS volumes: %w", err)
+		}
 	}
 
 	return nil
@@ -244,63 +245,102 @@ var nfsOptions = strings.Join([]string{
 	"port=2049",      // nfs proxy only supports mounting on port 2049
 	"nfsvers=3",      // nfs proxy is nfs version 3
 	"noacl",          // no reason for acl in the sandbox
+
+	// disable caching so that pause/resume works correctly
+	"noac",
+	"lookupcache=none",
 }, ",")
 
-const nfsMountTimeout = 5 * time.Second
+const nfsMountTimeout = 10 * time.Second
 
-func (a *API) setupNFS(ctx context.Context, logger zerolog.Logger, mounts []VolumeMount) {
-	// Already fully mounted, nothing to do
-	if a.isMountedNFS.Load() {
-		logger.Debug().Msg("NFS volumes already mounted")
-
-		return
-	}
-
+func (a *API) setupNFS(ctx context.Context, logger zerolog.Logger, lifecycleID *string, mounts []VolumeMount) (e error) {
 	// Prevent concurrent mounting attempts
 	if !a.isMountingNFS.CompareAndSwap(false, true) {
 		logger.Debug().Msg("NFS volumes already mounting")
 
-		return
+		return e
 	}
 	defer a.isMountingNFS.Store(false)
 
-	logger.Debug().Msg("Mounting NFS volumes")
+	logger.Debug().Msg("Setting up NFS volumes")
 
-	ctx = context.WithoutCancel(ctx)
-	ctx, cancel := context.WithTimeout(ctx, nfsMountTimeout)
+	ctx = context.WithoutCancel(ctx)                         // don't allow request context cancellation to propagate
+	ctx, cancel := context.WithTimeout(ctx, nfsMountTimeout) // don't let the nfs mount run forever
 	defer cancel()
 
-	var wg sync.WaitGroup
-	var allSucceeded atomic.Bool
-	allSucceeded.Store(true)
+	wg, wgCtx := errgroup.WithContext(ctx)
+
+	requestLifecycleID := derefString(lifecycleID)
 
 	for _, volume := range mounts {
-		// Skip already mounted paths
-		if _, ok := a.mountedPaths.Load(volume.Path); ok {
-			logger.Debug().Msgf("Skipping already mounted %q", volume.Path)
+		// Check if this path is already mounted for the current lifecycle
+		mountedLifecycle, isMounted := a.mountedPaths.Load(volume.Path)
+		mountedLifecycleID := asString(mountedLifecycle)
+		if !shouldRemountNFS(isMounted, mountedLifecycleID, requestLifecycleID) {
+			logger.Debug().Msgf("Skipping %q, already mounted for lifecycle %q", volume.Path, requestLifecycleID)
 
 			continue
 		}
 
-		logger.Debug().Msgf("Mounting %s at %q", volume.NfsTarget, volume.Path)
+		if isMounted {
+			logger.Debug().Msgf("Lifecycle changed for %q: %q -> %q", volume.Path, mountedLifecycleID, requestLifecycleID)
+		}
 
-		wg.Go(func() {
-			if a.mountNFS(ctx, volume.NfsTarget, volume.Path) {
-				a.mountedPaths.Store(volume.Path, true)
-			} else {
-				allSucceeded.Store(false)
+		logger.Debug().Msgf("Setting up %s at %q", volume.NfsTarget, volume.Path)
+
+		wg.Go(func() error {
+			// Unmount if currently mounted (handles stale mounts from previous lifecycle)
+			if err := a.unmountNFS(wgCtx, logger, volume.Path); err != nil {
+				return fmt.Errorf("failed to unmount stale NFS mount at %q: %w", volume.Path, err)
 			}
+
+			if err := a.mountNFS(wgCtx, volume.NfsTarget, volume.Path); err != nil {
+				return fmt.Errorf("failed to mount NFS at %q: %w", volume.Path, err)
+			}
+
+			a.mountedPaths.Store(volume.Path, requestLifecycleID)
+
+			return nil
 		})
 	}
 
-	wg.Wait()
-
-	if allSucceeded.Load() {
-		a.isMountedNFS.Store(true)
-	}
+	return wg.Wait()
 }
 
-func (a *API) mountNFS(ctx context.Context, nfsTarget, path string) bool {
+func (a *API) unmountNFS(ctx context.Context, logger zerolog.Logger, path string) error {
+	// Check if actually mounted before trying to unmount.
+	// findmnt returns exit code 1 when path is not a mount point - that's not an error.
+	data, err := exec.CommandContext(ctx, "findmnt", "--noheadings", "--output", "SOURCE", path).CombinedOutput()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			// Not mounted - nothing to unmount
+			return nil
+		}
+
+		return fmt.Errorf("failed to check if %q is mounted: %w", path, err)
+	}
+
+	source := strings.TrimSpace(string(data))
+	if source == "" {
+		return nil // already unmounted
+	}
+
+	logger.Debug().Msgf("Unmounting stale NFS mount at %q (was: %s)", path, source)
+
+	// Force unmount since the handles are stale anyway
+	data, err = exec.CommandContext(ctx, "umount", "--force", path).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to unmount stale NFS mount at %q: %w\n%s", path, err, string(data))
+	}
+
+	// Clear our tracking state for this path
+	a.mountedPaths.Delete(path)
+
+	return nil
+}
+
+func (a *API) mountNFS(ctx context.Context, nfsTarget, path string) error {
 	commands := [][]string{
 		{"mkdir", "-p", path},
 		{"mount", "-v", "-t", "nfs", "-o", "fg,hard," + nfsOptions, nfsTarget, path},
@@ -308,20 +348,47 @@ func (a *API) mountNFS(ctx context.Context, nfsTarget, path string) bool {
 
 	for _, command := range commands {
 		data, err := exec.CommandContext(ctx, command[0], command[1:]...).CombinedOutput()
-
-		logger := a.getLogger(err)
-
-		logger.
-			Strs("command", command).
-			Str("output", string(data)).
-			Msg("Mount NFS")
-
 		if err != nil {
-			return false
+			return fmt.Errorf("`%s` failed: %w\n%s", strings.Join(command, " "), err, string(data))
 		}
 	}
 
-	return true
+	return nil
+}
+
+// shouldRemountNFS determines if an NFS volume should be remounted based on lifecycle IDs.
+// Returns true if remount is needed, false if we should skip (already mounted for this lifecycle).
+//
+// Truth table (treating nil/empty as equivalent):
+//   - mounted="" + request="" → false (no remount - would cause infinite loop)
+//   - mounted="abc" + request="" → true (remount - lifecycle cleared)
+//   - mounted="" + request="abc" → true (remount - new lifecycle)
+//   - mounted="abc" + request="abc" → false (no remount - same lifecycle)
+//   - mounted="abc" + request="xyz" → true (remount - different lifecycle)
+func shouldRemountNFS(isMounted bool, mountedLifecycleID, requestLifecycleID string) bool {
+	if !isMounted {
+		return true // not mounted yet, need to mount
+	}
+
+	return mountedLifecycleID != requestLifecycleID
+}
+
+func derefString(p *string) string {
+	if p == nil {
+		return ""
+	}
+
+	return *p
+}
+
+func asString(v any) string {
+	if v == nil {
+		return ""
+	}
+
+	s, _ := v.(string)
+
+	return s
 }
 
 func (a *API) SetupHyperloop(address string) {

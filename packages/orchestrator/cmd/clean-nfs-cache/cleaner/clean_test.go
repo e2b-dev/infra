@@ -81,10 +81,15 @@ func TestCleanDeletesOldestFiles(t *testing.T) {
 		origFiles[sd] = names
 	}
 
-	// Configure Cleaner to delete 2 files (target bytes equal to 2 files)
+	// Configure Cleaner to delete 2 files (target bytes equal to 2 files).
+	// BatchN must equal DeleteN here: with BatchN > DeleteN, splitBatch
+	// reinserts the "younger" half of each batch, and this can race with the
+	// scanner's next pop (which happens before the reinsert runs), allowing a
+	// younger file to be deleted while an older sibling reinserted into the
+	// same subdir is never popped again.
 	opts := Options{
 		Path:                rootPath,
-		BatchN:              4,
+		BatchN:              2,
 		DeleteN:             2,
 		TargetBytesToDelete: 1024, // 2 * 512
 		DryRun:              false,
@@ -98,33 +103,49 @@ func TestCleanDeletesOldestFiles(t *testing.T) {
 	err = c.Clean(t.Context())
 	require.NoError(t, err)
 
-	// Collect which files remain and which were deleted
-	deleted := []string{}
+	// Collect which files remain and which were deleted, per subdir.
+	deletedCount := 0
+	remaining := map[string]map[string]bool{}
 	for _, sd := range subdirs {
 		dirPath := filepath.Join(rootPath, sd)
 		entries, err := os.ReadDir(dirPath)
 		require.NoError(t, err)
-		remaining := map[string]bool{}
+		remaining[sd] = map[string]bool{}
 		for _, e := range entries {
 			if !e.IsDir() {
-				remaining[e.Name()] = true
+				remaining[sd][e.Name()] = true
 			}
 		}
 		for _, fn := range origFiles[sd] {
-			if !remaining[fn] {
-				deleted = append(deleted, filepath.Join(sd, fn))
+			if !remaining[sd][fn] {
+				deletedCount++
 			}
 		}
 	}
 
-	// Expect at least 2 deletions, it can be more due to concurrency.
-	require.GreaterOrEqual(t, len(deleted), 2)
+	// Expect at least 2 deletions (target = 1024 bytes = 2 * 512). Concurrency
+	// can cause additional batches to complete before the byte target is
+	// observed, so we don't assert an upper bound.
+	require.GreaterOrEqual(t, deletedCount, 2)
 
-	// The two files must have been some combination of 7 and 8 (from whichever
-	// folder) Because of concurrency, sometimes we may pick an extra batch of
-	// candidates, so include 6 as well.
-	for _, d := range deleted {
-		require.Regexp(t, `.+/file(6|7|8)\.txt`, d)
+	// The cleaner pops the oldest file from each subdir; with BatchN==DeleteN
+	// nothing is reinserted, so per subdir the deleted indices must form a
+	// contiguous suffix [N..8]: if fileN was deleted then fileN+1 ... file8
+	// must also be deleted.
+	for _, sd := range subdirs {
+		maxRemaining, minDeleted := -1, len(origFiles[sd])
+		for i, fn := range origFiles[sd] {
+			if remaining[sd][fn] {
+				if i > maxRemaining {
+					maxRemaining = i
+				}
+			} else if i < minDeleted {
+				minDeleted = i
+			}
+		}
+		require.Lessf(t, maxRemaining, minDeleted,
+			"subdir %s: file%d.txt remained but file%d.txt was deleted (expected oldest-first deletion)",
+			sd, maxRemaining, minDeleted)
 	}
 }
 

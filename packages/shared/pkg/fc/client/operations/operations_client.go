@@ -57,6 +57,8 @@ type ClientService interface {
 
 	DescribeBalloonConfig(params *DescribeBalloonConfigParams, opts ...ClientOption) (*DescribeBalloonConfigOK, error)
 
+	DescribeBalloonHinting(params *DescribeBalloonHintingParams, opts ...ClientOption) (*DescribeBalloonHintingOK, error)
+
 	DescribeBalloonStats(params *DescribeBalloonStatsParams, opts ...ClientOption) (*DescribeBalloonStatsOK, error)
 
 	DescribeInstance(params *DescribeInstanceParams, opts ...ClientOption) (*DescribeInstanceOK, error)
@@ -70,6 +72,8 @@ type ClientService interface {
 	GetMachineConfiguration(params *GetMachineConfigurationParams, opts ...ClientOption) (*GetMachineConfigurationOK, error)
 
 	GetMemory(params *GetMemoryParams, opts ...ClientOption) (*GetMemoryOK, error)
+
+	GetMemoryHotplug(params *GetMemoryHotplugParams, opts ...ClientOption) (*GetMemoryHotplugOK, error)
 
 	GetMemoryMappings(params *GetMemoryMappingsParams, opts ...ClientOption) (*GetMemoryMappingsOK, error)
 
@@ -87,6 +91,8 @@ type ClientService interface {
 
 	PatchMachineConfiguration(params *PatchMachineConfigurationParams, opts ...ClientOption) (*PatchMachineConfigurationNoContent, error)
 
+	PatchMemoryHotplug(params *PatchMemoryHotplugParams, opts ...ClientOption) (*PatchMemoryHotplugNoContent, error)
+
 	PatchMmds(params *PatchMmdsParams, opts ...ClientOption) (*PatchMmdsNoContent, error)
 
 	PatchVM(params *PatchVMParams, opts ...ClientOption) (*PatchVMNoContent, error)
@@ -103,17 +109,27 @@ type ClientService interface {
 
 	PutGuestNetworkInterfaceByID(params *PutGuestNetworkInterfaceByIDParams, opts ...ClientOption) (*PutGuestNetworkInterfaceByIDNoContent, error)
 
+	PutGuestPmemByID(params *PutGuestPmemByIDParams, opts ...ClientOption) (*PutGuestPmemByIDNoContent, error)
+
 	PutGuestVsock(params *PutGuestVsockParams, opts ...ClientOption) (*PutGuestVsockNoContent, error)
 
 	PutLogger(params *PutLoggerParams, opts ...ClientOption) (*PutLoggerNoContent, error)
 
 	PutMachineConfiguration(params *PutMachineConfigurationParams, opts ...ClientOption) (*PutMachineConfigurationNoContent, error)
 
+	PutMemoryHotplug(params *PutMemoryHotplugParams, opts ...ClientOption) (*PutMemoryHotplugNoContent, error)
+
 	PutMetrics(params *PutMetricsParams, opts ...ClientOption) (*PutMetricsNoContent, error)
 
 	PutMmds(params *PutMmdsParams, opts ...ClientOption) (*PutMmdsNoContent, error)
 
 	PutMmdsConfig(params *PutMmdsConfigParams, opts ...ClientOption) (*PutMmdsConfigNoContent, error)
+
+	PutSerialDevice(params *PutSerialDeviceParams, opts ...ClientOption) (*PutSerialDeviceNoContent, error)
+
+	StartBalloonHinting(params *StartBalloonHintingParams, opts ...ClientOption) (*StartBalloonHintingOK, error)
+
+	StopBalloonHinting(params *StopBalloonHintingParams, opts ...ClientOption) (*StopBalloonHintingOK, error)
 
 	SetTransport(transport runtime.ClientTransport)
 }
@@ -242,6 +258,48 @@ func (a *Client) DescribeBalloonConfig(params *DescribeBalloonConfigParams, opts
 	//
 	// a default response is provided: fill this and return an error
 	unexpectedSuccess := result.(*DescribeBalloonConfigDefault)
+
+	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
+}
+
+/*
+DescribeBalloonHinting returns the balloon hinting statistics only if enabled pre boot
+*/
+func (a *Client) DescribeBalloonHinting(params *DescribeBalloonHintingParams, opts ...ClientOption) (*DescribeBalloonHintingOK, error) {
+	// NOTE: parameters are not validated before sending
+	if params == nil {
+		params = NewDescribeBalloonHintingParams()
+	}
+	op := &runtime.ClientOperation{
+		ID:                 "describeBalloonHinting",
+		Method:             "GET",
+		PathPattern:        "/balloon/hinting/status",
+		ProducesMediaTypes: []string{"application/json"},
+		ConsumesMediaTypes: []string{"application/json"},
+		Schemes:            []string{"http"},
+		Params:             params,
+		Reader:             &DescribeBalloonHintingReader{formats: a.formats},
+		Context:            params.Context,
+		Client:             params.HTTPClient,
+	}
+	for _, opt := range opts {
+		opt(op)
+	}
+	result, err := a.transport.Submit(op)
+	if err != nil {
+		return nil, err
+	}
+
+	// only one success response has to be checked
+	success, ok := result.(*DescribeBalloonHintingOK)
+	if ok {
+		return success, nil
+	}
+
+	// unexpected success response.
+	//
+	// a default response is provided: fill this and return an error
+	unexpectedSuccess := result.(*DescribeBalloonHintingDefault)
 
 	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
 }
@@ -544,6 +602,50 @@ func (a *Client) GetMemory(params *GetMemoryParams, opts ...ClientOption) (*GetM
 	//
 	// a default response is provided: fill this and return an error
 	unexpectedSuccess := result.(*GetMemoryDefault)
+
+	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
+}
+
+/*
+GetMemoryHotplug retrieves the status of the hotpluggable memory
+
+Reuturn the status of the hotpluggable memory. This can be used to follow the progress of the guest after a PATCH API.
+*/
+func (a *Client) GetMemoryHotplug(params *GetMemoryHotplugParams, opts ...ClientOption) (*GetMemoryHotplugOK, error) {
+	// NOTE: parameters are not validated before sending
+	if params == nil {
+		params = NewGetMemoryHotplugParams()
+	}
+	op := &runtime.ClientOperation{
+		ID:                 "getMemoryHotplug",
+		Method:             "GET",
+		PathPattern:        "/hotplug/memory",
+		ProducesMediaTypes: []string{"application/json"},
+		ConsumesMediaTypes: []string{"application/json"},
+		Schemes:            []string{"http"},
+		Params:             params,
+		Reader:             &GetMemoryHotplugReader{formats: a.formats},
+		Context:            params.Context,
+		Client:             params.HTTPClient,
+	}
+	for _, opt := range opts {
+		opt(op)
+	}
+	result, err := a.transport.Submit(op)
+	if err != nil {
+		return nil, err
+	}
+
+	// only one success response has to be checked
+	success, ok := result.(*GetMemoryHotplugOK)
+	if ok {
+		return success, nil
+	}
+
+	// unexpected success response.
+	//
+	// a default response is provided: fill this and return an error
+	unexpectedSuccess := result.(*GetMemoryHotplugDefault)
 
 	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
 }
@@ -892,6 +994,50 @@ func (a *Client) PatchMachineConfiguration(params *PatchMachineConfigurationPara
 	//
 	// a default response is provided: fill this and return an error
 	unexpectedSuccess := result.(*PatchMachineConfigurationDefault)
+
+	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
+}
+
+/*
+PatchMemoryHotplug updates the size of the hotpluggable memory region
+
+Updates the size of the hotpluggable memory region. The guest will plug and unplug memory to hit the requested memory.
+*/
+func (a *Client) PatchMemoryHotplug(params *PatchMemoryHotplugParams, opts ...ClientOption) (*PatchMemoryHotplugNoContent, error) {
+	// NOTE: parameters are not validated before sending
+	if params == nil {
+		params = NewPatchMemoryHotplugParams()
+	}
+	op := &runtime.ClientOperation{
+		ID:                 "patchMemoryHotplug",
+		Method:             "PATCH",
+		PathPattern:        "/hotplug/memory",
+		ProducesMediaTypes: []string{"application/json"},
+		ConsumesMediaTypes: []string{"application/json"},
+		Schemes:            []string{"http"},
+		Params:             params,
+		Reader:             &PatchMemoryHotplugReader{formats: a.formats},
+		Context:            params.Context,
+		Client:             params.HTTPClient,
+	}
+	for _, opt := range opts {
+		opt(op)
+	}
+	result, err := a.transport.Submit(op)
+	if err != nil {
+		return nil, err
+	}
+
+	// only one success response has to be checked
+	success, ok := result.(*PatchMemoryHotplugNoContent)
+	if ok {
+		return success, nil
+	}
+
+	// unexpected success response.
+	//
+	// a default response is provided: fill this and return an error
+	unexpectedSuccess := result.(*PatchMemoryHotplugDefault)
 
 	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
 }
@@ -1247,6 +1393,50 @@ func (a *Client) PutGuestNetworkInterfaceByID(params *PutGuestNetworkInterfaceBy
 }
 
 /*
+PutGuestPmemByID creates or updates a pmem device pre boot only
+
+Creates new pmem device with ID specified by id parameter. If a pmem device with the specified ID already exists, updates its state based on new input. Will fail if update is not possible.
+*/
+func (a *Client) PutGuestPmemByID(params *PutGuestPmemByIDParams, opts ...ClientOption) (*PutGuestPmemByIDNoContent, error) {
+	// NOTE: parameters are not validated before sending
+	if params == nil {
+		params = NewPutGuestPmemByIDParams()
+	}
+	op := &runtime.ClientOperation{
+		ID:                 "putGuestPmemByID",
+		Method:             "PUT",
+		PathPattern:        "/pmem/{id}",
+		ProducesMediaTypes: []string{"application/json"},
+		ConsumesMediaTypes: []string{"application/json"},
+		Schemes:            []string{"http"},
+		Params:             params,
+		Reader:             &PutGuestPmemByIDReader{formats: a.formats},
+		Context:            params.Context,
+		Client:             params.HTTPClient,
+	}
+	for _, opt := range opts {
+		opt(op)
+	}
+	result, err := a.transport.Submit(op)
+	if err != nil {
+		return nil, err
+	}
+
+	// only one success response has to be checked
+	success, ok := result.(*PutGuestPmemByIDNoContent)
+	if ok {
+		return success, nil
+	}
+
+	// unexpected success response.
+	//
+	// a default response is provided: fill this and return an error
+	unexpectedSuccess := result.(*PutGuestPmemByIDDefault)
+
+	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
+}
+
+/*
 PutGuestVsock creates updates a vsock device pre boot only
 
 The first call creates the device with the configuration specified in body. Subsequent calls will update the device configuration. May fail if update is not possible.
@@ -1377,6 +1567,50 @@ func (a *Client) PutMachineConfiguration(params *PutMachineConfigurationParams, 
 }
 
 /*
+PutMemoryHotplug configures the hotpluggable memory
+
+Configure the hotpluggable memory, which is a virtio-mem device, with an associated memory area that can be hot(un)plugged in the guest on demand using the PATCH API.
+*/
+func (a *Client) PutMemoryHotplug(params *PutMemoryHotplugParams, opts ...ClientOption) (*PutMemoryHotplugNoContent, error) {
+	// NOTE: parameters are not validated before sending
+	if params == nil {
+		params = NewPutMemoryHotplugParams()
+	}
+	op := &runtime.ClientOperation{
+		ID:                 "putMemoryHotplug",
+		Method:             "PUT",
+		PathPattern:        "/hotplug/memory",
+		ProducesMediaTypes: []string{"application/json"},
+		ConsumesMediaTypes: []string{"application/json"},
+		Schemes:            []string{"http"},
+		Params:             params,
+		Reader:             &PutMemoryHotplugReader{formats: a.formats},
+		Context:            params.Context,
+		Client:             params.HTTPClient,
+	}
+	for _, opt := range opts {
+		opt(op)
+	}
+	result, err := a.transport.Submit(op)
+	if err != nil {
+		return nil, err
+	}
+
+	// only one success response has to be checked
+	success, ok := result.(*PutMemoryHotplugNoContent)
+	if ok {
+		return success, nil
+	}
+
+	// unexpected success response.
+	//
+	// a default response is provided: fill this and return an error
+	unexpectedSuccess := result.(*PutMemoryHotplugDefault)
+
+	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
+}
+
+/*
 PutMetrics initializes the metrics system by specifying a named pipe or a file for the metrics output
 */
 func (a *Client) PutMetrics(params *PutMetricsParams, opts ...ClientOption) (*PutMetricsNoContent, error) {
@@ -1500,6 +1734,134 @@ func (a *Client) PutMmdsConfig(params *PutMmdsConfigParams, opts ...ClientOption
 	//
 	// a default response is provided: fill this and return an error
 	unexpectedSuccess := result.(*PutMmdsConfigDefault)
+
+	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
+}
+
+/*
+PutSerialDevice configures the serial console
+
+Configure the serial console, which the guest can write its kernel logs to. Has no effect if the serial console is not also enabled on the guest kernel command line
+*/
+func (a *Client) PutSerialDevice(params *PutSerialDeviceParams, opts ...ClientOption) (*PutSerialDeviceNoContent, error) {
+	// NOTE: parameters are not validated before sending
+	if params == nil {
+		params = NewPutSerialDeviceParams()
+	}
+	op := &runtime.ClientOperation{
+		ID:                 "putSerialDevice",
+		Method:             "PUT",
+		PathPattern:        "/serial",
+		ProducesMediaTypes: []string{"application/json"},
+		ConsumesMediaTypes: []string{"application/json"},
+		Schemes:            []string{"http"},
+		Params:             params,
+		Reader:             &PutSerialDeviceReader{formats: a.formats},
+		Context:            params.Context,
+		Client:             params.HTTPClient,
+	}
+	for _, opt := range opts {
+		opt(op)
+	}
+	result, err := a.transport.Submit(op)
+	if err != nil {
+		return nil, err
+	}
+
+	// only one success response has to be checked
+	success, ok := result.(*PutSerialDeviceNoContent)
+	if ok {
+		return success, nil
+	}
+
+	// unexpected success response.
+	//
+	// a default response is provided: fill this and return an error
+	unexpectedSuccess := result.(*PutSerialDeviceDefault)
+
+	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
+}
+
+/*
+StartBalloonHinting starts a free page hinting run only if enabled pre boot
+*/
+func (a *Client) StartBalloonHinting(params *StartBalloonHintingParams, opts ...ClientOption) (*StartBalloonHintingOK, error) {
+	// NOTE: parameters are not validated before sending
+	if params == nil {
+		params = NewStartBalloonHintingParams()
+	}
+	op := &runtime.ClientOperation{
+		ID:                 "startBalloonHinting",
+		Method:             "PATCH",
+		PathPattern:        "/balloon/hinting/start",
+		ProducesMediaTypes: []string{"application/json"},
+		ConsumesMediaTypes: []string{"application/json"},
+		Schemes:            []string{"http"},
+		Params:             params,
+		Reader:             &StartBalloonHintingReader{formats: a.formats},
+		Context:            params.Context,
+		Client:             params.HTTPClient,
+	}
+	for _, opt := range opts {
+		opt(op)
+	}
+	result, err := a.transport.Submit(op)
+	if err != nil {
+		return nil, err
+	}
+
+	// only one success response has to be checked
+	success, ok := result.(*StartBalloonHintingOK)
+	if ok {
+		return success, nil
+	}
+
+	// unexpected success response.
+	//
+	// a default response is provided: fill this and return an error
+	unexpectedSuccess := result.(*StartBalloonHintingDefault)
+
+	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
+}
+
+/*
+StopBalloonHinting stops a free page hinting run only if enabled pre boot
+*/
+func (a *Client) StopBalloonHinting(params *StopBalloonHintingParams, opts ...ClientOption) (*StopBalloonHintingOK, error) {
+	// NOTE: parameters are not validated before sending
+	if params == nil {
+		params = NewStopBalloonHintingParams()
+	}
+	op := &runtime.ClientOperation{
+		ID:                 "stopBalloonHinting",
+		Method:             "PATCH",
+		PathPattern:        "/balloon/hinting/stop",
+		ProducesMediaTypes: []string{"application/json"},
+		ConsumesMediaTypes: []string{"application/json"},
+		Schemes:            []string{"http"},
+		Params:             params,
+		Reader:             &StopBalloonHintingReader{formats: a.formats},
+		Context:            params.Context,
+		Client:             params.HTTPClient,
+	}
+	for _, opt := range opts {
+		opt(op)
+	}
+	result, err := a.transport.Submit(op)
+	if err != nil {
+		return nil, err
+	}
+
+	// only one success response has to be checked
+	success, ok := result.(*StopBalloonHintingOK)
+	if ok {
+		return success, nil
+	}
+
+	// unexpected success response.
+	//
+	// a default response is provided: fill this and return an error
+	unexpectedSuccess := result.(*StopBalloonHintingDefault)
 
 	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
 }
