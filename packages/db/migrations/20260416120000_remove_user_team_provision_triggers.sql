@@ -23,6 +23,8 @@ DROP POLICY IF EXISTS "Allow to delete a user" ON public.users;
 DROP POLICY IF EXISTS "Allow to create a team to new user" ON public.teams;
 DROP POLICY IF EXISTS "Allow to create a user team connection to new user" ON public.users_teams;
 DROP POLICY IF EXISTS "Allow to select a team for supabase auth admin" ON public.teams;
+DROP POLICY IF EXISTS "Allow to create a team api key to new user" ON public.team_api_keys;
+DROP POLICY IF EXISTS "Allow to create an access token to new user" ON public.access_tokens;
 
 REVOKE INSERT ON public.users FROM trigger_user;
 REVOKE SELECT (id) ON public.users FROM trigger_user;
@@ -31,9 +33,19 @@ REVOKE DELETE ON public.users FROM trigger_user;
 
 REVOKE SELECT, INSERT, TRIGGER ON public.teams FROM trigger_user;
 REVOKE INSERT ON public.users_teams FROM trigger_user;
+REVOKE INSERT ON public.team_api_keys FROM trigger_user;
+REVOKE INSERT ON public.access_tokens FROM trigger_user;
+
+REVOKE CREATE, USAGE ON SCHEMA public FROM trigger_user;
+REVOKE USAGE ON SCHEMA extensions FROM trigger_user;
+REVOKE USAGE ON SCHEMA auth FROM trigger_user;
 
 -- +goose Down
 -- +goose StatementBegin
+
+GRANT CREATE, USAGE ON SCHEMA public TO trigger_user;
+GRANT USAGE ON SCHEMA extensions TO trigger_user;
+GRANT USAGE ON SCHEMA auth TO trigger_user;
 
 GRANT SELECT, INSERT, TRIGGER ON public.teams TO trigger_user;
 GRANT INSERT ON public.users_teams TO trigger_user;
@@ -41,6 +53,8 @@ GRANT INSERT ON public.users TO trigger_user;
 GRANT SELECT (id) ON public.users TO trigger_user;
 GRANT UPDATE ON public.users TO trigger_user;
 GRANT DELETE ON public.users TO trigger_user;
+GRANT INSERT ON public.team_api_keys TO trigger_user;
+GRANT INSERT ON public.access_tokens TO trigger_user;
 
 CREATE POLICY "Allow to create a new user"
     ON public.users
@@ -80,6 +94,20 @@ CREATE POLICY "Allow to create a team to new user"
 
 CREATE POLICY "Allow to create a user team connection to new user"
     ON public.users_teams
+    AS PERMISSIVE
+    FOR INSERT
+    TO trigger_user
+    WITH CHECK (TRUE);
+
+CREATE POLICY "Allow to create a team api key to new user"
+    ON public.team_api_keys
+    AS PERMISSIVE
+    FOR INSERT
+    TO trigger_user
+    WITH CHECK (TRUE);
+
+CREATE POLICY "Allow to create an access token to new user"
+    ON public.access_tokens
     AS PERMISSIVE
     FOR INSERT
     TO trigger_user
