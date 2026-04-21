@@ -1,7 +1,7 @@
 package cfg
 
 import (
-	"fmt"
+	"errors"
 
 	"github.com/caarlos0/env/v11"
 )
@@ -40,7 +40,7 @@ func Parse() (Config, error) {
 	}
 
 	if err == nil && config.RedisURL == "" && config.RedisClusterURL == "" {
-		err = fmt.Errorf("at least one of REDIS_URL or REDIS_CLUSTER_URL must be set")
+		err = errors.New("at least one of REDIS_URL or REDIS_CLUSTER_URL must be set")
 	}
 
 	return config, err

@@ -2,10 +2,10 @@ package template_manager
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"

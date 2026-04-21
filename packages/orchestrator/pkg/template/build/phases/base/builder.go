@@ -322,7 +322,7 @@ func (bb *BaseBuilder) Layer(
 		tm, err := bb.index.Cached(ctx, bb.Config.FromTemplate.GetBuildID())
 		if err != nil {
 			if errors.Is(err, storage.ErrObjectNotExist) {
-				return phases.LayerResult{}, phases.NewPhaseBuildError(bb.Metadata(), fmt.Errorf("error getting base template, you may need to rebuild it first"))
+				return phases.LayerResult{}, phases.NewPhaseBuildError(bb.Metadata(), errors.New("error getting base template, you may need to rebuild it first"))
 			}
 
 			return phases.LayerResult{}, fmt.Errorf("error getting base template: %w", err)

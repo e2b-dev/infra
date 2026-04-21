@@ -575,7 +575,7 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 		if len(allowedDomains) > 0 && !hasBlockAll {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("allow out contains domains but deny out is missing 0.0.0.0/0 (ALL_TRAFFIC)"),
+				Err:       errors.New("allow out contains domains but deny out is missing 0.0.0.0/0 (ALL_TRAFFIC)"),
 				ClientMsg: ErrMsgDomainsRequireBlockAll,
 			}
 		}

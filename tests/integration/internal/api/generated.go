@@ -1442,6 +1442,9 @@ type PutSandboxesSandboxIDNetworkJSONBody struct {
 	// AllowOut List of allowed destinations for egress traffic. Each entry can be a CIDR block (e.g. "8.8.8.8/32"), a bare IP address (e.g. "8.8.8.8"), or a domain name (e.g. "example.com", "*.example.com"). Allowed entries always take precedence over denied entries.
 	AllowOut *[]string `json:"allowOut,omitempty"`
 
+	// AllowInternetAccess Allow sandbox to access the internet. When set to false, it behaves the same as specifying denyOut to 0.0.0.0/0 in the network config.
+	AllowInternetAccess *bool `json:"allow_internet_access,omitempty"`
+
 	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
 	DenyOut *[]string `json:"denyOut,omitempty"`
 }

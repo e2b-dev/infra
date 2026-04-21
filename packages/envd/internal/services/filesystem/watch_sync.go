@@ -2,6 +2,7 @@ package filesystem
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -57,7 +58,7 @@ func CreateFileWatcher(ctx context.Context, watchPath string, recursive bool, op
 				return
 			case chErr, ok := <-w.Errors:
 				if !ok {
-					fw.Error = connect.NewError(connect.CodeInternal, fmt.Errorf("watcher error channel closed"))
+					fw.Error = connect.NewError(connect.CodeInternal, errors.New("watcher error channel closed"))
 
 					return
 				}
@@ -67,7 +68,7 @@ func CreateFileWatcher(ctx context.Context, watchPath string, recursive bool, op
 				return
 			case e, ok := <-w.Events:
 				if !ok {
-					fw.Error = connect.NewError(connect.CodeInternal, fmt.Errorf("watcher event channel closed"))
+					fw.Error = connect.NewError(connect.CodeInternal, errors.New("watcher event channel closed"))
 
 					return
 				}

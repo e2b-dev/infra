@@ -195,14 +195,14 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 			request.Length = binary.BigEndian.Uint32(header[24:28])
 
 			if request.Magic != NBDRequestMagic {
-				return fmt.Errorf("received invalid MAGIC")
+				return errors.New("received invalid MAGIC")
 			}
 
 			switch request.Type {
 			case NBDCmdDisconnect:
 				return nil // All done
 			case NBDCmdFlush:
-				return fmt.Errorf("not supported: Flush")
+				return errors.New("not supported: Flush")
 			case NBDCmdRead:
 				rp += 28
 				err := d.cmdRead(ctx, request.Handle, request.From, request.Length)

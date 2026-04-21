@@ -3,6 +3,7 @@ package dockerhub
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -64,7 +65,7 @@ func (g *AWSRemoteRepository) getAuthToken(ctx context.Context) (authn.Authentic
 	}
 
 	if len(res.AuthorizationData) == 0 {
-		return nil, fmt.Errorf("no aws ecr auth token found")
+		return nil, errors.New("no aws ecr auth token found")
 	}
 
 	authData := res.AuthorizationData[0]
@@ -76,7 +77,7 @@ func (g *AWSRemoteRepository) getAuthToken(ctx context.Context) (authn.Authentic
 	// split into username and password
 	parts := strings.SplitN(string(decodedToken), ":", 2)
 	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid aws ecr auth token")
+		return nil, errors.New("invalid aws ecr auth token")
 	}
 
 	username := parts[0]
