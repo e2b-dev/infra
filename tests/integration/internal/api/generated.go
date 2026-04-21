@@ -1587,6 +1587,9 @@ type PostSandboxesJSONRequestBody = NewSandbox
 // PostSandboxesSandboxIDConnectJSONRequestBody defines body for PostSandboxesSandboxIDConnect for application/json ContentType.
 type PostSandboxesSandboxIDConnectJSONRequestBody = ConnectSandbox
 
+// PutSandboxesSandboxIDMetadataJSONRequestBody defines body for PutSandboxesSandboxIDMetadata for application/json ContentType.
+type PutSandboxesSandboxIDMetadataJSONRequestBody = SandboxMetadata
+
 // PutSandboxesSandboxIDNetworkJSONRequestBody defines body for PutSandboxesSandboxIDNetwork for application/json ContentType.
 type PutSandboxesSandboxIDNetworkJSONRequestBody PutSandboxesSandboxIDNetworkJSONBody
 
@@ -1892,6 +1895,11 @@ type ClientInterface interface {
 
 	// GetSandboxesSandboxIDLogs request
 	GetSandboxesSandboxIDLogs(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutSandboxesSandboxIDMetadataWithBody request with any body
+	PutSandboxesSandboxIDMetadataWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PutSandboxesSandboxIDMetadata(ctx context.Context, sandboxID SandboxID, body PutSandboxesSandboxIDMetadataJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetSandboxesSandboxIDMetrics request
 	GetSandboxesSandboxIDMetrics(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDMetricsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2319,6 +2327,30 @@ func (c *Client) PostSandboxesSandboxIDConnect(ctx context.Context, sandboxID Sa
 
 func (c *Client) GetSandboxesSandboxIDLogs(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetSandboxesSandboxIDLogsRequest(c.Server, sandboxID, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutSandboxesSandboxIDMetadataWithBody(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutSandboxesSandboxIDMetadataRequestWithBody(c.Server, sandboxID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutSandboxesSandboxIDMetadata(ctx context.Context, sandboxID SandboxID, body PutSandboxesSandboxIDMetadataJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutSandboxesSandboxIDMetadataRequest(c.Server, sandboxID, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3697,6 +3729,53 @@ func NewGetSandboxesSandboxIDLogsRequest(server string, sandboxID SandboxID, par
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewPutSandboxesSandboxIDMetadataRequest calls the generic PutSandboxesSandboxIDMetadata builder with application/json body
+func NewPutSandboxesSandboxIDMetadataRequest(server string, sandboxID SandboxID, body PutSandboxesSandboxIDMetadataJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutSandboxesSandboxIDMetadataRequestWithBody(server, sandboxID, "application/json", bodyReader)
+}
+
+// NewPutSandboxesSandboxIDMetadataRequestWithBody generates requests for PutSandboxesSandboxIDMetadata with any type of body
+func NewPutSandboxesSandboxIDMetadataRequestWithBody(server string, sandboxID SandboxID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "sandboxID", sandboxID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/sandboxes/%s/metadata", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -5692,6 +5771,11 @@ type ClientWithResponsesInterface interface {
 	// GetSandboxesSandboxIDLogsWithResponse request
 	GetSandboxesSandboxIDLogsWithResponse(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDLogsParams, reqEditors ...RequestEditorFn) (*GetSandboxesSandboxIDLogsResponse, error)
 
+	// PutSandboxesSandboxIDMetadataWithBodyWithResponse request with any body
+	PutSandboxesSandboxIDMetadataWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutSandboxesSandboxIDMetadataResponse, error)
+
+	PutSandboxesSandboxIDMetadataWithResponse(ctx context.Context, sandboxID SandboxID, body PutSandboxesSandboxIDMetadataJSONRequestBody, reqEditors ...RequestEditorFn) (*PutSandboxesSandboxIDMetadataResponse, error)
+
 	// GetSandboxesSandboxIDMetricsWithResponse request
 	GetSandboxesSandboxIDMetricsWithResponse(ctx context.Context, sandboxID SandboxID, params *GetSandboxesSandboxIDMetricsParams, reqEditors ...RequestEditorFn) (*GetSandboxesSandboxIDMetricsResponse, error)
 
@@ -6287,6 +6371,32 @@ func (r GetSandboxesSandboxIDLogsResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetSandboxesSandboxIDLogsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PutSandboxesSandboxIDMetadataResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *N400
+	JSON401      *N401
+	JSON404      *N404
+	JSON409      *N409
+	JSON500      *N500
+}
+
+// Status returns HTTPResponse.Status
+func (r PutSandboxesSandboxIDMetadataResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutSandboxesSandboxIDMetadataResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -7377,6 +7487,23 @@ func (c *ClientWithResponses) GetSandboxesSandboxIDLogsWithResponse(ctx context.
 		return nil, err
 	}
 	return ParseGetSandboxesSandboxIDLogsResponse(rsp)
+}
+
+// PutSandboxesSandboxIDMetadataWithBodyWithResponse request with arbitrary body returning *PutSandboxesSandboxIDMetadataResponse
+func (c *ClientWithResponses) PutSandboxesSandboxIDMetadataWithBodyWithResponse(ctx context.Context, sandboxID SandboxID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutSandboxesSandboxIDMetadataResponse, error) {
+	rsp, err := c.PutSandboxesSandboxIDMetadataWithBody(ctx, sandboxID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutSandboxesSandboxIDMetadataResponse(rsp)
+}
+
+func (c *ClientWithResponses) PutSandboxesSandboxIDMetadataWithResponse(ctx context.Context, sandboxID SandboxID, body PutSandboxesSandboxIDMetadataJSONRequestBody, reqEditors ...RequestEditorFn) (*PutSandboxesSandboxIDMetadataResponse, error) {
+	rsp, err := c.PutSandboxesSandboxIDMetadata(ctx, sandboxID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutSandboxesSandboxIDMetadataResponse(rsp)
 }
 
 // GetSandboxesSandboxIDMetricsWithResponse request returning *GetSandboxesSandboxIDMetricsResponse
@@ -8624,6 +8751,60 @@ func ParseGetSandboxesSandboxIDLogsResponse(rsp *http.Response) (*GetSandboxesSa
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutSandboxesSandboxIDMetadataResponse parses an HTTP response from a PutSandboxesSandboxIDMetadataWithResponse call
+func ParsePutSandboxesSandboxIDMetadataResponse(rsp *http.Response) (*PutSandboxesSandboxIDMetadataResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutSandboxesSandboxIDMetadataResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500

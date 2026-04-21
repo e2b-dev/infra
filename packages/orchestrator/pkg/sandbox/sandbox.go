@@ -182,9 +182,10 @@ type Metadata struct {
 	Config         *Config
 	Runtime        RuntimeMetadata
 
-	rwmu      sync.RWMutex // protects startedAt, endAt
+	rwmu      sync.RWMutex // protects startedAt, endAt, metadata
 	startedAt time.Time
 	endAt     time.Time
+	metadata  map[string]string
 }
 
 // GetEndAt returns the sandbox end time in a thread-safe manner.
@@ -201,6 +202,29 @@ func (m *Metadata) SetEndAt(t time.Time) {
 	defer m.rwmu.Unlock()
 
 	m.endAt = t
+}
+
+// GetMetadata returns the sandbox metadata. The caller must not mutate it;
+// SetMetadata only replaces the slot, so the returned reference is stable.
+func (m *Metadata) GetMetadata() map[string]string {
+	m.rwmu.RLock()
+	defer m.rwmu.RUnlock()
+
+	return m.metadata
+}
+
+// SetMetadata replaces the sandbox metadata in a thread-safe manner. A nil
+// map is normalized to an empty map so GetMetadata never returns nil. The
+// caller must not mutate the map after handing it over.
+func (m *Metadata) SetMetadata(metadata map[string]string) {
+	if metadata == nil {
+		metadata = map[string]string{}
+	}
+
+	m.rwmu.Lock()
+	defer m.rwmu.Unlock()
+
+	m.metadata = metadata
 }
 
 type Sandbox struct {
@@ -458,6 +482,7 @@ func (f *Factory) CreateSandbox(
 
 		startedAt: time.Now(),
 		endAt:     time.Now().Add(sandboxTimeout),
+		metadata:  apiConfigToStore.GetMetadata(),
 	}
 
 	sbx := &Sandbox{
@@ -805,6 +830,7 @@ func (f *Factory) ResumeSandbox(
 
 		startedAt: startedAt,
 		endAt:     endAt,
+		metadata:  apiConfigToStore.GetMetadata(),
 	}
 
 	sbx := &Sandbox{

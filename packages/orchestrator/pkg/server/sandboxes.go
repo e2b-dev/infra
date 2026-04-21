@@ -336,6 +336,16 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		})
 	}
 
+	if req.GetMetadata() != nil {
+		updates = append(updates, func(_ context.Context) (func(context.Context), error) {
+			oldMetadata := sbx.GetMetadata()
+
+			sbx.SetMetadata(req.GetMetadata().GetEntries())
+
+			return func(_ context.Context) { sbx.SetMetadata(oldMetadata) }, nil
+		})
+	}
+
 	if err := utils.ApplyAllOrNone(ctx, updates); err != nil {
 		telemetry.ReportCriticalError(ctx, "failed to update sandbox", err)
 
@@ -355,7 +365,6 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 				"allowed_domains": egress.GetAllowedDomains(),
 			}
 		}
-
 		go s.sbxEventsService.Publish(
 			context.WithoutCancel(ctx),
 			teamID,
@@ -692,13 +701,13 @@ func (s *Server) prepareSandboxEventData(ctx context.Context, sbx *sandbox.Sandb
 	}
 
 	buildId := ""
-	eventData := make(map[string]any)
 	if sbx.APIStoredConfig != nil {
 		buildId = sbx.APIStoredConfig.GetBuildId()
-		if sbx.APIStoredConfig.Metadata != nil {
-			// Copy the map to avoid race conditions
-			eventData["sandbox_metadata"] = utils.ShallowCopyMap(sbx.APIStoredConfig.GetMetadata())
-		}
+	}
+
+	eventData := make(map[string]any)
+	if md := sbx.GetMetadata(); len(md) > 0 {
+		eventData["sandbox_metadata"] = md
 	}
 
 	return teamID, buildId, eventData

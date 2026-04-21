@@ -2414,6 +2414,36 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /sandboxes/{sandboxID}/metadata:
+    put:
+      description: Replace metadata on a running sandbox. Full replacement; keys omitted from the body are removed.
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      tags: [sandboxes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SandboxMetadata"
+      parameters:
+        - $ref: "#/components/parameters/sandboxID"
+      responses:
+        "204":
+          description: Successfully updated the sandbox metadata
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+
   /sandboxes/{sandboxID}/refreshes:
     post:
       description: Refresh the sandbox extending its time to live
