@@ -213,16 +213,12 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 			state := pageState(data[i])
 			offset := uint(binary.LittleEndian.Uint64(data[i+1 : i+entrySize]))
 
-			switch state {
-			case faulted:
+			if state == faulted {
 				result.faulted = append(result.faulted, offset)
-			case removed:
-				result.removed = append(result.removed, offset)
 			}
 		}
 
 		slices.Sort(result.faulted)
-		slices.Sort(result.removed)
 
 		return result, nil
 	}

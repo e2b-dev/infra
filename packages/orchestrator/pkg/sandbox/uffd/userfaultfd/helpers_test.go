@@ -44,11 +44,11 @@ type operation struct {
 
 // handlerPageStates is a snapshot of the pageTracker grouped by state. It
 // lets tests assert on the set of pages that the handler observed in each
-// state, rather than a flat list of "accessed" offsets. Additional states
-// (e.g. removed) are exposed so REMOVE-event tests can reuse this helper.
+// state, rather than a flat list of "accessed" offsets. Follow-up PRs can
+// add more state-specific fields (e.g. removed) without touching the
+// existing call sites.
 type handlerPageStates struct {
 	faulted []uint
-	removed []uint
 }
 
 // allAccessed returns the sorted union of offsets that the handler touched
@@ -57,9 +57,6 @@ type handlerPageStates struct {
 func (s handlerPageStates) allAccessed() []uint {
 	b := bitset.New(0)
 	for _, o := range s.faulted {
-		b.Set(o)
-	}
-	for _, o := range s.removed {
 		b.Set(o)
 	}
 

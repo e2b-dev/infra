@@ -7,7 +7,6 @@ type pageState uint8
 const (
 	missing pageState = iota
 	faulted
-	removed
 )
 
 type pageTracker struct {
