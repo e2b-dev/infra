@@ -98,6 +98,8 @@ module "client_proxy" {
   redis_cluster_url   = var.redis_cluster_url
   redis_tls_ca_base64 = var.redis_tls_ca_base64
   image               = data.aws_ecr_image.client_proxy.image_uri
+  api_grpc_address    = "api-grpc.service.consul:${var.api_grpc_port}"
+  api_grpc_tls        = false
   api_secret          = var.api_secret
 
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
@@ -122,6 +124,7 @@ module "api" {
   logs_collector_address         = "http://localhost:${var.logs_proxy_port}"
   port_name                      = "api"
   port_number                    = var.api_port
+  api_grpc_port                  = var.api_grpc_port
   environment                    = var.environment
   api_docker_image               = data.aws_ecr_image.api.image_uri
   postgres_connection_string     = var.postgres_connection_string
