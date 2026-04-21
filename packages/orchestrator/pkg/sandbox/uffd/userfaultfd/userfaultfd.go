@@ -107,6 +107,9 @@ func (u *Userfaultfd) Serve(
 		{Fd: fdExit.Reader(), Events: unix.POLLIN},
 	}
 
+	eagainCounter := newCounterReporter(u.logger, "uffd: eagain with no pagefaults (accumulated)")
+	defer eagainCounter.Close(ctx)
+
 	noDataCounter := newCounterReporter(u.logger, "uffd: no data in fd (accumulated)")
 	defer noDataCounter.Close(ctx)
 
@@ -222,9 +225,12 @@ func (u *Userfaultfd) Serve(
 		}
 
 		if len(pagefaults) == 0 {
+			eagainCounter.Increase("EMPTY_DRAIN")
+
 			continue
 		}
 
+		eagainCounter.Log(ctx)
 		noDataCounter.Log(ctx)
 
 		for _, pagefault := range pagefaults {
