@@ -2,6 +2,7 @@ package cgroup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -90,7 +91,7 @@ func (h *CgroupHandle) ReleaseCgroupFD() error {
 // Returns error if the handle is nil (unexpected) or stats cannot be read.
 func (h *CgroupHandle) GetStats(ctx context.Context) (*Stats, error) {
 	if h == nil {
-		return nil, fmt.Errorf("cgroup handle is nil")
+		return nil, errors.New("cgroup handle is nil")
 	}
 
 	if h.noop {

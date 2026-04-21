@@ -84,7 +84,7 @@ func findTeam(teams []*types.TeamWithDefault, teamID *string) (*types.Team, erro
 		}
 	}
 
-	return nil, fmt.Errorf("default team not found")
+	return nil, errors.New("default team not found")
 }
 
 func (a *APIStore) getUserTeams(ctx context.Context, userID uuid.UUID) ([]*types.TeamWithDefault, *api.APIError) {
@@ -154,7 +154,7 @@ func (a *APIStore) resolveTemplateAndTeam(
 		return nil, nil, &api.APIError{
 			Code:      http.StatusForbidden,
 			ClientMsg: fmt.Sprintf("You don't have access to template '%s'", identifier),
-			Err:       fmt.Errorf("user does not have access to template's team"),
+			Err:       errors.New("user does not have access to template's team"),
 		}
 	}
 

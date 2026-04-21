@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -1041,7 +1042,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		return fmt.Errorf("storage provider: %w", err)
 	}
 	if persistence == nil {
-		return fmt.Errorf("storage provider is nil")
+		return errors.New("storage provider is nil")
 	}
 
 	if verbose {

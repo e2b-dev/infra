@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	mathrand "math/rand/v2"
@@ -134,7 +135,7 @@ func (r *errorAfterNReader) Read(p []byte) (int, error) {
 	}
 
 	if r.pos >= r.failAfter {
-		return 0, fmt.Errorf("simulated upstream error")
+		return 0, errors.New("simulated upstream error")
 	}
 
 	end := min(r.pos+r.blockSize, len(r.data))
