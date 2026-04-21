@@ -180,7 +180,7 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, ft *storage.Fra
 		}
 
 		// Safety net: if no code path called setDone/fail, terminate now.
-		s.failIfRunning(fmt.Errorf("fetch exited without completing"))
+		s.failIfRunning(errors.New("fetch exited without completing"))
 	}()
 
 	mmapSlice, releaseLock, err := c.cache.addressBytes(s.chunkOff, s.chunkLen)

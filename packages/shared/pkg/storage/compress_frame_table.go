@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -152,7 +153,7 @@ func (ft *FrameTable) CompressedSize() int64 {
 // locate finds the frame containing the given uncompressed offset.
 func (ft *FrameTable) locate(offset int64) (frameEntry, error) {
 	if ft == nil {
-		return frameEntry{}, fmt.Errorf("locate called with nil frame table — data is not compressed")
+		return frameEntry{}, errors.New("locate called with nil frame table — data is not compressed")
 	}
 
 	// Binary search: find the last entry whose StartU <= offset.

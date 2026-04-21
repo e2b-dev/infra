@@ -236,19 +236,19 @@ func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64
 // 3. Mappings don't extend beyond file size (with block alignment tolerance)
 func ValidateHeader(h *Header) error {
 	if h == nil {
-		return fmt.Errorf("header is nil")
+		return errors.New("header is nil")
 	}
 	if h.Metadata == nil {
-		return fmt.Errorf("header metadata is nil")
+		return errors.New("header metadata is nil")
 	}
 	if h.Metadata.BlockSize == 0 {
-		return fmt.Errorf("header has zero block size")
+		return errors.New("header has zero block size")
 	}
 	if h.Metadata.Size == 0 {
-		return fmt.Errorf("header has zero size")
+		return errors.New("header has zero size")
 	}
 	if len(h.Mapping) == 0 {
-		return fmt.Errorf("header has no mappings")
+		return errors.New("header has no mappings")
 	}
 
 	// Sort mappings by offset to check for gaps/overlaps

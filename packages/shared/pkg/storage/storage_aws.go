@@ -164,7 +164,7 @@ func (o *awsObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 
 func (o *awsObject) StoreFile(ctx context.Context, path string, cfg CompressConfig) (*FrameTable, [32]byte, error) {
 	if cfg.IsCompressionEnabled() {
-		return nil, [32]byte{}, fmt.Errorf("compressed uploads are not supported on AWS (builds target GCP only)")
+		return nil, [32]byte{}, errors.New("compressed uploads are not supported on AWS (builds target GCP only)")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
@@ -232,7 +232,7 @@ func (o *awsObject) Put(ctx context.Context, data []byte) error {
 
 func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
 	if frameTable.IsCompressed() {
-		return nil, fmt.Errorf("compressed reads are not supported on AWS")
+		return nil, errors.New("compressed reads are not supported on AWS")
 	}
 
 	readRange := aws.String(fmt.Sprintf("bytes=%d-%d", off, off+length-1))

@@ -2,6 +2,7 @@ package peerclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync/atomic"
