@@ -18,15 +18,18 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func sandboxLifecycleToAPI(autoPause bool, autoResumeConfig *dbtypes.SandboxAutoResumeConfig) *api.SandboxLifecycle {
+func sandboxLifecycleToAPI(autoPause bool, autoResumeConfig *dbtypes.SandboxAutoResumeConfig, trafficKeepalive bool) *api.SandboxLifecycle {
 	onTimeout := api.Kill
 	if autoPause {
 		onTimeout = api.Pause
 	}
 
+	autoResume := autoResumeConfig != nil && autoResumeConfig.Policy == dbtypes.SandboxAutoResumeAny
+
 	return &api.SandboxLifecycle{
-		AutoResume: autoResumeConfig != nil && autoResumeConfig.Policy == dbtypes.SandboxAutoResumeAny,
-		OnTimeout:  onTimeout,
+		AutoResume:       autoResume,
+		TrafficKeepalive: trafficKeepalive,
+		OnTimeout:        onTimeout,
 	}
 }
 
@@ -123,7 +126,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			AllowInternetAccess: sbx.AllowInternetAccess,
 			Domain:              sbxDomain,
 			Network:             dbNetworkConfigToAPI(sbx.Network),
-			Lifecycle:           sandboxLifecycleToAPI(sbx.AutoPause, sbx.AutoResume),
+			Lifecycle:           sandboxLifecycleToAPI(sbx.AutoPause, sbx.AutoResume, sbx.TrafficKeepalive),
 			VolumeMounts:        convertFromDBMountsToAPIMounts(sbx.VolumeMounts),
 		}
 
@@ -195,9 +198,11 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	var autoResumeConfig *dbtypes.SandboxAutoResumeConfig
 	var networkConfig *dbtypes.SandboxNetworkConfig
+	var trafficKeepalive bool
 	if lastSnapshot.Snapshot.Config != nil {
 		autoResumeConfig = lastSnapshot.Snapshot.Config.AutoResume
 		networkConfig = lastSnapshot.Snapshot.Config.Network
+		trafficKeepalive = lastSnapshot.Snapshot.Config.TrafficKeepalive
 	}
 
 	pausedAlias := firstAlias(lastSnapshot.Aliases)
@@ -217,7 +222,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		AllowInternetAccess: lastSnapshot.Snapshot.AllowInternetAccess,
 		Domain:              nil,
 		Network:             dbNetworkConfigToAPI(networkConfig),
-		Lifecycle:           sandboxLifecycleToAPI(lastSnapshot.Snapshot.AutoPause, autoResumeConfig),
+		Lifecycle:           sandboxLifecycleToAPI(lastSnapshot.Snapshot.AutoPause, autoResumeConfig, trafficKeepalive),
 	}
 
 	sandbox.Alias = &pausedAlias

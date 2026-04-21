@@ -47,6 +47,7 @@ func TestSandboxDetailReturnsLifecycleAndNetworkConfig(t *testing.T) {
 		c,
 		utils.WithAutoPause(true),
 		utils.WithAutoResume(true),
+		utils.WithTrafficKeepalive(true),
 		utils.WithAllowInternetAccess(allowInternetAccess),
 		utils.WithNetwork(&api.SandboxNetworkConfig{
 			AllowOut: &allowOut,
@@ -72,6 +73,7 @@ func TestSandboxDetailReturnsLifecycleAndNetworkConfig(t *testing.T) {
 
 		require.NotNil(t, returnedSbx.Lifecycle)
 		assert.True(t, returnedSbx.Lifecycle.AutoResume)
+		assert.True(t, returnedSbx.Lifecycle.TrafficKeepalive)
 		assert.Equal(t, api.Pause, returnedSbx.Lifecycle.OnTimeout)
 
 		require.NotNil(t, returnedSbx.Network)

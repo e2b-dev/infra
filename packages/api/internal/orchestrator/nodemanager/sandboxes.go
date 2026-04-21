@@ -113,6 +113,8 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 				n.ClusterID,
 				config.GetAutoPause(),
 				autoResume,
+				config.GetTrafficKeepalive(),
+				time.Duration(config.GetTimeoutSeconds())*time.Second,
 				config.EnvdAccessToken,     //nolint:protogetter // we need the nil check too
 				config.AllowInternetAccess, //nolint:protogetter // we need the nil check too
 				config.GetBaseTemplateId(),

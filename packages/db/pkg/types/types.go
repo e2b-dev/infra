@@ -100,10 +100,12 @@ type SandboxAutoResumeConfig struct {
 }
 
 type PausedSandboxConfig struct {
-	Version      string                      `json:"version"`
-	Network      *SandboxNetworkConfig       `json:"network,omitempty"`
-	AutoResume   *SandboxAutoResumeConfig    `json:"autoResume,omitempty"`
-	VolumeMounts []*SandboxVolumeMountConfig `json:"volumeMounts,omitempty"`
+	Version          string                      `json:"version"`
+	Network          *SandboxNetworkConfig       `json:"network,omitempty"`
+	AutoResume       *SandboxAutoResumeConfig    `json:"autoResume,omitempty"`
+	TrafficKeepalive bool                        `json:"traffic_keepalive,omitempty"`
+	Timeout          uint64                      `json:"timeout,omitempty"`
+	VolumeMounts     []*SandboxVolumeMountConfig `json:"volumeMounts,omitempty"`
 }
 
 func (c PausedSandboxConfig) Value() (driver.Value, error) {

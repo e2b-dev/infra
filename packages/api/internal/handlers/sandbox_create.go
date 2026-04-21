@@ -146,6 +146,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		minAutoResumeTimeout := time.Duration(a.featureFlags.IntFlag(ctx, featureflags.MinAutoResumeTimeoutSeconds)) * time.Second
 		autoResume.Timeout = calculateTimeoutSeconds(timeout, minAutoResumeTimeout, teamInfo)
 	}
+	trafficKeepalive := sharedUtils.DerefOrDefault(body.TrafficKeepalive, false)
 
 	var envdAccessToken *string = nil
 	if body.Secure != nil && *body.Secure == true {
@@ -234,6 +235,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 			BaseTemplateID:      env.TemplateID,
 			AutoPause:           autoPause,
 			AutoResume:          autoResume,
+			TrafficKeepalive:    trafficKeepalive,
+			Timeout:             timeout,
 			VolumeMounts:        sbxVolumeMounts,
 			EnvdAccessToken:     envdAccessToken,
 		}, nil

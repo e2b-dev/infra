@@ -73,6 +73,61 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 	}
 }
 
+func TestSandboxLifecycleToAPI(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                 string
+		autoPause            bool
+		autoResumeConfig     *dbtypes.SandboxAutoResumeConfig
+		trafficKeepalive     bool
+		wantAutoResume       bool
+		wantTrafficKeepalive bool
+		wantOnTimeout        api.SandboxOnTimeout
+	}{
+		{
+			name:          "default kills without auto resume",
+			wantOnTimeout: api.Kill,
+		},
+		{
+			name:          "auto pause changes timeout policy",
+			autoPause:     true,
+			wantOnTimeout: api.Pause,
+		},
+		{
+			name: "traffic keepalive is independent from disabled auto resume",
+			autoResumeConfig: &dbtypes.SandboxAutoResumeConfig{
+				Policy: dbtypes.SandboxAutoResumeOff,
+			},
+			trafficKeepalive:     true,
+			wantTrafficKeepalive: true,
+			wantOnTimeout:        api.Kill,
+		},
+		{
+			name: "auto resume and traffic keepalive can both be enabled",
+			autoResumeConfig: &dbtypes.SandboxAutoResumeConfig{
+				Policy: dbtypes.SandboxAutoResumeAny,
+			},
+			trafficKeepalive:     true,
+			wantAutoResume:       true,
+			wantTrafficKeepalive: true,
+			wantOnTimeout:        api.Kill,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := sandboxLifecycleToAPI(tt.autoPause, tt.autoResumeConfig, tt.trafficKeepalive)
+
+			assert.Equal(t, tt.wantAutoResume, got.AutoResume)
+			assert.Equal(t, tt.wantTrafficKeepalive, got.TrafficKeepalive)
+			assert.Equal(t, tt.wantOnTimeout, got.OnTimeout)
+		})
+	}
+}
+
 func TestValidateNetworkConfig(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

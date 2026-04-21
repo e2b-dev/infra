@@ -51,6 +51,12 @@ message SandboxConfig {
 
   // Auto-resume policy for paused sandboxes.
   optional SandboxAutoResumeConfig auto_resume = 24;
+
+  // Timeout requested on sandbox create/resume (seconds).
+  uint64 timeout_seconds = 25;
+
+  // Whether valid proxy traffic should refresh the sandbox timeout.
+  bool traffic_keepalive = 26;
 }
 
 message SandboxAutoResumeConfig {

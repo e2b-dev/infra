@@ -45,6 +45,8 @@ type SandboxMetadata struct {
 	BaseTemplateID      string
 	AutoPause           bool
 	AutoResume          *types.SandboxAutoResumeConfig
+	TrafficKeepalive    bool
+	Timeout             time.Duration
 	VolumeMounts        []*orchestrator.SandboxVolumeMount
 	EnvdAccessToken     *string
 	NodeID              *string
@@ -174,6 +176,7 @@ func (o *Orchestrator) CreateSandbox(
 	if fetchErr != nil {
 		return sandbox.Sandbox{}, fetchErr
 	}
+	sbxData.Timeout = timeout
 
 	fcSemver, err := sandbox.NewVersionInfo(sbxData.Build.FirecrackerVersion)
 	if err != nil {
@@ -250,6 +253,8 @@ func (o *Orchestrator) CreateSandbox(
 			Snapshot:            isResume,
 			AutoPause:           sbxData.AutoPause,
 			AutoResume:          orchAutoResume,
+			TimeoutSeconds:      uint64(sbxData.Timeout.Seconds()),
+			TrafficKeepalive:    sbxData.TrafficKeepalive,
 			AllowInternetAccess: sbxData.AllowInternetAccess,
 			Network:             sbxNetwork,
 			TotalDiskSizeMb:     ut.FromPtr(sbxData.Build.TotalDiskSizeMb),
@@ -323,6 +328,8 @@ func (o *Orchestrator) CreateSandbox(
 		node.ClusterID,
 		sbxData.AutoPause,
 		sbxData.AutoResume,
+		sbxData.TrafficKeepalive,
+		sbxData.Timeout,
 		sbxData.EnvdAccessToken,
 		sbxData.AllowInternetAccess,
 		sbxData.BaseTemplateID,

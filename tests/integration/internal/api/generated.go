@@ -567,8 +567,11 @@ type NewSandbox struct {
 	TemplateID string `json:"templateID"`
 
 	// Timeout Time to live for the sandbox in seconds.
-	Timeout      *int32                `json:"timeout,omitempty"`
-	VolumeMounts *[]SandboxVolumeMount `json:"volumeMounts,omitempty"`
+	Timeout *int32 `json:"timeout,omitempty"`
+
+	// TrafficKeepalive Whether valid proxy traffic should refresh the sandbox timeout.
+	TrafficKeepalive *bool                 `json:"traffic_keepalive,omitempty"`
+	VolumeMounts     *[]SandboxVolumeMount `json:"volumeMounts,omitempty"`
 }
 
 // NewTeamAPIKey defines model for NewTeamAPIKey.
@@ -807,6 +810,9 @@ type SandboxLifecycle struct {
 
 	// OnTimeout Action taken when the sandbox times out.
 	OnTimeout SandboxOnTimeout `json:"onTimeout"`
+
+	// TrafficKeepalive Whether valid proxy traffic refreshes the sandbox timeout.
+	TrafficKeepalive bool `json:"traffic_keepalive"`
 }
 
 // SandboxLog Log entry with timestamp and line

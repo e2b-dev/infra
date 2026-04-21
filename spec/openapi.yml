@@ -309,11 +309,15 @@ components:
       description: Sandbox lifecycle policy returned by sandbox info.
       required:
         - autoResume
+        - traffic_keepalive
         - onTimeout
       properties:
         autoResume:
           type: boolean
           description: Whether the sandbox can auto-resume.
+        traffic_keepalive:
+          type: boolean
+          description: Whether valid proxy traffic refreshes the sandbox timeout.
         onTimeout:
           $ref: "#/components/schemas/SandboxOnTimeout"
 
@@ -621,6 +625,10 @@ components:
           description: Automatically pauses the sandbox after the timeout
         autoResume:
           $ref: "#/components/schemas/SandboxAutoResumeConfig"
+        traffic_keepalive:
+          type: boolean
+          description: Whether valid proxy traffic should refresh the sandbox timeout.
+          default: false
         secure:
           type: boolean
           description: Secure all system communication with sandbox
