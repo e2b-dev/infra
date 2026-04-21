@@ -5,10 +5,10 @@ import "sync"
 type pageState uint8
 
 const (
-	// unfaulted is the implicit state for pages not yet present in the
+	// missing is the implicit state for pages not yet present in the
 	// tracker map; it is the zero value of pageState. The follow-up
 	// free-page-reporting work returns it explicitly from a get() accessor.
-	unfaulted pageState = iota
+	missing pageState = iota
 	faulted
 )
 
