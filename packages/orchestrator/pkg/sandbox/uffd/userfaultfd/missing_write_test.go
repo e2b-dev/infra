@@ -123,10 +123,10 @@ func TestMissingWrite(t *testing.T) {
 
 			expectedAccessedOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
 
-			accessedOffsets, err := h.offsetsOnce()
+			states, err := h.pageStatesOnce()
 			require.NoError(t, err)
 
-			assert.ElementsMatch(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+			assert.Equal(t, expectedAccessedOffsets, states.allAccessed(), "checking which pages were faulted")
 
 			h.checkDirtiness(t, tt.operations)
 		})
@@ -164,10 +164,10 @@ func TestParallelMissingWrite(t *testing.T) {
 
 	expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
 
-	accessedOffsets, err := h.offsetsOnce()
+	states, err := h.pageStatesOnce()
 	require.NoError(t, err)
 
-	assert.ElementsMatch(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+	assert.Equal(t, expectedAccessedOffsets, states.allAccessed(), "checking which pages were faulted")
 }
 
 func TestParallelMissingWriteWithPrefault(t *testing.T) {
@@ -204,10 +204,10 @@ func TestParallelMissingWriteWithPrefault(t *testing.T) {
 
 	expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
 
-	accessedOffsets, err := h.offsetsOnce()
+	states, err := h.pageStatesOnce()
 	require.NoError(t, err)
 
-	assert.ElementsMatch(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+	assert.Equal(t, expectedAccessedOffsets, states.allAccessed(), "checking which pages were faulted")
 }
 
 func TestSerialMissingWrite(t *testing.T) {
@@ -235,8 +235,8 @@ func TestSerialMissingWrite(t *testing.T) {
 
 	expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
 
-	accessedOffsets, err := h.offsetsOnce()
+	states, err := h.pageStatesOnce()
 	require.NoError(t, err)
 
-	assert.ElementsMatch(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+	assert.Equal(t, expectedAccessedOffsets, states.allAccessed(), "checking which pages were faulted")
 }
