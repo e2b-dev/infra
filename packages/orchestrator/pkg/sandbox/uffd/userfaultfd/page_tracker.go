@@ -5,8 +5,6 @@ import "sync"
 type pageState uint8
 
 const (
-	// missing is the implicit state for pages not yet present in the
-	// tracker map; it is the zero value of pageState.
 	missing pageState = iota
 	faulted
 	removed
