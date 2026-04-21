@@ -30,9 +30,8 @@ const maxRequestsInProgress = 4096
 
 const (
 	// sliceMaxRetries is the number of times to retry source.Slice() after the initial attempt.
-	// Total attempts = sliceMaxRetries + 1. Kept low because ReadAt already retries
-	// internally (3 attempts × 10s each). Combined worst case: ~62s per page fault.
-	sliceMaxRetries = 1
+	// Total attempts = sliceMaxRetries + 1.
+	sliceMaxRetries = 3
 	// sliceRetryBaseDelay is the initial backoff delay before the first retry.
 	// Subsequent retries double the delay (exponential backoff), capped at sliceRetryMaxDelay.
 	sliceRetryBaseDelay = 50 * time.Millisecond
@@ -550,4 +549,5 @@ func (u *Userfaultfd) Close() error {
 	syscall.Close(u.wakeupPipe[1])
 
 	return u.fd.close()
+
 }

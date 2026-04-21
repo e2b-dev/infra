@@ -2,7 +2,7 @@ package placement
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"math"
 	"math/rand"
 	"sync"
@@ -132,7 +132,7 @@ func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, exclu
 	}
 
 	if bestNode == nil {
-		return nil, fmt.Errorf("no node available")
+		return nil, errors.New("no node available")
 	}
 
 	return bestNode, nil

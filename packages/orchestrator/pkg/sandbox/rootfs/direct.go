@@ -76,7 +76,7 @@ func (o *DirectProvider) ExportDiff(
 	defer childSpan.End()
 
 	if !o.closed.CompareAndSwap(false, true) {
-		return nil, fmt.Errorf("direct provider close is already in progress")
+		return nil, errors.New("direct provider close is already in progress")
 	}
 
 	defer func() {
@@ -97,7 +97,7 @@ func (o *DirectProvider) ExportDiff(
 	select {
 	case <-o.finishedOperations:
 	case <-ctx.Done():
-		return nil, fmt.Errorf("timeout waiting for overlay device to be released")
+		return nil, errors.New("timeout waiting for overlay device to be released")
 	}
 	telemetry.ReportEvent(ctx, "sandbox stopped")
 

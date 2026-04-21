@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -18,7 +19,7 @@ func ValidateRange(start time.Time, end time.Time) (time.Time, time.Time, error)
 
 	// Validate time range parameters
 	if start.After(end) {
-		return start, end, fmt.Errorf("start time cannot be after end time")
+		return start, end, errors.New("start time cannot be after end time")
 	}
 
 	return start, end, nil

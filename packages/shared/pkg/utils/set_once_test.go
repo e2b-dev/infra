@@ -2,7 +2,7 @@ package utils
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -27,7 +27,7 @@ func TestSetOnce(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, value)
 
-	setOnce.SetError(fmt.Errorf("error"))
+	setOnce.SetError(errors.New("error"))
 
 	value, err = setOnce.Wait()
 	require.NoError(t, err)
@@ -37,7 +37,7 @@ func TestSetOnce(t *testing.T) {
 func TestSetOnceSetError(t *testing.T) {
 	t.Parallel()
 	setOnce := NewSetOnce[int]()
-	expectedErr := fmt.Errorf("error")
+	expectedErr := errors.New("error")
 
 	err := setOnce.SetError(expectedErr)
 	require.NoError(t, err)

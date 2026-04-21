@@ -99,7 +99,7 @@ func (o *NBDProvider) ExportDiff(
 			logger.L().Warn(ctx, "error closing cache", zap.Error(closeErr))
 		}
 
-		return nil, fmt.Errorf("timeout waiting for overlay device to be released")
+		return nil, errors.New("timeout waiting for overlay device to be released")
 	}
 	telemetry.ReportEvent(ctx, "sandbox stopped")
 

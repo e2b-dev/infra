@@ -125,7 +125,7 @@ func setupEnv(ctx context.Context, storagePath, sandboxDir, kernel, fc string, l
 
 	if localMode {
 		if os.Geteuid() != 0 {
-			return fmt.Errorf("local mode requires root")
+			return errors.New("local mode requires root")
 		}
 
 		dataDir := storagePath

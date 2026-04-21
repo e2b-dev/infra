@@ -1,6 +1,7 @@
 package machineinfo
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 
@@ -53,5 +54,5 @@ func Detect() (MachineInfo, error) {
 		}, nil
 	}
 
-	return MachineInfo{}, fmt.Errorf("unable to detect CPU platform from any source")
+	return MachineInfo{}, errors.New("unable to detect CPU platform from any source")
 }

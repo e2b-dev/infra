@@ -205,12 +205,6 @@ var (
 	// MaxConcurrentSnapshotBuildQueries limits concurrent GetSnapshotBuilds calls (e.g. sandbox delete).
 	// 0 or negative disables throttling (unlimited concurrency).
 	MaxConcurrentSnapshotBuildQueries = newIntFlag("max-concurrent-snapshot-build-queries", 0)
-
-	// GCSPerAttemptTimeoutMs is the per-attempt timeout in milliseconds for GCS ReadAt calls.
-	// Each retry attempt gets a fresh context.WithTimeout with this value.
-	GCSPerAttemptTimeoutMs = newIntFlag("gcs-per-attempt-timeout-ms", 10000)
-	// GCSMaxReadAttempts is the maximum number of attempts for GCS ReadAt calls.
-	GCSMaxReadAttempts = newIntFlag("gcs-max-read-attempts", 3)
 )
 
 type StringFlag struct {

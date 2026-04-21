@@ -199,6 +199,10 @@ module "cluster" {
   server_boot_disk_size_gb  = var.server_boot_disk_size_gb
   clickhouse_boot_disk_type = var.clickhouse_boot_disk_type
   loki_boot_disk_type       = var.loki_boot_disk_type
+
+  # ClickHouse stateful data disk
+  clickhouse_stateful_disk_type    = var.clickhouse_stateful_disk_type
+  clickhouse_stateful_disk_size_gb = var.clickhouse_stateful_disk_size_gb
 }
 
 module "nomad" {
@@ -281,11 +285,12 @@ module "nomad" {
   otel_collector_resources_cpu_count = var.otel_collector_resources_cpu_count
 
   # Dashboard API
-  dashboard_api_count                     = var.dashboard_api_count
-  dashboard_api_admin_token_secret_name   = module.init.dashboard_api_admin_token_secret_name
-  supabase_db_connection_string           = var.supabase_db_connection_string
-  enable_auth_user_sync_background_worker = var.enable_auth_user_sync_background_worker
-  enable_billing_http_team_provision_sink = var.enable_billing_http_team_provision_sink
+  dashboard_api_count                          = var.dashboard_api_count
+  dashboard_api_admin_token_secret_name        = module.init.dashboard_api_admin_token_secret_name
+  supabase_db_connection_string_secret_version = module.init.supabase_db_connection_string_secret_version
+  supabase_db_connection_string                = var.supabase_db_connection_string
+  enable_auth_user_sync_background_worker      = var.enable_auth_user_sync_background_worker
+  enable_billing_http_team_provision_sink      = var.enable_billing_http_team_provision_sink
 
   # Docker reverse proxy
   docker_reverse_proxy_port                = var.docker_reverse_proxy_port

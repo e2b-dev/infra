@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -237,7 +238,7 @@ type templateInfo struct {
 func resolveTemplateID(input string) (string, error) {
 	apiKey := os.Getenv("E2B_API_KEY")
 	if apiKey == "" {
-		return "", fmt.Errorf("E2B_API_KEY environment variable required for -template flag")
+		return "", errors.New("E2B_API_KEY environment variable required for -template flag")
 	}
 
 	// Determine API URL
