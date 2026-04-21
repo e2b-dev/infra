@@ -102,10 +102,13 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	err = register(uffdFd, memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
 	require.NoError(t, err)
 
-	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestHelperServingProcess")
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestHelperServingProcess", "-test.timeout=0")
 	cmd.Env = append(os.Environ(), "GO_TEST_HELPER_PROCESS=1")
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_START=%d", memoryStart))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_PAGE_SIZE=%d", tt.pagesize))
+	if tt.alwaysWP {
+		cmd.Env = append(cmd.Env, "GO_ALWAYS_WP=1")
+	}
 
 	dup, err := syscall.Dup(int(uffdFd))
 	require.NoError(t, err)
@@ -293,6 +296,10 @@ func crossProcessServe() error {
 		return fmt.Errorf("exit creating uffd: %w", err)
 	}
 
+	if os.Getenv("GO_ALWAYS_WP") == "1" {
+		uffd.defaultCopyMode = UFFDIO_COPY_MODE_WP
+	}
+
 	offsetsFile := os.NewFile(uintptr(5), "offsets")
 
 	offsetsSignal := make(chan os.Signal, 1)
@@ -307,8 +314,19 @@ func crossProcessServe() error {
 			case <-ctx.Done():
 				return
 			case <-offsetsSignal:
-				for offset := range uffd.faulted().Offsets() {
-					writeErr := binary.Write(offsetsFile, binary.LittleEndian, uint64(offset))
+				entries, entriesErr := uffd.pageStateEntries()
+				if entriesErr != nil {
+					cancel(fmt.Errorf("error getting page state entries: %w", entriesErr))
+
+					return
+				}
+
+				for _, entry := range entries {
+					if entry.state != faulted {
+						continue
+					}
+
+					writeErr := binary.Write(offsetsFile, binary.LittleEndian, entry.offset)
 					if writeErr != nil {
 						msg := fmt.Errorf("error writing offsets to file: %w", writeErr)
 
@@ -382,4 +400,27 @@ func crossProcessServe() error {
 	case <-exitSignal:
 		return nil
 	}
+}
+
+type pageStateEntry struct {
+	state  pageState
+	offset uint64
+}
+
+func (u *Userfaultfd) pageStateEntries() ([]pageStateEntry, error) {
+	// Hold the write lock for the whole snapshot so no in-flight faultPage can
+	// mutate pageTracker while we iterate.
+	u.settleRequests.Lock()
+	defer u.settleRequests.Unlock()
+
+	entries := make([]pageStateEntry, 0, len(u.pageTracker.m))
+	for addr, state := range u.pageTracker.m {
+		offset, err := u.ma.GetOffset(addr)
+		if err != nil {
+			return nil, fmt.Errorf("address %#x not in mapping: %w", addr, err)
+		}
+		entries = append(entries, pageStateEntry{state, uint64(offset)})
+	}
+
+	return entries, nil
 }

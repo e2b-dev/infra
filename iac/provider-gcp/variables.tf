@@ -184,6 +184,12 @@ variable "client_proxy_port" {
   }
 }
 
+variable "supabase_db_connection_string" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
 variable "loki_cluster_size" {
   type    = number
   default = 0
@@ -233,12 +239,6 @@ variable "ingress_port" {
 variable "dashboard_api_count" {
   type    = number
   default = 0
-}
-
-variable "supabase_db_connection_string" {
-  type      = string
-  default   = ""
-  sensitive = true
 }
 
 variable "enable_auth_user_sync_background_worker" {
@@ -624,6 +624,18 @@ variable "clickhouse_boot_disk_type" {
   description = "The GCE boot disk type for the ClickHouse machines."
   type        = string
   default     = "pd-ssd"
+}
+
+variable "clickhouse_stateful_disk_type" {
+  description = "The GCE disk type for the ClickHouse stateful data disk (e.g. pd-ssd, hyperdisk-balanced). Must be compatible with clickhouse_machine_type (C4 requires hyperdisk-*)."
+  type        = string
+  default     = "pd-ssd"
+}
+
+variable "clickhouse_stateful_disk_size_gb" {
+  description = "The GCE disk size (in GB) for the ClickHouse stateful data disk."
+  type        = number
+  default     = 100
 }
 
 variable "loki_boot_disk_type" {

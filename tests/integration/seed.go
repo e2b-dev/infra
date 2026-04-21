@@ -97,6 +97,14 @@ VALUES ($1, $2)
 		return fmt.Errorf("failed to create user: %w", err)
 	}
 
+	err = authdb.Write.UpsertPublicUser(ctx, authqueries.UpsertPublicUserParams{
+		ID:    data.UserID,
+		Email: "user-test-integration@e2b.dev",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create public user: %w", err)
+	}
+
 	// Access token
 	tokenWithoutPrefix := strings.TrimPrefix(data.AccessToken, keys.AccessTokenPrefix)
 	accessTokenBytes, err := hex.DecodeString(tokenWithoutPrefix)

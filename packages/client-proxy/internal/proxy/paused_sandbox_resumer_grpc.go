@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -26,7 +27,7 @@ type grpcPausedSandboxResumer struct {
 func NewGrpcPausedSandboxResumer(address string, apiSecret string, tlsEnabled bool) (PausedSandboxResumer, error) {
 	// Client-proxy uses this gRPC client to trigger ResumeSandbox when needed.
 	if strings.TrimSpace(address) == "" {
-		return nil, fmt.Errorf("api grpc address is required")
+		return nil, errors.New("api grpc address is required")
 	}
 	if tlsEnabled && strings.TrimSpace(apiSecret) == "" {
 		return nil, fmt.Errorf("api secret is required when api grpc tls is enabled")

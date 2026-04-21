@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -63,7 +64,7 @@ func (s *fsStorage) GetDetails() string {
 
 func (s *fsStorage) UploadSignedURL(_ context.Context, path string, ttl time.Duration) (string, error) {
 	if s.uploadURL == "" || s.hmacKey == nil {
-		return "", fmt.Errorf("file system storage does not support signed URLs (no local upload endpoint configured)")
+		return "", errors.New("file system storage does not support signed URLs (no local upload endpoint configured)")
 	}
 
 	expires := time.Now().Add(ttl).Unix()

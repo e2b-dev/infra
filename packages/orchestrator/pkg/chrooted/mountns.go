@@ -2,6 +2,7 @@ package chrooted
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -47,7 +48,7 @@ type mountNS struct {
 	doneCh chan struct{}
 }
 
-var ErrNamespaceClosed = fmt.Errorf("namespace is closed")
+var ErrNamespaceClosed = errors.New("namespace is closed")
 
 func (ns *mountNS) errorIfClosed() error {
 	ns.mu.Lock()

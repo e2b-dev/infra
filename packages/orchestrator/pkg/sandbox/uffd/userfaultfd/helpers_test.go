@@ -5,8 +5,12 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"testing"
+	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/v2"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils"
 )
@@ -19,6 +23,8 @@ type testConfig struct {
 	numberOfPages uint64
 	// Operations to trigger on the memory area.
 	operations []operation
+	// alwaysWP makes the handler copy with UFFDIO_COPY_MODE_WP for all faults.
+	alwaysWP bool
 }
 
 type operationMode uint32
@@ -42,6 +48,72 @@ type testHandler struct {
 	// It can only be called once.
 	offsetsOnce func() ([]uint, error)
 	mutex       sync.Mutex
+}
+
+func (h *testHandler) executeAll(t *testing.T, operations []operation) {
+	t.Helper()
+
+	for i, op := range operations {
+		err := h.executeOperation(t.Context(), op)
+		require.NoError(t, err, "step %d: %v at offset %d", i, op.mode, op.offset)
+	}
+}
+
+type pageExpectation uint8
+
+const (
+	expectClean pageExpectation = iota // read-only: present + WP set
+	expectDirty                        // written: present + WP cleared
+)
+
+func (h *testHandler) checkDirtiness(t *testing.T, operations []operation) {
+	t.Helper()
+
+	pagemap, err := testutils.NewPagemapReader()
+	require.NoError(t, err)
+	defer pagemap.Close()
+
+	memStart := uintptr(unsafe.Pointer(&(*h.memoryArea)[0]))
+
+	// Track the final expected state per offset by replaying operations in order.
+	expected := make(map[uint]pageExpectation)
+
+	for _, op := range operations {
+		off := uint(op.offset)
+		switch op.mode {
+		case operationModeRead:
+			if _, seen := expected[off]; !seen {
+				expected[off] = expectClean
+			}
+		case operationModeWrite:
+			expected[off] = expectDirty
+		}
+	}
+
+	for off, expect := range expected {
+		entry, err := pagemap.ReadEntry(memStart + uintptr(off))
+		require.NoError(t, err, "pagemap read at offset %d", off)
+
+		switch expect {
+		case expectDirty:
+			assert.True(t, entry.IsPresent(), "written page at offset %d should be present", off)
+			assert.False(t, entry.IsWriteProtected(), "written page at offset %d should be dirty", off)
+		case expectClean:
+			assert.True(t, entry.IsPresent(), "read-only page at offset %d should be present", off)
+			assert.True(t, entry.IsWriteProtected(), "read-only page at offset %d should be clean", off)
+		}
+	}
+}
+
+func (h *testHandler) executeOperation(ctx context.Context, op operation) error {
+	switch op.mode {
+	case operationModeRead:
+		return h.executeRead(ctx, op)
+	case operationModeWrite:
+		return h.executeWrite(ctx, op)
+	default:
+		return fmt.Errorf("invalid operation mode: %d", op.mode)
+	}
 }
 
 func (h *testHandler) executeRead(ctx context.Context, op operation) error {

@@ -97,7 +97,7 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 			if !certPool.AppendCertsFromPEM(cert) {
 				logger.L().Error(ctx, "Failed to parse Redis cluster TLS CA certificate")
 
-				return nil, fmt.Errorf("failed to parse Redis cluster TLS CA certificate")
+				return nil, errors.New("failed to parse Redis cluster TLS CA certificate")
 			}
 
 			// Remove the port if present
