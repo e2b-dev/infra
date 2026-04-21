@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
@@ -134,7 +136,7 @@ func GetAccessTokenHashFromMMDS(ctx context.Context) (string, error) {
 	return opts.AccessTokenHash, nil
 }
 
-func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *utils.Map[string, string]) {
+func PollForMMDSOpts(ctx context.Context, logger zerolog.Logger, mmdsChan chan<- *MMDSOpts, envVars *utils.Map[string, string]) {
 	httpClient := &http.Client{}
 	defer httpClient.CloseIdleConnections()
 
@@ -144,20 +146,20 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Fprintf(os.Stderr, "context cancelled while waiting for mmds opts")
+			logger.Error().Msg("context cancelled while waiting for mmds opts")
 
 			return
 		case <-ticker.C:
 			token, err := getMMDSToken(ctx, httpClient)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "error getting mmds token: %v\n", err)
+				logger.Error().Err(err).Msg("error getting mmds token")
 
 				continue
 			}
 
 			mmdsOpts, err := getMMDSOpts(ctx, httpClient, token)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "error getting mmds opts: %v\n", err)
+				logger.Error().Err(err).Msg("error getting mmds opts")
 
 				continue
 			}
@@ -166,10 +168,10 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 			envVars.Store("E2B_TEMPLATE_ID", mmdsOpts.TemplateID)
 
 			if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_SANDBOX_ID"), []byte(mmdsOpts.SandboxID), 0o666); err != nil {
-				fmt.Fprintf(os.Stderr, "error writing sandbox ID file: %v\n", err)
+				logger.Error().Err(err).Msg("error writing sandbox ID file")
 			}
 			if err := os.WriteFile(filepath.Join(E2BRunDir, ".E2B_TEMPLATE_ID"), []byte(mmdsOpts.TemplateID), 0o666); err != nil {
-				fmt.Fprintf(os.Stderr, "error writing template ID file: %v\n", err)
+				logger.Error().Err(err).Msg("error writing template ID file")
 			}
 
 			if mmdsOpts.LogsCollectorAddress != "" {

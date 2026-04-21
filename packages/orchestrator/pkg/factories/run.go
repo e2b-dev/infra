@@ -286,7 +286,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
 			IsInternal:       false,
-			CollectorAddress: env.LogsCollectorAddress(),
+			CollectorAddress: config.LogsCollectorAddress,
 		},
 	)
 	defer func(l logger.Logger) {
@@ -304,7 +304,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
 			IsInternal:       true,
-			CollectorAddress: env.LogsCollectorAddress(),
+			CollectorAddress: config.LogsCollectorAddress,
 		},
 	)
 	defer func(l logger.Logger) {
@@ -571,7 +571,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      constants.ServiceNameTemplate,
 			IsInternal:       false,
-			CollectorAddress: env.LogsCollectorAddress(),
+			CollectorAddress: config.LogsCollectorAddress,
 		},
 	)
 	closers = append(closers, closer{
@@ -595,7 +595,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}
 
 	// hyperloop server
-	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(ctx, config.NetworkConfig.HyperloopProxyPort, globalLogger, sandboxes)
+	hyperloopSrv, err := hyperloopserver.NewHyperloopServer(ctx, config, globalLogger, sandboxes)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create hyperloop server", zap.Error(err))
 	}

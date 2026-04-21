@@ -73,6 +73,8 @@ type Config struct {
 	SandboxStorageBackend string `env:"SANDBOX_STORAGE_BACKEND" envDefault:"memory"`
 
 	DomainName string `env:"DOMAIN_NAME" envDefault:""`
+
+	LogsCollectorAddress string `env:"LOGS_COLLECTOR_ADDRESS" envDefault:""`
 }
 
 type JWTSigningKey any

@@ -251,6 +251,11 @@ func run() int {
 	serviceInstanceID := uuid.New().String()
 	nodeID := env.GetNodeID()
 
+	config, err := cfg.Parse()
+	if err != nil {
+		logger.L().Fatal(ctx, "Error parsing config", zap.Error(err))
+	}
+
 	tel, err := telemetry.New(ctx, nodeID, serviceName, commitSHA, serviceVersion, serviceInstanceID)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create metrics exporter", zap.Error(err))
@@ -279,7 +284,7 @@ func run() int {
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
 			IsInternal:       false,
-			CollectorAddress: env.LogsCollectorAddress(),
+			CollectorAddress: config.LogsCollectorAddress,
 		},
 	)
 	defer sbxLoggerExternal.Sync()
@@ -291,7 +296,7 @@ func run() int {
 		sbxlogger.SandboxLoggerConfig{
 			ServiceName:      serviceName,
 			IsInternal:       true,
-			CollectorAddress: env.LogsCollectorAddress(),
+			CollectorAddress: config.LogsCollectorAddress,
 		},
 	)
 	defer sbxLoggerInternal.Sync()
@@ -308,11 +313,6 @@ func run() int {
 		// If expectedMigrationTimestamp is not set, we set it to 0
 		l.Warn(ctx, "Failed to parse expected migration timestamp", zap.Error(err))
 		expectedMigration = 0
-	}
-
-	config, err := cfg.Parse()
-	if err != nil {
-		logger.L().Fatal(ctx, "Error parsing config", zap.Error(err))
 	}
 
 	err = sqlcdb.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)

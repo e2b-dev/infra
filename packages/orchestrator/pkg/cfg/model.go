@@ -31,6 +31,9 @@ type BuilderConfig struct {
 	SharedChunkCacheDir    string        `env:"SHARED_CHUNK_CACHE_PATH"`
 	TemplatesDir           string        `env:"TEMPLATES_DIR,expand"     envDefault:"${ORCHESTRATOR_BASE_PATH}/build-templates"`
 
+	WriteEnvdMessagesToLog bool   `env:"WRITE_ENVD_MESSAGES_TO_LOG" envDefault:"false"`
+	LogsCollectorAddress   string `env:"LOGS_COLLECTOR_ADDRESS"     envDefault:""`
+
 	DefaultCacheDir string `env:"DEFAULT_CACHE_DIR,expand" envDefault:"${ORCHESTRATOR_BASE_PATH}/build"`
 
 	Provider string `env:"PROVIDER" envDefault:"gcp"`

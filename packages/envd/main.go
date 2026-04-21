@@ -15,6 +15,7 @@ import (
 	connectcors "connectrpc.com/cors"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/cors"
+	"github.com/rs/zerolog"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/api"
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
@@ -147,27 +148,28 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := os.MkdirAll(host.E2BRunDir, 0o755); err != nil {
-		fmt.Fprintf(os.Stderr, "error creating E2B run directory: %v\n", err)
-	}
-
 	defaults := &execcontext.Defaults{
 		User:    defaultUser,
 		EnvVars: utils.NewMap[string, string](),
 	}
-	isFCBoolStr := strconv.FormatBool(!isNotFC)
-	defaults.EnvVars.Store("E2B_SANDBOX", isFCBoolStr)
-	if err := os.WriteFile(filepath.Join(host.E2BRunDir, ".E2B_SANDBOX"), []byte(isFCBoolStr), 0o444); err != nil {
-		fmt.Fprintf(os.Stderr, "error writing sandbox file: %v\n", err)
-	}
 
 	mmdsChan := make(chan *host.MMDSOpts, 1)
 	defer close(mmdsChan)
-	if !isNotFC {
-		go host.PollForMMDSOpts(ctx, mmdsChan, defaults.EnvVars)
+	l := logs.NewLogger(ctx, isNotFC, mmdsChan)
+
+	if err := os.MkdirAll(host.E2BRunDir, 0o755); err != nil {
+		l.Error().Err(err).Msg("error creating E2B run directory")
 	}
 
-	l := logs.NewLogger(ctx, isNotFC, mmdsChan)
+	isFCBoolStr := strconv.FormatBool(!isNotFC)
+	defaults.EnvVars.Store("E2B_SANDBOX", isFCBoolStr)
+	if err := os.WriteFile(filepath.Join(host.E2BRunDir, ".E2B_SANDBOX"), []byte(isFCBoolStr), 0o444); err != nil {
+		l.Error().Err(err).Msg("error writing sandbox file")
+	}
+
+	if !isNotFC {
+		go host.PollForMMDSOpts(ctx, l.With().Str("logger", "mmds-poller").Logger(), mmdsChan, defaults.EnvVars)
+	}
 
 	m := chi.NewRouter()
 
@@ -175,18 +177,18 @@ func main() {
 	fsLogger := l.With().Str("logger", "filesystem").Logger()
 	filesystemRpc.Handle(m, &fsLogger, defaults)
 
-	cgroupManager := createCgroupManager()
+	cgroupManager := createCgroupManager(l)
 	defer func() {
 		err := cgroupManager.Close()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to close cgroup manager: %v\n", err)
+			l.Error().Err(err).Msg("failed to close cgroup manager")
 		}
 	}()
 
 	processLogger := l.With().Str("logger", "process").Logger()
 	processService := processRpc.Handle(m, &processLogger, defaults, cgroupManager)
 
-	service := api.New(&envLogger, defaults, mmdsChan, isNotFC)
+	service := api.New(envLogger, defaults, mmdsChan, isNotFC)
 	handler := api.HandlerFromMux(service, m)
 	middleware := authn.NewMiddleware(permissions.AuthenticateUsername)
 
@@ -241,17 +243,17 @@ func main() {
 	}
 }
 
-func createCgroupManager() (m cgroups.Manager) {
+func createCgroupManager(logger *zerolog.Logger) (m cgroups.Manager) {
 	defer func() {
 		if m == nil {
-			fmt.Fprintf(os.Stderr, "falling back to no-op cgroup manager\n")
+			logger.Warn().Msg("falling back to no-op cgroup manager")
 			m = cgroups.NewNoopManager()
 		}
 	}()
 
 	metrics, err := host.GetMetrics()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to calculate host metrics: %v\n", err)
+		logger.Error().Err(err).Msg("failed to calculate host metrics")
 
 		return nil
 	}
@@ -284,7 +286,7 @@ func createCgroupManager() (m cgroups.Manager) {
 
 	mgr, err := cgroups.NewCgroup2Manager(opts...)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create cgroup2 manager: %v\n", err)
+		logger.Error().Err(err).Msg("failed to create cgroup2 manager")
 
 		return nil
 	}

@@ -95,7 +95,7 @@ func TestGetFilesContentDisposition(t *testing.T) {
 				EnvVars: utils.NewMap[string, string](),
 				User:    currentUser.Username,
 			}
-			api := New(&logger, defaults, nil, false)
+			api := New(logger, defaults, nil, false)
 
 			// Create request and response recorder
 			req := httptest.NewRequest(http.MethodGet, "/files?path="+url.QueryEscape(tempFile), nil)
@@ -144,7 +144,7 @@ func TestGetFilesContentDispositionWithNestedPath(t *testing.T) {
 		EnvVars: utils.NewMap[string, string](),
 		User:    currentUser.Username,
 	}
-	api := New(&logger, defaults, nil, false)
+	api := New(logger, defaults, nil, false)
 
 	// Create request and response recorder
 	req := httptest.NewRequest(http.MethodGet, "/files?path="+url.QueryEscape(tempFile), nil)
@@ -187,7 +187,7 @@ func TestGetFiles_GzipEncoding_ExplicitIdentityOffWithRange(t *testing.T) {
 		EnvVars: utils.NewMap[string, string](),
 		User:    currentUser.Username,
 	}
-	api := New(&logger, defaults, nil, false)
+	api := New(logger, defaults, nil, false)
 
 	// Create request and response recorder
 	req := httptest.NewRequest(http.MethodGet, "/files?path="+url.QueryEscape(tempFile), nil)
@@ -228,7 +228,7 @@ func TestGetFiles_GzipDownload(t *testing.T) {
 		EnvVars: utils.NewMap[string, string](),
 		User:    currentUser.Username,
 	}
-	api := New(&logger, defaults, nil, false)
+	api := New(logger, defaults, nil, false)
 
 	req := httptest.NewRequest(http.MethodGet, "/files?path="+url.QueryEscape(tempFile), nil)
 	req.Header.Set("Accept-Encoding", "gzip")
@@ -293,7 +293,7 @@ func TestPostFiles_GzipUpload(t *testing.T) {
 		EnvVars: utils.NewMap[string, string](),
 		User:    currentUser.Username,
 	}
-	api := New(&logger, defaults, nil, false)
+	api := New(logger, defaults, nil, false)
 
 	req := httptest.NewRequest(http.MethodPost, "/files?path="+url.QueryEscape(destPath), &gzBuf)
 	req.Header.Set("Content-Type", mpWriter.FormDataContentType())
@@ -333,7 +333,7 @@ func TestPostFiles_RawBodyUpload(t *testing.T) {
 		EnvVars: utils.NewMap[string, string](),
 		User:    currentUser.Username,
 	}
-	api := New(&logger, defaults, nil, false)
+	api := New(logger, defaults, nil, false)
 
 	req := httptest.NewRequest(http.MethodPost, "/files?path="+url.QueryEscape(destPath), bytes.NewReader(originalContent))
 	req.Header.Set("Content-Type", "application/octet-stream")
@@ -371,7 +371,7 @@ func TestPostFiles_RawBodyUploadCreatesDirectories(t *testing.T) {
 		EnvVars: utils.NewMap[string, string](),
 		User:    currentUser.Username,
 	}
-	api := New(&logger, defaults, nil, false)
+	api := New(logger, defaults, nil, false)
 
 	req := httptest.NewRequest(http.MethodPost, "/files?path="+url.QueryEscape(destPath), bytes.NewReader(originalContent))
 	req.Header.Set("Content-Type", "application/octet-stream")
@@ -404,7 +404,7 @@ func TestPostFiles_RawBodyUploadRequiresPath(t *testing.T) {
 		EnvVars: utils.NewMap[string, string](),
 		User:    currentUser.Username,
 	}
-	api := New(&logger, defaults, nil, false)
+	api := New(logger, defaults, nil, false)
 
 	req := httptest.NewRequest(http.MethodPost, "/files", bytes.NewReader([]byte("some content")))
 	req.Header.Set("Content-Type", "application/octet-stream")
@@ -439,7 +439,7 @@ func TestPostFiles_RawBodyUploadOverwritesExisting(t *testing.T) {
 		EnvVars: utils.NewMap[string, string](),
 		User:    currentUser.Username,
 	}
-	api := New(&logger, defaults, nil, false)
+	api := New(logger, defaults, nil, false)
 
 	req := httptest.NewRequest(http.MethodPost, "/files?path="+url.QueryEscape(destPath), bytes.NewReader(newContent))
 	req.Header.Set("Content-Type", "application/octet-stream")
@@ -485,7 +485,7 @@ func TestPostFiles_RawBodyGzipUpload(t *testing.T) {
 		EnvVars: utils.NewMap[string, string](),
 		User:    currentUser.Username,
 	}
-	api := New(&logger, defaults, nil, false)
+	api := New(logger, defaults, nil, false)
 
 	req := httptest.NewRequest(http.MethodPost, "/files?path="+url.QueryEscape(destPath), &gzBuf)
 	req.Header.Set("Content-Type", "application/octet-stream")
@@ -519,7 +519,7 @@ func TestPostFiles_UnsupportedContentType(t *testing.T) {
 		EnvVars: utils.NewMap[string, string](),
 		User:    currentUser.Username,
 	}
-	api := New(&logger, defaults, nil, false)
+	api := New(logger, defaults, nil, false)
 
 	tempDir := t.TempDir()
 	destPath := filepath.Join(tempDir, "test.txt")
@@ -565,7 +565,7 @@ func TestPostFiles_MultipartStillWorksWithoutContentType(t *testing.T) {
 		EnvVars: utils.NewMap[string, string](),
 		User:    currentUser.Username,
 	}
-	api := New(&logger, defaults, nil, false)
+	api := New(logger, defaults, nil, false)
 
 	req := httptest.NewRequest(http.MethodPost, "/files?path="+url.QueryEscape(destPath), &multipartBuf)
 	req.Header.Set("Content-Type", mpWriter.FormDataContentType())
@@ -623,7 +623,7 @@ func TestGzipUploadThenGzipDownload(t *testing.T) {
 		EnvVars: utils.NewMap[string, string](),
 		User:    currentUser.Username,
 	}
-	api := New(&logger, defaults, nil, false)
+	api := New(logger, defaults, nil, false)
 
 	uploadReq := httptest.NewRequest(http.MethodPost, "/files?path="+url.QueryEscape(destPath), &gzBuf)
 	uploadReq.Header.Set("Content-Type", mpWriter.FormDataContentType())

@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -17,16 +18,18 @@ type APIStore struct {
 	logger    logger.Logger
 	sandboxes *sandbox.Map
 
-	collectorClient http.Client
-	collectorAddr   string
+	collectorClient        http.Client
+	collectorAddr          string
+	writeEnvdMessagesToLog bool
 }
 
-func NewHyperloopStore(logger logger.Logger, sandboxes *sandbox.Map, sandboxCollectorAddr string) *APIStore {
+func NewHyperloopStore(logger logger.Logger, sandboxes *sandbox.Map, config cfg.Config) *APIStore {
 	return &APIStore{
 		logger:    logger,
 		sandboxes: sandboxes,
 
-		collectorAddr: sandboxCollectorAddr,
+		writeEnvdMessagesToLog: config.WriteEnvdMessagesToLog,
+		collectorAddr:          config.LogsCollectorAddress,
 		collectorClient: http.Client{
 			Timeout: CollectorExporterTimeout,
 		},
