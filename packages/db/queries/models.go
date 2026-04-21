@@ -89,31 +89,6 @@ type Snapshot struct {
 	Config              *types.PausedSandboxConfig
 }
 
-type Team struct {
-	ID                      uuid.UUID
-	CreatedAt               time.Time
-	IsBlocked               bool
-	Name                    string
-	Tier                    string
-	Email                   string
-	IsBanned                bool
-	BlockedReason           *string
-	ClusterID               *uuid.UUID
-	SandboxSchedulingLabels []string
-	Slug                    string
-	ProfilePictureUrl       *string
-}
-
-type TeamLimit struct {
-	ID                       uuid.UUID
-	MaxLengthHours           int64
-	ConcurrentSandboxes      int32
-	ConcurrentTemplateBuilds int32
-	MaxVcpu                  int32
-	MaxRamMb                 int32
-	DiskMb                   int32
-}
-
 type UsersTeam struct {
 	ID        int64
 	UserID    uuid.UUID
