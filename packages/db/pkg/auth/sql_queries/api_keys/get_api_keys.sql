@@ -11,5 +11,5 @@ SELECT
     tak.last_used,
     u.email AS created_by_email
 FROM "public"."team_api_keys" tak
-LEFT JOIN "auth"."users" u ON tak.created_by = u.id
+LEFT JOIN "public"."users" u ON tak.created_by = u.id
 WHERE tak.team_id = @team_id;
