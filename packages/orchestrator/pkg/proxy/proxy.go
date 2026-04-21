@@ -29,6 +29,8 @@ const (
 	idleTimeout = 620 * time.Second
 
 	trafficAccessTokenHeader = "e2b-traffic-access-token"
+
+	resumedSandboxProxyRetries = 12
 )
 
 var _ sandbox.MapSubscriber = (*SandboxProxy)(nil)
@@ -107,12 +109,18 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				)...,
 			)
 
+			maxConnectionAttempts := 0
+			if sbx.APIStoredConfig != nil && sbx.APIStoredConfig.GetSnapshot() {
+				maxConnectionAttempts = resumedSandboxProxyRetries
+			}
+
 			return &pool.Destination{
 				Url:                                url,
 				SandboxId:                          sbx.Runtime.SandboxID,
 				SandboxPort:                        port,
 				DefaultToPortError:                 true,
 				IncludeSandboxIdInProxyErrorLogger: true,
+				MaxConnectionAttempts:              maxConnectionAttempts,
 				// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
 				// We are not using sandbox id to prevent removing connections based on sandbox id (pause/resume race condition).
 				ConnectionKey:   sbx.LifecycleID,

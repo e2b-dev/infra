@@ -872,6 +872,78 @@ func TestProxyRetriesOnDelayedBackendStartup(t *testing.T) {
 	assert.Equal(t, uint64(1), proxy.TotalPoolConnections(), "proxy should have established one connection")
 }
 
+func TestProxyUsesDestinationConnectionAttemptOverride(t *testing.T) {
+	t.Parallel()
+	var lisCfg net.ListenConfig
+	tempListener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	backendAddr := tempListener.Addr().String()
+	require.NoError(t, tempListener.Close())
+
+	backendURL, err := url.Parse(fmt.Sprintf("http://%s", backendAddr))
+	require.NoError(t, err)
+
+	getDestination := func(_ *http.Request) (*pool.Destination, error) {
+		return &pool.Destination{
+			Url:                   backendURL,
+			SandboxId:             "test-sandbox",
+			RequestLogger:         logger.NewNopLogger(),
+			ConnectionKey:         "delayed-backend-override",
+			MaxConnectionAttempts: 8,
+		}, nil
+	}
+
+	proxy, port, err := newTestProxy(t, getDestination)
+	require.NoError(t, err)
+	defer proxy.Close()
+
+	type backendResult struct {
+		backend *testBackend
+		err     error
+	}
+	backendReady := make(chan backendResult, 1)
+
+	go func() {
+		time.Sleep(1300 * time.Millisecond)
+
+		listener, err := lisCfg.Listen(t.Context(), "tcp", backendAddr)
+		if err != nil {
+			backendReady <- backendResult{nil, fmt.Errorf("failed to create delayed backend listener: %w", err)}
+
+			return
+		}
+
+		backend, err := newTestBackend(listener, "delayed-backend-override")
+		if err != nil {
+			listener.Close()
+			backendReady <- backendResult{nil, fmt.Errorf("failed to create delayed backend: %w", err)}
+
+			return
+		}
+
+		backendReady <- backendResult{backend, nil}
+	}()
+
+	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
+	start := time.Now()
+
+	resp, err := httpGet(t, proxyURL)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	elapsed := time.Since(start)
+
+	result := <-backendReady
+	require.NoError(t, result.err)
+	backend := result.backend
+	defer backend.Close()
+
+	assertBackendOutput(t, backend, resp)
+	assert.GreaterOrEqual(t, elapsed, 1300*time.Millisecond, "request should have waited for the destination override retries")
+	assert.Less(t, elapsed, 4*time.Second, "request should have succeeded before override retries exhausted")
+	assert.Equal(t, uint64(1), backend.RequestCount(), "backend should have been called once")
+}
+
 type data struct {
 	Tag     string      `json:"tag"`
 	Host    string      `json:"host"`
