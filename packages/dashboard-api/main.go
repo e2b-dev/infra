@@ -231,33 +231,36 @@ func run() int {
 		riverClient, err = backgroundworker.StartAuthUserSyncWorker(
 			ctx,
 			signalCtx,
-			supabaseDB,
-			authDB,
-			l,
+			r.Use(
+			sharedmiddleware.ExcludeRoutes(
+				tracingmiddleware.Middleware(tel.TracerProvider, serviceName),
+				"/health",
+			),
+			metricsmiddleware.Middleware(
+				tel.MeterProvider,
+				serviceName,
+				metricsmiddleware.WithShouldRecordFunc(func(_ string, route string, _ *http.Request) bool {
+					return route != "/health"
+				}),
+			),
+			sharedmiddleware.LoggingMiddleware(l, sharedmiddleware.Config{
+				TimeFormat:   time.RFC3339Nano,
+				UTC:          true,
+				DefaultLevel: zap.InfoLevel,
+				SkipPaths:    []string{"/health"},
+				Context: func(c *gin.Context) []zapcore.Field {
+					fields := make([]zapcore.Field, 0, 3)
+					if teamInfo, ok := sharedauth.GetTeamInfo(c); ok {
+						fields = append(fields, logger.WithTeamID(teamInfo.ID.String()))
+					}
+					// Add request id and remote ip to every log line for better correlation
+					fields = append(fields, logger.WithRequestID(c.Request), logger.WithRemoteIP(c.Request))
+
+					return fields
+				},
+			},
+			sharedmiddleware.RequestTimeout(requestTimeout),
 		)
-		if err != nil {
-			l.Error(ctx, "failed to start auth user sync worker", zap.Error(err))
-
-			return 1
-		}
-	}
-
-	l.Info(ctx, "HTTP service starting", zap.Int("port", config.Port))
-	runErr := waitForServiceStop(signalCtx, startHTTPServer(s), riverStoppedChan(riverClient))
-	if runErr != nil {
-		l.Error(ctx, "dashboard-api runtime error", zap.Error(runErr))
-	} else {
-		l.Info(ctx, "Shutting down dashboard-api service...")
-	}
-
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
-	defer shutdownCancel()
-
-	if err := shutdownService(shutdownCtx, s, riverClient); err != nil {
-		l.Error(ctx, "dashboard-api shutdown error", zap.Error(err))
-
-		return 1
-	}
 
 	if runErr != nil {
 		return 1

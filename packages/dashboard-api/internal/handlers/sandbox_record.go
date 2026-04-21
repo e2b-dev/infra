@@ -52,6 +52,22 @@ func (s *APIStore) GetSandboxesSandboxIDRecord(c *gin.Context, sandboxID api.San
 	if row.Alias != "" {
 		alias = &row.Alias
 	}
+	// If the sandbox stopped very shortly after starting, it likely failed during provisioning/spawn.
+	// Log structured information to help diagnose issues like 'exit status: 1' on spawn.
+	if row.StoppedAt != nil {
+		lifetime := row.StoppedAt.Sub(row.StartedAt)
+		// Threshold: 30 seconds — short-lived sandboxes often indicate provisioning failures
+		if lifetime < 30*time.Second {
+			logger.L().Warn(ctx, "Sandbox stopped shortly after start — possible provisioning/spawn failure",
+				logger.WithTeamID(teamID.String()),
+				logger.WithSandboxID(sandboxID),
+				logger.WithRequestID(c.Request),
+				logger.WithRemoteIP(c.Request),
+				zap.String("template_alias", row.Alias),
+				zap.Duration("lifetime", lifetime),
+			)
+		}
+	}
 
 	c.JSON(http.StatusOK, api.SandboxRecord{
 		TemplateID: row.TemplateID,
