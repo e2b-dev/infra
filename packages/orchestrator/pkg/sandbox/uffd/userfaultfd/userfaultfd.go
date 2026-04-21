@@ -63,6 +63,9 @@ type Userfaultfd struct {
 
 	wg errgroup.Group
 
+	// defaultCopyMode overrides the UFFDIO_COPY mode for all faults when non-zero.
+	defaultCopyMode CULong
+
 	logger logger.Logger
 }
 
@@ -363,7 +366,7 @@ retryLoop:
 		return fmt.Errorf("failed to read from source after %d attempts: %w", attempt+1, joinedErr)
 	}
 
-	var copyMode CULong
+	copyMode := u.defaultCopyMode
 
 	// Performing copy() on UFFD clears the WP bit unless we explicitly tell
 	// it not to. We do that for faults caused by a read access. Write accesses
