@@ -295,7 +295,8 @@ func (u *Userfaultfd) faultPage(
 
 	// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
 	// even if the errgroup is cancelled or the goroutine returns early.
-	// This check protects us against race condition between marking the request for prefetching and accessing the prefetchTracker.
+	// This guards against races between marking the page faulted / prefetched
+	// and another caller observing the pageTracker or prefetchTracker.
 	u.settleRequests.RLock()
 	defer u.settleRequests.RUnlock()
 

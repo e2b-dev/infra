@@ -412,11 +412,10 @@ type pageStateEntry struct {
 }
 
 func (u *Userfaultfd) pageStateEntries() ([]pageStateEntry, error) {
+	// Hold the write lock for the whole snapshot so no in-flight faultPage can
+	// mutate pageTracker while we iterate.
 	u.settleRequests.Lock()
-	u.settleRequests.Unlock() //nolint:staticcheck // SA2001: intentional — settle the read locks.
-
-	u.pageTracker.mu.RLock()
-	defer u.pageTracker.mu.RUnlock()
+	defer u.settleRequests.Unlock()
 
 	entries := make([]pageStateEntry, 0, len(u.pageTracker.m))
 	for addr, state := range u.pageTracker.m {
