@@ -4,14 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"slices"
 	"sync"
 	"testing"
 	"time"
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/v2"
-	"github.com/bits-and-blooms/bitset"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
@@ -54,31 +52,53 @@ type operation struct {
 	async bool
 }
 
+// handlerPageStates is a snapshot of the pageTracker grouped by state. It
+// lets tests assert on the set of pages that the handler observed in each
+// state, rather than a flat list of "accessed" offsets.
 type handlerPageStates struct {
 	faulted []uint
 	removed []uint
 }
 
+// allAccessed returns the sorted union of offsets that the handler touched
+// in any non-missing state.
+//
+// pageStatesOnce returns each per-state slice already sorted, and a page
+// has exactly one state at a time in pageTracker, so the per-state slices
+// are disjoint. We merge them with a simple sorted merge instead of a
+// bitset — byte offsets make poor bit indices (a single hugepage offset
+// would force ~1.8 MB of backing storage).
 func (s handlerPageStates) allAccessed() []uint {
-	b := bitset.New(0)
-	for _, o := range s.faulted {
-		b.Set(o)
+	out := make([]uint, 0, len(s.faulted)+len(s.removed))
+	i, j := 0, 0
+	for i < len(s.faulted) && j < len(s.removed) {
+		if s.faulted[i] <= s.removed[j] {
+			out = append(out, s.faulted[i])
+			i++
+		} else {
+			out = append(out, s.removed[j])
+			j++
+		}
 	}
-	for _, o := range s.removed {
-		b.Set(o)
-	}
+	out = append(out, s.faulted[i:]...)
+	out = append(out, s.removed[j:]...)
 
-	return slices.Collect(b.EachSet())
+	return out
 }
 
 type testHandler struct {
-	memoryArea     *[]byte
-	pagesize       uint64
-	data           *MemorySlicer
+	memoryArea *[]byte
+	pagesize   uint64
+	data       *MemorySlicer
+	// pageStatesOnce returns a per-state snapshot of the handler's pageTracker.
+	// It can only be called once.
 	pageStatesOnce func() (handlerPageStates, error)
-	servePause     func() error
-	serveResume    func() error
-	mutex          sync.Mutex
+	// servePause and serveResume gate the UFFD event loop in the child process.
+	// Tests use them to deterministically drain a batch of REMOVE events
+	// before more faults are processed.
+	servePause  func() error
+	serveResume func() error
+	mutex       sync.Mutex
 }
 
 func (h *testHandler) executeAll(t *testing.T, operations []operation) {

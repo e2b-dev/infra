@@ -2,6 +2,7 @@ package userfaultfd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
@@ -52,7 +53,7 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		nil,
 	)
 	if err != nil {
-		span.RecordError(fmt.Errorf("could not prefault page"))
+		span.RecordError(errors.New("could not prefault page"))
 
 		return fmt.Errorf("failed to fault page: %w", err)
 	}

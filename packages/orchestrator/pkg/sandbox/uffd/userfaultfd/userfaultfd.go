@@ -295,12 +295,12 @@ func (u *Userfaultfd) Serve(
 		for _, pf := range pagefaults {
 			// We don't handle minor page faults.
 			if pf.flags&UFFD_PAGEFAULT_FLAG_MINOR != 0 {
-				return fmt.Errorf("unexpected MINOR pagefault event, closing UFFD")
+				return errors.New("unexpected MINOR pagefault event, closing UFFD")
 			}
 
 			// We don't handle write-protection page faults, we're using asynchronous write protection.
 			if pf.flags&UFFD_PAGEFAULT_FLAG_WP != 0 {
-				return fmt.Errorf("unexpected WP pagefault event, closing UFFD")
+				return errors.New("unexpected WP pagefault event, closing UFFD")
 			}
 
 			addr := getPagefaultAddress(pf)
