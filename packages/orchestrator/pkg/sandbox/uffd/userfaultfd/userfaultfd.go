@@ -319,12 +319,12 @@ func (u *Userfaultfd) Serve(
 				// Skip faulting the page. This has already been faulted, either during pre-faulting
 				// or because we handled another page fault on the same address in the current
 				// iteration. It can only be removed via a a UFFD_EVENT_REMOVE, which will mark the
-				// page as `unfaulted`.
+				// page as `missing`.
 				// For this to work correctly, the used pages cannot be swappable.
 				continue
 			case removed:
 				// Fault the page as empty.
-			case unfaulted:
+			case missing:
 				source = u.src
 			default:
 				return fmt.Errorf("unexpected pageState: %#v", state)

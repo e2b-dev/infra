@@ -215,7 +215,7 @@ func TestRemoveThenWriteGated(t *testing.T) {
 
 // TestWriteThenRemoveGated verifies the serve loop's ordering guarantee:
 // REMOVE events are processed before pagefaults even when the MISSING pagefault
-// was queued first. The write to an unfaulted page triggers MISSING (queued first),
+// was queued first. The write to a missing page triggers MISSING (queued first),
 // then MADV_DONTNEED triggers REMOVE (queued second). When the handler resumes,
 // it processes REMOVE first, then MISSING — the write is not skipped.
 func TestWriteThenRemoveGated(t *testing.T) {
