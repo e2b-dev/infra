@@ -5,7 +5,7 @@ on: [workflow_call]
 jobs:
   check:
     name: Check for out of order migrations
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5

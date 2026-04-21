@@ -2,7 +2,7 @@ package utils
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sync"
 )
 
@@ -52,7 +52,7 @@ func (s *SetOnce[T]) SetResult(value T, err error) error {
 	return s.SetValue(value)
 }
 
-var ErrAlreadySet = fmt.Errorf("value already set")
+var ErrAlreadySet = errors.New("value already set")
 
 // SetResult internal method for setting the result only once.
 func (s *SetOnce[T]) setResult(r result[T]) error {

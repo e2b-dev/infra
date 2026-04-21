@@ -57,7 +57,7 @@ const (
 
 func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (_ *orchestrator.SandboxCreateResponse, createErr error) {
 	// set max request timeout for this request
-	ctx, cancel := context.WithTimeoutCause(ctx, requestTimeout, fmt.Errorf("request timed out"))
+	ctx, cancel := context.WithTimeoutCause(ctx, requestTimeout, errors.New("request timed out"))
 	defer cancel()
 
 	// set up tracing
@@ -410,7 +410,7 @@ func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 }
 
 func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteRequest) (*emptypb.Empty, error) {
-	ctx, cancel := context.WithTimeoutCause(ctxConn, requestTimeout, fmt.Errorf("request timed out"))
+	ctx, cancel := context.WithTimeoutCause(ctxConn, requestTimeout, errors.New("request timed out"))
 	defer cancel()
 
 	ctx, childSpan := tracer.Start(ctx, "sandbox-delete")

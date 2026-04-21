@@ -621,6 +621,18 @@ variable "clickhouse_boot_disk_type" {
   default     = "pd-ssd"
 }
 
+variable "clickhouse_stateful_disk_type" {
+  description = "The GCE disk type for the ClickHouse stateful data disk (e.g. pd-ssd, hyperdisk-balanced). Must be compatible with clickhouse_machine_type (C4 requires hyperdisk-*)."
+  type        = string
+  default     = "pd-ssd"
+}
+
+variable "clickhouse_stateful_disk_size_gb" {
+  description = "The GCE disk size (in GB) for the ClickHouse stateful data disk."
+  type        = number
+  default     = 100
+}
+
 variable "loki_boot_disk_type" {
   description = "The GCE boot disk type for the Loki machines."
   type        = string

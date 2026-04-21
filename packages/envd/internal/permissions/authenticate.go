@@ -2,7 +2,7 @@ package permissions
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"os/user"
 
 	"connectrpc.com/authn"
@@ -32,7 +32,7 @@ func GetAuthUser(ctx context.Context, defaultUser string) (*user.User, error) {
 	if !ok {
 		username, err := execcontext.ResolveDefaultUsername(nil, defaultUser)
 		if err != nil {
-			return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("no user specified"))
+			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("no user specified"))
 		}
 
 		u, err := GetUser(username)

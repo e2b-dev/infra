@@ -11,3 +11,7 @@ indent_style = space
 [*.toml]
 indent_size = 2
 indent_style = space
+
+[*.ts]
+indent_size = 2
+indent_style = space

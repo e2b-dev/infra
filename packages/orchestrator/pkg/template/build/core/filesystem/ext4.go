@@ -3,6 +3,7 @@ package filesystem
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -35,7 +36,7 @@ func Make(ctx context.Context, rootfsPath string, sizeMb int64, blockSize int64)
 	defer tuneSpan.End()
 
 	if blockSize < inodesRatio {
-		return fmt.Errorf("block size must be greater than inodes ratio")
+		return errors.New("block size must be greater than inodes ratio")
 	}
 
 	cmd := exec.CommandContext(ctx,
@@ -359,7 +360,7 @@ func parseFreeBlocks(debugfsOutput string) (int64, error) {
 	re := regexp.MustCompile(`Free blocks:\s+(\d+)`)
 	matches := re.FindStringSubmatch(debugfsOutput)
 	if len(matches) < 2 {
-		return 0, fmt.Errorf("could not find free blocks in debugfs output")
+		return 0, errors.New("could not find free blocks in debugfs output")
 	}
 	freeBlocks, err := strconv.ParseInt(matches[1], 10, 64)
 	if err != nil {
@@ -374,7 +375,7 @@ func parseReservedBlocks(debugfsOutput string) (int64, error) {
 	re := regexp.MustCompile(`Reserved block count:\s+(\d+)`)
 	matches := re.FindStringSubmatch(debugfsOutput)
 	if len(matches) < 2 {
-		return 0, fmt.Errorf("could not find reserved blocks in debugfs output")
+		return 0, errors.New("could not find reserved blocks in debugfs output")
 	}
 	reservedBlocks, err := strconv.ParseInt(matches[1], 10, 64)
 	if err != nil {

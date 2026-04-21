@@ -109,7 +109,7 @@ func (o *osFileBlob) Exists(_ context.Context) (bool, error) {
 }
 
 func (o *osFileBlob) Put(_ context.Context, _ []byte) error {
-	return fmt.Errorf("not implemented")
+	return errors.New("not implemented")
 }
 
 func NewHeaderFromPath(ctx context.Context, from, headerPath string) (*header.Header, error) {

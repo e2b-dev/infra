@@ -199,6 +199,10 @@ module "cluster" {
   server_boot_disk_size_gb  = var.server_boot_disk_size_gb
   clickhouse_boot_disk_type = var.clickhouse_boot_disk_type
   loki_boot_disk_type       = var.loki_boot_disk_type
+
+  # ClickHouse stateful data disk
+  clickhouse_stateful_disk_type    = var.clickhouse_stateful_disk_type
+  clickhouse_stateful_disk_size_gb = var.clickhouse_stateful_disk_size_gb
 }
 
 module "nomad" {
@@ -246,7 +250,7 @@ module "nomad" {
   posthog_api_key_secret_name                            = module.init.posthog_api_key_secret_name
   analytics_collector_host_secret_name                   = module.init.analytics_collector_host_secret_name
   analytics_collector_api_token_secret_name              = module.init.analytics_collector_api_token_secret_name
-  api_admin_token                                        = random_password.api_admin_secret.result
+  api_admin_token_secret_name                            = module.init.api_admin_token_secret_name
   redis_cluster_url_secret_version                       = module.init.redis_cluster_url_secret_version
   redis_tls_ca_base64_secret_version                     = module.init.redis_tls_ca_base64_secret_version
   sandbox_access_token_hash_seed                         = random_password.sandbox_access_token_hash_seed.result
@@ -282,7 +286,7 @@ module "nomad" {
 
   # Dashboard API
   dashboard_api_count                     = var.dashboard_api_count
-  dashboard_api_admin_token               = random_password.dashboard_api_admin_secret.result
+  dashboard_api_admin_token_secret_name   = module.init.dashboard_api_admin_token_secret_name
   supabase_db_connection_string           = var.supabase_db_connection_string
   enable_auth_user_sync_background_worker = var.enable_auth_user_sync_background_worker
   enable_billing_http_team_provision_sink = var.enable_billing_http_team_provision_sink

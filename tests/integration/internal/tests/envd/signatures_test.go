@@ -60,8 +60,8 @@ func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
 	defer cancel()
 
 	sbx := createSandbox(t, true, setup.WithAPIKey())
-	assert.NotNil(t, sbx.JSON201)
-	assert.NotNil(t, sbx.JSON201.EnvdAccessToken)
+	require.NotNil(t, sbx.JSON201)
+	require.NotNil(t, sbx.JSON201.EnvdAccessToken)
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 	envdToken := sbx.JSON201.EnvdAccessToken
@@ -103,8 +103,8 @@ func TestDownloadFileWithSigningWhenAuthIsEnabled(t *testing.T) {
 	defer cancel()
 
 	sbx := createSandbox(t, true, setup.WithAPIKey())
-	assert.NotNil(t, sbx.JSON201)
-	assert.NotNil(t, sbx.JSON201.EnvdAccessToken)
+	require.NotNil(t, sbx.JSON201)
+	require.NotNil(t, sbx.JSON201.EnvdAccessToken)
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 	envdToken := sbx.JSON201.EnvdAccessToken
@@ -147,8 +147,8 @@ func TestDownloadWithAlreadyExpiredToken(t *testing.T) {
 	defer cancel()
 
 	sbx := createSandbox(t, true, setup.WithAPIKey())
-	assert.NotNil(t, sbx.JSON201)
-	assert.NotNil(t, sbx.JSON201.EnvdAccessToken)
+	require.NotNil(t, sbx.JSON201)
+	require.NotNil(t, sbx.JSON201.EnvdAccessToken)
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 	envdToken := sbx.JSON201.EnvdAccessToken
@@ -181,8 +181,8 @@ func TestDownloadWithHealthyToken(t *testing.T) {
 	defer cancel()
 
 	sbx := createSandbox(t, true, setup.WithAPIKey())
-	assert.NotNil(t, sbx.JSON201)
-	assert.NotNil(t, sbx.JSON201.EnvdAccessToken)
+	require.NotNil(t, sbx.JSON201)
+	require.NotNil(t, sbx.JSON201.EnvdAccessToken)
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 	envdToken := sbx.JSON201.EnvdAccessToken
@@ -215,8 +215,8 @@ func TestAccessWithNotCorrespondingSignatureAndSignatureExpiration(t *testing.T)
 	defer cancel()
 
 	sbx := createSandbox(t, true, setup.WithAPIKey())
-	assert.NotNil(t, sbx.JSON201)
-	assert.NotNil(t, sbx.JSON201.EnvdAccessToken)
+	require.NotNil(t, sbx.JSON201)
+	require.NotNil(t, sbx.JSON201.EnvdAccessToken)
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 	envdToken := sbx.JSON201.EnvdAccessToken

@@ -26,8 +26,16 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 	sandboxID string,
 	allowedEntries []string,
 	deniedEntries []string,
+	allowInternetAccess *bool,
 ) *api.APIError {
-	egress := buildEgressConfig(allowedEntries, deniedEntries)
+	network := &types.SandboxNetworkConfig{
+		Egress: &types.SandboxNetworkEgressConfig{
+			AllowedAddresses: allowedEntries,
+			DeniedAddresses:  deniedEntries,
+		},
+	}
+	orchNetwork := buildNetworkConfig(network, allowInternetAccess, nil)
+	egress := orchNetwork.GetEgress()
 
 	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
 		if sbx.State != sandbox.StateRunning {
@@ -41,6 +49,10 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 		sbx.Network.Egress = &types.SandboxNetworkEgressConfig{
 			AllowedAddresses: allowedEntries,
 			DeniedAddresses:  deniedEntries,
+		}
+
+		if allowInternetAccess != nil {
+			sbx.AllowInternetAccess = allowInternetAccess
 		}
 
 		return sbx, nil

@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -75,7 +76,7 @@ func (m *Map) GetByHostPort(hostPort string) (*Sandbox, error) {
 
 	sbx, ok := m.network.Get(reqIP)
 	if !ok {
-		return nil, fmt.Errorf("sandbox not found")
+		return nil, errors.New("sandbox not found")
 	}
 
 	return sbx, nil
