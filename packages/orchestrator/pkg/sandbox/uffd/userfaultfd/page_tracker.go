@@ -5,9 +5,11 @@ import "sync"
 type pageState uint8
 
 const (
-	// faulted starts at 1 so the pageState zero value is reserved for pages
-	// not yet present in the tracker map.
-	faulted pageState = iota + 1
+	// unfaulted is the implicit state for pages not yet present in the
+	// tracker map; it is the zero value of pageState. The follow-up
+	// free-page-reporting work returns it explicitly from a get() accessor.
+	unfaulted pageState = iota
+	faulted
 )
 
 type pageTracker struct {
