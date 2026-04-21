@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -188,28 +189,42 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 		)
 	})
 
-	offsetsOnce := func() ([]uint, error) {
+	// pageStatesOnce asks the serving process for a snapshot of its pageTracker
+	// and decodes it into a per-state view. It can only be called once.
+	pageStatesOnce := func() (handlerPageStates, error) {
 		err := cmd.Process.Signal(syscall.SIGUSR2)
 		if err != nil {
-			return nil, err
+			return handlerPageStates{}, err
 		}
 
-		offsetsBytes, err := io.ReadAll(offsetsReader)
+		data, err := io.ReadAll(offsetsReader)
 		if err != nil {
-			return nil, err
+			return handlerPageStates{}, err
 		}
 
-		var offsetList []uint
-
-		if len(offsetsBytes)%8 != 0 {
-			return nil, fmt.Errorf("invalid offsets bytes length: %d", len(offsetsBytes))
+		const entrySize = 1 + 8 // uint8 state + uint64 offset
+		if len(data)%entrySize != 0 {
+			return handlerPageStates{}, fmt.Errorf("invalid page state data length: %d", len(data))
 		}
 
-		for i := 0; i < len(offsetsBytes); i += 8 {
-			offsetList = append(offsetList, uint(binary.LittleEndian.Uint64(offsetsBytes[i:i+8])))
+		var result handlerPageStates
+
+		for i := 0; i < len(data); i += entrySize {
+			state := pageState(data[i])
+			offset := uint(binary.LittleEndian.Uint64(data[i+1 : i+entrySize]))
+
+			switch state {
+			case faulted:
+				result.faulted = append(result.faulted, offset)
+			case removed:
+				result.removed = append(result.removed, offset)
+			}
 		}
 
-		return offsetList, nil
+		slices.Sort(result.faulted)
+		slices.Sort(result.removed)
+
+		return result, nil
 	}
 
 	select {
@@ -219,10 +234,10 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	}
 
 	return &testHandler{
-		memoryArea:  &memoryArea,
-		pagesize:    tt.pagesize,
-		data:        data,
-		offsetsOnce: offsetsOnce,
+		memoryArea:     &memoryArea,
+		pagesize:       tt.pagesize,
+		data:           data,
+		pageStatesOnce: pageStatesOnce,
 	}, nil
 }
 
@@ -322,17 +337,9 @@ func crossProcessServe() error {
 				}
 
 				for _, entry := range entries {
-					if entry.state != faulted {
-						continue
-					}
-
-					writeErr := binary.Write(offsetsFile, binary.LittleEndian, entry.offset)
+					writeErr := binary.Write(offsetsFile, binary.LittleEndian, entry)
 					if writeErr != nil {
-						msg := fmt.Errorf("error writing offsets to file: %w", writeErr)
-
-						fmt.Fprint(os.Stderr, msg.Error())
-
-						cancel(msg)
+						cancel(fmt.Errorf("error writing page state entry: %w", writeErr))
 
 						return
 					}
@@ -402,14 +409,18 @@ func crossProcessServe() error {
 	}
 }
 
+// pageStateEntry is the wire format used between the main test process
+// and the serving helper process. State is emitted as a single byte so it
+// can be written directly with binary.Write and decoded on the other side.
 type pageStateEntry struct {
-	state  pageState
-	offset uint64
+	State  uint8
+	Offset uint64
 }
 
+// pageStateEntries returns a snapshot of every tracked page and its state.
+// It holds the settleRequests write lock so no in-flight faultPage worker
+// can mutate the pageTracker while we iterate.
 func (u *Userfaultfd) pageStateEntries() ([]pageStateEntry, error) {
-	// Hold the write lock for the whole snapshot so no in-flight faultPage can
-	// mutate pageTracker while we iterate.
 	u.settleRequests.Lock()
 	defer u.settleRequests.Unlock()
 
@@ -419,7 +430,8 @@ func (u *Userfaultfd) pageStateEntries() ([]pageStateEntry, error) {
 		if err != nil {
 			return nil, fmt.Errorf("address %#x not in mapping: %w", addr, err)
 		}
-		entries = append(entries, pageStateEntry{state, uint64(offset)})
+
+		entries = append(entries, pageStateEntry{uint8(state), uint64(offset)})
 	}
 
 	return entries, nil

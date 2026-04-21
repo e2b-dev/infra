@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/v2"
+	"github.com/bits-and-blooms/bitset"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -40,14 +42,38 @@ type operation struct {
 	mode   operationMode
 }
 
+// handlerPageStates is a snapshot of the pageTracker grouped by state. It
+// lets tests assert on the set of pages that the handler observed in each
+// state, rather than a flat list of "accessed" offsets. Additional states
+// (e.g. removed) are exposed so REMOVE-event tests can reuse this helper.
+type handlerPageStates struct {
+	faulted []uint
+	removed []uint
+}
+
+// allAccessed returns the sorted union of offsets that the handler touched
+// in any non-missing state. Tests that only care about "which pages did the
+// handler see" can compare directly against this.
+func (s handlerPageStates) allAccessed() []uint {
+	b := bitset.New(0)
+	for _, o := range s.faulted {
+		b.Set(o)
+	}
+	for _, o := range s.removed {
+		b.Set(o)
+	}
+
+	return slices.Collect(b.EachSet())
+}
+
 type testHandler struct {
 	memoryArea *[]byte
 	pagesize   uint64
 	data       *MemorySlicer
-	// Returns offsets of the pages that were faulted.
+	// pageStatesOnce returns a per-state snapshot of the handler's pageTracker.
 	// It can only be called once.
-	offsetsOnce func() ([]uint, error)
-	mutex       sync.Mutex
+	pageStatesOnce func() (handlerPageStates, error)
+	mutex          sync.Mutex
 }
 
 func (h *testHandler) executeAll(t *testing.T, operations []operation) {
