@@ -117,8 +117,8 @@ job "client-proxy" {
         # used by client-proxy to call API ResumeSandbox over gRPC
         API_GRPC_ADDRESS             = "${api_grpc_address}"
         API_GRPC_TLS                 = "${api_grpc_tls}"
-        %{ if sandbox_resume_auth_token != "" }
-        SANDBOX_RESUME_AUTH_TOKEN    = "${sandbox_resume_auth_token}"
+        %{ if api_secret != "" }
+        API_SECRET                   = "${api_secret}"
         %{ endif }
         %{ endif }
 

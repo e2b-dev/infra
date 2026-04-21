@@ -17,10 +17,10 @@ resource "nomad_job" "client_proxy" {
     redis_tls_ca_base64 = var.redis_tls_ca_base64
     redis_pool_size     = var.redis_pool_size
 
-    image                     = var.image
-    api_grpc_address          = trimspace(var.api_grpc_address)
-    api_grpc_tls              = var.api_grpc_tls
-    sandbox_resume_auth_token = trimspace(var.sandbox_resume_auth_token)
+    image            = var.image
+    api_grpc_address = trimspace(var.api_grpc_address)
+    api_grpc_tls     = var.api_grpc_tls
+    api_secret       = trimspace(var.api_secret)
 
     otel_collector_grpc_endpoint = var.otel_collector_grpc_endpoint
     logs_collector_address       = var.logs_collector_address

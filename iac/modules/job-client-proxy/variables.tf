@@ -73,7 +73,7 @@ variable "api_grpc_tls" {
   default = false
 }
 
-variable "sandbox_resume_auth_token" {
+variable "api_secret" {
   type      = string
   default   = ""
   sensitive = true

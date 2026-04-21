@@ -11,9 +11,9 @@ type Config struct {
 	RedisTLSCABase64 string `env:"REDIS_TLS_CA_BASE64"`
 	RedisPoolSize    int    `env:"REDIS_POOL_SIZE"     envDefault:"40"`
 
-	ApiGrpcAddress         string `env:"API_GRPC_ADDRESS"`
-	ApiGrpcTLS             bool   `env:"API_GRPC_TLS" envDefault:"false"`
-	SandboxResumeAuthToken string `env:"SANDBOX_RESUME_AUTH_TOKEN"`
+	ApiGrpcAddress string `env:"API_GRPC_ADDRESS"`
+	ApiGrpcTLS     bool   `env:"API_GRPC_TLS" envDefault:"false"`
+	APISecret      string `env:"API_SECRET"`
 }
 
 func Parse() (Config, error) {

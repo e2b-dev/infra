@@ -20,16 +20,16 @@ import (
 type grpcPausedSandboxResumer struct {
 	conn      *grpc.ClientConn
 	client    proxygrpc.SandboxServiceClient
-	authToken string
+	apiSecret string
 }
 
-func NewGrpcPausedSandboxResumer(address string, authToken string, tlsEnabled bool) (PausedSandboxResumer, error) {
+func NewGrpcPausedSandboxResumer(address string, apiSecret string, tlsEnabled bool) (PausedSandboxResumer, error) {
 	// Client-proxy uses this gRPC client to trigger ResumeSandbox when needed.
 	if strings.TrimSpace(address) == "" {
 		return nil, fmt.Errorf("api grpc address is required")
 	}
-	if tlsEnabled && strings.TrimSpace(authToken) == "" {
-		return nil, fmt.Errorf("sandbox resume auth token is required when api grpc tls is enabled")
+	if tlsEnabled && strings.TrimSpace(apiSecret) == "" {
+		return nil, fmt.Errorf("api secret is required when api grpc tls is enabled")
 	}
 
 	var creds credentials.TransportCredentials = insecure.NewCredentials()
@@ -49,7 +49,7 @@ func NewGrpcPausedSandboxResumer(address string, authToken string, tlsEnabled bo
 	return &grpcPausedSandboxResumer{
 		conn:      conn,
 		client:    proxygrpc.NewSandboxServiceClient(conn),
-		authToken: strings.TrimSpace(authToken),
+		apiSecret: strings.TrimSpace(apiSecret),
 	}, nil
 }
 
@@ -71,8 +71,8 @@ func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string,
 	if envdAccessToken != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataEnvdAccessToken, envdAccessToken)
 	}
-	if c.authToken != "" {
-		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataClientProxyAuthToken, c.authToken)
+	if c.apiSecret != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataClientProxyAuthToken, c.apiSecret)
 	}
 
 	resp, err := c.client.ResumeSandbox(ctx, &proxygrpc.SandboxResumeRequest{

@@ -54,8 +54,7 @@ type Config struct {
 	RedisPoolSize    int    `env:"REDIS_POOL_SIZE"     envDefault:"160"`
 
 	APIGrpcPort uint16 `env:"API_GRPC_PORT" envDefault:"5009"`
-
-	SandboxResumeAuthToken string `env:"SANDBOX_RESUME_AUTH_TOKEN"`
+	APISecret   string `env:"API_SECRET"`
 
 	SandboxAccessTokenHashSeed string `env:"SANDBOX_ACCESS_TOKEN_HASH_SEED"`
 

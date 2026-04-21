@@ -125,7 +125,7 @@ func (s *SandboxService) getAutoResumeSnapshot(ctx context.Context, sandboxID st
 
 func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*proxygrpc.SandboxResumeResponse, error) {
 	incomingMetadata := metadataFromIncomingContext(ctx)
-	if err := validateClientProxyAuth(incomingMetadata, s.api.config.SandboxResumeAuthToken); err != nil {
+	if err := validateClientProxyAuth(incomingMetadata, s.api.config.APISecret); err != nil {
 		return nil, err
 	}
 

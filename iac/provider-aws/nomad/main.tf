@@ -98,6 +98,7 @@ module "client_proxy" {
   redis_cluster_url   = var.redis_cluster_url
   redis_tls_ca_base64 = var.redis_tls_ca_base64
   image               = data.aws_ecr_image.client_proxy.image_uri
+  api_secret          = var.api_secret
 
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
   logs_collector_address       = "http://localhost:${var.logs_proxy_port}"
@@ -127,6 +128,7 @@ module "api" {
   supabase_jwt_secrets           = var.supabase_jwt_secrets
   nomad_acl_token                = var.nomad_acl_token
   admin_token                    = var.admin_token
+  api_secret                     = var.api_secret
   redis_url                      = var.redis_url
   redis_cluster_url              = var.redis_cluster_url
   redis_tls_ca_base64            = var.redis_tls_ca_base64

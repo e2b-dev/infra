@@ -99,7 +99,7 @@ variable "admin_token" {
   sensitive = true
 }
 
-variable "sandbox_resume_auth_token" {
+variable "api_secret" {
   type      = string
   default   = ""
   sensitive = true

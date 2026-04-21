@@ -120,7 +120,7 @@ module "api" {
   analytics_collector_api_token           = trimspace(data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data)
   nomad_acl_token                         = var.nomad_acl_token_secret
   admin_token                             = trimspace(data.google_secret_manager_secret_version.api_admin_token.secret_data)
-  sandbox_resume_auth_token               = var.api_secret
+  api_secret                              = var.api_secret
   redis_url                               = local.redis_url
   redis_cluster_url                       = local.redis_cluster_url
   redis_tls_ca_base64                     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
@@ -224,11 +224,11 @@ module "client_proxy" {
   image               = data.google_artifact_registry_docker_image.client_proxy_image.self_link
   api_grpc_address    = "api-grpc.service.consul:${var.api_grpc_port}"
   api_grpc_tls        = false
+  api_secret          = var.api_secret
 
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
   logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
   launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
-  sandbox_resume_auth_token    = var.api_secret
 }
 
 # grafana otel collector url
