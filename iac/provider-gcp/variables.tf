@@ -56,12 +56,6 @@ variable "api_server_count" {
   default = 1
 }
 
-variable "sandbox_resume_auth_token" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
 variable "api_resources_cpu_count" {
   type    = number
   default = 2

@@ -41,7 +41,6 @@ tf_vars := \
 	$(call tfvar, DOMAIN_NAME) \
 	$(call tfvar, PREFIX) \
 	$(call tfvar, SANDBOX_STORAGE_BACKEND) \
-	$(call tfvar, SANDBOX_RESUME_AUTH_TOKEN) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
 	$(call tfvar, API_SERVER_COUNT) \
 	$(call tfvar, API_RESOURCES_CPU_COUNT) \
