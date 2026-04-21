@@ -217,12 +217,6 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 				waitErr == nil,
 			"unexpected error: %v", waitErr,
 		)
-
-		// Unregister the uffd range before the fd-close cleanup runs.
-		// This is a no-op for the existing tests but is required by the
-		// upcoming REMOVE event tests so munmap doesn't block on
-		// un-acked events.
-		unregister(uffdFd, memoryStart, uint64(size))
 	})
 
 	// pageStatesOnce asks the serving process for a snapshot of its pageTracker
@@ -350,6 +344,9 @@ func crossProcessServe() error {
 		},
 	})
 
+	exitUffd := make(chan struct{}, 1)
+	defer close(exitUffd)
+
 	l, err := logger.NewDevelopmentLogger()
 	if err != nil {
 		return fmt.Errorf("exit creating logger: %w", err)
@@ -405,16 +402,20 @@ func crossProcessServe() error {
 	}
 	defer fdExit.Close()
 
-	exitUffd := make(chan struct{}, 1)
-
 	go func() {
-		defer func() { exitUffd <- struct{}{} }()
+		defer func() {
+			exitUffd <- struct{}{}
+		}()
 
 		serverErr := uffd.Serve(ctx, fdExit)
 		if serverErr != nil {
 			msg := fmt.Errorf("error serving: %w", serverErr)
+
 			fmt.Fprint(os.Stderr, msg.Error())
+
 			cancel(msg)
+
+			return
 		}
 	}()
 
@@ -427,7 +428,17 @@ func crossProcessServe() error {
 	var (
 		stopMu sync.Mutex
 		stopFn = func() {
-			fdExit.SignalExit()
+			err := fdExit.SignalExit()
+			if err != nil {
+				msg := fmt.Errorf("error signaling exit: %w", err)
+
+				fmt.Fprint(os.Stderr, msg.Error())
+
+				cancel(msg)
+
+				return
+			}
+
 			<-exitUffd
 		}
 	)
@@ -521,19 +532,13 @@ type pageStateEntry struct {
 }
 
 // pageStateEntries returns a snapshot of every tracked page and its state.
-// We first take the settleRequests writer lock just as a fence to drain
-// in-flight faultPage workers (which hold settleRequests.RLock()), then
-// release it and re-lock pageTracker directly. This lets the snapshot stay
-// correct even if future writers to pageTracker (e.g. REMOVE event
-// handlers) don't go through settleRequests.
+// It holds the settleRequests write lock so no in-flight faultPage worker
+// can mutate the pageTracker while we iterate.
 func (u *Userfaultfd) pageStateEntries() ([]pageStateEntry, error) {
 	u.settleRequests.Lock()
-	u.settleRequests.Unlock() //nolint:staticcheck // SA2001: intentional — drain in-flight faultPage workers.
+	defer u.settleRequests.Unlock()
 
-	u.pageTracker.mu.RLock()
-	defer u.pageTracker.mu.RUnlock()
-
-	var entries []pageStateEntry
+	entries := make([]pageStateEntry, 0, len(u.pageTracker.m))
 	for addr, state := range u.pageTracker.m {
 		offset, err := u.ma.GetOffset(addr)
 		if err != nil {
