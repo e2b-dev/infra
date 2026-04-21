@@ -5,7 +5,7 @@ locals {
   loki_url                                = "http://loki.service.consul:${var.loki_service_port.port}"
   enable_billing_http_team_provision_sink = var.enable_billing_http_team_provision_sink
   dashboard_api_billing_server_url        = local.enable_billing_http_team_provision_sink ? trimspace(data.google_secret_manager_secret_version.billing_server_url[0].secret_data) : ""
-  dashboard_api_billing_server_api_token  = local.enable_billing_http_team_provision_sink ? data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data : ""
+  dashboard_api_billing_server_api_token  = local.enable_billing_http_team_provision_sink ? trimspace(data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data) : ""
 }
 
 # API
