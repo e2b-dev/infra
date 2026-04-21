@@ -549,5 +549,4 @@ func (u *Userfaultfd) Close() error {
 	syscall.Close(u.wakeupPipe[1])
 
 	return u.fd.close()
-
 }
