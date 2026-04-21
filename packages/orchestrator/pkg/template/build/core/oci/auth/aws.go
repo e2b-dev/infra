@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -50,7 +51,7 @@ func (p *AWSAuthProvider) GetAuthOption(ctx context.Context) (remote.Option, err
 	}
 
 	if len(token.AuthorizationData) == 0 {
-		return nil, fmt.Errorf("no ECR authorization data returned")
+		return nil, errors.New("no ECR authorization data returned")
 	}
 
 	// Decode the authorization token
@@ -63,7 +64,7 @@ func (p *AWSAuthProvider) GetAuthOption(ctx context.Context) (remote.Option, err
 	// Parse the token (format is username:password)
 	parts := strings.SplitN(string(decodedToken), ":", 2)
 	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid ECR token format")
+		return nil, errors.New("invalid ECR token format")
 	}
 
 	return remote.WithAuth(&authn.Basic{

@@ -1,7 +1,7 @@
 package chrooted
 
 import (
-	"fmt"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -180,7 +180,7 @@ func (fs *Chrooted) Readlink(link string) (target string, err error) {
 }
 
 func (fs *Chrooted) Chroot(_ string) (*Chrooted, error) {
-	return nil, fmt.Errorf("chroot not supported")
+	return nil, errors.New("chroot not supported")
 }
 
 func (fs *Chrooted) Root() string {

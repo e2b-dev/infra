@@ -199,6 +199,10 @@ module "cluster" {
   server_boot_disk_size_gb  = var.server_boot_disk_size_gb
   clickhouse_boot_disk_type = var.clickhouse_boot_disk_type
   loki_boot_disk_type       = var.loki_boot_disk_type
+
+  # ClickHouse stateful data disk
+  clickhouse_stateful_disk_type    = var.clickhouse_stateful_disk_type
+  clickhouse_stateful_disk_size_gb = var.clickhouse_stateful_disk_size_gb
 }
 
 module "nomad" {

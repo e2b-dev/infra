@@ -249,7 +249,7 @@ func (p *Process) configure(
 	}
 
 	startCtx, cancelStart := context.WithCancelCause(ctx)
-	defer cancelStart(fmt.Errorf("fc finished starting"))
+	defer cancelStart(errors.New("fc finished starting"))
 
 	go func() {
 		defer stderrWriter.Close()
@@ -606,7 +606,7 @@ func (p *Process) Resume(
 
 func (p *Process) Pid() (int, error) {
 	if p.cmd.Process == nil {
-		return 0, fmt.Errorf("fc process not started")
+		return 0, errors.New("fc process not started")
 	}
 
 	return p.cmd.Process.Pid, nil
@@ -626,7 +626,7 @@ func getProcessStatus(pid int) ([]string, error) {
 
 func (p *Process) Stop(ctx context.Context) error {
 	if p.cmd.Process == nil {
-		return fmt.Errorf("fc process not started")
+		return errors.New("fc process not started")
 	}
 
 	// Always remove the metrics FIFO, even if the process already exited,

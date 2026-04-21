@@ -20,6 +20,7 @@ import (
 const blockAll = sandbox_network.AllInternetTrafficCIDR
 
 func ptrS(s ...string) *[]string { return &s }
+func ptrB(b bool) *bool          { return &b }
 
 // putNetwork is a helper to call the update network endpoint.
 func putNetwork(
@@ -163,10 +164,11 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 	// ── Firewall rule updates (table-driven, apply + verify connectivity) ─
 
 	type step struct {
-		name     string
-		allowOut *[]string
-		denyOut  *[]string
-		checks   []connectivityCheck
+		name                string
+		allowOut            *[]string
+		denyOut             *[]string
+		allowInternetAccess *bool
+		checks              []connectivityCheck
 	}
 
 	// Steps execute sequentially. Each PUT fully replaces the previous config.
@@ -281,9 +283,33 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 				{"https://1.1.1.1", true}, // no deny → default accept
 			},
 		},
+		// ── allow_internet_access bool ───────────────────────────────
+		{
+			name:                "12_allow_internet_access_false_blocks_all",
+			allowInternetAccess: ptrB(false),
+			checks: []connectivityCheck{
+				{"https://8.8.8.8", false},
+				{"https://1.1.1.1", false},
+			},
+		},
+		{
+			name:                "13_allow_internet_access_true_is_noop",
+			allowInternetAccess: ptrB(true),
+			checks: []connectivityCheck{
+				{"https://8.8.8.8", true},
+				{"https://1.1.1.1", true},
+			},
+		},
+		{
+			name: "14_allow_internet_access_omitted_is_noop",
+			checks: []connectivityCheck{
+				{"https://8.8.8.8", true},
+				{"https://1.1.1.1", true},
+			},
+		},
 		// ── final clear ──────────────────────────────────────────────
 		{
-			name: "12_final_clear",
+			name: "15_final_clear",
 			checks: []connectivityCheck{
 				{"https://8.8.8.8", true},
 				{"https://1.1.1.1", true},
@@ -294,8 +320,9 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 	for _, s := range steps { //nolint:paralleltest // subtests are sequential
 		t.Run(s.name, func(t *testing.T) {
 			resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
-				AllowOut: s.allowOut,
-				DenyOut:  s.denyOut,
+				AllowOut:            s.allowOut,
+				DenyOut:             s.denyOut,
+				AllowInternetAccess: s.allowInternetAccess,
 			})
 			require.Equal(t, http.StatusNoContent, resp.StatusCode())
 			verifyConnectivity(t, ctx, sbx, envdClient, s.checks)
@@ -332,6 +359,37 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		// Verify rules survived
 		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
 			{"https://8.8.8.8", true},
+			{"https://1.1.1.1", false},
+		})
+	})
+
+	t.Run("pause_resume_preserves_allow_internet_access_false", func(t *testing.T) { //nolint:paralleltest // sequential
+		// Block all via allow_internet_access=false
+		resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
+			AllowInternetAccess: ptrB(false),
+		})
+		require.Equal(t, http.StatusNoContent, resp.StatusCode())
+		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+			{"https://8.8.8.8", false},
+			{"https://1.1.1.1", false},
+		})
+
+		// Pause
+		pauseResp, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNoContent, pauseResp.StatusCode())
+
+		// Resume
+		resumeResp, err := client.PostSandboxesSandboxIDResumeWithResponse(ctx, sbx.SandboxID,
+			api.PostSandboxesSandboxIDResumeJSONRequestBody{},
+			setup.WithAPIKey(),
+		)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusCreated, resumeResp.StatusCode())
+
+		// Verify block survived pause/resume
+		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+			{"https://8.8.8.8", false},
 			{"https://1.1.1.1", false},
 		})
 	})

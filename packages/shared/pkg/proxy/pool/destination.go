@@ -18,8 +18,12 @@ type Destination struct {
 	// Should we return the error about closed port if there is a problem with a connection to upstream?
 	DefaultToPortError bool
 	RequestLogger      logger.Logger
-	// ConnectionKey is used for identifying which keepalive connections are not the same so we can prevent unintended reuse.
-	// This is evaluated before checking for existing connection to the IP:port pair.
+	// ConnectionKey uniquely identifies a single sandbox lifecycle. It is
+	// used for two purposes:
+	//   1. keepalive connection pool isolation, so connections to a reused
+	//      IP:port pair are not accidentally shared across sandboxes;
+	//   2. per-sandbox ingress connection limiter accounting.
+	// Embedders should pick a value that is unique per lifecycle.
 	ConnectionKey                      string
 	IncludeSandboxIdInProxyErrorLogger bool
 	// MaskRequestHost is used to mask the request host.

@@ -347,7 +347,7 @@ func getProcType(req *rpc.StartRequest) cgroups.ProcessType {
 
 func (p *Handler) SendSignal(signal syscall.Signal) error {
 	if p.cmd.Process == nil {
-		return fmt.Errorf("process not started")
+		return errors.New("process not started")
 	}
 
 	if signal == syscall.SIGKILL || signal == syscall.SIGTERM {
@@ -359,7 +359,7 @@ func (p *Handler) SendSignal(signal syscall.Signal) error {
 
 func (p *Handler) ResizeTty(size *pty.Winsize) error {
 	if p.tty == nil {
-		return fmt.Errorf("tty not assigned to process")
+		return errors.New("tty not assigned to process")
 	}
 
 	return pty.Setsize(p.tty, size)
@@ -367,14 +367,14 @@ func (p *Handler) ResizeTty(size *pty.Winsize) error {
 
 func (p *Handler) WriteStdin(data []byte) error {
 	if p.tty != nil {
-		return fmt.Errorf("tty assigned to process — input should be written to the pty, not the stdin")
+		return errors.New("tty assigned to process — input should be written to the pty, not the stdin")
 	}
 
 	p.stdinMu.Lock()
 	defer p.stdinMu.Unlock()
 
 	if p.stdin == nil {
-		return fmt.Errorf("stdin not enabled or closed")
+		return errors.New("stdin not enabled or closed")
 	}
 
 	_, err := p.stdin.Write(data)
@@ -389,7 +389,7 @@ func (p *Handler) WriteStdin(data []byte) error {
 // Only works for non-PTY processes.
 func (p *Handler) CloseStdin() error {
 	if p.tty != nil {
-		return fmt.Errorf("cannot close stdin for PTY process — send Ctrl+D (0x04) instead")
+		return errors.New("cannot close stdin for PTY process — send Ctrl+D (0x04) instead")
 	}
 
 	p.stdinMu.Lock()
@@ -409,7 +409,7 @@ func (p *Handler) CloseStdin() error {
 
 func (p *Handler) WriteTty(data []byte) error {
 	if p.tty == nil {
-		return fmt.Errorf("tty not assigned to process — input should be written to the stdin, not the tty")
+		return errors.New("tty not assigned to process — input should be written to the stdin, not the tty")
 	}
 
 	_, err := p.tty.Write(data)

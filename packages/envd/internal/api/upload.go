@@ -22,7 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
-var ErrNoDiskSpace = fmt.Errorf("not enough disk space available")
+var ErrNoDiskSpace = errors.New("not enough disk space available")
 
 func processFile(r *http.Request, path string, part io.Reader, uid, gid int, logger zerolog.Logger) (int, error) {
 	logger.Debug().
@@ -324,7 +324,7 @@ func (a *API) handleMultipartUpload(r *http.Request, u *user.User, uid, gid int,
 
 func (a *API) handleRawUpload(r *http.Request, u *user.User, uid, gid int, operationID string, params PostFilesParams) (UploadSuccess, int, error) {
 	if params.Path == nil {
-		return nil, http.StatusBadRequest, fmt.Errorf("path query parameter is required for raw body upload")
+		return nil, http.StatusBadRequest, errors.New("path query parameter is required for raw body upload")
 	}
 
 	filePath, err := permissions.ExpandAndResolve(*params.Path, u, a.defaults.Workdir)

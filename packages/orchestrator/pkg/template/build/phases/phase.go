@@ -138,7 +138,7 @@ func validateLayer(
 	layer LayerResult,
 ) (err error) {
 	if layer.Hash == "" {
-		err = errors.Join(err, fmt.Errorf("layer hash is empty"))
+		err = errors.Join(err, errors.New("layer hash is empty"))
 	}
 
 	return errors.Join(err, validateMetadata(layer.Metadata))
@@ -157,13 +157,13 @@ func validateTemplate(
 	metadata metadata.TemplateMetadata,
 ) (err error) {
 	if metadata.BuildID == "" {
-		err = errors.Join(err, fmt.Errorf("template build ID is empty"))
+		err = errors.Join(err, errors.New("template build ID is empty"))
 	}
 	if metadata.KernelVersion == "" {
-		err = errors.Join(err, fmt.Errorf("template kernel version is empty"))
+		err = errors.Join(err, errors.New("template kernel version is empty"))
 	}
 	if metadata.FirecrackerVersion == "" {
-		err = errors.Join(err, fmt.Errorf("template firecracker version is empty"))
+		err = errors.Join(err, errors.New("template firecracker version is empty"))
 	}
 
 	return err
@@ -173,10 +173,10 @@ func validateContext(
 	context metadata.Context,
 ) (err error) {
 	if context.User == "" {
-		err = errors.Join(err, fmt.Errorf("context user is empty"))
+		err = errors.Join(err, errors.New("context user is empty"))
 	}
 	if context.WorkDir != nil && *context.WorkDir == "" {
-		err = errors.Join(err, fmt.Errorf("context working dir is empty"))
+		err = errors.Join(err, errors.New("context working dir is empty"))
 	}
 
 	return err

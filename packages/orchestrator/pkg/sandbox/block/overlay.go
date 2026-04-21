@@ -52,7 +52,7 @@ func (o *Overlay) ReadAt(ctx context.Context, p []byte, off int64) (int, error) 
 
 func (o *Overlay) EjectCache() (*Cache, error) {
 	if !o.cacheEjected.CompareAndSwap(false, true) {
-		return nil, fmt.Errorf("cache already ejected")
+		return nil, errors.New("cache already ejected")
 	}
 
 	return o.cache, nil
@@ -63,7 +63,7 @@ func (o *Overlay) EjectCache() (*Cache, error) {
 //
 // When we are implementing this we might want to just enforce the length to be the same as the block size.
 func (o *Overlay) Slice(_ context.Context, _, _ int64) ([]byte, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, errors.New("not implemented")
 }
 
 func (o *Overlay) WriteAt(p []byte, off int64) (int, error) {

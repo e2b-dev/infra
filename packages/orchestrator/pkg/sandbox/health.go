@@ -25,7 +25,7 @@ func (c *Checks) getHealth(ctx context.Context, timeout time.Duration) (bool, er
 	response, err := sandboxHttpClient.Do(request)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return false, fmt.Errorf("health check timed out")
+			return false, errors.New("health check timed out")
 		}
 
 		return false, err
