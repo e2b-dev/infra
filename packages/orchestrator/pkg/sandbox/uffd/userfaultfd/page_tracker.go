@@ -5,8 +5,9 @@ import "sync"
 type pageState uint8
 
 const (
-	unfaulted pageState = iota
-	faulted
+	// faulted starts at 1 so the pageState zero value is reserved for pages
+	// not yet present in the tracker map.
+	faulted pageState = iota + 1
 )
 
 type pageTracker struct {

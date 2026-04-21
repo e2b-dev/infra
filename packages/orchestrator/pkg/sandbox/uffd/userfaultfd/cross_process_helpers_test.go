@@ -316,11 +316,7 @@ func crossProcessServe() error {
 			case <-offsetsSignal:
 				entries, entriesErr := uffd.pageStateEntries()
 				if entriesErr != nil {
-					msg := fmt.Errorf("error getting page state entries: %w", entriesErr)
-
-					fmt.Fprint(os.Stderr, msg.Error())
-
-					cancel(msg)
+					cancel(fmt.Errorf("error getting page state entries: %w", entriesErr))
 
 					return
 				}
