@@ -53,9 +53,11 @@ type Userfaultfd struct {
 	src         block.Slicer
 	ma          *memory.Mapping
 	pageSize    uintptr
-	pageTracker pageTracker
+	pageTracker *pageTracker
 
-	// We use the settleRequests to guard the prefetchTracker so we can access a consistent state of the prefetchTracker after the requests are finished.
+	// settleRequests guards the pageTracker and prefetchTracker so we can access a
+	// consistent state after in-flight requests have finished, and so REMOVE events
+	// can update the pageTracker without racing with concurrent faultPage workers.
 	settleRequests  sync.RWMutex
 	prefetchTracker *block.PrefetchTracker
 

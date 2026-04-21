@@ -17,8 +17,8 @@ type pageTracker struct {
 	mu sync.RWMutex
 }
 
-func newPageTracker(pageSize uintptr) pageTracker {
-	return pageTracker{
+func newPageTracker(pageSize uintptr) *pageTracker {
+	return &pageTracker{
 		pageSize: pageSize,
 		m:        make(map[uintptr]pageState),
 	}
