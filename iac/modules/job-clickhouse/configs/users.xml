@@ -9,7 +9,7 @@
             <async_insert_busy_timeout_max_ms>4000</async_insert_busy_timeout_max_ms>
             <async_insert_max_data_size>104857600</async_insert_max_data_size>
 
-            <!-- new: distributed forwarder behaviour -->
+            <!-- distributed forwarder behaviour -->
             <distributed_background_insert_batch>1</distributed_background_insert_batch>
             <distributed_background_insert_split_batch_on_failure>1</distributed_background_insert_split_batch_on_failure>
         </default>
