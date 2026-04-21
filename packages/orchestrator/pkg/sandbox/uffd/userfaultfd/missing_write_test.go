@@ -126,7 +126,7 @@ func TestMissingWrite(t *testing.T) {
 			accessedOffsets, err := h.offsetsOnce()
 			require.NoError(t, err)
 
-			assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+			assert.ElementsMatch(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
 
 			h.checkDirtiness(t, tt.operations)
 		})
@@ -167,7 +167,7 @@ func TestParallelMissingWrite(t *testing.T) {
 	accessedOffsets, err := h.offsetsOnce()
 	require.NoError(t, err)
 
-	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+	assert.ElementsMatch(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
 }
 
 func TestParallelMissingWriteWithPrefault(t *testing.T) {
@@ -207,7 +207,7 @@ func TestParallelMissingWriteWithPrefault(t *testing.T) {
 	accessedOffsets, err := h.offsetsOnce()
 	require.NoError(t, err)
 
-	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+	assert.ElementsMatch(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
 }
 
 func TestSerialMissingWrite(t *testing.T) {
@@ -238,5 +238,5 @@ func TestSerialMissingWrite(t *testing.T) {
 	accessedOffsets, err := h.offsetsOnce()
 	require.NoError(t, err)
 
-	assert.Equal(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
+	assert.ElementsMatch(t, expectedAccessedOffsets, accessedOffsets, "checking which pages were faulted")
 }

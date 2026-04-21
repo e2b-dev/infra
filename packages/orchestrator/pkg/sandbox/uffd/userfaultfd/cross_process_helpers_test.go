@@ -16,7 +16,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -427,10 +426,6 @@ func (u *Userfaultfd) pageStateEntries() ([]pageStateEntry, error) {
 		}
 		entries = append(entries, pageStateEntry{state, uint64(offset)})
 	}
-
-	// Map iteration is nondeterministic; the test harness compares the emitted
-	// offsets via ordered assert.Equal, so sort to keep the wire format stable.
-	sort.Slice(entries, func(i, j int) bool { return entries[i].offset < entries[j].offset })
 
 	return entries, nil
 }
