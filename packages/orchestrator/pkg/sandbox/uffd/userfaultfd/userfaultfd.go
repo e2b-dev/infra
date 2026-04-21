@@ -173,6 +173,12 @@ func (u *Userfaultfd) Serve(
 		{Fd: int32(u.wakeupPipe[0]), Events: unix.POLLIN},
 	}
 
+	eagainCounter := newCounterReporter(u.logger, "uffd: eagain with no pagefaults (accumulated)")
+	defer eagainCounter.Close(ctx)
+
+	noDataCounter := newCounterReporter(u.logger, "uffd: no data in fd (accumulated)")
+	defer noDataCounter.Close(ctx)
+
 	exitFdErrorCounter := newCounterReporter(u.logger, "uffd: exit fd poll errors (accumulated)")
 	defer exitFdErrorCounter.Close(ctx)
 
@@ -253,6 +259,8 @@ func (u *Userfaultfd) Serve(
 
 				return fmt.Errorf("failed to read: %w", err)
 			}
+		} else {
+			noDataCounter.Increase("POLLIN")
 		}
 
 		// First handle the UFFD_EVENT_REMOVE events. Take the settleRequests write lock to ensure that no
@@ -275,8 +283,13 @@ func (u *Userfaultfd) Serve(
 
 		if len(pagefaults) == 0 {
 			// Woke up but nothing to do (e.g., only REMOVE events, or spurious wakeup).
+			eagainCounter.Increase("EMPTY_DRAIN")
+
 			continue
 		}
+
+		eagainCounter.Log(ctx)
+		noDataCounter.Log(ctx)
 
 		for _, pf := range pagefaults {
 			// We don't handle minor page faults.
