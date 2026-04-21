@@ -49,14 +49,12 @@ func hasEvent(revents, event int16) bool {
 type Userfaultfd struct {
 	fd Fd
 
-	src      block.Slicer
-	ma       *memory.Mapping
-	pageSize uintptr
+	src         block.Slicer
+	ma          *memory.Mapping
+	pageSize    uintptr
+	pageTracker pageTracker
 
-	// We don't skip the already mapped pages, because if the memory is swappable the page *might* under some conditions be mapped out.
-	// For hugepages this should not be a problem, but might theoretically happen to normal pages with swap
-	missingRequests *block.Tracker
-	// We use the settleRequests to guard the missingRequests so we can access a consistent state of the missingRequests after the requests are finished.
+	// We use the settleRequests to guard the pageTracker so we can access a consistent state of the pageTracker after the requests are finished.
 	settleRequests sync.RWMutex
 
 	prefetchTracker *block.PrefetchTracker
@@ -83,7 +81,7 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 		fd:              Fd(fd),
 		src:             src,
 		pageSize:        uintptr(blockSize),
-		missingRequests: block.NewTracker(blockSize),
+		pageTracker:     newPageTracker(uintptr(blockSize)),
 		prefetchTracker: block.NewPrefetchTracker(blockSize),
 		ma:              m,
 		logger:          logger,
@@ -275,16 +273,6 @@ func (u *Userfaultfd) Serve(
 	}
 }
 
-func (u *Userfaultfd) faulted() *block.Tracker {
-	// This will be at worst cancelled when the uffd is closed.
-	u.settleRequests.Lock()
-	// The locking here would work even without using defer (just lock-then-unlock the mutex), but at this point let's make it lock to the clone,
-	// so it is consistent even if there is a another uffd call after.
-	defer u.settleRequests.Unlock()
-
-	return u.missingRequests.Clone()
-}
-
 func (u *Userfaultfd) PrefetchData() block.PrefetchData {
 	// This will be at worst cancelled when the uffd is closed.
 	u.settleRequests.Lock()
@@ -307,8 +295,7 @@ func (u *Userfaultfd) faultPage(
 
 	// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
 	// even if the errgroup is cancelled or the goroutine returns early.
-	// This check protects us against race condition between marking the request as missing and accessing the missingRequests tracker.
-	// The Firecracker pause should return only after the requested memory is faulted in, so we don't need to guard the pagefault from the moment it is created.
+	// This check protects us against race condition between marking the request for prefetching and accessing the prefetchTracker.
 	u.settleRequests.RLock()
 	defer u.settleRequests.RUnlock()
 
@@ -407,8 +394,7 @@ retryLoop:
 		return fmt.Errorf("failed uffdio copy: %w", joinedErr)
 	}
 
-	// Add the offset to the missing requests tracker with metadata.
-	u.missingRequests.Add(offset)
+	u.pageTracker.setState(addr, addr+u.pageSize, faulted)
 	u.prefetchTracker.Add(offset, accessType)
 
 	return nil
