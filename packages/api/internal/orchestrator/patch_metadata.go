@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -19,18 +20,24 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (o *Orchestrator) UpdateSandboxMetadata(
+// PatchSandboxMetadata applies a JSON-Merge-Patch-style update: non-nil values
+// upsert the key, a nil pointer (or empty string) removes it, and absent keys
+// are left alone.
+func (o *Orchestrator) PatchSandboxMetadata(
 	ctx context.Context,
 	teamID uuid.UUID,
 	sandboxID string,
-	metadata map[string]string,
+	patch map[string]*string,
 ) *api.APIError {
+	var merged map[string]string
+
 	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
 		if sbx.State != sandbox.StateRunning {
 			return sbx, &sandbox.NotRunningError{SandboxID: sandboxID, State: sbx.State}
 		}
 
-		sbx.Metadata = metadata
+		merged = applyMetadataPatch(sbx.Metadata, patch)
+		sbx.Metadata = merged
 
 		return sbx, nil
 	}
@@ -45,19 +52,33 @@ func (o *Orchestrator) UpdateSandboxMetadata(
 		case errors.Is(err, sandbox.ErrNotFound):
 			return &api.APIError{Code: http.StatusNotFound, ClientMsg: utils.SandboxNotFoundMsg(sandboxID), Err: err}
 		default:
-			return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error updating sandbox metadata", Err: err}
+			return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error patching sandbox metadata", Err: err}
 		}
 	}
 
-	return o.updateSandboxMetadataOnNode(ctx, sbx, metadata)
+	return o.patchSandboxMetadataOnNode(ctx, sbx, merged)
 }
 
-func (o *Orchestrator) updateSandboxMetadataOnNode(
+func applyMetadataPatch(current map[string]string, patch map[string]*string) map[string]string {
+	out := make(map[string]string, len(current)+len(patch))
+	maps.Copy(out, current)
+	for k, v := range patch {
+		if v == nil || *v == "" {
+			delete(out, k)
+		} else {
+			out[k] = *v
+		}
+	}
+
+	return out
+}
+
+func (o *Orchestrator) patchSandboxMetadataOnNode(
 	ctx context.Context,
 	sbx sandbox.Sandbox,
 	metadata map[string]string,
 ) *api.APIError {
-	ctx, span := tracer.Start(ctx, "update-sandbox-metadata-on-node",
+	ctx, span := tracer.Start(ctx, "patch-sandbox-metadata-on-node",
 		trace.WithAttributes(
 			attribute.String("instance.id", sbx.SandboxID),
 		),
@@ -85,16 +106,16 @@ func (o *Orchestrator) updateSandboxMetadataOnNode(
 		}
 
 		err = utils.UnwrapGRPCError(err)
-		telemetry.ReportCriticalError(ctx, "failed to update sandbox metadata on node", err)
+		telemetry.ReportCriticalError(ctx, "failed to patch sandbox metadata on node", err)
 
 		return &api.APIError{
 			Code:      http.StatusInternalServerError,
 			ClientMsg: "Error applying metadata to sandbox",
-			Err:       fmt.Errorf("failed to update sandbox metadata on node: %w", err),
+			Err:       fmt.Errorf("failed to patch sandbox metadata on node: %w", err),
 		}
 	}
 
-	telemetry.ReportEvent(ctx, "Updated sandbox metadata on node")
+	telemetry.ReportEvent(ctx, "Patched sandbox metadata on node")
 
 	return nil
 }

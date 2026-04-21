@@ -229,6 +229,15 @@ components:
         type: string
         description: Metadata of the sandbox
 
+    SandboxMetadataPatch:
+      description: |
+        Partial metadata update. Non-null string values add or overwrite the key.
+        An explicit `null` (or empty string) removes the key. Keys not present in
+        the body are left unchanged.
+      additionalProperties:
+        type: string
+        nullable: true
+
     SandboxState:
       type: string
       description: State of the sandbox
@@ -2415,8 +2424,11 @@ paths:
           $ref: "#/components/responses/500"
 
   /sandboxes/{sandboxID}/metadata:
-    put:
-      description: Replace metadata on a running sandbox. Full replacement; keys omitted from the body are removed.
+    patch:
+      description: |
+        Patch metadata on a running sandbox. String values add or overwrite the
+        matching key; `null` (or an empty string) removes it. Keys omitted from
+        the body are left unchanged.
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
@@ -2427,7 +2439,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SandboxMetadata"
+              $ref: "#/components/schemas/SandboxMetadataPatch"
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:

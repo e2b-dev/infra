@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (a *APIStore) PutSandboxesSandboxIDMetadata(
+func (a *APIStore) PatchSandboxesSandboxIDMetadata(
 	c *gin.Context,
 	sandboxID string,
 ) {
@@ -29,7 +29,7 @@ func (a *APIStore) PutSandboxesSandboxIDMetadata(
 
 	team := auth.MustGetTeamInfo(c)
 
-	body, err := ginutils.ParseBody[api.PutSandboxesSandboxIDMetadataJSONRequestBody](ctx, c)
+	body, err := ginutils.ParseBody[api.PatchSandboxesSandboxIDMetadataJSONRequestBody](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
@@ -37,10 +37,8 @@ func (a *APIStore) PutSandboxesSandboxIDMetadata(
 		return
 	}
 
-	metadata := map[string]string(body)
-
-	if apiErr := a.orchestrator.UpdateSandboxMetadata(ctx, team.ID, sandboxID, metadata); apiErr != nil {
-		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error updating sandbox metadata", apiErr.Err)
+	if apiErr := a.orchestrator.PatchSandboxMetadata(ctx, team.ID, sandboxID, body); apiErr != nil {
+		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error patching sandbox metadata", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return

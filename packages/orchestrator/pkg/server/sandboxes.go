@@ -338,11 +338,12 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	if req.GetMetadata() != nil {
 		updates = append(updates, func(_ context.Context) (func(context.Context), error) {
-			oldMetadata := sbx.GetMetadata()
+			oldMetadata := sbx.GetAPIMetadata()
+			sbx.SetAPIMetadata(req.GetMetadata().GetEntries())
 
-			sbx.SetMetadata(req.GetMetadata().GetEntries())
-
-			return func(_ context.Context) { sbx.SetMetadata(oldMetadata) }, nil
+			return func(_ context.Context) {
+				sbx.SetAPIMetadata(oldMetadata)
+			}, nil
 		})
 	}
 
@@ -410,6 +411,7 @@ func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 			ClientId:  s.info.ClientId,
 			StartTime: timestamppb.New(startedAt),
 			EndTime:   timestamppb.New(sbx.GetEndAt()),
+			Metadata:  sbx.GetAPIMetadata(),
 		})
 	}
 
@@ -641,6 +643,9 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 		return nil, status.Errorf(codes.Internal, "error resuming sandbox after checkpoint: %s", err)
 	}
+	// ResumeSandbox seeds apiMetadata from the (immutable) APIStoredConfig
+	// snapshot — override with the live value so any PATCH carries over.
+	resumedSbx.SetAPIMetadata(sbx.GetAPIMetadata())
 
 	// Collect prefetch data immediately after resume while it's most accurate
 	prefetchData, prefetchErr := resumedSbx.MemoryPrefetchData(ctx)
@@ -706,7 +711,7 @@ func (s *Server) prepareSandboxEventData(ctx context.Context, sbx *sandbox.Sandb
 	}
 
 	eventData := make(map[string]any)
-	if md := sbx.GetMetadata(); len(md) > 0 {
+	if md := sbx.GetAPIMetadata(); len(md) > 0 {
 		eventData["sandbox_metadata"] = md
 	}
 

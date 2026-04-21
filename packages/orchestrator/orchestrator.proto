@@ -132,6 +132,10 @@ message RunningSandbox {
 
   google.protobuf.Timestamp start_time = 3;
   google.protobuf.Timestamp end_time = 4;
+
+  // Live user-facing metadata tags. Authoritative over config.metadata, which
+  // reflects only the create-time snapshot.
+  map<string, string> metadata = 5;
 }
 
 message SandboxListResponse {
