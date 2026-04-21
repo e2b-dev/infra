@@ -1,12 +1,11 @@
 locals {
-  clickhouse_connection_string                = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
-  redis_url                                   = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
-  redis_cluster_url                           = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
-  loki_url                                    = "http://loki.service.consul:${var.loki_service_port.port}"
-  enable_billing_http_team_provision_sink     = var.enable_billing_http_team_provision_sink
-  dashboard_api_billing_server_url            = local.enable_billing_http_team_provision_sink ? trimspace(data.google_secret_manager_secret_version.billing_server_url[0].secret_data) : ""
-  dashboard_api_billing_server_api_token      = local.enable_billing_http_team_provision_sink ? data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data : ""
-  dashboard_api_supabase_db_connection_string = trimspace(data.google_secret_manager_secret_version.supabase_db_connection_string.secret_data) != "" ? trimspace(data.google_secret_manager_secret_version.supabase_db_connection_string.secret_data) : var.supabase_db_connection_string
+  clickhouse_connection_string            = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
+  redis_url                               = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
+  redis_cluster_url                       = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
+  loki_url                                = "http://loki.service.consul:${var.loki_service_port.port}"
+  enable_billing_http_team_provision_sink = var.enable_billing_http_team_provision_sink
+  dashboard_api_billing_server_url        = local.enable_billing_http_team_provision_sink ? trimspace(data.google_secret_manager_secret_version.billing_server_url[0].secret_data) : ""
+  dashboard_api_billing_server_api_token  = local.enable_billing_http_team_provision_sink ? data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data : ""
 }
 
 # API
@@ -164,7 +163,7 @@ module "dashboard_api" {
   postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   auth_db_connection_string               = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   auth_db_read_replica_connection_string  = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
-  supabase_db_connection_string           = local.dashboard_api_supabase_db_connection_string
+  supabase_db_connection_string           = trimspace(data.google_secret_manager_secret_version.supabase_db_connection_string.secret_data)
   clickhouse_connection_string            = local.clickhouse_connection_string
   supabase_jwt_secrets                    = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
   redis_url                               = local.redis_url
