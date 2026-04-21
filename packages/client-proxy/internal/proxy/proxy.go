@@ -26,6 +26,9 @@ import (
 const (
 	orchestratorProxyPort = 5007 // orchestrator proxy port
 
+	resumedSandboxCatalogLookupAttempts = 6
+	resumedSandboxCatalogLookupBackoff  = 100 * time.Millisecond
+
 	// This timeout should be > 600 (GCP LB upstream idle timeout) to prevent race condition
 	// Also it's a good practice to set it to a value higher than the idle timeout of the backend service
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
@@ -44,6 +47,42 @@ const (
 	autoResumeErrored
 )
 
+func resumedSandboxNodeIPFromCatalog(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog) (string, error) {
+	var lastErr error
+
+	for attempt := 0; attempt < resumedSandboxCatalogLookupAttempts; attempt++ {
+		resumedSandbox, err := c.GetSandbox(ctx, sandboxId)
+		if err == nil {
+			if resumedSandbox.OrchestratorIP != "" {
+				return resumedSandbox.OrchestratorIP, nil
+			}
+
+			lastErr = ErrNodeNotFound
+		} else {
+			if !errors.Is(err, catalog.ErrSandboxNotFound) {
+				return "", fmt.Errorf("failed to get resumed sandbox from catalog: %w", err)
+			}
+
+			lastErr = ErrNodeNotFound
+		}
+
+		if attempt == resumedSandboxCatalogLookupAttempts-1 {
+			break
+		}
+
+		timer := time.NewTimer(resumedSandboxCatalogLookupBackoff)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+
+			return "", ctx.Err()
+		case <-timer.C:
+		}
+	}
+
+	return "", lastErr
+}
+
 func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
@@ -58,19 +97,7 @@ func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64
 				}
 
 				// when deployed to edge, need to refetch the sandbox info from the catalog
-				resumedSandbox, catalogErr := c.GetSandbox(ctx, sandboxId)
-				if catalogErr != nil {
-					if errors.Is(catalogErr, catalog.ErrSandboxNotFound) {
-						return "", ErrNodeNotFound
-					}
-
-					return "", fmt.Errorf("failed to get resumed sandbox from catalog: %w", catalogErr)
-				}
-				if resumedSandbox.OrchestratorIP == "" {
-					return "", ErrNodeNotFound
-				}
-
-				return resumedSandbox.OrchestratorIP, nil
+				return resumedSandboxNodeIPFromCatalog(ctx, sandboxId, c)
 			}
 
 			return "", ErrNodeNotFound

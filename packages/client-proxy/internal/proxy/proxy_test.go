@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -63,6 +64,41 @@ func (r catalogStoringResumer) Resume(ctx context.Context, sandboxID string, _ u
 	}
 
 	return "", nil
+}
+
+type delayedCatalog struct {
+	mu        sync.Mutex
+	missCount int
+	nodeIP    string
+}
+
+func (c *delayedCatalog) GetSandbox(_ context.Context, _ string) (*catalog.SandboxInfo, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.missCount > 0 {
+		c.missCount--
+
+		return nil, catalog.ErrSandboxNotFound
+	}
+
+	return &catalog.SandboxInfo{
+		OrchestratorIP: c.nodeIP,
+		ExecutionID:    "exec",
+		StartedAt:      time.Now(),
+	}, nil
+}
+
+func (c *delayedCatalog) StoreSandbox(_ context.Context, _ string, _ *catalog.SandboxInfo, _ time.Duration) error {
+	return nil
+}
+
+func (c *delayedCatalog) DeleteSandbox(_ context.Context, _ string, _ string) error {
+	return nil
+}
+
+func (c *delayedCatalog) Close(_ context.Context) error {
+	return nil
 }
 
 func newFF(t *testing.T, autoResumeEnabled bool) *featureflags.Client {
@@ -131,6 +167,20 @@ func TestCatalogResolution_CatalogMiss_ResumeEmptyIPUsesCatalog(t *testing.T) {
 	ff := newFF(t, true)
 
 	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, catalogStoringResumer{catalog: c, nodeIP: "10.0.0.1"}, ff)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.1", nodeIP)
+}
+
+func TestCatalogResolution_CatalogMiss_ResumeEmptyIPRetriesCatalog(t *testing.T) {
+	t.Parallel()
+
+	c := &delayedCatalog{
+		missCount: 3,
+		nodeIP:    "10.0.0.1",
+	}
+	ff := newFF(t, true)
+
+	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, stubResumer{nodeIP: ""}, ff)
 	require.NoError(t, err)
 	require.Equal(t, "10.0.0.1", nodeIP)
 }
