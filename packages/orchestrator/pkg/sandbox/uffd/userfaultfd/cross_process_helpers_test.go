@@ -93,10 +93,6 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	uffdFd, err := newFd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	require.NoError(t, err)
 
-	t.Cleanup(func() {
-		uffdFd.close()
-	})
-
 	err = configureApi(uffdFd, tt.pagesize)
 	require.NoError(t, err)
 
@@ -109,6 +105,9 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_PAGE_SIZE=%d", tt.pagesize))
 	if tt.alwaysWP {
 		cmd.Env = append(cmd.Env, "GO_ALWAYS_WP=1")
+	}
+	if tt.gated {
+		cmd.Env = append(cmd.Env, "GO_GATED=1")
 	}
 
 	dup, err := syscall.Dup(int(uffdFd))
@@ -153,12 +152,34 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 		readySignal <- struct{}{}
 	}()
 
-	cmd.ExtraFiles = []*os.File{
+	extraFiles := []*os.File{
 		uffdFile,
 		contentReader,
 		offsetsWriter,
 		readyWriter,
 	}
+
+	var gateCmdWriter *os.File
+	var gateSyncReader *os.File
+	if tt.gated {
+		var gateCmdReader *os.File
+		gateCmdReader, gateCmdWriter, err = os.Pipe()
+		require.NoError(t, err)
+
+		var gateSyncWriter *os.File
+		gateSyncReader, gateSyncWriter, err = os.Pipe()
+		require.NoError(t, err)
+
+		t.Cleanup(func() {
+			gateCmdWriter.Close()
+			gateSyncReader.Close()
+		})
+
+		extraFiles = append(extraFiles, gateCmdReader)  // fd 7
+		extraFiles = append(extraFiles, gateSyncWriter) // fd 8
+	}
+
+	cmd.ExtraFiles = extraFiles
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -169,6 +190,10 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	offsetsWriter.Close()
 	readyWriter.Close()
 	uffdFile.Close()
+	if tt.gated {
+		extraFiles[4].Close() // gateCmdReader
+		extraFiles[5].Close() // gateSyncWriter
+	}
 
 	t.Cleanup(func() {
 		signalErr := cmd.Process.Signal(syscall.SIGUSR1)
@@ -187,6 +212,12 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 				waitErr == nil,
 			"unexpected error: %v", waitErr,
 		)
+
+		// Unregister the uffd range before closing the fd. This is a
+		// no-op for the existing tests but is required by the upcoming
+		// REMOVE event tests so munmap doesn't block on un-acked events.
+		unregister(uffdFd, memoryStart, uint64(size))
+		uffdFd.close()
 	})
 
 	// pageStatesOnce asks the serving process for a snapshot of its pageTracker
@@ -230,12 +261,31 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	case <-readySignal:
 	}
 
-	return &testHandler{
+	h := &testHandler{
 		memoryArea:     &memoryArea,
 		pagesize:       tt.pagesize,
 		data:           data,
 		pageStatesOnce: pageStatesOnce,
-	}, nil
+	}
+
+	if tt.gated {
+		h.servePause = func() error {
+			if _, err := gateCmdWriter.Write([]byte{'P'}); err != nil {
+				return err
+			}
+			var buf [1]byte
+			_, err := gateSyncReader.Read(buf[:])
+
+			return err
+		}
+		h.serveResume = func() error {
+			_, err := gateCmdWriter.Write([]byte{'R'})
+
+			return err
+		}
+	}
+
+	return h, nil
 }
 
 // Secondary process, orchestrator in our case
@@ -295,9 +345,6 @@ func crossProcessServe() error {
 		},
 	})
 
-	exitUffd := make(chan struct{}, 1)
-	defer close(exitUffd)
-
 	l, err := logger.NewDevelopmentLogger()
 	if err != nil {
 		return fmt.Errorf("exit creating logger: %w", err)
@@ -353,39 +400,78 @@ func crossProcessServe() error {
 	}
 	defer fdExit.Close()
 
+	exitUffd := make(chan struct{}, 1)
+
 	go func() {
-		defer func() {
-			exitUffd <- struct{}{}
-		}()
+		defer func() { exitUffd <- struct{}{} }()
 
 		serverErr := uffd.Serve(ctx, fdExit)
 		if serverErr != nil {
 			msg := fmt.Errorf("error serving: %w", serverErr)
-
 			fmt.Fprint(os.Stderr, msg.Error())
-
 			cancel(msg)
-
-			return
 		}
 	}()
 
 	cleanup := func() {
-		err := fdExit.SignalExit()
-		if err != nil {
-			msg := fmt.Errorf("error signaling exit: %w", err)
-
-			fmt.Fprint(os.Stderr, msg.Error())
-
-			cancel(msg)
-
-			return
-		}
-
+		fdExit.SignalExit()
 		<-exitUffd
 	}
+	defer func() { cleanup() }()
 
-	defer cleanup()
+	if os.Getenv("GO_GATED") == "1" {
+		gateCmdFile := os.NewFile(uintptr(7), "gate-cmd")
+		defer gateCmdFile.Close()
+
+		gateSyncFile := os.NewFile(uintptr(8), "gate-sync")
+		defer gateSyncFile.Close()
+
+		startServe := func() func() {
+			newExit, fdErr := fdexit.New()
+			if fdErr != nil {
+				cancel(fmt.Errorf("error creating fd exit: %w", fdErr))
+
+				return func() {}
+			}
+
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				if err := uffd.Serve(ctx, newExit); err != nil {
+					cancel(fmt.Errorf("error serving: %w", err))
+				}
+			}()
+
+			return func() {
+				newExit.SignalExit()
+				<-done
+				newExit.Close()
+			}
+		}
+
+		stopServe := func() {
+			cleanup()
+		}
+
+		go func() {
+			var buf [1]byte
+			for {
+				if _, err := gateCmdFile.Read(buf[:]); err != nil {
+					return
+				}
+
+				switch buf[0] {
+				case 'P':
+					stopServe()
+					gateSyncFile.Write([]byte{1})
+				case 'R':
+					newStop := startServe()
+					stopServe = newStop
+					cleanup = newStop
+				}
+			}
+		}()
+	}
 
 	exitSignal := make(chan os.Signal, 1)
 	signal.Notify(exitSignal, syscall.SIGUSR1)
@@ -415,13 +501,19 @@ type pageStateEntry struct {
 }
 
 // pageStateEntries returns a snapshot of every tracked page and its state.
-// It holds the settleRequests write lock so no in-flight faultPage worker
-// can mutate the pageTracker while we iterate.
+// We first take the settleRequests writer lock just as a fence to drain
+// in-flight faultPage workers (which hold settleRequests.RLock()), then
+// release it and re-lock pageTracker directly. This lets the snapshot stay
+// correct even if future writers to pageTracker (e.g. REMOVE event
+// handlers) don't go through settleRequests.
 func (u *Userfaultfd) pageStateEntries() ([]pageStateEntry, error) {
 	u.settleRequests.Lock()
-	defer u.settleRequests.Unlock()
+	u.settleRequests.Unlock() //nolint:staticcheck // SA2001: intentional — drain in-flight faultPage workers.
 
-	entries := make([]pageStateEntry, 0, len(u.pageTracker.m))
+	u.pageTracker.mu.RLock()
+	defer u.pageTracker.mu.RUnlock()
+
+	var entries []pageStateEntry
 	for addr, state := range u.pageTracker.m {
 		offset, err := u.ma.GetOffset(addr)
 		if err != nil {
