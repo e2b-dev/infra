@@ -24,18 +24,6 @@ func newPageTracker(pageSize uintptr) *pageTracker {
 	}
 }
 
-func (pt *pageTracker) get(addr uintptr) pageState {
-	pt.mu.RLock()
-	defer pt.mu.RUnlock()
-
-	state, ok := pt.m[addr]
-	if !ok {
-		return missing
-	}
-
-	return state
-}
-
 func (pt *pageTracker) setState(start, end uintptr, state pageState) {
 	pt.mu.Lock()
 	defer pt.mu.Unlock()
