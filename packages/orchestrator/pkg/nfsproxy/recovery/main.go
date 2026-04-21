@@ -2,6 +2,7 @@ package recovery
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 
@@ -81,7 +82,7 @@ func tryRecovery(ctx context.Context, name string) {
 	}
 }
 
-var ErrPanic = fmt.Errorf("panic")
+var ErrPanic = errors.New("panic")
 
 func deferErrRecovery(ctx context.Context, name string, perr *error) {
 	if r := recover(); r != nil { //nolint:revive // always called via defer
