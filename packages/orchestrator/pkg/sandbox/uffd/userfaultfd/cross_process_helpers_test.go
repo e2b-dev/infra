@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 
@@ -417,11 +418,30 @@ func crossProcessServe() error {
 		}
 	}()
 
-	cleanup := func() {
-		fdExit.SignalExit()
-		<-exitUffd
+	// stopFn drains whichever Serve goroutine is currently running and
+	// is reset to a no-op once it has run. This makes both pause-then-exit
+	// (no resume in between) and pause-resume-pause-exit safe: every
+	// caller — gated 'P', gated 'R' replacing the previous stop, and the
+	// final defer below — sees a stop function that matches the goroutine
+	// actually running, and never blocks on an already-drained channel.
+	var (
+		stopMu sync.Mutex
+		stopFn = func() {
+			fdExit.SignalExit()
+			<-exitUffd
+		}
+	)
+
+	stopServe := func() {
+		stopMu.Lock()
+		fn := stopFn
+		stopFn = func() {}
+		stopMu.Unlock()
+
+		fn()
 	}
-	defer func() { cleanup() }()
+
+	defer stopServe()
 
 	if os.Getenv("GO_GATED") == "1" {
 		gateCmdFile := os.NewFile(uintptr(7), "gate-cmd")
@@ -430,12 +450,12 @@ func crossProcessServe() error {
 		gateSyncFile := os.NewFile(uintptr(8), "gate-sync")
 		defer gateSyncFile.Close()
 
-		startServe := func() func() {
+		startServe := func() {
 			newExit, fdErr := fdexit.New()
 			if fdErr != nil {
 				cancel(fmt.Errorf("error creating fd exit: %w", fdErr))
 
-				return func() {}
+				return
 			}
 
 			done := make(chan struct{})
@@ -446,15 +466,13 @@ func crossProcessServe() error {
 				}
 			}()
 
-			return func() {
+			stopMu.Lock()
+			stopFn = func() {
 				newExit.SignalExit()
 				<-done
 				newExit.Close()
 			}
-		}
-
-		stopServe := func() {
-			cleanup()
+			stopMu.Unlock()
 		}
 
 		go func() {
@@ -469,9 +487,7 @@ func crossProcessServe() error {
 					stopServe()
 					gateSyncFile.Write([]byte{1})
 				case 'R':
-					newStop := startServe()
-					stopServe = newStop
-					cleanup = newStop
+					startServe()
 				}
 			}
 		}()
