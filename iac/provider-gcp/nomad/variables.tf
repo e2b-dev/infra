@@ -462,6 +462,12 @@ variable "supabase_db_connection_string_secret_version" {
   type = any
 }
 
+variable "supabase_db_connection_string" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
 variable "enable_auth_user_sync_background_worker" {
   type    = bool
   default = false
