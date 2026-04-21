@@ -113,7 +113,11 @@ func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploa
 	}
 	defer uploader.Close()
 
-	// +1: read loop goroutine + up to maxUploadConcurrency concurrent uploads.
+	// The read loop goroutine holds one slot for the duration of the stream;
+	// at least one additional slot is required for uploaders to make progress.
+	if maxUploadConcurrency < 1 {
+		maxUploadConcurrency = 1
+	}
 	work, workCtx := errgroup.WithContext(ctx)
 	work.SetLimit(maxUploadConcurrency + 1)
 
@@ -178,7 +182,7 @@ func readLoop(ctx context.Context, in io.Reader, cfg CompressConfig, hasher io.W
 
 	frameSize := cfg.FrameSize()
 	minPartSize := cfg.MinPartSize()
-	workers := cfg.FrameEncodeWorkers
+	workers := max(cfg.FrameEncodeWorkers, 1)
 	p, compressCtx := newPart(1, ctx, workers)
 
 	for {

@@ -13,6 +13,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
+// v4SizePrefixLen is the length of the uint32 size prefix that precedes the
+// LZ4-compressed block in the v4 header layout: [metadata][uint32 size][LZ4 block].
+const v4SizePrefixLen = 4
+
 type v4SerializableBuildMap struct {
 	Offset             uint64
 	Length             uint64
@@ -95,18 +99,16 @@ func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings []
 		return nil, fmt.Errorf("failed to LZ4-compress v4 header block: %w", err)
 	}
 
-	const Uint32Len = 4
-	result := make([]byte, metadataSize+Uint32Len+len(compressed))
+	result := make([]byte, metadataSize+v4SizePrefixLen+len(compressed))
 	copy(result, metaBuf.Bytes())
 	binary.LittleEndian.PutUint32(result[metadataSize:], uint32(len(blockBytes)))
-	copy(result[metadataSize+Uint32Len:], compressed)
+	copy(result[metadataSize+v4SizePrefixLen:], compressed)
 
 	return result, nil
 }
 
 // deserializeV4 decompresses and reads the V4 block.
 func deserializeV4(metadata *Metadata, blockData []byte) (*Header, error) {
-	const v4SizePrefixLen = 4
 	if len(blockData) < v4SizePrefixLen {
 		return nil, fmt.Errorf("v4 header block too short for size prefix: %d bytes", len(blockData))
 	}
