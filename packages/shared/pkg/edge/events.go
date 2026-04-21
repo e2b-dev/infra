@@ -16,10 +16,13 @@ const (
 	CatalogDeleteEventType = "sandbox-catalog-delete"
 
 	sbxIdHeader               = "sandbox-id"
+	sbxTeamIdHeader           = "team-id"
 	sbxExecutionIdHeader      = "execution-id"
 	sbxOrchestratorIdHeader   = "orchestrator-id"
+	sbxEndTimeHeader          = "sandbox-end-time"
 	sbxMaxLengthInHoursHeader = "sandbox-max-length-in-hours"
 	sbxStartTimeHeader        = "sandbox-start-time"
+	sbxTrafficKeepaliveHeader = "traffic-keepalive"
 )
 
 var (
@@ -38,10 +41,13 @@ func (e SandboxEventFieldMissingError) Error() string {
 
 type SandboxCatalogCreateEvent struct {
 	SandboxID               string
+	TeamID                  string
 	ExecutionID             string
 	OrchestratorID          string
 	SandboxMaxLengthInHours int64
 	SandboxStartTime        time.Time // Formatted as RFC3339 (ISO 8601)
+	SandboxEndTime          time.Time // Formatted as RFC3339 (ISO 8601)
+	TrafficKeepalive        bool
 }
 
 type SandboxCatalogDeleteEvent struct {
@@ -55,10 +61,13 @@ func SerializeSandboxCatalogCreateEvent(e SandboxCatalogCreateEvent) metadata.MD
 			EventTypeHeader: CatalogCreateEventType,
 
 			sbxIdHeader:               e.SandboxID,
+			sbxTeamIdHeader:           e.TeamID,
 			sbxExecutionIdHeader:      e.ExecutionID,
 			sbxOrchestratorIdHeader:   e.OrchestratorID,
+			sbxEndTimeHeader:          e.SandboxEndTime.Format(time.RFC3339),
 			sbxStartTimeHeader:        e.SandboxStartTime.Format(time.RFC3339),
 			sbxMaxLengthInHoursHeader: strconv.Itoa(int(e.SandboxMaxLengthInHours)),
+			sbxTrafficKeepaliveHeader: strconv.FormatBool(e.TrafficKeepalive),
 		},
 	)
 }
@@ -85,6 +94,8 @@ func ParseSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEven
 		return nil, SandboxEventFieldMissingError{eventName: CatalogCreateEventType, fieldName: sbxExecutionIdHeader}
 	}
 
+	teamID, _ := getMetadataValue(md, sbxTeamIdHeader)
+
 	orchestratorID, found := getMetadataValue(md, sbxOrchestratorIdHeader)
 	if !found {
 		return nil, SandboxEventFieldMissingError{eventName: CatalogCreateEventType, fieldName: sbxOrchestratorIdHeader}
@@ -110,12 +121,33 @@ func ParseSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEven
 		return nil, ErrSandboxCreationParse
 	}
 
+	var sandboxEndTime time.Time
+	sandboxEndTimeStr, found := getMetadataValue(md, sbxEndTimeHeader)
+	if found {
+		sandboxEndTime, err = time.Parse(time.RFC3339, sandboxEndTimeStr)
+		if err != nil {
+			return nil, ErrSandboxCreationParse
+		}
+	}
+
+	var trafficKeepalive bool
+	trafficKeepaliveStr, found := getMetadataValue(md, sbxTrafficKeepaliveHeader)
+	if found {
+		trafficKeepalive, err = strconv.ParseBool(trafficKeepaliveStr)
+		if err != nil {
+			return nil, ErrSandboxCreationParse
+		}
+	}
+
 	return &SandboxCatalogCreateEvent{
 		SandboxID:               sandboxID,
+		TeamID:                  teamID,
 		ExecutionID:             executionID,
 		OrchestratorID:          orchestratorID,
 		SandboxMaxLengthInHours: int64(maxLengthInHours),
 		SandboxStartTime:        sandboxStartTime,
+		SandboxEndTime:          sandboxEndTime,
+		TrafficKeepalive:        trafficKeepalive,
 	}, nil
 }
 

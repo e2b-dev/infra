@@ -29,15 +29,22 @@ func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox san
 	nodeIP := node.IPAddress
 
 	info := e2bcatalog.SandboxInfo{
+		TeamID:         sandbox.TeamID.String(),
 		OrchestratorID: node.Metadata().ServiceInstanceID,
 		OrchestratorIP: nodeIP,
 
 		ExecutionID:      sandbox.ExecutionID,
 		StartedAt:        sandbox.StartTime,
+		EndTime:          sandbox.EndTime,
 		MaxLengthInHours: int64(sandbox.MaxInstanceLength / time.Hour),
+		TrafficKeepalive: sandbox.TrafficKeepalive,
 	}
 
-	lifetime := time.Duration(info.MaxLengthInHours) * time.Hour
+	lifetime := time.Until(sandbox.StartTime.Add(sandbox.MaxInstanceLength))
+	if lifetime <= 0 {
+		return
+	}
+
 	err := o.routingCatalog.StoreSandbox(ctx, sandbox.SandboxID, &info, lifetime)
 	if err != nil {
 		logger.L().Error(ctx, "error adding routing record to catalog", zap.Error(err), logger.WithSandboxID(sandbox.SandboxID))
