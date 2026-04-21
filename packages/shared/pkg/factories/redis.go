@@ -17,7 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-var ErrRedisUnconfigured = errors.New("redis is not configured")
+var ErrRedisDisabled = errors.New("redis is disabled")
 
 type RedisConfig struct {
 	RedisURL         string
@@ -124,7 +124,7 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 
 		redisClient = redis.NewClient(opts)
 	default:
-		return nil, ErrRedisUnconfigured
+		return nil, ErrRedisDisabled
 	}
 
 	// Enable tracing
