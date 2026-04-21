@@ -52,7 +52,7 @@ type Userfaultfd struct {
 	src         block.Slicer
 	ma          *memory.Mapping
 	pageSize    uintptr
-	pageTracker pageTracker
+	pageTracker *pageTracker
 
 	// We use the settleRequests to guard the pageTracker so we can access a consistent state of the pageTracker after the requests are finished.
 	settleRequests sync.RWMutex

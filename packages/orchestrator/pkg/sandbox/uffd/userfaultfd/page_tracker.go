@@ -16,23 +16,11 @@ type pageTracker struct {
 	mu sync.RWMutex
 }
 
-func newPageTracker(pageSize uintptr) pageTracker {
-	return pageTracker{
+func newPageTracker(pageSize uintptr) *pageTracker {
+	return &pageTracker{
 		pageSize: pageSize,
 		m:        make(map[uintptr]pageState),
 	}
-}
-
-func (pt *pageTracker) get(addr uintptr) pageState {
-	pt.mu.RLock()
-	defer pt.mu.RUnlock()
-
-	state, ok := pt.m[addr]
-	if !ok {
-		return unfaulted
-	}
-
-	return state
 }
 
 func (pt *pageTracker) setState(start, end uintptr, state pageState) {
