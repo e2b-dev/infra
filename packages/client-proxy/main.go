@@ -115,18 +115,24 @@ func run() int {
 		RedisTLSCABase64: config.RedisTLSCABase64,
 		PoolSize:         config.RedisPoolSize,
 	})
-	if err != nil {
-		l.Error(ctx, "Failed to create redis client", zap.Error(err))
+	if err == nil {
+		defer func() {
+			err := factories.CloseCleanly(redisClient)
+			if err != nil {
+				l.Error(ctx, "Failed to close redis client", zap.Error(err))
+			}
+		}()
+		catalog = e2bcatalog.NewRedisSandboxCatalog(redisClient)
+	} else {
+		if !errors.Is(err, factories.ErrRedisDisabled) {
+			l.Error(ctx, "Failed to create redis client", zap.Error(err))
 
-		return 1
-	}
-	defer func() {
-		err := factories.CloseCleanly(redisClient)
-		if err != nil {
-			l.Error(ctx, "Failed to close redis client", zap.Error(err))
+			return 1
 		}
-	}()
-	catalog = e2bcatalog.NewRedisSandboxCatalog(redisClient)
+
+		l.Warn(ctx, "Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
+		catalog = e2bcatalog.NewMemorySandboxesCatalog()
+	}
 
 	info := &internal.ServiceInfo{}
 	info.SetStatus(ctx, internal.Healthy)
