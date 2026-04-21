@@ -30,10 +30,10 @@ func NewGrpcPausedSandboxResumer(address string, apiSecret string, tlsEnabled bo
 		return nil, errors.New("api grpc address is required")
 	}
 	if tlsEnabled && strings.TrimSpace(apiSecret) == "" {
-		return nil, fmt.Errorf("api secret is required when api grpc tls is enabled")
+		return nil, errors.New("api secret is required when api grpc tls is enabled")
 	}
 
-	var creds credentials.TransportCredentials = insecure.NewCredentials()
+	creds := insecure.NewCredentials()
 	if tlsEnabled {
 		creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
 	}

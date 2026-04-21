@@ -217,6 +217,7 @@ func TestValidateClientProxyAuth(t *testing.T) {
 			err := validateClientProxyAuth(tt.md, tt.expected...)
 			if tt.wantErrCode {
 				assert.Error(t, err)
+
 				return
 			}
 			assert.NoError(t, err)
