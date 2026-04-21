@@ -631,6 +631,35 @@ resource "google_compute_security_policy_rule" "api-throttling-ip" {
   description = "Requests to API from IP address"
 }
 
+resource "google_compute_security_policy_rule" "api-grpc-throttling-client-proxy-auth" {
+  security_policy = google_compute_security_policy.default["api-grpc"].name
+  action          = "throttle"
+  priority        = "300"
+  match {
+    versioned_expr = "SRC_IPS_V1"
+    config {
+      src_ip_ranges = ["*"]
+    }
+  }
+
+  rate_limit_options {
+    conform_action = "allow"
+    exceed_action  = "deny(429)"
+
+    enforce_on_key_configs {
+      enforce_on_key_name = "x-e2b-client-proxy-auth"
+      enforce_on_key_type = "HTTP_HEADER"
+    }
+
+    rate_limit_threshold {
+      count        = 600
+      interval_sec = 60
+    }
+  }
+
+  description = "ResumeSandbox gRPC calls per client-proxy auth token"
+}
+
 resource "google_compute_security_policy_rule" "sandbox-throttling-host" {
   security_policy = google_compute_security_policy.default["session"].name
   description     = "WS envd connection requests per sandbox"
