@@ -2,7 +2,7 @@ package placement
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"math"
 	"math/rand"
 	"sync"
@@ -38,7 +38,15 @@ func DefaultBestOfKConfig() BestOfKConfig {
 // Score calculates the placement score for this node
 func (b *BestOfK) Score(node *nodemanager.Node, resources nodemanager.SandboxResources, config BestOfKConfig) float64 {
 	metrics := node.Metrics()
-	reserved := metrics.CpuAllocated
+
+	// Get locally recorded resources that haven't been reported yet.
+	pendingCPUs := int64(0)
+	for _, res := range node.PlacementMetrics.InProgress() {
+		pendingCPUs += res.CPUs
+	}
+
+	// Combine allocated resources with in-progress allocations
+	reserved := metrics.CpuAllocated + uint32(pendingCPUs)
 
 	// 1 CPU used = 100% CPU percept
 	usageAvg := float64(metrics.CpuPercent) / 100
@@ -124,7 +132,7 @@ func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, exclu
 	}
 
 	if bestNode == nil {
-		return nil, fmt.Errorf("no node available")
+		return nil, errors.New("no node available")
 	}
 
 	return bestNode, nil

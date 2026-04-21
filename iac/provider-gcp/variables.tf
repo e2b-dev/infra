@@ -132,14 +132,16 @@ variable "ingress_count" {
 }
 
 variable "additional_api_paths_handled_by_ingress" {
-  type        = list(string)
-  description = "Additional paths to forward to nomad's ingress"
+  type        = any
+  description = <<-EOT
+    Additional path rules to forward to nomad's ingress. Each entry creates a separate path_rule.
+    Accepts two formats for backward compatibility:
+    - Legacy: list(string) - e.g. ["/path1/*", "/path2/*"]
+    - New: list(object({paths = list(string), timeout_sec = optional(number)}))
+      e.g. [{paths = ["/path1/*", "/path2/*"], timeout_sec = 120}]
+    Per-route timeout_sec overrides the ingress backend default (see ingress_timeout_seconds).
+  EOT
   default     = []
-}
-
-variable "additional_traefik_arguments" {
-  type    = list(string)
-  default = []
 }
 
 variable "client_proxy_resources_memory_mb" {
@@ -228,6 +230,21 @@ variable "dashboard_api_count" {
   default = 0
 }
 
+variable "supabase_db_connection_string" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "enable_auth_user_sync_background_worker" {
+  type    = bool
+  default = false
+}
+
+variable "enable_billing_http_team_provision_sink" {
+  type    = bool
+  default = false
+}
 variable "docker_reverse_proxy_port" {
   type = object({
     name        = string
@@ -376,6 +393,12 @@ variable "redis_managed" {
 variable "redis_shard_count" {
   type    = number
   default = 1
+}
+
+variable "gcp_redis_engine_version" {
+  type        = string
+  description = "The engine version for managed GCP Redis/Valkey. Can be set via TF_VAR_gcp_redis_engine_version or GCP_REDIS_ENGINE_VERSION env var."
+  default     = "VALKEY_8_0"
 }
 
 variable "filestore_cache_enabled" {
@@ -598,6 +621,18 @@ variable "clickhouse_boot_disk_type" {
   default     = "pd-ssd"
 }
 
+variable "clickhouse_stateful_disk_type" {
+  description = "The GCE disk type for the ClickHouse stateful data disk (e.g. pd-ssd, hyperdisk-balanced). Must be compatible with clickhouse_machine_type (C4 requires hyperdisk-*)."
+  type        = string
+  default     = "pd-ssd"
+}
+
+variable "clickhouse_stateful_disk_size_gb" {
+  description = "The GCE disk size (in GB) for the ClickHouse stateful data disk."
+  type        = number
+  default     = 100
+}
+
 variable "loki_boot_disk_type" {
   description = "The GCE boot disk type for the Loki machines."
   type        = string
@@ -700,7 +735,35 @@ variable "gcs_grpc_connection_pool_size" {
   }
 }
 
+variable "anywhere_cache_enabled" {
+  type        = bool
+  description = "Enable GCS Anywhere Cache on the template bucket for all zones in the deploy region."
+  default     = false
+}
+
+variable "anywhere_cache_admission_policy" {
+  type        = string
+  description = "Configure anywhere cache policy. One of: admit-on-first-miss, admit-on-second-miss"
+  default     = null
+}
+
+variable "anywhere_cache_ttl" {
+  type    = string
+  default = null
+}
+
 variable "orchestrator_env_vars" {
   type    = map(string)
   default = {}
+}
+
+variable "traefik_config_files" {
+  type        = map(string)
+  description = "Map of filename => content for additional Traefik dynamic configuration files"
+  default     = {}
+}
+
+variable "ingress_timeout_seconds" {
+  type    = number
+  default = 80
 }

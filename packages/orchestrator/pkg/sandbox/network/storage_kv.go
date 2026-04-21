@@ -2,6 +2,7 @@ package network
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"slices"
@@ -119,7 +120,7 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 	}
 
 	if slot == nil {
-		return nil, fmt.Errorf("failed to acquire IP slot: no empty slots found")
+		return nil, errors.New("failed to acquire IP slot: no empty slots found")
 	}
 
 	return slot, nil

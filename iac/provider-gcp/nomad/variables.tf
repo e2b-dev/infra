@@ -73,8 +73,9 @@ variable "ingress_port" {
   })
 }
 
-variable "additional_traefik_arguments" {
-  type = list(string)
+variable "traefik_config_files" {
+  type        = map(string)
+  description = "Map of filename => content for additional Traefik dynamic configuration files"
 }
 
 variable "ingress_count" {
@@ -93,7 +94,11 @@ variable "api_secret" {
   type = string
 }
 
-variable "api_admin_token" {
+variable "api_admin_token_secret_name" {
+  type = string
+}
+
+variable "dashboard_api_admin_token_secret_name" {
   type = string
 }
 
@@ -453,6 +458,21 @@ variable "dashboard_api_count" {
   default = 0
 }
 
+variable "supabase_db_connection_string" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "enable_auth_user_sync_background_worker" {
+  type    = bool
+  default = false
+}
+
+variable "enable_billing_http_team_provision_sink" {
+  type    = bool
+  default = false
+}
 variable "volume_token_issuer" {
   type = string
 }

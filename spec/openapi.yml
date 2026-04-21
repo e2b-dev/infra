@@ -388,6 +388,7 @@ components:
         - cpuUsedPct
         - memUsed
         - memTotal
+        - memCache
         - diskUsed
         - diskTotal
       properties:
@@ -416,6 +417,10 @@ components:
           type: integer
           format: int64
           description: Total memory in bytes
+        memCache:
+          type: integer
+          format: int64
+          description: Cached memory (page cache) in bytes
         diskUsed:
           type: integer
           format: int64
@@ -2390,6 +2395,11 @@ paths:
                   description: List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
                   items:
                     type: string
+                allow_internet_access:
+                  type: boolean
+                  description:
+                    Allow sandbox to access the internet. When set to false, it behaves the same as specifying denyOut
+                    to 0.0.0.0/0 in the network config.
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:

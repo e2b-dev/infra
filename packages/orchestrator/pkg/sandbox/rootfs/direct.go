@@ -69,14 +69,14 @@ func (o *DirectProvider) Start(_ context.Context) error {
 
 func (o *DirectProvider) ExportDiff(
 	ctx context.Context,
-	out io.Writer,
+	out *os.File,
 	stopSandbox func(context.Context) error,
 ) (*header.DiffMetadata, error) {
 	ctx, childSpan := tracer.Start(ctx, "direct-provider-export")
 	defer childSpan.End()
 
 	if !o.closed.CompareAndSwap(false, true) {
-		return nil, fmt.Errorf("direct provider close is already in progress")
+		return nil, errors.New("direct provider close is already in progress")
 	}
 
 	defer func() {
@@ -97,7 +97,7 @@ func (o *DirectProvider) ExportDiff(
 	select {
 	case <-o.finishedOperations:
 	case <-ctx.Done():
-		return nil, fmt.Errorf("timeout waiting for overlay device to be released")
+		return nil, errors.New("timeout waiting for overlay device to be released")
 	}
 	telemetry.ReportEvent(ctx, "sandbox stopped")
 
@@ -131,7 +131,7 @@ func (o *DirectProvider) exportToDiff(ctx context.Context, out io.Writer) (*head
 		return nil, fmt.Errorf("error flushing path: %w", err)
 	}
 
-	builder := header.NewDiffMetadataBuilder(int64(o.header.Metadata.Size), o.blockSize)
+	builder := header.NewDiffMetadataBuilder(o.blockSize)
 
 	f, err := os.Open(o.path)
 	if err != nil {

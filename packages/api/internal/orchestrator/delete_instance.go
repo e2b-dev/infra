@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/gogo/status"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -80,14 +83,24 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 	if alreadyDone {
 		logger.L().Info(ctx, "Sandbox was already in the process of being removed", logger.WithSandboxID(sandboxID), zap.String("state", string(sbx.State)))
 
+		if time.Since(sbx.EndTime) > sandbox.StaleCutoff && opts.Action.Effect == sandbox.TransitionExpires {
+			o.sandboxStore.Remove(context.WithoutCancel(ctx), teamID, sandboxID)
+			go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action)
+		}
+
 		return nil
 	}
 
 	defer func() { go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action) }()
-	defer o.sandboxStore.Remove(ctx, teamID, sandboxID)
+	// Once we start the removal process, we want to make sure it gets removed from the store
+	defer o.sandboxStore.Remove(context.WithoutCancel(ctx), teamID, sandboxID)
 	err = o.removeSandboxFromNode(ctx, sbx, opts.Action)
 	if err != nil {
-		logger.L().Error(ctx, "Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
+		logger.L().Error(ctx, "Error removing sandbox",
+			zap.String("state_action", opts.Action.Name),
+			zap.Error(err),
+			logger.WithSandboxID(sbx.SandboxID),
+		)
 
 		return ErrSandboxOperationFailed
 	}
@@ -148,14 +161,43 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 	return nil
 }
 
+func (o *Orchestrator) killOrphanSandbox(ctx context.Context, sbx sandbox.Sandbox) {
+	node := o.GetNode(sbx.ClusterID, sbx.NodeID)
+	if node == nil {
+		logger.L().Error(ctx, "Node not found for orphan sandbox kill",
+			logger.WithSandboxID(sbx.SandboxID),
+			logger.WithNodeID(sbx.NodeID),
+		)
+
+		return
+	}
+
+	err := o.killSandboxOnNode(ctx, node, sbx)
+	if err != nil {
+		logger.L().Error(ctx, "Failed to kill orphan sandbox on node",
+			zap.Error(err),
+			logger.WithSandboxID(sbx.SandboxID),
+			logger.WithNodeID(sbx.NodeID),
+		)
+	}
+}
+
 func (o *Orchestrator) killSandboxOnNode(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox) error {
 	req := &orchestrator.SandboxDeleteRequest{SandboxId: sbx.SandboxID}
 
 	client, ctx := node.GetSandboxDeleteCtx(ctx, sbx.SandboxID, sbx.ExecutionID)
 	_, err := client.Sandbox.Delete(ctx, req)
-	if err != nil {
-		return fmt.Errorf("failed to delete sandbox '%s': %w", sbx.SandboxID, err)
+	st, ok := status.FromError(err)
+	if ok && st.Code() == codes.NotFound {
+		logger.L().Info(ctx, "Sandbox not found during kill", logger.WithSandboxID(sbx.SandboxID), logger.WithNodeID(node.ID))
+	} else if err != nil {
+		return fmt.Errorf("failed to delete sandbox: %w", err)
 	}
+
+	node.OptimisticRemove(ctx, nodemanager.SandboxResources{
+		CPUs:      sbx.VCpu,
+		MiBMemory: sbx.RamMB,
+	})
 
 	return nil
 }

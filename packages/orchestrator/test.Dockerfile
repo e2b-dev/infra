@@ -1,4 +1,4 @@
-ARG GOLANG_VERSION=1.25.4
+ARG GOLANG_VERSION=1.25.9
 
 # It has to match with the host OS version (Ubuntu 22.04 = bookworm)
 ARG DEBIAN_VERSION=bookworm
@@ -16,7 +16,7 @@ COPY .shared/pkg pkg
 
 WORKDIR /build/clickhouse
 
-# Copy clickhouse package dependencies  
+# Copy clickhouse package dependencies
 COPY .clickhouse/go.mod .clickhouse/go.sum ./
 RUN go mod download
 
@@ -30,7 +30,9 @@ RUN go mod download
 
 # Copy source code
 COPY main.go Makefile ./
-COPY internal internal
+COPY scripts scripts
+COPY pkg pkg
+COPY cmd cmd
 
 FROM base AS runner
 

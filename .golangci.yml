@@ -43,7 +43,6 @@ linters:
     - noinlineerr
     - nonamedreturns
     - nosprintfhostport
-    - perfsprint
     - prealloc
     - predeclared
     - tagliatelle
@@ -95,6 +94,9 @@ linters:
         - pattern: '^retryablehttp\.NewRequest$'
           pkg: ^github\.com/hashicorp/go-retryablehttp$
           msg: "Use github.com/hashicorp/go-retryablehttp.NewRequestWithContext instead of retryablehttp.NewRequest"
+        - pattern: 'gin\.SetMode'
+          pkg: '^github\.com/gin-gonic/gin$'
+          msg: "Do not use gin.SetMode(gin.TestMode) - it causes race conditions. GIN_MODE=test is set in CI workflows."
       analyze-types: true
 
     depguard:
@@ -112,6 +114,22 @@ linters:
       # false failures in CI. See
       # https://github.com/golangci/golangci-lint/issues/3228
       allow-unused: true
+
+    perfsprint:
+      # Scoped to `errorf` only: enforce `errors.New` over `fmt.Errorf("static")`.
+      # Other perfsprint checks are intentionally disabled to keep this rule surgical.
+      # Can be broadened later in a follow-up.
+      error-format: true
+      errorf: true
+      err-error: false
+      integer-format: false
+      int-conversion: false
+      string-format: false
+      sprintf1: false
+      strconcat: false
+      bool-format: false
+      hex-format: false
+      concat-loop: false
 
     gocritic:
       disabled-checks:
@@ -170,7 +188,7 @@ linters:
         - -QF1008 # Omit embedded fields from selector expression
 
 run:
-  go: 1.25.4
+  go: 1.25.9
   allow-parallel-runners: true
 
 issues:

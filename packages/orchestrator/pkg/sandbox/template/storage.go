@@ -54,14 +54,25 @@ func NewStorage(
 	persistence storage.StorageProvider,
 	metrics blockmetrics.Metrics,
 ) (*Storage, error) {
+	paths := storage.Paths{BuildID: buildId}
+
 	if h == nil {
-		headerObjectPath := buildId + "/" + string(fileType) + storage.HeaderSuffix
 		headerObjectType, ok := storageHeaderObjectType(fileType)
 		if !ok {
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
 
-		headerObject, err := persistence.OpenBlob(ctx, headerObjectPath, headerObjectType)
+		var hdrPath string
+		switch fileType {
+		case build.Memfile:
+			hdrPath = paths.MemfileHeader()
+		case build.Rootfs:
+			hdrPath = paths.RootfsHeader()
+		default:
+			return nil, build.UnknownDiffTypeError{DiffType: fileType}
+		}
+
+		headerObject, err := persistence.OpenBlob(ctx, hdrPath, headerObjectType)
 		if err != nil {
 			return nil, err
 		}
@@ -80,12 +91,22 @@ func NewStorage(
 
 	// If we can't find the diff header in storage, we try to find the "old" style template without a header as a fallback.
 	if h == nil {
-		objectPath := buildId + "/" + string(fileType)
 		objectType, ok := objectType(fileType)
 		if !ok {
 			return nil, build.UnknownDiffTypeError{DiffType: fileType}
 		}
-		object, err := persistence.OpenSeekable(ctx, objectPath, objectType)
+
+		var dataPath string
+		switch fileType {
+		case build.Memfile:
+			dataPath = paths.Memfile()
+		case build.Rootfs:
+			dataPath = paths.Rootfs()
+		default:
+			return nil, build.UnknownDiffTypeError{DiffType: fileType}
+		}
+
+		object, err := persistence.OpenSeekable(ctx, dataPath, objectType)
 		if err != nil {
 			return nil, err
 		}

@@ -65,8 +65,8 @@ func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.
 
 func (p *Proxy) OnInsert(_ context.Context, _ *sandbox.Sandbox) {}
 
-func (p *Proxy) OnRemove(_ context.Context, sbx *sandbox.Sandbox) {
-	p.limiter.Remove(sbx.Runtime.SandboxID)
+func (p *Proxy) OnNetworkRelease(_ context.Context, sbx *sandbox.Sandbox) {
+	p.limiter.Remove(sbx.LifecycleID)
 }
 
 func (p *Proxy) Start(ctx context.Context) error {
@@ -175,6 +175,10 @@ func (p *Proxy) Close(_ context.Context) error {
 	return nil
 }
 
+func (p *Proxy) CABundle() string {
+	return ""
+}
+
 // handlerFunc is the signature for connection handlers.
 type handlerFunc func(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol)
 
@@ -229,11 +233,15 @@ func (t *connectionHandler) HandleConn(conn net.Conn) {
 	}
 
 	sandboxID := sbx.Runtime.SandboxID
+	// Scope the limiter to this sandbox lifecycle: SandboxID is reused on
+	// checkpoint/resume and the IP is reused via the network slot pool, so
+	// only LifecycleID is unique per lifecycle.
+	limiterKey := sbx.LifecycleID
 	sbxLogger := t.logger.With(logger.WithSandboxID(sandboxID))
 
 	// Check per-sandbox connection limit
 	maxLimit := t.featureFlags.IntFlag(ctx, featureflags.TCPFirewallMaxConnectionsPerSandbox)
-	count, acquired := t.limiter.TryAcquire(sandboxID, maxLimit)
+	count, acquired := t.limiter.TryAcquire(limiterKey, maxLimit)
 	if !acquired {
 		t.metrics.RecordError(ctx, ErrorTypeLimitExceeded, t.protocol)
 		conn.Close()
@@ -246,7 +254,7 @@ func (t *connectionHandler) HandleConn(conn net.Conn) {
 	if err != nil {
 		sbxLogger.Error(ctx, "failed to get original destination", zap.Error(err))
 		t.metrics.RecordError(ctx, ErrorTypeOrigDst, t.protocol)
-		t.limiter.Release(sandboxID)
+		t.limiter.Release(limiterKey)
 		conn.Close()
 
 		return
@@ -257,7 +265,7 @@ func (t *connectionHandler) HandleConn(conn net.Conn) {
 
 	// Wrap the handler to release the connection slot when done
 	wrappedHandler := func(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, l logger.Logger, metrics *Metrics, protocol Protocol) {
-		defer t.limiter.Release(sandboxID)
+		defer t.limiter.Release(limiterKey)
 		t.handler(ctx, conn, dstIP, dstPort, sbx, l, metrics, protocol)
 	}
 

@@ -27,7 +27,7 @@ permissions:
 jobs:
   changes:
     name: Check
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -103,56 +103,62 @@ jobs:
           E2B_ACCESS_TOKEN: ${{ env.E2B_ACCESS_TOKEN }}
           E2B_DOMAIN: ${{ matrix.e2b-domain }}
 
-      - name: Send Grafana OnCall webhook
+      - name: Send incident.io alert
         if: always()
+        continue-on-error: true
         env:
           JOB_STATUS: ${{ job.status }}
           DOMAIN: ${{ matrix.e2b-domain }}
           RUN_LINK: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          WEBHOOK_URL: ${{ secrets.GRAFANA_ALERT_WEBHOOK }}
+          WEBHOOK_URL: ${{ secrets.INCIDENT_IO_ALERT_SOURCE_URL }}
+          ALERT_TOKEN: ${{ secrets.INCIDENT_IO_ALERT_TOKEN }}
           TEST_NAME: ${{ matrix.test-command.name }}
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq jq  # jq for JSON assembly
+          sudo apt-get update -qq && sudo apt-get install -y -qq jq
 
-          # Map GH status → Grafana state
-          STATE=$([ "$JOB_STATUS" = "success" ] && echo ok || echo alerting)
+          # Map GH status to incident.io status
           STATUS=$([ "$JOB_STATUS" = "success" ] && echo resolved || echo firing)
 
-          # slug-ify the test name (lowercase, a–z/0–9, hyphens)
+          # slug-ify the test name (lowercase, a-z/0-9, hyphens)
           TEST_SLUG=$(echo "$TEST_NAME" \
                       | tr '[:upper:]' '[:lower:]' \
                       | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')
 
-          # Unique per (domain + test) – same UID for state so OnCall auto-resolves
-          ALERT_UID="periodic-tests-${DOMAIN//./-}-${TEST_SLUG}"
+          # Unique per (domain + test) – same key so incident.io auto-resolves
+          DEDUP_KEY="periodic-tests-${DOMAIN//./-}-${TEST_SLUG}"
 
           TITLE="Periodic tests | ${DOMAIN} | ${TEST_NAME}"
-          MESSAGE="${TEST_NAME} on ${DOMAIN} finished. Link: ${RUN_LINK}"
+          DESCRIPTION="${TEST_NAME} on ${DOMAIN} finished with status: ${JOB_STATUS}. [View run](${RUN_LINK})"
 
-          # Attach a branch-status badge.
+          # Attach a branch-status badge
           BADGE_COLOR=$([ "$JOB_STATUS" = "success" ] && echo brightgreen || echo CB2431)
-          BADGE_LABEL_ESCAPED=$(echo "$ALERT_UID" | sed 's/-/--/g')
+          BADGE_LABEL_ESCAPED=$(echo "$DEDUP_KEY" | sed 's/-/--/g')
           IMAGE_URL="https://img.shields.io/badge/${BADGE_LABEL_ESCAPED}-${JOB_STATUS}-${BADGE_COLOR}"
 
           jq -n \
-            --arg alert_uid "$ALERT_UID" \
+            --arg deduplication_key "$DEDUP_KEY" \
             --arg title "$TITLE" \
-            --arg state "$STATE" \
             --arg status "$STATUS" \
-            --arg link_to_upstream_details "$RUN_LINK" \
-            --arg message "$MESSAGE" \
-            --arg image_url "$IMAGE_URL" \
+            --arg source_url "$RUN_LINK" \
+            --arg description "$DESCRIPTION" \
             --arg domain "$DOMAIN" \
             --arg dev "${{ inputs.dev }}" \
-            '{alert_uid: $alert_uid,
+            --arg image_url "$IMAGE_URL" \
+            '{
+              deduplication_key: $deduplication_key,
               title: $title,
-              state: $state,
-              link_to_upstream_details: $link_to_upstream_details,
-              message: $message,
-              severity: "warning",
               status: $status,
-              domain: $domain,
-              dev: ($dev == "true"),
-              annotations: {Project: $domain},
-              image_url: $image_url}' \
-          | curl -s -X POST -H 'Content-Type: application/json' -d @- "$WEBHOOK_URL"
+              source_url: $source_url,
+              description: $description,
+              metadata: {
+                severity: "warning",
+                domain: $domain,
+                dev: ($dev == "true"),
+                image_url: $image_url,
+                project: $domain
+              }
+            }' \
+          | curl -s --fail-with-body -X POST \
+              -H 'Content-Type: application/json' \
+              -H "Authorization: Bearer $ALERT_TOKEN" \
+              -d @- "$WEBHOOK_URL"

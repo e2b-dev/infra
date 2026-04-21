@@ -25,6 +25,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -63,6 +64,7 @@ func run() int {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create metrics exporter", zap.Error(err))
 	}
+	e2bgrpc.StartChannelzSampler(ctx)
 	defer func() {
 		err := tel.Shutdown(ctx)
 		if err != nil {
@@ -113,24 +115,18 @@ func run() int {
 		RedisTLSCABase64: config.RedisTLSCABase64,
 		PoolSize:         config.RedisPoolSize,
 	})
-	if err == nil {
-		defer func() {
-			err := factories.CloseCleanly(redisClient)
-			if err != nil {
-				l.Error(ctx, "Failed to close redis client", zap.Error(err))
-			}
-		}()
-		catalog = e2bcatalog.NewRedisSandboxesCatalog(redisClient, featureFlagsClient)
-	} else {
-		if !errors.Is(err, factories.ErrRedisDisabled) {
-			l.Error(ctx, "Failed to create redis client", zap.Error(err))
+	if err != nil {
+		l.Error(ctx, "Failed to create redis client", zap.Error(err))
 
-			return 1
-		}
-
-		l.Warn(ctx, "Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
-		catalog = e2bcatalog.NewMemorySandboxesCatalog()
+		return 1
 	}
+	defer func() {
+		err := factories.CloseCleanly(redisClient)
+		if err != nil {
+			l.Error(ctx, "Failed to close redis client", zap.Error(err))
+		}
+	}()
+	catalog = e2bcatalog.NewRedisSandboxCatalog(redisClient)
 
 	info := &internal.ServiceInfo{}
 	info.SetStatus(ctx, internal.Healthy)
@@ -143,6 +139,8 @@ func run() int {
 
 			return 1
 		}
+
+		pausedSandboxResumer.Init(ctx)
 	} else {
 		l.Warn(ctx, "API gRPC address not set; paused sandbox checks disabled")
 	}

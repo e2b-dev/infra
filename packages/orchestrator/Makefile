@@ -7,6 +7,17 @@ GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
 HOSTNAME := $(shell hostname 2> /dev/null || hostnamectl hostname 2> /dev/null)
 $(if $(HOSTNAME),,$(error Failed to determine hostname: both 'hostname' and 'hostnamectl' failed))
 
+# Architecture for builds. Defaults to amd64; override for ARM64 builds.
+# (e.g., BUILD_ARCH=arm64 make build-local)
+BUILD_ARCH ?= amd64
+# Docker platform string. Override for cross-platform builds:
+#   BUILD_PLATFORM=linux/arm64 make build
+BUILD_PLATFORM ?= linux/$(BUILD_ARCH)
+
+# Busybox version — single source of truth for both Docker and local builds.
+BUSYBOX_VERSION ?= 1.36.1
+BUSYBOX_LOCAL := .busybox/$(BUSYBOX_VERSION)/$(BUILD_ARCH)/busybox
+
 .PHONY: init
 init:
 	brew install protobuf
@@ -18,18 +29,24 @@ generate:
 .PHONY: build
 build:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
-	@docker build --platform linux/amd64 --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
+	@docker build --platform $(BUILD_PLATFORM) --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
+
+# Download busybox from GCS public builds bucket.
+# Skips if binary exists and version/arch match the stamp file.
+.PHONY: fetch-busybox
+fetch-busybox:
+	@./scripts/fetch-busybox.sh "$(BUSYBOX_VERSION)" "$(BUILD_ARCH)" "$(BUSYBOX_LOCAL)"
 
 .PHONY: build-local
 build-local:
 	# Allow for passing commit sha directly for docker builds
 	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
-	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o bin/orchestrator -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
-	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o bin/clean-nfs-cache -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" ./cmd/clean-nfs-cache
+	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/orchestrator -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
+	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/clean-nfs-cache -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" ./cmd/clean-nfs-cache
 
 .PHONY: build-debug
 build-debug:
-	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -race -gcflags=all="-N -l" -o bin/orchestrator .
+	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -race -gcflags=all="-N -l" -o bin/orchestrator .
 
 .PHONY: run-debug
 run-debug:
@@ -100,18 +117,18 @@ test:
 
 .PHONY: test-docker
 test-docker:
-	@echo "Running orchestrator tests in Docker (AMD64 Linux)..."
+	@echo "Running orchestrator tests in Docker ($(BUILD_PLATFORM))..."
 	@rm -rf .shared/
 	@cp -r ../shared .shared/
 	@rm -rf .clickhouse/
 	@cp -r ../clickhouse .clickhouse/
-	@docker build --platform linux/amd64 -f test.Dockerfile --no-cache-filter runner --progress=plain -t orchestrator-test .
+	@docker build --platform $(BUILD_PLATFORM) -f test.Dockerfile --no-cache-filter runner --progress=plain -t orchestrator-test .
 	@rm -rf .shared/
 	@rm -rf .clickhouse/
 	@echo "Done"
 
 .PHONY: build-template
-build-template:
+build-template: fetch-busybox
 	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
 	GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) \
 	DOCKER_AUTH_BASE64=$(DOCKER_AUTH_BASE64) \

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
@@ -16,7 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-var ErrRedisDisabled = errors.New("redis is disabled")
+var ErrRedisUnconfigured = errors.New("redis is not configured")
 
 type RedisConfig struct {
 	RedisURL         string
@@ -25,15 +26,45 @@ type RedisConfig struct {
 	// PoolSize overrides the default connection pool size.
 	// When non-positive, defaults to 40.
 	PoolSize int
+	// MinIdleConns overrides the minimum number of idle connections maintained in the pool
+	// (per cluster node for cluster clients).
+	// When non-positive, defaults to min(defaultMinIdleConns, PoolSize).
+	MinIdleConns int
 }
 
 const (
 	defaultPoolSize     = 40
 	defaultMinIdleConns = 10
+
+	// connMaxLifetime controls the maximum age of a connection before it is recycled.
+	// Combined with connMaxLifetimeJitter, this spreads connection recycling evenly over time
+	// instead of expiring in bursts (which happens with idle-time-based eviction under LIFO reuse).
+	connMaxLifetime = 30 * time.Minute
+	// connMaxLifetimeJitter adds random offset in [-jitter, +jitter] to each connection's lifetime,
+	// so connections expire between 20-40 minutes instead of all at exactly 30 minutes.
+	connMaxLifetimeJitter = 10 * time.Minute
 )
+
+// resolvePoolSize computes the effective pool size and minimum idle connections
+// from the given config, applying defaults and floors.
+func resolvePoolSize(config RedisConfig) (poolSize, minIdleConns int) {
+	poolSize = defaultPoolSize
+	if config.PoolSize > 0 {
+		poolSize = config.PoolSize
+	}
+
+	minIdleConns = min(defaultMinIdleConns, poolSize)
+	if config.MinIdleConns > 0 {
+		minIdleConns = min(config.MinIdleConns, poolSize)
+	}
+
+	return poolSize, minIdleConns
+}
 
 func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalClient, error) {
 	var redisClient redis.UniversalClient
+
+	poolSize, minIdleConns := resolvePoolSize(config)
 
 	switch {
 	case config.RedisClusterURL != "":
@@ -42,17 +73,16 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 		// https://cloud.google.com/memorystore/docs/cluster/cluster-node-specification#cluster_endpoints
 		// https://cloud.google.com/memorystore/docs/cluster/client-library-code-samples#go-redis
 
-		poolSize := defaultPoolSize
-		minIdleConns := defaultMinIdleConns
-		if config.PoolSize > 0 {
-			poolSize = max(defaultMinIdleConns, config.PoolSize)
-			minIdleConns = max(defaultMinIdleConns, config.PoolSize/4)
-		}
-
 		clusterOpts := &redis.ClusterOptions{
 			Addrs:        []string{config.RedisClusterURL},
 			PoolSize:     poolSize,
 			MinIdleConns: minIdleConns,
+			// Disable idle-time eviction; use lifetime-based recycling with jitter instead.
+			// Under the default LIFO reuse, ConnMaxIdleTime causes thundering-herd bursts because
+			// the cold (bottom-of-stack) connections all idle-expire simultaneously.
+			ConnMaxIdleTime:       -1,
+			ConnMaxLifetime:       connMaxLifetime,
+			ConnMaxLifetimeJitter: connMaxLifetimeJitter,
 		}
 
 		if config.RedisTLSCABase64 != "" {
@@ -67,7 +97,7 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 			if !certPool.AppendCertsFromPEM(cert) {
 				logger.L().Error(ctx, "Failed to parse Redis cluster TLS CA certificate")
 
-				return nil, fmt.Errorf("failed to parse Redis cluster TLS CA certificate")
+				return nil, errors.New("failed to parse Redis cluster TLS CA certificate")
 			}
 
 			// Remove the port if present
@@ -83,21 +113,18 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 
 		redisClient = redis.NewClusterClient(clusterOpts)
 	case config.RedisURL != "":
-		poolSize := defaultPoolSize
-		minIdleConns := defaultMinIdleConns
-		if config.PoolSize > 0 {
-			poolSize = max(defaultMinIdleConns, config.PoolSize)
-			minIdleConns = max(defaultMinIdleConns, config.PoolSize/4)
-		}
 		opts := &redis.Options{
-			Addr:         config.RedisURL,
-			PoolSize:     poolSize,
-			MinIdleConns: minIdleConns,
+			Addr:                  config.RedisURL,
+			PoolSize:              poolSize,
+			MinIdleConns:          minIdleConns,
+			ConnMaxIdleTime:       -1,
+			ConnMaxLifetime:       connMaxLifetime,
+			ConnMaxLifetimeJitter: connMaxLifetimeJitter,
 		}
 
 		redisClient = redis.NewClient(opts)
 	default:
-		return nil, ErrRedisDisabled
+		return nil, ErrRedisUnconfigured
 	}
 
 	// Enable tracing

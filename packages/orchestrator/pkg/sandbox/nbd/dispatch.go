@@ -7,14 +7,40 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+)
+
+var (
+	nbdReadDuration = utils.Must(meter.Int64Histogram("orchestrator.nbd.dispatch.read.duration",
+		metric.WithDescription("Duration of NBD dispatch handler ReadAt calls to the backend."),
+		metric.WithUnit("ms"),
+	))
+	nbdReadConncurent = utils.Must(meter.Int64UpDownCounter("orchestrator.nbd.dispatch.read.concurrent",
+		metric.WithDescription("Number of NBD read requests currently waiting for a response. A sustained high value indicates reads stuck in kernel I/O."),
+		metric.WithUnit("{read}"),
+	))
+	nbdReadSuccess   = metric.WithAttributeSet(attribute.NewSet(attribute.String("result", "success")))
+	nbdReadFailure   = metric.WithAttributeSet(attribute.NewSet(attribute.String("result", "failure")))
+	nbdReadCancelled = metric.WithAttributeSet(attribute.NewSet(attribute.String("result", "cancelled")))
 )
 
 var ErrShuttingDown = errors.New("shutting down. Cannot serve any new requests")
+
+var dispatchBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, dispatchBufferSize)
+
+		return &b
+	},
+}
 
 type Provider interface {
 	storage.SeekableReader
@@ -61,10 +87,14 @@ type Response struct {
 }
 
 type Dispatch struct {
-	fp               io.ReadWriter
-	responseHeader   []byte
-	writeLock        sync.Mutex
-	prov             Provider
+	fp             io.ReadWriter
+	responseHeader []byte
+	writeLock      sync.Mutex
+	prov           Provider
+	// provName is the concrete backend type name, cached at construction so
+	// error logs can identify which storage layer failed without reflection
+	// on every call.
+	provName         string
 	pendingResponses sync.WaitGroup
 	shuttingDown     bool
 	shuttingDownLock sync.Mutex
@@ -76,6 +106,7 @@ func NewDispatch(fp io.ReadWriter, prov Provider) *Dispatch {
 		responseHeader: make([]byte, 16),
 		fp:             fp,
 		prov:           prov,
+		provName:       fmt.Sprintf("%T", prov),
 		fatal:          make(chan error, 1),
 	}
 
@@ -123,7 +154,9 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
  *
  */
 func (d *Dispatch) Handle(ctx context.Context) error {
-	buffer := make([]byte, dispatchBufferSize)
+	poolBuf := dispatchBufPool.Get().(*[]byte)
+	defer dispatchBufPool.Put(poolBuf)
+	buffer := *poolBuf
 	wp := 0
 
 	request := Request{}
@@ -162,14 +195,14 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 			request.Length = binary.BigEndian.Uint32(header[24:28])
 
 			if request.Magic != NBDRequestMagic {
-				return fmt.Errorf("received invalid MAGIC")
+				return errors.New("received invalid MAGIC")
 			}
 
 			switch request.Type {
 			case NBDCmdDisconnect:
 				return nil // All done
 			case NBDCmdFlush:
-				return fmt.Errorf("not supported: Flush")
+				return errors.New("not supported: Flush")
 			case NBDCmdRead:
 				rp += 28
 				err := d.cmdRead(ctx, request.Handle, request.From, request.Length)
@@ -247,19 +280,49 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 		errchan := make(chan error, 1)
 		data := make([]byte, length)
 
+		nbdReadConncurent.Add(ctx, 1)
+
 		go func() {
+			start := time.Now()
 			_, err := d.prov.ReadAt(ctx, data, int64(from))
+
+			attrs := nbdReadSuccess
+			if err != nil {
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					attrs = nbdReadCancelled
+				} else {
+					attrs = nbdReadFailure
+				}
+			}
+
+			nbdReadDuration.Record(ctx, time.Since(start).Milliseconds(), attrs)
 			errchan <- err
 		}()
 
 		// Wait until either the ReadAt completed, or our context is cancelled...
+		var readErr error
 		select {
 		case <-ctx.Done():
+			readErr = ctx.Err()
+		case readErr = <-errchan:
+		}
+
+		nbdReadConncurent.Add(ctx, -1)
+
+		if readErr != nil {
+			// Per-request backend failure: signal it to the NBD client via the
+			// response error byte and keep the dispatch loop alive. Only
+			// writeResponse errors (dead NBD socket) escalate through d.fatal.
+			logger.L().Error(ctx, "nbd backend read failed",
+				zap.Error(readErr),
+				zap.String("nbd_op", "read"),
+				zap.String("nbd_provider", d.provName),
+				zap.Uint64("nbd_handle", handle),
+				zap.Uint64("nbd_offset", from),
+				zap.Uint32("nbd_length", length),
+			)
+
 			return d.writeResponse(1, handle, []byte{})
-		case err := <-errchan:
-			if err != nil {
-				return d.writeResponse(1, handle, []byte{})
-			}
 		}
 
 		// read was successful
@@ -272,7 +335,14 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 			select {
 			case d.fatal <- err:
 			default:
-				logger.L().Error(ctx, "nbd error cmd read", zap.Error(err))
+				logger.L().Error(ctx, "nbd error cmd read",
+					zap.Error(err),
+					zap.String("nbd_op", "read"),
+					zap.String("nbd_provider", d.provName),
+					zap.Uint64("nbd_handle", cmdHandle),
+					zap.Uint64("nbd_offset", cmdFrom),
+					zap.Uint32("nbd_length", cmdLength),
+				)
 			}
 		}
 		d.pendingResponses.Done()
@@ -301,13 +371,25 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 		}()
 
 		// Wait until either the WriteAt completed, or our context is cancelled...
+		var writeErr error
 		select {
 		case <-ctx.Done():
-			return d.writeResponse(1, handle, []byte{})
+			writeErr = ctx.Err()
 		case err := <-errchan:
-			if err != nil {
-				return d.writeResponse(1, handle, []byte{})
-			}
+			writeErr = err
+		}
+
+		if writeErr != nil {
+			logger.L().Error(ctx, "nbd backend write failed",
+				zap.Error(writeErr),
+				zap.String("nbd_op", "write"),
+				zap.String("nbd_provider", d.provName),
+				zap.Uint64("nbd_handle", handle),
+				zap.Uint64("nbd_offset", from),
+				zap.Int("nbd_length", len(data)),
+			)
+
+			return d.writeResponse(1, handle, []byte{})
 		}
 
 		// write was successful
@@ -320,7 +402,14 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 			select {
 			case d.fatal <- err:
 			default:
-				logger.L().Error(ctx, "nbd error cmd write", zap.Error(err))
+				logger.L().Error(ctx, "nbd error cmd write",
+					zap.Error(err),
+					zap.String("nbd_op", "write"),
+					zap.String("nbd_provider", d.provName),
+					zap.Uint64("nbd_handle", cmdHandle),
+					zap.Uint64("nbd_offset", cmdFrom),
+					zap.Int("nbd_length", len(cmdData)),
+				)
 			}
 		}
 		d.pendingResponses.Done()

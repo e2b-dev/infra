@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bits-and-blooms/bitset"
+	"github.com/RoaringBitmap/roaring/v2"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -23,7 +23,7 @@ func (p *Process) DirtyMemory(ctx context.Context, blockSize int64) (*header.Dif
 
 func (p *Process) ExportMemory(
 	ctx context.Context,
-	include *bitset.BitSet,
+	include *roaring.Bitmap,
 	cachePath string,
 	blockSize int64,
 ) (*block.Cache, error) {

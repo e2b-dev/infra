@@ -77,8 +77,54 @@ func main() {
 	}
 	defer authDb.Close()
 
-	// Open .e2b/config.json
-	// Delete existing user and recreate (simpler for seeding)
+	// Clean up existing data for idempotent re-seeding.
+	// Delete child rows that have ON DELETE NO ACTION constraints
+	// before deleting the team and user rows.
+	err = authDb.TestsRawSQL(ctx, `
+DELETE FROM envs WHERE team_id IN (SELECT id FROM teams WHERE email = $1)
+`, email)
+	if err != nil {
+		panic(err)
+	}
+
+	err = authDb.TestsRawSQL(ctx, `
+DELETE FROM snapshots WHERE team_id IN (SELECT id FROM teams WHERE email = $1)
+`, email)
+	if err != nil {
+		panic(err)
+	}
+
+	err = authDb.TestsRawSQL(ctx, `
+DELETE FROM volumes WHERE team_id IN (SELECT id FROM teams WHERE email = $1)
+`, email)
+	if err != nil {
+		panic(err)
+	}
+
+	err = authDb.TestsRawSQL(ctx, `
+DELETE FROM addons WHERE added_by IN (SELECT id FROM public.users WHERE email = $1)
+`, email)
+	if err != nil {
+		panic(err)
+	}
+
+	// Now safe to delete team (team_api_keys cascade automatically).
+	err = authDb.TestsRawSQL(ctx, `
+DELETE FROM teams WHERE email = $1
+`, email)
+	if err != nil {
+		panic(err)
+	}
+
+	// Delete the projected user row so access_tokens and users_teams cascade.
+	err = authDb.TestsRawSQL(ctx, `
+DELETE FROM public.users WHERE email = $1
+`, email)
+	if err != nil {
+		panic(err)
+	}
+
+	// Delete the auth user separately.
 	err = authDb.TestsRawSQL(ctx, `
 DELETE FROM auth.users WHERE email = $1
 `, email)
@@ -86,7 +132,7 @@ DELETE FROM auth.users WHERE email = $1
 		panic(err)
 	}
 
-	// Create the user
+	// Create the auth user and its projected public user row explicitly.
 	userID := uuid.New()
 	err = authDb.TestsRawSQL(ctx, `
 INSERT INTO auth.users (id, email)
@@ -96,10 +142,10 @@ VALUES ($1, $2)
 		panic(err)
 	}
 
-	// Delete team
-	err = authDb.TestsRawSQL(ctx, `
-DELETE FROM teams WHERE email = $1
-`, email)
+	err = authDb.Write.UpsertPublicUser(ctx, authqueries.UpsertPublicUserParams{
+		ID:    userID,
+		Email: email,
+	})
 	if err != nil {
 		panic(err)
 	}

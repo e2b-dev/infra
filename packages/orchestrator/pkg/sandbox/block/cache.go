@@ -8,18 +8,22 @@ import (
 	"math"
 	"math/rand"
 	"os"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
-	"github.com/bits-and-blooms/bitset"
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/edsrzf/mmap-go"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/syncroaring"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
@@ -49,12 +53,11 @@ type Cache struct {
 	blockSize int64
 	mmap      *mmap.MMap
 	mu        sync.RWMutex
-	dirty     sync.Map
+	dirty     *syncroaring.Bitset
 	dirtyFile bool
 	closed    atomic.Bool
 }
 
-// When we are passing filePath that is a file that has content we want to server want to use dirtyFile = true.
 func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, error) {
 	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
@@ -69,6 +72,7 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 			size:      size,
 			blockSize: blockSize,
 			dirtyFile: dirtyFile,
+			dirty:     syncroaring.New(),
 		}, nil
 	}
 
@@ -82,7 +86,7 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		return nil, fmt.Errorf("size too big: %d > %d", size, math.MaxInt)
 	}
 
-	mm, err := mmap.MapRegion(f, int(size), unix.PROT_READ|unix.PROT_WRITE, 0, 0)
+	mm, err := mmap.MapRegion(f, int(size), mmap.RDWR, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("error mapping file: %w", err)
 	}
@@ -93,6 +97,7 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		size:      size,
 		blockSize: blockSize,
 		dirtyFile: dirtyFile,
+		dirty:     syncroaring.New(),
 	}, nil
 }
 
@@ -100,27 +105,7 @@ func (c *Cache) isClosed() bool {
 	return c.closed.Load()
 }
 
-func (c *Cache) Sync() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.isClosed() {
-		return NewErrCacheClosed(c.filePath)
-	}
-
-	if c.mmap == nil {
-		return nil
-	}
-
-	err := c.mmap.Flush()
-	if err != nil {
-		return fmt.Errorf("error syncing cache: %w", err)
-	}
-
-	return nil
-}
-
-func (c *Cache) ExportToDiff(ctx context.Context, out io.Writer) (*header.DiffMetadata, error) {
+func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMetadata, error) {
 	ctx, childSpan := tracer.Start(ctx, "export-to-diff")
 	defer childSpan.End()
 
@@ -132,30 +117,88 @@ func (c *Cache) ExportToDiff(ctx context.Context, out io.Writer) (*header.DiffMe
 	}
 
 	if c.mmap == nil {
-		return &header.DiffMetadata{
-			Dirty:     bitset.New(0),
-			Empty:     bitset.New(0),
-			BlockSize: c.blockSize,
-		}, nil
+		return header.NewDiffMetadata(c.blockSize, roaring.New()), nil
 	}
 
-	err := c.mmap.Flush()
+	f, err := os.Open(c.filePath)
 	if err != nil {
-		return nil, fmt.Errorf("error flushing mmap: %w", err)
+		return nil, fmt.Errorf("error opening file: %w", err)
+	}
+	defer f.Close()
+
+	src := int(f.Fd())
+
+	// Explicit mmap flush is not necessary, because the kernel will handle that as part of the copy_file_range syscall.
+	// Calling sync_file_range marks the range for writeback and starts it early.
+	// This is just an optimization, so if it fails just log a warning and let copy_file_range do the actual work.
+	err = unix.SyncFileRange(src, 0, c.size, unix.SYNC_FILE_RANGE_WRITE)
+	if err != nil {
+		logger.L().Warn(ctx, "error syncing file", zap.Error(err))
 	}
 
-	builder := header.NewDiffMetadataBuilder(c.size, c.blockSize)
+	diffMetadata := header.NewDiffMetadata(c.blockSize, c.dirty.Clone())
 
-	for _, offset := range c.dirtySortedKeys() {
-		block := (*c.mmap)[offset : offset+c.blockSize]
+	dst := int(out.Fd())
+	var writeOffset int64
+	var totalRanges int64
+	fallback := false
 
-		err := builder.Process(ctx, block, out, offset)
-		if err != nil {
-			return nil, fmt.Errorf("error processing block %d: %w", offset, err)
+	copyStart := time.Now()
+	for r := range BitsetRanges(diffMetadata.Dirty, diffMetadata.BlockSize) {
+		totalRanges++
+		remaining := int(r.Size)
+		readOffset := r.Start
+
+		// The kernel may return short writes (e.g. capped at MAX_RW_COUNT on non-reflink filesystems),
+		// so we loop until the full range is copied. The offset pointers are advanced by the kernel.
+		for remaining > 0 {
+			if !fallback {
+				// On XFS this uses reflink automatically.
+				n, err := unix.CopyFileRange(
+					src,
+					&readOffset,
+					dst,
+					&writeOffset,
+					remaining,
+					0,
+				)
+				switch {
+				case errors.Is(err, syscall.EXDEV) || errors.Is(err, syscall.EOPNOTSUPP) || errors.Is(err, syscall.ENOSYS):
+					fallback = true
+					logger.L().Warn(ctx, "copy_file_range unsupported, falling back to normal copy", zap.Error(err))
+				case err != nil:
+					return nil, fmt.Errorf("error copying file range: %w", err)
+				case n == 0:
+					return nil, fmt.Errorf("copy_file_range returned 0 with %d bytes remaining", remaining)
+				default:
+					remaining -= n
+				}
+			}
+
+			// CopyFileRange failed. Falling back to normal copy
+			if fallback && remaining > 0 {
+				if _, err := out.Seek(writeOffset, io.SeekStart); err != nil {
+					return nil, fmt.Errorf("error seeking: %w", err)
+				}
+				sr := io.NewSectionReader(f, readOffset, int64(remaining))
+				if _, err := io.Copy(out, sr); err != nil {
+					return nil, fmt.Errorf("error copying file range. %w", err)
+				}
+
+				writeOffset += int64(remaining)
+				remaining = 0
+			}
 		}
 	}
 
-	return builder.Build(), nil
+	telemetry.SetAttributes(ctx,
+		attribute.Int64("copy_ms", time.Since(copyStart).Milliseconds()),
+		attribute.Int64("total_size_bytes", c.size),
+		attribute.Int64("dirty_size_bytes", int64(diffMetadata.Dirty.GetCardinality())*c.blockSize),
+		attribute.Int64("total_ranges", totalRanges),
+	)
+
+	return diffMetadata, nil
 }
 
 func (c *Cache) ReadAt(b []byte, off int64) (int, error) {
@@ -245,31 +288,38 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 	return nil, BytesNotAvailableError{}
 }
 
-func (c *Cache) isCached(off, length int64) bool {
-	// Make sure the offset is within the cache size
-	if off >= c.size {
-		return false
+// sliceDirect returns a slice of the mmap without checking isCached.
+// Used by the streaming chunker after the waiter mechanism has confirmed data availability.
+func (c *Cache) sliceDirect(off, length int64) ([]byte, error) {
+	if c.isClosed() {
+		return nil, NewErrCacheClosed(c.filePath)
 	}
 
-	// Cap if the length goes beyond the cache size, so we don't check for blocks that are out of bounds.
+	if c.mmap == nil {
+		return nil, nil
+	}
+
+	if off < 0 || off >= c.size {
+		return nil, BytesNotAvailableError{}
+	}
+
 	end := min(off+length, c.size)
-	// Recalculate the length based on the capped end, so we check for the correct blocks in case of capping.
-	length = end - off
 
-	for _, blockOff := range header.BlocksOffsets(length, c.blockSize) {
-		_, dirty := c.dirty.Load(off + blockOff)
-		if !dirty {
-			return false
-		}
-	}
+	return (*c.mmap)[off:end], nil
+}
 
-	return true
+func (c *Cache) isCached(off, length int64) bool {
+	start := uint64(header.BlockIdx(off, c.blockSize))
+	end := uint64(header.BlockCeilIdx(min(off+length, c.size), c.blockSize))
+
+	return c.dirty.HasRange(start, end)
 }
 
 func (c *Cache) setIsCached(off, length int64) {
-	for _, blockOff := range header.BlocksOffsets(length, c.blockSize) {
-		c.dirty.Store(off+blockOff, struct{}{})
-	}
+	start := uint64(header.BlockIdx(off, c.blockSize))
+	end := uint64(header.BlockCeilIdx(off+length, c.blockSize))
+
+	c.dirty.SetRange(start, end)
 }
 
 // When using WriteAtWithoutLock you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
@@ -289,20 +339,6 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	c.setIsCached(off, end-off)
 
 	return n, nil
-}
-
-// dirtySortedKeys returns a sorted list of dirty keys.
-// Key represents a block offset.
-func (c *Cache) dirtySortedKeys() []int64 {
-	var keys []int64
-	c.dirty.Range(func(key, _ any) bool {
-		keys = append(keys, key.(int64))
-
-		return true
-	})
-	slices.Sort(keys)
-
-	return keys
 }
 
 // FileSize returns the size of the cache on disk.
@@ -491,9 +527,7 @@ func (c *Cache) copyProcessMemory(
 				return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
 			}
 
-			for _, blockOff := range header.BlocksOffsets(segmentSize, c.blockSize) {
-				c.dirty.Store(offset+blockOff, struct{}{})
-			}
+			c.setIsCached(offset, segmentSize)
 
 			offset += segmentSize
 

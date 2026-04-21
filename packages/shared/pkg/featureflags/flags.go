@@ -108,7 +108,6 @@ var (
 	EdgeProvidedSandboxMetricsFlag      = newBoolFlag("edge-provided-sandbox-metrics", false)
 	CreateStorageCacheSpansFlag         = newBoolFlag("create-storage-cache-spans", env.IsDevelopment())
 	SandboxAutoResumeFlag               = newBoolFlag("sandbox-auto-resume", env.IsDevelopment())
-	SandboxCatalogLocalCacheFlag        = newBoolFlag("sandbox-catalog-local-cache", true)
 
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.
 	PeerToPeerChunkTransferFlag = newBoolFlag("peer-to-peer-chunk-transfer", false)
@@ -116,9 +115,10 @@ var (
 	// of synchronous. Only safe to enable after PeerToPeerChunkTransferFlag is ON.
 	PeerToPeerAsyncCheckpointFlag = newBoolFlag("peer-to-peer-async-checkpoint", false)
 
-	PersistentVolumesFlag           = newBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
-	ExecutionMetricsOnWebhooksFlag  = newBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
-	SandboxLabelBasedSchedulingFlag = newBoolFlag("sandbox-label-based-scheduling", false)
+	PersistentVolumesFlag            = newBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
+	ExecutionMetricsOnWebhooksFlag   = newBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
+	SandboxLabelBasedSchedulingFlag  = newBoolFlag("sandbox-label-based-scheduling", false)
+	OptimisticResourceAccountingFlag = newBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
 )
 
 type IntFlag struct {
@@ -166,7 +166,7 @@ var (
 	BuildProvisionVersion        = newIntFlag("build-provision-version", 0)
 
 	// NBDConnectionsPerDevice the number of NBD socket connections per device
-	NBDConnectionsPerDevice = newIntFlag("nbd-connections-per-device", 4)
+	NBDConnectionsPerDevice = newIntFlag("nbd-connections-per-device", 1)
 
 	// MemoryPrefetchMaxFetchWorkers is the maximum number of parallel fetch workers per sandbox for memory prefetching.
 	// Fetching is I/O bound so we can have more parallelism.
@@ -204,6 +204,12 @@ var (
 	// MaxConcurrentSnapshotBuildQueries limits concurrent GetSnapshotBuilds calls (e.g. sandbox delete).
 	// 0 or negative disables throttling (unlimited concurrency).
 	MaxConcurrentSnapshotBuildQueries = newIntFlag("max-concurrent-snapshot-build-queries", 0)
+
+	// GCSPerAttemptTimeoutMs is the per-attempt timeout in milliseconds for GCS ReadAt calls.
+	// Each retry attempt gets a fresh context.WithTimeout with this value.
+	GCSPerAttemptTimeoutMs = newIntFlag("gcs-per-attempt-timeout-ms", 10000)
+	// GCSMaxReadAttempts is the maximum number of attempts for GCS ReadAt calls.
+	GCSMaxReadAttempts = newIntFlag("gcs-max-read-attempts", 3)
 )
 
 type StringFlag struct {
@@ -240,13 +246,15 @@ const (
 // TODO: The short tag here has only 7 characters — the one from our build pipeline will likely have exactly 8 so this will break.
 const (
 	DefaultFirecackerV1_10Version = "v1.10.1_30cbb07"
-	DefaultFirecackerV1_12Version = "v1.12.1_a41d3fb"
-	DefaultFirecrackerVersion     = DefaultFirecackerV1_12Version
+	DefaultFirecackerV1_12Version = "v1.12.1_210cbac"
+	DefaultFirecackerV1_14Version = "v1.14.1_458ca91"
+	DefaultFirecrackerVersion     = DefaultFirecackerV1_14Version
 )
 
 var FirecrackerVersionMap = map[string]string{
 	"v1.10": DefaultFirecackerV1_10Version,
 	"v1.12": DefaultFirecackerV1_12Version,
+	"v1.14": DefaultFirecackerV1_14Version,
 }
 
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
@@ -259,7 +267,7 @@ var (
 )
 
 // ResolveFirecrackerVersion resolves the firecracker version using the FirecrackerVersions feature flag.
-// The buildVersion format is "v1.12.1_a41d3fb" — we extract "v1.12" as the lookup key.
+// The buildVersion format is "v1.12.1_210cbac" — we extract "v1.12" as the lookup key.
 func ResolveFirecrackerVersion(ctx context.Context, ff *Client, buildVersion string) string {
 	parts := strings.Split(buildVersion, "_")
 	if len(parts) < 2 {
@@ -352,10 +360,8 @@ type TCPFirewallEgressThrottleConfigValue struct {
 	Bandwidth TokenBucketConfig
 }
 
-// GetTCPFirewallEgressThrottleConfig fetches and parses the TCPFirewallEgressThrottleConfig flag.
-func GetTCPFirewallEgressThrottleConfig(ctx context.Context, ff *Client) TCPFirewallEgressThrottleConfigValue {
-	value := ff.JSONFlag(ctx, TCPFirewallEgressThrottleConfig)
-
+// parseThrottleBuckets parses "ops" and "bandwidth" token bucket configs from a JSON flag value.
+func parseThrottleBuckets(value ldvalue.Value) (ops, bandwidth TokenBucketConfig) {
 	parseBucket := func(key string) TokenBucketConfig {
 		b := value.GetByKey(key)
 		if b.IsNull() {
@@ -375,8 +381,45 @@ func GetTCPFirewallEgressThrottleConfig(ctx context.Context, ff *Client) TCPFire
 		}
 	}
 
+	return parseBucket("ops"), parseBucket("bandwidth")
+}
+
+// GetTCPFirewallEgressThrottleConfig fetches and parses the TCPFirewallEgressThrottleConfig flag.
+func GetTCPFirewallEgressThrottleConfig(ctx context.Context, ff *Client) TCPFirewallEgressThrottleConfigValue {
+	value := ff.JSONFlag(ctx, TCPFirewallEgressThrottleConfig)
+	ops, bw := parseThrottleBuckets(value)
+
 	return TCPFirewallEgressThrottleConfigValue{
-		Ops:       parseBucket("ops"),
-		Bandwidth: parseBucket("bandwidth"),
+		Ops:       ops,
+		Bandwidth: bw,
+	}
+}
+
+// BlockDriveThrottleConfig controls per-sandbox block device (disk) throttling via Firecracker's
+// VMM-level token bucket rate limiters on the rootfs drive.
+// Structure mirrors the Firecracker RateLimiter API: two independent token buckets.
+// Set bucketSize to -1 to disable a bucket.
+//
+// Ops bucket (IOPS):       effective rate = ops.bucketSize * 1000 / ops.refillTimeMs ops/s.
+// Bandwidth bucket (bytes): effective rate = bandwidth.bucketSize * 1000 / bandwidth.refillTimeMs bytes/s.
+var BlockDriveThrottleConfig = newJSONFlag("block-drive-throttle-config", ldvalue.FromJSONMarshal(map[string]any{
+	"ops":       map[string]any{"bucketSize": -1, "oneTimeBurst": 0, "refillTimeMs": 1000},
+	"bandwidth": map[string]any{"bucketSize": -1, "oneTimeBurst": 0, "refillTimeMs": 1000},
+}))
+
+// BlockDriveThrottleConfigValue holds the parsed values of BlockDriveThrottleConfig.
+type BlockDriveThrottleConfigValue struct {
+	Ops       TokenBucketConfig
+	Bandwidth TokenBucketConfig
+}
+
+// GetBlockDriveThrottleConfig fetches and parses the BlockDriveThrottleConfig flag.
+func GetBlockDriveThrottleConfig(ctx context.Context, ff *Client) BlockDriveThrottleConfigValue {
+	value := ff.JSONFlag(ctx, BlockDriveThrottleConfig)
+	ops, bw := parseThrottleBuckets(value)
+
+	return BlockDriveThrottleConfigValue{
+		Ops:       ops,
+		Bandwidth: bw,
 	}
 }

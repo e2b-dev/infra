@@ -108,15 +108,20 @@ copy-public-builds:
 ifeq ($(PROVIDER),aws)
 	mkdir -p ./.kernels
 	mkdir -p ./.firecrackers
+	mkdir -p ./.busybox
 	aws s3 cp s3://e2b-prod-public-builds/kernels/ ./.kernels/ --recursive --no-sign-request --endpoint-url https://storage.googleapis.com
 	aws s3 cp s3://e2b-prod-public-builds/firecrackers/ ./.firecrackers/ --recursive --no-sign-request --endpoint-url https://storage.googleapis.com
+	aws s3 cp s3://e2b-prod-public-builds/busybox/ ./.busybox/ --recursive --no-sign-request --endpoint-url https://storage.googleapis.com
 	aws s3 cp ./.kernels/ s3://${AWS_BUCKET_PREFIX}fc-kernels/ --recursive --profile ${AWS_PROFILE}
 	aws s3 cp ./.firecrackers/ s3://${AWS_BUCKET_PREFIX}fc-versions/ --recursive --profile ${AWS_PROFILE}
+	aws s3 cp ./.busybox/ s3://${AWS_BUCKET_PREFIX}fc-busybox/ --recursive --profile ${AWS_PROFILE}
 	rm -rf ./.kernels
 	rm -rf ./.firecrackers
+	rm -rf ./.busybox
 else
 	gsutil cp -r gs://e2b-prod-public-builds/kernels/* gs://$(GCP_BUCKET_PREFIX)fc-kernels/
 	gsutil cp -r gs://e2b-prod-public-builds/firecrackers/* gs://$(GCP_BUCKET_PREFIX)fc-versions/
+	gsutil cp -r gs://e2b-prod-public-builds/busybox/* gs://$(GCP_BUCKET_PREFIX)fc-busybox/
 endif
 
 .PHONY: download-public-kernels
@@ -147,6 +152,14 @@ generate-tests/%:
 .PHONY: migrate
 migrate:
 	$(MAKE) -C packages/db migrate
+
+.PHONY: prep-cluster
+prep-cluster:
+	$(MAKE) -C packages/shared prep-cluster
+
+.PHONY: seed-db
+seed-db:
+	$(MAKE) -C packages/db seed-db
 
 .PHONY: set-env
 set-env:

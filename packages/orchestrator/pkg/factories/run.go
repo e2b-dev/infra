@@ -251,6 +251,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to init telemetry", zap.Error(err))
 	}
+	e2bgrpc.StartChannelzSampler(ctx)
 	defer func() {
 		err := tel.Shutdown(ctx)
 		if err != nil {
@@ -381,18 +382,19 @@ func run(config cfg.Config, opts Options) (success bool) {
 		RedisClusterURL:  config.RedisClusterURL,
 		RedisTLSCABase64: config.RedisTLSCABase64,
 		PoolSize:         config.RedisPoolSize,
+		MinIdleConns:     config.RedisMinIdleConns,
 	})
-	if err != nil && !errors.Is(err, sharedFactories.ErrRedisDisabled) {
-		logger.L().Fatal(ctx, "Could not connect to Redis", zap.Error(err))
-	} else if err == nil {
-		closers = append(closers, closer{"redis client", func(context.Context) error {
-			return sharedFactories.CloseCleanly(redisClient)
-		}})
+	if err != nil {
+		logger.L().Fatal(ctx, "Failed to create redis client", zap.Error(err))
 	}
+
+	closers = append(closers, closer{"redis client", func(context.Context) error {
+		return sharedFactories.CloseCleanly(redisClient)
+	}})
 
 	peerRegistry := peerclient.NopRegistry()
 	peerResolver := peerclient.NopResolver()
-	if nodeAddress := config.NodeAddress(); redisClient != nil && nodeAddress != nil {
+	if nodeAddress := config.NodeAddress(); nodeAddress != nil {
 		peerRegistry = peerclient.NewRedisRegistry(redisClient, *nodeAddress)
 		peerResolver = peerclient.NewResolver(peerRegistry, *nodeAddress)
 	}
@@ -410,7 +412,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 	sbxEventsDeliveryTargets := make([]event.Delivery[event.SandboxEvent], 0)
 
-	var hostStatsDelivery clickhousehoststats.Delivery
+	hostStatsDelivery := clickhousehoststats.NewNoopDelivery()
 
 	// Clickhouse sandbox events and host stats delivery
 	if config.ClickhouseConnectionString != "" {
@@ -452,11 +454,9 @@ func run(config cfg.Config, opts Options) (success bool) {
 	logger.L().Info(ctx, "cgroup accounting enabled", zap.String("root", cgroup.RootCgroupPath))
 
 	// Redis sandbox events delivery target
-	if redisClient != nil {
-		sbxEventsDeliveryRedis := event.NewRedisStreamsDelivery[event.SandboxEvent](redisClient, event.SandboxEventsStreamName)
-		sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryRedis)
-		closers = append(closers, closer{"sandbox events delivery for redis", sbxEventsDeliveryRedis.Close})
-	}
+	sbxEventsDeliveryRedis := event.NewRedisStreamsDelivery[event.SandboxEvent](redisClient, event.SandboxEventsStreamName)
+	sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryRedis)
+	closers = append(closers, closer{"sandbox events delivery for redis", sbxEventsDeliveryRedis.Close})
 
 	// sandbox observer
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID, sandboxes)
@@ -464,6 +464,14 @@ func run(config cfg.Config, opts Options) (success bool) {
 		logger.L().Fatal(ctx, "failed to create sandbox observer", zap.Error(err))
 	}
 	closers = append(closers, closer{"sandbox observer", sandboxObserver.Close})
+
+	// host metrics — samples CPU in the background so GetCPUMetrics is a
+	// non-blocking cache read on the request path.
+	hostMetrics := metrics.NewHostMetrics()
+	startService("host metrics poller", func() error {
+		return hostMetrics.Start()
+	})
+	closers = append(closers, closer{"host metrics poller", hostMetrics.Close})
 
 	// sandbox proxy
 	sandboxProxy, err := proxy.NewSandboxProxy(tel.MeterProvider, config.ProxyPort, sandboxes, featureFlags)
@@ -507,7 +515,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}
 
 	// device pool
-	devicePool, err := nbd.NewDevicePool()
+	devicePool, err := nbd.NewDevicePool(config.NBDPoolSize)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create device pool", zap.Error(err))
 	}
@@ -532,7 +540,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	closers = append(closers, closer{"network pool", networkPool.Close})
 
 	// sandbox factory
-	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery, cgroupManager, sandboxes)
+	sandboxFactory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery, cgroupManager, egressSetup.Proxy, sandboxes)
 
 	// isolated filesystems cache (for nfs proxy)
 	builder := chrooted.NewBuilder(config)
@@ -601,7 +609,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	})
 	closers = append(closers, closer{"hyperloop server", hyperloopSrv.Shutdown})
 
-	grpcServer := e2bgrpc.NewGRPCServer(tel)
+	grpcServer := e2bgrpc.NewGRPCServer(tel, e2bgrpc.WithSandboxResumeMetrics())
 	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
 	orchestrator.RegisterVolumeServiceServer(grpcServer, volumeService)
 	orchestrator.RegisterChunkServiceServer(grpcServer, orchestratorService)
@@ -639,7 +647,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		closers = append(closers, closer{"template server", tmpl.Close})
 	}
 
-	infoService := service.NewInfoService(serviceInfo, sandboxes)
+	infoService := service.NewInfoService(serviceInfo, sandboxes, hostMetrics)
 	orchestratorinfo.RegisterInfoServiceServer(grpcServer, infoService)
 
 	grpcHealth := health.NewServer()

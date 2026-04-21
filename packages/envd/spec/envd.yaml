@@ -48,6 +48,9 @@ paths:
                 hyperloopIP:
                   type: string
                   description: IP address of the hyperloop server to connect to
+                lifecycleID:
+                  type: string
+                  description: Lifecycle ID of the sandbox
                 envVars:
                   $ref: "#/components/schemas/EnvVars"
                 accessToken:
@@ -64,6 +67,10 @@ paths:
                 defaultWorkdir:
                   type: string
                   description: The default working directory to use for operations
+                caBundle:
+                  type: string
+                  description: PEM-encoded CA certificates to install into the system trust store (may contain multiple concatenated PEM blocks)
+
       responses:
         "204":
           description: Env vars set, the time and metadata is synced with the host
@@ -349,6 +356,9 @@ components:
         mem_used:
           type: integer
           description: Used virtual memory in bytes
+        mem_cache:
+          type: integer
+          description: Cached memory (page cache) in bytes
         mem_total_mib:
           type: integer
           description: Total virtual memory in MiB

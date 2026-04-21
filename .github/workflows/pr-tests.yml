@@ -9,6 +9,8 @@ jobs:
   run-tests:
     name: Run tests for ${{ matrix.package }}
     runs-on: infra-tests
+    env:
+      GIN_MODE: test
     strategy:
       matrix:
         include:
@@ -37,8 +39,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.commit_sha }}
 
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
@@ -56,6 +56,9 @@ jobs:
 
       - name: Setup orchestrator tests
         run: |
+          make -C packages/orchestrator fetch-busybox
+          echo "HOST_BUSYBOX_DIR=$(pwd)/packages/orchestrator/.busybox" >> "$GITHUB_ENV"
+
           # Enable unprivileged uffd mode
           echo 1 | sudo tee /proc/sys/vm/unprivileged_userfaultfd
 
@@ -78,12 +81,12 @@ jobs:
         working-directory: ${{ matrix.package }}
         run: |
           # Run tests. The '-E' flag is required to allow root to use the correct cache path.
-          sudo -E `which go` test -v ${{ matrix.test_path }}
+          sudo -E `which go` test -v -timeout 20m ${{ matrix.test_path }}
         if: matrix.sudo == true
 
       - name: Run tests
         working-directory: ${{ matrix.package }}
-        run: go test -v ${{ matrix.test_path }}
+        run: go test -v -timeout 20m ${{ matrix.test_path }}
         if: matrix.sudo == false
 
   validate-iac:

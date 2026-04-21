@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	mathrand "math/rand/v2"
@@ -134,7 +135,7 @@ func (r *errorAfterNReader) Read(p []byte) (int, error) {
 	}
 
 	if r.pos >= r.failAfter {
-		return 0, fmt.Errorf("simulated upstream error")
+		return 0, errors.New("simulated upstream error")
 	}
 
 	end := min(r.pos+r.blockSize, len(r.data))
@@ -347,100 +348,6 @@ func TestStreamingChunker_ConcurrentSameChunk(t *testing.T) {
 	for i := range numGoroutines {
 		require.Equal(t, data[offsets[i]:offsets[i]+testBlockSize], results[i],
 			"goroutine %d got wrong data", i)
-	}
-}
-
-func TestStreamingChunker_EarlyReturn(t *testing.T) {
-	t.Parallel()
-
-	type testCase struct {
-		name      string
-		blockSize int64
-		delay     time.Duration
-		// blockIndices are block indices within the chunk, listed in the
-		// expected completion order (earlier blocks are notified first).
-		blockIndices []int
-	}
-
-	cases := []testCase{
-		{
-			name:         "hugepage",
-			blockSize:    header.HugepageSize, // 2MB → 2 blocks per 4MB chunk
-			delay:        50 * time.Millisecond,
-			blockIndices: []int{0, 1},
-		},
-		{
-			name:         "4K",
-			blockSize:    header.PageSize, // 4KB → 1024 blocks per 4MB chunk
-			delay:        100 * time.Microsecond,
-			blockIndices: []int{1, 512, 1022},
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			data := makeTestData(t, storage.MemoryChunkSize)
-
-			gate := make(chan struct{})
-			upstream := streamingFunc(func(_ context.Context, off, length int64) (io.ReadCloser, error) {
-				<-gate
-				end := min(off+length, int64(len(data)))
-
-				return &slowReader{
-					data:      data[off:end],
-					blockSize: int(tc.blockSize),
-					delay:     tc.delay,
-				}, nil
-			})
-
-			chunker, err := NewStreamingChunker(
-				int64(len(data)), tc.blockSize,
-				upstream, t.TempDir()+"/cache",
-				newTestMetrics(t),
-				0, nil,
-			)
-			require.NoError(t, err)
-			defer chunker.Close()
-
-			n := len(tc.blockIndices)
-			completionOrder := make(chan int, n)
-
-			var eg errgroup.Group
-			for i, blockIdx := range tc.blockIndices {
-				off := int64(blockIdx) * tc.blockSize
-				eg.Go(func() error {
-					_, err := chunker.Slice(t.Context(), off, tc.blockSize)
-					if err != nil {
-						return fmt.Errorf("request %d (block %d) failed: %w", i, blockIdx, err)
-					}
-					completionOrder <- i
-
-					return nil
-				})
-			}
-
-			// Let all goroutines register as waiters before the fetch begins.
-			time.Sleep(10 * time.Millisecond)
-			close(gate)
-
-			require.NoError(t, eg.Wait())
-			close(completionOrder)
-
-			got := make([]int, 0, n)
-			for idx := range completionOrder {
-				got = append(got, idx)
-			}
-
-			expected := make([]int, n)
-			for i := range expected {
-				expected[i] = i
-			}
-
-			assert.Equal(t, expected, got,
-				"requests should complete in offset order (earlier blocks first)")
-		})
 	}
 }
 

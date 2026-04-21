@@ -13,7 +13,7 @@ import (
 // This is to prevent remove instances that are still being started
 const syncSandboxRemoveGracePeriod = 10 * time.Second
 
-func (s *Storage) Sync(ctx context.Context, sandboxes []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
+func (s *Storage) Reconcile(ctx context.Context, sandboxes []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
 	sandboxMap := make(map[string]sandbox.Sandbox)
 	now := time.Now()
 

@@ -27,9 +27,6 @@ job "nomad-autoscaler" {
         source      = "${apm_plugin_artifact_source}"
         destination = "local/plugins/nomad-nodepool-apm"
         mode        = "file"
-        options {
-          checksum = "md5:${apm_plugin_checksum}"
-        }
       }
 
       template {

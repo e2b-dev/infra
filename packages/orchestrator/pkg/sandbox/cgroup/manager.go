@@ -2,6 +2,7 @@ package cgroup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -51,6 +52,7 @@ type CgroupHandle struct {
 	memoryPeakFile *os.File // Open FD to memory.peak for per-FD reset (nil after Remove or if not available)
 	manager        *managerImpl
 	removed        bool
+	noop           bool // true for handles created by NoopManager (no real cgroup backing)
 }
 
 // GetFD returns the file descriptor for use with SysProcAttr.CgroupFD.
@@ -84,11 +86,16 @@ func (h *CgroupHandle) ReleaseCgroupFD() error {
 	return err
 }
 
-// GetStats retrieves current resource usage statistics for this cgroup
-// Returns error if cgroup has been removed or stats cannot be read
+// GetStats retrieves current resource usage statistics for this cgroup.
+// Returns (nil, nil) for noop handles (no real cgroup backing).
+// Returns error if the handle is nil (unexpected) or stats cannot be read.
 func (h *CgroupHandle) GetStats(ctx context.Context) (*Stats, error) {
 	if h == nil {
-		return nil, fmt.Errorf("cgroup handle is nil")
+		return nil, errors.New("cgroup handle is nil")
+	}
+
+	if h.noop {
+		return nil, nil
 	}
 
 	return h.manager.getStatsForPath(ctx, h.path, h.memoryPeakFile)
@@ -99,7 +106,7 @@ func (h *CgroupHandle) GetStats(ctx context.Context) (*Stats, error) {
 // Safe to call multiple times. Returns error if removal fails
 // (but tolerates the cgroup having been auto-cleaned by the kernel).
 func (h *CgroupHandle) Remove(ctx context.Context) error {
-	if h == nil || h.removed {
+	if h == nil || h.noop || h.removed {
 		return nil
 	}
 

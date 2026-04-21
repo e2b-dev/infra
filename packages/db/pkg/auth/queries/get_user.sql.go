@@ -12,12 +12,17 @@ import (
 )
 
 const getUser = `-- name: GetUser :one
-SELECT id, email FROM "auth"."users" where id = $1
+SELECT id, email FROM "public"."users" where id = $1
 `
 
-func (q *Queries) GetUser(ctx context.Context, userID uuid.UUID) (AuthUser, error) {
+type GetUserRow struct {
+	ID    uuid.UUID
+	Email string
+}
+
+func (q *Queries) GetUser(ctx context.Context, userID uuid.UUID) (GetUserRow, error) {
 	row := q.db.QueryRow(ctx, getUser, userID)
-	var i AuthUser
+	var i GetUserRow
 	err := row.Scan(&i.ID, &i.Email)
 	return i, err
 }

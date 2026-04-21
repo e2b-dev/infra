@@ -21,7 +21,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/api/internal/middleware/otel/metrics"
 	apiorch "github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -35,6 +34,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/metrics"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -316,7 +316,7 @@ var errVolumesNotSupported = errors.New("volumes are not supported")
 
 var errNoEnvdVersion = errors.New("no envd version provided")
 
-const minEnvdVersionForVolumes = "0.5.8"
+const minEnvdVersionForVolumes = "0.5.14"
 
 func convertAPIVolumesToOrchestratorVolumes(ctx context.Context, sqlClient *sqlcdb.Client, featureFlags featureFlagsClient, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount, env *queries.EnvBuild) ([]*orchestrator.SandboxVolumeMount, error) {
 	// are any volumes configured?
@@ -575,7 +575,7 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 		if len(allowedDomains) > 0 && !hasBlockAll {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("allow out contains domains but deny out is missing 0.0.0.0/0 (ALL_TRAFFIC)"),
+				Err:       errors.New("allow out contains domains but deny out is missing 0.0.0.0/0 (ALL_TRAFFIC)"),
 				ClientMsg: ErrMsgDomainsRequireBlockAll,
 			}
 		}

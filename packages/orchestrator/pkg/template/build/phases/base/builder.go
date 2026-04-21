@@ -183,13 +183,13 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		return metadata.Template{}, fmt.Errorf("error building environment: %w", err)
 	}
 
-	cacheFiles, err := storage.TemplateFiles{BuildID: baseMetadata.Template.BuildID}.CacheFiles(bb.BuildContext.BuilderConfig.StorageConfig)
+	cachePaths, err := storage.Paths{BuildID: baseMetadata.Template.BuildID}.Cache(bb.BuildContext.BuilderConfig.StorageConfig)
 	if err != nil {
 		err = errors.Join(err, rootfs.Close(), memfile.Close())
 
 		return metadata.Template{}, fmt.Errorf("error creating template files: %w", err)
 	}
-	localTemplate := sbxtemplate.NewLocalTemplate(cacheFiles, rootfs, memfile)
+	localTemplate := sbxtemplate.NewLocalTemplate(cachePaths, rootfs, memfile)
 	defer localTemplate.Close(ctx)
 
 	// Env variables from the Docker image
@@ -322,7 +322,7 @@ func (bb *BaseBuilder) Layer(
 		tm, err := bb.index.Cached(ctx, bb.Config.FromTemplate.GetBuildID())
 		if err != nil {
 			if errors.Is(err, storage.ErrObjectNotExist) {
-				return phases.LayerResult{}, phases.NewPhaseBuildError(bb.Metadata(), fmt.Errorf("error getting base template, you may need to rebuild it first"))
+				return phases.LayerResult{}, phases.NewPhaseBuildError(bb.Metadata(), errors.New("error getting base template, you may need to rebuild it first"))
 			}
 
 			return phases.LayerResult{}, fmt.Errorf("error getting base template: %w", err)

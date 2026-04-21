@@ -90,7 +90,7 @@ func NewNFSHandler(
 
 func (h *NFSHandler) OnInsert(_ context.Context, _ *sandbox.Sandbox) {}
 
-func (h *NFSHandler) OnRemove(ctx context.Context, sbx *sandbox.Sandbox) {
+func (h *NFSHandler) OnNetworkRelease(ctx context.Context, sbx *sandbox.Sandbox) {
 	lifecycleID := sbx.LifecycleID
 
 	h.mu.Lock()
@@ -119,8 +119,11 @@ func (h *NFSHandler) Mount(
 ) (nfs.MountStatus, billy.Filesystem, []nfs.AuthFlavor) {
 	fs, err := h.getChroot(ctx, conn.RemoteAddr(), request)
 	if err != nil {
+		sourceIP, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
+
 		logger.L().Warn(ctx, "failed to get path",
 			zap.String("request", string(request.Dirpath)),
+			logger.WithSandboxIP(sourceIP),
 			zap.Error(err))
 
 		return nfs.MountStatusErrAcces, mountFailedFS{}, nil

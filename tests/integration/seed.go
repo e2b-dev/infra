@@ -97,6 +97,14 @@ VALUES ($1, $2)
 		return fmt.Errorf("failed to create user: %w", err)
 	}
 
+	err = authdb.Write.UpsertPublicUser(ctx, authqueries.UpsertPublicUserParams{
+		ID:    data.UserID,
+		Email: "user-test-integration@e2b.dev",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create public user: %w", err)
+	}
+
 	// Access token
 	tokenWithoutPrefix := strings.TrimPrefix(data.AccessToken, keys.AccessTokenPrefix)
 	accessTokenBytes, err := hex.DecodeString(tokenWithoutPrefix)
@@ -208,7 +216,7 @@ INSERT INTO env_builds (
 	cluster_node_id, version, created_at, updated_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)
 `, build.id, "FROM e2bdev/base:latest", dbtypes.BuildStatusUploaded,
-				2, 512, 512, 1982, "vmlinux-6.1.102", "v1.12.1_a41d3fb", pkg.Version,
+				2, 512, 512, 1982, "vmlinux-6.1.102", "v1.14.1_458ca91", pkg.Version,
 				"integration-test-node", templates.TemplateV1Version, build.createdAt)
 		} else {
 			err = db.TestsRawSQL(ctx, `
@@ -218,7 +226,7 @@ INSERT INTO env_builds (
 	cluster_node_id, version, updated_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP)
 `, build.id, "FROM e2bdev/base:latest", dbtypes.BuildStatusUploaded,
-				2, 512, 512, 1982, "vmlinux-6.1.102", "v1.12.1_a41d3fb", pkg.Version,
+				2, 512, 512, 1982, "vmlinux-6.1.102", "v1.14.1_458ca91", pkg.Version,
 				"integration-test-node", templates.TemplateV1Version)
 		}
 		if err != nil {

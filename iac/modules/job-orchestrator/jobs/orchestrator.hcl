@@ -84,6 +84,7 @@ job "orchestrator-${latest_orchestrator_job_id}" {
         DOMAIN_NAME                  = "${domain_name}"
         SHARED_CHUNK_CACHE_PATH      = "${shared_chunk_cache_path}"
         ORCHESTRATOR_SERVICES        = "${orchestrator_services}"
+        PROVIDER                     = "${provider}"
 
 %{ if build_cache_bucket_name != "" }
         BUILD_CACHE_BUCKET_NAME      = "${build_cache_bucket_name}"
@@ -134,7 +135,9 @@ job "orchestrator-${latest_orchestrator_job_id}" {
       }
 
       artifact {
-        source = "${artifact_source}"
+        source      = "${artifact_source}"
+        destination = "local/orchestrator"
+        mode        = "file"
       }
     }
   }

@@ -41,7 +41,7 @@ func (a *API) WithAuthorization(handler http.Handler) http.Handler {
 			if !a.accessToken.Equals(authHeader) && !allowedPath {
 				a.logger.Error().Msg("Trying to access secured envd without correct access token")
 
-				err := fmt.Errorf("unauthorized access, please provide a valid access token or method signing if supported")
+				err := errors.New("unauthorized access, please provide a valid access token or method signing if supported")
 				jsonError(w, http.StatusUnauthorized, err)
 
 				return
@@ -83,14 +83,14 @@ func (a *API) validateSigning(r *http.Request, signature *string, signatureExpir
 	tokenFromHeader := r.Header.Get(accessTokenHeader)
 	if tokenFromHeader != "" {
 		if !a.accessToken.Equals(tokenFromHeader) {
-			return fmt.Errorf("access token present in header but does not match")
+			return errors.New("access token present in header but does not match")
 		}
 
 		return nil
 	}
 
 	if signature == nil {
-		return fmt.Errorf("missing signature query parameter")
+		return errors.New("missing signature query parameter")
 	}
 
 	// Empty string is used when no username is provided and the default user should be used
@@ -114,14 +114,14 @@ func (a *API) validateSigning(r *http.Request, signature *string, signatureExpir
 
 	// signature validation
 	if expectedSignature != *signature {
-		return fmt.Errorf("invalid signature")
+		return errors.New("invalid signature")
 	}
 
 	// signature expiration
 	if signatureExpiration != nil {
 		exp := int64(*signatureExpiration)
 		if exp < time.Now().Unix() {
-			return fmt.Errorf("signature is already expired")
+			return errors.New("signature is already expired")
 		}
 	}
 

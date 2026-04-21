@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/bits-and-blooms/bitset"
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -290,7 +290,7 @@ func TestRange_Offsets_Iteration(t *testing.T) {
 
 func TestBitsetRanges_Empty(t *testing.T) {
 	t.Parallel()
-	b := bitset.New(100)
+	b := roaring.New()
 	blockSize := int64(4096)
 
 	ranges := slices.Collect(BitsetRanges(b, blockSize))
@@ -299,8 +299,8 @@ func TestBitsetRanges_Empty(t *testing.T) {
 
 func TestBitsetRanges_SingleBit(t *testing.T) {
 	t.Parallel()
-	b := bitset.New(100)
-	b.Set(5)
+	b := roaring.New()
+	b.Add(5)
 	blockSize := int64(4096)
 
 	ranges := slices.Collect(BitsetRanges(b, blockSize))
@@ -313,12 +313,12 @@ func TestBitsetRanges_SingleBit(t *testing.T) {
 
 func TestBitsetRanges_Contiguous(t *testing.T) {
 	t.Parallel()
-	b := bitset.New(100)
+	b := roaring.New()
 	// Set bits 2, 3, 4, 5
-	b.Set(2)
-	b.Set(3)
-	b.Set(4)
-	b.Set(5)
+	b.Add(2)
+	b.Add(3)
+	b.Add(4)
+	b.Add(5)
 	blockSize := int64(4096)
 
 	ranges := slices.Collect(BitsetRanges(b, blockSize))
@@ -331,15 +331,15 @@ func TestBitsetRanges_Contiguous(t *testing.T) {
 
 func TestBitsetRanges_MultipleRanges(t *testing.T) {
 	t.Parallel()
-	b := bitset.New(100)
+	b := roaring.New()
 	// Set bits 1, 2, 3 (contiguous)
-	b.Set(1)
-	b.Set(2)
-	b.Set(3)
+	b.Add(1)
+	b.Add(2)
+	b.Add(3)
 	// Gap
 	// Set bits 7, 8 (contiguous)
-	b.Set(7)
-	b.Set(8)
+	b.Add(7)
+	b.Add(8)
 	blockSize := int64(4096)
 
 	ranges := slices.Collect(BitsetRanges(b, blockSize))
@@ -356,9 +356,9 @@ func TestBitsetRanges_MultipleRanges(t *testing.T) {
 
 func TestBitsetRanges_AllSet(t *testing.T) {
 	t.Parallel()
-	b := bitset.New(10)
-	for i := range uint(10) {
-		b.Set(i)
+	b := roaring.New()
+	for i := range uint32(10) {
+		b.Add(i)
 	}
 	blockSize := int64(4096)
 
@@ -372,10 +372,10 @@ func TestBitsetRanges_AllSet(t *testing.T) {
 
 func TestBitsetRanges_EndOfBitset(t *testing.T) {
 	t.Parallel()
-	b := bitset.New(20)
+	b := roaring.New()
 	// Set bits 15, 16, 17, 18, 19 (at the end)
-	for i := uint(15); i < 20; i++ {
-		b.Set(i)
+	for i := uint32(15); i < 20; i++ {
+		b.Add(i)
 	}
 	blockSize := int64(4096)
 
@@ -389,12 +389,12 @@ func TestBitsetRanges_EndOfBitset(t *testing.T) {
 
 func TestBitsetRanges_Sparse(t *testing.T) {
 	t.Parallel()
-	b := bitset.New(100)
+	b := roaring.New()
 	// Set individual bits with gaps
-	b.Set(0)
-	b.Set(10)
-	b.Set(20)
-	b.Set(30)
+	b.Add(0)
+	b.Add(10)
+	b.Add(20)
+	b.Add(30)
 	blockSize := int64(4096)
 
 	ranges := slices.Collect(BitsetRanges(b, blockSize))

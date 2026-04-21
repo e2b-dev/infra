@@ -2,6 +2,7 @@ package placement
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"go.opentelemetry.io/otel"
@@ -19,7 +20,7 @@ import (
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement")
 
-var errSandboxCreateFailed = fmt.Errorf("failed to create a new sandbox, if the problem persists, contact us")
+var errSandboxCreateFailed = errors.New("failed to create a new sandbox, if the problem persists, contact us")
 
 // Algorithm defines the interface for sandbox placement strategies.
 // Implementations should choose an optimal node based on available resources
@@ -53,7 +54,7 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 			telemetry.ReportEvent(ctx, "Placing sandbox on the preferred node", telemetry.WithNodeID(node.ID))
 		} else {
 			if len(nodesExcluded) >= len(clusterNodes) {
-				return nil, fmt.Errorf("no nodes available")
+				return nil, errors.New("no nodes available")
 			}
 
 			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()}, buildMachineInfo, labelFilteringEnabled, requiredLabels)
@@ -78,6 +79,14 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 		span.End()
 		if err == nil {
 			node.PlacementMetrics.Success(sbxRequest.GetSandbox().GetSandboxId())
+
+			// Optimistic update: assume resources are occupied after successful creation.
+			// Manually update node.metrics with the newly allocated resources.
+			// This will be overwritten by the next real Metrics report for auto-correction.
+			node.OptimisticAdd(ctx, nodemanager.SandboxResources{
+				CPUs:      sbxRequest.GetSandbox().GetVcpu(),
+				MiBMemory: sbxRequest.GetSandbox().GetRamMb(),
+			})
 
 			return node, nil
 		}

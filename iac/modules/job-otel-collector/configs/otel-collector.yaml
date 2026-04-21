@@ -217,6 +217,7 @@ processors:
           - "orchestrator.*"
           - "template.*"
           - "api.*"
+          - "batcher.*"
           - "db.sql.connection.*"
           - "db.client.*"
           - "vault.*"
@@ -230,6 +231,8 @@ processors:
           - "pgxpool.*"
           - "go\\..*"
           - "traefik.*"
+          - "grpc\\..*"
+          - "rpc\\.client.*"
 
   filter/only_client_allocs:
     metrics:

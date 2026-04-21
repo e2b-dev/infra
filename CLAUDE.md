@@ -130,6 +130,7 @@ Client → Client-Proxy → API (REST) ⟷ PostgreSQL
 - Process management API: `/spec/process/process.proto`
 - Filesystem API: `/spec/filesystem/filesystem.proto`
 - Port: 49983
+- **Version in `pkg/version.go` must be bumped on every behavioral change** (not comments/docs-only changes)
 
 **Client Proxy (`packages/client-proxy/`)** - Edge routing layer
 - Service discovery via Consul
@@ -152,7 +153,7 @@ Client → Client-Proxy → API (REST) ⟷ PostgreSQL
 
 ### Key Technologies
 
-- **Go 1.25.4** with workspaces (`go.work`)
+- **go 1.25.9** with workspaces (`go.work`)
 - **Firecracker** for microVM virtualization
 - **PostgreSQL** for primary data (sqlc for queries)
 - **ClickHouse** for analytics

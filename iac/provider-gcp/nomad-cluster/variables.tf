@@ -224,6 +224,11 @@ variable "fc_versions_bucket_name" {
   type = string
 }
 
+variable "fc_busybox_bucket_name" {
+  type        = string
+  description = "The name of the bucket to store the busybox binary"
+}
+
 variable "consul_acl_token_secret" {
   type = string
 }
@@ -353,6 +358,16 @@ variable "clickhouse_boot_disk_type" {
   type        = string
 }
 
+variable "clickhouse_stateful_disk_type" {
+  description = "The GCE disk type for the ClickHouse stateful data disk (e.g. pd-ssd, hyperdisk-balanced)."
+  type        = string
+}
+
+variable "clickhouse_stateful_disk_size_gb" {
+  description = "The GCE disk size (in GB) for the ClickHouse stateful data disk."
+  type        = number
+}
+
 variable "loki_boot_disk_type" {
   description = "The GCE boot disk type for the Loki machines."
   type        = string
@@ -368,5 +383,12 @@ variable "persistent_volume_types" {
 }
 
 variable "additional_api_paths_handled_by_ingress" {
-  type = list(string)
+  type = list(object({
+    paths       = list(string)
+    timeout_sec = optional(number)
+  }))
+}
+
+variable "ingress_timeout_seconds" {
+  type = number
 }

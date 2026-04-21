@@ -42,6 +42,7 @@ func TestSandboxResume(t *testing.T) {
 		require.Equal(t, http.StatusCreated, sbxResume.StatusCode())
 		require.NotNil(t, sbxResume.JSON201)
 		assert.Equal(t, sbxResume.JSON201.SandboxID, sbxId)
+		assert.Equal(t, sbx.TemplateID, sbxResume.JSON201.TemplateID)
 	})
 
 	t.Run("concurrent resumes", func(t *testing.T) {
@@ -76,6 +77,7 @@ func TestSandboxResume(t *testing.T) {
 		require.Equal(t, http.StatusOK, res.StatusCode())
 		require.NotNil(t, res.JSON200)
 		assert.Equal(t, api.Running, res.JSON200.State)
+		assert.Equal(t, sbx.TemplateID, res.JSON200.TemplateID)
 
 		assert.True(t, resumed.Load(), "at least one resume should succeed")
 	})

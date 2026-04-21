@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -19,11 +20,13 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
@@ -112,7 +115,7 @@ func setupEnv(ctx context.Context, storagePath, sandboxDir, kernel, fc string, l
 
 	if localMode {
 		if os.Geteuid() != 0 {
-			return fmt.Errorf("local mode requires root")
+			return errors.New("local mode requires root")
 		}
 
 		dataDir := storagePath
@@ -159,6 +162,24 @@ func setupEnv(ctx context.Context, storagePath, sandboxDir, kernel, fc string, l
 		}
 		if _, err := os.Stat(envdPath); err == nil {
 			fmt.Printf("✓ Envd: %s\n", envdPath)
+		}
+
+		// HOST_BUSYBOX_DIR: use env if set, otherwise default to local .busybox dir.
+		// Run "make fetch-busybox" in packages/orchestrator to download the binary.
+		busyboxDir := os.Getenv("HOST_BUSYBOX_DIR")
+		if busyboxDir == "" {
+			busyboxDir = abs(".busybox")
+			os.Setenv("HOST_BUSYBOX_DIR", busyboxDir)
+		}
+		busyboxVersion := os.Getenv("BUSYBOX_VERSION")
+		if busyboxVersion == "" {
+			busyboxVersion = cfg.DefaultBusyboxVersion
+		}
+		busyboxBin := filepath.Join(busyboxDir, busyboxVersion, runtime.GOARCH, "busybox")
+		if _, err := os.Stat(busyboxBin); err == nil {
+			fmt.Printf("✓ Busybox: %s\n", busyboxBin)
+		} else {
+			fmt.Printf("⚠ Busybox not found at %s — run 'make fetch-busybox' in packages/orchestrator\n", busyboxBin)
 		}
 
 		fmt.Printf("✓ Storage: %s (local)\n", dataDir)
@@ -252,7 +273,18 @@ func doBuild(
 		return fmt.Errorf("build storage: %w", err)
 	}
 
-	devicePool, err := nbd.NewDevicePool()
+	blockMetrics, _ := blockmetrics.NewMetrics(noop.NewMeterProvider())
+
+	if os.Getenv("NODE_IP") == "" {
+		os.Setenv("NODE_IP", "127.0.0.1")
+	}
+
+	c, err := cfg.Parse()
+	if err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
+
+	devicePool, err := nbd.NewDevicePool(c.NBDPoolSize)
 	if err != nil {
 		return fmt.Errorf("nbd pool: %w", err)
 	}
@@ -278,17 +310,6 @@ func doBuild(
 	}
 	defer dockerhubRepo.Close()
 
-	blockMetrics, _ := blockmetrics.NewMetrics(noop.NewMeterProvider())
-
-	if os.Getenv("NODE_IP") == "" {
-		os.Setenv("NODE_IP", "127.0.0.1")
-	}
-
-	c, err := cfg.Parse()
-	if err != nil {
-		return fmt.Errorf("config: %w", err)
-	}
-
 	templateCache, err := sbxtemplate.NewCache(c, featureFlags, persistenceTemplate, blockMetrics, peerclient.NopResolver())
 	if err != nil {
 		return fmt.Errorf("template cache: %w", err)
@@ -297,7 +318,7 @@ func doBuild(
 	defer templateCache.Stop()
 
 	buildMetrics, _ := metrics.NewBuildMetrics(noop.MeterProvider{})
-	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags, nil, nil, sandboxes)
+	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), network.NewNoopEgressProxy(), sandboxes)
 
 	builder := build.NewBuilder(
 		builderConfig, l, featureFlags, sandboxFactory,
@@ -348,7 +369,7 @@ func doBuild(
 		tmpl.FromImage = baseImage
 	}
 
-	result, err := builder.Build(ctx, storage.TemplateFiles{BuildID: buildID}, tmpl, l.Detach(ctx).Core())
+	result, err := builder.Build(ctx, storage.Paths{BuildID: buildID}, tmpl, l.Detach(ctx).Core())
 	if err != nil {
 		return fmt.Errorf("build: %w", err)
 	}
@@ -362,7 +383,7 @@ func doBuild(
 }
 
 func printArtifactSizes(ctx context.Context, persistence storage.StorageProvider, buildID string, _ *build.Result) {
-	files := storage.TemplateFiles{BuildID: buildID}
+	paths := storage.Paths{BuildID: buildID}
 	basePath := os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH")
 
 	fmt.Printf("\n📦 Artifacts:\n")
@@ -372,7 +393,7 @@ func printArtifactSizes(ctx context.Context, persistence storage.StorageProvider
 		printLocalFileSizes(basePath, buildID)
 	} else {
 		// For remote storage, get sizes from storage provider
-		if memfile, err := persistence.OpenSeekable(ctx, files.StorageMemfilePath(), storage.MemfileObjectType); err == nil {
+		if memfile, err := persistence.OpenSeekable(ctx, paths.Memfile(), storage.MemfileObjectType); err == nil {
 			if size, err := memfile.Size(ctx); err == nil {
 				fmt.Printf("   Memfile: %d MB\n", size>>20)
 			}
@@ -412,63 +433,141 @@ func printLocalFileSizes(basePath, buildID string) {
 }
 
 func setupKernel(ctx context.Context, dir, version string) error {
-	dstPath := filepath.Join(dir, version, "vmlinux.bin")
+	arch := utils.TargetArch()
+	dstPath := filepath.Join(dir, version, arch, "vmlinux.bin")
+
 	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
 		return fmt.Errorf("mkdir kernel dir: %w", err)
 	}
 
 	if _, err := os.Stat(dstPath); err == nil {
-		fmt.Printf("✓ Kernel %s exists\n", version)
+		fmt.Printf("✓ Kernel %s (%s) exists\n", version, arch)
 
 		return nil
 	}
 
-	kernelURL, _ := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/kernels/", version, "vmlinux.bin")
-	fmt.Printf("⬇ Downloading kernel %s...\n", version)
+	// Try arch-specific URL first: {version}/{arch}/vmlinux.bin
+	archURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/kernels/", version, arch, "vmlinux.bin")
+	if err != nil {
+		return fmt.Errorf("invalid kernel URL: %w", err)
+	}
 
-	return download(ctx, kernelURL, dstPath, 0o644)
+	fmt.Printf("⬇ Downloading kernel %s (%s)...\n", version, arch)
+
+	if err := download(ctx, archURL, dstPath, 0o644); err == nil {
+		return nil
+	} else if !errors.Is(err, errNotFound) {
+		return fmt.Errorf("failed to download kernel: %w", err)
+	}
+
+	// Legacy URLs are x86_64-only; only fall back for amd64.
+	if arch != "amd64" {
+		return fmt.Errorf("kernel %s not found for %s (no legacy fallback for non-amd64)", version, arch)
+	}
+
+	legacyURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/kernels/", version, "vmlinux.bin")
+	if err != nil {
+		return fmt.Errorf("invalid kernel legacy URL: %w", err)
+	}
+
+	fmt.Printf("  %s path not found, trying legacy URL...\n", arch)
+
+	return download(ctx, legacyURL, dstPath, 0o644)
 }
 
 func setupFC(ctx context.Context, dir, version string) error {
-	dstPath := filepath.Join(dir, version, "firecracker")
+	arch := utils.TargetArch()
+	dstPath := filepath.Join(dir, version, arch, "firecracker")
+
 	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
 		return fmt.Errorf("mkdir firecracker dir: %w", err)
 	}
 
 	if _, err := os.Stat(dstPath); err == nil {
-		fmt.Printf("✓ Firecracker %s exists\n", version)
+		fmt.Printf("✓ Firecracker %s (%s) exists\n", version, arch)
 
 		return nil
 	}
 
-	fcURL := fmt.Sprintf("https://github.com/e2b-dev/fc-versions/releases/download/%s/firecracker", version)
-	fmt.Printf("⬇ Downloading Firecracker %s...\n", version)
+	// Download from GCS bucket with {version}/{arch}/firecracker path
+	fcURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/firecrackers/", version, arch, "firecracker")
+	if err != nil {
+		return fmt.Errorf("invalid Firecracker URL: %w", err)
+	}
 
-	return download(ctx, fcURL, dstPath, 0o755)
+	fmt.Printf("⬇ Downloading Firecracker %s (%s)...\n", version, arch)
+
+	if err := download(ctx, fcURL, dstPath, 0o755); err == nil {
+		return nil
+	} else if !errors.Is(err, errNotFound) {
+		return fmt.Errorf("failed to download Firecracker: %w", err)
+	}
+
+	// Legacy URLs are x86_64-only; only fall back for amd64.
+	if arch != "amd64" {
+		return fmt.Errorf("firecracker %s not found for %s (no legacy fallback for non-amd64)", version, arch)
+	}
+
+	legacyURL, err := url.JoinPath("https://storage.googleapis.com/e2b-prod-public-builds/firecrackers/", version, "firecracker")
+	if err != nil {
+		return fmt.Errorf("invalid Firecracker legacy URL: %w", err)
+	}
+
+	fmt.Printf("  %s path not found, trying legacy URL...\n", arch)
+
+	return download(ctx, legacyURL, dstPath, 0o755)
 }
 
-func download(ctx context.Context, url, path string, perm os.FileMode) error {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+var errNotFound = errors.New("not found")
+
+func download(ctx context.Context, rawURL, path string, perm os.FileMode) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return fmt.Errorf("invalid download URL %s: %w", rawURL, err)
+	}
+
 	resp, err := (&http.Client{Timeout: 5 * time.Minute}).Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("%w: %s", errNotFound, rawURL)
+	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, url)
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, rawURL)
 	}
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
+	// Write to a temporary file and rename atomically to avoid partial files
+	// on network errors or disk-full conditions.
+	tmpPath := path + ".tmp"
+
+	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 
-	_, err = io.Copy(f, resp.Body)
-	if err == nil {
-		fmt.Printf("✓ Downloaded %s\n", filepath.Base(path))
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+
+		return err
 	}
 
-	return err
+	if err := f.Close(); err != nil {
+		os.Remove(tmpPath)
+
+		return err
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		os.Remove(tmpPath)
+
+		return err
+	}
+
+	fmt.Printf("✓ Downloaded %s\n", filepath.Base(path))
+
+	return nil
 }

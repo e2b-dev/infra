@@ -14,6 +14,14 @@ output "nomad_acl_token_secret" {
   value = google_secret_manager_secret_version.nomad_acl_token.secret_data
 }
 
+output "api_admin_token_secret_name" {
+  value = google_secret_manager_secret_version.api_admin_token_value.secret
+}
+
+output "dashboard_api_admin_token_secret_name" {
+  value = google_secret_manager_secret_version.dashboard_api_admin_token_value.secret
+}
+
 output "grafana_api_key_secret_name" {
   value = google_secret_manager_secret.grafana_api_key.name
 }
@@ -89,6 +97,10 @@ output "fc_kernels_bucket_name" {
 
 output "fc_versions_bucket_name" {
   value = google_storage_bucket.fc_versions_bucket.name
+}
+
+output "fc_busybox_bucket_name" {
+  value = google_storage_bucket.fc_busybox_bucket.name
 }
 
 output "fc_template_bucket_name" {
