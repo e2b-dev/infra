@@ -50,7 +50,7 @@ const (
 func resumedSandboxNodeIPFromCatalog(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog) (string, error) {
 	var lastErr error
 
-	for attempt := 0; attempt < resumedSandboxCatalogLookupAttempts; attempt++ {
+	for attempt := range resumedSandboxCatalogLookupAttempts {
 		resumedSandbox, err := c.GetSandbox(ctx, sandboxId)
 		if err == nil {
 			if resumedSandbox.OrchestratorIP != "" {
