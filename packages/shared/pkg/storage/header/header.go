@@ -21,20 +21,20 @@ import (
 const NormalizeFixVersion = 3
 
 // Dependency is the per-build metadata stored in V4 headers: size, checksum,
-// and optional FrameData for compressed reads.
+// and optional FrameTable for compressed reads.
 type Dependency struct {
-	Size      int64
-	Checksum  [32]byte
-	FrameData *storage.FrameTable
+	Size       int64
+	Checksum   [32]byte
+	FrameTable *storage.FrameTable
 }
 
 type Header struct {
 	Metadata *Metadata
 	Mapping  []BuildMap
 
-	initialDependencies map[uuid.UUID]Dependency
-	dependencies        *utils.SetOnce[map[uuid.UUID]Dependency]
-	locallyAvailable    atomic.Bool
+	knownDependencies map[uuid.UUID]Dependency
+	dependencies      *utils.SetOnce[map[uuid.UUID]Dependency]
+	locallyAvailable  atomic.Bool
 }
 
 func (t *Header) MarkLocallyAvailable() {
@@ -92,17 +92,17 @@ func NewHeaderWithKnownDependencies(metadata *Metadata, mapping []BuildMap, know
 }
 
 // NewHeaderWithPendingDependencies creates a header seeded with
-// initialDependencies (typically the parent-inherited subset) and completed
+// knownDependencies (typically the parent-inherited subset) and completed
 // later via FinalizeDependencies. Until then, WaitForDependencies blocks.
-// The header retains a reference to initialDependencies; callers should
+// The header retains a reference to knownDependencies; callers should
 // treat it as read-only after this call.
-func NewHeaderWithPendingDependencies(metadata *Metadata, mapping []BuildMap, initialDependencies map[uuid.UUID]Dependency) (*Header, error) {
+func NewHeaderWithPendingDependencies(metadata *Metadata, mapping []BuildMap, knownDependencies map[uuid.UUID]Dependency) (*Header, error) {
 	h, err := NewHeader(metadata, mapping)
 	if err != nil {
 		return nil, err
 	}
 
-	h.initialDependencies = initialDependencies
+	h.knownDependencies = knownDependencies
 	h.dependencies = utils.NewSetOnce[map[uuid.UUID]Dependency]()
 
 	return h, nil
@@ -140,7 +140,7 @@ func (t *Header) CancelOnError(err error) {
 }
 
 // FinalizeDependencies completes a pending header: merges extra into the
-// parent-inherited initialDependencies and sets the result, unblocking
+// parent-inherited knownDependencies and sets the result, unblocking
 // WaitForDependencies. First call wins. Nil-safe: V3 uploader calls this on
 // potentially-nil *Header references (see build_upload_v3.go).
 func (t *Header) FinalizeDependencies(extra map[uuid.UUID]Dependency, err error) {
@@ -153,8 +153,16 @@ func (t *Header) FinalizeDependencies(extra map[uuid.UUID]Dependency, err error)
 		return
 	}
 
-	merged := make(map[uuid.UUID]Dependency, len(t.initialDependencies)+len(extra))
-	maps.Copy(merged, t.initialDependencies)
+	// No extras → hand the immutable knownDependencies straight through;
+	// the merge allocation would only produce a shallow copy of it anyway.
+	if len(extra) == 0 {
+		_ = t.dependencies.SetValue(t.knownDependencies)
+
+		return
+	}
+
+	merged := make(map[uuid.UUID]Dependency, len(t.knownDependencies)+len(extra))
+	maps.Copy(merged, t.knownDependencies)
 	maps.Copy(merged, extra)
 	_ = t.dependencies.SetValue(merged)
 }
@@ -226,22 +234,21 @@ func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (BuildMap,
 }
 
 func (t *Header) LookupDependency(ctx context.Context, buildID uuid.UUID) (Dependency, error) {
-	if t.locallyAvailable.Load() && buildID == t.Metadata.BuildId {
+	switch {
+	case t.locallyAvailable.Load() && buildID == t.Metadata.BuildId:
 		return Dependency{}, nil
-	}
 
-	if t.IsPending() {
-		if dep, ok := t.initialDependencies[buildID]; ok {
-			return dep, nil
+	case t.IsPending():
+		return t.knownDependencies[buildID], nil
+
+	default:
+		deps, err := t.dependencies.WaitWithContext(ctx)
+		if err != nil {
+			return Dependency{}, err
 		}
-	}
 
-	deps, err := t.dependencies.WaitWithContext(ctx)
-	if err != nil {
-		return Dependency{}, err
+		return deps[buildID], nil
 	}
-
-	return deps[buildID], nil
 }
 
 func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64, error) {

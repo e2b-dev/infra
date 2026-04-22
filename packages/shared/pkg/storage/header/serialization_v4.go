@@ -64,7 +64,7 @@ func serializeV4(meta *Metadata, h *Header) ([]byte, error) {
 	var dependencies map[uuid.UUID]Dependency
 	pending := h.IsPending()
 	if pending {
-		dependencies = h.initialDependencies
+		dependencies = h.knownDependencies
 	} else {
 		dependencies, _ = h.dependencies.Result()
 	}
@@ -106,7 +106,7 @@ func serializeV4(meta *Metadata, h *Header) ([]byte, error) {
 			return nil, fmt.Errorf("failed to write dependency info: %w", err)
 		}
 
-		trimmed := bd.FrameData.TrimToRanges(perBuildRanges[id])
+		trimmed := bd.FrameTable.TrimToRanges(perBuildRanges[id])
 		if err := trimmed.Serialize(&block); err != nil {
 			return nil, fmt.Errorf("failed to write dependency frame data: %w", err)
 		}
@@ -189,7 +189,7 @@ func deserializeV4(metadata *Metadata, blockData []byte) (*Header, error) {
 				return nil, fmt.Errorf("failed to read frame table for dependency %s: %w", entry.BuildId, err)
 			}
 
-			bd.FrameData = ft
+			bd.FrameTable = ft
 			dependencies[entry.BuildId] = bd
 		}
 	}

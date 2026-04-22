@@ -159,7 +159,7 @@ func TestSerializeDeserialize_V4_WithFrameTable(t *testing.T) {
 	h, err := NewHeaderWithKnownDependencies(metadata, mappings, map[uuid.UUID]Dependency{
 		buildID: {
 			Size: 12345, Checksum: checksum,
-			FrameData: storage.NewFrameTable(storage.CompressionLZ4, []storage.FrameSize{
+			FrameTable: storage.NewFrameTable(storage.CompressionLZ4, []storage.FrameSize{
 				{U: 2048, C: 1024},
 				{U: 2048, C: 900},
 			}),
@@ -186,7 +186,7 @@ func TestSerializeDeserialize_V4_WithFrameTable(t *testing.T) {
 	require.Equal(t, int64(67890), depsOf(t, got)[baseID].Size)
 
 	// Frame data round-trip
-	fd := depsOf(t, got)[buildID].FrameData
+	fd := depsOf(t, got)[buildID].FrameTable
 	require.NotNil(t, fd)
 	require.Equal(t, storage.CompressionLZ4, fd.CompressionType())
 	require.Equal(t, 2, fd.NumFrames())
@@ -202,7 +202,7 @@ func TestSerializeDeserialize_V4_WithFrameTable(t *testing.T) {
 	require.Equal(t, 900, r.Length)
 
 	// baseID has no frames
-	require.Nil(t, depsOf(t, got)[baseID].FrameData)
+	require.Nil(t, depsOf(t, got)[baseID].FrameTable)
 }
 
 func TestSerializeDeserialize_V4_Zstd(t *testing.T) {
@@ -230,7 +230,7 @@ func TestSerializeDeserialize_V4_Zstd(t *testing.T) {
 	// 3 frames; only the third [8192, 12288) overlaps the mapping.
 	h, err := NewHeaderWithKnownDependencies(metadata, mappings, map[uuid.UUID]Dependency{
 		buildID: {
-			FrameData: storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+			FrameTable: storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
 				{U: 4096, C: 2000},
 				{U: 4096, C: 3000},
 				{U: 4096, C: 3500},
@@ -249,7 +249,7 @@ func TestSerializeDeserialize_V4_Zstd(t *testing.T) {
 	require.Equal(t, uint64(8192), got.Mapping[0].BuildStorageOffset)
 
 	require.Len(t, depsOf(t, got), 1)
-	fd := depsOf(t, got)[buildID].FrameData
+	fd := depsOf(t, got)[buildID].FrameTable
 	require.NotNil(t, fd)
 	require.Equal(t, storage.CompressionZstd, fd.CompressionType())
 	require.Equal(t, 1, fd.NumFrames())
@@ -331,7 +331,7 @@ func TestSerializeDeserialize_V4_ManyFrames(t *testing.T) {
 	}
 
 	h, err := NewHeaderWithKnownDependencies(metadata, mappings, map[uuid.UUID]Dependency{
-		buildID: {FrameData: storage.NewFrameTable(storage.CompressionLZ4, frames)},
+		buildID: {FrameTable: storage.NewFrameTable(storage.CompressionLZ4, frames)},
 	})
 	require.NoError(t, err)
 
@@ -343,7 +343,7 @@ func TestSerializeDeserialize_V4_ManyFrames(t *testing.T) {
 
 	require.Len(t, got.Mapping, 1)
 	require.NotNil(t, depsOf(t, got))
-	fd := depsOf(t, got)[buildID].FrameData
+	fd := depsOf(t, got)[buildID].FrameTable
 	require.NotNil(t, fd)
 	require.Equal(t, numFrames, fd.NumFrames())
 
@@ -439,8 +439,8 @@ func TestSerializeDeserialize_V4_MultiBuild_LocateCompressed(t *testing.T) {
 	checksumB := sha256.Sum256([]byte("build-b"))
 
 	h, err := NewHeaderWithKnownDependencies(metadata, mappings, map[uuid.UUID]Dependency{
-		buildA: {Size: 12288, Checksum: checksumA, FrameData: ftA},
-		buildB: {Size: 8192, Checksum: checksumB, FrameData: ftB},
+		buildA: {Size: 12288, Checksum: checksumA, FrameTable: ftA},
+		buildB: {Size: 8192, Checksum: checksumB, FrameTable: ftB},
 	})
 	require.NoError(t, err)
 
@@ -461,7 +461,7 @@ func TestSerializeDeserialize_V4_MultiBuild_LocateCompressed(t *testing.T) {
 	// --- Build A frame lookups via Dependency ---
 	depA, err := got.LookupDependency(t.Context(), buildA)
 	require.NoError(t, err)
-	fdA := depA.FrameData
+	fdA := depA.FrameTable
 	require.NotNil(t, fdA)
 	require.Equal(t, storage.CompressionZstd, fdA.CompressionType())
 	// All 3 frames should survive trimming: frame 0 referenced by mapping 0,
@@ -489,7 +489,7 @@ func TestSerializeDeserialize_V4_MultiBuild_LocateCompressed(t *testing.T) {
 	// --- Build B frame lookups via Dependency ---
 	depB, err := got.LookupDependency(t.Context(), buildB)
 	require.NoError(t, err)
-	fdB := depB.FrameData
+	fdB := depB.FrameTable
 	require.NotNil(t, fdB)
 	require.Equal(t, storage.CompressionLZ4, fdB.CompressionType())
 	require.Equal(t, 2, fdB.NumFrames())
@@ -545,7 +545,7 @@ func TestSerializeDeserialize_V4_TrimmedOffsets_Error(t *testing.T) {
 	}
 
 	h, err := NewHeaderWithKnownDependencies(metadata, mappings, map[uuid.UUID]Dependency{
-		buildID: {FrameData: ft},
+		buildID: {FrameTable: ft},
 	})
 	require.NoError(t, err)
 
@@ -555,7 +555,7 @@ func TestSerializeDeserialize_V4_TrimmedOffsets_Error(t *testing.T) {
 	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
-	fd := depsOf(t, got)[buildID].FrameData
+	fd := depsOf(t, got)[buildID].FrameTable
 	require.NotNil(t, fd)
 	require.Equal(t, 1, fd.NumFrames(), "only frame 2 should survive trimming")
 
@@ -672,7 +672,7 @@ func TestSerializeDeserialize_V4_SparseTrimming(t *testing.T) {
 	}
 
 	h, err := NewHeaderWithKnownDependencies(metadata, mappings, map[uuid.UUID]Dependency{
-		buildID: {FrameData: ft, Size: 16384},
+		buildID: {FrameTable: ft, Size: 16384},
 		otherID: {Size: 8192},
 	})
 	require.NoError(t, err)
@@ -683,7 +683,7 @@ func TestSerializeDeserialize_V4_SparseTrimming(t *testing.T) {
 	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
-	gotFT := depsOf(t, got)[buildID].FrameData
+	gotFT := depsOf(t, got)[buildID].FrameTable
 	require.NotNil(t, gotFT)
 	require.Equal(t, 2, gotFT.NumFrames())
 

@@ -130,7 +130,7 @@ func (c *compressedUploader) uploadData(
 			return headers.Dependency{}, fmt.Errorf("compressed data upload: %w", err)
 		}
 
-		return headers.Dependency{Size: ft.UncompressedSize(), Checksum: checksum, FrameData: ft}, nil
+		return headers.Dependency{Size: ft.UncompressedSize(), Checksum: checksum, FrameTable: ft}, nil
 	}
 
 	// Stat before the upload so an eviction mid-upload doesn't mask a
