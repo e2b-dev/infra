@@ -11,7 +11,7 @@ import (
 )
 
 func TestMiddlewareSanitizesTraceparentByDefault(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+	t.Parallel()
 
 	r := gin.New()
 	r.Use(Middleware(nooptrace.NewTracerProvider(), "test-service"))
