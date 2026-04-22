@@ -28,10 +28,10 @@ const (
 // AliasInfo holds resolved alias information (immutable mapping data only).
 // Mutable metadata like Public is in TemplateMetadata.
 type AliasInfo struct {
-	TemplateID string    `json:"template_id"`
-	TeamID     uuid.UUID `json:"team_id"`
-	MatchedNamespace string `json:"matched_namespace,omitempty"` // namespace under which the alias matched ("" = NULL/promoted or ID hit)
-	NotFound   bool      `json:"not_found"`           // tombstone marker for caching negative lookups
+	TemplateID       string    `json:"template_id"`
+	TeamID           uuid.UUID `json:"team_id"`
+	MatchedNamespace string    `json:"matched_namespace,omitempty"` // namespace under which the alias matched ("" = NULL/promoted or ID hit)
+	NotFound         bool      `json:"not_found"`                   // tombstone marker for caching negative lookups
 }
 
 // FullName returns the namespaced canonical name under which this info was
