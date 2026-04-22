@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 	"unsafe"
@@ -40,14 +41,37 @@ type operation struct {
 	mode   operationMode
 }
 
+// handlerPageStates is a snapshot of the pageTracker grouped by state. It
+// lets tests assert on the set of pages that the handler observed in each
+// state, rather than a flat list of "accessed" offsets. Follow-up PRs can
+// add more state-specific fields (e.g. removed) without touching the
+// existing call sites.
+type handlerPageStates struct {
+	faulted []uint
+}
+
+// allAccessed returns the sorted union of offsets that the handler touched
+// in any non-missing state. Tests that only care about "which pages did the
+// handler see" can compare directly against this.
+//
+// pageStatesOnce already returns each per-state slice sorted, and a page
+// has exactly one state at a time in pageTracker, so the per-state slices
+// are disjoint. Follow-up PRs that add more state-specific fields should
+// sorted-merge them here instead of reaching for a bitset — byte offsets
+// make poor bit indices (a single hugepage offset would force ~1.8 MB of
+// backing storage).
+func (s handlerPageStates) allAccessed() []uint {
+	return slices.Clone(s.faulted)
+}
+
 type testHandler struct {
 	memoryArea *[]byte
 	pagesize   uint64
 	data       *MemorySlicer
-	// Returns offsets of the pages that were faulted.
+	// pageStatesOnce returns a per-state snapshot of the handler's pageTracker.
 	// It can only be called once.
-	offsetsOnce func() ([]uint, error)
-	mutex       sync.Mutex
+	pageStatesOnce func() (handlerPageStates, error)
+	mutex          sync.Mutex
 }
 
 func (h *testHandler) executeAll(t *testing.T, operations []operation) {

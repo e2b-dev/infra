@@ -3,7 +3,7 @@
 //   sqlc v1.29.0
 // source: get_dashboard_teams_with_users_teams_with_tier.sql
 
-package queries
+package dashboardqueries
 
 import (
 	"context"
