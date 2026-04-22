@@ -29,9 +29,6 @@ import (
 const (
 	orchestratorProxyPort = 5007 // orchestrator proxy port
 
-	resumedSandboxCatalogLookupAttempts = 6
-	resumedSandboxCatalogLookupBackoff  = 100 * time.Millisecond
-
 	// This timeout should be > 600 (GCP LB upstream idle timeout) to prevent race condition
 	// Also it's a good practice to set it to a value higher than the idle timeout of the backend service
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
@@ -53,43 +50,6 @@ const (
 	autoResumeErrored
 )
 
-func resumedSandboxNodeIPFromCatalog(ctx context.Context, sandboxId string, c catalog.SandboxesCatalog) (string, error) {
-	var lastErr error
-
-	for attempt := range resumedSandboxCatalogLookupAttempts {
-		resumedSandbox, err := c.GetSandbox(ctx, sandboxId)
-		if err == nil {
-			nodeIP, routeErr := catalogSandboxNodeIP(resumedSandbox)
-			if routeErr == nil {
-				return nodeIP, nil
-			}
-
-			lastErr = routeErr
-		} else {
-			if !errors.Is(err, catalog.ErrSandboxNotFound) {
-				return "", fmt.Errorf("failed to get resumed sandbox from catalog: %w", err)
-			}
-
-			lastErr = ErrNodeNotFound
-		}
-
-		if attempt == resumedSandboxCatalogLookupAttempts-1 {
-			break
-		}
-
-		timer := time.NewTimer(resumedSandboxCatalogLookupBackoff)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-
-			return "", ctx.Err()
-		case <-timer.C:
-		}
-	}
-
-	return "", lastErr
-}
-
 func catalogSandboxNodeIP(s *catalog.SandboxInfo) (string, error) {
 	nodeIP := strings.TrimSpace(s.OrchestratorIP)
 	if nodeIP == "" {
@@ -108,13 +68,7 @@ func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64
 				return "", pausedErr
 			}
 			if res == autoResumeSucceeded {
-				if nodeIP != "" {
-					return nodeIP, nil
-				}
-
-				// Compatibility fallback for resume responses that do not include
-				// an orchestrator IP. The API should normally return it directly.
-				return resumedSandboxNodeIPFromCatalog(ctx, sandboxId, c)
+				return nodeIP, nil
 			}
 
 			return "", ErrNodeNotFound
@@ -166,6 +120,11 @@ func handlePausedSandbox(
 		return "", autoResumeErrored, err
 	}
 
+	nodeIP = strings.TrimSpace(nodeIP)
+	if nodeIP == "" {
+		return "", autoResumeErrored, ErrNodeRouteUnavailable
+	}
+
 	return nodeIP, autoResumeSucceeded, nil
 }
 
@@ -211,7 +170,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				}
 
 				if errors.Is(err, ErrNodeRouteUnavailable) {
-					l.Warn(ctx, "sandbox catalog record is not routable by client-proxy", zap.Error(err))
+					l.Warn(ctx, "sandbox route unavailable", zap.Error(err))
 				} else if !errors.Is(err, ErrNodeNotFound) {
 					l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))
 				}

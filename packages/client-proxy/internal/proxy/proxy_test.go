@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
@@ -44,61 +43,6 @@ func (r *recordingResumer) Resume(_ context.Context, sandboxID string, sandboxPo
 	r.envdAccessToken = envdAccessToken
 
 	return "10.0.0.1", nil
-}
-
-type catalogStoringResumer struct {
-	catalog catalog.SandboxesCatalog
-	nodeIP  string
-}
-
-func (r catalogStoringResumer) Init(_ context.Context) {}
-
-func (r catalogStoringResumer) Resume(ctx context.Context, sandboxID string, _ uint64, _ string, _ string) (string, error) {
-	err := r.catalog.StoreSandbox(ctx, sandboxID, &catalog.SandboxInfo{
-		OrchestratorIP: r.nodeIP,
-		ExecutionID:    "exec",
-		StartedAt:      time.Now(),
-	}, time.Minute)
-	if err != nil {
-		return "", err
-	}
-
-	return "", nil
-}
-
-type delayedCatalog struct {
-	mu        sync.Mutex
-	missCount int
-	nodeIP    string
-}
-
-func (c *delayedCatalog) GetSandbox(_ context.Context, _ string) (*catalog.SandboxInfo, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.missCount > 0 {
-		c.missCount--
-
-		return nil, catalog.ErrSandboxNotFound
-	}
-
-	return &catalog.SandboxInfo{
-		OrchestratorIP: c.nodeIP,
-		ExecutionID:    "exec",
-		StartedAt:      time.Now(),
-	}, nil
-}
-
-func (c *delayedCatalog) StoreSandbox(_ context.Context, _ string, _ *catalog.SandboxInfo, _ time.Duration) error {
-	return nil
-}
-
-func (c *delayedCatalog) DeleteSandbox(_ context.Context, _ string, _ string) error {
-	return nil
-}
-
-func (c *delayedCatalog) Close(_ context.Context) error {
-	return nil
 }
 
 func newFF(t *testing.T, autoResumeEnabled bool) *featureflags.Client {
@@ -160,39 +104,15 @@ func TestCatalogResolution_CatalogMiss(t *testing.T) {
 	require.ErrorIs(t, err, ErrNodeNotFound)
 }
 
-func TestCatalogResolution_CatalogMiss_ResumeEmptyIPUsesCatalog(t *testing.T) {
+func TestCatalogResolution_CatalogMiss_ResumeEmptyIPReturnsRouteUnavailable(t *testing.T) {
 	t.Parallel()
 
 	c := catalog.NewMemorySandboxesCatalog()
-	ff := newFF(t, true)
-
-	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, catalogStoringResumer{catalog: c, nodeIP: "10.0.0.1"}, ff)
-	require.NoError(t, err)
-	require.Equal(t, "10.0.0.1", nodeIP)
-}
-
-func TestCatalogResolution_CatalogMiss_ResumeEmptyIPRetriesCatalog(t *testing.T) {
-	t.Parallel()
-
-	c := &delayedCatalog{
-		missCount: 3,
-		nodeIP:    "10.0.0.1",
-	}
 	ff := newFF(t, true)
 
 	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, stubResumer{nodeIP: ""}, ff)
-	require.NoError(t, err)
-	require.Equal(t, "10.0.0.1", nodeIP)
-}
-
-func TestCatalogResolution_CatalogMiss_ResumeEmptyIPWithoutCatalogReturnsNotFound(t *testing.T) {
-	t.Parallel()
-
-	c := catalog.NewMemorySandboxesCatalog()
-	ff := newFF(t, true)
-
-	_, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, stubResumer{nodeIP: ""}, ff)
-	require.ErrorIs(t, err, ErrNodeNotFound)
+	require.ErrorIs(t, err, ErrNodeRouteUnavailable)
+	require.Empty(t, nodeIP)
 }
 
 func TestHandlePausedSandbox_NoResumer_MissingTrafficAccessToken(t *testing.T) {
@@ -323,8 +243,8 @@ func TestHandlePausedSandbox_Succeeded_EmptyIP(t *testing.T) {
 	ff := newFF(t, true)
 
 	nodeIP, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{nodeIP: ""}, ff)
-	require.NoError(t, err)
-	require.Equal(t, autoResumeSucceeded, res)
+	require.ErrorIs(t, err, ErrNodeRouteUnavailable)
+	require.Equal(t, autoResumeErrored, res)
 	require.Empty(t, nodeIP)
 }
 
