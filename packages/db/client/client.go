@@ -16,9 +16,9 @@ const poolName = "main"
 
 type Client struct {
 	*database.Queries
-	Dashboard *dashboardqueries.Queries
 
-	conn *pgxpool.Pool
+	Dashboard *dashboardqueries.Queries
+	conn      *pgxpool.Pool
 }
 
 func NewClient(ctx context.Context, databaseURL string, options ...pool.Option) (*Client, error) {
