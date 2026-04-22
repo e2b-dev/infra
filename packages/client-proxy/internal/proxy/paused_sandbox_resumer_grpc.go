@@ -25,7 +25,6 @@ type grpcPausedSandboxResumer struct {
 }
 
 func NewGrpcPausedSandboxResumer(address string, apiSecret string, tlsEnabled bool) (PausedSandboxResumer, error) {
-	// Client-proxy uses this gRPC client to trigger ResumeSandbox when needed.
 	if strings.TrimSpace(address) == "" {
 		return nil, errors.New("api grpc address is required")
 	}

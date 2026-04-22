@@ -31,13 +31,6 @@ func (o *Orchestrator) HandleExistingSandboxAutoResume(
 
 	attempts := 0
 
-	// Existing sandbox auto-resume state handling:
-	// - running: return the current route IP immediately
-	// - pausing/snapshotting: wait for the transition, refresh state, and retry
-	// - killing: treat as not found
-	// - anything else: return internal error
-	// - internal transition wait timeout: treat as "still transitioning"
-	// - caller cancellation/deadline: propagate the context error
 	for {
 		switch sbx.State {
 		case apisandbox.StatePausing, apisandbox.StateSnapshotting:
