@@ -418,3 +418,50 @@ func TestAliasCacheResolve_NegativeCachingFallback(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), exists, "positive result should be cached for NULL namespace hit")
 }
+
+func TestAliasInfo_FullName(t *testing.T) {
+	t.Parallel()
+
+	team := "team-x"
+
+	t.Run("bare alias matched under team namespace", func(t *testing.T) {
+		info := &AliasInfo{TemplateID: "tmpl-abc", MatchedNamespace: team}
+		assert.Equal(t, "team-x/myalias", info.FullName("myalias"))
+	})
+
+	t.Run("bare alias matched under NULL namespace", func(t *testing.T) {
+		info := &AliasInfo{TemplateID: "tmpl-abc", MatchedNamespace: ""}
+		assert.Equal(t, "myalias", info.FullName("myalias"))
+	})
+
+	t.Run("identifier already namespaced", func(t *testing.T) {
+		info := &AliasInfo{TemplateID: "tmpl-abc", MatchedNamespace: team}
+		assert.Equal(t, "team-x/myalias", info.FullName("team-x/myalias"))
+	})
+
+	t.Run("nil receiver", func(t *testing.T) {
+		var info *AliasInfo
+		assert.Equal(t, "myalias", info.FullName("myalias"))
+	})
+}
+
+func TestAliasCacheResolve_PopulatesNamespace(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "ns-alias", &teamSlug)
+
+	cache := NewAliasCache(db.SqlcClient, redis)
+	defer cache.Close(ctx)
+
+	info, err := cache.Resolve(ctx, "ns-alias", teamSlug)
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	assert.Equal(t, teamSlug, info.MatchedNamespace)
+	assert.Equal(t, teamSlug+"/ns-alias", info.FullName("ns-alias"))
+}

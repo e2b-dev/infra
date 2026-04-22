@@ -1,0 +1,73 @@
+package templatecache
+
+import (
+	"errors"
+	"net/http"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestErrorToAPIError_TagNotFound_WithTag(t *testing.T) {
+	t.Parallel()
+
+	tag := "v2"
+	apiErr := ErrorToAPIError(ErrTemplateTagNotFound, "mytemplate", WithTag(&tag), WithTemplateID("tmpl-abc"))
+
+	assert.Equal(t, http.StatusNotFound, apiErr.Code)
+	assert.Equal(t, "template 'mytemplate' (tmpl-abc) with tag 'v2' not found", apiErr.ClientMsg)
+	assert.ErrorIs(t, apiErr.Err, ErrTemplateTagNotFound)
+}
+
+func TestErrorToAPIError_TagNotFound_WithoutTag(t *testing.T) {
+	t.Parallel()
+
+	apiErr := ErrorToAPIError(ErrTemplateTagNotFound, "mytemplate", WithTemplateID("tmpl-abc"))
+
+	assert.Equal(t, http.StatusNotFound, apiErr.Code)
+	assert.Equal(t, "template 'mytemplate' (tmpl-abc) has no ready build", apiErr.ClientMsg)
+}
+
+func TestErrorToAPIError_TemplateNotFound_IdentifierOnly(t *testing.T) {
+	t.Parallel()
+
+	tag := "v2"
+	apiErr := ErrorToAPIError(ErrTemplateNotFound, "mytemplate", WithTag(&tag))
+
+	assert.Equal(t, http.StatusNotFound, apiErr.Code)
+	assert.Equal(t, "template 'mytemplate' not found", apiErr.ClientMsg)
+}
+
+func TestErrorToAPIError_FormatTemplateRef_IdentifierEqualsTemplateID(t *testing.T) {
+	t.Parallel()
+
+	apiErr := ErrorToAPIError(ErrTemplateNotFound, "tmpl-abc", WithTemplateID("tmpl-abc"))
+
+	assert.Equal(t, "template 'tmpl-abc' not found", apiErr.ClientMsg)
+}
+
+func TestErrorToAPIError_AccessDenied(t *testing.T) {
+	t.Parallel()
+
+	apiErr := ErrorToAPIError(ErrAccessDenied, "mytemplate", WithTemplateID("tmpl-abc"))
+
+	assert.Equal(t, http.StatusForbidden, apiErr.Code)
+	assert.Equal(t, "you don't have access to template 'mytemplate' (tmpl-abc)", apiErr.ClientMsg)
+}
+
+func TestErrorToAPIError_ClusterMismatch(t *testing.T) {
+	t.Parallel()
+
+	apiErr := ErrorToAPIError(ErrClusterMismatch, "mytemplate", WithTemplateID("tmpl-abc"))
+
+	assert.Equal(t, http.StatusBadRequest, apiErr.Code)
+	assert.Equal(t, "template 'mytemplate' (tmpl-abc) is not available in the requested cluster", apiErr.ClientMsg)
+}
+
+func TestErrorToAPIError_Unknown(t *testing.T) {
+	t.Parallel()
+
+	apiErr := ErrorToAPIError(errors.New("boom"), "mytemplate")
+
+	assert.Equal(t, http.StatusInternalServerError, apiErr.Code)
+}

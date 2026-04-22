@@ -154,7 +154,15 @@ func (c *TemplateCache) fetchTemplateWithBuild(templateID string, tag *string) f
 		})
 		if err != nil {
 			if dberrors.IsNotFoundError(err) {
-				return nil, ErrTemplateNotFound
+				_, idErr := c.aliasCache.LookupByID(ctx, templateID)
+				switch {
+				case idErr == nil:
+					return nil, ErrTemplateTagNotFound
+				case errors.Is(idErr, ErrTemplateNotFound):
+					return nil, ErrTemplateNotFound
+				default:
+					return nil, fmt.Errorf("checking template existence: %w", idErr)
+				}
 			}
 
 			return nil, fmt.Errorf("fetching template with build: %w", err)

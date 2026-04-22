@@ -14,6 +14,7 @@ import (
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -318,10 +319,12 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 			}
 		}
 
+		label := templatecache.FormatTemplateRef(aliasInfo.FullName(identifier), aliasInfo.TemplateID)
+
 		if !metadata.Public && aliasInfo.TeamID != teamID {
 			return &FromTemplateError{
 				err:     nil,
-				message: fmt.Sprintf("you have no access to use '%s' as a base template", *fromTemplate),
+				message: fmt.Sprintf("you have no access to use base template %s", label),
 			}
 		}
 
@@ -331,9 +334,18 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 			Tag:        tag,
 		})
 		if err != nil {
+			if dberrors.IsNotFoundError(err) {
+				var msg string
+				if tag != nil {
+					msg = fmt.Sprintf("base template %s with tag '%s' not found", label, *tag)
+				} else {
+					msg = fmt.Sprintf("base template %s has no ready build", label)
+				}
+				return &FromTemplateError{err: err, message: msg}
+			}
 			return &FromTemplateError{
 				err:     err,
-				message: fmt.Sprintf("base template '%s' not found", *fromTemplate),
+				message: fmt.Sprintf("error fetching base template %s", label),
 			}
 		}
 

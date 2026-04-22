@@ -3,6 +3,7 @@ package templatecache
 import (
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -116,6 +117,45 @@ func TestTemplateCache_InvalidateAllTagsAlsoInvalidatesMetadata(t *testing.T) {
 	exists, err = redis.Exists(ctx, metadataKey).Result()
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), exists, "metadata key should be deleted after InvalidateAllTags")
+}
+
+func TestTemplateCache_Get_TagNotFound(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+	buildID := testutils.CreateTestBuild(t, ctx, db, templateID, "ready")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "default")
+
+	tc := NewTemplateCache(db.SqlcClient, redis)
+	defer tc.Close(ctx)
+
+	missingTag := "v-does-not-exist"
+	_, _, err := tc.Get(ctx, templateID, &missingTag, teamID, consts.LocalClusterID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrTemplateTagNotFound)
+	assert.NotErrorIs(t, err, ErrTemplateNotFound)
+}
+
+func TestTemplateCache_Get_TemplateNotFound(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	tc := NewTemplateCache(db.SqlcClient, redis)
+	defer tc.Close(ctx)
+
+	teamID := uuid.New()
+	missingTemplate := "nonexistent-template-" + uuid.New().String()
+	tag := "any-tag"
+	_, _, err := tc.Get(ctx, missingTemplate, &tag, teamID, consts.LocalClusterID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrTemplateNotFound)
+	assert.NotErrorIs(t, err, ErrTemplateTagNotFound)
 }
 
 // TestTemplateCache_ResolveAliasWithMetadata tests the combined resolution
