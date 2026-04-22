@@ -33,8 +33,8 @@ type Header struct {
 	Mapping  []BuildMap
 
 	initialDependencies map[uuid.UUID]Dependency
-	dependencies *utils.SetOnce[map[uuid.UUID]Dependency]
-	locallyAvailable atomic.Bool
+	dependencies        *utils.SetOnce[map[uuid.UUID]Dependency]
+	locallyAvailable    atomic.Bool
 }
 
 func (t *Header) MarkLocallyAvailable() {
