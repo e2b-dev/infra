@@ -36,8 +36,8 @@ type Client struct {
 // Direct OTLP/HTTP exporter mode is enabled with OTEL_EXPORTER_OTLP_ENDPOINT and
 // standard OTEL exporter environment variables.
 func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID string, additional ...attribute.KeyValue) (*Client, error) {
-	legacyGRPCEndpoint := OTELCollectorGRPCEndpoint()
-	if legacyGRPCEndpoint == "" && !OTLPHTTPEnabled() {
+	mode := currentExportMode()
+	if mode == exportModeDisabled {
 		return NewNoopClient(), nil
 	}
 
@@ -72,7 +72,7 @@ func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion
 	// Setup logging
 	var logProvider LogProvider
 	var spanExporter sdktrace.SpanExporter
-	if legacyGRPCEndpoint != "" {
+	if mode == exportModeCollectorGRPC {
 		logProvider, err = NewLogProvider(ctx, res)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create log provider: %w", err)

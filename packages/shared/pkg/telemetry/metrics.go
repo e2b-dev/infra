@@ -60,14 +60,14 @@ func NewMeterExporter(ctx context.Context, extraOptions ...MeterExporterOption) 
 		option(&config)
 	}
 
-	if OTELCollectorGRPCEndpoint() != "" {
+	switch currentExportMode() {
+	case exportModeCollectorGRPC:
 		return newGRPCMeterExporter(ctx, config)
-	}
-	if OTLPHTTPEnabled() {
+	case exportModeDirectHTTP:
 		return newHTTPMeterExporter(ctx, config)
+	default:
+		return &noopMetricExporter{}, nil
 	}
-
-	return &noopMetricExporter{}, nil
 }
 
 func newGRPCMeterExporter(ctx context.Context, config meterExporterConfig) (sdkmetric.Exporter, error) {

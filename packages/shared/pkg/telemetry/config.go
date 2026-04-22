@@ -12,8 +12,19 @@ import (
 )
 
 const (
-	otelCollectorGRPCEndpointEnv = "OTEL_COLLECTOR_GRPC_ENDPOINT"
-	otelExporterOTLPEndpointEnv  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	otelCollectorGRPCEndpointEnv       = "OTEL_COLLECTOR_GRPC_ENDPOINT"
+	otelExporterOTLPEndpointEnv        = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	otelExporterOTLPTracesEndpointEnv  = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
+	otelExporterOTLPMetricsEndpointEnv = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"
+	otelExporterOTLPLogsEndpointEnv    = "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"
+)
+
+type exportMode int
+
+const (
+	exportModeDisabled exportMode = iota
+	exportModeCollectorGRPC
+	exportModeDirectHTTP
 )
 
 func OTELCollectorGRPCEndpoint() string {
@@ -25,7 +36,33 @@ func OTLPHTTPEndpoint() string {
 }
 
 func OTLPHTTPEnabled() bool {
-	return OTLPHTTPEndpoint() != ""
+	return currentExportMode() == exportModeDirectHTTP
+}
+
+func currentExportMode() exportMode {
+	if OTELCollectorGRPCEndpoint() != "" {
+		return exportModeCollectorGRPC
+	}
+	if anyEnvSet(
+		otelExporterOTLPEndpointEnv,
+		otelExporterOTLPTracesEndpointEnv,
+		otelExporterOTLPMetricsEndpointEnv,
+		otelExporterOTLPLogsEndpointEnv,
+	) {
+		return exportModeDirectHTTP
+	}
+
+	return exportModeDisabled
+}
+
+func anyEnvSet(keys ...string) bool {
+	for _, key := range keys {
+		if strings.TrimSpace(os.Getenv(key)) != "" {
+			return true
+		}
+	}
+
+	return false
 }
 
 func GetResource(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID string, additional ...attribute.KeyValue) (*resource.Resource, error) {
