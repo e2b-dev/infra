@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
-	"github.com/e2b-dev/infra/packages/db/queries"
+	dashboardqueries "github.com/e2b-dev/infra/packages/db/pkg/dashboard/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -48,7 +48,7 @@ func (s *APIStore) PatchTeamsTeamID(c *gin.Context, teamID api.TeamID) {
 		return
 	}
 
-	row, err := s.db.UpdateTeam(ctx, queries.UpdateTeamParams{
+	row, err := s.db.Dashboard.UpdateTeam(ctx, dashboardqueries.UpdateTeamParams{
 		TeamID:               teamInfo.Team.ID,
 		Name:                 body.NamePtr(),
 		NameSet:              body.NameSet,
