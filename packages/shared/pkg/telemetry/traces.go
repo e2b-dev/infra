@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -23,11 +24,15 @@ func (nsb *noopSpanExporter) Shutdown(context.Context) error { return nil }
 func NewSpanExporter(ctx context.Context, extraOption ...otlptracegrpc.Option) (sdktrace.SpanExporter, error) {
 	opts := []otlptracegrpc.Option{
 		otlptracegrpc.WithInsecure(),
-		otlptracegrpc.WithEndpoint(otelCollectorGRPCEndpoint),
+		otlptracegrpc.WithEndpoint(OTELCollectorGRPCEndpoint()),
 		otlptracegrpc.WithCompressor(gzip.Name),
 	}
 	opts = append(opts, extraOption...)
 
+	return newGRPCSpanExporter(ctx, opts)
+}
+
+func newGRPCSpanExporter(ctx context.Context, opts []otlptracegrpc.Option) (sdktrace.SpanExporter, error) {
 	// Set up a trace exporter
 	traceExporter, traceErr := otlptracegrpc.New(
 		ctx,
@@ -35,6 +40,15 @@ func NewSpanExporter(ctx context.Context, extraOption ...otlptracegrpc.Option) (
 	)
 	if traceErr != nil {
 		return nil, fmt.Errorf("failed to create trace exporter: %w", traceErr)
+	}
+
+	return traceExporter, nil
+}
+
+func NewHTTPSpanExporter(ctx context.Context) (sdktrace.SpanExporter, error) {
+	traceExporter, err := otlptracehttp.New(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create trace exporter: %w", err)
 	}
 
 	return traceExporter, nil

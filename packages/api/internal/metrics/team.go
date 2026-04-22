@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/exemplar"
@@ -30,7 +29,7 @@ type TeamObserver struct {
 }
 
 func NewTeamObserver(ctx context.Context, sandboxStore *sandbox.Store) (*TeamObserver, error) {
-	deltaTemporality := otlpmetricgrpc.WithTemporalitySelector(func(sdkmetric.InstrumentKind) metricdata.Temporality {
+	deltaTemporality := telemetry.WithMeterTemporalitySelector(func(sdkmetric.InstrumentKind) metricdata.Temporality {
 		return metricdata.DeltaTemporality
 	})
 

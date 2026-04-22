@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/metric"
 	noopMetric "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/propagation"
@@ -31,16 +30,19 @@ type Client struct {
 	LogsProvider    LogProvider
 }
 
-// New creates a telemetry client that exports traces, metrics, and logs via gRPC.
-// Telemetry is enabled when the OTEL_COLLECTOR_GRPC_ENDPOINT environment variable is set
-// (e.g. "localhost:4317"). When unset, a noop client is returned with zero overhead.
+// New creates a telemetry client that exports traces, metrics, and logs over OTLP.
+//
+// Backward-compatible collector mode is enabled with OTEL_COLLECTOR_GRPC_ENDPOINT.
+// Direct OTLP/HTTP exporter mode is enabled with OTEL_EXPORTER_OTLP_ENDPOINT and
+// standard OTEL exporter environment variables.
 func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID string, additional ...attribute.KeyValue) (*Client, error) {
-	if otelCollectorGRPCEndpoint == "" {
+	legacyGRPCEndpoint := OTELCollectorGRPCEndpoint()
+	if legacyGRPCEndpoint == "" && !OTLPHTTPEnabled() {
 		return NewNoopClient(), nil
 	}
 
 	// Setup metrics
-	metricsExporter, err := NewMeterExporter(ctx, otlpmetricgrpc.WithAggregationSelector(func(kind sdkmetric.InstrumentKind) sdkmetric.Aggregation {
+	metricsExporter, err := NewMeterExporter(ctx, WithMeterAggregationSelector(func(kind sdkmetric.InstrumentKind) sdkmetric.Aggregation {
 		if kind == sdkmetric.InstrumentKindHistogram {
 			// Defaults from https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/sdk.md#base2-exponential-bucket-histogram-aggregation
 			return sdkmetric.AggregationBase2ExponentialHistogram{
@@ -68,15 +70,28 @@ func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion
 	otel.SetMeterProvider(meterProvider)
 
 	// Setup logging
-	logProvider, err := NewLogProvider(ctx, res)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create log provider: %w", err)
-	}
+	var logProvider LogProvider
+	var spanExporter sdktrace.SpanExporter
+	if legacyGRPCEndpoint != "" {
+		logProvider, err = NewLogProvider(ctx, res)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create log provider: %w", err)
+		}
 
-	// Setup tracing
-	spanExporter, err := NewSpanExporter(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create span exporter: %w", err)
+		spanExporter, err = NewSpanExporter(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create span exporter: %w", err)
+		}
+	} else {
+		logProvider, err = NewHTTPLogProvider(ctx, res)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create log provider: %w", err)
+		}
+
+		spanExporter, err = NewHTTPSpanExporter(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create span exporter: %w", err)
+		}
 	}
 
 	tracerProvider := NewTracerProvider(spanExporter, res)

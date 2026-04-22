@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/log"
 	nooplog "go.opentelemetry.io/otel/log/noop"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
@@ -28,12 +29,30 @@ func NewNoopLogProvider() LogProvider { return noopLogProvider{} }
 func NewLogProvider(ctx context.Context, res *resource.Resource, extraOpts ...otlploggrpc.Option) (LogProvider, error) {
 	opts := []otlploggrpc.Option{
 		otlploggrpc.WithInsecure(),
-		otlploggrpc.WithEndpoint(otelCollectorGRPCEndpoint),
+		otlploggrpc.WithEndpoint(OTELCollectorGRPCEndpoint()),
 		otlploggrpc.WithCompressor(gzip.Name),
 	}
 	opts = append(opts, extraOpts...)
 
+	return newGRPCLogProvider(ctx, res, opts)
+}
+
+func newGRPCLogProvider(ctx context.Context, res *resource.Resource, opts []otlploggrpc.Option) (LogProvider, error) {
 	exporter, err := otlploggrpc.New(ctx, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create logs exporter: %w", err)
+	}
+
+	p := sdklog.NewLoggerProvider(
+		sdklog.WithResource(res),
+		sdklog.WithProcessor(sdklog.NewBatchProcessor(exporter)),
+	)
+
+	return p, nil
+}
+
+func NewHTTPLogProvider(ctx context.Context, res *resource.Resource) (LogProvider, error) {
+	exporter, err := otlploghttp.New(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create logs exporter: %w", err)
 	}

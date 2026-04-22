@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -34,19 +35,74 @@ func (noopMetricExporter) Shutdown(context.Context) error {
 	return nil
 }
 
-func NewMeterExporter(ctx context.Context, extraOption ...otlpmetricgrpc.Option) (sdkmetric.Exporter, error) {
-	opts := []otlpmetricgrpc.Option{
-		otlpmetricgrpc.WithInsecure(),
-		otlpmetricgrpc.WithEndpoint(otelCollectorGRPCEndpoint),
-	}
-	opts = append(opts, extraOption...)
+type meterExporterConfig struct {
+	aggregationSelector sdkmetric.AggregationSelector
+	temporalitySelector sdkmetric.TemporalitySelector
+}
 
-	metricExporter, metricErr := otlpmetricgrpc.New(
-		ctx,
-		opts...,
+type MeterExporterOption func(*meterExporterConfig)
+
+func WithMeterTemporalitySelector(selector sdkmetric.TemporalitySelector) MeterExporterOption {
+	return func(config *meterExporterConfig) {
+		config.temporalitySelector = selector
+	}
+}
+
+func WithMeterAggregationSelector(selector sdkmetric.AggregationSelector) MeterExporterOption {
+	return func(config *meterExporterConfig) {
+		config.aggregationSelector = selector
+	}
+}
+
+func NewMeterExporter(ctx context.Context, extraOptions ...MeterExporterOption) (sdkmetric.Exporter, error) {
+	config := meterExporterConfig{}
+	for _, option := range extraOptions {
+		option(&config)
+	}
+
+	if OTELCollectorGRPCEndpoint() != "" {
+		return newGRPCMeterExporter(ctx, config)
+	}
+	if OTLPHTTPEnabled() {
+		return newHTTPMeterExporter(ctx, config)
+	}
+
+	return &noopMetricExporter{}, nil
+}
+
+func newGRPCMeterExporter(ctx context.Context, config meterExporterConfig) (sdkmetric.Exporter, error) {
+	opts := []otlpmetricgrpc.Option{}
+	opts = append(opts,
+		otlpmetricgrpc.WithInsecure(),
+		otlpmetricgrpc.WithEndpoint(OTELCollectorGRPCEndpoint()),
 	)
-	if metricErr != nil {
-		return nil, fmt.Errorf("failed to create metric exporter: %w", metricErr)
+	if config.temporalitySelector != nil {
+		opts = append(opts, otlpmetricgrpc.WithTemporalitySelector(config.temporalitySelector))
+	}
+	if config.aggregationSelector != nil {
+		opts = append(opts, otlpmetricgrpc.WithAggregationSelector(config.aggregationSelector))
+	}
+
+	metricExporter, err := otlpmetricgrpc.New(ctx, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create metric exporter: %w", err)
+	}
+
+	return metricExporter, nil
+}
+
+func newHTTPMeterExporter(ctx context.Context, config meterExporterConfig) (sdkmetric.Exporter, error) {
+	opts := []otlpmetrichttp.Option{}
+	if config.temporalitySelector != nil {
+		opts = append(opts, otlpmetrichttp.WithTemporalitySelector(config.temporalitySelector))
+	}
+	if config.aggregationSelector != nil {
+		opts = append(opts, otlpmetrichttp.WithAggregationSelector(config.aggregationSelector))
+	}
+
+	metricExporter, err := otlpmetrichttp.New(ctx, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create metric exporter: %w", err)
 	}
 
 	return metricExporter, nil

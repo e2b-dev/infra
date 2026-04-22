@@ -4,16 +4,28 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 )
 
-var otelCollectorGRPCEndpoint = os.Getenv("OTEL_COLLECTOR_GRPC_ENDPOINT")
+const (
+	otelCollectorGRPCEndpointEnv = "OTEL_COLLECTOR_GRPC_ENDPOINT"
+	otelExporterOTLPEndpointEnv  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+)
 
 func OTELCollectorGRPCEndpoint() string {
-	return otelCollectorGRPCEndpoint
+	return strings.TrimSpace(os.Getenv(otelCollectorGRPCEndpointEnv))
+}
+
+func OTLPHTTPEndpoint() string {
+	return strings.TrimSpace(os.Getenv(otelExporterOTLPEndpointEnv))
+}
+
+func OTLPHTTPEnabled() bool {
+	return OTLPHTTPEndpoint() != ""
 }
 
 func GetResource(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion, serviceInstanceID string, additional ...attribute.KeyValue) (*resource.Resource, error) {
