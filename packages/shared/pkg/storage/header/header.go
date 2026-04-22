@@ -230,6 +230,12 @@ func (t *Header) LookupDependency(ctx context.Context, buildID uuid.UUID) (Depen
 		return Dependency{}, nil
 	}
 
+	if t.IsPending() {
+		if dep, ok := t.initialDependencies[buildID]; ok {
+			return dep, nil
+		}
+	}
+
 	deps, err := t.dependencies.WaitWithContext(ctx)
 	if err != nil {
 		return Dependency{}, err

@@ -14,7 +14,7 @@ type uncompressedUploader struct {
 	buildUploader
 }
 
-func (u *uncompressedUploader) Upload(ctx context.Context) (_, _ []byte, e error) {
+func (u *uncompressedUploader) Upload(ctx context.Context) ([]byte, []byte, error) {
 	memfilePath, err := u.snapshot.MemfileDiff.CachePath()
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting memfile diff path: %w", err)
@@ -25,13 +25,12 @@ func (u *uncompressedUploader) Upload(ctx context.Context) (_, _ []byte, e error
 		return nil, nil, fmt.Errorf("error getting rootfs diff path: %w", err)
 	}
 
-	// V3 has no per-build dependencies. Unblock waiters on success;
-	// propagate the upload error on failure so children don't proceed
-	// against incomplete data.
-	defer func() {
-		u.snapshot.MemfileDiffHeader.FinalizeDependencies(nil, e)
-		u.snapshot.RootfsDiffHeader.FinalizeDependencies(nil, e)
-	}()
+	// V3 stores no per-build dependencies (serializeV3 ignores the map).
+	// Finalize up front so concurrent readers (e.g. UFFD page faults on
+	// Resume after pause during Checkpoint) don't block on the channel
+	// while data uploads to GCS.
+	u.snapshot.MemfileDiffHeader.FinalizeDependencies(nil, nil)
+	u.snapshot.RootfsDiffHeader.FinalizeDependencies(nil, nil)
 
 	eg, ctx := errgroup.WithContext(ctx)
 
