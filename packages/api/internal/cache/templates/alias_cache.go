@@ -44,6 +44,7 @@ func (a *AliasInfo) FullName(identifier string) string {
 	if ns, _ := id.SplitIdentifier(identifier); ns != nil {
 		return identifier
 	}
+
 	return id.WithNamespace(a.MatchedNamespace, identifier)
 }
 

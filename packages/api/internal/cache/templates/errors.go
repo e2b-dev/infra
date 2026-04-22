@@ -46,6 +46,7 @@ func ErrorToAPIError(err error, identifier string, opts ...ErrorOption) *api.API
 		} else {
 			msg = fmt.Sprintf("template %s has no ready build", label)
 		}
+
 		return &api.APIError{
 			Code:      http.StatusNotFound,
 			ClientMsg: msg,
@@ -82,5 +83,6 @@ func FormatTemplateRef(identifier, templateID string) string {
 	if templateID == "" || templateID == identifier {
 		return "'" + identifier + "'"
 	}
+
 	return fmt.Sprintf("'%s' (%s)", identifier, templateID)
 }

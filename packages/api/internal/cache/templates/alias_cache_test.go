@@ -425,21 +425,25 @@ func TestAliasInfo_FullName(t *testing.T) {
 	team := "team-x"
 
 	t.Run("bare alias matched under team namespace", func(t *testing.T) {
+		t.Parallel()
 		info := &AliasInfo{TemplateID: "tmpl-abc", MatchedNamespace: team}
 		assert.Equal(t, "team-x/myalias", info.FullName("myalias"))
 	})
 
 	t.Run("bare alias matched under NULL namespace", func(t *testing.T) {
+		t.Parallel()
 		info := &AliasInfo{TemplateID: "tmpl-abc", MatchedNamespace: ""}
 		assert.Equal(t, "myalias", info.FullName("myalias"))
 	})
 
 	t.Run("identifier already namespaced", func(t *testing.T) {
+		t.Parallel()
 		info := &AliasInfo{TemplateID: "tmpl-abc", MatchedNamespace: team}
 		assert.Equal(t, "team-x/myalias", info.FullName("team-x/myalias"))
 	})
 
 	t.Run("nil receiver", func(t *testing.T) {
+		t.Parallel()
 		var info *AliasInfo
 		assert.Equal(t, "myalias", info.FullName("myalias"))
 	})

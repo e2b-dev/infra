@@ -135,8 +135,7 @@ func TestTemplateCache_Get_TagNotFound(t *testing.T) {
 
 	missingTag := "v-does-not-exist"
 	_, _, err := tc.Get(ctx, templateID, &missingTag, teamID, consts.LocalClusterID)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrTemplateTagNotFound)
+	require.ErrorIs(t, err, ErrTemplateTagNotFound)
 	assert.NotErrorIs(t, err, ErrTemplateNotFound)
 }
 
@@ -153,8 +152,7 @@ func TestTemplateCache_Get_TemplateNotFound(t *testing.T) {
 	missingTemplate := "nonexistent-template-" + uuid.New().String()
 	tag := "any-tag"
 	_, _, err := tc.Get(ctx, missingTemplate, &tag, teamID, consts.LocalClusterID)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrTemplateNotFound)
+	require.ErrorIs(t, err, ErrTemplateNotFound)
 	assert.NotErrorIs(t, err, ErrTemplateTagNotFound)
 }
 

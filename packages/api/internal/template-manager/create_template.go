@@ -341,8 +341,10 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 				} else {
 					msg = fmt.Sprintf("base template %s has no ready build", label)
 				}
+
 				return &FromTemplateError{err: err, message: msg}
 			}
+
 			return &FromTemplateError{
 				err:     err,
 				message: fmt.Sprintf("error fetching base template %s", label),
