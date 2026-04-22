@@ -32,13 +32,9 @@ func (s *Snapshot) Upload(
 	ff *featureflags.Client,
 	useCase string,
 ) (memfileHdr, rootfsHdr []byte, err error) {
-	uploader := NewBuildUploader(ctx, s, persistence, paths, cfg, ff, useCase, nil)
+	uploader := NewBuildUploader(ctx, s, persistence, paths, cfg, ff, useCase)
 
-	if err := uploader.UploadData(ctx); err != nil {
-		return nil, nil, fmt.Errorf("error uploading template files: %w", err)
-	}
-
-	return uploader.FinalizeHeaders(ctx)
+	return uploader.Upload(ctx)
 }
 
 func (s *Snapshot) Close(ctx context.Context) error {

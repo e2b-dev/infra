@@ -112,6 +112,12 @@ func (d *DiffMetadata) toDiffMapping(
 	return mappings
 }
 
+// ToDiffHeader returns the header for the paused snapshot's diff file.
+// The header's lifecycle depends on what's known up front:
+//   - Dirty blocks > 0: pending; upload path calls FinalizeDependencies
+//     (compressed adds self-entry; uncompressed passes nil to unblock).
+//   - No dirty blocks + parent has deps: born final with inherited subset.
+//   - No dirty blocks + no parent deps: minimal header.
 func (d *DiffMetadata) ToDiffHeader(
 	ctx context.Context,
 	originalHeader *Header,
@@ -125,6 +131,11 @@ func (d *DiffMetadata) ToDiffHeader(
 			span.SetStatus(codes.Error, e.Error())
 		}
 	}()
+
+	parentDeps, err := originalHeader.Dependencies(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("wait parent dependencies: %w", err)
+	}
 
 	diffMapping := d.toDiffMapping(ctx, buildID)
 
@@ -151,7 +162,15 @@ func (d *DiffMetadata) ToDiffHeader(
 		attribute.String("snapshot.metadata.base_build_id", metadata.BaseBuildId.String()),
 	)
 
-	header, err := NewHeaderWithBuilds(metadata, m, originalHeader.Builds)
+	var header *Header
+	switch {
+	case d.Dirty.GetCardinality() > 0:
+		header, err = NewHeaderWithPendingDependencies(metadata, m, referencedSubset(m, parentDeps))
+	case len(parentDeps) == 0:
+		header, err = NewHeader(metadata, m)
+	default:
+		header, err = NewHeaderWithKnownDependencies(metadata, m, referencedSubset(m, parentDeps))
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}
@@ -159,6 +178,8 @@ func (d *DiffMetadata) ToDiffHeader(
 	err = ValidateMappings(header.Mapping, header.Metadata.Size, header.Metadata.BlockSize)
 	if err != nil {
 		if header.IsNormalizeFixApplied() {
+			header.CancelOnError(err)
+
 			return nil, fmt.Errorf("invalid header mappings: %w", err)
 		}
 

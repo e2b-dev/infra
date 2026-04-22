@@ -1089,6 +1089,7 @@ func (s *Sandbox) Pause(
 		s.config.DefaultCacheDir,
 		s.process,
 	)
+	defer func() { memfileDiffHeader.CancelOnError(e) }()
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
@@ -1104,6 +1105,7 @@ func (s *Sandbox) Pause(
 		},
 		s.config.DefaultCacheDir,
 	)
+	defer func() { rootfsDiffHeader.CancelOnError(e) }()
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
@@ -1176,6 +1178,10 @@ func pauseProcessMemory(
 		return nil, nil, fmt.Errorf("failed to create local diff from cache: %w", errors.Join(err, cache.Close()))
 	}
 
+	// Diff data is on local disk; readers (Resume) can skip the
+	// FinalizeDependencies wait that the upload path will satisfy later.
+	header.MarkLocallyAvailable()
+
 	return diff, header, nil
 }
 
@@ -1214,6 +1220,10 @@ func pauseProcessRootfs(
 
 		return nil, nil, fmt.Errorf("failed to create rootfs header: %w", err)
 	}
+
+	// Diff data is on local disk; readers (Resume) can skip the
+	// FinalizeDependencies wait that the upload path will satisfy later.
+	rootfsHeader.MarkLocallyAvailable()
 
 	return rootfsDiff, rootfsHeader, nil
 }

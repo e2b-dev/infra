@@ -96,9 +96,11 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 			continue
 		}
 
-		size := b.buildFileSize(h, mappedToBuild.BuildId)
-		ft := h.GetBuildFrameData(mappedToBuild.BuildId)
-		mappedBuild, err := b.getBuild(ctx, mappedToBuild.BuildId, size, ft.CompressionType())
+		dep, err := h.LookupDependency(ctx, mappedToBuild.BuildId)
+		if err != nil {
+			return 0, fmt.Errorf("wait header dependencies: %w", err)
+		}
+		mappedBuild, err := b.getBuild(ctx, mappedToBuild.BuildId, dep.Size, dep.FrameData.CompressionType())
 		if err != nil {
 			return 0, fmt.Errorf("failed to get build: %w", err)
 		}
@@ -106,7 +108,7 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 		buildN, err := mappedBuild.ReadAt(ctx,
 			p[n:int64(n)+readLength],
 			int64(mappedToBuild.Offset),
-			ft,
+			dep.FrameData,
 		)
 		if err != nil {
 			if retry, swapErr := b.retryOnTransition(ctx, err, &transitionRetries); retry {
@@ -141,14 +143,16 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 			return header.EmptyHugePage, nil
 		}
 
-		size := b.buildFileSize(h, mappedBuild.BuildId)
-		ft := h.GetBuildFrameData(mappedBuild.BuildId)
-		diff, err := b.getBuild(ctx, mappedBuild.BuildId, size, ft.CompressionType())
+		dep, err := h.LookupDependency(ctx, mappedBuild.BuildId)
+		if err != nil {
+			return nil, fmt.Errorf("wait header dependencies: %w", err)
+		}
+		diff, err := b.getBuild(ctx, mappedBuild.BuildId, dep.Size, dep.FrameData.CompressionType())
 		if err != nil {
 			return nil, fmt.Errorf("failed to get build: %w", err)
 		}
 
-		result, err := diff.Slice(ctx, int64(mappedBuild.Offset), int64(h.Metadata.BlockSize), ft)
+		result, err := diff.Slice(ctx, int64(mappedBuild.Offset), int64(h.Metadata.BlockSize), dep.FrameData)
 		if err != nil {
 			if retry, swapErr := b.retryOnTransition(ctx, err, &transitionRetries); retry {
 				continue
@@ -179,7 +183,7 @@ func (b *File) retryOnTransition(ctx context.Context, err error, retries *int) (
 		zap.Int("retry", *retries),
 	)
 
-	if swapErr := b.swapHeader(transErr); swapErr != nil {
+	if swapErr := b.swapHeader(ctx, transErr); swapErr != nil {
 		return false, fmt.Errorf("failed to swap header: %w", swapErr)
 	}
 
@@ -190,7 +194,7 @@ func (b *File) retryOnTransition(ctx context.Context, err error, retries *int) (
 // completion. Only the first goroutine to CAS succeeds; others just retry
 // with the already-swapped header. The caller's retry counter bounds
 // repeated attempts.
-func (b *File) swapHeader(transErr *storage.PeerTransitionedError) error {
+func (b *File) swapHeader(ctx context.Context, transErr *storage.PeerTransitionedError) error {
 	var headerBytes []byte
 
 	switch b.fileType {
@@ -206,23 +210,16 @@ func (b *File) swapHeader(transErr *storage.PeerTransitionedError) error {
 
 	newH, err := header.DeserializeBytes(headerBytes)
 	if err != nil {
-		return fmt.Errorf("failed to swap header: %w", err)
+		return fmt.Errorf("deserialize header: %w", err)
 	}
 
 	old := b.header.Load()
-	b.header.CompareAndSwap(old, newH)
-
-	return nil
-}
-
-// buildFileSize returns the uncompressed file size for a build. Returns 0 for
-// V3 headers, which signals the read path to fall back to a Size() RPC.
-func (b *File) buildFileSize(h *header.Header, buildID uuid.UUID) int64 {
-	if bd, ok := h.Builds[buildID]; ok {
-		return bd.Size
+	if !b.header.CompareAndSwap(old, newH) {
+		logger.L().Debug(ctx, "header already swapped by another goroutine",
+			zap.String("file_type", string(b.fileType)))
 	}
 
-	return 0
+	return nil
 }
 
 func (b *File) getBuild(ctx context.Context, buildID uuid.UUID, uncompressedSize int64, ct storage.CompressionType) (Diff, error) {
