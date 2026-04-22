@@ -17,4 +17,5 @@ type MemoryBackend interface {
 	Stop() error
 	Ready() chan struct{}
 	Exit() *utils.ErrorOnce
+	Memfd(ctx context.Context) *block.Memfd
 }
