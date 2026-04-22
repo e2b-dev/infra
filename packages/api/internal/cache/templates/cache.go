@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
@@ -111,6 +112,10 @@ func (c *TemplateCache) Get(ctx context.Context, templateID string, tag *string,
 	// Step 1: Get template with build by ID and tag
 	templateInfo, err := c.getByID(ctx, templateID, tag)
 	if err != nil {
+		if errors.Is(err, ErrTemplateNotFound) {
+			return nil, nil, c.refineNotFound(ctx, span, err, templateID, teamID)
+		}
+
 		return nil, nil, err
 	}
 
@@ -125,6 +130,46 @@ func (c *TemplateCache) Get(ctx context.Context, templateID string, tag *string,
 	}
 
 	return templateInfo.Template, templateInfo.Build, nil
+}
+
+func (c *TemplateCache) refineNotFound(ctx context.Context, span trace.Span, origErr error, templateID string, teamID uuid.UUID) error {
+	return refineTemplateNotFound(ctx, span, origErr, templateID, teamID, c.aliasCache.LookupByID, c.metadataCache.Get)
+}
+
+// refineTemplateNotFound returns the tag-specific variant only to callers with
+// access; otherwise it keeps the original error so we don't leak that a
+// private template exists. On any transient lookup error it also falls back
+// to the original error so the caller still sees a 404 rather than a 500.
+func refineTemplateNotFound(
+	ctx context.Context,
+	span trace.Span,
+	origErr error,
+	templateID string,
+	teamID uuid.UUID,
+	lookupByID func(context.Context, string) (*AliasInfo, error),
+	getMetadata func(context.Context, string) (*TemplateMetadata, error),
+) error {
+	aliasInfo, idErr := lookupByID(ctx, templateID)
+	if idErr != nil {
+		if !errors.Is(idErr, ErrTemplateNotFound) {
+			span.RecordError(idErr)
+		}
+
+		return origErr
+	}
+
+	metadata, mErr := getMetadata(ctx, templateID)
+	if mErr != nil {
+		span.RecordError(mErr)
+
+		return origErr
+	}
+
+	if aliasInfo.TeamID == teamID || metadata.Public {
+		return ErrTemplateTagNotFound
+	}
+
+	return origErr
 }
 
 // getByID fetches template+build by templateID and tag
@@ -154,16 +199,6 @@ func (c *TemplateCache) fetchTemplateWithBuild(templateID string, tag *string) f
 		})
 		if err != nil {
 			if dberrors.IsNotFoundError(err) {
-				// Existence check only refines the 404 message; on transient
-				// failure fall back to ErrTemplateNotFound instead of a 500.
-				_, idErr := c.aliasCache.LookupByID(ctx, templateID)
-				if idErr == nil {
-					return nil, ErrTemplateTagNotFound
-				}
-				if !errors.Is(idErr, ErrTemplateNotFound) {
-					span.RecordError(idErr)
-				}
-
 				return nil, ErrTemplateNotFound
 			}
 

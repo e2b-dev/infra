@@ -449,6 +449,32 @@ func TestAliasInfo_FullName(t *testing.T) {
 	})
 }
 
+func TestAliasCacheResolve_IDLookupDoesNotLeakNamespace(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	ownerTeamID := testutils.CreateTestTeam(t, db)
+	ownerSlug := testutils.GetTeamSlug(t, ctx, db, ownerTeamID)
+	templateID := testutils.CreateTestTemplate(t, db, ownerTeamID)
+	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "shared-name", &ownerSlug)
+
+	cache := NewAliasCache(db.SqlcClient, redis)
+	defer cache.Close(ctx)
+
+	info, err := cache.Resolve(ctx, "shared-name", ownerSlug)
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	assert.Equal(t, ownerSlug, info.MatchedNamespace)
+
+	byID, err := cache.LookupByID(ctx, templateID)
+	require.NoError(t, err)
+	require.NotNil(t, byID)
+	assert.Empty(t, byID.MatchedNamespace, "direct-ID entries must not carry another team's namespace")
+	assert.Equal(t, templateID, byID.FullName(templateID), "FullName on a bare ID must not prepend a foreign namespace")
+}
+
 func TestAliasCacheResolve_PopulatesNamespace(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)

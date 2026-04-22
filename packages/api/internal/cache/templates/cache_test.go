@@ -1,6 +1,8 @@
 package templatecache
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -137,6 +139,151 @@ func TestTemplateCache_Get_TagNotFound(t *testing.T) {
 	_, _, err := tc.Get(ctx, templateID, &missingTag, teamID, consts.LocalClusterID)
 	require.ErrorIs(t, err, ErrTemplateTagNotFound)
 	assert.NotErrorIs(t, err, ErrTemplateNotFound)
+}
+
+func TestRefineTemplateNotFound(t *testing.T) {
+	t.Parallel()
+
+	templateID := "tmpl-1"
+	ownerTeamID := uuid.New()
+	otherTeamID := uuid.New()
+	origErr := ErrTemplateNotFound
+
+	ownerLookup := func(context.Context, string) (*AliasInfo, error) { //nolint:unparam // stub signature fixed by callback type
+		return &AliasInfo{TemplateID: templateID, TeamID: ownerTeamID}, nil
+	}
+
+	t.Run("owner of private template gets tag-not-found", func(t *testing.T) {
+		t.Parallel()
+		_, span := tracer.Start(t.Context(), "t")
+		defer span.End()
+
+		err := refineTemplateNotFound(
+			t.Context(), span, origErr, templateID, ownerTeamID,
+			ownerLookup,
+			func(context.Context, string) (*TemplateMetadata, error) {
+				return &TemplateMetadata{TemplateID: templateID, TeamID: ownerTeamID, Public: false}, nil
+			},
+		)
+		assert.ErrorIs(t, err, ErrTemplateTagNotFound)
+	})
+
+	t.Run("foreign team on public template gets tag-not-found", func(t *testing.T) {
+		t.Parallel()
+		_, span := tracer.Start(t.Context(), "t")
+		defer span.End()
+
+		err := refineTemplateNotFound(
+			t.Context(), span, origErr, templateID, otherTeamID,
+			ownerLookup,
+			func(context.Context, string) (*TemplateMetadata, error) {
+				return &TemplateMetadata{TemplateID: templateID, TeamID: ownerTeamID, Public: true}, nil
+			},
+		)
+		assert.ErrorIs(t, err, ErrTemplateTagNotFound)
+	})
+
+	t.Run("foreign team on private template keeps original error", func(t *testing.T) {
+		t.Parallel()
+		_, span := tracer.Start(t.Context(), "t")
+		defer span.End()
+
+		err := refineTemplateNotFound(
+			t.Context(), span, origErr, templateID, otherTeamID,
+			ownerLookup,
+			func(context.Context, string) (*TemplateMetadata, error) {
+				return &TemplateMetadata{TemplateID: templateID, TeamID: ownerTeamID, Public: false}, nil
+			},
+		)
+		require.ErrorIs(t, err, ErrTemplateNotFound)
+		assert.NotErrorIs(t, err, ErrTemplateTagNotFound)
+	})
+
+	t.Run("template genuinely missing keeps original error", func(t *testing.T) {
+		t.Parallel()
+		_, span := tracer.Start(t.Context(), "t")
+		defer span.End()
+
+		getMetadataShouldNotRun := func(context.Context, string) (*TemplateMetadata, error) {
+			t.Fatalf("metadata lookup must not run when template is missing")
+
+			return nil, nil
+		}
+
+		err := refineTemplateNotFound(
+			t.Context(), span, origErr, templateID, ownerTeamID,
+			func(context.Context, string) (*AliasInfo, error) {
+				return nil, ErrTemplateNotFound
+			},
+			getMetadataShouldNotRun,
+		)
+		require.ErrorIs(t, err, ErrTemplateNotFound)
+		assert.NotErrorIs(t, err, ErrTemplateTagNotFound)
+	})
+
+	t.Run("transient lookup error falls back to original error", func(t *testing.T) {
+		t.Parallel()
+		_, span := tracer.Start(t.Context(), "t")
+		defer span.End()
+
+		getMetadataShouldNotRun := func(context.Context, string) (*TemplateMetadata, error) {
+			t.Fatalf("metadata lookup must not run on transient existence failure")
+
+			return nil, nil
+		}
+
+		err := refineTemplateNotFound(
+			t.Context(), span, origErr, templateID, ownerTeamID,
+			func(context.Context, string) (*AliasInfo, error) {
+				return nil, errors.New("redis: connection refused")
+			},
+			getMetadataShouldNotRun,
+		)
+		require.ErrorIs(t, err, ErrTemplateNotFound)
+		assert.NotErrorIs(t, err, ErrTemplateTagNotFound)
+	})
+
+	t.Run("transient metadata error falls back to original error", func(t *testing.T) {
+		t.Parallel()
+		_, span := tracer.Start(t.Context(), "t")
+		defer span.End()
+
+		err := refineTemplateNotFound(
+			t.Context(), span, origErr, templateID, ownerTeamID,
+			ownerLookup,
+			func(context.Context, string) (*TemplateMetadata, error) {
+				return nil, errors.New("redis: i/o timeout")
+			},
+		)
+		require.ErrorIs(t, err, ErrTemplateNotFound)
+		assert.NotErrorIs(t, err, ErrTemplateTagNotFound)
+	})
+}
+
+func TestTemplateCache_Get_TagNotFound_HidesExistenceFromForeignTeam(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	ownerTeamID := testutils.CreateTestTeam(t, db)
+	templateID := "base-env-" + uuid.New().String()
+	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx,
+		"INSERT INTO public.envs (id, team_id, public, updated_at, source) VALUES ($1, $2, false, NOW(), 'template')",
+		templateID, ownerTeamID,
+	))
+	buildID := testutils.CreateTestBuild(t, ctx, db, templateID, "ready")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "default")
+
+	foreignTeamID := testutils.CreateTestTeam(t, db)
+
+	tc := NewTemplateCache(db.SqlcClient, redis)
+	defer tc.Close(ctx)
+
+	missingTag := "bogus"
+	_, _, err := tc.Get(ctx, templateID, &missingTag, foreignTeamID, consts.LocalClusterID)
+	require.ErrorIs(t, err, ErrTemplateNotFound)
+	assert.NotErrorIs(t, err, ErrTemplateTagNotFound)
 }
 
 func TestTemplateCache_Get_TemplateNotFound(t *testing.T) {

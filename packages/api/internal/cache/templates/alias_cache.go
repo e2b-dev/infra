@@ -140,9 +140,15 @@ func (c *AliasCache) cacheByTemplateID(ctx context.Context, originalKey string, 
 	}
 
 	idKey := buildAliasKey(nil, info.TemplateID)
-	if idKey != originalKey {
-		c.cache.Set(ctx, idKey, info)
+	if idKey == originalKey {
+		return
 	}
+
+	// Clear MatchedNamespace — direct-ID entries must not surface another
+	// team's slug to later bare-ID lookups.
+	idInfo := *info
+	idInfo.MatchedNamespace = ""
+	c.cache.Set(ctx, idKey, &idInfo)
 }
 
 func (c *AliasCache) fetchFromDB(ctx context.Context, key string) (info *AliasInfo, err error) {
