@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -28,20 +29,12 @@ func ResponseMapper(ctx context.Context, res *loghttp.QueryResponse, offset int3
 				logger.L().Error(ctx, "error parsing log line", zap.Error(err), zap.String("line", entry.Line))
 			}
 
-			levelName := "info"
-			if ll, ok := fields["level"]; ok {
-				levelName = ll
-			}
+			levelName, message := structuredLogMetadata(fields)
 
 			// loki does not support offset pagination, so we need to skip logs manually
 			logsCrawled++
 			if logsCrawled <= offset {
 				continue
-			}
-
-			message := ""
-			if msg, ok := fields["message"]; ok {
-				message = msg
 			}
 
 			// Drop duplicate fields
@@ -69,4 +62,58 @@ func ResponseMapper(ctx context.Context, res *loghttp.QueryResponse, offset int3
 	})
 
 	return logEntries, nil
+}
+
+func structuredLogMetadata(fields map[string]string) (levelName string, message string) {
+	levelName = "info"
+	if ll, ok := fields["level"]; ok {
+		levelName = ll
+	}
+
+	if msg, ok := fields["message"]; ok {
+		message = msg
+	}
+
+	dataFields := embeddedDataFields(fields["data"])
+	if len(dataFields) == 0 {
+		return levelName, message
+	}
+
+	if ll, ok := firstNonEmpty(dataFields["level"], dataFields["severity"]); ok {
+		levelName = ll
+	}
+
+	if msg, ok := firstNonEmpty(dataFields["message"], dataFields["msg"]); ok {
+		message = msg
+	}
+
+	if loggerName, ok := firstNonEmpty(dataFields["logger"], dataFields["name"]); ok {
+		fields["logger"] = loggerName
+	}
+
+	return levelName, message
+}
+
+func embeddedDataFields(data string) map[string]string {
+	data = strings.TrimSpace(data)
+	if data == "" || !strings.HasPrefix(data, "{") {
+		return nil
+	}
+
+	fields, err := logs.FlatJsonLogLineParser(data)
+	if err != nil {
+		return nil
+	}
+
+	return fields
+}
+
+func firstNonEmpty(values ...string) (string, bool) {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value, true
+		}
+	}
+
+	return "", false
 }

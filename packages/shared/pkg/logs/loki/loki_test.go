@@ -9,6 +9,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
 func TestResponseMapper_DirectionOrdering(t *testing.T) {
@@ -65,13 +67,51 @@ func TestResponseMapper_DirectionOrdering(t *testing.T) {
 	}
 }
 
+func TestResponseMapper_UsesEmbeddedDataLogFields(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	embeddedData := `{"severity":"ERROR","logger":"app","message":"database unavailable","request_id":"req_123"}`
+	res := &loghttp.QueryResponse{
+		Data: loghttp.QueryResponseData{
+			ResultType: loghttp.ResultTypeStream,
+			Result: loghttp.Streams{
+				{
+					Entries: []loghttp.Entry{
+						{
+							Timestamp: now,
+							Line:      toRawLogLine(t, map[string]any{"message": "Streaming process event", "level": "info", "logger": "process", "data": embeddedData}),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	entries, err := ResponseMapper(t.Context(), res, 0, logproto.FORWARD)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+
+	entry := entries[0]
+	assert.Equal(t, "database unavailable", entry.Message)
+	assert.Equal(t, logs.LevelError, entry.Level)
+	assert.Equal(t, "app", entry.Fields["logger"])
+	assert.Equal(t, embeddedData, entry.Fields["data"])
+}
+
 func toLogLine(t *testing.T, message string) string {
 	t.Helper()
 
-	raw, err := json.Marshal(map[string]string{
+	return toRawLogLine(t, map[string]any{
 		"message": message,
 		"level":   "info",
 	})
+}
+
+func toRawLogLine(t *testing.T, fields map[string]any) string {
+	t.Helper()
+
+	raw, err := json.Marshal(fields)
 	require.NoError(t, err)
 
 	return string(raw)

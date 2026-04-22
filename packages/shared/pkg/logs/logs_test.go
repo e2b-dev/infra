@@ -84,6 +84,16 @@ func TestFlatJsonLogLineParser(t *testing.T) {
 			hasError: false,
 		},
 		{
+			name:  "data object preserved as json",
+			input: `{"message": "test", "data": {"severity": "ERROR"}, "level": "info"}`,
+			expected: map[string]string{
+				"message": "test",
+				"data":    `{"severity":"ERROR"}`,
+				"level":   "info",
+			},
+			hasError: false,
+		},
+		{
 			name:     "invalid JSON",
 			input:    `{"message": "test", "level":}`,
 			expected: nil,
@@ -136,6 +146,33 @@ func TestFlatJsonLogLineParser(t *testing.T) {
 			}
 
 			if !reflect.DeepEqual(result, tt.expected) {
+				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestStringToLevel(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected LogLevel
+	}{
+		{name: "lowercase debug", input: "debug", expected: LevelDebug},
+		{name: "uppercase info", input: "INFO", expected: LevelInfo},
+		{name: "warning alias", input: "WARNING", expected: LevelWarn},
+		{name: "fatal maps to error", input: "fatal", expected: LevelError},
+		{name: "unknown defaults to info", input: "notice", expected: LevelInfo},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := StringToLevel(tt.input)
+			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
 		})

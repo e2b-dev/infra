@@ -3,6 +3,7 @@ package logs
 import (
 	"encoding/json"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -24,10 +25,14 @@ const (
 )
 
 var stringToLevel = map[string]LogLevel{
-	"debug": LevelDebug,
-	"info":  LevelInfo,
-	"warn":  LevelWarn,
-	"error": LevelError,
+	"trace":   LevelDebug,
+	"debug":   LevelDebug,
+	"info":    LevelInfo,
+	"warning": LevelWarn,
+	"warn":    LevelWarn,
+	"error":   LevelError,
+	"fatal":   LevelError,
+	"panic":   LevelError,
 }
 
 var levelToString = map[LogLevel]string{
@@ -38,7 +43,7 @@ var levelToString = map[LogLevel]string{
 }
 
 func StringToLevel(name string) LogLevel {
-	if level, ok := stringToLevel[name]; ok {
+	if level, ok := stringToLevel[strings.ToLower(name)]; ok {
 		return level
 	}
 
@@ -66,7 +71,7 @@ func CompareLevels(as, bs string) int32 {
 	return 0
 }
 
-// FlatJsonLogLineParser parses a flat JSON log line into a map of string keys and values.
+// FlatJsonLogLineParser parses a JSON log line into a map of string keys and values.
 // Handles based on the documentation at https://pkg.go.dev/encoding/json#Unmarshal
 func FlatJsonLogLineParser(input string) (map[string]string, error) {
 	var raw map[string]any
@@ -83,6 +88,17 @@ func FlatJsonLogLineParser(input string) (map[string]string, error) {
 			result[key] = strconv.FormatFloat(t, 'G', -1, 64)
 		case bool:
 			result[key] = strconv.FormatBool(t)
+		case map[string]any, []any:
+			if key != "data" {
+				continue
+			}
+
+			data, err := json.Marshal(t)
+			if err != nil {
+				continue
+			}
+
+			result[key] = string(data)
 		default:
 			// Reject arrays, objects, nulls, etc.
 		}
