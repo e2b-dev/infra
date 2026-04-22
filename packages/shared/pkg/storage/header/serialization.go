@@ -16,7 +16,7 @@ func SerializeHeader(h *Header) ([]byte, error) {
 		return serializeV3(h.Metadata, h.Mapping)
 	}
 
-	return serializeV4(h.Metadata, h.dependencies, h.Mapping, h.IsPending())
+	return serializeV4(h.Metadata, h)
 }
 
 // DeserializeBytes auto-detects the header version and deserializes accordingly.

@@ -100,7 +100,7 @@ func (c *compressedUploader) uploadFile(
 	}
 
 	// A header-only layer may exist.
-	headerBytes, err := headers.SerializeHeader(h.CloneForV4Upload())
+	headerBytes, err := h.SerializeForV4Upload()
 	if err != nil {
 		return nil, fmt.Errorf("serialize header: %w", err)
 	}

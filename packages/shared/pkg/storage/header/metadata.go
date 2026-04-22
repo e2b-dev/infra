@@ -132,7 +132,7 @@ func (d *DiffMetadata) ToDiffHeader(
 		}
 	}()
 
-	parentDeps, err := originalHeader.Dependencies(ctx)
+	parentDeps, err := originalHeader.WaitForDependencies(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("wait parent dependencies: %w", err)
 	}

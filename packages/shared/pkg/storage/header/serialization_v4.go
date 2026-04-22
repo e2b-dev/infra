@@ -50,10 +50,23 @@ type v4SerializableDependency struct {
 
 // serializeV4 emits the V4 format documented at the top of this file.
 // Frame tables are sparse-trimmed to only frames referenced by mappings.
-func serializeV4(metadata *Metadata, dependencies map[uuid.UUID]Dependency, mappings []BuildMap, pending bool) ([]byte, error) {
+// meta is passed separately so callers can override the on-wire version
+// without mutating h.Metadata (see SerializeForV4Upload).
+func serializeV4(meta *Metadata, h *Header) ([]byte, error) {
 	var metaBuf bytes.Buffer
-	if err := binary.Write(&metaBuf, binary.LittleEndian, metadata); err != nil {
+	if err := binary.Write(&metaBuf, binary.LittleEndian, meta); err != nil {
 		return nil, fmt.Errorf("failed to write metadata: %w", err)
+	}
+
+	// Non-blocking read of the current dependency state. If still pending,
+	// we serialize the parent-inherited seed and flag pending=true so the
+	// reader knows more entries may arrive.
+	var dependencies map[uuid.UUID]Dependency
+	pending := h.IsPending()
+	if pending {
+		dependencies = h.initialDependencies
+	} else {
+		dependencies, _ = h.dependencies.Result()
 	}
 
 	var block bytes.Buffer
@@ -79,7 +92,7 @@ func serializeV4(metadata *Metadata, dependencies map[uuid.UUID]Dependency, mapp
 		return nil, fmt.Errorf("failed to write dependency count: %w", err)
 	}
 
-	perBuildRanges := extractRelevantRanges(mappings)
+	perBuildRanges := extractRelevantRanges(h.Mapping)
 	for _, id := range dependencyIDs {
 		bd := dependencies[id]
 
@@ -99,11 +112,11 @@ func serializeV4(metadata *Metadata, dependencies map[uuid.UUID]Dependency, mapp
 		}
 	}
 
-	if err := binary.Write(&block, binary.LittleEndian, uint32(len(mappings))); err != nil {
+	if err := binary.Write(&block, binary.LittleEndian, uint32(len(h.Mapping))); err != nil {
 		return nil, fmt.Errorf("failed to write mappings count: %w", err)
 	}
 
-	for _, mapping := range mappings {
+	for _, mapping := range h.Mapping {
 		v4 := &v4SerializableBuildMap{
 			Offset:             mapping.Offset,
 			Length:             mapping.Length,
