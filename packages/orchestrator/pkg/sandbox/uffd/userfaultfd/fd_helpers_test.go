@@ -42,6 +42,10 @@ func configureApi(f Fd, pagesize uint64) error {
 	return nil
 }
 
+// unregister tears down the UFFD registration over [addr, addr+size).
+// Used in test cleanup so in-flight REMOVE events queued by the kernel
+// (configureApi enables UFFD_FEATURE_EVENT_REMOVE on this branch) don't
+// keep munmap blocked on un-acked events.
 func unregister(f Fd, addr uintptr, size uint64) error {
 	r := newUffdioRange(CULong(addr), CULong(size))
 

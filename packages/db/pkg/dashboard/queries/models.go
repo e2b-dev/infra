@@ -2,7 +2,7 @@
 // versions:
 //   sqlc v1.29.0
 
-package authqueries
+package dashboardqueries
 
 import (
 	"time"
@@ -22,22 +22,7 @@ type Team struct {
 	ClusterID               *uuid.UUID
 	SandboxSchedulingLabels []string
 	Slug                    string
-}
-
-type TeamApiKey struct {
-	CreatedAt time.Time
-	TeamID    uuid.UUID
-	UpdatedAt *time.Time
-	Name      string
-	LastUsed  *time.Time
-	CreatedBy *uuid.UUID
-	ID        uuid.UUID
-	// sensitive
-	ApiKeyHash       string
-	ApiKeyPrefix     string
-	ApiKeyLength     int32
-	ApiKeyMaskPrefix string
-	ApiKeyMaskSuffix string
+	ProfilePictureUrl       *string
 }
 
 type TeamLimit struct {

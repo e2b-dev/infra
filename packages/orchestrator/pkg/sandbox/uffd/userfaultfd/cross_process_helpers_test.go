@@ -93,6 +93,10 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	uffdFd, err := newFd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	require.NoError(t, err)
 
+	t.Cleanup(func() {
+		uffdFd.close()
+	})
+
 	err = configureApi(uffdFd, tt.pagesize)
 	require.NoError(t, err)
 
@@ -213,9 +217,13 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 			"unexpected error: %v", waitErr,
 		)
 
-		// Unregister the uffd range so munmap won't block on REMOVE events.
-		unregister(uffdFd, memoryStart, uint64(size))
-		uffdFd.close()
+		// Tear down the UFFD registration before the early uffdFd.close()
+		// cleanup runs. This branch enables UFFD_FEATURE_EVENT_REMOVE
+		// (see configureApi in fd_helpers_test.go), so without the
+		// unregister, munmap can block on un-acked REMOVE events queued
+		// by the kernel against the still-registered range. Cleanups
+		// run LIFO, so this fires before the close registered earlier.
+		assert.NoError(t, unregister(uffdFd, memoryStart, uint64(size)))
 	})
 
 	// pageStatesOnce asks the serving process for a snapshot of its pageTracker
