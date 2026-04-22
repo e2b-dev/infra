@@ -133,14 +133,16 @@ func (c *compressedUploader) uploadData(
 		return headers.Dependency{Size: ft.UncompressedSize(), Checksum: checksum, FrameData: ft}, nil
 	}
 
+	// Stat before the upload so an eviction mid-upload doesn't mask a
+	// successful remote write as a header-finalization error.
+	fi, err := os.Stat(localPath)
+	if err != nil {
+		return headers.Dependency{}, fmt.Errorf("stat %s: %w", localPath, err)
+	}
+
 	_, checksum, err := storage.UploadFramed(ctx, c.persistence, dataPath, objType, localPath, storage.CompressConfig{})
 	if err != nil {
 		return headers.Dependency{}, fmt.Errorf("uncompressed data upload: %w", err)
-	}
-
-	fi, ferr := os.Stat(localPath)
-	if ferr != nil {
-		return headers.Dependency{}, fmt.Errorf("stat %s: %w", localPath, ferr)
 	}
 
 	return headers.Dependency{Size: fi.Size(), Checksum: checksum}, nil

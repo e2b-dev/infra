@@ -225,28 +225,17 @@ func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (BuildMap,
 	return b, nil
 }
 
-// LookupDependency returns the per-build metadata for buildID. For a local
-// reader asking about this header's own build, returns a zero Dependency
-// without waiting — the data is on local disk and LocalDiff doesn't need
-// the upload-side FrameData. Otherwise blocks on finalization, then errors
-// if the entry is missing (prevents a silent zero-value fallback that would
-// corrupt compressed reads).
 func (t *Header) LookupDependency(ctx context.Context, buildID uuid.UUID) (Dependency, error) {
 	if t.locallyAvailable.Load() && buildID == t.Metadata.BuildId {
 		return Dependency{}, nil
 	}
 
-	m, err := t.dependencies.WaitWithContext(ctx)
+	deps, err := t.dependencies.WaitWithContext(ctx)
 	if err != nil {
 		return Dependency{}, err
 	}
 
-	dep, ok := m[buildID]
-	if !ok {
-		return Dependency{}, fmt.Errorf("no dependency entry for build %s", buildID)
-	}
-
-	return dep, nil
+	return deps[buildID], nil
 }
 
 func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64, error) {
