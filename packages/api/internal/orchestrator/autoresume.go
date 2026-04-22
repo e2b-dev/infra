@@ -10,16 +10,14 @@ import (
 	"go.uber.org/zap"
 
 	apisandbox "github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	sharedproxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const MaxAutoResumeTransitionRetries = 3
 
-var (
-	ErrSandboxStillTransitioning = errors.New(sharedproxygrpc.SandboxStillTransitioningMessage)
-	ErrSandboxRouteUnavailable   = errors.New("sandbox is running but routing info is not available yet")
-)
+var ErrSandboxStillTransitioning = errors.New(sharedproxygrpc.SandboxStillTransitioningMessage)
 
 func (o *Orchestrator) HandleExistingSandboxAutoResume(
 	ctx context.Context,
@@ -105,19 +103,19 @@ func (o *Orchestrator) HandleExistingSandboxAutoResume(
 			node := o.getOrConnectNode(ctx, sbx.ClusterID, sbx.NodeID)
 			nodeIP := ""
 			if node != nil {
-				nodeIP = currentRouteNodeIPAddress(node)
+				nodeIP = routeNodeIPAddress(node, env.IsLocal())
 			}
 			if nodeIP == "" {
 				logger.L().Error(
 					ctx,
-					"Sandbox is running but routing info is not available during auto-resume",
+					"Sandbox is running but orchestrator IP is not available during auto-resume",
 					logger.WithSandboxID(sandboxID),
 					logger.WithTeamID(teamID.String()),
 					logger.WithNodeID(sbx.NodeID),
 					zap.Stringer("cluster_id", sbx.ClusterID),
 				)
 
-				return "", false, ErrSandboxRouteUnavailable
+				return "", false, errors.New("sandbox is running but orchestrator IP is not available yet")
 			}
 
 			return nodeIP, true, nil

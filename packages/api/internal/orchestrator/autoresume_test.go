@@ -74,7 +74,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		assert.Equal(t, "10.0.0.1", nodeIP)
 	})
 
-	t.Run("running sandbox with empty route returns route unavailable", func(t *testing.T) {
+	t.Run("running sandbox with empty ip returns error", func(t *testing.T) {
 		t.Parallel()
 
 		o := newTestAutoResumeOrchestrator()
@@ -82,7 +82,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		registerNode(o, sbx, "")
 
 		nodeIP, handled, err := o.HandleExistingSandboxAutoResume(t.Context(), sbx.TeamID, sbx.SandboxID, sbx, time.Minute)
-		require.ErrorIs(t, err, ErrSandboxRouteUnavailable)
+		require.ErrorContains(t, err, "orchestrator IP is not available")
 		assert.False(t, handled)
 		assert.Empty(t, nodeIP)
 	})

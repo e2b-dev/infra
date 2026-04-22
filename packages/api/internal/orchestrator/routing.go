@@ -22,17 +22,13 @@ func routeNodeIPAddress(node *nodemanager.Node, local bool) string {
 	return ""
 }
 
-func currentRouteNodeIPAddress(node *nodemanager.Node) string {
-	return routeNodeIPAddress(node, env.IsLocal())
-}
-
 func (o *Orchestrator) GetNodeRouteIPAddress(clusterID uuid.UUID, nodeID string) (string, bool) {
 	node := o.GetNode(clusterID, nodeID)
 	if node == nil {
 		return "", false
 	}
 
-	nodeIP := currentRouteNodeIPAddress(node)
+	nodeIP := routeNodeIPAddress(node, env.IsLocal())
 
 	return nodeIP, nodeIP != ""
 }
