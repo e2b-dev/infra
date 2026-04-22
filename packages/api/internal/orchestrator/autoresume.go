@@ -16,7 +16,10 @@ import (
 
 const MaxAutoResumeTransitionRetries = 3
 
-var ErrSandboxStillTransitioning = errors.New(sharedproxygrpc.SandboxStillTransitioningMessage)
+var (
+	ErrSandboxStillTransitioning = errors.New(sharedproxygrpc.SandboxStillTransitioningMessage)
+	ErrSandboxRouteUnavailable   = errors.New("sandbox is running but routing info is not available yet")
+)
 
 func (o *Orchestrator) HandleExistingSandboxAutoResume(
 	ctx context.Context,
@@ -31,7 +34,7 @@ func (o *Orchestrator) HandleExistingSandboxAutoResume(
 	attempts := 0
 
 	// Existing sandbox auto-resume state handling:
-	// - running: return the current node IP immediately
+	// - running: return the current route IP immediately
 	// - pausing/snapshotting: wait for the transition, refresh state, and retry
 	// - killing: treat as not found
 	// - anything else: return internal error
@@ -100,7 +103,11 @@ func (o *Orchestrator) HandleExistingSandboxAutoResume(
 			return "", false, apisandbox.ErrNotFound
 		case apisandbox.StateRunning:
 			node := o.getOrConnectNode(ctx, sbx.ClusterID, sbx.NodeID)
-			if node == nil {
+			nodeIP := ""
+			if node != nil {
+				nodeIP = currentRouteNodeIPAddress(node)
+			}
+			if nodeIP == "" {
 				logger.L().Error(
 					ctx,
 					"Sandbox is running but routing info is not available during auto-resume",
@@ -110,10 +117,10 @@ func (o *Orchestrator) HandleExistingSandboxAutoResume(
 					zap.Stringer("cluster_id", sbx.ClusterID),
 				)
 
-				return "", false, errors.New("sandbox is running but routing info is not available yet")
+				return "", false, ErrSandboxRouteUnavailable
 			}
 
-			return node.IPAddress, true, nil
+			return nodeIP, true, nil
 		default:
 			logger.L().Error(ctx, "Sandbox is in an unknown state during auto-resume", logger.WithSandboxID(sandboxID), zap.String("state", string(sbx.State)))
 

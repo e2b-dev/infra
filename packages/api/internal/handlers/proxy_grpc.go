@@ -257,10 +257,10 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		return nil, status.Error(sharedutils.GRPCCodeFromHTTPStatus(apiErr.Code), apiErr.ClientMsg)
 	}
 
-	node := s.api.orchestrator.GetNode(sbx.ClusterID, sbx.NodeID)
-	if node == nil {
+	nodeIP, found := s.api.orchestrator.GetNodeRouteIPAddress(sbx.ClusterID, sbx.NodeID)
+	if !found {
 		return nil, status.Error(codes.Internal, "sandbox resumed but routing info is not available yet")
 	}
 
-	return &proxygrpc.SandboxResumeResponse{OrchestratorIp: node.IPAddress}, nil
+	return &proxygrpc.SandboxResumeResponse{OrchestratorIp: nodeIP}, nil
 }

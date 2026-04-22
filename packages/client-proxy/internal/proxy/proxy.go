@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
@@ -35,7 +36,10 @@ const (
 	idleTimeout = 610 * time.Second
 )
 
-var ErrNodeNotFound = errors.New("node not found")
+var (
+	ErrNodeNotFound         = errors.New("node not found")
+	ErrNodeRouteUnavailable = errors.New("node route unavailable")
+)
 
 type autoResumeResult uint8
 
@@ -53,11 +57,12 @@ func resumedSandboxNodeIPFromCatalog(ctx context.Context, sandboxId string, c ca
 	for attempt := range resumedSandboxCatalogLookupAttempts {
 		resumedSandbox, err := c.GetSandbox(ctx, sandboxId)
 		if err == nil {
-			if resumedSandbox.OrchestratorIP != "" {
-				return resumedSandbox.OrchestratorIP, nil
+			nodeIP, routeErr := catalogSandboxNodeIP(resumedSandbox)
+			if routeErr == nil {
+				return nodeIP, nil
 			}
 
-			lastErr = ErrNodeNotFound
+			lastErr = routeErr
 		} else {
 			if !errors.Is(err, catalog.ErrSandboxNotFound) {
 				return "", fmt.Errorf("failed to get resumed sandbox from catalog: %w", err)
@@ -83,6 +88,15 @@ func resumedSandboxNodeIPFromCatalog(ctx context.Context, sandboxId string, c ca
 	return "", lastErr
 }
 
+func catalogSandboxNodeIP(s *catalog.SandboxInfo) (string, error) {
+	nodeIP := strings.TrimSpace(s.OrchestratorIP)
+	if nodeIP == "" {
+		return "", ErrNodeRouteUnavailable
+	}
+
+	return nodeIP, nil
+}
+
 func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
@@ -106,9 +120,7 @@ func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64
 		return "", fmt.Errorf("failed to get sandbox from catalog: %w", err)
 	}
 
-	// todo: when we will use edge for orchestrators discovery we can stop sending IP in the catalog
-	//  and just resolve node from pool to get the IP of the node
-	return s.OrchestratorIP, nil
+	return catalogSandboxNodeIP(s)
 }
 
 func handlePausedSandbox(
@@ -195,7 +207,9 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 					return nil, stillTransitioningErr
 				}
 
-				if !errors.Is(err, ErrNodeNotFound) {
+				if errors.Is(err, ErrNodeRouteUnavailable) {
+					l.Warn(ctx, "sandbox catalog record is not routable by client-proxy", zap.Error(err))
+				} else if !errors.Is(err, ErrNodeNotFound) {
 					l.Warn(ctx, "failed to resolve node ip with Redis resolution", zap.Error(err))
 				}
 

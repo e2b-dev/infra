@@ -132,7 +132,7 @@ func TestCatalogResolution_CatalogHit(t *testing.T) {
 	require.Equal(t, "10.0.0.1", nodeIP)
 }
 
-func TestCatalogResolution_CatalogHit_EmptyIPReturnsEmpty(t *testing.T) {
+func TestCatalogResolution_CatalogHit_EmptyIPReturnsRouteUnavailable(t *testing.T) {
 	t.Parallel()
 
 	c := catalog.NewMemorySandboxesCatalog()
@@ -146,7 +146,7 @@ func TestCatalogResolution_CatalogHit_EmptyIPReturnsEmpty(t *testing.T) {
 	require.NoError(t, err)
 
 	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrNodeRouteUnavailable)
 	require.Empty(t, nodeIP)
 }
 
