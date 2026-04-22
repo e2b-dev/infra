@@ -29,7 +29,7 @@ func TestRouteNodeIPAddress(t *testing.T) {
 			name:  "local cluster falls back for local ci",
 			node:  &nodemanager.Node{ClusterID: consts.LocalClusterID},
 			local: true,
-			want:  localSandboxRouteHost,
+			want:  localSandboxIPAddress,
 		},
 		{
 			name:  "local cluster stays empty outside local env",

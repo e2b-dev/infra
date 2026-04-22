@@ -16,6 +16,10 @@ type Item struct {
 	// Instance ID that changes on each restart, available only for edge-backend service discovery.
 	InstanceID string
 
+	// IPAddress is the node IP/host, without service port, returned to edge/client proxy for sandbox routing.
+	// Remote cluster control-plane calls still go through the cluster gRPC proxy.
+	IPAddress string
+
 	// Following fields are available only for local cluster.
 	// For remote clusters gRPC proxy is used and these fields are not needed.
 	LocalIPAddress       string

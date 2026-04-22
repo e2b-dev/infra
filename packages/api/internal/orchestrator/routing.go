@@ -8,7 +8,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
-const localSandboxRouteHost = "127.0.0.1"
+const localSandboxIPAddress = "127.0.0.1"
 
 func routeNodeIPAddress(node *nodemanager.Node, local bool) string {
 	if node.IPAddress != "" {
@@ -16,7 +16,7 @@ func routeNodeIPAddress(node *nodemanager.Node, local bool) string {
 	}
 
 	if local && node.ClusterID == consts.LocalClusterID {
-		return localSandboxRouteHost
+		return localSandboxIPAddress
 	}
 
 	return ""

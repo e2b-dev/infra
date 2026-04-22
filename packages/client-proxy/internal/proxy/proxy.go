@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -110,7 +112,8 @@ func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64
 					return nodeIP, nil
 				}
 
-				// when deployed to edge, need to refetch the sandbox info from the catalog
+				// Compatibility fallback for resume responses that do not include
+				// an orchestrator IP. The API should normally return it directly.
 				return resumedSandboxNodeIPFromCatalog(ctx, sandboxId, c)
 			}
 
@@ -218,7 +221,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 
 			url := &url.URL{
 				Scheme: "http",
-				Host:   fmt.Sprintf("%s:%d", nodeIP, orchestratorProxyPort),
+				Host:   net.JoinHostPort(nodeIP, strconv.Itoa(orchestratorProxyPort)),
 			}
 
 			l = l.With(
