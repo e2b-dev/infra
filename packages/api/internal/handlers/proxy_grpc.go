@@ -257,8 +257,8 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		return nil, status.Error(sharedutils.GRPCCodeFromHTTPStatus(apiErr.Code), apiErr.ClientMsg)
 	}
 
-	nodeIP, found := s.api.orchestrator.GetNodeRouteIPAddress(sbx.ClusterID, sbx.NodeID)
-	if !found {
+	nodeIP := s.api.orchestrator.GetNodeRouteIPAddress(sbx.ClusterID, sbx.NodeID)
+	if nodeIP == "" {
 		return nil, status.Error(codes.Internal, "sandbox resumed but orchestrator IP is not available yet")
 	}
 
