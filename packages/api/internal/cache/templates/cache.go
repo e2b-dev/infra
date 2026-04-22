@@ -154,15 +154,17 @@ func (c *TemplateCache) fetchTemplateWithBuild(templateID string, tag *string) f
 		})
 		if err != nil {
 			if dberrors.IsNotFoundError(err) {
+				// Existence check only refines the 404 message; on transient
+				// failure fall back to ErrTemplateNotFound instead of a 500.
 				_, idErr := c.aliasCache.LookupByID(ctx, templateID)
-				switch {
-				case idErr == nil:
+				if idErr == nil {
 					return nil, ErrTemplateTagNotFound
-				case errors.Is(idErr, ErrTemplateNotFound):
-					return nil, ErrTemplateNotFound
-				default:
-					return nil, fmt.Errorf("checking template existence: %w", idErr)
 				}
+				if !errors.Is(idErr, ErrTemplateNotFound) {
+					span.RecordError(idErr)
+				}
+
+				return nil, ErrTemplateNotFound
 			}
 
 			return nil, fmt.Errorf("fetching template with build: %w", err)
