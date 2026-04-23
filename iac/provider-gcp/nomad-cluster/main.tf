@@ -137,7 +137,7 @@ module "network" {
 module "api" {
   source = "./api-cluster"
 
-  cluster_name   = "${var.prefix}orch-api-regional"
+  cluster_name   = "${var.prefix}orch-api"
   cluster_size   = var.api_cluster_size
   machine_type   = var.api_machine_type
   image_family   = var.api_image_family
