@@ -88,6 +88,16 @@ func buildEgressConfig(allowedEntries, deniedEntries []string, rules map[string]
 	}
 }
 
+// applyEgressProxy copies BYOP SOCKS5 fields from src to dst. No-op on nil.
+func applyEgressProxy(dst *orchestrator.SandboxNetworkEgressConfig, src *types.SandboxNetworkEgressConfig) {
+	if dst == nil || src == nil {
+		return
+	}
+	dst.EgressProxyAddress = src.EgressProxyAddress
+	dst.EgressProxyUsername = src.EgressProxyUsername
+	dst.EgressProxyPassword = src.EgressProxyPassword
+}
+
 // buildNetworkConfig constructs the orchestrator network configuration from the input parameters
 func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess *bool, trafficAccessToken *string) *orchestrator.SandboxNetworkConfig {
 	orchNetwork := &orchestrator.SandboxNetworkConfig{
@@ -99,6 +109,7 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 
 	if network != nil && network.Egress != nil {
 		orchNetwork.Egress = buildEgressConfig(network.Egress.AllowedAddresses, network.Egress.DeniedAddresses, network.Egress.Rules)
+		applyEgressProxy(orchNetwork.Egress, network.Egress)
 	}
 
 	if network != nil && network.Ingress != nil {
