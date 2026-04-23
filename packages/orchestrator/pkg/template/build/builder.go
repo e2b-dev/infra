@@ -34,7 +34,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/units"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
-	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -125,26 +124,6 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 		featureflags.TemplateContext(cfg.TemplateID),
 		featureflags.TeamContext(cfg.TeamID),
 	)
-
-	cfg.KernelVersion = featureflags.DefaultKernelVersion
-	cfg.FirecrackerVersion = b.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
-
-	// The API computes HugePages from whatever firecracker version its own
-	// feature-flag lookup returned, under a different LaunchDarkly context
-	// (team/user/tier/cluster vs. builder's template/team). A cross-1.7
-	// divergence between the two resolutions would configure the memfile
-	// page size (2 MiB vs 4 KiB) for a binary we are not about to launch.
-	// Recompute from the firecracker version we actually resolved above so
-	// the page size always matches the binary that runs.
-	if info, err := fcversion.New(cfg.FirecrackerVersion); err == nil {
-		cfg.HugePages = info.HasHugePages()
-	} else {
-		logger.L().Warn(ctx,
-			"failed to parse resolved firecracker version, keeping HugePages value sent by the API",
-			zap.String("firecracker_version", cfg.FirecrackerVersion),
-			zap.Error(err),
-		)
-	}
 
 	// Record build duration and result at the end
 	startTime := time.Now()

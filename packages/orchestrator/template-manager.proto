@@ -72,7 +72,11 @@ message TemplateConfig {
   string kernelVersion = 6 [deprecated = true];
   string firecrackerVersion = 7 [deprecated = true];
   string startCommand = 8;
-  bool hugePages = 9;
+  // Deprecated: hugePages is derived from the resolved firecracker version
+  // (it flipped to on at v1.7) and the orchestrator now computes it locally
+  // from whatever firecracker binary it actually launches. Senders should
+  // leave this as the zero value.
+  bool hugePages = 9 [deprecated = true];
 
   string readyCommand = 10;
 
