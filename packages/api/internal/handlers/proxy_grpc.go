@@ -152,14 +152,21 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
 	}
 
-	clusterAuthToken := ""
+	var clientProxyAuthTokens []string
 	if team.ClusterID != nil {
-		if cluster, found := s.api.clusters.GetClusterById(*team.ClusterID); found {
-			clusterAuthToken = cluster.AuthToken
+		cluster, found := s.api.clusters.GetClusterById(*team.ClusterID)
+		if !found {
+			return nil, status.Errorf(codes.Internal, "cluster with ID '%s' not found", *team.ClusterID)
 		}
+
+		if cluster.AuthToken == "" {
+			return nil, status.Errorf(codes.Internal, "cluster auth token for cluster '%s' is not configured", *team.ClusterID)
+		}
+
+		clientProxyAuthTokens = []string{cluster.AuthToken}
 	}
 
-	if err := validateClientProxyAuth(incomingMetadata, s.api.config.APISecret, clusterAuthToken); err != nil {
+	if err := validateClientProxyAuth(incomingMetadata, clientProxyAuthTokens...); err != nil {
 		return nil, err
 	}
 
