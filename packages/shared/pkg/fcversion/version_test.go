@@ -46,12 +46,6 @@ func TestNew_RejectsGarbage(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// TestHasHugePages pins the huge-pages support boundary: firecracker v1.7.
-// The build path relies on this: HugePages determines whether the memfile
-// uses 2 MiB or 4 KiB pages, and a wrong answer corrupts the memory file
-// for the binary that is actually launched. Do not relax these assertions
-// without also making sure the orchestrator's Builder.Build still computes
-// HugePages from the firecracker version it resolved locally.
 func TestHasHugePages(t *testing.T) {
 	t.Parallel()
 
