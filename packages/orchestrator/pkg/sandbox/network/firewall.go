@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
+	"sync/atomic"
 
 	"github.com/google/nftables"
 	"github.com/google/nftables/binaryutil"
@@ -33,6 +34,12 @@ type Firewall struct {
 	tapInterface string
 
 	allowedRanges []string
+
+	// byopEnabled tracks whether Rule 3 is currently in BYOP mode (drop
+	// non-TCP only) vs default (drop all protocols). Slot pool reuse must
+	// flip this back to default before handing the slot to a non-BYOP
+	// sandbox; see EnableBYOPProxy / DisableBYOPProxy.
+	byopEnabled atomic.Bool
 }
 
 func NewFirewall(tapIf string, orchestratorInternalIP string, extraAllowedCIDRs []string) (*Firewall, error) {
@@ -92,8 +99,11 @@ func NewFirewall(tapIf string, orchestratorInternalIP string, extraAllowedCIDRs 
 		filterChain: filterChain,
 	}
 
-	// Add firewall rules to the chain
-	if err := fw.installRules(); err != nil {
+	// Add firewall rules to the chain. byop=false: kernel-level drop on
+	// predefinedDenySet applies to all protocols (defense-in-depth alongside
+	// userspace tcpfw). Sandboxes with egressProxy configured later switch
+	// to byop=true via EnableBYOPProxy.
+	if err := fw.installRules(false); err != nil {
 		return nil, err
 	}
 
@@ -184,17 +194,26 @@ func (fw *Firewall) addNonTCPSetFilterRule(ipSet *nftables.Set, drop bool) {
 	})
 }
 
-func (fw *Firewall) installRules() error {
+// installRules installs the filter chain. byop controls Rule 3:
+//
+//	false → predefinedDenySet → DROP (all protocols). Kernel enforces the
+//	        deny set for TCP and non-TCP alike. Default for sandboxes
+//	        without an egress proxy.
+//	true  → predefinedDenySet → DROP (non-TCP only). TCP enforcement for
+//	        these ranges shifts to userspace tcpfw, which routes via the
+//	        user-supplied SOCKS5 proxy and applies a dial-time DNS-rebind
+//	        guard. Set contents are unchanged across modes.
+func (fw *Firewall) installRules(byop bool) error {
 	// ============================================================
 	// FILTER CHAIN (PREROUTING, priority -150)
 	// Order:
 	//   1. ESTABLISHED/RELATED → accept (allow responses even from denied ranges)
-	//   2. predefinedAllowSet → accept (all protocols)
-	//   3. predefinedDenySet → DROP (all protocols, hard block)
+	//   2. predefinedAllowSet → accept (all protocols; includes orchestrator IP)
+	//   3. predefinedDenySet → DROP. All protocols by default; non-TCP only
+	//      when byop=true. See function-level comment.
 	//   4. Non-TCP: userAllowSet → accept
 	//   5. Non-TCP: userDenySet → DROP
-	//   6. Default: ACCEPT (TCP handled by iptables REDIRECT)
-	//
+	//   6. Default: ACCEPT (TCP handled by iptables REDIRECT in host netns)
 	// ============================================================
 
 	// Rule 1: Allow ESTABLISHED/RELATED connections - all protocols
@@ -226,8 +245,18 @@ func (fw *Firewall) installRules() error {
 	// Rule 2: predefinedAllowSet → accept (all protocols)
 	fw.addSetFilterRule(fw.predefinedAllowSet.Set(), false)
 
-	// Rule 3: predefinedDenySet → DROP (all protocols, hard block)
-	fw.addSetFilterRule(fw.predefinedDenySet.Set(), true)
+	// Rule 3: predefinedDenySet → DROP.
+	// Default (byop=false): drop all protocols at the kernel; tcpfw in the
+	// host netns is a redundant userspace check.
+	// BYOP (byop=true): drop non-TCP only. TCP for predefined-deny ranges
+	// is routed by the host-netns iptables REDIRECT to tcpfw, which dials
+	// via the user-supplied SOCKS5 proxy. The dial-time DNS-rebind guard
+	// in newSOCKS5DialContext rejects rebinds onto these ranges.
+	if byop {
+		fw.addNonTCPSetFilterRule(fw.predefinedDenySet.Set(), true)
+	} else {
+		fw.addSetFilterRule(fw.predefinedDenySet.Set(), true)
+	}
 
 	// Rule 4: Non-TCP + userAllowSet → accept
 	// Only non-TCP traffic is affected; TCP goes to proxy
@@ -245,6 +274,41 @@ func (fw *Firewall) installRules() error {
 		return fmt.Errorf("flush nftables changes: %w", err)
 	}
 
+	return nil
+}
+
+// EnableBYOPProxy switches the filter chain into BYOP mode by atomically
+// flushing all rules and reinstalling them with Rule 3 narrowed to non-TCP.
+// Called from slot.ConfigureInternet when the sandbox has egressProxy set.
+// Idempotent — no-op when already in BYOP mode.
+func (fw *Firewall) EnableBYOPProxy() error {
+	if !fw.byopEnabled.CompareAndSwap(false, true) {
+		return nil
+	}
+	fw.conn.FlushChain(fw.filterChain)
+	if err := fw.installRules(true); err != nil {
+		// Roll back so a subsequent call retries the install.
+		fw.byopEnabled.Store(false)
+		return err
+	}
+	return nil
+}
+
+// DisableBYOPProxy reverts the filter chain from BYOP mode back to default
+// (Rule 3 drops all protocols). Called from slot.ResetInternet during pool
+// recycle so a non-BYOP sandbox does not inherit a narrowed kernel firewall
+// from a previous BYOP tenant. Idempotent — no-op when already default.
+func (fw *Firewall) DisableBYOPProxy() error {
+	if !fw.byopEnabled.CompareAndSwap(true, false) {
+		return nil
+	}
+	fw.conn.FlushChain(fw.filterChain)
+	if err := fw.installRules(false); err != nil {
+		// Roll back: state is uncertain, leave byopEnabled=true so a
+		// subsequent ResetInternet retries the disable.
+		fw.byopEnabled.Store(true)
+		return err
+	}
 	return nil
 }
 
