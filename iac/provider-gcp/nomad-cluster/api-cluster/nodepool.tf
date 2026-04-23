@@ -14,7 +14,7 @@ locals {
 }
 
 resource "google_compute_health_check" "nomad_check" {
-  name                = "${var.cluster_name}-nomad-api-check"
+  name                = "${var.cluster_name}-nomad-check"
   check_interval_sec  = 15
   timeout_sec         = 10
   healthy_threshold   = 2
