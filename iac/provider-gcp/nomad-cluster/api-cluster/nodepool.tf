@@ -30,6 +30,10 @@ resource "google_compute_health_check" "nomad_check" {
   }
 }
 
+data "google_compute_zones" "region_zones" {
+  region = var.gcp_region
+}
+
 resource "google_compute_region_instance_group_manager" "pool" {
   name   = "${var.cluster_name}-rig"
   region = var.gcp_region
@@ -74,13 +78,17 @@ resource "google_compute_region_instance_group_manager" "pool" {
   # Server is a stateful cluster, so the update strategy used to roll out a new GCE Instance Template must be
   # a rolling update.
   update_policy {
-    type                         = var.environment == "dev" ? "PROACTIVE" : "OPPORTUNISTIC"
-    minimal_action               = "REPLACE"
-    max_surge_fixed              = 3
-    max_surge_percent            = null
-    max_unavailable_fixed        = 3
-    max_unavailable_percent      = null
-    replacement_method           = "SUBSTITUTE"
+    type                    = var.environment == "dev" ? "PROACTIVE" : "OPPORTUNISTIC"
+    minimal_action          = "REPLACE"
+    max_surge_percent       = null
+    max_unavailable_percent = null
+    replacement_method      = "SUBSTITUTE"
+
+    # Regional MIG surge/unavailable counts must be a multiple of the number of
+    # target zones in the region.
+    max_surge_fixed       = length(data.google_compute_zones.region_zones.names)
+    max_unavailable_fixed = length(data.google_compute_zones.region_zones.names)
+
     instance_redistribution_type = "NONE"
   }
 
