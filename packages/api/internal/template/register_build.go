@@ -40,7 +40,7 @@ type RegisterBuildData struct {
 	MemoryMB   *int32
 	Version    string
 
-	// TODO: Remove once the template manager resolves the kernel and firecracker versions itself.
+	// TODO(ENG-3852): Remove once the template manager resolves the kernel and firecracker versions itself.
 	//
 	// Deprecated: Template manager should use its own.
 	KernelVersion string
