@@ -14,6 +14,14 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 )
 
+const (
+	logOriginField           = "origin"
+	logOriginUser            = "user"
+	capturedByLoggerField    = "captured_by_logger"
+	capturedByMessageField   = "captured_by_message"
+	capturedByEventTypeField = "captured_by_event_type"
+)
+
 func ResponseMapper(ctx context.Context, res *loghttp.QueryResponse, offset int32, direction logproto.Direction) ([]logs.LogEntry, error) {
 	logsCrawled := int32(0)
 	logEntries := make([]logs.LogEntry, 0)
@@ -79,6 +87,17 @@ func structuredLogMetadata(fields map[string]string) (levelName string, message 
 		return levelName, message
 	}
 
+	fields[logOriginField] = logOriginUser
+	if loggerName, ok := firstNonEmpty(fields["logger"]); ok {
+		fields[capturedByLoggerField] = loggerName
+	}
+	if msg, ok := firstNonEmpty(fields["message"]); ok {
+		fields[capturedByMessageField] = msg
+	}
+	if eventType, ok := firstNonEmpty(fields["event_type"]); ok {
+		fields[capturedByEventTypeField] = eventType
+	}
+
 	if ll, ok := firstNonEmpty(dataFields["level"], dataFields["severity"]); ok {
 		levelName = ll
 	}
@@ -89,6 +108,8 @@ func structuredLogMetadata(fields map[string]string) (levelName string, message 
 
 	if loggerName, ok := firstNonEmpty(dataFields["logger"], dataFields["name"]); ok {
 		fields["logger"] = loggerName
+	} else {
+		delete(fields, "logger")
 	}
 
 	return levelName, message
@@ -110,8 +131,9 @@ func embeddedDataFields(data string) map[string]string {
 
 func firstNonEmpty(values ...string) (string, bool) {
 	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value, true
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			return trimmed, true
 		}
 	}
 

@@ -96,6 +96,45 @@ func TestResponseMapper_UsesEmbeddedDataLogFields(t *testing.T) {
 	assert.Equal(t, "database unavailable", entry.Message)
 	assert.Equal(t, logs.LevelError, entry.Level)
 	assert.Equal(t, "app", entry.Fields["logger"])
+	assert.Equal(t, "user", entry.Fields["origin"])
+	assert.Equal(t, "process", entry.Fields["captured_by_logger"])
+	assert.Equal(t, "Streaming process event", entry.Fields["captured_by_message"])
+	assert.Equal(t, embeddedData, entry.Fields["data"])
+}
+
+func TestResponseMapper_KeepsWrapperLoggerSeparateWhenDataHasNoLogger(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	embeddedData := `{"severity":"WARN","message":"cache warmup skipped","request_id":"req_456"}`
+	res := &loghttp.QueryResponse{
+		Data: loghttp.QueryResponseData{
+			ResultType: loghttp.ResultTypeStream,
+			Result: loghttp.Streams{
+				{
+					Entries: []loghttp.Entry{
+						{
+							Timestamp: now,
+							Line:      toRawLogLine(t, map[string]any{"message": "Streaming process event", "level": "info", "logger": "process", "event_type": "stdout", "data": embeddedData}),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	entries, err := ResponseMapper(t.Context(), res, 0, logproto.FORWARD)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+
+	entry := entries[0]
+	assert.Equal(t, "cache warmup skipped", entry.Message)
+	assert.Equal(t, logs.LevelWarn, entry.Level)
+	assert.NotContains(t, entry.Fields, "logger")
+	assert.Equal(t, "user", entry.Fields["origin"])
+	assert.Equal(t, "process", entry.Fields["captured_by_logger"])
+	assert.Equal(t, "Streaming process event", entry.Fields["captured_by_message"])
+	assert.Equal(t, "stdout", entry.Fields["captured_by_event_type"])
 	assert.Equal(t, embeddedData, entry.Fields["data"])
 }
 
