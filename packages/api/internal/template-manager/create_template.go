@@ -292,9 +292,9 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 	// Validate input: exactly one source must be provided
 	switch {
 	case hasImage && hasTemplate:
-		return fmt.Errorf("cannot specify both fromImage and fromTemplate")
+		return errors.New("cannot specify both fromImage and fromTemplate")
 	case !hasImage && !hasTemplate:
-		return fmt.Errorf("must specify either fromImage or fromTemplate")
+		return errors.New("must specify either fromImage or fromTemplate")
 	case hasTemplate:
 		identifier, tag, err := id.ParseName(*fromTemplate)
 		if err != nil {

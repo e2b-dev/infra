@@ -11,8 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/e2b-dev/infra/packages/db/pkg/auth"
-	"github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 
@@ -197,12 +197,12 @@ func createTokenHash(prefix, accessToken string) (string, keys.MaskedIdentifier,
 	tokenWithoutPrefix := strings.TrimPrefix(accessToken, prefix)
 	accessTokenBytes, err := hex.DecodeString(tokenWithoutPrefix)
 	if err != nil {
-		return "", keys.MaskedIdentifier{}, fmt.Errorf("failed to hex decode string")
+		return "", keys.MaskedIdentifier{}, errors.New("failed to hex decode string")
 	}
 	accessTokenHash := hasher.Hash(accessTokenBytes)
 	accessTokenMask, err := keys.MaskKey(prefix, tokenWithoutPrefix)
 	if err != nil {
-		return "", keys.MaskedIdentifier{}, fmt.Errorf("failed to mask key")
+		return "", keys.MaskedIdentifier{}, errors.New("failed to mask key")
 	}
 
 	return accessTokenHash, accessTokenMask, nil

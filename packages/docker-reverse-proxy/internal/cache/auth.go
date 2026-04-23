@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -34,7 +35,7 @@ func New() *AuthCache {
 // Get returns the auth token for the given teamID and e2bToken.
 func (c *AuthCache) Get(e2bToken string) (*AccessTokenData, error) {
 	if e2bToken == "" {
-		return nil, fmt.Errorf("e2bToken is empty")
+		return nil, errors.New("e2bToken is empty")
 	}
 
 	item := c.cache.Get(e2bToken)

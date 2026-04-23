@@ -2,6 +2,7 @@ package network
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -64,10 +65,10 @@ func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 	for {
 		select {
 		case <-acquireTimeoutCtx.Done():
-			return nil, fmt.Errorf("failed to acquire IP slot: timeout")
+			return nil, errors.New("failed to acquire IP slot: timeout")
 		default:
 			if len(s.acquiredNs) > s.slotsSize {
-				return nil, fmt.Errorf("failed to acquire IP slot: no empty slots found")
+				return nil, errors.New("failed to acquire IP slot: no empty slots found")
 			}
 
 			slotIdx++

@@ -2,6 +2,7 @@ package network
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/vishvananda/netlink"
@@ -50,5 +51,5 @@ func getDefaultGateway(ctx context.Context) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("cannot find default gateway")
+	return "", errors.New("cannot find default gateway")
 }

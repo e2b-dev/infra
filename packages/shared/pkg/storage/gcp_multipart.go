@@ -37,7 +37,7 @@ type RetryConfig struct {
 	BackoffMultiplier float64
 }
 
-// DefaultRetryConfig returns the default retry configuration for multipart uploads.
+// DefaultRetryConfig returns the default retry configuration matching storage_google.go
 func DefaultRetryConfig() RetryConfig {
 	return RetryConfig{
 		MaxAttempts:       googleMaxAttempts,

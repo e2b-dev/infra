@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -81,7 +82,7 @@ func getMMDSToken(ctx context.Context, client *http.Client) (string, error) {
 	token := string(body)
 
 	if len(token) == 0 {
-		return "", fmt.Errorf("mmds token is an empty string")
+		return "", errors.New("mmds token is an empty string")
 	}
 
 	return token, nil

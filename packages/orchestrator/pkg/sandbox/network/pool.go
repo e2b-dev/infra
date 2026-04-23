@@ -79,6 +79,9 @@ type Pool struct {
 	done     chan struct{}
 	doneOnce sync.Once
 
+	closeMu sync.RWMutex
+	closed  bool
+
 	newSlots    chan *Slot
 	reusedSlots chan *Slot
 
@@ -187,15 +190,22 @@ func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConf
 func (p *Pool) Return(ctx context.Context, slot *Slot) error {
 	select {
 	case <-ctx.Done():
+		if cerr := p.cleanup(ctx, slot); cerr != nil {
+			return errors.Join(ctx.Err(), fmt.Errorf("cleanup slot '%d' on cancelled context: %w", slot.Idx, cerr))
+		}
+
 		return ctx.Err()
 	case <-p.done:
+		if cerr := p.cleanup(ctx, slot); cerr != nil {
+			return errors.Join(ErrClosed, fmt.Errorf("cleanup slot '%d' on closed pool: %w", slot.Idx, cerr))
+		}
+
 		return ErrClosed
 	default:
 	}
 
 	err := slot.ResetInternet(ctx)
 	if err != nil {
-		// Cleanup the slot if resetting internet fails
 		if cerr := p.cleanup(ctx, slot); cerr != nil {
 			return fmt.Errorf("reset internet: %w; cleanup: %w", err, cerr)
 		}
@@ -203,22 +213,54 @@ func (p *Pool) Return(ctx context.Context, slot *Slot) error {
 		return fmt.Errorf("error resetting slot internet access: %w", err)
 	}
 
+	// RLock only guards the closed flag and the reusedSlots send. It is
+	// released before cleanup() so Close()'s Lock() is never pinned by a
+	// slow RemoveNetwork syscall (iptables, netlink) running in a
+	// concurrent Return.
+	p.closeMu.RLock()
+
+	if p.closed {
+		p.closeMu.RUnlock()
+
+		if cerr := p.cleanup(ctx, slot); cerr != nil {
+			return errors.Join(ErrClosed, fmt.Errorf("cleanup slot '%d' on closed pool: %w", slot.Idx, cerr))
+		}
+
+		return ErrClosed
+	}
+
 	select {
 	case <-ctx.Done():
+		p.closeMu.RUnlock()
+
+		if cerr := p.cleanup(ctx, slot); cerr != nil {
+			return errors.Join(ctx.Err(), fmt.Errorf("cleanup slot '%d' on cancelled context: %w", slot.Idx, cerr))
+		}
+
 		return ctx.Err()
 	case <-p.done:
+		p.closeMu.RUnlock()
+
+		if cerr := p.cleanup(ctx, slot); cerr != nil {
+			return errors.Join(ErrClosed, fmt.Errorf("cleanup slot '%d' on closing pool: %w", slot.Idx, cerr))
+		}
+
 		return ErrClosed
 	case p.reusedSlots <- slot:
 		returnedSlotCounter.Add(ctx, 1)
 		reusableSlotsAvailableCounter.Add(ctx, 1)
-	default:
-		err := p.cleanup(ctx, slot)
-		if err != nil {
-			return fmt.Errorf("failed to return slot '%d': %w", slot.Idx, err)
-		}
-	}
+		p.closeMu.RUnlock()
 
-	return nil
+		return nil
+	default:
+		p.closeMu.RUnlock()
+
+		if cerr := p.cleanup(ctx, slot); cerr != nil {
+			return fmt.Errorf("failed to return slot '%d': %w", slot.Idx, cerr)
+		}
+
+		return nil
+	}
 }
 
 func (p *Pool) cleanup(ctx context.Context, slot *Slot) error {
@@ -246,21 +288,33 @@ func (p *Pool) Close(ctx context.Context) error {
 		close(p.done)
 	})
 
+	p.closeMu.Lock()
+	p.closed = true
+	p.closeMu.Unlock()
+
 	var errs []error
 
 	for slot := range p.newSlots {
+		newSlotsAvailableCounter.Add(ctx, -1)
+
 		err := p.cleanup(ctx, slot)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err))
 		}
 	}
 
-	close(p.reusedSlots)
+drain:
+	for {
+		select {
+		case slot := <-p.reusedSlots:
+			reusableSlotsAvailableCounter.Add(ctx, -1)
 
-	for slot := range p.reusedSlots {
-		err := p.cleanup(ctx, slot)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err))
+			err := p.cleanup(ctx, slot)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err))
+			}
+		default:
+			break drain
 		}
 	}
 

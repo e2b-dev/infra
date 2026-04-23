@@ -662,7 +662,7 @@ func TestProxyReuseConnectionsWhenBackendChangesFails(t *testing.T) {
 
 		backendKey, ok := backendMapping[backendAddr]
 		if !ok {
-			return nil, fmt.Errorf("backend not found")
+			return nil, errors.New("backend not found")
 		}
 
 		return &pool.Destination{
@@ -735,7 +735,7 @@ func TestProxyDoesNotReuseConnectionsWhenBackendChanges(t *testing.T) {
 
 		backendKey, ok := backendMapping[backendAddr]
 		if !ok {
-			return nil, fmt.Errorf("backend not found")
+			return nil, errors.New("backend not found")
 		}
 
 		return &pool.Destination{
