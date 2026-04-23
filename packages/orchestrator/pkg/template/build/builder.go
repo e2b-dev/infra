@@ -94,8 +94,10 @@ func NewBuilder(
 }
 
 type Result struct {
-	EnvdVersion  string
-	RootfsSizeMB int64
+	EnvdVersion        string
+	KernelVersion      string
+	FirecrackerVersion string
+	RootfsSizeMB       int64
 }
 
 // Build builds the template, uploads it to storage and returns the result metadata.
@@ -122,6 +124,18 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 		featureflags.TemplateContext(cfg.TemplateID),
 		featureflags.TeamContext(cfg.TeamID),
 	)
+
+	// The kernel and firecracker versions in TemplateConfig are deprecated:
+	// the template-manager picks its own versions and returns them in the
+	// TemplateBuildMetadata response. Fall back to defaults when the API did
+	// not send them.
+	if cfg.KernelVersion == "" {
+		cfg.KernelVersion = featureflags.DefaultKernelVersion
+	}
+
+	if cfg.FirecrackerVersion == "" {
+		cfg.FirecrackerVersion = b.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
+	}
 
 	cfg.FirecrackerVersion = featureflags.ResolveFirecrackerVersion(ctx, b.featureFlags, cfg.FirecrackerVersion)
 
@@ -378,8 +392,10 @@ func runBuild(
 	logger.L().Info(ctx, "rootfs size", zap.Uint64("size", rootfsSize))
 
 	return &Result{
-		EnvdVersion:  bc.EnvdVersion,
-		RootfsSizeMB: units.BytesToMB(int64(rootfsSize)),
+		EnvdVersion:        bc.EnvdVersion,
+		KernelVersion:      bc.Config.KernelVersion,
+		FirecrackerVersion: bc.Config.FirecrackerVersion,
+		RootfsSizeMB:       units.BytesToMB(int64(rootfsSize)),
 	}, nil
 }
 

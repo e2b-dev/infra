@@ -151,8 +151,10 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 			buildInfo.SetFail(userError)
 		} else {
 			buildInfo.SetSuccess(&templatemanager.TemplateBuildMetadata{
-				RootfsSizeKey:  int32(res.RootfsSizeMB),
-				EnvdVersionKey: res.EnvdVersion,
+				RootfsSizeKey:      int32(res.RootfsSizeMB),
+				EnvdVersionKey:     res.EnvdVersion,
+				KernelVersion:      res.KernelVersion,
+				FirecrackerVersion: res.FirecrackerVersion,
 			})
 			telemetry.ReportEvent(ctx, "Environment built")
 		}

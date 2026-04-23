@@ -27,18 +27,26 @@ import (
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/template")
 
 type RegisterBuildData struct {
-	ClusterID          uuid.UUID
-	TemplateID         api.TemplateID
-	UserID             *uuid.UUID
-	Team               *types.Team
-	Dockerfile         string
-	Alias              *string
-	Tags               []string
-	StartCmd           *string
-	ReadyCmd           *string
-	CpuCount           *int32
-	MemoryMB           *int32
-	Version            string
+	ClusterID  uuid.UUID
+	TemplateID api.TemplateID
+	UserID     *uuid.UUID
+	Team       *types.Team
+	Dockerfile string
+	Alias      *string
+	Tags       []string
+	StartCmd   *string
+	ReadyCmd   *string
+	CpuCount   *int32
+	MemoryMB   *int32
+	Version    string
+
+	// KernelVersion and FirecrackerVersion are the versions the API intends to
+	// hand to the template-manager. They are deprecated on the wire: the
+	// template-manager selects its own versions and reports the ones it used
+	// back via TemplateBuildMetadata, at which point SetFinished overwrites
+	// these rows. They are still populated at build registration so the row
+	// stays non-NULL and consumers that read the record before completion see
+	// reasonable values.
 	KernelVersion      string
 	FirecrackerVersion string
 }
@@ -202,6 +210,9 @@ func RegisterBuild(
 
 	// Insert the new build
 	// TODO(ENG-3469): Switch to dbtypes.BuildStatusPending once all consumers are migrated.
+	// kernel_version and firecracker_version are seeded here for backwards
+	// compatibility; the template-manager reports the versions it actually
+	// used in TemplateBuildMetadata and SetFinished overwrites these rows.
 	err = client.CreateTemplateBuild(ctx, queries.CreateTemplateBuildParams{
 		BuildID:            buildID,
 		Status:             dbtypes.BuildStatusWaiting,

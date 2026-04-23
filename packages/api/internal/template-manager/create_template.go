@@ -109,6 +109,10 @@ func (tm *TemplateManager) CreateTemplate(
 		return fmt.Errorf("failed to convert image registry: %w", err)
 	}
 
+	// TODO: Remove later. KernelVersion and FirecrackerVersion are deprecated on
+	// template-manager selects its own versions and reports the ones it actually
+	// used via TemplateBuildMetadata. They are still populated here for
+	// backwards compatibility with older template-managers that honor them.
 	template := &templatemanagergrpc.TemplateConfig{
 		TeamID:             teamID.String(),
 		TemplateID:         templateID,
