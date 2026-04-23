@@ -686,19 +686,14 @@ type TemplateConfig struct {
 	MemoryMB   int32  `protobuf:"varint,3,opt,name=memoryMB,proto3" json:"memoryMB,omitempty"`
 	VCpuCount  int32  `protobuf:"varint,4,opt,name=vCpuCount,proto3" json:"vCpuCount,omitempty"`
 	DiskSizeMB int32  `protobuf:"varint,5,opt,name=diskSizeMB,proto3" json:"diskSizeMB,omitempty"`
-	// Deprecated: the orchestrator/template-manager now selects the kernel and
-	// firecracker versions itself and returns the used versions in
-	// TemplateBuildMetadata. Senders should leave these empty.
+	// Deprecated: template-manager now selects the kernel and firecracker versions itself
 	//
 	// Deprecated: Do not use.
 	KernelVersion string `protobuf:"bytes,6,opt,name=kernelVersion,proto3" json:"kernelVersion,omitempty"`
 	// Deprecated: Do not use.
 	FirecrackerVersion string `protobuf:"bytes,7,opt,name=firecrackerVersion,proto3" json:"firecrackerVersion,omitempty"`
 	StartCommand       string `protobuf:"bytes,8,opt,name=startCommand,proto3" json:"startCommand,omitempty"`
-	// Deprecated: hugePages is derived from the resolved firecracker version
-	// (it flipped to on at v1.7) and the orchestrator now computes it locally
-	// from whatever firecracker binary it actually launches. Senders should
-	// leave this as the zero value.
+	// Deprecated: hugePages is derived from the resolved firecracker version locally
 	//
 	// Deprecated: Do not use.
 	HugePages    bool            `protobuf:"varint,9,opt,name=hugePages,proto3" json:"hugePages,omitempty"`

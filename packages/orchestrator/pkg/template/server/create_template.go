@@ -51,14 +51,6 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		}
 	}
 
-	// KernelVersion / FirecrackerVersion on the wire are deprecated; the
-	// orchestrator picks them itself under its own LaunchDarkly context so we
-	// can't get a cross-1.7 mismatch between the resolved firecracker binary
-	// and the HugePages page-size decision. The resolved versions are echoed
-	// back to the API in TemplateBuildMetadata.
-	//
-	// LD context is built once here and reused by Builder.Build so both the
-	// version lookup and any downstream flag reads see the same attributes.
 	ctx = featureflags.AddToContext(
 		ctx,
 		featureflags.TemplateContext(cfg.GetTemplateID()),
