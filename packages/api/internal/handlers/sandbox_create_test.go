@@ -127,10 +127,11 @@ func TestSandboxLifecycleToAPI(t *testing.T) {
 
 			assert.Equal(t, tt.wantAutoResume, got.AutoResume)
 			if tt.wantTrafficKeepalive {
+				require.NotNil(t, got.Keepalive)
 				require.NotNil(t, got.Keepalive.Traffic)
 				assert.True(t, got.Keepalive.Traffic.Enabled)
 			} else {
-				assert.Nil(t, got.Keepalive.Traffic)
+				assert.Nil(t, got.Keepalive)
 			}
 			assert.Equal(t, tt.wantOnTimeout, got.OnTimeout)
 		})

@@ -332,7 +332,6 @@ components:
       description: Sandbox lifecycle policy returned by sandbox info.
       required:
         - autoResume
-        - keepalive
         - onTimeout
       properties:
         autoResume:

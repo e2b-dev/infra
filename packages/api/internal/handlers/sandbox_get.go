@@ -33,13 +33,13 @@ func sandboxLifecycleToAPI(autoPause bool, autoResumeConfig *dbtypes.SandboxAuto
 	}
 }
 
-func keepaliveConfigToAPI(keepalive *dbtypes.SandboxKeepaliveConfig) api.SandboxKeepalive {
-	result := api.SandboxKeepalive{}
+func keepaliveConfigToAPI(keepalive *dbtypes.SandboxKeepaliveConfig) *api.SandboxKeepalive {
 	if keepalive == nil || keepalive.Traffic == nil {
-		return result
+		return nil
 	}
 
 	timeout := int32(keepalive.Traffic.Timeout)
+	result := &api.SandboxKeepalive{}
 	result.Traffic = &api.SandboxTrafficKeepalive{
 		Enabled: keepalive.Traffic.Enabled,
 		Timeout: &timeout,
