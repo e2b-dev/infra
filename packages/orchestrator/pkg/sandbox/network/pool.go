@@ -23,9 +23,9 @@ const (
 	NewSlotsPoolSize    = 32
 	ReusedSlotsPoolSize = 100
 
-	// returnDelay is how long we wait before returning a slot to the reused pool,
+	// ReturnDelay is how long we wait before returning a slot to the reused pool,
 	// to let inflight requests on the previous sandbox drain and reduce reuse churn.
-	returnDelay = 3 * time.Second
+	ReturnDelay = 3 * time.Second
 )
 
 var (

@@ -1265,7 +1265,7 @@ func getNetworkSlot(
 
 			// We can run this cleanup asynchronously, as it is not important for the sandbox lifecycle
 			go func(ctx context.Context) {
-				returnErr := networkPool.Return(ctx, slot, networkReleased)
+				returnErr := networkPool.Return(ctx, slot, networkReleased, network.ReturnDelay)
 				if returnErr != nil {
 					logger.L().Error(ctx, "failed to return network slot", zap.Error(returnErr))
 				}
