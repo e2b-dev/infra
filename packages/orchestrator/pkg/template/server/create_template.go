@@ -69,8 +69,8 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	childSpan.SetAttributes(
 		telemetry.WithTemplateID(cfg.GetTemplateID()),
 		telemetry.WithBuildID(cfg.GetBuildID()),
-		attribute.String("env.kernel.version", kernelVersion),
-		attribute.String("env.firecracker.version", firecrackerVersion),
+		telemetry.WithKernelVersion(kernelVersion),
+		telemetry.WithFirecrackerVersion(firecrackerVersion),
 		attribute.String("env.start_cmd", cfg.GetStartCommand()),
 		attribute.Int64("env.memory_mb", int64(cfg.GetMemoryMB())),
 		attribute.Int64("env.vcpu_count", int64(cfg.GetVCpuCount())),
