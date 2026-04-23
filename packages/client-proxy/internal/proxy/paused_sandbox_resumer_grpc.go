@@ -19,17 +19,14 @@ import (
 )
 
 type grpcPausedSandboxResumer struct {
-	conn      *grpc.ClientConn
-	client    proxygrpc.SandboxServiceClient
-	apiSecret string
+	conn             *grpc.ClientConn
+	client           proxygrpc.SandboxServiceClient
+	clusterAuthToken string
 }
 
-func NewGrpcPausedSandboxResumer(address string, apiSecret string, tlsEnabled bool) (PausedSandboxResumer, error) {
+func NewGrpcPausedSandboxResumer(address string, clusterAuthToken string, tlsEnabled bool) (PausedSandboxResumer, error) {
 	if strings.TrimSpace(address) == "" {
 		return nil, errors.New("api grpc address is required")
-	}
-	if tlsEnabled && strings.TrimSpace(apiSecret) == "" {
-		return nil, errors.New("api secret is required when api grpc tls is enabled")
 	}
 
 	creds := insecure.NewCredentials()
@@ -47,9 +44,9 @@ func NewGrpcPausedSandboxResumer(address string, apiSecret string, tlsEnabled bo
 	}
 
 	return &grpcPausedSandboxResumer{
-		conn:      conn,
-		client:    proxygrpc.NewSandboxServiceClient(conn),
-		apiSecret: strings.TrimSpace(apiSecret),
+		conn:             conn,
+		client:           proxygrpc.NewSandboxServiceClient(conn),
+		clusterAuthToken: strings.TrimSpace(clusterAuthToken),
 	}, nil
 }
 
@@ -71,8 +68,8 @@ func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string,
 	if envdAccessToken != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataEnvdAccessToken, envdAccessToken)
 	}
-	if c.apiSecret != "" {
-		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataClientProxyAuthToken, c.apiSecret)
+	if c.clusterAuthToken != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataClientProxyAuthToken, c.clusterAuthToken)
 	}
 
 	resp, err := c.client.ResumeSandbox(ctx, &proxygrpc.SandboxResumeRequest{

@@ -73,7 +73,7 @@ variable "api_grpc_tls" {
   default = false
 }
 
-variable "api_secret" {
+variable "cluster_auth_token" {
   type      = string
   default   = ""
   sensitive = true

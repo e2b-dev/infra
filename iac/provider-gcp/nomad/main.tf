@@ -229,7 +229,6 @@ module "client_proxy" {
   image               = data.google_artifact_registry_docker_image.client_proxy_image.self_link
   api_grpc_address    = "api-grpc.service.consul:${var.api_grpc_port}"
   api_grpc_tls        = false
-  api_secret          = var.api_secret
 
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
   logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
