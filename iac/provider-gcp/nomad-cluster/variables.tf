@@ -84,6 +84,10 @@ variable "api_grpc_port" {
   type = number
 }
 
+variable "api_public_grpc_port" {
+  type = number
+}
+
 variable "ingress_port" {
   type = object({
     name        = string

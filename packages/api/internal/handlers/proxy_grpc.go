@@ -29,11 +29,15 @@ import (
 type SandboxService struct {
 	proxygrpc.UnimplementedSandboxServiceServer
 
-	api *APIStore
+	api                    *APIStore
+	requireClientProxyAuth bool
 }
 
-func NewSandboxService(api *APIStore) *SandboxService {
-	return &SandboxService{api: api}
+func NewSandboxService(api *APIStore, requireClientProxyAuth bool) *SandboxService {
+	return &SandboxService{
+		api:                    api,
+		requireClientProxyAuth: requireClientProxyAuth,
+	}
 }
 
 func metadataFromIncomingContext(ctx context.Context) metadata.MD {
@@ -103,7 +107,7 @@ func validateClientProxyAuth(incomingMetadata metadata.MD, expectedTokens ...str
 	}
 
 	if !hasExpectedToken {
-		return nil
+		return denyResumePermission()
 	}
 
 	return denyResumePermission()
@@ -152,22 +156,24 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
 	}
 
-	var clientProxyAuthTokens []string
-	if team.ClusterID != nil {
-		cluster, found := s.api.clusters.GetClusterById(*team.ClusterID)
-		if !found {
-			return nil, status.Errorf(codes.Internal, "cluster with ID '%s' not found", *team.ClusterID)
+	if s.requireClientProxyAuth {
+		var clientProxyAuthTokens []string
+		if team.ClusterID != nil {
+			cluster, found := s.api.clusters.GetClusterById(*team.ClusterID)
+			if !found {
+				return nil, status.Errorf(codes.Internal, "cluster with ID '%s' not found", *team.ClusterID)
+			}
+
+			if cluster.AuthToken == "" {
+				return nil, status.Errorf(codes.Internal, "cluster auth token for cluster '%s' is not configured", *team.ClusterID)
+			}
+
+			clientProxyAuthTokens = []string{cluster.AuthToken}
 		}
 
-		if cluster.AuthToken == "" {
-			return nil, status.Errorf(codes.Internal, "cluster auth token for cluster '%s' is not configured", *team.ClusterID)
+		if err := validateClientProxyAuth(incomingMetadata, clientProxyAuthTokens...); err != nil {
+			return nil, err
 		}
-
-		clientProxyAuthTokens = []string{cluster.AuthToken}
-	}
-
-	if err := validateClientProxyAuth(incomingMetadata, clientProxyAuthTokens...); err != nil {
-		return nil, err
 	}
 
 	sandboxData, sandboxErr := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)

@@ -223,6 +223,11 @@ variable "api_grpc_port" {
   default = 5009
 }
 
+variable "api_public_grpc_port" {
+  type    = number
+  default = 5010
+}
+
 variable "ingress_port" {
   type = object({
     name        = string

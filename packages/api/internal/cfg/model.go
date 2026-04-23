@@ -53,8 +53,9 @@ type Config struct {
 	RedisTLSCABase64 string `env:"REDIS_TLS_CA_BASE64"`
 	RedisPoolSize    int    `env:"REDIS_POOL_SIZE"     envDefault:"160"`
 
-	APIGrpcPort uint16 `env:"API_GRPC_PORT" envDefault:"5009"`
-	APISecret   string `env:"API_SECRET"`
+	APIGrpcPort       uint16 `env:"API_GRPC_PORT"        envDefault:"5009"`
+	APIPublicGrpcPort uint16 `env:"API_PUBLIC_GRPC_PORT" envDefault:"5010"`
+	APISecret         string `env:"API_SECRET"`
 
 	SandboxAccessTokenHashSeed string `env:"SANDBOX_ACCESS_TOKEN_HASH_SEED"`
 

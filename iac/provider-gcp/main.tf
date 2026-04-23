@@ -162,6 +162,7 @@ module "cluster" {
   ingress_port                 = var.ingress_port
   api_port                     = var.api_port
   api_grpc_port                = var.api_grpc_port
+  api_public_grpc_port         = var.api_public_grpc_port
   docker_reverse_proxy_port    = var.docker_reverse_proxy_port
   nomad_port                   = var.nomad_port
   google_service_account_email = module.init.service_account_email
@@ -242,6 +243,7 @@ module "nomad" {
   api_node_pool                                          = var.api_node_pool
   api_port                                               = var.api_port
   api_grpc_port                                          = var.api_grpc_port
+  api_public_grpc_port                                   = var.api_public_grpc_port
   environment                                            = var.environment
   google_service_account_key                             = module.init.google_service_account_key
   api_secret                                             = random_password.api_secret.result

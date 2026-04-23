@@ -177,9 +177,10 @@ func TestValidateClientProxyAuth(t *testing.T) {
 		wantErrCode bool
 	}{
 		{
-			name:     "disabled when expected token empty",
-			md:       metadata.MD{},
-			expected: []string{""},
+			name:        "denies when expected token empty",
+			md:          metadata.MD{},
+			expected:    []string{""},
+			wantErrCode: true,
 		},
 		{
 			name:     "valid token",

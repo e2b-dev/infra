@@ -23,6 +23,10 @@ job "api" {
         static = "${api_grpc_port}"
       }
 
+      port "grpc-public" {
+        static = "${api_public_grpc_port}"
+      }
+
       %{ if prevent_colocation }
       port "scheduling-block" {
         // This port is used to block scheduling of jobs with the same block on the same node.
@@ -65,22 +69,35 @@ job "api" {
       port = "grpc"
       task = "start"
 
-      tags = [
-        "traefik.enable=true",
-
-        "traefik.http.routers.api-grpc.rule=HostRegexp(`api-grpc.{domain:.+}`)",
-        "traefik.http.routers.api-grpc.ruleSyntax=v2",
-        "traefik.http.routers.api-grpc.priority=500",
-        "traefik.http.routers.api-grpc.service=api-grpc",
-        "traefik.http.services.api-grpc.loadbalancer.server.scheme=h2c"
-      ]
-
       check {
         type     = "tcp"
         name     = "grpc"
         interval = "3s"
         timeout  = "3s"
         port     = "grpc"
+      }
+    }
+
+    service {
+      name = "api-grpc-public"
+      port = "grpc-public"
+      task = "start"
+
+      tags = [
+        "traefik.enable=true",
+        "traefik.http.routers.api-grpc.rule=HostRegexp(`api-grpc.{domain:.+}`)",
+        "traefik.http.routers.api-grpc.ruleSyntax=v2",
+        "traefik.http.routers.api-grpc.priority=500",
+        "traefik.http.routers.api-grpc.service=api-grpc-public",
+        "traefik.http.services.api-grpc-public.loadbalancer.server.scheme=h2c"
+      ]
+
+      check {
+        type     = "tcp"
+        name     = "grpc-public"
+        interval = "3s"
+        timeout  = "3s"
+        port     = "grpc-public"
       }
     }
 
@@ -125,6 +142,7 @@ job "api" {
         NOMAD_TOKEN                    = "${nomad_acl_token}"
         ORCHESTRATOR_PORT              = "${orchestrator_port}"
         API_GRPC_PORT                  = "${api_grpc_port}"
+        API_PUBLIC_GRPC_PORT           = "${api_public_grpc_port}"
         ADMIN_TOKEN                    = "${admin_token}"
         SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
 %{ if api_secret != "" }

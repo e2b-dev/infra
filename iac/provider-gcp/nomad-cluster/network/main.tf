@@ -68,8 +68,8 @@ locals {
     }
     api-grpc = {
       protocol                        = "H2C"
-      port                            = var.api_grpc_port
-      port_name                       = "api-grpc"
+      port                            = var.api_public_grpc_port
+      port_name                       = "api-grpc-public"
       timeout_sec                     = 80
       connection_draining_timeout_sec = 1
       http_health_check = {
@@ -493,7 +493,7 @@ resource "google_compute_firewall" "default-hc" {
 
   allow {
     protocol = "tcp"
-    ports    = [var.api_grpc_port]
+    ports    = [var.api_public_grpc_port]
   }
 }
 
