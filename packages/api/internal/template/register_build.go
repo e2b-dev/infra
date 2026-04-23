@@ -40,14 +40,10 @@ type RegisterBuildData struct {
 	MemoryMB   *int32
 	Version    string
 
-	// KernelVersion and FirecrackerVersion are the versions the API intends to
-	// hand to the template-manager. They are deprecated on the wire: the
-	// template-manager selects its own versions and reports the ones it used
-	// back via TemplateBuildMetadata, at which point SetFinished overwrites
-	// these rows. They are still populated at build registration so the row
-	// stays non-NULL and consumers that read the record before completion see
-	// reasonable values.
-	KernelVersion      string
+	// TODO: Remove once the template manager resolves the kernel and firecracker versions itself.
+	// Deprecated: Template manager should use its own
+	KernelVersion string
+	// Deprecated: Template manager should use its own
 	FirecrackerVersion string
 }
 

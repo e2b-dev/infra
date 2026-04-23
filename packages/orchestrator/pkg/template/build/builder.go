@@ -125,19 +125,8 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 		featureflags.TeamContext(cfg.TeamID),
 	)
 
-	// The kernel and firecracker versions in TemplateConfig are deprecated:
-	// the template-manager picks its own versions and returns them in the
-	// TemplateBuildMetadata response. Fall back to defaults when the API did
-	// not send them.
-	if cfg.KernelVersion == "" {
-		cfg.KernelVersion = featureflags.DefaultKernelVersion
-	}
-
-	if cfg.FirecrackerVersion == "" {
-		cfg.FirecrackerVersion = b.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
-	}
-
-	cfg.FirecrackerVersion = featureflags.ResolveFirecrackerVersion(ctx, b.featureFlags, cfg.FirecrackerVersion)
+	cfg.KernelVersion = featureflags.DefaultKernelVersion
+	cfg.FirecrackerVersion = b.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
 
 	// Record build duration and result at the end
 	startTime := time.Now()
