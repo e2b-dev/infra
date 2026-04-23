@@ -123,6 +123,8 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 		featureflags.TeamContext(cfg.TeamID),
 	)
 
+	cfg.FirecrackerVersion = featureflags.ResolveFirecrackerVersion(ctx, b.featureFlags, cfg.FirecrackerVersion)
+
 	// Record build duration and result at the end
 	startTime := time.Now()
 	defer func() {
