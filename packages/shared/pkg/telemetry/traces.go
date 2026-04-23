@@ -12,6 +12,8 @@ import (
 	"google.golang.org/grpc/encoding/gzip"
 )
 
+var contextPropagationHeaders = NewTextPropagator().Fields()
+
 type noopSpanExporter struct{}
 
 // ExportSpans handles export of spans by dropping them.
@@ -55,4 +57,8 @@ func NewTracerProvider(spanExporter sdktrace.SpanExporter, res *resource.Resourc
 
 func NewTextPropagator() propagation.TextMapPropagator {
 	return propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})
+}
+
+func ContextPropagationHeaders() []string {
+	return append([]string(nil), contextPropagationHeaders...)
 }

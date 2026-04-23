@@ -164,6 +164,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 		"sdk_runtime",
 		"system",
 	}
+	corsConfig.AllowHeaders = append(corsConfig.AllowHeaders, telemetry.ContextPropagationHeaders()...)
 	r.Use(cors.New(corsConfig))
 
 	// Create a team API Key auth validator

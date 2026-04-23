@@ -293,6 +293,7 @@ func newHTTPServer(
 		sharedauth.HeaderSupabaseToken,
 		sharedauth.HeaderSupabaseTeam,
 	}
+	corsConfig.AllowHeaders = append(corsConfig.AllowHeaders, telemetry.ContextPropagationHeaders()...)
 	r.Use(cors.New(corsConfig))
 
 	r.Use(
