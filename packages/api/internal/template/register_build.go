@@ -41,9 +41,10 @@ type RegisterBuildData struct {
 	Version    string
 
 	// TODO: Remove once the template manager resolves the kernel and firecracker versions itself.
-	// Deprecated: Template manager should use its own
+	//
+	// Deprecated: Template manager should use its own.
 	KernelVersion string
-	// Deprecated: Template manager should use its own
+	// Deprecated: Template manager should use its own.
 	FirecrackerVersion string
 }
 
