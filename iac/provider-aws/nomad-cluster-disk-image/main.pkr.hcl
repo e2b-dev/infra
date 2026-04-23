@@ -17,6 +17,10 @@ source "amazon-ebs" "ubuntu" {
   ami_name      = "${var.prefix}orch-${formatdate("YYYY-MM-DD-hh-mm-ss", timestamp())}"
   ssh_username  = "ubuntu"
 
+  vpc_id                      = var.vpc_id
+  subnet_id                   = var.subnet_id
+  associate_public_ip_address = true
+
   // Ubuntu Server 24.04 LTS (HVM), SSD Volume Type
   source_ami_filter {
     filters = {

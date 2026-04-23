@@ -10,7 +10,7 @@ require (
 	github.com/e2b-dev/infra/packages/db v0.0.0
 	github.com/e2b-dev/infra/packages/shared v0.0.0
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.9.1
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/pressly/goose/v3 v3.26.0
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.39.0
@@ -72,7 +72,7 @@ require (
 	go.opentelemetry.io/contrib/bridges/otelzap v0.14.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.64.0 // indirect
 	go.opentelemetry.io/otel v1.43.0 // indirect
-	go.opentelemetry.io/otel/log v0.15.0 // indirect
+	go.opentelemetry.io/otel/log v0.19.0 // indirect
 	go.opentelemetry.io/otel/metric v1.43.0 // indirect
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect

@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -175,7 +176,7 @@ func (o *Orchestrator) CreateSandbox(
 		return sandbox.Sandbox{}, fetchErr
 	}
 
-	fcSemver, err := sandbox.NewVersionInfo(sbxData.Build.FirecrackerVersion)
+	fcSemver, err := fcversion.New(sbxData.Build.FirecrackerVersion)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get fcSemver for firecracker fcSemver '%s': %w", sbxData.Build.FirecrackerVersion, err)
 
