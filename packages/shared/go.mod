@@ -8,6 +8,7 @@ require (
 	cloud.google.com/go/artifactregistry v1.19.0
 	cloud.google.com/go/storage v1.59.2
 	connectrpc.com/connect v1.18.1
+	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/RoaringBitmap/roaring/v2 v2.18.0
 	github.com/aws/aws-sdk-go-v2 v1.41.6
 	github.com/aws/aws-sdk-go-v2/config v1.32.6
@@ -85,7 +86,6 @@ require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.54.0 // indirect
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
-	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/Workiva/go-datastructures v1.1.6 // indirect
