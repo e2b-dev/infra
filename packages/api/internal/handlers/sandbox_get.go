@@ -18,7 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func sandboxLifecycleToAPI(autoPause bool, autoResumeConfig *dbtypes.SandboxAutoResumeConfig, trafficKeepalive bool) *api.SandboxLifecycle {
+func sandboxLifecycleToAPI(autoPause bool, autoResumeConfig *dbtypes.SandboxAutoResumeConfig, keepalive *dbtypes.SandboxKeepaliveConfig) *api.SandboxLifecycle {
 	onTimeout := api.Kill
 	if autoPause {
 		onTimeout = api.Pause
@@ -27,10 +27,25 @@ func sandboxLifecycleToAPI(autoPause bool, autoResumeConfig *dbtypes.SandboxAuto
 	autoResume := autoResumeConfig != nil && autoResumeConfig.Policy == dbtypes.SandboxAutoResumeAny
 
 	return &api.SandboxLifecycle{
-		AutoResume:       autoResume,
-		TrafficKeepalive: trafficKeepalive,
-		OnTimeout:        onTimeout,
+		AutoResume: autoResume,
+		Keepalive:  keepaliveConfigToAPI(keepalive),
+		OnTimeout:  onTimeout,
 	}
+}
+
+func keepaliveConfigToAPI(keepalive *dbtypes.SandboxKeepaliveConfig) api.SandboxKeepalive {
+	result := api.SandboxKeepalive{}
+	if keepalive == nil || keepalive.Traffic == nil {
+		return result
+	}
+
+	timeout := int32(keepalive.Traffic.Timeout)
+	result.Traffic = &api.SandboxTrafficKeepalive{
+		Enabled: keepalive.Traffic.Enabled,
+		Timeout: &timeout,
+	}
+
+	return result
 }
 
 func dbNetworkConfigToAPI(network *dbtypes.SandboxNetworkConfig) *api.SandboxNetworkConfig {
@@ -126,7 +141,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			AllowInternetAccess: sbx.AllowInternetAccess,
 			Domain:              sbxDomain,
 			Network:             dbNetworkConfigToAPI(sbx.Network),
-			Lifecycle:           sandboxLifecycleToAPI(sbx.AutoPause, sbx.AutoResume, sbx.TrafficKeepalive),
+			Lifecycle:           sandboxLifecycleToAPI(sbx.AutoPause, sbx.AutoResume, sbx.Keepalive),
 			VolumeMounts:        convertFromDBMountsToAPIMounts(sbx.VolumeMounts),
 		}
 
@@ -198,11 +213,11 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 
 	var autoResumeConfig *dbtypes.SandboxAutoResumeConfig
 	var networkConfig *dbtypes.SandboxNetworkConfig
-	var trafficKeepalive bool
+	var keepaliveConfig *dbtypes.SandboxKeepaliveConfig
 	if lastSnapshot.Snapshot.Config != nil {
 		autoResumeConfig = lastSnapshot.Snapshot.Config.AutoResume
 		networkConfig = lastSnapshot.Snapshot.Config.Network
-		trafficKeepalive = lastSnapshot.Snapshot.Config.TrafficKeepalive
+		keepaliveConfig = lastSnapshot.Snapshot.Config.Keepalive
 	}
 
 	pausedAlias := firstAlias(lastSnapshot.Aliases)
@@ -222,7 +237,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		AllowInternetAccess: lastSnapshot.Snapshot.AllowInternetAccess,
 		Domain:              nil,
 		Network:             dbNetworkConfigToAPI(networkConfig),
-		Lifecycle:           sandboxLifecycleToAPI(lastSnapshot.Snapshot.AutoPause, autoResumeConfig, trafficKeepalive),
+		Lifecycle:           sandboxLifecycleToAPI(lastSnapshot.Snapshot.AutoPause, autoResumeConfig, keepaliveConfig),
 	}
 
 	sandbox.Alias = &pausedAlias

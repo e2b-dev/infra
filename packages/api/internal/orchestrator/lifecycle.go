@@ -7,10 +7,27 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
+
+func catalogKeepaliveFromDB(keepalive *types.SandboxKeepaliveConfig) *e2bcatalog.Keepalive {
+	if keepalive == nil {
+		return nil
+	}
+
+	result := &e2bcatalog.Keepalive{}
+	if keepalive.Traffic != nil {
+		result.Traffic = &e2bcatalog.TrafficKeepalive{
+			Enabled: keepalive.Traffic.Enabled,
+			Timeout: keepalive.Traffic.Timeout,
+		}
+	}
+
+	return result
+}
 
 func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox sandbox.Sandbox) {
 	node := o.GetNode(sandbox.ClusterID, sandbox.NodeID)
@@ -37,7 +54,7 @@ func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox san
 		StartedAt:        sandbox.StartTime,
 		EndTime:          sandbox.EndTime,
 		MaxLengthInHours: int64(sandbox.MaxInstanceLength / time.Hour),
-		TrafficKeepalive: sandbox.TrafficKeepalive,
+		Keepalive:        catalogKeepaliveFromDB(sandbox.Keepalive),
 	}
 
 	lifetime := time.Until(sandbox.StartTime.Add(sandbox.MaxInstanceLength))

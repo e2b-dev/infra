@@ -80,7 +80,7 @@ func TestSandboxLifecycleToAPI(t *testing.T) {
 		name                 string
 		autoPause            bool
 		autoResumeConfig     *dbtypes.SandboxAutoResumeConfig
-		trafficKeepalive     bool
+		keepalive            *dbtypes.SandboxKeepaliveConfig
 		wantAutoResume       bool
 		wantTrafficKeepalive bool
 		wantOnTimeout        api.SandboxOnTimeout
@@ -99,7 +99,9 @@ func TestSandboxLifecycleToAPI(t *testing.T) {
 			autoResumeConfig: &dbtypes.SandboxAutoResumeConfig{
 				Policy: dbtypes.SandboxAutoResumeOff,
 			},
-			trafficKeepalive:     true,
+			keepalive: &dbtypes.SandboxKeepaliveConfig{
+				Traffic: &dbtypes.SandboxTrafficKeepaliveConfig{Enabled: true, Timeout: 300},
+			},
 			wantTrafficKeepalive: true,
 			wantOnTimeout:        api.Kill,
 		},
@@ -108,7 +110,9 @@ func TestSandboxLifecycleToAPI(t *testing.T) {
 			autoResumeConfig: &dbtypes.SandboxAutoResumeConfig{
 				Policy: dbtypes.SandboxAutoResumeAny,
 			},
-			trafficKeepalive:     true,
+			keepalive: &dbtypes.SandboxKeepaliveConfig{
+				Traffic: &dbtypes.SandboxTrafficKeepaliveConfig{Enabled: true, Timeout: 300},
+			},
 			wantAutoResume:       true,
 			wantTrafficKeepalive: true,
 			wantOnTimeout:        api.Kill,
@@ -119,10 +123,15 @@ func TestSandboxLifecycleToAPI(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := sandboxLifecycleToAPI(tt.autoPause, tt.autoResumeConfig, tt.trafficKeepalive)
+			got := sandboxLifecycleToAPI(tt.autoPause, tt.autoResumeConfig, tt.keepalive)
 
 			assert.Equal(t, tt.wantAutoResume, got.AutoResume)
-			assert.Equal(t, tt.wantTrafficKeepalive, got.TrafficKeepalive)
+			if tt.wantTrafficKeepalive {
+				require.NotNil(t, got.Keepalive.Traffic)
+				assert.True(t, got.Keepalive.Traffic.Enabled)
+			} else {
+				assert.Nil(t, got.Keepalive.Traffic)
+			}
 			assert.Equal(t, tt.wantOnTimeout, got.OnTimeout)
 		})
 	}

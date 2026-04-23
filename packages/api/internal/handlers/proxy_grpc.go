@@ -259,7 +259,8 @@ func (s *SandboxService) KeepAliveSandbox(ctx context.Context, req *proxygrpc.Sa
 		return nil, status.Errorf(codes.Internal, "failed to get sandbox state: %v", err)
 	}
 
-	if !sandboxData.TrafficKeepalive {
+	trafficKeepalive := sandboxData.TrafficKeepalive()
+	if trafficKeepalive == nil {
 		return nil, status.Error(codes.FailedPrecondition, "sandbox traffic keepalive disabled")
 	}
 
@@ -267,10 +268,7 @@ func (s *SandboxService) KeepAliveSandbox(ctx context.Context, req *proxygrpc.Sa
 		return nil, trafficErr
 	}
 
-	timeout := sandboxData.Timeout
-	if timeout <= 0 {
-		timeout = sandbox.SandboxTimeoutDefault
-	}
+	timeout := time.Duration(trafficKeepalive.Timeout) * time.Second
 
 	if _, apiErr := s.api.orchestrator.KeepAliveFor(ctx, teamID, sandboxID, timeout, false); apiErr != nil {
 		return nil, status.Error(sharedutils.GRPCCodeFromHTTPStatus(apiErr.Code), apiErr.ClientMsg)

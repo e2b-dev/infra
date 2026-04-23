@@ -167,7 +167,7 @@ func createTestSandbox() sandbox.Sandbox {
 		uuid.New(),
 		false, // autoPause
 		nil,   // autoResume
-		false, // trafficKeepalive
+		nil,   // keepalive
 		time.Hour,
 		nil, // envdAccessToken
 		nil, // allowInternetAccess

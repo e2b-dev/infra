@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"google.golang.org/grpc/metadata"
+
+	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 const (
@@ -22,7 +24,8 @@ const (
 	sbxEndTimeHeader          = "sandbox-end-time"
 	sbxMaxLengthInHoursHeader = "sandbox-max-length-in-hours"
 	sbxStartTimeHeader        = "sandbox-start-time"
-	sbxTrafficKeepaliveHeader = "traffic-keepalive"
+	sbxKeepaliveTrafficHeader = "keepalive-traffic-enabled"
+	sbxKeepaliveTimeoutHeader = "keepalive-traffic-timeout"
 )
 
 var (
@@ -47,7 +50,7 @@ type SandboxCatalogCreateEvent struct {
 	SandboxMaxLengthInHours int64
 	SandboxStartTime        time.Time // Formatted as RFC3339 (ISO 8601)
 	SandboxEndTime          time.Time // Formatted as RFC3339 (ISO 8601)
-	TrafficKeepalive        bool
+	Keepalive               *catalog.Keepalive
 }
 
 type SandboxCatalogDeleteEvent struct {
@@ -56,20 +59,23 @@ type SandboxCatalogDeleteEvent struct {
 }
 
 func SerializeSandboxCatalogCreateEvent(e SandboxCatalogCreateEvent) metadata.MD {
-	return metadata.New(
-		map[string]string{
-			EventTypeHeader: CatalogCreateEventType,
+	values := map[string]string{
+		EventTypeHeader: CatalogCreateEventType,
 
-			sbxIdHeader:               e.SandboxID,
-			sbxTeamIdHeader:           e.TeamID,
-			sbxExecutionIdHeader:      e.ExecutionID,
-			sbxOrchestratorIdHeader:   e.OrchestratorID,
-			sbxEndTimeHeader:          e.SandboxEndTime.Format(time.RFC3339),
-			sbxStartTimeHeader:        e.SandboxStartTime.Format(time.RFC3339),
-			sbxMaxLengthInHoursHeader: strconv.Itoa(int(e.SandboxMaxLengthInHours)),
-			sbxTrafficKeepaliveHeader: strconv.FormatBool(e.TrafficKeepalive),
-		},
-	)
+		sbxIdHeader:               e.SandboxID,
+		sbxTeamIdHeader:           e.TeamID,
+		sbxExecutionIdHeader:      e.ExecutionID,
+		sbxOrchestratorIdHeader:   e.OrchestratorID,
+		sbxEndTimeHeader:          e.SandboxEndTime.Format(time.RFC3339),
+		sbxStartTimeHeader:        e.SandboxStartTime.Format(time.RFC3339),
+		sbxMaxLengthInHoursHeader: strconv.Itoa(int(e.SandboxMaxLengthInHours)),
+	}
+	if e.Keepalive != nil && e.Keepalive.Traffic != nil {
+		values[sbxKeepaliveTrafficHeader] = strconv.FormatBool(e.Keepalive.Traffic.Enabled)
+		values[sbxKeepaliveTimeoutHeader] = strconv.FormatUint(e.Keepalive.Traffic.Timeout, 10)
+	}
+
+	return metadata.New(values)
 }
 
 func SerializeSandboxCatalogDeleteEvent(e SandboxCatalogDeleteEvent) metadata.MD {
@@ -130,12 +136,26 @@ func ParseSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEven
 		}
 	}
 
-	var trafficKeepalive bool
-	trafficKeepaliveStr, found := getMetadataValue(md, sbxTrafficKeepaliveHeader)
+	var keepalive *catalog.Keepalive
+	trafficKeepaliveStr, found := getMetadataValue(md, sbxKeepaliveTrafficHeader)
 	if found {
-		trafficKeepalive, err = strconv.ParseBool(trafficKeepaliveStr)
+		trafficKeepalive, err := strconv.ParseBool(trafficKeepaliveStr)
 		if err != nil {
 			return nil, ErrSandboxCreationParse
+		}
+
+		keepalive = &catalog.Keepalive{
+			Traffic: &catalog.TrafficKeepalive{
+				Enabled: trafficKeepalive,
+			},
+		}
+
+		timeoutStr, timeoutFound := getMetadataValue(md, sbxKeepaliveTimeoutHeader)
+		if timeoutFound {
+			keepalive.Traffic.Timeout, err = strconv.ParseUint(timeoutStr, 10, 64)
+			if err != nil {
+				return nil, ErrSandboxCreationParse
+			}
 		}
 	}
 
@@ -147,7 +167,7 @@ func ParseSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEven
 		SandboxMaxLengthInHours: int64(maxLengthInHours),
 		SandboxStartTime:        sandboxStartTime,
 		SandboxEndTime:          sandboxEndTime,
-		TrafficKeepalive:        trafficKeepalive,
+		Keepalive:               keepalive,
 	}, nil
 }
 

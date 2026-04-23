@@ -13,11 +13,20 @@ type SandboxInfo struct {
 	OrchestratorID string `json:"orchestrator_id"`
 	OrchestratorIP string `json:"orchestrator_ip"` // used only for cases where orchestrator is not registered in edge pool
 
-	ExecutionID      string    `json:"execution_id"`
-	StartedAt        time.Time `json:"sandbox_started_at"`          // when sandbox was started
-	EndTime          time.Time `json:"sandbox_end_time"`            // when sandbox will expire
-	MaxLengthInHours int64     `json:"sandbox_max_length_in_hours"` // how long can sandbox can possibly run (in hours)
-	TrafficKeepalive bool      `json:"traffic_keepalive"`           // whether traffic should refresh the sandbox timeout
+	ExecutionID      string     `json:"execution_id"`
+	StartedAt        time.Time  `json:"sandbox_started_at"`          // when sandbox was started
+	EndTime          time.Time  `json:"sandbox_end_time"`            // when sandbox will expire
+	MaxLengthInHours int64      `json:"sandbox_max_length_in_hours"` // how long can sandbox can possibly run (in hours)
+	Keepalive        *Keepalive `json:"keepalive,omitempty"`         // policies for refreshing the sandbox timeout
+}
+
+type Keepalive struct {
+	Traffic *TrafficKeepalive `json:"traffic,omitempty"`
+}
+
+type TrafficKeepalive struct {
+	Enabled bool   `json:"enabled"`
+	Timeout uint64 `json:"timeout,omitempty"`
 }
 
 type SandboxesCatalog interface {

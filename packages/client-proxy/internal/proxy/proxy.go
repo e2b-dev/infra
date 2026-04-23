@@ -62,7 +62,7 @@ func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64
 		return "", fmt.Errorf("failed to get sandbox from catalog: %w", err)
 	}
 
-	if s.TrafficKeepalive {
+	if s.Keepalive != nil && s.Keepalive.Traffic != nil && s.Keepalive.Traffic.Enabled {
 		trafficKeepalive.MaybeRefresh(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken, s)
 	}
 

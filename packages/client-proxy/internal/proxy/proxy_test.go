@@ -162,6 +162,15 @@ func requireTrafficKeepaliveIdle(t *testing.T, manager *trafficKeepaliveManager,
 	}, time.Second, 10*time.Millisecond)
 }
 
+func testKeepalive() *catalog.Keepalive {
+	return &catalog.Keepalive{
+		Traffic: &catalog.TrafficKeepalive{
+			Enabled: true,
+			Timeout: 300,
+		},
+	}
+}
+
 func newFF(t *testing.T, autoResumeEnabled bool) *featureflags.Client {
 	t.Helper()
 
@@ -232,12 +241,12 @@ func TestCatalogResolution_CatalogHit_TrafficKeepaliveRefreshesNearExpiry(t *tes
 	trafficKeepalive.now = func() time.Time { return now }
 
 	err := c.StoreSandbox(t.Context(), "sbx", &catalog.SandboxInfo{
-		OrchestratorIP:   "10.0.0.1",
-		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
-		ExecutionID:      "exec",
-		StartedAt:        now.Add(-time.Minute),
-		EndTime:          now.Add(30 * time.Second),
-		TrafficKeepalive: true,
+		OrchestratorIP: "10.0.0.1",
+		TeamID:         "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		ExecutionID:    "exec",
+		StartedAt:      now.Add(-time.Minute),
+		EndTime:        now.Add(30 * time.Second),
+		Keepalive:      testKeepalive(),
 	}, time.Minute)
 	require.NoError(t, err)
 
@@ -265,12 +274,12 @@ func TestCatalogResolution_CatalogHit_TrafficKeepaliveRefreshesWhenAutoResumeFla
 	trafficKeepalive.now = func() time.Time { return now }
 
 	err := c.StoreSandbox(t.Context(), "sbx", &catalog.SandboxInfo{
-		OrchestratorIP:   "10.0.0.1",
-		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
-		ExecutionID:      "exec",
-		StartedAt:        now.Add(-time.Minute),
-		EndTime:          now.Add(30 * time.Second),
-		TrafficKeepalive: true,
+		OrchestratorIP: "10.0.0.1",
+		TeamID:         "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		ExecutionID:    "exec",
+		StartedAt:      now.Add(-time.Minute),
+		EndTime:        now.Add(30 * time.Second),
+		Keepalive:      testKeepalive(),
 	}, time.Minute)
 	require.NoError(t, err)
 
@@ -292,9 +301,9 @@ func TestTrafficKeepaliveManager_SkipsWhenNotNearExpiry(t *testing.T) {
 	trafficKeepalive.now = func() time.Time { return now }
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", &catalog.SandboxInfo{
-		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
-		EndTime:          now.Add(trafficKeepaliveRefreshBefore + time.Second),
-		TrafficKeepalive: true,
+		TeamID:    "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		EndTime:   now.Add(trafficKeepaliveRefreshBefore + time.Second),
+		Keepalive: testKeepalive(),
 	})
 
 	requireNoResumerCall(t, resumer.calls)
@@ -309,8 +318,8 @@ func TestTrafficKeepaliveManager_SkipsWhenTeamIDMissing(t *testing.T) {
 	trafficKeepalive.now = func() time.Time { return now }
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", &catalog.SandboxInfo{
-		EndTime:          now.Add(30 * time.Second),
-		TrafficKeepalive: true,
+		EndTime:   now.Add(30 * time.Second),
+		Keepalive: testKeepalive(),
 	})
 
 	requireNoResumerCall(t, resumer.calls)
@@ -328,9 +337,9 @@ func TestTrafficKeepaliveManager_SuppressesConcurrentRefreshes(t *testing.T) {
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 	trafficKeepalive.now = func() time.Time { return now }
 	info := &catalog.SandboxInfo{
-		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
-		EndTime:          now.Add(30 * time.Second),
-		TrafficKeepalive: true,
+		TeamID:    "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		EndTime:   now.Add(30 * time.Second),
+		Keepalive: testKeepalive(),
 	}
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
@@ -351,9 +360,9 @@ func TestTrafficKeepaliveManager_RateLimitsAttempts(t *testing.T) {
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 	trafficKeepalive.now = func() time.Time { return currentTime }
 	info := &catalog.SandboxInfo{
-		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
-		EndTime:          currentTime.Add(30 * time.Second),
-		TrafficKeepalive: true,
+		TeamID:    "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		EndTime:   currentTime.Add(30 * time.Second),
+		Keepalive: testKeepalive(),
 	}
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)

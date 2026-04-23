@@ -73,7 +73,8 @@ func TestSandboxDetailReturnsLifecycleAndNetworkConfig(t *testing.T) {
 
 		require.NotNil(t, returnedSbx.Lifecycle)
 		assert.True(t, returnedSbx.Lifecycle.AutoResume)
-		assert.True(t, returnedSbx.Lifecycle.TrafficKeepalive)
+		require.NotNil(t, returnedSbx.Lifecycle.Keepalive.Traffic)
+		assert.True(t, returnedSbx.Lifecycle.Keepalive.Traffic.Enabled)
 		assert.Equal(t, api.Pause, returnedSbx.Lifecycle.OnTimeout)
 
 		require.NotNil(t, returnedSbx.Network)

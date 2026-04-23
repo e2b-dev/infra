@@ -46,13 +46,21 @@ type SandboxConfig struct {
 	timeout             int32
 	autoPause           bool
 	autoResume          *api.SandboxAutoResumeConfig
-	trafficKeepalive    *bool
+	lifecycle           *api.NewSandboxLifecycle
 	network             *api.SandboxNetworkConfig
 	allowInternetAccess *bool
 	secure              *bool
 }
 
 type SandboxOption func(config *SandboxConfig)
+
+func ensureLifecycle(config *SandboxConfig) *api.NewSandboxLifecycle {
+	if config.lifecycle == nil {
+		config.lifecycle = &api.NewSandboxLifecycle{}
+	}
+
+	return config.lifecycle
+}
 
 func WithMetadata(metadata api.SandboxMetadata) SandboxOption {
 	return func(config *SandboxConfig) {
@@ -90,7 +98,12 @@ func WithAutoResume(enabled bool) SandboxOption {
 
 func WithTrafficKeepalive(enabled bool) SandboxOption {
 	return func(config *SandboxConfig) {
-		config.trafficKeepalive = &enabled
+		lifecycle := ensureLifecycle(config)
+		if lifecycle.Keepalive == nil {
+			lifecycle.Keepalive = &api.SandboxKeepalive{}
+		}
+
+		lifecycle.Keepalive.Traffic = &api.SandboxTrafficKeepalive{Enabled: enabled}
 	}
 }
 
@@ -153,7 +166,7 @@ func SetupSandboxWithCleanup(t *testing.T, c *api.ClientWithResponses, options .
 			Metadata:            &config.metadata,
 			AutoPause:           &config.autoPause,
 			AutoResume:          config.autoResume,
-			TrafficKeepalive:    config.trafficKeepalive,
+			Lifecycle:           config.lifecycle,
 			Network:             config.network,
 			AllowInternetAccess: config.allowInternetAccess,
 			Secure:              config.secure,

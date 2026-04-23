@@ -226,12 +226,12 @@ func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *b
 
 		var network *types.SandboxNetworkConfig
 		var autoResume *types.SandboxAutoResumeConfig
-		var trafficKeepalive bool
+		var keepalive *types.SandboxKeepaliveConfig
 		var volumes []*types.SandboxVolumeMountConfig
 		if snap.Config != nil {
 			network = snap.Config.Network
 			autoResume = snap.Config.AutoResume
-			trafficKeepalive = snap.Config.TrafficKeepalive
+			keepalive = snap.Config.Keepalive
 			volumes = snap.Config.VolumeMounts
 		}
 
@@ -245,7 +245,7 @@ func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *b
 			BaseTemplateID:      snap.BaseEnvID,
 			AutoPause:           autoPause,
 			AutoResume:          autoResume,
-			TrafficKeepalive:    trafficKeepalive,
+			Keepalive:           keepalive,
 			VolumeMounts:        convertDatabaseMountsToOrchestratorMounts(volumes),
 			EnvdAccessToken:     envdAccessToken,
 			NodeID:              &nodeID,

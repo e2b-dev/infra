@@ -45,7 +45,7 @@ type SandboxMetadata struct {
 	BaseTemplateID      string
 	AutoPause           bool
 	AutoResume          *types.SandboxAutoResumeConfig
-	TrafficKeepalive    bool
+	Keepalive           *types.SandboxKeepaliveConfig
 	Timeout             time.Duration
 	VolumeMounts        []*orchestrator.SandboxVolumeMount
 	EnvdAccessToken     *string
@@ -279,7 +279,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
 
-	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels, sbxData.TrafficKeepalive)
+	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels, sbxData.Keepalive)
 	if err != nil {
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
@@ -326,7 +326,7 @@ func (o *Orchestrator) CreateSandbox(
 		node.ClusterID,
 		sbxData.AutoPause,
 		sbxData.AutoResume,
-		sbxData.TrafficKeepalive,
+		sbxData.Keepalive,
 		sbxData.Timeout,
 		sbxData.EnvdAccessToken,
 		sbxData.AllowInternetAccess,

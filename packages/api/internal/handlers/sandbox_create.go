@@ -125,6 +125,9 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	)
 
 	autoPause := sharedUtils.DerefOrDefault(body.AutoPause, sandbox.AutoPauseDefault)
+	if body.Lifecycle != nil && body.Lifecycle.OnTimeout != nil {
+		autoPause = *body.Lifecycle.OnTimeout == api.Pause
+	}
 	envVars := sharedUtils.DerefOrDefault(body.EnvVars, nil)
 	mcp := sharedUtils.DerefOrDefault(body.Mcp, nil)
 	metadata := sharedUtils.DerefOrDefault(body.Metadata, nil)
@@ -142,11 +145,19 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	autoResume := buildAutoResumeConfig(body.AutoResume)
+	if body.Lifecycle != nil && body.Lifecycle.AutoResume != nil {
+		autoResume = buildAutoResumeConfigFromEnabled(*body.Lifecycle.AutoResume)
+	}
 	if autoResume != nil {
 		minAutoResumeTimeout := time.Duration(a.featureFlags.IntFlag(ctx, featureflags.MinAutoResumeTimeoutSeconds)) * time.Second
 		autoResume.Timeout = calculateTimeoutSeconds(timeout, minAutoResumeTimeout, teamInfo)
 	}
-	trafficKeepalive := sharedUtils.DerefOrDefault(body.TrafficKeepalive, false)
+	keepalive, keepaliveErr := buildKeepaliveConfig(body.Lifecycle)
+	if keepaliveErr != nil {
+		a.sendAPIStoreError(c, keepaliveErr.Code, keepaliveErr.ClientMsg)
+
+		return
+	}
 
 	var envdAccessToken *string = nil
 	if body.Secure != nil && *body.Secure == true {
@@ -235,7 +246,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 			BaseTemplateID:      env.TemplateID,
 			AutoPause:           autoPause,
 			AutoResume:          autoResume,
-			TrafficKeepalive:    trafficKeepalive,
+			Keepalive:           keepalive,
 			Timeout:             timeout,
 			VolumeMounts:        sbxVolumeMounts,
 			EnvdAccessToken:     envdAccessToken,
@@ -266,14 +277,40 @@ func buildAutoResumeConfig(autoResume *api.SandboxAutoResumeConfig) *types.Sandb
 		return nil
 	}
 
+	return buildAutoResumeConfigFromEnabled(autoResume.Enabled)
+}
+
+func buildAutoResumeConfigFromEnabled(enabled bool) *types.SandboxAutoResumeConfig {
 	policy := types.SandboxAutoResumeOff
-	if autoResume.Enabled {
+	if enabled {
 		policy = types.SandboxAutoResumeAny
 	}
 
 	return &types.SandboxAutoResumeConfig{
 		Policy: policy,
 	}
+}
+
+func buildKeepaliveConfig(lifecycle *api.NewSandboxLifecycle) (*types.SandboxKeepaliveConfig, *api.APIError) {
+	if lifecycle == nil || lifecycle.Keepalive == nil || lifecycle.Keepalive.Traffic == nil {
+		return nil, nil
+	}
+
+	timeout := types.SandboxTrafficKeepaliveTimeoutDefault
+	if lifecycle.Keepalive.Traffic.Timeout != nil {
+		if *lifecycle.Keepalive.Traffic.Timeout < 0 {
+			return nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: "Traffic keepalive timeout cannot be negative"}
+		}
+
+		timeout = uint64(*lifecycle.Keepalive.Traffic.Timeout)
+	}
+
+	return &types.SandboxKeepaliveConfig{
+		Traffic: &types.SandboxTrafficKeepaliveConfig{
+			Enabled: lifecycle.Keepalive.Traffic.Enabled,
+			Timeout: timeout,
+		},
+	}, nil
 }
 
 func dedupeVolumeNames(items []api.SandboxVolumeMount) []string {

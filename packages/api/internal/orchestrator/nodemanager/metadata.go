@@ -7,9 +7,11 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/edge"
 	grpcshared "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 type NodeMetadata struct {
@@ -35,7 +37,7 @@ func (n *Node) Metadata() NodeMetadata {
 	return n.meta
 }
 
-func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest, trafficKeepalive bool) (*clusters.GRPCClient, context.Context) {
+func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest, keepalive *types.SandboxKeepaliveConfig) (*clusters.GRPCClient, context.Context) {
 	md := metadata.MD{}
 
 	if !n.IsNomadManaged() {
@@ -46,7 +48,7 @@ func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.Sandbo
 				SandboxMaxLengthInHours: req.GetSandbox().GetMaxSandboxLength(),
 				SandboxStartTime:        req.GetStartTime().AsTime(),
 				SandboxEndTime:          req.GetEndTime().AsTime(),
-				TrafficKeepalive:        trafficKeepalive,
+				Keepalive:               catalogKeepaliveFromDB(keepalive),
 
 				ExecutionID:    req.GetSandbox().GetExecutionId(),
 				OrchestratorID: n.Metadata().ServiceInstanceID,
@@ -60,6 +62,22 @@ func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.Sandbo
 
 	// Merge medata from client (auth, routing with service instance id) and event metadata.
 	return n.client, appendMetadataCtx(ctx, md)
+}
+
+func catalogKeepaliveFromDB(keepalive *types.SandboxKeepaliveConfig) *catalog.Keepalive {
+	if keepalive == nil {
+		return nil
+	}
+
+	result := &catalog.Keepalive{}
+	if keepalive.Traffic != nil {
+		result.Traffic = &catalog.TrafficKeepalive{
+			Enabled: keepalive.Traffic.Enabled,
+			Timeout: keepalive.Traffic.Timeout,
+		}
+	}
+
+	return result
 }
 
 func (n *Node) GetSandboxDeleteCtx(ctx context.Context, sandboxID string, executionID string) (*clusters.GRPCClient, context.Context) {

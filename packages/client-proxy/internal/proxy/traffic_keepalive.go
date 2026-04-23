@@ -39,7 +39,7 @@ func newTrafficKeepaliveManager(resumer PausedSandboxResumer) *trafficKeepaliveM
 }
 
 func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, info *catalog.SandboxInfo) {
-	if m == nil || m.resumer == nil || info == nil || !info.TrafficKeepalive || info.TeamID == "" || info.EndTime.IsZero() {
+	if m == nil || m.resumer == nil || info == nil || info.Keepalive == nil || info.Keepalive.Traffic == nil || !info.Keepalive.Traffic.Enabled || info.TeamID == "" || info.EndTime.IsZero() {
 		return
 	}
 

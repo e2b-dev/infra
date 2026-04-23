@@ -555,6 +555,9 @@ type NewSandbox struct {
 	AutoResume *SandboxAutoResumeConfig `json:"autoResume,omitempty"`
 	EnvVars    *EnvVars                 `json:"envVars,omitempty"`
 
+	// Lifecycle Sandbox lifecycle policy.
+	Lifecycle *NewSandboxLifecycle `json:"lifecycle,omitempty"`
+
 	// Mcp MCP configuration for the sandbox
 	Mcp      *Mcp                  `json:"mcp,omitempty"`
 	Metadata *SandboxMetadata      `json:"metadata,omitempty"`
@@ -567,11 +570,20 @@ type NewSandbox struct {
 	TemplateID string `json:"templateID"`
 
 	// Timeout Time to live for the sandbox in seconds.
-	Timeout *int32 `json:"timeout,omitempty"`
+	Timeout      *int32                `json:"timeout,omitempty"`
+	VolumeMounts *[]SandboxVolumeMount `json:"volumeMounts,omitempty"`
+}
 
-	// TrafficKeepalive Whether valid proxy traffic should refresh the sandbox timeout.
-	TrafficKeepalive *bool                 `json:"traffic_keepalive,omitempty"`
-	VolumeMounts     *[]SandboxVolumeMount `json:"volumeMounts,omitempty"`
+// NewSandboxLifecycle Sandbox lifecycle policy.
+type NewSandboxLifecycle struct {
+	// AutoResume Whether the sandbox can auto-resume.
+	AutoResume *bool `json:"autoResume,omitempty"`
+
+	// Keepalive Keepalive policies for extending sandbox timeout.
+	Keepalive *SandboxKeepalive `json:"keepalive,omitempty"`
+
+	// OnTimeout Action taken when the sandbox times out.
+	OnTimeout *SandboxOnTimeout `json:"onTimeout,omitempty"`
 }
 
 // NewTeamAPIKey defines model for NewTeamAPIKey.
@@ -803,16 +815,22 @@ type SandboxDetail struct {
 	VolumeMounts *[]SandboxVolumeMount `json:"volumeMounts,omitempty"`
 }
 
+// SandboxKeepalive Keepalive policies for extending sandbox timeout.
+type SandboxKeepalive struct {
+	// Traffic Traffic keepalive policy.
+	Traffic *SandboxTrafficKeepalive `json:"traffic,omitempty"`
+}
+
 // SandboxLifecycle Sandbox lifecycle policy returned by sandbox info.
 type SandboxLifecycle struct {
 	// AutoResume Whether the sandbox can auto-resume.
 	AutoResume bool `json:"autoResume"`
 
+	// Keepalive Keepalive policies for extending sandbox timeout.
+	Keepalive SandboxKeepalive `json:"keepalive"`
+
 	// OnTimeout Action taken when the sandbox times out.
 	OnTimeout SandboxOnTimeout `json:"onTimeout"`
-
-	// TrafficKeepalive Whether valid proxy traffic refreshes the sandbox timeout.
-	TrafficKeepalive bool `json:"traffic_keepalive"`
 }
 
 // SandboxLog Log entry with timestamp and line
@@ -907,6 +925,15 @@ type SandboxOnTimeout string
 
 // SandboxState State of the sandbox
 type SandboxState string
+
+// SandboxTrafficKeepalive Traffic keepalive policy.
+type SandboxTrafficKeepalive struct {
+	// Enabled Whether valid proxy traffic refreshes the sandbox timeout.
+	Enabled bool `json:"enabled"`
+
+	// Timeout Time to extend the sandbox timeout by when valid proxy traffic is received, in seconds.
+	Timeout *int32 `json:"timeout,omitempty"`
+}
 
 // SandboxVolumeMount defines model for SandboxVolumeMount.
 type SandboxVolumeMount struct {

@@ -304,20 +304,54 @@ components:
         - kill
         - pause
 
+    SandboxTrafficKeepalive:
+      type: object
+      description: Traffic keepalive policy.
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+          description: Whether valid proxy traffic refreshes the sandbox timeout.
+        timeout:
+          type: integer
+          format: int32
+          minimum: 0
+          default: 300
+          description: Time to extend the sandbox timeout by when valid proxy traffic is received, in seconds.
+
+    SandboxKeepalive:
+      type: object
+      description: Keepalive policies for extending sandbox timeout.
+      properties:
+        traffic:
+          $ref: "#/components/schemas/SandboxTrafficKeepalive"
+
     SandboxLifecycle:
       type: object
       description: Sandbox lifecycle policy returned by sandbox info.
       required:
         - autoResume
-        - traffic_keepalive
+        - keepalive
         - onTimeout
       properties:
         autoResume:
           type: boolean
           description: Whether the sandbox can auto-resume.
-        traffic_keepalive:
+        keepalive:
+          $ref: "#/components/schemas/SandboxKeepalive"
+        onTimeout:
+          $ref: "#/components/schemas/SandboxOnTimeout"
+
+    NewSandboxLifecycle:
+      type: object
+      description: Sandbox lifecycle policy.
+      properties:
+        autoResume:
           type: boolean
-          description: Whether valid proxy traffic refreshes the sandbox timeout.
+          description: Whether the sandbox can auto-resume.
+        keepalive:
+          $ref: "#/components/schemas/SandboxKeepalive"
         onTimeout:
           $ref: "#/components/schemas/SandboxOnTimeout"
 
@@ -625,10 +659,8 @@ components:
           description: Automatically pauses the sandbox after the timeout
         autoResume:
           $ref: "#/components/schemas/SandboxAutoResumeConfig"
-        traffic_keepalive:
-          type: boolean
-          description: Whether valid proxy traffic should refresh the sandbox timeout.
-          default: false
+        lifecycle:
+          $ref: "#/components/schemas/NewSandboxLifecycle"
         secure:
           type: boolean
           description: Secure all system communication with sandbox

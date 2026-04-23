@@ -32,7 +32,7 @@ func NewSandbox(
 	clusterID uuid.UUID,
 	autoPause bool,
 	autoResume *types.SandboxAutoResumeConfig,
-	trafficKeepalive bool,
+	keepalive *types.SandboxKeepaliveConfig,
 	timeout time.Duration,
 	envdAccessToken *string,
 	allowInternetAccess *bool,
@@ -69,7 +69,7 @@ func NewSandbox(
 		ClusterID:           clusterID,
 		AutoPause:           autoPause,
 		AutoResume:          autoResume,
-		TrafficKeepalive:    trafficKeepalive,
+		Keepalive:           keepalive,
 		Timeout:             timeout,
 		State:               StateRunning,
 		BaseTemplateID:      baseTemplateID,
@@ -106,7 +106,7 @@ type Sandbox struct {
 	ClusterID           uuid.UUID                         `json:"clusterID"`
 	AutoPause           bool                              `json:"autoPause"`
 	AutoResume          *types.SandboxAutoResumeConfig    `json:"autoResume,omitempty"`
-	TrafficKeepalive    bool                              `json:"traffic_keepalive,omitempty"`
+	Keepalive           *types.SandboxKeepaliveConfig     `json:"keepalive,omitempty"`
 	Timeout             time.Duration                     `json:"timeout,omitempty"`
 	Network             *types.SandboxNetworkConfig       `json:"network"`
 	VolumeMounts        []*types.SandboxVolumeMountConfig `json:"volumeMounts"`
@@ -137,4 +137,12 @@ func (s Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 
 func (s Sandbox) IsExpired(now time.Time) bool {
 	return now.After(s.EndTime)
+}
+
+func (s Sandbox) TrafficKeepalive() *types.SandboxTrafficKeepaliveConfig {
+	if s.Keepalive == nil || s.Keepalive.Traffic == nil || !s.Keepalive.Traffic.Enabled {
+		return nil
+	}
+
+	return s.Keepalive.Traffic
 }
