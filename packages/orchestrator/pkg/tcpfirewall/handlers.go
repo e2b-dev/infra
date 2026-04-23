@@ -51,21 +51,37 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 
 	metrics.RecordDecision(ctx, DecisionAllowed, protocol, matchType)
 
+	// BYOP: if a SOCKS5 egress proxy is configured for this sandbox, tunnel the
+	// connection through it. The dialer is nil when BYOP is off, falling back
+	// to the direct dial path.
+	byopDial := socks5DialContextFromEgress(sbx)
+
 	// When allowed by domain match, dial the hostname directly (not the sandbox's resolved IP).
 	// This prevents DNS spoofing attacks where the sandbox modifies /etc/hosts to redirect
 	// an allowed domain to an arbitrary IP. We use Go's net.Dialer which provides built-in
 	// Happy Eyeballs (RFC 8305) for multi-IP fallback when some IPs are unreachable.
-	// After connecting, we verify the connected IP is not internal/private.
+	// After connecting, we verify the connected IP is not internal/private — UNLESS
+	// BYOP is on, in which case the bytes travel inside a TCP session to the
+	// user's SOCKS5 server and never touch our infrastructure, so the internal-IP
+	// resolve is intentional (private destinations are a primary BYOP use case)
+	// and we defer to the user's own SOCKS5 server for routing.
 	if matchType == MatchTypeDomain {
 		upstreamAddr := net.JoinHostPort(hostname, fmt.Sprintf("%d", dstPort))
+		if byopDial != nil {
+			// With BYOP, skip the resolved-IP internal check and let the SOCKS5
+			// server resolve the hostname remotely (ATYP=domain).
+			proxyVia(ctx, conn, upstreamAddr, byopDial, metrics, protocol)
+
+			return
+		}
 		proxyWithIPVerification(ctx, conn, upstreamAddr, logger, metrics, protocol)
 
 		return
 	}
 
-	// For non-domain matches, use the original destination IP
+	// For non-domain matches, use the original destination IP.
 	upstreamAddr := net.JoinHostPort(dstIP.String(), fmt.Sprintf("%d", dstPort))
-	proxy(ctx, conn, upstreamAddr, metrics, protocol)
+	proxyVia(ctx, conn, upstreamAddr, byopDial, metrics, protocol)
 }
 
 // cidrOnlyHandler handles connections without hostname information.
@@ -91,17 +107,22 @@ func cidrOnlyHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort i
 
 	upstreamAddr := net.JoinHostPort(dstIP.String(), fmt.Sprintf("%d", dstPort))
 
-	proxy(ctx, conn, upstreamAddr, metrics, protocol)
+	proxyVia(ctx, conn, upstreamAddr, socks5DialContextFromEgress(sbx), metrics, protocol)
 }
 
-// proxy proxies the connection to the upstream address.
-func proxy(ctx context.Context, conn net.Conn, upstreamAddr string, metrics *Metrics, protocol Protocol) {
+// proxyVia proxies the connection to upstreamAddr. When dialCtx is non-nil
+// (BYOP configured for the sandbox), the connection is routed through that
+// dialer — in practice the SOCKS5 proxy — instead of dialing directly.
+func proxyVia(ctx context.Context, conn net.Conn, upstreamAddr string, dialCtx dialContextFunc, metrics *Metrics, protocol Protocol) {
 	tracker := metrics.TrackConnection(protocol)
 	defer tracker.Close(ctx)
 
 	dp := &tcpproxy.DialProxy{
 		Addr:        upstreamAddr,
 		DialTimeout: upstreamDialTimeout,
+	}
+	if dialCtx != nil {
+		dp.DialContext = dialCtx
 	}
 	dp.HandleConn(conn)
 }
