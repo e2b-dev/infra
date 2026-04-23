@@ -49,6 +49,11 @@ const (
 	ErrorTypeConnectionMeta    ErrorType = "connection_meta"
 	ErrorTypeResolvedIPBlocked ErrorType = "resolved_ip_blocked"
 	ErrorTypeLimitExceeded     ErrorType = "limit_exceeded"
+
+	// BYOP SOCKS5 dial errors. Split so alerts can distinguish DNS-rebind
+	// rejections from transport/auth failures.
+	ErrorTypeSOCKS5Dial          ErrorType = "socks5_dial"
+	ErrorTypeByopEndpointInvalid ErrorType = "byop_endpoint_invalid"
 )
 
 // Metrics holds all TCP firewall metrics.
@@ -88,10 +93,12 @@ func NewMetrics(meterProvider metric.MeterProvider) *Metrics {
 	return m
 }
 
-// RecordConnection records a new connection being processed.
-func (m *Metrics) RecordConnection(ctx context.Context, protocol Protocol) {
+// RecordConnection records a new connection. byop=true means the connection
+// will be tunneled through a user SOCKS5 proxy.
+func (m *Metrics) RecordConnection(ctx context.Context, protocol Protocol, byop bool) {
 	m.connectionsTotal.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("protocol", string(protocol)),
+		attribute.Bool("byop", byop),
 	))
 }
 
@@ -104,11 +111,12 @@ func (m *Metrics) RecordError(ctx context.Context, errorType ErrorType, protocol
 }
 
 // RecordDecision records an allow/block decision.
-func (m *Metrics) RecordDecision(ctx context.Context, decision Decision, protocol Protocol, matchType MatchType) {
+func (m *Metrics) RecordDecision(ctx context.Context, decision Decision, protocol Protocol, matchType MatchType, byop bool) {
 	m.decisionsTotal.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("decision", string(decision)),
 		attribute.String("protocol", string(protocol)),
 		attribute.String("match_type", string(matchType)),
+		attribute.Bool("byop", byop),
 	))
 }
 
@@ -117,16 +125,18 @@ type ConnectionTracker struct {
 	metrics   *Metrics
 	startTime time.Time
 	protocol  Protocol
+	byop      bool
 }
 
 // TrackConnection starts tracking a connection. Call Close() when the connection ends.
-func (m *Metrics) TrackConnection(protocol Protocol) *ConnectionTracker {
+func (m *Metrics) TrackConnection(protocol Protocol, byop bool) *ConnectionTracker {
 	m.activeConnections.Add(1)
 
 	return &ConnectionTracker{
 		metrics:   m,
 		startTime: time.Now(),
 		protocol:  protocol,
+		byop:      byop,
 	}
 }
 
@@ -137,6 +147,7 @@ func (t *ConnectionTracker) Close(ctx context.Context) {
 	duration := time.Since(t.startTime)
 	t.metrics.connectionDuration.Record(ctx, duration.Milliseconds(), metric.WithAttributes(
 		attribute.String("protocol", string(t.protocol)),
+		attribute.Bool("byop", t.byop),
 	))
 }
 

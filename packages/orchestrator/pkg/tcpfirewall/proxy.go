@@ -261,7 +261,7 @@ func (t *connectionHandler) HandleConn(conn net.Conn) {
 	}
 
 	t.metrics.RecordConnectionsPerSandbox(ctx, count)
-	t.metrics.RecordConnection(ctx, t.protocol)
+	t.metrics.RecordConnection(ctx, t.protocol, sbxHasBYOP(sbx))
 
 	// Wrap the handler to release the connection slot when done
 	wrappedHandler := func(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, l logger.Logger, metrics *Metrics, protocol Protocol) {

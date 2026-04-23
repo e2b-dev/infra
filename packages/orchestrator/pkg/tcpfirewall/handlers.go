@@ -24,8 +24,15 @@ const (
 	noHostnameValue = ""
 )
 
+// sbxHasBYOP reports whether the sandbox has BYOP configured.
+func sbxHasBYOP(sbx *sandbox.Sandbox) bool {
+	return sbx.Config.GetNetworkEgress().GetEgressProxyAddress() != ""
+}
+
 // domainHandler handles connections with hostname information (HTTP Host header or TLS SNI).
 func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol) {
+	byop := sbxHasBYOP(sbx)
+
 	// Get hostname from tcpproxy's wrapped connection (HTTP Host or TLS SNI).
 	// Hostname can be empty, e.g. for https://1.1.1.1 like requests.
 	var hostname string
@@ -43,13 +50,13 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 	}
 
 	if !allowed {
-		metrics.RecordDecision(ctx, DecisionBlocked, protocol, matchType)
+		metrics.RecordDecision(ctx, DecisionBlocked, protocol, matchType, byop)
 		conn.Close()
 
 		return
 	}
 
-	metrics.RecordDecision(ctx, DecisionAllowed, protocol, matchType)
+	metrics.RecordDecision(ctx, DecisionAllowed, protocol, matchType, byop)
 
 	// BYOP: if a SOCKS5 egress proxy is configured for this sandbox, tunnel the
 	// connection through it. The dialer is nil when BYOP is off, falling back
@@ -70,7 +77,7 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 		if byopDial != nil {
 			// With BYOP, skip the resolved-IP internal check and let the SOCKS5
 			// server resolve the hostname remotely (ATYP=domain).
-			proxyVia(ctx, conn, upstreamAddr, byopDial, metrics, protocol)
+			proxyVia(ctx, conn, upstreamAddr, byopDial, byop, metrics, protocol)
 
 			return
 		}
@@ -81,11 +88,13 @@ func domainHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int
 
 	// For non-domain matches, use the original destination IP.
 	upstreamAddr := net.JoinHostPort(dstIP.String(), fmt.Sprintf("%d", dstPort))
-	proxyVia(ctx, conn, upstreamAddr, byopDial, metrics, protocol)
+	proxyVia(ctx, conn, upstreamAddr, byopDial, byop, metrics, protocol)
 }
 
 // cidrOnlyHandler handles connections without hostname information.
 func cidrOnlyHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol) {
+	byop := sbxHasBYOP(sbx)
+
 	// No hostname available for CIDR-only handler
 	allowed, matchType, err := isEgressAllowed(sbx, noHostnameValue, dstIP)
 	if err != nil {
@@ -97,24 +106,23 @@ func cidrOnlyHandler(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort i
 	}
 
 	if !allowed {
-		metrics.RecordDecision(ctx, DecisionBlocked, protocol, matchType)
+		metrics.RecordDecision(ctx, DecisionBlocked, protocol, matchType, byop)
 		conn.Close()
 
 		return
 	}
 
-	metrics.RecordDecision(ctx, DecisionAllowed, protocol, matchType)
+	metrics.RecordDecision(ctx, DecisionAllowed, protocol, matchType, byop)
 
 	upstreamAddr := net.JoinHostPort(dstIP.String(), fmt.Sprintf("%d", dstPort))
 
-	proxyVia(ctx, conn, upstreamAddr, socks5DialContextFromEgress(sbx), metrics, protocol)
+	proxyVia(ctx, conn, upstreamAddr, socks5DialContextFromEgress(sbx), byop, metrics, protocol)
 }
 
-// proxyVia proxies the connection to upstreamAddr. When dialCtx is non-nil
-// (BYOP configured for the sandbox), the connection is routed through that
-// dialer — in practice the SOCKS5 proxy — instead of dialing directly.
-func proxyVia(ctx context.Context, conn net.Conn, upstreamAddr string, dialCtx dialContextFunc, metrics *Metrics, protocol Protocol) {
-	tracker := metrics.TrackConnection(protocol)
+// proxyVia proxies to upstreamAddr. When dialCtx is non-nil the connection
+// goes through it (BYOP SOCKS5 path); otherwise it dials directly.
+func proxyVia(ctx context.Context, conn net.Conn, upstreamAddr string, dialCtx dialContextFunc, byop bool, metrics *Metrics, protocol Protocol) {
+	tracker := metrics.TrackConnection(protocol, byop)
 	defer tracker.Close(ctx)
 
 	dp := &tcpproxy.DialProxy{
@@ -135,7 +143,7 @@ func proxyVia(ctx context.Context, conn net.Conn, upstreamAddr string, dialCtx d
 // The ControlContext callback is called after DNS resolution but before the TCP connect()
 // syscall, so no TCP handshake occurs to internal IPs.
 func proxyWithIPVerification(ctx context.Context, conn net.Conn, upstreamAddr string, logger logger.Logger, metrics *Metrics, protocol Protocol) {
-	tracker := metrics.TrackConnection(protocol)
+	tracker := metrics.TrackConnection(protocol, false) // BYOP flows divert before this point
 	defer tracker.Close(ctx)
 
 	// Use tcpproxy.DialProxy with a custom DialContext that verifies resolved IPs
