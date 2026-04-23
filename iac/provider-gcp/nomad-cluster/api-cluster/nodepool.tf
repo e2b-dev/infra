@@ -84,10 +84,8 @@ resource "google_compute_region_instance_group_manager" "pool" {
     max_unavailable_percent = null
     replacement_method      = "SUBSTITUTE"
 
-    # Regional MIG surge/unavailable counts must be a multiple of the number of
-    # target zones in the region.
     max_surge_fixed       = length(data.google_compute_zones.region_zones.names)
-    max_unavailable_fixed = length(data.google_compute_zones.region_zones.names)
+    max_unavailable_fixed = 0
 
     instance_redistribution_type = "NONE"
   }
