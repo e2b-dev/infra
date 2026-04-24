@@ -419,36 +419,6 @@ func TestAliasCacheResolve_NegativeCachingFallback(t *testing.T) {
 	assert.Equal(t, int64(1), exists, "positive result should be cached for NULL namespace hit")
 }
 
-func TestAliasInfo_FullName(t *testing.T) {
-	t.Parallel()
-
-	team := "team-x"
-
-	t.Run("bare alias matched under team namespace", func(t *testing.T) {
-		t.Parallel()
-		info := &AliasInfo{TemplateID: "tmpl-abc", MatchedNamespace: team}
-		assert.Equal(t, "team-x/myalias", info.FullName("myalias"))
-	})
-
-	t.Run("bare alias matched under NULL namespace", func(t *testing.T) {
-		t.Parallel()
-		info := &AliasInfo{TemplateID: "tmpl-abc", MatchedNamespace: ""}
-		assert.Equal(t, "myalias", info.FullName("myalias"))
-	})
-
-	t.Run("identifier already namespaced", func(t *testing.T) {
-		t.Parallel()
-		info := &AliasInfo{TemplateID: "tmpl-abc", MatchedNamespace: team}
-		assert.Equal(t, "team-x/myalias", info.FullName("team-x/myalias"))
-	})
-
-	t.Run("nil receiver", func(t *testing.T) {
-		t.Parallel()
-		var info *AliasInfo
-		assert.Equal(t, "myalias", info.FullName("myalias"))
-	})
-}
-
 func TestAliasCacheResolve_IDLookupDoesNotLeakNamespace(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
@@ -466,13 +436,12 @@ func TestAliasCacheResolve_IDLookupDoesNotLeakNamespace(t *testing.T) {
 	info, err := cache.Resolve(ctx, "shared-name", ownerSlug)
 	require.NoError(t, err)
 	require.NotNil(t, info)
-	assert.Equal(t, ownerSlug, info.MatchedNamespace)
+	assert.Equal(t, ownerSlug+"/shared-name", info.MatchedIdentifier)
 
 	byID, err := cache.LookupByID(ctx, templateID)
 	require.NoError(t, err)
 	require.NotNil(t, byID)
-	assert.Empty(t, byID.MatchedNamespace, "direct-ID entries must not carry another team's namespace")
-	assert.Equal(t, templateID, byID.FullName(templateID), "FullName on a bare ID must not prepend a foreign namespace")
+	assert.Equal(t, templateID, byID.MatchedIdentifier, "direct-ID entries must not carry another team's namespace")
 }
 
 func TestAliasCacheResolve_PopulatesNamespace(t *testing.T) {
@@ -492,6 +461,5 @@ func TestAliasCacheResolve_PopulatesNamespace(t *testing.T) {
 	info, err := cache.Resolve(ctx, "ns-alias", teamSlug)
 	require.NoError(t, err)
 	require.NotNil(t, info)
-	assert.Equal(t, teamSlug, info.MatchedNamespace)
-	assert.Equal(t, teamSlug+"/ns-alias", info.FullName("ns-alias"))
+	assert.Equal(t, teamSlug+"/ns-alias", info.MatchedIdentifier)
 }

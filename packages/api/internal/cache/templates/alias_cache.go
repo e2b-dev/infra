@@ -28,24 +28,10 @@ const (
 // AliasInfo holds resolved alias information (immutable mapping data only).
 // Mutable metadata like Public is in TemplateMetadata.
 type AliasInfo struct {
-	TemplateID       string    `json:"template_id"`
-	TeamID           uuid.UUID `json:"team_id"`
-	MatchedNamespace string    `json:"matched_namespace,omitempty"` // namespace under which the alias matched ("" = NULL/promoted or ID hit)
-	NotFound         bool      `json:"not_found"`                   // tombstone marker for caching negative lookups
-}
-
-// FullName returns the namespaced canonical name under which this info was
-// resolved (e.g. "team-x/myalias"), falling back to identifier when the alias
-// matched under NULL namespace or came from a direct templateID lookup.
-func (a *AliasInfo) FullName(identifier string) string {
-	if a == nil || a.MatchedNamespace == "" {
-		return identifier
-	}
-	if ns, _ := id.SplitIdentifier(identifier); ns != nil {
-		return identifier
-	}
-
-	return id.WithNamespace(a.MatchedNamespace, identifier)
+	TemplateID        string    `json:"template_id"`
+	TeamID            uuid.UUID `json:"team_id"`
+	MatchedIdentifier string    `json:"matched_identifier,omitempty"` // canonical identifier under which the alias matched
+	NotFound          bool      `json:"not_found"`                    // tombstone marker for caching negative lookups
 }
 
 var notFoundTombstone = &AliasInfo{NotFound: true}
@@ -144,10 +130,10 @@ func (c *AliasCache) cacheByTemplateID(ctx context.Context, originalKey string, 
 		return
 	}
 
-	// Clear MatchedNamespace — direct-ID entries must not surface another
-	// team's slug to later bare-ID lookups.
+	// Direct-ID entries must not surface another team's slug or alias to later
+	// bare-ID lookups.
 	idInfo := *info
-	idInfo.MatchedNamespace = ""
+	idInfo.MatchedIdentifier = idKey
 	c.cache.Set(ctx, idKey, &idInfo)
 }
 
@@ -167,11 +153,6 @@ func (c *AliasCache) fetchFromDB(ctx context.Context, key string) (info *AliasIn
 
 	namespace, alias := id.SplitIdentifier(key)
 
-	var matchedNamespace string
-	if namespace != nil {
-		matchedNamespace = *namespace
-	}
-
 	// Try alias lookup first
 	result, err := c.db.GetTemplateByAlias(ctx, queries.GetTemplateByAliasParams{
 		Alias:     alias,
@@ -179,9 +160,9 @@ func (c *AliasCache) fetchFromDB(ctx context.Context, key string) (info *AliasIn
 	})
 	if err == nil {
 		return &AliasInfo{
-			TemplateID:       result.ID,
-			TeamID:           result.TeamID,
-			MatchedNamespace: matchedNamespace,
+			TemplateID:        result.ID,
+			TeamID:            result.TeamID,
+			MatchedIdentifier: key,
 		}, nil
 	}
 
@@ -194,8 +175,9 @@ func (c *AliasCache) fetchFromDB(ctx context.Context, key string) (info *AliasIn
 			idResult, idErr := c.db.GetTemplateById(ctx, alias)
 			if idErr == nil {
 				return &AliasInfo{
-					TemplateID: idResult.ID,
-					TeamID:     idResult.TeamID,
+					TemplateID:        idResult.ID,
+					TeamID:            idResult.TeamID,
+					MatchedIdentifier: key,
 				}, nil
 			}
 
