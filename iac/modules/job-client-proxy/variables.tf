@@ -68,11 +68,6 @@ variable "api_grpc_address" {
   default = ""
 }
 
-variable "api_grpc_tls" {
-  type    = bool
-  default = false
-}
-
 variable "api_grpc_oauth_client_id" {
   type      = string
   default   = ""

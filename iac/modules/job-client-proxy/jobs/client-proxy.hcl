@@ -116,6 +116,7 @@ job "client-proxy" {
         %{ if api_grpc_address != "" }
         # used by client-proxy to call API ResumeSandbox over gRPC
         API_GRPC_ADDRESS             = "${api_grpc_address}"
+        # internal Consul addresses use plaintext; external addresses use TLS
         API_GRPC_TLS                 = "${api_grpc_tls}"
         %{ if api_grpc_oauth_client_id != "" }
         API_GRPC_OAUTH_CLIENT_ID     = "${api_grpc_oauth_client_id}"

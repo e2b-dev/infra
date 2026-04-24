@@ -99,7 +99,6 @@ module "client_proxy" {
   redis_tls_ca_base64 = var.redis_tls_ca_base64
   image               = data.aws_ecr_image.client_proxy.image_uri
   api_grpc_address    = "api-grpc.service.consul:${var.api_grpc_port}"
-  api_grpc_tls        = false
 
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
   logs_collector_address       = "http://localhost:${var.logs_proxy_port}"
