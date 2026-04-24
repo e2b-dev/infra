@@ -41,8 +41,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -56,7 +58,7 @@ func main() {
 	iterations := flag.Int("iterations", 0, "run N iterations (0 = interactive)")
 	coldStart := flag.Bool("cold", false, "clear cache between iterations (cold start each time)")
 	noPrefetch := flag.Bool("no-prefetch", false, "disable memory prefetching")
-	noDefaultRoute := flag.Bool("no-default-route", false, "skip adding the in-namespace default route (default via VethIP)")
+	noEgress := flag.Bool("no-egress", false, "block all guest internet egress")
 	verbose := flag.Bool("v", false, "verbose logging")
 
 	// Command execution (no pause)
@@ -156,7 +158,7 @@ func main() {
 		iterations: *iterations,
 	}
 
-	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *noDefaultRoute, *verbose, pauseOpts, runOpts)
+	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *noEgress, *verbose, pauseOpts, runOpts)
 	cancel()
 
 	if err != nil {
@@ -956,7 +958,7 @@ func (r *runner) benchmark(ctx context.Context, n int) error {
 	return lastErr
 }
 
-func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, noDefaultRoute, verbose bool, pauseOpts pauseOptions, runOpts runOptions) error {
+func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, noEgress, verbose bool, pauseOpts pauseOptions, runOpts runOptions) error {
 	// Silence other loggers unless verbose mode
 	var l logger.Logger
 	if !verbose {
@@ -989,8 +991,6 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		return fmt.Errorf("config: %w", err)
 	}
 
-	config.NetworkConfig.SkipDefaultRoute = noDefaultRoute
-
 	if verbose {
 		fmt.Println("🔧 Creating feature flags client...")
 	}
@@ -1012,7 +1012,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating network storage...")
 	}
-	slotStorage, err := network.NewStorageLocal(ctx, config.NetworkConfig, network.NoopEgressProxy{})
+	slotStorage, err := network.NewStorageLocal(ctx, config.NetworkConfig, tcpFw)
 	if err != nil {
 		return fmt.Errorf("network storage: %w", err)
 	}
@@ -1069,7 +1069,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating sandbox factory...")
 	}
-	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), network.NewNoopEgressProxy(), sandboxes)
+	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), tcpFw, sandboxes)
 
 	fmt.Printf("📦 Loading %s...\n", buildID)
 	tmpl, err := cache.GetTemplate(ctx, buildID, false, false)
@@ -1100,6 +1100,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 			KernelVersion:      meta.Template.KernelVersion,
 			FirecrackerVersion: meta.Template.FirecrackerVersion,
 		},
+		Network: denyAllEgressIf(noEgress),
 	})
 
 	r := &runner{
@@ -1460,4 +1461,18 @@ func (t *noPrefetchTemplate) Metadata() (metadata.Template, error) {
 	meta.Prefetch = nil
 
 	return meta, nil
+}
+
+// denyAllEgressIf returns a SandboxNetworkConfig that blocks all outbound IPv4 traffic.
+// If deny is false, it returns nil (no config), allowing normal network behavior.
+func denyAllEgressIf(deny bool) *orchestrator.SandboxNetworkConfig {
+	if !deny {
+		return nil
+	}
+
+	return &orchestrator.SandboxNetworkConfig{
+		Egress: &orchestrator.SandboxNetworkEgressConfig{
+			DeniedCidrs: []string{sandbox_network.AllInternetTrafficCIDR},
+		},
+	}
 }

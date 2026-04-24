@@ -157,14 +157,12 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 	}
 
 	// Add NS default route
-	if !s.config.SkipDefaultRoute {
-		err = netlink.RouteAdd(&netlink.Route{
-			Scope: netlink.SCOPE_UNIVERSE,
-			Gw:    s.VethIP(),
-		})
-		if err != nil {
-			return fmt.Errorf("error adding default NS route: %w", err)
-		}
+	err = netlink.RouteAdd(&netlink.Route{
+		Scope: netlink.SCOPE_UNIVERSE,
+		Gw:    s.VethIP(),
+	})
+	if err != nil {
+		return fmt.Errorf("error adding default NS route: %w", err)
 	}
 
 	tables, err := iptables.New()
