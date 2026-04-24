@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -44,7 +45,7 @@ func (a *APIStore) GetToken(w http.ResponseWriter, r *http.Request) error {
 		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte("invalid access token"))
 
-		return fmt.Errorf("invalid access token")
+		return errors.New("invalid access token")
 	}
 
 	scope := r.URL.Query().Get("scope")

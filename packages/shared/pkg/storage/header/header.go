@@ -2,6 +2,7 @@ package header
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -20,7 +21,7 @@ type Header struct {
 
 func NewHeader(metadata *Metadata, mapping []BuildMap) (*Header, error) {
 	if metadata.BlockSize == 0 {
-		return nil, fmt.Errorf("block size cannot be zero")
+		return nil, errors.New("block size cannot be zero")
 	}
 
 	if len(mapping) == 0 {

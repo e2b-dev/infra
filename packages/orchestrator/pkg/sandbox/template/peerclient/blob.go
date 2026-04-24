@@ -2,6 +2,7 @@ package peerclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync/atomic"
@@ -105,7 +106,7 @@ func openPeerBlobStream(
 	}
 
 	if !checkPeerAvailability(msg.GetAvailability(), uploaded) {
-		return nil, fmt.Errorf("peer not available for blob stream")
+		return nil, errors.New("peer not available for blob stream")
 	}
 
 	first := msg.GetData()

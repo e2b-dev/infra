@@ -30,13 +30,13 @@ func (a *API) PostFilesCompose(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(req.SourcePaths) == 0 {
-		jsonError(w, http.StatusBadRequest, fmt.Errorf("source_paths must not be empty"))
+		jsonError(w, http.StatusBadRequest, errors.New("source_paths must not be empty"))
 
 		return
 	}
 
 	if req.Destination == "" {
-		jsonError(w, http.StatusBadRequest, fmt.Errorf("destination is required"))
+		jsonError(w, http.StatusBadRequest, errors.New("destination is required"))
 
 		return
 	}
@@ -121,7 +121,7 @@ func (a *API) PostFilesCompose(w http.ResponseWriter, r *http.Request) {
 	destFile, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o666)
 	if err != nil {
 		if errors.Is(err, syscall.ENOSPC) {
-			jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space available"))
+			jsonError(w, http.StatusInsufficientStorage, errors.New("not enough disk space available"))
 
 			return
 		}
@@ -163,7 +163,7 @@ func (a *API) PostFilesCompose(w http.ResponseWriter, r *http.Request) {
 			os.Remove(tmpPath)
 
 			if errors.Is(err, syscall.ENOSPC) {
-				jsonError(w, http.StatusInsufficientStorage, fmt.Errorf("not enough disk space available"))
+				jsonError(w, http.StatusInsufficientStorage, errors.New("not enough disk space available"))
 
 				return
 			}

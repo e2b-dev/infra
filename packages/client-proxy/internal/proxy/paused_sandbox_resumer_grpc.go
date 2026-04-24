@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -23,7 +24,7 @@ type grpcPausedSandboxResumer struct {
 func NewGrpcPausedSandboxResumer(address string) (PausedSandboxResumer, error) {
 	// Client-proxy uses this gRPC client to trigger ResumeSandbox when needed.
 	if strings.TrimSpace(address) == "" {
-		return nil, fmt.Errorf("api grpc address is required")
+		return nil, errors.New("api grpc address is required")
 	}
 
 	conn, err := grpc.NewClient(

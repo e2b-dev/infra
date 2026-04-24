@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 type MemorySandboxCatalog struct {
@@ -46,6 +48,8 @@ func (c *MemorySandboxCatalog) GetSandbox(ctx context.Context, sandboxID string)
 func (c *MemorySandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string, sandboxInfo *SandboxInfo, expiration time.Duration) error {
 	_, span := tracer.Start(ctx, "sandbox-catalog-store")
 	defer span.End()
+
+	logger.L().Debug(ctx, "storing sandbox in memory catalog", logger.WithSandboxID(sandboxID))
 
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
@@ -96,6 +100,7 @@ func (c *MemorySandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID stri
 		return nil
 	}
 
+	logger.L().Debug(ctx, "deleting sandbox from memory catalog", logger.WithSandboxID(sandboxID))
 	c.cache.Delete(sandboxID)
 	delete(c.trafficKeepalives, sandboxID)
 

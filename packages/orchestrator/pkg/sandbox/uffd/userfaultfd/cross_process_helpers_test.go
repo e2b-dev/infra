@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -102,10 +103,13 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	err = register(uffdFd, memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
 	require.NoError(t, err)
 
-	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestHelperServingProcess")
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestHelperServingProcess", "-test.timeout=0")
 	cmd.Env = append(os.Environ(), "GO_TEST_HELPER_PROCESS=1")
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_START=%d", memoryStart))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_PAGE_SIZE=%d", tt.pagesize))
+	if tt.alwaysWP {
+		cmd.Env = append(cmd.Env, "GO_ALWAYS_WP=1")
+	}
 
 	dup, err := syscall.Dup(int(uffdFd))
 	require.NoError(t, err)
@@ -183,30 +187,49 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 				waitErr == nil,
 			"unexpected error: %v", waitErr,
 		)
+
+		// Tear down the UFFD registration before the early uffdFd.close()
+		// cleanup runs. Today this is a no-op (no test enables
+		// UFFD_FEATURE_EVENT_REMOVE) but a follow-up that does will
+		// otherwise see munmap block on un-acked REMOVE events queued
+		// against the still-registered range. Cleanups run LIFO, so
+		// this fires before the close registered earlier.
+		assert.NoError(t, unregister(uffdFd, memoryStart, uint64(size)))
 	})
 
-	offsetsOnce := func() ([]uint, error) {
+	// pageStatesOnce asks the serving process for a snapshot of its pageTracker
+	// and decodes it into a per-state view. It can only be called once.
+	pageStatesOnce := func() (handlerPageStates, error) {
 		err := cmd.Process.Signal(syscall.SIGUSR2)
 		if err != nil {
-			return nil, err
+			return handlerPageStates{}, err
 		}
 
-		offsetsBytes, err := io.ReadAll(offsetsReader)
-		if err != nil {
-			return nil, err
+		var result handlerPageStates
+
+		for {
+			var entry pageStateEntry
+
+			// binary.Read uses the same field layout as binary.Write on
+			// the producer side (sum of fixed-size fields, no struct
+			// padding), so we never have to hard-code the wire size.
+			err := binary.Read(offsetsReader, binary.LittleEndian, &entry)
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			if err != nil {
+				return handlerPageStates{}, fmt.Errorf("decoding page state entry: %w", err)
+			}
+
+			if pageState(entry.State) == faulted {
+				result.faulted = append(result.faulted, uint(entry.Offset))
+			}
 		}
 
-		var offsetList []uint
+		slices.Sort(result.faulted)
 
-		if len(offsetsBytes)%8 != 0 {
-			return nil, fmt.Errorf("invalid offsets bytes length: %d", len(offsetsBytes))
-		}
-
-		for i := 0; i < len(offsetsBytes); i += 8 {
-			offsetList = append(offsetList, uint(binary.LittleEndian.Uint64(offsetsBytes[i:i+8])))
-		}
-
-		return offsetList, nil
+		return result, nil
 	}
 
 	select {
@@ -216,10 +239,10 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	}
 
 	return &testHandler{
-		memoryArea:  &memoryArea,
-		pagesize:    tt.pagesize,
-		data:        data,
-		offsetsOnce: offsetsOnce,
+		memoryArea:     &memoryArea,
+		pagesize:       tt.pagesize,
+		data:           data,
+		pageStatesOnce: pageStatesOnce,
 	}, nil
 }
 
@@ -293,6 +316,10 @@ func crossProcessServe() error {
 		return fmt.Errorf("exit creating uffd: %w", err)
 	}
 
+	if os.Getenv("GO_ALWAYS_WP") == "1" {
+		uffd.defaultCopyMode = UFFDIO_COPY_MODE_WP
+	}
+
 	offsetsFile := os.NewFile(uintptr(5), "offsets")
 
 	offsetsSignal := make(chan os.Signal, 1)
@@ -307,14 +334,17 @@ func crossProcessServe() error {
 			case <-ctx.Done():
 				return
 			case <-offsetsSignal:
-				for offset := range uffd.faulted().Offsets() {
-					writeErr := binary.Write(offsetsFile, binary.LittleEndian, uint64(offset))
+				entries, entriesErr := uffd.pageStateEntries()
+				if entriesErr != nil {
+					cancel(fmt.Errorf("error getting page state entries: %w", entriesErr))
+
+					return
+				}
+
+				for _, entry := range entries {
+					writeErr := binary.Write(offsetsFile, binary.LittleEndian, entry)
 					if writeErr != nil {
-						msg := fmt.Errorf("error writing offsets to file: %w", writeErr)
-
-						fmt.Fprint(os.Stderr, msg.Error())
-
-						cancel(msg)
+						cancel(fmt.Errorf("error writing page state entry: %w", writeErr))
 
 						return
 					}
@@ -382,4 +412,32 @@ func crossProcessServe() error {
 	case <-exitSignal:
 		return nil
 	}
+}
+
+// pageStateEntry is the wire format used between the main test process
+// and the serving helper process. State is emitted as a single byte so it
+// can be written directly with binary.Write and decoded on the other side.
+type pageStateEntry struct {
+	State  uint8
+	Offset uint64
+}
+
+// pageStateEntries returns a snapshot of every tracked page and its state.
+// It holds the settleRequests write lock so no in-flight faultPage worker
+// can mutate the pageTracker while we iterate.
+func (u *Userfaultfd) pageStateEntries() ([]pageStateEntry, error) {
+	u.settleRequests.Lock()
+	defer u.settleRequests.Unlock()
+
+	entries := make([]pageStateEntry, 0, len(u.pageTracker.m))
+	for addr, state := range u.pageTracker.m {
+		offset, err := u.ma.GetOffset(addr)
+		if err != nil {
+			return nil, fmt.Errorf("address %#x not in mapping: %w", addr, err)
+		}
+
+		entries = append(entries, pageStateEntry{uint8(state), uint64(offset)})
+	}
+
+	return entries, nil
 }

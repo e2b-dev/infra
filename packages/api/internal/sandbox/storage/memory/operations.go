@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -195,7 +196,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 		case sandbox.AllowedTransitions[currentState][newState]:
 			return startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: opts.Action})
 		default:
-			return false, nil, fmt.Errorf("unexpected state transition")
+			return false, nil, errors.New("unexpected state transition")
 		}
 	}
 

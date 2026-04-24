@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"go.uber.org/zap/zapcore"
@@ -30,7 +31,7 @@ func (r *Run) Execute(
 	args := step.GetArgs()
 	// args: [command optional_user]
 	if len(args) < 1 {
-		return metadata.Context{}, fmt.Errorf("RUN requires command argument")
+		return metadata.Context{}, errors.New("RUN requires command argument")
 	}
 
 	originalMetadata := cmdMetadata

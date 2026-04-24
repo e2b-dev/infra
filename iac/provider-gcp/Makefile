@@ -72,11 +72,12 @@ tf_vars := \
 	$(call tfvar, SERVER_BOOT_DISK_TYPE) \
 	$(call tfvar, SERVER_BOOT_DISK_SIZE_GB) \
 	$(call tfvar, CLICKHOUSE_BOOT_DISK_TYPE) \
+	$(call tfvar, CLICKHOUSE_STATEFUL_DISK_TYPE) \
+	$(call tfvar, CLICKHOUSE_STATEFUL_DISK_SIZE_GB) \
 	$(call tfvar, BUCKET_PREFIX) \
 	$(call tfvar, LOKI_BOOT_DISK_TYPE) \
 	$(call tfvar, LOKI_USE_V13_SCHEMA_FROM) \
 	$(call tfvar, DASHBOARD_API_COUNT) \
-	$(call tfvar, SUPABASE_DB_CONNECTION_STRING) \
 	$(call tfvar, ENABLE_AUTH_USER_SYNC_BACKGROUND_WORKER) \
 	$(call tfvar, ENABLE_BILLING_HTTP_TEAM_PROVISION_SINK) \
 	$(call tfvar, DEFAULT_PERSISTENT_VOLUME_TYPE) \

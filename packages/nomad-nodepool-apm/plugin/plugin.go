@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -111,7 +112,7 @@ func (p *NodePoolPlugin) Query(query string, _ sdk.TimeRange) (sdk.TimestampedMe
 	nodePool := query
 
 	if nodePool == "" {
-		return nil, fmt.Errorf("node pool name is required as query parameter")
+		return nil, errors.New("node pool name is required as query parameter")
 	}
 
 	p.logger.Debug("querying node count for node pool", "node_pool", nodePool)
