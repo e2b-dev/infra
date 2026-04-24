@@ -148,6 +148,8 @@ module "api" {
     VOLUME_TOKEN_SIGNING_KEY_NAME = var.volume_token_signing_key_name
     VOLUME_TOKEN_DURATION         = var.volume_token_duration
     VOLUME_TOKEN_SIGNING_METHOD   = var.volume_token_signing_method
+    CLIENT_PROXY_OIDC_ISSUER_URL  = var.client_proxy_oidc_issuer_url
+    CLIENT_PROXY_OIDC_AUDIENCE    = var.client_proxy_oidc_audience
   }
 }
 

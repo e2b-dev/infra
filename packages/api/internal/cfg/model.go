@@ -57,6 +57,9 @@ type Config struct {
 	APIPublicGrpcPort uint16 `env:"API_PUBLIC_GRPC_PORT" envDefault:"5010"`
 	APISecret         string `env:"API_SECRET"`
 
+	ClientProxyOIDCIssuerURL string `env:"CLIENT_PROXY_OIDC_ISSUER_URL"`
+	ClientProxyOIDCAudience  string `env:"CLIENT_PROXY_OIDC_AUDIENCE"`
+
 	SandboxAccessTokenHashSeed string `env:"SANDBOX_ACCESS_TOKEN_HASH_SEED"`
 
 	VolumesToken VolumesTokenConfig

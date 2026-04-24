@@ -22,6 +22,10 @@ resource "nomad_job" "client_proxy" {
     api_grpc_tls       = var.api_grpc_tls
     cluster_auth_token = trimspace(var.cluster_auth_token)
 
+    api_grpc_oauth_client_id     = trimspace(var.api_grpc_oauth_client_id)
+    api_grpc_oauth_client_secret = trimspace(var.api_grpc_oauth_client_secret)
+    api_grpc_oauth_token_url     = trimspace(var.api_grpc_oauth_token_url)
+
     otel_collector_grpc_endpoint = var.otel_collector_grpc_endpoint
     logs_collector_address       = var.logs_collector_address
     launch_darkly_api_key        = trimspace(var.launch_darkly_api_key)

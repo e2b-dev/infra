@@ -411,7 +411,7 @@ func run() int {
 	}
 
 	grpcServer := e2bgrpc.NewGRPCServer(tel)
-	proxygrpc.RegisterSandboxServiceServer(grpcServer, handlers.NewSandboxService(apiStore, false))
+	proxygrpc.RegisterSandboxServiceServer(grpcServer, handlers.NewSandboxService(apiStore, false, nil))
 
 	publicGrpcAddr := fmt.Sprintf("0.0.0.0:%d", config.APIPublicGrpcPort)
 	publicGrpcListener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", publicGrpcAddr)
@@ -420,7 +420,11 @@ func run() int {
 	}
 
 	publicGrpcServer := e2bgrpc.NewGRPCServer(tel)
-	proxygrpc.RegisterSandboxServiceServer(publicGrpcServer, handlers.NewSandboxService(apiStore, true))
+	clientProxyOAuthVerifier, err := handlers.NewClientProxyOAuthVerifier(ctx, config.ClientProxyOIDCIssuerURL, config.ClientProxyOIDCAudience)
+	if err != nil {
+		l.Fatal(ctx, "failed to create client proxy OIDC verifier", zap.Error(err))
+	}
+	proxygrpc.RegisterSandboxServiceServer(publicGrpcServer, handlers.NewSandboxService(apiStore, true, clientProxyOAuthVerifier))
 
 	// pass the signal context so that handlers know when shutdown is happening.
 	s := NewGinServer(ctx, config, tel, l, apiStore, redisClient, featureFlags, swagger, port)

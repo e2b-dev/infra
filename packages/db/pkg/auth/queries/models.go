@@ -73,6 +73,7 @@ type Cluster struct {
 	EndpointTls        bool
 	Token              string
 	SandboxProxyDomain *string
+	AuthOrgID          *string
 }
 
 type Env struct {

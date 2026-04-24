@@ -9,6 +9,8 @@ const (
 	MetadataEnvdAccessToken = "e2b-envd-access-token"
 	// MetadataClientProxyAuthToken authenticates client-proxy resume requests to the API.
 	MetadataClientProxyAuthToken = "x-e2b-client-proxy-auth"
+	// MetadataAuthorization carries bearer credentials for gRPC requests.
+	MetadataAuthorization = "authorization"
 	// MetadataEnvdHTTPAccessToken is the HTTP header used by envd for access token authentication.
 	MetadataEnvdHTTPAccessToken = "X-Access-Token"
 )

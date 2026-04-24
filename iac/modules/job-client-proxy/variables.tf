@@ -79,6 +79,24 @@ variable "cluster_auth_token" {
   sensitive = true
 }
 
+variable "api_grpc_oauth_client_id" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "api_grpc_oauth_client_secret" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "api_grpc_oauth_token_url" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
 variable "otel_collector_grpc_endpoint" {
   type = string
 }

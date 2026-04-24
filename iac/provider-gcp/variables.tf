@@ -228,6 +228,16 @@ variable "api_public_grpc_port" {
   default = 5010
 }
 
+variable "client_proxy_oidc_issuer_url" {
+  type    = string
+  default = ""
+}
+
+variable "client_proxy_oidc_audience" {
+  type    = string
+  default = ""
+}
+
 variable "ingress_port" {
   type = object({
     name        = string

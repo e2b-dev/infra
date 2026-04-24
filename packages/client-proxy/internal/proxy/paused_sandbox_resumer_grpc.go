@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -21,12 +23,49 @@ import (
 type grpcPausedSandboxResumer struct {
 	conn             *grpc.ClientConn
 	client           proxygrpc.SandboxServiceClient
-	clusterAuthToken string
+	oauthTokenSource oauth2.TokenSource
 }
 
-func NewGrpcPausedSandboxResumer(address string, clusterAuthToken string, tlsEnabled bool) (PausedSandboxResumer, error) {
+type GrpcOAuthConfig struct {
+	ClientID     string
+	ClientSecret string
+	TokenURL     string
+}
+
+func (c GrpcOAuthConfig) Enabled() bool {
+	return strings.TrimSpace(c.ClientID) != "" ||
+		strings.TrimSpace(c.ClientSecret) != "" ||
+		strings.TrimSpace(c.TokenURL) != ""
+}
+
+func (c GrpcOAuthConfig) tokenSource(ctx context.Context) (oauth2.TokenSource, error) {
+	if !c.Enabled() {
+		return nil, nil
+	}
+
+	if strings.TrimSpace(c.ClientID) == "" ||
+		strings.TrimSpace(c.ClientSecret) == "" ||
+		strings.TrimSpace(c.TokenURL) == "" {
+		return nil, errors.New("api grpc OAuth client ID, client secret, and token URL are required when OAuth is configured")
+	}
+
+	oauthConfig := clientcredentials.Config{
+		ClientID:     strings.TrimSpace(c.ClientID),
+		ClientSecret: strings.TrimSpace(c.ClientSecret),
+		TokenURL:     strings.TrimSpace(c.TokenURL),
+	}
+
+	return oauthConfig.TokenSource(ctx), nil
+}
+
+func NewGrpcPausedSandboxResumer(address string, _ string, oauthConfig GrpcOAuthConfig, tlsEnabled bool) (PausedSandboxResumer, error) {
 	if strings.TrimSpace(address) == "" {
 		return nil, errors.New("api grpc address is required")
+	}
+
+	oauthTokenSource, err := oauthConfig.tokenSource(context.Background())
+	if err != nil {
+		return nil, err
 	}
 
 	creds := insecure.NewCredentials()
@@ -46,7 +85,7 @@ func NewGrpcPausedSandboxResumer(address string, clusterAuthToken string, tlsEna
 	return &grpcPausedSandboxResumer{
 		conn:             conn,
 		client:           proxygrpc.NewSandboxServiceClient(conn),
-		clusterAuthToken: strings.TrimSpace(clusterAuthToken),
+		oauthTokenSource: oauthTokenSource,
 	}, nil
 }
 
@@ -68,8 +107,14 @@ func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string,
 	if envdAccessToken != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataEnvdAccessToken, envdAccessToken)
 	}
-	if c.clusterAuthToken != "" {
-		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataClientProxyAuthToken, c.clusterAuthToken)
+
+	if c.oauthTokenSource != nil {
+		token, tokenErr := c.oauthTokenSource.Token()
+		if tokenErr != nil {
+			return "", fmt.Errorf("get api grpc OAuth token: %w", tokenErr)
+		}
+
+		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataAuthorization, "Bearer "+token.AccessToken)
 	}
 
 	resp, err := c.client.ResumeSandbox(ctx, &proxygrpc.SandboxResumeRequest{

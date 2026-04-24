@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -31,12 +32,14 @@ type SandboxService struct {
 
 	api                    *APIStore
 	requireClientProxyAuth bool
+	clientProxyOAuth       ClientProxyOAuthVerifier
 }
 
-func NewSandboxService(api *APIStore, requireClientProxyAuth bool) *SandboxService {
+func NewSandboxService(api *APIStore, requireClientProxyAuth bool, clientProxyOAuth ClientProxyOAuthVerifier) *SandboxService {
 	return &SandboxService{
 		api:                    api,
 		requireClientProxyAuth: requireClientProxyAuth,
+		clientProxyOAuth:       clientProxyOAuth,
 	}
 }
 
@@ -91,26 +94,60 @@ func denyResumePermission() error {
 	return status.Error(codes.PermissionDenied, "permission denied")
 }
 
-func validateClientProxyAuth(incomingMetadata metadata.MD, expectedTokens ...string) error {
-	providedToken, _ := metadataFirstValue(incomingMetadata, proxygrpc.MetadataClientProxyAuthToken)
-
-	hasExpectedToken := false
-	for _, expectedToken := range expectedTokens {
-		if expectedToken == "" {
-			continue
-		}
-
-		hasExpectedToken = true
-		if tokensMatch(providedToken, expectedToken) {
-			return nil
-		}
+func metadataBearerToken(md metadata.MD) (string, bool) {
+	authorization, found := metadataFirstValue(md, proxygrpc.MetadataAuthorization)
+	if !found {
+		return "", false
 	}
 
-	if !hasExpectedToken {
+	scheme, token, ok := strings.Cut(authorization, " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") || strings.TrimSpace(token) == "" {
+		return "", false
+	}
+
+	return strings.TrimSpace(token), true
+}
+
+func validateClientProxyOAuth(
+	ctx context.Context,
+	incomingMetadata metadata.MD,
+	verifier ClientProxyOAuthVerifier,
+	expectedOrgID string,
+) error {
+	if expectedOrgID == "" {
+		return denyResumePermission()
+	}
+	if verifier == nil {
+		return status.Error(codes.Internal, "client proxy OIDC verifier is not configured")
+	}
+
+	rawToken, found := metadataBearerToken(incomingMetadata)
+	if !found {
 		return denyResumePermission()
 	}
 
-	return denyResumePermission()
+	claims, err := verifier.VerifyClaims(ctx, rawToken)
+	if err != nil {
+		return denyResumePermission()
+	}
+	if !tokensMatch(claims.OrgID, expectedOrgID) {
+		return denyResumePermission()
+	}
+
+	return nil
+}
+
+func validateClientProxyAuth(
+	ctx context.Context,
+	incomingMetadata metadata.MD,
+	verifier ClientProxyOAuthVerifier,
+	expectedAuthOrgID string,
+) error {
+	if expectedAuthOrgID == "" {
+		return denyResumePermission()
+	}
+
+	return validateClientProxyOAuth(ctx, incomingMetadata, verifier, expectedAuthOrgID)
 }
 
 const autoResumeTransitionWaitBudget = time.Minute
@@ -157,21 +194,17 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	}
 
 	if s.requireClientProxyAuth {
-		var clientProxyAuthTokens []string
+		var authOrgID string
 		if team.ClusterID != nil {
 			cluster, found := s.api.clusters.GetClusterById(*team.ClusterID)
 			if !found {
 				return nil, status.Errorf(codes.Internal, "cluster with ID '%s' not found", *team.ClusterID)
 			}
 
-			if cluster.AuthToken == "" {
-				return nil, status.Errorf(codes.Internal, "cluster auth token for cluster '%s' is not configured", *team.ClusterID)
-			}
-
-			clientProxyAuthTokens = []string{cluster.AuthToken}
+			authOrgID = strings.TrimSpace(cluster.AuthOrgID)
 		}
 
-		if err := validateClientProxyAuth(incomingMetadata, clientProxyAuthTokens...); err != nil {
+		if err := validateClientProxyAuth(ctx, incomingMetadata, s.clientProxyOAuth, authOrgID); err != nil {
 			return nil, err
 		}
 	}

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -171,52 +172,104 @@ func TestValidateClientProxyAuth(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name        string
-		md          metadata.MD
-		expected    []string
-		wantErrCode bool
+		name  string
+		md    metadata.MD
+		orgID string
 	}{
 		{
-			name:        "denies when expected token empty",
-			md:          metadata.MD{},
-			expected:    []string{""},
-			wantErrCode: true,
+			name: "denies when auth org is not configured",
+			md:   metadata.MD{},
 		},
 		{
-			name:     "valid token",
-			md:       metadata.Pairs(proxygrpc.MetadataClientProxyAuthToken, "secret"),
-			expected: []string{"secret"},
-		},
-		{
-			name:     "valid alternate token",
-			md:       metadata.Pairs(proxygrpc.MetadataClientProxyAuthToken, "cluster-secret"),
-			expected: []string{"api-secret", "cluster-secret"},
-		},
-		{
-			name:        "missing token",
-			md:          metadata.MD{},
-			expected:    []string{"secret"},
-			wantErrCode: true,
-		},
-		{
-			name:        "wrong token",
-			md:          metadata.Pairs(proxygrpc.MetadataClientProxyAuthToken, "wrong"),
-			expected:    []string{"secret"},
-			wantErrCode: true,
-		},
-		{
-			name:        "empty alternate does not disable configured token",
-			md:          metadata.MD{},
-			expected:    []string{"secret", ""},
-			wantErrCode: true,
+			name:  "legacy client proxy token is ignored",
+			md:    metadata.Pairs(proxygrpc.MetadataClientProxyAuthToken, "secret"),
+			orgID: "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := validateClientProxyAuth(tt.md, tt.expected...)
-			if tt.wantErrCode {
+			err := validateClientProxyAuth(context.Background(), tt.md, nil, tt.orgID)
+			assert.Error(t, err)
+		})
+	}
+}
+
+type fakeClientProxyOAuthVerifier struct {
+	claims ClientProxyOAuthClaims
+	err    error
+}
+
+func (v fakeClientProxyOAuthVerifier) VerifyClaims(context.Context, string) (ClientProxyOAuthClaims, error) {
+	return v.claims, v.err
+}
+
+func TestValidateClientProxyAuthOAuth(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		md            metadata.MD
+		verifier      ClientProxyOAuthVerifier
+		expectedOrgID string
+		wantErr       bool
+	}{
+		{
+			name:          "valid bearer token org",
+			md:            metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
+			verifier:      fakeClientProxyOAuthVerifier{claims: ClientProxyOAuthClaims{Subject: "client_123", OrgID: "org_123"}},
+			expectedOrgID: "org_123",
+		},
+		{
+			name:          "missing bearer token",
+			md:            metadata.MD{},
+			verifier:      fakeClientProxyOAuthVerifier{claims: ClientProxyOAuthClaims{Subject: "client_123", OrgID: "org_123"}},
+			expectedOrgID: "org_123",
+			wantErr:       true,
+		},
+		{
+			name:          "wrong bearer token org",
+			md:            metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
+			verifier:      fakeClientProxyOAuthVerifier{claims: ClientProxyOAuthClaims{Subject: "client_123", OrgID: "org_456"}},
+			expectedOrgID: "org_123",
+			wantErr:       true,
+		},
+		{
+			name:          "missing org claim",
+			md:            metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
+			verifier:      fakeClientProxyOAuthVerifier{claims: ClientProxyOAuthClaims{Subject: "client_123"}},
+			expectedOrgID: "org_123",
+			wantErr:       true,
+		},
+		{
+			name:          "verifier error",
+			md:            metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
+			verifier:      fakeClientProxyOAuthVerifier{err: errors.New("invalid token")},
+			expectedOrgID: "org_123",
+			wantErr:       true,
+		},
+		{
+			name:          "configured auth org does not allow legacy token fallback",
+			md:            metadata.Pairs(proxygrpc.MetadataClientProxyAuthToken, "secret"),
+			verifier:      fakeClientProxyOAuthVerifier{claims: ClientProxyOAuthClaims{Subject: "client_123", OrgID: "org_123"}},
+			expectedOrgID: "org_123",
+			wantErr:       true,
+		},
+		{
+			name:          "configured auth org requires verifier",
+			md:            metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
+			expectedOrgID: "org_123",
+			wantErr:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validateClientProxyAuth(context.Background(), tt.md, tt.verifier, tt.expectedOrgID)
+			if tt.wantErr {
 				assert.Error(t, err)
 
 				return

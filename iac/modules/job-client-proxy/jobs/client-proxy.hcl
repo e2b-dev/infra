@@ -120,6 +120,11 @@ job "client-proxy" {
         %{ if cluster_auth_token != "" }
         CLUSTER_AUTH_TOKEN           = "${cluster_auth_token}"
         %{ endif }
+        %{ if api_grpc_oauth_client_id != "" }
+        API_GRPC_OAUTH_CLIENT_ID     = "${api_grpc_oauth_client_id}"
+        API_GRPC_OAUTH_CLIENT_SECRET = "${api_grpc_oauth_client_secret}"
+        API_GRPC_OAUTH_TOKEN_URL     = "${api_grpc_oauth_token_url}"
+        %{ endif }
         %{ endif }
 
         %{ if launch_darkly_api_key != "" }
