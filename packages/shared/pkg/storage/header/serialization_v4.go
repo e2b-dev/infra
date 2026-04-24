@@ -18,6 +18,7 @@ package header
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -26,6 +27,7 @@ import (
 	lz4 "github.com/pierrec/lz4/v4"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // v4SizePrefixLen is the length of the uint32 size prefix that precedes the
@@ -74,8 +76,18 @@ func (t *Header) SerializeV4() ([]byte, error) {
 		dep, pendingDep := t.builds[id].Dep, t.builds[id].Pending
 		if pendingDep != nil {
 			var err error
-			if dep, err = pendingDep.Result(); err != nil {
+			dep, err = pendingDep.Result()
+			switch {
+			case err == nil:
+				// resolved — include in the wire format
+			case errors.Is(err, utils.NotSetError{}):
+				// not yet resolved — emit what is currently known
 				continue
+			default:
+				// Pending was Cancel'd with a real error (upload failure,
+				// pause defer, etc.). Refuse to serialize a corrupt
+				// header; peer callers will fall back to GCS.
+				return nil, fmt.Errorf("serialize v4: dep %s: %w", id, err)
 			}
 		}
 		s := v4SerializableDependency{
