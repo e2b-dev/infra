@@ -92,6 +92,8 @@ func assertMissingTagDisclosure(t *testing.T, public bool, alias string) {
 	wantMessage := fmt.Sprintf("template '%s' (%s) not found", id.WithNamespace(ownerTeamSlug, alias), templateID)
 	if public {
 		wantMessage = fmt.Sprintf("template '%s' (%s) with tag 'v2' not found", id.WithNamespace(ownerTeamSlug, alias), templateID)
+	} else {
+		wantMessage = fmt.Sprintf("template '%s' not found", id.WithNamespace(ownerTeamSlug, alias))
 	}
 
 	assert.Equal(t, int32(http.StatusNotFound), apiErr.Code)

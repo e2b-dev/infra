@@ -1,6 +1,7 @@
 package templatecache
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -462,4 +463,33 @@ func TestAliasCacheResolve_PopulatesNamespace(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, info)
 	assert.Equal(t, teamSlug+"/ns-alias", info.MatchedIdentifier)
+}
+
+func TestAliasCacheResolve_PopulatesMatchedIdentifierFromLookupKey(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "cached-alias", &teamSlug)
+
+	cache := NewAliasCache(db.SqlcClient, redis)
+	defer cache.Close(ctx)
+
+	legacyCachedValue, err := json.Marshal(&AliasInfo{
+		TemplateID: templateID,
+		TeamID:     teamID,
+	})
+	require.NoError(t, err)
+
+	err = redis.Set(ctx, cache.cache.RedisKey(buildAliasKey(&teamSlug, "cached-alias")), legacyCachedValue, aliasCacheTTL).Err()
+	require.NoError(t, err)
+
+	info, err := cache.Resolve(ctx, "cached-alias", teamSlug)
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	assert.Equal(t, teamSlug+"/cached-alias", info.MatchedIdentifier)
 }

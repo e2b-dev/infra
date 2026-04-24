@@ -37,6 +37,17 @@ func TestErrorToAPIError_TemplateNotFound_IdentifierOnly(t *testing.T) {
 	assert.Equal(t, "template 'mytemplate' not found", apiErr.ClientMsg)
 }
 
+func TestErrorToAPIError_TemplateNotFound_UndisclosedOmitsTemplateID(t *testing.T) {
+	t.Parallel()
+
+	apiErr := ErrorToAPIErrorWithTemplate(ErrTemplateNotFoundUndisclosed, "mytemplate", "tmpl-abc", nil)
+
+	assert.Equal(t, http.StatusNotFound, apiErr.Code)
+	assert.Equal(t, "template 'mytemplate' not found", apiErr.ClientMsg)
+	assert.ErrorIs(t, apiErr.Err, ErrTemplateNotFoundUndisclosed)
+	assert.ErrorIs(t, apiErr.Err, ErrTemplateNotFound)
+}
+
 func TestErrorToAPIError_FormatTemplateRef_IdentifierEqualsTemplateID(t *testing.T) {
 	t.Parallel()
 

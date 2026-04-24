@@ -30,8 +30,8 @@ const (
 type AliasInfo struct {
 	TemplateID        string    `json:"template_id"`
 	TeamID            uuid.UUID `json:"team_id"`
-	MatchedIdentifier string    `json:"matched_identifier,omitempty"` // canonical identifier under which the alias matched
-	NotFound          bool      `json:"not_found"`                    // tombstone marker for caching negative lookups
+	MatchedIdentifier string    `json:"-"`         // derived from the current lookup key, not persisted
+	NotFound          bool      `json:"not_found"` // tombstone marker for caching negative lookups
 }
 
 var notFoundTombstone = &AliasInfo{NotFound: true}
@@ -116,7 +116,10 @@ func (c *AliasCache) lookup(ctx context.Context, namespace *string, alias string
 		return nil, ErrTemplateNotFound
 	}
 
-	return info, nil
+	resolved := *info
+	resolved.MatchedIdentifier = key
+
+	return &resolved, nil
 }
 
 // cacheByTemplateID caches info also by template ID for direct ID lookups.
@@ -130,11 +133,7 @@ func (c *AliasCache) cacheByTemplateID(ctx context.Context, originalKey string, 
 		return
 	}
 
-	// Direct-ID entries must not surface another team's slug or alias to later
-	// bare-ID lookups.
-	idInfo := *info
-	idInfo.MatchedIdentifier = idKey
-	c.cache.Set(ctx, idKey, &idInfo)
+	c.cache.Set(ctx, idKey, info)
 }
 
 func (c *AliasCache) fetchFromDB(ctx context.Context, key string) (info *AliasInfo, err error) {
@@ -160,9 +159,8 @@ func (c *AliasCache) fetchFromDB(ctx context.Context, key string) (info *AliasIn
 	})
 	if err == nil {
 		return &AliasInfo{
-			TemplateID:        result.ID,
-			TeamID:            result.TeamID,
-			MatchedIdentifier: key,
+			TemplateID: result.ID,
+			TeamID:     result.TeamID,
 		}, nil
 	}
 
@@ -175,9 +173,8 @@ func (c *AliasCache) fetchFromDB(ctx context.Context, key string) (info *AliasIn
 			idResult, idErr := c.db.GetTemplateById(ctx, alias)
 			if idErr == nil {
 				return &AliasInfo{
-					TemplateID:        idResult.ID,
-					TeamID:            idResult.TeamID,
-					MatchedIdentifier: key,
+					TemplateID: idResult.ID,
+					TeamID:     idResult.TeamID,
 				}, nil
 			}
 

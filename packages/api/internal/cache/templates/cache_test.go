@@ -182,7 +182,7 @@ func TestTemplateCache_TranslateGetError(t *testing.T) {
 			name:          "foreign team keeps generic not found for private template",
 			requesterTeam: "foreign",
 			public:        false,
-			wantErr:       ErrTemplateNotFound,
+			wantErr:       ErrTemplateNotFoundUndisclosed,
 		},
 	}
 
@@ -224,6 +224,9 @@ func TestTemplateCache_TranslateGetError(t *testing.T) {
 
 			err = tc.TranslateGetError(ctx, err, aliasInfo, requesterTeamID)
 			require.ErrorIs(t, err, tt.wantErr)
+			if !tt.public && tt.requesterTeam == "foreign" {
+				require.ErrorIs(t, err, ErrTemplateNotFound)
+			}
 		})
 	}
 }

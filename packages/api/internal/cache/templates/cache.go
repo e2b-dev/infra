@@ -117,7 +117,7 @@ func (c *TemplateCache) TranslateGetError(ctx context.Context, err error, aliasI
 		return ErrTemplateTagNotFound
 	}
 
-	return err
+	return ErrTemplateNotFoundUndisclosed
 }
 
 // Get fetches a template with build by templateID and tag.
