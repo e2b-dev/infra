@@ -184,12 +184,6 @@ variable "client_proxy_port" {
   }
 }
 
-variable "supabase_db_connection_string" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
 variable "loki_cluster_size" {
   type    = number
   default = 0

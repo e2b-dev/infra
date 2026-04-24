@@ -87,22 +87,26 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		if c.Request.Header.Get("traceparent") != "" {
 			c.Request.Header.Del("traceparent")
 		}
-		if edgeTraceID, ok := telemetry.ParseEdgeTraceID(
-			c.Request.Header.Get(telemetry.GCPTraceContextHeader),
-			c.Request.Header.Get(telemetry.AWSTraceContextHeader),
-		); ok {
-			ctx = logger.ContextWithEdgeTraceID(ctx, edgeTraceID)
-		}
 		opts := []oteltrace.SpanStartOption{
 			oteltrace.WithAttributes(semconv.NetAttributesFromHTTPRequest("tcp", c.Request)...),
 			oteltrace.WithAttributes(semconv.EndUserAttributesFromHTTPRequest(c.Request)...),
 			oteltrace.WithAttributes(semconv.HTTPServerAttributesFromHTTPRequest(service, c.FullPath(), c.Request)...),
 			oteltrace.WithSpanKind(oteltrace.SpanKindServer),
 		}
+
+		if edgeTraceID, ok := telemetry.ParseEdgeTraceID(
+			c.Request.Header.Get(telemetry.GCPTraceContextHeader),
+			c.Request.Header.Get(telemetry.AWSTraceContextHeader),
+		); ok {
+			ctx = logger.ContextWithEdgeTraceID(ctx, edgeTraceID)
+			opts = append(opts, oteltrace.WithAttributes(telemetry.WithEdgeTraceID(edgeTraceID)))
+		}
+
 		spanName := c.FullPath()
 		if spanName == "" {
 			spanName = fmt.Sprintf("HTTP %s route not found", c.Request.Method)
 		}
+
 		ctx, span := tracer.Start(ctx, spanName, opts...)
 		defer span.End()
 

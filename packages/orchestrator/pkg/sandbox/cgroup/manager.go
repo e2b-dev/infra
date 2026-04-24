@@ -34,7 +34,7 @@ type Stats struct {
 	CPUSystemUsec uint64 // microseconds
 
 	MemoryUsageBytes uint64 // bytes
-	MemoryPeakBytes  uint64 // bytes, lifetime peak
+	MemoryPeakBytes  uint64 // bytes, reset after each GetStats() call
 }
 
 // CgroupHandle represents a created cgroup for a sandbox.
@@ -43,8 +43,9 @@ type Stats struct {
 // Lifecycle: Create → GetFD → cmd.Start() → ReleaseCgroupFD → GetStats (repeatedly) → Remove
 //
 // The caller MUST call ReleaseCgroupFD() right after cmd.Start() (regardless of
-// whether Start succeeded or failed). Remove() closes the memory.peak FD and
-// deletes the cgroup directory — it does not release the cgroup directory FD.
+// whether Start succeeded or failed). Remove() closes the memory.peak FD,
+// closes the cgroup directory FD as a safety net if ReleaseCgroupFD() was not
+// called, and deletes the cgroup directory.
 type CgroupHandle struct {
 	cgroupName     string
 	path           string
@@ -70,8 +71,8 @@ func (h *CgroupHandle) GetFD() int {
 // Call this after cmd.Start() — the kernel has already placed the process in
 // the cgroup atomically during clone, so the directory FD is no longer needed.
 //
-// The memory.peak FD is intentionally kept open for the lifetime of stats
-// collection. It will be needed for per-FD reset when kernel 6.12+ is available.
+// The memory.peak FD is intentionally kept open because the per-FD reset
+// mechanism requires the same FD for the lifetime of stats collection.
 // That FD is closed later by Remove().
 //
 // Safe to call multiple times.
@@ -212,12 +213,12 @@ func (m *managerImpl) Create(ctx context.Context, cgroupName string) (*CgroupHan
 		return nil, fmt.Errorf("failed to open cgroup directory: %w", err)
 	}
 
-	// TODO: Change to os.O_RDWR when per-FD peak reset is re-enabled.
+	// O_RDWR FD must stay open for per-FD peak reset across GetStats() calls
 	memPeakPath := filepath.Join(cgroupPath, "memory.peak")
-	memoryPeakFile, peakErr := os.OpenFile(memPeakPath, os.O_RDONLY, 0)
+	memoryPeakFile, peakErr := os.OpenFile(memPeakPath, os.O_RDWR, 0)
 	if peakErr != nil {
 		// Not fatal — memory.peak may not exist on older kernels
-		logger.L().Debug(ctx, "failed to open memory.peak",
+		logger.L().Warn(ctx, "failed to open memory.peak for reset",
 			zap.String("cgroup_name", cgroupName),
 			zap.String("path", memPeakPath),
 			zap.Error(peakErr))
@@ -235,7 +236,8 @@ func (m *managerImpl) Create(ctx context.Context, cgroupName string) (*CgroupHan
 	logger.L().Debug(ctx, "created cgroup for sandbox",
 		zap.String("cgroup_name", cgroupName),
 		zap.String("path", cgroupPath),
-		zap.Int("fd", handle.GetFD()))
+		zap.Int("fd", handle.GetFD()),
+		zap.Bool("peak_reset_available", memoryPeakFile != nil))
 
 	return handle, nil
 }
@@ -277,9 +279,9 @@ func (m *managerImpl) getStatsForPath(ctx context.Context, cgroupPath string, me
 	stats.MemoryUsageBytes, _ = strconv.ParseUint(strings.TrimSpace(string(memData)), 10, 64)
 
 	if memoryPeakFile != nil {
-		peakBytes, err := m.readMemoryPeak(memoryPeakFile)
+		peakBytes, err := m.readAndResetMemoryPeak(ctx, memoryPeakFile)
 		if err != nil {
-			logger.L().Debug(ctx, "failed to read memory.peak", zap.Error(err))
+			logger.L().Warn(ctx, "failed to read memory.peak", zap.Error(err))
 		} else {
 			stats.MemoryPeakBytes = peakBytes
 		}
@@ -288,12 +290,13 @@ func (m *managerImpl) getStatsForPath(ctx context.Context, cgroupPath string, me
 	return stats, nil
 }
 
-// readMemoryPeak reads the current peak memory value from the persistent FD.
-// Read requires file position 0 (seq_file), so we seek before reading.
-//
-// TODO: When per-FD peak reset is available-enabled, this function
-// should also write to the FD to reset the peak for the next interval.
-func (m *managerImpl) readMemoryPeak(memoryPeakFile *os.File) (uint64, error) {
+// readAndResetMemoryPeak reads the current peak memory value and resets it for the next interval.
+// It uses the persistent FD kept open in CgroupHandle for per-FD reset tracking.
+// The cgroups v2 kernel interface works as follows:
+//   - Read requires file position 0 (seq_file), so we seek before reading.
+//   - Write resets the per-FD peak to current memory usage. The kernel ignores
+//     both the written content and the file offset, so no seek before write is needed.
+func (m *managerImpl) readAndResetMemoryPeak(ctx context.Context, memoryPeakFile *os.File) (uint64, error) {
 	if _, err := memoryPeakFile.Seek(0, io.SeekStart); err != nil {
 		return 0, fmt.Errorf("failed to seek memory.peak for read: %w", err)
 	}
@@ -304,9 +307,15 @@ func (m *managerImpl) readMemoryPeak(memoryPeakFile *os.File) (uint64, error) {
 		return 0, fmt.Errorf("failed to read memory.peak: %w", err)
 	}
 
-	peakBytes, _ := strconv.ParseUint(strings.TrimSpace(string(buf[:n])), 10, 64)
+	peakBytes, parseErr := strconv.ParseUint(strings.TrimSpace(string(buf[:n])), 10, 64)
+	if parseErr != nil {
+		return 0, fmt.Errorf("failed to parse memory.peak value %q: %w", strings.TrimSpace(string(buf[:n])), parseErr)
+	}
 
-	// TODO:The write for Per-FD peak reset introduced in kernel 6.12 belongs here.
+	// Reset per-FD peak for next interval
+	if _, err := memoryPeakFile.WriteString("0"); err != nil {
+		logger.L().Warn(ctx, "failed to reset memory.peak, interval peak semantics degraded", zap.Error(err))
+	}
 
 	return peakBytes, nil
 }
