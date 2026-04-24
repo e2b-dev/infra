@@ -46,8 +46,8 @@ func TestSetTemplateSource_FromTemplateUsesResolvedBuild(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NotNil(t, template.GetFromTemplate())
-	assert.Equal(t, fromTemplate, template.GetFromTemplate().Alias)
-	assert.Equal(t, buildID.String(), template.GetFromTemplate().BuildID)
+	assert.Equal(t, fromTemplate, template.GetFromTemplate().GetAlias())
+	assert.Equal(t, buildID.String(), template.GetFromTemplate().GetBuildID())
 }
 
 func TestSetTemplateSource_FromTemplateMissingBuildReturnsNotFound(t *testing.T) {
