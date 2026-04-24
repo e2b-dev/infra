@@ -232,24 +232,6 @@ variable "client_proxy_oidc_audience" {
   default = ""
 }
 
-variable "api_grpc_oauth_client_id" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
-variable "api_grpc_oauth_client_secret" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
-variable "api_grpc_oauth_token_url" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
 variable "ingress_port" {
   type = object({
     name        = string

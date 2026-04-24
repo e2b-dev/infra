@@ -170,34 +170,6 @@ variable "api_public_grpc_port" {
   default = 5109
 }
 
-variable "client_proxy_oidc_issuer_url" {
-  type    = string
-  default = ""
-}
-
-variable "client_proxy_oidc_audience" {
-  type    = string
-  default = ""
-}
-
-variable "api_grpc_oauth_client_id" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
-variable "api_grpc_oauth_client_secret" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
-variable "api_grpc_oauth_token_url" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
 variable "api_memory_mb" {
   type    = number
   default = 512

@@ -246,9 +246,6 @@ module "nomad" {
   api_public_grpc_port                                   = var.api_public_grpc_port
   client_proxy_oidc_issuer_url                           = var.client_proxy_oidc_issuer_url
   client_proxy_oidc_audience                             = var.client_proxy_oidc_audience
-  api_grpc_oauth_client_id                               = var.api_grpc_oauth_client_id
-  api_grpc_oauth_client_secret                           = var.api_grpc_oauth_client_secret
-  api_grpc_oauth_token_url                               = var.api_grpc_oauth_token_url
   environment                                            = var.environment
   google_service_account_key                             = module.init.google_service_account_key
   api_secret                                             = random_password.api_secret.result

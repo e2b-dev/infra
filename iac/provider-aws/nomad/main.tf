@@ -98,12 +98,8 @@ module "client_proxy" {
   redis_cluster_url   = var.redis_cluster_url
   redis_tls_ca_base64 = var.redis_tls_ca_base64
   image               = data.aws_ecr_image.client_proxy.image_uri
-  api_grpc_address    = "api-grpc.${var.domain_name}:443"
-  api_grpc_tls        = true
-
-  api_grpc_oauth_client_id     = var.api_grpc_oauth_client_id
-  api_grpc_oauth_client_secret = var.api_grpc_oauth_client_secret
-  api_grpc_oauth_token_url     = var.api_grpc_oauth_token_url
+  api_grpc_address    = "api-grpc.service.consul:${var.api_grpc_port}"
+  api_grpc_tls        = false
 
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
   logs_collector_address       = "http://localhost:${var.logs_proxy_port}"
@@ -155,8 +151,6 @@ module "api" {
     VOLUME_TOKEN_SIGNING_KEY_NAME = "e2b-volume-token-key"
     VOLUME_TOKEN_DURATION         = "1h"
     VOLUME_TOKEN_SIGNING_METHOD   = "HS256"
-    CLIENT_PROXY_OIDC_ISSUER_URL  = var.client_proxy_oidc_issuer_url
-    CLIENT_PROXY_OIDC_AUDIENCE    = var.client_proxy_oidc_audience
   }
 }
 
