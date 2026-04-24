@@ -67,11 +67,6 @@ func (p *ProxyPool) Get(ctx context.Context, d *Destination) *ProxyClient {
 
 		l.Debug(ctx, "creating proxy client in pool")
 
-		maxConnectionAttempts := p.maxConnectionAttempts
-		if d.MaxConnectionAttempts > 0 {
-			maxConnectionAttempts = d.MaxConnectionAttempts
-		}
-
 		//nolint:contextcheck // Function `newProxyClient->newProxyClient$4` should pass the context parameter, but there is no reason to
 		return newProxyClient(
 			p.maxClientConns,
@@ -83,7 +78,7 @@ func (p *ProxyPool) Get(ctx context.Context, d *Destination) *ProxyClient {
 
 				return p.maxClientConns / hostConnectionSplit
 			}(),
-			maxConnectionAttempts,
+			p.maxConnectionAttempts,
 			p.idleTimeout,
 			&p.totalConnsCounter,
 			&p.currentConnsCounter,

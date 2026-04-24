@@ -26,9 +26,6 @@ type Destination struct {
 	// Embedders should pick a value that is unique per lifecycle.
 	ConnectionKey                      string
 	IncludeSandboxIdInProxyErrorLogger bool
-	// MaxConnectionAttempts overrides the proxy pool default for this destination.
-	// Leave unset to use the proxy-level default.
-	MaxConnectionAttempts int
 	// MaskRequestHost is used to mask the request host.
 	MaskRequestHost *string
 }
