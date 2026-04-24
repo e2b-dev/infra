@@ -131,6 +131,20 @@ build {
     execute_command = "chmod +x {{ .Path }}; {{ .Vars }} {{ .Path }} --version ${var.vault_version}"
   }
 
+  # Install the ClickHouse client at the same version as the server so it's
+  # available on every node without being downloaded at boot time.
+  provisioner "shell" {
+    script          = "${local.shared_setup_dir}/install-clickhouse-client.sh"
+    execute_command = "chmod +x {{ .Path }}; {{ .Vars }} {{ .Path }} --version ${var.clickhouse_client_version}"
+  }
+
+  # Install CNI plugins (needed by Nomad bridge-mode networking on the
+  # ClickHouse nodepool). Harmless on nodes that don't use them.
+  provisioner "shell" {
+    script          = "${local.shared_setup_dir}/install-cni-plugins.sh"
+    execute_command = "chmod +x {{ .Path }}; {{ .Vars }} {{ .Path }} --version ${var.cni_plugin_version}"
+  }
+
   provisioner "shell" {
     inline = [
       "sudo mkdir -p /opt/nomad/plugins",
