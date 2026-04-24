@@ -38,19 +38,6 @@ else
     echo "All required packages are already installed."
 fi
 
-echo "Configuring FUSE for non-root users"
-# Enable user_allow_other option in fuse.conf
-if [ -f /etc/fuse.conf ]; then
-    # Uncomment user_allow_other if it exists, or add it if it doesn't
-    if grep -q '^#user_allow_other' /etc/fuse.conf; then
-        sed -i 's/^#user_allow_other/user_allow_other/' /etc/fuse.conf
-    elif ! grep -q '^user_allow_other' /etc/fuse.conf; then
-        echo "user_allow_other" >> /etc/fuse.conf
-    fi
-else
-    echo "user_allow_other" > /etc/fuse.conf
-fi
-
 # Set /dev/fuse permissions to 666 for non-root access
 # Use systemd-tmpfiles to set permissions at boot
 mkdir -p /etc/tmpfiles.d

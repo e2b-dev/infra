@@ -1162,19 +1162,12 @@ func TestTemplateBuildFuseConfiguration(t *testing.T) {
 	t.Parallel()
 
 	// Test that FUSE is configured to allow non-root users:
-	// - /etc/fuse.conf contains user_allow_other
 	// - /etc/tmpfiles.d/fuse.conf sets /dev/fuse permissions at boot
 	// - /dev/fuse has actual permissions 666
 	buildConfig := api.TemplateBuildStartV2{
 		Force:     utils.ToPtr(ForceBaseBuild),
 		FromImage: utils.ToPtr("ubuntu:22.04"),
 		Steps: utils.ToPtr([]api.TemplateStep{
-			{
-				Type: "RUN",
-				Args: utils.ToPtr([]string{
-					"grep -q '^user_allow_other' /etc/fuse.conf",
-				}),
-			},
 			{
 				Type: "RUN",
 				Args: utils.ToPtr([]string{
