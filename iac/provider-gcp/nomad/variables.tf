@@ -67,7 +67,7 @@ variable "api_grpc_port" {
 
 variable "api_public_grpc_port" {
   type    = number
-  default = 5010
+  default = 5109
 }
 
 variable "client_proxy_oidc_issuer_url" {

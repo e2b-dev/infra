@@ -54,7 +54,7 @@ type Config struct {
 	RedisPoolSize    int    `env:"REDIS_POOL_SIZE"     envDefault:"160"`
 
 	APIGrpcPort       uint16 `env:"API_GRPC_PORT"        envDefault:"5009"`
-	APIPublicGrpcPort uint16 `env:"API_PUBLIC_GRPC_PORT" envDefault:"5010"`
+	APIPublicGrpcPort uint16 `env:"API_PUBLIC_GRPC_PORT" envDefault:"5109"`
 	APISecret         string `env:"API_SECRET"`
 
 	ClientProxyOIDCIssuerURL string `env:"CLIENT_PROXY_OIDC_ISSUER_URL"`

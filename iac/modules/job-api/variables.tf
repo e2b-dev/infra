@@ -38,7 +38,7 @@ variable "api_grpc_port" {
 
 variable "api_public_grpc_port" {
   type    = number
-  default = 5010
+  default = 5109
 }
 
 variable "domain_name" {
