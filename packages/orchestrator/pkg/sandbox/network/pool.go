@@ -67,6 +67,10 @@ type Config struct {
 	SandboxTCPFirewallHTTPPort  uint16 `env:"SANDBOX_TCP_FIREWALL_HTTP_PORT"  envDefault:"5016"`
 	SandboxTCPFirewallTLSPort   uint16 `env:"SANDBOX_TCP_FIREWALL_TLS_PORT"   envDefault:"5017"`
 	SandboxTCPFirewallOtherPort uint16 `env:"SANDBOX_TCP_FIREWALL_OTHER_PORT" envDefault:"5018"`
+
+	// SkipDefaultRoute, when true, makes Slot.CreateNetwork skip installing the
+	// in-namespace default route (`default via <VethIP>`).
+	SkipDefaultRoute bool
 }
 
 func ParseConfig() (Config, error) {

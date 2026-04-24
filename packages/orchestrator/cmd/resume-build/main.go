@@ -56,6 +56,7 @@ func main() {
 	iterations := flag.Int("iterations", 0, "run N iterations (0 = interactive)")
 	coldStart := flag.Bool("cold", false, "clear cache between iterations (cold start each time)")
 	noPrefetch := flag.Bool("no-prefetch", false, "disable memory prefetching")
+	noDefaultRoute := flag.Bool("no-default-route", false, "skip adding the in-namespace default route (default via VethIP)")
 	verbose := flag.Bool("v", false, "verbose logging")
 
 	// Command execution (no pause)
@@ -155,7 +156,7 @@ func main() {
 		iterations: *iterations,
 	}
 
-	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *verbose, pauseOpts, runOpts)
+	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *noDefaultRoute, *verbose, pauseOpts, runOpts)
 	cancel()
 
 	if err != nil {
@@ -955,7 +956,7 @@ func (r *runner) benchmark(ctx context.Context, n int) error {
 	return lastErr
 }
 
-func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, verbose bool, pauseOpts pauseOptions, runOpts runOptions) error {
+func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, noDefaultRoute, verbose bool, pauseOpts pauseOptions, runOpts runOptions) error {
 	// Silence other loggers unless verbose mode
 	var l logger.Logger
 	if !verbose {
@@ -987,6 +988,8 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
+
+	config.NetworkConfig.SkipDefaultRoute = noDefaultRoute
 
 	if verbose {
 		fmt.Println("🔧 Creating feature flags client...")
