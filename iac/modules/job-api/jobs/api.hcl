@@ -145,9 +145,6 @@ job "api" {
         API_PUBLIC_GRPC_PORT           = "${api_public_grpc_port}"
         ADMIN_TOKEN                    = "${admin_token}"
         SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
-%{ if api_secret != "" }
-        API_SECRET                     = "${api_secret}"
-%{ endif }
 
         POSTGRES_CONNECTION_STRING              = "${postgres_connection_string}"
         DB_MAX_OPEN_CONNECTIONS                = "${db_max_open_connections}"

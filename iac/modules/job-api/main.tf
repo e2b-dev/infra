@@ -34,7 +34,6 @@ resource "nomad_job" "api" {
     analytics_collector_api_token           = var.analytics_collector_api_token
     nomad_acl_token                         = var.nomad_acl_token
     admin_token                             = var.admin_token
-    api_secret                              = trimspace(var.api_secret)
     redis_url                               = var.redis_url
     redis_cluster_url                       = var.redis_cluster_url
     redis_tls_ca_base64                     = var.redis_tls_ca_base64

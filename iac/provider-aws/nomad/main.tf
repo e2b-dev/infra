@@ -131,7 +131,6 @@ module "api" {
   supabase_jwt_secrets           = var.supabase_jwt_secrets
   nomad_acl_token                = var.nomad_acl_token
   admin_token                    = var.admin_token
-  api_secret                     = var.api_secret
   redis_url                      = var.redis_url
   redis_cluster_url              = var.redis_cluster_url
   redis_tls_ca_base64            = var.redis_tls_ca_base64

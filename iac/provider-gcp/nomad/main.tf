@@ -125,7 +125,6 @@ module "api" {
   analytics_collector_api_token           = trimspace(data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data)
   nomad_acl_token                         = var.nomad_acl_token_secret
   admin_token                             = trimspace(data.google_secret_manager_secret_version.api_admin_token.secret_data)
-  api_secret                              = var.api_secret
   redis_url                               = local.redis_url
   redis_cluster_url                       = local.redis_cluster_url
   redis_tls_ca_base64                     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
