@@ -58,7 +58,7 @@ func (c GrpcOAuthConfig) tokenSource(ctx context.Context) (oauth2.TokenSource, e
 	return oauthConfig.TokenSource(ctx), nil
 }
 
-func NewGrpcPausedSandboxResumer(address string, _ string, oauthConfig GrpcOAuthConfig, tlsEnabled bool) (PausedSandboxResumer, error) {
+func NewGrpcPausedSandboxResumer(address string, oauthConfig GrpcOAuthConfig, tlsEnabled bool) (PausedSandboxResumer, error) {
 	if strings.TrimSpace(address) == "" {
 		return nil, errors.New("api grpc address is required")
 	}
