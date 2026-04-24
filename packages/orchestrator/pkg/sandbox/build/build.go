@@ -96,10 +96,7 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 			continue
 		}
 
-		dep, err := h.LookupDependency(ctx, mappedToBuild.BuildId)
-		if err != nil {
-			return 0, fmt.Errorf("lookup header dependency: %w", err)
-		}
+		dep := h.LookupDependency(mappedToBuild.BuildId)
 		mappedBuild, err := b.getBuild(ctx, mappedToBuild.BuildId, dep.Size, dep.FrameTable.CompressionType())
 		if err != nil {
 			return 0, fmt.Errorf("failed to get build: %w", err)
@@ -143,10 +140,7 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 			return header.EmptyHugePage, nil
 		}
 
-		dep, err := h.LookupDependency(ctx, mappedBuild.BuildId)
-		if err != nil {
-			return nil, fmt.Errorf("lookup header dependency: %w", err)
-		}
+		dep := h.LookupDependency(mappedBuild.BuildId)
 		diff, err := b.getBuild(ctx, mappedBuild.BuildId, dep.Size, dep.FrameTable.CompressionType())
 		if err != nil {
 			return nil, fmt.Errorf("failed to get build: %w", err)

@@ -7,7 +7,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type uncompressedUploader struct {
@@ -15,6 +15,12 @@ type uncompressedUploader struct {
 }
 
 func (u *uncompressedUploader) Upload(ctx context.Context) ([]byte, []byte, error) {
+	// Release self-Pending on V3 headers so descendant WaitForDependencies
+	// don't leak. V3 carries no FrameTable, so zero Dep is sufficient.
+	// Done up front so every error path below still resolves the Pending.
+	_ = u.snapshot.MemfileDiffHeader.Finalize(header.Dependency{})
+	_ = u.snapshot.RootfsDiffHeader.Finalize(header.Dependency{})
+
 	memfilePath, err := u.snapshot.MemfileDiff.CachePath()
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting memfile diff path: %w", err)
@@ -25,33 +31,40 @@ func (u *uncompressedUploader) Upload(ctx context.Context) ([]byte, []byte, erro
 		return nil, nil, fmt.Errorf("error getting rootfs diff path: %w", err)
 	}
 
-	// V3 stores no per-build dependencies (serializeV3 ignores the map).
-	// Finalize up front so concurrent readers (e.g. UFFD page faults on
-	// Resume after pause during Checkpoint) don't block on the channel
-	// while data uploads to GCS.
-	u.snapshot.MemfileDiffHeader.FinalizeDependencies(nil, nil)
-	u.snapshot.RootfsDiffHeader.FinalizeDependencies(nil, nil)
-
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
-		if u.snapshot.MemfileDiffHeader == nil {
+		h := u.snapshot.MemfileDiffHeader
+		if h == nil {
 			return nil
 		}
+		data, err := h.SerializeV3()
+		if err != nil {
+			return fmt.Errorf("serialize memfile header: %w", err)
+		}
+		blob, err := u.persistence.OpenBlob(ctx, u.paths.MemfileHeader(), storage.MetadataObjectType)
+		if err != nil {
+			return fmt.Errorf("open memfile header blob: %w", err)
+		}
 
-		_, err := headers.StoreHeader(ctx, u.persistence, u.paths.MemfileHeader(), u.snapshot.MemfileDiffHeader)
-
-		return err
+		return blob.Put(ctx, data)
 	})
 
 	eg.Go(func() error {
-		if u.snapshot.RootfsDiffHeader == nil {
+		h := u.snapshot.RootfsDiffHeader
+		if h == nil {
 			return nil
 		}
+		data, err := h.SerializeV3()
+		if err != nil {
+			return fmt.Errorf("serialize rootfs header: %w", err)
+		}
+		blob, err := u.persistence.OpenBlob(ctx, u.paths.RootfsHeader(), storage.MetadataObjectType)
+		if err != nil {
+			return fmt.Errorf("open rootfs header blob: %w", err)
+		}
 
-		_, err := headers.StoreHeader(ctx, u.persistence, u.paths.RootfsHeader(), u.snapshot.RootfsDiffHeader)
-
-		return err
+		return blob.Put(ctx, data)
 	})
 
 	eg.Go(func() error {

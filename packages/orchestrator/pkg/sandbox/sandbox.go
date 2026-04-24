@@ -1089,10 +1089,10 @@ func (s *Sandbox) Pause(
 		s.config.DefaultCacheDir,
 		s.process,
 	)
-	defer func() { memfileDiffHeader.CancelOnError(e) }()
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
+	defer func() { memfileDiffHeader.Cancel(e) }()
 	cleanup.AddNoContext(ctx, memfileDiff.Close)
 
 	rootfsDiff, rootfsDiffHeader, err := pauseProcessRootfs(
@@ -1105,10 +1105,10 @@ func (s *Sandbox) Pause(
 		},
 		s.config.DefaultCacheDir,
 	)
-	defer func() { rootfsDiffHeader.CancelOnError(e) }()
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
+	defer func() { rootfsDiffHeader.Cancel(e) }()
 	cleanup.AddNoContext(ctx, rootfsDiff.Close)
 
 	metadataFileLink := template.NewLocalFileLink(cachePaths.CacheMetadata())
@@ -1156,6 +1156,7 @@ func pauseProcessMemory(
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create memfile header: %w", err)
 	}
+	defer func() { header.Cancel(e) }()
 
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
 
@@ -1178,9 +1179,8 @@ func pauseProcessMemory(
 		return nil, nil, fmt.Errorf("failed to create local diff from cache: %w", errors.Join(err, cache.Close()))
 	}
 
-	// Diff data is on local disk; readers (Resume) can skip the
-	// FinalizeDependencies wait that the upload path will satisfy later.
-	header.MarkLocallyAvailable()
+	// Diff data is on local disk; readers can resolve self via local fd.
+	header.DataAvailable.Store(true)
 
 	return diff, header, nil
 }
@@ -1220,10 +1220,10 @@ func pauseProcessRootfs(
 
 		return nil, nil, fmt.Errorf("failed to create rootfs header: %w", err)
 	}
+	defer func() { rootfsHeader.Cancel(e) }()
 
-	// Diff data is on local disk; readers (Resume) can skip the
-	// FinalizeDependencies wait that the upload path will satisfy later.
-	rootfsHeader.MarkLocallyAvailable()
+	// Diff data is on local disk; readers can resolve self via local fd.
+	rootfsHeader.DataAvailable.Store(true)
 
 	return rootfsDiff, rootfsHeader, nil
 }

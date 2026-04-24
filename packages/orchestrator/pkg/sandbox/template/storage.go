@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -17,13 +16,7 @@ import (
 const (
 	oldMemfileHugePageSize = 2 << 20 // 2 MiB
 	oldRootfsBlockSize     = 4 << 10 // 4 KiB
-
-	// peerPendingHeaderTimeout is a generous upper bound — a peer upload that
-	// takes longer than this has almost certainly failed.
-	peerPendingHeaderTimeout = 5 * time.Minute
 )
-
-var errPeerHeaderPendingTimeout = errors.New("peer header pending timeout")
 
 type Storage struct {
 	source *build.File
@@ -66,19 +59,6 @@ func NewStorage(
 		h, err = header.LoadHeader(ctx, persistence, hdrPath)
 		if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
 			return nil, err
-		}
-
-		// Peer-delivered pending headers must be bounded: if the remote upload
-		// never completes, waiters would hang forever. Local headers are
-		// always born final at this call site, so this is a no-op for them.
-		if h != nil && h.IsPending() {
-			go func(h *header.Header) {
-				select {
-				case <-time.After(peerPendingHeaderTimeout):
-					h.CancelOnError(errPeerHeaderPendingTimeout)
-				case <-h.Done():
-				}
-			}(h)
 		}
 	}
 
