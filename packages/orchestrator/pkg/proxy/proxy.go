@@ -29,8 +29,6 @@ const (
 	// Also it's a good practice to set it to higher values as you progress in the stack
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
 	idleTimeout = 620 * time.Second
-
-	resumedSandboxProxyRetries = 12
 )
 
 var _ sandbox.MapSubscriber = (*SandboxProxy)(nil)
@@ -109,18 +107,12 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 				)...,
 			)
 
-			maxConnectionAttempts := 0
-			if sbx.APIStoredConfig != nil && sbx.APIStoredConfig.GetSnapshot() {
-				maxConnectionAttempts = resumedSandboxProxyRetries
-			}
-
 			return &pool.Destination{
 				Url:                                url,
 				SandboxId:                          sbx.Runtime.SandboxID,
 				SandboxPort:                        port,
 				DefaultToPortError:                 true,
 				IncludeSandboxIdInProxyErrorLogger: true,
-				MaxConnectionAttempts:              maxConnectionAttempts,
 				// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
 				// We are not using sandbox id to prevent removing connections based on sandbox id (pause/resume race condition).
 				ConnectionKey:   sbx.LifecycleID,
