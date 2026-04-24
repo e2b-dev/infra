@@ -185,6 +185,11 @@ module "nomad" {
   api_cluster_size               = var.api_cluster_size
   api_grpc_port                  = var.api_grpc_port
   api_public_grpc_port           = var.api_public_grpc_port
+  client_proxy_oidc_issuer_url   = var.client_proxy_oidc_issuer_url
+  client_proxy_oidc_audience     = var.client_proxy_oidc_audience
+  api_grpc_oauth_client_id       = var.api_grpc_oauth_client_id
+  api_grpc_oauth_client_secret   = var.api_grpc_oauth_client_secret
+  api_grpc_oauth_token_url       = var.api_grpc_oauth_token_url
   api_repository_name            = module.init.api_repository_name
   db_migrator_repository_name    = module.init.db_migrator_repository_name
   postgres_connection_string     = module.init.postgres_connection_string

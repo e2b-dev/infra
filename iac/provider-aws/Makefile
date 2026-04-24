@@ -46,7 +46,12 @@ tf_vars := AWS_PROFILE=$(AWS_PROFILE) AWS_REGION=$(AWS_REGION) \
 	$(call tfvar, DB_MAX_OPEN_CONNECTIONS) \
 	$(call tfvar, DB_MIN_IDLE_CONNECTIONS) \
 	$(call tfvar, AUTH_DB_MAX_OPEN_CONNECTIONS) \
-	$(call tfvar, AUTH_DB_MIN_IDLE_CONNECTIONS)
+	$(call tfvar, AUTH_DB_MIN_IDLE_CONNECTIONS) \
+	$(call tfvar, CLIENT_PROXY_OIDC_ISSUER_URL) \
+	$(call tfvar, CLIENT_PROXY_OIDC_AUDIENCE) \
+	$(call tfvar, API_GRPC_OAUTH_CLIENT_ID) \
+	$(call tfvar, API_GRPC_OAUTH_CLIENT_SECRET) \
+	$(call tfvar, API_GRPC_OAUTH_TOKEN_URL)
 
 .PHONY: provider-login
 provider-login:
