@@ -62,8 +62,8 @@ func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64
 		return "", fmt.Errorf("failed to get sandbox from catalog: %w", err)
 	}
 
-	if s.Keepalive != nil && s.Keepalive.Traffic != nil && s.Keepalive.Traffic.Enabled {
-		trafficKeepalive.MaybeRefresh(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken, s)
+	if s.Keepalive != nil && s.Keepalive.Traffic != nil && s.Keepalive.Traffic.KeepaliveMs != nil {
+		trafficKeepalive.MaybeRefresh(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken, c, s)
 	}
 
 	// todo: when we will use edge for orchestrators discovery we can stop sending IP in the catalog

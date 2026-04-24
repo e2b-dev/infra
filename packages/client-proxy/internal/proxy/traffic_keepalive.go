@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -12,50 +11,34 @@ import (
 )
 
 const (
-	trafficKeepaliveRefreshBefore  = time.Minute
-	trafficKeepaliveMinInterval    = 30 * time.Second
 	trafficKeepaliveRequestTimeout = 10 * time.Second
 )
 
-type trafficKeepaliveState struct {
-	inFlight    bool
-	lastAttempt time.Time
-}
-
 type trafficKeepaliveManager struct {
 	resumer PausedSandboxResumer
-	now     func() time.Time
-
-	mu     sync.Mutex
-	states map[string]trafficKeepaliveState
 }
 
 func newTrafficKeepaliveManager(resumer PausedSandboxResumer) *trafficKeepaliveManager {
 	return &trafficKeepaliveManager{
 		resumer: resumer,
-		now:     time.Now,
-		states:  map[string]trafficKeepaliveState{},
 	}
 }
 
-func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, info *catalog.SandboxInfo) {
-	if m == nil || m.resumer == nil || info == nil || info.Keepalive == nil || info.Keepalive.Traffic == nil || !info.Keepalive.Traffic.Enabled || info.TeamID == "" || info.EndTime.IsZero() {
+func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, catalogStore catalog.SandboxesCatalog, info *catalog.SandboxInfo) {
+	if m == nil || m.resumer == nil || catalogStore == nil || info == nil || info.Keepalive == nil || info.Keepalive.Traffic == nil || info.Keepalive.Traffic.KeepaliveMs == nil || info.TeamID == "" {
 		return
 	}
 
-	now := m.now()
-	timeLeft := info.EndTime.Sub(now)
-	if timeLeft <= 0 || timeLeft > trafficKeepaliveRefreshBefore {
+	acquired, err := catalogStore.AcquireTrafficKeepalive(ctx, sandboxID, *info.Keepalive.Traffic.KeepaliveMs)
+	if err != nil {
+		logger.L().Warn(ctx, "traffic keepalive acquire failed", logger.WithSandboxID(sandboxID), zap.Error(err))
 		return
 	}
-
-	if !m.tryBegin(sandboxID, now) {
+	if !acquired {
 		return
 	}
 
 	go func() {
-		defer m.finish(sandboxID)
-
 		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), trafficKeepaliveRequestTimeout)
 		defer cancel()
 
@@ -64,32 +47,4 @@ func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID st
 			logger.L().Warn(refreshCtx, "traffic keepalive refresh failed", logger.WithSandboxID(sandboxID), zap.Error(err))
 		}
 	}()
-}
-
-func (m *trafficKeepaliveManager) tryBegin(sandboxID string, now time.Time) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	state := m.states[sandboxID]
-	if state.inFlight {
-		return false
-	}
-	if !state.lastAttempt.IsZero() && now.Sub(state.lastAttempt) < trafficKeepaliveMinInterval {
-		return false
-	}
-
-	state.inFlight = true
-	state.lastAttempt = now
-	m.states[sandboxID] = state
-
-	return true
-}
-
-func (m *trafficKeepaliveManager) finish(sandboxID string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	state := m.states[sandboxID]
-	state.inFlight = false
-	m.states[sandboxID] = state
 }

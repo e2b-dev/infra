@@ -76,6 +76,26 @@ func (c *RedisSandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string
 	return nil
 }
 
+func (c *RedisSandboxCatalog) AcquireTrafficKeepalive(ctx context.Context, sandboxID string, keepaliveMs uint64) (bool, error) {
+	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-traffic-keepalive-acquire")
+	defer span.End()
+
+	ctx, ctxCancel := context.WithTimeout(spanCtx, catalogRedisTimeout)
+	defer ctxCancel()
+
+	expiration := time.Duration(keepaliveMs) * time.Millisecond
+	if expiration <= 0 {
+		return true, nil
+	}
+
+	acquired, err := c.redisClient.SetNX(ctx, c.getTrafficKeepaliveKey(sandboxID), "1", expiration).Result()
+	if err != nil {
+		return false, fmt.Errorf("failed to acquire traffic keepalive semaphore: %w", err)
+	}
+
+	return acquired, nil
+}
+
 func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID string, executionID string) error {
 	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-delete")
 	defer span.End()
@@ -101,12 +121,17 @@ func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID strin
 	}
 
 	c.redisClient.Del(ctx, c.getCatalogKey(sandboxID))
+	c.redisClient.Del(ctx, c.getTrafficKeepaliveKey(sandboxID))
 
 	return nil
 }
 
 func (c *RedisSandboxCatalog) getCatalogKey(sandboxID string) string {
 	return fmt.Sprintf("sandbox:catalog:%s", sandboxID)
+}
+
+func (c *RedisSandboxCatalog) getTrafficKeepaliveKey(sandboxID string) string {
+	return fmt.Sprintf("sandbox:catalog:%s:traffic-keepalive", sandboxID)
 }
 
 func (c *RedisSandboxCatalog) Close(_ context.Context) error {

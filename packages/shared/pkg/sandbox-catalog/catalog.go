@@ -24,14 +24,16 @@ type Keepalive struct {
 	Traffic *TrafficKeepalive `json:"traffic,omitempty"`
 }
 
+const TrafficKeepaliveDefaultMs uint64 = 10_000
+
 type TrafficKeepalive struct {
-	Enabled bool   `json:"enabled"`
-	Timeout uint64 `json:"timeout,omitempty"`
+	KeepaliveMs *uint64 `json:"keepaliveMs,omitempty"`
 }
 
 type SandboxesCatalog interface {
 	GetSandbox(ctx context.Context, sandboxID string) (*SandboxInfo, error)
 	StoreSandbox(ctx context.Context, sandboxID string, sandboxInfo *SandboxInfo, expiration time.Duration) error
+	AcquireTrafficKeepalive(ctx context.Context, sandboxID string, keepaliveMs uint64) (bool, error)
 	DeleteSandbox(ctx context.Context, sandboxID string, executionID string) error
 	Close(ctx context.Context) error
 }

@@ -151,22 +151,12 @@ func requireNoResumerCall(t *testing.T, calls <-chan resumeCall) {
 	}
 }
 
-func requireTrafficKeepaliveIdle(t *testing.T, manager *trafficKeepaliveManager, sandboxID string) {
-	t.Helper()
-
-	require.Eventually(t, func() bool {
-		manager.mu.Lock()
-		defer manager.mu.Unlock()
-
-		return !manager.states[sandboxID].inFlight
-	}, time.Second, 10*time.Millisecond)
-}
-
 func testKeepalive() *catalog.Keepalive {
+	keepaliveMs := uint64(50)
+
 	return &catalog.Keepalive{
 		Traffic: &catalog.TrafficKeepalive{
-			Enabled: true,
-			Timeout: 300,
+			KeepaliveMs: &keepaliveMs,
 		},
 	}
 }
@@ -230,7 +220,7 @@ func TestCatalogResolution_CatalogMiss(t *testing.T) {
 	require.ErrorIs(t, err, ErrNodeNotFound)
 }
 
-func TestCatalogResolution_CatalogHit_TrafficKeepaliveRefreshesNearExpiry(t *testing.T) {
+func TestCatalogResolution_CatalogHit_TrafficKeepaliveRefreshes(t *testing.T) {
 	t.Parallel()
 
 	c := catalog.NewMemorySandboxesCatalog()
@@ -238,7 +228,6 @@ func TestCatalogResolution_CatalogHit_TrafficKeepaliveRefreshesNearExpiry(t *tes
 	now := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
 	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
-	trafficKeepalive.now = func() time.Time { return now }
 
 	err := c.StoreSandbox(t.Context(), "sbx", &catalog.SandboxInfo{
 		OrchestratorIP: "10.0.0.1",
@@ -271,7 +260,6 @@ func TestCatalogResolution_CatalogHit_TrafficKeepaliveRefreshesWhenAutoResumeFla
 	now := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
 	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
-	trafficKeepalive.now = func() time.Time { return now }
 
 	err := c.StoreSandbox(t.Context(), "sbx", &catalog.SandboxInfo{
 		OrchestratorIP: "10.0.0.1",
@@ -292,32 +280,32 @@ func TestCatalogResolution_CatalogHit_TrafficKeepaliveRefreshesWhenAutoResumeFla
 	require.Equal(t, "8f56d6bc-9b6d-4cbb-8e31-86b62359f716", call.teamID)
 }
 
-func TestTrafficKeepaliveManager_SkipsWhenNotNearExpiry(t *testing.T) {
+func TestTrafficKeepaliveManager_RefreshesWhenNotNearExpiry(t *testing.T) {
 	t.Parallel()
 
+	c := catalog.NewMemorySandboxesCatalog()
 	now := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
 	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
-	trafficKeepalive.now = func() time.Time { return now }
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", &catalog.SandboxInfo{
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, &catalog.SandboxInfo{
 		TeamID:    "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
-		EndTime:   now.Add(trafficKeepaliveRefreshBefore + time.Second),
+		EndTime:   now.Add(time.Hour),
 		Keepalive: testKeepalive(),
 	})
 
-	requireNoResumerCall(t, resumer.calls)
+	requireResumerCall(t, resumer.calls)
 }
 
 func TestTrafficKeepaliveManager_SkipsWhenTeamIDMissing(t *testing.T) {
 	t.Parallel()
 
+	c := catalog.NewMemorySandboxesCatalog()
 	now := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
 	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
-	trafficKeepalive.now = func() time.Time { return now }
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", &catalog.SandboxInfo{
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, &catalog.SandboxInfo{
 		EndTime:   now.Add(30 * time.Second),
 		Keepalive: testKeepalive(),
 	})
@@ -335,18 +323,18 @@ func TestTrafficKeepaliveManager_SuppressesConcurrentRefreshes(t *testing.T) {
 		block: release,
 	}
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
-	trafficKeepalive.now = func() time.Time { return now }
+	c := catalog.NewMemorySandboxesCatalog()
 	info := &catalog.SandboxInfo{
 		TeamID:    "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
 		EndTime:   now.Add(30 * time.Second),
 		Keepalive: testKeepalive(),
 	}
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
 	call := requireResumerCall(t, resumer.calls)
 	require.Equal(t, "keepalive", call.method)
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
 	requireNoResumerCall(t, resumer.calls)
 
 	close(release)
@@ -355,28 +343,22 @@ func TestTrafficKeepaliveManager_SuppressesConcurrentRefreshes(t *testing.T) {
 func TestTrafficKeepaliveManager_RateLimitsAttempts(t *testing.T) {
 	t.Parallel()
 
-	currentTime := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
 	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 2)}
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
-	trafficKeepalive.now = func() time.Time { return currentTime }
+	c := catalog.NewMemorySandboxesCatalog()
 	info := &catalog.SandboxInfo{
 		TeamID:    "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
-		EndTime:   currentTime.Add(30 * time.Second),
 		Keepalive: testKeepalive(),
 	}
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
 	requireResumerCall(t, resumer.calls)
-	requireTrafficKeepaliveIdle(t, trafficKeepalive, "sbx")
 
-	currentTime = currentTime.Add(trafficKeepaliveMinInterval - time.Second)
-	info.EndTime = currentTime.Add(30 * time.Second)
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
 	requireNoResumerCall(t, resumer.calls)
 
-	currentTime = currentTime.Add(2 * time.Second)
-	info.EndTime = currentTime.Add(30 * time.Second)
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
+	time.Sleep(60 * time.Millisecond)
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
 	requireResumerCall(t, resumer.calls)
 }
 

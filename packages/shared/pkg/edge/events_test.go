@@ -15,6 +15,7 @@ func TestSandboxCatalogCreateEventRoundTrip(t *testing.T) {
 
 	startTime := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
 	endTime := startTime.Add(30 * time.Minute)
+	keepaliveMs := catalog.TrafficKeepaliveDefaultMs
 	event := SandboxCatalogCreateEvent{
 		SandboxID:               "sbx",
 		TeamID:                  "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
@@ -25,8 +26,7 @@ func TestSandboxCatalogCreateEventRoundTrip(t *testing.T) {
 		SandboxEndTime:          endTime,
 		Keepalive: &catalog.Keepalive{
 			Traffic: &catalog.TrafficKeepalive{
-				Enabled: true,
-				Timeout: 300,
+				KeepaliveMs: &keepaliveMs,
 			},
 		},
 	}

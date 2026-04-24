@@ -9,8 +9,9 @@ import (
 )
 
 type MemorySandboxCatalog struct {
-	cache *ttlcache.Cache[string, *SandboxInfo]
-	mtx   sync.RWMutex
+	cache             *ttlcache.Cache[string, *SandboxInfo]
+	trafficKeepalives map[string]time.Time
+	mtx               sync.RWMutex
 }
 
 const (
@@ -22,7 +23,8 @@ func NewMemorySandboxesCatalog() SandboxesCatalog {
 	go cache.Start()
 
 	return &MemorySandboxCatalog{
-		cache: cache,
+		cache:             cache,
+		trafficKeepalives: make(map[string]time.Time),
 	}
 }
 
@@ -53,6 +55,25 @@ func (c *MemorySandboxCatalog) StoreSandbox(ctx context.Context, sandboxID strin
 	return nil
 }
 
+func (c *MemorySandboxCatalog) AcquireTrafficKeepalive(_ context.Context, sandboxID string, keepaliveMs uint64) (bool, error) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	expiration := time.Duration(keepaliveMs) * time.Millisecond
+	if expiration <= 0 {
+		return true, nil
+	}
+
+	now := time.Now()
+	if expiresAt, ok := c.trafficKeepalives[sandboxID]; ok && now.Before(expiresAt) {
+		return false, nil
+	}
+
+	c.trafficKeepalives[sandboxID] = now.Add(expiration)
+
+	return true, nil
+}
+
 func (c *MemorySandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID string, executionID string) error {
 	_, span := tracer.Start(ctx, "sandbox-catalog-delete")
 	defer span.End()
@@ -76,6 +97,7 @@ func (c *MemorySandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID stri
 	}
 
 	c.cache.Delete(sandboxID)
+	delete(c.trafficKeepalives, sandboxID)
 
 	return nil
 }

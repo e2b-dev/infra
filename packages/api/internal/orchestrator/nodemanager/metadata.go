@@ -70,10 +70,10 @@ func catalogKeepaliveFromDB(keepalive *types.SandboxKeepaliveConfig) *catalog.Ke
 	}
 
 	result := &catalog.Keepalive{}
-	if keepalive.Traffic != nil {
+	if keepalive.Traffic != nil && keepalive.Traffic.Enabled {
+		keepaliveMs := catalog.TrafficKeepaliveDefaultMs
 		result.Traffic = &catalog.TrafficKeepalive{
-			Enabled: keepalive.Traffic.Enabled,
-			Timeout: keepalive.Traffic.Timeout,
+			KeepaliveMs: &keepaliveMs,
 		}
 	}
 
