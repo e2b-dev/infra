@@ -15,7 +15,12 @@ import (
 )
 
 const (
-	SigningReadOperation  = "read"
+	// SigningReadOperation is the operation name used when generating
+	// signatures for read operations.
+	SigningReadOperation = "read"
+
+	// SigningWriteOperation is the operation name used when generating
+	// signatures for write operations.
 	SigningWriteOperation = "write"
 
 	accessTokenHeader = "X-Access-Token"
@@ -23,6 +28,9 @@ const (
 
 // paths that are always allowed without general authentication
 // POST/init is secured via MMDS hash validation instead
+// authExcludedPaths lists request methods+paths that are allowed without
+// general access token authentication (for example health checks and
+// endpoints that support signing instead of a token).
 var authExcludedPaths = []string{
 	"GET/health",
 	"GET/files",
@@ -30,6 +38,10 @@ var authExcludedPaths = []string{
 	"POST/init",
 }
 
+// WithAuthorization is middleware that enforces access token authentication
+// for requests handled by the returned handler. If the API's access token
+// is not set the middleware is a no-op. Requests that match
+// authExcludedPaths or present a valid access token are allowed.
 func (a *API) WithAuthorization(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if a.accessToken.IsSet() {

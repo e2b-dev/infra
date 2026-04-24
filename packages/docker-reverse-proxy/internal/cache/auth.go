@@ -20,10 +20,20 @@ type AccessTokenData struct {
 	TemplateID  string
 }
 
+// AccessTokenData holds authentication details associated with a generated
+// temporary e2b token: the underlying Docker registry token and the
+// template identifier this token is valid for.
 type AuthCache struct {
 	cache *ttlcache.Cache[string, *AccessTokenData]
 }
 
+// AuthCache provides a TTL-backed in-memory cache for mapping generated
+// e2b tokens to `AccessTokenData`. It is intended to be short-lived and
+// is used during reverse-proxy authentication flows.
+
+// New returns a new initialized AuthCache instance.
+// The cache is started in a separate goroutine and will store temporary
+// access tokens for template/docker authentication lookup.
 func New() *AuthCache {
 	cache := ttlcache.New(ttlcache.WithTTL[string, *AccessTokenData](authInfoExpiration))
 
