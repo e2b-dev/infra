@@ -43,18 +43,28 @@ esac
 BASE_URL="https://packages.clickhouse.com/tgz/stable"
 TARBALL="clickhouse-common-static-${VERSION}-${CH_ARCH}.tgz"
 URL="${BASE_URL}/${TARBALL}"
+CHECKSUM_URL="${URL}.sha512"
 
 echo "Installing clickhouse-client ${VERSION} (${CH_ARCH}) from ${URL}"
 
-TMPDIR=$(mktemp -d)
-trap 'rm -rf "$TMPDIR"' EXIT
+# Use a named work dir; DO NOT clobber $TMPDIR (POSIX env var used by curl/tar).
+WORK_DIR=$(mktemp -d)
+trap 'rm -rf "$WORK_DIR"' EXIT
 
-curl -fsSL --retry 5 --retry-delay 5 -o "${TMPDIR}/${TARBALL}" "${URL}"
-tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}"
+curl -fsSL --retry 5 --retry-delay 5 -o "${WORK_DIR}/${TARBALL}" "${URL}"
+curl -fsSL --retry 5 --retry-delay 5 -o "${WORK_DIR}/${TARBALL}.sha512" "${CHECKSUM_URL}"
+
+# Verify SHA-512 checksum before extracting. The .sha512 file is in standard
+# `<hash>  <filename>` format, so `sha512sum -c` works directly when run in
+# the same directory as the tarball.
+echo "Verifying SHA-512 checksum"
+(cd "${WORK_DIR}" && sha512sum -c "${TARBALL}.sha512")
+
+tar -xzf "${WORK_DIR}/${TARBALL}" -C "${WORK_DIR}"
 
 # The tarball extracts to clickhouse-common-static-<VERSION>/usr/bin/clickhouse
 # (a single multi-call binary; `clickhouse client`, `clickhouse local`, etc.).
-EXTRACTED_BIN=$(find "${TMPDIR}" -type f -name clickhouse -path '*/usr/bin/*' | head -n1)
+EXTRACTED_BIN=$(find "${WORK_DIR}" -type f -name clickhouse -path '*/usr/bin/*' | head -n1)
 if [[ -z "$EXTRACTED_BIN" ]]; then
   echo "ERROR: could not find clickhouse binary in ${TARBALL}" >&2
   exit 1

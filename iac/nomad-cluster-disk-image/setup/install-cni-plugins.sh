@@ -38,17 +38,27 @@ case "$(uname -m)" in
     ;;
 esac
 
-URL="https://github.com/containernetworking/plugins/releases/download/${VERSION}/cni-plugins-linux-${ARCH}-${VERSION}.tgz"
+TARBALL="cni-plugins-linux-${ARCH}-${VERSION}.tgz"
+BASE_URL="https://github.com/containernetworking/plugins/releases/download/${VERSION}"
+URL="${BASE_URL}/${TARBALL}"
+CHECKSUM_URL="${URL}.sha256"
 
 echo "Installing CNI plugins ${VERSION} (${ARCH}) from ${URL}"
 
-TMPDIR=$(mktemp -d)
-trap 'rm -rf "$TMPDIR"' EXIT
+# Use a named work dir; DO NOT clobber $TMPDIR (POSIX env var used by curl/tar).
+WORK_DIR=$(mktemp -d)
+trap 'rm -rf "$WORK_DIR"' EXIT
 
-curl -fsSL --retry 5 --retry-delay 5 -o "${TMPDIR}/cni-plugins.tgz" "${URL}"
+curl -fsSL --retry 5 --retry-delay 5 -o "${WORK_DIR}/${TARBALL}" "${URL}"
+curl -fsSL --retry 5 --retry-delay 5 -o "${WORK_DIR}/${TARBALL}.sha256" "${CHECKSUM_URL}"
+
+# Verify SHA-256 checksum before extracting. The .sha256 file is in standard
+# `<hash>  <filename>` format, so `sha256sum -c` works directly.
+echo "Verifying SHA-256 checksum"
+(cd "${WORK_DIR}" && sha256sum -c "${TARBALL}.sha256")
 
 sudo mkdir -p /opt/cni/bin
-sudo tar -C /opt/cni/bin -xzf "${TMPDIR}/cni-plugins.tgz"
+sudo tar -C /opt/cni/bin -xzf "${WORK_DIR}/${TARBALL}"
 
 # Sanity check: bridge is the plugin Nomad needs for bridge-mode networking.
 if [[ ! -x /opt/cni/bin/bridge ]]; then
