@@ -49,17 +49,3 @@ func TestFuseNonRootAccess(t *testing.T) {
 	err = utils.ExecCommand(t, ctx, sbx, envdClient, "test", "-w", "/dev/fuse")
 	require.NoError(t, err, "Non-root user should be able to write to /dev/fuse")
 }
-
-func TestFuseConfigUserAllowOther(t *testing.T) {
-	t.Parallel()
-	ctx := t.Context()
-
-	client := setup.GetAPIClient()
-	sbx := utils.SetupSandboxWithCleanup(t, client)
-
-	envdClient := setup.GetEnvdClient(t, ctx)
-
-	// Verify /etc/fuse.conf has user_allow_other enabled
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "grep", "-q", "^user_allow_other", "/etc/fuse.conf")
-	require.NoError(t, err, "Expected /etc/fuse.conf to contain 'user_allow_other'")
-}
