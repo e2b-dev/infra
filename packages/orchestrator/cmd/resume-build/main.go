@@ -1010,11 +1010,6 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	go tcpFw.Start(ctx)
 	defer tcpFw.Close(context.WithoutCancel(ctx))
 
-	// Choose the egress proxy BEFORE slots are pre-warmed so OnSlotCreate
-	// (invoked from network.Slot.CreateNetwork) applies to every slot the
-	// pool hands out. When -no-egress is set, noEgressProxy removes the
-	// default route in the sandbox netns at slot-creation time, so the
-	// guest is resumed into a netns that never (visibly) had one.
 	var egressProxy network.EgressProxy = network.NoopEgressProxy{}
 	if noEgress {
 		egressProxy = noEgressProxy{}
@@ -1474,19 +1469,7 @@ func (t *noPrefetchTemplate) Metadata() (metadata.Template, error) {
 }
 
 // noEgressProxy is an EgressProxy that removes the default route from the
-// sandbox's netns at slot-creation time. Equivalent to running
-// `sudo ip netns exec <ns> ip r d default` right after the namespace is
-// set up, but applied while the slot is still being pre-warmed — before
-// any sandbox is resumed into it.
-//
-// Used by the -no-egress CLI flag in resume-build. OnSlotCreate runs in
-// the host netns (see packages/orchestrator/pkg/sandbox/network/network.go:
-// CreateNetwork invokes egressProxy.OnSlotCreate after restoring hostNS),
-// so we explicitly enter the sandbox netns to delete the route.
-//
-// The netns itself is preserved, so `nsenter --net=/var/run/netns/<ns>`
-// still works for inspection; only destinations that required the default
-// route are cut off.
+// sandbox's netns at slot-creation time.
 type noEgressProxy struct {
 	network.NoopEgressProxy
 }
