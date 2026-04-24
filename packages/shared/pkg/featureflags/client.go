@@ -34,6 +34,11 @@ func NewClientWithDatasource(source *ldtestdata.TestDataSource) (*Client, error)
 		"",
 		ldclient.Config{
 			DataSource: source,
+			// Disable all outbound network traffic: no analytics events and no
+			// diagnostic events. The SDK key is empty here so any network call
+			// would fail and produce noise anyway.
+			Events:           ldcomponents.NoEvents(),
+			DiagnosticOptOut: true,
 		},
 		0)
 	if err != nil {
@@ -65,6 +70,9 @@ func NewClientWithLogLevel(logLevel ldlog.LogLevel) (*Client, error) {
 
 	if launchDarklyApiKey == "" {
 		cfg.DataSource = launchDarklyOfflineStore
+		// Disable all outbound network traffic when no API key is configured.
+		cfg.Events = ldcomponents.NoEvents()
+		cfg.DiagnosticOptOut = true
 		ldClient, err := ldclient.MakeCustomClient("", cfg, 0)
 		if err != nil {
 			return nil, err
