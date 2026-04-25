@@ -44,7 +44,6 @@ snapshot as (
         metadata = excluded.metadata,
         sandbox_started_at = excluded.sandbox_started_at,
         origin_node_id = excluded.origin_node_id,
-        allow_internet_access = excluded.allow_internet_access,
         auto_pause = excluded.auto_pause,
         config = excluded.config
     RETURNING env_id as template_id

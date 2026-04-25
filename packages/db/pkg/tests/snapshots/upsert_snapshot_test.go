@@ -170,7 +170,6 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 	updatedOriginNodeID := "node-2"
 	newStartTime := time.Now()
 	updatedMetadata := types.JSONBStringMap{"key": "updated_value", "new_key": "new_value"}
-	updatedAllowInternet := false
 	updatedConfig := &types.PausedSandboxConfig{
 		Version: types.PausedSandboxConfigVersion,
 		Network: &types.SandboxNetworkConfig{
@@ -194,7 +193,7 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 		FirecrackerVersion:  firecrackerVersion,
 		EnvdVersion:         &envdVersion,
 		Secure:              true,
-		AllowInternetAccess: &updatedAllowInternet,
+		AllowInternetAccess: &allowInternet,
 		AutoPause:           true,                // Updated from false
 		Config:              updatedConfig,       // Updated config
 		OriginNodeID:        updatedOriginNodeID, // Updated from node-1
@@ -224,9 +223,6 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 	assert.Equal(t, "updated_value", updatedStoredMetadata["key"], "Updated metadata key should have new value")
 	assert.Equal(t, "new_value", updatedStoredMetadata["new_key"], "New metadata key should be present")
 	assert.NotEqual(t, initialStoredMetadata, updatedStoredMetadata, "Updated metadata should be different from initial")
-	storedAllowInternet := testutils.GetSnapshotAllowInternetAccess(t, ctx, client, sandboxID)
-	require.NotNil(t, storedAllowInternet, "Updated allow_internet_access should be stored")
-	assert.False(t, *storedAllowInternet, "Updated allow_internet_access should match the latest snapshot")
 
 	// 5. Verify the second build and its assignment were created
 	assert.True(t, testutils.GetEnvBuildByID(t, ctx, client, updatedResult.BuildID), "Second build should exist")

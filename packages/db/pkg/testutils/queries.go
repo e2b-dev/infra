@@ -252,27 +252,6 @@ func GetSnapshotMetadata(t *testing.T, ctx context.Context, db *Database, sandbo
 	return metadata
 }
 
-// GetSnapshotAllowInternetAccess retrieves the allow_internet_access value from a snapshot using raw SQL
-func GetSnapshotAllowInternetAccess(t *testing.T, ctx context.Context, db *Database, sandboxID string) *bool {
-	t.Helper()
-	var allowInternetAccess *bool
-
-	err := db.SqlcClient.TestsRawSQLQuery(ctx,
-		"SELECT allow_internet_access FROM public.snapshots WHERE sandbox_id = $1",
-		func(rows pgx.Rows) error {
-			if !rows.Next() {
-				return nil
-			}
-
-			return rows.Scan(&allowInternetAccess)
-		},
-		sandboxID,
-	)
-	require.NoError(t, err, "Failed to query snapshot allow_internet_access")
-
-	return allowInternetAccess
-}
-
 // BuildAssignment represents a row from env_build_assignments
 type BuildAssignment struct {
 	ID      uuid.UUID
