@@ -196,6 +196,55 @@ func TestValidateClientProxyAuth(t *testing.T) {
 	}
 }
 
+func TestRequireBearerMetadata(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		md      metadata.MD
+		wantErr bool
+	}{
+		{
+			name:    "missing authorization",
+			md:      metadata.MD{},
+			wantErr: true,
+		},
+		{
+			name:    "legacy client proxy token is not bearer auth",
+			md:      metadata.Pairs(proxygrpc.MetadataClientProxyAuthToken, "secret"),
+			wantErr: true,
+		},
+		{
+			name:    "malformed authorization",
+			md:      metadata.Pairs(proxygrpc.MetadataAuthorization, "token"),
+			wantErr: true,
+		},
+		{
+			name:    "empty bearer token",
+			md:      metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer "),
+			wantErr: true,
+		},
+		{
+			name: "bearer token",
+			md:   metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := requireBearerMetadata(tt.md)
+			if tt.wantErr {
+				assert.Error(t, err)
+
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
 type fakeClientProxyOAuthVerifier struct {
 	claims ClientProxyOAuthClaims
 	err    error

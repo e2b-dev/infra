@@ -108,6 +108,14 @@ func metadataBearerToken(md metadata.MD) (string, bool) {
 	return strings.TrimSpace(token), true
 }
 
+func requireBearerMetadata(md metadata.MD) error {
+	if _, found := metadataBearerToken(md); !found {
+		return denyResumePermission()
+	}
+
+	return nil
+}
+
 func validateClientProxyOAuth(
 	ctx context.Context,
 	incomingMetadata metadata.MD,
@@ -175,6 +183,12 @@ func (s *SandboxService) getAutoResumeSnapshot(ctx context.Context, sandboxID st
 
 func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*proxygrpc.SandboxResumeResponse, error) {
 	incomingMetadata := metadataFromIncomingContext(ctx)
+
+	if s.requireClientProxyAuth {
+		if err := requireBearerMetadata(incomingMetadata); err != nil {
+			return nil, err
+		}
+	}
 
 	sandboxID, err := utils.ShortID(req.GetSandboxId())
 	if err != nil {
