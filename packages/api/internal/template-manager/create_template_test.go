@@ -57,17 +57,16 @@ func TestSetTemplateSource_FromTemplateMissingBuildReturnsNotFound(t *testing.T)
 		name          string
 		requesterTeam string
 		public        bool
-		wantMessage   func(ownerSlug, alias, templateID string) string
+		wantMessage   func(ownerSlug, alias string) string
 	}{
 		{
 			name:          "owner gets tag-specific not found",
 			requesterTeam: "owner",
 			public:        false,
-			wantMessage: func(ownerSlug, alias, templateID string) string {
+			wantMessage: func(ownerSlug, alias string) string {
 				return fmt.Sprintf(
-					"base template '%s' (%s) with tag 'v2' not found",
+					"tag 'v2' does not exist for template '%s'",
 					id.WithNamespace(ownerSlug, alias),
-					templateID,
 				)
 			},
 		},
@@ -75,11 +74,10 @@ func TestSetTemplateSource_FromTemplateMissingBuildReturnsNotFound(t *testing.T)
 			name:          "foreign team gets tag-specific not found for public template",
 			requesterTeam: "foreign",
 			public:        true,
-			wantMessage: func(ownerSlug, alias, templateID string) string {
+			wantMessage: func(ownerSlug, alias string) string {
 				return fmt.Sprintf(
-					"base template '%s' (%s) with tag 'v2' not found",
+					"tag 'v2' does not exist for template '%s'",
 					id.WithNamespace(ownerSlug, alias),
-					templateID,
 				)
 			},
 		},
@@ -87,8 +85,8 @@ func TestSetTemplateSource_FromTemplateMissingBuildReturnsNotFound(t *testing.T)
 			name:          "foreign team gets generic not found for private template",
 			requesterTeam: "foreign",
 			public:        false,
-			wantMessage: func(ownerSlug, alias, _ string) string {
-				return fmt.Sprintf("base template '%s' not found", id.WithNamespace(ownerSlug, alias))
+			wantMessage: func(ownerSlug, alias string) string {
+				return fmt.Sprintf("template '%s' not found", id.WithNamespace(ownerSlug, alias))
 			},
 		},
 	}
@@ -137,7 +135,7 @@ func TestSetTemplateSource_FromTemplateMissingBuildReturnsNotFound(t *testing.T)
 			var fromTemplateErr *FromTemplateError
 			require.ErrorAs(t, err, &fromTemplateErr)
 
-			assert.Equal(t, tt.wantMessage(ownerTeamSlug, "base-template-missing", templateID), err.Error())
+			assert.Equal(t, tt.wantMessage(ownerTeamSlug, "base-template-missing"), err.Error())
 			assert.Nil(t, template.GetFromTemplate())
 		})
 	}

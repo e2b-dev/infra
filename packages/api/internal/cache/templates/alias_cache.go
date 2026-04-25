@@ -90,10 +90,7 @@ func (c *AliasCache) Resolve(ctx context.Context, identifier string, namespaceFa
 
 	// If not found, try NULL namespace (promoted templates)
 	if errors.Is(err, ErrTemplateNotFound) {
-		info, err = c.lookup(ctx, nil, alias)
-		if err == nil {
-			return info, nil
-		}
+		return c.lookup(ctx, nil, alias)
 	}
 
 	return nil, err
@@ -113,7 +110,7 @@ func (c *AliasCache) lookup(ctx context.Context, namespace *string, alias string
 	}
 
 	if info.NotFound {
-		return nil, ErrTemplateNotFound
+		return nil, templateNotFoundError{Identifier: key}
 	}
 
 	resolved := *info

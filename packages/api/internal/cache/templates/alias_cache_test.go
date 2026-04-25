@@ -192,6 +192,32 @@ func TestAliasCacheResolve_NotFound(t *testing.T) {
 	info, err := cache.Resolve(ctx, "non-existent", teamSlug)
 	require.ErrorIs(t, err, ErrTemplateNotFound)
 	require.Nil(t, info)
+
+	var notFoundErr templateNotFoundError
+	require.ErrorAs(t, err, &notFoundErr)
+	assert.Equal(t, "non-existent", notFoundErr.Identifier)
+}
+
+func TestAliasCacheResolve_ExplicitNamespaceNotFoundUsesRequestedIdentifier(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
+	identifier := teamSlug + "/missing"
+
+	cache := NewAliasCache(db.SqlcClient, redis)
+	defer cache.Close(ctx)
+
+	info, err := cache.Resolve(ctx, identifier, teamSlug)
+	require.ErrorIs(t, err, ErrTemplateNotFound)
+	require.Nil(t, info)
+
+	var notFoundErr templateNotFoundError
+	require.ErrorAs(t, err, &notFoundErr)
+	assert.Equal(t, identifier, notFoundErr.Identifier)
 }
 
 // TestAliasCacheLookupByID tests direct template ID lookup

@@ -310,7 +310,7 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 		// Step 1: Resolve alias to template ID (using cache with fallback for promoted templates)
 		aliasInfo, metadata, err := tm.templateCache.ResolveAliasWithMetadata(ctx, identifier, teamSlug)
 		if err != nil {
-			apiErr := templatecache.ToAPIError(err, "base template", identifier)
+			apiErr := templatecache.ErrorToAPIError(err, identifier)
 
 			return &FromTemplateError{
 				err:     err,
@@ -319,10 +319,7 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 		}
 
 		ref := templatecache.TemplateRef{
-			Subject:    "base template",
 			Identifier: aliasInfo.MatchedIdentifier,
-			TemplateID: aliasInfo.TemplateID,
-			Tag:        tag,
 			Visible:    aliasInfo.TeamID == teamID || metadata.Public,
 		}
 

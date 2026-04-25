@@ -158,7 +158,10 @@ func (c *TemplateCache) fetchTemplateWithBuild(templateID string, tag *string) f
 		})
 		if err != nil {
 			if dberrors.IsNotFoundError(err) {
-				return nil, ErrTemplateNotFound
+				return nil, templateTagNotFoundError{
+					Identifier: templateID,
+					Tag:        sharedUtils.DerefOrDefault(tag, id.DefaultTag),
+				}
 			}
 
 			return nil, fmt.Errorf("fetching template with build: %w", err)
