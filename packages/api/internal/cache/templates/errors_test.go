@@ -54,6 +54,22 @@ func TestTemplateRef_APIError_HiddenTemplate(t *testing.T) {
 	assert.Equal(t, "template 'mytemplate' not found", apiErr.ClientMsg)
 }
 
+func TestTemplateRef_APIError_HiddenAccessDenied(t *testing.T) {
+	t.Parallel()
+
+	tag := "v2"
+	apiErr := TemplateRef{
+		Subject:    "template",
+		Identifier: "mytemplate",
+		TemplateID: "tmpl-abc",
+		Tag:        &tag,
+		Visible:    false,
+	}.APIError(ErrAccessDenied)
+
+	assert.Equal(t, http.StatusNotFound, apiErr.Code)
+	assert.Equal(t, "template 'mytemplate' not found", apiErr.ClientMsg)
+}
+
 func TestErrorToAPIError_TemplateNotFound(t *testing.T) {
 	t.Parallel()
 

@@ -56,16 +56,16 @@ func ToAPIError(err error, subject, identifier string) *api.APIError {
 }
 
 func (r TemplateRef) APIError(err error) *api.APIError {
-	if !errors.Is(err, ErrTemplateNotFound) {
-		return ToAPIError(err, r.Subject, r.Identifier)
-	}
-
-	if !r.Visible {
+	if !r.Visible && (errors.Is(err, ErrAccessDenied) || errors.Is(err, ErrTemplateNotFound)) {
 		return &api.APIError{
 			Code:      http.StatusNotFound,
 			ClientMsg: fmt.Sprintf("%s not found", formatTemplateRef(r.Subject, r.Identifier, "")),
 			Err:       err,
 		}
+	}
+
+	if !errors.Is(err, ErrTemplateNotFound) {
+		return ToAPIError(err, r.Subject, r.Identifier)
 	}
 
 	label := formatTemplateRef(r.Subject, r.Identifier, r.TemplateID)

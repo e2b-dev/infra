@@ -520,6 +520,67 @@ func TestPostSandboxes_MissingTagDisclosure(t *testing.T) {
 	})
 }
 
+// Valid tag exists on a private template owned by another team. A non-owner
+// requester must receive the same generic 404 used for missing tags so access
+// denials don't leak template existence.
+func TestPostSandboxes_PrivateTemplateHidesAccessDenied(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	ownerTeamID := testutils.CreateTestTeam(t, db)
+	ownerTeamSlug := testutils.GetTeamSlug(t, ctx, db, ownerTeamID)
+	requesterTeamID := testutils.CreateTestTeam(t, db)
+	requesterTeamSlug := testutils.GetTeamSlug(t, ctx, db, requesterTeamID)
+
+	store := &APIStore{
+		templateCache: templatecache.NewTemplateCache(db.SqlcClient, redis),
+	}
+	defer func() {
+		require.NoError(t, store.templateCache.Close(ctx))
+	}()
+
+	alias := "private-valid-tag"
+	tag := "v2"
+
+	templateID := createTestTemplate(ctx, t, db, ownerTeamID)
+	setTemplatePublic(ctx, t, db, templateID, false)
+	createTestTemplateAliasWithName(ctx, t, db, templateID, alias, &ownerTeamSlug)
+
+	buildID := testutils.CreateTestBuild(t, ctx, db, templateID, "ready")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, tag)
+
+	templateRef := id.WithTag(id.WithNamespace(ownerTeamSlug, alias), tag)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+
+	body, err := json.Marshal(api.PostSandboxesJSONRequestBody{TemplateID: templateRef})
+	require.NoError(t, err)
+
+	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/sandboxes", bytes.NewReader(body))
+	ginCtx.Request.Header.Set("Content-Type", "application/json")
+	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+		Team: &authqueries.Team{
+			ID:   requesterTeamID,
+			Slug: requesterTeamSlug,
+		},
+		Limits: &authtypes.TeamLimits{MaxLengthHours: 24},
+	})
+
+	//nolint:contextcheck // PostSandboxes reads ctx from ginCtx.Request.Context().
+	store.PostSandboxes(ginCtx)
+
+	require.Equal(t, http.StatusNotFound, recorder.Code)
+
+	var apiErr api.Error
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &apiErr))
+
+	assert.Equal(t, int32(http.StatusNotFound), apiErr.Code)
+	assert.Equal(t, fmt.Sprintf("template '%s' not found", id.WithNamespace(ownerTeamSlug, alias)), apiErr.Message)
+}
+
 func assertMissingTagDisclosure(t *testing.T, public bool, alias string) {
 	t.Helper()
 
