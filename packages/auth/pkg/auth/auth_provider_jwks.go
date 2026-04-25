@@ -1,0 +1,115 @@
+package auth
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"time"
+
+	jose "github.com/go-jose/go-jose/v4"
+	"github.com/golang-jwt/jwt/v5"
+)
+
+func (v *AuthProviderJWTVerifier) verifyJWKS(ctx context.Context, tokenString string) (*AuthProviderIdentity, error) {
+	claims := jwt.MapClaims{}
+	options := []jwt.ParserOption{
+		jwt.WithExpirationRequired(),
+		jwt.WithIssuer(v.config.Issuer),
+	}
+	if v.config.Audience != "" {
+		options = append(options, jwt.WithAudience(v.config.Audience))
+	}
+
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
+		return v.keyForToken(ctx, token)
+	}, options...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify auth provider token: %w", err)
+	}
+	if !token.Valid {
+		return nil, errors.New("auth provider token is invalid")
+	}
+
+	return identityFromClaims(claims, v.config.UserIDClaim, v.config.EmailClaim), nil
+}
+
+func (v *AuthProviderJWTVerifier) keyForToken(ctx context.Context, token *jwt.Token) (any, error) {
+	switch token.Method.(type) {
+	case *jwt.SigningMethodRSA, *jwt.SigningMethodRSAPSS, *jwt.SigningMethodECDSA:
+	default:
+		return nil, fmt.Errorf("unexpected auth provider signing method: %v", token.Header["alg"])
+	}
+
+	kid, ok := token.Header["kid"].(string)
+	if !ok || kid == "" {
+		return nil, errors.New("auth provider token is missing kid header")
+	}
+
+	if key, ok := v.cachedKey(kid); ok {
+		return key, nil
+	}
+	if err := v.refreshKeys(ctx); err != nil {
+		return nil, err
+	}
+	if key, ok := v.cachedKey(kid); ok {
+		return key, nil
+	}
+
+	return nil, fmt.Errorf("auth provider signing key %q not found", kid)
+}
+
+func (v *AuthProviderJWTVerifier) cachedKey(kid string) (any, bool) {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+
+	if time.Now().After(v.expiresAt) {
+		return nil, false
+	}
+
+	key, ok := v.keys[kid]
+
+	return key, ok
+}
+
+func (v *AuthProviderJWTVerifier) refreshKeys(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, v.config.JWKSURL, nil)
+	if err != nil {
+		return fmt.Errorf("create JWKS request: %w", err)
+	}
+
+	resp, err := v.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("fetch auth provider JWKS: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("fetch auth provider JWKS: unexpected status %d", resp.StatusCode)
+	}
+
+	var set jose.JSONWebKeySet
+	if err := json.NewDecoder(resp.Body).Decode(&set); err != nil {
+		return fmt.Errorf("decode auth provider JWKS: %w", err)
+	}
+
+	keys := make(map[string]any, len(set.Keys))
+	for _, key := range set.Keys {
+		if key.KeyID == "" || key.Key == nil {
+			continue
+		}
+
+		keys[key.KeyID] = key.Key
+	}
+	if len(keys) == 0 {
+		return errors.New("auth provider JWKS contains no usable keys")
+	}
+
+	v.mu.Lock()
+	v.keys = keys
+	v.expiresAt = time.Now().Add(v.config.JWKSCacheDuration)
+	v.mu.Unlock()
+
+	return nil
+}
