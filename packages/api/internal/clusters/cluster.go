@@ -38,7 +38,6 @@ const (
 type Cluster struct {
 	ID            uuid.UUID
 	SandboxDomain *string
-	AuthToken     string
 	AuthOrgID     string
 
 	instances       *smap.Map[*Instance]
@@ -54,7 +53,6 @@ var (
 func NewCluster(
 	clusterID uuid.UUID,
 	domain *string,
-	authToken string,
 	authOrgID string,
 	sandboxes *smap.Map[*Instance],
 	synchronization *synchronization.Synchronize[discovery.Item, *Instance],
@@ -63,7 +61,6 @@ func NewCluster(
 	return &Cluster{
 		ID:              clusterID,
 		SandboxDomain:   domain,
-		AuthToken:       authToken,
 		AuthOrgID:       authOrgID,
 		instances:       sandboxes,
 		synchronization: synchronization,
@@ -93,7 +90,6 @@ func newLocalCluster(
 	c := NewCluster(
 		clusterID,
 		nil,
-		config.APISecret,
 		"",
 		instances,
 		synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
@@ -156,7 +152,6 @@ func newRemoteCluster(
 	c := NewCluster(
 		clusterID,
 		sandboxDomain,
-		secret,
 		authOrgID,
 		instances,
 		synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),

@@ -55,7 +55,6 @@ type Config struct {
 
 	APIGrpcPort       uint16 `env:"API_GRPC_PORT"        envDefault:"5009"`
 	APIPublicGrpcPort uint16 `env:"API_PUBLIC_GRPC_PORT" envDefault:"5109"`
-	APISecret         string `env:"API_SECRET"`
 
 	ClientProxyOIDCIssuerURL string `env:"CLIENT_PROXY_OIDC_ISSUER_URL"`
 	ClientProxyOIDCAudience  string `env:"CLIENT_PROXY_OIDC_AUDIENCE"`
