@@ -182,10 +182,10 @@ module "nomad" {
   clickhouse_node_pool   = local.clickhouse_pool_name
   clickhouse_jobs_prefix = local.clickhouse_jobs_prefix
 
-  api_cluster_size               = var.api_cluster_size
-  api_repository_name            = module.init.api_repository_name
-  db_migrator_repository_name    = module.init.db_migrator_repository_name
-  postgres_connection_string = module.init.postgres_connection_string
+  api_cluster_size            = var.api_cluster_size
+  api_repository_name         = module.init.api_repository_name
+  db_migrator_repository_name = module.init.db_migrator_repository_name
+  postgres_connection_string  = module.init.postgres_connection_string
   auth_provider_config = {
     jwt = {
       signing_method = "HMAC"
