@@ -6,6 +6,12 @@ locals {
   enable_billing_http_team_provision_sink = var.enable_billing_http_team_provision_sink
   dashboard_api_billing_server_url        = local.enable_billing_http_team_provision_sink ? trimspace(data.google_secret_manager_secret_version.billing_server_url[0].secret_data) : ""
   dashboard_api_billing_server_api_token  = local.enable_billing_http_team_provision_sink ? trimspace(data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data) : ""
+  dashboard_api_auth_provider_config = var.auth_provider_config != null ? var.auth_provider_config : {
+    jwt = {
+      signing_method = "HMAC"
+      hmac_secrets   = split(",", trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data))
+    }
+  }
 }
 
 # API
@@ -165,8 +171,7 @@ module "dashboard_api" {
   auth_db_read_replica_connection_string  = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
   supabase_db_connection_string           = trimspace(data.google_secret_manager_secret_version.supabase_db_connection_string.secret_data)
   clickhouse_connection_string            = local.clickhouse_connection_string
-  supabase_jwt_secrets                    = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
-  auth_provider_config                    = var.auth_provider_config
+  auth_provider_config                    = local.dashboard_api_auth_provider_config
   redis_url                               = local.redis_url
   redis_cluster_url                       = local.redis_cluster_url
   redis_tls_ca_base64                     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
