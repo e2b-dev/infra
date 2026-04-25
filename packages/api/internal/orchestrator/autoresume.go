@@ -108,14 +108,14 @@ func (o *Orchestrator) HandleExistingSandboxAutoResume(
 			if nodeIP == "" {
 				logger.L().Error(
 					ctx,
-					"Sandbox is running but orchestrator IP is not available during auto-resume",
+					"Sandbox is running but routing info is not available during auto-resume",
 					logger.WithSandboxID(sandboxID),
 					logger.WithTeamID(teamID.String()),
 					logger.WithNodeID(sbx.NodeID),
 					zap.Stringer("cluster_id", sbx.ClusterID),
 				)
 
-				return "", false, errors.New("sandbox is running but orchestrator IP is not available yet")
+				return "", false, errors.New("sandbox is running but routing info is not available yet")
 			}
 
 			return nodeIP, true, nil
