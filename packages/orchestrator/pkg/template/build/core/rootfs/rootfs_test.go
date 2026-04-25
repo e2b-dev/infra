@@ -95,6 +95,9 @@ func TestAdditionalOCILayers(t *testing.T) {
 		// verify that memory function works
 		assert.Contains(t, actualFiles["etc/systemd/system/envd.service"], `"GOMEMLIMIT=50MiB"`)
 
+		// verify that systemd is configured to retry envd forever
+		assert.Contains(t, actualFiles["etc/systemd/system/envd.service"], "StartLimitIntervalSec=0")
+
 		// ensure that both files have identical content
 		disabledContent := strings.TrimSpace(`
 [Service]

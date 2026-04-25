@@ -12,9 +12,9 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
+	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -84,7 +84,7 @@ func (tm *TemplateManager) CreateTemplate(
 		}
 	}()
 
-	features, err := sandbox.NewVersionInfo(firecrackerVersion)
+	features, err := fcversion.New(firecrackerVersion)
 	if err != nil {
 		return fmt.Errorf("failed to get features for firecracker version '%s': %w", firecrackerVersion, err)
 	}
@@ -108,6 +108,10 @@ func (tm *TemplateManager) CreateTemplate(
 		return fmt.Errorf("failed to convert image registry: %w", err)
 	}
 
+	// TODO(ENG-3852): Remove later. KernelVersion and FirecrackerVersion are deprecated on
+	// template-manager selects its own versions and reports the ones it actually
+	// used via TemplateBuildMetadata. They are still populated here for
+	// backwards compatibility with older template-managers that honor them.
 	template := &templatemanagergrpc.TemplateConfig{
 		TeamID:             teamID.String(),
 		TemplateID:         templateID,

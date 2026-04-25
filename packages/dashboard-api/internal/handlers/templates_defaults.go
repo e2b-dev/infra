@@ -15,7 +15,7 @@ func (s *APIStore) GetTemplatesDefaults(c *gin.Context) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "list default templates")
 
-	rows, err := s.db.GetDefaultTemplates(ctx)
+	rows, err := s.db.Dashboard.GetDefaultTemplates(ctx)
 	if err != nil {
 		logger.L().Error(ctx, "failed to get default templates", zap.Error(err))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get default templates")
