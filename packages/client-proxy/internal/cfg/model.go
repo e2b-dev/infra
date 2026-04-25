@@ -12,7 +12,6 @@ type Config struct {
 	RedisPoolSize    int    `env:"REDIS_POOL_SIZE"     envDefault:"40"`
 
 	ApiGrpcAddress string `env:"API_GRPC_ADDRESS"`
-	ApiGrpcTLS     bool   `env:"API_GRPC_TLS"     envDefault:"false"`
 
 	ApiGrpcOAuthClientID     string `env:"API_GRPC_OAUTH_CLIENT_ID"`
 	ApiGrpcOAuthClientSecret string `env:"API_GRPC_OAUTH_CLIENT_SECRET"`

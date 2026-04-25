@@ -1,6 +1,5 @@
 locals {
   api_grpc_address = trimspace(var.api_grpc_address)
-  api_grpc_tls     = local.api_grpc_address != "" && length(regexall("(^|\\.)service\\.consul(:|$)", local.api_grpc_address)) == 0
 }
 
 resource "nomad_job" "client_proxy" {
@@ -24,7 +23,6 @@ resource "nomad_job" "client_proxy" {
 
     image            = var.image
     api_grpc_address = local.api_grpc_address
-    api_grpc_tls     = local.api_grpc_tls
 
     api_grpc_oauth_client_id     = trimspace(var.api_grpc_oauth_client_id)
     api_grpc_oauth_client_secret = trimspace(var.api_grpc_oauth_client_secret)

@@ -145,7 +145,7 @@ func run() int {
 			TokenURL:     config.ApiGrpcOAuthTokenURL,
 		}
 
-		pausedSandboxResumer, err = e2bproxy.NewGrpcPausedSandboxResumer(config.ApiGrpcAddress, apiGrpcOAuthConfig, config.ApiGrpcTLS)
+		pausedSandboxResumer, err = e2bproxy.NewGrpcPausedSandboxResumer(config.ApiGrpcAddress, apiGrpcOAuthConfig)
 		if err != nil {
 			l.Error(ctx, "Failed to create paused sandbox checker", zap.Error(err))
 

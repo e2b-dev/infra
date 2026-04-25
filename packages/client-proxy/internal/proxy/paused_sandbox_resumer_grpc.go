@@ -58,7 +58,13 @@ func (c GrpcOAuthConfig) tokenSource(ctx context.Context) (oauth2.TokenSource, e
 	return oauthConfig.TokenSource(ctx), nil
 }
 
-func NewGrpcPausedSandboxResumer(address string, oauthConfig GrpcOAuthConfig, tlsEnabled bool) (PausedSandboxResumer, error) {
+func apiGrpcAddressUsesTLS(address string) bool {
+	address = strings.TrimSpace(address)
+
+	return address != "" && !strings.Contains(address, ".service.consul:")
+}
+
+func NewGrpcPausedSandboxResumer(address string, oauthConfig GrpcOAuthConfig) (PausedSandboxResumer, error) {
 	if strings.TrimSpace(address) == "" {
 		return nil, errors.New("api grpc address is required")
 	}
@@ -69,7 +75,7 @@ func NewGrpcPausedSandboxResumer(address string, oauthConfig GrpcOAuthConfig, tl
 	}
 
 	creds := insecure.NewCredentials()
-	if tlsEnabled {
+	if apiGrpcAddressUsesTLS(address) {
 		creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
 	}
 
