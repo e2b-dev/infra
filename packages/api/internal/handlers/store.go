@@ -152,7 +152,11 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 
 	authCache := sharedauth.NewAuthCache[*types.Team](redisClient)
 	authStore := sharedauth.NewAuthStore(authDB)
-	authService := sharedauth.NewAuthService[*types.Team](authStore, authCache, config.SupabaseJWTSecrets)
+	authProviderVerifier, err := sharedauth.NewAuthProviderJWTVerifier(config.AuthProvider)
+	if err != nil {
+		logger.L().Fatal(ctx, "Initializing auth provider JWT verifier", zap.Error(err))
+	}
+	authService := sharedauth.NewAuthService[*types.Team](authStore, authCache, nil, authProviderVerifier)
 	templateCache := templatecache.NewTemplateCache(sqlcDB, redisClient)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(ctx, time.Minute, sqlcDB)
 

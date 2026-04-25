@@ -27,7 +27,7 @@ resource "nomad_job" "api" {
     api_docker_image                        = var.api_docker_image
     postgres_connection_string              = var.postgres_connection_string
     postgres_read_replica_connection_string = var.postgres_read_replica_connection_string
-    supabase_jwt_secrets                    = var.supabase_jwt_secrets
+    auth_provider_config                    = jsonencode(var.auth_provider_config)
     posthog_api_key                         = var.posthog_api_key
     analytics_collector_host                = var.analytics_collector_host
     analytics_collector_api_token           = var.analytics_collector_api_token

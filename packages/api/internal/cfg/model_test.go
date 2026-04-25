@@ -34,10 +34,10 @@ func TestParse(t *testing.T) {
 	})
 
 	t.Run("supabase secrets are comma separated", func(t *testing.T) {
-		t.Setenv("SUPABASE_JWT_SECRETS", "aaa,bbb")
+		t.Setenv("AUTH_PROVIDER_CONFIG", `{"jwt":{"signing_method":"HMAC","hmac_secrets":["aaa","bbb"]}}`)
 		result, err := Parse()
 		require.NoError(t, err)
-		assert.Equal(t, []string{"aaa", "bbb"}, result.SupabaseJWTSecrets)
+		assert.Equal(t, []string{"aaa", "bbb"}, result.AuthProvider.JWT.HMACSecrets)
 	})
 
 	t.Run("base64 signing key can be parsed", func(t *testing.T) {
