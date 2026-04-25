@@ -61,11 +61,6 @@ resource "google_compute_instance_group_manager" "api_pool" {
   }
 
   named_port {
-    name = "api-grpc"
-    port = var.api_grpc_port
-  }
-
-  named_port {
     name = var.docker_reverse_proxy_port.name
     port = var.docker_reverse_proxy_port.port
   }

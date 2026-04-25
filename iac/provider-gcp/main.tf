@@ -161,7 +161,6 @@ module "cluster" {
 
   ingress_port                 = var.ingress_port
   api_port                     = var.api_port
-  api_grpc_port                = var.api_grpc_port
   docker_reverse_proxy_port    = var.docker_reverse_proxy_port
   nomad_port                   = var.nomad_port
   google_service_account_email = module.init.service_account_email
