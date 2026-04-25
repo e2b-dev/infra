@@ -13,6 +13,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+const authProviderJWKSHTTPTimeout = 10 * time.Second
+
 type jwksAuthProviderJWTVerifier struct {
 	jwksURL           string
 	userIDClaim       string
@@ -33,7 +35,7 @@ func newJWKSAuthProviderJWTVerifier(config AuthProviderJWTConfig) *jwksAuthProvi
 		emailClaim:        config.EmailClaim,
 		jwksCacheDuration: config.JWKSCacheDuration,
 		parserOptions:     authProviderJWTParserOptions(config.Issuer, config.Audience),
-		client:            &http.Client{Timeout: 10 * time.Second},
+		client:            &http.Client{Timeout: authProviderJWKSHTTPTimeout},
 		keys:              map[string]any{},
 	}
 }
