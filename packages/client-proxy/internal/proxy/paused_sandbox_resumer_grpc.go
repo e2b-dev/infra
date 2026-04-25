@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 
@@ -61,7 +62,20 @@ func (c GrpcOAuthConfig) tokenSource(ctx context.Context) (oauth2.TokenSource, e
 func apiGrpcAddressUsesTLS(address string) bool {
 	address = strings.TrimSpace(address)
 
-	return address != "" && !strings.Contains(address, ".service.consul:")
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		host = address
+	}
+	host = strings.Trim(strings.TrimSpace(host), "[]")
+
+	if host == "" || host == "localhost" || strings.HasSuffix(host, ".service.consul") {
+		return false
+	}
+	if net.ParseIP(host) != nil {
+		return false
+	}
+
+	return true
 }
 
 func NewGrpcPausedSandboxResumer(address string, oauthConfig GrpcOAuthConfig) (PausedSandboxResumer, error) {
