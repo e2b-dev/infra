@@ -29,28 +29,28 @@ type AuthStore[T TeamItem] interface {
 
 // AuthService encapsulates the cache, store, and JWT secrets for auth validation.
 type AuthService[T TeamItem] struct {
-	store         AuthStore[T]
-	teamCache     *AuthCache[T]
-	jwtSecrets    []string
-	oauthVerifier *OAuthJWTVerifier
+	store                AuthStore[T]
+	teamCache            *AuthCache[T]
+	jwtSecrets           []string
+	authProviderVerifier *AuthProviderJWTVerifier
 }
 
 // NewAuthService creates an AuthService with the given store, cache, and JWT secrets.
-func NewAuthService[T TeamItem](store AuthStore[T], teamCache *AuthCache[T], jwtSecrets []string, oauthVerifiers ...*OAuthJWTVerifier) *AuthService[T] {
+func NewAuthService[T TeamItem](store AuthStore[T], teamCache *AuthCache[T], jwtSecrets []string, authProviderVerifiers ...*AuthProviderJWTVerifier) *AuthService[T] {
 	service := &AuthService[T]{
 		store:      store,
 		teamCache:  teamCache,
 		jwtSecrets: jwtSecrets,
 	}
-	if len(oauthVerifiers) > 0 {
-		service.oauthVerifier = oauthVerifiers[0]
+	if len(authProviderVerifiers) > 0 {
+		service.authProviderVerifier = authProviderVerifiers[0]
 	}
 
 	return service
 }
 
-func (s *AuthService[T]) WithOAuthVerifier(verifier *OAuthJWTVerifier) *AuthService[T] {
-	s.oauthVerifier = verifier
+func (s *AuthService[T]) WithAuthProviderVerifier(verifier *AuthProviderJWTVerifier) *AuthService[T] {
+	s.authProviderVerifier = verifier
 
 	return s
 }
@@ -156,9 +156,9 @@ func (s *AuthService[T]) ValidateSupabaseToken(ctx context.Context, ginCtx *gin.
 	return userID, nil
 }
 
-// ValidateOAuthToken verifies a JWT against the configured OAuth JWKS provider and resolves an internal user ID.
-func (s *AuthService[T]) ValidateOAuthToken(ctx context.Context, ginCtx *gin.Context, oauthToken string) (uuid.UUID, *APIError) {
-	identity, err := s.oauthVerifier.Verify(ctx, oauthToken)
+// ValidateAuthProviderToken verifies a JWT against the configured auth provider JWKS and resolves an internal user ID.
+func (s *AuthService[T]) ValidateAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError) {
+	identity, err := s.authProviderVerifier.Verify(ctx, token)
 	if err != nil {
 		return uuid.UUID{}, &APIError{
 			Err:       err,
@@ -171,7 +171,7 @@ func (s *AuthService[T]) ValidateOAuthToken(ctx context.Context, ginCtx *gin.Con
 	if userID == uuid.Nil {
 		if identity.Email == "" {
 			return uuid.UUID{}, &APIError{
-				Err:       errors.New("OAuth token contains neither UUID user claim nor email claim"),
+				Err:       errors.New("auth provider token contains neither UUID user claim nor email claim"),
 				ClientMsg: "Backend authentication failed",
 				Code:      http.StatusUnauthorized,
 			}
@@ -180,7 +180,7 @@ func (s *AuthService[T]) ValidateOAuthToken(ctx context.Context, ginCtx *gin.Con
 		userID, err = s.store.GetUserIDByEmail(ctx, identity.Email)
 		if err != nil {
 			return uuid.UUID{}, &APIError{
-				Err:       fmt.Errorf("failed to resolve OAuth user by email: %w", err),
+				Err:       fmt.Errorf("failed to resolve auth provider user by email: %w", err),
 				ClientMsg: "Backend authentication failed",
 				Code:      http.StatusUnauthorized,
 			}

@@ -17,27 +17,27 @@ import (
 )
 
 const (
-	defaultOAuthCacheDuration = 5 * time.Minute
-	defaultOAuthUserIDClaim   = "sub"
-	defaultOAuthEmailClaim    = "email"
+	defaultAuthProviderJWKSCacheDuration = 5 * time.Minute
+	defaultAuthProviderUserIDClaim       = "sub"
+	defaultAuthProviderEmailClaim        = "email"
 )
 
-// OAuthConfig describes a generic OAuth/OIDC JWT issuer backed by JWKS.
-type OAuthConfig struct {
-	JWKSURL       string
-	Issuer        string
-	Audience      string
-	UserIDClaim   string
-	EmailClaim    string
-	CacheDuration time.Duration
+// AuthProviderConfig describes a generic OAuth/OIDC JWT issuer backed by JWKS.
+type AuthProviderConfig struct {
+	JWKSURL           string        `env:"AUTH_PROVIDER_JWKS_URL"`
+	Issuer            string        `env:"AUTH_PROVIDER_JWT_ISSUER"`
+	Audience          string        `env:"AUTH_PROVIDER_JWT_AUDIENCE"`
+	UserIDClaim       string        `env:"AUTH_PROVIDER_JWT_USER_ID_CLAIM"   envDefault:"sub"`
+	EmailClaim        string        `env:"AUTH_PROVIDER_JWT_EMAIL_CLAIM"     envDefault:"email"`
+	JWKSCacheDuration time.Duration `env:"AUTH_PROVIDER_JWKS_CACHE_DURATION" envDefault:"5m"`
 }
 
-// Enabled returns true when OAuth/JWKS token validation is configured.
-func (c OAuthConfig) Enabled() bool {
+// Enabled returns true when external auth provider JWT validation is configured.
+func (c AuthProviderConfig) Enabled() bool {
 	return strings.TrimSpace(c.JWKSURL) != ""
 }
 
-func (c OAuthConfig) normalized() OAuthConfig {
+func (c AuthProviderConfig) normalized() AuthProviderConfig {
 	c.JWKSURL = strings.TrimSpace(c.JWKSURL)
 	c.Issuer = strings.TrimSpace(c.Issuer)
 	c.Audience = strings.TrimSpace(c.Audience)
@@ -45,19 +45,19 @@ func (c OAuthConfig) normalized() OAuthConfig {
 	c.EmailClaim = strings.TrimSpace(c.EmailClaim)
 
 	if c.UserIDClaim == "" {
-		c.UserIDClaim = defaultOAuthUserIDClaim
+		c.UserIDClaim = defaultAuthProviderUserIDClaim
 	}
 	if c.EmailClaim == "" {
-		c.EmailClaim = defaultOAuthEmailClaim
+		c.EmailClaim = defaultAuthProviderEmailClaim
 	}
-	if c.CacheDuration <= 0 {
-		c.CacheDuration = defaultOAuthCacheDuration
+	if c.JWKSCacheDuration <= 0 {
+		c.JWKSCacheDuration = defaultAuthProviderJWKSCacheDuration
 	}
 
 	return c
 }
 
-func (c OAuthConfig) validate() error {
+func (c AuthProviderConfig) validate() error {
 	if !c.Enabled() {
 		return nil
 	}
@@ -76,15 +76,15 @@ func (c OAuthConfig) validate() error {
 	return nil
 }
 
-// OAuthIdentity is the normalized identity extracted from a validated OAuth JWT.
-type OAuthIdentity struct {
+// AuthProviderIdentity is the normalized identity extracted from a validated auth provider JWT.
+type AuthProviderIdentity struct {
 	UserID uuid.UUID
 	Email  string
 	Claims jwt.MapClaims
 }
 
-type OAuthJWTVerifier struct {
-	config OAuthConfig
+type AuthProviderJWTVerifier struct {
+	config AuthProviderConfig
 	client *http.Client
 
 	mu        sync.RWMutex
@@ -92,7 +92,7 @@ type OAuthJWTVerifier struct {
 	expiresAt time.Time
 }
 
-func NewOAuthJWTVerifier(config OAuthConfig) (*OAuthJWTVerifier, error) {
+func NewAuthProviderJWTVerifier(config AuthProviderConfig) (*AuthProviderJWTVerifier, error) {
 	config = config.normalized()
 	if err := config.validate(); err != nil {
 		return nil, err
@@ -101,16 +101,16 @@ func NewOAuthJWTVerifier(config OAuthConfig) (*OAuthJWTVerifier, error) {
 		return nil, nil
 	}
 
-	return &OAuthJWTVerifier{
+	return &AuthProviderJWTVerifier{
 		config: config,
 		client: &http.Client{Timeout: 10 * time.Second},
 		keys:   map[string]any{},
 	}, nil
 }
 
-func (v *OAuthJWTVerifier) Verify(ctx context.Context, tokenString string) (*OAuthIdentity, error) {
+func (v *AuthProviderJWTVerifier) Verify(ctx context.Context, tokenString string) (*AuthProviderIdentity, error) {
 	if v == nil {
-		return nil, errors.New("OAuth verifier is not configured")
+		return nil, errors.New("auth provider verifier is not configured")
 	}
 
 	claims := jwt.MapClaims{}
@@ -126,13 +126,13 @@ func (v *OAuthJWTVerifier) Verify(ctx context.Context, tokenString string) (*OAu
 		return v.keyForToken(ctx, token)
 	}, options...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to verify OAuth token: %w", err)
+		return nil, fmt.Errorf("failed to verify auth provider token: %w", err)
 	}
 	if !token.Valid {
-		return nil, errors.New("OAuth token is invalid")
+		return nil, errors.New("auth provider token is invalid")
 	}
 
-	identity := &OAuthIdentity{Claims: claims}
+	identity := &AuthProviderIdentity{Claims: claims}
 	if claimValue, ok := claimString(claims, v.config.UserIDClaim); ok {
 		userID, err := uuid.Parse(claimValue)
 		if err == nil {
@@ -146,16 +146,16 @@ func (v *OAuthJWTVerifier) Verify(ctx context.Context, tokenString string) (*OAu
 	return identity, nil
 }
 
-func (v *OAuthJWTVerifier) keyForToken(ctx context.Context, token *jwt.Token) (any, error) {
+func (v *AuthProviderJWTVerifier) keyForToken(ctx context.Context, token *jwt.Token) (any, error) {
 	switch token.Method.(type) {
 	case *jwt.SigningMethodRSA, *jwt.SigningMethodRSAPSS, *jwt.SigningMethodECDSA:
 	default:
-		return nil, fmt.Errorf("unexpected OAuth signing method: %v", token.Header["alg"])
+		return nil, fmt.Errorf("unexpected auth provider signing method: %v", token.Header["alg"])
 	}
 
 	kid, ok := token.Header["kid"].(string)
 	if !ok || kid == "" {
-		return nil, errors.New("OAuth token is missing kid header")
+		return nil, errors.New("auth provider token is missing kid header")
 	}
 
 	if key, ok := v.cachedKey(kid); ok {
@@ -168,10 +168,10 @@ func (v *OAuthJWTVerifier) keyForToken(ctx context.Context, token *jwt.Token) (a
 		return key, nil
 	}
 
-	return nil, fmt.Errorf("OAuth signing key %q not found", kid)
+	return nil, fmt.Errorf("auth provider signing key %q not found", kid)
 }
 
-func (v *OAuthJWTVerifier) cachedKey(kid string) (any, bool) {
+func (v *AuthProviderJWTVerifier) cachedKey(kid string) (any, bool) {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 
@@ -184,7 +184,7 @@ func (v *OAuthJWTVerifier) cachedKey(kid string) (any, bool) {
 	return key, ok
 }
 
-func (v *OAuthJWTVerifier) refreshKeys(ctx context.Context) error {
+func (v *AuthProviderJWTVerifier) refreshKeys(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, v.config.JWKSURL, nil)
 	if err != nil {
 		return fmt.Errorf("create JWKS request: %w", err)
@@ -192,17 +192,17 @@ func (v *OAuthJWTVerifier) refreshKeys(ctx context.Context) error {
 
 	resp, err := v.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("fetch OAuth JWKS: %w", err)
+		return fmt.Errorf("fetch auth provider JWKS: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("fetch OAuth JWKS: unexpected status %d", resp.StatusCode)
+		return fmt.Errorf("fetch auth provider JWKS: unexpected status %d", resp.StatusCode)
 	}
 
 	var set jose.JSONWebKeySet
 	if err := json.NewDecoder(resp.Body).Decode(&set); err != nil {
-		return fmt.Errorf("decode OAuth JWKS: %w", err)
+		return fmt.Errorf("decode auth provider JWKS: %w", err)
 	}
 
 	keys := make(map[string]any, len(set.Keys))
@@ -214,12 +214,12 @@ func (v *OAuthJWTVerifier) refreshKeys(ctx context.Context) error {
 		keys[key.KeyID] = key.Key
 	}
 	if len(keys) == 0 {
-		return errors.New("OAuth JWKS contains no usable keys")
+		return errors.New("auth provider JWKS contains no usable keys")
 	}
 
 	v.mu.Lock()
 	v.keys = keys
-	v.expiresAt = time.Now().Add(v.config.CacheDuration)
+	v.expiresAt = time.Now().Add(v.config.JWKSCacheDuration)
 	v.mu.Unlock()
 
 	return nil

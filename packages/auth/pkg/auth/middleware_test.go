@@ -30,10 +30,10 @@ func TestAdminValidationFunction(t *testing.T) {
 	})
 }
 
-func TestOAuthTokenAuthenticator(t *testing.T) {
+func TestAuthProviderTokenAuthenticator(t *testing.T) {
 	t.Parallel()
 
-	authenticator := NewOAuthTokenAuthenticator(nil)
+	authenticator := NewAuthProviderTokenAuthenticator(nil)
 	common, ok := authenticator.(*CommonAuthenticator[uuid.UUID])
 	require.True(t, ok)
 

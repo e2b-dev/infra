@@ -55,32 +55,32 @@ variable "supabase_jwt_secrets" {
   sensitive = true
 }
 
-variable "oauth_jwks_url" {
+variable "auth_provider_jwks_url" {
   type    = string
   default = ""
 }
 
-variable "oauth_issuer" {
+variable "auth_provider_jwt_issuer" {
   type    = string
   default = ""
 }
 
-variable "oauth_audience" {
+variable "auth_provider_jwt_audience" {
   type    = string
   default = ""
 }
 
-variable "oauth_user_id_claim" {
+variable "auth_provider_jwt_user_id_claim" {
   type    = string
   default = "sub"
 }
 
-variable "oauth_email_claim" {
+variable "auth_provider_jwt_email_claim" {
   type    = string
   default = "email"
 }
 
-variable "oauth_jwks_cache_duration" {
+variable "auth_provider_jwks_cache_duration" {
   type    = string
   default = "5m"
 }

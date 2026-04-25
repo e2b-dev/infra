@@ -462,32 +462,32 @@ variable "supabase_db_connection_string_secret_version" {
   type = any
 }
 
-variable "dashboard_api_oauth_jwks_url" {
+variable "auth_provider_jwks_url" {
   type    = string
   default = ""
 }
 
-variable "dashboard_api_oauth_issuer" {
+variable "auth_provider_jwt_issuer" {
   type    = string
   default = ""
 }
 
-variable "dashboard_api_oauth_audience" {
+variable "auth_provider_jwt_audience" {
   type    = string
   default = ""
 }
 
-variable "dashboard_api_oauth_user_id_claim" {
+variable "auth_provider_jwt_user_id_claim" {
   type    = string
   default = "sub"
 }
 
-variable "dashboard_api_oauth_email_claim" {
+variable "auth_provider_jwt_email_claim" {
   type    = string
   default = "email"
 }
 
-variable "dashboard_api_oauth_jwks_cache_duration" {
+variable "auth_provider_jwks_cache_duration" {
   type    = string
   default = "5m"
 }

@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOAuthJWTVerifier_Verify(t *testing.T) {
+func TestAuthProviderJWTVerifier_Verify(t *testing.T) {
 	t.Parallel()
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -24,11 +24,11 @@ func TestOAuthJWTVerifier_Verify(t *testing.T) {
 	const keyID = "test-key"
 	jwksServer := newJWKSHTTPServer(t, &privateKey.PublicKey, keyID)
 
-	verifier, err := NewOAuthJWTVerifier(OAuthConfig{
-		JWKSURL:       jwksServer.URL,
-		Issuer:        "https://issuer.example.com",
-		Audience:      "dashboard-api",
-		CacheDuration: time.Minute,
+	verifier, err := NewAuthProviderJWTVerifier(AuthProviderConfig{
+		JWKSURL:           jwksServer.URL,
+		Issuer:            "https://issuer.example.com",
+		Audience:          "dashboard-api",
+		JWKSCacheDuration: time.Minute,
 	})
 	require.NoError(t, err)
 
@@ -51,7 +51,7 @@ func TestOAuthJWTVerifier_Verify(t *testing.T) {
 	require.Equal(t, "user@example.com", identity.Email)
 }
 
-func TestOAuthJWTVerifier_VerifyRejectsWrongAudience(t *testing.T) {
+func TestAuthProviderJWTVerifier_VerifyRejectsWrongAudience(t *testing.T) {
 	t.Parallel()
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -60,7 +60,7 @@ func TestOAuthJWTVerifier_VerifyRejectsWrongAudience(t *testing.T) {
 	const keyID = "test-key"
 	jwksServer := newJWKSHTTPServer(t, &privateKey.PublicKey, keyID)
 
-	verifier, err := NewOAuthJWTVerifier(OAuthConfig{
+	verifier, err := NewAuthProviderJWTVerifier(AuthProviderConfig{
 		JWKSURL:  jwksServer.URL,
 		Issuer:   "https://issuer.example.com",
 		Audience: "dashboard-api",
