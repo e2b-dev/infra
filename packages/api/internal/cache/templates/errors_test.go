@@ -8,51 +8,26 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestTemplateRef_APIError_MissingBuildWithTagReturnsMissingTag(t *testing.T) {
+func TestTemplateRef_APIError_TagNotFound(t *testing.T) {
 	t.Parallel()
 
 	tag := "v2"
 	apiErr := TemplateRef{
 		Identifier: "mytemplate",
 		Visible:    true,
-	}.APIError(templateTagNotFoundError{Identifier: "tmpl-abc", Tag: tag})
+	}.APIError(templateTagNotFoundError{Tag: tag})
 
 	assert.Equal(t, http.StatusNotFound, apiErr.Code)
 	assert.Equal(t, "tag 'v2' does not exist for template 'mytemplate'", apiErr.ClientMsg)
 }
 
-func TestTemplateRef_APIError_MissingTag(t *testing.T) {
-	t.Parallel()
-
-	tag := "v2"
-	apiErr := TemplateRef{
-		Identifier: "mytemplate",
-		Visible:    true,
-	}.APIError(templateTagNotFoundError{Identifier: "tmpl-abc", Tag: tag})
-
-	assert.Equal(t, http.StatusNotFound, apiErr.Code)
-	assert.Equal(t, "tag 'v2' does not exist for template 'mytemplate'", apiErr.ClientMsg)
-}
-
-func TestTemplateRef_APIError_MissingDefaultTag(t *testing.T) {
+func TestTemplateRef_APIError_DefaultTagNotFound(t *testing.T) {
 	t.Parallel()
 
 	apiErr := TemplateRef{
 		Identifier: "mytemplate",
 		Visible:    true,
-	}.APIError(templateTagNotFoundError{Identifier: "tmpl-abc", Tag: "default"})
-
-	assert.Equal(t, http.StatusNotFound, apiErr.Code)
-	assert.Equal(t, "tag 'default' does not exist for template 'mytemplate'", apiErr.ClientMsg)
-}
-
-func TestTemplateRef_APIError_MissingBuildWithoutTagReturnsMissingDefaultTag(t *testing.T) {
-	t.Parallel()
-
-	apiErr := TemplateRef{
-		Identifier: "mytemplate",
-		Visible:    true,
-	}.APIError(templateTagNotFoundError{Identifier: "tmpl-abc", Tag: "default"})
+	}.APIError(templateTagNotFoundError{Tag: "default"})
 
 	assert.Equal(t, http.StatusNotFound, apiErr.Code)
 	assert.Equal(t, "tag 'default' does not exist for template 'mytemplate'", apiErr.ClientMsg)
@@ -112,7 +87,7 @@ func TestToAPIError_UsesIdentifierFromNotFoundError(t *testing.T) {
 func TestToAPIError_TemplateTagNotFound(t *testing.T) {
 	t.Parallel()
 
-	apiErr := ToAPIError(templateTagNotFoundError{Identifier: "myteam/desktop", Tag: "dev"}, "desktop")
+	apiErr := ToAPIError(templateTagNotFoundError{Tag: "dev"}, "myteam/desktop")
 
 	assert.Equal(t, http.StatusNotFound, apiErr.Code)
 	assert.Equal(t, "tag 'dev' does not exist for template 'myteam/desktop'", apiErr.ClientMsg)
@@ -124,7 +99,7 @@ func TestTemplateRef_APIError_IdentifierEqualsTemplateID(t *testing.T) {
 	apiErr := TemplateRef{
 		Identifier: "tmpl-abc",
 		Visible:    true,
-	}.APIError(templateTagNotFoundError{Identifier: "tmpl-abc", Tag: "default"})
+	}.APIError(templateTagNotFoundError{Tag: "default"})
 
 	assert.Equal(t, "tag 'default' does not exist for template 'tmpl-abc'", apiErr.ClientMsg)
 }

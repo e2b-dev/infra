@@ -27,12 +27,11 @@ func (e templateNotFoundError) Unwrap() error {
 }
 
 type templateTagNotFoundError struct {
-	Identifier string
-	Tag        string
+	Tag string
 }
 
 func (e templateTagNotFoundError) Error() string {
-	return fmt.Sprintf("%s: %s:%s", ErrTemplateNotFound, e.Identifier, e.Tag)
+	return fmt.Sprintf("%s: tag %s", ErrTemplateNotFound, e.Tag)
 }
 
 func (e templateTagNotFoundError) Unwrap() error {
@@ -54,7 +53,7 @@ func ToAPIError(err error, identifier string) *api.APIError {
 	case errors.As(err, &tagErr):
 		return &api.APIError{
 			Code:      http.StatusNotFound,
-			ClientMsg: fmt.Sprintf("tag '%s' does not exist for template '%s'", tagErr.Tag, tagErr.Identifier),
+			ClientMsg: fmt.Sprintf("tag '%s' does not exist for template '%s'", tagErr.Tag, identifier),
 			Err:       err,
 		}
 	case errors.Is(err, ErrTemplateNotFound):
