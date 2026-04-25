@@ -169,6 +169,8 @@ module "dashboard_api" {
   auth_provider_jwks_url                  = var.auth_provider_jwks_url
   auth_provider_jwt_issuer                = var.auth_provider_jwt_issuer
   auth_provider_jwt_audience              = var.auth_provider_jwt_audience
+  auth_provider_jwt_signing_method        = var.auth_provider_jwt_signing_method
+  auth_provider_jwt_hmac_secrets          = var.auth_provider_jwt_hmac_secrets
   auth_provider_jwt_user_id_claim         = var.auth_provider_jwt_user_id_claim
   auth_provider_jwt_email_claim           = var.auth_provider_jwt_email_claim
   auth_provider_jwks_cache_duration       = var.auth_provider_jwks_cache_duration

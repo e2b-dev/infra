@@ -14,19 +14,27 @@ import (
 	jose "github.com/go-jose/go-jose/v4"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
 	defaultAuthProviderJWKSCacheDuration = 5 * time.Minute
 	defaultAuthProviderUserIDClaim       = "sub"
 	defaultAuthProviderEmailClaim        = "email"
+
+	authProviderSigningMethodJWKS = "JWKS"
+	authProviderSigningMethodHMAC = "HMAC"
 )
 
-// AuthProviderConfig describes a generic OAuth/OIDC JWT issuer backed by JWKS.
+// AuthProviderConfig describes a generic OAuth/OIDC JWT issuer.
 type AuthProviderConfig struct {
 	JWKSURL           string        `env:"AUTH_PROVIDER_JWKS_URL"`
 	Issuer            string        `env:"AUTH_PROVIDER_JWT_ISSUER"`
 	Audience          string        `env:"AUTH_PROVIDER_JWT_AUDIENCE"`
+	SigningMethod     string        `env:"AUTH_PROVIDER_JWT_SIGNING_METHOD"    envDefault:"JWKS"`
+	HMACSecrets       []string      `env:"AUTH_PROVIDER_JWT_HMAC_SECRETS"`
 	UserIDClaim       string        `env:"AUTH_PROVIDER_JWT_USER_ID_CLAIM"   envDefault:"sub"`
 	EmailClaim        string        `env:"AUTH_PROVIDER_JWT_EMAIL_CLAIM"     envDefault:"email"`
 	JWKSCacheDuration time.Duration `env:"AUTH_PROVIDER_JWKS_CACHE_DURATION" envDefault:"5m"`
@@ -34,16 +42,20 @@ type AuthProviderConfig struct {
 
 // Enabled returns true when external auth provider JWT validation is configured.
 func (c AuthProviderConfig) Enabled() bool {
-	return strings.TrimSpace(c.JWKSURL) != ""
+	return strings.TrimSpace(c.JWKSURL) != "" || len(c.HMACSecrets) > 0
 }
 
 func (c AuthProviderConfig) normalized() AuthProviderConfig {
 	c.JWKSURL = strings.TrimSpace(c.JWKSURL)
 	c.Issuer = strings.TrimSpace(c.Issuer)
 	c.Audience = strings.TrimSpace(c.Audience)
+	c.SigningMethod = strings.ToUpper(strings.TrimSpace(c.SigningMethod))
 	c.UserIDClaim = strings.TrimSpace(c.UserIDClaim)
 	c.EmailClaim = strings.TrimSpace(c.EmailClaim)
 
+	if c.SigningMethod == "" {
+		c.SigningMethod = authProviderSigningMethodJWKS
+	}
 	if c.UserIDClaim == "" {
 		c.UserIDClaim = defaultAuthProviderUserIDClaim
 	}
@@ -62,18 +74,38 @@ func (c AuthProviderConfig) validate() error {
 		return nil
 	}
 
+	switch c.SigningMethod {
+	case authProviderSigningMethodHMAC:
+		if len(c.HMACSecrets) == 0 {
+			return errors.New("auth provider HMAC secrets are required when HMAC signing is configured")
+		}
+
+		return nil
+
+	case authProviderSigningMethodJWKS:
+	default:
+		return fmt.Errorf("unknown auth provider JWT signing method %q", c.SigningMethod)
+	}
+
 	parsedURL, err := url.ParseRequestURI(c.JWKSURL)
 	if err != nil {
-		return fmt.Errorf("invalid OAuth JWKS URL: %w", err)
+		return fmt.Errorf("invalid auth provider JWKS URL: %w", err)
 	}
 	if parsedURL.Scheme != "https" && parsedURL.Scheme != "http" {
-		return fmt.Errorf("invalid OAuth JWKS URL scheme %q", parsedURL.Scheme)
+		return fmt.Errorf("invalid auth provider JWKS URL scheme %q", parsedURL.Scheme)
 	}
 	if c.Issuer == "" {
-		return errors.New("OAuth issuer is required when OAuth JWKS URL is configured")
+		return errors.New("auth provider issuer is required when JWKS signing is configured")
 	}
 
 	return nil
+}
+
+func NewHMACAuthProviderConfig(secrets []string) AuthProviderConfig {
+	return AuthProviderConfig{
+		SigningMethod: authProviderSigningMethodHMAC,
+		HMACSecrets:   secrets,
+	}
 }
 
 // AuthProviderIdentity is the normalized identity extracted from a validated auth provider JWT.
@@ -113,6 +145,10 @@ func (v *AuthProviderJWTVerifier) Verify(ctx context.Context, tokenString string
 		return nil, errors.New("auth provider verifier is not configured")
 	}
 
+	if v.config.SigningMethod == authProviderSigningMethodHMAC {
+		return v.verifyHMAC(ctx, tokenString)
+	}
+
 	claims := jwt.MapClaims{}
 	options := []jwt.ParserOption{
 		jwt.WithExpirationRequired(),
@@ -132,18 +168,70 @@ func (v *AuthProviderJWTVerifier) Verify(ctx context.Context, tokenString string
 		return nil, errors.New("auth provider token is invalid")
 	}
 
+	return identityFromClaims(claims, v.config.UserIDClaim, v.config.EmailClaim), nil
+}
+
+func (v *AuthProviderJWTVerifier) verifyHMAC(ctx context.Context, tokenString string) (*AuthProviderIdentity, error) {
+	errs := make([]error, 0, len(v.config.HMACSecrets))
+	for _, secret := range v.config.HMACSecrets {
+		if len(secret) < MinJWTSecretLength {
+			logger.L().Warn(ctx, "jwt secret is too short and will be ignored",
+				zap.Int("min_length", MinJWTSecretLength),
+				zap.String("secret_start", secret[:min(3, len(secret))]))
+
+			continue
+		}
+
+		claims := jwt.MapClaims{}
+		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected auth provider signing method: %v", token.Header["alg"])
+			}
+
+			return []byte(secret), nil
+		}, v.parserOptions()...)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("failed to verify auth provider HMAC token: %w", err))
+
+			continue
+		}
+		if token.Valid {
+			return identityFromClaims(claims, v.config.UserIDClaim, v.config.EmailClaim), nil
+		}
+	}
+
+	if len(errs) == 0 {
+		return nil, errors.New("failed to verify auth provider HMAC token, no usable secrets found")
+	}
+
+	return nil, errors.Join(errs...)
+}
+
+func (v *AuthProviderJWTVerifier) parserOptions() []jwt.ParserOption {
+	options := []jwt.ParserOption{jwt.WithExpirationRequired()}
+	if v.config.Issuer != "" {
+		options = append(options, jwt.WithIssuer(v.config.Issuer))
+	}
+	if v.config.Audience != "" {
+		options = append(options, jwt.WithAudience(v.config.Audience))
+	}
+
+	return options
+}
+
+func identityFromClaims(claims jwt.MapClaims, userIDClaim, emailClaim string) *AuthProviderIdentity {
 	identity := &AuthProviderIdentity{Claims: claims}
-	if claimValue, ok := claimString(claims, v.config.UserIDClaim); ok {
+	if claimValue, ok := claimString(claims, userIDClaim); ok {
 		userID, err := uuid.Parse(claimValue)
 		if err == nil {
 			identity.UserID = userID
 		}
 	}
-	if email, ok := claimString(claims, v.config.EmailClaim); ok {
+	if email, ok := claimString(claims, emailClaim); ok {
 		identity.Email = email
 	}
 
-	return identity, nil
+	return identity
 }
 
 func (v *AuthProviderJWTVerifier) keyForToken(ctx context.Context, token *jwt.Token) (any, error) {

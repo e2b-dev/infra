@@ -60,6 +60,17 @@ variable "auth_provider_jwks_url" {
   default = ""
 }
 
+variable "auth_provider_jwt_signing_method" {
+  type    = string
+  default = "JWKS"
+}
+
+variable "auth_provider_jwt_hmac_secrets" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
 variable "auth_provider_jwt_issuer" {
   type    = string
   default = ""

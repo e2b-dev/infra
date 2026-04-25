@@ -12,6 +12,8 @@ locals {
     AUTH_PROVIDER_JWKS_URL                  = var.auth_provider_jwks_url
     AUTH_PROVIDER_JWT_ISSUER                = var.auth_provider_jwt_issuer
     AUTH_PROVIDER_JWT_AUDIENCE              = var.auth_provider_jwt_audience
+    AUTH_PROVIDER_JWT_SIGNING_METHOD        = var.auth_provider_jwt_signing_method
+    AUTH_PROVIDER_JWT_HMAC_SECRETS          = var.auth_provider_jwt_hmac_secrets
     AUTH_PROVIDER_JWT_USER_ID_CLAIM         = var.auth_provider_jwt_user_id_claim
     AUTH_PROVIDER_JWT_EMAIL_CLAIM           = var.auth_provider_jwt_email_claim
     AUTH_PROVIDER_JWKS_CACHE_DURATION       = var.auth_provider_jwks_cache_duration

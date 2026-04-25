@@ -467,6 +467,11 @@ variable "auth_provider_jwks_url" {
   default = ""
 }
 
+variable "auth_provider_jwt_signing_method" {
+  type    = string
+  default = "JWKS"
+}
+
 variable "auth_provider_jwt_issuer" {
   type    = string
   default = ""
@@ -485,6 +490,12 @@ variable "auth_provider_jwt_user_id_claim" {
 variable "auth_provider_jwt_email_claim" {
   type    = string
   default = "email"
+}
+
+variable "auth_provider_jwt_hmac_secrets" {
+  type      = string
+  sensitive = true
+  default   = ""
 }
 
 variable "auth_provider_jwks_cache_duration" {

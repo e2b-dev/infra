@@ -31,16 +31,17 @@ type AuthStore[T TeamItem] interface {
 type AuthService[T TeamItem] struct {
 	store                AuthStore[T]
 	teamCache            *AuthCache[T]
-	jwtSecrets           []string
+	supabaseVerifier     *AuthProviderJWTVerifier
 	authProviderVerifier *AuthProviderJWTVerifier
 }
 
-// NewAuthService creates an AuthService with the given store, cache, and JWT secrets.
+// NewAuthService creates an AuthService with the given store, cache, and legacy HMAC JWT secrets.
 func NewAuthService[T TeamItem](store AuthStore[T], teamCache *AuthCache[T], jwtSecrets []string, authProviderVerifiers ...*AuthProviderJWTVerifier) *AuthService[T] {
+	supabaseVerifier, _ := NewAuthProviderJWTVerifier(NewHMACAuthProviderConfig(jwtSecrets))
 	service := &AuthService[T]{
-		store:      store,
-		teamCache:  teamCache,
-		jwtSecrets: jwtSecrets,
+		store:            store,
+		teamCache:        teamCache,
+		supabaseVerifier: supabaseVerifier,
 	}
 	if len(authProviderVerifiers) > 0 {
 		service.authProviderVerifier = authProviderVerifiers[0]
@@ -53,6 +54,14 @@ func (s *AuthService[T]) WithAuthProviderVerifier(verifier *AuthProviderJWTVerif
 	s.authProviderVerifier = verifier
 
 	return s
+}
+
+func (s *AuthService[T]) supabaseTokenVerifier() *AuthProviderJWTVerifier {
+	if s.supabaseVerifier != nil {
+		return s.supabaseVerifier
+	}
+
+	return s.authProviderVerifier
 }
 
 // ValidateAPIKey verifies the API key format and fetches the associated team via cache + store.
@@ -139,26 +148,16 @@ func (s *AuthService[T]) ValidateAccessToken(ctx context.Context, ginCtx *gin.Co
 
 // ValidateSupabaseToken parses a Supabase JWT and extracts the user ID.
 func (s *AuthService[T]) ValidateSupabaseToken(ctx context.Context, ginCtx *gin.Context, supabaseToken string) (uuid.UUID, *APIError) {
-	userID, err := ParseUserIDFromToken(ctx, s.jwtSecrets, supabaseToken)
-	if err != nil {
-		return uuid.UUID{}, &APIError{
-			Err:       err,
-			ClientMsg: "Backend authentication failed",
-			Code:      http.StatusUnauthorized,
-		}
-	}
-
-	//nolint:contextcheck // We use the gin request context to set attributes on the parent span.
-	telemetry.SetAttributes(ginCtx.Request.Context(),
-		telemetry.WithUserID(userID.String()),
-	)
-
-	return userID, nil
+	return s.validateJWTWithProvider(ctx, ginCtx, s.supabaseTokenVerifier(), supabaseToken, "Supabase")
 }
 
 // ValidateAuthProviderToken verifies a JWT against the configured auth provider JWKS and resolves an internal user ID.
 func (s *AuthService[T]) ValidateAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError) {
-	identity, err := s.authProviderVerifier.Verify(ctx, token)
+	return s.validateJWTWithProvider(ctx, ginCtx, s.authProviderVerifier, token, "auth provider")
+}
+
+func (s *AuthService[T]) validateJWTWithProvider(ctx context.Context, ginCtx *gin.Context, verifier *AuthProviderJWTVerifier, token string, tokenSource string) (uuid.UUID, *APIError) {
+	identity, err := verifier.Verify(ctx, token)
 	if err != nil {
 		return uuid.UUID{}, &APIError{
 			Err:       err,
@@ -171,7 +170,7 @@ func (s *AuthService[T]) ValidateAuthProviderToken(ctx context.Context, ginCtx *
 	if userID == uuid.Nil {
 		if identity.Email == "" {
 			return uuid.UUID{}, &APIError{
-				Err:       errors.New("auth provider token contains neither UUID user claim nor email claim"),
+				Err:       fmt.Errorf("%s token contains neither UUID user claim nor email claim", tokenSource),
 				ClientMsg: "Backend authentication failed",
 				Code:      http.StatusUnauthorized,
 			}
@@ -180,7 +179,7 @@ func (s *AuthService[T]) ValidateAuthProviderToken(ctx context.Context, ginCtx *
 		userID, err = s.store.GetUserIDByEmail(ctx, identity.Email)
 		if err != nil {
 			return uuid.UUID{}, &APIError{
-				Err:       fmt.Errorf("failed to resolve auth provider user by email: %w", err),
+				Err:       fmt.Errorf("failed to resolve %s user by email: %w", tokenSource, err),
 				ClientMsg: "Backend authentication failed",
 				Code:      http.StatusUnauthorized,
 			}

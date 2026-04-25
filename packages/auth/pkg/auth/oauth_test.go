@@ -82,6 +82,30 @@ func TestAuthProviderJWTVerifier_VerifyRejectsWrongAudience(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestAuthProviderJWTVerifier_VerifyHMAC(t *testing.T) {
+	t.Parallel()
+
+	const secret = "supabasejwtsecretsupabasejwtsecret"
+	verifier, err := NewAuthProviderJWTVerifier(AuthProviderConfig{
+		SigningMethod: authProviderSigningMethodHMAC,
+		HMACSecrets:   []string{"wrong-secret-wrong-secret", secret},
+	})
+	require.NoError(t, err)
+
+	userID := uuid.New()
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": userID.String(),
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+
+	signedToken, err := token.SignedString([]byte(secret))
+	require.NoError(t, err)
+
+	identity, err := verifier.Verify(t.Context(), signedToken)
+	require.NoError(t, err)
+	require.Equal(t, userID, identity.UserID)
+}
+
 func newJWKSHTTPServer(t *testing.T, publicKey *rsa.PublicKey, keyID string) *httptest.Server {
 	t.Helper()
 
