@@ -22,12 +22,14 @@ type oidcClientProxyOAuthVerifier struct {
 	verifier *oidc.IDTokenVerifier
 }
 
+type noopClientProxyOAuthVerifier struct{}
+
 func NewClientProxyOAuthVerifier(ctx context.Context, issuerURL string, audience string) (ClientProxyOAuthVerifier, error) {
 	issuerURL = strings.TrimSpace(issuerURL)
 	audience = strings.TrimSpace(audience)
 
 	if issuerURL == "" && audience == "" {
-		return nil, nil
+		return noopClientProxyOAuthVerifier{}, nil
 	}
 	if issuerURL == "" || audience == "" {
 		return nil, errors.New("client proxy OIDC issuer URL and audience must both be configured")
@@ -41,6 +43,10 @@ func NewClientProxyOAuthVerifier(ctx context.Context, issuerURL string, audience
 	return &oidcClientProxyOAuthVerifier{
 		verifier: provider.Verifier(&oidc.Config{ClientID: audience}),
 	}, nil
+}
+
+func (noopClientProxyOAuthVerifier) VerifyClaims(context.Context, string) (ClientProxyOAuthClaims, error) {
+	return ClientProxyOAuthClaims{}, errors.New("client proxy OIDC verifier is not configured")
 }
 
 func (v *oidcClientProxyOAuthVerifier) VerifyClaims(ctx context.Context, rawToken string) (ClientProxyOAuthClaims, error) {
