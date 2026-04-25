@@ -82,7 +82,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		registerNode(o, sbx, "")
 
 		nodeIP, handled, err := o.HandleExistingSandboxAutoResume(t.Context(), sbx.TeamID, sbx.SandboxID, sbx, time.Minute)
-		require.ErrorContains(t, err, "orchestrator IP is not available")
+		require.ErrorContains(t, err, "routing info is not available")
 		assert.False(t, handled)
 		assert.Empty(t, nodeIP)
 	})
