@@ -57,6 +57,10 @@ func (s *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, ginCtx *gin.C
 	return s.authService.ValidateSupabaseToken(ctx, ginCtx, supabaseToken)
 }
 
+func (s *APIStore) GetUserIDFromOAuthToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *sharedauth.APIError) {
+	return s.authService.ValidateOAuthToken(ctx, ginCtx, token)
+}
+
 func (s *APIStore) GetTeamFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *sharedauth.APIError) {
 	return s.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID)
 }

@@ -23,23 +23,36 @@ type AuthStore[T TeamItem] interface {
 	GetTeamByHashedAPIKey(ctx context.Context, hashedKey string) (T, error)
 	GetTeamByIDAndUserID(ctx context.Context, userID uuid.UUID, teamID string) (T, error)
 	GetUserIDByHashedAccessToken(ctx context.Context, hashedToken string) (uuid.UUID, error)
+	GetUserIDByEmail(ctx context.Context, email string) (uuid.UUID, error)
 	GetTeamAPIKeyHashes(ctx context.Context, teamID uuid.UUID) ([]string, error)
 }
 
 // AuthService encapsulates the cache, store, and JWT secrets for auth validation.
 type AuthService[T TeamItem] struct {
-	store      AuthStore[T]
-	teamCache  *AuthCache[T]
-	jwtSecrets []string
+	store         AuthStore[T]
+	teamCache     *AuthCache[T]
+	jwtSecrets    []string
+	oauthVerifier *OAuthJWTVerifier
 }
 
 // NewAuthService creates an AuthService with the given store, cache, and JWT secrets.
-func NewAuthService[T TeamItem](store AuthStore[T], teamCache *AuthCache[T], jwtSecrets []string) *AuthService[T] {
-	return &AuthService[T]{
+func NewAuthService[T TeamItem](store AuthStore[T], teamCache *AuthCache[T], jwtSecrets []string, oauthVerifiers ...*OAuthJWTVerifier) *AuthService[T] {
+	service := &AuthService[T]{
 		store:      store,
 		teamCache:  teamCache,
 		jwtSecrets: jwtSecrets,
 	}
+	if len(oauthVerifiers) > 0 {
+		service.oauthVerifier = oauthVerifiers[0]
+	}
+
+	return service
+}
+
+func (s *AuthService[T]) WithOAuthVerifier(verifier *OAuthJWTVerifier) *AuthService[T] {
+	s.oauthVerifier = verifier
+
+	return s
 }
 
 // ValidateAPIKey verifies the API key format and fetches the associated team via cache + store.
@@ -132,6 +145,45 @@ func (s *AuthService[T]) ValidateSupabaseToken(ctx context.Context, ginCtx *gin.
 			Err:       err,
 			ClientMsg: "Backend authentication failed",
 			Code:      http.StatusUnauthorized,
+		}
+	}
+
+	//nolint:contextcheck // We use the gin request context to set attributes on the parent span.
+	telemetry.SetAttributes(ginCtx.Request.Context(),
+		telemetry.WithUserID(userID.String()),
+	)
+
+	return userID, nil
+}
+
+// ValidateOAuthToken verifies a JWT against the configured OAuth JWKS provider and resolves an internal user ID.
+func (s *AuthService[T]) ValidateOAuthToken(ctx context.Context, ginCtx *gin.Context, oauthToken string) (uuid.UUID, *APIError) {
+	identity, err := s.oauthVerifier.Verify(ctx, oauthToken)
+	if err != nil {
+		return uuid.UUID{}, &APIError{
+			Err:       err,
+			ClientMsg: "Backend authentication failed",
+			Code:      http.StatusUnauthorized,
+		}
+	}
+
+	userID := identity.UserID
+	if userID == uuid.Nil {
+		if identity.Email == "" {
+			return uuid.UUID{}, &APIError{
+				Err:       errors.New("OAuth token contains neither UUID user claim nor email claim"),
+				ClientMsg: "Backend authentication failed",
+				Code:      http.StatusUnauthorized,
+			}
+		}
+
+		userID, err = s.store.GetUserIDByEmail(ctx, identity.Email)
+		if err != nil {
+			return uuid.UUID{}, &APIError{
+				Err:       fmt.Errorf("failed to resolve OAuth user by email: %w", err),
+				ClientMsg: "Backend authentication failed",
+				Code:      http.StatusUnauthorized,
+			}
 		}
 	}
 

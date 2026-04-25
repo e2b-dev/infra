@@ -187,7 +187,21 @@ func run() int {
 
 	authCache := sharedauth.NewAuthCache[*types.Team](redisClient)
 	authStore := sharedauth.NewAuthStore(authDB)
-	authService := sharedauth.NewAuthService[*types.Team](authStore, authCache, config.SupabaseJWTSecrets)
+	oauthVerifier, err := sharedauth.NewOAuthJWTVerifier(sharedauth.OAuthConfig{
+		JWKSURL:       config.OAuthJWKSURL,
+		Issuer:        config.OAuthIssuer,
+		Audience:      config.OAuthAudience,
+		UserIDClaim:   config.OAuthUserIDClaim,
+		EmailClaim:    config.OAuthEmailClaim,
+		CacheDuration: config.OAuthJWKSCacheDuration,
+	})
+	if err != nil {
+		l.Error(ctx, "Initializing OAuth JWT verifier", zap.Error(err))
+
+		return 1
+	}
+
+	authService := sharedauth.NewAuthService[*types.Team](authStore, authCache, config.SupabaseJWTSecrets, oauthVerifier)
 	defer authService.Close(ctx)
 
 	teamProvisionSink, err := internalteamprovision.NewProvisionSink(
@@ -215,8 +229,10 @@ func run() int {
 	authenticationFunc := sharedauth.CreateAuthenticationFunc(
 		[]sharedauth.Authenticator{
 			sharedauth.NewAdminTokenAuthenticator(config.AdminToken),
+			sharedauth.NewOAuthTokenAuthenticator(apiStore.GetUserIDFromOAuthToken),
 			sharedauth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromSupabaseToken),
 			sharedauth.NewSupabaseTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
+			sharedauth.NewOAuthTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
 		},
 		nil,
 	)
@@ -289,9 +305,11 @@ func newHTTPServer(
 		"Origin",
 		"Content-Length",
 		"Content-Type",
+		sharedauth.HeaderAuthorization,
 		sharedauth.HeaderAdminToken,
 		sharedauth.HeaderSupabaseToken,
 		sharedauth.HeaderSupabaseTeam,
+		sharedauth.HeaderTeamID,
 	}
 	r.Use(cors.New(corsConfig))
 

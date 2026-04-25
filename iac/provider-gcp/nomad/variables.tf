@@ -462,6 +462,36 @@ variable "supabase_db_connection_string_secret_version" {
   type = any
 }
 
+variable "dashboard_api_oauth_jwks_url" {
+  type    = string
+  default = ""
+}
+
+variable "dashboard_api_oauth_issuer" {
+  type    = string
+  default = ""
+}
+
+variable "dashboard_api_oauth_audience" {
+  type    = string
+  default = ""
+}
+
+variable "dashboard_api_oauth_user_id_claim" {
+  type    = string
+  default = "sub"
+}
+
+variable "dashboard_api_oauth_email_claim" {
+  type    = string
+  default = "email"
+}
+
+variable "dashboard_api_oauth_jwks_cache_duration" {
+  type    = string
+  default = "5m"
+}
+
 variable "enable_auth_user_sync_background_worker" {
   type    = bool
   default = false
@@ -471,6 +501,7 @@ variable "enable_billing_http_team_provision_sink" {
   type    = bool
   default = false
 }
+
 variable "volume_token_issuer" {
   type = string
 }

@@ -55,6 +55,36 @@ variable "supabase_jwt_secrets" {
   sensitive = true
 }
 
+variable "oauth_jwks_url" {
+  type    = string
+  default = ""
+}
+
+variable "oauth_issuer" {
+  type    = string
+  default = ""
+}
+
+variable "oauth_audience" {
+  type    = string
+  default = ""
+}
+
+variable "oauth_user_id_claim" {
+  type    = string
+  default = "sub"
+}
+
+variable "oauth_email_claim" {
+  type    = string
+  default = "email"
+}
+
+variable "oauth_jwks_cache_duration" {
+  type    = string
+  default = "5m"
+}
+
 variable "enable_auth_user_sync_background_worker" {
   type    = bool
   default = false
@@ -64,6 +94,7 @@ variable "enable_billing_http_team_provision_sink" {
   type    = bool
   default = false
 }
+
 variable "otel_collector_grpc_port" {
   type    = number
   default = 4317

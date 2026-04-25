@@ -169,6 +169,20 @@ func NewAccessTokenAuthenticator(validationFunc func(ctx context.Context, ginCtx
 	}
 }
 
+// NewOAuthTokenAuthenticator creates an authenticator for OAuthTokenAuth (Authorization Bearer JWT).
+func NewOAuthTokenAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError)) Authenticator {
+	return &CommonAuthenticator[uuid.UUID]{
+		SchemeName: "OAuthTokenAuth",
+		Header: HeaderKey{
+			Name:         HeaderAuthorization,
+			RemovePrefix: PrefixBearer,
+		},
+		ValidationFunc: validationFunc,
+		SetContextFunc: SetUserID,
+		ErrorMessage:   "Invalid OAuth token.",
+	}
+}
+
 // NewSupabaseTokenAuthenticator creates an authenticator for the Supabase1TokenAuth security scheme (X-Supabase-Token header).
 func NewSupabaseTokenAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError)) Authenticator {
 	return &CommonAuthenticator[uuid.UUID]{
@@ -192,6 +206,19 @@ func NewSupabaseTeamAuthenticator(validationFunc func(ctx context.Context, ginCt
 		ValidationFunc: validationFunc,
 		SetContextFunc: SetTeamInfo,
 		ErrorMessage:   "Invalid Supabase token teamID.",
+	}
+}
+
+// NewOAuthTeamAuthenticator creates an authenticator for the OAuthTeamAuth security scheme (X-Team-Id header).
+func NewOAuthTeamAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, token string) (*types.Team, *APIError)) Authenticator {
+	return &CommonAuthenticator[*types.Team]{
+		SchemeName: "OAuthTeamAuth",
+		Header: HeaderKey{
+			Name: HeaderTeamID,
+		},
+		ValidationFunc: validationFunc,
+		SetContextFunc: SetTeamInfo,
+		ErrorMessage:   "Invalid OAuth token teamID.",
 	}
 }
 

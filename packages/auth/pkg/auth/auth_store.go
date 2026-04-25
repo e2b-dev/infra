@@ -97,6 +97,15 @@ func (s *AuthStoreImpl) GetUserIDByHashedAccessToken(ctx context.Context, hashed
 	return s.authDB.Read.GetUserIDFromAccessToken(ctx, hashedToken)
 }
 
+func (s *AuthStoreImpl) GetUserIDByEmail(ctx context.Context, email string) (uuid.UUID, error) {
+	userID, err := s.authDB.Read.GetUserByEmail(ctx, email)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	return userID, nil
+}
+
 func (s *AuthStoreImpl) GetTeamAPIKeyHashes(ctx context.Context, teamID uuid.UUID) ([]string, error) {
 	return s.authDB.Read.GetTeamAPIKeyHashes(ctx, teamID)
 }

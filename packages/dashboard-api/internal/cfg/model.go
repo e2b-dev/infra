@@ -2,16 +2,23 @@ package cfg
 
 import (
 	"errors"
+	"time"
 
 	"github.com/caarlos0/env/v11"
 )
 
 type Config struct {
-	Port                       int      `env:"PORT"                                         envDefault:"3010"`
-	PostgresConnectionString   string   `env:"POSTGRES_CONNECTION_STRING,required,notEmpty"`
-	ClickhouseConnectionString string   `env:"CLICKHOUSE_CONNECTION_STRING"`
-	AdminToken                 string   `env:"ADMIN_TOKEN,required,notEmpty"`
-	SupabaseJWTSecrets         []string `env:"SUPABASE_JWT_SECRETS"`
+	Port                       int           `env:"PORT"                                         envDefault:"3010"`
+	PostgresConnectionString   string        `env:"POSTGRES_CONNECTION_STRING,required,notEmpty"`
+	ClickhouseConnectionString string        `env:"CLICKHOUSE_CONNECTION_STRING"`
+	AdminToken                 string        `env:"ADMIN_TOKEN,required,notEmpty"`
+	SupabaseJWTSecrets         []string      `env:"SUPABASE_JWT_SECRETS"`
+	OAuthJWKSURL               string        `env:"OAUTH_JWKS_URL"`
+	OAuthIssuer                string        `env:"OAUTH_ISSUER"`
+	OAuthAudience              string        `env:"OAUTH_AUDIENCE"`
+	OAuthUserIDClaim           string        `env:"OAUTH_USER_ID_CLAIM"     envDefault:"sub"`
+	OAuthEmailClaim            string        `env:"OAUTH_EMAIL_CLAIM"       envDefault:"email"`
+	OAuthJWKSCacheDuration     time.Duration `env:"OAUTH_JWKS_CACHE_DURATION" envDefault:"5m"`
 
 	AuthDBConnectionString            string `env:"AUTH_DB_CONNECTION_STRING"`
 	AuthDBReadReplicaConnectionString string `env:"AUTH_DB_READ_REPLICA_CONNECTION_STRING"`
