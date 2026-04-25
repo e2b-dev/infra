@@ -26,10 +26,12 @@ func TestAuthProviderJWTVerifier_VerifyJWKS(t *testing.T) {
 
 	verifier, err := NewAuthProviderJWTVerifier(AuthProviderConfig{
 		JWT: AuthProviderJWTConfig{
-			JWKSURL:           jwksServer.URL,
-			Issuer:            "https://issuer.example.com",
-			Audience:          "dashboard-api",
-			JWKSCacheDuration: time.Minute,
+			JWKS: &AuthProviderJWKSConfig{
+				URL:           jwksServer.URL,
+				CacheDuration: time.Minute,
+			},
+			Issuer:   "https://issuer.example.com",
+			Audience: "dashboard-api",
 		},
 	})
 	require.NoError(t, err)
@@ -64,7 +66,9 @@ func TestAuthProviderJWTVerifier_VerifyJWKSRejectsWrongAudience(t *testing.T) {
 
 	verifier, err := NewAuthProviderJWTVerifier(AuthProviderConfig{
 		JWT: AuthProviderJWTConfig{
-			JWKSURL:  jwksServer.URL,
+			JWKS: &AuthProviderJWKSConfig{
+				URL: jwksServer.URL,
+			},
 			Issuer:   "https://issuer.example.com",
 			Audience: "dashboard-api",
 		},

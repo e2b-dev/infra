@@ -15,8 +15,9 @@ func TestAuthProviderJWTVerifier_VerifyHMAC(t *testing.T) {
 	const secret = "supabasejwtsecretsupabasejwtsecret"
 	verifier, err := NewAuthProviderJWTVerifier(AuthProviderConfig{
 		JWT: AuthProviderJWTConfig{
-			SigningMethod: authProviderSigningMethodHMAC,
-			HMACSecrets:   []string{"wrong-secret-wrong-secret", secret},
+			HMAC: &AuthProviderHMACConfig{
+				Secrets: []string{"wrong-secret-wrong-secret", secret},
+			},
 		},
 	})
 	require.NoError(t, err)

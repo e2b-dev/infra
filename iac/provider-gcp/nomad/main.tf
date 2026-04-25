@@ -8,8 +8,9 @@ locals {
   dashboard_api_billing_server_api_token  = local.enable_billing_http_team_provision_sink ? trimspace(data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data) : ""
   default_auth_provider_config = {
     jwt = {
-      signing_method = "HMAC"
-      hmac_secrets   = split(",", trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data))
+      hmac = {
+        secrets = split(",", trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data))
+      }
     }
   }
   auth_provider_config = var.auth_provider_config != null ? var.auth_provider_config : local.default_auth_provider_config

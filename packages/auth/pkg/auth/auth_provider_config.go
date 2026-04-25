@@ -13,9 +13,6 @@ const (
 	defaultAuthProviderJWKSCacheDuration = 5 * time.Minute
 	defaultAuthProviderUserIDClaim       = "sub"
 	defaultAuthProviderEmailClaim        = "email"
-
-	authProviderSigningMethodJWKS = "JWKS"
-	authProviderSigningMethodHMAC = "HMAC"
 )
 
 // AuthProviderConfig describes external auth provider verification.
@@ -25,48 +22,43 @@ type AuthProviderConfig struct {
 
 // AuthProviderJWTConfig describes a JWT issuer with JWKS or HMAC signing.
 type AuthProviderJWTConfig struct {
-	JWKSURL           string        `json:"jwks_url"`
-	Issuer            string        `json:"issuer"`
-	Audience          string        `json:"audience"`
-	SigningMethod     string        `json:"signing_method"`
-	HMACSecrets       []string      `json:"hmac_secrets"`
-	UserIDClaim       string        `json:"user_id_claim"`
-	EmailClaim        string        `json:"email_claim"`
-	JWKSCacheDuration time.Duration `json:"jwks_cache_duration"`
+	Issuer      string                  `json:"issuer"`
+	Audience    string                  `json:"audience"`
+	UserIDClaim string                  `json:"user_id_claim"`
+	EmailClaim  string                  `json:"email_claim"`
+	JWKS        *AuthProviderJWKSConfig `json:"jwks"`
+	HMAC        *AuthProviderHMACConfig `json:"hmac"`
 }
 
-func (c *AuthProviderJWTConfig) UnmarshalJSON(data []byte) error {
-	type authProviderJWTConfigJSON struct {
-		JWKSURL           string   `json:"jwks_url"`
-		Issuer            string   `json:"issuer"`
-		Audience          string   `json:"audience"`
-		SigningMethod     string   `json:"signing_method"`
-		HMACSecrets       []string `json:"hmac_secrets"`
-		UserIDClaim       string   `json:"user_id_claim"`
-		EmailClaim        string   `json:"email_claim"`
-		JWKSCacheDuration string   `json:"jwks_cache_duration"`
+type AuthProviderJWKSConfig struct {
+	URL           string        `json:"url"`
+	CacheDuration time.Duration `json:"cache_duration"`
+}
+
+type AuthProviderHMACConfig struct {
+	Secrets []string `json:"secrets"`
+}
+
+func (c *AuthProviderJWKSConfig) UnmarshalJSON(data []byte) error {
+	type authProviderJWKSConfigJSON struct {
+		URL           string `json:"url"`
+		CacheDuration string `json:"cache_duration"`
 	}
 
-	var raw authProviderJWTConfigJSON
+	var raw authProviderJWKSConfigJSON
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 
-	c.JWKSURL = raw.JWKSURL
-	c.Issuer = raw.Issuer
-	c.Audience = raw.Audience
-	c.SigningMethod = raw.SigningMethod
-	c.HMACSecrets = raw.HMACSecrets
-	c.UserIDClaim = raw.UserIDClaim
-	c.EmailClaim = raw.EmailClaim
+	c.URL = raw.URL
 
-	if raw.JWKSCacheDuration != "" {
-		duration, err := time.ParseDuration(raw.JWKSCacheDuration)
+	if raw.CacheDuration != "" {
+		duration, err := time.ParseDuration(raw.CacheDuration)
 		if err != nil {
-			return fmt.Errorf("parse jwks_cache_duration: %w", err)
+			return fmt.Errorf("parse jwks.cache_duration: %w", err)
 		}
 
-		c.JWKSCacheDuration = duration
+		c.CacheDuration = duration
 	}
 
 	return nil
@@ -87,28 +79,26 @@ func (c AuthProviderConfig) validate() error {
 
 // Enabled returns true when external auth provider JWT validation is configured.
 func (c AuthProviderJWTConfig) Enabled() bool {
-	return strings.TrimSpace(c.JWKSURL) != "" || len(c.HMACSecrets) > 0
+	return c.JWKS != nil || c.HMAC != nil
 }
 
 func (c AuthProviderJWTConfig) normalized() AuthProviderJWTConfig {
-	c.JWKSURL = strings.TrimSpace(c.JWKSURL)
 	c.Issuer = strings.TrimSpace(c.Issuer)
 	c.Audience = strings.TrimSpace(c.Audience)
-	c.SigningMethod = strings.ToUpper(strings.TrimSpace(c.SigningMethod))
 	c.UserIDClaim = strings.TrimSpace(c.UserIDClaim)
 	c.EmailClaim = strings.TrimSpace(c.EmailClaim)
 
-	if c.SigningMethod == "" {
-		c.SigningMethod = authProviderSigningMethodJWKS
-	}
 	if c.UserIDClaim == "" {
 		c.UserIDClaim = defaultAuthProviderUserIDClaim
 	}
 	if c.EmailClaim == "" {
 		c.EmailClaim = defaultAuthProviderEmailClaim
 	}
-	if c.JWKSCacheDuration <= 0 {
-		c.JWKSCacheDuration = defaultAuthProviderJWKSCacheDuration
+	if c.JWKS != nil {
+		c.JWKS.URL = strings.TrimSpace(c.JWKS.URL)
+		if c.JWKS.CacheDuration <= 0 {
+			c.JWKS.CacheDuration = defaultAuthProviderJWKSCacheDuration
+		}
 	}
 
 	return c
@@ -119,20 +109,23 @@ func (c AuthProviderJWTConfig) validate() error {
 		return nil
 	}
 
-	switch c.SigningMethod {
-	case authProviderSigningMethodHMAC:
-		if len(c.HMACSecrets) == 0 {
-			return errors.New("auth provider HMAC secrets are required when HMAC signing is configured")
+	if c.JWKS != nil && c.HMAC != nil {
+		return errors.New("auth provider JWT config must specify exactly one of jwks or hmac")
+	}
+
+	if c.HMAC != nil {
+		if len(c.HMAC.Secrets) == 0 {
+			return errors.New("auth provider HMAC secrets are required when hmac is configured")
 		}
 
 		return nil
-
-	case authProviderSigningMethodJWKS:
-	default:
-		return fmt.Errorf("unknown auth provider JWT signing method %q", c.SigningMethod)
 	}
 
-	parsedURL, err := url.ParseRequestURI(c.JWKSURL)
+	if c.JWKS == nil {
+		return nil
+	}
+
+	parsedURL, err := url.ParseRequestURI(c.JWKS.URL)
 	if err != nil {
 		return fmt.Errorf("invalid auth provider JWKS URL: %w", err)
 	}
@@ -140,7 +133,7 @@ func (c AuthProviderJWTConfig) validate() error {
 		return fmt.Errorf("invalid auth provider JWKS URL scheme %q", parsedURL.Scheme)
 	}
 	if c.Issuer == "" {
-		return errors.New("auth provider issuer is required when JWKS signing is configured")
+		return errors.New("auth provider issuer is required when jwks is configured")
 	}
 
 	return nil
@@ -149,8 +142,9 @@ func (c AuthProviderJWTConfig) validate() error {
 func NewHMACAuthProviderConfig(secrets []string) AuthProviderConfig {
 	return AuthProviderConfig{
 		JWT: AuthProviderJWTConfig{
-			SigningMethod: authProviderSigningMethodHMAC,
-			HMACSecrets:   secrets,
+			HMAC: &AuthProviderHMACConfig{
+				Secrets: secrets,
+			},
 		},
 	}
 }

@@ -21,12 +21,12 @@ type jwksAuthProviderJWTVerifier struct {
 	parserOptions []jwt.ParserOption
 }
 
-func newJWKSAuthProviderJWTVerifier(ctx context.Context, config AuthProviderJWTConfig) (*jwksAuthProviderJWTVerifier, error) {
-	storage, err := jwkset.NewStorageFromHTTP(config.JWKSURL, jwkset.HTTPClientStorageOptions{
+func newJWKSAuthProviderJWTVerifier(ctx context.Context, config AuthProviderJWTConfig, jwksConfig AuthProviderJWKSConfig) (*jwksAuthProviderJWTVerifier, error) {
+	storage, err := jwkset.NewStorageFromHTTP(jwksConfig.URL, jwkset.HTTPClientStorageOptions{
 		Client:          &http.Client{Timeout: authProviderJWKSHTTPTimeout},
 		Ctx:             ctx,
 		HTTPTimeout:     authProviderJWKSHTTPTimeout,
-		RefreshInterval: config.JWKSCacheDuration,
+		RefreshInterval: jwksConfig.CacheDuration,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create auth provider JWKS storage: %w", err)

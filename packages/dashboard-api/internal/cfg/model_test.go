@@ -13,23 +13,23 @@ func TestParseAuthProviderConfig(t *testing.T) {
 	t.Setenv("REDIS_URL", "redis://example")
 	t.Setenv("AUTH_PROVIDER_CONFIG", `{
 		"jwt": {
-			"jwks_url": "https://auth.example.com/.well-known/jwks.json",
 			"issuer": "https://auth.example.com",
 			"audience": "dashboard-api",
-			"signing_method": "JWKS",
+			"jwks": {
+				"url": "https://auth.example.com/.well-known/jwks.json",
+				"cache_duration": "30m"
+			},
 			"user_id_claim": "https://e2b.dev/user_id",
-			"email_claim": "preferred_email",
-			"jwks_cache_duration": "30m"
+			"email_claim": "preferred_email"
 		}
 	}`)
 
 	config, err := Parse()
 	require.NoError(t, err)
-	require.Equal(t, "https://auth.example.com/.well-known/jwks.json", config.AuthProvider.JWT.JWKSURL)
+	require.Equal(t, "https://auth.example.com/.well-known/jwks.json", config.AuthProvider.JWT.JWKS.URL)
 	require.Equal(t, "https://auth.example.com", config.AuthProvider.JWT.Issuer)
 	require.Equal(t, "dashboard-api", config.AuthProvider.JWT.Audience)
-	require.Equal(t, "JWKS", config.AuthProvider.JWT.SigningMethod)
 	require.Equal(t, "https://e2b.dev/user_id", config.AuthProvider.JWT.UserIDClaim)
 	require.Equal(t, "preferred_email", config.AuthProvider.JWT.EmailClaim)
-	require.Equal(t, 30*time.Minute, config.AuthProvider.JWT.JWKSCacheDuration)
+	require.Equal(t, 30*time.Minute, config.AuthProvider.JWT.JWKS.CacheDuration)
 }

@@ -188,8 +188,9 @@ module "nomad" {
   postgres_connection_string  = module.init.postgres_connection_string
   auth_provider_config = {
     jwt = {
-      signing_method = "HMAC"
-      hmac_secrets   = split(",", trimspace(module.init.supabase_jwt_secrets))
+      hmac = {
+        secrets = split(",", trimspace(module.init.supabase_jwt_secrets))
+      }
     }
   }
   admin_token                    = module.init.admin_token

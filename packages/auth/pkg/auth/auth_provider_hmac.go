@@ -20,7 +20,7 @@ type hmacAuthProviderJWTVerifier struct {
 
 func newHMACAuthProviderJWTVerifier(config AuthProviderJWTConfig) *hmacAuthProviderJWTVerifier {
 	return &hmacAuthProviderJWTVerifier{
-		secrets:     config.HMACSecrets,
+		secrets:     config.HMAC.Secrets,
 		userIDClaim: config.UserIDClaim,
 		emailClaim:  config.EmailClaim,
 		options:     authProviderJWTParserOptions(config.Issuer, config.Audience),

@@ -26,17 +26,17 @@ func NewAuthProviderJWTVerifier(config AuthProviderConfig) (*AuthProviderJWTVeri
 	}
 
 	var strategy authProviderJWTVerificationStrategy
-	switch jwtConfig.SigningMethod {
-	case authProviderSigningMethodHMAC:
+	switch {
+	case jwtConfig.HMAC != nil:
 		strategy = newHMACAuthProviderJWTVerifier(jwtConfig)
-	case authProviderSigningMethodJWKS:
-		jwksStrategy, err := newJWKSAuthProviderJWTVerifier(context.Background(), jwtConfig)
+	case jwtConfig.JWKS != nil:
+		jwksStrategy, err := newJWKSAuthProviderJWTVerifier(context.Background(), jwtConfig, *jwtConfig.JWKS)
 		if err != nil {
 			return nil, err
 		}
 		strategy = jwksStrategy
 	default:
-		return nil, errors.New("auth provider verifier has unknown signing method")
+		return nil, errors.New("auth provider verifier has no configured signing verifier")
 	}
 
 	return &AuthProviderJWTVerifier{
