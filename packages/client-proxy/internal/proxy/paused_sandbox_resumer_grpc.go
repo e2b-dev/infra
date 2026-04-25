@@ -33,6 +33,8 @@ type GrpcOAuthConfig struct {
 	TokenURL     string
 }
 
+var noopOAuthTokenSource = oauth2.StaticTokenSource(&oauth2.Token{})
+
 func (c GrpcOAuthConfig) Enabled() bool {
 	return strings.TrimSpace(c.ClientID) != "" ||
 		strings.TrimSpace(c.ClientSecret) != "" ||
@@ -41,7 +43,7 @@ func (c GrpcOAuthConfig) Enabled() bool {
 
 func (c GrpcOAuthConfig) tokenSource(ctx context.Context) (oauth2.TokenSource, error) {
 	if !c.Enabled() {
-		return nil, nil
+		return noopOAuthTokenSource, nil
 	}
 
 	if strings.TrimSpace(c.ClientID) == "" ||
@@ -128,12 +130,11 @@ func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string,
 		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataEnvdAccessToken, envdAccessToken)
 	}
 
-	if c.oauthTokenSource != nil {
-		token, tokenErr := c.oauthTokenSource.Token()
-		if tokenErr != nil {
-			return "", fmt.Errorf("get api grpc OAuth token: %w", tokenErr)
-		}
-
+	token, tokenErr := c.oauthTokenSource.Token()
+	if tokenErr != nil {
+		return "", fmt.Errorf("get api grpc OAuth token: %w", tokenErr)
+	}
+	if strings.TrimSpace(token.AccessToken) != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataAuthorization, "Bearer "+token.AccessToken)
 	}
 
