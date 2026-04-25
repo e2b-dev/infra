@@ -1,6 +1,7 @@
 package templatecache
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -417,4 +418,78 @@ func TestAliasCacheResolve_NegativeCachingFallback(t *testing.T) {
 	exists, err = redis.Exists(ctx, positiveKey).Result()
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), exists, "positive result should be cached for NULL namespace hit")
+}
+
+func TestAliasCacheResolve_IDLookupDoesNotLeakNamespace(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	ownerTeamID := testutils.CreateTestTeam(t, db)
+	ownerSlug := testutils.GetTeamSlug(t, ctx, db, ownerTeamID)
+	templateID := testutils.CreateTestTemplate(t, db, ownerTeamID)
+	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "shared-name", &ownerSlug)
+
+	cache := NewAliasCache(db.SqlcClient, redis)
+	defer cache.Close(ctx)
+
+	info, err := cache.Resolve(ctx, "shared-name", ownerSlug)
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	assert.Equal(t, ownerSlug+"/shared-name", info.MatchedIdentifier)
+
+	byID, err := cache.LookupByID(ctx, templateID)
+	require.NoError(t, err)
+	require.NotNil(t, byID)
+	assert.Equal(t, templateID, byID.MatchedIdentifier, "direct-ID entries must not carry another team's namespace")
+}
+
+func TestAliasCacheResolve_PopulatesNamespace(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "ns-alias", &teamSlug)
+
+	cache := NewAliasCache(db.SqlcClient, redis)
+	defer cache.Close(ctx)
+
+	info, err := cache.Resolve(ctx, "ns-alias", teamSlug)
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	assert.Equal(t, teamSlug+"/ns-alias", info.MatchedIdentifier)
+}
+
+func TestAliasCacheResolve_PopulatesMatchedIdentifierFromLookupKey(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	teamSlug := testutils.GetTeamSlug(t, ctx, db, teamID)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+	testutils.CreateTestTemplateAliasWithName(t, db, templateID, "cached-alias", &teamSlug)
+
+	cache := NewAliasCache(db.SqlcClient, redis)
+	defer cache.Close(ctx)
+
+	legacyCachedValue, err := json.Marshal(&AliasInfo{
+		TemplateID: templateID,
+		TeamID:     teamID,
+	})
+	require.NoError(t, err)
+
+	err = redis.Set(ctx, cache.cache.RedisKey(buildAliasKey(&teamSlug, "cached-alias")), legacyCachedValue, aliasCacheTTL).Err()
+	require.NoError(t, err)
+
+	info, err := cache.Resolve(ctx, "cached-alias", teamSlug)
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	assert.Equal(t, teamSlug+"/cached-alias", info.MatchedIdentifier)
 }

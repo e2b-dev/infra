@@ -28,9 +28,10 @@ const (
 // AliasInfo holds resolved alias information (immutable mapping data only).
 // Mutable metadata like Public is in TemplateMetadata.
 type AliasInfo struct {
-	TemplateID string    `json:"template_id"`
-	TeamID     uuid.UUID `json:"team_id"`
-	NotFound   bool      `json:"not_found"` // tombstone marker for caching negative lookups
+	TemplateID        string    `json:"template_id"`
+	TeamID            uuid.UUID `json:"team_id"`
+	MatchedIdentifier string    `json:"-"`         // derived from the current lookup key, not persisted
+	NotFound          bool      `json:"not_found"` // tombstone marker for caching negative lookups
 }
 
 var notFoundTombstone = &AliasInfo{NotFound: true}
@@ -115,7 +116,10 @@ func (c *AliasCache) lookup(ctx context.Context, namespace *string, alias string
 		return nil, ErrTemplateNotFound
 	}
 
-	return info, nil
+	resolved := *info
+	resolved.MatchedIdentifier = key
+
+	return &resolved, nil
 }
 
 // cacheByTemplateID caches info also by template ID for direct ID lookups.

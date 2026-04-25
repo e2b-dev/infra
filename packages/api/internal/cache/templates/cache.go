@@ -88,7 +88,7 @@ func (c *TemplateCache) GetByID(ctx context.Context, templateID string) (*AliasI
 
 // ResolveAliasWithMetadata chains alias resolution with metadata lookup.
 func (c *TemplateCache) ResolveAliasWithMetadata(ctx context.Context, identifier string, namespaceFallback string) (*AliasInfo, *TemplateMetadata, error) {
-	aliasInfo, err := c.aliasCache.Resolve(ctx, identifier, namespaceFallback)
+	aliasInfo, err := c.ResolveAlias(ctx, identifier, namespaceFallback)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -99,6 +99,10 @@ func (c *TemplateCache) ResolveAliasWithMetadata(ctx context.Context, identifier
 	}
 
 	return aliasInfo, metadata, nil
+}
+
+func (c *TemplateCache) GetMetadata(ctx context.Context, templateID string) (*TemplateMetadata, error) {
+	return c.metadataCache.Get(ctx, templateID)
 }
 
 // Get fetches a template with build by templateID and tag.
