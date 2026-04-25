@@ -27,41 +27,26 @@ type AuthStore[T TeamItem] interface {
 	GetTeamAPIKeyHashes(ctx context.Context, teamID uuid.UUID) ([]string, error)
 }
 
-// AuthService encapsulates the cache, store, and JWT secrets for auth validation.
+// AuthService encapsulates the cache, store, and JWT verifier for auth validation.
 type AuthService[T TeamItem] struct {
 	store                AuthStore[T]
 	teamCache            *AuthCache[T]
-	supabaseVerifier     *AuthProviderJWTVerifier
 	authProviderVerifier *AuthProviderJWTVerifier
 }
 
-// NewAuthService creates an AuthService with the given store, cache, and legacy HMAC JWT secrets.
-func NewAuthService[T TeamItem](store AuthStore[T], teamCache *AuthCache[T], jwtSecrets []string, authProviderVerifiers ...*AuthProviderJWTVerifier) *AuthService[T] {
-	supabaseVerifier, _ := NewAuthProviderJWTVerifier(NewHMACAuthProviderConfig(jwtSecrets))
-	service := &AuthService[T]{
-		store:            store,
-		teamCache:        teamCache,
-		supabaseVerifier: supabaseVerifier,
+// NewAuthService creates an AuthService with the given store, cache, and auth provider verifier.
+func NewAuthService[T TeamItem](store AuthStore[T], teamCache *AuthCache[T], authProviderVerifier *AuthProviderJWTVerifier) *AuthService[T] {
+	return &AuthService[T]{
+		store:                store,
+		teamCache:            teamCache,
+		authProviderVerifier: authProviderVerifier,
 	}
-	if len(authProviderVerifiers) > 0 {
-		service.authProviderVerifier = authProviderVerifiers[0]
-	}
-
-	return service
 }
 
 func (s *AuthService[T]) WithAuthProviderVerifier(verifier *AuthProviderJWTVerifier) *AuthService[T] {
 	s.authProviderVerifier = verifier
 
 	return s
-}
-
-func (s *AuthService[T]) supabaseTokenVerifier() *AuthProviderJWTVerifier {
-	if s.supabaseVerifier != nil {
-		return s.supabaseVerifier
-	}
-
-	return s.authProviderVerifier
 }
 
 // ValidateAPIKey verifies the API key format and fetches the associated team via cache + store.
@@ -146,9 +131,9 @@ func (s *AuthService[T]) ValidateAccessToken(ctx context.Context, ginCtx *gin.Co
 	return userID, nil
 }
 
-// ValidateSupabaseToken parses a Supabase JWT and extracts the user ID.
+// ValidateSupabaseToken validates the legacy Supabase header through the configured auth provider.
 func (s *AuthService[T]) ValidateSupabaseToken(ctx context.Context, ginCtx *gin.Context, supabaseToken string) (uuid.UUID, *APIError) {
-	return s.validateJWTWithProvider(ctx, ginCtx, s.supabaseTokenVerifier(), supabaseToken, "Supabase")
+	return s.validateJWTWithProvider(ctx, ginCtx, s.authProviderVerifier, supabaseToken, "Supabase")
 }
 
 // ValidateAuthProviderToken verifies a JWT against the configured auth provider JWKS and resolves an internal user ID.

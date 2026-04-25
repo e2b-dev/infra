@@ -194,7 +194,7 @@ func run() int {
 		return 1
 	}
 
-	authService := sharedauth.NewAuthService[*types.Team](authStore, authCache, nil, authProviderVerifier)
+	authService := sharedauth.NewAuthService[*types.Team](authStore, authCache, authProviderVerifier)
 	defer authService.Close(ctx)
 
 	teamProvisionSink, err := internalteamprovision.NewProvisionSink(
