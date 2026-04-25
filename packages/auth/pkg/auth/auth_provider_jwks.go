@@ -14,8 +14,12 @@ import (
 )
 
 type jwksAuthProviderJWTVerifier struct {
-	config AuthProviderJWTConfig
-	client *http.Client
+	jwksURL           string
+	userIDClaim       string
+	emailClaim        string
+	jwksCacheDuration time.Duration
+	parserOptions     []jwt.ParserOption
+	client            *http.Client
 
 	mu        sync.RWMutex
 	keys      map[string]any
@@ -24,25 +28,21 @@ type jwksAuthProviderJWTVerifier struct {
 
 func newJWKSAuthProviderJWTVerifier(config AuthProviderJWTConfig) *jwksAuthProviderJWTVerifier {
 	return &jwksAuthProviderJWTVerifier{
-		config: config,
-		client: &http.Client{Timeout: 10 * time.Second},
-		keys:   map[string]any{},
+		jwksURL:           config.JWKSURL,
+		userIDClaim:       config.UserIDClaim,
+		emailClaim:        config.EmailClaim,
+		jwksCacheDuration: config.JWKSCacheDuration,
+		parserOptions:     authProviderJWTParserOptions(config.Issuer, config.Audience),
+		client:            &http.Client{Timeout: 10 * time.Second},
+		keys:              map[string]any{},
 	}
 }
 
 func (v *jwksAuthProviderJWTVerifier) verify(ctx context.Context, tokenString string) (*AuthProviderIdentity, error) {
 	claims := jwt.MapClaims{}
-	options := []jwt.ParserOption{
-		jwt.WithExpirationRequired(),
-		jwt.WithIssuer(v.config.Issuer),
-	}
-	if v.config.Audience != "" {
-		options = append(options, jwt.WithAudience(v.config.Audience))
-	}
-
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
 		return v.keyForToken(ctx, token)
-	}, options...)
+	}, v.parserOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify auth provider token: %w", err)
 	}
@@ -50,7 +50,7 @@ func (v *jwksAuthProviderJWTVerifier) verify(ctx context.Context, tokenString st
 		return nil, errors.New("auth provider token is invalid")
 	}
 
-	return identityFromClaims(claims, v.config.UserIDClaim, v.config.EmailClaim), nil
+	return identityFromClaims(claims, v.userIDClaim, v.emailClaim), nil
 }
 
 func (v *jwksAuthProviderJWTVerifier) keyForToken(ctx context.Context, token *jwt.Token) (any, error) {
@@ -92,7 +92,7 @@ func (v *jwksAuthProviderJWTVerifier) cachedKey(kid string) (any, bool) {
 }
 
 func (v *jwksAuthProviderJWTVerifier) refreshKeys(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, v.config.JWKSURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, v.jwksURL, nil)
 	if err != nil {
 		return fmt.Errorf("create JWKS request: %w", err)
 	}
@@ -126,7 +126,7 @@ func (v *jwksAuthProviderJWTVerifier) refreshKeys(ctx context.Context) error {
 
 	v.mu.Lock()
 	v.keys = keys
-	v.expiresAt = time.Now().Add(v.config.JWKSCacheDuration)
+	v.expiresAt = time.Now().Add(v.jwksCacheDuration)
 	v.mu.Unlock()
 
 	return nil

@@ -12,16 +12,24 @@ import (
 )
 
 type hmacAuthProviderJWTVerifier struct {
-	config AuthProviderJWTConfig
+	secrets     []string
+	userIDClaim string
+	emailClaim  string
+	options     []jwt.ParserOption
 }
 
 func newHMACAuthProviderJWTVerifier(config AuthProviderJWTConfig) *hmacAuthProviderJWTVerifier {
-	return &hmacAuthProviderJWTVerifier{config: config}
+	return &hmacAuthProviderJWTVerifier{
+		secrets:     config.HMACSecrets,
+		userIDClaim: config.UserIDClaim,
+		emailClaim:  config.EmailClaim,
+		options:     authProviderJWTParserOptions(config.Issuer, config.Audience),
+	}
 }
 
 func (v *hmacAuthProviderJWTVerifier) verify(ctx context.Context, tokenString string) (*AuthProviderIdentity, error) {
-	errs := make([]error, 0, len(v.config.HMACSecrets))
-	for _, secret := range v.config.HMACSecrets {
+	errs := make([]error, 0, len(v.secrets))
+	for _, secret := range v.secrets {
 		if len(secret) < MinJWTSecretLength {
 			logger.L().Warn(ctx, "jwt secret is too short and will be ignored",
 				zap.Int("min_length", MinJWTSecretLength),
@@ -37,14 +45,14 @@ func (v *hmacAuthProviderJWTVerifier) verify(ctx context.Context, tokenString st
 			}
 
 			return []byte(secret), nil
-		}, authProviderJWTParserOptions(v.config)...)
+		}, v.options...)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("failed to verify auth provider HMAC token: %w", err))
 
 			continue
 		}
 		if token.Valid {
-			return identityFromClaims(claims, v.config.UserIDClaim, v.config.EmailClaim), nil
+			return identityFromClaims(claims, v.userIDClaim, v.emailClaim), nil
 		}
 	}
 

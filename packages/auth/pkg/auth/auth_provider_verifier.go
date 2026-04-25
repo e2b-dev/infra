@@ -51,13 +51,13 @@ func (v *AuthProviderJWTVerifier) Verify(ctx context.Context, tokenString string
 	return v.strategy.verify(ctx, tokenString)
 }
 
-func authProviderJWTParserOptions(config AuthProviderJWTConfig) []jwt.ParserOption {
+func authProviderJWTParserOptions(issuer, audience string) []jwt.ParserOption {
 	options := []jwt.ParserOption{jwt.WithExpirationRequired()}
-	if config.Issuer != "" {
-		options = append(options, jwt.WithIssuer(config.Issuer))
+	if issuer != "" {
+		options = append(options, jwt.WithIssuer(issuer))
 	}
-	if config.Audience != "" {
-		options = append(options, jwt.WithAudience(config.Audience))
+	if audience != "" {
+		options = append(options, jwt.WithAudience(audience))
 	}
 
 	return options
