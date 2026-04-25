@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAuthProviderJWTVerifier_Verify(t *testing.T) {
+func TestAuthProviderJWTVerifier_VerifyJWKS(t *testing.T) {
 	t.Parallel()
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -53,7 +53,7 @@ func TestAuthProviderJWTVerifier_Verify(t *testing.T) {
 	require.Equal(t, "user@example.com", identity.Email)
 }
 
-func TestAuthProviderJWTVerifier_VerifyRejectsWrongAudience(t *testing.T) {
+func TestAuthProviderJWTVerifier_VerifyJWKSRejectsWrongAudience(t *testing.T) {
 	t.Parallel()
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -84,32 +84,6 @@ func TestAuthProviderJWTVerifier_VerifyRejectsWrongAudience(t *testing.T) {
 
 	_, err = verifier.Verify(t.Context(), signedToken)
 	require.Error(t, err)
-}
-
-func TestAuthProviderJWTVerifier_VerifyHMAC(t *testing.T) {
-	t.Parallel()
-
-	const secret = "supabasejwtsecretsupabasejwtsecret"
-	verifier, err := NewAuthProviderJWTVerifier(AuthProviderConfig{
-		JWT: AuthProviderJWTConfig{
-			SigningMethod: authProviderSigningMethodHMAC,
-			HMACSecrets:   []string{"wrong-secret-wrong-secret", secret},
-		},
-	})
-	require.NoError(t, err)
-
-	userID := uuid.New()
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": userID.String(),
-		"exp": time.Now().Add(time.Hour).Unix(),
-	})
-
-	signedToken, err := token.SignedString([]byte(secret))
-	require.NoError(t, err)
-
-	identity, err := verifier.Verify(t.Context(), signedToken)
-	require.NoError(t, err)
-	require.Equal(t, userID, identity.UserID)
 }
 
 func newJWKSHTTPServer(t *testing.T, publicKey *rsa.PublicKey, keyID string) *httptest.Server {
