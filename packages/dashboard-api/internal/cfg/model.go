@@ -1,7 +1,9 @@
 package cfg
 
 import (
+	"encoding/json"
 	"errors"
+	"reflect"
 
 	"github.com/caarlos0/env/v11"
 
@@ -9,12 +11,12 @@ import (
 )
 
 type Config struct {
-	Port                       int      `env:"PORT"                                         envDefault:"3010"`
-	PostgresConnectionString   string   `env:"POSTGRES_CONNECTION_STRING,required,notEmpty"`
-	ClickhouseConnectionString string   `env:"CLICKHOUSE_CONNECTION_STRING"`
-	AdminToken                 string   `env:"ADMIN_TOKEN,required,notEmpty"`
-	SupabaseJWTSecrets         []string `env:"SUPABASE_JWT_SECRETS"`
-	AuthProvider               auth.AuthProviderConfig
+	Port                       int                     `env:"PORT"                                         envDefault:"3010"`
+	PostgresConnectionString   string                  `env:"POSTGRES_CONNECTION_STRING,required,notEmpty"`
+	ClickhouseConnectionString string                  `env:"CLICKHOUSE_CONNECTION_STRING"`
+	AdminToken                 string                  `env:"ADMIN_TOKEN,required,notEmpty"`
+	SupabaseJWTSecrets         []string                `env:"SUPABASE_JWT_SECRETS"`
+	AuthProvider               auth.AuthProviderConfig `env:"AUTH_PROVIDER_CONFIG"`
 
 	AuthDBConnectionString            string `env:"AUTH_DB_CONNECTION_STRING"`
 	AuthDBReadReplicaConnectionString string `env:"AUTH_DB_READ_REPLICA_CONNECTION_STRING"`
@@ -32,7 +34,22 @@ type Config struct {
 
 func Parse() (Config, error) {
 	var config Config
-	err := env.Parse(&config)
+	err := env.ParseWithOptions(&config, env.Options{
+		FuncMap: map[reflect.Type]env.ParserFunc{
+			reflect.TypeFor[auth.AuthProviderConfig](): func(v string) (any, error) {
+				var config auth.AuthProviderConfig
+				if v == "" {
+					return config, nil
+				}
+
+				if err := json.Unmarshal([]byte(v), &config); err != nil {
+					return nil, err
+				}
+
+				return config, nil
+			},
+		},
+	})
 
 	if config.AuthDBConnectionString == "" {
 		config.AuthDBConnectionString = config.PostgresConnectionString

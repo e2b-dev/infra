@@ -9,14 +9,7 @@ locals {
     SUPABASE_DB_CONNECTION_STRING           = var.supabase_db_connection_string
     CLICKHOUSE_CONNECTION_STRING            = var.clickhouse_connection_string
     SUPABASE_JWT_SECRETS                    = var.supabase_jwt_secrets
-    AUTH_PROVIDER_JWKS_URL                  = var.auth_provider_jwks_url
-    AUTH_PROVIDER_JWT_ISSUER                = var.auth_provider_jwt_issuer
-    AUTH_PROVIDER_JWT_AUDIENCE              = var.auth_provider_jwt_audience
-    AUTH_PROVIDER_JWT_SIGNING_METHOD        = var.auth_provider_jwt_signing_method
-    AUTH_PROVIDER_JWT_HMAC_SECRETS          = var.auth_provider_jwt_hmac_secrets
-    AUTH_PROVIDER_JWT_USER_ID_CLAIM         = var.auth_provider_jwt_user_id_claim
-    AUTH_PROVIDER_JWT_EMAIL_CLAIM           = var.auth_provider_jwt_email_claim
-    AUTH_PROVIDER_JWKS_CACHE_DURATION       = var.auth_provider_jwks_cache_duration
+    AUTH_PROVIDER_CONFIG                    = jsonencode(var.auth_provider_config)
     REDIS_URL                               = var.redis_url
     REDIS_CLUSTER_URL                       = var.redis_cluster_url
     REDIS_TLS_CA_BASE64                     = var.redis_tls_ca_base64

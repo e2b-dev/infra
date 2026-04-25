@@ -166,14 +166,7 @@ module "dashboard_api" {
   supabase_db_connection_string           = trimspace(data.google_secret_manager_secret_version.supabase_db_connection_string.secret_data)
   clickhouse_connection_string            = local.clickhouse_connection_string
   supabase_jwt_secrets                    = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
-  auth_provider_jwks_url                  = var.auth_provider_jwks_url
-  auth_provider_jwt_issuer                = var.auth_provider_jwt_issuer
-  auth_provider_jwt_audience              = var.auth_provider_jwt_audience
-  auth_provider_jwt_signing_method        = var.auth_provider_jwt_signing_method
-  auth_provider_jwt_hmac_secrets          = var.auth_provider_jwt_hmac_secrets
-  auth_provider_jwt_user_id_claim         = var.auth_provider_jwt_user_id_claim
-  auth_provider_jwt_email_claim           = var.auth_provider_jwt_email_claim
-  auth_provider_jwks_cache_duration       = var.auth_provider_jwks_cache_duration
+  auth_provider_config                    = var.auth_provider_config
   redis_url                               = local.redis_url
   redis_cluster_url                       = local.redis_cluster_url
   redis_tls_ca_base64                     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)

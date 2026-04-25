@@ -25,10 +25,12 @@ func TestAuthProviderJWTVerifier_Verify(t *testing.T) {
 	jwksServer := newJWKSHTTPServer(t, &privateKey.PublicKey, keyID)
 
 	verifier, err := NewAuthProviderJWTVerifier(AuthProviderConfig{
-		JWKSURL:           jwksServer.URL,
-		Issuer:            "https://issuer.example.com",
-		Audience:          "dashboard-api",
-		JWKSCacheDuration: time.Minute,
+		JWT: AuthProviderJWTConfig{
+			JWKSURL:           jwksServer.URL,
+			Issuer:            "https://issuer.example.com",
+			Audience:          "dashboard-api",
+			JWKSCacheDuration: time.Minute,
+		},
 	})
 	require.NoError(t, err)
 
@@ -61,9 +63,11 @@ func TestAuthProviderJWTVerifier_VerifyRejectsWrongAudience(t *testing.T) {
 	jwksServer := newJWKSHTTPServer(t, &privateKey.PublicKey, keyID)
 
 	verifier, err := NewAuthProviderJWTVerifier(AuthProviderConfig{
-		JWKSURL:  jwksServer.URL,
-		Issuer:   "https://issuer.example.com",
-		Audience: "dashboard-api",
+		JWT: AuthProviderJWTConfig{
+			JWKSURL:  jwksServer.URL,
+			Issuer:   "https://issuer.example.com",
+			Audience: "dashboard-api",
+		},
 	})
 	require.NoError(t, err)
 
@@ -87,8 +91,10 @@ func TestAuthProviderJWTVerifier_VerifyHMAC(t *testing.T) {
 
 	const secret = "supabasejwtsecretsupabasejwtsecret"
 	verifier, err := NewAuthProviderJWTVerifier(AuthProviderConfig{
-		SigningMethod: authProviderSigningMethodHMAC,
-		HMACSecrets:   []string{"wrong-secret-wrong-secret", secret},
+		JWT: AuthProviderJWTConfig{
+			SigningMethod: authProviderSigningMethodHMAC,
+			HMACSecrets:   []string{"wrong-secret-wrong-secret", secret},
+		},
 	})
 	require.NoError(t, err)
 

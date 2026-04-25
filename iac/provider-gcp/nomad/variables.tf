@@ -462,45 +462,10 @@ variable "supabase_db_connection_string_secret_version" {
   type = any
 }
 
-variable "auth_provider_jwks_url" {
-  type    = string
-  default = ""
-}
-
-variable "auth_provider_jwt_signing_method" {
-  type    = string
-  default = "JWKS"
-}
-
-variable "auth_provider_jwt_issuer" {
-  type    = string
-  default = ""
-}
-
-variable "auth_provider_jwt_audience" {
-  type    = string
-  default = ""
-}
-
-variable "auth_provider_jwt_user_id_claim" {
-  type    = string
-  default = "sub"
-}
-
-variable "auth_provider_jwt_email_claim" {
-  type    = string
-  default = "email"
-}
-
-variable "auth_provider_jwt_hmac_secrets" {
-  type      = string
+variable "auth_provider_config" {
+  type      = any
   sensitive = true
-  default   = ""
-}
-
-variable "auth_provider_jwks_cache_duration" {
-  type    = string
-  default = "5m"
+  default   = {}
 }
 
 variable "enable_auth_user_sync_background_worker" {
