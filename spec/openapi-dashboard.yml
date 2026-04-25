@@ -21,7 +21,7 @@ components:
     AuthProviderTokenAuth:
       type: http
       scheme: bearer
-      bearerFormat: JWT
+      bearerFormat: access_token
     AuthProviderTeamAuth:
       type: apiKey
       in: header

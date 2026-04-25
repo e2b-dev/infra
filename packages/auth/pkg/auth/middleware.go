@@ -169,7 +169,7 @@ func NewAccessTokenAuthenticator(validationFunc func(ctx context.Context, ginCtx
 	}
 }
 
-// NewAuthProviderTokenAuthenticator creates an authenticator for AuthProviderTokenAuth (Authorization Bearer JWT).
+// NewAuthProviderTokenAuthenticator creates an authenticator for AuthProviderTokenAuth (Authorization Bearer token).
 func NewAuthProviderTokenAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError)) Authenticator {
 	return &CommonAuthenticator[uuid.UUID]{
 		SchemeName: "AuthProviderTokenAuth",

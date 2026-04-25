@@ -325,8 +325,22 @@ func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, ginCtx *gin.C
 	return a.authService.ValidateSupabaseToken(ctx, ginCtx, supabaseToken)
 }
 
+func (a *APIStore) GetUserIDFromAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "get user id from auth provider token")
+	defer span.End()
+
+	return a.authService.ValidateAuthProviderToken(ctx, ginCtx, token)
+}
+
 func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *api.APIError) {
 	ctx, span := tracer.Start(ctx, "get team from supabase token")
+	defer span.End()
+
+	return a.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID)
+}
+
+func (a *APIStore) GetTeamFromAuthProviderToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "get team from auth provider token")
 	defer span.End()
 
 	return a.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID)

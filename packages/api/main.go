@@ -151,6 +151,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 		// Supabase headers
 		auth.HeaderSupabaseToken,
 		auth.HeaderSupabaseTeam,
+		auth.HeaderTeamID,
 		// Custom headers sent from SDK
 		"browser",
 		"lang",
@@ -171,8 +172,10 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 		[]auth.Authenticator{
 			auth.NewApiKeyAuthenticator(apiStore.GetTeamFromAPIKey),
 			auth.NewAccessTokenAuthenticator(apiStore.GetUserFromAccessToken),
+			auth.NewAuthProviderTokenAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
 			auth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromSupabaseToken),
 			auth.NewSupabaseTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
+			auth.NewAuthProviderTeamAuthenticator(apiStore.GetTeamFromAuthProviderToken),
 			auth.NewAdminTokenAuthenticator(config.AdminToken),
 		},
 		metricsMiddleware.SetProcessingStartTime,
