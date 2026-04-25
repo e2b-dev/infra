@@ -3,20 +3,16 @@ package auth
 import (
 	"context"
 	"errors"
-	"net/http"
-	"sync"
-	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
-type AuthProviderJWTVerifier struct {
-	config AuthProviderJWTConfig
-	client *http.Client
+type authProviderJWTVerificationStrategy interface {
+	verify(ctx context.Context, tokenString string) (*AuthProviderIdentity, error)
+}
 
-	mu        sync.RWMutex
-	keys      map[string]any
-	expiresAt time.Time
+type AuthProviderJWTVerifier struct {
+	strategy authProviderJWTVerificationStrategy
 }
 
 func NewAuthProviderJWTVerifier(config AuthProviderConfig) (*AuthProviderJWTVerifier, error) {
@@ -28,10 +24,18 @@ func NewAuthProviderJWTVerifier(config AuthProviderConfig) (*AuthProviderJWTVeri
 		return nil, nil
 	}
 
+	var strategy authProviderJWTVerificationStrategy
+	switch jwtConfig.SigningMethod {
+	case authProviderSigningMethodHMAC:
+		strategy = newHMACAuthProviderJWTVerifier(jwtConfig)
+	case authProviderSigningMethodJWKS:
+		strategy = newJWKSAuthProviderJWTVerifier(jwtConfig)
+	default:
+		return nil, errors.New("auth provider verifier has unknown signing method")
+	}
+
 	return &AuthProviderJWTVerifier{
-		config: jwtConfig,
-		client: &http.Client{Timeout: 10 * time.Second},
-		keys:   map[string]any{},
+		strategy: strategy,
 	}, nil
 }
 
@@ -40,20 +44,20 @@ func (v *AuthProviderJWTVerifier) Verify(ctx context.Context, tokenString string
 		return nil, errors.New("auth provider verifier is not configured")
 	}
 
-	if v.config.SigningMethod == authProviderSigningMethodHMAC {
-		return v.verifyHMAC(ctx, tokenString)
+	if v.strategy == nil {
+		return nil, errors.New("auth provider verifier strategy is not configured")
 	}
 
-	return v.verifyJWKS(ctx, tokenString)
+	return v.strategy.verify(ctx, tokenString)
 }
 
-func (v *AuthProviderJWTVerifier) parserOptions() []jwt.ParserOption {
+func authProviderJWTParserOptions(config AuthProviderJWTConfig) []jwt.ParserOption {
 	options := []jwt.ParserOption{jwt.WithExpirationRequired()}
-	if v.config.Issuer != "" {
-		options = append(options, jwt.WithIssuer(v.config.Issuer))
+	if config.Issuer != "" {
+		options = append(options, jwt.WithIssuer(config.Issuer))
 	}
-	if v.config.Audience != "" {
-		options = append(options, jwt.WithAudience(v.config.Audience))
+	if config.Audience != "" {
+		options = append(options, jwt.WithAudience(config.Audience))
 	}
 
 	return options

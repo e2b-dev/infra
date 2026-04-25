@@ -11,7 +11,15 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func (v *AuthProviderJWTVerifier) verifyHMAC(ctx context.Context, tokenString string) (*AuthProviderIdentity, error) {
+type hmacAuthProviderJWTVerifier struct {
+	config AuthProviderJWTConfig
+}
+
+func newHMACAuthProviderJWTVerifier(config AuthProviderJWTConfig) *hmacAuthProviderJWTVerifier {
+	return &hmacAuthProviderJWTVerifier{config: config}
+}
+
+func (v *hmacAuthProviderJWTVerifier) verify(ctx context.Context, tokenString string) (*AuthProviderIdentity, error) {
 	errs := make([]error, 0, len(v.config.HMACSecrets))
 	for _, secret := range v.config.HMACSecrets {
 		if len(secret) < MinJWTSecretLength {
@@ -29,7 +37,7 @@ func (v *AuthProviderJWTVerifier) verifyHMAC(ctx context.Context, tokenString st
 			}
 
 			return []byte(secret), nil
-		}, v.parserOptions()...)
+		}, authProviderJWTParserOptions(v.config)...)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("failed to verify auth provider HMAC token: %w", err))
 
