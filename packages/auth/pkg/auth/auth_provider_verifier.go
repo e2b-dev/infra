@@ -9,6 +9,7 @@ import (
 
 type authProviderJWTVerificationStrategy interface {
 	verify(ctx context.Context, tokenString string) (*AuthProviderIdentity, error)
+	close()
 }
 
 type AuthProviderJWTVerifier struct {
@@ -29,7 +30,11 @@ func NewAuthProviderJWTVerifier(config AuthProviderConfig) (*AuthProviderJWTVeri
 	case authProviderSigningMethodHMAC:
 		strategy = newHMACAuthProviderJWTVerifier(jwtConfig)
 	case authProviderSigningMethodJWKS:
-		strategy = newJWKSAuthProviderJWTVerifier(jwtConfig)
+		jwksStrategy, err := newJWKSAuthProviderJWTVerifier(context.Background(), jwtConfig)
+		if err != nil {
+			return nil, err
+		}
+		strategy = jwksStrategy
 	default:
 		return nil, errors.New("auth provider verifier has unknown signing method")
 	}
@@ -49,6 +54,14 @@ func (v *AuthProviderJWTVerifier) Verify(ctx context.Context, tokenString string
 	}
 
 	return v.strategy.verify(ctx, tokenString)
+}
+
+func (v *AuthProviderJWTVerifier) Close() {
+	if v == nil || v.strategy == nil {
+		return
+	}
+
+	v.strategy.close()
 }
 
 func authProviderJWTParserOptions(issuer, audience string) []jwt.ParserOption {

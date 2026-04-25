@@ -62,3 +62,5 @@ func (v *hmacAuthProviderJWTVerifier) verify(ctx context.Context, tokenString st
 
 	return nil, errors.Join(errs...)
 }
+
+func (v *hmacAuthProviderJWTVerifier) close() {}
