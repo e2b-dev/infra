@@ -129,11 +129,9 @@ func (c *AliasCache) cacheByTemplateID(ctx context.Context, originalKey string, 
 	}
 
 	idKey := buildAliasKey(nil, info.TemplateID)
-	if idKey == originalKey {
-		return
+	if idKey != originalKey {
+		c.cache.Set(ctx, idKey, info)
 	}
-
-	c.cache.Set(ctx, idKey, info)
 }
 
 func (c *AliasCache) fetchFromDB(ctx context.Context, key string) (info *AliasInfo, err error) {

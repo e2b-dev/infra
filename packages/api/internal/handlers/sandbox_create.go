@@ -92,8 +92,24 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	env, build, err := a.templateCache.Get(ctx, aliasInfo.TemplateID, tag, teamInfo.Team.ID, clusterID)
 	if err != nil {
-		err = a.templateCache.TranslateGetError(ctx, err, aliasInfo, teamInfo.Team.ID)
-		apiErr := templatecache.ErrorToAPIErrorWithTemplate(err, aliasInfo.MatchedIdentifier, aliasInfo.TemplateID, tag)
+		templateMetadata, metadataErr := a.templateCache.GetMetadata(ctx, aliasInfo.TemplateID)
+		if metadataErr != nil {
+			apiErr := templatecache.ErrorToAPIError(metadataErr, identifier)
+			telemetry.ReportErrorByCode(ctx, apiErr.Code, "error when getting template metadata", apiErr.Err, telemetry.WithTemplateID(aliasInfo.TemplateID))
+			a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+
+			return
+		}
+
+		ref := templatecache.TemplateRef{
+			Subject:    "template",
+			Identifier: aliasInfo.MatchedIdentifier,
+			TemplateID: aliasInfo.TemplateID,
+			Tag:        tag,
+			Visible:    aliasInfo.TeamID == teamInfo.Team.ID || templateMetadata.Public,
+		}
+
+		apiErr := ref.APIError(err)
 		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error when getting template", apiErr.Err, telemetry.WithTemplateID(aliasInfo.TemplateID))
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 

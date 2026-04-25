@@ -88,7 +88,7 @@ func (c *TemplateCache) GetByID(ctx context.Context, templateID string) (*AliasI
 
 // ResolveAliasWithMetadata chains alias resolution with metadata lookup.
 func (c *TemplateCache) ResolveAliasWithMetadata(ctx context.Context, identifier string, namespaceFallback string) (*AliasInfo, *TemplateMetadata, error) {
-	aliasInfo, err := c.aliasCache.Resolve(ctx, identifier, namespaceFallback)
+	aliasInfo, err := c.ResolveAlias(ctx, identifier, namespaceFallback)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -101,23 +101,8 @@ func (c *TemplateCache) ResolveAliasWithMetadata(ctx context.Context, identifier
 	return aliasInfo, metadata, nil
 }
 
-// TranslateGetError upgrades a generic not-found from Get to the tag-specific
-// variant only for callers who are allowed to know the template exists.
-func (c *TemplateCache) TranslateGetError(ctx context.Context, err error, aliasInfo *AliasInfo, teamID uuid.UUID) error {
-	if !errors.Is(err, ErrTemplateNotFound) || aliasInfo == nil {
-		return err
-	}
-
-	if aliasInfo.TeamID == teamID {
-		return ErrTemplateTagNotFound
-	}
-
-	metadata, metadataErr := c.metadataCache.Get(ctx, aliasInfo.TemplateID)
-	if metadataErr == nil && metadata.Public {
-		return ErrTemplateTagNotFound
-	}
-
-	return ErrTemplateNotFoundUndisclosed
+func (c *TemplateCache) GetMetadata(ctx context.Context, templateID string) (*TemplateMetadata, error) {
+	return c.metadataCache.Get(ctx, templateID)
 }
 
 // Get fetches a template with build by templateID and tag.

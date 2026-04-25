@@ -8,80 +8,87 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
 
-type undisclosedTemplateNotFoundError struct{}
-
-func (undisclosedTemplateNotFoundError) Error() string {
-	return ErrTemplateNotFound.Error()
-}
-
-func (undisclosedTemplateNotFoundError) Is(target error) bool {
-	return target == ErrTemplateNotFound
-}
-
 var (
-	ErrTemplateNotFound            = errors.New("template not found")
-	ErrTemplateNotFoundUndisclosed = undisclosedTemplateNotFoundError{}
-	ErrTemplateTagNotFound         = errors.New("template tag not found")
-	ErrAccessDenied                = errors.New("access denied")
-	ErrClusterMismatch             = errors.New("template not available in cluster")
+	ErrTemplateNotFound = errors.New("template not found")
+	ErrAccessDenied     = errors.New("access denied")
+	ErrClusterMismatch  = errors.New("template not available in cluster")
 )
 
-func ErrorToAPIError(err error, identifier string) *api.APIError {
-	return ErrorToAPIErrorWithTemplate(err, identifier, "", nil)
+type TemplateRef struct {
+	Subject    string
+	Identifier string
+	TemplateID string
+	Tag        *string
+	Visible    bool
 }
 
-func ErrorToAPIErrorWithTemplate(err error, identifier, templateID string, tag *string) *api.APIError {
-	label := formatTemplateRef(identifier, templateID)
+func ErrorToAPIError(err error, fallbackIdentifier string) *api.APIError {
+	return ToAPIError(err, "template", fallbackIdentifier)
+}
 
+func ToAPIError(err error, subject, identifier string) *api.APIError {
 	switch {
-	case errors.Is(err, ErrTemplateNotFoundUndisclosed):
-		return &api.APIError{
-			Code:      http.StatusNotFound,
-			ClientMsg: fmt.Sprintf("template '%s' not found", identifier),
-			Err:       err,
-		}
-	case errors.Is(err, ErrTemplateTagNotFound):
-		clientMsg := fmt.Sprintf("template %s has no ready build", label)
-		if tag != nil {
-			clientMsg = fmt.Sprintf("template %s with tag '%s' not found", label, *tag)
-		}
-
-		return &api.APIError{
-			Code:      http.StatusNotFound,
-			ClientMsg: clientMsg,
-			Err:       err,
-		}
 	case errors.Is(err, ErrTemplateNotFound):
 		return &api.APIError{
 			Code:      http.StatusNotFound,
-			ClientMsg: fmt.Sprintf("template %s not found", label),
+			ClientMsg: fmt.Sprintf("%s not found", formatTemplateRef(subject, identifier, "")),
 			Err:       err,
 		}
 	case errors.Is(err, ErrAccessDenied):
 		return &api.APIError{
 			Code:      http.StatusForbidden,
-			ClientMsg: fmt.Sprintf("you don't have access to template %s", label),
+			ClientMsg: fmt.Sprintf("you don't have access to %s", formatTemplateRef(subject, identifier, "")),
 			Err:       err,
 		}
 	case errors.Is(err, ErrClusterMismatch):
 		return &api.APIError{
 			Code:      http.StatusBadRequest,
-			ClientMsg: fmt.Sprintf("template %s is not available in the requested cluster", label),
+			ClientMsg: fmt.Sprintf("%s is not available in the requested cluster", formatTemplateRef(subject, identifier, "")),
 			Err:       err,
 		}
-	default:
-		return &api.APIError{
-			Code:      http.StatusInternalServerError,
-			ClientMsg: fmt.Sprintf("error resolving template %s", label),
-			Err:       err,
-		}
+	}
+
+	return &api.APIError{
+		Code:      http.StatusInternalServerError,
+		ClientMsg: fmt.Sprintf("error resolving %s", formatTemplateRef(subject, identifier, "")),
+		Err:       err,
 	}
 }
 
-func formatTemplateRef(identifier, templateID string) string {
-	if templateID == "" || templateID == identifier {
-		return "'" + identifier + "'"
+func (r TemplateRef) APIError(err error) *api.APIError {
+	if !errors.Is(err, ErrTemplateNotFound) {
+		return ToAPIError(err, r.Subject, r.Identifier)
 	}
 
-	return fmt.Sprintf("'%s' (%s)", identifier, templateID)
+	if !r.Visible {
+		return &api.APIError{
+			Code:      http.StatusNotFound,
+			ClientMsg: fmt.Sprintf("%s not found", formatTemplateRef(r.Subject, r.Identifier, "")),
+			Err:       err,
+		}
+	}
+
+	label := formatTemplateRef(r.Subject, r.Identifier, r.TemplateID)
+	clientMsg := fmt.Sprintf("%s has no ready build", label)
+	if r.Tag != nil {
+		clientMsg = fmt.Sprintf("%s with tag '%s' not found", label, *r.Tag)
+	}
+
+	return &api.APIError{
+		Code:      http.StatusNotFound,
+		ClientMsg: clientMsg,
+		Err:       err,
+	}
+}
+
+func formatTemplateRef(subject, identifier, templateID string) string {
+	if subject == "" {
+		subject = "template"
+	}
+
+	if templateID == "" || templateID == identifier {
+		return fmt.Sprintf("%s '%s'", subject, identifier)
+	}
+
+	return fmt.Sprintf("%s '%s' (%s)", subject, identifier, templateID)
 }

@@ -1,7 +1,6 @@
 package template_manager
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 
@@ -58,14 +57,12 @@ func TestSetTemplateSource_FromTemplateMissingBuildReturnsNotFound(t *testing.T)
 		name          string
 		requesterTeam string
 		public        bool
-		wantErr       error
 		wantMessage   func(ownerSlug, alias, templateID string) string
 	}{
 		{
 			name:          "owner gets tag-specific not found",
 			requesterTeam: "owner",
 			public:        false,
-			wantErr:       templatecache.ErrTemplateTagNotFound,
 			wantMessage: func(ownerSlug, alias, templateID string) string {
 				return fmt.Sprintf(
 					"base template '%s' (%s) with tag 'v2' not found",
@@ -78,7 +75,6 @@ func TestSetTemplateSource_FromTemplateMissingBuildReturnsNotFound(t *testing.T)
 			name:          "foreign team gets tag-specific not found for public template",
 			requesterTeam: "foreign",
 			public:        true,
-			wantErr:       templatecache.ErrTemplateTagNotFound,
 			wantMessage: func(ownerSlug, alias, templateID string) string {
 				return fmt.Sprintf(
 					"base template '%s' (%s) with tag 'v2' not found",
@@ -91,7 +87,6 @@ func TestSetTemplateSource_FromTemplateMissingBuildReturnsNotFound(t *testing.T)
 			name:          "foreign team gets generic not found for private template",
 			requesterTeam: "foreign",
 			public:        false,
-			wantErr:       templatecache.ErrTemplateNotFoundUndisclosed,
 			wantMessage: func(ownerSlug, alias, _ string) string {
 				return fmt.Sprintf("base template '%s' not found", id.WithNamespace(ownerSlug, alias))
 			},
@@ -141,10 +136,6 @@ func TestSetTemplateSource_FromTemplateMissingBuildReturnsNotFound(t *testing.T)
 
 			var fromTemplateErr *FromTemplateError
 			require.ErrorAs(t, err, &fromTemplateErr)
-			require.ErrorIs(t, err, tt.wantErr)
-			if errors.Is(tt.wantErr, templatecache.ErrTemplateNotFound) {
-				require.ErrorIs(t, err, templatecache.ErrTemplateNotFound)
-			}
 
 			assert.Equal(t, tt.wantMessage(ownerTeamSlug, "base-template-missing", templateID), err.Error())
 			assert.Nil(t, template.GetFromTemplate())

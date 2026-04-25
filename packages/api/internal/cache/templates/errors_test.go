@@ -8,27 +8,53 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestErrorToAPIError_TagNotFound_WithTag(t *testing.T) {
+func TestTemplateRef_APIError_MissingBuildWithTag(t *testing.T) {
 	t.Parallel()
 
 	tag := "v2"
-	apiErr := ErrorToAPIErrorWithTemplate(ErrTemplateTagNotFound, "mytemplate", "tmpl-abc", &tag)
+	apiErr := TemplateRef{
+		Subject:    "template",
+		Identifier: "mytemplate",
+		TemplateID: "tmpl-abc",
+		Tag:        &tag,
+		Visible:    true,
+	}.APIError(ErrTemplateNotFound)
 
 	assert.Equal(t, http.StatusNotFound, apiErr.Code)
 	assert.Equal(t, "template 'mytemplate' (tmpl-abc) with tag 'v2' not found", apiErr.ClientMsg)
-	assert.ErrorIs(t, apiErr.Err, ErrTemplateTagNotFound)
 }
 
-func TestErrorToAPIError_TagNotFound_WithoutTag(t *testing.T) {
+func TestTemplateRef_APIError_MissingBuildWithoutTag(t *testing.T) {
 	t.Parallel()
 
-	apiErr := ErrorToAPIErrorWithTemplate(ErrTemplateTagNotFound, "mytemplate", "tmpl-abc", nil)
+	apiErr := TemplateRef{
+		Subject:    "template",
+		Identifier: "mytemplate",
+		TemplateID: "tmpl-abc",
+		Visible:    true,
+	}.APIError(ErrTemplateNotFound)
 
 	assert.Equal(t, http.StatusNotFound, apiErr.Code)
 	assert.Equal(t, "template 'mytemplate' (tmpl-abc) has no ready build", apiErr.ClientMsg)
 }
 
-func TestErrorToAPIError_TemplateNotFound_IdentifierOnly(t *testing.T) {
+func TestTemplateRef_APIError_HiddenTemplate(t *testing.T) {
+	t.Parallel()
+
+	tag := "v2"
+	apiErr := TemplateRef{
+		Subject:    "template",
+		Identifier: "mytemplate",
+		TemplateID: "tmpl-abc",
+		Tag:        &tag,
+		Visible:    false,
+	}.APIError(ErrTemplateNotFound)
+
+	assert.Equal(t, http.StatusNotFound, apiErr.Code)
+	assert.Equal(t, "template 'mytemplate' not found", apiErr.ClientMsg)
+}
+
+func TestErrorToAPIError_TemplateNotFound(t *testing.T) {
 	t.Parallel()
 
 	apiErr := ErrorToAPIError(ErrTemplateNotFound, "mytemplate")
@@ -37,41 +63,51 @@ func TestErrorToAPIError_TemplateNotFound_IdentifierOnly(t *testing.T) {
 	assert.Equal(t, "template 'mytemplate' not found", apiErr.ClientMsg)
 }
 
-func TestErrorToAPIError_TemplateNotFound_UndisclosedOmitsTemplateID(t *testing.T) {
-	t.Parallel()
-
-	apiErr := ErrorToAPIErrorWithTemplate(ErrTemplateNotFoundUndisclosed, "mytemplate", "tmpl-abc", nil)
-
-	assert.Equal(t, http.StatusNotFound, apiErr.Code)
-	assert.Equal(t, "template 'mytemplate' not found", apiErr.ClientMsg)
-	assert.ErrorIs(t, apiErr.Err, ErrTemplateNotFoundUndisclosed)
-	assert.ErrorIs(t, apiErr.Err, ErrTemplateNotFound)
-}
-
 func TestErrorToAPIError_FormatTemplateRef_IdentifierEqualsTemplateID(t *testing.T) {
 	t.Parallel()
 
-	apiErr := ErrorToAPIErrorWithTemplate(ErrTemplateNotFound, "tmpl-abc", "tmpl-abc", nil)
+	apiErr := TemplateRef{
+		Subject:    "template",
+		Identifier: "tmpl-abc",
+		TemplateID: "tmpl-abc",
+		Visible:    true,
+	}.APIError(ErrTemplateNotFound)
 
-	assert.Equal(t, "template 'tmpl-abc' not found", apiErr.ClientMsg)
+	assert.Equal(t, "template 'tmpl-abc' has no ready build", apiErr.ClientMsg)
 }
 
 func TestErrorToAPIError_AccessDenied(t *testing.T) {
 	t.Parallel()
 
-	apiErr := ErrorToAPIErrorWithTemplate(ErrAccessDenied, "mytemplate", "tmpl-abc", nil)
+	apiErr := ToAPIError(ErrAccessDenied, "template", "mytemplate")
 
 	assert.Equal(t, http.StatusForbidden, apiErr.Code)
-	assert.Equal(t, "you don't have access to template 'mytemplate' (tmpl-abc)", apiErr.ClientMsg)
+	assert.Equal(t, "you don't have access to template 'mytemplate'", apiErr.ClientMsg)
 }
 
 func TestErrorToAPIError_ClusterMismatch(t *testing.T) {
 	t.Parallel()
 
-	apiErr := ErrorToAPIErrorWithTemplate(ErrClusterMismatch, "mytemplate", "tmpl-abc", nil)
+	apiErr := ToAPIError(ErrClusterMismatch, "template", "mytemplate")
 
 	assert.Equal(t, http.StatusBadRequest, apiErr.Code)
-	assert.Equal(t, "template 'mytemplate' (tmpl-abc) is not available in the requested cluster", apiErr.ClientMsg)
+	assert.Equal(t, "template 'mytemplate' is not available in the requested cluster", apiErr.ClientMsg)
+}
+
+func TestTemplateRef_APIError_BaseTemplateUsesSubject(t *testing.T) {
+	t.Parallel()
+
+	tag := "v2"
+	apiErr := TemplateRef{
+		Subject:    "base template",
+		Identifier: "mytemplate",
+		TemplateID: "tmpl-abc",
+		Tag:        &tag,
+		Visible:    true,
+	}.APIError(ErrTemplateNotFound)
+
+	assert.Equal(t, http.StatusNotFound, apiErr.Code)
+	assert.Equal(t, "base template 'mytemplate' (tmpl-abc) with tag 'v2' not found", apiErr.ClientMsg)
 }
 
 func TestErrorToAPIError_Unknown(t *testing.T) {

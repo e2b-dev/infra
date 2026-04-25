@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
@@ -34,15 +33,6 @@ func (e *FromTemplateError) Error() string {
 
 func (e *FromTemplateError) Unwrap() error {
 	return e.err
-}
-
-func newFromTemplateAPIError(err error, identifier, templateID string, tag *string) *FromTemplateError {
-	apiErr := templatecache.ErrorToAPIErrorWithTemplate(err, identifier, templateID, tag)
-
-	return &FromTemplateError{
-		err:     err,
-		message: strings.Replace(apiErr.ClientMsg, "template ", "base template ", 1),
-	}
 }
 
 func (tm *TemplateManager) CreateTemplate(
@@ -313,19 +303,34 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 			}
 		}
 
-		// Step 1: Resolve alias to template ID (using cache with fallback for promoted templates).
+		// Step 1: Resolve alias to template ID (using cache with fallback for promoted templates)
 		aliasInfo, metadata, err := tm.templateCache.ResolveAliasWithMetadata(ctx, identifier, teamSlug)
 		if err != nil {
-			return newFromTemplateAPIError(err, identifier, "", nil)
+			apiErr := templatecache.ToAPIError(err, "base template", identifier)
+
+			return &FromTemplateError{
+				err:     err,
+				message: apiErr.ClientMsg,
+			}
 		}
 
-		// Step 2: Get template with build by ID, then translate generic not-found
-		// into the same user-visible shape used by sandbox creation.
+		ref := templatecache.TemplateRef{
+			Subject:    "base template",
+			Identifier: aliasInfo.MatchedIdentifier,
+			TemplateID: aliasInfo.TemplateID,
+			Tag:        tag,
+			Visible:    aliasInfo.TeamID == teamID || metadata.Public,
+		}
+
+		// Step 2: Get template with build by ID
 		_, build, err := tm.templateCache.Get(ctx, aliasInfo.TemplateID, tag, teamID, metadata.ClusterID)
 		if err != nil {
-			err = tm.templateCache.TranslateGetError(ctx, err, aliasInfo, teamID)
+			apiErr := ref.APIError(err)
 
-			return newFromTemplateAPIError(err, aliasInfo.MatchedIdentifier, aliasInfo.TemplateID, tag)
+			return &FromTemplateError{
+				err:     err,
+				message: apiErr.ClientMsg,
+			}
 		}
 
 		template.Source = &templatemanagergrpc.TemplateConfig_FromTemplate{
