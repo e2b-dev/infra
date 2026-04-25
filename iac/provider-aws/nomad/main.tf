@@ -123,7 +123,6 @@ module "api" {
   port_name                      = "api"
   port_number                    = var.api_port
   api_grpc_port                  = var.api_grpc_port
-  api_public_grpc_port           = var.api_public_grpc_port
   environment                    = var.environment
   api_docker_image               = data.aws_ecr_image.api.image_uri
   postgres_connection_string     = var.postgres_connection_string

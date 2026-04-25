@@ -44,11 +44,6 @@ variable "api_grpc_port" {
   default = 5009
 }
 
-variable "api_public_grpc_port" {
-  type    = number
-  default = 5109
-}
-
 variable "api_server_machine_type" {
   type    = string
   default = "t3.xlarge"

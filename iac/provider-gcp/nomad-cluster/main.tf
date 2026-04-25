@@ -113,7 +113,6 @@ module "network" {
   ingress_port                            = var.ingress_port
   api_port                                = var.api_port
   api_grpc_port                           = var.api_grpc_port
-  api_public_grpc_port                    = var.api_public_grpc_port
   docker_reverse_proxy_port               = var.docker_reverse_proxy_port
   network_name                            = var.network_name
   domain_name                             = var.domain_name

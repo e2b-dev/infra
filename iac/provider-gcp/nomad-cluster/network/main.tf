@@ -66,21 +66,6 @@ locals {
       }
       groups = [{ group = var.api_instance_group }]
     }
-    api-grpc = {
-      protocol                        = "H2C"
-      port                            = var.api_public_grpc_port
-      port_name                       = "api-grpc-public"
-      timeout_sec                     = 80
-      connection_draining_timeout_sec = 1
-      http_health_check = {
-        protocol           = "HTTP"
-        request_path       = var.api_port.health_path
-        port               = var.api_port.port
-        timeout_sec        = 3
-        check_interval_sec = 3
-      }
-      groups = [{ group = var.api_instance_group }]
-    }
     docker-reverse-proxy = {
       protocol                        = "HTTP"
       port                            = var.docker_reverse_proxy_port.port
@@ -267,7 +252,7 @@ resource "google_compute_url_map" "orch_map" {
 
   host_rule {
     hosts        = concat(["api-grpc.${var.domain_name}"], [for d in var.additional_domains : "api-grpc.${d}"])
-    path_matcher = "api-grpc-paths"
+    path_matcher = "api-grpc-ingress-paths"
   }
 
   host_rule {
@@ -315,8 +300,8 @@ resource "google_compute_url_map" "orch_map" {
   }
 
   path_matcher {
-    name            = "api-grpc-paths"
-    default_service = google_compute_backend_service.default["api-grpc"].self_link
+    name            = "api-grpc-ingress-paths"
+    default_service = google_compute_backend_service.ingress_grpc.self_link
   }
 
   path_matcher {
@@ -491,10 +476,6 @@ resource "google_compute_firewall" "default-hc" {
     ports    = [var.ingress_port.port]
   }
 
-  allow {
-    protocol = "tcp"
-    ports    = [var.api_public_grpc_port]
-  }
 }
 
 resource "google_compute_firewall" "client_proxy_firewall_ingress" {
@@ -629,35 +610,6 @@ resource "google_compute_security_policy_rule" "api-throttling-ip" {
   }
 
   description = "Requests to API from IP address"
-}
-
-resource "google_compute_security_policy_rule" "api-grpc-throttling-client-proxy-auth" {
-  security_policy = google_compute_security_policy.default["api-grpc"].name
-  action          = "throttle"
-  priority        = "300"
-  match {
-    versioned_expr = "SRC_IPS_V1"
-    config {
-      src_ip_ranges = ["*"]
-    }
-  }
-
-  rate_limit_options {
-    conform_action = "allow"
-    exceed_action  = "deny(429)"
-
-    enforce_on_key_configs {
-      enforce_on_key_name = "x-e2b-client-proxy-auth"
-      enforce_on_key_type = "HTTP_HEADER"
-    }
-
-    rate_limit_threshold {
-      count        = 600
-      interval_sec = 60
-    }
-  }
-
-  description = "ResumeSandbox gRPC calls per client-proxy auth token"
 }
 
 resource "google_compute_security_policy_rule" "sandbox-throttling-host" {

@@ -23,9 +23,7 @@ job "api" {
         static = "${api_grpc_port}"
       }
 
-      port "grpc-public" {
-        static = "${api_public_grpc_port}"
-      }
+      port "grpc_public" {}
 
       %{ if prevent_colocation }
       port "scheduling-block" {
@@ -80,7 +78,7 @@ job "api" {
 
     service {
       name = "api-grpc-public"
-      port = "grpc-public"
+      port = "grpc_public"
       task = "start"
 
       tags = [
@@ -97,7 +95,7 @@ job "api" {
         name     = "grpc-public"
         interval = "3s"
         timeout  = "3s"
-        port     = "grpc-public"
+        port     = "grpc_public"
       }
     }
 
@@ -142,7 +140,7 @@ job "api" {
         NOMAD_TOKEN                    = "${nomad_acl_token}"
         ORCHESTRATOR_PORT              = "${orchestrator_port}"
         API_GRPC_PORT                  = "${api_grpc_port}"
-        API_PUBLIC_GRPC_PORT           = "${api_public_grpc_port}"
+        API_PUBLIC_GRPC_PORT           = "$${NOMAD_PORT_grpc_public}"
         ADMIN_TOKEN                    = "${admin_token}"
         SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
 
@@ -192,7 +190,7 @@ job "api" {
       config {
         network_mode = "host"
         image        = "${api_docker_image}"
-        ports        = ["${port_name}"]
+        ports        = ["${port_name}", "grpc_public"]
         args         = [
           "--port", "${port_number}",
         ]
