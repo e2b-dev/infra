@@ -49,7 +49,6 @@ func (a *APIStore) startSandbox(
 }
 
 // startSandboxInternal starts the sandbox and returns the internal sandbox model (includes routing info).
-// Analytics emission is performed in Orchestrator.handleNewlyCreatedSandbox, gated on actual creation.
 func (a *APIStore) startSandboxInternal(
 	ctx context.Context,
 	sandboxID string,

@@ -76,10 +76,6 @@ func (o *Orchestrator) analyticsInsert(ctx context.Context, sandbox sandbox.Sand
 }
 
 func (o *Orchestrator) emitCreatedInstancePosthog(ctx context.Context, sbx sandbox.Sandbox, meta sandbox.CreationMetadata) {
-	if o.posthogClient == nil {
-		return
-	}
-
 	o.posthogClient.IdentifyAnalyticsTeam(ctx, sbx.TeamID.String(), meta.TeamName)
 	properties := o.posthogClient.GetPackageToPosthogProperties(&meta.RequestHeader)
 

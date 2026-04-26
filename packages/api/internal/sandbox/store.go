@@ -14,10 +14,6 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
-// CreationMetadata is the per-request data that AsyncNewlyCreatedSandbox needs
-// for analytics emission. Passing a non-nil pointer to Store.Add gates emission
-// of both the PostHog `created_instance` event and the analytics-collector
-// `InstanceStarted` event.
 type CreationMetadata struct {
 	IsResume         bool
 	TeamName         string
