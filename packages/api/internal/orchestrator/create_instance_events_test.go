@@ -64,7 +64,7 @@ func newOrchestratorWithCounter(t *testing.T) (*Orchestrator, *eventCounter) {
 		},
 	)
 
-	meter := noop.NewMeterProvider().Meter("test")
+	meter := noop.NewMeterProvider().Meter("github.com/e2b-dev/infra/packages/api/internal/orchestrator")
 	counter, _ := meter.Int64Counter("test-created")
 
 	ffClient, err := featureflags.NewClientWithDatasource(ldtestdata.DataSource())
