@@ -53,10 +53,6 @@ resource "google_compute_backend_service" "ingress" {
   backend {
     group = var.api_instance_group
   }
-
-  backend {
-    group = var.api_instance_group_regional
-  }
 }
 
 resource "google_compute_security_policy" "ingress" {

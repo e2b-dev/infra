@@ -122,9 +122,8 @@ module "network" {
   client_proxy_port        = var.client_proxy_port
   client_proxy_health_port = var.client_proxy_health_port
 
-  api_instance_group          = google_compute_instance_group_manager.api_pool.instance_group
-  api_instance_group_regional = module.api.instance_group
-  server_instance_group       = google_compute_region_instance_group_manager.server_pool.instance_group
+  api_instance_group    = google_compute_instance_group_manager.api_pool.instance_group
+  server_instance_group = google_compute_region_instance_group_manager.server_pool.instance_group
 
   nomad_port = var.nomad_port
 
@@ -132,47 +131,6 @@ module "network" {
 
   labels = var.labels
   prefix = var.prefix
-}
-
-module "api" {
-  source = "../modules/nodepool-api"
-
-  cluster_name   = "${var.prefix}orch-api"
-  cluster_size   = var.api_cluster_size
-  machine_type   = var.api_machine_type
-  image_family   = var.api_image_family
-  boot_disk_type = var.api_boot_disk_type
-  api_use_nat    = var.api_use_nat
-
-  client_proxy_health_port  = var.client_proxy_health_port
-  client_proxy_port         = var.client_proxy_port
-  api_port                  = var.api_port
-  ingress_port              = var.ingress_port
-  docker_reverse_proxy_port = var.docker_reverse_proxy_port
-
-  gcp_region                   = var.gcp_region
-  gcp_zone                     = var.gcp_zone
-  network_name                 = var.network_name
-  cluster_tag_name             = var.cluster_tag_name
-  google_service_account_email = var.google_service_account_email
-  google_service_account_key   = var.google_service_account_key
-
-  nomad_port                               = var.nomad_port
-  consul_acl_token_secret                  = var.consul_acl_token_secret
-  consul_gossip_encryption_key_secret_data = google_secret_manager_secret_version.consul_gossip_encryption_key.secret_data
-  consul_dns_request_token_secret_data     = google_secret_manager_secret_version.consul_dns_request_token.secret_data
-  node_pool                                = var.api_node_pool
-
-  cluster_setup_bucket_name = var.cluster_setup_bucket_name
-
-  environment = var.environment
-  labels      = var.labels
-  file_hash   = local.file_hash
-
-  depends_on = [
-    google_storage_bucket_object.setup_config_objects["scripts/run-nomad.sh"],
-    google_storage_bucket_object.setup_config_objects["scripts/run-consul.sh"],
-  ]
 }
 
 module "filestore" {

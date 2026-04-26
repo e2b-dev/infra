@@ -94,11 +94,6 @@ variable "api_instance_group" {
   type = string
 }
 
-variable "api_instance_group_regional" {
-  description = "Self-link of the regional API instance group. Added as an additional backend alongside api_instance_group so both zonal and regional pools serve traffic during cutover."
-  type        = string
-}
-
 variable "server_instance_group" {
   type = string
 }
