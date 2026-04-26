@@ -2,6 +2,8 @@ job "filestore-cleanup" {
     type = "batch"
     node_pool = "${node_pool}"
 
+    datacenters = ["*"]
+
     periodic {
         cron             = "0 * * * *" // run every hour
         prohibit_overlap = true

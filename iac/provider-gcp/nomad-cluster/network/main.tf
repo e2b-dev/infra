@@ -50,10 +50,7 @@ locals {
         timeout_sec        = 3
         check_interval_sec = 3
       }
-      groups = [
-        { group = var.api_instance_group },
-        { group = var.api_instance_group_regional },
-      ]
+      groups = [{ group = var.api_instance_group }]
     }
     api = {
       protocol                        = "HTTP"
@@ -67,10 +64,7 @@ locals {
         timeout_sec        = 3
         check_interval_sec = 3
       }
-      groups = [
-        { group = var.api_instance_group },
-        { group = var.api_instance_group_regional },
-      ]
+      groups = [{ group = var.api_instance_group }]
     }
     docker-reverse-proxy = {
       protocol                        = "HTTP"
@@ -84,7 +78,6 @@ locals {
       }
       groups = [
         { group = var.api_instance_group },
-        { group = var.api_instance_group_regional },
       ]
     }
     nomad = {
