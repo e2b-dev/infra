@@ -112,7 +112,7 @@ mkdir -p /mnt/snapshot-cache
 mount -t tmpfs -o size=65G tmpfs /mnt/snapshot-cache
 
 ulimit -n 1048576
-export GOMAXPROCS='nproc'
+export GOMAXPROCS=$(nproc)
 
 tee -a /etc/sysctl.conf <<EOF
 # Increase the maximum number of socket connections
