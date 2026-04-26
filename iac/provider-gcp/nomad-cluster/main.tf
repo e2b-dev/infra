@@ -135,7 +135,7 @@ module "network" {
 }
 
 module "api" {
-  source = "./api-cluster"
+  source = "../modules/nodepool-api"
 
   cluster_name   = "${var.prefix}orch-api"
   cluster_size   = var.api_cluster_size
