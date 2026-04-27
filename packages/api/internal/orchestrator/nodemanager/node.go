@@ -136,7 +136,7 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 		ID:               i.NodeID,
 		// API control-plane calls still use the cluster gRPC proxy, but edge/client
 		// proxies need the node IP address for data-plane sandbox traffic.
-		IPAddress:     i.IPAddress,
+		IPAddress:     i.LocalIPAddress,
 		SandboxDomain: sandboxDomain,
 		PlacementMetrics: PlacementMetrics{
 			sandboxesInProgress: smap.New[SandboxResources](),
