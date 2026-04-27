@@ -61,7 +61,7 @@ func GRPCLogger(l Logger) logging.Logger {
 		}
 		f = f[:fieldsCount]
 
-		logger := l.WithOptions(zap.AddCallerSkip(1)).With(f...)
+		logger := l.WithOptions(zap.WithCaller(false)).With(f...)
 
 		methodFullName := fmt.Sprintf("%s/%s/%s",
 			methodFullNameMap["grpc.service"],

@@ -123,12 +123,19 @@ type TracedLogger struct {
 	innerLogger *zap.Logger
 }
 
+func withTraceLoggerOptions(innerLogger *zap.Logger) *zap.Logger {
+	return innerLogger.WithOptions(
+		zap.AddCaller(),
+		zap.AddCallerSkip(1),
+	)
+}
+
 func NewTracedLoggerFromCore(core zapcore.Core) Logger {
-	return &TracedLogger{innerLogger: zap.New(core)} //nolint:forbidigo // zap.New is used to create a new logger from a core
+	return &TracedLogger{innerLogger: withTraceLoggerOptions(zap.New(core))} //nolint:forbidigo // zap.New is used to create a new logger from a core
 }
 
 func NewTracedLogger(innerLogger *zap.Logger) Logger {
-	return &TracedLogger{innerLogger: innerLogger}
+	return &TracedLogger{innerLogger: withTraceLoggerOptions(innerLogger)}
 }
 
 func L() *TracedLogger {
@@ -136,7 +143,7 @@ func L() *TracedLogger {
 }
 
 func NewNopLogger() *TracedLogger {
-	return &TracedLogger{innerLogger: zap.NewNop()} //nolint:forbidigo // zap.NewNop is used to create a new nop logger
+	return &TracedLogger{innerLogger: withTraceLoggerOptions(zap.NewNop())} //nolint:forbidigo // zap.NewNop is used to create a new nop logger
 }
 
 func NewDevelopmentLogger() (Logger, error) {
