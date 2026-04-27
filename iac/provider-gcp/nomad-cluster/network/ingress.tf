@@ -37,7 +37,7 @@ resource "google_compute_health_check" "ingress" {
 resource "google_compute_backend_service" "ingress" {
   name = "${var.prefix}ingress"
 
-  protocol  = "HTTP"
+  protocol  = "H2C"
   port_name = var.ingress_port.name
 
   session_affinity = null
