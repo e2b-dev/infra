@@ -2,6 +2,7 @@ package fc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/RoaringBitmap/roaring/v2"
@@ -21,7 +22,32 @@ func (p *Process) DirtyMemory(ctx context.Context, blockSize int64) (*header.Dif
 	return p.client.dirtyMemory(ctx, blockSize)
 }
 
-func (p *Process) ExportMemory(
+func (p *Process) exportMemoryFromMemfd(
+	ctx context.Context,
+	include *roaring.Bitmap,
+	cachePath string,
+	blockSize int64,
+	memfd *block.Memfd,
+) (*block.Cache, error) {
+	var guestRanges []block.Range
+	for r := range block.BitsetRanges(include, blockSize) {
+		guestRanges = append(guestRanges, r)
+	}
+
+	cache, err := block.NewCacheFromMemfd(ctx, blockSize, cachePath, memfd, guestRanges)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cache: %w", errors.Join(err, memfd.Close()))
+	}
+
+	err = memfd.Close()
+	if err != nil {
+		return nil, errors.Join(err, cache.Close())
+	}
+
+	return cache, nil
+}
+
+func (p *Process) exportMemoryFromFc(
 	ctx context.Context,
 	include *roaring.Bitmap,
 	cachePath string,
@@ -54,4 +80,18 @@ func (p *Process) ExportMemory(
 	}
 
 	return cache, nil
+}
+
+func (p *Process) ExportMemory(
+	ctx context.Context,
+	include *roaring.Bitmap,
+	cachePath string,
+	blockSize int64,
+	memfd *block.Memfd,
+) (*block.Cache, error) {
+	if memfd == nil {
+		return p.exportMemoryFromFc(ctx, include, cachePath, blockSize)
+	}
+
+	return p.exportMemoryFromMemfd(ctx, include, cachePath, blockSize, memfd)
 }
