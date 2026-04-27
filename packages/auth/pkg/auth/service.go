@@ -42,12 +42,6 @@ func NewAuthService[T TeamItem](store AuthStore[T], teamCache *AuthCache[T], aut
 	}
 }
 
-func (s *AuthService[T]) WithAuthProviderVerifier(verifier *AuthProviderJWTVerifier) *AuthService[T] {
-	s.authProviderVerifier = verifier
-
-	return s
-}
-
 // ValidateAPIKey verifies the API key format and fetches the associated team via cache + store.
 func (s *AuthService[T]) ValidateAPIKey(ctx context.Context, ginCtx *gin.Context, apiKey string) (T, *APIError) {
 	hashedKey, err := keys.VerifyKey(keys.ApiKeyPrefix, apiKey)
