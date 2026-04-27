@@ -251,11 +251,6 @@ resource "google_compute_url_map" "orch_map" {
   }
 
   host_rule {
-    hosts        = concat(["api-grpc.${var.domain_name}"], [for d in var.additional_domains : "api-grpc.${d}"])
-    path_matcher = "api-grpc-ingress-paths"
-  }
-
-  host_rule {
     hosts        = concat(["docker.${var.domain_name}"], [for d in var.additional_domains : "docker.${d}"])
     path_matcher = "docker-reverse-proxy-paths"
   }
@@ -297,11 +292,6 @@ resource "google_compute_url_map" "orch_map" {
   path_matcher {
     name            = "docker-reverse-proxy-paths"
     default_service = google_compute_backend_service.default["docker-reverse-proxy"].self_link
-  }
-
-  path_matcher {
-    name            = "api-grpc-ingress-paths"
-    default_service = google_compute_backend_service.ingress_grpc.self_link
   }
 
   path_matcher {
