@@ -317,8 +317,8 @@ func (u *Userfaultfd) Serve(
 			case faulted:
 				// Skip faulting the page. This has already been faulted, either during pre-faulting
 				// or because we handled another page fault on the same address in the current
-				// iteration. It can only be removed via a a UFFD_EVENT_REMOVE, which will mark the
-				// page as `missing`.
+				// iteration. It can only transition out of `faulted` via a UFFD_EVENT_REMOVE, which
+				// will mark the page as `removed`.
 				// For this to work correctly, the used pages cannot be swappable.
 				continue
 			case removed:
@@ -512,7 +512,7 @@ func (u *Userfaultfd) faultPage(
 		span.RecordError(joinedErr)
 		u.logger.Error(ctx, "UFFD serve uffdio copy error", zap.Error(joinedErr))
 
-		return false, fmt.Errorf("failed uffdio copy %w", joinedErr)
+		return false, fmt.Errorf("failed uffdio copy: %w", joinedErr)
 	}
 
 	return true, nil

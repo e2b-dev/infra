@@ -9,9 +9,5 @@ func (v *Info) HasHugePages() bool {
 }
 
 func (v *Info) HasFreePageReporting() bool {
-	if v.lastReleaseVersion.Major() > 1 || (v.lastReleaseVersion.Major() == 1 && v.lastReleaseVersion.Minor() >= 14) {
-		return true
-	}
-
-	return false
+	return v.lastReleaseVersion.Major() > 1 || (v.lastReleaseVersion.Major() == 1 && v.lastReleaseVersion.Minor() >= 14)
 }
