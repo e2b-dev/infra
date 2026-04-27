@@ -518,6 +518,56 @@ func TestPostSandboxes_MissingTagDisclosure(t *testing.T) {
 		t.Parallel()
 		assertMissingTagDisclosure(t, false, "private-missing-tag")
 	})
+
+	t.Run("public template without default tag names default", func(t *testing.T) {
+		t.Parallel()
+		assertMissingDefaultTagDisclosure(t)
+	})
+}
+
+func TestPostSandboxes_MissingBareAliasUsesPromotedFallbackKey(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	requesterTeamID := testutils.CreateTestTeam(t, db)
+	requesterTeamSlug := testutils.GetTeamSlug(t, ctx, db, requesterTeamID)
+
+	store := &APIStore{
+		templateCache: templatecache.NewTemplateCache(db.SqlcClient, redis),
+	}
+	defer func() {
+		require.NoError(t, store.templateCache.Close(ctx))
+	}()
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+
+	body, err := json.Marshal(api.PostSandboxesJSONRequestBody{TemplateID: "desktop"})
+	require.NoError(t, err)
+
+	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/sandboxes", bytes.NewReader(body))
+	ginCtx.Request.Header.Set("Content-Type", "application/json")
+	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+		Team: &authqueries.Team{
+			ID:   requesterTeamID,
+			Slug: requesterTeamSlug,
+		},
+		Limits: &authtypes.TeamLimits{MaxLengthHours: 24},
+	})
+
+	//nolint:contextcheck // PostSandboxes reads ctx from ginCtx.Request.Context().
+	store.PostSandboxes(ginCtx)
+
+	require.Equal(t, http.StatusNotFound, recorder.Code)
+
+	var apiErr api.Error
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &apiErr))
+
+	assert.Equal(t, int32(http.StatusNotFound), apiErr.Code)
+	assert.Equal(t, "template 'desktop' not found", apiErr.Message)
 }
 
 // Valid tag exists on a private template owned by another team. A non-owner
@@ -634,13 +684,68 @@ func assertMissingTagDisclosure(t *testing.T, public bool, alias string) {
 
 	var wantMessage string
 	if public {
-		wantMessage = fmt.Sprintf("template '%s' (%s) with tag 'v2' not found", id.WithNamespace(ownerTeamSlug, alias), templateID)
+		wantMessage = fmt.Sprintf("tag 'v2' does not exist for template '%s'", id.WithNamespace(ownerTeamSlug, alias))
 	} else {
 		wantMessage = fmt.Sprintf("template '%s' not found", id.WithNamespace(ownerTeamSlug, alias))
 	}
 
 	assert.Equal(t, int32(http.StatusNotFound), apiErr.Code)
 	assert.Equal(t, wantMessage, apiErr.Message)
+}
+
+func assertMissingDefaultTagDisclosure(t *testing.T) {
+	t.Helper()
+
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	ownerTeamID := testutils.CreateTestTeam(t, db)
+	ownerTeamSlug := testutils.GetTeamSlug(t, ctx, db, ownerTeamID)
+	requesterTeamID := testutils.CreateTestTeam(t, db)
+	requesterTeamSlug := testutils.GetTeamSlug(t, ctx, db, requesterTeamID)
+
+	store := &APIStore{
+		templateCache: templatecache.NewTemplateCache(db.SqlcClient, redis),
+	}
+	defer func() {
+		require.NoError(t, store.templateCache.Close(ctx))
+	}()
+
+	alias := "public-missing-default-tag"
+	templateID := createTestTemplate(ctx, t, db, ownerTeamID)
+	createTestTemplateAliasWithName(ctx, t, db, templateID, alias, &ownerTeamSlug)
+
+	buildID := testutils.CreateTestBuild(t, ctx, db, templateID, "ready")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "dev")
+
+	templateRef := id.WithNamespace(ownerTeamSlug, alias)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+
+	body, err := json.Marshal(api.PostSandboxesJSONRequestBody{TemplateID: templateRef})
+	require.NoError(t, err)
+
+	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/sandboxes", bytes.NewReader(body))
+	ginCtx.Request.Header.Set("Content-Type", "application/json")
+	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+		Team: &authqueries.Team{
+			ID:   requesterTeamID,
+			Slug: requesterTeamSlug,
+		},
+		Limits: &authtypes.TeamLimits{MaxLengthHours: 24},
+	})
+
+	//nolint:contextcheck // PostSandboxes reads ctx from ginCtx.Request.Context().
+	store.PostSandboxes(ginCtx)
+
+	require.Equal(t, http.StatusNotFound, recorder.Code)
+
+	var apiErr api.Error
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &apiErr))
+
+	assert.Equal(t, int32(http.StatusNotFound), apiErr.Code)
+	assert.Equal(t, fmt.Sprintf("tag 'default' does not exist for template '%s'", templateRef), apiErr.Message)
 }
 
 func setTemplatePublic(ctx context.Context, t *testing.T, db *testutils.Database, templateID string, public bool) {

@@ -98,10 +98,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 
 		ref := templatecache.TemplateRef{
-			Subject:    "template",
 			Identifier: aliasInfo.MatchedIdentifier,
-			TemplateID: aliasInfo.TemplateID,
-			Tag:        tag,
 			Visible:    visible,
 		}
 

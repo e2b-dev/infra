@@ -14,43 +14,76 @@ var (
 	ErrClusterMismatch  = errors.New("template not available in cluster")
 )
 
-type TemplateRef struct {
-	Subject    string
+type templateNotFoundError struct {
 	Identifier string
-	TemplateID string
-	Tag        *string
+}
+
+func (e templateNotFoundError) Error() string {
+	return fmt.Sprintf("%s: %s", ErrTemplateNotFound, e.Identifier)
+}
+
+func (e templateNotFoundError) Unwrap() error {
+	return ErrTemplateNotFound
+}
+
+type templateTagNotFoundError struct {
+	Tag string
+}
+
+func (e templateTagNotFoundError) Error() string {
+	return fmt.Sprintf("%s: tag %s", ErrTemplateNotFound, e.Tag)
+}
+
+func (e templateTagNotFoundError) Unwrap() error {
+	return ErrTemplateNotFound
+}
+
+type TemplateRef struct {
+	Identifier string
 	Visible    bool
 }
 
 func ErrorToAPIError(err error, fallbackIdentifier string) *api.APIError {
-	return ToAPIError(err, "template", fallbackIdentifier)
+	return ToAPIError(err, fallbackIdentifier)
 }
 
-func ToAPIError(err error, subject, identifier string) *api.APIError {
+func ToAPIError(err error, identifier string) *api.APIError {
+	var tagErr templateTagNotFoundError
 	switch {
-	case errors.Is(err, ErrTemplateNotFound):
+	case errors.As(err, &tagErr):
 		return &api.APIError{
 			Code:      http.StatusNotFound,
-			ClientMsg: fmt.Sprintf("%s not found", formatTemplateRef(subject, identifier, "")),
+			ClientMsg: fmt.Sprintf("tag '%s' does not exist for template '%s'", tagErr.Tag, identifier),
+			Err:       err,
+		}
+	case errors.Is(err, ErrTemplateNotFound):
+		var notFoundErr templateNotFoundError
+		if errors.As(err, &notFoundErr) {
+			identifier = notFoundErr.Identifier
+		}
+
+		return &api.APIError{
+			Code:      http.StatusNotFound,
+			ClientMsg: fmt.Sprintf("template '%s' not found", identifier),
 			Err:       err,
 		}
 	case errors.Is(err, ErrAccessDenied):
 		return &api.APIError{
 			Code:      http.StatusForbidden,
-			ClientMsg: fmt.Sprintf("you don't have access to %s", formatTemplateRef(subject, identifier, "")),
+			ClientMsg: fmt.Sprintf("you don't have access to template '%s'", identifier),
 			Err:       err,
 		}
 	case errors.Is(err, ErrClusterMismatch):
 		return &api.APIError{
 			Code:      http.StatusBadRequest,
-			ClientMsg: fmt.Sprintf("%s is not available in the requested cluster", formatTemplateRef(subject, identifier, "")),
+			ClientMsg: fmt.Sprintf("template '%s' is not available in the requested cluster", identifier),
 			Err:       err,
 		}
 	}
 
 	return &api.APIError{
 		Code:      http.StatusInternalServerError,
-		ClientMsg: fmt.Sprintf("error resolving %s", formatTemplateRef(subject, identifier, "")),
+		ClientMsg: fmt.Sprintf("error resolving template '%s'", identifier),
 		Err:       err,
 	}
 }
@@ -59,36 +92,21 @@ func (r TemplateRef) APIError(err error) *api.APIError {
 	if !r.Visible && (errors.Is(err, ErrAccessDenied) || errors.Is(err, ErrTemplateNotFound)) {
 		return &api.APIError{
 			Code:      http.StatusNotFound,
-			ClientMsg: fmt.Sprintf("%s not found", formatTemplateRef(r.Subject, r.Identifier, "")),
+			ClientMsg: fmt.Sprintf("template '%s' not found", r.Identifier),
 			Err:       err,
 		}
 	}
 
-	if !errors.Is(err, ErrTemplateNotFound) {
-		return ToAPIError(err, r.Subject, r.Identifier)
+	var tagErr templateTagNotFoundError
+	if !errors.As(err, &tagErr) {
+		return ToAPIError(err, r.Identifier)
 	}
 
-	label := formatTemplateRef(r.Subject, r.Identifier, r.TemplateID)
-	clientMsg := fmt.Sprintf("%s has no ready build", label)
-	if r.Tag != nil {
-		clientMsg = fmt.Sprintf("%s with tag '%s' not found", label, *r.Tag)
-	}
+	clientMsg := fmt.Sprintf("tag '%s' does not exist for template '%s'", tagErr.Tag, r.Identifier)
 
 	return &api.APIError{
 		Code:      http.StatusNotFound,
 		ClientMsg: clientMsg,
 		Err:       err,
 	}
-}
-
-func formatTemplateRef(subject, identifier, templateID string) string {
-	if subject == "" {
-		subject = "template"
-	}
-
-	if templateID == "" || templateID == identifier {
-		return fmt.Sprintf("%s '%s'", subject, identifier)
-	}
-
-	return fmt.Sprintf("%s '%s' (%s)", subject, identifier, templateID)
 }
