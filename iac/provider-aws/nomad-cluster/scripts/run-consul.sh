@@ -15,6 +15,9 @@ readonly SYSTEMD_CONFIG_PATH="/etc/systemd/system/consul.service"
 
 readonly EC2_INSTANCE_METADATA_URL="http://169.254.169.254/latest/meta-data"
 readonly EC2_DYNAMIC_METADATA_URL="http://169.254.169.254/latest/dynamic/instance-identity/document"
+readonly EC2_METADATA_TOKEN_URL="http://169.254.169.254/latest/api/token"
+readonly EC2_METADATA_TOKEN_TTL_SECONDS="21600"
+readonly EC2_METADATA_TOKEN_MAX_ATTEMPTS="5"
 readonly CLUSTER_SIZE_INSTANCE_METADATA_KEY_NAME="cluster-size"
 
 readonly DEFAULT_RAFT_PROTOCOL="3"
@@ -86,15 +89,49 @@ function print_usage {
 # Get the value at a specific Instance Metadata path.
 function get_instance_metadata_value {
   local -r path="$1"
+  local token=""
+  local -a token_header=()
+
+  token=$(get_instance_metadata_token)
+  token_header=(--header "X-aws-ec2-metadata-token: $token")
 
   log_info "Looking up Metadata value at $EC2_INSTANCE_METADATA_URL/$path"
-  curl --silent --show-error --location "$EC2_INSTANCE_METADATA_URL/$path"
+  curl --silent --show-error --location --fail "${token_header[@]}" "$EC2_INSTANCE_METADATA_URL/$path"
+}
+
+# Get an IMDSv2 token for Instance Metadata calls.
+function get_instance_metadata_token {
+  local token=""
+
+  for attempt in $(seq 1 "$EC2_METADATA_TOKEN_MAX_ATTEMPTS"); do
+    if token=$(curl --silent --show-error --location --fail \
+      --connect-timeout 2 \
+      --max-time 5 \
+      --request PUT \
+      --header "X-aws-ec2-metadata-token-ttl-seconds: $EC2_METADATA_TOKEN_TTL_SECONDS" \
+      "$EC2_METADATA_TOKEN_URL"); then
+      printf '%s' "$token"
+      return 0
+    fi
+
+    log_warn "Failed to get IMDSv2 token, retrying ($attempt/$EC2_METADATA_TOKEN_MAX_ATTEMPTS)"
+    sleep "$attempt"
+  done
+
+  log_error "Failed to get IMDSv2 token after $EC2_METADATA_TOKEN_MAX_ATTEMPTS attempts"
+  return 1
 }
 
 # Get dynamic instance metadata (includes region, account-id, etc.)
 function get_instance_dynamic_metadata {
+  local token=""
+  local -a token_header=()
+
+  token=$(get_instance_metadata_token)
+  token_header=(--header "X-aws-ec2-metadata-token: $token")
+
   log_info "Looking up dynamic instance metadata"
-  curl --silent --show-error --location "$EC2_DYNAMIC_METADATA_URL"
+  curl --silent --show-error --location --fail "${token_header[@]}" "$EC2_DYNAMIC_METADATA_URL"
 }
 
 # Get the value of the given tag from EC2 instance tags
