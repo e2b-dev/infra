@@ -71,10 +71,6 @@ func (c AuthProviderConfig) normalizedJWT() AuthProviderJWTConfig {
 	return c.JWT.normalized()
 }
 
-func (c AuthProviderConfig) validate() error {
-	return c.normalizedJWT().validate()
-}
-
 // Enabled returns true when external auth provider JWT validation is configured.
 func (c AuthProviderJWTConfig) Enabled() bool {
 	return c.JWKS != nil || c.HMAC != nil
@@ -120,7 +116,6 @@ func (c AuthProviderJWTConfig) validate() error {
 		if c.Issuer == "" {
 			return errors.New("auth provider issuer is required when jwks is configured")
 		}
-
 	}
 
 	return nil

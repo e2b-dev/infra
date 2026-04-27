@@ -16,13 +16,15 @@ import (
 )
 
 func TestAuthProviderJWTVerifier_VerifyJWKS(t *testing.T) {
+	t.Parallel()
+
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
 	const keyID = "test-key"
 	jwksServer := newJWKSHTTPServer(t, &privateKey.PublicKey, keyID)
 
-	verifier, err := NewAuthProviderJWTVerifier(t.Context(), AuthProviderConfig{
+	verifier, err := newAuthProviderJWTVerifier(t.Context(), AuthProviderConfig{
 		JWT: AuthProviderJWTConfig{
 			JWKS: &AuthProviderJWKSConfig{
 				URL:           jwksServer.URL,
@@ -31,7 +33,7 @@ func TestAuthProviderJWTVerifier_VerifyJWKS(t *testing.T) {
 			Issuer:   "https://issuer.example.com",
 			Audience: "dashboard-api",
 		},
-	})
+	}, jwksServer.Client())
 	require.NoError(t, err)
 
 	userID := uuid.New()
@@ -52,13 +54,15 @@ func TestAuthProviderJWTVerifier_VerifyJWKS(t *testing.T) {
 }
 
 func TestAuthProviderJWTVerifier_VerifyJWKSRejectsWrongAudience(t *testing.T) {
+	t.Parallel()
+
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
 	const keyID = "test-key"
 	jwksServer := newJWKSHTTPServer(t, &privateKey.PublicKey, keyID)
 
-	verifier, err := NewAuthProviderJWTVerifier(t.Context(), AuthProviderConfig{
+	verifier, err := newAuthProviderJWTVerifier(t.Context(), AuthProviderConfig{
 		JWT: AuthProviderJWTConfig{
 			JWKS: &AuthProviderJWKSConfig{
 				URL: jwksServer.URL,
@@ -66,7 +70,7 @@ func TestAuthProviderJWTVerifier_VerifyJWKSRejectsWrongAudience(t *testing.T) {
 			Issuer:   "https://issuer.example.com",
 			Audience: "dashboard-api",
 		},
-	})
+	}, jwksServer.Client())
 	require.NoError(t, err)
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
@@ -96,14 +100,11 @@ func newJWKSHTTPServer(t *testing.T, publicKey *rsa.PublicKey, keyID string) *ht
 				Use:       "sig",
 			},
 		}})
-		require.NoError(t, err)
+		if err != nil {
+			t.Errorf("encode JWKS response: %v", err)
+		}
 	}))
 	t.Cleanup(server.Close)
-	previousHTTPClient := newAuthProviderJWKSHTTPClient
-	t.Cleanup(func() {
-		newAuthProviderJWKSHTTPClient = previousHTTPClient
-	})
-	newAuthProviderJWKSHTTPClient = server.Client
 
 	return server
 }

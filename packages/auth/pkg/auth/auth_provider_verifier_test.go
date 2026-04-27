@@ -23,7 +23,7 @@ func TestAuthProviderJWTVerifier_VerifyWithMultipleStrategies(t *testing.T) {
 	)
 	jwksServer := newJWKSHTTPServer(t, &privateKey.PublicKey, keyID)
 
-	verifier, err := NewAuthProviderJWTVerifier(t.Context(), AuthProviderConfig{
+	verifier, err := newAuthProviderJWTVerifier(t.Context(), AuthProviderConfig{
 		JWT: AuthProviderJWTConfig{
 			JWKS: &AuthProviderJWKSConfig{
 				URL:           jwksServer.URL,
@@ -35,7 +35,7 @@ func TestAuthProviderJWTVerifier_VerifyWithMultipleStrategies(t *testing.T) {
 			Issuer:   "https://issuer.example.com",
 			Audience: "dashboard-api",
 		},
-	})
+	}, jwksServer.Client())
 	require.NoError(t, err)
 
 	hmacUserID := uuid.New()

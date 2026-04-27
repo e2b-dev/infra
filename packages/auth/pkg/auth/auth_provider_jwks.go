@@ -20,13 +20,13 @@ type jwksAuthProviderJWTVerifier struct {
 	parserOptions []jwt.ParserOption
 }
 
-var newAuthProviderJWKSHTTPClient = func() *http.Client {
-	return &http.Client{Timeout: authProviderJWKSHTTPTimeout}
-}
+func newJWKSAuthProviderJWTVerifier(ctx context.Context, config AuthProviderJWTConfig, jwksConfig AuthProviderJWKSConfig, httpClient *http.Client) (*jwksAuthProviderJWTVerifier, error) {
+	if httpClient == nil {
+		return nil, errors.New("auth provider JWKS HTTP client is required")
+	}
 
-func newJWKSAuthProviderJWTVerifier(ctx context.Context, config AuthProviderJWTConfig, jwksConfig AuthProviderJWKSConfig) (*jwksAuthProviderJWTVerifier, error) {
 	storage, err := jwkset.NewStorageFromHTTP(jwksConfig.URL, jwkset.HTTPClientStorageOptions{
-		Client:          newAuthProviderJWKSHTTPClient(),
+		Client:          httpClient,
 		Ctx:             ctx,
 		HTTPTimeout:     authProviderJWKSHTTPTimeout,
 		RefreshInterval: jwksConfig.CacheDuration,

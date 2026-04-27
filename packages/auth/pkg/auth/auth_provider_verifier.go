@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -18,6 +19,10 @@ type AuthProviderJWTVerifier struct {
 }
 
 func NewAuthProviderJWTVerifier(ctx context.Context, config AuthProviderConfig) (*AuthProviderJWTVerifier, error) {
+	return newAuthProviderJWTVerifier(ctx, config, &http.Client{Timeout: authProviderJWKSHTTPTimeout})
+}
+
+func newAuthProviderJWTVerifier(ctx context.Context, config AuthProviderConfig, jwksHTTPClient *http.Client) (*AuthProviderJWTVerifier, error) {
 	jwtConfig := config.normalizedJWT()
 	if err := jwtConfig.validate(); err != nil {
 		return nil, err
@@ -31,7 +36,7 @@ func NewAuthProviderJWTVerifier(ctx context.Context, config AuthProviderConfig) 
 		strategies = append(strategies, newHMACAuthProviderJWTVerifier(jwtConfig))
 	}
 	if jwtConfig.JWKS != nil {
-		jwksStrategy, err := newJWKSAuthProviderJWTVerifier(ctx, jwtConfig, *jwtConfig.JWKS)
+		jwksStrategy, err := newJWKSAuthProviderJWTVerifier(ctx, jwtConfig, *jwtConfig.JWKS, jwksHTTPClient)
 		if err != nil {
 			return nil, err
 		}
