@@ -15,11 +15,10 @@ import (
 )
 
 type CreationMetadata struct {
-	IsResume         bool
-	TeamName         string
-	RequestHeader    http.Header
-	MCPServerNames   []string
-	RequestStartTime time.Time
+	IsResume       bool
+	TeamName       string
+	RequestHeader  http.Header
+	MCPServerNames []string
 }
 
 type (

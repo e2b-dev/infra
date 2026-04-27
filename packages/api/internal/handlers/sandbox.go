@@ -15,7 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	typesteam "github.com/e2b-dev/infra/packages/auth/pkg/types"
-	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -65,7 +64,7 @@ func (a *APIStore) startSandboxInternal(
 	// Unique ID for the execution (from start/resume to stop/pause)
 	executionID := uuid.New().String()
 
-	creationMeta := buildCreationMetadata(ctx, team, requestHeader, isResume, mcp)
+	creationMeta := buildCreationMetadata(team, requestHeader, isResume, mcp)
 
 	sbx, instanceErr := a.orchestrator.CreateSandbox(
 		ctx,
@@ -99,7 +98,6 @@ func (a *APIStore) startSandboxInternal(
 }
 
 func buildCreationMetadata(
-	ctx context.Context,
 	team *typesteam.Team,
 	requestHeader *http.Header,
 	isResume bool,
@@ -112,10 +110,6 @@ func buildCreationMetadata(
 
 	if requestHeader != nil {
 		meta.RequestHeader = *requestHeader
-	}
-
-	if t, ok := tracing.GetRequestStartTime(ctx); ok {
-		meta.RequestStartTime = t
 	}
 
 	if mcp != nil {

@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -75,7 +76,7 @@ func (o *Orchestrator) analyticsInsert(ctx context.Context, sandbox sandbox.Sand
 	}
 }
 
-func (o *Orchestrator) emitCreatedInstancePosthog(ctx context.Context, sbx sandbox.Sandbox, meta sandbox.CreationMetadata) {
+func (o *Orchestrator) emitCreatedInstancePosthog(ctx context.Context, sbx sandbox.Sandbox, meta sandbox.CreationMetadata, startDuration time.Duration) {
 	o.posthogClient.IdentifyAnalyticsTeam(ctx, sbx.TeamID.String(), meta.TeamName)
 	properties := o.posthogClient.GetPackageToPosthogProperties(&meta.RequestHeader)
 
@@ -91,9 +92,8 @@ func (o *Orchestrator) emitCreatedInstancePosthog(ctx context.Context, sbx sandb
 		Set("ram_mb", sbx.RamMB).
 		Set("total_disk_size_mb", sbx.TotalDiskSizeMB).
 		Set("auto_pause", sbx.AutoPause)
-
-	if !meta.RequestStartTime.IsZero() {
-		props = props.Set("start_time_ms", time.Since(meta.RequestStartTime).Milliseconds())
+	if startDuration > 0 {
+		props = props.Set("start_time_ms", startDuration.Milliseconds())
 	}
 
 	if len(meta.MCPServerNames) > 0 {
@@ -145,8 +145,14 @@ func (o *Orchestrator) handleNewlyCreatedSandbox(ctx context.Context, sbx sandbo
 	ctx, span := tracer.Start(ctx, "newly-created-sandbox-callback")
 	defer span.End()
 
+	// Calculate the time it took for the sandbox to start from request receipt
+	var startDuration time.Duration
+	if requestStartTime, ok := tracing.GetRequestStartTime(ctx); ok {
+		startDuration = time.Since(requestStartTime)
+	}
+
 	o.analyticsInsert(ctx, sbx)
-	o.emitCreatedInstancePosthog(ctx, sbx, meta)
+	o.emitCreatedInstancePosthog(ctx, sbx, meta, startDuration)
 	o.teamMetricsObserver.Add(ctx, sbx.TeamID)
 	o.createdCounter.Add(ctx, 1, metric.WithAttributes(telemetry.WithTeamID(sbx.TeamID.String())))
 	logSandboxCreated(ctx, sbx)
