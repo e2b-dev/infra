@@ -13,7 +13,7 @@ func TestAuthProviderJWTVerifier_VerifyHMAC(t *testing.T) {
 	t.Parallel()
 
 	const secret = "supabasejwtsecretsupabasejwtsecret"
-	verifier, err := NewAuthProviderJWTVerifier(AuthProviderConfig{
+	verifier, err := NewAuthProviderJWTVerifier(t.Context(), AuthProviderConfig{
 		JWT: AuthProviderJWTConfig{
 			HMAC: &AuthProviderHMACConfig{
 				Secrets: []string{"wrong-secret-wrong-secret", secret},

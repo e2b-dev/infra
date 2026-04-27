@@ -24,7 +24,7 @@ func TestAuthProviderJWTVerifier_VerifyJWKS(t *testing.T) {
 	const keyID = "test-key"
 	jwksServer := newJWKSHTTPServer(t, &privateKey.PublicKey, keyID)
 
-	verifier, err := NewAuthProviderJWTVerifier(AuthProviderConfig{
+	verifier, err := NewAuthProviderJWTVerifier(t.Context(), AuthProviderConfig{
 		JWT: AuthProviderJWTConfig{
 			JWKS: &AuthProviderJWKSConfig{
 				URL:           jwksServer.URL,
@@ -62,7 +62,7 @@ func TestAuthProviderJWTVerifier_VerifyJWKSRejectsWrongAudience(t *testing.T) {
 	const keyID = "test-key"
 	jwksServer := newJWKSHTTPServer(t, &privateKey.PublicKey, keyID)
 
-	verifier, err := NewAuthProviderJWTVerifier(AuthProviderConfig{
+	verifier, err := NewAuthProviderJWTVerifier(t.Context(), AuthProviderConfig{
 		JWT: AuthProviderJWTConfig{
 			JWKS: &AuthProviderJWKSConfig{
 				URL: jwksServer.URL,

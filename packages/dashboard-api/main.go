@@ -187,7 +187,7 @@ func run() int {
 
 	authCache := sharedauth.NewAuthCache[*types.Team](redisClient)
 	authStore := sharedauth.NewAuthStore(authDB)
-	authProviderVerifier, err := sharedauth.NewAuthProviderJWTVerifier(config.AuthProvider)
+	authProviderVerifier, err := sharedauth.NewAuthProviderJWTVerifier(ctx, config.AuthProvider)
 	if err != nil {
 		l.Error(ctx, "Initializing auth provider JWT verifier", zap.Error(err))
 

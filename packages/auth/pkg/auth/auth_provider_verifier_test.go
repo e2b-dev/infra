@@ -23,7 +23,7 @@ func TestAuthProviderJWTVerifier_VerifyWithMultipleStrategies(t *testing.T) {
 	)
 	jwksServer := newJWKSHTTPServer(t, &privateKey.PublicKey, keyID)
 
-	verifier, err := NewAuthProviderJWTVerifier(AuthProviderConfig{
+	verifier, err := NewAuthProviderJWTVerifier(t.Context(), AuthProviderConfig{
 		JWT: AuthProviderJWTConfig{
 			JWKS: &AuthProviderJWKSConfig{
 				URL:           jwksServer.URL,

@@ -17,7 +17,7 @@ type AuthProviderJWTVerifier struct {
 	strategies []authProviderJWTVerificationStrategy
 }
 
-func NewAuthProviderJWTVerifier(config AuthProviderConfig) (*AuthProviderJWTVerifier, error) {
+func NewAuthProviderJWTVerifier(ctx context.Context, config AuthProviderConfig) (*AuthProviderJWTVerifier, error) {
 	jwtConfig := config.normalizedJWT()
 	if err := jwtConfig.validate(); err != nil {
 		return nil, err
@@ -31,7 +31,7 @@ func NewAuthProviderJWTVerifier(config AuthProviderConfig) (*AuthProviderJWTVeri
 		strategies = append(strategies, newHMACAuthProviderJWTVerifier(jwtConfig))
 	}
 	if jwtConfig.JWKS != nil {
-		jwksStrategy, err := newJWKSAuthProviderJWTVerifier(context.Background(), jwtConfig, *jwtConfig.JWKS)
+		jwksStrategy, err := newJWKSAuthProviderJWTVerifier(ctx, jwtConfig, *jwtConfig.JWKS)
 		if err != nil {
 			return nil, err
 		}
