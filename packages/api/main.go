@@ -404,7 +404,7 @@ func run() int {
 	apiStore := handlers.NewAPIStore(ctx, tel, redisClient, featureFlags, config)
 	cleanupFns = append(cleanupFns, apiStore.Close)
 
-	grpcAddr := fmt.Sprintf("0.0.0.0:%d", config.APIGrpcPort)
+	grpcAddr := fmt.Sprintf("0.0.0.0:%d", config.APIInternalGrpcPort)
 	grpcListener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", grpcAddr)
 	if err != nil {
 		l.Fatal(ctx, "failed to create proxy grpc listener", zap.Error(err))
@@ -413,18 +413,18 @@ func run() int {
 	grpcServer := e2bgrpc.NewGRPCServer(tel)
 	proxygrpc.RegisterSandboxServiceServer(grpcServer, handlers.NewSandboxService(apiStore, false, nil))
 
-	publicGrpcAddr := fmt.Sprintf("0.0.0.0:%d", config.APIPublicGrpcPort)
-	publicGrpcListener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", publicGrpcAddr)
+	edgeGrpcAddr := fmt.Sprintf("0.0.0.0:%d", config.APIEdgeGrpcPort)
+	edgeGrpcListener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", edgeGrpcAddr)
 	if err != nil {
-		l.Fatal(ctx, "failed to create public proxy grpc listener", zap.Error(err))
+		l.Fatal(ctx, "failed to create edge proxy grpc listener", zap.Error(err))
 	}
 
-	publicGrpcServer := e2bgrpc.NewGRPCServer(tel)
+	edgeGrpcServer := e2bgrpc.NewGRPCServer(tel)
 	clientProxyOAuthVerifier, err := handlers.NewClientProxyOAuthVerifier(ctx, config.ClientProxyOIDCIssuerURL, config.ClientProxyOIDCAudience)
 	if err != nil {
 		l.Fatal(ctx, "failed to create client proxy OIDC verifier", zap.Error(err))
 	}
-	proxygrpc.RegisterSandboxServiceServer(publicGrpcServer, handlers.NewSandboxService(apiStore, true, clientProxyOAuthVerifier))
+	proxygrpc.RegisterSandboxServiceServer(edgeGrpcServer, handlers.NewSandboxService(apiStore, true, clientProxyOAuthVerifier))
 
 	// pass the signal context so that handlers know when shutdown is happening.
 	s := NewGinServer(ctx, config, tel, l, apiStore, redisClient, featureFlags, swagger, port)
@@ -475,7 +475,7 @@ func run() int {
 	wg.Go(func() {
 		defer cancel()
 
-		l.Info(ctx, "internal gRPC service starting", zap.Uint16("port", config.APIGrpcPort))
+		l.Info(ctx, "internal gRPC service starting", zap.Uint16("port", config.APIInternalGrpcPort))
 		err := grpcServer.Serve(grpcListener)
 		if err != nil {
 			exitCode.Add(1)
@@ -486,11 +486,11 @@ func run() int {
 	wg.Go(func() {
 		defer cancel()
 
-		l.Info(ctx, "public gRPC service starting", zap.Uint16("port", config.APIPublicGrpcPort))
-		err := publicGrpcServer.Serve(publicGrpcListener)
+		l.Info(ctx, "edge gRPC service starting", zap.Uint16("port", config.APIEdgeGrpcPort))
+		err := edgeGrpcServer.Serve(edgeGrpcListener)
 		if err != nil {
 			exitCode.Add(1)
-			l.Error(ctx, "public gRPC service encountered error", zap.Error(err))
+			l.Error(ctx, "edge gRPC service encountered error", zap.Error(err))
 		}
 	})
 
@@ -535,7 +535,7 @@ func run() int {
 		}
 
 		grpcServer.GracefulStop()
-		publicGrpcServer.GracefulStop()
+		edgeGrpcServer.GracefulStop()
 	})
 
 	// wait for the HTTP service to complete shutting down first

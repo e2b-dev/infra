@@ -53,8 +53,8 @@ type Config struct {
 	RedisTLSCABase64 string `env:"REDIS_TLS_CA_BASE64"`
 	RedisPoolSize    int    `env:"REDIS_POOL_SIZE"     envDefault:"160"`
 
-	APIGrpcPort       uint16 `env:"API_GRPC_PORT"        envDefault:"5009"`
-	APIPublicGrpcPort uint16 `env:"API_PUBLIC_GRPC_PORT" envDefault:"5109"`
+	APIInternalGrpcPort uint16 `env:"API_INTERNAL_GRPC_PORT" envDefault:"5009"`
+	APIEdgeGrpcPort     uint16 `env:"API_EDGE_GRPC_PORT"     envDefault:"5109"`
 
 	ClientProxyOIDCIssuerURL string `env:"CLIENT_PROXY_OIDC_ISSUER_URL"`
 	ClientProxyOIDCAudience  string `env:"CLIENT_PROXY_OIDC_AUDIENCE"`

@@ -19,11 +19,11 @@ job "api" {
         static = "${port_number}"
       }
 
-      port "grpc" {
-        static = "${api_grpc_port}"
+      port "grpc_internal" {
+        static = "${api_internal_grpc_port}"
       }
 
-      port "grpc_public" {}
+      port "grpc_edge" {}
 
       %{ if prevent_colocation }
       port "scheduling-block" {
@@ -64,21 +64,21 @@ job "api" {
 
     service {
       name = "api-grpc"
-      port = "grpc"
+      port = "grpc_internal"
       task = "start"
 
       check {
         type     = "tcp"
-        name     = "grpc"
+        name     = "grpc-internal"
         interval = "3s"
         timeout  = "3s"
-        port     = "grpc"
+        port     = "grpc_internal"
       }
     }
 
     service {
-      name = "api-grpc-public"
-      port = "grpc_public"
+      name = "api-grpc-edge"
+      port = "grpc_edge"
       task = "start"
 
       tags = [
@@ -86,16 +86,16 @@ job "api" {
         "traefik.http.routers.api-grpc.rule=HostRegexp(`api-grpc.{domain:.+}`)",
         "traefik.http.routers.api-grpc.ruleSyntax=v2",
         "traefik.http.routers.api-grpc.priority=500",
-        "traefik.http.routers.api-grpc.service=api-grpc-public",
-        "traefik.http.services.api-grpc-public.loadbalancer.server.scheme=h2c"
+        "traefik.http.routers.api-grpc.service=api-grpc-edge",
+        "traefik.http.services.api-grpc-edge.loadbalancer.server.scheme=h2c"
       ]
 
       check {
         type     = "tcp"
-        name     = "grpc-public"
+        name     = "grpc-edge"
         interval = "3s"
         timeout  = "3s"
-        port     = "grpc_public"
+        port     = "grpc_edge"
       }
     }
 
@@ -139,8 +139,8 @@ job "api" {
         NODE_ID                        = "$${node.unique.id}"
         NOMAD_TOKEN                    = "${nomad_acl_token}"
         ORCHESTRATOR_PORT              = "${orchestrator_port}"
-        API_GRPC_PORT                  = "${api_grpc_port}"
-        API_PUBLIC_GRPC_PORT           = "$${NOMAD_PORT_grpc_public}"
+        API_INTERNAL_GRPC_PORT         = "${api_internal_grpc_port}"
+        API_EDGE_GRPC_PORT             = "$${NOMAD_PORT_grpc_edge}"
         ADMIN_TOKEN                    = "${admin_token}"
         SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
 
@@ -190,7 +190,7 @@ job "api" {
       config {
         network_mode = "host"
         image        = "${api_docker_image}"
-        ports        = ["${port_name}", "grpc_public"]
+        ports        = ["${port_name}", "grpc_edge"]
         args         = [
           "--port", "${port_number}",
         ]

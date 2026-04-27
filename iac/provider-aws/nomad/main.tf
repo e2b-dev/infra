@@ -122,7 +122,7 @@ module "api" {
   logs_collector_address         = "http://localhost:${var.logs_proxy_port}"
   port_name                      = "api"
   port_number                    = var.api_port
-  api_grpc_port                  = var.api_grpc_port
+  api_internal_grpc_port         = var.api_grpc_port
   environment                    = var.environment
   api_docker_image               = data.aws_ecr_image.api.image_uri
   postgres_connection_string     = var.postgres_connection_string
