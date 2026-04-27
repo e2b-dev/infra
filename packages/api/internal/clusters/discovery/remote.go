@@ -65,7 +65,7 @@ func (sd *RemoteServiceDiscovery) Query(ctx context.Context) ([]Item, error) {
 			UniqueIdentifier: n.ServiceInstanceID,
 			NodeID:           n.NodeID,
 			InstanceID:       n.ServiceInstanceID,
-			IPAddress:        ipAddressFromServiceHost(n.ServiceHost),
+			LocalIPAddress:   ipAddressFromServiceHost(n.ServiceHost),
 		}
 	}
 

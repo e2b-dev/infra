@@ -88,7 +88,7 @@ func newInstance(
 		serviceInstanceID: sd.InstanceID,
 		NodeID:            sd.NodeID,
 		ClusterID:         clusterID,
-		IPAddress:         sd.IPAddress,
+		IPAddress:         sd.LocalIPAddress,
 
 		client: client,
 		mutex:  sync.RWMutex{},
