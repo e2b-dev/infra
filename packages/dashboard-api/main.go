@@ -223,7 +223,7 @@ func run() int {
 		[]sharedauth.Authenticator{
 			sharedauth.NewAdminTokenAuthenticator(config.AdminToken),
 			sharedauth.NewAuthProviderTokenAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
-			sharedauth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromSupabaseToken),
+			sharedauth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
 			sharedauth.NewSupabaseTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
 			sharedauth.NewAuthProviderTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
 		},

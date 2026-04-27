@@ -124,12 +124,7 @@ func (s *AuthService[T]) ValidateAccessToken(ctx context.Context, ginCtx *gin.Co
 	return userID, nil
 }
 
-// ValidateSupabaseToken validates the legacy Supabase header through the configured auth provider.
-func (s *AuthService[T]) ValidateSupabaseToken(ctx context.Context, ginCtx *gin.Context, supabaseToken string) (uuid.UUID, *APIError) {
-	return s.validateJWTWithProvider(ctx, ginCtx, s.authProviderVerifier, supabaseToken, "Supabase")
-}
-
-// ValidateAuthProviderToken verifies a JWT against the configured auth provider JWKS and resolves an internal user ID.
+// ValidateAuthProviderToken verifies a JWT against the configured auth provider and resolves an internal user ID.
 func (s *AuthService[T]) ValidateAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError) {
 	return s.validateJWTWithProvider(ctx, ginCtx, s.authProviderVerifier, token, "auth provider")
 }

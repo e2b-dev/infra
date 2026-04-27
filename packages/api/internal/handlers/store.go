@@ -318,13 +318,6 @@ func (a *APIStore) GetUserFromAccessToken(ctx context.Context, ginCtx *gin.Conte
 	return a.authService.ValidateAccessToken(ctx, ginCtx, accessToken)
 }
 
-func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
-	ctx, span := tracer.Start(ctx, "get user id from supabase token")
-	defer span.End()
-
-	return a.authService.ValidateSupabaseToken(ctx, ginCtx, supabaseToken)
-}
-
 func (a *APIStore) GetUserIDFromAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *api.APIError) {
 	ctx, span := tracer.Start(ctx, "get user id from auth provider token")
 	defer span.End()
