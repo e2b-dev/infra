@@ -17,6 +17,7 @@ CREATE TABLE auth.users (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
     email text NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
+    raw_app_meta_data jsonb,
     PRIMARY KEY (id)
 );
 -- +goose StatementEnd
