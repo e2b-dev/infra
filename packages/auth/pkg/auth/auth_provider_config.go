@@ -114,7 +114,7 @@ func (c AuthProviderJWTConfig) validate() error {
 		if err != nil {
 			return fmt.Errorf("invalid auth provider JWKS URL: %w", err)
 		}
-		if parsedURL.Scheme != "https" && parsedURL.Scheme != "http" {
+		if parsedURL.Scheme != "https" {
 			return fmt.Errorf("invalid auth provider JWKS URL scheme %q", parsedURL.Scheme)
 		}
 		if c.Issuer == "" {

@@ -16,8 +16,6 @@ import (
 )
 
 func TestAuthProviderJWTVerifier_VerifyJWKS(t *testing.T) {
-	t.Parallel()
-
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
@@ -54,8 +52,6 @@ func TestAuthProviderJWTVerifier_VerifyJWKS(t *testing.T) {
 }
 
 func TestAuthProviderJWTVerifier_VerifyJWKSRejectsWrongAudience(t *testing.T) {
-	t.Parallel()
-
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
@@ -91,7 +87,7 @@ func TestAuthProviderJWTVerifier_VerifyJWKSRejectsWrongAudience(t *testing.T) {
 func newJWKSHTTPServer(t *testing.T, publicKey *rsa.PublicKey, keyID string) *httptest.Server {
 	t.Helper()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		err := json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{
 			{
 				Key:       publicKey,
@@ -103,6 +99,11 @@ func newJWKSHTTPServer(t *testing.T, publicKey *rsa.PublicKey, keyID string) *ht
 		require.NoError(t, err)
 	}))
 	t.Cleanup(server.Close)
+	previousHTTPClient := newAuthProviderJWKSHTTPClient
+	t.Cleanup(func() {
+		newAuthProviderJWKSHTTPClient = previousHTTPClient
+	})
+	newAuthProviderJWKSHTTPClient = server.Client
 
 	return server
 }
