@@ -14,7 +14,6 @@ import (
 type hmacAuthProviderJWTVerifier struct {
 	secrets     []string
 	userIDClaim string
-	emailClaim  string
 	options     []jwt.ParserOption
 }
 
@@ -22,7 +21,6 @@ func newHMACAuthProviderJWTVerifier(config AuthProviderJWTConfig) *hmacAuthProvi
 	return &hmacAuthProviderJWTVerifier{
 		secrets:     config.HMAC.Secrets,
 		userIDClaim: config.UserIDClaim,
-		emailClaim:  config.EmailClaim,
 		options:     authProviderJWTParserOptions(config.Issuer, config.Audience),
 	}
 }
@@ -52,7 +50,7 @@ func (v *hmacAuthProviderJWTVerifier) verify(ctx context.Context, tokenString st
 			continue
 		}
 		if token.Valid {
-			return identityFromClaims(claims, v.userIDClaim, v.emailClaim), nil
+			return identityFromClaims(claims, v.userIDClaim), nil
 		}
 	}
 

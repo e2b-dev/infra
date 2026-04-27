@@ -12,7 +12,6 @@ import (
 const (
 	defaultAuthProviderJWKSCacheDuration = 5 * time.Minute
 	defaultAuthProviderUserIDClaim       = "sub"
-	defaultAuthProviderEmailClaim        = "email"
 )
 
 // AuthProviderConfig describes external auth provider verification.
@@ -25,7 +24,6 @@ type AuthProviderJWTConfig struct {
 	Issuer      string                  `json:"issuer"`
 	Audience    string                  `json:"audience"`
 	UserIDClaim string                  `json:"user_id_claim"`
-	EmailClaim  string                  `json:"email_claim"`
 	JWKS        *AuthProviderJWKSConfig `json:"jwks"`
 	HMAC        *AuthProviderHMACConfig `json:"hmac"`
 }
@@ -86,13 +84,9 @@ func (c AuthProviderJWTConfig) normalized() AuthProviderJWTConfig {
 	c.Issuer = strings.TrimSpace(c.Issuer)
 	c.Audience = strings.TrimSpace(c.Audience)
 	c.UserIDClaim = strings.TrimSpace(c.UserIDClaim)
-	c.EmailClaim = strings.TrimSpace(c.EmailClaim)
 
 	if c.UserIDClaim == "" {
 		c.UserIDClaim = defaultAuthProviderUserIDClaim
-	}
-	if c.EmailClaim == "" {
-		c.EmailClaim = defaultAuthProviderEmailClaim
 	}
 	if c.JWKS != nil {
 		c.JWKS.URL = strings.TrimSpace(c.JWKS.URL)

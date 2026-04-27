@@ -38,11 +38,10 @@ func TestAuthProviderJWTVerifier_VerifyJWKS(t *testing.T) {
 
 	userID := uuid.New()
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-		"iss":   "https://issuer.example.com",
-		"aud":   "dashboard-api",
-		"sub":   userID.String(),
-		"email": "user@example.com",
-		"exp":   time.Now().Add(time.Hour).Unix(),
+		"iss": "https://issuer.example.com",
+		"aud": "dashboard-api",
+		"sub": userID.String(),
+		"exp": time.Now().Add(time.Hour).Unix(),
 	})
 	token.Header["kid"] = keyID
 
@@ -52,7 +51,6 @@ func TestAuthProviderJWTVerifier_VerifyJWKS(t *testing.T) {
 	identity, err := verifier.Verify(t.Context(), signedToken)
 	require.NoError(t, err)
 	require.Equal(t, userID, identity.UserID)
-	require.Equal(t, "user@example.com", identity.Email)
 }
 
 func TestAuthProviderJWTVerifier_VerifyJWKSRejectsWrongAudience(t *testing.T) {

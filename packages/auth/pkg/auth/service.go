@@ -23,7 +23,6 @@ type AuthStore[T TeamItem] interface {
 	GetTeamByHashedAPIKey(ctx context.Context, hashedKey string) (T, error)
 	GetTeamByIDAndUserID(ctx context.Context, userID uuid.UUID, teamID string) (T, error)
 	GetUserIDByHashedAccessToken(ctx context.Context, hashedToken string) (uuid.UUID, error)
-	GetUserIDByEmail(ctx context.Context, email string) (uuid.UUID, error)
 	GetTeamAPIKeyHashes(ctx context.Context, teamID uuid.UUID) ([]string, error)
 }
 
@@ -153,21 +152,10 @@ func (s *AuthService[T]) validateJWTWithProvider(ctx context.Context, ginCtx *gi
 
 	userID := identity.UserID
 	if userID == uuid.Nil {
-		if identity.Email == "" {
-			return uuid.UUID{}, &APIError{
-				Err:       fmt.Errorf("%s token contains neither UUID user claim nor email claim", tokenSource),
-				ClientMsg: "Backend authentication failed",
-				Code:      http.StatusUnauthorized,
-			}
-		}
-
-		userID, err = s.store.GetUserIDByEmail(ctx, identity.Email)
-		if err != nil {
-			return uuid.UUID{}, &APIError{
-				Err:       fmt.Errorf("failed to resolve %s user by email: %w", tokenSource, err),
-				ClientMsg: "Backend authentication failed",
-				Code:      http.StatusUnauthorized,
-			}
+		return uuid.UUID{}, &APIError{
+			Err:       fmt.Errorf("%s token user claim is missing or is not an internal UUID", tokenSource),
+			ClientMsg: "Backend authentication failed",
+			Code:      http.StatusUnauthorized,
 		}
 	}
 

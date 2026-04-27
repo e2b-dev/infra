@@ -17,7 +17,6 @@ const authProviderJWKSHTTPTimeout = 10 * time.Second
 type jwksAuthProviderJWTVerifier struct {
 	keyfunc       keyfunc.Keyfunc
 	userIDClaim   string
-	emailClaim    string
 	parserOptions []jwt.ParserOption
 }
 
@@ -43,7 +42,6 @@ func newJWKSAuthProviderJWTVerifier(ctx context.Context, config AuthProviderJWTC
 	return &jwksAuthProviderJWTVerifier{
 		keyfunc:       keyFunc,
 		userIDClaim:   config.UserIDClaim,
-		emailClaim:    config.EmailClaim,
 		parserOptions: authProviderJWTParserOptions(config.Issuer, config.Audience),
 	}, nil
 }
@@ -62,5 +60,5 @@ func (v *jwksAuthProviderJWTVerifier) verify(ctx context.Context, tokenString st
 		return nil, errors.New("auth provider token is invalid")
 	}
 
-	return identityFromClaims(claims, v.userIDClaim, v.emailClaim), nil
+	return identityFromClaims(claims, v.userIDClaim), nil
 }

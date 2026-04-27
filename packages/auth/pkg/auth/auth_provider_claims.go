@@ -8,20 +8,16 @@ import (
 // AuthProviderIdentity is the normalized identity extracted from a validated auth provider JWT.
 type AuthProviderIdentity struct {
 	UserID uuid.UUID
-	Email  string
 	Claims jwt.MapClaims
 }
 
-func identityFromClaims(claims jwt.MapClaims, userIDClaim, emailClaim string) *AuthProviderIdentity {
+func identityFromClaims(claims jwt.MapClaims, userIDClaim string) *AuthProviderIdentity {
 	identity := &AuthProviderIdentity{Claims: claims}
 	if claimValue, ok := claimString(claims, userIDClaim); ok {
 		userID, err := uuid.Parse(claimValue)
 		if err == nil {
 			identity.UserID = userID
 		}
-	}
-	if email, ok := claimString(claims, emailClaim); ok {
-		identity.Email = email
 	}
 
 	return identity
