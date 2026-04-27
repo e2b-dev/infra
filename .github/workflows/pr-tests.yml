@@ -81,12 +81,15 @@ jobs:
         working-directory: ${{ matrix.package }}
         run: |
           # Run tests. The '-E' flag is required to allow root to use the correct cache path.
-          sudo -E `which go` test -v -timeout 20m ${{ matrix.test_path }}
+          # -parallel=4 caps concurrent t.Parallel() tests to keep heavyweight
+          # cross-process UFFD tests in packages/orchestrator from overwhelming
+          # the runner and timing out (each test forks a child handler process).
+          sudo -E `which go` test -v -timeout 30m -parallel 4 ${{ matrix.test_path }}
         if: matrix.sudo == true
 
       - name: Run tests
         working-directory: ${{ matrix.package }}
-        run: go test -v -timeout 20m ${{ matrix.test_path }}
+        run: go test -v -timeout 30m -parallel 4 ${{ matrix.test_path }}
         if: matrix.sudo == false
 
   validate-iac:
