@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -13,7 +14,7 @@ type authProviderJWTVerificationStrategy interface {
 }
 
 type AuthProviderJWTVerifier struct {
-	strategy authProviderJWTVerificationStrategy
+	strategies []authProviderJWTVerificationStrategy
 }
 
 func NewAuthProviderJWTVerifier(config AuthProviderConfig) (*AuthProviderJWTVerifier, error) {
@@ -25,22 +26,23 @@ func NewAuthProviderJWTVerifier(config AuthProviderConfig) (*AuthProviderJWTVeri
 		return nil, nil
 	}
 
-	var strategy authProviderJWTVerificationStrategy
-	switch {
-	case jwtConfig.HMAC != nil:
-		strategy = newHMACAuthProviderJWTVerifier(jwtConfig)
-	case jwtConfig.JWKS != nil:
+	strategies := make([]authProviderJWTVerificationStrategy, 0, 2)
+	if jwtConfig.HMAC != nil {
+		strategies = append(strategies, newHMACAuthProviderJWTVerifier(jwtConfig))
+	}
+	if jwtConfig.JWKS != nil {
 		jwksStrategy, err := newJWKSAuthProviderJWTVerifier(context.Background(), jwtConfig, *jwtConfig.JWKS)
 		if err != nil {
 			return nil, err
 		}
-		strategy = jwksStrategy
-	default:
+		strategies = append(strategies, jwksStrategy)
+	}
+	if len(strategies) == 0 {
 		return nil, errors.New("auth provider verifier has no configured signing verifier")
 	}
 
 	return &AuthProviderJWTVerifier{
-		strategy: strategy,
+		strategies: strategies,
 	}, nil
 }
 
@@ -49,19 +51,31 @@ func (v *AuthProviderJWTVerifier) Verify(ctx context.Context, tokenString string
 		return nil, errors.New("auth provider verifier is not configured")
 	}
 
-	if v.strategy == nil {
-		return nil, errors.New("auth provider verifier strategy is not configured")
+	if len(v.strategies) == 0 {
+		return nil, errors.New("auth provider verifier strategies are not configured")
 	}
 
-	return v.strategy.verify(ctx, tokenString)
+	errs := make([]error, 0, len(v.strategies))
+	for _, strategy := range v.strategies {
+		identity, err := strategy.verify(ctx, tokenString)
+		if err == nil {
+			return identity, nil
+		}
+
+		errs = append(errs, err)
+	}
+
+	return nil, fmt.Errorf("failed to verify auth provider token: %w", errors.Join(errs...))
 }
 
 func (v *AuthProviderJWTVerifier) Close() {
-	if v == nil || v.strategy == nil {
+	if v == nil {
 		return
 	}
 
-	v.strategy.close()
+	for _, strategy := range v.strategies {
+		strategy.close()
+	}
 }
 
 func authProviderJWTParserOptions(issuer, audience string) []jwt.ParserOption {

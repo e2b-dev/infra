@@ -103,31 +103,24 @@ func (c AuthProviderJWTConfig) validate() error {
 		return nil
 	}
 
-	if c.JWKS != nil && c.HMAC != nil {
-		return errors.New("auth provider JWT config must specify exactly one of jwks or hmac")
-	}
-
 	if c.HMAC != nil {
 		if len(c.HMAC.Secrets) == 0 {
 			return errors.New("auth provider HMAC secrets are required when hmac is configured")
 		}
-
-		return nil
 	}
 
-	if c.JWKS == nil {
-		return nil
-	}
+	if c.JWKS != nil {
+		parsedURL, err := url.ParseRequestURI(c.JWKS.URL)
+		if err != nil {
+			return fmt.Errorf("invalid auth provider JWKS URL: %w", err)
+		}
+		if parsedURL.Scheme != "https" && parsedURL.Scheme != "http" {
+			return fmt.Errorf("invalid auth provider JWKS URL scheme %q", parsedURL.Scheme)
+		}
+		if c.Issuer == "" {
+			return errors.New("auth provider issuer is required when jwks is configured")
+		}
 
-	parsedURL, err := url.ParseRequestURI(c.JWKS.URL)
-	if err != nil {
-		return fmt.Errorf("invalid auth provider JWKS URL: %w", err)
-	}
-	if parsedURL.Scheme != "https" && parsedURL.Scheme != "http" {
-		return fmt.Errorf("invalid auth provider JWKS URL scheme %q", parsedURL.Scheme)
-	}
-	if c.Issuer == "" {
-		return errors.New("auth provider issuer is required when jwks is configured")
 	}
 
 	return nil
