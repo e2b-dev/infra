@@ -3,6 +3,7 @@ package featureflags
 import (
 	"context"
 	"os"
+	"reflect"
 	"time"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
@@ -116,6 +117,7 @@ func (c *Client) StringFlag(ctx context.Context, flag StringFlag, contexts ...ld
 type typedFlag[T any] interface {
 	Key() string
 	Fallback() T
+	FallbackOnZero() bool
 }
 
 func getFlag[T any](
@@ -136,7 +138,16 @@ func getFlag[T any](
 		logger.L().Warn(ctx, "error evaluating flag", zap.Error(err), zap.String("flag", flag.Key()))
 	}
 
+	if flag.FallbackOnZero() && isZeroValue(value) {
+		return flag.Fallback()
+	}
+
 	return value
+}
+
+// isZeroValue returns true if the value is the zero value for its type.
+func isZeroValue[T any](v T) bool {
+	return reflect.ValueOf(&v).Elem().IsZero()
 }
 
 func (c *Client) Close(ctx context.Context) error {
