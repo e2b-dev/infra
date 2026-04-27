@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	authProviderGoogle = "google"
-	authProviderGitHub = "github"
+	// supabase uses "email" for password signups; everything else (google,
+	// github, apple, gitlab, ...) is treated as a social provider.
+	emailAuthProvider = "email"
 
 	signupIPMetadataKey        = "signup_ip"
 	signupUserAgentMetadataKey = "signup_user_agent"
@@ -61,7 +62,8 @@ func hasOAuthProvider(metadata map[string]any) bool {
 	}
 
 	for _, p := range rawProviders {
-		if name, ok := p.(string); ok && (name == authProviderGoogle || name == authProviderGitHub) {
+		name, ok := p.(string)
+		if ok && name != "" && name != emailAuthProvider {
 			return true
 		}
 	}

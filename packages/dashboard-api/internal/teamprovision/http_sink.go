@@ -33,6 +33,8 @@ const (
 	provisionBackoffMultiplier       = 2.0
 	// Error responses only need enough body to extract a short API message without buffering large upstream payloads.
 	provisionErrorMessageReadLimit = 2 * 1024
+	// short cap so a slow auth.users lookup can't eat into the provisioning timeout.
+	creatorContextResolveTimeout = 2 * time.Second
 )
 
 type HTTPProvisionSink struct {
@@ -79,7 +81,9 @@ func (s *HTTPProvisionSink) ProvisionTeam(ctx context.Context, req sharedteampro
 	}
 
 	if s.supabaseDB != nil && req.CreatorContext == nil {
-		creatorContext, resolveErr := resolveCreatorContext(ctx, s.supabaseDB, req.CreatorUserID)
+		resolveCtx, cancel := context.WithTimeout(ctx, creatorContextResolveTimeout)
+		creatorContext, resolveErr := resolveCreatorContext(resolveCtx, s.supabaseDB, req.CreatorUserID)
+		cancel()
 		if resolveErr != nil {
 			// creator context is best-effort; keep going without it
 			logger.L().Warn(ctx, "failed to resolve creator context for team provisioning",
