@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -58,8 +59,13 @@ func dbNetworkConfigToAPI(network *dbtypes.SandboxNetworkConfig) *api.SandboxNet
 				for _, r := range dbRules {
 					apiRule := api.SandboxNetworkRule{}
 					if r.Transform != nil {
+						var h *map[string]string
+						if r.Transform.Headers != nil {
+							clone := maps.Clone(r.Transform.Headers)
+							h = &clone
+						}
 						apiRule.Transform = &api.SandboxNetworkTransform{
-							Headers: &r.Transform.Headers,
+							Headers: h,
 						}
 					}
 					apiDomainRules = append(apiDomainRules, apiRule)
