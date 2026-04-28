@@ -119,6 +119,7 @@ job "template-manager" {
         TEMPLATE_BUCKET_NAME          = "${template_bucket_name}"
         BUILD_CACHE_BUCKET_NAME       = "${build_cache_bucket_name}"
         OTEL_COLLECTOR_GRPC_ENDPOINT     = "${otel_collector_grpc_endpoint}"
+        OTEL_METRICS_EXEMPLAR_FILTER     = "always_off"
         LOGS_COLLECTOR_ADDRESS           = "${logs_collector_address}"
         ORCHESTRATOR_SERVICES            = "${orchestrator_services}"
         REDIS_POOL_SIZE                  = "${redis_pool_size}"

@@ -70,6 +70,7 @@ job "orchestrator-${latest_orchestrator_job_id}" {
         ENVD_TIMEOUT                 = "${envd_timeout}"
         TEMPLATE_BUCKET_NAME         = "${template_bucket_name}"
         OTEL_COLLECTOR_GRPC_ENDPOINT = "${otel_collector_grpc_endpoint}"
+        OTEL_METRICS_EXEMPLAR_FILTER = "always_off"
         ALLOW_SANDBOX_INTERNET       = "${allow_sandbox_internet}"
         CLICKHOUSE_CONNECTION_STRING = "${clickhouse_connection_string}"
         REDIS_POOL_SIZE              = "${redis_pool_size}"
