@@ -22,9 +22,9 @@ import (
 )
 
 type grpcPausedSandboxResumer struct {
-	conn             *grpc.ClientConn
-	client           proxygrpc.SandboxServiceClient
-	oauthTokenSource oauth2.TokenSource
+	conn   *grpc.ClientConn
+	client proxygrpc.SandboxServiceClient
+	auth   grpcResumeAuth
 }
 
 type GrpcOAuthConfig struct {
@@ -33,7 +33,15 @@ type GrpcOAuthConfig struct {
 	TokenURL     string
 }
 
-var noopOAuthTokenSource = oauth2.StaticTokenSource(&oauth2.Token{})
+type grpcResumeAuth interface {
+	authorize(ctx context.Context) (context.Context, error)
+}
+
+type noopGrpcResumeAuth struct{}
+
+type oauthGrpcResumeAuth struct {
+	tokenSource oauth2.TokenSource
+}
 
 func (c GrpcOAuthConfig) Enabled() bool {
 	return strings.TrimSpace(c.ClientID) != "" ||
@@ -41,9 +49,9 @@ func (c GrpcOAuthConfig) Enabled() bool {
 		strings.TrimSpace(c.TokenURL) != ""
 }
 
-func (c GrpcOAuthConfig) tokenSource(ctx context.Context) (oauth2.TokenSource, error) {
+func newGrpcResumeAuth(ctx context.Context, c GrpcOAuthConfig) (grpcResumeAuth, error) {
 	if !c.Enabled() {
-		return noopOAuthTokenSource, nil
+		return noopGrpcResumeAuth{}, nil
 	}
 
 	if strings.TrimSpace(c.ClientID) == "" ||
@@ -58,7 +66,20 @@ func (c GrpcOAuthConfig) tokenSource(ctx context.Context) (oauth2.TokenSource, e
 		TokenURL:     strings.TrimSpace(c.TokenURL),
 	}
 
-	return oauthConfig.TokenSource(ctx), nil
+	return oauthGrpcResumeAuth{tokenSource: oauthConfig.TokenSource(ctx)}, nil
+}
+
+func (noopGrpcResumeAuth) authorize(ctx context.Context) (context.Context, error) {
+	return ctx, nil
+}
+
+func (a oauthGrpcResumeAuth) authorize(ctx context.Context) (context.Context, error) {
+	token, err := a.tokenSource.Token()
+	if err != nil {
+		return ctx, fmt.Errorf("get api grpc OAuth token: %w", err)
+	}
+
+	return metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataAuthorization, "Bearer "+token.AccessToken), nil
 }
 
 func apiGrpcAddressUsesTLS(address string) bool {
@@ -85,7 +106,7 @@ func NewGrpcPausedSandboxResumer(address string, oauthConfig GrpcOAuthConfig) (P
 		return nil, errors.New("api grpc address is required")
 	}
 
-	oauthTokenSource, err := oauthConfig.tokenSource(context.Background())
+	auth, err := newGrpcResumeAuth(context.Background(), oauthConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -105,9 +126,9 @@ func NewGrpcPausedSandboxResumer(address string, oauthConfig GrpcOAuthConfig) (P
 	}
 
 	return &grpcPausedSandboxResumer{
-		conn:             conn,
-		client:           proxygrpc.NewSandboxServiceClient(conn),
-		oauthTokenSource: oauthTokenSource,
+		conn:   conn,
+		client: proxygrpc.NewSandboxServiceClient(conn),
+		auth:   auth,
 	}, nil
 }
 
@@ -130,12 +151,10 @@ func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string,
 		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataEnvdAccessToken, envdAccessToken)
 	}
 
-	token, tokenErr := c.oauthTokenSource.Token()
-	if tokenErr != nil {
-		return "", fmt.Errorf("get api grpc OAuth token: %w", tokenErr)
-	}
-	if strings.TrimSpace(token.AccessToken) != "" {
-		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataAuthorization, "Bearer "+token.AccessToken)
+	var err error
+	ctx, err = c.auth.authorize(ctx)
+	if err != nil {
+		return "", err
 	}
 
 	resp, err := c.client.ResumeSandbox(ctx, &proxygrpc.SandboxResumeRequest{
