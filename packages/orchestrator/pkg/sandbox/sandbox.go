@@ -1254,7 +1254,7 @@ func getNetworkSlot(
 	networkPool *network.Pool,
 	cleanup *Cleanup,
 	networkConfig *orchestrator.SandboxNetworkConfig,
-	networkReleased func(ctx context.Context, ip string),
+	networkReleased network.ReleaseNotify,
 ) *utils.Promise[*network.Slot] {
 	return utils.NewPromise(func() (*network.Slot, error) {
 		ctx, span := tracer.Start(ctx, "get network-slot")
@@ -1271,9 +1271,7 @@ func getNetworkSlot(
 
 			// We can run this cleanup asynchronously, as it is not important for the sandbox lifecycle
 			go func(ctx context.Context) {
-				networkReleased(ctx, slot.HostIPString())
-
-				returnErr := networkPool.Return(ctx, slot)
+				returnErr := networkPool.Return(ctx, slot, networkReleased, network.ReturnDelay)
 				if returnErr != nil {
 					logger.L().Error(ctx, "failed to return network slot", zap.Error(returnErr))
 				}

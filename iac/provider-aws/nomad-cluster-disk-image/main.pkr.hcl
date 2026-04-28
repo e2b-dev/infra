@@ -17,6 +17,10 @@ source "amazon-ebs" "ubuntu" {
   ami_name      = "${var.prefix}orch-${formatdate("YYYY-MM-DD-hh-mm-ss", timestamp())}"
   ssh_username  = "ubuntu"
 
+  vpc_id                      = var.vpc_id
+  subnet_id                   = var.subnet_id
+  associate_public_ip_address = true
+
   // Ubuntu Server 24.04 LTS (HVM), SSD Volume Type
   source_ami_filter {
     filters = {
@@ -126,6 +130,20 @@ build {
   provisioner "shell" {
     script          = "${local.shared_setup_dir}/install-vault.sh"
     execute_command = "chmod +x {{ .Path }}; {{ .Vars }} {{ .Path }} --version ${var.vault_version}"
+  }
+
+  # Install the ClickHouse client at the same version as the server so it's
+  # available on every node without being downloaded at boot time.
+  provisioner "shell" {
+    script          = "${local.shared_setup_dir}/install-clickhouse-client.sh"
+    execute_command = "chmod +x {{ .Path }}; {{ .Vars }} {{ .Path }} --version ${var.clickhouse_client_version}"
+  }
+
+  # Install CNI plugins (needed by Nomad bridge-mode networking on the
+  # ClickHouse nodepool). Harmless on nodes that don't use them.
+  provisioner "shell" {
+    script          = "${local.shared_setup_dir}/install-cni-plugins.sh"
+    execute_command = "chmod +x {{ .Path }}; {{ .Vars }} {{ .Path }} --version ${var.cni_plugin_version}"
   }
 
   provisioner "shell" {

@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/exemplar"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/resource"
 )
@@ -60,6 +61,10 @@ func NewMeterProvider(metricsExporter sdkmetric.Exporter, metricExportPeriod tim
 				sdkmetric.WithInterval(metricExportPeriod),
 			),
 		),
+		// Disable exemplars: they count 1:1 against the Mimir tenant items/s
+		// limit and we don't query them in any dashboard. Callers can still
+		// override this via extraOption since later options take precedence.
+		sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter),
 	}
 
 	if res != nil {
