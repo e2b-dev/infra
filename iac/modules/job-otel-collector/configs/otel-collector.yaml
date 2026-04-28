@@ -80,7 +80,7 @@ receivers:
           match_type: regexp
         metrics:
           system.filesystem.inodes.usage:
-            enabled: true
+            enabled: false
           system.filesystem.usage:
             enabled: true
           system.filesystem.utilization:
@@ -157,7 +157,7 @@ receivers:
       processes:
         metrics:
           system.processes.count:
-            enabled: true
+            enabled: false
           system.processes.created:
             enabled: true
 
@@ -233,6 +233,16 @@ processors:
           - "traefik.*"
           - "grpc\\..*"
           - "rpc\\.client.*"
+      # Drop metrics that no dashboard or alert references and that
+      # contribute disproportionately to the Mimir items/s budget through
+      # their samples and the exemplars attached to them.
+      exclude:
+        match_type: regexp
+        metric_names:
+          - "rpc\\.client\\.request\\.size.*"
+          - "rpc\\.client\\.response\\.size.*"
+          - "grpc\\.client\\.connections.*"
+          - "orchestrator\\.storage\\.cache\\.bytes\\.byte.*"
 
   filter/only_client_allocs:
     metrics:
