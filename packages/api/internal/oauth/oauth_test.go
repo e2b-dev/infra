@@ -227,3 +227,108 @@ func TestRequireOrg(t *testing.T) {
 		})
 	}
 }
+
+func TestRequireClaims(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		md       metadata.MD
+		verifier Verifier
+		want     Claims
+		wantErr  bool
+	}{
+		{
+			name:     "valid bearer token",
+			md:       metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
+			verifier: fakeVerifier{claims: Claims{Subject: "client_123", OrgID: "org_123"}},
+			want:     Claims{Subject: "client_123", OrgID: "org_123"},
+		},
+		{
+			name:     "missing bearer token",
+			md:       metadata.MD{},
+			verifier: fakeVerifier{claims: Claims{Subject: "client_123", OrgID: "org_123"}},
+			wantErr:  true,
+		},
+		{
+			name:    "configured auth requires verifier",
+			md:      metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
+			wantErr: true,
+		},
+		{
+			name:     "verifier error",
+			md:       metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
+			verifier: fakeVerifier{err: errors.New("invalid token")},
+			wantErr:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			claims, err := RequireClaims(context.Background(), tt.md, tt.verifier)
+			if tt.wantErr {
+				require.Error(t, err)
+
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, claims)
+		})
+	}
+}
+
+func TestRequireOrgClaims(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		claims        Claims
+		expectedOrgID string
+		wantErr       bool
+	}{
+		{
+			name:          "matching org",
+			claims:        Claims{OrgID: "org_123"},
+			expectedOrgID: "org_123",
+		},
+		{
+			name:          "trims expected org",
+			claims:        Claims{OrgID: "org_123"},
+			expectedOrgID: " org_123 ",
+		},
+		{
+			name:          "wrong org",
+			claims:        Claims{OrgID: "org_456"},
+			expectedOrgID: "org_123",
+			wantErr:       true,
+		},
+		{
+			name:          "missing expected org",
+			claims:        Claims{OrgID: "org_123"},
+			expectedOrgID: "",
+			wantErr:       true,
+		},
+		{
+			name:          "missing claim org",
+			claims:        Claims{},
+			expectedOrgID: "org_123",
+			wantErr:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := RequireOrgClaims(tt.claims, tt.expectedOrgID)
+			if tt.wantErr {
+				require.Error(t, err)
+
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}

@@ -98,22 +98,27 @@ func RequireBearer(md metadata.MD) error {
 	return nil
 }
 
-func RequireOrg(ctx context.Context, md metadata.MD, verifier Verifier, expectedOrgID string) error {
-	expectedOrgID = strings.TrimSpace(expectedOrgID)
-	if expectedOrgID == "" {
-		return denyPermission()
-	}
+func RequireClaims(ctx context.Context, md metadata.MD, verifier Verifier) (Claims, error) {
 	if verifier == nil {
-		return status.Error(codes.Internal, "client proxy OIDC verifier is not configured")
+		return Claims{}, status.Error(codes.Internal, "client proxy OIDC verifier is not configured")
 	}
 
 	rawToken, found := BearerToken(md)
 	if !found {
-		return denyPermission()
+		return Claims{}, denyPermission()
 	}
 
 	claims, err := verifier.VerifyClaims(ctx, rawToken)
 	if err != nil {
+		return Claims{}, denyPermission()
+	}
+
+	return claims, nil
+}
+
+func RequireOrgClaims(claims Claims, expectedOrgID string) error {
+	expectedOrgID = strings.TrimSpace(expectedOrgID)
+	if expectedOrgID == "" {
 		return denyPermission()
 	}
 	if subtle.ConstantTimeCompare([]byte(claims.OrgID), []byte(expectedOrgID)) != 1 {
@@ -121,6 +126,15 @@ func RequireOrg(ctx context.Context, md metadata.MD, verifier Verifier, expected
 	}
 
 	return nil
+}
+
+func RequireOrg(ctx context.Context, md metadata.MD, verifier Verifier, expectedOrgID string) error {
+	claims, err := RequireClaims(ctx, md, verifier)
+	if err != nil {
+		return err
+	}
+
+	return RequireOrgClaims(claims, expectedOrgID)
 }
 
 func denyPermission() error {

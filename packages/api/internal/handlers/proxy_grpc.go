@@ -30,16 +30,16 @@ import (
 type SandboxService struct {
 	proxygrpc.UnimplementedSandboxServiceServer
 
-	api                    *APIStore
-	requireClientProxyAuth bool
-	clientProxyOAuth       oauth.Verifier
+	api                        *APIStore
+	requireEdgeClientProxyAuth bool
+	clientProxyOAuth           oauth.Verifier
 }
 
-func NewSandboxService(api *APIStore, requireClientProxyAuth bool, clientProxyOAuth oauth.Verifier) *SandboxService {
+func NewSandboxService(api *APIStore, requireEdgeClientProxyAuth bool, clientProxyOAuth oauth.Verifier) *SandboxService {
 	return &SandboxService{
-		api:                    api,
-		requireClientProxyAuth: requireClientProxyAuth,
-		clientProxyOAuth:       clientProxyOAuth,
+		api:                        api,
+		requireEdgeClientProxyAuth: requireEdgeClientProxyAuth,
+		clientProxyOAuth:           clientProxyOAuth,
 	}
 }
 
@@ -120,9 +120,12 @@ func (s *SandboxService) getAutoResumeSnapshot(ctx context.Context, sandboxID st
 func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*proxygrpc.SandboxResumeResponse, error) {
 	incomingMetadata := metadataFromIncomingContext(ctx)
 
-	if s.requireClientProxyAuth {
-		if err := oauth.RequireBearer(incomingMetadata); err != nil {
-			return nil, err
+	var clientProxyClaims oauth.Claims
+	if s.requireEdgeClientProxyAuth {
+		var authErr error
+		clientProxyClaims, authErr = oauth.RequireClaims(ctx, incomingMetadata, s.clientProxyOAuth)
+		if authErr != nil {
+			return nil, authErr
 		}
 	}
 
@@ -143,7 +146,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
 	}
 
-	if s.requireClientProxyAuth {
+	if s.requireEdgeClientProxyAuth {
 		var authOrgID string
 		if team.ClusterID != nil {
 			cluster, found := s.api.clusters.GetClusterById(*team.ClusterID)
@@ -154,7 +157,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 			authOrgID = cluster.AuthOrgID
 		}
 
-		if err := oauth.RequireOrg(ctx, incomingMetadata, s.clientProxyOAuth, authOrgID); err != nil {
+		if err := oauth.RequireOrgClaims(clientProxyClaims, authOrgID); err != nil {
 			return nil, err
 		}
 	}
