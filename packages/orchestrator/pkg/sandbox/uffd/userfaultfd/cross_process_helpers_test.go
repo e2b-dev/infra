@@ -110,6 +110,9 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	if tt.alwaysWP {
 		cmd.Env = append(cmd.Env, "GO_ALWAYS_WP=1")
 	}
+	if tt.gated {
+		cmd.Env = append(cmd.Env, "GO_GATED=1")
+	}
 
 	dup, err := syscall.Dup(int(uffdFd))
 	require.NoError(t, err)
@@ -153,12 +156,34 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 		readySignal <- struct{}{}
 	}()
 
-	cmd.ExtraFiles = []*os.File{
+	extraFiles := []*os.File{
 		uffdFile,
 		contentReader,
 		offsetsWriter,
 		readyWriter,
 	}
+
+	var gateCmdWriter *os.File
+	var gateSyncReader *os.File
+	if tt.gated {
+		var gateCmdReader *os.File
+		gateCmdReader, gateCmdWriter, err = os.Pipe()
+		require.NoError(t, err)
+
+		var gateSyncWriter *os.File
+		gateSyncReader, gateSyncWriter, err = os.Pipe()
+		require.NoError(t, err)
+
+		t.Cleanup(func() {
+			gateCmdWriter.Close()
+			gateSyncReader.Close()
+		})
+
+		extraFiles = append(extraFiles, gateCmdReader)  // fd 7
+		extraFiles = append(extraFiles, gateSyncWriter) // fd 8
+	}
+
+	cmd.ExtraFiles = extraFiles
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -169,6 +194,10 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	offsetsWriter.Close()
 	readyWriter.Close()
 	uffdFile.Close()
+	if tt.gated {
+		extraFiles[4].Close() // gateCmdReader
+		extraFiles[5].Close() // gateSyncWriter
+	}
 
 	t.Cleanup(func() {
 		signalErr := cmd.Process.Signal(syscall.SIGUSR1)
@@ -189,11 +218,11 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 		)
 
 		// Tear down the UFFD registration before the early uffdFd.close()
-		// cleanup runs. Today this is a no-op (no test enables
-		// UFFD_FEATURE_EVENT_REMOVE) but a follow-up that does will
-		// otherwise see munmap block on un-acked REMOVE events queued
-		// against the still-registered range. Cleanups run LIFO, so
-		// this fires before the close registered earlier.
+		// cleanup runs. This branch enables UFFD_FEATURE_EVENT_REMOVE
+		// (see configureApi in fd_helpers_test.go), so without the
+		// unregister, munmap can block on un-acked REMOVE events queued
+		// by the kernel against the still-registered range. Cleanups
+		// run LIFO, so this fires before the close registered earlier.
 		assert.NoError(t, unregister(uffdFd, memoryStart, uint64(size)))
 	})
 
@@ -222,12 +251,16 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 				return handlerPageStates{}, fmt.Errorf("decoding page state entry: %w", err)
 			}
 
-			if pageState(entry.State) == faulted {
+			switch pageState(entry.State) {
+			case faulted:
 				result.faulted = append(result.faulted, uint(entry.Offset))
+			case removed:
+				result.removed = append(result.removed, uint(entry.Offset))
 			}
 		}
 
 		slices.Sort(result.faulted)
+		slices.Sort(result.removed)
 
 		return result, nil
 	}
@@ -238,12 +271,31 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	case <-readySignal:
 	}
 
-	return &testHandler{
+	h := &testHandler{
 		memoryArea:     &memoryArea,
 		pagesize:       tt.pagesize,
 		data:           data,
 		pageStatesOnce: pageStatesOnce,
-	}, nil
+	}
+
+	if tt.gated {
+		h.servePause = func() error {
+			if _, err := gateCmdWriter.Write([]byte{'P'}); err != nil {
+				return err
+			}
+			var buf [1]byte
+			_, err := gateSyncReader.Read(buf[:])
+
+			return err
+		}
+		h.serveResume = func() error {
+			_, err := gateCmdWriter.Write([]byte{'R'})
+
+			return err
+		}
+	}
+
+	return h, nil
 }
 
 // Secondary process, orchestrator in our case
@@ -303,9 +355,6 @@ func crossProcessServe() error {
 		},
 	})
 
-	exitUffd := make(chan struct{}, 1)
-	defer close(exitUffd)
-
 	l, err := logger.NewDevelopmentLogger()
 	if err != nil {
 		return fmt.Errorf("exit creating logger: %w", err)
@@ -361,39 +410,78 @@ func crossProcessServe() error {
 	}
 	defer fdExit.Close()
 
+	exitUffd := make(chan struct{}, 1)
+
 	go func() {
-		defer func() {
-			exitUffd <- struct{}{}
-		}()
+		defer func() { exitUffd <- struct{}{} }()
 
 		serverErr := uffd.Serve(ctx, fdExit)
 		if serverErr != nil {
 			msg := fmt.Errorf("error serving: %w", serverErr)
-
 			fmt.Fprint(os.Stderr, msg.Error())
-
 			cancel(msg)
-
-			return
 		}
 	}()
 
 	cleanup := func() {
-		err := fdExit.SignalExit()
-		if err != nil {
-			msg := fmt.Errorf("error signaling exit: %w", err)
-
-			fmt.Fprint(os.Stderr, msg.Error())
-
-			cancel(msg)
-
-			return
-		}
-
+		fdExit.SignalExit()
 		<-exitUffd
 	}
+	defer func() { cleanup() }()
 
-	defer cleanup()
+	if os.Getenv("GO_GATED") == "1" {
+		gateCmdFile := os.NewFile(uintptr(7), "gate-cmd")
+		defer gateCmdFile.Close()
+
+		gateSyncFile := os.NewFile(uintptr(8), "gate-sync")
+		defer gateSyncFile.Close()
+
+		startServe := func() func() {
+			newExit, fdErr := fdexit.New()
+			if fdErr != nil {
+				cancel(fmt.Errorf("error creating fd exit: %w", fdErr))
+
+				return func() {}
+			}
+
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				if err := uffd.Serve(ctx, newExit); err != nil {
+					cancel(fmt.Errorf("error serving: %w", err))
+				}
+			}()
+
+			return func() {
+				newExit.SignalExit()
+				<-done
+				newExit.Close()
+			}
+		}
+
+		stopServe := func() {
+			cleanup()
+		}
+
+		go func() {
+			var buf [1]byte
+			for {
+				if _, err := gateCmdFile.Read(buf[:]); err != nil {
+					return
+				}
+
+				switch buf[0] {
+				case 'P':
+					stopServe()
+					gateSyncFile.Write([]byte{1})
+				case 'R':
+					newStop := startServe()
+					stopServe = newStop
+					cleanup = newStop
+				}
+			}
+		}()
+	}
 
 	exitSignal := make(chan os.Signal, 1)
 	signal.Notify(exitSignal, syscall.SIGUSR1)
@@ -427,9 +515,12 @@ type pageStateEntry struct {
 // can mutate the pageTracker while we iterate.
 func (u *Userfaultfd) pageStateEntries() ([]pageStateEntry, error) {
 	u.settleRequests.Lock()
-	defer u.settleRequests.Unlock()
+	u.settleRequests.Unlock() //nolint:staticcheck // SA2001: intentional — settle the read locks.
 
-	entries := make([]pageStateEntry, 0, len(u.pageTracker.m))
+	u.pageTracker.mu.RLock()
+	defer u.pageTracker.mu.RUnlock()
+
+	var entries []pageStateEntry
 	for addr, state := range u.pageTracker.m {
 		offset, err := u.ma.GetOffset(addr)
 		if err != nil {
