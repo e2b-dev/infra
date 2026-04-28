@@ -1,28 +1,39 @@
 package userfaultfd
 
-// This tests is creating uffd in the main process and handling the page faults in another process.
-// It prevents problems with Go mmap during testing (https://pojntfx.github.io/networked-linux-memsync/main.html#limitations) and also more accurately simulates what we do with Firecracker.
-// These problems are not affecting Firecracker, because:
-// 1. It is a different process that handles the page faults
-// 2. Does not use garbage collection
+// This test creates the userfaultfd in the parent test process and
+// drives it from a child helper process. We do this so the actual
+// page-fault handling runs in a process where we can fully control
+// memory layout (no Go GC scanning / touching the registered region)
+// — which mirrors how Firecracker uses UFFD in production.
+//
+// All parent ↔ child coordination — readiness, page-state queries,
+// pause/resume, fault barriers, shutdown — flows over a single Unix
+// domain socket using the standard-library net/rpc + jsonrpc codec.
+// Each in-flight RPC runs in its own server-side goroutine, so a
+// blocking handler (e.g. WaitFaultHeld) does not stall other RPCs.
+// The only fd we still hand off out-of-band is the userfaultfd
+// itself (kernel object, has to go through ExtraFiles); the initial
+// source data is written to a temp file under t.TempDir() because
+// base64-stuffing megabytes through the JSON envelope would be silly.
 
 import (
 	"context"
 	"crypto/rand"
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
+	"net"
+	"net/rpc"
+	"net/rpc/jsonrpc"
 	"os"
 	"os/exec"
-	"os/signal"
+	"path/filepath"
 	"slices"
 	"strconv"
-	"strings"
+	"sync"
 	"syscall"
 	"testing"
+	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
@@ -33,8 +44,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-// MemorySlicer exposes byte slice via the Slicer interface.
-// This is used for testing purposes.
+// MemorySlicer exposes a byte slice via the Slicer interface.
+// Test-only.
 type MemorySlicer struct {
 	content  []byte
 	pagesize int64
@@ -43,10 +54,7 @@ type MemorySlicer struct {
 var _ block.Slicer = (*MemorySlicer)(nil)
 
 func NewMemorySlicer(content []byte, pagesize int64) *MemorySlicer {
-	return &MemorySlicer{
-		content:  content,
-		pagesize: pagesize,
-	}
+	return &MemorySlicer{content: content, pagesize: pagesize}
 }
 
 func (s *MemorySlicer) Slice(_ context.Context, offset, size int64) ([]byte, error) {
@@ -67,9 +75,7 @@ func (s *MemorySlicer) BlockSize() int64 {
 
 func RandomPages(pagesize, numberOfPages uint64) *MemorySlicer {
 	size := pagesize * numberOfPages
-
-	n := int(size)
-	buf := make([]byte, n)
+	buf := make([]byte, int(size))
 	if _, err := rand.Read(buf); err != nil {
 		panic(err)
 	}
@@ -77,11 +83,84 @@ func RandomPages(pagesize, numberOfPages uint64) *MemorySlicer {
 	return NewMemorySlicer(buf, int64(pagesize))
 }
 
-// Main process, FC in our case
+// Env vars used by the child helper process.
+const (
+	envHelperFlag    = "GO_TEST_HELPER_PROCESS"
+	envSocketPath    = "GO_UFFD_SOCKET"
+	envContentPath   = "GO_UFFD_CONTENT"
+	envMmapStart     = "GO_UFFD_MMAP_START"
+	envMmapPagesize  = "GO_UFFD_MMAP_PAGESIZE"
+	envMmapTotalSize = "GO_UFFD_MMAP_SIZE"
+	envAlwaysWP      = "GO_UFFD_ALWAYS_WP"
+	envGated         = "GO_UFFD_GATED"
+	// envBarriers gates the test-only worker hooks. Only race tests
+	// need them; for everyone else we leave the hook fields nil so
+	// the hot path stays a single nil-pointer load + branch.
+	envBarriers = "GO_UFFD_BARRIERS"
+)
+
+// ---- RPC method types ---------------------------------------------------
+//
+// net/rpc requires methods of the form:
+//
+//   func (s *Service) Method(args *ArgsT, reply *ReplyT) error
+//
+// where both args and reply are exported pointer types. For methods
+// that take or return nothing meaningful we still need a type — Empty
+// fills that role.
+
+type Empty struct{}
+
+type PageStatesReply struct {
+	Entries []pageStateEntry
+}
+
+type FaultBarrierArgs struct {
+	Addr  uint64
+	Point uint8
+}
+
+type FaultBarrierReply struct {
+	Token uint64
+}
+
+type TokenArgs struct {
+	Token uint64
+}
+
+// pageStateEntry is the wire format for PageStates RPC results.
+type pageStateEntry struct {
+	State  uint8
+	Offset uint64
+}
+
+// ---- Parent side --------------------------------------------------------
+
+// childForkMu serialises the cmd.Start() call across all parallel
+// cross-process tests in this binary. Without it, the duplicated
+// uffd fd we hand to one child via ExtraFiles is briefly visible in
+// the parent's fd table while ANOTHER concurrent test calls fork()
+// — so that other test's child inherits a uffd fd it does not own.
+// The leaked fd keeps the original test's uffd kernel object alive
+// after its owner closes its end, prevents madvise from completing
+// once the owning child exits, and produces hard-to-diagnose
+// -parallel-only deadlocks.
+//
+// Holding the mutex only across cmd.Start (which itself holds the
+// process lock for the underlying syscall.ForkExec) is enough — by
+// the time Start returns the dup'd fd is already mapped into fd 3
+// in the new child and we close it immediately in the parent below.
+var childForkMu sync.Mutex
+
+// Main process, FC in our case.
 func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error) {
 	t.Helper()
 
 	data := RandomPages(tt.pagesize, tt.numberOfPages)
+
+	if tt.sourcePatcher != nil {
+		tt.sourcePatcher(data.Content())
+	}
 
 	size, err := data.Size()
 	require.NoError(t, err)
@@ -89,430 +168,431 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	memoryArea, memoryStart, err := testutils.NewPageMmap(t, uint64(size), tt.pagesize)
 	require.NoError(t, err)
 
-	// We can pass mapping nil as the serve is used only in the helper process.
 	uffdFd, err := newFd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	require.NoError(t, err)
-
 	t.Cleanup(func() {
 		uffdFd.close()
 	})
 
-	err = configureApi(uffdFd, tt.pagesize)
-	require.NoError(t, err)
+	require.NoError(t, configureApi(uffdFd, tt.pagesize))
+	require.NoError(t, register(uffdFd, memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP))
 
-	err = register(uffdFd, memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP)
+	t.Cleanup(func() {
+		// Tear the registration down before the late close. With
+		// UFFD_FEATURE_EVENT_REMOVE enabled (see configureApi),
+		// munmap can otherwise block on un-acked REMOVE events.
+		_ = unregister(uffdFd, memoryStart, uint64(size))
+	})
+
+	tmpDir := t.TempDir()
+
+	contentPath := filepath.Join(tmpDir, "content.bin")
+	require.NoError(t, os.WriteFile(contentPath, data.Content(), 0o600))
+
+	socketPath := filepath.Join(tmpDir, "rpc.sock")
+	listener, err := net.Listen("unix", socketPath)
 	require.NoError(t, err)
 
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestHelperServingProcess", "-test.timeout=0")
-	cmd.Env = append(os.Environ(), "GO_TEST_HELPER_PROCESS=1")
-	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_START=%d", memoryStart))
-	cmd.Env = append(cmd.Env, fmt.Sprintf("GO_MMAP_PAGE_SIZE=%d", tt.pagesize))
+	cmd.Env = append(os.Environ(),
+		envHelperFlag+"=1",
+		envSocketPath+"="+socketPath,
+		envContentPath+"="+contentPath,
+		fmt.Sprintf("%s=%d", envMmapStart, memoryStart),
+		fmt.Sprintf("%s=%d", envMmapPagesize, tt.pagesize),
+		fmt.Sprintf("%s=%d", envMmapTotalSize, size),
+	)
 	if tt.alwaysWP {
-		cmd.Env = append(cmd.Env, "GO_ALWAYS_WP=1")
+		cmd.Env = append(cmd.Env, envAlwaysWP+"=1")
 	}
 	if tt.gated {
-		cmd.Env = append(cmd.Env, "GO_GATED=1")
+		cmd.Env = append(cmd.Env, envGated+"=1")
 	}
+	if tt.barriers {
+		cmd.Env = append(cmd.Env, envBarriers+"=1")
+	}
+
+	// We hand the uffd fd to the child via ExtraFiles. The child-
+	// side dup3 inside fork+exec clears CLOEXEC on the destination
+	// fd (i.e. fd 3 in the child) automatically, so the SOURCE fd
+	// in our parent should remain CLOEXEC — otherwise every other
+	// test fork()'d concurrently from this binary inherits a uffd
+	// it does not own, the kernel keeps the original test's uffd
+	// alive after its real owner exits, and madvise stops draining.
+	// At higher -parallel this surfaces as long, hard-to-diagnose
+	// hangs.
+	//
+	// syscall.Dup creates the new fd WITHOUT CLOEXEC, so we
+	// re-arm it explicitly. Holding childForkMu across the
+	// dup → cmd.Start window further guarantees no concurrent
+	// fork can race the F_SETFD.
+	childForkMu.Lock()
 
 	dup, err := syscall.Dup(int(uffdFd))
 	require.NoError(t, err)
-
-	// clear FD_CLOEXEC on the dup we pass across exec
-	_, err = unix.FcntlInt(uintptr(dup), unix.F_SETFD, 0)
-	require.NoError(t, err)
+	if _, err := unix.FcntlInt(uintptr(dup), unix.F_SETFD, unix.FD_CLOEXEC); err != nil {
+		childForkMu.Unlock()
+		require.NoError(t, err)
+	}
 
 	uffdFile := os.NewFile(uintptr(dup), "uffd")
-
-	contentReader, contentWriter, err := os.Pipe()
-	require.NoError(t, err)
-
-	go func() {
-		_, writeErr := contentWriter.Write(data.Content())
-		assert.NoError(t, writeErr)
-
-		closeErr := contentWriter.Close()
-		assert.NoError(t, closeErr)
-	}()
-
-	offsetsReader, offsetsWriter, err := os.Pipe()
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		offsetsReader.Close()
-	})
-
-	readyReader, readyWriter, err := os.Pipe()
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		readyReader.Close()
-	})
-
-	readySignal := make(chan struct{}, 1)
-	go func() {
-		_, err := io.ReadAll(readyReader)
-		assert.NoError(t, err)
-
-		readySignal <- struct{}{}
-	}()
-
-	extraFiles := []*os.File{
-		uffdFile,
-		contentReader,
-		offsetsWriter,
-		readyWriter,
-	}
-
-	var gateCmdWriter *os.File
-	var gateSyncReader *os.File
-	if tt.gated {
-		var gateCmdReader *os.File
-		gateCmdReader, gateCmdWriter, err = os.Pipe()
-		require.NoError(t, err)
-
-		var gateSyncWriter *os.File
-		gateSyncReader, gateSyncWriter, err = os.Pipe()
-		require.NoError(t, err)
-
-		t.Cleanup(func() {
-			gateCmdWriter.Close()
-			gateSyncReader.Close()
-		})
-
-		extraFiles = append(extraFiles, gateCmdReader)  // fd 7
-		extraFiles = append(extraFiles, gateSyncWriter) // fd 8
-	}
-
-	cmd.ExtraFiles = extraFiles
+	cmd.ExtraFiles = []*os.File{uffdFile}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	err = cmd.Start()
-	require.NoError(t, err)
-
-	contentReader.Close()
-	offsetsWriter.Close()
-	readyWriter.Close()
+	startErr := cmd.Start()
 	uffdFile.Close()
-	if tt.gated {
-		extraFiles[4].Close() // gateCmdReader
-		extraFiles[5].Close() // gateSyncWriter
+	childForkMu.Unlock()
+
+	require.NoError(t, startErr)
+
+	// Accept the child's connection. Tight deadline so a wedged
+	// child surfaces fast instead of hanging the test.
+	type acceptResult struct {
+		conn net.Conn
+		err  error
 	}
+	acceptCh := make(chan acceptResult, 1)
+	go func() {
+		c, err := listener.Accept()
+		acceptCh <- acceptResult{conn: c, err: err}
+	}()
 
-	t.Cleanup(func() {
-		signalErr := cmd.Process.Signal(syscall.SIGUSR1)
-		assert.NoError(t, signalErr)
-
-		waitErr := cmd.Wait()
-		// It can be either nil, an ExitError, a context.Canceled error, or "signal: killed"
-		assert.True(t,
-			(waitErr != nil && func(err error) bool {
-				var exitErr *exec.ExitError
-
-				return errors.As(err, &exitErr)
-			}(waitErr)) ||
-				errors.Is(waitErr, context.Canceled) ||
-				(waitErr != nil && strings.Contains(waitErr.Error(), "signal: killed")) ||
-				waitErr == nil,
-			"unexpected error: %v", waitErr,
-		)
-
-		// Tear down the UFFD registration before the early uffdFd.close()
-		// cleanup runs. This branch enables UFFD_FEATURE_EVENT_REMOVE
-		// (see configureApi in fd_helpers_test.go), so without the
-		// unregister, munmap can block on un-acked REMOVE events queued
-		// by the kernel against the still-registered range. Cleanups
-		// run LIFO, so this fires before the close registered earlier.
-		assert.NoError(t, unregister(uffdFd, memoryStart, uint64(size)))
-	})
-
-	// pageStatesOnce asks the serving process for a snapshot of its pageTracker
-	// and decodes it into a per-state view. It can only be called once.
-	pageStatesOnce := func() (handlerPageStates, error) {
-		err := cmd.Process.Signal(syscall.SIGUSR2)
-		if err != nil {
-			return handlerPageStates{}, err
-		}
-
-		var result handlerPageStates
-
-		for {
-			var entry pageStateEntry
-
-			// binary.Read uses the same field layout as binary.Write on
-			// the producer side (sum of fixed-size fields, no struct
-			// padding), so we never have to hard-code the wire size.
-			err := binary.Read(offsetsReader, binary.LittleEndian, &entry)
-			if errors.Is(err, io.EOF) {
-				break
-			}
-
-			if err != nil {
-				return handlerPageStates{}, fmt.Errorf("decoding page state entry: %w", err)
-			}
-
-			switch pageState(entry.State) {
-			case faulted:
-				result.faulted = append(result.faulted, uint(entry.Offset))
-			case removed:
-				result.removed = append(result.removed, uint(entry.Offset))
-			}
-		}
-
-		slices.Sort(result.faulted)
-		slices.Sort(result.removed)
-
-		return result, nil
-	}
-
+	var conn net.Conn
 	select {
-	case <-t.Context().Done():
-		return nil, t.Context().Err()
-	case <-readySignal:
+	case res := <-acceptCh:
+		require.NoError(t, res.err)
+		conn = res.conn
+	case <-time.After(10 * time.Second):
+		listener.Close()
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		t.Fatalf("child did not connect within 10s")
 	}
+	listener.Close()
+
+	client := jsonrpc.NewClient(conn)
 
 	h := &testHandler{
-		memoryArea:     &memoryArea,
-		pagesize:       tt.pagesize,
-		data:           data,
-		pageStatesOnce: pageStatesOnce,
+		memoryArea: &memoryArea,
+		pagesize:   tt.pagesize,
+		data:       data,
+		client:     client,
+		conn:       conn,
+		cmd:        cmd,
 	}
+
+	// WaitReady blocks on the child until its initial setup is done
+	// (uffd serve goroutine running, hooks installed). The RPC reply
+	// IS the readiness signal — no separate ready pipe / signal
+	// needed.
+	require.NoError(t, h.client.Call("Service.WaitReady", &Empty{}, &Empty{}))
+
+	t.Cleanup(func() {
+		// Best-effort graceful shutdown via RPC. If the child has
+		// already crashed the RPC will error and we fall back to
+		// killing the process below.
+		_ = h.client.Call("Service.Shutdown", &Empty{}, &Empty{})
+		_ = client.Close()
+
+		waitErr := cmd.Wait()
+		if waitErr != nil {
+			var exitErr *exec.ExitError
+			if !errors.As(waitErr, &exitErr) {
+				t.Logf("helper process Wait: %v", waitErr)
+			}
+		}
+	})
 
 	if tt.gated {
 		h.servePause = func() error {
-			if _, err := gateCmdWriter.Write([]byte{'P'}); err != nil {
-				return err
-			}
-			var buf [1]byte
-			_, err := gateSyncReader.Read(buf[:])
-
-			return err
+			return h.client.Call("Service.ServePause", &Empty{}, &Empty{})
 		}
 		h.serveResume = func() error {
-			_, err := gateCmdWriter.Write([]byte{'R'})
-
-			return err
+			return h.client.Call("Service.ServeResume", &Empty{}, &Empty{})
 		}
+	}
+
+	h.pageStatesOnce = func() (handlerPageStates, error) {
+		var reply PageStatesReply
+		if err := h.client.Call("Service.PageStates", &Empty{}, &reply); err != nil {
+			return handlerPageStates{}, err
+		}
+
+		var states handlerPageStates
+		for _, e := range reply.Entries {
+			switch pageState(e.State) {
+			case faulted:
+				states.faulted = append(states.faulted, uint(e.Offset))
+			case removed:
+				states.removed = append(states.removed, uint(e.Offset))
+			}
+		}
+		slices.Sort(states.faulted)
+		slices.Sort(states.removed)
+
+		return states, nil
 	}
 
 	return h, nil
 }
 
-// Secondary process, orchestrator in our case
+// ---- Child side ---------------------------------------------------------
+
+// Secondary process, orchestrator in our case.
 func TestHelperServingProcess(t *testing.T) {
 	t.Parallel()
 
-	if os.Getenv("GO_TEST_HELPER_PROCESS") != "1" {
+	if os.Getenv(envHelperFlag) != "1" {
 		t.Skip("this is a helper process, skipping direct execution")
 	}
 
-	err := crossProcessServe()
-	if err != nil {
-		fmt.Println("exit serving process", err)
+	if err := crossProcessServe(); err != nil {
+		fmt.Fprintln(os.Stderr, "exit serving process:", err)
 		os.Exit(1)
 	}
 
 	os.Exit(0)
 }
 
+// crossProcessServe wires up the child side: connects back to the
+// parent socket, registers the RPC service, and runs uffd.Serve in a
+// background goroutine that pause/resume RPCs can stop and restart.
 func crossProcessServe() error {
-	ctx, cancel := context.WithCancelCause(context.Background())
-	defer cancel(nil)
-
-	startRaw, err := strconv.Atoi(os.Getenv("GO_MMAP_START"))
-	if err != nil {
-		return fmt.Errorf("exit parsing mmap start: %w", err)
+	socketPath := os.Getenv(envSocketPath)
+	if socketPath == "" {
+		return fmt.Errorf("missing %s", envSocketPath)
 	}
 
+	conn, err := net.Dial("unix", socketPath)
+	if err != nil {
+		return fmt.Errorf("dial parent socket: %w", err)
+	}
+	defer conn.Close()
+
+	startRaw, err := strconv.ParseUint(os.Getenv(envMmapStart), 10, 64)
+	if err != nil {
+		return fmt.Errorf("parse %s: %w", envMmapStart, err)
+	}
 	memoryStart := uintptr(startRaw)
 
-	uffdFile := os.NewFile(uintptr(3), os.Getenv("GO_UFFD_FILE"))
-	defer uffdFile.Close()
+	pagesize, err := strconv.ParseInt(os.Getenv(envMmapPagesize), 10, 64)
+	if err != nil {
+		return fmt.Errorf("parse %s: %w", envMmapPagesize, err)
+	}
 
+	totalSize, err := strconv.ParseInt(os.Getenv(envMmapTotalSize), 10, 64)
+	if err != nil {
+		return fmt.Errorf("parse %s: %w", envMmapTotalSize, err)
+	}
+
+	content, err := os.ReadFile(os.Getenv(envContentPath))
+	if err != nil {
+		return fmt.Errorf("read content: %w", err)
+	}
+	if int64(len(content)) != totalSize {
+		return fmt.Errorf("content size %d != expected %d", len(content), totalSize)
+	}
+
+	data := NewMemorySlicer(content, pagesize)
+
+	uffdFile := os.NewFile(uintptr(3), "uffd")
+	defer uffdFile.Close()
 	uffdFd := uffdFile.Fd()
 
-	contentFile := os.NewFile(uintptr(4), "content")
-	defer contentFile.Close()
-
-	content, err := io.ReadAll(contentFile)
-	if err != nil {
-		return fmt.Errorf("exit reading content: %w", err)
-	}
-
-	pageSize, err := strconv.ParseInt(os.Getenv("GO_MMAP_PAGE_SIZE"), 10, 64)
-	if err != nil {
-		return fmt.Errorf("exit parsing page size: %w", err)
-	}
-
-	data := NewMemorySlicer(content, pageSize)
-
-	m := memory.NewMapping([]memory.Region{
+	mapping := memory.NewMapping([]memory.Region{
 		{
 			BaseHostVirtAddr: memoryStart,
-			Size:             uintptr(len(content)),
+			Size:             uintptr(totalSize),
 			Offset:           0,
-			PageSize:         uintptr(pageSize),
+			PageSize:         uintptr(pagesize),
 		},
 	})
 
 	l, err := logger.NewDevelopmentLogger()
 	if err != nil {
-		return fmt.Errorf("exit creating logger: %w", err)
+		return fmt.Errorf("logger: %w", err)
 	}
 
-	uffd, err := NewUserfaultfdFromFd(uffdFd, data, m, l)
+	uffd, err := NewUserfaultfdFromFd(uffdFd, data, mapping, l)
 	if err != nil {
-		return fmt.Errorf("exit creating uffd: %w", err)
+		return fmt.Errorf("NewUserfaultfdFromFd: %w", err)
 	}
 
-	if os.Getenv("GO_ALWAYS_WP") == "1" {
+	if os.Getenv(envAlwaysWP) == "1" {
 		uffd.defaultCopyMode = UFFDIO_COPY_MODE_WP
 	}
 
-	offsetsFile := os.NewFile(uintptr(5), "offsets")
+	br := newBarrierRegistry()
 
-	offsetsSignal := make(chan os.Signal, 1)
-	signal.Notify(offsetsSignal, syscall.SIGUSR2)
-	defer signal.Stop(offsetsSignal)
+	// Hooks are only wired up when the test asked for them (race
+	// tests). For everyone else we leave the fields nil so the hot
+	// path is a single nil-pointer load + branch — keeps the high-
+	// throughput tests (TestParallelMissingWriteWithPrefault, etc.)
+	// from paying for a Mutex per fault.
+	if os.Getenv(envBarriers) == "1" {
+		uffd.beforeWorkerRLockHook = br.hookFor(barrierBeforeRLock)
+		uffd.beforeFaultPageHook = br.hookFor(barrierBeforeFaultPage)
+	}
 
+	gated := os.Getenv(envGated) == "1"
+
+	svc := &Service{
+		uffd:     uffd,
+		br:       br,
+		gated:    gated,
+		shutdown: make(chan struct{}),
+	}
+	svc.startServe()
+
+	server := rpc.NewServer()
+	if err := server.Register(svc); err != nil {
+		return fmt.Errorf("rpc Register: %w", err)
+	}
+
+	// Run the codec in a goroutine so we can react to Shutdown
+	// without depending on the codec returning.
+	codecDone := make(chan struct{})
 	go func() {
-		defer offsetsFile.Close()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-offsetsSignal:
-				entries, entriesErr := uffd.pageStateEntries()
-				if entriesErr != nil {
-					cancel(fmt.Errorf("error getting page state entries: %w", entriesErr))
-
-					return
-				}
-
-				for _, entry := range entries {
-					writeErr := binary.Write(offsetsFile, binary.LittleEndian, entry)
-					if writeErr != nil {
-						cancel(fmt.Errorf("error writing page state entry: %w", writeErr))
-
-						return
-					}
-				}
-
-				return
-			}
-		}
+		defer close(codecDone)
+		server.ServeCodec(jsonrpc.NewServerCodec(conn))
 	}()
-
-	fdExit, err := fdexit.New()
-	if err != nil {
-		return fmt.Errorf("exit creating fd exit: %w", err)
-	}
-	defer fdExit.Close()
-
-	exitUffd := make(chan struct{}, 1)
-
-	go func() {
-		defer func() { exitUffd <- struct{}{} }()
-
-		serverErr := uffd.Serve(ctx, fdExit)
-		if serverErr != nil {
-			msg := fmt.Errorf("error serving: %w", serverErr)
-			fmt.Fprint(os.Stderr, msg.Error())
-			cancel(msg)
-		}
-	}()
-
-	cleanup := func() {
-		fdExit.SignalExit()
-		<-exitUffd
-	}
-	defer func() { cleanup() }()
-
-	if os.Getenv("GO_GATED") == "1" {
-		gateCmdFile := os.NewFile(uintptr(7), "gate-cmd")
-		defer gateCmdFile.Close()
-
-		gateSyncFile := os.NewFile(uintptr(8), "gate-sync")
-		defer gateSyncFile.Close()
-
-		startServe := func() func() {
-			newExit, fdErr := fdexit.New()
-			if fdErr != nil {
-				cancel(fmt.Errorf("error creating fd exit: %w", fdErr))
-
-				return func() {}
-			}
-
-			done := make(chan struct{})
-			go func() {
-				defer close(done)
-				if err := uffd.Serve(ctx, newExit); err != nil {
-					cancel(fmt.Errorf("error serving: %w", err))
-				}
-			}()
-
-			return func() {
-				newExit.SignalExit()
-				<-done
-				newExit.Close()
-			}
-		}
-
-		stopServe := func() {
-			cleanup()
-		}
-
-		go func() {
-			var buf [1]byte
-			for {
-				if _, err := gateCmdFile.Read(buf[:]); err != nil {
-					return
-				}
-
-				switch buf[0] {
-				case 'P':
-					stopServe()
-					gateSyncFile.Write([]byte{1})
-				case 'R':
-					newStop := startServe()
-					stopServe = newStop
-					cleanup = newStop
-				}
-			}
-		}()
-	}
-
-	exitSignal := make(chan os.Signal, 1)
-	signal.Notify(exitSignal, syscall.SIGUSR1)
-	defer signal.Stop(exitSignal)
-
-	readyFile := os.NewFile(uintptr(6), "ready")
-
-	closeErr := readyFile.Close()
-	if closeErr != nil {
-		return fmt.Errorf("error closing ready file: %w", closeErr)
-	}
 
 	select {
-	case <-ctx.Done():
-		return fmt.Errorf("context done: %w: %w", ctx.Err(), context.Cause(ctx))
-	case <-exitSignal:
-		return nil
+	case <-svc.shutdown:
+		fmt.Fprintln(os.Stderr, "child: shutdown received")
+	case <-codecDone:
+		fmt.Fprintln(os.Stderr, "child: codec done")
+	}
+
+	// Release any still-parked barriers so the serve goroutine can
+	// finish, then stop the serve goroutine.
+	br.releaseAll()
+	fmt.Fprintln(os.Stderr, "child: barriers released")
+	svc.stopServe()
+	fmt.Fprintln(os.Stderr, "child: serve stopped")
+
+	// Closing the conn is sufficient to unblock ServeCodec if it
+	// hasn't already returned.
+	_ = conn.Close()
+	<-codecDone
+	fmt.Fprintln(os.Stderr, "child: codec exited")
+
+	return nil
+}
+
+// Service is the RPC surface exposed to the parent. Methods follow
+// net/rpc's required signature.
+type Service struct {
+	uffd *Userfaultfd
+	br   *barrierRegistry
+
+	gated bool
+
+	mu       sync.Mutex
+	stop     func() // currently active serve-stop function, nil if paused
+	shutdown chan struct{}
+	closed   bool
+}
+
+func (s *Service) startServe() {
+	exit, err := fdexit.New()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "fdexit.New:", err)
+
+		return
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if err := s.uffd.Serve(context.Background(), exit); err != nil {
+			fmt.Fprintln(os.Stderr, "uffd.Serve:", err)
+		}
+	}()
+
+	s.stop = func() {
+		_ = exit.SignalExit()
+		<-done
+		exit.Close()
 	}
 }
 
-// pageStateEntry is the wire format used between the main test process
-// and the serving helper process. State is emitted as a single byte so it
-// can be written directly with binary.Write and decoded on the other side.
-type pageStateEntry struct {
-	State  uint8
-	Offset uint64
+func (s *Service) stopServe() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stop != nil {
+		s.stop()
+		s.stop = nil
+	}
 }
 
-// pageStateEntries returns a snapshot of every tracked page and its state.
-// It holds the settleRequests write lock so no in-flight faultPage worker
-// can mutate the pageTracker while we iterate.
+// WaitReady is a no-op handler whose successful reply is the
+// readiness signal for the parent.
+func (s *Service) WaitReady(_ *Empty, _ *Empty) error {
+	return nil
+}
+
+func (s *Service) PageStates(_ *Empty, reply *PageStatesReply) error {
+	entries, err := s.uffd.pageStateEntries()
+	if err != nil {
+		return err
+	}
+	reply.Entries = entries
+
+	return nil
+}
+
+func (s *Service) ServePause(_ *Empty, _ *Empty) error {
+	if !s.gated {
+		return errors.New("ServePause called on a non-gated handler")
+	}
+	s.stopServe()
+
+	return nil
+}
+
+func (s *Service) ServeResume(_ *Empty, _ *Empty) error {
+	if !s.gated {
+		return errors.New("ServeResume called on a non-gated handler")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.startServe()
+
+	return nil
+}
+
+func (s *Service) InstallFaultBarrier(args *FaultBarrierArgs, reply *FaultBarrierReply) error {
+	reply.Token = s.br.install(uintptr(args.Addr), barrierPoint(args.Point))
+
+	return nil
+}
+
+func (s *Service) WaitFaultHeld(args *TokenArgs, _ *Empty) error {
+	return s.br.waitArrived(context.Background(), args.Token)
+}
+
+func (s *Service) ReleaseFault(args *TokenArgs, _ *Empty) error {
+	s.br.release(args.Token)
+
+	return nil
+}
+
+func (s *Service) Shutdown(_ *Empty, _ *Empty) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.closed {
+		s.closed = true
+		close(s.shutdown)
+	}
+
+	return nil
+}
+
+// pageStateEntries returns a snapshot of every tracked page and its
+// state. It briefly takes settleRequests.Lock so no in-flight worker
+// can mutate the pageTracker while we read it.
 func (u *Userfaultfd) pageStateEntries() ([]pageStateEntry, error) {
 	u.settleRequests.Lock()
 	u.settleRequests.Unlock() //nolint:staticcheck // SA2001: intentional — settle the read locks.
@@ -520,15 +600,163 @@ func (u *Userfaultfd) pageStateEntries() ([]pageStateEntry, error) {
 	u.pageTracker.mu.RLock()
 	defer u.pageTracker.mu.RUnlock()
 
-	var entries []pageStateEntry
+	entries := make([]pageStateEntry, 0, len(u.pageTracker.m))
 	for addr, state := range u.pageTracker.m {
 		offset, err := u.ma.GetOffset(addr)
 		if err != nil {
 			return nil, fmt.Errorf("address %#x not in mapping: %w", addr, err)
 		}
-
-		entries = append(entries, pageStateEntry{uint8(state), uint64(offset)})
+		entries = append(entries, pageStateEntry{State: uint8(state), Offset: uint64(offset)})
 	}
 
 	return entries, nil
+}
+
+// ---- Barrier registry ---------------------------------------------------
+
+// barrierPoint identifies WHICH hook a barrier should park on.
+type barrierPoint uint8
+
+const (
+	// barrierBeforeRLock parks the worker BEFORE settleRequests.RLock(),
+	// i.e. before it can read the page state. Use this for the
+	// stale-source race: a parallel REMOVE batch on the parent loop
+	// can take the write lock immediately because no worker holds
+	// the read lock.
+	barrierBeforeRLock barrierPoint = 1
+	// barrierBeforeFaultPage parks the worker AFTER it has taken
+	// settleRequests.RLock and decided on `source`, but BEFORE the
+	// actual UFFDIO_COPY syscall. Use this for the in-flight COPY
+	// deadlock test: the parent's madvise must still return even
+	// though a worker holds RLock.
+	barrierBeforeFaultPage barrierPoint = 2
+)
+
+// barrierRegistry is the child-process side of the barrier. The
+// hooks installed on Userfaultfd consult this registry by addr+point
+// to decide whether to park, and the RPC handlers manipulate it from
+// the parent over the socket.
+type barrierRegistry struct {
+	mu     sync.Mutex
+	next   uint64
+	tokens map[uint64]*barrierSlot
+	byKey  map[barrierKey]uint64
+}
+
+type barrierKey struct {
+	addr  uintptr
+	point barrierPoint
+}
+
+type barrierSlot struct {
+	addr        uintptr
+	point       barrierPoint
+	arrived     chan struct{}
+	release     chan struct{}
+	arrivedOnce sync.Once
+}
+
+func newBarrierRegistry() *barrierRegistry {
+	return &barrierRegistry{
+		tokens: make(map[uint64]*barrierSlot),
+		byKey:  make(map[barrierKey]uint64),
+	}
+}
+
+func (b *barrierRegistry) install(addr uintptr, point barrierPoint) uint64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.next++
+	token := b.next
+	slot := &barrierSlot{
+		addr:    addr,
+		point:   point,
+		arrived: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	b.tokens[token] = slot
+	b.byKey[barrierKey{addr, point}] = token
+
+	return token
+}
+
+func (b *barrierRegistry) lookupByAddr(addr uintptr, point barrierPoint) *barrierSlot {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	token, ok := b.byKey[barrierKey{addr, point}]
+	if !ok {
+		return nil
+	}
+
+	return b.tokens[token]
+}
+
+func (b *barrierRegistry) waitArrived(ctx context.Context, token uint64) error {
+	b.mu.Lock()
+	slot, ok := b.tokens[token]
+	b.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("unknown barrier token %d", token)
+	}
+
+	select {
+	case <-slot.arrived:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (b *barrierRegistry) release(token uint64) {
+	b.mu.Lock()
+	slot, ok := b.tokens[token]
+	delete(b.tokens, token)
+	if ok {
+		delete(b.byKey, barrierKey{slot.addr, slot.point})
+	}
+	b.mu.Unlock()
+
+	if !ok {
+		return
+	}
+
+	select {
+	case <-slot.release:
+	default:
+		close(slot.release)
+	}
+}
+
+func (b *barrierRegistry) releaseAll() {
+	b.mu.Lock()
+	tokens := make([]uint64, 0, len(b.tokens))
+	for t := range b.tokens {
+		tokens = append(tokens, t)
+	}
+	b.mu.Unlock()
+
+	for _, t := range tokens {
+		b.release(t)
+	}
+}
+
+// hookFor returns the function to assign to a Userfaultfd
+// beforeXxxHook field. The returned function is a no-op for any
+// (addr, point) pair that hasn't been Install'd, so non-targeted
+// faults see no scheduling distortion.
+func (b *barrierRegistry) hookFor(point barrierPoint) func(addr uintptr) {
+	return func(addr uintptr) {
+		slot := b.lookupByAddr(addr, point)
+		if slot == nil {
+			return
+		}
+
+		slot.arrivedOnce.Do(func() {
+			close(slot.arrived)
+		})
+
+		<-slot.release
+	}
 }
