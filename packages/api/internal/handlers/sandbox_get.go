@@ -46,8 +46,27 @@ func dbNetworkConfigToAPI(network *dbtypes.SandboxNetworkConfig) *api.SandboxNet
 		if egress.AllowedAddresses != nil {
 			result.AllowOut = &egress.AllowedAddresses
 		}
+
 		if egress.DeniedAddresses != nil {
 			result.DenyOut = &egress.DeniedAddresses
+		}
+
+		if egress.Rules != nil {
+			apiRules := make(map[string][]api.SandboxNetworkRule, len(egress.Rules))
+			for domain, dbRules := range egress.Rules {
+				apiDomainRules := make([]api.SandboxNetworkRule, 0, len(dbRules))
+				for _, r := range dbRules {
+					apiRule := api.SandboxNetworkRule{}
+					if r.Transform != nil {
+						apiRule.Transform = &api.SandboxNetworkTransform{
+							Headers: &r.Transform.Headers,
+						}
+					}
+					apiDomainRules = append(apiDomainRules, apiRule)
+				}
+				apiRules[domain] = apiDomainRules
+			}
+			result.Rules = &apiRules
 		}
 	}
 

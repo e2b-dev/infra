@@ -13,10 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (a *APIStore) PutSandboxesSandboxIDNetwork(
-	c *gin.Context,
-	sandboxID string,
-) {
+func (a *APIStore) PutSandboxesSandboxIDNetwork(c *gin.Context, sandboxID string) {
 	ctx := c.Request.Context()
 
 	var err error
@@ -53,7 +50,15 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(
 		return
 	}
 
-	if apiErr := a.orchestrator.UpdateSandboxNetworkConfig(ctx, team.ID, sandboxID, allowedEntries, deniedEntries, body.AllowInternetAccess); apiErr != nil {
+	if apiErr := validateNetworkRules(ctx, a.featureFlags, team.ID, body.Rules); apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+
+		return
+	}
+
+	rules := apiRulesToDBRules(body.Rules)
+
+	if apiErr := a.orchestrator.UpdateSandboxNetworkConfig(ctx, team.ID, sandboxID, allowedEntries, deniedEntries, rules, body.AllowInternetAccess); apiErr != nil {
 		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error updating sandbox network config", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
