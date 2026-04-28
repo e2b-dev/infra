@@ -70,6 +70,29 @@ type Userfaultfd struct {
 	// if no new UFFD events arrive to wake poll.
 	wakeupPipe [2]int
 
+	// Test-only synchronisation hooks. Both default to nil and the nil
+	// branch costs a single un-predictable load + branch in the hot path,
+	// so they are effectively free in production. They MUST only be set
+	// from _test.go files. They let tests park a worker goroutine at a
+	// known point so a racing event (REMOVE, MISSING) can be issued
+	// deterministically before the worker proceeds.
+	//
+	//   - beforeWorkerRLockHook: called as the very first thing in the
+	//     worker goroutine, BEFORE settleRequests.RLock(). At this point
+	//     the test holds the goroutine before it can claim the read lock,
+	//     so a parallel REMOVE batch in the parent loop can take the
+	//     write lock immediately and mutate page state. This is the
+	//     window the production fix actually closes — the post-fix
+	//     worker reads state under RLock, so it observes the REMOVE.
+	//
+	//   - beforeFaultPageHook: called inside the worker AFTER RLock and
+	//     AFTER the state-vs-source decision, but BEFORE the actual
+	//     UFFDIO_COPY/UFFDIO_ZEROPAGE syscall. Lets a test simulate a
+	//     slow data fetch / in-flight COPY so a parent madvise can race
+	//     against an in-flight worker.
+	beforeWorkerRLockHook func(addr uintptr)
+	beforeFaultPageHook   func(addr uintptr)
+
 	logger logger.Logger
 }
 
@@ -330,6 +353,16 @@ func (u *Userfaultfd) Serve(
 			}
 
 			u.wg.Go(func() error {
+				// Test-only barrier: park the worker BEFORE it takes
+				// RLock. While parked, the parent loop is free to take
+				// settleRequests.Lock() to process REMOVE events, which
+				// is exactly the window the production fix has to close
+				// (pre-fix the worker has already captured a stale state
+				// snapshot in the parent loop).
+				if hook := u.beforeWorkerRLockHook; hook != nil {
+					hook(addr)
+				}
+
 				// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
 				// even if the errgroup is cancelled or the goroutine returns early.
 				// This check protects us against race condition between marking the request for prefetching and accessing the prefetchTracker.
@@ -342,6 +375,15 @@ func (u *Userfaultfd) Serve(
 					accessType = block.Read
 				} else {
 					accessType = block.Write
+				}
+
+				// Test-only barrier: park the worker AFTER state has been
+				// read under RLock but BEFORE the actual UFFDIO_* syscall.
+				// Lets tests simulate a slow / in-flight COPY so the
+				// parent's madvise (and the subsequent REMOVE batch) can
+				// race against a worker that already holds RLock.
+				if hook := u.beforeFaultPageHook; hook != nil {
+					hook(addr)
 				}
 
 				handled, err := u.faultPage(
