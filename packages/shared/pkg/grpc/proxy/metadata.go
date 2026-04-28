@@ -7,8 +7,6 @@ const (
 	MetadataSandboxRequestPort = "e2b-sandbox-request-port"
 	// MetadataEnvdAccessToken is forwarded by client-proxy for envd traffic on secure sandboxes.
 	MetadataEnvdAccessToken = "e2b-envd-access-token"
-	// MetadataClientProxyAuthToken authenticates client-proxy resume requests to the API.
-	MetadataClientProxyAuthToken = "x-e2b-client-proxy-auth"
 	// MetadataAuthorization carries bearer credentials for gRPC requests.
 	MetadataAuthorization = "authorization"
 	// MetadataEnvdHTTPAccessToken is the HTTP header used by envd for access token authentication.

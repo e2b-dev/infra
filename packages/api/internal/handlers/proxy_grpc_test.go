@@ -180,11 +180,6 @@ func TestValidateClientProxyAuth(t *testing.T) {
 			name: "denies when auth org is not configured",
 			md:   metadata.MD{},
 		},
-		{
-			name:  "legacy client proxy token is ignored",
-			md:    metadata.Pairs(proxygrpc.MetadataClientProxyAuthToken, "secret"),
-			orgID: "",
-		},
 	}
 
 	for _, tt := range tests {
@@ -207,11 +202,6 @@ func TestRequireBearerMetadata(t *testing.T) {
 		{
 			name:    "missing authorization",
 			md:      metadata.MD{},
-			wantErr: true,
-		},
-		{
-			name:    "legacy client proxy token is not bearer auth",
-			md:      metadata.Pairs(proxygrpc.MetadataClientProxyAuthToken, "secret"),
 			wantErr: true,
 		},
 		{
@@ -295,13 +285,6 @@ func TestValidateClientProxyAuthOAuth(t *testing.T) {
 			name:          "verifier error",
 			md:            metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
 			verifier:      fakeClientProxyOAuthVerifier{err: errors.New("invalid token")},
-			expectedOrgID: "org_123",
-			wantErr:       true,
-		},
-		{
-			name:          "configured auth org does not allow legacy token fallback",
-			md:            metadata.Pairs(proxygrpc.MetadataClientProxyAuthToken, "secret"),
-			verifier:      fakeClientProxyOAuthVerifier{claims: ClientProxyOAuthClaims{Subject: "client_123", OrgID: "org_123"}},
 			expectedOrgID: "org_123",
 			wantErr:       true,
 		},
