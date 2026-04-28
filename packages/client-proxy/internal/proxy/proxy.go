@@ -51,7 +51,11 @@ const (
 )
 
 func catalogSandboxNodeIP(s *catalog.SandboxInfo) (string, error) {
-	nodeIP := strings.TrimSpace(s.OrchestratorIP)
+	return normalizeNodeIP(s.OrchestratorIP)
+}
+
+func normalizeNodeIP(nodeIP string) (string, error) {
+	nodeIP = strings.TrimSpace(nodeIP)
 	if nodeIP == "" {
 		return "", ErrNodeRouteUnavailable
 	}
@@ -120,9 +124,9 @@ func handlePausedSandbox(
 		return "", autoResumeErrored, err
 	}
 
-	nodeIP = strings.TrimSpace(nodeIP)
-	if nodeIP == "" {
-		return "", autoResumeErrored, ErrNodeRouteUnavailable
+	nodeIP, err = normalizeNodeIP(nodeIP)
+	if err != nil {
+		return "", autoResumeErrored, err
 	}
 
 	return nodeIP, autoResumeSucceeded, nil
