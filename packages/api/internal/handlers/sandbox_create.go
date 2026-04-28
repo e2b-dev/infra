@@ -273,6 +273,19 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		return
 	}
 
+	if n := body.Network; n != nil && n.Rules != nil && len(*n.Rules) > 0 {
+		domains := make([]string, 0, len(*n.Rules))
+		for domain := range *n.Rules {
+			domains = append(domains, domain)
+		}
+
+		a.posthog.CreateAnalyticsTeamEvent(ctx, teamInfo.Team.ID.String(), "sandbox with network transform rules created",
+			a.posthog.GetPackageToPosthogProperties(&c.Request.Header).
+				Set("sandbox_id", sandboxID).
+				Set("domains", domains),
+		)
+	}
+
 	c.JSON(http.StatusCreated, &sbx)
 }
 
