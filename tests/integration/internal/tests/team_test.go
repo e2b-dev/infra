@@ -70,5 +70,5 @@ UPDATE teams SET is_blocked = $1, blocked_reason = $2 WHERE id = $3
 
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode())
 	assert.Equal(t, http.StatusForbidden, errResp.Code)
-	assert.Equal(t, "blocked: team is blocked", errResp.Message)
+	assert.Equal(t, "blocked: team is blocked: test-reason", errResp.Message)
 }
