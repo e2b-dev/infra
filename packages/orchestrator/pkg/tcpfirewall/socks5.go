@@ -141,7 +141,7 @@ func validateSOCKS5Endpoint(ctx context.Context, proxyAddr string) error {
 		return fmt.Errorf("resolve socks5 proxy host %q: %w", host, err)
 	}
 	for _, ip := range ips {
-		if sandbox_network.IsIPInDeniedSandboxCIDRs(ip) {
+		if sandbox_network.IsIPInDeniedSandboxCIDRs(ip) && !sandbox_network.IsIPDevAllowedAsProxyEndpoint(ip) {
 			return fmt.Errorf("%w: %s -> %s", ErrSOCKS5EndpointInternal, host, ip)
 		}
 	}

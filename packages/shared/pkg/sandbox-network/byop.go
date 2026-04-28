@@ -4,9 +4,56 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 )
+
+// DevAllowedProxyEndpointCIDRs is a dev-only allowlist that overrides
+// DeniedSandboxCIDRs at BYOP validation time. Empty in production. Populated
+// from BYOP_DEV_ALLOWED_PROXY_CIDRS (comma-separated CIDRs) so a developer
+// can point a sandbox at a SOCKS5 proxy on 127.0.0.1 / docker bridge IPs
+// without weakening the deny-list itself.
+//
+// Malformed entries are silently dropped at parse time. Production envs do
+// not set the variable; the allowlist is empty and behavior is unchanged.
+var DevAllowedProxyEndpointCIDRs = parseCIDRsEnv("BYOP_DEV_ALLOWED_PROXY_CIDRS")
+
+func parseCIDRsEnv(name string) []string {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if _, _, err := net.ParseCIDR(p); err != nil {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// IsIPDevAllowedAsProxyEndpoint reports whether ip falls into any CIDR in
+// DevAllowedProxyEndpointCIDRs. Exported so the orchestrator dial-time check
+// can apply the same override.
+func IsIPDevAllowedAsProxyEndpoint(ip net.IP) bool {
+	for _, cidr := range DevAllowedProxyEndpointCIDRs {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		if ipNet.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
 
 // EgressProxyConfig is a transport-agnostic view of a BYOP SOCKS5 proxy
 // configuration. The fields mirror the EgressProxy{Address,Username,Password}
@@ -77,7 +124,7 @@ func ValidateEgressProxy(cfg *EgressProxyConfig) (*EgressProxyConfig, error) {
 		return nil, fmt.Errorf("resolve egress proxy host %q: %w", host, err)
 	}
 	for _, ip := range ips {
-		if IsIPInDeniedSandboxCIDRs(ip) {
+		if IsIPInDeniedSandboxCIDRs(ip) && !IsIPDevAllowedAsProxyEndpoint(ip) {
 			return nil, fmt.Errorf("%w: %s resolves to %s", ErrEgressProxyInternalEndpoint, host, ip)
 		}
 	}
