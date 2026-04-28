@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils"
 )
@@ -36,6 +36,7 @@ type operationMode uint32
 const (
 	operationModeRead operationMode = 1 << iota
 	operationModeWrite
+	operationModeRemove
 	operationModeServePause
 	operationModeServeResume
 	// operationModeSleep pauses for a short duration to let async goroutines
@@ -53,25 +54,36 @@ type operation struct {
 
 // handlerPageStates is a snapshot of the pageTracker grouped by state. It
 // lets tests assert on the set of pages that the handler observed in each
-// state, rather than a flat list of "accessed" offsets. Follow-up PRs can
-// add more state-specific fields (e.g. removed) without touching the
-// existing call sites.
+// state, rather than a flat list of "accessed" offsets.
 type handlerPageStates struct {
 	faulted []uint
+	removed []uint
 }
 
 // allAccessed returns the sorted union of offsets that the handler touched
-// in any non-missing state. Tests that only care about "which pages did the
-// handler see" can compare directly against this.
+// in any non-missing state.
 //
-// pageStatesOnce already returns each per-state slice sorted, and a page
+// pageStatesOnce returns each per-state slice already sorted, and a page
 // has exactly one state at a time in pageTracker, so the per-state slices
-// are disjoint. Follow-up PRs that add more state-specific fields should
-// sorted-merge them here instead of reaching for a bitset — byte offsets
-// make poor bit indices (a single hugepage offset would force ~1.8 MB of
-// backing storage).
+// are disjoint. We merge them with a simple sorted merge instead of a
+// bitset — byte offsets make poor bit indices (a single hugepage offset
+// would force ~1.8 MB of backing storage).
 func (s handlerPageStates) allAccessed() []uint {
-	return slices.Clone(s.faulted)
+	out := make([]uint, 0, len(s.faulted)+len(s.removed))
+	i, j := 0, 0
+	for i < len(s.faulted) && j < len(s.removed) {
+		if s.faulted[i] <= s.removed[j] {
+			out = append(out, s.faulted[i])
+			i++
+		} else {
+			out = append(out, s.removed[j])
+			j++
+		}
+	}
+	out = append(out, s.faulted[i:]...)
+	out = append(out, s.removed[j:]...)
+
+	return out
 }
 
 type testHandler struct {
@@ -82,7 +94,7 @@ type testHandler struct {
 	// It can only be called once.
 	pageStatesOnce func() (handlerPageStates, error)
 	// servePause and serveResume gate the UFFD event loop in the child process.
-	// Tests use them to deterministically batch a sequence of UFFD events
+	// Tests use them to deterministically drain a batch of REMOVE events
 	// before more faults are processed.
 	servePause  func() error
 	serveResume func() error
@@ -123,8 +135,9 @@ func (h *testHandler) executeAll(t *testing.T, operations []operation) {
 type pageExpectation uint8
 
 const (
-	expectClean pageExpectation = iota // read-only: present + WP set
-	expectDirty                        // written: present + WP cleared
+	expectClean   pageExpectation = iota // read-only: present + WP set
+	expectDirty                          // written: present + WP cleared
+	expectRemoved                        // removed: not present
 )
 
 func (h *testHandler) checkDirtiness(t *testing.T, operations []operation) {
@@ -137,17 +150,25 @@ func (h *testHandler) checkDirtiness(t *testing.T, operations []operation) {
 	memStart := uintptr(unsafe.Pointer(&(*h.memoryArea)[0]))
 
 	// Track the final expected state per offset by replaying operations in order.
+	// A remove after a read/write makes the page not present.
+	// A read/write after a remove makes it present again.
 	expected := make(map[uint]pageExpectation)
 
 	for _, op := range operations {
 		off := uint(op.offset)
 		switch op.mode {
 		case operationModeRead:
-			if _, seen := expected[off]; !seen {
+			curr, seen := expected[off]
+			// If we haven't seen this page before or the page
+			// has previously been removed then the page should be clean
+			// after this read operation.
+			if !seen || curr == expectRemoved {
 				expected[off] = expectClean
 			}
 		case operationModeWrite:
 			expected[off] = expectDirty
+		case operationModeRemove:
+			expected[off] = expectRemoved
 		}
 	}
 
@@ -156,6 +177,8 @@ func (h *testHandler) checkDirtiness(t *testing.T, operations []operation) {
 		require.NoError(t, err, "pagemap read at offset %d", off)
 
 		switch expect {
+		case expectRemoved:
+			assert.False(t, entry.IsPresent(), "removed page at offset %d should not be present", off)
 		case expectDirty:
 			assert.True(t, entry.IsPresent(), "written page at offset %d should be present", off)
 			assert.False(t, entry.IsWriteProtected(), "written page at offset %d should be dirty", off)
@@ -172,6 +195,8 @@ func (h *testHandler) executeOperation(ctx context.Context, op operation) error 
 		return h.executeRead(ctx, op)
 	case operationModeWrite:
 		return h.executeWrite(ctx, op)
+	case operationModeRemove:
+		return h.executeRemove(op)
 	case operationModeServePause:
 		return h.servePause()
 	case operationModeServeResume:
@@ -183,6 +208,12 @@ func (h *testHandler) executeOperation(ctx context.Context, op operation) error 
 	default:
 		return fmt.Errorf("invalid operation mode: %d", op.mode)
 	}
+}
+
+func (h *testHandler) executeRemove(op operation) error {
+	page := (*h.memoryArea)[op.offset : op.offset+int64(h.pagesize)]
+
+	return unix.Madvise(page, unix.MADV_DONTNEED)
 }
 
 func (h *testHandler) executeRead(ctx context.Context, op operation) error {

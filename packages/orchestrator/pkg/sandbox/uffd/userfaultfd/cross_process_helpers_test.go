@@ -19,7 +19,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"testing"
 
@@ -217,6 +216,14 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 				waitErr == nil,
 			"unexpected error: %v", waitErr,
 		)
+
+		// Tear down the UFFD registration before the early uffdFd.close()
+		// cleanup runs. This branch enables UFFD_FEATURE_EVENT_REMOVE
+		// (see configureApi in fd_helpers_test.go), so without the
+		// unregister, munmap can block on un-acked REMOVE events queued
+		// by the kernel against the still-registered range. Cleanups
+		// run LIFO, so this fires before the close registered earlier.
+		assert.NoError(t, unregister(uffdFd, memoryStart, uint64(size)))
 	})
 
 	// pageStatesOnce asks the serving process for a snapshot of its pageTracker
@@ -244,12 +251,16 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 				return handlerPageStates{}, fmt.Errorf("decoding page state entry: %w", err)
 			}
 
-			if pageState(entry.State) == faulted {
+			switch pageState(entry.State) {
+			case faulted:
 				result.faulted = append(result.faulted, uint(entry.Offset))
+			case removed:
+				result.removed = append(result.removed, uint(entry.Offset))
 			}
 		}
 
 		slices.Sort(result.faulted)
+		slices.Sort(result.removed)
 
 		return result, nil
 	}
@@ -344,9 +355,6 @@ func crossProcessServe() error {
 		},
 	})
 
-	exitUffd := make(chan struct{}, 1)
-	defer close(exitUffd)
-
 	l, err := logger.NewDevelopmentLogger()
 	if err != nil {
 		return fmt.Errorf("exit creating logger: %w", err)
@@ -402,57 +410,24 @@ func crossProcessServe() error {
 	}
 	defer fdExit.Close()
 
+	exitUffd := make(chan struct{}, 1)
+
 	go func() {
-		defer func() {
-			exitUffd <- struct{}{}
-		}()
+		defer func() { exitUffd <- struct{}{} }()
 
 		serverErr := uffd.Serve(ctx, fdExit)
 		if serverErr != nil {
 			msg := fmt.Errorf("error serving: %w", serverErr)
-
 			fmt.Fprint(os.Stderr, msg.Error())
-
 			cancel(msg)
-
-			return
 		}
 	}()
 
-	// stopFn drains whichever Serve goroutine is currently running and
-	// is reset to a no-op once it has run. This makes both pause-then-exit
-	// (no resume in between) and pause-resume-pause-exit safe: every
-	// caller — gated 'P', gated 'R' replacing the previous stop, and the
-	// final defer below — sees a stop function that matches the goroutine
-	// actually running, and never blocks on an already-drained channel.
-	var (
-		stopMu sync.Mutex
-		stopFn = func() {
-			err := fdExit.SignalExit()
-			if err != nil {
-				msg := fmt.Errorf("error signaling exit: %w", err)
-
-				fmt.Fprint(os.Stderr, msg.Error())
-
-				cancel(msg)
-
-				return
-			}
-
-			<-exitUffd
-		}
-	)
-
-	stopServe := func() {
-		stopMu.Lock()
-		fn := stopFn
-		stopFn = func() {}
-		stopMu.Unlock()
-
-		fn()
+	cleanup := func() {
+		fdExit.SignalExit()
+		<-exitUffd
 	}
-
-	defer stopServe()
+	defer func() { cleanup() }()
 
 	if os.Getenv("GO_GATED") == "1" {
 		gateCmdFile := os.NewFile(uintptr(7), "gate-cmd")
@@ -461,12 +436,12 @@ func crossProcessServe() error {
 		gateSyncFile := os.NewFile(uintptr(8), "gate-sync")
 		defer gateSyncFile.Close()
 
-		startServe := func() {
+		startServe := func() func() {
 			newExit, fdErr := fdexit.New()
 			if fdErr != nil {
 				cancel(fmt.Errorf("error creating fd exit: %w", fdErr))
 
-				return
+				return func() {}
 			}
 
 			done := make(chan struct{})
@@ -477,13 +452,15 @@ func crossProcessServe() error {
 				}
 			}()
 
-			stopMu.Lock()
-			stopFn = func() {
+			return func() {
 				newExit.SignalExit()
 				<-done
 				newExit.Close()
 			}
-			stopMu.Unlock()
+		}
+
+		stopServe := func() {
+			cleanup()
 		}
 
 		go func() {
@@ -498,7 +475,9 @@ func crossProcessServe() error {
 					stopServe()
 					gateSyncFile.Write([]byte{1})
 				case 'R':
-					startServe()
+					newStop := startServe()
+					stopServe = newStop
+					cleanup = newStop
 				}
 			}
 		}()
@@ -536,9 +515,12 @@ type pageStateEntry struct {
 // can mutate the pageTracker while we iterate.
 func (u *Userfaultfd) pageStateEntries() ([]pageStateEntry, error) {
 	u.settleRequests.Lock()
-	defer u.settleRequests.Unlock()
+	u.settleRequests.Unlock() //nolint:staticcheck // SA2001: intentional — settle the read locks.
 
-	entries := make([]pageStateEntry, 0, len(u.pageTracker.m))
+	u.pageTracker.mu.RLock()
+	defer u.pageTracker.mu.RUnlock()
+
+	var entries []pageStateEntry
 	for addr, state := range u.pageTracker.m {
 		offset, err := u.ma.GetOffset(addr)
 		if err != nil {
