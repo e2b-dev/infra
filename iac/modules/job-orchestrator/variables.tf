@@ -149,8 +149,3 @@ variable "job_env_vars" {
   default = {}
 }
 
-variable "enabled" {
-  type        = bool
-  default     = true
-  description = "Whether the orchestrator Nomad job should be deployed. Set to false to skip deployment without removing the module."
-}
