@@ -1,12 +1,18 @@
-package clientproxyoauth
+package oauth
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
+
+	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 )
 
 type Verifier interface {
@@ -18,7 +24,7 @@ type Claims struct {
 	OrgID   string
 }
 
-type TokenClaims struct {
+type tokenClaims struct {
 	OrgID string `json:"org_id"`
 }
 
@@ -59,7 +65,7 @@ func (v *oidcVerifier) VerifyClaims(ctx context.Context, rawToken string) (Claim
 		return Claims{}, fmt.Errorf("verify client proxy OIDC token: %w", err)
 	}
 
-	claims := TokenClaims{}
+	claims := tokenClaims{}
 	if err := idToken.Claims(&claims); err != nil {
 		return Claims{}, fmt.Errorf("parse client proxy OIDC claims: %w", err)
 	}
@@ -68,4 +74,55 @@ func (v *oidcVerifier) VerifyClaims(ctx context.Context, rawToken string) (Claim
 		Subject: idToken.Subject,
 		OrgID:   claims.OrgID,
 	}, nil
+}
+
+func BearerToken(md metadata.MD) (string, bool) {
+	vals := md.Get(proxygrpc.MetadataAuthorization)
+	if len(vals) == 0 {
+		return "", false
+	}
+
+	scheme, token, ok := strings.Cut(vals[0], " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") || strings.TrimSpace(token) == "" {
+		return "", false
+	}
+
+	return strings.TrimSpace(token), true
+}
+
+func RequireBearer(md metadata.MD) error {
+	if _, found := BearerToken(md); !found {
+		return denyPermission()
+	}
+
+	return nil
+}
+
+func RequireOrg(ctx context.Context, md metadata.MD, verifier Verifier, expectedOrgID string) error {
+	expectedOrgID = strings.TrimSpace(expectedOrgID)
+	if expectedOrgID == "" {
+		return denyPermission()
+	}
+	if verifier == nil {
+		return status.Error(codes.Internal, "client proxy OIDC verifier is not configured")
+	}
+
+	rawToken, found := BearerToken(md)
+	if !found {
+		return denyPermission()
+	}
+
+	claims, err := verifier.VerifyClaims(ctx, rawToken)
+	if err != nil {
+		return denyPermission()
+	}
+	if subtle.ConstantTimeCompare([]byte(claims.OrgID), []byte(expectedOrgID)) != 1 {
+		return denyPermission()
+	}
+
+	return nil
+}
+
+func denyPermission() error {
+	return status.Error(codes.PermissionDenied, "permission denied")
 }

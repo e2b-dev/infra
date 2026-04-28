@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -15,8 +14,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
-	"github.com/e2b-dev/infra/packages/api/internal/clientproxyoauth"
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
+	"github.com/e2b-dev/infra/packages/api/internal/oauth"
 	apiorchestrator "github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -33,10 +32,10 @@ type SandboxService struct {
 
 	api                    *APIStore
 	requireClientProxyAuth bool
-	clientProxyOAuth       clientproxyoauth.Verifier
+	clientProxyOAuth       oauth.Verifier
 }
 
-func NewSandboxService(api *APIStore, requireClientProxyAuth bool, clientProxyOAuth clientproxyoauth.Verifier) *SandboxService {
+func NewSandboxService(api *APIStore, requireClientProxyAuth bool, clientProxyOAuth oauth.Verifier) *SandboxService {
 	return &SandboxService{
 		api:                    api,
 		requireClientProxyAuth: requireClientProxyAuth,
@@ -95,70 +94,6 @@ func denyResumePermission() error {
 	return status.Error(codes.PermissionDenied, "permission denied")
 }
 
-func metadataBearerToken(md metadata.MD) (string, bool) {
-	authorization, found := metadataFirstValue(md, proxygrpc.MetadataAuthorization)
-	if !found {
-		return "", false
-	}
-
-	scheme, token, ok := strings.Cut(authorization, " ")
-	if !ok || !strings.EqualFold(scheme, "Bearer") || strings.TrimSpace(token) == "" {
-		return "", false
-	}
-
-	return strings.TrimSpace(token), true
-}
-
-func requireBearerMetadata(md metadata.MD) error {
-	if _, found := metadataBearerToken(md); !found {
-		return denyResumePermission()
-	}
-
-	return nil
-}
-
-func validateClientProxyOAuth(
-	ctx context.Context,
-	incomingMetadata metadata.MD,
-	verifier clientproxyoauth.Verifier,
-	expectedOrgID string,
-) error {
-	if expectedOrgID == "" {
-		return denyResumePermission()
-	}
-	if verifier == nil {
-		return status.Error(codes.Internal, "client proxy OIDC verifier is not configured")
-	}
-
-	rawToken, found := metadataBearerToken(incomingMetadata)
-	if !found {
-		return denyResumePermission()
-	}
-
-	claims, err := verifier.VerifyClaims(ctx, rawToken)
-	if err != nil {
-		return denyResumePermission()
-	}
-	if !tokensMatch(claims.OrgID, expectedOrgID) {
-		return denyResumePermission()
-	}
-
-	return nil
-}
-
-func validateClientProxyAuth(
-	ctx context.Context,
-	incomingMetadata metadata.MD,
-	verifier clientproxyoauth.Verifier,
-	expectedAuthOrgID string,
-) error {
-	if expectedAuthOrgID == "" {
-		return denyResumePermission()
-	}
-
-	return validateClientProxyOAuth(ctx, incomingMetadata, verifier, expectedAuthOrgID)
-}
-
 const autoResumeTransitionWaitBudget = time.Minute
 
 func (s *SandboxService) getAutoResumeSnapshot(ctx context.Context, sandboxID string) (*snapshotcache.SnapshotInfo, *dbtypes.SandboxAutoResumeConfig, error) {
@@ -186,7 +121,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	incomingMetadata := metadataFromIncomingContext(ctx)
 
 	if s.requireClientProxyAuth {
-		if err := requireBearerMetadata(incomingMetadata); err != nil {
+		if err := oauth.RequireBearer(incomingMetadata); err != nil {
 			return nil, err
 		}
 	}
@@ -216,10 +151,10 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 				return nil, status.Errorf(codes.Internal, "cluster with ID '%s' not found", *team.ClusterID)
 			}
 
-			authOrgID = strings.TrimSpace(cluster.AuthOrgID)
+			authOrgID = cluster.AuthOrgID
 		}
 
-		if err := validateClientProxyAuth(ctx, incomingMetadata, s.clientProxyOAuth, authOrgID); err != nil {
+		if err := oauth.RequireOrg(ctx, incomingMetadata, s.clientProxyOAuth, authOrgID); err != nil {
 			return nil, err
 		}
 	}
