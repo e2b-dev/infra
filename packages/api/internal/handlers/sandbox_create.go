@@ -201,6 +201,14 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		}
 
 		if ep := n.EgressProxy; ep != nil {
+			if !a.featureFlags.BoolFlag(ctx, featureflags.BYOPProxyEnabledFlag) {
+				telemetry.ReportEvent(ctx, "egressProxy rejected by BYOPProxyEnabledFlag")
+				a.sendAPIStoreError(c, http.StatusForbidden,
+					"Egress proxy (network.egressProxy) is not enabled for this team.")
+
+				return
+			}
+
 			canonical, err := sandbox_network.ValidateEgressProxy(&sandbox_network.EgressProxyConfig{
 				Address:  ep.Address,
 				Username: sharedUtils.DerefOrDefault(ep.Username, ""),

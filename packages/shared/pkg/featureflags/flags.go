@@ -124,6 +124,8 @@ var (
 	OptimisticResourceAccountingFlag = NewBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
+
+	BYOPProxyEnabledFlag = NewBoolFlag("byop-proxy-enabled", env.IsDevelopment())
 )
 
 type IntFlag struct {

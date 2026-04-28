@@ -103,6 +103,18 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		featureflags.VersionContext(s.info.ClientId, s.info.SourceCommit),
 	)
 
+	// Kill-switch for BYOP egress proxy. Mirrors the API gate; also covers
+	// direct gRPC callers and resumes of snapshots created when the flag
+	// was on. Flipping off blocks all BYOP for that team, resumes included.
+	if req.GetSandbox().GetNetwork().GetEgress().GetEgressProxyAddress() != "" {
+		if !s.featureFlags.BoolFlag(ctx, featureflags.BYOPProxyEnabledFlag) {
+			telemetry.ReportEvent(ctx, "egressProxy rejected by BYOPProxyEnabledFlag")
+
+			return nil, status.Error(codes.PermissionDenied,
+				"egress proxy is not enabled for this team")
+		}
+	}
+
 	maxRunningSandboxesPerNode := s.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)
 
 	runningSandboxes := s.sandboxFactory.Sandboxes.Count()
