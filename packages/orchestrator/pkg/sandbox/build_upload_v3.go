@@ -7,49 +7,63 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-// uncompressedUploader implements BuildUploader for V3 (uncompressed) builds.
 type uncompressedUploader struct {
 	buildUploader
 }
 
-func (u *uncompressedUploader) UploadData(ctx context.Context) error {
+func (u *uncompressedUploader) Upload(ctx context.Context) ([]byte, []byte, error) {
+	_ = u.snapshot.MemfileDiffHeader.Finalize(header.Dependency{})
+	_ = u.snapshot.RootfsDiffHeader.Finalize(header.Dependency{})
+
 	memfilePath, err := u.snapshot.MemfileDiff.CachePath()
 	if err != nil {
-		return fmt.Errorf("error getting memfile diff path: %w", err)
+		return nil, nil, fmt.Errorf("error getting memfile diff path: %w", err)
 	}
 
 	rootfsPath, err := u.snapshot.RootfsDiff.CachePath()
 	if err != nil {
-		return fmt.Errorf("error getting rootfs diff path: %w", err)
+		return nil, nil, fmt.Errorf("error getting rootfs diff path: %w", err)
 	}
 
 	eg, ctx := errgroup.WithContext(ctx)
 
-	// V3 headers
 	eg.Go(func() error {
-		if u.snapshot.MemfileDiffHeader == nil {
+		h := u.snapshot.MemfileDiffHeader
+		if h == nil {
 			return nil
 		}
+		data, err := h.SerializeV3()
+		if err != nil {
+			return fmt.Errorf("serialize memfile header: %w", err)
+		}
+		blob, err := u.persistence.OpenBlob(ctx, u.paths.MemfileHeader(), storage.MetadataObjectType)
+		if err != nil {
+			return fmt.Errorf("open memfile header blob: %w", err)
+		}
 
-		_, err := headers.StoreHeader(ctx, u.persistence, u.paths.MemfileHeader(), u.snapshot.MemfileDiffHeader)
-
-		return err
+		return blob.Put(ctx, data)
 	})
 
 	eg.Go(func() error {
-		if u.snapshot.RootfsDiffHeader == nil {
+		h := u.snapshot.RootfsDiffHeader
+		if h == nil {
 			return nil
 		}
+		data, err := h.SerializeV3()
+		if err != nil {
+			return fmt.Errorf("serialize rootfs header: %w", err)
+		}
+		blob, err := u.persistence.OpenBlob(ctx, u.paths.RootfsHeader(), storage.MetadataObjectType)
+		if err != nil {
+			return fmt.Errorf("open rootfs header blob: %w", err)
+		}
 
-		_, err := headers.StoreHeader(ctx, u.persistence, u.paths.RootfsHeader(), u.snapshot.RootfsDiffHeader)
-
-		return err
+		return blob.Put(ctx, data)
 	})
 
-	// Uncompressed data
 	eg.Go(func() error {
 		if memfilePath == "" {
 			return nil
@@ -78,12 +92,7 @@ func (u *uncompressedUploader) UploadData(ctx context.Context) error {
 		return storage.UploadBlob(ctx, u.persistence, u.paths.Metadata(), storage.MetadataObjectType, u.snapshot.Metafile.Path())
 	})
 
-	return eg.Wait()
+	return nil, nil, eg.Wait()
 }
 
-func (u *uncompressedUploader) FinalizeHeaders(context.Context) ([]byte, []byte, error) {
-	return nil, nil, nil
-}
-
-// Ensure uncompressedUploader implements BuildUploader.
 var _ BuildUploader = (*uncompressedUploader)(nil)

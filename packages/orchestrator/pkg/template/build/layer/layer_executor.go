@@ -285,7 +285,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 
 	// Register this upload and get functions to signal completion and wait for previous uploads
 	completeUpload, waitForPreviousUploads := lb.uploadTracker.StartUpload()
-	uploader := sandbox.NewBuildUploader(ctx, snapshot, lb.templateStorage, storage.Paths{BuildID: meta.Template.BuildID}, lb.compressConfig, lb.ff, storage.UseCaseBuild, lb.uploadTracker.Pending())
+	uploader := sandbox.NewBuildUploader(ctx, snapshot, lb.templateStorage, storage.Paths{BuildID: meta.Template.BuildID}, lb.compressConfig, lb.ff, storage.UseCaseBuild)
 
 	lb.UploadErrGroup.Go(func() error {
 		ctx := context.WithoutCancel(ctx)
@@ -297,21 +297,15 @@ func (lb *LayerExecutor) PauseAndUpload(
 		// still unblock and the errgroup can properly collect all errors.
 		defer completeUpload()
 
-		if err := uploader.UploadData(ctx); err != nil {
-			return fmt.Errorf("error uploading data files: %w", err)
+		if _, _, err := uploader.Upload(ctx); err != nil {
+			return fmt.Errorf("error uploading snapshot: %w", err)
 		}
 
 		// Wait for all previous layer uploads to complete before saving the cache entry.
 		// This prevents race conditions where another build hits this cache entry
 		// before its dependencies (previous layers) are available in storage.
-		// For compressed builds, this also ensures all ancestor frame tables are
-		// available so headers can reference mappings from earlier layers.
 		if err := waitForPreviousUploads(ctx); err != nil {
 			return fmt.Errorf("error waiting for previous uploads: %w", err)
-		}
-
-		if _, _, err := uploader.FinalizeHeaders(ctx); err != nil {
-			return fmt.Errorf("error finalizing headers: %w", err)
 		}
 
 		if err := lb.index.SaveLayerMeta(ctx, hash, cache.LayerMetadata{

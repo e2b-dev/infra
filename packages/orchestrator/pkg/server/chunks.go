@@ -3,13 +3,16 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerserver"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -158,6 +161,63 @@ func (s *Server) ReadAtBuildSeekable(req *orchestrator.ReadAtBuildSeekableReques
 	}
 
 	return nil
+}
+
+func (s *Server) WaitForPeerAvailability(ctx context.Context, req *orchestrator.WaitForPeerAvailabilityRequest) (*orchestrator.WaitForPeerAvailabilityResponse, error) {
+	buildID := req.GetBuildId()
+	telemetry.SetAttributes(ctx, telemetry.WithBuildID(buildID))
+
+	// Fast path: upload already finalized, serialized bytes cached.
+	if avail := s.buildUploadedResponse(buildID); avail != nil {
+		return &orchestrator.WaitForPeerAvailabilityResponse{Availability: avail}, nil
+	}
+
+	tpl, ok := s.templateCache.GetCachedTemplate(buildID)
+	if !ok {
+		return &orchestrator.WaitForPeerAvailabilityResponse{Availability: peerNotAvailable}, nil
+	}
+
+	memDev, err := tpl.Memfile(ctx)
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	memBytes, err := waitAndSerializeV4(ctx, memDev.Header(), "memfile")
+	if errors.Is(err, sandbox.ErrSnapshotAbandoned) {
+		return &orchestrator.WaitForPeerAvailabilityResponse{Availability: peerNotAvailable}, nil
+	}
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	rootfsDev, err := tpl.Rootfs()
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+	rootfsBytes, err := waitAndSerializeV4(ctx, rootfsDev.Header(), "rootfs")
+	if errors.Is(err, sandbox.ErrSnapshotAbandoned) {
+		return &orchestrator.WaitForPeerAvailabilityResponse{Availability: peerNotAvailable}, nil
+	}
+	if err != nil {
+		return nil, toGRPCError(err)
+	}
+
+	return &orchestrator.WaitForPeerAvailabilityResponse{Availability: &orchestrator.PeerAvailability{
+		UseStorage:    true,
+		MemfileHeader: memBytes,
+		RootfsHeader:  rootfsBytes,
+	}}, nil
+}
+
+func waitAndSerializeV4(ctx context.Context, h *header.Header, label string) ([]byte, error) {
+	if err := h.WaitUntilFinal(ctx); err != nil {
+		return nil, fmt.Errorf("%s wait deps: %w", label, err)
+	}
+	data, err := h.SerializeV4()
+	if err != nil {
+		return nil, fmt.Errorf("%s serialize: %w", label, err)
+	}
+
+	return data, nil
 }
 
 // GetBuildBlob streams an entire blob file (snapfile, metadata, headers).

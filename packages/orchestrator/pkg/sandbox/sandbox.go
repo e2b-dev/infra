@@ -1092,6 +1092,7 @@ func (s *Sandbox) Pause(
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
+	defer func() { memfileDiffHeader.Cancel(e) }()
 	cleanup.AddNoContext(ctx, memfileDiff.Close)
 
 	rootfsDiff, rootfsDiffHeader, err := pauseProcessRootfs(
@@ -1107,6 +1108,7 @@ func (s *Sandbox) Pause(
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
+	defer func() { rootfsDiffHeader.Cancel(e) }()
 	cleanup.AddNoContext(ctx, rootfsDiff.Close)
 
 	metadataFileLink := template.NewLocalFileLink(cachePaths.CacheMetadata())
@@ -1124,6 +1126,8 @@ func (s *Sandbox) Pause(
 		MemfileDiffHeader: memfileDiffHeader,
 		RootfsDiff:        rootfsDiff,
 		RootfsDiffHeader:  rootfsDiffHeader,
+		ParentMemfile:     s.Template.MemfileFile(),
+		ParentRootfs:      s.Template.RootfsFile(),
 
 		cleanup: cleanup,
 	}, nil
@@ -1154,6 +1158,7 @@ func pauseProcessMemory(
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create memfile header: %w", err)
 	}
+	defer func() { header.Cancel(e) }()
 
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
 
@@ -1214,6 +1219,7 @@ func pauseProcessRootfs(
 
 		return nil, nil, fmt.Errorf("failed to create rootfs header: %w", err)
 	}
+	defer func() { rootfsHeader.Cancel(e) }()
 
 	return rootfsDiff, rootfsHeader, nil
 }

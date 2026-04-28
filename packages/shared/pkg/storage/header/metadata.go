@@ -1,9 +1,7 @@
 package header
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"io"
 
@@ -16,59 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
-
-const (
-	// metadataVersion is used by template-manager for uncompressed builds (V3 headers).
-	metadataVersion = 3
-	// MetadataVersionV4 is used for compressed builds (V4 headers with FrameTables).
-	MetadataVersionV4 = 4
-)
-
-type Metadata struct {
-	Version    uint64
-	BlockSize  uint64
-	Size       uint64
-	Generation uint64
-	BuildId    uuid.UUID
-	// TODO: Use the base build id when setting up the snapshot rootfs
-	BaseBuildId uuid.UUID
-}
-
-func NewTemplateMetadata(buildId uuid.UUID, blockSize, size uint64) *Metadata {
-	return &Metadata{
-		Version:     metadataVersion,
-		Generation:  0,
-		BlockSize:   blockSize,
-		Size:        size,
-		BuildId:     buildId,
-		BaseBuildId: buildId,
-	}
-}
-
-func (m *Metadata) NextGeneration(buildID uuid.UUID) *Metadata {
-	return &Metadata{
-		Version:     m.Version,
-		Generation:  m.Generation + 1,
-		BlockSize:   m.BlockSize,
-		Size:        m.Size,
-		BuildId:     buildID,
-		BaseBuildId: m.BaseBuildId,
-	}
-}
-
-// metadataSize is the binary size of the Metadata struct, computed from the struct layout.
-var metadataSize = binary.Size(Metadata{})
-
-func deserializeMetadata(data []byte) (*Metadata, error) {
-	var metadata Metadata
-
-	err := binary.Read(bytes.NewReader(data), binary.LittleEndian, &metadata)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read metadata: %w", err)
-	}
-
-	return &metadata, nil
-}
 
 var ignoreBuildID = uuid.Nil
 
@@ -112,6 +57,7 @@ func (d *DiffMetadata) toDiffMapping(
 	return mappings
 }
 
+// ToDiffHeader returns the header for the paused snapshot's diff file.
 func (d *DiffMetadata) ToDiffHeader(
 	ctx context.Context,
 	originalHeader *Header,
@@ -151,18 +97,24 @@ func (d *DiffMetadata) ToDiffHeader(
 		attribute.String("snapshot.metadata.base_build_id", metadata.BaseBuildId.String()),
 	)
 
-	header, err := NewHeaderWithBuilds(metadata, m, originalHeader.Builds)
+	// We don't know the compression settings here yet, so initialize the header
+	// as "pending". The uncompressed upload path has to finalize the header to
+	// avoid deadlocks.
+	header, err := newHeaderWithPendingDependencies(metadata, m, originalHeader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}
 
-	err = ValidateMappings(header.Mapping, header.Metadata.Size, header.Metadata.BlockSize)
-	if err != nil {
+	if err := ValidateMappings(header.Mapping, header.Metadata.Size, header.Metadata.BlockSize); err != nil {
 		if header.IsNormalizeFixApplied() {
+			header.Cancel(err)
+
 			return nil, fmt.Errorf("invalid header mappings: %w", err)
 		}
-
-		logger.L().Warn(ctx, "header mappings are invalid, but normalize fix is not applied", zap.Error(err), logger.WithBuildID(header.Metadata.BuildId.String()))
+		logger.L().Warn(ctx, "header mappings are invalid, but normalize fix is not applied",
+			zap.Error(err),
+			logger.WithBuildID(header.Metadata.BuildId.String()),
+		)
 	}
 
 	return header, nil

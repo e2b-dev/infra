@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 var _ BlobSource = &headerSource{}
@@ -35,7 +34,7 @@ func (f *headerSource) Stream(ctx context.Context, sender Sender) error {
 		return ErrNotAvailable
 	}
 
-	data, err := header.SerializeHeader(h)
+	data, err := h.SerializeHeader()
 	if err != nil {
 		span.RecordError(err)
 

@@ -3,73 +3,70 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-// compressedUploader implements BuildUploader for V4 (compressed) builds.
-// Per-file configs are resolved in NewBuildUploader and passed in directly.
 type compressedUploader struct {
 	buildUploader
 
-	pending   *PendingBuildInfo
-	memCfg    storage.CompressConfig
-	rootfsCfg storage.CompressConfig
+	memCompressConfig    storage.CompressConfig
+	rootfsCompressConfig storage.CompressConfig
 }
 
-func (c *compressedUploader) UploadData(ctx context.Context) error {
-	memfilePath, err := c.snapshot.MemfileDiff.CachePath()
+func (c *compressedUploader) Upload(ctx context.Context) (memfileHeader, rootfsHeader []byte, err error) {
+	// Resolve both self-Pendings on any early bail before uploadFile gets
+	// a chance to run its own per-header defer. Cancel is a no-op once a
+	// header has been Finalized by uploadFile.
+	defer func() {
+		c.snapshot.MemfileDiffHeader.Cancel(err)
+		c.snapshot.RootfsDiffHeader.Cancel(err)
+	}()
+
+	memfileLocalPath, err := c.snapshot.MemfileDiff.CachePath()
 	if err != nil {
-		return fmt.Errorf("error getting memfile diff path: %w", err)
+		return nil, nil, fmt.Errorf("error getting memfile diff path: %w", err)
 	}
 
-	rootfsPath, err := c.snapshot.RootfsDiff.CachePath()
+	rootfsLocalPath, err := c.snapshot.RootfsDiff.CachePath()
 	if err != nil {
-		return fmt.Errorf("error getting rootfs diff path: %w", err)
+		return nil, nil, fmt.Errorf("error getting rootfs diff path: %w", err)
 	}
 
 	eg, ctx := errgroup.WithContext(ctx)
 
-	if memfilePath != "" {
-		eg.Go(func() error {
-			if !c.memCfg.IsCompressionEnabled() {
-				_, _, err := storage.UploadFramed(ctx, c.persistence, c.paths.Memfile(), storage.MemfileObjectType, memfilePath, storage.CompressConfig{})
+	eg.Go(func() error {
+		data, err := c.uploadFile(ctx, memfileLocalPath, c.memCompressConfig, storage.MemfileObjectType,
+			c.snapshot.MemfileDiffHeader,
+			c.snapshot.ParentMemfile,
+			c.paths.MemfileCompressed(c.memCompressConfig.CompressionType()),
+			c.paths.MemfileHeader())
+		if err != nil {
+			return fmt.Errorf("memfile upload: %w", err)
+		}
+		memfileHeader = data
 
-				return err
-			}
+		return nil
+	})
 
-			ft, checksum, err := storage.UploadFramed(ctx, c.persistence, c.paths.MemfileCompressed(c.memCfg.CompressionType()), storage.MemfileObjectType, memfilePath, c.memCfg)
-			if err != nil {
-				return fmt.Errorf("compressed memfile upload: %w", err)
-			}
+	eg.Go(func() error {
+		data, err := c.uploadFile(ctx, rootfsLocalPath, c.rootfsCompressConfig, storage.RootFSObjectType,
+			c.snapshot.RootfsDiffHeader,
+			c.snapshot.ParentRootfs,
+			c.paths.RootfsCompressed(c.rootfsCompressConfig.CompressionType()),
+			c.paths.RootfsHeader())
+		if err != nil {
+			return fmt.Errorf("rootfs upload: %w", err)
+		}
+		rootfsHeader = data
 
-			c.pending.add(pendingBuildInfoKey(c.paths.BuildID, storage.MemfileName), ft, ft.UncompressedSize(), checksum)
-
-			return nil
-		})
-	}
-
-	if rootfsPath != "" {
-		eg.Go(func() error {
-			if !c.rootfsCfg.IsCompressionEnabled() {
-				_, _, err := storage.UploadFramed(ctx, c.persistence, c.paths.Rootfs(), storage.RootFSObjectType, rootfsPath, storage.CompressConfig{})
-
-				return err
-			}
-
-			ft, checksum, err := storage.UploadFramed(ctx, c.persistence, c.paths.RootfsCompressed(c.rootfsCfg.CompressionType()), storage.RootFSObjectType, rootfsPath, c.rootfsCfg)
-			if err != nil {
-				return fmt.Errorf("compressed rootfs upload: %w", err)
-			}
-
-			c.pending.add(pendingBuildInfoKey(c.paths.BuildID, storage.RootfsName), ft, ft.UncompressedSize(), checksum)
-
-			return nil
-		})
-	}
+		return nil
+	})
 
 	eg.Go(func() error {
 		return storage.UploadBlob(ctx, c.persistence, c.paths.Snapfile(), storage.SnapfileObjectType, c.snapshot.Snapfile.Path())
@@ -79,53 +76,111 @@ func (c *compressedUploader) UploadData(ctx context.Context) error {
 		return storage.UploadBlob(ctx, c.persistence, c.paths.Metadata(), storage.MetadataObjectType, c.snapshot.Metafile.Path())
 	})
 
-	return eg.Wait()
-}
-
-// FinalizeHeaders applies pending frame tables to headers and uploads them as V4 format.
-//
-// The snapshot headers are cloned before mutation because the originals may be
-// concurrently read by sandboxes resumed from the template cache (e.g. the
-// optimize phase's UFFD handlers).
-func (c *compressedUploader) FinalizeHeaders(ctx context.Context) (memfileHeader, rootfsHeader []byte, err error) {
-	eg, ctx := errgroup.WithContext(ctx)
-
-	if c.snapshot.MemfileDiffHeader != nil {
-		eg.Go(func() error {
-			h := c.pending.PrepareV4Header(c.snapshot.MemfileDiffHeader, storage.MemfileName)
-
-			data, err := headers.StoreHeader(ctx, c.persistence, c.paths.MemfileHeader(), h)
-			if err != nil {
-				return err
-			}
-
-			memfileHeader = data
-
-			return nil
-		})
-	}
-
-	if c.snapshot.RootfsDiffHeader != nil {
-		eg.Go(func() error {
-			h := c.pending.PrepareV4Header(c.snapshot.RootfsDiffHeader, storage.RootfsName)
-
-			data, err := headers.StoreHeader(ctx, c.persistence, c.paths.RootfsHeader(), h)
-			if err != nil {
-				return err
-			}
-
-			rootfsHeader = data
-
-			return nil
-		})
-	}
-
-	if err = eg.Wait(); err != nil {
+	if err := eg.Wait(); err != nil {
 		return nil, nil, err
 	}
 
 	return memfileHeader, rootfsHeader, nil
 }
 
-// Ensure compressedUploader implements BuildUploader.
+func (c *compressedUploader) uploadFile(
+	ctx context.Context,
+	localPath string,
+	cfg storage.CompressConfig,
+	objType storage.SeekableObjectType,
+	h *headers.Header,
+	parent *build.File,
+	dataPath string,
+	headerPath string,
+) (_ []byte, e error) {
+	defer func() { h.Cancel(e) }()
+
+	// Data upload (CPU-heavy compression + network) and parent header wait
+	// are independent; run them concurrently so compression isn't blocked on
+	// chain finalization. Only the header serialize/upload below depends on
+	// both completing.
+	var dep headers.Dependency
+	var parentHeader *headers.Header
+
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		if localPath == "" {
+			return nil
+		}
+		var err error
+		dep, err = c.uploadData(egCtx, localPath, cfg, dataPath, objType)
+
+		return err
+	})
+	eg.Go(func() error {
+		if parent == nil {
+			return nil
+		}
+		ph, err := parent.FinalHeader(egCtx)
+		if err != nil {
+			return fmt.Errorf("wait parent final header: %w", err)
+		}
+		parentHeader = ph
+
+		return nil
+	})
+	if err := eg.Wait(); err != nil {
+		return nil, err
+	}
+
+	if parentHeader != nil {
+		h.SetParent(parentHeader)
+	}
+	if err := h.Finalize(dep); err != nil {
+		return nil, fmt.Errorf("finalize header: %w", err)
+	}
+
+	headerBytes, err := h.SerializeV4()
+	if err != nil {
+		return nil, fmt.Errorf("serialize header: %w", err)
+	}
+
+	blob, err := c.persistence.OpenBlob(ctx, headerPath, storage.MetadataObjectType)
+	if err != nil {
+		return nil, fmt.Errorf("open header blob %s: %w", headerPath, err)
+	}
+
+	if err := blob.Put(ctx, headerBytes); err != nil {
+		return nil, fmt.Errorf("put header blob %s: %w", headerPath, err)
+	}
+
+	return headerBytes, nil
+}
+
+func (c *compressedUploader) uploadData(
+	ctx context.Context,
+	localPath string,
+	cfg storage.CompressConfig,
+	dataPath string,
+	objType storage.SeekableObjectType,
+) (headers.Dependency, error) {
+	if cfg.IsCompressionEnabled() {
+		ft, checksum, err := storage.UploadFramed(ctx, c.persistence, dataPath, objType, localPath, cfg)
+		if err != nil {
+			return headers.Dependency{}, fmt.Errorf("compressed data upload: %w", err)
+		}
+
+		return headers.Dependency{Size: ft.UncompressedSize(), Checksum: checksum, FrameTable: ft}, nil
+	}
+
+	// Stat before the upload so an eviction mid-upload doesn't mask a
+	// successful remote write as a header-finalization error.
+	fi, err := os.Stat(localPath)
+	if err != nil {
+		return headers.Dependency{}, fmt.Errorf("stat %s: %w", localPath, err)
+	}
+
+	_, checksum, err := storage.UploadFramed(ctx, c.persistence, dataPath, objType, localPath, storage.CompressConfig{})
+	if err != nil {
+		return headers.Dependency{}, fmt.Errorf("uncompressed data upload: %w", err)
+	}
+
+	return headers.Dependency{Size: fi.Size(), Checksum: checksum}, nil
+}
+
 var _ BuildUploader = (*compressedUploader)(nil)

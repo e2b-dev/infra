@@ -47,7 +47,10 @@ var (
 	attrPeerHitFalse = attribute.Bool("peer_hit", false)
 )
 
-var _ storage.StorageProvider = (*routingProvider)(nil)
+var (
+	_ storage.StorageProvider = (*routingProvider)(nil)
+	_ storage.P2PProvider     = (*routingProvider)(nil)
+)
 
 // routingProvider wraps a base StorageProvider and, for each Open call,
 // checks Redis for a peer routing entry for the buildID extracted from the path.
@@ -102,6 +105,31 @@ func (p *routingProvider) UploadSignedURL(ctx context.Context, path string, ttl 
 
 func (p *routingProvider) GetDetails() string {
 	return p.base.GetDetails()
+}
+
+// TODO: an upload pair (memfile + rootfs) makes two calls here for the same
+// parent buildID — one peer RPC each. Coalescing to one call is a small win
+// (saves 1 round-trip per upload pair); doing it cleanly requires either a
+// dedup primitive or upload-level prefetch threading. Left for later.
+func (p *routingProvider) WaitForPeerAvailability(ctx context.Context, buildID string) ([]byte, []byte, error) {
+	status, res := p.resolver.resolve(ctx, buildID)
+	if status != attrResolvePeer {
+		return nil, nil, nil
+	}
+
+	resp, err := res.client.WaitForPeerAvailability(ctx, &orchestrator.WaitForPeerAvailabilityRequest{
+		BuildId: buildID,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("wait for peer availability: %w", err)
+	}
+
+	avail := resp.GetAvailability()
+	if avail.GetNotAvailable() || !avail.GetUseStorage() {
+		return nil, nil, nil
+	}
+
+	return avail.GetMemfileHeader(), avail.GetRootfsHeader(), nil
 }
 
 var _ storage.StorageProvider = (*peerStorageProvider)(nil)

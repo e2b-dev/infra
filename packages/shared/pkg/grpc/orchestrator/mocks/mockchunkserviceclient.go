@@ -370,3 +370,86 @@ func (_c *MockChunkServiceClient_ReadAtBuildSeekable_Call) RunAndReturn(run func
 	_c.Call.Return(run)
 	return _c
 }
+
+// WaitForPeerAvailability provides a mock function for the type MockChunkServiceClient
+func (_mock *MockChunkServiceClient) WaitForPeerAvailability(ctx context.Context, in *orchestrator.WaitForPeerAvailabilityRequest, opts ...grpc.CallOption) (*orchestrator.WaitForPeerAvailabilityResponse, error) {
+	var tmpRet mock.Arguments
+	if len(opts) > 0 {
+		tmpRet = _mock.Called(ctx, in, opts)
+	} else {
+		tmpRet = _mock.Called(ctx, in)
+	}
+	ret := tmpRet
+
+	if len(ret) == 0 {
+		panic("no return value specified for WaitForPeerAvailability")
+	}
+
+	var r0 *orchestrator.WaitForPeerAvailabilityResponse
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *orchestrator.WaitForPeerAvailabilityRequest, ...grpc.CallOption) (*orchestrator.WaitForPeerAvailabilityResponse, error)); ok {
+		return returnFunc(ctx, in, opts...)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *orchestrator.WaitForPeerAvailabilityRequest, ...grpc.CallOption) *orchestrator.WaitForPeerAvailabilityResponse); ok {
+		r0 = returnFunc(ctx, in, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*orchestrator.WaitForPeerAvailabilityResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *orchestrator.WaitForPeerAvailabilityRequest, ...grpc.CallOption) error); ok {
+		r1 = returnFunc(ctx, in, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockChunkServiceClient_WaitForPeerAvailability_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'WaitForPeerAvailability'
+type MockChunkServiceClient_WaitForPeerAvailability_Call struct {
+	*mock.Call
+}
+
+// WaitForPeerAvailability is a helper method to define mock.On call
+//   - ctx context.Context
+//   - in *orchestrator.WaitForPeerAvailabilityRequest
+//   - opts ...grpc.CallOption
+func (_e *MockChunkServiceClient_Expecter) WaitForPeerAvailability(ctx interface{}, in interface{}, opts ...interface{}) *MockChunkServiceClient_WaitForPeerAvailability_Call {
+	return &MockChunkServiceClient_WaitForPeerAvailability_Call{Call: _e.mock.On("WaitForPeerAvailability",
+		append([]interface{}{ctx, in}, opts...)...)}
+}
+
+func (_c *MockChunkServiceClient_WaitForPeerAvailability_Call) Run(run func(ctx context.Context, in *orchestrator.WaitForPeerAvailabilityRequest, opts ...grpc.CallOption)) *MockChunkServiceClient_WaitForPeerAvailability_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *orchestrator.WaitForPeerAvailabilityRequest
+		if args[1] != nil {
+			arg1 = args[1].(*orchestrator.WaitForPeerAvailabilityRequest)
+		}
+		var arg2 []grpc.CallOption
+		var variadicArgs []grpc.CallOption
+		if len(args) > 2 {
+			variadicArgs = args[2].([]grpc.CallOption)
+		}
+		arg2 = variadicArgs
+		run(
+			arg0,
+			arg1,
+			arg2...,
+		)
+	})
+	return _c
+}
+
+func (_c *MockChunkServiceClient_WaitForPeerAvailability_Call) Return(waitForPeerAvailabilityResponse *orchestrator.WaitForPeerAvailabilityResponse, err error) *MockChunkServiceClient_WaitForPeerAvailability_Call {
+	_c.Call.Return(waitForPeerAvailabilityResponse, err)
+	return _c
+}
+
+func (_c *MockChunkServiceClient_WaitForPeerAvailability_Call) RunAndReturn(run func(ctx context.Context, in *orchestrator.WaitForPeerAvailabilityRequest, opts ...grpc.CallOption) (*orchestrator.WaitForPeerAvailabilityResponse, error)) *MockChunkServiceClient_WaitForPeerAvailability_Call {
+	_c.Call.Return(run)
+	return _c
+}
