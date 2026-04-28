@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
+	"github.com/e2b-dev/infra/packages/api/internal/clientproxyoauth"
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
 	apiorchestrator "github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -32,10 +33,10 @@ type SandboxService struct {
 
 	api                    *APIStore
 	requireClientProxyAuth bool
-	clientProxyOAuth       ClientProxyOAuthVerifier
+	clientProxyOAuth       clientproxyoauth.Verifier
 }
 
-func NewSandboxService(api *APIStore, requireClientProxyAuth bool, clientProxyOAuth ClientProxyOAuthVerifier) *SandboxService {
+func NewSandboxService(api *APIStore, requireClientProxyAuth bool, clientProxyOAuth clientproxyoauth.Verifier) *SandboxService {
 	return &SandboxService{
 		api:                    api,
 		requireClientProxyAuth: requireClientProxyAuth,
@@ -119,7 +120,7 @@ func requireBearerMetadata(md metadata.MD) error {
 func validateClientProxyOAuth(
 	ctx context.Context,
 	incomingMetadata metadata.MD,
-	verifier ClientProxyOAuthVerifier,
+	verifier clientproxyoauth.Verifier,
 	expectedOrgID string,
 ) error {
 	if expectedOrgID == "" {
@@ -148,7 +149,7 @@ func validateClientProxyOAuth(
 func validateClientProxyAuth(
 	ctx context.Context,
 	incomingMetadata metadata.MD,
-	verifier ClientProxyOAuthVerifier,
+	verifier clientproxyoauth.Verifier,
 	expectedAuthOrgID string,
 ) error {
 	if expectedAuthOrgID == "" {

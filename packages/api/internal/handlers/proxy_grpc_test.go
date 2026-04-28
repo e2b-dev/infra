@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/e2b-dev/infra/packages/api/internal/clientproxyoauth"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 )
@@ -236,11 +237,11 @@ func TestRequireBearerMetadata(t *testing.T) {
 }
 
 type fakeClientProxyOAuthVerifier struct {
-	claims ClientProxyOAuthClaims
+	claims clientproxyoauth.Claims
 	err    error
 }
 
-func (v fakeClientProxyOAuthVerifier) VerifyClaims(context.Context, string) (ClientProxyOAuthClaims, error) {
+func (v fakeClientProxyOAuthVerifier) VerifyClaims(context.Context, string) (clientproxyoauth.Claims, error) {
 	return v.claims, v.err
 }
 
@@ -250,34 +251,34 @@ func TestValidateClientProxyAuthOAuth(t *testing.T) {
 	tests := []struct {
 		name          string
 		md            metadata.MD
-		verifier      ClientProxyOAuthVerifier
+		verifier      clientproxyoauth.Verifier
 		expectedOrgID string
 		wantErr       bool
 	}{
 		{
 			name:          "valid bearer token org",
 			md:            metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
-			verifier:      fakeClientProxyOAuthVerifier{claims: ClientProxyOAuthClaims{Subject: "client_123", OrgID: "org_123"}},
+			verifier:      fakeClientProxyOAuthVerifier{claims: clientproxyoauth.Claims{Subject: "client_123", OrgID: "org_123"}},
 			expectedOrgID: "org_123",
 		},
 		{
 			name:          "missing bearer token",
 			md:            metadata.MD{},
-			verifier:      fakeClientProxyOAuthVerifier{claims: ClientProxyOAuthClaims{Subject: "client_123", OrgID: "org_123"}},
+			verifier:      fakeClientProxyOAuthVerifier{claims: clientproxyoauth.Claims{Subject: "client_123", OrgID: "org_123"}},
 			expectedOrgID: "org_123",
 			wantErr:       true,
 		},
 		{
 			name:          "wrong bearer token org",
 			md:            metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
-			verifier:      fakeClientProxyOAuthVerifier{claims: ClientProxyOAuthClaims{Subject: "client_123", OrgID: "org_456"}},
+			verifier:      fakeClientProxyOAuthVerifier{claims: clientproxyoauth.Claims{Subject: "client_123", OrgID: "org_456"}},
 			expectedOrgID: "org_123",
 			wantErr:       true,
 		},
 		{
 			name:          "missing org claim",
 			md:            metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
-			verifier:      fakeClientProxyOAuthVerifier{claims: ClientProxyOAuthClaims{Subject: "client_123"}},
+			verifier:      fakeClientProxyOAuthVerifier{claims: clientproxyoauth.Claims{Subject: "client_123"}},
 			expectedOrgID: "org_123",
 			wantErr:       true,
 		},

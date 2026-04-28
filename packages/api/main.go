@@ -29,6 +29,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
+	"github.com/e2b-dev/infra/packages/api/internal/clientproxyoauth"
 	"github.com/e2b-dev/infra/packages/api/internal/handlers"
 	customMiddleware "github.com/e2b-dev/infra/packages/api/internal/middleware"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware/ratelimit"
@@ -420,7 +421,7 @@ func run() int {
 	}
 
 	edgeGrpcServer := e2bgrpc.NewGRPCServer(tel)
-	clientProxyOAuthVerifier, err := handlers.NewClientProxyOAuthVerifier(ctx, config.ClientProxyOIDCIssuerURL, config.ClientProxyOIDCAudience)
+	clientProxyOAuthVerifier, err := clientproxyoauth.NewVerifier(ctx, config.ClientProxyOIDCIssuerURL, config.ClientProxyOIDCAudience)
 	if err != nil {
 		l.Fatal(ctx, "failed to create client proxy OIDC verifier", zap.Error(err))
 	}
