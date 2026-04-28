@@ -17,7 +17,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
-	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -29,6 +28,8 @@ const (
 	// Also it's a good practice to set it to higher values as you progress in the stack
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
 	idleTimeout = 620 * time.Second
+
+	trafficAccessTokenHeader = "e2b-traffic-access-token"
 )
 
 var _ sandbox.MapSubscriber = (*SandboxProxy)(nil)
@@ -79,11 +80,11 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 			// Handle traffic access token validation.
 			// We are skipping envd port as it has its own access validation mechanism.
 			if accessToken != "" && isNonEnvdTraffic {
-				accessTokenRaw := r.Header.Get(proxygrpc.MetadataTrafficAccessToken)
+				accessTokenRaw := r.Header.Get(trafficAccessTokenHeader)
 				if accessTokenRaw == "" {
-					return nil, reverseproxy.NewErrMissingTrafficAccessToken(sandboxId, proxygrpc.MetadataTrafficAccessToken)
+					return nil, reverseproxy.NewErrMissingTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
 				} else if subtle.ConstantTimeCompare([]byte(accessTokenRaw), []byte(accessToken)) != 1 {
-					return nil, reverseproxy.NewErrInvalidTrafficAccessToken(sandboxId, proxygrpc.MetadataTrafficAccessToken)
+					return nil, reverseproxy.NewErrInvalidTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
 				}
 			}
 
