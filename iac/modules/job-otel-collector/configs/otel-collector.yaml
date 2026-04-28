@@ -233,6 +233,15 @@ processors:
           - "traefik.*"
           - "grpc\\..*"
           - "rpc\\.client.*"
+      # Drop high-volume / never-queried metrics that dominate the Mimir
+      # items/s budget (samples + their exemplars). Latency is still covered
+      # by rpc.client.call.duration; payload sizes were never used in any
+      # dashboard.
+      exclude:
+        match_type: regexp
+        metric_names:
+          - "rpc\\.client\\.request\\.size.*"
+          - "rpc\\.client\\.response\\.size.*"
 
   filter/only_client_allocs:
     metrics:
