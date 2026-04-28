@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asaskevich/govalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
@@ -669,10 +670,10 @@ func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, 
 			}
 		}
 
-		if _, err := idna.Lookup.ToASCII(domain); err != nil {
+		if !govalidator.IsDNSName(domain) {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
-				Err:       fmt.Errorf("rule domain %q is not a valid domain: %w", domain, err),
+				Err:       fmt.Errorf("rule domain %q is not a valid domain", domain),
 				ClientMsg: fmt.Sprintf("Rule domain %q is not a valid domain name.", domain),
 			}
 		}
