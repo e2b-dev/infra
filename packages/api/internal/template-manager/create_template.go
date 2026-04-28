@@ -12,10 +12,9 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
-	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -85,7 +84,7 @@ func (tm *TemplateManager) CreateTemplate(
 		}
 	}()
 
-	features, err := sandbox.NewVersionInfo(firecrackerVersion)
+	features, err := fcversion.New(firecrackerVersion)
 	if err != nil {
 		return fmt.Errorf("failed to get features for firecracker version '%s': %w", firecrackerVersion, err)
 	}
@@ -109,6 +108,10 @@ func (tm *TemplateManager) CreateTemplate(
 		return fmt.Errorf("failed to convert image registry: %w", err)
 	}
 
+	// TODO(ENG-3852): Remove later. KernelVersion and FirecrackerVersion are deprecated on
+	// template-manager selects its own versions and reports the ones it actually
+	// used via TemplateBuildMetadata. They are still populated here for
+	// backwards compatibility with older template-managers that honor them.
 	template := &templatemanagergrpc.TemplateConfig{
 		TeamID:             teamID.String(),
 		TemplateID:         templateID,
@@ -307,40 +310,34 @@ func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUI
 		// Step 1: Resolve alias to template ID (using cache with fallback for promoted templates)
 		aliasInfo, metadata, err := tm.templateCache.ResolveAliasWithMetadata(ctx, identifier, teamSlug)
 		if err != nil {
-			msg := fmt.Sprintf("error resolving base template '%s'", *fromTemplate)
-			if errors.Is(err, templatecache.ErrTemplateNotFound) {
-				msg = fmt.Sprintf("base template '%s' not found", *fromTemplate)
-			}
+			apiErr := templatecache.ErrorToAPIError(err, identifier)
 
 			return &FromTemplateError{
 				err:     err,
-				message: msg,
+				message: apiErr.ClientMsg,
 			}
 		}
 
-		if !metadata.Public && aliasInfo.TeamID != teamID {
-			return &FromTemplateError{
-				err:     nil,
-				message: fmt.Sprintf("you have no access to use '%s' as a base template", *fromTemplate),
-			}
+		ref := templatecache.TemplateRef{
+			Identifier: aliasInfo.MatchedIdentifier,
+			Visible:    aliasInfo.TeamID == teamID || metadata.Public,
 		}
 
 		// Step 2: Get template with build by ID
-		baseTemplate, err := tm.sqlcDB.GetTemplateWithBuildByTag(ctx, queries.GetTemplateWithBuildByTagParams{
-			TemplateID: aliasInfo.TemplateID,
-			Tag:        tag,
-		})
+		_, build, err := tm.templateCache.Get(ctx, aliasInfo.TemplateID, tag, teamID, metadata.ClusterID)
 		if err != nil {
+			apiErr := ref.APIError(err)
+
 			return &FromTemplateError{
 				err:     err,
-				message: fmt.Sprintf("base template '%s' not found", *fromTemplate),
+				message: apiErr.ClientMsg,
 			}
 		}
 
 		template.Source = &templatemanagergrpc.TemplateConfig_FromTemplate{
 			FromTemplate: &templatemanagergrpc.FromTemplateConfig{
 				Alias:   *fromTemplate,
-				BuildID: baseTemplate.EnvBuild.ID.String(),
+				BuildID: build.ID.String(),
 			},
 		}
 	default: // hasImage

@@ -160,6 +160,9 @@ func (a *APIStore) buildTemplate(
 	templateID api.TemplateID,
 	body api.TemplateBuildRequest,
 ) (*template.RegisterBuildResponse, *api.APIError) {
+	// TODO(ENG-3852): Stop sending the firecracker version from the API. The orchestrator
+	// now resolves its own FC version via the FirecrackerVersions feature flag
+	// (see packages/orchestrator/pkg/template/build/builder.go)
 	firecrackerVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
 
 	var alias *string

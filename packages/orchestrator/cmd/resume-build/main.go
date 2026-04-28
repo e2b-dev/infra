@@ -17,8 +17,11 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/containernetworking/plugins/pkg/ns"
+	"github.com/coreos/go-iptables/iptables"
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldlog"
+	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
@@ -56,6 +59,7 @@ func main() {
 	iterations := flag.Int("iterations", 0, "run N iterations (0 = interactive)")
 	coldStart := flag.Bool("cold", false, "clear cache between iterations (cold start each time)")
 	noPrefetch := flag.Bool("no-prefetch", false, "disable memory prefetching")
+	noEgress := flag.Bool("no-egress", false, "block all guest internet egress")
 	verbose := flag.Bool("v", false, "verbose logging")
 
 	// Command execution (no pause)
@@ -155,7 +159,7 @@ func main() {
 		iterations: *iterations,
 	}
 
-	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *verbose, pauseOpts, runOpts)
+	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *noEgress, *verbose, pauseOpts, runOpts)
 	cancel()
 
 	if err != nil {
@@ -953,7 +957,7 @@ func (r *runner) benchmark(ctx context.Context, n int) error {
 	return lastErr
 }
 
-func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, verbose bool, pauseOpts pauseOptions, runOpts runOptions) error {
+func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, noEgress, verbose bool, pauseOpts pauseOptions, runOpts runOptions) error {
 	// Silence other loggers unless verbose mode
 	var l logger.Logger
 	if !verbose {
@@ -1004,10 +1008,15 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	go tcpFw.Start(ctx)
 	defer tcpFw.Close(context.WithoutCancel(ctx))
 
+	var egressProxy network.EgressProxy = network.NoopEgressProxy{}
+	if noEgress {
+		egressProxy = noEgressProxy{}
+	}
+
 	if verbose {
 		fmt.Println("🔧 Creating network storage...")
 	}
-	slotStorage, err := network.NewStorageLocal(ctx, config.NetworkConfig, network.NoopEgressProxy{})
+	slotStorage, err := network.NewStorageLocal(ctx, config.NetworkConfig, egressProxy)
 	if err != nil {
 		return fmt.Errorf("network storage: %w", err)
 	}
@@ -1064,7 +1073,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating sandbox factory...")
 	}
-	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), network.NewNoopEgressProxy(), sandboxes)
+	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), egressProxy, sandboxes)
 
 	fmt.Printf("📦 Loading %s...\n", buildID)
 	tmpl, err := cache.GetTemplate(ctx, buildID, false, false)
@@ -1455,4 +1464,33 @@ func (t *noPrefetchTemplate) Metadata() (metadata.Template, error) {
 	meta.Prefetch = nil
 
 	return meta, nil
+}
+
+// noEgressProxy is an EgressProxy that removes the default route from the
+// sandbox's netns at slot-creation time.
+type noEgressProxy struct {
+	network.NoopEgressProxy
+}
+
+func (noEgressProxy) OnSlotCreate(s *network.Slot, _ *iptables.IPTables) error {
+	nsPath := filepath.Join("/var/run/netns", s.NamespaceID())
+
+	handle, err := ns.GetNS(nsPath)
+	if err != nil {
+		return fmt.Errorf("get netns %q: %w", nsPath, err)
+	}
+	defer handle.Close()
+
+	// Match the route installed earlier in Slot.CreateNetwork:
+	//   Scope = SCOPE_UNIVERSE, Gw = VethIP.
+	return handle.Do(func(_ ns.NetNS) error {
+		if err := netlink.RouteDel(&netlink.Route{
+			Scope: netlink.SCOPE_UNIVERSE,
+			Gw:    s.VethIP(),
+		}); err != nil {
+			return fmt.Errorf("delete default route in %s: %w", s.NamespaceID(), err)
+		}
+
+		return nil
+	})
 }

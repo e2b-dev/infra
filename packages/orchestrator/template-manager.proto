@@ -66,10 +66,12 @@ message TemplateConfig {
   int32 vCpuCount = 4;
   int32 diskSizeMB = 5;
 
-  string kernelVersion = 6;
-  string firecrackerVersion = 7;
+  // Deprecated: template-manager now selects the kernel and firecracker versions itself
+  string kernelVersion = 6 [deprecated = true];
+  string firecrackerVersion = 7 [deprecated = true];
   string startCommand = 8;
-  bool hugePages = 9;
+  // Deprecated: hugePages is derived from the resolved firecracker version locally
+  bool hugePages = 9 [deprecated = true];
 
   string readyCommand = 10;
 
@@ -125,6 +127,11 @@ message TemplateBuildDeleteRequest {
 message TemplateBuildMetadata {
   int32 rootfsSizeKey = 1;
   string envdVersionKey = 2;
+
+  // Versions actually used by the template-manager to build the template.
+  // The API persists these into the env_builds row once the build finishes.
+  string kernelVersion = 3;
+  string firecrackerVersion = 4;
 }
 
 enum TemplateBuildState {
