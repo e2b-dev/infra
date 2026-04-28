@@ -3,6 +3,7 @@ package sandbox
 import (
 	"context"
 	"errors"
+	"net/http"
 	"sync"
 	"time"
 
@@ -13,9 +14,17 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
+type CreationMetadata struct {
+	IsResume       bool
+	TeamName       string
+	RequestHeader  http.Header
+	MCPServerNames []string
+}
+
 type (
-	InsertCallback func(ctx context.Context, sbx Sandbox)
-	RemoveCallback func(ctx context.Context, sbx Sandbox)
+	InsertCallback   func(ctx context.Context, sbx Sandbox)
+	RemoveCallback   func(ctx context.Context, sbx Sandbox)
+	CreationCallback func(ctx context.Context, sbx Sandbox, meta CreationMetadata)
 )
 
 const (
@@ -51,8 +60,8 @@ type Storage interface { //nolint: interfacebloat
 type Callbacks struct {
 	// AddSandboxToRoutingTable should be called sync to prevent race conditions where we would know where to route the sandbox
 	AddSandboxToRoutingTable InsertCallback
-	// AsyncNewlyCreatedSandbox should be called async to prevent blocking the main goroutine
-	AsyncNewlyCreatedSandbox InsertCallback
+	// AsyncNewlyCreatedSandbox is called asynchronously for newly created sandboxes (Add called with non-nil CreationMetadata).
+	AsyncNewlyCreatedSandbox CreationCallback
 	// RemoveSandboxFromNode kills an orphaned sandbox on the orchestrator node via gRPC.
 	// Used during sync when the Redis backend detects sandboxes running on a node but not present in the store.
 	RemoveSandboxFromNode RemoveCallback
@@ -77,9 +86,11 @@ func NewStore(
 	}
 }
 
-func (s *Store) Add(ctx context.Context, sandbox Sandbox, newlyCreated bool) error {
+// Add inserts a sandbox into the store. A non-nil creation argument fires the
+// AsyncNewlyCreatedSandbox callback; nil indicates a sync/reconcile re-add.
+func (s *Store) Add(ctx context.Context, sandbox Sandbox, creation *CreationMetadata) error {
 	sbxlogger.I(sandbox).Debug(ctx, "Adding sandbox to cache",
-		zap.Bool("newly_created", newlyCreated),
+		zap.Bool("newly_created", creation != nil),
 		logger.Time("start_time", sandbox.StartTime),
 		logger.Time("end_time", sandbox.EndTime),
 	)
@@ -118,8 +129,9 @@ func (s *Store) Add(ctx context.Context, sandbox Sandbox, newlyCreated bool) err
 		}
 	}
 
-	if newlyCreated {
-		go s.callbacks.AsyncNewlyCreatedSandbox(context.WithoutCancel(ctx), sandbox)
+	if creation != nil {
+		meta := *creation
+		go s.callbacks.AsyncNewlyCreatedSandbox(context.WithoutCancel(ctx), sandbox, meta)
 	}
 
 	return nil
@@ -185,7 +197,7 @@ func (s *Store) Reconcile(ctx context.Context, sandboxes []Sandbox, nodeID strin
 		// Memory backend — divergent sandboxes are ones discovered on the node
 		// that aren't in the local cache yet. Re-add them.
 		for _, sbx := range sbxsToBeSynced {
-			err := s.Add(ctx, sbx, false)
+			err := s.Add(ctx, sbx, nil)
 			if err != nil {
 				logger.L().Error(ctx, "Failed to re-add sandbox during sync", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
 			}
