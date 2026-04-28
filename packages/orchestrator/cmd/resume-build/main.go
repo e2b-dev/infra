@@ -965,10 +965,17 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if !verbose {
 		cmdutil.SuppressNoisyLogs()
 		l = logger.NewNopLogger()
+		sbxlogger.SetSandboxLoggerInternal(logger.NewNopLogger())
 	} else {
-		l, _ = logger.NewDevelopmentLogger()
+		var err error
+		l, err = logger.NewDevelopmentLogger()
+		if err != nil {
+			return fmt.Errorf("logger: %w", err)
+		}
+		logger.ReplaceGlobals(ctx, l)
+		sbxlogger.SetSandboxLoggerExternal(l)
+		sbxlogger.SetSandboxLoggerInternal(l)
 	}
-	sbxlogger.SetSandboxLoggerInternal(logger.NewNopLogger())
 
 	tel, err := telemetry.NewAnonymous(ctx, "resume-build")
 	if err != nil {
