@@ -30,8 +30,7 @@
 
 **Accounts**
 
-- Cloudflare account
-- Domain on Cloudflare
+- DNS provider: Cloudflare account with domain, **or** AWS Route53 hosted zone
 - PostgreSQL database (Supabase's DB only supported for now)
 
 **Optional**
@@ -125,8 +124,10 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
     - `AWS_ACCOUNT_ID` - your AWS account ID
     - `AWS_REGION` - the AWS region to deploy to (must support bare metal instances for Firecracker)
     - `PREFIX` - name prefix for all resources (e.g. `e2b-`)
-    - `DOMAIN_NAME` - your domain managed by Cloudflare
+    - `DOMAIN_NAME` - your domain
     - `TERRAFORM_ENVIRONMENT` - one of `prod`, `staging`, `dev`
+    - `DNS_PROVIDER` - `cloudflare` (default) or `route53`
+    - `ROUTE53_ZONE_ID` - your Route53 hosted zone ID (required when `DNS_PROVIDER=route53`)
 2. Run `make set-env ENV={prod,staging,dev}` to start using your env
 3. Run `make provider-login` to authenticate with AWS ECR
 4. Run `make init`. This creates:
@@ -135,9 +136,9 @@ Now, you should see the right quota options in `All Quotas` and be able to reque
     - ECR repositories for container images
     - S3 buckets for templates, kernels, builds, and backups
     - Secrets in AWS Secrets Manager (with placeholder values)
-    - Cloudflare DNS records and TLS certificates
+    - DNS records and TLS certificates (via Cloudflare or Route53)
 5. Update the following secrets in [AWS Secrets Manager](https://console.aws.amazon.com/secretsmanager) with actual values:
-    - `{prefix}cloudflare` - JSON with `TOKEN` key
+    - `{prefix}cloudflare` - JSON with `TOKEN` key (**only when using Cloudflare**)
         > Get Cloudflare API Token: go to the [Cloudflare dashboard](https://dash.cloudflare.com/) -> Manage Account -> Account API Tokens -> Create Token -> Edit Zone DNS -> in "Zone Resources" select your domain and generate the token
     - `{prefix}postgres-connection-string` - your PostgreSQL connection string (**required**)
     - `{prefix}supabase-jwt-secrets` - Supabase JWT secret (optional / required for the [E2B dashboard](https://github.com/e2b-dev/dashboard))

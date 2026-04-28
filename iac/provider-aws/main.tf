@@ -29,7 +29,9 @@ terraform {
 }
 
 provider "cloudflare" {
-  api_token = module.init.cloudflare.token
+  # When not using Cloudflare, provide a syntactically valid dummy token.
+  # No Cloudflare resources are created (all have count=0), but Terraform still validates the provider config.
+  api_token = var.dns_provider == "cloudflare" ? module.init.cloudflare[0].token : "0000000000000000000000000000000000000000"
 }
 
 provider "aws" {}
@@ -58,6 +60,7 @@ module "init" {
   ]
 
   allow_force_destroy = var.allow_force_destroy
+  dns_provider        = var.dns_provider
 }
 
 locals {

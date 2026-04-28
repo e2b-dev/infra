@@ -12,6 +12,7 @@ module "network" {
 
 module "cloudflare" {
   source = "../modules/cloudflare"
+  count  = var.dns_provider == "cloudflare" ? 1 : 0
 
   prefix = var.prefix
 }

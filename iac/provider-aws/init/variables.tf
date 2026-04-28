@@ -17,3 +17,8 @@ variable "region" {
 variable "endpoint_ingress_subnet_ids" {
   type = list(string)
 }
+
+variable "dns_provider" {
+  type    = string
+  default = "cloudflare"
+}
