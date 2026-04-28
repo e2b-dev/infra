@@ -63,6 +63,8 @@ resource "nomad_variable" "orchestrator_hash" {
 }
 
 resource "nomad_job" "orchestrator" {
+  count = var.enabled ? 1 : 0
+
   deregister_on_id_change = false
 
   jobspec = templatefile("${path.module}/jobs/orchestrator.hcl", merge(

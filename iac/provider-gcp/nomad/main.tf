@@ -435,6 +435,8 @@ locals {
 }
 
 module "orchestrator" {
+  count = var.orchestrator_enabled ? 1 : 0
+
   source = "../../modules/job-orchestrator"
 
   provider_name = "gcp"

@@ -49,21 +49,6 @@ moved {
 }
 
 moved {
-  from = nomad_job.orchestrator
-  to   = module.orchestrator.nomad_job.orchestrator
-}
-
-moved {
-  from = random_id.orchestrator_job
-  to   = module.orchestrator.random_id.orchestrator_job
-}
-
-moved {
-  from = nomad_variable.orchestrator_hash
-  to   = module.orchestrator.nomad_variable.orchestrator_hash
-}
-
-moved {
   from = nomad_job.api
   to   = module.api.nomad_job.api
 }
