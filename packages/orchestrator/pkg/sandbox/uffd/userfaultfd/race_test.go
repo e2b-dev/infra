@@ -109,6 +109,7 @@ func TestStaleSourceRaceMissingAndRemove(t *testing.T) {
 				cfg := testConfig{
 					pagesize:      tt.pagesize,
 					numberOfPages: 4,
+					barriers:      true,
 					sourcePatcher: func(content []byte) {
 						content[pageOffset] = sentinel
 					},
@@ -232,6 +233,7 @@ func TestNoMadviseDeadlockWithInflightCopy(t *testing.T) {
 				cfg := testConfig{
 					pagesize:      tt.pagesize,
 					numberOfPages: 4,
+					barriers:      true,
 				}
 
 				h, err := configureCrossProcessTest(t, cfg)
@@ -301,9 +303,19 @@ func TestNoMadviseDeadlockWithInflightCopy(t *testing.T) {
 // invariant itself: any future change that, for example, dispatched
 // pagefaults before draining REMOVEs would fail this test as a
 // concrete state-mismatch assertion rather than a 30-minute hang.
+//
+// NOTE: this test deliberately does NOT call t.Parallel(). While the
+// handler is in the gated `paused` state, the user thread that
+// triggered the queued WRITE fault is suspended in the kernel's
+// pagefault path. From the Go runtime's perspective that goroutine
+// is "running" (not in syscall, since it's a plain memory store) but
+// can't be preempted. If a CONCURRENT cross-process test in the same
+// binary triggers a stop-the-world GC pause during this window, STW
+// will wait forever for the suspended goroutine to reach a safe
+// point — the kernel can't deliver the SIGURG preempt signal until
+// the pagefault is served, and the handler is paused. Running this
+// test sequentially avoids that interleaving.
 func TestFaultedShortCircuitOrdering(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name     string
 		pagesize uint64
@@ -352,10 +364,14 @@ func TestFaultedShortCircuitOrdering(t *testing.T) {
 }
 
 // waitForState polls the child's PageStates RPC until the page at
-// the given offset reaches `want` or `deadline` elapses. Polling is
-// deliberately tight (no fixed sleep) — the state transition we care
-// about is microseconds.
+// the given offset reaches `want` or `deadline` elapses. Each RPC
+// round-trip is microseconds-to-low-milliseconds; we yield with a
+// small sleep between polls so the harness doesn't burn an entire
+// CPU on tight-loop encoding while the rest of the suite is also
+// running cross-process tests.
 func waitForState(ctx context.Context, h *testHandler, offset uint64, want pageState, deadline time.Duration) error {
+	const pollInterval = 1 * time.Millisecond
+
 	end := time.Now().Add(deadline)
 	for {
 		states, err := h.pageStatesOnce()
@@ -385,7 +401,7 @@ func waitForState(ctx context.Context, h *testHandler, offset uint64, want pageS
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		default:
+		case <-time.After(pollInterval):
 		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/rpc"
 	"os/exec"
 	"sync"
 	"testing"
@@ -31,6 +32,10 @@ type testConfig struct {
 	alwaysWP bool
 	// gated enables pause/resume control over the handler's serve loop.
 	gated bool
+	// barriers wires up the per-worker fault hooks in the child
+	// (used by race tests). Off by default so the worker hot path
+	// stays a single nil-pointer load + branch in non-race tests.
+	barriers bool
 	// sourcePatcher, if non-nil, is invoked on the random source data
 	// AFTER it's generated but BEFORE it's written to the on-disk
 	// content file the child reads. Tests can use this to plant
@@ -111,10 +116,8 @@ type testHandler struct {
 	servePause  func() error
 	serveResume func() error
 
-	// client is the RPC channel to the child helper process. nil for
-	// any future in-process testHandler — every method that uses it
-	// must guard accordingly.
-	client *rpcClient
+	// client is the RPC channel to the child helper process.
+	client *rpc.Client
 	conn   io.Closer
 	cmd    *exec.Cmd
 
@@ -124,23 +127,31 @@ type testHandler struct {
 // installFaultBarrier asks the child to park the next worker that
 // hits `point` for `addr`. Returns a token that must be passed to
 // waitFaultHeld and releaseFault.
-func (h *testHandler) installFaultBarrier(ctx context.Context, addr uintptr, point barrierPoint) (uint64, error) {
-	var resp installFaultBarrierResp
-	err := h.client.Call(ctx, "InstallFaultBarrier", installFaultBarrierArgs{Addr: uint64(addr), Point: uint8(point)}, &resp)
+func (h *testHandler) installFaultBarrier(_ context.Context, addr uintptr, point barrierPoint) (uint64, error) {
+	var reply FaultBarrierReply
+	err := h.client.Call("Service.InstallFaultBarrier", &FaultBarrierArgs{Addr: uint64(addr), Point: uint8(point)}, &reply)
 
-	return resp.Token, err
+	return reply.Token, err
 }
 
 // waitFaultHeld blocks until the child reports that a worker has
-// reached the barrier identified by token.
+// reached the barrier identified by token. The wait is bounded via
+// context by issuing the call on a goroutine and racing it against
+// ctx; net/rpc's Call doesn't take a context directly.
 func (h *testHandler) waitFaultHeld(ctx context.Context, token uint64) error {
-	return h.client.Call(ctx, "WaitFaultHeld", tokenArgs{Token: token}, nil)
+	call := h.client.Go("Service.WaitFaultHeld", &TokenArgs{Token: token}, &Empty{}, nil)
+	select {
+	case <-call.Done:
+		return call.Error
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // releaseFault releases a parked worker so it proceeds past the
 // barrier.
-func (h *testHandler) releaseFault(ctx context.Context, token uint64) error {
-	return h.client.Call(ctx, "ReleaseFault", tokenArgs{Token: token}, nil)
+func (h *testHandler) releaseFault(_ context.Context, token uint64) error {
+	return h.client.Call("Service.ReleaseFault", &TokenArgs{Token: token}, &Empty{})
 }
 
 func (h *testHandler) executeAll(t *testing.T, operations []operation) {

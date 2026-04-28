@@ -156,9 +156,20 @@ func TestRemoveThenFault(t *testing.T) {
 // succeeds without faulting because MADV_DONTNEED blocks (waiting for ack)
 // and doesn't unmap the page until the handler processes the event.
 // When the handler resumes, it only sees the REMOVE — no MISSING fault.
+//
+// NOTE: this test (and the other gated tests below) deliberately does
+// NOT call t.Parallel(). While the handler is paused, any user thread
+// that triggers a queued pagefault on the registered region is
+// suspended in the kernel's pagefault path. From the Go runtime's
+// perspective that goroutine is "running" (not in syscall, since it's
+// a plain memory store) and cannot be preempted until the fault is
+// served. If a CONCURRENT cross-process test in the same binary
+// triggers a stop-the-world GC pause during this window, STW will
+// wait forever for the suspended goroutine to reach a safe point —
+// the kernel cannot deliver the SIGURG preempt signal until the
+// pagefault is served, and the handler is paused. Running the gated
+// tests sequentially avoids that interleaving.
 func TestRemoveThenWriteGated(t *testing.T) {
-	t.Parallel()
-
 	tests := []testConfig{
 		{
 			name:          "4k gated remove with concurrent write",
@@ -194,8 +205,6 @@ func TestRemoveThenWriteGated(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			h, err := configureCrossProcessTest(t, tt)
 			require.NoError(t, err)
 
@@ -218,9 +227,9 @@ func TestRemoveThenWriteGated(t *testing.T) {
 // was queued first. The write to a missing page triggers MISSING (queued first),
 // then MADV_DONTNEED triggers REMOVE (queued second). When the handler resumes,
 // it processes REMOVE first, then MISSING — the write is not skipped.
+//
+// See TestRemoveThenWriteGated for why this test is not parallel.
 func TestWriteThenRemoveGated(t *testing.T) {
-	t.Parallel()
-
 	tests := []testConfig{
 		{
 			name:          "4k write then remove in same batch",
@@ -258,8 +267,6 @@ func TestWriteThenRemoveGated(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			h, err := configureCrossProcessTest(t, tt)
 			require.NoError(t, err)
 

@@ -8,20 +8,22 @@ package userfaultfd
 //
 // All parent ↔ child coordination — readiness, page-state queries,
 // pause/resume, fault barriers, shutdown — flows over a single Unix
-// domain socket using the JSON-RPC harness in rpc_test.go. The only
-// fd we still hand off out-of-band is the userfaultfd itself, which
-// is a kernel object and has to be passed via ExtraFiles. The
-// initial source data is written to a temp file (path passed in an
-// env var) because base64-stuffing megabytes through the JSON
-// envelope would be silly.
+// domain socket using the standard-library net/rpc + jsonrpc codec.
+// Each in-flight RPC runs in its own server-side goroutine, so a
+// blocking handler (e.g. WaitFaultHeld) does not stall other RPCs.
+// The only fd we still hand off out-of-band is the userfaultfd
+// itself (kernel object, has to go through ExtraFiles); the initial
+// source data is written to a temp file under t.TempDir() because
+// base64-stuffing megabytes through the JSON envelope would be silly.
 
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
+	"net/rpc"
+	"net/rpc/jsonrpc"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,6 +32,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
@@ -80,8 +83,7 @@ func RandomPages(pagesize, numberOfPages uint64) *MemorySlicer {
 	return NewMemorySlicer(buf, int64(pagesize))
 }
 
-// Env vars used by the child helper process. Kept in one place so
-// drift between parent (sets) and child (reads) is impossible.
+// Env vars used by the child helper process.
 const (
 	envHelperFlag    = "GO_TEST_HELPER_PROCESS"
 	envSocketPath    = "GO_UFFD_SOCKET"
@@ -91,9 +93,66 @@ const (
 	envMmapTotalSize = "GO_UFFD_MMAP_SIZE"
 	envAlwaysWP      = "GO_UFFD_ALWAYS_WP"
 	envGated         = "GO_UFFD_GATED"
+	// envBarriers gates the test-only worker hooks. Only race tests
+	// need them; for everyone else we leave the hook fields nil so
+	// the hot path stays a single nil-pointer load + branch.
+	envBarriers = "GO_UFFD_BARRIERS"
 )
 
-// Main process, FC in our case
+// ---- RPC method types ---------------------------------------------------
+//
+// net/rpc requires methods of the form:
+//
+//   func (s *Service) Method(args *ArgsT, reply *ReplyT) error
+//
+// where both args and reply are exported pointer types. For methods
+// that take or return nothing meaningful we still need a type — Empty
+// fills that role.
+
+type Empty struct{}
+
+type PageStatesReply struct {
+	Entries []pageStateEntry
+}
+
+type FaultBarrierArgs struct {
+	Addr  uint64
+	Point uint8
+}
+
+type FaultBarrierReply struct {
+	Token uint64
+}
+
+type TokenArgs struct {
+	Token uint64
+}
+
+// pageStateEntry is the wire format for PageStates RPC results.
+type pageStateEntry struct {
+	State  uint8
+	Offset uint64
+}
+
+// ---- Parent side --------------------------------------------------------
+
+// childForkMu serialises the cmd.Start() call across all parallel
+// cross-process tests in this binary. Without it, the duplicated
+// uffd fd we hand to one child via ExtraFiles is briefly visible in
+// the parent's fd table while ANOTHER concurrent test calls fork()
+// — so that other test's child inherits a uffd fd it does not own.
+// The leaked fd keeps the original test's uffd kernel object alive
+// after its owner closes its end, prevents madvise from completing
+// once the owning child exits, and produces hard-to-diagnose
+// -parallel-only deadlocks.
+//
+// Holding the mutex only across cmd.Start (which itself holds the
+// process lock for the underlying syscall.ForkExec) is enough — by
+// the time Start returns the dup'd fd is already mapped into fd 3
+// in the new child and we close it immediately in the parent below.
+var childForkMu sync.Mutex
+
+// Main process, FC in our case.
 func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error) {
 	t.Helper()
 
@@ -149,10 +208,30 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	if tt.gated {
 		cmd.Env = append(cmd.Env, envGated+"=1")
 	}
+	if tt.barriers {
+		cmd.Env = append(cmd.Env, envBarriers+"=1")
+	}
+
+	// We hand the uffd fd to the child via ExtraFiles. The child-
+	// side dup3 inside fork+exec clears CLOEXEC on the destination
+	// fd (i.e. fd 3 in the child) automatically, so the SOURCE fd
+	// in our parent should remain CLOEXEC — otherwise every other
+	// test fork()'d concurrently from this binary inherits a uffd
+	// it does not own, the kernel keeps the original test's uffd
+	// alive after its real owner exits, and madvise stops draining.
+	// At higher -parallel this surfaces as long, hard-to-diagnose
+	// hangs.
+	//
+	// syscall.Dup creates the new fd WITHOUT CLOEXEC, so we
+	// re-arm it explicitly. Holding childForkMu across the
+	// dup → cmd.Start window further guarantees no concurrent
+	// fork can race the F_SETFD.
+	childForkMu.Lock()
 
 	dup, err := syscall.Dup(int(uffdFd))
 	require.NoError(t, err)
-	if _, err := unix.FcntlInt(uintptr(dup), unix.F_SETFD, 0); err != nil {
+	if _, err := unix.FcntlInt(uintptr(dup), unix.F_SETFD, unix.FD_CLOEXEC); err != nil {
+		childForkMu.Unlock()
 		require.NoError(t, err)
 	}
 
@@ -161,8 +240,11 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	require.NoError(t, cmd.Start())
+	startErr := cmd.Start()
 	uffdFile.Close()
+	childForkMu.Unlock()
+
+	require.NoError(t, startErr)
 
 	// Accept the child's connection. Tight deadline so a wedged
 	// child surfaces fast instead of hanging the test.
@@ -181,13 +263,15 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	case res := <-acceptCh:
 		require.NoError(t, res.err)
 		conn = res.conn
-	case <-t.Context().Done():
+	case <-time.After(10 * time.Second):
 		listener.Close()
-		require.NoError(t, t.Context().Err())
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		t.Fatalf("child did not connect within 10s")
 	}
 	listener.Close()
 
-	client := newRPCClient(conn, conn)
+	client := jsonrpc.NewClient(conn)
 
 	h := &testHandler{
 		memoryArea: &memoryArea,
@@ -199,20 +283,18 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	}
 
 	// WaitReady blocks on the child until its initial setup is done
-	// (uffd resumed, hooks installed). This is the RPC equivalent of
-	// the old "ready pipe + read until EOF" handshake.
-	require.NoError(t, h.client.Call(t.Context(), "WaitReady", nil, nil))
+	// (uffd serve goroutine running, hooks installed). The RPC reply
+	// IS the readiness signal — no separate ready pipe / signal
+	// needed.
+	require.NoError(t, h.client.Call("Service.WaitReady", &Empty{}, &Empty{}))
 
 	t.Cleanup(func() {
 		// Best-effort graceful shutdown via RPC. If the child has
 		// already crashed the RPC will error and we fall back to
-		// killing the process via cmd.Process.Kill on the next line.
-		_ = h.client.Call(context.Background(), "Shutdown", nil, nil)
-		_ = conn.Close()
+		// killing the process below.
+		_ = h.client.Call("Service.Shutdown", &Empty{}, &Empty{})
+		_ = client.Close()
 
-		// cmd.Wait can return ExitError, "signal: killed", or nil
-		// depending on whether the child exited cleanly. Any of
-		// those is acceptable here.
 		waitErr := cmd.Wait()
 		if waitErr != nil {
 			var exitErr *exec.ExitError
@@ -224,21 +306,21 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 
 	if tt.gated {
 		h.servePause = func() error {
-			return h.client.Call(t.Context(), "ServePause", nil, nil)
+			return h.client.Call("Service.ServePause", &Empty{}, &Empty{})
 		}
 		h.serveResume = func() error {
-			return h.client.Call(t.Context(), "ServeResume", nil, nil)
+			return h.client.Call("Service.ServeResume", &Empty{}, &Empty{})
 		}
 	}
 
 	h.pageStatesOnce = func() (handlerPageStates, error) {
-		var entries []pageStateEntry
-		if err := h.client.Call(t.Context(), "PageStates", nil, &entries); err != nil {
+		var reply PageStatesReply
+		if err := h.client.Call("Service.PageStates", &Empty{}, &reply); err != nil {
 			return handlerPageStates{}, err
 		}
 
 		var states handlerPageStates
-		for _, e := range entries {
+		for _, e := range reply.Entries {
 			switch pageState(e.State) {
 			case faulted:
 				states.faulted = append(states.faulted, uint(e.Offset))
@@ -254,6 +336,8 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 
 	return h, nil
 }
+
+// ---- Child side ---------------------------------------------------------
 
 // Secondary process, orchestrator in our case.
 func TestHelperServingProcess(t *testing.T) {
@@ -272,7 +356,7 @@ func TestHelperServingProcess(t *testing.T) {
 }
 
 // crossProcessServe wires up the child side: connects back to the
-// parent socket, exposes the RPC surface, and runs uffd.Serve in a
+// parent socket, registers the RPC service, and runs uffd.Serve in a
 // background goroutine that pause/resume RPCs can stop and restart.
 func crossProcessServe() error {
 	socketPath := os.Getenv(envSocketPath)
@@ -339,159 +423,171 @@ func crossProcessServe() error {
 		uffd.defaultCopyMode = UFFDIO_COPY_MODE_WP
 	}
 
-	// Wire the deterministic test barriers into the production hook
-	// fields. Both hooks consult the same per-addr registry below.
 	br := newBarrierRegistry()
-	uffd.beforeWorkerRLockHook = br.hookFor(barrierBeforeRLock)
-	uffd.beforeFaultPageHook = br.hookFor(barrierBeforeFaultPage)
 
-	server := newRPCServer(conn, conn)
-
-	serveCtx, serveCancel := context.WithCancel(context.Background())
-
-	// Lifecycle of the actual UFFD serve loop. Pause/resume RPCs
-	// stop and restart this goroutine; Shutdown signals the outer
-	// loop to exit. We use a small helper to avoid duplicating the
-	// "create fdexit + go uffd.Serve + wait" pattern.
-	var serveMu sync.Mutex
-	var serveStop func()
-
-	startServe := func() {
-		exit, err := fdexit.New()
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "fdexit.New:", err)
-
-			return
-		}
-
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			if err := uffd.Serve(serveCtx, exit); err != nil {
-				fmt.Fprintln(os.Stderr, "uffd.Serve:", err)
-			}
-		}()
-
-		serveStop = func() {
-			_ = exit.SignalExit()
-			<-done
-			exit.Close()
-		}
+	// Hooks are only wired up when the test asked for them (race
+	// tests). For everyone else we leave the fields nil so the hot
+	// path is a single nil-pointer load + branch — keeps the high-
+	// throughput tests (TestParallelMissingWriteWithPrefault, etc.)
+	// from paying for a Mutex per fault.
+	if os.Getenv(envBarriers) == "1" {
+		uffd.beforeWorkerRLockHook = br.hookFor(barrierBeforeRLock)
+		uffd.beforeFaultPageHook = br.hookFor(barrierBeforeFaultPage)
 	}
-
-	startServe()
 
 	gated := os.Getenv(envGated) == "1"
 
-	// Track in-flight barrier tokens so Shutdown can release them
-	// (otherwise a parked worker would never return and the serve
-	// goroutine would never finish).
-	server.Register("WaitReady", func(_ context.Context, _ json.RawMessage) (any, error) {
-		return nil, nil
-	})
+	svc := &Service{
+		uffd:     uffd,
+		br:       br,
+		gated:    gated,
+		shutdown: make(chan struct{}),
+	}
+	svc.startServe()
 
-	server.Register("PageStates", func(_ context.Context, _ json.RawMessage) (any, error) {
-		return uffd.pageStateEntries()
-	})
+	server := rpc.NewServer()
+	if err := server.Register(svc); err != nil {
+		return fmt.Errorf("rpc Register: %w", err)
+	}
 
-	server.Register("ServePause", func(_ context.Context, _ json.RawMessage) (any, error) {
-		if !gated {
-			return nil, errors.New("ServePause called on a non-gated handler")
-		}
-		serveMu.Lock()
-		defer serveMu.Unlock()
-		if serveStop != nil {
-			serveStop()
-			serveStop = nil
-		}
-
-		return nil, nil
-	})
-
-	server.Register("ServeResume", func(_ context.Context, _ json.RawMessage) (any, error) {
-		if !gated {
-			return nil, errors.New("ServeResume called on a non-gated handler")
-		}
-		serveMu.Lock()
-		defer serveMu.Unlock()
-		startServe()
-
-		return nil, nil
-	})
-
-	server.Register("InstallFaultBarrier", func(_ context.Context, raw json.RawMessage) (any, error) {
-		var args installFaultBarrierArgs
-		if err := json.Unmarshal(raw, &args); err != nil {
-			return nil, err
-		}
-		token := br.install(uintptr(args.Addr), barrierPoint(args.Point))
-
-		return installFaultBarrierResp{Token: token}, nil
-	})
-
-	server.Register("WaitFaultHeld", func(ctx context.Context, raw json.RawMessage) (any, error) {
-		var args tokenArgs
-		if err := json.Unmarshal(raw, &args); err != nil {
-			return nil, err
-		}
-
-		return nil, br.waitArrived(ctx, args.Token)
-	})
-
-	server.Register("ReleaseFault", func(_ context.Context, raw json.RawMessage) (any, error) {
-		var args tokenArgs
-		if err := json.Unmarshal(raw, &args); err != nil {
-			return nil, err
-		}
-		br.release(args.Token)
-
-		return nil, nil
-	})
-
-	shutdownCh := make(chan struct{})
-	server.Register("Shutdown", func(_ context.Context, _ json.RawMessage) (any, error) {
-		// Run the actual shutdown asynchronously so the RPC reply
-		// goes out before we tear the channel down.
-		go func() {
-			close(shutdownCh)
-		}()
-
-		return nil, nil
-	})
-
-	serveErrCh := make(chan error, 1)
+	// Run the codec in a goroutine so we can react to Shutdown
+	// without depending on the codec returning.
+	codecDone := make(chan struct{})
 	go func() {
-		serveErrCh <- server.Serve(serveCtx)
+		defer close(codecDone)
+		server.ServeCodec(jsonrpc.NewServerCodec(conn))
 	}()
 
 	select {
-	case <-shutdownCh:
-	case err := <-serveErrCh:
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "rpc server:", err)
-		}
+	case <-svc.shutdown:
+		fmt.Fprintln(os.Stderr, "child: shutdown received")
+	case <-codecDone:
+		fmt.Fprintln(os.Stderr, "child: codec done")
 	}
-
-	serveCancel()
 
 	// Release any still-parked barriers so the serve goroutine can
-	// finish before we ask it to stop.
+	// finish, then stop the serve goroutine.
 	br.releaseAll()
+	fmt.Fprintln(os.Stderr, "child: barriers released")
+	svc.stopServe()
+	fmt.Fprintln(os.Stderr, "child: serve stopped")
 
-	serveMu.Lock()
-	if serveStop != nil {
-		serveStop()
-		serveStop = nil
-	}
-	serveMu.Unlock()
+	// Closing the conn is sufficient to unblock ServeCodec if it
+	// hasn't already returned.
+	_ = conn.Close()
+	<-codecDone
+	fmt.Fprintln(os.Stderr, "child: codec exited")
 
 	return nil
 }
 
-// pageStateEntry is the wire format for PageStates RPC results.
-type pageStateEntry struct {
-	State  uint8  `json:"state"`
-	Offset uint64 `json:"offset"`
+// Service is the RPC surface exposed to the parent. Methods follow
+// net/rpc's required signature.
+type Service struct {
+	uffd *Userfaultfd
+	br   *barrierRegistry
+
+	gated bool
+
+	mu       sync.Mutex
+	stop     func() // currently active serve-stop function, nil if paused
+	shutdown chan struct{}
+	closed   bool
+}
+
+func (s *Service) startServe() {
+	exit, err := fdexit.New()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "fdexit.New:", err)
+
+		return
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if err := s.uffd.Serve(context.Background(), exit); err != nil {
+			fmt.Fprintln(os.Stderr, "uffd.Serve:", err)
+		}
+	}()
+
+	s.stop = func() {
+		_ = exit.SignalExit()
+		<-done
+		exit.Close()
+	}
+}
+
+func (s *Service) stopServe() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stop != nil {
+		s.stop()
+		s.stop = nil
+	}
+}
+
+// WaitReady is a no-op handler whose successful reply is the
+// readiness signal for the parent.
+func (s *Service) WaitReady(_ *Empty, _ *Empty) error {
+	return nil
+}
+
+func (s *Service) PageStates(_ *Empty, reply *PageStatesReply) error {
+	entries, err := s.uffd.pageStateEntries()
+	if err != nil {
+		return err
+	}
+	reply.Entries = entries
+
+	return nil
+}
+
+func (s *Service) ServePause(_ *Empty, _ *Empty) error {
+	if !s.gated {
+		return errors.New("ServePause called on a non-gated handler")
+	}
+	s.stopServe()
+
+	return nil
+}
+
+func (s *Service) ServeResume(_ *Empty, _ *Empty) error {
+	if !s.gated {
+		return errors.New("ServeResume called on a non-gated handler")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.startServe()
+
+	return nil
+}
+
+func (s *Service) InstallFaultBarrier(args *FaultBarrierArgs, reply *FaultBarrierReply) error {
+	reply.Token = s.br.install(uintptr(args.Addr), barrierPoint(args.Point))
+
+	return nil
+}
+
+func (s *Service) WaitFaultHeld(args *TokenArgs, _ *Empty) error {
+	return s.br.waitArrived(context.Background(), args.Token)
+}
+
+func (s *Service) ReleaseFault(args *TokenArgs, _ *Empty) error {
+	s.br.release(args.Token)
+
+	return nil
+}
+
+func (s *Service) Shutdown(_ *Empty, _ *Empty) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.closed {
+		s.closed = true
+		close(s.shutdown)
+	}
+
+	return nil
 }
 
 // pageStateEntries returns a snapshot of every tracked page and its
@@ -516,6 +612,8 @@ func (u *Userfaultfd) pageStateEntries() ([]pageStateEntry, error) {
 	return entries, nil
 }
 
+// ---- Barrier registry ---------------------------------------------------
+
 // barrierPoint identifies WHICH hook a barrier should park on.
 type barrierPoint uint8
 
@@ -533,20 +631,6 @@ const (
 	// though a worker holds RLock.
 	barrierBeforeFaultPage barrierPoint = 2
 )
-
-// installFaultBarrierArgs is the InstallFaultBarrier RPC payload.
-type installFaultBarrierArgs struct {
-	Addr  uint64 `json:"addr"`
-	Point uint8  `json:"point"`
-}
-
-type installFaultBarrierResp struct {
-	Token uint64 `json:"token"`
-}
-
-type tokenArgs struct {
-	Token uint64 `json:"token"`
-}
 
 // barrierRegistry is the child-process side of the barrier. The
 // hooks installed on Userfaultfd consult this registry by addr+point
