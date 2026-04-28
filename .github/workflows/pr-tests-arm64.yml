@@ -43,13 +43,9 @@ jobs:
     timeout-minutes: 45
     env:
       GIN_MODE: test
-      # Disable Testcontainers' Ryuk reaper. Parallel test binaries from
-      # `go test ./...` derive the same session-id-based reaper container
-      # name and race on creation, causing flaky "container name already
-      # in use" failures. Per-test t.Cleanup already terminates containers
-      # on the normal exit path; the "Reap orphaned Testcontainers" step
-      # below handles the abnormal-termination case (timeout / SIGKILL /
-      # OOM) on the persistent self-hosted runner.
+      # Parallel `go test ./...` binaries derive the same Ryuk session id
+      # and race on `reaper_<hash>` creation. Disable Ryuk; t.Cleanup
+      # handles normal exit, the prune step below handles abnormal exit.
       TESTCONTAINERS_RYUK_DISABLED: "true"
     strategy:
       matrix:
@@ -89,24 +85,11 @@ jobs:
             ${{ matrix.package }}/go.sum
 
       - name: Reap orphaned Testcontainers from previous runs
-        # Self-hosted runner is persistent and Ryuk is disabled, so a
-        # SIGKILL / timeout / OOM in a previous job can leave behind
-        # postgres / redis / reaper containers. Force-remove anything
-        # carrying a Testcontainers label or a reaper_ name substring
-        # before tests start.
-        #
-        # Notes on the filters:
-        # - Testcontainers labels every container it creates (user
-        #   containers and the reaper itself) with
-        #   `org.testcontainers=true`, so the label filter alone covers
-        #   both. The `name=reaper_` query is a belt-and-braces fallback
-        #   for any reaper container that somehow lost its label.
-        # - `name=` is a substring match in Docker; do NOT anchor with
-        #   `^reaper_` — the daemon's name-filter pre-check silently
-        #   rejects anchored patterns (docker/cli#1201) and matches
-        #   nothing.
-        # - We run two separate `docker ps` calls and union the ids
-        #   because mixing different filter keys in one call AND-s them.
+        # Persistent runner + Ryuk disabled: prune leftover containers
+        # from SIGKILL/timeout/OOM in prior jobs.
+        # Two `docker ps` calls because different filter keys AND inside
+        # one call. Don't anchor `name=^reaper_` — Docker silently drops
+        # anchored patterns (docker/cli#1201).
         run: |
           set -euo pipefail
           ids=$(
