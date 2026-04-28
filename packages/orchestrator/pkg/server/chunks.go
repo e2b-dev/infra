@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerserver"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -181,6 +182,9 @@ func (s *Server) WaitForPeerAvailability(ctx context.Context, req *orchestrator.
 		return nil, toGRPCError(err)
 	}
 	memBytes, err := waitAndSerializeV4(ctx, memDev.Header(), "memfile")
+	if errors.Is(err, sandbox.ErrSnapshotAbandoned) {
+		return &orchestrator.WaitForPeerAvailabilityResponse{Availability: peerNotAvailable}, nil
+	}
 	if err != nil {
 		return nil, toGRPCError(err)
 	}
@@ -190,6 +194,9 @@ func (s *Server) WaitForPeerAvailability(ctx context.Context, req *orchestrator.
 		return nil, toGRPCError(err)
 	}
 	rootfsBytes, err := waitAndSerializeV4(ctx, rootfsDev.Header(), "rootfs")
+	if errors.Is(err, sandbox.ErrSnapshotAbandoned) {
+		return &orchestrator.WaitForPeerAvailabilityResponse{Availability: peerNotAvailable}, nil
+	}
 	if err != nil {
 		return nil, toGRPCError(err)
 	}

@@ -95,24 +95,42 @@ func (c *compressedUploader) uploadFile(
 ) (_ []byte, e error) {
 	defer func() { h.Cancel(e) }()
 
+	// Data upload (CPU-heavy compression + network) and parent header wait
+	// are independent; run them concurrently so compression isn't blocked on
+	// chain finalization. Only the header serialize/upload below depends on
+	// both completing.
 	var dep headers.Dependency
+	var parentHeader *headers.Header
 
-	if localPath != "" {
-		var err error
-		dep, err = c.uploadData(ctx, localPath, cfg, dataPath, objType)
-		if err != nil {
-			return nil, err
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		if localPath == "" {
+			return nil
 		}
+		var err error
+		dep, err = c.uploadData(egCtx, localPath, cfg, dataPath, objType)
+
+		return err
+	})
+	eg.Go(func() error {
+		if parent == nil {
+			return nil
+		}
+		ph, err := parent.FinalHeader(egCtx)
+		if err != nil {
+			return fmt.Errorf("wait parent final header: %w", err)
+		}
+		parentHeader = ph
+
+		return nil
+	})
+	if err := eg.Wait(); err != nil {
+		return nil, err
 	}
 
-	if parent != nil {
-		parentHeader, err := parent.FinalHeader(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("wait parent final header: %w", err)
-		}
+	if parentHeader != nil {
 		h.SetParent(parentHeader)
 	}
-
 	if err := h.Finalize(dep); err != nil {
 		return nil, fmt.Errorf("finalize header: %w", err)
 	}
