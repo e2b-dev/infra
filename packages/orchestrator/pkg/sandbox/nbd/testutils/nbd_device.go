@@ -2,63 +2,14 @@ package testutils
 
 import (
 	"context"
-	"fmt"
-	"os"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd/nbdutil"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 )
 
-func GetNBDDevice(ctx context.Context, backend block.Device, featureFlags *featureflags.Client, mountOpts ...nbd.MountOption) (nbd.DevicePath, *Cleaner, error) {
-	var cleaner Cleaner
-
-	devicePool, err := nbd.NewDevicePool(64)
-	if err != nil {
-		return "", &cleaner, fmt.Errorf("failed to create device pool: %w", err)
-	}
-
-	poolClosed := make(chan struct{})
-
-	cleaner.Add(func(cleanupCtx context.Context) error {
-		<-poolClosed
-
-		err = devicePool.Close(cleanupCtx)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to close device pool: %v\n", err)
-		}
-
-		return nil
-	})
-
-	poolCtx, poolCancel := context.WithCancel(ctx)
-
-	cleaner.Add(func(context.Context) error {
-		poolCancel()
-
-		return nil
-	})
-
-	go func() {
-		devicePool.Populate(poolCtx)
-		close(poolClosed)
-	}()
-
-	mnt := nbd.NewDirectPathMount(backend, devicePool, featureFlags, mountOpts...)
-
-	mntIndex, err := mnt.Open(ctx)
-	if err != nil {
-		return "", &cleaner, fmt.Errorf("failed to open nbd mount: %w", err)
-	}
-
-	cleaner.Add(func(cleanupCtx context.Context) error {
-		err = mnt.Close(cleanupCtx)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to close nbd mount: %v\n", err)
-		}
-
-		return nil
-	})
-
-	return nbd.GetDevicePath(mntIndex), &cleaner, nil
+// GetNBDDevice re-exports nbdutil.GetNBDDevice for backward compatibility.
+func GetNBDDevice(ctx context.Context, backend block.Device, featureFlags *featureflags.Client, mountOpts ...nbd.MountOption) (nbd.DevicePath, *nbdutil.Cleaner, error) {
+	return nbdutil.GetNBDDevice(ctx, backend, featureFlags, mountOpts...)
 }

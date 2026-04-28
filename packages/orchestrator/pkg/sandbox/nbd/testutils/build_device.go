@@ -1,42 +1,11 @@
 package testutils
 
 import (
-	"context"
-
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd/nbdutil"
 )
 
-var _ block.ReadonlyDevice = (*BuildDevice)(nil)
+// BuildDevice is an alias for nbdutil.BuildDevice for backward compatibility.
+type BuildDevice = nbdutil.BuildDevice
 
-type BuildDevice struct {
-	*build.File
-
-	header    *header.Header
-	blockSize int64
-}
-
-func NewBuildDevice(file *build.File, header *header.Header, blockSize int64) *BuildDevice {
-	return &BuildDevice{
-		File:      file,
-		header:    header,
-		blockSize: blockSize,
-	}
-}
-
-func (m *BuildDevice) Close() error {
-	return nil
-}
-
-func (m *BuildDevice) BlockSize() int64 {
-	return m.blockSize
-}
-
-func (m *BuildDevice) Header() *header.Header {
-	return m.header
-}
-
-func (m *BuildDevice) Size(_ context.Context) (int64, error) {
-	return int64(m.header.Metadata.Size), nil
-}
+// NewBuildDevice re-exports nbdutil.NewBuildDevice for backward compatibility.
+var NewBuildDevice = nbdutil.NewBuildDevice
