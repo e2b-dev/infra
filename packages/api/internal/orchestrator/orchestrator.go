@@ -48,6 +48,7 @@ type SnapshotCacheInvalidator interface {
 type Orchestrator struct {
 	httpClient                    *http.Client
 	nomadClient                   *nomadapi.Client
+	nomadNodePool                 string
 	sandboxStore                  *sandbox.Store
 	nodes                         *smap.Map[*nodemanager.Node]
 	placementAlgorithm            *placement.BestOfK
@@ -142,6 +143,7 @@ func New(
 		analytics:            analyticsInstance,
 		posthogClient:        posthogClient,
 		nomadClient:          nomadClient,
+		nomadNodePool:        config.NomadNodePool,
 		nodes:                smap.New[*nodemanager.Node](),
 		placementAlgorithm:   bestOfKAlgorithm,
 		featureFlagsClient:   featureFlags,
