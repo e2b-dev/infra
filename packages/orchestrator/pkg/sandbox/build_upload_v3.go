@@ -15,9 +15,6 @@ type uncompressedUploader struct {
 }
 
 func (u *uncompressedUploader) Upload(ctx context.Context) ([]byte, []byte, error) {
-	// Release self-Pending on V3 headers so descendant WaitForDependencies
-	// don't leak. V3 carries no FrameTable, so zero Dep is sufficient.
-	// Done up front so every error path below still resolves the Pending.
 	_ = u.snapshot.MemfileDiffHeader.Finalize(header.Dependency{})
 	_ = u.snapshot.RootfsDiffHeader.Finalize(header.Dependency{})
 

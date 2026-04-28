@@ -88,6 +88,18 @@ type StorageProvider interface {
 	GetDetails() string
 }
 
+// P2PProvider is the optional capability interface that peer-aware providers
+// implement alongside StorageProvider. It exposes wait-for-peer-finalization
+// semantics that only make sense when the provider fronts a live peer (not
+// plain GCS/S3/FS). Consumers type-assert on StorageProvider to detect it.
+type P2PProvider interface {
+	// WaitForPeerAvailability blocks until the peer hosting buildID finalizes
+	// its upload, then returns the serialized V4 header bytes for memfile
+	// and rootfs. Empty bytes means "no peer / not_available" — caller falls
+	// back to the object store or locally-resolved state.
+	WaitForPeerAvailability(ctx context.Context, buildID string) (memfile, rootfs []byte, err error)
+}
+
 type Blob interface {
 	WriteTo(ctx context.Context, dst io.Writer) (int64, error)
 	Put(ctx context.Context, data []byte) error
@@ -235,4 +247,14 @@ func GetBlob(ctx context.Context, b Blob) ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
+}
+
+// LoadBlob opens a blob at path and reads its contents into a byte slice.
+func LoadBlob(ctx context.Context, s StorageProvider, path string, objectType ObjectType) ([]byte, error) {
+	blob, err := s.OpenBlob(ctx, path, objectType)
+	if err != nil {
+		return nil, fmt.Errorf("open blob %s: %w", path, err)
+	}
+
+	return GetBlob(ctx, blob)
 }

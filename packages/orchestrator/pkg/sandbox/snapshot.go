@@ -13,10 +13,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-// ErrSnapshotAbandoned is the cause surfaced on the header Pending entries
-// when a Snapshot is Closed without its Upload ever running. Wait-path
-// consumers can distinguish abandonment from real upload failures via
-// errors.Is.
 var ErrSnapshotAbandoned = errors.New("snapshot abandoned before upload")
 
 type Snapshot struct {
@@ -26,6 +22,8 @@ type Snapshot struct {
 	RootfsDiffHeader  *header.Header
 	Snapfile          template.File
 	Metafile          template.File
+	ParentMemfile     *build.File
+	ParentRootfs      *build.File
 
 	uploadStarted atomic.Bool
 	cleanup       *Cleanup

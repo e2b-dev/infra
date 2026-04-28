@@ -19,10 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ChunkService_GetBuildFileSize_FullMethodName    = "/ChunkService/GetBuildFileSize"
-	ChunkService_GetBuildFileExists_FullMethodName  = "/ChunkService/GetBuildFileExists"
-	ChunkService_ReadAtBuildSeekable_FullMethodName = "/ChunkService/ReadAtBuildSeekable"
-	ChunkService_GetBuildBlob_FullMethodName        = "/ChunkService/GetBuildBlob"
+	ChunkService_GetBuildFileSize_FullMethodName        = "/ChunkService/GetBuildFileSize"
+	ChunkService_GetBuildFileExists_FullMethodName      = "/ChunkService/GetBuildFileExists"
+	ChunkService_ReadAtBuildSeekable_FullMethodName     = "/ChunkService/ReadAtBuildSeekable"
+	ChunkService_GetBuildBlob_FullMethodName            = "/ChunkService/GetBuildBlob"
+	ChunkService_WaitForPeerAvailability_FullMethodName = "/ChunkService/WaitForPeerAvailability"
 )
 
 // ChunkServiceClient is the client API for ChunkService service.
@@ -37,6 +38,11 @@ type ChunkServiceClient interface {
 	ReadAtBuildSeekable(ctx context.Context, in *ReadAtBuildSeekableRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ReadAtBuildSeekableResponse], error)
 	// GetBuildBlob streams an entire blob file (snapfile, metadata, headers).
 	GetBuildBlob(ctx context.Context, in *GetBuildBlobRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GetBuildBlobResponse], error)
+	// WaitForPeerAvailability blocks until the peer's upload for the given
+	// build has finalized (returns PeerAvailability with use_storage=true and
+	// the V4 headers). The caller sets a generous deadline; DeadlineExceeded
+	// signals fallback to GCS.
+	WaitForPeerAvailability(ctx context.Context, in *WaitForPeerAvailabilityRequest, opts ...grpc.CallOption) (*WaitForPeerAvailabilityResponse, error)
 }
 
 type chunkServiceClient struct {
@@ -105,6 +111,16 @@ func (c *chunkServiceClient) GetBuildBlob(ctx context.Context, in *GetBuildBlobR
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ChunkService_GetBuildBlobClient = grpc.ServerStreamingClient[GetBuildBlobResponse]
 
+func (c *chunkServiceClient) WaitForPeerAvailability(ctx context.Context, in *WaitForPeerAvailabilityRequest, opts ...grpc.CallOption) (*WaitForPeerAvailabilityResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WaitForPeerAvailabilityResponse)
+	err := c.cc.Invoke(ctx, ChunkService_WaitForPeerAvailability_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ChunkServiceServer is the server API for ChunkService service.
 // All implementations must embed UnimplementedChunkServiceServer
 // for forward compatibility.
@@ -117,6 +133,11 @@ type ChunkServiceServer interface {
 	ReadAtBuildSeekable(*ReadAtBuildSeekableRequest, grpc.ServerStreamingServer[ReadAtBuildSeekableResponse]) error
 	// GetBuildBlob streams an entire blob file (snapfile, metadata, headers).
 	GetBuildBlob(*GetBuildBlobRequest, grpc.ServerStreamingServer[GetBuildBlobResponse]) error
+	// WaitForPeerAvailability blocks until the peer's upload for the given
+	// build has finalized (returns PeerAvailability with use_storage=true and
+	// the V4 headers). The caller sets a generous deadline; DeadlineExceeded
+	// signals fallback to GCS.
+	WaitForPeerAvailability(context.Context, *WaitForPeerAvailabilityRequest) (*WaitForPeerAvailabilityResponse, error)
 	mustEmbedUnimplementedChunkServiceServer()
 }
 
@@ -138,6 +159,9 @@ func (UnimplementedChunkServiceServer) ReadAtBuildSeekable(*ReadAtBuildSeekableR
 }
 func (UnimplementedChunkServiceServer) GetBuildBlob(*GetBuildBlobRequest, grpc.ServerStreamingServer[GetBuildBlobResponse]) error {
 	return status.Error(codes.Unimplemented, "method GetBuildBlob not implemented")
+}
+func (UnimplementedChunkServiceServer) WaitForPeerAvailability(context.Context, *WaitForPeerAvailabilityRequest) (*WaitForPeerAvailabilityResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method WaitForPeerAvailability not implemented")
 }
 func (UnimplementedChunkServiceServer) mustEmbedUnimplementedChunkServiceServer() {}
 func (UnimplementedChunkServiceServer) testEmbeddedByValue()                      {}
@@ -218,6 +242,24 @@ func _ChunkService_GetBuildBlob_Handler(srv interface{}, stream grpc.ServerStrea
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ChunkService_GetBuildBlobServer = grpc.ServerStreamingServer[GetBuildBlobResponse]
 
+func _ChunkService_WaitForPeerAvailability_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WaitForPeerAvailabilityRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChunkServiceServer).WaitForPeerAvailability(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChunkService_WaitForPeerAvailability_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChunkServiceServer).WaitForPeerAvailability(ctx, req.(*WaitForPeerAvailabilityRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ChunkService_ServiceDesc is the grpc.ServiceDesc for ChunkService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -232,6 +274,10 @@ var ChunkService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetBuildFileExists",
 			Handler:    _ChunkService_GetBuildFileExists_Handler,
+		},
+		{
+			MethodName: "WaitForPeerAvailability",
+			Handler:    _ChunkService_WaitForPeerAvailability_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

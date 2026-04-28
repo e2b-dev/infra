@@ -259,6 +259,29 @@ func (t *storageTemplate) Rootfs() (block.ReadonlyDevice, error) {
 	return t.rootfs.Wait()
 }
 
+// MemfileFile and RootfsFile expose the underlying *build.File. storageTemplate
+// constructs its devices as *Storage (see open()), so the type assertion is
+// safe by construction; we return nil only on the init-error / eviction paths.
+func (t *storageTemplate) MemfileFile() *build.File {
+	return underlyingBuildFile(t.memfile)
+}
+
+func (t *storageTemplate) RootfsFile() *build.File {
+	return underlyingBuildFile(t.rootfs)
+}
+
+func underlyingBuildFile(once *utils.SetOnce[block.ReadonlyDevice]) *build.File {
+	dev, err := once.Wait()
+	if err != nil {
+		return nil
+	}
+	if s, ok := dev.(*Storage); ok {
+		return s.source
+	}
+
+	return nil
+}
+
 func (t *storageTemplate) Snapfile() (File, error) {
 	return t.snapfile.Wait()
 }

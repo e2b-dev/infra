@@ -6,10 +6,12 @@
 //
 // Inner block (LZ4-compressed), all little-endian:
 //
-//	[ uint32  numDependencies       ]
-//	[ numDependencies × (
-//	    v4SerializableDependency{BuildId, FileSize, Checksum}
-//	    FrameTable (variable, trimmed to mapping ranges)
+//	[ v4SerializableDependency      ] // self: BuildId, FileSize, Checksum
+//	[ FrameTable                    ] // self frame table (trimmed)
+//	[ uint32  numParents            ]
+//	[ numParents × (
+//	    v4SerializableDependency
+//	    FrameTable (trimmed)
 //	  )                             ]
 //	[ uint32  numMappings           ]
 //	[ numMappings × v4SerializableBuildMap{Offset, Length, BuildId, BuildStorageOffset} ]
@@ -18,7 +20,6 @@ package header
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -27,11 +28,11 @@ import (
 	lz4 "github.com/pierrec/lz4/v4"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-// v4SizePrefixLen is the length of the uint32 size prefix that precedes the
-// LZ4-compressed block in the v4 header layout.
+// MetadataVersionV4 is used for compressed builds (V4 headers with FrameTables).
+const MetadataVersionV4 = 4
+
 const v4SizePrefixLen = 4
 
 type v4SerializableBuildMap struct {
@@ -41,83 +42,58 @@ type v4SerializableBuildMap struct {
 	BuildStorageOffset uint64
 }
 
-// v4SerializableDependency is the on-disk format for a Dependency's fixed
-// fields, followed by a serialized FrameTable.
 type v4SerializableDependency struct {
 	BuildId  uuid.UUID
 	FileSize int64
 	Checksum [32]byte
 }
 
-// SerializeV4 emits the V4 wire format using whichever entries are
-// currently resolved; upload path calls WaitForDependencies first.
+// SerializeV4 — callers must Finalize self first; an unresolved self errors
+// out rather than emitting a wire blob without proper self metadata.
 func (t *Header) SerializeV4() ([]byte, error) {
+	var toCompress bytes.Buffer
+	var metaBuf bytes.Buffer
+
 	meta := *t.Metadata
 	meta.Version = MetadataVersionV4
 
-	var metaBuf bytes.Buffer
 	if err := binary.Write(&metaBuf, binary.LittleEndian, &meta); err != nil {
 		return nil, fmt.Errorf("failed to write metadata: %w", err)
 	}
 
-	// Sort buildIDs first, then build wire records in that order so deps
-	// and fts stay aligned by index.
-	ids := make([]uuid.UUID, 0, len(t.builds))
-	for id := range t.builds {
-		ids = append(ids, id)
-	}
-	slices.SortFunc(ids, func(a, b uuid.UUID) int {
-		return bytes.Compare(a[:], b[:])
-	})
-
-	serializableDependencies := make([]v4SerializableDependency, 0, len(ids))
-	frameTables := make([]*storage.FrameTable, 0, len(ids))
-	for _, id := range ids {
-		dep, pendingDep := t.builds[id].Dep, t.builds[id].Pending
-		if pendingDep != nil {
-			var err error
-			dep, err = pendingDep.Result()
-			switch {
-			case err == nil:
-				// resolved — include in the wire format
-			case errors.Is(err, utils.NotSetError{}):
-				// not yet resolved — emit what is currently known
-				continue
-			default:
-				// Pending was Cancel'd with a real error (upload failure,
-				// pause defer, etc.). Refuse to serialize a corrupt
-				// header; peer callers will fall back to GCS.
-				return nil, fmt.Errorf("serialize v4: dep %s: %w", id, err)
-			}
-		}
-		s := v4SerializableDependency{
-			BuildId:  id,
-			FileSize: dep.Size,
-			Checksum: dep.Checksum,
-		}
-
-		serializableDependencies = append(serializableDependencies, s)
-		frameTables = append(frameTables, dep.FrameTable)
-	}
-
-	var block bytes.Buffer
-	if err := binary.Write(&block, binary.LittleEndian, uint32(len(serializableDependencies))); err != nil {
-		return nil, fmt.Errorf("failed to write dependency count: %w", err)
+	self, err := t.selfDependency()
+	if err != nil {
+		return nil, fmt.Errorf("serialize v4: self dep: %w", err)
 	}
 
 	perBuildRanges := extractRelevantRanges(t.Mapping)
-	for i, s := range serializableDependencies {
-		if err := binary.Write(&block, binary.LittleEndian, &s); err != nil {
-			return nil, fmt.Errorf("failed to write dependency info: %w", err)
-		}
 
-		ft := frameTables[i].TrimToRanges(perBuildRanges[s.BuildId])
-		if err := ft.Serialize(&block); err != nil {
-			return nil, fmt.Errorf("failed to write dependency frame data: %w", err)
+	self.FrameTable = self.FrameTable.TrimToRanges(perBuildRanges[t.Metadata.BuildId])
+	if err := serializeDependency(&toCompress, t.Metadata.BuildId, self); err != nil {
+		return nil, fmt.Errorf("write self dep: %w", err)
+	}
+
+	parentDependencies := t.parentDependencies()
+	parentIDs := make([]uuid.UUID, 0, len(parentDependencies))
+	for id := range parentDependencies {
+		parentIDs = append(parentIDs, id)
+	}
+	slices.SortFunc(parentIDs, func(a, b uuid.UUID) int {
+		return bytes.Compare(a[:], b[:])
+	})
+
+	if err := binary.Write(&toCompress, binary.LittleEndian, uint32(len(parentIDs))); err != nil {
+		return nil, fmt.Errorf("failed to write parent count: %w", err)
+	}
+	for _, id := range parentIDs {
+		dep := parentDependencies[id]
+		dep.FrameTable = dep.FrameTable.TrimToRanges(perBuildRanges[id])
+		if err := serializeDependency(&toCompress, id, dep); err != nil {
+			return nil, fmt.Errorf("write parent dep %s: %w", id, err)
 		}
 	}
 
-	if err := binary.Write(&block, binary.LittleEndian, uint32(len(t.Mapping))); err != nil {
+	if err := binary.Write(&toCompress, binary.LittleEndian, uint32(len(t.Mapping))); err != nil {
 		return nil, fmt.Errorf("failed to write mappings count: %w", err)
 	}
 
@@ -129,13 +105,12 @@ func (t *Header) SerializeV4() ([]byte, error) {
 			BuildStorageOffset: mapping.BuildStorageOffset,
 		}
 
-		if err := binary.Write(&block, binary.LittleEndian, v4); err != nil {
+		if err := binary.Write(&toCompress, binary.LittleEndian, v4); err != nil {
 			return nil, fmt.Errorf("failed to write block mapping: %w", err)
 		}
 	}
 
-	// LZ4-compress the block and assemble: [metadata] [uint32 size] [compressed block].
-	blockBytes := block.Bytes()
+	blockBytes := toCompress.Bytes()
 	compressed, err := compressLZ4(blockBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to LZ4-compress v4 header block: %w", err)
@@ -149,7 +124,6 @@ func (t *Header) SerializeV4() ([]byte, error) {
 	return result, nil
 }
 
-// deserializeV4 decompresses and reads the V4 block.
 func deserializeV4(metadata *Metadata, blockData []byte) (*Header, error) {
 	if len(blockData) < v4SizePrefixLen {
 		return nil, fmt.Errorf("v4 header block too short for size prefix: %d bytes", len(blockData))
@@ -162,35 +136,26 @@ func deserializeV4(metadata *Metadata, blockData []byte) (*Header, error) {
 
 	reader := bytes.NewReader(decompressed)
 
-	var numDependencies uint32
-	if err := binary.Read(reader, binary.LittleEndian, &numDependencies); err != nil {
-		return nil, fmt.Errorf("failed to read dependency count: %w", err)
+	selfID, self, err := deserializeDependency(reader)
+	if err != nil {
+		return nil, fmt.Errorf("read self dep: %w", err)
+	}
+	if selfID != metadata.BuildId {
+		return nil, fmt.Errorf("self dep build id mismatch: got %s, expected %s", selfID, metadata.BuildId)
 	}
 
-	var dependencies map[uuid.UUID]Dependency
+	var n uint32
+	if err := binary.Read(reader, binary.LittleEndian, &n); err != nil {
+		return nil, fmt.Errorf("failed to read parent dependency count: %w", err)
+	}
 
-	if numDependencies > 0 {
-		dependencies = make(map[uuid.UUID]Dependency, numDependencies)
-
-		for range numDependencies {
-			var entry v4SerializableDependency
-			if err := binary.Read(reader, binary.LittleEndian, &entry); err != nil {
-				return nil, fmt.Errorf("failed to read dependency info: %w", err)
-			}
-
-			bd := Dependency{
-				Size:     entry.FileSize,
-				Checksum: entry.Checksum,
-			}
-
-			ft, err := storage.DeserializeFrameTable(reader)
-			if err != nil {
-				return nil, fmt.Errorf("failed to read frame table for dependency %s: %w", entry.BuildId, err)
-			}
-
-			bd.FrameTable = ft
-			dependencies[entry.BuildId] = bd
+	parent := make(map[uuid.UUID]Dependency, n)
+	for range n {
+		id, dep, err := deserializeDependency(reader)
+		if err != nil {
+			return nil, fmt.Errorf("read parent dep: %w", err)
 		}
+		parent[id] = dep
 	}
 
 	var numMappings uint32
@@ -205,21 +170,17 @@ func deserializeV4(metadata *Metadata, blockData []byte) (*Header, error) {
 			return nil, fmt.Errorf("failed to read block mapping: %w", err)
 		}
 
-		m := BuildMap{
+		mappings = append(mappings, BuildMap{
 			Offset:             v4.Offset,
 			Length:             v4.Length,
 			BuildId:            v4.BuildId,
 			BuildStorageOffset: v4.BuildStorageOffset,
-		}
-
-		mappings = append(mappings, m)
+		})
 	}
 
-	return NewHeaderWithResolvedDependencies(metadata, mappings, dependencies)
+	return NewHeaderWithResolvedDependencies(metadata, mappings, self, parent)
 }
 
-// compressLZ4 compresses data for V4 header serialization using the LZ4
-// streaming API. Settings are fixed for the V4 wire format.
 func compressLZ4(data []byte) ([]byte, error) {
 	var buf bytes.Buffer
 	buf.Grow(len(data))
@@ -245,8 +206,6 @@ func compressLZ4(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// extractRelevantRanges groups mappings into per-build U-space [start, end) ranges
-// for sparse frame table trimming during serialization.
 func extractRelevantRanges(mappings []BuildMap) map[uuid.UUID][]storage.Range {
 	ranges := make(map[uuid.UUID][]storage.Range)
 	for _, m := range mappings {
@@ -259,7 +218,6 @@ func extractRelevantRanges(mappings []BuildMap) map[uuid.UUID][]storage.Range {
 	return ranges
 }
 
-// decompressLZ4 decompresses an LZ4 frame from V4 header data.
 func decompressLZ4(src []byte) ([]byte, error) {
 	r := lz4.NewReader(bytes.NewReader(src))
 
@@ -269,4 +227,37 @@ func decompressLZ4(src []byte) ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+func serializeDependency(w *bytes.Buffer, id uuid.UUID, dep Dependency) error {
+	s := v4SerializableDependency{
+		BuildId:  id,
+		FileSize: dep.Size,
+		Checksum: dep.Checksum,
+	}
+	if err := binary.Write(w, binary.LittleEndian, &s); err != nil {
+		return fmt.Errorf("write dependency info: %w", err)
+	}
+	if err := dep.FrameTable.Serialize(w); err != nil {
+		return fmt.Errorf("write dependency frame data: %w", err)
+	}
+
+	return nil
+}
+
+func deserializeDependency(r io.Reader) (uuid.UUID, Dependency, error) {
+	var entry v4SerializableDependency
+	if err := binary.Read(r, binary.LittleEndian, &entry); err != nil {
+		return uuid.Nil, Dependency{}, fmt.Errorf("read dependency info: %w", err)
+	}
+	ft, err := storage.DeserializeFrameTable(r)
+	if err != nil {
+		return uuid.Nil, Dependency{}, fmt.Errorf("read frame table for dependency %s: %w", entry.BuildId, err)
+	}
+
+	return entry.BuildId, Dependency{
+		Size:       entry.FileSize,
+		Checksum:   entry.Checksum,
+		FrameTable: ft,
+	}, nil
 }

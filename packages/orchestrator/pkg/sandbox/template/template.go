@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -19,6 +20,15 @@ type Template interface {
 	Metadata() (metadata.Template, error)
 	UpdateMetadata(meta metadata.Template) error
 	Close(ctx context.Context) error
+
+	// MemfileFile and RootfsFile return the underlying *build.File for the
+	// template's memfile/rootfs, or nil when the template has no such backing
+	// (e.g., LocalTemplate for a locally-built base template). Callers that
+	// need *build.File-specific APIs (e.g., FinalHeader for upload-time
+	// parent-state refresh) use these rather than reaching through the
+	// ReadonlyDevice interface.
+	MemfileFile() *build.File
+	RootfsFile() *build.File
 }
 
 func closeTemplate(ctx context.Context, t Template) (e error) {

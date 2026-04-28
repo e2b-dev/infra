@@ -68,6 +68,23 @@ message GetBuildBlobResponse {
   PeerAvailability availability = 2;
 }
 
+// WaitForPeerAvailabilityRequest asks the peer to report build availability,
+// blocking until the upload has finalized (use_storage=true with headers) or
+// the peer determines it cannot serve the build (not_available=true). The
+// caller's context deadline bounds the wait; on peer crash / stream drop the
+// caller should fall back to GCS.
+message WaitForPeerAvailabilityRequest {
+  string build_id = 1;
+}
+
+message WaitForPeerAvailabilityResponse {
+  // availability.use_storage == true carries the final headers; not_available
+  // == true means the peer has no record of this build (caller falls back to
+  // GCS). Neither flag set is unexpected for this RPC — it only returns once
+  // the upload has finalized.
+  PeerAvailability availability = 1;
+}
+
 service ChunkService {
   // GetBuildFileSize returns the total size of a seekable diff file (memfile, rootfs.ext4).
   rpc GetBuildFileSize(GetBuildFileSizeRequest) returns (GetBuildFileSizeResponse);
@@ -77,4 +94,9 @@ service ChunkService {
   rpc ReadAtBuildSeekable(ReadAtBuildSeekableRequest) returns (stream ReadAtBuildSeekableResponse);
   // GetBuildBlob streams an entire blob file (snapfile, metadata, headers).
   rpc GetBuildBlob(GetBuildBlobRequest) returns (stream GetBuildBlobResponse);
+  // WaitForPeerAvailability blocks until the peer's upload for the given
+  // build has finalized (returns PeerAvailability with use_storage=true and
+  // the V4 headers). The caller sets a generous deadline; DeadlineExceeded
+  // signals fallback to GCS.
+  rpc WaitForPeerAvailability(WaitForPeerAvailabilityRequest) returns (WaitForPeerAvailabilityResponse);
 }

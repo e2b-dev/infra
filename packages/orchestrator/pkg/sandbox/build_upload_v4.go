@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -42,6 +43,7 @@ func (c *compressedUploader) Upload(ctx context.Context) (memfileHeader, rootfsH
 	eg.Go(func() error {
 		data, err := c.uploadFile(ctx, memfileLocalPath, c.memCompressConfig, storage.MemfileObjectType,
 			c.snapshot.MemfileDiffHeader,
+			c.snapshot.ParentMemfile,
 			c.paths.MemfileCompressed(c.memCompressConfig.CompressionType()),
 			c.paths.MemfileHeader())
 		if err != nil {
@@ -55,6 +57,7 @@ func (c *compressedUploader) Upload(ctx context.Context) (memfileHeader, rootfsH
 	eg.Go(func() error {
 		data, err := c.uploadFile(ctx, rootfsLocalPath, c.rootfsCompressConfig, storage.RootFSObjectType,
 			c.snapshot.RootfsDiffHeader,
+			c.snapshot.ParentRootfs,
 			c.paths.RootfsCompressed(c.rootfsCompressConfig.CompressionType()),
 			c.paths.RootfsHeader())
 		if err != nil {
@@ -80,20 +83,20 @@ func (c *compressedUploader) Upload(ctx context.Context) (memfileHeader, rootfsH
 	return memfileHeader, rootfsHeader, nil
 }
 
-// uploadFile uploads data, publishes self-dependency into the header, waits for
-// inherited deps, and PUTs the V4 header.
 func (c *compressedUploader) uploadFile(
 	ctx context.Context,
 	localPath string,
 	cfg storage.CompressConfig,
 	objType storage.SeekableObjectType,
 	h *headers.Header,
+	parent *build.File,
 	dataPath string,
 	headerPath string,
 ) (_ []byte, e error) {
 	defer func() { h.Cancel(e) }()
 
 	var dep headers.Dependency
+
 	if localPath != "" {
 		var err error
 		dep, err = c.uploadData(ctx, localPath, cfg, dataPath, objType)
@@ -101,12 +104,17 @@ func (c *compressedUploader) uploadFile(
 			return nil, err
 		}
 	}
-	if err := h.Finalize(dep); err != nil {
-		return nil, fmt.Errorf("finalize header: %w", err)
+
+	if parent != nil {
+		parentHeader, err := parent.FinalHeader(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("wait parent final header: %w", err)
+		}
+		h.SetParent(parentHeader)
 	}
 
-	if err := h.WaitForDependencies(ctx); err != nil {
-		return nil, fmt.Errorf("wait inherited deps: %w", err)
+	if err := h.Finalize(dep); err != nil {
+		return nil, fmt.Errorf("finalize header: %w", err)
 	}
 
 	headerBytes, err := h.SerializeV4()

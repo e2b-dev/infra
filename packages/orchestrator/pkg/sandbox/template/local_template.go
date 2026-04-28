@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -46,6 +47,12 @@ func (t *LocalTemplate) Memfile(ctx context.Context) (block.ReadonlyDevice, erro
 func (t *LocalTemplate) Rootfs() (block.ReadonlyDevice, error) {
 	return t.rootfs, nil
 }
+
+// LocalTemplate has no *build.File backing — its devices are locally-built
+// block.Local files. Callers that need a *build.File (e.g., for FinalHeader)
+// treat nil as "no parent to wait for" since local templates are born-final.
+func (t *LocalTemplate) MemfileFile() *build.File { return nil }
+func (t *LocalTemplate) RootfsFile() *build.File  { return nil }
 
 func (t *LocalTemplate) Snapfile() (File, error) {
 	return &NoopFile{}, errors.New("snapfile not available in local template")

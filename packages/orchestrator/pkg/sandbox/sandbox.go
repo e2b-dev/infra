@@ -1126,6 +1126,8 @@ func (s *Sandbox) Pause(
 		MemfileDiffHeader: memfileDiffHeader,
 		RootfsDiff:        rootfsDiff,
 		RootfsDiffHeader:  rootfsDiffHeader,
+		ParentMemfile:     s.Template.MemfileFile(),
+		ParentRootfs:      s.Template.RootfsFile(),
 
 		cleanup: cleanup,
 	}, nil
@@ -1179,9 +1181,6 @@ func pauseProcessMemory(
 		return nil, nil, fmt.Errorf("failed to create local diff from cache: %w", errors.Join(err, cache.Close()))
 	}
 
-	// Diff data is on local disk; readers can resolve self via local fd.
-	header.DataAvailable.Store(true)
-
 	return diff, header, nil
 }
 
@@ -1221,9 +1220,6 @@ func pauseProcessRootfs(
 		return nil, nil, fmt.Errorf("failed to create rootfs header: %w", err)
 	}
 	defer func() { rootfsHeader.Cancel(e) }()
-
-	// Diff data is on local disk; readers can resolve self via local fd.
-	rootfsHeader.DataAvailable.Store(true)
 
 	return rootfsDiff, rootfsHeader, nil
 }

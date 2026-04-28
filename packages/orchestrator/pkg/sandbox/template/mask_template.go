@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -64,6 +65,9 @@ func (c *MaskTemplate) Memfile(ctx context.Context) (block.ReadonlyDevice, error
 func (c *MaskTemplate) Rootfs() (block.ReadonlyDevice, error) {
 	return c.template.Rootfs()
 }
+
+func (c *MaskTemplate) MemfileFile() *build.File { return c.template.MemfileFile() }
+func (c *MaskTemplate) RootfsFile() *build.File  { return c.template.RootfsFile() }
 
 func (c *MaskTemplate) Snapfile() (File, error) {
 	return c.template.Snapfile()

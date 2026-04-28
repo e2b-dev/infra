@@ -132,11 +132,11 @@ func (d *Storage) ReadAt(ctx context.Context, p []byte, off int64) (int, error) 
 }
 
 func (d *Storage) Size(_ context.Context) (int64, error) {
-	return int64(d.source.Header().Metadata.Size), nil
+	return int64(d.source.Header.Metadata.Size), nil
 }
 
 func (d *Storage) BlockSize() int64 {
-	return int64(d.source.Header().Metadata.BlockSize)
+	return int64(d.source.Header.Metadata.BlockSize)
 }
 
 func (d *Storage) Slice(ctx context.Context, off, length int64) ([]byte, error) {
@@ -144,7 +144,7 @@ func (d *Storage) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 }
 
 func (d *Storage) Header() *header.Header {
-	return d.source.Header()
+	return d.source.Header
 }
 
 func (d *Storage) Close() error {

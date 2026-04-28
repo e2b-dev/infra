@@ -47,7 +47,10 @@ var (
 	attrPeerHitFalse = attribute.Bool("peer_hit", false)
 )
 
-var _ storage.StorageProvider = (*routingProvider)(nil)
+var (
+	_ storage.StorageProvider = (*routingProvider)(nil)
+	_ storage.P2PProvider     = (*routingProvider)(nil)
+)
 
 // routingProvider wraps a base StorageProvider and, for each Open call,
 // checks Redis for a peer routing entry for the buildID extracted from the path.
@@ -56,6 +59,15 @@ var _ storage.StorageProvider = (*routingProvider)(nil)
 type routingProvider struct {
 	base     storage.StorageProvider
 	resolver Resolver
+
+	// peerHeaders dedups concurrent WaitForPeerAvailability RPCs for the
+	// same buildID. The memfile and rootfs uploads for a given child build
+	// both call into the peer for their shared parent; one RPC is enough.
+	peerHeaders sync.Map // buildID → *utils.SetOnce[peerHeaderBytes]
+}
+type peerHeaderBytes struct {
+	memfile []byte
+	rootfs  []byte
 }
 
 func NewRoutingProvider(base storage.StorageProvider, resolver Resolver) storage.StorageProvider {
@@ -102,6 +114,61 @@ func (p *routingProvider) UploadSignedURL(ctx context.Context, path string, ttl 
 
 func (p *routingProvider) GetDetails() string {
 	return p.base.GetDetails()
+}
+
+func (p *routingProvider) WaitForPeerAvailability(ctx context.Context, buildID string) (memfile, rootfs []byte, err error) {
+	if v, ok := p.peerHeaders.Load(buildID); ok {
+		return waitPeerHeaders(ctx, v.(*utils.SetOnce[peerHeaderBytes]))
+	}
+
+	newOnce := utils.NewSetOnce[peerHeaderBytes]()
+	actual, loaded := p.peerHeaders.LoadOrStore(buildID, newOnce)
+	once := actual.(*utils.SetOnce[peerHeaderBytes])
+	if loaded {
+		return waitPeerHeaders(ctx, once)
+	}
+
+	defer p.peerHeaders.Delete(buildID)
+
+	mem, root, rpcErr := p.fetchPeerHeaders(ctx, buildID)
+	if rpcErr != nil {
+		_ = once.SetError(rpcErr)
+
+		return nil, nil, rpcErr
+	}
+	_ = once.SetValue(peerHeaderBytes{memfile: mem, rootfs: root})
+
+	return mem, root, nil
+}
+
+func waitPeerHeaders(ctx context.Context, once *utils.SetOnce[peerHeaderBytes]) ([]byte, []byte, error) {
+	result, err := once.WaitWithContext(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return result.memfile, result.rootfs, nil
+}
+
+func (p *routingProvider) fetchPeerHeaders(ctx context.Context, buildID string) ([]byte, []byte, error) {
+	status, res := p.resolver.resolve(ctx, buildID)
+	if status != attrResolvePeer {
+		return nil, nil, nil
+	}
+
+	resp, err := res.client.WaitForPeerAvailability(ctx, &orchestrator.WaitForPeerAvailabilityRequest{
+		BuildId: buildID,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("wait for peer availability: %w", err)
+	}
+
+	avail := resp.GetAvailability()
+	if avail.GetNotAvailable() || !avail.GetUseStorage() {
+		return nil, nil, nil
+	}
+
+	return avail.GetMemfileHeader(), avail.GetRootfsHeader(), nil
 }
 
 var _ storage.StorageProvider = (*peerStorageProvider)(nil)

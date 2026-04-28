@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -198,6 +199,52 @@ func (_c *MockTemplate_Memfile_Call) RunAndReturn(run func(ctx context.Context) 
 	return _c
 }
 
+// MemfileFile provides a mock function for the type MockTemplate
+func (_mock *MockTemplate) MemfileFile() *build.File {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for MemfileFile")
+	}
+
+	var r0 *build.File
+	if returnFunc, ok := ret.Get(0).(func() *build.File); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*build.File)
+		}
+	}
+	return r0
+}
+
+// MockTemplate_MemfileFile_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'MemfileFile'
+type MockTemplate_MemfileFile_Call struct {
+	*mock.Call
+}
+
+// MemfileFile is a helper method to define mock.On call
+func (_e *MockTemplate_Expecter) MemfileFile() *MockTemplate_MemfileFile_Call {
+	return &MockTemplate_MemfileFile_Call{Call: _e.mock.On("MemfileFile")}
+}
+
+func (_c *MockTemplate_MemfileFile_Call) Run(run func()) *MockTemplate_MemfileFile_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockTemplate_MemfileFile_Call) Return(file *build.File) *MockTemplate_MemfileFile_Call {
+	_c.Call.Return(file)
+	return _c
+}
+
+func (_c *MockTemplate_MemfileFile_Call) RunAndReturn(run func() *build.File) *MockTemplate_MemfileFile_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Metadata provides a mock function for the type MockTemplate
 func (_mock *MockTemplate) Metadata() (metadata.Template, error) {
 	ret := _mock.Called()
@@ -302,6 +349,52 @@ func (_c *MockTemplate_Rootfs_Call) Return(readonlyDevice block.ReadonlyDevice, 
 }
 
 func (_c *MockTemplate_Rootfs_Call) RunAndReturn(run func() (block.ReadonlyDevice, error)) *MockTemplate_Rootfs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RootfsFile provides a mock function for the type MockTemplate
+func (_mock *MockTemplate) RootfsFile() *build.File {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for RootfsFile")
+	}
+
+	var r0 *build.File
+	if returnFunc, ok := ret.Get(0).(func() *build.File); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*build.File)
+		}
+	}
+	return r0
+}
+
+// MockTemplate_RootfsFile_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RootfsFile'
+type MockTemplate_RootfsFile_Call struct {
+	*mock.Call
+}
+
+// RootfsFile is a helper method to define mock.On call
+func (_e *MockTemplate_Expecter) RootfsFile() *MockTemplate_RootfsFile_Call {
+	return &MockTemplate_RootfsFile_Call{Call: _e.mock.On("RootfsFile")}
+}
+
+func (_c *MockTemplate_RootfsFile_Call) Run(run func()) *MockTemplate_RootfsFile_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockTemplate_RootfsFile_Call) Return(file *build.File) *MockTemplate_RootfsFile_Call {
+	_c.Call.Return(file)
+	return _c
+}
+
+func (_c *MockTemplate_RootfsFile_Call) RunAndReturn(run func() *build.File) *MockTemplate_RootfsFile_Call {
 	_c.Call.Return(run)
 	return _c
 }
