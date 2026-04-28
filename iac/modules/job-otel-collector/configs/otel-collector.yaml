@@ -300,6 +300,20 @@ processors:
         statements:
           - replace_pattern(attributes["device"], "^nvme.*$$", "nvme")
 
+  # Strip exemplars before export. Exemplars (trace-id annotations on histogram
+  # buckets) count 1:1 against Mimir's items/s tenant limit. With trace-based
+  # exemplar filtering on by default in the SDKs and ~12k histogram series across
+  # rpc.server.call.duration / rpc.client.call.duration, they were ~90% of the
+  # data we shipped (peak ~420k exemplars/s vs 100k/s tenant limit), causing
+  # rate_limited / exemplar_too_old / aggregator-sample-too-old discards across
+  # all signal types. We are not querying exemplars in Grafana today.
+  transform/drop_exemplars:
+    error_mode: ignore
+    metric_statements:
+      - context: datapoint
+        statements:
+          - set(exemplars, [])
+
   metricstransform/aggregate_disks:
     transforms:
       - include: "system.disk.*"
@@ -469,6 +483,7 @@ service:
         - otlp
       processors:
         - filter/otlp
+        - transform/drop_exemplars
         - resourcedetection
         - transform/set-name
         - batch
@@ -479,6 +494,7 @@ service:
         - prometheus
       processors:
         - filter/only_client_allocs
+        - transform/drop_exemplars
         - resourcedetection
         - transform/set-name
         - batch
@@ -489,6 +505,7 @@ service:
         - otlp
       processors:
         - filter/rpc_duration_only
+        - transform/drop_exemplars
         - resource/remove_instance
         - resourcedetection
         - transform/set-name
@@ -499,6 +516,7 @@ service:
       receivers:
         - hostmetrics
       processors:
+        - transform/drop_exemplars
         - resourcedetection
         - transform/set-name
         - metricstransform/single_cpu
