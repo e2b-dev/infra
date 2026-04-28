@@ -163,6 +163,8 @@ var (
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
 
+	BYOPProxyEnabledFlag = NewBoolFlag("byop-proxy-enabled", env.IsDevelopment())
+
 	// V4HeaderForUncompressedFlag forces the V4 header layout on uncompressed
 	// uploads. Independent of compress-config: it changes the header format,
 	// not whether data is compressed.
