@@ -714,11 +714,27 @@ func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, 
 					}
 				}
 
+				if strings.ContainsAny(name, "\r\n") {
+					return &api.APIError{
+						Code:      http.StatusBadRequest,
+						Err:       fmt.Errorf("header name %q in rule for domain %q contains invalid characters", name, domain),
+						ClientMsg: fmt.Sprintf("Header name %q in rule for domain %q must not contain CR or LF characters.", name, domain),
+					}
+				}
+
 				if len(name) > maxNetworkRuleHeaderNameLen {
 					return &api.APIError{
 						Code:      http.StatusBadRequest,
 						Err:       fmt.Errorf("header name %q in rule for domain %q exceeds max length %d", name, domain, maxNetworkRuleHeaderNameLen),
 						ClientMsg: fmt.Sprintf("Header name %q in rule for domain %q exceeds maximum length of %d characters.", name, domain, maxNetworkRuleHeaderNameLen),
+					}
+				}
+
+				if strings.ContainsAny(value, "\r\n") {
+					return &api.APIError{
+						Code:      http.StatusBadRequest,
+						Err:       fmt.Errorf("value for header %q in rule for domain %q contains invalid characters", name, domain),
+						ClientMsg: fmt.Sprintf("Value for header %q in rule for domain %q must not contain CR or LF characters.", name, domain),
 					}
 				}
 
