@@ -106,7 +106,6 @@ job "client-proxy" {
         ENVIRONMENT = "${environment}"
 
         OTEL_COLLECTOR_GRPC_ENDPOINT = "${otel_collector_grpc_endpoint}"
-        OTEL_METRICS_EXEMPLAR_FILTER = "always_off"
         LOGS_COLLECTOR_ADDRESS       = "${logs_collector_address}"
 
         REDIS_POOL_SIZE          = "${redis_pool_size}"

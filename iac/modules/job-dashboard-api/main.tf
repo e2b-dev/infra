@@ -17,7 +17,6 @@ locals {
     BILLING_SERVER_URL                      = var.billing_server_url
     BILLING_SERVER_API_TOKEN                = var.billing_server_api_token
     OTEL_COLLECTOR_GRPC_ENDPOINT            = "localhost:${var.otel_collector_grpc_port}"
-    OTEL_METRICS_EXEMPLAR_FILTER            = "always_off"
     LOGS_COLLECTOR_ADDRESS                  = "http://localhost:${var.logs_proxy_port.port}"
   }
 }

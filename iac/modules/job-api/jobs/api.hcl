@@ -135,7 +135,6 @@ job "api" {
         ANALYTICS_COLLECTOR_API_TOKEN  = "${analytics_collector_api_token}"
         LOGS_COLLECTOR_ADDRESS         = "${logs_collector_address}"
         OTEL_COLLECTOR_GRPC_ENDPOINT   = "${otel_collector_grpc_endpoint}"
-        OTEL_METRICS_EXEMPLAR_FILTER   = "always_off"
 
         REDIS_POOL_SIZE                = "${redis_pool_size}"
         REDIS_CLUSTER_URL              = "${redis_cluster_url}"
