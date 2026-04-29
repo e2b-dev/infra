@@ -96,6 +96,13 @@ func NewBoolFlag(name string, fallback bool) BoolFlag {
 	return flag
 }
 
+// OverrideBoolFlag forces a bool flag to a specific value in the offline store.
+// Only takes effect when LAUNCH_DARKLY_API_KEY is not set (i.e. dev/CLI tools).
+func OverrideBoolFlag(flag BoolFlag, value bool) {
+	builder := launchDarklyOfflineStore.Flag(flag.name).VariationForAll(value)
+	launchDarklyOfflineStore.Update(builder)
+}
+
 var (
 	MetricsWriteFlag                    = NewBoolFlag("sandbox-metrics-write", true)
 	MetricsReadFlag                     = NewBoolFlag("sandbox-metrics-read", true)
@@ -108,6 +115,12 @@ var (
 	EdgeProvidedSandboxMetricsFlag      = NewBoolFlag("edge-provided-sandbox-metrics", false)
 	CreateStorageCacheSpansFlag         = NewBoolFlag("create-storage-cache-spans", env.IsDevelopment())
 	SandboxAutoResumeFlag               = NewBoolFlag("sandbox-auto-resume", env.IsDevelopment())
+	// UseMemFdFlag enables memfd-backed guest memory. When enabled, Firecracker
+	// allocates guest memory via memfd_create and passes the fd to the UFFD
+	// handler over the UFFD socket on snapshot restore. This allows the
+	// orchestrator to read dirty pages via pread without mapping the memfd,
+	// keeping punch holes cheap (empty RMAP).
+	UseMemFdFlag = NewBoolFlag("use-memfd", false)
 
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.
 	PeerToPeerChunkTransferFlag = NewBoolFlag("peer-to-peer-chunk-transfer", false)
