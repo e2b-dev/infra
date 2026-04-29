@@ -11,7 +11,8 @@ import (
 )
 
 type AuthUser struct {
-	ID        uuid.UUID
-	Email     string
-	CreatedAt *time.Time
+	ID             uuid.UUID
+	Email          string
+	CreatedAt      *time.Time
+	RawAppMetaData []byte
 }
