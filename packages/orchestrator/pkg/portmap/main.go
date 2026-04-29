@@ -22,6 +22,17 @@ func newHandlers(ctx context.Context) *handlers {
 
 var _ portmap.PMAP_PROG_PMAP_VERS_handler = (*handlers)(nil)
 
+func (h *handlers) registerPort(mapping portmap.Mapping) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+
+	h.maps[key{
+		Prog: mapping.Prog,
+		Vers: mapping.Vers,
+		Prot: mapping.Prot,
+	}] = portmap.Uint32(mapping.Port)
+}
+
 func (h *handlers) PMAPPROC_NULL() {}
 
 func (h *handlers) PMAPPROC_SET(_ portmap.Mapping) portmap.Xbool {
