@@ -334,40 +334,49 @@ func (u *Userfaultfd) Serve(
 				return fmt.Errorf("failed to map: %w", err)
 			}
 
-			var source block.Slicer
-
-			switch state := u.pageTracker.get(addr); state {
-			case faulted:
-				// Skip faulting the page. This has already been faulted, either during pre-faulting
-				// or because we handled another page fault on the same address in the current
-				// iteration. It can only transition out of `faulted` via a UFFD_EVENT_REMOVE, which
-				// will mark the page as `removed`.
-				// For this to work correctly, the used pages cannot be swappable.
-				continue
-			case removed:
-				// Fault the page as empty.
-			case missing:
-				source = u.src
-			default:
-				return fmt.Errorf("unexpected pageState: %#v", state)
-			}
-
 			u.wg.Go(func() error {
 				// Test-only barrier: park the worker BEFORE it takes
 				// RLock. While parked, the parent loop is free to take
 				// settleRequests.Lock() to process REMOVE events, which
 				// is exactly the window the production fix has to close
-				// (pre-fix the worker has already captured a stale state
+				// (pre-fix the worker had already captured a stale state
 				// snapshot in the parent loop).
 				if hook := u.beforeWorkerRLockHook; hook != nil {
 					hook(addr)
 				}
 
-				// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
-				// even if the errgroup is cancelled or the goroutine returns early.
-				// This check protects us against race condition between marking the request for prefetching and accessing the prefetchTracker.
+				// The RLock must be acquired inside the goroutine — and it must be acquired
+				// BEFORE we read the pageTracker / u.src state — so that the read+act+commit
+				// sequence (state lookup → faultPage → setState) is atomic with respect to
+				// any concurrent REMOVE batch (which takes settleRequests.Lock()). If the
+				// state read happened in the parent loop, a REMOVE could land between the
+				// read and the goroutine acquiring the RLock, and the goroutine would still
+				// commit `faulted` afterwards, overwriting `removed`.
+				//
+				// This also protects the read of u.src: in the future src could be swapped
+				// out under settleRequests; reading it under the RLock keeps that safe.
 				u.settleRequests.RLock()
 				defer u.settleRequests.RUnlock()
+
+				var source block.Slicer
+
+				switch state := u.pageTracker.get(addr); state {
+				case faulted:
+					// Skip faulting the page. This has already been faulted, either during pre-faulting
+					// or because we handled another page fault on the same address in the current
+					// iteration. It can only transition out of `faulted` via a UFFD_EVENT_REMOVE, which
+					// will mark the page as `removed`.
+					// For this to work correctly, the used pages cannot be swappable.
+					return nil
+				case removed:
+					// Fault the page as empty (no source). The page was MADV_DONTNEED'd; the
+					// kernel still expects an UFFDIO_COPY/ZEROPAGE ack for the original
+					// MISSING fault, otherwise the faulting thread stays blocked.
+				case missing:
+					source = u.src
+				default:
+					return fmt.Errorf("unexpected pageState: %#v", state)
+				}
 
 				var accessType block.AccessType
 
