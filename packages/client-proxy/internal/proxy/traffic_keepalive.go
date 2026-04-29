@@ -15,10 +15,10 @@ const (
 )
 
 type trafficKeepaliveManager struct {
-	resumer PausedSandboxResumer
+	resumer SandboxLifecycleClient
 }
 
-func newTrafficKeepaliveManager(resumer PausedSandboxResumer) *trafficKeepaliveManager {
+func newTrafficKeepaliveManager(resumer SandboxLifecycleClient) *trafficKeepaliveManager {
 	return &trafficKeepaliveManager{
 		resumer: resumer,
 	}

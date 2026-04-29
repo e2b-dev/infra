@@ -16,13 +16,13 @@ import (
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 )
 
-type grpcPausedSandboxResumer struct {
+type grpcSandboxLifecycleClient struct {
 	conn   *grpc.ClientConn
 	client proxygrpc.SandboxServiceClient
 }
 
-func NewGrpcPausedSandboxResumer(address string) (PausedSandboxResumer, error) {
-	// Client-proxy uses this gRPC client to trigger ResumeSandbox when needed.
+func NewGrpcSandboxLifecycleClient(address string) (SandboxLifecycleClient, error) {
+	// Client-proxy uses this gRPC client to trigger sandbox lifecycle calls when needed.
 	if strings.TrimSpace(address) == "" {
 		return nil, errors.New("api grpc address is required")
 	}
@@ -36,17 +36,17 @@ func NewGrpcPausedSandboxResumer(address string) (PausedSandboxResumer, error) {
 		return nil, fmt.Errorf("create grpc client: %w", err)
 	}
 
-	return &grpcPausedSandboxResumer{
+	return &grpcSandboxLifecycleClient{
 		conn:   conn,
 		client: proxygrpc.NewSandboxServiceClient(conn),
 	}, nil
 }
 
-func (c *grpcPausedSandboxResumer) Init(ctx context.Context) {
-	e2bgrpc.ObserveConnection(ctx, c.conn, "api-resumer")
+func (c *grpcSandboxLifecycleClient) Init(ctx context.Context) {
+	e2bgrpc.ObserveConnection(ctx, c.conn, "api-lifecycle")
 }
 
-func (c *grpcPausedSandboxResumer) Close(_ context.Context) error {
+func (c *grpcSandboxLifecycleClient) Close(_ context.Context) error {
 	return c.conn.Close()
 }
 
@@ -64,7 +64,7 @@ func appendProxyTrafficMetadata(ctx context.Context, sandboxPort uint64, traffic
 	return ctx
 }
 
-func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (string, error) {
+func (c *grpcSandboxLifecycleClient) Resume(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (string, error) {
 	ctx = appendProxyTrafficMetadata(ctx, sandboxPort, trafficAccessToken, envdAccessToken)
 
 	resp, err := c.client.ResumeSandbox(ctx, &proxygrpc.SandboxResumeRequest{
@@ -77,7 +77,7 @@ func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string,
 	return strings.TrimSpace(resp.GetOrchestratorIp()), nil
 }
 
-func (c *grpcPausedSandboxResumer) KeepAlive(ctx context.Context, sandboxId string, teamID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) error {
+func (c *grpcSandboxLifecycleClient) KeepAlive(ctx context.Context, sandboxId string, teamID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) error {
 	ctx = appendProxyTrafficMetadata(ctx, sandboxPort, trafficAccessToken, envdAccessToken)
 
 	_, err := c.client.KeepAliveSandbox(ctx, &proxygrpc.SandboxKeepAliveRequest{

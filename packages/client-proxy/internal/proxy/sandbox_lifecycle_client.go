@@ -2,7 +2,7 @@ package proxy
 
 import "context"
 
-type PausedSandboxResumer interface {
+type SandboxLifecycleClient interface {
 	Init(ctx context.Context)
 
 	// Resume attempts to resume/start the sandbox and returns a routable orchestrator IP on success.

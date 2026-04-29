@@ -137,18 +137,18 @@ func run() int {
 	info := &internal.ServiceInfo{}
 	info.SetStatus(ctx, internal.Healthy)
 
-	var pausedSandboxResumer e2bproxy.PausedSandboxResumer
+	var sandboxLifecycleClient e2bproxy.SandboxLifecycleClient
 	if strings.TrimSpace(config.ApiGrpcAddress) != "" {
-		pausedSandboxResumer, err = e2bproxy.NewGrpcPausedSandboxResumer(config.ApiGrpcAddress)
+		sandboxLifecycleClient, err = e2bproxy.NewGrpcSandboxLifecycleClient(config.ApiGrpcAddress)
 		if err != nil {
-			l.Error(ctx, "Failed to create paused sandbox checker", zap.Error(err))
+			l.Error(ctx, "Failed to create sandbox lifecycle client", zap.Error(err))
 
 			return 1
 		}
 
-		pausedSandboxResumer.Init(ctx)
+		sandboxLifecycleClient.Init(ctx)
 	} else {
-		l.Warn(ctx, "API gRPC address not set; paused sandbox checks disabled")
+		l.Warn(ctx, "API gRPC address not set; sandbox lifecycle calls disabled")
 	}
 
 	// Proxy sandbox http traffic to orchestrator nodes
@@ -157,7 +157,7 @@ func run() int {
 		serviceName,
 		config.ProxyPort,
 		catalog,
-		pausedSandboxResumer,
+		sandboxLifecycleClient,
 		featureFlagsClient,
 	)
 	if err != nil {
@@ -187,7 +187,7 @@ func run() int {
 
 	var closers []Closeable
 	closers = append(closers, featureFlagsClient, catalog)
-	if closeable, ok := pausedSandboxResumer.(Closeable); ok {
+	if closeable, ok := sandboxLifecycleClient.(Closeable); ok {
 		closers = append(closers, closeable)
 	}
 
