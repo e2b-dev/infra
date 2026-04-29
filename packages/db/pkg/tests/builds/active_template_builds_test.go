@@ -109,7 +109,11 @@ func TestDeleteActiveTemplateBuild_RemovesActiveBuild(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = db.SqlcClient.DeleteActiveTemplateBuild(ctx, buildID)
+	err = db.SqlcClient.TestsRawSQL(ctx,
+		`DELETE FROM public.active_template_builds
+		 WHERE build_id = $1`,
+		buildID,
+	)
 	require.NoError(t, err)
 
 	count, err := db.SqlcClient.GetInProgressTemplateBuildsByTeam(ctx, queries.GetInProgressTemplateBuildsByTeamParams{
