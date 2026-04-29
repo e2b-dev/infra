@@ -22,7 +22,7 @@ func newFd(flags uintptr) (Fd, error) {
 // Used for testing
 // features: UFFD_FEATURE_MISSING_HUGETLBFS
 // This is already called by the FC
-func configureApi(f Fd, pagesize uint64) error {
+func configureApi(f Fd, pagesize uint64, removeEnabled bool) error {
 	var features CULong
 
 	// Only set the hugepage feature if we're using hugepages
@@ -31,6 +31,9 @@ func configureApi(f Fd, pagesize uint64) error {
 	}
 
 	features |= UFFD_FEATURE_WP_ASYNC
+	if removeEnabled {
+		features |= UFFD_FEATURE_EVENT_REMOVE
+	}
 
 	api := newUffdioAPI(UFFD_API, features)
 	ret, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(f), UFFDIO_API, uintptr(unsafe.Pointer(&api)))
@@ -42,9 +45,9 @@ func configureApi(f Fd, pagesize uint64) error {
 }
 
 // unregister tears down the UFFD registration over [addr, addr+size).
-// Used in test cleanup so that any in-flight REMOVE events the kernel
-// may have queued (once UFFD_FEATURE_EVENT_REMOVE is enabled in a
-// follow-up) don't keep munmap blocked on un-acked events.
+// Used in test cleanup so in-flight REMOVE events queued by the kernel
+// (configureApi enables UFFD_FEATURE_EVENT_REMOVE when removeEnabled)
+// don't keep munmap blocked on un-acked events.
 func unregister(f Fd, addr uintptr, size uint64) error {
 	r := newUffdioRange(CULong(addr), CULong(size))
 

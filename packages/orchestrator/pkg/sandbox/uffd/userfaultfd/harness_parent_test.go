@@ -74,7 +74,7 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 	require.NoError(t, err)
 	t.Cleanup(func() { uffdFd.close() })
 
-	require.NoError(t, configureApi(uffdFd, tt.pagesize))
+	require.NoError(t, configureApi(uffdFd, tt.pagesize, tt.removeEnabled))
 	require.NoError(t, register(uffdFd, memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP))
 	t.Cleanup(func() {
 		// Unregister before close (LIFO): a future test enabling

@@ -7,6 +7,7 @@ type pageState uint8
 const (
 	missing pageState = iota
 	faulted
+	removed
 )
 
 type pageTracker struct {
@@ -21,6 +22,18 @@ func newPageTracker(pageSize uintptr) *pageTracker {
 		pageSize: pageSize,
 		m:        make(map[uintptr]pageState),
 	}
+}
+
+func (pt *pageTracker) get(addr uintptr) pageState {
+	pt.mu.RLock()
+	defer pt.mu.RUnlock()
+
+	state, ok := pt.m[addr]
+	if !ok {
+		return missing
+	}
+
+	return state
 }
 
 func (pt *pageTracker) setState(start, end uintptr, state pageState) {

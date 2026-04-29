@@ -13,10 +13,51 @@ import (
 	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils/testharness"
 )
+
+// matrixModes are the (subtest-name, removeEnabled) pairs that every
+// generic cross-process test should iterate over so we have regression
+// coverage for both the no-REMOVE and the REMOVE-enabled paths.
+var matrixModes = []struct {
+	name          string
+	removeEnabled bool
+}{
+	{"remove-off", false},
+	{"remove-on", true},
+}
+
+// runMatrix runs body once per matrix mode as a parallel subtest. The
+// body is given a fresh testConfig that has the per-mode flag set so it
+// can hand it straight to configureCrossProcessTest.
+func runMatrix(t *testing.T, tt testConfig, body func(t *testing.T, cfg testConfig)) {
+	t.Helper()
+
+	for _, m := range matrixModes {
+		t.Run(m.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := tt
+			cfg.removeEnabled = m.removeEnabled
+			body(t, cfg)
+		})
+	}
+}
+
+// remove-only assert helper used by REMOVE-specific tests.
+func removeOffset(offsets []uint, target uint) []uint {
+	result := make([]uint, 0, len(offsets))
+	for _, o := range offsets {
+		if o != target {
+			result = append(result, o)
+		}
+	}
+
+	return result
+}
 
 type testConfig struct {
 	name string
@@ -28,6 +69,15 @@ type testConfig struct {
 	operations []operation
 	// alwaysWP makes the handler copy with UFFDIO_COPY_MODE_WP for all faults.
 	alwaysWP bool
+	// removeEnabled toggles UFFD_FEATURE_EVENT_REMOVE in configureApi.
+	// Generic tests run in both modes via runMatrix; REMOVE-specific
+	// tests pin removeEnabled=true.
+	removeEnabled bool
+	// gated is a documentation tag for tests that drive the handler's
+	// pause/resume RPC explicitly. The harness itself doesn't read it;
+	// it exists so the test author and reviewers can tell at a glance
+	// that the test orchestrates serve pauses.
+	gated bool
 	// barriers enables the per-worker fault hook (race tests only).
 	barriers bool
 }
@@ -37,6 +87,7 @@ type operationMode uint32
 const (
 	operationModeRead operationMode = 1 << iota
 	operationModeWrite
+	operationModeRemove
 	operationModeServePause
 	operationModeServeResume
 	// operationModeSleep pauses for a short duration to let async goroutines
@@ -54,10 +105,28 @@ type operation struct {
 
 type handlerPageStates struct {
 	faulted []uint
+	removed []uint
 }
 
+// allAccessed returns the sorted union of faulted+removed offsets. Each
+// per-state slice is already sorted and the states are disjoint, so a
+// simple merge suffices.
 func (s handlerPageStates) allAccessed() []uint {
-	return slices.Clone(s.faulted)
+	out := make([]uint, 0, len(s.faulted)+len(s.removed))
+	i, j := 0, 0
+	for i < len(s.faulted) && j < len(s.removed) {
+		if s.faulted[i] <= s.removed[j] {
+			out = append(out, s.faulted[i])
+			i++
+		} else {
+			out = append(out, s.removed[j])
+			j++
+		}
+	}
+	out = append(out, s.faulted[i:]...)
+	out = append(out, s.removed[j:]...)
+
+	return out
 }
 
 type testHandler struct {
@@ -76,11 +145,15 @@ func (h *testHandler) pageStates() (handlerPageStates, error) {
 
 	var states handlerPageStates
 	for _, e := range entries {
-		if pageState(e.State) == faulted {
+		switch pageState(e.State) {
+		case faulted:
 			states.faulted = append(states.faulted, uint(e.Offset))
+		case removed:
+			states.removed = append(states.removed, uint(e.Offset))
 		}
 	}
 	slices.Sort(states.faulted)
+	slices.Sort(states.removed)
 
 	return states, nil
 }
@@ -119,8 +192,9 @@ func (h *testHandler) executeAll(t *testing.T, operations []operation) {
 type pageExpectation uint8
 
 const (
-	expectClean pageExpectation = iota // read-only: present + WP set
-	expectDirty                        // written: present + WP cleared
+	expectClean   pageExpectation = iota // read-only: present + WP set
+	expectDirty                          // written: present + WP cleared
+	expectRemoved                        // removed: not present
 )
 
 func (h *testHandler) checkDirtiness(t *testing.T, operations []operation) {
@@ -133,17 +207,25 @@ func (h *testHandler) checkDirtiness(t *testing.T, operations []operation) {
 	memStart := uintptr(unsafe.Pointer(&(*h.memoryArea)[0]))
 
 	// Track the final expected state per offset by replaying operations in order.
+	// A remove after a read/write makes the page not present.
+	// A read/write after a remove makes it present again.
 	expected := make(map[uint]pageExpectation)
 
 	for _, op := range operations {
 		off := uint(op.offset)
 		switch op.mode {
 		case operationModeRead:
-			if _, seen := expected[off]; !seen {
+			curr, seen := expected[off]
+			// If we haven't seen this page before or the page
+			// has previously been removed then the page should be clean
+			// after this read operation.
+			if !seen || curr == expectRemoved {
 				expected[off] = expectClean
 			}
 		case operationModeWrite:
 			expected[off] = expectDirty
+		case operationModeRemove:
+			expected[off] = expectRemoved
 		}
 	}
 
@@ -152,6 +234,8 @@ func (h *testHandler) checkDirtiness(t *testing.T, operations []operation) {
 		require.NoError(t, err, "pagemap read at offset %d", off)
 
 		switch expect {
+		case expectRemoved:
+			assert.False(t, entry.IsPresent(), "removed page at offset %d should not be present", off)
 		case expectDirty:
 			assert.True(t, entry.IsPresent(), "written page at offset %d should be present", off)
 			assert.False(t, entry.IsWriteProtected(), "written page at offset %d should be dirty", off)
@@ -168,6 +252,8 @@ func (h *testHandler) executeOperation(ctx context.Context, op operation) error 
 		return h.executeRead(ctx, op)
 	case operationModeWrite:
 		return h.executeWrite(ctx, op)
+	case operationModeRemove:
+		return h.executeRemove(op)
 	case operationModeServePause:
 		return h.client.Pause()
 	case operationModeServeResume:
@@ -179,6 +265,12 @@ func (h *testHandler) executeOperation(ctx context.Context, op operation) error 
 	default:
 		return fmt.Errorf("invalid operation mode: %d", op.mode)
 	}
+}
+
+func (h *testHandler) executeRemove(op operation) error {
+	page := (*h.memoryArea)[op.offset : op.offset+int64(h.pagesize)]
+
+	return unix.Madvise(page, unix.MADV_DONTNEED)
 }
 
 func (h *testHandler) executeRead(ctx context.Context, op operation) error {
