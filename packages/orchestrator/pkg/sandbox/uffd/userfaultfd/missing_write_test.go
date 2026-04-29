@@ -116,7 +116,7 @@ func TestMissingWrite(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			h, err := configureCrossProcessTest(t, tt)
+			h, err := configureCrossProcessTest(t.Context(), t, tt)
 			require.NoError(t, err)
 
 			h.executeAll(t, tt.operations)
@@ -143,7 +143,7 @@ func TestParallelMissingWrite(t *testing.T) {
 		numberOfPages: 2,
 	}
 
-	h, err := configureCrossProcessTest(t, tt)
+	h, err := configureCrossProcessTest(t.Context(), t, tt)
 	require.NoError(t, err)
 
 	writeOp := operation{
@@ -180,7 +180,7 @@ func TestParallelMissingWriteWithPrefault(t *testing.T) {
 		numberOfPages: 2,
 	}
 
-	h, err := configureCrossProcessTest(t, tt)
+	h, err := configureCrossProcessTest(t.Context(), t, tt)
 	require.NoError(t, err)
 
 	writeOp := operation{
@@ -220,7 +220,7 @@ func TestSerialMissingWrite(t *testing.T) {
 		numberOfPages: 2,
 	}
 
-	h, err := configureCrossProcessTest(t, tt)
+	h, err := configureCrossProcessTest(t.Context(), t, tt)
 	require.NoError(t, err)
 
 	writeOp := operation{

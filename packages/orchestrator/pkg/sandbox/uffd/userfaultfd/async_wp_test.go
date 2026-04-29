@@ -289,7 +289,7 @@ func TestAsyncWriteProtection(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			h, err := configureCrossProcessTest(t, testConfig{
+			h, err := configureCrossProcessTest(t.Context(), t, testConfig{
 				pagesize:      tt.pagesize,
 				numberOfPages: tt.numberOfPages,
 				alwaysWP:      tt.alwaysWP,
