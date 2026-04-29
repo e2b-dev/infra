@@ -103,6 +103,7 @@ func (o *Orchestrator) HandleExistingSandboxAutoResume(
 			node := o.getOrConnectNode(ctx, sbx.ClusterID, sbx.NodeID)
 			nodeIP := ""
 			if node != nil {
+				// For github actions in cicd, we don't have node ips and need to handle that specially
 				nodeIP = routeNodeIPAddress(node, env.IsLocal())
 			}
 			if nodeIP == "" {
