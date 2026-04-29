@@ -53,7 +53,8 @@ const (
 	maxNetworkRuleTransformsPerDomain = 1
 	maxNetworkRuleDomainLen           = 128
 	maxNetworkRuleHeaderNameLen       = 64
-	maxNetworkRuleHeaderValueLen      = 256
+	maxNetworkRuleHeaderValueLen      = 2048
+	maxNetworkRuleHeadersPerRule      = 20
 )
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
@@ -705,6 +706,14 @@ func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, 
 			}
 
 			headers := sharedUtils.DerefOrDefault(rule.Transform.Headers, nil)
+			if len(headers) > maxNetworkRuleHeadersPerRule {
+				return &api.APIError{
+					Code:      http.StatusBadRequest,
+					Err:       fmt.Errorf("domain %q has %d headers (max %d)", domain, len(headers), maxNetworkRuleHeadersPerRule),
+					ClientMsg: fmt.Sprintf("Domain %q can have at most %d headers per rule.", domain, maxNetworkRuleHeadersPerRule),
+				}
+			}
+
 			for name, value := range headers {
 				if len(name) == 0 {
 					return &api.APIError{
