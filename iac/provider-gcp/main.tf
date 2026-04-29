@@ -240,7 +240,7 @@ module "nomad" {
   api_machine_count                                      = var.api_cluster_size
   api_node_pool                                          = var.api_node_pool
   api_port                                               = var.api_port
-  api_grpc_port                                          = var.api_grpc_port
+  api_internal_grpc_port                                 = var.api_internal_grpc_port
   client_proxy_oidc_issuer_url                           = var.client_proxy_oidc_issuer_url
   client_proxy_oidc_audience                             = var.client_proxy_oidc_audience
   environment                                            = var.environment

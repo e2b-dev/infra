@@ -43,6 +43,7 @@ tf_vars := \
 	$(call tfvar, SANDBOX_STORAGE_BACKEND) \
 	$(call tfvar, ORCHESTRATOR_ENABLED) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
+	$(call tfvar, API_INTERNAL_GRPC_PORT) \
 	$(call tfvar, API_SERVER_COUNT) \
 	$(call tfvar, API_RESOURCES_CPU_COUNT) \
 	$(call tfvar, API_RESOURCES_MEMORY_MB) \

@@ -25,7 +25,7 @@ type grpcPausedSandboxResumer struct {
 	auth   grpcResumeAuth
 }
 
-type GrpcOAuthConfig struct {
+type GRPCOAuthConfig struct {
 	ClientID     string
 	ClientSecret string
 	TokenURL     string
@@ -50,7 +50,7 @@ func apiGrpcAddressUsesTLS(address string) bool {
 	return true
 }
 
-func NewGrpcPausedSandboxResumer(address string, oauthConfig GrpcOAuthConfig) (PausedSandboxResumer, error) {
+func NewGRPCPausedSandboxResumer(address string, oauthConfig GRPCOAuthConfig) (PausedSandboxResumer, error) {
 	if strings.TrimSpace(address) == "" {
 		return nil, errors.New("api grpc address is required")
 	}

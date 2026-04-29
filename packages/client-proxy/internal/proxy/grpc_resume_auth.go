@@ -23,13 +23,13 @@ type oauthGrpcResumeAuth struct {
 	tokenSource oauth2.TokenSource
 }
 
-func (c GrpcOAuthConfig) Enabled() bool {
+func (c GRPCOAuthConfig) Enabled() bool {
 	return strings.TrimSpace(c.ClientID) != "" ||
 		strings.TrimSpace(c.ClientSecret) != "" ||
 		strings.TrimSpace(c.TokenURL) != ""
 }
 
-func newGrpcResumeAuth(ctx context.Context, c GrpcOAuthConfig) (grpcResumeAuth, error) {
+func newGrpcResumeAuth(ctx context.Context, c GRPCOAuthConfig) (grpcResumeAuth, error) {
 	if !c.Enabled() {
 		return noopGrpcResumeAuth{}, nil
 	}

@@ -21,13 +21,13 @@ func (s stubTokenSource) Token() (*oauth2.Token, error) {
 	return s.token, s.err
 }
 
-func TestNewGrpcResumeAuth(t *testing.T) {
+func TestNewGRPCResumeAuth(t *testing.T) {
 	t.Parallel()
 
 	t.Run("disabled", func(t *testing.T) {
 		t.Parallel()
 
-		auth, err := newGrpcResumeAuth(context.Background(), GrpcOAuthConfig{})
+		auth, err := newGrpcResumeAuth(context.Background(), GRPCOAuthConfig{})
 		require.NoError(t, err)
 		require.IsType(t, noopGrpcResumeAuth{}, auth)
 	})
@@ -35,7 +35,7 @@ func TestNewGrpcResumeAuth(t *testing.T) {
 	t.Run("partial config", func(t *testing.T) {
 		t.Parallel()
 
-		auth, err := newGrpcResumeAuth(context.Background(), GrpcOAuthConfig{ClientID: "client-id"})
+		auth, err := newGrpcResumeAuth(context.Background(), GRPCOAuthConfig{ClientID: "client-id"})
 		require.Error(t, err)
 		require.Nil(t, auth)
 	})
@@ -43,7 +43,7 @@ func TestNewGrpcResumeAuth(t *testing.T) {
 	t.Run("enabled", func(t *testing.T) {
 		t.Parallel()
 
-		auth, err := newGrpcResumeAuth(context.Background(), GrpcOAuthConfig{
+		auth, err := newGrpcResumeAuth(context.Background(), GRPCOAuthConfig{
 			ClientID:     " client-id ",
 			ClientSecret: " secret ",
 			TokenURL:     " https://tokens.example.com ",

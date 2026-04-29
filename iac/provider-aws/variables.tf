@@ -39,7 +39,7 @@ variable "api_cluster_size" {
   default = 1
 }
 
-variable "api_grpc_port" {
+variable "api_internal_grpc_port" {
   type    = number
   default = 5009
 }
