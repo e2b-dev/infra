@@ -7,11 +7,11 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
+	orchestratorcatalog "github.com/e2b-dev/infra/packages/api/internal/orchestrator/catalog"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/edge"
 	grpcshared "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 type NodeMetadata struct {
@@ -48,7 +48,7 @@ func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.Sandbo
 				SandboxMaxLengthInHours: req.GetSandbox().GetMaxSandboxLength(),
 				SandboxStartTime:        req.GetStartTime().AsTime(),
 				SandboxEndTime:          req.GetEndTime().AsTime(),
-				Keepalive:               catalogKeepaliveFromDB(keepalive),
+				Keepalive:               orchestratorcatalog.KeepaliveFromDB(keepalive),
 
 				ExecutionID:    req.GetSandbox().GetExecutionId(),
 				OrchestratorID: n.Metadata().ServiceInstanceID,
@@ -62,22 +62,6 @@ func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.Sandbo
 
 	// Merge medata from client (auth, routing with service instance id) and event metadata.
 	return n.client, appendMetadataCtx(ctx, md)
-}
-
-func catalogKeepaliveFromDB(keepalive *types.SandboxKeepaliveConfig) *catalog.Keepalive {
-	if keepalive == nil {
-		return nil
-	}
-
-	result := &catalog.Keepalive{}
-	if keepalive.Traffic != nil && keepalive.Traffic.Enabled {
-		keepaliveMs := catalog.TrafficKeepaliveDefaultMs
-		result.Traffic = &catalog.TrafficKeepalive{
-			KeepaliveMs: &keepaliveMs,
-		}
-	}
-
-	return result
 }
 
 func (n *Node) GetSandboxDeleteCtx(ctx context.Context, sandboxID string, executionID string) (*clusters.GRPCClient, context.Context) {
