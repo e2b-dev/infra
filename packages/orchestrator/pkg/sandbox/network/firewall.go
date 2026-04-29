@@ -131,7 +131,8 @@ func accept() []expr.Any {
 
 // addSetFilterRule adds a filter rule that matches destination IPs in a set.
 // If drop is true, packets are dropped. Otherwise, they are accepted.
-// This applies to ALL protocols.
+// This applies to ALL protocols. A counter is attached for observability
+// (visible via `nft list chain inet slot-firewall PREROUTE_FILTER`).
 func (fw *Firewall) addSetFilterRule(ipSet *nftables.Set, drop bool) {
 	var verdict []expr.Any
 	if drop {
@@ -145,7 +146,8 @@ func (fw *Firewall) addSetFilterRule(ipSet *nftables.Set, drop bool) {
 		Chain: fw.filterChain,
 		Exprs: append(append(fw.tapIfaceMatch(),
 			expressions.IPv4DestinationAddress(1),
-			expressions.IPSetLookUp(ipSet, 1)),
+			expressions.IPSetLookUp(ipSet, 1),
+			&expr.Counter{}),
 			verdict...,
 		),
 	})
@@ -175,7 +177,8 @@ func (fw *Firewall) addNonTCPSetFilterRule(ipSet *nftables.Set, drop bool) {
 			},
 			// Check dest in set
 			expressions.IPv4DestinationAddress(1),
-			expressions.IPSetLookUp(ipSet, 1)),
+			expressions.IPSetLookUp(ipSet, 1),
+			&expr.Counter{}),
 			verdict...,
 		),
 	})
@@ -214,7 +217,8 @@ func (fw *Firewall) installRules() error {
 				Op:       expr.CmpOpNeq,
 				Register: 1,
 				Data:     binaryutil.NativeEndian.PutUint32(0),
-			}),
+			},
+			&expr.Counter{}),
 			accept()...,
 		),
 	})
