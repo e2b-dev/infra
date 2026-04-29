@@ -724,7 +724,7 @@ func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, 
 					}
 				}
 
-				if httpguts.ValidHeaderFieldName(name) {
+				if !httpguts.ValidHeaderFieldName(name) {
 					return &api.APIError{
 						Code:      http.StatusBadRequest,
 						Err:       fmt.Errorf("header name %q in rule for domain %q contains invalid characters", name, domain),
