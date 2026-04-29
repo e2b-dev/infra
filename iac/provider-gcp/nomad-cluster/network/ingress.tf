@@ -55,8 +55,8 @@ resource "google_compute_backend_service" "ingress" {
   }
 }
 
-resource "google_compute_backend_service" "http2_ingress" {
-  name = "${var.prefix}http2-ingress"
+resource "google_compute_backend_service" "h2c_ingress" {
+  name = "${var.prefix}h2c-ingress"
 
   protocol  = "H2C"
   port_name = var.ingress_port.name
