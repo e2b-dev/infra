@@ -461,6 +461,7 @@ func (p *Process) Resume(
 	uffdReady chan struct{},
 	accessToken *string,
 	cgroupFD int,
+	useMemfd bool,
 	txRateLimit RateLimiterConfig,
 	driveRateLimit RateLimiterConfig,
 ) error {
@@ -549,6 +550,7 @@ func (p *Process) Resume(
 		uffdSocketPath,
 		uffdReady,
 		snapfile,
+		useMemfd,
 	)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)

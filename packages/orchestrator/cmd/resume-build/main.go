@@ -60,6 +60,7 @@ func main() {
 	coldStart := flag.Bool("cold", false, "clear cache between iterations (cold start each time)")
 	noPrefetch := flag.Bool("no-prefetch", false, "disable memory prefetching")
 	noEgress := flag.Bool("no-egress", false, "block all guest internet egress")
+	useMemfd := flag.Bool("use-memfd", false, "enable memfd-backed guest memory (passes use_memfd on snapshot load)")
 	verbose := flag.Bool("v", false, "verbose logging")
 
 	// Command execution (no pause)
@@ -74,6 +75,10 @@ func main() {
 	shell := flag.Bool("shell", false, "attach an interactive PTY shell via envd (no sshd required in the sandbox)")
 
 	flag.Parse()
+
+	if *useMemfd {
+		featureflags.OverrideBoolFlag(featureflags.UseMemFdFlag, true)
+	}
 
 	if *fromBuild == "" {
 		log.Fatal("-from-build required")
