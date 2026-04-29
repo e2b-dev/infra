@@ -2,7 +2,10 @@ package proxy
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -51,6 +54,48 @@ func TestNewGRPCResumeAuth(t *testing.T) {
 		require.NoError(t, err)
 		require.IsType(t, oauthGrpcResumeAuth{}, auth)
 	})
+}
+
+func TestOAuthGrpcResumeAuthRequestsAutoresumeScope(t *testing.T) {
+	t.Parallel()
+
+	scopeCh := make(chan string, 1)
+	errCh := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			errCh <- err
+			http.Error(w, err.Error(), http.StatusBadRequest)
+
+			return
+		}
+		scopeCh <- r.Form.Get("scope")
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "token",
+			"token_type":   "bearer",
+			"expires_in":   3600,
+		}); err != nil {
+			errCh <- err
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	auth, err := newGrpcResumeAuth(context.Background(), GRPCOAuthConfig{
+		ClientID:     "client-id",
+		ClientSecret: "secret",
+		TokenURL:     server.URL,
+	})
+	require.NoError(t, err)
+
+	ctx, err := auth.authorize(context.Background())
+	require.NoError(t, err)
+
+	md, ok := metadata.FromOutgoingContext(ctx)
+	require.True(t, ok)
+	require.Equal(t, []string{"Bearer token"}, md.Get(proxygrpc.MetadataAuthorization))
+	require.Equal(t, grpcResumeAuthScope, <-scopeCh)
+	require.Empty(t, errCh)
 }
 
 func TestNoopGrpcResumeAuthAuthorize(t *testing.T) {

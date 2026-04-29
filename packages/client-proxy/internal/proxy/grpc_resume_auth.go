@@ -13,6 +13,8 @@ import (
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 )
 
+const grpcResumeAuthScope = "sandboxes:autoresume"
+
 type grpcResumeAuth interface {
 	authorize(ctx context.Context) (context.Context, error)
 }
@@ -44,6 +46,7 @@ func newGrpcResumeAuth(ctx context.Context, c GRPCOAuthConfig) (grpcResumeAuth, 
 		ClientID:     strings.TrimSpace(c.ClientID),
 		ClientSecret: strings.TrimSpace(c.ClientSecret),
 		TokenURL:     strings.TrimSpace(c.TokenURL),
+		Scopes:       []string{grpcResumeAuthScope},
 	}
 
 	return oauthGrpcResumeAuth{tokenSource: oauthConfig.TokenSource(ctx)}, nil

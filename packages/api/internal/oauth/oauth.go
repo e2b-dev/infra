@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -15,6 +16,8 @@ import (
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 )
 
+const RequiredScope = "sandboxes:autoresume"
+
 type Verifier interface {
 	VerifyClaims(ctx context.Context, rawToken string) (Claims, error)
 }
@@ -22,10 +25,12 @@ type Verifier interface {
 type Claims struct {
 	Subject string
 	OrgID   string
+	Scopes  []string
 }
 
 type tokenClaims struct {
 	OrgID string `json:"org_id"`
+	Scope string `json:"scope"`
 }
 
 type oidcVerifier struct {
@@ -77,6 +82,7 @@ func (v *oidcVerifier) VerifyClaims(ctx context.Context, rawToken string) (Claim
 	return Claims{
 		Subject: idToken.Subject,
 		OrgID:   claims.OrgID,
+		Scopes:  strings.Fields(claims.Scope),
 	}, nil
 }
 
@@ -127,6 +133,18 @@ func RequireOrgClaims(claims Claims, expectedOrgID string) error {
 		return denyPermission()
 	}
 	if subtle.ConstantTimeCompare([]byte(claims.OrgID), []byte(expectedOrgID)) != 1 {
+		return denyPermission()
+	}
+
+	return nil
+}
+
+func RequireScopeClaims(claims Claims, requiredScope string) error {
+	requiredScope = strings.TrimSpace(requiredScope)
+	if requiredScope == "" {
+		return denyPermission()
+	}
+	if !slices.Contains(claims.Scopes, requiredScope) {
 		return denyPermission()
 	}
 

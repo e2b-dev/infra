@@ -126,6 +126,9 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		if authErr != nil {
 			return nil, authErr
 		}
+		if err := oauth.RequireScopeClaims(clientProxyClaims, oauth.RequiredScope); err != nil {
+			return nil, err
+		}
 	}
 
 	sandboxID, err := utils.ShortID(req.GetSandboxId())

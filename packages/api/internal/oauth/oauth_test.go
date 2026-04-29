@@ -177,13 +177,13 @@ func TestRequireClaims(t *testing.T) {
 		{
 			name:     "valid bearer token",
 			md:       metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
-			verifier: fakeVerifier{claims: Claims{Subject: "client_123", OrgID: "org_123"}},
-			want:     Claims{Subject: "client_123", OrgID: "org_123"},
+			verifier: fakeVerifier{claims: Claims{Subject: "client_123", OrgID: "org_123", Scopes: []string{RequiredScope}}},
+			want:     Claims{Subject: "client_123", OrgID: "org_123", Scopes: []string{RequiredScope}},
 		},
 		{
 			name:     "missing bearer token",
 			md:       metadata.MD{},
-			verifier: fakeVerifier{claims: Claims{Subject: "client_123", OrgID: "org_123"}},
+			verifier: fakeVerifier{claims: Claims{Subject: "client_123", OrgID: "org_123", Scopes: []string{RequiredScope}}},
 			wantErr:  true,
 		},
 		{
@@ -211,6 +211,54 @@ func TestRequireClaims(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, tt.want, claims)
+		})
+	}
+}
+
+func TestRequireScopeClaims(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		claims        Claims
+		requiredScope string
+		wantErr       bool
+	}{
+		{
+			name:          "matching scope",
+			claims:        Claims{Scopes: []string{"other", RequiredScope}},
+			requiredScope: RequiredScope,
+		},
+		{
+			name:          "trims required scope",
+			claims:        Claims{Scopes: []string{RequiredScope}},
+			requiredScope: " " + RequiredScope + " ",
+		},
+		{
+			name:          "missing scope",
+			claims:        Claims{Scopes: []string{"other"}},
+			requiredScope: RequiredScope,
+			wantErr:       true,
+		},
+		{
+			name:          "missing required scope",
+			claims:        Claims{Scopes: []string{RequiredScope}},
+			requiredScope: "",
+			wantErr:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := RequireScopeClaims(tt.claims, tt.requiredScope)
+			if tt.wantErr {
+				require.Error(t, err)
+
+				return
+			}
+			require.NoError(t, err)
 		})
 	}
 }
