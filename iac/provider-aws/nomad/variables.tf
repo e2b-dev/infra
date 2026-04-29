@@ -160,6 +160,11 @@ variable "api_port" {
   default = 80
 }
 
+variable "api_internal_grpc_port" {
+  type    = number
+  default = 5009
+}
+
 variable "api_memory_mb" {
   type    = number
   default = 512

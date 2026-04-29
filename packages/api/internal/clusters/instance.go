@@ -35,6 +35,8 @@ type Instance struct {
 	ClusterID uuid.UUID
 	NodeID    string
 
+	LocalIPAddress string
+
 	serviceInstanceID    string
 	serviceVersion       string
 	serviceVersionCommit string
@@ -87,6 +89,7 @@ func newInstance(
 		serviceInstanceID: sd.InstanceID,
 		NodeID:            sd.NodeID,
 		ClusterID:         clusterID,
+		LocalIPAddress:    sd.LocalIPAddress,
 
 		client: client,
 		mutex:  sync.RWMutex{},

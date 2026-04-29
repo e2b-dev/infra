@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
-	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
+	"github.com/e2b-dev/infra/packages/api/internal/oauth"
 	apiorchestrator "github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -29,11 +29,17 @@ import (
 type SandboxService struct {
 	proxygrpc.UnimplementedSandboxServiceServer
 
-	api *APIStore
+	api                        *APIStore
+	requireEdgeClientProxyAuth bool
+	clientProxyOAuth           oauth.Verifier
 }
 
-func NewSandboxService(api *APIStore) *SandboxService {
-	return &SandboxService{api: api}
+func NewSandboxService(api *APIStore, requireEdgeClientProxyAuth bool, clientProxyOAuth oauth.Verifier) *SandboxService {
+	return &SandboxService{
+		api:                        api,
+		requireEdgeClientProxyAuth: requireEdgeClientProxyAuth,
+		clientProxyOAuth:           clientProxyOAuth,
+	}
 }
 
 func metadataFromIncomingContext(ctx context.Context) metadata.MD {
@@ -111,6 +117,20 @@ func (s *SandboxService) getAutoResumeSnapshot(ctx context.Context, sandboxID st
 }
 
 func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*proxygrpc.SandboxResumeResponse, error) {
+	incomingMetadata := metadataFromIncomingContext(ctx)
+
+	var clientProxyClaims oauth.Claims
+	if s.requireEdgeClientProxyAuth {
+		var authErr error
+		clientProxyClaims, authErr = oauth.RequireClaims(ctx, incomingMetadata, s.clientProxyOAuth)
+		if authErr != nil {
+			return nil, authErr
+		}
+		if err := oauth.RequireScopeClaims(clientProxyClaims, oauth.RequiredScope); err != nil {
+			return nil, err
+		}
+	}
+
 	sandboxID, err := utils.ShortID(req.GetSandboxId())
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid sandbox ID")
@@ -122,6 +142,27 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	}
 
 	teamID := snap.Snapshot.TeamID
+
+	team, err := s.api.authService.GetTeamByID(ctx, teamID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
+	}
+
+	if s.requireEdgeClientProxyAuth {
+		var authOrgID string
+		if team.ClusterID != nil {
+			cluster, found := s.api.clusters.GetClusterById(*team.ClusterID)
+			if !found {
+				return nil, status.Errorf(codes.Internal, "cluster with ID '%s' not found", *team.ClusterID)
+			}
+
+			authOrgID = cluster.AuthOrgID
+		}
+
+		if err := oauth.RequireOrgClaims(clientProxyClaims, authOrgID); err != nil {
+			return nil, err
+		}
+	}
 
 	sandboxData, sandboxErr := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if sandboxErr != nil {
@@ -154,10 +195,6 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		}
 	}
 
-	team, err := dbapi.GetTeamByID(ctx, s.api.authDB, teamID)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
-	}
 	minAutoResumeTimeout := time.Duration(s.api.featureFlags.IntFlag(ctx, featureflags.MinAutoResumeTimeoutSeconds)) * time.Second
 
 	timeout := calculateAutoResumeTimeout(autoResume, minAutoResumeTimeout, team)
@@ -179,7 +216,6 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		network = snap.Snapshot.Config.Network
 	}
 
-	incomingMetadata := metadataFromIncomingContext(ctx)
 	isNonEnvdTraffic := isNonEnvdTrafficRequest(ctx, incomingMetadata, sandboxID)
 
 	// Validate traffic access token for sandboxes with private ingress.
@@ -222,10 +258,10 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		return nil, status.Error(sharedutils.GRPCCodeFromHTTPStatus(apiErr.Code), apiErr.ClientMsg)
 	}
 
-	node := s.api.orchestrator.GetNode(sbx.ClusterID, sbx.NodeID)
-	if node == nil {
-		return nil, status.Error(codes.Internal, "sandbox resumed but routing info is not available yet")
+	nodeIP := s.api.orchestrator.GetNodeRouteIPAddress(sbx.ClusterID, sbx.NodeID)
+	if nodeIP == "" {
+		return nil, status.Error(codes.Internal, "sandbox resumed but orchestrator IP is not available yet")
 	}
 
-	return &proxygrpc.SandboxResumeResponse{OrchestratorIp: node.IPAddress}, nil
+	return &proxygrpc.SandboxResumeResponse{OrchestratorIp: nodeIP}, nil
 }

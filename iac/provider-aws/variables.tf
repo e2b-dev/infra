@@ -39,6 +39,11 @@ variable "api_cluster_size" {
   default = 1
 }
 
+variable "api_internal_grpc_port" {
+  type    = number
+  default = 5009
+}
+
 variable "api_server_machine_type" {
   type    = string
   default = "t3.xlarge"

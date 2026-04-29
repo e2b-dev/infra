@@ -2,13 +2,16 @@ package proxy
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
@@ -19,17 +22,52 @@ import (
 type grpcPausedSandboxResumer struct {
 	conn   *grpc.ClientConn
 	client proxygrpc.SandboxServiceClient
+	auth   grpcResumeAuth
 }
 
-func NewGrpcPausedSandboxResumer(address string) (PausedSandboxResumer, error) {
-	// Client-proxy uses this gRPC client to trigger ResumeSandbox when needed.
+type GRPCOAuthConfig struct {
+	ClientID     string
+	ClientSecret string
+	TokenURL     string
+}
+
+func apiGrpcAddressUsesTLS(address string) bool {
+	address = strings.TrimSpace(address)
+
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		host = address
+	}
+	host = strings.Trim(strings.TrimSpace(host), "[]")
+
+	if host == "" || host == "localhost" || strings.HasSuffix(host, ".service.consul") {
+		return false
+	}
+	if net.ParseIP(host) != nil {
+		return false
+	}
+
+	return true
+}
+
+func NewGRPCPausedSandboxResumer(address string, oauthConfig GRPCOAuthConfig) (PausedSandboxResumer, error) {
 	if strings.TrimSpace(address) == "" {
 		return nil, errors.New("api grpc address is required")
 	}
 
+	auth, err := newGrpcResumeAuth(context.Background(), oauthConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	creds := insecure.NewCredentials()
+	if apiGrpcAddressUsesTLS(address) {
+		creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
+	}
+
 	conn, err := grpc.NewClient(
 		address,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(creds),
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 	)
 	if err != nil {
@@ -39,6 +77,7 @@ func NewGrpcPausedSandboxResumer(address string) (PausedSandboxResumer, error) {
 	return &grpcPausedSandboxResumer{
 		conn:   conn,
 		client: proxygrpc.NewSandboxServiceClient(conn),
+		auth:   auth,
 	}, nil
 }
 
@@ -59,6 +98,12 @@ func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string,
 
 	if envdAccessToken != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataEnvdAccessToken, envdAccessToken)
+	}
+
+	var err error
+	ctx, err = c.auth.authorize(ctx)
+	if err != nil {
+		return "", err
 	}
 
 	resp, err := c.client.ResumeSandbox(ctx, &proxygrpc.SandboxResumeRequest{
