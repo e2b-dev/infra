@@ -14,7 +14,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
-	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/api/internal/oauth"
 	apiorchestrator "github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -141,7 +140,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 
 	teamID := snap.Snapshot.TeamID
 
-	team, err := dbapi.GetTeamByID(ctx, s.api.authDB, teamID)
+	team, err := s.api.authService.GetTeamByID(ctx, teamID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
 	}
