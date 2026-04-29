@@ -62,19 +62,22 @@ func buildEgressConfig(allowedEntries, deniedEntries []string, rules map[string]
 		allowedAddresses = append(allowedAddresses, sandbox_network.DefaultNameserver)
 	}
 
-	orchRules := make(map[string]*orchestrator.SandboxNetworkDomainRules, len(rules))
-	for domain, domainRules := range rules {
-		orchRuleList := make([]*orchestrator.SandboxNetworkRule, 0, len(domainRules))
-		for _, r := range domainRules {
-			orchRule := &orchestrator.SandboxNetworkRule{}
-			if r.Transform != nil {
-				orchRule.Transform = &orchestrator.SandboxNetworkTransform{
-					Headers: r.Transform.Headers,
+	var orchRules map[string]*orchestrator.SandboxNetworkDomainRules
+	if rules != nil {
+		orchRules = make(map[string]*orchestrator.SandboxNetworkDomainRules, len(rules))
+		for domain, domainRules := range rules {
+			orchRuleList := make([]*orchestrator.SandboxNetworkRule, 0, len(domainRules))
+			for _, r := range domainRules {
+				orchRule := &orchestrator.SandboxNetworkRule{}
+				if r.Transform != nil {
+					orchRule.Transform = &orchestrator.SandboxNetworkTransform{
+						Headers: r.Transform.Headers,
+					}
 				}
+				orchRuleList = append(orchRuleList, orchRule)
 			}
-			orchRuleList = append(orchRuleList, orchRule)
+			orchRules[domain] = &orchestrator.SandboxNetworkDomainRules{Rules: orchRuleList}
 		}
-		orchRules[domain] = &orchestrator.SandboxNetworkDomainRules{Rules: orchRuleList}
 	}
 
 	return &orchestrator.SandboxNetworkEgressConfig{
