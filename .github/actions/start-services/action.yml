@@ -103,7 +103,6 @@ runs:
         MAX_PARALLEL_MEMFILE_SNAPSHOTTING: "2"
         SHARED_CHUNK_CACHE_PATH: "./.e2b-chunk-cache"
         REDIS_URL: "localhost:6379"
-        API_PUBLIC_GRPC_PORT: "5109"
         # Client-proxy config
         API_GRPC_ADDRESS: "localhost:5009"
         DEFAULT_PERSISTENT_VOLUME_TYPE: "test-volume-type"
