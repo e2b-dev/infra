@@ -500,3 +500,9 @@ variable "orchestrator_env_vars" {
   type    = map(string)
   default = {}
 }
+
+variable "orchestrator_enabled" {
+  type        = bool
+  default     = true
+  description = "Whether the orchestrator job should be deployed"
+}
