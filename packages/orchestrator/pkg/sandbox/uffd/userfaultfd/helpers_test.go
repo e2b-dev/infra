@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"net/rpc"
+	"os/exec"
 	"slices"
 	"sync"
 	"testing"
@@ -29,6 +32,10 @@ type testConfig struct {
 	alwaysWP bool
 	// gated enables pause/resume control over the handler's serve loop.
 	gated bool
+	// barriers wires up the per-worker fault hooks in the child
+	// (used by race tests). Off by default so the worker hot path
+	// stays a single nil-pointer load + branch in non-race tests.
+	barriers bool
 }
 
 type operationMode uint32
@@ -63,13 +70,6 @@ type handlerPageStates struct {
 // allAccessed returns the sorted union of offsets that the handler touched
 // in any non-missing state. Tests that only care about "which pages did the
 // handler see" can compare directly against this.
-//
-// pageStatesOnce already returns each per-state slice sorted, and a page
-// has exactly one state at a time in pageTracker, so the per-state slices
-// are disjoint. Follow-up PRs that add more state-specific fields should
-// sorted-merge them here instead of reaching for a bitset — byte offsets
-// make poor bit indices (a single hugepage offset would force ~1.8 MB of
-// backing storage).
 func (s handlerPageStates) allAccessed() []uint {
 	return slices.Clone(s.faulted)
 }
@@ -79,14 +79,22 @@ type testHandler struct {
 	pagesize   uint64
 	data       *MemorySlicer
 	// pageStatesOnce returns a per-state snapshot of the handler's pageTracker.
-	// It can only be called once.
+	// Backed by the PageStates RPC; callable any number of times.
+	// The "Once" suffix is kept for source-stability with the existing
+	// test sites.
 	pageStatesOnce func() (handlerPageStates, error)
 	// servePause and serveResume gate the UFFD event loop in the child process.
 	// Tests use them to deterministically batch a sequence of UFFD events
 	// before more faults are processed.
 	servePause  func() error
 	serveResume func() error
-	mutex       sync.Mutex
+
+	// client is the RPC channel to the child helper process.
+	client *rpc.Client
+	conn   io.Closer
+	cmd    *exec.Cmd
+
+	mutex sync.Mutex
 }
 
 func (h *testHandler) executeAll(t *testing.T, operations []operation) {
