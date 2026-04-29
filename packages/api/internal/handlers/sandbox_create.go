@@ -11,12 +11,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asaskevich/govalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/idna"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -47,6 +49,13 @@ const (
 
 	// Network validation error messages
 	ErrMsgDomainsRequireBlockAll = "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic."
+
+	maxNetworkRuleDomains             = 10
+	maxNetworkRuleTransformsPerDomain = 1
+	maxNetworkRuleDomainLen           = 128
+	maxNetworkRuleHeaderNameLen       = 64
+	maxNetworkRuleHeaderValueLen      = 2048
+	maxNetworkRuleHeadersPerRule      = 20
 )
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
@@ -174,7 +183,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	var network *types.SandboxNetworkConfig
 	if n := body.Network; n != nil {
-		if err := validateNetworkConfig(n); err != nil {
+		if err := validateNetworkConfig(ctx, a.featureFlags, teamInfo.Team.ID, n); err != nil {
 			telemetry.ReportError(ctx, "invalid network config", err.Err, telemetry.WithSandboxID(sandboxID))
 			a.sendAPIStoreError(c, err.Code, err.ClientMsg)
 
@@ -189,6 +198,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 			Egress: &types.SandboxNetworkEgressConfig{
 				AllowedAddresses: sharedUtils.DerefOrDefault(n.AllowOut, nil),
 				DeniedAddresses:  sharedUtils.DerefOrDefault(n.DenyOut, nil),
+				Rules:            apiRulesToDBRules(n.Rules),
 			},
 		}
 
@@ -263,6 +273,19 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
 
 		return
+	}
+
+	if n := body.Network; n != nil && n.Rules != nil && len(*n.Rules) > 0 {
+		domains := make([]string, 0, len(*n.Rules))
+		for domain := range *n.Rules {
+			domains = append(domains, domain)
+		}
+
+		a.posthog.CreateAnalyticsTeamEvent(ctx, teamInfo.Team.ID.String(), "sandbox with network transform rules created",
+			a.posthog.GetPackageToPosthogProperties(&c.Request.Header).
+				Set("sandbox_id", sandboxID).
+				Set("domains", domains),
+		)
 	}
 
 	c.JSON(http.StatusCreated, &sbx)
@@ -514,7 +537,33 @@ func splitHostPortOptional(hostport string) (host string, port string, err error
 	return host, port, nil
 }
 
-func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
+func apiRulesToDBRules(apiRules *map[string][]api.SandboxNetworkRule) map[string][]types.SandboxNetworkRule {
+	if apiRules == nil {
+		return nil
+	}
+
+	dbRules := make(map[string][]types.SandboxNetworkRule, len(*apiRules))
+	for domain, rules := range *apiRules {
+		dbDomainRules := make([]types.SandboxNetworkRule, 0, len(rules))
+		for _, r := range rules {
+			dbRule := types.SandboxNetworkRule{}
+
+			if r.Transform != nil {
+				dbRule.Transform = &types.SandboxNetworkTransform{
+					Headers: sharedUtils.DerefOrDefault(r.Transform.Headers, nil),
+				}
+			}
+
+			dbDomainRules = append(dbDomainRules, dbRule)
+		}
+
+		dbRules[domain] = dbDomainRules
+	}
+
+	return dbRules
+}
+
+func validateNetworkConfig(ctx context.Context, featureFlags featureFlagsClient, teamID uuid.UUID, network *api.SandboxNetworkConfig) *api.APIError {
 	if network == nil {
 		return nil
 	}
@@ -550,7 +599,11 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 	denyOut := sharedUtils.DerefOrDefault(network.DenyOut, nil)
 	allowOut := sharedUtils.DerefOrDefault(network.AllowOut, nil)
 
-	return validateEgressRules(allowOut, denyOut)
+	if err := validateEgressRules(allowOut, denyOut); err != nil {
+		return err
+	}
+
+	return validateNetworkRules(ctx, featureFlags, teamID, network.Rules)
 }
 
 // validateEgressRules validates egress allow/deny rules:
@@ -587,6 +640,121 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 				Code:      http.StatusBadRequest,
 				Err:       errors.New("allow out contains domains but deny out is missing 0.0.0.0/0 (ALL_TRAFFIC)"),
 				ClientMsg: ErrMsgDomainsRequireBlockAll,
+			}
+		}
+	}
+
+	return nil
+}
+
+func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, teamID uuid.UUID, rules *map[string][]api.SandboxNetworkRule) *api.APIError {
+	if rules == nil {
+		return nil
+	}
+
+	if !featureFlags.BoolFlag(ctx, featureflags.NetworkTransformRulesFlag, featureflags.TeamContext(teamID.String())) {
+		return &api.APIError{
+			Code:      http.StatusBadRequest,
+			Err:       fmt.Errorf("team %s is not allowed to use network transform rules", teamID),
+			ClientMsg: "Network transform rules are not available for your team.",
+		}
+	}
+
+	if len(*rules) > maxNetworkRuleDomains {
+		return &api.APIError{
+			Code:      http.StatusBadRequest,
+			Err:       fmt.Errorf("too many rule domains: %d (max %d)", len(*rules), maxNetworkRuleDomains),
+			ClientMsg: fmt.Sprintf("Network rules can have at most %d domains.", maxNetworkRuleDomains),
+		}
+	}
+
+	for domain, domainRules := range *rules {
+		if len(domain) == 0 {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       errors.New("rule domain must not be empty"),
+				ClientMsg: "Rule domain must not be empty.",
+			}
+		}
+
+		if len(domain) > maxNetworkRuleDomainLen {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("rule domain %q exceeds max length %d", domain, maxNetworkRuleDomainLen),
+				ClientMsg: fmt.Sprintf("Rule domain %q exceeds maximum length of %d characters.", domain, maxNetworkRuleDomainLen),
+			}
+		}
+
+		if !govalidator.IsDNSName(domain) {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("rule domain %q is not a valid domain", domain),
+				ClientMsg: fmt.Sprintf("Rule domain %q is not a valid domain name.", domain),
+			}
+		}
+
+		if len(domainRules) > maxNetworkRuleTransformsPerDomain {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("domain %q has %d transforms (max %d)", domain, len(domainRules), maxNetworkRuleTransformsPerDomain),
+				ClientMsg: fmt.Sprintf("Domain %q can have at most %d transform rule.", domain, maxNetworkRuleTransformsPerDomain),
+			}
+		}
+
+		for _, rule := range domainRules {
+			if rule.Transform == nil {
+				continue
+			}
+
+			headers := sharedUtils.DerefOrDefault(rule.Transform.Headers, nil)
+			if len(headers) > maxNetworkRuleHeadersPerRule {
+				return &api.APIError{
+					Code:      http.StatusBadRequest,
+					Err:       fmt.Errorf("domain %q has %d headers (max %d)", domain, len(headers), maxNetworkRuleHeadersPerRule),
+					ClientMsg: fmt.Sprintf("Domain %q can have at most %d headers per rule.", domain, maxNetworkRuleHeadersPerRule),
+				}
+			}
+
+			for name, value := range headers {
+				if len(name) == 0 {
+					return &api.APIError{
+						Code:      http.StatusBadRequest,
+						Err:       fmt.Errorf("header name in rule for domain %q must not be empty", domain),
+						ClientMsg: fmt.Sprintf("Header name in rule for domain %q must not be empty.", domain),
+					}
+				}
+
+				if !httpguts.ValidHeaderFieldName(name) {
+					return &api.APIError{
+						Code:      http.StatusBadRequest,
+						Err:       fmt.Errorf("header name %q in rule for domain %q contains invalid characters", name, domain),
+						ClientMsg: fmt.Sprintf("Header name %q in rule for domain %q must not contain CR or LF characters.", name, domain),
+					}
+				}
+
+				if len(name) > maxNetworkRuleHeaderNameLen {
+					return &api.APIError{
+						Code:      http.StatusBadRequest,
+						Err:       fmt.Errorf("header name %q in rule for domain %q exceeds max length %d", name, domain, maxNetworkRuleHeaderNameLen),
+						ClientMsg: fmt.Sprintf("Header name %q in rule for domain %q exceeds maximum length of %d characters.", name, domain, maxNetworkRuleHeaderNameLen),
+					}
+				}
+
+				if strings.ContainsAny(value, "\r\n") {
+					return &api.APIError{
+						Code:      http.StatusBadRequest,
+						Err:       fmt.Errorf("value for header %q in rule for domain %q contains invalid characters", name, domain),
+						ClientMsg: fmt.Sprintf("Value for header %q in rule for domain %q must not contain CR or LF characters.", name, domain),
+					}
+				}
+
+				if len(value) > maxNetworkRuleHeaderValueLen {
+					return &api.APIError{
+						Code:      http.StatusBadRequest,
+						Err:       fmt.Errorf("value for header %q in rule for domain %q exceeds max length %d", name, domain, maxNetworkRuleHeaderValueLen),
+						ClientMsg: fmt.Sprintf("Value for header %q in rule for domain %q exceeds maximum length of %d characters.", name, domain, maxNetworkRuleHeaderValueLen),
+					}
+				}
 			}
 		}
 	}
