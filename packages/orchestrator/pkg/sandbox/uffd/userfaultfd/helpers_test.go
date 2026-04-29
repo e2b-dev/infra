@@ -80,6 +80,14 @@ type testConfig struct {
 	gated bool
 	// barriers enables the per-worker fault hook (race tests only).
 	barriers bool
+	// sourcePatcher, if non-nil, is invoked on the random source data
+	// AFTER it's generated but BEFORE it's written to the on-disk
+	// content file the child reads. Race tests use it to plant a
+	// deterministic sentinel into the source so post-test assertions
+	// can distinguish "post-fix zero-fault" from "pre-fix UFFDIO_COPY
+	// of stale src bytes" without depending on randomly-generated
+	// byte values.
+	sourcePatcher func([]byte)
 }
 
 type operationMode uint32
@@ -156,6 +164,31 @@ func (h *testHandler) pageStates() (handlerPageStates, error) {
 	slices.Sort(states.removed)
 
 	return states, nil
+}
+
+// installFaultBarrier parks the next worker that hits `phase` for
+// `addr`. Returns a token to be passed to waitFaultHeld / releaseFault.
+func (h *testHandler) installFaultBarrier(_ context.Context, addr uintptr, phase faultPhase) (uint64, error) {
+	return h.client.InstallBarrier(addr, testharness.Point(phase))
+}
+
+// waitFaultHeld blocks until the child reports a worker has reached the
+// barrier identified by token, or ctx is cancelled. net/rpc's Call
+// doesn't take a context, so we run it in a goroutine and race it.
+func (h *testHandler) waitFaultHeld(ctx context.Context, token uint64) error {
+	errCh := make(chan error, 1)
+	go func() { errCh <- h.client.WaitFaultHeld(token) }()
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// releaseFault releases a parked worker so it proceeds past the barrier.
+func (h *testHandler) releaseFault(_ context.Context, token uint64) error {
+	return h.client.ReleaseFault(token)
 }
 
 func (h *testHandler) executeAll(t *testing.T, operations []operation) {
