@@ -3,7 +3,7 @@
 ALTER TABLE clusters
     ADD COLUMN auth_org_id TEXT;
 
-CREATE INDEX clusters_auth_org_id_idx
+CREATE UNIQUE INDEX clusters_auth_org_id_idx
     ON clusters (auth_org_id)
     WHERE auth_org_id IS NOT NULL;
 -- +goose StatementEnd
