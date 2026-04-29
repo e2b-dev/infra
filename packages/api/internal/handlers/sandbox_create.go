@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/idna"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -723,7 +724,7 @@ func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, 
 					}
 				}
 
-				if strings.ContainsAny(name, "\r\n") {
+				if httpguts.ValidHeaderFieldName(name) {
 					return &api.APIError{
 						Code:      http.StatusBadRequest,
 						Err:       fmt.Errorf("header name %q in rule for domain %q contains invalid characters", name, domain),
