@@ -325,35 +325,37 @@ func (u *Userfaultfd) Serve(
 				return fmt.Errorf("failed to map: %w", err)
 			}
 
-			// State read happens before the worker takes settleRequests.RLock,
-			// so a REMOVE arriving in the parent's next iteration can race
-			// with an already-scheduled worker. Tracked as a known race; fix
-			// re-reads state under RLock in the worker.
-			var source block.Slicer
-			switch state := u.pageTracker.get(addr); state {
-			case faulted:
-				// Already mapped (prefault or earlier fault in this batch).
-				// Only a UFFD_EVENT_REMOVE can transition out of `faulted`;
-				// the used pages must not be swappable for this to hold.
-				continue
-			case removed:
-				// Zero-fill: source stays nil.
-			case missing:
-				source = u.src
-			default:
-				return fmt.Errorf("unexpected pageState: %#v", state)
-			}
-
 			u.wg.Go(func() error {
 				if h := u.testFaultHook.Load(); h != nil {
 					(*h)(addr, faultPhaseBeforeRLock)
 				}
 
-				// RLock inside the goroutine so RUnlock runs via defer even on
-				// early return, and so it pairs with the prefetchTracker write
-				// below.
+				// RLock must be inside the goroutine so RUnlock runs via defer.
+				// The state read below MUST happen after RLock: the read+act+commit
+				// sequence (state lookup → faultPage → setState(faulted)) must be
+				// atomic with any concurrent REMOVE batch (settleRequests.Lock()).
+				// A state read in the parent loop would leave a window where a REMOVE
+				// lands after the read but before RLock, and the worker would
+				// overwrite `removed` with `faulted`.
 				u.settleRequests.RLock()
 				defer u.settleRequests.RUnlock()
+
+				var source block.Slicer
+
+				switch state := u.pageTracker.get(addr); state {
+				case faulted:
+					// Already mapped; only UFFD_EVENT_REMOVE transitions out of
+					// faulted. Pages must not be swappable for this to hold.
+					return nil
+				case removed:
+					// Zero-fill. The kernel still expects an UFFDIO_COPY/ZEROPAGE
+					// ack for the original MISSING fault, otherwise the faulting
+					// thread stays blocked.
+				case missing:
+					source = u.src
+				default:
+					return fmt.Errorf("unexpected pageState: %#v", state)
+				}
 
 				var accessType block.AccessType
 				if pf.flags&UFFD_PAGEFAULT_FLAG_WRITE == 0 {
