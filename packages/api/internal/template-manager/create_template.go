@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	templatemanagergrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -108,6 +109,8 @@ func (tm *TemplateManager) CreateTemplate(
 		return fmt.Errorf("failed to convert image registry: %w", err)
 	}
 
+	freePageReporting := features.HasFreePageReporting() && tm.featureFlags.BoolFlag(ctx, featureflags.FreePageReportingFlag, featureflags.TeamContext(teamID.String()))
+
 	// TODO(ENG-3852): Remove later. KernelVersion and FirecrackerVersion are deprecated on
 	// template-manager selects its own versions and reports the ones it actually
 	// used via TemplateBuildMetadata. They are still populated here for
@@ -122,6 +125,7 @@ func (tm *TemplateManager) CreateTemplate(
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: firecrackerVersion,
 		HugePages:          features.HasHugePages(),
+		FreePageReporting:  &freePageReporting,
 		StartCommand:       startCmd,
 		ReadyCommand:       readyCmd,
 		Force:              force,

@@ -7,3 +7,7 @@ func (v *Info) HasHugePages() bool {
 
 	return false
 }
+
+func (v *Info) HasFreePageReporting() bool {
+	return v.lastReleaseVersion.Major() > 1 || (v.lastReleaseVersion.Major() == 1 && v.lastReleaseVersion.Minor() >= 14)
+}

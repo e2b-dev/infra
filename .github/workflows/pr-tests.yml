@@ -104,12 +104,18 @@ jobs:
         working-directory: ${{ matrix.package }}
         run: |
           # Run tests. The '-E' flag is required to allow root to use the correct cache path.
-          sudo -E `which go` test -v -timeout 20m ${{ matrix.test_path }}
+          # -parallel=4 caps concurrent t.Parallel() tests as a runner-resource
+          # cap: heavyweight cross-process UFFD tests in packages/orchestrator
+          # each fork a child handler process and we don't want N-CPU copies
+          # racing for the same kernel resources. This is NOT a workaround for
+          # the stale-source race in pkg/sandbox/uffd/userfaultfd — that is
+          # fixed and covered by the deterministic race tests in race_test.go.
+          sudo -E `which go` test -v -timeout 10m -parallel 4 ${{ matrix.test_path }}
         if: matrix.sudo == true
 
       - name: Run tests
         working-directory: ${{ matrix.package }}
-        run: go test -v -timeout 20m ${{ matrix.test_path }}
+        run: go test -v -timeout 10m -parallel 4 ${{ matrix.test_path }}
         if: matrix.sudo == false
 
   validate-iac:

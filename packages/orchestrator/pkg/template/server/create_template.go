@@ -88,6 +88,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		ReadyCmd:             cfg.GetReadyCommand(),
 		DiskSizeMB:           int64(cfg.GetDiskSizeMB()),
 		HugePages:            hugePages,
+		FreePageReporting:    cfg.GetFreePageReporting(),
 		FromImage:            cfg.GetFromImage(),
 		FromTemplate:         cfg.GetFromTemplate(),
 		RegistryAuthProvider: authProvider,
