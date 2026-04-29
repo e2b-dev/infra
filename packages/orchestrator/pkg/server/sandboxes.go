@@ -336,6 +336,17 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		})
 	}
 
+	if req.GetMetadata() != nil {
+		updates = append(updates, func(_ context.Context) (func(context.Context), error) {
+			oldMetadata := sbx.GetAPIMetadata()
+			sbx.SetAPIMetadata(req.GetMetadata().GetEntries())
+
+			return func(_ context.Context) {
+				sbx.SetAPIMetadata(oldMetadata)
+			}, nil
+		})
+	}
+
 	if err := utils.ApplyAllOrNone(ctx, updates); err != nil {
 		telemetry.ReportCriticalError(ctx, "failed to update sandbox", err)
 
@@ -355,7 +366,6 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 				"allowed_domains": egress.GetAllowedDomains(),
 			}
 		}
-
 		go s.sbxEventsService.Publish(
 			context.WithoutCancel(ctx),
 			teamID,
@@ -401,6 +411,7 @@ func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 			ClientId:  s.info.ClientId,
 			StartTime: timestamppb.New(startedAt),
 			EndTime:   timestamppb.New(sbx.GetEndAt()),
+			Metadata:  sbx.GetAPIMetadata(),
 		})
 	}
 
@@ -632,6 +643,9 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 		return nil, status.Errorf(codes.Internal, "error resuming sandbox after checkpoint: %s", err)
 	}
+	// ResumeSandbox seeds apiMetadata from the (immutable) APIStoredConfig
+	// snapshot — override with the live value so any PATCH carries over.
+	resumedSbx.SetAPIMetadata(sbx.GetAPIMetadata())
 
 	// Collect prefetch data immediately after resume while it's most accurate
 	prefetchData, prefetchErr := resumedSbx.MemoryPrefetchData(ctx)
@@ -692,13 +706,13 @@ func (s *Server) prepareSandboxEventData(ctx context.Context, sbx *sandbox.Sandb
 	}
 
 	buildId := ""
-	eventData := make(map[string]any)
 	if sbx.APIStoredConfig != nil {
 		buildId = sbx.APIStoredConfig.GetBuildId()
-		if sbx.APIStoredConfig.Metadata != nil {
-			// Copy the map to avoid race conditions
-			eventData["sandbox_metadata"] = utils.ShallowCopyMap(sbx.APIStoredConfig.GetMetadata())
-		}
+	}
+
+	eventData := make(map[string]any)
+	if md := sbx.GetAPIMetadata(); len(md) > 0 {
+		eventData["sandbox_metadata"] = md
 	}
 
 	return teamID, buildId, eventData

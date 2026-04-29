@@ -101,6 +101,11 @@ message SandboxUpdateRequest {
   // All fields are optional — only set fields are applied.
   optional google.protobuf.Timestamp end_time = 2;
   optional SandboxNetworkEgressConfig egress = 3;
+  optional SandboxMetadataUpdate metadata = 4;
+}
+
+message SandboxMetadataUpdate {
+  map<string, string> entries = 1;
 }
 
 message SandboxDeleteRequest {
@@ -127,6 +132,10 @@ message RunningSandbox {
 
   google.protobuf.Timestamp start_time = 3;
   google.protobuf.Timestamp end_time = 4;
+
+  // Live user-facing metadata tags. Authoritative over config.metadata, which
+  // reflects only the create-time snapshot.
+  map<string, string> metadata = 5;
 }
 
 message SandboxListResponse {
