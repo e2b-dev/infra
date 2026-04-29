@@ -18,8 +18,8 @@ type seekableSource struct {
 	diff build.Diff
 }
 
-func (f *seekableSource) Size(ctx context.Context) (int64, error) {
-	return f.diff.Size(ctx)
+func (f *seekableSource) Size(_ context.Context) (int64, error) {
+	return f.diff.FileSize()
 }
 
 func (f *seekableSource) Exists(_ context.Context) (bool, error) {
@@ -33,7 +33,8 @@ func (f *seekableSource) Stream(ctx context.Context, offset, length int64, sende
 	))
 	defer span.End()
 
-	data, err := f.diff.Slice(ctx, offset, length)
+	// P2P always serves uncompressed bytes — pass nil FrameTable.
+	data, err := f.diff.Slice(ctx, offset, length, nil)
 	if err != nil {
 		span.RecordError(err)
 

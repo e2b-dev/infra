@@ -45,53 +45,7 @@ func (s *peerSeekable) Size(ctx context.Context) (int64, error) {
 	)
 }
 
-func (s *peerSeekable) ReadAt(ctx context.Context, buf []byte, off int64) (int, error) {
-	return withPeerFallback(ctx, &s.peerHandle, "read-at peer-seekable", attrOpReadAt,
-		func(ctx context.Context) (peerAttempt[int], error) {
-			streamCtx, cancel := context.WithCancel(ctx)
-			defer cancel()
-
-			recv, err := openPeerSeekableStream(streamCtx, s.client, &orchestrator.ReadAtBuildSeekableRequest{
-				BuildId:  s.buildID,
-				FileName: s.fileName,
-				Offset:   off,
-				Length:   int64(len(buf)),
-			}, s.uploaded)
-			if err != nil {
-				logger.L().Warn(ctx, "failed to read build file from peer", logger.WithBuildID(s.buildID), zap.Int64("off", off), zap.Int("buf_len", len(buf)), zap.Error(err))
-
-				return peerAttempt[int]{}, nil
-			}
-
-			n := 0
-
-			for n < len(buf) {
-				data, recvErr := recv()
-				if errors.Is(recvErr, io.EOF) {
-					break
-				}
-
-				if recvErr != nil {
-					return peerAttempt[int]{value: n, bytes: int64(n), hit: true},
-						fmt.Errorf("failed to receive chunk from peer: %w", recvErr)
-				}
-
-				n += copy(buf[n:], data)
-			}
-
-			if n < len(buf) {
-				return peerAttempt[int]{value: n, bytes: int64(n), hit: true}, io.ErrUnexpectedEOF
-			}
-
-			return peerAttempt[int]{value: n, bytes: int64(n), hit: true}, nil
-		},
-		func(ctx context.Context, base storage.Seekable) (int, error) {
-			return base.ReadAt(ctx, buf, off)
-		},
-	)
-}
-
-func (s *peerSeekable) OpenRangeReader(ctx context.Context, off, length int64) (io.ReadCloser, error) {
+func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *storage.FrameTable) (io.ReadCloser, error) {
 	return withPeerFallback(ctx, &s.peerHandle, "peer-seekable-open-range-reader", attrOpRangeReader,
 		func(ctx context.Context) (peerAttempt[io.ReadCloser], error) {
 			streamCtx, cancel := context.WithCancel(ctx)
@@ -115,19 +69,29 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off, length int64) (
 			}, nil
 		},
 		func(ctx context.Context, base storage.Seekable) (io.ReadCloser, error) {
-			return base.OpenRangeReader(ctx, off, length)
+			// Signal the caller to swap to V4 headers if compressed headers are available.
+			if s.uploaded != nil {
+				if hdrs := s.uploaded.Load(); hdrs != nil && (len(hdrs.MemfileHeader) > 0 || len(hdrs.RootfsHeader) > 0) {
+					return nil, &storage.PeerTransitionedError{
+						MemfileHeader: hdrs.MemfileHeader,
+						RootfsHeader:  hdrs.RootfsHeader,
+					}
+				}
+			}
+
+			return base.OpenRangeReader(ctx, off, length, frameTable)
 		},
 	)
 }
 
-func (s *peerSeekable) StoreFile(ctx context.Context, path string) error {
+func (s *peerSeekable) StoreFile(ctx context.Context, path string, cfg storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
 	// Writes always go to the base provider (GCS/S3); the peer is read-only.
 	fallback, err := s.getOrOpenBase(ctx)
 	if err != nil {
-		return err
+		return nil, [32]byte{}, err
 	}
 
-	return fallback.StoreFile(ctx, path)
+	return fallback.StoreFile(ctx, path, cfg)
 }
 
 // openPeerSeekableStream opens a ReadAtBuildSeekable stream, checks peer availability,
@@ -137,7 +101,7 @@ func openPeerSeekableStream(
 	ctx context.Context,
 	client orchestrator.ChunkServiceClient,
 	req *orchestrator.ReadAtBuildSeekableRequest,
-	uploaded *atomic.Bool,
+	uploaded *atomic.Pointer[UploadedHeaders],
 ) (func() ([]byte, error), error) {
 	stream, err := client.ReadAtBuildSeekable(ctx, req)
 	if err != nil {

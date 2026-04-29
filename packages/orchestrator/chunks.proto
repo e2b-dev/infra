@@ -14,6 +14,12 @@ message PeerAvailability {
   // use_storage is true when the GCS upload has completed and the caller
   // should switch to reading from GCS/NFS directly instead of this peer.
   bool use_storage = 2;
+  // memfile_header contains the serialized V4 header (with FrameTables)
+  // for the memfile, included when use_storage is true and the upload was compressed.
+  bytes memfile_header = 3;
+  // rootfs_header contains the serialized V4 header (with FrameTables)
+  // for the rootfs, included when use_storage is true and the upload was compressed.
+  bytes rootfs_header = 4;
 }
 
 message GetBuildFileSizeRequest {

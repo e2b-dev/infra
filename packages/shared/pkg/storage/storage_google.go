@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -45,12 +46,14 @@ const (
 	gcloudDefaultUploadConcurrency = 16
 
 	gcsOperationAttr                           = "operation"
-	gcsOperationAttrReadAt                     = "ReadAt"
 	gcsOperationAttrWrite                      = "Write"
 	gcsOperationAttrWriteFromFileSystem        = "WriteFromFileSystem"
 	gcsOperationAttrWriteFromFileSystemOneShot = "WriteFromFileSystemOneShot"
 	gcsOperationAttrWriteTo                    = "WriteTo"
 	gcsOperationAttrSize                       = "Size"
+	// gcsOperationAttrReadAt tags GCS read timer metrics for OpenRangeReader
+	// (the method was renamed from ReadAt; value kept for dashboard compatibility).
+	gcsOperationAttrReadAt = "ReadAt"
 )
 
 var (
@@ -245,10 +248,17 @@ func (o *gcpObject) Size(ctx context.Context) (int64, error) {
 
 	timer.Success(ctx, 0)
 
+	if v, ok := attrs.Metadata[MetadataKeyUncompressedSize]; ok {
+		parsed, parseErr := strconv.ParseInt(v, 10, 64)
+		if parseErr == nil {
+			return parsed, nil
+		}
+	}
+
 	return attrs.Size, nil
 }
 
-func (o *gcpObject) OpenRangeReader(ctx context.Context, off, length int64) (io.ReadCloser, error) {
+func (o *gcpObject) openRangeReader(ctx context.Context, off, length int64) (io.ReadCloser, error) {
 	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
 
 	reader, err := o.handle.NewRangeReader(ctx, off, length)
@@ -273,38 +283,6 @@ func (r *cancelOnCloseReader) Close() error {
 	defer r.cancel()
 
 	return r.ReadCloser.Close()
-}
-
-func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
-	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrReadAt))
-
-	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
-	defer cancel()
-
-	// The file should not be gzip compressed
-	reader, err := o.handle.NewRangeReader(ctx, off, int64(len(buff)))
-	if err != nil {
-		timer.Failure(ctx, int64(n))
-
-		return 0, fmt.Errorf("failed to create GCS reader for %q: %w", o.path, err)
-	}
-
-	defer reader.Close()
-
-	n, err = io.ReadFull(reader, buff)
-	if errors.Is(err, io.ErrUnexpectedEOF) {
-		err = io.EOF
-	}
-
-	if ignoreEOF(err) != nil {
-		timer.Failure(ctx, int64(n))
-
-		return n, fmt.Errorf("failed to read %q: %w", o.path, err)
-	}
-
-	timer.Success(ctx, int64(n))
-
-	return n, err
 }
 
 func (o *gcpObject) Put(ctx context.Context, data []byte) error {
@@ -384,7 +362,7 @@ func (o *gcpObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	return n, nil
 }
 
-func (o *gcpObject) StoreFile(ctx context.Context, path string) (e error) {
+func (o *gcpObject) StoreFile(ctx context.Context, path string, cfg CompressConfig) (_ *FrameTable, _ [32]byte, e error) {
 	ctx, span := tracer.Start(ctx, "write to gcp from file system")
 	defer func() {
 		recordError(span, e)
@@ -396,33 +374,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string) (e error) {
 
 	fileInfo, err := os.Stat(path)
 	if err != nil {
-		return fmt.Errorf("failed to get file size: %w", err)
-	}
-
-	// If the file is too small, the overhead of writing in parallel isn't worth the effort.
-	// Write it in one shot instead.
-	if fileInfo.Size() < gcpMultipartUploadChunkSize {
-		timer := googleWriteTimerFactory.Begin(
-			attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystemOneShot),
-		)
-
-		data, err := os.ReadFile(path)
-		if err != nil {
-			timer.Failure(ctx, 0)
-
-			return fmt.Errorf("failed to read file: %w", err)
-		}
-
-		err = o.Put(ctx, data)
-		if err != nil {
-			timer.Failure(ctx, int64(len(data)))
-
-			return fmt.Errorf("failed to write file (%d bytes): %w", len(data), err)
-		}
-
-		timer.Success(ctx, int64(len(data)))
-
-		return nil
+		return nil, [32]byte{}, fmt.Errorf("failed to get file size: %w", err)
 	}
 
 	timer := googleWriteTimerFactory.Begin(
@@ -437,7 +389,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string) (e error) {
 			if semaphoreErr != nil {
 				timer.Failure(ctx, 0)
 
-				return fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
+				return nil, [32]byte{}, fmt.Errorf("failed to acquire semaphore: %w", semaphoreErr)
 			}
 			defer uploadLimiter.Release(1)
 		}
@@ -445,16 +397,76 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string) (e error) {
 		maxConcurrency = o.limiter.GCloudMaxTasks(ctx)
 	}
 
+	// Compressed uploads always go through the multipart compressed path,
+	// regardless of file size.
+	if cfg.IsCompressionEnabled() {
+		start := time.Now()
+		ft, checksum, err := o.storeFileCompressed(ctx, path, cfg, maxConcurrency)
+		if err != nil {
+			timer.Failure(ctx, fileInfo.Size())
+		} else {
+			timer.Success(ctx, fileInfo.Size())
+
+			logger.L().Debug(ctx, "Uploaded file to GCS",
+				zap.String("bucket", bucketName),
+				zap.String("object", objectName),
+				zap.String("source", path),
+				zap.Int64("size_uncompressed", fileInfo.Size()),
+				zap.Int64("size_compressed", ft.CompressedSize()),
+				zap.String("compression", cfg.CompressionType().String()),
+				zap.Int("frames", ft.NumFrames()),
+				zap.Int64("duration_ms", time.Since(start).Milliseconds()),
+			)
+		}
+
+		return ft, checksum, err
+	}
+
+	// If the file is too small, the overhead of writing in parallel isn't worth the effort.
+	// Write it in one shot instead.
+	if fileInfo.Size() < gcpMultipartUploadChunkSize {
+		timer := googleWriteTimerFactory.Begin(
+			attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystemOneShot),
+		)
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			timer.Failure(ctx, 0)
+
+			return nil, [32]byte{}, fmt.Errorf("failed to read file: %w", err)
+		}
+
+		err = o.Put(ctx, data)
+		if err != nil {
+			timer.Failure(ctx, int64(len(data)))
+
+			return nil, [32]byte{}, fmt.Errorf("failed to write file (%d bytes): %w", len(data), err)
+		}
+
+		timer.Success(ctx, int64(len(data)))
+
+		logger.L().Debug(ctx, "Uploaded file to GCS",
+			zap.String("bucket", bucketName),
+			zap.String("object", objectName),
+			zap.String("source", path),
+			zap.Int64("size_uncompressed", int64(len(data))),
+			zap.String("compression", "none"),
+		)
+
+		return nil, [32]byte{}, e
+	}
+
 	uploader, err := NewMultipartUploaderWithRetryConfig(
 		ctx,
 		bucketName,
 		objectName,
 		DefaultRetryConfig(),
+		nil,
 	)
 	if err != nil {
 		timer.Failure(ctx, 0)
 
-		return fmt.Errorf("failed to create multipart uploader: %w", err)
+		return nil, [32]byte{}, fmt.Errorf("failed to create multipart uploader: %w", err)
 	}
 
 	start := time.Now()
@@ -462,21 +474,50 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string) (e error) {
 	if err != nil {
 		timer.Failure(ctx, count)
 
-		return fmt.Errorf("failed to upload file in parallel: %w", err)
+		return nil, [32]byte{}, fmt.Errorf("failed to upload file in parallel: %w", err)
 	}
 
-	logger.L().Debug(ctx, "Uploaded file in parallel",
+	logger.L().Debug(ctx, "Uploaded file to GCS",
 		zap.String("bucket", bucketName),
 		zap.String("object", objectName),
-		zap.String("path", path),
+		zap.String("source", path),
+		zap.Int64("size_uncompressed", fileInfo.Size()),
+		zap.String("compression", "none"),
 		zap.Int("max_concurrency", maxConcurrency),
-		zap.Int64("file_size", fileInfo.Size()),
-		zap.Int64("duration", time.Since(start).Milliseconds()),
+		zap.Int64("duration_ms", time.Since(start).Milliseconds()),
 	)
 
 	timer.Success(ctx, count)
 
-	return nil
+	return nil, [32]byte{}, e
+}
+
+func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, cfg CompressConfig, maxConcurrency int) (*FrameTable, [32]byte, error) {
+	file, err := os.Open(localPath)
+	if err != nil {
+		return nil, [32]byte{}, fmt.Errorf("failed to open local file %s: %w", localPath, err)
+	}
+	defer file.Close()
+
+	fi, err := file.Stat()
+	if err != nil {
+		return nil, [32]byte{}, fmt.Errorf("failed to stat local file %s: %w", localPath, err)
+	}
+
+	uploader, err := NewMultipartUploaderWithRetryConfig(
+		ctx,
+		o.storage.bucket.BucketName(),
+		o.path,
+		DefaultRetryConfig(),
+		map[string]string{
+			MetadataKeyUncompressedSize: strconv.FormatInt(fi.Size(), 10),
+		},
+	)
+	if err != nil {
+		return nil, [32]byte{}, fmt.Errorf("failed to create multipart uploader: %w", err)
+	}
+
+	return compressStream(ctx, file, cfg, uploader, maxConcurrency)
 }
 
 type gcpServiceToken struct {
@@ -496,6 +537,78 @@ func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) 
 	}
 
 	return &sa, nil
+}
+
+func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
+	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrReadAt))
+
+	if !frameTable.IsCompressed() {
+		rc, err := o.openRangeReader(ctx, offsetU, length)
+		if err != nil {
+			timer.Failure(ctx, 0)
+
+			return nil, err
+		}
+
+		return &timedReadCloser{inner: rc, timer: timer, ctx: ctx}, nil
+	}
+
+	r, err := frameTable.LocateCompressed(offsetU)
+	if err != nil {
+		timer.Failure(ctx, 0)
+
+		return nil, fmt.Errorf("get frame for offset %d, GCS:%s: %w", offsetU, o.path, err)
+	}
+
+	raw, err := o.openRangeReader(ctx, r.Offset, int64(r.Length))
+	if err != nil {
+		timer.Failure(ctx, 0)
+
+		return nil, err
+	}
+
+	decompressed, err := newDecompressingReadCloser(raw, frameTable.CompressionType())
+	if err != nil {
+		raw.Close()
+		timer.Failure(ctx, 0)
+
+		return nil, err
+	}
+
+	return &timedReadCloser{inner: decompressed, timer: timer, ctx: ctx}, nil
+}
+
+// timedReadCloser wraps a reader with OTEL timer metrics.
+// Close records success (with total bytes read) or failure on the timer.
+type timedReadCloser struct {
+	inner     io.ReadCloser
+	timer     *telemetry.Stopwatch
+	ctx       context.Context //nolint:containedctx // needed for timer recording in Close
+	bytesRead int64
+	closeErr  error
+}
+
+func (r *timedReadCloser) Read(p []byte) (int, error) {
+	n, err := r.inner.Read(p)
+	r.bytesRead += int64(n)
+
+	if err != nil && err != io.EOF {
+		r.closeErr = err
+	}
+
+	return n, err
+}
+
+func (r *timedReadCloser) Close() error {
+	err := r.inner.Close()
+
+	if r.closeErr != nil || err != nil {
+		r.timer.Failure(r.ctx, r.bytesRead)
+	} else {
+		r.timer.Success(r.ctx, r.bytesRead)
+	}
+
+	return err
 }
 
 func isResourceExhausted(err error) bool {

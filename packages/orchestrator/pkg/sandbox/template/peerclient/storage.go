@@ -34,7 +34,6 @@ var (
 	attrOpWriteTo     = attribute.String("operation", "WriteTo")
 	attrOpExists      = attribute.String("operation", "Exists")
 	attrOpSize        = attribute.String("operation", "Size")
-	attrOpReadAt      = attribute.String("operation", "ReadAt")
 	attrOpRangeReader = attribute.String("operation", "OpenRangeReader")
 
 	attrResolveRedisError = attribute.String("peer_resolve", "redis_error")
@@ -111,15 +110,15 @@ var _ storage.StorageProvider = (*peerStorageProvider)(nil)
 type peerStorageProvider struct {
 	base       storage.StorageProvider
 	peerClient orchestrator.ChunkServiceClient
-	// uploaded is set to true when the peer signals that GCS upload is complete
-	// (use_storage=true). Once set, all subsequent reads skip the peer and go to base.
-	uploaded *atomic.Bool
+	// uploaded is set when the peer signals GCS upload is complete (use_storage=true).
+	// Once non-nil, all subsequent reads skip the peer and go to base.
+	uploaded *atomic.Pointer[UploadedHeaders]
 }
 
 func newPeerStorageProvider(
 	base storage.StorageProvider,
 	peerClient orchestrator.ChunkServiceClient,
-	uploaded *atomic.Bool,
+	uploaded *atomic.Pointer[UploadedHeaders],
 ) storage.StorageProvider {
 	return &peerStorageProvider{
 		base:       base,
@@ -168,14 +167,18 @@ func (p *peerStorageProvider) GetDetails() string {
 	return p.base.GetDetails()
 }
 
-// checkPeerAvailability also marks the uploaded flag when UseStorage is set.
-func checkPeerAvailability(avail *orchestrator.PeerAvailability, uploaded *atomic.Bool) bool {
+// checkPeerAvailability marks the build as uploaded when UseStorage is set.
+func checkPeerAvailability(avail *orchestrator.PeerAvailability, uploaded *atomic.Pointer[UploadedHeaders]) bool {
 	if avail.GetNotAvailable() {
 		return false
 	}
 
 	if avail.GetUseStorage() {
-		uploaded.Store(true)
+		hdrs := &UploadedHeaders{
+			MemfileHeader: avail.GetMemfileHeader(),
+			RootfsHeader:  avail.GetRootfsHeader(),
+		}
+		uploaded.Store(hdrs)
 
 		return false
 	}
@@ -187,7 +190,7 @@ type peerHandle[Base any] struct {
 	client   orchestrator.ChunkServiceClient
 	buildID  string
 	fileName string
-	uploaded *atomic.Bool
+	uploaded *atomic.Pointer[UploadedHeaders]
 
 	mu     sync.Mutex
 	base   Base
@@ -238,7 +241,7 @@ func withPeerFallback[Base, T any](
 	))
 	defer span.End()
 
-	if !h.uploaded.Load() {
+	if h.uploaded.Load() == nil {
 		timer := peerReadTimerFactory.Begin(opAttr)
 
 		res, err := peerFn(ctx)

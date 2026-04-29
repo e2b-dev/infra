@@ -704,3 +704,181 @@ func TestNormalizeMappingsDoesNotModifyInput(t *testing.T) {
 	err := ValidateMappings(m, 6*blockSize, blockSize)
 	require.NoError(t, err)
 }
+
+// TestMergeMappings_Splits verifies that MergeMappings preserves
+// BuildStorageOffset through splits. When a diff lands in the middle of a
+// base mapping the base is split into left/right pieces; each piece must
+// keep the correct BuildStorageOffset so the read path fetches data from
+// the right position within each build's data blob. Without this,
+// compressed builds whose frame tables are keyed by BuildStorageOffset
+// would decompress the wrong frames.
+func TestMergeMappings_Splits(t *testing.T) {
+	t.Parallel()
+
+	compBaseID := uuid.New()
+	compDiffID := uuid.New()
+	plainID := uuid.New()
+
+	tests := map[string]struct {
+		base     []BuildMap
+		diff     []BuildMap
+		validate func(t *testing.T, merged []BuildMap)
+	}{
+		"diff inside base — left and right split correctly": {
+			base: []BuildMap{{
+				Offset: 0, Length: 6 * blockSize,
+				BuildId: compBaseID, BuildStorageOffset: 0,
+			}},
+			diff: []BuildMap{{
+				Offset: 2 * blockSize, Length: 2 * blockSize,
+				BuildId: compDiffID,
+			}},
+			validate: func(t *testing.T, m []BuildMap) {
+				t.Helper()
+				require.Len(t, m, 3)
+
+				assert.Equal(t, uint64(0), m[0].Offset)
+				assert.Equal(t, 2*blockSize, m[0].Length)
+				assert.Equal(t, compBaseID, m[0].BuildId)
+
+				assert.Equal(t, compDiffID, m[1].BuildId)
+
+				assert.Equal(t, 4*blockSize, m[2].Offset)
+				assert.Equal(t, 4*blockSize, m[2].BuildStorageOffset)
+				assert.Equal(t, compBaseID, m[2].BuildId)
+			},
+		},
+
+		"base after diff with overlap — right split keeps tail": {
+			base: []BuildMap{
+				{Offset: 0, Length: 1 * blockSize, BuildId: plainID},
+				{
+					Offset: 1 * blockSize, Length: 4 * blockSize,
+					BuildId: compBaseID, BuildStorageOffset: 0,
+				},
+			},
+			diff: []BuildMap{{
+				Offset: 0, Length: 3 * blockSize,
+				BuildId: compDiffID,
+			}},
+			validate: func(t *testing.T, m []BuildMap) {
+				t.Helper()
+				require.Len(t, m, 2)
+
+				assert.Equal(t, compDiffID, m[0].BuildId)
+
+				assert.Equal(t, 3*blockSize, m[1].Offset)
+				assert.Equal(t, 2*blockSize, m[1].BuildStorageOffset)
+				assert.Equal(t, compBaseID, m[1].BuildId)
+			},
+		},
+
+		"diff after base with overlap — left split keeps head": {
+			base: []BuildMap{
+				{
+					Offset: 0, Length: 4 * blockSize,
+					BuildId: compBaseID, BuildStorageOffset: 0,
+				},
+				{Offset: 4 * blockSize, Length: 2 * blockSize, BuildId: plainID},
+			},
+			diff: []BuildMap{{
+				Offset: 2 * blockSize, Length: 4 * blockSize,
+				BuildId: compDiffID,
+			}},
+			validate: func(t *testing.T, m []BuildMap) {
+				t.Helper()
+				require.Len(t, m, 2)
+
+				assert.Equal(t, uint64(0), m[0].Offset)
+				assert.Equal(t, 2*blockSize, m[0].Length)
+				assert.Equal(t, compBaseID, m[0].BuildId)
+
+				assert.Equal(t, compDiffID, m[1].BuildId)
+			},
+		},
+
+		"two diffs split same base into three pieces": {
+			base: []BuildMap{{
+				Offset: 0, Length: 6 * blockSize,
+				BuildId: compBaseID, BuildStorageOffset: 0,
+			}},
+			diff: []BuildMap{
+				{Offset: 1 * blockSize, Length: 1 * blockSize, BuildId: compDiffID},
+				{Offset: 4 * blockSize, Length: 1 * blockSize, BuildId: compDiffID},
+			},
+			validate: func(t *testing.T, m []BuildMap) {
+				t.Helper()
+				require.Len(t, m, 5)
+
+				assert.Equal(t, compBaseID, m[0].BuildId)
+				assert.Equal(t, 1*blockSize, m[0].Length)
+
+				assert.Equal(t, compDiffID, m[1].BuildId)
+
+				assert.Equal(t, compBaseID, m[2].BuildId)
+				assert.Equal(t, 2*blockSize, m[2].Length)
+				assert.Equal(t, 2*blockSize, m[2].BuildStorageOffset)
+
+				assert.Equal(t, compDiffID, m[3].BuildId)
+
+				assert.Equal(t, compBaseID, m[4].BuildId)
+				assert.Equal(t, 1*blockSize, m[4].Length)
+				assert.Equal(t, 5*blockSize, m[4].BuildStorageOffset)
+			},
+		},
+
+		"multi-layer base — diff splits middle build": {
+			base: func() []BuildMap {
+				buildA := uuid.New()
+				buildB := compBaseID
+				buildC := uuid.New()
+
+				return []BuildMap{
+					{
+						Offset: 0, Length: 2 * blockSize,
+						BuildId: buildA, BuildStorageOffset: 0,
+					},
+					{
+						Offset: 2 * blockSize, Length: 4 * blockSize,
+						BuildId: buildB, BuildStorageOffset: 0,
+					},
+					{
+						Offset: 6 * blockSize, Length: 2 * blockSize,
+						BuildId: buildC, BuildStorageOffset: 0,
+					},
+				}
+			}(),
+			diff: []BuildMap{{
+				Offset: 3 * blockSize, Length: 2 * blockSize,
+				BuildId: compDiffID,
+			}},
+			validate: func(t *testing.T, m []BuildMap) {
+				t.Helper()
+				require.Len(t, m, 5)
+
+				// Build B left
+				assert.Equal(t, 2*blockSize, m[1].Offset)
+				assert.Equal(t, 1*blockSize, m[1].Length)
+				assert.Equal(t, uint64(0), m[1].BuildStorageOffset)
+
+				// Diff
+				assert.Equal(t, compDiffID, m[2].BuildId)
+
+				// Build B right
+				assert.Equal(t, 5*blockSize, m[3].Offset)
+				assert.Equal(t, 1*blockSize, m[3].Length)
+				assert.Equal(t, 3*blockSize, m[3].BuildStorageOffset)
+			},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			merged := MergeMappings(tc.base, tc.diff)
+
+			tc.validate(t, merged)
+		})
+	}
+}

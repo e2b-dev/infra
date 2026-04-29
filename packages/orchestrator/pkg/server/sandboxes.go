@@ -665,9 +665,11 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		// be paused or resumed later.
 		uploadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadTimeout)
 		defer cancel()
-		defer res.completeUpload(uploadCtx)
 
-		if err := res.snapshot.Upload(uploadCtx, s.persistence, res.paths); err != nil {
+		memHdr, rootHdr, err := res.snapshot.Upload(uploadCtx, s.persistence, res.paths, s.config.StorageConfig.CompressConfig, s.featureFlags, storage.UseCasePause)
+		defer res.completeUpload(uploadCtx, memHdr, rootHdr)
+
+		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
 			s.sandboxFactory.Sandboxes.MarkStopping(ctx, resumedSbx.Runtime.SandboxID, resumedSbx.LifecycleID)
@@ -721,12 +723,12 @@ type snapshotResult struct {
 	meta           metadata.Template
 	snapshot       *sandbox.Snapshot
 	paths          storage.Paths
-	completeUpload func(ctx context.Context)
+	completeUpload func(ctx context.Context, memfileHdr, rootfsHdr []byte)
 }
 
 // snapshotAndCacheSandbox creates a snapshot of a sandbox and adds it to the local
 // template cache. The caller is responsible for starting the GCS upload via
-// startSnapshotUploadAsync or uploadSnapshotWithPrefetchAsync.
+// uploadSnapshotAsync.
 func (s *Server) snapshotAndCacheSandbox(
 	ctx context.Context,
 	sbx *sandbox.Sandbox,
@@ -772,9 +774,12 @@ func (s *Server) snapshotAndCacheSandbox(
 			logger.L().Warn(ctx, "failed to register peer address for routing", zap.String("build_id", meta.Template.BuildID), zap.Error(err))
 		}
 
-		completeUpload := func(ctx context.Context) {
+		completeUpload := func(ctx context.Context, memfileHdr, rootfsHdr []byte) {
 			// Signal in-flight peer streams to switch to GCS.
-			s.uploadedBuilds.Set(meta.Template.BuildID, struct{}{}, ttlcache.DefaultTTL)
+			s.uploadedBuilds.Set(meta.Template.BuildID, &uploadedBuildHeaders{
+				memfileHeader: memfileHdr,
+				rootfsHeader:  rootfsHdr,
+			}, ttlcache.DefaultTTL)
 
 			// Remove from Redis so new nodes go directly to GCS.
 			if err := s.peerRegistry.Unregister(ctx, meta.Template.BuildID); err != nil {
@@ -794,7 +799,7 @@ func (s *Server) snapshotAndCacheSandbox(
 		meta:           meta,
 		snapshot:       snapshot,
 		paths:          paths,
-		completeUpload: func(context.Context) {},
+		completeUpload: func(context.Context, []byte, []byte) {},
 	}, nil
 }
 
@@ -806,16 +811,15 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 
 	go func() {
 		defer cancel()
-		defer res.completeUpload(ctx)
 
-		err := res.snapshot.Upload(ctx, s.persistence, res.paths)
+		memHdr, rootHdr, err := res.snapshot.Upload(ctx, s.persistence, res.paths, s.config.StorageConfig.CompressConfig, s.featureFlags, storage.UseCasePause)
 		if err != nil {
 			sbxlogger.I(sbx).Error(ctx, "error uploading snapshot files", zap.Error(err))
-
-			return
+		} else {
+			sbxlogger.I(sbx).Info(ctx, "snapshot finished uploading successfully")
 		}
 
-		sbxlogger.E(sbx).Info(ctx, "Snapshot files uploaded to GCS")
+		res.completeUpload(ctx, memHdr, rootHdr)
 	}()
 }
 

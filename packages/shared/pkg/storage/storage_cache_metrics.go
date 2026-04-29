@@ -29,12 +29,11 @@ type cacheOp string
 
 const (
 	cacheOpWriteTo cacheOp = "write_to"
-	cacheOpReadAt  cacheOp = "read_at"
+	cacheOpWrite   cacheOp = "write"
 	cacheOpSize    cacheOp = "size"
 
 	cacheOpOpenRangeReader cacheOp = "open_range_reader"
 
-	cacheOpWrite               cacheOp = "write"
 	cacheOpWriteFromFileSystem cacheOp = "write_from_filesystem"
 )
 

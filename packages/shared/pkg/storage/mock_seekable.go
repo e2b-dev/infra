@@ -2,7 +2,7 @@
 // github.com/vektra/mockery
 // template: testify
 
-package storagemocks
+package storage
 
 import (
 	"context"
@@ -39,8 +39,8 @@ func (_m *MockSeekable) EXPECT() *MockSeekable_Expecter {
 }
 
 // OpenRangeReader provides a mock function for the type MockSeekable
-func (_mock *MockSeekable) OpenRangeReader(ctx context.Context, off int64, length int64) (io.ReadCloser, error) {
-	ret := _mock.Called(ctx, off, length)
+func (_mock *MockSeekable) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
+	ret := _mock.Called(ctx, offsetU, length, frameTable)
 
 	if len(ret) == 0 {
 		panic("no return value specified for OpenRangeReader")
@@ -48,18 +48,18 @@ func (_mock *MockSeekable) OpenRangeReader(ctx context.Context, off int64, lengt
 
 	var r0 io.ReadCloser
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int64, int64) (io.ReadCloser, error)); ok {
-		return returnFunc(ctx, off, length)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int64, int64, *FrameTable) (io.ReadCloser, error)); ok {
+		return returnFunc(ctx, offsetU, length, frameTable)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int64, int64) io.ReadCloser); ok {
-		r0 = returnFunc(ctx, off, length)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int64, int64, *FrameTable) io.ReadCloser); ok {
+		r0 = returnFunc(ctx, offsetU, length, frameTable)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(io.ReadCloser)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, int64, int64) error); ok {
-		r1 = returnFunc(ctx, off, length)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int64, int64, *FrameTable) error); ok {
+		r1 = returnFunc(ctx, offsetU, length, frameTable)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -73,13 +73,14 @@ type MockSeekable_OpenRangeReader_Call struct {
 
 // OpenRangeReader is a helper method to define mock.On call
 //   - ctx context.Context
-//   - off int64
+//   - offsetU int64
 //   - length int64
-func (_e *MockSeekable_Expecter) OpenRangeReader(ctx interface{}, off interface{}, length interface{}) *MockSeekable_OpenRangeReader_Call {
-	return &MockSeekable_OpenRangeReader_Call{Call: _e.mock.On("OpenRangeReader", ctx, off, length)}
+//   - frameTable *FrameTable
+func (_e *MockSeekable_Expecter) OpenRangeReader(ctx interface{}, offsetU interface{}, length interface{}, frameTable interface{}) *MockSeekable_OpenRangeReader_Call {
+	return &MockSeekable_OpenRangeReader_Call{Call: _e.mock.On("OpenRangeReader", ctx, offsetU, length, frameTable)}
 }
 
-func (_c *MockSeekable_OpenRangeReader_Call) Run(run func(ctx context.Context, off int64, length int64)) *MockSeekable_OpenRangeReader_Call {
+func (_c *MockSeekable_OpenRangeReader_Call) Run(run func(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable)) *MockSeekable_OpenRangeReader_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -93,10 +94,15 @@ func (_c *MockSeekable_OpenRangeReader_Call) Run(run func(ctx context.Context, o
 		if args[2] != nil {
 			arg2 = args[2].(int64)
 		}
+		var arg3 *FrameTable
+		if args[3] != nil {
+			arg3 = args[3].(*FrameTable)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -107,79 +113,7 @@ func (_c *MockSeekable_OpenRangeReader_Call) Return(readCloser io.ReadCloser, er
 	return _c
 }
 
-func (_c *MockSeekable_OpenRangeReader_Call) RunAndReturn(run func(ctx context.Context, off int64, length int64) (io.ReadCloser, error)) *MockSeekable_OpenRangeReader_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// ReadAt provides a mock function for the type MockSeekable
-func (_mock *MockSeekable) ReadAt(ctx context.Context, buffer []byte, off int64) (int, error) {
-	ret := _mock.Called(ctx, buffer, off)
-
-	if len(ret) == 0 {
-		panic("no return value specified for ReadAt")
-	}
-
-	var r0 int
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte, int64) (int, error)); ok {
-		return returnFunc(ctx, buffer, off)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte, int64) int); ok {
-		r0 = returnFunc(ctx, buffer, off)
-	} else {
-		r0 = ret.Get(0).(int)
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, []byte, int64) error); ok {
-		r1 = returnFunc(ctx, buffer, off)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// MockSeekable_ReadAt_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReadAt'
-type MockSeekable_ReadAt_Call struct {
-	*mock.Call
-}
-
-// ReadAt is a helper method to define mock.On call
-//   - ctx context.Context
-//   - buffer []byte
-//   - off int64
-func (_e *MockSeekable_Expecter) ReadAt(ctx interface{}, buffer interface{}, off interface{}) *MockSeekable_ReadAt_Call {
-	return &MockSeekable_ReadAt_Call{Call: _e.mock.On("ReadAt", ctx, buffer, off)}
-}
-
-func (_c *MockSeekable_ReadAt_Call) Run(run func(ctx context.Context, buffer []byte, off int64)) *MockSeekable_ReadAt_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 []byte
-		if args[1] != nil {
-			arg1 = args[1].([]byte)
-		}
-		var arg2 int64
-		if args[2] != nil {
-			arg2 = args[2].(int64)
-		}
-		run(
-			arg0,
-			arg1,
-			arg2,
-		)
-	})
-	return _c
-}
-
-func (_c *MockSeekable_ReadAt_Call) Return(n int, err error) *MockSeekable_ReadAt_Call {
-	_c.Call.Return(n, err)
-	return _c
-}
-
-func (_c *MockSeekable_ReadAt_Call) RunAndReturn(run func(ctx context.Context, buffer []byte, off int64) (int, error)) *MockSeekable_ReadAt_Call {
+func (_c *MockSeekable_OpenRangeReader_Call) RunAndReturn(run func(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error)) *MockSeekable_OpenRangeReader_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -245,20 +179,39 @@ func (_c *MockSeekable_Size_Call) RunAndReturn(run func(ctx context.Context) (in
 }
 
 // StoreFile provides a mock function for the type MockSeekable
-func (_mock *MockSeekable) StoreFile(ctx context.Context, path string) error {
-	ret := _mock.Called(ctx, path)
+func (_mock *MockSeekable) StoreFile(ctx context.Context, path string, cfg CompressConfig) (*FrameTable, [32]byte, error) {
+	ret := _mock.Called(ctx, path, cfg)
 
 	if len(ret) == 0 {
 		panic("no return value specified for StoreFile")
 	}
 
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = returnFunc(ctx, path)
-	} else {
-		r0 = ret.Error(0)
+	var r0 *FrameTable
+	var r1 [32]byte
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, CompressConfig) (*FrameTable, [32]byte, error)); ok {
+		return returnFunc(ctx, path, cfg)
 	}
-	return r0
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, CompressConfig) *FrameTable); ok {
+		r0 = returnFunc(ctx, path, cfg)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*FrameTable)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, CompressConfig) [32]byte); ok {
+		r1 = returnFunc(ctx, path, cfg)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).([32]byte)
+		}
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, string, CompressConfig) error); ok {
+		r2 = returnFunc(ctx, path, cfg)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
 }
 
 // MockSeekable_StoreFile_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'StoreFile'
@@ -269,11 +222,12 @@ type MockSeekable_StoreFile_Call struct {
 // StoreFile is a helper method to define mock.On call
 //   - ctx context.Context
 //   - path string
-func (_e *MockSeekable_Expecter) StoreFile(ctx interface{}, path interface{}) *MockSeekable_StoreFile_Call {
-	return &MockSeekable_StoreFile_Call{Call: _e.mock.On("StoreFile", ctx, path)}
+//   - cfg CompressConfig
+func (_e *MockSeekable_Expecter) StoreFile(ctx interface{}, path interface{}, cfg interface{}) *MockSeekable_StoreFile_Call {
+	return &MockSeekable_StoreFile_Call{Call: _e.mock.On("StoreFile", ctx, path, cfg)}
 }
 
-func (_c *MockSeekable_StoreFile_Call) Run(run func(ctx context.Context, path string)) *MockSeekable_StoreFile_Call {
+func (_c *MockSeekable_StoreFile_Call) Run(run func(ctx context.Context, path string, cfg CompressConfig)) *MockSeekable_StoreFile_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -283,20 +237,25 @@ func (_c *MockSeekable_StoreFile_Call) Run(run func(ctx context.Context, path st
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
+		var arg2 CompressConfig
+		if args[2] != nil {
+			arg2 = args[2].(CompressConfig)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
 }
 
-func (_c *MockSeekable_StoreFile_Call) Return(err error) *MockSeekable_StoreFile_Call {
-	_c.Call.Return(err)
+func (_c *MockSeekable_StoreFile_Call) Return(frameTable *FrameTable, bytes [32]byte, err error) *MockSeekable_StoreFile_Call {
+	_c.Call.Return(frameTable, bytes, err)
 	return _c
 }
 
-func (_c *MockSeekable_StoreFile_Call) RunAndReturn(run func(ctx context.Context, path string) error) *MockSeekable_StoreFile_Call {
+func (_c *MockSeekable_StoreFile_Call) RunAndReturn(run func(ctx context.Context, path string, cfg CompressConfig) (*FrameTable, [32]byte, error)) *MockSeekable_StoreFile_Call {
 	_c.Call.Return(run)
 	return _c
 }

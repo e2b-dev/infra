@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -41,6 +42,10 @@ const (
 
 	// MemoryChunkSize must always be bigger or equal to the block size.
 	MemoryChunkSize = 4 * 1024 * 1024 // 4 MB
+
+	// MetadataKeyUncompressedSize stores the original size so that Size()
+	// returns the uncompressed size for compressed objects.
+	MetadataKeyUncompressedSize = "uncompressed-size"
 )
 
 // GetProviderType returns the configured storage provider type from the
@@ -91,24 +96,58 @@ type Blob interface {
 
 type SeekableReader interface {
 	// Random slice access, off and buffer length must be aligned to block size
-	ReadAt(ctx context.Context, buffer []byte, off int64) (int, error)
+	ReadAt(ctx context.Context, buffer []byte, off int64, ft *FrameTable) (int, error)
 	Size(ctx context.Context) (int64, error)
 }
 
 // StreamingReader supports progressive reads via a streaming range reader.
 type StreamingReader interface {
-	OpenRangeReader(ctx context.Context, off, length int64) (io.ReadCloser, error)
+	OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error)
 }
 
 type SeekableWriter interface {
 	// Store entire file
-	StoreFile(ctx context.Context, path string) error
+	StoreFile(ctx context.Context, path string, cfg CompressConfig) (*FrameTable, [32]byte, error)
 }
 
 type Seekable interface {
-	SeekableReader
-	SeekableWriter
 	StreamingReader
+	SeekableWriter
+	Size(ctx context.Context) (int64, error)
+}
+
+func UploadFramed(ctx context.Context, provider StorageProvider, remotePath string, objType SeekableObjectType, localPath string, cfg CompressConfig) (*FrameTable, [32]byte, error) {
+	object, err := provider.OpenSeekable(ctx, remotePath, objType)
+	if err != nil {
+		return nil, [32]byte{}, err
+	}
+
+	return object.StoreFile(ctx, localPath, cfg)
+}
+
+func UploadBlob(ctx context.Context, provider StorageProvider, remotePath string, objType ObjectType, localPath string) error {
+	blob, err := provider.OpenBlob(ctx, remotePath, objType)
+	if err != nil {
+		return err
+	}
+
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		return fmt.Errorf("failed to read file %s: %w", localPath, err)
+	}
+
+	return blob.Put(ctx, data)
+}
+
+// PeerTransitionedError is returned by the peer Seekable when the GCS upload
+// has completed and serialized V4 headers are available.
+type PeerTransitionedError struct {
+	MemfileHeader []byte
+	RootfsHeader  []byte
+}
+
+func (e *PeerTransitionedError) Error() string {
+	return "peer upload completed, headers available"
 }
 
 // StorageConfig holds the configuration for creating a storage provider.

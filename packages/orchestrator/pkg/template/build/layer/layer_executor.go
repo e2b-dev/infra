@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -34,6 +35,8 @@ type LayerExecutor struct {
 	buildStorage    storage.StorageProvider
 	index           cache.Index
 	uploadTracker   *UploadTracker
+	compressConfig  storage.CompressConfig
+	ff              *featureflags.Client
 }
 
 func NewLayerExecutor(
@@ -46,6 +49,8 @@ func NewLayerExecutor(
 	buildStorage storage.StorageProvider,
 	index cache.Index,
 	uploadTracker *UploadTracker,
+	compressConfig storage.CompressConfig,
+	ff *featureflags.Client,
 ) *LayerExecutor {
 	return &LayerExecutor{
 		BuildContext: buildContext,
@@ -59,6 +64,8 @@ func NewLayerExecutor(
 		buildStorage:    buildStorage,
 		index:           index,
 		uploadTracker:   uploadTracker,
+		compressConfig:  compressConfig,
+		ff:              ff,
 	}
 }
 
@@ -278,6 +285,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 
 	// Register this upload and get functions to signal completion and wait for previous uploads
 	completeUpload, waitForPreviousUploads := lb.uploadTracker.StartUpload()
+	uploader := sandbox.NewBuildUploader(ctx, snapshot, lb.templateStorage, storage.Paths{BuildID: meta.Template.BuildID}, lb.compressConfig, lb.ff, storage.UseCaseBuild, lb.uploadTracker.Pending())
 
 	lb.UploadErrGroup.Go(func() error {
 		ctx := context.WithoutCancel(ctx)
@@ -289,29 +297,28 @@ func (lb *LayerExecutor) PauseAndUpload(
 		// still unblock and the errgroup can properly collect all errors.
 		defer completeUpload()
 
-		err := snapshot.Upload(
-			ctx,
-			lb.templateStorage,
-			storage.Paths{BuildID: meta.Template.BuildID},
-		)
-		if err != nil {
-			return fmt.Errorf("error uploading snapshot: %w", err)
+		if err := uploader.UploadData(ctx); err != nil {
+			return fmt.Errorf("error uploading data files: %w", err)
 		}
 
 		// Wait for all previous layer uploads to complete before saving the cache entry.
 		// This prevents race conditions where another build hits this cache entry
 		// before its dependencies (previous layers) are available in storage.
-		err = waitForPreviousUploads(ctx)
-		if err != nil {
+		// For compressed builds, this also ensures all ancestor frame tables are
+		// available so headers can reference mappings from earlier layers.
+		if err := waitForPreviousUploads(ctx); err != nil {
 			return fmt.Errorf("error waiting for previous uploads: %w", err)
 		}
 
-		err = lb.index.SaveLayerMeta(ctx, hash, cache.LayerMetadata{
+		if _, _, err := uploader.FinalizeHeaders(ctx); err != nil {
+			return fmt.Errorf("error finalizing headers: %w", err)
+		}
+
+		if err := lb.index.SaveLayerMeta(ctx, hash, cache.LayerMetadata{
 			Template: cache.Template{
 				BuildID: meta.Template.BuildID,
 			},
-		})
-		if err != nil {
+		}); err != nil {
 			// Since the data should be basically identical, this is safe to skip.
 			if !errors.Is(err, storage.ErrObjectRateLimited) {
 				return fmt.Errorf("error saving UUID to hash mapping: %w", err)

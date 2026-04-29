@@ -93,7 +93,7 @@ func openPeerBlobStream(
 	ctx context.Context,
 	client orchestrator.ChunkServiceClient,
 	req *orchestrator.GetBuildBlobRequest,
-	uploaded *atomic.Bool,
+	uploaded *atomic.Pointer[UploadedHeaders],
 ) (func() ([]byte, error), error) {
 	stream, err := client.GetBuildBlob(ctx, req)
 	if err != nil {

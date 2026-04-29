@@ -2,13 +2,12 @@
 // github.com/vektra/mockery
 // template: testify
 
-package providermocks
+package storage
 
 import (
 	"context"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -141,26 +140,26 @@ func (_c *MockStorageProvider_GetDetails_Call) RunAndReturn(run func() string) *
 }
 
 // OpenBlob provides a mock function for the type MockStorageProvider
-func (_mock *MockStorageProvider) OpenBlob(ctx context.Context, path string, objectType storage.ObjectType) (storage.Blob, error) {
+func (_mock *MockStorageProvider) OpenBlob(ctx context.Context, path string, objectType ObjectType) (Blob, error) {
 	ret := _mock.Called(ctx, path, objectType)
 
 	if len(ret) == 0 {
 		panic("no return value specified for OpenBlob")
 	}
 
-	var r0 storage.Blob
+	var r0 Blob
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, storage.ObjectType) (storage.Blob, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, ObjectType) (Blob, error)); ok {
 		return returnFunc(ctx, path, objectType)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, storage.ObjectType) storage.Blob); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, ObjectType) Blob); ok {
 		r0 = returnFunc(ctx, path, objectType)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(storage.Blob)
+			r0 = ret.Get(0).(Blob)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, storage.ObjectType) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, ObjectType) error); ok {
 		r1 = returnFunc(ctx, path, objectType)
 	} else {
 		r1 = ret.Error(1)
@@ -176,12 +175,12 @@ type MockStorageProvider_OpenBlob_Call struct {
 // OpenBlob is a helper method to define mock.On call
 //   - ctx context.Context
 //   - path string
-//   - objectType storage.ObjectType
+//   - objectType ObjectType
 func (_e *MockStorageProvider_Expecter) OpenBlob(ctx interface{}, path interface{}, objectType interface{}) *MockStorageProvider_OpenBlob_Call {
 	return &MockStorageProvider_OpenBlob_Call{Call: _e.mock.On("OpenBlob", ctx, path, objectType)}
 }
 
-func (_c *MockStorageProvider_OpenBlob_Call) Run(run func(ctx context.Context, path string, objectType storage.ObjectType)) *MockStorageProvider_OpenBlob_Call {
+func (_c *MockStorageProvider_OpenBlob_Call) Run(run func(ctx context.Context, path string, objectType ObjectType)) *MockStorageProvider_OpenBlob_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -191,9 +190,9 @@ func (_c *MockStorageProvider_OpenBlob_Call) Run(run func(ctx context.Context, p
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 storage.ObjectType
+		var arg2 ObjectType
 		if args[2] != nil {
-			arg2 = args[2].(storage.ObjectType)
+			arg2 = args[2].(ObjectType)
 		}
 		run(
 			arg0,
@@ -204,37 +203,37 @@ func (_c *MockStorageProvider_OpenBlob_Call) Run(run func(ctx context.Context, p
 	return _c
 }
 
-func (_c *MockStorageProvider_OpenBlob_Call) Return(blob storage.Blob, err error) *MockStorageProvider_OpenBlob_Call {
+func (_c *MockStorageProvider_OpenBlob_Call) Return(blob Blob, err error) *MockStorageProvider_OpenBlob_Call {
 	_c.Call.Return(blob, err)
 	return _c
 }
 
-func (_c *MockStorageProvider_OpenBlob_Call) RunAndReturn(run func(ctx context.Context, path string, objectType storage.ObjectType) (storage.Blob, error)) *MockStorageProvider_OpenBlob_Call {
+func (_c *MockStorageProvider_OpenBlob_Call) RunAndReturn(run func(ctx context.Context, path string, objectType ObjectType) (Blob, error)) *MockStorageProvider_OpenBlob_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // OpenSeekable provides a mock function for the type MockStorageProvider
-func (_mock *MockStorageProvider) OpenSeekable(ctx context.Context, path string, seekableObjectType storage.SeekableObjectType) (storage.Seekable, error) {
+func (_mock *MockStorageProvider) OpenSeekable(ctx context.Context, path string, seekableObjectType SeekableObjectType) (Seekable, error) {
 	ret := _mock.Called(ctx, path, seekableObjectType)
 
 	if len(ret) == 0 {
 		panic("no return value specified for OpenSeekable")
 	}
 
-	var r0 storage.Seekable
+	var r0 Seekable
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, storage.SeekableObjectType) (storage.Seekable, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, SeekableObjectType) (Seekable, error)); ok {
 		return returnFunc(ctx, path, seekableObjectType)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, storage.SeekableObjectType) storage.Seekable); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, SeekableObjectType) Seekable); ok {
 		r0 = returnFunc(ctx, path, seekableObjectType)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(storage.Seekable)
+			r0 = ret.Get(0).(Seekable)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, storage.SeekableObjectType) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, SeekableObjectType) error); ok {
 		r1 = returnFunc(ctx, path, seekableObjectType)
 	} else {
 		r1 = ret.Error(1)
@@ -250,12 +249,12 @@ type MockStorageProvider_OpenSeekable_Call struct {
 // OpenSeekable is a helper method to define mock.On call
 //   - ctx context.Context
 //   - path string
-//   - seekableObjectType storage.SeekableObjectType
+//   - seekableObjectType SeekableObjectType
 func (_e *MockStorageProvider_Expecter) OpenSeekable(ctx interface{}, path interface{}, seekableObjectType interface{}) *MockStorageProvider_OpenSeekable_Call {
 	return &MockStorageProvider_OpenSeekable_Call{Call: _e.mock.On("OpenSeekable", ctx, path, seekableObjectType)}
 }
 
-func (_c *MockStorageProvider_OpenSeekable_Call) Run(run func(ctx context.Context, path string, seekableObjectType storage.SeekableObjectType)) *MockStorageProvider_OpenSeekable_Call {
+func (_c *MockStorageProvider_OpenSeekable_Call) Run(run func(ctx context.Context, path string, seekableObjectType SeekableObjectType)) *MockStorageProvider_OpenSeekable_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -265,9 +264,9 @@ func (_c *MockStorageProvider_OpenSeekable_Call) Run(run func(ctx context.Contex
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 storage.SeekableObjectType
+		var arg2 SeekableObjectType
 		if args[2] != nil {
-			arg2 = args[2].(storage.SeekableObjectType)
+			arg2 = args[2].(SeekableObjectType)
 		}
 		run(
 			arg0,
@@ -278,12 +277,12 @@ func (_c *MockStorageProvider_OpenSeekable_Call) Run(run func(ctx context.Contex
 	return _c
 }
 
-func (_c *MockStorageProvider_OpenSeekable_Call) Return(seekable storage.Seekable, err error) *MockStorageProvider_OpenSeekable_Call {
+func (_c *MockStorageProvider_OpenSeekable_Call) Return(seekable Seekable, err error) *MockStorageProvider_OpenSeekable_Call {
 	_c.Call.Return(seekable, err)
 	return _c
 }
 
-func (_c *MockStorageProvider_OpenSeekable_Call) RunAndReturn(run func(ctx context.Context, path string, seekableObjectType storage.SeekableObjectType) (storage.Seekable, error)) *MockStorageProvider_OpenSeekable_Call {
+func (_c *MockStorageProvider_OpenSeekable_Call) RunAndReturn(run func(ctx context.Context, path string, seekableObjectType SeekableObjectType) (Seekable, error)) *MockStorageProvider_OpenSeekable_Call {
 	_c.Call.Return(run)
 	return _c
 }

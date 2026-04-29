@@ -162,13 +162,17 @@ func (o *awsObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	return io.Copy(dst, resp.Body)
 }
 
-func (o *awsObject) StoreFile(ctx context.Context, path string) error {
+func (o *awsObject) StoreFile(ctx context.Context, path string, cfg CompressConfig) (*FrameTable, [32]byte, error) {
+	if cfg.IsCompressionEnabled() {
+		return nil, [32]byte{}, errors.New("compressed uploads are not supported on AWS (builds target GCP only)")
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
 	defer cancel()
 
 	f, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("failed to open file %s: %w", path, err)
+		return nil, [32]byte{}, fmt.Errorf("failed to open file %s: %w", path, err)
 	}
 	defer f.Close()
 
@@ -188,8 +192,23 @@ func (o *awsObject) StoreFile(ctx context.Context, path string) error {
 			Body:   f,
 		},
 	)
+	if err == nil {
+		fi, _ := f.Stat()
+		var size int64
+		if fi != nil {
+			size = fi.Size()
+		}
 
-	return err
+		logger.L().Debug(ctx, "Uploaded file to S3",
+			zap.String("bucket", o.bucketName),
+			zap.String("object", o.path),
+			zap.String("source", path),
+			zap.Int64("size_uncompressed", size),
+			zap.String("compression", "none"),
+		)
+	}
+
+	return nil, [32]byte{}, err
 }
 
 func (o *awsObject) Put(ctx context.Context, data []byte) error {
@@ -211,7 +230,11 @@ func (o *awsObject) Put(ctx context.Context, data []byte) error {
 	return nil
 }
 
-func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64) (io.ReadCloser, error) {
+func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
+	if frameTable.IsCompressed() {
+		return nil, errors.New("compressed reads are not supported on AWS")
+	}
+
 	readRange := aws.String(fmt.Sprintf("bytes=%d-%d", off, off+length-1))
 	resp, err := o.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(o.bucketName),
@@ -228,37 +251,6 @@ func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64) (io.
 	}
 
 	return resp.Body, nil
-}
-
-func (o *awsObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, err error) {
-	ctx, cancel := context.WithTimeout(ctx, awsReadTimeout)
-	defer cancel()
-
-	readRange := aws.String(fmt.Sprintf("bytes=%d-%d", off, off+int64(len(buff))-1))
-	resp, err := o.client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(o.bucketName),
-		Key:    aws.String(o.path),
-		Range:  readRange,
-	})
-	if err != nil {
-		var nsk *types.NoSuchKey
-		if errors.As(err, &nsk) {
-			return 0, ErrObjectNotExist
-		}
-
-		return 0, err
-	}
-
-	defer resp.Body.Close()
-
-	// When the object is smaller than requested range there will be unexpected EOF,
-	// but backend expects to return EOF in this case.
-	n, err = io.ReadFull(resp.Body, buff)
-	if errors.Is(err, io.ErrUnexpectedEOF) {
-		err = io.EOF
-	}
-
-	return n, err
 }
 
 func (o *awsObject) Size(ctx context.Context) (int64, error) {

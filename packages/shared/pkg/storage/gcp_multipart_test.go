@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"crypto/md5"
+	"encoding/base64"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -115,6 +117,42 @@ func TestMultipartUploader_UploadPart_Success(t *testing.T) {
 	require.Equal(t, expectedETag, etag)
 }
 
+func TestMultipartUploader_UploadPartSlices_Success(t *testing.T) {
+	t.Parallel()
+	expectedETag := `"slice-etag"`
+	slices := [][]byte{[]byte("hello "), []byte("world"), []byte("!")}
+
+	// Compute expected MD5 over all slices.
+	h := md5.New()
+	for _, s := range slices {
+		h.Write(s)
+	}
+	expectedMD5 := base64.StdEncoding.EncodeToString(h.Sum(nil))
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "PUT", r.Method)
+		assert.Contains(t, r.URL.RawQuery, "partNumber=3")
+		assert.Contains(t, r.URL.RawQuery, "uploadId=test-upload-id")
+
+		// Verify MD5 matches the expected hash of all slices.
+		assert.Equal(t, expectedMD5, r.Header.Get("Content-MD5"))
+
+		// Verify body is the concatenation of all slices.
+		body, err := io.ReadAll(r.Body)
+		assert.NoError(t, err)
+		assert.Equal(t, []byte("hello world!"), body)
+
+		w.Header().Set("ETag", expectedETag)
+		w.WriteHeader(http.StatusOK)
+	})
+
+	uploader := createTestMultipartUploader(t, handler)
+	etag, err := uploader.uploadPartSlices(t.Context(), "test-upload-id", 3, slices)
+
+	require.NoError(t, err)
+	require.Equal(t, expectedETag, etag)
+}
+
 func TestMultipartUploader_UploadPart_MissingETag(t *testing.T) {
 	t.Parallel()
 	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -170,7 +208,6 @@ func TestMultipartUploader_UploadFileInParallel_Success(t *testing.T) {
 	err := os.WriteFile(testFile, []byte(testContent), 0o644)
 	require.NoError(t, err)
 
-	var uploadID string
 	var initiateCount, uploadPartCount, completeCount int32
 	receivedParts := sync.Map{}
 
@@ -179,11 +216,10 @@ func TestMultipartUploader_UploadFileInParallel_Success(t *testing.T) {
 		case r.URL.RawQuery == uploadsPath:
 			// Initiate upload
 			atomic.AddInt32(&initiateCount, 1)
-			uploadID = "test-upload-id-123"
 			response := InitiateMultipartUploadResult{
 				Bucket:   testBucketName,
 				Key:      testObjectName,
-				UploadID: uploadID,
+				UploadID: "test-upload-id-123",
 			}
 			xmlData, _ := xml.Marshal(response)
 			w.Header().Set("Content-Type", "application/xml")
@@ -524,7 +560,7 @@ func TestMultipartUploader_EdgeCases_VerySmallFile(t *testing.T) {
 	err := os.WriteFile(smallFile, []byte(smallContent), 0o644)
 	require.NoError(t, err)
 
-	var receivedData string
+	var receivedParts sync.Map
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -540,7 +576,8 @@ func TestMultipartUploader_EdgeCases_VerySmallFile(t *testing.T) {
 
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			body, _ := io.ReadAll(r.Body)
-			receivedData = string(body)
+			partNum := r.URL.Query().Get("partNumber")
+			receivedParts.Store(partNum, string(body))
 
 			w.Header().Set("ETag", `"small-etag"`)
 			w.WriteHeader(http.StatusOK)
@@ -553,7 +590,18 @@ func TestMultipartUploader_EdgeCases_VerySmallFile(t *testing.T) {
 	uploader := createTestMultipartUploader(t, handler)
 	_, err = uploader.UploadFileInParallel(t.Context(), smallFile, 10) // High concurrency for small file
 	require.NoError(t, err)
-	require.Equal(t, smallContent, receivedData)
+
+	// Small file should produce exactly one part
+	var partCount int
+	receivedParts.Range(func(_, _ any) bool {
+		partCount++
+
+		return true
+	})
+	require.Equal(t, 1, partCount)
+	data, ok := receivedParts.Load("1")
+	require.True(t, ok)
+	require.Equal(t, smallContent, data.(string))
 }
 
 type repeatReader struct {
@@ -692,8 +740,9 @@ func TestMultipartUploader_BoundaryConditions_ExactChunkSize(t *testing.T) {
 
 	// Should have exactly 2 parts, each of ChunkSize
 	require.Len(t, partSizes, 2)
-	require.Equal(t, gcpMultipartUploadChunkSize, partSizes[0])
-	require.Equal(t, gcpMultipartUploadChunkSize, partSizes[1])
+	for _, size := range partSizes {
+		require.Equal(t, gcpMultipartUploadChunkSize, size)
+	}
 }
 
 func TestMultipartUploader_FileNotFound_Error(t *testing.T) {

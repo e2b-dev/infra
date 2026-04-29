@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 type LocalDiffFile struct {
@@ -114,16 +115,16 @@ func (b *localDiff) Close() error {
 	return b.cache.Close()
 }
 
-func (b *localDiff) ReadAt(_ context.Context, p []byte, off int64) (int, error) {
+func (b *localDiff) ReadAt(_ context.Context, p []byte, off int64, _ *storage.FrameTable) (int, error) {
 	return b.cache.ReadAt(p, off)
 }
 
-func (b *localDiff) Slice(_ context.Context, off, length int64) ([]byte, error) {
+func (b *localDiff) Slice(_ context.Context, off, length int64, _ *storage.FrameTable) ([]byte, error) {
 	return b.cache.Slice(off, length)
 }
 
 func (b *localDiff) Size(_ context.Context) (int64, error) {
-	return b.cache.Size()
+	return b.FileSize()
 }
 
 func (b *localDiff) FileSize() (int64, error) {
