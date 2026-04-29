@@ -465,7 +465,6 @@ resource "google_compute_firewall" "default-hc" {
     protocol = "tcp"
     ports    = [var.ingress_port.port]
   }
-
 }
 
 resource "google_compute_firewall" "client_proxy_firewall_ingress" {
