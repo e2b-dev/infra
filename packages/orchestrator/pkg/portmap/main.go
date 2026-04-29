@@ -24,17 +24,8 @@ var _ portmap.PMAP_PROG_PMAP_VERS_handler = (*handlers)(nil)
 
 func (h *handlers) PMAPPROC_NULL() {}
 
-func (h *handlers) PMAPPROC_SET(mapping portmap.Mapping) portmap.Xbool {
-	h.lock.Lock()
-	defer h.lock.Unlock()
-
-	h.maps[key{
-		Prog: mapping.Prog,
-		Vers: mapping.Vers,
-		Prot: mapping.Prot,
-	}] = portmap.Uint32(mapping.Port)
-
-	return true
+func (h *handlers) PMAPPROC_SET(_ portmap.Mapping) portmap.Xbool {
+	return false
 }
 
 func (h *handlers) PMAPPROC_UNSET(_ portmap.Mapping) portmap.Xbool {
