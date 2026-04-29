@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/v2"
@@ -26,6 +27,8 @@ type testConfig struct {
 	operations []operation
 	// alwaysWP makes the handler copy with UFFDIO_COPY_MODE_WP for all faults.
 	alwaysWP bool
+	// gated enables pause/resume control over the handler's serve loop.
+	gated bool
 }
 
 type operationMode uint32
@@ -33,12 +36,19 @@ type operationMode uint32
 const (
 	operationModeRead operationMode = 1 << iota
 	operationModeWrite
+	operationModeServePause
+	operationModeServeResume
+	// operationModeSleep pauses for a short duration to let async goroutines
+	// enter their blocking syscalls before proceeding.
+	operationModeSleep
 )
 
 type operation struct {
 	// Offset in bytes. Must be smaller than the (numberOfPages-1) * pagesize as it reads a page and it must be aligned to the pagesize from the testConfig.
 	offset int64
 	mode   operationMode
+	// async runs the operation in a background goroutine.
+	async bool
 }
 
 // handlerPageStates is a snapshot of the pageTracker grouped by state. It
@@ -71,15 +81,42 @@ type testHandler struct {
 	// pageStatesOnce returns a per-state snapshot of the handler's pageTracker.
 	// It can only be called once.
 	pageStatesOnce func() (handlerPageStates, error)
-	mutex          sync.Mutex
+	// servePause and serveResume gate the UFFD event loop in the child process.
+	// Tests use them to deterministically batch a sequence of UFFD events
+	// before more faults are processed.
+	servePause  func() error
+	serveResume func() error
+	mutex       sync.Mutex
 }
 
 func (h *testHandler) executeAll(t *testing.T, operations []operation) {
 	t.Helper()
 
+	var asyncErrors []chan error
+
 	for i, op := range operations {
+		if op.async {
+			errCh := make(chan error, 1)
+			asyncErrors = append(asyncErrors, errCh)
+
+			go func() {
+				errCh <- h.executeOperation(t.Context(), op)
+			}()
+
+			continue
+		}
+
 		err := h.executeOperation(t.Context(), op)
 		require.NoError(t, err, "step %d: %v at offset %d", i, op.mode, op.offset)
+	}
+
+	for _, errCh := range asyncErrors {
+		select {
+		case err := <-errCh:
+			require.NoError(t, err, "async operation")
+		case <-t.Context().Done():
+			t.Fatal("timed out waiting for async operation")
+		}
 	}
 }
 
@@ -135,6 +172,14 @@ func (h *testHandler) executeOperation(ctx context.Context, op operation) error 
 		return h.executeRead(ctx, op)
 	case operationModeWrite:
 		return h.executeWrite(ctx, op)
+	case operationModeServePause:
+		return h.servePause()
+	case operationModeServeResume:
+		return h.serveResume()
+	case operationModeSleep:
+		time.Sleep(50 * time.Millisecond)
+
+		return nil
 	default:
 		return fmt.Errorf("invalid operation mode: %d", op.mode)
 	}
