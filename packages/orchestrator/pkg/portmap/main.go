@@ -35,10 +35,14 @@ func (h *handlers) registerPort(mapping portmap.Mapping) {
 
 func (h *handlers) PMAPPROC_NULL() {}
 
+// PMAPPROC_SET is not implemented, so we return false. It needs to remain unimplemented, as
+// implementing it allows attackers to register and possibly redirect NFS traffic.
 func (h *handlers) PMAPPROC_SET(_ portmap.Mapping) portmap.Xbool {
 	return false
 }
 
+// PMAPPROC_UNSET is not implemented, so we return false. It serves no purpose, and implementing it
+// would allow attackers to remove port mappings, potentially disrupting services.
 func (h *handlers) PMAPPROC_UNSET(_ portmap.Mapping) portmap.Xbool {
 	return false
 }
