@@ -425,6 +425,9 @@ func run() int {
 	if err != nil {
 		l.Fatal(ctx, "failed to create client proxy OIDC verifier", zap.Error(err))
 	}
+	if !oauth.Configured(config.ClientProxyOIDCIssuerURL, config.ClientProxyOIDCAudience) {
+		l.Warn(ctx, "client proxy OIDC is not configured; edge proxy gRPC requests will be rejected")
+	}
 	proxygrpc.RegisterSandboxServiceServer(edgeGrpcServer, handlers.NewSandboxService(apiStore, true, clientProxyOAuthVerifier))
 
 	// pass the signal context so that handlers know when shutdown is happening.

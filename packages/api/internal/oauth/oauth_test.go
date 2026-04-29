@@ -117,13 +117,14 @@ func (v fakeVerifier) VerifyClaims(context.Context, string) (Claims, error) {
 	return v.claims, v.err
 }
 
-func TestRequireBearer(t *testing.T) {
+func TestRequireBearerToken(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		md      metadata.MD
-		wantErr bool
+		name      string
+		md        metadata.MD
+		wantToken string
+		wantErr   bool
 	}{
 		{
 			name:    "missing authorization",
@@ -141,8 +142,9 @@ func TestRequireBearer(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "bearer token",
-			md:   metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
+			name:      "bearer token",
+			md:        metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
+			wantToken: "token",
 		},
 	}
 
@@ -150,80 +152,14 @@ func TestRequireBearer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := RequireBearer(tt.md)
+			token, err := requireBearerToken(tt.md)
 			if tt.wantErr {
 				require.Error(t, err)
 
 				return
 			}
 			require.NoError(t, err)
-		})
-	}
-}
-
-func TestRequireOrg(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name          string
-		md            metadata.MD
-		verifier      Verifier
-		expectedOrgID string
-		wantErr       bool
-	}{
-		{
-			name:          "valid bearer token org",
-			md:            metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
-			verifier:      fakeVerifier{claims: Claims{Subject: "client_123", OrgID: "org_123"}},
-			expectedOrgID: "org_123",
-		},
-		{
-			name:          "missing bearer token",
-			md:            metadata.MD{},
-			verifier:      fakeVerifier{claims: Claims{Subject: "client_123", OrgID: "org_123"}},
-			expectedOrgID: "org_123",
-			wantErr:       true,
-		},
-		{
-			name:          "wrong bearer token org",
-			md:            metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
-			verifier:      fakeVerifier{claims: Claims{Subject: "client_123", OrgID: "org_456"}},
-			expectedOrgID: "org_123",
-			wantErr:       true,
-		},
-		{
-			name:          "missing org claim",
-			md:            metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
-			verifier:      fakeVerifier{claims: Claims{Subject: "client_123"}},
-			expectedOrgID: "org_123",
-			wantErr:       true,
-		},
-		{
-			name:          "verifier error",
-			md:            metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
-			verifier:      fakeVerifier{err: errors.New("invalid token")},
-			expectedOrgID: "org_123",
-			wantErr:       true,
-		},
-		{
-			name:          "configured auth org requires verifier",
-			md:            metadata.Pairs(proxygrpc.MetadataAuthorization, "Bearer token"),
-			expectedOrgID: "org_123",
-			wantErr:       true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			err := RequireOrg(context.Background(), tt.md, tt.verifier, tt.expectedOrgID)
-			if tt.wantErr {
-				require.Error(t, err)
-
-				return
-			}
-			require.NoError(t, err)
+			require.Equal(t, tt.wantToken, token)
 		})
 	}
 }

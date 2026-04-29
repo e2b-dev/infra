@@ -55,6 +55,10 @@ func NewVerifier(ctx context.Context, issuerURL string, audience string) (Verifi
 	}, nil
 }
 
+func Configured(issuerURL string, audience string) bool {
+	return strings.TrimSpace(issuerURL) != "" && strings.TrimSpace(audience) != ""
+}
+
 func (noopVerifier) VerifyClaims(context.Context, string) (Claims, error) {
 	return Claims{}, errors.New("client proxy OIDC verifier is not configured")
 }
@@ -76,7 +80,7 @@ func (v *oidcVerifier) VerifyClaims(ctx context.Context, rawToken string) (Claim
 	}, nil
 }
 
-func BearerToken(md metadata.MD) (string, bool) {
+func bearerToken(md metadata.MD) (string, bool) {
 	vals := md.Get(proxygrpc.MetadataAuthorization)
 	if len(vals) == 0 {
 		return "", false
@@ -90,12 +94,13 @@ func BearerToken(md metadata.MD) (string, bool) {
 	return strings.TrimSpace(token), true
 }
 
-func RequireBearer(md metadata.MD) error {
-	if _, found := BearerToken(md); !found {
-		return denyPermission()
+func requireBearerToken(md metadata.MD) (string, error) {
+	rawToken, found := bearerToken(md)
+	if !found {
+		return "", denyPermission()
 	}
 
-	return nil
+	return rawToken, nil
 }
 
 func RequireClaims(ctx context.Context, md metadata.MD, verifier Verifier) (Claims, error) {
@@ -103,9 +108,9 @@ func RequireClaims(ctx context.Context, md metadata.MD, verifier Verifier) (Clai
 		return Claims{}, status.Error(codes.Internal, "client proxy OIDC verifier is not configured")
 	}
 
-	rawToken, found := BearerToken(md)
-	if !found {
-		return Claims{}, denyPermission()
+	rawToken, err := requireBearerToken(md)
+	if err != nil {
+		return Claims{}, err
 	}
 
 	claims, err := verifier.VerifyClaims(ctx, rawToken)
@@ -126,15 +131,6 @@ func RequireOrgClaims(claims Claims, expectedOrgID string) error {
 	}
 
 	return nil
-}
-
-func RequireOrg(ctx context.Context, md metadata.MD, verifier Verifier, expectedOrgID string) error {
-	claims, err := RequireClaims(ctx, md, verifier)
-	if err != nil {
-		return err
-	}
-
-	return RequireOrgClaims(claims, expectedOrgID)
 }
 
 func denyPermission() error {
