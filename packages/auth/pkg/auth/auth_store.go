@@ -32,7 +32,12 @@ func validateTeamUsage(team authqueries.Team) error {
 	}
 
 	if team.IsBlocked {
-		return &TeamBlockedError{Message: "team is blocked"}
+		msg := "team is blocked"
+		if team.BlockedReason != nil && *team.BlockedReason != "" {
+			msg = fmt.Sprintf("%s: %s", msg, *team.BlockedReason)
+		}
+
+		return &TeamBlockedError{Message: msg}
 	}
 
 	return nil

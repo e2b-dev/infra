@@ -192,7 +192,6 @@ module "redis" {
 resource "nomad_job" "docker_reverse_proxy" {
   jobspec = templatefile("${path.module}/jobs/docker-reverse-proxy.hcl",
     {
-      gcp_zone                      = var.gcp_zone
       node_pool                     = var.api_node_pool
       image_name                    = data.google_artifact_registry_docker_image.docker_reverse_proxy_image.self_link
       postgres_connection_string    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
@@ -427,16 +426,19 @@ module "logs_collector" {
 }
 
 data "google_storage_bucket_object" "orchestrator" {
+  count  = var.orchestrator_enabled ? 1 : 0
   name   = "orchestrator"
   bucket = var.fc_env_pipeline_bucket_name
 }
 
 locals {
-  orchestrator_checksum        = data.google_storage_bucket_object.orchestrator.generation
-  orchestrator_artifact_source = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/orchestrator?version=${local.orchestrator_checksum}"
+  orchestrator_checksum        = var.orchestrator_enabled ? data.google_storage_bucket_object.orchestrator[0].generation : ""
+  orchestrator_artifact_source = var.orchestrator_enabled ? "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/orchestrator?version=${local.orchestrator_checksum}" : ""
 }
 
 module "orchestrator" {
+  count = var.orchestrator_enabled ? 1 : 0
+
   source = "../../modules/job-orchestrator"
 
   provider_name = "gcp"

@@ -766,6 +766,12 @@ variable "orchestrator_env_vars" {
   default = {}
 }
 
+variable "orchestrator_enabled" {
+  type        = bool
+  default     = true
+  description = "Whether the orchestrator Nomad job should be deployed. Set to false to skip deployment without removing the module."
+}
+
 variable "traefik_config_files" {
   type        = map(string)
   description = "Map of filename => content for additional Traefik dynamic configuration files"
