@@ -50,7 +50,7 @@ func newCreateSandboxTestOrchestrator(t *testing.T) (*Orchestrator, *nodemanager
 		reservations.NewReservationStorage(),
 		sandbox.Callbacks{
 			AddSandboxToRoutingTable: func(context.Context, sandbox.Sandbox) {},
-			AsyncNewlyCreatedSandbox: func(context.Context, sandbox.Sandbox) {},
+			AsyncNewlyCreatedSandbox: func(context.Context, sandbox.Sandbox, sandbox.CreationMetadata) {},
 		},
 	)
 
@@ -144,6 +144,7 @@ func TestCreateSandbox_StaleDataAfterConcurrentPause(t *testing.T) {
 			now.Add(time.Hour),
 			time.Hour,
 			true,
+			sandbox.CreationMetadata{IsResume: true},
 		)
 		require.Nil(t, apiErr)
 		assert.Equal(t, "tpl-v1", sbx1.TemplateID)
@@ -167,6 +168,7 @@ func TestCreateSandbox_StaleDataAfterConcurrentPause(t *testing.T) {
 			now.Add(time.Hour),
 			time.Hour,
 			true,
+			sandbox.CreationMetadata{IsResume: true},
 		)
 		require.Nil(t, apiErr)
 

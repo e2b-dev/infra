@@ -122,6 +122,7 @@ func (o *Orchestrator) CreateSandbox(
 	endTime time.Time,
 	timeout time.Duration,
 	isResume bool,
+	creationMeta sandbox.CreationMetadata,
 ) (sbx sandbox.Sandbox, apiErr *api.APIError) {
 	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -349,7 +350,7 @@ func (o *Orchestrator) CreateSandbox(
 		nodemanager.ConvertOrchestratorMountsToDatabaseMounts(sbxData.VolumeMounts),
 	)
 
-	err = o.sandboxStore.Add(ctx, sbx, true)
+	err = o.sandboxStore.Add(ctx, sbx, &creationMeta)
 	if err != nil {
 		telemetry.ReportError(ctx, "failed to add sandbox to store", err)
 
