@@ -93,6 +93,10 @@ const (
 	envMmapTotalSize = "GO_UFFD_MMAP_SIZE"
 	envAlwaysWP      = "GO_UFFD_ALWAYS_WP"
 	envGated         = "GO_UFFD_GATED"
+	// envRemoveEnabled toggles UFFD_FEATURE_EVENT_REMOVE in the child's
+	// configureApi. The matrix runs every cross-process test in both
+	// modes so we have regression coverage for the no-REMOVE path.
+	envRemoveEnabled = "GO_UFFD_REMOVE_ENABLED"
 	// envBarriers gates the test-only worker hooks. Only race tests
 	// need them; for everyone else we leave the hook fields nil so
 	// the hot path stays a single nil-pointer load + branch.
@@ -169,8 +173,17 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 		uffdFd.close()
 	})
 
-	require.NoError(t, configureApi(uffdFd, tt.pagesize))
+	require.NoError(t, configureApi(uffdFd, tt.pagesize, tt.removeEnabled))
 	require.NoError(t, register(uffdFd, memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP))
+
+	if tt.removeEnabled {
+		t.Cleanup(func() {
+			// Tear the registration down before the late close. With
+			// UFFD_FEATURE_EVENT_REMOVE enabled, munmap can otherwise
+			// block on un-acked REMOVE events.
+			_ = unregister(uffdFd, memoryStart, uint64(size))
+		})
+	}
 
 	tmpDir := t.TempDir()
 
@@ -196,6 +209,9 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 	}
 	if tt.gated {
 		cmd.Env = append(cmd.Env, envGated+"=1")
+	}
+	if tt.removeEnabled {
+		cmd.Env = append(cmd.Env, envRemoveEnabled+"=1")
 	}
 	if tt.barriers {
 		cmd.Env = append(cmd.Env, envBarriers+"=1")
@@ -303,11 +319,15 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 
 		var states handlerPageStates
 		for _, e := range reply.Entries {
-			if pageState(e.State) == faulted {
+			switch pageState(e.State) {
+			case faulted:
 				states.faulted = append(states.faulted, uint(e.Offset))
+			case removed:
+				states.removed = append(states.removed, uint(e.Offset))
 			}
 		}
 		slices.Sort(states.faulted)
+		slices.Sort(states.removed)
 
 		return states, nil
 	}

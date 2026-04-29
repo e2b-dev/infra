@@ -289,38 +289,42 @@ func TestAsyncWriteProtection(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			h, err := configureCrossProcessTest(t.Context(), t, testConfig{
+			runMatrix(t, testConfig{
 				pagesize:      tt.pagesize,
 				numberOfPages: tt.numberOfPages,
 				alwaysWP:      tt.alwaysWP,
+			}, func(t *testing.T, cfg testConfig) {
+				t.Helper()
+
+				h, err := configureCrossProcessTest(t.Context(), t, cfg)
+				require.NoError(t, err)
+
+				h.executeAll(t, tt.operations)
+
+				pagemap, err := testutils.NewPagemapReader()
+				require.NoError(t, err)
+				defer pagemap.Close()
+
+				memStart := uintptr(unsafe.Pointer(&(*h.memoryArea)[0]))
+
+				for _, p := range tt.expectedDirty {
+					addr := memStart + uintptr(p)*uintptr(tt.pagesize)
+					entry, err := pagemap.ReadEntry(addr)
+					require.NoError(t, err, "pagemap read for dirty page %d", p)
+
+					assert.True(t, entry.IsPresent(), "dirty page %d should be present", p)
+					assert.False(t, entry.IsWriteProtected(), "dirty page %d should have WP cleared", p)
+				}
+
+				for _, p := range tt.expectedClean {
+					addr := memStart + uintptr(p)*uintptr(tt.pagesize)
+					entry, err := pagemap.ReadEntry(addr)
+					require.NoError(t, err, "pagemap read for clean page %d", p)
+
+					assert.True(t, entry.IsPresent(), "clean page %d should be present", p)
+					assert.True(t, entry.IsWriteProtected(), "clean page %d should have WP set", p)
+				}
 			})
-			require.NoError(t, err)
-
-			h.executeAll(t, tt.operations)
-
-			pagemap, err := testutils.NewPagemapReader()
-			require.NoError(t, err)
-			defer pagemap.Close()
-
-			memStart := uintptr(unsafe.Pointer(&(*h.memoryArea)[0]))
-
-			for _, p := range tt.expectedDirty {
-				addr := memStart + uintptr(p)*uintptr(tt.pagesize)
-				entry, err := pagemap.ReadEntry(addr)
-				require.NoError(t, err, "pagemap read for dirty page %d", p)
-
-				assert.True(t, entry.IsPresent(), "dirty page %d should be present", p)
-				assert.False(t, entry.IsWriteProtected(), "dirty page %d should have WP cleared", p)
-			}
-
-			for _, p := range tt.expectedClean {
-				addr := memStart + uintptr(p)*uintptr(tt.pagesize)
-				entry, err := pagemap.ReadEntry(addr)
-				require.NoError(t, err, "pagemap read for clean page %d", p)
-
-				assert.True(t, entry.IsPresent(), "clean page %d should be present", p)
-				assert.True(t, entry.IsWriteProtected(), "clean page %d should have WP set", p)
-			}
 		})
 	}
 }
