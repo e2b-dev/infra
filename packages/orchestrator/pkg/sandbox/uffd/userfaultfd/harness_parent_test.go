@@ -64,6 +64,10 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 
 	data := RandomPages(tt.pagesize, tt.numberOfPages)
 
+	if tt.sourcePatcher != nil {
+		tt.sourcePatcher(data.Content())
+	}
+
 	size, err := data.Size()
 	require.NoError(t, err)
 
