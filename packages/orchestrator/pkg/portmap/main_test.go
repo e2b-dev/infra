@@ -11,7 +11,7 @@ func TestPortmapRetrieval(t *testing.T) {
 	t.Parallel()
 
 	h := newHandlers(t.Context())
-	h.PMAPPROC_SET(portmap.Mapping{
+	h.registerPort(portmap.Mapping{
 		Prog: 100003,
 		Vers: 2,
 		Prot: 1,

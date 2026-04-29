@@ -46,14 +46,14 @@ func NewPortMap(ctx context.Context) *Server {
 func (pm *Server) RegisterPort(ctx context.Context, port uint32) {
 	logger.L().Info(ctx, "registering port", zap.Uint32("port", port))
 
-	pm.h.PMAPPROC_SET(rfc1057.Mapping{
+	pm.h.registerPort(rfc1057.Mapping{
 		Prog: nfs.Nfs3Prog,
 		Vers: nfs.Nfs3Vers,
 		Prot: rfc1057.IPPROTO_TCP,
 		Port: port,
 	})
 
-	pm.h.PMAPPROC_SET(rfc1057.Mapping{
+	pm.h.registerPort(rfc1057.Mapping{
 		Prog: 100005, // mountd
 		Vers: nfs.Nfs3Vers,
 		Prot: rfc1057.IPPROTO_TCP,
