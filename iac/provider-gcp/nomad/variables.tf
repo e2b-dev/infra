@@ -462,6 +462,12 @@ variable "supabase_db_connection_string_secret_version" {
   type = any
 }
 
+variable "auth_provider_config" {
+  type      = any
+  sensitive = true
+  default   = {}
+}
+
 variable "enable_auth_user_sync_background_worker" {
   type    = bool
   default = false
@@ -471,6 +477,7 @@ variable "enable_billing_http_team_provision_sink" {
   type    = bool
   default = false
 }
+
 variable "volume_token_issuer" {
   type = string
 }

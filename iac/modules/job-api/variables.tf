@@ -67,9 +67,10 @@ variable "postgres_read_replica_connection_string" {
   sensitive = true
 }
 
-variable "supabase_jwt_secrets" {
-  type      = string
+variable "auth_provider_config" {
+  type      = any
   sensitive = true
+  default   = null
 }
 
 variable "posthog_api_key" {
