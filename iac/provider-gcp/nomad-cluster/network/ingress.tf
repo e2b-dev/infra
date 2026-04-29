@@ -55,8 +55,8 @@ resource "google_compute_backend_service" "ingress" {
   }
 }
 
-resource "google_compute_backend_service" "ingress_grpc" {
-  name = "${var.prefix}ingress-grpc"
+resource "google_compute_backend_service" "h2c_ingress" {
+  name = "${var.prefix}h2c-ingress"
 
   protocol  = "H2C"
   port_name = var.ingress_port.name
@@ -97,7 +97,7 @@ resource "google_compute_url_map" "ingress" {
 
   path_matcher {
     name            = "api-grpc-paths"
-    default_service = google_compute_backend_service.ingress_grpc.self_link
+    default_service = google_compute_backend_service.h2c_ingress.self_link
   }
 }
 
