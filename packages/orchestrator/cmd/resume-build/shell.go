@@ -137,7 +137,7 @@ func runShell(
 
 	stream, err := processC.Start(ctx, startReq)
 	if err != nil {
-		return &missingShellError{inner: fmt.Errorf("start %s: %w", cmd, err)}
+		return fmt.Errorf("start %s: %w", cmd, err)
 	}
 	defer stream.Close()
 
@@ -170,10 +170,10 @@ func runShell(
 	}
 	if pid == 0 {
 		if err := stream.Err(); err != nil {
-			return &missingShellError{inner: fmt.Errorf("stream closed before start: %w", err)}
+			return fmt.Errorf("stream closed before start: %w", err)
 		}
 
-		return &missingShellError{inner: errors.New("no start event received")}
+		return errors.New("no start event received")
 	}
 
 	fmt.Println("📟 Attaching shell via envd (Ctrl+D to exit)")
