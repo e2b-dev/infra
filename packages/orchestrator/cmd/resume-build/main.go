@@ -126,19 +126,8 @@ func main() {
 		log.Fatal("-optimize is incompatible with -iterations (benchmarking doesn't upload)")
 	}
 
-	if *shell {
-		if isCmdMode {
-			log.Fatal("-shell is incompatible with -cmd")
-		}
-		if *cmdPause != "" || *cmdSignalPause != "" {
-			log.Fatal("-shell is incompatible with -cmd-pause and -cmd-signal-pause")
-		}
-		if *pause {
-			log.Fatal("-shell is incompatible with -pause (sandbox is paused immediately, no time to interact)")
-		}
-		if *iterations > 0 {
-			log.Fatal("-shell is incompatible with -iterations")
-		}
+	if *shell && (isCmdMode || isPauseMode || *iterations > 0) {
+		log.Fatal("-shell can only be used in interactive mode (no -cmd, no pause flags, no -iterations)")
 	}
 
 	// Generate new build ID if not specified and pause mode is enabled
@@ -605,17 +594,11 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 			fmt.Printf("🔧 Starting command: %s\n", opts.commandSignal)
 		}
 		cmdErrCh := runCommandInSandboxAsync(ctx, sbx, opts.commandSignal)
-		if err := waitForPauseSignal(ctx, sbx, "SIGUSR1", cmdErrCh, false); err != nil {
+		if err := waitForPauseSignal(ctx, sbx, "SIGUSR1", cmdErrCh); err != nil {
 			return pauseTimings{resume: resumeDur, err: err}, err
 		}
 	case opts.signalName != "":
-		if err := waitForPauseSignal(ctx, sbx, opts.signalName, nil, r.shell); err != nil {
-			if errors.Is(err, errShellExitedBeforePauseSignal) {
-				fmt.Println("ℹ️  Shell exited before pause signal — skipping snapshot")
-
-				return pauseTimings{resume: resumeDur}, nil
-			}
-
+		if err := waitForPauseSignal(ctx, sbx, opts.signalName, nil); err != nil {
 			return pauseTimings{resume: resumeDur, err: err}, err
 		}
 	}
@@ -1278,12 +1261,7 @@ func runCommandInSandboxAsync(ctx context.Context, sbx *sandbox.Sandbox, command
 	return errCh
 }
 
-// errShellExitedBeforePauseSignal indicates the user pressed Ctrl+D in the
-// interactive shell before sending the configured pause signal. The caller
-// should abort cleanly without taking a snapshot.
-var errShellExitedBeforePauseSignal = errors.New("shell exited before pause signal")
-
-func waitForPauseSignal(ctx context.Context, sbx *sandbox.Sandbox, signalName string, cmdErrCh <-chan error, shell bool) error {
+func waitForPauseSignal(ctx context.Context, sbx *sandbox.Sandbox, signalName string, cmdErrCh <-chan error) error {
 	sig := parseSignal(signalName)
 	if sig == nil {
 		return fmt.Errorf("unknown signal: %s", signalName)
@@ -1296,18 +1274,6 @@ func waitForPauseSignal(ctx context.Context, sbx *sandbox.Sandbox, signalName st
 	signal.Notify(sigCh, sig)
 	defer signal.Stop(sigCh)
 
-	var shellDoneCh <-chan struct{}
-	if shell {
-		done := make(chan struct{})
-		shellDoneCh = done
-		go func() {
-			defer close(done)
-			if err := attachShell(ctx, sbx); err != nil && !isShellExited(err) {
-				fmt.Printf("⚠️  Shell error: %v\n", err)
-			}
-		}()
-	}
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -1316,8 +1282,6 @@ func waitForPauseSignal(ctx context.Context, sbx *sandbox.Sandbox, signalName st
 			fmt.Printf("📨 Received %s signal\n", signalName)
 
 			return nil
-		case <-shellDoneCh:
-			return errShellExitedBeforePauseSignal
 		case err, ok := <-cmdErrCh:
 			if !ok {
 				cmdErrCh = nil
