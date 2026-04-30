@@ -2,18 +2,148 @@ package template
 
 import (
 	"context"
+	"errors"
+	"io"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
+	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 func newTestCache(defaultTTL time.Duration) *Cache {
 	return &Cache{
 		cache: ttlcache.New(ttlcache.WithTTL[string, Template](defaultTTL)),
 	}
+}
+
+func newFetchTestCache(t *testing.T) *Cache {
+	t.Helper()
+
+	return &Cache{
+		cache: ttlcache.New(ttlcache.WithTTL[string, Template](time.Hour)),
+		config: cfg.Config{
+			BuilderConfig: cfg.BuilderConfig{
+				StorageConfig: storage.Config{
+					TemplateCacheDir: t.TempDir(),
+				},
+			},
+		},
+	}
+}
+
+type testTemplateFile struct {
+	path string
+}
+
+func (f testTemplateFile) Path() string {
+	return f.path
+}
+
+func (f testTemplateFile) Close() error {
+	return nil
+}
+
+type testStorageProvider struct {
+	openBlobErr error
+	release     <-chan struct{}
+}
+
+func (p *testStorageProvider) wait(ctx context.Context) error {
+	if p.release == nil {
+		return nil
+	}
+
+	select {
+	case <-p.release:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (p *testStorageProvider) DeleteObjectsWithPrefix(context.Context, string) error {
+	return nil
+}
+
+func (p *testStorageProvider) UploadSignedURL(context.Context, string, time.Duration) (string, error) {
+	return "", nil
+}
+
+func (p *testStorageProvider) OpenBlob(ctx context.Context, _ string, _ storage.ObjectType) (storage.Blob, error) {
+	if err := p.wait(ctx); err != nil {
+		return nil, err
+	}
+
+	if p.openBlobErr != nil {
+		return nil, p.openBlobErr
+	}
+
+	return testBlob{}, nil
+}
+
+func (p *testStorageProvider) OpenSeekable(context.Context, string, storage.SeekableObjectType) (storage.Seekable, error) {
+	return nil, errors.New("unexpected seekable open")
+}
+
+func (p *testStorageProvider) GetDetails() string {
+	return "test storage provider"
+}
+
+type testBlob struct{}
+
+func (testBlob) WriteTo(context.Context, io.Writer) (int64, error) {
+	return 0, nil
+}
+
+func (testBlob) Put(context.Context, []byte) error {
+	return nil
+}
+
+func (testBlob) Exists(context.Context) (bool, error) {
+	return true, nil
+}
+
+func testHeader(t *testing.T, buildID string) *header.Header {
+	t.Helper()
+
+	id := uuid.MustParse(buildID)
+	h, err := header.NewHeader(header.NewTemplateMetadata(id, 4096, 4096), nil)
+	require.NoError(t, err)
+
+	return h
+}
+
+func newStorageTemplateForTest(
+	t *testing.T,
+	c *Cache,
+	buildID string,
+	provider storage.StorageProvider,
+	memfileHeader *header.Header,
+	rootfsHeader *header.Header,
+) *storageTemplate {
+	t.Helper()
+
+	tmpl, err := newTemplateFromStorage(
+		c.config.BuilderConfig,
+		buildID,
+		memfileHeader,
+		rootfsHeader,
+		provider,
+		blockmetrics.Metrics{},
+		testTemplateFile{path: "snapfile"},
+		testTemplateFile{path: "metadata"},
+	)
+	require.NoError(t, err)
+
+	return tmpl
 }
 
 // simulateGetTemplate mimics getTemplateWithFetch's lock-protected TTL logic
@@ -125,4 +255,88 @@ func TestWithoutExtend_EntryEvictedEarly(t *testing.T) {
 
 	item := c.cache.Get(key)
 	assert.Nil(t, item, "without TTL extension, the entry should be evicted after the default TTL")
+}
+
+func TestGetTemplateWithFetch_RetriesAfterFetchFailure(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	c := newFetchTestCache(t)
+	buildID := uuid.NewString()
+	memfileHeader := testHeader(t, buildID)
+
+	failedTemplate := newStorageTemplateForTest(
+		t,
+		c,
+		buildID,
+		&testStorageProvider{openBlobErr: errors.New("gcs unavailable")},
+		memfileHeader,
+		nil,
+	)
+	got := c.getTemplateWithFetch(ctx, failedTemplate, 0)
+	require.Same(t, failedTemplate, got)
+
+	_, err := got.Rootfs()
+	require.ErrorContains(t, err, "gcs unavailable")
+	require.Eventually(t, func() bool {
+		_, found := c.GetCachedTemplate(buildID)
+
+		return !found
+	}, time.Second, time.Millisecond)
+
+	successfulTemplate := newStorageTemplateForTest(
+		t,
+		c,
+		buildID,
+		&testStorageProvider{},
+		memfileHeader,
+		testHeader(t, buildID),
+	)
+	got = c.getTemplateWithFetch(ctx, successfulTemplate, 0)
+	require.Same(t, successfulTemplate, got)
+
+	rootfs, err := got.Rootfs()
+	require.NoError(t, err)
+	require.NotNil(t, rootfs)
+	require.Eventually(t, func() bool {
+		cached, ok := c.GetCachedTemplate(buildID)
+
+		return ok && cached == got
+	}, time.Second, time.Millisecond)
+}
+
+func TestGetTemplateWithFetch_SharesCachedFetchBeforeEviction(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	c := newFetchTestCache(t)
+	buildID := uuid.NewString()
+	memfileHeader := testHeader(t, buildID)
+	release := make(chan struct{})
+
+	firstTemplate := newStorageTemplateForTest(
+		t,
+		c,
+		buildID,
+		&testStorageProvider{openBlobErr: errors.New("gcs unavailable"), release: release},
+		memfileHeader,
+		nil,
+	)
+	got := c.getTemplateWithFetch(ctx, firstTemplate, 0)
+	require.Same(t, firstTemplate, got)
+
+	secondTemplate := newStorageTemplateForTest(
+		t,
+		c,
+		buildID,
+		&testStorageProvider{},
+		memfileHeader,
+		testHeader(t, buildID),
+	)
+	got = c.getTemplateWithFetch(ctx, secondTemplate, 0)
+	require.Same(t, firstTemplate, got)
+
+	close(release)
+	_, err := got.Rootfs()
+	require.ErrorContains(t, err, "gcs unavailable")
 }
