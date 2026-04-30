@@ -728,7 +728,7 @@ func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, 
 					return &api.APIError{
 						Code:      http.StatusBadRequest,
 						Err:       fmt.Errorf("header name %q in rule for domain %q contains invalid characters", name, domain),
-						ClientMsg: fmt.Sprintf("Header name %q in rule for domain %q must not contain CR or LF characters.", name, domain),
+						ClientMsg: fmt.Sprintf("Header name %q in rule for domain %q must contain only valid HTTP token characters.", name, domain),
 					}
 				}
 
