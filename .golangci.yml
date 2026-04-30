@@ -64,6 +64,10 @@ linters:
       - path: '^packages/db/pkg/dberrors/dberrors\.go$'
         linters:
           - forbidigo
+      - path: '.*_test\.go$'
+        text: "Use github.com/e2b-dev/infra/packages/db/pkg/dberrors.IsNotFoundError instead."
+        linters:
+          - forbidigo
 
   settings:
     forbidigo:
