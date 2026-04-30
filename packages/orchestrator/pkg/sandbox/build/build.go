@@ -105,6 +105,10 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 		if err != nil {
 			var transErr *storage.PeerTransitionedError
 			if errors.As(err, &transErr) {
+				// No retry cap: the first successful swap flips
+				// peerSeekable.uploaded, so withPeerFallback skips the peer
+				// on subsequent reads and PeerTransitionedError is unreachable
+				// on the next iteration.
 				if swapErr := b.swapHeader(transErr); swapErr != nil {
 					return 0, fmt.Errorf("failed to swap header: %w", swapErr)
 				}

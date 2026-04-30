@@ -324,6 +324,7 @@ func doBuild(
 		builderConfig, l, featureFlags, sandboxFactory,
 		persistenceTemplate, persistenceBuild, artifactRegistry,
 		dockerhubRepo, sandboxProxy, sandboxes, templateCache, buildMetrics,
+		nil,
 	)
 
 	l = l.With(zap.String("envID", templateID)).With(zap.String("buildID", buildID))

@@ -147,9 +147,6 @@ func (d *Storage) Header() *header.Header {
 	return d.source.Header()
 }
 
-// SwapHeader publishes a new header on the underlying build.File. The upload
-// pipeline calls this after finalizing the V4 header so subsequent readers
-// see the post-upload mapping with FrameTables and IncompleteUploading=false.
 func (d *Storage) SwapHeader(h *header.Header) {
 	d.source.SwapHeader(h)
 }

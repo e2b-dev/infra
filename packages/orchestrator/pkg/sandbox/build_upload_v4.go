@@ -109,7 +109,7 @@ func (c *compressedUploader) uploadFile(
 	h.IncompletePendingUpload = false
 
 	parentBuilds := srcHeader.Builds
-	if c.coord != nil && c.snapshot.ParentBuildID != uuid.Nil {
+	if c.snapshot.ParentBuildID != uuid.Nil {
 		parentH, err := c.coord.WaitForFinalHeader(ctx, c.snapshot.ParentBuildID, fileType)
 		if err != nil {
 			return nil, fmt.Errorf("wait for parent %s/%s: %w", c.snapshot.ParentBuildID, fileType, err)
@@ -118,24 +118,22 @@ func (c *compressedUploader) uploadFile(
 		parentBuilds = parentH.Builds
 	}
 
-	// Self is always added even when srcPath == "" — children need to see
-	// self in the lineage.
+	// Self goes into the lineage even when srcPath == "" — empty diffs still
+	// represent a layer that descendants must record as an ancestor.
 	h.Builds = make(map[uuid.UUID]headers.BuildData, len(parentBuilds)+1)
 	maps.Copy(h.Builds, parentBuilds)
-	h.Builds[c.snapshot.SelfBuildID()] = selfBuild
+	h.Builds[c.snapshot.BuildID] = selfBuild
 
 	data, err := headers.StoreHeader(ctx, c.persistence, c.snapshot.Paths.HeaderFile(string(fileType)), h)
 	if err != nil {
 		return nil, fmt.Errorf("store %s header: %w", fileType, err)
 	}
 
-	if c.coord != nil {
-		dev, err := c.coord.FindInTemplateCache(ctx, c.snapshot.SelfBuildID(), fileType)
-		if err == nil {
-			dev.SwapHeader(h)
-		} else if !errors.Is(err, ErrBuildNotInCache) {
-			return nil, fmt.Errorf("load %s for swap: %w", fileType, err)
-		}
+	dev, err := c.coord.FindInTemplateCache(ctx, c.snapshot.BuildID, fileType)
+	if err == nil {
+		dev.SwapHeader(h)
+	} else if !errors.Is(err, ErrBuildNotInCache) {
+		return nil, fmt.Errorf("load %s for swap: %w", fileType, err)
 	}
 
 	return data, nil

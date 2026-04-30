@@ -723,7 +723,7 @@ type snapshotResult struct {
 	meta           metadata.Template
 	snapshot       *sandbox.Snapshot
 	paths          storage.Paths
-	uploadFut      *utils.SetOnce[struct{}]
+	uploadFut      *utils.ErrorOnce
 	completeUpload func(ctx context.Context, memfileHdr, rootfsHdr []byte, uploadErr error)
 }
 
@@ -751,7 +751,10 @@ func (s *Server) snapshotAndCacheSandbox(
 		return nil, fmt.Errorf("error snapshotting sandbox: %w", err)
 	}
 
-	uploadFut := s.uploadCoord.Begin(snapshot.SelfBuildID())
+	uploadFut, err := s.uploadCoord.Begin(snapshot.BuildID)
+	if err != nil {
+		return nil, fmt.Errorf("register upload: %w", err)
+	}
 
 	err = s.templateCache.AddSnapshot(
 		ctx,
@@ -769,10 +772,14 @@ func (s *Server) snapshotAndCacheSandbox(
 
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
-	completeUpload := func(ctx context.Context, memfileHdr, rootfsHdr []byte, uploadErr error) {
-		_ = uploadFut.SetResult(struct{}{}, uploadErr)
+	// Capture once so Register and the symmetric Unregister inside
+	// completeUpload don't drift if the flag flips mid-upload.
+	peerEnabled := s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag)
 
-		if !s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag) {
+	completeUpload := func(ctx context.Context, memfileHdr, rootfsHdr []byte, uploadErr error) {
+		_ = uploadFut.SetError(uploadErr)
+
+		if !peerEnabled {
 			return
 		}
 
@@ -780,9 +787,13 @@ func (s *Server) snapshotAndCacheSandbox(
 			memfileHeader: memfileHdr,
 			rootfsHeader:  rootfsHdr,
 		}, ttlcache.DefaultTTL)
+
+		if err := s.peerRegistry.Unregister(ctx, meta.Template.BuildID); err != nil {
+			logger.L().Warn(ctx, "failed to unregister peer address from routing", zap.String("build_id", meta.Template.BuildID), zap.Error(err))
+		}
 	}
 
-	if s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag) {
+	if peerEnabled {
 		if err := s.peerRegistry.Register(ctx, meta.Template.BuildID, redisPeerKeyTTL); err != nil {
 			logger.L().Warn(ctx, "failed to register peer address for routing", zap.String("build_id", meta.Template.BuildID), zap.Error(err))
 		}

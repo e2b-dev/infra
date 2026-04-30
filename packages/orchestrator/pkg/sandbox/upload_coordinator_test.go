@@ -51,7 +51,7 @@ func newCoordinator(t *testing.T) (*UploadCoordinator, *fakeCache) {
 	t.Helper()
 	cache := newFakeCache()
 	futures := ttlcache.New(
-		ttlcache.WithTTL[uuid.UUID, *utils.SetOnce[struct{}]](uploadFutureTTL),
+		ttlcache.WithTTL[uuid.UUID, *utils.ErrorOnce](uploadFutureTTL),
 	)
 	go futures.Start()
 	t.Cleanup(futures.Stop)
@@ -85,15 +85,17 @@ func TestUploadCoordinator_BeginDistinctIDsAreIndependent(t *testing.T) {
 	a := uuid.New()
 	b := uuid.New()
 
-	futA := c.Begin(a)
-	futB := c.Begin(b)
+	futA, err := c.Begin(a)
+	require.NoError(t, err)
+	futB, err := c.Begin(b)
+	require.NoError(t, err)
 
 	require.NotSame(t, futA, futB)
-	require.NoError(t, futA.SetValue(struct{}{}))
+	require.NoError(t, futA.SetSuccess())
 
 	// futB still pending.
 	select {
-	case <-futB.Done:
+	case <-futB.Done():
 		t.Fatal("futB should not be done after only futA fires")
 	default:
 	}
@@ -105,7 +107,8 @@ func TestUploadCoordinator_WaitForFinalHeader_BlocksUntilSet(t *testing.T) {
 
 	id := uuid.New()
 	putFinalHeader(t, cache, id, build.Memfile)
-	fut := c.Begin(id)
+	fut, err := c.Begin(id)
+	require.NoError(t, err)
 
 	done := make(chan struct{})
 	go func() {
@@ -119,7 +122,7 @@ func TestUploadCoordinator_WaitForFinalHeader_BlocksUntilSet(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 
-	require.NoError(t, fut.SetValue(struct{}{}))
+	require.NoError(t, fut.SetSuccess())
 
 	select {
 	case <-done:
@@ -134,12 +137,13 @@ func TestUploadCoordinator_WaitForFinalHeader_PropagatesUploadError(t *testing.T
 
 	id := uuid.New()
 	putFinalHeader(t, cache, id, build.Memfile)
-	fut := c.Begin(id)
+	fut, err := c.Begin(id)
+	require.NoError(t, err)
 
 	uploadErr := errors.New("upload exploded")
 	require.NoError(t, fut.SetError(uploadErr))
 
-	_, err := c.WaitForFinalHeader(context.Background(), id, build.Memfile)
+	_, err = c.WaitForFinalHeader(context.Background(), id, build.Memfile)
 	require.ErrorIs(t, err, uploadErr)
 }
 
@@ -148,7 +152,8 @@ func TestUploadCoordinator_WaitForFinalHeader_ContextCancellation(t *testing.T) 
 	c, _ := newCoordinator(t)
 
 	id := uuid.New()
-	c.Begin(id) // never signaled
+	_, err := c.Begin(id) // never signaled
+	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -196,7 +201,7 @@ func TestUploadCoordinator_WaitForFinalHeader_RejectsIncompleteCachedHeader(t *t
 	// inheritance).
 	_, err := c.WaitForFinalHeader(context.Background(), id, build.Memfile)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "still incomplete after wait")
+	require.Contains(t, err.Error(), "header incomplete")
 }
 
 func TestUploadCoordinator_WaitForFinalHeader_NoFuture_ReadsFromCache(t *testing.T) {
@@ -217,14 +222,6 @@ func TestUploadCoordinator_WaitForFinalHeader_NoFuture_ReadsFromCache(t *testing
 	require.Same(t, want, got)
 }
 
-func TestUploadCoordinator_FindInTemplateCache_AbsentReturnsErr(t *testing.T) {
-	t.Parallel()
-	c, _ := newCoordinator(t)
-
-	_, err := c.FindInTemplateCache(context.Background(), uuid.New(), build.Memfile)
-	require.ErrorIs(t, err, ErrBuildNotInCache)
-}
-
 func TestUploadCoordinator_ConcurrentBeginsAndWaits(t *testing.T) {
 	t.Parallel()
 	c, cache := newCoordinator(t)
@@ -232,11 +229,13 @@ func TestUploadCoordinator_ConcurrentBeginsAndWaits(t *testing.T) {
 	const n = 10
 
 	ids := make([]uuid.UUID, n)
-	futs := make([]*utils.SetOnce[struct{}], n)
+	futs := make([]*utils.ErrorOnce, n)
 	for i := range n {
 		ids[i] = uuid.New()
 		putFinalHeader(t, cache, ids[i], build.Memfile)
-		futs[i] = c.Begin(ids[i])
+		fut, err := c.Begin(ids[i])
+		require.NoError(t, err)
+		futs[i] = fut
 	}
 
 	var done atomic.Int32
@@ -252,7 +251,7 @@ func TestUploadCoordinator_ConcurrentBeginsAndWaits(t *testing.T) {
 	}
 
 	for i := range n {
-		require.NoError(t, futs[i].SetValue(struct{}{}))
+		require.NoError(t, futs[i].SetSuccess())
 	}
 
 	wg.Wait()

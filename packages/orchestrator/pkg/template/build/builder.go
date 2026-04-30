@@ -61,6 +61,7 @@ type Builder struct {
 	templateCache       *sbxtemplate.Cache
 	metrics             *metrics.BuildMetrics
 	featureFlags        *featureflags.Client
+	uploadCoord         *sandbox.UploadCoordinator
 }
 
 func NewBuilder(
@@ -76,6 +77,7 @@ func NewBuilder(
 	sandboxes *sandbox.Map,
 	templateCache *sbxtemplate.Cache,
 	buildMetrics *metrics.BuildMetrics,
+	uploadCoord *sandbox.UploadCoordinator,
 ) *Builder {
 	return &Builder{
 		config:              config,
@@ -90,6 +92,7 @@ func NewBuilder(
 		sandboxes:           sandboxes,
 		templateCache:       templateCache,
 		metrics:             buildMetrics,
+		uploadCoord:         uploadCoord,
 	}
 }
 
@@ -259,8 +262,6 @@ func runBuild(
 
 	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, templateStorage)
 
-	uploadCoord := sandbox.NewUploadCoordinator(builder.templateCache)
-
 	layerExecutor := layer.NewLayerExecutor(
 		bc,
 		builder.logger,
@@ -270,7 +271,7 @@ func runBuild(
 		templateStorage,
 		builder.buildStorage,
 		index,
-		uploadCoord,
+		builder.uploadCoord,
 		builder.config.StorageConfig.CompressConfig,
 		builder.featureFlags,
 	)

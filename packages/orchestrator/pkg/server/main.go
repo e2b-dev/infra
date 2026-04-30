@@ -67,6 +67,7 @@ type ServiceConfig struct {
 	FeatureFlags     *featureflags.Client
 	SbxEventsService *events.EventsService
 	PeerRegistry     peerclient.Registry
+	UploadCoord      *sandbox.UploadCoordinator
 }
 
 func New(cfg ServiceConfig) (*Server, error) {
@@ -89,7 +90,7 @@ func New(cfg ServiceConfig) (*Server, error) {
 		startingSandboxes: semaphore.NewWeighted(maxStartingInstancesPerNode),
 		peerRegistry:      cfg.PeerRegistry,
 		uploadedBuilds:    uploadedBuilds,
-		uploadCoord:       sandbox.NewUploadCoordinator(cfg.TemplateCache),
+		uploadCoord:       cfg.UploadCoord,
 	}
 
 	meter := cfg.Tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")
@@ -110,4 +111,8 @@ func New(cfg ServiceConfig) (*Server, error) {
 	}
 
 	return server, nil
+}
+
+func (s *Server) Close() error {
+	return nil
 }

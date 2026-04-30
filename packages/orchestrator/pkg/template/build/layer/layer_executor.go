@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/layer")
@@ -284,12 +285,20 @@ func (lb *LayerExecutor) PauseAndUpload(
 	// Upload snapshot async, it's added to the template cache immediately
 	userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
 
-	selfBuildID, err := uuid.Parse(meta.Template.BuildID)
-	if err != nil {
-		return fmt.Errorf("parse self build id: %w", err)
-	}
+	// uploadCoord is nil for one-shot CLIs (create-build, smoketest, benchmarks)
+	// that build a single template and exit; nothing waits on the future.
+	var uploadFut *utils.ErrorOnce
+	if lb.uploadCoord != nil {
+		selfBuildID, err := uuid.Parse(meta.Template.BuildID)
+		if err != nil {
+			return fmt.Errorf("parse self build id: %w", err)
+		}
 
-	uploadFut := lb.uploadCoord.Begin(selfBuildID)
+		uploadFut, err = lb.uploadCoord.Begin(selfBuildID)
+		if err != nil {
+			return fmt.Errorf("register upload: %w", err)
+		}
+	}
 
 	lb.UploadErrGroup.Go(func() (uploadErr error) {
 		ctx := context.WithoutCancel(ctx)
@@ -299,7 +308,9 @@ func (lb *LayerExecutor) PauseAndUpload(
 		// Always signal terminal outcome on the future so child layers waiting
 		// on this build wake up — including on error, so they can abort.
 		defer func() {
-			_ = uploadFut.SetResult(struct{}{}, uploadErr)
+			if uploadFut != nil {
+				_ = uploadFut.SetError(uploadErr)
+			}
 		}()
 
 		if _, _, err := snapshot.Upload(ctx, lb.templateStorage, lb.compressConfig, lb.ff, storage.UseCaseBuild, lb.uploadCoord); err != nil {

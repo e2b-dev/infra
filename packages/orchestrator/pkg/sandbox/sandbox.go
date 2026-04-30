@@ -1137,6 +1137,7 @@ func (s *Sandbox) Pause(
 		RootfsDiffHeader:  rootfsDiffHeader,
 
 		Paths:         storage.Paths{BuildID: m.Template.BuildID},
+		BuildID:       buildID,
 		ParentBuildID: parentBuildID,
 
 		cleanup: cleanup,

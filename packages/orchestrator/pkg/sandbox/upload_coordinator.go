@@ -27,17 +27,17 @@ type templateCacheLookup interface {
 }
 
 // UploadCoordinator gates a child layer's V4 header finalization on its parent's
-// SwapHeader via a per-build SetOnce. Failed uploads keep their future in the
+// SwapHeader via a per-build ErrorOnce. Failed uploads keep their future in the
 // cache so late waiters observe the error; the cache TTL bounds the total.
 type UploadCoordinator struct {
 	templateCache templateCacheLookup // *template.Cache, but abstracted for testing
 
-	futures *ttlcache.Cache[uuid.UUID, *utils.SetOnce[struct{}]]
+	futures *ttlcache.Cache[uuid.UUID, *utils.ErrorOnce]
 }
 
 func NewUploadCoordinator(templateCache *template.Cache) *UploadCoordinator {
 	futures := ttlcache.New(
-		ttlcache.WithTTL[uuid.UUID, *utils.SetOnce[struct{}]](uploadFutureTTL),
+		ttlcache.WithTTL[uuid.UUID, *utils.ErrorOnce](uploadFutureTTL),
 	)
 	go futures.Start()
 
@@ -47,13 +47,27 @@ func NewUploadCoordinator(templateCache *template.Cache) *UploadCoordinator {
 	}
 }
 
-// Begin registers a new in-flight upload for buildID. Calling Begin twice with
-// the same buildID orphans existing waiters and is not guarded against.
-func (c *UploadCoordinator) Begin(buildID uuid.UUID) *utils.SetOnce[struct{}] {
-	fut := utils.NewSetOnce[struct{}]()
+// Stop tears down the TTL eviction goroutine. Safe to call multiple times.
+func (c *UploadCoordinator) Stop() {
+	c.futures.Stop()
+}
+
+var ErrUploadAlreadyInFlight = errors.New("upload already in flight for build")
+
+func (c *UploadCoordinator) Begin(buildID uuid.UUID) (*utils.ErrorOnce, error) {
+	if existing := c.futures.Get(buildID); existing != nil {
+		select {
+		case <-existing.Value().Done():
+			// Prior upload finished; safe to replace.
+		default:
+			return nil, fmt.Errorf("%w: %s", ErrUploadAlreadyInFlight, buildID)
+		}
+	}
+
+	fut := utils.NewErrorOnce()
 	c.futures.Set(buildID, fut, ttlcache.DefaultTTL)
 
-	return fut
+	return fut, nil
 }
 
 // WaitForFinalHeader blocks on buildID's upload future (if registered) and
@@ -61,7 +75,7 @@ func (c *UploadCoordinator) Begin(buildID uuid.UUID) *utils.SetOnce[struct{}] {
 // seam — a future Redis-backed remote wait will plug in here.
 func (c *UploadCoordinator) WaitForFinalHeader(ctx context.Context, buildID uuid.UUID, fileType build.DiffType) (*header.Header, error) {
 	if item := c.futures.Get(buildID); item != nil {
-		if _, err := item.Value().WaitWithContext(ctx); err != nil {
+		if err := item.Value().WaitWithContext(ctx); err != nil {
 			return nil, fmt.Errorf("wait for upload %s: %w", buildID, err)
 		}
 	}
@@ -78,7 +92,7 @@ func (c *UploadCoordinator) WaitForFinalHeader(ctx context.Context, buildID uuid
 
 	h := dev.Header()
 	if h.IncompletePendingUpload {
-		return nil, fmt.Errorf("build %s/%s: parent header still incomplete after wait", buildID, fileType)
+		return nil, fmt.Errorf("build %s/%s: header incomplete", buildID, fileType)
 	}
 
 	return h, nil
