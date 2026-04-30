@@ -16,7 +16,7 @@ import (
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 )
 
-const RequiredScope = "sandboxes:lifecycle"
+const RequiredScope = proxygrpc.ScopeSandboxLifecycle
 
 type Verifier interface {
 	VerifyClaims(ctx context.Context, rawToken string) (Claims, error)

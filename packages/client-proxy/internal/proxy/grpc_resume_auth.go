@@ -13,7 +13,7 @@ import (
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 )
 
-const grpcResumeAuthScope = "sandboxes:lifecycle"
+const grpcResumeAuthScope = proxygrpc.ScopeSandboxLifecycle
 
 type grpcResumeAuth interface {
 	authorize(ctx context.Context) (context.Context, error)
