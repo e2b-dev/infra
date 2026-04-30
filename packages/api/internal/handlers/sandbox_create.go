@@ -17,7 +17,6 @@ import (
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/idna"
 
@@ -34,7 +33,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/metrics"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
@@ -183,7 +181,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	var network *types.SandboxNetworkConfig
 	if n := body.Network; n != nil {
-		if err := validateNetworkConfig(ctx, a.featureFlags, teamInfo.Team.ID, n); err != nil {
+		if err := validateNetworkConfig(ctx, a.featureFlags, teamInfo.Team.ID, sharedUtils.DerefOrDefault(build.EnvdVersion, ""), n); err != nil {
 			telemetry.ReportError(ctx, "invalid network config", err.Err, telemetry.WithSandboxID(sandboxID))
 			a.sendAPIStoreError(c, err.Code, err.ClientMsg)
 
@@ -347,9 +345,34 @@ func (im InvalidVolumeMountsError) Error() string {
 
 var errVolumesNotSupported = errors.New("volumes are not supported")
 
+var errNetworkRulesNotSupported = errors.New("network transform rules are not supported")
+
 var errNoEnvdVersion = errors.New("no envd version provided")
 
+const minEnvdVersionForNetworkRules = "0.5.13"
+
 const minEnvdVersionForVolumes = "0.5.14"
+
+// checkEnvdVersionRequirement returns errNoEnvdVersion when buildVersion is empty, a parse
+// error when the version string is invalid, or a wrapped featureErr when the build does not
+// meet requiredMinVersion. The caller decides how to convert the returned error into an API
+// response so each call-site can produce its own status code / message.
+func checkEnvdVersionRequirement(buildVersion, requiredMinVersion string, featureErr error) error {
+	if buildVersion == "" {
+		return errNoEnvdVersion
+	}
+
+	ok, err := sharedUtils.IsGTEVersion(buildVersion, requiredMinVersion)
+	if err != nil {
+		return fmt.Errorf("invalid envd version %q: %w", buildVersion, err)
+	}
+
+	if !ok {
+		return fmt.Errorf("%w; template must be rebuilt. Template envd version is %s, must be at least %s", featureErr, buildVersion, requiredMinVersion)
+	}
+
+	return nil
+}
 
 func convertAPIVolumesToOrchestratorVolumes(ctx context.Context, sqlClient *sqlcdb.Client, featureFlags featureFlagsClient, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount, env *queries.EnvBuild) ([]*orchestrator.SandboxVolumeMount, error) {
 	// are any volumes configured?
@@ -363,16 +386,9 @@ func convertAPIVolumesToOrchestratorVolumes(ctx context.Context, sqlClient *sqlc
 	}
 
 	// does your envd version support volumes?
-	if envdVersion := sharedUtils.DerefOrDefault(env.EnvdVersion, ""); envdVersion == "" {
-		logger.L().Warn(ctx, "envd version is unset")
-
-		return nil, errNoEnvdVersion
-	} else if ok, err := sharedUtils.IsGTEVersion(envdVersion, minEnvdVersionForVolumes); err != nil {
-		logger.L().Warn(ctx, "failed to check envd version", zap.Error(err), zap.String("envd_version", envdVersion))
-
-		return nil, fmt.Errorf("invalid envd version %q: %w", envdVersion, err)
-	} else if !ok {
-		return nil, fmt.Errorf("%w; template must be rebuilt. Template envd version is %s, must be at least %s to support volumes", errVolumesNotSupported, envdVersion, minEnvdVersionForVolumes)
+	envdVersion := sharedUtils.DerefOrDefault(env.EnvdVersion, "")
+	if err := checkEnvdVersionRequirement(envdVersion, minEnvdVersionForVolumes, errVolumesNotSupported); err != nil {
+		return nil, err
 	}
 
 	// get volumes from the database
@@ -563,7 +579,7 @@ func apiRulesToDBRules(apiRules *map[string][]api.SandboxNetworkRule) map[string
 	return dbRules
 }
 
-func validateNetworkConfig(ctx context.Context, featureFlags featureFlagsClient, teamID uuid.UUID, network *api.SandboxNetworkConfig) *api.APIError {
+func validateNetworkConfig(ctx context.Context, featureFlags featureFlagsClient, teamID uuid.UUID, envdVersion string, network *api.SandboxNetworkConfig) *api.APIError {
 	if network == nil {
 		return nil
 	}
@@ -603,7 +619,7 @@ func validateNetworkConfig(ctx context.Context, featureFlags featureFlagsClient,
 		return err
 	}
 
-	return validateNetworkRules(ctx, featureFlags, teamID, network.Rules)
+	return validateNetworkRules(ctx, featureFlags, teamID, envdVersion, network.Rules)
 }
 
 // validateEgressRules validates egress allow/deny rules:
@@ -647,7 +663,7 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 	return nil
 }
 
-func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, teamID uuid.UUID, rules *map[string][]api.SandboxNetworkRule) *api.APIError {
+func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, teamID uuid.UUID, envdVersion string, rules *map[string][]api.SandboxNetworkRule) *api.APIError {
 	if rules == nil {
 		return nil
 	}
@@ -657,6 +673,22 @@ func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, 
 			Code:      http.StatusBadRequest,
 			Err:       fmt.Errorf("team %s is not allowed to use network transform rules", teamID),
 			ClientMsg: "Network transform rules are not available for your team.",
+		}
+	}
+
+	if err := checkEnvdVersionRequirement(envdVersion, minEnvdVersionForNetworkRules, errNetworkRulesNotSupported); err != nil {
+		if errors.Is(err, errNetworkRulesNotSupported) {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       err,
+				ClientMsg: err.Error(),
+			}
+		}
+
+		return &api.APIError{
+			Code:      http.StatusInternalServerError,
+			Err:       err,
+			ClientMsg: "internal error while validating network rules",
 		}
 	}
 

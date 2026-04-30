@@ -280,7 +280,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			mockFF := handlersmocks.NewMockFeatureFlagsClient(t)
-			err := validateNetworkConfig(context.Background(), mockFF, uuid.Nil, tt.network)
+			err := validateNetworkConfig(context.Background(), mockFF, uuid.Nil, "", tt.network)
 
 			if tt.wantErr {
 				if err == nil {
@@ -819,11 +819,12 @@ func TestValidateNetworkRules(t *testing.T) {
 	teamID := uuid.New()
 
 	tests := []struct {
-		name     string
-		rules    *map[string][]api.SandboxNetworkRule
-		setupFF  func(t *testing.T) *handlersmocks.MockFeatureFlagsClient
-		wantCode int
-		wantMsg  string // substring of ClientMsg; empty means expect no error
+		name        string
+		envdVersion string
+		rules       *map[string][]api.SandboxNetworkRule
+		setupFF     func(t *testing.T) *handlersmocks.MockFeatureFlagsClient
+		wantCode    int
+		wantMsg     string // substring of ClientMsg; empty means expect no error
 	}{
 		// ── nil / empty ──────────────────────────────────────────────────────────
 		{
@@ -832,9 +833,10 @@ func TestValidateNetworkRules(t *testing.T) {
 			setupFF: ffUnused,
 		},
 		{
-			name:    "empty rules map is valid",
-			rules:   rulesMap(map[string][]api.SandboxNetworkRule{}),
-			setupFF: ffEnabled,
+			name:        "empty rules map is valid",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       rulesMap(map[string][]api.SandboxNetworkRule{}),
+			setupFF:     ffEnabled,
 		},
 		// ── feature flag ─────────────────────────────────────────────────────────
 		{
@@ -843,6 +845,28 @@ func TestValidateNetworkRules(t *testing.T) {
 			setupFF:  ffDisabled,
 			wantCode: http.StatusBadRequest,
 			wantMsg:  "not available for your team",
+		},
+		// ── envd version ─────────────────────────────────────────────────────────
+		{
+			name:     "missing envd version returns 500",
+			rules:    rulesMap(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
+			setupFF:  ffEnabled,
+			wantCode: http.StatusInternalServerError,
+			wantMsg:  "internal error while validating network rules",
+		},
+		{
+			name:        "envd version below minimum returns 400",
+			envdVersion: "0.5.12",
+			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
+			setupFF:     ffEnabled,
+			wantCode:    http.StatusBadRequest,
+			wantMsg:     "template must be rebuilt",
+		},
+		{
+			name:        "envd version at minimum is valid",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
+			setupFF:     ffEnabled,
 		},
 		// ── domain count ─────────────────────────────────────────────────────────
 		{
@@ -855,7 +879,8 @@ func TestValidateNetworkRules(t *testing.T) {
 
 				return &m
 			}(),
-			setupFF: ffEnabled,
+			envdVersion: minEnvdVersionForNetworkRules,
+			setupFF:     ffEnabled,
 		},
 		{
 			name: "one over max domains returns 400",
@@ -867,61 +892,70 @@ func TestValidateNetworkRules(t *testing.T) {
 
 				return &m
 			}(),
-			setupFF:  ffEnabled,
-			wantCode: http.StatusBadRequest,
-			wantMsg:  fmt.Sprintf("at most %d domains", maxNetworkRuleDomains),
+			envdVersion: minEnvdVersionForNetworkRules,
+			setupFF:     ffEnabled,
+			wantCode:    http.StatusBadRequest,
+			wantMsg:     fmt.Sprintf("at most %d domains", maxNetworkRuleDomains),
 		},
 		// ── domain key validation ─────────────────────────────────────────────────
 		{
-			name:     "empty domain key returns 400",
-			rules:    rulesMap(map[string][]api.SandboxNetworkRule{"": {}}),
-			setupFF:  ffEnabled,
-			wantCode: http.StatusBadRequest,
-			wantMsg:  "must not be empty",
+			name:        "empty domain key returns 400",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"": {}}),
+			setupFF:     ffEnabled,
+			wantCode:    http.StatusBadRequest,
+			wantMsg:     "must not be empty",
 		},
 		{
-			name:     "domain exceeding max length returns 400",
-			rules:    rulesMap(map[string][]api.SandboxNetworkRule{strings.Repeat("a", maxNetworkRuleDomainLen+1): {}}),
-			setupFF:  ffEnabled,
-			wantCode: http.StatusBadRequest,
-			wantMsg:  "maximum length",
+			name:        "domain exceeding max length returns 400",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       rulesMap(map[string][]api.SandboxNetworkRule{strings.Repeat("a", maxNetworkRuleDomainLen+1): {}}),
+			setupFF:     ffEnabled,
+			wantCode:    http.StatusBadRequest,
+			wantMsg:     "maximum length",
 		},
 		{
-			name:     "invalid domain returns 400",
-			rules:    rulesMap(map[string][]api.SandboxNetworkRule{"not a valid domain!": {}}),
-			setupFF:  ffEnabled,
-			wantCode: http.StatusBadRequest,
-			wantMsg:  "not a valid domain name",
+			name:        "invalid domain returns 400",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"not a valid domain!": {}}),
+			setupFF:     ffEnabled,
+			wantCode:    http.StatusBadRequest,
+			wantMsg:     "not a valid domain name",
 		},
 		{
-			name:    "valid plain domain is accepted",
-			rules:   rulesMap(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
-			setupFF: ffEnabled,
+			name:        "valid plain domain is accepted",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
+			setupFF:     ffEnabled,
 		},
 		{
-			name:     "wildcard domain is rejected",
-			rules:    rulesMap(map[string][]api.SandboxNetworkRule{"*.openai.com": {}}),
-			setupFF:  ffEnabled,
-			wantCode: http.StatusBadRequest,
-			wantMsg:  "not a valid domain name",
+			name:        "wildcard domain is rejected",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"*.openai.com": {}}),
+			setupFF:     ffEnabled,
+			wantCode:    http.StatusBadRequest,
+			wantMsg:     "not a valid domain name",
 		},
 		{
-			name:     "bare wildcard is rejected",
-			rules:    rulesMap(map[string][]api.SandboxNetworkRule{"*.": {}}),
-			setupFF:  ffEnabled,
-			wantCode: http.StatusBadRequest,
-			wantMsg:  "not a valid domain name",
+			name:        "bare wildcard is rejected",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"*.": {}}),
+			setupFF:     ffEnabled,
+			wantCode:    http.StatusBadRequest,
+			wantMsg:     "not a valid domain name",
 		},
 		// ── transform count ───────────────────────────────────────────────────────
 		{
-			name: "one transform per domain is valid",
+			name:        "one transform per domain is valid",
+			envdVersion: minEnvdVersionForNetworkRules,
 			rules: rulesMap(map[string][]api.SandboxNetworkRule{
 				"api.openai.com": {simpleRule(map[string]string{"Authorization": "Bearer token"})},
 			}),
 			setupFF: ffEnabled,
 		},
 		{
-			name: "two transforms for one domain returns 400",
+			name:        "two transforms for one domain returns 400",
+			envdVersion: minEnvdVersionForNetworkRules,
 			rules: rulesMap(map[string][]api.SandboxNetworkRule{
 				"api.openai.com": {
 					simpleRule(map[string]string{"Authorization": "Bearer token"}),
@@ -934,7 +968,8 @@ func TestValidateNetworkRules(t *testing.T) {
 		},
 		// ── nil transform (no headers to check) ───────────────────────────────────
 		{
-			name: "nil transform in rule is valid",
+			name:        "nil transform in rule is valid",
+			envdVersion: minEnvdVersionForNetworkRules,
 			rules: rulesMap(map[string][]api.SandboxNetworkRule{
 				"api.openai.com": {{Transform: nil}},
 			}),
@@ -942,7 +977,8 @@ func TestValidateNetworkRules(t *testing.T) {
 		},
 		// ── header name ───────────────────────────────────────────────────────────
 		{
-			name: "empty header name returns 400",
+			name:        "empty header name returns 400",
+			envdVersion: minEnvdVersionForNetworkRules,
 			rules: rulesMap(map[string][]api.SandboxNetworkRule{
 				"api.openai.com": {simpleRule(map[string]string{"": "value"})},
 			}),
@@ -951,7 +987,8 @@ func TestValidateNetworkRules(t *testing.T) {
 			wantMsg:  "must not be empty",
 		},
 		{
-			name: "header name at max length is valid",
+			name:        "header name at max length is valid",
+			envdVersion: minEnvdVersionForNetworkRules,
 			rules: rulesMap(map[string][]api.SandboxNetworkRule{
 				"api.openai.com": {simpleRule(map[string]string{
 					strings.Repeat("X", maxNetworkRuleHeaderNameLen): "value",
@@ -960,7 +997,8 @@ func TestValidateNetworkRules(t *testing.T) {
 			setupFF: ffEnabled,
 		},
 		{
-			name: "header name exceeding max length returns 400",
+			name:        "header name exceeding max length returns 400",
+			envdVersion: minEnvdVersionForNetworkRules,
 			rules: rulesMap(map[string][]api.SandboxNetworkRule{
 				"api.openai.com": {simpleRule(map[string]string{
 					strings.Repeat("X", maxNetworkRuleHeaderNameLen+1): "value",
@@ -972,7 +1010,8 @@ func TestValidateNetworkRules(t *testing.T) {
 		},
 		// ── header value ──────────────────────────────────────────────────────────
 		{
-			name: "header value at max length is valid",
+			name:        "header value at max length is valid",
+			envdVersion: minEnvdVersionForNetworkRules,
 			rules: rulesMap(map[string][]api.SandboxNetworkRule{
 				"api.openai.com": {simpleRule(map[string]string{
 					"Authorization": strings.Repeat("x", maxNetworkRuleHeaderValueLen),
@@ -981,7 +1020,8 @@ func TestValidateNetworkRules(t *testing.T) {
 			setupFF: ffEnabled,
 		},
 		{
-			name: "header value exceeding max length returns 400",
+			name:        "header value exceeding max length returns 400",
+			envdVersion: minEnvdVersionForNetworkRules,
 			rules: rulesMap(map[string][]api.SandboxNetworkRule{
 				"api.openai.com": {simpleRule(map[string]string{
 					"Authorization": strings.Repeat("x", maxNetworkRuleHeaderValueLen+1),
@@ -998,7 +1038,7 @@ func TestValidateNetworkRules(t *testing.T) {
 			t.Parallel()
 
 			ff := tt.setupFF(t)
-			apiErr := validateNetworkRules(context.Background(), ff, teamID, tt.rules)
+			apiErr := validateNetworkRules(context.Background(), ff, teamID, tt.envdVersion, tt.rules)
 
 			if tt.wantMsg == "" {
 				assert.Nil(t, apiErr)

@@ -1,12 +1,14 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
@@ -50,7 +52,19 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(c *gin.Context, sandboxID string
 		return
 	}
 
-	if apiErr := validateNetworkRules(ctx, a.featureFlags, team.ID, body.Rules); apiErr != nil {
+	sbxInfo, err := a.orchestrator.GetSandbox(ctx, team.ID, sandboxID)
+	if err != nil {
+		if errors.Is(err, sandbox.ErrNotFound) {
+			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
+		} else {
+			telemetry.ReportError(ctx, "error getting sandbox for network update", err)
+			a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get sandbox")
+		}
+
+		return
+	}
+
+	if apiErr := validateNetworkRules(ctx, a.featureFlags, team.ID, sbxInfo.EnvdVersion, body.Rules); apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
