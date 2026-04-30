@@ -76,6 +76,11 @@ func (lb *LayerExecutor) BuildLayer(
 		return metadata.Template{}, fmt.Errorf("get template snapshot: %w", err)
 	}
 
+	var parentBuildID string
+	if sourceMeta, sourceMetaErr := localTemplate.Metadata(); sourceMetaErr == nil {
+		parentBuildID = sourceMeta.Template.BuildID
+	}
+
 	// Create or resume sandbox
 	sbx, err := cmd.SandboxCreator.Sandbox(ctx, lb, localTemplate)
 	if err != nil {
@@ -140,6 +145,7 @@ func (lb *LayerExecutor) BuildLayer(
 		sbx,
 		cmd.Hash,
 		meta,
+		parentBuildID,
 	)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("pause and upload: %w", err)
@@ -241,6 +247,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 	sbx *sandbox.Sandbox,
 	hash string,
 	meta metadata.Template,
+	parentBuildID string,
 ) (e error) {
 	ctx, childSpan := tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
@@ -293,6 +300,13 @@ func (lb *LayerExecutor) PauseAndUpload(
 			ctx,
 			lb.templateStorage,
 			storage.Paths{BuildID: meta.Template.BuildID},
+			storage.SnapshotUploadMetadata{
+				Common: storage.ObjectMetadata{
+					storage.ObjectMetadataTeamID:      lb.BuildContext.Config.TeamID,
+					storage.ObjectMetadataRootBuildID: lb.BuildContext.Template.BuildID,
+				},
+				MetadataOnly: storage.BuildLineageMetadata(storage.BuildKindTemplateLayer, parentBuildID),
+			},
 		)
 		if err != nil {
 			return fmt.Errorf("error uploading snapshot: %w", err)

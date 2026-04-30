@@ -8,6 +8,7 @@ import (
 	"context"
 	"io"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/storageopts"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -245,16 +246,22 @@ func (_c *MockSeekable_Size_Call) RunAndReturn(run func(ctx context.Context) (in
 }
 
 // StoreFile provides a mock function for the type MockSeekable
-func (_mock *MockSeekable) StoreFile(ctx context.Context, path string) error {
-	ret := _mock.Called(ctx, path)
+func (_mock *MockSeekable) StoreFile(ctx context.Context, path string, opts ...storageopts.PutOption) error {
+	var tmpRet mock.Arguments
+	if len(opts) > 0 {
+		tmpRet = _mock.Called(ctx, path, opts)
+	} else {
+		tmpRet = _mock.Called(ctx, path)
+	}
+	ret := tmpRet
 
 	if len(ret) == 0 {
 		panic("no return value specified for StoreFile")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = returnFunc(ctx, path)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, ...storageopts.PutOption) error); ok {
+		r0 = returnFunc(ctx, path, opts...)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -269,11 +276,13 @@ type MockSeekable_StoreFile_Call struct {
 // StoreFile is a helper method to define mock.On call
 //   - ctx context.Context
 //   - path string
-func (_e *MockSeekable_Expecter) StoreFile(ctx interface{}, path interface{}) *MockSeekable_StoreFile_Call {
-	return &MockSeekable_StoreFile_Call{Call: _e.mock.On("StoreFile", ctx, path)}
+//   - opts ...storageopts.PutOption
+func (_e *MockSeekable_Expecter) StoreFile(ctx interface{}, path interface{}, opts ...interface{}) *MockSeekable_StoreFile_Call {
+	return &MockSeekable_StoreFile_Call{Call: _e.mock.On("StoreFile",
+		append([]interface{}{ctx, path}, opts...)...)}
 }
 
-func (_c *MockSeekable_StoreFile_Call) Run(run func(ctx context.Context, path string)) *MockSeekable_StoreFile_Call {
+func (_c *MockSeekable_StoreFile_Call) Run(run func(ctx context.Context, path string, opts ...storageopts.PutOption)) *MockSeekable_StoreFile_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -283,9 +292,16 @@ func (_c *MockSeekable_StoreFile_Call) Run(run func(ctx context.Context, path st
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
+		var arg2 []storageopts.PutOption
+		var variadicArgs []storageopts.PutOption
+		if len(args) > 2 {
+			variadicArgs = args[2].([]storageopts.PutOption)
+		}
+		arg2 = variadicArgs
 		run(
 			arg0,
 			arg1,
+			arg2...,
 		)
 	})
 	return _c
@@ -296,7 +312,7 @@ func (_c *MockSeekable_StoreFile_Call) Return(err error) *MockSeekable_StoreFile
 	return _c
 }
 
-func (_c *MockSeekable_StoreFile_Call) RunAndReturn(run func(ctx context.Context, path string) error) *MockSeekable_StoreFile_Call {
+func (_c *MockSeekable_StoreFile_Call) RunAndReturn(run func(ctx context.Context, path string, opts ...storageopts.PutOption) error) *MockSeekable_StoreFile_Call {
 	_c.Call.Return(run)
 	return _c
 }

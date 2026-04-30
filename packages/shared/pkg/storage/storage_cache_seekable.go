@@ -266,7 +266,7 @@ func (c *cachedSeekable) Size(ctx context.Context) (n int64, e error) {
 	return size, nil
 }
 
-func (c *cachedSeekable) StoreFile(ctx context.Context, path string) (e error) {
+func (c *cachedSeekable) StoreFile(ctx context.Context, path string, opts ...PutOption) (e error) {
 	ctx, span := c.tracer.Start(ctx, "write object from file system",
 		trace.WithAttributes(attribute.String("path", path)),
 	)
@@ -301,7 +301,7 @@ func (c *cachedSeekable) StoreFile(ctx context.Context, path string) (e error) {
 		})
 	}
 
-	return c.inner.StoreFile(ctx, path)
+	return c.inner.StoreFile(ctx, path, opts...)
 }
 
 func (c *cachedSeekable) goCtx(ctx context.Context, fn func(context.Context)) {

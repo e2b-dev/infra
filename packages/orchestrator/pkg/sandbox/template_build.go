@@ -13,17 +13,25 @@ import (
 )
 
 type TemplateBuild struct {
-	paths       storage.Paths
-	persistence storage.StorageProvider
+	paths        storage.Paths
+	persistence  storage.StorageProvider
+	uploadLabels storage.SnapshotUploadMetadata
 
 	memfileHeader *headers.Header
 	rootfsHeader  *headers.Header
 }
 
-func NewTemplateBuild(memfileHeader *headers.Header, rootfsHeader *headers.Header, persistence storage.StorageProvider, paths storage.Paths) *TemplateBuild {
+func NewTemplateBuild(
+	memfileHeader *headers.Header,
+	rootfsHeader *headers.Header,
+	persistence storage.StorageProvider,
+	paths storage.Paths,
+	uploadLabels storage.SnapshotUploadMetadata,
+) *TemplateBuild {
 	return &TemplateBuild{
-		persistence: persistence,
-		paths:       paths,
+		persistence:  persistence,
+		paths:        paths,
+		uploadLabels: uploadLabels,
 
 		memfileHeader: memfileHeader,
 		rootfsHeader:  rootfsHeader,
@@ -39,6 +47,21 @@ func (t *TemplateBuild) Remove(ctx context.Context) error {
 	return nil
 }
 
+func (t *TemplateBuild) commonPutOpts() []storage.PutOption {
+	if len(t.uploadLabels.Common) == 0 {
+		return nil
+	}
+	return []storage.PutOption{storage.WithMetadata(t.uploadLabels.Common)}
+}
+
+func (t *TemplateBuild) metadataPutOpts() []storage.PutOption {
+	merged := t.uploadLabels.MergedForMetadata()
+	if len(merged) == 0 {
+		return nil
+	}
+	return []storage.PutOption{storage.WithMetadata(merged)}
+}
+
 func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Header) error {
 	object, err := t.persistence.OpenBlob(ctx, t.paths.MemfileHeader(), storage.MemfileHeaderObjectType)
 	if err != nil {
@@ -50,7 +73,7 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 		return fmt.Errorf("error when serializing memfile header: %w", err)
 	}
 
-	err = object.Put(ctx, serialized)
+	err = object.Put(ctx, serialized, t.commonPutOpts()...)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile header: %w", err)
 	}
@@ -64,7 +87,7 @@ func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) e
 		return err
 	}
 
-	err = object.StoreFile(ctx, memfilePath)
+	err = object.StoreFile(ctx, memfilePath, t.commonPutOpts()...)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile: %w", err)
 	}
@@ -83,7 +106,7 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Heade
 		return fmt.Errorf("error when serializing memfile header: %w", err)
 	}
 
-	err = object.Put(ctx, serialized)
+	err = object.Put(ctx, serialized, t.commonPutOpts()...)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile header: %w", err)
 	}
@@ -97,7 +120,7 @@ func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) err
 		return err
 	}
 
-	err = object.StoreFile(ctx, rootfsPath)
+	err = object.StoreFile(ctx, rootfsPath, t.commonPutOpts()...)
 	if err != nil {
 		return fmt.Errorf("error when uploading rootfs: %w", err)
 	}
@@ -112,7 +135,7 @@ func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
 		return err
 	}
 
-	if err = uploadFileAsBlob(ctx, object, path); err != nil {
+	if err = uploadFileAsBlob(ctx, object, path, t.commonPutOpts()...); err != nil {
 		return fmt.Errorf("error when uploading snapfile: %w", err)
 	}
 
@@ -126,14 +149,14 @@ func (t *TemplateBuild) uploadMetadata(ctx context.Context, path string) error {
 		return err
 	}
 
-	if err := uploadFileAsBlob(ctx, object, path); err != nil {
+	if err := uploadFileAsBlob(ctx, object, path, t.metadataPutOpts()...); err != nil {
 		return fmt.Errorf("error when uploading metadata: %w", err)
 	}
 
 	return nil
 }
 
-func uploadFileAsBlob(ctx context.Context, b storage.Blob, path string) error {
+func uploadFileAsBlob(ctx context.Context, b storage.Blob, path string, opts ...storage.PutOption) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("failed to open file %s: %w", path, err)
@@ -145,7 +168,7 @@ func uploadFileAsBlob(ctx context.Context, b storage.Blob, path string) error {
 		return fmt.Errorf("failed to read file %s: %w", path, err)
 	}
 
-	err = b.Put(ctx, data)
+	err = b.Put(ctx, data, opts...)
 	if err != nil {
 		return fmt.Errorf("failed to write data to object: %w", err)
 	}

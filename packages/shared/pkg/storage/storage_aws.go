@@ -162,7 +162,7 @@ func (o *awsObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	return io.Copy(dst, resp.Body)
 }
 
-func (o *awsObject) StoreFile(ctx context.Context, path string) error {
+func (o *awsObject) StoreFile(ctx context.Context, path string, opts ...PutOption) error {
 	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
 	defer cancel()
 
@@ -183,25 +183,27 @@ func (o *awsObject) StoreFile(ctx context.Context, path string) error {
 	_, err = uploader.Upload(
 		ctx,
 		&s3.PutObjectInput{
-			Bucket: &o.bucketName,
-			Key:    &o.path,
-			Body:   f,
+			Bucket:   &o.bucketName,
+			Key:      &o.path,
+			Body:     f,
+			Metadata: ApplyPutOptions(opts).Metadata,
 		},
 	)
 
 	return err
 }
 
-func (o *awsObject) Put(ctx context.Context, data []byte) error {
+func (o *awsObject) Put(ctx context.Context, data []byte, opts ...PutOption) error {
 	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
 	defer cancel()
 
 	_, err := o.client.PutObject(
 		ctx,
 		&s3.PutObjectInput{
-			Bucket: &o.bucketName,
-			Key:    &o.path,
-			Body:   bytes.NewReader(data),
+			Bucket:   &o.bucketName,
+			Key:      &o.path,
+			Body:     bytes.NewReader(data),
+			Metadata: ApplyPutOptions(opts).Metadata,
 		},
 	)
 	if err != nil {

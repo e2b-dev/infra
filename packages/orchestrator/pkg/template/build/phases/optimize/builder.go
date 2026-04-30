@@ -256,7 +256,16 @@ func (pb *OptimizeBuilder) runSandboxAndCollectPrefetch(
 
 // updateMetadata updates the template metadata in storages.
 func (pb *OptimizeBuilder) updateMetadata(ctx context.Context, t metadata.Template) error {
-	err := metadata.UploadMetadata(ctx, pb.templateStorage, t)
+	// parent_build_id isn't plumbed through this phase, so it's omitted on rewrite.
+	uploadMeta := storage.SnapshotUploadMetadata{
+		Common: storage.ObjectMetadata{
+			storage.ObjectMetadataTeamID:      pb.BuildContext.Config.TeamID,
+			storage.ObjectMetadataRootBuildID: pb.BuildContext.Template.BuildID,
+		},
+		MetadataOnly: storage.BuildLineageMetadata(storage.BuildKindTemplateLayer, ""),
+	}
+
+	err := metadata.UploadMetadata(ctx, pb.templateStorage, t, uploadMeta.MergedForMetadata())
 	if err != nil {
 		return err
 	}

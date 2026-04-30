@@ -76,14 +76,14 @@ func (b *peerBlob) Exists(ctx context.Context) (bool, error) {
 	)
 }
 
-func (b *peerBlob) Put(ctx context.Context, data []byte) error {
+func (b *peerBlob) Put(ctx context.Context, data []byte, opts ...storage.PutOption) error {
 	// Writes always go to the base provider (GCS/S3); the peer is read-only.
 	fallback, err := b.getOrOpenBase(ctx)
 	if err != nil {
 		return err
 	}
 
-	return fallback.Put(ctx, data)
+	return fallback.Put(ctx, data, opts...)
 }
 
 // openPeerBlobStream opens a GetBuildBlob stream, checks peer availability,
