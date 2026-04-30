@@ -71,7 +71,7 @@ func newTemplateFromStorage(
 	}, nil
 }
 
-func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore) {
+func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore) error {
 	ctx, span := tracer.Start(ctx, "fetch storage template", trace.WithAttributes(
 		telemetry.WithBuildID(t.paths.BuildID),
 	))
@@ -102,7 +102,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 				return fmt.Errorf("failed to set snapfile error: %w", errors.Join(errMsg, err))
 			}
 
-			return nil
+			return errMsg
 		}
 
 		if err := t.snapfile.SetValue(snapfile); err != nil {
@@ -134,7 +134,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 				return fmt.Errorf("failed to set metafile error: %w", errors.Join(sourceErr, err))
 			}
 
-			return nil
+			return sourceErr
 		}
 
 		if err != nil {
@@ -152,7 +152,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 					return fmt.Errorf("failed to set metafile error: %w", errors.Join(sourceErr, err))
 				}
 
-				return nil
+				return sourceErr
 			}
 
 			if err := t.metafile.SetValue(&storageFile{
@@ -189,7 +189,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 				return fmt.Errorf("failed to set memfile error: %w", errors.Join(errMsg, err))
 			}
 
-			return nil
+			return errMsg
 		}
 
 		if err := t.memfile.SetValue(memfileStorage); err != nil {
@@ -216,7 +216,7 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 				return fmt.Errorf("failed to set rootfs error: %w", errors.Join(errMsg, err))
 			}
 
-			return nil
+			return errMsg
 		}
 
 		if err := t.rootfs.SetValue(rootfsStorage); err != nil {
@@ -236,8 +236,10 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 			zap.Error(err),
 		)
 
-		return
+		return err
 	}
+
+	return nil
 }
 
 func (t *storageTemplate) Close(ctx context.Context) error {
