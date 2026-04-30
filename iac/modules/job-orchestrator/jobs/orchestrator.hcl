@@ -71,6 +71,7 @@ job "orchestrator-${latest_orchestrator_job_id}" {
         TEMPLATE_BUCKET_NAME         = "${template_bucket_name}"
         OTEL_COLLECTOR_GRPC_ENDPOINT = "${otel_collector_grpc_endpoint}"
         ALLOW_SANDBOX_INTERNET       = "${allow_sandbox_internet}"
+        ALLOW_SANDBOX_INTERNAL_CIDRS = "${allow_sandbox_internal_cidrs}"
         CLICKHOUSE_CONNECTION_STRING = "${clickhouse_connection_string}"
         REDIS_POOL_SIZE              = "${redis_pool_size}"
         REDIS_CLUSTER_URL            = "${redis_cluster_url}"
