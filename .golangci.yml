@@ -73,6 +73,9 @@ linters:
         - pattern: '.*\.ErrNoRows$'
           pkg: '^database/sql$'
           msg: "Use github.com/e2b-dev/infra/packages/db/pkg/dberrors.IsNotFoundError instead."
+        - pattern: '.*\.ErrNoRows$'
+          pkg: '^github\.com/jackc/pgx/v5$'
+          msg: "Use github.com/e2b-dev/infra/packages/db/pkg/dberrors.IsNotFoundError instead."
     #        - pattern: os\.Getenv
     #          msg: "Add your field to the configuration model instead."
         - pattern: 'zap\.New$'
