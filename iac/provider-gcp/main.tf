@@ -302,6 +302,7 @@ module "nomad" {
   orchestrator_proxy_port        = var.orchestrator_proxy_port
   fc_env_pipeline_bucket_name    = module.init.fc_env_pipeline_bucket_name
   envd_timeout                   = var.envd_timeout
+  sandbox_hosts_file_override    = var.sandbox_hosts_file_override
   persistent_volume_mounts       = { for key, config in local.persistent_volume_types : key => config["local_mount_path"] }
   default_persistent_volume_type = var.default_persistent_volume_type
   orchestrator_env_vars          = var.orchestrator_env_vars

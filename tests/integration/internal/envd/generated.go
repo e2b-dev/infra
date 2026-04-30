@@ -203,6 +203,9 @@ type PostInitJSONBody struct {
 	// EnvVars Environment variables to set
 	EnvVars *EnvVars `json:"envVars,omitempty"`
 
+	// HostsFileOverride Extra /etc/hosts entries, semicolon-separated (e.g. "10.0.0.1 host1.example.com;10.0.0.2 host2.example.com")
+	HostsFileOverride *string `json:"hostsFileOverride,omitempty"`
+
 	// HyperloopIP IP address of the hyperloop server to connect to
 	HyperloopIP *string `json:"hyperloopIP,omitempty"`
 

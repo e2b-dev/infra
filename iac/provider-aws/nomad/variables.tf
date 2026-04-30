@@ -223,6 +223,12 @@ variable "envd_timeout" {
   default = "40s"
 }
 
+variable "sandbox_hosts_file_override" {
+  type        = string
+  description = "Extra /etc/hosts entries for sandboxes, semicolon-separated"
+  default     = ""
+}
+
 variable "fc_env_pipeline_bucket_name" {
   type = string
 }

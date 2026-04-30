@@ -35,6 +35,8 @@ type BuilderConfig struct {
 
 	Provider string `env:"PROVIDER" envDefault:"gcp"`
 
+	SandboxHostsFileOverride string `env:"SANDBOX_HOSTS_FILE_OVERRIDE" envDefault:""`
+
 	StorageConfig storage.Config
 	NetworkConfig network.Config
 }

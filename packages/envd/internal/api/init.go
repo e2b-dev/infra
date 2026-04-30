@@ -202,8 +202,8 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 		a.accessToken.Destroy()
 	}
 
-	if data.HyperloopIP != nil {
-		go a.SetupHyperloop(*data.HyperloopIP)
+	if data.HyperloopIP != nil || (data.HostsFileOverride != nil && *data.HostsFileOverride != "") {
+		go a.setupHostsFile(logger, data.HyperloopIP, data.HostsFileOverride)
 	}
 
 	if data.DefaultUser != nil && *data.DefaultUser != "" {
@@ -392,14 +392,58 @@ func asString(v any) string {
 }
 
 func (a *API) SetupHyperloop(address string) {
+	a.setupHostsFile(*a.logger, &address, nil)
+}
+
+// setupHostsFile serialises all /etc/hosts mutations under hyperloopLock so
+// that concurrent HyperloopIP and HostsFileOverride writes cannot clobber each other.
+func (a *API) setupHostsFile(logger zerolog.Logger, hyperloopIP *string, hostsFileOverride *string) {
 	a.hyperloopLock.Lock()
 	defer a.hyperloopLock.Unlock()
 
-	if err := rewriteHostsFile(address, "/etc/hosts"); err != nil {
-		a.logger.Error().Err(err).Msg("failed to modify hosts file")
-	} else {
-		a.defaults.EnvVars.Store("E2B_EVENTS_ADDRESS", fmt.Sprintf("http://%s", address))
+	if hyperloopIP != nil {
+		if err := rewriteHostsFile(*hyperloopIP, "/etc/hosts"); err != nil {
+			logger.Error().Err(err).Msg("failed to modify hosts file")
+		} else {
+			a.defaults.EnvVars.Store("E2B_EVENTS_ADDRESS", fmt.Sprintf("http://%s", *hyperloopIP))
+		}
 	}
+
+	if hostsFileOverride != nil && *hostsFileOverride != "" {
+		if err := applyHostsOverride(*hostsFileOverride, "/etc/hosts"); err != nil {
+			logger.Error().Err(err).Msg("failed to apply hosts file override")
+		}
+	}
+}
+
+func applyHostsOverride(override, path string) error {
+	hosts, err := txeh.NewHosts(&txeh.HostsConfig{
+		ReadFilePath:  path,
+		WriteFilePath: path,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to read hosts file: %w", err)
+	}
+
+	for line := range strings.SplitSeq(override, ";") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+
+		ip := fields[0]
+		hostnames := fields[1:]
+		for _, h := range hostnames {
+			hosts.AddHost(ip, h)
+		}
+	}
+
+	return hosts.Save()
 }
 
 const eventsHost = "events.e2b.local"

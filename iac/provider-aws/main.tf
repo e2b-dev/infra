@@ -202,6 +202,7 @@ module "nomad" {
   orchestrator_port                   = var.orchestrator_port
   orchestrator_proxy_port             = var.orchestrator_proxy_port
   envd_timeout                        = var.envd_timeout
+  sandbox_hosts_file_override         = var.sandbox_hosts_file_override
   fc_env_pipeline_bucket_name         = module.init.fc_env_pipeline_bucket_name
   template_bucket_name                = module.init.fc_template_bucket_name
   build_cache_bucket_name             = module.init.fc_template_build_cache_bucket_name

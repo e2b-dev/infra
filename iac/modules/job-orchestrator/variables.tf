@@ -83,6 +83,12 @@ variable "clickhouse_connection_string" {
   sensitive = true
 }
 
+variable "sandbox_hosts_file_override" {
+  type        = string
+  description = "Extra /etc/hosts entries for sandboxes, semicolon-separated"
+  default     = ""
+}
+
 variable "redis_url" {
   type      = string
   sensitive = true

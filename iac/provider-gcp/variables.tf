@@ -298,6 +298,12 @@ variable "envd_timeout" {
   default = "40s"
 }
 
+variable "sandbox_hosts_file_override" {
+  type        = string
+  description = "Extra /etc/hosts entries for sandboxes, semicolon-separated (e.g. 10.0.0.1 host.example.com;10.0.0.2 other.example.com)"
+  default     = ""
+}
+
 variable "environment" {
   type    = string
   default = "prod"

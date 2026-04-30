@@ -30,6 +30,7 @@ tf_vars := AWS_PROFILE=$(AWS_PROFILE) AWS_REGION=$(AWS_REGION) \
 	$(call tfvar, CLIENT_CLUSTER_SIZE) \
 	$(call tfvar, CLIENT_SERVER_MACHINE_TYPE) \
 	$(call tfvar, CLIENT_SERVER_NESTED_VIRTUALIZATION) \
+	$(call tfvar, SANDBOX_HOSTS_FILE_OVERRIDE) \
 	$(call tfvar, CLICKHOUSE_CLUSTER_SIZE) \
 	$(call tfvar, REDIS_INSTANCE_TYPE) \
 	$(call tfvar, REDIS_MANAGED) \

@@ -11,6 +11,7 @@ locals {
     template_bucket_name         = var.template_bucket_name
     allow_sandbox_internet       = var.allow_sandbox_internet
     clickhouse_connection_string = var.clickhouse_connection_string
+    sandbox_hosts_file_override  = var.sandbox_hosts_file_override
     redis_url                    = var.redis_url
     redis_cluster_url            = var.redis_cluster_url
     redis_tls_ca_base64          = var.redis_tls_ca_base64

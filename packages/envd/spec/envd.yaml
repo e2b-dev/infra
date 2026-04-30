@@ -70,6 +70,9 @@ paths:
                 caBundle:
                   type: string
                   description: PEM-encoded CA certificates to install into the system trust store (may contain multiple concatenated PEM blocks)
+                hostsFileOverride:
+                  type: string
+                  description: Extra /etc/hosts entries, semicolon-separated (e.g. "10.0.0.1 host1.example.com;10.0.0.2 host2.example.com")
 
       responses:
         "204":

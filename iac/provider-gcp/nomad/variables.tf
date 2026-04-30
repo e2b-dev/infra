@@ -323,6 +323,12 @@ variable "template_manages_clusters_size_gt_1" {
   type = bool
 }
 
+variable "sandbox_hosts_file_override" {
+  type        = string
+  description = "Extra /etc/hosts entries for sandboxes, semicolon-separated"
+  default     = ""
+}
+
 variable "nomad_autoscaler_version" {
   type        = string
   description = "Version of the Nomad Autoscaler to deploy"
