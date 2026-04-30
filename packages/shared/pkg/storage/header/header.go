@@ -35,6 +35,13 @@ type Header struct {
 	Builds map[uuid.UUID]BuildData
 
 	Mapping []BuildMap
+
+	// IncompletePendingUpload is set on diff headers produced by ToDiffHeader and
+	// cleared on the finalized headers swapped in by the upload pipeline. It
+	// is in-memory only (never serialized), and signals that the build's data
+	// has not yet reached object storage — readers must serve from the local
+	// cache and skip FrameTable lookups for the still-missing self entry.
+	IncompletePendingUpload bool
 }
 
 // CloneForUpload returns a clone with copied Mapping and Builds, safe to

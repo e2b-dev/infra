@@ -62,6 +62,10 @@ func (z *ZeroDevice) Header() *header.Header {
 	return z.header
 }
 
+func (z *ZeroDevice) SwapHeader(h *header.Header) {
+	z.header = h
+}
+
 func (z *ZeroDevice) Close() error {
 	return nil
 }

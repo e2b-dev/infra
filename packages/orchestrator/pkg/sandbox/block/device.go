@@ -36,6 +36,7 @@ type ReadonlyDevice interface {
 	Slicer
 	BlockSize() int64
 	Header() *header.Header
+	SwapHeader(h *header.Header)
 }
 
 type Device interface {

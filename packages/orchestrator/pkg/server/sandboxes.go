@@ -666,8 +666,8 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		uploadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadTimeout)
 		defer cancel()
 
-		memHdr, rootHdr, err := res.snapshot.Upload(uploadCtx, s.persistence, res.paths, s.config.StorageConfig.CompressConfig, s.featureFlags, storage.UseCasePause)
-		defer res.completeUpload(uploadCtx, memHdr, rootHdr)
+		memHdr, rootHdr, err := res.snapshot.Upload(uploadCtx, s.persistence, s.config.StorageConfig.CompressConfig, s.featureFlags, storage.UseCasePause, s.uploadCoord)
+		defer res.completeUpload(uploadCtx, memHdr, rootHdr, err)
 
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
@@ -723,7 +723,8 @@ type snapshotResult struct {
 	meta           metadata.Template
 	snapshot       *sandbox.Snapshot
 	paths          storage.Paths
-	completeUpload func(ctx context.Context, memfileHdr, rootfsHdr []byte)
+	uploadFut      *utils.SetOnce[struct{}]
+	completeUpload func(ctx context.Context, memfileHdr, rootfsHdr []byte, uploadErr error)
 }
 
 // snapshotAndCacheSandbox creates a snapshot of a sandbox and adds it to the local
@@ -750,6 +751,8 @@ func (s *Server) snapshotAndCacheSandbox(
 		return nil, fmt.Errorf("error snapshotting sandbox: %w", err)
 	}
 
+	uploadFut := s.uploadCoord.Begin(snapshot.SelfBuildID())
+
 	err = s.templateCache.AddSnapshot(
 		ctx,
 		meta.Template.BuildID,
@@ -766,40 +769,31 @@ func (s *Server) snapshotAndCacheSandbox(
 
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
-	paths := storage.Paths{BuildID: meta.Template.BuildID}
+	completeUpload := func(ctx context.Context, memfileHdr, rootfsHdr []byte, uploadErr error) {
+		_ = uploadFut.SetResult(struct{}{}, uploadErr)
 
-	// Register in Redis so other orchestrators can find us for peer routing.
+		if !s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag) {
+			return
+		}
+
+		s.uploadedBuilds.Set(meta.Template.BuildID, &uploadedBuildHeaders{
+			memfileHeader: memfileHdr,
+			rootfsHeader:  rootfsHdr,
+		}, ttlcache.DefaultTTL)
+	}
+
 	if s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag) {
 		if err := s.peerRegistry.Register(ctx, meta.Template.BuildID, redisPeerKeyTTL); err != nil {
 			logger.L().Warn(ctx, "failed to register peer address for routing", zap.String("build_id", meta.Template.BuildID), zap.Error(err))
 		}
-
-		completeUpload := func(ctx context.Context, memfileHdr, rootfsHdr []byte) {
-			// Signal in-flight peer streams to switch to GCS.
-			s.uploadedBuilds.Set(meta.Template.BuildID, &uploadedBuildHeaders{
-				memfileHeader: memfileHdr,
-				rootfsHeader:  rootfsHdr,
-			}, ttlcache.DefaultTTL)
-
-			// Remove from Redis so new nodes go directly to GCS.
-			if err := s.peerRegistry.Unregister(ctx, meta.Template.BuildID); err != nil {
-				logger.L().Warn(ctx, "failed to unregister peer address from routing", zap.String("build_id", meta.Template.BuildID), zap.Error(err))
-			}
-		}
-
-		return &snapshotResult{
-			meta:           meta,
-			snapshot:       snapshot,
-			paths:          paths,
-			completeUpload: completeUpload,
-		}, nil
 	}
 
 	return &snapshotResult{
 		meta:           meta,
 		snapshot:       snapshot,
-		paths:          paths,
-		completeUpload: func(context.Context, []byte, []byte) {},
+		paths:          snapshot.Paths,
+		uploadFut:      uploadFut,
+		completeUpload: completeUpload,
 	}, nil
 }
 
@@ -812,14 +806,14 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 	go func() {
 		defer cancel()
 
-		memHdr, rootHdr, err := res.snapshot.Upload(ctx, s.persistence, res.paths, s.config.StorageConfig.CompressConfig, s.featureFlags, storage.UseCasePause)
+		memHdr, rootHdr, err := res.snapshot.Upload(ctx, s.persistence, s.config.StorageConfig.CompressConfig, s.featureFlags, storage.UseCasePause, s.uploadCoord)
 		if err != nil {
 			sbxlogger.I(sbx).Error(ctx, "error uploading snapshot files", zap.Error(err))
 		} else {
 			sbxlogger.I(sbx).Info(ctx, "snapshot finished uploading successfully")
 		}
 
-		res.completeUpload(ctx, memHdr, rootHdr)
+		res.completeUpload(ctx, memHdr, rootHdr, err)
 	}()
 }
 

@@ -156,6 +156,11 @@ func (d *DiffMetadata) ToDiffHeader(
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}
 
+	// Diff headers describe a build whose data is only in the local cache
+	// until the upload pipeline finalizes and SwapHeader publishes the
+	// post-upload header.
+	header.IncompletePendingUpload = true
+
 	err = ValidateMappings(header.Mapping, header.Metadata.Size, header.Metadata.BlockSize)
 	if err != nil {
 		if header.IsNormalizeFixApplied() {

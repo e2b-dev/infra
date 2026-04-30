@@ -71,6 +71,12 @@ func (p Paths) DataFile(name string, ct CompressionType) string {
 	return fmt.Sprintf("%s/%s%s", p.BuildID, name, ct.Suffix())
 }
 
+// HeaderFile returns the storage path for a header sidecar of a data file
+// (e.g. "memfile" → "{buildID}/memfile.header").
+func (p Paths) HeaderFile(name string) string {
+	return fmt.Sprintf("%s/%s%s", p.BuildID, name, HeaderSuffix)
+}
+
 // SplitPath splits a storage path of the form "{buildID}/{fileName}"
 // back into its components. This is the inverse of the path methods.
 func SplitPath(path string) (buildID, fileName string) {

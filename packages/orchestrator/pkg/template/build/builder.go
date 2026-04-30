@@ -259,7 +259,7 @@ func runBuild(
 
 	index := cache.NewHashIndex(bc.CacheScope, builder.buildStorage, templateStorage)
 
-	uploadTracker := layer.NewUploadTracker()
+	uploadCoord := sandbox.NewUploadCoordinator(builder.templateCache)
 
 	layerExecutor := layer.NewLayerExecutor(
 		bc,
@@ -270,7 +270,7 @@ func runBuild(
 		templateStorage,
 		builder.buildStorage,
 		index,
-		uploadTracker,
+		uploadCoord,
 		builder.config.StorageConfig.CompressConfig,
 		builder.featureFlags,
 	)

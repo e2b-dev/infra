@@ -89,3 +89,7 @@ func (o *Overlay) Close() error {
 func (o *Overlay) Header() *header.Header {
 	return o.device.Header()
 }
+
+func (o *Overlay) SwapHeader(h *header.Header) {
+	o.device.SwapHeader(h)
+}

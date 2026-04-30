@@ -50,6 +50,7 @@ type Server struct {
 	startingSandboxes     *semaphore.Weighted
 	peerRegistry          peerclient.Registry
 	uploadedBuilds        *ttlcache.Cache[string, *uploadedBuildHeaders]
+	uploadCoord           *sandbox.UploadCoordinator
 	sandboxCreateDuration metric.Int64Histogram
 }
 
@@ -88,6 +89,7 @@ func New(cfg ServiceConfig) (*Server, error) {
 		startingSandboxes: semaphore.NewWeighted(maxStartingInstancesPerNode),
 		peerRegistry:      cfg.PeerRegistry,
 		uploadedBuilds:    uploadedBuilds,
+		uploadCoord:       sandbox.NewUploadCoordinator(cfg.TemplateCache),
 	}
 
 	meter := cfg.Tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")

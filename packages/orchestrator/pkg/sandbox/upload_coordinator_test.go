@@ -1,0 +1,260 @@
+package sandbox
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jellydator/ttlcache/v3"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
+	blockmocks "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/mocks"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
+	templatemocks "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/mocks"
+	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+)
+
+// fakeCache is a templateCacheLookup stub backed by a map.
+type fakeCache struct {
+	mu sync.Mutex
+	m  map[string]template.Template
+}
+
+func newFakeCache() *fakeCache {
+	return &fakeCache{m: make(map[string]template.Template)}
+}
+
+func (f *fakeCache) GetCachedTemplate(buildID string) (template.Template, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t, ok := f.m[buildID]
+
+	return t, ok
+}
+
+func (f *fakeCache) put(buildID string, tpl template.Template) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.m[buildID] = tpl
+}
+
+// newCoordinator builds an UploadCoordinator wired to a fake cache.
+func newCoordinator(t *testing.T) (*UploadCoordinator, *fakeCache) {
+	t.Helper()
+	cache := newFakeCache()
+	futures := ttlcache.New(
+		ttlcache.WithTTL[uuid.UUID, *utils.SetOnce[struct{}]](uploadFutureTTL),
+	)
+	go futures.Start()
+	t.Cleanup(futures.Stop)
+
+	return &UploadCoordinator{
+		templateCache: cache,
+		futures:       futures,
+	}, cache
+}
+
+func putFinalHeader(t *testing.T, cache *fakeCache, buildID uuid.UUID, fileType build.DiffType) {
+	t.Helper()
+	tpl := templatemocks.NewMockTemplate(t)
+	dev := blockmocks.NewMockReadonlyDevice(t)
+	dev.EXPECT().Header().Return(&headers.Header{}).Maybe()
+
+	switch fileType {
+	case build.Memfile:
+		tpl.EXPECT().Memfile(mock.Anything).Return(dev, nil).Maybe()
+	case build.Rootfs:
+		tpl.EXPECT().Rootfs().Return(dev, nil).Maybe()
+	}
+
+	cache.put(buildID.String(), tpl)
+}
+
+func TestUploadCoordinator_BeginDistinctIDsAreIndependent(t *testing.T) {
+	t.Parallel()
+	c, _ := newCoordinator(t)
+
+	a := uuid.New()
+	b := uuid.New()
+
+	futA := c.Begin(a)
+	futB := c.Begin(b)
+
+	require.NotSame(t, futA, futB)
+	require.NoError(t, futA.SetValue(struct{}{}))
+
+	// futB still pending.
+	select {
+	case <-futB.Done:
+		t.Fatal("futB should not be done after only futA fires")
+	default:
+	}
+}
+
+func TestUploadCoordinator_WaitForFinalHeader_BlocksUntilSet(t *testing.T) {
+	t.Parallel()
+	c, cache := newCoordinator(t)
+
+	id := uuid.New()
+	putFinalHeader(t, cache, id, build.Memfile)
+	fut := c.Begin(id)
+
+	done := make(chan struct{})
+	go func() {
+		_, _ = c.WaitForFinalHeader(context.Background(), id, build.Memfile)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		t.Fatal("WaitForFinalHeader should block until the future fires")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	require.NoError(t, fut.SetValue(struct{}{}))
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("WaitForFinalHeader should return after future fires")
+	}
+}
+
+func TestUploadCoordinator_WaitForFinalHeader_PropagatesUploadError(t *testing.T) {
+	t.Parallel()
+	c, cache := newCoordinator(t)
+
+	id := uuid.New()
+	putFinalHeader(t, cache, id, build.Memfile)
+	fut := c.Begin(id)
+
+	uploadErr := errors.New("upload exploded")
+	require.NoError(t, fut.SetError(uploadErr))
+
+	_, err := c.WaitForFinalHeader(context.Background(), id, build.Memfile)
+	require.ErrorIs(t, err, uploadErr)
+}
+
+func TestUploadCoordinator_WaitForFinalHeader_ContextCancellation(t *testing.T) {
+	t.Parallel()
+	c, _ := newCoordinator(t)
+
+	id := uuid.New()
+	c.Begin(id) // never signaled
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := c.WaitForFinalHeader(ctx, id, build.Memfile)
+		errCh <- err
+	}()
+
+	cancel()
+
+	select {
+	case err := <-errCh:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("WaitForFinalHeader should return on context cancel")
+	}
+}
+
+func TestUploadCoordinator_WaitForFinalHeader_NotInCache(t *testing.T) {
+	t.Parallel()
+	c, _ := newCoordinator(t)
+
+	id := uuid.New()
+	// No Begin, no cache entry — caller relied on a parent that's neither in
+	// flight nor cached locally. ErrBuildNotInCache is the P2P-fallback seam.
+	_, err := c.WaitForFinalHeader(context.Background(), id, build.Memfile)
+	require.ErrorIs(t, err, ErrBuildNotInCache)
+}
+
+func TestUploadCoordinator_WaitForFinalHeader_RejectsIncompleteCachedHeader(t *testing.T) {
+	t.Parallel()
+	c, cache := newCoordinator(t)
+
+	id := uuid.New()
+
+	tpl := templatemocks.NewMockTemplate(t)
+	dev := blockmocks.NewMockReadonlyDevice(t)
+	dev.EXPECT().Header().Return(&headers.Header{IncompletePendingUpload: true})
+	tpl.EXPECT().Memfile(mock.Anything).Return(dev, nil)
+	cache.put(id.String(), tpl)
+
+	// No future registered; the cache lookup happens immediately and the
+	// IncompletePendingUpload flag should make it a hard error (not a stale
+	// inheritance).
+	_, err := c.WaitForFinalHeader(context.Background(), id, build.Memfile)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "still incomplete after wait")
+}
+
+func TestUploadCoordinator_WaitForFinalHeader_NoFuture_ReadsFromCache(t *testing.T) {
+	t.Parallel()
+	c, cache := newCoordinator(t)
+
+	id := uuid.New()
+	want := &headers.Header{}
+
+	tpl := templatemocks.NewMockTemplate(t)
+	dev := blockmocks.NewMockReadonlyDevice(t)
+	dev.EXPECT().Header().Return(want)
+	tpl.EXPECT().Rootfs().Return(dev, nil)
+	cache.put(id.String(), tpl)
+
+	got, err := c.WaitForFinalHeader(context.Background(), id, build.Rootfs)
+	require.NoError(t, err)
+	require.Same(t, want, got)
+}
+
+func TestUploadCoordinator_FindInTemplateCache_AbsentReturnsErr(t *testing.T) {
+	t.Parallel()
+	c, _ := newCoordinator(t)
+
+	_, err := c.FindInTemplateCache(context.Background(), uuid.New(), build.Memfile)
+	require.ErrorIs(t, err, ErrBuildNotInCache)
+}
+
+func TestUploadCoordinator_ConcurrentBeginsAndWaits(t *testing.T) {
+	t.Parallel()
+	c, cache := newCoordinator(t)
+
+	const n = 10
+
+	ids := make([]uuid.UUID, n)
+	futs := make([]*utils.SetOnce[struct{}], n)
+	for i := range n {
+		ids[i] = uuid.New()
+		putFinalHeader(t, cache, ids[i], build.Memfile)
+		futs[i] = c.Begin(ids[i])
+	}
+
+	var done atomic.Int32
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			if _, err := c.WaitForFinalHeader(context.Background(), ids[i], build.Memfile); err == nil {
+				done.Add(1)
+			}
+		}(i)
+	}
+
+	for i := range n {
+		require.NoError(t, futs[i].SetValue(struct{}{}))
+	}
+
+	wg.Wait()
+	assert.Equal(t, int32(n), done.Load())
+}
