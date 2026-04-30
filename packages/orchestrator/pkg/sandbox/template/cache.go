@@ -355,7 +355,7 @@ func (c *Cache) fetchAndEvictOnFailure(ctx context.Context, key string, tmpl *st
 	}
 
 	c.cache.Delete(key)
-	logger.L().Warn(ctx, "template fetch failed, evicted cached template",
+	logger.L().Error(ctx, "template fetch failed, evicted cached template",
 		logger.WithBuildID(key),
 		zap.Error(err),
 	)

@@ -231,11 +231,6 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 
-		logger.L().Error(ctx, "failed to fetch template storage",
-			logger.WithBuildID(t.paths.BuildID),
-			zap.Error(err),
-		)
-
 		return err
 	}
 
