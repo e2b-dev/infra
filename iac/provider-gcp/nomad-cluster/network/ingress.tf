@@ -1,5 +1,5 @@
 locals {
-  subdomains = ["api-edge-grpc", "dashboard-api"]
+  subdomains = ["grpc-api", "dashboard-api"]
 
   ingress_zones = toset([for info in local.domain_info : info.root_domain])
 
@@ -91,12 +91,12 @@ resource "google_compute_url_map" "ingress" {
   default_service = google_compute_backend_service.ingress.self_link
 
   host_rule {
-    hosts        = concat(["api-edge-grpc.${var.domain_name}"], [for d in var.additional_domains : "api-edge-grpc.${d}"])
-    path_matcher = "api-edge-grpc-paths"
+    hosts        = concat(["grpc-api.${var.domain_name}"], [for d in var.additional_domains : "grpc-api.${d}"])
+    path_matcher = "grpc-api-paths"
   }
 
   path_matcher {
-    name            = "api-edge-grpc-paths"
+    name            = "grpc-api-paths"
     default_service = google_compute_backend_service.h2c_ingress.self_link
   }
 }

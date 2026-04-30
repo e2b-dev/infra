@@ -23,7 +23,7 @@ job "api" {
         static = "${api_internal_grpc_port}"
       }
 
-      port "api_edge_grpc" {}
+      port "grpc_api" {}
 
       %{ if prevent_colocation }
       port "scheduling-block" {
@@ -77,25 +77,25 @@ job "api" {
     }
 
     service {
-      name = "api-edge-grpc"
-      port = "api_edge_grpc"
+      name = "grpc-api"
+      port = "grpc_api"
       task = "start"
 
       tags = [
         "traefik.enable=true",
-        "traefik.http.routers.api-edge-grpc.rule=HostRegexp(`api-edge-grpc.{domain:.+}`)",
-        "traefik.http.routers.api-edge-grpc.ruleSyntax=v2",
-        "traefik.http.routers.api-edge-grpc.priority=500",
-        "traefik.http.routers.api-edge-grpc.service=api-edge-grpc",
-        "traefik.http.services.api-edge-grpc.loadbalancer.server.scheme=h2c"
+        "traefik.http.routers.grpc-api.rule=HostRegexp(`grpc-api.{domain:.+}`)",
+        "traefik.http.routers.grpc-api.ruleSyntax=v2",
+        "traefik.http.routers.grpc-api.priority=500",
+        "traefik.http.routers.grpc-api.service=grpc-api",
+        "traefik.http.services.grpc-api.loadbalancer.server.scheme=h2c"
       ]
 
       check {
         type     = "tcp"
-        name     = "api-edge-grpc"
+        name     = "grpc-api"
         interval = "3s"
         timeout  = "3s"
-        port     = "api_edge_grpc"
+        port     = "grpc_api"
       }
     }
 
@@ -140,7 +140,7 @@ job "api" {
         NOMAD_TOKEN                    = "${nomad_acl_token}"
         ORCHESTRATOR_PORT              = "${orchestrator_port}"
         API_INTERNAL_GRPC_PORT         = "${api_internal_grpc_port}"
-        API_EDGE_GRPC_PORT             = "$${NOMAD_PORT_api_edge_grpc}"
+        API_EDGE_GRPC_PORT             = "$${NOMAD_PORT_grpc_api}"
         ADMIN_TOKEN                    = "${admin_token}"
         SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
 
@@ -190,7 +190,7 @@ job "api" {
       config {
         network_mode = "host"
         image        = "${api_docker_image}"
-        ports        = ["${port_name}", "api_edge_grpc"]
+        ports        = ["${port_name}", "grpc_api"]
         args         = [
           "--port", "${port_number}",
         ]
