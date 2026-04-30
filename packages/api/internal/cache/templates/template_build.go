@@ -2,7 +2,6 @@ package templatecache
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/cache"
@@ -76,7 +76,7 @@ func (c *TemplatesBuildCache) fetchFromDB(templateID string, buildID uuid.UUID) 
 			BuildID:    buildID,
 		})
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
+			if dberrors.IsNotFoundError(err) {
 				return TemplateBuildInfo{}, ErrTemplateBuildInfoNotFound
 			}
 
