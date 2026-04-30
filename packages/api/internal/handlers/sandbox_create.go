@@ -772,11 +772,11 @@ func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, 
 					}
 				}
 
-				if strings.ContainsAny(value, "\r\n") {
+				if !httpguts.ValidHeaderFieldValue(value) {
 					return &api.APIError{
 						Code:      http.StatusBadRequest,
 						Err:       fmt.Errorf("value for header %q in rule for domain %q contains invalid characters", name, domain),
-						ClientMsg: fmt.Sprintf("Value for header %q in rule for domain %q must not contain CR or LF characters.", name, domain),
+						ClientMsg: fmt.Sprintf("Value for header %q in rule for domain %q contains invalid characters.", name, domain),
 					}
 				}
 
