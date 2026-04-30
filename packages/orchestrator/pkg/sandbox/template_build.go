@@ -51,6 +51,7 @@ func (t *TemplateBuild) commonPutOpts() []storage.PutOption {
 	if len(t.uploadLabels.Common) == 0 {
 		return nil
 	}
+
 	return []storage.PutOption{storage.WithMetadata(t.uploadLabels.Common)}
 }
 
@@ -59,6 +60,7 @@ func (t *TemplateBuild) metadataPutOpts() []storage.PutOption {
 	if len(merged) == 0 {
 		return nil
 	}
+
 	return []storage.PutOption{storage.WithMetadata(merged)}
 }
 

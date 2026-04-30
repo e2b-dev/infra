@@ -79,6 +79,8 @@ func (lb *LayerExecutor) BuildLayer(
 	var parentBuildID string
 	if sourceMeta, sourceMetaErr := localTemplate.Metadata(); sourceMetaErr == nil {
 		parentBuildID = sourceMeta.Template.BuildID
+	} else {
+		lb.logger.Warn(ctx, "could not read source template metadata, parent_build_id will be omitted", zap.Error(sourceMetaErr))
 	}
 
 	// Create or resume sandbox

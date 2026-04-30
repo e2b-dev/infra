@@ -767,10 +767,16 @@ func (s *Server) snapshotAndCacheSandbox(
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
 	paths := storage.Paths{BuildID: meta.Template.BuildID}
+	// root_build_id = diff-chain root (originating template), preserved across
+	// pause -> resume -> pause chains.
+	rootBuildID := meta.Template.BuildID
+	if h := snapshot.MemfileDiffHeader; h != nil && h.Metadata != nil && h.Metadata.BaseBuildId != uuid.Nil {
+		rootBuildID = h.Metadata.BaseBuildId.String()
+	}
 	uploadMetadata := storage.SnapshotUploadMetadata{
 		Common: storage.ObjectMetadata{
 			storage.ObjectMetadataTeamID:      sbx.Runtime.TeamID,
-			storage.ObjectMetadataRootBuildID: meta.Template.BuildID,
+			storage.ObjectMetadataRootBuildID: rootBuildID,
 		},
 		MetadataOnly: storage.BuildLineageMetadata(buildKind, sbx.Runtime.BuildID),
 	}
