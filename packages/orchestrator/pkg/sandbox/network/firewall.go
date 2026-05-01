@@ -35,7 +35,7 @@ type Firewall struct {
 	allowedRanges []string
 }
 
-func NewFirewall(tapIf string, orchestratorInternalIP string) (*Firewall, error) {
+func NewFirewall(tapIf string, orchestratorInternalIP string, extraAllowedCIDRs []string) (*Firewall, error) {
 	conn, err := nftables.New(nftables.AsLasting())
 	if err != nil {
 		return nil, fmt.Errorf("new nftables conn: %w", err)
@@ -85,8 +85,11 @@ func NewFirewall(tapIf string, orchestratorInternalIP string) (*Firewall, error)
 		userDenySet:        denySet,
 		userAllowSet:       allowSet,
 		tapInterface:       tapIf,
-		allowedRanges:      []string{fmt.Sprintf("%s/32", orchestratorInternalIP)},
-		filterChain:        filterChain,
+		allowedRanges: append(
+			[]string{fmt.Sprintf("%s/32", orchestratorInternalIP)},
+			extraAllowedCIDRs...,
+		),
+		filterChain: filterChain,
 	}
 
 	// Add firewall rules to the chain

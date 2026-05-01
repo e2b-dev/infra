@@ -10,6 +10,7 @@ locals {
     envd_timeout                 = var.envd_timeout
     template_bucket_name         = var.template_bucket_name
     allow_sandbox_internet       = var.allow_sandbox_internet
+    allow_sandbox_internal_cidrs = var.allow_sandbox_internal_cidrs
     clickhouse_connection_string = var.clickhouse_connection_string
     redis_url                    = var.redis_url
     redis_cluster_url            = var.redis_cluster_url
