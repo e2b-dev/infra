@@ -119,7 +119,7 @@ resource "google_compute_instance_template" "clickhouse" {
   labels = merge(
     var.labels,
   )
-  tags                    = [var.cluster_tag_name]
+  tags                    = local.clickhouse_network_tags
   metadata_startup_script = local.clickhouse_start_script
   metadata = {
     enable-osconfig         = "TRUE",
@@ -139,14 +139,15 @@ resource "google_compute_instance_template" "clickhouse" {
   }
 
   network_interface {
-    network = var.network_name
+    network    = var.network_name
+    subnetwork = local.clickhouse_subnetwork_name
 
     access_config {}
   }
 
   # For a full list of oAuth 2.0 Scopes, see https://developers.google.com/identity/protocols/googlescopes
   service_account {
-    email = var.google_service_account_email
+    email = local.clickhouse_service_account_email
     scopes = [
       "userinfo-email",
       "compute-ro",

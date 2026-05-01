@@ -200,6 +200,24 @@ module "cluster" {
   clickhouse_boot_disk_type = var.clickhouse_boot_disk_type
   loki_boot_disk_type       = var.loki_boot_disk_type
 
+  # Per-pool subnetwork overrides
+  server_subnetwork_name     = var.server_subnetwork_name
+  api_subnetwork_name        = var.api_subnetwork_name
+  clickhouse_subnetwork_name = var.clickhouse_subnetwork_name
+  loki_subnetwork_name       = var.loki_subnetwork_name
+
+  # Per-pool network tag overrides
+  server_network_tag     = var.server_network_tag
+  api_network_tag        = var.api_network_tag
+  clickhouse_network_tag = var.clickhouse_network_tag
+  loki_network_tag       = var.loki_network_tag
+
+  # Per-pool GSA email overrides
+  server_service_account_email     = var.server_service_account_email
+  api_service_account_email        = var.api_service_account_email
+  clickhouse_service_account_email = var.clickhouse_service_account_email
+  loki_service_account_email       = var.loki_service_account_email
+
   # ClickHouse stateful data disk
   clickhouse_stateful_disk_type    = var.clickhouse_stateful_disk_type
   clickhouse_stateful_disk_size_gb = var.clickhouse_stateful_disk_size_gb

@@ -95,7 +95,7 @@ resource "google_compute_instance_template" "server" {
   instance_description = null
   machine_type         = var.server_machine_type
 
-  tags                    = [var.cluster_tag_name]
+  tags                    = local.server_network_tags
   metadata_startup_script = local.server_startup_script
   metadata = {
     enable-osconfig         = "TRUE",
@@ -121,7 +121,8 @@ resource "google_compute_instance_template" "server" {
   }
 
   network_interface {
-    network = var.network_name
+    network    = var.network_name
+    subnetwork = local.server_subnetwork_name
 
     # Create access config dynamically. If a public ip is requested, we just need the empty `access_config` block
     # to automatically assign an external IP address.
@@ -132,7 +133,7 @@ resource "google_compute_instance_template" "server" {
   }
 
   service_account {
-    email = var.google_service_account_email
+    email = local.server_service_account_email
     scopes = [
       "userinfo-email",
       "compute-ro",

@@ -91,6 +91,18 @@ variable "cluster_tag_name" {
   type        = string
 }
 
+variable "network_tag" {
+  description = "Additional network tag for this worker cluster. Added alongside cluster_tag_name."
+  type        = string
+  default     = null
+}
+
+variable "subnetwork_name" {
+  description = "Subnetwork override for this worker cluster. Leave null to use network default."
+  type        = string
+  default     = null
+}
+
 # SERVICE ACCOUNT & AUTHENTICATION
 
 variable "google_service_account_email" {
