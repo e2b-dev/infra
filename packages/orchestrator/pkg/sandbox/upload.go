@@ -64,11 +64,14 @@ func (u *Upload) Run(ctx context.Context) error {
 	return u.runV4(ctx)
 }
 
-// Finish signals the upload's terminal outcome. Safe to call when uploads was
-// nil; in that case there's no future to signal.
-func (u *Upload) Finish(err error) {
+// Finish signals the upload's terminal outcome. Same-orch waiters wake on the
+// future; cross-orch waiters wake on the Redis hint published here.
+func (u *Upload) Finish(ctx context.Context, uploadErr error) {
 	if u.future != nil {
-		_ = u.future.SetError(err)
+		_ = u.future.SetError(uploadErr)
+	}
+	if u.uploads != nil {
+		u.uploads.publishUploadDoneToRedis(ctx, u.id, uploadErr)
 	}
 }
 

@@ -17,6 +17,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
+// swapReadHeaderBudget bounds how long the read-path swap polls GCS for the
+// V4 header to appear. 
+const swapReadHeaderBudget = 30 * time.Second
+
 type File struct {
 	header      atomic.Pointer[header.Header]
 	store       *DiffStore
@@ -169,7 +173,7 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 // retryOnTransition checks if err is a PeerTransitionedError and swaps the
 // header if the retry budget allows. Returns (true, nil) to signal the caller
 // should continue the loop, or (false, swapErr) if the swap itself failed.
-func (b *File) retryOnTransition(ctx context.Context, err error, retries *int) (retry bool, swapErr error) {
+func (b *File) retryOnTransition(ctx context.Context, err error, retries *int) (bool, error) {
 	var transErr *storage.PeerTransitionedError
 	if !errors.As(err, &transErr) || *retries >= maxTransitionRetries {
 		return false, nil
@@ -182,28 +186,13 @@ func (b *File) retryOnTransition(ctx context.Context, err error, retries *int) (
 		zap.Int("retry", *retries),
 	)
 
-	if swapErr := b.swapHeader(ctx); swapErr != nil {
-		return false, fmt.Errorf("failed to swap header: %w", swapErr)
+	h, err := PollRemoteStorageForHeader(ctx, b.persistence, b.header.Load().Metadata.BuildId, b.fileType, nil, swapReadHeaderBudget)
+	if err != nil {
+		return false, fmt.Errorf("failed to swap header: %w", err)
 	}
+	b.SwapHeader(h)
 
 	return true, nil
-}
-
-// swapReadHeaderBudget bounds how long the read-path swap waits for the V4
-// header to appear. The peer just signaled use_storage, so GCS visibility is
-// imminent — short budget keeps a stalled reader from blocking forever.
-const swapReadHeaderBudget = 700 * time.Millisecond
-
-// swapHeader replaces the header with the post-upload V4 header from storage.
-func (b *File) swapHeader(ctx context.Context) error {
-	newH, err := LoadV4(ctx, b.persistence, b.header.Load().Metadata.BuildId, b.fileType, nil, swapReadHeaderBudget)
-	if err != nil {
-		return err
-	}
-
-	b.header.Store(newH)
-
-	return nil
 }
 
 // buildFileSize returns the uncompressed file size for a build. Returns 0 for

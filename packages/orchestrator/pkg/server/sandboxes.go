@@ -775,7 +775,7 @@ func (s *Server) snapshotAndCacheSandbox(
 	peerEnabled := s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag)
 
 	completeUpload := func(ctx context.Context, uploadErr error) {
-		upload.Finish(uploadErr)
+		upload.Finish(ctx, uploadErr)
 
 		if !peerEnabled {
 			return
