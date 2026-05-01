@@ -58,6 +58,8 @@ func (c *RedisSandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string
 	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-store")
 	defer span.End()
 
+	logger.L().Debug(ctx, "storing sandbox in redis catalog", logger.WithSandboxID(sandboxID))
+
 	ctx, ctxCancel := context.WithTimeout(spanCtx, catalogRedisTimeout)
 	defer ctxCancel()
 
@@ -100,6 +102,7 @@ func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID strin
 		return nil
 	}
 
+	logger.L().Debug(ctx, "deleting sandbox from redis catalog", logger.WithSandboxID(sandboxID))
 	c.redisClient.Del(ctx, c.getCatalogKey(sandboxID))
 
 	return nil

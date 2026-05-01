@@ -38,6 +38,11 @@ else
     echo "All required packages are already installed."
 fi
 
+# Set /dev/fuse permissions to 666 for non-root access
+# Use systemd-tmpfiles to set permissions at boot
+mkdir -p /etc/tmpfiles.d
+echo 'z /dev/fuse 0666 root root -' > /etc/tmpfiles.d/fuse.conf
+
 echo "Setting up shell"
 echo "export SHELL='/bin/bash'" >/etc/profile.d/shell.sh
 echo "export PS1='\w \$ '" >/etc/profile.d/prompt.sh

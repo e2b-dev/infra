@@ -8,6 +8,7 @@ import (
 	"context"
 	"io"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/storageopts"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -99,16 +100,22 @@ func (_c *MockBlob_Exists_Call) RunAndReturn(run func(ctx context.Context) (bool
 }
 
 // Put provides a mock function for the type MockBlob
-func (_mock *MockBlob) Put(ctx context.Context, data []byte) error {
-	ret := _mock.Called(ctx, data)
+func (_mock *MockBlob) Put(ctx context.Context, data []byte, opts ...storageopts.PutOption) error {
+	var tmpRet mock.Arguments
+	if len(opts) > 0 {
+		tmpRet = _mock.Called(ctx, data, opts)
+	} else {
+		tmpRet = _mock.Called(ctx, data)
+	}
+	ret := tmpRet
 
 	if len(ret) == 0 {
 		panic("no return value specified for Put")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte) error); ok {
-		r0 = returnFunc(ctx, data)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte, ...storageopts.PutOption) error); ok {
+		r0 = returnFunc(ctx, data, opts...)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -123,11 +130,13 @@ type MockBlob_Put_Call struct {
 // Put is a helper method to define mock.On call
 //   - ctx context.Context
 //   - data []byte
-func (_e *MockBlob_Expecter) Put(ctx interface{}, data interface{}) *MockBlob_Put_Call {
-	return &MockBlob_Put_Call{Call: _e.mock.On("Put", ctx, data)}
+//   - opts ...storageopts.PutOption
+func (_e *MockBlob_Expecter) Put(ctx interface{}, data interface{}, opts ...interface{}) *MockBlob_Put_Call {
+	return &MockBlob_Put_Call{Call: _e.mock.On("Put",
+		append([]interface{}{ctx, data}, opts...)...)}
 }
 
-func (_c *MockBlob_Put_Call) Run(run func(ctx context.Context, data []byte)) *MockBlob_Put_Call {
+func (_c *MockBlob_Put_Call) Run(run func(ctx context.Context, data []byte, opts ...storageopts.PutOption)) *MockBlob_Put_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -137,9 +146,16 @@ func (_c *MockBlob_Put_Call) Run(run func(ctx context.Context, data []byte)) *Mo
 		if args[1] != nil {
 			arg1 = args[1].([]byte)
 		}
+		var arg2 []storageopts.PutOption
+		var variadicArgs []storageopts.PutOption
+		if len(args) > 2 {
+			variadicArgs = args[2].([]storageopts.PutOption)
+		}
+		arg2 = variadicArgs
 		run(
 			arg0,
 			arg1,
+			arg2...,
 		)
 	})
 	return _c
@@ -150,7 +166,7 @@ func (_c *MockBlob_Put_Call) Return(err error) *MockBlob_Put_Call {
 	return _c
 }
 
-func (_c *MockBlob_Put_Call) RunAndReturn(run func(ctx context.Context, data []byte) error) *MockBlob_Put_Call {
+func (_c *MockBlob_Put_Call) RunAndReturn(run func(ctx context.Context, data []byte, opts ...storageopts.PutOption) error) *MockBlob_Put_Call {
 	_c.Call.Return(run)
 	return _c
 }

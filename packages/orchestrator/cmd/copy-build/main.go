@@ -108,7 +108,7 @@ func (o *osFileBlob) Exists(_ context.Context) (bool, error) {
 	return true, nil
 }
 
-func (o *osFileBlob) Put(_ context.Context, _ []byte) error {
+func (o *osFileBlob) Put(_ context.Context, _ []byte, _ ...storage.PutOption) error {
 	return errors.New("not implemented")
 }
 

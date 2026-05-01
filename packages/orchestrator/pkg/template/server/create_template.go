@@ -14,6 +14,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/buildlogger"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/oci/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -25,16 +27,6 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	defer childSpan.End()
 
 	cfg := templateRequest.GetTemplate()
-	childSpan.SetAttributes(
-		telemetry.WithTemplateID(cfg.GetTemplateID()),
-		telemetry.WithBuildID(cfg.GetBuildID()),
-		attribute.String("env.kernel.version", cfg.GetKernelVersion()),
-		attribute.String("env.firecracker.version", cfg.GetFirecrackerVersion()),
-		attribute.String("env.start_cmd", cfg.GetStartCommand()),
-		attribute.Int64("env.memory_mb", int64(cfg.GetMemoryMB())),
-		attribute.Int64("env.vcpu_count", int64(cfg.GetVCpuCount())),
-		attribute.Bool("env.huge_pages", cfg.GetHugePages()),
-	)
 
 	metadata := storage.Paths{
 		BuildID: cfg.GetBuildID(),
@@ -59,6 +51,32 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		}
 	}
 
+	ctx = featureflags.AddToContext(
+		ctx,
+		featureflags.TemplateContext(cfg.GetTemplateID()),
+		featureflags.TeamContext(cfg.GetTeamID()),
+	)
+
+	kernelVersion := featureflags.DefaultKernelVersion
+	firecrackerVersion := s.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
+
+	fcInfo, err := fcversion.New(firecrackerVersion)
+	if err != nil {
+		return nil, fmt.Errorf("invalid resolved firecracker version %q: %w", firecrackerVersion, err)
+	}
+	hugePages := fcInfo.HasHugePages()
+
+	childSpan.SetAttributes(
+		telemetry.WithTemplateID(cfg.GetTemplateID()),
+		telemetry.WithBuildID(cfg.GetBuildID()),
+		telemetry.WithKernelVersion(kernelVersion),
+		telemetry.WithFirecrackerVersion(firecrackerVersion),
+		attribute.String("env.start_cmd", cfg.GetStartCommand()),
+		attribute.Int64("env.memory_mb", int64(cfg.GetMemoryMB())),
+		attribute.Int64("env.vcpu_count", int64(cfg.GetVCpuCount())),
+		attribute.Bool("env.huge_pages", hugePages),
+	)
+
 	template := config.TemplateConfig{
 		Version:              version,
 		TeamID:               cfg.GetTeamID(),
@@ -69,14 +87,14 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		StartCmd:             cfg.GetStartCommand(),
 		ReadyCmd:             cfg.GetReadyCommand(),
 		DiskSizeMB:           int64(cfg.GetDiskSizeMB()),
-		HugePages:            cfg.GetHugePages(),
+		HugePages:            hugePages,
 		FromImage:            cfg.GetFromImage(),
 		FromTemplate:         cfg.GetFromTemplate(),
 		RegistryAuthProvider: authProvider,
 		Force:                cfg.Force,
 		Steps:                cfg.GetSteps(),
-		KernelVersion:        cfg.GetKernelVersion(),
-		FirecrackerVersion:   cfg.GetFirecrackerVersion(),
+		KernelVersion:        kernelVersion,
+		FirecrackerVersion:   firecrackerVersion,
 	}
 
 	logs := buildlogger.NewLogEntryLogger()
@@ -151,8 +169,10 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 			buildInfo.SetFail(userError)
 		} else {
 			buildInfo.SetSuccess(&templatemanager.TemplateBuildMetadata{
-				RootfsSizeKey:  int32(res.RootfsSizeMB),
-				EnvdVersionKey: res.EnvdVersion,
+				RootfsSizeKey:      int32(res.RootfsSizeMB),
+				EnvdVersionKey:     res.EnvdVersion,
+				KernelVersion:      res.KernelVersion,
+				FirecrackerVersion: res.FirecrackerVersion,
 			})
 			telemetry.ReportEvent(ctx, "Environment built")
 		}

@@ -24,7 +24,7 @@ func newTestAutoResumeOrchestrator() *Orchestrator {
 			reservations.NewReservationStorage(),
 			sandbox.Callbacks{
 				AddSandboxToRoutingTable: func(context.Context, sandbox.Sandbox) {},
-				AsyncNewlyCreatedSandbox: func(context.Context, sandbox.Sandbox) {},
+				AsyncNewlyCreatedSandbox: func(context.Context, sandbox.Sandbox, sandbox.CreationMetadata) {},
 			},
 		),
 		nodes: smap.New[*nodemanager.Node](),
@@ -46,7 +46,7 @@ func testSandboxForAutoResume(state sandbox.State) sandbox.Sandbox {
 
 func addSandbox(t *testing.T, o *Orchestrator, sbx sandbox.Sandbox) {
 	t.Helper()
-	require.NoError(t, o.sandboxStore.Add(t.Context(), sbx, false))
+	require.NoError(t, o.sandboxStore.Add(t.Context(), sbx, nil))
 }
 
 func registerNode(o *Orchestrator, sbx sandbox.Sandbox, ip string) {

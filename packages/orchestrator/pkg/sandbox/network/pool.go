@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/caarlos0/env/v11"
 	"go.opentelemetry.io/otel"
@@ -21,6 +22,10 @@ import (
 const (
 	NewSlotsPoolSize    = 32
 	ReusedSlotsPoolSize = 100
+
+	// ReturnDelay is how long we wait before returning a slot to the reused pool,
+	// to let inflight requests on the previous sandbox drain and reduce reuse churn.
+	ReturnDelay = 3 * time.Second
 )
 
 var (
@@ -48,6 +53,8 @@ var (
 	))
 )
 
+type ReleaseNotify func(ctx context.Context, ip string)
+
 type Config struct {
 	// Using reserver IPv4 in range that is used for experiments and documentation
 	// https://en.wikipedia.org/wiki/Reserved_IP_addresses
@@ -58,6 +65,11 @@ type Config struct {
 	PortmapperPort     uint16 `env:"SANDBOX_PORTMAPPER_PORT"      envDefault:"5012"`
 
 	UseLocalNamespaceStorage bool `env:"USE_LOCAL_NAMESPACE_STORAGE"`
+
+	// Comma-separated CIDRs to allow through the predefined firewall deny list.
+	// These are allowed before the private-range deny rules, so they can
+	// reach hosts in the 10.0.0.0/8, 172.16.0.0/12, etc. blocks.
+	AllowSandboxInternalCIDRs []string `env:"ALLOW_SANDBOX_INTERNAL_CIDRS" envDefault:"" envSeparator:","`
 
 	// TCP firewall ports - separate ports for different traffic types to avoid
 	// protocol detection blocking on server-first protocols like SSH.
@@ -78,6 +90,9 @@ type Pool struct {
 
 	done     chan struct{}
 	doneOnce sync.Once
+
+	closeMu sync.RWMutex
+	closed  bool
 
 	newSlots    chan *Slot
 	reusedSlots chan *Slot
@@ -173,7 +188,7 @@ func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConf
 	if err != nil {
 		// Return the slot to the pool if configuring internet fails
 		go func() {
-			if returnErr := p.Return(context.WithoutCancel(ctx), slot); returnErr != nil {
+			if returnErr := p.recycle(context.WithoutCancel(ctx), slot); returnErr != nil {
 				logger.L().Error(ctx, "failed to return slot to the pool", zap.Error(returnErr), zap.Int("slot_index", slot.Idx))
 			}
 		}()
@@ -184,18 +199,45 @@ func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConf
 	return slot, nil
 }
 
-func (p *Pool) Return(ctx context.Context, slot *Slot) error {
+// Return recycles a slot that was used by a sandbox. It waits returnDelay
+// before making the slot reusable to let inflight requests on the previous
+// sandbox drain.
+func (p *Pool) Return(ctx context.Context, slot *Slot, releasedFn ReleaseNotify, returnDelay time.Duration) error {
+	notifyNetworkRelease := sync.OnceFunc(func() {
+		releasedFn(ctx, slot.HostIPString())
+	})
+	// Make sure we notify for all code paths
+	defer notifyNetworkRelease()
+
+	// If the pool is closed or the context is cancelled during the delay we
+	// still fall through and clean up the slot to avoid leaking it.
 	select {
 	case <-ctx.Done():
+		if cerr := p.cleanup(ctx, slot); cerr != nil {
+			return errors.Join(ctx.Err(), fmt.Errorf("cleanup slot '%d' on cancelled context: %w", slot.Idx, cerr))
+		}
+
 		return ctx.Err()
 	case <-p.done:
+		if cerr := p.cleanup(ctx, slot); cerr != nil {
+			return errors.Join(ErrClosed, fmt.Errorf("cleanup slot '%d' on closed pool: %w", slot.Idx, cerr))
+		}
+
 		return ErrClosed
-	default:
+	case <-time.After(returnDelay):
 	}
 
+	// Notify right before the release
+	notifyNetworkRelease()
+
+	return p.recycle(ctx, slot)
+}
+
+// recycle resets the slot's internet configuration and puts it back into the
+// reused pool, or cleans it up if the pool is full or closed.
+func (p *Pool) recycle(ctx context.Context, slot *Slot) error {
 	err := slot.ResetInternet(ctx)
 	if err != nil {
-		// Cleanup the slot if resetting internet fails
 		if cerr := p.cleanup(ctx, slot); cerr != nil {
 			return fmt.Errorf("reset internet: %w; cleanup: %w", err, cerr)
 		}
@@ -203,22 +245,54 @@ func (p *Pool) Return(ctx context.Context, slot *Slot) error {
 		return fmt.Errorf("error resetting slot internet access: %w", err)
 	}
 
+	// RLock only guards the closed flag and the reusedSlots send. It is
+	// released before cleanup() so Close()'s Lock() is never pinned by a
+	// slow RemoveNetwork syscall (iptables, netlink) running in a
+	// concurrent Return.
+	p.closeMu.RLock()
+
+	if p.closed {
+		p.closeMu.RUnlock()
+
+		if cerr := p.cleanup(ctx, slot); cerr != nil {
+			return errors.Join(ErrClosed, fmt.Errorf("cleanup slot '%d' on closed pool: %w", slot.Idx, cerr))
+		}
+
+		return ErrClosed
+	}
+
 	select {
 	case <-ctx.Done():
+		p.closeMu.RUnlock()
+
+		if cerr := p.cleanup(ctx, slot); cerr != nil {
+			return errors.Join(ctx.Err(), fmt.Errorf("cleanup slot '%d' on cancelled context: %w", slot.Idx, cerr))
+		}
+
 		return ctx.Err()
 	case <-p.done:
+		p.closeMu.RUnlock()
+
+		if cerr := p.cleanup(ctx, slot); cerr != nil {
+			return errors.Join(ErrClosed, fmt.Errorf("cleanup slot '%d' on closing pool: %w", slot.Idx, cerr))
+		}
+
 		return ErrClosed
 	case p.reusedSlots <- slot:
 		returnedSlotCounter.Add(ctx, 1)
 		reusableSlotsAvailableCounter.Add(ctx, 1)
-	default:
-		err := p.cleanup(ctx, slot)
-		if err != nil {
-			return fmt.Errorf("failed to return slot '%d': %w", slot.Idx, err)
-		}
-	}
+		p.closeMu.RUnlock()
 
-	return nil
+		return nil
+	default:
+		p.closeMu.RUnlock()
+
+		if cerr := p.cleanup(ctx, slot); cerr != nil {
+			return fmt.Errorf("failed to return slot '%d': %w", slot.Idx, cerr)
+		}
+
+		return nil
+	}
 }
 
 func (p *Pool) cleanup(ctx context.Context, slot *Slot) error {
@@ -246,21 +320,33 @@ func (p *Pool) Close(ctx context.Context) error {
 		close(p.done)
 	})
 
+	p.closeMu.Lock()
+	p.closed = true
+	p.closeMu.Unlock()
+
 	var errs []error
 
 	for slot := range p.newSlots {
+		newSlotsAvailableCounter.Add(ctx, -1)
+
 		err := p.cleanup(ctx, slot)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err))
 		}
 	}
 
-	close(p.reusedSlots)
+drain:
+	for {
+		select {
+		case slot := <-p.reusedSlots:
+			reusableSlotsAvailableCounter.Add(ctx, -1)
 
-	for slot := range p.reusedSlots {
-		err := p.cleanup(ctx, slot)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err))
+			err := p.cleanup(ctx, slot)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("failed to cleanup slot '%d': %w", slot.Idx, err))
+			}
+		default:
+			break drain
 		}
 	}
 

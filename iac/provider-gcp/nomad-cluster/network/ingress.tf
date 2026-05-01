@@ -55,6 +55,27 @@ resource "google_compute_backend_service" "ingress" {
   }
 }
 
+resource "google_compute_backend_service" "h2c_ingress" {
+  name = "${var.prefix}h2c-ingress"
+
+  protocol  = "H2C"
+  port_name = var.ingress_port.name
+
+  session_affinity = null
+  health_checks    = [google_compute_health_check.ingress.id]
+
+  timeout_sec = var.ingress_timeout_seconds
+
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  locality_lb_policy    = "ROUND_ROBIN"
+
+  security_policy = google_compute_security_policy.ingress.id
+
+  backend {
+    group = var.api_instance_group
+  }
+}
+
 resource "google_compute_security_policy" "ingress" {
   name = "${var.prefix}ingress"
 

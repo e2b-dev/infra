@@ -64,6 +64,7 @@ type Config struct {
 	// tokens signed with the old secret for some time.
 	SupabaseJWTSecrets []string `env:"SUPABASE_JWT_SECRETS"`
 
+	// Deprecated: Template manager should use its own
 	DefaultKernelVersion string `env:"DEFAULT_KERNEL_VERSION"`
 
 	DefaultPersistentVolumeType string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`

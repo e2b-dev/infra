@@ -2,7 +2,6 @@ package snapshotcache
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel"
 
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/cache"
 )
@@ -79,7 +79,7 @@ func (c *SnapshotCache) fetchFromDB(ctx context.Context, sandboxID string) (*Sna
 
 	row, err := c.db.GetLastSnapshot(ctx, sandboxID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if dberrors.IsNotFoundError(err) {
 			return errNotFoundSentinel, nil
 		}
 

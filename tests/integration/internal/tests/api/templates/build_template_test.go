@@ -1157,3 +1157,31 @@ func TestTemplateBuildCOPY(t *testing.T) {
 		},
 	))
 }
+
+func TestTemplateBuildFuseConfiguration(t *testing.T) {
+	t.Parallel()
+
+	// Test that FUSE is configured to allow non-root users:
+	// - /etc/tmpfiles.d/fuse.conf sets /dev/fuse permissions at boot
+	// - /dev/fuse has actual permissions 666
+	buildConfig := api.TemplateBuildStartV2{
+		Force:     utils.ToPtr(ForceBaseBuild),
+		FromImage: utils.ToPtr("ubuntu:22.04"),
+		Steps: utils.ToPtr([]api.TemplateStep{
+			{
+				Type: "RUN",
+				Args: utils.ToPtr([]string{
+					"grep -q 'z /dev/fuse 0666 root root -' /etc/tmpfiles.d/fuse.conf",
+				}),
+			},
+			{
+				Type: "RUN",
+				Args: utils.ToPtr([]string{
+					"echo \"Checking /dev/fuse permissions:\"; ls -la /dev/fuse; stat -c 'mode=%a owner=%U group=%G' /dev/fuse; test $(stat -c %a /dev/fuse) = '666'",
+				}),
+			},
+		}),
+	}
+
+	assert.True(t, buildTemplate(t, "test-ubuntu-fuse-config", buildConfig, defaultBuildLogHandler(t)))
+}

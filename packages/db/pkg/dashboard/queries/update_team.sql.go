@@ -3,7 +3,7 @@
 //   sqlc v1.29.0
 // source: update_team.sql
 
-package queries
+package dashboardqueries
 
 import (
 	"context"

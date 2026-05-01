@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 // TODO: this should be removed once we have a better way to handle node sync
@@ -12,7 +13,7 @@ import (
 // This is to prevent remove instances that are still being started
 const syncSandboxRemoveGracePeriod = 10 * time.Second
 
-func (s *Storage) Reconcile(_ context.Context, sandboxes []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
+func (s *Storage) Reconcile(ctx context.Context, sandboxes []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
 	sandboxMap := make(map[string]sandbox.Sandbox)
 	now := time.Now()
 
@@ -38,6 +39,13 @@ func (s *Storage) Reconcile(_ context.Context, sandboxes []sandbox.Sandbox, node
 
 		_, found := sandboxMap[data.SandboxID]
 		if !found {
+			logger.L().Debug(
+				ctx,
+				"sync expiring sandbox missing from node report",
+				logger.WithSandboxID(data.SandboxID),
+				logger.WithTeamID(data.TeamID.String()),
+				logger.WithNodeID(nodeID),
+			)
 			item.SetExpired()
 		}
 	})
@@ -49,6 +57,13 @@ func (s *Storage) Reconcile(_ context.Context, sandboxes []sandbox.Sandbox, node
 			continue
 		}
 
+		logger.L().Debug(
+			ctx,
+			"sync discovered sandbox missing from cache",
+			logger.WithSandboxID(sandbox.SandboxID),
+			logger.WithTeamID(sandbox.TeamID.String()),
+			logger.WithNodeID(nodeID),
+		)
 		toBeAdded = append(toBeAdded, sandbox)
 	}
 

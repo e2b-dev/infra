@@ -217,6 +217,14 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 				waitErr == nil,
 			"unexpected error: %v", waitErr,
 		)
+
+		// Tear down the UFFD registration before the early uffdFd.close()
+		// cleanup runs. Today this is a no-op (no test enables
+		// UFFD_FEATURE_EVENT_REMOVE) but a follow-up that does will
+		// otherwise see munmap block on un-acked REMOVE events queued
+		// against the still-registered range. Cleanups run LIFO, so
+		// this fires before the close registered earlier.
+		assert.NoError(t, unregister(uffdFd, memoryStart, uint64(size)))
 	})
 
 	// pageStatesOnce asks the serving process for a snapshot of its pageTracker

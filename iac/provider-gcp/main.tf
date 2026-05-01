@@ -288,7 +288,6 @@ module "nomad" {
   dashboard_api_count                          = var.dashboard_api_count
   dashboard_api_admin_token_secret_name        = module.init.dashboard_api_admin_token_secret_name
   supabase_db_connection_string_secret_version = module.init.supabase_db_connection_string_secret_version
-  supabase_db_connection_string                = var.supabase_db_connection_string
   enable_auth_user_sync_background_worker      = var.enable_auth_user_sync_background_worker
   enable_billing_http_team_provision_sink      = var.enable_billing_http_team_provision_sink
 
@@ -299,6 +298,7 @@ module "nomad" {
   # Orchestrator
   orchestrator_node_pool         = var.orchestrator_node_pool
   allow_sandbox_internet         = var.allow_sandbox_internet
+  allow_sandbox_internal_cidrs   = var.allow_sandbox_internal_cidrs
   orchestrator_port              = var.orchestrator_port
   orchestrator_proxy_port        = var.orchestrator_proxy_port
   fc_env_pipeline_bucket_name    = module.init.fc_env_pipeline_bucket_name
@@ -306,6 +306,7 @@ module "nomad" {
   persistent_volume_mounts       = { for key, config in local.persistent_volume_types : key => config["local_mount_path"] }
   default_persistent_volume_type = var.default_persistent_volume_type
   orchestrator_env_vars          = var.orchestrator_env_vars
+  orchestrator_enabled           = var.orchestrator_enabled
 
   # Template manager
   builder_node_pool                   = var.build_node_pool

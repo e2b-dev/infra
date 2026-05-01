@@ -74,6 +74,10 @@ resource "aws_launch_template" "clickhouse" {
 
   vpc_security_group_ids = var.security_group_ids
 
+  metadata_options {
+    http_tokens = "required"
+  }
+
   iam_instance_profile {
     name = aws_iam_instance_profile.clickhouse.name
   }
@@ -110,6 +114,10 @@ resource "aws_instance" "clickhouse" {
 
   availability_zone = var.clickhouse_az
   subnet_id         = var.clickhouse_subnet_id
+
+  metadata_options {
+    http_tokens = "required"
+  }
 
   user_data = base64encode(templatefile("${local.scripts_path}/start-clickhouse.sh", {
     NODE_POOL                    = var.node_pool_name

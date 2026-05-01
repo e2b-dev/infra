@@ -8,6 +8,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
@@ -83,6 +84,52 @@ func TestTemplateCache_InvalidateAllTagsDeletesRedisEntries(t *testing.T) {
 	exists, err := redisClient.Exists(ctx, redisKey).Result()
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), exists, "Redis entry should be deleted after InvalidateAllTags")
+}
+
+func TestTemplateCache_Get_ClassifiesMissingDefaultTag(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+	buildID := testutils.CreateTestBuild(t, ctx, db, templateID, "ready")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "dev")
+
+	tc := NewTemplateCache(db.SqlcClient, redis)
+	defer tc.Close(ctx)
+
+	_, _, err := tc.Get(ctx, templateID, nil, teamID, consts.LocalClusterID)
+
+	require.ErrorIs(t, err, ErrTemplateNotFound)
+
+	var tagErr templateTagNotFoundError
+	require.ErrorAs(t, err, &tagErr)
+	assert.Equal(t, id.DefaultTag, tagErr.Tag)
+}
+
+func TestTemplateCache_Get_ExistingTagWithoutReadyBuildIsTagNotFound(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, db)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+	buildID := testutils.CreateTestBuild(t, ctx, db, templateID, "building")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "default")
+
+	tc := NewTemplateCache(db.SqlcClient, redis)
+	defer tc.Close(ctx)
+
+	_, _, err := tc.Get(ctx, templateID, nil, teamID, consts.LocalClusterID)
+
+	require.ErrorIs(t, err, ErrTemplateNotFound)
+
+	var tagErr templateTagNotFoundError
+	require.ErrorAs(t, err, &tagErr)
+	assert.Equal(t, id.DefaultTag, tagErr.Tag)
 }
 
 // TestTemplateCache_InvalidateAllTagsAlsoInvalidatesMetadata tests that

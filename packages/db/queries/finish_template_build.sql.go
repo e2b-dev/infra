@@ -14,30 +14,41 @@ import (
 
 const finishTemplateBuild = `-- name: FinishTemplateBuild :exec
 WITH deactivated AS (
-    DELETE FROM public.active_template_builds WHERE build_id = $4
+    DELETE FROM public.active_template_builds WHERE build_id = $6
 )
 UPDATE "public"."env_builds"
 SET
     finished_at = NOW(),
     total_disk_size_mb = $1,
     status = $2,
-    envd_version = $3
+    envd_version = $3,
+    kernel_version = COALESCE(NULLIF($4::text, ''), kernel_version),
+    firecracker_version = COALESCE(NULLIF($5::text, ''), firecracker_version)
 WHERE
-    id = $4
+    id = $6
 `
 
 type FinishTemplateBuildParams struct {
-	TotalDiskSizeMb *int64
-	Status          types.BuildStatus
-	EnvdVersion     *string
-	BuildID         uuid.UUID
+	TotalDiskSizeMb    *int64
+	Status             types.BuildStatus
+	EnvdVersion        *string
+	KernelVersion      string
+	FirecrackerVersion string
+	BuildID            uuid.UUID
 }
 
+// kernel_version and firecracker_version are overwritten with whatever the
+// template-manager reports back in TemplateBuildMetadata. Old template-managers
+// that do not populate those fields end up passing an empty string; the
+// NULLIF + COALESCE trick leaves the row's existing values untouched in that
+// case so we do not clobber the values the API seeded at build registration.
 func (q *Queries) FinishTemplateBuild(ctx context.Context, arg FinishTemplateBuildParams) error {
 	_, err := q.db.Exec(ctx, finishTemplateBuild,
 		arg.TotalDiskSizeMb,
 		arg.Status,
 		arg.EnvdVersion,
+		arg.KernelVersion,
+		arg.FirecrackerVersion,
 		arg.BuildID,
 	)
 	return err
