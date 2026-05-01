@@ -83,11 +83,9 @@ type testHandler struct {
 	mutex sync.RWMutex
 }
 
-// pageStatesOnce returns a per-state snapshot of the handler's
-// pageTracker, fetched via the Paging.States RPC. The "Once" suffix
-// is kept for source-stability with the existing test sites; the
-// method is safely callable any number of times.
-func (h *testHandler) pageStatesOnce() (handlerPageStates, error) {
+// pageStates returns a per-state snapshot of the handler's
+// pageTracker, fetched via the Paging.States RPC.
+func (h *testHandler) pageStates() (handlerPageStates, error) {
 	entries, err := h.client.PageStates()
 	if err != nil {
 		return handlerPageStates{}, err

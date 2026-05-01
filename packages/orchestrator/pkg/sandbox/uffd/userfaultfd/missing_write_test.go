@@ -123,7 +123,7 @@ func TestMissingWrite(t *testing.T) {
 
 			expectedAccessedOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
 
-			states, err := h.pageStatesOnce()
+			states, err := h.pageStates()
 			require.NoError(t, err)
 
 			assert.Equal(t, expectedAccessedOffsets, states.allAccessed(), "checking which pages were faulted")
@@ -164,7 +164,7 @@ func TestParallelMissingWrite(t *testing.T) {
 
 	expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
 
-	states, err := h.pageStatesOnce()
+	states, err := h.pageStates()
 	require.NoError(t, err)
 
 	assert.Equal(t, expectedAccessedOffsets, states.allAccessed(), "checking which pages were faulted")
@@ -204,7 +204,7 @@ func TestParallelMissingWriteWithPrefault(t *testing.T) {
 
 	expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
 
-	states, err := h.pageStatesOnce()
+	states, err := h.pageStates()
 	require.NoError(t, err)
 
 	assert.Equal(t, expectedAccessedOffsets, states.allAccessed(), "checking which pages were faulted")
@@ -235,7 +235,7 @@ func TestSerialMissingWrite(t *testing.T) {
 
 	expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
 
-	states, err := h.pageStatesOnce()
+	states, err := h.pageStates()
 	require.NoError(t, err)
 
 	assert.Equal(t, expectedAccessedOffsets, states.allAccessed(), "checking which pages were faulted")
