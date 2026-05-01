@@ -8,7 +8,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -19,9 +18,7 @@ type Snapshot struct {
 	RootfsDiffHeader  *header.Header
 	Snapfile          template.File
 	Metafile          template.File
-	Paths             storage.Paths
 	BuildID           uuid.UUID
-	ParentBuildID     uuid.UUID
 
 	cleanup *Cleanup
 }

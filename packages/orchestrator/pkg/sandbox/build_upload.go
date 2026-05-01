@@ -15,14 +15,14 @@ import (
 )
 
 type Upload struct {
-	buildID, parent uuid.UUID
-	snap            *Snapshot
-	paths           storage.Paths
-	uploads         *Uploads
-	store           storage.StorageProvider
-	mem             storage.CompressConfig
-	root            storage.CompressConfig
-	future          *utils.ErrorOnce
+	buildID uuid.UUID
+	snap    *Snapshot
+	paths   storage.Paths
+	uploads *Uploads
+	store   storage.StorageProvider
+	mem     storage.CompressConfig
+	root    storage.CompressConfig
+	future  *utils.ErrorOnce
 }
 
 func NewUpload(
@@ -36,9 +36,8 @@ func NewUpload(
 ) (*Upload, error) {
 	u := &Upload{
 		buildID: snap.BuildID,
-		parent:  snap.ParentBuildID,
 		snap:    snap,
-		paths:   snap.Paths,
+		paths:   storage.Paths{BuildID: snap.BuildID.String()},
 		uploads: uploads,
 		store:   store,
 		mem:     storage.ResolveCompressConfig(ctx, cfg, ff, storage.MemfileName, useCase),

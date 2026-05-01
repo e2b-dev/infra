@@ -3,7 +3,6 @@ package sandbox
 import (
 	"context"
 	"fmt"
-	"maps"
 
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
@@ -75,19 +74,18 @@ func (u *Upload) uploadFramed(
 	h := srcHeader.CloneForUpload(headers.MetadataVersionV4)
 	h.IncompletePendingUpload = false
 
-	builds := srcHeader.Builds
-	if u.parent != uuid.Nil && u.uploads != nil {
-		parentHeader, err := u.uploads.Wait(ctx, u.parent, fileType)
-		if err != nil {
-			return fmt.Errorf("wait for parent %s/%s: %w", u.parent, fileType, err)
-		}
-
-		builds = parentHeader.Builds
+	// Dependency closure is the set of buildIDs referenced by mappings, minus
+	// self. Each ancestor's BuildData lives in its own finalized header's
+	// self-entry; Wait routes to local future, peer, or GCS as appropriate.
+	// Already-final ancestors resolve immediately (GCS round-trip beats
+	// blocking on whatever the immediate parent's upload is doing).
+	ancestors, err := u.collectAncestorBuilds(ctx, srcHeader.Mapping, fileType)
+	if err != nil {
+		return err
 	}
 
 	// Empty diffs still represent a layer descendants must record as an ancestor.
-	h.Builds = make(map[uuid.UUID]headers.BuildData, len(builds)+1)
-	maps.Copy(h.Builds, builds)
+	h.Builds = ancestors
 	h.Builds[u.buildID] = selfBuild
 
 	if err := headers.StoreHeader(ctx, u.store, u.paths.HeaderFile(string(fileType)), h); err != nil {
@@ -95,6 +93,44 @@ func (u *Upload) uploadFramed(
 	}
 
 	return u.publish(ctx, fileType, h)
+}
+
+// collectAncestorBuilds resolves every unique buildID referenced by mappings
+// (excluding self) to its finalized BuildData. Local ancestors resolve from
+// the in-memory futures map without any I/O; cross-orch ancestors take a
+// single GCS round-trip each. Sequential — the critical path is the slowest
+// pending Wait either way, and serial keeps the code simple.
+func (u *Upload) collectAncestorBuilds(
+	ctx context.Context,
+	mappings []headers.BuildMap,
+	fileType build.DiffType,
+) (map[uuid.UUID]headers.BuildData, error) {
+	out := make(map[uuid.UUID]headers.BuildData)
+	if u.uploads == nil {
+		return out, nil
+	}
+
+	for _, m := range mappings {
+		if m.BuildId == u.buildID || m.BuildId == uuid.Nil {
+			continue
+		}
+		if _, dup := out[m.BuildId]; dup {
+			continue
+		}
+
+		h, err := u.uploads.Wait(ctx, m.BuildId, fileType)
+		if err != nil {
+			return nil, fmt.Errorf("wait for ancestor %s/%s: %w", m.BuildId, fileType, err)
+		}
+		bd, ok := h.Builds[m.BuildId]
+		if !ok {
+			return nil, fmt.Errorf("ancestor %s/%s header missing self-entry", m.BuildId, fileType)
+		}
+
+		out[m.BuildId] = bd
+	}
+
+	return out, nil
 }
 
 func seekableTypeFor(fileType build.DiffType) storage.SeekableObjectType {

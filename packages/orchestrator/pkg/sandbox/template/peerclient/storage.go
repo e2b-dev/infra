@@ -16,7 +16,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -103,29 +102,6 @@ func (p *routingProvider) UploadSignedURL(ctx context.Context, path string, ttl 
 
 func (p *routingProvider) GetDetails() string {
 	return p.base.GetDetails()
-}
-
-var _ header.P2PHeaderLoader = (*routingProvider)(nil)
-
-func (p *routingProvider) LoadHeader(ctx context.Context, path string) (*header.Header, error) {
-	buildID, _ := storage.SplitPath(path)
-	sub := p.resolveProvider(ctx, buildID)
-
-	peerInFlight := false
-	if peer, ok := sub.(*peerStorageProvider); ok {
-		peerInFlight = !peer.uploaded.Load()
-	}
-
-	h, err := header.LoadHeader(ctx, sub, path)
-	if err != nil {
-		return nil, err
-	}
-
-	if peerInFlight {
-		h.IncompletePendingUpload = true
-	}
-
-	return h, nil
 }
 
 var _ storage.StorageProvider = (*peerStorageProvider)(nil)

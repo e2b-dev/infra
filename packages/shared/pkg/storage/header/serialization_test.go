@@ -61,34 +61,6 @@ func TestSerializeDeserialize_V3_RoundTrip(t *testing.T) {
 	require.Nil(t, got.Builds)
 }
 
-// IncompletePendingUpload is in-memory only — set on diff headers, must not
-// survive a serialize/deserialize round-trip onto the wire.
-func TestSerializeDeserialize_IncompletePendingUpload_NotSerialized(t *testing.T) {
-	t.Parallel()
-
-	buildID := uuid.New()
-	h := &Header{
-		Metadata: &Metadata{
-			Version:     3,
-			BlockSize:   4096,
-			Size:        4096,
-			BuildId:     buildID,
-			BaseBuildId: buildID,
-		},
-		Mapping: []BuildMap{{
-			Offset: 0, Length: 4096, BuildId: buildID, BuildStorageOffset: 0,
-		}},
-		IncompletePendingUpload: true,
-	}
-
-	data, err := SerializeHeader(h)
-	require.NoError(t, err)
-
-	got, err := DeserializeBytes(data)
-	require.NoError(t, err)
-	require.False(t, got.IncompletePendingUpload, "in-memory flag must not survive serialization")
-}
-
 func TestDeserialize_TruncatedMetadata(t *testing.T) {
 	t.Parallel()
 

@@ -1117,17 +1117,6 @@ func (s *Sandbox) Pause(
 		return nil, err
 	}
 
-	parentBuildID, err := uuid.Parse(s.Template.Files().BuildID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse parent build id: %w", err)
-	}
-	// Base layers report the source template with the same buildID as self —
-	// flatten that to uuid.Nil so the upload pipeline doesn't self-deadlock
-	// waiting on its own future.
-	if parentBuildID == buildID {
-		parentBuildID = uuid.Nil
-	}
-
 	return &Snapshot{
 		Snapfile:          snapfile,
 		Metafile:          metadataFileLink,
@@ -1136,9 +1125,7 @@ func (s *Sandbox) Pause(
 		RootfsDiff:        rootfsDiff,
 		RootfsDiffHeader:  rootfsDiffHeader,
 
-		Paths:         storage.Paths{BuildID: m.Template.BuildID},
-		BuildID:       buildID,
-		ParentBuildID: parentBuildID,
+		BuildID: buildID,
 
 		cleanup: cleanup,
 	}, nil

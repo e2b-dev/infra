@@ -14,8 +14,17 @@ import (
 )
 
 // v4SizePrefixLen is the length of the uint32 size prefix that precedes the
-// LZ4-compressed block in the v4 header layout: [metadata][uint32 size][LZ4 block].
+// LZ4-compressed block in the V4 header layout.
 const v4SizePrefixLen = 4
+
+// v4FlagsLen is the length of the V4 flags byte. Bit 0 = IncompletePendingUpload.
+const v4FlagsLen = 1
+
+// v4FlagIncomplete is bit 0 of the V4 flags byte: when set, the header
+// describes a build whose upload has not yet finalized (an in-flight diff).
+// StoreHeader refuses to persist headers carrying this flag; only the P2P
+// peer-server path emits it.
+const v4FlagIncomplete uint8 = 1 << 0
 
 type v4SerializableBuildMap struct {
 	Offset             uint64
@@ -32,9 +41,9 @@ type v4SerializableBuildInfo struct {
 	Checksum [32]byte
 }
 
-// serializeV4 writes [Metadata] [uint32 LZ4 size] [LZ4( Builds[] + Mappings[] )].
+// serializeV4 writes [Metadata] [uint8 flags] [uint32 LZ4 size] [LZ4( Builds[] + Mappings[] )].
 // Frame tables are sparse-trimmed to only frames referenced by mappings.
-func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings []BuildMap) ([]byte, error) {
+func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings []BuildMap, incomplete bool) ([]byte, error) {
 	var metaBuf bytes.Buffer
 	if err := binary.Write(&metaBuf, binary.LittleEndian, metadata); err != nil {
 		return nil, fmt.Errorf("failed to write metadata: %w", err)
@@ -92,28 +101,36 @@ func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings []
 		}
 	}
 
-	// LZ4-compress the block and assemble: [metadata] [uint32 size] [compressed block].
+	// LZ4-compress the block and assemble: [metadata] [uint8 flags] [uint32 size] [compressed block].
 	blockBytes := block.Bytes()
 	compressed, err := compressLZ4(blockBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to LZ4-compress v4 header block: %w", err)
 	}
 
-	result := make([]byte, metadataSize+v4SizePrefixLen+len(compressed))
+	var flags uint8
+	if incomplete {
+		flags |= v4FlagIncomplete
+	}
+
+	result := make([]byte, metadataSize+v4FlagsLen+v4SizePrefixLen+len(compressed))
 	copy(result, metaBuf.Bytes())
-	binary.LittleEndian.PutUint32(result[metadataSize:], uint32(len(blockBytes)))
-	copy(result[metadataSize+v4SizePrefixLen:], compressed)
+	result[metadataSize] = flags
+	binary.LittleEndian.PutUint32(result[metadataSize+v4FlagsLen:], uint32(len(blockBytes)))
+	copy(result[metadataSize+v4FlagsLen+v4SizePrefixLen:], compressed)
 
 	return result, nil
 }
 
 // deserializeV4 decompresses and reads the V4 block.
 func deserializeV4(metadata *Metadata, blockData []byte) (*Header, error) {
-	if len(blockData) < v4SizePrefixLen {
-		return nil, fmt.Errorf("v4 header block too short for size prefix: %d bytes", len(blockData))
+	if len(blockData) < v4FlagsLen+v4SizePrefixLen {
+		return nil, fmt.Errorf("v4 header block too short for flags + size prefix: %d bytes", len(blockData))
 	}
 
-	decompressed, err := decompressLZ4(blockData[v4SizePrefixLen:])
+	flags := blockData[0]
+
+	decompressed, err := decompressLZ4(blockData[v4FlagsLen+v4SizePrefixLen:])
 	if err != nil {
 		return nil, fmt.Errorf("failed to LZ4-decompress v4 header block: %w", err)
 	}
@@ -178,6 +195,7 @@ func deserializeV4(metadata *Metadata, blockData []byte) (*Header, error) {
 		return nil, err
 	}
 	h.Builds = builds
+	h.IncompletePendingUpload = flags&v4FlagIncomplete != 0
 
 	return h, nil
 }
