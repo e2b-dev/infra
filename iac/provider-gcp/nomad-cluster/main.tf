@@ -22,6 +22,16 @@ locals {
   clickhouse_service_account_email = var.clickhouse_service_account_email != "" ? var.clickhouse_service_account_email : var.google_service_account_email
   loki_service_account_email       = var.loki_service_account_email != "" ? var.loki_service_account_email : var.google_service_account_email
 
+  # Per-pool SA overrides that differ from the default (need their own IAM grants)
+  extra_service_account_emails = distinct([
+    for sa in [
+      local.server_service_account_email,
+      local.api_service_account_email,
+      local.clickhouse_service_account_email,
+      local.loki_service_account_email,
+    ] : sa if sa != var.google_service_account_email
+  ])
+
   nfs_mount_path   = "/orchestrator/shared-store"
   nfs_mount_subdir = "chunks-cache"
   nfs_mount_opts = join(",", [ // for more docs, see https://linux.die.net/man/5/nfs
@@ -93,10 +103,32 @@ resource "google_project_iam_member" "monitoring_editor" {
   member  = "serviceAccount:${var.google_service_account_email}"
   role    = "roles/monitoring.editor"
 }
+
 resource "google_project_iam_member" "logging_writer" {
   project = var.gcp_project_id
   member  = "serviceAccount:${var.google_service_account_email}"
   role    = "roles/logging.logWriter"
+}
+
+resource "google_project_iam_member" "extra_network_viewer" {
+  for_each = toset(local.extra_service_account_emails)
+  project  = var.gcp_project_id
+  member   = "serviceAccount:${each.value}"
+  role     = "roles/compute.networkViewer"
+}
+
+resource "google_project_iam_member" "extra_monitoring_editor" {
+  for_each = toset(local.extra_service_account_emails)
+  project  = var.gcp_project_id
+  member   = "serviceAccount:${each.value}"
+  role     = "roles/monitoring.editor"
+}
+
+resource "google_project_iam_member" "extra_logging_writer" {
+  for_each = toset(local.extra_service_account_emails)
+  project  = var.gcp_project_id
+  member   = "serviceAccount:${each.value}"
+  role     = "roles/logging.logWriter"
 }
 
 variable "setup_files" {
