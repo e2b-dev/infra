@@ -46,8 +46,8 @@ func NewVerifier(ctx context.Context, issuerURL string, audience string) (Verifi
 	if issuerURL == "" && audience == "" {
 		return noopVerifier{}, nil
 	}
-	if issuerURL == "" || audience == "" {
-		return nil, errors.New("client proxy OIDC issuer URL and audience must both be configured")
+	if issuerURL == "" {
+		return nil, errors.New("client proxy OIDC issuer URL must be configured")
 	}
 
 	provider, err := oidc.NewProvider(ctx, issuerURL)
@@ -55,13 +55,18 @@ func NewVerifier(ctx context.Context, issuerURL string, audience string) (Verifi
 		return nil, fmt.Errorf("create client proxy OIDC provider: %w", err)
 	}
 
+	config := &oidc.Config{SkipClientIDCheck: true}
+	if audience != "" {
+		config = &oidc.Config{ClientID: audience}
+	}
+
 	return &oidcVerifier{
-		verifier: provider.Verifier(&oidc.Config{ClientID: audience}),
+		verifier: provider.Verifier(config),
 	}, nil
 }
 
-func Configured(issuerURL string, audience string) bool {
-	return strings.TrimSpace(issuerURL) != "" && strings.TrimSpace(audience) != ""
+func Configured(issuerURL string, _ string) bool {
+	return strings.TrimSpace(issuerURL) != ""
 }
 
 func (noopVerifier) VerifyClaims(context.Context, string) (Claims, error) {

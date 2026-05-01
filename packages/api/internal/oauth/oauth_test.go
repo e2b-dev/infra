@@ -27,11 +27,6 @@ func TestNewVerifierConfig(t *testing.T) {
 			name: "empty config returns noop verifier",
 		},
 		{
-			name:      "missing audience",
-			issuerURL: "https://issuer.example.com",
-			wantErr:   true,
-		},
-		{
 			name:     "missing issuer",
 			audience: "client-proxy",
 			wantErr:  true,
@@ -40,12 +35,6 @@ func TestNewVerifierConfig(t *testing.T) {
 			name:      "trims empty config",
 			issuerURL: " ",
 			audience:  "\t",
-		},
-		{
-			name:      "trims partial config",
-			issuerURL: " https://issuer.example.com ",
-			audience:  " ",
-			wantErr:   true,
 		},
 	}
 
@@ -97,6 +86,31 @@ func TestNewVerifierLoadsOIDCProvider(t *testing.T) {
 	issuerURL = server.URL
 
 	verifier, err := NewVerifier(context.Background(), server.URL, "client-proxy")
+	require.NoError(t, err)
+	require.NotNil(t, verifier)
+}
+
+func TestNewVerifierAllowsEmptyAudience(t *testing.T) {
+	t.Parallel()
+
+	issuerURL := ""
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			writeJSON(t, w, map[string]string{
+				"issuer":   issuerURL,
+				"jwks_uri": issuerURL + "/jwks",
+			})
+		case "/jwks":
+			writeJSON(t, w, map[string]any{"keys": []any{}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	issuerURL = server.URL
+
+	verifier, err := NewVerifier(context.Background(), server.URL, "")
 	require.NoError(t, err)
 	require.NotNil(t, verifier)
 }
