@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/userfaultfd/internal/rpcharness"
 )
 
 type testConfig struct {
@@ -78,7 +79,7 @@ type testHandler struct {
 	// Pause/Resume/PageStates/etc. flow through it; tests should
 	// reach for the convenience methods on testHandler rather than
 	// poking at client directly.
-	client *harnessClient
+	client *rpcharness.Client
 
 	mutex sync.RWMutex
 }

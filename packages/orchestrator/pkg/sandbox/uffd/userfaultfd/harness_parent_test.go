@@ -33,6 +33,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/userfaultfd/internal/rpcharness"
 )
 
 // MemorySlicer exposes a byte slice via the Slicer interface.
@@ -81,7 +82,7 @@ const envHelperFlag = "GO_TEST_HELPER_PROCESS"
 // configureCrossProcessTest spawns the helper child, hands it the
 // userfaultfd, and drives initial setup via Lifecycle.Bootstrap.
 // All subsequent test interaction goes through the returned
-// testHandler's *harnessClient.
+// testHandler's *rpcharness.Client.
 func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig) (*testHandler, error) {
 	t.Helper()
 
@@ -148,7 +149,7 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 	parentEnd.Close()
 	require.NoError(t, err)
 
-	client := newHarnessClient(parentConn, cmd)
+	client := rpcharness.NewClient(parentConn)
 
 	h := &testHandler{
 		memoryArea: &memoryArea,
@@ -157,7 +158,7 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 		client:     client,
 	}
 
-	if err := client.Bootstrap(BootstrapArgs{
+	if err := client.Bootstrap(rpcharness.BootstrapArgs{
 		MmapStart: uint64(memoryStart),
 		Pagesize:  int64(tt.pagesize),
 		TotalSize: size,
