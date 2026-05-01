@@ -3,11 +3,7 @@ package userfaultfd
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
-	"io"
-	"net/rpc"
-	"os/exec"
 	"slices"
 	"sync"
 	"testing"
@@ -31,8 +27,6 @@ type testConfig struct {
 	operations []operation
 	// alwaysWP makes the handler copy with UFFDIO_COPY_MODE_WP for all faults.
 	alwaysWP bool
-	// gated enables pause/resume control over the handler's serve loop.
-	gated bool
 	// barriers wires up the per-worker fault hooks in the child
 	// (used by race tests). Off by default so the worker hot path
 	// stays a single nil-pointer load + branch in non-race tests.
@@ -79,23 +73,35 @@ type testHandler struct {
 	memoryArea *[]byte
 	pagesize   uint64
 	data       *MemorySlicer
-	// pageStatesOnce returns a per-state snapshot of the handler's pageTracker.
-	// Backed by the PageStates RPC; callable any number of times.
-	// The "Once" suffix is kept for source-stability with the existing
-	// test sites.
-	pageStatesOnce func() (handlerPageStates, error)
-	// servePause and serveResume gate the UFFD event loop in the child process.
-	// Tests use them to deterministically batch a sequence of UFFD events
-	// before more faults are processed.
-	servePause  func() error
-	serveResume func() error
 
-	// client is the RPC channel to the child helper process.
-	client *rpc.Client
-	conn   io.Closer
-	cmd    *exec.Cmd
+	// client is the typed RPC channel to the child helper process.
+	// Pause/Resume/PageStates/etc. flow through it; tests should
+	// reach for the convenience methods on testHandler rather than
+	// poking at client directly.
+	client *harnessClient
 
 	mutex sync.RWMutex
+}
+
+// pageStatesOnce returns a per-state snapshot of the handler's
+// pageTracker, fetched via the Paging.States RPC. The "Once" suffix
+// is kept for source-stability with the existing test sites; the
+// method is safely callable any number of times.
+func (h *testHandler) pageStatesOnce() (handlerPageStates, error) {
+	entries, err := h.client.PageStates()
+	if err != nil {
+		return handlerPageStates{}, err
+	}
+
+	var states handlerPageStates
+	for _, e := range entries {
+		if pageState(e.State) == faulted {
+			states.faulted = append(states.faulted, uint(e.Offset))
+		}
+	}
+	slices.Sort(states.faulted)
+
+	return states, nil
 }
 
 func (h *testHandler) executeAll(t *testing.T, operations []operation) {
@@ -182,17 +188,9 @@ func (h *testHandler) executeOperation(ctx context.Context, op operation) error 
 	case operationModeWrite:
 		return h.executeWrite(ctx, op)
 	case operationModeServePause:
-		if h.servePause == nil {
-			return errors.New("operationModeServePause requires testConfig.gated = true")
-		}
-
-		return h.servePause()
+		return h.client.Pause()
 	case operationModeServeResume:
-		if h.serveResume == nil {
-			return errors.New("operationModeServeResume requires testConfig.gated = true")
-		}
-
-		return h.serveResume()
+		return h.client.Resume()
 	case operationModeSleep:
 		time.Sleep(50 * time.Millisecond)
 
