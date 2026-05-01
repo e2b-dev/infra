@@ -18,7 +18,7 @@ import (
 )
 
 // swapReadHeaderBudget bounds how long the read-path swap polls GCS for the
-// V4 header to appear. 
+// V4 header to appear.
 const swapReadHeaderBudget = 30 * time.Second
 
 type File struct {
