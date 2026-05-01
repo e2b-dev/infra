@@ -152,7 +152,7 @@ func run() int {
 	}
 
 	if apiGRPCAddress != "" {
-		pausedSandboxResumer, err = e2bproxy.NewGRPCPausedSandboxResumer(apiGRPCAddress, apiGRPCOAuthConfig, apiGRPCUseTLS)
+		pausedSandboxResumer, err = e2bproxy.NewGRPCPausedSandboxResumer(ctx, apiGRPCAddress, apiGRPCOAuthConfig, apiGRPCUseTLS)
 		if err != nil {
 			l.Error(ctx, "Failed to create paused sandbox checker", zap.Error(err))
 

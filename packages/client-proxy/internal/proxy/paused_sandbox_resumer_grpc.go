@@ -30,13 +30,13 @@ type GRPCOAuthConfig struct {
 	TokenURL     string
 }
 
-func NewGRPCPausedSandboxResumer(address string, oauthConfig GRPCOAuthConfig, useTLS bool) (PausedSandboxResumer, error) {
+func NewGRPCPausedSandboxResumer(ctx context.Context, address string, oauthConfig GRPCOAuthConfig, useTLS bool) (PausedSandboxResumer, error) {
 	address = strings.TrimSpace(address)
 	if address == "" {
 		return nil, errors.New("api grpc address is required")
 	}
 
-	auth, err := newGrpcResumeAuth(context.Background(), oauthConfig)
+	auth, err := newGrpcResumeAuth(ctx, oauthConfig)
 	if err != nil {
 		return nil, err
 	}
