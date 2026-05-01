@@ -3,6 +3,7 @@ package userfaultfd
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -173,8 +174,16 @@ func (h *testHandler) executeOperation(ctx context.Context, op operation) error 
 	case operationModeWrite:
 		return h.executeWrite(ctx, op)
 	case operationModeServePause:
+		if h.servePause == nil {
+			return errors.New("operationModeServePause requires testConfig.gated = true")
+		}
+
 		return h.servePause()
 	case operationModeServeResume:
+		if h.serveResume == nil {
+			return errors.New("operationModeServeResume requires testConfig.gated = true")
+		}
+
 		return h.serveResume()
 	case operationModeSleep:
 		time.Sleep(50 * time.Millisecond)

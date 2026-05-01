@@ -427,15 +427,17 @@ func crossProcessServe() error {
 		}
 	}()
 
-	// stopFn drains whichever Serve goroutine is currently running and
-	// is reset to a no-op once it has run. This makes both pause-then-exit
-	// (no resume in between) and pause-resume-pause-exit safe: every
-	// caller — gated 'P', gated 'R' replacing the previous stop, and the
-	// final defer below — sees a stop function that matches the goroutine
-	// actually running, and never blocks on an already-drained channel.
+	// stopFn drains whichever Serve goroutine is currently running. The
+	// running flag plus stopMu makes both pause-then-exit (no resume in
+	// between) and pause-resume-pause-exit safe, and rejects nonsensical
+	// command sequences from the gated channel: 'P' when already paused
+	// is a no-op, 'R' when already running is a no-op so a stray or
+	// duplicate resume can't leak an untracked Serve goroutine and break
+	// later pauses.
 	var (
-		stopMu sync.Mutex
-		stopFn = func() {
+		stopMu  sync.Mutex
+		running = true
+		stopFn  = func() {
 			err := fdExit.SignalExit()
 			if err != nil {
 				msg := fmt.Errorf("error signaling exit: %w", err)
@@ -453,8 +455,14 @@ func crossProcessServe() error {
 
 	stopServe := func() {
 		stopMu.Lock()
+		if !running {
+			stopMu.Unlock()
+
+			return
+		}
 		fn := stopFn
 		stopFn = func() {}
+		running = false
 		stopMu.Unlock()
 
 		fn()
@@ -470,6 +478,14 @@ func crossProcessServe() error {
 		defer gateSyncFile.Close()
 
 		startServe := func() {
+			stopMu.Lock()
+			if running {
+				stopMu.Unlock()
+
+				return
+			}
+			stopMu.Unlock()
+
 			newExit, fdErr := fdexit.New()
 			if fdErr != nil {
 				cancel(fmt.Errorf("error creating fd exit: %w", fdErr))
@@ -491,6 +507,7 @@ func crossProcessServe() error {
 				<-done
 				newExit.Close()
 			}
+			running = true
 			stopMu.Unlock()
 		}
 
@@ -504,7 +521,11 @@ func crossProcessServe() error {
 				switch buf[0] {
 				case 'P':
 					stopServe()
-					gateSyncFile.Write([]byte{1})
+					if _, err := gateSyncFile.Write([]byte{1}); err != nil {
+						cancel(fmt.Errorf("writing gate sync: %w", err))
+
+						return
+					}
 				case 'R':
 					startServe()
 				}
@@ -540,11 +561,16 @@ type pageStateEntry struct {
 }
 
 // pageStateEntries returns a snapshot of every tracked page and its state.
-// It holds the settleRequests write lock so no in-flight faultPage worker
-// can mutate the pageTracker while we iterate.
+// It first drains in-flight faultPage workers via settleRequests.Lock(), then
+// holds the pageTracker RLock while iterating so any future writer that
+// doesn't go through settleRequests (e.g. the upcoming REMOVE handler)
+// still can't mutate the map under us.
 func (u *Userfaultfd) pageStateEntries() ([]pageStateEntry, error) {
 	u.settleRequests.Lock()
 	defer u.settleRequests.Unlock()
+
+	u.pageTracker.mu.RLock()
+	defer u.pageTracker.mu.RUnlock()
 
 	entries := make([]pageStateEntry, 0, len(u.pageTracker.m))
 	for addr, state := range u.pageTracker.m {
