@@ -43,8 +43,8 @@ func PrefetchEntriesToMapping(entries []block.PrefetchBlockEntry, blockSize int6
 	}
 }
 
-// UploadMetadata uploads the template metadata to storage. objectMetadata is
-// applied as custom metadata on the object; pass nil to skip.
+// UploadMetadata uploads the template metadata to storage. objectMetadata
+// is attached to the object; pass nil to skip.
 func UploadMetadata(ctx context.Context, persistence storage.StorageProvider, t Template, objectMetadata storage.ObjectMetadata) error {
 	ctx, span := tracer.Start(ctx, "upload-metadata")
 	defer span.End()

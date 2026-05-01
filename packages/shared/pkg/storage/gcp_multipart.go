@@ -175,8 +175,7 @@ func (m *MultipartUploader) initiateUpload(ctx context.Context) (string, error) 
 	req.Header.Set("Authorization", "Bearer "+m.token)
 	req.Header.Set("Content-Length", "0")
 	req.Header.Set("Content-Type", "application/octet-stream")
-	// Custom user metadata is set on the initiate request only; subsequent
-	// part uploads and the complete request inherit it on the final object.
+	// Custom user metadata is set on initiate; the final object inherits it.
 	for k, v := range m.metadata {
 		req.Header.Set("x-goog-meta-"+k, v)
 	}

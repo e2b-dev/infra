@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
@@ -77,13 +76,6 @@ func (lb *LayerExecutor) BuildLayer(
 		return metadata.Template{}, fmt.Errorf("get template snapshot: %w", err)
 	}
 
-	var parentBuildID string
-	if sourceMeta, sourceMetaErr := localTemplate.Metadata(); sourceMetaErr == nil {
-		parentBuildID = sourceMeta.Template.BuildID
-	} else {
-		lb.logger.Warn(ctx, "could not read source template metadata, parent_build_id will be omitted", zap.Error(sourceMetaErr))
-	}
-
 	// Create or resume sandbox
 	sbx, err := cmd.SandboxCreator.Sandbox(ctx, lb, localTemplate)
 	if err != nil {
@@ -148,7 +140,6 @@ func (lb *LayerExecutor) BuildLayer(
 		sbx,
 		cmd.Hash,
 		meta,
-		parentBuildID,
 	)
 	if err != nil {
 		return metadata.Template{}, fmt.Errorf("pause and upload: %w", err)
@@ -250,7 +241,6 @@ func (lb *LayerExecutor) PauseAndUpload(
 	sbx *sandbox.Sandbox,
 	hash string,
 	meta metadata.Template,
-	parentBuildID string,
 ) (e error) {
 	ctx, childSpan := tracer.Start(ctx, "pause-and-upload")
 	defer childSpan.End()
@@ -299,22 +289,12 @@ func (lb *LayerExecutor) PauseAndUpload(
 		// still unblock and the errgroup can properly collect all errors.
 		defer completeUpload()
 
-		// root_build_id = diff-chain root (the very first build in the lineage),
-		// derived from the memfile header so it's stable across the layer chain.
-		common := storage.ObjectMetadata{
-			storage.ObjectMetadataTeamID: lb.BuildContext.Config.TeamID,
-		}
-		if h := snapshot.MemfileDiffHeader; h != nil && h.Metadata != nil && h.Metadata.BaseBuildId != uuid.Nil {
-			common[storage.ObjectMetadataRootBuildID] = h.Metadata.BaseBuildId.String()
-		}
-
 		err := snapshot.Upload(
 			ctx,
 			lb.templateStorage,
 			storage.Paths{BuildID: meta.Template.BuildID},
-			storage.SnapshotUploadMetadata{
-				Common:       common,
-				MetadataOnly: storage.BuildLineageMetadata(storage.BuildKindTemplateLayer, parentBuildID),
+			storage.ObjectMetadata{
+				storage.ObjectMetadataTeamID: lb.BuildContext.Config.TeamID,
 			},
 		)
 		if err != nil {

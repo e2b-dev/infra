@@ -21,13 +21,13 @@ type Snapshot struct {
 	cleanup *Cleanup
 }
 
-// Upload writes snapshot artifacts to persistence under paths. uploadMetadata
-// labels are applied to the uploaded objects; pass a zero value to skip.
+// Upload writes snapshot artifacts to persistence under paths. objectMetadata
+// is attached to every uploaded object; pass nil to skip.
 func (s *Snapshot) Upload(
 	ctx context.Context,
 	persistence storage.StorageProvider,
 	paths storage.Paths,
-	uploadMetadata storage.SnapshotUploadMetadata,
+	objectMetadata storage.ObjectMetadata,
 ) error {
 	var memfilePath *string
 	switch r := s.MemfileDiff.(type) {
@@ -58,7 +58,7 @@ func (s *Snapshot) Upload(
 		s.RootfsDiffHeader,
 		persistence,
 		paths,
-		uploadMetadata,
+		objectMetadata,
 	)
 
 	if err := templateBuild.Upload(

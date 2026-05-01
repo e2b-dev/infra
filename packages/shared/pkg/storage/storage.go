@@ -84,36 +84,17 @@ type StorageProvider interface {
 	GetDetails() string
 }
 
-// Re-exports from storageopts so callers don't need to import the subpackage.
 type (
-	ObjectMetadata         = storageopts.ObjectMetadata
-	PutOptions             = storageopts.PutOptions
-	PutOption              = storageopts.PutOption
-	SnapshotUploadMetadata = storageopts.SnapshotUploadMetadata
+	ObjectMetadata = storageopts.ObjectMetadata
+	PutOptions     = storageopts.PutOptions
+	PutOption      = storageopts.PutOption
 )
 
-const (
-	ObjectMetadataTeamID        = storageopts.ObjectMetadataTeamID
-	ObjectMetadataRootBuildID   = storageopts.ObjectMetadataRootBuildID
-	ObjectMetadataParentBuildID = storageopts.ObjectMetadataParentBuildID
-	ObjectMetadataBuildKind     = storageopts.ObjectMetadataBuildKind
+const ObjectMetadataTeamID = storageopts.ObjectMetadataTeamID
 
-	BuildKindTemplateLayer     = storageopts.BuildKindTemplateLayer
-	BuildKindSandboxPause      = storageopts.BuildKindSandboxPause
-	BuildKindSandboxCheckpoint = storageopts.BuildKindSandboxCheckpoint
-)
+func WithMetadata(metadata ObjectMetadata) PutOption { return storageopts.WithMetadata(metadata) }
 
-func BuildLineageMetadata(buildKind, parentBuildID string) ObjectMetadata {
-	return storageopts.BuildLineageMetadata(buildKind, parentBuildID)
-}
-
-func WithMetadata(metadata ObjectMetadata) PutOption {
-	return storageopts.WithMetadata(metadata)
-}
-
-func ApplyPutOptions(opts []PutOption) PutOptions {
-	return storageopts.Apply(opts)
-}
+func ApplyPutOptions(opts []PutOption) PutOptions { return storageopts.Apply(opts) }
 
 type Blob interface {
 	WriteTo(ctx context.Context, dst io.Writer) (int64, error)

@@ -512,7 +512,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
 
 	// Fire and forget - upload completes in the background
-	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), storage.BuildKindSandboxPause)
+	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId())
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -591,7 +591,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	sbxlogger.E(sbx).Info(ctx, "Checkpointing sandbox")
 
-	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), storage.BuildKindSandboxCheckpoint)
+	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId())
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -667,7 +667,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		defer cancel()
 		defer res.completeUpload(uploadCtx)
 
-		if err := res.snapshot.Upload(uploadCtx, s.persistence, res.paths, res.uploadMetadata); err != nil {
+		if err := res.snapshot.Upload(uploadCtx, s.persistence, res.paths, res.objectMetadata); err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
 			s.sandboxFactory.Sandboxes.MarkStopping(ctx, resumedSbx.Runtime.SandboxID, resumedSbx.LifecycleID)
@@ -721,7 +721,7 @@ type snapshotResult struct {
 	meta           metadata.Template
 	snapshot       *sandbox.Snapshot
 	paths          storage.Paths
-	uploadMetadata storage.SnapshotUploadMetadata
+	objectMetadata storage.ObjectMetadata
 	completeUpload func(ctx context.Context)
 }
 
@@ -732,7 +732,6 @@ func (s *Server) snapshotAndCacheSandbox(
 	ctx context.Context,
 	sbx *sandbox.Sandbox,
 	buildID string,
-	buildKind string,
 ) (*snapshotResult, error) {
 	meta, err := sbx.Template.Metadata()
 	if err != nil {
@@ -767,18 +766,8 @@ func (s *Server) snapshotAndCacheSandbox(
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
 	paths := storage.Paths{BuildID: meta.Template.BuildID}
-	// root_build_id = diff-chain root (the very first build in the lineage),
-	// preserved across pause -> resume -> pause chains. Omitted if the header
-	// doesn't carry a usable base build ID.
-	common := storage.ObjectMetadata{
+	objectMetadata := storage.ObjectMetadata{
 		storage.ObjectMetadataTeamID: sbx.Runtime.TeamID,
-	}
-	if h := snapshot.MemfileDiffHeader; h != nil && h.Metadata != nil && h.Metadata.BaseBuildId != uuid.Nil {
-		common[storage.ObjectMetadataRootBuildID] = h.Metadata.BaseBuildId.String()
-	}
-	uploadMetadata := storage.SnapshotUploadMetadata{
-		Common:       common,
-		MetadataOnly: storage.BuildLineageMetadata(buildKind, sbx.Runtime.BuildID),
 	}
 
 	// Register in Redis so other orchestrators can find us for peer routing.
@@ -801,7 +790,7 @@ func (s *Server) snapshotAndCacheSandbox(
 			meta:           meta,
 			snapshot:       snapshot,
 			paths:          paths,
-			uploadMetadata: uploadMetadata,
+			objectMetadata: objectMetadata,
 			completeUpload: completeUpload,
 		}, nil
 	}
@@ -810,7 +799,7 @@ func (s *Server) snapshotAndCacheSandbox(
 		meta:           meta,
 		snapshot:       snapshot,
 		paths:          paths,
-		uploadMetadata: uploadMetadata,
+		objectMetadata: objectMetadata,
 		completeUpload: func(context.Context) {},
 	}, nil
 }
@@ -825,7 +814,7 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 		defer cancel()
 		defer res.completeUpload(ctx)
 
-		err := res.snapshot.Upload(ctx, s.persistence, res.paths, res.uploadMetadata)
+		err := res.snapshot.Upload(ctx, s.persistence, res.paths, res.objectMetadata)
 		if err != nil {
 			sbxlogger.I(sbx).Error(ctx, "error uploading snapshot files", zap.Error(err))
 

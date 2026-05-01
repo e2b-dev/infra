@@ -13,9 +13,9 @@ import (
 )
 
 type TemplateBuild struct {
-	paths        storage.Paths
-	persistence  storage.StorageProvider
-	uploadLabels storage.SnapshotUploadMetadata
+	paths          storage.Paths
+	persistence    storage.StorageProvider
+	objectMetadata storage.ObjectMetadata
 
 	memfileHeader *headers.Header
 	rootfsHeader  *headers.Header
@@ -26,12 +26,12 @@ func NewTemplateBuild(
 	rootfsHeader *headers.Header,
 	persistence storage.StorageProvider,
 	paths storage.Paths,
-	uploadLabels storage.SnapshotUploadMetadata,
+	objectMetadata storage.ObjectMetadata,
 ) *TemplateBuild {
 	return &TemplateBuild{
-		persistence:  persistence,
-		paths:        paths,
-		uploadLabels: uploadLabels,
+		persistence:    persistence,
+		paths:          paths,
+		objectMetadata: objectMetadata,
 
 		memfileHeader: memfileHeader,
 		rootfsHeader:  rootfsHeader,
@@ -47,21 +47,12 @@ func (t *TemplateBuild) Remove(ctx context.Context) error {
 	return nil
 }
 
-func (t *TemplateBuild) commonPutOpts() []storage.PutOption {
-	if len(t.uploadLabels.Common) == 0 {
+func (t *TemplateBuild) putOpts() []storage.PutOption {
+	if len(t.objectMetadata) == 0 {
 		return nil
 	}
 
-	return []storage.PutOption{storage.WithMetadata(t.uploadLabels.Common)}
-}
-
-func (t *TemplateBuild) metadataPutOpts() []storage.PutOption {
-	merged := t.uploadLabels.MergedForMetadata()
-	if len(merged) == 0 {
-		return nil
-	}
-
-	return []storage.PutOption{storage.WithMetadata(merged)}
+	return []storage.PutOption{storage.WithMetadata(t.objectMetadata)}
 }
 
 func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Header) error {
@@ -75,7 +66,7 @@ func (t *TemplateBuild) uploadMemfileHeader(ctx context.Context, h *headers.Head
 		return fmt.Errorf("error when serializing memfile header: %w", err)
 	}
 
-	err = object.Put(ctx, serialized, t.commonPutOpts()...)
+	err = object.Put(ctx, serialized, t.putOpts()...)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile header: %w", err)
 	}
@@ -89,7 +80,7 @@ func (t *TemplateBuild) uploadMemfile(ctx context.Context, memfilePath string) e
 		return err
 	}
 
-	err = object.StoreFile(ctx, memfilePath, t.commonPutOpts()...)
+	err = object.StoreFile(ctx, memfilePath, t.putOpts()...)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile: %w", err)
 	}
@@ -108,7 +99,7 @@ func (t *TemplateBuild) uploadRootfsHeader(ctx context.Context, h *headers.Heade
 		return fmt.Errorf("error when serializing memfile header: %w", err)
 	}
 
-	err = object.Put(ctx, serialized, t.commonPutOpts()...)
+	err = object.Put(ctx, serialized, t.putOpts()...)
 	if err != nil {
 		return fmt.Errorf("error when uploading memfile header: %w", err)
 	}
@@ -122,7 +113,7 @@ func (t *TemplateBuild) uploadRootfs(ctx context.Context, rootfsPath string) err
 		return err
 	}
 
-	err = object.StoreFile(ctx, rootfsPath, t.commonPutOpts()...)
+	err = object.StoreFile(ctx, rootfsPath, t.putOpts()...)
 	if err != nil {
 		return fmt.Errorf("error when uploading rootfs: %w", err)
 	}
@@ -137,7 +128,7 @@ func (t *TemplateBuild) uploadSnapfile(ctx context.Context, path string) error {
 		return err
 	}
 
-	if err = uploadFileAsBlob(ctx, object, path, t.commonPutOpts()...); err != nil {
+	if err = uploadFileAsBlob(ctx, object, path, t.putOpts()...); err != nil {
 		return fmt.Errorf("error when uploading snapfile: %w", err)
 	}
 
@@ -151,7 +142,7 @@ func (t *TemplateBuild) uploadMetadata(ctx context.Context, path string) error {
 		return err
 	}
 
-	if err := uploadFileAsBlob(ctx, object, path, t.metadataPutOpts()...); err != nil {
+	if err := uploadFileAsBlob(ctx, object, path, t.putOpts()...); err != nil {
 		return fmt.Errorf("error when uploading metadata: %w", err)
 	}
 
