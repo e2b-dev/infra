@@ -109,5 +109,7 @@ func New(cfg ServiceConfig) (*Server, error) {
 }
 
 func (s *Server) Close() error {
+	s.uploadedBuilds.Stop()
+
 	return nil
 }

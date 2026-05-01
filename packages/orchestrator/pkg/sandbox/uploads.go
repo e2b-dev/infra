@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -56,7 +57,9 @@ type Uploads struct {
 	tc          templateLookup
 	persistence storage.StorageProvider
 	redis       redis.UniversalClient
-	futures     *ttlcache.Cache[uuid.UUID, *utils.ErrorOnce]
+
+	startMu sync.Mutex
+	futures *ttlcache.Cache[uuid.UUID, *utils.ErrorOnce]
 }
 
 func NewUploads(tc *template.Cache, persistence storage.StorageProvider, redisClient redis.UniversalClient) *Uploads {
@@ -74,6 +77,9 @@ func (u *Uploads) Stop() {
 
 // Start replaces a finished future at the same key; rejects an in-flight one.
 func (u *Uploads) Start(buildID uuid.UUID) (*utils.ErrorOnce, error) {
+	u.startMu.Lock()
+	defer u.startMu.Unlock()
+
 	if existing := u.futures.Get(buildID); existing != nil {
 		select {
 		case <-existing.Value().Done():

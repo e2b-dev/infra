@@ -20,6 +20,14 @@ var _ storage.Seekable = (*peerSeekable)(nil)
 // calls (e.g. ReadAt then OpenRangeReader) do not re-open the underlying GCS object.
 type peerSeekable struct {
 	peerHandle[storage.Seekable]
+
+	// transitionEmitted ensures we signal PeerTransitionedError at most once
+	// after the peer flips uploaded=true. The caller (build.File) reacts by
+	// loading the post-upload header from storage; whether that ends up V4
+	// (compressed) or V3 (no upgrade) determines how subsequent reads route.
+	// Either way, after the first emission we fall through to base so V3
+	// builds don't loop forever against PeerTransitionedError.
+	transitionEmitted atomic.Bool
 }
 
 func (s *peerSeekable) Size(ctx context.Context) (int64, error) {
@@ -69,8 +77,10 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length in
 			}, nil
 		},
 		func(ctx context.Context, base storage.Seekable) (io.ReadCloser, error) {
-			// Signal the caller to fetch the V4 header from storage on its own.
-			if s.uploaded != nil && s.uploaded.Load() {
+			// Signal the caller once to fetch the post-upload header from storage;
+			// thereafter fall through so V3 builds (no V4 to upgrade to) don't
+			// loop against PeerTransitionedError.
+			if s.uploaded != nil && s.uploaded.Load() && s.transitionEmitted.CompareAndSwap(false, true) {
 				return nil, &storage.PeerTransitionedError{}
 			}
 

@@ -749,11 +749,6 @@ func (s *Server) snapshotAndCacheSandbox(
 		return nil, fmt.Errorf("error snapshotting sandbox: %w", err)
 	}
 
-	upload, err := sandbox.NewUpload(ctx, s.uploads, snapshot, s.persistence, s.config.StorageConfig.CompressConfig, s.featureFlags, storage.UseCasePause)
-	if err != nil {
-		return nil, fmt.Errorf("register upload: %w", err)
-	}
-
 	err = s.templateCache.AddSnapshot(
 		ctx,
 		meta.Template.BuildID,
@@ -766,6 +761,13 @@ func (s *Server) snapshotAndCacheSandbox(
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error adding snapshot to template cache: %w", err)
+	}
+
+	// Register the upload only after the snapshot is in the local cache, so a
+	// failed AddSnapshot doesn't leave an orphan future blocking re-registration.
+	upload, err := sandbox.NewUpload(ctx, s.uploads, snapshot, s.persistence, s.config.StorageConfig.CompressConfig, s.featureFlags, storage.UseCasePause)
+	if err != nil {
+		return nil, fmt.Errorf("register upload: %w", err)
 	}
 
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
