@@ -88,7 +88,7 @@ func (u *Upload) uploadFramed(
 	// Empty diffs still represent a layer descendants must record as an ancestor.
 	h.Builds = make(map[uuid.UUID]headers.BuildData, len(builds)+1)
 	maps.Copy(h.Builds, builds)
-	h.Builds[u.id] = selfBuild
+	h.Builds[u.buildID] = selfBuild
 
 	if err := headers.StoreHeader(ctx, u.store, u.paths.HeaderFile(string(fileType)), h); err != nil {
 		return fmt.Errorf("store %s header: %w", fileType, err)

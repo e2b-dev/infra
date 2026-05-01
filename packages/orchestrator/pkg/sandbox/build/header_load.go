@@ -13,13 +13,16 @@ import (
 )
 
 const (
-	loadV4InitialBackoff = 100 * time.Millisecond
-	loadV4MaxBackoff     = 5 * time.Second
+	loadV4InitialBackoff     = 100 * time.Millisecond
+	loadV4MaxBackoff         = 5 * time.Second
+	loadV4MaxTransientErrors = 3
 )
 
 // PollRemoteStorageForHeader polls storage for the post-upload V4 header for buildID/fileType.
-// ErrObjectNotExist is the only retryable error; any other LoadHeader error
-// returns immediately.
+// ErrObjectNotExist is retried until the budget expires; other LoadHeader
+// errors are tolerated up to loadV4MaxTransientErrors consecutive occurrences
+// (e.g. transient GCS hiccups during the rare window between the upload-done
+// signal and object visibility) before giving up.
 //
 // hint is an optional accelerator. A nil error received on the channel says
 // "the upload just finished, poll storage now"; a non-nil error says "the
@@ -38,13 +41,19 @@ func PollRemoteStorageForHeader(
 	deadline := time.Now().Add(budget)
 
 	backoff := loadV4InitialBackoff
+	transientErrs := 0
 	for {
 		h, err := header.LoadHeader(ctx, store, hdrPath)
 		if err == nil {
 			return h, nil
 		}
 		if !errors.Is(err, storage.ErrObjectNotExist) {
-			return nil, fmt.Errorf("load V4 header for %s/%s: %w", buildID, t, err)
+			transientErrs++
+			if transientErrs >= loadV4MaxTransientErrors {
+				return nil, fmt.Errorf("load V4 header for %s/%s after %d attempts: %w", buildID, t, transientErrs, err)
+			}
+		} else {
+			transientErrs = 0
 		}
 		if !time.Now().Before(deadline) {
 			return nil, fmt.Errorf("V4 header for %s/%s not visible after %s: %w", buildID, t, budget, err)

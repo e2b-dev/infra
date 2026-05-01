@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -58,7 +58,6 @@ type Uploads struct {
 	persistence storage.StorageProvider
 	redis       redis.UniversalClient
 
-	startMu sync.Mutex
 	futures *ttlcache.Cache[uuid.UUID, *utils.ErrorOnce]
 }
 
@@ -76,10 +75,9 @@ func (u *Uploads) Stop() {
 }
 
 // Start replaces a finished future at the same key; rejects an in-flight one.
+// Build IDs are unique per upload so concurrent Starts for the same key are
+// not expected — the in-flight check only guards against accidental misuse.
 func (u *Uploads) Start(buildID uuid.UUID) (*utils.ErrorOnce, error) {
-	u.startMu.Lock()
-	defer u.startMu.Unlock()
-
 	if existing := u.futures.Get(buildID); existing != nil {
 		select {
 		case <-existing.Value().Done():
@@ -99,7 +97,7 @@ func (u *Uploads) Start(buildID uuid.UUID) (*utils.ErrorOnce, error) {
 // stale, optionally accelerated by a per-call Redis subscription.
 func (u *Uploads) Wait(ctx context.Context, buildID uuid.UUID, t build.DiffType) (*header.Header, error) {
 	ctx, span := tracer.Start(ctx, "wait-for-parent-upload", trace.WithAttributes(
-		attribute.String("build_id", buildID.String()),
+		telemetry.WithBuildID(buildID.String()),
 		attribute.String("file_type", string(t)),
 	))
 	defer span.End()
@@ -116,56 +114,18 @@ func (u *Uploads) Wait(ctx context.Context, buildID uuid.UUID, t build.DiffType)
 	}
 
 	h := d.Header()
-	if isStale(h, buildID) {
-		subCtx, cancel := context.WithCancel(ctx)
+	if h.IncompletePendingUpload {
+		// The only way we can still have an incomplete header at this point is
+		// the P2P path. We already waited on the local upload future and it did
+		// not finalize the header.
+		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
-		fresh, err := u.pollRemoteStorageForHeader(ctx, buildID, t, u.subscribe(subCtx, buildID))
+		h, err = build.PollRemoteStorageForHeader(ctx, u.persistence, buildID, t, u.subscribe(ctx, buildID), refreshHeaderBudget)
 		if err != nil {
 			return nil, err
 		}
-		if fresh != nil {
-			d.SwapHeader(fresh)
-			h = fresh
-		}
-		if isStale(h, buildID) {
-			return nil, fmt.Errorf("build %s/%s: header still stale after refresh", buildID, t)
-		}
-	}
-
-	return h, nil
-}
-
-// isStale reports whether h needs to be refreshed from GCS to be usable as a
-// parent in V4 lineage construction. V3 builds (Version<V4) are skipped:
-// they have no Builds map and nothing to upgrade to.
-func isStale(h *header.Header, buildID uuid.UUID) bool {
-	if h.IncompletePendingUpload {
-		return true
-	}
-	if h.Metadata.Version < header.MetadataVersionV4 {
-		return false
-	}
-	_, hasSelf := h.Builds[buildID]
-
-	return !hasSelf
-}
-
-// pollRemoteStorageForHeader polls storage for the post-upload V4 header. Returns nil if
-// storage only has a V3 header (genuine V3 build, no upgrade available);
-// returns the V4 header on success; returns the budget-expired error if the
-// parent is still uploading on a remote orch and never lands.
-func (u *Uploads) pollRemoteStorageForHeader(ctx context.Context, buildID uuid.UUID, t build.DiffType, hint <-chan error) (*header.Header, error) {
-	if u.persistence == nil {
-		return nil, nil
-	}
-
-	h, err := build.PollRemoteStorageForHeader(ctx, u.persistence, buildID, t, hint, refreshHeaderBudget)
-	if err != nil {
-		return nil, err
-	}
-	if h.Metadata.Version < header.MetadataVersionV4 {
-		return nil, nil
+		d.SwapHeader(h)
 	}
 
 	return h, nil
@@ -208,7 +168,7 @@ func (u *Uploads) publishUploadDoneToRedis(ctx context.Context, buildID uuid.UUI
 
 	if err := u.redis.Publish(ctx, uploadDoneChannel(buildID), payload).Err(); err != nil {
 		logger.L().Warn(ctx, "failed to publish upload-done signal",
-			zap.String("build_id", buildID.String()),
+			logger.WithBuildID(buildID.String()),
 			zap.Error(err),
 		)
 	}

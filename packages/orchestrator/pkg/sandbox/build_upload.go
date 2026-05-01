@@ -15,14 +15,14 @@ import (
 )
 
 type Upload struct {
-	id, parent uuid.UUID
-	snap       *Snapshot
-	paths      storage.Paths
-	uploads    *Uploads
-	store      storage.StorageProvider
-	mem        storage.CompressConfig
-	root       storage.CompressConfig
-	future     *utils.ErrorOnce
+	buildID, parent uuid.UUID
+	snap            *Snapshot
+	paths           storage.Paths
+	uploads         *Uploads
+	store           storage.StorageProvider
+	mem             storage.CompressConfig
+	root            storage.CompressConfig
+	future          *utils.ErrorOnce
 }
 
 func NewUpload(
@@ -35,7 +35,7 @@ func NewUpload(
 	useCase string,
 ) (*Upload, error) {
 	u := &Upload{
-		id:      snap.BuildID,
+		buildID: snap.BuildID,
 		parent:  snap.ParentBuildID,
 		snap:    snap,
 		paths:   snap.Paths,
@@ -71,7 +71,7 @@ func (u *Upload) Finish(ctx context.Context, uploadErr error) {
 		_ = u.future.SetError(uploadErr)
 	}
 	if u.uploads != nil {
-		u.uploads.publishUploadDoneToRedis(ctx, u.id, uploadErr)
+		u.uploads.publishUploadDoneToRedis(ctx, u.buildID, uploadErr)
 	}
 }
 
@@ -83,7 +83,7 @@ func (u *Upload) publish(ctx context.Context, t build.DiffType, h *headers.Heade
 		return nil
 	}
 
-	dev, err := u.uploads.find(ctx, u.id, t)
+	dev, err := u.uploads.find(ctx, u.buildID, t)
 	if errors.Is(err, ErrBuildNotInCache) {
 		return nil
 	}

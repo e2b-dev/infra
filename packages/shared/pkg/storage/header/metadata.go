@@ -151,15 +151,10 @@ func (d *DiffMetadata) ToDiffHeader(
 		attribute.String("snapshot.metadata.base_build_id", metadata.BaseBuildId.String()),
 	)
 
-	header, err := NewHeaderWithBuilds(metadata, m, originalHeader.Builds)
+	header, err := newDiffHeader(metadata, m, originalHeader.Builds)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}
-
-	// Diff headers describe a build whose data is only in the local cache
-	// until the upload pipeline finalizes and SwapHeader publishes the
-	// post-upload header.
-	header.IncompletePendingUpload = true
 
 	err = ValidateMappings(header.Mapping, header.Metadata.Size, header.Metadata.BlockSize)
 	if err != nil {

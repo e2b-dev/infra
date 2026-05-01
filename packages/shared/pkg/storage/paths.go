@@ -34,7 +34,7 @@ func (p Paths) Memfile() string {
 }
 
 func (p Paths) MemfileHeader() string {
-	return fmt.Sprintf("%s/%s%s", p.BuildID, MemfileName, HeaderSuffix)
+	return p.HeaderFile(MemfileName)
 }
 
 func (p Paths) Rootfs() string {
@@ -42,7 +42,7 @@ func (p Paths) Rootfs() string {
 }
 
 func (p Paths) RootfsHeader() string {
-	return fmt.Sprintf("%s/%s%s", p.BuildID, RootfsName, HeaderSuffix)
+	return p.HeaderFile(RootfsName)
 }
 
 func (p Paths) Snapfile() string {

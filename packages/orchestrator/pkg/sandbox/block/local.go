@@ -112,16 +112,14 @@ func (d *Local) UpdateHeaderSize() error {
 		return fmt.Errorf("failed to get file info: %w", err)
 	}
 
-	// Clone-then-store so concurrent readers (via Header()) don't observe the
-	// in-place mutation through the atomic pointer.
-	current := d.Header()
-	metaCopy := *current.Metadata
+	h := d.Header()
+	metaCopy := *h.Metadata
 	metaCopy.Size = uint64(info.Size())
 
 	updated := &header.Header{
 		Metadata: &metaCopy,
-		Builds:   current.Builds,
-		Mapping:  current.Mapping,
+		Builds:   h.Builds,
+		Mapping:  h.Mapping,
 	}
 	d.SwapHeader(updated)
 
