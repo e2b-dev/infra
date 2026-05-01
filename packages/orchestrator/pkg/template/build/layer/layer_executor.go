@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
@@ -298,15 +299,21 @@ func (lb *LayerExecutor) PauseAndUpload(
 		// still unblock and the errgroup can properly collect all errors.
 		defer completeUpload()
 
+		// root_build_id = diff-chain root (the very first build in the lineage),
+		// derived from the memfile header so it's stable across the layer chain.
+		common := storage.ObjectMetadata{
+			storage.ObjectMetadataTeamID: lb.BuildContext.Config.TeamID,
+		}
+		if h := snapshot.MemfileDiffHeader; h != nil && h.Metadata != nil && h.Metadata.BaseBuildId != uuid.Nil {
+			common[storage.ObjectMetadataRootBuildID] = h.Metadata.BaseBuildId.String()
+		}
+
 		err := snapshot.Upload(
 			ctx,
 			lb.templateStorage,
 			storage.Paths{BuildID: meta.Template.BuildID},
 			storage.SnapshotUploadMetadata{
-				Common: storage.ObjectMetadata{
-					storage.ObjectMetadataTeamID:      lb.BuildContext.Config.TeamID,
-					storage.ObjectMetadataRootBuildID: lb.BuildContext.Template.BuildID,
-				},
+				Common:       common,
 				MetadataOnly: storage.BuildLineageMetadata(storage.BuildKindTemplateLayer, parentBuildID),
 			},
 		)

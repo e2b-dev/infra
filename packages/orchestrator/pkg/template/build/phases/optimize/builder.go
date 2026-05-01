@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -152,7 +153,7 @@ func (pb *OptimizeBuilder) Build(
 	})
 
 	// Upload the updated metadata
-	err = pb.updateMetadata(ctx, updatedMetadata)
+	err = pb.updateMetadata(ctx, updatedMetadata, localTemplate)
 	if err != nil {
 		pb.logger.Warn(ctx, "failed to upload prefetch metadata, continuing without prefetch",
 			zap.Error(err),
@@ -255,13 +256,18 @@ func (pb *OptimizeBuilder) runSandboxAndCollectPrefetch(
 }
 
 // updateMetadata updates the template metadata in storages.
-func (pb *OptimizeBuilder) updateMetadata(ctx context.Context, t metadata.Template) error {
+func (pb *OptimizeBuilder) updateMetadata(ctx context.Context, t metadata.Template, localTemplate sbxtemplate.Template) error {
 	// parent_build_id isn't plumbed through this phase, so it's omitted on rewrite.
+	common := storage.ObjectMetadata{
+		storage.ObjectMetadataTeamID: pb.BuildContext.Config.TeamID,
+	}
+	if memfile, memErr := localTemplate.Memfile(ctx); memErr == nil {
+		if h := memfile.Header(); h != nil && h.Metadata != nil && h.Metadata.BaseBuildId != uuid.Nil {
+			common[storage.ObjectMetadataRootBuildID] = h.Metadata.BaseBuildId.String()
+		}
+	}
 	uploadMeta := storage.SnapshotUploadMetadata{
-		Common: storage.ObjectMetadata{
-			storage.ObjectMetadataTeamID:      pb.BuildContext.Config.TeamID,
-			storage.ObjectMetadataRootBuildID: pb.BuildContext.Template.BuildID,
-		},
+		Common:       common,
 		MetadataOnly: storage.BuildLineageMetadata(storage.BuildKindTemplateLayer, ""),
 	}
 
