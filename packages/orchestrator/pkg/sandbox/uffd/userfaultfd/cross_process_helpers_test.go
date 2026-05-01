@@ -414,11 +414,13 @@ func crossProcessServe() error {
 	br := newBarrierRegistry()
 
 	// Hooks are only wired up when the test asked for them (race
-	// tests). For everyone else we leave the fields nil so the hot
+	// tests). For everyone else we leave the bundle nil so the hot
 	// path is a single nil-pointer load + branch.
 	if os.Getenv(envBarriers) == "1" {
-		uffd.beforeWorkerRLockHook = br.hookFor(barrierBeforeRLock)
-		uffd.beforeFaultPageHook = br.hookFor(barrierBeforeFaultPage)
+		uffd.SetTestHooks(&testHooks{
+			beforeWorkerRLock: br.hookFor(barrierBeforeRLock),
+			beforeFaultPage:   br.hookFor(barrierBeforeFaultPage),
+		})
 	}
 
 	gated := os.Getenv(envGated) == "1"
