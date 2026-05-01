@@ -43,6 +43,7 @@ tf_vars := \
 	$(call tfvar, SANDBOX_STORAGE_BACKEND) \
 	$(call tfvar, ORCHESTRATOR_ENABLED) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
+	$(call tfvar, ALLOW_SANDBOX_INTERNAL_CIDRS) \
 	$(call tfvar, API_SERVER_COUNT) \
 	$(call tfvar, SANDBOX_HOSTS_FILE_OVERRIDE) \
 	$(call tfvar, API_RESOURCES_CPU_COUNT) \

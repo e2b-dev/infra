@@ -77,6 +77,12 @@ variable "allow_sandbox_internet" {
   type = string
 }
 
+variable "allow_sandbox_internal_cidrs" {
+  type        = string
+  description = "Comma-separated CIDRs to allow through the sandbox firewall deny list (e.g. 10.0.0.1/32,10.0.0.2/32)"
+  default     = ""
+}
+
 variable "clickhouse_connection_string" {
   type      = string
   default   = ""

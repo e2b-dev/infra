@@ -314,6 +314,12 @@ variable "allow_sandbox_internet" {
   type = bool
 }
 
+variable "allow_sandbox_internal_cidrs" {
+  type        = string
+  description = "Comma-separated CIDRs to allow through the sandbox firewall deny list"
+  default     = ""
+}
+
 # Template manager
 variable "template_manager_port" {
   type = number
