@@ -92,7 +92,15 @@ tf_vars := \
 	$(call tfvar, CLIENT_PROXY_OIDC_ISSUER_URL) \
 	$(call tfvar, GCS_GRPC_CONNECTION_POOL_SIZE) \
 	$(call tfvar, ADDITIONAL_API_PATHS_HANDLED_BY_INGRESS) \
-	$(call tfvar, ANYWHERE_CACHE_ENABLED)
+	$(call tfvar, ANYWHERE_CACHE_ENABLED) \
+	$(call tfvar, SERVER_SUBNETWORK_NAME) \
+	$(call tfvar, API_SUBNETWORK_NAME) \
+	$(call tfvar, CLICKHOUSE_SUBNETWORK_NAME) \
+	$(call tfvar, LOKI_SUBNETWORK_NAME) \
+	$(call tfvar, SERVER_NETWORK_TAG) \
+	$(call tfvar, API_NETWORK_TAG) \
+	$(call tfvar, CLICKHOUSE_NETWORK_TAG) \
+	$(call tfvar, LOKI_NETWORK_TAG)
 
 .PHONY: init
 init:

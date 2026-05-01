@@ -4,6 +4,18 @@ locals {
   build_base_hugepages_percentage  = 60
   client_base_hugepages_percentage = 80
 
+  # Per-pool effective subnetwork names (null when not overridden)
+  server_subnetwork_name     = var.server_subnetwork_name != "" ? var.server_subnetwork_name : null
+  api_subnetwork_name        = var.api_subnetwork_name != "" ? var.api_subnetwork_name : null
+  clickhouse_subnetwork_name = var.clickhouse_subnetwork_name != "" ? var.clickhouse_subnetwork_name : null
+  loki_subnetwork_name       = var.loki_subnetwork_name != "" ? var.loki_subnetwork_name : null
+
+  # Per-pool effective network tags
+  server_network_tags     = distinct(compact([var.cluster_tag_name, var.server_network_tag]))
+  api_network_tags        = distinct(compact([var.cluster_tag_name, var.api_network_tag]))
+  clickhouse_network_tags = distinct(compact([var.cluster_tag_name, var.clickhouse_network_tag]))
+  loki_network_tags       = distinct(compact([var.cluster_tag_name, var.loki_network_tag]))
+
   nfs_mount_path   = "/orchestrator/shared-store"
   nfs_mount_subdir = "chunks-cache"
   nfs_mount_opts = join(",", [ // for more docs, see https://linux.die.net/man/5/nfs
@@ -166,11 +178,13 @@ module "build_cluster" {
   cluster_name              = "${var.prefix}${var.build_cluster_name}-${each.key}"
   image_family              = var.build_image_family
   network_name              = var.network_name
+  subnetwork_name           = each.value.subnetwork_name != "" ? each.value.subnetwork_name : null
   base_hugepages_percentage = coalesce((each.value.hugepages_percentage), local.build_base_hugepages_percentage)
   network_interface_type    = each.value.network_interface_type
   node_labels               = each.value.node_labels
 
   cluster_tag_name                         = var.cluster_tag_name
+  network_tag                              = each.value.network_tag
   node_pool                                = var.build_node_pool
   nomad_port                               = var.nomad_port
   consul_acl_token_secret                  = var.consul_acl_token_secret
@@ -225,11 +239,13 @@ module "client_cluster" {
   cluster_name              = each.key == "default" ? "${var.prefix}${var.client_cluster_name}" : "${var.prefix}${var.client_cluster_name}-${each.key}"
   image_family              = var.client_image_family
   network_name              = var.network_name
+  subnetwork_name           = each.value.subnetwork_name != "" ? each.value.subnetwork_name : null
   base_hugepages_percentage = coalesce((each.value.hugepages_percentage), local.client_base_hugepages_percentage)
   network_interface_type    = each.value.network_interface_type
   node_labels               = each.value.node_labels
 
   cluster_tag_name                         = var.cluster_tag_name
+  network_tag                              = each.value.network_tag
   node_pool                                = var.orchestrator_node_pool
   nomad_port                               = var.nomad_port
   consul_acl_token_secret                  = var.consul_acl_token_secret

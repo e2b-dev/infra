@@ -521,6 +521,8 @@ variable "client_clusters_config" {
     hugepages_percentage   = optional(number)
     network_interface_type = optional(string)
     node_labels            = optional(list(string), [])
+    subnetwork_name        = optional(string)
+    network_tag            = optional(string)
   }))
 
   description = <<EOT
@@ -581,6 +583,8 @@ variable "build_clusters_config" {
     hugepages_percentage   = optional(number)
     network_interface_type = optional(string)
     node_labels            = optional(list(string), [])
+    subnetwork_name        = optional(string)
+    network_tag            = optional(string)
   }))
   description = <<EOT
 Configuration for the build clusters.
@@ -719,6 +723,56 @@ variable "default_persistent_volume_type" {
 variable "network_name" {
   type    = string
   default = "default"
+}
+
+# Per-pool subnetwork overrides
+variable "server_subnetwork_name" {
+  description = "Subnetwork override for server (Nomad/Consul) MIG. Leave empty to use network default."
+  type        = string
+  default     = ""
+}
+
+variable "api_subnetwork_name" {
+  description = "Subnetwork override for API MIG. Leave empty to use network default."
+  type        = string
+  default     = ""
+}
+
+variable "clickhouse_subnetwork_name" {
+  description = "Subnetwork override for ClickHouse MIG. Leave empty to use network default."
+  type        = string
+  default     = ""
+}
+
+variable "loki_subnetwork_name" {
+  description = "Subnetwork override for Loki MIG. Leave empty to use network default."
+  type        = string
+  default     = ""
+}
+
+# Per-pool network tag overrides (added alongside default cluster tag)
+variable "server_network_tag" {
+  description = "Additional network tag for server MIG. Added alongside the cluster-wide tag."
+  type        = string
+  default     = ""
+}
+
+variable "api_network_tag" {
+  description = "Additional network tag for API MIG. Added alongside the cluster-wide tag."
+  type        = string
+  default     = ""
+}
+
+variable "clickhouse_network_tag" {
+  description = "Additional network tag for ClickHouse MIG. Added alongside the cluster-wide tag."
+  type        = string
+  default     = ""
+}
+
+variable "loki_network_tag" {
+  description = "Additional network tag for Loki MIG. Added alongside the cluster-wide tag."
+  type        = string
+  default     = ""
 }
 
 variable "volume_token_issuer" {

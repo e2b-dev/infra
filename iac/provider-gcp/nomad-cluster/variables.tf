@@ -131,6 +131,8 @@ variable "client_clusters_config" {
     hugepages_percentage   = optional(number)
     network_interface_type = optional(string)
     node_labels            = optional(list(string), [])
+    subnetwork_name        = optional(string)
+    network_tag            = optional(string)
   }))
 }
 
@@ -164,6 +166,8 @@ variable "build_clusters_config" {
     hugepages_percentage   = optional(number)
     network_interface_type = optional(string)
     node_labels            = optional(list(string), [])
+    subnetwork_name        = optional(string)
+    network_tag            = optional(string)
   }))
 }
 
@@ -391,4 +395,54 @@ variable "additional_api_paths_handled_by_ingress" {
 
 variable "ingress_timeout_seconds" {
   type = number
+}
+
+# Per-pool subnetwork overrides
+variable "server_subnetwork_name" {
+  description = "Subnetwork override for server MIG. Leave empty to use network default."
+  type        = string
+  default     = ""
+}
+
+variable "api_subnetwork_name" {
+  description = "Subnetwork override for API MIG. Leave empty to use network default."
+  type        = string
+  default     = ""
+}
+
+variable "clickhouse_subnetwork_name" {
+  description = "Subnetwork override for ClickHouse MIG. Leave empty to use network default."
+  type        = string
+  default     = ""
+}
+
+variable "loki_subnetwork_name" {
+  description = "Subnetwork override for Loki MIG. Leave empty to use network default."
+  type        = string
+  default     = ""
+}
+
+# Per-pool network tag overrides
+variable "server_network_tag" {
+  description = "Additional network tag for server MIG."
+  type        = string
+  default     = ""
+}
+
+variable "api_network_tag" {
+  description = "Additional network tag for API MIG."
+  type        = string
+  default     = ""
+}
+
+variable "clickhouse_network_tag" {
+  description = "Additional network tag for ClickHouse MIG."
+  type        = string
+  default     = ""
+}
+
+variable "loki_network_tag" {
+  description = "Additional network tag for Loki MIG."
+  type        = string
+  default     = ""
 }
