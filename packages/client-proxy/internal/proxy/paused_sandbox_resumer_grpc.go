@@ -81,8 +81,7 @@ func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string,
 		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataEnvdAccessToken, envdAccessToken)
 	}
 
-	var err error
-	ctx, err = c.auth.authorize(ctx)
+	ctx, err := c.auth.authorize(ctx)
 	if err != nil {
 		return "", err
 	}
