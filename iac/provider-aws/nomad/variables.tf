@@ -183,11 +183,6 @@ variable "postgres_connection_string" {
   sensitive = true
 }
 
-variable "supabase_jwt_secrets" {
-  type      = string
-  sensitive = true
-}
-
 variable "admin_token" {
   type      = string
   sensitive = true

@@ -50,9 +50,10 @@ variable "clickhouse_connection_string" {
   sensitive = true
 }
 
-variable "supabase_jwt_secrets" {
-  type      = string
+variable "auth_provider_config" {
+  type      = any
   sensitive = true
+  default   = null
 }
 
 variable "enable_auth_user_sync_background_worker" {
@@ -64,6 +65,7 @@ variable "enable_billing_http_team_provision_sink" {
   type    = bool
   default = false
 }
+
 variable "otel_collector_grpc_port" {
   type    = number
   default = 4317

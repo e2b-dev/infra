@@ -27,6 +27,14 @@ components:
       type: apiKey
       in: header
       name: X-Supabase-Team
+    AuthProviderTokenAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: access_token
+    AuthProviderTeamAuth:
+      type: apiKey
+      in: header
+      name: X-Team-Id
     AdminTokenAuth:
       type: apiKey
       in: header
@@ -1821,6 +1829,7 @@ paths:
       security:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+        - AuthProviderTokenAuth: []
       responses:
         "200":
           description: Successfully returned all teams
@@ -1844,6 +1853,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
         - in: query
@@ -1886,6 +1897,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
         - in: query
@@ -1933,6 +1946,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - name: metadata
           in: query
@@ -1963,6 +1978,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       requestBody:
         required: true
         content:
@@ -1991,6 +2008,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - name: metadata
           in: query
@@ -2035,6 +2054,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - name: sandbox_ids
           in: query
@@ -2070,6 +2091,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
         - in: query
@@ -2109,6 +2132,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
         - in: query
@@ -2165,6 +2190,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -2188,6 +2215,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -2208,6 +2237,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
         - in: query
@@ -2252,6 +2283,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -2275,6 +2308,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       requestBody:
@@ -2307,6 +2342,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       requestBody:
@@ -2344,6 +2381,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       tags: [sandboxes]
       requestBody:
         content:
@@ -2377,6 +2416,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       tags: [sandboxes]
       requestBody:
         required: true
@@ -2421,6 +2462,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       tags: [sandboxes]
       requestBody:
         content:
@@ -2451,6 +2494,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       requestBody:
@@ -2487,6 +2532,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - name: sandboxID
           in: query
@@ -2518,6 +2565,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       requestBody:
         required: true
         content:
@@ -2548,6 +2597,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       requestBody:
         required: true
         content:
@@ -2578,6 +2629,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - in: path
@@ -2612,6 +2665,8 @@ paths:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - in: query
           required: false
@@ -2641,6 +2696,8 @@ paths:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       requestBody:
         required: true
         content:
@@ -2670,6 +2727,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/paginationNextToken"
@@ -2693,6 +2752,8 @@ paths:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -2721,6 +2782,8 @@ paths:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       responses:
@@ -2739,6 +2802,8 @@ paths:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -2766,6 +2831,8 @@ paths:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2785,6 +2852,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2811,6 +2880,8 @@ paths:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -2842,6 +2913,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2889,6 +2962,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2943,6 +3018,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       requestBody:
         required: true
         content:
@@ -2971,6 +3048,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       requestBody:
         required: true
         content:
@@ -2997,6 +3076,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       responses:
@@ -3025,6 +3106,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - name: alias
           in: path
@@ -3183,6 +3266,7 @@ paths:
       tags: [access-tokens]
       security:
         - Supabase1TokenAuth: []
+        - AuthProviderTokenAuth: []
       requestBody:
         required: true
         content:
@@ -3207,6 +3291,7 @@ paths:
       tags: [access-tokens]
       security:
         - Supabase1TokenAuth: []
+        - AuthProviderTokenAuth: []
       parameters:
         - $ref: "#/components/parameters/accessTokenID"
       responses:
@@ -3226,6 +3311,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       responses:
         "200":
           description: Successfully returned all team API keys
@@ -3245,6 +3332,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       requestBody:
         required: true
         content:
@@ -3270,6 +3359,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/apiKeyID"
       requestBody:
@@ -3293,6 +3384,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/apiKeyID"
       responses:
@@ -3313,6 +3406,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       responses:
         "200":
           description: Successfully listed all team volumes
@@ -3334,6 +3429,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       requestBody:
         required: true
         content:
@@ -3362,6 +3459,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/volumeID"
       responses:
@@ -3385,6 +3484,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/volumeID"
       responses:
