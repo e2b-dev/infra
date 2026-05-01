@@ -421,11 +421,11 @@ func run() int {
 	}
 
 	edgeGrpcServer := e2bgrpc.NewGRPCServer(tel)
-	clientProxyOAuthVerifier, err := oauth.NewVerifier(ctx, config.ClientProxyOIDCIssuerURL, config.ClientProxyOIDCAudience)
+	clientProxyOAuthVerifier, err := oauth.NewVerifier(ctx, config.ClientProxyOIDCIssuerURL)
 	if err != nil {
 		l.Fatal(ctx, "failed to create client proxy OIDC verifier", zap.Error(err))
 	}
-	if !oauth.Configured(config.ClientProxyOIDCIssuerURL, config.ClientProxyOIDCAudience) {
+	if !oauth.Configured(config.ClientProxyOIDCIssuerURL) {
 		l.Warn(ctx, "client proxy OIDC is not configured; edge proxy gRPC requests will be rejected")
 	}
 	proxygrpc.RegisterSandboxServiceServer(edgeGrpcServer, handlers.NewSandboxService(apiStore, true, clientProxyOAuthVerifier))

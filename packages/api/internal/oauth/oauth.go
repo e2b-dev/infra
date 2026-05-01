@@ -39,15 +39,11 @@ type oidcVerifier struct {
 
 type noopVerifier struct{}
 
-func NewVerifier(ctx context.Context, issuerURL string, audience string) (Verifier, error) {
+func NewVerifier(ctx context.Context, issuerURL string) (Verifier, error) {
 	issuerURL = strings.TrimSpace(issuerURL)
-	audience = strings.TrimSpace(audience)
 
-	if issuerURL == "" && audience == "" {
-		return noopVerifier{}, nil
-	}
 	if issuerURL == "" {
-		return nil, errors.New("client proxy OIDC issuer URL must be configured")
+		return noopVerifier{}, nil
 	}
 
 	provider, err := oidc.NewProvider(ctx, issuerURL)
@@ -55,17 +51,12 @@ func NewVerifier(ctx context.Context, issuerURL string, audience string) (Verifi
 		return nil, fmt.Errorf("create client proxy OIDC provider: %w", err)
 	}
 
-	config := &oidc.Config{SkipClientIDCheck: true}
-	if audience != "" {
-		config = &oidc.Config{ClientID: audience}
-	}
-
 	return &oidcVerifier{
-		verifier: provider.Verifier(config),
+		verifier: provider.Verifier(&oidc.Config{SkipClientIDCheck: true}),
 	}, nil
 }
 
-func Configured(issuerURL string, _ string) bool {
+func Configured(issuerURL string) bool {
 	return strings.TrimSpace(issuerURL) != ""
 }
 

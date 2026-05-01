@@ -70,11 +70,6 @@ variable "client_proxy_oidc_issuer_url" {
   default = ""
 }
 
-variable "client_proxy_oidc_audience" {
-  type    = string
-  default = ""
-}
-
 variable "ingress_port" {
   type = object({
     name        = string

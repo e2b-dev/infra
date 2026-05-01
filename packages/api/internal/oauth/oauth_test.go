@@ -20,21 +20,13 @@ func TestNewVerifierConfig(t *testing.T) {
 	tests := []struct {
 		name      string
 		issuerURL string
-		audience  string
-		wantErr   bool
 	}{
 		{
 			name: "empty config returns noop verifier",
 		},
 		{
-			name:     "missing issuer",
-			audience: "client-proxy",
-			wantErr:  true,
-		},
-		{
 			name:      "trims empty config",
 			issuerURL: " ",
-			audience:  "\t",
 		},
 	}
 
@@ -42,12 +34,7 @@ func TestNewVerifierConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			verifier, err := NewVerifier(context.Background(), tt.issuerURL, tt.audience)
-			if tt.wantErr {
-				require.Error(t, err)
-
-				return
-			}
+			verifier, err := NewVerifier(context.Background(), tt.issuerURL)
 			require.NoError(t, err)
 			require.NotNil(t, verifier)
 		})
@@ -57,7 +44,7 @@ func TestNewVerifierConfig(t *testing.T) {
 func TestNoopVerifierRejectsClaims(t *testing.T) {
 	t.Parallel()
 
-	verifier, err := NewVerifier(context.Background(), "", "")
+	verifier, err := NewVerifier(context.Background(), "")
 	require.NoError(t, err)
 
 	claims, err := verifier.VerifyClaims(context.Background(), "token")
@@ -85,32 +72,7 @@ func TestNewVerifierLoadsOIDCProvider(t *testing.T) {
 	t.Cleanup(server.Close)
 	issuerURL = server.URL
 
-	verifier, err := NewVerifier(context.Background(), server.URL, "client-proxy")
-	require.NoError(t, err)
-	require.NotNil(t, verifier)
-}
-
-func TestNewVerifierAllowsEmptyAudience(t *testing.T) {
-	t.Parallel()
-
-	issuerURL := ""
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/.well-known/openid-configuration":
-			writeJSON(t, w, map[string]string{
-				"issuer":   issuerURL,
-				"jwks_uri": issuerURL + "/jwks",
-			})
-		case "/jwks":
-			writeJSON(t, w, map[string]any{"keys": []any{}})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	t.Cleanup(server.Close)
-	issuerURL = server.URL
-
-	verifier, err := NewVerifier(context.Background(), server.URL, "")
+	verifier, err := NewVerifier(context.Background(), server.URL)
 	require.NoError(t, err)
 	require.NotNil(t, verifier)
 }

@@ -57,7 +57,6 @@ type Config struct {
 	APIEdgeGrpcPort     uint16 `env:"API_EDGE_GRPC_PORT"     envDefault:"5109"`
 
 	ClientProxyOIDCIssuerURL string `env:"CLIENT_PROXY_OIDC_ISSUER_URL"`
-	ClientProxyOIDCAudience  string `env:"CLIENT_PROXY_OIDC_AUDIENCE"`
 
 	SandboxAccessTokenHashSeed string `env:"SANDBOX_ACCESS_TOKEN_HASH_SEED"`
 
