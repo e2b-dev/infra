@@ -301,6 +301,7 @@ module "nomad" {
   # Orchestrator
   orchestrator_node_pool         = var.orchestrator_node_pool
   allow_sandbox_internet         = var.allow_sandbox_internet
+  allow_sandbox_internal_cidrs   = var.allow_sandbox_internal_cidrs
   orchestrator_port              = var.orchestrator_port
   orchestrator_proxy_port        = var.orchestrator_proxy_port
   fc_env_pipeline_bucket_name    = module.init.fc_env_pipeline_bucket_name
