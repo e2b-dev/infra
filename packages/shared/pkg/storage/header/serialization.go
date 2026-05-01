@@ -40,6 +40,15 @@ func DeserializeBytes(data []byte) (*Header, error) {
 	return deserializeV3(metadata, blockData)
 }
 
+// P2PHeaderLoader is implemented by storage providers that need to mutate the
+// loaded header based on knowledge they alone have (e.g. the peer routing
+// provider marks IncompletePendingUpload when the bytes were served by a
+// not-yet-finalized peer). PollRemoteStorageForHeader prefers this method
+// when available and falls back to plain LoadHeader otherwise.
+type P2PHeaderLoader interface {
+	LoadHeader(ctx context.Context, path string) (*Header, error)
+}
+
 // LoadHeader fetches a serialized header from storage and deserializes it.
 // Errors (including storage.ErrObjectNotExist) are returned as-is.
 func LoadHeader(ctx context.Context, s storage.StorageProvider, path string) (*Header, error) {

@@ -43,7 +43,15 @@ func PollRemoteStorageForHeader(
 	backoff := loadV4InitialBackoff
 	transientErrs := 0
 	for {
-		h, err := header.LoadHeader(ctx, store, hdrPath)
+		var (
+			h   *header.Header
+			err error
+		)
+		if hl, ok := store.(header.P2PHeaderLoader); ok {
+			h, err = hl.LoadHeader(ctx, hdrPath)
+		} else {
+			h, err = header.LoadHeader(ctx, store, hdrPath)
+		}
 		if err == nil {
 			return h, nil
 		}
