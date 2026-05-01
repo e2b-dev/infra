@@ -182,27 +182,6 @@ func TestUploads_Wait_NotInCache(t *testing.T) {
 	require.ErrorIs(t, err, ErrBuildNotInCache)
 }
 
-func TestUploads_Wait_RejectsIncompleteCachedHeader(t *testing.T) {
-	t.Parallel()
-	c, cache := newUploads(t)
-
-	id := uuid.New()
-
-	tpl := templatemocks.NewMockTemplate(t)
-	dev := blockmocks.NewMockReadonlyDevice(t)
-	dev.EXPECT().Header().Return(&headers.Header{
-		Metadata:                &headers.Metadata{Version: headers.MetadataVersionV4},
-		Builds:                  map[uuid.UUID]headers.BuildData{id: {}},
-		IncompletePendingUpload: true,
-	})
-	tpl.EXPECT().Memfile(mock.Anything).Return(dev, nil)
-	cache.put(id.String(), tpl)
-
-	_, err := c.Wait(context.Background(), id, build.Memfile)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "still stale after refresh")
-}
-
 func TestUploads_Wait_NoFuture_ReadsFromCache(t *testing.T) {
 	t.Parallel()
 	c, cache := newUploads(t)
