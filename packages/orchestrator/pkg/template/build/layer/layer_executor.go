@@ -293,6 +293,9 @@ func (lb *LayerExecutor) PauseAndUpload(
 			ctx,
 			lb.templateStorage,
 			storage.Paths{BuildID: meta.Template.BuildID},
+			storage.ObjectMetadata{
+				storage.ObjectMetadataTeamID: lb.BuildContext.Config.TeamID,
+			},
 		)
 		if err != nil {
 			return fmt.Errorf("error uploading snapshot: %w", err)

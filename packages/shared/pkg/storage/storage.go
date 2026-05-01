@@ -14,6 +14,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/storageopts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -83,9 +84,21 @@ type StorageProvider interface {
 	GetDetails() string
 }
 
+type (
+	ObjectMetadata = storageopts.ObjectMetadata
+	PutOptions     = storageopts.PutOptions
+	PutOption      = storageopts.PutOption
+)
+
+const ObjectMetadataTeamID = storageopts.ObjectMetadataTeamID
+
+func WithMetadata(metadata ObjectMetadata) PutOption { return storageopts.WithMetadata(metadata) }
+
+func ApplyPutOptions(opts []PutOption) PutOptions { return storageopts.Apply(opts) }
+
 type Blob interface {
 	WriteTo(ctx context.Context, dst io.Writer) (int64, error)
-	Put(ctx context.Context, data []byte) error
+	Put(ctx context.Context, data []byte, opts ...storageopts.PutOption) error
 	Exists(ctx context.Context) (bool, error)
 }
 
@@ -102,7 +115,7 @@ type StreamingReader interface {
 
 type SeekableWriter interface {
 	// Store entire file
-	StoreFile(ctx context.Context, path string) error
+	StoreFile(ctx context.Context, path string, opts ...storageopts.PutOption) error
 }
 
 type Seekable interface {

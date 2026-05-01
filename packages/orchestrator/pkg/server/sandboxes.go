@@ -667,7 +667,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		defer cancel()
 		defer res.completeUpload(uploadCtx)
 
-		if err := res.snapshot.Upload(uploadCtx, s.persistence, res.paths); err != nil {
+		if err := res.snapshot.Upload(uploadCtx, s.persistence, res.paths, res.objectMetadata); err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
 			s.sandboxFactory.Sandboxes.MarkStopping(ctx, resumedSbx.Runtime.SandboxID, resumedSbx.LifecycleID)
@@ -721,6 +721,7 @@ type snapshotResult struct {
 	meta           metadata.Template
 	snapshot       *sandbox.Snapshot
 	paths          storage.Paths
+	objectMetadata storage.ObjectMetadata
 	completeUpload func(ctx context.Context)
 }
 
@@ -765,6 +766,9 @@ func (s *Server) snapshotAndCacheSandbox(
 	telemetry.ReportEvent(ctx, "added snapshot to template cache")
 
 	paths := storage.Paths{BuildID: meta.Template.BuildID}
+	objectMetadata := storage.ObjectMetadata{
+		storage.ObjectMetadataTeamID: sbx.Runtime.TeamID,
+	}
 
 	// Register in Redis so other orchestrators can find us for peer routing.
 	if s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag) {
@@ -786,6 +790,7 @@ func (s *Server) snapshotAndCacheSandbox(
 			meta:           meta,
 			snapshot:       snapshot,
 			paths:          paths,
+			objectMetadata: objectMetadata,
 			completeUpload: completeUpload,
 		}, nil
 	}
@@ -794,6 +799,7 @@ func (s *Server) snapshotAndCacheSandbox(
 		meta:           meta,
 		snapshot:       snapshot,
 		paths:          paths,
+		objectMetadata: objectMetadata,
 		completeUpload: func(context.Context) {},
 	}, nil
 }
@@ -808,7 +814,7 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 		defer cancel()
 		defer res.completeUpload(ctx)
 
-		err := res.snapshot.Upload(ctx, s.persistence, res.paths)
+		err := res.snapshot.Upload(ctx, s.persistence, res.paths, res.objectMetadata)
 		if err != nil {
 			sbxlogger.I(sbx).Error(ctx, "error uploading snapshot files", zap.Error(err))
 

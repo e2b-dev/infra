@@ -120,14 +120,14 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off, length int64) (
 	)
 }
 
-func (s *peerSeekable) StoreFile(ctx context.Context, path string) error {
+func (s *peerSeekable) StoreFile(ctx context.Context, path string, opts ...storage.PutOption) error {
 	// Writes always go to the base provider (GCS/S3); the peer is read-only.
 	fallback, err := s.getOrOpenBase(ctx)
 	if err != nil {
 		return err
 	}
 
-	return fallback.StoreFile(ctx, path)
+	return fallback.StoreFile(ctx, path, opts...)
 }
 
 // openPeerSeekableStream opens a ReadAtBuildSeekable stream, checks peer availability,

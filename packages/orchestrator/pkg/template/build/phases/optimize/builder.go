@@ -256,7 +256,9 @@ func (pb *OptimizeBuilder) runSandboxAndCollectPrefetch(
 
 // updateMetadata updates the template metadata in storages.
 func (pb *OptimizeBuilder) updateMetadata(ctx context.Context, t metadata.Template) error {
-	err := metadata.UploadMetadata(ctx, pb.templateStorage, t)
+	err := metadata.UploadMetadata(ctx, pb.templateStorage, t, storage.ObjectMetadata{
+		storage.ObjectMetadataTeamID: pb.BuildContext.Config.TeamID,
+	})
 	if err != nil {
 		return err
 	}

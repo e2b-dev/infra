@@ -43,8 +43,9 @@ func PrefetchEntriesToMapping(entries []block.PrefetchBlockEntry, blockSize int6
 	}
 }
 
-// UploadMetadata uploads the template metadata to storage.
-func UploadMetadata(ctx context.Context, persistence storage.StorageProvider, t Template) error {
+// UploadMetadata uploads the template metadata to storage. objectMetadata
+// is attached to the object; pass nil to skip.
+func UploadMetadata(ctx context.Context, persistence storage.StorageProvider, t Template, objectMetadata storage.ObjectMetadata) error {
 	ctx, span := tracer.Start(ctx, "upload-metadata")
 	defer span.End()
 
@@ -60,7 +61,12 @@ func UploadMetadata(ctx context.Context, persistence storage.StorageProvider, t 
 		return fmt.Errorf("failed to serialize metadata: %w", err)
 	}
 
-	err = object.Put(ctx, metaBytes)
+	var opts []storage.PutOption
+	if len(objectMetadata) > 0 {
+		opts = append(opts, storage.WithMetadata(objectMetadata))
+	}
+
+	err = object.Put(ctx, metaBytes, opts...)
 	if err != nil {
 		return fmt.Errorf("failed to write metadata: %w", err)
 	}
