@@ -84,7 +84,7 @@ func (tm *TemplateManager) BuildStatusSync(ctx context.Context, buildID uuid.UUI
 
 type templateManagerClient interface {
 	SetStatus(ctx context.Context, buildID uuid.UUID, statusGroup types.BuildStatusGroup, reason *templatemanagergrpc.TemplateBuildStatusReason) error
-	SetFinished(ctx context.Context, buildID uuid.UUID, rootfsSize int64, envdVersion string) error
+	SetFinished(ctx context.Context, buildID uuid.UUID, rootfsSize int64, envdVersion, kernelVersion, firecrackerVersion string) error
 	GetStatus(ctx context.Context, buildId uuid.UUID, templateID string, clusterID uuid.UUID, nodeID string) (*templatemanagergrpc.TemplateBuildStatusResponse, error)
 }
 
@@ -200,7 +200,14 @@ func (c *PollBuildStatus) dispatchBasedOnStatus(ctx context.Context, status *tem
 			return false, errors.New("nil metadata")
 		}
 
-		err := c.client.SetFinished(ctx, c.buildID, int64(meta.GetRootfsSizeKey()), meta.GetEnvdVersionKey())
+		err := c.client.SetFinished(
+			ctx,
+			c.buildID,
+			int64(meta.GetRootfsSizeKey()),
+			meta.GetEnvdVersionKey(),
+			meta.GetKernelVersion(),
+			meta.GetFirecrackerVersion(),
+		)
 		if err != nil {
 			return false, fmt.Errorf("error when finishing build: %w", err)
 		}
@@ -295,14 +302,16 @@ func (tm *TemplateManager) SetStatus(ctx context.Context, buildID uuid.UUID, sta
 	return err
 }
 
-func (tm *TemplateManager) SetFinished(ctx context.Context, buildID uuid.UUID, rootfsSize int64, envdVersion string) error {
+func (tm *TemplateManager) SetFinished(ctx context.Context, buildID uuid.UUID, rootfsSize int64, envdVersion, kernelVersion, firecrackerVersion string) error {
 	// first do database update to prevent race condition while calling status
 	// TODO(ENG-3469): Switch to types.BuildStatusReady once all consumers are migrated.
 	err := tm.sqlcDB.FinishTemplateBuild(ctx, queries.FinishTemplateBuildParams{
-		TotalDiskSizeMb: &rootfsSize,
-		Status:          types.BuildStatusUploaded,
-		EnvdVersion:     &envdVersion,
-		BuildID:         buildID,
+		TotalDiskSizeMb:    &rootfsSize,
+		Status:             types.BuildStatusUploaded,
+		EnvdVersion:        &envdVersion,
+		KernelVersion:      kernelVersion,
+		FirecrackerVersion: firecrackerVersion,
+		BuildID:            buildID,
 	})
 
 	tm.buildCache.Invalidate(ctx, buildID)

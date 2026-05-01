@@ -50,7 +50,7 @@ func (f JSONFlag) Fallback() ldvalue.Value {
 	return f.fallback
 }
 
-func newJSONFlag(name string, fallback ldvalue.Value) JSONFlag {
+func NewJSONFlag(name string, fallback ldvalue.Value) JSONFlag {
 	flag := JSONFlag{name: name, fallback: fallback}
 	builder := launchDarklyOfflineStore.Flag(flag.name).ValueForAll(fallback)
 	launchDarklyOfflineStore.Update(builder)
@@ -58,7 +58,7 @@ func newJSONFlag(name string, fallback ldvalue.Value) JSONFlag {
 	return flag
 }
 
-var CleanNFSCache = newJSONFlag("clean-nfs-cache", ldvalue.Null())
+var CleanNFSCache = NewJSONFlag("clean-nfs-cache", ldvalue.Null())
 
 // RateLimitConfigFlag provides per-team rate limit overrides.
 // JSON format:
@@ -69,7 +69,7 @@ var CleanNFSCache = newJSONFlag("clean-nfs-cache", ldvalue.Null())
 //	}
 //
 // When non-null, values override the code defaults. Target specific teams in LaunchDarkly.
-var RateLimitConfigFlag = newJSONFlag("rate-limit-config", ldvalue.Null())
+var RateLimitConfigFlag = NewJSONFlag("rate-limit-config", ldvalue.Null())
 
 type BoolFlag struct {
 	name     string
@@ -88,7 +88,7 @@ func (f BoolFlag) Fallback() bool {
 	return f.fallback
 }
 
-func newBoolFlag(name string, fallback bool) BoolFlag {
+func NewBoolFlag(name string, fallback bool) BoolFlag {
 	flag := BoolFlag{name: name, fallback: fallback}
 	builder := launchDarklyOfflineStore.Flag(flag.name).VariationForAll(fallback)
 	launchDarklyOfflineStore.Update(builder)
@@ -97,28 +97,28 @@ func newBoolFlag(name string, fallback bool) BoolFlag {
 }
 
 var (
-	MetricsWriteFlag                    = newBoolFlag("sandbox-metrics-write", true)
-	MetricsReadFlag                     = newBoolFlag("sandbox-metrics-read", true)
-	SnapshotFeatureFlag                 = newBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
-	TemplateFeatureFlag                 = newBoolFlag("use-nfs-for-templates", env.IsDevelopment())
-	EnableWriteThroughCacheFlag         = newBoolFlag("write-to-cache-on-writes", false)
-	UseNFSCacheForBuildingTemplatesFlag = newBoolFlag("use-nfs-for-building-templates", env.IsDevelopment())
-	BestOfKCanFitFlag                   = newBoolFlag("best-of-k-can-fit", true)
-	BestOfKTooManyStartingFlag          = newBoolFlag("best-of-k-too-many-starting", false)
-	EdgeProvidedSandboxMetricsFlag      = newBoolFlag("edge-provided-sandbox-metrics", false)
-	CreateStorageCacheSpansFlag         = newBoolFlag("create-storage-cache-spans", env.IsDevelopment())
-	SandboxAutoResumeFlag               = newBoolFlag("sandbox-auto-resume", env.IsDevelopment())
+	MetricsWriteFlag                    = NewBoolFlag("sandbox-metrics-write", true)
+	MetricsReadFlag                     = NewBoolFlag("sandbox-metrics-read", true)
+	SnapshotFeatureFlag                 = NewBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
+	TemplateFeatureFlag                 = NewBoolFlag("use-nfs-for-templates", env.IsDevelopment())
+	EnableWriteThroughCacheFlag         = NewBoolFlag("write-to-cache-on-writes", false)
+	UseNFSCacheForBuildingTemplatesFlag = NewBoolFlag("use-nfs-for-building-templates", env.IsDevelopment())
+	BestOfKCanFitFlag                   = NewBoolFlag("best-of-k-can-fit", true)
+	BestOfKTooManyStartingFlag          = NewBoolFlag("best-of-k-too-many-starting", false)
+	EdgeProvidedSandboxMetricsFlag      = NewBoolFlag("edge-provided-sandbox-metrics", false)
+	CreateStorageCacheSpansFlag         = NewBoolFlag("create-storage-cache-spans", env.IsDevelopment())
+	SandboxAutoResumeFlag               = NewBoolFlag("sandbox-auto-resume", env.IsDevelopment())
 
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.
-	PeerToPeerChunkTransferFlag = newBoolFlag("peer-to-peer-chunk-transfer", false)
+	PeerToPeerChunkTransferFlag = NewBoolFlag("peer-to-peer-chunk-transfer", false)
 	// PeerToPeerAsyncCheckpointFlag makes Checkpoint upload fire-and-forget instead
 	// of synchronous. Only safe to enable after PeerToPeerChunkTransferFlag is ON.
-	PeerToPeerAsyncCheckpointFlag = newBoolFlag("peer-to-peer-async-checkpoint", false)
+	PeerToPeerAsyncCheckpointFlag = NewBoolFlag("peer-to-peer-async-checkpoint", false)
 
-	PersistentVolumesFlag            = newBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
-	ExecutionMetricsOnWebhooksFlag   = newBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
-	SandboxLabelBasedSchedulingFlag  = newBoolFlag("sandbox-label-based-scheduling", false)
-	OptimisticResourceAccountingFlag = newBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
+	PersistentVolumesFlag            = NewBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
+	ExecutionMetricsOnWebhooksFlag   = NewBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
+	SandboxLabelBasedSchedulingFlag  = NewBoolFlag("sandbox-label-based-scheduling", false)
+	OptimisticResourceAccountingFlag = NewBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
 )
 
 type IntFlag struct {
@@ -138,7 +138,7 @@ func (f IntFlag) Fallback() int {
 	return f.fallback
 }
 
-func newIntFlag(name string, fallback int) IntFlag {
+func NewIntFlag(name string, fallback int) IntFlag {
 	flag := IntFlag{name: name, fallback: fallback}
 	builder := launchDarklyOfflineStore.Flag(flag.name).ValueForAll(ldvalue.Int(fallback))
 	launchDarklyOfflineStore.Update(builder)
@@ -147,63 +147,63 @@ func newIntFlag(name string, fallback int) IntFlag {
 }
 
 var (
-	MaxSandboxesPerNode           = newIntFlag("max-sandboxes-per-node", 200)
-	GcloudConcurrentUploadLimit   = newIntFlag("gcloud-concurrent-upload-limit", 8)
-	GcloudMaxTasks                = newIntFlag("gcloud-max-tasks", 16)
-	ClickhouseBatcherMaxBatchSize = newIntFlag("clickhouse-batcher-max-batch-size", 100)
-	ClickhouseBatcherMaxDelay     = newIntFlag("clickhouse-batcher-max-delay", 1000) // 1s in milliseconds
-	ClickhouseBatcherQueueSize    = newIntFlag("clickhouse-batcher-queue-size", 1000)
-	BestOfKSampleSize             = newIntFlag("best-of-k-sample-size", 3)                   // Default K=3
-	BestOfKMaxOvercommit          = newIntFlag("best-of-k-max-overcommit", 400)              // Default R=4 (stored as percentage, max over-commit ratio)
-	BestOfKAlpha                  = newIntFlag("best-of-k-alpha", 50)                        // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
-	EnvdInitTimeoutMilliseconds   = newIntFlag("envd-init-request-timeout-milliseconds", 50) // Timeout for envd init request in milliseconds
-	HostStatsSamplingInterval     = newIntFlag("host-stats-sampling-interval", 5000)         // Host stats sampling interval in milliseconds (default 5s)
-	MaxCacheWriterConcurrencyFlag = newIntFlag("max-cache-writer-concurrency", 10)
+	MaxSandboxesPerNode           = NewIntFlag("max-sandboxes-per-node", 200)
+	GcloudConcurrentUploadLimit   = NewIntFlag("gcloud-concurrent-upload-limit", 8)
+	GcloudMaxTasks                = NewIntFlag("gcloud-max-tasks", 16)
+	ClickhouseBatcherMaxBatchSize = NewIntFlag("clickhouse-batcher-max-batch-size", 100)
+	ClickhouseBatcherMaxDelay     = NewIntFlag("clickhouse-batcher-max-delay", 1000) // 1s in milliseconds
+	ClickhouseBatcherQueueSize    = NewIntFlag("clickhouse-batcher-queue-size", 1000)
+	BestOfKSampleSize             = NewIntFlag("best-of-k-sample-size", 3)                   // Default K=3
+	BestOfKMaxOvercommit          = NewIntFlag("best-of-k-max-overcommit", 400)              // Default R=4 (stored as percentage, max over-commit ratio)
+	BestOfKAlpha                  = NewIntFlag("best-of-k-alpha", 50)                        // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
+	EnvdInitTimeoutMilliseconds   = NewIntFlag("envd-init-request-timeout-milliseconds", 50) // Timeout for envd init request in milliseconds
+	HostStatsSamplingInterval     = NewIntFlag("host-stats-sampling-interval", 5000)         // Host stats sampling interval in milliseconds (default 5s)
+	MaxCacheWriterConcurrencyFlag = NewIntFlag("max-cache-writer-concurrency", 10)
 
 	// BuildCacheMaxUsagePercentage the maximum percentage of the cache disk storage
 	// that can be used before the cache starts evicting items.
-	BuildCacheMaxUsagePercentage = newIntFlag("build-cache-max-usage-percentage", 85)
-	BuildProvisionVersion        = newIntFlag("build-provision-version", 0)
+	BuildCacheMaxUsagePercentage = NewIntFlag("build-cache-max-usage-percentage", 85)
+	BuildProvisionVersion        = NewIntFlag("build-provision-version", 0)
 
 	// NBDConnectionsPerDevice the number of NBD socket connections per device
-	NBDConnectionsPerDevice = newIntFlag("nbd-connections-per-device", 1)
+	NBDConnectionsPerDevice = NewIntFlag("nbd-connections-per-device", 1)
 
 	// MemoryPrefetchMaxFetchWorkers is the maximum number of parallel fetch workers per sandbox for memory prefetching.
 	// Fetching is I/O bound so we can have more parallelism.
-	MemoryPrefetchMaxFetchWorkers = newIntFlag("memory-prefetch-max-fetch-workers", 16)
+	MemoryPrefetchMaxFetchWorkers = NewIntFlag("memory-prefetch-max-fetch-workers", 16)
 
 	// MemoryPrefetchMaxCopyWorkers is the maximum number of parallel copy workers per sandbox for memory prefetching.
 	// Copy uses uffd syscalls, so we limit parallelism to avoid overwhelming the system.
-	MemoryPrefetchMaxCopyWorkers = newIntFlag("memory-prefetch-max-copy-workers", 8)
+	MemoryPrefetchMaxCopyWorkers = NewIntFlag("memory-prefetch-max-copy-workers", 8)
 
 	// TCPFirewallMaxConnectionsPerSandbox is the maximum number of concurrent TCP firewall
 	// connections allowed per sandbox. Negative means no limit.
-	TCPFirewallMaxConnectionsPerSandbox = newIntFlag("tcpfirewall-max-connections-per-sandbox", -1)
+	TCPFirewallMaxConnectionsPerSandbox = NewIntFlag("tcpfirewall-max-connections-per-sandbox", -1)
 
 	// SandboxMaxIncomingConnections is the maximum number of concurrent HTTP proxy
 	// connections allowed per sandbox. Negative means no limit.
-	SandboxMaxIncomingConnections = newIntFlag("sandbox-max-incoming-connections", -1)
+	SandboxMaxIncomingConnections = NewIntFlag("sandbox-max-incoming-connections", -1)
 
 	// BuildBaseRootfsSizeLimitMB is the maximum size of the base rootfs filesystem created from the OCI image, in MB.
-	BuildBaseRootfsSizeLimitMB = newIntFlag("build-base-rootfs-size-limit-mb", 25000)
+	BuildBaseRootfsSizeLimitMB = NewIntFlag("build-base-rootfs-size-limit-mb", 25000)
 
 	// MinAutoResumeTimeoutSeconds is the minimum auto-resume timeout in seconds.
 	// This prevents thrashing from very short timeouts.
-	MinAutoResumeTimeoutSeconds = newIntFlag("minimum-autoresume-timeout", 300)
+	MinAutoResumeTimeoutSeconds = NewIntFlag("minimum-autoresume-timeout", 300)
 
 	// BuildReservedDiskSpaceMB is the amount of disk space in MB reserved for root on the guest filesystem.
 	// Reserved blocks are only usable by root (uid 0), protecting the guest OS from disk-full conditions.
-	BuildReservedDiskSpaceMB = newIntFlag("build-reserved-disk-space-mb", 0)
+	BuildReservedDiskSpaceMB = NewIntFlag("build-reserved-disk-space-mb", 0)
 
 	// MaxConcurrentSnapshotUpserts limits concurrent UpsertSnapshot calls (pause + snapshot template paths).
 	// 0 or negative disables throttling (unlimited concurrency).
-	MaxConcurrentSnapshotUpserts = newIntFlag("max-concurrent-snapshot-upserts", 0)
+	MaxConcurrentSnapshotUpserts = NewIntFlag("max-concurrent-snapshot-upserts", 0)
 	// MaxConcurrentSandboxListQueries limits concurrent GetSnapshotsWithCursor calls in the sandbox list path.
 	// 0 or negative disables throttling (unlimited concurrency).
-	MaxConcurrentSandboxListQueries = newIntFlag("max-concurrent-sandbox-list-queries", 0)
+	MaxConcurrentSandboxListQueries = NewIntFlag("max-concurrent-sandbox-list-queries", 0)
 	// MaxConcurrentSnapshotBuildQueries limits concurrent GetSnapshotBuilds calls (e.g. sandbox delete).
 	// 0 or negative disables throttling (unlimited concurrency).
-	MaxConcurrentSnapshotBuildQueries = newIntFlag("max-concurrent-snapshot-build-queries", 0)
+	MaxConcurrentSnapshotBuildQueries = NewIntFlag("max-concurrent-snapshot-build-queries", 0)
 )
 
 type StringFlag struct {
@@ -223,7 +223,7 @@ func (f StringFlag) Fallback() string {
 	return f.fallback
 }
 
-func newStringFlag(name string, fallback string) StringFlag {
+func NewStringFlag(name string, fallback string) StringFlag {
 	flag := StringFlag{name: name, fallback: fallback}
 	builder := launchDarklyOfflineStore.Flag(flag.name).ValueForAll(ldvalue.String(fallback))
 	launchDarklyOfflineStore.Update(builder)
@@ -242,7 +242,7 @@ const (
 	DefaultFirecackerV1_10Version = "v1.10.1_30cbb07"
 	DefaultFirecackerV1_12Version = "v1.12.1_210cbac"
 	DefaultFirecackerV1_14Version = "v1.14.1_458ca91"
-	DefaultFirecrackerVersion     = DefaultFirecackerV1_14Version
+	DefaultFirecrackerVersion     = DefaultFirecackerV1_12Version
 )
 
 var FirecrackerVersionMap = map[string]string{
@@ -253,11 +253,11 @@ var FirecrackerVersionMap = map[string]string{
 
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
 var (
-	BuildFirecrackerVersion     = newStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
-	BuildIoEngine               = newStringFlag("build-io-engine", "Sync")
-	DefaultPersistentVolumeType = newStringFlag("default-persistent-volume-type", "")
-	BuildNodeInfo               = newJSONFlag("preferred-build-node", ldvalue.Null())
-	FirecrackerVersions         = newJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
+	BuildFirecrackerVersion     = NewStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
+	BuildIoEngine               = NewStringFlag("build-io-engine", "Sync")
+	DefaultPersistentVolumeType = NewStringFlag("default-persistent-volume-type", "")
+	BuildNodeInfo               = NewJSONFlag("preferred-build-node", ldvalue.Null())
+	FirecrackerVersions         = NewJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
 )
 
 // ResolveFirecrackerVersion resolves the firecracker version using the FirecrackerVersions feature flag.
@@ -297,7 +297,7 @@ var defaultTrackedTemplates = map[string]bool{
 // should be tracked in sandbox start time metrics. Templates not in this list
 // will be grouped under "other" to reduce metric cardinality.
 // JSON format: {"base": true, "code-interpreter-v1": true, ...}
-var TrackedTemplatesForMetrics = newJSONFlag("tracked-templates-for-metrics", ldvalue.FromJSONMarshal(defaultTrackedTemplates))
+var TrackedTemplatesForMetrics = NewJSONFlag("tracked-templates-for-metrics", ldvalue.FromJSONMarshal(defaultTrackedTemplates))
 
 // GetTrackedTemplatesSet fetches the TrackedTemplatesForMetrics flag and returns it as a set for efficient lookup.
 // Only keys with a truthy value are included; keys set to false are ignored.
@@ -323,7 +323,7 @@ func GetTrackedTemplatesSet(ctx context.Context, ff *Client) map[string]struct{}
 // so it takes effect immediately.
 //
 // JSON format: {"useStreaming": false, "minReadBatchSizeKB": 16}
-var ChunkerConfigFlag = newJSONFlag("chunker-config", ldvalue.FromJSONMarshal(map[string]any{
+var ChunkerConfigFlag = NewJSONFlag("chunker-config", ldvalue.FromJSONMarshal(map[string]any{
 	"useStreaming":       false,
 	"minReadBatchSizeKB": 16,
 }))
@@ -335,7 +335,7 @@ var ChunkerConfigFlag = newJSONFlag("chunker-config", ldvalue.FromJSONMarshal(ma
 //
 // Ops bucket (packets):    effective rate = ops.bucketSize * 1000 / ops.refillTimeMs ops/s.
 // Bandwidth bucket (bytes): effective rate = bandwidth.bucketSize * 1000 / bandwidth.refillTimeMs bytes/s.
-var TCPFirewallEgressThrottleConfig = newJSONFlag("tcpfirewall-egress-throttle-config", ldvalue.FromJSONMarshal(map[string]any{
+var TCPFirewallEgressThrottleConfig = NewJSONFlag("tcpfirewall-egress-throttle-config", ldvalue.FromJSONMarshal(map[string]any{
 	"ops":       map[string]any{"bucketSize": -1, "oneTimeBurst": 0, "refillTimeMs": 1000},
 	"bandwidth": map[string]any{"bucketSize": -1, "oneTimeBurst": 0, "refillTimeMs": 1000},
 }))
@@ -396,7 +396,7 @@ func GetTCPFirewallEgressThrottleConfig(ctx context.Context, ff *Client) TCPFire
 //
 // Ops bucket (IOPS):       effective rate = ops.bucketSize * 1000 / ops.refillTimeMs ops/s.
 // Bandwidth bucket (bytes): effective rate = bandwidth.bucketSize * 1000 / bandwidth.refillTimeMs bytes/s.
-var BlockDriveThrottleConfig = newJSONFlag("block-drive-throttle-config", ldvalue.FromJSONMarshal(map[string]any{
+var BlockDriveThrottleConfig = NewJSONFlag("block-drive-throttle-config", ldvalue.FromJSONMarshal(map[string]any{
 	"ops":       map[string]any{"bucketSize": -1, "oneTimeBurst": 0, "refillTimeMs": 1000},
 	"bandwidth": map[string]any{"bucketSize": -1, "oneTimeBurst": 0, "refillTimeMs": 1000},
 }))

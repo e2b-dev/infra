@@ -3,6 +3,7 @@ package userfaultfd
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/rpc"
@@ -94,7 +95,7 @@ type testHandler struct {
 	conn   io.Closer
 	cmd    *exec.Cmd
 
-	mutex sync.Mutex
+	mutex sync.RWMutex
 }
 
 func (h *testHandler) executeAll(t *testing.T, operations []operation) {
@@ -181,8 +182,16 @@ func (h *testHandler) executeOperation(ctx context.Context, op operation) error 
 	case operationModeWrite:
 		return h.executeWrite(ctx, op)
 	case operationModeServePause:
+		if h.servePause == nil {
+			return errors.New("operationModeServePause requires testConfig.gated = true")
+		}
+
 		return h.servePause()
 	case operationModeServeResume:
+		if h.serveResume == nil {
+			return errors.New("operationModeServeResume requires testConfig.gated = true")
+		}
+
 		return h.serveResume()
 	case operationModeSleep:
 		time.Sleep(50 * time.Millisecond)
@@ -194,12 +203,20 @@ func (h *testHandler) executeOperation(ctx context.Context, op operation) error 
 }
 
 func (h *testHandler) executeRead(ctx context.Context, op operation) error {
-	readBytes := (*h.memoryArea)[op.offset : op.offset+int64(h.pagesize)]
-
 	expectedBytes, err := h.data.Slice(ctx, op.offset, int64(h.pagesize))
 	if err != nil {
 		return err
 	}
+
+	// Hold the read side of the memoryArea mutex while we touch the page.
+	// Reads can run concurrently with each other (RLock), but a parallel
+	// async write to the same page (executeWrite, write lock) is excluded
+	// so go test -race stays clean when a test plan mixes async read and
+	// async write at overlapping offsets.
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	readBytes := (*h.memoryArea)[op.offset : op.offset+int64(h.pagesize)]
 
 	// The bytes.Equal is the first place in this flow that actually touches the uffd managed memory and triggers the pagefault, so any deadlocks will manifest here.
 	if !bytes.Equal(readBytes, expectedBytes) {
@@ -218,6 +235,7 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 	}
 
 	// An unprotected parallel write to map might result in an undefined behavior.
+	// Lock excludes both other writers and any concurrent executeRead.
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 

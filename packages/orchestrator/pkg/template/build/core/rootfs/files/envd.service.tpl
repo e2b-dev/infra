@@ -4,6 +4,8 @@
 [Unit]
 Description=Env Daemon Service
 After=multi-user.target
+# Disable rate limiting; retry forever
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple

@@ -1,12 +1,11 @@
 locals {
-  clickhouse_connection_string                = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
-  redis_url                                   = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
-  redis_cluster_url                           = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
-  loki_url                                    = "http://loki.service.consul:${var.loki_service_port.port}"
-  enable_billing_http_team_provision_sink     = var.enable_billing_http_team_provision_sink
-  dashboard_api_billing_server_url            = local.enable_billing_http_team_provision_sink ? trimspace(data.google_secret_manager_secret_version.billing_server_url[0].secret_data) : ""
-  dashboard_api_billing_server_api_token      = local.enable_billing_http_team_provision_sink ? data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data : ""
-  dashboard_api_supabase_db_connection_string = trimspace(data.google_secret_manager_secret_version.supabase_db_connection_string.secret_data) != "" ? trimspace(data.google_secret_manager_secret_version.supabase_db_connection_string.secret_data) : var.supabase_db_connection_string
+  clickhouse_connection_string            = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
+  redis_url                               = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
+  redis_cluster_url                       = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
+  loki_url                                = "http://loki.service.consul:${var.loki_service_port.port}"
+  enable_billing_http_team_provision_sink = var.enable_billing_http_team_provision_sink
+  dashboard_api_billing_server_url        = local.enable_billing_http_team_provision_sink ? trimspace(data.google_secret_manager_secret_version.billing_server_url[0].secret_data) : ""
+  dashboard_api_billing_server_api_token  = local.enable_billing_http_team_provision_sink ? trimspace(data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data) : ""
 }
 
 # API
@@ -164,7 +163,7 @@ module "dashboard_api" {
   postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   auth_db_connection_string               = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   auth_db_read_replica_connection_string  = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
-  supabase_db_connection_string           = local.dashboard_api_supabase_db_connection_string
+  supabase_db_connection_string           = trimspace(data.google_secret_manager_secret_version.supabase_db_connection_string.secret_data)
   clickhouse_connection_string            = local.clickhouse_connection_string
   supabase_jwt_secrets                    = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
   redis_url                               = local.redis_url
@@ -191,7 +190,6 @@ module "redis" {
 resource "nomad_job" "docker_reverse_proxy" {
   jobspec = templatefile("${path.module}/jobs/docker-reverse-proxy.hcl",
     {
-      gcp_zone                      = var.gcp_zone
       node_pool                     = var.api_node_pool
       image_name                    = data.google_artifact_registry_docker_image.docker_reverse_proxy_image.self_link
       postgres_connection_string    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
@@ -426,16 +424,19 @@ module "logs_collector" {
 }
 
 data "google_storage_bucket_object" "orchestrator" {
+  count  = var.orchestrator_enabled ? 1 : 0
   name   = "orchestrator"
   bucket = var.fc_env_pipeline_bucket_name
 }
 
 locals {
-  orchestrator_checksum        = data.google_storage_bucket_object.orchestrator.generation
-  orchestrator_artifact_source = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/orchestrator?version=${local.orchestrator_checksum}"
+  orchestrator_checksum        = var.orchestrator_enabled ? data.google_storage_bucket_object.orchestrator[0].generation : ""
+  orchestrator_artifact_source = var.orchestrator_enabled ? "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/orchestrator?version=${local.orchestrator_checksum}" : ""
 }
 
 module "orchestrator" {
+  count = var.orchestrator_enabled ? 1 : 0
+
   source = "../../modules/job-orchestrator"
 
   provider_name = "gcp"
@@ -456,6 +457,7 @@ module "orchestrator" {
   envd_timeout                 = var.envd_timeout
   template_bucket_name         = var.template_bucket_name
   allow_sandbox_internet       = var.allow_sandbox_internet
+  allow_sandbox_internal_cidrs = var.allow_sandbox_internal_cidrs
   clickhouse_connection_string = local.clickhouse_connection_string
   redis_url                    = local.redis_url
   redis_cluster_url            = local.redis_cluster_url

@@ -94,8 +94,10 @@ func NewBuilder(
 }
 
 type Result struct {
-	EnvdVersion  string
-	RootfsSizeMB int64
+	EnvdVersion        string
+	KernelVersion      string
+	FirecrackerVersion string
+	RootfsSizeMB       int64
 }
 
 // Build builds the template, uploads it to storage and returns the result metadata.
@@ -376,8 +378,10 @@ func runBuild(
 	logger.L().Info(ctx, "rootfs size", zap.Uint64("size", rootfsSize))
 
 	return &Result{
-		EnvdVersion:  bc.EnvdVersion,
-		RootfsSizeMB: units.BytesToMB(int64(rootfsSize)),
+		EnvdVersion:        bc.EnvdVersion,
+		KernelVersion:      bc.Config.KernelVersion,
+		FirecrackerVersion: bc.Config.FirecrackerVersion,
+		RootfsSizeMB:       units.BytesToMB(int64(rootfsSize)),
 	}, nil
 }
 

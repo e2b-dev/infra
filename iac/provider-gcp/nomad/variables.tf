@@ -314,6 +314,12 @@ variable "allow_sandbox_internet" {
   type = bool
 }
 
+variable "allow_sandbox_internal_cidrs" {
+  type        = string
+  description = "Comma-separated CIDRs to allow through the sandbox firewall deny list"
+  default     = ""
+}
+
 # Template manager
 variable "template_manager_port" {
   type = number
@@ -462,12 +468,6 @@ variable "supabase_db_connection_string_secret_version" {
   type = any
 }
 
-variable "supabase_db_connection_string" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
 variable "enable_auth_user_sync_background_worker" {
   type    = bool
   default = false
@@ -505,4 +505,10 @@ variable "gcs_grpc_connection_pool_size" {
 variable "orchestrator_env_vars" {
   type    = map(string)
   default = {}
+}
+
+variable "orchestrator_enabled" {
+  type        = bool
+  default     = true
+  description = "Whether the orchestrator job should be deployed"
 }

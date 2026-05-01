@@ -130,6 +130,10 @@ resource "aws_launch_template" "client" {
 
   vpc_security_group_ids = var.security_group_ids
 
+  metadata_options {
+    http_tokens = "required"
+  }
+
   iam_instance_profile {
     name = aws_iam_instance_profile.client.name
   }

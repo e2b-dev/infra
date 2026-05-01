@@ -218,6 +218,12 @@ variable "allow_sandbox_internet" {
   default = true
 }
 
+variable "allow_sandbox_internal_cidrs" {
+  type        = string
+  description = "Comma-separated CIDRs to allow through the sandbox firewall deny list"
+  default     = ""
+}
+
 variable "envd_timeout" {
   type    = string
   default = "40s"

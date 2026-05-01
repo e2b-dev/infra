@@ -38,6 +38,7 @@ type ServerStore struct {
 	builder           *build.Builder
 	buildCache        *cache.BuildCache
 	buildLogger       logger.Logger
+	featureFlags      *featureflags.Client
 	artifactsregistry artifactsregistry.ArtifactsRegistry
 	templateStorage   storage.StorageProvider
 	buildStorage      storage.StorageProvider
@@ -113,6 +114,7 @@ func New(
 		builder:           builder,
 		buildCache:        buildCache,
 		buildLogger:       buildLogger,
+		featureFlags:      featureFlags,
 		artifactsregistry: artifactsRegistry,
 		templateStorage:   templatePersistence,
 		buildStorage:      buildPersistence,

@@ -52,6 +52,10 @@ resource "aws_launch_template" "control_server" {
 
   vpc_security_group_ids = var.security_group_ids
 
+  metadata_options {
+    http_tokens = "required"
+  }
+
   iam_instance_profile {
     name = aws_iam_instance_profile.control_server.name
   }

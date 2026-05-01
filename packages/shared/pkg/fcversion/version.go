@@ -1,4 +1,4 @@
-package sandbox
+package fcversion
 
 import (
 	"strings"
@@ -6,7 +6,7 @@ import (
 	"github.com/Masterminds/semver/v3"
 )
 
-type VersionInfo struct {
+type Info struct {
 	commitHash         string
 	lastReleaseVersion semver.Version
 }
@@ -15,7 +15,7 @@ func stripVersionPrefix(version string) string {
 	return strings.TrimPrefix(version, "v")
 }
 
-func NewVersionInfo(fcVersion string) (info VersionInfo, err error) {
+func New(fcVersion string) (info Info, err error) {
 	// The structure of the fcVersion is last_tag[-prerelease]_commit_hash
 	// Example: v1.0.0-release_1234567
 
@@ -36,14 +36,6 @@ func NewVersionInfo(fcVersion string) (info VersionInfo, err error) {
 	return info, nil
 }
 
-func (v *VersionInfo) Version() semver.Version {
+func (v *Info) Version() semver.Version {
 	return v.lastReleaseVersion
-}
-
-func (v *VersionInfo) HasHugePages() bool {
-	if v.lastReleaseVersion.Major() > 1 || (v.lastReleaseVersion.Major() == 1 && v.lastReleaseVersion.Minor() >= 7) {
-		return true
-	}
-
-	return false
 }

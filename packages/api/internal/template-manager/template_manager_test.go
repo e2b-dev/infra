@@ -26,7 +26,7 @@ func (f fakeTemplateManagerClient) SetStatus(context.Context, uuid.UUID, types.B
 	return f.setStatusError
 }
 
-func (f fakeTemplateManagerClient) SetFinished(context.Context, uuid.UUID, int64, string) error {
+func (f fakeTemplateManagerClient) SetFinished(context.Context, uuid.UUID, int64, string, string, string) error {
 	return f.setFinishedError
 }
 

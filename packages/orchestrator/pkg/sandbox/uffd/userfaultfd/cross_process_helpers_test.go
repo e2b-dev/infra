@@ -34,6 +34,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
@@ -284,6 +285,14 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 				t.Logf("helper process Wait: %v", waitErr)
 			}
 		}
+
+		// Tear down the UFFD registration before the early uffdFd.close()
+		// cleanup runs. Today this is a no-op (no test enables
+		// UFFD_FEATURE_EVENT_REMOVE) but a follow-up that does will
+		// otherwise see munmap block on un-acked REMOVE events queued
+		// against the still-registered range. Cleanups run LIFO, so
+		// this fires before the close registered earlier.
+		assert.NoError(t, unregister(uffdFd, memoryStart, uint64(size)))
 	})
 
 	if tt.gated {
@@ -467,7 +476,16 @@ type Service struct {
 	closed   bool
 }
 
+// startServe spawns the uffd Serve goroutine and stores its stop fn.
+// Caller must hold s.mu. Idempotent: if a serve goroutine is already
+// running (s.stop != nil) this is a no-op so a stray duplicate
+// ServeResume can't leak an untracked Serve goroutine and break later
+// pauses.
 func (s *Service) startServe() {
+	if s.stop != nil {
+		return
+	}
+
 	exit, err := fdexit.New()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "fdexit.New:", err)

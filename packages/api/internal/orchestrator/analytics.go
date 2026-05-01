@@ -12,6 +12,8 @@ import (
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/tracing"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -74,13 +76,84 @@ func (o *Orchestrator) analyticsInsert(ctx context.Context, sandbox sandbox.Sand
 	}
 }
 
-func (o *Orchestrator) handleNewlyCreatedSandbox(ctx context.Context, sandbox sandbox.Sandbox) {
-	// Send analytics event
-	o.analyticsInsert(ctx, sandbox)
+func (o *Orchestrator) emitCreatedInstancePosthog(ctx context.Context, sbx sandbox.Sandbox, meta sandbox.CreationMetadata, startDuration time.Duration) {
+	o.posthogClient.IdentifyAnalyticsTeam(ctx, sbx.TeamID.String(), meta.TeamName)
+	properties := o.posthogClient.GetPackageToPosthogProperties(&meta.RequestHeader)
 
-	// Update team metrics
-	o.teamMetricsObserver.Add(ctx, sandbox.TeamID)
+	props := properties.
+		Set("environment", sbx.TemplateID).
+		Set("instance_id", sbx.SandboxID).
+		Set("alias", sbx.Alias).
+		Set("resume", meta.IsResume).
+		Set("build_id", sbx.BuildID).
+		Set("envd_version", sbx.EnvdVersion).
+		Set("node_id", sbx.NodeID).
+		Set("vcpu", sbx.VCpu).
+		Set("ram_mb", sbx.RamMB).
+		Set("total_disk_size_mb", sbx.TotalDiskSizeMB).
+		Set("auto_pause", sbx.AutoPause)
+	if startDuration > 0 {
+		props = props.Set("start_time_ms", startDuration.Milliseconds())
+	}
 
-	// Increment created counter
-	o.createdCounter.Add(ctx, 1, metric.WithAttributes(telemetry.WithTeamID(sandbox.TeamID.String())))
+	if len(meta.MCPServerNames) > 0 {
+		props = props.Set("mcp_servers", meta.MCPServerNames)
+	}
+
+	if len(sbx.VolumeMounts) > 0 {
+		volumeNames := make([]string, 0, len(sbx.VolumeMounts))
+		volumeIDs := make([]string, 0, len(sbx.VolumeMounts))
+		for _, vol := range sbx.VolumeMounts {
+			volumeNames = append(volumeNames, vol.Name)
+			volumeIDs = append(volumeIDs, vol.ID)
+		}
+		props = props.
+			Set("volume_names", volumeNames).
+			Set("volume_ids", volumeIDs).
+			Set("volume_count", len(sbx.VolumeMounts))
+	}
+
+	o.posthogClient.CreateAnalyticsTeamEvent(ctx, sbx.TeamID.String(), "created_instance", props)
+}
+
+func logSandboxCreated(ctx context.Context, sbx sandbox.Sandbox) {
+	logMetadata := &sbxlogger.SandboxMetadata{
+		SandboxID:  sbx.SandboxID,
+		TemplateID: sbx.TemplateID,
+		TeamID:     sbx.TeamID.String(),
+	}
+
+	endTimeStr := sbx.EndTime.Format("2006-01-02 15:04:05 -07:00")
+	sbxlogger.E(logMetadata).Info(ctx, "Sandbox created", zap.String("end_time", endTimeStr))
+
+	autoResumePolicy := "unset"
+	if sbx.AutoResume != nil {
+		autoResumePolicy = string(sbx.AutoResume.Policy)
+	}
+
+	sbxlogger.I(logMetadata).Info(
+		ctx,
+		"Sandbox created details",
+		zap.String("end_time", endTimeStr),
+		zap.String("auto_resume_policy", autoResumePolicy),
+		zap.Bool("auto_pause", sbx.AutoPause),
+		zap.String("template_id", sbx.BaseTemplateID),
+	)
+}
+
+func (o *Orchestrator) handleNewlyCreatedSandbox(ctx context.Context, sbx sandbox.Sandbox, meta sandbox.CreationMetadata) {
+	ctx, span := tracer.Start(ctx, "newly-created-sandbox-callback")
+	defer span.End()
+
+	// Calculate the time it took for the sandbox to start from request receipt
+	var startDuration time.Duration
+	if requestStartTime, ok := tracing.GetRequestStartTime(ctx); ok {
+		startDuration = time.Since(requestStartTime)
+	}
+
+	o.analyticsInsert(ctx, sbx)
+	o.emitCreatedInstancePosthog(ctx, sbx, meta, startDuration)
+	o.teamMetricsObserver.Add(ctx, sbx.TeamID)
+	o.createdCounter.Add(ctx, 1, metric.WithAttributes(telemetry.WithTeamID(sbx.TeamID.String())))
+	logSandboxCreated(ctx, sbx)
 }

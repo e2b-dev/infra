@@ -142,6 +142,16 @@ VALUES ($1, $2, $3, $4, $5, $6)
 		return fmt.Errorf("failed to create team: %w", err)
 	}
 
+	// Grant the integration test team extra capacity so parallel tests don't
+	// hit the base tier's 20-sandbox cap.
+	err = db.TestsRawSQL(ctx, `
+INSERT INTO addons (team_id, name, extra_concurrent_sandboxes, extra_concurrent_template_builds, added_by)
+VALUES ($1, 'integration-tests-extra-capacity', 200, 50, '00000000-0000-0000-0000-000000000000')
+`, data.TeamID)
+	if err != nil {
+		return fmt.Errorf("failed to create test team addon: %w", err)
+	}
+
 	// User-Team
 	err = authdb.TestsRawSQL(ctx, `
 INSERT INTO users_teams (user_id, team_id, is_default)
