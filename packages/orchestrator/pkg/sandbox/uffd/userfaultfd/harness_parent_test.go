@@ -10,10 +10,9 @@ package userfaultfd
 // Firecracker uses UFFD in production.
 //
 // The side channels between parent and child are intentionally
-// minimal: a single env var flagging the child as the helper, an
-// env var carrying the rendezvous socket path, the userfaultfd
-// itself handed off via ExtraFiles (it's a kernel object, has to go
-// through that), and the unix domain socket used for JSON-RPC. All
+// minimal: a single env var flagging the child as the helper, the
+// userfaultfd handed off via ExtraFiles at fd 3, and a socketpair(2)
+// half handed off via ExtraFiles at fd 4 carrying JSON-RPC. All
 // configuration (mmap geometry, source content, feature toggles)
 // flows over a single Lifecycle.Bootstrap RPC.
 
@@ -25,10 +24,8 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -77,12 +74,9 @@ func RandomPages(pagesize, numberOfPages uint64) *MemorySlicer {
 	return NewMemorySlicer(buf, int64(pagesize))
 }
 
-// Env vars used by the child helper process. The set is deliberately
-// small: anything else lives in BootstrapArgs and flows over RPC.
-const (
-	envHelperFlag = "GO_TEST_HELPER_PROCESS"
-	envSocketPath = "GO_UFFD_SOCKET"
-)
+// Env var used by the child helper process. The set is deliberately
+// minimal: anything else lives in BootstrapArgs and flows over RPC.
+const envHelperFlag = "GO_TEST_HELPER_PROCESS"
 
 // configureCrossProcessTest spawns the helper child, hands it the
 // userfaultfd, and drives initial setup via Lifecycle.Bootstrap.
@@ -108,16 +102,8 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 	require.NoError(t, configureApi(uffdFd, tt.pagesize))
 	require.NoError(t, register(uffdFd, memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP))
 
-	socketPath := filepath.Join(t.TempDir(), "rpc.sock")
-	listenCfg := net.ListenConfig{}
-	listener, err := listenCfg.Listen(ctx, "unix", socketPath)
-	require.NoError(t, err)
-
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestHelperServingProcess", "-test.timeout=0")
-	cmd.Env = append(os.Environ(),
-		envHelperFlag+"=1",
-		envSocketPath+"="+socketPath,
-	)
+	cmd.Env = append(os.Environ(), envHelperFlag+"=1")
 
 	// F_DUPFD_CLOEXEC duplicates uffdFd into a new fd that is born
 	// with CLOEXEC set, atomically. The previous incarnation used
@@ -130,43 +116,39 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 	// version used to wrap cmd.Start.
 	dup, err := unix.FcntlInt(uintptr(uffdFd), unix.F_DUPFD_CLOEXEC, 0)
 	require.NoError(t, err)
-
 	uffdFile := os.NewFile(uintptr(dup), "uffd")
-	cmd.ExtraFiles = []*os.File{uffdFile}
+
+	// socketpair gives us a connected AF_UNIX/SOCK_STREAM pair in one
+	// syscall, no listener / accept / dial / temp inode required.
+	// SOCK_CLOEXEC on the pair is the same rationale as F_DUPFD_CLOEXEC
+	// on the uffd fd above: both ends are born CLOEXEC so a concurrent
+	// fork in another goroutine cannot leak them. cmd.ExtraFiles will
+	// clear CLOEXEC on the destination fd in the child via dup3 inside
+	// ForkExec, which is exactly what we want for fd 4.
+	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, 0)
+	require.NoError(t, err)
+	parentEnd := os.NewFile(uintptr(fds[0]), "rpc-parent")
+	childEnd := os.NewFile(uintptr(fds[1]), "rpc-child")
+
+	cmd.ExtraFiles = []*os.File{uffdFile, childEnd}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	startErr := cmd.Start()
 	uffdFile.Close()
-	require.NoError(t, startErr)
-
-	// Accept the child's connection. Tight deadline so a wedged
-	// child surfaces fast instead of hanging the test.
-	type acceptResult struct {
-		conn net.Conn
-		err  error
+	childEnd.Close()
+	if startErr != nil {
+		parentEnd.Close()
+		require.NoError(t, startErr)
 	}
-	acceptCh := make(chan acceptResult, 1)
-	go func() {
-		c, err := listener.Accept()
-		acceptCh <- acceptResult{conn: c, err: err}
-	}()
 
-	var conn net.Conn
-	select {
-	case res := <-acceptCh:
-		require.NoError(t, res.err)
-		conn = res.conn
-	case <-time.After(10 * time.Second):
-		listener.Close()
-		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
+	// FileConn dups the underlying fd, so closing parentEnd after is
+	// both correct and necessary to avoid leaking the original fd.
+	parentConn, err := net.FileConn(parentEnd)
+	parentEnd.Close()
+	require.NoError(t, err)
 
-		return nil, errors.New("child did not connect within 10s")
-	}
-	listener.Close()
-
-	client := newHarnessClient(conn, cmd)
+	client := newHarnessClient(parentConn, cmd)
 
 	h := &testHandler{
 		memoryArea: &memoryArea,
