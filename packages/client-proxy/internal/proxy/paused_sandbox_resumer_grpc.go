@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"net"
 	"strconv"
 	"strings"
 
@@ -31,27 +30,9 @@ type GRPCOAuthConfig struct {
 	TokenURL     string
 }
 
-func apiGrpcAddressUsesTLS(address string) bool {
+func NewGRPCPausedSandboxResumer(address string, oauthConfig GRPCOAuthConfig, useTLS bool) (PausedSandboxResumer, error) {
 	address = strings.TrimSpace(address)
-
-	host, _, err := net.SplitHostPort(address)
-	if err != nil {
-		host = address
-	}
-	host = strings.Trim(strings.TrimSpace(host), "[]")
-
-	if host == "" || host == "localhost" || strings.HasSuffix(host, ".service.consul") {
-		return false
-	}
-	if net.ParseIP(host) != nil {
-		return false
-	}
-
-	return true
-}
-
-func NewGRPCPausedSandboxResumer(address string, oauthConfig GRPCOAuthConfig) (PausedSandboxResumer, error) {
-	if strings.TrimSpace(address) == "" {
+	if address == "" {
 		return nil, errors.New("api grpc address is required")
 	}
 
@@ -61,7 +42,7 @@ func NewGRPCPausedSandboxResumer(address string, oauthConfig GRPCOAuthConfig) (P
 	}
 
 	creds := insecure.NewCredentials()
-	if apiGrpcAddressUsesTLS(address) {
+	if useTLS {
 		creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
 	}
 
