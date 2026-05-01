@@ -21,6 +21,7 @@ type TeamItem interface {
 // AuthStore abstracts the DB operations needed for auth validation.
 type AuthStore[T TeamItem] interface {
 	GetTeamByHashedAPIKey(ctx context.Context, hashedKey string) (T, error)
+	GetTeamByID(ctx context.Context, teamID uuid.UUID) (T, error)
 	GetTeamByIDAndUserID(ctx context.Context, userID uuid.UUID, teamID string) (T, error)
 	GetUserIDByHashedAccessToken(ctx context.Context, hashedToken string) (uuid.UUID, error)
 	GetTeamAPIKeyHashes(ctx context.Context, teamID uuid.UUID) ([]string, error)
@@ -93,6 +94,13 @@ func (s *AuthService[T]) ValidateAPIKey(ctx context.Context, ginCtx *gin.Context
 	)
 
 	return result, nil
+}
+
+// GetTeamByID fetches team auth data via cache + store.
+func (s *AuthService[T]) GetTeamByID(ctx context.Context, teamID uuid.UUID) (T, error) {
+	return s.teamCache.GetOrSet(ctx, teamCacheKey(teamID), func(ctx context.Context, _ string) (T, error) {
+		return s.store.GetTeamByID(ctx, teamID)
+	})
 }
 
 // ValidateAccessToken verifies the access token format and fetches the associated user ID.
@@ -206,6 +214,8 @@ func (s *AuthService[T]) InvalidateTeamMemberCache(ctx context.Context, userID u
 
 // InvalidateTeamCache queries the team's API key hashes and removes their cached entries.
 func (s *AuthService[T]) InvalidateTeamCache(ctx context.Context, teamID uuid.UUID) error {
+	s.teamCache.Invalidate(ctx, teamCacheKey(teamID))
+
 	hashes, err := s.store.GetTeamAPIKeyHashes(ctx, teamID)
 	if err != nil {
 		return fmt.Errorf("failed to get team API key hashes: %w", err)
@@ -220,6 +230,10 @@ func (s *AuthService[T]) InvalidateTeamCache(ctx context.Context, teamID uuid.UU
 
 func supabaseTeamCacheKey(userID uuid.UUID, teamID string) string {
 	return fmt.Sprintf("%s-%s", userID.String(), strings.ToLower(teamID))
+}
+
+func teamCacheKey(teamID uuid.UUID) string {
+	return fmt.Sprintf("team-%s", teamID.String())
 }
 
 // Close stops the underlying cache's background refresh goroutines.

@@ -34,6 +34,7 @@ tf_vars := AWS_PROFILE=$(AWS_PROFILE) AWS_REGION=$(AWS_REGION) \
 	$(call tfvar, REDIS_INSTANCE_TYPE) \
 	$(call tfvar, REDIS_MANAGED) \
 	$(call tfvar, API_CLUSTER_SIZE) \
+	$(call tfvar, API_INTERNAL_GRPC_PORT) \
 	$(call tfvar, API_SERVER_MACHINE_TYPE) \
 	$(call tfvar, CLIENT_PROXY_COUNT) \
 	$(call tfvar, INGRESS_COUNT) \
@@ -45,7 +46,8 @@ tf_vars := AWS_PROFILE=$(AWS_PROFILE) AWS_REGION=$(AWS_REGION) \
 	$(call tfvar, DB_MAX_OPEN_CONNECTIONS) \
 	$(call tfvar, DB_MIN_IDLE_CONNECTIONS) \
 	$(call tfvar, AUTH_DB_MAX_OPEN_CONNECTIONS) \
-	$(call tfvar, AUTH_DB_MIN_IDLE_CONNECTIONS)
+	$(call tfvar, AUTH_DB_MIN_IDLE_CONNECTIONS) \
+	$(call tfvar, ALLOW_SANDBOX_INTERNAL_CIDRS)
 
 .PHONY: provider-login
 provider-login:

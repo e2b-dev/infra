@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
@@ -19,17 +21,34 @@ import (
 type grpcSandboxLifecycleClient struct {
 	conn   *grpc.ClientConn
 	client proxygrpc.SandboxServiceClient
+	auth   grpcResumeAuth
 }
 
-func NewGrpcSandboxLifecycleClient(address string) (SandboxLifecycleClient, error) {
-	// Client-proxy uses this gRPC client to trigger sandbox lifecycle calls when needed.
-	if strings.TrimSpace(address) == "" {
+type GRPCOAuthConfig struct {
+	ClientID     string
+	ClientSecret string
+	TokenURL     string
+}
+
+func NewGrpcSandboxLifecycleClient(ctx context.Context, address string, oauthConfig GRPCOAuthConfig, useTLS bool) (SandboxLifecycleClient, error) {
+	address = strings.TrimSpace(address)
+	if address == "" {
 		return nil, errors.New("api grpc address is required")
+	}
+
+	auth, err := newGrpcResumeAuth(ctx, oauthConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	creds := insecure.NewCredentials()
+	if useTLS {
+		creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
 	}
 
 	conn, err := grpc.NewClient(
 		address,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(creds),
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 	)
 	if err != nil {
@@ -39,6 +58,7 @@ func NewGrpcSandboxLifecycleClient(address string) (SandboxLifecycleClient, erro
 	return &grpcSandboxLifecycleClient{
 		conn:   conn,
 		client: proxygrpc.NewSandboxServiceClient(conn),
+		auth:   auth,
 	}, nil
 }
 
@@ -66,6 +86,10 @@ func appendProxyTrafficMetadata(ctx context.Context, sandboxPort uint64, traffic
 
 func (c *grpcSandboxLifecycleClient) Resume(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (string, error) {
 	ctx = appendProxyTrafficMetadata(ctx, sandboxPort, trafficAccessToken, envdAccessToken)
+	ctx, err := c.auth.authorize(ctx)
+	if err != nil {
+		return "", err
+	}
 
 	resp, err := c.client.ResumeSandbox(ctx, &proxygrpc.SandboxResumeRequest{
 		SandboxId: sandboxId,
@@ -79,6 +103,10 @@ func (c *grpcSandboxLifecycleClient) Resume(ctx context.Context, sandboxId strin
 
 func (c *grpcSandboxLifecycleClient) KeepAlive(ctx context.Context, sandboxId string, teamID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) error {
 	ctx = appendProxyTrafficMetadata(ctx, sandboxPort, trafficAccessToken, envdAccessToken)
+	ctx, authErr := c.auth.authorize(ctx)
+	if authErr != nil {
+		return authErr
+	}
 
 	_, err := c.client.KeepAliveSandbox(ctx, &proxygrpc.SandboxKeepAliveRequest{
 		SandboxId: sandboxId,

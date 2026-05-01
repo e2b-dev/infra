@@ -138,8 +138,21 @@ func run() int {
 	info.SetStatus(ctx, internal.Healthy)
 
 	var sandboxLifecycleClient e2bproxy.SandboxLifecycleClient
-	if strings.TrimSpace(config.ApiGrpcAddress) != "" {
-		sandboxLifecycleClient, err = e2bproxy.NewGrpcSandboxLifecycleClient(config.ApiGrpcAddress)
+	apiGRPCAddress := strings.TrimSpace(config.APIInternalGRPCAddress)
+	apiGRPCOAuthConfig := e2bproxy.GRPCOAuthConfig{}
+	apiGRPCUseTLS := false
+	if apiGRPCAddress == "" {
+		apiGRPCAddress = strings.TrimSpace(config.APIEdgeGRPCAddress)
+		apiGRPCUseTLS = true
+		apiGRPCOAuthConfig = e2bproxy.GRPCOAuthConfig{
+			ClientID:     config.APIEdgeGRPCOAuthClientID,
+			ClientSecret: config.APIEdgeGRPCOAuthClientSecret,
+			TokenURL:     config.APIEdgeGRPCOAuthTokenURL,
+		}
+	}
+
+	if apiGRPCAddress != "" {
+		sandboxLifecycleClient, err = e2bproxy.NewGrpcSandboxLifecycleClient(ctx, apiGRPCAddress, apiGRPCOAuthConfig, apiGRPCUseTLS)
 		if err != nil {
 			l.Error(ctx, "Failed to create sandbox lifecycle client", zap.Error(err))
 

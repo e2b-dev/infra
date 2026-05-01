@@ -38,6 +38,7 @@ const (
 type Cluster struct {
 	ID            uuid.UUID
 	SandboxDomain *string
+	AuthOrgID     string
 
 	instances       *smap.Map[*Instance]
 	synchronization *synchronization.Synchronize[discovery.Item, *Instance]
@@ -52,6 +53,7 @@ var (
 func NewCluster(
 	clusterID uuid.UUID,
 	domain *string,
+	authOrgID string,
 	sandboxes *smap.Map[*Instance],
 	synchronization *synchronization.Synchronize[discovery.Item, *Instance],
 	resources ClusterResource,
@@ -59,6 +61,7 @@ func NewCluster(
 	return &Cluster{
 		ID:              clusterID,
 		SandboxDomain:   domain,
+		AuthOrgID:       authOrgID,
 		instances:       sandboxes,
 		synchronization: synchronization,
 		resources:       resources,
@@ -87,6 +90,7 @@ func newLocalCluster(
 	c := NewCluster(
 		clusterID,
 		nil,
+		"",
 		instances,
 		synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
 		newLocalClusterResourceProvider(clickhouse, queryLogsProvider, instances, config),
@@ -106,6 +110,7 @@ func newRemoteCluster(
 	secret string,
 	clusterID uuid.UUID,
 	sandboxDomain *string,
+	authOrgID string,
 ) (*Cluster, error) {
 	scheme := "http"
 	if endpointTLS {
@@ -147,6 +152,7 @@ func newRemoteCluster(
 	c := NewCluster(
 		clusterID,
 		sandboxDomain,
+		authOrgID,
 		instances,
 		synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
 		newRemoteClusterResourceProvider(clusterID, instances, httpClient),

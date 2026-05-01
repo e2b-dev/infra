@@ -95,7 +95,7 @@ func (b *cachedBlob) WriteTo(ctx context.Context, dst io.Writer) (n int64, e err
 
 // Write pushes data to the wrapped object provider, and optionally pushes the data to a fast ephemeral cache as well.
 // `p` is considered immutable, and won't change if we access it after the function returns.
-func (b *cachedBlob) Put(ctx context.Context, data []byte) (e error) {
+func (b *cachedBlob) Put(ctx context.Context, data []byte, opts ...PutOption) (e error) {
 	ctx, span := b.tracer.Start(ctx, "write data to object storage")
 	defer func() {
 		recordError(span, e)
@@ -117,7 +117,7 @@ func (b *cachedBlob) Put(ctx context.Context, data []byte) (e error) {
 		})
 	}
 
-	return b.inner.Put(ctx, data)
+	return b.inner.Put(ctx, data, opts...)
 }
 
 func (b *cachedBlob) goCtxWithoutCancel(ctx context.Context, fn func(context.Context)) {

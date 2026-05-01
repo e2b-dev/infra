@@ -113,7 +113,7 @@ func (o *fsObject) WriteTo(_ context.Context, dst io.Writer) (int64, error) {
 	return io.Copy(dst, handle)
 }
 
-func (o *fsObject) Put(_ context.Context, data []byte) error {
+func (o *fsObject) Put(_ context.Context, data []byte, _ ...PutOption) error {
 	handle, err := o.getHandle(false)
 	if err != nil {
 		return err
@@ -125,7 +125,7 @@ func (o *fsObject) Put(_ context.Context, data []byte) error {
 	return err
 }
 
-func (o *fsObject) StoreFile(_ context.Context, path string) error {
+func (o *fsObject) StoreFile(_ context.Context, path string, _ ...PutOption) error {
 	r, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("failed to open file %s: %w", path, err)

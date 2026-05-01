@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 
@@ -110,6 +111,9 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	if tt.alwaysWP {
 		cmd.Env = append(cmd.Env, "GO_ALWAYS_WP=1")
 	}
+	if tt.gated {
+		cmd.Env = append(cmd.Env, "GO_GATED=1")
+	}
 
 	dup, err := syscall.Dup(int(uffdFd))
 	require.NoError(t, err)
@@ -153,12 +157,34 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 		readySignal <- struct{}{}
 	}()
 
-	cmd.ExtraFiles = []*os.File{
+	extraFiles := []*os.File{
 		uffdFile,
 		contentReader,
 		offsetsWriter,
 		readyWriter,
 	}
+
+	var gateCmdWriter *os.File
+	var gateSyncReader *os.File
+	if tt.gated {
+		var gateCmdReader *os.File
+		gateCmdReader, gateCmdWriter, err = os.Pipe()
+		require.NoError(t, err)
+
+		var gateSyncWriter *os.File
+		gateSyncReader, gateSyncWriter, err = os.Pipe()
+		require.NoError(t, err)
+
+		t.Cleanup(func() {
+			gateCmdWriter.Close()
+			gateSyncReader.Close()
+		})
+
+		extraFiles = append(extraFiles, gateCmdReader)  // fd 7
+		extraFiles = append(extraFiles, gateSyncWriter) // fd 8
+	}
+
+	cmd.ExtraFiles = extraFiles
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -169,6 +195,10 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	offsetsWriter.Close()
 	readyWriter.Close()
 	uffdFile.Close()
+	if tt.gated {
+		extraFiles[4].Close() // gateCmdReader
+		extraFiles[5].Close() // gateSyncWriter
+	}
 
 	t.Cleanup(func() {
 		signalErr := cmd.Process.Signal(syscall.SIGUSR1)
@@ -238,12 +268,31 @@ func configureCrossProcessTest(t *testing.T, tt testConfig) (*testHandler, error
 	case <-readySignal:
 	}
 
-	return &testHandler{
+	h := &testHandler{
 		memoryArea:     &memoryArea,
 		pagesize:       tt.pagesize,
 		data:           data,
 		pageStatesOnce: pageStatesOnce,
-	}, nil
+	}
+
+	if tt.gated {
+		h.servePause = func() error {
+			if _, err := gateCmdWriter.Write([]byte{'P'}); err != nil {
+				return err
+			}
+			var buf [1]byte
+			_, err := gateSyncReader.Read(buf[:])
+
+			return err
+		}
+		h.serveResume = func() error {
+			_, err := gateCmdWriter.Write([]byte{'R'})
+
+			return err
+		}
+	}
+
+	return h, nil
 }
 
 // Secondary process, orchestrator in our case
@@ -378,22 +427,111 @@ func crossProcessServe() error {
 		}
 	}()
 
-	cleanup := func() {
-		err := fdExit.SignalExit()
-		if err != nil {
-			msg := fmt.Errorf("error signaling exit: %w", err)
+	// stopFn drains whichever Serve goroutine is currently running. The
+	// running flag plus stopMu makes both pause-then-exit (no resume in
+	// between) and pause-resume-pause-exit safe, and rejects nonsensical
+	// command sequences from the gated channel: 'P' when already paused
+	// is a no-op, 'R' when already running is a no-op so a stray or
+	// duplicate resume can't leak an untracked Serve goroutine and break
+	// later pauses.
+	var (
+		stopMu  sync.Mutex
+		running = true
+		stopFn  = func() {
+			err := fdExit.SignalExit()
+			if err != nil {
+				msg := fmt.Errorf("error signaling exit: %w", err)
 
-			fmt.Fprint(os.Stderr, msg.Error())
+				fmt.Fprint(os.Stderr, msg.Error())
 
-			cancel(msg)
+				cancel(msg)
+
+				return
+			}
+
+			<-exitUffd
+		}
+	)
+
+	stopServe := func() {
+		stopMu.Lock()
+		if !running {
+			stopMu.Unlock()
 
 			return
 		}
+		fn := stopFn
+		stopFn = func() {}
+		running = false
+		stopMu.Unlock()
 
-		<-exitUffd
+		fn()
 	}
 
-	defer cleanup()
+	defer stopServe()
+
+	if os.Getenv("GO_GATED") == "1" {
+		gateCmdFile := os.NewFile(uintptr(7), "gate-cmd")
+		defer gateCmdFile.Close()
+
+		gateSyncFile := os.NewFile(uintptr(8), "gate-sync")
+		defer gateSyncFile.Close()
+
+		startServe := func() {
+			stopMu.Lock()
+			if running {
+				stopMu.Unlock()
+
+				return
+			}
+			stopMu.Unlock()
+
+			newExit, fdErr := fdexit.New()
+			if fdErr != nil {
+				cancel(fmt.Errorf("error creating fd exit: %w", fdErr))
+
+				return
+			}
+
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				if err := uffd.Serve(ctx, newExit); err != nil {
+					cancel(fmt.Errorf("error serving: %w", err))
+				}
+			}()
+
+			stopMu.Lock()
+			stopFn = func() {
+				newExit.SignalExit()
+				<-done
+				newExit.Close()
+			}
+			running = true
+			stopMu.Unlock()
+		}
+
+		go func() {
+			var buf [1]byte
+			for {
+				if _, err := gateCmdFile.Read(buf[:]); err != nil {
+					return
+				}
+
+				switch buf[0] {
+				case 'P':
+					stopServe()
+					if _, err := gateSyncFile.Write([]byte{1}); err != nil {
+						cancel(fmt.Errorf("writing gate sync: %w", err))
+
+						return
+					}
+				case 'R':
+					startServe()
+				}
+			}
+		}()
+	}
 
 	exitSignal := make(chan os.Signal, 1)
 	signal.Notify(exitSignal, syscall.SIGUSR1)
@@ -423,11 +561,16 @@ type pageStateEntry struct {
 }
 
 // pageStateEntries returns a snapshot of every tracked page and its state.
-// It holds the settleRequests write lock so no in-flight faultPage worker
-// can mutate the pageTracker while we iterate.
+// It first drains in-flight faultPage workers via settleRequests.Lock(), then
+// holds the pageTracker RLock while iterating so any future writer that
+// doesn't go through settleRequests (e.g. the upcoming REMOVE handler)
+// still can't mutate the map under us.
 func (u *Userfaultfd) pageStateEntries() ([]pageStateEntry, error) {
 	u.settleRequests.Lock()
 	defer u.settleRequests.Unlock()
+
+	u.pageTracker.mu.RLock()
+	defer u.pageTracker.mu.RUnlock()
 
 	entries := make([]pageStateEntry, 0, len(u.pageTracker.m))
 	for addr, state := range u.pageTracker.m {

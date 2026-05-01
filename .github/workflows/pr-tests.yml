@@ -1,6 +1,6 @@
 name: Run tests on PRs
 
-on: [workflow_call]
+on: [ workflow_call ]
 
 permissions:
   contents: read
@@ -11,6 +11,10 @@ jobs:
     runs-on: infra-tests
     env:
       GIN_MODE: test
+      # Parallel `go test ./...` binaries derive the same Ryuk session id
+      # and race on `reaper_<hash>` creation. Disable Ryuk; t.Cleanup
+      # handles normal exit, the prune step below handles abnormal exit.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
     strategy:
       matrix:
         include:
@@ -47,6 +51,25 @@ jobs:
             go.work
             ${{ matrix.package }}/go.mod
             ${{ matrix.package }}/go.sum
+
+      - name: Reap orphaned Testcontainers from previous runs
+        # Persistent runner + Ryuk disabled: prune leftover containers
+        # from SIGKILL/timeout/OOM in prior jobs.
+        # Two `docker ps` calls because different filter keys AND inside
+        # one call. Don't anchor `name=^reaper_` — Docker silently drops
+        # anchored patterns (docker/cli#1201).
+        run: |
+          set -euo pipefail
+          ids=$(
+            {
+              docker ps -aq --filter "label=org.testcontainers=true"
+              docker ps -aq --filter "name=reaper_"
+            } | sort -u
+          )
+          if [ -n "${ids}" ]; then
+            # shellcheck disable=SC2086
+            docker rm -f ${ids}
+          fi
 
       - name: Setup envd tests
         run: |

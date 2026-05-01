@@ -15,10 +15,10 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 )
 
-// MaxConcurrentSandboxes is the maximum number of sandboxes that can exist
-// simultaneously, the base tier's concurrent_instances limit is 20, leaveing
-// some headroom
-const MaxConcurrentSandboxes = 15
+// MaxConcurrentSandboxes gates parallel sandbox creation in tests. The
+// integration test team is granted extra capacity in seed.go (base tier 20 +
+// addon 200 = 220), so this can stay well below that ceiling.
+const MaxConcurrentSandboxes = 100
 
 // sandboxSemaphore gates sandbox creation so parallel tests don't exceed the
 // tier's concurrent instance limit. A slot is acquired before creation and

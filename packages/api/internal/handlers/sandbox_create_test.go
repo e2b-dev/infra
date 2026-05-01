@@ -1,19 +1,32 @@
 package handlers
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	handlersmocks "github.com/e2b-dev/infra/packages/api/internal/handlers/mocks"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	authtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -556,4 +569,289 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 			{Id: dbVolume.ID.String(), Name: "vol1", Path: "/vol1", Type: "local"},
 		}, actual)
 	})
+}
+
+func TestPostSandboxes_MissingTagDisclosure(t *testing.T) {
+	t.Parallel()
+
+	t.Run("public template returns tag-specific not found", func(t *testing.T) {
+		t.Parallel()
+		assertMissingTagDisclosure(t, true, "public-missing-tag")
+	})
+
+	t.Run("private template stays generic not found", func(t *testing.T) {
+		t.Parallel()
+		assertMissingTagDisclosure(t, false, "private-missing-tag")
+	})
+
+	t.Run("public template without default tag names default", func(t *testing.T) {
+		t.Parallel()
+		assertMissingDefaultTagDisclosure(t)
+	})
+}
+
+func TestPostSandboxes_MissingBareAliasUsesPromotedFallbackKey(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	requesterTeamID := testutils.CreateTestTeam(t, db)
+	requesterTeamSlug := testutils.GetTeamSlug(t, ctx, db, requesterTeamID)
+
+	store := &APIStore{
+		templateCache: templatecache.NewTemplateCache(db.SqlcClient, redis),
+	}
+	defer func() {
+		require.NoError(t, store.templateCache.Close(ctx))
+	}()
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+
+	body, err := json.Marshal(api.PostSandboxesJSONRequestBody{TemplateID: "desktop"})
+	require.NoError(t, err)
+
+	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/sandboxes", bytes.NewReader(body))
+	ginCtx.Request.Header.Set("Content-Type", "application/json")
+	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+		Team: &authqueries.Team{
+			ID:   requesterTeamID,
+			Slug: requesterTeamSlug,
+		},
+		Limits: &authtypes.TeamLimits{MaxLengthHours: 24},
+	})
+
+	//nolint:contextcheck // PostSandboxes reads ctx from ginCtx.Request.Context().
+	store.PostSandboxes(ginCtx)
+
+	require.Equal(t, http.StatusNotFound, recorder.Code)
+
+	var apiErr api.Error
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &apiErr))
+
+	assert.Equal(t, int32(http.StatusNotFound), apiErr.Code)
+	assert.Equal(t, "template 'desktop' not found", apiErr.Message)
+}
+
+// Valid tag exists on a private template owned by another team. A non-owner
+// requester must receive the same generic 404 used for missing tags so access
+// denials don't leak template existence.
+func TestPostSandboxes_PrivateTemplateHidesAccessDenied(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	ownerTeamID := testutils.CreateTestTeam(t, db)
+	ownerTeamSlug := testutils.GetTeamSlug(t, ctx, db, ownerTeamID)
+	requesterTeamID := testutils.CreateTestTeam(t, db)
+	requesterTeamSlug := testutils.GetTeamSlug(t, ctx, db, requesterTeamID)
+
+	store := &APIStore{
+		templateCache: templatecache.NewTemplateCache(db.SqlcClient, redis),
+	}
+	defer func() {
+		require.NoError(t, store.templateCache.Close(ctx))
+	}()
+
+	alias := "private-valid-tag"
+	tag := "v2"
+
+	templateID := createTestTemplate(ctx, t, db, ownerTeamID)
+	setTemplatePublic(ctx, t, db, templateID, false)
+	createTestTemplateAliasWithName(ctx, t, db, templateID, alias, &ownerTeamSlug)
+
+	buildID := testutils.CreateTestBuild(t, ctx, db, templateID, "ready")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, tag)
+
+	templateRef := id.WithTag(id.WithNamespace(ownerTeamSlug, alias), tag)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+
+	body, err := json.Marshal(api.PostSandboxesJSONRequestBody{TemplateID: templateRef})
+	require.NoError(t, err)
+
+	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/sandboxes", bytes.NewReader(body))
+	ginCtx.Request.Header.Set("Content-Type", "application/json")
+	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+		Team: &authqueries.Team{
+			ID:   requesterTeamID,
+			Slug: requesterTeamSlug,
+		},
+		Limits: &authtypes.TeamLimits{MaxLengthHours: 24},
+	})
+
+	//nolint:contextcheck // PostSandboxes reads ctx from ginCtx.Request.Context().
+	store.PostSandboxes(ginCtx)
+
+	require.Equal(t, http.StatusNotFound, recorder.Code)
+
+	var apiErr api.Error
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &apiErr))
+
+	assert.Equal(t, int32(http.StatusNotFound), apiErr.Code)
+	assert.Equal(t, fmt.Sprintf("template '%s' not found", id.WithNamespace(ownerTeamSlug, alias)), apiErr.Message)
+}
+
+func assertMissingTagDisclosure(t *testing.T, public bool, alias string) {
+	t.Helper()
+
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	ownerTeamID := testutils.CreateTestTeam(t, db)
+	ownerTeamSlug := testutils.GetTeamSlug(t, ctx, db, ownerTeamID)
+	requesterTeamID := testutils.CreateTestTeam(t, db)
+	requesterTeamSlug := testutils.GetTeamSlug(t, ctx, db, requesterTeamID)
+
+	store := &APIStore{
+		templateCache: templatecache.NewTemplateCache(db.SqlcClient, redis),
+	}
+	defer func() {
+		require.NoError(t, store.templateCache.Close(ctx))
+	}()
+
+	templateID := createTestTemplate(ctx, t, db, ownerTeamID)
+	setTemplatePublic(ctx, t, db, templateID, public)
+	createTestTemplateAliasWithName(ctx, t, db, templateID, alias, &ownerTeamSlug)
+
+	buildID := testutils.CreateTestBuild(t, ctx, db, templateID, "ready")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, id.DefaultTag)
+
+	templateRef := id.WithTag(id.WithNamespace(ownerTeamSlug, alias), "v2")
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+
+	body, err := json.Marshal(api.PostSandboxesJSONRequestBody{TemplateID: templateRef})
+	require.NoError(t, err)
+
+	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/sandboxes", bytes.NewReader(body))
+	ginCtx.Request.Header.Set("Content-Type", "application/json")
+	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+		Team: &authqueries.Team{
+			ID:   requesterTeamID,
+			Slug: requesterTeamSlug,
+		},
+		Limits: &authtypes.TeamLimits{MaxLengthHours: 24},
+	})
+
+	//nolint:contextcheck // PostSandboxes reads ctx from ginCtx.Request.Context().
+	store.PostSandboxes(ginCtx)
+
+	require.Equal(t, http.StatusNotFound, recorder.Code)
+
+	var apiErr api.Error
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &apiErr))
+
+	var wantMessage string
+	if public {
+		wantMessage = fmt.Sprintf("tag 'v2' does not exist for template '%s'", id.WithNamespace(ownerTeamSlug, alias))
+	} else {
+		wantMessage = fmt.Sprintf("template '%s' not found", id.WithNamespace(ownerTeamSlug, alias))
+	}
+
+	assert.Equal(t, int32(http.StatusNotFound), apiErr.Code)
+	assert.Equal(t, wantMessage, apiErr.Message)
+}
+
+func assertMissingDefaultTagDisclosure(t *testing.T) {
+	t.Helper()
+
+	db := testutils.SetupDatabase(t)
+	redis := redis_utils.SetupInstance(t)
+	ctx := t.Context()
+
+	ownerTeamID := testutils.CreateTestTeam(t, db)
+	ownerTeamSlug := testutils.GetTeamSlug(t, ctx, db, ownerTeamID)
+	requesterTeamID := testutils.CreateTestTeam(t, db)
+	requesterTeamSlug := testutils.GetTeamSlug(t, ctx, db, requesterTeamID)
+
+	store := &APIStore{
+		templateCache: templatecache.NewTemplateCache(db.SqlcClient, redis),
+	}
+	defer func() {
+		require.NoError(t, store.templateCache.Close(ctx))
+	}()
+
+	alias := "public-missing-default-tag"
+	templateID := createTestTemplate(ctx, t, db, ownerTeamID)
+	createTestTemplateAliasWithName(ctx, t, db, templateID, alias, &ownerTeamSlug)
+
+	buildID := testutils.CreateTestBuild(t, ctx, db, templateID, "ready")
+	testutils.CreateTestBuildAssignment(t, ctx, db, templateID, buildID, "dev")
+
+	templateRef := id.WithNamespace(ownerTeamSlug, alias)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+
+	body, err := json.Marshal(api.PostSandboxesJSONRequestBody{TemplateID: templateRef})
+	require.NoError(t, err)
+
+	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/sandboxes", bytes.NewReader(body))
+	ginCtx.Request.Header.Set("Content-Type", "application/json")
+	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+		Team: &authqueries.Team{
+			ID:   requesterTeamID,
+			Slug: requesterTeamSlug,
+		},
+		Limits: &authtypes.TeamLimits{MaxLengthHours: 24},
+	})
+
+	//nolint:contextcheck // PostSandboxes reads ctx from ginCtx.Request.Context().
+	store.PostSandboxes(ginCtx)
+
+	require.Equal(t, http.StatusNotFound, recorder.Code)
+
+	var apiErr api.Error
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &apiErr))
+
+	assert.Equal(t, int32(http.StatusNotFound), apiErr.Code)
+	assert.Equal(t, fmt.Sprintf("tag 'default' does not exist for template '%s'", templateRef), apiErr.Message)
+}
+
+func setTemplatePublic(ctx context.Context, t *testing.T, db *testutils.Database, templateID string, public bool) {
+	t.Helper()
+
+	err := db.SqlcClient.TestsRawSQL(
+		ctx,
+		"UPDATE public.envs SET public = $2 WHERE id = $1",
+		templateID,
+		public,
+	)
+	require.NoError(t, err)
+}
+
+func createTestTemplate(ctx context.Context, t *testing.T, db *testutils.Database, teamID uuid.UUID) string {
+	t.Helper()
+
+	templateID := "base-env-" + uuid.New().String()
+
+	err := db.SqlcClient.TestsRawSQL(
+		ctx,
+		"INSERT INTO public.envs (id, team_id, public, updated_at, source) VALUES ($1, $2, $3, NOW(), 'template')",
+		templateID,
+		teamID,
+		true,
+	)
+	require.NoError(t, err)
+
+	return templateID
+}
+
+func createTestTemplateAliasWithName(ctx context.Context, t *testing.T, db *testutils.Database, templateID, aliasName string, namespace *string) {
+	t.Helper()
+
+	err := db.SqlcClient.TestsRawSQL(
+		ctx,
+		"INSERT INTO public.env_aliases (alias, env_id, is_renamable, namespace) VALUES ($1, $2, $3, $4)",
+		aliasName,
+		templateID,
+		true,
+		namespace,
+	)
+	require.NoError(t, err)
 }

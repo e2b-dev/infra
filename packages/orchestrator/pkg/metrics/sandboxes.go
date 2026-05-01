@@ -11,7 +11,6 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/metric/exemplar"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -84,7 +83,7 @@ func NewSandboxObserver(ctx context.Context, nodeID, serviceName, serviceCommit,
 		return nil, fmt.Errorf("failed to create resource: %w", err)
 	}
 
-	meterProvider, err := telemetry.NewMeterProvider(externalMeterExporter, sandboxMetricExportPeriod, res, sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter))
+	meterProvider, err := telemetry.NewMeterProvider(externalMeterExporter, sandboxMetricExportPeriod, res)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create external metric provider: %w", err)
 	}

@@ -60,9 +60,14 @@ variable "api_port" {
   })
 }
 
-variable "api_grpc_port" {
+variable "api_internal_grpc_port" {
   type    = number
   default = 5009
+}
+
+variable "client_proxy_oidc_issuer_url" {
+  type    = string
+  default = ""
 }
 
 variable "ingress_port" {
@@ -314,6 +319,12 @@ variable "allow_sandbox_internet" {
   type = bool
 }
 
+variable "allow_sandbox_internal_cidrs" {
+  type        = string
+  description = "Comma-separated CIDRs to allow through the sandbox firewall deny list"
+  default     = ""
+}
+
 # Template manager
 variable "template_manager_port" {
   type = number
@@ -499,4 +510,10 @@ variable "gcs_grpc_connection_pool_size" {
 variable "orchestrator_env_vars" {
   type    = map(string)
   default = {}
+}
+
+variable "orchestrator_enabled" {
+  type        = bool
+  default     = true
+  description = "Whether the orchestrator job should be deployed"
 }
