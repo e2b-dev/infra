@@ -548,9 +548,9 @@ func run(config cfg.Config, opts Options) (success bool) {
 	builder := chrooted.NewBuilder(config)
 	volumeService := volumes.New(config, builder)
 
-	uploadCoord := sandbox.NewUploadCoordinator(templateCache)
-	closers = append(closers, closer{"upload coordinator", func(context.Context) error {
-		uploadCoord.Stop()
+	uploads := sandbox.NewUploads(templateCache)
+	closers = append(closers, closer{"pending uploads", func(context.Context) error {
+		uploads.Stop()
 
 		return nil
 	}})
@@ -568,7 +568,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		FeatureFlags:     featureFlags,
 		SbxEventsService: events.NewEventsService(sbxEventsDeliveryTargets),
 		PeerRegistry:     peerRegistry,
-		UploadCoord:      uploadCoord,
+		Uploads:          uploads,
 	})
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create orchestrator server", zap.Error(err))
@@ -650,7 +650,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 			templateCache,
 			persistence,
 			buildPersistence,
-			uploadCoord,
+			uploads,
 		)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to create template manager", zap.Error(err))

@@ -666,7 +666,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		uploadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadTimeout)
 		defer cancel()
 
-		memHdr, rootHdr, err := res.snapshot.Upload(uploadCtx, s.persistence, s.config.StorageConfig.CompressConfig, s.featureFlags, storage.UseCasePause, s.uploadCoord)
+		memHdr, rootHdr, err := res.upload.Run(uploadCtx)
 		defer res.completeUpload(uploadCtx, memHdr, rootHdr, err)
 
 		if err != nil {
@@ -721,9 +721,7 @@ func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
 // need to start the background GCS upload.
 type snapshotResult struct {
 	meta           metadata.Template
-	snapshot       *sandbox.Snapshot
-	paths          storage.Paths
-	uploadFut      *utils.ErrorOnce
+	upload         *sandbox.Upload
 	completeUpload func(ctx context.Context, memfileHdr, rootfsHdr []byte, uploadErr error)
 }
 
@@ -751,7 +749,7 @@ func (s *Server) snapshotAndCacheSandbox(
 		return nil, fmt.Errorf("error snapshotting sandbox: %w", err)
 	}
 
-	uploadFut, err := s.uploadCoord.Begin(snapshot.BuildID)
+	upload, err := sandbox.NewUpload(ctx, s.uploads, snapshot, s.persistence, s.config.StorageConfig.CompressConfig, s.featureFlags, storage.UseCasePause)
 	if err != nil {
 		return nil, fmt.Errorf("register upload: %w", err)
 	}
@@ -777,7 +775,7 @@ func (s *Server) snapshotAndCacheSandbox(
 	peerEnabled := s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag)
 
 	completeUpload := func(ctx context.Context, memfileHdr, rootfsHdr []byte, uploadErr error) {
-		_ = uploadFut.SetError(uploadErr)
+		upload.Finish(uploadErr)
 
 		if !peerEnabled {
 			return
@@ -801,9 +799,7 @@ func (s *Server) snapshotAndCacheSandbox(
 
 	return &snapshotResult{
 		meta:           meta,
-		snapshot:       snapshot,
-		paths:          snapshot.Paths,
-		uploadFut:      uploadFut,
+		upload:         upload,
 		completeUpload: completeUpload,
 	}, nil
 }
@@ -817,7 +813,10 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 	go func() {
 		defer cancel()
 
-		memHdr, rootHdr, err := res.snapshot.Upload(ctx, s.persistence, s.config.StorageConfig.CompressConfig, s.featureFlags, storage.UseCasePause, s.uploadCoord)
+		ctx, span := tracer.Start(ctx, "upload snapshot")
+		defer span.End()
+
+		memHdr, rootHdr, err := res.upload.Run(ctx)
 		if err != nil {
 			sbxlogger.I(sbx).Error(ctx, "error uploading snapshot files", zap.Error(err))
 		} else {

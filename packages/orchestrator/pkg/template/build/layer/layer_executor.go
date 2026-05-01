@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
@@ -20,7 +19,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/layer")
@@ -36,7 +34,7 @@ type LayerExecutor struct {
 	templateStorage storage.StorageProvider
 	buildStorage    storage.StorageProvider
 	index           cache.Index
-	uploadCoord     *sandbox.UploadCoordinator
+	uploads         *sandbox.Uploads
 	compressConfig  storage.CompressConfig
 	ff              *featureflags.Client
 }
@@ -50,7 +48,7 @@ func NewLayerExecutor(
 	templateStorage storage.StorageProvider,
 	buildStorage storage.StorageProvider,
 	index cache.Index,
-	uploadCoord *sandbox.UploadCoordinator,
+	uploads *sandbox.Uploads,
 	compressConfig storage.CompressConfig,
 	ff *featureflags.Client,
 ) *LayerExecutor {
@@ -65,7 +63,7 @@ func NewLayerExecutor(
 		templateStorage: templateStorage,
 		buildStorage:    buildStorage,
 		index:           index,
-		uploadCoord:     uploadCoord,
+		uploads:         uploads,
 		compressConfig:  compressConfig,
 		ff:              ff,
 	}
@@ -285,19 +283,9 @@ func (lb *LayerExecutor) PauseAndUpload(
 	// Upload snapshot async, it's added to the template cache immediately
 	userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
 
-	// uploadCoord is nil for one-shot CLIs (create-build, smoketest, benchmarks)
-	// that build a single template and exit; nothing waits on the future.
-	var uploadFut *utils.ErrorOnce
-	if lb.uploadCoord != nil {
-		selfBuildID, err := uuid.Parse(meta.Template.BuildID)
-		if err != nil {
-			return fmt.Errorf("parse self build id: %w", err)
-		}
-
-		uploadFut, err = lb.uploadCoord.Begin(selfBuildID)
-		if err != nil {
-			return fmt.Errorf("register upload: %w", err)
-		}
+	upload, err := sandbox.NewUpload(ctx, lb.uploads, snapshot, lb.templateStorage, lb.compressConfig, lb.ff, storage.UseCaseBuild)
+	if err != nil {
+		return fmt.Errorf("register upload: %w", err)
 	}
 
 	lb.UploadErrGroup.Go(func() (uploadErr error) {
@@ -305,15 +293,10 @@ func (lb *LayerExecutor) PauseAndUpload(
 		ctx, span := tracer.Start(ctx, "upload snapshot")
 		defer span.End()
 
-		// Always signal terminal outcome on the future so child layers waiting
-		// on this build wake up — including on error, so they can abort.
-		defer func() {
-			if uploadFut != nil {
-				_ = uploadFut.SetError(uploadErr)
-			}
-		}()
+		// Signal even on error so child layers waiting on this build can abort.
+		defer func() { upload.Finish(uploadErr) }()
 
-		if _, _, err := snapshot.Upload(ctx, lb.templateStorage, lb.compressConfig, lb.ff, storage.UseCaseBuild, lb.uploadCoord); err != nil {
+		if _, _, err := upload.Run(ctx); err != nil {
 			return fmt.Errorf("error uploading snapshot: %w", err)
 		}
 

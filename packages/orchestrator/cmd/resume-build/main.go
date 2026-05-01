@@ -644,7 +644,12 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 			fmt.Println("💾 Saving snapshot to local storage...")
 		}
 
-		if _, _, err := snapshot.Upload(ctx, r.storage, storage.CompressConfig{}, nil, "", nil); err != nil {
+		upload, err := sandbox.NewUpload(ctx, nil, snapshot, r.storage, storage.CompressConfig{}, nil, "")
+		if err != nil {
+			return timings, fmt.Errorf("failed to prepare upload: %w", err)
+		}
+
+		if _, _, err := upload.Run(ctx); err != nil {
 			return timings, fmt.Errorf("failed to upload snapshot: %w", err)
 		}
 

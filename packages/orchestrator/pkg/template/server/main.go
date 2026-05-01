@@ -61,7 +61,7 @@ func New(
 	templateCache *sbxtemplate.Cache,
 	templatePersistence storage.StorageProvider,
 	buildPersistence storage.StorageProvider,
-	uploadCoord *sandbox.UploadCoordinator,
+	uploads *sandbox.Uploads,
 ) (s *ServerStore, e error) {
 	logger.Info(ctx, "Initializing template manager")
 
@@ -108,7 +108,7 @@ func New(
 		sandboxFactory.Sandboxes,
 		templateCache,
 		buildMetrics,
-		uploadCoord,
+		uploads,
 	)
 
 	store := &ServerStore{
