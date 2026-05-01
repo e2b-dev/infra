@@ -60,9 +60,14 @@ variable "api_port" {
   })
 }
 
-variable "api_grpc_port" {
+variable "api_internal_grpc_port" {
   type    = number
   default = 5009
+}
+
+variable "client_proxy_oidc_issuer_url" {
+  type    = string
+  default = ""
 }
 
 variable "ingress_port" {

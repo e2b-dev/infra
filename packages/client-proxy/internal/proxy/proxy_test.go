@@ -76,7 +76,7 @@ func TestCatalogResolution_CatalogHit(t *testing.T) {
 	require.Equal(t, "10.0.0.1", nodeIP)
 }
 
-func TestCatalogResolution_CatalogHit_EmptyIPReturnsEmpty(t *testing.T) {
+func TestCatalogResolution_CatalogHit_EmptyIPReturnsRouteUnavailable(t *testing.T) {
 	t.Parallel()
 
 	c := catalog.NewMemorySandboxesCatalog()
@@ -90,7 +90,7 @@ func TestCatalogResolution_CatalogHit_EmptyIPReturnsEmpty(t *testing.T) {
 	require.NoError(t, err)
 
 	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrNodeRouteUnavailable)
 	require.Empty(t, nodeIP)
 }
 
@@ -102,6 +102,17 @@ func TestCatalogResolution_CatalogMiss(t *testing.T) {
 
 	_, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
 	require.ErrorIs(t, err, ErrNodeNotFound)
+}
+
+func TestCatalogResolution_CatalogMiss_ResumeEmptyIPReturnsRouteUnavailable(t *testing.T) {
+	t.Parallel()
+
+	c := catalog.NewMemorySandboxesCatalog()
+	ff := newFF(t, true)
+
+	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, stubResumer{nodeIP: ""}, ff)
+	require.ErrorIs(t, err, ErrNodeRouteUnavailable)
+	require.Empty(t, nodeIP)
 }
 
 func TestHandlePausedSandbox_NoResumer_MissingTrafficAccessToken(t *testing.T) {
@@ -232,8 +243,8 @@ func TestHandlePausedSandbox_Succeeded_EmptyIP(t *testing.T) {
 	ff := newFF(t, true)
 
 	nodeIP, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{nodeIP: ""}, ff)
-	require.NoError(t, err)
-	require.Equal(t, autoResumeSucceeded, res)
+	require.ErrorIs(t, err, ErrNodeRouteUnavailable)
+	require.Equal(t, autoResumeErrored, res)
 	require.Empty(t, nodeIP)
 }
 

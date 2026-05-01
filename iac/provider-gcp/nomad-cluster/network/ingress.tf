@@ -1,5 +1,5 @@
 locals {
-  subdomains = ["dashboard-api"]
+  subdomains = ["grpc-api", "dashboard-api"]
 
   ingress_zones = toset([for info in local.domain_info : info.root_domain])
 
@@ -89,6 +89,16 @@ resource "google_compute_security_policy" "ingress" {
 resource "google_compute_url_map" "ingress" {
   name            = "${var.prefix}ingress"
   default_service = google_compute_backend_service.ingress.self_link
+
+  host_rule {
+    hosts        = concat(["grpc-api.${var.domain_name}"], [for d in var.additional_domains : "grpc-api.${d}"])
+    path_matcher = "grpc-api-paths"
+  }
+
+  path_matcher {
+    name            = "grpc-api-paths"
+    default_service = google_compute_backend_service.h2c_ingress.self_link
+  }
 }
 
 resource "google_compute_global_forwarding_rule" "ingress" {
