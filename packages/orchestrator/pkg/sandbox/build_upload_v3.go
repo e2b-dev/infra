@@ -29,7 +29,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		return headers.StoreHeader(ctx, u.store, u.paths.MemfileHeader(), u.snap.MemfileDiffHeader)
+		return headers.StoreHeader(ctx, u.store, u.paths.MemfileHeader(), finalizeV3(u.snap.MemfileDiffHeader))
 	})
 
 	eg.Go(func() error {
@@ -37,7 +37,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		return headers.StoreHeader(ctx, u.store, u.paths.RootfsHeader(), u.snap.RootfsDiffHeader)
+		return headers.StoreHeader(ctx, u.store, u.paths.RootfsHeader(), finalizeV3(u.snap.RootfsDiffHeader))
 	})
 
 	eg.Go(func() error {
