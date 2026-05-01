@@ -66,6 +66,7 @@ func putFinalHeader(t *testing.T, cache *fakeCache, buildID uuid.UUID, fileType 
 	dev := blockmocks.NewMockReadonlyDevice(t)
 	dev.EXPECT().Header().Return(&headers.Header{
 		Metadata: &headers.Metadata{Version: headers.MetadataVersionV4},
+		Builds:   map[uuid.UUID]headers.BuildData{buildID: {}}, // self-entry → not stale
 	}).Maybe()
 
 	switch fileType {
@@ -191,6 +192,7 @@ func TestUploads_Wait_RejectsIncompleteCachedHeader(t *testing.T) {
 	dev := blockmocks.NewMockReadonlyDevice(t)
 	dev.EXPECT().Header().Return(&headers.Header{
 		Metadata:                &headers.Metadata{Version: headers.MetadataVersionV4},
+		Builds:                  map[uuid.UUID]headers.BuildData{id: {}},
 		IncompletePendingUpload: true,
 	})
 	tpl.EXPECT().Memfile(mock.Anything).Return(dev, nil)
@@ -198,7 +200,7 @@ func TestUploads_Wait_RejectsIncompleteCachedHeader(t *testing.T) {
 
 	_, err := c.Wait(context.Background(), id, build.Memfile)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "header incomplete")
+	require.Contains(t, err.Error(), "still stale after refresh")
 }
 
 func TestUploads_Wait_NoFuture_ReadsFromCache(t *testing.T) {
@@ -208,6 +210,7 @@ func TestUploads_Wait_NoFuture_ReadsFromCache(t *testing.T) {
 	id := uuid.New()
 	want := &headers.Header{
 		Metadata: &headers.Metadata{Version: headers.MetadataVersionV4},
+		Builds:   map[uuid.UUID]headers.BuildData{id: {}},
 	}
 
 	tpl := templatemocks.NewMockTemplate(t)
