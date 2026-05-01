@@ -140,14 +140,11 @@ func UploadBlob(ctx context.Context, provider StorageProvider, remotePath string
 }
 
 // PeerTransitionedError is returned by the peer Seekable when the GCS upload
-// has completed and serialized V4 headers are available.
-type PeerTransitionedError struct {
-	MemfileHeader []byte
-	RootfsHeader  []byte
-}
+// has completed; the caller should re-load the V4 header from storage.
+type PeerTransitionedError struct{}
 
 func (e *PeerTransitionedError) Error() string {
-	return "peer upload completed, headers available"
+	return "peer upload completed, reload header from storage"
 }
 
 // StorageConfig holds the configuration for creating a storage provider.

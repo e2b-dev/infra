@@ -296,7 +296,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 		// Signal even on error so child layers waiting on this build can abort.
 		defer func() { upload.Finish(uploadErr) }()
 
-		if _, _, err := upload.Run(ctx); err != nil {
+		if err := upload.Run(ctx); err != nil {
 			return fmt.Errorf("error uploading snapshot: %w", err)
 		}
 

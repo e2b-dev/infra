@@ -25,7 +25,7 @@ func TestPeerSeekable_Size_PeerSucceeds(t *testing.T) {
 		return req.GetBuildId() == "build-1" && req.GetFileName() == storage.MemfileName
 	})).Return(&orchestrator.GetBuildFileSizeResponse{TotalSize: 4096}, nil)
 
-	s := &peerSeekable{peerHandle: peerHandle[storage.Seekable]{client: client, buildID: "build-1", fileName: storage.MemfileName, uploaded: &atomic.Pointer[UploadedHeaders]{}}}
+	s := &peerSeekable{peerHandle: peerHandle[storage.Seekable]{client: client, buildID: "build-1", fileName: storage.MemfileName, uploaded: &atomic.Bool{}}}
 	size, err := s.Size(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, int64(4096), size)
@@ -47,7 +47,7 @@ func TestPeerSeekable_Size_PeerNotAvailable_FallsBackToBase(t *testing.T) {
 		client:   client,
 		buildID:  "build-1",
 		fileName: storage.MemfileName,
-		uploaded: &atomic.Pointer[UploadedHeaders]{},
+		uploaded: &atomic.Bool{},
 		openFn: func(ctx context.Context) (storage.Seekable, error) {
 			return base.OpenSeekable(ctx, "build-1/memfile", storage.MemfileObjectType)
 		},
@@ -71,7 +71,7 @@ func TestPeerSeekable_OpenRangeReader_PeerSucceeds(t *testing.T) {
 		return req.GetOffset() == 10 && req.GetLength() == int64(len(data))
 	})).Return(stream, nil)
 
-	s := &peerSeekable{peerHandle: peerHandle[storage.Seekable]{client: client, buildID: "build-1", fileName: storage.MemfileName, uploaded: &atomic.Pointer[UploadedHeaders]{}}}
+	s := &peerSeekable{peerHandle: peerHandle[storage.Seekable]{client: client, buildID: "build-1", fileName: storage.MemfileName, uploaded: &atomic.Bool{}}}
 	rc, err := s.OpenRangeReader(t.Context(), 10, int64(len(data)), nil)
 	require.NoError(t, err)
 	defer rc.Close()
@@ -98,7 +98,7 @@ func TestPeerSeekable_OpenRangeReader_PeerError_FallsBackToBase(t *testing.T) {
 		client:   client,
 		buildID:  "build-1",
 		fileName: storage.MemfileName,
-		uploaded: &atomic.Pointer[UploadedHeaders]{},
+		uploaded: &atomic.Bool{},
 		openFn: func(ctx context.Context) (storage.Seekable, error) {
 			return base.OpenSeekable(ctx, "build-1/memfile", storage.MemfileObjectType)
 		},
@@ -112,19 +112,13 @@ func TestPeerSeekable_OpenRangeReader_PeerError_FallsBackToBase(t *testing.T) {
 	assert.Equal(t, baseData, got)
 }
 
-func TestPeerSeekable_OpenRangeReader_UploadedHeaders_ReturnsPeerTransitionedError(t *testing.T) {
+func TestPeerSeekable_OpenRangeReader_Uploaded_ReturnsPeerTransitionedError(t *testing.T) {
 	t.Parallel()
-
-	memHeader := []byte("mem-header-v4")
-	rootHeader := []byte("root-header-v4")
 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
 
-	uploaded := &atomic.Pointer[UploadedHeaders]{}
-	uploaded.Store(&UploadedHeaders{
-		MemfileHeader: memHeader,
-		RootfsHeader:  rootHeader,
-	})
+	uploaded := &atomic.Bool{}
+	uploaded.Store(true)
 
 	baseSeekable := storage.NewMockSeekable(t)
 	base := storage.NewMockStorageProvider(t)
@@ -140,46 +134,9 @@ func TestPeerSeekable_OpenRangeReader_UploadedHeaders_ReturnsPeerTransitionedErr
 		},
 	}}
 
-	// frameTable=nil triggers the transition header check in the fallback path
 	_, err := s.OpenRangeReader(t.Context(), 0, 100, nil)
 	require.Error(t, err)
 
 	var transErr *storage.PeerTransitionedError
 	require.ErrorAs(t, err, &transErr)
-	assert.Equal(t, memHeader, transErr.MemfileHeader)
-	assert.Equal(t, rootHeader, transErr.RootfsHeader)
-}
-
-func TestPeerSeekable_OpenRangeReader_UploadedSkipsPeer(t *testing.T) {
-	t.Parallel()
-
-	client := orchestratormocks.NewMockChunkServiceClient(t)
-
-	uploaded := &atomic.Pointer[UploadedHeaders]{}
-	uploaded.Store(&UploadedHeaders{})
-
-	baseData := []byte("from gcs")
-	baseSeekable := storage.NewMockSeekable(t)
-	baseSeekable.EXPECT().OpenRangeReader(mock.Anything, int64(0), int64(len(baseData)), (*storage.FrameTable)(nil)).Return(io.NopCloser(bytes.NewReader(baseData)), nil)
-
-	base := storage.NewMockStorageProvider(t)
-	base.EXPECT().OpenSeekable(mock.Anything, "build-1/memfile", storage.MemfileObjectType).Return(baseSeekable, nil)
-
-	s := &peerSeekable{peerHandle: peerHandle[storage.Seekable]{
-		client:   client,
-		buildID:  "build-1",
-		fileName: storage.MemfileName,
-		uploaded: uploaded,
-		openFn: func(ctx context.Context) (storage.Seekable, error) {
-			return base.OpenSeekable(ctx, "build-1/memfile", storage.MemfileObjectType)
-		},
-	}}
-
-	rc, err := s.OpenRangeReader(t.Context(), 0, int64(len(baseData)), nil)
-	require.NoError(t, err)
-	defer rc.Close()
-
-	got, err := io.ReadAll(rc)
-	require.NoError(t, err)
-	assert.Equal(t, baseData, got)
 }

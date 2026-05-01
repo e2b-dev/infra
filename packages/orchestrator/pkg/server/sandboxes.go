@@ -666,8 +666,8 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		uploadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadTimeout)
 		defer cancel()
 
-		memHdr, rootHdr, err := res.upload.Run(uploadCtx)
-		defer res.completeUpload(uploadCtx, memHdr, rootHdr, err)
+		err := res.upload.Run(uploadCtx)
+		defer res.completeUpload(uploadCtx, err)
 
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
@@ -722,7 +722,7 @@ func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
 type snapshotResult struct {
 	meta           metadata.Template
 	upload         *sandbox.Upload
-	completeUpload func(ctx context.Context, memfileHdr, rootfsHdr []byte, uploadErr error)
+	completeUpload func(ctx context.Context, uploadErr error)
 }
 
 // snapshotAndCacheSandbox creates a snapshot of a sandbox and adds it to the local
@@ -774,17 +774,14 @@ func (s *Server) snapshotAndCacheSandbox(
 	// completeUpload don't drift if the flag flips mid-upload.
 	peerEnabled := s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag)
 
-	completeUpload := func(ctx context.Context, memfileHdr, rootfsHdr []byte, uploadErr error) {
+	completeUpload := func(ctx context.Context, uploadErr error) {
 		upload.Finish(uploadErr)
 
 		if !peerEnabled {
 			return
 		}
 
-		s.uploadedBuilds.Set(meta.Template.BuildID, &uploadedBuildHeaders{
-			memfileHeader: memfileHdr,
-			rootfsHeader:  rootfsHdr,
-		}, ttlcache.DefaultTTL)
+		s.uploadedBuilds.Set(meta.Template.BuildID, struct{}{}, ttlcache.DefaultTTL)
 
 		if err := s.peerRegistry.Unregister(ctx, meta.Template.BuildID); err != nil {
 			logger.L().Warn(ctx, "failed to unregister peer address from routing", zap.String("build_id", meta.Template.BuildID), zap.Error(err))
@@ -816,14 +813,14 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 		ctx, span := tracer.Start(ctx, "upload snapshot")
 		defer span.End()
 
-		memHdr, rootHdr, err := res.upload.Run(ctx)
+		err := res.upload.Run(ctx)
 		if err != nil {
 			sbxlogger.I(sbx).Error(ctx, "error uploading snapshot files", zap.Error(err))
 		} else {
 			sbxlogger.I(sbx).Info(ctx, "snapshot finished uploading successfully")
 		}
 
-		res.completeUpload(ctx, memHdr, rootHdr, err)
+		res.completeUpload(ctx, err)
 	}()
 }
 

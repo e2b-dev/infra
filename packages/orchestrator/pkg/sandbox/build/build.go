@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"sync/atomic"
+	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -41,7 +43,6 @@ func NewFile(
 	return f
 }
 
-// Header returns the current header.
 func (b *File) Header() *header.Header {
 	return b.header.Load()
 }
@@ -50,7 +51,15 @@ func (b *File) SwapHeader(h *header.Header) {
 	b.header.Store(h)
 }
 
+// maxTransitionRetries caps the number of header-swap retries when the peer
+// signals upload completion via PeerTransitionedError. After a successful CAS,
+// subsequent swapHeader calls are no-ops, so without a limit the loop would
+// retry the same failing read forever.
+const maxTransitionRetries = 2
+
 func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
+	transitionRetries := 0
+
 	for n < len(p) {
 		h := b.header.Load()
 
@@ -103,17 +112,10 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 			ft,
 		)
 		if err != nil {
-			var transErr *storage.PeerTransitionedError
-			if errors.As(err, &transErr) {
-				// No retry cap: the first successful swap flips
-				// peerSeekable.uploaded, so withPeerFallback skips the peer
-				// on subsequent reads and PeerTransitionedError is unreachable
-				// on the next iteration.
-				if swapErr := b.swapHeader(transErr); swapErr != nil {
-					return 0, fmt.Errorf("failed to swap header: %w", swapErr)
-				}
-
+			if retry, swapErr := b.retryOnTransition(ctx, err, &transitionRetries); retry {
 				continue
+			} else if swapErr != nil {
+				return 0, swapErr
 			}
 
 			return 0, fmt.Errorf("failed to read from source: %w", err)
@@ -127,6 +129,8 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 
 // The slice access must be in the predefined blocksize of the build.
 func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
+	transitionRetries := 0
+
 	for {
 		h := b.header.Load()
 
@@ -149,13 +153,10 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 
 		result, err := diff.Slice(ctx, int64(mappedBuild.Offset), int64(h.Metadata.BlockSize), ft)
 		if err != nil {
-			var transErr *storage.PeerTransitionedError
-			if errors.As(err, &transErr) {
-				if swapErr := b.swapHeader(transErr); swapErr != nil {
-					return nil, fmt.Errorf("failed to swap header: %w", swapErr)
-				}
-
+			if retry, swapErr := b.retryOnTransition(ctx, err, &transitionRetries); retry {
 				continue
+			} else if swapErr != nil {
+				return nil, swapErr
 			}
 
 			return nil, err
@@ -165,31 +166,42 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 	}
 }
 
-// swapHeader atomically replaces the header when the peer signals upload
-// completion. Only the first goroutine to CAS succeeds; others just retry
-// with the already-swapped header. The caller's retry counter bounds
-// repeated attempts.
-func (b *File) swapHeader(transErr *storage.PeerTransitionedError) error {
-	var headerBytes []byte
-
-	switch b.fileType {
-	case Memfile:
-		headerBytes = transErr.MemfileHeader
-	case Rootfs:
-		headerBytes = transErr.RootfsHeader
+// retryOnTransition checks if err is a PeerTransitionedError and swaps the
+// header if the retry budget allows. Returns (true, nil) to signal the caller
+// should continue the loop, or (false, swapErr) if the swap itself failed.
+func (b *File) retryOnTransition(ctx context.Context, err error, retries *int) (retry bool, swapErr error) {
+	var transErr *storage.PeerTransitionedError
+	if !errors.As(err, &transErr) || *retries >= maxTransitionRetries {
+		return false, nil
 	}
 
-	if len(headerBytes) == 0 {
-		return errors.New("no header bytes available")
+	*retries++
+
+	logger.L().Info(ctx, "peer transition detected, swapping header",
+		zap.String("file_type", string(b.fileType)),
+		zap.Int("retry", *retries),
+	)
+
+	if swapErr := b.swapHeader(ctx); swapErr != nil {
+		return false, fmt.Errorf("failed to swap header: %w", swapErr)
 	}
 
-	newH, err := header.DeserializeBytes(headerBytes)
+	return true, nil
+}
+
+// swapReadHeaderBudget bounds how long the read-path swap waits for the V4
+// header to appear. The peer just signaled use_storage, so GCS visibility is
+// imminent — short budget keeps a stalled reader from blocking forever.
+const swapReadHeaderBudget = 700 * time.Millisecond
+
+// swapHeader replaces the header with the post-upload V4 header from storage.
+func (b *File) swapHeader(ctx context.Context) error {
+	newH, err := LoadV4(ctx, b.persistence, b.header.Load().Metadata.BuildId, b.fileType, nil, swapReadHeaderBudget)
 	if err != nil {
-		return fmt.Errorf("failed to swap header: %w", err)
+		return err
 	}
 
-	old := b.header.Load()
-	b.header.CompareAndSwap(old, newH)
+	b.header.Store(newH)
 
 	return nil
 }

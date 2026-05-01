@@ -649,7 +649,7 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 			return timings, fmt.Errorf("failed to prepare upload: %w", err)
 		}
 
-		if _, _, err := upload.Run(ctx); err != nil {
+		if err := upload.Run(ctx); err != nil {
 			return timings, fmt.Errorf("failed to upload snapshot: %w", err)
 		}
 

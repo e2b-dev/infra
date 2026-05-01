@@ -69,14 +69,9 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length in
 			}, nil
 		},
 		func(ctx context.Context, base storage.Seekable) (io.ReadCloser, error) {
-			// Signal the caller to swap to V4 headers if compressed headers are available.
-			if s.uploaded != nil {
-				if hdrs := s.uploaded.Load(); hdrs != nil && (len(hdrs.MemfileHeader) > 0 || len(hdrs.RootfsHeader) > 0) {
-					return nil, &storage.PeerTransitionedError{
-						MemfileHeader: hdrs.MemfileHeader,
-						RootfsHeader:  hdrs.RootfsHeader,
-					}
-				}
+			// Signal the caller to fetch the V4 header from storage on its own.
+			if s.uploaded != nil && s.uploaded.Load() {
+				return nil, &storage.PeerTransitionedError{}
 			}
 
 			return base.OpenRangeReader(ctx, off, length, frameTable)
@@ -101,7 +96,7 @@ func openPeerSeekableStream(
 	ctx context.Context,
 	client orchestrator.ChunkServiceClient,
 	req *orchestrator.ReadAtBuildSeekableRequest,
-	uploaded *atomic.Pointer[UploadedHeaders],
+	uploaded *atomic.Bool,
 ) (func() ([]byte, error), error) {
 	stream, err := client.ReadAtBuildSeekable(ctx, req)
 	if err != nil {

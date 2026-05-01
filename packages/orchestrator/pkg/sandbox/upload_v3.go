@@ -11,15 +11,15 @@ import (
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-func (u *Upload) runV3(ctx context.Context) (memfileHeader, rootfsHeader []byte, err error) {
+func (u *Upload) runV3(ctx context.Context) error {
 	memfilePath, err := u.snap.MemfileDiff.CachePath()
 	if err != nil {
-		return nil, nil, fmt.Errorf("error getting memfile diff path: %w", err)
+		return fmt.Errorf("error getting memfile diff path: %w", err)
 	}
 
 	rootfsPath, err := u.snap.RootfsDiff.CachePath()
 	if err != nil {
-		return nil, nil, fmt.Errorf("error getting rootfs diff path: %w", err)
+		return fmt.Errorf("error getting rootfs diff path: %w", err)
 	}
 
 	eg, ctx := errgroup.WithContext(ctx)
@@ -29,9 +29,7 @@ func (u *Upload) runV3(ctx context.Context) (memfileHeader, rootfsHeader []byte,
 			return nil
 		}
 
-		_, err := headers.StoreHeader(ctx, u.store, u.paths.MemfileHeader(), u.snap.MemfileDiffHeader)
-
-		return err
+		return headers.StoreHeader(ctx, u.store, u.paths.MemfileHeader(), u.snap.MemfileDiffHeader)
 	})
 
 	eg.Go(func() error {
@@ -39,9 +37,7 @@ func (u *Upload) runV3(ctx context.Context) (memfileHeader, rootfsHeader []byte,
 			return nil
 		}
 
-		_, err := headers.StoreHeader(ctx, u.store, u.paths.RootfsHeader(), u.snap.RootfsDiffHeader)
-
-		return err
+		return headers.StoreHeader(ctx, u.store, u.paths.RootfsHeader(), u.snap.RootfsDiffHeader)
 	})
 
 	eg.Go(func() error {
@@ -73,21 +69,21 @@ func (u *Upload) runV3(ctx context.Context) (memfileHeader, rootfsHeader []byte,
 	})
 
 	if err := eg.Wait(); err != nil {
-		return nil, nil, err
+		return err
 	}
 
 	if h := finalizeV3(u.snap.MemfileDiffHeader); h != nil {
 		if err := u.publish(ctx, build.Memfile, h); err != nil {
-			return nil, nil, err
+			return err
 		}
 	}
 	if h := finalizeV3(u.snap.RootfsDiffHeader); h != nil {
 		if err := u.publish(ctx, build.Rootfs, h); err != nil {
-			return nil, nil, err
+			return err
 		}
 	}
 
-	return nil, nil, nil
+	return nil
 }
 
 // finalizeV3 returns a shallow copy of src with IncompletePendingUpload cleared,

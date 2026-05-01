@@ -56,7 +56,7 @@ func NewUpload(
 	return u, nil
 }
 
-func (u *Upload) Run(ctx context.Context) (memHdr, rootHdr []byte, err error) {
+func (u *Upload) Run(ctx context.Context) error {
 	if !u.mem.IsCompressionEnabled() && !u.root.IsCompressionEnabled() {
 		return u.runV3(ctx)
 	}

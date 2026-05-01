@@ -30,17 +30,9 @@ type Resolver interface {
 	Close()
 }
 
-// UploadedHeaders holds the serialized V4 headers received from the peer's
-// use_storage response. These are used by build.File to atomically swap headers
-// when transitioning from P2P to compressed GCS reads.
-type UploadedHeaders struct {
-	MemfileHeader []byte
-	RootfsHeader  []byte
-}
-
 type resolveResult struct {
 	client   orchestrator.ChunkServiceClient
-	uploaded *atomic.Pointer[UploadedHeaders]
+	uploaded *atomic.Bool
 	addr     string
 }
 
@@ -57,11 +49,11 @@ func (nopResolver) Close()       {}
 
 // peerResolver is the real implementation that looks up peers via the Registry.
 type peerResolver struct {
-	registry    Registry
-	selfAddress string
-	peerConns   sync.Map // address → *grpc.ClientConn
-	uploaded    sync.Map // buildID → *atomic.Pointer[UploadedHeaders]
-	dialGroup   singleflight.Group
+	registry       Registry
+	selfAddress    string
+	peerConns      sync.Map // address → *grpc.ClientConn
+	uploadedBuilds sync.Map // buildID → *atomic.Bool
+	dialGroup      singleflight.Group
 }
 
 func NewResolver(registry Registry, selfAddress string) Resolver {
@@ -112,33 +104,32 @@ func (r *peerResolver) isSelfAddress(address string) bool {
 	return address == r.selfAddress
 }
 
-// uploadedPtr returns a shared atomic pointer for the given build ID.
-// Non-nil value means the build is uploaded (use_storage). The UploadedHeaders
-// may contain serialized V4 headers for the peer transition protocol, or be
-// empty (for uncompressed builds).
-func (r *peerResolver) uploadedPtr(buildID string) *atomic.Pointer[UploadedHeaders] {
-	if v, ok := r.uploaded.Load(buildID); ok {
-		return v.(*atomic.Pointer[UploadedHeaders])
+// uploadedFlag returns a shared atomic flag for the given build ID.
+// Once any reader sets the flag (via use_storage), all subsequent opens for
+// that build skip the peer.
+func (r *peerResolver) uploadedFlag(buildID string) *atomic.Bool {
+	if v, ok := r.uploadedBuilds.Load(buildID); ok {
+		return v.(*atomic.Bool)
 	}
 
-	ptr := &atomic.Pointer[UploadedHeaders]{}
-	actual, _ := r.uploaded.LoadOrStore(buildID, ptr)
+	flag := &atomic.Bool{}
+	actual, _ := r.uploadedBuilds.LoadOrStore(buildID, flag)
 
-	return actual.(*atomic.Pointer[UploadedHeaders])
+	return actual.(*atomic.Bool)
 }
 
 // Purge removes the uploaded state for a build, called on template
 // cache eviction so the entry doesn't accumulate forever.
 func (r *peerResolver) Purge(buildID string) {
-	r.uploaded.Delete(buildID)
+	r.uploadedBuilds.Delete(buildID)
 }
 
 // resolve looks up the peer for the given build and returns a gRPC client if
 // a remote peer is found. Returns a nil client when the base provider should
 // be used instead (uploaded, no peer, self, or error).
 func (r *peerResolver) resolve(ctx context.Context, buildID string) (attribute.KeyValue, resolveResult) {
-	hdrs := r.uploadedPtr(buildID)
-	if hdrs.Load() != nil {
+	uploaded := r.uploadedFlag(buildID)
+	if uploaded.Load() {
 		return attrResolveUploaded, resolveResult{}
 	}
 
@@ -162,7 +153,7 @@ func (r *peerResolver) resolve(ctx context.Context, buildID string) (attribute.K
 
 	return attrResolvePeer, resolveResult{
 		client:   orchestrator.NewChunkServiceClient(conn),
-		uploaded: hdrs,
+		uploaded: uploaded,
 		addr:     addr,
 	}
 }

@@ -64,7 +64,9 @@ func putFinalHeader(t *testing.T, cache *fakeCache, buildID uuid.UUID, fileType 
 	t.Helper()
 	tpl := templatemocks.NewMockTemplate(t)
 	dev := blockmocks.NewMockReadonlyDevice(t)
-	dev.EXPECT().Header().Return(&headers.Header{}).Maybe()
+	dev.EXPECT().Header().Return(&headers.Header{
+		Metadata: &headers.Metadata{Version: headers.MetadataVersionV4},
+	}).Maybe()
 
 	switch fileType {
 	case build.Memfile:
@@ -187,7 +189,10 @@ func TestUploads_Wait_RejectsIncompleteCachedHeader(t *testing.T) {
 
 	tpl := templatemocks.NewMockTemplate(t)
 	dev := blockmocks.NewMockReadonlyDevice(t)
-	dev.EXPECT().Header().Return(&headers.Header{IncompletePendingUpload: true})
+	dev.EXPECT().Header().Return(&headers.Header{
+		Metadata:                &headers.Metadata{Version: headers.MetadataVersionV4},
+		IncompletePendingUpload: true,
+	})
 	tpl.EXPECT().Memfile(mock.Anything).Return(dev, nil)
 	cache.put(id.String(), tpl)
 
@@ -201,7 +206,9 @@ func TestUploads_Wait_NoFuture_ReadsFromCache(t *testing.T) {
 	c, cache := newUploads(t)
 
 	id := uuid.New()
-	want := &headers.Header{}
+	want := &headers.Header{
+		Metadata: &headers.Metadata{Version: headers.MetadataVersionV4},
+	}
 
 	tpl := templatemocks.NewMockTemplate(t)
 	dev := blockmocks.NewMockReadonlyDevice(t)

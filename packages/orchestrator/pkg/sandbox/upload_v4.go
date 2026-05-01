@@ -13,34 +13,28 @@ import (
 	headers "github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-func (u *Upload) runV4(ctx context.Context) (memfileHeader, rootfsHeader []byte, err error) {
+func (u *Upload) runV4(ctx context.Context) error {
 	memSrc, err := u.snap.MemfileDiff.CachePath()
 	if err != nil {
-		return nil, nil, fmt.Errorf("memfile diff path: %w", err)
+		return fmt.Errorf("memfile diff path: %w", err)
 	}
 
 	rootfsSrc, err := u.snap.RootfsDiff.CachePath()
 	if err != nil {
-		return nil, nil, fmt.Errorf("rootfs diff path: %w", err)
+		return fmt.Errorf("rootfs diff path: %w", err)
 	}
 
 	eg, ctx := errgroup.WithContext(ctx)
 
 	if u.snap.MemfileDiffHeader != nil {
 		eg.Go(func() error {
-			data, err := u.uploadFramed(ctx, build.Memfile, memSrc, u.snap.MemfileDiffHeader, u.mem)
-			memfileHeader = data
-
-			return err
+			return u.uploadFramed(ctx, build.Memfile, memSrc, u.snap.MemfileDiffHeader, u.mem)
 		})
 	}
 
 	if u.snap.RootfsDiffHeader != nil {
 		eg.Go(func() error {
-			data, err := u.uploadFramed(ctx, build.Rootfs, rootfsSrc, u.snap.RootfsDiffHeader, u.root)
-			rootfsHeader = data
-
-			return err
+			return u.uploadFramed(ctx, build.Rootfs, rootfsSrc, u.snap.RootfsDiffHeader, u.root)
 		})
 	}
 
@@ -52,11 +46,7 @@ func (u *Upload) runV4(ctx context.Context) (memfileHeader, rootfsHeader []byte,
 		return storage.UploadBlob(ctx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path())
 	})
 
-	if err := eg.Wait(); err != nil {
-		return nil, nil, err
-	}
-
-	return memfileHeader, rootfsHeader, nil
+	return eg.Wait()
 }
 
 func (u *Upload) uploadFramed(
@@ -65,13 +55,13 @@ func (u *Upload) uploadFramed(
 	srcPath string,
 	srcHeader *headers.Header,
 	cfg storage.CompressConfig,
-) ([]byte, error) {
+) error {
 	var selfBuild headers.BuildData
 
 	if srcPath != "" {
 		ft, checksum, err := storage.UploadFramed(ctx, u.store, u.paths.DataFile(string(fileType), cfg.CompressionType()), seekableTypeFor(fileType), srcPath, cfg)
 		if err != nil {
-			return nil, fmt.Errorf("%s upload: %w", fileType, err)
+			return fmt.Errorf("%s upload: %w", fileType, err)
 		}
 
 		// FrameTable count, not os.Stat: sparse memfile diffs stream less than
@@ -89,7 +79,7 @@ func (u *Upload) uploadFramed(
 	if u.parent != uuid.Nil && u.uploads != nil {
 		parentHeader, err := u.uploads.Wait(ctx, u.parent, fileType)
 		if err != nil {
-			return nil, fmt.Errorf("wait for parent %s/%s: %w", u.parent, fileType, err)
+			return fmt.Errorf("wait for parent %s/%s: %w", u.parent, fileType, err)
 		}
 
 		builds = parentHeader.Builds
@@ -100,16 +90,11 @@ func (u *Upload) uploadFramed(
 	maps.Copy(h.Builds, builds)
 	h.Builds[u.id] = selfBuild
 
-	data, err := headers.StoreHeader(ctx, u.store, u.paths.HeaderFile(string(fileType)), h)
-	if err != nil {
-		return nil, fmt.Errorf("store %s header: %w", fileType, err)
+	if err := headers.StoreHeader(ctx, u.store, u.paths.HeaderFile(string(fileType)), h); err != nil {
+		return fmt.Errorf("store %s header: %w", fileType, err)
 	}
 
-	if err := u.publish(ctx, fileType, h); err != nil {
-		return nil, err
-	}
-
-	return data, nil
+	return u.publish(ctx, fileType, h)
 }
 
 func seekableTypeFor(fileType build.DiffType) storage.SeekableObjectType {

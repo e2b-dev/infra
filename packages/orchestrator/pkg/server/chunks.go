@@ -45,18 +45,11 @@ func toGRPCError(err error) error {
 }
 
 func (s *Server) buildUploadedResponse(buildID string) *orchestrator.PeerAvailability {
-	cacheItem := s.uploadedBuilds.Get(buildID)
-	if cacheItem == nil {
+	if s.uploadedBuilds.Get(buildID) == nil {
 		return nil
 	}
 
-	hdrs := cacheItem.Value()
-
-	return &orchestrator.PeerAvailability{
-		UseStorage:    true,
-		MemfileHeader: hdrs.memfileHeader,
-		RootfsHeader:  hdrs.rootfsHeader,
-	}
+	return &orchestrator.PeerAvailability{UseStorage: true}
 }
 
 func (s *Server) GetBuildFileSize(ctx context.Context, req *orchestrator.GetBuildFileSizeRequest) (*orchestrator.GetBuildFileSizeResponse, error) {
