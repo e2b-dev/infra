@@ -6,6 +6,7 @@ import (
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"os"
+	"sync"
 	"testing"
 )
 
@@ -38,7 +39,12 @@ func crossProcessServe() error {
 	if err != nil {
 		return fmt.Errorf("net.FileConn rpc: %w", err)
 	}
-	defer conn.Close()
+	// Close once: the explicit close before <-codecDone unblocks
+	// server.ServeCodec on the success path; the deferred close is the
+	// safety net for early returns from the rpc.Register calls below.
+	var closeConnOnce sync.Once
+	closeConn := func() { closeConnOnce.Do(func() { _ = conn.Close() }) }
+	defer closeConn()
 
 	state := newHarnessState(uffdFile.Fd())
 
@@ -70,7 +76,7 @@ func crossProcessServe() error {
 	state.releaseAllBarriers()
 	state.stopServe()
 
-	_ = conn.Close()
+	closeConn()
 	<-codecDone
 
 	return nil

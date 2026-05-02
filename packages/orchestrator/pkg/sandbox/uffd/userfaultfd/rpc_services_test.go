@@ -76,11 +76,20 @@ func (s *harnessState) startServeLocked() error {
 }
 
 func (s *harnessState) stopServe() {
+	// Snapshot s.stop and clear it under the lock, then drop the lock
+	// before calling stop() — stop() blocks on <-done draining the Serve
+	// goroutine, and any concurrent RPC handler that needs s.mu
+	// (Barriers.registry, Paging.States/Resume, Lifecycle.Bootstrap/Shutdown)
+	// would otherwise be blocked for the full drain. Required for the
+	// upcoming barrier-race RPCs where WaitFaultHeld must run while a
+	// worker parked at a barrier holds Pause's drain.
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.stop != nil {
-		s.stop()
-		s.stop = nil
+	stop := s.stop
+	s.stop = nil
+	s.mu.Unlock()
+
+	if stop != nil {
+		stop()
 	}
 }
 
