@@ -193,15 +193,12 @@ func (p *Paging) Resume(_ *rpcharness.Empty, _ *rpcharness.Empty) error {
 	return p.state.startServeLocked()
 }
 
-// pageStateEntries returns a snapshot of every tracked page and its
-// state, in rpcharness wire format. Briefly takes settleRequests.Lock
-// so no in-flight worker can mutate pageTracker while we read it.
+// pageStateEntries returns a snapshot of every tracked page and its state in
+// rpcharness wire format. Holds settleRequests.Lock for the duration so no
+// fault worker is in flight; mirrors PrefetchData.
 func (u *Userfaultfd) pageStateEntries() ([]rpcharness.PageStateEntry, error) {
 	u.settleRequests.Lock()
-	u.settleRequests.Unlock() //nolint:staticcheck // SA2001: intentional — settle the read locks.
-
-	u.pageTracker.mu.RLock()
-	defer u.pageTracker.mu.RUnlock()
+	defer u.settleRequests.Unlock()
 
 	entries := make([]rpcharness.PageStateEntry, 0, len(u.pageTracker.m))
 	for addr, state := range u.pageTracker.m {
