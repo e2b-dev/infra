@@ -36,6 +36,18 @@ variable "api_internal_grpc_port" {
   default = 5009
 }
 
+variable "api_tls_cert_pem" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "api_tls_key_pem" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
 variable "domain_name" {
   type = string
 }

@@ -206,6 +206,12 @@ variable "api_h2c_backend_enabled" {
   default     = false
 }
 
+variable "api_http2_backend_enabled" {
+  description = "Route api.<domain> to a separate TLS HTTP/2 backend service."
+  type        = bool
+  default     = false
+}
+
 variable "additional_domains" {
   type        = list(string)
   description = "Additional domains which can be used to access the e2b cluster"

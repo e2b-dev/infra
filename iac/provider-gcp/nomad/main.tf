@@ -114,6 +114,8 @@ module "api" {
   port_name                               = var.api_port.name
   port_number                             = var.api_port.port
   api_internal_grpc_port                  = var.api_internal_grpc_port
+  api_tls_cert_pem                        = var.api_tls_cert_pem
+  api_tls_key_pem                         = var.api_tls_key_pem
   api_docker_image                        = data.google_artifact_registry_docker_image.api_image.self_link
   postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   postgres_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)

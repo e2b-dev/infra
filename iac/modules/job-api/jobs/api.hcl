@@ -59,6 +59,10 @@ job "api" {
         interval = "3s"
         timeout  = "3s"
         port     = "${port_number}"
+%{ if api_tls_cert_pem != "" && api_tls_key_pem != "" }
+        protocol = "https"
+        tls_skip_verify = true
+%{ endif }
       }
     }
 
@@ -172,6 +176,10 @@ job "api" {
 %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
 %{ endif }
+%{ if api_tls_cert_pem != "" && api_tls_key_pem != "" }
+        API_TLS_CERT_FILE             = "local/tls/api.crt"
+        API_TLS_KEY_FILE              = "local/tls/api.key"
+%{ endif }
 
         # This is here just because it is required in some part of our code which is transitively imported
         TEMPLATE_BUCKET_NAME          = "skip"
@@ -186,6 +194,18 @@ job "api" {
   %{ endif }
 %{ endfor }
       }
+
+%{ if api_tls_cert_pem != "" && api_tls_key_pem != "" }
+      template {
+        data        = ${jsonencode(api_tls_cert_pem)}
+        destination = "local/tls/api.crt"
+      }
+
+      template {
+        data        = ${jsonencode(api_tls_key_pem)}
+        destination = "local/tls/api.key"
+      }
+%{ endif }
 
       config {
         network_mode = "host"

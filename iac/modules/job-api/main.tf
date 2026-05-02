@@ -24,6 +24,8 @@ resource "nomad_job" "api" {
     port_name                               = var.port_name
     port_number                             = var.port_number
     api_internal_grpc_port                  = var.api_internal_grpc_port
+    api_tls_cert_pem                        = var.api_tls_cert_pem
+    api_tls_key_pem                         = var.api_tls_key_pem
     api_docker_image                        = var.api_docker_image
     postgres_connection_string              = var.postgres_connection_string
     postgres_read_replica_connection_string = var.postgres_read_replica_connection_string
