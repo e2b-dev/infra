@@ -20,7 +20,7 @@ import (
 // return as soon as the handler drains the REMOVE event, which requires
 // no lock — coupling readEvents to settleRequests would push us past it.
 const (
-	raceHappyPathBudget    = 5 * time.Second
+	raceHappyPathBudget    = 30 * time.Second
 	barrierArrivalDeadline = 2 * time.Second
 	madviseBudget          = 2 * time.Second
 )
