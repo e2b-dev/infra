@@ -54,18 +54,15 @@ type operation struct {
 	async bool
 }
 
-// handlerPageStates is a snapshot of the pageTracker grouped by state. It
-// lets tests assert on the set of pages that the handler observed in each
-// state, rather than a flat list of "accessed" offsets. Follow-up PRs can
-// add more state-specific fields (e.g. removed) without touching the
+// handlerPageStates groups a pageTracker snapshot by state so follow-up
+// PRs can add more per-state fields (e.g. removed) without touching
 // existing call sites.
 type handlerPageStates struct {
 	faulted []uint
 }
 
-// allAccessed returns the sorted union of offsets that the handler touched
-// in any non-missing state. Tests that only care about "which pages did the
-// handler see" can compare directly against this.
+// allAccessed returns the sorted offsets the handler touched in any
+// non-missing state.
 func (s handlerPageStates) allAccessed() []uint {
 	return slices.Clone(s.faulted)
 }
@@ -76,16 +73,14 @@ type testHandler struct {
 	data       *MemorySlicer
 
 	// client is the typed RPC channel to the child helper process.
-	// Pause/Resume/PageStates/etc. flow through it; tests should
-	// reach for the convenience methods on testHandler rather than
-	// poking at client directly.
+	// Tests should prefer the convenience methods on testHandler.
 	client *rpcharness.Client
 
 	mutex sync.RWMutex
 }
 
-// pageStates returns a per-state snapshot of the handler's
-// pageTracker, fetched via the Paging.States RPC.
+// pageStates fetches a per-state snapshot of the child's pageTracker
+// via the Paging.States RPC.
 func (h *testHandler) pageStates() (handlerPageStates, error) {
 	entries, err := h.client.PageStates()
 	if err != nil {

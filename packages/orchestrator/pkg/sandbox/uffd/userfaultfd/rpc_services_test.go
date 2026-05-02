@@ -1,19 +1,8 @@
 package userfaultfd
 
-// RPC service implementations for the cross-process UFFD test
-// harness. These live in _test.go (rather than the sibling
-// internal/rpcharness package) because they need access to the
-// unexported pageState / pageStateEntries / settleRequests /
-// pageTracker / defaultCopyMode internals on *Userfaultfd. The wire
-// types, typed Client, and barrier registry they consume are exported
-// from internal/rpcharness so they cannot leak into a production
-// import path.
-//
-// Three services are registered against the same *harnessState:
-//
-//   Lifecycle.Bootstrap / WaitReady / Shutdown
-//   Paging.States / Pause / Resume
-//   Barriers.Install / WaitHeld / Release
+// RPC service implementations for the cross-process UFFD test harness.
+// These live in _test.go (rather than internal/rpcharness) because they
+// need access to unexported *Userfaultfd internals.
 
 import (
 	"context"
@@ -28,17 +17,15 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-// harnessState is the per-child container holding the resources
-// created by Lifecycle.Bootstrap and consumed by Paging/Barriers.
-// All three RPC services hold a *harnessState rather than duplicating
-// fields. Mutable fields are guarded by mu.
+// harnessState is the per-child container shared by Lifecycle / Paging /
+// Barriers RPCs. Mutable fields are guarded by mu.
 type harnessState struct {
 	uffdFd uintptr
 
 	mu       sync.Mutex
 	uffd     *Userfaultfd
 	br       *rpcharness.Registry
-	stop     func() // currently active serve-stop function, nil if paused
+	stop     func() // serve-stop fn; nil when paused
 	shutdown chan struct{}
 	closed   bool
 }
@@ -51,10 +38,9 @@ func newHarnessState(uffdFd uintptr) *harnessState {
 }
 
 // startServeLocked spawns the uffd Serve goroutine and stores its
-// stop fn. Caller must hold s.mu. Idempotent: if the serve goroutine
-// is already running (s.stop != nil) this is a no-op so a stray
-// duplicate Resume can't leak an untracked Serve goroutine and break
-// later pauses.
+// stop fn. Caller must hold s.mu. Idempotent: if a serve goroutine is
+// already running (s.stop != nil), a stray duplicate Resume cannot
+// leak an untracked Serve goroutine and break later pauses.
 func (s *harnessState) startServeLocked() {
 	if s.stop != nil {
 		return
@@ -83,6 +69,12 @@ func (s *harnessState) startServeLocked() {
 	}
 }
 
+func (s *harnessState) startServe() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.startServeLocked()
+}
+
 func (s *harnessState) stopServe() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -101,12 +93,9 @@ func (s *harnessState) releaseAllBarriers() {
 	}
 }
 
-// Lifecycle owns the boot/shutdown of the in-child uffd. Bootstrap
-// builds the *Userfaultfd, optionally installs the test hooks, and
-// kicks off the initial Serve goroutine. Shutdown signals the
-// crossProcessServe loop to exit; the goroutine + barrier registry
-// are torn down there so we don't have to hold any mutex while
-// joining the serve goroutine.
+// Lifecycle owns boot/shutdown of the in-child uffd. Shutdown signals
+// crossProcessServe to exit, where the serve goroutine and barrier
+// registry are torn down outside any mutex.
 type Lifecycle struct {
 	state *harnessState
 }
@@ -132,9 +121,9 @@ func (l *Lifecycle) Bootstrap(args *rpcharness.BootstrapArgs, _ *rpcharness.Boot
 		return fmt.Errorf("logger: %w", err)
 	}
 
-	uffd, err := NewUserfaultfdFromFd(l.state.uffdFd, data, mapping, log)
+	uffd, err := NewFromFd(l.state.uffdFd, data, mapping, log)
 	if err != nil {
-		return fmt.Errorf("NewUserfaultfdFromFd: %w", err)
+		return fmt.Errorf("NewFromFd: %w", err)
 	}
 
 	if args.AlwaysWP {
@@ -145,16 +134,7 @@ func (l *Lifecycle) Bootstrap(args *rpcharness.BootstrapArgs, _ *rpcharness.Boot
 	if args.Barriers {
 		hook := br.Hook()
 		uffd.SetTestFaultHook(func(addr uintptr, p faultPhase) {
-			var point rpcharness.Point
-			switch p {
-			case faultPhaseBeforeRLock:
-				point = rpcharness.BeforeRLock
-			case faultPhaseBeforeFaultPage:
-				point = rpcharness.BeforeFaultPage
-			default:
-				return
-			}
-			hook(addr, point)
+			hook(addr, rpcharness.Point(p))
 		})
 	}
 
@@ -167,10 +147,9 @@ func (l *Lifecycle) Bootstrap(args *rpcharness.BootstrapArgs, _ *rpcharness.Boot
 	return nil
 }
 
-// WaitReady is a no-op: Bootstrap is synchronous, so its successful
-// reply already implies readiness. WaitReady is kept as a separate
-// RPC so that an async-Bootstrap variant can be slotted in later
-// without touching every call site.
+// WaitReady is a no-op today: Bootstrap is synchronous so its reply
+// already implies readiness. Kept as a separate RPC so an async
+// Bootstrap variant can hold the parent here without changing callers.
 func (l *Lifecycle) WaitReady(_ *rpcharness.Empty, _ *rpcharness.Empty) error {
 	return nil
 }
@@ -186,8 +165,7 @@ func (l *Lifecycle) Shutdown(_ *rpcharness.Empty, _ *rpcharness.Empty) error {
 	return nil
 }
 
-// Paging is the RPC service exposing page-state introspection and
-// the gated-serve pause/resume controls.
+// Paging exposes page-state introspection and pause/resume controls.
 type Paging struct {
 	state *harnessState
 }
@@ -216,17 +194,14 @@ func (p *Paging) Pause(_ *rpcharness.Empty, _ *rpcharness.Empty) error {
 }
 
 func (p *Paging) Resume(_ *rpcharness.Empty, _ *rpcharness.Empty) error {
-	p.state.mu.Lock()
-	defer p.state.mu.Unlock()
-	p.state.startServeLocked()
+	p.state.startServe()
 
 	return nil
 }
 
 // pageStateEntries returns a snapshot of every tracked page and its
-// state, translated into the rpcharness wire format. Briefly takes
-// settleRequests.Lock so no in-flight worker can mutate the
-// pageTracker while we read it.
+// state, in rpcharness wire format. Briefly takes settleRequests.Lock
+// so no in-flight worker can mutate pageTracker while we read it.
 func (u *Userfaultfd) pageStateEntries() ([]rpcharness.PageStateEntry, error) {
 	u.settleRequests.Lock()
 	u.settleRequests.Unlock() //nolint:staticcheck // SA2001: intentional — settle the read locks.
@@ -246,9 +221,8 @@ func (u *Userfaultfd) pageStateEntries() ([]rpcharness.PageStateEntry, error) {
 	return entries, nil
 }
 
-// Barriers is the RPC service exposing the rpcharness.Registry to the
-// parent. It's a thin wrapper so all the locking/lifecycle logic stays
-// in rpcharness.
+// Barriers is the thin RPC wrapper exposing rpcharness.Registry to
+// the parent; locking and lifecycle live in rpcharness.
 type Barriers struct {
 	state *harnessState
 }

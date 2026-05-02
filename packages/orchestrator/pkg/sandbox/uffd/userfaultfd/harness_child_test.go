@@ -1,15 +1,5 @@
 package userfaultfd
 
-// Child side of the cross-process UFFD test harness. The child is a
-// re-execed copy of the test binary entered through
-// TestHelperServingProcess; it adopts the inherited rpc socket fd
-// (fd 4, the parent's socketpair half), registers the three RPC
-// services that share a single *harnessState container, and serves
-// JSON-RPC until the parent issues Lifecycle.Shutdown. All actual
-// work (build mapping, construct *Userfaultfd, install hooks, run
-// Serve) is driven by Lifecycle.Bootstrap rather than env vars or
-// extra fds.
-
 import (
 	"fmt"
 	"net"
@@ -20,10 +10,7 @@ import (
 )
 
 // TestHelperServingProcess is the entry point for the child helper
-// process spawned by configureCrossProcessTest. The parent re-execs
-// the test binary with envHelperFlag=1 and the uffd / rpc fds in
-// ExtraFiles; this test hands off to crossProcessServe and exits
-// with its result.
+// process spawned by configureCrossProcessTest.
 func TestHelperServingProcess(t *testing.T) {
 	t.Parallel()
 
@@ -39,21 +26,14 @@ func TestHelperServingProcess(t *testing.T) {
 	os.Exit(0)
 }
 
-// crossProcessServe wires up the child side: adopt the inherited
-// rpc socket fd, register the three RPC services that share a single
-// harnessState, and run jsonrpc.ServeCodec until the parent shuts
-// us down.
 func crossProcessServe() error {
-	// The parent handed us two fds via cmd.ExtraFiles; the child-side
-	// dup3 inside fork+exec lands them at fd 3 (uffd) and fd 4 (rpc
-	// socketpair half) with CLOEXEC cleared automatically.
+	// fork+exec dup3's the parent's ExtraFiles to fd 3 (uffd) and fd 4
+	// (rpc socketpair half) with CLOEXEC cleared.
 	uffdFile := os.NewFile(uintptr(3), "uffd")
 	defer uffdFile.Close()
 
 	rpcFile := os.NewFile(uintptr(4), "rpc")
 	conn, err := net.FileConn(rpcFile)
-	// FileConn dups the underlying fd; close rpcFile in both the
-	// success and error paths so we don't leak an fd.
 	rpcFile.Close()
 	if err != nil {
 		return fmt.Errorf("net.FileConn rpc: %w", err)
@@ -86,13 +66,10 @@ func crossProcessServe() error {
 	case <-codecDone:
 	}
 
-	// Release any still-parked barriers so the serve goroutine can
-	// finish, then stop the serve goroutine.
+	// Release parked barriers so the serve goroutine can drain.
 	state.releaseAllBarriers()
 	state.stopServe()
 
-	// Closing the conn is sufficient to unblock ServeCodec if it
-	// hasn't already returned.
 	_ = conn.Close()
 	<-codecDone
 

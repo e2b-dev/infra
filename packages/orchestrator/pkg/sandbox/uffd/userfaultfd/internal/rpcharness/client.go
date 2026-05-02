@@ -7,17 +7,16 @@ import (
 )
 
 // Client is the typed parent-side wrapper around the JSON-RPC channel
-// to the child helper process. Hides method-name strings, the Empty
-// placeholder pointers, and the wire-vs-domain type translation from
-// every call site.
+// to the child helper process. It hides method-name strings, the Empty
+// placeholder pointers, and the wire-vs-domain type translation.
 type Client struct {
 	rpc  *rpc.Client
 	conn io.Closer
 }
 
 // NewClient wraps an already-connected duplex stream (typically one
-// half of a socketpair handed off via cmd.ExtraFiles) in a typed
-// client. Closing the returned Client closes the underlying conn.
+// half of a socketpair handed off via cmd.ExtraFiles). Closing the
+// returned Client closes the underlying conn.
 func NewClient(conn io.ReadWriteCloser) *Client {
 	return &Client{
 		rpc:  jsonrpc.NewClient(conn),

@@ -1,21 +1,5 @@
 package userfaultfd
 
-// Parent side of the cross-process UFFD test harness. The parent
-// owns the userfaultfd (created and registered against an mmap that
-// lives in the parent's address space) and drives the in-VM page
-// fault servicing logic from a child helper process. We re-exec the
-// test binary as the child so the actual page-fault handling runs
-// in a process where we can fully control memory layout (no Go GC
-// scanning / touching the registered region) — which mirrors how
-// Firecracker uses UFFD in production.
-//
-// The side channels between parent and child are intentionally
-// minimal: a single env var flagging the child as the helper, the
-// userfaultfd handed off via ExtraFiles at fd 3, and a socketpair(2)
-// half handed off via ExtraFiles at fd 4 carrying JSON-RPC. All
-// configuration (mmap geometry, source content, feature toggles)
-// flows over a single Lifecycle.Bootstrap RPC.
-
 import (
 	"context"
 	"crypto/rand"
@@ -37,7 +21,6 @@ import (
 )
 
 // MemorySlicer exposes a byte slice via the Slicer interface.
-// Test-only.
 type MemorySlicer struct {
 	content  []byte
 	pagesize int64
@@ -75,14 +58,8 @@ func RandomPages(pagesize, numberOfPages uint64) *MemorySlicer {
 	return NewMemorySlicer(buf, int64(pagesize))
 }
 
-// Env var used by the child helper process. The set is deliberately
-// minimal: anything else lives in BootstrapArgs and flows over RPC.
 const envHelperFlag = "GO_TEST_HELPER_PROCESS"
 
-// configureCrossProcessTest spawns the helper child, hands it the
-// userfaultfd, and drives initial setup via Lifecycle.Bootstrap.
-// All subsequent test interaction goes through the returned
-// testHandler's *rpcharness.Client.
 func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig) (*testHandler, error) {
 	t.Helper()
 
@@ -96,9 +73,6 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 
 	uffdFd, err := newFd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	require.NoError(t, err)
-	t.Cleanup(func() {
-		uffdFd.close()
-	})
 
 	require.NoError(t, configureApi(uffdFd, tt.pagesize))
 	require.NoError(t, register(uffdFd, memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP))
@@ -106,26 +80,16 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestHelperServingProcess", "-test.timeout=0")
 	cmd.Env = append(os.Environ(), envHelperFlag+"=1")
 
-	// F_DUPFD_CLOEXEC duplicates uffdFd into a new fd that is born
-	// with CLOEXEC set, atomically. The previous incarnation used
-	// syscall.Dup followed by F_SETFD, which left a brief window
-	// where the dup'd fd was visible without CLOEXEC; under
-	// -parallel that window let other concurrent forks inherit a
-	// uffd they did not own and produced hard-to-diagnose,
-	// parallel-only deadlocks. Removing the window removes the
-	// need for the childForkMu serialising lock the previous
-	// version used to wrap cmd.Start.
+	// F_DUPFD_CLOEXEC dup's atomically with CLOEXEC set, so a concurrent
+	// fork in another goroutine cannot inherit the dup'd fd before we
+	// hand it off via ExtraFiles.
 	dup, err := unix.FcntlInt(uintptr(uffdFd), unix.F_DUPFD_CLOEXEC, 0)
 	require.NoError(t, err)
 	uffdFile := os.NewFile(uintptr(dup), "uffd")
 
-	// socketpair gives us a connected AF_UNIX/SOCK_STREAM pair in one
-	// syscall, no listener / accept / dial / temp inode required.
-	// SOCK_CLOEXEC on the pair is the same rationale as F_DUPFD_CLOEXEC
-	// on the uffd fd above: both ends are born CLOEXEC so a concurrent
-	// fork in another goroutine cannot leak them. cmd.ExtraFiles will
-	// clear CLOEXEC on the destination fd in the child via dup3 inside
-	// ForkExec, which is exactly what we want for fd 4.
+	// Socketpair gives a connected AF_UNIX pair in one syscall, with both
+	// ends born CLOEXEC; cmd.ExtraFiles clears CLOEXEC on the child end
+	// inside ForkExec.
 	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, 0)
 	require.NoError(t, err)
 	parentEnd := os.NewFile(uintptr(fds[0]), "rpc-parent")
@@ -143,8 +107,7 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 		require.NoError(t, startErr)
 	}
 
-	// FileConn dups the underlying fd, so closing parentEnd after is
-	// both correct and necessary to avoid leaking the original fd.
+	// FileConn dups the underlying fd; close parentEnd to avoid leaking it.
 	parentConn, err := net.FileConn(parentEnd)
 	parentEnd.Close()
 	require.NoError(t, err)
@@ -169,18 +132,14 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 		return nil, fmt.Errorf("Lifecycle.Bootstrap: %w", err)
 	}
 
-	// WaitReady's successful reply IS the readiness signal. Bootstrap
-	// is synchronous, so today this is largely a smoke check, but
-	// the explicit RPC is kept so that future async-Bootstrap variants
-	// can hold the parent here without breaking the call site.
+	// Bootstrap is synchronous, so its reply already implies readiness;
+	// WaitReady is kept as a separate RPC so an async-Bootstrap variant
+	// can hold the parent here without touching call sites.
 	if err := client.WaitReady(); err != nil {
 		return nil, fmt.Errorf("Lifecycle.WaitReady: %w", err)
 	}
 
 	t.Cleanup(func() {
-		// Best-effort graceful shutdown via RPC. If the child has
-		// already crashed the RPC will error and we fall back to
-		// killing the process below.
 		_ = client.Shutdown()
 		_ = client.Close()
 
@@ -192,13 +151,11 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 			}
 		}
 
-		// Tear down the UFFD registration before the early uffdFd.close()
-		// cleanup runs. Today this is a no-op (no test enables
-		// UFFD_FEATURE_EVENT_REMOVE) but a follow-up that does will
-		// otherwise see munmap block on un-acked REMOVE events queued
-		// against the still-registered range. Cleanups run LIFO, so
-		// this fires before the close registered earlier.
+		// Unregister before close so a future test that enables
+		// UFFD_FEATURE_EVENT_REMOVE does not see munmap block on
+		// un-acked REMOVE events queued against the registered range.
 		assert.NoError(t, unregister(uffdFd, memoryStart, uint64(size)))
+		uffdFd.close()
 	})
 
 	return h, nil

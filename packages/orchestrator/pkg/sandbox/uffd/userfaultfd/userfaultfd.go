@@ -70,9 +70,9 @@ type Userfaultfd struct {
 	logger logger.Logger
 }
 
-// faultPhase identifies WHEN inside the worker the (test-only) fault hook is
-// invoked. Production builds never install a hook (testFaultHook is nil); the
-// per-fault overhead is then a single atomic load + nil check per call site.
+// faultPhase identifies WHEN inside the worker the test-only fault
+// hook is invoked. testFaultHook is nil in production, so the
+// per-fault cost is a single atomic load + nil check per call site.
 type faultPhase uint8
 
 const (
@@ -80,8 +80,9 @@ const (
 	faultPhaseBeforeFaultPage
 )
 
-// NewUserfaultfdFromFd creates a new userfaultfd instance with optional configuration.
-func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logger logger.Logger) (*Userfaultfd, error) {
+// NewFromFd wraps an already-open userfaultfd file descriptor. The caller
+// is responsible for creating, configuring, and registering the fd.
+func NewFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logger logger.Logger) (*Userfaultfd, error) {
 	blockSize := src.BlockSize()
 
 	for _, region := range m.Regions {

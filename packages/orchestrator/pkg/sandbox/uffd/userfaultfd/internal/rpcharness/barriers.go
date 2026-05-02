@@ -6,26 +6,24 @@ import (
 	"sync"
 )
 
-// Point identifies WHICH worker hook a barrier should park on.
+// Point identifies WHICH worker hook a barrier should park on. Values
+// must match the parent package's faultPhase iota so the test hook can
+// pass them through with a numeric cast.
 type Point uint8
 
 const (
-	// BeforeRLock parks the worker BEFORE settleRequests.RLock(),
-	// i.e. before it can read the page state. Use this when a parallel
-	// writer needs the write lock immediately because no worker holds
-	// the read lock.
-	BeforeRLock Point = 1
-	// BeforeFaultPage parks the worker AFTER it has taken
-	// settleRequests.RLock, but BEFORE the actual UFFDIO_COPY syscall.
-	// Use this when a parent operation must still return even though a
-	// worker holds RLock.
-	BeforeFaultPage Point = 2
+	// BeforeRLock parks the worker BEFORE settleRequests.RLock(), so a
+	// parallel writer can take the write lock immediately.
+	BeforeRLock Point = iota
+	// BeforeFaultPage parks the worker AFTER settleRequests.RLock but
+	// BEFORE the UFFDIO_COPY syscall, so a parent operation must still
+	// return even though a worker holds RLock.
+	BeforeFaultPage
 )
 
 // Registry is the child-process side of the barrier mechanism. The
-// hooks installed on *Userfaultfd consult this registry by addr+point
-// to decide whether to park, and the Barriers RPC handlers manipulate
-// it from the parent over the socket.
+// per-fault hook on *Userfaultfd consults it by (addr, point) to decide
+// whether to park.
 type Registry struct {
 	mu     sync.Mutex
 	next   uint64
@@ -53,8 +51,7 @@ func NewRegistry() *Registry {
 	}
 }
 
-// Install registers a barrier at (addr, point) and returns the opaque
-// token used by subsequent WaitArrived/Release calls.
+// Install registers a barrier at (addr, point) and returns its token.
 func (r *Registry) Install(addr uintptr, point Point) uint64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -125,9 +122,8 @@ func (r *Registry) Release(token uint64) {
 	}
 }
 
-// ReleaseAll releases every still-installed barrier. Called during
-// child shutdown so that any parked worker can finish before the
-// serve goroutine is joined.
+// ReleaseAll releases every still-installed barrier so any parked
+// worker can finish before the child's serve goroutine is joined.
 func (r *Registry) ReleaseAll() {
 	r.mu.Lock()
 	tokens := make([]uint64, 0, len(r.tokens))
@@ -141,9 +137,8 @@ func (r *Registry) ReleaseAll() {
 	}
 }
 
-// Hook returns the function tests assign as the per-fault hook on
-// *Userfaultfd. The returned closure dispatches by (addr, point):
-// pages/points that haven't been Install'd see no scheduling distortion.
+// Hook returns the per-fault hook tests install on *Userfaultfd. Faults
+// at (addr, point) pairs without an Install'd slot are no-ops.
 func (r *Registry) Hook() func(addr uintptr, point Point) {
 	return func(addr uintptr, point Point) {
 		s := r.lookupByAddr(addr, point)
