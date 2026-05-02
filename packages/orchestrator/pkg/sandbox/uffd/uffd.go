@@ -164,7 +164,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 
 	m := memory.NewMapping(regions)
 
-	uffd, err := userfaultfd.NewFromFd(
+	uffd, err := userfaultfd.NewUserfaultfdFromFd(
 		uintptr(fds[0]),
 		u.memfile,
 		m,

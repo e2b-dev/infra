@@ -121,9 +121,9 @@ func (l *Lifecycle) Bootstrap(args *rpcharness.BootstrapArgs, _ *rpcharness.Boot
 		return fmt.Errorf("logger: %w", err)
 	}
 
-	uffd, err := NewFromFd(l.state.uffdFd, data, mapping, log)
+	uffd, err := NewUserfaultfdFromFd(l.state.uffdFd, data, mapping, log)
 	if err != nil {
-		return fmt.Errorf("NewFromFd: %w", err)
+		return fmt.Errorf("NewUserfaultfdFromFd: %w", err)
 	}
 
 	if args.AlwaysWP {
