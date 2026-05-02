@@ -11,6 +11,8 @@ import (
 
 	"github.com/caarlos0/env/v11"
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 )
 
 const (
@@ -76,10 +78,7 @@ type Config struct {
 
 	VolumesToken VolumesTokenConfig
 
-	// SupabaseJWTSecrets is a list of secrets used to verify the Supabase JWT.
-	// More secrets are possible in the case of JWT secret rotation where we need to accept
-	// tokens signed with the old secret for some time.
-	SupabaseJWTSecrets []string `env:"SUPABASE_JWT_SECRETS"`
+	AuthProvider auth.ProviderConfig `env:"AUTH_PROVIDER_CONFIG"`
 
 	DefaultPersistentVolumeType string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`
 
@@ -105,6 +104,9 @@ var (
 	ErrUnknownKeyType       = errors.New("unknown JWT signing key type")
 
 	parserFuncs = map[reflect.Type]env.ParserFunc{
+		reflect.TypeFor[auth.ProviderConfig](): func(v string) (any, error) {
+			return auth.ParseProviderConfig(v)
+		},
 		reflect.TypeFor[JWTSigningKey](): func(v string) (any, error) {
 			keyPieces := strings.SplitN(v, ":", 2)
 			if len(keyPieces) != 2 {
