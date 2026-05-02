@@ -9,9 +9,16 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 )
 
-func GetTargetFromRequest(processHeaders bool) func(r *http.Request) (sandboxId string, port uint64, err error) {
+type HeaderRoutingMode uint8
+
+const (
+	HeaderRoutingDisabled HeaderRoutingMode = iota
+	HeaderRoutingEnabled
+)
+
+func GetTargetFromRequest(headerRouting HeaderRoutingMode) func(r *http.Request) (sandboxId string, port uint64, err error) {
 	return func(r *http.Request) (sandboxId string, port uint64, err error) {
-		if processHeaders && shouldParseHeaders(r.Host) {
+		if headerRouting == HeaderRoutingEnabled && shouldParseHeaders(r.Host) && hasRoutingHeaders(r.Header) {
 			var ok bool
 			sandboxId, port, ok, err = parseHeaders(r.Header)
 			if err != nil {
@@ -41,6 +48,10 @@ func GetTargetFromRequest(processHeaders bool) func(r *http.Request) (sandboxId 
 func shouldParseHeaders(host string) bool {
 	host = strings.Split(host, ":")[0]
 	return host == "localhost" || strings.HasPrefix(host, "envd.")
+}
+
+func hasRoutingHeaders(h http.Header) bool {
+	return h.Get(headerSandboxID) != "" || h.Get(headerSandboxPort) != ""
 }
 
 func parseHost(host string) (sandboxID string, port uint64, err error) {
