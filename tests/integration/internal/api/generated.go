@@ -20,11 +20,13 @@ import (
 )
 
 const (
-	AccessTokenAuthScopes    accessTokenAuthContextKey    = "AccessTokenAuth.Scopes"
-	AdminTokenAuthScopes     adminTokenAuthContextKey     = "AdminTokenAuth.Scopes"
-	ApiKeyAuthScopes         apiKeyAuthContextKey         = "ApiKeyAuth.Scopes"
-	Supabase1TokenAuthScopes supabase1TokenAuthContextKey = "Supabase1TokenAuth.Scopes"
-	Supabase2TeamAuthScopes  supabase2TeamAuthContextKey  = "Supabase2TeamAuth.Scopes"
+	AccessTokenAuthScopes       accessTokenAuthContextKey       = "AccessTokenAuth.Scopes"
+	AdminTokenAuthScopes        adminTokenAuthContextKey        = "AdminTokenAuth.Scopes"
+	ApiKeyAuthScopes            apiKeyAuthContextKey            = "ApiKeyAuth.Scopes"
+	AuthProviderTeamAuthScopes  authProviderTeamAuthContextKey  = "AuthProviderTeamAuth.Scopes"
+	AuthProviderTokenAuthScopes authProviderTokenAuthContextKey = "AuthProviderTokenAuth.Scopes"
+	Supabase1TokenAuthScopes    supabase1TokenAuthContextKey    = "Supabase1TokenAuth.Scopes"
+	Supabase2TeamAuthScopes     supabase2TeamAuthContextKey     = "Supabase2TeamAuth.Scopes"
 )
 
 // Defines values for AWSRegistryType.
@@ -1426,6 +1428,12 @@ type adminTokenAuthContextKey string
 
 // apiKeyAuthContextKey is the context key for ApiKeyAuth security scheme
 type apiKeyAuthContextKey string
+
+// authProviderTeamAuthContextKey is the context key for AuthProviderTeamAuth security scheme
+type authProviderTeamAuthContextKey string
+
+// authProviderTokenAuthContextKey is the context key for AuthProviderTokenAuth security scheme
+type authProviderTokenAuthContextKey string
 
 // supabase1TokenAuthContextKey is the context key for Supabase1TokenAuth security scheme
 type supabase1TokenAuthContextKey string

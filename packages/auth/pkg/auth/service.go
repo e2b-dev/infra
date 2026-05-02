@@ -27,19 +27,19 @@ type AuthStore[T TeamItem] interface {
 	GetTeamAPIKeyHashes(ctx context.Context, teamID uuid.UUID) ([]string, error)
 }
 
-// AuthService encapsulates the cache, store, and JWT secrets for auth validation.
+// AuthService encapsulates the cache, store, and JWT verifier for auth validation.
 type AuthService[T TeamItem] struct {
-	store      AuthStore[T]
-	teamCache  *AuthCache[T]
-	jwtSecrets []string
+	store                AuthStore[T]
+	teamCache            *AuthCache[T]
+	authProviderVerifier *Verifier
 }
 
-// NewAuthService creates an AuthService with the given store, cache, and JWT secrets.
-func NewAuthService[T TeamItem](store AuthStore[T], teamCache *AuthCache[T], jwtSecrets []string) *AuthService[T] {
+// NewAuthService creates an AuthService with the given store, cache, and auth provider verifier.
+func NewAuthService[T TeamItem](store AuthStore[T], teamCache *AuthCache[T], authProviderVerifier *Verifier) *AuthService[T] {
 	return &AuthService[T]{
-		store:      store,
-		teamCache:  teamCache,
-		jwtSecrets: jwtSecrets,
+		store:                store,
+		teamCache:            teamCache,
+		authProviderVerifier: authProviderVerifier,
 	}
 }
 
@@ -132,12 +132,25 @@ func (s *AuthService[T]) ValidateAccessToken(ctx context.Context, ginCtx *gin.Co
 	return userID, nil
 }
 
-// ValidateSupabaseToken parses a Supabase JWT and extracts the user ID.
-func (s *AuthService[T]) ValidateSupabaseToken(ctx context.Context, ginCtx *gin.Context, supabaseToken string) (uuid.UUID, *APIError) {
-	userID, err := ParseUserIDFromToken(ctx, s.jwtSecrets, supabaseToken)
+// ValidateAuthProviderToken verifies a JWT against the configured auth provider and resolves an internal user ID.
+func (s *AuthService[T]) ValidateAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError) {
+	return s.validateJWTWithProvider(ctx, ginCtx, s.authProviderVerifier, token, "auth provider")
+}
+
+func (s *AuthService[T]) validateJWTWithProvider(ctx context.Context, ginCtx *gin.Context, verifier *Verifier, token string, tokenSource string) (uuid.UUID, *APIError) {
+	identity, err := verifier.Verify(ctx, token)
 	if err != nil {
 		return uuid.UUID{}, &APIError{
 			Err:       err,
+			ClientMsg: "Backend authentication failed",
+			Code:      http.StatusUnauthorized,
+		}
+	}
+
+	userID := identity.UserID
+	if userID == uuid.Nil {
+		return uuid.UUID{}, &APIError{
+			Err:       fmt.Errorf("%s token user claim is missing or is not an internal UUID", tokenSource),
 			ClientMsg: "Backend authentication failed",
 			Code:      http.StatusUnauthorized,
 		}
