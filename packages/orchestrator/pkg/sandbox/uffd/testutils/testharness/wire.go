@@ -1,12 +1,10 @@
 // Package testharness provides the wire types, typed RPC client, and
 // barrier registry shared between the parent and child halves of the
-// userfaultfd test harness. It deliberately knows nothing about
-// *Userfaultfd internals so it can sit alongside the other uffd test
-// utilities and never get pulled into a production import path.
+// userfaultfd test harness.
 package testharness
 
-// Empty stands in for net/rpc methods that take or return nothing;
-// net/rpc still requires both args and reply to be exported pointers.
+// Empty is the placeholder for net/rpc methods that take or return
+// nothing; net/rpc still requires both args and reply pointers.
 type Empty struct{}
 
 type BootstrapArgs struct {
@@ -14,17 +12,14 @@ type BootstrapArgs struct {
 	Pagesize  int64
 	TotalSize int64
 	AlwaysWP  bool
-	// Barriers gates the test-only worker hooks. Off by default so
-	// the worker hot path stays a single nil-pointer load + branch
-	// in non-race tests.
+	// Barriers gates the test-only worker hooks (off by default).
 	Barriers bool
 	Content  []byte
 }
 
 type BootstrapReply struct{}
 
-// PageStateEntry is the wire form of the parent package's pageState
-// enum; the parent translates back at the boundary.
+// PageStateEntry is the wire form of the parent package's pageState enum.
 type PageStateEntry struct {
 	State  uint8
 	Offset uint64

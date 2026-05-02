@@ -1,8 +1,7 @@
 package userfaultfd
 
-// RPC service implementations for the cross-process UFFD test harness.
-// These live in _test.go (rather than testutils/testharness) because they
-// need access to unexported *Userfaultfd internals.
+// RPC service implementations for the cross-process UFFD test harness;
+// in _test.go because they need *Userfaultfd internals.
 
 import (
 	"context"
@@ -17,10 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-// harnessState is the per-child container shared by Lifecycle / Paging /
-// Barriers RPCs. Mutable fields are guarded by mu.
-//
-//nolint:containedctx // shutdown-aware ctx is shared with RPC handlers; lifetime is the child process.
+//nolint:containedctx // shutdown-aware ctx shared with RPC handlers; lifetime is the child process.
 type harnessState struct {
 	uffdFd uintptr
 
@@ -43,10 +39,8 @@ func newHarnessState(uffdFd uintptr) *harnessState {
 	}
 }
 
-// startServeLocked spawns the uffd Serve goroutine and stores its
-// stop fn. Caller must hold s.mu. Idempotent: if a serve goroutine is
-// already running (s.stop != nil), a stray duplicate Resume cannot
-// leak an untracked Serve goroutine and break later pauses.
+// startServeLocked is idempotent so a stray duplicate Resume cannot
+// leak an untracked Serve goroutine. Caller must hold s.mu.
 func (s *harnessState) startServeLocked() error {
 	if s.stop != nil {
 		return nil
@@ -76,13 +70,9 @@ func (s *harnessState) startServeLocked() error {
 }
 
 func (s *harnessState) stopServe() {
-	// Snapshot s.stop and clear it under the lock, then drop the lock
-	// before calling stop() — stop() blocks on <-done draining the Serve
-	// goroutine, and any concurrent RPC handler that needs s.mu
-	// (Barriers.registry, Paging.States/Resume, Lifecycle.Bootstrap/Shutdown)
-	// would otherwise be blocked for the full drain. Required for the
-	// upcoming barrier-race RPCs where WaitFaultHeld must run while a
-	// worker parked at a barrier holds Pause's drain.
+	// Drop s.mu before stop() — stop() blocks on the Serve drain, and any
+	// concurrent RPC handler needing s.mu (e.g. WaitFaultHeld during a
+	// parked barrier) would otherwise stall until the drain completes.
 	s.mu.Lock()
 	stop := s.stop
 	s.stop = nil
@@ -93,18 +83,6 @@ func (s *harnessState) stopServe() {
 	}
 }
 
-func (s *harnessState) releaseAllBarriers() {
-	s.mu.Lock()
-	br := s.br
-	s.mu.Unlock()
-	if br != nil {
-		br.ReleaseAll()
-	}
-}
-
-// Lifecycle owns boot/shutdown of the in-child uffd. Shutdown signals
-// crossProcessServe to exit, where the serve goroutine and barrier
-// registry are torn down outside any mutex.
 type Lifecycle struct {
 	state *harnessState
 }
@@ -156,9 +134,8 @@ func (l *Lifecycle) Bootstrap(args *testharness.BootstrapArgs, _ *testharness.Bo
 	return l.state.startServeLocked()
 }
 
-// WaitReady is a no-op today: Bootstrap is synchronous so its reply
-// already implies readiness. Kept as a separate RPC so an async
-// Bootstrap variant can hold the parent here without changing callers.
+// WaitReady is a no-op today (Bootstrap is synchronous); kept as a separate
+// RPC so an async-Bootstrap variant can hold the parent here unchanged.
 func (l *Lifecycle) WaitReady(_ *testharness.Empty, _ *testharness.Empty) error {
 	return nil
 }
@@ -174,7 +151,6 @@ func (l *Lifecycle) Shutdown(_ *testharness.Empty, _ *testharness.Empty) error {
 	return nil
 }
 
-// Paging exposes page-state introspection and pause/resume controls.
 type Paging struct {
 	state *harnessState
 }
@@ -209,11 +185,10 @@ func (p *Paging) Resume(_ *testharness.Empty, _ *testharness.Empty) error {
 	return p.state.startServeLocked()
 }
 
-// pageStateEntries returns a snapshot of every tracked page and its state in
-// testharness wire format. Holds settleRequests.Lock to fence fault workers
-// (mirrors PrefetchData) plus pageTracker.mu.RLock defensively, so a future
-// writer that mutates pageTracker.m without going through settleRequests
-// (e.g. a REMOVE event handler) cannot race this snapshot.
+// pageStateEntries returns a wire-format snapshot of pageTracker.
+// settleRequests.Lock drains fault workers (mirrors PrefetchData);
+// pageTracker.mu.RLock is defensive against a future REMOVE writer
+// that mutates pageTracker.m outside settleRequests.
 func (u *Userfaultfd) pageStateEntries() ([]testharness.PageStateEntry, error) {
 	u.settleRequests.Lock()
 	defer u.settleRequests.Unlock()
@@ -233,8 +208,6 @@ func (u *Userfaultfd) pageStateEntries() ([]testharness.PageStateEntry, error) {
 	return entries, nil
 }
 
-// Barriers is the thin RPC wrapper exposing testharness.Registry to
-// the parent; locking and lifecycle live in testharness.
 type Barriers struct {
 	state *harnessState
 }

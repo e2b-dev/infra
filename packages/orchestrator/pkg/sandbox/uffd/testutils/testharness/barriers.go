@@ -6,24 +6,18 @@ import (
 	"sync"
 )
 
-// Point identifies WHICH worker hook a barrier should park on. Values
-// must match the parent package's faultPhase iota so the test hook can
-// pass them through with a numeric cast.
+// Point identifies which worker hook to park on. Values must match the
+// parent package's faultPhase iota so the hook can cast across.
 type Point uint8
 
 const (
-	// BeforeRLock parks the worker BEFORE settleRequests.RLock(), so a
-	// parallel writer can take the write lock immediately.
+	// BeforeRLock parks before settleRequests.RLock.
 	BeforeRLock Point = iota
-	// BeforeFaultPage parks the worker AFTER settleRequests.RLock but
-	// BEFORE the UFFDIO_COPY syscall, so a parent operation must still
-	// return even though a worker holds RLock.
+	// BeforeFaultPage parks after settleRequests.RLock, before UFFDIO_COPY.
 	BeforeFaultPage
 )
 
-// Registry is the child-process side of the barrier mechanism. The
-// per-fault hook on *Userfaultfd consults it by (addr, point) to decide
-// whether to park.
+// Registry is the child-side barrier store consulted by the per-fault hook.
 type Registry struct {
 	mu     sync.Mutex
 	next   uint64
@@ -51,7 +45,6 @@ func NewRegistry() *Registry {
 	}
 }
 
-// Install registers a barrier at (addr, point) and returns its token.
 func (r *Registry) Install(addr uintptr, point Point) uint64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -82,8 +75,6 @@ func (r *Registry) lookupByAddr(addr uintptr, point Point) *slot {
 	return r.tokens[token]
 }
 
-// WaitArrived blocks until the worker hook for token has reached the
-// barrier point, or until ctx is cancelled.
 func (r *Registry) WaitArrived(ctx context.Context, token uint64) error {
 	r.mu.Lock()
 	s, ok := r.tokens[token]
@@ -100,16 +91,14 @@ func (r *Registry) WaitArrived(ctx context.Context, token uint64) error {
 	}
 }
 
-// Release frees the barrier identified by token, allowing any parked
-// worker to proceed. Releasing an unknown token is a no-op.
+// Release frees the barrier; unknown token is a no-op.
 func (r *Registry) Release(token uint64) {
 	r.mu.Lock()
 	s, ok := r.tokens[token]
 	delete(r.tokens, token)
 	if ok {
-		// A later Install at the same (addr, point) overwrites byKey;
-		// do not clobber that newer mapping when releasing this older
-		// token.
+		// A later Install at this key overwrites byKey; only delete if
+		// it still maps to this token.
 		k := key{s.addr, s.point}
 		if r.byKey[k] == token {
 			delete(r.byKey, k)
@@ -128,8 +117,7 @@ func (r *Registry) Release(token uint64) {
 	}
 }
 
-// ReleaseAll releases every still-installed barrier so any parked
-// worker can finish before the child's serve goroutine is joined.
+// ReleaseAll releases every still-installed barrier.
 func (r *Registry) ReleaseAll() {
 	r.mu.Lock()
 	tokens := make([]uint64, 0, len(r.tokens))
@@ -143,8 +131,8 @@ func (r *Registry) ReleaseAll() {
 	}
 }
 
-// Hook returns the per-fault hook tests install on *Userfaultfd. Faults
-// at (addr, point) pairs without an Install'd slot are no-ops.
+// Hook returns the per-fault hook to install on *Userfaultfd; faults
+// without an installed slot are no-ops.
 func (r *Registry) Hook() func(addr uintptr, point Point) {
 	return func(addr uintptr, point Point) {
 		s := r.lookupByAddr(addr, point)

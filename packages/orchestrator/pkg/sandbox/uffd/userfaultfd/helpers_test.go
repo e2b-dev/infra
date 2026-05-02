@@ -28,9 +28,7 @@ type testConfig struct {
 	operations []operation
 	// alwaysWP makes the handler copy with UFFDIO_COPY_MODE_WP for all faults.
 	alwaysWP bool
-	// barriers wires up the per-worker fault hooks in the child
-	// (used by race tests). Off by default so the worker hot path
-	// stays a single nil-pointer load + branch in non-race tests.
+	// barriers enables the per-worker fault hook (race tests only).
 	barriers bool
 }
 
@@ -54,15 +52,10 @@ type operation struct {
 	async bool
 }
 
-// handlerPageStates groups a pageTracker snapshot by state so follow-up
-// PRs can add more per-state fields (e.g. removed) without touching
-// existing call sites.
 type handlerPageStates struct {
 	faulted []uint
 }
 
-// allAccessed returns the sorted offsets the handler touched in any
-// non-missing state.
 func (s handlerPageStates) allAccessed() []uint {
 	return slices.Clone(s.faulted)
 }
@@ -71,16 +64,10 @@ type testHandler struct {
 	memoryArea *[]byte
 	pagesize   uint64
 	data       *MemorySlicer
-
-	// client is the typed RPC channel to the child helper process.
-	// Tests should prefer the convenience methods on testHandler.
-	client *testharness.Client
-
-	mutex sync.RWMutex
+	client     *testharness.Client
+	mutex      sync.RWMutex
 }
 
-// pageStates fetches a per-state snapshot of the child's pageTracker
-// via the Paging.States RPC.
 func (h *testHandler) pageStates() (handlerPageStates, error) {
 	entries, err := h.client.PageStates()
 	if err != nil {

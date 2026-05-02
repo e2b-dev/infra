@@ -64,15 +64,13 @@ type Userfaultfd struct {
 	// defaultCopyMode overrides the UFFDIO_COPY mode for all faults when non-zero.
 	defaultCopyMode CULong
 
-	// installed only by SetTestFaultHook in test builds; nil in production.
+	// testFaultHook is set only by SetTestFaultHook in test builds.
 	testFaultHook atomic.Pointer[func(uintptr, faultPhase)]
 
 	logger logger.Logger
 }
 
-// faultPhase identifies WHEN inside the worker the test-only fault
-// hook is invoked. testFaultHook is nil in production, so the
-// per-fault cost is a single atomic load + nil check per call site.
+// faultPhase identifies the worker fault hook call site (test-only).
 type faultPhase uint8
 
 const (

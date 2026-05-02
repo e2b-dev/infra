@@ -10,8 +10,6 @@ import (
 	"testing"
 )
 
-// TestHelperServingProcess is the entry point for the child helper
-// process spawned by configureCrossProcessTest.
 func TestHelperServingProcess(t *testing.T) {
 	t.Parallel()
 
@@ -28,8 +26,7 @@ func TestHelperServingProcess(t *testing.T) {
 }
 
 func crossProcessServe() error {
-	// fork+exec dup3's the parent's ExtraFiles to fd 3 (uffd) and fd 4
-	// (rpc socketpair half) with CLOEXEC cleared.
+	// fork+exec dup3's the parent's ExtraFiles to fd 3 (uffd) and fd 4 (rpc).
 	uffdFile := os.NewFile(uintptr(3), "uffd")
 	defer uffdFile.Close()
 
@@ -39,9 +36,8 @@ func crossProcessServe() error {
 	if err != nil {
 		return fmt.Errorf("net.FileConn rpc: %w", err)
 	}
-	// Close once: the explicit close before <-codecDone unblocks
-	// server.ServeCodec on the success path; the deferred close is the
-	// safety net for early returns from the rpc.Register calls below.
+	// Explicit close before <-codecDone unblocks ServeCodec on the success
+	// path; the deferred close is the safety net for early returns.
 	var closeConnOnce sync.Once
 	closeConn := func() { closeConnOnce.Do(func() { _ = conn.Close() }) }
 	defer closeConn()
@@ -59,8 +55,7 @@ func crossProcessServe() error {
 		return fmt.Errorf("rpc Register Barriers: %w", err)
 	}
 
-	// Run the codec in a goroutine so we can react to Shutdown
-	// without depending on the codec returning.
+	// Run the codec in a goroutine so Shutdown can unblock us via ctx.
 	codecDone := make(chan struct{})
 	go func() {
 		defer close(codecDone)
@@ -72,8 +67,12 @@ func crossProcessServe() error {
 	case <-codecDone:
 	}
 
-	// Release parked barriers so the serve goroutine can drain.
-	state.releaseAllBarriers()
+	state.mu.Lock()
+	br := state.br
+	state.mu.Unlock()
+	if br != nil {
+		br.ReleaseAll()
+	}
 	state.stopServe()
 
 	closeConn()

@@ -20,7 +20,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils/testharness"
 )
 
-// MemorySlicer exposes a byte slice via the Slicer interface.
 type MemorySlicer struct {
 	content  []byte
 	pagesize int64
@@ -78,26 +77,21 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 	require.NoError(t, configureApi(uffdFd, tt.pagesize))
 	require.NoError(t, register(uffdFd, memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP))
 	t.Cleanup(func() {
-		// Unregister before the close cleanup runs (LIFO). A future test
-		// that enables UFFD_FEATURE_EVENT_REMOVE would otherwise see
-		// munmap block on un-acked REMOVE events queued against a
-		// still-registered range.
+		// Unregister before close (LIFO): a future test enabling
+		// UFFD_FEATURE_EVENT_REMOVE would otherwise see munmap block on
+		// un-acked REMOVE events against a still-registered range.
 		assert.NoError(t, unregister(uffdFd, memoryStart, uint64(size)))
 	})
 
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestHelperServingProcess", "-test.timeout=0")
 	cmd.Env = append(os.Environ(), envHelperFlag+"=1")
 
-	// F_DUPFD_CLOEXEC dup's atomically with CLOEXEC set, so a concurrent
-	// fork in another goroutine cannot inherit the dup'd fd before we
-	// hand it off via ExtraFiles.
+	// F_DUPFD_CLOEXEC dup's atomically with CLOEXEC set; a concurrent
+	// fork cannot inherit the fd before we hand it off via ExtraFiles.
 	dup, err := unix.FcntlInt(uintptr(uffdFd), unix.F_DUPFD_CLOEXEC, 0)
 	require.NoError(t, err)
 	uffdFile := os.NewFile(uintptr(dup), "uffd")
 
-	// Socketpair gives a connected AF_UNIX pair in one syscall, with both
-	// ends born CLOEXEC; cmd.ExtraFiles clears CLOEXEC on the child end
-	// inside ForkExec.
 	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, 0)
 	require.NoError(t, err)
 	parentEnd := os.NewFile(uintptr(fds[0]), "rpc-parent")
@@ -115,11 +109,6 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 		require.NoError(t, startErr)
 	}
 
-	// child-reap cleanup. client is captured by reference: nil →
-	// cmd.Process.Kill, non-nil → graceful Shutdown via RPC. LIFO
-	// ordering with the cleanups above gives child-reap → unregister →
-	// close, i.e. stop the child's Serve loop before tearing down
-	// kernel state.
 	var client *testharness.Client
 	t.Cleanup(func() {
 		if client != nil {
@@ -128,7 +117,7 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 		} else {
 			_ = cmd.Process.Kill()
 		}
-		_ = parentEnd.Close() // idempotent; FileConn dups the underlying fd
+		_ = parentEnd.Close()
 
 		waitErr := cmd.Wait()
 		if waitErr != nil {
@@ -163,9 +152,6 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 		return nil, fmt.Errorf("Lifecycle.Bootstrap: %w", err)
 	}
 
-	// Bootstrap is synchronous, so its reply already implies readiness;
-	// WaitReady is kept as a separate RPC so an async-Bootstrap variant
-	// can hold the parent here without touching call sites.
 	if err := client.WaitReady(); err != nil {
 		return nil, fmt.Errorf("Lifecycle.WaitReady: %w", err)
 	}
