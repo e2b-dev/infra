@@ -69,8 +69,9 @@ func orchestratorSandboxHost(host string, sandboxID string, port uint64) *string
 		return nil
 	}
 
-	host := fmt.Sprintf("%d-%s.%s", port, sandboxID, domain)
-	return &host
+	orchestratorHost := fmt.Sprintf("%d-%s.%s", port, sandboxID, domain)
+
+	return &orchestratorHost
 }
 
 func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {
