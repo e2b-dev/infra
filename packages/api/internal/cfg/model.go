@@ -55,6 +55,8 @@ type Config struct {
 
 	APIInternalGrpcPort uint16 `env:"API_INTERNAL_GRPC_PORT" envDefault:"5009"`
 	APIEdgeGrpcPort     uint16 `env:"API_EDGE_GRPC_PORT"     envDefault:"5109"`
+	APITLSCertFile      string `env:"API_TLS_CERT_FILE"`
+	APITLSKeyFile       string `env:"API_TLS_KEY_FILE"`
 
 	ClientProxyOIDCIssuerURL string `env:"CLIENT_PROXY_OIDC_ISSUER_URL"`
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -235,6 +236,23 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	return s
 }
 
+func listenAndServeAPI(s *http.Server, config cfg.Config) error {
+	if config.APITLSCertFile == "" && config.APITLSKeyFile == "" {
+		return s.ListenAndServe()
+	}
+
+	if config.APITLSCertFile == "" || config.APITLSKeyFile == "" {
+		return fmt.Errorf("both API_TLS_CERT_FILE and API_TLS_KEY_FILE must be set to serve TLS")
+	}
+
+	s.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	if err := http2.ConfigureServer(s, &http2.Server{}); err != nil {
+		return fmt.Errorf("configure API HTTP/2 server: %w", err)
+	}
+
+	return s.ListenAndServeTLS(config.APITLSCertFile, config.APITLSKeyFile)
+}
+
 func run() int {
 	ctx, cancel := context.WithCancel(context.Background()) // root context
 	defer cancel()
@@ -464,7 +482,7 @@ func run() int {
 		l.Info(ctx, "Http service starting", zap.Int("port", port))
 
 		// Serve HTTP until shutdown.
-		err := s.ListenAndServe()
+		err := listenAndServeAPI(s, config)
 
 		switch {
 		case errors.Is(err, http.ErrServerClosed):
