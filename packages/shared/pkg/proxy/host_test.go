@@ -143,8 +143,8 @@ func TestGetTargetFromRequest(t *testing.T) {
 			wantErrIs: MissingHeaderError{Header: headerSandboxPort},
 		},
 		{
-			name: "headers: envd shared host",
-			host: "envd.e2b.app",
+			name: "headers: sandbox shared host",
+			host: "sandbox.e2b.app",
 			headers: http.Header{
 				headerSandboxID:   []string{"isv6ril5xadwn1k9t2jye"},
 				headerSandboxPort: []string{"49983"},

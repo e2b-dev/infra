@@ -58,6 +58,10 @@ func newFF(t *testing.T, autoResumeEnabled bool) *featureflags.Client {
 	return ff
 }
 
+func ptr[T any](v T) *T {
+	return &v
+}
+
 func TestCatalogResolution_CatalogHit(t *testing.T) {
 	t.Parallel()
 
@@ -74,6 +78,55 @@ func TestCatalogResolution_CatalogHit(t *testing.T) {
 	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
 	require.NoError(t, err)
 	require.Equal(t, "10.0.0.1", nodeIP)
+}
+
+func TestOrchestratorSandboxHost(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		host      string
+		sandboxID string
+		port      uint64
+		want      *string
+	}{
+		{
+			name:      "localhost",
+			host:      "localhost:3000",
+			sandboxID: "sbx",
+			port:      49983,
+			want:      ptr("49983-sbx.localhost"),
+		},
+		{
+			name:      "sandbox shared host",
+			host:      "sandbox.e2b.app",
+			sandboxID: "sbx",
+			port:      49983,
+			want:      ptr("49983-sbx.e2b.app"),
+		},
+		{
+			name:      "sandbox shared host with port",
+			host:      "sandbox.e2b.app:443",
+			sandboxID: "sbx",
+			port:      49983,
+			want:      ptr("49983-sbx.e2b.app"),
+		},
+		{
+			name:      "regular sandbox host",
+			host:      "49983-sbx.e2b.app",
+			sandboxID: "sbx",
+			port:      49983,
+			want:      nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tt.want, orchestratorSandboxHost(tt.host, tt.sandboxID, tt.port))
+		})
+	}
 }
 
 func TestCatalogResolution_CatalogHit_EmptyIPReturnsRouteUnavailable(t *testing.T) {

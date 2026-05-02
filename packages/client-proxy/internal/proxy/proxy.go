@@ -70,7 +70,7 @@ func orchestratorSandboxHost(host string, sandboxID string, port uint64) *string
 		return &orchestratorHost
 	}
 
-	domain, ok := strings.CutPrefix(hostname, "envd.")
+	domain, ok := strings.CutPrefix(hostname, "sandbox.")
 	if !ok || domain == "" {
 		return nil
 	}
