@@ -20,11 +20,13 @@ import (
 )
 
 const (
-	AccessTokenAuthScopes    = "AccessTokenAuth.Scopes"
-	AdminTokenAuthScopes     = "AdminTokenAuth.Scopes"
-	ApiKeyAuthScopes         = "ApiKeyAuth.Scopes"
-	Supabase1TokenAuthScopes = "Supabase1TokenAuth.Scopes"
-	Supabase2TeamAuthScopes  = "Supabase2TeamAuth.Scopes"
+	AccessTokenAuthScopes       = "AccessTokenAuth.Scopes"
+	AdminTokenAuthScopes        = "AdminTokenAuth.Scopes"
+	ApiKeyAuthScopes            = "ApiKeyAuth.Scopes"
+	AuthProviderTeamAuthScopes  = "AuthProviderTeamAuth.Scopes"
+	AuthProviderTokenAuthScopes = "AuthProviderTokenAuth.Scopes"
+	Supabase1TokenAuthScopes    = "Supabase1TokenAuth.Scopes"
+	Supabase2TeamAuthScopes     = "Supabase2TeamAuth.Scopes"
 )
 
 // Defines values for AWSRegistryType.

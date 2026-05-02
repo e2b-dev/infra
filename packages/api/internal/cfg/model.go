@@ -2,6 +2,7 @@ package cfg
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -12,6 +13,7 @@ import (
 	"github.com/caarlos0/env/v11"
 	"github.com/golang-jwt/jwt/v5"
 
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 )
 
@@ -62,10 +64,7 @@ type Config struct {
 
 	VolumesToken VolumesTokenConfig
 
-	// SupabaseJWTSecrets is a list of secrets used to verify the Supabase JWT.
-	// More secrets are possible in the case of JWT secret rotation where we need to accept
-	// tokens signed with the old secret for some time.
-	SupabaseJWTSecrets []string `env:"SUPABASE_JWT_SECRETS"`
+	AuthProvider auth.ProviderConfig `env:"AUTH_PROVIDER_CONFIG"`
 
 	// Deprecated: Template manager should use its own
 	DefaultKernelVersion string `env:"DEFAULT_KERNEL_VERSION"`
@@ -94,6 +93,17 @@ var (
 	ErrUnknownKeyType       = errors.New("unknown JWT signing key type")
 
 	parserFuncs = map[reflect.Type]env.ParserFunc{
+		reflect.TypeFor[auth.ProviderConfig](): func(v string) (any, error) {
+			var config auth.ProviderConfig
+			if v == "" || strings.TrimSpace(v) == "null" {
+				return config, nil
+			}
+			if err := json.Unmarshal([]byte(v), &config); err != nil {
+				return nil, fmt.Errorf("parse AUTH_PROVIDER_CONFIG: %w", err)
+			}
+
+			return config, nil
+		},
 		reflect.TypeFor[JWTSigningKey](): func(v string) (any, error) {
 			keyPieces := strings.SplitN(v, ":", 2)
 			if len(keyPieces) != 2 {

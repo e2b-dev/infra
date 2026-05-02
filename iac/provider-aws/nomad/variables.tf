@@ -188,9 +188,35 @@ variable "postgres_connection_string" {
   sensitive = true
 }
 
-variable "supabase_jwt_secrets" {
-  type      = string
+variable "auth_provider_config" {
+  type = object({
+    jwt = optional(list(object({
+      issuer = object({
+        url                 = string
+        discoveryURL        = optional(string)
+        audiences           = list(string)
+        audienceMatchPolicy = optional(string)
+      })
+      claimMappings = optional(object({
+        username = object({
+          claim = string
+        })
+      }))
+      jwksCacheDuration = optional(string)
+    })))
+    bearer = optional(list(object({
+      hmac = object({
+        secrets = list(string)
+      })
+      claimMappings = optional(object({
+        username = object({
+          claim = string
+        })
+      }))
+    })))
+  })
   sensitive = true
+  default   = null
 }
 
 variable "admin_token" {

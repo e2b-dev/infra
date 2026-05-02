@@ -18,6 +18,14 @@ components:
       type: apiKey
       in: header
       name: X-Supabase-Team
+    AuthProviderTokenAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: access_token
+    AuthProviderTeamAuth:
+      type: apiKey
+      in: header
+      name: X-Team-Id
 
   parameters:
     build_id:
@@ -617,6 +625,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/build_id_or_template"
         - $ref: "#/components/parameters/build_statuses"
@@ -645,6 +655,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/build_ids"
 
@@ -671,6 +683,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/build_id"
       responses:
@@ -696,6 +710,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -721,6 +737,7 @@ paths:
       tags: [teams]
       security:
         - Supabase1TokenAuth: []
+        - AuthProviderTokenAuth: []
       responses:
         "200":
           description: Successfully returned user teams.
@@ -737,6 +754,7 @@ paths:
       tags: [teams]
       security:
         - Supabase1TokenAuth: []
+        - AuthProviderTokenAuth: []
       requestBody:
         required: true
         content:
@@ -784,6 +802,7 @@ paths:
       tags: [teams]
       security:
         - Supabase1TokenAuth: []
+        - AuthProviderTokenAuth: []
       parameters:
         - $ref: "#/components/parameters/teamSlug"
       responses:
@@ -809,6 +828,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
       requestBody:
@@ -840,6 +861,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
       responses:
@@ -861,6 +884,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
       requestBody:
@@ -890,6 +915,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderTokenAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
         - $ref: "#/components/parameters/userId"
@@ -912,6 +939,7 @@ paths:
       tags: [templates]
       security:
         - Supabase1TokenAuth: []
+        - AuthProviderTokenAuth: []
       responses:
         "200":
           description: Successfully returned default templates.
