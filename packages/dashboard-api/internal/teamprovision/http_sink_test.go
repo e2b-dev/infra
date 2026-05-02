@@ -24,7 +24,7 @@ func TestHTTPProvisionSink_ReturnsJSONErrorMessage(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sink := NewHTTPProvisionSink(server.URL, "token")
+	sink := NewHTTPProvisionSink(server.URL, "token", nil)
 	err := sink.ProvisionTeam(t.Context(), testProvisionRequest())
 	require.Error(t, err)
 
@@ -52,7 +52,7 @@ func TestHTTPProvisionSink_RetriesRetryableResponsesAndSucceeds(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sink := NewHTTPProvisionSink(server.URL, "token")
+	sink := NewHTTPProvisionSink(server.URL, "token", nil)
 	sink.client.RetryWaitMin = time.Millisecond
 	sink.client.RetryWaitMax = time.Millisecond
 	err := sink.ProvisionTeam(t.Context(), testProvisionRequest())
@@ -74,7 +74,7 @@ func TestHTTPProvisionSink_RetriesRequestTimeoutWithinOverallBudget(t *testing.T
 	}))
 	defer server.Close()
 
-	sink := NewHTTPProvisionSink(server.URL, "token")
+	sink := NewHTTPProvisionSink(server.URL, "token", nil)
 	sink.timeout = 80 * time.Millisecond
 	sink.client.HTTPClient.Timeout = 25 * time.Millisecond
 	sink.client.RetryWaitMin = time.Millisecond
@@ -87,10 +87,10 @@ func TestHTTPProvisionSink_RetriesRequestTimeoutWithinOverallBudget(t *testing.T
 
 func testProvisionRequest() sharedteamprovision.TeamBillingProvisionRequestedV1 {
 	return sharedteamprovision.TeamBillingProvisionRequestedV1{
-		TeamID:      uuid.New(),
-		TeamName:    "Acme",
-		TeamEmail:   "acme@example.com",
-		OwnerUserID: uuid.New(),
-		Reason:      sharedteamprovision.ReasonAdditionalTeam,
+		TeamID:        uuid.New(),
+		TeamName:      "Acme",
+		TeamEmail:     "acme@example.com",
+		CreatorUserID: uuid.New(),
+		Reason:        sharedteamprovision.ReasonAdditionalTeam,
 	}
 }

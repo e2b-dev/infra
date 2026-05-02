@@ -130,11 +130,11 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 		}
 
 		req := teamprovision.TeamBillingProvisionRequestedV1{
-			TeamID:      existingTeam.ID,
-			TeamName:    existingTeam.Name,
-			TeamEmail:   existingTeam.Email,
-			OwnerUserID: userID,
-			Reason:      teamprovision.ReasonDefaultSignupTeam,
+			TeamID:        existingTeam.ID,
+			TeamName:      existingTeam.Name,
+			TeamEmail:     existingTeam.Email,
+			CreatorUserID: userID,
+			Reason:        teamprovision.ReasonDefaultSignupTeam,
 		}
 		_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
 
@@ -176,11 +176,11 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 	}
 
 	req := teamprovision.TeamBillingProvisionRequestedV1{
-		TeamID:      team.ID,
-		TeamName:    team.Name,
-		TeamEmail:   team.Email,
-		OwnerUserID: userID,
-		Reason:      teamprovision.ReasonDefaultSignupTeam,
+		TeamID:        team.ID,
+		TeamName:      team.Name,
+		TeamEmail:     team.Email,
+		CreatorUserID: userID,
+		Reason:        teamprovision.ReasonDefaultSignupTeam,
 	}
 	_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
 
@@ -249,11 +249,11 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 	}
 
 	req := teamprovision.TeamBillingProvisionRequestedV1{
-		TeamID:      team.ID,
-		TeamName:    team.Name,
-		TeamEmail:   team.Email,
-		OwnerUserID: userID,
-		Reason:      teamprovision.ReasonAdditionalTeam,
+		TeamID:        team.ID,
+		TeamName:      team.Name,
+		TeamEmail:     team.Email,
+		CreatorUserID: userID,
+		Reason:        teamprovision.ReasonAdditionalTeam,
 	}
 	if err := s.teamProvisionSink.ProvisionTeam(ctx, req); err != nil {
 		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), teamProvisionRollbackTimeout)
