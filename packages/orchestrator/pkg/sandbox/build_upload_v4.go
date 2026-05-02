@@ -122,9 +122,12 @@ func (u *Upload) collectAncestorBuilds(
 		if err != nil {
 			return nil, fmt.Errorf("wait for ancestor %s/%s: %w", m.BuildId, fileType, err)
 		}
+		// V3 ancestors have Builds=nil (FrameTable is V4-only); their data is
+		// raw bytes and the read path doesn't consult Builds for them. Skip
+		// silently so V4 descendants of V3 ancestors still upload.
 		bd, ok := h.Builds[m.BuildId]
 		if !ok {
-			return nil, fmt.Errorf("ancestor %s/%s header missing self-entry", m.BuildId, fileType)
+			continue
 		}
 
 		out[m.BuildId] = bd

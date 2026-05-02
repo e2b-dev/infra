@@ -109,6 +109,14 @@ func (u *Uploads) Wait(ctx context.Context, buildID uuid.UUID, t build.DiffType)
 	}
 
 	d, err := u.find(ctx, buildID, t)
+	if errors.Is(err, ErrBuildNotInCache) {
+		// Ancestor never resumed locally (typical for grand-grandparents
+		// reached via mappings). It's necessarily finalized — load directly
+		// from GCS without an in-memory device or future to track.
+		hdrPath := storage.Paths{BuildID: buildID.String()}.HeaderFile(string(t))
+
+		return header.LoadHeader(ctx, u.persistence, hdrPath)
+	}
 	if err != nil {
 		return nil, err
 	}

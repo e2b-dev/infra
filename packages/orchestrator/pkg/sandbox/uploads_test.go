@@ -173,15 +173,6 @@ func TestUploads_Wait_ContextCancellation(t *testing.T) {
 	}
 }
 
-func TestUploads_Wait_NotInCache(t *testing.T) {
-	t.Parallel()
-	c, _ := newUploads(t)
-
-	id := uuid.New()
-	_, err := c.Wait(context.Background(), id, build.Memfile)
-	require.ErrorIs(t, err, ErrBuildNotInCache)
-}
-
 func TestUploads_Wait_NoFuture_ReadsFromCache(t *testing.T) {
 	t.Parallel()
 	c, cache := newUploads(t)
