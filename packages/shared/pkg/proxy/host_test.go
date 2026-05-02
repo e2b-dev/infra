@@ -142,6 +142,26 @@ func TestGetTargetFromRequest(t *testing.T) { //nolint:tparallel // cannot call 
 			},
 			wantErrIs: MissingHeaderError{Header: headerSandboxPort},
 		},
+		{
+			name: "headers: envd shared host",
+			host: "envd.e2b.app",
+			headers: http.Header{
+				headerSandboxID:   []string{"isv6ril5xadwn1k9t2jye"},
+				headerSandboxPort: []string{"49983"},
+			},
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 49983,
+		},
+		{
+			name: "headers: ignored on regular sandbox host",
+			host: "49983-isv6ril5xadwn1k9t2jye.e2b.app",
+			headers: http.Header{
+				headerSandboxID:   []string{"iother5b5aiixd410phsjv"},
+				headerSandboxPort: []string{"3000"},
+			},
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 49983,
+		},
 	}
 
 	for _, tt := range tests {

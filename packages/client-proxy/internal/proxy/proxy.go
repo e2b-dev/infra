@@ -16,7 +16,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -61,6 +60,17 @@ func normalizeNodeIP(nodeIP string) (string, error) {
 	}
 
 	return nodeIP, nil
+}
+
+func legacySandboxHostForEnvdRequest(host string, sandboxID string, port uint64) *string {
+	hostname := strings.Split(host, ":")[0]
+	domain, ok := strings.CutPrefix(hostname, "envd.")
+	if !ok || domain == "" {
+		return nil
+	}
+
+	legacyHost := fmt.Sprintf("%d-%s.%s", port, sandboxID, domain)
+	return &legacyHost
 }
 
 func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {
@@ -133,7 +143,7 @@ func handlePausedSandbox(
 }
 
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedSandboxResumer PausedSandboxResumer, featureFlagsClient *featureflags.Client) (*reverseproxy.Proxy, error) {
-	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
+	getTargetFromRequest := reverseproxy.GetTargetFromRequest(true)
 	proxy := reverseproxy.New(
 		port,
 		// Retries that are needed to handle port forwarding delays in sandbox envd are handled by the orchestrator proxy
@@ -198,6 +208,11 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				SandboxPort:   port,
 				ConnectionKey: pool.ClientProxyConnectionKey,
 				Url:           url,
+				MaskRequestHost: legacySandboxHostForEnvdRequest(
+					r.Host,
+					sandboxId,
+					port,
+				),
 			}, nil
 		},
 		nil,
