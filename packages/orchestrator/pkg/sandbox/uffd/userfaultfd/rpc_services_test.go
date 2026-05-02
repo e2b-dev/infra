@@ -124,8 +124,9 @@ func (l *Lifecycle) Bootstrap(args *testharness.BootstrapArgs, _ *testharness.Bo
 		uffd.defaultCopyMode = UFFDIO_COPY_MODE_WP
 	}
 
-	br := testharness.NewRegistry()
+	var br *testharness.Registry
 	if args.Barriers {
+		br = testharness.NewRegistry()
 		hook := br.Hook()
 		uffd.SetTestFaultHook(func(addr uintptr, p faultPhase) {
 			hook(addr, testharness.Point(p))
@@ -252,7 +253,7 @@ func (b *Barriers) registry() (*testharness.Registry, error) {
 	br := b.state.br
 	b.state.mu.Unlock()
 	if br == nil {
-		return nil, errors.New("Barriers RPC called before Lifecycle.Bootstrap")
+		return nil, errors.New("Barriers RPC requires args.Barriers=true at Bootstrap")
 	}
 
 	return br, nil

@@ -107,16 +107,20 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 		require.NoError(t, startErr)
 	}
 
-	// FileConn dups the underlying fd; close parentEnd to avoid leaking it.
-	parentConn, err := net.FileConn(parentEnd)
-	parentEnd.Close()
-	require.NoError(t, err)
-
-	client := testharness.NewClient(parentConn)
-
+	// Register teardown immediately so any failure between here and the
+	// final return still reaps the helper process and unregisters the
+	// userfaultfd. client is captured by reference so the closure can
+	// pick the graceful (Shutdown) or hard (Kill) path depending on
+	// how far init progressed.
+	var client *testharness.Client
 	t.Cleanup(func() {
-		_ = client.Shutdown()
-		_ = client.Close()
+		if client != nil {
+			_ = client.Shutdown()
+			_ = client.Close()
+		} else {
+			_ = cmd.Process.Kill()
+		}
+		_ = parentEnd.Close() // idempotent; FileConn dups the underlying fd
 
 		waitErr := cmd.Wait()
 		if waitErr != nil {
@@ -132,6 +136,12 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 		assert.NoError(t, unregister(uffdFd, memoryStart, uint64(size)))
 		uffdFd.close()
 	})
+
+	parentConn, err := net.FileConn(parentEnd)
+	parentEnd.Close()
+	require.NoError(t, err)
+
+	client = testharness.NewClient(parentConn)
 
 	h := &testHandler{
 		memoryArea: &memoryArea,
