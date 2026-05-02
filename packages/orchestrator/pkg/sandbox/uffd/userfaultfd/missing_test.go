@@ -218,7 +218,7 @@ func TestParallelMissingWithPrefault(t *testing.T) {
 func TestSerialMissing(t *testing.T) {
 	t.Parallel()
 
-	serialOperations := 10_000
+	serialOperations := 1_000_000
 
 	tt := testConfig{
 		pagesize:      header.PageSize,

@@ -173,7 +173,7 @@ func TestParallelMissingWrite(t *testing.T) {
 func TestParallelMissingWriteWithPrefault(t *testing.T) {
 	t.Parallel()
 
-	parallelOperations := 10_000
+	parallelOperations := 1_000_000
 
 	tt := testConfig{
 		pagesize:      header.PageSize,
@@ -213,7 +213,7 @@ func TestParallelMissingWriteWithPrefault(t *testing.T) {
 func TestSerialMissingWrite(t *testing.T) {
 	t.Parallel()
 
-	serialOperations := 10_000
+	serialOperations := 1_000_000
 
 	tt := testConfig{
 		pagesize:      header.PageSize,
