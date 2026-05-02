@@ -64,6 +64,12 @@ func normalizeNodeIP(nodeIP string) (string, error) {
 
 func orchestratorSandboxHost(host string, sandboxID string, port uint64) *string {
 	hostname := strings.Split(host, ":")[0]
+	if hostname == "localhost" {
+		orchestratorHost := fmt.Sprintf("%d-%s.localhost", port, sandboxID)
+
+		return &orchestratorHost
+	}
+
 	domain, ok := strings.CutPrefix(hostname, "envd.")
 	if !ok || domain == "" {
 		return nil
