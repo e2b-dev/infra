@@ -47,6 +47,7 @@ func GetTargetFromRequest(headerRouting HeaderRoutingMode) func(r *http.Request)
 
 func shouldParseHeaders(host string) bool {
 	host = strings.Split(host, ":")[0]
+
 	return host == "localhost" || strings.HasPrefix(host, "envd.")
 }
 
