@@ -1,7 +1,7 @@
 package userfaultfd
 
 // RPC service implementations for the cross-process UFFD test harness.
-// These live in _test.go (rather than internal/rpcharness) because they
+// These live in _test.go (rather than testutils/testharness) because they
 // need access to unexported *Userfaultfd internals.
 
 import (
@@ -13,7 +13,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/memory"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/userfaultfd/internal/rpcharness"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils/testharness"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -24,7 +24,7 @@ type harnessState struct {
 
 	mu       sync.Mutex
 	uffd     *Userfaultfd
-	br       *rpcharness.Registry
+	br       *testharness.Registry
 	stop     func() // serve-stop fn; nil when paused
 	shutdown chan struct{}
 	closed   bool
@@ -94,7 +94,7 @@ type Lifecycle struct {
 	state *harnessState
 }
 
-func (l *Lifecycle) Bootstrap(args *rpcharness.BootstrapArgs, _ *rpcharness.BootstrapReply) error {
+func (l *Lifecycle) Bootstrap(args *testharness.BootstrapArgs, _ *testharness.BootstrapReply) error {
 	if int64(len(args.Content)) != args.TotalSize {
 		return fmt.Errorf("content size %d != expected %d", len(args.Content), args.TotalSize)
 	}
@@ -124,11 +124,11 @@ func (l *Lifecycle) Bootstrap(args *rpcharness.BootstrapArgs, _ *rpcharness.Boot
 		uffd.defaultCopyMode = UFFDIO_COPY_MODE_WP
 	}
 
-	br := rpcharness.NewRegistry()
+	br := testharness.NewRegistry()
 	if args.Barriers {
 		hook := br.Hook()
 		uffd.SetTestFaultHook(func(addr uintptr, p faultPhase) {
-			hook(addr, rpcharness.Point(p))
+			hook(addr, testharness.Point(p))
 		})
 	}
 
@@ -143,11 +143,11 @@ func (l *Lifecycle) Bootstrap(args *rpcharness.BootstrapArgs, _ *rpcharness.Boot
 // WaitReady is a no-op today: Bootstrap is synchronous so its reply
 // already implies readiness. Kept as a separate RPC so an async
 // Bootstrap variant can hold the parent here without changing callers.
-func (l *Lifecycle) WaitReady(_ *rpcharness.Empty, _ *rpcharness.Empty) error {
+func (l *Lifecycle) WaitReady(_ *testharness.Empty, _ *testharness.Empty) error {
 	return nil
 }
 
-func (l *Lifecycle) Shutdown(_ *rpcharness.Empty, _ *rpcharness.Empty) error {
+func (l *Lifecycle) Shutdown(_ *testharness.Empty, _ *testharness.Empty) error {
 	l.state.mu.Lock()
 	defer l.state.mu.Unlock()
 	if !l.state.closed {
@@ -163,7 +163,7 @@ type Paging struct {
 	state *harnessState
 }
 
-func (p *Paging) States(_ *rpcharness.Empty, reply *rpcharness.PageStatesReply) error {
+func (p *Paging) States(_ *testharness.Empty, reply *testharness.PageStatesReply) error {
 	p.state.mu.Lock()
 	uffd := p.state.uffd
 	p.state.mu.Unlock()
@@ -180,13 +180,13 @@ func (p *Paging) States(_ *rpcharness.Empty, reply *rpcharness.PageStatesReply) 
 	return nil
 }
 
-func (p *Paging) Pause(_ *rpcharness.Empty, _ *rpcharness.Empty) error {
+func (p *Paging) Pause(_ *testharness.Empty, _ *testharness.Empty) error {
 	p.state.stopServe()
 
 	return nil
 }
 
-func (p *Paging) Resume(_ *rpcharness.Empty, _ *rpcharness.Empty) error {
+func (p *Paging) Resume(_ *testharness.Empty, _ *testharness.Empty) error {
 	p.state.mu.Lock()
 	defer p.state.mu.Unlock()
 
@@ -194,41 +194,41 @@ func (p *Paging) Resume(_ *rpcharness.Empty, _ *rpcharness.Empty) error {
 }
 
 // pageStateEntries returns a snapshot of every tracked page and its state in
-// rpcharness wire format. Holds settleRequests.Lock for the duration so no
+// testharness wire format. Holds settleRequests.Lock for the duration so no
 // fault worker is in flight; mirrors PrefetchData.
-func (u *Userfaultfd) pageStateEntries() ([]rpcharness.PageStateEntry, error) {
+func (u *Userfaultfd) pageStateEntries() ([]testharness.PageStateEntry, error) {
 	u.settleRequests.Lock()
 	defer u.settleRequests.Unlock()
 
-	entries := make([]rpcharness.PageStateEntry, 0, len(u.pageTracker.m))
+	entries := make([]testharness.PageStateEntry, 0, len(u.pageTracker.m))
 	for addr, state := range u.pageTracker.m {
 		offset, err := u.ma.GetOffset(addr)
 		if err != nil {
 			return nil, fmt.Errorf("address %#x not in mapping: %w", addr, err)
 		}
-		entries = append(entries, rpcharness.PageStateEntry{State: uint8(state), Offset: uint64(offset)})
+		entries = append(entries, testharness.PageStateEntry{State: uint8(state), Offset: uint64(offset)})
 	}
 
 	return entries, nil
 }
 
-// Barriers is the thin RPC wrapper exposing rpcharness.Registry to
-// the parent; locking and lifecycle live in rpcharness.
+// Barriers is the thin RPC wrapper exposing testharness.Registry to
+// the parent; locking and lifecycle live in testharness.
 type Barriers struct {
 	state *harnessState
 }
 
-func (b *Barriers) Install(args *rpcharness.FaultBarrierArgs, reply *rpcharness.FaultBarrierReply) error {
+func (b *Barriers) Install(args *testharness.FaultBarrierArgs, reply *testharness.FaultBarrierReply) error {
 	br, err := b.registry()
 	if err != nil {
 		return err
 	}
-	reply.Token = br.Install(uintptr(args.Addr), rpcharness.Point(args.Point))
+	reply.Token = br.Install(uintptr(args.Addr), testharness.Point(args.Point))
 
 	return nil
 }
 
-func (b *Barriers) WaitHeld(args *rpcharness.TokenArgs, _ *rpcharness.Empty) error {
+func (b *Barriers) WaitHeld(args *testharness.TokenArgs, _ *testharness.Empty) error {
 	br, err := b.registry()
 	if err != nil {
 		return err
@@ -237,7 +237,7 @@ func (b *Barriers) WaitHeld(args *rpcharness.TokenArgs, _ *rpcharness.Empty) err
 	return br.WaitArrived(context.Background(), args.Token)
 }
 
-func (b *Barriers) Release(args *rpcharness.TokenArgs, _ *rpcharness.Empty) error {
+func (b *Barriers) Release(args *testharness.TokenArgs, _ *testharness.Empty) error {
 	br, err := b.registry()
 	if err != nil {
 		return err
@@ -247,7 +247,7 @@ func (b *Barriers) Release(args *rpcharness.TokenArgs, _ *rpcharness.Empty) erro
 	return nil
 }
 
-func (b *Barriers) registry() (*rpcharness.Registry, error) {
+func (b *Barriers) registry() (*testharness.Registry, error) {
 	b.state.mu.Lock()
 	br := b.state.br
 	b.state.mu.Unlock()

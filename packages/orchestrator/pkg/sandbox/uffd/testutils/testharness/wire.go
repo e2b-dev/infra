@@ -1,9 +1,9 @@
-// Package rpcharness provides the wire types, typed RPC client, and
+// Package testharness provides the wire types, typed RPC client, and
 // barrier registry shared between the parent and child halves of the
 // userfaultfd test harness. It deliberately knows nothing about
-// *Userfaultfd internals so it can sit in a sibling internal package
-// and never get pulled into a production import path.
-package rpcharness
+// *Userfaultfd internals so it can sit alongside the other uffd test
+// utilities and never get pulled into a production import path.
+package testharness
 
 // Empty stands in for net/rpc methods that take or return nothing;
 // net/rpc still requires both args and reply to be exported pointers.

@@ -17,7 +17,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/userfaultfd/internal/rpcharness"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils/testharness"
 )
 
 // MemorySlicer exposes a byte slice via the Slicer interface.
@@ -112,7 +112,7 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 	parentEnd.Close()
 	require.NoError(t, err)
 
-	client := rpcharness.NewClient(parentConn)
+	client := testharness.NewClient(parentConn)
 
 	t.Cleanup(func() {
 		_ = client.Shutdown()
@@ -140,7 +140,7 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 		client:     client,
 	}
 
-	if err := client.Bootstrap(rpcharness.BootstrapArgs{
+	if err := client.Bootstrap(testharness.BootstrapArgs{
 		MmapStart: uint64(memoryStart),
 		Pagesize:  int64(tt.pagesize),
 		TotalSize: size,

@@ -1,4 +1,4 @@
-package rpcharness
+package testharness
 
 import (
 	"context"

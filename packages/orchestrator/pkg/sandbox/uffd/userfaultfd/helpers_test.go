@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/userfaultfd/internal/rpcharness"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils/testharness"
 )
 
 type testConfig struct {
@@ -74,7 +74,7 @@ type testHandler struct {
 
 	// client is the typed RPC channel to the child helper process.
 	// Tests should prefer the convenience methods on testHandler.
-	client *rpcharness.Client
+	client *testharness.Client
 
 	mutex sync.RWMutex
 }
