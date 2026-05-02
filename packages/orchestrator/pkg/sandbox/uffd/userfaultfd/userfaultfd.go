@@ -323,10 +323,10 @@ func (u *Userfaultfd) Serve(
 				return fmt.Errorf("failed to map: %w", err)
 			}
 
-			// State read happens HERE in the parent loop (before the
-			// worker takes settleRequests.RLock). PR #2521 adds tests
-			// that demonstrate this is racy with REMOVE events; PR #2512
-			// moves the read into the worker under RLock.
+			// State read happens before the worker takes settleRequests.RLock,
+			// so a REMOVE arriving in the parent's next iteration can race
+			// with an already-scheduled worker. Tracked as a known race; fix
+			// re-reads state under RLock in the worker.
 			var source block.Slicer
 			switch state := u.pageTracker.get(addr); state {
 			case faulted:
@@ -343,18 +343,13 @@ func (u *Userfaultfd) Serve(
 			}
 
 			u.wg.Go(func() error {
-				// Test-only barrier: park the worker BEFORE it takes RLock.
-				// While parked, the parent loop is free to take
-				// settleRequests.Lock() to process REMOVE events — exactly
-				// the window PR #2512 closes by re-reading state in the
-				// worker under RLock.
 				if h := u.testFaultHook.Load(); h != nil {
 					(*h)(addr, faultPhaseBeforeRLock)
 				}
 
-				// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
-				// even if the errgroup is cancelled or the goroutine returns early.
-				// This check protects us against race condition between marking the request for prefetching and accessing the prefetchTracker.
+				// RLock inside the goroutine so RUnlock runs via defer even on
+				// early return, and so it pairs with the prefetchTracker write
+				// below.
 				u.settleRequests.RLock()
 				defer u.settleRequests.RUnlock()
 
@@ -365,10 +360,6 @@ func (u *Userfaultfd) Serve(
 					accessType = block.Write
 				}
 
-				// Test-only barrier: park the worker AFTER RLock but BEFORE
-				// the actual UFFDIO_* syscall. Lets tests simulate a slow
-				// in-flight COPY so the parent's REMOVE batch can race
-				// against a worker that already holds RLock.
 				if h := u.testFaultHook.Load(); h != nil {
 					(*h)(addr, faultPhaseBeforeFaultPage)
 				}
@@ -406,12 +397,17 @@ func (u *Userfaultfd) faultPage(
 	accessType block.AccessType,
 	source block.Slicer,
 	onFailure func() error,
-) (bool, error) {
+) (handled bool, err error) {
 	span := trace.SpanFromContext(ctx)
 
+	// Named returns so a recovered panic surfaces as a fatal error instead of
+	// the zero values (false, nil) — which the caller treats as "defer & retry"
+	// and would loop indefinitely on a deterministic panic.
 	defer func() {
 		if r := recover(); r != nil {
 			u.logger.Error(ctx, "UFFD serve panic", zap.Any("pagesize", u.pageSize), zap.Any("panic", r))
+			handled = false
+			err = fmt.Errorf("uffd serve panic: %v", r)
 		}
 	}()
 
@@ -527,12 +523,10 @@ func (u *Userfaultfd) faultPage(
 	}
 
 	if errors.Is(writeErr, unix.EAGAIN) {
-		// Kernel sets mmap_changing during a concurrent madvise(MADV_DONTNEED),
-		// mremap, or fork against the same mm and surfaces it as EAGAIN — either
-		// directly via errno or via the UFFDIO_COPY partial-copy convention
-		// (cpy.copy == -EAGAIN, or 0 <= cpy.copy < pagesize for hugetlb faults
-		// preempted mid-page; see classifyCopyResult). Drop the fault and let
-		// the kernel redeliver it once the racing operation settles.
+		// mmap_changing was set during the copy (concurrent
+		// madvise(MADV_DONTNEED)/mremap/fork on the mm). Drop the fault and
+		// let the kernel redeliver. See classifyCopyResult for the
+		// partial-copy variant that maps onto this branch.
 		span.SetAttributes(attribute.Bool("uffd.copy_eagain", true))
 		u.logger.Debug(ctx, "UFFD page write EAGAIN, deferring", zap.Uintptr("addr", addr))
 

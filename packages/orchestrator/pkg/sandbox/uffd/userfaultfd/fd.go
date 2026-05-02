@@ -158,16 +158,14 @@ func (f Fd) copy(addr, pagesize uintptr, data []byte, mode CULong) error {
 	return classifyCopyResult(int64(cpy.copy), int64(pagesize))
 }
 
-// classifyCopyResult interprets the bytes-copied field returned by a
-// UFFDIO_COPY ioctl whose syscall returned no errno. The kernel uses a
-// partial-copy convention: a negative value carries the negated errno of
-// the underlying failure (notably -EAGAIN when mmap_changing was set
-// mid-copy by a concurrent madvise(MADV_DONTNEED), mremap, or fork); a
-// positive value less than pagesize means the kernel made partial
-// progress (e.g. a hugetlb fault preempted the copy mid-page). Both
-// cases are surfaced as a soft errno so the caller drops the fault and
-// lets the kernel redeliver once the racing operation settles. Matches
-// Firecracker's reference handler in src/firecracker/examples/uffd/uffd_utils.rs.
+// classifyCopyResult turns the bytes-copied field returned by a UFFDIO_COPY
+// ioctl (whose syscall itself returned no errno) into a Go error. The kernel
+// uses a partial-copy convention: a negative value carries the negated errno
+// of the underlying failure (notably -EAGAIN when mmap_changing was set mid-
+// copy); a positive value less than pagesize signals partial progress (e.g. a
+// hugetlb fault preempted the copy mid-page). Both surface as EAGAIN so the
+// caller drops the fault and lets the kernel redeliver. Matches Firecracker's
+// reference handler in src/firecracker/examples/uffd/uffd_utils.rs.
 func classifyCopyResult(bytesCopied, pagesize int64) error {
 	if bytesCopied < 0 {
 		return syscall.Errno(-bytesCopied)
