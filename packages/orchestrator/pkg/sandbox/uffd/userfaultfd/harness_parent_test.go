@@ -73,9 +73,17 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 
 	uffdFd, err := newFd(syscall.O_CLOEXEC | syscall.O_NONBLOCK)
 	require.NoError(t, err)
+	t.Cleanup(func() { uffdFd.close() })
 
 	require.NoError(t, configureApi(uffdFd, tt.pagesize))
 	require.NoError(t, register(uffdFd, memoryStart, uint64(size), UFFDIO_REGISTER_MODE_MISSING|UFFDIO_REGISTER_MODE_WP))
+	t.Cleanup(func() {
+		// Unregister before the close cleanup runs (LIFO). A future test
+		// that enables UFFD_FEATURE_EVENT_REMOVE would otherwise see
+		// munmap block on un-acked REMOVE events queued against a
+		// still-registered range.
+		assert.NoError(t, unregister(uffdFd, memoryStart, uint64(size)))
+	})
 
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestHelperServingProcess", "-test.timeout=0")
 	cmd.Env = append(os.Environ(), envHelperFlag+"=1")
@@ -107,11 +115,11 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 		require.NoError(t, startErr)
 	}
 
-	// Register teardown immediately so any failure between here and the
-	// final return still reaps the helper process and unregisters the
-	// userfaultfd. client is captured by reference so the closure can
-	// pick the graceful (Shutdown) or hard (Kill) path depending on
-	// how far init progressed.
+	// child-reap cleanup. client is captured by reference: nil →
+	// cmd.Process.Kill, non-nil → graceful Shutdown via RPC. LIFO
+	// ordering with the cleanups above gives child-reap → unregister →
+	// close, i.e. stop the child's Serve loop before tearing down
+	// kernel state.
 	var client *testharness.Client
 	t.Cleanup(func() {
 		if client != nil {
@@ -129,12 +137,6 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 				t.Logf("helper process Wait: %v", waitErr)
 			}
 		}
-
-		// Unregister before close so a future test that enables
-		// UFFD_FEATURE_EVENT_REMOVE does not see munmap block on
-		// un-acked REMOVE events queued against the registered range.
-		assert.NoError(t, unregister(uffdFd, memoryStart, uint64(size)))
-		uffdFd.close()
 	})
 
 	parentConn, err := net.FileConn(parentEnd)

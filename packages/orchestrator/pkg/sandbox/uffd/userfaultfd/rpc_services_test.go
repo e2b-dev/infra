@@ -19,21 +19,27 @@ import (
 
 // harnessState is the per-child container shared by Lifecycle / Paging /
 // Barriers RPCs. Mutable fields are guarded by mu.
+//
+//nolint:containedctx // shutdown-aware ctx is shared with RPC handlers; lifetime is the child process.
 type harnessState struct {
 	uffdFd uintptr
 
-	mu       sync.Mutex
-	uffd     *Userfaultfd
-	br       *testharness.Registry
-	stop     func() // serve-stop fn; nil when paused
-	shutdown chan struct{}
-	closed   bool
+	mu     sync.Mutex
+	uffd   *Userfaultfd
+	br     *testharness.Registry
+	stop   func() // serve-stop fn; nil when paused
+	ctx    context.Context
+	cancel context.CancelFunc
+	closed bool
 }
 
 func newHarnessState(uffdFd uintptr) *harnessState {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	return &harnessState{
-		uffdFd:   uffdFd,
-		shutdown: make(chan struct{}),
+		uffdFd: uffdFd,
+		ctx:    ctx,
+		cancel: cancel,
 	}
 }
 
@@ -153,7 +159,7 @@ func (l *Lifecycle) Shutdown(_ *testharness.Empty, _ *testharness.Empty) error {
 	defer l.state.mu.Unlock()
 	if !l.state.closed {
 		l.state.closed = true
-		close(l.state.shutdown)
+		l.state.cancel()
 	}
 
 	return nil
@@ -195,11 +201,16 @@ func (p *Paging) Resume(_ *testharness.Empty, _ *testharness.Empty) error {
 }
 
 // pageStateEntries returns a snapshot of every tracked page and its state in
-// testharness wire format. Holds settleRequests.Lock for the duration so no
-// fault worker is in flight; mirrors PrefetchData.
+// testharness wire format. Holds settleRequests.Lock to fence fault workers
+// (mirrors PrefetchData) plus pageTracker.mu.RLock defensively, so a future
+// writer that mutates pageTracker.m without going through settleRequests
+// (e.g. a REMOVE event handler) cannot race this snapshot.
 func (u *Userfaultfd) pageStateEntries() ([]testharness.PageStateEntry, error) {
 	u.settleRequests.Lock()
 	defer u.settleRequests.Unlock()
+
+	u.pageTracker.mu.RLock()
+	defer u.pageTracker.mu.RUnlock()
 
 	entries := make([]testharness.PageStateEntry, 0, len(u.pageTracker.m))
 	for addr, state := range u.pageTracker.m {
@@ -235,7 +246,7 @@ func (b *Barriers) WaitHeld(args *testharness.TokenArgs, _ *testharness.Empty) e
 		return err
 	}
 
-	return br.WaitArrived(context.Background(), args.Token)
+	return br.WaitArrived(b.state.ctx, args.Token)
 }
 
 func (b *Barriers) Release(args *testharness.TokenArgs, _ *testharness.Empty) error {

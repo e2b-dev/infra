@@ -62,7 +62,7 @@ func crossProcessServe() error {
 	}()
 
 	select {
-	case <-state.shutdown:
+	case <-state.ctx.Done():
 	case <-codecDone:
 	}
 

@@ -107,7 +107,13 @@ func (r *Registry) Release(token uint64) {
 	s, ok := r.tokens[token]
 	delete(r.tokens, token)
 	if ok {
-		delete(r.byKey, key{s.addr, s.point})
+		// A later Install at the same (addr, point) overwrites byKey;
+		// do not clobber that newer mapping when releasing this older
+		// token.
+		k := key{s.addr, s.point}
+		if r.byKey[k] == token {
+			delete(r.byKey, k)
+		}
 	}
 	r.mu.Unlock()
 
