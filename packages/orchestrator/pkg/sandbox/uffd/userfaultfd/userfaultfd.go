@@ -186,8 +186,8 @@ func (u *Userfaultfd) Serve(
 		{Fd: int32(u.wakeupPipe[0]), Events: unix.POLLIN},
 	}
 
-	eagainCounter := newCounterReporter(u.logger, "uffd: eagain with no pagefaults (accumulated)")
-	defer eagainCounter.Close(ctx)
+	emptyDrainCounter := newCounterReporter(u.logger, "uffd: empty drain (spurious wakeup) (accumulated)")
+	defer emptyDrainCounter.Close(ctx)
 
 	noDataCounter := newCounterReporter(u.logger, "uffd: no data in fd (accumulated)")
 	defer noDataCounter.Close(ctx)
@@ -295,13 +295,15 @@ func (u *Userfaultfd) Serve(
 		pagefaults = append(deferred.drain(), pagefaults...)
 
 		if len(pagefaults) == 0 {
-			// Woke up but nothing to do (e.g., only REMOVE events, or spurious wakeup).
-			eagainCounter.Increase("EMPTY_DRAIN")
+			// No pagefaults to handle: spurious wakeup if no removes either.
+			if len(removes) == 0 {
+				emptyDrainCounter.Increase("EMPTY_DRAIN")
+			}
 
 			continue
 		}
 
-		eagainCounter.Log(ctx)
+		emptyDrainCounter.Log(ctx)
 		noDataCounter.Log(ctx)
 
 		for _, pf := range pagefaults {
