@@ -527,9 +527,13 @@ func (u *Userfaultfd) faultPage(
 	}
 
 	if errors.Is(writeErr, unix.EAGAIN) {
-		// This happens when a remove event arrives in the UFFD file descriptor while
-		// we are trying to copy()/zero() a page. We need to read all the events from
-		// file descriptor and try again.
+		// Kernel sets mmap_changing during a concurrent madvise(MADV_DONTNEED),
+		// mremap, or fork against the same mm and surfaces it as EAGAIN — either
+		// directly via errno or via the UFFDIO_COPY partial-copy convention
+		// (cpy.copy == -EAGAIN, or 0 <= cpy.copy < pagesize for hugetlb faults
+		// preempted mid-page; see classifyCopyResult). Drop the fault and let
+		// the kernel redeliver it once the racing operation settles.
+		span.SetAttributes(attribute.Bool("uffd.copy_eagain", true))
 		u.logger.Debug(ctx, "UFFD page write EAGAIN, deferring", zap.Uintptr("addr", addr))
 
 		return false, nil
