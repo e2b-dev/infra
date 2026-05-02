@@ -11,6 +11,11 @@ variable "domain_name" {
   type = string
 }
 
+variable "api_h2c_backend_enabled" {
+  type    = bool
+  default = false
+}
+
 variable "additional_domains" {
   type = list(string)
 }

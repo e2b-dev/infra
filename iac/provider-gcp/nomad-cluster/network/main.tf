@@ -267,7 +267,7 @@ resource "google_compute_url_map" "orch_map" {
 
   path_matcher {
     name            = "api-paths"
-    default_service = google_compute_backend_service.default["api"].self_link
+    default_service = var.api_h2c_backend_enabled ? google_compute_backend_service.h2c_api[0].self_link : google_compute_backend_service.default["api"].self_link
 
     dynamic "path_rule" {
       for_each = var.additional_api_paths_handled_by_ingress
@@ -315,6 +315,36 @@ resource "google_compute_url_map" "orch_map" {
       }
     }
   }
+}
+
+resource "google_compute_backend_service" "h2c_api" {
+  count = var.api_h2c_backend_enabled ? 1 : 0
+
+  name = "${var.prefix}h2c-api"
+
+  port_name = var.api_port.name
+  protocol  = "H2C"
+
+  timeout_sec                     = local.backends.api.timeout_sec
+  connection_draining_timeout_sec = 1
+  compression_mode                = "DISABLED"
+
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  health_checks         = [google_compute_health_check.default["api"].self_link]
+
+  security_policy = google_compute_security_policy.default["api"].self_link
+
+  log_config {
+    enable = var.environment != "dev"
+  }
+
+  backend {
+    group = var.api_instance_group
+  }
+
+  depends_on = [
+    google_compute_health_check.default
+  ]
 }
 
 ### IPv4 block ###

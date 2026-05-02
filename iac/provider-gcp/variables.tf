@@ -715,6 +715,12 @@ variable "network_name" {
   default = "default"
 }
 
+variable "api_h2c_backend_enabled" {
+  description = "Route api.<domain> to a separate H2C backend service."
+  type        = bool
+  default     = false
+}
+
 variable "volume_token_issuer" {
   type    = string
   default = ""

@@ -200,6 +200,12 @@ variable "domain_name" {
   description = "The domain name where e2b will run"
 }
 
+variable "api_h2c_backend_enabled" {
+  description = "Route api.<domain> to a separate H2C backend service."
+  type        = bool
+  default     = false
+}
+
 variable "additional_domains" {
   type        = list(string)
   description = "Additional domains which can be used to access the e2b cluster"
