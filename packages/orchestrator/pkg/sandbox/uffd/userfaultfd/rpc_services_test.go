@@ -143,9 +143,18 @@ func (l *Lifecycle) Bootstrap(args *rpcharness.BootstrapArgs, _ *rpcharness.Boot
 
 	br := rpcharness.NewRegistry()
 	if args.Barriers {
-		uffd.SetTestHooks(&testHooks{
-			beforeWorkerRLock: br.HookFor(rpcharness.BeforeRLock),
-			beforeFaultPage:   br.HookFor(rpcharness.BeforeFaultPage),
+		hook := br.Hook()
+		uffd.SetTestFaultHook(func(addr uintptr, p faultPhase) {
+			var point rpcharness.Point
+			switch p {
+			case faultPhaseBeforeRLock:
+				point = rpcharness.BeforeRLock
+			case faultPhaseBeforeFaultPage:
+				point = rpcharness.BeforeFaultPage
+			default:
+				return
+			}
+			hook(addr, point)
 		})
 	}
 

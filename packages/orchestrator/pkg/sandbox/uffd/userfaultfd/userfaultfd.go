@@ -64,42 +64,21 @@ type Userfaultfd struct {
 	// defaultCopyMode overrides the UFFDIO_COPY mode for all faults when non-zero.
 	defaultCopyMode CULong
 
-	// testHooks is nil in production; tests set it via SetTestHooks (defined in
-	// a _test.go file, so production binaries cannot reach the setter). All hook
-	// fields default to nil and the call sites no-op when unset.
-	testHooks atomic.Pointer[testHooks]
+	// installed only by SetTestFaultHook in test builds; nil in production.
+	testFaultHook atomic.Pointer[func(uintptr, faultPhase)]
 
 	logger logger.Logger
 }
 
-// testHooks bundles the optional test-only synchronisation callbacks. A nil
-// callback means the corresponding call site is a no-op. Tests use these to
-// park a worker goroutine at a known point so a racing event (REMOVE, MISSING)
-// can be issued deterministically before the worker proceeds.
-type testHooks struct {
-	// beforeWorkerRLock is called as the very first thing in the worker
-	// goroutine, BEFORE settleRequests.RLock(). Lets a test hold the
-	// goroutine before it can claim the read lock so a parallel writer can
-	// take the write lock immediately.
-	beforeWorkerRLock func(addr uintptr)
-	// beforeFaultPage is called inside the worker AFTER RLock and BEFORE the
-	// actual UFFDIO_COPY/UFFDIO_ZEROPAGE syscall. Lets a test simulate a
-	// slow data fetch / in-flight COPY so a parent operation can race
-	// against an in-flight worker.
-	beforeFaultPage func(addr uintptr)
-}
+// faultPhase identifies WHEN inside the worker the (test-only) fault hook is
+// invoked. Production builds never install a hook (testFaultHook is nil); the
+// per-fault overhead is then a single atomic load + nil check per call site.
+type faultPhase uint8
 
-func (u *Userfaultfd) callBeforeWorkerRLock(addr uintptr) {
-	if h := u.testHooks.Load(); h != nil && h.beforeWorkerRLock != nil {
-		h.beforeWorkerRLock(addr)
-	}
-}
-
-func (u *Userfaultfd) callBeforeFaultPage(addr uintptr) {
-	if h := u.testHooks.Load(); h != nil && h.beforeFaultPage != nil {
-		h.beforeFaultPage(addr)
-	}
-}
+const (
+	faultPhaseBeforeRLock faultPhase = iota
+	faultPhaseBeforeFaultPage
+)
 
 // NewUserfaultfdFromFd creates a new userfaultfd instance with optional configuration.
 func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logger logger.Logger) (*Userfaultfd, error) {
@@ -285,7 +264,9 @@ func (u *Userfaultfd) Serve(
 			// For the write to be executed, we first need to copy the page from the source to the guest memory.
 			if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
 				u.wg.Go(func() error {
-					u.callBeforeWorkerRLock(addr)
+					if h := u.testFaultHook.Load(); h != nil {
+						(*h)(addr, faultPhaseBeforeRLock)
+					}
 
 					return u.faultPage(ctx, addr, offset, u.src, fdExit.SignalExit, block.Write)
 				})
@@ -297,7 +278,9 @@ func (u *Userfaultfd) Serve(
 			// If the event has no flags, it was a read to a missing page and we need to copy the page from the source to the guest memory.
 			if flags == 0 {
 				u.wg.Go(func() error {
-					u.callBeforeWorkerRLock(addr)
+					if h := u.testFaultHook.Load(); h != nil {
+						(*h)(addr, faultPhaseBeforeRLock)
+					}
 
 					return u.faultPage(ctx, addr, offset, u.src, fdExit.SignalExit, block.Read)
 				})
@@ -338,7 +321,9 @@ func (u *Userfaultfd) faultPage(
 	u.settleRequests.RLock()
 	defer u.settleRequests.RUnlock()
 
-	u.callBeforeFaultPage(addr)
+	if h := u.testFaultHook.Load(); h != nil {
+		(*h)(addr, faultPhaseBeforeFaultPage)
+	}
 
 	defer func() {
 		if r := recover(); r != nil {

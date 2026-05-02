@@ -141,12 +141,11 @@ func (r *Registry) ReleaseAll() {
 	}
 }
 
-// HookFor returns the function to assign to the matching test-hook
-// field on *Userfaultfd. The returned function is a no-op for any
-// (addr, point) pair that hasn't been Install'd, so non-targeted
-// faults see no scheduling distortion.
-func (r *Registry) HookFor(point Point) func(addr uintptr) {
-	return func(addr uintptr) {
+// Hook returns the function tests assign as the per-fault hook on
+// *Userfaultfd. The returned closure dispatches by (addr, point):
+// pages/points that haven't been Install'd see no scheduling distortion.
+func (r *Registry) Hook() func(addr uintptr, point Point) {
+	return func(addr uintptr, point Point) {
 		s := r.lookupByAddr(addr, point)
 		if s == nil {
 			return
