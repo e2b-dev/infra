@@ -26,6 +26,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
@@ -216,7 +218,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	r.MaxMultipartMemory = maxMultipartMemory
 
 	s := &http.Server{
-		Handler: r,
+		Handler: h2c.NewHandler(r, &http2.Server{}),
 		Addr:    fmt.Sprintf("0.0.0.0:%d", port),
 
 		// Configure request timeouts.
