@@ -3,7 +3,6 @@ package userfaultfd
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -16,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils/testharness"
 )
 
 type testConfig struct {
@@ -28,8 +28,8 @@ type testConfig struct {
 	operations []operation
 	// alwaysWP makes the handler copy with UFFDIO_COPY_MODE_WP for all faults.
 	alwaysWP bool
-	// gated enables pause/resume control over the handler's serve loop.
-	gated bool
+	// barriers enables the per-worker fault hook (race tests only).
+	barriers bool
 }
 
 type operationMode uint32
@@ -52,25 +52,10 @@ type operation struct {
 	async bool
 }
 
-// handlerPageStates is a snapshot of the pageTracker grouped by state. It
-// lets tests assert on the set of pages that the handler observed in each
-// state, rather than a flat list of "accessed" offsets. Follow-up PRs can
-// add more state-specific fields (e.g. removed) without touching the
-// existing call sites.
 type handlerPageStates struct {
 	faulted []uint
 }
 
-// allAccessed returns the sorted union of offsets that the handler touched
-// in any non-missing state. Tests that only care about "which pages did the
-// handler see" can compare directly against this.
-//
-// pageStatesOnce already returns each per-state slice sorted, and a page
-// has exactly one state at a time in pageTracker, so the per-state slices
-// are disjoint. Follow-up PRs that add more state-specific fields should
-// sorted-merge them here instead of reaching for a bitset — byte offsets
-// make poor bit indices (a single hugepage offset would force ~1.8 MB of
-// backing storage).
 func (s handlerPageStates) allAccessed() []uint {
 	return slices.Clone(s.faulted)
 }
@@ -79,15 +64,25 @@ type testHandler struct {
 	memoryArea *[]byte
 	pagesize   uint64
 	data       *MemorySlicer
-	// pageStatesOnce returns a per-state snapshot of the handler's pageTracker.
-	// It can only be called once.
-	pageStatesOnce func() (handlerPageStates, error)
-	// servePause and serveResume gate the UFFD event loop in the child process.
-	// Tests use them to deterministically batch a sequence of UFFD events
-	// before more faults are processed.
-	servePause  func() error
-	serveResume func() error
-	mutex       sync.RWMutex
+	client     *testharness.Client
+	mutex      sync.RWMutex
+}
+
+func (h *testHandler) pageStates() (handlerPageStates, error) {
+	entries, err := h.client.PageStates()
+	if err != nil {
+		return handlerPageStates{}, err
+	}
+
+	var states handlerPageStates
+	for _, e := range entries {
+		if pageState(e.State) == faulted {
+			states.faulted = append(states.faulted, uint(e.Offset))
+		}
+	}
+	slices.Sort(states.faulted)
+
+	return states, nil
 }
 
 func (h *testHandler) executeAll(t *testing.T, operations []operation) {
@@ -174,17 +169,9 @@ func (h *testHandler) executeOperation(ctx context.Context, op operation) error 
 	case operationModeWrite:
 		return h.executeWrite(ctx, op)
 	case operationModeServePause:
-		if h.servePause == nil {
-			return errors.New("operationModeServePause requires testConfig.gated = true")
-		}
-
-		return h.servePause()
+		return h.client.Pause()
 	case operationModeServeResume:
-		if h.serveResume == nil {
-			return errors.New("operationModeServeResume requires testConfig.gated = true")
-		}
-
-		return h.serveResume()
+		return h.client.Resume()
 	case operationModeSleep:
 		time.Sleep(50 * time.Millisecond)
 
