@@ -114,6 +114,25 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 
 	client := rpcharness.NewClient(parentConn)
 
+	t.Cleanup(func() {
+		_ = client.Shutdown()
+		_ = client.Close()
+
+		waitErr := cmd.Wait()
+		if waitErr != nil {
+			var exitErr *exec.ExitError
+			if !errors.As(waitErr, &exitErr) {
+				t.Logf("helper process Wait: %v", waitErr)
+			}
+		}
+
+		// Unregister before close so a future test that enables
+		// UFFD_FEATURE_EVENT_REMOVE does not see munmap block on
+		// un-acked REMOVE events queued against the registered range.
+		assert.NoError(t, unregister(uffdFd, memoryStart, uint64(size)))
+		uffdFd.close()
+	})
+
 	h := &testHandler{
 		memoryArea: &memoryArea,
 		pagesize:   tt.pagesize,
@@ -138,25 +157,6 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 	if err := client.WaitReady(); err != nil {
 		return nil, fmt.Errorf("Lifecycle.WaitReady: %w", err)
 	}
-
-	t.Cleanup(func() {
-		_ = client.Shutdown()
-		_ = client.Close()
-
-		waitErr := cmd.Wait()
-		if waitErr != nil {
-			var exitErr *exec.ExitError
-			if !errors.As(waitErr, &exitErr) {
-				t.Logf("helper process Wait: %v", waitErr)
-			}
-		}
-
-		// Unregister before close so a future test that enables
-		// UFFD_FEATURE_EVENT_REMOVE does not see munmap block on
-		// un-acked REMOVE events queued against the registered range.
-		assert.NoError(t, unregister(uffdFd, memoryStart, uint64(size)))
-		uffdFd.close()
-	})
 
 	return h, nil
 }

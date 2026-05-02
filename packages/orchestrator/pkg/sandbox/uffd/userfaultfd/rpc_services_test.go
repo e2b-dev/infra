@@ -41,16 +41,14 @@ func newHarnessState(uffdFd uintptr) *harnessState {
 // stop fn. Caller must hold s.mu. Idempotent: if a serve goroutine is
 // already running (s.stop != nil), a stray duplicate Resume cannot
 // leak an untracked Serve goroutine and break later pauses.
-func (s *harnessState) startServeLocked() {
+func (s *harnessState) startServeLocked() error {
 	if s.stop != nil {
-		return
+		return nil
 	}
 
 	exit, err := fdexit.New()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "fdexit.New:", err)
-
-		return
+		return fmt.Errorf("fdexit.New: %w", err)
 	}
 
 	uffd := s.uffd
@@ -67,12 +65,8 @@ func (s *harnessState) startServeLocked() {
 		<-done
 		exit.Close()
 	}
-}
 
-func (s *harnessState) startServe() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.startServeLocked()
+	return nil
 }
 
 func (s *harnessState) stopServe() {
@@ -142,9 +136,8 @@ func (l *Lifecycle) Bootstrap(args *rpcharness.BootstrapArgs, _ *rpcharness.Boot
 	defer l.state.mu.Unlock()
 	l.state.uffd = uffd
 	l.state.br = br
-	l.state.startServeLocked()
 
-	return nil
+	return l.state.startServeLocked()
 }
 
 // WaitReady is a no-op today: Bootstrap is synchronous so its reply
@@ -194,9 +187,10 @@ func (p *Paging) Pause(_ *rpcharness.Empty, _ *rpcharness.Empty) error {
 }
 
 func (p *Paging) Resume(_ *rpcharness.Empty, _ *rpcharness.Empty) error {
-	p.state.startServe()
+	p.state.mu.Lock()
+	defer p.state.mu.Unlock()
 
-	return nil
+	return p.state.startServeLocked()
 }
 
 // pageStateEntries returns a snapshot of every tracked page and its
