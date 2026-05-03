@@ -60,6 +60,11 @@ func Make(ctx context.Context, rootfsPath string, sizeMb int64, blockSize int64)
 		"-b", strconv.FormatInt(blockSize, 10),
 		"-m", strconv.FormatInt(reservedBlocksPercentage, 10),
 		"-i", strconv.FormatInt(inodesRatio, 10),
+		// lazy_itable_init / lazy_journal_init: skip eager zero-fill so the freshly-formatted
+		// rootfs.ext4 stays sparse; the kernel zeroes them on first mount where the cache
+		// IsZero short-circuit hole-punches instead of growing the diff.
+		// discard: hole-punches the backing file on a loop device (no-op on a regular file).
+		"-E", "lazy_itable_init=1,lazy_journal_init=1,discard",
 		rootfsPath,
 		strconv.FormatInt(sizeMb, 10)+"M",
 	)
@@ -77,8 +82,10 @@ func Mount(ctx context.Context, rootfsPath string, mountPoint string) error {
 	ctx, mountSpan := tracer.Start(ctx, "mount-ext4")
 	defer mountSpan.End()
 
-	// discard: loop driver translates BLKDISCARD into fallocate(PUNCH_HOLE) on rootfs.ext4, keeping it sparse.
-	cmd := exec.CommandContext(ctx, "mount", "-o", "loop,discard", rootfsPath, mountPoint)
+	// discard  – loop driver translates BLKDISCARD into fallocate(PUNCH_HOLE) on rootfs.ext4.
+	// noatime  – skip atime updates that would dirty inode-table blocks for nothing.
+	// lazytime – batch mtime/ctime updates in memory until unmount/sync.
+	cmd := exec.CommandContext(ctx, "mount", "-o", "loop,discard,noatime,lazytime", rootfsPath, mountPoint)
 
 	mountStdoutWriter := telemetry.NewEventWriter(ctx, "stdout")
 	cmd.Stdout = mountStdoutWriter

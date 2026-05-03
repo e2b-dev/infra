@@ -364,8 +364,10 @@ func (p *Process) Create(
 		"i8042.noaux":      "",
 		"random.trust_cpu": "on",
 
-		// discard: ext4 issues NBD_CMD_TRIM on freed blocks; the orchestrator NBD server elides them from the snapshot diff.
-		"rootflags": "discard",
+		// discard       – ext4 issues NBD_CMD_TRIM on freed blocks; orchestrator elides them from the diff.
+		// noatime       – skip atime updates that would dirty inode-table blocks for nothing.
+		// lazytime      – keep mtime/ctime in memory until eviction/sync; snapshot syncs anyway.
+		"rootflags": "discard,noatime,lazytime",
 	}
 
 	if options.KvmClock {
