@@ -158,7 +158,11 @@ var (
 	BestOfKMaxOvercommit          = NewIntFlag("best-of-k-max-overcommit", 400)              // Default R=4 (stored as percentage, max over-commit ratio)
 	BestOfKAlpha                  = NewIntFlag("best-of-k-alpha", 50)                        // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
 	EnvdInitTimeoutMilliseconds   = NewIntFlag("envd-init-request-timeout-milliseconds", 50) // Timeout for envd init request in milliseconds
-	HostStatsSamplingInterval     = NewIntFlag("host-stats-sampling-interval", 5000)         // Host stats sampling interval in milliseconds (default 5s)
+	// 0 disables the step. Both default off; operator opts in once the host
+	// kernel has the FPH race fix and the fleet is ready.
+	FreePageHintingTimeoutMs      = NewIntFlag("free-page-hinting-timeout-ms", 0)
+	ReclaimOnPauseTimeoutMs       = NewIntFlag("reclaim-on-pause-timeout-ms", 0)
+	HostStatsSamplingInterval     = NewIntFlag("host-stats-sampling-interval", 5000) // Host stats sampling interval in milliseconds (default 5s)
 	MaxCacheWriterConcurrencyFlag = NewIntFlag("max-cache-writer-concurrency", 10)
 
 	// BuildCacheMaxUsagePercentage the maximum percentage of the cache disk storage

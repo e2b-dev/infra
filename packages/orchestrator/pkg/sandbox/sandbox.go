@@ -218,6 +218,8 @@ type Sandbox struct {
 	files   *storage.SandboxFiles
 	cleanup *Cleanup
 
+	featureFlags *featureflags.Client
+
 	process      *fc.Process
 	cgroupHandle *cgroup.CgroupHandle
 
@@ -458,7 +460,8 @@ func (f *Factory) CreateSandbox(
 		files:    sandboxFiles,
 		process:  fcHandle,
 
-		cleanup: cleanup,
+		cleanup:      cleanup,
+		featureFlags: f.featureFlags,
 
 		APIStoredConfig: apiConfigToStore,
 
@@ -799,7 +802,8 @@ func (f *Factory) ResumeSandbox(
 		files:    sandboxFiles,
 		process:  fcHandle,
 
-		cleanup: cleanup,
+		cleanup:      cleanup,
+		featureFlags: f.featureFlags,
 
 		APIStoredConfig: apiConfigToStore,
 		CABundle:        f.egressProxy.CABundle(),
@@ -1052,6 +1056,19 @@ func (s *Sandbox) Pause(
 
 	// Stop the health check before pausing the VM
 	s.Checks.Stop()
+
+	// Best-effort pre-pause guest reclaim, then FPH drain. Both run on the
+	// live VM and are non-fatal. Timeout=0 disables the step.
+	if t := time.Duration(s.featureFlags.IntFlag(ctx, featureflags.ReclaimOnPauseTimeoutMs)) * time.Millisecond; t > 0 {
+		s.bestEffortReclaim(ctx, t)
+	}
+	if t := time.Duration(s.featureFlags.IntFlag(ctx, featureflags.FreePageHintingTimeoutMs)) * time.Millisecond; t > 0 {
+		drainCtx, cancel := context.WithTimeout(ctx, t)
+		if err := s.process.DrainBalloon(drainCtx); err != nil {
+			telemetry.ReportError(ctx, "balloon hinting drain failed (continuing pause)", err)
+		}
+		cancel()
+	}
 
 	if err := s.process.Pause(ctx); err != nil {
 		return nil, fmt.Errorf("failed to pause VM: %w", err)

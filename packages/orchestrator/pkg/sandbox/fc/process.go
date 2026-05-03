@@ -133,6 +133,8 @@ type Process struct {
 	Exit *utils.ErrorOnce
 
 	client *apiClient
+
+	balloonInstalled bool
 }
 
 func NewProcess(
@@ -440,13 +442,13 @@ func (p *Process) Create(
 	telemetry.ReportEvent(ctx, "set fc entropy config")
 
 	if freePageReporting {
-		err = p.client.enableFreePageReporting(ctx)
-		if err != nil {
+		if err := p.client.installBalloon(ctx, freePageReporting); err != nil {
 			fcStopErr := p.Stop(ctx)
 
-			return errors.Join(fmt.Errorf("error enabling free page reporting: %w", err), fcStopErr)
+			return errors.Join(fmt.Errorf("error installing balloon device: %w", err), fcStopErr)
 		}
-		telemetry.ReportEvent(ctx, "enabled free page reporting")
+		p.balloonInstalled = true
+		telemetry.ReportEvent(ctx, "installed balloon device")
 	}
 
 	err = p.client.startVM(ctx)
@@ -708,6 +710,44 @@ func (p *Process) Pause(ctx context.Context) error {
 	defer childSpan.End()
 
 	return p.client.pauseVM(ctx)
+}
+
+// DrainBalloon triggers a free-page-hinting run and blocks until the guest
+// acknowledges or ctx fires. No-op when the balloon wasn't installed.
+func (p *Process) DrainBalloon(ctx context.Context) error {
+	if !p.balloonInstalled {
+		return nil
+	}
+
+	ctx, span := tracer.Start(ctx, "drain-balloon")
+	defer span.End()
+
+	if err := p.client.startBalloonHinting(ctx, true /* ackOnStop */); err != nil {
+		return fmt.Errorf("start balloon hinting: %w", err)
+	}
+
+	backoff := 5 * time.Millisecond
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+
+		host, guest, err := p.client.describeBalloonHinting(ctx)
+		if err != nil {
+			return fmt.Errorf("balloon hinting status: %w", err)
+		}
+		// host_cmd is monotonic and we just called start, so host > 0
+		// after FC accepts it. Require it to guard against transient
+		// nil/zero responses returning a false-positive completion.
+		if host > 0 && guest >= host {
+			return nil
+		}
+		if backoff < 50*time.Millisecond {
+			backoff *= 2
+		}
+	}
 }
 
 // CreateSnapshot VM needs to be paused before creating a snapshot.
