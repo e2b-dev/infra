@@ -17,11 +17,11 @@ type StateTracker[S comparable] struct {
 
 // NewStateTracker requires three distinct states. Duplicates are a
 // programming error — the switch in SetRange would silently favour the
-// first matching case and corrupt bitmap state — so we panic at
+// first matching case and corrupt bitmap state — so we reject them at
 // construction rather than defer the bug to a later SetRange call.
-func NewStateTracker[S comparable](defaultState, a, b S) *StateTracker[S] {
+func NewStateTracker[S comparable](defaultState, a, b S) (*StateTracker[S], error) {
 	if defaultState == a || defaultState == b || a == b {
-		panic(fmt.Sprintf("block.NewStateTracker: states must be distinct (default=%v a=%v b=%v)", defaultState, a, b))
+		return nil, fmt.Errorf("block.NewStateTracker: states must be distinct (default=%v a=%v b=%v)", defaultState, a, b)
 	}
 
 	return &StateTracker[S]{
@@ -30,15 +30,15 @@ func NewStateTracker[S comparable](defaultState, a, b S) *StateTracker[S] {
 		b:            b,
 		bmA:          roaring.New(),
 		bmB:          roaring.New(),
-	}
+	}, nil
 }
 
 // SetRange takes uint64 because roaring's range API allows end = 1<<32
 // (the half-open upper bound of a 32-bit bitmap); Get stays uint32 since
 // no 33-bit value can ever be a bitmap member.
-func (t *StateTracker[S]) SetRange(start, end uint64, state S) {
+func (t *StateTracker[S]) SetRange(start, end uint64, state S) error {
 	if end <= start {
-		return
+		return nil
 	}
 
 	t.mu.Lock()
@@ -58,9 +58,11 @@ func (t *StateTracker[S]) SetRange(start, end uint64, state S) {
 		// S is constrained only to comparable, so the compiler can't
 		// prove exhaustiveness. A silent no-op here would hide a
 		// programming error (caller added a state but forgot to wire
-		// it); panic makes it fail fast in tests.
-		panic(fmt.Sprintf("block.StateTracker.SetRange: unsupported state %v (only default=%v a=%v b=%v allowed)", state, t.defaultState, t.a, t.b))
+		// it); surfacing an error makes it fail fast in tests.
+		return fmt.Errorf("block.StateTracker.SetRange: unsupported state %v (only default=%v a=%v b=%v allowed)", state, t.defaultState, t.a, t.b)
 	}
+
+	return nil
 }
 
 func (t *StateTracker[S]) Export() (a, b *roaring.Bitmap) {
