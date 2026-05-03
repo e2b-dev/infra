@@ -65,16 +65,24 @@ variable "api_internal_grpc_port" {
   default = 5009
 }
 
-variable "api_tls_cert_pem" {
-  type      = string
-  default   = ""
-  sensitive = true
+variable "api_internal_tls_ca_pool" {
+  type    = string
+  default = ""
 }
 
-variable "api_tls_key_pem" {
-  type      = string
-  default   = ""
-  sensitive = true
+variable "api_internal_tls_ca_authority" {
+  type    = string
+  default = ""
+}
+
+variable "api_internal_tls_dns_name" {
+  type    = string
+  default = ""
+}
+
+variable "api_internal_tls_cert_id_prefix" {
+  type    = string
+  default = ""
 }
 
 variable "client_proxy_oidc_issuer_url" {
@@ -233,16 +241,24 @@ variable "client_proxy_health_port" {
   type = number
 }
 
-variable "client_proxy_tls_cert_pem" {
-  type      = string
-  default   = ""
-  sensitive = true
+variable "client_proxy_internal_tls_ca_pool" {
+  type    = string
+  default = ""
 }
 
-variable "client_proxy_tls_key_pem" {
-  type      = string
-  default   = ""
-  sensitive = true
+variable "client_proxy_internal_tls_ca_authority" {
+  type    = string
+  default = ""
+}
+
+variable "client_proxy_internal_tls_dns_name" {
+  type    = string
+  default = ""
+}
+
+variable "client_proxy_internal_tls_cert_id_prefix" {
+  type    = string
+  default = ""
 }
 
 variable "domain_name" {

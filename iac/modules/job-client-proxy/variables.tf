@@ -44,16 +44,24 @@ variable "health_port" {
   default = 3001
 }
 
-variable "tls_cert_pem" {
-  type      = string
-  default   = ""
-  sensitive = true
+variable "internal_tls_ca_pool" {
+  type    = string
+  default = ""
 }
 
-variable "tls_key_pem" {
-  type      = string
-  default   = ""
-  sensitive = true
+variable "internal_tls_ca_authority" {
+  type    = string
+  default = ""
+}
+
+variable "internal_tls_dns_name" {
+  type    = string
+  default = ""
+}
+
+variable "internal_tls_cert_id_prefix" {
+  type    = string
+  default = ""
 }
 
 variable "redis_url" {

@@ -3,28 +3,6 @@ locals {
   api_backend_tls_enabled  = var.api_http2_backend_enabled && var.internal_tls
 }
 
-resource "tls_private_key" "api_backend" {
-  count = local.api_backend_tls_enabled ? 1 : 0
-
-  algorithm   = "ECDSA"
-  ecdsa_curve = "P256"
-}
-
-resource "tls_cert_request" "api_backend" {
-  count = local.api_backend_tls_enabled ? 1 : 0
-
-  private_key_pem = tls_private_key.api_backend[0].private_key_pem
-
-  subject {
-    common_name  = local.api_backend_tls_hostname
-    organization = "E2B"
-  }
-
-  dns_names = [
-    local.api_backend_tls_hostname,
-  ]
-}
-
 resource "google_privateca_ca_pool" "api_backend" {
   count = local.api_backend_tls_enabled ? 1 : 0
 
@@ -90,17 +68,12 @@ resource "google_privateca_certificate_authority" "api_backend" {
   labels = var.labels
 }
 
-resource "google_privateca_certificate" "api_backend" {
+resource "google_privateca_ca_pool_iam_member" "api_backend_certificate_requester" {
   count = local.api_backend_tls_enabled ? 1 : 0
 
-  name                  = "${var.prefix}api-backend"
-  location              = var.gcp_region
-  pool                  = google_privateca_ca_pool.api_backend[0].name
-  certificate_authority = google_privateca_certificate_authority.api_backend[0].certificate_authority_id
-  lifetime              = "7776000s"
-  pem_csr               = tls_cert_request.api_backend[0].cert_request_pem
-
-  labels = var.labels
+  ca_pool = google_privateca_ca_pool.api_backend[0].id
+  role    = "roles/privateca.certificateRequester"
+  member  = "serviceAccount:${module.init.service_account_email}"
 }
 
 resource "google_certificate_manager_trust_config" "api_backend" {

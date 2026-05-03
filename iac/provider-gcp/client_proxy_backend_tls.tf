@@ -3,28 +3,6 @@ locals {
   client_proxy_backend_tls_enabled  = var.client_proxy_http2_backend_enabled && var.internal_tls
 }
 
-resource "tls_private_key" "client_proxy_backend" {
-  count = local.client_proxy_backend_tls_enabled ? 1 : 0
-
-  algorithm   = "ECDSA"
-  ecdsa_curve = "P256"
-}
-
-resource "tls_cert_request" "client_proxy_backend" {
-  count = local.client_proxy_backend_tls_enabled ? 1 : 0
-
-  private_key_pem = tls_private_key.client_proxy_backend[0].private_key_pem
-
-  subject {
-    common_name  = local.client_proxy_backend_tls_hostname
-    organization = "E2B"
-  }
-
-  dns_names = [
-    local.client_proxy_backend_tls_hostname,
-  ]
-}
-
 resource "google_privateca_ca_pool" "client_proxy_backend" {
   count = local.client_proxy_backend_tls_enabled ? 1 : 0
 
@@ -90,17 +68,12 @@ resource "google_privateca_certificate_authority" "client_proxy_backend" {
   labels = var.labels
 }
 
-resource "google_privateca_certificate" "client_proxy_backend" {
+resource "google_privateca_ca_pool_iam_member" "client_proxy_backend_certificate_requester" {
   count = local.client_proxy_backend_tls_enabled ? 1 : 0
 
-  name                  = "${var.prefix}client-proxy-backend"
-  location              = var.gcp_region
-  pool                  = google_privateca_ca_pool.client_proxy_backend[0].name
-  certificate_authority = google_privateca_certificate_authority.client_proxy_backend[0].certificate_authority_id
-  lifetime              = "7776000s"
-  pem_csr               = tls_cert_request.client_proxy_backend[0].cert_request_pem
-
-  labels = var.labels
+  ca_pool = google_privateca_ca_pool.client_proxy_backend[0].id
+  role    = "roles/privateca.certificateRequester"
+  member  = "serviceAccount:${module.init.service_account_email}"
 }
 
 resource "google_certificate_manager_trust_config" "client_proxy_backend" {

@@ -14,11 +14,13 @@ resource "nomad_job" "client_proxy" {
     node_pool   = var.node_pool
     environment = var.environment
 
-    proxy_port     = var.proxy_port
-    proxy_tls_port = var.proxy_tls_port
-    health_port    = var.health_port
-    tls_cert_pem = var.tls_cert_pem
-    tls_key_pem  = var.tls_key_pem
+    proxy_port                  = var.proxy_port
+    proxy_tls_port              = var.proxy_tls_port
+    health_port                 = var.health_port
+    internal_tls_ca_pool        = var.internal_tls_ca_pool
+    internal_tls_ca_authority   = var.internal_tls_ca_authority
+    internal_tls_dns_name       = var.internal_tls_dns_name
+    internal_tls_cert_id_prefix = var.internal_tls_cert_id_prefix
 
     redis_url           = var.redis_url
     redis_cluster_url   = var.redis_cluster_url

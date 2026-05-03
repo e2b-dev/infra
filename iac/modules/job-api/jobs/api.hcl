@@ -59,7 +59,7 @@ job "api" {
         interval = "3s"
         timeout  = "3s"
         port     = "${port_number}"
-%{ if api_tls_cert_pem != "" && api_tls_key_pem != "" }
+%{ if internal_tls_ca_pool != "" }
         protocol = "https"
         tls_skip_verify = true
 %{ endif }
@@ -176,9 +176,13 @@ job "api" {
 %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
 %{ endif }
-%{ if api_tls_cert_pem != "" && api_tls_key_pem != "" }
+%{ if internal_tls_ca_pool != "" }
         API_TLS_CERT_FILE             = "local/tls/api.crt"
         API_TLS_KEY_FILE              = "local/tls/api.key"
+        INTERNAL_TLS_CA_POOL          = "${internal_tls_ca_pool}"
+        INTERNAL_TLS_CA_AUTHORITY     = "${internal_tls_ca_authority}"
+        INTERNAL_TLS_DNS_NAME         = "${internal_tls_dns_name}"
+        INTERNAL_TLS_CERT_ID_PREFIX   = "${internal_tls_cert_id_prefix}"
 %{ endif }
 
         # This is here just because it is required in some part of our code which is transitively imported
@@ -194,18 +198,6 @@ job "api" {
   %{ endif }
 %{ endfor }
       }
-
-%{ if api_tls_cert_pem != "" && api_tls_key_pem != "" }
-      template {
-        data        = ${jsonencode(api_tls_cert_pem)}
-        destination = "local/tls/api.crt"
-      }
-
-      template {
-        data        = ${jsonencode(api_tls_key_pem)}
-        destination = "local/tls/api.key"
-      }
-%{ endif }
 
       config {
         network_mode = "host"

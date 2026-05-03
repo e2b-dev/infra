@@ -254,8 +254,10 @@ module "nomad" {
   api_node_pool                                          = var.api_node_pool
   api_port                                               = var.api_port
   api_internal_grpc_port                                 = var.api_internal_grpc_port
-  api_tls_cert_pem                                       = local.api_backend_tls_enabled ? join("", concat([google_privateca_certificate.api_backend[0].pem_certificate], google_privateca_certificate.api_backend[0].pem_certificate_chain)) : ""
-  api_tls_key_pem                                        = local.api_backend_tls_enabled ? tls_private_key.api_backend[0].private_key_pem : ""
+  api_internal_tls_ca_pool                               = local.api_backend_tls_enabled ? google_privateca_ca_pool.api_backend[0].id : ""
+  api_internal_tls_ca_authority                          = local.api_backend_tls_enabled ? google_privateca_certificate_authority.api_backend[0].certificate_authority_id : ""
+  api_internal_tls_dns_name                              = local.api_backend_tls_enabled ? local.api_backend_tls_hostname : ""
+  api_internal_tls_cert_id_prefix                        = local.api_backend_tls_enabled ? "${var.prefix}api-backend" : ""
   client_proxy_oidc_issuer_url                           = var.client_proxy_oidc_issuer_url
   environment                                            = var.environment
   google_service_account_key                             = module.init.google_service_account_key
@@ -283,11 +285,13 @@ module "nomad" {
   client_proxy_resources_memory_mb = var.client_proxy_resources_memory_mb
   client_proxy_update_max_parallel = var.client_proxy_update_max_parallel
 
-  client_proxy_session_port     = var.client_proxy_port.port
-  client_proxy_tls_session_port = var.client_proxy_tls_port.port
-  client_proxy_health_port      = var.client_proxy_health_port.port
-  client_proxy_tls_cert_pem     = local.client_proxy_backend_tls_enabled ? join("", concat([google_privateca_certificate.client_proxy_backend[0].pem_certificate], google_privateca_certificate.client_proxy_backend[0].pem_certificate_chain)) : ""
-  client_proxy_tls_key_pem      = local.client_proxy_backend_tls_enabled ? tls_private_key.client_proxy_backend[0].private_key_pem : ""
+  client_proxy_session_port                = var.client_proxy_port.port
+  client_proxy_tls_session_port            = var.client_proxy_tls_port.port
+  client_proxy_health_port                 = var.client_proxy_health_port.port
+  client_proxy_internal_tls_ca_pool        = local.client_proxy_backend_tls_enabled ? google_privateca_ca_pool.client_proxy_backend[0].id : ""
+  client_proxy_internal_tls_ca_authority   = local.client_proxy_backend_tls_enabled ? google_privateca_certificate_authority.client_proxy_backend[0].certificate_authority_id : ""
+  client_proxy_internal_tls_dns_name       = local.client_proxy_backend_tls_enabled ? local.client_proxy_backend_tls_hostname : ""
+  client_proxy_internal_tls_cert_id_prefix = local.client_proxy_backend_tls_enabled ? "${var.prefix}client-proxy-backend" : ""
 
   domain_name = var.domain_name
 
