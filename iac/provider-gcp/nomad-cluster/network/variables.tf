@@ -16,6 +16,11 @@ variable "api_h2c_backend_enabled" {
   default = false
 }
 
+variable "client_proxy_h2c_backend_enabled" {
+  type    = bool
+  default = false
+}
+
 variable "additional_domains" {
   type = list(string)
 }

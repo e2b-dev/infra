@@ -11,6 +11,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/tracking"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 )
 
 // ConnectionLimitConfig bundles connection limiting and associated metric callbacks.
@@ -57,6 +59,8 @@ func New(
 		disableKeepAlives,
 	)
 
+	proxyHandler := handler(p, getDestination, connLimitConfig)
+
 	return &Proxy{
 		Server: http.Server{
 			Addr:         fmt.Sprintf(":%d", port),
@@ -66,7 +70,7 @@ func New(
 			// otherwise there's a chance for a race condition when the server closes and the client tries to use the connection
 			IdleTimeout:       idleTimeout + idleTimeoutBufferUpstreamDownstream,
 			ReadHeaderTimeout: 0,
-			Handler:           handler(p, getDestination, connLimitConfig),
+			Handler:           h2c.NewHandler(proxyHandler, &http2.Server{}),
 		},
 		pool: p,
 	}

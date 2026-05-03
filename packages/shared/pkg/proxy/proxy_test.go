@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/net/http2"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
@@ -214,6 +216,50 @@ func TestProxyRoutesToTargetServer(t *testing.T) {
 
 	assert.Equal(t, uint64(1), backend.RequestCount(), "backend should have been called once")
 	assert.Equal(t, uint64(1), proxy.TotalPoolConnections(), "proxy should have established one connection")
+}
+
+func TestProxyAcceptsH2C(t *testing.T) {
+	t.Parallel()
+	var lisCfg net.ListenConfig
+	listener, err := lisCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	backend, err := newTestBackend(listener, "backend-1")
+	require.NoError(t, err)
+	defer backend.Close()
+
+	getDestination := func(*http.Request) (*pool.Destination, error) {
+		return &pool.Destination{
+			Url:           backend.url,
+			SandboxId:     "test-sandbox",
+			RequestLogger: logger.NewNopLogger(),
+			ConnectionKey: backend.id,
+		}, nil
+	}
+
+	proxy, port, err := newTestProxy(t, getDestination)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		proxy.Close()
+	})
+
+	client := &http.Client{
+		Transport: &http2.Transport{
+			AllowHTTP: true,
+			DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
+				var dialer net.Dialer
+				return dialer.DialContext(ctx, network, addr)
+			},
+		},
+	}
+
+	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/hello", port))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, "HTTP/2.0", resp.Proto)
+	assertBackendOutput(t, backend, resp)
+	assert.Equal(t, uint64(1), backend.RequestCount(), "backend should have been called once")
 }
 
 func TestProxyResumePermissionDeniedErrorTemplate(t *testing.T) {

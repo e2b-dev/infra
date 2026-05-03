@@ -243,7 +243,7 @@ resource "google_certificate_manager_certificate_map_entry" "subdomains_map_entr
 # Load balancers
 resource "google_compute_url_map" "orch_map" {
   name            = "${var.prefix}orch-map"
-  default_service = google_compute_backend_service.default["session"].self_link
+  default_service = var.client_proxy_h2c_backend_enabled ? google_compute_backend_service.h2c_session[0].self_link : google_compute_backend_service.default["session"].self_link
 
   host_rule {
     hosts        = concat(["api.${var.domain_name}"], [for d in var.additional_domains : "api.${d}"])
@@ -296,7 +296,7 @@ resource "google_compute_url_map" "orch_map" {
 
   path_matcher {
     name            = "session-paths"
-    default_service = google_compute_backend_service.default["session"].self_link
+    default_service = var.client_proxy_h2c_backend_enabled ? google_compute_backend_service.h2c_session[0].self_link : google_compute_backend_service.default["session"].self_link
   }
 
   path_matcher {
@@ -333,6 +333,36 @@ resource "google_compute_backend_service" "h2c_api" {
   health_checks         = [google_compute_health_check.default["api"].self_link]
 
   security_policy = google_compute_security_policy.default["api"].self_link
+
+  log_config {
+    enable = var.environment != "dev"
+  }
+
+  backend {
+    group = var.api_instance_group
+  }
+
+  depends_on = [
+    google_compute_health_check.default
+  ]
+}
+
+resource "google_compute_backend_service" "h2c_session" {
+  count = var.client_proxy_h2c_backend_enabled ? 1 : 0
+
+  name = "${var.prefix}h2c-session"
+
+  port_name = var.client_proxy_port.name
+  protocol  = "H2C"
+
+  timeout_sec                     = local.backends.session.timeout_sec
+  connection_draining_timeout_sec = 1
+  compression_mode                = "DISABLED"
+
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  health_checks         = [google_compute_health_check.default["session"].self_link]
+
+  security_policy = google_compute_security_policy.default["session"].self_link
 
   log_config {
     enable = var.environment != "dev"

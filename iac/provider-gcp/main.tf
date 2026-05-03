@@ -159,14 +159,15 @@ module "cluster" {
   client_proxy_port        = var.client_proxy_port
   client_proxy_health_port = var.client_proxy_health_port
 
-  ingress_port                 = var.ingress_port
-  api_port                     = var.api_port
-  docker_reverse_proxy_port    = var.docker_reverse_proxy_port
-  nomad_port                   = var.nomad_port
-  google_service_account_email = module.init.service_account_email
-  domain_name                  = var.domain_name
-  api_h2c_backend_enabled      = var.api_h2c_backend_enabled
-  ingress_timeout_seconds      = var.ingress_timeout_seconds
+  ingress_port                     = var.ingress_port
+  api_port                         = var.api_port
+  docker_reverse_proxy_port        = var.docker_reverse_proxy_port
+  nomad_port                       = var.nomad_port
+  google_service_account_email     = module.init.service_account_email
+  domain_name                      = var.domain_name
+  api_h2c_backend_enabled          = var.api_h2c_backend_enabled
+  client_proxy_h2c_backend_enabled = var.client_proxy_h2c_backend_enabled
+  ingress_timeout_seconds          = var.ingress_timeout_seconds
 
   additional_domains                      = local.additional_domains
   additional_api_paths_handled_by_ingress = local.normalized_api_paths_handled_by_ingress
