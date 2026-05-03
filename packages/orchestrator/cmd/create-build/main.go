@@ -101,8 +101,8 @@ func main() {
 		log.Fatalf("network config: %v", err)
 	}
 
-	// Detect if --free-page-reporting was explicitly set; if not, pass nil so
-	// doBuild can default based on the Firecracker version.
+	// nil = no explicit --free-page-reporting flag; doBuild then defaults
+	// based on the Firecracker version.
 	var fprOverride *bool
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "free-page-reporting" {
@@ -341,18 +341,16 @@ func doBuild(
 
 	force := true
 
-	// Build steps list for setup commands
 	var steps []*templatemanager.TemplateStep
 	if setupCmd != "" {
 		fmt.Printf("Setup command (as root): %s\n", setupCmd)
-		// Add a RUN step that executes as root
 		steps = append(steps, &templatemanager.TemplateStep{
 			Type: "RUN",
-			Args: []string{setupCmd, "root"}, // command, user
+			Args: []string{setupCmd, "root"},
 		})
 	}
 
-	// Default FPR to enabled when the FC version supports it (v1.14+); explicit flag overrides.
+	// Default FPR on for FC v1.14+; explicit --free-page-reporting overrides.
 	var fprEnabled bool
 	if freePageReporting != nil {
 		fprEnabled = *freePageReporting
