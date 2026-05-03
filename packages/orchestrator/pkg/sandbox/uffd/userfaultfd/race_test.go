@@ -55,9 +55,9 @@ func withRaceContext(t *testing.T, body func(ctx context.Context)) {
 //
 // Both variants fail until the fix in #2512 lands — the failure is
 // intentional and demonstrates the stale-source bug.
+//
+//nolint:paralleltest,tparallel // serialised: a paused gated handler keeps a faulting goroutine suspended in the kernel pagefault path; a STW GC pause from another parallel test would wait forever for that goroutine to reach a safe point.
 func TestStaleSourceRaceMissingAndRemove(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name     string
 		pagesize uint64
@@ -67,8 +67,7 @@ func TestStaleSourceRaceMissingAndRemove(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+		t.Run(tt.name, func(t *testing.T) { //nolint:paralleltest // see test-level comment
 
 			withRaceContext(t, func(ctx context.Context) {
 				const sentinel = byte(0xC3)
@@ -147,9 +146,9 @@ func TestStaleSourceRaceMissingAndRemove(t *testing.T) {
 // must return within madviseBudget because readEvents drains REMOVE
 // events without taking any lock — any future change that couples
 // readEvents to settleRequests fails this test at the budget boundary.
+//
+//nolint:paralleltest,tparallel // same reason — see TestFaultedShortCircuitOrdering
 func TestNoMadviseDeadlockWithInflightCopy(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name     string
 		pagesize uint64
@@ -159,8 +158,7 @@ func TestNoMadviseDeadlockWithInflightCopy(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+		t.Run(tt.name, func(t *testing.T) { //nolint:paralleltest // see test-level comment
 
 			withRaceContext(t, func(ctx context.Context) {
 				cfg := testConfig{
