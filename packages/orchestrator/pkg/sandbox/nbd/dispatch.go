@@ -157,17 +157,6 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
 	return nil
 }
 
-func parseRequest(header []byte) Request {
-	return Request{
-		Magic:  binary.BigEndian.Uint32(header[0:4]),
-		Flags:  binary.BigEndian.Uint16(header[4:6]),
-		Type:   binary.BigEndian.Uint16(header[6:8]),
-		Handle: binary.BigEndian.Uint64(header[8:16]),
-		From:   binary.BigEndian.Uint64(header[16:24]),
-		Length: binary.BigEndian.Uint32(header[24:28]),
-	}
-}
-
 /**
  * This dispatches incoming NBD requests sequentially to the provider.
  *
@@ -206,7 +195,13 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 
 			// We can read the neader...
 
-			request = parseRequest(buffer[rp : rp+28])
+			header := buffer[rp : rp+28]
+			request.Magic = binary.BigEndian.Uint32(header)
+			request.Flags = binary.BigEndian.Uint16(header[4:6])
+			request.Type = binary.BigEndian.Uint16(header[6:8])
+			request.Handle = binary.BigEndian.Uint64(header[8:16])
+			request.From = binary.BigEndian.Uint64(header[16:24])
+			request.Length = binary.BigEndian.Uint32(header[24:28])
 
 			if request.Magic != NBDRequestMagic {
 				return errors.New("received invalid MAGIC")
