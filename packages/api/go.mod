@@ -404,4 +404,5 @@ require (
 	k8s.io/client-go v0.34.3 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397 // indirect
+	pgregory.net/rapid v1.3.0 // indirect
 )
