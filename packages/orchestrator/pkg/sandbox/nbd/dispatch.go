@@ -62,14 +62,20 @@ const (
 	dispatchMaxWriteBufferSize = 32 * 1024 * 1024
 )
 
-// NBD Commands
+// NBD Commands.
+//
+// The corresponding NBD_CMD_FLAG_* bits (FUA, NO_HOLE, DF, REQ_ONE, FAST_ZERO)
+// arrive in Request.Flags. We currently ignore all of them: writes are durable
+// by virtue of the kernel committing on snapshot, NO_HOLE is moot because
+// shrinking the diff is the entire point, and DF/REQ_ONE only matter for
+// structured replies which we don't speak.
 const (
-	NBDCmdRead        = 0
-	NBDCmdWrite       = 1
-	NBDCmdDisconnect  = 2
-	NBDCmdFlush       = 3
-	NBDCmdTrim        = 4
-	NBDCmdWriteZeroes = 6
+	NBDCmdRead        uint16 = 0
+	NBDCmdWrite       uint16 = 1
+	NBDCmdDisconnect  uint16 = 2
+	NBDCmdFlush       uint16 = 3
+	NBDCmdTrim        uint16 = 4
+	NBDCmdWriteZeroes uint16 = 6
 )
 
 const (
@@ -77,10 +83,13 @@ const (
 	NBDResponseMagic = 0x67446698
 )
 
-// NBD Request packet
+// NBD Request packet. Wire layout (big-endian, total 28 bytes):
+//
+//	magic(4) | flags(2) | type(2) | handle(8) | from(8) | length(4)
 type Request struct {
 	Magic  uint32
-	Type   uint32
+	Flags  uint16
+	Type   uint16
 	Handle uint64
 	From   uint64
 	Length uint32
@@ -196,7 +205,8 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 
 			header := buffer[rp : rp+28]
 			request.Magic = binary.BigEndian.Uint32(header)
-			request.Type = binary.BigEndian.Uint32(header[4:8])
+			request.Flags = binary.BigEndian.Uint16(header[4:6])
+			request.Type = binary.BigEndian.Uint16(header[6:8])
 			request.Handle = binary.BigEndian.Uint64(header[8:16])
 			request.From = binary.BigEndian.Uint64(header[16:24])
 			request.Length = binary.BigEndian.Uint32(header[24:28])

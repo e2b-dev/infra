@@ -94,11 +94,17 @@ func (m *mockProvider) snapshot() (writes []writeCall, zeroes []zeroCall) {
 	return append([]writeCall(nil), m.writes...), append([]zeroCall(nil), m.zeroes...)
 }
 
-func writeReq(t *testing.T, w io.Writer, opcode uint32, handle, from uint64, length uint32, data []byte) {
+func writeReq(t *testing.T, w io.Writer, opcode uint16, handle, from uint64, length uint32, data []byte) {
+	t.Helper()
+	writeReqFlags(t, w, opcode, 0, handle, from, length, data)
+}
+
+func writeReqFlags(t *testing.T, w io.Writer, opcode, flags uint16, handle, from uint64, length uint32, data []byte) {
 	t.Helper()
 	hdr := make([]byte, 28)
 	binary.BigEndian.PutUint32(hdr[0:4], NBDRequestMagic)
-	binary.BigEndian.PutUint32(hdr[4:8], opcode)
+	binary.BigEndian.PutUint16(hdr[4:6], flags)
+	binary.BigEndian.PutUint16(hdr[6:8], opcode)
 	binary.BigEndian.PutUint64(hdr[8:16], handle)
 	binary.BigEndian.PutUint64(hdr[16:24], from)
 	binary.BigEndian.PutUint32(hdr[24:28], length)
@@ -249,6 +255,29 @@ func TestDispatch_TrimRoutesToWriteZeroes(t *testing.T) {
 	assert.Empty(t, writes, "TRIM must not write payload bytes")
 	require.Len(t, zeroes, 1)
 	assert.Equal(t, zeroCall{off: 32768, length: length}, zeroes[0])
+}
+
+func TestDispatch_WriteZeroesIgnoresFlagsLikeNoHole(t *testing.T) {
+	t.Parallel()
+
+	h := newDispatchHarness(t)
+
+	// NBD_CMD_FLAG_NO_HOLE = 1<<1. The request type field ends up sharing a
+	// uint32 word with the flags on the wire, so a flag-blind parser would
+	// fail to dispatch this packet at all. Verify the parser splits them.
+	const noHole uint16 = 1 << 1
+	const length = 4096
+	writeReqFlags(t, h.client, NBDCmdWriteZeroes, noHole, 11, 0, length, nil)
+	errCode, handle := readResp(t, h.client)
+	assert.Equal(t, uint32(0), errCode)
+	assert.Equal(t, uint64(11), handle)
+
+	h.disconnectAndWait()
+
+	writes, zeroes := h.prov.snapshot()
+	assert.Empty(t, writes)
+	require.Len(t, zeroes, 1, "NO_HOLE-flagged WRITE_ZEROES still routes to WriteZeroesAt")
+	assert.Equal(t, zeroCall{off: 0, length: length}, zeroes[0])
 }
 
 func TestDispatch_WriteZeroesBackendErrorReportedInResponse(t *testing.T) {

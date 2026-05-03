@@ -431,7 +431,7 @@ func TestCacheWriteZeroesAt_AlignedRangeMapsToEmpty(t *testing.T) {
 	require.Equal(t, 2*blockSize, n)
 
 	// Reads after WriteZeroesAt must return zero, even for blocks that
-	// previously held non-zero data.
+	// previously held non-zero data — the punched hole serves zeros via mmap.
 	got := make([]byte, 2*blockSize)
 	rn, err := cache.ReadAt(got, 0)
 	require.NoError(t, err)

@@ -64,6 +64,10 @@ type Cache struct {
 	size      int64
 	blockSize int64
 	mmap      *mmap.MMap
+	// file is kept open for the lifetime of the cache so WriteZeroesAt can
+	// fallocate(PUNCH_HOLE) without re-opening on every guest zero/discard.
+	// nil iff size == 0 (no mmap, no file ops).
+	file      *os.File
 	mu        sync.RWMutex
 	state     *StateTracker[blockState]
 	dirtyFile bool
@@ -76,14 +80,16 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		return nil, fmt.Errorf("error opening file: %w", err)
 	}
 
-	defer f.Close()
-
 	state, err := NewStateTracker(blockUntouched, blockDirty, blockZero)
 	if err != nil {
+		f.Close()
+
 		return nil, fmt.Errorf("error creating state tracker: %w", err)
 	}
 
 	if size == 0 {
+		f.Close()
+
 		return &Cache{
 			filePath:  filePath,
 			size:      size,
@@ -94,22 +100,28 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 	}
 
 	// This should create a sparse file on Linux.
-	err = f.Truncate(size)
-	if err != nil {
+	if err := f.Truncate(size); err != nil {
+		f.Close()
+
 		return nil, fmt.Errorf("error allocating file: %w", err)
 	}
 
 	if size > math.MaxInt {
+		f.Close()
+
 		return nil, fmt.Errorf("size too big: %d > %d", size, math.MaxInt)
 	}
 
 	mm, err := mmap.MapRegion(f, int(size), mmap.RDWR, 0, 0)
 	if err != nil {
+		f.Close()
+
 		return nil, fmt.Errorf("error mapping file: %w", err)
 	}
 
 	return &Cache{
 		mmap:      &mm,
+		file:      f,
 		filePath:  filePath,
 		size:      size,
 		blockSize: blockSize,
@@ -274,6 +286,12 @@ func (c *Cache) Close() (e error) {
 		e = errors.Join(e, fmt.Errorf("error unmapping mmap: %w", err))
 	}
 
+	if c.file != nil {
+		if err := c.file.Close(); err != nil {
+			e = errors.Join(e, fmt.Errorf("error closing cache file: %w", err))
+		}
+	}
+
 	// TODO: Move to to the scope of the caller
 	e = errors.Join(e, os.RemoveAll(c.filePath))
 
@@ -370,10 +388,20 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	return n, nil
 }
 
-// WriteZeroesAt records that [off, off+length) reads as zero without writing
-// the zero bytes to the diff. Only block-aligned, fully-covered blocks are
-// marked Empty: any sub-block tail must be zeroed in-place and tracked as
-// dirty to preserve correctness against partial overwrites.
+// WriteZeroesAt records that [off, off+length) reads as zero. Used for both
+// NBD WRITE_ZEROES and TRIM, plus zero-detection on regular writes.
+//
+// Aligned, fully-covered blocks are punched out of the underlying sparse file
+// (FALLOC_FL_PUNCH_HOLE) and marked Empty in the diff. Punching releases the
+// host-side cache pages immediately — important because the cache file lives
+// on tmpfs in production. Reads after the punch return zero from the mmap
+// hole, even if the block previously held dirty bytes.
+//
+// Sub-block head/tail share their block with neighbouring data, so we can't
+// claim the whole block as Empty — write zeros into the mmap and mark Dirty.
+//
+// The kernel's NBD_CMD_FLAG_NO_HOLE hint is intentionally ignored: shrinking
+// the diff is the entire point.
 func (c *Cache) WriteZeroesAt(off, length int64) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -394,15 +422,19 @@ func (c *Cache) WriteZeroesAt(off, length int64) (int, error) {
 	alignedStart := alignUp(off, c.blockSize)
 	alignedEnd := alignDown(end, c.blockSize)
 
-	// Aligned core: clear mmap (so reads return zero even after a prior dirty
-	// write to the same block) and mark blocks as Empty in the diff.
 	if alignedStart < alignedEnd {
-		clear((*c.mmap)[alignedStart:alignedEnd])
+		err := unix.Fallocate(
+			int(c.file.Fd()),
+			unix.FALLOC_FL_PUNCH_HOLE|unix.FALLOC_FL_KEEP_SIZE,
+			alignedStart,
+			alignedEnd-alignedStart,
+		)
+		if err != nil {
+			return 0, fmt.Errorf("punch hole at %d-%d: %w", alignedStart, alignedEnd, err)
+		}
 		c.markBlocks(alignedStart, alignedEnd-alignedStart, blockZero)
 	}
 
-	// Unaligned head/tail share their block with neighbouring data, so we
-	// can't claim the whole block as Empty — write zeros and mark Dirty.
 	if off < alignedStart {
 		head := min(alignedStart, end)
 		clear((*c.mmap)[off:head])
