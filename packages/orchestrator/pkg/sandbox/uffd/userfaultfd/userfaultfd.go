@@ -42,7 +42,6 @@ const (
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
-// hasEvent checks if a specific poll event flag is set in revents.
 func hasEvent(revents, event int16) bool {
 	return revents&event != 0
 }
@@ -55,15 +54,21 @@ type Userfaultfd struct {
 	pageSize    uintptr
 	pageTracker *block.Tracker
 
-	// We use the settleRequests to guard the pageTracker so we can access a consistent state of the pageTracker after the requests are finished.
-	settleRequests sync.RWMutex
-
+	// settleRequests guards the pageTracker / prefetchTracker. Workers take
+	// RLock for the lookup→install→SetRange sequence; the REMOVE batch takes
+	// Lock so a concurrent worker can't overwrite a removed state.
+	settleRequests  sync.RWMutex
 	prefetchTracker *block.PrefetchTracker
+
+	// defaultCopyMode overrides UFFDIO_COPY mode for all faults when non-zero.
+	defaultCopyMode CULong
 
 	wg errgroup.Group
 
-	// defaultCopyMode overrides the UFFDIO_COPY mode for all faults when non-zero.
-	defaultCopyMode CULong
+	// wakeupPipe is a self-pipe that wakes the poll loop after a worker
+	// defers a fault, so a deferred fault isn't orphaned waiting for the
+	// next unrelated UFFD event.
+	wakeupPipe [2]int
 
 	// testFaultHook is set only by SetTestFaultHook in test builds.
 	testFaultHook atomic.Pointer[func(uintptr, faultPhase)]
@@ -89,6 +94,11 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 		}
 	}
 
+	var wakeupPipe [2]int
+	if err := syscall.Pipe2(wakeupPipe[:], syscall.O_NONBLOCK|syscall.O_CLOEXEC); err != nil {
+		return nil, fmt.Errorf("failed to create wakeup pipe: %w", err)
+	}
+
 	u := &Userfaultfd{
 		fd:              Fd(fd),
 		src:             src,
@@ -96,19 +106,59 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 		pageTracker:     block.NewTracker(),
 		prefetchTracker: block.NewPrefetchTracker(blockSize),
 		ma:              m,
+		wakeupPipe:      wakeupPipe,
 		logger:          logger,
 	}
 
-	// By default this was unlimited.
-	// Now that we don't skip previously faulted pages we add at least some boundaries to the concurrency.
-	// Also, in some brief tests, adding a limit actually improved the handling at high concurrency.
 	u.wg.SetLimit(maxRequestsInProgress)
 
 	return u, nil
 }
 
-func (u *Userfaultfd) Close() error {
-	return u.fd.close()
+func (u *Userfaultfd) readEvents(ctx context.Context) ([]*UffdRemove, []*UffdPagefault, error) {
+	buf := make([]byte, unsafe.Sizeof(UffdMsg{}))
+
+	var removes []*UffdRemove
+	var pagefaults []*UffdPagefault
+
+	for {
+		n, err := syscall.Read(int(u.fd), buf)
+		if errors.Is(err, syscall.EINTR) {
+			u.logger.Debug(ctx, "uffd: interrupted read. Reading again")
+
+			continue
+		}
+
+		if errors.Is(err, syscall.EAGAIN) {
+			break
+		}
+
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed reading uffd: %w", err)
+		}
+
+		if n == 0 {
+			break
+		}
+
+		msg := (*UffdMsg)(unsafe.Pointer(&buf[0]))
+
+		event := getMsgEvent(msg)
+		arg := getMsgArg(msg)
+
+		switch event {
+		case UFFD_EVENT_PAGEFAULT:
+			v := *(*UffdPagefault)(unsafe.Pointer(&arg[0]))
+			pagefaults = append(pagefaults, &v)
+		case UFFD_EVENT_REMOVE:
+			v := *(*UffdRemove)(unsafe.Pointer(&arg[0]))
+			removes = append(removes, &v)
+		default:
+			return nil, nil, ErrUnexpectedEventType
+		}
+	}
+
+	return removes, pagefaults, nil
 }
 
 func (u *Userfaultfd) Serve(
@@ -118,10 +168,11 @@ func (u *Userfaultfd) Serve(
 	pollFds := []unix.PollFd{
 		{Fd: int32(u.fd), Events: unix.POLLIN},
 		{Fd: fdExit.Reader(), Events: unix.POLLIN},
+		{Fd: int32(u.wakeupPipe[0]), Events: unix.POLLIN},
 	}
 
-	eagainCounter := newCounterReporter(u.logger, "uffd: eagain with no pagefaults (accumulated)")
-	defer eagainCounter.Close(ctx)
+	emptyDrainCounter := newCounterReporter(u.logger, "uffd: empty drain (spurious wakeup) (accumulated)")
+	defer emptyDrainCounter.Close(ctx)
 
 	noDataCounter := newCounterReporter(u.logger, "uffd: no data in fd (accumulated)")
 	defer noDataCounter.Close(ctx)
@@ -137,6 +188,8 @@ func (u *Userfaultfd) Serve(
 		unix.POLLERR:  "POLLERR",
 		unix.POLLNVAL: "POLLNVAL",
 	}
+
+	var deferred deferredFaults
 
 	for {
 		if _, err := unix.Poll(
@@ -172,256 +225,335 @@ func (u *Userfaultfd) Serve(
 			return nil
 		}
 
-		// Track exit fd error events
 		for event, name := range pollErrorEvents {
 			if hasEvent(exitFd.Revents, event) {
 				exitFdErrorCounter.Increase(name)
 			}
 		}
 
+		if hasEvent(pollFds[2].Revents, unix.POLLIN) {
+			u.drainWakeupPipe()
+		}
+
 		uffdFd := pollFds[0]
 
-		// Track uffd error events
 		for event, name := range pollErrorEvents {
 			if hasEvent(uffdFd.Revents, event) {
 				uffdErrorCounter.Increase(name)
 			}
 		}
 
-		if !hasEvent(uffdFd.Revents, unix.POLLIN) {
-			// Uffd is not ready for reading as there is nothing to read on the fd.
-			// https://github.com/firecracker-microvm/firecracker/issues/5056
-			// https://elixir.bootlin.com/linux/v6.8.12/source/fs/userfaultfd.c#L1149
-			// TODO: Check for all the errors
-			// - https://docs.kernel.org/admin-guide/mm/userfaultfd.html
-			// - https://elixir.bootlin.com/linux/v6.8.12/source/fs/userfaultfd.c
-			// - https://man7.org/linux/man-pages/man2/userfaultfd.2.html
-			// It might be possible to just check for data != 0 in the syscall.Read loop
-			// but I don't feel confident about doing that.
-			noDataCounter.Increase("POLLIN")
-
-			continue
-		}
-
-		buf := make([]byte, unsafe.Sizeof(UffdMsg{}))
-
+		var removes []*UffdRemove
 		var pagefaults []*UffdPagefault
-		for {
-			_, err := syscall.Read(int(u.fd), buf)
-			if err == syscall.EINTR {
-				u.logger.Debug(ctx, "uffd: interrupted read, reading again")
 
-				continue
-			}
-
-			if err == syscall.EAGAIN {
-				break
-			}
-
+		if hasEvent(uffdFd.Revents, unix.POLLIN) {
+			var err error
+			removes, pagefaults, err = u.readEvents(ctx)
 			if err != nil {
 				u.logger.Error(ctx, "uffd: read error", zap.Error(err))
 
 				return fmt.Errorf("failed to read: %w", err)
 			}
-
-			msg := *(*UffdMsg)(unsafe.Pointer(&buf[0]))
-
-			if msgEvent := getMsgEvent(&msg); msgEvent != UFFD_EVENT_PAGEFAULT {
-				u.logger.Error(ctx, "UFFD serve unexpected event type", zap.Any("event_type", msgEvent))
-
-				return ErrUnexpectedEventType
-			}
-
-			arg := getMsgArg(&msg)
-			pagefault := *(*UffdPagefault)(unsafe.Pointer(&arg[0]))
-			pagefaults = append(pagefaults, &pagefault)
+		} else {
+			noDataCounter.Increase("POLLIN")
 		}
 
+		// REMOVE batch under write lock so an in-flight worker's SetRange(Dirty)
+		// can't overwrite the Zero state we are about to install.
+		if len(removes) > 0 {
+			u.settleRequests.Lock()
+			for _, rm := range removes {
+				// rm.start (inclusive) and rm.end (exclusive) are page-aligned
+				// to u.pageSize for the registered VMA (UFFD invariant), so
+				// startOff is a multiple of pageSize and length is an integer
+				// number of pages — both divisions below are exact, and
+				// SetRange's half-open [startIdx, endIdx) lines up with the
+				// half-open [rm.start, rm.end).
+				startOff, err := u.ma.GetOffset(uintptr(rm.start))
+				if err != nil {
+					u.logger.Error(ctx, "UFFD REMOVE: failed to map start address",
+						zap.Uintptr("start", uintptr(rm.start)), zap.Error(err))
+
+					continue
+				}
+
+				startIdx := uint32(header.BlockIdx(startOff, int64(u.pageSize)))
+				endIdx := startIdx + uint32(rm.end-rm.start)/uint32(u.pageSize)
+				u.pageTracker.SetRange(startIdx, endIdx, block.Zero)
+			}
+			u.settleRequests.Unlock()
+		}
+
+		pagefaults = append(deferred.drain(), pagefaults...)
+
 		if len(pagefaults) == 0 {
-			eagainCounter.Increase("EMPTY_DRAIN")
+			if len(removes) == 0 {
+				emptyDrainCounter.Increase("EMPTY_DRAIN")
+			}
 
 			continue
 		}
 
-		eagainCounter.Log(ctx)
+		emptyDrainCounter.Log(ctx)
 		noDataCounter.Log(ctx)
 
-		for _, pagefault := range pagefaults {
-			flags := pagefault.flags
+		for _, pf := range pagefaults {
+			if pf.flags&UFFD_PAGEFAULT_FLAG_MINOR != 0 {
+				return errors.New("unexpected MINOR pagefault event, closing UFFD")
+			}
 
-			addr := getPagefaultAddress(pagefault)
+			// WP faults are not registered: we use UFFD_FEATURE_WP_ASYNC.
+			if pf.flags&UFFD_PAGEFAULT_FLAG_WP != 0 {
+				return errors.New("unexpected WP pagefault event, closing UFFD")
+			}
 
+			addr := getPagefaultAddress(pf)
 			offset, err := u.ma.GetOffset(addr)
 			if err != nil {
-				u.logger.Error(ctx, "UFFD serve get mapping error", zap.Error(err))
+				u.logger.Error(ctx, "UFFD serve got mapping error", zap.Error(err))
 
 				return fmt.Errorf("failed to map: %w", err)
 			}
 
-			// Handle write to missing page (WRITE flag)
-			// If the event has WRITE flag, it was a write to a missing page.
-			// For the write to be executed, we first need to copy the page from the source to the guest memory.
-			if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
-				u.wg.Go(func() error {
-					if h := u.testFaultHook.Load(); h != nil {
-						(*h)(addr, faultPhaseBeforeRLock)
-					}
+			u.wg.Go(func() error {
+				if h := u.testFaultHook.Load(); h != nil {
+					(*h)(addr, faultPhaseBeforeRLock)
+				}
 
-					return u.faultPage(ctx, addr, offset, u.src, fdExit.SignalExit, block.Write)
-				})
+				// RLock spans the lookup→faultPage→setState sequence so a
+				// concurrent REMOVE batch (settleRequests.Lock) can't slip in
+				// between the state read and the install.
+				u.settleRequests.RLock()
+				defer u.settleRequests.RUnlock()
 
-				continue
-			}
+				var source block.Slicer
 
-			// Handle read to missing page ("MISSING" flag)
-			// If the event has no flags, it was a read to a missing page and we need to copy the page from the source to the guest memory.
-			if flags == 0 {
-				u.wg.Go(func() error {
-					if h := u.testFaultHook.Load(); h != nil {
-						(*h)(addr, faultPhaseBeforeRLock)
-					}
+				idx := uint32(header.BlockIdx(offset, int64(u.pageSize)))
 
-					return u.faultPage(ctx, addr, offset, u.src, fdExit.SignalExit, block.Read)
-				})
+				switch state := u.pageTracker.Get(idx); state {
+				case block.Dirty:
+					// Pages must not be swappable for this short-circuit to hold:
+					// only UFFD_EVENT_REMOVE moves a page out of Dirty.
+					return nil
+				case block.Zero:
+					// Zero-fill. We still owe the kernel an ack for the original
+					// MISSING fault or the faulting thread stays blocked.
+				case block.NotPresent:
+					source = u.src
+				default:
+					return fmt.Errorf("unexpected block.State: %#v", state)
+				}
 
-				continue
-			}
+				var accessType block.AccessType
+				if pf.flags&UFFD_PAGEFAULT_FLAG_WRITE == 0 {
+					accessType = block.Read
+				} else {
+					accessType = block.Write
+				}
 
-			// MINOR and WP flags are not expected as we don't register the uffd with these flags.
-			return fmt.Errorf("unexpected event type: %d, closing uffd", flags)
+				if h := u.testFaultHook.Load(); h != nil {
+					(*h)(addr, faultPhaseBeforeFaultPage)
+				}
+
+				handled, err := u.faultPage(
+					ctx,
+					addr,
+					offset,
+					accessType,
+					source,
+					fdExit.SignalExit,
+				)
+				if err != nil {
+					return err
+				}
+
+				if handled {
+					u.pageTracker.SetRange(idx, idx+1, block.Dirty)
+					u.prefetchTracker.Add(offset, accessType)
+				} else {
+					deferred.push(pf)
+					u.signalWakeup()
+				}
+
+				return nil
+			})
 		}
 	}
-}
-
-func (u *Userfaultfd) PrefetchData() block.PrefetchData {
-	// This will be at worst cancelled when the uffd is closed.
-	u.settleRequests.Lock()
-	// The locking here would work even without using defer (just lock-then-unlock the mutex), but at this point let's make it lock to the clone,
-	// so it is consistent even if there is a another uffd call after.
-	defer u.settleRequests.Unlock()
-
-	return u.prefetchTracker.PrefetchData()
 }
 
 func (u *Userfaultfd) faultPage(
 	ctx context.Context,
 	addr uintptr,
 	offset int64,
+	accessType block.AccessType,
 	source block.Slicer,
 	onFailure func() error,
-	accessType block.AccessType,
-) error {
+) (handled bool, err error) {
 	span := trace.SpanFromContext(ctx)
 
-	// The RLock must be called inside the goroutine to ensure RUnlock runs via defer,
-	// even if the errgroup is cancelled or the goroutine returns early.
-	// This guards against races between marking the page faulted / prefetched
-	// and another caller observing the pageTracker or prefetchTracker.
-	u.settleRequests.RLock()
-	defer u.settleRequests.RUnlock()
-
-	if h := u.testFaultHook.Load(); h != nil {
-		(*h)(addr, faultPhaseBeforeFaultPage)
-	}
-
+	// Named returns so a recovered panic produces a fatal error: the bare
+	// zero values (false, nil) would otherwise be treated as "defer & retry"
+	// and a deterministic panic would loop forever.
 	defer func() {
 		if r := recover(); r != nil {
 			u.logger.Error(ctx, "UFFD serve panic", zap.Any("pagesize", u.pageSize), zap.Any("panic", r))
+			handled = false
+			err = fmt.Errorf("uffd serve panic: %v", r)
 		}
 	}()
 
-	var b []byte
-	var dataErr error
-	var attempt int
+	var writeErr error
 
-retryLoop:
-	for attempt = range sliceMaxRetries + 1 {
-		b, dataErr = source.Slice(ctx, offset, int64(u.pageSize))
-		if dataErr == nil {
+	mode := u.defaultCopyMode
+	if accessType == block.Read {
+		mode = UFFDIO_COPY_MODE_WP
+	}
+
+	// nil source = zero-fill. 4K read needs zero → WP → wake (anonymous mappings
+	// cannot be write-protected until they are populated, so wake must come last).
+	switch {
+	case source == nil && u.pageSize == header.PageSize && accessType == block.Read:
+		writeErr = u.fd.zero(addr, u.pageSize, UFFDIO_ZEROPAGE_MODE_DONTWAKE)
+		if writeErr != nil {
 			break
 		}
-
-		if attempt >= sliceMaxRetries || ctx.Err() != nil {
+		writeErr = u.fd.writeProtect(addr, u.pageSize, UFFDIO_WRITEPROTECT_MODE_WP)
+		if writeErr != nil {
 			break
 		}
+		writeErr = u.fd.wake(addr, u.pageSize)
+	case source == nil && u.pageSize == header.PageSize && accessType == block.Write:
+		writeErr = u.fd.zero(addr, u.pageSize, 0)
+	case source == nil && u.pageSize == header.HugepageSize:
+		writeErr = u.fd.copy(addr, u.pageSize, header.EmptyHugePage, mode)
+	default:
+		// Slice retry holds settleRequests.RLock for up to ~2s of
+		// exponential backoff, blocking any concurrent REMOVE batch.
+		// Correctness holds (uffd FIFO drains the queued REMOVE before
+		// the next same-page fault); if the blocking latency ever shows
+		// up, move Slice outside the lock and re-check state before
+		// UFFDIO_COPY.
+		var b []byte
+		var dataErr error
+		var attempt int
 
-		u.logger.Warn(ctx, "UFFD serve slice error, retrying",
-			zap.Int("attempt", attempt+1),
-			zap.Int("max_attempts", sliceMaxRetries+1),
-			zap.Error(dataErr),
-		)
+	retryLoop:
+		for attempt = range sliceMaxRetries + 1 {
+			b, dataErr = source.Slice(ctx, offset, int64(u.pageSize))
+			if dataErr == nil {
+				break
+			}
 
-		delay := min(sliceRetryBaseDelay<<attempt, sliceRetryMaxDelay)
-		jitter := time.Duration(rand.Int63n(int64(delay) / 2))
+			if attempt >= sliceMaxRetries || ctx.Err() != nil {
+				break
+			}
 
-		backoff := time.NewTimer(delay + jitter)
+			u.logger.Warn(ctx, "UFFD serve slice error, retrying",
+				zap.Int("attempt", attempt+1),
+				zap.Int("max_attempts", sliceMaxRetries+1),
+				zap.Error(dataErr),
+			)
 
-		select {
-		case <-ctx.Done():
-			backoff.Stop()
+			delay := min(sliceRetryBaseDelay<<attempt, sliceRetryMaxDelay)
+			jitter := time.Duration(rand.Int63n(int64(delay) / 2))
 
-			dataErr = errors.Join(dataErr, ctx.Err())
+			backoff := time.NewTimer(delay + jitter)
 
-			break retryLoop
-		case <-backoff.C:
+			select {
+			case <-ctx.Done():
+				backoff.Stop()
+
+				dataErr = errors.Join(dataErr, ctx.Err())
+
+				break retryLoop
+			case <-backoff.C:
+			}
 		}
+
+		if dataErr != nil {
+			var signalErr error
+			if onFailure != nil {
+				signalErr = onFailure()
+			}
+
+			joinedErr := errors.Join(dataErr, signalErr)
+
+			span.RecordError(joinedErr)
+			u.logger.Error(ctx, "UFFD serve data fetch error after retries",
+				zap.Int("attempts", attempt+1),
+				zap.Error(joinedErr),
+			)
+
+			return false, fmt.Errorf("failed to read from source after %d attempts: %w", attempt+1, joinedErr)
+		}
+		writeErr = u.fd.copy(addr, u.pageSize, b, mode)
 	}
 
-	if dataErr != nil {
-		signalErr := safeInvoke(onFailure)
-
-		joinedErr := errors.Join(dataErr, signalErr)
-
-		span.RecordError(joinedErr)
-		u.logger.Error(ctx, "UFFD serve data fetch error after retries",
-			zap.Int("attempts", attempt+1),
-			zap.Error(joinedErr),
-		)
-
-		return fmt.Errorf("failed to read from source after %d attempts: %w", attempt+1, joinedErr)
-	}
-
-	copyMode := u.defaultCopyMode
-
-	// Performing copy() on UFFD clears the WP bit unless we explicitly tell
-	// it not to. We do that for faults caused by a read access. Write accesses
-	// would anyways cause clear the write-protection bit.
-	if accessType != block.Write {
-		copyMode |= UFFDIO_COPY_MODE_WP
-	}
-
-	copyErr := u.fd.copy(addr, u.pageSize, b, copyMode)
-	if errors.Is(copyErr, unix.EEXIST) {
-		// Page is already mapped
+	// EEXIST: page already mapped. Wake in case the install used DONTWAKE.
+	if errors.Is(writeErr, unix.EEXIST) {
 		span.SetAttributes(attribute.Bool("uffd.already_mapped", true))
 
-		return nil
+		u.fd.wake(addr, u.pageSize) //nolint:errcheck // best-effort; thread may already be awake
+
+		return true, nil
 	}
 
-	if errors.Is(copyErr, unix.ESRCH) {
-		// The faulting thread/process no longer exists — it exited or was killed
-		// while the page fetch was in flight. This is expected during sandbox
-		// teardown; treat it as benign.
+	// ESRCH: faulting thread exited during sandbox teardown.
+	if errors.Is(writeErr, unix.ESRCH) {
 		span.SetAttributes(attribute.Bool("uffd.process_exited", true))
-		u.logger.Debug(ctx, "UFFD serve copy error: process no longer exists", zap.Error(copyErr))
+		u.logger.Debug(ctx, "UFFD serve copy error: process no longer exists", zap.Error(writeErr))
 
-		return nil
+		return true, nil
 	}
 
-	if copyErr != nil {
-		signalErr := safeInvoke(onFailure)
+	// EAGAIN: mmap_changing set mid-copy (concurrent madvise/mremap/fork) or
+	// a partial copy (see classifyCopyResult). We defer the fault ourselves
+	// via deferred.push(pf) + signalWakeup below; the kernel does not
+	// auto-redeliver.
+	if errors.Is(writeErr, unix.EAGAIN) {
+		span.SetAttributes(attribute.Bool("uffd.copy_eagain", true))
+		u.logger.Debug(ctx, "UFFD page write EAGAIN, deferring", zap.Uintptr("addr", addr))
 
-		joinedErr := errors.Join(copyErr, signalErr)
+		return false, nil
+	}
+
+	if writeErr != nil {
+		joinedErr := errors.Join(writeErr, safeInvoke(onFailure))
 
 		span.RecordError(joinedErr)
 		u.logger.Error(ctx, "UFFD serve uffdio copy error", zap.Error(joinedErr))
 
-		return fmt.Errorf("failed uffdio copy: %w", joinedErr)
+		return false, fmt.Errorf("failed uffdio copy: %w", joinedErr)
 	}
 
-	idx := uint32(header.BlockIdx(offset, int64(u.pageSize)))
-	u.pageTracker.SetRange(idx, idx+1, block.Dirty)
-	u.prefetchTracker.Add(offset, accessType)
+	return true, nil
+}
 
-	return nil
+func (u *Userfaultfd) PrefetchData() block.PrefetchData {
+	// This will be at worst cancelled when the uffd is closed.
+	u.settleRequests.Lock()
+	u.settleRequests.Unlock() //nolint:staticcheck // SA2001: intentional — we just need to settle the read locks.
+
+	return u.prefetchTracker.PrefetchData()
+}
+
+func (u *Userfaultfd) signalWakeup() {
+	syscall.Write(u.wakeupPipe[1], []byte{1}) //nolint:errcheck // best-effort; pipe is non-blocking
+}
+
+func (u *Userfaultfd) drainWakeupPipe() {
+	var buf [64]byte
+	for {
+		_, err := syscall.Read(u.wakeupPipe[0], buf[:])
+		if err != nil {
+			break
+		}
+	}
+}
+
+func (u *Userfaultfd) Close() error {
+	syscall.Close(u.wakeupPipe[0])
+	syscall.Close(u.wakeupPipe[1])
+
+	return u.fd.close()
 }

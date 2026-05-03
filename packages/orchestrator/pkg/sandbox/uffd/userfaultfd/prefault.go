@@ -5,12 +5,15 @@ import (
 	"fmt"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-// Prefault proactively copies a page to guest memory at the given offset.
-// This is used to speed up sandbox starts by prefetching pages that are known to be needed.
-// Returns nil on success, or if the page is already mapped (EEXIST is handled gracefully).
+// Prefault proactively copies a page to guest memory at the given offset
+// to speed up sandbox starts. EEXIST (already mapped) is handled gracefully.
 func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) error {
+	u.settleRequests.RLock()
+	defer u.settleRequests.RUnlock()
+
 	ctx, span := tracer.Start(ctx, "prefault page")
 	defer span.End()
 
@@ -23,7 +26,38 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		return fmt.Errorf("data length (%d) does not match pagesize (%d)", len(data), u.pageSize)
 	}
 
-	return u.faultPage(ctx, addr, offset, directDataSource{data, int64(u.pageSize)}, nil, block.Prefetch)
+	idx := uint32(header.BlockIdx(offset, int64(u.pageSize)))
+	state := u.pageTracker.Get(idx)
+	if state == block.Dirty || state == block.Zero {
+		return nil
+	}
+
+	// Prefault as a read so the page gets WP set. faultPage treats EEXIST
+	// as handled (returns true,nil), so a concurrent on-demand fault that
+	// installs the page first is silently absorbed; handled stays false
+	// only when faultPage soft-failed (e.g. UFFDIO_COPY EAGAIN).
+	handled, err := u.faultPage(
+		ctx,
+		addr,
+		offset,
+		block.Read,
+		directDataSource{data, int64(u.pageSize)},
+		nil,
+	)
+	if err != nil {
+		span.RecordError(err)
+
+		return fmt.Errorf("failed to fault page: %w", err)
+	}
+
+	if !handled {
+		span.AddEvent("prefault: page already faulted or write returned EAGAIN")
+	} else {
+		u.pageTracker.SetRange(idx, idx+1, block.Dirty)
+		u.prefetchTracker.Add(offset, block.Prefetch)
+	}
+
+	return nil
 }
 
 // directDataSource wraps a byte slice to implement block.Slicer for prefaulting.
