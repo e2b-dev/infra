@@ -40,6 +40,7 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/templates"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -71,11 +72,14 @@ func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests sh
 	defer infra.close(ctx)
 
 	for fcMajor, fcVersion := range featureflags.FirecrackerVersionMap { //nolint:paralleltest // sequential by design
+		versionOnly, _, _ := strings.Cut(fcVersion, "_")
+		fpr, _ := utils.IsGTEVersion(versionOnly, "v1.14.0")
+
 		t.Run("fc-"+fcMajor, func(t *testing.T) {
 			buildID := uuid.New().String()
 
 			// Phase 1: create build
-			t.Logf("creating build %s with FC %s", buildID, fcVersion)
+			t.Logf("creating build %s with FC %s (freePageReporting=%v)", buildID, fcVersion, fpr)
 			force := true
 			_, err := infra.builder.Build(
 				ctx,
@@ -88,6 +92,7 @@ func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests sh
 					MemoryMB:           512,
 					DiskSizeMB:         512,
 					HugePages:          true,
+					FreePageReporting:  fpr,
 					KernelVersion:      featureflags.DefaultKernelVersion,
 					FirecrackerVersion: fcVersion,
 					FromImage:          baseImage,
@@ -111,10 +116,11 @@ func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests sh
 				ctx,
 				tmpl,
 				sandbox.NewConfig(sandbox.Config{
-					BaseTemplateID: "smoke-" + fcMajor,
-					Vcpu:           2,
-					RamMB:          512,
-					HugePages:      true,
+					BaseTemplateID:    "smoke-" + fcMajor,
+					Vcpu:              2,
+					RamMB:             512,
+					HugePages:         true,
+					FreePageReporting: fpr,
 					Envd: sandbox.EnvdMetadata{
 						Vars:        map[string]string{},
 						AccessToken: &token,
