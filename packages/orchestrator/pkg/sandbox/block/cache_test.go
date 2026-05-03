@@ -436,7 +436,7 @@ func TestCacheWriteZeroesAt_AlignedRangeMapsToEmpty(t *testing.T) {
 	rn, err := cache.ReadAt(got, 0)
 	require.NoError(t, err)
 	require.Equal(t, len(got), rn)
-	require.True(t, IsZero(got), "zeroed range must read back as zero")
+	require.True(t, header.IsZero(got), "zeroed range must read back as zero")
 
 	out, err := os.CreateTemp(t.TempDir(), "diff-*")
 	require.NoError(t, err)

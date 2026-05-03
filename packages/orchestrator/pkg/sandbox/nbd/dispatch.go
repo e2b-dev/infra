@@ -13,9 +13,9 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -370,7 +370,7 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 	// Convert all-zero writes (e.g. `dd if=/dev/zero`, scratch wipes, qcow2
 	// preallocation) into a zero op so they don't grow the snapshot diff.
 	// Mirrors qemu's detect-zeroes=unmap on bdrv_aligned_pwritev.
-	if block.IsZero(cmdData) {
+	if header.IsZero(cmdData) {
 		return d.cmdWriteZeroes(ctx, cmdHandle, cmdFrom, int64(len(cmdData)))
 	}
 
