@@ -70,10 +70,18 @@ const (
 	NBDResponseMagic = 0x67446698
 )
 
-// NBD Request packet
+// NBD Request packet. Wire layout (big-endian, 28 bytes total):
+//
+//	magic(4) | flags(2) | type(2) | handle(8) | from(8) | length(4)
+//
+// Spec: https://github.com/NetworkBlockDevice/nbd/blob/master/doc/proto.md#request-message
+//
+// Flags carries the NBD_CMD_FLAG_* bits and is intentionally ignored — split
+// from Type so a non-zero flag bit doesn't corrupt the command opcode.
 type Request struct {
 	Magic  uint32
-	Type   uint32
+	Flags  uint16
+	Type   uint16
 	Handle uint64
 	From   uint64
 	Length uint32
@@ -149,6 +157,17 @@ func (d *Dispatch) writeResponse(respError uint32, respHandle uint64, chunk []by
 	return nil
 }
 
+func parseRequest(header []byte) Request {
+	return Request{
+		Magic:  binary.BigEndian.Uint32(header[0:4]),
+		Flags:  binary.BigEndian.Uint16(header[4:6]),
+		Type:   binary.BigEndian.Uint16(header[6:8]),
+		Handle: binary.BigEndian.Uint64(header[8:16]),
+		From:   binary.BigEndian.Uint64(header[16:24]),
+		Length: binary.BigEndian.Uint32(header[24:28]),
+	}
+}
+
 /**
  * This dispatches incoming NBD requests sequentially to the provider.
  *
@@ -187,12 +206,7 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 
 			// We can read the neader...
 
-			header := buffer[rp : rp+28]
-			request.Magic = binary.BigEndian.Uint32(header)
-			request.Type = binary.BigEndian.Uint32(header[4:8])
-			request.Handle = binary.BigEndian.Uint64(header[8:16])
-			request.From = binary.BigEndian.Uint64(header[16:24])
-			request.Length = binary.BigEndian.Uint32(header[24:28])
+			request = parseRequest(buffer[rp : rp+28])
 
 			if request.Magic != NBDRequestMagic {
 				return errors.New("received invalid MAGIC")
