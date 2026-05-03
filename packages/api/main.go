@@ -44,6 +44,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
+	"github.com/e2b-dev/infra/packages/shared/pkg/internalcert"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
@@ -253,6 +254,30 @@ func listenAndServeAPI(s *http.Server, config cfg.Config) error {
 	return s.ListenAndServeTLS(config.APITLSCertFile, config.APITLSKeyFile)
 }
 
+func ensureInternalTLSCertificate(ctx context.Context, config cfg.Config, l logger.Logger) error {
+	result, err := internalcert.Ensure(ctx, internalcert.Config{
+		CertFile:               config.APITLSCertFile,
+		KeyFile:                config.APITLSKeyFile,
+		CAPool:                 config.InternalTLSCAPool,
+		CertificateAuthorityID: config.InternalTLSCertificateAuthorityID,
+		DNSName:                config.InternalTLSDNSName,
+		CertificateIDPrefix:    config.InternalTLSCertificateIDPrefix,
+		Lifetime:               config.InternalTLSCertLifetime,
+		RenewBefore:            config.InternalTLSRenewBefore,
+	})
+	if err != nil {
+		return err
+	}
+
+	if config.InternalTLSCAPool == "" {
+		return nil
+	}
+
+	l.Info(ctx, "Internal TLS certificate ready", zap.Bool("issued", result.Issued), zap.Time("expires_at", result.Expiry))
+
+	return nil
+}
+
 func run() int {
 	ctx, cancel := context.WithCancel(context.Background()) // root context
 	defer cancel()
@@ -334,6 +359,10 @@ func run() int {
 	config, err := cfg.Parse()
 	if err != nil {
 		logger.L().Fatal(ctx, "Error parsing config", zap.Error(err))
+	}
+
+	if err := ensureInternalTLSCertificate(ctx, config, l); err != nil {
+		l.Fatal(ctx, "failed to prepare internal TLS certificate", zap.Error(err))
 	}
 
 	err = sqlcdb.CheckMigrationVersion(ctx, config.PostgresConnectionString, expectedMigration)

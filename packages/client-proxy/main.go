@@ -27,6 +27,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
+	"github.com/e2b-dev/infra/packages/shared/pkg/internalcert"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
@@ -94,6 +95,10 @@ func run() int {
 	logger.ReplaceGlobals(ctx, l)
 
 	exitCode := atomic.Int32{}
+
+	if err := ensureInternalTLSCertificate(ctx, config, l); err != nil {
+		l.Fatal(ctx, "failed to prepare internal TLS certificate", zap.Error(err))
+	}
 
 	wg := sync.WaitGroup{}
 
@@ -387,6 +392,30 @@ func listenAndServeTLSProxy(ctx context.Context, trafficProxy *reverseproxy.Prox
 
 func clientProxyTLSEnabled(config cfg.Config) bool {
 	return config.TLSCertFile != "" || config.TLSKeyFile != "" || config.TLSPort != 0
+}
+
+func ensureInternalTLSCertificate(ctx context.Context, config cfg.Config, l logger.Logger) error {
+	result, err := internalcert.Ensure(ctx, internalcert.Config{
+		CertFile:               config.TLSCertFile,
+		KeyFile:                config.TLSKeyFile,
+		CAPool:                 config.InternalTLSCAPool,
+		CertificateAuthorityID: config.InternalTLSCertificateAuthorityID,
+		DNSName:                config.InternalTLSDNSName,
+		CertificateIDPrefix:    config.InternalTLSCertificateIDPrefix,
+		Lifetime:               config.InternalTLSCertLifetime,
+		RenewBefore:            config.InternalTLSRenewBefore,
+	})
+	if err != nil {
+		return err
+	}
+
+	if config.InternalTLSCAPool == "" {
+		return nil
+	}
+
+	l.Info(ctx, "Internal TLS certificate ready", zap.Bool("issued", result.Issued), zap.Time("expires_at", result.Expiry))
+
+	return nil
 }
 
 func main() {

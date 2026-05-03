@@ -58,6 +58,13 @@ type Config struct {
 	APITLSCertFile      string `env:"API_TLS_CERT_FILE"`
 	APITLSKeyFile       string `env:"API_TLS_KEY_FILE"`
 
+	InternalTLSCAPool                 string        `env:"INTERNAL_TLS_CA_POOL"`
+	InternalTLSCertificateAuthorityID string        `env:"INTERNAL_TLS_CA_AUTHORITY"`
+	InternalTLSDNSName                string        `env:"INTERNAL_TLS_DNS_NAME"`
+	InternalTLSCertificateIDPrefix    string        `env:"INTERNAL_TLS_CERT_ID_PREFIX"`
+	InternalTLSCertLifetime           time.Duration `env:"INTERNAL_TLS_CERT_LIFETIME"     envDefault:"2160h"`
+	InternalTLSRenewBefore            time.Duration `env:"INTERNAL_TLS_CERT_RENEW_BEFORE" envDefault:"720h"`
+
 	ClientProxyOIDCIssuerURL string `env:"CLIENT_PROXY_OIDC_ISSUER_URL"`
 
 	SandboxAccessTokenHashSeed string `env:"SANDBOX_ACCESS_TOKEN_HASH_SEED"`

@@ -1,6 +1,10 @@
 package cfg
 
-import "github.com/caarlos0/env/v11"
+import (
+	"time"
+
+	"github.com/caarlos0/env/v11"
+)
 
 type Config struct {
 	HealthPort uint16 `env:"HEALTH_PORT" envDefault:"3003"`
@@ -9,6 +13,13 @@ type Config struct {
 
 	TLSCertFile string `env:"CLIENT_PROXY_TLS_CERT_FILE"`
 	TLSKeyFile  string `env:"CLIENT_PROXY_TLS_KEY_FILE"`
+
+	InternalTLSCAPool                 string        `env:"INTERNAL_TLS_CA_POOL"`
+	InternalTLSCertificateAuthorityID string        `env:"INTERNAL_TLS_CA_AUTHORITY"`
+	InternalTLSDNSName                string        `env:"INTERNAL_TLS_DNS_NAME"`
+	InternalTLSCertificateIDPrefix    string        `env:"INTERNAL_TLS_CERT_ID_PREFIX"`
+	InternalTLSCertLifetime           time.Duration `env:"INTERNAL_TLS_CERT_LIFETIME"     envDefault:"2160h"`
+	InternalTLSRenewBefore            time.Duration `env:"INTERNAL_TLS_CERT_RENEW_BEFORE" envDefault:"720h"`
 
 	RedisURL         string `env:"REDIS_URL"`
 	RedisClusterURL  string `env:"REDIS_CLUSTER_URL"`
