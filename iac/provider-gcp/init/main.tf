@@ -14,6 +14,20 @@ resource "google_project_service" "certificate_manager_api" {
   disable_on_destroy = false
 }
 
+# Enable Certificate Authority Service API
+resource "google_project_service" "privateca_api" {
+  service = "privateca.googleapis.com"
+
+  disable_on_destroy = false
+}
+
+# Enable Network Security API
+resource "google_project_service" "network_security_api" {
+  service = "networksecurity.googleapis.com"
+
+  disable_on_destroy = false
+}
+
 # Enable Compute Engine API
 resource "google_project_service" "compute_engine_api" {
   #project = var.gcp_project_id

@@ -21,6 +21,16 @@ variable "api_http2_backend_enabled" {
   default = false
 }
 
+variable "api_http2_backend_authentication_config" {
+  type    = string
+  default = ""
+}
+
+variable "api_http2_backend_tls_hostname" {
+  type    = string
+  default = ""
+}
+
 variable "additional_domains" {
   type = list(string)
 }

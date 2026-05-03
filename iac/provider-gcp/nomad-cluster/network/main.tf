@@ -334,6 +334,15 @@ resource "google_compute_backend_service" "http2_api" {
 
   security_policy = google_compute_security_policy.default["api"].self_link
 
+  tls_settings {
+    authentication_config = var.api_http2_backend_authentication_config
+    sni                   = var.api_http2_backend_tls_hostname
+
+    subject_alt_names {
+      dns_name = var.api_http2_backend_tls_hostname
+    }
+  }
+
   log_config {
     enable = var.environment != "dev"
   }

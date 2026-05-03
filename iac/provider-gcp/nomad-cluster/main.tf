@@ -117,6 +117,8 @@ module "network" {
   domain_name                             = var.domain_name
   api_h2c_backend_enabled                 = var.api_h2c_backend_enabled
   api_http2_backend_enabled               = var.api_http2_backend_enabled
+  api_http2_backend_authentication_config = var.api_http2_backend_authentication_config
+  api_http2_backend_tls_hostname          = var.api_http2_backend_tls_hostname
   additional_domains                      = var.additional_domains
   additional_api_paths_handled_by_ingress = var.additional_api_paths_handled_by_ingress
   ingress_timeout_seconds                 = var.ingress_timeout_seconds

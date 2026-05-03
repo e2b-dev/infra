@@ -212,6 +212,18 @@ variable "api_http2_backend_enabled" {
   default     = false
 }
 
+variable "api_http2_backend_authentication_config" {
+  description = "BackendAuthenticationConfig resource used to validate API backend TLS."
+  type        = string
+  default     = ""
+}
+
+variable "api_http2_backend_tls_hostname" {
+  description = "SNI and SAN hostname expected on the API backend TLS certificate."
+  type        = string
+  default     = ""
+}
+
 variable "additional_domains" {
   type        = list(string)
   description = "Additional domains which can be used to access the e2b cluster"
