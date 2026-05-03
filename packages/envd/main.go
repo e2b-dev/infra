@@ -28,6 +28,7 @@ import (
 	processSpec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 	"github.com/e2b-dev/infra/packages/envd/pkg"
+	"github.com/e2b-dev/infra/packages/shared/pkg/httpserver"
 )
 
 const (
@@ -191,11 +192,11 @@ func main() {
 	middleware := authn.NewMiddleware(permissions.AuthenticateUsername)
 
 	s := &http.Server{
-		Handler: withCORS(
+		Handler: httpserver.WithH2C(withCORS(
 			service.WithAuthorization(
 				middleware.Wrap(handler),
 			),
-		),
+		)),
 		Addr: fmt.Sprintf("0.0.0.0:%d", port),
 		// We remove the timeouts as the connection is terminated by closing of the sandbox and keepalive close.
 		ReadTimeout:  0,
