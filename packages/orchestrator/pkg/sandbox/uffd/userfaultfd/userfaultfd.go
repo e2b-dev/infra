@@ -68,6 +68,14 @@ type Userfaultfd struct {
 	// RLock for the lookup→install→SetRange sequence; the REMOVE batch takes
 	// Lock so a concurrent worker can't overwrite a removed state.
 	settleRequests  sync.RWMutex
+
+	// readSerial serializes serve-loop iterations (read+apply) with snapshot-time
+	// Export. Workers do NOT touch this lock — it must remain disjoint from
+	// settleRequests so readEvents can always drain the kernel UFFD queue and
+	// unblock madvise even when settleRequests.RLock is held by an in-flight
+	// worker. See TestNoMadviseDeadlockWithInflightCopy.
+	readSerial sync.Mutex
+
 	prefetchTracker *block.PrefetchTracker
 
 	// defaultCopyMode overrides UFFDIO_COPY mode for all faults when non-zero.
@@ -262,46 +270,54 @@ func (u *Userfaultfd) Serve(
 		var pagefaults []*UffdPagefault
 
 		if hasEvent(uffdFd.Revents, unix.POLLIN) {
+			// readSerial keeps Export from interleaving between read and
+			// SetRange(removed) in the same serve-loop iteration. It does
+			// NOT couple readEvents to settleRequests — workers don't take
+			// readSerial, so a worker holding settleRequests.RLock can
+			// never block this read. See TestNoMadviseDeadlockWithInflightCopy.
+			u.readSerial.Lock()
+
 			var err error
 			removes, pagefaults, err = u.readEvents(ctx)
 			if err != nil {
+				u.readSerial.Unlock()
 				u.logger.Error(ctx, "uffd: read error", zap.Error(err))
 
 				return fmt.Errorf("failed to read: %w", err)
 			}
+
+			if len(removes) > 0 {
+				u.settleRequests.Lock()
+				for _, rm := range removes {
+					// rm.start (inclusive) and rm.end (exclusive) are page-aligned
+					// to u.pageSize for the registered VMA (UFFD invariant), so
+					// startOff is a multiple of pageSize and length is an integer
+					// number of pages — both divisions below are exact, and
+					// SetRange's half-open [startIdx, endIdx) lines up with the
+					// half-open [rm.start, rm.end).
+					startOff, err := u.ma.GetOffset(uintptr(rm.start))
+					if err != nil {
+						u.logger.Error(ctx, "UFFD REMOVE: failed to map start address",
+							zap.Uintptr("start", uintptr(rm.start)), zap.Error(err))
+
+						continue
+					}
+
+					startIdx := uint64(header.BlockIdx(startOff, int64(u.pageSize)))
+					endIdx := startIdx + uint64(rm.end-rm.start)/uint64(u.pageSize)
+					if err := u.pageTracker.SetRange(startIdx, endIdx, removed); err != nil {
+						// Programming bug only — keep draining the batch so
+						// the remaining ranges still get marked.
+						u.logger.Error(ctx, "UFFD REMOVE: pageTracker SetRange error",
+							zap.Uint64("start_idx", startIdx), zap.Uint64("end_idx", endIdx), zap.Error(err))
+					}
+				}
+				u.settleRequests.Unlock()
+			}
+
+			u.readSerial.Unlock()
 		} else {
 			noDataCounter.Increase("POLLIN")
-		}
-
-		// REMOVE batch under write lock so an in-flight worker's SetRange(faulted)
-		// can't overwrite the removed state we are about to install.
-		if len(removes) > 0 {
-			u.settleRequests.Lock()
-			for _, rm := range removes {
-				// rm.start (inclusive) and rm.end (exclusive) are page-aligned
-				// to u.pageSize for the registered VMA (UFFD invariant), so
-				// startOff is a multiple of pageSize and length is an integer
-				// number of pages — both divisions below are exact, and
-				// SetRange's half-open [startIdx, endIdx) lines up with the
-				// half-open [rm.start, rm.end).
-				startOff, err := u.ma.GetOffset(uintptr(rm.start))
-				if err != nil {
-					u.logger.Error(ctx, "UFFD REMOVE: failed to map start address",
-						zap.Uintptr("start", uintptr(rm.start)), zap.Error(err))
-
-					continue
-				}
-
-				startIdx := uint64(header.BlockIdx(startOff, int64(u.pageSize)))
-				endIdx := startIdx + uint64(rm.end-rm.start)/uint64(u.pageSize)
-				if err := u.pageTracker.SetRange(startIdx, endIdx, removed); err != nil {
-					// Programming bug only — keep draining the batch so
-					// the remaining ranges still get marked.
-					u.logger.Error(ctx, "UFFD REMOVE: pageTracker SetRange error",
-						zap.Uint64("start_idx", startIdx), zap.Uint64("end_idx", endIdx), zap.Error(err))
-				}
-			}
-			u.settleRequests.Unlock()
 		}
 
 		pagefaults = append(deferred.drain(), pagefaults...)
