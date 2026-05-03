@@ -146,8 +146,7 @@ func getPagefaultAddress(pagefault *UffdPagefault) uintptr {
 // Fd is a helper type that wraps uffd fd.
 type Fd uintptr
 
-// mode: UFFDIO_COPY_MODE_WP
-// When we use both missing and wp, we need to use UFFDIO_COPY_MODE_WP, otherwise copying would unprotect the page
+// copy requires UFFDIO_COPY_MODE_WP when both MISSING and WP tracking are active.
 func (f Fd) copy(addr, pagesize uintptr, data []byte, mode CULong) error {
 	cpy := newUffdioCopy(data, CULong(addr)&^CULong(pagesize-1), CULong(pagesize), mode, 0)
 
@@ -155,9 +154,22 @@ func (f Fd) copy(addr, pagesize uintptr, data []byte, mode CULong) error {
 		return errno
 	}
 
-	// Check if the copied size matches the requested pagesize
-	if cpy.copy != CLong(pagesize) {
-		return fmt.Errorf("UFFDIO_COPY copied %d bytes, expected %d", cpy.copy, pagesize)
+	return classifyCopyResult(int64(cpy.copy), int64(pagesize))
+}
+
+// classifyCopyResult turns the UFFDIO_COPY cpy.copy field into a Go error.
+// The kernel encodes a negated errno on failure (most commonly -EAGAIN when
+// mmap_changing is set), and a short positive count when the copy was
+// preempted mid-page (e.g. hugetlb). Both partial outcomes surface as EAGAIN;
+// the caller defers the fault for retry on the next poll iteration (via the
+// deferred queue + wakeup pipe), the kernel does not auto-redeliver.
+func classifyCopyResult(bytesCopied, pagesize int64) error {
+	if bytesCopied < 0 {
+		return syscall.Errno(-bytesCopied)
+	}
+
+	if bytesCopied != pagesize {
+		return syscall.EAGAIN
 	}
 
 	return nil
@@ -170,7 +182,6 @@ func (f Fd) zero(addr, pagesize uintptr, mode CULong) error {
 		return errno
 	}
 
-	// Check if the bytes actually zeroed out by the kernel match the page size
 	if zero.zeropage != CLong(pagesize) {
 		return fmt.Errorf("UFFDIO_ZEROPAGE copied %d bytes, expected %d", zero.zeropage, pagesize)
 	}
