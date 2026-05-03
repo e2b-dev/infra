@@ -93,6 +93,12 @@ locals {
       groups = [{ group = var.server_instance_group }]
     }
   }
+  h2c_backends = {
+    for backend_index, backend_value in local.backends : backend_index => merge(backend_value, {
+      protocol = "H2C"
+    }) if contains(["api", "session", "docker-reverse-proxy"], backend_index)
+  }
+
   health_checked_backends = { for backend_index, backend_value in local.backends : backend_index => backend_value }
 }
 
@@ -339,6 +345,39 @@ resource "google_compute_global_forwarding_rule" "https" {
   load_balancing_scheme = "EXTERNAL_MANAGED"
   port_range            = "443"
   labels                = var.labels
+}
+
+resource "google_compute_backend_service" "h2c" {
+  for_each = local.h2c_backends
+
+  name = "${var.prefix}h2c-${each.key}"
+
+  port_name = lookup(each.value, "port_name", "http")
+  protocol  = "H2C"
+
+  timeout_sec                     = lookup(each.value, "timeout_sec")
+  connection_draining_timeout_sec = 1
+  compression_mode                = "DISABLED"
+
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  health_checks         = [google_compute_health_check.default[each.key].self_link]
+
+  security_policy = google_compute_security_policy.default[each.key].self_link
+
+  log_config {
+    enable = var.environment != "dev"
+  }
+
+  dynamic "backend" {
+    for_each = toset(each.value["groups"])
+    content {
+      group = lookup(backend.value, "group")
+    }
+  }
+
+  depends_on = [
+    google_compute_health_check.default
+  ]
 }
 
 resource "google_compute_backend_service" "default" {

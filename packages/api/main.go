@@ -41,6 +41,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
+	"github.com/e2b-dev/infra/packages/shared/pkg/httpserver"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
@@ -216,7 +217,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	r.MaxMultipartMemory = maxMultipartMemory
 
 	s := &http.Server{
-		Handler: r,
+		Handler: httpserver.WithH2C(r),
 		Addr:    fmt.Sprintf("0.0.0.0:%d", port),
 
 		// Configure request timeouts.

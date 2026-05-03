@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
+	"github.com/e2b-dev/infra/packages/shared/pkg/httpserver"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/tracking"
 )
@@ -66,7 +67,7 @@ func New(
 			// otherwise there's a chance for a race condition when the server closes and the client tries to use the connection
 			IdleTimeout:       idleTimeout + idleTimeoutBufferUpstreamDownstream,
 			ReadHeaderTimeout: 0,
-			Handler:           handler(p, getDestination, connLimitConfig),
+			Handler:           httpserver.WithH2C(handler(p, getDestination, connLimitConfig)),
 		},
 		pool: p,
 	}
