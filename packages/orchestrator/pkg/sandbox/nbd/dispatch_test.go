@@ -179,44 +179,40 @@ func (h *dispatchHarness) disconnectAndWait() {
 	h.close()
 }
 
-func TestDispatch_AllZeroWriteRoutesToWriteZeroes(t *testing.T) {
+// Zero-detection on NBD_CMD_WRITE payloads lives in block.Cache (see
+// TestCacheExportToDiff_ZeroBlockWriteAtRoutesToEmpty), not the dispatcher,
+// so any WRITE payload — zero or not — must reach WriteAt verbatim and
+// nothing must reach WriteZeroesAt.
+func TestDispatch_WriteForwardsPayloadVerbatim(t *testing.T) {
 	t.Parallel()
 
-	h := newDispatchHarness(t)
+	cases := []struct {
+		name    string
+		payload []byte
+	}{
+		{name: "non_zero", payload: []byte("hello-block")},
+		{name: "all_zero", payload: make([]byte, 4096)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	const length = 4096
-	zeros := make([]byte, length)
-	writeReq(t, h.client, NBDCmdWrite, 1, 8192, length, zeros)
-	errCode, handle := readResp(t, h.client)
-	assert.Equal(t, uint32(0), errCode)
-	assert.Equal(t, uint64(1), handle)
+			h := newDispatchHarness(t)
 
-	h.disconnectAndWait()
+			writeReq(t, h.client, NBDCmdWrite, 7, 16, uint32(len(tc.payload)), tc.payload)
+			errCode, handle := readResp(t, h.client)
+			assert.Equal(t, uint32(0), errCode)
+			assert.Equal(t, uint64(7), handle)
 
-	writes, zeroes := h.prov.snapshot()
-	assert.Empty(t, writes, "all-zero NBD_CMD_WRITE must not reach WriteAt")
-	require.Len(t, zeroes, 1)
-	assert.Equal(t, zeroCall{off: 8192, length: length}, zeroes[0])
-}
+			h.disconnectAndWait()
 
-func TestDispatch_NonZeroWriteGoesThroughWriteAt(t *testing.T) {
-	t.Parallel()
-
-	h := newDispatchHarness(t)
-
-	payload := []byte("hello-block")
-	writeReq(t, h.client, NBDCmdWrite, 7, 16, uint32(len(payload)), payload)
-	errCode, handle := readResp(t, h.client)
-	assert.Equal(t, uint32(0), errCode)
-	assert.Equal(t, uint64(7), handle)
-
-	h.disconnectAndWait()
-
-	writes, zeroes := h.prov.snapshot()
-	assert.Empty(t, zeroes)
-	require.Len(t, writes, 1)
-	assert.Equal(t, int64(16), writes[0].off)
-	assert.Equal(t, payload, writes[0].data)
+			writes, zeroes := h.prov.snapshot()
+			assert.Empty(t, zeroes, "dispatch must not synthesise WriteZeroesAt from WRITE payloads")
+			require.Len(t, writes, 1)
+			assert.Equal(t, int64(16), writes[0].off)
+			assert.Equal(t, tc.payload, writes[0].data)
+		})
+	}
 }
 
 func TestDispatch_WriteZeroesCommand(t *testing.T) {

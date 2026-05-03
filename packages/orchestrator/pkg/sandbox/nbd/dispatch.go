@@ -15,7 +15,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -376,14 +375,11 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 	return nil
 }
 
+// cmdWrite forwards the payload to the provider verbatim. Zero-detection
+// (turning all-zero blocks within the buffer into hole punches so they don't
+// reach the snapshot diff) lives in block.Cache, where it can split sub-block
+// runs and share state with WriteZeroesAt. Mirrors qemu's detect-zeroes=unmap.
 func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
-	// Convert all-zero writes (e.g. `dd if=/dev/zero`, scratch wipes, qcow2
-	// preallocation) into a zero op so they don't grow the snapshot diff.
-	// Mirrors qemu's detect-zeroes=unmap on bdrv_aligned_pwritev.
-	if header.IsZero(cmdData) {
-		return d.cmdWriteZeroes(ctx, cmdHandle, cmdFrom, int64(len(cmdData)))
-	}
-
 	d.shuttingDownLock.Lock()
 	if d.shuttingDown {
 		d.shuttingDownLock.Unlock()

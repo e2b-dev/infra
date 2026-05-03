@@ -369,7 +369,15 @@ func (c *Cache) markBlocks(off, length int64, s blockState) {
 	}
 }
 
-// When using WriteAtWithoutLock you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
+// WriteAtWithoutLock copies b into the mmap. Aligned full blocks are screened
+// per-block with header.IsZero so all-zero sub-blocks (zero padding inside an
+// otherwise non-zero buffer, scratch wipes, qcow2-style preallocation) are
+// routed through the same hole-punch path as WriteZeroesAt and never become
+// snapshot payload. Sub-block head/tail bytes share their block with
+// neighbouring data and stay Dirty unconditionally.
+//
+// You must ensure thread safety, ideally by only writing to the same block
+// once and then exposing the slice.
 func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	if c.isClosed() {
 		return 0, NewErrCacheClosed(c.filePath)
@@ -380,16 +388,54 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	}
 
 	end := min(off+int64(len(b)), c.size)
+	if end <= off {
+		return 0, nil
+	}
 
-	n := copy((*c.mmap)[off:end], b)
+	bs := c.blockSize
+	bodyStart := header.BlockCeilIdx(off, bs) * bs
+	bodyEnd := header.BlockIdx(end, bs) * bs
 
-	c.setIsCached(off, end-off)
+	if off < bodyStart {
+		head := min(bodyStart, end)
+		copy((*c.mmap)[off:head], b[:head-off])
+		c.markBlocks(off, head-off, blockDirty)
+	}
 
-	return n, nil
+	for i := bodyStart; i < bodyEnd; {
+		chunk := b[i-off : i-off+bs]
+		if !header.IsZero(chunk) {
+			copy((*c.mmap)[i:i+bs], chunk)
+			c.markBlocks(i, bs, blockDirty)
+			i += bs
+
+			continue
+		}
+		// Coalesce contiguous zero blocks into one fallocate call so a big
+		// all-zero write (e.g. dd if=/dev/zero of=…) doesn't pay one syscall
+		// per 4 KiB block.
+		runEnd := i + bs
+		for runEnd < bodyEnd && header.IsZero(b[runEnd-off:runEnd-off+bs]) {
+			runEnd += bs
+		}
+		if err := c.punchHole(i, runEnd-i); err != nil {
+			return 0, err
+		}
+		c.markBlocks(i, runEnd-i, blockZero)
+		i = runEnd
+	}
+
+	if bodyEnd < end && bodyEnd >= bodyStart {
+		tail := max(bodyEnd, off)
+		copy((*c.mmap)[tail:end], b[tail-off:end-off])
+		c.markBlocks(tail, end-tail, blockDirty)
+	}
+
+	return int(end - off), nil
 }
 
 // WriteZeroesAt records that [off, off+length) reads as zero. Used for both
-// NBD WRITE_ZEROES and TRIM, plus zero-detection on regular writes.
+// NBD WRITE_ZEROES and TRIM.
 //
 // Aligned, fully-covered blocks are punched out of the underlying sparse file
 // (FALLOC_FL_PUNCH_HOLE) and marked Empty in the diff. Punching releases the
@@ -419,29 +465,24 @@ func (c *Cache) WriteZeroesAt(off, length int64) (int, error) {
 		return 0, nil
 	}
 
-	alignedStart := alignUp(off, c.blockSize)
-	alignedEnd := alignDown(end, c.blockSize)
+	bs := c.blockSize
+	bodyStart := header.BlockCeilIdx(off, bs) * bs
+	bodyEnd := header.BlockIdx(end, bs) * bs
 
-	if alignedStart < alignedEnd {
-		err := unix.Fallocate(
-			int(c.file.Fd()),
-			unix.FALLOC_FL_PUNCH_HOLE|unix.FALLOC_FL_KEEP_SIZE,
-			alignedStart,
-			alignedEnd-alignedStart,
-		)
-		if err != nil {
-			return 0, fmt.Errorf("punch hole at %d-%d: %w", alignedStart, alignedEnd, err)
+	if bodyStart < bodyEnd {
+		if err := c.punchHole(bodyStart, bodyEnd-bodyStart); err != nil {
+			return 0, err
 		}
-		c.markBlocks(alignedStart, alignedEnd-alignedStart, blockZero)
+		c.markBlocks(bodyStart, bodyEnd-bodyStart, blockZero)
 	}
 
-	if off < alignedStart {
-		head := min(alignedStart, end)
+	if off < bodyStart {
+		head := min(bodyStart, end)
 		clear((*c.mmap)[off:head])
 		c.markBlocks(off, head-off, blockDirty)
 	}
-	if alignedEnd < end && alignedEnd >= alignedStart {
-		tail := max(alignedEnd, off)
+	if bodyEnd < end && bodyEnd >= bodyStart {
+		tail := max(bodyEnd, off)
 		clear((*c.mmap)[tail:end])
 		c.markBlocks(tail, end-tail, blockDirty)
 	}
@@ -449,8 +490,19 @@ func (c *Cache) WriteZeroesAt(off, length int64) (int, error) {
 	return int(end - off), nil
 }
 
-func alignUp(v, align int64) int64   { return (v + align - 1) / align * align }
-func alignDown(v, align int64) int64 { return v / align * align }
+func (c *Cache) punchHole(off, length int64) error {
+	err := unix.Fallocate(
+		int(c.file.Fd()),
+		unix.FALLOC_FL_PUNCH_HOLE|unix.FALLOC_FL_KEEP_SIZE,
+		off,
+		length,
+	)
+	if err != nil {
+		return fmt.Errorf("punch hole at %d-%d: %w", off, off+length, err)
+	}
+
+	return nil
+}
 
 // FileSize returns the size of the cache on disk.
 // The size might differ from the dirty size, as it may not be fully on disk.

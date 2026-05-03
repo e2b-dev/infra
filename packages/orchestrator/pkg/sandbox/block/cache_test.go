@@ -234,7 +234,7 @@ func TestEmptyRanges(t *testing.T) {
 	})
 }
 
-func TestCacheExportToDiff_ZeroDirtyBlockEmittedAsDirtyPayload(t *testing.T) {
+func TestCacheExportToDiff_ZeroBlockWriteAtRoutesToEmpty(t *testing.T) {
 	t.Parallel()
 
 	const blockSize = header.RootfsBlockSize
@@ -257,15 +257,15 @@ func TestCacheExportToDiff_ZeroDirtyBlockEmittedAsDirtyPayload(t *testing.T) {
 	diffMetadata, err := cache.ExportToDiff(t.Context(), out)
 	require.NoError(t, err)
 
-	require.EqualValues(t, 1, diffMetadata.Dirty.GetCardinality(), "zero-filled dirty block should be emitted as dirty payload")
-	require.EqualValues(t, 0, diffMetadata.Empty.GetCardinality(), "zero-filled dirty block should not be tracked in empty metadata")
+	require.EqualValues(t, 0, diffMetadata.Dirty.GetCardinality(), "all-zero WriteAt must not produce dirty payload")
+	require.EqualValues(t, 1, diffMetadata.Empty.GetCardinality(), "all-zero WriteAt must mark the block Empty")
 
 	stat, err := out.Stat()
 	require.NoError(t, err)
-	require.EqualValues(t, blockSize, stat.Size(), "zero-filled dirty block should write block payload bytes")
+	require.EqualValues(t, 0, stat.Size(), "Empty diff bytes are not written to the diff file")
 }
 
-func TestCacheExportToDiff_ZeroDirtyBlockMapsToSnapshotBuild(t *testing.T) {
+func TestCacheExportToDiff_ZeroBlockWriteAtMapsToNilBuild(t *testing.T) {
 	t.Parallel()
 
 	const blockSize = header.RootfsBlockSize
@@ -276,10 +276,8 @@ func TestCacheExportToDiff_ZeroDirtyBlockMapsToSnapshotBuild(t *testing.T) {
 		require.NoError(t, cache.Close())
 	})
 
-	zeroBlock := make([]byte, blockSize)
-	n, err := cache.WriteAt(zeroBlock, 0)
+	_, err = cache.WriteAt(make([]byte, blockSize), 0)
 	require.NoError(t, err)
-	require.Equal(t, int(blockSize), n)
 
 	out, err := os.CreateTemp(t.TempDir(), "diff-*")
 	require.NoError(t, err)
@@ -301,17 +299,15 @@ func TestCacheExportToDiff_ZeroDirtyBlockMapsToSnapshotBuild(t *testing.T) {
 
 	_, _, mappedBuildID, err := diffHeader.GetShiftedMapping(t.Context(), 0)
 	require.NoError(t, err)
-
 	require.NotNil(t, mappedBuildID)
-	require.Equal(t, snapshotBuildID, *mappedBuildID, "zero-filled dirty block should map to the snapshot diff when empty detection is skipped")
-	require.NotEqual(t, uuid.Nil, *mappedBuildID, "zero-filled dirty block should no longer be represented as an empty mapping")
+	require.Equal(t, uuid.Nil, *mappedBuildID, "all-zero WriteAt block should map to uuid.Nil so reads serve zeros without fetching the snapshot")
 }
 
-func TestCacheExportToDiff_MixedDirtyBlocksKeepsZeroBlockInDiff(t *testing.T) {
+func TestCacheExportToDiff_MixedWriteAtRoutesZeroSubBlocksToEmpty(t *testing.T) {
 	t.Parallel()
 
 	const blockSize = header.RootfsBlockSize
-	const size = blockSize * 3
+	const size = blockSize * 4
 
 	cache, err := NewCache(size, blockSize, t.TempDir()+"/cache", false)
 	require.NoError(t, err)
@@ -319,13 +315,15 @@ func TestCacheExportToDiff_MixedDirtyBlocksKeepsZeroBlockInDiff(t *testing.T) {
 		require.NoError(t, cache.Close())
 	})
 
-	zeroBlock := make([]byte, blockSize)
-	nonZeroBlock := bytes.Repeat([]byte{0xAB}, int(blockSize))
-
-	_, err = cache.WriteAt(zeroBlock, 0)
-	require.NoError(t, err)
-
-	_, err = cache.WriteAt(nonZeroBlock, blockSize)
+	// One WriteAt covering 3 blocks: non-zero | zero | non-zero. The middle
+	// zero sub-block must become Empty (no payload, no copy_file_range);
+	// the surrounding non-zero sub-blocks stay Dirty.
+	mixed := make([]byte, blockSize*3)
+	for i := range int64(blockSize) {
+		mixed[i] = 0xAB
+		mixed[2*blockSize+i] = 0xCD
+	}
+	_, err = cache.WriteAt(mixed, 0)
 	require.NoError(t, err)
 
 	out, err := os.CreateTemp(t.TempDir(), "diff-*")
@@ -336,16 +334,19 @@ func TestCacheExportToDiff_MixedDirtyBlocksKeepsZeroBlockInDiff(t *testing.T) {
 	require.NoError(t, err)
 
 	require.EqualValues(t, 2, diffMetadata.Dirty.GetCardinality())
-	require.EqualValues(t, 0, diffMetadata.Empty.GetCardinality(), "mixed export should still skip empty tracking for zero-filled dirty blocks")
+	require.True(t, diffMetadata.Dirty.Contains(0))
+	require.True(t, diffMetadata.Dirty.Contains(2))
+	require.EqualValues(t, 1, diffMetadata.Empty.GetCardinality(), "zero sub-block within a non-zero buffer must become Empty")
+	require.True(t, diffMetadata.Empty.Contains(1))
 
 	_, err = out.Seek(0, io.SeekStart)
 	require.NoError(t, err)
 	exported, err := io.ReadAll(out)
 	require.NoError(t, err)
-	expected := make([]byte, 0, len(zeroBlock)+len(nonZeroBlock))
-	expected = append(expected, zeroBlock...)
-	expected = append(expected, nonZeroBlock...)
-	require.Equal(t, expected, exported)
+	expected := make([]byte, 0, 2*blockSize)
+	expected = append(expected, mixed[:blockSize]...)
+	expected = append(expected, mixed[2*blockSize:]...)
+	require.Equal(t, expected, exported, "diff payload must contain only the non-zero sub-blocks")
 
 	baseBuildID := uuid.New()
 	originalHeader, err := header.NewHeader(
@@ -358,17 +359,9 @@ func TestCacheExportToDiff_MixedDirtyBlocksKeepsZeroBlockInDiff(t *testing.T) {
 	diffHeader, err := diffMetadata.ToDiffHeader(t.Context(), originalHeader, snapshotBuildID)
 	require.NoError(t, err)
 
-	_, _, firstBlockBuildID, err := diffHeader.GetShiftedMapping(t.Context(), 0)
+	_, _, midBuildID, err := diffHeader.GetShiftedMapping(t.Context(), blockSize)
 	require.NoError(t, err)
-	require.Equal(t, snapshotBuildID, *firstBlockBuildID, "zero-filled dirty block should still map to the snapshot diff")
-
-	_, _, secondBlockBuildID, err := diffHeader.GetShiftedMapping(t.Context(), blockSize)
-	require.NoError(t, err)
-	require.Equal(t, snapshotBuildID, *secondBlockBuildID)
-
-	_, _, thirdBlockBuildID, err := diffHeader.GetShiftedMapping(t.Context(), 2*blockSize)
-	require.NoError(t, err)
-	require.Equal(t, baseBuildID, *thirdBlockBuildID, "clean blocks should keep the base mapping")
+	require.Equal(t, uuid.Nil, *midBuildID, "zero sub-block must map to uuid.Nil")
 }
 
 func TestCacheExportToDiff_NonContiguousDirtyBlocksPreserveRangeOrder(t *testing.T) {
