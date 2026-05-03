@@ -164,9 +164,9 @@ func TestRemoveThenFault(t *testing.T) {
 // succeeds without faulting because MADV_DONTNEED blocks (waiting for ack)
 // and doesn't unmap the page until the handler processes the event.
 // When the handler resumes, it only sees the REMOVE — no MISSING fault.
-//
-//nolint:paralleltest,tparallel // serialised: a paused gated handler keeps a faulting goroutine suspended in the kernel pagefault path; a STW GC pause from another parallel test would wait forever for that goroutine to reach a safe point.
 func TestRemoveThenWriteGated(t *testing.T) {
+	t.Parallel()
+
 	tests := []testConfig{
 		{
 			name:          "4k gated remove with concurrent write",
@@ -203,7 +203,9 @@ func TestRemoveThenWriteGated(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) { //nolint:paralleltest // see test-level comment
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			h, err := configureCrossProcessTest(t.Context(), t, tt)
 			require.NoError(t, err)
 
@@ -226,9 +228,9 @@ func TestRemoveThenWriteGated(t *testing.T) {
 // was queued first. The write to a missing page triggers MISSING (queued first),
 // then MADV_DONTNEED triggers REMOVE (queued second). When the handler resumes,
 // it processes REMOVE first, then MISSING — the write is not skipped.
-//
-//nolint:paralleltest,tparallel // serialised: see TestRemoveThenWriteGated for STW deadlock rationale.
 func TestWriteThenRemoveGated(t *testing.T) {
+	t.Parallel()
+
 	tests := []testConfig{
 		{
 			name:          "4k write then remove in same batch",
@@ -267,7 +269,9 @@ func TestWriteThenRemoveGated(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) { //nolint:paralleltest // see test-level comment
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			h, err := configureCrossProcessTest(t.Context(), t, tt)
 			require.NoError(t, err)
 
