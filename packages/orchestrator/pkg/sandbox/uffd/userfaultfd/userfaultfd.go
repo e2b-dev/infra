@@ -555,9 +555,10 @@ func (u *Userfaultfd) faultPage(
 }
 
 func (u *Userfaultfd) PrefetchData() block.PrefetchData {
-	// This will be at worst cancelled when the uffd is closed.
+	// Hold Lock across the read — Lock; Unlock; Read leaves a window
+	// where a worker can RLock and mutate prefetchTracker before we read.
 	u.settleRequests.Lock()
-	u.settleRequests.Unlock() //nolint:staticcheck // SA2001: intentional — we just need to settle the read locks.
+	defer u.settleRequests.Unlock()
 
 	return u.prefetchTracker.PrefetchData()
 }
