@@ -34,9 +34,26 @@ variable "proxy_port" {
   default = 3002
 }
 
+variable "proxy_tls_port" {
+  type    = number
+  default = 3004
+}
+
 variable "health_port" {
   type    = number
   default = 3001
+}
+
+variable "tls_cert_pem" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "tls_key_pem" {
+  type      = string
+  default   = ""
+  sensitive = true
 }
 
 variable "redis_url" {

@@ -220,8 +220,11 @@ module "client_proxy" {
   node_pool   = var.api_node_pool
   environment = var.environment
 
-  proxy_port  = var.client_proxy_session_port
-  health_port = var.client_proxy_health_port
+  proxy_port     = var.client_proxy_session_port
+  proxy_tls_port = var.client_proxy_tls_session_port
+  health_port    = var.client_proxy_health_port
+  tls_cert_pem   = var.client_proxy_tls_cert_pem
+  tls_key_pem    = var.client_proxy_tls_key_pem
 
   redis_url                 = local.redis_url
   redis_cluster_url         = local.redis_cluster_url

@@ -14,8 +14,11 @@ resource "nomad_job" "client_proxy" {
     node_pool   = var.node_pool
     environment = var.environment
 
-    proxy_port  = var.proxy_port
-    health_port = var.health_port
+    proxy_port     = var.proxy_port
+    proxy_tls_port = var.proxy_tls_port
+    health_port    = var.health_port
+    tls_cert_pem = var.tls_cert_pem
+    tls_key_pem  = var.tls_key_pem
 
     redis_url           = var.redis_url
     redis_cluster_url   = var.redis_cluster_url

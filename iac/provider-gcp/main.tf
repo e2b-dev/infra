@@ -157,6 +157,7 @@ module "cluster" {
   api_nat_min_ports_per_vm = var.api_nat_min_ports_per_vm
 
   client_proxy_port        = var.client_proxy_port
+  client_proxy_tls_port    = var.client_proxy_tls_port
   client_proxy_health_port = var.client_proxy_health_port
 
   ingress_port                            = var.ingress_port
@@ -169,6 +170,14 @@ module "cluster" {
   api_http2_backend_enabled               = local.api_backend_tls_enabled
   api_http2_backend_authentication_config = local.api_backend_tls_enabled ? "//networksecurity.googleapis.com/${google_network_security_backend_authentication_config.api_backend[0].id}" : ""
   api_http2_backend_tls_hostname          = local.api_backend_tls_hostname
+  client_proxy_h2c_backend_enabled        = var.client_proxy_h2c_backend_enabled
+  client_proxy_http2_backend_enabled      = local.client_proxy_backend_tls_enabled
+  client_proxy_http2_backend_authentication_config = (
+    local.client_proxy_backend_tls_enabled
+    ? "//networksecurity.googleapis.com/${google_network_security_backend_authentication_config.client_proxy_backend[0].id}"
+    : ""
+  )
+  client_proxy_http2_backend_tls_hostname = local.client_proxy_backend_tls_hostname
   ingress_timeout_seconds                 = var.ingress_timeout_seconds
 
   additional_domains                      = local.additional_domains
@@ -274,8 +283,11 @@ module "nomad" {
   client_proxy_resources_memory_mb = var.client_proxy_resources_memory_mb
   client_proxy_update_max_parallel = var.client_proxy_update_max_parallel
 
-  client_proxy_session_port = var.client_proxy_port.port
-  client_proxy_health_port  = var.client_proxy_health_port.port
+  client_proxy_session_port     = var.client_proxy_port.port
+  client_proxy_tls_session_port = var.client_proxy_tls_port.port
+  client_proxy_health_port      = var.client_proxy_health_port.port
+  client_proxy_tls_cert_pem     = local.client_proxy_backend_tls_enabled ? join("", concat([google_privateca_certificate.client_proxy_backend[0].pem_certificate], google_privateca_certificate.client_proxy_backend[0].pem_certificate_chain)) : ""
+  client_proxy_tls_key_pem      = local.client_proxy_backend_tls_enabled ? tls_private_key.client_proxy_backend[0].private_key_pem : ""
 
   domain_name = var.domain_name
 

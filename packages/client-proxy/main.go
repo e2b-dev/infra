@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	_ "embed"
 	"errors"
 	"fmt"
@@ -27,9 +28,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+	"golang.org/x/net/http2"
 )
 
 type Closeable interface {
@@ -179,6 +182,23 @@ func run() int {
 		return 1
 	}
 
+	var tlsTrafficProxy *reverseproxy.Proxy
+	if clientProxyTLSEnabled(config) {
+		tlsTrafficProxy, err = e2bproxy.NewClientProxy(
+			tel.MeterProvider,
+			serviceName,
+			config.TLSPort,
+			catalog,
+			pausedSandboxResumer,
+			featureFlagsClient,
+		)
+		if err != nil {
+			l.Error(ctx, "Failed to create TLS client proxy", zap.Error(err))
+
+			return 1
+		}
+	}
+
 	// Health check server
 	healthAddr := fmt.Sprintf("0.0.0.0:%d", config.HealthPort)
 	healthHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -214,7 +234,7 @@ func run() int {
 		proxyRunLogger := l.With(zap.Uint16("port", config.ProxyPort))
 		proxyRunLogger.Info(ctx, "Http proxy starting")
 
-		err := trafficProxy.ListenAndServe(ctx)
+		err := listenAndServeProxy(ctx, trafficProxy, config)
 
 		// Add different handling for the error
 		switch {
@@ -228,6 +248,27 @@ func run() int {
 			proxyRunLogger.Error(ctx, "Http proxy exited without error")
 		}
 	})
+
+	if tlsTrafficProxy != nil {
+		wg.Go(func() {
+			defer sigCancel()
+
+			proxyRunLogger := l.With(zap.Uint16("port", config.TLSPort))
+			proxyRunLogger.Info(ctx, "TLS HTTP proxy starting")
+
+			err := listenAndServeTLSProxy(ctx, tlsTrafficProxy, config)
+
+			switch {
+			case errors.Is(err, http.ErrServerClosed):
+				proxyRunLogger.Info(ctx, "TLS HTTP proxy closed successfully")
+			case err != nil:
+				exitCode.Add(1)
+				proxyRunLogger.Error(ctx, "TLS HTTP proxy encountered error", zap.Error(err))
+			default:
+				proxyRunLogger.Error(ctx, "TLS HTTP proxy exited without error")
+			}
+		})
+	}
 
 	wg.Go(func() {
 		defer sigCancel()
@@ -278,6 +319,16 @@ func run() int {
 			shutdownLogger.Info(ctx, "Http proxy shutdown successfully")
 		}
 
+		if tlsTrafficProxy != nil {
+			err = tlsTrafficProxy.Shutdown(proxyShutdownCtx)
+			if err != nil {
+				exitCode.Add(1)
+				shutdownLogger.Error(ctx, "TLS HTTP proxy shutdown error", zap.Error(err))
+			} else {
+				shutdownLogger.Info(ctx, "TLS HTTP proxy shutdown successfully")
+			}
+		}
+
 		info.SetStatus(ctx, internal.Unhealthy)
 
 		// Wait for the health check manager to notice that we are not healthy at all
@@ -311,6 +362,31 @@ func run() int {
 	wg.Wait()
 
 	return int(exitCode.Load())
+}
+
+func listenAndServeProxy(ctx context.Context, trafficProxy *reverseproxy.Proxy, config cfg.Config) error {
+	return trafficProxy.ListenAndServe(ctx)
+}
+
+func listenAndServeTLSProxy(ctx context.Context, trafficProxy *reverseproxy.Proxy, config cfg.Config) error {
+	if config.TLSCertFile == "" || config.TLSKeyFile == "" {
+		return fmt.Errorf("both CLIENT_PROXY_TLS_CERT_FILE and CLIENT_PROXY_TLS_KEY_FILE must be set to serve TLS")
+	}
+
+	if config.TLSPort == 0 {
+		return fmt.Errorf("CLIENT_PROXY_TLS_PORT must be set to serve TLS")
+	}
+
+	trafficProxy.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	if err := http2.ConfigureServer(&trafficProxy.Server, &http2.Server{}); err != nil {
+		return fmt.Errorf("configure client proxy HTTP/2 server: %w", err)
+	}
+
+	return trafficProxy.ListenAndServeTLS(ctx, config.TLSCertFile, config.TLSKeyFile)
+}
+
+func clientProxyTLSEnabled(config cfg.Config) bool {
+	return config.TLSCertFile != "" || config.TLSKeyFile != "" || config.TLSPort != 0
 }
 
 func main() {

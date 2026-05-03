@@ -72,6 +72,13 @@ variable "client_proxy_port" {
   })
 }
 
+variable "client_proxy_tls_port" {
+  type = object({
+    name = string
+    port = number
+  })
+}
+
 variable "api_port" {
   type = object({
     name        = string
@@ -220,6 +227,30 @@ variable "api_http2_backend_authentication_config" {
 
 variable "api_http2_backend_tls_hostname" {
   description = "SNI and SAN hostname expected on the API backend TLS certificate."
+  type        = string
+  default     = ""
+}
+
+variable "client_proxy_h2c_backend_enabled" {
+  description = "Route sandbox session traffic to a separate H2C client-proxy backend service."
+  type        = bool
+  default     = false
+}
+
+variable "client_proxy_http2_backend_enabled" {
+  description = "Route sandbox session traffic to a separate TLS HTTP/2 client-proxy backend service."
+  type        = bool
+  default     = false
+}
+
+variable "client_proxy_http2_backend_authentication_config" {
+  description = "BackendAuthenticationConfig resource used to validate client-proxy backend TLS."
+  type        = string
+  default     = ""
+}
+
+variable "client_proxy_http2_backend_tls_hostname" {
+  description = "SNI and SAN hostname expected on the client-proxy backend TLS certificate."
   type        = string
   default     = ""
 }

@@ -225,8 +225,24 @@ variable "client_proxy_session_port" {
   type = number
 }
 
+variable "client_proxy_tls_session_port" {
+  type = number
+}
+
 variable "client_proxy_health_port" {
   type = number
+}
+
+variable "client_proxy_tls_cert_pem" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "client_proxy_tls_key_pem" {
+  type      = string
+  default   = ""
+  sensitive = true
 }
 
 variable "domain_name" {

@@ -33,6 +33,12 @@ job "client-proxy" {
         static = "${proxy_port}"
       }
 
+%{ if tls_cert_pem != "" && tls_key_pem != "" }
+      port "proxy_tls" {
+        static = "${proxy_tls_port}"
+      }
+%{ endif }
+
       port "health" {
         static = "${health_port}"
       }
@@ -105,6 +111,12 @@ job "client-proxy" {
 
         ENVIRONMENT = "${environment}"
 
+%{ if tls_cert_pem != "" && tls_key_pem != "" }
+        CLIENT_PROXY_TLS_CERT_FILE = "local/tls/client-proxy.crt"
+        CLIENT_PROXY_TLS_KEY_FILE  = "local/tls/client-proxy.key"
+        CLIENT_PROXY_TLS_PORT      = "$${NOMAD_PORT_proxy_tls}"
+%{ endif }
+
         OTEL_COLLECTOR_GRPC_ENDPOINT = "${otel_collector_grpc_endpoint}"
         LOGS_COLLECTOR_ADDRESS       = "${logs_collector_address}"
 
@@ -133,10 +145,26 @@ job "client-proxy" {
         %{ endif }
       }
 
+%{ if tls_cert_pem != "" && tls_key_pem != "" }
+      template {
+        data        = ${jsonencode(tls_cert_pem)}
+        destination = "local/tls/client-proxy.crt"
+      }
+
+      template {
+        data        = ${jsonencode(tls_key_pem)}
+        destination = "local/tls/client-proxy.key"
+      }
+%{ endif }
+
       config {
         network_mode = "host"
         image        = "${image}"
+%{ if tls_cert_pem != "" && tls_key_pem != "" }
+        ports        = ["proxy", "proxy_tls", "health"]
+%{ else }
         ports        = ["proxy", "health"]
+%{ endif }
       }
     }
   }

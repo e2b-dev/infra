@@ -110,20 +110,25 @@ module "network" {
   api_nat_ips              = var.api_nat_ips
   api_nat_min_ports_per_vm = var.api_nat_min_ports_per_vm
 
-  ingress_port                            = var.ingress_port
-  api_port                                = var.api_port
-  docker_reverse_proxy_port               = var.docker_reverse_proxy_port
-  network_name                            = var.network_name
-  domain_name                             = var.domain_name
-  api_h2c_backend_enabled                 = var.api_h2c_backend_enabled
-  api_http2_backend_enabled               = var.api_http2_backend_enabled
-  api_http2_backend_authentication_config = var.api_http2_backend_authentication_config
-  api_http2_backend_tls_hostname          = var.api_http2_backend_tls_hostname
-  additional_domains                      = var.additional_domains
-  additional_api_paths_handled_by_ingress = var.additional_api_paths_handled_by_ingress
-  ingress_timeout_seconds                 = var.ingress_timeout_seconds
+  ingress_port                                     = var.ingress_port
+  api_port                                         = var.api_port
+  docker_reverse_proxy_port                        = var.docker_reverse_proxy_port
+  network_name                                     = var.network_name
+  domain_name                                      = var.domain_name
+  api_h2c_backend_enabled                          = var.api_h2c_backend_enabled
+  api_http2_backend_enabled                        = var.api_http2_backend_enabled
+  api_http2_backend_authentication_config          = var.api_http2_backend_authentication_config
+  api_http2_backend_tls_hostname                   = var.api_http2_backend_tls_hostname
+  client_proxy_h2c_backend_enabled                 = var.client_proxy_h2c_backend_enabled
+  client_proxy_http2_backend_enabled               = var.client_proxy_http2_backend_enabled
+  client_proxy_http2_backend_authentication_config = var.client_proxy_http2_backend_authentication_config
+  client_proxy_http2_backend_tls_hostname          = var.client_proxy_http2_backend_tls_hostname
+  additional_domains                               = var.additional_domains
+  additional_api_paths_handled_by_ingress          = var.additional_api_paths_handled_by_ingress
+  ingress_timeout_seconds                          = var.ingress_timeout_seconds
 
   client_proxy_port        = var.client_proxy_port
+  client_proxy_tls_port    = var.client_proxy_tls_port
   client_proxy_health_port = var.client_proxy_health_port
 
   api_instance_group    = google_compute_instance_group_manager.api_pool.instance_group

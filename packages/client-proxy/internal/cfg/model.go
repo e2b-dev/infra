@@ -5,6 +5,10 @@ import "github.com/caarlos0/env/v11"
 type Config struct {
 	HealthPort uint16 `env:"HEALTH_PORT" envDefault:"3003"`
 	ProxyPort  uint16 `env:"PROXY_PORT"  envDefault:"3002"`
+	TLSPort    uint16 `env:"CLIENT_PROXY_TLS_PORT"`
+
+	TLSCertFile string `env:"CLIENT_PROXY_TLS_CERT_FILE"`
+	TLSKeyFile  string `env:"CLIENT_PROXY_TLS_KEY_FILE"`
 
 	RedisURL         string `env:"REDIS_URL"`
 	RedisClusterURL  string `env:"REDIS_CLUSTER_URL"`

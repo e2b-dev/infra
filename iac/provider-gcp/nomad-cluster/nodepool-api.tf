@@ -56,6 +56,11 @@ resource "google_compute_instance_group_manager" "api_pool" {
   }
 
   named_port {
+    name = var.client_proxy_tls_port.name
+    port = var.client_proxy_tls_port.port
+  }
+
+  named_port {
     name = var.api_port.name
     port = var.api_port.port
   }

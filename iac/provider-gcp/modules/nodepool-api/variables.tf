@@ -76,6 +76,13 @@ variable "client_proxy_port" {
   })
 }
 
+variable "client_proxy_tls_port" {
+  type = object({
+    name = string
+    port = number
+  })
+}
+
 variable "ingress_port" {
   type = object({
     name        = string

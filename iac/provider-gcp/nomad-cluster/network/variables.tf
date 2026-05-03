@@ -31,6 +31,26 @@ variable "api_http2_backend_tls_hostname" {
   default = ""
 }
 
+variable "client_proxy_h2c_backend_enabled" {
+  type    = bool
+  default = false
+}
+
+variable "client_proxy_http2_backend_enabled" {
+  type    = bool
+  default = false
+}
+
+variable "client_proxy_http2_backend_authentication_config" {
+  type    = string
+  default = ""
+}
+
+variable "client_proxy_http2_backend_tls_hostname" {
+  type    = string
+  default = ""
+}
+
 variable "additional_domains" {
   type = list(string)
 }
@@ -100,6 +120,13 @@ variable "client_proxy_health_port" {
 }
 
 variable "client_proxy_port" {
+  type = object({
+    name = string
+    port = number
+  })
+}
+
+variable "client_proxy_tls_port" {
   type = object({
     name = string
     port = number

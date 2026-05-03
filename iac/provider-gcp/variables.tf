@@ -184,6 +184,17 @@ variable "client_proxy_port" {
   }
 }
 
+variable "client_proxy_tls_port" {
+  type = object({
+    name = string
+    port = number
+  })
+  default = {
+    name = "session-tls"
+    port = 3004
+  }
+}
+
 variable "loki_cluster_size" {
   type    = number
   default = 0
@@ -731,6 +742,18 @@ variable "internal_tls" {
   description = "Enable TLS on internal service hops that support both TLS and plaintext modes."
   type        = bool
   default     = true
+}
+
+variable "client_proxy_h2c_backend_enabled" {
+  description = "Route sandbox session traffic to a separate H2C client-proxy backend service."
+  type        = bool
+  default     = false
+}
+
+variable "client_proxy_http2_backend_enabled" {
+  description = "Route sandbox session traffic to a separate TLS HTTP/2 client-proxy backend service."
+  type        = bool
+  default     = false
 }
 
 variable "volume_token_issuer" {
