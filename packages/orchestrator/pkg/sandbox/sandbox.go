@@ -68,10 +68,8 @@ type Config struct {
 	RamMB int64
 
 	// TotalDiskSizeMB optional, now used only for metrics.
-	TotalDiskSizeMB int64
-	HugePages       bool
-
-	// Enable free page reporting
+	TotalDiskSizeMB   int64
+	HugePages         bool
 	FreePageReporting bool
 
 	Envd EnvdMetadata
