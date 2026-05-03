@@ -76,6 +76,7 @@ require (
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
+	pgregory.net/rapid v1.3.0
 )
 
 require (
