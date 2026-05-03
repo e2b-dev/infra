@@ -1,16 +1,17 @@
 locals {
   api_backend_tls_hostname = "api.internal.${var.domain_name}"
+  api_backend_tls_enabled  = var.api_http2_backend_enabled && var.internal_tls
 }
 
 resource "tls_private_key" "api_backend" {
-  count = var.api_http2_backend_enabled ? 1 : 0
+  count = local.api_backend_tls_enabled ? 1 : 0
 
   algorithm   = "ECDSA"
   ecdsa_curve = "P256"
 }
 
 resource "tls_cert_request" "api_backend" {
-  count = var.api_http2_backend_enabled ? 1 : 0
+  count = local.api_backend_tls_enabled ? 1 : 0
 
   private_key_pem = tls_private_key.api_backend[0].private_key_pem
 
@@ -25,7 +26,7 @@ resource "tls_cert_request" "api_backend" {
 }
 
 resource "google_privateca_ca_pool" "api_backend" {
-  count = var.api_http2_backend_enabled ? 1 : 0
+  count = local.api_backend_tls_enabled ? 1 : 0
 
   name     = "${var.prefix}api-backend"
   location = var.gcp_region
@@ -42,7 +43,7 @@ resource "google_privateca_ca_pool" "api_backend" {
 }
 
 resource "google_privateca_certificate_authority" "api_backend" {
-  count = var.api_http2_backend_enabled ? 1 : 0
+  count = local.api_backend_tls_enabled ? 1 : 0
 
   certificate_authority_id = "${var.prefix}api-backend-ca"
   location                 = var.gcp_region
@@ -90,7 +91,7 @@ resource "google_privateca_certificate_authority" "api_backend" {
 }
 
 resource "google_privateca_certificate" "api_backend" {
-  count = var.api_http2_backend_enabled ? 1 : 0
+  count = local.api_backend_tls_enabled ? 1 : 0
 
   name                  = "${var.prefix}api-backend"
   location              = var.gcp_region
@@ -103,7 +104,7 @@ resource "google_privateca_certificate" "api_backend" {
 }
 
 resource "google_certificate_manager_trust_config" "api_backend" {
-  count = var.api_http2_backend_enabled ? 1 : 0
+  count = local.api_backend_tls_enabled ? 1 : 0
 
   name        = "${var.prefix}api-backend"
   description = "Trust anchors for API backend TLS."
@@ -119,7 +120,7 @@ resource "google_certificate_manager_trust_config" "api_backend" {
 }
 
 resource "google_network_security_backend_authentication_config" "api_backend" {
-  count = var.api_http2_backend_enabled ? 1 : 0
+  count = local.api_backend_tls_enabled ? 1 : 0
 
   name             = "${var.prefix}api-backend"
   description      = "Authenticates API backend certificates for the external load balancer."

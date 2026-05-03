@@ -166,8 +166,8 @@ module "cluster" {
   google_service_account_email            = module.init.service_account_email
   domain_name                             = var.domain_name
   api_h2c_backend_enabled                 = var.api_h2c_backend_enabled
-  api_http2_backend_enabled               = var.api_http2_backend_enabled
-  api_http2_backend_authentication_config = var.api_http2_backend_enabled ? "//networksecurity.googleapis.com/${google_network_security_backend_authentication_config.api_backend[0].id}" : ""
+  api_http2_backend_enabled               = local.api_backend_tls_enabled
+  api_http2_backend_authentication_config = local.api_backend_tls_enabled ? "//networksecurity.googleapis.com/${google_network_security_backend_authentication_config.api_backend[0].id}" : ""
   api_http2_backend_tls_hostname          = local.api_backend_tls_hostname
   ingress_timeout_seconds                 = var.ingress_timeout_seconds
 
@@ -245,8 +245,8 @@ module "nomad" {
   api_node_pool                                          = var.api_node_pool
   api_port                                               = var.api_port
   api_internal_grpc_port                                 = var.api_internal_grpc_port
-  api_tls_cert_pem                                       = var.api_http2_backend_enabled ? join("", concat([google_privateca_certificate.api_backend[0].pem_certificate], google_privateca_certificate.api_backend[0].pem_certificate_chain)) : ""
-  api_tls_key_pem                                        = var.api_http2_backend_enabled ? tls_private_key.api_backend[0].private_key_pem : ""
+  api_tls_cert_pem                                       = local.api_backend_tls_enabled ? join("", concat([google_privateca_certificate.api_backend[0].pem_certificate], google_privateca_certificate.api_backend[0].pem_certificate_chain)) : ""
+  api_tls_key_pem                                        = local.api_backend_tls_enabled ? tls_private_key.api_backend[0].private_key_pem : ""
   client_proxy_oidc_issuer_url                           = var.client_proxy_oidc_issuer_url
   environment                                            = var.environment
   google_service_account_key                             = module.init.google_service_account_key

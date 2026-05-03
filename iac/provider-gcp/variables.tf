@@ -727,6 +727,12 @@ variable "api_http2_backend_enabled" {
   default     = false
 }
 
+variable "internal_tls" {
+  description = "Enable TLS on internal service hops that support both TLS and plaintext modes."
+  type        = bool
+  default     = true
+}
+
 variable "volume_token_issuer" {
   type    = string
   default = ""
