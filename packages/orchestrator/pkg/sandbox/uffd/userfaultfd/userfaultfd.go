@@ -11,6 +11,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -136,6 +137,24 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 	u.wg.SetLimit(maxRequestsInProgress)
 
 	return u, nil
+}
+
+// ExportPageStates returns snapshots of the faulted and removed
+// page-index bitmaps. The diff-snapshot writer uses the removed
+// bitmap to mark freed pages as DiffMetadata.Empty so they resolve
+// to uuid.Nil (zero-on-restore) in the snapshot header.
+func (u *Userfaultfd) ExportPageStates() (faulted, removed *roaring.Bitmap) {
+	// Take readSerial first to wait for the serve loop's current
+	// iteration (read+apply) to complete, then settleRequests to wait
+	// for in-flight workers. Same lock order as serve loop avoids any
+	// AB-BA inversion.
+	u.readSerial.Lock()
+	defer u.readSerial.Unlock()
+
+	u.settleRequests.Lock()
+	defer u.settleRequests.Unlock()
+
+	return u.pageTracker.Export()
 }
 
 func (u *Userfaultfd) readEvents(ctx context.Context) ([]*UffdRemove, []*UffdPagefault, error) {
