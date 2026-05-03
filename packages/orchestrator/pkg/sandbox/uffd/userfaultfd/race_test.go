@@ -68,7 +68,6 @@ func TestStaleSourceRaceMissingAndRemove(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) { //nolint:paralleltest // see test-level comment
-
 			withRaceContext(t, func(ctx context.Context) {
 				const sentinel = byte(0xC3)
 				const pageIdx = 1
@@ -159,7 +158,6 @@ func TestNoMadviseDeadlockWithInflightCopy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) { //nolint:paralleltest // see test-level comment
-
 			withRaceContext(t, func(ctx context.Context) {
 				cfg := testConfig{
 					pagesize:      tt.pagesize,
