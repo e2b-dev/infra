@@ -411,6 +411,79 @@ func TestCacheExportToDiff_NonContiguousDirtyBlocksPreserveRangeOrder(t *testing
 	require.Equal(t, append(firstBlock, secondBlock...), exported)
 }
 
+func TestCacheWriteZeroesAt_AlignedRangeMapsToEmpty(t *testing.T) {
+	t.Parallel()
+
+	const blockSize = header.RootfsBlockSize
+	const size = blockSize * 4
+	cache, err := NewCache(size, blockSize, t.TempDir()+"/cache", false)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, cache.Close()) })
+
+	// Pre-write a non-zero block so we exercise the dirty→zero transition,
+	// not just untouched→zero (which is trivially served by the sparse hole).
+	dirty := bytes.Repeat([]byte{0xAB}, int(blockSize))
+	_, err = cache.WriteAt(dirty, blockSize)
+	require.NoError(t, err)
+
+	n, err := cache.WriteZeroesAt(0, 2*blockSize)
+	require.NoError(t, err)
+	require.Equal(t, 2*blockSize, n)
+
+	// Reads after WriteZeroesAt must return zero, even for blocks that
+	// previously held non-zero data.
+	got := make([]byte, 2*blockSize)
+	rn, err := cache.ReadAt(got, 0)
+	require.NoError(t, err)
+	require.Equal(t, len(got), rn)
+	require.True(t, IsZero(got), "zeroed range must read back as zero")
+
+	out, err := os.CreateTemp(t.TempDir(), "diff-*")
+	require.NoError(t, err)
+	defer out.Close()
+
+	diffMetadata, err := cache.ExportToDiff(t.Context(), out)
+	require.NoError(t, err)
+
+	require.EqualValues(t, 0, diffMetadata.Dirty.GetCardinality(), "aligned WriteZeroesAt should not produce dirty payload")
+	require.EqualValues(t, 2, diffMetadata.Empty.GetCardinality(), "two aligned blocks should be tracked as Empty")
+
+	stat, err := out.Stat()
+	require.NoError(t, err)
+	require.EqualValues(t, 0, stat.Size(), "Empty diff bytes are not written to the diff file")
+}
+
+func TestCacheWriteZeroesAt_UnalignedTailKeepsBlockDirty(t *testing.T) {
+	t.Parallel()
+
+	const blockSize = header.RootfsBlockSize
+	const size = blockSize * 3
+	cache, err := NewCache(size, blockSize, t.TempDir()+"/cache", false)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, cache.Close()) })
+
+	// Zero half of block 0 and half of block 2: only the fully-covered
+	// block 1 may become Empty; the partial blocks must stay Dirty so a
+	// subsequent partial write to the other half is preserved.
+	const halfBlock = blockSize / 2
+	n, err := cache.WriteZeroesAt(halfBlock, blockSize*2)
+	require.NoError(t, err)
+	require.Equal(t, blockSize*2, n)
+
+	out, err := os.CreateTemp(t.TempDir(), "diff-*")
+	require.NoError(t, err)
+	defer out.Close()
+
+	diffMetadata, err := cache.ExportToDiff(t.Context(), out)
+	require.NoError(t, err)
+
+	require.EqualValues(t, 1, diffMetadata.Empty.GetCardinality(), "only the fully-covered block should be Empty")
+	require.True(t, diffMetadata.Empty.Contains(1))
+	require.EqualValues(t, 2, diffMetadata.Dirty.GetCardinality(), "both partial blocks must be Dirty")
+	require.True(t, diffMetadata.Dirty.Contains(0))
+	require.True(t, diffMetadata.Dirty.Contains(2))
+}
+
 func TestCache_ZeroLengthIsCachedAndSetIsCached(t *testing.T) {
 	t.Parallel()
 

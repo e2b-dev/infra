@@ -22,8 +22,20 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
-	"github.com/e2b-dev/infra/packages/shared/pkg/syncroaring"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+)
+
+// blockState classifies cached blocks for diff export and read fall-through.
+//   - blockUntouched: no guest write; reads fall through to the template.
+//   - blockDirty:     guest wrote bytes; copied verbatim into the diff.
+//   - blockZero:      guest wrote zeros (or trimmed); recorded in Empty so the
+//     diff carries no payload bytes for it.
+type blockState uint8
+
+const (
+	blockUntouched blockState = iota
+	blockDirty
+	blockZero
 )
 
 const (
@@ -53,7 +65,7 @@ type Cache struct {
 	blockSize int64
 	mmap      *mmap.MMap
 	mu        sync.RWMutex
-	dirty     *syncroaring.Bitset
+	state     *StateTracker[blockState]
 	dirtyFile bool
 	closed    atomic.Bool
 }
@@ -66,13 +78,18 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 
 	defer f.Close()
 
+	state, err := NewStateTracker(blockUntouched, blockDirty, blockZero)
+	if err != nil {
+		return nil, fmt.Errorf("error creating state tracker: %w", err)
+	}
+
 	if size == 0 {
 		return &Cache{
 			filePath:  filePath,
 			size:      size,
 			blockSize: blockSize,
 			dirtyFile: dirtyFile,
-			dirty:     syncroaring.New(),
+			state:     state,
 		}, nil
 	}
 
@@ -97,7 +114,7 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		size:      size,
 		blockSize: blockSize,
 		dirtyFile: dirtyFile,
-		dirty:     syncroaring.New(),
+		state:     state,
 	}, nil
 }
 
@@ -136,7 +153,9 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 		logger.L().Warn(ctx, "error syncing file", zap.Error(err))
 	}
 
-	diffMetadata := header.NewDiffMetadata(c.blockSize, c.dirty.Clone())
+	dirty, empty := c.state.Export()
+	diffMetadata := header.NewDiffMetadata(c.blockSize, dirty)
+	diffMetadata.Empty = empty
 
 	dst := int(out.Fd())
 	var writeOffset int64
@@ -195,6 +214,7 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 		attribute.Int64("copy_ms", time.Since(copyStart).Milliseconds()),
 		attribute.Int64("total_size_bytes", c.size),
 		attribute.Int64("dirty_size_bytes", int64(diffMetadata.Dirty.GetCardinality())*c.blockSize),
+		attribute.Int64("empty_size_bytes", int64(diffMetadata.Empty.GetCardinality())*c.blockSize),
 		attribute.Int64("total_ranges", totalRanges),
 	)
 
@@ -312,14 +332,23 @@ func (c *Cache) isCached(off, length int64) bool {
 	start := uint64(header.BlockIdx(off, c.blockSize))
 	end := uint64(header.BlockCeilIdx(min(off+length, c.size), c.blockSize))
 
-	return c.dirty.HasRange(start, end)
+	return c.state.HasRange(start, end)
 }
 
+// setIsCached marks the byte range as resident in the cache (blockDirty),
+// signalling that subsequent reads must be served from the mmap rather than
+// fetched from the template.
 func (c *Cache) setIsCached(off, length int64) {
+	c.markBlocks(off, length, blockDirty)
+}
+
+func (c *Cache) markBlocks(off, length int64, s blockState) {
 	start := uint64(header.BlockIdx(off, c.blockSize))
 	end := uint64(header.BlockCeilIdx(off+length, c.blockSize))
-
-	c.dirty.SetRange(start, end)
+	if err := c.state.SetRange(start, end, s); err != nil {
+		// Should be unreachable: blockUntouched/Dirty/Zero are wired in NewCache.
+		panic(fmt.Errorf("cache: state.SetRange %d-%d: %w", start, end, err))
+	}
 }
 
 // When using WriteAtWithoutLock you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
@@ -340,6 +369,56 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 
 	return n, nil
 }
+
+// WriteZeroesAt records that [off, off+length) reads as zero without writing
+// the zero bytes to the diff. Only block-aligned, fully-covered blocks are
+// marked Empty: any sub-block tail must be zeroed in-place and tracked as
+// dirty to preserve correctness against partial overwrites.
+func (c *Cache) WriteZeroesAt(off, length int64) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.mmap == nil {
+		return 0, nil
+	}
+
+	if c.isClosed() {
+		return 0, NewErrCacheClosed(c.filePath)
+	}
+
+	end := min(off+length, c.size)
+	if end <= off {
+		return 0, nil
+	}
+
+	alignedStart := alignUp(off, c.blockSize)
+	alignedEnd := alignDown(end, c.blockSize)
+
+	// Aligned core: clear mmap (so reads return zero even after a prior dirty
+	// write to the same block) and mark blocks as Empty in the diff.
+	if alignedStart < alignedEnd {
+		clear((*c.mmap)[alignedStart:alignedEnd])
+		c.markBlocks(alignedStart, alignedEnd-alignedStart, blockZero)
+	}
+
+	// Unaligned head/tail share their block with neighbouring data, so we
+	// can't claim the whole block as Empty — write zeros and mark Dirty.
+	if off < alignedStart {
+		head := min(alignedStart, end)
+		clear((*c.mmap)[off:head])
+		c.markBlocks(off, head-off, blockDirty)
+	}
+	if alignedEnd < end && alignedEnd >= alignedStart {
+		tail := max(alignedEnd, off)
+		clear((*c.mmap)[tail:end])
+		c.markBlocks(tail, end-tail, blockDirty)
+	}
+
+	return int(end - off), nil
+}
+
+func alignUp(v, align int64) int64   { return (v + align - 1) / align * align }
+func alignDown(v, align int64) int64 { return v / align * align }
 
 // FileSize returns the size of the cache on disk.
 // The size might differ from the dirty size, as it may not be fully on disk.

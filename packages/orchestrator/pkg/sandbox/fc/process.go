@@ -363,6 +363,11 @@ func (p *Process) Create(
 		"i8042.nokbd":      "",
 		"i8042.noaux":      "",
 		"random.trust_cpu": "on",
+
+		// Mount the rootfs with online discard so ext4 issues NBD_CMD_TRIM on
+		// freed blocks. Combined with WRITE_ZEROES the orchestrator NBD server
+		// elides those blocks from the snapshot diff (see sandbox/nbd).
+		"rootflags": "discard",
 	}
 
 	if options.KvmClock {

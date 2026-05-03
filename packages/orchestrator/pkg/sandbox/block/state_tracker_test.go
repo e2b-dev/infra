@@ -101,4 +101,19 @@ func TestStateTracker(t *testing.T) {
 		require.Error(t, s.SetRange(0, 1, ts(99)),
 			"unregistered state value must error, not silently no-op")
 	})
+
+	t.Run("HasRange covers union of non-default bitmaps", func(t *testing.T) {
+		t.Parallel()
+		s, err := NewStateTracker(tsDefault, tsA, tsB)
+		require.NoError(t, err)
+
+		require.NoError(t, s.SetRange(0, 5, tsA))
+		require.NoError(t, s.SetRange(5, 10, tsB))
+
+		assert.True(t, s.HasRange(0, 10), "fully covered by a∪b")
+		assert.True(t, s.HasRange(2, 8), "subrange spanning a and b")
+		assert.False(t, s.HasRange(0, 11), "trailing default index breaks coverage")
+		assert.False(t, s.HasRange(8, 15))
+		assert.True(t, s.HasRange(7, 7), "empty range is vacuously covered")
+	})
 }

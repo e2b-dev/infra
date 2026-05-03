@@ -85,3 +85,18 @@ func (t *StateTracker[S]) Get(idx uint32) S {
 		return t.defaultState
 	}
 }
+
+// HasRange reports whether every index in [start, end) is in some non-default
+// state. The two bitmaps are disjoint by construction, so summing their
+// per-bitmap cardinalities in the range gives the union cardinality without
+// allocating a merged bitmap.
+func (t *StateTracker[S]) HasRange(start, end uint64) bool {
+	if end <= start {
+		return true
+	}
+
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	return t.bmA.CardinalityInRange(start, end)+t.bmB.CardinalityInRange(start, end) == end-start
+}

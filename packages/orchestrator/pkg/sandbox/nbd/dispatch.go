@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -45,6 +46,11 @@ var dispatchBufPool = sync.Pool{
 type Provider interface {
 	storage.SeekableReader
 	io.WriterAt
+	// WriteZeroesAt records [off, off+length) as zero. Used for both
+	// NBD_CMD_WRITE_ZEROES and NBD_CMD_TRIM (TRIM is advisory per the spec;
+	// we resolve the ambiguity by guaranteeing zero-on-read so trimmed
+	// regions can be elided from the diff).
+	WriteZeroesAt(off, length int64) (int, error)
 }
 
 const (
@@ -58,11 +64,12 @@ const (
 
 // NBD Commands
 const (
-	NBDCmdRead       = 0
-	NBDCmdWrite      = 1
-	NBDCmdDisconnect = 2
-	NBDCmdFlush      = 3
-	NBDCmdTrim       = 4
+	NBDCmdRead        = 0
+	NBDCmdWrite       = 1
+	NBDCmdDisconnect  = 2
+	NBDCmdFlush       = 3
+	NBDCmdTrim        = 4
+	NBDCmdWriteZeroes = 6
 )
 
 const (
@@ -246,9 +253,17 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 				if err != nil {
 					return err
 				}
+			case NBDCmdWriteZeroes:
+				rp += 28
+				err := d.cmdWriteZeroes(ctx, request.Handle, request.From, int64(request.Length))
+				if err != nil {
+					return err
+				}
 			case NBDCmdTrim:
 				rp += 28
-				err := d.cmdTrim(request.Handle, request.From, request.Length)
+				// TRIM is advisory; we treat it as WRITE_ZEROES so trimmed
+				// regions can be elided from snapshot diffs.
+				err := d.cmdWriteZeroes(ctx, request.Handle, request.From, int64(request.Length))
 				if err != nil {
 					return err
 				}
@@ -352,6 +367,13 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 }
 
 func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
+	// Convert all-zero writes (e.g. `dd if=/dev/zero`, scratch wipes, qcow2
+	// preallocation) into a zero op so they don't grow the snapshot diff.
+	// Mirrors qemu's detect-zeroes=unmap on bdrv_aligned_pwritev.
+	if block.IsZero(cmdData) {
+		return d.cmdWriteZeroes(ctx, cmdHandle, cmdFrom, int64(len(cmdData)))
+	}
+
 	d.shuttingDownLock.Lock()
 	if d.shuttingDown {
 		d.shuttingDownLock.Unlock()
@@ -418,25 +440,62 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 	return nil
 }
 
-/**
- * cmdTrim
- *
- */
-func (d *Dispatch) cmdTrim(handle uint64, _ uint64, _ uint32) error {
-	// TODO: Ask the provider
-	/*
-		e := d.prov.Trim(from, length)
-		if e != storage.StorageError_SUCCESS {
-			err := d.writeResponse(1, handle, []byte{})
-			if err != nil {
-				return err
-			}
-		} else {
-	*/
-	err := d.writeResponse(0, handle, []byte{})
-	if err != nil {
-		return err
+// cmdWriteZeroes handles NBD_CMD_WRITE_ZEROES (and TRIM, which we route here).
+// The request carries no payload, so the goroutine just delegates to the
+// provider and writes the response. Errors on the backend are signalled in
+// the NBD response byte; only writeResponse failures (dead socket) escalate.
+func (d *Dispatch) cmdWriteZeroes(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength int64) error {
+	d.shuttingDownLock.Lock()
+	if d.shuttingDown {
+		d.shuttingDownLock.Unlock()
+
+		return ErrShuttingDown
 	}
-	//	}
+
+	d.pendingResponses.Add(1)
+	d.shuttingDownLock.Unlock()
+
+	go func() {
+		errchan := make(chan error, 1)
+		go func() {
+			_, err := d.prov.WriteZeroesAt(int64(cmdFrom), cmdLength)
+			errchan <- err
+		}()
+
+		var writeErr error
+		select {
+		case <-ctx.Done():
+			writeErr = ctx.Err()
+		case err := <-errchan:
+			writeErr = err
+		}
+
+		var respErr uint32
+		if writeErr != nil {
+			respErr = 1
+			logger.L().Error(ctx, "nbd backend write-zeroes failed",
+				zap.Error(writeErr),
+				zap.String("nbd_op", "write_zeroes"),
+				zap.String("nbd_provider", d.provName),
+				zap.Uint64("nbd_handle", cmdHandle),
+				zap.Uint64("nbd_offset", cmdFrom),
+				zap.Int64("nbd_length", cmdLength),
+			)
+		}
+
+		if err := d.writeResponse(respErr, cmdHandle, nil); err != nil {
+			select {
+			case d.fatal <- err:
+			default:
+				logger.L().Error(ctx, "nbd write_zeroes response failed",
+					zap.Error(err),
+					zap.String("nbd_op", "write_zeroes"),
+					zap.Uint64("nbd_handle", cmdHandle),
+				)
+			}
+		}
+		d.pendingResponses.Done()
+	}()
+
 	return nil
 }

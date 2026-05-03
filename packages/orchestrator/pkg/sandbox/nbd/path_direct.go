@@ -175,7 +175,12 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 		opts = append(opts, nbdnl.WithTimeout(d.ioTimeout))
 		opts = append(opts, nbdnl.WithDeadconnTimeout(d.deadconnTimeout))
 
-		serverFlags := nbdnl.FlagHasFlags | nbdnl.FlagCanMulticonn
+		// flagSendWriteZeroes is bit 6 of the NBD spec's transmission flags.
+		// Merovius's enum stops at FlagCanMulticonn (bit 8); ServerFlags is a
+		// raw uint64 bitmask so passing the bit directly is fine.
+		const flagSendWriteZeroes nbdnl.ServerFlags = 1 << 6
+		serverFlags := nbdnl.FlagHasFlags | nbdnl.FlagCanMulticonn |
+			nbdnl.FlagSendTrim | flagSendWriteZeroes
 
 		idx, connectErr := nbdnl.Connect(deviceIndex, d.socksClient, uint64(size), 0, serverFlags, opts...)
 		if connectErr == nil {
