@@ -7,17 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestClassifyCopyResult covers UFFD audit findings #1 and #7. It pins the
-// kernel partial-copy convention used by UFFDIO_COPY: when the syscall
-// returns no errno, cpy.copy carries either the bytes copied or a negative
-// -errno. Both EAGAIN-surfacing paths and any short positive copy must be
-// classified as a soft errno so the caller drops the fault and lets the
-// kernel redeliver instead of tearing the sandbox down.
-//
-// Mocking faultPage end-to-end would require an interface seam over Fd
-// that this PR is too small to introduce; per the audit's "smallest
-// pragmatic test" guidance we test the extracted classifier directly and
-// rely on the existing cross-process matrix tests for integration coverage.
+// TestClassifyCopyResult pins the kernel partial-copy convention used by
+// UFFDIO_COPY: negative cpy.copy carries negated errno; a short positive
+// copy is treated as EAGAIN so the caller drops the fault and redelivers.
 func TestClassifyCopyResult(t *testing.T) {
 	t.Parallel()
 

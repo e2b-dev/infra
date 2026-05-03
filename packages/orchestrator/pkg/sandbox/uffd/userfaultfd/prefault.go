@@ -7,9 +7,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 )
 
-// Prefault proactively copies a page to guest memory at the given offset.
-// This is used to speed up sandbox starts by prefetching pages that are known to be needed.
-// Returns nil on success, or if the page is already mapped (EEXIST is handled gracefully).
+// Prefault proactively copies a page to guest memory at the given offset
+// to speed up sandbox starts. EEXIST (already mapped) is handled gracefully.
 func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) error {
 	u.settleRequests.RLock()
 	defer u.settleRequests.RUnlock()
@@ -26,23 +25,14 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		return fmt.Errorf("data length (%d) does not match pagesize (%d)", len(data), u.pageSize)
 	}
 
-	// If page has already been faulted in due to on-demand page fault handling or removed because
-	// Firecracker called madvise() on it, skip it.
+	// Skip already faulted or removed pages (madvise'd by FC).
 	state := u.pageTracker.get(addr)
 	if state == faulted || state == removed {
 		return nil
 	}
 
-	// We're treating prefault handling as if it was caused by a read access.
-	// This way, we will fault the page with UFFD_COPY_MODE_WP which will set
-	// the WP bit for the page. This works even in the case of a race with a
-	// concurrent on-demand write access.
-	//
-	// If the on-demand fault handler beats us, we will get an EEXIST here.
-	// If we beat the on-demand handler, it will get the EEXIST.
-	//
-	// In both cases, the WP bit will be cleared because it is handled asynchronously
-	// by the kernel.
+	// Prefault as a read so the page gets WP set. If a concurrent on-demand
+	// write fault beats us, faultPage returns EEXIST and we skip setState.
 	handled, err := u.faultPage(
 		ctx,
 		addr,

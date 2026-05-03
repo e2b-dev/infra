@@ -305,17 +305,13 @@ func (h *testHandler) executeRead(ctx context.Context, op operation) error {
 		return err
 	}
 
-	// Hold the read side of the memoryArea mutex while we touch the page.
-	// Reads can run concurrently with each other (RLock), but a parallel
-	// async write to the same page (executeWrite, write lock) is excluded
-	// so go test -race stays clean when a test plan mixes async read and
-	// async write at overlapping offsets.
+	// RLock allows concurrent reads; excludes concurrent async writes at the same offset.
 	h.mutex.RLock()
 	defer h.mutex.RUnlock()
 
 	readBytes := (*h.memoryArea)[op.offset : op.offset+int64(h.pagesize)]
 
-	// The bytes.Equal is the first place in this flow that actually touches the uffd managed memory and triggers the pagefault, so any deadlocks will manifest here.
+	// bytes.Equal is the first access to uffd-managed memory, triggering the pagefault.
 	if !bytes.Equal(readBytes, expectedBytes) {
 		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
 
@@ -331,8 +327,7 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 		return err
 	}
 
-	// An unprotected parallel write to map might result in an undefined behavior.
-	// Lock excludes both other writers and any concurrent executeRead.
+	// Lock excludes both other writers and concurrent executeRead.
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 

@@ -42,7 +42,6 @@ const (
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
-// hasEvent checks if a specific poll event flag is set in revents.
 func hasEvent(revents, event int16) bool {
 	return revents&event != 0
 }
@@ -111,9 +110,7 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 		logger:          logger,
 	}
 
-	// By default this was unlimited.
-	// Now that we don't skip previously faulted pages we add at least some boundaries to the concurrency.
-	// Also, in some brief tests, adding a limit actually improved the handling at high concurrency.
+	// Cap goroutine concurrency; high concurrency benchmarks showed no gain beyond this limit.
 	u.wg.SetLimit(maxRequestsInProgress)
 
 	return u, nil
@@ -122,9 +119,6 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 // readEvents reads all available UFFD events from the file descriptor,
 // returning removes and pagefaults separately.
 func (u *Userfaultfd) readEvents(ctx context.Context) ([]*UffdRemove, []*UffdPagefault, error) {
-	// We are reusing the same buffer for all events, but that's fine,
-	// because getMsgArg, will make a copy of the actual event from `buf`
-	// and it's a pointer to this copy that we are returning to caller.
 	buf := make([]byte, unsafe.Sizeof(UffdMsg{}))
 
 	var removes []*UffdRemove
@@ -139,8 +133,6 @@ func (u *Userfaultfd) readEvents(ctx context.Context) ([]*UffdRemove, []*UffdPag
 		}
 
 		if errors.Is(err, syscall.EAGAIN) {
-			// EAGAIN means that we have drained all the available events for the file descriptor.
-			// We are done.
 			break
 		}
 
@@ -148,10 +140,7 @@ func (u *Userfaultfd) readEvents(ctx context.Context) ([]*UffdRemove, []*UffdPag
 			return nil, nil, fmt.Errorf("failed reading uffd: %w", err)
 		}
 
-		// `Read` returned with 0 bytes actually read. No more events to read
-		// and the writing end has been closed. This should never happen, unless
-		// something (us or Firecracker) closes the file descriptor
-		// TODO: Ignore it for now, but maybe we should return an error(?)
+		// n==0: writing end closed (us or Firecracker); no more events.
 		if n == 0 {
 			break
 		}
@@ -247,7 +236,7 @@ func (u *Userfaultfd) Serve(
 			}
 		}
 
-		// Drain the wakeup pipe if it fired (a goroutine deferred a fault).
+		// Drain wakeup pipe if a goroutine deferred a fault.
 		if hasEvent(pollFds[2].Revents, unix.POLLIN) {
 			u.drainWakeupPipe()
 		}
@@ -276,12 +265,8 @@ func (u *Userfaultfd) Serve(
 			noDataCounter.Increase("POLLIN")
 		}
 
-		// First handle the UFFD_EVENT_REMOVE events. Take the settleRequests write lock to ensure that no
-		// other page or pre-fault operation is running concurrently.
-		// A goroutine from the previous batch or a prefault operation could still be executing
-		// setState(faulted) after its UFFDIO_COPY returned. If we process a REMOVE for the same
-		// page before that goroutine finishes, the goroutine's setState(faulted) would
-		// overwrite the removed state we just set.
+		// Handle REMOVE events first under write lock so any in-flight faultPage
+		// goroutine's setState(faulted) can't overwrite the removed state we set here.
 		if len(removes) > 0 {
 			u.settleRequests.Lock()
 			for _, rm := range removes {
@@ -290,8 +275,7 @@ func (u *Userfaultfd) Serve(
 			u.settleRequests.Unlock()
 		}
 
-		// Collect deferred pagefaults from previous goroutines that got EAGAIN.
-		// The wakeup pipe ensures we don't sleep through these.
+		// Merge any deferred pagefaults from previous EAGAIN cycles.
 		pagefaults = append(deferred.drain(), pagefaults...)
 
 		if len(pagefaults) == 0 {
@@ -331,12 +315,8 @@ func (u *Userfaultfd) Serve(
 				}
 
 				// RLock must be inside the goroutine so RUnlock runs via defer.
-				// The state read below MUST happen after RLock: the read+act+commit
-				// sequence (state lookup → faultPage → setState(faulted)) must be
-				// atomic with any concurrent REMOVE batch (settleRequests.Lock()).
-				// A state read in the parent loop would leave a window where a REMOVE
-				// lands after the read but before RLock, and the worker would
-				// overwrite `removed` with `faulted`.
+				// State read must happen after RLock: the lookup→faultPage→setState
+				// sequence must be atomic with any concurrent REMOVE batch (Lock).
 				u.settleRequests.RLock()
 				defer u.settleRequests.RUnlock()
 
@@ -504,10 +484,7 @@ func (u *Userfaultfd) faultPage(
 		writeErr = u.fd.copy(addr, u.pageSize, b, mode)
 	}
 
-	// Page is already mapped (e.g. pre-faulted, or a previous DONTWAKE zero succeeded
-	// but the subsequent writeProtect/wake step failed with EAGAIN and the fault was deferred).
-	// Wake the thread unconditionally: if the thread is sleeping due to DONTWAKE this
-	// unblocks it; if it was already woken the wake is a harmless no-op.
+	// EEXIST: page already mapped; wake the thread in case DONTWAKE was used.
 	if errors.Is(writeErr, unix.EEXIST) {
 		span.SetAttributes(attribute.Bool("uffd.already_mapped", true))
 
@@ -517,9 +494,7 @@ func (u *Userfaultfd) faultPage(
 	}
 
 	if errors.Is(writeErr, unix.ESRCH) {
-		// The faulting thread/process no longer exists — it exited or was killed
-		// while the page fetch was in flight. This is expected during sandbox
-		// teardown; treat it as benign.
+		// Thread/process exited during sandbox teardown; treat as benign.
 		span.SetAttributes(attribute.Bool("uffd.process_exited", true))
 		u.logger.Debug(ctx, "UFFD serve copy error: process no longer exists", zap.Error(writeErr))
 
@@ -527,10 +502,8 @@ func (u *Userfaultfd) faultPage(
 	}
 
 	if errors.Is(writeErr, unix.EAGAIN) {
-		// mmap_changing was set during the copy (concurrent
-		// madvise(MADV_DONTNEED)/mremap/fork on the mm). Drop the fault and
-		// let the kernel redeliver. See classifyCopyResult for the
-		// partial-copy variant that maps onto this branch.
+		// mmap_changing set mid-copy (concurrent madvise/mremap/fork). Drop the
+		// fault; kernel will redeliver. See classifyCopyResult for the partial-copy variant.
 		span.SetAttributes(attribute.Bool("uffd.copy_eagain", true))
 		u.logger.Debug(ctx, "UFFD page write EAGAIN, deferring", zap.Uintptr("addr", addr))
 
@@ -557,14 +530,12 @@ func (u *Userfaultfd) PrefetchData() block.PrefetchData {
 	return u.prefetchTracker.PrefetchData()
 }
 
-// signalWakeup writes a byte to the wakeup pipe to unblock poll.
-// Safe to call from any goroutine; spurious writes are harmless.
+// signalWakeup writes to the wakeup pipe to unblock poll after a deferred fault.
 func (u *Userfaultfd) signalWakeup() {
 	syscall.Write(u.wakeupPipe[1], []byte{1}) //nolint:errcheck // best-effort; pipe is non-blocking
 }
 
-// drainWakeupPipe consumes all bytes from the wakeup pipe so it doesn't
-// keep firing on the next poll.
+// drainWakeupPipe consumes all bytes from the wakeup pipe.
 func (u *Userfaultfd) drainWakeupPipe() {
 	var buf [64]byte
 	for {

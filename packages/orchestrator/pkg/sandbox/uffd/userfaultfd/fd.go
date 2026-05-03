@@ -146,8 +146,7 @@ func getPagefaultAddress(pagefault *UffdPagefault) uintptr {
 // Fd is a helper type that wraps uffd fd.
 type Fd uintptr
 
-// mode: UFFDIO_COPY_MODE_WP
-// When we use both missing and wp, we need to use UFFDIO_COPY_MODE_WP, otherwise copying would unprotect the page
+// copy requires UFFDIO_COPY_MODE_WP when both MISSING and WP tracking are active.
 func (f Fd) copy(addr, pagesize uintptr, data []byte, mode CULong) error {
 	cpy := newUffdioCopy(data, CULong(addr)&^CULong(pagesize-1), CULong(pagesize), mode, 0)
 
@@ -158,14 +157,11 @@ func (f Fd) copy(addr, pagesize uintptr, data []byte, mode CULong) error {
 	return classifyCopyResult(int64(cpy.copy), int64(pagesize))
 }
 
-// classifyCopyResult turns the bytes-copied field returned by a UFFDIO_COPY
-// ioctl (whose syscall itself returned no errno) into a Go error. The kernel
-// uses a partial-copy convention: a negative value carries the negated errno
-// of the underlying failure (notably -EAGAIN when mmap_changing was set mid-
-// copy); a positive value less than pagesize signals partial progress (e.g. a
-// hugetlb fault preempted the copy mid-page). Both surface as EAGAIN so the
-// caller drops the fault and lets the kernel redeliver. Matches Firecracker's
-// reference handler in src/firecracker/examples/uffd/uffd_utils.rs.
+// classifyCopyResult converts the kernel's bytes-copied field from UFFDIO_COPY
+// into a Go error. Negative values carry negated errno (-EAGAIN when
+// mmap_changing is set); a positive value less than pagesize signals a partial
+// copy (e.g. a hugetlb fault preempted mid-page). Both map to EAGAIN so the
+// caller drops the fault and lets the kernel redeliver.
 func classifyCopyResult(bytesCopied, pagesize int64) error {
 	if bytesCopied < 0 {
 		return syscall.Errno(-bytesCopied)
@@ -185,7 +181,6 @@ func (f Fd) zero(addr, pagesize uintptr, mode CULong) error {
 		return errno
 	}
 
-	// Check if the bytes actually zeroed out by the kernel match the page size
 	if zero.zeropage != CLong(pagesize) {
 		return fmt.Errorf("UFFDIO_ZEROPAGE copied %d bytes, expected %d", zero.zeropage, pagesize)
 	}
