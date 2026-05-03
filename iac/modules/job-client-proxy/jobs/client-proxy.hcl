@@ -113,9 +113,19 @@ job "client-proxy" {
         REDIS_TLS_CA_BASE64      = "${redis_tls_ca_base64}"
         REDIS_URL                = "${redis_url}"
 
-        %{ if api_grpc_address != "" }
-        # used only when client-proxy is deployed directly in the cluster next to the API
-        API_GRPC_ADDRESS = "${api_grpc_address}"
+        %{ if api_internal_grpc_address != "" }
+        # used by in-cluster client-proxy to call API ResumeSandbox over gRPC
+        API_INTERNAL_GRPC_ADDRESS = "${api_internal_grpc_address}"
+        %{ endif }
+
+        %{ if api_edge_grpc_address != "" }
+        # used by external client-proxy to call edge API ResumeSandbox over gRPC
+        API_EDGE_GRPC_ADDRESS             = "${api_edge_grpc_address}"
+        %{ if api_edge_grpc_oauth_client_id != "" }
+        API_EDGE_GRPC_OAUTH_CLIENT_ID     = "${api_edge_grpc_oauth_client_id}"
+        API_EDGE_GRPC_OAUTH_CLIENT_SECRET = "${api_edge_grpc_oauth_client_secret}"
+        API_EDGE_GRPC_OAUTH_TOKEN_URL     = "${api_edge_grpc_oauth_token_url}"
+        %{ endif }
         %{ endif }
 
         %{ if launch_darkly_api_key != "" }

@@ -183,6 +183,7 @@ module "nomad" {
   clickhouse_jobs_prefix = local.clickhouse_jobs_prefix
 
   api_cluster_size               = var.api_cluster_size
+  api_internal_grpc_port         = var.api_internal_grpc_port
   api_repository_name            = module.init.api_repository_name
   db_migrator_repository_name    = module.init.db_migrator_repository_name
   postgres_connection_string     = module.init.postgres_connection_string

@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	apisandbox "github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	sharedproxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -100,7 +101,12 @@ func (o *Orchestrator) HandleExistingSandboxAutoResume(
 			return "", false, apisandbox.ErrNotFound
 		case apisandbox.StateRunning:
 			node := o.getOrConnectNode(ctx, sbx.ClusterID, sbx.NodeID)
-			if node == nil {
+			nodeIP := ""
+			if node != nil {
+				// For github actions in cicd, we don't have node ips and need to handle that specially
+				nodeIP = routeNodeIPAddress(node, env.IsLocal())
+			}
+			if nodeIP == "" {
 				logger.L().Error(
 					ctx,
 					"Sandbox is running but routing info is not available during auto-resume",
@@ -113,7 +119,7 @@ func (o *Orchestrator) HandleExistingSandboxAutoResume(
 				return "", false, errors.New("sandbox is running but routing info is not available yet")
 			}
 
-			return node.IPAddress, true, nil
+			return nodeIP, true, nil
 		default:
 			logger.L().Error(ctx, "Sandbox is in an unknown state during auto-resume", logger.WithSandboxID(sandboxID), zap.String("state", string(sbx.State)))
 

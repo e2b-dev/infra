@@ -63,9 +63,32 @@ variable "image" {
   type = string
 }
 
-variable "api_grpc_address" {
+variable "api_internal_grpc_address" {
   type    = string
   default = ""
+}
+
+variable "api_edge_grpc_address" {
+  type    = string
+  default = ""
+}
+
+variable "api_edge_grpc_oauth_client_id" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "api_edge_grpc_oauth_client_secret" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
+variable "api_edge_grpc_oauth_token_url" {
+  type      = string
+  default   = ""
+  sensitive = true
 }
 
 variable "otel_collector_grpc_endpoint" {
