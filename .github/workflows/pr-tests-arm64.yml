@@ -1,6 +1,6 @@
 name: ARM64 tests on PRs
 
-on: [workflow_call]
+on: [ workflow_call ]
 
 permissions:
   contents: read
@@ -107,6 +107,22 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y bindfs
         if: matrix.package == 'packages/envd'
+
+      - name: Diagnose runner system info
+        if: matrix.package == 'packages/orchestrator'
+        run: |
+          echo "::group::system info"
+          echo "PAGESIZE=$(getconf PAGESIZE)"
+          echo "uname -a: $(uname -a)"
+          echo "uname -m: $(uname -m)"
+          echo "uname -r: $(uname -r)"
+          echo "/proc/cpuinfo (first 20 lines):"
+          head -20 /proc/cpuinfo
+          echo "/proc/meminfo (first 10 lines):"
+          head -10 /proc/meminfo
+          echo "hugepages dir:"
+          ls /sys/kernel/mm/hugepages/ 2>/dev/null || echo "(none)"
+          echo "::endgroup::"
 
       - name: Setup orchestrator tests
         run: |
