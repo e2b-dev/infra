@@ -2,7 +2,6 @@ package header
 
 import (
 	"bytes"
-	"fmt"
 
 	"go.opentelemetry.io/otel"
 )
@@ -15,21 +14,23 @@ const (
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage/header")
 
-var (
-	EmptyHugePage = make([]byte, HugepageSize)
-	EmptyBlock    = make([]byte, RootfsBlockSize)
-)
+var EmptyHugePage = make([]byte, HugepageSize)
 
-func IsEmptyBlock(block []byte, blockSize int64) (bool, error) {
-	var emptyBuf []byte
-	switch blockSize {
-	case HugepageSize:
-		emptyBuf = EmptyHugePage
-	case RootfsBlockSize:
-		emptyBuf = EmptyBlock
-	default:
-		return false, fmt.Errorf("block size not supported: %d", blockSize)
+// IsZero reports whether b is all-zero. Samples first/middle/last byte to
+// reject most non-zero buffers from one cache line, then falls back to
+// bytes.Equal(b[:n-1], b[1:]) — true iff every adjacent pair is equal, i.e.
+// all bytes equal b[0] (which the sample already proved is zero).
+func IsZero(b []byte) bool {
+	n := len(b)
+	if n == 0 {
+		return true
+	}
+	if b[0]|b[n-1]|b[n/2] != 0 {
+		return false
+	}
+	if n <= 3 {
+		return true
 	}
 
-	return bytes.Equal(block, emptyBuf), nil
+	return bytes.Equal(b[:n-1], b[1:])
 }
