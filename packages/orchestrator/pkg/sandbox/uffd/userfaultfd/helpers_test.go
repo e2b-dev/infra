@@ -311,7 +311,12 @@ func (h *testHandler) executeRead(ctx context.Context, op operation) error {
 
 	readBytes := (*h.memoryArea)[op.offset : op.offset+int64(h.pagesize)]
 
-	// bytes.Equal is the first access to uffd-managed memory, triggering the pagefault.
+	// MADV_POPULATE_READ faults the page in via syscall, so the goroutine sits
+	// in _Gsyscall while the kernel waits for UFFDIO_COPY — STW can preempt.
+	if err := unix.Madvise(readBytes, unix.MADV_POPULATE_READ); err != nil {
+		return fmt.Errorf("madvise POPULATE_READ at offset %d: %w", op.offset, err)
+	}
+
 	if !bytes.Equal(readBytes, expectedBytes) {
 		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
 
@@ -331,7 +336,14 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
-	n := copy((*h.memoryArea)[op.offset:op.offset+int64(h.pagesize)], bytesToWrite)
+	writeBytes := (*h.memoryArea)[op.offset : op.offset+int64(h.pagesize)]
+
+	// MADV_POPULATE_WRITE: see executeRead for why we fault via syscall.
+	if err := unix.Madvise(writeBytes, unix.MADV_POPULATE_WRITE); err != nil {
+		return fmt.Errorf("madvise POPULATE_WRITE at offset %d: %w", op.offset, err)
+	}
+
+	n := copy(writeBytes, bytesToWrite)
 	if n != int(h.pagesize) {
 		return fmt.Errorf("copy length mismatch: want %d, got %d", h.pagesize, n)
 	}
