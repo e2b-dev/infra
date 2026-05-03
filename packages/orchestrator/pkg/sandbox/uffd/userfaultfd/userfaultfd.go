@@ -57,7 +57,7 @@ type Userfaultfd struct {
 	// settleRequests guards the pageTracker / prefetchTracker. Workers take
 	// RLock for the lookup→install→SetRange sequence; the REMOVE batch takes
 	// Lock so a concurrent worker can't overwrite a removed state.
-	settleRequests  sync.RWMutex
+	settleRequests sync.RWMutex
 
 	// readSerial serializes serve-loop iterations (read+apply) with snapshot-time
 	// Export. Workers do NOT touch this lock — it must remain disjoint from
