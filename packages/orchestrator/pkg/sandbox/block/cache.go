@@ -59,7 +59,6 @@ type Cache struct {
 	size      int64
 	blockSize int64
 	mmap      *mmap.MMap
-	file      *os.File // kept open for fallocate(PUNCH_HOLE) in WriteZeroesAt; nil when size == 0
 	mu        sync.RWMutex
 	state     *StateTracker[blockState]
 	dirtyFile bool
@@ -72,16 +71,14 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		return nil, fmt.Errorf("error opening file: %w", err)
 	}
 
+	defer f.Close()
+
 	state, err := NewStateTracker(blockUntouched, blockDirty, blockZero)
 	if err != nil {
-		f.Close()
-
 		return nil, fmt.Errorf("error creating state tracker: %w", err)
 	}
 
 	if size == 0 {
-		f.Close()
-
 		return &Cache{
 			filePath:  filePath,
 			size:      size,
@@ -92,28 +89,22 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 	}
 
 	// This should create a sparse file on Linux.
-	if err := f.Truncate(size); err != nil {
-		f.Close()
-
+	err = f.Truncate(size)
+	if err != nil {
 		return nil, fmt.Errorf("error allocating file: %w", err)
 	}
 
 	if size > math.MaxInt {
-		f.Close()
-
 		return nil, fmt.Errorf("size too big: %d > %d", size, math.MaxInt)
 	}
 
 	mm, err := mmap.MapRegion(f, int(size), mmap.RDWR, 0, 0)
 	if err != nil {
-		f.Close()
-
 		return nil, fmt.Errorf("error mapping file: %w", err)
 	}
 
 	return &Cache{
 		mmap:      &mm,
-		file:      f,
 		filePath:  filePath,
 		size:      size,
 		blockSize: blockSize,
@@ -278,12 +269,6 @@ func (c *Cache) Close() (e error) {
 		e = errors.Join(e, fmt.Errorf("error unmapping mmap: %w", err))
 	}
 
-	if c.file != nil {
-		if err := c.file.Close(); err != nil {
-			e = errors.Join(e, fmt.Errorf("error closing cache file: %w", err))
-		}
-	}
-
 	// TODO: Move to to the scope of the caller
 	e = errors.Join(e, os.RemoveAll(c.filePath))
 
@@ -415,11 +400,9 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 }
 
 // WriteZeroesAt records [off, off+length) as zero. Aligned full blocks are
-// punched (FALLOC_FL_PUNCH_HOLE) so the page cache is freed immediately
-// (the cache file lives on tmpfs in prod) and the diff carries no payload
-// for them. Reads via mmap still return zero. Sub-block head/tail share a
-// block with neighbouring data and stay Dirty. NBD's NO_HOLE hint is
-// intentionally ignored.
+// hole-punched (see punchHole) so the diff carries no payload for them and
+// tmpfs reclaims the pages immediately. Sub-block head/tail share a block
+// with neighbouring data and stay Dirty. NBD's NO_HOLE hint is ignored.
 func (c *Cache) WriteZeroesAt(off, length int64) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -462,14 +445,13 @@ func (c *Cache) WriteZeroesAt(off, length int64) (int, error) {
 	return int(end - off), nil
 }
 
+// punchHole frees the backing pages for [off, off+length) so neither the
+// snapshot diff nor tmpfs RAM carries them. MADV_REMOVE is the in-kernel
+// equivalent of fallocate(PUNCH_HOLE | KEEP_SIZE) routed through the mmap,
+// which lets us avoid keeping a separate *os.File around. Reads via mmap
+// after this fault back in as zeros.
 func (c *Cache) punchHole(off, length int64) error {
-	err := unix.Fallocate(
-		int(c.file.Fd()),
-		unix.FALLOC_FL_PUNCH_HOLE|unix.FALLOC_FL_KEEP_SIZE,
-		off,
-		length,
-	)
-	if err != nil {
+	if err := unix.Madvise((*c.mmap)[off:off+length], unix.MADV_REMOVE); err != nil {
 		return fmt.Errorf("punch hole at %d-%d: %w", off, off+length, err)
 	}
 
