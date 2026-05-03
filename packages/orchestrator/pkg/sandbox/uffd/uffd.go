@@ -13,6 +13,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
@@ -162,6 +163,11 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 		return fmt.Errorf("expected 1 fd: found %d", len(fds))
 	}
 
+	// ParseUnixRights doesn't set FD_CLOEXEC; mark it so a later fork can't leak.
+	if err := setCloexec(fds[0]); err != nil {
+		return fmt.Errorf("failed to set FD_CLOEXEC on uffd fd: %w", err)
+	}
+
 	m := memory.NewMapping(regions)
 
 	uffd, err := userfaultfd.NewUserfaultfdFromFd(
@@ -218,6 +224,12 @@ func (u *Uffd) Exit() *utils.ErrorOnce {
 // It *MUST* be only called after the sandbox was successfully paused via API and after the snapshot endpoint was called.
 func (u *Uffd) DiffMetadata(ctx context.Context, f *fc.Process) (*header.DiffMetadata, error) {
 	return f.DirtyMemory(ctx, u.memfile.BlockSize())
+}
+
+func setCloexec(fd int) error {
+	_, err := unix.FcntlInt(uintptr(fd), unix.F_SETFD, unix.FD_CLOEXEC)
+
+	return err
 }
 
 // PrefetchData returns page fault data for prefetch mapping.
