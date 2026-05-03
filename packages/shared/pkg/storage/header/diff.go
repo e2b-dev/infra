@@ -18,8 +18,9 @@ var EmptyHugePage = make([]byte, HugepageSize)
 
 // IsZero reports whether b is all-zero. Samples first/middle/last byte to
 // reject most non-zero buffers from one cache line, then falls back to
-// bytes.Equal(b[:n-1], b[1:]) — true iff every adjacent pair is equal, i.e.
-// all bytes equal b[0] (which the sample already proved is zero).
+// bytes.Equal(b[:n-1], b[1:]): true exactly when every adjacent pair of
+// bytes is equal, i.e. all bytes equal b[0] (which the sample already
+// proved is zero).
 func IsZero(b []byte) bool {
 	n := len(b)
 	if n == 0 {
