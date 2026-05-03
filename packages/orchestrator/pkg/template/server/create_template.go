@@ -65,6 +65,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		return nil, fmt.Errorf("invalid resolved firecracker version %q: %w", firecrackerVersion, err)
 	}
 	hugePages := fcInfo.HasHugePages()
+	freePageReporting := fcInfo.HasFreePageReporting() && s.featureFlags.BoolFlag(ctx, featureflags.FreePageReportingFlag)
 
 	childSpan.SetAttributes(
 		telemetry.WithTemplateID(cfg.GetTemplateID()),
@@ -75,6 +76,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		attribute.Int64("env.memory_mb", int64(cfg.GetMemoryMB())),
 		attribute.Int64("env.vcpu_count", int64(cfg.GetVCpuCount())),
 		attribute.Bool("env.huge_pages", hugePages),
+		attribute.Bool("env.free_page_reporting", freePageReporting),
 	)
 
 	template := config.TemplateConfig{
@@ -88,7 +90,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		ReadyCmd:             cfg.GetReadyCommand(),
 		DiskSizeMB:           int64(cfg.GetDiskSizeMB()),
 		HugePages:            hugePages,
-		FreePageReporting:    cfg.GetFreePageReporting(),
+		FreePageReporting:    freePageReporting,
 		FromImage:            cfg.GetFromImage(),
 		FromTemplate:         cfg.GetFromTemplate(),
 		RegistryAuthProvider: authProvider,
