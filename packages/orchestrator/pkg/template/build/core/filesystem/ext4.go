@@ -77,9 +77,7 @@ func Mount(ctx context.Context, rootfsPath string, mountPoint string) error {
 	ctx, mountSpan := tracer.Start(ctx, "mount-ext4")
 	defer mountSpan.End()
 
-	// loop,discard: the loop driver translates BLKDISCARD on the mounted ext4
-	// into fallocate(PUNCH_HOLE) on the backing rootfs.ext4 file, so any
-	// deletions during the build phase keep the template file sparse on disk.
+	// discard: loop driver translates BLKDISCARD into fallocate(PUNCH_HOLE) on rootfs.ext4, keeping it sparse.
 	cmd := exec.CommandContext(ctx, "mount", "-o", "loop,discard", rootfsPath, mountPoint)
 
 	mountStdoutWriter := telemetry.NewEventWriter(ctx, "stdout")

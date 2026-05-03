@@ -70,8 +70,6 @@ func (o *Overlay) WriteAt(p []byte, off int64) (int, error) {
 	return o.cache.WriteAt(p, off)
 }
 
-// WriteZeroesAt records [off, off+length) as zero in the diff without
-// shipping payload bytes.
 func (o *Overlay) WriteZeroesAt(off, length int64) (int, error) {
 	return o.cache.WriteZeroesAt(off, length)
 }

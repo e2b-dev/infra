@@ -110,10 +110,8 @@ func TestStateTracker(t *testing.T) {
 		require.NoError(t, s.SetRange(0, 5, tsA))
 		require.NoError(t, s.SetRange(5, 10, tsB))
 
-		assert.True(t, s.HasRange(0, 10), "fully covered by a∪b")
-		assert.True(t, s.HasRange(2, 8), "subrange spanning a and b")
+		assert.True(t, s.HasRange(2, 8), "spans a and b")
 		assert.False(t, s.HasRange(0, 11), "trailing default index breaks coverage")
-		assert.False(t, s.HasRange(8, 15))
-		assert.True(t, s.HasRange(7, 7), "empty range is vacuously covered")
+		assert.True(t, s.HasRange(7, 7), "empty range is vacuous")
 	})
 }

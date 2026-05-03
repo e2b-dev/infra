@@ -132,11 +132,7 @@ func NewDiffMetadataBuilder(blockSize int64) *DiffMetadataBuilder {
 func (b *DiffMetadataBuilder) Process(ctx context.Context, block []byte, out io.Writer, offset int64) error {
 	blockIdx := BlockIdx(offset, b.blockSize)
 
-	isEmpty, err := IsEmptyBlock(block, b.blockSize)
-	if err != nil {
-		return fmt.Errorf("error checking empty block: %w", err)
-	}
-	if isEmpty {
+	if IsZero(block) {
 		b.empty.Add(uint32(blockIdx))
 
 		return nil

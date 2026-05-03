@@ -364,9 +364,7 @@ func (p *Process) Create(
 		"i8042.noaux":      "",
 		"random.trust_cpu": "on",
 
-		// Mount the rootfs with online discard so ext4 issues NBD_CMD_TRIM on
-		// freed blocks. Combined with WRITE_ZEROES the orchestrator NBD server
-		// elides those blocks from the snapshot diff (see sandbox/nbd).
+		// discard: ext4 issues NBD_CMD_TRIM on freed blocks; the orchestrator NBD server elides them from the snapshot diff.
 		"rootflags": "discard",
 	}
 

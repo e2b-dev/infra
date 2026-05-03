@@ -30,8 +30,5 @@ type ReadonlyDevice interface {
 type Device interface {
 	ReadonlyDevice
 	io.WriterAt
-	// WriteZeroesAt records [off, off+length) as zero. Implementations should
-	// represent this without writing payload bytes when possible (e.g. by
-	// marking the range as Empty in a snapshot diff).
 	WriteZeroesAt(off, length int64) (int, error)
 }

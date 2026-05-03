@@ -45,10 +45,6 @@ var dispatchBufPool = sync.Pool{
 type Provider interface {
 	storage.SeekableReader
 	io.WriterAt
-	// WriteZeroesAt records [off, off+length) as zero. Used for both
-	// NBD_CMD_WRITE_ZEROES and NBD_CMD_TRIM (TRIM is advisory per the spec;
-	// we resolve the ambiguity by guaranteeing zero-on-read so trimmed
-	// regions can be elided from the diff).
 	WriteZeroesAt(off, length int64) (int, error)
 }
 
@@ -61,13 +57,7 @@ const (
 	dispatchMaxWriteBufferSize = 32 * 1024 * 1024
 )
 
-// NBD Commands.
-//
-// The corresponding NBD_CMD_FLAG_* bits (FUA, NO_HOLE, DF, REQ_ONE, FAST_ZERO)
-// arrive in Request.Flags. We currently ignore all of them: writes are durable
-// by virtue of the kernel committing on snapshot, NO_HOLE is moot because
-// shrinking the diff is the entire point, and DF/REQ_ONE only matter for
-// structured replies which we don't speak.
+// NBD Commands
 const (
 	NBDCmdRead        uint16 = 0
 	NBDCmdWrite       uint16 = 1
@@ -82,9 +72,14 @@ const (
 	NBDResponseMagic = 0x67446698
 )
 
-// NBD Request packet. Wire layout (big-endian, total 28 bytes):
+// NBD Request packet. Wire layout (big-endian, 28 bytes total):
 //
 //	magic(4) | flags(2) | type(2) | handle(8) | from(8) | length(4)
+//
+// Spec: https://github.com/NetworkBlockDevice/nbd/blob/master/doc/proto.md#request-message
+//
+// Flags carries the NBD_CMD_FLAG_* bits and is intentionally ignored — split
+// from Type so a non-zero flag bit doesn't corrupt the command opcode.
 type Request struct {
 	Magic  uint32
 	Flags  uint16
@@ -270,8 +265,7 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 				}
 			case NBDCmdTrim:
 				rp += 28
-				// TRIM is advisory; we treat it as WRITE_ZEROES so trimmed
-				// regions can be elided from snapshot diffs.
+				// TRIM is advisory; route to WRITE_ZEROES so trimmed regions are elided from the diff.
 				err := d.cmdWriteZeroes(ctx, request.Handle, request.From, int64(request.Length))
 				if err != nil {
 					return err
@@ -375,10 +369,6 @@ func (d *Dispatch) cmdRead(ctx context.Context, cmdHandle uint64, cmdFrom uint64
 	return nil
 }
 
-// cmdWrite forwards the payload to the provider verbatim. Zero-detection
-// (turning all-zero blocks within the buffer into hole punches so they don't
-// reach the snapshot diff) lives in block.Cache, where it can split sub-block
-// runs and share state with WriteZeroesAt. Mirrors qemu's detect-zeroes=unmap.
 func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdData []byte) error {
 	d.shuttingDownLock.Lock()
 	if d.shuttingDown {
@@ -446,10 +436,6 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 	return nil
 }
 
-// cmdWriteZeroes handles NBD_CMD_WRITE_ZEROES (and TRIM, which we route here).
-// The request carries no payload, so the goroutine just delegates to the
-// provider and writes the response. Errors on the backend are signalled in
-// the NBD response byte; only writeResponse failures (dead socket) escalate.
 func (d *Dispatch) cmdWriteZeroes(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength int64) error {
 	d.shuttingDownLock.Lock()
 	if d.shuttingDown {

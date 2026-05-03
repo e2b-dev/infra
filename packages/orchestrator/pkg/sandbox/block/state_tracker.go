@@ -87,9 +87,8 @@ func (t *StateTracker[S]) Get(idx uint32) S {
 }
 
 // HasRange reports whether every index in [start, end) is in some non-default
-// state. The two bitmaps are disjoint by construction, so summing their
-// per-bitmap cardinalities in the range gives the union cardinality without
-// allocating a merged bitmap.
+// state. The two bitmaps are disjoint, so their per-range cardinalities sum
+// to the union cardinality without allocating.
 func (t *StateTracker[S]) HasRange(start, end uint64) bool {
 	if end <= start {
 		return true

@@ -25,17 +25,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-// blockState classifies cached blocks for diff export and read fall-through.
-//   - blockUntouched: no guest write; reads fall through to the template.
-//   - blockDirty:     guest wrote bytes; copied verbatim into the diff.
-//   - blockZero:      guest wrote zeros (or trimmed); recorded in Empty so the
-//     diff carries no payload bytes for it.
 type blockState uint8
 
 const (
 	blockUntouched blockState = iota
-	blockDirty
-	blockZero
+	blockDirty                // copied verbatim into the diff
+	blockZero                 // recorded in Empty; no payload in the diff
 )
 
 const (
@@ -64,10 +59,7 @@ type Cache struct {
 	size      int64
 	blockSize int64
 	mmap      *mmap.MMap
-	// file is kept open for the lifetime of the cache so WriteZeroesAt can
-	// fallocate(PUNCH_HOLE) without re-opening on every guest zero/discard.
-	// nil iff size == 0 (no mmap, no file ops).
-	file      *os.File
+	file      *os.File // kept open for fallocate(PUNCH_HOLE) in WriteZeroesAt; nil when size == 0
 	mu        sync.RWMutex
 	state     *StateTracker[blockState]
 	dirtyFile bool
@@ -353,9 +345,6 @@ func (c *Cache) isCached(off, length int64) bool {
 	return c.state.HasRange(start, end)
 }
 
-// setIsCached marks the byte range as resident in the cache (blockDirty),
-// signalling that subsequent reads must be served from the mmap rather than
-// fetched from the template.
 func (c *Cache) setIsCached(off, length int64) {
 	c.markBlocks(off, length, blockDirty)
 }
@@ -364,20 +353,13 @@ func (c *Cache) markBlocks(off, length int64, s blockState) {
 	start := uint64(header.BlockIdx(off, c.blockSize))
 	end := uint64(header.BlockCeilIdx(off+length, c.blockSize))
 	if err := c.state.SetRange(start, end, s); err != nil {
-		// Should be unreachable: blockUntouched/Dirty/Zero are wired in NewCache.
-		panic(fmt.Errorf("cache: state.SetRange %d-%d: %w", start, end, err))
+		panic(err) // unreachable: states are wired in NewCache
 	}
 }
 
-// WriteAtWithoutLock copies b into the mmap. Aligned full blocks are screened
-// per-block with header.IsZero so all-zero sub-blocks (zero padding inside an
-// otherwise non-zero buffer, scratch wipes, qcow2-style preallocation) are
-// routed through the same hole-punch path as WriteZeroesAt and never become
-// snapshot payload. Sub-block head/tail bytes share their block with
-// neighbouring data and stay Dirty unconditionally.
-//
-// You must ensure thread safety, ideally by only writing to the same block
-// once and then exposing the slice.
+// WriteAtWithoutLock copies b into the mmap. Aligned full blocks of zeros
+// are punched and tracked as Empty so they never reach the diff (mirrors
+// qemu's detect-zeroes=unmap). Caller must ensure thread safety.
 func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	if c.isClosed() {
 		return 0, NewErrCacheClosed(c.filePath)
@@ -403,17 +385,15 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	}
 
 	for i := bodyStart; i < bodyEnd; {
-		chunk := b[i-off : i-off+bs]
-		if !header.IsZero(chunk) {
-			copy((*c.mmap)[i:i+bs], chunk)
+		if !header.IsZero(b[i-off : i-off+bs]) {
+			copy((*c.mmap)[i:i+bs], b[i-off:i-off+bs])
 			c.markBlocks(i, bs, blockDirty)
 			i += bs
 
 			continue
 		}
-		// Coalesce contiguous zero blocks into one fallocate call so a big
-		// all-zero write (e.g. dd if=/dev/zero of=…) doesn't pay one syscall
-		// per 4 KiB block.
+		// Coalesce contiguous zero blocks so an all-zero write costs one
+		// fallocate, not one per block.
 		runEnd := i + bs
 		for runEnd < bodyEnd && header.IsZero(b[runEnd-off:runEnd-off+bs]) {
 			runEnd += bs
@@ -434,20 +414,12 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	return int(end - off), nil
 }
 
-// WriteZeroesAt records that [off, off+length) reads as zero. Used for both
-// NBD WRITE_ZEROES and TRIM.
-//
-// Aligned, fully-covered blocks are punched out of the underlying sparse file
-// (FALLOC_FL_PUNCH_HOLE) and marked Empty in the diff. Punching releases the
-// host-side cache pages immediately — important because the cache file lives
-// on tmpfs in production. Reads after the punch return zero from the mmap
-// hole, even if the block previously held dirty bytes.
-//
-// Sub-block head/tail share their block with neighbouring data, so we can't
-// claim the whole block as Empty — write zeros into the mmap and mark Dirty.
-//
-// The kernel's NBD_CMD_FLAG_NO_HOLE hint is intentionally ignored: shrinking
-// the diff is the entire point.
+// WriteZeroesAt records [off, off+length) as zero. Aligned full blocks are
+// punched (FALLOC_FL_PUNCH_HOLE) so the page cache is freed immediately
+// (the cache file lives on tmpfs in prod) and the diff carries no payload
+// for them. Reads via mmap still return zero. Sub-block head/tail share a
+// block with neighbouring data and stay Dirty. NBD's NO_HOLE hint is
+// intentionally ignored.
 func (c *Cache) WriteZeroesAt(off, length int64) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
