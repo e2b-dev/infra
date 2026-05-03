@@ -15,10 +15,8 @@ type StateTracker[S comparable] struct {
 	bmA, bmB     *roaring.Bitmap
 }
 
-// NewStateTracker requires three distinct states. Duplicates are a
-// programming error — the switch in SetRange would silently favour the
-// first matching case and corrupt bitmap state — so we reject them at
-// construction rather than defer the bug to a later SetRange call.
+// NewStateTracker requires three distinct states; duplicates would alias in
+// SetRange's switch and silently corrupt the bitmaps.
 func NewStateTracker[S comparable](defaultState, a, b S) (*StateTracker[S], error) {
 	if defaultState == a || defaultState == b || a == b {
 		return nil, fmt.Errorf("block.NewStateTracker: states must be distinct (default=%v a=%v b=%v)", defaultState, a, b)
@@ -33,9 +31,7 @@ func NewStateTracker[S comparable](defaultState, a, b S) (*StateTracker[S], erro
 	}, nil
 }
 
-// SetRange takes uint64 because roaring's range API allows end = 1<<32
-// (the half-open upper bound of a 32-bit bitmap); Get stays uint32 since
-// no 33-bit value can ever be a bitmap member.
+// SetRange takes uint64 to allow end = 1<<32 (roaring's half-open upper bound).
 func (t *StateTracker[S]) SetRange(start, end uint64, state S) error {
 	if end <= start {
 		return nil
@@ -55,10 +51,7 @@ func (t *StateTracker[S]) SetRange(start, end uint64, state S) error {
 		t.bmA.RemoveRange(start, end)
 		t.bmB.RemoveRange(start, end)
 	default:
-		// S is constrained only to comparable, so the compiler can't
-		// prove exhaustiveness. A silent no-op here would hide a
-		// programming error (caller added a state but forgot to wire
-		// it); surfacing an error makes it fail fast in tests.
+		// S is only `comparable`, so the compiler can't prove exhaustiveness.
 		return fmt.Errorf("block.StateTracker.SetRange: unsupported state %v (only default=%v a=%v b=%v allowed)", state, t.defaultState, t.a, t.b)
 	}
 

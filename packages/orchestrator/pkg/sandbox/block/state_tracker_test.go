@@ -15,9 +15,6 @@ const (
 	tsB
 )
 
-// TestStateTracker exercises every transition pair (default↔a, default↔b,
-// a↔b, idempotent same-state) and confirms the two non-default bitmaps
-// stay disjoint.
 func TestStateTracker(t *testing.T) {
 	t.Parallel()
 
