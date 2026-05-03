@@ -49,7 +49,12 @@ job "api" {
 
         "traefik.http.routers.api.rule=HostRegexp(`api.{domain:.+}`)",
         "traefik.http.routers.api.ruleSyntax=v2",
-        "traefik.http.routers.api.priority=500"
+        "traefik.http.routers.api.priority=500",
+        "traefik.http.routers.api.service=api",
+%{ if internal_tls_ca_pool != "" }
+        "traefik.http.services.api.loadbalancer.server.scheme=https",
+        "traefik.http.services.api.loadbalancer.serverstransport=api-internal-tls@file",
+%{ endif }
       ]
 
       check {

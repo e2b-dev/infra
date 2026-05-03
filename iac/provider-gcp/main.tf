@@ -242,9 +242,14 @@ module "nomad" {
   clickhouse_node_pool             = var.clickhouse_node_pool
 
   # Ingress
-  ingress_port         = var.ingress_port
-  ingress_count        = var.ingress_count
-  traefik_config_files = var.traefik_config_files
+  ingress_port  = var.ingress_port
+  ingress_count = var.ingress_count
+  traefik_config_files = merge(var.traefik_config_files, local.api_backend_tls_enabled ? {
+    "api-internal-tls.toml" = <<-EOT
+      [http.serversTransports.api-internal-tls]
+        insecureSkipVerify = true
+    EOT
+  } : {})
 
   # API
   api_server_count                                       = var.api_server_count

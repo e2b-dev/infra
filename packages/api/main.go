@@ -70,6 +70,9 @@ const (
 	// cancel r.Context(); see https://github.com/golang/go/issues/59602).
 	requestTimeout = 70 * time.Second
 
+	internalTLSIssueAttempts = 6
+	internalTLSIssueDelay    = 5 * time.Second
+
 	// This timeout should be > 600 (GCP LB upstream idle timeout) to prevent race condition
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
 	idleTimeout = 620 * time.Second
@@ -246,16 +249,24 @@ func listenAndServeAPI(s *http.Server, config cfg.Config) error {
 		return fmt.Errorf("both API_TLS_CERT_FILE and API_TLS_KEY_FILE must be set to serve TLS")
 	}
 
-	s.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	reloader, err := internalcert.NewReloader(config.APITLSCertFile, config.APITLSKeyFile)
+	if err != nil {
+		return err
+	}
+
+	s.TLSConfig = &tls.Config{
+		MinVersion:     tls.VersionTLS12,
+		GetCertificate: reloader.GetCertificate,
+	}
 	if err := http2.ConfigureServer(s, &http2.Server{}); err != nil {
 		return fmt.Errorf("configure API HTTP/2 server: %w", err)
 	}
 
-	return s.ListenAndServeTLS(config.APITLSCertFile, config.APITLSKeyFile)
+	return s.ListenAndServeTLS("", "")
 }
 
 func ensureInternalTLSCertificate(ctx context.Context, config cfg.Config, l logger.Logger) error {
-	result, err := internalcert.Ensure(ctx, internalcert.Config{
+	certConfig := internalcert.Config{
 		CertFile:               config.APITLSCertFile,
 		KeyFile:                config.APITLSKeyFile,
 		CAPool:                 config.InternalTLSCAPool,
@@ -264,7 +275,13 @@ func ensureInternalTLSCertificate(ctx context.Context, config cfg.Config, l logg
 		CertificateIDPrefix:    config.InternalTLSCertificateIDPrefix,
 		Lifetime:               config.InternalTLSCertLifetime,
 		RenewBefore:            config.InternalTLSRenewBefore,
-	})
+	}
+	retryConfig := internalcert.RetryConfig{
+		Attempts: internalTLSIssueAttempts,
+		Delay:    internalTLSIssueDelay,
+	}
+
+	result, err := internalcert.EnsureWithRetry(ctx, certConfig, retryConfig)
 	if err != nil {
 		return err
 	}
@@ -274,6 +291,14 @@ func ensureInternalTLSCertificate(ctx context.Context, config cfg.Config, l logg
 	}
 
 	l.Info(ctx, "Internal TLS certificate ready", zap.Bool("issued", result.Issued), zap.Time("expires_at", result.Expiry))
+	internalcert.StartRenewal(ctx, certConfig, internalcert.DefaultRenewPeriod, retryConfig, func(result internalcert.Result, err error) {
+		if err != nil {
+			l.Error(ctx, "failed to renew internal TLS certificate", zap.Error(err))
+			return
+		}
+
+		l.Info(ctx, "Internal TLS certificate renewed", zap.Bool("issued", result.Issued), zap.Time("expires_at", result.Expiry))
+	})
 
 	return nil
 }

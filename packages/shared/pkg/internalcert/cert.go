@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -15,6 +16,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	privateca "google.golang.org/api/privateca/v1"
@@ -23,6 +25,7 @@ import (
 const (
 	DefaultLifetime    = 90 * 24 * time.Hour
 	DefaultRenewBefore = 30 * 24 * time.Hour
+	DefaultRenewPeriod = 12 * time.Hour
 )
 
 type Config struct {
@@ -35,12 +38,20 @@ type Config struct {
 	Lifetime               time.Duration
 	RenewBefore            time.Duration
 	Now                    func() time.Time
+	Issuer                 Issuer
 }
 
 type Result struct {
 	Issued bool
 	Expiry time.Time
 }
+
+type RetryConfig struct {
+	Attempts int
+	Delay    time.Duration
+}
+
+type Issuer func(ctx context.Context, config Config, csr string, lifetime time.Duration) (*privateca.Certificate, error)
 
 func Ensure(ctx context.Context, config Config) (Result, error) {
 	if config.CAPool == "" {
@@ -93,7 +104,7 @@ func Ensure(ctx context.Context, config Config) (Result, error) {
 		return Result{}, err
 	}
 
-	cert, err := issueCertificate(ctx, config, string(csrPEM), lifetime)
+	cert, err := issuer(config)(ctx, config, string(csrPEM), lifetime)
 	if err != nil {
 		return Result{}, err
 	}
@@ -109,6 +120,152 @@ func Ensure(ctx context.Context, config Config) (Result, error) {
 	}
 
 	return Result{Issued: true, Expiry: leaf.NotAfter}, nil
+}
+
+func EnsureWithRetry(ctx context.Context, config Config, retry RetryConfig) (Result, error) {
+	attempts := retry.Attempts
+	if attempts == 0 {
+		attempts = 1
+	}
+
+	delay := retry.Delay
+	if delay == 0 {
+		delay = time.Second
+	}
+
+	var lastErr error
+	for attempt := range attempts {
+		result, err := Ensure(ctx, config)
+		if err == nil {
+			return result, nil
+		}
+
+		lastErr = err
+		if attempt == attempts-1 {
+			break
+		}
+
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return Result{}, ctx.Err()
+		case <-timer.C:
+		}
+	}
+
+	return Result{}, lastErr
+}
+
+type RenewFunc func(Result, error)
+
+func StartRenewal(ctx context.Context, config Config, period time.Duration, retry RetryConfig, onRenew RenewFunc) {
+	if config.CAPool == "" {
+		return
+	}
+
+	if period == 0 {
+		period = DefaultRenewPeriod
+	}
+
+	go func() {
+		ticker := time.NewTicker(period)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				result, err := EnsureWithRetry(ctx, config, retry)
+				if onRenew != nil {
+					onRenew(result, err)
+				}
+			}
+		}
+	}()
+}
+
+type Reloader struct {
+	certFile string
+	keyFile  string
+
+	mu      sync.RWMutex
+	cert    *tls.Certificate
+	certMod time.Time
+	keyMod  time.Time
+}
+
+func NewReloader(certFile string, keyFile string) (*Reloader, error) {
+	reloader := &Reloader{
+		certFile: certFile,
+		keyFile:  keyFile,
+	}
+
+	if err := reloader.reload(); err != nil {
+		return nil, err
+	}
+
+	return reloader, nil
+}
+
+func (r *Reloader) GetCertificate(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+	if err := r.reloadIfChanged(); err != nil {
+		return nil, err
+	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return r.cert, nil
+}
+
+func (r *Reloader) reloadIfChanged() error {
+	certInfo, err := os.Stat(r.certFile)
+	if err != nil {
+		return fmt.Errorf("stat internal TLS certificate: %w", err)
+	}
+
+	keyInfo, err := os.Stat(r.keyFile)
+	if err != nil {
+		return fmt.Errorf("stat internal TLS private key: %w", err)
+	}
+
+	r.mu.RLock()
+	unchanged := r.cert != nil && certInfo.ModTime().Equal(r.certMod) && keyInfo.ModTime().Equal(r.keyMod)
+	r.mu.RUnlock()
+
+	if unchanged {
+		return nil
+	}
+
+	return r.reload()
+}
+
+func (r *Reloader) reload() error {
+	certInfo, err := os.Stat(r.certFile)
+	if err != nil {
+		return fmt.Errorf("stat internal TLS certificate: %w", err)
+	}
+
+	keyInfo, err := os.Stat(r.keyFile)
+	if err != nil {
+		return fmt.Errorf("stat internal TLS private key: %w", err)
+	}
+
+	cert, err := tls.LoadX509KeyPair(r.certFile, r.keyFile)
+	if err != nil {
+		return fmt.Errorf("load internal TLS certificate pair: %w", err)
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.cert = &cert
+	r.certMod = certInfo.ModTime()
+	r.keyMod = keyInfo.ModTime()
+
+	return nil
 }
 
 func loadLeafCertificate(path string) (*x509.Certificate, error) {
@@ -188,6 +345,14 @@ func issueCertificate(ctx context.Context, config Config, csr string, lifetime t
 	return cert, nil
 }
 
+func issuer(config Config) Issuer {
+	if config.Issuer != nil {
+		return config.Issuer
+	}
+
+	return issueCertificate
+}
+
 func writePair(certFile string, certPEM []byte, keyFile string, keyPEM []byte) error {
 	if err := writeFileAtomic(certFile, certPEM, 0o644); err != nil {
 		return fmt.Errorf("write internal TLS certificate: %w", err)
@@ -240,6 +405,15 @@ func certificateID(prefix string) string {
 	cleanPrefix := strings.Trim(certificateIDCleaner.ReplaceAllString(strings.ToLower(prefix), "-"), "-")
 	if cleanPrefix == "" {
 		cleanPrefix = "internal-tls"
+	}
+	if cleanPrefix[0] < 'a' || cleanPrefix[0] > 'z' {
+		cleanPrefix = "internal-tls-" + cleanPrefix
+	}
+
+	const maxCertificateIDLength = 63
+	const suffixLength = 20
+	if len(cleanPrefix) > maxCertificateIDLength-suffixLength {
+		cleanPrefix = strings.Trim(cleanPrefix[:maxCertificateIDLength-suffixLength], "-")
 	}
 
 	suffix, err := rand.Int(rand.Reader, big.NewInt(1_000_000_000))
