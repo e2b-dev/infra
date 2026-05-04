@@ -269,3 +269,22 @@ func waitForStateChange(ctx context.Context, sbx *memorySandbox) error {
 
 	return transition.WaitWithContext(ctx)
 }
+
+// MarkKilled records that a sandbox was killed with the given reason.
+func (s *Storage) MarkKilled(_ context.Context, teamID uuid.UUID, sandboxID string, reason sandbox.KillReason) error {
+	info := sandbox.KillInfo{
+		Reason:   reason,
+		KilledAt: time.Now().UnixMilli(),
+	}
+	s.killed.Set(killedKey(teamID.String(), sandboxID), info)
+	return nil
+}
+
+// WasKilled checks if a sandbox was killed and returns the kill info.
+func (s *Storage) WasKilled(_ context.Context, teamID uuid.UUID, sandboxID string) (*sandbox.KillInfo, error) {
+	info, ok := s.killed.Get(killedKey(teamID.String(), sandboxID))
+	if !ok {
+		return nil, nil
+	}
+	return &info, nil
+}

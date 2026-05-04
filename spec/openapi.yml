@@ -145,6 +145,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    "410":
+      description: Gone - Resource was deleted and cannot be recovered
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     "500":
       description: Server error
       content:
@@ -2176,6 +2182,8 @@ paths:
                 $ref: "#/components/schemas/SandboxDetail"
         "404":
           $ref: "#/components/responses/404"
+        "410":
+          $ref: "#/components/responses/410"
         "401":
           $ref: "#/components/responses/401"
         "500":
@@ -2259,6 +2267,8 @@ paths:
           description: The sandbox was paused successfully and can be resumed
         "409":
           $ref: "#/components/responses/409"
+        "410":
+          $ref: "#/components/responses/410"
         "404":
           $ref: "#/components/responses/404"
         "401":
@@ -2292,6 +2302,8 @@ paths:
                 $ref: "#/components/schemas/Sandbox"
         "409":
           $ref: "#/components/responses/409"
+        "410":
+          $ref: "#/components/responses/410"
         "404":
           $ref: "#/components/responses/404"
         "401":
@@ -2334,6 +2346,10 @@ paths:
           $ref: "#/components/responses/401"
         "404":
           $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
+        "410":
+          $ref: "#/components/responses/410"
         "500":
           $ref: "#/components/responses/500"
 
@@ -2367,6 +2383,10 @@ paths:
           $ref: "#/components/responses/401"
         "404":
           $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
+        "410":
+          $ref: "#/components/responses/410"
         "500":
           $ref: "#/components/responses/500"
 
@@ -2411,6 +2431,8 @@ paths:
           $ref: "#/components/responses/404"
         "409":
           $ref: "#/components/responses/409"
+        "410":
+          $ref: "#/components/responses/410"
         "500":
           $ref: "#/components/responses/500"
 
@@ -2442,6 +2464,12 @@ paths:
           $ref: "#/components/responses/401"
         "404":
           $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
+        "410":
+          $ref: "#/components/responses/410"
+        "500":
+          $ref: "#/components/responses/500"
 
   /sandboxes/{sandboxID}/snapshots:
     post:
@@ -2476,6 +2504,10 @@ paths:
           $ref: "#/components/responses/401"
         "404":
           $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
+        "410":
+          $ref: "#/components/responses/410"
         "500":
           $ref: "#/components/responses/500"
 

@@ -102,7 +102,12 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 	sbx, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if err != nil {
 		if errors.Is(err, sandbox.ErrNotFound) {
-			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
+			// Check if the sandbox was killed (return 410 Gone) vs never existed (return 404 Not Found)
+			if killInfo := a.orchestrator.WasSandboxKilled(ctx, teamID, sandboxID); killInfo != nil {
+				a.sendAPIStoreError(c, http.StatusGone, utils.SandboxKilledMsg(sandboxID, killInfo))
+			} else {
+				a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
+			}
 		} else {
 			telemetry.ReportError(ctx, "error getting sandbox for snapshot", err)
 			a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get sandbox")
@@ -122,8 +127,14 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 	result, err := a.orchestrator.CreateSnapshotTemplate(ctx, teamID, sandboxID, opts)
 	if err != nil {
 		if errors.Is(err, sandbox.ErrNotFound) {
-			logger.L().Debug(ctx, "Sandbox not found for snapshot", logger.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
+			// Check if the sandbox was killed (return 410 Gone) vs never existed (return 404 Not Found)
+			if killInfo := a.orchestrator.WasSandboxKilled(ctx, teamID, sandboxID); killInfo != nil {
+				logger.L().Debug(ctx, "Sandbox was killed", logger.WithSandboxID(sandboxID))
+				a.sendAPIStoreError(c, http.StatusGone, utils.SandboxKilledMsg(sandboxID, killInfo))
+			} else {
+				logger.L().Debug(ctx, "Sandbox not found for snapshot", logger.WithSandboxID(sandboxID))
+				a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
+			}
 
 			return
 		}

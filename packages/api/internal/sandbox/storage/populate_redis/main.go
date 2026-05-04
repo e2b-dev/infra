@@ -91,6 +91,16 @@ func (m *PopulateRedisStorage) Reconcile(ctx context.Context, sandboxes []sandbo
 	return m.memoryBackend.Reconcile(ctx, sandboxes, nodeID)
 }
 
+// MarkKilled records that a sandbox was killed with the given reason. Writes to Redis for persistence.
+func (m *PopulateRedisStorage) MarkKilled(ctx context.Context, teamID uuid.UUID, sandboxID string, reason sandbox.KillReason) error {
+	return m.redisBackend.MarkKilled(ctx, teamID, sandboxID, reason)
+}
+
+// WasKilled checks if a sandbox was recently killed and returns the kill info. Reads from Redis.
+func (m *PopulateRedisStorage) WasKilled(ctx context.Context, teamID uuid.UUID, sandboxID string) (*sandbox.KillInfo, error) {
+	return m.redisBackend.WasKilled(ctx, teamID, sandboxID)
+}
+
 func NewStorage(
 	memoryStorage *memory.Storage,
 	redisStorage *redis.Storage,

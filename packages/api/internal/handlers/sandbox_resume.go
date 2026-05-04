@@ -91,7 +91,8 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 			}
 		case sandbox.StateKilling:
 			logger.L().Debug(ctx, "Sandbox is being killed, cannot resume", logger.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
+			killInfo := a.orchestrator.WasSandboxKilled(ctx, teamID, sandboxID)
+			a.sendAPIStoreError(c, http.StatusGone, utils.SandboxKilledMsg(sandboxID, killInfo))
 
 			return
 		case sandbox.StateSnapshotting:
@@ -124,6 +125,14 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	lastSnapshot, err := a.snapshotCache.Get(ctx, sandboxID)
 	if err != nil {
 		if errors.Is(err, snapshotcache.ErrSnapshotNotFound) {
+			// Check if the sandbox was killed (return 410 Gone) vs never existed (return 404 Not Found)
+			if killInfo := a.orchestrator.WasSandboxKilled(ctx, teamID, sandboxID); killInfo != nil {
+				logger.L().Debug(ctx, "Sandbox was killed", logger.WithSandboxID(sandboxID))
+				a.sendAPIStoreError(c, http.StatusGone, utils.SandboxKilledMsg(sandboxID, killInfo))
+
+				return
+			}
+
 			logger.L().Debug(ctx, "Snapshot not found", logger.WithSandboxID(sandboxID))
 			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
 

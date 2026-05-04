@@ -9,6 +9,7 @@ import (
 const (
 	sandboxKeyPrefix    = "sandbox:storage"
 	transitionKeyPrefix = "transition"
+	killedKeyPrefix     = "killed"
 	notifySuffix        = "notify"
 	sandboxesKey        = "sandboxes"
 	indexKey            = "index"
@@ -54,6 +55,10 @@ func getTransitionKey(teamID, sandboxID string) string {
 
 func getTransitionResultKey(teamID, sandboxID, transitionID string) string {
 	return redis_utils.CreateKey(getTransitionKey(teamID, sandboxID), transitionID)
+}
+
+func getKilledSandboxKey(teamID, sandboxID string) string {
+	return redis_utils.CreateKey(sandboxKeyPrefix, killedKeyPrefix, teamID, sandboxID)
 }
 
 // getTransitionRoutingKey returns the per-transition routing key embedded in the

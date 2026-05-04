@@ -100,6 +100,13 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 	if killedOrRemoved {
 		c.Status(http.StatusNoContent)
 	} else {
+		// Check if the sandbox was already killed (return 204 since DELETE is idempotent) vs never existed (return 404)
+		if killInfo := a.orchestrator.WasSandboxKilled(ctx, teamID, sandboxID); killInfo != nil {
+			c.Status(http.StatusNoContent)
+
+			return
+		}
+
 		logger.L().Debug(ctx, "Sandbox not found for deletion", logger.WithSandboxID(sandboxID))
 		a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
 	}

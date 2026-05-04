@@ -55,6 +55,12 @@ type Storage interface { //nolint: interfacebloat
 	StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts RemoveOpts) (Sandbox, bool, func(context.Context, error), error)
 	WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error
 	Reconcile(ctx context.Context, sandboxes []Sandbox, nodeID string) []Sandbox
+
+	// MarkKilled records that a sandbox was killed with the given reason, allowing 410 Gone responses.
+	MarkKilled(ctx context.Context, teamID uuid.UUID, sandboxID string, reason KillReason) error
+	// WasKilled checks if a sandbox was recently killed and returns the kill info.
+	// Returns nil if the sandbox was not killed.
+	WasKilled(ctx context.Context, teamID uuid.UUID, sandboxID string) (*KillInfo, error)
 }
 
 type Callbacks struct {
@@ -223,4 +229,12 @@ func (s *Store) Reserve(ctx context.Context, teamID uuid.UUID, sandboxID string,
 
 func (s *Store) Release(ctx context.Context, teamID uuid.UUID, sandboxID string) error {
 	return s.reservations.Release(ctx, teamID, sandboxID)
+}
+
+func (s *Store) MarkKilled(ctx context.Context, teamID uuid.UUID, sandboxID string, reason KillReason) error {
+	return s.storage.MarkKilled(ctx, teamID, sandboxID, reason)
+}
+
+func (s *Store) WasKilled(ctx context.Context, teamID uuid.UUID, sandboxID string) (*KillInfo, error) {
+	return s.storage.WasKilled(ctx, teamID, sandboxID)
 }

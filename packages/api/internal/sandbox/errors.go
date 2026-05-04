@@ -17,6 +17,24 @@ func (e *LimitExceededError) Error() string {
 
 var ErrNotFound = errors.New("sandbox not found")
 
+var ErrSandboxKilled = errors.New("sandbox was killed")
+
+// KillReason represents why a sandbox was terminated.
+type KillReason string
+
+const (
+	// KillReasonAPI indicates the sandbox was terminated via API request.
+	KillReasonAPI KillReason = "api"
+	// KillReasonEvicted indicates the sandbox was evicted due to timeout expiration.
+	KillReasonEvicted KillReason = "timeout"
+)
+
+// KillInfo contains information about when and why a sandbox was killed.
+type KillInfo struct {
+	Reason    KillReason
+	KilledAt  int64 // Unix timestamp in milliseconds
+}
+
 type InvalidStateTransitionError struct {
 	CurrentState State
 	TargetState  State

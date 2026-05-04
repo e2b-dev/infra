@@ -48,8 +48,17 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 	if err != nil {
 		switch {
 		case errors.As(err, &sbxNotRunningErr):
+			// If sandbox is being killed, return 410 Gone instead of 409 Conflict
+			if sbxNotRunningErr.State == sandbox.StateKilling {
+				killInfo := o.WasSandboxKilled(ctx, teamID, sandboxID)
+				return nil, &api.APIError{Code: http.StatusGone, ClientMsg: utils.SandboxKilledMsg(sandboxID, killInfo), Err: err}
+			}
 			return nil, &api.APIError{Code: http.StatusConflict, ClientMsg: utils.SandboxChangingStateMsg(sandboxID, sbxNotRunningErr.State), Err: err}
 		case errors.Is(err, sandbox.ErrNotFound):
+			// Check if the sandbox was killed (return 410 Gone) vs never existed (return 404 Not Found)
+			if killInfo := o.WasSandboxKilled(ctx, teamID, sandboxID); killInfo != nil {
+				return nil, &api.APIError{Code: http.StatusGone, ClientMsg: utils.SandboxKilledMsg(sandboxID, killInfo), Err: sandbox.ErrSandboxKilled}
+			}
 			return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: utils.SandboxNotFoundMsg(sandboxID), Err: err}
 		case errors.Is(err, errMaxInstanceLengthExceeded):
 			return nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: "Max instance length exceeded", Err: err}
@@ -60,6 +69,10 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 	err = o.UpdateSandbox(ctx, sandboxID, sbx.EndTime, sbx.ClusterID, sbx.NodeID)
 	if err != nil {
 		if errors.Is(err, ErrSandboxNotFound) {
+			// Check if the sandbox was killed (return 410 Gone) vs never existed (return 404 Not Found)
+			if killInfo := o.WasSandboxKilled(ctx, teamID, sandboxID); killInfo != nil {
+				return nil, &api.APIError{Code: http.StatusGone, ClientMsg: utils.SandboxKilledMsg(sandboxID, killInfo), Err: sandbox.ErrSandboxKilled}
+			}
 			return nil, &api.APIError{Code: http.StatusNotFound, ClientMsg: utils.SandboxNotFoundMsg(sandboxID), Err: err}
 		}
 

@@ -101,7 +101,8 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		// Sandbox is being stopped or already is stopped, user can't work with it anymore
 		case sandbox.StateKilling:
 			logger.L().Debug(ctx, "Sandbox is being killed", logger.WithSandboxID(sandboxId))
-			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(id))
+			killInfo := a.orchestrator.WasSandboxKilled(ctx, team.ID, sandboxId)
+			a.sendAPIStoreError(c, http.StatusGone, utils.SandboxKilledMsg(id, killInfo))
 
 			return
 		}
@@ -142,6 +143,13 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	lastSnapshot, err := a.snapshotCache.Get(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, snapshotcache.ErrSnapshotNotFound) {
+			// Check if the sandbox was killed (return 410 Gone) vs never existed (return 404 Not Found)
+			if killInfo := a.orchestrator.WasSandboxKilled(ctx, team.ID, sandboxId); killInfo != nil {
+				a.sendAPIStoreError(c, http.StatusGone, utils.SandboxKilledMsg(id, killInfo))
+
+				return
+			}
+
 			telemetry.ReportError(ctx, "snapshot not found", err, telemetry.WithSandboxID(sandboxId))
 			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(id))
 

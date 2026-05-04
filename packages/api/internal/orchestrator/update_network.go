@@ -64,8 +64,17 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 	if err != nil {
 		switch {
 		case errors.As(err, &sbxNotRunningErr):
+			// If sandbox is being killed, return 410 Gone instead of 409 Conflict
+			if sbxNotRunningErr.State == sandbox.StateKilling {
+				killInfo := o.WasSandboxKilled(ctx, teamID, sandboxID)
+				return &api.APIError{Code: http.StatusGone, ClientMsg: utils.SandboxKilledMsg(sandboxID, killInfo), Err: err}
+			}
 			return &api.APIError{Code: http.StatusConflict, ClientMsg: utils.SandboxChangingStateMsg(sandboxID, sbxNotRunningErr.State), Err: err}
 		case errors.Is(err, sandbox.ErrNotFound):
+			// Check if the sandbox was killed (return 410 Gone) vs never existed (return 404 Not Found)
+			if killInfo := o.WasSandboxKilled(ctx, teamID, sandboxID); killInfo != nil {
+				return &api.APIError{Code: http.StatusGone, ClientMsg: utils.SandboxKilledMsg(sandboxID, killInfo), Err: sandbox.ErrSandboxKilled}
+			}
 			return &api.APIError{Code: http.StatusNotFound, ClientMsg: utils.SandboxNotFoundMsg(sandboxID), Err: err}
 		default:
 			return &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error updating sandbox network config", Err: err}
