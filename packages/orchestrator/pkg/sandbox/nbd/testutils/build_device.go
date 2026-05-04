@@ -37,6 +37,10 @@ func (m *BuildDevice) Header() *header.Header {
 	return m.header
 }
 
+func (m *BuildDevice) SwapHeader(h *header.Header) {
+	m.header = h
+}
+
 func (m *BuildDevice) Size(_ context.Context) (int64, error) {
 	return int64(m.header.Metadata.Size), nil
 }

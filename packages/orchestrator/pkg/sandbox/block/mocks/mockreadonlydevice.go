@@ -377,3 +377,43 @@ func (_c *MockReadonlyDevice_Slice_Call) RunAndReturn(run func(ctx context.Conte
 	_c.Call.Return(run)
 	return _c
 }
+
+// SwapHeader provides a mock function for the type MockReadonlyDevice
+func (_mock *MockReadonlyDevice) SwapHeader(h *header.Header) {
+	_mock.Called(h)
+	return
+}
+
+// MockReadonlyDevice_SwapHeader_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SwapHeader'
+type MockReadonlyDevice_SwapHeader_Call struct {
+	*mock.Call
+}
+
+// SwapHeader is a helper method to define mock.On call
+//   - h *header.Header
+func (_e *MockReadonlyDevice_Expecter) SwapHeader(h interface{}) *MockReadonlyDevice_SwapHeader_Call {
+	return &MockReadonlyDevice_SwapHeader_Call{Call: _e.mock.On("SwapHeader", h)}
+}
+
+func (_c *MockReadonlyDevice_SwapHeader_Call) Run(run func(h *header.Header)) *MockReadonlyDevice_SwapHeader_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 *header.Header
+		if args[0] != nil {
+			arg0 = args[0].(*header.Header)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockReadonlyDevice_SwapHeader_Call) Return() *MockReadonlyDevice_SwapHeader_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *MockReadonlyDevice_SwapHeader_Call) RunAndReturn(run func(h *header.Header)) *MockReadonlyDevice_SwapHeader_Call {
+	_c.Run(run)
+	return _c
+}

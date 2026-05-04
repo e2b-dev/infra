@@ -10,13 +10,13 @@ import (
 // SerializeHeader serializes a header, dispatching to the version-specific format.
 //
 // V3 (Version <= 3): [Metadata] [v3 mappings…]
-// V4 (Version >= 4): [Metadata] [uint32 uncompressedSize] [LZ4( Builds + v4 mappings )]
+// V4 (Version >= 4): [Metadata] [uint8 flags] [uint32 uncompressedSize] [LZ4( Builds + v4 mappings )]
 func SerializeHeader(h *Header) ([]byte, error) {
 	if h.Metadata.Version <= 3 {
 		return serializeV3(h.Metadata, h.Mapping)
 	}
 
-	return serializeV4(h.Metadata, h.Builds, h.Mapping)
+	return serializeV4(h.Metadata, h.Builds, h.Mapping, h.IncompletePendingUpload)
 }
 
 // DeserializeBytes auto-detects the header version and deserializes accordingly.
@@ -56,20 +56,25 @@ func LoadHeader(ctx context.Context, s storage.StorageProvider, path string) (*H
 	return DeserializeBytes(data)
 }
 
-// StoreHeader serializes a header and uploads it to storage.
-// Inverse of LoadHeader.
-func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h *Header) ([]byte, error) {
+// StoreHeader serializes a header and uploads it to long-term storage.
+// Refuses to persist a header still flagged as in-flight — the upload pipeline
+// must clear IncompletePendingUpload before reaching here.
+func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h *Header) error {
+	if h.IncompletePendingUpload {
+		return fmt.Errorf("refusing to persist incomplete header for %s", path)
+	}
+
 	data, err := SerializeHeader(h)
 	if err != nil {
-		return nil, fmt.Errorf("serialize header: %w", err)
+		return fmt.Errorf("serialize header: %w", err)
 	}
 
 	blob, err := s.OpenBlob(ctx, path, storage.MetadataObjectType)
 	if err != nil {
-		return nil, fmt.Errorf("open blob %s: %w", path, err)
+		return fmt.Errorf("open blob %s: %w", path, err)
 	}
 
-	return data, blob.Put(ctx, data)
+	return blob.Put(ctx, data)
 }
 
 // Deserialize reads a header from a storage Blob (legacy API).

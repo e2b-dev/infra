@@ -34,7 +34,7 @@ func (p Paths) Memfile() string {
 }
 
 func (p Paths) MemfileHeader() string {
-	return fmt.Sprintf("%s/%s%s", p.BuildID, MemfileName, HeaderSuffix)
+	return p.HeaderFile(MemfileName)
 }
 
 func (p Paths) Rootfs() string {
@@ -42,7 +42,7 @@ func (p Paths) Rootfs() string {
 }
 
 func (p Paths) RootfsHeader() string {
-	return fmt.Sprintf("%s/%s%s", p.BuildID, RootfsName, HeaderSuffix)
+	return p.HeaderFile(RootfsName)
 }
 
 func (p Paths) Snapfile() string {
@@ -69,6 +69,12 @@ func (p Paths) DataFile(name string, ct CompressionType) string {
 	}
 
 	return fmt.Sprintf("%s/%s%s", p.BuildID, name, ct.Suffix())
+}
+
+// HeaderFile returns the storage path for a header sidecar of a data file
+// (e.g. "memfile" → "{buildID}/memfile.header").
+func (p Paths) HeaderFile(name string) string {
+	return fmt.Sprintf("%s/%s%s", p.BuildID, name, HeaderSuffix)
 }
 
 // SplitPath splits a storage path of the form "{buildID}/{fileName}"

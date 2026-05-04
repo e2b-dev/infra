@@ -110,15 +110,15 @@ var _ storage.StorageProvider = (*peerStorageProvider)(nil)
 type peerStorageProvider struct {
 	base       storage.StorageProvider
 	peerClient orchestrator.ChunkServiceClient
-	// uploaded is set when the peer signals GCS upload is complete (use_storage=true).
-	// Once non-nil, all subsequent reads skip the peer and go to base.
-	uploaded *atomic.Pointer[UploadedHeaders]
+	// uploaded is set to true when the peer signals that GCS upload is complete
+	// (use_storage=true). Once set, all subsequent reads skip the peer and go to base.
+	uploaded *atomic.Bool
 }
 
 func newPeerStorageProvider(
 	base storage.StorageProvider,
 	peerClient orchestrator.ChunkServiceClient,
-	uploaded *atomic.Pointer[UploadedHeaders],
+	uploaded *atomic.Bool,
 ) storage.StorageProvider {
 	return &peerStorageProvider{
 		base:       base,
@@ -167,18 +167,14 @@ func (p *peerStorageProvider) GetDetails() string {
 	return p.base.GetDetails()
 }
 
-// checkPeerAvailability marks the build as uploaded when UseStorage is set.
-func checkPeerAvailability(avail *orchestrator.PeerAvailability, uploaded *atomic.Pointer[UploadedHeaders]) bool {
+// checkPeerAvailability also marks the uploaded flag when UseStorage is set.
+func checkPeerAvailability(avail *orchestrator.PeerAvailability, uploaded *atomic.Bool) bool {
 	if avail.GetNotAvailable() {
 		return false
 	}
 
 	if avail.GetUseStorage() {
-		hdrs := &UploadedHeaders{
-			MemfileHeader: avail.GetMemfileHeader(),
-			RootfsHeader:  avail.GetRootfsHeader(),
-		}
-		uploaded.Store(hdrs)
+		uploaded.Store(true)
 
 		return false
 	}
@@ -190,7 +186,7 @@ type peerHandle[Base any] struct {
 	client   orchestrator.ChunkServiceClient
 	buildID  string
 	fileName string
-	uploaded *atomic.Pointer[UploadedHeaders]
+	uploaded *atomic.Bool
 
 	mu     sync.Mutex
 	base   Base
@@ -241,7 +237,7 @@ func withPeerFallback[Base, T any](
 	))
 	defer span.End()
 
-	if h.uploaded.Load() == nil {
+	if !h.uploaded.Load() {
 		timer := peerReadTimerFactory.Begin(opAttr)
 
 		res, err := peerFn(ctx)

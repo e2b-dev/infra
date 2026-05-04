@@ -20,6 +20,14 @@ var _ storage.Seekable = (*peerSeekable)(nil)
 // calls (e.g. ReadAt then OpenRangeReader) do not re-open the underlying GCS object.
 type peerSeekable struct {
 	peerHandle[storage.Seekable]
+
+	// transitionEmitted ensures we signal PeerTransitionedError at most once
+	// after the peer flips uploaded=true. The caller (build.File) reacts by
+	// loading the post-upload header from storage; whether that ends up V4
+	// (compressed) or V3 (no upgrade) determines how subsequent reads route.
+	// Either way, after the first emission we fall through to base so V3
+	// builds don't loop forever against PeerTransitionedError.
+	transitionEmitted atomic.Bool
 }
 
 func (s *peerSeekable) Size(ctx context.Context) (int64, error) {
@@ -69,14 +77,11 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length in
 			}, nil
 		},
 		func(ctx context.Context, base storage.Seekable) (io.ReadCloser, error) {
-			// Signal the caller to swap to V4 headers if compressed headers are available.
-			if s.uploaded != nil {
-				if hdrs := s.uploaded.Load(); hdrs != nil && (len(hdrs.MemfileHeader) > 0 || len(hdrs.RootfsHeader) > 0) {
-					return nil, &storage.PeerTransitionedError{
-						MemfileHeader: hdrs.MemfileHeader,
-						RootfsHeader:  hdrs.RootfsHeader,
-					}
-				}
+			// Signal the caller once to fetch the post-upload header from storage;
+			// thereafter fall through so V3 builds (no V4 to upgrade to) don't
+			// loop against PeerTransitionedError.
+			if s.uploaded != nil && s.uploaded.Load() && s.transitionEmitted.CompareAndSwap(false, true) {
+				return nil, &storage.PeerTransitionedError{}
 			}
 
 			return base.OpenRangeReader(ctx, off, length, frameTable)
@@ -101,7 +106,7 @@ func openPeerSeekableStream(
 	ctx context.Context,
 	client orchestrator.ChunkServiceClient,
 	req *orchestrator.ReadAtBuildSeekableRequest,
-	uploaded *atomic.Pointer[UploadedHeaders],
+	uploaded *atomic.Bool,
 ) (func() ([]byte, error), error) {
 	stream, err := client.ReadAtBuildSeekable(ctx, req)
 	if err != nil {

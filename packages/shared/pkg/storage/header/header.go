@@ -18,7 +18,7 @@ import (
 
 // BuildData holds per-build metadata stored in V4 headers.
 // Each layer's header carries a Builds map; child headers inherit parent
-// entries for still-referenced build IDs via NewHeaderWithBuilds.
+// entries for still-referenced build IDs via newDiffHeader.
 type BuildData struct {
 	Size      int64               // uncompressed file size
 	Checksum  [32]byte            // SHA-256 of uncompressed data; zero value means unknown
@@ -35,6 +35,13 @@ type Header struct {
 	Builds map[uuid.UUID]BuildData
 
 	Mapping []BuildMap
+
+	// IncompletePendingUpload is set on diff headers produced by ToDiffHeader and
+	// cleared on the finalized headers swapped in by the upload pipeline. It
+	// is in-memory only (never serialized), and signals that the build's data
+	// has not yet reached object storage — readers must serve from the local
+	// cache and skip FrameTable lookups for the still-missing self entry.
+	IncompletePendingUpload bool
 }
 
 // CloneForUpload returns a clone with copied Mapping and Builds, safe to
@@ -86,11 +93,7 @@ func NewHeader(metadata *Metadata, mapping []BuildMap) (*Header, error) {
 	}, nil
 }
 
-// NewHeaderWithBuilds creates a header and copies the subset of sourceBuilds
-// referenced by the mappings. This propagates ancestor build metadata through
-// the template chain (parent → child → grandchild).
-// Returns nil Builds when sourceBuilds is nil (V3 / uncompressed).
-func NewHeaderWithBuilds(metadata *Metadata, mapping []BuildMap, sourceBuilds map[uuid.UUID]BuildData) (*Header, error) {
+func newDiffHeader(metadata *Metadata, mapping []BuildMap, sourceBuilds map[uuid.UUID]BuildData) (*Header, error) {
 	h, err := NewHeader(metadata, mapping)
 	if err != nil {
 		return nil, err
@@ -109,6 +112,8 @@ func NewHeaderWithBuilds(metadata *Metadata, mapping []BuildMap, sourceBuilds ma
 			}
 		}
 	}
+
+	h.IncompletePendingUpload = true
 
 	return h, nil
 }

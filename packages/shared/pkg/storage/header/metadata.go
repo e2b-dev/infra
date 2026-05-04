@@ -151,7 +151,7 @@ func (d *DiffMetadata) ToDiffHeader(
 		attribute.String("snapshot.metadata.base_build_id", metadata.BaseBuildId.String()),
 	)
 
-	header, err := NewHeaderWithBuilds(metadata, m, originalHeader.Builds)
+	header, err := newDiffHeader(metadata, m, originalHeader.Builds)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}

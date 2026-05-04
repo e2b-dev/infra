@@ -147,6 +147,10 @@ func (d *Storage) Header() *header.Header {
 	return d.source.Header()
 }
 
+func (d *Storage) SwapHeader(h *header.Header) {
+	d.source.SwapHeader(h)
+}
+
 func (d *Storage) Close() error {
 	return nil
 }

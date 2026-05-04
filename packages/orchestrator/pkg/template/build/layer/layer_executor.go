@@ -34,7 +34,7 @@ type LayerExecutor struct {
 	templateStorage storage.StorageProvider
 	buildStorage    storage.StorageProvider
 	index           cache.Index
-	uploadTracker   *UploadTracker
+	uploads         *sandbox.Uploads
 	compressConfig  storage.CompressConfig
 	ff              *featureflags.Client
 }
@@ -48,7 +48,7 @@ func NewLayerExecutor(
 	templateStorage storage.StorageProvider,
 	buildStorage storage.StorageProvider,
 	index cache.Index,
-	uploadTracker *UploadTracker,
+	uploads *sandbox.Uploads,
 	compressConfig storage.CompressConfig,
 	ff *featureflags.Client,
 ) *LayerExecutor {
@@ -63,7 +63,7 @@ func NewLayerExecutor(
 		templateStorage: templateStorage,
 		buildStorage:    buildStorage,
 		index:           index,
-		uploadTracker:   uploadTracker,
+		uploads:         uploads,
 		compressConfig:  compressConfig,
 		ff:              ff,
 	}
@@ -283,35 +283,21 @@ func (lb *LayerExecutor) PauseAndUpload(
 	// Upload snapshot async, it's added to the template cache immediately
 	userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
 
-	// Register this upload and get functions to signal completion and wait for previous uploads
-	completeUpload, waitForPreviousUploads := lb.uploadTracker.StartUpload()
-	uploader := sandbox.NewBuildUploader(ctx, snapshot, lb.templateStorage, storage.Paths{BuildID: meta.Template.BuildID}, lb.compressConfig, lb.ff, storage.UseCaseBuild, lb.uploadTracker.Pending())
+	upload, err := sandbox.NewUpload(ctx, lb.uploads, snapshot, lb.templateStorage, lb.compressConfig, lb.ff, storage.UseCaseBuild)
+	if err != nil {
+		return fmt.Errorf("register upload: %w", err)
+	}
 
-	lb.UploadErrGroup.Go(func() error {
+	lb.UploadErrGroup.Go(func() (uploadErr error) {
 		ctx := context.WithoutCancel(ctx)
 		ctx, span := tracer.Start(ctx, "upload snapshot")
 		defer span.End()
 
-		// Always signal completion to unblock waiting goroutines, even on error.
-		// This prevents deadlocks when an earlier layer fails - later layers can
-		// still unblock and the errgroup can properly collect all errors.
-		defer completeUpload()
+		// Signal even on error so child layers waiting on this build can abort.
+		defer func() { upload.Finish(ctx, uploadErr) }()
 
-		if err := uploader.UploadData(ctx); err != nil {
-			return fmt.Errorf("error uploading data files: %w", err)
-		}
-
-		// Wait for all previous layer uploads to complete before saving the cache entry.
-		// This prevents race conditions where another build hits this cache entry
-		// before its dependencies (previous layers) are available in storage.
-		// For compressed builds, this also ensures all ancestor frame tables are
-		// available so headers can reference mappings from earlier layers.
-		if err := waitForPreviousUploads(ctx); err != nil {
-			return fmt.Errorf("error waiting for previous uploads: %w", err)
-		}
-
-		if _, _, err := uploader.FinalizeHeaders(ctx); err != nil {
-			return fmt.Errorf("error finalizing headers: %w", err)
+		if err := upload.Run(ctx); err != nil {
+			return fmt.Errorf("error uploading snapshot: %w", err)
 		}
 
 		if err := lb.index.SaveLayerMeta(ctx, hash, cache.LayerMetadata{
