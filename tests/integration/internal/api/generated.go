@@ -1400,6 +1400,9 @@ type N404 = Error
 // N409 defines model for 409.
 type N409 = Error
 
+// N410 defines model for 410.
+type N410 = Error
+
 // N500 defines model for 500.
 type N500 = Error
 
@@ -6222,6 +6225,7 @@ type GetSandboxesSandboxIDResponse struct {
 	JSON200      *SandboxDetail
 	JSON401      *N401
 	JSON404      *N404
+	JSON410      *N410
 	JSON500      *N500
 }
 
@@ -6249,6 +6253,8 @@ type PostSandboxesSandboxIDConnectResponse struct {
 	JSON400      *N400
 	JSON401      *N401
 	JSON404      *N404
+	JSON409      *N409
+	JSON410      *N410
 	JSON500      *N500
 }
 
@@ -6325,6 +6331,7 @@ type PutSandboxesSandboxIDNetworkResponse struct {
 	JSON401      *N401
 	JSON404      *N404
 	JSON409      *N409
+	JSON410      *N410
 	JSON500      *N500
 }
 
@@ -6350,6 +6357,7 @@ type PostSandboxesSandboxIDPauseResponse struct {
 	JSON401      *N401
 	JSON404      *N404
 	JSON409      *N409
+	JSON410      *N410
 	JSON500      *N500
 }
 
@@ -6374,6 +6382,9 @@ type PostSandboxesSandboxIDRefreshesResponse struct {
 	HTTPResponse *http.Response
 	JSON401      *N401
 	JSON404      *N404
+	JSON409      *N409
+	JSON410      *N410
+	JSON500      *N500
 }
 
 // Status returns HTTPResponse.Status
@@ -6399,6 +6410,7 @@ type PostSandboxesSandboxIDResumeResponse struct {
 	JSON401      *N401
 	JSON404      *N404
 	JSON409      *N409
+	JSON410      *N410
 	JSON500      *N500
 }
 
@@ -6425,6 +6437,8 @@ type PostSandboxesSandboxIDSnapshotsResponse struct {
 	JSON400      *N400
 	JSON401      *N401
 	JSON404      *N404
+	JSON409      *N409
+	JSON410      *N410
 	JSON500      *N500
 }
 
@@ -6449,6 +6463,8 @@ type PostSandboxesSandboxIDTimeoutResponse struct {
 	HTTPResponse *http.Response
 	JSON401      *N401
 	JSON404      *N404
+	JSON409      *N409
+	JSON410      *N410
 	JSON500      *N500
 }
 
@@ -8517,6 +8533,13 @@ func ParseGetSandboxesSandboxIDResponse(rsp *http.Response) (*GetSandboxesSandbo
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 410:
+		var dest N410
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON410 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -8577,6 +8600,20 @@ func ParsePostSandboxesSandboxIDConnectResponse(rsp *http.Response) (*PostSandbo
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 410:
+		var dest N410
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON410 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
@@ -8726,6 +8763,13 @@ func ParsePutSandboxesSandboxIDNetworkResponse(rsp *http.Response) (*PutSandboxe
 		}
 		response.JSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 410:
+		var dest N410
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON410 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -8773,6 +8817,13 @@ func ParsePostSandboxesSandboxIDPauseResponse(rsp *http.Response) (*PostSandboxe
 		}
 		response.JSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 410:
+		var dest N410
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON410 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -8812,6 +8863,27 @@ func ParsePostSandboxesSandboxIDRefreshesResponse(rsp *http.Response) (*PostSand
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 410:
+		var dest N410
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON410 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
 
 	}
 
@@ -8859,6 +8931,13 @@ func ParsePostSandboxesSandboxIDResumeResponse(rsp *http.Response) (*PostSandbox
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 410:
+		var dest N410
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON410 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
@@ -8914,6 +8993,20 @@ func ParsePostSandboxesSandboxIDSnapshotsResponse(rsp *http.Response) (*PostSand
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 410:
+		var dest N410
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON410 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -8953,6 +9046,20 @@ func ParsePostSandboxesSandboxIDTimeoutResponse(rsp *http.Response) (*PostSandbo
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 410:
+		var dest N410
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON410 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500

@@ -47,9 +47,9 @@ const (
 
 // TransitionInfo contains information about an ongoing state transition.
 type TransitionInfo struct {
-	ToState     State            `json:"toState"`
-	Reason      TransitionReason `json:"reason"`
-	StartedAt   int64            `json:"startedAt"` // Unix timestamp in milliseconds
+	ToState   State            `json:"toState"`
+	Reason    TransitionReason `json:"reason"`
+	StartedAt int64            `json:"startedAt"` // Unix timestamp in milliseconds
 }
 
 type InvalidStateTransitionError struct {
