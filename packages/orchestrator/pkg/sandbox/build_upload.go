@@ -15,14 +15,15 @@ import (
 )
 
 type Upload struct {
-	buildID uuid.UUID
-	snap    *Snapshot
-	paths   storage.Paths
-	uploads *Uploads
-	store   storage.StorageProvider
-	mem     storage.CompressConfig
-	root    storage.CompressConfig
-	future  *utils.ErrorOnce
+	buildID        uuid.UUID
+	snap           *Snapshot
+	paths          storage.Paths
+	uploads        *Uploads
+	store          storage.StorageProvider
+	mem            storage.CompressConfig
+	root           storage.CompressConfig
+	objectMetadata storage.ObjectMetadata
+	future         *utils.ErrorOnce
 }
 
 func NewUpload(
@@ -33,15 +34,17 @@ func NewUpload(
 	cfg storage.CompressConfig,
 	ff *featureflags.Client,
 	useCase string,
+	objectMetadata storage.ObjectMetadata,
 ) (*Upload, error) {
 	u := &Upload{
-		buildID: snap.BuildID,
-		snap:    snap,
-		paths:   storage.Paths{BuildID: snap.BuildID.String()},
-		uploads: uploads,
-		store:   store,
-		mem:     storage.ResolveCompressConfig(ctx, cfg, ff, storage.MemfileName, useCase),
-		root:    storage.ResolveCompressConfig(ctx, cfg, ff, storage.RootfsName, useCase),
+		buildID:        snap.BuildID,
+		snap:           snap,
+		paths:          storage.Paths{BuildID: snap.BuildID.String()},
+		uploads:        uploads,
+		store:          store,
+		mem:            storage.ResolveCompressConfig(ctx, cfg, ff, storage.MemfileName, useCase),
+		root:           storage.ResolveCompressConfig(ctx, cfg, ff, storage.RootfsName, useCase),
+		objectMetadata: objectMetadata,
 	}
 
 	if uploads != nil {

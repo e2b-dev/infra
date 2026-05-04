@@ -94,10 +94,11 @@ module "client_proxy" {
   node_pool   = var.api_node_pool
   environment = var.environment
 
-  redis_url           = var.redis_url
-  redis_cluster_url   = var.redis_cluster_url
-  redis_tls_ca_base64 = var.redis_tls_ca_base64
-  image               = data.aws_ecr_image.client_proxy.image_uri
+  redis_url                 = var.redis_url
+  redis_cluster_url         = var.redis_cluster_url
+  redis_tls_ca_base64       = var.redis_tls_ca_base64
+  image                     = data.aws_ecr_image.client_proxy.image_uri
+  api_internal_grpc_address = "api-internal-grpc.service.consul:${var.api_internal_grpc_port}"
 
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
   logs_collector_address       = "http://localhost:${var.logs_proxy_port}"
@@ -121,6 +122,7 @@ module "api" {
   logs_collector_address         = "http://localhost:${var.logs_proxy_port}"
   port_name                      = "api"
   port_number                    = var.api_port
+  api_internal_grpc_port         = var.api_internal_grpc_port
   environment                    = var.environment
   api_docker_image               = data.aws_ecr_image.api.image_uri
   postgres_connection_string     = var.postgres_connection_string
@@ -180,6 +182,7 @@ module "orchestrator" {
   envd_timeout                 = var.envd_timeout
   template_bucket_name         = var.template_bucket_name
   allow_sandbox_internet       = var.allow_sandbox_internet
+  allow_sandbox_internal_cidrs = var.allow_sandbox_internal_cidrs
   clickhouse_connection_string = local.clickhouse_connection_string
   redis_url                    = var.redis_url
   redis_cluster_url            = var.redis_cluster_url

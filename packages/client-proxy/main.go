@@ -138,8 +138,21 @@ func run() int {
 	info.SetStatus(ctx, internal.Healthy)
 
 	var pausedSandboxResumer e2bproxy.PausedSandboxResumer
-	if strings.TrimSpace(config.ApiGrpcAddress) != "" {
-		pausedSandboxResumer, err = e2bproxy.NewGrpcPausedSandboxResumer(config.ApiGrpcAddress)
+	apiGRPCAddress := strings.TrimSpace(config.APIInternalGRPCAddress)
+	apiGRPCOAuthConfig := e2bproxy.GRPCOAuthConfig{}
+	apiGRPCUseTLS := false
+	if apiGRPCAddress == "" {
+		apiGRPCAddress = strings.TrimSpace(config.APIEdgeGRPCAddress)
+		apiGRPCUseTLS = true
+		apiGRPCOAuthConfig = e2bproxy.GRPCOAuthConfig{
+			ClientID:     config.APIEdgeGRPCOAuthClientID,
+			ClientSecret: config.APIEdgeGRPCOAuthClientSecret,
+			TokenURL:     config.APIEdgeGRPCOAuthTokenURL,
+		}
+	}
+
+	if apiGRPCAddress != "" {
+		pausedSandboxResumer, err = e2bproxy.NewGRPCPausedSandboxResumer(ctx, apiGRPCAddress, apiGRPCOAuthConfig, apiGRPCUseTLS)
 		if err != nil {
 			l.Error(ctx, "Failed to create paused sandbox checker", zap.Error(err))
 

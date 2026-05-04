@@ -162,8 +162,9 @@ func (o *awsObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	return io.Copy(dst, resp.Body)
 }
 
-func (o *awsObject) StoreFile(ctx context.Context, path string, cfg CompressConfig) (*FrameTable, [32]byte, error) {
-	if cfg.IsCompressionEnabled() {
+func (o *awsObject) StoreFile(ctx context.Context, path string, opts ...PutOption) (*FrameTable, [32]byte, error) {
+	p := ApplyPutOptions(opts)
+	if CompressConfigFromOpts(p).IsCompressionEnabled() {
 		return nil, [32]byte{}, errors.New("compressed uploads are not supported on AWS (builds target GCP only)")
 	}
 
@@ -187,9 +188,10 @@ func (o *awsObject) StoreFile(ctx context.Context, path string, cfg CompressConf
 	_, err = uploader.Upload(
 		ctx,
 		&s3.PutObjectInput{
-			Bucket: &o.bucketName,
-			Key:    &o.path,
-			Body:   f,
+			Bucket:   &o.bucketName,
+			Key:      &o.path,
+			Body:     f,
+			Metadata: p.Metadata,
 		},
 	)
 	if err == nil {
@@ -211,16 +213,17 @@ func (o *awsObject) StoreFile(ctx context.Context, path string, cfg CompressConf
 	return nil, [32]byte{}, err
 }
 
-func (o *awsObject) Put(ctx context.Context, data []byte) error {
+func (o *awsObject) Put(ctx context.Context, data []byte, opts ...PutOption) error {
 	ctx, cancel := context.WithTimeout(ctx, awsWriteTimeout)
 	defer cancel()
 
 	_, err := o.client.PutObject(
 		ctx,
 		&s3.PutObjectInput{
-			Bucket: &o.bucketName,
-			Key:    &o.path,
-			Body:   bytes.NewReader(data),
+			Bucket:   &o.bucketName,
+			Key:      &o.path,
+			Body:     bytes.NewReader(data),
+			Metadata: ApplyPutOptions(opts).Metadata,
 		},
 	)
 	if err != nil {

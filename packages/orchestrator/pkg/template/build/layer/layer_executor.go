@@ -283,7 +283,11 @@ func (lb *LayerExecutor) PauseAndUpload(
 	// Upload snapshot async, it's added to the template cache immediately
 	userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
 
-	upload, err := sandbox.NewUpload(ctx, lb.uploads, snapshot, lb.templateStorage, lb.compressConfig, lb.ff, storage.UseCaseBuild)
+	objectMetadata := storage.ObjectMetadata{
+		storage.ObjectMetadataTeamID: lb.BuildContext.Config.TeamID,
+	}
+
+	upload, err := sandbox.NewUpload(ctx, lb.uploads, snapshot, lb.templateStorage, lb.compressConfig, lb.ff, storage.UseCaseBuild, objectMetadata)
 	if err != nil {
 		return fmt.Errorf("register upload: %w", err)
 	}

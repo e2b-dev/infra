@@ -76,7 +76,7 @@ func (s *fakeSeekable) Size(_ context.Context) (int64, error) {
 	return int64(len(s.data)), nil
 }
 
-func (s *fakeSeekable) StoreFile(context.Context, string, storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
+func (s *fakeSeekable) StoreFile(context.Context, string, ...storage.PutOption) (*storage.FrameTable, [32]byte, error) {
 	panic("not used")
 }
 
@@ -422,7 +422,7 @@ func (s *panicSeekable) Size(_ context.Context) (int64, error) {
 	return int64(len(s.data)), nil
 }
 
-func (s *panicSeekable) StoreFile(context.Context, string, storage.CompressConfig) (*storage.FrameTable, [32]byte, error) {
+func (s *panicSeekable) StoreFile(context.Context, string, ...storage.PutOption) (*storage.FrameTable, [32]byte, error) {
 	panic("not used")
 }
 

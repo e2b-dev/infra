@@ -122,7 +122,7 @@ runs:
         SHARED_CHUNK_CACHE_PATH: "./.e2b-chunk-cache"
         REDIS_URL: "localhost:6379"
         # Client-proxy config
-        API_GRPC_ADDRESS: "localhost:5009"
+        API_INTERNAL_GRPC_ADDRESS: "localhost:5009"
         DEFAULT_PERSISTENT_VOLUME_TYPE: "test-volume-type"
         SANDBOX_STORAGE_BACKEND: "redis"
         COMPRESS_ENABLED: ${{ inputs.compress_enabled }}

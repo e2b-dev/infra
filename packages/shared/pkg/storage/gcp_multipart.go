@@ -138,8 +138,8 @@ type MultipartUploader struct {
 	token       string
 	client      *retryablehttp.Client
 	retryConfig RetryConfig
+	metadata    ObjectMetadata
 	baseURL     string // Allow overriding for testing
-	metadata    map[string]string
 
 	// Fields for partUploader interface
 	uploadID string
@@ -193,7 +193,7 @@ func (m *MultipartUploader) Close() error {
 	return nil
 }
 
-func NewMultipartUploaderWithRetryConfig(ctx context.Context, bucketName, objectName string, retryConfig RetryConfig, metadata map[string]string) (*MultipartUploader, error) {
+func NewMultipartUploaderWithRetryConfig(ctx context.Context, bucketName, objectName string, retryConfig RetryConfig, metadata ObjectMetadata) (*MultipartUploader, error) {
 	creds, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get credentials: %w", err)
@@ -210,8 +210,8 @@ func NewMultipartUploaderWithRetryConfig(ctx context.Context, bucketName, object
 		token:       token.AccessToken,
 		client:      createRetryableClient(ctx, retryConfig),
 		retryConfig: retryConfig,
-		baseURL:     fmt.Sprintf("https://%s.storage.googleapis.com", bucketName),
 		metadata:    metadata,
+		baseURL:     fmt.Sprintf("https://%s.storage.googleapis.com", bucketName),
 	}, nil
 }
 
@@ -226,7 +226,7 @@ func (m *MultipartUploader) initiateUpload(ctx context.Context) (string, error) 
 	req.Header.Set("Authorization", "Bearer "+m.token)
 	req.Header.Set("Content-Length", "0")
 	req.Header.Set("Content-Type", "application/octet-stream")
-
+	// Custom user metadata is set on initiate; the final object inherits it.
 	for k, v := range m.metadata {
 		req.Header.Set("x-goog-meta-"+k, v)
 	}

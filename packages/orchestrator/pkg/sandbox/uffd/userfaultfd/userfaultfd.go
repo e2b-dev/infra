@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -63,8 +64,19 @@ type Userfaultfd struct {
 	// defaultCopyMode overrides the UFFDIO_COPY mode for all faults when non-zero.
 	defaultCopyMode CULong
 
+	// testFaultHook is set only by SetTestFaultHook in test builds.
+	testFaultHook atomic.Pointer[func(uintptr, faultPhase)]
+
 	logger logger.Logger
 }
+
+// faultPhase identifies the worker fault hook call site (test-only).
+type faultPhase uint8
+
+const (
+	faultPhaseBeforeRLock faultPhase = iota
+	faultPhaseBeforeFaultPage
+)
 
 // NewUserfaultfdFromFd creates a new userfaultfd instance with optional configuration.
 func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logger logger.Logger) (*Userfaultfd, error) {
@@ -250,6 +262,10 @@ func (u *Userfaultfd) Serve(
 			// For the write to be executed, we first need to copy the page from the source to the guest memory.
 			if flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
 				u.wg.Go(func() error {
+					if h := u.testFaultHook.Load(); h != nil {
+						(*h)(addr, faultPhaseBeforeRLock)
+					}
+
 					return u.faultPage(ctx, addr, offset, u.src, fdExit.SignalExit, block.Write)
 				})
 
@@ -260,6 +276,10 @@ func (u *Userfaultfd) Serve(
 			// If the event has no flags, it was a read to a missing page and we need to copy the page from the source to the guest memory.
 			if flags == 0 {
 				u.wg.Go(func() error {
+					if h := u.testFaultHook.Load(); h != nil {
+						(*h)(addr, faultPhaseBeforeRLock)
+					}
+
 					return u.faultPage(ctx, addr, offset, u.src, fdExit.SignalExit, block.Read)
 				})
 
@@ -298,6 +318,10 @@ func (u *Userfaultfd) faultPage(
 	// and another caller observing the pageTracker or prefetchTracker.
 	u.settleRequests.RLock()
 	defer u.settleRequests.RUnlock()
+
+	if h := u.testFaultHook.Load(); h != nil {
+		(*h)(addr, faultPhaseBeforeFaultPage)
+	}
 
 	defer func() {
 		if r := recover(); r != nil {

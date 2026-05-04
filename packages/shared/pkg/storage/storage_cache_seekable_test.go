@@ -93,7 +93,7 @@ func TestCachedFileObjectProvider_WriteFromFileSystem(t *testing.T) {
 
 		inner := NewMockSeekable(t)
 		inner.EXPECT().
-			StoreFile(mock.Anything, mock.Anything, CompressConfig{}).
+			StoreFile(mock.Anything, mock.Anything).
 			Return(nil, [32]byte{}, nil)
 
 		featureFlags := NewMockFeatureFlagsClient(t)
@@ -103,7 +103,7 @@ func TestCachedFileObjectProvider_WriteFromFileSystem(t *testing.T) {
 		c := cachedSeekable{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags, tracer: noopTracer}
 
 		// write temp file
-		_, _, err = c.StoreFile(t.Context(), tempFilename, CompressConfig{})
+		_, _, err = c.StoreFile(t.Context(), tempFilename)
 		require.NoError(t, err)
 
 		// file is written asynchronously, wait for it to finish

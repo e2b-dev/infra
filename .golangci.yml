@@ -59,11 +59,27 @@ linters:
     - wsl
     - wsl_v5
 
+  exclusions:
+    rules:
+      - path: '^packages/db/pkg/dberrors/dberrors\.go$'
+        linters:
+          - forbidigo
+      - path: '.*_test\.go$'
+        text: "Use github.com/e2b-dev/infra/packages/db/pkg/dberrors.IsNotFoundError instead."
+        linters:
+          - forbidigo
+
   settings:
     forbidigo:
       forbid:
         - pattern: "^new$"
           msg: "Use &Type{} instead."
+        - pattern: '.*\.ErrNoRows$'
+          pkg: '^database/sql$'
+          msg: "Use github.com/e2b-dev/infra/packages/db/pkg/dberrors.IsNotFoundError instead."
+        - pattern: '.*\.ErrNoRows$'
+          pkg: '^github\.com/jackc/pgx/v5$'
+          msg: "Use github.com/e2b-dev/infra/packages/db/pkg/dberrors.IsNotFoundError instead."
     #        - pattern: os\.Getenv
     #          msg: "Add your field to the configuration model instead."
         - pattern: 'zap\.New$'

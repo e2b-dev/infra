@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/RoaringBitmap/roaring/v2"
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils/testharness"
 )
 
 type testConfig struct {
@@ -26,6 +28,8 @@ type testConfig struct {
 	operations []operation
 	// alwaysWP makes the handler copy with UFFDIO_COPY_MODE_WP for all faults.
 	alwaysWP bool
+	// barriers enables the per-worker fault hook (race tests only).
+	barriers bool
 }
 
 type operationMode uint32
@@ -33,33 +37,25 @@ type operationMode uint32
 const (
 	operationModeRead operationMode = 1 << iota
 	operationModeWrite
+	operationModeServePause
+	operationModeServeResume
+	// operationModeSleep pauses for a short duration to let async goroutines
+	// enter their blocking syscalls before proceeding.
+	operationModeSleep
 )
 
 type operation struct {
 	// Offset in bytes. Must be smaller than the (numberOfPages-1) * pagesize as it reads a page and it must be aligned to the pagesize from the testConfig.
 	offset int64
 	mode   operationMode
+	// async runs the operation in a background goroutine.
+	async bool
 }
 
-// handlerPageStates is a snapshot of the pageTracker grouped by state. It
-// lets tests assert on the set of pages that the handler observed in each
-// state, rather than a flat list of "accessed" offsets. Follow-up PRs can
-// add more state-specific fields (e.g. removed) without touching the
-// existing call sites.
 type handlerPageStates struct {
 	faulted []uint
 }
 
-// allAccessed returns the sorted union of offsets that the handler touched
-// in any non-missing state. Tests that only care about "which pages did the
-// handler see" can compare directly against this.
-//
-// pageStatesOnce already returns each per-state slice sorted, and a page
-// has exactly one state at a time in pageTracker, so the per-state slices
-// are disjoint. Follow-up PRs that add more state-specific fields should
-// sorted-merge them here instead of reaching for a bitset — byte offsets
-// make poor bit indices (a single hugepage offset would force ~1.8 MB of
-// backing storage).
 func (s handlerPageStates) allAccessed() []uint {
 	return slices.Clone(s.faulted)
 }
@@ -68,18 +64,55 @@ type testHandler struct {
 	memoryArea *[]byte
 	pagesize   uint64
 	data       *MemorySlicer
-	// pageStatesOnce returns a per-state snapshot of the handler's pageTracker.
-	// It can only be called once.
-	pageStatesOnce func() (handlerPageStates, error)
-	mutex          sync.Mutex
+	client     *testharness.Client
+	mutex      sync.RWMutex
+}
+
+func (h *testHandler) pageStates() (handlerPageStates, error) {
+	entries, err := h.client.PageStates()
+	if err != nil {
+		return handlerPageStates{}, err
+	}
+
+	var states handlerPageStates
+	for _, e := range entries {
+		if pageState(e.State) == faulted {
+			states.faulted = append(states.faulted, uint(e.Offset))
+		}
+	}
+	slices.Sort(states.faulted)
+
+	return states, nil
 }
 
 func (h *testHandler) executeAll(t *testing.T, operations []operation) {
 	t.Helper()
 
+	var asyncErrors []chan error
+
 	for i, op := range operations {
+		if op.async {
+			errCh := make(chan error, 1)
+			asyncErrors = append(asyncErrors, errCh)
+
+			go func() {
+				errCh <- h.executeOperation(t.Context(), op)
+			}()
+
+			continue
+		}
+
 		err := h.executeOperation(t.Context(), op)
 		require.NoError(t, err, "step %d: %v at offset %d", i, op.mode, op.offset)
+	}
+
+	for _, errCh := range asyncErrors {
+		select {
+		case err := <-errCh:
+			require.NoError(t, err, "async operation")
+		case <-t.Context().Done():
+			t.Fatal("timed out waiting for async operation")
+		}
 	}
 }
 
@@ -135,18 +168,34 @@ func (h *testHandler) executeOperation(ctx context.Context, op operation) error 
 		return h.executeRead(ctx, op)
 	case operationModeWrite:
 		return h.executeWrite(ctx, op)
+	case operationModeServePause:
+		return h.client.Pause()
+	case operationModeServeResume:
+		return h.client.Resume()
+	case operationModeSleep:
+		time.Sleep(50 * time.Millisecond)
+
+		return nil
 	default:
 		return fmt.Errorf("invalid operation mode: %d", op.mode)
 	}
 }
 
 func (h *testHandler) executeRead(ctx context.Context, op operation) error {
-	readBytes := (*h.memoryArea)[op.offset : op.offset+int64(h.pagesize)]
-
 	expectedBytes, err := h.data.Slice(ctx, op.offset, int64(h.pagesize))
 	if err != nil {
 		return err
 	}
+
+	// Hold the read side of the memoryArea mutex while we touch the page.
+	// Reads can run concurrently with each other (RLock), but a parallel
+	// async write to the same page (executeWrite, write lock) is excluded
+	// so go test -race stays clean when a test plan mixes async read and
+	// async write at overlapping offsets.
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	readBytes := (*h.memoryArea)[op.offset : op.offset+int64(h.pagesize)]
 
 	// The bytes.Equal is the first place in this flow that actually touches the uffd managed memory and triggers the pagefault, so any deadlocks will manifest here.
 	if !bytes.Equal(readBytes, expectedBytes) {
@@ -165,6 +214,7 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 	}
 
 	// An unprotected parallel write to map might result in an undefined behavior.
+	// Lock excludes both other writers and any concurrent executeRead.
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 

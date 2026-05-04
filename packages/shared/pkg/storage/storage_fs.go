@@ -118,7 +118,7 @@ func (o *fsObject) WriteTo(_ context.Context, dst io.Writer) (int64, error) {
 	return io.Copy(dst, handle)
 }
 
-func (o *fsObject) Put(_ context.Context, data []byte) error {
+func (o *fsObject) Put(_ context.Context, data []byte, _ ...PutOption) error {
 	handle, err := o.getHandle(false)
 	if err != nil {
 		return err
@@ -130,7 +130,8 @@ func (o *fsObject) Put(_ context.Context, data []byte) error {
 	return err
 }
 
-func (o *fsObject) StoreFile(ctx context.Context, path string, cfg CompressConfig) (*FrameTable, [32]byte, error) {
+func (o *fsObject) StoreFile(ctx context.Context, path string, opts ...PutOption) (*FrameTable, [32]byte, error) {
+	cfg := CompressConfigFromOpts(ApplyPutOptions(opts))
 	if cfg.IsCompressionEnabled() {
 		ft, checksum, err := o.storeFileCompressed(ctx, path, cfg)
 		if err == nil {

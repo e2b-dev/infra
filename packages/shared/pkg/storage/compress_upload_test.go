@@ -418,7 +418,7 @@ func BenchmarkStoreFile(b *testing.B) {
 					outPath := filepath.Join(outDir, "output.dat")
 					obj := &fsObject{path: outPath}
 
-					ft, _, err := obj.StoreFile(b.Context(), inputPath, compCfg)
+					ft, _, err := obj.StoreFile(b.Context(), inputPath, WithCompressConfig(compCfg))
 					if err != nil {
 						b.Fatal(err)
 					}

@@ -212,6 +212,16 @@ variable "api_port" {
   }
 }
 
+variable "api_internal_grpc_port" {
+  type    = number
+  default = 5009
+}
+
+variable "client_proxy_oidc_issuer_url" {
+  type    = string
+  default = ""
+}
+
 variable "ingress_port" {
   type = object({
     name        = string
@@ -271,6 +281,12 @@ variable "nomad_port" {
 variable "allow_sandbox_internet" {
   type    = bool
   default = true
+}
+
+variable "allow_sandbox_internal_cidrs" {
+  type        = string
+  description = "Comma-separated CIDRs to allow through the sandbox firewall deny list (e.g. 10.0.0.1/32,10.0.0.2/32)"
+  default     = ""
 }
 
 variable "orchestrator_node_pool" {
@@ -749,6 +765,12 @@ variable "anywhere_cache_ttl" {
 variable "orchestrator_env_vars" {
   type    = map(string)
   default = {}
+}
+
+variable "orchestrator_enabled" {
+  type        = bool
+  default     = true
+  description = "Whether the orchestrator Nomad job should be deployed. Set to false to skip deployment without removing the module."
 }
 
 variable "traefik_config_files" {

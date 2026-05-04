@@ -18,6 +18,7 @@ require (
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.65.0
 	go.opentelemetry.io/otel/metric v1.43.0
 	go.uber.org/zap v1.27.1
+	golang.org/x/oauth2 v0.36.0
 	google.golang.org/grpc v1.80.0
 )
 

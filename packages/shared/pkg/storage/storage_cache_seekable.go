@@ -270,7 +270,7 @@ func (c *cachedSeekable) Size(ctx context.Context) (n int64, e error) {
 	return size, nil
 }
 
-func (c *cachedSeekable) StoreFile(ctx context.Context, path string, cfg CompressConfig) (_ *FrameTable, _ [32]byte, e error) {
+func (c *cachedSeekable) StoreFile(ctx context.Context, path string, opts ...PutOption) (_ *FrameTable, _ [32]byte, e error) {
 	ctx, span := c.tracer.Start(ctx, "write object from file system",
 		trace.WithAttributes(attribute.String("path", path)),
 	)
@@ -278,6 +278,8 @@ func (c *cachedSeekable) StoreFile(ctx context.Context, path string, cfg Compres
 		recordError(span, e)
 		span.End()
 	}()
+
+	cfg := CompressConfigFromOpts(ApplyPutOptions(opts))
 
 	// write the file to the disk and the remote system at the same time.
 	// this opens the file twice, but the API makes it difficult to use a MultiWriter
@@ -305,7 +307,7 @@ func (c *cachedSeekable) StoreFile(ctx context.Context, path string, cfg Compres
 		})
 	}
 
-	return c.inner.StoreFile(ctx, path, cfg)
+	return c.inner.StoreFile(ctx, path, opts...)
 }
 
 func (c *cachedSeekable) goCtx(ctx context.Context, fn func(context.Context)) {

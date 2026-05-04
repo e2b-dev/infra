@@ -179,7 +179,21 @@ func (d clustersSyncStore) PoolInsert(ctx context.Context, cluster queries.Clust
 	}
 
 	// Remote cluster
-	c, err = newRemoteCluster(context.WithoutCancel(ctx), d.tel, cluster.Endpoint, cluster.EndpointTls, cluster.Token, cluster.ID, cluster.SandboxProxyDomain)
+	authOrgID := ""
+	if cluster.AuthOrgID != nil {
+		authOrgID = *cluster.AuthOrgID
+	}
+
+	c, err = newRemoteCluster(
+		context.WithoutCancel(ctx),
+		d.tel,
+		cluster.Endpoint,
+		cluster.EndpointTls,
+		cluster.Token,
+		cluster.ID,
+		cluster.SandboxProxyDomain,
+		authOrgID,
+	)
 	if err != nil {
 		logger.L().Error(ctx, "Initializing remote cluster failed", zap.Error(err), logger.WithClusterID(cluster.ID))
 

@@ -764,9 +764,13 @@ func (s *Server) snapshotAndCacheSandbox(
 		return nil, fmt.Errorf("error adding snapshot to template cache: %w", err)
 	}
 
+	objectMetadata := storage.ObjectMetadata{
+		storage.ObjectMetadataTeamID: sbx.Runtime.TeamID,
+	}
+
 	// Register the upload only after the snapshot is in the local cache, so a
 	// failed AddSnapshot doesn't leave an orphan future blocking re-registration.
-	upload, err := sandbox.NewUpload(ctx, s.uploads, snapshot, s.persistence, s.config.StorageConfig.CompressConfig, s.featureFlags, storage.UseCasePause)
+	upload, err := sandbox.NewUpload(ctx, s.uploads, snapshot, s.persistence, s.config.StorageConfig.CompressConfig, s.featureFlags, storage.UseCasePause, objectMetadata)
 	if err != nil {
 		return nil, fmt.Errorf("register upload: %w", err)
 	}

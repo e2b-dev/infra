@@ -240,6 +240,8 @@ module "nomad" {
   api_machine_count                                      = var.api_cluster_size
   api_node_pool                                          = var.api_node_pool
   api_port                                               = var.api_port
+  api_internal_grpc_port                                 = var.api_internal_grpc_port
+  client_proxy_oidc_issuer_url                           = var.client_proxy_oidc_issuer_url
   environment                                            = var.environment
   google_service_account_key                             = module.init.google_service_account_key
   api_secret                                             = random_password.api_secret.result
@@ -298,6 +300,7 @@ module "nomad" {
   # Orchestrator
   orchestrator_node_pool         = var.orchestrator_node_pool
   allow_sandbox_internet         = var.allow_sandbox_internet
+  allow_sandbox_internal_cidrs   = var.allow_sandbox_internal_cidrs
   orchestrator_port              = var.orchestrator_port
   orchestrator_proxy_port        = var.orchestrator_proxy_port
   fc_env_pipeline_bucket_name    = module.init.fc_env_pipeline_bucket_name
@@ -305,6 +308,7 @@ module "nomad" {
   persistent_volume_mounts       = { for key, config in local.persistent_volume_types : key => config["local_mount_path"] }
   default_persistent_volume_type = var.default_persistent_volume_type
   orchestrator_env_vars          = var.orchestrator_env_vars
+  orchestrator_enabled           = var.orchestrator_enabled
 
   # Template manager
   builder_node_pool                   = var.build_node_pool

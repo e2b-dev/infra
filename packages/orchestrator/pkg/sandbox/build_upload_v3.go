@@ -40,12 +40,14 @@ func (u *Upload) runV3(ctx context.Context) error {
 		return headers.StoreHeader(ctx, u.store, u.paths.RootfsHeader(), finalizeV3(u.snap.RootfsDiffHeader))
 	})
 
+	meta := storage.WithMetadata(u.objectMetadata)
+
 	eg.Go(func() error {
 		if memfilePath == "" {
 			return nil
 		}
 
-		_, _, err := storage.UploadFramed(ctx, u.store, u.paths.Memfile(), storage.MemfileObjectType, memfilePath, storage.CompressConfig{})
+		_, _, err := storage.UploadFramed(ctx, u.store, u.paths.Memfile(), storage.MemfileObjectType, memfilePath, meta)
 
 		return err
 	})
@@ -55,17 +57,17 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		_, _, err := storage.UploadFramed(ctx, u.store, u.paths.Rootfs(), storage.RootFSObjectType, rootfsPath, storage.CompressConfig{})
+		_, _, err := storage.UploadFramed(ctx, u.store, u.paths.Rootfs(), storage.RootFSObjectType, rootfsPath, meta)
 
 		return err
 	})
 
 	eg.Go(func() error {
-		return storage.UploadBlob(ctx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path())
+		return storage.UploadBlob(ctx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), meta)
 	})
 
 	eg.Go(func() error {
-		return storage.UploadBlob(ctx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path())
+		return storage.UploadBlob(ctx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path(), meta)
 	})
 
 	if err := eg.Wait(); err != nil {

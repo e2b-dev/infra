@@ -15,6 +15,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/storageopts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -88,9 +89,36 @@ type StorageProvider interface {
 	GetDetails() string
 }
 
+type (
+	ObjectMetadata = storageopts.ObjectMetadata
+	PutOptions     = storageopts.PutOptions
+	PutOption      = storageopts.PutOption
+)
+
+const ObjectMetadataTeamID = storageopts.ObjectMetadataTeamID
+
+func WithMetadata(metadata ObjectMetadata) PutOption { return storageopts.WithMetadata(metadata) }
+
+// WithCompressConfig threads a typed CompressConfig through PutOptions. It is
+// stored as `any` in storageopts to avoid importing storage from there;
+// backends use CompressConfigFromOpts to pull it back out.
+func WithCompressConfig(cfg CompressConfig) PutOption { return storageopts.WithCompression(cfg) }
+
+func ApplyPutOptions(opts []PutOption) PutOptions { return storageopts.Apply(opts) }
+
+// CompressConfigFromOpts returns the typed CompressConfig set by
+// WithCompressConfig, or the zero value if absent.
+func CompressConfigFromOpts(p PutOptions) CompressConfig {
+	if c, ok := p.Compression.(CompressConfig); ok {
+		return c
+	}
+
+	return CompressConfig{}
+}
+
 type Blob interface {
 	WriteTo(ctx context.Context, dst io.Writer) (int64, error)
-	Put(ctx context.Context, data []byte) error
+	Put(ctx context.Context, data []byte, opts ...storageopts.PutOption) error
 	Exists(ctx context.Context) (bool, error)
 }
 
@@ -106,8 +134,8 @@ type StreamingReader interface {
 }
 
 type SeekableWriter interface {
-	// Store entire file
-	StoreFile(ctx context.Context, path string, cfg CompressConfig) (*FrameTable, [32]byte, error)
+	// Store entire file. Compression is opt-in via WithCompressConfig.
+	StoreFile(ctx context.Context, path string, opts ...PutOption) (*FrameTable, [32]byte, error)
 }
 
 type Seekable interface {
@@ -116,16 +144,16 @@ type Seekable interface {
 	Size(ctx context.Context) (int64, error)
 }
 
-func UploadFramed(ctx context.Context, provider StorageProvider, remotePath string, objType SeekableObjectType, localPath string, cfg CompressConfig) (*FrameTable, [32]byte, error) {
+func UploadFramed(ctx context.Context, provider StorageProvider, remotePath string, objType SeekableObjectType, localPath string, opts ...PutOption) (*FrameTable, [32]byte, error) {
 	object, err := provider.OpenSeekable(ctx, remotePath, objType)
 	if err != nil {
 		return nil, [32]byte{}, err
 	}
 
-	return object.StoreFile(ctx, localPath, cfg)
+	return object.StoreFile(ctx, localPath, opts...)
 }
 
-func UploadBlob(ctx context.Context, provider StorageProvider, remotePath string, objType ObjectType, localPath string) error {
+func UploadBlob(ctx context.Context, provider StorageProvider, remotePath string, objType ObjectType, localPath string, opts ...PutOption) error {
 	blob, err := provider.OpenBlob(ctx, remotePath, objType)
 	if err != nil {
 		return err
@@ -136,7 +164,7 @@ func UploadBlob(ctx context.Context, provider StorageProvider, remotePath string
 		return fmt.Errorf("failed to read file %s: %w", localPath, err)
 	}
 
-	return blob.Put(ctx, data)
+	return blob.Put(ctx, data, opts...)
 }
 
 // PeerTransitionedError is returned by the peer Seekable when the remote

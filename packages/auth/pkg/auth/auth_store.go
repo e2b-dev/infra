@@ -32,7 +32,12 @@ func validateTeamUsage(team authqueries.Team) error {
 	}
 
 	if team.IsBlocked {
-		return &TeamBlockedError{Message: "team is blocked"}
+		msg := "team is blocked"
+		if team.BlockedReason != nil && *team.BlockedReason != "" {
+			msg = fmt.Sprintf("%s: %s", msg, *team.BlockedReason)
+		}
+
+		return &TeamBlockedError{Message: msg}
 	}
 
 	return nil
@@ -60,6 +65,25 @@ func (s *AuthStoreImpl) GetTeamByHashedAPIKey(ctx context.Context, hashedKey str
 			logger.L().Error(ctx, "failed to update last time used", zap.Error(updateErr))
 		}
 	}()
+
+	team := types.NewTeam(&result.Team, &result.TeamLimit)
+
+	return team, nil
+}
+
+func (s *AuthStoreImpl) GetTeamByID(ctx context.Context, teamID uuid.UUID) (*types.Team, error) {
+	ctx, span := tracer.Start(ctx, "get team by id auth")
+	defer span.End()
+
+	result, err := s.authDB.Read.GetTeamWithTierByTeamID(ctx, teamID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get team from team ID: %w", err)
+	}
+
+	err = validateTeamUsage(result.Team)
+	if err != nil {
+		return nil, err
+	}
 
 	team := types.NewTeam(&result.Team, &result.TeamLimit)
 
