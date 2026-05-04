@@ -164,11 +164,15 @@ jobs:
 
       - name: Run tests that require sudo
         working-directory: ${{ matrix.package }}
+        # `sudo` strips PATH via secure_path, so we pass it explicitly via `env`
+        # to make the runner-installed go (1.25.9) and gotestsum visible to the
+        # root shell. `-E` keeps the rest of the env (HOST_BUSYBOX_DIR, GIN_MODE,
+        # etc). The trap hands the root-written reports back to the runner user
+        # even if tests fail, so the upload steps can still read them.
         run: |
-          sudo -E "$(which gotestsum)" --junitfile=junit.xml --format=standard-verbose \
+          trap 'sudo chown "$(id -u):$(id -g)" coverage.txt junit.xml 2>/dev/null || true' EXIT
+          sudo -E env "PATH=$PATH" gotestsum --junitfile=junit.xml --format=standard-verbose \
             -- -timeout 20m -coverprofile=coverage.txt -covermode=atomic ${{ matrix.test_path }}
-          # Hand the root-written reports back to the runner user so the upload actions can read them.
-          sudo chown "$(id -u):$(id -g)" coverage.txt junit.xml
         if: matrix.sudo == true
 
       - name: Compile test binaries
