@@ -10,6 +10,9 @@ import (
 	"os"
 	"sync"
 
+	"github.com/RoaringBitmap/roaring/v2"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils/testharness"
@@ -186,24 +189,24 @@ func (p *Paging) Resume(_ *testharness.Empty, _ *testharness.Empty) error {
 }
 
 // pageStateEntries returns a wire-format snapshot of pageTracker.
-// settleRequests.Lock drains fault workers (mirrors PrefetchData);
-// pageTracker.mu.RLock is defensive against a future REMOVE writer
-// that mutates pageTracker.m outside settleRequests.
+// settleRequests.Lock drains fault workers (mirrors PrefetchData) so
+// the snapshot is consistent w.r.t. concurrent installs.
 func (u *Userfaultfd) pageStateEntries() ([]testharness.PageStateEntry, error) {
 	u.settleRequests.Lock()
 	defer u.settleRequests.Unlock()
 
-	u.pageTracker.mu.RLock()
-	defer u.pageTracker.mu.RUnlock()
-
-	entries := make([]testharness.PageStateEntry, 0, len(u.pageTracker.m))
-	for addr, state := range u.pageTracker.m {
-		offset, err := u.ma.GetOffset(addr)
-		if err != nil {
-			return nil, fmt.Errorf("address %#x not in mapping: %w", addr, err)
+	bmDirty, bmZero := u.pageTracker.Export()
+	entries := make([]testharness.PageStateEntry, 0, bmDirty.GetCardinality()+bmZero.GetCardinality())
+	emit := func(bm *roaring.Bitmap, state block.State) {
+		for _, idx := range bm.ToArray() {
+			entries = append(entries, testharness.PageStateEntry{
+				State:  uint8(state),
+				Offset: uint64(idx) * uint64(u.pageSize),
+			})
 		}
-		entries = append(entries, testharness.PageStateEntry{State: uint8(state), Offset: uint64(offset)})
 	}
+	emit(bmDirty, block.Dirty)
+	emit(bmZero, block.Zero)
 
 	return entries, nil
 }

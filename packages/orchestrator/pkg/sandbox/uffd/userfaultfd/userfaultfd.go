@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/userfaultfd")
@@ -52,7 +53,7 @@ type Userfaultfd struct {
 	src         block.Slicer
 	ma          *memory.Mapping
 	pageSize    uintptr
-	pageTracker *pageTracker
+	pageTracker *block.Tracker
 
 	// We use the settleRequests to guard the pageTracker so we can access a consistent state of the pageTracker after the requests are finished.
 	settleRequests sync.RWMutex
@@ -92,7 +93,7 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 		fd:              Fd(fd),
 		src:             src,
 		pageSize:        uintptr(blockSize),
-		pageTracker:     newPageTracker(uintptr(blockSize)),
+		pageTracker:     block.NewTracker(),
 		prefetchTracker: block.NewPrefetchTracker(blockSize),
 		ma:              m,
 		logger:          logger,
@@ -418,7 +419,8 @@ retryLoop:
 		return fmt.Errorf("failed uffdio copy: %w", joinedErr)
 	}
 
-	u.pageTracker.setState(addr, addr+u.pageSize, faulted)
+	idx := uint32(header.BlockIdx(offset, int64(u.pageSize)))
+	u.pageTracker.SetRange(idx, idx+1, block.Dirty)
 	u.prefetchTracker.Add(offset, accessType)
 
 	return nil
