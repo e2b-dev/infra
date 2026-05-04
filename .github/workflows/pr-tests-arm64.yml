@@ -4,7 +4,6 @@ on:
   workflow_call:
     secrets:
       CODECOV_TOKEN: { required: false }
-      TRUNK_API_TOKEN: { required: false }
 
 permissions:
   contents: read
@@ -53,7 +52,6 @@ jobs:
       TESTCONTAINERS_RYUK_DISABLED: "true"
       # Surfaced as env so upload steps can gate on presence (skipped on fork PRs).
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-      TRUNK_API_TOKEN: ${{ secrets.TRUNK_API_TOKEN }}
     strategy:
       matrix:
         include:
@@ -195,13 +193,3 @@ jobs:
           files: ${{ matrix.package }}/junit.xml
           flags: ${{ matrix.flag }}
           disable_search: true
-
-      - name: Upload test results to Trunk
-        if: ${{ !cancelled() && env.TRUNK_API_TOKEN != '' && hashFiles(format('{0}/junit.xml', matrix.package)) != '' }}
-        continue-on-error: true
-        uses: trunk-io/analytics-uploader@v2
-        with:
-          junit-paths: ${{ matrix.package }}/junit.xml
-          org-slug: e2b
-          token: ${{ secrets.TRUNK_API_TOKEN }}
-          variant: unit-arm64

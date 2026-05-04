@@ -9,7 +9,6 @@ on:
         required: true
     secrets:
       CODECOV_TOKEN: { required: false }
-      TRUNK_API_TOKEN: { required: false }
 jobs:
   integration_tests:
     runs-on: infra-tests
@@ -20,7 +19,6 @@ jobs:
     env:
       # Surfaced as env so upload steps can gate on presence (skipped on fork PRs).
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-      TRUNK_API_TOKEN: ${{ secrets.TRUNK_API_TOKEN }}
 
     steps:
       - name: Checkout Code
@@ -93,16 +91,6 @@ jobs:
           files: tests/integration/test-results.xml
           flags: integration
           disable_search: true
-
-      - name: Upload test results to Trunk
-        if: ${{ !cancelled() && env.TRUNK_API_TOKEN != '' && hashFiles('tests/integration/test-results.xml') != '' }}
-        continue-on-error: true
-        uses: trunk-io/analytics-uploader@v2
-        with:
-          junit-paths: tests/integration/test-results.xml
-          org-slug: e2b
-          token: ${{ secrets.TRUNK_API_TOKEN }}
-          variant: integration
 
       - name: Upload Service Logs
         if: ${{ always() && inputs.publish == true }}
