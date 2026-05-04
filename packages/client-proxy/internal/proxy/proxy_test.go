@@ -98,6 +98,20 @@ func TestOrchestratorSandboxHost(t *testing.T) {
 			want:      ptr("49983-sbx.localhost"),
 		},
 		{
+			name:      "loopback IPv4",
+			host:      "127.0.0.1:3000",
+			sandboxID: "sbx",
+			port:      49983,
+			want:      ptr("49983-sbx.localhost"),
+		},
+		{
+			name:      "loopback IPv6",
+			host:      "[::1]:3000",
+			sandboxID: "sbx",
+			port:      49983,
+			want:      ptr("49983-sbx.localhost"),
+		},
+		{
 			name:      "sandbox shared host",
 			host:      "sandbox.e2b.app",
 			sandboxID: "sbx",

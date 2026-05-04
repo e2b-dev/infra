@@ -17,6 +17,8 @@ const (
 	HeaderRoutingEnabled
 )
 
+const SandboxSharedHostSubdomain = "sandbox."
+
 func GetTargetFromRequest(headerRouting HeaderRoutingMode) func(r *http.Request) (sandboxId string, port uint64, err error) {
 	return func(r *http.Request) (sandboxId string, port uint64, err error) {
 		if headerRouting == HeaderRoutingEnabled && shouldParseHeaders(r.Host) && hasRoutingHeaders(r.Header) {
@@ -47,13 +49,13 @@ func GetTargetFromRequest(headerRouting HeaderRoutingMode) func(r *http.Request)
 }
 
 func shouldParseHeaders(host string) bool {
-	host = requestHostname(host)
-	ip := net.ParseIP(host)
+	_, sharedHost := SandboxSharedHostDomain(host)
 
-	return host == "localhost" || (ip != nil && ip.IsLoopback()) || strings.HasPrefix(host, "sandbox.")
+	return IsLocalRequestHost(host) || sharedHost
 }
 
-func requestHostname(host string) string {
+// RequestHostname returns the hostname portion of an HTTP Host value.
+func RequestHostname(host string) string {
 	hostname, _, err := net.SplitHostPort(host)
 	if err == nil {
 		return hostname
@@ -64,6 +66,21 @@ func requestHostname(host string) string {
 	}
 
 	return host
+}
+
+// IsLocalRequestHost reports whether host targets localhost or a loopback IP.
+func IsLocalRequestHost(host string) bool {
+	host = RequestHostname(host)
+	ip := net.ParseIP(host)
+
+	return host == "localhost" || (ip != nil && ip.IsLoopback())
+}
+
+// SandboxSharedHostDomain returns the parent domain for a sandbox shared host.
+func SandboxSharedHostDomain(host string) (string, bool) {
+	domain, ok := strings.CutPrefix(RequestHostname(host), SandboxSharedHostSubdomain)
+
+	return domain, ok && domain != ""
 }
 
 func hasRoutingHeaders(h http.Header) bool {

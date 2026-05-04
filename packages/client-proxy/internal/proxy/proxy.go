@@ -26,8 +26,7 @@ import (
 )
 
 const (
-	orchestratorProxyPort      = 5007 // orchestrator proxy port
-	sandboxSharedHostSubdomain = "sandbox."
+	orchestratorProxyPort = 5007 // orchestrator proxy port
 
 	// This timeout should be > 600 (GCP LB upstream idle timeout) to prevent race condition
 	// Also it's a good practice to set it to a value higher than the idle timeout of the backend service
@@ -64,15 +63,14 @@ func normalizeNodeIP(nodeIP string) (string, error) {
 }
 
 func orchestratorSandboxHost(host string, sandboxID string, port uint64) *string {
-	hostname := strings.Split(host, ":")[0]
-	if hostname == "localhost" {
+	if reverseproxy.IsLocalRequestHost(host) {
 		orchestratorHost := fmt.Sprintf("%d-%s.localhost", port, sandboxID)
 
 		return &orchestratorHost
 	}
 
-	domain, ok := strings.CutPrefix(hostname, sandboxSharedHostSubdomain)
-	if !ok || domain == "" {
+	domain, ok := reverseproxy.SandboxSharedHostDomain(host)
+	if !ok {
 		return nil
 	}
 
