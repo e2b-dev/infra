@@ -3,12 +3,8 @@ name: ARM64 tests on PRs
 on:
   workflow_call:
     secrets:
-      CODECOV_TOKEN:
-        description: "Codecov upload token; absent on fork PRs (upload step is skipped)."
-        required: false
-      TRUNK_API_TOKEN:
-        description: "Trunk Flaky Tests upload token; absent on fork PRs (upload step is skipped)."
-        required: false
+      CODECOV_TOKEN: { required: false }
+      TRUNK_API_TOKEN: { required: false }
 
 permissions:
   contents: read
@@ -55,8 +51,7 @@ jobs:
       # and race on `reaper_<hash>` creation. Disable Ryuk; t.Cleanup
       # handles normal exit, the prune step below handles abnormal exit.
       TESTCONTAINERS_RYUK_DISABLED: "true"
-      # Surfaced as env so the upload steps can gate on their presence
-      # (fork PRs never receive secrets).
+      # Surfaced as env so upload steps can gate on presence (skipped on fork PRs).
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       TRUNK_API_TOKEN: ${{ secrets.TRUNK_API_TOKEN }}
     strategy:
@@ -153,8 +148,6 @@ jobs:
         if: matrix.package == 'packages/orchestrator'
 
       - name: Install gotestsum
-        # Wraps `go test` to emit JUnit XML for Trunk while passing through
-        # -coverprofile to go test for Codecov.
         run: go install gotest.tools/gotestsum@v1.13.0
 
       - name: Compile test binaries
@@ -162,13 +155,11 @@ jobs:
         run: sudo -E `which go` test -run '^$' ${{ matrix.test_path }}
         if: matrix.sudo == true
 
+      # sudo strips PATH; pass it through so gotestsum/go resolve to the runner's
+      # toolchain (1.25.9) instead of /usr/bin/go. Trap chowns reports back to
+      # the runner so uploads can read them even when tests fail.
       - name: Run tests that require sudo
         working-directory: ${{ matrix.package }}
-        # `sudo` strips PATH via secure_path, so we pass it explicitly via `env`
-        # to make the runner-installed go (1.25.9) and gotestsum visible to the
-        # root shell. `-E` keeps the rest of the env (HOST_BUSYBOX_DIR, GIN_MODE,
-        # etc). The trap hands the root-written reports back to the runner user
-        # even if tests fail, so the upload steps can still read them.
         run: |
           trap 'sudo chown "$(id -u):$(id -g)" coverage.txt junit.xml 2>/dev/null || true' EXIT
           sudo -E env "PATH=$PATH" gotestsum --junitfile=junit.xml --format=standard-verbose \
@@ -198,12 +189,10 @@ jobs:
 
       - name: Upload test results to Trunk
         if: ${{ !cancelled() && env.TRUNK_API_TOKEN != '' && hashFiles(format('{0}/junit.xml', matrix.package)) != '' }}
-        # Don't fail the job if the analytics upload itself errors out.
         continue-on-error: true
         uses: trunk-io/analytics-uploader@v2
         with:
           junit-paths: ${{ matrix.package }}/junit.xml
           org-slug: e2b
           token: ${{ secrets.TRUNK_API_TOKEN }}
-          # Variant keeps x86_64 and arm64 runs of the same test distinguishable in Trunk.
           variant: unit-arm64
