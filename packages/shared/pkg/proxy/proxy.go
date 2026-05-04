@@ -58,21 +58,21 @@ func New(
 		disableKeepAlives,
 	)
 
-	server := http.Server{
-		Addr:         fmt.Sprintf(":%d", port),
-		ReadTimeout:  0,
-		WriteTimeout: 0,
-		// Downstream idle timeout (client facing) > upstream idle timeout (server facing)
-		// otherwise there's a chance for a race condition when the server closes and the client tries to use the connection
-		IdleTimeout:       idleTimeout + idleTimeoutBufferUpstreamDownstream,
-		ReadHeaderTimeout: 0,
+	proxy := &Proxy{
+		Server: http.Server{
+			Addr:         fmt.Sprintf(":%d", port),
+			ReadTimeout:  0,
+			WriteTimeout: 0,
+			// Downstream idle timeout (client facing) > upstream idle timeout (server facing)
+			// otherwise there's a chance for a race condition when the server closes and the client tries to use the connection
+			IdleTimeout:       idleTimeout + idleTimeoutBufferUpstreamDownstream,
+			ReadHeaderTimeout: 0,
+		},
+		pool: p,
 	}
-	httpserver.ConfigureH2C(&server, handler(p, getDestination, connLimitConfig))
+	httpserver.ConfigureH2C(&proxy.Server, handler(p, getDestination, connLimitConfig))
 
-	return &Proxy{
-		Server: server,
-		pool:   p,
-	}
+	return proxy
 }
 
 // TotalPoolConnections returns the total number of connections that have been established across whole pool.
