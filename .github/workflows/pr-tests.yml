@@ -123,14 +123,14 @@ jobs:
         run: |
           trap 'sudo chown "$(id -u):$(id -g)" coverage.txt junit.xml 2>/dev/null || true' EXIT
           sudo -E env "PATH=$PATH" gotestsum --junitfile=junit.xml --format=standard-verbose \
-            -- -timeout 20m -coverprofile=coverage.txt -covermode=atomic ${{ matrix.test_path }}
+            -- -race -timeout 30m -coverprofile=coverage.txt -covermode=atomic ${{ matrix.test_path }}
         if: matrix.sudo == true
 
       - name: Run tests
         working-directory: ${{ matrix.package }}
         run: |
           gotestsum --junitfile=junit.xml --format=standard-verbose \
-            -- -timeout 20m -coverprofile=coverage.txt -covermode=atomic ${{ matrix.test_path }}
+            -- -race -timeout 30m -coverprofile=coverage.txt -covermode=atomic ${{ matrix.test_path }}
         if: matrix.sudo == false
 
       - name: Upload coverage to Codecov

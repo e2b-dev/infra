@@ -44,3 +44,12 @@ jobs:
           # disable, as it randomly fails with the following error:
           # The command is terminated due to an error: [../../.golangci.yml] validate: compile schema: failing loading "https://golangci-lint.run/jsonschema/golangci.v2.11.jsonschema.json": Get "https://golangci-lint.run/jsonschema/golangci.v2.11.jsonschema.json": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
           verify: 'false'
+
+  actionlint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: raven-actions/actionlint@v2
+        with:
+          # Style noise; re-enable in a follow-up after fixing existing findings.
+          shellcheck: 'false'

@@ -19,6 +19,8 @@ jobs:
     uses: ./.github/workflows/pr-tests.yml
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+  govulncheck:
+    uses: ./.github/workflows/govulncheck.yml
   integration-tests:
     uses: ./.github/workflows/integration_tests.yml
     with:
