@@ -92,6 +92,19 @@ const (
 	faultPhaseBeforeFaultPage
 )
 
+// faultOutcome is the terminal classification of a faultPage call.
+type faultOutcome uint8
+
+const (
+	// faultInstalled: page was installed (or already mapped; EEXIST).
+	faultInstalled faultOutcome = iota
+	// faultDeferred: soft failure (EAGAIN); the caller must retry later.
+	faultDeferred
+	// faultDiscarded: no install happened and retry is pointless
+	// (e.g. ESRCH — the faulting thread is gone).
+	faultDiscarded
+)
+
 // NewUserfaultfdFromFd creates a new userfaultfd instance with optional configuration.
 func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logger logger.Logger) (*Userfaultfd, error) {
 	blockSize := src.BlockSize()
@@ -173,6 +186,11 @@ func (u *Userfaultfd) Serve(
 	ctx context.Context,
 	fdExit *fdexit.FdExit,
 ) error {
+	// Workers spawned via u.wg.Go may still be running when an error path
+	// returns early. Drain them before returning so a worker can't outlive
+	// Serve and race with Close() on wakeupPipe / the uffd fd.
+	defer func() { _ = u.wg.Wait() }()
+
 	pollFds := []unix.PollFd{
 		{Fd: int32(u.fd), Events: unix.POLLIN},
 		{Fd: fdExit.Reader(), Events: unix.POLLIN},
@@ -239,7 +257,8 @@ func (u *Userfaultfd) Serve(
 			}
 		}
 
-		if hasEvent(pollFds[2].Revents, unix.POLLIN) {
+		wakeupFired := hasEvent(pollFds[2].Revents, unix.POLLIN)
+		if wakeupFired {
 			u.drainWakeupPipe()
 		}
 
@@ -296,7 +315,9 @@ func (u *Userfaultfd) Serve(
 			}
 
 			u.readSerial.Unlock()
-		} else {
+		} else if !wakeupFired {
+			// Only treat as "no data" when poll returned without any known
+			// source — a wakeupPipe self-wake (worker deferred) is expected.
 			noDataCounter.Increase("POLLIN")
 		}
 
@@ -371,7 +392,7 @@ func (u *Userfaultfd) Serve(
 					(*h)(addr, faultPhaseBeforeFaultPage)
 				}
 
-				handled, err := u.faultPage(
+				outcome, err := u.faultPage(
 					ctx,
 					addr,
 					offset,
@@ -383,12 +404,15 @@ func (u *Userfaultfd) Serve(
 					return err
 				}
 
-				if handled {
+				switch outcome {
+				case faultInstalled:
 					u.pageTracker.SetRange(idx, idx+1, block.Dirty)
 					u.prefetchTracker.Add(offset, accessType)
-				} else {
+				case faultDeferred:
 					deferred.push(pf)
 					u.signalWakeup()
+				case faultDiscarded:
+					// No install happened (ESRCH); retry would be pointless.
 				}
 
 				return nil
@@ -404,16 +428,16 @@ func (u *Userfaultfd) faultPage(
 	accessType block.AccessType,
 	source block.Slicer,
 	onFailure func() error,
-) (handled bool, err error) {
+) (outcome faultOutcome, err error) {
 	span := trace.SpanFromContext(ctx)
 
 	// Named returns so a recovered panic produces a fatal error: the bare
-	// zero values (false, nil) would otherwise be treated as "defer & retry"
-	// and a deterministic panic would loop forever.
+	// zero values would otherwise look like a successful install
+	// (faultInstalled) and a deterministic panic would loop forever.
 	defer func() {
 		if r := recover(); r != nil {
 			u.logger.Error(ctx, "UFFD serve panic", zap.Any("pagesize", u.pageSize), zap.Any("panic", r))
-			handled = false
+			outcome = faultDiscarded
 			err = fmt.Errorf("uffd serve panic: %v", r)
 		}
 	}()
@@ -500,7 +524,7 @@ func (u *Userfaultfd) faultPage(
 				zap.Error(joinedErr),
 			)
 
-			return false, fmt.Errorf("failed to read from source after %d attempts: %w", attempt+1, joinedErr)
+			return faultDiscarded, fmt.Errorf("failed to read from source after %d attempts: %w", attempt+1, joinedErr)
 		}
 		writeErr = u.fd.copy(addr, u.pageSize, b, mode)
 	}
@@ -511,15 +535,16 @@ func (u *Userfaultfd) faultPage(
 
 		u.fd.wake(addr, u.pageSize) //nolint:errcheck // best-effort; thread may already be awake
 
-		return true, nil
+		return faultInstalled, nil
 	}
 
-	// ESRCH: faulting thread exited during sandbox teardown.
+	// ESRCH: faulting thread exited during sandbox teardown. No install
+	// happened, but retrying is pointless — the mm is going away.
 	if errors.Is(writeErr, unix.ESRCH) {
 		span.SetAttributes(attribute.Bool("uffd.process_exited", true))
 		u.logger.Debug(ctx, "UFFD serve copy error: process no longer exists", zap.Error(writeErr))
 
-		return true, nil
+		return faultDiscarded, nil
 	}
 
 	// EAGAIN: mmap_changing set mid-copy (concurrent madvise/mremap/fork) or
@@ -530,7 +555,7 @@ func (u *Userfaultfd) faultPage(
 		span.SetAttributes(attribute.Bool("uffd.copy_eagain", true))
 		u.logger.Debug(ctx, "UFFD page write EAGAIN, deferring", zap.Uintptr("addr", addr))
 
-		return false, nil
+		return faultDeferred, nil
 	}
 
 	if writeErr != nil {
@@ -539,10 +564,10 @@ func (u *Userfaultfd) faultPage(
 		span.RecordError(joinedErr)
 		u.logger.Error(ctx, "UFFD serve uffdio copy error", zap.Error(joinedErr))
 
-		return false, fmt.Errorf("failed uffdio copy: %w", joinedErr)
+		return faultDiscarded, fmt.Errorf("failed uffdio copy: %w", joinedErr)
 	}
 
-	return true, nil
+	return faultInstalled, nil
 }
 
 func (u *Userfaultfd) PrefetchData() block.PrefetchData {

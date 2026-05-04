@@ -32,11 +32,9 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		return nil
 	}
 
-	// Prefault as a read so the page gets WP set. faultPage treats EEXIST
-	// as handled (returns true,nil), so a concurrent on-demand fault that
-	// installs the page first is silently absorbed; handled stays false
-	// only when faultPage soft-failed (e.g. UFFDIO_COPY EAGAIN).
-	handled, err := u.faultPage(
+	// Prefault as a read so the page gets WP set. A concurrent on-demand
+	// fault that installs the page first returns faultInstalled via EEXIST.
+	outcome, err := u.faultPage(
 		ctx,
 		addr,
 		offset,
@@ -50,11 +48,14 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		return fmt.Errorf("failed to fault page: %w", err)
 	}
 
-	if !handled {
-		span.AddEvent("prefault: page already faulted or write returned EAGAIN")
-	} else {
+	switch outcome {
+	case faultInstalled:
 		u.pageTracker.SetRange(idx, idx+1, block.Dirty)
 		u.prefetchTracker.Add(offset, block.Prefetch)
+	case faultDeferred:
+		span.AddEvent("prefault: write returned EAGAIN")
+	case faultDiscarded:
+		span.AddEvent("prefault: discarded (process gone)")
 	}
 
 	return nil
