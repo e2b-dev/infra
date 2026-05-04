@@ -192,17 +192,17 @@ func main() {
 	middleware := authn.NewMiddleware(permissions.AuthenticateUsername)
 
 	s := &http.Server{
-		Handler: httpserver.WithH2C(withCORS(
-			service.WithAuthorization(
-				middleware.Wrap(handler),
-			),
-		)),
 		Addr: fmt.Sprintf("0.0.0.0:%d", port),
 		// We remove the timeouts as the connection is terminated by closing of the sandbox and keepalive close.
 		ReadTimeout:  0,
 		WriteTimeout: 0,
 		IdleTimeout:  idleTimeout,
 	}
+	httpserver.ConfigureH2C(s, withCORS(
+		service.WithAuthorization(
+			middleware.Wrap(handler),
+		),
+	))
 
 	// TODO: Not used anymore in template build, replaced by direct envd command call.
 	if startCmdFlag != "" {

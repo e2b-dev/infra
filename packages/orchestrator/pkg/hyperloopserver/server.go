@@ -36,11 +36,11 @@ func NewHyperloopServer(ctx context.Context, port uint16, logger logger.Logger, 
 	)
 
 	server := &http.Server{
-		Handler: httpserver.WithH2C(engine),
-		Addr:    fmt.Sprintf("0.0.0.0:%d", port),
+		Addr: fmt.Sprintf("0.0.0.0:%d", port),
 
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
+	httpserver.ConfigureH2C(server, engine)
 
 	contracts.RegisterHandlersWithOptions(engine, store, contracts.GinServerOptions{})
 

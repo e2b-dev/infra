@@ -9,19 +9,22 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/http2"
 )
 
-func TestWithH2CAcceptsHTTP2AndHTTP1(t *testing.T) {
+func TestConfigureH2CAcceptsHTTP2AndHTTP1(t *testing.T) {
 	t.Parallel()
 
-	handler := WithH2C(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
-	}))
+	})
 
-	server := httptest.NewServer(handler)
+	server := httptest.NewUnstartedServer(nil)
+	ConfigureH2C(server.Config, handler)
+	server.Start()
 	t.Cleanup(server.Close)
 
 	h2Client := &http.Client{
@@ -54,10 +57,10 @@ func TestWithH2CAcceptsHTTP2AndHTTP1(t *testing.T) {
 	require.Equal(t, "HTTP/1.1", h1Resp.Proto)
 }
 
-func TestWithH2CLimitsUpgradeRequestBodyOnly(t *testing.T) {
+func TestConfigureH2CLimitsUpgradeRequestBodyOnly(t *testing.T) {
 	t.Parallel()
 
-	handler := WithH2C(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, err := io.Copy(io.Discard, r.Body)
 		if err != nil {
 			t.Errorf("copy request body: %v", err)
@@ -66,9 +69,11 @@ func TestWithH2CLimitsUpgradeRequestBodyOnly(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusNoContent)
-	}))
+	})
 
-	server := httptest.NewServer(handler)
+	server := httptest.NewUnstartedServer(nil)
+	ConfigureH2C(server.Config, handler)
+	server.Start()
 	t.Cleanup(server.Close)
 
 	h1Req, err := http.NewRequestWithContext(
@@ -101,4 +106,24 @@ func TestWithH2CLimitsUpgradeRequestBodyOnly(t *testing.T) {
 	defer upgradeResp.Body.Close()
 
 	require.Equal(t, http.StatusInternalServerError, upgradeResp.StatusCode)
+}
+
+func TestNewHTTP2ServerUsesParentIdleTimeout(t *testing.T) {
+	t.Parallel()
+
+	const parentIdleTimeout = 620 * time.Second
+
+	h2Server := newHTTP2Server(&http.Server{IdleTimeout: parentIdleTimeout})
+
+	require.Equal(t, parentIdleTimeout, h2Server.IdleTimeout)
+	require.Equal(t, uint32(100), h2Server.MaxConcurrentStreams)
+	require.Equal(t, 30*time.Second, h2Server.ReadIdleTimeout)
+}
+
+func TestNewHTTP2ServerUsesDefaultIdleTimeout(t *testing.T) {
+	t.Parallel()
+
+	h2Server := newHTTP2Server(&http.Server{})
+
+	require.Equal(t, defaultH2CIdleTimeout, h2Server.IdleTimeout)
 }

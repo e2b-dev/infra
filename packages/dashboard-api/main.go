@@ -350,14 +350,16 @@ func newHTTPServer(
 
 	api.RegisterHandlers(r, apiStore)
 
-	return &http.Server{
-		Handler:           httpserver.WithH2C(r),
+	s := &http.Server{
 		Addr:              fmt.Sprintf("0.0.0.0:%d", port),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,
 		IdleTimeout:       idleTimeout,
 	}
+	httpserver.ConfigureH2C(s, r)
+
+	return s
 }
 
 func startHTTPServer(s *http.Server) <-chan error {
