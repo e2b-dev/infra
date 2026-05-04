@@ -9,15 +9,21 @@ import (
 var _ sandbox.Storage = (*Storage)(nil)
 
 type Storage struct {
-	items cmap.ConcurrentMap[string, *memorySandbox]
+	items  cmap.ConcurrentMap[string, *memorySandbox]
+	killed cmap.ConcurrentMap[string, sandbox.KillInfo]
 }
 
 func (s *Storage) Name() string { return sandbox.StorageNameMemory }
 
 func NewStorage() *Storage {
 	instanceCache := &Storage{
-		items: cmap.New[*memorySandbox](),
+		items:  cmap.New[*memorySandbox](),
+		killed: cmap.New[sandbox.KillInfo](),
 	}
 
 	return instanceCache
+}
+
+func killedKey(teamID, sandboxID string) string {
+	return teamID + ":" + sandboxID
 }

@@ -105,7 +105,8 @@ type Sandbox struct {
 	Network             *types.SandboxNetworkConfig       `json:"network"`
 	VolumeMounts        []*types.SandboxVolumeMountConfig `json:"volumeMounts"`
 
-	State State `json:"state"`
+	State      State           `json:"state"`
+	Transition *TransitionInfo `json:"transition,omitempty"`
 }
 
 func (s Sandbox) ToAPISandbox() *api.Sandbox {

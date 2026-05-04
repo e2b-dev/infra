@@ -82,7 +82,8 @@ func TestSandboxPause(t *testing.T) {
 
 		pauseResp, err := c.PostSandboxesSandboxIDPauseWithResponse(t.Context(), sbxId, setup.WithAPIKey())
 		require.NoError(t, err)
-		require.Equal(t, http.StatusNotFound, pauseResp.StatusCode())
+		// Killed sandboxes return 410 Gone (not 404 Not Found)
+		require.Equal(t, http.StatusGone, pauseResp.StatusCode())
 	})
 
 	t.Run("pause already paused sandbox", func(t *testing.T) {

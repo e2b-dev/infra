@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/metric"
@@ -332,4 +333,19 @@ func getBestOfKConfig(ctx context.Context, featureFlagsClient *featureflags.Clie
 		CanFit:          canFit,
 		TooManyStarting: tooManyStarting,
 	}
+}
+
+// WasSandboxKilled checks if a sandbox was recently killed and returns the kill info.
+// This allows the API to return 410 Gone instead of 404 Not Found.
+// Returns nil if the sandbox was not killed or if there's an error.
+func (o *Orchestrator) WasSandboxKilled(ctx context.Context, teamID uuid.UUID, sandboxID string) *sandbox.KillInfo {
+	info, err := o.sandboxStore.WasKilled(ctx, teamID, sandboxID)
+	if err != nil {
+		logger.L().Warn(ctx, "Failed to check if sandbox was killed",
+			logger.WithSandboxID(sandboxID),
+			zap.Error(err),
+		)
+		return nil
+	}
+	return info
 }

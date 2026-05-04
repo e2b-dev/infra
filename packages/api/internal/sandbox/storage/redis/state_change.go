@@ -106,13 +106,25 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 
 	// Validate state transition is allowed
 	if !sandbox.AllowedTransitions[sbx.State][newState] {
-		return sbx, false, nil, &sandbox.InvalidStateTransitionError{CurrentState: sbx.State, TargetState: newState}
+		return sbx, false, nil, &sandbox.InvalidStateTransitionError{CurrentState: sbx.State, TargetState: newState, Transition: sbx.Transition}
 	}
 
 	// Build the updated sandbox for Redis without mutating the original.
 	// This ensures that on failure the caller sees the pre-mutation state,
 	updated := sbx
 	updated.State = newState
+
+	// Determine transition reason
+	reason := sandbox.TransitionReasonAPI
+	if opts.Eviction {
+		reason = sandbox.TransitionReasonTimeout
+	}
+	updated.Transition = &sandbox.TransitionInfo{
+		ToState:   newState,
+		Reason:    reason,
+		StartedAt: time.Now().UnixMilli(),
+	}
+
 	if opts.Action.Effect == sandbox.TransitionExpires {
 		now := time.Now()
 		if !updated.IsExpired(now) {
@@ -217,6 +229,7 @@ func (s *Storage) restoreToRunning(ctx context.Context, teamID uuid.UUID, sandbo
 		}
 
 		sbx.State = sandbox.StateRunning
+		sbx.Transition = nil
 
 		return sbx, nil
 	})
@@ -330,7 +343,7 @@ func (s *Storage) handleExistingTransition(
 
 	// Different state - validate transition and wait
 	if !sandbox.AllowedTransitions[sbx.State][newState] {
-		return sbx, false, nil, &sandbox.InvalidStateTransitionError{CurrentState: sbx.State, TargetState: newState}
+		return sbx, false, nil, &sandbox.InvalidStateTransitionError{CurrentState: sbx.State, TargetState: newState, Transition: sbx.Transition}
 	}
 
 	err := s.waitForTransition(ctx, teamID, sbx.SandboxID, transactionID)

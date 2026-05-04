@@ -51,11 +51,15 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	case err == nil:
 		pause.LogSuccess(ctx, sandboxID, teamID.String(), pause.ReasonRequest)
 	case errors.Is(err, orchestrator.ErrSandboxNotFound):
-		apiErr := pauseHandleNotRunningSandbox(ctx, a.snapshotCache, sandboxID, teamID)
+		// Check if the sandbox was killed
+		killInfo := a.orchestrator.WasSandboxKilled(ctx, teamID, sandboxID)
+		apiErr := pauseHandleNotRunningSandbox(ctx, a.snapshotCache, sandboxID, teamID, killInfo)
 		switch apiErr.Code {
 		case http.StatusConflict:
 			pause.LogSkipped(ctx, sandboxID, teamID.String(), pause.ReasonRequest, pause.SkipReasonAlreadyPaused)
 		case http.StatusNotFound:
+			pause.LogSkipped(ctx, sandboxID, teamID.String(), pause.ReasonRequest, pause.SkipReasonNotFound)
+		case http.StatusGone:
 			pause.LogSkipped(ctx, sandboxID, teamID.String(), pause.ReasonRequest, pause.SkipReasonNotFound)
 		default:
 			pause.LogFailure(ctx, sandboxID, teamID.String(), pause.ReasonRequest, err)
@@ -80,7 +84,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	c.Status(http.StatusNoContent)
 }
 
-func pauseHandleNotRunningSandbox(ctx context.Context, cache *snapshotcache.SnapshotCache, sandboxID string, teamID uuid.UUID) api.APIError {
+func pauseHandleNotRunningSandbox(ctx context.Context, cache *snapshotcache.SnapshotCache, sandboxID string, teamID uuid.UUID, killInfo *sandbox.KillInfo) api.APIError {
 	// TODO: ENG-3544 scope GetLastSnapshot query by teamID to avoid post-fetch ownership check.
 	snap, err := cache.Get(ctx, sandboxID)
 	if err == nil {
@@ -102,6 +106,16 @@ func pauseHandleNotRunningSandbox(ctx context.Context, cache *snapshotcache.Snap
 	}
 
 	if errors.Is(err, snapshotcache.ErrSnapshotNotFound) {
+		// Check if the sandbox was killed (return 410 Gone) vs never existed (return 404 Not Found)
+		if killInfo != nil {
+			logger.L().Debug(ctx, "Sandbox was killed", logger.WithSandboxID(sandboxID))
+
+			return api.APIError{
+				Code:      http.StatusGone,
+				ClientMsg: utils.SandboxKilledMsg(sandboxID, killInfo),
+			}
+		}
+
 		logger.L().Debug(ctx, "Snapshot not found", logger.WithSandboxID(sandboxID))
 
 		return api.APIError{

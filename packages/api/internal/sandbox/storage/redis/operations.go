@@ -287,3 +287,39 @@ func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int6
 
 	return teams, nil
 }
+
+const killedSandboxTTL = 24 * time.Hour
+
+// MarkKilled records that a sandbox was killed with the given reason, with TTL.
+// This allows the API to return 410 Gone for killed sandboxes instead of 404 Not Found.
+func (s *Storage) MarkKilled(ctx context.Context, teamID uuid.UUID, sandboxID string, reason sandbox.KillReason) error {
+	key := getKilledSandboxKey(teamID.String(), sandboxID)
+	info := sandbox.KillInfo{
+		Reason:   reason,
+		KilledAt: time.Now().UnixMilli(),
+	}
+	data, err := json.Marshal(info)
+	if err != nil {
+		return fmt.Errorf("failed to marshal kill info: %w", err)
+	}
+	return s.redisClient.Set(ctx, key, data, killedSandboxTTL).Err()
+}
+
+// WasKilled checks if a sandbox was recently killed and returns the kill info.
+// Returns nil if the sandbox was not killed.
+func (s *Storage) WasKilled(ctx context.Context, teamID uuid.UUID, sandboxID string) (*sandbox.KillInfo, error) {
+	key := getKilledSandboxKey(teamID.String(), sandboxID)
+	result, err := s.redisClient.Get(ctx, key).Bytes()
+	if errors.Is(err, redis.Nil) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to check killed sandbox: %w", err)
+	}
+	var info sandbox.KillInfo
+	if err := json.Unmarshal(result, &info); err != nil {
+		// Fallback for old format (just the reason string)
+		return &sandbox.KillInfo{Reason: sandbox.KillReason(result)}, nil
+	}
+	return &info, nil
+}

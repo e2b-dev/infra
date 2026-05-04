@@ -48,6 +48,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 		return SnapshotTemplateResult{}, &sandbox.InvalidStateTransitionError{
 			CurrentState: sandbox.StateSnapshotting,
 			TargetState:  sandbox.StateSnapshotting,
+			Transition:   sbx.Transition,
 		}
 	}
 
