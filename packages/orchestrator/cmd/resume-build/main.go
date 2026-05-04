@@ -72,7 +72,14 @@ func main() {
 	cmdSignalPause := flag.String("cmd-signal-pause", "", "execute command in sandbox, then wait for SIGUSR1 before pausing")
 	optimize := flag.Bool("optimize", false, "collect fresh prefetch mapping after pause (resumes snapshot to record page faults)")
 
+	// Pause-time reclaim override; 0 = use LD default (off).
+	reclaimTimeoutMs := flag.Int("reclaim-timeout-ms", 0, "override reclaim-on-pause-timeout-ms LD flag (0 = use LD default)")
+
 	flag.Parse()
+
+	if *reclaimTimeoutMs > 0 {
+		featureflags.NewIntFlag("reclaim-on-pause-timeout-ms", *reclaimTimeoutMs)
+	}
 
 	if *fromBuild == "" {
 		log.Fatal("-from-build required")
