@@ -109,6 +109,26 @@ func TestGetTargetFromRequest(t *testing.T) {
 			wantPort: 8080,
 		},
 		{
+			name: "headers: loopback IPv4",
+			host: "127.0.0.1:1234",
+			headers: http.Header{
+				headerSandboxID:   []string{"isv6ril5xadwn1k9t2jye"},
+				headerSandboxPort: []string{"8080"},
+			},
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 8080,
+		},
+		{
+			name: "headers: loopback IPv6",
+			host: "[::1]:1234",
+			headers: http.Header{
+				headerSandboxID:   []string{"isv6ril5xadwn1k9t2jye"},
+				headerSandboxPort: []string{"8080"},
+			},
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 8080,
+		},
+		{
 			name: "headers: invalid sandbox id with colon",
 			host: "localhost:1234",
 			headers: http.Header{

@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -46,9 +47,23 @@ func GetTargetFromRequest(headerRouting HeaderRoutingMode) func(r *http.Request)
 }
 
 func shouldParseHeaders(host string) bool {
-	host = strings.Split(host, ":")[0]
+	host = requestHostname(host)
+	ip := net.ParseIP(host)
 
-	return host == "localhost" || strings.HasPrefix(host, "sandbox.")
+	return host == "localhost" || (ip != nil && ip.IsLoopback()) || strings.HasPrefix(host, "sandbox.")
+}
+
+func requestHostname(host string) string {
+	hostname, _, err := net.SplitHostPort(host)
+	if err == nil {
+		return hostname
+	}
+
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		return strings.TrimPrefix(strings.TrimSuffix(host, "]"), "[")
+	}
+
+	return host
 }
 
 func hasRoutingHeaders(h http.Header) bool {
