@@ -9,12 +9,15 @@ import (
 	"golang.org/x/net/http2/h2c"
 )
 
-const h2cUpgradeBodyLimit = 1 << 20 // 1 MiB
+const (
+	h2cIdleTimeout      = 650 * time.Second
+	h2cUpgradeBodyLimit = 1 << 20 // 1 MiB
+)
 
 func WithH2C(handler http.Handler) http.Handler {
 	h2cHandler := h2c.NewHandler(handler, &http2.Server{
 		MaxConcurrentStreams:         100,
-		IdleTimeout:                  2 * time.Minute,
+		IdleTimeout:                  h2cIdleTimeout,
 		ReadIdleTimeout:              30 * time.Second,
 		PingTimeout:                  15 * time.Second,
 		WriteByteTimeout:             30 * time.Second,
