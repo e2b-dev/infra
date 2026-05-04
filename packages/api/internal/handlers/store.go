@@ -14,6 +14,8 @@ import (
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -41,6 +43,22 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+// newInClusterKubeClient builds a Kubernetes API client using the pod's
+// in-cluster ServiceAccount token. The api Pod must be running in K8s with a
+// projected SA token (the default for any pod with a ServiceAccount).
+func newInClusterKubeClient() (kubernetes.Interface, error) {
+	cfg, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, fmt.Errorf("rest.InClusterConfig: %w", err)
+	}
+	c, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("kubernetes.NewForConfig: %w", err)
+	}
+
+	return c, nil
+}
 
 var _ api.ServerInterface = (*APIStore)(nil)
 
@@ -107,19 +125,41 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 	}
 
 	// Build the orchestrator-discovery and template-builder-discovery backends
-	// against the local Nomad agent. The Discovery interfaces below allow
-	// alternative backends to be plugged in without touching the rest of the
-	// orchestrator/clusters code paths.
-	nomadClient, err := nomadapi.NewClient(&nomadapi.Config{
-		Address:  config.NomadAddress,
-		SecretID: config.NomadToken,
-	})
-	if err != nil {
-		logger.L().Fatal(ctx, "Initializing Nomad client", zap.Error(err))
+	// based on cfg.ServiceDiscoveryProvider:
+	//   nomad      - both go through the local Nomad agent
+	//   kubernetes - both list pods via the in-cluster K8s API
+	var (
+		nodeDiscovery            orchdiscovery.Discovery
+		templateBuilderDiscovery clustersdiscovery.Discovery
+	)
+	switch config.ServiceDiscoveryProvider {
+	case cfg.ServiceDiscoveryProviderKubernetes:
+		k8sClient, k8sErr := newInClusterKubeClient()
+		if k8sErr != nil {
+			logger.L().Fatal(ctx, "Initializing in-cluster Kubernetes client", zap.Error(k8sErr))
+		}
+		nodeDiscovery = orchdiscovery.NewKubernetes(
+			k8sClient,
+			config.K8sNamespace,
+			config.K8sOrchestratorPodLabelSelector,
+		)
+		templateBuilderDiscovery = clustersdiscovery.NewKubernetesDiscovery(
+			consts.LocalClusterID,
+			k8sClient,
+			config.K8sNamespace,
+			config.K8sTemplateManagerPodLabelSelector,
+		)
+	default: // ServiceDiscoveryProviderNomad
+		nomadClient, nomadErr := nomadapi.NewClient(&nomadapi.Config{
+			Address:  config.NomadAddress,
+			SecretID: config.NomadToken,
+		})
+		if nomadErr != nil {
+			logger.L().Fatal(ctx, "Initializing Nomad client", zap.Error(nomadErr))
+		}
+		nodeDiscovery = orchdiscovery.NewNomad(nomadClient, "default")
+		templateBuilderDiscovery = clustersdiscovery.NewLocalDiscovery(consts.LocalClusterID, nomadClient)
 	}
-
-	nodeDiscovery := orchdiscovery.NewNomad(nomadClient, "default")
-	templateBuilderDiscovery := clustersdiscovery.NewLocalDiscovery(consts.LocalClusterID, nomadClient)
 
 	queryLogsProvider, err := loki.NewLokiQueryProvider(config.LokiURL, config.LokiUser, config.LokiPassword)
 	if err != nil {
