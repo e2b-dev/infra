@@ -848,11 +848,11 @@ func TestValidateNetworkRules(t *testing.T) {
 		},
 		// ── envd version ─────────────────────────────────────────────────────────
 		{
-			name:     "missing envd version returns 500",
+			name:     "missing envd version returns 400",
 			rules:    rulesMap(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
 			setupFF:  ffEnabled,
-			wantCode: http.StatusInternalServerError,
-			wantMsg:  "internal error while validating network rules",
+			wantCode: http.StatusBadRequest,
+			wantMsg:  "no envd version provided",
 		},
 		{
 			name:        "envd version below minimum returns 400",
