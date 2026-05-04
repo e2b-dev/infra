@@ -7,6 +7,8 @@ on:
         type: boolean
         description: "Whether to publish the results"
         required: true
+    secrets:
+      CODECOV_TOKEN: { required: false }
 jobs:
   integration_tests:
     runs-on: infra-tests
@@ -14,6 +16,9 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      # Surfaced as env so upload steps can gate on presence (skipped on fork PRs).
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
     steps:
       - name: Checkout Code
@@ -77,6 +82,15 @@ jobs:
         with:
           name: Integration Tests Results
           path: ./tests/integration/test-results.xml
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() && env.CODECOV_TOKEN != '' && hashFiles('tests/integration/test-results.xml') != '' }}
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: tests/integration/test-results.xml
+          flags: integration
+          disable_search: true
 
       - name: Upload Service Logs
         if: ${{ always() && inputs.publish == true }}

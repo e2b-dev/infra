@@ -1,0 +1,30 @@
+# Coverage signal only — never gates merges. Carries forward per-flag so
+# shards that didn't run keep their last-known number instead of dropping to 0%.
+
+coverage:
+  status:
+    project:
+      default: { informational: true }
+    patch:
+      default: { informational: true }
+
+flag_management:
+  default_rules:
+    carryforward: true
+
+component_management:
+  individual_components:
+    - { component_id: api, paths: ["packages/api/**"] }
+    - { component_id: client-proxy, paths: ["packages/client-proxy/**"] }
+    - { component_id: db, paths: ["packages/db/**"] }
+    - { component_id: docker-reverse-proxy, paths: ["packages/docker-reverse-proxy/**"] }
+    - { component_id: envd, paths: ["packages/envd/**"] }
+    - { component_id: orchestrator, paths: ["packages/orchestrator/**"] }
+    - { component_id: shared, paths: ["packages/shared/**"] }
+
+ignore:
+  - "**/*.gen.go"   # oapi-codegen
+  - "**/*.sql.go"   # sqlc
+  - "**/*.pb.go"    # protoc (message + grpc)
+  - "**/mocks/**"   # mockery
+  - "**/testdata/**"

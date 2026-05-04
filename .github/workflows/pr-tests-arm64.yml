@@ -1,6 +1,9 @@
 name: ARM64 tests on PRs
 
-on: [workflow_call]
+on:
+  workflow_call:
+    secrets:
+      CODECOV_TOKEN: { required: false }
 
 permissions:
   contents: read
@@ -47,28 +50,37 @@ jobs:
       # and race on `reaper_<hash>` creation. Disable Ryuk; t.Cleanup
       # handles normal exit, the prune step below handles abnormal exit.
       TESTCONTAINERS_RYUK_DISABLED: "true"
+      # Surfaced as env so upload steps can gate on presence (skipped on fork PRs).
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     strategy:
       matrix:
         include:
           - package: packages/api
+            flag: arm64-api
             test_path: ./...
             sudo: false
           - package: packages/client-proxy
+            flag: arm64-client-proxy
             test_path: ./...
             sudo: false
           - package: packages/db
+            flag: arm64-db
             test_path: ./...
             sudo: false
           - package: packages/docker-reverse-proxy
+            flag: arm64-docker-reverse-proxy
             test_path: ./...
             sudo: false
           - package: packages/envd
+            flag: arm64-envd
             test_path: ./...
             sudo: true
           - package: packages/orchestrator
+            flag: arm64-orchestrator
             test_path: ./...
             sudo: true
           - package: packages/shared
+            flag: arm64-shared
             test_path: ./pkg/...
             sudo: false
       fail-fast: false
@@ -133,14 +145,23 @@ jobs:
           sudo udevadm trigger
         if: matrix.package == 'packages/orchestrator'
 
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@v1.13.0
+
       - name: Compile test binaries
         working-directory: ${{ matrix.package }}
         run: sudo -E `which go` test -run '^$' ${{ matrix.test_path }}
         if: matrix.sudo == true
 
+      # sudo strips PATH; pass it through so gotestsum/go resolve to the runner's
+      # toolchain (1.25.9) instead of /usr/bin/go. Trap chowns reports back to
+      # the runner so uploads can read them even when tests fail.
       - name: Run tests that require sudo
         working-directory: ${{ matrix.package }}
-        run: sudo -E `which go` test -v -timeout 20m ${{ matrix.test_path }}
+        run: |
+          trap 'sudo chown "$(id -u):$(id -g)" coverage.txt junit.xml 2>/dev/null || true' EXIT
+          sudo -E env "PATH=$PATH" gotestsum --junitfile=junit.xml --format=standard-verbose \
+            -- -timeout 20m -coverprofile=coverage.txt -covermode=atomic ${{ matrix.test_path }}
         if: matrix.sudo == true
 
       - name: Compile test binaries
@@ -150,5 +171,25 @@ jobs:
 
       - name: Run tests
         working-directory: ${{ matrix.package }}
-        run: go test -v -timeout 20m ${{ matrix.test_path }}
+        run: |
+          gotestsum --junitfile=junit.xml --format=standard-verbose \
+            -- -timeout 20m -coverprofile=coverage.txt -covermode=atomic ${{ matrix.test_path }}
         if: matrix.sudo == false
+
+      - name: Upload coverage to Codecov
+        if: ${{ !cancelled() && env.CODECOV_TOKEN != '' && hashFiles(format('{0}/coverage.txt', matrix.package)) != '' }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ${{ matrix.package }}/coverage.txt
+          flags: ${{ matrix.flag }}
+          disable_search: true
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() && env.CODECOV_TOKEN != '' && hashFiles(format('{0}/junit.xml', matrix.package)) != '' }}
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ${{ matrix.package }}/junit.xml
+          flags: ${{ matrix.flag }}
+          disable_search: true
