@@ -1,0 +1,93 @@
+# Coverage is informational, not gating. We upload one report per matrix shard
+# (one per package × arch) — the flags below mirror those uploaded by the
+# pr-tests / pr-tests-arm64 workflows.
+
+codecov:
+  require_ci_to_pass: false
+  notify:
+    # Wait for every expected upload before posting the check, otherwise a fast
+    # shard's number lands on the PR before slower shards finish.
+    wait_for_ci: true
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%       # Don't fail the project check on sub-1% drift.
+        informational: true # Never block merges on coverage.
+    patch:
+      default:
+        target: auto
+        threshold: 1%
+        informational: true
+
+# Carry forward each flag's last-known coverage on commits that didn't run it,
+# so a single missing shard doesn't show up as 0% for that package.
+flag_management:
+  default_rules:
+    carryforward: true
+  individual_flags:
+    - name: unit-api
+      paths: [packages/api/]
+    - name: unit-client-proxy
+      paths: [packages/client-proxy/]
+    - name: unit-db
+      paths: [packages/db/]
+    - name: unit-docker-reverse-proxy
+      paths: [packages/docker-reverse-proxy/]
+    - name: unit-envd
+      paths: [packages/envd/]
+    - name: unit-orchestrator
+      paths: [packages/orchestrator/]
+    - name: unit-shared
+      paths: [packages/shared/]
+    - name: arm64-api
+      paths: [packages/api/]
+    - name: arm64-client-proxy
+      paths: [packages/client-proxy/]
+    - name: arm64-db
+      paths: [packages/db/]
+    - name: arm64-docker-reverse-proxy
+      paths: [packages/docker-reverse-proxy/]
+    - name: arm64-envd
+      paths: [packages/envd/]
+    - name: arm64-orchestrator
+      paths: [packages/orchestrator/]
+    - name: arm64-shared
+      paths: [packages/shared/]
+
+# Codecov component groupings — surfaces a coverage trend per package
+# regardless of which arch ran the test.
+component_management:
+  individual_components:
+    - component_id: api
+      paths: [packages/api/**]
+    - component_id: client-proxy
+      paths: [packages/client-proxy/**]
+    - component_id: db
+      paths: [packages/db/**]
+    - component_id: docker-reverse-proxy
+      paths: [packages/docker-reverse-proxy/**]
+    - component_id: envd
+      paths: [packages/envd/**]
+    - component_id: orchestrator
+      paths: [packages/orchestrator/**]
+    - component_id: shared
+      paths: [packages/shared/**]
+
+# Skip generated and vendored code so the metric reflects hand-written Go.
+ignore:
+  - "**/*.gen.go"
+  - "**/*_gen.go"
+  - "**/mocks/**"
+  - "**/internal/db/**"          # sqlc output
+  - "packages/shared/pkg/grpc/**" # protoc output
+  - "packages/api/internal/api/**" # oapi-codegen output
+  - "**/testdata/**"
+  - "vendor/**"
+
+comment:
+  layout: "header, diff, components, flags, files"
+  behavior: default
+  require_changes: false

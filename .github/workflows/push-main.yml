@@ -17,6 +17,8 @@ jobs:
 
   unit-tests:
     uses: ./.github/workflows/pr-tests.yml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   integration-tests:
     uses: ./.github/workflows/integration_tests.yml
     with:

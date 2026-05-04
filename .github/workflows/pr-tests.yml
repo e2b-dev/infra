@@ -1,6 +1,11 @@
 name: Run tests on PRs
 
-on: [ workflow_call ]
+on:
+  workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        description: "Codecov upload token; absent on fork PRs (upload step is skipped)."
+        required: false
 
 permissions:
   contents: read
@@ -15,28 +20,38 @@ jobs:
       # and race on `reaper_<hash>` creation. Disable Ryuk; t.Cleanup
       # handles normal exit, the prune step below handles abnormal exit.
       TESTCONTAINERS_RYUK_DISABLED: "true"
+      # Surfaced as env so the codecov upload step can gate on its presence
+      # (fork PRs never receive the secret).
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     strategy:
       matrix:
         include:
           - package: packages/api
+            flag: unit-api
             test_path: ./...
             sudo: false
           - package: packages/client-proxy
+            flag: unit-client-proxy
             test_path: ./...
             sudo: false
           - package: packages/db
+            flag: unit-db
             test_path: ./...
             sudo: false
           - package: packages/docker-reverse-proxy
+            flag: unit-docker-reverse-proxy
             test_path: ./...
             sudo: false
           - package: packages/envd
+            flag: unit-envd
             test_path: ./...
             sudo: true
           - package: packages/orchestrator
+            flag: unit-orchestrator
             test_path: ./...
             sudo: true
           - package: packages/shared
+            flag: unit-shared
             test_path: ./pkg/...
             sudo: false
       fail-fast: false
@@ -104,13 +119,24 @@ jobs:
         working-directory: ${{ matrix.package }}
         run: |
           # Run tests. The '-E' flag is required to allow root to use the correct cache path.
-          sudo -E `which go` test -v -timeout 20m ${{ matrix.test_path }}
+          sudo -E `which go` test -v -timeout 20m -coverprofile=coverage.txt -covermode=atomic ${{ matrix.test_path }}
+          # Hand the root-written profile back to the runner user so codecov-action can read it.
+          sudo chown "$(id -u):$(id -g)" coverage.txt
         if: matrix.sudo == true
 
       - name: Run tests
         working-directory: ${{ matrix.package }}
-        run: go test -v -timeout 20m ${{ matrix.test_path }}
+        run: go test -v -timeout 20m -coverprofile=coverage.txt -covermode=atomic ${{ matrix.test_path }}
         if: matrix.sudo == false
+
+      - name: Upload coverage to Codecov
+        if: ${{ !cancelled() && env.CODECOV_TOKEN != '' && hashFiles(format('{0}/coverage.txt', matrix.package)) != '' }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ${{ matrix.package }}/coverage.txt
+          flags: ${{ matrix.flag }}
+          disable_search: true
 
   validate-iac:
     name: Validate terraform
