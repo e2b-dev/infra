@@ -3,19 +3,12 @@ package sandbox
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
-	"connectrpc.com/connect"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -33,14 +26,13 @@ var reclaimSteps = []reclaimStep{
 	{featureflags.ReclaimFstrimTimeoutMs, "fstrim -av"},
 }
 
-// Outer slack on top of the sum of per-step caps to absorb shell start /
+// Slack added to the sum of per-step caps to absorb shell start /
 // envd round-trip overhead.
 const reclaimOuterSlack = 500 * time.Millisecond
 
 // buildReclaimScript composes a chain where each step has its own
-// `timeout -s KILL` ceiling. Steps with cap=0 are skipped; total returned
-// timeout is the sum of per-step caps plus a small slack. When every step
-// is disabled, returns ("", 0).
+// `timeout --foreground -s KILL` ceiling. Steps with cap=0 are skipped.
+// Returns ("", 0) when every step is disabled.
 func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration) {
 	var (
 		parts []string
@@ -62,8 +54,8 @@ func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration
 		return "", 0
 	}
 
-	// Trailing `true` ensures the script as a whole exits 0 regardless of
-	// any individual step's exit code.
+	// Trailing `true` keeps the script's exit code at 0 regardless of any
+	// individual step's outcome.
 	return strings.Join(parts, "; ") + "; true", sum + reclaimOuterSlack
 }
 
@@ -81,19 +73,7 @@ func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 	rcCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	addr := fmt.Sprintf("http://%s:%d", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
-	pc := processconnect.NewProcessClient(&http.Client{Transport: sandboxHttpClient.Transport}, addr)
-
-	req := connect.NewRequest(&process.StartRequest{
-		Process: &process.ProcessConfig{Cmd: "/bin/bash", Args: []string{"-c", script}},
-	})
-	req.Header().Set("Connect-Timeout-Ms", strconv.FormatInt(int64(timeout/time.Millisecond), 10))
-	if s.Config.Envd.AccessToken != nil {
-		req.Header().Set("X-Access-Token", *s.Config.Envd.AccessToken)
-	}
-	grpc.SetUserHeader(req.Header(), "root")
-
-	stream, err := pc.Start(rcCtx, req)
+	stream, err := s.StartEnvdProcess(rcCtx, script, "root", timeout)
 	if err != nil {
 		logger.L().Warn(ctx, "envd reclaim failed", logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
 
