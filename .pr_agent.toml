@@ -1,5 +1,6 @@
 [config]
 publish_output = true
+publish_output_progress = false
 verbosity_level = 1
 
 [github_app]
