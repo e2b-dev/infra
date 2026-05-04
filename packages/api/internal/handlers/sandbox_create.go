@@ -213,7 +213,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		ctx, a.sqlcDB, a.featureFlags, teamInfo.ID, apiVolumeMounts, build,
 	)
 	if err != nil {
-		if errors.Is(err, errVolumesNotSupported) {
+		if errors.Is(err, errVolumesNotSupported) || errors.Is(err, errNoEnvdVersion) {
 			a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
 
 			return
@@ -677,7 +677,7 @@ func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, 
 	}
 
 	if err := checkEnvdVersionRequirement(envdVersion, minEnvdVersionForNetworkRules, errNetworkRulesNotSupported); err != nil {
-		if errors.Is(err, errNetworkRulesNotSupported) {
+		if errors.Is(err, errNetworkRulesNotSupported) || errors.Is(err, errNoEnvdVersion) {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
 				Err:       err,
