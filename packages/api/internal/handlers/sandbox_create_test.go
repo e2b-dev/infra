@@ -852,7 +852,7 @@ func TestValidateNetworkRules(t *testing.T) {
 			rules:    rulesMap(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
 			setupFF:  ffEnabled,
 			wantCode: http.StatusBadRequest,
-			wantMsg:  "no envd version provided",
+			wantMsg:  "template must be rebuilt: envd version is not set",
 		},
 		{
 			name:        "envd version below minimum returns 400",

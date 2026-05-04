@@ -347,7 +347,7 @@ var errVolumesNotSupported = errors.New("volumes are not supported")
 
 var errNetworkRulesNotSupported = errors.New("network transform rules are not supported")
 
-var errNoEnvdVersion = errors.New("no envd version provided")
+var errNoEnvdVersion = errors.New("template must be rebuilt: envd version is not set")
 
 const minEnvdVersionForNetworkRules = "0.5.13"
 
