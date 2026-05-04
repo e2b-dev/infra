@@ -180,7 +180,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 		sbx.mu.Unlock()
 
 		if currentState != newState && !sandbox.AllowedTransitions[currentState][newState] {
-			return false, nil, &sandbox.InvalidStateTransitionError{CurrentState: currentState, TargetState: newState}
+			return false, nil, &sandbox.InvalidStateTransitionError{CurrentState: currentState, TargetState: newState, Transition: sbx._data.Transition}
 		}
 
 		logger.L().Debug(ctx, "State transition already in progress to the same state, waiting", logger.WithSandboxID(sbx.SandboxID()), zap.String("state", string(newState)))
@@ -208,14 +208,25 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 	}
 
 	if _, ok := sandbox.AllowedTransitions[sbx._data.State][newState]; !ok {
-		return false, nil, &sandbox.InvalidStateTransitionError{CurrentState: sbx._data.State, TargetState: newState}
+		return false, nil, &sandbox.InvalidStateTransitionError{CurrentState: sbx._data.State, TargetState: newState, Transition: sbx._data.Transition}
 	}
 
 	if opts.Action.Effect == sandbox.TransitionExpires {
 		sbx.setExpired()
 	}
 
+	// Determine transition reason
+	reason := sandbox.TransitionReasonAPI
+	if opts.Eviction {
+		reason = sandbox.TransitionReasonTimeout
+	}
+
 	sbx._data.State = newState
+	sbx._data.Transition = &sandbox.TransitionInfo{
+		ToState:   newState,
+		Reason:    reason,
+		StartedAt: time.Now().UnixMilli(),
+	}
 	sbx.transition = utils.NewErrorOnce()
 
 	callback = func(ctx context.Context, err error) {
@@ -226,6 +237,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 		if opts.Action.Effect == sandbox.TransitionTransient {
 			if err == nil && sbx._data.State == newState {
 				sbx._data.State = sandbox.StateRunning
+				sbx._data.Transition = nil
 			}
 
 			// Signal nil to waiters so concurrent callers (e.g. kill)
@@ -245,6 +257,7 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 
 		// The transition is completed and the next transition can be started
 		sbx.transition = nil
+		sbx._data.Transition = nil
 	}
 
 	return false, callback, nil

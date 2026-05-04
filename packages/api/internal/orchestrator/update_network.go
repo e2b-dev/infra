@@ -39,7 +39,7 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 
 	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
 		if sbx.State != sandbox.StateRunning {
-			return sbx, &sandbox.NotRunningError{SandboxID: sandboxID, State: sbx.State}
+			return sbx, &sandbox.NotRunningError{SandboxID: sandboxID, State: sbx.State, Transition: sbx.Transition}
 		}
 
 		if sbx.Network == nil {
@@ -69,7 +69,7 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 				killInfo := o.WasSandboxKilled(ctx, teamID, sandboxID)
 				return &api.APIError{Code: http.StatusGone, ClientMsg: utils.SandboxKilledMsg(sandboxID, killInfo), Err: err}
 			}
-			return &api.APIError{Code: http.StatusConflict, ClientMsg: utils.SandboxChangingStateMsg(sandboxID, sbxNotRunningErr.State), Err: err}
+			return &api.APIError{Code: http.StatusConflict, ClientMsg: utils.SandboxChangingStateMsg(sandboxID, sbxNotRunningErr.Transition), Err: err}
 		case errors.Is(err, sandbox.ErrNotFound):
 			// Check if the sandbox was killed (return 410 Gone) vs never existed (return 404 Not Found)
 			if killInfo := o.WasSandboxKilled(ctx, teamID, sandboxID); killInfo != nil {
