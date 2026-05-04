@@ -229,6 +229,15 @@ components:
         type: string
         description: Metadata of the sandbox
 
+    SandboxMetadataPatch:
+      description: |
+        Partial metadata update. Non-null string values add or overwrite the key.
+        An explicit `null` (or empty string) removes the key. Keys not present in
+        the body are left unchanged.
+      additionalProperties:
+        type: string
+        nullable: true
+
     SandboxState:
       type: string
       description: State of the sandbox
@@ -2405,6 +2414,39 @@ paths:
       responses:
         "204":
           description: Successfully updated the sandbox network configuration
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /sandboxes/{sandboxID}/metadata:
+    patch:
+      description: |
+        Patch metadata on a running sandbox. String values add or overwrite the
+        matching key; `null` (or an empty string) removes it. Keys omitted from
+        the body are left unchanged.
+      security:
+        - ApiKeyAuth: []
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+      tags: [sandboxes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SandboxMetadataPatch"
+      parameters:
+        - $ref: "#/components/parameters/sandboxID"
+      responses:
+        "204":
+          description: Successfully updated the sandbox metadata
+        "400":
+          $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
         "404":
