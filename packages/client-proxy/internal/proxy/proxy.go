@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	orchestratorProxyPort = 5007 // orchestrator proxy port
+	orchestratorProxyPort      = 5007 // orchestrator proxy port
 	sandboxSharedHostSubdomain = "sandbox."
 
 	// This timeout should be > 600 (GCP LB upstream idle timeout) to prevent race condition
