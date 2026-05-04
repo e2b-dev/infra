@@ -38,6 +38,9 @@ func (s *Sandbox) bestEffortReclaim(ctx context.Context, timeout time.Duration) 
 		Process: &process.ProcessConfig{Cmd: "/bin/bash", Args: []string{"-c", reclaimScript}},
 	})
 	req.Header().Set("Connect-Timeout-Ms", strconv.FormatInt(int64(timeout/time.Millisecond), 10))
+	if s.Config.Envd.AccessToken != nil {
+		req.Header().Set("X-Access-Token", *s.Config.Envd.AccessToken)
+	}
 	grpc.SetUserHeader(req.Header(), "root")
 
 	stream, err := pc.Start(rcCtx, req)
