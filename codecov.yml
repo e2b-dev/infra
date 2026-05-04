@@ -1,12 +1,16 @@
 # Coverage signal only — never gates merges. Carries forward per-flag so
 # shards that didn't run keep their last-known number instead of dropping to 0%.
+# Coverage info lives in the codecov/* status checks (click to expand);
+# the Test Analytics comment (failed + flaky tests) stays on.
 
 coverage:
   status:
     project:
-      default: { informational: true }
+      default: { informational: true, only_pulls: true }
     patch:
-      default: { informational: true }
+      default: { informational: true, only_pulls: true }
+
+comment: false
 
 flag_management:
   default_rules:
