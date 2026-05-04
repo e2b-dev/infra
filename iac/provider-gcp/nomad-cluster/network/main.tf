@@ -96,6 +96,9 @@ locals {
   h2c_backends = {
     for backend_index, backend_value in local.backends : backend_index => merge(backend_value, {
       protocol = "H2C"
+      # The session backend serves wildcard sandbox traffic, including /ws.
+      # Before routing session-paths to H2C, keep WebSocket upgrade paths on
+      # the HTTP/1.1 backend or split them into a separate backend service.
     }) if contains(["api", "session", "docker-reverse-proxy"], backend_index)
   }
 
