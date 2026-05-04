@@ -2,8 +2,8 @@ have_fun: false
 
 code_review:
   disable: false
-  # Only surface critical findings; drop nits, suggestions, and lower-severity issues.
-  comment_severity_threshold: CRITICAL
+  # Only surface high-severity findings; drop nits and lower-severity suggestions.
+  comment_severity_threshold: HIGH
   # Cap the number of review comments per PR to avoid noise floods.
   max_review_comments: 10
   pull_request_opened:
