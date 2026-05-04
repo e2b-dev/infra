@@ -1,12 +1,22 @@
 # Coverage signal only — never gates merges. Carries forward per-flag so
 # shards that didn't run keep their last-known number instead of dropping to 0%.
+# Coverage info lives in the codecov/* status checks (click to expand).
+# The PR comment is kept (with minimal coverage layout) because Test
+# Analytics (failed + flaky tests) ships in the same comment.
 
 coverage:
   status:
     project:
-      default: { informational: true }
+      default: { informational: true, only_pulls: true }
     patch:
-      default: { informational: true }
+      default: { informational: true, only_pulls: true }
+
+comment:
+  layout: "condensed_header"
+  hide_project_coverage: true
+  require_changes: false
+  require_base: false
+  require_head: true
 
 flag_management:
   default_rules:
