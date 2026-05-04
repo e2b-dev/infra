@@ -7,6 +7,10 @@ on:
         type: boolean
         description: "Whether to publish the results"
         required: true
+    secrets:
+      TRUNK_API_TOKEN:
+        description: "Trunk Flaky Tests upload token; absent on fork PRs (upload step is skipped)."
+        required: false
 jobs:
   integration_tests:
     runs-on: infra-tests
@@ -14,6 +18,10 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      # Surfaced as env so the upload step can gate on its presence
+      # (fork PRs never receive the secret).
+      TRUNK_API_TOKEN: ${{ secrets.TRUNK_API_TOKEN }}
 
     steps:
       - name: Checkout Code
@@ -77,6 +85,17 @@ jobs:
         with:
           name: Integration Tests Results
           path: ./tests/integration/test-results.xml
+
+      - name: Upload test results to Trunk
+        if: ${{ !cancelled() && env.TRUNK_API_TOKEN != '' && hashFiles('tests/integration/test-results.xml') != '' }}
+        # Don't fail the job if the analytics upload itself errors out.
+        continue-on-error: true
+        uses: trunk-io/analytics-uploader@v2
+        with:
+          junit-paths: tests/integration/test-results.xml
+          org-slug: e2b
+          token: ${{ secrets.TRUNK_API_TOKEN }}
+          variant: integration
 
       - name: Upload Service Logs
         if: ${{ always() && inputs.publish == true }}
