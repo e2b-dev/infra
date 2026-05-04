@@ -6,6 +6,23 @@ locals {
   enable_billing_http_team_provision_sink = var.enable_billing_http_team_provision_sink
   dashboard_api_billing_server_url        = local.enable_billing_http_team_provision_sink ? trimspace(data.google_secret_manager_secret_version.billing_server_url[0].secret_data) : ""
   dashboard_api_billing_server_api_token  = local.enable_billing_http_team_provision_sink ? trimspace(data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data) : ""
+  default_auth_provider_config = {
+    jwt = []
+    bearer = [
+      {
+        hmac = {
+          secrets = split(",", trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data))
+        }
+        claimMappings = null
+      }
+    ]
+  }
+  # jsonencode/jsondecode strips Terraform's static type info from
+  # var.auth_provider_config so that the conditional below does not fail with
+  # "Inconsistent conditional result types" when the typed object literal in
+  # `default_auth_provider_config` (a tuple of objects) is compared with the
+  # variable's declared object type (a list of objects).
+  auth_provider_config = var.auth_provider_config != null ? jsondecode(jsonencode(var.auth_provider_config)) : local.default_auth_provider_config
 }
 
 # API
@@ -117,7 +134,7 @@ module "api" {
   api_docker_image                        = data.google_artifact_registry_docker_image.api_image.self_link
   postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   postgres_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
-  supabase_jwt_secrets                    = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
+  auth_provider_config                    = local.auth_provider_config
   posthog_api_key                         = trimspace(data.google_secret_manager_secret_version.posthog_api_key.secret_data)
   environment                             = var.environment
   analytics_collector_host                = trimspace(data.google_secret_manager_secret_version.analytics_collector_host.secret_data)
@@ -166,7 +183,7 @@ module "dashboard_api" {
   auth_db_read_replica_connection_string  = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
   supabase_db_connection_string           = trimspace(data.google_secret_manager_secret_version.supabase_db_connection_string.secret_data)
   clickhouse_connection_string            = local.clickhouse_connection_string
-  supabase_jwt_secrets                    = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
+  auth_provider_config                    = local.auth_provider_config
   redis_url                               = local.redis_url
   redis_cluster_url                       = local.redis_cluster_url
   redis_tls_ca_base64                     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)

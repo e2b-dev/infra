@@ -152,7 +152,11 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 
 	authCache := sharedauth.NewAuthCache[*types.Team](redisClient)
 	authStore := sharedauth.NewAuthStore(authDB)
-	authService := sharedauth.NewAuthService[*types.Team](authStore, authCache, config.SupabaseJWTSecrets)
+	authProviderVerifier, err := sharedauth.NewVerifier(ctx, config.AuthProvider)
+	if err != nil {
+		logger.L().Fatal(ctx, "Initializing auth provider JWT verifier", zap.Error(err))
+	}
+	authService := sharedauth.NewAuthService[*types.Team](authStore, authCache, authProviderVerifier)
 	templateCache := templatecache.NewTemplateCache(sqlcDB, redisClient)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(ctx, time.Minute, sqlcDB)
 
@@ -314,15 +318,22 @@ func (a *APIStore) GetUserFromAccessToken(ctx context.Context, ginCtx *gin.Conte
 	return a.authService.ValidateAccessToken(ctx, ginCtx, accessToken)
 }
 
-func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
-	ctx, span := tracer.Start(ctx, "get user id from supabase token")
+func (a *APIStore) GetUserIDFromAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "get user id from auth provider token")
 	defer span.End()
 
-	return a.authService.ValidateSupabaseToken(ctx, ginCtx, supabaseToken)
+	return a.authService.ValidateAuthProviderToken(ctx, ginCtx, token)
 }
 
 func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *api.APIError) {
 	ctx, span := tracer.Start(ctx, "get team from supabase token")
+	defer span.End()
+
+	return a.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID)
+}
+
+func (a *APIStore) GetTeamFromAuthProviderToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "get team from auth provider token")
 	defer span.End()
 
 	return a.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID)

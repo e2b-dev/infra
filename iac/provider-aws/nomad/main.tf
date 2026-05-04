@@ -126,7 +126,7 @@ module "api" {
   environment                    = var.environment
   api_docker_image               = data.aws_ecr_image.api.image_uri
   postgres_connection_string     = var.postgres_connection_string
-  supabase_jwt_secrets           = var.supabase_jwt_secrets
+  auth_provider_config           = var.auth_provider_config
   nomad_acl_token                = var.nomad_acl_token
   admin_token                    = var.admin_token
   redis_url                      = var.redis_url

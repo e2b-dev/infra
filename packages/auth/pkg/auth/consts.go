@@ -6,6 +6,7 @@ const (
 	HeaderAuthorization = "Authorization"
 	HeaderSupabaseToken = "X-Supabase-Token"
 	HeaderSupabaseTeam  = "X-Supabase-Team"
+	HeaderTeamID        = "X-Team-Id"
 	HeaderAdminToken    = "X-Admin-Token"
 
 	// Token prefixes.

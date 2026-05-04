@@ -33,11 +33,13 @@ func TestParse(t *testing.T) {
 		assert.ErrorContains(t, err, `environment variable "POSTGRES_CONNECTION_STRING" should not be empty`)
 	})
 
-	t.Run("supabase secrets are comma separated", func(t *testing.T) {
-		t.Setenv("SUPABASE_JWT_SECRETS", "aaa,bbb")
+	t.Run("hmac secrets are parsed from auth provider config", func(t *testing.T) {
+		t.Setenv("AUTH_PROVIDER_CONFIG", `{"bearer":[{"hmac":{"secrets":["aaa","bbb"]}}]}`)
 		result, err := Parse()
 		require.NoError(t, err)
-		assert.Equal(t, []string{"aaa", "bbb"}, result.SupabaseJWTSecrets)
+		require.Len(t, result.AuthProvider.Bearer, 1)
+		require.NotNil(t, result.AuthProvider.Bearer[0].HMAC)
+		assert.Equal(t, []string{"aaa", "bbb"}, result.AuthProvider.Bearer[0].HMAC.Secrets)
 	})
 
 	t.Run("base64 signing key can be parsed", func(t *testing.T) {

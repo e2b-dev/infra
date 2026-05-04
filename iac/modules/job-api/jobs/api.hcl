@@ -151,7 +151,6 @@ job "api" {
         AUTH_DB_READ_REPLICA_CONNECTION_STRING  = "${postgres_read_replica_connection_string}"
         AUTH_DB_MAX_OPEN_CONNECTIONS           = "${auth_db_max_open_connections}"
         AUTH_DB_MIN_IDLE_CONNECTIONS           = "${auth_db_min_idle_connections}"
-        SUPABASE_JWT_SECRETS                    = "${supabase_jwt_secrets}"
 
         LOKI_URL                      = "${loki_url}"
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"

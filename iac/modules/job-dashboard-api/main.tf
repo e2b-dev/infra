@@ -8,7 +8,7 @@ locals {
     AUTH_DB_READ_REPLICA_CONNECTION_STRING  = var.auth_db_read_replica_connection_string
     SUPABASE_DB_CONNECTION_STRING           = var.supabase_db_connection_string
     CLICKHOUSE_CONNECTION_STRING            = var.clickhouse_connection_string
-    SUPABASE_JWT_SECRETS                    = var.supabase_jwt_secrets
+    AUTH_PROVIDER_CONFIG                    = jsonencode(var.auth_provider_config)
     REDIS_URL                               = var.redis_url
     REDIS_CLUSTER_URL                       = var.redis_cluster_url
     REDIS_TLS_CA_BASE64                     = var.redis_tls_ca_base64

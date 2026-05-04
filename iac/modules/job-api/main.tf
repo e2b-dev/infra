@@ -1,6 +1,7 @@
 locals {
   default_job_env_vars = {
-    GIN_MODE : "release"
+    GIN_MODE             = "release"
+    AUTH_PROVIDER_CONFIG = jsonencode(var.auth_provider_config)
   }
 
   job_env_vars = merge(local.default_job_env_vars, var.job_env_vars)
@@ -27,7 +28,6 @@ resource "nomad_job" "api" {
     api_docker_image                        = var.api_docker_image
     postgres_connection_string              = var.postgres_connection_string
     postgres_read_replica_connection_string = var.postgres_read_replica_connection_string
-    supabase_jwt_secrets                    = var.supabase_jwt_secrets
     posthog_api_key                         = var.posthog_api_key
     analytics_collector_host                = var.analytics_collector_host
     analytics_collector_api_token           = var.analytics_collector_api_token
