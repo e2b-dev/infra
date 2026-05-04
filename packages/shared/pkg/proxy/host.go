@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -56,16 +57,7 @@ func shouldParseHeaders(host string) bool {
 
 // RequestHostname returns the hostname portion of an HTTP Host value.
 func RequestHostname(host string) string {
-	hostname, _, err := net.SplitHostPort(host)
-	if err == nil {
-		return hostname
-	}
-
-	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
-		return strings.TrimPrefix(strings.TrimSuffix(host, "]"), "[")
-	}
-
-	return host
+	return (&url.URL{Host: host}).Hostname()
 }
 
 // IsLocalRequestHost reports whether host targets localhost or a loopback IP.
