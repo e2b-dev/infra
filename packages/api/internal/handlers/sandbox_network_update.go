@@ -52,22 +52,24 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(c *gin.Context, sandboxID string
 		return
 	}
 
-	sbxInfo, err := a.orchestrator.GetSandbox(ctx, team.ID, sandboxID)
-	if err != nil {
-		if errors.Is(err, sandbox.ErrNotFound) {
-			a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
-		} else {
-			telemetry.ReportError(ctx, "error getting sandbox for network update", err)
-			a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get sandbox")
+	if body.Rules != nil {
+		sbxInfo, err := a.orchestrator.GetSandbox(ctx, team.ID, sandboxID)
+		if err != nil {
+			if errors.Is(err, sandbox.ErrNotFound) {
+				a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
+			} else {
+				telemetry.ReportError(ctx, "error getting sandbox for network update", err)
+				a.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get sandbox")
+			}
+
+			return
 		}
 
-		return
-	}
+		if apiErr := validateNetworkRules(ctx, a.featureFlags, team.ID, sbxInfo.EnvdVersion, body.Rules); apiErr != nil {
+			a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
-	if apiErr := validateNetworkRules(ctx, a.featureFlags, team.ID, sbxInfo.EnvdVersion, body.Rules); apiErr != nil {
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-
-		return
+			return
+		}
 	}
 
 	rules := apiRulesToDBRules(body.Rules)
