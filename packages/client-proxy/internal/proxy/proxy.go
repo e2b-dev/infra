@@ -27,6 +27,7 @@ import (
 
 const (
 	orchestratorProxyPort = 5007 // orchestrator proxy port
+	sandboxSharedHostSubdomain = "sandbox."
 
 	// This timeout should be > 600 (GCP LB upstream idle timeout) to prevent race condition
 	// Also it's a good practice to set it to a value higher than the idle timeout of the backend service
@@ -70,7 +71,7 @@ func orchestratorSandboxHost(host string, sandboxID string, port uint64) *string
 		return &orchestratorHost
 	}
 
-	domain, ok := strings.CutPrefix(hostname, "sandbox.")
+	domain, ok := strings.CutPrefix(hostname, sandboxSharedHostSubdomain)
 	if !ok || domain == "" {
 		return nil
 	}
