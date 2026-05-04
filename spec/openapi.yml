@@ -2402,7 +2402,7 @@ paths:
 
   /sandboxes/{sandboxID}/network:
     put:
-      description: Update the network configuration for a running sandbox. Replaces the current egress rules with the provided configuration. Omitting both fields clears all egress rules.
+      description: Update the network configuration for a running sandbox. Replaces the current egress rules with the provided configuration. Omitting field clears it.
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
