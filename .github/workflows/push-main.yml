@@ -25,6 +25,7 @@ jobs:
     with:
       publish: true
     secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       TRUNK_API_TOKEN: ${{ secrets.TRUNK_API_TOKEN }}
   publish-test-results:
     needs:

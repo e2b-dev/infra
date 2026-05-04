@@ -8,6 +8,7 @@ on:
         description: "Whether to publish the results"
         required: true
     secrets:
+      CODECOV_TOKEN: { required: false }
       TRUNK_API_TOKEN: { required: false }
 jobs:
   integration_tests:
@@ -17,7 +18,8 @@ jobs:
       contents: read
       id-token: write
     env:
-      # Surfaced as env so the upload step can gate on presence (skipped on fork PRs).
+      # Surfaced as env so upload steps can gate on presence (skipped on fork PRs).
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       TRUNK_API_TOKEN: ${{ secrets.TRUNK_API_TOKEN }}
 
     steps:
@@ -82,6 +84,15 @@ jobs:
         with:
           name: Integration Tests Results
           path: ./tests/integration/test-results.xml
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() && env.CODECOV_TOKEN != '' && hashFiles('tests/integration/test-results.xml') != '' }}
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: tests/integration/test-results.xml
+          flags: integration
+          disable_search: true
 
       - name: Upload test results to Trunk
         if: ${{ !cancelled() && env.TRUNK_API_TOKEN != '' && hashFiles('tests/integration/test-results.xml') != '' }}
