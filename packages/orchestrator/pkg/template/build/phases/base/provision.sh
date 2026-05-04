@@ -32,6 +32,14 @@ done
 
 if [ -n "$MISSING" ]; then
     echo "Missing packages detected, installing:$MISSING"
+    # Bake retry config into the image so user RUN apt-get steps and
+    # provision.sh both survive transient mirror flakiness.
+    mkdir -p /etc/apt/apt.conf.d
+    cat >/etc/apt/apt.conf.d/80-retries <<'EOF'
+Acquire::Retries "10";
+Acquire::http::Timeout "30";
+Acquire::https::Timeout "30";
+EOF
     apt-get -q update
     DEBIAN_FRONTEND=noninteractive DEBCONF_NOWARNINGS=yes apt-get -qq -o=Dpkg::Use-Pty=0 install -y --no-install-recommends $MISSING
 else
