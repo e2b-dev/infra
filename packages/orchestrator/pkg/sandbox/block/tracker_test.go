@@ -67,20 +67,6 @@ func TestTracker(t *testing.T) {
 		assert.True(t, bmZero.IsEmpty())
 	})
 
-	t.Run("out-of-range bounds are no-ops", func(t *testing.T) {
-		t.Parallel()
-		s := NewTracker()
-
-		s.SetRange(0, 1<<33, Dirty)
-		s.SetRange(1<<32+1, 1<<32+5, Zero)
-		bmDirty, bmZero := s.Export()
-		assert.True(t, bmDirty.IsEmpty(), "end > 1<<32 must be ignored")
-		assert.True(t, bmZero.IsEmpty(), "start >= 1<<32 must be ignored")
-
-		s.SetRange(1<<32-1, 1<<32, Dirty)
-		assert.Equal(t, Dirty, s.Get(1<<32-1), "end == 1<<32 still works")
-	})
-
 	t.Run("Export returns clones", func(t *testing.T) {
 		t.Parallel()
 		s := NewTracker()

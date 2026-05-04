@@ -419,7 +419,7 @@ retryLoop:
 		return fmt.Errorf("failed uffdio copy: %w", joinedErr)
 	}
 
-	idx := uint64(header.BlockIdx(offset, int64(u.pageSize)))
+	idx := uint32(header.BlockIdx(offset, int64(u.pageSize)))
 	u.pageTracker.SetRange(idx, idx+1, block.Dirty)
 	u.prefetchTracker.Add(offset, accessType)
 

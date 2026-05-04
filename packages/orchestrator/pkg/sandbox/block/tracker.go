@@ -29,27 +29,27 @@ func NewTracker() *Tracker {
 	}
 }
 
-// SetRange takes uint64 to allow end = 1<<32 (roaring's half-open upper bound).
-// Out-of-range values (end > 1<<32) are silently ignored; roaring is a 32-bit
-// bitmap and AddRange panics otherwise.
-func (t *Tracker) SetRange(start, end uint64, state State) {
-	if end <= start || end > 1<<32 {
+// SetRange sets state for indices in [start, end). The index math.MaxUint32
+// is unaddressable: end is the half-open upper bound and capped at MaxUint32.
+func (t *Tracker) SetRange(start, end uint32, state State) {
+	if end <= start {
 		return
 	}
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	s, e := uint64(start), uint64(end)
 	switch state {
 	case Dirty:
-		t.dirty.AddRange(start, end)
-		t.zero.RemoveRange(start, end)
+		t.dirty.AddRange(s, e)
+		t.zero.RemoveRange(s, e)
 	case Zero:
-		t.zero.AddRange(start, end)
-		t.dirty.RemoveRange(start, end)
+		t.zero.AddRange(s, e)
+		t.dirty.RemoveRange(s, e)
 	case NotPresent:
-		t.dirty.RemoveRange(start, end)
-		t.zero.RemoveRange(start, end)
+		t.dirty.RemoveRange(s, e)
+		t.zero.RemoveRange(s, e)
 	}
 }
 
