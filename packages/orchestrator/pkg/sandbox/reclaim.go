@@ -45,22 +45,24 @@ func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration
 		}
 		// `timeout` accepts fractional seconds (s/m/h/d), not `ms`.
 		// `--foreground` ensures SIGKILL actually reaches the child when we
-		// run inside a non-interactive bash invoked from envd.
+		// run inside a non-interactive bash invoked from envd. Per-step
+		// stdout/stderr is dropped; any non-zero status is captured into
+		// `rc` so the script's overall exit code surfaces failures without
+		// short-circuiting subsequent steps.
 		secs := float64(ms) / 1000.0
-		parts = append(parts, fmt.Sprintf("timeout --foreground -s KILL %.3f sh -c %q 2>/dev/null", secs, st.cmd))
+		parts = append(parts, fmt.Sprintf("timeout --foreground -s KILL %.3f sh -c %q >/dev/null 2>&1 || rc=$?", secs, st.cmd))
 		sum += time.Duration(ms) * time.Millisecond
 	}
 	if len(parts) == 0 {
 		return "", 0
 	}
 
-	// Trailing `true` keeps the script's exit code at 0 regardless of any
-	// individual step's outcome.
-	return strings.Join(parts, "; ") + "; true", sum + reclaimOuterSlack
+	return "rc=0; " + strings.Join(parts, "; ") + "; exit $rc", sum + reclaimOuterSlack
 }
 
 // bestEffortReclaim asks envd to reclaim guest memory + disk before pause.
-// All failures are swallowed.
+// Per-step stdout/stderr is silenced inside the guest; we only log when
+// envd itself errors or the script reports a non-zero exit code.
 func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 	ctx, span := tracer.Start(ctx, "envd-reclaim")
 	defer span.End()
@@ -81,6 +83,18 @@ func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 	}
 	defer stream.Close()
 
+	var exitCode int32
 	for stream.Receive() {
+		if end := stream.Msg().GetEvent().GetEnd(); end != nil {
+			exitCode = end.GetExitCode()
+		}
+	}
+	if err := stream.Err(); err != nil {
+		logger.L().Warn(ctx, "envd reclaim stream error", logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
+
+		return
+	}
+	if exitCode != 0 {
+		logger.L().Warn(ctx, "envd reclaim non-zero exit", logger.WithSandboxID(s.Runtime.SandboxID), zap.Int32("exit_code", exitCode))
 	}
 }
