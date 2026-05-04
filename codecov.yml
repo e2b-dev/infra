@@ -23,9 +23,8 @@ component_management:
     - { component_id: shared, paths: ["packages/shared/**"] }
 
 ignore:
-  - "**/*.gen.go"
-  - "**/mocks/**"
-  - "**/internal/db/**"            # sqlc
-  - "packages/shared/pkg/grpc/**"  # protoc
-  - "packages/api/internal/api/**" # oapi-codegen
+  - "**/*.gen.go"   # oapi-codegen
+  - "**/*.sql.go"   # sqlc
+  - "**/*.pb.go"    # protoc (message + grpc)
+  - "**/mocks/**"   # mockery
   - "**/testdata/**"

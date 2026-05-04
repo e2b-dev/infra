@@ -136,7 +136,8 @@ jobs:
         if: matrix.sudo == false
 
       - name: Upload coverage to Codecov
-        if: ${{ !cancelled() && env.CODECOV_TOKEN != '' && hashFiles(format('{0}/coverage.txt', matrix.package)) != '' }}
+        if: ${{ !cancelled() && env.CODECOV_TOKEN != '' &&
+          hashFiles(format('{0}/coverage.txt', matrix.package)) != '' }}
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -145,7 +146,8 @@ jobs:
           disable_search: true
 
       - name: Upload test results to Trunk
-        if: ${{ !cancelled() && env.TRUNK_API_TOKEN != '' && hashFiles(format('{0}/junit.xml', matrix.package)) != '' }}
+        if: ${{ !cancelled() && env.TRUNK_API_TOKEN != '' &&
+          hashFiles(format('{0}/junit.xml', matrix.package)) != '' }}
         continue-on-error: true
         uses: trunk-io/analytics-uploader@v2
         with:
