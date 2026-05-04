@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -100,7 +101,8 @@ func attachShell(ctx context.Context, sbx *sandbox.Sandbox) error {
 	if err != nil {
 		return fmt.Errorf("start shell: %w", err)
 	}
-	defer stream.Close()
+	closeStream := sync.OnceFunc(func() { _ = stream.Close() })
+	defer closeStream()
 
 	// Wait for the StartEvent so we have a pid to address input/resize at.
 	var pid uint32
@@ -135,18 +137,14 @@ func attachShell(ctx context.Context, sbx *sandbox.Sandbox) error {
 	if err != nil {
 		return fmt.Errorf("raw mode: %w", err)
 	}
-	defer func() {
-		_ = term.Restore(int(os.Stdin.Fd()), oldState)
-		fmt.Println()
-	}()
 
 	sessionCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// Output pump: stream → stdout. Closes sessionCtx on exit so input/resize
-	// goroutines unwind too.
+	streamDone := make(chan struct{})
 	endCh := make(chan *process.ProcessEvent_EndEvent, 1)
 	go func() {
+		defer close(streamDone)
 		defer cancel()
 		for stream.Receive() {
 			event := stream.Msg().GetEvent().GetEvent()
@@ -170,6 +168,14 @@ func attachShell(ctx context.Context, sbx *sandbox.Sandbox) error {
 	go pumpResize(sessionCtx, processC, sbx, pid)
 
 	<-sessionCtx.Done()
+
+	// Drain the output goroutine before restoring the terminal — otherwise
+	// late PTY bytes land on a cooked-mode terminal and render stairstepped.
+	closeStream()
+	<-streamDone
+
+	_ = term.Restore(int(os.Stdin.Fd()), oldState)
+	fmt.Println()
 
 	select {
 	case end := <-endCh:
