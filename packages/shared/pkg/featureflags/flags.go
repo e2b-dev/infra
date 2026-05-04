@@ -157,9 +157,16 @@ var (
 	BestOfKMaxOvercommit          = NewIntFlag("best-of-k-max-overcommit", 400)              // Default R=4 (stored as percentage, max over-commit ratio)
 	BestOfKAlpha                  = NewIntFlag("best-of-k-alpha", 50)                        // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
 	EnvdInitTimeoutMilliseconds   = NewIntFlag("envd-init-request-timeout-milliseconds", 50) // Timeout for envd init request in milliseconds
-	// ReclaimOnPauseTimeoutMs gates a pre-pause guest reclaim (sync, drop_caches,
-	// compact_memory, fstrim) run via envd. 0 disables it.
-	ReclaimOnPauseTimeoutMs       = NewIntFlag("reclaim-on-pause-timeout-ms", 0)
+	// ReclaimOnPauseTimeoutMs gates a pre-pause guest reclaim run via envd and
+	// caps the whole chain. 0 disables the feature entirely.
+	ReclaimOnPauseTimeoutMs = NewIntFlag("reclaim-on-pause-timeout-ms", 0)
+	// Per-step ceilings for the reclaim chain. Each step is wrapped in
+	// `timeout -s KILL`; 0 skips that step. A stuck step cannot starve the
+	// rest, so compact_memory always runs (as long as its own cap is > 0).
+	ReclaimSyncTimeoutMs          = NewIntFlag("reclaim-sync-timeout-ms", 500)
+	ReclaimDropCachesTimeoutMs    = NewIntFlag("reclaim-drop-caches-timeout-ms", 200)
+	ReclaimCompactMemoryTimeoutMs = NewIntFlag("reclaim-compact-memory-timeout-ms", 1000)
+	ReclaimFstrimTimeoutMs        = NewIntFlag("reclaim-fstrim-timeout-ms", 500)
 	HostStatsSamplingInterval     = NewIntFlag("host-stats-sampling-interval", 5000) // Host stats sampling interval in milliseconds (default 5s)
 	MaxCacheWriterConcurrencyFlag = NewIntFlag("max-cache-writer-concurrency", 10)
 
