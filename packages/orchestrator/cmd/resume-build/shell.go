@@ -20,8 +20,9 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
 )
 
-// shellExitedError is returned when an interactive shell session ends.
-// Callers in pause modes use it to distinguish "user detached" from real errors.
+// shellExitedError is returned when the in-guest shell exits cleanly
+// (e.g. user pressed Ctrl+D). Callers use it to distinguish a normal
+// session end from a real transport/setup error.
 type shellExitedError struct{ exitCode int32 }
 
 func (e *shellExitedError) Error() string {
@@ -58,8 +59,9 @@ func shellEnv() map[string]string {
 }
 
 // attachShell opens an interactive PTY shell against envd inside sbx,
-// proxying the host terminal through. It tries /bin/bash -l first and
-// falls back to /bin/sh if bash is missing in the guest.
+// proxying the host terminal through. The shell is /bin/bash -l; if
+// bash is missing in the guest the wrapper's stderr ("nice: '/bin/bash':
+// No such file or directory") will surface in the user's terminal.
 //
 // Returns when the in-guest shell exits (Ctrl+D), or when ctx is cancelled.
 func attachShell(ctx context.Context, sbx *sandbox.Sandbox) error {
@@ -79,55 +81,14 @@ func attachShell(ctx context.Context, sbx *sandbox.Sandbox) error {
 		cols, rows = 80, 24
 	}
 
-	for _, candidate := range []struct {
-		cmd  string
-		args []string
-	}{
-		{"/bin/bash", []string{"-l"}},
-		{"/bin/sh", []string{"-l"}},
-	} {
-		err := runShell(ctx, processC, sbx, candidate.cmd, candidate.args, uint32(cols), uint32(rows))
-		// Fall back to the next candidate if the shell binary is missing or
-		// failed before we ever saw any output.
-		if isMissingShell(err) {
-			continue
-		}
-
-		return err
-	}
-
-	return errors.New("no usable shell found in sandbox (tried /bin/bash, /bin/sh)")
-}
-
-// missingShellError signals that a candidate shell binary failed to launch
-// and we should try the next one.
-type missingShellError struct{ inner error }
-
-func (e *missingShellError) Error() string { return e.inner.Error() }
-func (e *missingShellError) Unwrap() error { return e.inner }
-
-func isMissingShell(err error) bool {
-	var m *missingShellError
-
-	return errors.As(err, &m)
-}
-
-func runShell(
-	ctx context.Context,
-	processC processconnect.ProcessClient,
-	sbx *sandbox.Sandbox,
-	cmd string,
-	args []string,
-	cols, rows uint32,
-) error {
 	startReq := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{
-			Cmd:  cmd,
-			Args: args,
+			Cmd:  "/bin/bash",
+			Args: []string{"-l"},
 			Envs: shellEnv(),
 		},
 		Pty: &process.PTY{
-			Size: &process.PTY_Size{Cols: cols, Rows: rows},
+			Size: &process.PTY_Size{Cols: uint32(cols), Rows: uint32(rows)},
 		},
 	})
 	grpc.SetUserHeader(startReq.Header(), "root")
@@ -137,31 +98,23 @@ func runShell(
 
 	stream, err := processC.Start(ctx, startReq)
 	if err != nil {
-		return fmt.Errorf("start %s: %w", cmd, err)
+		return fmt.Errorf("start shell: %w", err)
 	}
 	defer stream.Close()
 
 	// Wait for the StartEvent so we have a pid to address input/resize at.
 	var pid uint32
-	gotData := false
 	for stream.Receive() {
 		event := stream.Msg().GetEvent().GetEvent()
 		switch e := event.(type) {
 		case *process.ProcessEvent_Start:
 			pid = e.Start.GetPid()
 		case *process.ProcessEvent_Data:
-			gotData = true
 			// Push any data that arrived before we exited the bootstrap loop.
 			if pty := e.Data.GetPty(); pty != nil {
 				_, _ = os.Stdout.Write(pty)
 			}
 		case *process.ProcessEvent_End:
-			// Process ended before producing output — treat as missing-shell
-			// so the caller can try the fallback.
-			if !gotData {
-				return &missingShellError{inner: fmt.Errorf("%s exited immediately (code %d)", cmd, e.End.GetExitCode())}
-			}
-
 			return endToError(e.End)
 		}
 		if pid != 0 {
