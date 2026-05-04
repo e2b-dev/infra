@@ -185,15 +185,22 @@ func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, cf
 		return nil, [32]byte{}, fmt.Errorf("failed to stat local file %s: %w", localPath, err)
 	}
 
-	// Write .uncompressed-size sidecar so Size() returns the correct value.
+	uploader := &fsPartUploader{fullPath: o.path}
+
+	ft, checksum, err := compressStream(ctx, file, cfg, uploader, 4)
+	if err != nil {
+		return nil, [32]byte{}, err
+	}
+
+	// Sidecar is written only after compressStream succeeds so a failure (cancel,
+	// partial read, compress error) doesn't leave Size() reporting the new size
+	// against the unchanged data file.
 	sidecarPath := SizeSidecar(o.path)
 	if writeErr := os.WriteFile(sidecarPath, []byte(strconv.FormatInt(fi.Size(), 10)), 0o644); writeErr != nil {
 		return nil, [32]byte{}, fmt.Errorf("failed to write uncompressed-size sidecar for %s: %w", o.path, writeErr)
 	}
 
-	uploader := &fsPartUploader{fullPath: o.path}
-
-	return compressStream(ctx, file, cfg, uploader, 4)
+	return ft, checksum, nil
 }
 
 func (o *fsObject) openRangeReader(_ context.Context, off, length int64) (io.ReadCloser, error) {

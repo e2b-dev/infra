@@ -155,7 +155,7 @@ func TestPeerBlob_WriteTo_UploadedSetMidStream_CompletesFromPeerThenFallsBack(t 
 	require.NoError(t, err)
 	assert.Equal(t, int64(9), n1)
 	assert.Equal(t, "aaabbbccc", buf1.String())
-	assert.NotNil(t, uploaded.Load())
+	assert.True(t, uploaded.Load())
 
 	// Second download: uploaded is now true, skips peer and goes to base storage.
 	var buf2 bytes.Buffer
@@ -230,5 +230,5 @@ func TestPeerBlob_Exists_UseStorage_FallsBackToBase(t *testing.T) {
 	ok, err := blob.Exists(t.Context())
 	require.NoError(t, err)
 	assert.True(t, ok)
-	assert.NotNil(t, uploaded.Load(), "uploaded flag should be set after UseStorage response")
+	assert.True(t, uploaded.Load(), "uploaded flag should be set after UseStorage response")
 }

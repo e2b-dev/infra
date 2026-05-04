@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"strconv"
@@ -408,7 +409,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 	// regardless of file size.
 	if cfg.IsCompressionEnabled() {
 		start := time.Now()
-		ft, checksum, err := o.storeFileCompressed(ctx, path, cfg, maxConcurrency)
+		ft, checksum, err := o.storeFileCompressed(ctx, path, cfg, maxConcurrency, putOpts)
 		if err != nil {
 			timer.Failure(ctx, fileInfo.Size())
 		} else {
@@ -499,7 +500,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 	return nil, [32]byte{}, e
 }
 
-func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, cfg CompressConfig, maxConcurrency int) (*FrameTable, [32]byte, error) {
+func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, cfg CompressConfig, maxConcurrency int, putOpts PutOptions) (*FrameTable, [32]byte, error) {
 	file, err := os.Open(localPath)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("failed to open local file %s: %w", localPath, err)
@@ -511,14 +512,18 @@ func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, c
 		return nil, [32]byte{}, fmt.Errorf("failed to stat local file %s: %w", localPath, err)
 	}
 
+	// Merge caller metadata (e.g. team_id) with our internal uncompressed-size
+	// bookkeeping. Internal key wins on collision.
+	metadata := make(map[string]string, len(putOpts.Metadata)+1)
+	maps.Copy(metadata, putOpts.Metadata)
+	metadata[MetadataKeyUncompressedSize] = strconv.FormatInt(fi.Size(), 10)
+
 	uploader, err := NewMultipartUploaderWithRetryConfig(
 		ctx,
 		o.storage.bucket.BucketName(),
 		o.path,
 		DefaultRetryConfig(),
-		map[string]string{
-			MetadataKeyUncompressedSize: strconv.FormatInt(fi.Size(), 10),
-		},
+		metadata,
 	)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("failed to create multipart uploader: %w", err)

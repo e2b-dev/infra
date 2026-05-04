@@ -131,7 +131,12 @@ func (ft *FrameTable) FrameAt(i int) (startU, endU, startC, endC int64) {
 }
 
 // UncompressedSize returns the total uncompressed size across all frames.
+// Nil-safe: returns 0 for nil (uncompressed leg in mixed-mode V4 upload).
 func (ft *FrameTable) UncompressedSize() int64 {
+	if ft == nil {
+		return 0
+	}
+
 	var total int64
 	for _, e := range ft.entries {
 		total += int64(e.SizeU)
@@ -141,7 +146,12 @@ func (ft *FrameTable) UncompressedSize() int64 {
 }
 
 // CompressedSize returns the total compressed size across all frames.
+// Nil-safe: returns 0 for nil (uncompressed leg in mixed-mode V4 upload).
 func (ft *FrameTable) CompressedSize() int64 {
+	if ft == nil {
+		return 0
+	}
+
 	var total int64
 	for _, e := range ft.entries {
 		total += int64(e.SizeC)
