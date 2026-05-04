@@ -5,9 +5,7 @@ verbosity_level = 1
 
 [github_app]
 # Only run /review. Drops the /describe walkthrough, diagram, and file-changes summary.
-pr_commands = [
-    "/review",
-]
+pr_commands = ["/review"]
 
 [pr_reviewer]
 require_score_review = false
