@@ -140,7 +140,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ${{ matrix.package }}/coverage.txt
-          flags: ${{ matrix.flag }}
+          flags: ${{ matrix.flag }},unit
           disable_search: true
 
       - name: Upload test results to Codecov
@@ -150,7 +150,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ${{ matrix.package }}/junit.xml
-          flags: ${{ matrix.flag }}
+          flags: ${{ matrix.flag }},unit
           disable_search: true
 
   validate-iac:

@@ -49,7 +49,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       checks: write
-    if: always()
+    # Skip on cancellation (e.g. superseded by a newer push) so partial
+    # artifacts aren't published as failed tests.
+    if: ${{ !cancelled() }}
 
     steps:
       - name: Download Artifacts
@@ -62,7 +64,6 @@ jobs:
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
-        if: always()
         with:
           comment_mode: off
           fail_on: "errors"
