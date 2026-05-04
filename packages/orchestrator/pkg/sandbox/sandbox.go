@@ -1056,10 +1056,9 @@ func (s *Sandbox) Pause(
 	s.Checks.Stop()
 
 	// Best-effort pre-pause guest reclaim (sync, drop_caches, compact_memory,
-	// fstrim) on the live VM via envd. Non-fatal. Timeout=0 disables it.
-	if t := time.Duration(s.featureFlags.IntFlag(ctx, featureflags.ReclaimOnPauseTimeoutMs)) * time.Millisecond; t > 0 {
-		s.bestEffortReclaim(ctx, t)
-	}
+	// fstrim) on the live VM via envd. Per-step caps are LD-flag-driven; all
+	// default to 0 which disables the chain entirely. Non-fatal.
+	s.bestEffortReclaim(ctx)
 
 	if err := s.process.Pause(ctx); err != nil {
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
