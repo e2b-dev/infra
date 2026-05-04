@@ -47,23 +47,13 @@ func hasEvent(revents, event int16) bool {
 	return revents&event != 0
 }
 
-// pageState tracks which UFFD page-management action has been applied
-// to each registered page. The default (zero) value is missing.
-type pageState uint8
-
-const (
-	missing pageState = iota
-	faulted
-	removed
-)
-
 type Userfaultfd struct {
 	fd Fd
 
 	src         block.Slicer
 	ma          *memory.Mapping
 	pageSize    uintptr
-	pageTracker *block.StateTracker[pageState]
+	pageTracker *block.Tracker
 
 	// We use the settleRequests to guard the pageTracker so we can access a consistent state of the pageTracker after the requests are finished.
 	settleRequests sync.RWMutex
@@ -99,16 +89,11 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 		}
 	}
 
-	pageTracker, err := block.NewStateTracker(missing, faulted, removed)
-	if err != nil {
-		return nil, fmt.Errorf("failed to init page tracker: %w", err)
-	}
-
 	u := &Userfaultfd{
 		fd:              Fd(fd),
 		src:             src,
 		pageSize:        uintptr(blockSize),
-		pageTracker:     pageTracker,
+		pageTracker:     block.NewTracker(),
 		prefetchTracker: block.NewPrefetchTracker(blockSize),
 		ma:              m,
 		logger:          logger,
@@ -435,13 +420,7 @@ retryLoop:
 	}
 
 	idx := uint64(header.BlockIdx(offset, int64(u.pageSize)))
-	if err := u.pageTracker.SetRange(idx, idx+1, faulted); err != nil {
-		// Programming bug only — the serve loop is still healthy and
-		// the page is correctly installed in guest memory. Log and
-		// continue rather than abort.
-		u.logger.Error(ctx, "UFFD serve pageTracker SetRange error",
-			zap.Uint64("idx", idx), zap.Error(err))
-	}
+	u.pageTracker.SetRange(idx, idx+1, block.Dirty)
 	u.prefetchTracker.Add(offset, accessType)
 
 	return nil
