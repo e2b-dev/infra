@@ -45,7 +45,8 @@ const (
 	acquireTimeout              = 15 * time.Second
 	maxStartingInstancesPerNode = 3
 
-	// uploadTimeout is the max time allowed for uploading snapshot files to GCS.
+	// uploadTimeout is the max time allowed for uploading snapshot files to
+	// remote storage.
 	uploadTimeout = 20 * time.Minute
 	// redisPeerKeyTTL is slightly longer than uploadTimeout so the key is still
 	// valid for the entire upload window before being cleaned up.
@@ -717,17 +718,17 @@ func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
 	}
 }
 
-// snapshotResult holds the data produced by snapshotAndCacheSandbox that callers
-// need to start the background GCS upload.
+// snapshotResult holds the data produced by snapshotAndCacheSandbox that
+// callers need to start the background remote storage upload.
 type snapshotResult struct {
 	meta           metadata.Template
 	upload         *sandbox.Upload
 	completeUpload func(ctx context.Context, uploadErr error)
 }
 
-// snapshotAndCacheSandbox creates a snapshot of a sandbox and adds it to the local
-// template cache. The caller is responsible for starting the GCS upload via
-// uploadSnapshotAsync.
+// snapshotAndCacheSandbox creates a snapshot of a sandbox and adds it to the
+// local template cache. The caller is responsible for starting the remote
+// storage upload via uploadSnapshotAsync.
 func (s *Server) snapshotAndCacheSandbox(
 	ctx context.Context,
 	sbx *sandbox.Sandbox,
@@ -803,9 +804,9 @@ func (s *Server) snapshotAndCacheSandbox(
 	}, nil
 }
 
-// uploadSnapshotAsync uploads snapshot files to GCS in the background and
-// cleans up the Redis peer key once done. Used by the Pause handler where no
-// prefetch data is available.
+// uploadSnapshotAsync uploads snapshot files to remote storage in the
+// background and cleans up the Redis peer key once done. Used by the Pause
+// handler where no prefetch data is available.
 func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, res *snapshotResult) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadTimeout)
 

@@ -76,9 +76,10 @@ func (u *Upload) uploadFramed(
 
 	// Dependency closure is the set of buildIDs referenced by mappings, minus
 	// self. Each ancestor's BuildData lives in its own finalized header's
-	// self-entry; Wait routes to local future, peer, or GCS as appropriate.
-	// Already-final ancestors resolve immediately (GCS round-trip beats
-	// blocking on whatever the immediate parent's upload is doing).
+	// self-entry; Wait routes to local future, peer, or remote storage as
+	// appropriate. Already-final ancestors resolve immediately (remote storage
+	// round-trip beats blocking on whatever the immediate parent's upload is
+	// doing).
 	ancestors, err := u.collectAncestorBuilds(ctx, srcHeader.Mapping, fileType)
 	if err != nil {
 		return err
@@ -96,9 +97,9 @@ func (u *Upload) uploadFramed(
 }
 
 // collectAncestorBuilds resolves every unique buildID referenced by mappings
-// (excluding self) to its finalized BuildData. Local ancestors resolve from
-// the in-memory futures map without any I/O; cross-orch ancestors take a
-// single GCS round-trip each. Sequential — the critical path is the slowest
+// (excluding self) to its finalized BuildData. Local ancestors resolve from the
+// in-memory futures map without any I/O; cross-orch ancestors take a single
+// remote storage round-trip each. Sequential — the critical path is the slowest
 // pending Wait either way, and serial keeps the code simple.
 func (u *Upload) collectAncestorBuilds(
 	ctx context.Context,

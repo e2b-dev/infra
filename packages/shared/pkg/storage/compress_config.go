@@ -10,13 +10,14 @@ import (
 )
 
 const (
-	// DefaultCompressFrameSize is the default uncompressed size of each compression
-	// frame (2 MiB). Overridable via CompressConfig.FrameSizeKB.
+	// DefaultCompressFrameSize is the default uncompressed size of each
+	// compression frame (2 MiB). Overridable via CompressConfig.FrameSizeKB.
 	// The last frame in a file may be shorter.
 	//
 	// The chunker fetches one frame at a time from storage on a cache miss.
 	// Larger frame sizes mean more data cached per fetch (faster warm-up and
-	// fewer GCS round-trips), but higher memory and I/O cost per miss.
+	// fewer remote storage round-trips), but higher memory and I/O cost per
+	// miss.
 	//
 	// This MUST be multiple of every block/page size:
 	//   - header.HugepageSize (2 MiB) — UFFD huge-page size, also used by prefetch

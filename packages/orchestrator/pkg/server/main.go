@@ -66,7 +66,7 @@ type ServiceConfig struct {
 }
 
 func New(cfg ServiceConfig) (*Server, error) {
-	uploadedBuilds := ttlcache.New(
+	uploadedBuilds := ttlcache.New[string, struct{}](
 		ttlcache.WithTTL[string, struct{}](uploadedBuildsTTL),
 	)
 	go uploadedBuilds.Start()

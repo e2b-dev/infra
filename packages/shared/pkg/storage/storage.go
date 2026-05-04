@@ -139,8 +139,9 @@ func UploadBlob(ctx context.Context, provider StorageProvider, remotePath string
 	return blob.Put(ctx, data)
 }
 
-// PeerTransitionedError is returned by the peer Seekable when the GCS upload
-// has completed; the caller should re-load the V4 header from storage.
+// PeerTransitionedError is returned by the peer Seekable when the remote
+// storage upload has completed; the caller should re-load the V4 header from
+// storage.
 type PeerTransitionedError struct{}
 
 func (e *PeerTransitionedError) Error() string {

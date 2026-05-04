@@ -31,11 +31,11 @@ var (
 const (
 	futureTTL = 1 * time.Hour
 
-	// refreshHeaderBudget bounds how long an upload Wait polls GCS for a
-	// parent's V4 header. Crosses orchestrators: A may still be uploading on a
-	// remote orch when B's runV4 calls Wait(A) here. Matches the per-upload
-	// bound in server.uploadTimeout — anything longer means the parent's
-	// upload is itself stuck and would have failed on its own.
+	// refreshHeaderBudget bounds how long an upload Wait polls remote storage
+	// for a parent's V4 header. Crosses orchestrators: A may still be uploading
+	// on a remote orch when B's runV4 calls Wait(A) here. Matches the
+	// per-upload bound in server.uploadTimeout — anything longer means the
+	// parent's upload is itself stuck and would have failed on its own.
 	refreshHeaderBudget = 20 * time.Minute
 
 	// uploadDoneChannelPrefix is the Redis pub/sub channel prefix for per-build
@@ -52,7 +52,8 @@ type templateLookup interface {
 //
 // Cross-orch coordination uses Redis pub/sub on per-build channels: the
 // uploader publishes on Finish, consumers subscribe inside Wait while polling
-// GCS. The Redis client is optional — nil falls back to ticker-only polling.
+// remote storage. The Redis client is optional — nil falls back to ticker-only
+// polling.
 type Uploads struct {
 	tc          templateLookup
 	persistence storage.StorageProvider
@@ -93,8 +94,8 @@ func (u *Uploads) Start(buildID uuid.UUID) (*utils.ErrorOnce, error) {
 }
 
 // Wait returns the parent's post-upload V4 header. Same-orch waits on the local
-// future; cross-orch refreshes from GCS when the locally-cached header is
-// stale, optionally accelerated by a per-call Redis subscription.
+// future; cross-orch refreshes from remote storage when the locally-cached
+// header is stale, optionally accelerated by a per-call Redis subscription.
 func (u *Uploads) Wait(ctx context.Context, buildID uuid.UUID, t build.DiffType) (*header.Header, error) {
 	ctx, span := tracer.Start(ctx, "wait-for-parent-upload", trace.WithAttributes(
 		telemetry.WithBuildID(buildID.String()),
@@ -112,7 +113,7 @@ func (u *Uploads) Wait(ctx context.Context, buildID uuid.UUID, t build.DiffType)
 	if errors.Is(err, ErrBuildNotInCache) {
 		// Ancestor never resumed locally (typical for grand-grandparents
 		// reached via mappings). It's necessarily finalized — load directly
-		// from GCS without an in-memory device or future to track.
+		// from remote storage without an in-memory device or future to track.
 		hdrPath := storage.Paths{BuildID: buildID.String()}.HeaderFile(string(t))
 
 		return header.LoadHeader(ctx, u.persistence, hdrPath)
