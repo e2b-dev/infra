@@ -289,7 +289,7 @@ func (u *Userfaultfd) Serve(
 					}
 
 					startIdx := uint32(header.BlockIdx(startOff, int64(u.pageSize)))
-					endIdx := startIdx + uint32(rm.end-rm.start)/uint32(u.pageSize)
+					endIdx := startIdx + uint32(uint64(rm.end-rm.start)/uint64(u.pageSize))
 					u.pageTracker.SetRange(startIdx, endIdx, block.Zero)
 				}
 				u.settleRequests.Unlock()
