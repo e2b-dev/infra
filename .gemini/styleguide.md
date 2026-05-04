@@ -2,12 +2,12 @@
 
 Output style rules (strict, override defaults):
 
-- Only report concrete bugs, regressions, or correctness issues. Do not summarize the PR, the diff, or what changed.
+- Only report concrete bugs, regressions, or correctness issues. Never summarize the PR, the diff, or what changed — no opening paragraph, no "Code Review" header, no overview, no recap.
+- Skip the review entirely if there are no critical findings.
 - One short paragraph per finding. No preamble, no closing remark.
 - No headers, no bullet lists, no tables, no diagrams.
 - No emojis. No severity tags or labels.
 - No branding or footer lines.
-- If there are no real issues to flag, post no review at all.
 
 ## Scope
 
