@@ -228,9 +228,11 @@ func (u *Uffd) DiffMetadata(ctx context.Context, f *fc.Process) (*header.DiffMet
 	}
 
 	// Mark REMOVE'd pages as empty so they resolve to uuid.Nil (zero on restore)
-	// instead of leaking stale contents from the previous layer.
+	// instead of leaking stale contents from the previous layer. A page that
+	// was zero-installed and later written shows up in diff.Dirty via WP-async,
+	// so dirty wins over empty for those.
 	_, empty := handler.ExportPageStates()
-	diff.Dirty.AndNot(empty)
+	empty.AndNot(diff.Dirty)
 
 	return &header.DiffMetadata{
 		BlockSize: diff.BlockSize,
