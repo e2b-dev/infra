@@ -16,6 +16,8 @@ provider "cloudflare" {
 }
 
 locals {
+  use_nomad_iap = var.nomad_iap_oauth2_client_id != null
+
   domain_map = { for d in var.additional_domains : replace(d, ".", "-") => d }
 
   // All domains (primary + additional)
@@ -91,7 +93,7 @@ locals {
         port         = var.nomad_port
       }
       groups = [{ group = var.server_instance_group }]
-      iap = var.nomad_iap_oauth2_client_id != null ? {
+      iap = local.use_nomad_iap ? {
         oauth2_client_id     = var.nomad_iap_oauth2_client_id
         oauth2_client_secret = var.nomad_iap_oauth2_client_secret
       } : null
@@ -387,9 +389,15 @@ resource "google_compute_backend_service" "default" {
   ]
 }
 
+resource "google_project_service" "iap" {
+  count = local.use_nomad_iap ? 1 : 0
+
+  service = "iap.googleapis.com"
+}
+
 # IAP IAM binding for Nomad backend
 resource "google_iap_web_backend_service_iam_binding" "nomad_iap" {
-  count = var.nomad_iap_oauth2_client_id != null && length(var.nomad_iap_members) > 0 ? 1 : 0
+  count = length(var.nomad_iap_members) > 0 ? 1 : 0
 
   project             = var.gcp_project_id
   web_backend_service = google_compute_backend_service.default["nomad"].name
