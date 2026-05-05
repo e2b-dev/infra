@@ -299,12 +299,11 @@ func TestCacheExportToDiff_ZeroDirtyBlockMapsToSnapshotBuild(t *testing.T) {
 	diffHeader, err := diffMetadata.ToDiffHeader(t.Context(), originalHeader, snapshotBuildID)
 	require.NoError(t, err)
 
-	_, _, mappedBuildID, err := diffHeader.GetShiftedMapping(t.Context(), 0)
+	mapped, err := diffHeader.GetShiftedMapping(t.Context(), 0)
 	require.NoError(t, err)
 
-	require.NotNil(t, mappedBuildID)
-	require.Equal(t, snapshotBuildID, *mappedBuildID, "zero-filled dirty block should map to the snapshot diff when empty detection is skipped")
-	require.NotEqual(t, uuid.Nil, *mappedBuildID, "zero-filled dirty block should no longer be represented as an empty mapping")
+	require.Equal(t, snapshotBuildID, mapped.BuildId, "zero-filled dirty block should map to the snapshot diff when empty detection is skipped")
+	require.NotEqual(t, uuid.Nil, mapped.BuildId, "zero-filled dirty block should no longer be represented as an empty mapping")
 }
 
 func TestCacheExportToDiff_MixedDirtyBlocksKeepsZeroBlockInDiff(t *testing.T) {
@@ -358,17 +357,17 @@ func TestCacheExportToDiff_MixedDirtyBlocksKeepsZeroBlockInDiff(t *testing.T) {
 	diffHeader, err := diffMetadata.ToDiffHeader(t.Context(), originalHeader, snapshotBuildID)
 	require.NoError(t, err)
 
-	_, _, firstBlockBuildID, err := diffHeader.GetShiftedMapping(t.Context(), 0)
+	firstBlock, err := diffHeader.GetShiftedMapping(t.Context(), 0)
 	require.NoError(t, err)
-	require.Equal(t, snapshotBuildID, *firstBlockBuildID, "zero-filled dirty block should still map to the snapshot diff")
+	require.Equal(t, snapshotBuildID, firstBlock.BuildId, "zero-filled dirty block should still map to the snapshot diff")
 
-	_, _, secondBlockBuildID, err := diffHeader.GetShiftedMapping(t.Context(), blockSize)
+	secondBlock, err := diffHeader.GetShiftedMapping(t.Context(), blockSize)
 	require.NoError(t, err)
-	require.Equal(t, snapshotBuildID, *secondBlockBuildID)
+	require.Equal(t, snapshotBuildID, secondBlock.BuildId)
 
-	_, _, thirdBlockBuildID, err := diffHeader.GetShiftedMapping(t.Context(), 2*blockSize)
+	thirdBlock, err := diffHeader.GetShiftedMapping(t.Context(), 2*blockSize)
 	require.NoError(t, err)
-	require.Equal(t, baseBuildID, *thirdBlockBuildID, "clean blocks should keep the base mapping")
+	require.Equal(t, baseBuildID, thirdBlock.BuildId, "clean blocks should keep the base mapping")
 }
 
 func TestCacheExportToDiff_NonContiguousDirtyBlocksPreserveRangeOrder(t *testing.T) {

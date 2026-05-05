@@ -18,14 +18,16 @@ const (
 	SandboxKernelVersionAttribute      string         = "kernel-version"
 	SandboxFirecrackerVersionAttribute string         = "firecracker-version"
 
-	TeamKind       ldcontext.Kind = "team"
-	UserKind       ldcontext.Kind = "user"
-	ClusterKind    ldcontext.Kind = "cluster"
-	deploymentKind ldcontext.Kind = "deployment"
-	TierKind       ldcontext.Kind = "tier"
-	ServiceKind    ldcontext.Kind = "service"
-	TemplateKind   ldcontext.Kind = "template"
-	VolumeKind     ldcontext.Kind = "volume"
+	TeamKind             ldcontext.Kind = "team"
+	UserKind             ldcontext.Kind = "user"
+	ClusterKind          ldcontext.Kind = "cluster"
+	deploymentKind       ldcontext.Kind = "deployment"
+	TierKind             ldcontext.Kind = "tier"
+	ServiceKind          ldcontext.Kind = "service"
+	TemplateKind         ldcontext.Kind = "template"
+	VolumeKind           ldcontext.Kind = "volume"
+	CompressFileTypeKind ldcontext.Kind = "compress-file-type"
+	CompressUseCaseKind  ldcontext.Kind = "compress-use-case"
 
 	OrchestratorKind            ldcontext.Kind = "orchestrator"
 	OrchestratorCommitAttribute string         = "commit"
@@ -207,6 +209,8 @@ var (
 	// MaxConcurrentSnapshotBuildQueries limits concurrent GetSnapshotBuilds calls (e.g. sandbox delete).
 	// 0 or negative disables throttling (unlimited concurrency).
 	MaxConcurrentSnapshotBuildQueries = NewIntFlag("max-concurrent-snapshot-build-queries", 0)
+
+	MinChunkerReadSizeKB = NewIntFlag("min-chunker-read-size-kb", 16)
 )
 
 type StringFlag struct {
@@ -318,17 +322,17 @@ func GetTrackedTemplatesSet(ctx context.Context, ff *Client) map[string]struct{}
 	return result
 }
 
-// ChunkerConfigFlag is a JSON flag controlling the chunker implementation and tuning.
-//
-// NOTE: Changing useStreaming has no effect on chunkers already created for
-// cached templates. A service restart (redeploy) is required for that change
-// to take effect. minReadBatchSizeKB is checked just-in-time on each fetch,
-// so it takes effect immediately.
-//
-// JSON format: {"useStreaming": false, "minReadBatchSizeKB": 16}
-var ChunkerConfigFlag = NewJSONFlag("chunker-config", ldvalue.FromJSONMarshal(map[string]any{
-	"useStreaming":       false,
-	"minReadBatchSizeKB": 16,
+// CompressConfigFlag controls compression during template builds.
+// When compressBuilds is true, builds upload exclusively compressed data
+// (no uncompressed fallback). When false, exclusively uncompressed with V3 headers.
+var CompressConfigFlag = NewJSONFlag("compress-config", ldvalue.FromJSONMarshal(map[string]any{
+	"compressBuilds":     false,
+	"compressionType":    "",
+	"compressionLevel":   0,
+	"frameSizeKB":        0,
+	"minPartSizeMB":      0,
+	"frameEncodeWorkers": 0,
+	"encoderConcurrency": 0,
 }))
 
 // TCPFirewallEgressThrottleConfig controls per-sandbox egress throttling via Firecracker's
