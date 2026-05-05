@@ -74,8 +74,19 @@ func (u *Upload) runV3(ctx context.Context) error {
 		return err
 	}
 
+	if u.snap.MemfileDiffHeader != nil {
+		if _, err := u.collectAncestorBuilds(ctx, u.snap.MemfileDiffHeader.Mapping, build.Memfile); err != nil {
+			return err
+		}
+	}
 	if h := finalizeV3(u.snap.MemfileDiffHeader); h != nil {
 		if err := u.publish(ctx, build.Memfile, h); err != nil {
+			return err
+		}
+	}
+
+	if u.snap.RootfsDiffHeader != nil {
+		if _, err := u.collectAncestorBuilds(ctx, u.snap.RootfsDiffHeader.Mapping, build.Rootfs); err != nil {
 			return err
 		}
 	}

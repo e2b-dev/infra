@@ -187,7 +187,8 @@ func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, cf
 
 	uploader := &fsPartUploader{fullPath: o.path}
 
-	ft, checksum, err := compressStream(ctx, file, cfg, uploader, 4)
+	const noConcurrencyForMemUploader = 1
+	ft, checksum, err := compressStream(ctx, file, cfg, uploader, noConcurrencyForMemUploader)
 	if err != nil {
 		return nil, [32]byte{}, err
 	}
