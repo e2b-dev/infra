@@ -93,69 +93,6 @@ func TestCatalogResolution_CatalogHit(t *testing.T) {
 	require.Equal(t, "10.0.0.1", nodeIP)
 }
 
-func TestOrchestratorSandboxHost(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name      string
-		host      string
-		sandboxID string
-		port      uint64
-		want      *string
-	}{
-		{
-			name:      "localhost",
-			host:      "localhost:3000",
-			sandboxID: "sbx",
-			port:      49983,
-			want:      nil,
-		},
-		{
-			name:      "loopback IPv4",
-			host:      "127.0.0.1:3000",
-			sandboxID: "sbx",
-			port:      49983,
-			want:      nil,
-		},
-		{
-			name:      "loopback IPv6",
-			host:      "[::1]:3000",
-			sandboxID: "sbx",
-			port:      49983,
-			want:      nil,
-		},
-		{
-			name:      "sandbox shared host",
-			host:      "sandbox.e2b.app",
-			sandboxID: "sbx",
-			port:      49983,
-			want:      ptr("49983-sbx.e2b.app"),
-		},
-		{
-			name:      "sandbox shared host with port",
-			host:      "sandbox.e2b.app:443",
-			sandboxID: "sbx",
-			port:      49983,
-			want:      ptr("49983-sbx.e2b.app"),
-		},
-		{
-			name:      "regular sandbox host",
-			host:      "49983-sbx.e2b.app",
-			sandboxID: "sbx",
-			port:      49983,
-			want:      nil,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			require.Equal(t, tt.want, orchestratorSandboxHost(tt.host, tt.sandboxID, tt.port))
-		})
-	}
-}
-
 func TestClientProxyMaskRequestHost(t *testing.T) {
 	t.Parallel()
 
@@ -184,13 +121,19 @@ func TestClientProxyMaskRequestHost(t *testing.T) {
 			want:        nil,
 		},
 		{
-			name:        "flag enabled leaves localhost unchanged",
-			flagEnabled: true,
+			name:        "leaves localhost unchanged",
+			flagEnabled: false,
 			host:        "localhost:3000",
 			want:        nil,
 		},
 		{
-			name:        "flag enabled leaves regular sandbox host unchanged",
+			name:        "leaves loopback unchanged",
+			flagEnabled: false,
+			host:        "127.0.0.1:3000",
+			want:        nil,
+		},
+		{
+			name:        "leaves regular sandbox host unchanged",
 			flagEnabled: true,
 			host:        "49983-sbx.e2b.app",
 			want:        nil,

@@ -62,24 +62,15 @@ func normalizeNodeIP(nodeIP string) (string, error) {
 	return nodeIP, nil
 }
 
-func orchestratorSandboxHost(host string, sandboxID string, port uint64) *string {
-	domain, ok := reverseproxy.SandboxSharedHostDomain(host)
-	if !ok {
+func clientProxyMaskRequestHost(ctx context.Context, featureFlags *featureflags.Client, host string, sandboxID string, port uint64) *string {
+	domain, sharedHost := reverseproxy.SandboxSharedHostDomain(host)
+	if !sharedHost || featureFlags.BoolFlag(ctx, featureflags.OrchAcceptsCombinedHostFlag) {
 		return nil
 	}
 
 	orchestratorHost := fmt.Sprintf("%d-%s.%s", port, sandboxID, domain)
 
 	return &orchestratorHost
-}
-
-func clientProxyMaskRequestHost(ctx context.Context, featureFlags *featureflags.Client, host string, sandboxID string, port uint64) *string {
-	_, sharedHost := reverseproxy.SandboxSharedHostDomain(host)
-	if sharedHost && featureFlags.BoolFlag(ctx, featureflags.OrchAcceptsCombinedHostFlag) {
-		return nil
-	}
-
-	return orchestratorSandboxHost(host, sandboxID, port)
 }
 
 func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {

@@ -11,7 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 )
 
-const SandboxSharedHostSubdomain = "sandbox."
+const sandboxSharedHostSubdomain = "sandbox."
 
 func GetTargetFromRequest() func(r *http.Request) (sandboxId string, port uint64, err error) {
 	return func(r *http.Request) (sandboxId string, port uint64, err error) {
@@ -45,17 +45,15 @@ func GetTargetFromRequest() func(r *http.Request) (sandboxId string, port uint64
 func shouldParseHeaders(host string) bool {
 	_, sharedHost := SandboxSharedHostDomain(host)
 
-	return IsLocalRequestHost(host) || sharedHost
+	return isLocalRequestHost(host) || sharedHost
 }
 
-// RequestHostname returns the hostname portion of an HTTP Host value.
-func RequestHostname(host string) string {
+func requestHostname(host string) string {
 	return (&url.URL{Host: host}).Hostname()
 }
 
-// IsLocalRequestHost reports whether host targets localhost or a loopback IP.
-func IsLocalRequestHost(host string) bool {
-	host = RequestHostname(host)
+func isLocalRequestHost(host string) bool {
+	host = requestHostname(host)
 	ip := net.ParseIP(host)
 
 	return host == "localhost" || (ip != nil && ip.IsLoopback())
@@ -63,7 +61,7 @@ func IsLocalRequestHost(host string) bool {
 
 // SandboxSharedHostDomain returns the parent domain for a sandbox shared host.
 func SandboxSharedHostDomain(host string) (string, bool) {
-	domain, ok := strings.CutPrefix(RequestHostname(host), SandboxSharedHostSubdomain)
+	domain, ok := strings.CutPrefix(requestHostname(host), sandboxSharedHostSubdomain)
 
 	return domain, ok && domain != ""
 }
