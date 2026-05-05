@@ -45,7 +45,8 @@ const (
 	acquireTimeout              = 15 * time.Second
 	maxStartingInstancesPerNode = 3
 
-	// uploadTimeout is the max time allowed for uploading snapshot files to GCS.
+	// uploadTimeout is the max time allowed for uploading snapshot files to
+	// remote storage.
 	uploadTimeout = 20 * time.Minute
 	// redisPeerKeyTTL is slightly longer than uploadTimeout so the key is still
 	// valid for the entire upload window before being cleaned up.
@@ -323,7 +324,7 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 			}
 
 			egress := req.GetEgress()
-			if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 {
+			if len(egress.GetAllowedCidrs()) == 0 && len(egress.GetDeniedCidrs()) == 0 && len(egress.GetAllowedDomains()) == 0 && len(egress.GetRules()) == 0 {
 				sbx.Config.SetNetworkEgress(nil)
 			} else {
 				sbx.Config.SetNetworkEgress(egress)
@@ -665,9 +666,11 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		// be paused or resumed later.
 		uploadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadTimeout)
 		defer cancel()
-		defer res.completeUpload(uploadCtx)
 
-		if err := res.snapshot.Upload(uploadCtx, s.persistence, res.paths, res.objectMetadata); err != nil {
+		err := res.upload.Run(uploadCtx)
+		defer res.completeUpload(uploadCtx, err)
+
+		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
 			s.sandboxFactory.Sandboxes.MarkStopping(ctx, resumedSbx.Runtime.SandboxID, resumedSbx.LifecycleID)
@@ -715,19 +718,17 @@ func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
 	}
 }
 
-// snapshotResult holds the data produced by snapshotAndCacheSandbox that callers
-// need to start the background GCS upload.
+// snapshotResult holds the data produced by snapshotAndCacheSandbox that
+// callers need to start the background remote storage upload.
 type snapshotResult struct {
 	meta           metadata.Template
-	snapshot       *sandbox.Snapshot
-	paths          storage.Paths
-	objectMetadata storage.ObjectMetadata
-	completeUpload func(ctx context.Context)
+	upload         *sandbox.Upload
+	completeUpload func(ctx context.Context, uploadErr error)
 }
 
-// snapshotAndCacheSandbox creates a snapshot of a sandbox and adds it to the local
-// template cache. The caller is responsible for starting the GCS upload via
-// startSnapshotUploadAsync or uploadSnapshotWithPrefetchAsync.
+// snapshotAndCacheSandbox creates a snapshot of a sandbox and adds it to the
+// local template cache. The caller is responsible for starting the remote
+// storage upload via uploadSnapshotAsync.
 func (s *Server) snapshotAndCacheSandbox(
 	ctx context.Context,
 	sbx *sandbox.Sandbox,
@@ -763,65 +764,70 @@ func (s *Server) snapshotAndCacheSandbox(
 		return nil, fmt.Errorf("error adding snapshot to template cache: %w", err)
 	}
 
-	telemetry.ReportEvent(ctx, "added snapshot to template cache")
-
-	paths := storage.Paths{BuildID: meta.Template.BuildID}
 	objectMetadata := storage.ObjectMetadata{
 		storage.ObjectMetadataTeamID: sbx.Runtime.TeamID,
 	}
 
-	// Register in Redis so other orchestrators can find us for peer routing.
-	if s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag) {
+	// Register the upload only after the snapshot is in the local cache, so a
+	// failed AddSnapshot doesn't leave an orphan future blocking re-registration.
+	upload, err := sandbox.NewUpload(ctx, s.uploads, snapshot, s.persistence, s.config.StorageConfig.CompressConfig, s.featureFlags, storage.UseCasePause, objectMetadata)
+	if err != nil {
+		return nil, fmt.Errorf("register upload: %w", err)
+	}
+
+	telemetry.ReportEvent(ctx, "added snapshot to template cache")
+
+	// Capture once so Register and the symmetric Unregister inside
+	// completeUpload don't drift if the flag flips mid-upload.
+	peerEnabled := s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerChunkTransferFlag)
+
+	completeUpload := func(ctx context.Context, uploadErr error) {
+		upload.Finish(ctx, uploadErr)
+
+		if !peerEnabled {
+			return
+		}
+
+		s.uploadedBuilds.Set(meta.Template.BuildID, struct{}{}, ttlcache.DefaultTTL)
+
+		if err := s.peerRegistry.Unregister(ctx, meta.Template.BuildID); err != nil {
+			logger.L().Warn(ctx, "failed to unregister peer address from routing", zap.String("build_id", meta.Template.BuildID), zap.Error(err))
+		}
+	}
+
+	if peerEnabled {
 		if err := s.peerRegistry.Register(ctx, meta.Template.BuildID, redisPeerKeyTTL); err != nil {
 			logger.L().Warn(ctx, "failed to register peer address for routing", zap.String("build_id", meta.Template.BuildID), zap.Error(err))
 		}
-
-		completeUpload := func(ctx context.Context) {
-			// Signal in-flight peer streams to switch to GCS.
-			s.uploadedBuilds.Set(meta.Template.BuildID, struct{}{}, ttlcache.DefaultTTL)
-
-			// Remove from Redis so new nodes go directly to GCS.
-			if err := s.peerRegistry.Unregister(ctx, meta.Template.BuildID); err != nil {
-				logger.L().Warn(ctx, "failed to unregister peer address from routing", zap.String("build_id", meta.Template.BuildID), zap.Error(err))
-			}
-		}
-
-		return &snapshotResult{
-			meta:           meta,
-			snapshot:       snapshot,
-			paths:          paths,
-			objectMetadata: objectMetadata,
-			completeUpload: completeUpload,
-		}, nil
 	}
 
 	return &snapshotResult{
 		meta:           meta,
-		snapshot:       snapshot,
-		paths:          paths,
-		objectMetadata: objectMetadata,
-		completeUpload: func(context.Context) {},
+		upload:         upload,
+		completeUpload: completeUpload,
 	}, nil
 }
 
-// uploadSnapshotAsync uploads snapshot files to GCS in the background and
-// cleans up the Redis peer key once done. Used by the Pause handler where no
-// prefetch data is available.
+// uploadSnapshotAsync uploads snapshot files to remote storage in the
+// background and cleans up the Redis peer key once done. Used by the Pause
+// handler where no prefetch data is available.
 func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, res *snapshotResult) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadTimeout)
 
 	go func() {
 		defer cancel()
-		defer res.completeUpload(ctx)
 
-		err := res.snapshot.Upload(ctx, s.persistence, res.paths, res.objectMetadata)
+		ctx, span := tracer.Start(ctx, "upload snapshot")
+		defer span.End()
+
+		err := res.upload.Run(ctx)
 		if err != nil {
 			sbxlogger.I(sbx).Error(ctx, "error uploading snapshot files", zap.Error(err))
-
-			return
+		} else {
+			sbxlogger.I(sbx).Info(ctx, "snapshot finished uploading successfully")
 		}
 
-		sbxlogger.E(sbx).Info(ctx, "Snapshot files uploaded to GCS")
+		res.completeUpload(ctx, err)
 	}()
 }
 

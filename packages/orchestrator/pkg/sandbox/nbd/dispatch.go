@@ -14,7 +14,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -43,7 +42,8 @@ var dispatchBufPool = sync.Pool{
 }
 
 type Provider interface {
-	storage.SeekableReader
+	ReadAt(ctx context.Context, p []byte, off int64) (int, error)
+	Size(ctx context.Context) (int64, error)
 	io.WriterAt
 	WriteZeroesAt(off, length int64) (int, error)
 }

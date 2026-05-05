@@ -275,6 +275,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		sandboxes,
 		templateCache,
 		buildMetrics,
+		nil,
 	)
 
 	buildPath := filepath.Join(os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH"), buildID, "rootfs.ext4")

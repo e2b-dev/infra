@@ -294,11 +294,9 @@ func TestCacheExportToDiff_ZeroBlockMapsToEmpty(t *testing.T) {
 	diffHeader, err := diffMetadata.ToDiffHeader(t.Context(), originalHeader, uuid.New())
 	require.NoError(t, err)
 
-	_, _, mappedBuildID, err := diffHeader.GetShiftedMapping(t.Context(), 0)
+	mapped, err := diffHeader.GetShiftedMapping(t.Context(), 0)
 	require.NoError(t, err)
-
-	require.NotNil(t, mappedBuildID)
-	require.Equal(t, uuid.Nil, *mappedBuildID, "zero block should be exported as Empty (uuid.Nil)")
+	require.Equal(t, uuid.Nil, mapped.BuildId, "zero block should be exported as Empty (uuid.Nil)")
 }
 
 func TestCacheExportToDiff_MixedZeroBlockSplitsIntoEmptyAndDirty(t *testing.T) {
@@ -340,16 +338,21 @@ func TestCacheExportToDiff_MixedZeroBlockSplitsIntoEmptyAndDirty(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	diffHeader, err := diffMetadata.ToDiffHeader(t.Context(), originalHeader, uuid.New())
+	snapshotBuildID := uuid.New()
+	diffHeader, err := diffMetadata.ToDiffHeader(t.Context(), originalHeader, snapshotBuildID)
 	require.NoError(t, err)
 
-	_, _, firstBlockBuildID, err := diffHeader.GetShiftedMapping(t.Context(), 0)
+	firstBlock, err := diffHeader.GetShiftedMapping(t.Context(), 0)
 	require.NoError(t, err)
-	require.Equal(t, uuid.Nil, *firstBlockBuildID, "zero block should map to Empty")
+	require.Equal(t, uuid.Nil, firstBlock.BuildId, "zero block should map to Empty")
 
-	_, _, thirdBlockBuildID, err := diffHeader.GetShiftedMapping(t.Context(), 2*blockSize)
+	secondBlock, err := diffHeader.GetShiftedMapping(t.Context(), blockSize)
 	require.NoError(t, err)
-	require.Equal(t, baseBuildID, *thirdBlockBuildID, "clean blocks should keep the base mapping")
+	require.Equal(t, snapshotBuildID, secondBlock.BuildId, "non-zero dirty block should map to the snapshot diff")
+
+	thirdBlock, err := diffHeader.GetShiftedMapping(t.Context(), 2*blockSize)
+	require.NoError(t, err)
+	require.Equal(t, baseBuildID, thirdBlock.BuildId, "clean blocks should keep the base mapping")
 }
 
 func TestCacheWriteZeroesAt_AlignedRangeMapsToEmpty(t *testing.T) {

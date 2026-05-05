@@ -18,9 +18,10 @@ var ErrUnknownFile = errors.New("unknown file")
 // Returns ErrNotAvailable when the build is not in the local cache.
 // Returns ErrUnknownFile for unrecognised file names.
 func ResolveSeekable(cache Cache, buildID, fileName string) (SeekableSource, error) {
-	switch fileName {
+	stripped := storage.StripCompression(fileName)
+	switch stripped {
 	case storage.MemfileName, storage.RootfsName:
-		diff, ok := cache.LookupDiff(buildID, build.DiffType(fileName))
+		diff, ok := cache.LookupDiff(buildID, build.DiffType(stripped))
 		if !ok {
 			return nil, ErrNotAvailable
 		}

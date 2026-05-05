@@ -57,6 +57,10 @@ func (s *SlowDevice) Header() *header.Header {
 	return s.inner.Header()
 }
 
+func (s *SlowDevice) SwapHeader(h *header.Header) {
+	s.inner.SwapHeader(h)
+}
+
 func (s *SlowDevice) Close() error {
 	return s.inner.Close()
 }

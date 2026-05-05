@@ -656,20 +656,22 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 
 	// Only upload when not in benchmark mode (verbose = true means single run)
 	if verbose {
-		paths := storage.Paths{BuildID: opts.newBuildID}
 		if opts.isRemoteStorage {
 			fmt.Println("📤 Uploading snapshot...")
-			if err := snapshot.Upload(ctx, r.storage, paths, nil); err != nil {
-				return timings, fmt.Errorf("failed to upload snapshot: %w", err)
-			}
-			fmt.Println("✅ Snapshot uploaded successfully")
 		} else {
 			fmt.Println("💾 Saving snapshot to local storage...")
-			if err := snapshot.Upload(ctx, r.storage, paths, nil); err != nil {
-				return timings, fmt.Errorf("failed to save snapshot: %w", err)
-			}
-			fmt.Println("✅ Snapshot saved successfully")
 		}
+
+		upload, err := sandbox.NewUpload(ctx, nil, snapshot, r.storage, storage.CompressConfig{}, nil, "", nil)
+		if err != nil {
+			return timings, fmt.Errorf("failed to prepare upload: %w", err)
+		}
+
+		if err := upload.Run(ctx); err != nil {
+			return timings, fmt.Errorf("failed to upload snapshot: %w", err)
+		}
+
+		fmt.Println("✅ Snapshot uploaded successfully")
 
 		fmt.Printf("\n✅ Build finished: %s\n", opts.newBuildID)
 		printArtifactSizes(opts.storagePath, opts.newBuildID)

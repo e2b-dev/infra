@@ -77,6 +77,10 @@ func (l *LoggerOverlay) Header() *header.Header {
 	return l.overlay.Header()
 }
 
+func (l *LoggerOverlay) SwapHeader(h *header.Header) {
+	l.overlay.SwapHeader(h)
+}
+
 func (l *LoggerOverlay) Close() error {
 	return l.overlay.Close()
 }
