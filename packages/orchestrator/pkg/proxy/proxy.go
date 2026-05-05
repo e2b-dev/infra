@@ -38,17 +38,8 @@ type SandboxProxy struct {
 	limiter *connlimit.ConnectionLimiter
 }
 
-func orchestratorHeaderRoutingMode(ctx context.Context, featureFlags *featureflags.Client) reverseproxy.HeaderRoutingMode {
-	if featureFlags.BoolFlag(ctx, featureflags.OrchAcceptsCombinedHostFlag) {
-		return reverseproxy.HeaderRoutingEnabled
-	}
-
-	return reverseproxy.HeaderRoutingDisabled
-}
-
 func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes *sandbox.Map, featureFlags *featureflags.Client) (*SandboxProxy, error) {
-	getTargetFromHost := reverseproxy.GetTargetFromRequest(reverseproxy.HeaderRoutingDisabled)
-	getTargetFromHostOrHeaders := reverseproxy.GetTargetFromRequest(reverseproxy.HeaderRoutingEnabled)
+	getTargetFromRequest := reverseproxy.GetTargetFromRequest(reverseproxy.HeaderRoutingEnabled)
 	limiter := connlimit.NewConnectionLimiter()
 	metrics := NewMetrics(meterProvider)
 
@@ -70,11 +61,6 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 		reverseproxy.SandboxProxyRetries,
 		idleTimeout,
 		func(r *http.Request) (*pool.Destination, error) {
-			getTargetFromRequest := getTargetFromHost
-			if orchestratorHeaderRoutingMode(r.Context(), featureFlags) == reverseproxy.HeaderRoutingEnabled {
-				getTargetFromRequest = getTargetFromHostOrHeaders
-			}
-
 			sandboxId, port, err := getTargetFromRequest(r)
 			if err != nil {
 				return nil, err
