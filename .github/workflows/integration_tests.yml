@@ -10,7 +10,7 @@ on:
     secrets:
       CODECOV_TOKEN: { required: false }
 jobs:
-  integration_tests:
+  run:
     runs-on: infra-tests
     timeout-minutes: 30
     permissions:
@@ -117,3 +117,16 @@ jobs:
         with:
           name: Service Logs (${{ matrix.name }})
           path: ~/logs/*.log
+
+  integration_tests:
+    needs: run
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aggregate matrix result
+        run: |
+          if [[ "${{ needs.run.result }}" != "success" ]]; then
+            echo "matrix result: ${{ needs.run.result }}"
+            exit 1
+          fi
+          echo "all matrix shards succeeded"
