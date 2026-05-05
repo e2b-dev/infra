@@ -268,21 +268,7 @@ func (o *gcpObject) openRangeReader(ctx context.Context, off, length int64) (io.
 		return nil, fmt.Errorf("failed to create GCS range reader for %q at %d+%d: %w", o.path, off, length, err)
 	}
 
-	return &cancelOnCloseReader{ReadCloser: reader, cancel: cancel}, nil
-}
-
-// cancelOnCloseReader wraps a ReadCloser and calls a CancelFunc on Close,
-// ensuring the context used to create the reader is cleaned up.
-type cancelOnCloseReader struct {
-	io.ReadCloser
-
-	cancel context.CancelFunc
-}
-
-func (r *cancelOnCloseReader) Close() error {
-	defer r.cancel()
-
-	return r.ReadCloser.Close()
+	return &cancelReader{ReadCloser: reader, cancel: cancel}, nil
 }
 
 func (o *gcpObject) Put(ctx context.Context, data []byte, opts ...PutOption) error {
@@ -561,7 +547,7 @@ func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length i
 			return nil, err
 		}
 
-		return &timedReadCloser{inner: rc, timer: timer, ctx: ctx}, nil
+		return newTimedReader(rc, timer, ctx), nil
 	}
 
 	r, err := frameTable.LocateCompressed(offsetU)
@@ -586,40 +572,7 @@ func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length i
 		return nil, err
 	}
 
-	return &timedReadCloser{inner: decompressed, timer: timer, ctx: ctx}, nil
-}
-
-// timedReadCloser wraps a reader with OTEL timer metrics.
-// Close records success (with total bytes read) or failure on the timer.
-type timedReadCloser struct {
-	inner     io.ReadCloser
-	timer     *telemetry.Stopwatch
-	ctx       context.Context //nolint:containedctx // needed for timer recording in Close
-	bytesRead int64
-	closeErr  error
-}
-
-func (r *timedReadCloser) Read(p []byte) (int, error) {
-	n, err := r.inner.Read(p)
-	r.bytesRead += int64(n)
-
-	if err != nil && err != io.EOF {
-		r.closeErr = err
-	}
-
-	return n, err
-}
-
-func (r *timedReadCloser) Close() error {
-	err := r.inner.Close()
-
-	if r.closeErr != nil || err != nil {
-		r.timer.Failure(r.ctx, r.bytesRead)
-	} else {
-		r.timer.Success(r.ctx, r.bytesRead)
-	}
-
-	return err
+	return newTimedReader(decompressed, timer, ctx), nil
 }
 
 func isResourceExhausted(err error) bool {

@@ -83,27 +83,30 @@ func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off int64, length 
 		attribute.Bool("compressed", compressed),
 	))
 
-	if compressed {
-		rc, err := c.openReaderCompressed(ctx, off, frameTable)
-		if err != nil {
-			recordError(span, err)
-			span.End()
-
-			return nil, err
+	var rc io.ReadCloser
+	var err error
+	switch {
+	case compressed:
+		rc, err = c.openReaderCompressed(ctx, off, frameTable)
+	default:
+		if err = c.validateReadParams(length, off); err == nil {
+			rc, err = c.openReaderUncompressed(ctx, off, length)
 		}
-
-		rc = withSpan(rc, span)
-
-		return rc, nil
 	}
 
-	if err := c.validateReadParams(length, off); err != nil {
+	if err != nil {
 		recordError(span, err)
 		span.End()
 
 		return nil, err
 	}
 
+	return newSpanReader(rc, span, ctx), nil
+}
+
+// openReaderUncompressed is the sequential NFS-then-remote path for
+// uncompressed chunks.
+func (c *cachedSeekable) openReaderUncompressed(ctx context.Context, off, length int64) (io.ReadCloser, error) {
 	timer := cacheSlabReadTimerFactory.Begin(
 		attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrReadAt),
 		attribute.Bool("compressed", false),
@@ -116,10 +119,7 @@ func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off int64, length 
 		recordCacheRead(ctx, true, length, cacheTypeSeekable, cacheOpOpenRangeReader)
 		timer.Success(ctx, length)
 
-		rc := io.ReadCloser(&fsRangeReadCloser{Reader: io.NewSectionReader(fp, 0, length), file: fp})
-		rc = withSpan(rc, span)
-
-		return rc, nil
+		return newSectionReader(fp, 0, length), nil
 	}
 
 	if !os.IsNotExist(err) {
@@ -130,50 +130,23 @@ func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off int64, length 
 
 	rc, err := c.inner.OpenRangeReader(ctx, off, length, nil)
 	if err != nil {
-		recordError(span, err)
-		span.End()
-
 		return nil, fmt.Errorf("failed to open inner range reader: %w", err)
 	}
 
 	recordCacheRead(ctx, false, length, cacheTypeSeekable, cacheOpOpenRangeReader)
 
 	if !skipCacheWriteback(ctx) {
-		rc = newCacheWriteThroughReader(rc, c, ctx, off, length, chunkPath)
+		rc = newCacheWritebackReader(rc, c, ctx, off, length, chunkPath)
 	}
-
-	rc = withSpan(rc, span)
 
 	return rc, nil
 }
 
-// withSpan wraps a reader with an OTEL span that ends on Close.
-func withSpan(rc io.ReadCloser, span trace.Span) io.ReadCloser {
-	return &spanReadCloser{inner: rc, span: span}
-}
-
-type spanReadCloser struct {
-	inner io.ReadCloser
-	span  trace.Span
-}
-
-func (r *spanReadCloser) Read(p []byte) (int, error) {
-	return r.inner.Read(p)
-}
-
-func (r *spanReadCloser) Close() error {
-	err := r.inner.Close()
-	recordError(r.span, err)
-	r.span.End()
-
-	return err
-}
-
-// newCacheWriteThroughReader wraps a reader, buffering all data read through it.
-// On Close, it asynchronously writes the buffered data to the NFS cache only
-// if the total bytes read match the expected length (to avoid caching truncated data).
-func newCacheWriteThroughReader(inner io.ReadCloser, cache *cachedSeekable, ctx context.Context, off, expectedLen int64, chunkPath string) io.ReadCloser {
-	return &cacheWriteThroughReader{
+// writebackReader buffers all data read through it. On Close, it
+// asynchronously writes the buffered data to the NFS cache only if the
+// total bytes read match the expected length (to avoid caching truncated data).
+func newCacheWritebackReader(inner io.ReadCloser, cache *cachedSeekable, ctx context.Context, off, expectedLen int64, chunkPath string) io.ReadCloser {
+	return &cacheWritebackReader{
 		inner:       inner,
 		buf:         bytes.NewBuffer(make([]byte, 0, expectedLen)),
 		cache:       cache,
@@ -184,7 +157,7 @@ func newCacheWriteThroughReader(inner io.ReadCloser, cache *cachedSeekable, ctx 
 	}
 }
 
-type cacheWriteThroughReader struct {
+type cacheWritebackReader struct {
 	inner       io.ReadCloser
 	buf         *bytes.Buffer
 	cache       *cachedSeekable
@@ -194,7 +167,7 @@ type cacheWriteThroughReader struct {
 	chunkPath   string
 }
 
-func (r *cacheWriteThroughReader) Read(p []byte) (int, error) {
+func (r *cacheWritebackReader) Read(p []byte) (int, error) {
 	n, err := r.inner.Read(p)
 	if n > 0 {
 		r.buf.Write(p[:n])
@@ -203,12 +176,11 @@ func (r *cacheWriteThroughReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func (r *cacheWriteThroughReader) Close() error {
+func (r *cacheWritebackReader) Close() error {
 	closeErr := r.inner.Close()
 
 	// Only cache when the total bytes read match the expected length.
-	// Unlike ReadAt where io.EOF can justify a short read (last chunk),
-	// a streaming reader always ends with EOF regardless of whether the
+	// A streaming reader always ends with EOF regardless of whether the
 	// data was truncated, so the byte count is the only reliable check.
 	if isCompleteRead(r.buf.Len(), int(r.expectedLen), nil) {
 		data := make([]byte, r.buf.Len())
