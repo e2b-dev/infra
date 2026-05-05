@@ -918,6 +918,21 @@ type SandboxNetworkConfig struct {
 
 	// MaskRequestHost Specify host mask which will be used for all sandbox requests
 	MaskRequestHost *string `json:"maskRequestHost,omitempty"`
+
+	// Rules Per-domain transform rules applied to matching egress HTTP/HTTPS requests. Keys are domains (e.g. "api.example.com", "example.com"). A domain listed here is not automatically allowed - use allowOut to permit the traffic.
+	Rules *map[string][]SandboxNetworkRule `json:"rules,omitempty"`
+}
+
+// SandboxNetworkRule Transform rule applied to egress requests matching a domain pattern.
+type SandboxNetworkRule struct {
+	// Transform Transformations applied to matching egress requests before forwarding.
+	Transform *SandboxNetworkTransform `json:"transform,omitempty"`
+}
+
+// SandboxNetworkTransform Transformations applied to matching egress requests before forwarding.
+type SandboxNetworkTransform struct {
+	// Headers HTTP headers to inject or override in matching requests. An existing header with the same name is replaced. Values are plain strings; secret resolution happens client-side before sending to the API.
+	Headers *map[string]string `json:"headers,omitempty"`
 }
 
 // SandboxOnTimeout Action taken when the sandbox times out.
@@ -1480,6 +1495,9 @@ type PutSandboxesSandboxIDNetworkJSONBody struct {
 
 	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
 	DenyOut *[]string `json:"denyOut,omitempty"`
+
+	// Rules Per-domain transform rules. Replaces all existing rules when provided.
+	Rules *map[string][]SandboxNetworkRule `json:"rules,omitempty"`
 }
 
 // PostSandboxesSandboxIDRefreshesJSONBody defines parameters for PostSandboxesSandboxIDRefreshes.

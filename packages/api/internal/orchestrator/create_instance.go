@@ -57,17 +57,36 @@ type SandboxMetadata struct {
 // allow/deny entry lists. It splits allowed entries into CIDRs and domains,
 // and adds the default nameserver when domains are present so the sandbox can
 // resolve them.
-func buildEgressConfig(allowedEntries, deniedEntries []string) *orchestrator.SandboxNetworkEgressConfig {
+func buildEgressConfig(allowedEntries, deniedEntries []string, rules map[string][]types.SandboxNetworkRule) *orchestrator.SandboxNetworkEgressConfig {
 	allowedAddresses, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowedEntries)
 
 	if len(allowedDomains) > 0 {
 		allowedAddresses = append(allowedAddresses, sandbox_network.DefaultNameserver)
 	}
 
+	var orchRules map[string]*orchestrator.SandboxNetworkDomainRules
+	if rules != nil {
+		orchRules = make(map[string]*orchestrator.SandboxNetworkDomainRules, len(rules))
+		for domain, domainRules := range rules {
+			orchRuleList := make([]*orchestrator.SandboxNetworkRule, 0, len(domainRules))
+			for _, r := range domainRules {
+				orchRule := &orchestrator.SandboxNetworkRule{}
+				if r.Transform != nil {
+					orchRule.Transform = &orchestrator.SandboxNetworkTransform{
+						Headers: r.Transform.Headers,
+					}
+				}
+				orchRuleList = append(orchRuleList, orchRule)
+			}
+			orchRules[domain] = &orchestrator.SandboxNetworkDomainRules{Rules: orchRuleList}
+		}
+	}
+
 	return &orchestrator.SandboxNetworkEgressConfig{
 		AllowedCidrs:   sandbox_network.AddressStringsToCIDRs(allowedAddresses),
 		DeniedCidrs:    sandbox_network.AddressStringsToCIDRs(deniedEntries),
 		AllowedDomains: allowedDomains,
+		Rules:          orchRules,
 	}
 }
 
@@ -81,7 +100,7 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 	}
 
 	if network != nil && network.Egress != nil {
-		orchNetwork.Egress = buildEgressConfig(network.Egress.AllowedAddresses, network.Egress.DeniedAddresses)
+		orchNetwork.Egress = buildEgressConfig(network.Egress.AllowedAddresses, network.Egress.DeniedAddresses, network.Egress.Rules)
 	}
 
 	if network != nil && network.Ingress != nil {

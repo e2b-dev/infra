@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -343,7 +344,8 @@ func TestValidateNetworkConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := validateNetworkConfig(tt.network)
+			mockFF := handlersmocks.NewMockFeatureFlagsClient(t)
+			err := validateNetworkConfig(context.Background(), mockFF, uuid.Nil, "", tt.network)
 
 			if tt.wantErr {
 				if err == nil {
@@ -840,6 +842,281 @@ func createTestTemplate(ctx context.Context, t *testing.T, db *testutils.Databas
 	require.NoError(t, err)
 
 	return templateID
+}
+
+func ffEnabled(t *testing.T) *handlersmocks.MockFeatureFlagsClient {
+	t.Helper()
+	ff := handlersmocks.NewMockFeatureFlagsClient(t)
+	ff.EXPECT().BoolFlag(mock.Anything, mock.Anything, mock.Anything).Return(true)
+
+	return ff
+}
+
+func ffDisabled(t *testing.T) *handlersmocks.MockFeatureFlagsClient {
+	t.Helper()
+	ff := handlersmocks.NewMockFeatureFlagsClient(t)
+	ff.EXPECT().BoolFlag(mock.Anything, mock.Anything, mock.Anything).Return(false)
+
+	return ff
+}
+
+func ffUnused(t *testing.T) *handlersmocks.MockFeatureFlagsClient {
+	t.Helper()
+
+	return handlersmocks.NewMockFeatureFlagsClient(t) // no expectations — must not be called
+}
+
+func rulesMap(entries map[string][]api.SandboxNetworkRule) *map[string][]api.SandboxNetworkRule {
+	return &entries
+}
+
+func simpleRule(headers map[string]string) api.SandboxNetworkRule {
+	h := headers
+
+	return api.SandboxNetworkRule{
+		Transform: &api.SandboxNetworkTransform{Headers: &h},
+	}
+}
+
+func TestValidateNetworkRules(t *testing.T) {
+	t.Parallel()
+
+	teamID := uuid.New()
+
+	tests := []struct {
+		name        string
+		envdVersion string
+		rules       *map[string][]api.SandboxNetworkRule
+		setupFF     func(t *testing.T) *handlersmocks.MockFeatureFlagsClient
+		wantCode    int
+		wantMsg     string // substring of ClientMsg; empty means expect no error
+	}{
+		// ── nil / empty ──────────────────────────────────────────────────────────
+		{
+			name:    "nil rules are valid",
+			rules:   nil,
+			setupFF: ffUnused,
+		},
+		{
+			name:        "empty rules map is valid",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       rulesMap(map[string][]api.SandboxNetworkRule{}),
+			setupFF:     ffEnabled,
+		},
+		// ── feature flag ─────────────────────────────────────────────────────────
+		{
+			name:     "feature flag disabled returns 400",
+			rules:    rulesMap(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
+			setupFF:  ffDisabled,
+			wantCode: http.StatusBadRequest,
+			wantMsg:  "not available for your team",
+		},
+		// ── envd version ─────────────────────────────────────────────────────────
+		{
+			name:     "missing envd version returns 400",
+			rules:    rulesMap(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
+			setupFF:  ffEnabled,
+			wantCode: http.StatusBadRequest,
+			wantMsg:  "template must be rebuilt: envd version is not set",
+		},
+		{
+			name:        "envd version below minimum returns 400",
+			envdVersion: "0.5.12",
+			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
+			setupFF:     ffEnabled,
+			wantCode:    http.StatusBadRequest,
+			wantMsg:     "template must be rebuilt",
+		},
+		{
+			name:        "envd version at minimum is valid",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
+			setupFF:     ffEnabled,
+		},
+		// ── domain count ─────────────────────────────────────────────────────────
+		{
+			name: "exactly max domains is valid",
+			rules: func() *map[string][]api.SandboxNetworkRule {
+				m := make(map[string][]api.SandboxNetworkRule, maxNetworkRuleDomains)
+				for i := range maxNetworkRuleDomains {
+					m[fmt.Sprintf("domain%d.example.com", i)] = nil
+				}
+
+				return &m
+			}(),
+			envdVersion: minEnvdVersionForNetworkRules,
+			setupFF:     ffEnabled,
+		},
+		{
+			name: "one over max domains returns 400",
+			rules: func() *map[string][]api.SandboxNetworkRule {
+				m := make(map[string][]api.SandboxNetworkRule, maxNetworkRuleDomains+1)
+				for i := range maxNetworkRuleDomains + 1 {
+					m[fmt.Sprintf("domain%d.example.com", i)] = nil
+				}
+
+				return &m
+			}(),
+			envdVersion: minEnvdVersionForNetworkRules,
+			setupFF:     ffEnabled,
+			wantCode:    http.StatusBadRequest,
+			wantMsg:     fmt.Sprintf("at most %d domains", maxNetworkRuleDomains),
+		},
+		// ── domain key validation ─────────────────────────────────────────────────
+		{
+			name:        "empty domain key returns 400",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"": {}}),
+			setupFF:     ffEnabled,
+			wantCode:    http.StatusBadRequest,
+			wantMsg:     "must not be empty",
+		},
+		{
+			name:        "domain exceeding max length returns 400",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       rulesMap(map[string][]api.SandboxNetworkRule{strings.Repeat("a", maxNetworkRuleDomainLen+1): {}}),
+			setupFF:     ffEnabled,
+			wantCode:    http.StatusBadRequest,
+			wantMsg:     "maximum length",
+		},
+		{
+			name:        "invalid domain returns 400",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"not a valid domain!": {}}),
+			setupFF:     ffEnabled,
+			wantCode:    http.StatusBadRequest,
+			wantMsg:     "not a valid domain name",
+		},
+		{
+			name:        "valid plain domain is accepted",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"api.openai.com": {}}),
+			setupFF:     ffEnabled,
+		},
+		{
+			name:        "wildcard domain is rejected",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"*.openai.com": {}}),
+			setupFF:     ffEnabled,
+			wantCode:    http.StatusBadRequest,
+			wantMsg:     "not a valid domain name",
+		},
+		{
+			name:        "bare wildcard is rejected",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       rulesMap(map[string][]api.SandboxNetworkRule{"*.": {}}),
+			setupFF:     ffEnabled,
+			wantCode:    http.StatusBadRequest,
+			wantMsg:     "not a valid domain name",
+		},
+		// ── transform count ───────────────────────────────────────────────────────
+		{
+			name:        "one transform per domain is valid",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: rulesMap(map[string][]api.SandboxNetworkRule{
+				"api.openai.com": {simpleRule(map[string]string{"Authorization": "Bearer token"})},
+			}),
+			setupFF: ffEnabled,
+		},
+		{
+			name:        "two transforms for one domain returns 400",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: rulesMap(map[string][]api.SandboxNetworkRule{
+				"api.openai.com": {
+					simpleRule(map[string]string{"Authorization": "Bearer token"}),
+					simpleRule(map[string]string{"X-Custom": "value"}),
+				},
+			}),
+			setupFF:  ffEnabled,
+			wantCode: http.StatusBadRequest,
+			wantMsg:  fmt.Sprintf("at most %d transform rule", maxNetworkRuleTransformsPerDomain),
+		},
+		// ── nil transform (no headers to check) ───────────────────────────────────
+		{
+			name:        "nil transform in rule is valid",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: rulesMap(map[string][]api.SandboxNetworkRule{
+				"api.openai.com": {{Transform: nil}},
+			}),
+			setupFF: ffEnabled,
+		},
+		// ── header name ───────────────────────────────────────────────────────────
+		{
+			name:        "empty header name returns 400",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: rulesMap(map[string][]api.SandboxNetworkRule{
+				"api.openai.com": {simpleRule(map[string]string{"": "value"})},
+			}),
+			setupFF:  ffEnabled,
+			wantCode: http.StatusBadRequest,
+			wantMsg:  "must not be empty",
+		},
+		{
+			name:        "header name at max length is valid",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: rulesMap(map[string][]api.SandboxNetworkRule{
+				"api.openai.com": {simpleRule(map[string]string{
+					strings.Repeat("X", maxNetworkRuleHeaderNameLen): "value",
+				})},
+			}),
+			setupFF: ffEnabled,
+		},
+		{
+			name:        "header name exceeding max length returns 400",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: rulesMap(map[string][]api.SandboxNetworkRule{
+				"api.openai.com": {simpleRule(map[string]string{
+					strings.Repeat("X", maxNetworkRuleHeaderNameLen+1): "value",
+				})},
+			}),
+			setupFF:  ffEnabled,
+			wantCode: http.StatusBadRequest,
+			wantMsg:  "maximum length",
+		},
+		// ── header value ──────────────────────────────────────────────────────────
+		{
+			name:        "header value at max length is valid",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: rulesMap(map[string][]api.SandboxNetworkRule{
+				"api.openai.com": {simpleRule(map[string]string{
+					"Authorization": strings.Repeat("x", maxNetworkRuleHeaderValueLen),
+				})},
+			}),
+			setupFF: ffEnabled,
+		},
+		{
+			name:        "header value exceeding max length returns 400",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: rulesMap(map[string][]api.SandboxNetworkRule{
+				"api.openai.com": {simpleRule(map[string]string{
+					"Authorization": strings.Repeat("x", maxNetworkRuleHeaderValueLen+1),
+				})},
+			}),
+			setupFF:  ffEnabled,
+			wantCode: http.StatusBadRequest,
+			wantMsg:  "maximum length",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ff := tt.setupFF(t)
+			apiErr := validateNetworkRules(context.Background(), ff, teamID, tt.envdVersion, tt.rules)
+
+			if tt.wantMsg == "" {
+				assert.Nil(t, apiErr)
+
+				return
+			}
+
+			if assert.NotNil(t, apiErr) {
+				assert.Equal(t, tt.wantCode, apiErr.Code)
+				assert.Contains(t, apiErr.ClientMsg, tt.wantMsg)
+			}
+		})
+	}
 }
 
 func createTestTemplateAliasWithName(ctx context.Context, t *testing.T, db *testutils.Database, templateID, aliasName string, namespace *string) {

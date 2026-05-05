@@ -3,7 +3,6 @@ package userfaultfd
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -14,22 +13,66 @@ import (
 	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils/testharness"
 )
 
+var matrixModes = []struct {
+	name          string
+	removeEnabled bool
+}{
+	{"remove-off", false},
+	{"remove-on", true},
+}
+
+// runMatrix runs body once per (removeEnabled) arm as a sequential pair
+// of subtests. Arms are intentionally NOT parallel: each arm forks a
+// uffd helper that mmaps the test region, and running both arms in
+// parallel on top of the case-level fan-out has OOM'd memory-bound
+// runners under -race.
+func runMatrix(t *testing.T, tt testConfig, body func(t *testing.T, cfg testConfig)) {
+	t.Helper()
+
+	for _, m := range matrixModes {
+		t.Run(m.name, func(t *testing.T) {
+			cfg := tt
+			cfg.removeEnabled = m.removeEnabled
+			body(t, cfg)
+		})
+	}
+}
+
+// remove-only assert helper used by REMOVE-specific tests.
+func removeOffset(offsets []uint, target uint) []uint {
+	result := make([]uint, 0, len(offsets))
+	for _, o := range offsets {
+		if o != target {
+			result = append(result, o)
+		}
+	}
+
+	return result
+}
+
 type testConfig struct {
-	name string
-	// Page size of the memory area.
-	pagesize uint64
-	// Number of pages in the memory area.
+	name          string
+	pagesize      uint64
 	numberOfPages uint64
-	// Operations to trigger on the memory area.
-	operations []operation
-	// alwaysWP makes the handler copy with UFFDIO_COPY_MODE_WP for all faults.
+	operations    []operation
+	// alwaysWP forces UFFDIO_COPY_MODE_WP on every fault.
 	alwaysWP bool
-	// gated enables pause/resume control over the handler's serve loop.
+	// removeEnabled toggles UFFD_FEATURE_EVENT_REMOVE in configureApi.
+	removeEnabled bool
+	// gated is a doc-only marker for tests that drive Pause/Resume.
 	gated bool
+	// barriers enables the per-worker fault hook (race tests only).
+	barriers bool
+	// sourcePatcher mutates the random source bytes before the child reads
+	// them so race tests can plant a deterministic sentinel.
+	sourcePatcher func([]byte)
 }
 
 type operationMode uint32
@@ -37,6 +80,7 @@ type operationMode uint32
 const (
 	operationModeRead operationMode = 1 << iota
 	operationModeWrite
+	operationModeRemove
 	operationModeServePause
 	operationModeServeResume
 	// operationModeSleep pauses for a short duration to let async goroutines
@@ -50,44 +94,84 @@ type operation struct {
 	mode   operationMode
 	// async runs the operation in a background goroutine.
 	async bool
+	// pages spans the operation across N contiguous pages. Currently only
+	// honored by operationModeRemove (multi-page MADV_DONTNEED). 0 == 1.
+	pages uint64
 }
 
-// handlerPageStates is a snapshot of the pageTracker grouped by state. It
-// lets tests assert on the set of pages that the handler observed in each
-// state, rather than a flat list of "accessed" offsets. Follow-up PRs can
-// add more state-specific fields (e.g. removed) without touching the
-// existing call sites.
 type handlerPageStates struct {
 	faulted []uint
+	removed []uint
 }
 
-// allAccessed returns the sorted union of offsets that the handler touched
-// in any non-missing state. Tests that only care about "which pages did the
-// handler see" can compare directly against this.
-//
-// pageStatesOnce already returns each per-state slice sorted, and a page
-// has exactly one state at a time in pageTracker, so the per-state slices
-// are disjoint. Follow-up PRs that add more state-specific fields should
-// sorted-merge them here instead of reaching for a bitset — byte offsets
-// make poor bit indices (a single hugepage offset would force ~1.8 MB of
-// backing storage).
+// allAccessed returns the sorted union of faulted+removed offsets.
 func (s handlerPageStates) allAccessed() []uint {
-	return slices.Clone(s.faulted)
+	out := make([]uint, 0, len(s.faulted)+len(s.removed))
+	i, j := 0, 0
+	for i < len(s.faulted) && j < len(s.removed) {
+		if s.faulted[i] <= s.removed[j] {
+			out = append(out, s.faulted[i])
+			i++
+		} else {
+			out = append(out, s.removed[j])
+			j++
+		}
+	}
+	out = append(out, s.faulted[i:]...)
+	out = append(out, s.removed[j:]...)
+
+	return out
 }
 
 type testHandler struct {
 	memoryArea *[]byte
 	pagesize   uint64
 	data       *MemorySlicer
-	// pageStatesOnce returns a per-state snapshot of the handler's pageTracker.
-	// It can only be called once.
-	pageStatesOnce func() (handlerPageStates, error)
-	// servePause and serveResume gate the UFFD event loop in the child process.
-	// Tests use them to deterministically batch a sequence of UFFD events
-	// before more faults are processed.
-	servePause  func() error
-	serveResume func() error
-	mutex       sync.RWMutex
+	client     *testharness.Client
+	mutex      sync.RWMutex
+}
+
+func (h *testHandler) pageStates() (handlerPageStates, error) {
+	entries, err := h.client.PageStates()
+	if err != nil {
+		return handlerPageStates{}, err
+	}
+
+	var states handlerPageStates
+	for _, e := range entries {
+		switch block.State(e.State) {
+		case block.Dirty:
+			states.faulted = append(states.faulted, uint(e.Offset))
+		case block.Zero:
+			states.removed = append(states.removed, uint(e.Offset))
+		}
+	}
+	slices.Sort(states.faulted)
+	slices.Sort(states.removed)
+
+	return states, nil
+}
+
+func (h *testHandler) installFaultBarrier(_ context.Context, addr uintptr, phase faultPhase) (uint64, error) {
+	return h.client.InstallBarrier(addr, testharness.Point(phase))
+}
+
+// waitFaultHeld blocks until the child reports a worker has reached the
+// barrier identified by token, or ctx is cancelled. net/rpc's Call
+// doesn't take a context, so we run it in a goroutine and race it.
+func (h *testHandler) waitFaultHeld(ctx context.Context, token uint64) error {
+	errCh := make(chan error, 1)
+	go func() { errCh <- h.client.WaitFaultHeld(token) }()
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (h *testHandler) releaseFault(_ context.Context, token uint64) error {
+	return h.client.ReleaseFault(token)
 }
 
 func (h *testHandler) executeAll(t *testing.T, operations []operation) {
@@ -124,8 +208,9 @@ func (h *testHandler) executeAll(t *testing.T, operations []operation) {
 type pageExpectation uint8
 
 const (
-	expectClean pageExpectation = iota // read-only: present + WP set
-	expectDirty                        // written: present + WP cleared
+	expectClean   pageExpectation = iota // read-only: present + WP set
+	expectDirty                          // written: present + WP cleared
+	expectRemoved                        // removed: not present
 )
 
 func (h *testHandler) checkDirtiness(t *testing.T, operations []operation) {
@@ -137,18 +222,29 @@ func (h *testHandler) checkDirtiness(t *testing.T, operations []operation) {
 
 	memStart := uintptr(unsafe.Pointer(&(*h.memoryArea)[0]))
 
-	// Track the final expected state per offset by replaying operations in order.
+	// Replay operations to derive the final expected state per offset.
 	expected := make(map[uint]pageExpectation)
 
 	for _, op := range operations {
 		off := uint(op.offset)
 		switch op.mode {
 		case operationModeRead:
-			if _, seen := expected[off]; !seen {
+			// First read on a fresh / removed page lands clean (WP set);
+			// a subsequent read on a dirty page must not downgrade.
+			curr, seen := expected[off]
+			if !seen || curr == expectRemoved {
 				expected[off] = expectClean
 			}
 		case operationModeWrite:
 			expected[off] = expectDirty
+		case operationModeRemove:
+			pages := op.pages
+			if pages == 0 {
+				pages = 1
+			}
+			for i := range pages {
+				expected[off+uint(i*h.pagesize)] = expectRemoved
+			}
 		}
 	}
 
@@ -157,6 +253,8 @@ func (h *testHandler) checkDirtiness(t *testing.T, operations []operation) {
 		require.NoError(t, err, "pagemap read at offset %d", off)
 
 		switch expect {
+		case expectRemoved:
+			assert.False(t, entry.IsPresent(), "removed page at offset %d should not be present", off)
 		case expectDirty:
 			assert.True(t, entry.IsPresent(), "written page at offset %d should be present", off)
 			assert.False(t, entry.IsWriteProtected(), "written page at offset %d should be dirty", off)
@@ -173,18 +271,12 @@ func (h *testHandler) executeOperation(ctx context.Context, op operation) error 
 		return h.executeRead(ctx, op)
 	case operationModeWrite:
 		return h.executeWrite(ctx, op)
+	case operationModeRemove:
+		return h.executeRemove(op)
 	case operationModeServePause:
-		if h.servePause == nil {
-			return errors.New("operationModeServePause requires testConfig.gated = true")
-		}
-
-		return h.servePause()
+		return h.client.Pause()
 	case operationModeServeResume:
-		if h.serveResume == nil {
-			return errors.New("operationModeServeResume requires testConfig.gated = true")
-		}
-
-		return h.serveResume()
+		return h.client.Resume()
 	case operationModeSleep:
 		time.Sleep(50 * time.Millisecond)
 
@@ -194,23 +286,36 @@ func (h *testHandler) executeOperation(ctx context.Context, op operation) error 
 	}
 }
 
+func (h *testHandler) executeRemove(op operation) error {
+	pages := op.pages
+	if pages == 0 {
+		pages = 1
+	}
+	length := int64(pages * h.pagesize)
+	region := (*h.memoryArea)[op.offset : op.offset+length]
+
+	return unix.Madvise(region, unix.MADV_DONTNEED)
+}
+
 func (h *testHandler) executeRead(ctx context.Context, op operation) error {
 	expectedBytes, err := h.data.Slice(ctx, op.offset, int64(h.pagesize))
 	if err != nil {
 		return err
 	}
 
-	// Hold the read side of the memoryArea mutex while we touch the page.
-	// Reads can run concurrently with each other (RLock), but a parallel
-	// async write to the same page (executeWrite, write lock) is excluded
-	// so go test -race stays clean when a test plan mixes async read and
-	// async write at overlapping offsets.
 	h.mutex.RLock()
 	defer h.mutex.RUnlock()
 
 	readBytes := (*h.memoryArea)[op.offset : op.offset+int64(h.pagesize)]
 
-	// The bytes.Equal is the first place in this flow that actually touches the uffd managed memory and triggers the pagefault, so any deadlocks will manifest here.
+	// MADV_POPULATE_READ faults via syscall: the goroutine sits in
+	// _Gsyscall while the kernel waits for UFFDIO_COPY, so STW can preempt
+	// it. A direct memory load would be _Grunning and would deadlock STW
+	// against the matching uffd worker goroutine.
+	if err := unix.Madvise(readBytes, unix.MADV_POPULATE_READ); err != nil {
+		return fmt.Errorf("madvise POPULATE_READ at offset %d: %w", op.offset, err)
+	}
+
 	if !bytes.Equal(readBytes, expectedBytes) {
 		idx, want, got := testutils.FirstDifferentByte(readBytes, expectedBytes)
 
@@ -226,12 +331,17 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 		return err
 	}
 
-	// An unprotected parallel write to map might result in an undefined behavior.
-	// Lock excludes both other writers and any concurrent executeRead.
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
-	n := copy((*h.memoryArea)[op.offset:op.offset+int64(h.pagesize)], bytesToWrite)
+	writeBytes := (*h.memoryArea)[op.offset : op.offset+int64(h.pagesize)]
+
+	// MADV_POPULATE_WRITE: STW preemption note in executeRead applies.
+	if err := unix.Madvise(writeBytes, unix.MADV_POPULATE_WRITE); err != nil {
+		return fmt.Errorf("madvise POPULATE_WRITE at offset %d: %w", op.offset, err)
+	}
+
+	n := copy(writeBytes, bytesToWrite)
 	if n != int(h.pagesize) {
 		return fmt.Errorf("copy length mismatch: want %d, got %d", h.pagesize, n)
 	}

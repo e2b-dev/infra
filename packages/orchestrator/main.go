@@ -7,7 +7,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/tcpfirewall"
 )
 
-const version = "0.1.0"
+const version = "0.2.0"
 
 var commitSHA string
 

@@ -11,12 +11,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asaskevich/govalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
+	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/idna"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -32,7 +33,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/metrics"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
@@ -47,6 +47,13 @@ const (
 
 	// Network validation error messages
 	ErrMsgDomainsRequireBlockAll = "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic."
+
+	maxNetworkRuleDomains             = 10
+	maxNetworkRuleTransformsPerDomain = 1
+	maxNetworkRuleDomainLen           = 128
+	maxNetworkRuleHeaderNameLen       = 64
+	maxNetworkRuleHeaderValueLen      = 2048
+	maxNetworkRuleHeadersPerRule      = 20
 )
 
 func (a *APIStore) PostSandboxes(c *gin.Context) {
@@ -186,7 +193,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	var network *types.SandboxNetworkConfig
 	if n := body.Network; n != nil {
-		if err := validateNetworkConfig(n); err != nil {
+		if err := validateNetworkConfig(ctx, a.featureFlags, teamInfo.Team.ID, sharedUtils.DerefOrDefault(build.EnvdVersion, ""), n); err != nil {
 			telemetry.ReportError(ctx, "invalid network config", err.Err, telemetry.WithSandboxID(sandboxID))
 			a.sendAPIStoreError(c, err.Code, err.ClientMsg)
 
@@ -201,6 +208,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 			Egress: &types.SandboxNetworkEgressConfig{
 				AllowedAddresses: sharedUtils.DerefOrDefault(n.AllowOut, nil),
 				DeniedAddresses:  sharedUtils.DerefOrDefault(n.DenyOut, nil),
+				Rules:            apiRulesToDBRules(n.Rules),
 			},
 		}
 
@@ -217,7 +225,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		ctx, a.sqlcDB, a.featureFlags, teamInfo.ID, apiVolumeMounts, build,
 	)
 	if err != nil {
-		if errors.Is(err, errVolumesNotSupported) {
+		if errors.Is(err, errVolumesNotSupported) || errors.Is(err, errNoEnvdVersion) {
 			a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
 
 			return
@@ -277,6 +285,19 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
 
 		return
+	}
+
+	if n := body.Network; n != nil && n.Rules != nil && len(*n.Rules) > 0 {
+		domains := make([]string, 0, len(*n.Rules))
+		for domain := range *n.Rules {
+			domains = append(domains, domain)
+		}
+
+		a.posthog.CreateAnalyticsTeamEvent(ctx, teamInfo.Team.ID.String(), "sandbox with network transform rules created",
+			a.posthog.GetPackageToPosthogProperties(&c.Request.Header).
+				Set("sandbox_id", sandboxID).
+				Set("domains", domains),
+		)
 	}
 
 	c.JSON(http.StatusCreated, &sbx)
@@ -364,9 +385,34 @@ func (im InvalidVolumeMountsError) Error() string {
 
 var errVolumesNotSupported = errors.New("volumes are not supported")
 
-var errNoEnvdVersion = errors.New("no envd version provided")
+var errNetworkRulesNotSupported = errors.New("network transform rules are not supported")
+
+var errNoEnvdVersion = errors.New("template must be rebuilt: envd version is not set")
+
+const minEnvdVersionForNetworkRules = "0.5.13"
 
 const minEnvdVersionForVolumes = "0.5.14"
+
+// checkEnvdVersionRequirement returns errNoEnvdVersion when buildVersion is empty, a parse
+// error when the version string is invalid, or a wrapped featureErr when the build does not
+// meet requiredMinVersion. The caller decides how to convert the returned error into an API
+// response so each call-site can produce its own status code / message.
+func checkEnvdVersionRequirement(buildVersion, requiredMinVersion string, featureErr error) error {
+	if buildVersion == "" {
+		return errNoEnvdVersion
+	}
+
+	ok, err := sharedUtils.IsGTEVersion(buildVersion, requiredMinVersion)
+	if err != nil {
+		return fmt.Errorf("invalid envd version %q: %w", buildVersion, err)
+	}
+
+	if !ok {
+		return fmt.Errorf("%w; template must be rebuilt. Template envd version is %s, must be at least %s", featureErr, buildVersion, requiredMinVersion)
+	}
+
+	return nil
+}
 
 func convertAPIVolumesToOrchestratorVolumes(ctx context.Context, sqlClient *sqlcdb.Client, featureFlags featureFlagsClient, teamID uuid.UUID, volumeMounts []api.SandboxVolumeMount, env *queries.EnvBuild) ([]*orchestrator.SandboxVolumeMount, error) {
 	// are any volumes configured?
@@ -380,16 +426,9 @@ func convertAPIVolumesToOrchestratorVolumes(ctx context.Context, sqlClient *sqlc
 	}
 
 	// does your envd version support volumes?
-	if envdVersion := sharedUtils.DerefOrDefault(env.EnvdVersion, ""); envdVersion == "" {
-		logger.L().Warn(ctx, "envd version is unset")
-
-		return nil, errNoEnvdVersion
-	} else if ok, err := sharedUtils.IsGTEVersion(envdVersion, minEnvdVersionForVolumes); err != nil {
-		logger.L().Warn(ctx, "failed to check envd version", zap.Error(err), zap.String("envd_version", envdVersion))
-
-		return nil, fmt.Errorf("invalid envd version %q: %w", envdVersion, err)
-	} else if !ok {
-		return nil, fmt.Errorf("%w; template must be rebuilt. Template envd version is %s, must be at least %s to support volumes", errVolumesNotSupported, envdVersion, minEnvdVersionForVolumes)
+	envdVersion := sharedUtils.DerefOrDefault(env.EnvdVersion, "")
+	if err := checkEnvdVersionRequirement(envdVersion, minEnvdVersionForVolumes, errVolumesNotSupported); err != nil {
+		return nil, err
 	}
 
 	// get volumes from the database
@@ -554,7 +593,33 @@ func splitHostPortOptional(hostport string) (host string, port string, err error
 	return host, port, nil
 }
 
-func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
+func apiRulesToDBRules(apiRules *map[string][]api.SandboxNetworkRule) map[string][]types.SandboxNetworkRule {
+	if apiRules == nil {
+		return nil
+	}
+
+	dbRules := make(map[string][]types.SandboxNetworkRule, len(*apiRules))
+	for domain, rules := range *apiRules {
+		dbDomainRules := make([]types.SandboxNetworkRule, 0, len(rules))
+		for _, r := range rules {
+			dbRule := types.SandboxNetworkRule{}
+
+			if r.Transform != nil {
+				dbRule.Transform = &types.SandboxNetworkTransform{
+					Headers: sharedUtils.DerefOrDefault(r.Transform.Headers, nil),
+				}
+			}
+
+			dbDomainRules = append(dbDomainRules, dbRule)
+		}
+
+		dbRules[domain] = dbDomainRules
+	}
+
+	return dbRules
+}
+
+func validateNetworkConfig(ctx context.Context, featureFlags featureFlagsClient, teamID uuid.UUID, envdVersion string, network *api.SandboxNetworkConfig) *api.APIError {
 	if network == nil {
 		return nil
 	}
@@ -590,7 +655,11 @@ func validateNetworkConfig(network *api.SandboxNetworkConfig) *api.APIError {
 	denyOut := sharedUtils.DerefOrDefault(network.DenyOut, nil)
 	allowOut := sharedUtils.DerefOrDefault(network.AllowOut, nil)
 
-	return validateEgressRules(allowOut, denyOut)
+	if err := validateEgressRules(allowOut, denyOut); err != nil {
+		return err
+	}
+
+	return validateNetworkRules(ctx, featureFlags, teamID, envdVersion, network.Rules)
 }
 
 // validateEgressRules validates egress allow/deny rules:
@@ -627,6 +696,137 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 				Code:      http.StatusBadRequest,
 				Err:       errors.New("allow out contains domains but deny out is missing 0.0.0.0/0 (ALL_TRAFFIC)"),
 				ClientMsg: ErrMsgDomainsRequireBlockAll,
+			}
+		}
+	}
+
+	return nil
+}
+
+func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, teamID uuid.UUID, envdVersion string, rules *map[string][]api.SandboxNetworkRule) *api.APIError {
+	if rules == nil {
+		return nil
+	}
+
+	if !featureFlags.BoolFlag(ctx, featureflags.NetworkTransformRulesFlag, featureflags.TeamContext(teamID.String())) {
+		return &api.APIError{
+			Code:      http.StatusBadRequest,
+			Err:       fmt.Errorf("team %s is not allowed to use network transform rules", teamID),
+			ClientMsg: "Network transform rules are not available for your team.",
+		}
+	}
+
+	if err := checkEnvdVersionRequirement(envdVersion, minEnvdVersionForNetworkRules, errNetworkRulesNotSupported); err != nil {
+		if errors.Is(err, errNetworkRulesNotSupported) || errors.Is(err, errNoEnvdVersion) {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       err,
+				ClientMsg: err.Error(),
+			}
+		}
+
+		return &api.APIError{
+			Code:      http.StatusInternalServerError,
+			Err:       err,
+			ClientMsg: "internal error while validating network rules",
+		}
+	}
+
+	if len(*rules) > maxNetworkRuleDomains {
+		return &api.APIError{
+			Code:      http.StatusBadRequest,
+			Err:       fmt.Errorf("too many rule domains: %d (max %d)", len(*rules), maxNetworkRuleDomains),
+			ClientMsg: fmt.Sprintf("Network rules can have at most %d domains.", maxNetworkRuleDomains),
+		}
+	}
+
+	for domain, domainRules := range *rules {
+		if len(domain) == 0 {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       errors.New("rule domain must not be empty"),
+				ClientMsg: "Rule domain must not be empty.",
+			}
+		}
+
+		if len(domain) > maxNetworkRuleDomainLen {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("rule domain %q exceeds max length %d", domain, maxNetworkRuleDomainLen),
+				ClientMsg: fmt.Sprintf("Rule domain %q exceeds maximum length of %d characters.", domain, maxNetworkRuleDomainLen),
+			}
+		}
+
+		if !govalidator.IsDNSName(domain) {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("rule domain %q is not a valid domain", domain),
+				ClientMsg: fmt.Sprintf("Rule domain %q is not a valid domain name.", domain),
+			}
+		}
+
+		if len(domainRules) > maxNetworkRuleTransformsPerDomain {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("domain %q has %d transforms (max %d)", domain, len(domainRules), maxNetworkRuleTransformsPerDomain),
+				ClientMsg: fmt.Sprintf("Domain %q can have at most %d transform rule.", domain, maxNetworkRuleTransformsPerDomain),
+			}
+		}
+
+		for _, rule := range domainRules {
+			if rule.Transform == nil {
+				continue
+			}
+
+			headers := sharedUtils.DerefOrDefault(rule.Transform.Headers, nil)
+			if len(headers) > maxNetworkRuleHeadersPerRule {
+				return &api.APIError{
+					Code:      http.StatusBadRequest,
+					Err:       fmt.Errorf("domain %q has %d headers (max %d)", domain, len(headers), maxNetworkRuleHeadersPerRule),
+					ClientMsg: fmt.Sprintf("Domain %q can have at most %d headers per rule.", domain, maxNetworkRuleHeadersPerRule),
+				}
+			}
+
+			for name, value := range headers {
+				if len(name) == 0 {
+					return &api.APIError{
+						Code:      http.StatusBadRequest,
+						Err:       fmt.Errorf("header name in rule for domain %q must not be empty", domain),
+						ClientMsg: fmt.Sprintf("Header name in rule for domain %q must not be empty.", domain),
+					}
+				}
+
+				if !httpguts.ValidHeaderFieldName(name) {
+					return &api.APIError{
+						Code:      http.StatusBadRequest,
+						Err:       fmt.Errorf("header name %q in rule for domain %q contains invalid characters", name, domain),
+						ClientMsg: fmt.Sprintf("Header name %q in rule for domain %q must contain only valid HTTP token characters.", name, domain),
+					}
+				}
+
+				if len(name) > maxNetworkRuleHeaderNameLen {
+					return &api.APIError{
+						Code:      http.StatusBadRequest,
+						Err:       fmt.Errorf("header name %q in rule for domain %q exceeds max length %d", name, domain, maxNetworkRuleHeaderNameLen),
+						ClientMsg: fmt.Sprintf("Header name %q in rule for domain %q exceeds maximum length of %d characters.", name, domain, maxNetworkRuleHeaderNameLen),
+					}
+				}
+
+				if !httpguts.ValidHeaderFieldValue(value) {
+					return &api.APIError{
+						Code:      http.StatusBadRequest,
+						Err:       fmt.Errorf("value for header %q in rule for domain %q contains invalid characters", name, domain),
+						ClientMsg: fmt.Sprintf("Value for header %q in rule for domain %q contains invalid characters.", name, domain),
+					}
+				}
+
+				if len(value) > maxNetworkRuleHeaderValueLen {
+					return &api.APIError{
+						Code:      http.StatusBadRequest,
+						Err:       fmt.Errorf("value for header %q in rule for domain %q exceeds max length %d", name, domain, maxNetworkRuleHeaderValueLen),
+						ClientMsg: fmt.Sprintf("Value for header %q in rule for domain %q exceeds maximum length of %d characters.", name, domain, maxNetworkRuleHeaderValueLen),
+					}
+				}
 			}
 		}
 	}

@@ -16,7 +16,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -61,6 +60,17 @@ func normalizeNodeIP(nodeIP string) (string, error) {
 	}
 
 	return nodeIP, nil
+}
+
+func clientProxyMaskRequestHost(ctx context.Context, featureFlags *featureflags.Client, host string, sandboxID string, port uint64) *string {
+	domain, sharedHost := reverseproxy.SandboxSharedHostDomain(host)
+	if !sharedHost || featureFlags.BoolFlag(ctx, featureflags.OrchAcceptsCombinedHostFlag) {
+		return nil
+	}
+
+	orchestratorHost := fmt.Sprintf("%d-%s.%s", port, sandboxID, domain)
+
+	return &orchestratorHost
 }
 
 func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, c catalog.SandboxesCatalog, lifecycleClient SandboxLifecycleClient, featureFlags *featureflags.Client, trafficKeepalive *trafficKeepaliveManager) (string, error) {
@@ -139,7 +149,7 @@ func handlePausedSandbox(
 }
 
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, sandboxLifecycleClient SandboxLifecycleClient, featureFlagsClient *featureflags.Client) (*reverseproxy.Proxy, error) {
-	getTargetFromRequest := reverseproxy.GetTargetFromRequest(env.IsLocal())
+	getTargetFromRequest := reverseproxy.GetTargetFromRequest()
 	trafficKeepalive := newTrafficKeepaliveManager(sandboxLifecycleClient)
 	proxy := reverseproxy.New(
 		port,
@@ -205,6 +215,13 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				SandboxPort:   port,
 				ConnectionKey: pool.ClientProxyConnectionKey,
 				Url:           url,
+				MaskRequestHost: clientProxyMaskRequestHost(
+					ctx,
+					featureFlagsClient,
+					r.Host,
+					sandboxId,
+					port,
+				),
 			}, nil
 		},
 		nil,

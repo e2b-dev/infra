@@ -195,6 +195,7 @@ func run() int {
 		config.EnableBillingHTTPTeamProvisionSink,
 		config.BillingServerURL,
 		config.BillingServerAPIToken,
+		supabaseDB,
 	)
 	if err != nil {
 		l.Error(ctx, "initializing team provision sink", zap.Error(err))

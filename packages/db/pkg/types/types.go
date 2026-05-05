@@ -63,9 +63,18 @@ func (r BuildReason) Value() (driver.Value, error) {
 
 const PausedSandboxConfigVersion = "v1"
 
+type SandboxNetworkTransform struct {
+	Headers map[string]string `json:"headers,omitempty"`
+}
+
+type SandboxNetworkRule struct {
+	Transform *SandboxNetworkTransform `json:"transform,omitempty"`
+}
+
 type SandboxNetworkEgressConfig struct {
-	AllowedAddresses []string `json:"allowedAddresses,omitempty"`
-	DeniedAddresses  []string `json:"deniedAddresses,omitempty"`
+	AllowedAddresses []string                        `json:"allowedAddresses,omitempty"`
+	DeniedAddresses  []string                        `json:"deniedAddresses,omitempty"`
+	Rules            map[string][]SandboxNetworkRule `json:"rules,omitempty"`
 }
 
 const AllowPublicAccessDefault = true

@@ -108,6 +108,7 @@ var (
 	EdgeProvidedSandboxMetricsFlag      = NewBoolFlag("edge-provided-sandbox-metrics", false)
 	CreateStorageCacheSpansFlag         = NewBoolFlag("create-storage-cache-spans", env.IsDevelopment())
 	SandboxAutoResumeFlag               = NewBoolFlag("sandbox-auto-resume", env.IsDevelopment())
+	OrchAcceptsCombinedHostFlag         = NewBoolFlag("orch-accepts-combined-host", false)
 
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.
 	PeerToPeerChunkTransferFlag = NewBoolFlag("peer-to-peer-chunk-transfer", false)
@@ -119,6 +120,8 @@ var (
 	ExecutionMetricsOnWebhooksFlag   = NewBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
 	SandboxLabelBasedSchedulingFlag  = NewBoolFlag("sandbox-label-based-scheduling", false)
 	OptimisticResourceAccountingFlag = NewBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
+
+	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
 )
 
 type IntFlag struct {
