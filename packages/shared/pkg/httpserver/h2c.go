@@ -2,7 +2,6 @@ package httpserver
 
 import (
 	"net/http"
-	"net/textproto"
 	"time"
 
 	"golang.org/x/net/http/httpguts"
@@ -22,15 +21,12 @@ func ConfigureH2C(server *http.Server) {
 		handler = http.DefaultServeMux
 	}
 
-	server.Handler = withH2C(server, handler)
-}
-
-func withH2C(server *http.Server, handler http.Handler) http.Handler {
 	h2cHandler := h2c.NewHandler(handler, newHTTP2Server(server))
+	limitedH2CHandler := http.MaxBytesHandler(h2cHandler, h2cUpgradeBodyLimit)
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if isH2CUpgrade(r.Header) {
-			http.MaxBytesHandler(h2cHandler, h2cUpgradeBodyLimit).ServeHTTP(w, r)
+			limitedH2CHandler.ServeHTTP(w, r)
 
 			return
 		}
@@ -41,7 +37,7 @@ func withH2C(server *http.Server, handler http.Handler) http.Handler {
 
 func newHTTP2Server(server *http.Server) *http2.Server {
 	idleTimeout := defaultH2CIdleTimeout
-	if server != nil && server.IdleTimeout > 0 {
+	if server.IdleTimeout > 0 {
 		idleTimeout = server.IdleTimeout
 	}
 
@@ -57,6 +53,6 @@ func newHTTP2Server(server *http.Server) *http2.Server {
 }
 
 func isH2CUpgrade(header http.Header) bool {
-	return httpguts.HeaderValuesContainsToken(header[textproto.CanonicalMIMEHeaderKey("Upgrade")], "h2c") &&
-		httpguts.HeaderValuesContainsToken(header[textproto.CanonicalMIMEHeaderKey("Connection")], "HTTP2-Settings")
+	return httpguts.HeaderValuesContainsToken(header["Upgrade"], "h2c") &&
+		httpguts.HeaderValuesContainsToken(header["Connection"], "HTTP2-Settings")
 }
