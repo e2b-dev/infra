@@ -30,4 +30,5 @@ type ReadonlyDevice interface {
 type Device interface {
 	ReadonlyDevice
 	io.WriterAt
+	WriteZeroesAt(off, length int64) (int, error)
 }

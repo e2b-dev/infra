@@ -24,10 +24,17 @@ type DiffMetadata struct {
 	BlockSize int64
 }
 
-func NewDiffMetadata(blockSize int64, dirty *roaring.Bitmap) *DiffMetadata {
+func NewDiffMetadata(blockSize int64, dirty, empty *roaring.Bitmap) *DiffMetadata {
+	if dirty == nil {
+		dirty = roaring.New()
+	}
+	if empty == nil {
+		empty = roaring.New()
+	}
+
 	return &DiffMetadata{
 		Dirty:     dirty,
-		Empty:     roaring.New(),
+		Empty:     empty,
 		BlockSize: blockSize,
 	}
 }
