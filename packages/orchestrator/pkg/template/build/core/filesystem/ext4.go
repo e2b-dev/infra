@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -29,7 +30,33 @@ const (
 	inodesRatio = int64(4096)
 	// reservedBlocksPercentage is 0 because reserved blocks are set post-creation via tune2fs -r after the final resize.
 	reservedBlocksPercentage = int64(0)
+	// First e2fsprogs release that supports the optional features we pass to
+	// mkfs.ext4 (inline_data, packed_meta_blocks). Released May 2016; every
+	// supported orchestrator host has a newer version.
+	minMkfsMajor = 1
+	minMkfsMinor = 43
 )
+
+var mkfsVersionRegex = regexp.MustCompile(`mke2fs (\d+)\.(\d+)`)
+
+// ensureMkfsVersion fails fast with an actionable error if the host's
+// mkfs.ext4 is too old to understand the optional features in Make().
+var ensureMkfsVersion = sync.OnceValue(func() error {
+	out, err := exec.Command("mkfs.ext4", "-V").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("mkfs.ext4 not available: %w (output: %s)", err, out)
+	}
+	m := mkfsVersionRegex.FindStringSubmatch(string(out))
+	if len(m) < 3 {
+		return fmt.Errorf("could not parse mkfs.ext4 version from %q", out)
+	}
+	major, _ := strconv.Atoi(m[1])
+	minor, _ := strconv.Atoi(m[2])
+	if major < minMkfsMajor || (major == minMkfsMajor && minor < minMkfsMinor) {
+		return fmt.Errorf("mkfs.ext4 %d.%d is too old; need >= %d.%d for the optional ext4 features used by the orchestrator", major, minor, minMkfsMajor, minMkfsMinor)
+	}
+	return nil
+})
 
 func Make(ctx context.Context, rootfsPath string, sizeMb int64, blockSize int64) error {
 	ctx, tuneSpan := tracer.Start(ctx, "make-ext4")
@@ -37,6 +64,10 @@ func Make(ctx context.Context, rootfsPath string, sizeMb int64, blockSize int64)
 
 	if blockSize < inodesRatio {
 		return errors.New("block size must be greater than inodes ratio")
+	}
+
+	if err := ensureMkfsVersion(); err != nil {
+		return err
 	}
 
 	cmd := exec.CommandContext(ctx,
