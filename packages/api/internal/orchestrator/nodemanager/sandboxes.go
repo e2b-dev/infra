@@ -109,6 +109,17 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 			}
 		}
 
+		var keepalive *types.SandboxKeepaliveConfig
+		if keepaliveCfg := config.GetKeepalive(); keepaliveCfg != nil {
+			keepalive = &types.SandboxKeepaliveConfig{}
+			if trafficCfg := keepaliveCfg.GetTraffic(); trafficCfg != nil {
+				keepalive.Traffic = &types.SandboxTrafficKeepaliveConfig{
+					Enabled: trafficCfg.GetEnabled(),
+					Timeout: trafficCfg.GetTimeoutSeconds(),
+				}
+			}
+		}
+
 		sandboxesInfo = append(
 			sandboxesInfo,
 			sandbox.NewSandbox(
@@ -133,8 +144,7 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 				n.ClusterID,
 				config.GetAutoPause(),
 				autoResume,
-				nil,
-				0,
+				keepalive,
 				config.EnvdAccessToken,     //nolint:protogetter // we need the nil check too
 				config.AllowInternetAccess, //nolint:protogetter // we need the nil check too
 				config.GetBaseTemplateId(),

@@ -47,7 +47,6 @@ type SandboxMetadata struct {
 	AutoPause           bool
 	AutoResume          *types.SandboxAutoResumeConfig
 	Keepalive           *types.SandboxKeepaliveConfig
-	Timeout             time.Duration
 	VolumeMounts        []*orchestrator.SandboxVolumeMount
 	EnvdAccessToken     *string
 	NodeID              *string
@@ -197,8 +196,6 @@ func (o *Orchestrator) CreateSandbox(
 	if fetchErr != nil {
 		return sandbox.Sandbox{}, fetchErr
 	}
-	sbxData.Timeout = timeout
-
 	fcSemver, err := fcversion.New(sbxData.Build.FirecrackerVersion)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get fcSemver for firecracker fcSemver '%s': %w", sbxData.Build.FirecrackerVersion, err)
@@ -252,6 +249,17 @@ func (o *Orchestrator) CreateSandbox(
 		}
 	}
 
+	var orchKeepalive *orchestrator.SandboxKeepaliveConfig
+	if sbxData.Keepalive != nil {
+		orchKeepalive = &orchestrator.SandboxKeepaliveConfig{}
+		if sbxData.Keepalive.Traffic != nil {
+			orchKeepalive.Traffic = &orchestrator.SandboxTrafficKeepaliveConfig{
+				Enabled:        sbxData.Keepalive.Traffic.Enabled,
+				TimeoutSeconds: sbxData.Keepalive.Traffic.Timeout,
+			}
+		}
+	}
+
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
 			BaseTemplateId:      sbxData.BaseTemplateID,
@@ -274,6 +282,7 @@ func (o *Orchestrator) CreateSandbox(
 			Snapshot:            isResume,
 			AutoPause:           sbxData.AutoPause,
 			AutoResume:          orchAutoResume,
+			Keepalive:           orchKeepalive,
 			AllowInternetAccess: sbxData.AllowInternetAccess,
 			Network:             sbxNetwork,
 			TotalDiskSizeMb:     ut.FromPtr(sbxData.Build.TotalDiskSizeMb),
@@ -348,7 +357,6 @@ func (o *Orchestrator) CreateSandbox(
 		sbxData.AutoPause,
 		sbxData.AutoResume,
 		sbxData.Keepalive,
-		sbxData.Timeout,
 		sbxData.EnvdAccessToken,
 		sbxData.AllowInternetAccess,
 		sbxData.BaseTemplateID,
