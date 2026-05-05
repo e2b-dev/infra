@@ -95,6 +95,25 @@ echo "Disable system first boot wizard"
 # and Linux boot was stuck in wizard until envd wait timeout
 systemctl mask systemd-firstboot.service
 
+# Mask background daemons / timers that periodically scribble small files into
+# the rootfs (audit log rotation, package list refresh, MOTD news fetch, man-db
+# rebuild, cron-style scrubbers). Each scribble dirties at least one 4 KiB
+# block that ends up in the next snapshot diff, with no value for ephemeral
+# sandboxes that don't survive long enough for the cadence to matter.
+# `systemctl mask` is a no-op if the unit isn't present, so this is safe across
+# customer base images.
+echo "Disabling periodic rootfs-dirtying timers and daemons"
+systemctl mask --quiet \
+    apt-daily.timer apt-daily-upgrade.timer \
+    motd-news.service motd-news.timer \
+    man-db.timer e2scrub_all.timer fstrim.timer \
+    logrotate.timer \
+    unattended-upgrades.service \
+    accounts-daemon.service \
+    udisks2.service \
+    auditd.service \
+    || true
+
 # Clean machine-id from Docker
 rm -rf /etc/machine-id
 
