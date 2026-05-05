@@ -33,7 +33,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
+	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -284,7 +284,7 @@ func (s *Server) storeSandboxRoutingInfo(ctx context.Context) {
 		return
 	}
 
-	info := &catalog.SandboxInfo{
+	info := &e2bcatalog.SandboxInfo{
 		TeamID:           event.TeamID,
 		OrchestratorID:   event.OrchestratorID,
 		OrchestratorIP:   event.OrchestratorIP,
@@ -304,14 +304,7 @@ func (s *Server) storeSandboxRoutingInfo(ctx context.Context) {
 	if err := s.routingCatalog.StoreSandbox(ctx, event.SandboxID, info, lifetime); err != nil {
 		logger.L().Error(ctx, "failed to store sandbox routing info", logger.WithSandboxID(event.SandboxID), zap.Error(err))
 	} else {
-		logger.L().Info(
-			ctx,
-			"stored sandbox routing info",
-			logger.WithSandboxID(event.SandboxID),
-			zap.Bool("traffic_keepalive", info.Keepalive != nil && info.Keepalive.Traffic != nil && info.Keepalive.Traffic.Enabled),
-			zap.Bool("team_id_present", info.TeamID != ""),
-			zap.Bool("orchestrator_ip_present", info.OrchestratorIP != ""),
-		)
+		logger.L().Info(ctx, "stored sandbox routing info", logger.WithSandboxID(event.SandboxID))
 	}
 }
 

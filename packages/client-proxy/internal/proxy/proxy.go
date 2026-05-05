@@ -21,7 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
-	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
+	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -49,7 +49,7 @@ const (
 	autoResumeErrored
 )
 
-func catalogSandboxNodeIP(s *catalog.SandboxInfo) (string, error) {
+func catalogSandboxNodeIP(s *e2bcatalog.SandboxInfo) (string, error) {
 	return normalizeNodeIP(s.OrchestratorIP)
 }
 
@@ -73,10 +73,10 @@ func clientProxyMaskRequestHost(ctx context.Context, featureFlags *featureflags.
 	return &orchestratorHost
 }
 
-func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, c catalog.SandboxesCatalog, lifecycleClient SandboxLifecycleClient, featureFlags *featureflags.Client, trafficKeepalive *trafficKeepaliveManager) (string, error) {
+func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, c e2bcatalog.SandboxesCatalog, lifecycleClient SandboxLifecycleClient, featureFlags *featureflags.Client, trafficKeepalive *trafficKeepaliveManager) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
-		if errors.Is(err, catalog.ErrSandboxNotFound) {
+		if errors.Is(err, e2bcatalog.ErrSandboxNotFound) {
 			nodeIP, res, pausedErr := handlePausedSandbox(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken, lifecycleClient, featureFlags)
 			if pausedErr != nil {
 				return "", pausedErr
@@ -92,7 +92,7 @@ func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64
 	}
 
 	if s.Keepalive != nil && s.Keepalive.Traffic != nil && s.Keepalive.Traffic.Enabled {
-		trafficKeepalive.MaybeRefresh(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken, c, s)
+		trafficKeepalive.MaybeRefresh(ctx, sandboxId, trafficAccessToken, c, s)
 	} else {
 		logger.L().Debug(
 			ctx,
@@ -103,8 +103,6 @@ func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64
 		)
 	}
 
-	// todo: when we will use edge for orchestrators discovery we can stop sending IP in the catalog
-	//  and just resolve node from pool to get the IP of the node
 	return catalogSandboxNodeIP(s)
 }
 
@@ -156,7 +154,7 @@ func handlePausedSandbox(
 	return nodeIP, autoResumeSucceeded, nil
 }
 
-func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, sandboxLifecycleClient SandboxLifecycleClient, featureFlagsClient *featureflags.Client) (*reverseproxy.Proxy, error) {
+func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog e2bcatalog.SandboxesCatalog, sandboxLifecycleClient SandboxLifecycleClient, featureFlagsClient *featureflags.Client) (*reverseproxy.Proxy, error) {
 	getTargetFromRequest := reverseproxy.GetTargetFromRequest()
 	trafficKeepalive := newTrafficKeepaliveManager(sandboxLifecycleClient)
 	proxy := reverseproxy.New(

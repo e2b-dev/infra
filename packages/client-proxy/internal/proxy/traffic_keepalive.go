@@ -7,7 +7,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
+	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 const (
@@ -24,7 +24,8 @@ func newTrafficKeepaliveManager(resumer SandboxLifecycleClient) *trafficKeepaliv
 	}
 }
 
-func trafficKeepaliveEnabled(info *catalog.SandboxInfo) bool {
+func trafficKeepaliveEnabled(info *e2bcatalog.SandboxInfo) bool {
+	// Older catalog entries can have keepalive metadata without team_id until they expire.
 	if info == nil || info.TeamID == "" {
 		return false
 	}
@@ -36,7 +37,7 @@ func trafficKeepaliveEnabled(info *catalog.SandboxInfo) bool {
 	return info.Keepalive.Traffic != nil && info.Keepalive.Traffic.Enabled
 }
 
-func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, catalogStore catalog.SandboxesCatalog, info *catalog.SandboxInfo) {
+func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID string, trafficAccessToken string, catalogStore e2bcatalog.SandboxesCatalog, info *e2bcatalog.SandboxInfo) {
 	if m.resumer == nil || !trafficKeepaliveEnabled(info) {
 		return
 	}
@@ -53,10 +54,16 @@ func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID st
 	}
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.L().Error(ctx, "traffic keepalive refresh panicked", logger.WithSandboxID(sandboxID), zap.Any("panic", r))
+			}
+		}()
+
 		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), trafficKeepaliveRequestTimeout)
 		defer cancel()
 
-		err := m.resumer.KeepAlive(refreshCtx, sandboxID, info.TeamID, sandboxPort, trafficAccessToken, envdAccessToken)
+		err := m.resumer.KeepAlive(refreshCtx, sandboxID, info.TeamID, trafficAccessToken)
 		if err != nil {
 			logger.L().Warn(refreshCtx, "traffic keepalive refresh failed", logger.WithSandboxID(sandboxID), zap.Error(err))
 		} else {

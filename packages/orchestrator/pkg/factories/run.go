@@ -63,7 +63,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
+	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -392,9 +392,9 @@ func run(config cfg.Config, opts Options) (success bool) {
 			return sharedFactories.CloseCleanly(redisClient)
 		}})
 	}
-	var routingCatalog catalog.SandboxesCatalog
+	var routingCatalog e2bcatalog.SandboxesCatalog
 	if redisClient != nil {
-		routingCatalog = catalog.NewRedisSandboxCatalog(redisClient)
+		routingCatalog = e2bcatalog.NewRedisSandboxCatalog(redisClient)
 	}
 
 	peerRegistry := peerclient.NopRegistry()

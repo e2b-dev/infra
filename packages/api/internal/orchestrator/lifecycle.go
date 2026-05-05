@@ -42,6 +42,8 @@ func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox san
 
 	lifetime := time.Until(sandbox.StartTime.Add(sandbox.MaxInstanceLength))
 	if lifetime <= 0 {
+		logger.L().Warn(ctx, "skipping sandbox routing info with expired lifetime", logger.WithSandboxID(sandbox.SandboxID), zap.Duration("lifetime", lifetime))
+
 		return
 	}
 
