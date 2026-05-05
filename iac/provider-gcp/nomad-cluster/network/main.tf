@@ -91,6 +91,10 @@ locals {
         port         = var.nomad_port
       }
       groups = [{ group = var.server_instance_group }]
+      iap = var.nomad_iap_oauth2_client_id != null ? {
+        oauth2_client_id     = var.nomad_iap_oauth2_client_id
+        oauth2_client_secret = var.nomad_iap_oauth2_client_secret
+      } : null
     }
   }
   health_checked_backends = { for backend_index, backend_value in local.backends : backend_index => backend_value }
@@ -369,9 +373,28 @@ resource "google_compute_backend_service" "default" {
     }
   }
 
+  dynamic "iap" {
+    for_each = lookup(each.value, "iap", null) != null ? [each.value.iap] : []
+    content {
+      enabled              = true
+      oauth2_client_id     = iap.value["oauth2_client_id"]
+      oauth2_client_secret = iap.value["oauth2_client_secret"]
+    }
+  }
+
   depends_on = [
     google_compute_health_check.default
   ]
+}
+
+# IAP IAM binding for Nomad backend
+resource "google_iap_web_backend_service_iam_binding" "nomad_iap" {
+  count = var.nomad_iap_oauth2_client_id != null && length(var.nomad_iap_members) > 0 ? 1 : 0
+
+  project             = var.gcp_project_id
+  web_backend_service = google_compute_backend_service.default["nomad"].name
+  role                = "roles/iap.httpsResourceAccessor"
+  members             = var.nomad_iap_members
 }
 
 resource "google_compute_health_check" "default" {
