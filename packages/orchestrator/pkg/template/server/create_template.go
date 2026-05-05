@@ -65,7 +65,10 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		return nil, fmt.Errorf("invalid resolved firecracker version %q: %w", firecrackerVersion, err)
 	}
 	hugePages := fcInfo.HasHugePages()
-	freePageReporting := fcInfo.HasFreePageReporting() && s.featureFlags.BoolFlag(ctx, featureflags.FreePageReportingFlag)
+	// Firecracker rejects balloon (free-page-reporting) together with hugepages,
+	// so hugepages wins. Once the flag is enabled and we want FPR over hugepages,
+	// gate hugepages on the FC version that supports both — which doesn't exist yet.
+	freePageReporting := !hugePages && fcInfo.HasFreePageReporting() && s.featureFlags.BoolFlag(ctx, featureflags.FreePageReportingFlag)
 
 	childSpan.SetAttributes(
 		telemetry.WithTemplateID(cfg.GetTemplateID()),

@@ -222,16 +222,18 @@ func (u *Uffd) DiffMetadata(ctx context.Context, f *fc.Process) (*header.DiffMet
 		return nil, fmt.Errorf("failed to get uffd: %w", err)
 	}
 
+	// Settle in-flight UFFD workers (and the REMOVE batch) before sampling
+	// FC's WP-async pagemap, so a Zero→Write install can't slip in between
+	// and escape both bitmaps.
+	_, empty := handler.ExportPageStates()
+
 	diff, err := f.DirtyMemory(ctx, u.memfile.BlockSize())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get dirty memory: %w", err)
 	}
 
-	// Mark REMOVE'd pages as empty so they resolve to uuid.Nil (zero on restore)
-	// instead of leaking stale contents from the previous layer. A page that
-	// was zero-installed and later written shows up in diff.Dirty via WP-async,
-	// so dirty wins over empty for those.
-	_, empty := handler.ExportPageStates()
+	// Pages that were zero-installed and later written show up in diff.Dirty
+	// via WP-async, so dirty wins over empty for those.
 	empty.AndNot(diff.Dirty)
 
 	return &header.DiffMetadata{
