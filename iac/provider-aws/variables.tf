@@ -39,6 +39,11 @@ variable "api_cluster_size" {
   default = 1
 }
 
+variable "api_internal_grpc_port" {
+  type    = number
+  default = 5009
+}
+
 variable "api_server_machine_type" {
   type    = string
   default = "t3.xlarge"
@@ -123,6 +128,12 @@ variable "orchestrator_proxy_port" {
 variable "allow_sandbox_internet" {
   type    = bool
   default = true
+}
+
+variable "allow_sandbox_internal_cidrs" {
+  type        = string
+  description = "Comma-separated CIDRs to allow through the sandbox firewall deny list (e.g. 10.0.0.1/32,10.0.0.2/32)"
+  default     = ""
 }
 
 variable "envd_timeout" {

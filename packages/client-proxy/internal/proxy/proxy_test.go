@@ -58,6 +58,23 @@ func newFF(t *testing.T, autoResumeEnabled bool) *featureflags.Client {
 	return ff
 }
 
+func newFFWithOrchAcceptsCombinedHost(t *testing.T, enabled bool) *featureflags.Client {
+	t.Helper()
+
+	source := ldtestdata.DataSource()
+	source.Update(source.Flag(featureflags.OrchAcceptsCombinedHostFlag.Key()).VariationForAll(enabled))
+
+	ff, err := featureflags.NewClientWithDatasource(source)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ff.Close(context.Background()) })
+
+	return ff
+}
+
+func ptr[T any](v T) *T {
+	return &v
+}
+
 func TestCatalogResolution_CatalogHit(t *testing.T) {
 	t.Parallel()
 
@@ -76,7 +93,65 @@ func TestCatalogResolution_CatalogHit(t *testing.T) {
 	require.Equal(t, "10.0.0.1", nodeIP)
 }
 
-func TestCatalogResolution_CatalogHit_EmptyIPReturnsEmpty(t *testing.T) {
+func TestClientProxyMaskRequestHost(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		flagEnabled bool
+		host        string
+		want        *string
+	}{
+		{
+			name:        "flag disabled masks sandbox shared host",
+			flagEnabled: false,
+			host:        "sandbox.e2b.app",
+			want:        ptr("49983-sbx.e2b.app"),
+		},
+		{
+			name:        "flag enabled preserves sandbox shared host",
+			flagEnabled: true,
+			host:        "sandbox.e2b.app",
+			want:        nil,
+		},
+		{
+			name:        "flag enabled preserves sandbox shared host with port",
+			flagEnabled: true,
+			host:        "sandbox.e2b.app:443",
+			want:        nil,
+		},
+		{
+			name:        "leaves localhost unchanged",
+			flagEnabled: false,
+			host:        "localhost:3000",
+			want:        nil,
+		},
+		{
+			name:        "leaves loopback unchanged",
+			flagEnabled: false,
+			host:        "127.0.0.1:3000",
+			want:        nil,
+		},
+		{
+			name:        "leaves regular sandbox host unchanged",
+			flagEnabled: true,
+			host:        "49983-sbx.e2b.app",
+			want:        nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ff := newFFWithOrchAcceptsCombinedHost(t, tt.flagEnabled)
+
+			require.Equal(t, tt.want, clientProxyMaskRequestHost(t.Context(), ff, tt.host, "sbx", 49983))
+		})
+	}
+}
+
+func TestCatalogResolution_CatalogHit_EmptyIPReturnsRouteUnavailable(t *testing.T) {
 	t.Parallel()
 
 	c := catalog.NewMemorySandboxesCatalog()
@@ -90,7 +165,7 @@ func TestCatalogResolution_CatalogHit_EmptyIPReturnsEmpty(t *testing.T) {
 	require.NoError(t, err)
 
 	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, ErrNodeRouteUnavailable)
 	require.Empty(t, nodeIP)
 }
 
@@ -102,6 +177,17 @@ func TestCatalogResolution_CatalogMiss(t *testing.T) {
 
 	_, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
 	require.ErrorIs(t, err, ErrNodeNotFound)
+}
+
+func TestCatalogResolution_CatalogMiss_ResumeEmptyIPReturnsRouteUnavailable(t *testing.T) {
+	t.Parallel()
+
+	c := catalog.NewMemorySandboxesCatalog()
+	ff := newFF(t, true)
+
+	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, stubResumer{nodeIP: ""}, ff)
+	require.ErrorIs(t, err, ErrNodeRouteUnavailable)
+	require.Empty(t, nodeIP)
 }
 
 func TestHandlePausedSandbox_NoResumer_MissingTrafficAccessToken(t *testing.T) {
@@ -232,8 +318,8 @@ func TestHandlePausedSandbox_Succeeded_EmptyIP(t *testing.T) {
 	ff := newFF(t, true)
 
 	nodeIP, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{nodeIP: ""}, ff)
-	require.NoError(t, err)
-	require.Equal(t, autoResumeSucceeded, res)
+	require.ErrorIs(t, err, ErrNodeRouteUnavailable)
+	require.Equal(t, autoResumeErrored, res)
 	require.Empty(t, nodeIP)
 }
 

@@ -43,6 +43,8 @@ tf_vars := \
 	$(call tfvar, SANDBOX_STORAGE_BACKEND) \
 	$(call tfvar, ORCHESTRATOR_ENABLED) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
+	$(call tfvar, API_INTERNAL_GRPC_PORT) \
+	$(call tfvar, ALLOW_SANDBOX_INTERNAL_CIDRS) \
 	$(call tfvar, API_SERVER_COUNT) \
 	$(call tfvar, API_RESOURCES_CPU_COUNT) \
 	$(call tfvar, API_RESOURCES_MEMORY_MB) \
@@ -87,6 +89,7 @@ tf_vars := \
 	$(call tfvar, DB_MIN_IDLE_CONNECTIONS) \
 	$(call tfvar, AUTH_DB_MAX_OPEN_CONNECTIONS) \
 	$(call tfvar, AUTH_DB_MIN_IDLE_CONNECTIONS) \
+	$(call tfvar, CLIENT_PROXY_OIDC_ISSUER_URL) \
 	$(call tfvar, GCS_GRPC_CONNECTION_POOL_SIZE) \
 	$(call tfvar, ADDITIONAL_API_PATHS_HANDLED_BY_INGRESS) \
 	$(call tfvar, ANYWHERE_CACHE_ENABLED)

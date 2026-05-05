@@ -6,6 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
+	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -14,7 +15,7 @@ var (
 	ErrMissingAPIToken = errors.New("billing server api token is required when billing http team provision sink is enabled")
 )
 
-func NewProvisionSink(ctx context.Context, enabled bool, baseURL, apiToken string) (TeamProvisionSink, error) {
+func NewProvisionSink(ctx context.Context, enabled bool, baseURL, apiToken string, supabaseDB *supabasedb.Client) (TeamProvisionSink, error) {
 	if !enabled {
 		logger.L().Info(ctx, "team provision sink configured",
 			zap.String("sink", "noop"),
@@ -38,5 +39,5 @@ func NewProvisionSink(ctx context.Context, enabled bool, baseURL, apiToken strin
 		zap.String("base_url", baseURL),
 	)
 
-	return NewHTTPProvisionSink(baseURL, apiToken), nil
+	return NewHTTPProvisionSink(baseURL, apiToken, supabaseDB), nil
 }

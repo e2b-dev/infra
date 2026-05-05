@@ -19,9 +19,11 @@ job "api" {
         static = "${port_number}"
       }
 
-      port "grpc" {
-        static = "${api_grpc_port}"
+      port "api_internal_grpc" {
+        static = "${api_internal_grpc_port}"
       }
+
+      port "grpc_api" {}
 
       %{ if prevent_colocation }
       port "scheduling-block" {
@@ -61,16 +63,39 @@ job "api" {
     }
 
     service {
-      name = "api-grpc"
-      port = "grpc"
+      name = "api-internal-grpc"
+      port = "api_internal_grpc"
       task = "start"
 
       check {
         type     = "tcp"
-        name     = "grpc"
+        name     = "api-internal-grpc"
         interval = "3s"
         timeout  = "3s"
-        port     = "grpc"
+        port     = "api_internal_grpc"
+      }
+    }
+
+    service {
+      name = "grpc-api"
+      port = "grpc_api"
+      task = "start"
+
+      tags = [
+        "traefik.enable=true",
+        "traefik.http.routers.grpc-api.rule=HostRegexp(`grpc-api.{domain:.+}`)",
+        "traefik.http.routers.grpc-api.ruleSyntax=v2",
+        "traefik.http.routers.grpc-api.priority=500",
+        "traefik.http.routers.grpc-api.service=grpc-api",
+        "traefik.http.services.grpc-api.loadbalancer.server.scheme=h2c"
+      ]
+
+      check {
+        type     = "tcp"
+        name     = "grpc-api"
+        interval = "3s"
+        timeout  = "3s"
+        port     = "grpc_api"
       }
     }
 
@@ -114,7 +139,8 @@ job "api" {
         NODE_ID                        = "$${node.unique.id}"
         NOMAD_TOKEN                    = "${nomad_acl_token}"
         ORCHESTRATOR_PORT              = "${orchestrator_port}"
-        API_GRPC_PORT                  = "${api_grpc_port}"
+        API_INTERNAL_GRPC_PORT         = "${api_internal_grpc_port}"
+        API_EDGE_GRPC_PORT             = "$${NOMAD_PORT_grpc_api}"
         ADMIN_TOKEN                    = "${admin_token}"
         SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
 
@@ -164,7 +190,7 @@ job "api" {
       config {
         network_mode = "host"
         image        = "${api_docker_image}"
-        ports        = ["${port_name}"]
+        ports        = ["${port_name}", "grpc_api"]
         args         = [
           "--port", "${port_number}",
         ]

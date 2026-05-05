@@ -71,6 +71,25 @@ func (s *AuthStoreImpl) GetTeamByHashedAPIKey(ctx context.Context, hashedKey str
 	return team, nil
 }
 
+func (s *AuthStoreImpl) GetTeamByID(ctx context.Context, teamID uuid.UUID) (*types.Team, error) {
+	ctx, span := tracer.Start(ctx, "get team by id auth")
+	defer span.End()
+
+	result, err := s.authDB.Read.GetTeamWithTierByTeamID(ctx, teamID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get team from team ID: %w", err)
+	}
+
+	err = validateTeamUsage(result.Team)
+	if err != nil {
+		return nil, err
+	}
+
+	team := types.NewTeam(&result.Team, &result.TeamLimit)
+
+	return team, nil
+}
+
 func (s *AuthStoreImpl) GetTeamByIDAndUserID(ctx context.Context, userID uuid.UUID, teamID string) (*types.Team, error) {
 	ctx, span := tracer.Start(ctx, "get team by id and user id auth")
 	defer span.End()

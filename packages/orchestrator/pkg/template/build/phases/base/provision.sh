@@ -75,6 +75,14 @@ EOF
 echo "Increasing inotify watch limit"
 echo 'fs.inotify.max_user_watches=65536' | tee -a /etc/sysctl.conf
 
+# Disable kcompactd background page migration. With 2 MiB host-side hugepage
+# backing of guest RAM, every migration dirties a destination hugepage from
+# the host UFFD's perspective and lands in the next memfile diff, with no
+# corresponding workload benefit between snapshots. We trigger compaction
+# explicitly pre-pause instead.
+echo "Disabling proactive memory compaction"
+echo 'vm.compaction_proactiveness=0' | tee -a /etc/sysctl.conf
+
 echo "Don't wait for ttyS0 (serial console kernel logs)"
 # This is required when the Firecracker kernel args has specified console=ttyS0
 systemctl mask serial-getty@ttyS0.service

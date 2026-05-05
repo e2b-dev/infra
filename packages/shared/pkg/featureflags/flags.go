@@ -108,6 +108,7 @@ var (
 	EdgeProvidedSandboxMetricsFlag      = NewBoolFlag("edge-provided-sandbox-metrics", false)
 	CreateStorageCacheSpansFlag         = NewBoolFlag("create-storage-cache-spans", env.IsDevelopment())
 	SandboxAutoResumeFlag               = NewBoolFlag("sandbox-auto-resume", env.IsDevelopment())
+	OrchAcceptsCombinedHostFlag         = NewBoolFlag("orch-accepts-combined-host", false)
 
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.
 	PeerToPeerChunkTransferFlag = NewBoolFlag("peer-to-peer-chunk-transfer", false)

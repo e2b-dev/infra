@@ -66,6 +66,11 @@ type Config struct {
 
 	UseLocalNamespaceStorage bool `env:"USE_LOCAL_NAMESPACE_STORAGE"`
 
+	// Comma-separated CIDRs to allow through the predefined firewall deny list.
+	// These are allowed before the private-range deny rules, so they can
+	// reach hosts in the 10.0.0.0/8, 172.16.0.0/12, etc. blocks.
+	AllowSandboxInternalCIDRs []string `env:"ALLOW_SANDBOX_INTERNAL_CIDRS" envDefault:"" envSeparator:","`
+
 	// TCP firewall ports - separate ports for different traffic types to avoid
 	// protocol detection blocking on server-first protocols like SSH.
 	// - HTTP port: for traffic destined to port 80 (HTTP Host header inspection)

@@ -307,10 +307,13 @@ func (o *gcpObject) ReadAt(ctx context.Context, buff []byte, off int64) (n int, 
 	return n, err
 }
 
-func (o *gcpObject) Put(ctx context.Context, data []byte) error {
+func (o *gcpObject) Put(ctx context.Context, data []byte, opts ...PutOption) error {
 	timer := googleWriteTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrWrite))
 
 	w := o.handle.NewWriter(ctx)
+	if putOpts := ApplyPutOptions(opts); len(putOpts.Metadata) > 0 {
+		w.Metadata = putOpts.Metadata
+	}
 
 	c, err := io.Copy(w, bytes.NewReader(data))
 	if err != nil && !errors.Is(err, io.EOF) {
@@ -384,12 +387,14 @@ func (o *gcpObject) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 	return n, nil
 }
 
-func (o *gcpObject) StoreFile(ctx context.Context, path string) (e error) {
+func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOption) (e error) {
 	ctx, span := tracer.Start(ctx, "write to gcp from file system")
 	defer func() {
 		recordError(span, e)
 		span.End()
 	}()
+
+	putOpts := ApplyPutOptions(opts)
 
 	bucketName := o.storage.bucket.BucketName()
 	objectName := o.path
@@ -413,7 +418,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string) (e error) {
 			return fmt.Errorf("failed to read file: %w", err)
 		}
 
-		err = o.Put(ctx, data)
+		err = o.Put(ctx, data, opts...)
 		if err != nil {
 			timer.Failure(ctx, int64(len(data)))
 
@@ -450,6 +455,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string) (e error) {
 		bucketName,
 		objectName,
 		DefaultRetryConfig(),
+		putOpts.Metadata,
 	)
 	if err != nil {
 		timer.Failure(ctx, 0)

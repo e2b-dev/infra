@@ -116,127 +116,137 @@ func TestMissingWrite(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			h, err := configureCrossProcessTest(t, tt)
-			require.NoError(t, err)
+			runMatrix(t, tt, func(t *testing.T, cfg testConfig) {
+				t.Helper()
 
-			h.executeAll(t, tt.operations)
+				h, err := configureCrossProcessTest(t.Context(), t, cfg)
+				require.NoError(t, err)
 
-			expectedAccessedOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
+				h.executeAll(t, cfg.operations)
 
-			states, err := h.pageStatesOnce()
-			require.NoError(t, err)
+				expectedAccessedOffsets := getOperationsOffsets(cfg.operations, operationModeRead|operationModeWrite)
 
-			assert.Equal(t, expectedAccessedOffsets, states.allAccessed(), "checking which pages were faulted")
+				states, err := h.pageStates()
+				require.NoError(t, err)
 
-			h.checkDirtiness(t, tt.operations)
+				assert.Equal(t, expectedAccessedOffsets, states.allAccessed(), "checking which pages were faulted")
+
+				h.checkDirtiness(t, cfg.operations)
+			})
 		})
 	}
 }
 
+//nolint:tparallel // matrix arms intentionally serial; see runMatrix doc.
 func TestParallelMissingWrite(t *testing.T) {
 	t.Parallel()
 
-	parallelOperations := 10_000
+	parallelOperations := 1_000_000
 
 	tt := testConfig{
 		pagesize:      header.PageSize,
 		numberOfPages: 2,
 	}
 
-	h, err := configureCrossProcessTest(t, tt)
-	require.NoError(t, err)
+	runMatrix(t, tt, func(t *testing.T, cfg testConfig) {
+		t.Helper()
 
-	writeOp := operation{
-		offset: 0,
-		mode:   operationModeWrite,
-	}
+		h, err := configureCrossProcessTest(t.Context(), t, cfg)
+		require.NoError(t, err)
 
-	var verr errgroup.Group
+		writeOp := operation{offset: 0, mode: operationModeWrite}
 
-	for range parallelOperations {
-		verr.Go(func() error {
-			return h.executeWrite(t.Context(), writeOp)
-		})
-	}
+		var verr errgroup.Group
 
-	err = verr.Wait()
-	require.NoError(t, err)
+		for range parallelOperations {
+			verr.Go(func() error {
+				return h.executeWrite(t.Context(), writeOp)
+			})
+		}
 
-	expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
+		err = verr.Wait()
+		require.NoError(t, err)
 
-	states, err := h.pageStatesOnce()
-	require.NoError(t, err)
+		expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
 
-	assert.Equal(t, expectedAccessedOffsets, states.allAccessed(), "checking which pages were faulted")
+		states, err := h.pageStates()
+		require.NoError(t, err)
+
+		assert.Equal(t, expectedAccessedOffsets, states.allAccessed(), "checking which pages were faulted")
+	})
 }
 
+//nolint:tparallel // matrix arms intentionally serial; see runMatrix doc.
 func TestParallelMissingWriteWithPrefault(t *testing.T) {
 	t.Parallel()
 
-	parallelOperations := 10_000
+	parallelOperations := 1_000_000
 
 	tt := testConfig{
 		pagesize:      header.PageSize,
 		numberOfPages: 2,
 	}
 
-	h, err := configureCrossProcessTest(t, tt)
-	require.NoError(t, err)
+	runMatrix(t, tt, func(t *testing.T, cfg testConfig) {
+		t.Helper()
 
-	writeOp := operation{
-		offset: 0,
-		mode:   operationModeWrite,
-	}
+		h, err := configureCrossProcessTest(t.Context(), t, cfg)
+		require.NoError(t, err)
 
-	err = h.executeWrite(t.Context(), writeOp)
-	require.NoError(t, err)
+		writeOp := operation{offset: 0, mode: operationModeWrite}
 
-	var verr errgroup.Group
+		err = h.executeWrite(t.Context(), writeOp)
+		require.NoError(t, err)
 
-	for range parallelOperations {
-		verr.Go(func() error {
-			return h.executeWrite(t.Context(), writeOp)
-		})
-	}
+		var verr errgroup.Group
 
-	err = verr.Wait()
-	require.NoError(t, err)
+		for range parallelOperations {
+			verr.Go(func() error {
+				return h.executeWrite(t.Context(), writeOp)
+			})
+		}
 
-	expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
+		err = verr.Wait()
+		require.NoError(t, err)
 
-	states, err := h.pageStatesOnce()
-	require.NoError(t, err)
+		expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
 
-	assert.Equal(t, expectedAccessedOffsets, states.allAccessed(), "checking which pages were faulted")
+		states, err := h.pageStates()
+		require.NoError(t, err)
+
+		assert.Equal(t, expectedAccessedOffsets, states.allAccessed(), "checking which pages were faulted")
+	})
 }
 
+//nolint:tparallel // matrix arms intentionally serial; see runMatrix doc.
 func TestSerialMissingWrite(t *testing.T) {
 	t.Parallel()
 
-	serialOperations := 10_000
+	serialOperations := 1_000_000
 
 	tt := testConfig{
 		pagesize:      header.PageSize,
 		numberOfPages: 2,
 	}
 
-	h, err := configureCrossProcessTest(t, tt)
-	require.NoError(t, err)
+	runMatrix(t, tt, func(t *testing.T, cfg testConfig) {
+		t.Helper()
 
-	writeOp := operation{
-		offset: 0,
-		mode:   operationModeWrite,
-	}
-
-	for range serialOperations {
-		err := h.executeWrite(t.Context(), writeOp)
+		h, err := configureCrossProcessTest(t.Context(), t, cfg)
 		require.NoError(t, err)
-	}
 
-	expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
+		writeOp := operation{offset: 0, mode: operationModeWrite}
 
-	states, err := h.pageStatesOnce()
-	require.NoError(t, err)
+		for range serialOperations {
+			err := h.executeWrite(t.Context(), writeOp)
+			require.NoError(t, err)
+		}
 
-	assert.Equal(t, expectedAccessedOffsets, states.allAccessed(), "checking which pages were faulted")
+		expectedAccessedOffsets := getOperationsOffsets([]operation{writeOp}, operationModeRead|operationModeWrite)
+
+		states, err := h.pageStates()
+		require.NoError(t, err)
+
+		assert.Equal(t, expectedAccessedOffsets, states.allAccessed(), "checking which pages were faulted")
+	})
 }

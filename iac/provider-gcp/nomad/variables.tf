@@ -60,9 +60,14 @@ variable "api_port" {
   })
 }
 
-variable "api_grpc_port" {
+variable "api_internal_grpc_port" {
   type    = number
   default = 5009
+}
+
+variable "client_proxy_oidc_issuer_url" {
+  type    = string
+  default = ""
 }
 
 variable "ingress_port" {
@@ -312,6 +317,12 @@ variable "fc_env_pipeline_bucket_name" {
 
 variable "allow_sandbox_internet" {
   type = bool
+}
+
+variable "allow_sandbox_internal_cidrs" {
+  type        = string
+  description = "Comma-separated CIDRs to allow through the sandbox firewall deny list"
+  default     = ""
 }
 
 # Template manager
