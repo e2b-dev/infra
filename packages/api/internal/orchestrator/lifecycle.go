@@ -36,7 +36,6 @@ func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox san
 
 		ExecutionID:      sandbox.ExecutionID,
 		StartedAt:        sandbox.StartTime,
-		EndTime:          sandbox.EndTime,
 		MaxLengthInHours: int64(sandbox.MaxInstanceLength / time.Hour),
 		Keepalive:        orchestratorcatalog.KeepaliveFromDB(sandbox.Keepalive),
 	}

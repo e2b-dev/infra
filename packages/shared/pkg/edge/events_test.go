@@ -14,7 +14,6 @@ func TestSandboxCatalogCreateEventRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	startTime := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
-	endTime := startTime.Add(30 * time.Minute)
 	event := SandboxCatalogCreateEvent{
 		SandboxID:               "sbx",
 		TeamID:                  "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
@@ -22,7 +21,6 @@ func TestSandboxCatalogCreateEventRoundTrip(t *testing.T) {
 		OrchestratorID:          "orch",
 		SandboxMaxLengthInHours: 24,
 		SandboxStartTime:        startTime,
-		SandboxEndTime:          endTime,
 		Keepalive: &catalog.Keepalive{
 			Traffic: &catalog.TrafficKeepalive{
 				Enabled: true,
@@ -52,6 +50,5 @@ func TestSandboxCatalogCreateEventParseAllowsMissingKeepaliveFields(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, startTime, parsed.SandboxStartTime)
 	require.Empty(t, parsed.TeamID)
-	require.True(t, parsed.SandboxEndTime.IsZero())
 	require.Nil(t, parsed.Keepalive)
 }

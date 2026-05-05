@@ -93,6 +93,14 @@ func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64
 
 	if s.Keepalive != nil && s.Keepalive.Traffic != nil && s.Keepalive.Traffic.Enabled {
 		trafficKeepalive.MaybeRefresh(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken, c, s)
+	} else {
+		logger.L().Debug(
+			ctx,
+			"traffic keepalive disabled in routing catalog",
+			logger.WithSandboxID(sandboxId),
+			zap.Bool("team_id_present", s.TeamID != ""),
+			zap.Bool("keepalive_present", s.Keepalive != nil),
+		)
 	}
 
 	// todo: when we will use edge for orchestrators discovery we can stop sending IP in the catalog

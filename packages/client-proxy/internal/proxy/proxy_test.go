@@ -318,7 +318,6 @@ func TestCatalogResolution_CatalogHit_TrafficKeepaliveRefreshes(t *testing.T) {
 		TeamID:         "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
 		ExecutionID:    "exec",
 		StartedAt:      now.Add(-time.Minute),
-		EndTime:        now.Add(30 * time.Second),
 		Keepalive:      testKeepalive(),
 	}, time.Minute)
 	require.NoError(t, err)
@@ -350,7 +349,6 @@ func TestCatalogResolution_CatalogHit_TrafficKeepaliveRefreshesWhenAutoResumeFla
 		TeamID:         "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
 		ExecutionID:    "exec",
 		StartedAt:      now.Add(-time.Minute),
-		EndTime:        now.Add(30 * time.Second),
 		Keepalive:      testKeepalive(),
 	}, time.Minute)
 	require.NoError(t, err)
@@ -368,13 +366,11 @@ func TestTrafficKeepaliveManager_RefreshesWhenNotNearExpiry(t *testing.T) {
 	t.Parallel()
 
 	c := catalog.NewMemorySandboxesCatalog()
-	now := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
 	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, &catalog.SandboxInfo{
 		TeamID:    "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
-		EndTime:   now.Add(time.Hour),
 		Keepalive: testKeepalive(),
 	})
 
@@ -385,12 +381,10 @@ func TestTrafficKeepaliveManager_SkipsWhenTeamIDMissing(t *testing.T) {
 	t.Parallel()
 
 	c := catalog.NewMemorySandboxesCatalog()
-	now := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
 	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, &catalog.SandboxInfo{
-		EndTime:   now.Add(30 * time.Second),
 		Keepalive: testKeepalive(),
 	})
 
@@ -417,7 +411,6 @@ func TestTrafficKeepaliveManager_SkipsWhenCatalogPolicyDisabled(t *testing.T) {
 func TestTrafficKeepaliveManager_SuppressesConcurrentRefreshes(t *testing.T) {
 	t.Parallel()
 
-	now := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
 	release := make(chan struct{})
 	resumer := &asyncRecordingResumer{
 		calls: make(chan resumeCall, 2),
@@ -427,7 +420,6 @@ func TestTrafficKeepaliveManager_SuppressesConcurrentRefreshes(t *testing.T) {
 	c := catalog.NewMemorySandboxesCatalog()
 	info := &catalog.SandboxInfo{
 		TeamID:    "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
-		EndTime:   now.Add(30 * time.Second),
 		Keepalive: testKeepalive(),
 	}
 

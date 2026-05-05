@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
+	grpcmetadata "google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -26,11 +27,13 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/events"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -233,6 +236,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}
 
 	s.setupSandboxLifecycle(ctx, sbx)
+	s.storeSandboxRoutingInfo(ctx)
 
 	eventType := events.SandboxCreatedEventPair
 	if req.GetSandbox().GetSnapshot() {
@@ -261,6 +265,54 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	return &orchestrator.SandboxCreateResponse{
 		ClientId: s.info.ClientId,
 	}, nil
+}
+
+func (s *Server) storeSandboxRoutingInfo(ctx context.Context) {
+	if s.routingCatalog == nil {
+		return
+	}
+
+	md, ok := grpcmetadata.FromIncomingContext(ctx)
+	if !ok || metadataEventType(md) != edge.CatalogCreateEventType {
+		return
+	}
+
+	event, err := edge.ParseSandboxCatalogCreateEvent(md)
+	if err != nil {
+		logger.L().Error(ctx, "failed to parse sandbox catalog create metadata", zap.Error(err))
+
+		return
+	}
+
+	info := &catalog.SandboxInfo{
+		TeamID:           event.TeamID,
+		OrchestratorID:   event.OrchestratorID,
+		OrchestratorIP:   event.OrchestratorIP,
+		ExecutionID:      event.ExecutionID,
+		StartedAt:        event.SandboxStartTime,
+		MaxLengthInHours: event.SandboxMaxLengthInHours,
+		Keepalive:        event.Keepalive,
+	}
+
+	lifetime := time.Until(event.SandboxStartTime.Add(time.Duration(event.SandboxMaxLengthInHours) * time.Hour))
+	if lifetime <= 0 {
+		logger.L().Warn(ctx, "skipping sandbox routing info with expired lifetime", logger.WithSandboxID(event.SandboxID), zap.Duration("lifetime", lifetime))
+
+		return
+	}
+
+	if err := s.routingCatalog.StoreSandbox(ctx, event.SandboxID, info, lifetime); err != nil {
+		logger.L().Error(ctx, "failed to store sandbox routing info", logger.WithSandboxID(event.SandboxID), zap.Error(err))
+	} else {
+		logger.L().Info(
+			ctx,
+			"stored sandbox routing info",
+			logger.WithSandboxID(event.SandboxID),
+			zap.Bool("traffic_keepalive", info.Keepalive != nil && info.Keepalive.Traffic != nil && info.Keepalive.Traffic.Enabled),
+			zap.Bool("team_id_present", info.TeamID != ""),
+			zap.Bool("orchestrator_ip_present", info.OrchestratorIP != ""),
+		)
+	}
 }
 
 func createVolumeMountModelsFromAPI(volumeMounts []*orchestrator.SandboxVolumeMount) ([]sandbox.VolumeMountConfig, error) {
@@ -420,6 +472,7 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		telemetry.WithSandboxID(in.GetSandboxId()),
 		attribute.String("client.id", s.info.ClientId),
 	)
+	defer s.deleteSandboxRoutingInfo(ctxConn)
 
 	sbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId())
 	if !ok {
@@ -478,6 +531,37 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	)
 
 	return &emptypb.Empty{}, nil
+}
+
+func (s *Server) deleteSandboxRoutingInfo(ctx context.Context) {
+	if s.routingCatalog == nil {
+		return
+	}
+
+	md, ok := grpcmetadata.FromIncomingContext(ctx)
+	if !ok || metadataEventType(md) != edge.CatalogDeleteEventType {
+		return
+	}
+
+	event, err := edge.ParseSandboxCatalogDeleteEvent(md)
+	if err != nil {
+		logger.L().Error(ctx, "failed to parse sandbox catalog delete metadata", zap.Error(err))
+
+		return
+	}
+
+	if err := s.routingCatalog.DeleteSandbox(ctx, event.SandboxID, event.ExecutionID); err != nil {
+		logger.L().Error(ctx, "failed to delete sandbox routing info", logger.WithSandboxID(event.SandboxID), zap.Error(err))
+	}
+}
+
+func metadataEventType(md grpcmetadata.MD) string {
+	values := md.Get(edge.EventTypeHeader)
+	if len(values) == 0 {
+		return ""
+	}
+
+	return values[0]
 }
 
 func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {

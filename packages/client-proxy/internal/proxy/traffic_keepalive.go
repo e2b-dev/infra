@@ -47,6 +47,8 @@ func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID st
 		return
 	}
 	if !acquired {
+		logger.L().Debug(ctx, "traffic keepalive refresh already acquired", logger.WithSandboxID(sandboxID))
+
 		return
 	}
 
@@ -57,6 +59,8 @@ func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID st
 		err := m.resumer.KeepAlive(refreshCtx, sandboxID, info.TeamID, sandboxPort, trafficAccessToken, envdAccessToken)
 		if err != nil {
 			logger.L().Warn(refreshCtx, "traffic keepalive refresh failed", logger.WithSandboxID(sandboxID), zap.Error(err))
+		} else {
+			logger.L().Info(refreshCtx, "traffic keepalive refreshed sandbox", logger.WithSandboxID(sandboxID))
 		}
 	}()
 }

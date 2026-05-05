@@ -47,11 +47,11 @@ func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.Sandbo
 				TeamID:                  req.GetSandbox().GetTeamId(),
 				SandboxMaxLengthInHours: req.GetSandbox().GetMaxSandboxLength(),
 				SandboxStartTime:        req.GetStartTime().AsTime(),
-				SandboxEndTime:          req.GetEndTime().AsTime(),
 				Keepalive:               orchestratorcatalog.KeepaliveFromDB(keepalive),
 
 				ExecutionID:    req.GetSandbox().GetExecutionId(),
 				OrchestratorID: n.Metadata().ServiceInstanceID,
+				OrchestratorIP: n.IPAddress,
 			},
 		)
 	}
