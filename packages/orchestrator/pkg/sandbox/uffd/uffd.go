@@ -227,16 +227,9 @@ func (u *Uffd) DiffMetadata(ctx context.Context, f *fc.Process) (*header.DiffMet
 		return nil, fmt.Errorf("failed to get dirty memory: %w", err)
 	}
 
-	// Without this, REMOVE'd pages stay attributed to the previous layer's BuildId in
-	// the merged mapping and leak their stale contents on resume; with it, those ranges
-	// become uuid.Nil sentinels (read as zero, matching guest free-page intent).
+	// Mark REMOVE'd pages as empty so they resolve to uuid.Nil (zero on restore)
+	// instead of leaking stale contents from the previous layer.
 	_, empty := handler.ExportPageStates()
-
-	// dirty ∩ empty should be empty after settle (Removed pages have no PTE,
-	// FC's WP-async dirty scan only sees present pages with WP cleared), but
-	// AndNot here means "empty wins" if the invariant ever breaks: the guest's
-	// most recent intent for a Removed page is "free, read zero on restore",
-	// so we must not let stale dirty content shadow it in this diff layer.
 	diff.Dirty.AndNot(empty)
 
 	return &header.DiffMetadata{

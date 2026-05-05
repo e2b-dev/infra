@@ -137,15 +137,10 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 	return u, nil
 }
 
-// ExportPageStates returns snapshots of the faulted and removed
-// page-index bitmaps. The diff-snapshot writer uses the removed
-// bitmap to mark freed pages as DiffMetadata.Empty so they resolve
-// to uuid.Nil (zero-on-restore) in the snapshot header.
+// ExportPageStates returns snapshots of the faulted and removed page-index
+// bitmaps after draining in-flight serve-loop iterations and workers.
+// Lock order matches the serve loop to avoid AB-BA inversion.
 func (u *Userfaultfd) ExportPageStates() (faulted, removed *roaring.Bitmap) {
-	// Take readSerial first to wait for the serve loop's current
-	// iteration (read+apply) to complete, then settleRequests to wait
-	// for in-flight workers. Same lock order as serve loop avoids any
-	// AB-BA inversion.
 	u.readSerial.Lock()
 	defer u.readSerial.Unlock()
 
