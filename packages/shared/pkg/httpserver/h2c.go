@@ -15,7 +15,12 @@ const (
 )
 
 // ConfigureH2C wraps server's handler with H2C support using server timeouts.
-func ConfigureH2C(server *http.Server, handler http.Handler) {
+func ConfigureH2C(server *http.Server) {
+	handler := server.Handler
+	if handler == nil {
+		handler = http.DefaultServeMux
+	}
+
 	server.Handler = withH2C(server, handler)
 }
 

@@ -99,9 +99,10 @@ func main() {
 
 	log.Printf("Starting server on port: %d\n", *port)
 	server := &http.Server{
-		Addr: fmt.Sprintf(":%s", strconv.Itoa(*port)),
+		Addr:    fmt.Sprintf(":%s", strconv.Itoa(*port)),
+		Handler: mux,
 	}
-	httpserver.ConfigureH2C(server, mux)
+	httpserver.ConfigureH2C(server)
 
 	log.Fatal(server.ListenAndServe())
 }

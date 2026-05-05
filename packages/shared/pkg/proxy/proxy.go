@@ -67,10 +67,11 @@ func New(
 			// otherwise there's a chance for a race condition when the server closes and the client tries to use the connection
 			IdleTimeout:       idleTimeout + idleTimeoutBufferUpstreamDownstream,
 			ReadHeaderTimeout: 0,
+			Handler:           handler(p, getDestination, connLimitConfig),
 		},
 		pool: p,
 	}
-	httpserver.ConfigureH2C(&proxy.Server, handler(p, getDestination, connLimitConfig))
+	httpserver.ConfigureH2C(&proxy.Server)
 
 	return proxy
 }

@@ -23,7 +23,8 @@ func TestConfigureH2CAcceptsHTTP2AndHTTP1(t *testing.T) {
 	})
 
 	server := httptest.NewUnstartedServer(nil)
-	ConfigureH2C(server.Config, handler)
+	server.Config.Handler = handler
+	ConfigureH2C(server.Config)
 	server.Start()
 	t.Cleanup(server.Close)
 
@@ -72,7 +73,8 @@ func TestConfigureH2CLimitsUpgradeRequestBodyOnly(t *testing.T) {
 	})
 
 	server := httptest.NewUnstartedServer(nil)
-	ConfigureH2C(server.Config, handler)
+	server.Config.Handler = handler
+	ConfigureH2C(server.Config)
 	server.Start()
 	t.Cleanup(server.Close)
 

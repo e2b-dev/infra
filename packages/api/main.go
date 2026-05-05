@@ -217,7 +217,8 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	r.MaxMultipartMemory = maxMultipartMemory
 
 	s := &http.Server{
-		Addr: fmt.Sprintf("0.0.0.0:%d", port),
+		Handler: r,
+		Addr:    fmt.Sprintf("0.0.0.0:%d", port),
 
 		// Configure request timeouts.
 		ReadHeaderTimeout: maxReadHeaderTimeout,
@@ -229,7 +230,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
-	httpserver.ConfigureH2C(s, r)
+	httpserver.ConfigureH2C(s)
 
 	return s
 }

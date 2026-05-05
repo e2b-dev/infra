@@ -351,13 +351,14 @@ func newHTTPServer(
 	api.RegisterHandlers(r, apiStore)
 
 	s := &http.Server{
+		Handler:           r,
 		Addr:              fmt.Sprintf("0.0.0.0:%d", port),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,
 		IdleTimeout:       idleTimeout,
 	}
-	httpserver.ConfigureH2C(s, r)
+	httpserver.ConfigureH2C(s)
 
 	return s
 }
