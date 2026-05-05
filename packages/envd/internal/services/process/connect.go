@@ -117,10 +117,8 @@ func (s *Service) handleConnect(ctx context.Context, req *connect.Request[rpc.Co
 		}
 	}()
 
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-exitChan:
-		return nil
-	}
+	// Wait for the sender goroutine; returning early panics envd.
+	<-exitChan
+
+	return ctx.Err()
 }
