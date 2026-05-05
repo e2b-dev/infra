@@ -60,6 +60,15 @@ func Make(ctx context.Context, rootfsPath string, sizeMb int64, blockSize int64)
 		"-b", strconv.FormatInt(blockSize, 10),
 		"-m", strconv.FormatInt(reservedBlocksPercentage, 10),
 		"-i", strconv.FormatInt(inodesRatio, 10),
+		// -G: flex group size. Default is 16 block groups per flex group;
+		// larger values pack inode tables and bitmaps for more block groups
+		// into one contiguous run on disk, improving the chance that small-file
+		// metadata churn lands in the same 4 MiB GCS chunk on cold resume.
+		"-G", "64",
+		// packed_meta_blocks: place all metadata (superblock, group descriptors,
+		// inode tables, bitmaps) at the start of the disk so they are spatially
+		// clustered. Same goal: fewer chunks touched by metadata-heavy diffs.
+		"-E", "packed_meta_blocks=1",
 		rootfsPath,
 		strconv.FormatInt(sizeMb, 10)+"M",
 	)
