@@ -26,7 +26,7 @@ type ConnectionLimitConfig struct {
 
 const (
 	maxClientConns                      = 16384 // Reasonably big number that is lower than the number of available ports.
-	idleTimeoutBufferUpstreamDownstream = 10
+	idleTimeoutBufferUpstreamDownstream = 10 * time.Second
 )
 
 type Proxy struct {
