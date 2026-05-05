@@ -74,10 +74,9 @@ func orchestratorSandboxHost(host string, sandboxID string, port uint64) *string
 }
 
 func clientProxyMaskRequestHost(ctx context.Context, featureFlags *featureflags.Client, host string, sandboxID string, port uint64) *string {
-	if featureFlags.BoolFlag(ctx, featureflags.OrchAcceptsCombinedHostFlag) {
-		if _, ok := reverseproxy.SandboxSharedHostDomain(host); ok {
-			return nil
-		}
+	_, sharedHost := reverseproxy.SandboxSharedHostDomain(host)
+	if sharedHost && featureFlags.BoolFlag(ctx, featureflags.OrchAcceptsCombinedHostFlag) {
+		return nil
 	}
 
 	return orchestratorSandboxHost(host, sandboxID, port)
