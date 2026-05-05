@@ -22,14 +22,14 @@ func (u *Upload) runV3(ctx context.Context) error {
 		return fmt.Errorf("error getting rootfs diff path: %w", err)
 	}
 
-	eg, ctx := errgroup.WithContext(ctx)
+	eg, egCtx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
 		if u.snap.MemfileDiffHeader == nil {
 			return nil
 		}
 
-		return headers.StoreHeader(ctx, u.store, u.paths.MemfileHeader(), finalizeV3(u.snap.MemfileDiffHeader))
+		return headers.StoreHeader(egCtx, u.store, u.paths.MemfileHeader(), finalizeV3(u.snap.MemfileDiffHeader))
 	})
 
 	eg.Go(func() error {
@@ -37,7 +37,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		return headers.StoreHeader(ctx, u.store, u.paths.RootfsHeader(), finalizeV3(u.snap.RootfsDiffHeader))
+		return headers.StoreHeader(egCtx, u.store, u.paths.RootfsHeader(), finalizeV3(u.snap.RootfsDiffHeader))
 	})
 
 	meta := storage.WithMetadata(u.objectMetadata)
@@ -47,7 +47,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		_, _, err := storage.UploadFramed(ctx, u.store, u.paths.Memfile(), storage.MemfileObjectType, memfilePath, meta)
+		_, _, err := storage.UploadFramed(egCtx, u.store, u.paths.Memfile(), storage.MemfileObjectType, memfilePath, meta)
 
 		return err
 	})
@@ -57,17 +57,17 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		_, _, err := storage.UploadFramed(ctx, u.store, u.paths.Rootfs(), storage.RootFSObjectType, rootfsPath, meta)
+		_, _, err := storage.UploadFramed(egCtx, u.store, u.paths.Rootfs(), storage.RootFSObjectType, rootfsPath, meta)
 
 		return err
 	})
 
 	eg.Go(func() error {
-		return storage.UploadBlob(ctx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), meta)
+		return storage.UploadBlob(egCtx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), meta)
 	})
 
 	eg.Go(func() error {
-		return storage.UploadBlob(ctx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path(), meta)
+		return storage.UploadBlob(egCtx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path(), meta)
 	})
 
 	if err := eg.Wait(); err != nil {
