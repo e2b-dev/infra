@@ -16,6 +16,7 @@ tool (
 )
 
 require (
+	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
 	github.com/bsm/redislock v0.9.4
 	github.com/caarlos0/env/v11 v11.3.1
 	github.com/coreos/go-oidc/v3 v3.15.0
