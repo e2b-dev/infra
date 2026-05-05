@@ -21,11 +21,11 @@ func ConfigureH2C(server *http.Server) {
 	if handler == nil {
 		handler = http.DefaultServeMux
 	}
-	if server.IdleTimeout == 0 {
-		server.IdleTimeout = defaultH2CIdleTimeout
-	}
 
 	h2Server := newHTTP2Server()
+	if server.IdleTimeout == 0 && server.ReadTimeout == 0 {
+		h2Server.IdleTimeout = defaultH2CIdleTimeout
+	}
 	if err := http2.ConfigureServer(server, h2Server); err != nil {
 		panic(err)
 	}

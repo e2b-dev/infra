@@ -185,7 +185,7 @@ func TestConfigureH2CPreservesParentIdleTimeout(t *testing.T) {
 	require.Equal(t, parentIdleTimeout, server.IdleTimeout)
 }
 
-func TestConfigureH2CUsesDefaultIdleTimeout(t *testing.T) {
+func TestConfigureH2CLeavesParentIdleTimeoutUnset(t *testing.T) {
 	t.Parallel()
 
 	server := &http.Server{
@@ -193,7 +193,7 @@ func TestConfigureH2CUsesDefaultIdleTimeout(t *testing.T) {
 	}
 	ConfigureH2C(server)
 
-	require.Equal(t, defaultH2CIdleTimeout, server.IdleTimeout)
+	require.Zero(t, server.IdleTimeout)
 }
 
 func TestNewHTTP2ServerConfiguresH2SpecificTimeouts(t *testing.T) {
