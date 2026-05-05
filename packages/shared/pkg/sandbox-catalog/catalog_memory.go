@@ -68,7 +68,7 @@ func (c *MemorySandboxCatalog) AcquireTrafficKeepalive(_ context.Context, sandbo
 		return false, nil
 	}
 
-	c.trafficKeepalives[sandboxID] = now.Add(TrafficKeepaliveInterval)
+	c.trafficKeepalives[sandboxID] = now.Add(TrafficKeepaliveThrottleInterval)
 
 	return true, nil
 }

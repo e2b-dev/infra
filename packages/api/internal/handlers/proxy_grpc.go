@@ -19,6 +19,7 @@ import (
 	apiorchestrator "github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	typesteam "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -149,20 +150,34 @@ func (s *SandboxService) validateSandboxTraffic(ctx context.Context, sandboxID s
 	return nil
 }
 
+func (s *SandboxService) requireClientProxyAuth(ctx context.Context, incomingMetadata metadata.MD, team *typesteam.Team) error {
+	if !s.requireEdgeClientProxyAuth {
+		return nil
+	}
+
+	clientProxyClaims, err := oauth.RequireClaims(ctx, incomingMetadata, s.clientProxyOAuth)
+	if err != nil {
+		return err
+	}
+	if err := oauth.RequireScopeClaims(clientProxyClaims, oauth.RequiredScope); err != nil {
+		return err
+	}
+
+	var authOrgID string
+	if team.ClusterID != nil {
+		cluster, found := s.api.clusters.GetClusterById(*team.ClusterID)
+		if !found {
+			return status.Errorf(codes.Internal, "cluster with ID '%s' not found", *team.ClusterID)
+		}
+
+		authOrgID = cluster.AuthOrgID
+	}
+
+	return oauth.RequireOrgClaims(clientProxyClaims, authOrgID)
+}
+
 func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*proxygrpc.SandboxResumeResponse, error) {
 	incomingMetadata := metadataFromIncomingContext(ctx)
-
-	var clientProxyClaims oauth.Claims
-	if s.requireEdgeClientProxyAuth {
-		var authErr error
-		clientProxyClaims, authErr = oauth.RequireClaims(ctx, incomingMetadata, s.clientProxyOAuth)
-		if authErr != nil {
-			return nil, authErr
-		}
-		if err := oauth.RequireScopeClaims(clientProxyClaims, oauth.RequiredScope); err != nil {
-			return nil, err
-		}
-	}
 
 	sandboxID, err := utils.ShortID(req.GetSandboxId())
 	if err != nil {
@@ -181,20 +196,8 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
 	}
 
-	if s.requireEdgeClientProxyAuth {
-		var authOrgID string
-		if team.ClusterID != nil {
-			cluster, found := s.api.clusters.GetClusterById(*team.ClusterID)
-			if !found {
-				return nil, status.Errorf(codes.Internal, "cluster with ID '%s' not found", *team.ClusterID)
-			}
-
-			authOrgID = cluster.AuthOrgID
-		}
-
-		if err := oauth.RequireOrgClaims(clientProxyClaims, authOrgID); err != nil {
-			return nil, err
-		}
+	if err := s.requireClientProxyAuth(ctx, incomingMetadata, team); err != nil {
+		return nil, err
 	}
 
 	minAutoResumeTimeout := time.Duration(s.api.featureFlags.IntFlag(ctx, featureflags.MinAutoResumeTimeoutSeconds)) * time.Second
@@ -277,6 +280,8 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 }
 
 func (s *SandboxService) KeepAliveSandbox(ctx context.Context, req *proxygrpc.SandboxKeepAliveRequest) (*proxygrpc.SandboxKeepAliveResponse, error) {
+	incomingMetadata := metadataFromIncomingContext(ctx)
+
 	sandboxID, err := utils.ShortID(req.GetSandboxId())
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid sandbox ID")
@@ -285,6 +290,15 @@ func (s *SandboxService) KeepAliveSandbox(ctx context.Context, req *proxygrpc.Sa
 	teamID, err := uuid.Parse(req.GetTeamId())
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid team ID")
+	}
+
+	team, err := s.api.authService.GetTeamByID(ctx, teamID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
+	}
+
+	if err := s.requireClientProxyAuth(ctx, incomingMetadata, team); err != nil {
+		return nil, err
 	}
 
 	sandboxData, err := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)

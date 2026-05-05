@@ -85,7 +85,7 @@ func (c *RedisSandboxCatalog) AcquireTrafficKeepalive(ctx context.Context, sandb
 	ctx, ctxCancel := context.WithTimeout(spanCtx, catalogRedisTimeout)
 	defer ctxCancel()
 
-	acquired, err := c.redisClient.SetNX(ctx, c.getTrafficKeepaliveKey(sandboxID), "1", TrafficKeepaliveInterval).Result()
+	acquired, err := c.redisClient.SetNX(ctx, c.getTrafficKeepaliveKey(sandboxID), "1", TrafficKeepaliveThrottleInterval).Result()
 	if err != nil {
 		return false, fmt.Errorf("failed to acquire traffic keepalive semaphore: %w", err)
 	}

@@ -346,7 +346,7 @@ components:
         timeout:
           type: integer
           format: int32
-          minimum: 0
+          minimum: 61
           default: 300
           description: Time to extend the sandbox timeout by when valid proxy traffic is received, in seconds.
 
