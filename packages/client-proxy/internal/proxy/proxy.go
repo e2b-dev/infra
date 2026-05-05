@@ -63,12 +63,6 @@ func normalizeNodeIP(nodeIP string) (string, error) {
 }
 
 func orchestratorSandboxHost(host string, sandboxID string, port uint64) *string {
-	if reverseproxy.IsLocalRequestHost(host) {
-		orchestratorHost := fmt.Sprintf("%d-%s.localhost", port, sandboxID)
-
-		return &orchestratorHost
-	}
-
 	domain, ok := reverseproxy.SandboxSharedHostDomain(host)
 	if !ok {
 		return nil
@@ -159,7 +153,7 @@ func handlePausedSandbox(
 }
 
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedSandboxResumer PausedSandboxResumer, featureFlagsClient *featureflags.Client) (*reverseproxy.Proxy, error) {
-	getTargetFromRequest := reverseproxy.GetTargetFromRequest(reverseproxy.HeaderRoutingEnabled)
+	getTargetFromRequest := reverseproxy.GetTargetFromRequest()
 	proxy := reverseproxy.New(
 		port,
 		// Retries that are needed to handle port forwarding delays in sandbox envd are handled by the orchestrator proxy

@@ -39,7 +39,7 @@ type SandboxProxy struct {
 }
 
 func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes *sandbox.Map, featureFlags *featureflags.Client) (*SandboxProxy, error) {
-	getTargetFromRequest := reverseproxy.GetTargetFromRequest(reverseproxy.HeaderRoutingEnabled)
+	getTargetFromRequest := reverseproxy.GetTargetFromRequest()
 	limiter := connlimit.NewConnectionLimiter()
 	metrics := NewMetrics(meterProvider)
 

@@ -10,7 +10,7 @@ import (
 func TestGetTargetFromRequest(t *testing.T) {
 	t.Parallel()
 
-	getTargetFromRequest := GetTargetFromRequest(HeaderRoutingEnabled)
+	getTargetFromRequest := GetTargetFromRequest()
 
 	tests := []struct {
 		name     string

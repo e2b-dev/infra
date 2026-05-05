@@ -11,18 +11,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 )
 
-type HeaderRoutingMode uint8
-
-const (
-	HeaderRoutingDisabled HeaderRoutingMode = iota
-	HeaderRoutingEnabled
-)
-
 const SandboxSharedHostSubdomain = "sandbox."
 
-func GetTargetFromRequest(headerRouting HeaderRoutingMode) func(r *http.Request) (sandboxId string, port uint64, err error) {
+func GetTargetFromRequest() func(r *http.Request) (sandboxId string, port uint64, err error) {
 	return func(r *http.Request) (sandboxId string, port uint64, err error) {
-		if headerRouting == HeaderRoutingEnabled && shouldParseHeaders(r.Host) && hasRoutingHeaders(r.Header) {
+		if shouldParseHeaders(r.Host) && hasRoutingHeaders(r.Header) {
 			var ok bool
 			sandboxId, port, ok, err = parseHeaders(r.Header)
 			if err != nil {

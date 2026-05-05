@@ -108,21 +108,21 @@ func TestOrchestratorSandboxHost(t *testing.T) {
 			host:      "localhost:3000",
 			sandboxID: "sbx",
 			port:      49983,
-			want:      ptr("49983-sbx.localhost"),
+			want:      nil,
 		},
 		{
 			name:      "loopback IPv4",
 			host:      "127.0.0.1:3000",
 			sandboxID: "sbx",
 			port:      49983,
-			want:      ptr("49983-sbx.localhost"),
+			want:      nil,
 		},
 		{
 			name:      "loopback IPv6",
 			host:      "[::1]:3000",
 			sandboxID: "sbx",
 			port:      49983,
-			want:      ptr("49983-sbx.localhost"),
+			want:      nil,
 		},
 		{
 			name:      "sandbox shared host",
@@ -184,10 +184,10 @@ func TestClientProxyMaskRequestHost(t *testing.T) {
 			want:        nil,
 		},
 		{
-			name:        "flag enabled still masks localhost",
+			name:        "flag enabled leaves localhost unchanged",
 			flagEnabled: true,
 			host:        "localhost:3000",
-			want:        ptr("49983-sbx.localhost"),
+			want:        nil,
 		},
 		{
 			name:        "flag enabled leaves regular sandbox host unchanged",
