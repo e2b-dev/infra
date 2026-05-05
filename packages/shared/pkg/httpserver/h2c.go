@@ -21,7 +21,12 @@ func ConfigureH2C(server *http.Server) {
 		handler = http.DefaultServeMux
 	}
 
-	h2cHandler := h2c.NewHandler(handler, newHTTP2Server(server))
+	h2Server := newHTTP2Server(server)
+	if err := http2.ConfigureServer(server, h2Server); err != nil {
+		panic(err)
+	}
+
+	h2cHandler := h2c.NewHandler(handler, h2Server)
 	limitedH2CHandler := http.MaxBytesHandler(h2cHandler, h2cUpgradeBodyLimit)
 
 	server.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
