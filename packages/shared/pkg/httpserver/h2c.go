@@ -2,9 +2,10 @@ package httpserver
 
 import (
 	"net/http"
-	"strings"
+	"net/textproto"
 	"time"
 
+	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 )
@@ -56,18 +57,6 @@ func newHTTP2Server(server *http.Server) *http2.Server {
 }
 
 func isH2CUpgrade(header http.Header) bool {
-	return strings.EqualFold(header.Get("Upgrade"), "h2c") &&
-		header.Get("HTTP2-Settings") != "" &&
-		headerValueContainsToken(header.Get("Connection"), "Upgrade") &&
-		headerValueContainsToken(header.Get("Connection"), "HTTP2-Settings")
-}
-
-func headerValueContainsToken(value, token string) bool {
-	for field := range strings.SplitSeq(value, ",") {
-		if strings.EqualFold(strings.TrimSpace(field), token) {
-			return true
-		}
-	}
-
-	return false
+	return httpguts.HeaderValuesContainsToken(header[textproto.CanonicalMIMEHeaderKey("Upgrade")], "h2c") &&
+		httpguts.HeaderValuesContainsToken(header[textproto.CanonicalMIMEHeaderKey("Connection")], "HTTP2-Settings")
 }

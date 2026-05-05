@@ -110,6 +110,67 @@ func TestConfigureH2CLimitsUpgradeRequestBodyOnly(t *testing.T) {
 	require.Equal(t, http.StatusInternalServerError, upgradeResp.StatusCode)
 }
 
+func TestConfigureH2CLimitsAllStdlibUpgradeMatches(t *testing.T) {
+	t.Parallel()
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := io.Copy(io.Discard, r.Body)
+		if err != nil {
+			t.Errorf("copy request body: %v", err)
+
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	server := httptest.NewUnstartedServer(nil)
+	server.Config.Handler = handler
+	ConfigureH2C(server.Config)
+	server.Start()
+	t.Cleanup(server.Close)
+
+	tests := []struct {
+		name       string
+		connection string
+		upgrade    string
+	}{
+		{
+			name:       "upgrade header token list",
+			connection: "Upgrade, HTTP2-Settings",
+			upgrade:    "foo, h2c",
+		},
+		{
+			name:       "connection only names HTTP2 settings",
+			connection: "HTTP2-Settings",
+			upgrade:    "h2c",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			req, err := http.NewRequestWithContext(
+				t.Context(),
+				http.MethodPost,
+				server.URL,
+				struct{ io.Reader }{strings.NewReader(strings.Repeat("a", h2cUpgradeBodyLimit+1))},
+			)
+			require.NoError(t, err)
+			req.Header.Set("Connection", tt.connection)
+			req.Header.Set("HTTP2-Settings", "AAMAAABkAAQAAP__")
+			req.Header.Set("Upgrade", tt.upgrade)
+
+			resp, err := server.Client().Do(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+		})
+	}
+}
+
 func TestNewHTTP2ServerUsesParentIdleTimeout(t *testing.T) {
 	t.Parallel()
 
