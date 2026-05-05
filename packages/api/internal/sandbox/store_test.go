@@ -193,9 +193,8 @@ func createTestSandbox() sandbox.Sandbox {
 		false, // autoPause
 		nil,   // autoResume
 		nil,   // keepalive
-		time.Hour,
-		nil, // envdAccessToken
-		nil, // allowInternetAccess
+		nil,   // envdAccessToken
+		nil,   // allowInternetAccess
 		"base-template",
 		nil, // domain
 		nil, // network

@@ -124,7 +124,6 @@ type PausedSandboxConfig struct {
 	Network      *SandboxNetworkConfig       `json:"network,omitempty"`
 	AutoResume   *SandboxAutoResumeConfig    `json:"autoResume,omitempty"`
 	Keepalive    *SandboxKeepaliveConfig     `json:"keepalive,omitempty"`
-	Timeout      uint64                      `json:"timeout,omitempty"`
 	VolumeMounts []*SandboxVolumeMountConfig `json:"volumeMounts,omitempty"`
 }
 

@@ -136,7 +136,6 @@ func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) quer
 			Network:      sbx.Network,
 			AutoResume:   sbx.AutoResume,
 			Keepalive:    sbx.Keepalive,
-			Timeout:      uint64(sbx.Timeout.Seconds()),
 			VolumeMounts: sbx.VolumeMounts,
 		},
 		OriginNodeID:    node.ID,

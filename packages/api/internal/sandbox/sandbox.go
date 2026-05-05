@@ -33,7 +33,6 @@ func NewSandbox(
 	autoPause bool,
 	autoResume *types.SandboxAutoResumeConfig,
 	keepalive *types.SandboxKeepaliveConfig,
-	timeout time.Duration,
 	envdAccessToken *string,
 	allowInternetAccess *bool,
 	baseTemplateID string,
@@ -70,7 +69,6 @@ func NewSandbox(
 		AutoPause:           autoPause,
 		AutoResume:          autoResume,
 		Keepalive:           keepalive,
-		Timeout:             timeout,
 		State:               StateRunning,
 		BaseTemplateID:      baseTemplateID,
 		Network:             network,
@@ -107,7 +105,6 @@ type Sandbox struct {
 	AutoPause           bool                              `json:"autoPause"`
 	AutoResume          *types.SandboxAutoResumeConfig    `json:"autoResume,omitempty"`
 	Keepalive           *types.SandboxKeepaliveConfig     `json:"keepalive,omitempty"`
-	Timeout             time.Duration                     `json:"timeout,omitempty"`
 	Network             *types.SandboxNetworkConfig       `json:"network"`
 	VolumeMounts        []*types.SandboxVolumeMountConfig `json:"volumeMounts"`
 
