@@ -8,21 +8,20 @@ verbosity_level = 1
 # /review is deprecated by qodo and removed after 2026-05-31.
 pr_commands = ["/agentic_review"]
 
-[pr_reviewer]
-require_score_review = false
-require_tests_review = false
-require_estimate_effort_to_review = false
-require_can_be_split_review = false
-require_security_review = false
-require_ticket_analysis_review = false
-enable_review_labels_security = false
-enable_review_labels_effort = false
-inline_code_comments = true
-num_code_suggestions = 3
-persistent_comment = true
-final_update_message = false
-enable_help_text = false
-extra_instructions = """
+[review_agent]
+# Style rules apply to both agents that /agentic_review runs:
+# - issues_user_guidelines  -> Issues Agent (bugs, security, perf)
+# - compliance_user_guidelines -> Compliance Agent (rule checks)
+issues_user_guidelines = """
+Output style rules (strict):
+- Be terse. One short paragraph per finding, no preamble.
+- Only report concrete bugs, correctness issues, or rule violations. Do not summarize the PR.
+- No headers, no bullet lists, no tables, no diagrams, no code-fence wrapping unless quoting code.
+- No emojis. No severity badges. No tags like "Bug", "Enhancement", "Correctness", "Maintainability".
+- No Qodo branding, logos, dividers, or footer links.
+- If nothing to flag, post nothing.
+"""
+compliance_user_guidelines = """
 Output style rules (strict):
 - Be terse. One short paragraph per finding, no preamble.
 - Only report concrete bugs, correctness issues, or rule violations. Do not summarize the PR.
