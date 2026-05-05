@@ -54,6 +54,8 @@ func Make(ctx context.Context, rootfsPath string, sizeMb int64, blockSize int64)
 			"filetype",
 			"flex_bg",
 			"huge_file",
+			// Pack file data <~160 B inside the inode to avoid a 4 KiB data block per tiny file.
+			"inline_data",
 			"large_file",
 			"sparse_super2",
 		}, ","),
