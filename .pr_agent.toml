@@ -4,8 +4,9 @@ publish_output_progress = false
 verbosity_level = 1
 
 [github_app]
-# Only run /review. Drops the /describe walkthrough, diagram, and file-changes summary.
-pr_commands = ["/review"]
+# Only run /agentic_review. Drops the /describe walkthrough, diagram, and file-changes summary.
+# /review is deprecated by qodo and removed after 2026-05-31.
+pr_commands = ["/agentic_review"]
 
 [pr_reviewer]
 require_score_review = false
