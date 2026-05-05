@@ -10,9 +10,7 @@ import (
 )
 
 const (
-	// Match envd's idle timeout for callers that do not set one explicitly.
-	defaultH2CIdleTimeout = 640 * time.Second
-	h2cUpgradeBodyLimit   = 1 << 20 // 1 MiB
+	h2cUpgradeBodyLimit = 1 << 20 // 1 MiB
 )
 
 // ConfigureH2C wraps server's handler with H2C support using server timeouts.
@@ -23,9 +21,6 @@ func ConfigureH2C(server *http.Server) {
 	}
 
 	h2Server := newHTTP2Server()
-	if server.IdleTimeout == 0 && server.ReadTimeout == 0 {
-		h2Server.IdleTimeout = defaultH2CIdleTimeout
-	}
 	if err := http2.ConfigureServer(server, h2Server); err != nil {
 		panic(err)
 	}
