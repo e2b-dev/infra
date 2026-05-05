@@ -430,7 +430,7 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 	return nil
 }
 
-// cmdWriteZeroes runs synchronously: WriteZeroesAt is just mmap ops + madvise + bitmap.
+// cmdWriteZeroes runs synchronously since WriteZeroesAt is cheap (mmap + bitmap).
 func (d *Dispatch) cmdWriteZeroes(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength int64) error {
 	var respErr uint32
 	if _, err := d.prov.WriteZeroesAt(int64(cmdFrom), cmdLength); err != nil {

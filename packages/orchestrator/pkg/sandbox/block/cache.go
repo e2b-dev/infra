@@ -345,9 +345,8 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 		return 0, nil
 	}
 
-	// NBD guarantees block-aligned writes; cache size is a multiple of blockSize.
-	// detect-zeroes=unmap: walk one block at a time and flush each contiguous
-	// same-state run as a single bulk copy / punchHole / SetRange.
+	// detect-zeroes=unmap: coalesce contiguous same-state blocks into one bulk
+	// copy or punchHole call. Caller must pass a block-aligned write (NBD invariant).
 	flush := func(runStart, runEnd int64, runZero bool) {
 		startIdx := uint32(header.BlockIdx(runStart, c.blockSize))
 		endIdx := uint32(header.BlockCeilIdx(runEnd, c.blockSize))
@@ -376,7 +375,8 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	return int(end - off), nil
 }
 
-// WriteZeroesAt punches aligned blocks (tracked Empty) and clears unaligned head/tail in place.
+// WriteZeroesAt punches the range and marks all touched blocks Zero.
+// Caller must pass a block-aligned offset/length (NBD invariant).
 func (c *Cache) WriteZeroesAt(off, length int64) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -394,7 +394,6 @@ func (c *Cache) WriteZeroesAt(off, length int64) (int, error) {
 		return 0, nil
 	}
 
-	// NBD guarantees block-aligned offset/length; cache size is a multiple of blockSize.
 	c.punchHole(off, end-off)
 	c.tracker.SetRange(
 		uint32(header.BlockIdx(off, c.blockSize)),
