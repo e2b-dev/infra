@@ -10,6 +10,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
+var _ io.ReadCloser = (*decompressingCacheReader)(nil) // decompress on Read, cache compressed bytes on Close
+
 // Precomputed OTEL attributes for compressed cache reads (avoids per-read allocation).
 var compressedCacheReadAttrs = []attribute.KeyValue{
 	attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrReadAt),
@@ -69,8 +71,8 @@ func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64
 	return rc, nil
 }
 
-// newDecompressingCacheReader creates a reader that decompresses on Read and
-// writes the accumulated compressed bytes to the NFS cache on Close.
+// decompressingCacheReader decompresses on Read and writes the accumulated
+// compressed bytes to the NFS cache on Close.
 func newDecompressingCacheReader(
 	raw io.ReadCloser,
 	ct CompressionType,
