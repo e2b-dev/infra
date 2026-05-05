@@ -46,12 +46,11 @@ const (
 	defaultGCSEnableDirectPath     = false
 	gcloudDefaultUploadConcurrency = 16
 
-	gcsOperationAttr                           = "operation"
-	gcsOperationAttrWrite                      = "Write"
-	gcsOperationAttrWriteFromFileSystem        = "WriteFromFileSystem"
-	gcsOperationAttrWriteFromFileSystemOneShot = "WriteFromFileSystemOneShot"
-	gcsOperationAttrWriteTo                    = "WriteTo"
-	gcsOperationAttrSize                       = "Size"
+	gcsOperationAttr                    = "operation"
+	gcsOperationAttrWrite               = "Write"
+	gcsOperationAttrWriteFromFileSystem = "WriteFromFileSystem"
+	gcsOperationAttrWriteTo             = "WriteTo"
+	gcsOperationAttrSize                = "Size"
 	// gcsOperationAttrReadAt tags GCS read timer metrics for OpenRangeReader
 	// (the method was renamed from ReadAt; value kept for dashboard compatibility).
 	gcsOperationAttrReadAt = "ReadAt"
@@ -383,8 +382,14 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 		return nil, [32]byte{}, fmt.Errorf("failed to get file size: %w", err)
 	}
 
+	cfg := CompressConfigFromOpts(putOpts)
+
+	// Tag the upload timer with the compression mode so dashboards can split
+	// duration/throughput by codec and level. Type is "none" when disabled.
 	timer := googleWriteTimerFactory.Begin(
 		attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystem),
+		attribute.String("compression.type", cfg.CompressionType().String()),
+		attribute.Int("compression.level", cfg.Level),
 	)
 
 	maxConcurrency := gcloudDefaultUploadConcurrency
@@ -402,8 +407,6 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 
 		maxConcurrency = o.limiter.GCloudMaxTasks(ctx)
 	}
-
-	cfg := CompressConfigFromOpts(putOpts)
 
 	// Compressed uploads always go through the multipart compressed path,
 	// regardless of file size.
@@ -433,10 +436,6 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 	// If the file is too small, the overhead of writing in parallel isn't worth the effort.
 	// Write it in one shot instead.
 	if fileInfo.Size() < gcpMultipartUploadChunkSize {
-		timer := googleWriteTimerFactory.Begin(
-			attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystemOneShot),
-		)
-
 		data, err := os.ReadFile(path)
 		if err != nil {
 			timer.Failure(ctx, 0)

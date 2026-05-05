@@ -17,7 +17,7 @@ func TestSeekableSource_Size(t *testing.T) {
 	t.Parallel()
 
 	diff := buildmocks.NewMockDiff(t)
-	diff.EXPECT().FileSize().Return(int64(1234), nil)
+	diff.EXPECT().Size(mock.Anything).Return(int64(1234), nil)
 
 	cache := peerservermocks.NewMockCache(t)
 	cache.EXPECT().LookupDiff("build-1", build.DiffType(storage.MemfileName)).Return(diff, true)

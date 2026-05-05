@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -36,14 +37,23 @@ func NewUpload(
 	useCase string,
 	objectMetadata storage.ObjectMetadata,
 ) (*Upload, error) {
+	mem, err := resolveCompressConfig(ctx, cfg, ff, storage.MemfileName, snap.MemfileDiffHeader.Metadata.BlockSize, useCase)
+	if err != nil {
+		return nil, fmt.Errorf("resolve memfile compress config: %w", err)
+	}
+	root, err := resolveCompressConfig(ctx, cfg, ff, storage.RootfsName, snap.RootfsDiffHeader.Metadata.BlockSize, useCase)
+	if err != nil {
+		return nil, fmt.Errorf("resolve rootfs compress config: %w", err)
+	}
+
 	u := &Upload{
 		buildID:        snap.BuildID,
 		snap:           snap,
 		paths:          storage.Paths{BuildID: snap.BuildID.String()},
 		uploads:        uploads,
 		store:          store,
-		mem:            storage.ResolveCompressConfig(ctx, cfg, ff, storage.MemfileName, useCase),
-		root:           storage.ResolveCompressConfig(ctx, cfg, ff, storage.RootfsName, useCase),
+		mem:            mem,
+		root:           root,
 		objectMetadata: objectMetadata,
 	}
 
@@ -94,6 +104,82 @@ func (u *Upload) publish(ctx context.Context, t build.DiffType, h *headers.Heade
 	}
 
 	dev.SwapHeader(h)
+
+	return nil
+}
+
+// resolveCompressConfig returns the effective compression config for a given
+// file type and use case. Feature flags override the base config when active.
+// Returns zero-value CompressConfig when compression is disabled.
+//
+// fileType and useCase are added to the LD evaluation context so that
+// LaunchDarkly targeting rules can differentiate (e.g. compress memfile
+// but not rootfs, or compress builds but not pauses). blockSize is the
+// in-VM read granularity for this fileType (from the diff header) and
+// constrains the legal frame sizes — see validateCompressConfig.
+//
+// The resolved config is validated; an invalid env or LD-derived config
+// surfaces as an error so the upload fails fast rather than streaming with
+// a misconfigured frame size.
+func resolveCompressConfig(ctx context.Context, base storage.CompressConfig, ff *featureflags.Client, fileType string, blockSize uint64, useCase string) (storage.CompressConfig, error) {
+	resolved := base
+
+	if ff != nil {
+		var extra []ldcontext.Context
+		if fileType != "" {
+			extra = append(extra, featureflags.CompressFileTypeContext(fileType))
+		}
+		if useCase != "" {
+			extra = append(extra, featureflags.CompressUseCaseContext(useCase))
+		}
+		ctx = featureflags.AddToContext(ctx, extra...)
+
+		v := ff.JSONFlag(ctx, featureflags.CompressConfigFlag).AsValueMap()
+
+		if v.Get("compressBuilds").BoolValue() {
+			ct := v.Get("compressionType").StringValue()
+			ldCfg := storage.CompressConfig{
+				Enabled:            true,
+				Type:               ct,
+				Level:              v.Get("compressionLevel").IntValue(),
+				FrameSizeKB:        v.Get("frameSizeKB").IntValue(),
+				MinPartSizeMB:      v.Get("minPartSizeMB").IntValue(),
+				FrameEncodeWorkers: v.Get("frameEncodeWorkers").IntValue(),
+				EncoderConcurrency: v.Get("encoderConcurrency").IntValue(),
+			}
+			if ldCfg.CompressionType() != storage.CompressionNone {
+				resolved = ldCfg
+			}
+		}
+	}
+
+	if !resolved.IsCompressionEnabled() {
+		return storage.CompressConfig{}, nil
+	}
+
+	if err := validateCompressConfig(resolved, blockSize); err != nil {
+		return storage.CompressConfig{}, err
+	}
+
+	return resolved, nil
+}
+
+// validateCompressConfig checks that the resolved config is internally
+// consistent for the given block size. Frame size must be a positive multiple
+// of blockSize so that every block-sized read served by the chunker lies
+// inside one frame — otherwise Chunker.fetch fetches only the start frame and
+// cache.sliceDirect returns uninitialized mmap bytes for the tail.
+func validateCompressConfig(c storage.CompressConfig, blockSize uint64) error {
+	fs := c.FrameSize()
+	if fs <= 0 {
+		return fmt.Errorf("frame size must be positive, got %d KB", c.FrameSizeKB)
+	}
+	if blockSize == 0 {
+		return errors.New("block size must be positive")
+	}
+	if uint64(fs)%blockSize != 0 {
+		return fmt.Errorf("frame size (%d) must be a multiple of block size (%d)", fs, blockSize)
+	}
 
 	return nil
 }

@@ -18,8 +18,8 @@ type seekableSource struct {
 	diff build.Diff
 }
 
-func (f *seekableSource) Size(_ context.Context) (int64, error) {
-	return f.diff.FileSize()
+func (f *seekableSource) Size(ctx context.Context) (int64, error) {
+	return f.diff.Size(ctx)
 }
 
 func (f *seekableSource) Exists(_ context.Context) (bool, error) {

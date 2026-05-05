@@ -30,6 +30,11 @@ jobs:
             compress_type: "zstd"
             compress_level: "1"
             compress_workers: "8"
+          - name: lz4
+            compress_enabled: "true"
+            compress_type: "lz4"
+            compress_level: "0"
+            compress_workers: "8"
     env:
       # Surfaced as env so upload steps can gate on presence (skipped on fork PRs).
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -46,6 +51,11 @@ jobs:
 
       - name: Build Template
         uses: ./.github/actions/build-sandbox-template
+        with:
+          compress_enabled: ${{ matrix.compress_enabled }}
+          compress_type: ${{ matrix.compress_type }}
+          compress_level: ${{ matrix.compress_level }}
+          compress_workers: ${{ matrix.compress_workers }}
 
       - name: Start Services
         uses: ./.github/actions/start-services
