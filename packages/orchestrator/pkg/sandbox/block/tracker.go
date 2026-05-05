@@ -67,6 +67,45 @@ func (t *Tracker) Get(idx uint32) State {
 	}
 }
 
+// HasRange reports whether every index in [start, end) is in the given state.
+// Only Dirty and Zero are accepted; passing NotPresent always returns false.
+// Empty ranges (end == start) are vacuously true; inverted ranges return false.
+func (t *Tracker) HasRange(start, end uint32, state State) bool {
+	if end <= start {
+		return end == start
+	}
+
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	var bm *roaring.Bitmap
+	switch state {
+	case Dirty:
+		bm = t.dirty
+	case Zero:
+		bm = t.zero
+	default:
+		return false
+	}
+
+	return bm.CardinalityInRange(uint64(start), uint64(end)) == uint64(end-start)
+}
+
+// Present reports whether every index in [start, end) has been observed
+// (i.e., is Dirty or Zero, not NotPresent).
+func (t *Tracker) Present(start, end uint32) bool {
+	if end <= start {
+		return end == start
+	}
+
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	s, e := uint64(start), uint64(end)
+	// Dirty and Zero are disjoint by invariant, so the cardinalities sum.
+	return t.dirty.CardinalityInRange(s, e)+t.zero.CardinalityInRange(s, e) == e-s
+}
+
 // Export returns clones of the dirty and zero bitmaps.
 func (t *Tracker) Export() (dirty, zero *roaring.Bitmap) {
 	t.mu.RLock()
