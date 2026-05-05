@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -124,16 +125,49 @@ func (h *CgroupHandle) Remove(ctx context.Context) error {
 		h.memoryPeakFile = nil
 	}
 
-	// Remove the cgroup directory.
-	// The kernel automatically cleans up when all processes have exited,
-	// so ENOENT is expected and not an error.
-	if err := os.Remove(h.path); err != nil {
-		if !os.IsNotExist(err) {
+	// Try plain rmdir first. The kernel removes the directory once the
+	// last process exits, so the common path is a single rmdir.
+	rmErr := os.Remove(h.path)
+	if rmErr == nil || os.IsNotExist(rmErr) {
+		logger.L().Debug(ctx, "removed cgroup for sandbox",
+			zap.String("cgroup_name", h.cgroupName),
+			zap.String("path", h.path))
+
+		return nil
+	}
+
+	// rmdir failed (almost always EBUSY because something is still in the
+	// cgroup, e.g. a leaked firecracker). Log so the leak is visible, then
+	// fall back to cgroup.kill (cgroups v2, kernel 5.14+) and retry rmdir.
+	logger.L().Warn(ctx, "cgroup rmdir failed, falling back to cgroup.kill",
+		zap.String("cgroup_name", h.cgroupName),
+		zap.String("path", h.path),
+		zap.Error(rmErr))
+
+	if err := os.WriteFile(filepath.Join(h.path, "cgroup.kill"), []byte("1"), 0); err != nil && !os.IsNotExist(err) {
+		logger.L().Warn(ctx, "failed to write cgroup.kill",
+			zap.String("cgroup_name", h.cgroupName),
+			zap.String("path", h.path),
+			zap.Error(err))
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		err := os.Remove(h.path)
+		if err == nil || os.IsNotExist(err) {
+			break
+		}
+		if time.Now().After(deadline) {
 			return fmt.Errorf("failed to remove cgroup: %w", err)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(200 * time.Millisecond):
 		}
 	}
 
-	logger.L().Debug(ctx, "removed cgroup for sandbox",
+	logger.L().Debug(ctx, "removed cgroup for sandbox after cgroup.kill",
 		zap.String("cgroup_name", h.cgroupName),
 		zap.String("path", h.path))
 
