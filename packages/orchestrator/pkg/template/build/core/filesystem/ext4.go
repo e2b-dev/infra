@@ -44,10 +44,21 @@ func Make(ctx context.Context, rootfsPath string, sizeMb int64, blockSize int64)
 		"-O", strings.Join([]string{
 			// Matches the final ext4 features used by tar2ext4 tool.
 			// But enables resize_inode, sparse_super (required for resize_inode),
-			// has_journal, and metadata_csum are kept as defaults.
+			// and metadata_csum is kept as default. has_journal is explicitly
+			// disabled below.
 			"^64bit",
 			"^dir_index",
 			"^dir_nlink",
+			// Disable the ext4 journal. The journal commits metadata every 5 s
+			// (jbd2/commit timer) which dirties journal blocks on a fixed cadence
+			// regardless of guest activity and inflates every snapshot diff.
+			// Snapshots are taken from a paused guest so all in-flight writes
+			// have already drained — the journal's crash-recovery guarantee
+			// across a clean pause/resume isn't needed. A guest kernel panic
+			// between snapshots can leave the rootfs inconsistent; resume always
+			// loads the previous good snapshot, so blast radius is bounded to
+			// one in-flight customer interaction.
+			"^has_journal",
 			"ext_attr",
 			"extent",
 			"extra_isize",
