@@ -118,6 +118,13 @@ func (r *decompressingCacheReader) Read(p []byte) (int, error) {
 }
 
 func (r *decompressingCacheReader) Close() error {
+	// Drive the decompressor to EOF before closing it. With io.ReadFull bounded
+	// by the uncompressed size, an LZ4 frame written with BlockChecksum=true /
+	// Checksum=false leaves the 4-byte EndMark unread — the next Read on the
+	// decoder pulls the EndMark (block-size = 0 → io.EOF) from raw through the
+	// tee, populating compressedBuf with the full encoded frame for cache writeback.
+	_, _ = io.Copy(io.Discard, r.decompressor)
+
 	decErr := r.decompressor.Close()
 	rawErr := r.raw.Close()
 
@@ -133,8 +140,14 @@ func (r *decompressingCacheReader) Close() error {
 		return nil
 	}
 
+	// Cache writeback is best-effort. After draining above, a remaining shortfall
+	// implies upstream truncation — log/metric and skip writeback rather than
+	// poison the read (the caller already received valid decompressed bytes).
 	if !isCompleteRead(got, r.expectedSize, nil) {
-		return fmt.Errorf("compressed frame cache writeback: got %d bytes, expected %d for %s", got, r.expectedSize, r.framePath)
+		recordCacheWriteError(r.ctx, cacheTypeSeekable, cacheOpOpenRangeReader,
+			fmt.Errorf("compressed frame cache writeback short: got %d bytes, expected %d for %s", got, r.expectedSize, r.framePath))
+
+		return nil
 	}
 
 	data := r.compressedBuf.Bytes()

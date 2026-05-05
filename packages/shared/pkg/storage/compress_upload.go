@@ -93,10 +93,10 @@ func (p *part) addFrame(ctx context.Context, uncompressedData []byte, pool *sync
 		}
 		c := pool.Get().(compressor)
 		out, err := c.compress(uncompressedData)
+		pool.Put(c)
 		if err != nil {
 			return err
 		}
-		pool.Put(c)
 		frameInPart.compressed = out
 		p.compressedSize.Add(int64(len(out)))
 
