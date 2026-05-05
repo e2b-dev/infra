@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	defaultH2CIdleTimeout = 650 * time.Second
+	// Match envd's idle timeout for callers that do not set one explicitly.
+	defaultH2CIdleTimeout = 640 * time.Second
 	h2cUpgradeBodyLimit   = 1 << 20 // 1 MiB
 )
 
@@ -20,8 +21,11 @@ func ConfigureH2C(server *http.Server) {
 	if handler == nil {
 		handler = http.DefaultServeMux
 	}
+	if server.IdleTimeout == 0 {
+		server.IdleTimeout = defaultH2CIdleTimeout
+	}
 
-	h2Server := newHTTP2Server(server)
+	h2Server := newHTTP2Server()
 	if err := http2.ConfigureServer(server, h2Server); err != nil {
 		panic(err)
 	}
@@ -40,15 +44,9 @@ func ConfigureH2C(server *http.Server) {
 	})
 }
 
-func newHTTP2Server(server *http.Server) *http2.Server {
-	idleTimeout := defaultH2CIdleTimeout
-	if server.IdleTimeout > 0 {
-		idleTimeout = server.IdleTimeout
-	}
-
+func newHTTP2Server() *http2.Server {
 	return &http2.Server{
 		MaxConcurrentStreams:         100,
-		IdleTimeout:                  idleTimeout,
 		ReadIdleTimeout:              30 * time.Second,
 		PingTimeout:                  15 * time.Second,
 		WriteByteTimeout:             30 * time.Second,

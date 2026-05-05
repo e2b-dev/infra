@@ -171,22 +171,37 @@ func TestConfigureH2CLimitsAllStdlibUpgradeMatches(t *testing.T) {
 	}
 }
 
-func TestNewHTTP2ServerUsesParentIdleTimeout(t *testing.T) {
+func TestConfigureH2CPreservesParentIdleTimeout(t *testing.T) {
 	t.Parallel()
 
 	const parentIdleTimeout = 620 * time.Second
 
-	h2Server := newHTTP2Server(&http.Server{IdleTimeout: parentIdleTimeout})
+	server := &http.Server{
+		Handler:     http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}),
+		IdleTimeout: parentIdleTimeout,
+	}
+	ConfigureH2C(server)
 
-	require.Equal(t, parentIdleTimeout, h2Server.IdleTimeout)
-	require.Equal(t, uint32(100), h2Server.MaxConcurrentStreams)
-	require.Equal(t, 30*time.Second, h2Server.ReadIdleTimeout)
+	require.Equal(t, parentIdleTimeout, server.IdleTimeout)
 }
 
-func TestNewHTTP2ServerUsesDefaultIdleTimeout(t *testing.T) {
+func TestConfigureH2CUsesDefaultIdleTimeout(t *testing.T) {
 	t.Parallel()
 
-	h2Server := newHTTP2Server(&http.Server{})
+	server := &http.Server{
+		Handler: http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}),
+	}
+	ConfigureH2C(server)
 
-	require.Equal(t, defaultH2CIdleTimeout, h2Server.IdleTimeout)
+	require.Equal(t, defaultH2CIdleTimeout, server.IdleTimeout)
+}
+
+func TestNewHTTP2ServerConfiguresH2SpecificTimeouts(t *testing.T) {
+	t.Parallel()
+
+	h2Server := newHTTP2Server()
+
+	require.Equal(t, uint32(100), h2Server.MaxConcurrentStreams)
+	require.Zero(t, h2Server.IdleTimeout)
+	require.Equal(t, 30*time.Second, h2Server.ReadIdleTimeout)
 }
