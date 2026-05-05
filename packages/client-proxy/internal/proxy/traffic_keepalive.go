@@ -24,8 +24,20 @@ func newTrafficKeepaliveManager(resumer SandboxLifecycleClient) *trafficKeepaliv
 	}
 }
 
+func trafficKeepaliveEnabled(info *catalog.SandboxInfo) bool {
+	if info == nil || info.TeamID == "" {
+		return false
+	}
+
+	if info.Keepalive == nil {
+		return false
+	}
+
+	return info.Keepalive.Traffic != nil && info.Keepalive.Traffic.Enabled
+}
+
 func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, catalogStore catalog.SandboxesCatalog, info *catalog.SandboxInfo) {
-	if m.resumer == nil || info == nil || info.Keepalive == nil || info.Keepalive.Traffic == nil || !info.Keepalive.Traffic.Enabled || info.TeamID == "" {
+	if m.resumer == nil || !trafficKeepaliveEnabled(info) {
 		return
 	}
 
