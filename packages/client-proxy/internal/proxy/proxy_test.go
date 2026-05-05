@@ -58,6 +58,19 @@ func newFF(t *testing.T, autoResumeEnabled bool) *featureflags.Client {
 	return ff
 }
 
+func newFFWithOrchAcceptsCombinedHost(t *testing.T, enabled bool) *featureflags.Client {
+	t.Helper()
+
+	source := ldtestdata.DataSource()
+	source.Update(source.Flag(featureflags.OrchAcceptsCombinedHostFlag.Key()).VariationForAll(enabled))
+
+	ff, err := featureflags.NewClientWithDatasource(source)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ff.Close(context.Background()) })
+
+	return ff
+}
+
 func ptr[T any](v T) *T {
 	return &v
 }
@@ -139,6 +152,58 @@ func TestOrchestratorSandboxHost(t *testing.T) {
 			t.Parallel()
 
 			require.Equal(t, tt.want, orchestratorSandboxHost(tt.host, tt.sandboxID, tt.port))
+		})
+	}
+}
+
+func TestClientProxyMaskRequestHost(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		flagEnabled bool
+		host        string
+		want        *string
+	}{
+		{
+			name:        "flag disabled masks sandbox shared host",
+			flagEnabled: false,
+			host:        "sandbox.e2b.app",
+			want:        ptr("49983-sbx.e2b.app"),
+		},
+		{
+			name:        "flag enabled preserves sandbox shared host",
+			flagEnabled: true,
+			host:        "sandbox.e2b.app",
+			want:        nil,
+		},
+		{
+			name:        "flag enabled preserves sandbox shared host with port",
+			flagEnabled: true,
+			host:        "sandbox.e2b.app:443",
+			want:        nil,
+		},
+		{
+			name:        "flag enabled still masks localhost",
+			flagEnabled: true,
+			host:        "localhost:3000",
+			want:        ptr("49983-sbx.localhost"),
+		},
+		{
+			name:        "flag enabled leaves regular sandbox host unchanged",
+			flagEnabled: true,
+			host:        "49983-sbx.e2b.app",
+			want:        nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ff := newFFWithOrchAcceptsCombinedHost(t, tt.flagEnabled)
+
+			require.Equal(t, tt.want, clientProxyMaskRequestHost(t.Context(), ff, tt.host, "sbx", 49983))
 		})
 	}
 }

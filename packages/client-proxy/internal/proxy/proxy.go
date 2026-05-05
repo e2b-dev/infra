@@ -79,6 +79,16 @@ func orchestratorSandboxHost(host string, sandboxID string, port uint64) *string
 	return &orchestratorHost
 }
 
+func clientProxyMaskRequestHost(ctx context.Context, featureFlags *featureflags.Client, host string, sandboxID string, port uint64) *string {
+	if featureFlags.BoolFlag(ctx, featureflags.OrchAcceptsCombinedHostFlag) {
+		if _, ok := reverseproxy.SandboxSharedHostDomain(host); ok {
+			return nil
+		}
+	}
+
+	return orchestratorSandboxHost(host, sandboxID, port)
+}
+
 func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, c catalog.SandboxesCatalog, pausedChecker PausedSandboxResumer, featureFlags *featureflags.Client) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
@@ -214,7 +224,9 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 				SandboxPort:   port,
 				ConnectionKey: pool.ClientProxyConnectionKey,
 				Url:           url,
-				MaskRequestHost: orchestratorSandboxHost(
+				MaskRequestHost: clientProxyMaskRequestHost(
+					ctx,
+					featureFlagsClient,
 					r.Host,
 					sandboxId,
 					port,
