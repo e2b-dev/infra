@@ -129,6 +129,10 @@ module "network" {
 
   cluster_tag_name = var.cluster_tag_name
 
+  nomad_iap_oauth2_client_id     = var.nomad_iap_oauth2_client_id
+  nomad_iap_oauth2_client_secret = var.nomad_iap_oauth2_client_secret
+  nomad_iap_members              = var.nomad_iap_members
+
   labels = var.labels
   prefix = var.prefix
 }

@@ -203,6 +203,11 @@ module "cluster" {
   # ClickHouse stateful data disk
   clickhouse_stateful_disk_type    = var.clickhouse_stateful_disk_type
   clickhouse_stateful_disk_size_gb = var.clickhouse_stateful_disk_size_gb
+
+  # Nomad IAP
+  nomad_iap_oauth2_client_id     = var.nomad_iap_oauth2_client_id
+  nomad_iap_oauth2_client_secret = var.nomad_iap_oauth2_client_secret
+  nomad_iap_members              = var.nomad_iap_members
 }
 
 module "nomad" {

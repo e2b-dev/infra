@@ -392,3 +392,22 @@ variable "additional_api_paths_handled_by_ingress" {
 variable "ingress_timeout_seconds" {
   type = number
 }
+
+variable "nomad_iap_oauth2_client_id" {
+  description = "OAuth2 client ID for IAP on Nomad backend. If set, IAP will be enabled."
+  type        = string
+  default     = null
+}
+
+variable "nomad_iap_oauth2_client_secret" {
+  description = "OAuth2 client secret for IAP on Nomad backend."
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
+variable "nomad_iap_members" {
+  description = "List of members who can access the Nomad UI through IAP (e.g., ['user:admin@example.com', 'group:devs@example.com'])"
+  type        = list(string)
+  default     = []
+}
