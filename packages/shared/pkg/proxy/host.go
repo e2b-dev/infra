@@ -59,7 +59,6 @@ func isLocalRequestHost(host string) bool {
 	return host == "localhost" || (ip != nil && ip.IsLoopback())
 }
 
-// SandboxSharedHostDomain returns the parent domain for a sandbox shared host.
 func SandboxSharedHostDomain(host string) (string, bool) {
 	domain, ok := strings.CutPrefix(requestHostname(host), sandboxSharedHostSubdomain)
 
