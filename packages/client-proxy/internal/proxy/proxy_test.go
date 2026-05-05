@@ -152,11 +152,9 @@ func requireNoResumerCall(t *testing.T, calls <-chan resumeCall) {
 }
 
 func testKeepalive() *catalog.Keepalive {
-	keepaliveMs := uint64(50)
-
 	return &catalog.Keepalive{
 		Traffic: &catalog.TrafficKeepalive{
-			KeepaliveMs: &keepaliveMs,
+			Enabled: true,
 		},
 	}
 }
@@ -324,6 +322,23 @@ func TestTrafficKeepaliveManager_SkipsWhenTeamIDMissing(t *testing.T) {
 	requireNoResumerCall(t, resumer.calls)
 }
 
+func TestTrafficKeepaliveManager_SkipsWhenCatalogPolicyDisabled(t *testing.T) {
+	t.Parallel()
+
+	c := catalog.NewMemorySandboxesCatalog()
+	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
+	trafficKeepalive := newTrafficKeepaliveManager(resumer)
+
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, &catalog.SandboxInfo{
+		TeamID: "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		Keepalive: &catalog.Keepalive{
+			Traffic: &catalog.TrafficKeepalive{Enabled: false},
+		},
+	})
+
+	requireNoResumerCall(t, resumer.calls)
+}
+
 func TestTrafficKeepaliveManager_SuppressesConcurrentRefreshes(t *testing.T) {
 	t.Parallel()
 
@@ -351,10 +366,10 @@ func TestTrafficKeepaliveManager_SuppressesConcurrentRefreshes(t *testing.T) {
 	close(release)
 }
 
-func TestTrafficKeepaliveManager_RateLimitsAttempts(t *testing.T) {
+func TestTrafficKeepaliveManager_SkipsWhenCatalogTimerHeld(t *testing.T) {
 	t.Parallel()
 
-	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 2)}
+	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 	c := catalog.NewMemorySandboxesCatalog()
 	info := &catalog.SandboxInfo{
@@ -367,10 +382,6 @@ func TestTrafficKeepaliveManager_RateLimitsAttempts(t *testing.T) {
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
 	requireNoResumerCall(t, resumer.calls)
-
-	time.Sleep(60 * time.Millisecond)
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
-	requireResumerCall(t, resumer.calls)
 }
 
 func TestHandlePausedSandbox_NoResumer_MissingTrafficAccessToken(t *testing.T) {

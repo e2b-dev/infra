@@ -24,7 +24,7 @@ const (
 	sbxEndTimeHeader          = "sandbox-end-time"
 	sbxMaxLengthInHoursHeader = "sandbox-max-length-in-hours"
 	sbxStartTimeHeader        = "sandbox-start-time"
-	sbxKeepaliveMsHeader      = "keepalive-ms"
+	sbxTrafficKeepaliveHeader = "traffic-keepalive"
 )
 
 var (
@@ -69,8 +69,8 @@ func SerializeSandboxCatalogCreateEvent(e SandboxCatalogCreateEvent) metadata.MD
 		sbxStartTimeHeader:        e.SandboxStartTime.Format(time.RFC3339),
 		sbxMaxLengthInHoursHeader: strconv.Itoa(int(e.SandboxMaxLengthInHours)),
 	}
-	if e.Keepalive != nil && e.Keepalive.Traffic != nil && e.Keepalive.Traffic.KeepaliveMs != nil {
-		values[sbxKeepaliveMsHeader] = strconv.FormatUint(*e.Keepalive.Traffic.KeepaliveMs, 10)
+	if e.Keepalive != nil && e.Keepalive.Traffic != nil && e.Keepalive.Traffic.Enabled {
+		values[sbxTrafficKeepaliveHeader] = strconv.FormatBool(true)
 	}
 
 	return metadata.New(values)
@@ -135,17 +135,19 @@ func ParseSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEven
 	}
 
 	var keepalive *catalog.Keepalive
-	keepaliveMsStr, found := getMetadataValue(md, sbxKeepaliveMsHeader)
+	trafficKeepaliveStr, found := getMetadataValue(md, sbxTrafficKeepaliveHeader)
 	if found {
-		keepaliveMs, err := strconv.ParseUint(keepaliveMsStr, 10, 64)
+		trafficKeepalive, err := strconv.ParseBool(trafficKeepaliveStr)
 		if err != nil {
 			return nil, ErrSandboxCreationParse
 		}
 
-		keepalive = &catalog.Keepalive{
-			Traffic: &catalog.TrafficKeepalive{
-				KeepaliveMs: &keepaliveMs,
-			},
+		if trafficKeepalive {
+			keepalive = &catalog.Keepalive{
+				Traffic: &catalog.TrafficKeepalive{
+					Enabled: true,
+				},
+			}
 		}
 	}
 

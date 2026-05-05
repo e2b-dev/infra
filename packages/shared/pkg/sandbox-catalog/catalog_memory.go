@@ -59,21 +59,16 @@ func (c *MemorySandboxCatalog) StoreSandbox(ctx context.Context, sandboxID strin
 	return nil
 }
 
-func (c *MemorySandboxCatalog) AcquireTrafficKeepalive(_ context.Context, sandboxID string, keepaliveMs uint64) (bool, error) {
+func (c *MemorySandboxCatalog) AcquireTrafficKeepalive(_ context.Context, sandboxID string) (bool, error) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-
-	expiration := time.Duration(keepaliveMs) * time.Millisecond
-	if expiration <= 0 {
-		return true, nil
-	}
 
 	now := time.Now()
 	if expiresAt, ok := c.trafficKeepalives[sandboxID]; ok && now.Before(expiresAt) {
 		return false, nil
 	}
 
-	c.trafficKeepalives[sandboxID] = now.Add(expiration)
+	c.trafficKeepalives[sandboxID] = now.Add(TrafficKeepaliveInterval)
 
 	return true, nil
 }

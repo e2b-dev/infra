@@ -12,9 +12,8 @@ func KeepaliveFromDB(keepalive *types.SandboxKeepaliveConfig) *e2bcatalog.Keepal
 
 	result := &e2bcatalog.Keepalive{}
 	if keepalive.Traffic != nil && keepalive.Traffic.Enabled {
-		keepaliveMs := e2bcatalog.TrafficKeepaliveDefaultMs
 		result.Traffic = &e2bcatalog.TrafficKeepalive{
-			KeepaliveMs: &keepaliveMs,
+			Enabled: true,
 		}
 	}
 

@@ -25,11 +25,11 @@ func newTrafficKeepaliveManager(resumer SandboxLifecycleClient) *trafficKeepaliv
 }
 
 func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, catalogStore catalog.SandboxesCatalog, info *catalog.SandboxInfo) {
-	if m == nil || m.resumer == nil || catalogStore == nil || info == nil || info.Keepalive == nil || info.Keepalive.Traffic == nil || info.Keepalive.Traffic.KeepaliveMs == nil || info.TeamID == "" {
+	if m.resumer == nil || info == nil || info.Keepalive == nil || info.Keepalive.Traffic == nil || !info.Keepalive.Traffic.Enabled || info.TeamID == "" {
 		return
 	}
 
-	acquired, err := catalogStore.AcquireTrafficKeepalive(ctx, sandboxID, *info.Keepalive.Traffic.KeepaliveMs)
+	acquired, err := catalogStore.AcquireTrafficKeepalive(ctx, sandboxID)
 	if err != nil {
 		logger.L().Warn(ctx, "traffic keepalive acquire failed", logger.WithSandboxID(sandboxID), zap.Error(err))
 		return
