@@ -164,6 +164,14 @@ func VolumeContext(volumeName string) ldcontext.Context {
 	return ldcontext.NewWithKind(VolumeKind, volumeName)
 }
 
+func CompressFileTypeContext(fileType string) ldcontext.Context {
+	return ldcontext.NewWithKind(CompressFileTypeKind, fileType)
+}
+
+func CompressUseCaseContext(useCase string) ldcontext.Context {
+	return ldcontext.NewWithKind(CompressUseCaseKind, useCase)
+}
+
 func VersionContext(orchestratorID, commit string) ldcontext.Context {
 	return ldcontext.NewBuilder(orchestratorID).
 		Kind(OrchestratorKind).

@@ -8,8 +8,12 @@ type ObjectMetadata map[string]string
 
 const ObjectMetadataTeamID = "team_id"
 
+// PutOptions holds parameters for blob/seekable writes. Compression is held
+// as `any` so that storage.CompressConfig (which has heavy storage-internal
+// dependencies) doesn't have to be moved here. Backends type-assert it back.
 type PutOptions struct {
-	Metadata ObjectMetadata
+	Metadata    ObjectMetadata
+	Compression any
 }
 
 type PutOption func(*PutOptions)
@@ -24,6 +28,12 @@ func WithMetadata(metadata ObjectMetadata) PutOption {
 		}
 		maps.Copy(o.Metadata, metadata)
 	}
+}
+
+// WithCompression stashes a compression config (typed in the storage package)
+// into PutOptions. The storage package wraps this with a typed helper.
+func WithCompression(cfg any) PutOption {
+	return func(o *PutOptions) { o.Compression = cfg }
 }
 
 func Apply(opts []PutOption) PutOptions {

@@ -297,6 +297,12 @@ variable "logs_proxy_port" {
   default = 30006
 }
 
+variable "enable_otel_router_logs" {
+  type        = bool
+  default     = false
+  description = "Enable teeing non-internal customer logs from Vector to otel-router."
+}
+
 # Feature flags
 variable "launch_darkly_api_key" {
   type      = string

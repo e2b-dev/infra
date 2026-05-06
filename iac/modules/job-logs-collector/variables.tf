@@ -27,6 +27,12 @@ variable "grafana_api_key" {
   sensitive = true
 }
 
+variable "enable_otel_router_logs" {
+  type        = bool
+  default     = false
+  description = "Enable teeing non-internal customer logs from Vector to otel-router."
+}
+
 variable "vector_config_override" {
   type        = string
   default     = ""

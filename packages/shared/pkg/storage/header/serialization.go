@@ -1,70 +1,83 @@
 package header
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
-	"errors"
 	"fmt"
-	"io"
-
-	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-const metadataVersion = 3
-
-type Metadata struct {
-	Version    uint64
-	BlockSize  uint64
-	Size       uint64
-	Generation uint64
-	BuildId    uuid.UUID
-	// TODO: Use the base build id when setting up the snapshot rootfs
-	BaseBuildId uuid.UUID
-}
-
-func NewTemplateMetadata(buildId uuid.UUID, blockSize, size uint64) *Metadata {
-	return &Metadata{
-		Version:     metadataVersion,
-		Generation:  0,
-		BlockSize:   blockSize,
-		Size:        size,
-		BuildId:     buildId,
-		BaseBuildId: buildId,
+// SerializeHeader serializes a header, dispatching to the version-specific format.
+//
+// V3 (Version <= 3): [Metadata] [v3 mappings…]
+// V4 (Version >= 4): [Metadata] [uint8 flags] [uint32 uncompressedSize] [LZ4( Builds + v4 mappings )]
+func SerializeHeader(h *Header) ([]byte, error) {
+	if h.Metadata.Version <= 3 {
+		return serializeV3(h.Metadata, h.Mapping)
 	}
+
+	return serializeV4(h.Metadata, h.Builds, h.Mapping, h.IncompletePendingUpload)
 }
 
-func (m *Metadata) NextGeneration(buildID uuid.UUID) *Metadata {
-	return &Metadata{
-		Version:     m.Version,
-		Generation:  m.Generation + 1,
-		BlockSize:   m.BlockSize,
-		Size:        m.Size,
-		BuildId:     buildID,
-		BaseBuildId: m.BaseBuildId,
+// DeserializeBytes auto-detects the header version and deserializes accordingly.
+// See SerializeHeader for the binary layout.
+func DeserializeBytes(data []byte) (*Header, error) {
+	if len(data) < metadataSize {
+		return nil, fmt.Errorf("header too short: %d bytes", len(data))
 	}
-}
 
-func Serialize(metadata *Metadata, mappings []BuildMap) ([]byte, error) {
-	var buf bytes.Buffer
-
-	err := binary.Write(&buf, binary.LittleEndian, metadata)
+	metadata, err := deserializeMetadata(data[:metadataSize])
 	if err != nil {
-		return nil, fmt.Errorf("failed to write metadata: %w", err)
+		return nil, err
 	}
 
-	for i := range mappings {
-		err := binary.Write(&buf, binary.LittleEndian, &mappings[i])
-		if err != nil {
-			return nil, fmt.Errorf("failed to write block mapping: %w", err)
-		}
+	blockData := data[metadataSize:]
+
+	if metadata.Version >= 4 {
+		return deserializeV4(metadata, blockData)
 	}
 
-	return buf.Bytes(), nil
+	return deserializeV3(metadata, blockData)
 }
 
+// LoadHeader fetches a serialized header from storage and deserializes it.
+// Errors (including storage.ErrObjectNotExist) are returned as-is.
+func LoadHeader(ctx context.Context, s storage.StorageProvider, path string) (*Header, error) {
+	blob, err := s.OpenBlob(ctx, path, storage.MetadataObjectType)
+	if err != nil {
+		return nil, fmt.Errorf("open blob %s: %w", path, err)
+	}
+
+	data, err := storage.GetBlob(ctx, blob)
+	if err != nil {
+		return nil, err
+	}
+
+	return DeserializeBytes(data)
+}
+
+// StoreHeader serializes a header and uploads it to long-term storage.
+// Refuses to persist a header still flagged as in-flight — the upload pipeline
+// must clear IncompletePendingUpload before reaching here.
+func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h *Header) error {
+	if h.IncompletePendingUpload {
+		return fmt.Errorf("refusing to persist incomplete header for %s", path)
+	}
+
+	data, err := SerializeHeader(h)
+	if err != nil {
+		return fmt.Errorf("serialize header: %w", err)
+	}
+
+	blob, err := s.OpenBlob(ctx, path, storage.MetadataObjectType)
+	if err != nil {
+		return fmt.Errorf("open blob %s: %w", path, err)
+	}
+
+	return blob.Put(ctx, data)
+}
+
+// Deserialize reads a header from a storage Blob (legacy API).
 func Deserialize(ctx context.Context, in storage.Blob) (*Header, error) {
 	data, err := storage.GetBlob(ctx, in)
 	if err != nil {
@@ -72,31 +85,4 @@ func Deserialize(ctx context.Context, in storage.Blob) (*Header, error) {
 	}
 
 	return DeserializeBytes(data)
-}
-
-func DeserializeBytes(data []byte) (*Header, error) {
-	reader := bytes.NewReader(data)
-	var metadata Metadata
-	err := binary.Read(reader, binary.LittleEndian, &metadata)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read metadata: %w", err)
-	}
-
-	mappings := make([]BuildMap, 0)
-
-	for {
-		var m BuildMap
-		err := binary.Read(reader, binary.LittleEndian, &m)
-		if errors.Is(err, io.EOF) {
-			break
-		}
-
-		if err != nil {
-			return nil, fmt.Errorf("failed to read block mapping: %w", err)
-		}
-
-		mappings = append(mappings, m)
-	}
-
-	return NewHeader(&metadata, mappings)
 }

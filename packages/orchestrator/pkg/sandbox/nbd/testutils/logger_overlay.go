@@ -49,6 +49,22 @@ func (l *LoggerOverlay) WriteAt(p []byte, off int64) (int, error) {
 	return n, err
 }
 
+func (l *LoggerOverlay) WriteZeroesAt(off, length int64) (int, error) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stdout, "[write_zeroes panic recovered]: [%d, %d] -> %v\n", off, length, r)
+		}
+	}()
+
+	fmt.Fprintf(os.Stdout, "[write_zeroes started]: [%d, %d]\n", off, length)
+
+	n, err := l.overlay.WriteZeroesAt(off, length)
+
+	fmt.Fprintf(os.Stdout, "[write_zeroes completed]: [%d, %d] -> %d\n", off, length, n)
+
+	return n, err
+}
+
 func (l *LoggerOverlay) Size(ctx context.Context) (int64, error) {
 	return l.overlay.Size(ctx)
 }
@@ -59,6 +75,10 @@ func (l *LoggerOverlay) BlockSize() int64 {
 
 func (l *LoggerOverlay) Header() *header.Header {
 	return l.overlay.Header()
+}
+
+func (l *LoggerOverlay) SwapHeader(h *header.Header) {
+	l.overlay.SwapHeader(h)
 }
 
 func (l *LoggerOverlay) Close() error {
