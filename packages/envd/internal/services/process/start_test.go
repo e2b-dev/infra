@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/user"
+	"runtime"
 	"testing"
 	"time"
 
@@ -172,6 +173,93 @@ func TestStart_ProcessSurvivesClientDisconnect(t *testing.T) {
 	// Clean up.
 	proc, _ := os.FindProcess(pid)
 	_ = proc.Kill()
+}
+
+// TestStart_DisconnectStormHeapGrowth demonstrates the memory leak
+// from bug #2: each abandoned Start RPC with a fast-producing child
+// leaves behind channel buffers and reader goroutines that accumulate
+// memory.  We run several disconnect cycles and assert that heap
+// usage stays bounded.
+func TestStart_DisconnectStormHeapGrowth(t *testing.T) {
+	t.Parallel()
+
+	client, cleanup := newTestService(t)
+	defer cleanup()
+
+	const cycles = 5
+
+	// Force a GC and record baseline heap.
+	runtime.GC() //nolint:revive // intentional: need accurate heap baseline
+	var baseline runtime.MemStats
+	runtime.ReadMemStats(&baseline)
+
+	var pids []int
+
+	for i := range cycles {
+		ctx, cancel := context.WithCancel(context.Background())
+
+		stream, err := client.Start(ctx, connect.NewRequest(&rpc.StartRequest{
+			Process: &rpc.ProcessConfig{
+				Cmd:  "timeout",
+				Args: []string{"10", "yes"},
+			},
+		}))
+		require.NoError(t, err, "cycle %d", i)
+
+		// Wait for the start event to get the PID.
+		require.True(t, stream.Receive(), "cycle %d: expected start event", i)
+		startEvt := stream.Msg().GetEvent().GetStart()
+		require.NotNil(t, startEvt, "cycle %d", i)
+		pids = append(pids, int(startEvt.GetPid()))
+
+		// Receive a few data events so the producer is actively
+		// writing into the handler's channel buffers.
+		for range 5 {
+			if !stream.Receive() {
+				break
+			}
+		}
+
+		// Disconnect.
+		cancel()
+		for stream.Receive() {
+		}
+		_ = stream.Close()
+
+		// Let the orphaned producer fill buffers for a moment.
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	// Measure heap after all cycles.
+	runtime.GC() //nolint:revive // intentional: need accurate heap measurement
+	var after runtime.MemStats
+	runtime.ReadMemStats(&after)
+
+	heapGrowthMiB := float64(after.HeapInuse-baseline.HeapInuse) / (1024 * 1024)
+	t.Logf("heap: baseline=%.1f MiB after=%.1f MiB growth=%.1f MiB (%d cycles)",
+		float64(baseline.HeapInuse)/(1024*1024),
+		float64(after.HeapInuse)/(1024*1024),
+		heapGrowthMiB, cycles)
+
+	// BUG: with procCtx=context.Background(), each orphaned `yes`
+	// process keeps pumping ~32 KiB chunks into channel buffers
+	// that nobody drains.  Heap grows roughly linearly with time
+	// and number of cycles.  A healthy implementation should stay
+	// well under 50 MiB for 5 cycles.
+	const maxHeapGrowthMiB = 50.0
+	if heapGrowthMiB > maxHeapGrowthMiB {
+		t.Errorf("heap grew %.1f MiB over %d disconnect cycles "+
+			"(limit %.1f MiB); orphaned handlers leaking memory",
+			heapGrowthMiB, cycles, maxHeapGrowthMiB)
+	}
+
+	// Kill orphaned processes.
+	for _, pid := range pids {
+		if processAlive(pid) {
+			proc, _ := os.FindProcess(pid)
+			_ = proc.Kill()
+		}
+	}
 }
 
 // processAlive checks whether a process with the given PID exists.
