@@ -3,19 +3,12 @@ package sandbox
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
-	"connectrpc.com/connect"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -79,19 +72,7 @@ func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 	rcCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	addr := fmt.Sprintf("http://%s:%d", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
-	pc := processconnect.NewProcessClient(&http.Client{Transport: sandboxHttpClient.Transport}, addr)
-
-	req := connect.NewRequest(&process.StartRequest{
-		Process: &process.ProcessConfig{Cmd: "/bin/bash", Args: []string{"-c", script}},
-	})
-	req.Header().Set("Connect-Timeout-Ms", strconv.FormatInt(int64(timeout/time.Millisecond), 10))
-	if s.Config.Envd.AccessToken != nil {
-		req.Header().Set("X-Access-Token", *s.Config.Envd.AccessToken)
-	}
-	grpc.SetUserHeader(req.Header(), "root")
-
-	stream, err := pc.Start(rcCtx, req)
+	stream, err := s.StartEnvdBash(rcCtx, []string{"-c", script}, "root", timeout)
 	if err != nil {
 		logger.L().Warn(ctx, "envd reclaim failed", logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
 
