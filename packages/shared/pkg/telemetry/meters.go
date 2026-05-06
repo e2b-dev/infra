@@ -26,6 +26,12 @@ const (
 	TeamSandboxCreated CounterType = "e2b.team.sandbox.created"
 
 	EnvdInitCalls CounterType = "orchestrator.sandbox.envd.init.calls"
+
+	// InspectorCheckpointDecisions counts how the orchestrator
+	// classified each Checkpoint that came in with skip_if_unchanged=true.
+	// Use the "decision" attribute (skipped|fallthrough|full) to slice
+	// the counter. See issue e2b-dev/infra#2580.
+	InspectorCheckpointDecisions CounterType = "orchestrator.inspector.checkpoint.decisions"
 )
 
 const (
@@ -149,6 +155,7 @@ var counterDesc = map[CounterType]string{
 	BuildCacheResultCounterName:     "Number of build cache results",
 	TeamSandboxCreated:              "Counter of started sandboxes for the team in the interval",
 	EnvdInitCalls:                   "Number of envd initialization calls",
+	InspectorCheckpointDecisions:    "Counter of orchestrator inspector decisions for skip-if-unchanged checkpoints (decision={skipped,fallthrough,full})",
 	TCPFirewallConnectionsTotal:     "Total number of TCP firewall connections processed",
 	TCPFirewallErrorsTotal:          "Total number of TCP firewall errors",
 	TCPFirewallDecisionsTotal:       "Total number of TCP firewall allow/block decisions",
@@ -171,6 +178,7 @@ var counterUnits = map[CounterType]string{
 	BuildCacheResultCounterName:     "{layer}",
 	TeamSandboxCreated:              "{sandbox}",
 	EnvdInitCalls:                   "1",
+	InspectorCheckpointDecisions:    "{decision}",
 	TCPFirewallConnectionsTotal:     "{connection}",
 	TCPFirewallErrorsTotal:          "{error}",
 	TCPFirewallDecisionsTotal:       "{decision}",

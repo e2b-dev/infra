@@ -590,14 +590,26 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 					sbxlogger.E(sbx).Info(ctx, "Checkpoint short-circuited: inspector reports no changes",
 						zap.String("last_build_id", last.BuildID))
 					childSpan.SetAttributes(attribute.Bool("checkpoint.short_circuit", true))
+					s.inspectorDecisions.Add(ctx, 1, metric.WithAttributes(attribute.String("decision", "skipped")))
 					return &orchestrator.SandboxCheckpointResponse{
 						Unchanged:        true,
 						PublishedBuildId: last.BuildID,
 					}, nil
 				}
+				// Inspector consulted but not skipped — count as fallthrough
+				// (changed or degraded). The full path runs below.
+				s.inspectorDecisions.Add(ctx, 1, metric.WithAttributes(attribute.String("decision", "fallthrough")))
+			} else {
+				s.inspectorDecisions.Add(ctx, 1, metric.WithAttributes(attribute.String("decision", "fallthrough")))
 			}
+		} else {
+			s.inspectorDecisions.Add(ctx, 1, metric.WithAttributes(attribute.String("decision", "fallthrough")))
 		}
 	}
+
+	// Every Checkpoint that reaches the full path increments the
+	// "full" bucket so the ratio of skipped vs full is observable.
+	s.inspectorDecisions.Add(ctx, 1, metric.WithAttributes(attribute.String("decision", "full")))
 
 	// Acquire the starting semaphore before resuming, same as Create/Pause.
 	if err := s.waitForAcquire(ctx); err != nil {

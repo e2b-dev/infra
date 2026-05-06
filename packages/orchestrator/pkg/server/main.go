@@ -54,6 +54,10 @@ type Server struct {
 	// In-memory, best-effort: a process restart simply forces the next
 	// skip-attempt to fall through. See issue #2580.
 	lastPublishedSnapshot *lastSnapshotMap
+
+	// inspectorDecisions counts skip-if-unchanged outcomes:
+	// decision=skipped|fallthrough|full. Sliced via OTel attributes.
+	inspectorDecisions metric.Int64Counter
 }
 
 type ServiceConfig struct {
@@ -103,6 +107,12 @@ func New(cfg ServiceConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to register sandbox create duration histogram: %w", err)
 	}
 	server.sandboxCreateDuration = sandboxCreateDuration
+
+	inspectorDecisions, err := telemetry.GetCounter(meter, telemetry.InspectorCheckpointDecisions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register inspector decisions counter: %w", err)
+	}
+	server.inspectorDecisions = inspectorDecisions
 
 	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(server.sandboxFactory.Sandboxes.Count()))
