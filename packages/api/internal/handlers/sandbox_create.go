@@ -142,6 +142,12 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		telemetry.WithFirecrackerVersion(build.FirecrackerVersion),
 	)
 
+	if lifecycleErr := validateLifecycleAliases(body); lifecycleErr != nil {
+		a.sendAPIStoreError(c, lifecycleErr.Code, lifecycleErr.ClientMsg)
+
+		return
+	}
+
 	autoPause := sharedUtils.DerefOrDefault(body.AutoPause, sandbox.AutoPauseDefault)
 	if body.Lifecycle != nil && body.Lifecycle.OnTimeout != nil {
 		autoPause = *body.Lifecycle.OnTimeout == api.Pause
@@ -150,12 +156,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	mcp := sharedUtils.DerefOrDefault(body.Mcp, nil)
 	metadata := sharedUtils.DerefOrDefault(body.Metadata, nil)
 	apiVolumeMounts := sharedUtils.DerefOrDefault(body.VolumeMounts, nil)
-
-	if lifecycleErr := validateLifecycleAliases(body); lifecycleErr != nil {
-		a.sendAPIStoreError(c, lifecycleErr.Code, lifecycleErr.ClientMsg)
-
-		return
-	}
 
 	timeout := sandbox.SandboxTimeoutDefault
 	if body.Timeout != nil {

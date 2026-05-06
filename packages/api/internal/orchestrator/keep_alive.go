@@ -38,6 +38,7 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 			return sbx, nil
 		}
 		if endTime.Equal(sbx.EndTime) {
+			// allowShorter=true can still produce an exact no-op update.
 			return sbx, nil
 		}
 

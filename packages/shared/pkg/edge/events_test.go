@@ -19,6 +19,7 @@ func TestSandboxCatalogCreateEventRoundTrip(t *testing.T) {
 		TeamID:                  "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
 		ExecutionID:             "exec",
 		OrchestratorID:          "orch",
+		OrchestratorIP:          "10.0.0.7",
 		SandboxMaxLengthInHours: 24,
 		SandboxStartTime:        startTime,
 		Keepalive: &catalog.Keepalive{
