@@ -2,6 +2,7 @@ package process
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -127,4 +128,56 @@ func TestStart_ClientDisconnectMidStream(t *testing.T) {
 	for stream.Receive() {
 	}
 	_ = stream.Close()
+}
+
+// TestStart_ProcessSurvivesClientDisconnect verifies that a child
+// process keeps running after the Start RPC client disconnects.
+// This is intentional: procCtx is context.Background() so clients
+// can reconnect via Connect later.
+func TestStart_ProcessSurvivesClientDisconnect(t *testing.T) {
+	t.Parallel()
+
+	client, cleanup := newTestService(t)
+	defer cleanup()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	stream, err := client.Start(ctx, connect.NewRequest(&rpc.StartRequest{
+		Process: &rpc.ProcessConfig{
+			Cmd:  "timeout",
+			Args: []string{"5", "yes"},
+		},
+	}))
+	require.NoError(t, err)
+
+	// Wait for the start event to get the PID.
+	require.True(t, stream.Receive(), "expected start event")
+	startEvt := stream.Msg().GetEvent().GetStart()
+	require.NotNil(t, startEvt)
+	pid := int(startEvt.GetPid())
+	require.Positive(t, pid)
+
+	// Disconnect the client.
+	cancel()
+	for stream.Receive() {
+	}
+	_ = stream.Close()
+
+	time.Sleep(200 * time.Millisecond)
+
+	// The child must still be alive — this is the Start-then-Connect contract.
+	assert.True(t, processAlive(pid),
+		"child process %d should survive client disconnect", pid)
+
+	// Clean up.
+	proc, _ := os.FindProcess(pid)
+	_ = proc.Kill()
+}
+
+// processAlive checks whether a process with the given PID exists.
+func processAlive(pid int) bool {
+	// /proc/<pid>/stat exists iff the process is alive (Linux-specific).
+	_, err := os.Stat(fmt.Sprintf("/proc/%d/stat", pid))
+
+	return err == nil
 }
