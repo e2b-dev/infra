@@ -128,9 +128,25 @@ message SandboxPauseRequest {
 message SandboxCheckpointRequest {
   string sandbox_id = 1;
   string build_id = 3;
+
+  // When true, the orchestrator consults the in-guest Inspector and
+  // returns the previous snapshot's build_id (with unchanged=true) if
+  // nothing recovery-relevant changed since then. Default false keeps
+  // the historical "always pause" behavior. See issue #2580.
+  bool skip_if_unchanged = 4;
 }
 
 message SandboxCheckpointResponse {
+  // Set when the orchestrator short-circuited because the Inspector
+  // reported no changes. The published_build_id below points at the
+  // pre-existing snapshot the caller should use.
+  bool unchanged = 1;
+
+  // BuildID of the snapshot the caller should treat as authoritative.
+  // For the normal full-checkpoint path this is the build_id passed in
+  // the request; for the unchanged path it is the previous snapshot's
+  // build_id.
+  string published_build_id = 2;
 }
 
 message RunningSandbox {
