@@ -37,7 +37,7 @@ func trafficKeepaliveEnabled(info *e2bcatalog.SandboxInfo) bool {
 	return info.Keepalive.Traffic != nil && info.Keepalive.Traffic.Enabled
 }
 
-func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID string, trafficAccessToken string, catalogStore e2bcatalog.SandboxesCatalog, info *e2bcatalog.SandboxInfo) {
+func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, catalogStore e2bcatalog.SandboxesCatalog, info *e2bcatalog.SandboxInfo) {
 	if m.resumer == nil || !trafficKeepaliveEnabled(info) {
 		return
 	}
@@ -63,7 +63,7 @@ func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID st
 		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), trafficKeepaliveRequestTimeout)
 		defer cancel()
 
-		err := m.resumer.KeepAlive(refreshCtx, sandboxID, info.TeamID, trafficAccessToken)
+		err := m.resumer.KeepAlive(refreshCtx, sandboxID, info.TeamID, sandboxPort, trafficAccessToken, envdAccessToken)
 		if err != nil {
 			logger.L().Warn(refreshCtx, "traffic keepalive refresh failed", logger.WithSandboxID(sandboxID), zap.Error(err))
 		} else {

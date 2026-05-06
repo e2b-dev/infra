@@ -101,11 +101,8 @@ func (c *grpcSandboxLifecycleClient) Resume(ctx context.Context, sandboxId strin
 	return strings.TrimSpace(resp.GetOrchestratorIp()), nil
 }
 
-func (c *grpcSandboxLifecycleClient) KeepAlive(ctx context.Context, sandboxId string, teamID string, trafficAccessToken string) error {
-	if trafficAccessToken != "" {
-		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataTrafficAccessToken, trafficAccessToken)
-	}
-
+func (c *grpcSandboxLifecycleClient) KeepAlive(ctx context.Context, sandboxId string, teamID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) error {
+	ctx = appendProxyTrafficMetadata(ctx, sandboxPort, trafficAccessToken, envdAccessToken)
 	ctx, authErr := c.auth.authorize(ctx)
 	if authErr != nil {
 		return authErr

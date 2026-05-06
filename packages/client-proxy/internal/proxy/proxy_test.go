@@ -27,7 +27,7 @@ func (s stubResumer) Resume(_ context.Context, _ string, _ uint64, _ string, _ s
 	return s.nodeIP, s.err
 }
 
-func (s stubResumer) KeepAlive(_ context.Context, _ string, _ string, _ string) error {
+func (s stubResumer) KeepAlive(_ context.Context, _ string, _ string, _ uint64, _ string, _ string) error {
 	return s.err
 }
 
@@ -50,10 +50,12 @@ func (r *recordingResumer) Resume(_ context.Context, sandboxID string, sandboxPo
 	return "10.0.0.1", nil
 }
 
-func (r *recordingResumer) KeepAlive(_ context.Context, sandboxID string, teamID string, trafficAccessToken string) error {
+func (r *recordingResumer) KeepAlive(_ context.Context, sandboxID string, teamID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) error {
 	r.sandboxID = sandboxID
 	r.teamID = teamID
+	r.sandboxPort = sandboxPort
 	r.trafficAccessToken = trafficAccessToken
+	r.envdAccessToken = envdAccessToken
 
 	return nil
 }
@@ -100,12 +102,14 @@ func (r *asyncRecordingResumer) Resume(ctx context.Context, sandboxID string, sa
 	return "10.0.0.1", nil
 }
 
-func (r *asyncRecordingResumer) KeepAlive(ctx context.Context, sandboxID string, teamID string, trafficAccessToken string) error {
+func (r *asyncRecordingResumer) KeepAlive(ctx context.Context, sandboxID string, teamID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) error {
 	call := resumeCall{
 		method:             "keepalive",
 		sandboxID:          sandboxID,
 		teamID:             teamID,
+		sandboxPort:        sandboxPort,
 		trafficAccessToken: trafficAccessToken,
+		envdAccessToken:    envdAccessToken,
 	}
 
 	select {
@@ -326,7 +330,9 @@ func TestCatalogResolution_CatalogHit_TrafficKeepaliveRefreshes(t *testing.T) {
 	require.Equal(t, "keepalive", call.method)
 	require.Equal(t, "sbx", call.sandboxID)
 	require.Equal(t, "8f56d6bc-9b6d-4cbb-8e31-86b62359f716", call.teamID)
+	require.Equal(t, uint64(49983), call.sandboxPort)
 	require.Equal(t, "traffic-token", call.trafficAccessToken)
+	require.Equal(t, "envd-token", call.envdAccessToken)
 }
 
 func TestCatalogResolution_CatalogHit_TrafficKeepaliveRefreshesWhenAutoResumeFlagDisabled(t *testing.T) {
@@ -354,6 +360,8 @@ func TestCatalogResolution_CatalogHit_TrafficKeepaliveRefreshesWhenAutoResumeFla
 	call := requireResumerCall(t, resumer.calls)
 	require.Equal(t, "keepalive", call.method)
 	require.Equal(t, "8f56d6bc-9b6d-4cbb-8e31-86b62359f716", call.teamID)
+	require.Equal(t, uint64(49983), call.sandboxPort)
+	require.Equal(t, "envd-token", call.envdAccessToken)
 }
 
 func TestTrafficKeepaliveManager_RefreshesWhenNotNearExpiry(t *testing.T) {
@@ -363,7 +371,7 @@ func TestTrafficKeepaliveManager_RefreshesWhenNotNearExpiry(t *testing.T) {
 	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", "traffic-token", c, &e2bcatalog.SandboxInfo{
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, &e2bcatalog.SandboxInfo{
 		TeamID:    "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
 		Keepalive: testKeepalive(),
 	})
@@ -378,7 +386,7 @@ func TestTrafficKeepaliveManager_SkipsWhenTeamIDMissing(t *testing.T) {
 	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", "traffic-token", c, &e2bcatalog.SandboxInfo{
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, &e2bcatalog.SandboxInfo{
 		Keepalive: testKeepalive(),
 	})
 
@@ -392,7 +400,7 @@ func TestTrafficKeepaliveManager_SkipsWhenCatalogPolicyDisabled(t *testing.T) {
 	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", "traffic-token", c, &e2bcatalog.SandboxInfo{
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, &e2bcatalog.SandboxInfo{
 		TeamID: "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
 		Keepalive: &e2bcatalog.Keepalive{
 			Traffic: &e2bcatalog.TrafficKeepalive{Enabled: false},
@@ -417,11 +425,11 @@ func TestTrafficKeepaliveManager_SuppressesConcurrentRefreshes(t *testing.T) {
 		Keepalive: testKeepalive(),
 	}
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", "traffic-token", c, info)
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
 	call := requireResumerCall(t, resumer.calls)
 	require.Equal(t, "keepalive", call.method)
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", "traffic-token", c, info)
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
 	requireNoResumerCall(t, resumer.calls)
 
 	close(release)
@@ -438,10 +446,10 @@ func TestTrafficKeepaliveManager_SkipsWhenCatalogTimerHeld(t *testing.T) {
 		Keepalive: testKeepalive(),
 	}
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", "traffic-token", c, info)
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
 	requireResumerCall(t, resumer.calls)
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", "traffic-token", c, info)
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
 	requireNoResumerCall(t, resumer.calls)
 }
 

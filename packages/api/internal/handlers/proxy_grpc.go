@@ -138,33 +138,13 @@ func (s *SandboxService) validateSandboxTraffic(ctx context.Context, sandboxID s
 		}
 	}
 
-	// Validate envd access token for secure sandboxes on envd traffic.
+	// Callers pass envdAccessToken only when envd traffic must enforce it.
 	if !isNonEnvdTraffic && envdAccessToken != nil {
 		providedEnvdToken, _ := metadataFirstValue(incomingMetadata, proxygrpc.MetadataEnvdAccessToken)
 
 		if !tokensMatch(providedEnvdToken, *envdAccessToken) {
 			return denyResumePermission()
 		}
-	}
-
-	return nil
-}
-
-func (s *SandboxService) validateSandboxProxyTraffic(ctx context.Context, incomingMetadata metadata.MD, sandboxID string, network *dbtypes.SandboxNetworkConfig) error {
-	if !isPrivateIngressTraffic(network) {
-		return nil
-	}
-
-	expectedToken, tokenErr := s.api.accessTokenGenerator.GenerateTrafficAccessToken(sandboxID)
-	if tokenErr != nil {
-		logger.L().Error(ctx, "failed to generate expected traffic access token", zap.Error(tokenErr), logger.WithSandboxID(sandboxID))
-
-		return status.Error(codes.Internal, "failed to validate traffic access token")
-	}
-
-	providedToken, _ := metadataFirstValue(incomingMetadata, proxygrpc.MetadataTrafficAccessToken)
-	if !tokensMatch(providedToken, expectedToken) {
-		return denyResumePermission()
 	}
 
 	return nil
@@ -335,7 +315,7 @@ func (s *SandboxService) KeepAliveSandbox(ctx context.Context, req *proxygrpc.Sa
 		return nil, status.Error(codes.FailedPrecondition, "sandbox traffic keepalive disabled")
 	}
 
-	if trafficErr := s.validateSandboxProxyTraffic(ctx, incomingMetadata, sandboxID, sandboxData.Network); trafficErr != nil {
+	if trafficErr := s.validateSandboxTraffic(ctx, sandboxID, sandboxData.Network, sandboxData.EnvdAccessToken); trafficErr != nil {
 		return nil, trafficErr
 	}
 

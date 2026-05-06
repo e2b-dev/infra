@@ -92,7 +92,7 @@ func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64
 	}
 
 	if s.Keepalive != nil && s.Keepalive.Traffic != nil && s.Keepalive.Traffic.Enabled {
-		trafficKeepalive.MaybeRefresh(ctx, sandboxId, trafficAccessToken, c, s)
+		trafficKeepalive.MaybeRefresh(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken, c, s)
 	} else {
 		logger.L().Debug(
 			ctx,
