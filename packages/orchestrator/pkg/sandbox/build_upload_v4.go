@@ -3,7 +3,6 @@ package sandbox
 import (
 	"context"
 	"fmt"
-	"maps"
 
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
@@ -76,27 +75,13 @@ func (u *Upload) uploadFramed(
 
 	h := srcHeader.CloneForUpload(headers.MetadataVersionV4)
 	h.IncompletePendingUpload = false
+	if h.Builds == nil {
+		h.Builds = make(map[uuid.UUID]headers.BuildData)
+	}
 
-	// Dependency closure is the set of buildIDs referenced by mappings, minus
-	// self. Each ancestor's BuildData lives in its own finalized header's
-	// self-entry; Wait routes to local future, peer, or remote storage as
-	// appropriate. Already-final ancestors resolve immediately (remote storage
-	// round-trip beats blocking on whatever the immediate parent's upload is
-	// doing).
-	ancestors, err := u.collectAncestorBuilds(ctx, srcHeader.Mapping, fileType)
-	if err != nil {
+	if err := u.appendAncestorBuilds(ctx, h.Builds, srcHeader.Mapping, fileType); err != nil {
 		return err
 	}
-
-	// Merge into the cloned srcHeader.Builds rather than overwriting: ancestors
-	// that collectAncestorBuilds skipped (Wait returned nil h because no local
-	// device existed) keep the BuildData carried through CloneForUpload from
-	// boot. Empty diffs represent a layer descendants must record as an
-	// ancestor.
-	if h.Builds == nil {
-		h.Builds = make(map[uuid.UUID]headers.BuildData, len(ancestors)+1)
-	}
-	maps.Copy(h.Builds, ancestors)
 	h.Builds[u.buildID] = selfBuild
 
 	if err := headers.StoreHeader(ctx, u.store, u.paths.HeaderFile(string(fileType)), h); err != nil {
@@ -106,51 +91,52 @@ func (u *Upload) uploadFramed(
 	return u.publish(ctx, fileType, h)
 }
 
-// collectAncestorBuilds resolves every unique buildID referenced by mappings
-// (excluding self) to its finalized BuildData. Local ancestors resolve from the
-// in-memory futures map without any I/O; cross-orch ancestors take a single
-// remote storage round-trip each. Sequential — the critical path is the slowest
-// pending Wait either way, and serial keeps the code simple.
-func (u *Upload) collectAncestorBuilds(
+// appendAncestorBuilds waits on every unique buildID referenced by mappings
+// (excluding self) — gating publish on parents' header finalization — and,
+// when dst is non-nil, writes the freshest BuildData into it. Existing dst
+// entries are overwritten (Wait is more authoritative than CloneForUpload).
+// Skips silently when Wait returns nil or the ancestor carries no Builds
+// entry (V3 ancestor); pre-existing dst entries are preserved.
+//
+// V3 callers pass dst=nil — they need the barrier but have no Builds map.
+//
+// Local ancestors resolve from the in-memory futures map without I/O;
+// cross-orch ancestors take a single remote storage round-trip. Sequential —
+// the critical path is the slowest pending Wait either way.
+func (u *Upload) appendAncestorBuilds(
 	ctx context.Context,
+	dst map[uuid.UUID]headers.BuildData,
 	mappings []headers.BuildMap,
 	fileType build.DiffType,
-) (map[uuid.UUID]headers.BuildData, error) {
-	out := make(map[uuid.UUID]headers.BuildData)
+) error {
 	if u.uploads == nil {
-		return out, nil
+		return nil
 	}
 
+	seen := make(map[uuid.UUID]struct{}, len(mappings))
 	for _, m := range mappings {
 		if m.BuildId == u.buildID || m.BuildId == uuid.Nil {
 			continue
 		}
-		if _, dup := out[m.BuildId]; dup {
+		if _, dup := seen[m.BuildId]; dup {
 			continue
 		}
+		seen[m.BuildId] = struct{}{}
 
 		h, err := u.uploads.Wait(ctx, m.BuildId, fileType)
 		if err != nil {
-			return nil, fmt.Errorf("wait for ancestor %s/%s: %w", m.BuildId, fileType, err)
+			return fmt.Errorf("wait for ancestor %s/%s: %w", m.BuildId, fileType, err)
 		}
-		// nil h means ancestor was never opened locally. The caller's
-		// srcHeader.Builds (preserved through CloneForUpload) carries the
-		// BuildData for ancestors.
-		if h == nil {
-			continue
-		}
-		// V3 ancestors have Builds=nil (FrameTable is V4-only); their data is
-		// raw bytes and the read path doesn't consult Builds for them. Skip
-		// silently so V4 descendants of V3 ancestors still upload.
-		bd, ok := h.Builds[m.BuildId]
-		if !ok {
+		if h == nil || dst == nil {
 			continue
 		}
 
-		out[m.BuildId] = bd
+		if bd, ok := h.Builds[m.BuildId]; ok {
+			dst[m.BuildId] = bd
+		}
 	}
 
-	return out, nil
+	return nil
 }
 
 func seekableTypeFor(fileType build.DiffType) storage.SeekableObjectType {

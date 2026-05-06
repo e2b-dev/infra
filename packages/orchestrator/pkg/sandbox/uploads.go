@@ -58,13 +58,13 @@ type templateLookup interface {
 type Uploads struct {
 	tc          templateLookup
 	persistence storage.StorageProvider
-	p2p         peerclient.UploadChecker
+	p2p         peerclient.Resolver
 	redis       redis.UniversalClient
 
 	futures *ttlcache.Cache[uuid.UUID, *utils.ErrorOnce]
 }
 
-func NewUploads(tc *template.Cache, persistence storage.StorageProvider, p2p peerclient.UploadChecker, redisClient redis.UniversalClient) *Uploads {
+func NewUploads(tc *template.Cache, persistence storage.StorageProvider, p2p peerclient.Resolver, redisClient redis.UniversalClient) *Uploads {
 	futures := ttlcache.New(
 		ttlcache.WithTTL[uuid.UUID, *utils.ErrorOnce](futureTTL),
 	)
@@ -95,9 +95,9 @@ func (u *Uploads) Start(buildID uuid.UUID) (*utils.ErrorOnce, error) {
 	return fut, nil
 }
 
-// Wait returns the parent's post-upload header. Same-orch waits on the local
-// future; cross-orch refreshes from remote storage when the locally-cached
-// header is stale, optionally accelerated by a per-call Redis subscription.
+// Wait returns the parent's post-upload header, or (nil, nil) when the
+// ancestor was never opened locally and no peer is mid-upload — the caller
+// already carries its BuildData through srcHeader.Builds.
 func (u *Uploads) Wait(ctx context.Context, buildID uuid.UUID, t build.DiffType) (*header.Header, error) {
 	ctx, span := tracer.Start(ctx, "wait-for-parent-upload", trace.WithAttributes(
 		telemetry.WithBuildID(buildID.String()),
@@ -110,37 +110,26 @@ func (u *Uploads) Wait(ctx context.Context, buildID uuid.UUID, t build.DiffType)
 		return nil, err
 	}
 
-	// Already durable: SwapHeader has cleared the in-flight bit on the local
-	// device. The transition is monotonic (cleared → never set again), so we
-	// can return without waiting on anything.
-	if d != nil {
-		if h := d.Header(); !h.IncompletePendingUpload {
-			return h, nil
-		}
-	}
-
-	// Pending. Local upload in flight? Wait on its future and return the
-	// freshly-swapped header. Future fires after publish runs SwapHeader, so
-	// d.Header() reflects the finalized state on success. On upload error,
-	// WaitWithContext returns the error and we bubble it up.
 	if item := u.futures.Get(buildID); item != nil {
-		if err := item.Value().WaitWithContext(ctx); err != nil {
-			return nil, fmt.Errorf("wait for upload %s: %w", buildID, err)
+		if waitErr := item.Value().WaitWithContext(ctx); waitErr != nil {
+			return nil, fmt.Errorf("wait for upload %s: %w", buildID, waitErr)
+		}
+		if d == nil {
+			return nil, nil
 		}
 
 		return d.Header(), nil
 	}
 
-	// No local future. Either a P2P-served device whose source is still
-	// uploading on a peer, or an ancestor never added to the template cache.
-	// Return nil to inherit from srcHeader.Builds.
-	if d == nil && !u.p2p.IsUploading(ctx, buildID.String()) {
+	if d != nil && !d.Header().IncompletePendingUpload {
+		return d.Header(), nil
+	}
+
+	if d == nil && !u.p2p.IsActive(buildID.String()) {
 		return nil, nil
 	}
 
-	// P2P pending: subscribe + poll until the source orchestrator finalizes
-	// the upload. SwapHeader on the local device (when we have one) so future
-	// readers hit the durable early-out.
+	// P2P mid-upload. Poll remote storage, then swap onto the local device.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
