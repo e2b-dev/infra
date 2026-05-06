@@ -358,7 +358,8 @@ func doBuild(
 		})
 	}
 
-	// Default FPR on for FC v1.14+; explicit --free-page-reporting overrides.
+	// Default FPR on for FC v1.14+ unless hugepages is enabled.
+	// Firecracker rejects balloon (free-page-reporting) together with hugepages.
 	var fprEnabled bool
 	if freePageReporting != nil {
 		fprEnabled = *freePageReporting
@@ -366,7 +367,7 @@ func doBuild(
 		versionOnly, _, _ := strings.Cut(fcVersion, "_")
 		supported, err := utils.IsGTEVersion(versionOnly, "v1.14.0")
 		if err == nil {
-			fprEnabled = supported
+			fprEnabled = !hugePages && supported
 		}
 	}
 
