@@ -40,4 +40,7 @@ mkdir -p /code
 echo "Give 777 permission to /code"
 chmod 777 -R /code
 
+# Remove apt proxy config injected during build
+rm -f /etc/apt/apt.conf.d/01proxy
+
 echo "Finished configuration script"
