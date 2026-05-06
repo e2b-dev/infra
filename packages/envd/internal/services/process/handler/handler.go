@@ -206,12 +206,18 @@ func New(
 				n, readErr := tty.Read(buf)
 
 				if n > 0 {
-					outMultiplex.Source <- rpc.ProcessEvent_Data{
+					event := rpc.ProcessEvent_Data{
 						Data: &rpc.ProcessEvent_DataEvent{
 							Output: &rpc.ProcessEvent_DataEvent_Pty{
 								Pty: buf[:n],
 							},
 						},
+					}
+
+					select {
+					case outMultiplex.Source <- event:
+					case <-outCtx.Done():
+						return
 					}
 				}
 
@@ -248,12 +254,18 @@ func New(
 				n, readErr := stdout.Read(buf)
 
 				if n > 0 {
-					outMultiplex.Source <- rpc.ProcessEvent_Data{
+					event := rpc.ProcessEvent_Data{
 						Data: &rpc.ProcessEvent_DataEvent{
 							Output: &rpc.ProcessEvent_DataEvent_Stdout{
 								Stdout: buf[:n],
 							},
 						},
+					}
+
+					select {
+					case outMultiplex.Source <- event:
+					case <-outCtx.Done():
+						return
 					}
 
 					stdoutLogs <- buf[:n]
@@ -290,12 +302,18 @@ func New(
 				n, readErr := stderr.Read(buf)
 
 				if n > 0 {
-					outMultiplex.Source <- rpc.ProcessEvent_Data{
+					event := rpc.ProcessEvent_Data{
 						Data: &rpc.ProcessEvent_DataEvent{
 							Output: &rpc.ProcessEvent_DataEvent_Stderr{
 								Stderr: buf[:n],
 							},
 						},
+					}
+
+					select {
+					case outMultiplex.Source <- event:
+					case <-outCtx.Done():
+						return
 					}
 
 					stderrLogs <- buf[:n]
@@ -328,7 +346,7 @@ func New(
 	go func() {
 		outWg.Wait()
 
-		close(outMultiplex.Source)
+		outMultiplex.CloseSource()
 
 		outCancel()
 	}()
@@ -440,10 +458,11 @@ func (p *Handler) Start(requestTimeout time.Duration) (uint32, error) {
 }
 
 func (p *Handler) Wait() {
-	// Wait for the output pipes to be closed or cancelled.
-	<-p.outCtx.Done()
-
+	// cmd.Wait reaps the child and closes the pipe read-ends.
+	// Then we cancel outCtx to unblock any reader goroutine that
+	// is blocked on a full Source channel send (back-pressure).
 	err := p.cmd.Wait()
+	p.outCancel()
 
 	p.tty.Close()
 
