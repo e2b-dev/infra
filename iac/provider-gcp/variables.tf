@@ -329,6 +329,12 @@ variable "otel_collector_resources_cpu_count" {
   default = 0.5
 }
 
+variable "enable_otel_router_logs" {
+  type        = bool
+  default     = false
+  description = "Enable teeing non-internal customer logs from Vector to otel-router."
+}
+
 variable "clickhouse_resources_memory_mb" {
   type    = number
   default = 8192

@@ -192,3 +192,9 @@ variable "auth_db_min_idle_connections" {
   type    = number
   default = 5
 }
+
+variable "enable_otel_router_logs" {
+  type        = bool
+  default     = false
+  description = "Enable teeing non-internal customer logs from Vector to otel-router."
+}
