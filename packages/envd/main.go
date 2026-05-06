@@ -188,7 +188,18 @@ func main() {
 	processService := processRpc.Handle(m, &processLogger, defaults, cgroupManager)
 
 	inspectorLogger := l.With().Str("logger", "inspector").Logger()
-	_ = inspectorRpc.Handle(m, &inspectorLogger, defaults)
+	inspectorCgroupRoot := cgroupRoot
+	if inspectorCgroupRoot == "" {
+		inspectorCgroupRoot = "/sys/fs/cgroup"
+	}
+	inspectorCfg := inspectorRpc.Config{
+		CgroupPaths: []string{
+			filepath.Join(inspectorCgroupRoot, string(cgroups.ProcessTypeUser)),
+			filepath.Join(inspectorCgroupRoot, "ptys"),
+			filepath.Join(inspectorCgroupRoot, "socats"),
+		},
+	}
+	_ = inspectorRpc.Handle(m, &inspectorLogger, defaults, inspectorCfg)
 
 	service := api.New(&envLogger, defaults, mmdsChan, isNotFC)
 	handler := api.HandlerFromMux(service, m)

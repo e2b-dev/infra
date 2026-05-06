@@ -15,7 +15,7 @@ import (
 func newTestService(t *testing.T) *Service {
 	t.Helper()
 	logger := zerolog.Nop()
-	return newService(&logger, nil)
+	return newService(&logger, nil, Config{})
 }
 
 // On non-linux builds (or linux without -tags inspector_bpf) the stub
