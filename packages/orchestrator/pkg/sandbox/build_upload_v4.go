@@ -3,6 +3,7 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"maps"
 
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
@@ -87,8 +88,15 @@ func (u *Upload) uploadFramed(
 		return err
 	}
 
-	// Empty diffs still represent a layer descendants must record as an ancestor.
-	h.Builds = ancestors
+	// Merge into the cloned srcHeader.Builds rather than overwriting: ancestors
+	// that collectAncestorBuilds skipped (Wait returned nil h because no local
+	// device existed) keep the BuildData carried through CloneForUpload from
+	// boot. Empty diffs represent a layer descendants must record as an
+	// ancestor.
+	if h.Builds == nil {
+		h.Builds = make(map[uuid.UUID]headers.BuildData, len(ancestors)+1)
+	}
+	maps.Copy(h.Builds, ancestors)
 	h.Builds[u.buildID] = selfBuild
 
 	if err := headers.StoreHeader(ctx, u.store, u.paths.HeaderFile(string(fileType)), h); err != nil {
@@ -124,6 +132,12 @@ func (u *Upload) collectAncestorBuilds(
 		h, err := u.uploads.Wait(ctx, m.BuildId, fileType)
 		if err != nil {
 			return nil, fmt.Errorf("wait for ancestor %s/%s: %w", m.BuildId, fileType, err)
+		}
+		// nil h means ancestor was never opened locally. The caller's
+		// srcHeader.Builds (preserved through CloneForUpload) carries the
+		// BuildData for ancestors.
+		if h == nil {
+			continue
 		}
 		// V3 ancestors have Builds=nil (FrameTable is V4-only); their data is
 		// raw bytes and the read path doesn't consult Builds for them. Skip

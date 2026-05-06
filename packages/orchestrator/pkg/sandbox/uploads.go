@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -57,18 +58,19 @@ type templateLookup interface {
 type Uploads struct {
 	tc          templateLookup
 	persistence storage.StorageProvider
+	p2p         peerclient.UploadChecker
 	redis       redis.UniversalClient
 
 	futures *ttlcache.Cache[uuid.UUID, *utils.ErrorOnce]
 }
 
-func NewUploads(tc *template.Cache, persistence storage.StorageProvider, redisClient redis.UniversalClient) *Uploads {
+func NewUploads(tc *template.Cache, persistence storage.StorageProvider, p2p peerclient.UploadChecker, redisClient redis.UniversalClient) *Uploads {
 	futures := ttlcache.New(
 		ttlcache.WithTTL[uuid.UUID, *utils.ErrorOnce](futureTTL),
 	)
 	go futures.Start()
 
-	return &Uploads{tc: tc, persistence: persistence, redis: redisClient, futures: futures}
+	return &Uploads{tc: tc, persistence: persistence, p2p: p2p, redis: redisClient, futures: futures}
 }
 
 func (u *Uploads) Stop() {
@@ -93,7 +95,7 @@ func (u *Uploads) Start(buildID uuid.UUID) (*utils.ErrorOnce, error) {
 	return fut, nil
 }
 
-// Wait returns the parent's post-upload V4 header. Same-orch waits on the local
+// Wait returns the parent's post-upload header. Same-orch waits on the local
 // future; cross-orch refreshes from remote storage when the locally-cached
 // header is stale, optionally accelerated by a per-call Redis subscription.
 func (u *Uploads) Wait(ctx context.Context, buildID uuid.UUID, t build.DiffType) (*header.Header, error) {
@@ -103,37 +105,50 @@ func (u *Uploads) Wait(ctx context.Context, buildID uuid.UUID, t build.DiffType)
 	))
 	defer span.End()
 
+	d, err := u.find(ctx, buildID, t)
+	if err != nil && !errors.Is(err, ErrBuildNotInCache) {
+		return nil, err
+	}
+
+	// Already durable: SwapHeader has cleared the in-flight bit on the local
+	// device. The transition is monotonic (cleared → never set again), so we
+	// can return without waiting on anything.
+	if d != nil {
+		if h := d.Header(); !h.IncompletePendingUpload {
+			return h, nil
+		}
+	}
+
+	// Pending. Local upload in flight? Wait on its future and return the
+	// freshly-swapped header. Future fires after publish runs SwapHeader, so
+	// d.Header() reflects the finalized state on success. On upload error,
+	// WaitWithContext returns the error and we bubble it up.
 	if item := u.futures.Get(buildID); item != nil {
 		if err := item.Value().WaitWithContext(ctx); err != nil {
 			return nil, fmt.Errorf("wait for upload %s: %w", buildID, err)
 		}
+
+		return d.Header(), nil
 	}
 
-	d, err := u.find(ctx, buildID, t)
-	if errors.Is(err, ErrBuildNotInCache) {
-		// Ancestor never resumed locally (typical for grand-grandparents
-		// reached via mappings). It's necessarily finalized — load directly
-		// from remote storage without an in-memory device or future to track.
-		hdrPath := storage.Paths{BuildID: buildID.String()}.HeaderFile(string(t))
-
-		return header.LoadHeader(ctx, u.persistence, hdrPath)
+	// No local future. Either a P2P-served device whose source is still
+	// uploading on a peer, or an ancestor never added to the template cache.
+	// Return nil to inherit from srcHeader.Builds.
+	if d == nil && !u.p2p.IsUploading(ctx, buildID.String()) {
+		return nil, nil
 	}
+
+	// P2P pending: subscribe + poll until the source orchestrator finalizes
+	// the upload. SwapHeader on the local device (when we have one) so future
+	// readers hit the durable early-out.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	h, err := build.PollRemoteStorageForHeader(ctx, u.persistence, buildID, t, u.subscribe(ctx, buildID), refreshHeaderBudget)
 	if err != nil {
 		return nil, err
 	}
-
-	h := d.Header()
-	if h.IncompletePendingUpload {
-		// The only way we can still have an incomplete header at this point is
-		// the P2P path. We already waited on the local upload future and it did
-		// not finalize the header.
-		ctx, cancel := context.WithCancel(ctx)
-		defer cancel()
-
-		h, err = build.PollRemoteStorageForHeader(ctx, u.persistence, buildID, t, u.subscribe(ctx, buildID), refreshHeaderBudget)
-		if err != nil {
-			return nil, err
-		}
+	if d != nil {
 		d.SwapHeader(h)
 	}
 

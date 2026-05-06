@@ -25,9 +25,20 @@ const peerConnectTimeout = 5 * time.Second
 //
 // The unexported resolve method restricts implementations to this package.
 type Resolver interface {
+	UploadChecker
 	resolve(ctx context.Context, buildID string) (attribute.KeyValue, resolveResult)
 	Purge(buildID string)
 	Close()
+}
+
+// UploadChecker answers whether a build's source upload is still in flight on
+// a peer orchestrator. False means the build is finalized in remote storage
+// (or was never registered as a peer to begin with) and is therefore safe to
+// read directly from the base provider. The narrow surface lets consumers
+// (e.g. sandbox.Uploads) take a dependency on upload state without pulling in
+// the full peer routing API.
+type UploadChecker interface {
+	IsUploading(ctx context.Context, buildID string) bool
 }
 
 type resolveResult struct {
@@ -44,8 +55,9 @@ type nopResolver struct{}
 func (nopResolver) resolve(context.Context, string) (attribute.KeyValue, resolveResult) {
 	return attrResolveNoPeer, resolveResult{}
 }
-func (nopResolver) Purge(string) {}
-func (nopResolver) Close()       {}
+func (nopResolver) IsUploading(context.Context, string) bool { return false }
+func (nopResolver) Purge(string)                             {}
+func (nopResolver) Close()                                   {}
 
 // peerResolver is the real implementation that looks up peers via the Registry.
 type peerResolver struct {
@@ -156,6 +168,12 @@ func (r *peerResolver) resolve(ctx context.Context, buildID string) (attribute.K
 		uploaded: uploaded,
 		addr:     addr,
 	}
+}
+
+func (r *peerResolver) IsUploading(ctx context.Context, buildID string) bool {
+	status, _ := r.resolve(ctx, buildID)
+
+	return status == attrResolvePeer
 }
 
 func (r *peerResolver) Close() {

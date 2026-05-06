@@ -52,7 +52,7 @@ func (b *File) SwapHeader(h *header.Header) {
 
 func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
 	for n < len(p) {
-		h := b.header.Load()
+		h := b.Header()
 
 		mappedToBuild, err := h.GetShiftedMapping(ctx, off+int64(n))
 		if err != nil {
@@ -121,7 +121,7 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 // The slice access must be in the predefined blocksize of the build.
 func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 	for {
-		h := b.header.Load()
+		h := b.Header()
 
 		mappedBuild, err := h.GetShiftedMapping(ctx, off)
 		if err != nil {
@@ -174,7 +174,7 @@ func (b *File) retryOnTransition(ctx context.Context, err error) (bool, error) {
 		zap.String("file_type", string(b.fileType)),
 	)
 
-	hdrPath := storage.Paths{BuildID: b.header.Load().Metadata.BuildId.String()}.HeaderFile(string(b.fileType))
+	hdrPath := storage.Paths{BuildID: b.Header().Metadata.BuildId.String()}.HeaderFile(string(b.fileType))
 	h, loadErr := header.LoadHeader(ctx, b.persistence, hdrPath)
 	if loadErr != nil {
 		return false, fmt.Errorf("failed to swap header: %w", loadErr)
