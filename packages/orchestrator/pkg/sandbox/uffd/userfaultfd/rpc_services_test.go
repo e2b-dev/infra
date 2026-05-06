@@ -12,6 +12,7 @@ import (
 
 	"github.com/RoaringBitmap/roaring/v2"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/fdexit"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/memory"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils/testharness"
@@ -194,9 +195,9 @@ func (u *Userfaultfd) pageStateEntries() ([]testharness.PageStateEntry, error) {
 	u.settleRequests.Lock()
 	defer u.settleRequests.Unlock()
 
-	bmFaulted, bmRemoved := u.pageTracker.Export()
-	entries := make([]testharness.PageStateEntry, 0, bmFaulted.GetCardinality()+bmRemoved.GetCardinality())
-	emit := func(bm *roaring.Bitmap, state pageState) {
+	bmDirty, bmZero := u.pageTracker.Export()
+	entries := make([]testharness.PageStateEntry, 0, bmDirty.GetCardinality()+bmZero.GetCardinality())
+	emit := func(bm *roaring.Bitmap, state block.State) {
 		for _, idx := range bm.ToArray() {
 			entries = append(entries, testharness.PageStateEntry{
 				State:  uint8(state),
@@ -204,8 +205,8 @@ func (u *Userfaultfd) pageStateEntries() ([]testharness.PageStateEntry, error) {
 			})
 		}
 	}
-	emit(bmFaulted, faulted)
-	emit(bmRemoved, removed)
+	emit(bmDirty, block.Dirty)
+	emit(bmZero, block.Zero)
 
 	return entries, nil
 }

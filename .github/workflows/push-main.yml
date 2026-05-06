@@ -17,10 +17,14 @@ jobs:
 
   unit-tests:
     uses: ./.github/workflows/pr-tests.yml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   integration-tests:
     uses: ./.github/workflows/integration_tests.yml
     with:
       publish: true
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   publish-test-results:
     needs:
       - unit-tests
@@ -28,7 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       checks: write
-    if: always()
+    # Skip on cancellation so partial artifacts aren't published as failed tests.
+    if: ${{ !cancelled() }}
 
     steps:
       - name: Download Artifacts
@@ -41,7 +46,6 @@ jobs:
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
-        if: always()
         with:
           comment_mode: off
           fail_on: "errors"

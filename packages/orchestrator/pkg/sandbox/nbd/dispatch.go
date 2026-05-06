@@ -14,7 +14,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -43,8 +42,10 @@ var dispatchBufPool = sync.Pool{
 }
 
 type Provider interface {
-	storage.SeekableReader
+	ReadAt(ctx context.Context, p []byte, off int64) (int, error)
+	Size(ctx context.Context) (int64, error)
 	io.WriterAt
+	WriteZeroesAt(off, length int64) (int, error)
 }
 
 const (
@@ -58,11 +59,12 @@ const (
 
 // NBD Commands
 const (
-	NBDCmdRead       = 0
-	NBDCmdWrite      = 1
-	NBDCmdDisconnect = 2
-	NBDCmdFlush      = 3
-	NBDCmdTrim       = 4
+	NBDCmdRead        = 0
+	NBDCmdWrite       = 1
+	NBDCmdDisconnect  = 2
+	NBDCmdFlush       = 3
+	NBDCmdTrim        = 4
+	NBDCmdWriteZeroes = 6
 )
 
 const (
@@ -70,10 +72,18 @@ const (
 	NBDResponseMagic = 0x67446698
 )
 
-// NBD Request packet
+// NBD Request packet. Wire layout (big-endian, 28 bytes total):
+//
+//	magic(4) | flags(2) | type(2) | handle(8) | from(8) | length(4)
+//
+// Spec: https://github.com/NetworkBlockDevice/nbd/blob/master/doc/proto.md#request-message
+//
+// Flags carries the NBD_CMD_FLAG_* bits and is intentionally ignored — split
+// from Type so a non-zero flag bit doesn't corrupt the command opcode.
 type Request struct {
 	Magic  uint32
-	Type   uint32
+	Flags  uint16
+	Type   uint16
 	Handle uint64
 	From   uint64
 	Length uint32
@@ -189,7 +199,8 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 
 			header := buffer[rp : rp+28]
 			request.Magic = binary.BigEndian.Uint32(header)
-			request.Type = binary.BigEndian.Uint32(header[4:8])
+			request.Flags = binary.BigEndian.Uint16(header[4:6])
+			request.Type = binary.BigEndian.Uint16(header[6:8])
 			request.Handle = binary.BigEndian.Uint64(header[8:16])
 			request.From = binary.BigEndian.Uint64(header[16:24])
 			request.Length = binary.BigEndian.Uint32(header[24:28])
@@ -246,9 +257,10 @@ func (d *Dispatch) Handle(ctx context.Context) error {
 				if err != nil {
 					return err
 				}
-			case NBDCmdTrim:
+			case NBDCmdWriteZeroes, NBDCmdTrim:
+				// TRIM and WRITE_ZEROES both punch the cache; NO_HOLE is intentionally ignored.
 				rp += 28
-				err := d.cmdTrim(request.Handle, request.From, request.Length)
+				err := d.cmdWriteZeroes(ctx, request.Handle, request.From, int64(request.Length))
 				if err != nil {
 					return err
 				}
@@ -418,25 +430,19 @@ func (d *Dispatch) cmdWrite(ctx context.Context, cmdHandle uint64, cmdFrom uint6
 	return nil
 }
 
-/**
- * cmdTrim
- *
- */
-func (d *Dispatch) cmdTrim(handle uint64, _ uint64, _ uint32) error {
-	// TODO: Ask the provider
-	/*
-		e := d.prov.Trim(from, length)
-		if e != storage.StorageError_SUCCESS {
-			err := d.writeResponse(1, handle, []byte{})
-			if err != nil {
-				return err
-			}
-		} else {
-	*/
-	err := d.writeResponse(0, handle, []byte{})
-	if err != nil {
-		return err
+// cmdWriteZeroes runs synchronously since WriteZeroesAt is cheap (mmap + bitmap).
+func (d *Dispatch) cmdWriteZeroes(ctx context.Context, cmdHandle uint64, cmdFrom uint64, cmdLength int64) error {
+	var respErr uint32
+	if _, err := d.prov.WriteZeroesAt(int64(cmdFrom), cmdLength); err != nil {
+		respErr = 1
+		logger.L().Error(ctx, "nbd backend write-zeroes failed",
+			zap.Error(err),
+			zap.String("nbd_provider", d.provName),
+			zap.Uint64("nbd_handle", cmdHandle),
+			zap.Uint64("nbd_offset", cmdFrom),
+			zap.Int64("nbd_length", cmdLength),
+		)
 	}
-	//	}
-	return nil
+
+	return d.writeResponse(respErr, cmdHandle, nil)
 }

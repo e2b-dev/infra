@@ -19,7 +19,7 @@ type BootstrapArgs struct {
 
 type BootstrapReply struct{}
 
-// PageStateEntry is the wire form of the parent package's pageState enum.
+// PageStateEntry is the wire form of a block.State for a single page offset.
 type PageStateEntry struct {
 	State  uint8
 	Offset uint64

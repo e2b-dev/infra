@@ -41,8 +41,7 @@ type TemplateConfig struct {
 	// HugePages sets whether the VM use huge pages.
 	HugePages bool
 
-	// FreePageReporting enables Firecracker's balloon free-page-reporting,
-	// which madvise(MADV_DONTNEED)s freed guest pages back to the host.
+	// FreePageReporting enables Firecracker's balloon free-page-reporting.
 	FreePageReporting bool
 
 	// Command to run to check if the template is ready.

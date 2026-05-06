@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils/testharness"
 )
@@ -138,10 +139,10 @@ func (h *testHandler) pageStates() (handlerPageStates, error) {
 
 	var states handlerPageStates
 	for _, e := range entries {
-		switch pageState(e.State) {
-		case faulted:
+		switch block.State(e.State) {
+		case block.Dirty:
 			states.faulted = append(states.faulted, uint(e.Offset))
-		case removed:
+		case block.Zero:
 			states.removed = append(states.removed, uint(e.Offset))
 		}
 	}

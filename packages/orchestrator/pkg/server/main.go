@@ -45,6 +45,7 @@ type Server struct {
 	startingSandboxes     *semaphore.Weighted
 	peerRegistry          peerclient.Registry
 	uploadedBuilds        *ttlcache.Cache[string, struct{}]
+	uploads               *sandbox.Uploads
 	sandboxCreateDuration metric.Int64Histogram
 }
 
@@ -61,6 +62,7 @@ type ServiceConfig struct {
 	FeatureFlags     *featureflags.Client
 	SbxEventsService *events.EventsService
 	PeerRegistry     peerclient.Registry
+	Uploads          *sandbox.Uploads
 }
 
 func New(cfg ServiceConfig) (*Server, error) {
@@ -83,6 +85,7 @@ func New(cfg ServiceConfig) (*Server, error) {
 		startingSandboxes: semaphore.NewWeighted(maxStartingInstancesPerNode),
 		peerRegistry:      cfg.PeerRegistry,
 		uploadedBuilds:    uploadedBuilds,
+		uploads:           cfg.Uploads,
 	}
 
 	meter := cfg.Tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")
@@ -103,4 +106,10 @@ func New(cfg ServiceConfig) (*Server, error) {
 	}
 
 	return server, nil
+}
+
+func (s *Server) Close() error {
+	s.uploadedBuilds.Stop()
+
+	return nil
 }

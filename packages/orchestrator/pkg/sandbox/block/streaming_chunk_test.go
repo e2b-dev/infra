@@ -3,498 +3,441 @@ package block
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"errors"
 	"fmt"
 	"io"
-	mathrand "math/rand/v2"
+	"math/rand/v2"
 	"sync/atomic"
 	"testing"
-	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 const (
 	testBlockSize = header.PageSize // 4KB
+	testFrameSize = 256 * 1024      // 256 KB per frame for fast tests
+	testFileSize  = testFrameSize * 4
 )
 
-// slowUpstream simulates GCS: implements both SeekableReader and StreamingReader.
-// OpenRangeReader returns a reader that yields blockSize bytes per Read() call
-// with a configurable delay between calls.
-type slowUpstream struct {
-	data      []byte
-	blockSize int64
-	delay     time.Duration
-}
-
-var (
-	_ storage.SeekableReader  = (*slowUpstream)(nil)
-	_ storage.StreamingReader = (*slowUpstream)(nil)
-)
-
-func (s *slowUpstream) ReadAt(_ context.Context, buffer []byte, off int64) (int, error) {
-	end := min(off+int64(len(buffer)), int64(len(s.data)))
-	n := copy(buffer, s.data[off:end])
-
-	return n, nil
-}
-
-func (s *slowUpstream) Size(_ context.Context) (int64, error) {
-	return int64(len(s.data)), nil
-}
-
-func (s *slowUpstream) OpenRangeReader(_ context.Context, off, length int64) (io.ReadCloser, error) {
-	end := min(off+length, int64(len(s.data)))
-
-	return &slowReader{
-		data:      s.data[off:end],
-		blockSize: int(s.blockSize),
-		delay:     s.delay,
-	}, nil
-}
-
-type slowReader struct {
-	data      []byte
-	pos       int
-	blockSize int
-	delay     time.Duration
-}
-
-func (r *slowReader) Read(p []byte) (int, error) {
-	if r.pos >= len(r.data) {
-		return 0, io.EOF
-	}
-
-	if r.delay > 0 {
-		time.Sleep(r.delay)
-	}
-
-	end := min(r.pos+r.blockSize, len(r.data))
-
-	n := copy(p, r.data[r.pos:end])
-	r.pos += n
-
-	if r.pos >= len(r.data) {
-		return n, io.EOF
-	}
-
-	return n, nil
-}
-
-func (r *slowReader) Close() error {
-	return nil
-}
-
-// fastUpstream simulates NFS: same interfaces but no delay.
-type fastUpstream = slowUpstream
-
-// streamingFunc adapts a function into a StreamingReader.
-type streamingFunc func(ctx context.Context, off, length int64) (io.ReadCloser, error)
-
-func (f streamingFunc) OpenRangeReader(ctx context.Context, off, length int64) (io.ReadCloser, error) {
-	return f(ctx, off, length)
-}
-
-// errorAfterNUpstream fails after reading n bytes.
-type errorAfterNUpstream struct {
-	data      []byte
-	failAfter int64
-	blockSize int64
-}
-
-var _ storage.StreamingReader = (*errorAfterNUpstream)(nil)
-
-func (u *errorAfterNUpstream) OpenRangeReader(_ context.Context, off, length int64) (io.ReadCloser, error) {
-	end := min(off+length, int64(len(u.data)))
-
-	return &errorAfterNReader{
-		data:      u.data[off:end],
-		blockSize: int(u.blockSize),
-		failAfter: int(u.failAfter - off),
-	}, nil
-}
-
-type errorAfterNReader struct {
-	data      []byte
-	pos       int
-	blockSize int
-	failAfter int
-}
-
-func (r *errorAfterNReader) Read(p []byte) (int, error) {
-	if r.pos >= len(r.data) {
-		return 0, io.EOF
-	}
-
-	if r.pos >= r.failAfter {
-		return 0, errors.New("simulated upstream error")
-	}
-
-	end := min(r.pos+r.blockSize, len(r.data))
-
-	n := copy(p, r.data[r.pos:end])
-	r.pos += n
-
-	if r.pos >= len(r.data) {
-		return n, io.EOF
-	}
-
-	return n, nil
-}
-
-func (r *errorAfterNReader) Close() error {
-	return nil
-}
-
-func newTestMetrics(t *testing.T) metrics.Metrics {
-	t.Helper()
+func newTestMetrics(tb testing.TB) metrics.Metrics {
+	tb.Helper()
 
 	m, err := metrics.NewMetrics(noop.NewMeterProvider())
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
 	return m
 }
 
-func makeTestData(t *testing.T, size int) []byte {
-	t.Helper()
-
+func makeTestData(size int) []byte {
+	rng := rand.New(rand.NewPCG(42, 0)) //nolint:gosec // deterministic test data
 	data := make([]byte, size)
-	_, err := rand.Read(data)
-	require.NoError(t, err)
+	for i := range data {
+		data[i] = byte(rng.IntN(256))
+	}
 
 	return data
 }
 
-func TestStreamingChunker_BasicSlice(t *testing.T) {
-	t.Parallel()
-
-	data := makeTestData(t, storage.MemoryChunkSize)
-	upstream := &fastUpstream{data: data, blockSize: testBlockSize}
-
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
-		newTestMetrics(t),
-		0, nil,
-	)
-	require.NoError(t, err)
-	defer chunker.Close()
-
-	// Read first page
-	slice, err := chunker.Slice(t.Context(), 0, testBlockSize)
-	require.NoError(t, err)
-	require.Equal(t, data[:testBlockSize], slice)
+// fakeSeekable implements storage.Seekable backed by in-memory data.
+// When ctrl is non-nil, reads are gated through its channels for concurrency tests.
+type fakeSeekable struct {
+	data       []byte
+	failAfter  int64 // >0: truncate reads at this offset; 0 = disabled
+	fetchCount atomic.Int64
+	ctrl       *testControl // nil = ungated immediate reads
 }
 
-func TestStreamingChunker_CacheHit(t *testing.T) {
-	t.Parallel()
+var _ storage.Seekable = (*fakeSeekable)(nil)
 
-	data := makeTestData(t, storage.MemoryChunkSize)
-	readCount := atomic.Int64{}
+// testControl provides channel-based flow control for fakeSeekable.
+type testControl struct {
+	advance  chan struct{} // close to release reads
+	consumed chan struct{} // receives after each read step
+	opened   chan struct{} // receives when OpenRangeReader is called
+	closed   chan struct{} // receives when reader is closed (fetch done)
+	onOpen   func()        // optional callback on OpenRangeReader
+}
 
-	upstream := &countingUpstream{
-		inner:     &fastUpstream{data: data, blockSize: testBlockSize},
-		readCount: &readCount,
+func newTestChunker(t *testing.T, file storage.Seekable, size int64) *Chunker {
+	t.Helper()
+	c, err := NewChunker(&featureflags.Client{}, size, testBlockSize, file, t.TempDir()+"/cache", newTestMetrics(t))
+	require.NoError(t, err)
+
+	return c
+}
+
+func (s *fakeSeekable) Size(_ context.Context) (int64, error) {
+	return int64(len(s.data)), nil
+}
+
+func (s *fakeSeekable) StoreFile(context.Context, string, ...storage.PutOption) (*storage.FrameTable, [32]byte, error) {
+	panic("not used")
+}
+
+func (s *fakeSeekable) OpenRangeReader(_ context.Context, offsetU int64, length int64, frameTable *storage.FrameTable) (io.ReadCloser, error) {
+	s.fetchCount.Add(1)
+
+	if s.ctrl != nil {
+		if s.ctrl.onOpen != nil {
+			s.ctrl.onOpen()
+		}
+
+		select {
+		case s.ctrl.opened <- struct{}{}:
+		default:
+		}
+
+		end := min(offsetU+length, int64(len(s.data)))
+
+		return &controlledReader{
+			data:     s.data[offsetU:end],
+			step:     max(16*1024, testBlockSize),
+			advance:  s.ctrl.advance,
+			consumed: s.ctrl.consumed,
+			closed:   s.ctrl.closed,
+		}, nil
 	}
 
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
-		newTestMetrics(t),
-		0, nil,
-	)
-	require.NoError(t, err)
-	defer chunker.Close()
+	var fetchOff, fetchLen int64
+	if frameTable.IsCompressed() {
+		r, err := frameTable.LocateCompressed(offsetU)
+		if err != nil {
+			return nil, fmt.Errorf("frame lookup: %w", err)
+		}
 
-	// First read: triggers fetch
-	_, err = chunker.Slice(t.Context(), 0, testBlockSize)
-	require.NoError(t, err)
+		fetchOff = r.Offset
+		fetchLen = int64(r.Length)
+	} else {
+		fetchOff = offsetU
+		fetchLen = length
+	}
 
-	// Wait for the full chunk to be fetched
-	time.Sleep(50 * time.Millisecond)
+	end := min(fetchOff+fetchLen, int64(len(s.data)))
+	if s.failAfter > 0 {
+		end = min(end, s.failAfter)
+	}
 
-	firstCount := readCount.Load()
-	require.Positive(t, firstCount)
+	r := io.Reader(bytes.NewReader(s.data[fetchOff:end]))
+	if frameTable.IsCompressed() {
+		return storage.NewDecompressingReader(r, frameTable.CompressionType())
+	}
 
-	// Second read: should hit cache
-	slice, err := chunker.Slice(t.Context(), 0, testBlockSize)
-	require.NoError(t, err)
-	require.Equal(t, data[:testBlockSize], slice)
-
-	// No additional reads should have happened
-	assert.Equal(t, firstCount, readCount.Load())
+	return io.NopCloser(r), nil
 }
 
-type countingUpstream struct {
-	inner     *fastUpstream
-	readCount *atomic.Int64
+func makeCompressedTestData(tb testing.TB, data []byte) (*storage.FrameTable, *fakeSeekable) {
+	tb.Helper()
+
+	ft, compressed, _, err := storage.CompressBytes(context.Background(), data, storage.CompressConfig{
+		Enabled:            true,
+		Type:               "lz4",
+		EncoderConcurrency: 1,
+		FrameEncodeWorkers: 1,
+		FrameSizeKB:        testFrameSize / 1024,
+		MinPartSizeMB:      50,
+	})
+	require.NoError(tb, err)
+
+	return ft, &fakeSeekable{data: compressed}
 }
 
-var (
-	_ storage.SeekableReader  = (*countingUpstream)(nil)
-	_ storage.StreamingReader = (*countingUpstream)(nil)
-)
-
-func (c *countingUpstream) ReadAt(ctx context.Context, buffer []byte, off int64) (int, error) {
-	c.readCount.Add(1)
-
-	return c.inner.ReadAt(ctx, buffer, off)
+type chunkerTestCase struct {
+	name       string
+	newChunker func(t *testing.T, data []byte) (*Chunker, *storage.FrameTable)
 }
 
-func (c *countingUpstream) Size(ctx context.Context) (int64, error) {
-	return c.inner.Size(ctx)
+var allChunkerTestCases = []chunkerTestCase{
+	{
+		name: "Compressed",
+		newChunker: func(t *testing.T, data []byte) (*Chunker, *storage.FrameTable) {
+			t.Helper()
+			ft, getter := makeCompressedTestData(t, data)
+
+			return newTestChunker(t, getter, int64(len(data))), ft
+		},
+	},
+	{
+		name: "Uncompressed",
+		newChunker: func(t *testing.T, data []byte) (*Chunker, *storage.FrameTable) {
+			t.Helper()
+
+			return newTestChunker(t, &fakeSeekable{data: data}, int64(len(data))), nil
+		},
+	},
 }
 
-func (c *countingUpstream) OpenRangeReader(ctx context.Context, off, length int64) (io.ReadCloser, error) {
-	c.readCount.Add(1)
-
-	return c.inner.OpenRangeReader(ctx, off, length)
-}
-
-func TestStreamingChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
+func TestChunker_BasicSlice(t *testing.T) {
 	t.Parallel()
 
-	data := makeTestData(t, storage.MemoryChunkSize)
-	openCount := atomic.Int64{}
+	for _, tc := range allChunkerTestCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	upstream := &countingUpstream{
-		inner:     &fastUpstream{data: data, blockSize: testBlockSize},
-		readCount: &openCount,
+			data := makeTestData(testFileSize)
+			chunker, ft := tc.newChunker(t, data)
+			defer chunker.Close()
+
+			slice, err := chunker.Slice(t.Context(), 0, testBlockSize, ft)
+			require.NoError(t, err)
+			require.Equal(t, data[:testBlockSize], slice)
+		})
 	}
-
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
-		newTestMetrics(t),
-		0, nil,
-	)
-	require.NoError(t, err)
-	defer chunker.Close()
-
-	// Request only the FIRST block of the 4MB chunk.
-	_, err = chunker.Slice(t.Context(), 0, testBlockSize)
-	require.NoError(t, err)
-
-	// The background goroutine should continue fetching the remaining data.
-	// Use a blocking Slice call (with timeout) instead of require.Eventually
-	// to avoid racing condition goroutines against defer chunker.Close().
-	lastOff := int64(storage.MemoryChunkSize) - testBlockSize
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-
-	slice, err := chunker.Slice(ctx, lastOff, testBlockSize)
-	require.NoError(t, err)
-	require.True(t, bytes.Equal(data[lastOff:], slice))
-
-	// Exactly one OpenRangeReader call should have been made for the entire
-	// chunk, not one per requested block.
-	assert.Equal(t, int64(1), openCount.Load(),
-		"expected 1 OpenRangeReader call (full chunk fetched in background), got %d", openCount.Load())
 }
 
-func TestStreamingChunker_ConcurrentSameChunk(t *testing.T) {
+// TestChunker_CacheHit verifies that a second read of the same block
+// is served from cache without an additional upstream fetch.
+func TestChunker_CacheHit(t *testing.T) {
 	t.Parallel()
 
-	data := makeTestData(t, storage.MemoryChunkSize)
-	// Use a slow upstream so requests will overlap
-	upstream := &slowUpstream{
-		data:      data,
-		blockSize: testBlockSize,
-		delay:     50 * time.Microsecond,
-	}
+	data := makeTestData(testFileSize)
 
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
-		newTestMetrics(t),
-		0, nil,
-	)
-	require.NoError(t, err)
+	// Uncompressed only — we need direct access to the fakeSeekable to count fetches.
+	file := &fakeSeekable{data: data}
+	chunker := newTestChunker(t, file, int64(len(data)))
 	defer chunker.Close()
 
-	numGoroutines := 10
-	offsets := make([]int64, numGoroutines)
-	for i := range numGoroutines {
-		offsets[i] = int64(i) * testBlockSize
-	}
+	// First read triggers a fetch.
+	slice1, err := chunker.Slice(t.Context(), 0, testBlockSize, nil)
+	require.NoError(t, err)
+	require.Equal(t, data[:testBlockSize], slice1)
 
-	results := make([][]byte, numGoroutines)
+	firstFetches := file.fetchCount.Load()
+	require.Positive(t, firstFetches)
+
+	// Second read of the same block — should hit cache.
+	slice2, err := chunker.Slice(t.Context(), 0, testBlockSize, nil)
+	require.NoError(t, err)
+	require.Equal(t, data[:testBlockSize], slice2)
+	require.Equal(t, firstFetches, file.fetchCount.Load(), "expected no additional upstream fetch")
+}
+
+// TestChunker_FullChunkCachedAfterPartialRequest verifies that requesting the
+// first block triggers a full background fetch of the entire chunk/frame, so
+// the last block becomes available without additional upstream fetches.
+func TestChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range allChunkerTestCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			data := makeTestData(testFileSize)
+			chunker, ft := tc.newChunker(t, data)
+			defer chunker.Close()
+
+			_, err := chunker.Slice(t.Context(), 0, testBlockSize, ft)
+			require.NoError(t, err)
+
+			// The second Slice joins the in-flight session (or hits
+			// cache if the fetch already completed). Either way it blocks
+			// until the data is available — no polling needed.
+			lastOff := int64(testFileSize) - testBlockSize
+			slice, err := chunker.Slice(t.Context(), lastOff, testBlockSize, ft)
+			require.NoError(t, err)
+			require.Equal(t, data[lastOff:lastOff+testBlockSize], slice)
+		})
+	}
+}
+
+// TestChunker_ConcurrentSameChunk verifies that concurrent requests for the same
+// chunk don't cause duplicate upstream fetches.
+func TestChunker_ConcurrentSameChunk(t *testing.T) {
+	t.Parallel()
+
+	data := makeTestData(testFileSize)
+
+	var fetchCount atomic.Int64
+	chunker := newControlledChunker(t, data)
+	chunker.onOpen = func() { fetchCount.Add(1) }
+	defer chunker.Close()
+
+	const numGoroutines = 10
 
 	var eg errgroup.Group
-
-	for i := range numGoroutines {
+	started := make(chan struct{})
+	for range numGoroutines {
 		eg.Go(func() error {
-			slice, err := chunker.Slice(t.Context(), offsets[i], testBlockSize)
-			if err != nil {
-				return fmt.Errorf("goroutine %d failed: %w", i, err)
-			}
-			results[i] = make([]byte, len(slice))
-			copy(results[i], slice)
+			<-started
+			_, sliceErr := chunker.Slice(t.Context(), 0, testBlockSize, nil)
 
-			return nil
+			return sliceErr
 		})
 	}
 
+	// Release goroutines, wait for the fetch to start (blocked on advance),
+	// then release data.
+	close(started)
+	<-chunker.opened
+	close(chunker.advance)
+
 	require.NoError(t, eg.Wait())
 
-	for i := range numGoroutines {
-		require.Equal(t, data[offsets[i]:offsets[i]+testBlockSize], results[i],
-			"goroutine %d got wrong data", i)
-	}
+	require.Equal(t, int64(1), fetchCount.Load(),
+		"expected 1 fetch (dedup), got %d", fetchCount.Load())
 }
 
-func TestStreamingChunker_ErrorKeepsPartialData(t *testing.T) {
+func TestChunker_EarlyReturn(t *testing.T) {
 	t.Parallel()
 
-	chunkSize := storage.MemoryChunkSize
-	data := makeTestData(t, chunkSize)
-	failAfter := int64(chunkSize / 2) // Fail at 2MB
-
-	upstream := &errorAfterNUpstream{
-		data:      data,
-		failAfter: failAfter,
-		blockSize: testBlockSize,
-	}
-
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
-		newTestMetrics(t),
-		0, nil,
-	)
-	require.NoError(t, err)
+	data := makeTestData(testFileSize)
+	chunker := newControlledChunker(t, data)
 	defer chunker.Close()
 
-	// Request the last page — this should fail because upstream dies at 2MB
-	lastOff := int64(chunkSize) - testBlockSize
-	_, err = chunker.Slice(t.Context(), lastOff, testBlockSize)
+	lastOff := int64(len(data)) - testBlockSize
+
+	type result struct {
+		data []byte
+		err  error
+	}
+
+	earlyDone := make(chan result, 1)
+	lateDone := make(chan result, 1)
+
+	go func() {
+		slice, sliceErr := chunker.Slice(t.Context(), 0, testBlockSize, nil)
+		earlyDone <- result{data: bytes.Clone(slice), err: sliceErr} // clone: slice backed by mutable mmap
+	}()
+	go func() {
+		slice, sliceErr := chunker.Slice(t.Context(), lastOff, testBlockSize, nil)
+		lateDone <- result{data: bytes.Clone(slice), err: sliceErr}
+	}()
+
+	// Advance exactly one read step (16KB). This covers offset 0 but is
+	// far from the last block, and no further reads can proceed until we
+	// send more signals — eliminating the scheduling race.
+	chunker.advance <- struct{}{}
+	<-chunker.consumed
+
+	// Offset 0 is within the first readBatch — should be available now.
+	r := <-earlyDone
+	require.NoError(t, r.err)
+	require.Equal(t, data[:testBlockSize], r.data)
+
+	// No more reads have been allowed, so the last offset is unreachable.
+	select {
+	case <-lateDone:
+		t.Fatal("late reader completed before its data was delivered")
+	default:
+	}
+
+	// Release all remaining reads so the late reader can complete.
+	close(chunker.advance)
+	r = <-lateDone
+	require.NoError(t, r.err)
+	require.Equal(t, data[lastOff:lastOff+testBlockSize], r.data)
+}
+
+// TestChunker_ErrorKeepsPartialData verifies that an upstream error at the
+// midpoint of a chunk still allows data before the error to be served.
+func TestChunker_ErrorKeepsPartialData(t *testing.T) {
+	t.Parallel()
+
+	data := makeTestData(testFileSize)
+
+	chunker := newTestChunker(t, &fakeSeekable{data: data, failAfter: int64(testFileSize / 2)}, int64(len(data)))
+	defer chunker.Close()
+
+	lastOff := int64(testFileSize) - testBlockSize
+	_, err := chunker.Slice(t.Context(), lastOff, testBlockSize, nil)
 	require.Error(t, err)
 
-	// But first page (within first 2MB) should still be cached and servable
-	slice, err := chunker.Slice(t.Context(), 0, testBlockSize)
+	slice, err := chunker.Slice(t.Context(), 0, testBlockSize, nil)
 	require.NoError(t, err)
 	require.Equal(t, data[:testBlockSize], slice)
 }
 
-func TestStreamingChunker_ContextCancellation(t *testing.T) {
+// TestChunker_ContextCancellation verifies that a cancelled caller context
+// doesn't kill the background fetch — another caller can still get data.
+func TestChunker_ContextCancellation(t *testing.T) {
 	t.Parallel()
 
-	data := makeTestData(t, storage.MemoryChunkSize)
-	upstream := &slowUpstream{
-		data:      data,
-		blockSize: testBlockSize,
-		delay:     1 * time.Millisecond,
-	}
-
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
-		newTestMetrics(t),
-		0, nil,
-	)
-	require.NoError(t, err)
+	data := makeTestData(testFileSize)
+	chunker := newControlledChunker(t, data)
 	defer chunker.Close()
 
-	// Request with a context that we'll cancel quickly
-	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Millisecond)
-	defer cancel()
+	ctx, cancel := context.WithCancel(t.Context())
 
-	lastOff := int64(storage.MemoryChunkSize) - testBlockSize
-	_, err = chunker.Slice(ctx, lastOff, testBlockSize)
-	// This should fail with context cancellation
-	require.Error(t, err)
+	done := make(chan error, 1)
+	go func() {
+		_, sliceErr := chunker.Slice(ctx, 0, testBlockSize, nil)
+		done <- sliceErr
+	}()
 
-	// But another caller with a valid context should still get the data
-	// because the fetch goroutine uses background context
-	time.Sleep(200 * time.Millisecond) // Wait for fetch to complete
-	slice, err := chunker.Slice(t.Context(), 0, testBlockSize)
+	// Wait for the fetch goroutine to be blocked on the reader, then cancel.
+	<-chunker.opened
+	cancel()
+
+	require.Error(t, <-done)
+
+	// Release the fetch — it runs with context.WithoutCancel so it continues.
+	close(chunker.advance)
+	<-chunker.closed
+
+	// Fetch completed — data is now cached.
+	slice, err := chunker.Slice(t.Context(), 0, testBlockSize, nil)
 	require.NoError(t, err)
 	require.Equal(t, data[:testBlockSize], slice)
 }
 
-func TestStreamingChunker_LastBlockPartial(t *testing.T) {
+// TestChunker_LastBlockPartial verifies correct handling of a file whose size
+// is not aligned to blockSize — the final block is shorter than blockSize.
+func TestChunker_LastBlockPartial(t *testing.T) {
 	t.Parallel()
 
-	// File size not aligned to blockSize
-	size := storage.MemoryChunkSize - 100
-	data := makeTestData(t, size)
-	upstream := &fastUpstream{data: data, blockSize: testBlockSize}
+	size := testFileSize - 100
+	data := makeTestData(size)
 
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
-		newTestMetrics(t),
-		0, nil,
-	)
-	require.NoError(t, err)
-	defer chunker.Close()
+	for _, tc := range allChunkerTestCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	// Read the last partial block
-	lastBlockOff := (int64(size) / testBlockSize) * testBlockSize
-	remaining := int64(size) - lastBlockOff
+			chunker, ft := tc.newChunker(t, data)
+			defer chunker.Close()
 
-	slice, err := chunker.Slice(t.Context(), lastBlockOff, remaining)
-	require.NoError(t, err)
-	require.Equal(t, data[lastBlockOff:], slice)
+			lastBlockOff := (int64(size) / testBlockSize) * testBlockSize
+			remaining := int64(size) - lastBlockOff
+
+			slice, err := chunker.Slice(t.Context(), lastBlockOff, remaining, ft)
+			require.NoError(t, err)
+			require.Equal(t, data[lastBlockOff:], slice)
+		})
+	}
 }
 
-func TestStreamingChunker_MultiChunkSlice(t *testing.T) {
-	t.Parallel()
-
-	// Two 4MB chunks
-	size := storage.MemoryChunkSize * 2
-	data := makeTestData(t, size)
-	upstream := &fastUpstream{data: data, blockSize: testBlockSize}
-
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
-		newTestMetrics(t),
-		0, nil,
-	)
-	require.NoError(t, err)
-	defer chunker.Close()
-
-	// Request spanning two chunks: last page of chunk 0 + first page of chunk 1
-	off := int64(storage.MemoryChunkSize) - testBlockSize
-	length := testBlockSize * 2
-
-	slice, err := chunker.Slice(t.Context(), off, int64(length))
-	require.NoError(t, err)
-	require.Equal(t, data[off:off+int64(length)], slice)
-}
-
-// panicUpstream panics during Read after delivering a configurable number of bytes.
-type panicUpstream struct {
+// panicSeekable panics during Read after delivering panicAfter bytes.
+type panicSeekable struct {
 	data       []byte
-	blockSize  int64
-	panicAfter int64 // byte offset at which to panic (0 = panic immediately)
+	panicAfter int64
 }
 
-var _ storage.StreamingReader = (*panicUpstream)(nil)
+var _ storage.Seekable = (*panicSeekable)(nil)
 
-func (u *panicUpstream) OpenRangeReader(_ context.Context, off, length int64) (io.ReadCloser, error) {
-	end := min(off+length, int64(len(u.data)))
+func (s *panicSeekable) Size(_ context.Context) (int64, error) {
+	return int64(len(s.data)), nil
+}
+
+func (s *panicSeekable) StoreFile(context.Context, string, ...storage.PutOption) (*storage.FrameTable, [32]byte, error) {
+	panic("not used")
+}
+
+func (s *panicSeekable) OpenRangeReader(_ context.Context, off int64, length int64, _ *storage.FrameTable) (io.ReadCloser, error) {
+	end := min(off+length, int64(len(s.data)))
 
 	return &panicReader{
-		data:       u.data[off:end],
-		blockSize:  int(u.blockSize),
-		panicAfter: int(u.panicAfter - off),
+		data:       s.data[off:end],
+		panicAfter: int(s.panicAfter - off),
 	}, nil
 }
 
 type panicReader struct {
 	data       []byte
 	pos        int
-	blockSize  int
 	panicAfter int
 }
 
@@ -507,7 +450,7 @@ func (r *panicReader) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 
-	end := min(r.pos+r.blockSize, len(r.data))
+	end := min(r.pos+len(p), len(r.data))
 	n := copy(p, r.data[r.pos:end])
 	r.pos += n
 
@@ -518,340 +461,125 @@ func (r *panicReader) Close() error {
 	return nil
 }
 
-func TestStreamingChunker_PanicRecovery(t *testing.T) {
+func TestChunker_PanicRecovery(t *testing.T) {
 	t.Parallel()
 
-	data := makeTestData(t, storage.MemoryChunkSize)
-	panicAt := int64(storage.MemoryChunkSize / 2) // Panic at 2MB
+	data := makeTestData(testFileSize)
+	panicAt := int64(testFileSize / 2)
 
-	upstream := &panicUpstream{
-		data:       data,
-		blockSize:  testBlockSize,
-		panicAfter: panicAt,
-	}
-
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
-		newTestMetrics(t),
-		0, nil,
-	)
-	require.NoError(t, err)
+	chunker := newTestChunker(t, &panicSeekable{data: data, panicAfter: panicAt}, int64(len(data)))
 	defer chunker.Close()
 
 	// Request data past the panic point — should get an error, not hang or crash
-	lastOff := int64(storage.MemoryChunkSize) - testBlockSize
-	_, err = chunker.Slice(t.Context(), lastOff, testBlockSize)
+	lastOff := int64(testFileSize) - testBlockSize
+	_, err := chunker.Slice(t.Context(), lastOff, testBlockSize, nil)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "panicked")
 
 	// Data before the panic point should still be cached
-	slice, err := chunker.Slice(t.Context(), 0, testBlockSize)
+	slice, err := chunker.Slice(t.Context(), 0, testBlockSize, nil)
 	require.NoError(t, err)
 	require.Equal(t, data[:testBlockSize], slice)
 }
 
-func TestStreamingChunker_ConcurrentSameChunk_SharedSession(t *testing.T) {
+func TestChunker_ConcurrentStress(t *testing.T) {
 	t.Parallel()
 
-	data := makeTestData(t, storage.MemoryChunkSize)
+	for _, tc := range allChunkerTestCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	gate := make(chan struct{})
-	openCount := atomic.Int64{}
+			data := makeTestData(testFileSize)
+			chunker, ft := tc.newChunker(t, data)
+			defer chunker.Close()
 
-	// OpenRangeReader blocks on the gate, keeping the session in fetchMap
-	// until both callers have entered. This removes the scheduling-dependent
-	// race in the old slow-upstream version of this test.
-	upstream := streamingFunc(func(_ context.Context, off, length int64) (io.ReadCloser, error) {
-		openCount.Add(1)
-		<-gate
+			const numGoroutines = 50
+			const opsPerGoroutine = 5
+			readLen := int64(testBlockSize)
 
-		end := min(off+length, int64(len(data)))
+			var eg errgroup.Group
 
-		return io.NopCloser(bytes.NewReader(data[off:end])), nil
-	})
+			for i := range numGoroutines {
+				eg.Go(func() error {
+					for j := range opsPerGoroutine {
+						off := int64(((i*opsPerGoroutine)+j)%(len(data)/int(readLen))) * readLen
+						slice, err := chunker.Slice(t.Context(), off, readLen, ft)
+						if err != nil {
+							return fmt.Errorf("goroutine %d op %d: %w", i, j, err)
+						}
+						if !bytes.Equal(data[off:off+readLen], slice) {
+							return fmt.Errorf("goroutine %d op %d: data mismatch at off=%d", i, j, off)
+						}
+					}
 
-	chunker, err := NewStreamingChunker(
-		int64(len(data)), testBlockSize,
-		upstream, t.TempDir()+"/cache",
-		newTestMetrics(t),
-		0, nil,
-	)
-	require.NoError(t, err)
-	defer chunker.Close()
+					return nil
+				})
+			}
 
-	// Two different ranges inside the same 4MB chunk.
-	offA := int64(0)
-	offB := int64(storage.MemoryChunkSize) - testBlockSize // last block
-
-	var eg errgroup.Group
-	var sliceA, sliceB []byte
-
-	eg.Go(func() error {
-		s, err := chunker.Slice(t.Context(), offA, testBlockSize)
-		if err != nil {
-			return err
-		}
-		sliceA = make([]byte, len(s))
-		copy(sliceA, s)
-
-		return nil
-	})
-	eg.Go(func() error {
-		s, err := chunker.Slice(t.Context(), offB, testBlockSize)
-		if err != nil {
-			return err
-		}
-		sliceB = make([]byte, len(s))
-		copy(sliceB, s)
-
-		return nil
-	})
-
-	// Let both goroutines enter getOrCreateSession, then release the fetch.
-	time.Sleep(10 * time.Millisecond)
-	close(gate)
-
-	require.NoError(t, eg.Wait())
-
-	assert.Equal(t, data[offA:offA+testBlockSize], sliceA)
-	assert.Equal(t, data[offB:offB+testBlockSize], sliceB)
-	assert.Equal(t, int64(1), openCount.Load(),
-		"expected exactly 1 OpenRangeReader call (shared session), got %d", openCount.Load())
+			require.NoError(t, eg.Wait())
+		})
+	}
 }
 
-// --- Benchmarks ---
-//
-// Uses a bandwidth-limited upstream with real time.Sleep to simulate GCS and
-// NFS backends. Measures actual wall-clock latency per caller.
-//
-// Backend parameters (tuned to match observed production latencies):
-//   GCS: 20ms TTFB + 100 MB/s → 4MB chunk ≈ 62ms  (observed ~60ms)
-//   NFS:  1ms TTFB + 500 MB/s → 4MB chunk ≈  9ms  (observed ~9-10ms)
-//
-// All sub-benchmarks share a pre-generated offset sequence so results are
-// directly comparable across chunker types and backends.
-//
-// Recommended invocation (~1 minute):
-//   go test -bench BenchmarkRandomAccess -benchtime 150x -count=3 -run '^$' ./...
-
-func newBenchmarkMetrics(b *testing.B) metrics.Metrics {
-	b.Helper()
-
-	m, err := metrics.NewMetrics(noop.NewMeterProvider())
-	require.NoError(b, err)
-
-	return m
+// controlledChunker wraps a Chunker with channel-based flow control for tests.
+// advance gates reads; opened/consumed/closed signal fetch lifecycle events.
+type controlledChunker struct {
+	*Chunker
+	*testControl
 }
 
-// realisticUpstream simulates a storage backend with configurable time-to-first-byte
-// and bandwidth. ReadAt blocks for the full transfer duration (bulk fetch model).
-// OpenRangeReader returns a bandwidth-limited progressive reader.
-type realisticUpstream struct {
-	data        []byte
-	blockSize   int64
-	ttfb        time.Duration
-	bytesPerSec float64
-}
+func newControlledChunker(t *testing.T, data []byte) *controlledChunker {
+	t.Helper()
 
-var (
-	_ storage.SeekableReader  = (*realisticUpstream)(nil)
-	_ storage.StreamingReader = (*realisticUpstream)(nil)
-)
-
-func (u *realisticUpstream) ReadAt(_ context.Context, buffer []byte, off int64) (int, error) {
-	transferTime := time.Duration(float64(len(buffer)) / u.bytesPerSec * float64(time.Second))
-	time.Sleep(u.ttfb + transferTime)
-
-	end := min(off+int64(len(buffer)), int64(len(u.data)))
-	n := copy(buffer, u.data[off:end])
-
-	return n, nil
-}
-
-func (u *realisticUpstream) Size(_ context.Context) (int64, error) {
-	return int64(len(u.data)), nil
-}
-
-func (u *realisticUpstream) OpenRangeReader(_ context.Context, off, length int64) (io.ReadCloser, error) {
-	end := min(off+length, int64(len(u.data)))
-
-	return &bandwidthReader{
-		data:        u.data[off:end],
-		blockSize:   int(u.blockSize),
-		ttfb:        u.ttfb,
-		bytesPerSec: u.bytesPerSec,
-	}, nil
-}
-
-// bandwidthReader delivers data at a steady rate after an initial TTFB delay.
-// Uses cumulative timing (time since first byte) so OS scheduling jitter does
-// not compound across blocks.
-type bandwidthReader struct {
-	data        []byte
-	pos         int
-	blockSize   int
-	ttfb        time.Duration
-	bytesPerSec float64
-	startTime   time.Time
-	started     bool
-}
-
-func (r *bandwidthReader) Read(p []byte) (int, error) {
-	if !r.started {
-		r.started = true
-		time.Sleep(r.ttfb)
-		r.startTime = time.Now()
+	ctrl := &testControl{
+		advance:  make(chan struct{}),
+		consumed: make(chan struct{}, 10),
+		opened:   make(chan struct{}, 10),
+		closed:   make(chan struct{}, 10),
 	}
 
+	file := &fakeSeekable{data: data, ctrl: ctrl}
+
+	return &controlledChunker{
+		Chunker:     newTestChunker(t, file, int64(len(data))),
+		testControl: ctrl,
+	}
+}
+
+// controlledReader yields data in fixed-size steps, blocking on advance
+// before each Read. After advance is closed, reads proceed immediately.
+type controlledReader struct {
+	data     []byte
+	pos      int
+	step     int
+	advance  chan struct{}
+	consumed chan struct{}
+	closed   chan struct{}
+}
+
+func (r *controlledReader) Read(p []byte) (int, error) {
 	if r.pos >= len(r.data) {
 		return 0, io.EOF
 	}
 
-	end := min(r.pos+r.blockSize, len(r.data))
+	<-r.advance
+
+	end := min(r.pos+min(len(p), r.step), len(r.data))
 	n := copy(p, r.data[r.pos:end])
 	r.pos += n
 
-	// Enforce bandwidth: sleep until this many bytes should have arrived.
-	expectedArrival := r.startTime.Add(time.Duration(float64(r.pos) / r.bytesPerSec * float64(time.Second)))
-	if wait := time.Until(expectedArrival); wait > 0 {
-		time.Sleep(wait)
-	}
-
-	if r.pos >= len(r.data) {
-		return n, io.EOF
+	select {
+	case r.consumed <- struct{}{}:
+	default:
 	}
 
 	return n, nil
 }
 
-func (r *bandwidthReader) Close() error {
+func (r *controlledReader) Close() error {
+	select {
+	case r.closed <- struct{}{}:
+	default:
+	}
+
 	return nil
-}
-
-type benchChunker interface {
-	Slice(ctx context.Context, off, length int64) ([]byte, error)
-	Close() error
-}
-
-func BenchmarkRandomAccess(b *testing.B) {
-	size := int64(storage.MemoryChunkSize)
-	data := make([]byte, size)
-
-	backends := []struct {
-		name     string
-		upstream *realisticUpstream
-	}{
-		{
-			name: "GCS",
-			upstream: &realisticUpstream{
-				data:        data,
-				blockSize:   testBlockSize,
-				ttfb:        20 * time.Millisecond,
-				bytesPerSec: 100e6, // 100 MB/s — full 4MB chunk ≈ 62ms (observed ~60ms)
-			},
-		},
-		{
-			name: "NFS",
-			upstream: &realisticUpstream{
-				data:        data,
-				blockSize:   testBlockSize,
-				ttfb:        1 * time.Millisecond,
-				bytesPerSec: 500e6, // 500 MB/s — full 4MB chunk ≈ 9ms (observed ~9-10ms)
-			},
-		},
-	}
-
-	chunkerTypes := []struct {
-		name       string
-		newChunker func(b *testing.B, m metrics.Metrics, upstream *realisticUpstream) benchChunker
-	}{
-		{
-			name: "StreamingChunker",
-			newChunker: func(b *testing.B, m metrics.Metrics, upstream *realisticUpstream) benchChunker {
-				b.Helper()
-				c, err := NewStreamingChunker(size, testBlockSize, upstream, b.TempDir()+"/cache", m, 0, nil)
-				require.NoError(b, err)
-
-				return c
-			},
-		},
-		{
-			name: "FullFetchChunker",
-			newChunker: func(b *testing.B, m metrics.Metrics, upstream *realisticUpstream) benchChunker {
-				b.Helper()
-				c, err := NewFullFetchChunker(size, testBlockSize, upstream, b.TempDir()+"/cache", m)
-				require.NoError(b, err)
-
-				return c
-			},
-		},
-	}
-
-	// Realistic concurrency: UFFD faults are limited by vCPU count (typically
-	// 1-2 for Firecracker VMs) and NBD requests are largely sequential.
-	const numCallers = 3
-
-	// Pre-generate a fixed sequence of random offsets so all sub-benchmarks
-	// use identical access patterns, making results directly comparable.
-	const maxIters = 500
-	numBlocks := size / testBlockSize
-	rng := mathrand.New(mathrand.NewPCG(42, 0))
-
-	allOffsets := make([][]int64, maxIters)
-	for i := range allOffsets {
-		offsets := make([]int64, numCallers)
-		for j := range offsets {
-			offsets[j] = rng.Int64N(numBlocks) * testBlockSize
-		}
-		allOffsets[i] = offsets
-	}
-
-	for _, backend := range backends {
-		for _, ct := range chunkerTypes {
-			b.Run(backend.name+"/"+ct.name, func(b *testing.B) {
-				m := newBenchmarkMetrics(b)
-
-				b.ReportMetric(0, "ns/op")
-
-				var sumAvg, sumMax float64
-
-				for i := range b.N {
-					offsets := allOffsets[i%maxIters]
-
-					chunker := ct.newChunker(b, m, backend.upstream)
-
-					latencies := make([]time.Duration, numCallers)
-
-					var eg errgroup.Group
-					for ci, off := range offsets {
-						eg.Go(func() error {
-							start := time.Now()
-							_, err := chunker.Slice(context.Background(), off, testBlockSize)
-							latencies[ci] = time.Since(start)
-
-							return err
-						})
-					}
-					require.NoError(b, eg.Wait())
-
-					var totalLatency time.Duration
-					var maxLatency time.Duration
-					for _, l := range latencies {
-						totalLatency += l
-						maxLatency = max(maxLatency, l)
-					}
-
-					avgUs := float64(totalLatency.Microseconds()) / float64(numCallers)
-					sumAvg += avgUs
-					sumMax = max(sumMax, float64(maxLatency.Microseconds()))
-
-					chunker.Close()
-				}
-
-				b.ReportMetric(sumAvg/float64(b.N), "avg-us/caller")
-				b.ReportMetric(sumMax, "worst-us/caller")
-			})
-		}
-	}
 }

@@ -35,7 +35,18 @@ func (f *headerSource) Stream(ctx context.Context, sender Sender) error {
 		return ErrNotAvailable
 	}
 
-	data, err := header.Serialize(h.Metadata, h.Mapping)
+	// V4 headers served via P2P are always for in-flight builds — peers stop
+	// being routed once the upload finalizes (peerStorageProvider switches to
+	// base/GCS via the uploaded flag). Force the wire bit on regardless of
+	// the in-memory state so consumers reliably treat these bytes as a
+	// pending diff and refresh from GCS once the upload lands. V3 has no
+	// in-flight notion on the wire, so it ships as-is and is treated as final.
+	wire := *h
+	if wire.Metadata.Version >= header.MetadataVersionV4 {
+		wire.IncompletePendingUpload = true
+	}
+
+	data, err := header.SerializeHeader(&wire)
 	if err != nil {
 		span.RecordError(err)
 

@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"go.uber.org/zap"
-
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -28,17 +26,15 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		return fmt.Errorf("data length (%d) does not match pagesize (%d)", len(data), u.pageSize)
 	}
 
-	idx := uint64(header.BlockIdx(offset, int64(u.pageSize)))
-	state := u.pageTracker.Get(uint32(idx))
-	if state == faulted || state == removed {
+	idx := uint32(header.BlockIdx(offset, int64(u.pageSize)))
+	state := u.pageTracker.Get(idx)
+	if state == block.Dirty || state == block.Zero {
 		return nil
 	}
 
-	// Prefault as a read so the page gets WP set. faultPage treats EEXIST
-	// as handled (returns true,nil), so a concurrent on-demand fault that
-	// installs the page first is silently absorbed; handled stays false
-	// only when faultPage soft-failed (e.g. UFFDIO_COPY EAGAIN).
-	handled, err := u.faultPage(
+	// Prefault as a read so the page gets WP set. A concurrent on-demand
+	// fault that installs the page first returns faultInstalled via EEXIST.
+	outcome, err := u.faultPage(
 		ctx,
 		addr,
 		offset,
@@ -52,15 +48,14 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		return fmt.Errorf("failed to fault page: %w", err)
 	}
 
-	if !handled {
-		span.AddEvent("prefault: page already faulted or write returned EAGAIN")
-	} else {
-		if err := u.pageTracker.SetRange(idx, idx+1, faulted); err != nil {
-			// Programming bug only — page is correctly installed.
-			u.logger.Error(ctx, "Prefault pageTracker SetRange error",
-				zap.Uint64("idx", idx), zap.Error(err))
-		}
+	switch outcome {
+	case faultInstalled:
+		u.pageTracker.SetRange(idx, idx+1, block.Dirty)
 		u.prefetchTracker.Add(offset, block.Prefetch)
+	case faultDeferred:
+		span.AddEvent("prefault: write returned EAGAIN")
+	case faultDiscarded:
+		span.AddEvent("prefault: discarded (process gone)")
 	}
 
 	return nil

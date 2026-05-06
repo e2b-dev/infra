@@ -1,6 +1,24 @@
 name: "Start Services"
 description: "Sets up and starts the required services, including PostgreSQL."
 
+inputs:
+  compress_enabled:
+    description: "Enable compression (true/false)"
+    required: false
+    default: "false"
+  compress_type:
+    description: "Compression type (zstd, lz4)"
+    required: false
+    default: ""
+  compress_level:
+    description: "Compression level (zstd: 1=fastest, 2=default; lz4: 0)"
+    required: false
+    default: ""
+  compress_workers:
+    description: "Number of frame encode workers"
+    required: false
+    default: ""
+
 runs:
   using: "composite"
   steps:
@@ -107,6 +125,11 @@ runs:
         API_INTERNAL_GRPC_ADDRESS: "localhost:5009"
         DEFAULT_PERSISTENT_VOLUME_TYPE: "test-volume-type"
         SANDBOX_STORAGE_BACKEND: "redis"
+        COMPRESS_ENABLED: ${{ inputs.compress_enabled }}
+        COMPRESS_TYPE: ${{ inputs.compress_type }}
+        COMPRESS_LEVEL: ${{ inputs.compress_level }}
+        COMPRESS_FRAME_ENCODE_WORKERS: ${{ inputs.compress_workers }}
+        E2B_DEBUG: "true"
       run: |
         mkdir -p $SHARED_CHUNK_CACHE_PATH
         mkdir -p ~/logs

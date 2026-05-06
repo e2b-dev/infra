@@ -76,18 +76,23 @@ jobs:
         run: make fmt
 
       - name: Commit generated changes if any
+        # head_ref is attacker-controlled (PR branch name); pass via env to avoid
+        # shell injection in the inline script.
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          COMMIT: ${{ inputs.commit }}
         run: |
           if [[ -z $(git status --porcelain) ]]; then
             echo "✅ No changes detected."
             exit 0
           fi
 
-          if [[ "${{ inputs.commit }}" != "true" ]]; then
+          if [[ "$COMMIT" != "true" ]]; then
             echo "❌ Generated files are not up to date. Please run 'make generate' and commit the changes."
             git status --short
             exit 1
           fi
-          
+
           echo "📝 Generated files are not up to date. Committing changes..."
           git status --short
 
@@ -96,7 +101,7 @@ jobs:
 
           git add -A
           git commit -m "chore: auto-commit generated changes"
-          git push origin HEAD:${{ github.head_ref }}
+          git push origin "HEAD:$HEAD_REF"
 
           echo "✅ Changes committed and pushed successfully."
 

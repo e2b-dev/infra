@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
@@ -106,7 +107,7 @@ func TestStaleSourceRaceMissingAndRemove(t *testing.T) {
 				err = h.executeRemove(operation{offset: pageOffset, mode: operationModeRemove})
 				require.NoError(t, err, "MADV_DONTNEED on page %d did not return — handler dispatch wedged", pageIdx)
 
-				require.NoError(t, waitForState(ctx, h, uint64(pageOffset), removed, barrierArrivalDeadline),
+				require.NoError(t, waitForState(ctx, h, uint64(pageOffset), block.Zero, barrierArrivalDeadline),
 					"handler did not transition page %d to `removed` after MADV_DONTNEED", pageIdx)
 
 				require.NoError(t, h.releaseFault(ctx, token))
@@ -286,7 +287,7 @@ func TestFaultedShortCircuitOrdering(t *testing.T) {
 
 // waitForState polls the child's PageStates RPC until the page at
 // `offset` reaches `want` or `deadline` elapses.
-func waitForState(ctx context.Context, h *testHandler, offset uint64, want pageState, deadline time.Duration) error {
+func waitForState(ctx context.Context, h *testHandler, offset uint64, want block.State, deadline time.Duration) error {
 	const pollInterval = 1 * time.Millisecond
 
 	end := time.Now().Add(deadline)
@@ -298,9 +299,9 @@ func waitForState(ctx context.Context, h *testHandler, offset uint64, want pageS
 
 		var bucket []uint
 		switch want {
-		case removed:
+		case block.Zero:
 			bucket = states.removed
-		case faulted:
+		case block.Dirty:
 			bucket = states.faulted
 		default:
 			return fmt.Errorf("waitForState: unsupported want=%d", want)

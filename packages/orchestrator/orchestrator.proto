@@ -72,11 +72,23 @@ message SandboxNetworkConfig {
   optional SandboxNetworkIngressConfig ingress = 2;
 }
 
+message SandboxNetworkTransform {
+  map<string, string> headers = 1;
+}
+
+message SandboxNetworkRule {
+  optional SandboxNetworkTransform transform = 1;
+}
+
+message SandboxNetworkDomainRules {
+  repeated SandboxNetworkRule rules = 1;
+}
+
 message SandboxNetworkEgressConfig {
   repeated string allowed_cidrs = 1;
   repeated string denied_cidrs = 2;
-
   repeated string allowed_domains = 3;
+  map<string, SandboxNetworkDomainRules> rules = 4;
 }
 
 message SandboxNetworkIngressConfig {

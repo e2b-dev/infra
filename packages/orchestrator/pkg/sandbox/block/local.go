@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 
@@ -15,7 +16,7 @@ type Local struct {
 	f    *os.File
 	path string
 
-	header *header.Header
+	header atomic.Pointer[header.Header]
 }
 
 var _ ReadonlyDevice = (*Local)(nil)
@@ -44,11 +45,10 @@ func NewLocal(path string, blockSize int64, buildID uuid.UUID) (*Local, error) {
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}
 
-	return &Local{
-		f:      f,
-		path:   path,
-		header: h,
-	}, nil
+	d := &Local{f: f, path: path}
+	d.header.Store(h)
+
+	return d, nil
 }
 
 func (d *Local) Path() string {
@@ -65,11 +65,11 @@ func (d *Local) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
 }
 
 func (d *Local) Size(_ context.Context) (int64, error) {
-	return int64(d.header.Metadata.Size), nil
+	return int64(d.Header().Metadata.Size), nil
 }
 
 func (d *Local) BlockSize() int64 {
-	return int64(d.header.Metadata.BlockSize)
+	return int64(d.Header().Metadata.BlockSize)
 }
 
 func (d *Local) Close() (e error) {
@@ -83,7 +83,7 @@ func (d *Local) Close() (e error) {
 
 func (d *Local) Slice(_ context.Context, off, length int64) ([]byte, error) {
 	end := off + length
-	size := int64(d.header.Metadata.Size)
+	size := int64(d.Header().Metadata.Size)
 	if end > size {
 		end = size
 		length = end - off
@@ -99,7 +99,11 @@ func (d *Local) Slice(_ context.Context, off, length int64) ([]byte, error) {
 }
 
 func (d *Local) Header() *header.Header {
-	return d.header
+	return d.header.Load()
+}
+
+func (d *Local) SwapHeader(h *header.Header) {
+	d.header.Store(h)
 }
 
 func (d *Local) UpdateHeaderSize() error {
@@ -108,7 +112,16 @@ func (d *Local) UpdateHeaderSize() error {
 		return fmt.Errorf("failed to get file info: %w", err)
 	}
 
-	d.header.Metadata.Size = uint64(info.Size())
+	h := d.Header()
+	metaCopy := *h.Metadata
+	metaCopy.Size = uint64(info.Size())
+
+	updated := &header.Header{
+		Metadata: &metaCopy,
+		Builds:   h.Builds,
+		Mapping:  h.Mapping,
+	}
+	d.SwapHeader(updated)
 
 	return nil
 }
