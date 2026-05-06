@@ -124,6 +124,12 @@ var (
 	OptimisticResourceAccountingFlag = NewBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
+
+	// InspectorSkipUnchangedFlag gates the per-sandbox short-circuit in
+	// orchestrator's Checkpoint RPC for requests carrying
+	// skip_if_unchanged=true. When the flag is off, the request behaves
+	// exactly like a normal full checkpoint. See issue #2580.
+	InspectorSkipUnchangedFlag = NewBoolFlag("inspector-skip-unchanged", false)
 )
 
 type IntFlag struct {

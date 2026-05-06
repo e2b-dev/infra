@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package inspector;
+
+// InspectorService exposes the in-guest "did anything change since the last
+// snapshot?" signal that the orchestrator consults when a checkpoint request
+// carries skip_if_unchanged=true. See issue #2580.
+//
+// Semantics: Inspector reports *what* has changed in the user-visible
+// portion of the sandbox since the last ResetEpoch. It does not decide
+// *whether* to checkpoint -- that is the orchestrator's job.
+service InspectorService {
+    // QueryChanges reports whether any recovery-relevant state has changed
+    // since the last successful ResetEpoch.
+    //
+    // Returning degraded=true means the inspector cannot make a confident
+    // claim (e.g. eBPF failed to load); callers must treat this as
+    // "changed" and fall through to a full checkpoint.
+    rpc QueryChanges(QueryChangesRequest) returns (QueryChangesResponse) {}
+
+    // ResetEpoch is called by the orchestrator after it has successfully
+    // published a checkpoint. The inspector clears its accumulated state so
+    // subsequent QueryChanges calls measure changes relative to the new
+    // baseline.
+    rpc ResetEpoch(ResetEpochRequest) returns (ResetEpochResponse) {}
+
+    // Status reports the inspector's loaded capabilities. Useful for
+    // debugging and for orchestrator-side telemetry.
+    rpc Status(StatusRequest) returns (StatusResponse) {}
+}
+
+message QueryChangesRequest {}
+
+message QueryChangesResponse {
+    // True if any net filesystem change is observed since the last
+    // ResetEpoch. Net change semantics: a file created and then deleted
+    // within the same epoch counts as no change.
+    bool filesystem_changed = 1;
+
+    // True if any user-cgroup process spawned/exited or any long-lived
+    // process wrote to memory since the last ResetEpoch.
+    bool processes_changed = 2;
+
+    // Monotonic identifier of the current epoch. Returned to callers so
+    // ResetEpoch can be guarded against stale resets.
+    uint32 epoch_id = 3;
+
+    // True if the inspector cannot reliably classify changes for this
+    // epoch (e.g. BPF failed to load, soft-dirty unsupported). Callers
+    // MUST treat this as "changed" and fall through to a full checkpoint.
+    bool degraded = 4;
+}
+
+message ResetEpochRequest {
+    // If set and non-zero, ResetEpoch is rejected unless this matches the
+    // inspector's current epoch_id. Optional; pass 0 to force-reset.
+    uint32 expected_epoch_id = 1;
+}
+
+message ResetEpochResponse {
+    uint32 new_epoch_id = 1;
+}
+
+message StatusRequest {}
+
+message StatusResponse {
+    // True iff the eBPF program is loaded and attached.
+    bool bpf_loaded = 1;
+
+    // True iff the kernel exposes /proc/PID/clear_refs and soft-dirty
+    // bits in /proc/PID/pagemap.
+    bool soft_dirty_supported = 2;
+
+    // True iff /sys/kernel/btf/vmlinux is present.
+    bool btf_present = 3;
+
+    // Empty when the inspector is healthy. Otherwise a short
+    // human-readable explanation of why it is in degraded mode.
+    string degraded_reason = 4;
+}
