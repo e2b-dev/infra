@@ -16,7 +16,7 @@ import (
 )
 
 // StartEnvdBash opens a streaming Process.Start call against this
-// sandbox's envd, running `/bin/bash` with the given args as `user`.
+// sandbox's envd, running `/bin/sh` with the given args as `user`.
 // Caller chooses login-shell vs. plain (e.g. []{"-l","-c",cmd} vs.
 // []{"-c",script}). When timeout > 0 it sets `Connect-Timeout-Ms` so
 // envd kills the process at the deadline. Auth/user headers are wired
@@ -31,7 +31,7 @@ func (s *Sandbox) StartEnvdBash(
 	pc := processconnect.NewProcessClient(&http.Client{Transport: sandboxHttpClient.Transport}, addr)
 
 	req := connect.NewRequest(&process.StartRequest{
-		Process: &process.ProcessConfig{Cmd: "/bin/bash", Args: bashArgs},
+		Process: &process.ProcessConfig{Cmd: "/bin/sh", Args: bashArgs},
 	})
 	if timeout > 0 {
 		req.Header().Set("Connect-Timeout-Ms", strconv.FormatInt(timeout.Milliseconds(), 10))
