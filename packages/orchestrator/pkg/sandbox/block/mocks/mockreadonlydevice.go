@@ -173,8 +173,8 @@ func (_c *MockReadonlyDevice_Header_Call) RunAndReturn(run func() *header.Header
 }
 
 // ReadAt provides a mock function for the type MockReadonlyDevice
-func (_mock *MockReadonlyDevice) ReadAt(ctx context.Context, buffer []byte, off int64) (int, error) {
-	ret := _mock.Called(ctx, buffer, off)
+func (_mock *MockReadonlyDevice) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
+	ret := _mock.Called(ctx, p, off)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ReadAt")
@@ -183,15 +183,15 @@ func (_mock *MockReadonlyDevice) ReadAt(ctx context.Context, buffer []byte, off 
 	var r0 int
 	var r1 error
 	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte, int64) (int, error)); ok {
-		return returnFunc(ctx, buffer, off)
+		return returnFunc(ctx, p, off)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte, int64) int); ok {
-		r0 = returnFunc(ctx, buffer, off)
+		r0 = returnFunc(ctx, p, off)
 	} else {
 		r0 = ret.Get(0).(int)
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, []byte, int64) error); ok {
-		r1 = returnFunc(ctx, buffer, off)
+		r1 = returnFunc(ctx, p, off)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -205,13 +205,13 @@ type MockReadonlyDevice_ReadAt_Call struct {
 
 // ReadAt is a helper method to define mock.On call
 //   - ctx context.Context
-//   - buffer []byte
+//   - p []byte
 //   - off int64
-func (_e *MockReadonlyDevice_Expecter) ReadAt(ctx interface{}, buffer interface{}, off interface{}) *MockReadonlyDevice_ReadAt_Call {
-	return &MockReadonlyDevice_ReadAt_Call{Call: _e.mock.On("ReadAt", ctx, buffer, off)}
+func (_e *MockReadonlyDevice_Expecter) ReadAt(ctx interface{}, p interface{}, off interface{}) *MockReadonlyDevice_ReadAt_Call {
+	return &MockReadonlyDevice_ReadAt_Call{Call: _e.mock.On("ReadAt", ctx, p, off)}
 }
 
-func (_c *MockReadonlyDevice_ReadAt_Call) Run(run func(ctx context.Context, buffer []byte, off int64)) *MockReadonlyDevice_ReadAt_Call {
+func (_c *MockReadonlyDevice_ReadAt_Call) Run(run func(ctx context.Context, p []byte, off int64)) *MockReadonlyDevice_ReadAt_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -239,7 +239,7 @@ func (_c *MockReadonlyDevice_ReadAt_Call) Return(n int, err error) *MockReadonly
 	return _c
 }
 
-func (_c *MockReadonlyDevice_ReadAt_Call) RunAndReturn(run func(ctx context.Context, buffer []byte, off int64) (int, error)) *MockReadonlyDevice_ReadAt_Call {
+func (_c *MockReadonlyDevice_ReadAt_Call) RunAndReturn(run func(ctx context.Context, p []byte, off int64) (int, error)) *MockReadonlyDevice_ReadAt_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -375,5 +375,45 @@ func (_c *MockReadonlyDevice_Slice_Call) Return(bytes []byte, err error) *MockRe
 
 func (_c *MockReadonlyDevice_Slice_Call) RunAndReturn(run func(ctx context.Context, off int64, length int64) ([]byte, error)) *MockReadonlyDevice_Slice_Call {
 	_c.Call.Return(run)
+	return _c
+}
+
+// SwapHeader provides a mock function for the type MockReadonlyDevice
+func (_mock *MockReadonlyDevice) SwapHeader(h *header.Header) {
+	_mock.Called(h)
+	return
+}
+
+// MockReadonlyDevice_SwapHeader_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SwapHeader'
+type MockReadonlyDevice_SwapHeader_Call struct {
+	*mock.Call
+}
+
+// SwapHeader is a helper method to define mock.On call
+//   - h *header.Header
+func (_e *MockReadonlyDevice_Expecter) SwapHeader(h interface{}) *MockReadonlyDevice_SwapHeader_Call {
+	return &MockReadonlyDevice_SwapHeader_Call{Call: _e.mock.On("SwapHeader", h)}
+}
+
+func (_c *MockReadonlyDevice_SwapHeader_Call) Run(run func(h *header.Header)) *MockReadonlyDevice_SwapHeader_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 *header.Header
+		if args[0] != nil {
+			arg0 = args[0].(*header.Header)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockReadonlyDevice_SwapHeader_Call) Return() *MockReadonlyDevice_SwapHeader_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *MockReadonlyDevice_SwapHeader_Call) RunAndReturn(run func(h *header.Header)) *MockReadonlyDevice_SwapHeader_Call {
+	_c.Run(run)
 	return _c
 }

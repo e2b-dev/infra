@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 
@@ -11,7 +12,7 @@ import (
 )
 
 type Empty struct {
-	header *header.Header
+	header atomic.Pointer[header.Header]
 }
 
 var _ ReadonlyDevice = (*Empty)(nil)
@@ -26,9 +27,10 @@ func NewEmpty(size int64, blockSize int64, buildID uuid.UUID) (*Empty, error) {
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}
 
-	return &Empty{
-		header: h,
-	}, nil
+	e := &Empty{}
+	e.header.Store(h)
+
+	return e, nil
 }
 
 func (e *Empty) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
@@ -41,11 +43,11 @@ func (e *Empty) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
 }
 
 func (e *Empty) Size(_ context.Context) (int64, error) {
-	return int64(e.header.Metadata.Size), nil
+	return int64(e.Header().Metadata.Size), nil
 }
 
 func (e *Empty) BlockSize() int64 {
-	return int64(e.header.Metadata.BlockSize)
+	return int64(e.Header().Metadata.BlockSize)
 }
 
 func (e *Empty) Close() error {
@@ -54,7 +56,7 @@ func (e *Empty) Close() error {
 
 func (e *Empty) Slice(_ context.Context, off, length int64) ([]byte, error) {
 	end := off + length
-	size := int64(e.header.Metadata.Size)
+	size := int64(e.Header().Metadata.Size)
 	if end > size {
 		end = size
 		length = end - off
@@ -65,7 +67,11 @@ func (e *Empty) Slice(_ context.Context, off, length int64) ([]byte, error) {
 }
 
 func (e *Empty) Header() *header.Header {
-	return e.header
+	return e.header.Load()
+}
+
+func (e *Empty) SwapHeader(h *header.Header) {
+	e.header.Store(h)
 }
 
 func (e *Empty) UpdateSize() error {

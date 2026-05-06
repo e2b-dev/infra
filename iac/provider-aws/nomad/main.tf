@@ -271,6 +271,8 @@ module "logs_collector" {
 
   loki_endpoint = "http://loki.service.consul:${var.loki_port}"
 
+  enable_otel_router_logs = var.enable_otel_router_logs
+
   vector_health_port = var.logs_health_proxy_port
   vector_api_port    = var.logs_proxy_port
 }

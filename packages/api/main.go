@@ -41,6 +41,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
+	"github.com/e2b-dev/infra/packages/shared/pkg/httpserver"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
@@ -229,6 +230,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
+	httpserver.ConfigureH2C(s)
 
 	return s
 }

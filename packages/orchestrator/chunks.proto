@@ -2,17 +2,19 @@ syntax = "proto3";
 
 option go_package = "https://github.com/e2b-dev/infra/orchestrator";
 
-// ChunkService allows orchestrators to serve snapshot files directly from
-// their local cache to peer orchestrators, bypassing GCS during hot resumes.
+// ChunkService allows orchestrators to serve snapshot files directly from their
+// local cache to peer orchestrators, bypassing remote storage during hot
+// resumes.
 
 // PeerAvailability carries the routing decision included in every response.
 // When neither flag is set, the file is available in the peer's local cache.
 message PeerAvailability {
-  // not_available is true when the file is not in the local cache.
-  // The caller should fall back to GCS.
+  // not_available is true when the file is not in the local cache. The caller
+  // should fall back to remote storage.
   bool not_available = 1;
-  // use_storage is true when the GCS upload has completed and the caller
-  // should switch to reading from GCS/NFS directly instead of this peer.
+  // use_storage is true when the remote storage upload has completed and the
+  // caller should switch to reading from remote storage directly instead of
+  // this peer.
   bool use_storage = 2;
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/hyperloopserver/handlers"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/httpserver"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -40,6 +41,7 @@ func NewHyperloopServer(ctx context.Context, port uint16, logger logger.Logger, 
 
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
+	httpserver.ConfigureH2C(server)
 
 	contracts.RegisterHandlersWithOptions(engine, store, contracts.GinServerOptions{})
 

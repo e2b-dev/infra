@@ -71,6 +71,7 @@ func main() {
 	cmdPause := flag.String("cmd-pause", "", "execute command in sandbox, then pause on success")
 	cmdSignalPause := flag.String("cmd-signal-pause", "", "execute command in sandbox, then wait for SIGUSR1 before pausing")
 	optimize := flag.Bool("optimize", false, "collect fresh prefetch mapping after pause (resumes snapshot to record page faults)")
+	shell := flag.Bool("shell", false, "attach an interactive PTY shell via envd (no sshd required in the sandbox)")
 
 	// Enables the pre-pause reclaim chain with sensible per-step caps.
 	reclaim := flag.Bool("reclaim", false, "enable pre-pause reclaim chain (sync 500ms, drop_caches 200ms, compact 1s, fstrim 500ms)")
@@ -135,6 +136,10 @@ func main() {
 		log.Fatal("-optimize is incompatible with -iterations (benchmarking doesn't upload)")
 	}
 
+	if *shell && (isCmdMode || isPauseMode || *iterations > 0) {
+		log.Fatal("-shell can only be used in interactive mode (no -cmd, no pause flags, no -iterations)")
+	}
+
 	// Generate new build ID if not specified and pause mode is enabled
 	outputBuildID := *toBuild
 	if isPauseMode && outputBuildID == "" {
@@ -169,7 +174,7 @@ func main() {
 		iterations: *iterations,
 	}
 
-	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *noEgress, *verbose, pauseOpts, runOpts)
+	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *noEgress, *verbose, *shell, pauseOpts, runOpts)
 	cancel()
 
 	if err != nil {
@@ -284,6 +289,7 @@ type runner struct {
 	cache      *template.Cache
 	coldStart  bool
 	noPrefetch bool
+	shell      bool
 	config     cfg.BuilderConfig
 	storage    storage.StorageProvider
 }
@@ -324,11 +330,23 @@ func (r *runner) interactive(ctx context.Context) error {
 
 	fmt.Printf("✅ Running (resumed in %s)\n", time.Since(t0))
 	fmt.Printf("   sudo nsenter --net=/var/run/netns/%s ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@169.254.0.21\n", sbx.Slot.NamespaceID())
-	fmt.Println("Ctrl+C to stop")
 
+	defer func() {
+		fmt.Println("🧹 Cleanup...")
+		sbx.Close(context.WithoutCancel(ctx))
+	}()
+
+	if r.shell {
+		err := attachShell(ctx, sbx)
+		if err != nil && !isShellExited(err) {
+			return err
+		}
+
+		return nil
+	}
+
+	fmt.Println("Ctrl+C to stop")
 	<-ctx.Done()
-	fmt.Println("🧹 Cleanup...")
-	sbx.Close(context.WithoutCancel(ctx))
 
 	return nil
 }
@@ -648,20 +666,22 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 
 	// Only upload when not in benchmark mode (verbose = true means single run)
 	if verbose {
-		paths := storage.Paths{BuildID: opts.newBuildID}
 		if opts.isRemoteStorage {
 			fmt.Println("📤 Uploading snapshot...")
-			if err := snapshot.Upload(ctx, r.storage, paths, nil); err != nil {
-				return timings, fmt.Errorf("failed to upload snapshot: %w", err)
-			}
-			fmt.Println("✅ Snapshot uploaded successfully")
 		} else {
 			fmt.Println("💾 Saving snapshot to local storage...")
-			if err := snapshot.Upload(ctx, r.storage, paths, nil); err != nil {
-				return timings, fmt.Errorf("failed to save snapshot: %w", err)
-			}
-			fmt.Println("✅ Snapshot saved successfully")
 		}
+
+		upload, err := sandbox.NewUpload(ctx, nil, snapshot, r.storage, storage.CompressConfig{}, nil, "", nil)
+		if err != nil {
+			return timings, fmt.Errorf("failed to prepare upload: %w", err)
+		}
+
+		if err := upload.Run(ctx); err != nil {
+			return timings, fmt.Errorf("failed to upload snapshot: %w", err)
+		}
+
+		fmt.Println("✅ Snapshot uploaded successfully")
 
 		fmt.Printf("\n✅ Build finished: %s\n", opts.newBuildID)
 		printArtifactSizes(opts.storagePath, opts.newBuildID)
@@ -969,7 +989,7 @@ func (r *runner) benchmark(ctx context.Context, n int) error {
 	return lastErr
 }
 
-func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, noEgress, verbose bool, pauseOpts pauseOptions, runOpts runOptions) error {
+func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, noEgress, verbose, shell bool, pauseOpts pauseOptions, runOpts runOptions) error {
 	// Silence other loggers unless verbose mode
 	var l logger.Logger
 	if !verbose {
@@ -1132,6 +1152,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		cache:      cache,
 		coldStart:  coldStart,
 		noPrefetch: noPrefetch,
+		shell:      shell,
 		config:     config.BuilderConfig,
 		storage:    persistence,
 		sbxConfig:  sbxCfg,

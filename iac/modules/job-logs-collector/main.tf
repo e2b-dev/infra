@@ -9,6 +9,8 @@ locals {
       grafana_logs_user     = var.grafana_logs_user
       grafana_logs_endpoint = var.grafana_logs_endpoint
       grafana_api_key       = var.grafana_api_key
+
+      enable_otel_router_logs = var.enable_otel_router_logs
     },
   )
 

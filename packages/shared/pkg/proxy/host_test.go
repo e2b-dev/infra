@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGetTargetFromRequest(t *testing.T) { //nolint:tparallel // cannot call t.Setenv with t.Parallel
-	t.Setenv("ENVIRONMENT", "local")
+func TestGetTargetFromRequest(t *testing.T) {
+	t.Parallel()
 
-	getTargetFromRequest := GetTargetFromRequest(true)
+	getTargetFromRequest := GetTargetFromRequest()
 
 	tests := []struct {
 		name     string
@@ -109,6 +109,26 @@ func TestGetTargetFromRequest(t *testing.T) { //nolint:tparallel // cannot call 
 			wantPort: 8080,
 		},
 		{
+			name: "headers: loopback IPv4",
+			host: "127.0.0.1:1234",
+			headers: http.Header{
+				headerSandboxID:   []string{"isv6ril5xadwn1k9t2jye"},
+				headerSandboxPort: []string{"8080"},
+			},
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 8080,
+		},
+		{
+			name: "headers: loopback IPv6",
+			host: "[::1]:1234",
+			headers: http.Header{
+				headerSandboxID:   []string{"isv6ril5xadwn1k9t2jye"},
+				headerSandboxPort: []string{"8080"},
+			},
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 8080,
+		},
+		{
 			name: "headers: invalid sandbox id with colon",
 			host: "localhost:1234",
 			headers: http.Header{
@@ -141,6 +161,56 @@ func TestGetTargetFromRequest(t *testing.T) { //nolint:tparallel // cannot call 
 				headerSandboxID: []string{"isv6ril5xadwn1k9t2jye"},
 			},
 			wantErrIs: MissingHeaderError{Header: headerSandboxPort},
+		},
+		{
+			name: "headers: sandbox shared host",
+			host: "sandbox.e2b.app",
+			headers: http.Header{
+				headerSandboxID:   []string{"isv6ril5xadwn1k9t2jye"},
+				headerSandboxPort: []string{"49983"},
+			},
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 49983,
+		},
+		{
+			name: "headers: private IPv4 (bridge/LAN)",
+			host: "192.168.100.66:3002",
+			headers: http.Header{
+				headerSandboxID:   []string{"isv6ril5xadwn1k9t2jye"},
+				headerSandboxPort: []string{"49983"},
+			},
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 49983,
+		},
+		{
+			name: "headers: private IPv4 (10.x network)",
+			host: "10.0.0.5:3002",
+			headers: http.Header{
+				headerSandboxID:   []string{"isv6ril5xadwn1k9t2jye"},
+				headerSandboxPort: []string{"49983"},
+			},
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 49983,
+		},
+		{
+			name: "headers: public IPv4",
+			host: "34.120.5.10:3002",
+			headers: http.Header{
+				headerSandboxID:   []string{"isv6ril5xadwn1k9t2jye"},
+				headerSandboxPort: []string{"49983"},
+			},
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 49983,
+		},
+		{
+			name: "headers: ignored on regular sandbox host",
+			host: "49983-isv6ril5xadwn1k9t2jye.e2b.app",
+			headers: http.Header{
+				headerSandboxID:   []string{"iother5b5aiixd410phsjv"},
+				headerSandboxPort: []string{"3000"},
+			},
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 49983,
 		},
 	}
 

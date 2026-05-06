@@ -320,10 +320,18 @@ func doBuild(
 	buildMetrics, _ := metrics.NewBuildMetrics(noop.MeterProvider{})
 	sandboxFactory := sandbox.NewFactory(c.BuilderConfig, networkPool, devicePool, featureFlags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), network.NewNoopEgressProxy(), sandboxes)
 
+	// Layered V4 builds need the upload coordinator so child layers wait on
+	// their parents' header finalization. Redis is nil (CLI is single-host —
+	// no cross-orch signaling needed); local same-orch coordination via
+	// futures is what matters here.
+	uploads := sandbox.NewUploads(templateCache, persistenceTemplate, nil)
+	defer uploads.Stop()
+
 	builder := build.NewBuilder(
 		builderConfig, l, featureFlags, sandboxFactory,
 		persistenceTemplate, persistenceBuild, artifactRegistry,
 		dockerhubRepo, sandboxProxy, sandboxes, templateCache, buildMetrics,
+		uploads,
 	)
 
 	l = l.With(zap.String("envID", templateID)).With(zap.String("buildID", buildID))

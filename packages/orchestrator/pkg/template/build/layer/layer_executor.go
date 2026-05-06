@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -33,7 +34,9 @@ type LayerExecutor struct {
 	templateStorage storage.StorageProvider
 	buildStorage    storage.StorageProvider
 	index           cache.Index
-	uploadTracker   *UploadTracker
+	uploads         *sandbox.Uploads
+	compressConfig  storage.CompressConfig
+	ff              *featureflags.Client
 }
 
 func NewLayerExecutor(
@@ -45,7 +48,9 @@ func NewLayerExecutor(
 	templateStorage storage.StorageProvider,
 	buildStorage storage.StorageProvider,
 	index cache.Index,
-	uploadTracker *UploadTracker,
+	uploads *sandbox.Uploads,
+	compressConfig storage.CompressConfig,
+	ff *featureflags.Client,
 ) *LayerExecutor {
 	return &LayerExecutor{
 		BuildContext: buildContext,
@@ -58,7 +63,9 @@ func NewLayerExecutor(
 		templateStorage: templateStorage,
 		buildStorage:    buildStorage,
 		index:           index,
-		uploadTracker:   uploadTracker,
+		uploads:         uploads,
+		compressConfig:  compressConfig,
+		ff:              ff,
 	}
 }
 
@@ -276,45 +283,32 @@ func (lb *LayerExecutor) PauseAndUpload(
 	// Upload snapshot async, it's added to the template cache immediately
 	userLogger.Debug(ctx, fmt.Sprintf("Saving: %s", meta.Template.BuildID))
 
-	// Register this upload and get functions to signal completion and wait for previous uploads
-	completeUpload, waitForPreviousUploads := lb.uploadTracker.StartUpload()
+	objectMetadata := storage.ObjectMetadata{
+		storage.ObjectMetadataTeamID: lb.BuildContext.Config.TeamID,
+	}
 
-	lb.UploadErrGroup.Go(func() error {
+	upload, err := sandbox.NewUpload(ctx, lb.uploads, snapshot, lb.templateStorage, lb.compressConfig, lb.ff, storage.UseCaseBuild, objectMetadata)
+	if err != nil {
+		return fmt.Errorf("register upload: %w", err)
+	}
+
+	lb.UploadErrGroup.Go(func() (uploadErr error) {
 		ctx := context.WithoutCancel(ctx)
 		ctx, span := tracer.Start(ctx, "upload snapshot")
 		defer span.End()
 
-		// Always signal completion to unblock waiting goroutines, even on error.
-		// This prevents deadlocks when an earlier layer fails - later layers can
-		// still unblock and the errgroup can properly collect all errors.
-		defer completeUpload()
+		// Signal even on error so child layers waiting on this build can abort.
+		defer func() { upload.Finish(ctx, uploadErr) }()
 
-		err := snapshot.Upload(
-			ctx,
-			lb.templateStorage,
-			storage.Paths{BuildID: meta.Template.BuildID},
-			storage.ObjectMetadata{
-				storage.ObjectMetadataTeamID: lb.BuildContext.Config.TeamID,
-			},
-		)
-		if err != nil {
+		if err := upload.Run(ctx); err != nil {
 			return fmt.Errorf("error uploading snapshot: %w", err)
 		}
 
-		// Wait for all previous layer uploads to complete before saving the cache entry.
-		// This prevents race conditions where another build hits this cache entry
-		// before its dependencies (previous layers) are available in storage.
-		err = waitForPreviousUploads(ctx)
-		if err != nil {
-			return fmt.Errorf("error waiting for previous uploads: %w", err)
-		}
-
-		err = lb.index.SaveLayerMeta(ctx, hash, cache.LayerMetadata{
+		if err := lb.index.SaveLayerMeta(ctx, hash, cache.LayerMetadata{
 			Template: cache.Template{
 				BuildID: meta.Template.BuildID,
 			},
-		})
-		if err != nil {
+		}); err != nil {
 			// Since the data should be basically identical, this is safe to skip.
 			if !errors.Is(err, storage.ErrObjectRateLimited) {
 				return fmt.Errorf("error saving UUID to hash mapping: %w", err)
