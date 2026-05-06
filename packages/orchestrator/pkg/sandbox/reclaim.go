@@ -3,12 +3,19 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
+	"connectrpc.com/connect"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -31,8 +38,8 @@ var reclaimSteps = []reclaimStep{
 const reclaimOuterSlack = 500 * time.Millisecond
 
 // buildReclaimScript composes a chain where each step has its own
-// `timeout --foreground -s KILL` ceiling. Steps with cap=0 are skipped.
-// Returns ("", 0) when every step is disabled.
+// `timeout -s KILL` ceiling. Steps with cap=0 are skipped. Returns
+// ("", 0) when every step is disabled.
 func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration) {
 	var (
 		parts []string
@@ -43,14 +50,11 @@ func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration
 		if ms <= 0 {
 			continue
 		}
-		// `timeout` accepts fractional seconds (s/m/h/d), not `ms`.
-		// `--foreground` ensures SIGKILL actually reaches the child when we
-		// run inside a non-interactive bash invoked from envd. Per-step
-		// stdout/stderr is dropped; any non-zero status is captured into
-		// `rc` so the script's overall exit code surfaces failures without
-		// short-circuiting subsequent steps.
+		// `timeout` accepts fractional seconds (s/m/h/d), not `ms`. Output
+		// is dropped; non-zero status is captured into `rc` so the final
+		// exit code surfaces failures without short-circuiting later steps.
 		secs := float64(ms) / 1000.0
-		parts = append(parts, fmt.Sprintf("timeout --foreground -s KILL %.3f sh -c %q >/dev/null 2>&1 || rc=$?", secs, st.cmd))
+		parts = append(parts, fmt.Sprintf("timeout -s KILL %.3f sh -c %q >/dev/null 2>&1 || rc=$?", secs, st.cmd))
 		sum += time.Duration(ms) * time.Millisecond
 	}
 	if len(parts) == 0 {
@@ -61,21 +65,33 @@ func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration
 }
 
 // bestEffortReclaim asks envd to reclaim guest memory + disk before pause.
-// Per-step stdout/stderr is silenced inside the guest; we only log when
-// envd itself errors or the script reports a non-zero exit code.
+// Per-step output is silenced inside the guest; we only log when envd
+// itself errors or the script reports a non-zero exit code.
 func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
-	ctx, span := tracer.Start(ctx, "envd-reclaim")
-	defer span.End()
-
 	script, timeout := s.buildReclaimScript(ctx)
 	if script == "" {
 		return
 	}
 
+	ctx, span := tracer.Start(ctx, "envd-reclaim")
+	defer span.End()
+
 	rcCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	stream, err := s.StartEnvdProcess(rcCtx, script, "root", timeout)
+	addr := fmt.Sprintf("http://%s:%d", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
+	pc := processconnect.NewProcessClient(&http.Client{Transport: sandboxHttpClient.Transport}, addr)
+
+	req := connect.NewRequest(&process.StartRequest{
+		Process: &process.ProcessConfig{Cmd: "/bin/bash", Args: []string{"-c", script}},
+	})
+	req.Header().Set("Connect-Timeout-Ms", strconv.FormatInt(int64(timeout/time.Millisecond), 10))
+	if s.Config.Envd.AccessToken != nil {
+		req.Header().Set("X-Access-Token", *s.Config.Envd.AccessToken)
+	}
+	grpc.SetUserHeader(req.Header(), "root")
+
+	stream, err := pc.Start(rcCtx, req)
 	if err != nil {
 		logger.L().Warn(ctx, "envd reclaim failed", logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
 
