@@ -78,7 +78,7 @@ func TestMultiplexedChannel_BasicFanOut(t *testing.T) {
 		)
 	}
 
-	close(m.Source)
+	m.CloseSource()
 	wg.Wait()
 
 	assert.Equal(t, []int{1, 2, 3}, gotA)
@@ -90,7 +90,7 @@ func TestMultiplexedChannel_AbandonedConsumerDoesNotWedgeFanOut(t *testing.T) {
 	t.Parallel()
 
 	m := NewMultiplexedChannel[int](1)
-	t.Cleanup(func() { close(m.Source) })
+	t.Cleanup(func() { m.CloseSource() })
 
 	abandoned, cancelAbandoned := m.Fork()
 
@@ -124,13 +124,20 @@ func TestMultiplexedChannel_AbandonedConsumerDoesNotWedgeFanOut(t *testing.T) {
 		t.Fatal("cancel func did not return promptly; fan-out is wedged")
 	}
 
-	// Producer should still make progress through Source.
+	// With no subscribers, the fan-out stops draining Source to apply
+	// back-pressure.  After the in-flight value is consumed, Source
+	// fills and further sends block.
+	sent := 0
 	for i := 2; i <= 8; i++ {
-		require.Truef(t,
-			sendOrTimeout(t, m.Source, i, multiplexTestTimeout),
-			"send %d should not be back-pressured by an abandoned consumer", i,
-		)
+		if !sendOrTimeout(t, m.Source, i, 100*time.Millisecond) {
+			break
+		}
+		sent++
 	}
+	// The buffer (size 1) plus at most one in-flight value means
+	// at most ~2 sends succeed before blocking.
+	assert.LessOrEqual(t, sent, 3,
+		"fan-out should stop draining Source when no subscribers remain (back-pressure)")
 }
 
 // Regression: an abandoned consumer must not starve other subscribers.
@@ -138,7 +145,7 @@ func TestMultiplexedChannel_AbandonedConsumerDoesNotStarveOthers(t *testing.T) {
 	t.Parallel()
 
 	m := NewMultiplexedChannel[int](1)
-	t.Cleanup(func() { close(m.Source) })
+	t.Cleanup(func() { m.CloseSource() })
 
 	healthy, cancelHealthy := m.Fork()
 	t.Cleanup(cancelHealthy)
@@ -202,7 +209,7 @@ func TestMultiplexedChannel_CancelIsIdempotentAndPrompt(t *testing.T) {
 	t.Cleanup(func() {
 		close(stop)
 		<-producerDone
-		close(m.Source)
+		m.CloseSource()
 	})
 
 	// Give the fan-out a chance to enter a per-subscriber select.
@@ -243,7 +250,7 @@ func TestMultiplexedChannel_SourceCloseClosesLiveSubscribers(t *testing.T) {
 		"send should succeed",
 	)
 
-	close(m.Source)
+	m.CloseSource()
 
 	select {
 	case <-done:
@@ -258,7 +265,7 @@ func TestMultiplexedChannel_ForkAfterSourceCloseReturnsClosedChan(t *testing.T) 
 	t.Parallel()
 
 	m := NewMultiplexedChannel[int](0)
-	close(m.Source)
+	m.CloseSource()
 
 	// Wait for the fan-out goroutine to observe Source close.
 	deadline := time.Now().Add(multiplexTestTimeout)
@@ -290,7 +297,8 @@ func TestMultiplexedChannel_NoGoroutineLeakOnAbandon(t *testing.T) { //nolint:pa
 		// Park one value so fan-out has work, then cancel mid-iteration.
 		m.Source <- 0
 		cancel()
-		close(m.Source)
+		m.CloseSource()
+		m.NotifySubscriberChange()
 	}
 
 	// Allow scheduled goroutines to finish.
