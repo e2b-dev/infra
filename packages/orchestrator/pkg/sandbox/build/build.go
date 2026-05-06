@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"sync/atomic"
-	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -16,10 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
-
-// swapReadHeaderBudget bounds how long the read-path swap polls GCS for the
-// V4 header to appear.
-const swapReadHeaderBudget = 30 * time.Second
 
 type File struct {
 	header      atomic.Pointer[header.Header]
@@ -57,7 +52,7 @@ func (b *File) SwapHeader(h *header.Header) {
 
 func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
 	for n < len(p) {
-		h := b.header.Load()
+		h := b.Header()
 
 		mappedToBuild, err := h.GetShiftedMapping(ctx, off+int64(n))
 		if err != nil {
@@ -126,7 +121,7 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 // The slice access must be in the predefined blocksize of the build.
 func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 	for {
-		h := b.header.Load()
+		h := b.Header()
 
 		mappedBuild, err := h.GetShiftedMapping(ctx, off)
 		if err != nil {
@@ -165,6 +160,10 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 // or (false, swapErr) if the swap itself failed. peerSeekable emits the
 // transition error at most once per seekable, so the loop is naturally
 // bounded — no retry counter needed here.
+//
+// The transition is signaled only after the source upload has finalized, so
+// the header object already exists in storage. A single LoadHeader is enough;
+// polling here would multiply GCS reads under high peer-transition rates.
 func (b *File) retryOnTransition(ctx context.Context, err error) (bool, error) {
 	var transErr *storage.PeerTransitionedError
 	if !errors.As(err, &transErr) {
@@ -175,7 +174,8 @@ func (b *File) retryOnTransition(ctx context.Context, err error) (bool, error) {
 		zap.String("file_type", string(b.fileType)),
 	)
 
-	h, loadErr := PollRemoteStorageForHeader(ctx, b.persistence, b.header.Load().Metadata.BuildId, b.fileType, nil, swapReadHeaderBudget)
+	hdrPath := storage.Paths{BuildID: b.Header().Metadata.BuildId.String()}.HeaderFile(string(b.fileType))
+	h, loadErr := header.LoadHeader(ctx, b.persistence, hdrPath)
 	if loadErr != nil {
 		return false, fmt.Errorf("failed to swap header: %w", loadErr)
 	}

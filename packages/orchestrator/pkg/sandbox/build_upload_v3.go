@@ -75,7 +75,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 	}
 
 	if u.snap.MemfileDiffHeader != nil {
-		if _, err := u.collectAncestorBuilds(ctx, u.snap.MemfileDiffHeader.Mapping, build.Memfile); err != nil {
+		if err := u.appendAncestorBuilds(ctx, nil, u.snap.MemfileDiffHeader.Mapping, build.Memfile); err != nil {
 			return err
 		}
 	}
@@ -86,7 +86,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 	}
 
 	if u.snap.RootfsDiffHeader != nil {
-		if _, err := u.collectAncestorBuilds(ctx, u.snap.RootfsDiffHeader.Mapping, build.Rootfs); err != nil {
+		if err := u.appendAncestorBuilds(ctx, nil, u.snap.RootfsDiffHeader.Mapping, build.Rootfs); err != nil {
 			return err
 		}
 	}

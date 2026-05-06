@@ -548,7 +548,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	builder := chrooted.NewBuilder(config)
 	volumeService := volumes.New(config, builder)
 
-	uploads := sandbox.NewUploads(templateCache, persistence, redisClient)
+	uploads := sandbox.NewUploads(templateCache, persistence, peerResolver, redisClient)
 	closers = append(closers, closer{"pending uploads", func(context.Context) error {
 		uploads.Stop()
 
