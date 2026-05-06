@@ -684,9 +684,11 @@ components:
           description: Time to live for the sandbox in seconds.
         autoPause:
           type: boolean
-          default: false
-          description: Automatically pauses the sandbox after the timeout
+          deprecated: true
+          description: Deprecated. Use lifecycle.onTimeout instead.
         autoResume:
+          deprecated: true
+          description: Deprecated. Use lifecycle.autoResume instead.
           $ref: "#/components/schemas/SandboxAutoResumeConfig"
         lifecycle:
           $ref: "#/components/schemas/NewSandboxLifecycle"
