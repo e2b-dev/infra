@@ -230,6 +230,8 @@ module "nomad" {
 
   launch_darkly_api_key = module.init.launch_darkly_api_key
 
+  enable_otel_router_logs = var.enable_otel_router_logs
+
   db_max_open_connections      = var.db_max_open_connections
   db_min_idle_connections      = var.db_min_idle_connections
   auth_db_max_open_connections = var.auth_db_max_open_connections

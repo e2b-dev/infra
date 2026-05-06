@@ -383,6 +383,13 @@ variable "otel_collector_grpc_port" {
   type    = number
   default = 4317
 }
+
+variable "enable_otel_router_logs" {
+  type        = bool
+  default     = false
+  description = "Enable teeing non-internal customer logs from Vector to otel-router."
+}
+
 variable "clickhouse_server_port" {
   type = object({
     name = string
