@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"sync/atomic"
 
 	"go.uber.org/zap"
@@ -17,9 +18,20 @@ import (
 var _ storage.Seekable = (*peerSeekable)(nil)
 
 // peerSeekable reads from the peer orchestrator first.
-// calls (e.g. ReadAt then OpenRangeReader) do not re-open the underlying GCS object.
+// Peer fetches always use the basic (uncompressed) name. Only the base
+// (GCS/S3) fallthrough path needs to know the current compression type —
+// it's resolved per call from the live FrameTable, so a header swap from
+// V3 to V4 (or vice versa) is reflected on the next read.
 type peerSeekable struct {
-	peerHandle[storage.Seekable]
+	peerHandle
+
+	basePersistence storage.StorageProvider
+	objType         storage.SeekableObjectType
+
+	mu     sync.Mutex
+	base   storage.Seekable
+	baseCT storage.CompressionType
+	loaded bool
 
 	// transitionEmitted ensures we signal PeerTransitionedError at most once
 	// after the peer flips uploaded=true. The caller (build.File) reacts by
@@ -30,8 +42,33 @@ type peerSeekable struct {
 	transitionEmitted atomic.Bool
 }
 
+// getBase returns a base Seekable opened against the storage path composed
+// from (buildID, basic name, ct). Reopens if ct differs from the cached
+// entry — a no-op for V3 (always None) but essential after a V3→V4 swap.
+func (s *peerSeekable) getBase(ctx context.Context, ct storage.CompressionType) (storage.Seekable, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.loaded && s.baseCT == ct {
+		return s.base, nil
+	}
+
+	path := storage.Paths{BuildID: s.buildID}.DataFile(s.fileName, ct)
+
+	base, err := s.basePersistence.OpenSeekable(ctx, path, s.objType)
+	if err != nil {
+		return nil, err
+	}
+
+	s.base = base
+	s.baseCT = ct
+	s.loaded = true
+
+	return base, nil
+}
+
 func (s *peerSeekable) Size(ctx context.Context) (int64, error) {
-	return withPeerFallback(ctx, &s.peerHandle, "size peer-seekable", attrOpSize,
+	res, err := tryPeer(ctx, &s.peerHandle, "size peer-seekable", attrOpSize,
 		func(ctx context.Context) (peerAttempt[int64], error) {
 			resp, err := s.client.GetBuildFileSize(ctx, &orchestrator.GetBuildFileSizeRequest{
 				BuildId:  s.buildID,
@@ -46,15 +83,33 @@ func (s *peerSeekable) Size(ctx context.Context) (int64, error) {
 			}
 
 			return peerAttempt[int64]{}, nil
-		},
-		func(ctx context.Context, base storage.Seekable) (int64, error) {
-			return base.Size(ctx)
-		},
-	)
+		})
+	if res.hit {
+		return res.value, err
+	}
+
+	// Size only reaches base for V3 builds (uncompressedSize unknown);
+	// V4 builds carry the size in the header so the chunker never calls Size.
+	// V3 implies CompressionNone, matching reality.
+	base, err := s.getBase(ctx, storage.CompressionNone)
+	if err != nil {
+		return 0, err
+	}
+
+	return base.Size(ctx)
 }
 
 func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *storage.FrameTable) (io.ReadCloser, error) {
-	return withPeerFallback(ctx, &s.peerHandle, "peer-seekable-open-range-reader", attrOpRangeReader,
+	// Once the peer flips uploaded=true, ask the caller to refresh its header
+	// from storage (the post-upload state may be V4/compressed) and retry.
+	// Emit at most once per peerSeekable so V3 builds (no V4 to upgrade to)
+	// don't loop against this error. No peer call, no base open — caller
+	// retries with the live compression type already in the new FrameTable.
+	if s.uploaded.Load() && s.transitionEmitted.CompareAndSwap(false, true) {
+		return nil, &storage.PeerTransitionedError{}
+	}
+
+	res, err := tryPeer(ctx, &s.peerHandle, "peer-seekable-open-range-reader", attrOpRangeReader,
 		func(ctx context.Context) (peerAttempt[io.ReadCloser], error) {
 			streamCtx, cancel := context.WithCancel(ctx)
 
@@ -75,23 +130,29 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length in
 				value: newPeerStreamReader(recv, cancel),
 				hit:   true,
 			}, nil
-		},
-		func(ctx context.Context, base storage.Seekable) (io.ReadCloser, error) {
-			// Signal the caller once to fetch the post-upload header from storage;
-			// thereafter fall through so V3 builds (no V4 to upgrade to) don't
-			// loop against PeerTransitionedError.
-			if s.uploaded != nil && s.uploaded.Load() && s.transitionEmitted.CompareAndSwap(false, true) {
-				return nil, &storage.PeerTransitionedError{}
-			}
+		})
+	if res.hit {
+		return res.value, err
+	}
 
-			return base.OpenRangeReader(ctx, off, length, frameTable)
-		},
-	)
+	ct := storage.CompressionNone
+	if frameTable != nil {
+		ct = frameTable.CompressionType()
+	}
+
+	base, err := s.getBase(ctx, ct)
+	if err != nil {
+		return nil, err
+	}
+
+	return base.OpenRangeReader(ctx, off, length, frameTable)
 }
 
 func (s *peerSeekable) StoreFile(ctx context.Context, path string, opts ...storage.PutOption) (*storage.FrameTable, [32]byte, error) {
 	// Writes always go to the base provider (GCS/S3); the peer is read-only.
-	fallback, err := s.getOrOpenBase(ctx)
+	// StoreFile composes its own paths via FrameTable; ct here is irrelevant
+	// to the actual write target.
+	fallback, err := s.getBase(ctx, storage.CompressionNone)
 	if err != nil {
 		return nil, [32]byte{}, err
 	}

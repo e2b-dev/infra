@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -130,29 +129,37 @@ func newPeerStorageProvider(
 func (p *peerStorageProvider) OpenBlob(_ context.Context, path string, objType storage.ObjectType) (storage.Blob, error) {
 	buildID, fileName := storage.SplitPath(path)
 
-	return &peerBlob{peerHandle: peerHandle[storage.Blob]{
-		client:   p.peerClient,
-		buildID:  buildID,
-		fileName: fileName,
-		uploaded: p.uploaded,
-		openFn: func(ctx context.Context) (storage.Blob, error) {
+	return &peerBlob{
+		peerHandle: peerHandle{
+			client:   p.peerClient,
+			buildID:  buildID,
+			fileName: fileName,
+			uploaded: p.uploaded,
+		},
+		openBase: func(ctx context.Context) (storage.Blob, error) {
 			return p.base.OpenBlob(ctx, path, objType)
 		},
-	}}, nil
+	}, nil
 }
 
 func (p *peerStorageProvider) OpenSeekable(_ context.Context, path string, objType storage.SeekableObjectType) (storage.Seekable, error) {
+	// peerStorageProvider is only constructed by routingProvider while the
+	// build is peer-authoritative — i.e. pre-finalization, when the header is
+	// V3 (CompressionNone) and the data file is referenced by its basic name.
+	// So fileName here is always the basic name; the base fallthrough path
+	// composes the actual storage path from (buildID, name, ct) per-call.
 	buildID, fileName := storage.SplitPath(path)
 
-	return &peerSeekable{peerHandle: peerHandle[storage.Seekable]{
-		client:   p.peerClient,
-		buildID:  buildID,
-		fileName: fileName,
-		uploaded: p.uploaded,
-		openFn: func(ctx context.Context) (storage.Seekable, error) {
-			return p.base.OpenSeekable(ctx, path, objType)
+	return &peerSeekable{
+		peerHandle: peerHandle{
+			client:   p.peerClient,
+			buildID:  buildID,
+			fileName: fileName,
+			uploaded: p.uploaded,
 		},
-	}}, nil
+		basePersistence: p.base,
+		objType:         objType,
+	}, nil
 }
 
 func (p *peerStorageProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
@@ -182,40 +189,16 @@ func checkPeerAvailability(avail *orchestrator.PeerAvailability, uploaded *atomi
 	return true
 }
 
-type peerHandle[Base any] struct {
+// peerHandle holds the peer-side identity shared by peerBlob and peerSeekable.
+// fileName is the basic (uncompressed) name — peer fetches always use it.
+type peerHandle struct {
 	client   orchestrator.ChunkServiceClient
 	buildID  string
 	fileName string
 	uploaded *atomic.Bool
-
-	mu     sync.Mutex
-	base   Base
-	loaded bool
-	openFn func(ctx context.Context) (Base, error)
 }
 
-func (h *peerHandle[Base]) getOrOpenBase(ctx context.Context) (Base, error) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	if h.loaded {
-		return h.base, nil
-	}
-
-	b, err := h.openFn(ctx)
-	if err != nil {
-		var zero Base
-
-		return zero, err
-	}
-
-	h.base = b
-	h.loaded = true
-
-	return b, nil
-}
-
-// peerAttempt is the result of a peer read attempt, used with withPeerFallback.
+// peerAttempt is the result of a peer read attempt.
 // hit=true means the peer had data (value is populated); when hit=true and the
 // caller also returns a non-nil error the helper records a partial failure.
 type peerAttempt[T any] struct {
@@ -224,61 +207,53 @@ type peerAttempt[T any] struct {
 	hit   bool
 }
 
-func withPeerFallback[Base, T any](
+// tryPeer attempts a peer read if the peer is still authoritative for this
+// build. It records peer telemetry and returns the attempt; the caller
+// inspects res.hit to decide whether to fall through to base. tryPeer never
+// opens base.
+func tryPeer[T any](
 	ctx context.Context,
-	h *peerHandle[Base],
+	h *peerHandle,
 	spanName string,
 	opAttr attribute.KeyValue,
 	peerFn func(ctx context.Context) (peerAttempt[T], error),
-	useBase func(ctx context.Context, base Base) (T, error),
-) (T, error) {
+) (peerAttempt[T], error) {
 	ctx, span := tracer.Start(ctx, spanName, trace.WithAttributes(
 		attribute.String("file_name", h.fileName),
 	))
 	defer span.End()
 
-	if !h.uploaded.Load() {
-		timer := peerReadTimerFactory.Begin(opAttr)
+	if h.uploaded.Load() {
+		span.SetAttributes(attrPeerHitFalse)
 
-		res, err := peerFn(ctx)
-		if res.hit {
-			if err != nil {
-				span.RecordError(err)
-				timer.Failure(ctx, res.bytes)
+		return peerAttempt[T]{}, nil
+	}
 
-				return res.value, err
-			}
+	timer := peerReadTimerFactory.Begin(opAttr)
 
-			span.SetAttributes(attrPeerHitTrue)
-			timer.Success(ctx, res.bytes)
-
-			return res.value, nil
-		}
-
+	res, err := peerFn(ctx)
+	if res.hit {
 		if err != nil {
 			span.RecordError(err)
+			timer.Failure(ctx, res.bytes)
+
+			return res, err
 		}
 
-		timer.Failure(ctx, 0)
+		span.SetAttributes(attrPeerHitTrue)
+		timer.Success(ctx, res.bytes)
+
+		return res, nil
 	}
 
+	if err != nil {
+		span.RecordError(err)
+	}
+
+	timer.Failure(ctx, 0)
 	span.SetAttributes(attrPeerHitFalse)
 
-	base, err := h.getOrOpenBase(ctx)
-	if err != nil {
-		span.RecordError(err)
-
-		var zero T
-
-		return zero, err
-	}
-
-	result, err := useBase(ctx, base)
-	if err != nil {
-		span.RecordError(err)
-	}
-
-	return result, err
+	return peerAttempt[T]{}, nil
 }
 
 var _ io.ReadCloser = (*peerStreamReader)(nil)

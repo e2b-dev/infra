@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"sync/atomic"
 
 	"go.uber.org/zap"
@@ -16,12 +17,39 @@ import (
 
 var _ storage.Blob = (*peerBlob)(nil)
 
+// peerBlob reads from the peer first; on fallthrough, opens base lazily.
+// The base path is fixed at construction (blobs are not compressed).
 type peerBlob struct {
-	peerHandle[storage.Blob]
+	peerHandle
+
+	openBase func(ctx context.Context) (storage.Blob, error)
+
+	mu     sync.Mutex
+	base   storage.Blob
+	loaded bool
+}
+
+func (b *peerBlob) getBase(ctx context.Context) (storage.Blob, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.loaded {
+		return b.base, nil
+	}
+
+	base, err := b.openBase(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	b.base = base
+	b.loaded = true
+
+	return base, nil
 }
 
 func (b *peerBlob) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
-	return withPeerFallback(ctx, &b.peerHandle, "peer-blob-write-to", attrOpWriteTo,
+	res, err := tryPeer(ctx, &b.peerHandle, "peer-blob-write-to", attrOpWriteTo,
 		func(ctx context.Context) (peerAttempt[int64], error) {
 			streamCtx, cancel := context.WithCancel(ctx)
 
@@ -46,15 +74,21 @@ func (b *peerBlob) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 			}
 
 			return peerAttempt[int64]{value: n, bytes: n, hit: true}, nil
-		},
-		func(ctx context.Context, base storage.Blob) (int64, error) {
-			return base.WriteTo(ctx, dst)
-		},
-	)
+		})
+	if res.hit {
+		return res.value, err
+	}
+
+	base, err := b.getBase(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	return base.WriteTo(ctx, dst)
 }
 
 func (b *peerBlob) Exists(ctx context.Context) (bool, error) {
-	return withPeerFallback(ctx, &b.peerHandle, "peer-blob-exists", attrOpExists,
+	res, err := tryPeer(ctx, &b.peerHandle, "peer-blob-exists", attrOpExists,
 		func(ctx context.Context) (peerAttempt[bool], error) {
 			resp, err := b.client.GetBuildFileExists(ctx, &orchestrator.GetBuildFileExistsRequest{
 				BuildId:  b.buildID,
@@ -69,16 +103,22 @@ func (b *peerBlob) Exists(ctx context.Context) (bool, error) {
 			}
 
 			return peerAttempt[bool]{}, nil
-		},
-		func(ctx context.Context, base storage.Blob) (bool, error) {
-			return base.Exists(ctx)
-		},
-	)
+		})
+	if res.hit {
+		return res.value, err
+	}
+
+	base, err := b.getBase(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	return base.Exists(ctx)
 }
 
 func (b *peerBlob) Put(ctx context.Context, data []byte, opts ...storage.PutOption) error {
 	// Writes always go to the base provider (GCS/S3); the peer is read-only.
-	fallback, err := b.getOrOpenBase(ctx)
+	fallback, err := b.getBase(ctx)
 	if err != nil {
 		return err
 	}
