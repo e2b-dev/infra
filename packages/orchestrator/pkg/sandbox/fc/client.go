@@ -427,9 +427,6 @@ func (c *apiClient) startVM(ctx context.Context) error {
 	return nil
 }
 
-// installBalloon installs the virtio-balloon pre-boot with target size 0.
-// FreePageReporting and FreePageHinting are each gated independently at
-// template build time (FC version for FPR; guest kernel version for FPH).
 func (c *apiClient) installBalloon(ctx context.Context, freePageReporting, freePageHinting bool) error {
 	ctx, span := tracer.Start(ctx, "install-balloon")
 	defer span.End()

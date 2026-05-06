@@ -73,7 +73,6 @@ func main() {
 	optimize := flag.Bool("optimize", false, "collect fresh prefetch mapping after pause (resumes snapshot to record page faults)")
 	shell := flag.Bool("shell", false, "attach an interactive PTY shell via envd (no sshd required in the sandbox)")
 
-	// Pause-time FPH override; 0 = use LD default (off).
 	fphTimeoutMs := flag.Int("fph-timeout-ms", 0, "override free-page-hinting-timeout-ms LD flag (0 = use LD default)")
 
 	flag.Parse()

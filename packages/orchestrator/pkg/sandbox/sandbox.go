@@ -1058,8 +1058,7 @@ func (s *Sandbox) Pause(
 	s.Checks.Stop()
 
 	// Drain free-page-hinting before pause so the snapshot doesn't capture
-	// pages the guest already considers free. No-op when no balloon. Failures
-	// are logged but non-fatal. Timeout=0 disables the step.
+	// pages the guest already considers free. Timeout=0 disables.
 	if t := time.Duration(s.featureFlags.IntFlag(ctx, featureflags.FreePageHintingTimeoutMs)) * time.Millisecond; t > 0 {
 		drainCtx, cancel := context.WithTimeout(ctx, t)
 		if err := s.process.DrainBalloon(drainCtx); err != nil {

@@ -715,10 +715,8 @@ func (p *Process) Pause(ctx context.Context) error {
 }
 
 // DrainBalloon triggers a free-page-hinting run and blocks until the guest
-// acknowledges or ctx fires. No-op on FC < v1.14 (no API) and when no balloon
-// device is configured (FC returns 400) so it survives snapshot/resume
-// without local state. Records `drain-balloon.outcome` on the span:
-// ok | fc-unsupported | not-configured | timeout | start-failed | describe-failed.
+// acknowledges or ctx fires. No-op on FC < v1.14 and when no balloon is
+// configured (FC returns 400).
 func (p *Process) DrainBalloon(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "drain-balloon")
 	outcome := "ok"
@@ -733,7 +731,7 @@ func (p *Process) DrainBalloon(ctx context.Context) error {
 		return nil
 	}
 
-	if err := p.client.startBalloonHinting(ctx, true /* ackOnStop */); err != nil {
+	if err := p.client.startBalloonHinting(ctx, true); err != nil {
 		var notConfigured *operations.StartBalloonHintingBadRequest
 		if errors.As(err, &notConfigured) {
 			outcome = "not-configured"
@@ -762,9 +760,8 @@ func (p *Process) DrainBalloon(ctx context.Context) error {
 
 			return fmt.Errorf("balloon hinting status: %w", err)
 		}
-		// host_cmd is monotonic and we just called start, so host > 0
-		// after FC accepts it. Require it to guard against transient
-		// nil/zero responses returning a false-positive completion.
+		// host_cmd is monotonic; require host > 0 to avoid a false-positive
+		// completion before FC has accepted the start.
 		if host > 0 && guest >= host {
 			return nil
 		}
