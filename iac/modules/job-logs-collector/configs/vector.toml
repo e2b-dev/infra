@@ -111,6 +111,28 @@ buildID = "{{ buildID }}"
 sandboxID = "{{ sandboxID }}"
 category = "{{ category }}"
 
+%{ if enable_otel_router_logs }
+[sinks.otel_router_non_internal]
+type = "opentelemetry"
+inputs = [ "remove_internal" ]
+healthcheck.enabled = false
+buffer.type = "memory"
+buffer.max_events = 500
+buffer.when_full = "drop_newest"
+
+[sinks.otel_router_non_internal.protocol]
+type = "http"
+uri = "http://otel-router.service.consul:4318/v1/logs"
+method = "post"
+
+[sinks.otel_router_non_internal.protocol.encoding]
+codec = "otlp"
+
+[sinks.otel_router_non_internal.protocol.request]
+retry_attempts = 0
+timeout_secs = 2
+%{ endif }
+
 %{ if grafana_logs_endpoint != "" }
 [sinks.grafana]
 type = "loki"
