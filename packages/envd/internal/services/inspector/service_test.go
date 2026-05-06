@@ -18,18 +18,25 @@ func newTestService(t *testing.T) *Service {
 	return newService(&logger, nil)
 }
 
-func TestQueryChangesScaffoldIsDegraded(t *testing.T) {
+// On non-linux builds (or linux without -tags inspector_bpf) the stub
+// fsTracker is in use, so QueryChanges always reports degraded=true.
+// On linux+inspector_bpf builds the BPF tracker may be active; this
+// test is permissive on degraded and only asserts the contract that
+// degraded ⇒ filesystem_changed=false.
+func TestQueryChangesDegradedContract(t *testing.T) {
 	s := newTestService(t)
 
 	resp, err := s.QueryChanges(context.Background(), connect.NewRequest(&rpc.QueryChangesRequest{}))
 	require.NoError(t, err)
 
-	// The scaffold MUST report degraded so callers fall through to a full
-	// checkpoint. PR 2 / PR 3 will flip this once the trackers ship.
-	assert.True(t, resp.Msg.GetDegraded(), "scaffold must report degraded=true to preserve correctness")
-	assert.False(t, resp.Msg.GetFilesystemChanged())
-	assert.False(t, resp.Msg.GetProcessesChanged())
-	assert.Equal(t, uint32(0), resp.Msg.GetEpochId())
+	if resp.Msg.GetDegraded() {
+		// Degraded responses MUST report "no changes" alongside the
+		// degraded flag — the orchestrator falls through to a full
+		// checkpoint based on the degraded bit alone.
+		assert.False(t, resp.Msg.GetFilesystemChanged(),
+			"degraded response must not also assert filesystem_changed")
+	}
+	assert.False(t, resp.Msg.GetProcessesChanged(), "PR 3 has not landed yet")
 }
 
 func TestResetEpochIncrements(t *testing.T) {
@@ -47,11 +54,9 @@ func TestResetEpochIncrements(t *testing.T) {
 func TestResetEpochRejectsStaleExpectedID(t *testing.T) {
 	s := newTestService(t)
 
-	// Bump the epoch to 1.
 	_, err := s.ResetEpoch(context.Background(), connect.NewRequest(&rpc.ResetEpochRequest{}))
 	require.NoError(t, err)
 
-	// Caller asks to reset only if epoch is still 0; should fail-precondition.
 	_, err = s.ResetEpoch(context.Background(), connect.NewRequest(&rpc.ResetEpochRequest{ExpectedEpochId: 0xdeadbeef}))
 	require.Error(t, err)
 	var connectErr *connect.Error
@@ -62,26 +67,25 @@ func TestResetEpochRejectsStaleExpectedID(t *testing.T) {
 func TestResetEpochAcceptsZeroExpectedAsForce(t *testing.T) {
 	s := newTestService(t)
 
-	// Bump the epoch a few times.
 	for range 3 {
 		_, err := s.ResetEpoch(context.Background(), connect.NewRequest(&rpc.ResetEpochRequest{}))
 		require.NoError(t, err)
 	}
 
-	// Force reset with expected_epoch_id=0; must succeed regardless.
 	resp, err := s.ResetEpoch(context.Background(), connect.NewRequest(&rpc.ResetEpochRequest{ExpectedEpochId: 0}))
 	require.NoError(t, err)
 	assert.Equal(t, uint32(4), resp.Msg.GetNewEpochId())
 }
 
-func TestStatusReportsScaffoldDegradedReason(t *testing.T) {
+func TestStatusReportsDegradedReasonWhenNotLoaded(t *testing.T) {
 	s := newTestService(t)
 
 	resp, err := s.Status(context.Background(), connect.NewRequest(&rpc.StatusRequest{}))
 	require.NoError(t, err)
 
-	assert.False(t, resp.Msg.GetBpfLoaded())
-	assert.False(t, resp.Msg.GetSoftDirtySupported())
-	assert.False(t, resp.Msg.GetBtfPresent())
-	assert.Equal(t, degradedReasonScaffold, resp.Msg.GetDegradedReason())
+	// Non-loaded tracker (stub or kernel-load failure) must surface a
+	// non-empty degraded_reason.
+	if !resp.Msg.GetBpfLoaded() {
+		assert.NotEmpty(t, resp.Msg.GetDegradedReason())
+	}
 }
