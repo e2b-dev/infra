@@ -105,20 +105,15 @@ func (u *Uploads) Wait(ctx context.Context, buildID uuid.UUID, t build.DiffType)
 	))
 	defer span.End()
 
+	if item := u.futures.Get(buildID); item != nil {
+		if err := item.Value().WaitWithContext(ctx); err != nil {
+			return nil, fmt.Errorf("wait for upload %s: %w", buildID, err)
+		}
+	}
+
 	d, err := u.find(ctx, buildID, t)
 	if err != nil && !errors.Is(err, ErrBuildNotInCache) {
 		return nil, err
-	}
-
-	if item := u.futures.Get(buildID); item != nil {
-		if waitErr := item.Value().WaitWithContext(ctx); waitErr != nil {
-			return nil, fmt.Errorf("wait for upload %s: %w", buildID, waitErr)
-		}
-		if d == nil {
-			return nil, nil
-		}
-
-		return d.Header(), nil
 	}
 
 	if d != nil && !d.Header().IncompletePendingUpload {
