@@ -83,7 +83,7 @@ func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 	pc := processconnect.NewProcessClient(&http.Client{Transport: sandboxHttpClient.Transport}, addr)
 
 	req := connect.NewRequest(&process.StartRequest{
-		Process: &process.ProcessConfig{Cmd: "/bin/bash", Args: []string{"-c", script}},
+		Process: &process.ProcessConfig{Cmd: "/bin/sh", Args: []string{"-c", script}},
 	})
 	req.Header().Set("Connect-Timeout-Ms", strconv.FormatInt(int64(timeout/time.Millisecond), 10))
 	if s.Config.Envd.AccessToken != nil {
