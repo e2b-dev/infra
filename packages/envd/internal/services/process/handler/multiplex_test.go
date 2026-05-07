@@ -325,6 +325,52 @@ func TestMultiplexedChannel_SendToUnbufferedSourceAfterLastCancelDeadlocks(t *te
 	m.CloseSource()
 }
 
+// Regression: closing Source directly (bypassing CloseSource) after the
+// last subscriber is cancelled leaks the fan-out goroutine.  This
+// reproduces the bug in start.go:101 where `defer close(startMultiplexer.Source)`
+// is used instead of `defer startMultiplexer.CloseSource()`.
+//
+// Because defers run LIFO, startCancel() (line 104) runs first and
+// removes the only subscriber.  Then close(Source) fires, but
+// the fan-out goroutine is parked on <-sig in receiveWhenReady
+// (because closed flag was never set and no NotifySubscriberChange
+// was called), so it never observes the channel close and leaks.
+func TestMultiplexedChannel_DirectCloseSourceAfterCancelLeaksFanOut(t *testing.T) { //nolint:paralleltest // relies on a stable goroutine count
+	const iterations = 8
+
+	time.Sleep(50 * time.Millisecond)
+	runtime.GC() //nolint:revive // intentional: settle goroutines before measuring baseline
+	before := runtime.NumGoroutine()
+
+	for range iterations {
+		m := NewMultiplexedChannel[int](0)
+		_, cancel := m.Fork()
+
+		// Simulate LIFO defer order in handleStart:
+		//   1. startCancel() runs first — removes subscriber
+		//   2. close(startMultiplexer.Source) runs second
+		cancel()
+		time.Sleep(10 * time.Millisecond) // let fan-out park on <-sig
+		close(m.Source)                    // bypass CloseSource — the bug
+	}
+
+	// Allow goroutines to settle.
+	time.Sleep(200 * time.Millisecond)
+	runtime.GC() //nolint:revive // intentional: help goroutines finalize
+	runtime.Gosched()
+
+	after := runtime.NumGoroutine()
+	leaked := after - before
+
+	// Each iteration leaks one fan-out goroutine with the bug.
+	assert.LessOrEqualf(t, leaked, 2,
+		"goroutine count grew by %d after %d iterations of "+
+			"cancel-then-close(Source); before=%d after=%d — "+
+			"fan-out goroutines are leaking (use CloseSource instead "+
+			"of close(Source))", leaked, iterations, before, after,
+	)
+}
+
 // Goroutine count must return to baseline after cancelled subscribers settle.
 func TestMultiplexedChannel_NoGoroutineLeakOnAbandon(t *testing.T) { //nolint:paralleltest // relies on a stable goroutine count
 	const wedges = 16
