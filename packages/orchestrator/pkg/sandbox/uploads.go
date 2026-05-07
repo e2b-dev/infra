@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -57,18 +58,19 @@ type templateLookup interface {
 type Uploads struct {
 	tc          templateLookup
 	persistence storage.StorageProvider
+	p2p         peerclient.Resolver
 	redis       redis.UniversalClient
 
 	futures *ttlcache.Cache[uuid.UUID, *utils.ErrorOnce]
 }
 
-func NewUploads(tc *template.Cache, persistence storage.StorageProvider, redisClient redis.UniversalClient) *Uploads {
+func NewUploads(tc *template.Cache, persistence storage.StorageProvider, p2p peerclient.Resolver, redisClient redis.UniversalClient) *Uploads {
 	futures := ttlcache.New(
 		ttlcache.WithTTL[uuid.UUID, *utils.ErrorOnce](futureTTL),
 	)
 	go futures.Start()
 
-	return &Uploads{tc: tc, persistence: persistence, redis: redisClient, futures: futures}
+	return &Uploads{tc: tc, persistence: persistence, p2p: p2p, redis: redisClient, futures: futures}
 }
 
 func (u *Uploads) Stop() {
@@ -93,9 +95,9 @@ func (u *Uploads) Start(buildID uuid.UUID) (*utils.ErrorOnce, error) {
 	return fut, nil
 }
 
-// Wait returns the parent's post-upload V4 header. Same-orch waits on the local
-// future; cross-orch refreshes from remote storage when the locally-cached
-// header is stale, optionally accelerated by a per-call Redis subscription.
+// Wait returns the parent's post-upload header, or (nil, nil) when the
+// ancestor was never opened locally and no peer is mid-upload — the caller
+// already carries its BuildData through srcHeader.Builds.
 func (u *Uploads) Wait(ctx context.Context, buildID uuid.UUID, t build.DiffType) (*header.Header, error) {
 	ctx, span := tracer.Start(ctx, "wait-for-parent-upload", trace.WithAttributes(
 		telemetry.WithBuildID(buildID.String()),
@@ -103,37 +105,39 @@ func (u *Uploads) Wait(ctx context.Context, buildID uuid.UUID, t build.DiffType)
 	))
 	defer span.End()
 
+	d, err := u.find(ctx, buildID, t)
+	if err != nil && !errors.Is(err, ErrBuildNotInCache) {
+		return nil, err
+	}
+
 	if item := u.futures.Get(buildID); item != nil {
 		if err := item.Value().WaitWithContext(ctx); err != nil {
 			return nil, fmt.Errorf("wait for upload %s: %w", buildID, err)
 		}
+		if d == nil {
+			return nil, fmt.Errorf("future fired but build %s not in template cache", buildID)
+		}
+
+		return d.Header(), nil
 	}
 
-	d, err := u.find(ctx, buildID, t)
-	if errors.Is(err, ErrBuildNotInCache) {
-		// Ancestor never resumed locally (typical for grand-grandparents
-		// reached via mappings). It's necessarily finalized — load directly
-		// from remote storage without an in-memory device or future to track.
-		hdrPath := storage.Paths{BuildID: buildID.String()}.HeaderFile(string(t))
-
-		return header.LoadHeader(ctx, u.persistence, hdrPath)
+	if d != nil && !d.Header().IncompletePendingUpload {
+		return d.Header(), nil
 	}
+
+	if d == nil && !u.p2p.IsActive(buildID.String()) {
+		return nil, nil
+	}
+
+	// P2P mid-upload. Poll remote storage, then swap onto the local device.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	h, err := build.PollRemoteStorageForHeader(ctx, u.persistence, buildID, t, u.subscribe(ctx, buildID), refreshHeaderBudget)
 	if err != nil {
 		return nil, err
 	}
-
-	h := d.Header()
-	if h.IncompletePendingUpload {
-		// The only way we can still have an incomplete header at this point is
-		// the P2P path. We already waited on the local upload future and it did
-		// not finalize the header.
-		ctx, cancel := context.WithCancel(ctx)
-		defer cancel()
-
-		h, err = build.PollRemoteStorageForHeader(ctx, u.persistence, buildID, t, u.subscribe(ctx, buildID), refreshHeaderBudget)
-		if err != nil {
-			return nil, err
-		}
+	if d != nil {
 		d.SwapHeader(h)
 	}
 
