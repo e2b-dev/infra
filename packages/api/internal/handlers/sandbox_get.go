@@ -169,7 +169,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			AllowInternetAccess: sbx.AllowInternetAccess,
 			Domain:              sbxDomain,
 			Network:             dbNetworkConfigToAPI(sbx.Network),
-			Lifecycle:           sandboxLifecycleToAPI(sbx.AutoPause, sbx.AutoResume, sbx.Keepalive),
+			Lifecycle:           sandboxLifecycleToAPI(sbx.Lifecycle.AutoPause, sbx.Lifecycle.AutoResume, sbx.Lifecycle.Keepalive),
 			VolumeMounts:        convertFromDBMountsToAPIMounts(sbx.VolumeMounts),
 		}
 
@@ -243,9 +243,11 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 	var networkConfig *dbtypes.SandboxNetworkConfig
 	var keepaliveConfig *dbtypes.SandboxKeepaliveConfig
 	if lastSnapshot.Snapshot.Config != nil {
-		autoResumeConfig = lastSnapshot.Snapshot.Config.AutoResume
 		networkConfig = lastSnapshot.Snapshot.Config.Network
-		keepaliveConfig = lastSnapshot.Snapshot.Config.Keepalive
+		if lifecycle := lastSnapshot.Snapshot.Config.LifecycleConfig(); lifecycle != nil {
+			autoResumeConfig = lifecycle.AutoResume
+			keepaliveConfig = lifecycle.Keepalive
+		}
 	}
 
 	pausedAlias := firstAlias(lastSnapshot.Aliases)

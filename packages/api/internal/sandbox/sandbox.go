@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,9 +31,7 @@ func NewSandbox(
 	envdVersion string,
 	nodeID string,
 	clusterID uuid.UUID,
-	autoPause bool,
-	autoResume *types.SandboxAutoResumeConfig,
-	keepalive *types.SandboxKeepaliveConfig,
+	lifecycle types.SandboxLifecycleConfig,
 	envdAccessToken *string,
 	allowInternetAccess *bool,
 	baseTemplateID string,
@@ -66,9 +65,7 @@ func NewSandbox(
 		AllowInternetAccess: allowInternetAccess,
 		NodeID:              nodeID,
 		ClusterID:           clusterID,
-		AutoPause:           autoPause,
-		AutoResume:          autoResume,
-		Keepalive:           keepalive,
+		Lifecycle:           lifecycle,
 		State:               StateRunning,
 		BaseTemplateID:      baseTemplateID,
 		Network:             network,
@@ -102,13 +99,33 @@ type Sandbox struct {
 	AllowInternetAccess *bool                             `json:"allowInternetAccess,omitempty"`
 	NodeID              string                            `json:"nodeID"`
 	ClusterID           uuid.UUID                         `json:"clusterID"`
-	AutoPause           bool                              `json:"autoPause"`
-	AutoResume          *types.SandboxAutoResumeConfig    `json:"autoResume,omitempty"`
-	Keepalive           *types.SandboxKeepaliveConfig     `json:"keepalive,omitempty"`
+	Lifecycle           types.SandboxLifecycleConfig      `json:"lifecycle"`
 	Network             *types.SandboxNetworkConfig       `json:"network"`
 	VolumeMounts        []*types.SandboxVolumeMountConfig `json:"volumeMounts"`
 
 	State State `json:"state"`
+}
+
+func (s *Sandbox) UnmarshalJSON(data []byte) error {
+	type sandboxAlias Sandbox
+	var raw struct {
+		sandboxAlias
+		AutoPause  *bool                          `json:"autoPause,omitempty"`
+		AutoResume *types.SandboxAutoResumeConfig `json:"autoResume,omitempty"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	*s = Sandbox(raw.sandboxAlias)
+	if raw.AutoPause != nil {
+		s.Lifecycle.AutoPause = *raw.AutoPause
+	}
+	if raw.AutoResume != nil && s.Lifecycle.AutoResume == nil {
+		s.Lifecycle.AutoResume = raw.AutoResume
+	}
+
+	return nil
 }
 
 func (s Sandbox) ToAPISandbox() *api.Sandbox {
@@ -137,9 +154,9 @@ func (s Sandbox) IsExpired(now time.Time) bool {
 }
 
 func (s Sandbox) TrafficKeepalive() *types.SandboxTrafficKeepaliveConfig {
-	if s.Keepalive == nil || s.Keepalive.Traffic == nil || !s.Keepalive.Traffic.Enabled {
+	if s.Lifecycle.Keepalive == nil || s.Lifecycle.Keepalive.Traffic == nil || !s.Lifecycle.Keepalive.Traffic.Enabled {
 		return nil
 	}
 
-	return s.Keepalive.Traffic
+	return s.Lifecycle.Keepalive.Traffic
 }

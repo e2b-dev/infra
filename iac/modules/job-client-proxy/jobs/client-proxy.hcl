@@ -119,12 +119,12 @@ job "client-proxy" {
         %{ endif }
 
         %{ if control_plane_api_grpc_address != "" }
-        # used by external client-proxy to call edge API ResumeSandbox over gRPC
-        API_EDGE_GRPC_ADDRESS             = "${control_plane_api_grpc_address}"
+        # used by external client-proxy to call control plane API ResumeSandbox over gRPC
+        CONTROL_PLANE_API_GRPC_ADDRESS             = "${control_plane_api_grpc_address}"
         %{ if control_plane_oauth_client_id != "" }
-        API_EDGE_GRPC_OAUTH_CLIENT_ID     = "${control_plane_oauth_client_id}"
-        API_EDGE_GRPC_OAUTH_CLIENT_SECRET = "${control_plane_oauth_client_secret}"
-        API_EDGE_GRPC_OAUTH_TOKEN_URL     = "${control_plane_oauth_token_url}"
+        CONTROL_PLANE_API_GRPC_OAUTH_CLIENT_ID     = "${control_plane_oauth_client_id}"
+        CONTROL_PLANE_API_GRPC_OAUTH_CLIENT_SECRET = "${control_plane_oauth_client_secret}"
+        CONTROL_PLANE_API_GRPC_OAUTH_TOKEN_URL     = "${control_plane_oauth_token_url}"
         %{ endif }
         %{ endif }
 

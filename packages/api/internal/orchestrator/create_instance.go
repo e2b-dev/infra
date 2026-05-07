@@ -44,9 +44,7 @@ type SandboxMetadata struct {
 	Alias               string
 	TemplateID          string
 	BaseTemplateID      string
-	AutoPause           bool
-	AutoResume          *types.SandboxAutoResumeConfig
-	Keepalive           *types.SandboxKeepaliveConfig
+	Lifecycle           types.SandboxLifecycleConfig
 	VolumeMounts        []*orchestrator.SandboxVolumeMount
 	EnvdAccessToken     *string
 	NodeID              *string
@@ -242,20 +240,20 @@ func (o *Orchestrator) CreateSandbox(
 	sbxNetwork := buildNetworkConfig(network, sbxData.AllowInternetAccess, trafficAccessToken)
 
 	var orchAutoResume *orchestrator.SandboxAutoResumeConfig
-	if sbxData.AutoResume != nil {
+	if sbxData.Lifecycle.AutoResume != nil {
 		orchAutoResume = &orchestrator.SandboxAutoResumeConfig{
-			Policy:         string(sbxData.AutoResume.Policy),
-			TimeoutSeconds: sbxData.AutoResume.Timeout,
+			Policy:         string(sbxData.Lifecycle.AutoResume.Policy),
+			TimeoutSeconds: sbxData.Lifecycle.AutoResume.Timeout,
 		}
 	}
 
 	var orchKeepalive *orchestrator.SandboxKeepaliveConfig
-	if sbxData.Keepalive != nil {
+	if sbxData.Lifecycle.Keepalive != nil {
 		orchKeepalive = &orchestrator.SandboxKeepaliveConfig{}
-		if sbxData.Keepalive.Traffic != nil {
+		if sbxData.Lifecycle.Keepalive.Traffic != nil {
 			orchKeepalive.Traffic = &orchestrator.SandboxTrafficKeepaliveConfig{
-				Enabled:        sbxData.Keepalive.Traffic.Enabled,
-				TimeoutSeconds: sbxData.Keepalive.Traffic.Timeout,
+				Enabled:        sbxData.Lifecycle.Keepalive.Traffic.Enabled,
+				TimeoutSeconds: sbxData.Lifecycle.Keepalive.Traffic.Timeout,
 			}
 		}
 	}
@@ -280,7 +278,7 @@ func (o *Orchestrator) CreateSandbox(
 			RamMb:               sbxData.Build.RamMb,
 			Vcpu:                sbxData.Build.Vcpu,
 			Snapshot:            isResume,
-			AutoPause:           sbxData.AutoPause,
+			AutoPause:           sbxData.Lifecycle.AutoPause,
 			AutoResume:          orchAutoResume,
 			Keepalive:           orchKeepalive,
 			AllowInternetAccess: sbxData.AllowInternetAccess,
@@ -309,7 +307,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
 
-	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels, sbxData.Keepalive)
+	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels)
 	if err != nil {
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
@@ -354,9 +352,7 @@ func (o *Orchestrator) CreateSandbox(
 		*sbxData.Build.EnvdVersion,
 		node.ID,
 		node.ClusterID,
-		sbxData.AutoPause,
-		sbxData.AutoResume,
-		sbxData.Keepalive,
+		sbxData.Lifecycle,
 		sbxData.EnvdAccessToken,
 		sbxData.AllowInternetAccess,
 		sbxData.BaseTemplateID,

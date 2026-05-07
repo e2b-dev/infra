@@ -269,11 +269,13 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 			Alias:               alias,
 			TemplateID:          env.TemplateID,
 			BaseTemplateID:      env.TemplateID,
-			AutoPause:           autoPause,
-			AutoResume:          autoResume,
-			Keepalive:           keepalive,
-			VolumeMounts:        sbxVolumeMounts,
-			EnvdAccessToken:     envdAccessToken,
+			Lifecycle: types.SandboxLifecycleConfig{
+				AutoPause:  autoPause,
+				AutoResume: autoResume,
+				Keepalive:  keepalive,
+			},
+			VolumeMounts:    sbxVolumeMounts,
+			EnvdAccessToken: envdAccessToken,
 		}, nil
 	}
 

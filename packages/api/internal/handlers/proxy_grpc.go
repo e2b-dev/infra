@@ -109,7 +109,9 @@ func (s *SandboxService) getAutoResumeSnapshot(ctx context.Context, sandboxID st
 
 	var autoResume *dbtypes.SandboxAutoResumeConfig
 	if snap.Snapshot.Config != nil {
-		autoResume = snap.Snapshot.Config.AutoResume
+		if lifecycle := snap.Snapshot.Config.LifecycleConfig(); lifecycle != nil {
+			autoResume = lifecycle.AutoResume
+		}
 	}
 	if autoResume == nil || autoResume.Policy != dbtypes.SandboxAutoResumeAny {
 		return nil, nil, status.Error(codes.NotFound, "sandbox auto-resume disabled")

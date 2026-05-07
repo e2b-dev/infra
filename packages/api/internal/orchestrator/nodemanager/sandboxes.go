@@ -142,9 +142,11 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 				config.GetEnvdVersion(),
 				n.ID,
 				n.ClusterID,
-				config.GetAutoPause(),
-				autoResume,
-				keepalive,
+				types.SandboxLifecycleConfig{
+					AutoPause:  config.GetAutoPause(),
+					AutoResume: autoResume,
+					Keepalive:  keepalive,
+				},
 				config.EnvdAccessToken,     //nolint:protogetter // we need the nil check too
 				config.AllowInternetAccess, //nolint:protogetter // we need the nil check too
 				config.GetBaseTemplateId(),

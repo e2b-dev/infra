@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 )
 
 func createTestSandbox() *memorySandbox {
@@ -740,8 +741,10 @@ func TestStartRemoving_Eviction(t *testing.T) {
 			StartTime:         time.Now().Add(-2 * time.Hour),
 			EndTime:           time.Now().Add(-time.Second), // expired
 			MaxInstanceLength: time.Hour,
-			AutoPause:         true,
-			State:             sandbox.StateRunning,
+			Lifecycle: types.SandboxLifecycleConfig{
+				AutoPause: true,
+			},
+			State: sandbox.StateRunning,
 		}
 
 		err := storage.Add(ctx, sbx)

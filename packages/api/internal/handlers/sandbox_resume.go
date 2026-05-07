@@ -225,15 +225,16 @@ func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *b
 		}
 
 		var network *types.SandboxNetworkConfig
-		var autoResume *types.SandboxAutoResumeConfig
-		var keepalive *types.SandboxKeepaliveConfig
+		var lifecycle types.SandboxLifecycleConfig
 		var volumes []*types.SandboxVolumeMountConfig
 		if snap.Config != nil {
 			network = snap.Config.Network
-			autoResume = snap.Config.AutoResume
-			keepalive = snap.Config.Keepalive
+			if configLifecycle := snap.Config.LifecycleConfig(); configLifecycle != nil {
+				lifecycle = *configLifecycle
+			}
 			volumes = snap.Config.VolumeMounts
 		}
+		lifecycle.AutoPause = autoPause
 
 		return orchestrator.SandboxMetadata{
 			Metadata:            snap.Metadata,
@@ -243,9 +244,7 @@ func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *b
 			Alias:               alias,
 			TemplateID:          snap.EnvID,
 			BaseTemplateID:      snap.BaseEnvID,
-			AutoPause:           autoPause,
-			AutoResume:          autoResume,
-			Keepalive:           keepalive,
+			Lifecycle:           lifecycle,
 			VolumeMounts:        convertDatabaseMountsToOrchestratorMounts(volumes),
 			EnvdAccessToken:     envdAccessToken,
 			NodeID:              &nodeID,

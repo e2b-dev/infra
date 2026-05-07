@@ -57,7 +57,7 @@ func TestPlaceSandbox_SuccessfulPlacement(t *testing.T) {
 		},
 	}
 
-	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil, nil)
+	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
 
 	require.NoError(t, err)
 	assert.NotNil(t, resultNode)
@@ -88,14 +88,14 @@ func TestPlaceSandbox_WithPreferredNode(t *testing.T) {
 	algorithm.On("chooseNode", mock.Anything, nodes, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(node1, nil).Once()
 
-	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil, nil)
+	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
 	require.NoError(t, err)
 	assert.NotNil(t, resultNode)
 	assert.Equal(t, node1, resultNode)
 	algorithm.AssertExpectations(t)
 
 	// Test with preferred node - should use the preferred node directly without calling algorithm
-	resultNode, err = PlaceSandbox(ctx, algorithm, nodes, node2, sbxRequest, machineinfo.MachineInfo{}, false, nil, nil)
+	resultNode, err = PlaceSandbox(ctx, algorithm, nodes, node2, sbxRequest, machineinfo.MachineInfo{}, false, nil)
 	require.NoError(t, err)
 	assert.NotNil(t, resultNode)
 	assert.Equal(t, node2, resultNode)
@@ -126,7 +126,7 @@ func TestPlaceSandbox_ContextTimeout(t *testing.T) {
 
 	resultNode, err := PlaceSandbox(ctx, algorithm, []*nodemanager.Node{
 		nodemanager.NewTestNode("node1", api.NodeStatusReady, 3, 4),
-	}, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil, nil)
+	}, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
 
 	require.Error(t, err)
 	assert.Nil(t, resultNode)
@@ -147,7 +147,7 @@ func TestPlaceSandbox_NoNodes(t *testing.T) {
 		},
 	}
 
-	resultNode, err := PlaceSandbox(ctx, algorithm, []*nodemanager.Node{}, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil, nil)
+	resultNode, err := PlaceSandbox(ctx, algorithm, []*nodemanager.Node{}, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
 
 	require.Error(t, err)
 	assert.Nil(t, resultNode)
@@ -172,7 +172,7 @@ func TestPlaceSandbox_AllNodesExcluded(t *testing.T) {
 
 	resultNode, err := PlaceSandbox(ctx, algorithm, []*nodemanager.Node{
 		nodemanager.NewTestNode("node1", api.NodeStatusReady, 3, 4),
-	}, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil, nil)
+	}, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
 
 	require.Error(t, err)
 	assert.Nil(t, resultNode)
@@ -205,7 +205,7 @@ func TestPlaceSandbox_ResourceExhausted(t *testing.T) {
 		},
 	}
 
-	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil, nil)
+	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
 
 	require.NoError(t, err)
 	assert.NotNil(t, resultNode)
@@ -246,7 +246,7 @@ func TestPlaceSandbox_TriggersOptimisticUpdate(t *testing.T) {
 		},
 	}
 
-	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil, nil)
+	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
 
 	require.NoError(t, err)
 	assert.NotNil(t, resultNode)

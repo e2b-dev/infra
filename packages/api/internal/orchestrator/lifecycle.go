@@ -6,7 +6,6 @@ import (
 
 	"go.uber.org/zap"
 
-	orchestratorcatalog "github.com/e2b-dev/infra/packages/api/internal/orchestrator/catalog"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -29,6 +28,14 @@ func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox san
 
 	nodeIP := routeNodeIPAddress(node, env.IsLocal())
 
+	var keepalive *sandboxroutingcatalog.Keepalive
+	if sandbox.Lifecycle.Keepalive != nil {
+		keepalive = &sandboxroutingcatalog.Keepalive{}
+		if sandbox.Lifecycle.Keepalive.Traffic != nil && sandbox.Lifecycle.Keepalive.Traffic.Enabled {
+			keepalive.Traffic = &sandboxroutingcatalog.TrafficKeepalive{Enabled: true}
+		}
+	}
+
 	info := sandboxroutingcatalog.SandboxInfo{
 		TeamID:         sandbox.TeamID.String(),
 		OrchestratorID: node.Metadata().ServiceInstanceID,
@@ -37,7 +44,7 @@ func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox san
 		ExecutionID:      sandbox.ExecutionID,
 		StartedAt:        sandbox.StartTime,
 		MaxLengthInHours: int64(sandbox.MaxInstanceLength / time.Hour),
-		Keepalive:        orchestratorcatalog.KeepaliveFromDB(sandbox.Keepalive),
+		Keepalive:        keepalive,
 	}
 
 	lifetime := time.Until(sandbox.StartTime.Add(sandbox.MaxInstanceLength))

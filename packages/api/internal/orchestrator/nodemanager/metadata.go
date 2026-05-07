@@ -7,11 +7,10 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
-	orchestratorcatalog "github.com/e2b-dev/infra/packages/api/internal/orchestrator/catalog"
-	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/edge"
 	grpcshared "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	sandboxroutingcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 type NodeMetadata struct {
@@ -37,17 +36,27 @@ func (n *Node) Metadata() NodeMetadata {
 	return n.meta
 }
 
-func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest, keepalive *types.SandboxKeepaliveConfig) (*clusters.GRPCClient, context.Context) {
+func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*clusters.GRPCClient, context.Context) {
 	md := metadata.MD{}
 
 	if !n.IsNomadManaged() {
+		var keepalive *sandboxroutingcatalog.Keepalive
+		if keepaliveConfig := req.GetSandbox().GetKeepalive(); keepaliveConfig != nil {
+			keepalive = &sandboxroutingcatalog.Keepalive{}
+			if traffic := keepaliveConfig.GetTraffic(); traffic != nil && traffic.GetEnabled() {
+				keepalive.Traffic = &sandboxroutingcatalog.TrafficKeepalive{
+					Enabled: true,
+				}
+			}
+		}
+
 		md = edge.SerializeSandboxCatalogCreateEvent(
 			edge.SandboxCatalogCreateEvent{
 				SandboxID:               req.GetSandbox().GetSandboxId(),
 				TeamID:                  req.GetSandbox().GetTeamId(),
 				SandboxMaxLengthInHours: req.GetSandbox().GetMaxSandboxLength(),
 				SandboxStartTime:        req.GetStartTime().AsTime(),
-				Keepalive:               orchestratorcatalog.KeepaliveFromDB(keepalive),
+				Keepalive:               keepalive,
 
 				ExecutionID:    req.GetSandbox().GetExecutionId(),
 				OrchestratorID: n.Metadata().ServiceInstanceID,

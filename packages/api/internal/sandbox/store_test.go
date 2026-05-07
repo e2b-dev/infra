@@ -2,6 +2,7 @@ package sandbox_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
@@ -190,11 +192,9 @@ func createTestSandbox() sandbox.Sandbox {
 		"1.0",                     // envd
 		"node-1",
 		uuid.New(),
-		false, // autoPause
-		nil,   // autoResume
-		nil,   // keepalive
-		nil,   // envdAccessToken
-		nil,   // allowInternetAccess
+		types.SandboxLifecycleConfig{}, // lifecycle
+		nil,                            // envdAccessToken
+		nil,                            // allowInternetAccess
 		"base-template",
 		nil, // domain
 		nil, // network
@@ -244,6 +244,30 @@ func TestAdd_NewSandbox(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, sbx.SandboxID, stored.SandboxID)
 	})
+}
+
+func TestSandboxUnmarshalJSONLegacyLifecycleFields(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{
+		"sandboxID": "legacy-sandbox",
+		"teamID": "00000000-0000-0000-0000-000000000001",
+		"autoPause": true,
+		"autoResume": {
+			"policy": "any",
+			"timeout": 120
+		}
+	}`)
+
+	var sbx sandbox.Sandbox
+	err := json.Unmarshal(data, &sbx)
+	require.NoError(t, err)
+
+	assert.True(t, sbx.Lifecycle.AutoPause)
+	require.NotNil(t, sbx.Lifecycle.AutoResume)
+	assert.Equal(t, types.SandboxAutoResumeAny, sbx.Lifecycle.AutoResume.Policy)
+	assert.Equal(t, uint64(120), sbx.Lifecycle.AutoResume.Timeout)
+	assert.Nil(t, sbx.Lifecycle.Keepalive)
 }
 
 func TestAdd_AlreadyInCache(t *testing.T) {
