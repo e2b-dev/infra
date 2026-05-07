@@ -139,7 +139,6 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	dirty, empty := c.tracker.Export()
 	diffMetadata := header.NewDiffMetadata(c.blockSize, dirty, empty)
 
-	dst := int(out.Fd())
 	var writeOffset int64
 	var totalRanges int64
 	fallback := false
@@ -147,48 +146,9 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	copyStart := time.Now()
 	for r := range BitsetRanges(diffMetadata.Dirty, diffMetadata.BlockSize) {
 		totalRanges++
-		remaining := int(r.Size)
 		readOffset := r.Start
-
-		// The kernel may return short writes (e.g. capped at MAX_RW_COUNT on non-reflink filesystems),
-		// so we loop until the full range is copied. The offset pointers are advanced by the kernel.
-		for remaining > 0 {
-			if !fallback {
-				// On XFS this uses reflink automatically.
-				n, err := unix.CopyFileRange(
-					src,
-					&readOffset,
-					dst,
-					&writeOffset,
-					remaining,
-					0,
-				)
-				switch {
-				case errors.Is(err, syscall.EXDEV) || errors.Is(err, syscall.EOPNOTSUPP) || errors.Is(err, syscall.ENOSYS):
-					fallback = true
-					logger.L().Warn(ctx, "copy_file_range unsupported, falling back to normal copy", zap.Error(err))
-				case err != nil:
-					return nil, fmt.Errorf("error copying file range: %w", err)
-				case n == 0:
-					return nil, fmt.Errorf("copy_file_range returned 0 with %d bytes remaining", remaining)
-				default:
-					remaining -= n
-				}
-			}
-
-			// CopyFileRange failed. Falling back to normal copy
-			if fallback && remaining > 0 {
-				if _, err := out.Seek(writeOffset, io.SeekStart); err != nil {
-					return nil, fmt.Errorf("error seeking: %w", err)
-				}
-				sr := io.NewSectionReader(f, readOffset, int64(remaining))
-				if _, err := io.Copy(out, sr); err != nil {
-					return nil, fmt.Errorf("error copying file range. %w", err)
-				}
-
-				writeOffset += int64(remaining)
-				remaining = 0
-			}
+		if err := copyFileRangeWithFallback(ctx, f, out, &readOffset, &writeOffset, int(r.Size), &fallback); err != nil {
+			return nil, err
 		}
 	}
 
@@ -201,6 +161,52 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	)
 
 	return diffMetadata, nil
+}
+
+// copyFileRangeWithFallback copies length bytes from src starting at *srcOff
+// into dst starting at *dstOff, advancing *srcOff and *dstOff by the bytes
+// actually copied. On filesystems where copy_file_range is unsupported it
+// falls back to a user-space io.Copy and flips *fallback so subsequent calls
+// skip the syscall path. On XFS, copy_file_range performs reflink — extents
+// are shared COW-style with no data copy.
+func copyFileRangeWithFallback(
+	ctx context.Context,
+	src, dst *os.File,
+	srcOff, dstOff *int64,
+	length int,
+	fallback *bool,
+) error {
+	remaining := length
+	for remaining > 0 {
+		if !*fallback {
+			n, err := unix.CopyFileRange(int(src.Fd()), srcOff, int(dst.Fd()), dstOff, remaining, 0)
+			switch {
+			case errors.Is(err, syscall.EXDEV) || errors.Is(err, syscall.EOPNOTSUPP) || errors.Is(err, syscall.ENOSYS):
+				*fallback = true
+				logger.L().Warn(ctx, "copy_file_range unsupported, falling back to user-space copy", zap.Error(err))
+			case err != nil:
+				return fmt.Errorf("copy_file_range: %w", err)
+			case n == 0:
+				return fmt.Errorf("copy_file_range returned 0 with %d bytes remaining", remaining)
+			default:
+				remaining -= n
+			}
+			continue
+		}
+
+		if _, err := dst.Seek(*dstOff, io.SeekStart); err != nil {
+			return fmt.Errorf("seek dst: %w", err)
+		}
+		sr := io.NewSectionReader(src, *srcOff, int64(remaining))
+		n, err := io.Copy(dst, sr)
+		*srcOff += n
+		*dstOff += n
+		remaining -= int(n)
+		if err != nil {
+			return fmt.Errorf("user-space copy fallback: %w", err)
+		}
+	}
+	return nil
 }
 
 // Dedup compares its contents against the original memory file and creates
@@ -269,33 +275,67 @@ func (c *Cache) Dedup(
 		return nil, nil, fmt.Errorf("failed to create dedup cache: %w", err)
 	}
 
+	srcF, err := os.Open(c.filePath)
+	if err != nil {
+		return nil, nil, errors.Join(fmt.Errorf("failed to open source cache: %w", err), dedupCache.Close())
+	}
+	defer srcF.Close()
+
+	dstF, err := os.OpenFile(dedupCache.filePath, os.O_RDWR, 0)
+	if err != nil {
+		return nil, nil, errors.Join(fmt.Errorf("failed to open dedup cache: %w", err), dedupCache.Close())
+	}
+	defer dstF.Close()
+
+	// Mark mmap dirty pages for writeback so copy_file_range sees current data.
+	// Optimization only; copy_file_range still gets correct data without it.
+	if err := unix.SyncFileRange(int(srcF.Fd()), 0, c.size, unix.SYNC_FILE_RANGE_WRITE); err != nil {
+		logger.L().Warn(ctx, "error syncing source cache", zap.Error(err))
+	}
+
 	cacheOffset = 0
 	var writeOffset int64
+	fallback := false
 
 	for r := range BitsetRanges(dirtyBlocks, blockSize) {
 		select {
 		case <-ctx.Done():
-			return nil, nil, ctx.Err()
+			return nil, nil, errors.Join(ctx.Err(), dedupCache.Close())
 		default:
 		}
 
 		for chunkOff := int64(0); chunkOff < r.Size; chunkOff += blockSize {
-			_, err := c.ReadAt(srcBuf, cacheOffset)
-			if err != nil {
-				return nil, nil, errors.Join(fmt.Errorf("failed to read exported cache at offset %d: %w", cacheOffset, err), dedupCache.Close())
+			runStart := int64(-1)
+			flushRun := func(runEndExcl int64) error {
+				if runStart < 0 {
+					return nil
+				}
+				n := runEndExcl - runStart
+				srcOff := cacheOffset + runStart
+				dstOff := writeOffset
+				if err := copyFileRangeWithFallback(ctx, srcF, dstF, &srcOff, &dstOff, int(n), &fallback); err != nil {
+					return err
+				}
+				dedupCache.setIsCached(writeOffset, n)
+				writeOffset += n
+				runStart = -1
+				return nil
 			}
 
 			for i := int64(0); i < blockSize; i += header.PageSize {
 				pageIdx := uint32((r.Start + chunkOff + i) / header.PageSize)
-				if !pageDirty.Contains(pageIdx) {
+				if pageDirty.Contains(pageIdx) {
+					if runStart < 0 {
+						runStart = i
+					}
 					continue
 				}
-				_, err = dedupCache.WriteAt(srcBuf[i:i+header.PageSize], writeOffset)
-				if err != nil {
-					return nil, nil, errors.Join(fmt.Errorf("failed to write deduped cache at offset %d: %w", writeOffset, err), dedupCache.Close())
+				if err := flushRun(i); err != nil {
+					return nil, nil, errors.Join(fmt.Errorf("failed to copy run to dedup cache: %w", err), dedupCache.Close())
 				}
-
-				writeOffset += header.PageSize
+			}
+			if err := flushRun(blockSize); err != nil {
+				return nil, nil, errors.Join(fmt.Errorf("failed to copy run to dedup cache: %w", err), dedupCache.Close())
 			}
 
 			cacheOffset += blockSize
