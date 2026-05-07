@@ -126,7 +126,7 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length in
 		return res.value, err
 	}
 
-	if s.uploaded.Load() && s.transitionEmitted.CompareAndSwap(false, true) {
+	if s.uploaded != nil && s.uploaded.Load() && s.transitionEmitted.CompareAndSwap(false, true) {
 		return nil, &storage.PeerTransitionedError{}
 	}
 
