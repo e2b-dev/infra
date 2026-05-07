@@ -173,6 +173,36 @@ func TestGetTargetFromRequest(t *testing.T) {
 			wantPort: 49983,
 		},
 		{
+			name: "headers: private IPv4 (bridge/LAN)",
+			host: "192.168.100.66:3002",
+			headers: http.Header{
+				headerSandboxID:   []string{"isv6ril5xadwn1k9t2jye"},
+				headerSandboxPort: []string{"49983"},
+			},
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 49983,
+		},
+		{
+			name: "headers: private IPv4 (10.x network)",
+			host: "10.0.0.5:3002",
+			headers: http.Header{
+				headerSandboxID:   []string{"isv6ril5xadwn1k9t2jye"},
+				headerSandboxPort: []string{"49983"},
+			},
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 49983,
+		},
+		{
+			name: "headers: public IPv4",
+			host: "34.120.5.10:3002",
+			headers: http.Header{
+				headerSandboxID:   []string{"isv6ril5xadwn1k9t2jye"},
+				headerSandboxPort: []string{"49983"},
+			},
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 49983,
+		},
+		{
 			name: "headers: ignored on regular sandbox host",
 			host: "49983-isv6ril5xadwn1k9t2jye.e2b.app",
 			headers: http.Header{
