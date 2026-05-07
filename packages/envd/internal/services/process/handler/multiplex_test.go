@@ -283,6 +283,48 @@ func TestMultiplexedChannel_ForkAfterSourceCloseReturnsClosedChan(t *testing.T) 
 	assert.False(t, ok, "Fork after shutdown must return a pre-closed channel")
 }
 
+// Regression: sending to an unbuffered Source after the last subscriber
+// cancelled must not deadlock.  This reproduces the bug where
+// handler.Wait() calls `p.EndEvent.Source <- event` on an unbuffered
+// (buffer=0) EndEvent channel after the handleStart/handleConnect
+// handler has returned and run `defer endCancel()`.  With
+// back-pressure, receiveWhenReady parks on <-sig waiting for a
+// subscriber that will never come, so the Source send blocks forever.
+func TestMultiplexedChannel_SendToUnbufferedSourceAfterLastCancelDeadlocks(t *testing.T) {
+	t.Parallel()
+
+	// Mirror EndEvent: buffer=0.
+	m := NewMultiplexedChannel[int](0)
+
+	_, cancel := m.Fork()
+
+	// Cancel the only subscriber immediately, without ever
+	// consuming a value.  This simulates the case where
+	// handleStart returns (running `defer endCancel()`) before
+	// the child process exits and Wait() tries to send the
+	// EndEvent.
+	//
+	// After cancel, the fan-out loop will observe zero subscribers
+	// and park on <-sig in receiveWhenReady.
+	cancel()
+
+	// Give the fan-out goroutine time to re-enter receiveWhenReady,
+	// observe HasSubscribers()==false, and park on <-sig.
+	time.Sleep(50 * time.Millisecond)
+
+	// Now attempt to send — this models handler.Wait()'s
+	// `p.EndEvent.Source <- event`.  With the bug, this blocks
+	// forever because receiveWhenReady is parked waiting for a
+	// subscriber and nobody will ever wake it.
+	sent := sendOrTimeout(t, m.Source, 1, 2*time.Second)
+	if !sent {
+		t.Fatal("Source send deadlocked after last subscriber cancelled; " +
+			"receiveWhenReady must not block the producer when Source is unbuffered")
+	}
+
+	m.CloseSource()
+}
+
 // Goroutine count must return to baseline after cancelled subscribers settle.
 func TestMultiplexedChannel_NoGoroutineLeakOnAbandon(t *testing.T) { //nolint:paralleltest // relies on a stable goroutine count
 	const wedges = 16
