@@ -157,7 +157,7 @@ func createCgroupPath(t *testing.T, s string) string {
 func startProcess(t *testing.T, m *Cgroup2Manager, pt ProcessType) *exec.Cmd {
 	t.Helper()
 
-	cmdName, args := "bash", []string{"-c", `sleep 1 && exec tail /dev/zero`}
+	cmdName, args := "bash", []string{"-c", `sleep 1 && exec perl -e 'my $x = "A" x (512*1024*1024); sleep 300'`}
 	cmd := exec.CommandContext(t.Context(), cmdName, args...)
 
 	fd, ok := m.GetFileDescriptor(pt)
