@@ -1,6 +1,7 @@
 package block
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/edsrzf/mmap-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -199,6 +201,145 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	)
 
 	return diffMetadata, nil
+}
+
+// Dedup compares its contents against the original memory file and creates
+// a new Cache
+func (c *Cache) Dedup(
+	ctx context.Context,
+	originalMemfile ReadonlyDevice,
+	dirtyBlocks *roaring.Bitmap,
+	blockSize int64,
+	totalMemorySize int64,
+	outPath string,
+) (*Cache, *header.DiffMetadata, error) {
+	ctx, span := tracer.Start(ctx, "dedup-cache")
+	defer span.End()
+
+	pageDirty := roaring.New()
+
+	srcBuf := make([]byte, blockSize)
+	origBuf := make([]byte, blockSize)
+
+	// First pass: count unique pages to size the output cache
+	var cacheOffset int64
+	var totalPages, dedupedPages uint
+	var uniquePageCount int64
+
+	for r := range BitsetRanges(dirtyBlocks, blockSize) {
+		select {
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		default:
+		}
+
+		// Loop within the Range at blockSize granularity to avoid creating (temporarily)
+		// a duplicate of the dirty contents of the cache within orchestrator memory.
+		for chunkOff := int64(0); chunkOff < r.Size; chunkOff += blockSize {
+			_, err := c.ReadAt(srcBuf, cacheOffset)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to read exported cache at offset %d: %w", cacheOffset, err)
+			}
+
+			_, err = originalMemfile.ReadAt(ctx, origBuf, r.Start+chunkOff)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to read from original memfile at offset %d: %w", r.Start+chunkOff, err)
+			}
+
+			for i := int64(0); i < blockSize; i += header.PageSize {
+				totalPages++
+				if bytes.Equal(srcBuf[i:i+header.PageSize], origBuf[i:i+header.PageSize]) {
+					dedupedPages++
+
+					continue
+				}
+
+				pageIdx := uint32((r.Start + chunkOff + i) / header.PageSize)
+				pageDirty.Add(pageIdx)
+				uniquePageCount++
+			}
+
+			cacheOffset += blockSize
+		}
+	}
+
+	dedupSize := uniquePageCount * header.PageSize
+	dedupCache, err := NewCache(dedupSize, header.PageSize, outPath, false)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create dedup cache: %w", err)
+	}
+
+	cacheOffset = 0
+	var writeOffset int64
+
+	for r := range BitsetRanges(dirtyBlocks, blockSize) {
+		select {
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		default:
+		}
+
+		for chunkOff := int64(0); chunkOff < r.Size; chunkOff += blockSize {
+			_, err := c.ReadAt(srcBuf, cacheOffset)
+			if err != nil {
+				return nil, nil, errors.Join(fmt.Errorf("failed to read exported cache at offset %d: %w", cacheOffset, err), dedupCache.Close())
+			}
+
+			for i := int64(0); i < blockSize; i += header.PageSize {
+				pageIdx := uint32((r.Start + chunkOff + i) / header.PageSize)
+				if !pageDirty.Contains(pageIdx) {
+					continue
+				}
+				_, err = dedupCache.WriteAt(srcBuf[i:i+header.PageSize], writeOffset)
+				if err != nil {
+					return nil, nil, errors.Join(fmt.Errorf("failed to write deduped cache at offset %d: %w", writeOffset, err), dedupCache.Close())
+				}
+
+				writeOffset += header.PageSize
+			}
+
+			cacheOffset += blockSize
+		}
+	}
+
+	exportedSize := int64(dirtyBlocks.GetCardinality()) * blockSize
+
+	telemetry.SetAttributes(ctx,
+		attribute.Int64("dedup.total_pages", int64(totalPages)),
+		attribute.Int64("dedup.deduped_pages", int64(dedupedPages)),
+		attribute.Int64("dedup.unique_pages", uniquePageCount),
+		attribute.Float64("dedup.ratio", safeDivide(float64(dedupedPages), float64(totalPages))),
+	)
+
+	logger.L().Info(ctx, "4KiB page dedup completed",
+		zap.Uint64("dirty_blocks", dirtyBlocks.GetCardinality()),
+		zap.Uint("total_4k_pages", totalPages),
+		zap.Uint("deduped_pages", dedupedPages),
+		zap.Int64("unique_pages", uniquePageCount),
+		zap.Int64("exported_size_bytes", exportedSize),
+		zap.Int64("dedup_size_bytes", dedupSize),
+		zap.String("reduction", fmt.Sprintf("%.1f%%", safeDivide(float64(dedupedPages), float64(totalPages))*100)),
+	)
+
+	// Every page NOT in pageDirty must be mapped to uuid.Nil (zeros)
+	pageEmpty := roaring.New()
+	totalPageCount := uint64(header.TotalBlocks(totalMemorySize, header.PageSize))
+	pageEmpty.Flip(0, totalPageCount)
+	pageEmpty.AndNot(pageDirty)
+
+	return dedupCache, &header.DiffMetadata{
+		Dirty:     pageDirty,
+		Empty:     pageEmpty,
+		BlockSize: header.PageSize,
+	}, nil
+}
+
+func safeDivide(a, b float64) float64 {
+	if b == 0 {
+		return 0
+	}
+
+	return a / b
 }
 
 func (c *Cache) ReadAt(b []byte, off int64) (int, error) {
