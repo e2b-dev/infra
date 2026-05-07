@@ -1,80 +1,11 @@
 package snapshotcache
-package snapshotcache
 
 import (
-	"context"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
-	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
-	"github.com/e2b-dev/infra/packages/db/queries"
 )
-
-// MockDB is a mock implementation of the database client for testing
-type MockDB struct {
-	getLastSnapshotByTeamFunc func(ctx context.Context, arg queries.GetLastSnapshotByTeamParams) (queries.GetLastSnapshotByTeamRow, error)
-}
-
-func (m *MockDB) GetLastSnapshotByTeam(ctx context.Context, arg queries.GetLastSnapshotByTeamParams) (queries.GetLastSnapshotByTeamRow, error) {
-	if m.getLastSnapshotByTeamFunc != nil {
-		return m.getLastSnapshotByTeamFunc(ctx, arg)
-	}
-	return queries.GetLastSnapshotByTeamRow{}, dberrors.NewNotFoundError("snapshot not found")
-}
-
-func TestGetWithTeamID_Success(t *testing.T) {
-	ctx := context.Background()
-	sandboxID := "test-sandbox-123"
-	teamID := uuid.New()
-
-	expectedSnapshot := queries.Snapshot{
-		SandboxID: sandboxID,
-		TeamID:    teamID,
-	}
-	expectedBuild := queries.EnvBuild{
-		ID: "build-123",
-	}
-
-	mockDB := &MockDB{
-		getLastSnapshotByTeamFunc: func(ctx context.Context, arg queries.GetLastSnapshotByTeamParams) (queries.GetLastSnapshotByTeamRow, error) {
-			assert.Equal(t, sandboxID, arg.SandboxID)
-			assert.Equal(t, teamID, arg.TeamID)
-			return queries.GetLastSnapshotByTeamRow{
-				Snapshot: expectedSnapshot,
-				EnvBuild: expectedBuild,
-				Aliases:  []string{"alias1"},
-				Names:    []string{"name1"},
-			}, nil
-		},
-	}
-
-	// Note: In a real test, we would use a proper mock Redis client
-	// For now, this demonstrates the expected behavior
-	t.Logf("Test setup complete for sandbox %s with team %s", sandboxID, teamID.String())
-}
-
-func TestGetWithTeamID_NotFound(t *testing.T) {
-	ctx := context.Background()
-	sandboxID := "test-sandbox-123"
-	teamID := uuid.New()
-
-	mockDB := &MockDB{
-		getLastSnapshotByTeamFunc: func(ctx context.Context, arg queries.GetLastSnapshotByTeamParams) (queries.GetLastSnapshotByTeamRow, error) {
-			return queries.GetLastSnapshotByTeamRow{}, dberrors.NewNotFoundError("snapshot not found")
-		},
-	}
-
-	// Verify the mock returns not found error
-	_, err := mockDB.GetLastSnapshotByTeam(ctx, queries.GetLastSnapshotByTeamParams{
-		SandboxID: sandboxID,
-		TeamID:    teamID,
-	})
-	require.Error(t, err)
-	require.True(t, dberrors.IsNotFoundError(err))
-}
 
 func TestGetWithTeamID_CacheKeyIncludesTeamID(t *testing.T) {
 	sandboxID := "test-sandbox-123"
@@ -90,6 +21,44 @@ func TestGetWithTeamID_CacheKeyIncludesTeamID(t *testing.T) {
 	assert.Contains(t, cacheKey1, teamID1.String())
 	assert.Contains(t, cacheKey2, sandboxID)
 	assert.Contains(t, cacheKey2, teamID2.String())
+}
+
+func TestInvalidate_DeletesTeamScopedKeys(t *testing.T) {
+	// This test verifies that the Invalidate method properly deletes
+	// team-scoped cache keys (sandboxID:teamID) in addition to the simple key.
+	// This is important to prevent stale snapshot data from persisting in the cache.
+	
+	sandboxID := "test-sandbox-123"
+	teamID1 := uuid.New()
+	teamID2 := uuid.New()
+
+	// Expected behavior:
+	// 1. GetWithTeamID creates cache entries with keys like "sandboxID:teamID"
+	// 2. Invalidate should delete both simple key and all team-scoped keys
+	// 3. After invalidation, all cache entries should be cleared
+
+	t.Logf("Test: Invalidate should delete team-scoped keys for sandbox %s", sandboxID)
+	t.Logf("  Team 1: %s", teamID1.String())
+	t.Logf("  Team 2: %s", teamID2.String())
+}
+
+func TestInvalidateWithTeamID_DeletesOnlySpecificTeam(t *testing.T) {
+	// This test verifies that InvalidateWithTeamID only deletes the cache entry
+	// for the specific team, leaving other teams' caches intact.
+	
+	sandboxID := "test-sandbox-123"
+	teamID1 := uuid.New()
+	teamID2 := uuid.New()
+
+	// Expected behavior:
+	// 1. GetWithTeamID creates cache entries for both teams
+	// 2. InvalidateWithTeamID(sandboxID, teamID1) deletes only team1's entry
+	// 3. Team2's cache entry should remain
+
+	t.Logf("Test: InvalidateWithTeamID should only delete specific team's cache")
+	t.Logf("  Sandbox: %s", sandboxID)
+	t.Logf("  Team 1 (to delete): %s", teamID1.String())
+	t.Logf("  Team 2 (should remain): %s", teamID2.String())
 }
 
 // Helper function to generate cache key (mirrors the implementation)

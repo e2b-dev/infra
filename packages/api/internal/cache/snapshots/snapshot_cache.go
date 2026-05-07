@@ -144,9 +144,25 @@ func (c *SnapshotCache) fetchFromDBWithTeamID(ctx context.Context, sandboxID str
 	}, nil
 }
 
-// Invalidate removes the cached snapshot for a sandbox.
+// Invalidate removes all cached snapshots for a sandbox, including team-scoped entries.
+// This method deletes both the simple key and all team-scoped keys to ensure
+// no stale snapshot data persists in the cache after invalidation.
 func (c *SnapshotCache) Invalidate(ctx context.Context, sandboxID string) {
+	// Delete the simple key for backward compatibility with Get method
 	c.cache.Delete(ctx, sandboxID)
+
+	// Delete all team-scoped keys using prefix matching
+	// This ensures team-scoped cache entries (sandboxID:teamID) are also cleared
+	c.cache.DeleteByPrefix(ctx, sandboxID)
+}
+
+// InvalidateWithTeamID removes the cached snapshot for a specific team.
+// This is the preferred method for precise cache invalidation when the teamID is known.
+// It only deletes the team-scoped cache entry, leaving other teams' caches intact.
+func (c *SnapshotCache) InvalidateWithTeamID(ctx context.Context, sandboxID string, teamID uuid.UUID) {
+	// Delete the team-scoped key
+	cacheKey := fmt.Sprintf("%s:%s", sandboxID, teamID.String())
+	c.cache.Delete(ctx, cacheKey)
 }
 
 func (c *SnapshotCache) Close(ctx context.Context) error {
