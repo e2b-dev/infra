@@ -68,8 +68,9 @@ type Config struct {
 	RamMB int64
 
 	// TotalDiskSizeMB optional, now used only for metrics.
-	TotalDiskSizeMB int64
-	HugePages       bool
+	TotalDiskSizeMB   int64
+	HugePages         bool
+	FreePageReporting bool
 
 	Envd EnvdMetadata
 
@@ -495,6 +496,7 @@ func (f *Factory) CreateSandbox(
 		config.Vcpu,
 		config.RamMB,
 		config.HugePages,
+		config.FreePageReporting,
 		processOptions,
 		fc.RateLimiterConfig{
 			Ops:       fc.TokenBucketConfig(throttleConfig.Ops),
