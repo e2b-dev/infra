@@ -33,7 +33,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	sandboxcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
+	sandboxroutingcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -284,7 +284,7 @@ func (s *Server) storeSandboxRoutingInfo(ctx context.Context) {
 		return
 	}
 
-	info := &sandboxcatalog.SandboxInfo{
+	info := &sandboxroutingcatalog.SandboxInfo{
 		TeamID:           event.TeamID,
 		OrchestratorID:   event.OrchestratorID,
 		OrchestratorIP:   event.OrchestratorIP,

@@ -7,7 +7,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	sandboxcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
+	sandboxroutingcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 const (
@@ -24,7 +24,7 @@ func newTrafficKeepaliveManager(resumer SandboxLifecycleClient) *trafficKeepaliv
 	}
 }
 
-func trafficKeepaliveEnabled(info *sandboxcatalog.SandboxInfo) bool {
+func trafficKeepaliveEnabled(info *sandboxroutingcatalog.SandboxInfo) bool {
 	// Older catalog entries can have keepalive metadata without team_id until they expire.
 	if info == nil || info.TeamID == "" {
 		return false
@@ -37,7 +37,7 @@ func trafficKeepaliveEnabled(info *sandboxcatalog.SandboxInfo) bool {
 	return info.Keepalive.Traffic != nil && info.Keepalive.Traffic.Enabled
 }
 
-func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, catalogStore sandboxcatalog.SandboxesCatalog, info *sandboxcatalog.SandboxInfo) {
+func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, catalogStore sandboxroutingcatalog.SandboxesCatalog, info *sandboxroutingcatalog.SandboxInfo) {
 	if m.resumer == nil || !trafficKeepaliveEnabled(info) {
 		return
 	}

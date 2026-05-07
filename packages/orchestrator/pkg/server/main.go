@@ -20,7 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	sandboxcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
+	sandboxroutingcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -43,7 +43,7 @@ type Server struct {
 	persistence           storage.StorageProvider
 	featureFlags          *featureflags.Client
 	sbxEventsService      *events.EventsService
-	routingCatalog        sandboxcatalog.SandboxesCatalog
+	routingCatalog        sandboxroutingcatalog.SandboxesCatalog
 	startingSandboxes     *semaphore.Weighted
 	peerRegistry          peerclient.Registry
 	uploadedBuilds        *ttlcache.Cache[string, struct{}]
@@ -62,7 +62,7 @@ type ServiceConfig struct {
 	Persistence      storage.StorageProvider
 	FeatureFlags     *featureflags.Client
 	SbxEventsService *events.EventsService
-	RoutingCatalog   sandboxcatalog.SandboxesCatalog
+	RoutingCatalog   sandboxroutingcatalog.SandboxesCatalog
 	PeerRegistry     peerclient.Registry
 }
 

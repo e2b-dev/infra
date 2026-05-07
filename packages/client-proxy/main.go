@@ -27,7 +27,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	sandboxcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
+	sandboxroutingcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -107,7 +107,7 @@ func run() int {
 	}
 	featureFlagsClient.SetServiceName(serviceName)
 
-	var catalog sandboxcatalog.SandboxesCatalog
+	var catalog sandboxroutingcatalog.SandboxesCatalog
 
 	redisClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
 		RedisURL:         config.RedisURL,
@@ -122,7 +122,7 @@ func run() int {
 				l.Error(ctx, "Failed to close redis client", zap.Error(err))
 			}
 		}()
-		catalog = sandboxcatalog.NewRedisSandboxCatalog(redisClient)
+		catalog = sandboxroutingcatalog.NewRedisSandboxCatalog(redisClient)
 	} else {
 		if !errors.Is(err, factories.ErrRedisDisabled) {
 			l.Error(ctx, "Failed to create redis client", zap.Error(err))
@@ -131,7 +131,7 @@ func run() int {
 		}
 
 		l.Warn(ctx, "Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
-		catalog = sandboxcatalog.NewMemorySandboxesCatalog()
+		catalog = sandboxroutingcatalog.NewMemorySandboxesCatalog()
 	}
 
 	info := &internal.ServiceInfo{}
