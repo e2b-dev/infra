@@ -1,6 +1,7 @@
 package block
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/edsrzf/mmap-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -137,7 +139,6 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	dirty, empty := c.tracker.Export()
 	diffMetadata := header.NewDiffMetadata(c.blockSize, dirty, empty)
 
-	dst := int(out.Fd())
 	var writeOffset int64
 	var totalRanges int64
 	fallback := false
@@ -145,48 +146,9 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	copyStart := time.Now()
 	for r := range BitsetRanges(diffMetadata.Dirty, diffMetadata.BlockSize) {
 		totalRanges++
-		remaining := int(r.Size)
 		readOffset := r.Start
-
-		// The kernel may return short writes (e.g. capped at MAX_RW_COUNT on non-reflink filesystems),
-		// so we loop until the full range is copied. The offset pointers are advanced by the kernel.
-		for remaining > 0 {
-			if !fallback {
-				// On XFS this uses reflink automatically.
-				n, err := unix.CopyFileRange(
-					src,
-					&readOffset,
-					dst,
-					&writeOffset,
-					remaining,
-					0,
-				)
-				switch {
-				case errors.Is(err, syscall.EXDEV) || errors.Is(err, syscall.EOPNOTSUPP) || errors.Is(err, syscall.ENOSYS):
-					fallback = true
-					logger.L().Warn(ctx, "copy_file_range unsupported, falling back to normal copy", zap.Error(err))
-				case err != nil:
-					return nil, fmt.Errorf("error copying file range: %w", err)
-				case n == 0:
-					return nil, fmt.Errorf("copy_file_range returned 0 with %d bytes remaining", remaining)
-				default:
-					remaining -= n
-				}
-			}
-
-			// CopyFileRange failed. Falling back to normal copy
-			if fallback && remaining > 0 {
-				if _, err := out.Seek(writeOffset, io.SeekStart); err != nil {
-					return nil, fmt.Errorf("error seeking: %w", err)
-				}
-				sr := io.NewSectionReader(f, readOffset, int64(remaining))
-				if _, err := io.Copy(out, sr); err != nil {
-					return nil, fmt.Errorf("error copying file range. %w", err)
-				}
-
-				writeOffset += int64(remaining)
-				remaining = 0
-			}
+		if err := copyFileRangeWithFallback(ctx, f, out, &readOffset, &writeOffset, int(r.Size), &fallback); err != nil {
+			return nil, err
 		}
 	}
 
@@ -199,6 +161,225 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	)
 
 	return diffMetadata, nil
+}
+
+// copyFileRangeWithFallback copies length bytes from src starting at *srcOff
+// into dst starting at *dstOff, advancing *srcOff and *dstOff by the bytes
+// actually copied. On filesystems where copy_file_range is unsupported it
+// falls back to a user-space io.Copy and flips *fallback so subsequent calls
+// skip the syscall path. On XFS, copy_file_range performs reflink — extents
+// are shared COW-style with no data copy.
+func copyFileRangeWithFallback(
+	ctx context.Context,
+	src, dst *os.File,
+	srcOff, dstOff *int64,
+	length int,
+	fallback *bool,
+) error {
+	remaining := length
+	for remaining > 0 {
+		if !*fallback {
+			n, err := unix.CopyFileRange(int(src.Fd()), srcOff, int(dst.Fd()), dstOff, remaining, 0)
+			switch {
+			case errors.Is(err, syscall.EXDEV) || errors.Is(err, syscall.EOPNOTSUPP) || errors.Is(err, syscall.ENOSYS):
+				*fallback = true
+				logger.L().Warn(ctx, "copy_file_range unsupported, falling back to user-space copy", zap.Error(err))
+			case err != nil:
+				return fmt.Errorf("copy_file_range: %w", err)
+			case n == 0:
+				return fmt.Errorf("copy_file_range returned 0 with %d bytes remaining", remaining)
+			default:
+				remaining -= n
+			}
+			continue
+		}
+
+		if _, err := dst.Seek(*dstOff, io.SeekStart); err != nil {
+			return fmt.Errorf("seek dst: %w", err)
+		}
+		sr := io.NewSectionReader(src, *srcOff, int64(remaining))
+		n, err := io.Copy(dst, sr)
+		*srcOff += n
+		*dstOff += n
+		remaining -= int(n)
+		if err != nil {
+			return fmt.Errorf("user-space copy fallback: %w", err)
+		}
+	}
+	return nil
+}
+
+// Dedup compares its contents against the original memory file and creates
+// a new Cache
+func (c *Cache) Dedup(
+	ctx context.Context,
+	originalMemfile ReadonlyDevice,
+	dirtyBlocks *roaring.Bitmap,
+	blockSize int64,
+	totalMemorySize int64,
+	outPath string,
+) (*Cache, *header.DiffMetadata, error) {
+	ctx, span := tracer.Start(ctx, "dedup-cache")
+	defer span.End()
+
+	pageDirty := roaring.New()
+
+	srcBuf := make([]byte, blockSize)
+	origBuf := make([]byte, blockSize)
+
+	// First pass: count unique pages to size the output cache
+	var cacheOffset int64
+	var totalPages, dedupedPages uint
+	var uniquePageCount int64
+
+	for r := range BitsetRanges(dirtyBlocks, blockSize) {
+		select {
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		default:
+		}
+
+		// Loop within the Range at blockSize granularity to avoid creating (temporarily)
+		// a duplicate of the dirty contents of the cache within orchestrator memory.
+		for chunkOff := int64(0); chunkOff < r.Size; chunkOff += blockSize {
+			_, err := c.ReadAt(srcBuf, cacheOffset)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to read exported cache at offset %d: %w", cacheOffset, err)
+			}
+
+			_, err = originalMemfile.ReadAt(ctx, origBuf, r.Start+chunkOff)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to read from original memfile at offset %d: %w", r.Start+chunkOff, err)
+			}
+
+			for i := int64(0); i < blockSize; i += header.PageSize {
+				totalPages++
+				if bytes.Equal(srcBuf[i:i+header.PageSize], origBuf[i:i+header.PageSize]) {
+					dedupedPages++
+
+					continue
+				}
+
+				pageIdx := uint32((r.Start + chunkOff + i) / header.PageSize)
+				pageDirty.Add(pageIdx)
+				uniquePageCount++
+			}
+
+			cacheOffset += blockSize
+		}
+	}
+
+	dedupSize := uniquePageCount * header.PageSize
+	dedupCache, err := NewCache(dedupSize, header.PageSize, outPath, false)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create dedup cache: %w", err)
+	}
+
+	srcF, err := os.Open(c.filePath)
+	if err != nil {
+		return nil, nil, errors.Join(fmt.Errorf("failed to open source cache: %w", err), dedupCache.Close())
+	}
+	defer srcF.Close()
+
+	dstF, err := os.OpenFile(dedupCache.filePath, os.O_RDWR, 0)
+	if err != nil {
+		return nil, nil, errors.Join(fmt.Errorf("failed to open dedup cache: %w", err), dedupCache.Close())
+	}
+	defer dstF.Close()
+
+	// Mark mmap dirty pages for writeback so copy_file_range sees current data.
+	// Optimization only; copy_file_range still gets correct data without it.
+	if err := unix.SyncFileRange(int(srcF.Fd()), 0, c.size, unix.SYNC_FILE_RANGE_WRITE); err != nil {
+		logger.L().Warn(ctx, "error syncing source cache", zap.Error(err))
+	}
+
+	cacheOffset = 0
+	var writeOffset int64
+	fallback := false
+
+	for r := range BitsetRanges(dirtyBlocks, blockSize) {
+		select {
+		case <-ctx.Done():
+			return nil, nil, errors.Join(ctx.Err(), dedupCache.Close())
+		default:
+		}
+
+		for chunkOff := int64(0); chunkOff < r.Size; chunkOff += blockSize {
+			runStart := int64(-1)
+			flushRun := func(runEndExcl int64) error {
+				if runStart < 0 {
+					return nil
+				}
+				n := runEndExcl - runStart
+				srcOff := cacheOffset + runStart
+				dstOff := writeOffset
+				if err := copyFileRangeWithFallback(ctx, srcF, dstF, &srcOff, &dstOff, int(n), &fallback); err != nil {
+					return err
+				}
+				dedupCache.setIsCached(writeOffset, n)
+				writeOffset += n
+				runStart = -1
+				return nil
+			}
+
+			for i := int64(0); i < blockSize; i += header.PageSize {
+				pageIdx := uint32((r.Start + chunkOff + i) / header.PageSize)
+				if pageDirty.Contains(pageIdx) {
+					if runStart < 0 {
+						runStart = i
+					}
+					continue
+				}
+				if err := flushRun(i); err != nil {
+					return nil, nil, errors.Join(fmt.Errorf("failed to copy run to dedup cache: %w", err), dedupCache.Close())
+				}
+			}
+			if err := flushRun(blockSize); err != nil {
+				return nil, nil, errors.Join(fmt.Errorf("failed to copy run to dedup cache: %w", err), dedupCache.Close())
+			}
+
+			cacheOffset += blockSize
+		}
+	}
+
+	exportedSize := int64(dirtyBlocks.GetCardinality()) * blockSize
+
+	telemetry.SetAttributes(ctx,
+		attribute.Int64("dedup.total_pages", int64(totalPages)),
+		attribute.Int64("dedup.deduped_pages", int64(dedupedPages)),
+		attribute.Int64("dedup.unique_pages", uniquePageCount),
+		attribute.Float64("dedup.ratio", safeDivide(float64(dedupedPages), float64(totalPages))),
+	)
+
+	logger.L().Info(ctx, "4KiB page dedup completed",
+		zap.Uint64("dirty_blocks", dirtyBlocks.GetCardinality()),
+		zap.Uint("total_4k_pages", totalPages),
+		zap.Uint("deduped_pages", dedupedPages),
+		zap.Int64("unique_pages", uniquePageCount),
+		zap.Int64("exported_size_bytes", exportedSize),
+		zap.Int64("dedup_size_bytes", dedupSize),
+		zap.String("reduction", fmt.Sprintf("%.1f%%", safeDivide(float64(dedupedPages), float64(totalPages))*100)),
+	)
+
+	// Every page NOT in pageDirty must be mapped to uuid.Nil (zeros)
+	pageEmpty := roaring.New()
+	totalPageCount := uint64(header.TotalBlocks(totalMemorySize, header.PageSize))
+	pageEmpty.Flip(0, totalPageCount)
+	pageEmpty.AndNot(pageDirty)
+
+	return dedupCache, &header.DiffMetadata{
+		Dirty:     pageDirty,
+		Empty:     pageEmpty,
+		BlockSize: header.PageSize,
+	}, nil
+}
+
+func safeDivide(a, b float64) float64 {
+	if b == 0 {
+		return 0
+	}
+
+	return a / b
 }
 
 func (c *Cache) ReadAt(b []byte, off int64) (int, error) {
@@ -471,6 +652,73 @@ func (c *Cache) BlockSize() int64 {
 
 func (c *Cache) Path() string {
 	return c.filePath
+}
+
+func NewCacheFromMemfd(
+	ctx context.Context,
+	blockSize int64,
+	filePath string,
+	memfd *Memfd,
+	ranges []Range,
+) (*Cache, error) {
+	size := GetSize(ranges)
+
+	logger.L().Debug(ctx, "Creating cache from memfd")
+
+	cache, err := NewCache(size, blockSize, filePath, false)
+	if err != nil {
+		return nil, err
+	}
+
+	if size == 0 {
+		return cache, nil
+	}
+
+	err = cache.copyFromMemfd(ctx, memfd, ranges)
+	if err != nil {
+		return nil, fmt.Errorf("failed to copy from memfd: %w", errors.Join(err, cache.Close()))
+	}
+
+	return cache, nil
+}
+
+func (c *Cache) copyFromMemfd(ctx context.Context, memfd *Memfd, ranges []Range) error {
+	var cacheOff int64
+
+	for _, r := range ranges {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		srcOff := r.Start
+		remaining := r.Size
+		rangeStart := cacheOff
+
+		for remaining > 0 {
+			n, err := unix.Pread(memfd.memfd, (*c.mmap)[cacheOff:cacheOff+remaining], srcOff)
+			if errors.Is(err, syscall.EINTR) {
+				continue
+			}
+
+			if err != nil {
+				return fmt.Errorf("pread from memfd failed: %w", err)
+			}
+
+			if n == 0 {
+				return fmt.Errorf("pread from memfd: EOF with %d bytes remaining", remaining)
+			}
+
+			srcOff += int64(n)
+			cacheOff += int64(n)
+			remaining -= int64(n)
+		}
+
+		c.setIsCached(rangeStart, r.Size)
+	}
+
+	return nil
 }
 
 func NewCacheFromProcessMemory(
