@@ -89,6 +89,25 @@ func NewClientWithLogLevel(logLevel ldlog.LogLevel) (*Client, error) {
 	return &Client{ld: ldClient}, nil
 }
 
+// NewOfflineClient creates a client that always reads from the in-process
+// offline data source, ignoring LAUNCH_DARKLY_API_KEY. Use this in CLI/dev
+// tools (e.g. resume-build) so flag overrides set via NewIntFlag/NewDurationFlag
+// at startup take effect deterministically.
+func NewOfflineClient(logLevel ldlog.LogLevel) (*Client, error) {
+	cfg := ldclient.Config{
+		Logging:          ldcomponents.Logging().MinLevel(logLevel),
+		DataSource:       launchDarklyOfflineStore,
+		Events:           ldcomponents.NoEvents(),
+		DiagnosticOptOut: true,
+	}
+	ldClient, err := ldclient.MakeCustomClient("", cfg, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Client{ld: ldClient}, nil
+}
+
 func (c *Client) SetDeploymentName(deploymentName string) {
 	c.deploymentName = deploymentName
 }

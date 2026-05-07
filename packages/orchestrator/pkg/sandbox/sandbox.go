@@ -217,6 +217,8 @@ type Sandbox struct {
 	files   *storage.SandboxFiles
 	cleanup *Cleanup
 
+	featureFlags *featureflags.Client
+
 	process      *fc.Process
 	cgroupHandle *cgroup.CgroupHandle
 
@@ -457,7 +459,8 @@ func (f *Factory) CreateSandbox(
 		files:    sandboxFiles,
 		process:  fcHandle,
 
-		cleanup: cleanup,
+		cleanup:      cleanup,
+		featureFlags: f.featureFlags,
 
 		APIStoredConfig: apiConfigToStore,
 
@@ -797,7 +800,8 @@ func (f *Factory) ResumeSandbox(
 		files:    sandboxFiles,
 		process:  fcHandle,
 
-		cleanup: cleanup,
+		cleanup:      cleanup,
+		featureFlags: f.featureFlags,
 
 		APIStoredConfig: apiConfigToStore,
 		CABundle:        f.egressProxy.CABundle(),
@@ -1050,6 +1054,11 @@ func (s *Sandbox) Pause(
 
 	// Stop the health check before pausing the VM
 	s.Checks.Stop()
+
+	// Best-effort pre-pause guest reclaim (sync, drop_caches, compact_memory,
+	// fstrim) on the live VM via envd. Per-step caps are LD-flag-driven; all
+	// default to 0 which disables the chain entirely. Non-fatal.
+	s.bestEffortReclaim(ctx)
 
 	if err := s.process.Pause(ctx); err != nil {
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
