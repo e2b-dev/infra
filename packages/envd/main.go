@@ -28,6 +28,7 @@ import (
 	processSpec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 	"github.com/e2b-dev/infra/packages/envd/pkg"
+	"github.com/e2b-dev/infra/packages/shared/pkg/httpserver"
 )
 
 const (
@@ -202,6 +203,7 @@ func main() {
 		WriteTimeout: 0,
 		IdleTimeout:  idleTimeout,
 	}
+	httpserver.ConfigureH2C(s)
 
 	// TODO: Not used anymore in template build, replaced by direct envd command call.
 	if startCmdFlag != "" {

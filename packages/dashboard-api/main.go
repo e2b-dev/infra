@@ -39,6 +39,7 @@ import (
 	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	e2benv "github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
+	"github.com/e2b-dev/infra/packages/shared/pkg/httpserver"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
 	metricsmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/metrics"
@@ -350,7 +351,7 @@ func newHTTPServer(
 
 	api.RegisterHandlers(r, apiStore)
 
-	return &http.Server{
+	s := &http.Server{
 		Handler:           r,
 		Addr:              fmt.Sprintf("0.0.0.0:%d", port),
 		ReadHeaderTimeout: readHeaderTimeout,
@@ -358,6 +359,9 @@ func newHTTPServer(
 		WriteTimeout:      writeTimeout,
 		IdleTimeout:       idleTimeout,
 	}
+	httpserver.ConfigureH2C(s)
+
+	return s
 }
 
 func startHTTPServer(s *http.Server) <-chan error {

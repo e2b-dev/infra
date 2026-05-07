@@ -60,13 +60,14 @@ func newUploads(t *testing.T) (*Uploads, *fakeCache) {
 	}, cache
 }
 
-func putFinalHeader(t *testing.T, cache *fakeCache, buildID uuid.UUID, fileType build.DiffType) {
+func putHeader(t *testing.T, cache *fakeCache, buildID uuid.UUID, fileType build.DiffType, pending bool) {
 	t.Helper()
 	tpl := templatemocks.NewMockTemplate(t)
 	dev := blockmocks.NewMockReadonlyDevice(t)
 	dev.EXPECT().Header().Return(&headers.Header{
-		Metadata: &headers.Metadata{Version: headers.MetadataVersionV4},
-		Builds:   map[uuid.UUID]headers.BuildData{buildID: {}}, // self-entry → not stale
+		Metadata:                &headers.Metadata{Version: headers.MetadataVersionV4},
+		Builds:                  map[uuid.UUID]headers.BuildData{buildID: {}}, // self-entry → not stale
+		IncompletePendingUpload: pending,
 	}).Maybe()
 
 	switch fileType {
@@ -77,6 +78,11 @@ func putFinalHeader(t *testing.T, cache *fakeCache, buildID uuid.UUID, fileType 
 	}
 
 	cache.put(buildID.String(), tpl)
+}
+
+func putPendingHeader(t *testing.T, cache *fakeCache, buildID uuid.UUID, fileType build.DiffType) {
+	t.Helper()
+	putHeader(t, cache, buildID, fileType, true)
 }
 
 func TestUploads_BeginDistinctIDsAreIndependent(t *testing.T) {
@@ -106,7 +112,9 @@ func TestUploads_Wait_BlocksUntilSet(t *testing.T) {
 	c, cache := newUploads(t)
 
 	id := uuid.New()
-	putFinalHeader(t, cache, id, build.Memfile)
+	// Pending header → Wait reaches the future-wait branch instead of
+	// short-circuiting on the cleared bit.
+	putPendingHeader(t, cache, id, build.Memfile)
 	fut, err := c.Start(id)
 	require.NoError(t, err)
 
@@ -136,7 +144,7 @@ func TestUploads_Wait_PropagatesUploadError(t *testing.T) {
 	c, cache := newUploads(t)
 
 	id := uuid.New()
-	putFinalHeader(t, cache, id, build.Memfile)
+	putPendingHeader(t, cache, id, build.Memfile)
 	fut, err := c.Start(id)
 	require.NoError(t, err)
 
@@ -204,7 +212,7 @@ func TestUploads_ConcurrentBeginsAndWaits(t *testing.T) {
 	futs := make([]*utils.ErrorOnce, n)
 	for i := range n {
 		ids[i] = uuid.New()
-		putFinalHeader(t, cache, ids[i], build.Memfile)
+		putPendingHeader(t, cache, ids[i], build.Memfile)
 		fut, err := c.Start(ids[i])
 		require.NoError(t, err)
 		futs[i] = fut
