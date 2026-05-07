@@ -100,15 +100,6 @@ func (s *peerSeekable) Size(ctx context.Context) (int64, error) {
 }
 
 func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *storage.FrameTable) (io.ReadCloser, error) {
-	// Once the peer flips uploaded=true, ask the caller to refresh its header
-	// from storage (the post-upload state may be V4/compressed) and retry.
-	// Emit at most once per peerSeekable so V3 builds (no V4 to upgrade to)
-	// don't loop against this error. No peer call, no base open — caller
-	// retries with the live compression type already in the new FrameTable.
-	if s.uploaded.Load() && s.transitionEmitted.CompareAndSwap(false, true) {
-		return nil, &storage.PeerTransitionedError{}
-	}
-
 	res, err := tryPeer(ctx, &s.peerHandle, "peer-seekable-open-range-reader", attrOpRangeReader,
 		func(ctx context.Context) (peerAttempt[io.ReadCloser], error) {
 			streamCtx, cancel := context.WithCancel(ctx)
@@ -135,12 +126,11 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length in
 		return res.value, err
 	}
 
-	ct := storage.CompressionNone
-	if frameTable != nil {
-		ct = frameTable.CompressionType()
+	if s.uploaded.Load() && s.transitionEmitted.CompareAndSwap(false, true) {
+		return nil, &storage.PeerTransitionedError{}
 	}
 
-	base, err := s.getBase(ctx, ct)
+	base, err := s.getBase(ctx, frameTable.CompressionType())
 	if err != nil {
 		return nil, err
 	}
