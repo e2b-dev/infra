@@ -250,6 +250,9 @@ components:
           items:
             type: string
           description: Full names of the snapshot template including team namespace and tag (e.g. team-slug/my-snapshot:v2)
+        unchanged:
+          type: boolean
+          description: When true, the request was answered with a previously-published snapshot because the in-guest inspector reported no recovery-relevant changes since then. The snapshotID and names point at that prior snapshot. See issue e2b-dev/infra#2580.
 
     EnvVars:
       additionalProperties:
@@ -2500,6 +2503,10 @@ paths:
                 name:
                   type: string
                   description: Optional name for the snapshot template. If a snapshot template with this name already exists, a new build will be assigned to the existing template instead of creating a new one.
+                skipIfUnchanged:
+                  type: boolean
+                  default: false
+                  description: When true, if the in-guest inspector reports no recovery-relevant changes since the last snapshot of this sandbox, the previous snapshot is returned with `unchanged=true` and no Firecracker pause is performed. Default false preserves the historical always-pause behavior. See issue e2b-dev/infra#2580.
       responses:
         "201":
           description: Snapshot created successfully

@@ -572,6 +572,45 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		return nil, status.Errorf(codes.FailedPrecondition, "%s", err.Error())
 	}
 
+	// skipIfUnchanged short-circuit: ask the in-guest Inspector whether
+	// the sandbox has had any recovery-relevant change since the last
+	// published checkpoint. This must happen BEFORE MarkStopping so we
+	// don't disrupt a running sandbox we're going to leave alone. The
+	// path is fully gated: any failure (feature flag off, envd too old,
+	// inspector RPC error, no prior checkpoint, degraded inspector)
+	// falls through to the existing always-pause path. See issue #2580.
+	if in.GetSkipIfUnchanged() && s.featureFlags.BoolFlag(ctx, featureflags.InspectorSkipUnchangedFlag) {
+		if last, ok := s.lastPublishedSnapshot.Get(sbx.Runtime.SandboxID); ok {
+			if err := utils.CheckEnvdVersionForInspector(sbx.Config.Envd.Version); err == nil {
+				inspectCtx, inspectSpan := tracer.Start(ctx, "inspector.query")
+				resp, ok := newInspectorClient(s.proxy, sbx.Runtime.SandboxID).QueryChanges(inspectCtx)
+				inspectSpan.End()
+
+				if ok && !resp.GetDegraded() && !resp.GetFilesystemChanged() && !resp.GetProcessesChanged() {
+					sbxlogger.E(sbx).Info(ctx, "Checkpoint short-circuited: inspector reports no changes",
+						zap.String("last_build_id", last.BuildID))
+					childSpan.SetAttributes(attribute.Bool("checkpoint.short_circuit", true))
+					s.inspectorDecisions.Add(ctx, 1, metric.WithAttributes(attribute.String("decision", "skipped")))
+					return &orchestrator.SandboxCheckpointResponse{
+						Unchanged:        true,
+						PublishedBuildId: last.BuildID,
+					}, nil
+				}
+				// Inspector consulted but not skipped — count as fallthrough
+				// (changed or degraded). The full path runs below.
+				s.inspectorDecisions.Add(ctx, 1, metric.WithAttributes(attribute.String("decision", "fallthrough")))
+			} else {
+				s.inspectorDecisions.Add(ctx, 1, metric.WithAttributes(attribute.String("decision", "fallthrough")))
+			}
+		} else {
+			s.inspectorDecisions.Add(ctx, 1, metric.WithAttributes(attribute.String("decision", "fallthrough")))
+		}
+	}
+
+	// Every Checkpoint that reaches the full path increments the
+	// "full" bucket so the ratio of skipped vs full is observable.
+	s.inspectorDecisions.Add(ctx, 1, metric.WithAttributes(attribute.String("decision", "full")))
+
 	// Acquire the starting semaphore before resuming, same as Create/Pause.
 	if err := s.waitForAcquire(ctx); err != nil {
 		return nil, err
@@ -682,9 +721,22 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	s.publishSandboxEvent(ctx, resumedSbx, events.SandboxCheckpointedEvent)
 
+	// Record the published BuildID for the next skip-if-unchanged
+	// attempt and reset the inspector epoch so subsequent QueryChanges
+	// calls measure changes relative to this checkpoint. Both are
+	// best-effort: failures only force the next call to fall through.
+	s.lastPublishedSnapshot.Set(resumedSbx.Runtime.SandboxID, in.GetBuildId())
+
+	if utils.CheckEnvdVersionForInspector(resumedSbx.Config.Envd.Version) == nil {
+		go newInspectorClient(s.proxy, resumedSbx.Runtime.SandboxID).
+			ResetEpoch(context.WithoutCancel(ctx), 0)
+	}
+
 	telemetry.ReportEvent(ctx, "Checkpoint completed")
 
-	return &orchestrator.SandboxCheckpointResponse{}, nil
+	return &orchestrator.SandboxCheckpointResponse{
+		PublishedBuildId: in.GetBuildId(),
+	}, nil
 }
 
 // Extracts common data needed for sandbox events
