@@ -119,7 +119,7 @@ resource "google_compute_instance_template" "clickhouse" {
   labels = merge(
     var.labels,
   )
-  tags                    = [var.cluster_tag_name]
+  tags                    = local.clickhouse_network_tags
   metadata_startup_script = local.clickhouse_start_script
   metadata = {
     enable-osconfig         = "TRUE",
@@ -139,7 +139,8 @@ resource "google_compute_instance_template" "clickhouse" {
   }
 
   network_interface {
-    network = var.network_name
+    network    = var.network_name
+    subnetwork = local.clickhouse_subnetwork_name
 
     access_config {}
   }
