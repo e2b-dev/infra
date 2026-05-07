@@ -235,7 +235,7 @@ func TestStart_DisconnectStormHeapGrowth(t *testing.T) {
 	var after runtime.MemStats
 	runtime.ReadMemStats(&after)
 
-	heapGrowthMiB := float64(after.HeapInuse-baseline.HeapInuse) / (1024 * 1024)
+	heapGrowthMiB := (float64(after.HeapInuse) - float64(baseline.HeapInuse)) / (1024 * 1024)
 	t.Logf("heap: baseline=%.1f MiB after=%.1f MiB growth=%.1f MiB (%d cycles)",
 		float64(baseline.HeapInuse)/(1024*1024),
 		float64(after.HeapInuse)/(1024*1024),
