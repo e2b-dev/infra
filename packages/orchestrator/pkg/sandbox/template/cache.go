@@ -332,10 +332,31 @@ func (c *Cache) getTemplateWithFetch(ctx context.Context, tmpl *storageTemplate,
 		missesMetric.Add(ctx, 1)
 		// We don't want to cancel the request if the request was canceled, because it can be used by other templates
 		// It's a little bit problematic, because shutdown won't cancel the fetch
-		go tmpl.Fetch(context.WithoutCancel(ctx), c.buildStore)
+		go c.fetchAndEvictOnFailure(context.WithoutCancel(ctx), key, tmpl)
 	} else {
 		hitsMetric.Add(ctx, 1)
 	}
 
 	return t.Value()
+}
+
+func (c *Cache) fetchAndEvictOnFailure(ctx context.Context, key string, tmpl *storageTemplate) {
+	err := tmpl.Fetch(ctx, c.buildStore)
+	if err == nil {
+		return
+	}
+
+	c.extendMu.Lock()
+	defer c.extendMu.Unlock()
+
+	item := c.cache.Get(key)
+	if item == nil || item.Value() != tmpl {
+		return
+	}
+
+	c.cache.Delete(key)
+	logger.L().Error(ctx, "template fetch failed, evicted cached template",
+		logger.WithBuildID(key),
+		zap.Error(err),
+	)
 }
