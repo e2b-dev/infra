@@ -46,7 +46,12 @@ func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration
 		// `timeout` accepts fractional seconds (s/m/h/d), not `ms`. Output
 		// is dropped; non-zero status is captured into `rc` so the final
 		// exit code surfaces failures without short-circuiting later steps.
-		parts = append(parts, fmt.Sprintf("timeout -s KILL %.3f sh -c %q >/dev/null 2>&1 || rc=$?", d.Seconds(), st.cmd))
+		// Ensure sub-millisecond durations round up to 0.001 so timeout != 0.
+		sec := d.Seconds()
+		if sec < 0.001 && sec > 0 {
+			sec = 0.001
+		}
+		parts = append(parts, fmt.Sprintf("timeout -s KILL %.3f sh -c %q >/dev/null 2>&1 || rc=$?", sec, st.cmd))
 		sum += d
 	}
 	if len(parts) == 0 {
