@@ -73,7 +73,7 @@ func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 	rcCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	stream, err := s.StartEnvdShell(rcCtx, []string{"-c", script}, "root", timeout)
+	stream, err := s.StartEnvdShell(rcCtx, "/bin/sh", []string{"-c", script}, "root", timeout)
 	if err != nil {
 		logger.L().Warn(ctx, "envd reclaim failed", logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
 

@@ -1194,7 +1194,7 @@ func printTemplateInfo(ctx context.Context, tmpl template.Template, meta metadat
 // runCommandInSandbox runs a command inside the sandbox via envd as a
 // login shell so /etc/profile is sourced.
 func runCommandInSandbox(ctx context.Context, sbx *sandbox.Sandbox, command string) error {
-	stream, err := sbx.StartEnvdShell(ctx, []string{"-l", "-c", command}, "root", 0)
+	stream, err := sbx.StartEnvdShell(ctx, "/bin/bash", []string{"-l", "-c", command}, "root", 0)
 	if err != nil {
 		return fmt.Errorf("failed to start process: %w", err)
 	}

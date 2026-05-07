@@ -16,14 +16,16 @@ import (
 )
 
 // StartEnvdShell opens a streaming Process.Start call against this
-// sandbox's envd, running `/bin/sh` with the given args as `user`.
-// `/bin/sh` is used (not bash) so minimal guests without bash still
-// work. Caller chooses login-shell vs. plain (e.g. []{"-l","-c",cmd}
-// vs. []{"-c",script}). When timeout > 0 it sets `Connect-Timeout-Ms`
+// sandbox's envd, running `shell` with the given args as `user`.
+// Caller picks the binary (e.g. "/bin/sh" for portable scripts,
+// "/bin/bash" when bash-only syntax is required) and chooses
+// login-shell vs. plain via args (e.g. []{"-l","-c",cmd} vs.
+// []{"-c",script}). When timeout > 0 it sets `Connect-Timeout-Ms`
 // so envd kills the process at the deadline. Auth/user headers are
 // wired from sandbox config. Caller owns the returned stream.
 func (s *Sandbox) StartEnvdShell(
 	ctx context.Context,
+	shell string,
 	shellArgs []string,
 	user string,
 	timeout time.Duration,
@@ -32,7 +34,7 @@ func (s *Sandbox) StartEnvdShell(
 	pc := processconnect.NewProcessClient(&http.Client{Transport: sandboxHttpClient.Transport}, addr)
 
 	req := connect.NewRequest(&process.StartRequest{
-		Process: &process.ProcessConfig{Cmd: "/bin/sh", Args: shellArgs},
+		Process: &process.ProcessConfig{Cmd: shell, Args: shellArgs},
 	})
 	if timeout > 0 {
 		req.Header().Set("Connect-Timeout-Ms", strconv.FormatInt(timeout.Milliseconds(), 10))
