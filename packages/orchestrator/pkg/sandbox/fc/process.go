@@ -26,6 +26,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -443,13 +444,13 @@ func (p *Process) Create(
 	telemetry.ReportEvent(ctx, "set fc entropy config")
 
 	if freePageReporting {
-		err = p.client.enableFreePageReporting(ctx)
-		if err != nil {
+		freePageHinting := fcSupportsFreePageHinting(p.Versions.FirecrackerVersion) && kernelSupportsFreePageHinting(p.Versions.KernelVersion)
+		if err := p.client.installBalloon(ctx, freePageReporting, freePageHinting); err != nil {
 			fcStopErr := p.Stop(ctx)
 
-			return errors.Join(fmt.Errorf("error enabling free page reporting: %w", err), fcStopErr)
+			return errors.Join(fmt.Errorf("error installing balloon device: %w", err), fcStopErr)
 		}
-		telemetry.ReportEvent(ctx, "enabled free page reporting")
+		telemetry.ReportEvent(ctx, "installed balloon device", attribute.Bool("balloon.free_page_hinting", freePageHinting))
 	}
 
 	err = p.client.startVM(ctx)
@@ -711,6 +712,61 @@ func (p *Process) Pause(ctx context.Context) error {
 	defer childSpan.End()
 
 	return p.client.pauseVM(ctx)
+}
+
+// DrainBalloon triggers a free-page-hinting run and blocks until the guest
+// acknowledges or ctx fires. No-op on FC < v1.14 and when no balloon is
+// configured (FC returns 400).
+func (p *Process) DrainBalloon(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "drain-balloon")
+	outcome := "ok"
+	defer func() {
+		span.SetAttributes(attribute.String("drain-balloon.outcome", outcome))
+		span.End()
+	}()
+
+	if !fcSupportsFreePageHinting(p.Versions.FirecrackerVersion) {
+		outcome = "fc-unsupported"
+
+		return nil
+	}
+
+	if err := p.client.startBalloonHinting(ctx, true); err != nil {
+		var notConfigured *operations.StartBalloonHintingBadRequest
+		if errors.As(err, &notConfigured) {
+			outcome = "not-configured"
+
+			return nil
+		}
+
+		outcome = "start-failed"
+
+		return fmt.Errorf("start balloon hinting: %w", err)
+	}
+
+	backoff := 5 * time.Millisecond
+	for {
+		select {
+		case <-ctx.Done():
+			outcome = "timeout"
+
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+
+		host, guest, err := p.client.describeBalloonHinting(ctx)
+		if err != nil {
+			outcome = "describe-failed"
+
+			return fmt.Errorf("balloon hinting status: %w", err)
+		}
+		// host_cmd is monotonic; require host > 0 to avoid a false-positive
+		// completion before FC has accepted the start.
+		if host > 0 && guest >= host {
+			return nil
+		}
+		backoff = min(backoff*2, 50*time.Millisecond)
+	}
 }
 
 // CreateSnapshot VM needs to be paused before creating a snapshot.

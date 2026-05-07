@@ -11,3 +11,7 @@ func (v *Info) HasHugePages() bool {
 func (v *Info) HasFreePageReporting() bool {
 	return v.lastReleaseVersion.Major() > 1 || (v.lastReleaseVersion.Major() == 1 && v.lastReleaseVersion.Minor() >= 14)
 }
+
+func (v *Info) HasFreePageHinting() bool {
+	return v.lastReleaseVersion.Major() > 1 || (v.lastReleaseVersion.Major() == 1 && v.lastReleaseVersion.Minor() >= 14)
+}

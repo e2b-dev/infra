@@ -427,8 +427,8 @@ func (c *apiClient) startVM(ctx context.Context) error {
 	return nil
 }
 
-func (c *apiClient) enableFreePageReporting(ctx context.Context) error {
-	ctx, span := tracer.Start(ctx, "enable-free-page-reporting")
+func (c *apiClient) installBalloon(ctx context.Context, freePageReporting, freePageHinting bool) error {
+	ctx, span := tracer.Start(ctx, "install-balloon")
 	defer span.End()
 
 	amountMib := int64(0)
@@ -439,7 +439,8 @@ func (c *apiClient) enableFreePageReporting(ctx context.Context) error {
 		Body: &models.Balloon{
 			AmountMib:         &amountMib,
 			DeflateOnOom:      &deflateOnOom,
-			FreePageReporting: true,
+			FreePageReporting: freePageReporting,
+			FreePageHinting:   freePageHinting,
 		},
 	}
 
@@ -449,6 +450,33 @@ func (c *apiClient) enableFreePageReporting(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (c *apiClient) startBalloonHinting(ctx context.Context, acknowledgeOnStop bool) error {
+	params := operations.StartBalloonHintingParams{
+		Context: ctx,
+		Body:    &models.BalloonStartCmd{AcknowledgeOnStop: acknowledgeOnStop},
+	}
+	_, err := c.client.Operations.StartBalloonHinting(&params)
+	if err != nil {
+		return fmt.Errorf("error starting balloon hinting: %w", err)
+	}
+
+	return nil
+}
+
+func (c *apiClient) describeBalloonHinting(ctx context.Context) (hostCmd, guestCmd int64, err error) {
+	params := operations.DescribeBalloonHintingParams{Context: ctx}
+	res, err := c.client.Operations.DescribeBalloonHinting(&params)
+	if err != nil {
+		return 0, 0, err
+	}
+	if res.Payload.HostCmd != nil {
+		hostCmd = *res.Payload.HostCmd
+	}
+	guestCmd = res.Payload.GuestCmd
+
+	return hostCmd, guestCmd, nil
 }
 
 func (c *apiClient) memoryMapping(ctx context.Context) (*memory.Mapping, error) {

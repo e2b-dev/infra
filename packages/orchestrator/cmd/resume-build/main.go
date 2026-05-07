@@ -73,7 +73,13 @@ func main() {
 	optimize := flag.Bool("optimize", false, "collect fresh prefetch mapping after pause (resumes snapshot to record page faults)")
 	shell := flag.Bool("shell", false, "attach an interactive PTY shell via envd (no sshd required in the sandbox)")
 
+	fphTimeoutMs := flag.Int("fph-timeout-ms", 0, "override free-page-hinting-timeout-ms LD flag (0 = use LD default)")
+
 	flag.Parse()
+
+	if *fphTimeoutMs > 0 {
+		featureflags.NewIntFlag("free-page-hinting-timeout-ms", *fphTimeoutMs)
+	}
 
 	if *fromBuild == "" {
 		log.Fatal("-from-build required")
