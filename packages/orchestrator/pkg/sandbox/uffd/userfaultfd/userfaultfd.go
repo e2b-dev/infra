@@ -49,10 +49,29 @@ func hasEvent(revents, event int16) bool {
 	return revents&event != 0
 }
 
+// PageReader is the data source UFFD pulls page contents from on a fault.
+// It lets faultPage compose a single huge-page response from any mix of
+// underlying mapping granularities (e.g. 4 KiB dedup pages on top of 2 MiB
+// template ranges). block.ReadonlyDevice satisfies it.
+type PageReader interface {
+	ReadAt(ctx context.Context, p []byte, off int64) (int, error)
+}
+
+// pagePool is a process-wide pool of huge-page-sized scratch buffers used to
+// serve UFFD faults. Sized to header.HugepageSize so the same pool serves
+// both 4 KiB and 2 MiB UFFD page sizes — fault sites slice b[:pageSize].
+var pagePool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, header.HugepageSize)
+
+		return &buf
+	},
+}
+
 type Userfaultfd struct {
 	fd Fd
 
-	src         block.Slicer
+	src         PageReader
 	ma          *memory.Mapping
 	pageSize    uintptr
 	pageTracker *block.Tracker
@@ -108,13 +127,20 @@ const (
 	faultDiscarded
 )
 
-// NewUserfaultfdFromFd creates a new userfaultfd instance with optional configuration.
-func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logger logger.Logger) (*Userfaultfd, error) {
-	blockSize := src.BlockSize()
-
+// NewUserfaultfdFromFd creates a new userfaultfd instance.
+//
+// The UFFD page size is taken from the FC-registered regions rather than from
+// the source's BlockSize: the source may now expose mixed-granularity
+// mappings (e.g. 4 KiB dedup pages on top of 2 MiB template ranges) while FC
+// still drives faults at huge-page granularity.
+func NewUserfaultfdFromFd(fd uintptr, src PageReader, m *memory.Mapping, logger logger.Logger) (*Userfaultfd, error) {
+	pageSize := uintptr(header.HugepageSize)
+	if len(m.Regions) > 0 {
+		pageSize = m.Regions[0].PageSize
+	}
 	for _, region := range m.Regions {
-		if region.PageSize != uintptr(blockSize) {
-			return nil, fmt.Errorf("block size mismatch: %d != %d for region %d", region.PageSize, blockSize, region.BaseHostVirtAddr)
+		if region.PageSize != pageSize {
+			return nil, fmt.Errorf("region page size mismatch: %d != %d for region %d", region.PageSize, pageSize, region.BaseHostVirtAddr)
 		}
 	}
 
@@ -126,9 +152,9 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 	u := &Userfaultfd{
 		fd:              Fd(fd),
 		src:             src,
-		pageSize:        uintptr(blockSize),
+		pageSize:        pageSize,
 		pageTracker:     block.NewTracker(),
-		prefetchTracker: block.NewPrefetchTracker(blockSize),
+		prefetchTracker: block.NewPrefetchTracker(int64(pageSize)),
 		ma:              m,
 		wakeupPipe:      wakeupPipe,
 		logger:          logger,
@@ -379,7 +405,7 @@ func (u *Userfaultfd) Serve(
 				u.settleRequests.RLock()
 				defer u.settleRequests.RUnlock()
 
-				var source block.Slicer
+				var source PageReader
 
 				idx := uint32(header.BlockIdx(offset, int64(u.pageSize)))
 
@@ -448,7 +474,7 @@ func (u *Userfaultfd) faultPage(
 	addr uintptr,
 	offset int64,
 	accessType block.AccessType,
-	source block.Slicer,
+	source PageReader,
 	onFailure func() error,
 ) (outcome faultOutcome, err error) {
 	span := trace.SpanFromContext(ctx)
@@ -489,19 +515,32 @@ func (u *Userfaultfd) faultPage(
 	case source == nil && u.pageSize == header.HugepageSize:
 		writeErr = u.fd.copy(addr, u.pageSize, header.EmptyHugePage, mode)
 	default:
-		// Slice retry holds settleRequests.RLock for up to ~2s of
+		// Borrow a HugepageSize-sized scratch buffer from the pool and slice
+		// it down to u.pageSize. The pool is process-wide so 4 KiB UFFD
+		// instances pay for the over-provisioned allocation just once each.
+		bufPtr := pagePool.Get().(*[]byte)
+		defer pagePool.Put(bufPtr)
+		b := (*bufPtr)[:u.pageSize]
+
+		// Zero the buffer before ReadAt: build.File.ReadAt skips ranges
+		// mapped to uuid.Nil (assumes p is pre-zeroed), and pooled buffers
+		// carry stale data from previous faults. Without this, a fault
+		// resolving to (current-build + uuid.Nil) sub-mappings would leak
+		// the previous fault's bytes for the uuid.Nil ranges.
+		clear(b)
+
+		// ReadAt retry holds settleRequests.RLock for up to ~2s of
 		// exponential backoff, blocking any concurrent REMOVE batch.
 		// Correctness holds (uffd FIFO drains the queued REMOVE before
 		// the next same-page fault); if the blocking latency ever shows
-		// up, move Slice outside the lock and re-check state before
+		// up, move ReadAt outside the lock and re-check state before
 		// UFFDIO_COPY.
-		var b []byte
 		var dataErr error
 		var attempt int
 
 	retryLoop:
 		for attempt = range sliceMaxRetries + 1 {
-			b, dataErr = source.Slice(ctx, offset, int64(u.pageSize))
+			_, dataErr = source.ReadAt(ctx, b, offset)
 			if dataErr == nil {
 				break
 			}
@@ -510,7 +549,7 @@ func (u *Userfaultfd) faultPage(
 				break
 			}
 
-			u.logger.Warn(ctx, "UFFD serve slice error, retrying",
+			u.logger.Warn(ctx, "UFFD serve read error, retrying",
 				zap.Int("attempt", attempt+1),
 				zap.Int("max_attempts", sliceMaxRetries+1),
 				zap.Error(dataErr),

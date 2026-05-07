@@ -120,41 +120,18 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 	return n, nil
 }
 
-// The slice access must be in the predefined blocksize of the build.
-func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
-	for {
-		h := b.Header()
-
-		mappedBuild, err := h.GetShiftedMapping(ctx, off)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get mapping: %w", err)
-		}
-
-		// Pass empty huge page when the build id is nil.
-		if mappedBuild.BuildId == uuid.Nil {
-			return header.EmptyHugePage, nil
-		}
-
-		size := b.buildFileSize(h, mappedBuild.BuildId)
-		ft := h.GetBuildFrameData(mappedBuild.BuildId)
-		diff, err := b.getBuild(ctx, mappedBuild.BuildId, size, ft.CompressionType())
-		if err != nil {
-			return nil, fmt.Errorf("failed to get build: %w", err)
-		}
-
-		result, err := diff.Slice(ctx, int64(mappedBuild.Offset), int64(h.Metadata.BlockSize), ft)
-		if err != nil {
-			if retry, swapErr := b.retryOnTransition(ctx, err); retry {
-				continue
-			} else if swapErr != nil {
-				return nil, swapErr
-			}
-
-			return nil, err
-		}
-
-		return result, nil
+// Slice returns the data at the given offset and length. It delegates to
+// ReadAt so a single Slice request can be served from multiple sub-mappings
+// of mixed granularity (e.g. 4 KiB dedup pages alongside 2 MiB template
+// ranges). The previous zero-copy mmap return is gone — callers that hold
+// the result for the full UFFD copy must use a pooled buffer instead.
+func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+	out := make([]byte, length)
+	if _, err := b.ReadAt(ctx, out, off); err != nil {
+		return nil, fmt.Errorf("failed to read at: %w", err)
 	}
+
+	return out, nil
 }
 
 // retryOnTransition catches a PeerTransitionedError and swaps the header from

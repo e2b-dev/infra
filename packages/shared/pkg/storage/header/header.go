@@ -193,14 +193,17 @@ func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64
 			logger.WithBuildID(t.Metadata.BuildId.String()),
 		)
 	}
-	if offset%int64(t.Metadata.BlockSize) != 0 {
+	// Mappings can be PageSize-granular even when Metadata.BlockSize is larger
+	// (e.g. 2 MiB UFFD page size with 4 KiB dedup mappings), so alignment is
+	// checked against PageSize rather than Metadata.BlockSize.
+	if offset%PageSize != 0 {
 		if t.IsNormalizeFixApplied() {
-			return nil, 0, fmt.Errorf("offset %d is not aligned to block size %d", offset, t.Metadata.BlockSize)
+			return nil, 0, fmt.Errorf("offset %d is not aligned to page size %d", offset, PageSize)
 		}
 
-		logger.L().Warn(ctx, "offset is not aligned to block size, but normalize fix is not applied",
+		logger.L().Warn(ctx, "offset is not aligned to page size, but normalize fix is not applied",
 			zap.Int64("offset", offset),
-			zap.Int64("blockSize", int64(t.Metadata.BlockSize)),
+			zap.Int64("pageSize", PageSize),
 			logger.WithBuildID(t.Metadata.BuildId.String()),
 		)
 	}
