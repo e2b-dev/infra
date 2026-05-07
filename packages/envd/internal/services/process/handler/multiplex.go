@@ -108,8 +108,8 @@ func (m *MultiplexedChannel[T]) run() {
 // it stops consuming so Source fills up and back-pressures the
 // producer.  Returns (zero, false) when Source is closed.
 //
-// Callers that close Source must also call NotifySubscriberChange so
-// the fan-out loop wakes up and observes the closed channel.
+// Callers that close Source must use CloseSource (not bare close)
+// so the fan-out loop wakes up and observes the closed channel.
 func (m *MultiplexedChannel[T]) receiveWhenReady() (v T, ok bool) {
 	for {
 		if m.closed.Load() {

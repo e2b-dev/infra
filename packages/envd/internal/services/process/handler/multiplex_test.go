@@ -283,18 +283,19 @@ func TestMultiplexedChannel_ForkAfterSourceCloseReturnsClosedChan(t *testing.T) 
 	assert.False(t, ok, "Fork after shutdown must return a pre-closed channel")
 }
 
-// Regression: sending to an unbuffered Source after the last subscriber
-// cancelled must not deadlock.  This reproduces the bug where
-// handler.Wait() calls `p.EndEvent.Source <- event` on an unbuffered
-// (buffer=0) EndEvent channel after the handleStart/handleConnect
-// handler has returned and run `defer endCancel()`.  With
-// back-pressure, receiveWhenReady parks on <-sig waiting for a
-// subscriber that will never come, so the Source send blocks forever.
-func TestMultiplexedChannel_SendToUnbufferedSourceAfterLastCancelDeadlocks(t *testing.T) {
+// Regression: sending to Source after the last subscriber cancelled
+// must not deadlock.  This reproduces the bug where handler.Wait()
+// calls `p.EndEvent.Source <- event` after the handleStart/handleConnect
+// handler has returned and run `defer endCancel()`.
+//
+// The fix is to give EndEvent a buffer of 1 so the single send in
+// Wait() always succeeds, and then call CloseSource() so the fan-out
+// goroutine can exit cleanly.
+func TestMultiplexedChannel_SendToSourceAfterLastCancelDoesNotDeadlock(t *testing.T) {
 	t.Parallel()
 
-	// Mirror EndEvent: buffer=0.
-	m := NewMultiplexedChannel[int](0)
+	// Mirror EndEvent: buffer=1 (the fix — was 0 before).
+	m := NewMultiplexedChannel[int](1)
 
 	_, cancel := m.Fork()
 
@@ -303,9 +304,6 @@ func TestMultiplexedChannel_SendToUnbufferedSourceAfterLastCancelDeadlocks(t *te
 	// handleStart returns (running `defer endCancel()`) before
 	// the child process exits and Wait() tries to send the
 	// EndEvent.
-	//
-	// After cancel, the fan-out loop will observe zero subscribers
-	// and park on <-sig in receiveWhenReady.
 	cancel()
 
 	// Give the fan-out goroutine time to re-enter receiveWhenReady,
@@ -313,29 +311,26 @@ func TestMultiplexedChannel_SendToUnbufferedSourceAfterLastCancelDeadlocks(t *te
 	time.Sleep(50 * time.Millisecond)
 
 	// Now attempt to send — this models handler.Wait()'s
-	// `p.EndEvent.Source <- event`.  With the bug, this blocks
-	// forever because receiveWhenReady is parked waiting for a
-	// subscriber and nobody will ever wake it.
+	// `p.EndEvent.Source <- event`.  With buffer=1 the send
+	// succeeds immediately even though no subscriber is draining.
 	sent := sendOrTimeout(t, m.Source, 1, 2*time.Second)
 	if !sent {
 		t.Fatal("Source send deadlocked after last subscriber cancelled; " +
-			"receiveWhenReady must not block the producer when Source is unbuffered")
+			"EndEvent must use buffer >= 1 so Wait() never blocks")
 	}
 
+	// CloseSource wakes the fan-out so it drains the buffered
+	// value and exits.  Without this the fan-out goroutine leaks.
 	m.CloseSource()
 }
 
-// Regression: closing Source directly (bypassing CloseSource) after the
-// last subscriber is cancelled leaks the fan-out goroutine.  This
-// reproduces the bug in start.go:101 where `defer close(startMultiplexer.Source)`
-// is used instead of `defer startMultiplexer.CloseSource()`.
-//
-// Because defers run LIFO, startCancel() (line 104) runs first and
-// removes the only subscriber.  Then close(Source) fires, but
-// the fan-out goroutine is parked on <-sig in receiveWhenReady
-// (because closed flag was never set and no NotifySubscriberChange
-// was called), so it never observes the channel close and leaks.
-func TestMultiplexedChannel_DirectCloseSourceAfterCancelLeaksFanOut(t *testing.T) { //nolint:paralleltest // relies on a stable goroutine count
+// Regression: CloseSource after the last subscriber is cancelled must
+// not leak the fan-out goroutine.  This reproduces the pattern from
+// start.go where startCancel() runs before CloseSource() (LIFO defer
+// order).  Previously start.go used bare close(Source) which bypassed
+// the closed flag and NotifySubscriberChange, leaving the fan-out
+// goroutine parked on <-sig forever.
+func TestMultiplexedChannel_CloseSourceAfterCancelDoesNotLeakFanOut(t *testing.T) { //nolint:paralleltest // relies on a stable goroutine count
 	const iterations = 8
 
 	time.Sleep(50 * time.Millisecond)
@@ -348,26 +343,30 @@ func TestMultiplexedChannel_DirectCloseSourceAfterCancelLeaksFanOut(t *testing.T
 
 		// Simulate LIFO defer order in handleStart:
 		//   1. startCancel() runs first — removes subscriber
-		//   2. close(startMultiplexer.Source) runs second
+		//   2. CloseSource() runs second (the fix — was bare close before)
 		cancel()
 		time.Sleep(10 * time.Millisecond) // let fan-out park on <-sig
-		close(m.Source)                    // bypass CloseSource — the bug
+		m.CloseSource()
 	}
 
 	// Allow goroutines to settle.
-	time.Sleep(200 * time.Millisecond)
-	runtime.GC() //nolint:revive // intentional: help goroutines finalize
-	runtime.Gosched()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		runtime.GC() //nolint:revive // intentional: help goroutines finalize
+		runtime.Gosched()
+		time.Sleep(20 * time.Millisecond)
+		if runtime.NumGoroutine() <= before+2 {
+			break
+		}
+	}
 
 	after := runtime.NumGoroutine()
 	leaked := after - before
 
-	// Each iteration leaks one fan-out goroutine with the bug.
 	assert.LessOrEqualf(t, leaked, 2,
 		"goroutine count grew by %d after %d iterations of "+
-			"cancel-then-close(Source); before=%d after=%d — "+
-			"fan-out goroutines are leaking (use CloseSource instead "+
-			"of close(Source))", leaked, iterations, before, after,
+			"cancel-then-CloseSource; before=%d after=%d — "+
+			"fan-out goroutines are leaking", leaked, iterations, before, after,
 	)
 }
 
