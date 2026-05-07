@@ -214,17 +214,53 @@ var (
 	MinChunkerReadSizeKB = NewIntFlag("min-chunker-read-size-kb", 16)
 )
 
-// Per-step ceilings for the pre-pause guest reclaim chain (run via envd
-// before snapshot). Each step is wrapped in `timeout -s KILL`; 0 skips it.
-// All default to 0, so the feature is disabled until an operator opts in
-// per step. A stuck step cannot starve the rest, so compact_memory always
-// runs as long as its own cap is > 0.
-var (
-	ReclaimSyncTimeout          = NewDurationFlag("reclaim-sync-timeout", 0)
-	ReclaimDropCachesTimeout    = NewDurationFlag("reclaim-drop-caches-timeout", 0)
-	ReclaimCompactMemoryTimeout = NewDurationFlag("reclaim-compact-memory-timeout", 0)
-	ReclaimFstrimTimeout        = NewDurationFlag("reclaim-fstrim-timeout", 0)
-)
+// ReclaimConfigFlag holds per-step ceilings for the pre-pause guest reclaim
+// chain (run via envd before snapshot). One JSON object so a single LD rule
+// can be targeted by team/template/sandbox/etc.
+//
+// JSON keys are duration strings parsed by time.ParseDuration. Missing/empty
+// keys (and the null default) leave each step at 0 = disabled. Sub-ms values
+// are also skipped by the caller. Each step is wrapped in `timeout -s KILL`,
+// so a stuck step cannot starve the rest.
+//
+// Example:
+//
+//	{"sync":"500ms","drop_caches":"200ms","compact_memory":"1s","fstrim":"500ms"}
+var ReclaimConfigFlag = NewJSONFlag("reclaim-config", ldvalue.Null())
+
+// ReclaimConfig is the parsed view of ReclaimConfigFlag.
+type ReclaimConfig struct {
+	Sync          time.Duration
+	DropCaches    time.Duration
+	CompactMemory time.Duration
+	Fstrim        time.Duration
+}
+
+// GetReclaimConfig fetches and parses ReclaimConfigFlag against the supplied
+// LD contexts (e.g. sandbox/team/template) so targeting is configured in LD.
+func GetReclaimConfig(ctx context.Context, ff *Client, contexts ...ldcontext.Context) ReclaimConfig {
+	v := ff.JSONFlag(ctx, ReclaimConfigFlag, contexts...)
+
+	return ReclaimConfig{
+		Sync:          parseDurationValue(v.GetByKey("sync")),
+		DropCaches:    parseDurationValue(v.GetByKey("drop_caches")),
+		CompactMemory: parseDurationValue(v.GetByKey("compact_memory")),
+		Fstrim:        parseDurationValue(v.GetByKey("fstrim")),
+	}
+}
+
+func parseDurationValue(v ldvalue.Value) time.Duration {
+	s := v.StringValue()
+	if s == "" {
+		return 0
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0
+	}
+
+	return d
+}
 
 type StringFlag struct {
 	name     string
@@ -246,37 +282,6 @@ func (f StringFlag) Fallback() string {
 func NewStringFlag(name string, fallback string) StringFlag {
 	flag := StringFlag{name: name, fallback: fallback}
 	builder := launchDarklyOfflineStore.Flag(flag.name).ValueForAll(ldvalue.String(fallback))
-	launchDarklyOfflineStore.Update(builder)
-
-	return flag
-}
-
-// DurationFlag is a string-backed flag that parses values via time.ParseDuration.
-// LaunchDarkly UI shows self-describing values like "500ms" or "2s" instead of
-// raw integers. Invalid or empty values fall back to the configured default.
-type DurationFlag struct {
-	name     string
-	fallback time.Duration
-}
-
-func (f DurationFlag) Key() string {
-	return f.name
-}
-
-func (f DurationFlag) String() string {
-	return f.name
-}
-
-func (f DurationFlag) Fallback() time.Duration {
-	return f.fallback
-}
-
-// NewDurationFlag registers a new duration flag. The fallback is stored both as
-// the typed default and as a string in the offline store so local/dev clients
-// resolve it consistently.
-func NewDurationFlag(name string, fallback time.Duration) DurationFlag {
-	flag := DurationFlag{name: name, fallback: fallback}
-	builder := launchDarklyOfflineStore.Flag(flag.name).ValueForAll(ldvalue.String(fallback.String()))
 	launchDarklyOfflineStore.Update(builder)
 
 	return flag

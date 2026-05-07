@@ -12,44 +12,50 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-type reclaimStep struct {
-	flag featureflags.DurationFlag
-	cmd  string
-}
-
-// Order matters: sync makes drop_caches more effective; drop_caches gives
-// compact_memory more headroom; fstrim wants a stable FS view.
-var reclaimSteps = []reclaimStep{
-	{featureflags.ReclaimSyncTimeout, "sync"},
-	{featureflags.ReclaimDropCachesTimeout, "echo 3 > /proc/sys/vm/drop_caches"},
-	{featureflags.ReclaimCompactMemoryTimeout, "echo 1 > /proc/sys/vm/compact_memory"},
-	{featureflags.ReclaimFstrimTimeout, "fstrim -av"},
-}
-
 // Slack added to the sum of per-step caps to absorb shell start /
 // envd round-trip overhead.
 const reclaimOuterSlack = 500 * time.Millisecond
 
 // buildReclaimScript composes a chain where each step has its own
-// `timeout -s KILL` ceiling. Steps with cap=0 are skipped. Returns
-// ("", 0) when every step is disabled.
+// `timeout -s KILL` ceiling. Step caps come from a single LD JSON flag
+// (`reclaim-config`), evaluated against sandbox/team/template contexts so
+// targeting is configured in LaunchDarkly. Sub-ms caps are skipped.
+// Returns ("", 0) when every step is disabled.
+//
+// Order matters: sync makes drop_caches more effective; drop_caches gives
+// compact_memory more headroom; fstrim wants a stable FS view.
 func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration) {
+	cfg := featureflags.GetReclaimConfig(ctx, s.featureFlags,
+		featureflags.SandboxContext(s.Runtime.SandboxID),
+		featureflags.TeamContext(s.Runtime.TeamID),
+		featureflags.TemplateContext(s.Runtime.TemplateID),
+	)
+
+	steps := []struct {
+		cap time.Duration
+		cmd string
+	}{
+		{cfg.Sync, "sync"},
+		{cfg.DropCaches, "echo 3 > /proc/sys/vm/drop_caches"},
+		{cfg.CompactMemory, "echo 1 > /proc/sys/vm/compact_memory"},
+		{cfg.Fstrim, "fstrim -av"},
+	}
+
 	var (
 		parts []string
 		sum   time.Duration
 	)
-	for _, st := range reclaimSteps {
-		d := s.featureFlags.DurationFlag(ctx, st.flag)
+	for _, st := range steps {
 		// Skip sub-ms values: `%.3f` would render them as 0.000 which GNU
 		// `timeout` treats as "no timeout" (waits forever).
-		if d < time.Millisecond {
+		if st.cap < time.Millisecond {
 			continue
 		}
 		// `timeout` accepts fractional seconds (s/m/h/d), not `ms`. Output
 		// is dropped; non-zero status is captured into `rc` so the final
 		// exit code surfaces failures without short-circuiting later steps.
-		parts = append(parts, fmt.Sprintf("timeout -s KILL %.3f sh -c %q >/dev/null 2>&1 || rc=$?", d.Seconds(), st.cmd))
-		sum += d
+		parts = append(parts, fmt.Sprintf("timeout -s KILL %.3f sh -c %q >/dev/null 2>&1 || rc=$?", st.cap.Seconds(), st.cmd))
+		sum += st.cap
 	}
 	if len(parts) == 0 {
 		return "", 0

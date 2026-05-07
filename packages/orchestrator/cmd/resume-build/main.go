@@ -19,6 +19,7 @@ import (
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldlog"
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
@@ -74,10 +75,12 @@ func main() {
 	flag.Parse()
 
 	if *reclaim {
-		featureflags.NewDurationFlag("reclaim-sync-timeout", 500*time.Millisecond)
-		featureflags.NewDurationFlag("reclaim-drop-caches-timeout", 200*time.Millisecond)
-		featureflags.NewDurationFlag("reclaim-compact-memory-timeout", time.Second)
-		featureflags.NewDurationFlag("reclaim-fstrim-timeout", 500*time.Millisecond)
+		featureflags.NewJSONFlag("reclaim-config", ldvalue.FromJSONMarshal(map[string]string{
+			"sync":           "500ms",
+			"drop_caches":    "200ms",
+			"compact_memory": "1s",
+			"fstrim":         "500ms",
+		}))
 	}
 
 	if *fromBuild == "" {

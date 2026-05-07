@@ -132,36 +132,6 @@ func (c *Client) StringFlag(ctx context.Context, flag StringFlag, contexts ...ld
 	return getFlag(ctx, c.ld, c.ld.StringVariationCtx, flag, c.allContexts(contexts))
 }
 
-// DurationFlag reads a duration-valued flag. The underlying flag is stored as a
-// string (e.g. "500ms") and parsed via time.ParseDuration. Empty/invalid values
-// fall back to the configured default.
-func (c *Client) DurationFlag(ctx context.Context, flag DurationFlag, contexts ...ldcontext.Context) time.Duration {
-	if c.ld == nil {
-		logger.L().Info(ctx, "LaunchDarkly client is not initialized, returning fallback")
-
-		return flag.Fallback()
-	}
-
-	raw, err := c.ld.StringVariationCtx(ctx, flag.Key(), mergeContexts(ctx, c.allContexts(contexts)), "")
-	if err != nil {
-		logger.L().Warn(ctx, "error evaluating flag", zap.Error(err), zap.String("flag", flag.Key()))
-
-		return flag.Fallback()
-	}
-	if raw == "" {
-		return flag.Fallback()
-	}
-	d, err := time.ParseDuration(raw)
-	if err != nil {
-		logger.L().Warn(ctx, "invalid duration flag value, using fallback",
-			zap.String("flag", flag.Key()), zap.String("value", raw), zap.Error(err))
-
-		return flag.Fallback()
-	}
-
-	return d
-}
-
 type typedFlag[T any] interface {
 	Key() string
 	Fallback() T
