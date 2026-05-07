@@ -143,6 +143,7 @@ module "api" {
   auth_db_min_idle_connections   = var.auth_db_min_idle_connections
 
   job_env_vars = {
+    NOMAD_NODE_POOL               = var.orchestrator_node_pool
     VOLUME_TOKEN_ISSUER           = var.domain_name
     VOLUME_TOKEN_SIGNING_KEY      = "HMAC:${base64encode(random_password.volume_token_key.result)}"
     VOLUME_TOKEN_SIGNING_KEY_NAME = "e2b-volume-token-key"

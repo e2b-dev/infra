@@ -140,6 +140,7 @@ module "api" {
   default_persistent_volume_type          = var.default_persistent_volume_type
 
   job_env_vars = {
+    NOMAD_NODE_POOL               = var.orchestrator_node_pool
     VOLUME_TOKEN_ISSUER           = var.volume_token_issuer
     VOLUME_TOKEN_SIGNING_KEY      = var.volume_token_signing_key
     VOLUME_TOKEN_SIGNING_KEY_NAME = var.volume_token_signing_key_name

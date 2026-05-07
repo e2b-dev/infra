@@ -40,9 +40,10 @@ func newTestOrchestrator(t *testing.T, nomad *nomadapi.Client) *Orchestrator {
 	logger.ReplaceGlobals(ctx, logger.NewNopLogger())
 
 	return &Orchestrator{
-		nodes:       smap.New[*nodemanager.Node](),
-		nomadClient: nomad,
-		tel:         telemetry.NewNoopClient(),
+		nodes:         smap.New[*nodemanager.Node](),
+		nomadClient:   nomad,
+		nomadNodePool: "default",
+		tel:           telemetry.NewNoopClient(),
 	}
 }
 
