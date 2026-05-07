@@ -143,12 +143,16 @@ func (p *peerStorageProvider) OpenBlob(_ context.Context, path string, objType s
 }
 
 func (p *peerStorageProvider) OpenSeekable(_ context.Context, path string, objType storage.SeekableObjectType) (storage.Seekable, error) {
-	// peerStorageProvider is only constructed by routingProvider while the
-	// build is peer-authoritative — i.e. pre-finalization, when the header is
-	// V3 (CompressionNone) and the data file is referenced by its basic name.
-	// So fileName here is always the basic name; the base fallthrough path
-	// composes the actual storage path from (buildID, name, ct) per-call.
+	// Strip any compression suffix so peerSeekable holds the basic name. The
+	// base fallthrough path composes the actual storage path from
+	// (buildID, name, ct) per-call. Peer routing usually engages only
+	// pre-finalization (basic name in, no-op strip), but the Redis peer-key
+	// TTL outlives the upload by ~2 min: a fresh orchestrator can resolve a
+	// stale entry for a finalized V4/Zstd build, in which case StorageDiff
+	// hands us "buildID/memfile.zstd" — without stripping, getBase would
+	// double-suffix to "memfile.zstd.zstd" on fallthrough.
 	buildID, fileName := storage.SplitPath(path)
+	fileName = storage.StripCompression(fileName)
 
 	return &peerSeekable{
 		peerHandle: peerHandle{

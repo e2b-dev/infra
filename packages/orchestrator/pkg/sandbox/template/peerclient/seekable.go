@@ -138,16 +138,15 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length in
 	return base.OpenRangeReader(ctx, off, length, frameTable)
 }
 
-func (s *peerSeekable) StoreFile(ctx context.Context, path string, opts ...storage.PutOption) (*storage.FrameTable, [32]byte, error) {
-	// Writes always go to the base provider (GCS/S3); the peer is read-only.
-	// StoreFile composes its own paths via FrameTable; ct here is irrelevant
-	// to the actual write target.
-	fallback, err := s.getBase(ctx, storage.CompressionNone)
-	if err != nil {
-		return nil, [32]byte{}, err
-	}
-
-	return fallback.StoreFile(ctx, path, opts...)
+func (s *peerSeekable) StoreFile(context.Context, string, ...storage.PutOption) (*storage.FrameTable, [32]byte, error) {
+	// peerSeekable only exists when routingProvider routed this buildID to an
+	// active peer at open time, i.e. the file is being P2P-served (the peer
+	// owns the upload). Asking the local orchestrator to upload it is a
+	// contradiction. The write path uses bare persistence (Upload.store) and
+	// does not flow through routingProvider, so this is unreachable today;
+	// returning an error keeps the contradiction explicit rather than letting
+	// a future caller silently upload to the wrong path.
+	return nil, [32]byte{}, fmt.Errorf("peerSeekable: StoreFile not supported (build %s is P2P-served; writes must use the base provider directly)", s.buildID)
 }
 
 // openPeerSeekableStream opens a ReadAtBuildSeekable stream, checks peer availability,
