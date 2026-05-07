@@ -20,3 +20,8 @@ Supported cloud providers:
 - 🟢 AWS (Beta)
 - [ ] Azure
 - [ ] General linux machine
+
+## Limitations
+
+- Custom template builds require Debian/Ubuntu-based base images (images that provide the apt package manager). Non-Debian images such as Alpine, CentOS/RHEL, or other distributions without apt are not supported and will fail during the template build/provisioning process. See [docs/limitations.md](docs/limitations.md) for details and suggested PR wording.
+
