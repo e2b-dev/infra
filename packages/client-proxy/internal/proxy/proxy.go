@@ -21,7 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
-	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
+	sandboxcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -49,7 +49,7 @@ const (
 	autoResumeErrored
 )
 
-func catalogSandboxNodeIP(s *e2bcatalog.SandboxInfo) (string, error) {
+func catalogSandboxNodeIP(s *sandboxcatalog.SandboxInfo) (string, error) {
 	return normalizeNodeIP(s.OrchestratorIP)
 }
 
@@ -73,10 +73,10 @@ func clientProxyMaskRequestHost(ctx context.Context, featureFlags *featureflags.
 	return &orchestratorHost
 }
 
-func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, c e2bcatalog.SandboxesCatalog, lifecycleClient SandboxLifecycleClient, featureFlags *featureflags.Client, trafficKeepalive *trafficKeepaliveManager) (string, error) {
+func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, c sandboxcatalog.SandboxesCatalog, lifecycleClient SandboxLifecycleClient, featureFlags *featureflags.Client, trafficKeepalive *trafficKeepaliveManager) (string, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
-		if errors.Is(err, e2bcatalog.ErrSandboxNotFound) {
+		if errors.Is(err, sandboxcatalog.ErrSandboxNotFound) {
 			nodeIP, res, pausedErr := handlePausedSandbox(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken, lifecycleClient, featureFlags)
 			if pausedErr != nil {
 				return "", pausedErr
@@ -154,7 +154,7 @@ func handlePausedSandbox(
 	return nodeIP, autoResumeSucceeded, nil
 }
 
-func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog e2bcatalog.SandboxesCatalog, sandboxLifecycleClient SandboxLifecycleClient, featureFlagsClient *featureflags.Client) (*reverseproxy.Proxy, error) {
+func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog sandboxcatalog.SandboxesCatalog, sandboxLifecycleClient SandboxLifecycleClient, featureFlagsClient *featureflags.Client) (*reverseproxy.Proxy, error) {
 	getTargetFromRequest := reverseproxy.GetTargetFromRequest()
 	trafficKeepalive := newTrafficKeepaliveManager(sandboxLifecycleClient)
 	proxy := reverseproxy.New(

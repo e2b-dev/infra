@@ -35,7 +35,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/metrics"
-	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
+	sandboxcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -354,8 +354,8 @@ func buildKeepaliveConfig(lifecycle *api.NewSandboxLifecycle) (*types.SandboxKee
 		if *lifecycle.Keepalive.Traffic.Timeout < 0 {
 			return nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: "Traffic keepalive timeout cannot be negative"}
 		}
-		if time.Duration(*lifecycle.Keepalive.Traffic.Timeout)*time.Second <= e2bcatalog.TrafficKeepaliveThrottleInterval {
-			return nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: fmt.Sprintf("Traffic keepalive timeout must be greater than %d seconds", int(e2bcatalog.TrafficKeepaliveThrottleInterval.Seconds()))}
+		if time.Duration(*lifecycle.Keepalive.Traffic.Timeout)*time.Second <= sandboxcatalog.TrafficKeepaliveThrottleInterval {
+			return nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: fmt.Sprintf("Traffic keepalive timeout must be greater than %d seconds", int(sandboxcatalog.TrafficKeepaliveThrottleInterval.Seconds()))}
 		}
 
 		timeout = uint64(*lifecycle.Keepalive.Traffic.Timeout)

@@ -2,17 +2,17 @@ package catalog
 
 import (
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
-	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
+	sandboxcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
-func KeepaliveFromDB(keepalive *types.SandboxKeepaliveConfig) *e2bcatalog.Keepalive {
+func KeepaliveFromDB(keepalive *types.SandboxKeepaliveConfig) *sandboxcatalog.Keepalive {
 	if keepalive == nil {
 		return nil
 	}
 
-	result := &e2bcatalog.Keepalive{}
+	result := &sandboxcatalog.Keepalive{}
 	if keepalive.Traffic != nil && keepalive.Traffic.Enabled {
-		result.Traffic = &e2bcatalog.TrafficKeepalive{
+		result.Traffic = &sandboxcatalog.TrafficKeepalive{
 			Enabled: true,
 		}
 	}
