@@ -40,7 +40,9 @@ func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration
 	)
 	for _, st := range reclaimSteps {
 		d := s.featureFlags.DurationFlag(ctx, st.flag)
-		if d <= 0 {
+		// Skip sub-ms values: `%.3f` would render them as 0.000 which GNU
+		// `timeout` treats as "no timeout" (waits forever).
+		if d < time.Millisecond {
 			continue
 		}
 		// `timeout` accepts fractional seconds (s/m/h/d), not `ms`. Output
