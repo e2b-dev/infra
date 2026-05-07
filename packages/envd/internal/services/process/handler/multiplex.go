@@ -17,7 +17,7 @@ type MultiplexedChannel[T any] struct {
 
 	mu       sync.RWMutex
 	channels []*subscriber[T]
-	exited   atomic.Bool
+	done     chan struct{} // closed when run() returns
 
 	subMu     sync.Mutex
 	subSignal chan struct{} // closed+recreated on subscriber list change
@@ -50,6 +50,7 @@ func (s *subscriber[T]) isCancelled() bool {
 func NewMultiplexedChannel[T any](buffer int) *MultiplexedChannel[T] {
 	c := &MultiplexedChannel[T]{
 		Source:    make(chan T, buffer),
+		done:      make(chan struct{}),
 		subSignal: make(chan struct{}),
 	}
 
@@ -90,17 +91,19 @@ func (m *MultiplexedChannel[T]) run() {
 		}
 	}
 
-	m.exited.Store(true)
-
 	// Close all remaining consumer channels so `for range` loops exit.
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	for _, s := range m.channels {
 		s.cancel()
 		close(s.ch)
 	}
 	m.channels = nil
+
+	m.mu.Unlock()
+
+	// Signal that run() has finished. Fork() uses this to detect shutdown.
+	close(m.done)
 }
 
 // receiveWhenReady reads the next value from Source, but only when at
@@ -112,13 +115,6 @@ func (m *MultiplexedChannel[T]) run() {
 // so the fan-out loop wakes up and observes the closed channel.
 func (m *MultiplexedChannel[T]) receiveWhenReady() (v T, ok bool) {
 	for {
-		if m.closed.Load() {
-			// Drain any remaining buffered values.
-			v, ok = <-m.Source
-
-			return v, ok
-		}
-
 		if m.HasSubscribers() {
 			v, ok = <-m.Source
 
@@ -129,6 +125,12 @@ func (m *MultiplexedChannel[T]) receiveWhenReady() (v T, ok bool) {
 		m.subMu.Lock()
 		sig := m.subSignal
 		m.subMu.Unlock()
+
+		if m.closed.Load() {
+			v, ok = <-m.Source
+
+			return v, ok
+		}
 
 		<-sig
 	}
@@ -169,22 +171,26 @@ func (m *MultiplexedChannel[T]) HasSubscribers() bool {
 // The channel is bidirectional for backwards compat with start.go which writes
 // a bootstrap event into it; new callers should treat it as receive-only.
 func (m *MultiplexedChannel[T]) Fork() (chan T, func()) {
-	if m.exited.Load() {
+	select {
+	case <-m.done:
 		ch := make(chan T)
 		close(ch)
 
 		return ch, func() {}
+	default:
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	// Re-check under lock in case run() finished between the fast path and here.
-	if m.exited.Load() {
+	select {
+	case <-m.done:
 		ch := make(chan T)
 		close(ch)
 
 		return ch, func() {}
+	default:
 	}
 
 	s := &subscriber[T]{
