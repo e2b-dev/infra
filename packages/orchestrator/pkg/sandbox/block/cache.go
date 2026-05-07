@@ -473,6 +473,73 @@ func (c *Cache) Path() string {
 	return c.filePath
 }
 
+func NewCacheFromMemfd(
+	ctx context.Context,
+	blockSize int64,
+	filePath string,
+	memfd *Memfd,
+	ranges []Range,
+) (*Cache, error) {
+	size := GetSize(ranges)
+
+	logger.L().Debug(ctx, "Creating cache from memfd")
+
+	cache, err := NewCache(size, blockSize, filePath, false)
+	if err != nil {
+		return nil, err
+	}
+
+	if size == 0 {
+		return cache, nil
+	}
+
+	err = cache.copyFromMemfd(ctx, memfd, ranges)
+	if err != nil {
+		return nil, fmt.Errorf("failed to copy from memfd: %w", errors.Join(err, cache.Close()))
+	}
+
+	return cache, nil
+}
+
+func (c *Cache) copyFromMemfd(ctx context.Context, memfd *Memfd, ranges []Range) error {
+	var cacheOff int64
+
+	for _, r := range ranges {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		srcOff := r.Start
+		remaining := r.Size
+		rangeStart := cacheOff
+
+		for remaining > 0 {
+			n, err := unix.Pread(memfd.memfd, (*c.mmap)[cacheOff:cacheOff+remaining], srcOff)
+			if errors.Is(err, syscall.EINTR) {
+				continue
+			}
+
+			if err != nil {
+				return fmt.Errorf("pread from memfd failed: %w", err)
+			}
+
+			if n == 0 {
+				return fmt.Errorf("pread from memfd: EOF with %d bytes remaining", remaining)
+			}
+
+			srcOff += int64(n)
+			cacheOff += int64(n)
+			remaining -= int64(n)
+		}
+
+		c.setIsCached(rangeStart, r.Size)
+	}
+
+	return nil
+}
+
 func NewCacheFromProcessMemory(
 	ctx context.Context,
 	blockSize int64,

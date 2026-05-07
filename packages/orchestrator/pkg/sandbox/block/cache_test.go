@@ -11,6 +11,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
@@ -753,5 +754,133 @@ func BenchmarkCopyFromHugepagesFile(b *testing.B) {
 		require.NoError(b, err)
 
 		b.SetBytes(GetSize(ranges))
+	}
+}
+
+// createTestMemfd creates a memfd of the given size, fills it with random data,
+// and registers a cleanup to close the fd. Returns the fd and the data written.
+func createTestMemfd(t *testing.T, size int64) (fd int, data []byte) {
+	t.Helper()
+
+	fd, err := unix.MemfdCreate("test", 0)
+	require.NoError(t, err)
+	t.Cleanup(func() { syscall.Close(fd) })
+
+	require.NoError(t, unix.Ftruncate(fd, size))
+
+	data = make([]byte, size)
+	_, err = rand.Read(data)
+	require.NoError(t, err)
+
+	_, err = syscall.Pwrite(fd, data, 0)
+	require.NoError(t, err)
+
+	return fd, data
+}
+
+func TestCopyFromMemfd_FullRange(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	size := pageSize * 30
+
+	fd, expected := createTestMemfd(t, size)
+
+	ranges := []Range{
+		{Start: 0, Size: size},
+	}
+
+	cache, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/cache", NewFromFd(fd), ranges)
+	require.NoError(t, err)
+	t.Cleanup(func() { cache.Close() })
+
+	got := make([]byte, size)
+	n, err := cache.ReadAt(got, 0)
+	require.NoError(t, err)
+	require.Equal(t, int(size), n)
+	require.NoError(t, compareData(got, expected))
+}
+
+func TestCopyFromMemfd_MultipleRanges(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	numPages := int64(6)
+	size := pageSize * numPages
+
+	fd, expected := createTestMemfd(t, size)
+
+	// Copy pages 0, 2, and 5 — non-contiguous, to verify cache offsets are packed correctly.
+	ranges := []Range{
+		{Start: 0, Size: pageSize},
+		{Start: pageSize * 2, Size: pageSize},
+		{Start: pageSize * 5, Size: pageSize},
+	}
+
+	cache, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/cache", NewFromFd(fd), ranges)
+	require.NoError(t, err)
+	t.Cleanup(func() { cache.Close() })
+
+	cases := []struct {
+		cacheOffset int64
+		srcOffset   int64
+	}{
+		{0, 0},
+		{pageSize, pageSize * 2},
+		{pageSize * 2, pageSize * 5},
+	}
+
+	for _, tc := range cases {
+		got := make([]byte, pageSize)
+		n, err := cache.ReadAt(got, tc.cacheOffset)
+		require.NoError(t, err)
+		require.Equal(t, int(pageSize), n)
+		require.NoError(t, compareData(got, expected[tc.srcOffset:tc.srcOffset+pageSize]))
+	}
+}
+
+func TestExportMemoryFromMemfd_DirtyBitmap(t *testing.T) {
+	t.Parallel()
+
+	// Simulate the exportMemoryFromMemfd path: a dirty-page bitmap drives which
+	// ranges are read from the memfd, exactly as ExportMemory does at runtime.
+	pageSize := int64(header.PageSize)
+	numPages := int64(8)
+	size := pageSize * numPages
+
+	fd, expected := createTestMemfd(t, size)
+
+	// Mark pages 1, 2, and 6 as dirty.
+	dirty := roaring.New()
+	dirty.Add(1)
+	dirty.Add(2)
+	dirty.Add(6)
+
+	var ranges []Range
+	for r := range BitsetRanges(dirty, pageSize) {
+		ranges = append(ranges, r)
+	}
+
+	cache, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/cache", NewFromFd(fd), ranges)
+	require.NoError(t, err)
+	t.Cleanup(func() { cache.Close() })
+
+	// BitsetRanges merges contiguous pages: pages 1 and 2 become one range,
+	// page 6 is separate. Verify each landed at the correct cache offset.
+	cases := []struct {
+		cacheOffset int64
+		srcOffset   int64
+		size        int64
+	}{
+		{0, pageSize * 1, pageSize * 2}, // pages 1–2 merged
+		{pageSize * 2, pageSize * 6, pageSize},
+	}
+
+	for _, tc := range cases {
+		got := make([]byte, tc.size)
+		n, err := cache.ReadAt(got, tc.cacheOffset)
+		require.NoError(t, err)
+		require.Equal(t, int(tc.size), n)
+		require.NoError(t, compareData(got, expected[tc.srcOffset:tc.srcOffset+tc.size]))
 	}
 }
