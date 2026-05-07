@@ -56,7 +56,9 @@ func isLocalRequestHost(host string) bool {
 	host = requestHostname(host)
 	ip := net.ParseIP(host)
 
-	return host == "localhost" || (ip != nil && ip.IsLoopback())
+	// An IP address cannot encode sandbox routing info (like {port}-{sandboxId}.{domain}),
+	// so header-based routing is the only mechanism that can work for IP hosts.
+	return host == "localhost" || ip != nil
 }
 
 func SandboxSharedHostDomain(host string) (string, bool) {

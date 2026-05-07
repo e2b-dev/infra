@@ -87,6 +87,8 @@ func (o *Orchestrator) emitCreatedInstancePosthog(ctx context.Context, sbx sandb
 		Set("resume", meta.IsResume).
 		Set("build_id", sbx.BuildID).
 		Set("envd_version", sbx.EnvdVersion).
+		Set("firecracker_version", sbx.FirecrackerVersion).
+		Set("kernel_version", sbx.KernelVersion).
 		Set("node_id", sbx.NodeID).
 		Set("vcpu", sbx.VCpu).
 		Set("ram_mb", sbx.RamMB).

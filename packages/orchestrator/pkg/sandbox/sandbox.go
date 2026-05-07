@@ -1125,6 +1125,8 @@ func (s *Sandbox) Pause(
 		RootfsDiff:        rootfsDiff,
 		RootfsDiffHeader:  rootfsDiffHeader,
 
+		BuildID: buildID,
+
 		cleanup: cleanup,
 	}, nil
 }

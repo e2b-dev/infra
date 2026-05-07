@@ -67,6 +67,33 @@ func TestTracker(t *testing.T) {
 		assert.True(t, bmZero.IsEmpty())
 	})
 
+	t.Run("HasRange checks contiguous state coverage", func(t *testing.T) {
+		t.Parallel()
+		s := NewTracker()
+
+		s.SetRange(0, 5, Dirty)
+		s.SetRange(5, 10, Zero)
+
+		assert.True(t, s.HasRange(0, 5, Dirty))
+		assert.True(t, s.HasRange(5, 10, Zero))
+		assert.False(t, s.HasRange(0, 5, Zero))
+		assert.False(t, s.HasRange(0, 6, Dirty), "gap in dirty must fail")
+		assert.True(t, s.HasRange(3, 3, Dirty), "empty range is vacuously true")
+		assert.False(t, s.HasRange(7, 5, Dirty), "inverted range is false")
+	})
+
+	t.Run("Present accepts mixed Dirty and Zero", func(t *testing.T) {
+		t.Parallel()
+		s := NewTracker()
+
+		s.SetRange(0, 5, Dirty)
+		s.SetRange(5, 10, Zero)
+
+		assert.True(t, s.Present(0, 10), "mixed Dirty+Zero should be present")
+		assert.False(t, s.Present(0, 11), "any NotPresent in range fails")
+		assert.True(t, s.Present(3, 3), "empty range is vacuously true")
+	})
+
 	t.Run("Export returns clones", func(t *testing.T) {
 		t.Parallel()
 		s := NewTracker()

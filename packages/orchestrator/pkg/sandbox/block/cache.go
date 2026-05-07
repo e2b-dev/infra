@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/edsrzf/mmap-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -22,7 +21,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
-	"github.com/e2b-dev/infra/packages/shared/pkg/syncroaring"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -53,7 +51,7 @@ type Cache struct {
 	blockSize int64
 	mmap      *mmap.MMap
 	mu        sync.RWMutex
-	dirty     *syncroaring.Bitset
+	tracker   *Tracker // Dirty: payload in mmap; Zero: punched, emitted as Empty in the diff
 	dirtyFile bool
 	closed    atomic.Bool
 }
@@ -72,7 +70,7 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 			size:      size,
 			blockSize: blockSize,
 			dirtyFile: dirtyFile,
-			dirty:     syncroaring.New(),
+			tracker:   NewTracker(),
 		}, nil
 	}
 
@@ -97,7 +95,7 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		size:      size,
 		blockSize: blockSize,
 		dirtyFile: dirtyFile,
-		dirty:     syncroaring.New(),
+		tracker:   NewTracker(),
 	}, nil
 }
 
@@ -117,7 +115,7 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	}
 
 	if c.mmap == nil {
-		return header.NewDiffMetadata(c.blockSize, roaring.New()), nil
+		return header.NewDiffMetadata(c.blockSize, nil, nil), nil
 	}
 
 	f, err := os.Open(c.filePath)
@@ -136,7 +134,8 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 		logger.L().Warn(ctx, "error syncing file", zap.Error(err))
 	}
 
-	diffMetadata := header.NewDiffMetadata(c.blockSize, c.dirty.Clone())
+	dirty, empty := c.tracker.Export()
+	diffMetadata := header.NewDiffMetadata(c.blockSize, dirty, empty)
 
 	dst := int(out.Fd())
 	var writeOffset int64
@@ -195,6 +194,7 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 		attribute.Int64("copy_ms", time.Since(copyStart).Milliseconds()),
 		attribute.Int64("total_size_bytes", c.size),
 		attribute.Int64("dirty_size_bytes", int64(diffMetadata.Dirty.GetCardinality())*c.blockSize),
+		attribute.Int64("empty_size_bytes", int64(diffMetadata.Empty.GetCardinality())*c.blockSize),
 		attribute.Int64("total_ranges", totalRanges),
 	)
 
@@ -308,18 +308,26 @@ func (c *Cache) sliceDirect(off, length int64) ([]byte, error) {
 	return (*c.mmap)[off:end], nil
 }
 
+// Zero blocks are treated as cached: the mmap region reads back as zero (punched).
 func (c *Cache) isCached(off, length int64) bool {
-	start := uint64(header.BlockIdx(off, c.blockSize))
-	end := uint64(header.BlockCeilIdx(min(off+length, c.size), c.blockSize))
+	start := uint32(header.BlockIdx(off, c.blockSize))
+	end := uint32(header.BlockCeilIdx(min(off+length, c.size), c.blockSize))
 
-	return c.dirty.HasRange(start, end)
+	return c.tracker.Present(start, end)
 }
 
 func (c *Cache) setIsCached(off, length int64) {
-	start := uint64(header.BlockIdx(off, c.blockSize))
-	end := uint64(header.BlockCeilIdx(off+length, c.blockSize))
+	start := uint32(header.BlockIdx(off, c.blockSize))
+	end := uint32(header.BlockCeilIdx(off+length, c.blockSize))
 
-	c.dirty.SetRange(start, end)
+	c.tracker.SetRange(start, end, Dirty)
+}
+
+// punchHole frees backing pages; clear() fallback if MADV_REMOVE is unsupported.
+func (c *Cache) punchHole(off, length int64) {
+	if err := unix.Madvise((*c.mmap)[off:off+length], unix.MADV_REMOVE); err != nil {
+		clear((*c.mmap)[off : off+length])
+	}
 }
 
 // When using WriteAtWithoutLock you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
@@ -333,12 +341,67 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	}
 
 	end := min(off+int64(len(b)), c.size)
+	if end <= off {
+		return 0, nil
+	}
 
-	n := copy((*c.mmap)[off:end], b)
+	// detect-zeroes=unmap: coalesce contiguous same-state blocks into one bulk
+	// copy or punchHole call. Caller must pass a block-aligned write (NBD invariant).
+	flush := func(runStart, runEnd int64, runZero bool) {
+		startIdx := uint32(header.BlockIdx(runStart, c.blockSize))
+		endIdx := uint32(header.BlockCeilIdx(runEnd, c.blockSize))
+		if runZero {
+			c.punchHole(runStart, runEnd-runStart)
+			c.tracker.SetRange(startIdx, endIdx, Zero)
+		} else {
+			copy((*c.mmap)[runStart:runEnd], b[runStart-off:runEnd-off])
+			c.tracker.SetRange(startIdx, endIdx, Dirty)
+		}
+	}
 
-	c.setIsCached(off, end-off)
+	runStart := off
+	runZero := header.IsZero(b[:c.blockSize])
+	for i := off + c.blockSize; i < end; i += c.blockSize {
+		z := header.IsZero(b[i-off : i-off+c.blockSize])
+		if z == runZero {
+			continue
+		}
+		flush(runStart, i, runZero)
+		runStart = i
+		runZero = z
+	}
+	flush(runStart, end, runZero)
 
-	return n, nil
+	return int(end - off), nil
+}
+
+// WriteZeroesAt punches the range and marks all touched blocks Zero.
+// Caller must pass a block-aligned offset/length (NBD invariant).
+func (c *Cache) WriteZeroesAt(off, length int64) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.mmap == nil {
+		return 0, nil
+	}
+
+	if c.isClosed() {
+		return 0, NewErrCacheClosed(c.filePath)
+	}
+
+	end := min(off+length, c.size)
+	if end <= off {
+		return 0, nil
+	}
+
+	c.punchHole(off, end-off)
+	c.tracker.SetRange(
+		uint32(header.BlockIdx(off, c.blockSize)),
+		uint32(header.BlockCeilIdx(end, c.blockSize)),
+		Zero,
+	)
+
+	return int(end - off), nil
 }
 
 // FileSize returns the size of the cache on disk.

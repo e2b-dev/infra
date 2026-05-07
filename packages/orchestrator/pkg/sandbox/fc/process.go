@@ -363,6 +363,9 @@ func (p *Process) Create(
 		"i8042.nokbd":      "",
 		"i8042.noaux":      "",
 		"random.trust_cpu": "on",
+
+		// discard: ext4 issues TRIM on freed blocks so they are elided from the snapshot diff.
+		"rootflags": "discard",
 	}
 
 	if options.KvmClock {

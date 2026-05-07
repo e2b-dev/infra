@@ -175,7 +175,9 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 		opts = append(opts, nbdnl.WithTimeout(d.ioTimeout))
 		opts = append(opts, nbdnl.WithDeadconnTimeout(d.deadconnTimeout))
 
-		serverFlags := nbdnl.FlagHasFlags | nbdnl.FlagCanMulticonn
+		const flagSendWriteZeroes nbdnl.ServerFlags = 1 << 6 // NBD_FLAG_SEND_WRITE_ZEROES, not in nbdnl
+		serverFlags := nbdnl.FlagHasFlags | nbdnl.FlagCanMulticonn |
+			nbdnl.FlagSendTrim | flagSendWriteZeroes
 
 		idx, connectErr := nbdnl.Connect(deviceIndex, d.socksClient, uint64(size), 0, serverFlags, opts...)
 		if connectErr == nil {

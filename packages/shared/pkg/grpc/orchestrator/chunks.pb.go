@@ -27,11 +27,12 @@ type PeerAvailability struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// not_available is true when the file is not in the local cache.
-	// The caller should fall back to GCS.
+	// not_available is true when the file is not in the local cache. The caller
+	// should fall back to remote storage.
 	NotAvailable bool `protobuf:"varint,1,opt,name=not_available,json=notAvailable,proto3" json:"not_available,omitempty"`
-	// use_storage is true when the GCS upload has completed and the caller
-	// should switch to reading from GCS/NFS directly instead of this peer.
+	// use_storage is true when the remote storage upload has completed and the
+	// caller should switch to reading from remote storage directly instead of
+	// this peer.
 	UseStorage bool `protobuf:"varint,2,opt,name=use_storage,json=useStorage,proto3" json:"use_storage,omitempty"`
 }
 

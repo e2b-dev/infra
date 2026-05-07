@@ -10,12 +10,31 @@ on:
     secrets:
       CODECOV_TOKEN: { required: false }
 jobs:
-  integration_tests:
+  run:
     runs-on: infra-tests
     timeout-minutes: 30
     permissions:
       contents: read
       id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: uncompressed
+            compress_enabled: "false"
+            compress_type: ""
+            compress_level: ""
+            compress_workers: ""
+          - name: zstd1
+            compress_enabled: "true"
+            compress_type: "zstd"
+            compress_level: "1"
+            compress_workers: "8"
+          - name: lz4
+            compress_enabled: "true"
+            compress_type: "lz4"
+            compress_level: "0"
+            compress_workers: "8"
     env:
       # Surfaced as env so upload steps can gate on presence (skipped on fork PRs).
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -32,9 +51,19 @@ jobs:
 
       - name: Build Template
         uses: ./.github/actions/build-sandbox-template
+        with:
+          compress_enabled: ${{ matrix.compress_enabled }}
+          compress_type: ${{ matrix.compress_type }}
+          compress_level: ${{ matrix.compress_level }}
+          compress_workers: ${{ matrix.compress_workers }}
 
       - name: Start Services
         uses: ./.github/actions/start-services
+        with:
+          compress_enabled: ${{ matrix.compress_enabled }}
+          compress_type: ${{ matrix.compress_type }}
+          compress_level: ${{ matrix.compress_level }}
+          compress_workers: ${{ matrix.compress_workers }}
 
       - name: Run Integration Tests
         env:
@@ -80,7 +109,7 @@ jobs:
         if: ${{ always() && inputs.publish == true }}
         uses: actions/upload-artifact@v6
         with:
-          name: Integration Tests Results
+          name: Integration Tests Results (${{ matrix.name }})
           path: ./tests/integration/test-results.xml
 
       - name: Upload test results to Codecov
@@ -96,5 +125,18 @@ jobs:
         if: ${{ always() && inputs.publish == true }}
         uses: actions/upload-artifact@v6
         with:
-          name: Service Logs
+          name: Service Logs (${{ matrix.name }})
           path: ~/logs/*.log
+
+  integration_tests:
+    needs: run
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aggregate matrix result
+        run: |
+          if [[ "${{ needs.run.result }}" != "success" ]]; then
+            echo "matrix result: ${{ needs.run.result }}"
+            exit 1
+          fi
+          echo "all matrix shards succeeded"

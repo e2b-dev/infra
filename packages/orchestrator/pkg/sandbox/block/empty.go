@@ -26,9 +26,7 @@ func NewEmpty(size int64, blockSize int64, buildID uuid.UUID) (*Empty, error) {
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}
 
-	return &Empty{
-		header: h,
-	}, nil
+	return &Empty{header: h}, nil
 }
 
 func (e *Empty) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
@@ -67,6 +65,8 @@ func (e *Empty) Slice(_ context.Context, off, length int64) ([]byte, error) {
 func (e *Empty) Header() *header.Header {
 	return e.header
 }
+
+func (e *Empty) SwapHeader(*header.Header) {}
 
 func (e *Empty) UpdateSize() error {
 	return errors.New("update size not supported for empty block")

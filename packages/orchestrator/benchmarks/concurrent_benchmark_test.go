@@ -324,6 +324,7 @@ func BenchmarkConcurrentResume(b *testing.B) {
 		config.BuilderConfig, l, featureFlags, sandboxFactory,
 		persistenceTemplate, persistenceBuild, artifactRegistry,
 		dockerhubRepository, sandboxProxy, sandboxes, templateCache, buildMetrics,
+		nil,
 	)
 
 	// build template if not cached
