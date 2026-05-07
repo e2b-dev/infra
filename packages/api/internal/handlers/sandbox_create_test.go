@@ -214,11 +214,13 @@ func TestBuildKeepaliveConfig(t *testing.T) {
 			got, err := buildKeepaliveConfig(tt.lifecycle)
 			if tt.wantErr {
 				require.NotNil(t, err)
+
 				return
 			}
 			require.Nil(t, err)
 			if tt.lifecycle == nil {
 				require.Nil(t, got)
+
 				return
 			}
 

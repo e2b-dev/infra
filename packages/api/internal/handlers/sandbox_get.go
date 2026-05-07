@@ -40,10 +40,7 @@ func keepaliveConfigToAPI(keepalive *dbtypes.SandboxKeepaliveConfig) *api.Sandbo
 	}
 
 	const maxInt32 = uint64(1<<31 - 1)
-	timeoutSeconds := keepalive.Traffic.Timeout
-	if timeoutSeconds > maxInt32 {
-		timeoutSeconds = maxInt32
-	}
+	timeoutSeconds := min(keepalive.Traffic.Timeout, maxInt32)
 	timeout := int32(timeoutSeconds)
 
 	result := &api.SandboxKeepalive{}

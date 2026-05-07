@@ -137,6 +137,7 @@ func requireResumerCall(t *testing.T, calls <-chan resumeCall) resumeCall {
 		return call
 	case <-time.After(time.Second):
 		t.Fatal("expected resume call")
+
 		return resumeCall{}
 	}
 }

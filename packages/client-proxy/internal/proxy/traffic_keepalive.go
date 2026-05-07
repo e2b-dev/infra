@@ -45,6 +45,7 @@ func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID st
 	acquired, err := catalogStore.AcquireTrafficKeepalive(ctx, sandboxID)
 	if err != nil {
 		logger.L().Warn(ctx, "traffic keepalive acquire failed", logger.WithSandboxID(sandboxID), zap.Error(err))
+
 		return
 	}
 	if !acquired {
