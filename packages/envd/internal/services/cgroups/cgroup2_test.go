@@ -157,19 +157,32 @@ func createCgroupPath(t *testing.T, s string) string {
 func startProcess(t *testing.T, m *Cgroup2Manager, pt ProcessType) *exec.Cmd {
 	t.Helper()
 
-	cmdName, args := "bash", []string{"-c", `sleep 1 && tail /dev/zero`}
+	cmdName, args := "bash", []string{"-c", `sleep 1 && exec perl -e 'my $x = "A" x (512*1024*1024); sleep 300'`}
 	cmd := exec.CommandContext(t.Context(), cmdName, args...)
 
 	fd, ok := m.GetFileDescriptor(pt)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		UseCgroupFD: ok,
 		CgroupFD:    fd,
+		Setpgid:     true,
 	}
 
 	err := cmd.Start()
 	require.NoError(t, err)
 
+	t.Cleanup(func() { killProcessGroup(cmd) })
+
 	return cmd
+}
+
+func killProcessGroup(cmd *exec.Cmd) {
+	if cmd.Process == nil {
+		return
+	}
+
+	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err != nil {
+		_ = cmd.Process.Kill()
+	}
 }
 
 func waitForProcess(t *testing.T, cmd *exec.Cmd, timeout time.Duration) error {
@@ -183,10 +196,13 @@ func waitForProcess(t *testing.T, cmd *exec.Cmd, timeout time.Duration) error {
 	}()
 
 	ctx, cancel := context.WithTimeout(t.Context(), timeout)
-	t.Cleanup(cancel)
+	defer cancel()
 
 	select {
 	case <-ctx.Done():
+		killProcessGroup(cmd)
+		<-done
+
 		return ctx.Err()
 	case err := <-done:
 		return err
