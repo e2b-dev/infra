@@ -131,18 +131,18 @@ func (s *SandboxService) validateSandboxTraffic(ctx context.Context, sandboxID s
 			return status.Error(codes.Internal, "failed to validate traffic access token")
 		}
 
-		providedToken, _ := metadataFirstValue(incomingMetadata, proxygrpc.MetadataTrafficAccessToken)
+		providedToken, found := metadataFirstValue(incomingMetadata, proxygrpc.MetadataTrafficAccessToken)
 
-		if !tokensMatch(providedToken, expectedToken) {
+		if !found || !tokensMatch(providedToken, expectedToken) {
 			return denyResumePermission()
 		}
 	}
 
 	// Callers pass envdAccessToken only when envd traffic must enforce it.
 	if !isNonEnvdTraffic && envdAccessToken != nil {
-		providedEnvdToken, _ := metadataFirstValue(incomingMetadata, proxygrpc.MetadataEnvdAccessToken)
+		providedEnvdToken, found := metadataFirstValue(incomingMetadata, proxygrpc.MetadataEnvdAccessToken)
 
-		if !tokensMatch(providedEnvdToken, *envdAccessToken) {
+		if !found || !tokensMatch(providedEnvdToken, *envdAccessToken) {
 			return denyResumePermission()
 		}
 	}
