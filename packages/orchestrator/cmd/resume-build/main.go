@@ -74,10 +74,10 @@ func main() {
 	flag.Parse()
 
 	if *reclaim {
-		featureflags.NewIntFlag("reclaim-sync-timeout-ms", 500)
-		featureflags.NewIntFlag("reclaim-drop-caches-timeout-ms", 200)
-		featureflags.NewIntFlag("reclaim-compact-memory-timeout-ms", 1000)
-		featureflags.NewIntFlag("reclaim-fstrim-timeout-ms", 500)
+		featureflags.NewDurationFlag("reclaim-sync-timeout", 500*time.Millisecond)
+		featureflags.NewDurationFlag("reclaim-drop-caches-timeout", 200*time.Millisecond)
+		featureflags.NewDurationFlag("reclaim-compact-memory-timeout", time.Second)
+		featureflags.NewDurationFlag("reclaim-fstrim-timeout", 500*time.Millisecond)
 	}
 
 	if *fromBuild == "" {
@@ -1031,7 +1031,9 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		logLevel = ldlog.Info
 	}
-	flags, _ := featureflags.NewClientWithLogLevel(logLevel)
+	// Always use the offline data source so per-run flag overrides (e.g. set
+	// from -reclaim) take effect regardless of LAUNCH_DARKLY_API_KEY.
+	flags, _ := featureflags.NewOfflineClient(logLevel)
 
 	sandboxes := sandbox.NewSandboxesMap()
 
@@ -1192,7 +1194,7 @@ func printTemplateInfo(ctx context.Context, tmpl template.Template, meta metadat
 // runCommandInSandbox runs a command inside the sandbox via envd as a
 // login shell so /etc/profile is sourced.
 func runCommandInSandbox(ctx context.Context, sbx *sandbox.Sandbox, command string) error {
-	stream, err := sbx.StartEnvdBash(ctx, []string{"-l", "-c", command}, "root", 0)
+	stream, err := sbx.StartEnvdShell(ctx, []string{"-l", "-c", command}, "root", 0)
 	if err != nil {
 		return fmt.Errorf("failed to start process: %w", err)
 	}

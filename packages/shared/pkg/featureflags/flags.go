@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
@@ -219,10 +220,10 @@ var (
 // per step. A stuck step cannot starve the rest, so compact_memory always
 // runs as long as its own cap is > 0.
 var (
-	ReclaimSyncTimeoutMs          = NewIntFlag("reclaim-sync-timeout-ms", 0)
-	ReclaimDropCachesTimeoutMs    = NewIntFlag("reclaim-drop-caches-timeout-ms", 0)
-	ReclaimCompactMemoryTimeoutMs = NewIntFlag("reclaim-compact-memory-timeout-ms", 0)
-	ReclaimFstrimTimeoutMs        = NewIntFlag("reclaim-fstrim-timeout-ms", 0)
+	ReclaimSyncTimeout          = NewDurationFlag("reclaim-sync-timeout", 0)
+	ReclaimDropCachesTimeout    = NewDurationFlag("reclaim-drop-caches-timeout", 0)
+	ReclaimCompactMemoryTimeout = NewDurationFlag("reclaim-compact-memory-timeout", 0)
+	ReclaimFstrimTimeout        = NewDurationFlag("reclaim-fstrim-timeout", 0)
 )
 
 type StringFlag struct {
@@ -245,6 +246,37 @@ func (f StringFlag) Fallback() string {
 func NewStringFlag(name string, fallback string) StringFlag {
 	flag := StringFlag{name: name, fallback: fallback}
 	builder := launchDarklyOfflineStore.Flag(flag.name).ValueForAll(ldvalue.String(fallback))
+	launchDarklyOfflineStore.Update(builder)
+
+	return flag
+}
+
+// DurationFlag is a string-backed flag that parses values via time.ParseDuration.
+// LaunchDarkly UI shows self-describing values like "500ms" or "2s" instead of
+// raw integers. Invalid or empty values fall back to the configured default.
+type DurationFlag struct {
+	name     string
+	fallback time.Duration
+}
+
+func (f DurationFlag) Key() string {
+	return f.name
+}
+
+func (f DurationFlag) String() string {
+	return f.name
+}
+
+func (f DurationFlag) Fallback() time.Duration {
+	return f.fallback
+}
+
+// NewDurationFlag registers a new duration flag. The fallback is stored both as
+// the typed default and as a string in the offline store so local/dev clients
+// resolve it consistently.
+func NewDurationFlag(name string, fallback time.Duration) DurationFlag {
+	flag := DurationFlag{name: name, fallback: fallback}
+	builder := launchDarklyOfflineStore.Flag(flag.name).ValueForAll(ldvalue.String(fallback.String()))
 	launchDarklyOfflineStore.Update(builder)
 
 	return flag

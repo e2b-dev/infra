@@ -13,17 +13,17 @@ import (
 )
 
 type reclaimStep struct {
-	flag featureflags.IntFlag
+	flag featureflags.DurationFlag
 	cmd  string
 }
 
 // Order matters: sync makes drop_caches more effective; drop_caches gives
 // compact_memory more headroom; fstrim wants a stable FS view.
 var reclaimSteps = []reclaimStep{
-	{featureflags.ReclaimSyncTimeoutMs, "sync"},
-	{featureflags.ReclaimDropCachesTimeoutMs, "echo 3 > /proc/sys/vm/drop_caches"},
-	{featureflags.ReclaimCompactMemoryTimeoutMs, "echo 1 > /proc/sys/vm/compact_memory"},
-	{featureflags.ReclaimFstrimTimeoutMs, "fstrim -av"},
+	{featureflags.ReclaimSyncTimeout, "sync"},
+	{featureflags.ReclaimDropCachesTimeout, "echo 3 > /proc/sys/vm/drop_caches"},
+	{featureflags.ReclaimCompactMemoryTimeout, "echo 1 > /proc/sys/vm/compact_memory"},
+	{featureflags.ReclaimFstrimTimeout, "fstrim -av"},
 }
 
 // Slack added to the sum of per-step caps to absorb shell start /
@@ -39,16 +39,15 @@ func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration
 		sum   time.Duration
 	)
 	for _, st := range reclaimSteps {
-		ms := s.featureFlags.IntFlag(ctx, st.flag)
-		if ms <= 0 {
+		d := s.featureFlags.DurationFlag(ctx, st.flag)
+		if d <= 0 {
 			continue
 		}
 		// `timeout` accepts fractional seconds (s/m/h/d), not `ms`. Output
 		// is dropped; non-zero status is captured into `rc` so the final
 		// exit code surfaces failures without short-circuiting later steps.
-		secs := float64(ms) / 1000.0
-		parts = append(parts, fmt.Sprintf("timeout -s KILL %.3f sh -c %q >/dev/null 2>&1 || rc=$?", secs, st.cmd))
-		sum += time.Duration(ms) * time.Millisecond
+		parts = append(parts, fmt.Sprintf("timeout -s KILL %.3f sh -c %q >/dev/null 2>&1 || rc=$?", d.Seconds(), st.cmd))
+		sum += d
 	}
 	if len(parts) == 0 {
 		return "", 0
@@ -72,7 +71,7 @@ func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 	rcCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	stream, err := s.StartEnvdBash(rcCtx, []string{"-c", script}, "root", timeout)
+	stream, err := s.StartEnvdShell(rcCtx, []string{"-c", script}, "root", timeout)
 	if err != nil {
 		logger.L().Warn(ctx, "envd reclaim failed", logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
 

@@ -89,6 +89,25 @@ func NewClientWithLogLevel(logLevel ldlog.LogLevel) (*Client, error) {
 	return &Client{ld: ldClient}, nil
 }
 
+// NewOfflineClient creates a client that always reads from the in-process
+// offline data source, ignoring LAUNCH_DARKLY_API_KEY. Use this in CLI/dev
+// tools (e.g. resume-build) so flag overrides set via NewIntFlag/NewDurationFlag
+// at startup take effect deterministically.
+func NewOfflineClient(logLevel ldlog.LogLevel) (*Client, error) {
+	cfg := ldclient.Config{
+		Logging:          ldcomponents.Logging().MinLevel(logLevel),
+		DataSource:       launchDarklyOfflineStore,
+		Events:           ldcomponents.NoEvents(),
+		DiagnosticOptOut: true,
+	}
+	ldClient, err := ldclient.MakeCustomClient("", cfg, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Client{ld: ldClient}, nil
+}
+
 func (c *Client) SetDeploymentName(deploymentName string) {
 	c.deploymentName = deploymentName
 }
@@ -111,6 +130,36 @@ func (c *Client) IntFlag(ctx context.Context, flag IntFlag, contexts ...ldcontex
 
 func (c *Client) StringFlag(ctx context.Context, flag StringFlag, contexts ...ldcontext.Context) string {
 	return getFlag(ctx, c.ld, c.ld.StringVariationCtx, flag, c.allContexts(contexts))
+}
+
+// DurationFlag reads a duration-valued flag. The underlying flag is stored as a
+// string (e.g. "500ms") and parsed via time.ParseDuration. Empty/invalid values
+// fall back to the configured default.
+func (c *Client) DurationFlag(ctx context.Context, flag DurationFlag, contexts ...ldcontext.Context) time.Duration {
+	if c.ld == nil {
+		logger.L().Info(ctx, "LaunchDarkly client is not initialized, returning fallback")
+
+		return flag.Fallback()
+	}
+
+	raw, err := c.ld.StringVariationCtx(ctx, flag.Key(), mergeContexts(ctx, c.allContexts(contexts)), "")
+	if err != nil {
+		logger.L().Warn(ctx, "error evaluating flag", zap.Error(err), zap.String("flag", flag.Key()))
+
+		return flag.Fallback()
+	}
+	if raw == "" {
+		return flag.Fallback()
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		logger.L().Warn(ctx, "invalid duration flag value, using fallback",
+			zap.String("flag", flag.Key()), zap.String("value", raw), zap.Error(err))
+
+		return flag.Fallback()
+	}
+
+	return d
 }
 
 type typedFlag[T any] interface {
