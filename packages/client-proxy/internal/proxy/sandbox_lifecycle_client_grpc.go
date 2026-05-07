@@ -18,7 +18,7 @@ import (
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 )
 
-type grpcPausedSandboxResumer struct {
+type grpcSandboxLifecycleClient struct {
 	conn   *grpc.ClientConn
 	client proxygrpc.SandboxServiceClient
 	auth   grpcResumeAuth
@@ -30,7 +30,7 @@ type GRPCOAuthConfig struct {
 	TokenURL     string
 }
 
-func NewGRPCPausedSandboxResumer(ctx context.Context, address string, oauthConfig GRPCOAuthConfig, useTLS bool) (PausedSandboxResumer, error) {
+func NewGrpcSandboxLifecycleClient(ctx context.Context, address string, oauthConfig GRPCOAuthConfig, useTLS bool) (SandboxLifecycleClient, error) {
 	address = strings.TrimSpace(address)
 	if address == "" {
 		return nil, errors.New("api grpc address is required")
@@ -55,22 +55,22 @@ func NewGRPCPausedSandboxResumer(ctx context.Context, address string, oauthConfi
 		return nil, fmt.Errorf("create grpc client: %w", err)
 	}
 
-	return &grpcPausedSandboxResumer{
+	return &grpcSandboxLifecycleClient{
 		conn:   conn,
 		client: proxygrpc.NewSandboxServiceClient(conn),
 		auth:   auth,
 	}, nil
 }
 
-func (c *grpcPausedSandboxResumer) Init(ctx context.Context) {
-	e2bgrpc.ObserveConnection(ctx, c.conn, "api-resumer")
+func (c *grpcSandboxLifecycleClient) Init(ctx context.Context) {
+	e2bgrpc.ObserveConnection(ctx, c.conn, "api-lifecycle")
 }
 
-func (c *grpcPausedSandboxResumer) Close(_ context.Context) error {
+func (c *grpcSandboxLifecycleClient) Close(_ context.Context) error {
 	return c.conn.Close()
 }
 
-func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (string, error) {
+func appendProxyTrafficMetadata(ctx context.Context, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) context.Context {
 	ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataSandboxRequestPort, strconv.FormatUint(sandboxPort, 10))
 
 	if trafficAccessToken != "" {
@@ -81,6 +81,11 @@ func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string,
 		ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataEnvdAccessToken, envdAccessToken)
 	}
 
+	return ctx
+}
+
+func (c *grpcSandboxLifecycleClient) Resume(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (string, error) {
+	ctx = appendProxyTrafficMetadata(ctx, sandboxPort, trafficAccessToken, envdAccessToken)
 	ctx, err := c.auth.authorize(ctx)
 	if err != nil {
 		return "", err
@@ -94,4 +99,22 @@ func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string,
 	}
 
 	return strings.TrimSpace(resp.GetOrchestratorIp()), nil
+}
+
+func (c *grpcSandboxLifecycleClient) KeepAlive(ctx context.Context, sandboxId string, teamID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) error {
+	ctx = appendProxyTrafficMetadata(ctx, sandboxPort, trafficAccessToken, envdAccessToken)
+	ctx, authErr := c.auth.authorize(ctx)
+	if authErr != nil {
+		return authErr
+	}
+
+	_, err := c.client.KeepAliveSandbox(ctx, &proxygrpc.SandboxKeepAliveRequest{
+		SandboxId: sandboxId,
+		TeamId:    teamID,
+	})
+	if err != nil {
+		return fmt.Errorf("grpc keepalive: %w", err)
+	}
+
+	return nil
 }

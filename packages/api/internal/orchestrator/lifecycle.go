@@ -9,7 +9,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
+	sandboxroutingcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox sandbox.Sandbox) {
@@ -28,16 +28,32 @@ func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox san
 
 	nodeIP := routeNodeIPAddress(node, env.IsLocal())
 
-	info := e2bcatalog.SandboxInfo{
+	var keepalive *sandboxroutingcatalog.Keepalive
+	if sandbox.Lifecycle.Keepalive != nil {
+		keepalive = &sandboxroutingcatalog.Keepalive{}
+		if sandbox.Lifecycle.Keepalive.Traffic != nil && sandbox.Lifecycle.Keepalive.Traffic.Enabled {
+			keepalive.Traffic = &sandboxroutingcatalog.TrafficKeepalive{Enabled: true}
+		}
+	}
+
+	info := sandboxroutingcatalog.SandboxInfo{
+		TeamID:         sandbox.TeamID.String(),
 		OrchestratorID: node.Metadata().ServiceInstanceID,
 		OrchestratorIP: nodeIP,
 
 		ExecutionID:      sandbox.ExecutionID,
 		StartedAt:        sandbox.StartTime,
 		MaxLengthInHours: int64(sandbox.MaxInstanceLength / time.Hour),
+		Keepalive:        keepalive,
 	}
 
-	lifetime := time.Duration(info.MaxLengthInHours) * time.Hour
+	lifetime := time.Until(sandbox.StartTime.Add(sandbox.MaxInstanceLength))
+	if lifetime <= 0 {
+		logger.L().Warn(ctx, "skipping sandbox routing info with expired lifetime", logger.WithSandboxID(sandbox.SandboxID), zap.Duration("lifetime", lifetime))
+
+		return
+	}
+
 	err := o.routingCatalog.StoreSandbox(ctx, sandbox.SandboxID, &info, lifetime)
 	if err != nil {
 		logger.L().Error(ctx, "error adding routing record to catalog", zap.Error(err), logger.WithSandboxID(sandbox.SandboxID))

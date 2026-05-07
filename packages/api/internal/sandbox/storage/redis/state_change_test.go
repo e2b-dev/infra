@@ -887,7 +887,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		sbx := createTestSandbox("evict-autopause")
 		sbx.StartTime = time.Now().Add(-2 * time.Hour)
 		sbx.EndTime = time.Now().Add(-time.Second) // expired
-		sbx.AutoPause = true
+		sbx.Lifecycle.AutoPause = true
 
 		err := storage.Add(ctx, sbx)
 		require.NoError(t, err)

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"google.golang.org/grpc/metadata"
+
+	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 const (
@@ -16,10 +18,13 @@ const (
 	CatalogDeleteEventType = "sandbox-catalog-delete"
 
 	sbxIdHeader               = "sandbox-id"
+	sbxTeamIdHeader           = "team-id"
 	sbxExecutionIdHeader      = "execution-id"
 	sbxOrchestratorIdHeader   = "orchestrator-id"
+	sbxOrchestratorIpHeader   = "orchestrator-ip"
 	sbxMaxLengthInHoursHeader = "sandbox-max-length-in-hours"
 	sbxStartTimeHeader        = "sandbox-start-time"
+	sbxTrafficKeepaliveHeader = "traffic-keepalive"
 )
 
 var (
@@ -38,10 +43,13 @@ func (e SandboxEventFieldMissingError) Error() string {
 
 type SandboxCatalogCreateEvent struct {
 	SandboxID               string
+	TeamID                  string
 	ExecutionID             string
 	OrchestratorID          string
+	OrchestratorIP          string
 	SandboxMaxLengthInHours int64
 	SandboxStartTime        time.Time // Formatted as RFC3339 (ISO 8601)
+	Keepalive               *catalog.Keepalive
 }
 
 type SandboxCatalogDeleteEvent struct {
@@ -50,17 +58,22 @@ type SandboxCatalogDeleteEvent struct {
 }
 
 func SerializeSandboxCatalogCreateEvent(e SandboxCatalogCreateEvent) metadata.MD {
-	return metadata.New(
-		map[string]string{
-			EventTypeHeader: CatalogCreateEventType,
+	values := map[string]string{
+		EventTypeHeader: CatalogCreateEventType,
 
-			sbxIdHeader:               e.SandboxID,
-			sbxExecutionIdHeader:      e.ExecutionID,
-			sbxOrchestratorIdHeader:   e.OrchestratorID,
-			sbxStartTimeHeader:        e.SandboxStartTime.Format(time.RFC3339),
-			sbxMaxLengthInHoursHeader: strconv.Itoa(int(e.SandboxMaxLengthInHours)),
-		},
-	)
+		sbxIdHeader:               e.SandboxID,
+		sbxTeamIdHeader:           e.TeamID,
+		sbxExecutionIdHeader:      e.ExecutionID,
+		sbxOrchestratorIdHeader:   e.OrchestratorID,
+		sbxOrchestratorIpHeader:   e.OrchestratorIP,
+		sbxStartTimeHeader:        e.SandboxStartTime.Format(time.RFC3339),
+		sbxMaxLengthInHoursHeader: strconv.Itoa(int(e.SandboxMaxLengthInHours)),
+	}
+	if e.Keepalive != nil && e.Keepalive.Traffic != nil && e.Keepalive.Traffic.Enabled {
+		values[sbxTrafficKeepaliveHeader] = strconv.FormatBool(true)
+	}
+
+	return metadata.New(values)
 }
 
 func SerializeSandboxCatalogDeleteEvent(e SandboxCatalogDeleteEvent) metadata.MD {
@@ -85,10 +98,14 @@ func ParseSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEven
 		return nil, SandboxEventFieldMissingError{eventName: CatalogCreateEventType, fieldName: sbxExecutionIdHeader}
 	}
 
+	teamID, _ := getMetadataValue(md, sbxTeamIdHeader)
+
 	orchestratorID, found := getMetadataValue(md, sbxOrchestratorIdHeader)
 	if !found {
 		return nil, SandboxEventFieldMissingError{eventName: CatalogCreateEventType, fieldName: sbxOrchestratorIdHeader}
 	}
+
+	orchestratorIP, _ := getMetadataValue(md, sbxOrchestratorIpHeader)
 
 	maxLengthInHoursStr, found := getMetadataValue(md, sbxMaxLengthInHoursHeader)
 	if !found {
@@ -110,12 +127,32 @@ func ParseSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEven
 		return nil, ErrSandboxCreationParse
 	}
 
+	var keepalive *catalog.Keepalive
+	trafficKeepaliveStr, found := getMetadataValue(md, sbxTrafficKeepaliveHeader)
+	if found {
+		trafficKeepalive, err := strconv.ParseBool(trafficKeepaliveStr)
+		if err != nil {
+			return nil, ErrSandboxCreationParse
+		}
+
+		if trafficKeepalive {
+			keepalive = &catalog.Keepalive{
+				Traffic: &catalog.TrafficKeepalive{
+					Enabled: true,
+				},
+			}
+		}
+	}
+
 	return &SandboxCatalogCreateEvent{
 		SandboxID:               sandboxID,
+		TeamID:                  teamID,
 		ExecutionID:             executionID,
 		OrchestratorID:          orchestratorID,
+		OrchestratorIP:          orchestratorIP,
 		SandboxMaxLengthInHours: int64(maxLengthInHours),
 		SandboxStartTime:        sandboxStartTime,
+		Keepalive:               keepalive,
 	}, nil
 }
 

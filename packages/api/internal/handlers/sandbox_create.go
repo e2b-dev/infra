@@ -35,6 +35,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/metrics"
+	sandboxroutingcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -141,7 +142,16 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		telemetry.WithFirecrackerVersion(build.FirecrackerVersion),
 	)
 
+	if lifecycleErr := validateLifecycleAliases(body); lifecycleErr != nil {
+		a.sendAPIStoreError(c, lifecycleErr.Code, lifecycleErr.ClientMsg)
+
+		return
+	}
+
 	autoPause := sharedUtils.DerefOrDefault(body.AutoPause, sandbox.AutoPauseDefault)
+	if body.Lifecycle != nil && body.Lifecycle.OnTimeout != nil {
+		autoPause = *body.Lifecycle.OnTimeout == api.Pause
+	}
 	envVars := sharedUtils.DerefOrDefault(body.EnvVars, nil)
 	mcp := sharedUtils.DerefOrDefault(body.Mcp, nil)
 	metadata := sharedUtils.DerefOrDefault(body.Metadata, nil)
@@ -159,9 +169,18 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	autoResume := buildAutoResumeConfig(body.AutoResume)
+	if body.Lifecycle != nil && body.Lifecycle.AutoResume != nil {
+		autoResume = buildAutoResumeConfigFromEnabled(*body.Lifecycle.AutoResume)
+	}
 	if autoResume != nil {
 		minAutoResumeTimeout := time.Duration(a.featureFlags.IntFlag(ctx, featureflags.MinAutoResumeTimeoutSeconds)) * time.Second
 		autoResume.Timeout = calculateTimeoutSeconds(timeout, minAutoResumeTimeout, teamInfo)
+	}
+	keepalive, keepaliveErr := buildKeepaliveConfig(body.Lifecycle)
+	if keepaliveErr != nil {
+		a.sendAPIStoreError(c, keepaliveErr.Code, keepaliveErr.ClientMsg)
+
+		return
 	}
 
 	var envdAccessToken *string = nil
@@ -250,10 +269,13 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 			Alias:               alias,
 			TemplateID:          env.TemplateID,
 			BaseTemplateID:      env.TemplateID,
-			AutoPause:           autoPause,
-			AutoResume:          autoResume,
-			VolumeMounts:        sbxVolumeMounts,
-			EnvdAccessToken:     envdAccessToken,
+			Lifecycle: types.SandboxLifecycleConfig{
+				AutoPause:  autoPause,
+				AutoResume: autoResume,
+				Keepalive:  keepalive,
+			},
+			VolumeMounts:    sbxVolumeMounts,
+			EnvdAccessToken: envdAccessToken,
 		}, nil
 	}
 
@@ -294,14 +316,59 @@ func buildAutoResumeConfig(autoResume *api.SandboxAutoResumeConfig) *types.Sandb
 		return nil
 	}
 
+	return buildAutoResumeConfigFromEnabled(autoResume.Enabled)
+}
+
+func buildAutoResumeConfigFromEnabled(enabled bool) *types.SandboxAutoResumeConfig {
 	policy := types.SandboxAutoResumeOff
-	if autoResume.Enabled {
+	if enabled {
 		policy = types.SandboxAutoResumeAny
 	}
 
 	return &types.SandboxAutoResumeConfig{
 		Policy: policy,
 	}
+}
+
+func validateLifecycleAliases(body api.NewSandbox) *api.APIError {
+	if body.Lifecycle == nil {
+		return nil
+	}
+
+	if body.AutoPause != nil && body.Lifecycle.OnTimeout != nil {
+		return &api.APIError{Code: http.StatusBadRequest, ClientMsg: "autoPause and lifecycle.onTimeout cannot both be set"}
+	}
+
+	if body.AutoResume != nil && body.Lifecycle.AutoResume != nil {
+		return &api.APIError{Code: http.StatusBadRequest, ClientMsg: "autoResume and lifecycle.autoResume cannot both be set"}
+	}
+
+	return nil
+}
+
+func buildKeepaliveConfig(lifecycle *api.NewSandboxLifecycle) (*types.SandboxKeepaliveConfig, *api.APIError) {
+	if lifecycle == nil || lifecycle.Keepalive == nil || lifecycle.Keepalive.Traffic == nil {
+		return nil, nil
+	}
+
+	timeout := types.SandboxTrafficKeepaliveTimeoutDefault
+	if lifecycle.Keepalive.Traffic.Timeout != nil {
+		if *lifecycle.Keepalive.Traffic.Timeout < 0 {
+			return nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: "Traffic keepalive timeout cannot be negative"}
+		}
+		if time.Duration(*lifecycle.Keepalive.Traffic.Timeout)*time.Second <= sandboxroutingcatalog.TrafficKeepaliveThrottleInterval {
+			return nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: fmt.Sprintf("Traffic keepalive timeout must be greater than %d seconds", int(sandboxroutingcatalog.TrafficKeepaliveThrottleInterval.Seconds()))}
+		}
+
+		timeout = uint64(*lifecycle.Keepalive.Traffic.Timeout)
+	}
+
+	return &types.SandboxKeepaliveConfig{
+		Traffic: &types.SandboxTrafficKeepaliveConfig{
+			Enabled: lifecycle.Keepalive.Traffic.Enabled,
+			Timeout: timeout,
+		},
+	}, nil
 }
 
 func dedupeVolumeNames(items []api.SandboxVolumeMount) []string {

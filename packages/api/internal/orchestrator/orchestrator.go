@@ -30,7 +30,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
+	sandboxroutingcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -54,7 +54,7 @@ type Orchestrator struct {
 	featureFlagsClient            *featureflags.Client
 	analytics                     *analyticscollector.Analytics
 	posthogClient                 *analyticscollector.PosthogClient
-	routingCatalog                e2bcatalog.SandboxesCatalog
+	routingCatalog                sandboxroutingcatalog.SandboxesCatalog
 	sqlcDB                        *sqlcdb.Client
 	tel                           *telemetry.Client
 	clusters                      *clusters.Pool
@@ -110,11 +110,11 @@ func New(
 	}
 	analyticsInstance.Init(ctx)
 
-	var routingCatalog e2bcatalog.SandboxesCatalog
+	var routingCatalog sandboxroutingcatalog.SandboxesCatalog
 	if redisClient != nil {
-		routingCatalog = e2bcatalog.NewRedisSandboxCatalog(redisClient)
+		routingCatalog = sandboxroutingcatalog.NewRedisSandboxCatalog(redisClient)
 	} else {
-		routingCatalog = e2bcatalog.NewMemorySandboxesCatalog()
+		routingCatalog = sandboxroutingcatalog.NewMemorySandboxesCatalog()
 	}
 
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,

@@ -93,7 +93,7 @@ func (o *Orchestrator) emitCreatedInstancePosthog(ctx context.Context, sbx sandb
 		Set("vcpu", sbx.VCpu).
 		Set("ram_mb", sbx.RamMB).
 		Set("total_disk_size_mb", sbx.TotalDiskSizeMB).
-		Set("auto_pause", sbx.AutoPause)
+		Set("auto_pause", sbx.Lifecycle.AutoPause)
 	if startDuration > 0 {
 		props = props.Set("start_time_ms", startDuration.Milliseconds())
 	}
@@ -129,8 +129,8 @@ func logSandboxCreated(ctx context.Context, sbx sandbox.Sandbox) {
 	sbxlogger.E(logMetadata).Info(ctx, "Sandbox created", zap.String("end_time", endTimeStr))
 
 	autoResumePolicy := "unset"
-	if sbx.AutoResume != nil {
-		autoResumePolicy = string(sbx.AutoResume.Policy)
+	if sbx.Lifecycle.AutoResume != nil {
+		autoResumePolicy = string(sbx.Lifecycle.AutoResume.Policy)
 	}
 
 	sbxlogger.I(logMetadata).Info(
@@ -138,7 +138,7 @@ func logSandboxCreated(ctx context.Context, sbx sandbox.Sandbox) {
 		"Sandbox created details",
 		zap.String("end_time", endTimeStr),
 		zap.String("auto_resume_policy", autoResumePolicy),
-		zap.Bool("auto_pause", sbx.AutoPause),
+		zap.Bool("auto_pause", sbx.Lifecycle.AutoPause),
 		zap.String("template_id", sbx.BaseTemplateID),
 	)
 }

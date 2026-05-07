@@ -87,6 +87,215 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 	}
 }
 
+func TestValidateLifecycleAliases(t *testing.T) {
+	t.Parallel()
+
+	autoPause := true
+	defaultedAutoPause := false
+	autoResume := &api.SandboxAutoResumeConfig{Enabled: true}
+	lifecycleAutoResume := true
+	onTimeout := api.Pause
+
+	tests := []struct {
+		name    string
+		body    api.NewSandbox
+		wantErr bool
+	}{
+		{
+			name: "top level auto pause conflicts with lifecycle on timeout",
+			body: api.NewSandbox{
+				AutoPause: &autoPause,
+				Lifecycle: &api.NewSandboxLifecycle{
+					OnTimeout: &onTimeout,
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "defaulted top level auto pause still conflicts with lifecycle on timeout when present",
+			body: api.NewSandbox{
+				AutoPause: &defaultedAutoPause,
+				Lifecycle: &api.NewSandboxLifecycle{
+					OnTimeout: &onTimeout,
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "top level auto resume conflicts with lifecycle auto resume",
+			body: api.NewSandbox{
+				AutoResume: autoResume,
+				Lifecycle: &api.NewSandboxLifecycle{
+					AutoResume: &lifecycleAutoResume,
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "single lifecycle surface is accepted",
+			body: api.NewSandbox{
+				Lifecycle: &api.NewSandboxLifecycle{
+					AutoResume: &lifecycleAutoResume,
+					OnTimeout:  &onTimeout,
+				},
+			},
+		},
+		{
+			name: "single top level surface is accepted",
+			body: api.NewSandbox{
+				AutoPause:  &autoPause,
+				AutoResume: autoResume,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validateLifecycleAliases(tt.body)
+			if tt.wantErr {
+				require.NotNil(t, err)
+			} else {
+				require.Nil(t, err)
+			}
+		})
+	}
+}
+
+func TestBuildKeepaliveConfig(t *testing.T) {
+	t.Parallel()
+
+	shortTimeout := int32(30)
+	validTimeout := int32(120)
+
+	tests := []struct {
+		name        string
+		lifecycle   *api.NewSandboxLifecycle
+		wantErr     bool
+		wantTimeout uint64
+	}{
+		{
+			name: "nil lifecycle returns nil",
+		},
+		{
+			name: "default timeout",
+			lifecycle: &api.NewSandboxLifecycle{
+				Keepalive: &api.SandboxKeepalive{
+					Traffic: &api.SandboxTrafficKeepalive{Enabled: true},
+				},
+			},
+			wantTimeout: dbtypes.SandboxTrafficKeepaliveTimeoutDefault,
+		},
+		{
+			name: "timeout must exceed throttle",
+			lifecycle: &api.NewSandboxLifecycle{
+				Keepalive: &api.SandboxKeepalive{
+					Traffic: &api.SandboxTrafficKeepalive{Enabled: true, Timeout: &shortTimeout},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "explicit valid timeout",
+			lifecycle: &api.NewSandboxLifecycle{
+				Keepalive: &api.SandboxKeepalive{
+					Traffic: &api.SandboxTrafficKeepalive{Enabled: true, Timeout: &validTimeout},
+				},
+			},
+			wantTimeout: uint64(validTimeout),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := buildKeepaliveConfig(tt.lifecycle)
+			if tt.wantErr {
+				require.NotNil(t, err)
+
+				return
+			}
+			require.Nil(t, err)
+			if tt.lifecycle == nil {
+				require.Nil(t, got)
+
+				return
+			}
+
+			require.NotNil(t, got)
+			require.NotNil(t, got.Traffic)
+			require.Equal(t, tt.wantTimeout, got.Traffic.Timeout)
+		})
+	}
+}
+
+func TestSandboxLifecycleToAPI(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                 string
+		autoPause            bool
+		autoResumeConfig     *dbtypes.SandboxAutoResumeConfig
+		keepalive            *dbtypes.SandboxKeepaliveConfig
+		wantAutoResume       bool
+		wantTrafficKeepalive bool
+		wantOnTimeout        api.SandboxOnTimeout
+	}{
+		{
+			name:          "default kills without auto resume",
+			wantOnTimeout: api.Kill,
+		},
+		{
+			name:          "auto pause changes timeout policy",
+			autoPause:     true,
+			wantOnTimeout: api.Pause,
+		},
+		{
+			name: "traffic keepalive is independent from disabled auto resume",
+			autoResumeConfig: &dbtypes.SandboxAutoResumeConfig{
+				Policy: dbtypes.SandboxAutoResumeOff,
+			},
+			keepalive: &dbtypes.SandboxKeepaliveConfig{
+				Traffic: &dbtypes.SandboxTrafficKeepaliveConfig{Enabled: true, Timeout: 300},
+			},
+			wantTrafficKeepalive: true,
+			wantOnTimeout:        api.Kill,
+		},
+		{
+			name: "auto resume and traffic keepalive can both be enabled",
+			autoResumeConfig: &dbtypes.SandboxAutoResumeConfig{
+				Policy: dbtypes.SandboxAutoResumeAny,
+			},
+			keepalive: &dbtypes.SandboxKeepaliveConfig{
+				Traffic: &dbtypes.SandboxTrafficKeepaliveConfig{Enabled: true, Timeout: 300},
+			},
+			wantAutoResume:       true,
+			wantTrafficKeepalive: true,
+			wantOnTimeout:        api.Kill,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := sandboxLifecycleToAPI(tt.autoPause, tt.autoResumeConfig, tt.keepalive)
+
+			assert.Equal(t, tt.wantAutoResume, got.AutoResume)
+			if tt.wantTrafficKeepalive {
+				require.NotNil(t, got.Keepalive)
+				require.NotNil(t, got.Keepalive.Traffic)
+				assert.True(t, got.Keepalive.Traffic.Enabled)
+			} else {
+				assert.Nil(t, got.Keepalive)
+			}
+			assert.Equal(t, tt.wantOnTimeout, got.OnTimeout)
+		})
+	}
+}
+
 func TestValidateNetworkConfig(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

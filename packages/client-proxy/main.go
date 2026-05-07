@@ -27,7 +27,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
+	sandboxroutingcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -107,7 +107,7 @@ func run() int {
 	}
 	featureFlagsClient.SetServiceName(serviceName)
 
-	var catalog e2bcatalog.SandboxesCatalog
+	var catalog sandboxroutingcatalog.SandboxesCatalog
 
 	redisClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
 		RedisURL:         config.RedisURL,
@@ -122,7 +122,7 @@ func run() int {
 				l.Error(ctx, "Failed to close redis client", zap.Error(err))
 			}
 		}()
-		catalog = e2bcatalog.NewRedisSandboxCatalog(redisClient)
+		catalog = sandboxroutingcatalog.NewRedisSandboxCatalog(redisClient)
 	} else {
 		if !errors.Is(err, factories.ErrRedisDisabled) {
 			l.Error(ctx, "Failed to create redis client", zap.Error(err))
@@ -131,37 +131,37 @@ func run() int {
 		}
 
 		l.Warn(ctx, "Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
-		catalog = e2bcatalog.NewMemorySandboxesCatalog()
+		catalog = sandboxroutingcatalog.NewMemorySandboxesCatalog()
 	}
 
 	info := &internal.ServiceInfo{}
 	info.SetStatus(ctx, internal.Healthy)
 
-	var pausedSandboxResumer e2bproxy.PausedSandboxResumer
+	var sandboxLifecycleClient e2bproxy.SandboxLifecycleClient
 	apiGRPCAddress := strings.TrimSpace(config.APIInternalGRPCAddress)
 	apiGRPCOAuthConfig := e2bproxy.GRPCOAuthConfig{}
 	apiGRPCUseTLS := false
 	if apiGRPCAddress == "" {
-		apiGRPCAddress = strings.TrimSpace(config.APIEdgeGRPCAddress)
+		apiGRPCAddress = strings.TrimSpace(config.ControlPlaneAPIGRPCAddress)
 		apiGRPCUseTLS = true
 		apiGRPCOAuthConfig = e2bproxy.GRPCOAuthConfig{
-			ClientID:     config.APIEdgeGRPCOAuthClientID,
-			ClientSecret: config.APIEdgeGRPCOAuthClientSecret,
-			TokenURL:     config.APIEdgeGRPCOAuthTokenURL,
+			ClientID:     config.ControlPlaneAPIGRPCOAuthClientID,
+			ClientSecret: config.ControlPlaneAPIGRPCOAuthClientSecret,
+			TokenURL:     config.ControlPlaneAPIGRPCOAuthTokenURL,
 		}
 	}
 
 	if apiGRPCAddress != "" {
-		pausedSandboxResumer, err = e2bproxy.NewGRPCPausedSandboxResumer(ctx, apiGRPCAddress, apiGRPCOAuthConfig, apiGRPCUseTLS)
+		sandboxLifecycleClient, err = e2bproxy.NewGrpcSandboxLifecycleClient(ctx, apiGRPCAddress, apiGRPCOAuthConfig, apiGRPCUseTLS)
 		if err != nil {
-			l.Error(ctx, "Failed to create paused sandbox checker", zap.Error(err))
+			l.Error(ctx, "Failed to create sandbox lifecycle client", zap.Error(err))
 
 			return 1
 		}
 
-		pausedSandboxResumer.Init(ctx)
+		sandboxLifecycleClient.Init(ctx)
 	} else {
-		l.Warn(ctx, "API gRPC address not set; paused sandbox checks disabled")
+		l.Warn(ctx, "API gRPC address not set; sandbox lifecycle calls disabled")
 	}
 
 	// Proxy sandbox http traffic to orchestrator nodes
@@ -170,7 +170,7 @@ func run() int {
 		serviceName,
 		config.ProxyPort,
 		catalog,
-		pausedSandboxResumer,
+		sandboxLifecycleClient,
 		featureFlagsClient,
 	)
 	if err != nil {
@@ -200,7 +200,7 @@ func run() int {
 
 	var closers []Closeable
 	closers = append(closers, featureFlagsClient, catalog)
-	if closeable, ok := pausedSandboxResumer.(Closeable); ok {
+	if closeable, ok := sandboxLifecycleClient.(Closeable); ok {
 		closers = append(closers, closeable)
 	}
 

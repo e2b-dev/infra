@@ -108,11 +108,43 @@ type SandboxAutoResumeConfig struct {
 	Timeout uint64                  `json:"timeout,omitempty"`
 }
 
+const SandboxTrafficKeepaliveTimeoutDefault uint64 = 300
+
+type SandboxTrafficKeepaliveConfig struct {
+	Enabled bool   `json:"enabled"`
+	Timeout uint64 `json:"timeout,omitempty"`
+}
+
+type SandboxKeepaliveConfig struct {
+	Traffic *SandboxTrafficKeepaliveConfig `json:"traffic,omitempty"`
+}
+
+type SandboxLifecycleConfig struct {
+	AutoPause  bool                     `json:"autoPause"`
+	AutoResume *SandboxAutoResumeConfig `json:"autoResume,omitempty"`
+	Keepalive  *SandboxKeepaliveConfig  `json:"keepalive,omitempty"`
+}
+
 type PausedSandboxConfig struct {
 	Version      string                      `json:"version"`
 	Network      *SandboxNetworkConfig       `json:"network,omitempty"`
-	AutoResume   *SandboxAutoResumeConfig    `json:"autoResume,omitempty"`
+	Lifecycle    *SandboxLifecycleConfig     `json:"lifecycle,omitempty"`
+	AutoResume   *SandboxAutoResumeConfig    `json:"autoResume,omitempty"` // Deprecated: use Lifecycle.
 	VolumeMounts []*SandboxVolumeMountConfig `json:"volumeMounts,omitempty"`
+}
+
+func (c PausedSandboxConfig) LifecycleConfig() *SandboxLifecycleConfig {
+	if c.Lifecycle != nil {
+		return c.Lifecycle
+	}
+	if c.AutoResume == nil {
+		return nil
+	}
+
+	return &SandboxLifecycleConfig{
+		AutoPause:  false,
+		AutoResume: c.AutoResume,
+	}
 }
 
 func (c PausedSandboxConfig) Value() (driver.Value, error) {

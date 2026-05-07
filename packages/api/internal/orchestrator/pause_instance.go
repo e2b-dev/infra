@@ -130,11 +130,11 @@ func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) quer
 		EnvdVersion:         &sbx.EnvdVersion,
 		Secure:              sbx.EnvdAccessToken != nil,
 		AllowInternetAccess: sbx.AllowInternetAccess,
-		AutoPause:           sbx.AutoPause,
+		AutoPause:           sbx.Lifecycle.AutoPause,
 		Config: &types.PausedSandboxConfig{
 			Version:      types.PausedSandboxConfigVersion,
 			Network:      sbx.Network,
-			AutoResume:   sbx.AutoResume,
+			Lifecycle:    &sbx.Lifecycle,
 			VolumeMounts: sbx.VolumeMounts,
 		},
 		OriginNodeID:    node.ID,

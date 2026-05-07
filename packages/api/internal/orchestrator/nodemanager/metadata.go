@@ -10,6 +10,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/edge"
 	grpcshared "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	sandboxroutingcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 type NodeMetadata struct {
@@ -39,14 +40,27 @@ func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.Sandbo
 	md := metadata.MD{}
 
 	if !n.IsNomadManaged() {
+		var keepalive *sandboxroutingcatalog.Keepalive
+		if keepaliveConfig := req.GetSandbox().GetKeepalive(); keepaliveConfig != nil {
+			keepalive = &sandboxroutingcatalog.Keepalive{}
+			if traffic := keepaliveConfig.GetTraffic(); traffic != nil && traffic.GetEnabled() {
+				keepalive.Traffic = &sandboxroutingcatalog.TrafficKeepalive{
+					Enabled: true,
+				}
+			}
+		}
+
 		md = edge.SerializeSandboxCatalogCreateEvent(
 			edge.SandboxCatalogCreateEvent{
 				SandboxID:               req.GetSandbox().GetSandboxId(),
+				TeamID:                  req.GetSandbox().GetTeamId(),
 				SandboxMaxLengthInHours: req.GetSandbox().GetMaxSandboxLength(),
 				SandboxStartTime:        req.GetStartTime().AsTime(),
+				Keepalive:               keepalive,
 
 				ExecutionID:    req.GetSandbox().GetExecutionId(),
 				OrchestratorID: n.Metadata().ServiceInstanceID,
+				OrchestratorIP: n.IPAddress,
 			},
 		)
 	}

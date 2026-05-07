@@ -56,7 +56,7 @@ func (e *Evictor) Start(ctx context.Context) {
 			for _, item := range sbxs {
 				g.Go(func() error {
 					action := sandbox.StateActionKill
-					if item.AutoPause {
+					if item.Lifecycle.AutoPause {
 						action = sandbox.StateActionPause
 						pause.LogInitiated(ctx, item.SandboxID, item.TeamID.String(), pause.ReasonTimeout)
 					}

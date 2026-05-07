@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	sandboxroutingcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -42,6 +43,7 @@ type Server struct {
 	persistence           storage.StorageProvider
 	featureFlags          *featureflags.Client
 	sbxEventsService      *events.EventsService
+	routingCatalog        sandboxroutingcatalog.SandboxesCatalog
 	startingSandboxes     *semaphore.Weighted
 	peerRegistry          peerclient.Registry
 	uploadedBuilds        *ttlcache.Cache[string, struct{}]
@@ -61,6 +63,7 @@ type ServiceConfig struct {
 	Persistence      storage.StorageProvider
 	FeatureFlags     *featureflags.Client
 	SbxEventsService *events.EventsService
+	RoutingCatalog   sandboxroutingcatalog.SandboxesCatalog
 	PeerRegistry     peerclient.Registry
 	Uploads          *sandbox.Uploads
 }
@@ -82,6 +85,7 @@ func New(cfg ServiceConfig) (*Server, error) {
 		persistence:       cfg.Persistence,
 		featureFlags:      cfg.FeatureFlags,
 		sbxEventsService:  cfg.SbxEventsService,
+		routingCatalog:    cfg.RoutingCatalog,
 		startingSandboxes: semaphore.NewWeighted(maxStartingInstancesPerNode),
 		peerRegistry:      cfg.PeerRegistry,
 		uploadedBuilds:    uploadedBuilds,

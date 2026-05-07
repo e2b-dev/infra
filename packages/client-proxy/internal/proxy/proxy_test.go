@@ -13,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
-	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
+	sandboxroutingcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 type stubResumer struct {
@@ -27,8 +27,13 @@ func (s stubResumer) Resume(_ context.Context, _ string, _ uint64, _ string, _ s
 	return s.nodeIP, s.err
 }
 
+func (s stubResumer) KeepAlive(_ context.Context, _ string, _ string, _ uint64, _ string, _ string) error {
+	return s.err
+}
+
 type recordingResumer struct {
 	sandboxID          string
+	teamID             string
 	sandboxPort        uint64
 	trafficAccessToken string
 	envdAccessToken    string
@@ -43,6 +48,116 @@ func (r *recordingResumer) Resume(_ context.Context, sandboxID string, sandboxPo
 	r.envdAccessToken = envdAccessToken
 
 	return "10.0.0.1", nil
+}
+
+func (r *recordingResumer) KeepAlive(_ context.Context, sandboxID string, teamID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) error {
+	r.sandboxID = sandboxID
+	r.teamID = teamID
+	r.sandboxPort = sandboxPort
+	r.trafficAccessToken = trafficAccessToken
+	r.envdAccessToken = envdAccessToken
+
+	return nil
+}
+
+type resumeCall struct {
+	method             string
+	sandboxID          string
+	teamID             string
+	sandboxPort        uint64
+	trafficAccessToken string
+	envdAccessToken    string
+}
+
+type asyncRecordingResumer struct {
+	calls chan resumeCall
+	block <-chan struct{}
+}
+
+func (r *asyncRecordingResumer) Init(_ context.Context) {}
+
+func (r *asyncRecordingResumer) Resume(ctx context.Context, sandboxID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (string, error) {
+	call := resumeCall{
+		method:             "resume",
+		sandboxID:          sandboxID,
+		sandboxPort:        sandboxPort,
+		trafficAccessToken: trafficAccessToken,
+		envdAccessToken:    envdAccessToken,
+	}
+
+	select {
+	case r.calls <- call:
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+
+	if r.block != nil {
+		select {
+		case <-r.block:
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+
+	return "10.0.0.1", nil
+}
+
+func (r *asyncRecordingResumer) KeepAlive(ctx context.Context, sandboxID string, teamID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) error {
+	call := resumeCall{
+		method:             "keepalive",
+		sandboxID:          sandboxID,
+		teamID:             teamID,
+		sandboxPort:        sandboxPort,
+		trafficAccessToken: trafficAccessToken,
+		envdAccessToken:    envdAccessToken,
+	}
+
+	select {
+	case r.calls <- call:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	if r.block != nil {
+		select {
+		case <-r.block:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	return nil
+}
+
+func requireResumerCall(t *testing.T, calls <-chan resumeCall) resumeCall {
+	t.Helper()
+
+	select {
+	case call := <-calls:
+		return call
+	case <-time.After(time.Second):
+		t.Fatal("expected resume call")
+
+		return resumeCall{}
+	}
+}
+
+func requireNoResumerCall(t *testing.T, calls <-chan resumeCall) {
+	t.Helper()
+
+	select {
+	case call := <-calls:
+		t.Fatalf("unexpected resumer call: %+v", call)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func testKeepalive() *sandboxroutingcatalog.Keepalive {
+	return &sandboxroutingcatalog.Keepalive{
+		Traffic: &sandboxroutingcatalog.TrafficKeepalive{
+			Enabled: true,
+		},
+	}
 }
 
 func newFF(t *testing.T, autoResumeEnabled bool) *featureflags.Client {
@@ -78,17 +193,17 @@ func ptr[T any](v T) *T {
 func TestCatalogResolution_CatalogHit(t *testing.T) {
 	t.Parallel()
 
-	c := catalog.NewMemorySandboxesCatalog()
+	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
 	ff := newFF(t, true)
 
-	err := c.StoreSandbox(t.Context(), "sbx", &catalog.SandboxInfo{
+	err := c.StoreSandbox(t.Context(), "sbx", &sandboxroutingcatalog.SandboxInfo{
 		OrchestratorIP: "10.0.0.1",
 		ExecutionID:    "exec",
 		StartedAt:      time.Now(),
 	}, time.Minute)
 	require.NoError(t, err)
 
-	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
+	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff, nil)
 	require.NoError(t, err)
 	require.Equal(t, "10.0.0.1", nodeIP)
 }
@@ -154,17 +269,17 @@ func TestClientProxyMaskRequestHost(t *testing.T) {
 func TestCatalogResolution_CatalogHit_EmptyIPReturnsRouteUnavailable(t *testing.T) {
 	t.Parallel()
 
-	c := catalog.NewMemorySandboxesCatalog()
+	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
 	ff := newFF(t, true)
 
-	err := c.StoreSandbox(t.Context(), "sbx", &catalog.SandboxInfo{
+	err := c.StoreSandbox(t.Context(), "sbx", &sandboxroutingcatalog.SandboxInfo{
 		OrchestratorIP: "",
 		ExecutionID:    "exec",
 		StartedAt:      time.Now(),
 	}, time.Minute)
 	require.NoError(t, err)
 
-	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
+	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff, nil)
 	require.ErrorIs(t, err, ErrNodeRouteUnavailable)
 	require.Empty(t, nodeIP)
 }
@@ -172,22 +287,171 @@ func TestCatalogResolution_CatalogHit_EmptyIPReturnsRouteUnavailable(t *testing.
 func TestCatalogResolution_CatalogMiss(t *testing.T) {
 	t.Parallel()
 
-	c := catalog.NewMemorySandboxesCatalog()
+	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
 	ff := newFF(t, true)
 
-	_, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
+	_, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff, nil)
 	require.ErrorIs(t, err, ErrNodeNotFound)
 }
 
 func TestCatalogResolution_CatalogMiss_ResumeEmptyIPReturnsRouteUnavailable(t *testing.T) {
 	t.Parallel()
 
-	c := catalog.NewMemorySandboxesCatalog()
+	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
 	ff := newFF(t, true)
 
-	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, stubResumer{nodeIP: ""}, ff)
+	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, stubResumer{nodeIP: ""}, ff, nil)
 	require.ErrorIs(t, err, ErrNodeRouteUnavailable)
 	require.Empty(t, nodeIP)
+}
+
+func TestCatalogResolution_CatalogHit_TrafficKeepaliveRefreshes(t *testing.T) {
+	t.Parallel()
+
+	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
+	ff := newFF(t, true)
+	now := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
+	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
+	trafficKeepalive := newTrafficKeepaliveManager(resumer)
+
+	err := c.StoreSandbox(t.Context(), "sbx", &sandboxroutingcatalog.SandboxInfo{
+		OrchestratorIP: "10.0.0.1",
+		TeamID:         "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		ExecutionID:    "exec",
+		StartedAt:      now.Add(-time.Minute),
+		Keepalive:      testKeepalive(),
+	}, time.Minute)
+	require.NoError(t, err)
+
+	nodeIP, err := catalogResolution(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, nil, ff, trafficKeepalive)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.1", nodeIP)
+
+	call := requireResumerCall(t, resumer.calls)
+	require.Equal(t, "keepalive", call.method)
+	require.Equal(t, "sbx", call.sandboxID)
+	require.Equal(t, "8f56d6bc-9b6d-4cbb-8e31-86b62359f716", call.teamID)
+	require.Equal(t, uint64(49983), call.sandboxPort)
+	require.Equal(t, "traffic-token", call.trafficAccessToken)
+	require.Equal(t, "envd-token", call.envdAccessToken)
+}
+
+func TestCatalogResolution_CatalogHit_TrafficKeepaliveRefreshesWhenAutoResumeFlagDisabled(t *testing.T) {
+	t.Parallel()
+
+	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
+	ff := newFF(t, false)
+	now := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
+	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
+	trafficKeepalive := newTrafficKeepaliveManager(resumer)
+
+	err := c.StoreSandbox(t.Context(), "sbx", &sandboxroutingcatalog.SandboxInfo{
+		OrchestratorIP: "10.0.0.1",
+		TeamID:         "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		ExecutionID:    "exec",
+		StartedAt:      now.Add(-time.Minute),
+		Keepalive:      testKeepalive(),
+	}, time.Minute)
+	require.NoError(t, err)
+
+	nodeIP, err := catalogResolution(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, nil, ff, trafficKeepalive)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.1", nodeIP)
+
+	call := requireResumerCall(t, resumer.calls)
+	require.Equal(t, "keepalive", call.method)
+	require.Equal(t, "8f56d6bc-9b6d-4cbb-8e31-86b62359f716", call.teamID)
+	require.Equal(t, uint64(49983), call.sandboxPort)
+	require.Equal(t, "envd-token", call.envdAccessToken)
+}
+
+func TestTrafficKeepaliveManager_RefreshesWhenNotNearExpiry(t *testing.T) {
+	t.Parallel()
+
+	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
+	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
+	trafficKeepalive := newTrafficKeepaliveManager(resumer)
+
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, &sandboxroutingcatalog.SandboxInfo{
+		TeamID:    "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		Keepalive: testKeepalive(),
+	})
+
+	requireResumerCall(t, resumer.calls)
+}
+
+func TestTrafficKeepaliveManager_SkipsWhenTeamIDMissing(t *testing.T) {
+	t.Parallel()
+
+	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
+	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
+	trafficKeepalive := newTrafficKeepaliveManager(resumer)
+
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, &sandboxroutingcatalog.SandboxInfo{
+		Keepalive: testKeepalive(),
+	})
+
+	requireNoResumerCall(t, resumer.calls)
+}
+
+func TestTrafficKeepaliveManager_SkipsWhenCatalogPolicyDisabled(t *testing.T) {
+	t.Parallel()
+
+	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
+	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
+	trafficKeepalive := newTrafficKeepaliveManager(resumer)
+
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, &sandboxroutingcatalog.SandboxInfo{
+		TeamID: "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		Keepalive: &sandboxroutingcatalog.Keepalive{
+			Traffic: &sandboxroutingcatalog.TrafficKeepalive{Enabled: false},
+		},
+	})
+
+	requireNoResumerCall(t, resumer.calls)
+}
+
+func TestTrafficKeepaliveManager_SuppressesConcurrentRefreshes(t *testing.T) {
+	t.Parallel()
+
+	release := make(chan struct{})
+	resumer := &asyncRecordingResumer{
+		calls: make(chan resumeCall, 2),
+		block: release,
+	}
+	trafficKeepalive := newTrafficKeepaliveManager(resumer)
+	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
+	info := &sandboxroutingcatalog.SandboxInfo{
+		TeamID:    "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		Keepalive: testKeepalive(),
+	}
+
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
+	call := requireResumerCall(t, resumer.calls)
+	require.Equal(t, "keepalive", call.method)
+
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
+	requireNoResumerCall(t, resumer.calls)
+
+	close(release)
+}
+
+func TestTrafficKeepaliveManager_SkipsWhenCatalogTimerHeld(t *testing.T) {
+	t.Parallel()
+
+	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
+	trafficKeepalive := newTrafficKeepaliveManager(resumer)
+	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
+	info := &sandboxroutingcatalog.SandboxInfo{
+		TeamID:    "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		Keepalive: testKeepalive(),
+	}
+
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
+	requireResumerCall(t, resumer.calls)
+
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
+	requireNoResumerCall(t, resumer.calls)
 }
 
 func TestHandlePausedSandbox_NoResumer_MissingTrafficAccessToken(t *testing.T) {

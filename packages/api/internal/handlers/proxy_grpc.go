@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -18,6 +19,7 @@ import (
 	apiorchestrator "github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	typesteam "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -69,7 +71,7 @@ func isNonEnvdTrafficRequest(ctx context.Context, incomingMetadata metadata.MD, 
 	if parseErr != nil {
 		logger.L().Warn(
 			ctx,
-			"invalid sandbox request port metadata for resume",
+			"invalid sandbox request port metadata for proxy traffic",
 			zap.Error(parseErr),
 			zap.String("request_port", requestPortRaw),
 			logger.WithSandboxID(sandboxID),
@@ -107,7 +109,9 @@ func (s *SandboxService) getAutoResumeSnapshot(ctx context.Context, sandboxID st
 
 	var autoResume *dbtypes.SandboxAutoResumeConfig
 	if snap.Snapshot.Config != nil {
-		autoResume = snap.Snapshot.Config.AutoResume
+		if lifecycle := snap.Snapshot.Config.LifecycleConfig(); lifecycle != nil {
+			autoResume = lifecycle.AutoResume
+		}
 	}
 	if autoResume == nil || autoResume.Policy != dbtypes.SandboxAutoResumeAny {
 		return nil, nil, status.Error(codes.NotFound, "sandbox auto-resume disabled")
@@ -116,20 +120,66 @@ func (s *SandboxService) getAutoResumeSnapshot(ctx context.Context, sandboxID st
 	return snap, autoResume, nil
 }
 
-func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*proxygrpc.SandboxResumeResponse, error) {
+func (s *SandboxService) validateSandboxTraffic(ctx context.Context, sandboxID string, network *dbtypes.SandboxNetworkConfig, envdAccessToken *string) error {
 	incomingMetadata := metadataFromIncomingContext(ctx)
+	isNonEnvdTraffic := isNonEnvdTrafficRequest(ctx, incomingMetadata, sandboxID)
 
-	var clientProxyClaims oauth.Claims
-	if s.requireEdgeClientProxyAuth {
-		var authErr error
-		clientProxyClaims, authErr = oauth.RequireClaims(ctx, incomingMetadata, s.clientProxyOAuth)
-		if authErr != nil {
-			return nil, authErr
+	// Validate traffic access token for sandboxes with private ingress.
+	if isPrivateIngressTraffic(network) && isNonEnvdTraffic {
+		expectedToken, tokenErr := s.api.accessTokenGenerator.GenerateTrafficAccessToken(sandboxID)
+		if tokenErr != nil {
+			logger.L().Error(ctx, "failed to generate expected traffic access token", zap.Error(tokenErr), logger.WithSandboxID(sandboxID))
+
+			return status.Error(codes.Internal, "failed to validate traffic access token")
 		}
-		if err := oauth.RequireScopeClaims(clientProxyClaims, oauth.RequiredScope); err != nil {
-			return nil, err
+
+		providedToken, found := metadataFirstValue(incomingMetadata, proxygrpc.MetadataTrafficAccessToken)
+
+		if !found || !tokensMatch(providedToken, expectedToken) {
+			return denyResumePermission()
 		}
 	}
+
+	// Callers pass envdAccessToken only when envd traffic must enforce it.
+	if !isNonEnvdTraffic && envdAccessToken != nil {
+		providedEnvdToken, found := metadataFirstValue(incomingMetadata, proxygrpc.MetadataEnvdAccessToken)
+
+		if !found || !tokensMatch(providedEnvdToken, *envdAccessToken) {
+			return denyResumePermission()
+		}
+	}
+
+	return nil
+}
+
+func (s *SandboxService) requireClientProxyAuth(ctx context.Context, incomingMetadata metadata.MD, team *typesteam.Team) error {
+	if !s.requireEdgeClientProxyAuth {
+		return nil
+	}
+
+	clientProxyClaims, err := oauth.RequireClaims(ctx, incomingMetadata, s.clientProxyOAuth)
+	if err != nil {
+		return err
+	}
+	if err := oauth.RequireScopeClaims(clientProxyClaims, oauth.RequiredScope); err != nil {
+		return err
+	}
+
+	var authOrgID string
+	if team.ClusterID != nil {
+		cluster, found := s.api.clusters.GetClusterById(*team.ClusterID)
+		if !found {
+			return status.Errorf(codes.Internal, "cluster with ID '%s' not found", *team.ClusterID)
+		}
+
+		authOrgID = cluster.AuthOrgID
+	}
+
+	return oauth.RequireOrgClaims(clientProxyClaims, authOrgID)
+}
+
+func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.SandboxResumeRequest) (*proxygrpc.SandboxResumeResponse, error) {
+	incomingMetadata := metadataFromIncomingContext(ctx)
 
 	sandboxID, err := utils.ShortID(req.GetSandboxId())
 	if err != nil {
@@ -148,20 +198,33 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
 	}
 
-	if s.requireEdgeClientProxyAuth {
-		var authOrgID string
-		if team.ClusterID != nil {
-			cluster, found := s.api.clusters.GetClusterById(*team.ClusterID)
-			if !found {
-				return nil, status.Errorf(codes.Internal, "cluster with ID '%s' not found", *team.ClusterID)
-			}
+	if err := s.requireClientProxyAuth(ctx, incomingMetadata, team); err != nil {
+		return nil, err
+	}
 
-			authOrgID = cluster.AuthOrgID
+	minAutoResumeTimeout := time.Duration(s.api.featureFlags.IntFlag(ctx, featureflags.MinAutoResumeTimeoutSeconds)) * time.Second
+
+	timeout := calculateAutoResumeTimeout(autoResume, minAutoResumeTimeout, team)
+
+	var envdAccessToken *string
+	if snap.Snapshot.EnvSecure {
+		accessToken, tokenErr := s.api.getEnvdAccessToken(snap.EnvBuild.EnvdVersion, sandboxID)
+		if tokenErr != nil {
+			logger.L().Error(ctx, "Secure envd access token error", zap.Error(tokenErr.Err), logger.WithSandboxID(sandboxID))
+
+			return nil, status.Error(codes.Internal, "failed to create envd access token")
 		}
 
-		if err := oauth.RequireOrgClaims(clientProxyClaims, authOrgID); err != nil {
-			return nil, err
-		}
+		envdAccessToken = &accessToken
+	}
+
+	var network *dbtypes.SandboxNetworkConfig
+	if snap.Snapshot.Config != nil {
+		network = snap.Snapshot.Config.Network
+	}
+
+	if trafficErr := s.validateSandboxTraffic(ctx, sandboxID, network, envdAccessToken); trafficErr != nil {
+		return nil, trafficErr
 	}
 
 	sandboxData, sandboxErr := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)
@@ -195,54 +258,6 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		}
 	}
 
-	minAutoResumeTimeout := time.Duration(s.api.featureFlags.IntFlag(ctx, featureflags.MinAutoResumeTimeoutSeconds)) * time.Second
-
-	timeout := calculateAutoResumeTimeout(autoResume, minAutoResumeTimeout, team)
-
-	var envdAccessToken *string
-	if snap.Snapshot.EnvSecure {
-		accessToken, tokenErr := s.api.getEnvdAccessToken(snap.EnvBuild.EnvdVersion, sandboxID)
-		if tokenErr != nil {
-			logger.L().Error(ctx, "Secure envd access token error", zap.Error(tokenErr.Err), logger.WithSandboxID(sandboxID))
-
-			return nil, status.Error(codes.Internal, "failed to create envd access token")
-		}
-
-		envdAccessToken = &accessToken
-	}
-
-	var network *dbtypes.SandboxNetworkConfig
-	if snap.Snapshot.Config != nil {
-		network = snap.Snapshot.Config.Network
-	}
-
-	isNonEnvdTraffic := isNonEnvdTrafficRequest(ctx, incomingMetadata, sandboxID)
-
-	// Validate traffic access token for sandboxes with private ingress.
-	if isPrivateIngressTraffic(network) && isNonEnvdTraffic {
-		expectedToken, tokenErr := s.api.accessTokenGenerator.GenerateTrafficAccessToken(sandboxID)
-		if tokenErr != nil {
-			logger.L().Error(ctx, "failed to generate expected traffic access token", zap.Error(tokenErr), logger.WithSandboxID(sandboxID))
-
-			return nil, status.Error(codes.Internal, "failed to validate traffic access token")
-		}
-
-		providedToken, _ := metadataFirstValue(incomingMetadata, proxygrpc.MetadataTrafficAccessToken)
-
-		if !tokensMatch(providedToken, expectedToken) {
-			return nil, denyResumePermission()
-		}
-	}
-
-	// Validate envd access token for secure sandboxes on envd traffic
-	if !isNonEnvdTraffic && snap.Snapshot.EnvSecure && envdAccessToken != nil {
-		providedEnvdToken, _ := metadataFirstValue(incomingMetadata, proxygrpc.MetadataEnvdAccessToken)
-
-		if !tokensMatch(providedEnvdToken, *envdAccessToken) {
-			return nil, denyResumePermission()
-		}
-	}
-
 	headers := http.Header{}
 	sbx, apiErr := s.api.startSandboxInternal(
 		ctx,
@@ -264,4 +279,53 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	}
 
 	return &proxygrpc.SandboxResumeResponse{OrchestratorIp: nodeIP}, nil
+}
+
+func (s *SandboxService) KeepAliveSandbox(ctx context.Context, req *proxygrpc.SandboxKeepAliveRequest) (*proxygrpc.SandboxKeepAliveResponse, error) {
+	incomingMetadata := metadataFromIncomingContext(ctx)
+
+	sandboxID, err := utils.ShortID(req.GetSandboxId())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid sandbox ID")
+	}
+
+	teamID, err := uuid.Parse(req.GetTeamId())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid team ID")
+	}
+
+	team, err := s.api.authService.GetTeamByID(ctx, teamID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
+	}
+
+	if err := s.requireClientProxyAuth(ctx, incomingMetadata, team); err != nil {
+		return nil, err
+	}
+
+	sandboxData, err := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)
+	if err != nil {
+		if errors.Is(err, sandbox.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "sandbox not found")
+		}
+
+		return nil, status.Errorf(codes.Internal, "failed to get sandbox state: %v", err)
+	}
+
+	trafficKeepalive := sandboxData.TrafficKeepalive()
+	if trafficKeepalive == nil {
+		return nil, status.Error(codes.FailedPrecondition, "sandbox traffic keepalive disabled")
+	}
+
+	if trafficErr := s.validateSandboxTraffic(ctx, sandboxID, sandboxData.Network, sandboxData.EnvdAccessToken); trafficErr != nil {
+		return nil, trafficErr
+	}
+
+	timeout := time.Duration(trafficKeepalive.Timeout) * time.Second
+
+	if _, apiErr := s.api.orchestrator.KeepAliveFor(ctx, teamID, sandboxID, timeout, false); apiErr != nil {
+		return nil, status.Error(sharedutils.GRPCCodeFromHTTPStatus(apiErr.Code), apiErr.ClientMsg)
+	}
+
+	return &proxygrpc.SandboxKeepAliveResponse{}, nil
 }

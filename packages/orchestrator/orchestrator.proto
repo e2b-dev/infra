@@ -51,12 +51,25 @@ message SandboxConfig {
 
   // Auto-resume policy for paused sandboxes.
   optional SandboxAutoResumeConfig auto_resume = 24;
+
+  // Keepalive policies for extending sandbox timeout.
+  optional SandboxKeepaliveConfig keepalive = 25;
 }
 
 message SandboxAutoResumeConfig {
   // Policy values are owned by the API layer today (e.g. "off", "any").
   string policy = 1;
   // Timeout requested on initial sandbox create (seconds).
+  uint64 timeout_seconds = 2;
+}
+
+message SandboxKeepaliveConfig {
+  optional SandboxTrafficKeepaliveConfig traffic = 1;
+}
+
+message SandboxTrafficKeepaliveConfig {
+  bool enabled = 1;
+  // Timeout extension for valid proxy traffic (seconds).
   uint64 timeout_seconds = 2;
 }
 

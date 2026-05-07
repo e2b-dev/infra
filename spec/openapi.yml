@@ -334,6 +334,29 @@ components:
         - kill
         - pause
 
+    SandboxTrafficKeepalive:
+      type: object
+      description: Traffic keepalive policy.
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+          description: Whether valid proxy traffic refreshes the sandbox timeout.
+        timeout:
+          type: integer
+          format: int32
+          minimum: 61
+          default: 300
+          description: Time to extend the sandbox timeout by when valid proxy traffic is received, in seconds.
+
+    SandboxKeepalive:
+      type: object
+      description: Keepalive policies for extending sandbox timeout.
+      properties:
+        traffic:
+          $ref: "#/components/schemas/SandboxTrafficKeepalive"
+
     SandboxLifecycle:
       type: object
       description: Sandbox lifecycle policy returned by sandbox info.
@@ -344,6 +367,20 @@ components:
         autoResume:
           type: boolean
           description: Whether the sandbox can auto-resume.
+        keepalive:
+          $ref: "#/components/schemas/SandboxKeepalive"
+        onTimeout:
+          $ref: "#/components/schemas/SandboxOnTimeout"
+
+    NewSandboxLifecycle:
+      type: object
+      description: Sandbox lifecycle policy.
+      properties:
+        autoResume:
+          type: boolean
+          description: Whether the sandbox can auto-resume.
+        keepalive:
+          $ref: "#/components/schemas/SandboxKeepalive"
         onTimeout:
           $ref: "#/components/schemas/SandboxOnTimeout"
 
@@ -647,10 +684,14 @@ components:
           description: Time to live for the sandbox in seconds.
         autoPause:
           type: boolean
-          default: false
-          description: Automatically pauses the sandbox after the timeout
+          deprecated: true
+          description: Deprecated. Use lifecycle.onTimeout instead.
         autoResume:
+          deprecated: true
+          description: Deprecated. Use lifecycle.autoResume instead.
           $ref: "#/components/schemas/SandboxAutoResumeConfig"
+        lifecycle:
+          $ref: "#/components/schemas/NewSandboxLifecycle"
         secure:
           type: boolean
           description: Secure all system communication with sandbox

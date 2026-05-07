@@ -91,3 +91,40 @@ func TestJSONBStringMap_NilRoundTrip(t *testing.T) {
 	assert.NotNil(t, decoded)
 	assert.Empty(t, decoded)
 }
+
+func TestPausedSandboxConfigLifecycleConfig(t *testing.T) {
+	t.Parallel()
+
+	autoResume := &SandboxAutoResumeConfig{Policy: SandboxAutoResumeAny, Timeout: 120}
+	keepalive := &SandboxKeepaliveConfig{Traffic: &SandboxTrafficKeepaliveConfig{Enabled: true, Timeout: 300}}
+
+	t.Run("prefers nested lifecycle", func(t *testing.T) {
+		t.Parallel()
+
+		config := PausedSandboxConfig{
+			Lifecycle: &SandboxLifecycleConfig{
+				AutoPause:  true,
+				AutoResume: autoResume,
+				Keepalive:  keepalive,
+			},
+		}
+
+		got := config.LifecycleConfig()
+		require.NotNil(t, got)
+		assert.True(t, got.AutoPause)
+		assert.Same(t, autoResume, got.AutoResume)
+		assert.Same(t, keepalive, got.Keepalive)
+	})
+
+	t.Run("supports legacy auto resume", func(t *testing.T) {
+		t.Parallel()
+
+		config := PausedSandboxConfig{AutoResume: autoResume}
+
+		got := config.LifecycleConfig()
+		require.NotNil(t, got)
+		assert.False(t, got.AutoPause)
+		assert.Same(t, autoResume, got.AutoResume)
+		assert.Nil(t, got.Keepalive)
+	})
+}

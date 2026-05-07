@@ -18,6 +18,7 @@ var errMaxInstanceLengthExceeded = errors.New("max instance length exceeded")
 
 func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandboxID string, duration time.Duration, allowShorter bool) (*sandbox.Sandbox, *api.APIError) {
 	now := time.Now()
+	var updatedEndTime time.Time
 
 	updateFunc := func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
 		if sbx.State != sandbox.StateRunning {
@@ -32,13 +33,18 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 			return sbx, errMaxInstanceLengthExceeded
 		}
 
-		if !allowShorter && endTime.Before(sbx.EndTime) {
+		if !allowShorter && !endTime.After(sbx.EndTime) {
 			// If shorter than the current end time, we don't extend, so we can return
+			return sbx, nil
+		}
+		if endTime.Equal(sbx.EndTime) {
+			// allowShorter=true can still produce an exact no-op update.
 			return sbx, nil
 		}
 
 		logger.L().Debug(ctx, "sandbox ttl updated", logger.WithSandboxID(sbx.SandboxID), logger.Time("end_time", endTime))
 		sbx.EndTime = endTime
+		updatedEndTime = endTime
 
 		return sbx, nil
 	}
@@ -57,6 +63,11 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 			return nil, &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}
 		}
 	}
+
+	if updatedEndTime.IsZero() || !sbx.EndTime.Equal(updatedEndTime) {
+		return &sbx, nil
+	}
+
 	err = o.UpdateSandbox(ctx, sandboxID, sbx.EndTime, sbx.ClusterID, sbx.NodeID)
 	if err != nil {
 		if errors.Is(err, ErrSandboxNotFound) {
@@ -65,6 +76,8 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 
 		return nil, &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when setting sandbox timeout", Err: err}
 	}
+
+	o.addSandboxToRoutingTable(ctx, sbx)
 
 	return &sbx, nil
 }
