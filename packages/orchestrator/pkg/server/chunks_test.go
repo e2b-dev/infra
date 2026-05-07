@@ -19,10 +19,10 @@ func TestReadAtBuildSeekable_RejectsNegativeRange(t *testing.T) {
 
 	s := &Server{}
 	err := s.ReadAtBuildSeekable(&orchestrator.ReadAtBuildSeekableRequest{
-		BuildId:  "build-1",
-		FileName: "memfile",
-		Offset:   -1,
-		Length:   1,
+		BuildId: "build-1",
+		Name:    "memfile",
+		Offset:  -1,
+		Length:  1,
 	}, stream)
 	require.Error(t, err)
 	st, ok := status.FromError(err)

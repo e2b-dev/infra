@@ -54,12 +54,12 @@ func (b *peerBlob) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 			streamCtx, cancel := context.WithCancel(ctx)
 
 			recv, err := openPeerBlobStream(streamCtx, b.client, &orchestrator.GetBuildBlobRequest{
-				BuildId:  b.buildID,
-				FileName: b.fileName,
+				BuildId: b.buildID,
+				Name:    b.name,
 			}, b.uploaded)
 			if err != nil {
 				cancel()
-				logger.L().Warn(ctx, "failed to open peer blob stream", logger.WithBuildID(b.buildID), zap.String("file_name", b.fileName), zap.Error(err))
+				logger.L().Warn(ctx, "failed to open peer blob stream", logger.WithBuildID(b.buildID), zap.String("file_name", b.name), zap.Error(err))
 
 				return peerAttempt[int64]{}, nil
 			}
@@ -70,7 +70,7 @@ func (b *peerBlob) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 			n, err := io.Copy(dst, reader)
 			if err != nil {
 				return peerAttempt[int64]{value: n, bytes: n, hit: true},
-					fmt.Errorf("failed to stream file %q from peer: %w", b.fileName, err)
+					fmt.Errorf("failed to stream file %q from peer: %w", b.name, err)
 			}
 
 			return peerAttempt[int64]{value: n, bytes: n, hit: true}, nil
@@ -91,15 +91,15 @@ func (b *peerBlob) Exists(ctx context.Context) (bool, error) {
 	res, err := tryPeer(ctx, &b.peerHandle, "peer-blob-exists", attrOpExists,
 		func(ctx context.Context) (peerAttempt[bool], error) {
 			resp, err := b.client.GetBuildFileExists(ctx, &orchestrator.GetBuildFileExistsRequest{
-				BuildId:  b.buildID,
-				FileName: b.fileName,
+				BuildId: b.buildID,
+				Name:    b.name,
 			})
 			if err == nil && checkPeerAvailability(resp.GetAvailability(), b.uploaded) {
 				return peerAttempt[bool]{value: true, hit: true}, nil
 			}
 
 			if err != nil {
-				logger.L().Warn(ctx, "failed to check build file exists from peer", logger.WithBuildID(b.buildID), zap.String("file_name", b.fileName), zap.Error(err))
+				logger.L().Warn(ctx, "failed to check build file exists from peer", logger.WithBuildID(b.buildID), zap.String("file_name", b.name), zap.Error(err))
 			}
 
 			return peerAttempt[bool]{}, nil

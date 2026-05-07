@@ -53,7 +53,7 @@ func (s *peerSeekable) getBase(ctx context.Context, ct storage.CompressionType) 
 		return s.base, nil
 	}
 
-	path := storage.Paths{BuildID: s.buildID}.DataFile(s.fileName, ct)
+	path := storage.Paths{BuildID: s.buildID}.DataFile(s.name, ct)
 
 	base, err := s.basePersistence.OpenSeekable(ctx, path, s.objType)
 	if err != nil {
@@ -71,8 +71,8 @@ func (s *peerSeekable) Size(ctx context.Context) (int64, error) {
 	res, err := tryPeer(ctx, &s.peerHandle, "size peer-seekable", attrOpSize,
 		func(ctx context.Context) (peerAttempt[int64], error) {
 			resp, err := s.client.GetBuildFileSize(ctx, &orchestrator.GetBuildFileSizeRequest{
-				BuildId:  s.buildID,
-				FileName: s.fileName,
+				BuildId: s.buildID,
+				Name:    s.name,
 			})
 			if err == nil && checkPeerAvailability(resp.GetAvailability(), s.uploaded) {
 				return peerAttempt[int64]{value: resp.GetTotalSize(), hit: true}, nil
@@ -105,10 +105,10 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length in
 			streamCtx, cancel := context.WithCancel(ctx)
 
 			recv, err := openPeerSeekableStream(streamCtx, s.client, &orchestrator.ReadAtBuildSeekableRequest{
-				BuildId:  s.buildID,
-				FileName: s.fileName,
-				Offset:   off,
-				Length:   length,
+				BuildId: s.buildID,
+				Name:    s.name,
+				Offset:  off,
+				Length:  length,
 			}, s.uploaded)
 			if err != nil {
 				logger.L().Warn(ctx, "failed to open range reader from peer", logger.WithBuildID(s.buildID), zap.Int64("off", off), zap.Int64("length", length), zap.Error(err))

@@ -127,13 +127,13 @@ func newPeerStorageProvider(
 }
 
 func (p *peerStorageProvider) OpenBlob(_ context.Context, path string, objType storage.ObjectType) (storage.Blob, error) {
-	buildID, fileName := storage.SplitPath(path)
+	buildID, t := storage.SplitPath(path)
 
 	return &peerBlob{
 		peerHandle: peerHandle{
 			client:   p.peerClient,
 			buildID:  buildID,
-			fileName: fileName,
+			name:     t,
 			uploaded: p.uploaded,
 		},
 		openBase: func(ctx context.Context) (storage.Blob, error) {
@@ -151,14 +151,14 @@ func (p *peerStorageProvider) OpenSeekable(_ context.Context, path string, objTy
 	// stale entry for a finalized V4/Zstd build, in which case StorageDiff
 	// hands us "buildID/memfile.zstd" — without stripping, getBase would
 	// double-suffix to "memfile.zstd.zstd" on fallthrough.
-	buildID, fileName := storage.SplitPath(path)
-	fileName = storage.StripCompression(fileName)
+	buildID, t := storage.SplitPath(path)
+	t = storage.StripCompression(t)
 
 	return &peerSeekable{
 		peerHandle: peerHandle{
 			client:   p.peerClient,
 			buildID:  buildID,
-			fileName: fileName,
+			name:     t,
 			uploaded: p.uploaded,
 		},
 		basePersistence: p.base,
@@ -198,7 +198,7 @@ func checkPeerAvailability(avail *orchestrator.PeerAvailability, uploaded *atomi
 type peerHandle struct {
 	client   orchestrator.ChunkServiceClient
 	buildID  string
-	fileName string
+	name     string
 	uploaded *atomic.Bool
 }
 
@@ -223,7 +223,7 @@ func tryPeer[T any](
 	peerFn func(ctx context.Context) (peerAttempt[T], error),
 ) (peerAttempt[T], error) {
 	ctx, span := tracer.Start(ctx, spanName, trace.WithAttributes(
-		attribute.String("file_name", h.fileName),
+		attribute.String("file_name", h.name),
 	))
 	defer span.End()
 

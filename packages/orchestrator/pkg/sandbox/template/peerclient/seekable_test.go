@@ -21,10 +21,10 @@ func TestPeerSeekable_Size_PeerSucceeds(t *testing.T) {
 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
 	client.EXPECT().GetBuildFileSize(mock.Anything, mock.MatchedBy(func(req *orchestrator.GetBuildFileSizeRequest) bool {
-		return req.GetBuildId() == "build-1" && req.GetFileName() == storage.MemfileName
+		return req.GetBuildId() == "build-1" && req.GetName() == storage.MemfileName
 	})).Return(&orchestrator.GetBuildFileSizeResponse{TotalSize: 4096}, nil)
 
-	s := &peerSeekable{peerHandle: peerHandle{client: client, buildID: "build-1", fileName: storage.MemfileName, uploaded: &atomic.Bool{}}}
+	s := &peerSeekable{peerHandle: peerHandle{client: client, buildID: "build-1", name: storage.MemfileName, uploaded: &atomic.Bool{}}}
 	size, err := s.Size(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, int64(4096), size)
@@ -46,7 +46,7 @@ func TestPeerSeekable_Size_PeerNotAvailable_FallsBackToBase(t *testing.T) {
 		peerHandle: peerHandle{
 			client:   client,
 			buildID:  "build-1",
-			fileName: storage.MemfileName,
+			name:     storage.MemfileName,
 			uploaded: &atomic.Bool{},
 		},
 		basePersistence: base,
@@ -71,7 +71,7 @@ func TestPeerSeekable_OpenRangeReader_PeerSucceeds(t *testing.T) {
 		return req.GetOffset() == 10 && req.GetLength() == int64(len(data))
 	})).Return(stream, nil)
 
-	s := &peerSeekable{peerHandle: peerHandle{client: client, buildID: "build-1", fileName: storage.MemfileName, uploaded: &atomic.Bool{}}}
+	s := &peerSeekable{peerHandle: peerHandle{client: client, buildID: "build-1", name: storage.MemfileName, uploaded: &atomic.Bool{}}}
 	rc, err := s.OpenRangeReader(t.Context(), 10, int64(len(data)), nil)
 	require.NoError(t, err)
 	defer rc.Close()
@@ -98,7 +98,7 @@ func TestPeerSeekable_OpenRangeReader_PeerError_FallsBackToBase(t *testing.T) {
 		peerHandle: peerHandle{
 			client:   client,
 			buildID:  "build-1",
-			fileName: storage.MemfileName,
+			name:     storage.MemfileName,
 			uploaded: &atomic.Bool{},
 		},
 		basePersistence: base,
@@ -129,7 +129,7 @@ func TestPeerSeekable_OpenRangeReader_Uploaded_ReturnsPeerTransitionedError(t *t
 		peerHandle: peerHandle{
 			client:   client,
 			buildID:  "build-1",
-			fileName: storage.MemfileName,
+			name:     storage.MemfileName,
 			uploaded: uploaded,
 		},
 		basePersistence: base,
@@ -179,7 +179,7 @@ func TestPeerStorageProvider_FullTransitionFlow(t *testing.T) {
 	client := orchestratormocks.NewMockChunkServiceClient(t)
 	client.EXPECT().ReadAtBuildSeekable(mock.Anything, mock.MatchedBy(func(req *orchestrator.ReadAtBuildSeekableRequest) bool {
 		// Peer is asked by basic name only.
-		return req.GetBuildId() == "build-1" && req.GetFileName() == storage.MemfileName
+		return req.GetBuildId() == "build-1" && req.GetName() == storage.MemfileName
 	})).Return(preStream, nil).Once()
 
 	// Base is only consulted post-transition, and only against the compressed
