@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -267,13 +266,10 @@ func TestMultiplexedChannel_ForkAfterSourceCloseReturnsClosedChan(t *testing.T) 
 	m := NewMultiplexedChannel[int](0)
 	m.CloseSource()
 
-	// Wait for the fan-out goroutine to observe Source close.
-	deadline := time.Now().Add(multiplexTestTimeout)
-	for !m.exited.Load() {
-		if time.Now().After(deadline) {
-			t.Fatal("fan-out did not mark itself exited after Source close")
-		}
-		time.Sleep(time.Millisecond)
+	select {
+	case <-m.done:
+	case <-time.After(multiplexTestTimeout):
+		t.Fatal("fan-out did not exit after Source close")
 	}
 
 	cons, cancel := m.Fork()
@@ -330,12 +326,10 @@ func TestMultiplexedChannel_SendToSourceAfterLastCancelDoesNotDeadlock(t *testin
 // order).  Previously start.go used bare close(Source) which bypassed
 // the closed flag and NotifySubscriberChange, leaving the fan-out
 // goroutine parked on <-sig forever.
-func TestMultiplexedChannel_CloseSourceAfterCancelDoesNotLeakFanOut(t *testing.T) { //nolint:paralleltest // relies on a stable goroutine count
-	const iterations = 8
+func TestMultiplexedChannel_CloseSourceAfterCancelDoesNotLeakFanOut(t *testing.T) {
+	t.Parallel()
 
-	time.Sleep(50 * time.Millisecond)
-	runtime.GC() //nolint:revive // intentional: settle goroutines before measuring baseline
-	before := runtime.NumGoroutine()
+	const iterations = 8
 
 	for range iterations {
 		m := NewMultiplexedChannel[int](0)
@@ -347,36 +341,20 @@ func TestMultiplexedChannel_CloseSourceAfterCancelDoesNotLeakFanOut(t *testing.T
 		cancel()
 		time.Sleep(10 * time.Millisecond) // let fan-out park on <-sig
 		m.CloseSource()
-	}
 
-	// Allow goroutines to settle.
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		runtime.GC() //nolint:revive // intentional: help goroutines finalize
-		runtime.Gosched()
-		time.Sleep(20 * time.Millisecond)
-		if runtime.NumGoroutine() <= before+2 {
-			break
+		select {
+		case <-m.done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("fan-out goroutine did not exit after cancel-then-CloseSource")
 		}
 	}
-
-	after := runtime.NumGoroutine()
-	leaked := after - before
-
-	assert.LessOrEqualf(t, leaked, 2,
-		"goroutine count grew by %d after %d iterations of "+
-			"cancel-then-CloseSource; before=%d after=%d — "+
-			"fan-out goroutines are leaking", leaked, iterations, before, after,
-	)
 }
 
-// Goroutine count must return to baseline after cancelled subscribers settle.
-func TestMultiplexedChannel_NoGoroutineLeakOnAbandon(t *testing.T) { //nolint:paralleltest // relies on a stable goroutine count
-	const wedges = 16
+// Fan-out goroutine must exit after cancelled subscribers and CloseSource.
+func TestMultiplexedChannel_NoGoroutineLeakOnAbandon(t *testing.T) {
+	t.Parallel()
 
-	time.Sleep(50 * time.Millisecond)
-	runtime.GC() //nolint:revive // intentional: settle goroutines before measuring baseline
-	before := runtime.NumGoroutine()
+	const wedges = 16
 
 	for range wedges {
 		m := NewMultiplexedChannel[int](1)
@@ -385,25 +363,11 @@ func TestMultiplexedChannel_NoGoroutineLeakOnAbandon(t *testing.T) { //nolint:pa
 		m.Source <- 0
 		cancel()
 		m.CloseSource()
-		m.NotifySubscriberChange()
-	}
 
-	// Allow scheduled goroutines to finish.
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		runtime.GC() //nolint:revive // intentional: help goroutines finalize
-		runtime.Gosched()
-		time.Sleep(20 * time.Millisecond)
-		if runtime.NumGoroutine() <= before+2 {
-			break
+		select {
+		case <-m.done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("fan-out goroutine did not exit after cancel + CloseSource")
 		}
 	}
-
-	after := runtime.NumGoroutine()
-	leaked := after - before
-	// Small slack for runtime bookkeeping; the old bug leaked >= wedges.
-	assert.LessOrEqualf(t, leaked, 2,
-		"goroutine count grew by %d after %d cancelled wedges; "+
-			"before=%d after=%d (expected ~0)", leaked, wedges, before, after,
-	)
 }

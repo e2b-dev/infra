@@ -18,6 +18,7 @@ type MultiplexedChannel[T any] struct {
 	mu       sync.RWMutex
 	channels []*subscriber[T]
 	exited   atomic.Bool
+	done     chan struct{} // closed when run() returns
 
 	subMu     sync.Mutex
 	subSignal chan struct{} // closed+recreated on subscriber list change
@@ -50,6 +51,7 @@ func (s *subscriber[T]) isCancelled() bool {
 func NewMultiplexedChannel[T any](buffer int) *MultiplexedChannel[T] {
 	c := &MultiplexedChannel[T]{
 		Source:    make(chan T, buffer),
+		done:      make(chan struct{}),
 		subSignal: make(chan struct{}),
 	}
 
@@ -94,13 +96,15 @@ func (m *MultiplexedChannel[T]) run() {
 
 	// Close all remaining consumer channels so `for range` loops exit.
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	for _, s := range m.channels {
 		s.cancel()
 		close(s.ch)
 	}
 	m.channels = nil
+
+	m.mu.Unlock()
+	close(m.done)
 }
 
 // receiveWhenReady reads the next value from Source, but only when at
@@ -126,9 +130,17 @@ func (m *MultiplexedChannel[T]) receiveWhenReady() (v T, ok bool) {
 		}
 
 		// No active subscribers — wait for a change notification.
+		// Re-check closed after grabbing the signal to avoid parking
+		// on a signal that was created *by* CloseSource's notify.
 		m.subMu.Lock()
 		sig := m.subSignal
 		m.subMu.Unlock()
+
+		if m.closed.Load() {
+			v, ok = <-m.Source
+
+			return v, ok
+		}
 
 		<-sig
 	}
