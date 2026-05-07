@@ -41,13 +41,3 @@ func (q *Queries) CreateActiveTemplateBuild(ctx context.Context, arg CreateActiv
 	)
 	return err
 }
-
-const deleteActiveTemplateBuild = `-- name: DeleteActiveTemplateBuild :exec
-DELETE FROM public.active_template_builds
-WHERE build_id = $1
-`
-
-func (q *Queries) DeleteActiveTemplateBuild(ctx context.Context, buildID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteActiveTemplateBuild, buildID)
-	return err
-}
