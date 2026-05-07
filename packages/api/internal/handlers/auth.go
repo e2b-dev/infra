@@ -16,6 +16,10 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 )
 
+// GetTeam retrieves the effective team for the current request context.
+// It first checks for team information injected by authentication middleware
+// and falls back to resolving teams by user ID if available. If a teamID is
+// provided it validates access to that team. Returns an APIError on failure.
 func (a *APIStore) GetTeam(
 	ctx context.Context,
 	c *gin.Context,
