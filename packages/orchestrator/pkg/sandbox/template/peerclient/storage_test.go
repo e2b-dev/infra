@@ -24,7 +24,7 @@ func TestPeerStorageProvider_OpenBlob_ExtractsFileName(t *testing.T) {
 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
 	client.EXPECT().GetBuildBlob(mock.Anything, mock.MatchedBy(func(req *orchestrator.GetBuildBlobRequest) bool {
-		return req.GetBuildId() == "build-1" && req.GetFileName() == "snapfile"
+		return req.GetBuildId() == "build-1" && req.GetName() == "snapfile"
 	})).Return(stream, nil)
 
 	base := storage.NewMockStorageProvider(t)
@@ -44,7 +44,7 @@ func TestPeerStorageProvider_OpenSeekable_ExtractsFileName(t *testing.T) {
 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
 	client.EXPECT().GetBuildFileSize(mock.Anything, mock.MatchedBy(func(req *orchestrator.GetBuildFileSizeRequest) bool {
-		return req.GetBuildId() == "build-1" && req.GetFileName() == "memfile"
+		return req.GetBuildId() == "build-1" && req.GetName() == "memfile"
 	})).Return(&orchestrator.GetBuildFileSizeResponse{TotalSize: 512}, nil)
 
 	base := storage.NewMockStorageProvider(t)

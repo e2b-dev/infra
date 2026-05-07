@@ -48,7 +48,7 @@ func toGRPCError(err error) error {
 }
 
 func (s *Server) GetBuildFileSize(ctx context.Context, req *orchestrator.GetBuildFileSizeRequest) (*orchestrator.GetBuildFileSizeResponse, error) {
-	telemetry.SetAttributes(ctx, telemetry.WithBuildID(req.GetBuildId()), attribute.String("file_name", req.GetFileName()))
+	telemetry.SetAttributes(ctx, telemetry.WithBuildID(req.GetBuildId()), attribute.String("file_name", req.GetName()))
 
 	if s.uploadedBuilds.Get(req.GetBuildId()) != nil {
 		telemetry.SetAttributes(ctx, attribute.Bool("uploaded", true))
@@ -56,7 +56,7 @@ func (s *Server) GetBuildFileSize(ctx context.Context, req *orchestrator.GetBuil
 		return &orchestrator.GetBuildFileSizeResponse{Availability: peerUseStorage}, nil
 	}
 
-	src, err := peerserver.ResolveSeekable(s.templateCache, req.GetBuildId(), req.GetFileName())
+	src, err := peerserver.ResolveSeekable(s.templateCache, req.GetBuildId(), req.GetName())
 	if err != nil {
 		if errors.Is(err, peerserver.ErrNotAvailable) {
 			return &orchestrator.GetBuildFileSizeResponse{Availability: peerNotAvailable}, nil
@@ -65,7 +65,7 @@ func (s *Server) GetBuildFileSize(ctx context.Context, req *orchestrator.GetBuil
 		return nil, toGRPCError(err)
 	}
 
-	telemetry.ReportEvent(ctx, "getting file size", telemetry.WithBuildID(req.GetBuildId()), attribute.String("file_name", req.GetFileName()))
+	telemetry.ReportEvent(ctx, "getting file size", telemetry.WithBuildID(req.GetBuildId()), attribute.String("file_name", req.GetName()))
 
 	size, err := src.Size(ctx)
 	if err != nil {
@@ -76,7 +76,7 @@ func (s *Server) GetBuildFileSize(ctx context.Context, req *orchestrator.GetBuil
 }
 
 func (s *Server) GetBuildFileExists(ctx context.Context, req *orchestrator.GetBuildFileExistsRequest) (*orchestrator.GetBuildFileExistsResponse, error) {
-	telemetry.SetAttributes(ctx, telemetry.WithBuildID(req.GetBuildId()), attribute.String("file_name", req.GetFileName()))
+	telemetry.SetAttributes(ctx, telemetry.WithBuildID(req.GetBuildId()), attribute.String("file_name", req.GetName()))
 
 	if s.uploadedBuilds.Get(req.GetBuildId()) != nil {
 		telemetry.SetAttributes(ctx, attribute.Bool("uploaded", true))
@@ -84,7 +84,7 @@ func (s *Server) GetBuildFileExists(ctx context.Context, req *orchestrator.GetBu
 		return &orchestrator.GetBuildFileExistsResponse{Availability: peerUseStorage}, nil
 	}
 
-	src, err := peerserver.ResolveBlob(s.templateCache, req.GetBuildId(), req.GetFileName())
+	src, err := peerserver.ResolveBlob(s.templateCache, req.GetBuildId(), req.GetName())
 	if err != nil {
 		if errors.Is(err, peerserver.ErrNotAvailable) {
 			return &orchestrator.GetBuildFileExistsResponse{Availability: peerNotAvailable}, nil
@@ -117,7 +117,7 @@ func (s *Server) ReadAtBuildSeekable(req *orchestrator.ReadAtBuildSeekableReques
 
 	telemetry.SetAttributes(ctx,
 		telemetry.WithBuildID(req.GetBuildId()),
-		attribute.String("file_name", req.GetFileName()),
+		attribute.String("file_name", req.GetName()),
 		attribute.Int64("offset", offset),
 		attribute.Int64("length", length),
 	)
@@ -128,7 +128,7 @@ func (s *Server) ReadAtBuildSeekable(req *orchestrator.ReadAtBuildSeekableReques
 		return stream.Send(&orchestrator.ReadAtBuildSeekableResponse{Availability: peerUseStorage})
 	}
 
-	src, err := peerserver.ResolveSeekable(s.templateCache, req.GetBuildId(), req.GetFileName())
+	src, err := peerserver.ResolveSeekable(s.templateCache, req.GetBuildId(), req.GetName())
 	if err != nil {
 		if errors.Is(err, peerserver.ErrNotAvailable) {
 			return stream.Send(&orchestrator.ReadAtBuildSeekableResponse{Availability: peerNotAvailable})
@@ -154,7 +154,7 @@ func (s *Server) GetBuildBlob(req *orchestrator.GetBuildBlobRequest, stream orch
 
 	telemetry.SetAttributes(ctx,
 		telemetry.WithBuildID(req.GetBuildId()),
-		attribute.String("file_name", req.GetFileName()),
+		attribute.String("file_name", req.GetName()),
 	)
 
 	if s.uploadedBuilds.Get(req.GetBuildId()) != nil {
@@ -163,7 +163,7 @@ func (s *Server) GetBuildBlob(req *orchestrator.GetBuildBlobRequest, stream orch
 		return stream.Send(&orchestrator.GetBuildBlobResponse{Availability: peerUseStorage})
 	}
 
-	src, err := peerserver.ResolveBlob(s.templateCache, req.GetBuildId(), req.GetFileName())
+	src, err := peerserver.ResolveBlob(s.templateCache, req.GetBuildId(), req.GetName())
 	if err != nil {
 		if errors.Is(err, peerserver.ErrNotAvailable) {
 			return stream.Send(&orchestrator.GetBuildBlobResponse{Availability: peerNotAvailable})

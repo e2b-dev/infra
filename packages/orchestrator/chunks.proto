@@ -20,8 +20,8 @@ message PeerAvailability {
 
 message GetBuildFileSizeRequest {
   string build_id = 1;
-  // file_name is one of the seekable diff files: "memfile", "rootfs.ext4"
-  string file_name = 2;
+  // name is one of the seekable diff files: "memfile", "rootfs.ext4"
+  string name = 2;
 }
 
 message GetBuildFileSizeResponse {
@@ -31,8 +31,8 @@ message GetBuildFileSizeResponse {
 
 message GetBuildFileExistsRequest {
   string build_id = 1;
-  // file_name is one of: "snapfile", "metadata.json"
-  string file_name = 2;
+  // name is one of: "snapfile", "metadata.json"
+  string name = 2;
 }
 
 message GetBuildFileExistsResponse {
@@ -41,7 +41,7 @@ message GetBuildFileExistsResponse {
 
 message ReadAtBuildSeekableRequest {
   string build_id = 1;
-  string file_name = 2;
+  string name = 2;
   int64 offset = 3;
   int64 length = 4;
 }
@@ -54,8 +54,8 @@ message ReadAtBuildSeekableResponse {
 
 message GetBuildBlobRequest {
   string build_id = 1;
-  // file_name is one of: "snapfile", "metadata.json", "memfile.header", "rootfs.ext4.header"
-  string file_name = 2;
+  // name is one of: "snapfile", "metadata.json", "memfile.header", "rootfs.ext4.header"
+  string name = 2;
 }
 
 message GetBuildBlobResponse {
