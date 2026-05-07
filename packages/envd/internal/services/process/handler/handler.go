@@ -184,7 +184,7 @@ func New(
 		cancel:    cancel,
 		outCtx:    outCtx,
 		outCancel: outCancel,
-		EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
+		EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](1),
 		logger:    logger,
 	}
 
@@ -485,6 +485,7 @@ func (p *Handler) Wait() {
 	}
 
 	p.EndEvent.Source <- event
+	p.EndEvent.CloseSource()
 
 	p.logger.
 		Info().
