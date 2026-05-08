@@ -238,7 +238,6 @@ func NewStringFlag(name string, fallback string) StringFlag {
 	return flag
 }
 
-// This is currently not configurable via feature flags.
 const (
 	DefaultKernelVersion = "vmlinux-6.1.158"
 )
@@ -261,6 +260,7 @@ var FirecrackerVersionMap = map[string]string{
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
 var (
 	BuildFirecrackerVersion     = NewStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
+	BuildKernelVersion          = NewStringFlag("build-kernel-version", env.GetEnv("DEFAULT_KERNEL_VERSION", DefaultKernelVersion))
 	BuildIoEngine               = NewStringFlag("build-io-engine", "Sync")
 	DefaultPersistentVolumeType = NewStringFlag("default-persistent-volume-type", "")
 	BuildNodeInfo               = NewJSONFlag("preferred-build-node", ldvalue.Null())
