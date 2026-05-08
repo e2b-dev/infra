@@ -75,7 +75,7 @@ func main() {
 	flag.Parse()
 
 	if *reclaim {
-		featureflags.NewJSONFlag("reclaim-config", ldvalue.FromJSONMarshal(map[string]int{
+		featureflags.NewJSONFlag("guest-pause-reclaim", ldvalue.FromJSONMarshal(map[string]int{
 			"sync":           500,
 			"drop_caches":    200,
 			"compact_memory": 1000,

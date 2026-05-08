@@ -217,7 +217,7 @@ var (
 // ReclaimConfigFlag holds per-step caps in milliseconds for the pre-pause
 // reclaim chain. Missing/zero/negative values disable the step.
 // Example: {"sync":500,"drop_caches":200,"compact_memory":1000,"fstrim":500}
-var ReclaimConfigFlag = NewJSONFlag("reclaim-config", ldvalue.Null())
+var ReclaimConfigFlag = NewJSONFlag("guest-pause-reclaim", ldvalue.Null())
 
 type ReclaimConfig struct {
 	Sync          time.Duration
