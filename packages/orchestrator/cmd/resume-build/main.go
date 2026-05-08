@@ -1192,10 +1192,15 @@ func printTemplateInfo(ctx context.Context, tmpl template.Template, meta metadat
 	}
 }
 
+// runCommandInSandboxTimeout caps how long a single resume-build command may
+// run before envd kills it. Restores the prior 10-minute upper bound that the
+// shared http.Client used to enforce, so a stuck command can't block the CLI.
+const runCommandInSandboxTimeout = 10 * time.Minute
+
 // runCommandInSandbox runs a command inside the sandbox via envd as a
 // login shell so /etc/profile is sourced.
 func runCommandInSandbox(ctx context.Context, sbx *sandbox.Sandbox, command string) error {
-	stream, err := sbx.StartEnvdShell(ctx, "/bin/bash", []string{"-l", "-c", command}, "root", 0)
+	stream, err := sbx.StartEnvdShell(ctx, "/bin/bash", []string{"-l", "-c", command}, "root", runCommandInSandboxTimeout)
 	if err != nil {
 		return fmt.Errorf("failed to start process: %w", err)
 	}
