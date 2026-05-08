@@ -164,7 +164,7 @@ func (a *APIStore) buildTemplate(
 	// The orchestrator resolves them itself via the BuildFirecrackerVersion /
 	// BuildKernelVersion feature flags (see packages/orchestrator/pkg/template/server/create_template.go).
 	firecrackerVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
-	kernelVersion := featureflags.ResolveBuildKernelVersion(ctx, a.featureFlags)
+	kernelVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildKernelVersion)
 
 	var alias *string
 	var tags []string

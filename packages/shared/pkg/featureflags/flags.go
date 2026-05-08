@@ -214,8 +214,9 @@ var (
 )
 
 type StringFlag struct {
-	name     string
-	fallback string
+	name              string
+	fallback          string
+	fallbackWhenEmpty bool
 }
 
 func (f StringFlag) Key() string {
@@ -230,10 +231,25 @@ func (f StringFlag) Fallback() string {
 	return f.fallback
 }
 
+// FallbackWhenEmpty reports whether the fallback should also be used when LD
+// returns an empty string (e.g. flag defined in LD without a value).
+func (f StringFlag) FallbackWhenEmpty() bool {
+	return f.fallbackWhenEmpty
+}
+
 func NewStringFlag(name string, fallback string) StringFlag {
 	flag := StringFlag{name: name, fallback: fallback}
 	builder := launchDarklyOfflineStore.Flag(flag.name).ValueForAll(ldvalue.String(fallback))
 	launchDarklyOfflineStore.Update(builder)
+
+	return flag
+}
+
+// NewStringFlagFallbackOnEmpty is like NewStringFlag but also returns the
+// fallback when LD evaluates the flag to an empty string.
+func NewStringFlagFallbackOnEmpty(name string, fallback string) StringFlag {
+	flag := NewStringFlag(name, fallback)
+	flag.fallbackWhenEmpty = true
 
 	return flag
 }
@@ -260,24 +276,12 @@ var FirecrackerVersionMap = map[string]string{
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
 var (
 	BuildFirecrackerVersion     = NewStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
-	BuildKernelVersion          = NewStringFlag("build-kernel-version", env.GetEnv("DEFAULT_KERNEL_VERSION", DefaultKernelVersion))
+	BuildKernelVersion          = NewStringFlagFallbackOnEmpty("build-kernel-version", env.GetEnv("DEFAULT_KERNEL_VERSION", DefaultKernelVersion))
 	BuildIoEngine               = NewStringFlag("build-io-engine", "Sync")
 	DefaultPersistentVolumeType = NewStringFlag("default-persistent-volume-type", "")
 	BuildNodeInfo               = NewJSONFlag("preferred-build-node", ldvalue.Null())
 	FirecrackerVersions         = NewJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
 )
-
-// ResolveBuildKernelVersion returns the kernel version for new template builds.
-// Falls back to DefaultKernelVersion when the LD flag is empty so that defining
-// the flag in LD without a value does not produce a "" kernel version downstream.
-func ResolveBuildKernelVersion(ctx context.Context, ff *Client) string {
-	v := ff.StringFlag(ctx, BuildKernelVersion)
-	if v == "" {
-		return DefaultKernelVersion
-	}
-
-	return v
-}
 
 // ResolveFirecrackerVersion resolves the firecracker version using the FirecrackerVersions feature flag.
 // The buildVersion format is "v1.12.1_210cbac" — we extract "v1.12" as the lookup key.
