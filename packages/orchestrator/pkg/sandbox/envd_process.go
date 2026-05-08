@@ -15,14 +15,9 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
 )
 
-// StartEnvdShell opens a streaming Process.Start call against this
-// sandbox's envd, running `shell` with the given args as `user`.
-// Caller picks the binary (e.g. "/bin/sh" for portable scripts,
-// "/bin/bash" when bash-only syntax is required) and chooses
-// login-shell vs. plain via args (e.g. []{"-l","-c",cmd} vs.
-// []{"-c",script}). When timeout > 0 it sets `Connect-Timeout-Ms`
-// so envd kills the process at the deadline. Auth/user headers are
-// wired from sandbox config. Caller owns the returned stream.
+// StartEnvdShell opens a streaming Process.Start call against the sandbox's
+// envd. timeout > 0 sets Connect-Timeout-Ms so envd kills the process at
+// the deadline. Caller owns the returned stream.
 func (s *Sandbox) StartEnvdShell(
 	ctx context.Context,
 	shell string,

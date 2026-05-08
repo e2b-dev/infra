@@ -1034,9 +1034,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		logLevel = ldlog.Info
 	}
-	// Always use the offline data source so per-run flag overrides (e.g. set
-	// from -reclaim) take effect regardless of LAUNCH_DARKLY_API_KEY.
-	flags, _ := featureflags.NewOfflineClient(logLevel)
+	flags, _ := featureflags.NewClientWithLogLevel(logLevel)
 
 	sandboxes := sandbox.NewSandboxesMap()
 

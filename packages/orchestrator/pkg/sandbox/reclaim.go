@@ -12,18 +12,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-// Slack added to the sum of per-step caps to absorb shell start /
-// envd round-trip overhead.
+// Slack covers shell start + envd round-trip overhead.
 const reclaimOuterSlack = 500 * time.Millisecond
 
-// buildReclaimScript composes a chain where each step has its own
-// `timeout -s KILL` ceiling. Step caps come from a single LD JSON flag
-// (`reclaim-config`), evaluated against sandbox/team/template contexts so
-// targeting is configured in LaunchDarkly. Sub-ms caps are skipped.
-// Returns ("", 0) when every step is disabled.
-//
-// Order matters: sync makes drop_caches more effective; drop_caches gives
-// compact_memory more headroom; fstrim wants a stable FS view.
+// Order: sync → drop_caches → compact_memory → fstrim. Each step is disabled
+// at sub-ms cap. Returns ("", 0) when every step is disabled.
 func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration) {
 	cfg := featureflags.GetReclaimConfig(ctx, s.featureFlags,
 		featureflags.SandboxContext(s.Runtime.SandboxID),
@@ -46,14 +39,10 @@ func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration
 		sum   time.Duration
 	)
 	for _, st := range steps {
-		// Skip sub-ms values: `%.3f` would render them as 0.000 which GNU
-		// `timeout` treats as "no timeout" (waits forever).
+		// %.3f at <1ms renders as 0.000 → GNU timeout reads as "no timeout".
 		if st.cap < time.Millisecond {
 			continue
 		}
-		// `timeout` accepts fractional seconds (s/m/h/d), not `ms`. Output
-		// is dropped; non-zero status is captured into `rc` so the final
-		// exit code surfaces failures without short-circuiting later steps.
 		parts = append(parts, fmt.Sprintf("timeout -s KILL %.3f sh -c %q >/dev/null 2>&1 || rc=$?", st.cap.Seconds(), st.cmd))
 		sum += st.cap
 	}
@@ -64,9 +53,7 @@ func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration
 	return "rc=0; " + strings.Join(parts, "; ") + "; exit $rc", sum + reclaimOuterSlack
 }
 
-// bestEffortReclaim asks envd to reclaim guest memory + disk before pause.
-// Per-step output is silenced inside the guest; we only log when envd
-// itself errors or the script reports a non-zero exit code.
+// bestEffortReclaim runs the reclaim chain via envd before pause.
 func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 	script, timeout := s.buildReclaimScript(ctx)
 	if script == "" {

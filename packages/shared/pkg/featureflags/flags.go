@@ -214,21 +214,11 @@ var (
 	MinChunkerReadSizeKB = NewIntFlag("min-chunker-read-size-kb", 16)
 )
 
-// ReclaimConfigFlag holds per-step ceilings for the pre-pause guest reclaim
-// chain (run via envd before snapshot). One JSON object so a single LD rule
-// can be targeted by team/template/sandbox/etc.
-//
-// JSON keys are duration strings parsed by time.ParseDuration. Missing/empty
-// keys (and the null default) leave each step at 0 = disabled. Sub-ms values
-// are also skipped by the caller. Each step is wrapped in `timeout -s KILL`,
-// so a stuck step cannot starve the rest.
-//
-// Example:
-//
-//	{"sync":"500ms","drop_caches":"200ms","compact_memory":"1s","fstrim":"500ms"}
+// ReclaimConfigFlag holds per-step caps (duration strings) for the pre-pause
+// reclaim chain. Missing/unparseable/sub-ms values disable the step.
+// Example: {"sync":"500ms","drop_caches":"200ms","compact_memory":"1s","fstrim":"500ms"}
 var ReclaimConfigFlag = NewJSONFlag("reclaim-config", ldvalue.Null())
 
-// ReclaimConfig is the parsed view of ReclaimConfigFlag.
 type ReclaimConfig struct {
 	Sync          time.Duration
 	DropCaches    time.Duration
@@ -236,8 +226,6 @@ type ReclaimConfig struct {
 	Fstrim        time.Duration
 }
 
-// GetReclaimConfig fetches and parses ReclaimConfigFlag against the supplied
-// LD contexts (e.g. sandbox/team/template) so targeting is configured in LD.
 func GetReclaimConfig(ctx context.Context, ff *Client, contexts ...ldcontext.Context) ReclaimConfig {
 	v := ff.JSONFlag(ctx, ReclaimConfigFlag, contexts...)
 
@@ -250,11 +238,7 @@ func GetReclaimConfig(ctx context.Context, ff *Client, contexts ...ldcontext.Con
 }
 
 func parseDurationValue(v ldvalue.Value) time.Duration {
-	s := v.StringValue()
-	if s == "" {
-		return 0
-	}
-	d, err := time.ParseDuration(s)
+	d, err := time.ParseDuration(v.StringValue())
 	if err != nil {
 		return 0
 	}
