@@ -443,13 +443,13 @@ func (p *Process) Create(
 	telemetry.ReportEvent(ctx, "set fc entropy config")
 
 	if freePageReporting {
-		err = p.client.enableFreePageReporting(ctx)
+		err = p.client.installBalloon(ctx, freePageReporting)
 		if err != nil {
 			fcStopErr := p.Stop(ctx)
 
-			return errors.Join(fmt.Errorf("error enabling free page reporting: %w", err), fcStopErr)
+			return errors.Join(fmt.Errorf("error installing balloon device: %w", err), fcStopErr)
 		}
-		telemetry.ReportEvent(ctx, "enabled free page reporting")
+		telemetry.ReportEvent(ctx, "installed balloon device")
 	}
 
 	err = p.client.startVM(ctx)

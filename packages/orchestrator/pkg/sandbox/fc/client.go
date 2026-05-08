@@ -427,8 +427,11 @@ func (c *apiClient) startVM(ctx context.Context) error {
 	return nil
 }
 
-func (c *apiClient) enableFreePageReporting(ctx context.Context) error {
-	ctx, span := tracer.Start(ctx, "enable-free-page-reporting")
+// installBalloon attaches a zero-MiB balloon device. Individual balloon
+// features (free-page-reporting today, free-page-hinting next) are toggled
+// via parameters so callers can opt in to any subset independently.
+func (c *apiClient) installBalloon(ctx context.Context, freePageReporting bool) error {
+	ctx, span := tracer.Start(ctx, "install-balloon")
 	defer span.End()
 
 	amountMib := int64(0)
@@ -439,13 +442,13 @@ func (c *apiClient) enableFreePageReporting(ctx context.Context) error {
 		Body: &models.Balloon{
 			AmountMib:         &amountMib,
 			DeflateOnOom:      &deflateOnOom,
-			FreePageReporting: true,
+			FreePageReporting: freePageReporting,
 		},
 	}
 
 	_, err := c.client.Operations.PutBalloon(&balloonConfig)
 	if err != nil {
-		return fmt.Errorf("error setting up balloon device: %w", err)
+		return fmt.Errorf("error installing balloon device: %w", err)
 	}
 
 	return nil
