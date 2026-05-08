@@ -160,10 +160,11 @@ func (a *APIStore) buildTemplate(
 	templateID api.TemplateID,
 	body api.TemplateBuildRequest,
 ) (*template.RegisterBuildResponse, *api.APIError) {
-	// TODO(ENG-3852): Stop sending the firecracker version from the API. The orchestrator
-	// now resolves its own FC version via the FirecrackerVersions feature flag
-	// (see packages/orchestrator/pkg/template/build/builder.go)
+	// TODO(ENG-3852): Stop sending the firecracker/kernel versions from the API.
+	// The orchestrator resolves them itself via the BuildFirecrackerVersion /
+	// BuildKernelVersion feature flags (see packages/orchestrator/pkg/template/server/create_template.go).
 	firecrackerVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
+	kernelVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildKernelVersion)
 
 	var alias *string
 	var tags []string
@@ -206,7 +207,7 @@ func (a *APIStore) buildTemplate(
 		CpuCount:           body.CpuCount,
 		MemoryMB:           body.MemoryMB,
 		Version:            templates.TemplateV1Version,
-		KernelVersion:      a.config.DefaultKernelVersion,
+		KernelVersion:      kernelVersion,
 		FirecrackerVersion: firecrackerVersion,
 	}
 
