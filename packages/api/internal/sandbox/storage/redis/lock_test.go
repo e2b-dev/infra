@@ -61,11 +61,14 @@ func TestStorageLocker_ObtainTimesOutWhenHeld(t *testing.T) {
 		_ = lock.Release(context.WithoutCancel(t.Context()))
 	})
 
-	_, err = locker.Obtain(t.Context(), lockKey, 25*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 25*time.Millisecond)
+	defer cancel()
+
+	_, err = locker.Obtain(ctx, lockKey, testLockTimeout)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
-func TestStorageLocker_ObtainUsesParentContextDeadline(t *testing.T) {
+func TestStorageLocker_ObtainUsesProvidedContext(t *testing.T) {
 	t.Parallel()
 
 	locker, subManager := setupTestLocker(t, true)
@@ -75,12 +78,9 @@ func TestStorageLocker_ObtainUsesParentContextDeadline(t *testing.T) {
 	lock, err := locker.Obtain(t.Context(), lockKey, testLockTimeout)
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithTimeout(t.Context(), testLockTimeout)
-	defer cancel()
-
 	waiterDone := make(chan error, 1)
 	go func() {
-		waiterLock, obtainErr := locker.Obtain(ctx, lockKey, 25*time.Millisecond)
+		waiterLock, obtainErr := locker.Obtain(t.Context(), lockKey, 25*time.Millisecond)
 		if obtainErr != nil {
 			waiterDone <- obtainErr
 
@@ -92,18 +92,27 @@ func TestStorageLocker_ObtainUsesParentContextDeadline(t *testing.T) {
 
 	waitForLockWaiter(t, subManager, routingKey, waiterDone)
 
-	var unexpectedErr error
-	require.Never(t, func() bool {
-		select {
-		case unexpectedErr = <-waiterDone:
-			return true
-		default:
-			return false
-		}
-	}, 50*time.Millisecond, testPollInterval, "waiter should use parent context deadline, not lock TTL: %v", unexpectedErr)
-
 	require.NoError(t, lock.Release(context.WithoutCancel(t.Context())))
 	requireNoErrorFromChannel(t, waiterDone)
+}
+
+func TestStorageLocker_ObtainReturnsContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	locker, _ := setupTestLocker(t, true)
+	lockKey := redis_utils.GetLockKey(getSandboxKey(uuid.NewString(), "lock-context-cancel"))
+
+	lock, err := locker.Obtain(t.Context(), lockKey, testLockTimeout)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = lock.Release(context.WithoutCancel(t.Context()))
+	})
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, err = locker.Obtain(ctx, lockKey, testLockTimeout)
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestStorageLocker_ObtainFallsBackWhenNotificationMissed(t *testing.T) {
