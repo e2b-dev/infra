@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -180,4 +181,44 @@ func isRetryableError(err error) bool {
 	}
 
 	return false
+}
+
+// executeOnAllClusterNodes calls fn concurrently on every ready node in the
+// cluster and returns a combined error if any node fails. This is used for
+// volume operations so that the volume directory exists on every orchestrator
+// node, regardless of which node a sandbox is later scheduled on.
+func (a *APIStore) executeOnAllClusterNodes(
+	ctx context.Context,
+	clusterID uuid.UUID,
+	fn func(context.Context, *clusters.GRPCClient) error,
+) error {
+	nodes := a.orchestrator.GetClusterNodes(clusterID)
+
+	if len(nodes) == 0 {
+		return ErrClusterNotFound
+	}
+
+	wg, wgCtx := errgroup.WithContext(ctx)
+
+	for _, node := range nodes {
+		if node.Status() != api.NodeStatusReady {
+			continue
+		}
+
+		wg.Go(func() error {
+			c, clientCtx := node.GetClient(wgCtx)
+
+			if err := fn(clientCtx, c); err != nil {
+				if volumeType, ok := isUnknownVolumeTypeError(err); ok {
+					return fmt.Errorf("%w: %s", ErrUnknownVolumeType, volumeType)
+				}
+
+				return fmt.Errorf("node %s: %w", node.ID, err)
+			}
+
+			return nil
+		})
+	}
+
+	return wg.Wait()
 }

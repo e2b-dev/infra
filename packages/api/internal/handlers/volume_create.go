@@ -181,7 +181,10 @@ func isValidVolumeName(name string) bool {
 }
 
 func (a *APIStore) createVolume(ctx context.Context, clusterID uuid.UUID, volume queries.Volume) error {
-	return a.executeOnOrchestratorByClusterID(ctx, clusterID, func(ctx context.Context, client *clusters.GRPCClient) error {
+	// Broadcast to all nodes so the volume directory exists on every orchestrator
+	// node. Sandbox placement is independent of volume creation and may schedule
+	// a sandbox on any node in the cluster.
+	return a.executeOnAllClusterNodes(ctx, clusterID, func(ctx context.Context, client *clusters.GRPCClient) error {
 		_, err := client.Volumes.CreateVolume(ctx, &orchestrator.CreateVolumeRequest{
 			Volume: toVolumeKey(volume),
 		})
