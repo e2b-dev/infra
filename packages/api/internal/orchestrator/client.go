@@ -100,8 +100,7 @@ func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]nodemanager.NomadS
 	defer listSpan.End()
 
 	options := &nomadapi.QueryOptions{
-		// TODO: Use variable for node pool name ("default")
-		Filter: "Status == \"ready\" and NodePool == \"default\"",
+		Filter: fmt.Sprintf("Status == \"ready\" and NodePool == \"%s\"", o.nomadNodePool),
 	}
 	nomadNodes, _, err := o.nomadClient.Nodes().List(options.WithContext(ctx))
 	if err != nil {
