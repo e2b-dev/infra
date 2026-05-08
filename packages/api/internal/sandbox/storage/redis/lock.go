@@ -35,6 +35,7 @@ func newStorageLocker(redisClient redis.UniversalClient, subManager *subscriptio
 
 type storageLock struct {
 	*redislock.Lock
+
 	redisClient redis.UniversalClient
 }
 
