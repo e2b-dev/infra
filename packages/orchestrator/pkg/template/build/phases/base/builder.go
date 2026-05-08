@@ -200,9 +200,10 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 
 	// Allow sandbox internet access during provisioning (nil network = no restrictions).
 	baseSbxConfig := sandbox.NewConfig(sandbox.Config{
-		Vcpu:      bb.Config.VCpuCount,
-		RamMB:     bb.Config.MemoryMB,
-		HugePages: bb.Config.HugePages,
+		Vcpu:              bb.Config.VCpuCount,
+		RamMB:             bb.Config.MemoryMB,
+		HugePages:         bb.Config.HugePages,
+		FreePageReporting: bb.Config.FreePageReporting,
 
 		Envd: sandbox.EnvdMetadata{
 			Version: bb.EnvdVersion,

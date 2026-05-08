@@ -11,6 +11,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -134,6 +135,19 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 	u.wg.SetLimit(maxRequestsInProgress)
 
 	return u, nil
+}
+
+// ExportPageStates returns snapshots of the faulted and removed page-index
+// bitmaps after draining in-flight serve-loop iterations and workers.
+// Lock order matches the serve loop to avoid AB-BA inversion.
+func (u *Userfaultfd) ExportPageStates() (faulted, removed *roaring.Bitmap) {
+	u.readSerial.Lock()
+	defer u.readSerial.Unlock()
+
+	u.settleRequests.Lock()
+	defer u.settleRequests.Unlock()
+
+	return u.pageTracker.Export()
 }
 
 func (u *Userfaultfd) readEvents(ctx context.Context) ([]*UffdRemove, []*UffdPagefault, error) {
@@ -406,7 +420,13 @@ func (u *Userfaultfd) Serve(
 
 				switch outcome {
 				case faultInstalled:
-					u.pageTracker.SetRange(idx, idx+1, block.Dirty)
+					// Zero-fill on a read fault installs zero+WP; the page still
+					// reads as zero, so keep the tracker entry as Zero so the
+					// snapshot diff marks it Empty. WP-async will catch any
+					// later write and surface it via DirtyMemory.
+					if source != nil || accessType == block.Write {
+						u.pageTracker.SetRange(idx, idx+1, block.Dirty)
+					}
 					u.prefetchTracker.Add(offset, accessType)
 				case faultDeferred:
 					deferred.push(pf)

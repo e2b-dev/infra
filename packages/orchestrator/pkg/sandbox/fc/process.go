@@ -299,6 +299,7 @@ func (p *Process) Create(
 	vCPUCount int64,
 	memoryMB int64,
 	hugePages bool,
+	freePageReporting bool,
 	options ProcessOptions,
 	txRateLimit RateLimiterConfig,
 	driveRateLimit RateLimiterConfig,
@@ -440,6 +441,16 @@ func (p *Process) Create(
 		return errors.Join(fmt.Errorf("error setting fc entropy config: %w", err), fcStopErr)
 	}
 	telemetry.ReportEvent(ctx, "set fc entropy config")
+
+	if freePageReporting {
+		err = p.client.installBalloon(ctx, freePageReporting)
+		if err != nil {
+			fcStopErr := p.Stop(ctx)
+
+			return errors.Join(fmt.Errorf("error installing balloon device: %w", err), fcStopErr)
+		}
+		telemetry.ReportEvent(ctx, "installed balloon device")
+	}
 
 	err = p.client.startVM(ctx)
 	if err != nil {
