@@ -65,6 +65,47 @@ func TestStorageLocker_ObtainTimesOutWhenHeld(t *testing.T) {
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
+func TestStorageLocker_ObtainUsesParentContextDeadline(t *testing.T) {
+	t.Parallel()
+
+	locker, subManager := setupTestLocker(t, true)
+	lockKey := redis_utils.GetLockKey(getSandboxKey(uuid.NewString(), "lock-parent-deadline"))
+	routingKey := getLockRoutingKey(lockKey)
+
+	lock, err := locker.Obtain(t.Context(), lockKey, testLockTimeout)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(t.Context(), testLockTimeout)
+	defer cancel()
+
+	waiterDone := make(chan error, 1)
+	go func() {
+		waiterLock, obtainErr := locker.Obtain(ctx, lockKey, 25*time.Millisecond)
+		if obtainErr != nil {
+			waiterDone <- obtainErr
+
+			return
+		}
+
+		waiterDone <- waiterLock.Release(context.WithoutCancel(t.Context()))
+	}()
+
+	waitForLockWaiter(t, subManager, routingKey, waiterDone)
+
+	var unexpectedErr error
+	require.Never(t, func() bool {
+		select {
+		case unexpectedErr = <-waiterDone:
+			return true
+		default:
+			return false
+		}
+	}, 50*time.Millisecond, testPollInterval, "waiter should use parent context deadline, not lock TTL: %v", unexpectedErr)
+
+	require.NoError(t, lock.Release(context.WithoutCancel(t.Context())))
+	requireNoErrorFromChannel(t, waiterDone)
+}
+
 func TestStorageLocker_ObtainFallsBackWhenNotificationMissed(t *testing.T) {
 	t.Parallel()
 

@@ -42,16 +42,16 @@ func (l *storageLock) Release(ctx context.Context) error {
 	}
 
 	routingKey := getLockRoutingKey(l.Key())
-	if err := l.redisClient.Publish(ctx, globalStorageNotifyChannel, routingKey).Err(); err != nil {
-		logger.L().Warn(ctx, "Failed to publish lock release notification", zap.Error(err))
-	}
+	go l.publishReleaseNotification(routingKey)
 
 	return nil
 }
 
 func (l *storageLocker) Obtain(ctx context.Context, lockKey string, timeout time.Duration) (*storageLock, error) {
-	lockCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	lockCtx, cancel := lockAcquireContext(ctx, timeout)
+	if cancel != nil {
+		defer cancel()
+	}
 
 	lock, err := l.tryLock(lockCtx, lockKey, timeout)
 	if err == nil {
@@ -95,6 +95,23 @@ func (l *storageLocker) tryLock(ctx context.Context, lockKey string, timeout tim
 	}
 
 	return &storageLock{Lock: lock, redisClient: l.redisClient}, nil
+}
+
+func (l *storageLock) publishReleaseNotification(routingKey string) {
+	ctx, cancel := context.WithTimeout(context.Background(), lockNotifyTimeout)
+	defer cancel()
+
+	if err := l.redisClient.Publish(ctx, globalStorageNotifyChannel, routingKey).Err(); err != nil {
+		logger.L().Warn(ctx, "Failed to publish lock release notification", zap.Error(err))
+	}
+}
+
+func lockAcquireContext(ctx context.Context, ttl time.Duration) (context.Context, context.CancelFunc) {
+	if _, ok := ctx.Deadline(); ok {
+		return ctx, nil
+	}
+
+	return context.WithDeadline(ctx, time.Now().Add(ttl))
 }
 
 func jitterBackoff(backoff time.Duration) time.Duration {
