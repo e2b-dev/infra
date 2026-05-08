@@ -187,6 +187,10 @@ func isRetryableError(err error) bool {
 // cluster and returns a combined error if any node fails. This is used for
 // volume operations so that the volume directory exists on every orchestrator
 // node, regardless of which node a sandbox is later scheduled on.
+//
+// All goroutines always run to completion regardless of individual failures so
+// that partial state (e.g. a volume directory left on some nodes but not
+// others) is avoided.
 func (a *APIStore) executeOnAllClusterNodes(
 	ctx context.Context,
 	clusterID uuid.UUID,
@@ -198,15 +202,24 @@ func (a *APIStore) executeOnAllClusterNodes(
 		return ErrClusterNotFound
 	}
 
-	wg, wgCtx := errgroup.WithContext(ctx)
+	// Use a plain errgroup without context so that a failure on one node does
+	// not cancel in-flight or pending RPCs on other nodes.
+	var wg errgroup.Group
+
+	readyNodeCount := 0
 
 	for _, node := range nodes {
 		if node.Status() != api.NodeStatusReady {
 			continue
 		}
 
+		readyNodeCount++
+
 		wg.Go(func() error {
-			c, clientCtx := node.GetClient(wgCtx)
+			// Derive a per-call context from the original request context so
+			// that the caller's deadline/cancellation is still respected, but
+			// a failure on one node does not affect the others.
+			c, clientCtx := node.GetClient(ctx)
 
 			if err := fn(clientCtx, c); err != nil {
 				if volumeType, ok := isUnknownVolumeTypeError(err); ok {
@@ -218,6 +231,10 @@ func (a *APIStore) executeOnAllClusterNodes(
 
 			return nil
 		})
+	}
+
+	if readyNodeCount == 0 {
+		return ErrNoHealthyOrchestratorFound
 	}
 
 	return wg.Wait()
