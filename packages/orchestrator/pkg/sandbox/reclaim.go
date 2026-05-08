@@ -15,8 +15,12 @@ import (
 // Slack covers shell start + envd round-trip overhead.
 const reclaimOuterSlack = 500 * time.Millisecond
 
-// Order: sync → drop_caches → compact_memory → fstrim. Each step is disabled
-// at sub-ms cap. Returns ("", 0) when every step is disabled.
+// Order: fstrim → sync → drop_caches → compact_memory. fstrim runs first so
+// that the fs metadata it pulls into the page cache and the superblock dirties
+// (last-trim timestamps) get flushed by sync and evicted by drop_caches in the
+// same pass; compact_memory then consolidates the minimal RSS so the snapshot
+// has long contiguous zero runs that compress well. Each step is disabled at
+// sub-ms cap. Returns ("", 0) when every step is disabled.
 func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration) {
 	cfg := featureflags.GetReclaimConfig(ctx, s.featureFlags,
 		featureflags.SandboxContext(s.Runtime.SandboxID),
@@ -28,10 +32,10 @@ func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration
 		cap time.Duration
 		cmd string
 	}{
+		{cfg.Fstrim, "fstrim -av"},
 		{cfg.Sync, "sync"},
 		{cfg.DropCaches, "echo 3 > /proc/sys/vm/drop_caches"},
 		{cfg.CompactMemory, "echo 1 > /proc/sys/vm/compact_memory"},
-		{cfg.Fstrim, "fstrim -av"},
 	}
 
 	var (

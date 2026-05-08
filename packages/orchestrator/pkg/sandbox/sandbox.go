@@ -1055,9 +1055,9 @@ func (s *Sandbox) Pause(
 	// Stop the health check before pausing the VM
 	s.Checks.Stop()
 
-	// Best-effort pre-pause guest reclaim (sync, drop_caches, compact_memory,
-	// fstrim) on the live VM via envd. Per-step caps are LD-flag-driven; all
-	// default to 0 which disables the chain entirely. Non-fatal.
+	// Best-effort pre-pause guest reclaim (fstrim, sync, drop_caches,
+	// compact_memory) on the live VM via envd. Per-step caps are LD-flag-driven;
+	// all default to 0 which disables the chain entirely. Non-fatal.
 	s.bestEffortReclaim(ctx)
 
 	if err := s.process.Pause(ctx); err != nil {

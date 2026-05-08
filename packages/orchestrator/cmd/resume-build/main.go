@@ -70,7 +70,7 @@ func main() {
 	shell := flag.Bool("shell", false, "attach an interactive PTY shell via envd (no sshd required in the sandbox)")
 
 	// Enables the pre-pause reclaim chain with sensible per-step caps.
-	reclaim := flag.Bool("reclaim", false, "enable pre-pause reclaim chain (sync 500ms, drop_caches 200ms, compact 1s, fstrim 500ms)")
+	reclaim := flag.Bool("reclaim", false, "enable pre-pause reclaim chain (fstrim 500ms, sync 500ms, drop_caches 200ms, compact 1s)")
 
 	flag.Parse()
 
