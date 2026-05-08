@@ -57,7 +57,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		featureflags.TeamContext(cfg.GetTeamID()),
 	)
 
-	kernelVersion := s.featureFlags.StringFlag(ctx, featureflags.BuildKernelVersion)
+	kernelVersion := featureflags.ResolveBuildKernelVersion(ctx, s.featureFlags)
 	firecrackerVersion := s.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
 
 	fcInfo, err := fcversion.New(firecrackerVersion)

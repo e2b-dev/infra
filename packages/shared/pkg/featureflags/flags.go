@@ -267,6 +267,18 @@ var (
 	FirecrackerVersions         = NewJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
 )
 
+// ResolveBuildKernelVersion returns the kernel version for new template builds.
+// Falls back to DefaultKernelVersion when the LD flag is empty so that defining
+// the flag in LD without a value does not produce a "" kernel version downstream.
+func ResolveBuildKernelVersion(ctx context.Context, ff *Client) string {
+	v := ff.StringFlag(ctx, BuildKernelVersion)
+	if v == "" {
+		return DefaultKernelVersion
+	}
+
+	return v
+}
+
 // ResolveFirecrackerVersion resolves the firecracker version using the FirecrackerVersions feature flag.
 // The buildVersion format is "v1.12.1_210cbac" — we extract "v1.12" as the lookup key.
 func ResolveFirecrackerVersion(ctx context.Context, ff *Client, buildVersion string) string {
