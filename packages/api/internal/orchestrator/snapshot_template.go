@@ -20,6 +20,11 @@ import (
 type SnapshotTemplateResult struct {
 	TemplateID string
 	BuildID    uuid.UUID
+	// Unchanged is true when the orchestrator's in-guest inspector
+	// reported no recovery-relevant changes since the prior snapshot
+	// and the result here points at that prior snapshot. See issue
+	// e2b-dev/infra#2580.
+	Unchanged bool
 }
 
 type SnapshotTemplateOpts struct {
@@ -31,6 +36,11 @@ type SnapshotTemplateOpts struct {
 	Namespace *string
 	// Tag is the build tag parsed from the name, defaults to "default".
 	Tag string
+	// SkipIfUnchanged makes the orchestrator consult the in-guest
+	// inspector and short-circuit to the prior snapshot if nothing
+	// changed. Default false preserves the historical always-pause
+	// behavior. See issue e2b-dev/infra#2580.
+	SkipIfUnchanged bool
 }
 
 // CreateSnapshotTemplate creates a persistent snapshot template from a running sandbox and immediately resumes it.
@@ -85,9 +95,10 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	// kills the sandbox itself; RemoveSandbox is still needed to clean up
 	// API-side state (store, routing, analytics).
 	client, childCtx := node.GetClient(ctx)
-	_, err = client.Sandbox.Checkpoint(childCtx, &orchestrator.SandboxCheckpointRequest{
-		SandboxId: sbx.SandboxID,
-		BuildId:   upsertResult.BuildID.String(),
+	checkpointResp, err := client.Sandbox.Checkpoint(childCtx, &orchestrator.SandboxCheckpointRequest{
+		SandboxId:       sbx.SandboxID,
+		BuildId:         upsertResult.BuildID.String(),
+		SkipIfUnchanged: opts.SkipIfUnchanged,
 	})
 	if err != nil {
 		o.failSnapshotBuild(ctx, upsertResult.BuildID, err)
@@ -102,6 +113,35 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 		}
 
 		return SnapshotTemplateResult{}, fmt.Errorf("checkpoint failed: %w", err)
+	}
+
+	// Short-circuit handling: orchestrator skipped the pause because the
+	// inspector reported no changes. The just-issued upsert is now
+	// vestigial; mark it cancelled and look up the template owning the
+	// prior build so we can return it to the caller.
+	if checkpointResp.GetUnchanged() {
+		priorBuild, parseErr := uuid.Parse(checkpointResp.GetPublishedBuildId())
+		if parseErr == nil {
+			priorTemplateID, lookupErr := o.sqlcDB.GetTemplateIDByBuildID(ctx, priorBuild)
+			if lookupErr == nil {
+				// Cancel the speculative new build — it represents zero
+				// work and should not appear as a successful upload.
+				o.failSnapshotBuild(ctx, upsertResult.BuildID, fmt.Errorf("skipped: no recovery-relevant changes"))
+				o.snapshotCache.Invalidate(context.WithoutCancel(ctx), sandboxID)
+				telemetry.ReportEvent(ctx, "Snapshot short-circuited (no changes)")
+				return SnapshotTemplateResult{
+					TemplateID: priorTemplateID,
+					BuildID:    priorBuild,
+					Unchanged:  true,
+				}, nil
+			}
+			telemetry.ReportError(ctx, "skipIfUnchanged: prior build template lookup failed; falling through", lookupErr)
+		}
+		// If we can't resolve the prior template, fall through and
+		// treat the new build as the canonical one. The orchestrator
+		// already wrote the previous snapshot's artifacts, so the
+		// new build_id is unbacked — but the existing failure path
+		// below will mark it failed in that case.
 	}
 
 	now := time.Now()

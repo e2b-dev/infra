@@ -938,6 +938,9 @@ type SnapshotInfo struct {
 
 	// SnapshotID Identifier of the snapshot template including the tag. Uses namespace/alias when a name was provided (e.g. team-slug/my-snapshot:default), otherwise falls back to the raw template ID (e.g. abc123:default).
 	SnapshotID string `json:"snapshotID"`
+
+	// Unchanged When true, the request was answered with a previously-published snapshot because the in-guest inspector reported no recovery-relevant changes since then. The snapshotID and names point at that prior snapshot. See issue e2b-dev/infra#2580.
+	Unchanged *bool `json:"unchanged,omitempty"`
 }
 
 // Team defines model for Team.
@@ -1477,6 +1480,9 @@ type PostSandboxesSandboxIDRefreshesJSONBody struct {
 type PostSandboxesSandboxIDSnapshotsJSONBody struct {
 	// Name Optional name for the snapshot template. If a snapshot template with this name already exists, a new build will be assigned to the existing template instead of creating a new one.
 	Name *string `json:"name,omitempty"`
+
+	// SkipIfUnchanged When true, if the in-guest inspector reports no recovery-relevant changes since the last snapshot of this sandbox, the previous snapshot is returned with `unchanged=true` and no Firecracker pause is performed. Default false preserves the historical always-pause behavior. See issue e2b-dev/infra#2580.
+	SkipIfUnchanged *bool `json:"skipIfUnchanged,omitempty"`
 }
 
 // PostSandboxesSandboxIDTimeoutJSONBody defines parameters for PostSandboxesSandboxIDTimeout.

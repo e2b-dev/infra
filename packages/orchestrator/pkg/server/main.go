@@ -47,6 +47,17 @@ type Server struct {
 	uploadedBuilds        *ttlcache.Cache[string, struct{}]
 	uploads               *sandbox.Uploads
 	sandboxCreateDuration metric.Int64Histogram
+
+	// lastPublishedSnapshot holds the BuildID of each sandbox's most
+	// recent successfully published checkpoint, keyed by SandboxID.
+	// Consumed by the skip_if_unchanged short-circuit in Checkpoint.
+	// In-memory, best-effort: a process restart simply forces the next
+	// skip-attempt to fall through. See issue #2580.
+	lastPublishedSnapshot *lastSnapshotMap
+
+	// inspectorDecisions counts skip-if-unchanged outcomes:
+	// decision=skipped|fallthrough|full. Sliced via OTel attributes.
+	inspectorDecisions metric.Int64Counter
 }
 
 type ServiceConfig struct {
@@ -72,20 +83,21 @@ func New(cfg ServiceConfig) (*Server, error) {
 	go uploadedBuilds.Start()
 
 	server := &Server{
-		config:            cfg.Config,
-		sandboxFactory:    cfg.SandboxFactory,
-		info:              cfg.Info,
-		proxy:             cfg.Proxy,
-		networkPool:       cfg.NetworkPool,
-		templateCache:     cfg.TemplateCache,
-		devicePool:        cfg.DevicePool,
-		persistence:       cfg.Persistence,
-		featureFlags:      cfg.FeatureFlags,
-		sbxEventsService:  cfg.SbxEventsService,
-		startingSandboxes: semaphore.NewWeighted(maxStartingInstancesPerNode),
-		peerRegistry:      cfg.PeerRegistry,
-		uploadedBuilds:    uploadedBuilds,
-		uploads:           cfg.Uploads,
+		config:                cfg.Config,
+		sandboxFactory:        cfg.SandboxFactory,
+		info:                  cfg.Info,
+		proxy:                 cfg.Proxy,
+		networkPool:           cfg.NetworkPool,
+		templateCache:         cfg.TemplateCache,
+		devicePool:            cfg.DevicePool,
+		persistence:           cfg.Persistence,
+		featureFlags:          cfg.FeatureFlags,
+		sbxEventsService:      cfg.SbxEventsService,
+		startingSandboxes:     semaphore.NewWeighted(maxStartingInstancesPerNode),
+		peerRegistry:          cfg.PeerRegistry,
+		uploadedBuilds:        uploadedBuilds,
+		uploads:               cfg.Uploads,
+		lastPublishedSnapshot: newLastSnapshotMap(),
 	}
 
 	meter := cfg.Tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")
@@ -95,6 +107,12 @@ func New(cfg ServiceConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to register sandbox create duration histogram: %w", err)
 	}
 	server.sandboxCreateDuration = sandboxCreateDuration
+
+	inspectorDecisions, err := telemetry.GetCounter(meter, telemetry.InspectorCheckpointDecisions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register inspector decisions counter: %w", err)
+	}
+	server.inspectorDecisions = inspectorDecisions
 
 	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(server.sandboxFactory.Sandboxes.Count()))

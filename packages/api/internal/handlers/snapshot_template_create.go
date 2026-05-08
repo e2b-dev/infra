@@ -59,6 +59,10 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 		Tag: id.DefaultTag,
 	}
 
+	if body.SkipIfUnchanged != nil {
+		opts.SkipIfUnchanged = *body.SkipIfUnchanged
+	}
+
 	if body.Name != nil {
 		identifier, tag, err := id.ParseName(*body.Name)
 		if err != nil {
@@ -157,8 +161,13 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 		names = append(names, name)
 	}
 
-	c.JSON(http.StatusCreated, api.SnapshotInfo{
+	resp := api.SnapshotInfo{
 		SnapshotID: snapshotID,
 		Names:      names,
-	})
+	}
+	if result.Unchanged {
+		unchanged := true
+		resp.Unchanged = &unchanged
+	}
+	c.JSON(http.StatusCreated, resp)
 }

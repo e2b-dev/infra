@@ -8,6 +8,12 @@ import (
 
 const MinEnvdVersionForSnapshot = "0.5.0"
 
+// MinEnvdVersionForInspector is the first envd version that exposes the
+// in-guest InspectorService (see packages/envd/spec/inspector). Older
+// envd builds fall through to the always-pause checkpoint path even
+// when skip_if_unchanged is requested.
+const MinEnvdVersionForInspector = "0.5.16"
+
 func sanitizeVersion(version string) string {
 	if len(version) > 0 && version[0] != 'v' {
 		version = "v" + version
@@ -24,6 +30,19 @@ func CheckEnvdVersionForSnapshot(envdVersion string) error {
 
 	if !ok {
 		return fmt.Errorf("sandbox envd version must be at least %s to create snapshots, current version: %s", MinEnvdVersionForSnapshot, envdVersion)
+	}
+
+	return nil
+}
+
+func CheckEnvdVersionForInspector(envdVersion string) error {
+	ok, err := IsGTEVersion(envdVersion, MinEnvdVersionForInspector)
+	if err != nil {
+		return fmt.Errorf("invalid envd version %q: %w", envdVersion, err)
+	}
+
+	if !ok {
+		return fmt.Errorf("sandbox envd version must be at least %s for inspector, current version: %s", MinEnvdVersionForInspector, envdVersion)
 	}
 
 	return nil
