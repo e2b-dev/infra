@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
@@ -212,6 +213,32 @@ var (
 
 	MinChunkerReadSizeKB = NewIntFlag("min-chunker-read-size-kb", 16)
 )
+
+// ReclaimConfigFlag holds per-step caps in milliseconds for the pre-pause
+// reclaim chain. Missing/zero/negative values disable the step.
+// Example: {"sync":500,"drop_caches":200,"compact_memory":1000,"fstrim":500}
+var ReclaimConfigFlag = NewJSONFlag("guest-pause-reclaim", ldvalue.Null())
+
+type ReclaimConfig struct {
+	Sync          time.Duration
+	DropCaches    time.Duration
+	CompactMemory time.Duration
+	Fstrim        time.Duration
+}
+
+func GetReclaimConfig(ctx context.Context, ff *Client, contexts ...ldcontext.Context) ReclaimConfig {
+	v := ff.JSONFlag(ctx, ReclaimConfigFlag, contexts...)
+	ms := func(key string) time.Duration {
+		return time.Duration(v.GetByKey(key).IntValue()) * time.Millisecond
+	}
+
+	return ReclaimConfig{
+		Sync:          ms("sync"),
+		DropCaches:    ms("drop_caches"),
+		CompactMemory: ms("compact_memory"),
+		Fstrim:        ms("fstrim"),
+	}
+}
 
 type StringFlag struct {
 	name     string
