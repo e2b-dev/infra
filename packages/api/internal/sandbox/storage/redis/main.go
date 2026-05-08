@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/bsm/redislock"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
@@ -16,7 +15,9 @@ const (
 	lockTimeout            = time.Minute
 	transitionKeyTTL       = 70 * time.Second // Should be longer than the longest expected state transition time
 	transitionResultKeyTTL = 30 * time.Second
-	lockRetryInterval      = 20 * time.Millisecond
+	lockRetryMinInterval   = 200 * time.Millisecond
+	lockRetryMaxInterval   = time.Second
+	lockRetryJitter        = 0.25
 	pollInterval           = 1 * time.Second // fallback polling interval; PubSub is the primary notification mechanism
 
 	// orphanGracePeriod is the minimum age a sandbox must have before it can be
@@ -29,8 +30,7 @@ var _ sandbox.Storage = (*Storage)(nil)
 
 type Storage struct {
 	redisClient redis.UniversalClient
-	lockService *redislock.Client
-	lockOption  *redislock.Options
+	locker      *storageLocker
 	subManager  *subscriptionManager
 }
 
@@ -39,13 +39,12 @@ func (s *Storage) Name() string { return sandbox.StorageNameRedis }
 func NewStorage(
 	redisClient redis.UniversalClient,
 ) *Storage {
+	subManager := newSubscriptionManager(redisClient, globalStorageNotifyChannel)
+
 	return &Storage{
 		redisClient: redisClient,
-		lockService: redislock.New(redisClient),
-		lockOption: &redislock.Options{
-			RetryStrategy: newConstantBackoff(lockRetryInterval),
-		},
-		subManager: newSubscriptionManager(redisClient),
+		locker:      newStorageLocker(redisClient, subManager),
+		subManager:  subManager,
 	}
 }
 
