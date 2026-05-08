@@ -11,8 +11,6 @@ import (
 
 	"github.com/caarlos0/env/v11"
 	"github.com/golang-jwt/jwt/v5"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 )
 
 const (
@@ -66,9 +64,6 @@ type Config struct {
 	// More secrets are possible in the case of JWT secret rotation where we need to accept
 	// tokens signed with the old secret for some time.
 	SupabaseJWTSecrets []string `env:"SUPABASE_JWT_SECRETS"`
-
-	// Deprecated: Template manager should use its own
-	DefaultKernelVersion string `env:"DEFAULT_KERNEL_VERSION"`
 
 	DefaultPersistentVolumeType string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`
 
@@ -136,10 +131,6 @@ func Parse() (Config, error) {
 	})
 	if err != nil {
 		return Config{}, err
-	}
-
-	if config.DefaultKernelVersion == "" {
-		config.DefaultKernelVersion = featureflags.DefaultKernelVersion
 	}
 
 	if config.AuthDBConnectionString == "" {

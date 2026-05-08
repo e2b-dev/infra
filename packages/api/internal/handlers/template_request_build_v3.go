@@ -115,10 +115,11 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	}
 	span.End()
 
-	// TODO(ENG-3852): Stop sending the firecracker version from the API. The orchestrator
-	// now resolves its own FC version via the FirecrackerVersions feature flag
-	// (see packages/orchestrator/pkg/template/build/builder.go)
+	// TODO(ENG-3852): Stop sending the firecracker/kernel versions from the API.
+	// The orchestrator resolves them itself via the BuildFirecrackerVersion /
+	// BuildKernelVersion feature flags (see packages/orchestrator/pkg/template/server/create_template.go).
 	firecrackerVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
+	kernelVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildKernelVersion)
 	buildReq := template.RegisterBuildData{
 		ClusterID:          clusters.WithClusterFallback(team.ClusterID),
 		TemplateID:         templateID,
@@ -129,7 +130,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		CpuCount:           body.CpuCount,
 		MemoryMB:           body.MemoryMB,
 		Version:            templates.TemplateV2LatestVersion,
-		KernelVersion:      a.config.DefaultKernelVersion,
+		KernelVersion:      kernelVersion,
 		FirecrackerVersion: firecrackerVersion,
 	}
 
