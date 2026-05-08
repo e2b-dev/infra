@@ -103,7 +103,7 @@ func TestStart_ClientDisconnectMidStream(t *testing.T) {
 	// Use a long-running command so there's data flowing when we cancel.
 	stream, err := client.Start(ctx, connect.NewRequest(&rpc.StartRequest{
 		Process: &rpc.ProcessConfig{
-			Cmd:  "yes",
+			Cmd: "yes",
 		},
 	}))
 	require.NoError(t, err)
