@@ -51,6 +51,9 @@ func (l *storageLock) Release(ctx context.Context) error {
 }
 
 func (l *storageLocker) Obtain(ctx context.Context, lockKey string, timeout time.Duration) (*storageLock, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	lock, err := l.tryLock(ctx, lockKey, timeout)
 	if err == nil {
 		return lock, nil
