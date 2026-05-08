@@ -68,24 +68,24 @@ variable "api_internal_grpc_address" {
   default = ""
 }
 
-variable "control_plane_api_grpc_address" {
+variable "api_edge_grpc_address" {
   type    = string
   default = ""
 }
 
-variable "control_plane_oauth_client_id" {
+variable "api_edge_grpc_oauth_client_id" {
   type      = string
   default   = ""
   sensitive = true
 }
 
-variable "control_plane_oauth_client_secret" {
+variable "api_edge_grpc_oauth_client_secret" {
   type      = string
   default   = ""
   sensitive = true
 }
 
-variable "control_plane_oauth_token_url" {
+variable "api_edge_grpc_oauth_token_url" {
   type      = string
   default   = ""
   sensitive = true

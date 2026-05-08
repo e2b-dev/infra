@@ -142,12 +142,12 @@ func run() int {
 	apiGRPCOAuthConfig := e2bproxy.GRPCOAuthConfig{}
 	apiGRPCUseTLS := false
 	if apiGRPCAddress == "" {
-		apiGRPCAddress = strings.TrimSpace(config.ControlPlaneAPIGRPCAddress)
+		apiGRPCAddress = strings.TrimSpace(config.APIEdgeGRPCAddress)
 		apiGRPCUseTLS = true
 		apiGRPCOAuthConfig = e2bproxy.GRPCOAuthConfig{
-			ClientID:     config.ControlPlaneAPIGRPCOAuthClientID,
-			ClientSecret: config.ControlPlaneAPIGRPCOAuthClientSecret,
-			TokenURL:     config.ControlPlaneAPIGRPCOAuthTokenURL,
+			ClientID:     config.APIEdgeGRPCOAuthClientID,
+			ClientSecret: config.APIEdgeGRPCOAuthClientSecret,
+			TokenURL:     config.APIEdgeGRPCOAuthTokenURL,
 		}
 	}
 
