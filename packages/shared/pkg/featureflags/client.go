@@ -110,12 +110,7 @@ func (c *Client) IntFlag(ctx context.Context, flag IntFlag, contexts ...ldcontex
 }
 
 func (c *Client) StringFlag(ctx context.Context, flag StringFlag, contexts ...ldcontext.Context) string {
-	v := getFlag(ctx, c.ld, c.ld.StringVariationCtx, flag, c.allContexts(contexts))
-	if v == "" && flag.FallbackWhenEmpty() {
-		return flag.Fallback()
-	}
-
-	return v
+	return getFlag(ctx, c.ld, c.ld.StringVariationCtx, flag, c.allContexts(contexts))
 }
 
 type typedFlag[T any] interface {
