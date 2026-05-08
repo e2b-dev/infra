@@ -13,6 +13,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+const lockNotifyTimeout = 5 * time.Second
+
 type storageLocker struct {
 	redisClient redis.UniversalClient
 	client      *redislock.Client
@@ -42,7 +44,7 @@ func (l *storageLock) Release(ctx context.Context) error {
 	}
 
 	routingKey := getLockRoutingKey(l.Key())
-	go l.publishReleaseNotification(routingKey)
+	go l.publishReleaseNotification(context.WithoutCancel(ctx), routingKey)
 
 	return nil
 }
@@ -97,8 +99,8 @@ func (l *storageLocker) tryLock(ctx context.Context, lockKey string, timeout tim
 	return &storageLock{Lock: lock, redisClient: l.redisClient}, nil
 }
 
-func (l *storageLock) publishReleaseNotification(routingKey string) {
-	ctx, cancel := context.WithTimeout(context.Background(), lockNotifyTimeout)
+func (l *storageLock) publishReleaseNotification(ctx context.Context, routingKey string) {
+	ctx, cancel := context.WithTimeout(ctx, lockNotifyTimeout)
 	defer cancel()
 
 	if err := l.redisClient.Publish(ctx, globalStorageNotifyChannel, routingKey).Err(); err != nil {

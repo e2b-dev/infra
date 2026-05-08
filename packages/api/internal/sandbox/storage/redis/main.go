@@ -18,7 +18,6 @@ const (
 	lockRetryMinInterval   = 200 * time.Millisecond
 	lockRetryMaxInterval   = time.Second
 	lockRetryJitter        = 0.25
-	lockNotifyTimeout      = 5 * time.Second
 	pollInterval           = 1 * time.Second // fallback polling interval; PubSub is the primary notification mechanism
 
 	// orphanGracePeriod is the minimum age a sandbox must have before it can be
