@@ -8,20 +8,22 @@ import (
 )
 
 // subscriptionManager maintains a Redis PubSub connection and
-// fans out transition-complete signals to registered in-process waiters.
+// fans out storage notifications to registered in-process waiters.
 type subscriptionManager struct {
 	mu      sync.RWMutex
 	waiters map[string]map[chan struct{}]struct{} // routingKey → registered waiters
 
 	redisClient redis.UniversalClient
+	channel     string
 	stop        chan struct{}
 	once        sync.Once
 }
 
-func newSubscriptionManager(redisClient redis.UniversalClient) *subscriptionManager {
+func newSubscriptionManager(redisClient redis.UniversalClient, channel string) *subscriptionManager {
 	return &subscriptionManager{
 		waiters:     make(map[string]map[chan struct{}]struct{}),
 		redisClient: redisClient,
+		channel:     channel,
 		stop:        make(chan struct{}),
 	}
 }
@@ -42,7 +44,7 @@ func (m *subscriptionManager) start(ctx context.Context) {
 		}
 	}()
 
-	ps := m.redisClient.Subscribe(ctx, globalTransitionNotifyChannel)
+	ps := m.redisClient.Subscribe(ctx, m.channel)
 	defer ps.Close()
 
 	ch := ps.Channel()
@@ -59,8 +61,8 @@ func (m *subscriptionManager) start(ctx context.Context) {
 	}
 }
 
-// subscribe registers a waiter for the given routingKey (per-transition).
-// The returned channel receives a signal when a transition-complete message
+// subscribe registers a waiter for the given routingKey.
+// The returned channel receives a signal when a matching PubSub message
 // arrives for that transition. The caller MUST invoke the returned cleanup
 // function when done to avoid a memory leak.
 func (m *subscriptionManager) subscribe(routingKey string) (<-chan struct{}, func()) {

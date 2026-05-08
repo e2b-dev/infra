@@ -1075,7 +1075,7 @@ func TestWaitForStateChange_MultipleWaitersPubSub(t *testing.T) {
 }
 
 // TestCallback_PublishesNotification verifies that the transition callback publishes
-// a notification to the global PubSub channel with the correct routing key.
+// a notification to the global storage PubSub channel with the correct routing key.
 func TestCallback_PublishesNotification(t *testing.T) {
 	t.Parallel()
 
@@ -1087,7 +1087,7 @@ func TestCallback_PublishesNotification(t *testing.T) {
 	require.NoError(t, err)
 
 	// Subscribe to the global notification channel directly
-	pubsub := client.Subscribe(ctx, globalTransitionNotifyChannel)
+	pubsub := client.Subscribe(ctx, globalStorageNotifyChannel)
 	defer pubsub.Close()
 
 	// Wait for the subscription to be ready
@@ -1103,15 +1103,22 @@ func TestCallback_PublishesNotification(t *testing.T) {
 	transitionID, err := client.Get(ctx, transitionKey).Result()
 	require.NoError(t, err)
 
+	expectedRoutingKey := getTransitionRoutingKey(sbx.TeamID.String(), sbx.SandboxID, transitionID)
+
 	// Complete the transition
 	callback(ctx, nil)
 
-	// Read the published message
-	msg, err := pubsub.ReceiveMessage(ctx)
-	require.NoError(t, err)
+	readCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
 
-	expectedRoutingKey := getTransitionRoutingKey(sbx.TeamID.String(), sbx.SandboxID, transitionID)
-	assert.Equal(t, expectedRoutingKey, msg.Payload, "published payload should be the per-transition routing key")
+	for {
+		msg, err := pubsub.ReceiveMessage(readCtx)
+		require.NoError(t, err)
+
+		if msg.Payload == expectedRoutingKey {
+			return
+		}
+	}
 }
 
 // TestStartRemoving_PauseThenKill_PubSubFastWake verifies that the PubSub path
@@ -1206,7 +1213,7 @@ func TestWaitForTransition_StalePubSubNotification(t *testing.T) {
 
 	// Publish a notification using transition A's routing key (stale).
 	staleRoutingKey := getTransitionRoutingKey(sbx.TeamID.String(), sbx.SandboxID, transitionIDA)
-	require.NoError(t, client.Publish(t.Context(), globalTransitionNotifyChannel, staleRoutingKey).Err())
+	require.NoError(t, client.Publish(t.Context(), globalStorageNotifyChannel, staleRoutingKey).Err())
 
 	// Give time for the stale notification to be (not) delivered.
 	time.Sleep(200 * time.Millisecond)
