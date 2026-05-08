@@ -37,14 +37,13 @@ type storageLock struct {
 }
 
 func (l *storageLock) Release(ctx context.Context) error {
-	releaseCtx := context.WithoutCancel(ctx)
-	if err := l.Lock.Release(releaseCtx); err != nil {
+	if err := l.Lock.Release(ctx); err != nil {
 		return err
 	}
 
 	routingKey := getLockRoutingKey(l.Key())
-	if err := l.redisClient.Publish(releaseCtx, globalStorageNotifyChannel, routingKey).Err(); err != nil {
-		logger.L().Warn(releaseCtx, "Failed to publish lock release notification", zap.Error(err))
+	if err := l.redisClient.Publish(ctx, globalStorageNotifyChannel, routingKey).Err(); err != nil {
+		logger.L().Warn(ctx, "Failed to publish lock release notification", zap.Error(err))
 	}
 
 	return nil

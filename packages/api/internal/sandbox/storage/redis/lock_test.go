@@ -95,7 +95,7 @@ func TestStorageLocker_ObtainFallsBackWhenNotificationMissed(t *testing.T) {
 	requireNoErrorFromChannel(t, waiterDone)
 }
 
-func TestStorageLock_ReleaseUsesWithoutCancelContext(t *testing.T) {
+func TestStorageLock_ReleaseUsesProvidedContext(t *testing.T) {
 	t.Parallel()
 
 	locker, _ := setupTestLocker(t, false)
@@ -113,7 +113,8 @@ func TestStorageLock_ReleaseUsesWithoutCancelContext(t *testing.T) {
 	canceledCtx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	require.NoError(t, lock.Release(canceledCtx))
+	require.ErrorIs(t, lock.Release(canceledCtx), context.Canceled)
+	require.NoError(t, lock.Release(context.WithoutCancel(t.Context())))
 	requirePubSubPayload(t, pubsub, routingKey)
 }
 
