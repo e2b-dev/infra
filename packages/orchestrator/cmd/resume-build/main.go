@@ -75,11 +75,11 @@ func main() {
 	flag.Parse()
 
 	if *reclaim {
-		featureflags.NewJSONFlag("reclaim-config", ldvalue.FromJSONMarshal(map[string]string{
-			"sync":           "500ms",
-			"drop_caches":    "200ms",
-			"compact_memory": "1s",
-			"fstrim":         "500ms",
+		featureflags.NewJSONFlag("reclaim-config", ldvalue.FromJSONMarshal(map[string]int{
+			"sync":           500,
+			"drop_caches":    200,
+			"compact_memory": 1000,
+			"fstrim":         500,
 		}))
 	}
 

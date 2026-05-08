@@ -214,9 +214,9 @@ var (
 	MinChunkerReadSizeKB = NewIntFlag("min-chunker-read-size-kb", 16)
 )
 
-// ReclaimConfigFlag holds per-step caps (duration strings) for the pre-pause
-// reclaim chain. Missing/unparseable/sub-ms values disable the step.
-// Example: {"sync":"500ms","drop_caches":"200ms","compact_memory":"1s","fstrim":"500ms"}
+// ReclaimConfigFlag holds per-step caps in milliseconds for the pre-pause
+// reclaim chain. Missing/zero/negative values disable the step.
+// Example: {"sync":500,"drop_caches":200,"compact_memory":1000,"fstrim":500}
 var ReclaimConfigFlag = NewJSONFlag("reclaim-config", ldvalue.Null())
 
 type ReclaimConfig struct {
@@ -228,22 +228,16 @@ type ReclaimConfig struct {
 
 func GetReclaimConfig(ctx context.Context, ff *Client, contexts ...ldcontext.Context) ReclaimConfig {
 	v := ff.JSONFlag(ctx, ReclaimConfigFlag, contexts...)
+	ms := func(key string) time.Duration {
+		return time.Duration(v.GetByKey(key).IntValue()) * time.Millisecond
+	}
 
 	return ReclaimConfig{
-		Sync:          parseDurationValue(v.GetByKey("sync")),
-		DropCaches:    parseDurationValue(v.GetByKey("drop_caches")),
-		CompactMemory: parseDurationValue(v.GetByKey("compact_memory")),
-		Fstrim:        parseDurationValue(v.GetByKey("fstrim")),
+		Sync:          ms("sync"),
+		DropCaches:    ms("drop_caches"),
+		CompactMemory: ms("compact_memory"),
+		Fstrim:        ms("fstrim"),
 	}
-}
-
-func parseDurationValue(v ldvalue.Value) time.Duration {
-	d, err := time.ParseDuration(v.StringValue())
-	if err != nil {
-		return 0
-	}
-
-	return d
 }
 
 type StringFlag struct {
