@@ -1,0 +1,146 @@
+# MaxiCore Observability Stack (NX.9) — self-hosted EU-sovereign
+#
+# 1:1 Manus pattern but replacing US providers with self-hosted equivalents:
+#   Manus → Sentry SaaS (US)            → THIS: Sentry self-hosted (sentry.helix12.eu)
+#   Manus → Datadog/New Relic (US)      → THIS: Grafana LGTM stack (self-hosted)
+#   Manus → AWS CloudWatch              → THIS: OTEL Collector → Grafana
+#
+# Components:
+#   - Sentry self-hosted (errors + performance)
+#   - OTEL Collector (traces + metrics + logs ingest)
+#   - Grafana (dashboards UI)
+#   - Loki (logs storage, S3-backed via Hetzner Object Storage)
+#   - Mimir (metrics storage, S3-backed)
+#   - Tempo (traces storage, S3-backed)
+#
+# All storage backends use the NX.2.4 Storage-Extensions buckets:
+#   loki-chunks, mimir-blocks, tempo-traces
+
+version: '3.8'
+
+services:
+  # ═══════════════════════════════ OTEL Collector ═══════════════════════════════
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.115.1
+    container_name: maxicore-otel-collector
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otel/config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8888:8888"   # Prometheus metrics (internal)
+    networks:
+      - observability
+    depends_on:
+      - tempo
+      - loki
+      - mimir
+
+  # ═══════════════════════════════ Loki (Logs) ═══════════════════════════════
+  loki:
+    image: grafana/loki:3.3.2
+    container_name: maxicore-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/config.yaml
+    volumes:
+      - ./loki/config.yaml:/etc/loki/config.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    networks:
+      - observability
+
+  # ═══════════════════════════════ Mimir (Metrics) ═══════════════════════════════
+  mimir:
+    image: grafana/mimir:2.14.2
+    container_name: maxicore-mimir
+    restart: unless-stopped
+    command: ["-config.file=/etc/mimir/config.yaml"]
+    volumes:
+      - ./mimir/config.yaml:/etc/mimir/config.yaml:ro
+      - mimir_data:/data
+    ports:
+      - "9009:9009"
+    networks:
+      - observability
+
+  # ═══════════════════════════════ Tempo (Traces) ═══════════════════════════════
+  tempo:
+    image: grafana/tempo:2.6.1
+    container_name: maxicore-tempo
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo/config.yaml"]
+    volumes:
+      - ./tempo/config.yaml:/etc/tempo/config.yaml:ro
+      - tempo_data:/var/tempo
+    ports:
+      - "3200:3200"   # Tempo HTTP
+      - "14268:14268" # Jaeger ingest
+    networks:
+      - observability
+
+  # ═══════════════════════════════ Grafana (UI) ═══════════════════════════════
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: maxicore-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD_FILE: /run/secrets/grafana_admin_password
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_INSTALL_PLUGINS: "grafana-clock-panel,grafana-piechart-panel"
+      GF_FEATURE_TOGGLES_ENABLE: "traceqlEditor"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    secrets:
+      - grafana_admin_password
+    ports:
+      - "127.0.0.1:3000:3000"   # LOCAL ONLY — SSH-tunnel for access
+    networks:
+      - observability
+    depends_on:
+      - loki
+      - mimir
+      - tempo
+
+  # ═══════════════════════════════ Sentry self-hosted ═══════════════════════════════
+  # Note: Full Sentry self-hosted is a large composition (Postgres, Redis, Kafka,
+  # ClickHouse, Snuba, Symbolicator, ...). For now we deploy via the official
+  # `sentry-self-hosted` install script which manages this internally.
+  # Triggered via scripts/install-sentry.sh (NOT in docker-compose because it
+  # has its own orchestrator).
+
+  # ═══════════════════════════════ Prometheus (scraping for Mimir remote-write) ═══
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: maxicore-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=24h    # Hot tier; cold goes to Mimir
+      - --web.enable-remote-write-receiver
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - observability
+
+networks:
+  observability:
+    driver: bridge
+
+volumes:
+  loki_data:
+  mimir_data:
+  tempo_data:
+  grafana_data:
+  prometheus_data:
+
+secrets:
+  grafana_admin_password:
+    file: ./secrets/grafana_admin_password

@@ -1,0 +1,22 @@
+auth_enabled: false
+server: { http_listen_port: 3100, grpc_listen_port: 9096 }
+common:
+  path_prefix: /loki
+  replication_factor: 1
+  ring: { kvstore: { store: inmemory } }
+schema_config:
+  configs:
+    - from: 2026-01-01
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index: { prefix: index_, period: 24h }
+storage_config:
+  aws:
+    bucketnames: maxicore-orch-loki-chunks
+    endpoint: fsn1.your-objectstorage.com
+    region: fsn1
+    s3forcepathstyle: true
+limits_config:
+  retention_period: 720h  # 30d
+ruler: { storage: { type: local, local: { directory: /loki/rules } } }

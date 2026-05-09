@@ -1,0 +1,14 @@
+target: all
+multitenancy_enabled: true
+server: { http_listen_port: 9009, grpc_listen_port: 9095 }
+blocks_storage:
+  backend: s3
+  s3:
+    bucket_name: maxicore-orch-mimir-blocks
+    endpoint: fsn1.your-objectstorage.com
+    region: fsn1
+    insecure: false
+distributor: { ring: { instance_addr: 127.0.0.1, kvstore: { store: memberlist } } }
+ingester: { ring: { instance_addr: 127.0.0.1, kvstore: { store: memberlist }, replication_factor: 1 } }
+ruler_storage: { backend: filesystem, filesystem: { dir: /data/rules } }
+limits: { compactor_blocks_retention_period: 90d }

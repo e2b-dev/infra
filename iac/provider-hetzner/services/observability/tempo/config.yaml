@@ -1,0 +1,17 @@
+server: { http_listen_port: 3200 }
+distributor:
+  receivers:
+    otlp: { protocols: { grpc: {}, http: {} } }
+    jaeger: { protocols: { thrift_http: {} } }
+ingester: { trace_idle_period: 10s, max_block_bytes: 100000000, max_block_duration: 5m }
+compactor:
+  compaction:
+    block_retention: 168h  # 7d hot
+storage:
+  trace:
+    backend: s3
+    s3:
+      bucket: maxicore-orch-tempo-traces
+      endpoint: fsn1.your-objectstorage.com
+      region: fsn1
+      forcepathstyle: true

@@ -1,0 +1,20 @@
+apiVersion: 1
+datasources:
+  - name: Loki
+    type: loki
+    url: http://loki:3100
+    uid: loki
+  - name: Mimir
+    type: prometheus
+    url: http://mimir:9009/prometheus
+    uid: mimir
+    jsonData: { httpHeaderName1: X-Scope-OrgID, prometheusType: Mimir }
+    secureJsonData: { httpHeaderValue1: maxicore }
+  - name: Tempo
+    type: tempo
+    url: http://tempo:3200
+    uid: tempo
+    jsonData:
+      tracesToLogsV2: { datasourceUid: loki, spanStartTimeShift: '-1h', spanEndTimeShift: '1h' }
+      tracesToMetrics: { datasourceUid: mimir }
+      serviceMap: { datasourceUid: mimir }
