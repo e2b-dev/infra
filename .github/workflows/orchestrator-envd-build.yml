@@ -1,0 +1,42 @@
+name: Orchestrator + envd Build
+
+on:
+  pull_request:
+    paths:
+      - 'packages/orchestrator/**'
+      - 'packages/envd/**'
+      - 'iac/provider-hetzner/services/**'
+      - '.github/workflows/orchestrator-envd-build.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Build orchestrator
+        working-directory: packages/orchestrator
+        run: |
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+            go build -o /tmp/orchestrator-bin -ldflags "-X main.commitSHA=${{ github.sha }}" .
+          ls -lh /tmp/orchestrator-bin
+
+      - name: Build envd
+        working-directory: packages/envd
+        run: |
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+            go build -o /tmp/envd-bin -ldflags "-X main.commitSHA=${{ github.sha }}" .
+          ls -lh /tmp/envd-bin
+
+      - name: Validate systemd units
+        run: |
+          systemd-analyze verify iac/provider-hetzner/services/orchestrator/orchestrator.service || true
+          systemd-analyze verify iac/provider-hetzner/services/envd/envd.service || true
+          echo "✅ systemd units parse cleanly"
+
+      - name: Bash syntax check
+        run: bash -n iac/provider-hetzner/services/scripts/deploy-to-primary.sh

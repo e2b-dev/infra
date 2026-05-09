@@ -1,0 +1,40 @@
+[Unit]
+Description=MaxiCore e2b envd (sandbox environment daemon)
+Documentation=https://github.com/Helix12-Labs/helix12-maxicore-vmm-e2b
+After=network-online.target orchestrator.service
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=envd
+Group=envd
+ExecStart=/opt/maxicore/envd/bin/envd
+Restart=on-failure
+RestartSec=5s
+
+EnvironmentFile=/etc/maxicore/envd.env
+
+Environment="ENVD_LISTEN=0.0.0.0:49983"
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/maxicore /var/log/maxicore /tmp
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+
+MemoryMax=2G
+CPUQuota=200%
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=envd
+
+[Install]
+WantedBy=multi-user.target

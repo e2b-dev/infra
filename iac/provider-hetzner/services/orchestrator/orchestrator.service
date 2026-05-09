@@ -1,0 +1,50 @@
+[Unit]
+Description=MaxiCore e2b Orchestrator (Firecracker MicroVM coordinator)
+Documentation=https://github.com/Helix12-Labs/helix12-maxicore-vmm-e2b
+After=network-online.target consul.service nomad.service
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=orchestrator
+Group=orchestrator
+ExecStart=/opt/maxicore/orchestrator/bin/orchestrator
+Restart=on-failure
+RestartSec=5s
+
+# Environment from /etc/maxicore/orchestrator.env (managed by Sharky-deploy)
+EnvironmentFile=/etc/maxicore/orchestrator.env
+
+# gRPC port + telemetry
+Environment="ORCHESTRATOR_LISTEN=0.0.0.0:50051"
+Environment="ORCHESTRATOR_TELEMETRY_PORT=2113"
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/maxicore /var/log/maxicore /tmp
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+
+# Resource limits (matches Manus orchestrator footprint)
+MemoryMax=4G
+CPUQuota=400%
+
+# Firecracker requires KVM access — orchestrator manages VMs
+DeviceAllow=/dev/kvm rw
+DeviceAllow=/dev/net/tun rw
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=orchestrator
+
+[Install]
+WantedBy=multi-user.target
