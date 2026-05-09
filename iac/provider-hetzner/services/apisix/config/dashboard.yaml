@@ -1,0 +1,33 @@
+conf:
+  listen:
+    host: 0.0.0.0
+    port: 9000
+  etcd:
+    endpoints:
+      - "etcd:2379"
+  log:
+    error_log:
+      level: warn
+      file_path: logs/error.log
+    access_log:
+      file_path: logs/access.log
+
+authentication:
+  secret: ""    # Set via env-var DASHBOARD_AUTH_SECRET
+  expire_time: 3600
+  users:
+    - username: admin
+      password: ""    # Set via vault helix12/apisix/dashboard-admin
+
+plugins:
+  - jwt-auth
+  - key-auth
+  - basic-auth
+  - cors
+  - real-ip
+  - prometheus
+  - opentelemetry
+  - limit-count
+  - limit-req
+  - proxy-rewrite
+  - response-rewrite

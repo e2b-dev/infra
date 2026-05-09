@@ -1,0 +1,77 @@
+# APISIX Gateway 3.11.0 — 1:1 Manus pattern (verified via api.manus.im live header)
+#
+# Architecture:
+#   Internet → Hetzner Cloud LB (NX.2.4) → APISIX (this service) → backend services
+#
+# APISIX provides:
+#   - IP-Whitelist (Manus production: rate-limit per IP)
+#   - 200 req/60s rate-limit (Manus default)
+#   - JWT authentication for /api/v2/* endpoints
+#   - Request transformation (multipart, JSON)
+#   - Prometheus metrics export
+#   - OpenTelemetry tracing
+#
+# Storage: ETCD (single-node for Operator-deploy, 3-node for HA-cluster)
+
+version: '3.8'
+
+services:
+  etcd:
+    image: bitnami/etcd:3.5.16
+    container_name: maxicore-apisix-etcd
+    restart: unless-stopped
+    environment:
+      ALLOW_NONE_AUTHENTICATION: "yes"
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd:2379
+      ETCD_ENABLE_V2: "true"
+    volumes:
+      - etcd_data:/bitnami/etcd
+    networks:
+      - apisix
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  apisix:
+    image: apache/apisix:3.11.0-debian
+    container_name: maxicore-apisix
+    restart: unless-stopped
+    depends_on:
+      etcd:
+        condition: service_healthy
+    volumes:
+      - ./config/apisix.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ./config/routes.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+      - ./logs:/usr/local/apisix/logs
+    networks:
+      - apisix
+    ports:
+      - "9080:9080"   # HTTP gateway
+      - "9443:9443"   # HTTPS gateway
+      - "9091:9091"   # Prometheus metrics
+      - "9180:9180"   # Admin API (LOCAL ONLY — UFW-blocked)
+    environment:
+      APISIX_STAND_ALONE: "false"
+
+  apisix-dashboard:
+    image: apache/apisix-dashboard:3.0.1-alpine
+    container_name: maxicore-apisix-dashboard
+    restart: unless-stopped
+    depends_on:
+      etcd:
+        condition: service_healthy
+    volumes:
+      - ./config/dashboard.yaml:/usr/local/apisix-dashboard/conf/conf.yaml:ro
+    networks:
+      - apisix
+    ports:
+      - "127.0.0.1:9000:9000"   # Dashboard LOCAL-ONLY (SSH tunnel for access)
+
+networks:
+  apisix:
+    driver: bridge
+
+volumes:
+  etcd_data:

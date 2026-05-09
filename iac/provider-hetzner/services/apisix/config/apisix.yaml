@@ -1,0 +1,110 @@
+# APISIX Configuration — 1:1 Manus pattern (api.manus.im uses APISIX 3.11.0)
+#
+# Reference: https://apisix.apache.org/docs/apisix/3.11/
+
+apisix:
+  node_listen: 9080
+  enable_admin: true
+  enable_dev_mode: false
+  enable_reuseport: true
+  enable_ipv6: false
+  enable_server_tokens: false
+  proxy_cache:
+    cache_ttl: 10s
+    zones:
+      - name: disk_cache_one
+        memory_size: 50m
+        disk_size: 1G
+        disk_path: /tmp/disk_cache_one
+        cache_levels: "1:2"
+
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  admin:
+    admin_listen:
+      port: 9180
+    https_admin: false
+    allow_admin:
+      - 127.0.0.1
+      - 10.0.1.0/24       # Hetzner Cloud Network (Operator + cluster)
+      - 10.10.0.0/24      # vSwitch (PRIMARY + HADES)
+    admin_key:
+      - name: "admin"
+        key: ""           # Set via ADMIN_API_KEY env-var or vault
+        role: admin
+  etcd:
+    host:
+      - "http://etcd:2379"
+    prefix: /apisix
+    timeout: 30
+
+# Plugins — enable Manus-equivalent set
+plugins:
+  - real-ip
+  - ai
+  - client-control
+  - proxy-cache
+  - request-id
+  - cors
+  - jwt-auth
+  - key-auth
+  - basic-auth
+  - authz-keycloak
+  - openid-connect
+  - hmac-auth
+  - ldap-auth
+  - opa
+  - limit-conn
+  - limit-count
+  - limit-req
+  - limit-route
+  - api-breaker
+  - traffic-split
+  - file-logger
+  - http-logger
+  - tcp-logger
+  - kafka-logger
+  - skywalking-logger
+  - error-log-logger
+  - log-rotate
+  - prometheus
+  - opentelemetry
+  - grpc-transcode
+  - request-validation
+  - proxy-rewrite
+  - response-rewrite
+  - workflow
+  - http-dubbo
+  - dubbo-proxy
+
+plugin_attr:
+  prometheus:
+    export_uri: /apisix/prometheus/metrics
+    metric_prefix: apisix_
+  opentelemetry:
+    trace_id_source: x-request-id
+    resource:
+      service.name: apisix
+      service.namespace: maxicore
+    collector:
+      address: otel-collector.service.consul:4318
+      request_timeout: 3
+  log-rotate:
+    interval: 3600
+    max_kept: 168    # 7 days
+    enable_compression: true
+
+graphql:
+  max_size: 1048576
+
+nginx_config:
+  error_log_level: warn
+  worker_processes: auto
+  worker_rlimit_nofile: 20480
+  worker_connections: 10620
+  keepalive_timeout: 60s
+  client_max_body_size: 100m
+
+discovery: {}

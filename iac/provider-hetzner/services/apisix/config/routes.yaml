@@ -1,0 +1,144 @@
+# APISIX Routes — Manus 1:1 Pattern
+#
+# Reference Manus production routes (api.manus.im):
+#   - /apiproxy.v1.ApiProxyService/CallApi   → connector-proxy
+#   - /api/llm-proxy/v1/*                    → LLM-proxy (OpenAI-compat)
+#   - /api/v2/*                              → public API
+#
+# Routes load via standalone YAML mode (apisix_yaml_path config).
+
+routes:
+  # ─── Public-API: api.{domain}/api/v2/* ───
+  - id: 1
+    name: public-api-v2
+    uri: /api/v2/*
+    upstream:
+      type: roundrobin
+      service_name: api.service.consul
+      discovery_type: dns
+      pass_host: pass
+    plugins:
+      cors:
+        allow_origins: "https://app.helix12.eu,https://*.helix12.eu"
+        allow_methods: "GET,POST,PUT,DELETE,OPTIONS"
+        allow_credential: true
+      limit-count:
+        count: 200
+        time_window: 60
+        rejected_code: 429
+        key_type: "var"
+        key: "remote_addr"
+      jwt-auth: {}
+      prometheus: {}
+      opentelemetry: {}
+
+  # ─── LLM-Proxy: api.{domain}/api/llm-proxy/v1/* (OpenAI-compat) ───
+  - id: 2
+    name: llm-proxy
+    uri: /api/llm-proxy/v1/*
+    upstream:
+      type: roundrobin
+      service_name: api.service.consul
+      discovery_type: dns
+      pass_host: pass
+    plugins:
+      cors:
+        allow_origins: "*"
+        allow_methods: "GET,POST,OPTIONS"
+      limit-count:
+        count: 100
+        time_window: 60
+        rejected_code: 429
+      key-auth: {}            # Bearer token via x-api-key header
+      proxy-rewrite:
+        regex_uri: ["^/api/llm-proxy/v1/(.*)", "/v1/$1"]
+      prometheus: {}
+
+  # ─── Connector-Proxy: api.{domain}/apiproxy.v1.ApiProxyService/CallApi ───
+  - id: 3
+    name: connector-proxy
+    uri: /apiproxy.v1.ApiProxyService/CallApi
+    methods:
+      - POST
+    upstream:
+      type: roundrobin
+      service_name: api.service.consul
+      discovery_type: dns
+      pass_host: pass
+    plugins:
+      cors:
+        allow_origins: "*"
+      limit-count:
+        count: 50
+        time_window: 60
+      key-auth: {}             # x-sandbox-token header (Manus 1:1)
+      prometheus: {}
+
+  # ─── Sandbox-Runtime: sandbox.{domain}/* ───
+  - id: 4
+    name: sandbox-runtime
+    uri: /*
+    hosts:
+      - "sandbox.helix12.eu"
+    upstream:
+      type: roundrobin
+      service_name: orchestrator.service.consul
+      discovery_type: dns
+      pass_host: pass
+    plugins:
+      cors:
+        allow_origins: "*"
+      limit-count:
+        count: 500
+        time_window: 60
+      jwt-auth: {}
+      prometheus: {}
+
+  # ─── WS-Server (Live-Streaming :19780) — for NX.8a ───
+  - id: 5
+    name: ws-server
+    uri: /*
+    hosts:
+      - "ws-server.helix12.eu"
+    upstream:
+      type: roundrobin
+      service_name: ws-server.service.consul
+      discovery_type: dns
+      scheme: ws
+      pass_host: pass
+    plugins:
+      jwt-auth: {}
+      prometheus: {}
+
+  # ─── MCP-Server (:8350) ───
+  - id: 6
+    name: mcp-server
+    uri: /*
+    hosts:
+      - "mcp.helix12.eu"
+    upstream:
+      type: roundrobin
+      service_name: mcp-server.service.consul
+      discovery_type: dns
+      pass_host: pass
+    plugins:
+      key-auth: {}
+      prometheus: {}
+
+# Global plugins applied to ALL routes
+global_rules:
+  - id: 1
+    plugins:
+      real-ip:
+        source: http_x_forwarded_for
+      request-id:
+        header_name: "X-Request-ID"
+        include_in_response: true
+
+# Consumers (clients with credentials)
+consumers:
+  # Default consumer for x-sandbox-token auth (Manus pattern)
+  - username: sandbox-default
+    plugins:
+      key-auth:
+        key: ""               # Set via vault: helix12/operator/sandbox-token
