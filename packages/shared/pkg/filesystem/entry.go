@@ -7,6 +7,16 @@ import (
 	"time"
 )
 
+// statTimes holds platform-independent file timestamps and ownership info
+// extracted from a *syscall.Stat_t.
+type statTimes struct {
+	atime time.Time
+	ctime time.Time
+	mtime time.Time
+	uid   uint32
+	gid   uint32
+}
+
 func GetEntryFromPath(path string) (EntryInfo, error) {
 	fileInfo, err := os.Lstat(path)
 	if err != nil {
@@ -55,11 +65,12 @@ func GetEntryInfo(path string, fileInfo os.FileInfo) EntryInfo {
 	}
 
 	if base := getBase(fileInfo.Sys()); base != nil {
-		entry.AccessedTime = toTimestamp(base.Atim)
-		entry.CreatedTime = toTimestamp(base.Ctim)
-		entry.ModifiedTime = toTimestamp(base.Mtim)
-		entry.UID = base.Uid
-		entry.GID = base.Gid
+		times := extractStatTimes(base)
+		entry.AccessedTime = times.atime
+		entry.CreatedTime = times.ctime
+		entry.ModifiedTime = times.mtime
+		entry.UID = times.uid
+		entry.GID = times.gid
 	} else if !fileInfo.ModTime().IsZero() {
 		entry.ModifiedTime = fileInfo.ModTime()
 	}
