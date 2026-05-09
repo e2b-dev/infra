@@ -293,6 +293,54 @@ module "cert" {
   common_labels     = local.common_labels
 }
 
+# ─────────────────────────── Cloud Load Balancer Module (NX.2.4) ───────────────────────────
+
+module "cloud_lb" {
+  source = "./modules/cloud-lb"
+  count  = var.enable_cloud_lb && var.enable_lets_encrypt ? 1 : 0
+
+  prefix                = var.prefix
+  lb_type               = var.lb_type
+  location              = local.region
+  algorithm             = var.lb_algorithm
+  network_id            = module.network.cloud_network_id
+  subnet_cidr           = var.cloud_subnet_cidr
+  certificate_id        = module.cert[0].hcloud_certificate_id
+  ingress_port          = local.ingress_port
+  enable_grpc           = var.lb_enable_grpc
+  enable_nomad_listener = var.lb_enable_nomad_listener
+  common_labels         = local.common_labels
+  allow_force_destroy   = var.allow_force_destroy
+
+  depends_on = [module.network, module.cert]
+}
+
+# ─────────────────────────── Redis Module (NX.2.4) ───────────────────────────
+
+module "redis" {
+  source = "./modules/redis"
+  count  = var.redis_managed ? 1 : 0
+
+  prefix              = var.prefix
+  server_type         = var.redis_server_type
+  location            = local.region
+  network_id          = module.network.cloud_network_id
+  subnet_cidr         = var.cloud_subnet_cidr
+  port                = local.redis_port
+  auth_token          = var.redis_auth_token != "" ? var.redis_auth_token : random_password.redis_auth.result
+  replica_size        = var.redis_replica_size
+  data_volume_size_gb = var.redis_data_volume_size_gb
+  common_labels       = local.common_labels
+  allow_force_destroy = var.allow_force_destroy
+
+  depends_on = [module.network]
+}
+
+resource "random_password" "redis_auth" {
+  length  = 32
+  special = false
+}
+
 # ─────────────────────────── Output: Cluster Bootstrap Info ───────────────────────────
 
 output "cluster_bootstrap" {
@@ -340,5 +388,27 @@ output "cert" {
     hcloud_certificate_id     = try(module.cert[0].hcloud_certificate_id, null)
     hcloud_certificate_name   = try(module.cert[0].hcloud_certificate_name, null)
     not_after                 = try(module.cert[0].not_after, null)
+  }
+}
+
+output "cloud_lb" {
+  description = "Cloud LB outputs (NX.2.4). null when enable_cloud_lb=false."
+  value = {
+    lb_id           = try(module.cloud_lb[0].lb_id, null)
+    lb_name         = try(module.cloud_lb[0].lb_name, null)
+    lb_ipv4         = try(module.cloud_lb[0].lb_ipv4, null)
+    lb_ipv6         = try(module.cloud_lb[0].lb_ipv6, null)
+    lb_private_ipv4 = try(module.cloud_lb[0].lb_private_ipv4, null)
+    lb_hostname     = try(module.cloud_lb[0].lb_hostname, null)
+  }
+}
+
+output "redis" {
+  description = "Redis outputs (NX.2.4). null when redis_managed=false."
+  sensitive   = true
+  value = {
+    primary_endpoint = try(module.redis[0].primary_endpoint, null)
+    replica_ips      = try(module.redis[0].replica_ips, [])
+    redis_url        = try(module.redis[0].redis_url, null)
   }
 }

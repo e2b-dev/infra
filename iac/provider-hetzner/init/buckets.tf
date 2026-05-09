@@ -28,6 +28,14 @@ locals {
     "loki-chunks",
     "snapshots",
     "cookies",
+    # NX.2.4 Storage-Extensions for Observability (NX.9 prep) + Manus-Pattern:
+    "fc-kernels",        # Firecracker-Kernels (NX.4 produces these)
+    "fc-versions",       # Firecracker-Binary-Versions
+    "fc-env-pipeline",   # Template-Build artifacts (sandbox-runtime envs)
+    "fc-busybox",        # Busybox-rootfs (minimal sandbox base)
+    "mimir-blocks",      # Mimir TSDB blocks (NX.9 metrics cold-tier)
+    "tempo-traces",      # Tempo traces (NX.9 distributed tracing)
+    "grafana-snapshots", # Grafana dashboard snapshots
   ]
 }
 

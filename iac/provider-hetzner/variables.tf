@@ -186,6 +186,53 @@ variable "cert_upload_to_hcloud" {
   default     = true
 }
 
+# ─────────────────────────── Cloud Load Balancer (NX.2.4) ───────────────────────────
+
+variable "enable_cloud_lb" {
+  type        = bool
+  description = "Provision Hetzner Cloud Load Balancer for HTTPS ingress."
+  default     = true
+}
+
+variable "lb_type" {
+  type        = string
+  description = "Hetzner Cloud LB type. lb11=10MB/s, lb21=20MB/s, lb31=40MB/s."
+  default     = "lb21"
+}
+
+variable "lb_algorithm" {
+  type        = string
+  description = "LB target algorithm. round_robin or least_connections."
+  default     = "round_robin"
+}
+
+variable "lb_enable_grpc" {
+  type        = bool
+  description = "Enable gRPC TCP-passthrough service on the LB."
+  default     = true
+}
+
+variable "lb_enable_nomad_listener" {
+  type        = bool
+  description = "Enable Nomad UI service (port 4646) on the LB."
+  default     = true
+}
+
+# ─────────────────────────── Redis (NX.2.4) ───────────────────────────
+
+variable "redis_auth_token" {
+  type        = string
+  description = "Redis AUTH password. Empty = auto-generated 32-char random."
+  default     = ""
+  sensitive   = true
+}
+
+variable "redis_data_volume_size_gb" {
+  type        = number
+  description = "Persistence volume size for Redis primary + replicas."
+  default     = 50
+}
+
 # ─────────────────────────── E2B Common Variables ───────────────────────────
 
 variable "domain_name" {
