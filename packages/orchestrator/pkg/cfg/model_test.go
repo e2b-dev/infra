@@ -1,3 +1,5 @@
+//go:build linux
+
 //nolint:paralleltest // many tests set env, which may cause issues
 package cfg
 

@@ -1,3 +1,5 @@
+//go:build linux
+
 package userfaultfd
 
 // SetTestFaultHook installs the per-fault hook atomically; pass nil to

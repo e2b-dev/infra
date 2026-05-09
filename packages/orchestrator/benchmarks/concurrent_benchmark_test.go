@@ -1,3 +1,5 @@
+//go:build linux
+
 // Concurrent sandbox creation benchmark.
 //
 // Measures how many sandboxes can be effectively resumed in parallel on a

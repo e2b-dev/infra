@@ -1,3 +1,5 @@
+//go:build linux
+
 package fc
 
 // The metadata serialization should not be changed — it is different from the field names we use here!
