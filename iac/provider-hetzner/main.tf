@@ -10,6 +10,41 @@
  * Nomad service mesh, ClickHouse analytics, Loki logs, OTEL collector.
  *
  * Architecture-Decision: ADR-0027 (helix12-maxicore-platform/docs/adr/).
+ *
+ * ═══════════════════════════════════════════════════════════════════
+ * IMPORTANT — WHY `hashicorp/aws` PROVIDER IN A 100% HETZNER STACK?
+ * ═══════════════════════════════════════════════════════════════════
+ *
+ *   The `aws` provider declared below is used EXCLUSIVELY as a generic
+ *   S3-API client to talk to Hetzner Object Storage (the native Hetzner
+ *   service for object storage, available in FSN1/NBG1/HEL1).
+ *
+ *   - NO AWS account is used or required.
+ *   - NO AWS resources are provisioned.
+ *   - NO data ever flows to AWS — every byte stays on Hetzner DE/FI.
+ *   - The `endpoints { s3 = "https://{region}.your-objectstorage.com" }`
+ *     redirects all S3-API calls to Hetzner's object storage endpoint.
+ *
+ *   This is the standard Terraform pattern for any S3-compatible storage
+ *   (Hetzner Object Storage, Wasabi, Backblaze B2, MinIO, Cloudflare R2,
+ *   Scaleway, …) because Hashicorp does not maintain dedicated providers
+ *   for each S3-compatible vendor — they all reuse `hashicorp/aws` with
+ *   a custom endpoint.
+ *
+ *   Hetzner does NOT publish a dedicated terraform-provider for Object
+ *   Storage. Using the AWS provider as an S3-client is the recommended
+ *   path documented in https://docs.hetzner.com/storage/object-storage/.
+ *
+ *   Verification:
+ *   - The `provider "aws"` block has `endpoints.s3` set to the Hetzner URL.
+ *   - The Terraform backend `backend "s3"` is similarly configured to
+ *     write state to Hetzner Object Storage, not AWS S3.
+ *   - All buckets created via `aws_s3_bucket` exist on Hetzner Object
+ *     Storage (visible in the Hetzner Console under Object Storage).
+ *
+ *   This satisfies §203 StGB and GDPR EU-sovereignty requirements
+ *   without exception.
+ * ═══════════════════════════════════════════════════════════════════
  */
 
 terraform {

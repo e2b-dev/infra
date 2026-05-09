@@ -145,6 +145,44 @@ make plan
 make apply
 ```
 
+## FAQ — Why `hashicorp/aws` Provider in a 100% Hetzner Stack?
+
+**Question:** I see `provider "aws"` and `aws_s3_bucket` in this Hetzner-stack. What gives?
+
+**Answer:** The AWS provider is used **exclusively** as a generic S3-API client to talk to **Hetzner Object Storage** (the native Hetzner service). It does NOT provision any AWS resources.
+
+| Concern | Reality |
+|---|---|
+| AWS account used? | No — endpoint override points at Hetzner |
+| AWS resources created? | No — all S3 calls go to `fsn1.your-objectstorage.com` |
+| Data flows to AWS? | No — every byte stays on Hetzner DE/FI |
+| Why not a dedicated Hetzner provider? | Hetzner does not publish one — using AWS provider with custom endpoint is the recommended pattern (see [Hetzner Object Storage docs](https://docs.hetzner.com/storage/object-storage/)) |
+| Why not MinIO instead? | MinIO would be third-party software running on a Hetzner VM. **Hetzner Object Storage is Hetzner-native** — fewer moving parts, automatic redundancy, integrated billing |
+
+This is the same pattern used industry-wide for Wasabi, Cloudflare R2, Scaleway, Backblaze B2 — all S3-compatible storage uses `hashicorp/aws` with a custom endpoint, because that one provider implements the entire S3 API surface.
+
+**Verification:**
+
+```hcl
+# In main.tf — note the endpoint override:
+provider "aws" {
+  region   = var.hetzner_object_storage_region   # fsn1, NOT us-east-1
+  endpoints {
+    s3 = "https://${var.hetzner_object_storage_region}.your-objectstorage.com"
+  }
+}
+```
+
+```hcl
+# In init/buckets.tf — `aws_s3_bucket` creates a Hetzner Object Storage bucket:
+resource "aws_s3_bucket" "buckets" {
+  bucket = "${var.bucket_prefix}-build-artifacts"
+  # → creates bucket on https://fsn1.your-objectstorage.com (Hetzner DE!)
+}
+```
+
+EU-sovereignty (§203 StGB / GDPR) is fully preserved.
+
 ## EU-Souveränität (§203 StGB / GDPR)
 
 - All compute on Hetzner DE/FI (no US providers)
