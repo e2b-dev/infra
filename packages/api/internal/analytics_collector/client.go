@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"net"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
@@ -38,7 +39,7 @@ func NewAnalytics(host, grpcAPIKey string) (*Analytics, error) {
 		})
 
 		conn, err := grpc.NewClient(
-			fmt.Sprintf("%s:443", host),
+			net.JoinHostPort(host, "443"),
 			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 			grpc.WithPerRPCCredentials(newGRPCAPIKey(grpcAPIKey)),
 			grpc.WithAuthority(host),

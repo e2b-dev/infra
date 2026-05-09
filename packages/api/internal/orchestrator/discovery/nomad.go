@@ -3,6 +3,8 @@ package discovery
 import (
 	"context"
 	"fmt"
+	"net"
+	"strconv"
 
 	nomadapi "github.com/hashicorp/nomad/api"
 
@@ -48,7 +50,7 @@ func (d *nomadDiscovery) ListNodes(ctx context.Context) ([]Node, error) {
 		out = append(out, Node{
 			ShortID:             shortID,
 			IPAddress:           n.Address,
-			OrchestratorAddress: fmt.Sprintf("%s:%d", n.Address, consts.OrchestratorAPIPort),
+			OrchestratorAddress: net.JoinHostPort(n.Address, strconv.FormatUint(uint64(consts.OrchestratorAPIPort), 10)),
 		})
 	}
 
