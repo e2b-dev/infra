@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	nomadapi "github.com/hashicorp/nomad/api"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
+	"github.com/e2b-dev/infra/packages/api/internal/clusters/discovery"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -46,7 +46,7 @@ func NewPool(
 	ctx context.Context,
 	tel *telemetry.Client,
 	db *client.Client,
-	nomad *nomadapi.Client,
+	localDiscovery discovery.Discovery,
 	queryMetricsProvider clickhouse.Clickhouse,
 	queryLogsProvider *loki.LokiQueryProvider,
 	config cfg.Config,
@@ -68,7 +68,7 @@ func NewPool(
 				tel:                  tel,
 				clusters:             clusters,
 				local:                localCluster,
-				nomad:                nomad,
+				localDiscovery:       localDiscovery,
 				queryLogsProvider:    queryLogsProvider,
 				queryMetricsProvider: queryMetricsProvider,
 			},
@@ -111,7 +111,7 @@ type clustersSyncStore struct {
 	tel                  *telemetry.Client
 	clusters             *smap.Map[*Cluster]
 	local                *queries.Cluster
-	nomad                *nomadapi.Client
+	localDiscovery       discovery.Discovery
 	queryMetricsProvider clickhouse.Clickhouse
 	queryLogsProvider    *loki.LokiQueryProvider
 	config               cfg.Config
@@ -171,7 +171,7 @@ func (d clustersSyncStore) PoolInsert(ctx context.Context, cluster queries.Clust
 
 	// Local cluster
 	if cluster.ID == consts.LocalClusterID {
-		c = newLocalCluster(context.WithoutCancel(ctx), d.tel, d.nomad, d.queryMetricsProvider, d.queryLogsProvider, d.config)
+		c = newLocalCluster(context.WithoutCancel(ctx), d.tel, d.localDiscovery, d.queryMetricsProvider, d.queryLogsProvider, d.config)
 		d.clusters.Insert(clusterID, c)
 		logger.L().Info(ctx, "Local cluster initialized successfully", logger.WithClusterID(cluster.ID))
 

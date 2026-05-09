@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	nomadapi "github.com/hashicorp/nomad/api"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
@@ -71,7 +70,7 @@ func NewCluster(
 func newLocalCluster(
 	ctx context.Context,
 	tel *telemetry.Client,
-	nomad *nomadapi.Client,
+	storeDiscovery discovery.Discovery,
 	clickhouse clickhouse.Clickhouse,
 	queryLogsProvider *loki.LokiQueryProvider,
 	config cfg.Config,
@@ -84,7 +83,6 @@ func newLocalCluster(
 		return newInstance(ctx, tel, nil, clusterID, item, fmt.Sprintf("%s:%d", item.LocalIPAddress, item.LocalInstanceApiPort), false)
 	}
 
-	storeDiscovery := discovery.NewLocalDiscovery(clusterID, nomad)
 	store := instancesSyncStore{clusterID: clusterID, instances: instances, discovery: storeDiscovery, instanceCreation: instanceCreation}
 
 	c := NewCluster(

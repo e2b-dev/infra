@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -17,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/metrics"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/discovery"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/evictor"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
@@ -47,7 +47,7 @@ type SnapshotCacheInvalidator interface {
 
 type Orchestrator struct {
 	httpClient                    *http.Client
-	nomadClient                   *nomadapi.Client
+	nodeDiscovery                 discovery.Discovery
 	sandboxStore                  *sandbox.Store
 	nodes                         *smap.Map[*nodemanager.Node]
 	placementAlgorithm            *placement.BestOfK
@@ -89,7 +89,7 @@ func New(
 	ctx context.Context,
 	config cfg.Config,
 	tel *telemetry.Client,
-	nomadClient *nomadapi.Client,
+	nodeDiscovery discovery.Discovery,
 	posthogClient *analyticscollector.PosthogClient,
 	redisClient redis.UniversalClient,
 	sqlcDB *sqlcdb.Client,
@@ -141,7 +141,7 @@ func New(
 		httpClient:           httpClient,
 		analytics:            analyticsInstance,
 		posthogClient:        posthogClient,
-		nomadClient:          nomadClient,
+		nodeDiscovery:        nodeDiscovery,
 		nodes:                smap.New[*nodemanager.Node](),
 		placementAlgorithm:   bestOfKAlgorithm,
 		featureFlagsClient:   featureFlags,
