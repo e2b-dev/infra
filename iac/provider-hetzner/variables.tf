@@ -117,6 +117,75 @@ variable "cloudflare_api_token" {
   default     = ""
 }
 
+# ─────────────────────────── DNS Records (Hetzner DNS) ───────────────────────────
+
+variable "lb_ipv4" {
+  type        = string
+  description = "Hetzner Cloud Load Balancer IPv4 (used for A-records when lb_hostname is empty). Set after NX.2.4 LB is provisioned."
+  default     = ""
+}
+
+variable "lb_ipv6" {
+  type        = string
+  description = "Hetzner Cloud Load Balancer IPv6."
+  default     = ""
+}
+
+variable "lb_hostname" {
+  type        = string
+  description = "Hetzner Cloud LB hostname (preferred over IP). Format: {lb_name}.fsn1.hetzner.cloud or similar."
+  default     = ""
+}
+
+variable "create_apex_a_record" {
+  type        = bool
+  description = "Create A/AAAA record for the apex domain (instead of just CNAME *)."
+  default     = false
+}
+
+variable "additional_dns_records" {
+  type = map(object({
+    name  = string
+    type  = string
+    value = string
+    ttl   = number
+  }))
+  description = "Additional Hetzner DNS records (MX, TXT for SPF/DKIM, custom CNAMEs)."
+  default     = {}
+}
+
+# ─────────────────────────── Let's Encrypt / ACME ───────────────────────────
+
+variable "enable_lets_encrypt" {
+  type        = bool
+  description = "If true, issue a Let's Encrypt wildcard cert via DNS-01 (requires use_cloudflare_dns=false)."
+  default     = true
+}
+
+variable "acme_email" {
+  type        = string
+  description = "Email address for Let's Encrypt account registration (required when enable_lets_encrypt=true)."
+  default     = ""
+}
+
+variable "acme_server_url" {
+  type        = string
+  description = "ACME directory URL. Default = Let's Encrypt production. Use staging for testing: https://acme-staging-v02.api.letsencrypt.org/directory."
+  default     = "https://acme-v02.api.letsencrypt.org/directory"
+}
+
+variable "cert_additional_sans" {
+  type        = list(string)
+  description = "Additional Subject Alternative Names for the wildcard cert (e.g. specific subdomains needing exact match)."
+  default     = []
+}
+
+variable "cert_upload_to_hcloud" {
+  type        = bool
+  description = "Upload the issued cert as a Hetzner Cloud Certificate (for Cloud LB HTTPS termination)."
+  default     = true
+}
+
 # ─────────────────────────── E2B Common Variables ───────────────────────────
 
 variable "domain_name" {

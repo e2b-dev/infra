@@ -99,8 +99,8 @@ iac/provider-hetzner/
 
 | Sprint | Scope | Status |
 |---|---|---|
-| NX.2.1 | Foundation: main.tf + variables + init + network + cloudflare + Makefile | ✅ this PR |
-| NX.2.2 | DNS + cert (Hetzner DNS + Let's Encrypt) | ⏸ pending |
+| NX.2.1 | Foundation: main.tf + variables + init + network + cloudflare + Makefile | ✅ merged |
+| NX.2.2 | DNS + cert (Hetzner DNS + Let's Encrypt ACME-DNS-01) | ✅ this PR |
 | NX.2.3 | compute nodepools (api/clickhouse/client/control-server) | ⏸ pending |
 | NX.2.4 | ALB + Redis + Storage extensions | ⏸ pending |
 | NX.2.5 | nomad-cluster (cluster wiring, scripts) | ⏸ pending |

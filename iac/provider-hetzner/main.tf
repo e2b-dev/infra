@@ -74,7 +74,19 @@ terraform {
       source  = "hashicorp/tls"
       version = "~> 4.0"
     }
+
+    # ACME provider for Let's Encrypt wildcard cert (DNS-01 via Hetzner DNS).
+    acme = {
+      source  = "vancluever/acme"
+      version = "~> 2.21"
+    }
   }
+}
+
+# ─────────────────────────── ACME Provider ───────────────────────────
+
+provider "acme" {
+  server_url = var.acme_server_url
 }
 
 # ─────────────────────────── Provider Configuration ───────────────────────────
@@ -216,6 +228,36 @@ module "cloudflare" {
   cloudflare_api_token = var.cloudflare_api_token
 }
 
+# ─────────────────────────── DNS Module (Hetzner DNS, primary) ───────────────────────────
+
+module "dns" {
+  source = "./modules/dns"
+  count  = var.use_cloudflare_dns ? 0 : 1
+
+  domain_root          = local.domain_root
+  domain_name          = var.domain_name
+  lb_ipv4              = var.lb_ipv4
+  lb_ipv6              = var.lb_ipv6
+  lb_hostname          = var.lb_hostname
+  create_apex_a_record = var.create_apex_a_record
+  additional_records   = var.additional_dns_records
+}
+
+# ─────────────────────────── Cert Module (Let's Encrypt Wildcard via DNS-01) ───────────────────────────
+
+module "cert" {
+  source = "./modules/cert"
+  count  = var.enable_lets_encrypt && !var.use_cloudflare_dns ? 1 : 0
+
+  prefix            = var.prefix
+  domain_name       = var.domain_name
+  acme_email        = var.acme_email
+  hetzner_dns_token = var.hetzner_dns_token
+  additional_sans   = var.cert_additional_sans
+  upload_to_hcloud  = var.cert_upload_to_hcloud
+  common_labels     = local.common_labels
+}
+
 # ─────────────────────────── Output: Cluster Bootstrap Info ───────────────────────────
 
 output "cluster_bootstrap" {
@@ -240,4 +282,28 @@ output "init" {
   description = "Init module outputs (buckets, secrets, ACL tokens)."
   sensitive   = true
   value       = module.init
+}
+
+output "dns" {
+  description = "DNS module outputs (zone id, NS, wildcard record). null when use_cloudflare_dns=true."
+  value = {
+    zone_id               = try(module.dns[0].zone_id, null)
+    zone_name             = try(module.dns[0].zone_name, null)
+    zone_ns               = try(module.dns[0].zone_ns, null)
+    wildcard_record       = try(module.dns[0].wildcard_record, null)
+    manus_pattern_records = try(module.dns[0].manus_pattern_records, {})
+    vps_wildcard_record   = try(module.dns[0].vps_wildcard_record, null)
+  }
+}
+
+output "cert" {
+  description = "Cert module outputs (cert PEM, hcloud cert id, expiry). null when enable_lets_encrypt=false."
+  sensitive   = true
+  value = {
+    common_name               = try(module.cert[0].common_name, null)
+    subject_alternative_names = try(module.cert[0].subject_alternative_names, null)
+    hcloud_certificate_id     = try(module.cert[0].hcloud_certificate_id, null)
+    hcloud_certificate_name   = try(module.cert[0].hcloud_certificate_name, null)
+    not_after                 = try(module.cert[0].not_after, null)
+  }
 }
