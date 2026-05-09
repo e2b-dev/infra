@@ -104,7 +104,7 @@ iac/provider-hetzner/
 | NX.2.3 | compute nodepools (api/clickhouse/client/control-server) | ✅ this PR |
 | NX.2.4 | Cloud LB + Redis + Storage extensions | ✅ this PR |
 | NX.2.5 | nomad-cluster (Cluster-Wiring + run-consul/run-nomad scripts, 1253L) | ✅ this PR |
-| NX.2.6 | nomad-cluster-disk-image (Packer-Hetzner) | ⏸ pending |
+| NX.2.6 | nomad-cluster-disk-image (Packer-Hetzner, 5 snapshots) | ✅ this PR |
 | NX.2.7 | nomad/ jobs + worker-cluster | ⏸ pending |
 | NX.2.8 | Integration + tests + Makefile e2e | ⏸ pending |
 
