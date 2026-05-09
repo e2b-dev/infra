@@ -104,5 +104,3 @@ func podReady(p *corev1.Pod) bool {
 
 	return false
 }
-
-
