@@ -43,6 +43,9 @@ module "otel_collector" {
   grafana_username             = var.grafana_username
   consul_token                 = var.consul_acl_token
 
+  enable_otel_router_metrics = var.enable_otel_router_metrics
+  otel_router_grpc_port      = var.otel_router_grpc_port
+
   clickhouse_username = var.clickhouse_username
   clickhouse_password = var.clickhouse_password
   clickhouse_port     = var.clickhouse_port

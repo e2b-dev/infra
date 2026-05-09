@@ -233,6 +233,9 @@ module "nomad" {
   enable_otel_router_logs = var.enable_otel_router_logs
   otel_router_http_port   = var.otel_router_http_port
 
+  enable_otel_router_metrics = var.enable_otel_router_metrics
+  otel_router_grpc_port      = var.otel_router_grpc_port
+
   db_max_open_connections      = var.db_max_open_connections
   db_min_idle_connections      = var.db_min_idle_connections
   auth_db_max_open_connections = var.auth_db_max_open_connections

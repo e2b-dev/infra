@@ -287,6 +287,8 @@ module "nomad" {
   otel_collector_resources_cpu_count = var.otel_collector_resources_cpu_count
   enable_otel_router_logs            = var.enable_otel_router_logs
   otel_router_http_port              = var.otel_router_http_port
+  enable_otel_router_metrics         = var.enable_otel_router_metrics
+  otel_router_grpc_port              = var.otel_router_grpc_port
 
   # Dashboard API
   dashboard_api_count                          = var.dashboard_api_count

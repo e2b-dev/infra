@@ -12,6 +12,9 @@ locals {
       clickhouse_port     = var.clickhouse_port
       clickhouse_host     = var.clickhouse_host
       clickhouse_database = var.clickhouse_database
+
+      enable_otel_router_metrics = var.enable_otel_router_metrics
+      otel_router_grpc_port      = var.otel_router_grpc_port
     },
   )
 
@@ -99,6 +102,18 @@ variable "clickhouse_host" {
 variable "clickhouse_database" {
   type    = string
   default = ""
+}
+
+variable "enable_otel_router_metrics" {
+  type        = bool
+  default     = false
+  description = "Enable teeing external customer metrics from otel-collector to otel-router."
+}
+
+variable "otel_router_grpc_port" {
+  type        = number
+  default     = 4320
+  description = "Local otel-router OTLP gRPC port used by otel-collector when otel-router metric teeing is enabled."
 }
 
 variable "otel_collector_config_override" {

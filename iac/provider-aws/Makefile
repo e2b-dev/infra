@@ -45,6 +45,8 @@ tf_vars := AWS_PROFILE=$(AWS_PROFILE) AWS_REGION=$(AWS_REGION) \
 	$(call tfvar, AWS_REGION) \
 	$(call tfvar, ENABLE_OTEL_ROUTER_LOGS) \
 	$(call tfvar, OTEL_ROUTER_HTTP_PORT) \
+	$(call tfvar, ENABLE_OTEL_ROUTER_METRICS) \
+	$(call tfvar, OTEL_ROUTER_GRPC_PORT) \
 	$(call tfvar, DB_MAX_OPEN_CONNECTIONS) \
 	$(call tfvar, DB_MIN_IDLE_CONNECTIONS) \
 	$(call tfvar, AUTH_DB_MAX_OPEN_CONNECTIONS) \

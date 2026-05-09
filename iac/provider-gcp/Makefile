@@ -61,6 +61,8 @@ tf_vars := \
 	$(call tfvar, OTEL_COLLECTOR_RESOURCES_MEMORY_MB) \
 	$(call tfvar, ENABLE_OTEL_ROUTER_LOGS) \
 	$(call tfvar, OTEL_ROUTER_HTTP_PORT) \
+	$(call tfvar, ENABLE_OTEL_ROUTER_METRICS) \
+	$(call tfvar, OTEL_ROUTER_GRPC_PORT) \
 	$(call tfvar, TEMPLATE_BUCKET_NAME) \
 	$(call tfvar, TEMPLATE_BUCKET_LOCATION) \
 	$(call tfvar, ENVD_TIMEOUT) \
