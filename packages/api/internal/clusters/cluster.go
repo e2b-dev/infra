@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -80,7 +82,7 @@ func newLocalCluster(
 	instances := smap.New[*Instance]()
 	instanceCreation := func(ctx context.Context, item discovery.Item) (*Instance, error) {
 		// For local cluster we are doing direct connection to instance IP and API port and without additional cluster auth.
-		return newInstance(ctx, tel, nil, clusterID, item, fmt.Sprintf("%s:%d", item.LocalIPAddress, item.LocalInstanceApiPort), false)
+		return newInstance(ctx, tel, nil, clusterID, item, net.JoinHostPort(item.LocalIPAddress, strconv.FormatUint(uint64(item.LocalInstanceApiPort), 10)), false)
 	}
 
 	store := instancesSyncStore{clusterID: clusterID, instances: instances, discovery: storeDiscovery, instanceCreation: instanceCreation}

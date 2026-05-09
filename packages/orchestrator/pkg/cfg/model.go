@@ -2,9 +2,11 @@ package cfg
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -108,7 +110,7 @@ func (c Config) NodeAddress() *string {
 		return nil
 	}
 
-	addr := fmt.Sprintf("%s:%d", c.NodeIP, c.GRPCPort)
+	addr := net.JoinHostPort(c.NodeIP, strconv.FormatUint(uint64(c.GRPCPort), 10))
 
 	return &addr
 }
