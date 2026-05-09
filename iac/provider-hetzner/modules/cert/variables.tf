@@ -31,7 +31,7 @@ variable "additional_sans" {
 
 variable "min_days_remaining" {
   type        = number
-  description = "Re-issue when fewer days remain until expiry. Let's Encrypt certs are valid 90d; default 30 = renew at 60 days remaining."
+  description = "Re-issue when fewer days remain until expiry. Let's Encrypt certs are valid 90d default 30 = renew at 60 days remaining."
   default     = 30
 }
 
