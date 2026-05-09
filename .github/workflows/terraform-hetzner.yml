@@ -1,0 +1,37 @@
+name: Terraform Hetzner Validate
+
+on:
+  pull_request:
+    paths:
+      - 'iac/provider-hetzner/**'
+      - '.github/workflows/terraform-hetzner.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'iac/provider-hetzner/**'
+
+jobs:
+  terraform-validate:
+    name: terraform fmt + validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: iac/provider-hetzner
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.0
+          terraform_wrapper: false
+
+      - name: terraform fmt -check
+        run: terraform fmt -check -recursive
+
+      - name: terraform init (no backend)
+        run: terraform init -backend=false -input=false
+
+      - name: terraform validate
+        run: terraform validate

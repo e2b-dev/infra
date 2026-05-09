@@ -1,4 +1,4 @@
-.PHONY: help init plan apply destroy validate fmt fmt-check
+.PHONY: help init plan apply destroy validate fmt fmt-check e2e-test test-modules
 
 # Hetzner-Provider Terraform Workflow Helpers
 #
@@ -57,3 +57,29 @@ apply:
 
 destroy:
 	terraform destroy
+
+# ─────────────────────────── NX.2.8 E2E-Tests ───────────────────────────
+
+e2e-test:
+	@echo "═══ NX.2.8 E2E-Test Pipeline ═══"
+	@echo ""
+	@echo "[1/3] terraform fmt -check -recursive..."
+	terraform fmt -check -recursive
+	@echo ""
+	@echo "[2/3] terraform init -backend=false (no remote state)..."
+	rm -rf .terraform/
+	terraform init -backend=false -input=false -upgrade
+	@echo ""
+	@echo "[3/3] terraform validate..."
+	terraform validate
+	@echo ""
+	@echo "✅ Hetzner-Provider NX.2.1-NX.2.7 alle Module validate sauber."
+
+test-modules:
+	@echo "═══ Standalone Module fmt-check ═══"
+	@for d in init modules/network modules/cloudflare modules/dns modules/cert modules/cloud-lb modules/redis modules/nodepool-api modules/nodepool-clickhouse modules/nodepool-client modules/nodepool-control-server nomad-cluster nomad-cluster/worker-cluster; do \
+		echo "→ $$d"; \
+		(cd "$$d" && terraform fmt -check) || exit 1; \
+	done
+	@echo ""
+	@echo "✅ All modules pass fmt-check."

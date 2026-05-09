@@ -1,6 +1,6 @@
 # Hetzner Provider — E2B Infrastructure on Hetzner Cloud + Robot
 
-> **Status:** NX.2.1 Foundation complete — terraform validate passes
+> **Status:** NX.2 KOMPLETT (NX.2.1-NX.2.8) — alle 13 Module validate ✅, GHA CI workflow live
 > **License:** Apache-2.0 (inherits from upstream `e2b-dev/infra`)
 > **Maintainer:** HELIX_12 Labs / MaxiCore
 > **EU-Sovereign:** all resources on Hetzner Cloud (DE/FI), no US providers
@@ -106,7 +106,7 @@ iac/provider-hetzner/
 | NX.2.5 | nomad-cluster (Cluster-Wiring + run-consul/run-nomad scripts, 1253L) | ✅ this PR |
 | NX.2.6 | nomad-cluster-disk-image (Packer-Hetzner, 5 snapshots) | ✅ this PR |
 | NX.2.7 | nomad-cluster/worker-cluster (secondary clusters); job-deployment deferred | ✅ this PR |
-| NX.2.8 | Integration + tests + Makefile e2e | ⏸ pending |
+| NX.2.8 | Integration + e2e-test Makefile + GHA CI workflow | ✅ this PR |
 
 ## Quick Start
 
