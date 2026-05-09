@@ -1,103 +1,163 @@
-# Hetzner Provider Module for E2B Infrastructure
+# Hetzner Provider — E2B Infrastructure on Hetzner Cloud + Robot
 
-> **Status:** WIP (MX.5 Sprint, 2026-05-09)
-> **License:** Apache-2.0 (Inherits from upstream e2b-dev/infra)
+> **Status:** NX.2.1 Foundation complete — terraform validate passes
+> **License:** Apache-2.0 (inherits from upstream `e2b-dev/infra`)
 > **Maintainer:** HELIX_12 Labs / MaxiCore
+> **EU-Sovereign:** all resources on Hetzner Cloud (DE/FI), no US providers
 
 ## Overview
 
-This module adapts the E2B infrastructure to run on **Hetzner Cloud + Hetzner Robot**.
+This provider adapts `e2b-dev/infra` to run on Hetzner — a 1:1 functional replacement for `provider-aws` and `provider-gcp` with Hetzner-Native-First strategy. Manus-pattern preserved (Firecracker MicroVMs, Nomad/Consul mesh, ClickHouse/Loki/OTEL observability).
 
-Unlike GCP or AWS, Hetzner offers:
-- **Hetzner Cloud** — virtualized servers (analog AWS EC2)
-- **Hetzner Robot** — bare-metal dedicated servers (NO direct equivalent in AWS/GCP)
-- **vSwitch** — VLAN-based private networking between Cloud + Robot (analog AWS VPC)
-- **Hetzner Cloud Networks** — private subnets
+The reference Manus deployment runs on AWS US-East-2; this provider provides the EU-sovereign equivalent.
 
-The Hetzner advantage for VMM-Hosts: **Robot bare-metal** for direct KVM access without nested virtualization overhead.
+## Hetzner-Native-First Strategy
+
+Wherever Hetzner offers a native service, we use it (no third-party deps):
+
+| Service | Hetzner-Native | Used For |
+|---------|---------------|----------|
+| Compute | Hetzner Cloud Server (`hcloud_server`) | API, ClickHouse, Client (Firecracker hosts), Control-Server |
+| Bare-metal | Hetzner Robot Server | PRIMARY (high-performance VMM host) |
+| Network | Hetzner Cloud Network + Subnets | VPC equivalent |
+| L2 bridge | Hetzner vSwitch (VLAN 4000) | Cloud↔Robot private routing |
+| Firewall | Hetzner Cloud Firewall | Public-ingress, cluster-internal, sandbox-egress |
+| LB | Hetzner Cloud Load Balancer | HTTPS ingress (replaces AWS ALB) |
+| Storage | Hetzner Object Storage (S3-compatible) | tfstate, build-artifacts, snapshots, ClickHouse cold-tier, Loki chunks, browser cookies |
+| Snapshots | Hetzner Cloud Snapshot | VM image family (replaces AWS AMI) |
+| Volumes | Hetzner Cloud Volume | Persistent block storage |
+| DNS | Hetzner DNS API | Primary DNS (Cloudflare available as legacy migration path) |
+| SSL | Hetzner SSL-Certs + Let's Encrypt | TLS termination |
+
+Hetzner does **not** offer managed Redis or managed PostgreSQL — both run as Cloud Servers in the cluster (Postgres on Operator host, existing).
 
 ## Architecture
 
-```
+```text
 [Hetzner Cloud Network 10.0.0.0/8]
 ├── Cloud Subnet 10.0.1.0/24
-│   ├── Operator (10.0.1.4) — Backend + Vault
+│   ├── Operator (10.0.1.4) — Backend + Vault + Sharky
 │   ├── Frontend (10.0.1.2) — Self-hosted Next.js
-│   ├── Auth (10.0.1.3) — Zitadel
+│   ├── Auth     (10.0.1.3) — Zitadel
 │   └── VPS-Agent lexi (10.0.1.5)
-├── vSwitch Subnet 10.10.0.0/24 (VLAN 4000)
-│   ├── PRIMARY (10.10.0.3) — Robot, VMM-Host (Firecracker pool)
-│   └── (FUTURE: more Robot VMM-Hosts for multi-region scale)
+└── vSwitch Subnet 10.10.0.0/24 (VLAN 4000)
+    ├── PRIMARY (10.10.0.3) — Robot, VMM-Host (Firecracker pool)
+    └── (future) more Robot VMM-Hosts for multi-region scale
 ```
 
-## Manus-Pattern Mapping
+## Manus 1:1 Mapping (Verified)
 
-Per `manus-wiki/MEGA_FORENSIK_REPORT.md` Sec 4 Sandbox + M64-M67:
+Every resource below is derived from `manus-wiki/MEGA_FORENSIK_REPORT.md` Sec 4 (Sandbox+VMM) and `manus-wiki/manus-4/MISSED_FORENSIK_AUDIT_MANUS4.md` M64-M67.
 
-| Manus (AWS-East-2) | MaxiCore (Hetzner-fsn1) |
-|---------------------|--------------------------|
-| AWS VPC | Hetzner Cloud Network 10.0.0.0/8 |
-| AWS EC2 sandbox-host | Hetzner Robot PRIMARY |
-| AWS PrivateLink | Hetzner vSwitch (VLAN 4000) |
-| `e2b-startup.sh` trampoline | identisch (universal pattern) |
-| MAC `02:fc:00:00:00:05` | identisch (Firecracker default) |
-| Network `169.254.0.21/30` | identisch (link-local, universal) |
-| AWS S3 vida-private | MinIO (auf Operator) ODER Hetzner Object Storage |
+| Manus (AWS US-East-2) | MaxiCore (Hetzner FSN1) | Status |
+|---|---|---|
+| AWS VPC | Hetzner Cloud Network 10.0.0.0/8 | ✅ NX.2.1 |
+| AWS Security Group (cluster) | Hetzner Cloud Firewall (cluster-internal) | ✅ NX.2.1 |
+| AWS Security Group (public) | Hetzner Cloud Firewall (public-ingress) | ✅ NX.2.1 |
+| AWS Security Group (sandbox) | Hetzner Cloud Firewall (sandbox-egress) | ✅ NX.2.1 |
+| AWS S3 (vida-private) | Hetzner Object Storage (`{prefix}-build-artifacts`) | ✅ NX.2.1 |
+| AWS S3 (cluster-logs) | Hetzner Object Storage (`{prefix}-cluster-logs`) | ✅ NX.2.1 |
+| AWS S3 (snapshots) | Hetzner Object Storage (`{prefix}-snapshots`) | ✅ NX.2.1 |
+| AWS S3 (browser-cookie-prod R2) | Hetzner Object Storage (`{prefix}-cookies`) | ✅ NX.2.1 |
+| AWS Secrets Manager | Hetzner Object Storage object (encrypted) | ✅ NX.2.1 |
+| AWS EC2 (orchestrator/api) | Hetzner Cloud Server CPX41 (`nodepool-api`) | ⏸ NX.2.4 |
+| AWS EC2 (clickhouse) | Hetzner Cloud Server CPX41 (`nodepool-clickhouse`) | ⏸ NX.2.4 |
+| AWS EC2 (firecracker host) | Hetzner Robot bare-metal (PRIMARY) | ⏸ NX.2.4 |
+| AWS ALB | Hetzner Cloud Load Balancer | ⏸ NX.2.5 |
+| AWS ElastiCache (Redis) | Hetzner Cloud Server (Redis container or Nomad job) | ⏸ NX.2.5 |
+| AWS Route53 | Hetzner DNS API + Cloudflare (legacy) | ⏸ NX.2.3 |
+| AWS ACM (TLS cert) | Let's Encrypt + Hetzner SSL-cert | ⏸ NX.2.3 |
+| AWS AMI (Packer) | Hetzner Cloud Snapshot (Packer-Hetzner) | ⏸ NX.2.6 |
+| AWS Autoscaling Group | Nomad autoscaler + Hetzner Cloud Server pools | ⏸ NX.2.7 |
+| `e2b-startup.sh` trampoline | identical (universal cloud-init script) | ⏸ NX.2.4 |
+| MAC `02:fc:00:00:00:05` | identical (Firecracker default) | ✅ universal |
+| Network `169.254.0.21/30` | identical (link-local, universal) | ✅ universal |
 
 ## Module Structure
 
-```
+```text
 iac/provider-hetzner/
-├── init/                  # Bootstrap module (similar to provider-aws/init)
+├── main.tf                   # Provider definition + backend (Hetzner Object Storage)
+├── variables.tf              # All input variables
+├── Makefile                  # Workflow helpers (init/validate/plan/apply)
+├── README.md                 # This file
+├── init/                     # ✅ NX.2.1 — Bootstrap (buckets, secrets, ACL tokens)
 ├── modules/
-│   ├── network/           # Cloud Network + vSwitch + Subnets
-│   ├── compute-cloud/     # Hetzner Cloud Server (e.g. orchestrator-control-plane)
-│   ├── compute-robot/     # Hetzner Robot Server (VMM-Hosts mit KVM bare-metal)
-│   ├── storage/           # MinIO (S3-compatible, EU-self-hosted)
-│   └── firewall/          # Cloud Firewall + iptables-rules
-└── scripts/
-    └── cloud-init/        # cloud-init-templates (analog Manus e2b-startup.sh)
+│   ├── network/              # ✅ NX.2.1 — Cloud Network, Subnets, Cloud Firewalls
+│   ├── cloudflare/           # ✅ NX.2.1 — Legacy DNS migration path
+│   ├── nodepool-api/         # ⏸ NX.2.4
+│   ├── nodepool-clickhouse/  # ⏸ NX.2.4
+│   ├── nodepool-client/      # ⏸ NX.2.4 (Firecracker Cloud Server pool)
+│   ├── nodepool-control-server/ # ⏸ NX.2.4
+│   └── redis/                # ⏸ NX.2.5
+├── nomad-cluster/            # ⏸ NX.2.6 — Cluster wiring + Nomad/Consul scripts
+├── nomad-cluster-disk-image/ # ⏸ NX.2.6 — Packer-Hetzner snapshot build
+└── nomad/                    # ⏸ NX.2.7 — Nomad job deployments
 ```
 
-## Required Inputs
+## NX.2 Sub-Sprint Plan (Anti-Skeleton, each PR fully validates)
 
-```hcl
-variable "hetzner_api_token"        {}  # Cloud-API
-variable "hetzner_robot_user"       {}
-variable "hetzner_robot_password"   {}
-variable "hetzner_ssh_key_id"       {}
-variable "hetzner_network_zone"     { default = "eu-central" }
-variable "hetzner_datacenter"       { default = "fsn1-dc14" }
-variable "primary_robot_id"         {}  # Existing Robot Server ID
+| Sprint | Scope | Status |
+|---|---|---|
+| NX.2.1 | Foundation: main.tf + variables + init + network + cloudflare + Makefile | ✅ this PR |
+| NX.2.2 | DNS + cert (Hetzner DNS + Let's Encrypt) | ⏸ pending |
+| NX.2.3 | compute nodepools (api/clickhouse/client/control-server) | ⏸ pending |
+| NX.2.4 | ALB + Redis + Storage extensions | ⏸ pending |
+| NX.2.5 | nomad-cluster (cluster wiring, scripts) | ⏸ pending |
+| NX.2.6 | nomad-cluster-disk-image (Packer-Hetzner) | ⏸ pending |
+| NX.2.7 | nomad/ jobs + worker-cluster | ⏸ pending |
+| NX.2.8 | Integration + tests + Makefile e2e | ⏸ pending |
+
+## Quick Start
+
+### 1. Pre-requisites
+
+- Hetzner Cloud account with API token (read+write)
+- Hetzner Object Storage credentials (S3-compatible)
+- Hetzner DNS API token (for non-Cloudflare path)
+- For Robot integration: Hetzner Robot account + vSwitch ID + existing Robot server
+- Pre-create the tfstate bucket: `maxicore-tfstate` (via Hetzner Console)
+
+### 2. Configuration
+
+```bash
+cp ../../.env.hetzner.template ../../.env.hetzner
+# Fill in TF_VAR_* values
+source ../../.env.hetzner
 ```
 
-## Provider Dependencies
+### 3. Initialize
 
-```hcl
-required_providers {
-  hcloud = {
-    source  = "hetznercloud/hcloud"
-    version = "~> 1.45"
-  }
-  hetznerdns = {
-    source  = "germanbrew/hetznerdns"
-    version = "~> 3.0"
-  }
-}
+```bash
+make init
 ```
 
-For Robot-Server (no native Terraform provider): use `null_resource` + `remote-exec` provisioner.
+### 4. Validate + Plan
 
-## EU-Souveränität
+```bash
+make validate
+make plan
+```
 
-- All compute on Hetzner DE/FI (NICHT US-Cloud!)
-- Storage MinIO (Hetzner-hosted) statt Cloudflare R2 (US)
-- DNS via Cloudflare (only DNS, no compute) ODER Hetzner DNS
-- Postgres auf Operator (existing, Vault-integrated)
+### 5. Apply (after review)
+
+```bash
+make apply
+```
+
+## EU-Souveränität (§203 StGB / GDPR)
+
+- All compute on Hetzner DE/FI (no US providers)
+- All storage on Hetzner Object Storage (no Cloudflare R2 / no AWS S3)
+- DNS via Hetzner DNS API (no Cloudflare for new zones)
+- TLS via Let's Encrypt (no AWS ACM)
+- No data exits EU jurisdiction at any layer
 
 ## Cross-References
 
-- `manus-wiki/MEGA_FORENSIK_REPORT.md` Sec 4 (Sandbox+VMM)
-- `manus-wiki/manus-4/MISSED_FORENSIK_AUDIT_MANUS4.md` M64-M67
 - `helix12-maxicore-platform/docs/adr/ADR-0026-e2b-firecracker-pattern.md`
 - `helix12-maxicore-platform/docs/adr/ADR-0027-hetzner-provider-strategy.md` (this sprint)
+- `helix12-maxicore-platform/docs/forensik/STATUS_NX_2_1_HETZNER_FOUNDATION.md`
+- `manus-wiki/MEGA_FORENSIK_REPORT.md` (Sec 4 Sandbox+VMM)
+- `manus-wiki/manus-4/MISSED_FORENSIK_AUDIT_MANUS4.md` (M64-M67)
+- Upstream `e2b-dev/infra` `iac/provider-aws/` and `iac/provider-gcp/`
