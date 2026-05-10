@@ -1,6 +1,7 @@
 package nodemanager
 
 import (
+	"crypto/tls"
 	"fmt"
 	"time"
 
@@ -8,7 +9,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -25,7 +26,7 @@ var OrchestratorToApiNodeStateMapper = map[orchestratorinfo.ServiceInfoStatus]ap
 
 func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string) (*clusters.GRPCClient, error) {
 	conn, err := grpc.NewClient(host,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})),
 		grpc.WithStatsHandler(
 			otelgrpc.NewClientHandler(
 				otelgrpc.WithTracerProvider(tracerProvider),
