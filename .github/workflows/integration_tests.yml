@@ -114,12 +114,13 @@ jobs:
 
       - name: Upload test results to Codecov
         if: ${{ !cancelled() && env.CODECOV_TOKEN != '' && hashFiles('tests/integration/test-results.xml') != '' }}
-        uses: codecov/test-results-action@v1
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: tests/integration/test-results.xml
           flags: integration
           disable_search: true
+          report_type: test_results
 
       - name: Upload Service Logs
         if: ${{ always() && inputs.publish == true }}
