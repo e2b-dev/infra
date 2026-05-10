@@ -25,7 +25,7 @@ func WrapWithRecovery(ctx context.Context, h nfs.Handler) *Handler {
 }
 
 func (h Handler) Mount(ctx context.Context, conn net.Conn, request nfs.MountRequest) (nfs.MountStatus, billy.Filesystem, []nfs.AuthFlavor) {
-	defer h.tryRecovery(ctx, "Mount")
+	defer tryRecovery(ctx, "Mount")
 	s, fs, auth := h.inner.Mount(ctx, conn, request)
 	fs = wrapFS(ctx, fs)
 
@@ -33,7 +33,7 @@ func (h Handler) Mount(ctx context.Context, conn net.Conn, request nfs.MountRequ
 }
 
 func (h Handler) Change(ctx context.Context, filesystem billy.Filesystem) billy.Change {
-	defer h.tryRecovery(ctx, "Change")
+	defer tryRecovery(ctx, "Change")
 	c := h.inner.Change(ctx, filesystem)
 
 	return wrapChange(ctx, c)
@@ -46,7 +46,7 @@ func (h Handler) FSStat(ctx context.Context, filesystem billy.Filesystem, stat *
 }
 
 func (h Handler) ToHandle(ctx context.Context, fs billy.Filesystem, path []string) []byte {
-	defer h.tryRecovery(ctx, "ToHandle")
+	defer tryRecovery(ctx, "ToHandle")
 
 	return h.inner.ToHandle(ctx, fs, path)
 }
@@ -64,17 +64,16 @@ func (h Handler) InvalidateHandle(ctx context.Context, filesystem billy.Filesyst
 }
 
 func (h Handler) HandleLimit() int {
-	defer h.tryRecovery(h.ctx, "HandleLimit")
+	defer tryRecovery(h.ctx, "HandleLimit")
 
 	return h.inner.HandleLimit()
 }
 
-func (h Handler) tryRecovery(ctx context.Context, name string) {
-	tryRecovery(ctx, name)
-}
-
+// tryRecovery must be called via `defer` directly so that recover() runs in
+// the deferred function frame. Nesting it inside another helper would cause
+// recover() to return nil and the panic would propagate.
 func tryRecovery(ctx context.Context, name string) {
-	if r := recover(); r != nil { //nolint:revive // tryRecovery is always called via defer
+	if r := recover(); r != nil { //nolint:revive // always called via defer
 		logger.L().Error(ctx, fmt.Sprintf("panic in %q nfs handler", name),
 			zap.Any("panic", r),
 			zap.Stack("stack"),
