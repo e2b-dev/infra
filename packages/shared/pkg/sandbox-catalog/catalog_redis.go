@@ -93,6 +93,20 @@ func (c *RedisSandboxCatalog) AcquireTrafficKeepalive(ctx context.Context, sandb
 	return acquired, nil
 }
 
+func (c *RedisSandboxCatalog) ReleaseTrafficKeepalive(ctx context.Context, sandboxID string) error {
+	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-traffic-keepalive-release")
+	defer span.End()
+
+	ctx, ctxCancel := context.WithTimeout(spanCtx, catalogRedisTimeout)
+	defer ctxCancel()
+
+	if err := c.redisClient.Del(ctx, c.getTrafficKeepaliveKey(sandboxID)).Err(); err != nil {
+		return fmt.Errorf("failed to release traffic keepalive semaphore: %w", err)
+	}
+
+	return nil
+}
+
 func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID string, executionID string) error {
 	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-delete")
 	defer span.End()

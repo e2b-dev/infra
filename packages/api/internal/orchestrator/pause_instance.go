@@ -135,6 +135,7 @@ func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) quer
 			Version:      types.PausedSandboxConfigVersion,
 			Network:      sbx.Network,
 			Lifecycle:    &sbx.Lifecycle,
+			AutoResume:   sbx.Lifecycle.AutoResume,
 			VolumeMounts: sbx.VolumeMounts,
 		},
 		OriginNodeID:    node.ID,

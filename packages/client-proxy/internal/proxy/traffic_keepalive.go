@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sandboxroutingcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
@@ -37,6 +39,15 @@ func trafficKeepaliveEnabled(info *sandboxroutingcatalog.SandboxInfo) bool {
 	return info.Keepalive.Traffic != nil && info.Keepalive.Traffic.Enabled
 }
 
+func releaseTrafficKeepaliveOnFailure(err error) bool {
+	switch status.Code(err) {
+	case codes.InvalidArgument, codes.Unauthenticated, codes.PermissionDenied, codes.FailedPrecondition:
+		return true
+	default:
+		return false
+	}
+}
+
 func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, catalogStore sandboxroutingcatalog.SandboxesCatalog, info *sandboxroutingcatalog.SandboxInfo) {
 	if m.resumer == nil || !trafficKeepaliveEnabled(info) {
 		return
@@ -67,6 +78,11 @@ func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID st
 		err := m.resumer.KeepAlive(refreshCtx, sandboxID, info.TeamID, sandboxPort, trafficAccessToken, envdAccessToken)
 		if err != nil {
 			logger.L().Warn(refreshCtx, "traffic keepalive refresh failed", logger.WithSandboxID(sandboxID), zap.Error(err))
+			if releaseTrafficKeepaliveOnFailure(err) {
+				if releaseErr := catalogStore.ReleaseTrafficKeepalive(refreshCtx, sandboxID); releaseErr != nil {
+					logger.L().Warn(refreshCtx, "traffic keepalive release failed", logger.WithSandboxID(sandboxID), zap.Error(releaseErr))
+				}
+			}
 		} else {
 			logger.L().Info(refreshCtx, "traffic keepalive refreshed sandbox", logger.WithSandboxID(sandboxID))
 		}

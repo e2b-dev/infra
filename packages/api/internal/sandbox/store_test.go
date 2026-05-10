@@ -270,6 +270,40 @@ func TestSandboxUnmarshalJSONLegacyLifecycleFields(t *testing.T) {
 	assert.Nil(t, sbx.Lifecycle.Keepalive)
 }
 
+func TestSandboxMarshalJSONWritesLegacyLifecycleFields(t *testing.T) {
+	t.Parallel()
+
+	autoResume := &types.SandboxAutoResumeConfig{
+		Policy:  types.SandboxAutoResumeAny,
+		Timeout: 120,
+	}
+	sbx := sandbox.Sandbox{
+		SandboxID: "sandbox",
+		Lifecycle: types.SandboxLifecycleConfig{
+			AutoPause:  true,
+			AutoResume: autoResume,
+		},
+	}
+
+	data, err := json.Marshal(sbx)
+	require.NoError(t, err)
+
+	var raw struct {
+		AutoPause  bool                           `json:"autoPause"`
+		AutoResume *types.SandboxAutoResumeConfig `json:"autoResume,omitempty"`
+		Lifecycle  types.SandboxLifecycleConfig   `json:"lifecycle"`
+	}
+	err = json.Unmarshal(data, &raw)
+	require.NoError(t, err)
+
+	assert.True(t, raw.AutoPause)
+	require.NotNil(t, raw.AutoResume)
+	assert.Equal(t, types.SandboxAutoResumeAny, raw.AutoResume.Policy)
+	assert.True(t, raw.Lifecycle.AutoPause)
+	require.NotNil(t, raw.Lifecycle.AutoResume)
+	assert.Equal(t, types.SandboxAutoResumeAny, raw.Lifecycle.AutoResume.Policy)
+}
+
 func TestAdd_AlreadyInCache(t *testing.T) {
 	t.Parallel()
 	t.Run("newlyCreated=true - only AsyncNewlyCreatedSandbox called when already in cache", func(t *testing.T) {

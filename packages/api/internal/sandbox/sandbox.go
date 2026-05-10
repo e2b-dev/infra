@@ -128,6 +128,19 @@ func (s *Sandbox) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func (s Sandbox) MarshalJSON() ([]byte, error) {
+	type sandboxAlias Sandbox
+	return json.Marshal(struct {
+		sandboxAlias
+		AutoPause  bool                           `json:"autoPause"`
+		AutoResume *types.SandboxAutoResumeConfig `json:"autoResume,omitempty"`
+	}{
+		sandboxAlias: sandboxAlias(s),
+		AutoPause:    s.Lifecycle.AutoPause,
+		AutoResume:   s.Lifecycle.AutoResume,
+	})
+}
+
 func (s Sandbox) ToAPISandbox() *api.Sandbox {
 	return &api.Sandbox{
 		SandboxID:          s.SandboxID,

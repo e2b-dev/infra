@@ -72,6 +72,7 @@ type resumeCall struct {
 type asyncRecordingResumer struct {
 	calls chan resumeCall
 	block <-chan struct{}
+	err   error
 }
 
 func (r *asyncRecordingResumer) Init(_ context.Context) {}
@@ -126,7 +127,7 @@ func (r *asyncRecordingResumer) KeepAlive(ctx context.Context, sandboxID string,
 		}
 	}
 
-	return nil
+	return r.err
 }
 
 func requireResumerCall(t *testing.T, calls <-chan resumeCall) resumeCall {
@@ -440,6 +441,48 @@ func TestTrafficKeepaliveManager_SkipsWhenCatalogTimerHeld(t *testing.T) {
 	t.Parallel()
 
 	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
+	trafficKeepalive := newTrafficKeepaliveManager(resumer)
+	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
+	info := &sandboxroutingcatalog.SandboxInfo{
+		TeamID:    "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		Keepalive: testKeepalive(),
+	}
+
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
+	requireResumerCall(t, resumer.calls)
+
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
+	requireNoResumerCall(t, resumer.calls)
+}
+
+func TestTrafficKeepaliveManager_ReleasesThrottleAfterValidationFailure(t *testing.T) {
+	t.Parallel()
+
+	resumer := &asyncRecordingResumer{
+		calls: make(chan resumeCall, 2),
+		err:   status.Error(codes.PermissionDenied, "invalid traffic token"),
+	}
+	trafficKeepalive := newTrafficKeepaliveManager(resumer)
+	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
+	info := &sandboxroutingcatalog.SandboxInfo{
+		TeamID:    "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		Keepalive: testKeepalive(),
+	}
+
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "bad-token", "envd-token", c, info)
+	requireResumerCall(t, resumer.calls)
+
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
+	requireResumerCall(t, resumer.calls)
+}
+
+func TestTrafficKeepaliveManager_KeepsThrottleAfterInternalFailure(t *testing.T) {
+	t.Parallel()
+
+	resumer := &asyncRecordingResumer{
+		calls: make(chan resumeCall, 2),
+		err:   status.Error(codes.Internal, "api unavailable"),
+	}
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
 	info := &sandboxroutingcatalog.SandboxInfo{

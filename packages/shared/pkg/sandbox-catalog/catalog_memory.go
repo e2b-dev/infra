@@ -73,6 +73,15 @@ func (c *MemorySandboxCatalog) AcquireTrafficKeepalive(_ context.Context, sandbo
 	return true, nil
 }
 
+func (c *MemorySandboxCatalog) ReleaseTrafficKeepalive(_ context.Context, sandboxID string) error {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	delete(c.trafficKeepalives, sandboxID)
+
+	return nil
+}
+
 func (c *MemorySandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID string, executionID string) error {
 	_, span := tracer.Start(ctx, "sandbox-catalog-delete")
 	defer span.End()
