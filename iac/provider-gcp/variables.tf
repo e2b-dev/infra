@@ -417,6 +417,12 @@ variable "redis_shard_count" {
   default = 1
 }
 
+variable "gcp_redis_node_type" {
+  type        = string
+  description = "The node type for managed GCP Redis/Valkey. Can be set via TF_VAR_gcp_redis_node_type or GCP_REDIS_NODE_TYPE env var."
+  default     = "STANDARD_SMALL"
+}
+
 variable "gcp_redis_engine_version" {
   type        = string
   description = "The engine version for managed GCP Redis/Valkey. Can be set via TF_VAR_gcp_redis_engine_version or GCP_REDIS_ENGINE_VERSION env var."
