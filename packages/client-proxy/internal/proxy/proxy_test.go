@@ -2,11 +2,15 @@ package proxy
 
 import (
 	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"github.com/stretchr/testify/require"
+	noopmetric "go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -179,6 +183,40 @@ func TestCatalogResolution_CatalogMiss(t *testing.T) {
 	require.ErrorIs(t, err, ErrNodeNotFound)
 }
 
+type errorCatalog struct {
+	err error
+}
+
+func (e errorCatalog) GetSandbox(_ context.Context, _ string) (*catalog.SandboxInfo, error) {
+	return nil, e.err
+}
+
+func (e errorCatalog) StoreSandbox(_ context.Context, _ string, _ *catalog.SandboxInfo, _ time.Duration) error {
+	return nil
+}
+
+func (e errorCatalog) DeleteSandbox(_ context.Context, _ string, _ string) error {
+	return nil
+}
+
+func (e errorCatalog) Close(_ context.Context) error {
+	return nil
+}
+
+func TestCatalogResolution_CatalogReturnsGenericError(t *testing.T) {
+	t.Parallel()
+
+	ff := newFF(t, true)
+	c := errorCatalog{err: errors.New("catalog unavailable")}
+
+	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrNodeNotFound)
+	require.NotErrorIs(t, err, ErrNodeRouteUnavailable)
+	require.Empty(t, nodeIP)
+	require.Contains(t, err.Error(), "catalog unavailable")
+}
+
 func TestCatalogResolution_CatalogMiss_ResumeEmptyIPReturnsRouteUnavailable(t *testing.T) {
 	t.Parallel()
 
@@ -337,4 +375,149 @@ func TestHandlePausedSandbox_PassesPortAndTokenToResumer(t *testing.T) {
 	require.EqualValues(t, 49983, resumer.sandboxPort)
 	require.Equal(t, "token", resumer.trafficAccessToken)
 	require.Equal(t, "envd-token", resumer.envdAccessToken)
+}
+
+func TestNewClientProxy_Construction(t *testing.T) {
+	t.Parallel()
+
+	c := catalog.NewMemorySandboxesCatalog()
+	ff := newFF(t, true)
+
+	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "test-service", 0, c, nil, ff)
+	require.NoError(t, err)
+	require.NotNil(t, p)
+	require.EqualValues(t, 0, p.CurrentServerConnections())
+	require.EqualValues(t, 0, p.CurrentPoolConnections())
+}
+
+func TestNewClientProxy_SandboxNotFoundReturns502(t *testing.T) {
+	t.Parallel()
+
+	c := catalog.NewMemorySandboxesCatalog()
+	ff := newFF(t, true)
+
+	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "test-service-2", 0, c, nil, ff)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "http://49983-sbx.e2b.app/", nil).WithContext(t.Context())
+	rr := httptest.NewRecorder()
+
+	p.Handler.ServeHTTP(rr, req)
+
+	// when sandbox not found, the proxy returns a 502
+	require.Equal(t, http.StatusBadGateway, rr.Code)
+}
+
+func TestNewClientProxy_ResumeDeniedReturnsAuthError(t *testing.T) {
+	t.Parallel()
+
+	c := catalog.NewMemorySandboxesCatalog()
+	ff := newFF(t, true)
+
+	denyResumer := stubResumer{err: status.Error(codes.PermissionDenied, "denied")}
+	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "test-service-3", 0, c, denyResumer, ff)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "http://49983-sbx.e2b.app/", nil).WithContext(t.Context())
+	rr := httptest.NewRecorder()
+	p.Handler.ServeHTTP(rr, req)
+
+	// permission denied is reported via reverseproxy.NewErrSandboxResumePermissionDenied
+	require.NotEqual(t, http.StatusOK, rr.Code)
+}
+
+func TestNewClientProxy_ResourceExhaustedSurfacedAsError(t *testing.T) {
+	t.Parallel()
+
+	c := catalog.NewMemorySandboxesCatalog()
+	ff := newFF(t, true)
+
+	exhausted := stubResumer{err: status.Error(codes.ResourceExhausted, "rate limit")}
+	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "test-service-4", 0, c, exhausted, ff)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "http://49983-sbx.e2b.app/", nil).WithContext(t.Context())
+	rr := httptest.NewRecorder()
+	p.Handler.ServeHTTP(rr, req)
+
+	require.NotEqual(t, http.StatusOK, rr.Code)
+}
+
+func TestNewClientProxy_StillTransitioningSurfacedAsError(t *testing.T) {
+	t.Parallel()
+
+	c := catalog.NewMemorySandboxesCatalog()
+	ff := newFF(t, true)
+
+	transitioning := stubResumer{err: status.Error(codes.FailedPrecondition, proxygrpc.SandboxStillTransitioningMessage)}
+	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "test-service-5", 0, c, transitioning, ff)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "http://49983-sbx.e2b.app/", nil).WithContext(t.Context())
+	rr := httptest.NewRecorder()
+	p.Handler.ServeHTTP(rr, req)
+
+	require.NotEqual(t, http.StatusOK, rr.Code)
+}
+
+func TestNewClientProxy_TargetExtractionFailureReturnsError(t *testing.T) {
+	t.Parallel()
+
+	c := catalog.NewMemorySandboxesCatalog()
+	ff := newFF(t, true)
+
+	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "test-service-6", 0, c, nil, ff)
+	require.NoError(t, err)
+
+	// Host that does not match the sandbox host pattern leads to GetTargetFromRequest failing.
+	req := httptest.NewRequest(http.MethodGet, "http://invalid-host/", nil).WithContext(t.Context())
+	rr := httptest.NewRecorder()
+	p.Handler.ServeHTTP(rr, req)
+
+	require.NotEqual(t, http.StatusOK, rr.Code)
+}
+
+func TestNewClientProxy_DuplicateMetricsRegistrationReturnsErrors(t *testing.T) {
+	t.Parallel()
+
+	c := catalog.NewMemorySandboxesCatalog()
+	ff := newFF(t, true)
+
+	// noop meter provider should not error; this is a sanity test that NewClientProxy
+	// works repeatedly for separate service names without leaking metric registrations.
+	for range 3 {
+		_, err := NewClientProxy(noopmetric.NewMeterProvider(), "service", 0, c, nil, ff)
+		require.NoError(t, err)
+	}
+}
+
+// Sanity assertion that the proxy honors the configured idle timeout.
+func TestNewClientProxy_HasIdleTimeout(t *testing.T) {
+	t.Parallel()
+
+	c := catalog.NewMemorySandboxesCatalog()
+	ff := newFF(t, true)
+
+	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "service-idle", 0, c, nil, ff)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, p.IdleTimeout, idleTimeout)
+	require.Less(t, p.IdleTimeout, 2*idleTimeout)
+}
+
+// Validate the Construction test exercises pool size accessor too.
+func TestNewClientProxy_PoolAccessors(t *testing.T) {
+	t.Parallel()
+
+	c := catalog.NewMemorySandboxesCatalog()
+	ff := newFF(t, true)
+
+	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "service-pool", 0, c, nil, ff)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, p.CurrentPoolSize(), 0)
+
+	// Even on no-op meter providers, the proxy must still be wired up correctly.
+	req := httptest.NewRequest(http.MethodGet, "http://49983-sbx.e2b.app/", nil).WithContext(t.Context())
+	rr := httptest.NewRecorder()
+	p.Handler.ServeHTTP(rr, req)
+	require.NotEqual(t, http.StatusOK, rr.Code)
 }

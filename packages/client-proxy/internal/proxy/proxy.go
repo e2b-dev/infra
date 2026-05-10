@@ -224,7 +224,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 	meter := meterProvider.Meter(serviceName)
 	_, err := telemetry.GetObservableUpDownCounter(
 		meter, telemetry.ClientProxyPoolConnectionsMeterCounterName, func(_ context.Context, observer metric.Int64Observer) error {
-			observer.Observe(proxy.CurrentServerConnections())
+			observer.Observe(proxy.CurrentPoolConnections())
 
 			return nil
 		},
@@ -246,7 +246,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 
 	_, err = telemetry.GetObservableUpDownCounter(
 		meter, telemetry.ClientProxyServerConnectionsMeterCounterName, func(_ context.Context, observer metric.Int64Observer) error {
-			observer.Observe(proxy.CurrentPoolConnections())
+			observer.Observe(proxy.CurrentServerConnections())
 
 			return nil
 		},
