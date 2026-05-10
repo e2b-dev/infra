@@ -4,6 +4,7 @@ import (
 	"context"
 	"os/exec"
 	osuser "os/user"
+	"runtime"
 	"strconv"
 	"testing"
 
@@ -25,6 +26,11 @@ func TestIsPathOnNetworkMount(t *testing.T) {
 
 func TestIsPathOnNetworkMount_FuseMount(t *testing.T) {
 	t.Parallel()
+
+	// FUSE mounts via bindfs are exercised on Linux only.
+	if runtime.GOOS != "linux" {
+		t.Skip("FUSE bindfs mount test runs only on Linux")
+	}
 
 	// Require bindfs to be available
 	_, err := exec.LookPath("bindfs")

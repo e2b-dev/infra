@@ -123,14 +123,13 @@ func New(
 	cgroupFD, ok := cgroupManager.GetFileDescriptor(getProcType(req))
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		UseCgroupFD: ok,
-		CgroupFD:    cgroupFD,
 		Credential: &syscall.Credential{
 			Uid:    uid,
 			Gid:    gid,
 			Groups: groups,
 		},
 	}
+	applyCgroupFD(cmd.SysProcAttr, cgroupFD, ok)
 
 	resolvedPath, err := permissions.ExpandAndResolve(req.GetProcess().GetCwd(), user, defaults.Workdir)
 	if err != nil {
