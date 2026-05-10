@@ -38,8 +38,8 @@ func TestFetchSession_FastPath(t *testing.T) {
 
 	// All blocks already covered — must return immediately via atomic fast path.
 	start := time.Now()
-	require.NoError(t, s.registerAndWait(context.Background(), 0))
-	require.NoError(t, s.registerAndWait(context.Background(), 3*blockSize))
+	require.NoError(t, s.registerAndWait(t.Context(), 0))
+	require.NoError(t, s.registerAndWait(t.Context(), 3*blockSize))
 	require.Less(t, time.Since(start), time.Millisecond)
 }
 
@@ -62,7 +62,7 @@ func TestFetchSession_ProgressiveAdvance(t *testing.T) {
 
 	for i := range numBlocks {
 		go func(idx int) {
-			err := s.registerAndWait(context.Background(), int64(idx)*blockSize)
+			err := s.registerAndWait(t.Context(), int64(idx)*blockSize)
 			returned.Add(1)
 			ch <- result{idx, err}
 		}(i)
@@ -106,7 +106,7 @@ func TestFetchSession_SetDoneUnblocksAll(t *testing.T) {
 
 	for i := range numBlocks {
 		go func(idx int) {
-			err := s.registerAndWait(context.Background(), int64(idx)*blockSize)
+			err := s.registerAndWait(t.Context(), int64(idx)*blockSize)
 			returned.Add(1)
 			ch <- err
 		}(i)
@@ -135,7 +135,7 @@ func TestFetchSession_FailPropagatesError(t *testing.T) {
 	ch := make(chan error, 1)
 
 	go func() {
-		err := s.registerAndWait(context.Background(), 0)
+		err := s.registerAndWait(t.Context(), 0)
 		returned.Add(1)
 		ch <- err
 	}()
@@ -157,7 +157,7 @@ func TestFetchSession_ContextCancellation(t *testing.T) {
 	cache := makeTestCacheForSession(t, 4)
 	s := newFetchSession(0, 4*blockSize, cache)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	var returned atomic.Int64
 	ch := make(chan error, 1)
@@ -190,7 +190,7 @@ func TestFetchSession_TerminatedButCachedByPriorSession(t *testing.T) {
 	// Fail this session — but block 0 is already in the cache.
 	s.fail(errors.New("some error"))
 
-	err := s.registerAndWait(context.Background(), 0)
+	err := s.registerAndWait(t.Context(), 0)
 	require.NoError(t, err)
 }
 
@@ -209,7 +209,7 @@ func TestFetchSession_TerminatedNoErrorBlockNotCached(t *testing.T) {
 	s.mu.Unlock()
 	s.cond.Broadcast()
 
-	err := s.registerAndWait(context.Background(), 2*blockSize)
+	err := s.registerAndWait(t.Context(), 2*blockSize)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "terminated without error but block")
 }
@@ -226,8 +226,8 @@ func TestFetchSession_FailIfRunning_NoOpAfterSetDone(t *testing.T) {
 	s.failIfRunning(errors.New("should be ignored"))
 
 	// setDone set bytesReady = chunkLen, so all blocks are covered.
-	require.NoError(t, s.registerAndWait(context.Background(), 0))
-	require.NoError(t, s.registerAndWait(context.Background(), 3*blockSize))
+	require.NoError(t, s.registerAndWait(t.Context(), 0))
+	require.NoError(t, s.registerAndWait(t.Context(), 3*blockSize))
 	require.NoError(t, s.fetchErr)
 }
 
@@ -242,7 +242,7 @@ func TestFetchSession_FailIfRunning_BeforeDone(t *testing.T) {
 	sentinel := errors.New("panic recovery")
 	s.failIfRunning(sentinel)
 
-	err := s.registerAndWait(context.Background(), 0)
+	err := s.registerAndWait(t.Context(), 0)
 	require.ErrorIs(t, err, sentinel)
 }
 
@@ -262,7 +262,7 @@ func TestFetchSession_NonZeroChunkOffset(t *testing.T) {
 	ch := make(chan error, 2)
 
 	go func() {
-		err := s.registerAndWait(context.Background(), chunkOff) // block 2
+		err := s.registerAndWait(t.Context(), chunkOff) // block 2
 		returned.Add(1)
 		ch <- err
 	}()
@@ -271,7 +271,7 @@ func TestFetchSession_NonZeroChunkOffset(t *testing.T) {
 		// Block 3 extends past chunkOff+chunkLen, so endByte is clamped to chunkLen.
 		// relEnd = lastBlockOff + blockSize - chunkOff = 2*blockSize = 8192
 		// endByte = min(8192, 5096) = 5096 (chunkLen)
-		err := s.registerAndWait(context.Background(), lastBlockOff)
+		err := s.registerAndWait(t.Context(), lastBlockOff)
 		returned.Add(1)
 		ch <- err
 	}()
@@ -301,7 +301,7 @@ func TestFetchSession_ConcurrentWaitersAndCancel(t *testing.T) {
 	cache := makeTestCacheForSession(t, 8)
 	s := newFetchSession(0, 8*blockSize, cache)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	var returned atomic.Int64
 
@@ -322,7 +322,7 @@ func TestFetchSession_ConcurrentWaitersAndCancel(t *testing.T) {
 
 		go func(idx int) {
 			defer wg.Done()
-			bgErrs[idx] = s.registerAndWait(context.Background(), int64(idx+4)*blockSize)
+			bgErrs[idx] = s.registerAndWait(t.Context(), int64(idx+4)*blockSize)
 			returned.Add(1)
 		}(i)
 	}

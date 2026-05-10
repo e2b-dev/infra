@@ -1,7 +1,6 @@
 package nodemanager_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
@@ -35,7 +34,7 @@ func TestNode_OptimisticAdd_FlagEnabled(t *testing.T) {
 		CPUs:      2,
 		MiBMemory: 1024,
 	}
-	node.OptimisticAdd(context.Background(), res)
+	node.OptimisticAdd(t.Context(), res)
 
 	// 6. Assert: When flag is enabled, resources should be successfully accumulated
 	newMetrics := node.Metrics()
@@ -65,7 +64,7 @@ func TestNode_OptimisticAdd_FlagDisabled(t *testing.T) {
 		CPUs:      2,
 		MiBMemory: 1024,
 	}
-	node.OptimisticAdd(context.Background(), res)
+	node.OptimisticAdd(t.Context(), res)
 
 	// 6. Assert: When flag is disabled, return early, resources should not be accumulated
 	newMetrics := node.Metrics()
@@ -95,7 +94,7 @@ func TestNode_OptimisticRemove_FlagEnabled(t *testing.T) {
 		CPUs:      2,
 		MiBMemory: 1024,
 	}
-	node.OptimisticRemove(context.Background(), res)
+	node.OptimisticRemove(t.Context(), res)
 
 	// 6. Assert: When flag is enabled, resources should be successfully deducted
 	newMetrics := node.Metrics()
@@ -125,7 +124,7 @@ func TestNode_OptimisticRemove_FlagDisabled(t *testing.T) {
 		CPUs:      2,
 		MiBMemory: 1024,
 	}
-	node.OptimisticRemove(context.Background(), res)
+	node.OptimisticRemove(t.Context(), res)
 
 	// 6. Assert: When flag is disabled, return early, resources should remain unchanged
 	newMetrics := node.Metrics()

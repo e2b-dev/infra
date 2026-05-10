@@ -3,7 +3,6 @@
 package cgroup
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -36,7 +35,7 @@ func TestManagerInitialize(t *testing.T) {
 		t.Skip("test requires root privileges")
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	mgr := &managerImpl{}
 
@@ -63,7 +62,7 @@ func TestCgroupHandleLifecycle(t *testing.T) {
 		t.Skip("test requires root privileges")
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 	mgr, err := NewManager()
 	require.NoError(t, err)
 
@@ -101,7 +100,7 @@ func TestCgroupHandleWithProcessCreation(t *testing.T) {
 		t.Skip("test requires root privileges")
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 	mgr, err := NewManager()
 	require.NoError(t, err)
 
@@ -156,7 +155,7 @@ func TestCgroupHandleNoRaceOnQuickExit(t *testing.T) {
 		t.Skip("test requires root privileges")
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 	mgr, err := NewManager()
 	require.NoError(t, err)
 
@@ -193,7 +192,7 @@ func TestCgroupHandleGetStats(t *testing.T) {
 		t.Skip("test requires root privileges")
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 	mgr, err := NewManager()
 	require.NoError(t, err)
 
@@ -242,7 +241,7 @@ func TestCgroupHandleGetStatsNonExistent(t *testing.T) {
 		t.Skip("test requires root privileges")
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 	mgr, err := NewManager()
 	require.NoError(t, err)
 
@@ -270,7 +269,7 @@ func TestCgroupHandleRemoveNonExistent(t *testing.T) {
 		t.Skip("test requires root privileges")
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 	mgr, err := NewManager()
 	require.NoError(t, err)
 
@@ -312,7 +311,7 @@ burst_usec 0`
 	err = os.WriteFile(filepath.Join(cgroupPath, "memory.current"), []byte("536870912"), 0o644)
 	require.NoError(t, err)
 
-	ctx := context.Background()
+	ctx := t.Context()
 	mgr := &managerImpl{}
 
 	// nil memoryPeakFile: regular files don't support the per-FD reset of cgroup pseudo-files
@@ -334,7 +333,7 @@ func TestCgroupHandlePeakReset(t *testing.T) {
 		t.Skip("test requires root privileges")
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 	mgr, err := NewManager()
 	require.NoError(t, err)
 

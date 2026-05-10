@@ -122,7 +122,7 @@ func TestUploads_Wait_BlocksUntilSet(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_, _ = c.Wait(context.Background(), id, build.Memfile)
+		_, _ = c.Wait(t.Context(), id, build.Memfile)
 		close(done)
 	}()
 
@@ -153,7 +153,7 @@ func TestUploads_Wait_PropagatesUploadError(t *testing.T) {
 	uploadErr := errors.New("upload exploded")
 	require.NoError(t, fut.SetError(uploadErr))
 
-	_, err = c.Wait(context.Background(), id, build.Memfile)
+	_, err = c.Wait(t.Context(), id, build.Memfile)
 	require.ErrorIs(t, err, uploadErr)
 }
 
@@ -165,7 +165,7 @@ func TestUploads_Wait_ContextCancellation(t *testing.T) {
 	_, err := c.Start(id) // never signaled
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -199,7 +199,7 @@ func TestUploads_Wait_NoFuture_ReadsFromCache(t *testing.T) {
 	tpl.EXPECT().Rootfs().Return(dev, nil)
 	cache.put(id.String(), tpl)
 
-	got, err := c.Wait(context.Background(), id, build.Rootfs)
+	got, err := c.Wait(t.Context(), id, build.Rootfs)
 	require.NoError(t, err)
 	require.Same(t, want, got)
 }
@@ -226,7 +226,7 @@ func TestUploads_ConcurrentBeginsAndWaits(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			if _, err := c.Wait(context.Background(), ids[i], build.Memfile); err == nil {
+			if _, err := c.Wait(t.Context(), ids[i], build.Memfile); err == nil {
 				done.Add(1)
 			}
 		}(i)

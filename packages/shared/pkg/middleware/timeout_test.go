@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -45,7 +44,7 @@ func TestRequestTimeout_CancelsBlockingHandler(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "/slow", nil)
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/slow", nil)
 
 	start := time.Now()
 	r.ServeHTTP(w, req)
@@ -75,7 +74,7 @@ func TestRequestTimeout_NormalRequestContextNotCanceled(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil)
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
@@ -99,7 +98,7 @@ func TestRequestTimeout_TimeoutContextVisibleToOuterMiddleware(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "/slow", nil)
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "/slow", nil)
 	r.ServeHTTP(w, req)
 
 	require.ErrorIs(t, outerCause, ErrRequestTimeout,

@@ -280,7 +280,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			mockFF := handlersmocks.NewMockFeatureFlagsClient(t)
-			err := validateNetworkConfig(context.Background(), mockFF, uuid.Nil, "", tt.network)
+			err := validateNetworkConfig(t.Context(), mockFF, uuid.Nil, "", tt.network)
 
 			if tt.wantErr {
 				if err == nil {
@@ -1038,7 +1038,7 @@ func TestValidateNetworkRules(t *testing.T) {
 			t.Parallel()
 
 			ff := tt.setupFF(t)
-			apiErr := validateNetworkRules(context.Background(), ff, teamID, tt.envdVersion, tt.rules)
+			apiErr := validateNetworkRules(t.Context(), ff, teamID, tt.envdVersion, tt.rules)
 
 			if tt.wantMsg == "" {
 				assert.Nil(t, apiErr)

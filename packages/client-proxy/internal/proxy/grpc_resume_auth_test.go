@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -30,7 +29,7 @@ func TestNewGRPCResumeAuth(t *testing.T) {
 	t.Run("disabled", func(t *testing.T) {
 		t.Parallel()
 
-		auth, err := newGrpcResumeAuth(context.Background(), GRPCOAuthConfig{})
+		auth, err := newGrpcResumeAuth(t.Context(), GRPCOAuthConfig{})
 		require.NoError(t, err)
 		require.IsType(t, noopGrpcResumeAuth{}, auth)
 	})
@@ -38,7 +37,7 @@ func TestNewGRPCResumeAuth(t *testing.T) {
 	t.Run("partial config", func(t *testing.T) {
 		t.Parallel()
 
-		auth, err := newGrpcResumeAuth(context.Background(), GRPCOAuthConfig{ClientID: "client-id"})
+		auth, err := newGrpcResumeAuth(t.Context(), GRPCOAuthConfig{ClientID: "client-id"})
 		require.Error(t, err)
 		require.Nil(t, auth)
 	})
@@ -46,7 +45,7 @@ func TestNewGRPCResumeAuth(t *testing.T) {
 	t.Run("enabled", func(t *testing.T) {
 		t.Parallel()
 
-		auth, err := newGrpcResumeAuth(context.Background(), GRPCOAuthConfig{
+		auth, err := newGrpcResumeAuth(t.Context(), GRPCOAuthConfig{
 			ClientID:     " client-id ",
 			ClientSecret: " secret ",
 			TokenURL:     " https://tokens.example.com ",
@@ -81,14 +80,14 @@ func TestOAuthGrpcResumeAuthRequestsAutoresumeScope(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	auth, err := newGrpcResumeAuth(context.Background(), GRPCOAuthConfig{
+	auth, err := newGrpcResumeAuth(t.Context(), GRPCOAuthConfig{
 		ClientID:     "client-id",
 		ClientSecret: "secret",
 		TokenURL:     server.URL,
 	})
 	require.NoError(t, err)
 
-	ctx, err := auth.authorize(context.Background())
+	ctx, err := auth.authorize(t.Context())
 	require.NoError(t, err)
 
 	md, ok := metadata.FromOutgoingContext(ctx)
@@ -101,7 +100,7 @@ func TestOAuthGrpcResumeAuthRequestsAutoresumeScope(t *testing.T) {
 func TestNoopGrpcResumeAuthAuthorize(t *testing.T) {
 	t.Parallel()
 
-	ctx, err := (noopGrpcResumeAuth{}).authorize(context.Background())
+	ctx, err := (noopGrpcResumeAuth{}).authorize(t.Context())
 	require.NoError(t, err)
 
 	md, ok := metadata.FromOutgoingContext(ctx)
@@ -112,7 +111,7 @@ func TestNoopGrpcResumeAuthAuthorize(t *testing.T) {
 func TestOAuthGrpcResumeAuthAuthorize(t *testing.T) {
 	t.Parallel()
 
-	ctx, err := (oauthGrpcResumeAuth{tokenSource: stubTokenSource{token: &oauth2.Token{AccessToken: "token"}}}).authorize(context.Background())
+	ctx, err := (oauthGrpcResumeAuth{tokenSource: stubTokenSource{token: &oauth2.Token{AccessToken: "token"}}}).authorize(t.Context())
 	require.NoError(t, err)
 
 	md, ok := metadata.FromOutgoingContext(ctx)
@@ -124,7 +123,7 @@ func TestOAuthGrpcResumeAuthAuthorizeError(t *testing.T) {
 	t.Parallel()
 
 	tokenErr := errors.New("token failed")
-	ctx, err := (oauthGrpcResumeAuth{tokenSource: stubTokenSource{err: tokenErr}}).authorize(context.Background())
+	ctx, err := (oauthGrpcResumeAuth{tokenSource: stubTokenSource{err: tokenErr}}).authorize(t.Context())
 	require.ErrorIs(t, err, tokenErr)
 
 	md, ok := metadata.FromOutgoingContext(ctx)

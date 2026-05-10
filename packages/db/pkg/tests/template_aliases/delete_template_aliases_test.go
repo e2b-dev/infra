@@ -1,7 +1,6 @@
 package aliases
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,7 +13,7 @@ func TestDeleteTemplateAliases_Success(t *testing.T) {
 	t.Parallel()
 	// Setup test database with migrations
 	client := testutils.SetupDatabase(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Create a test team first (required by foreign key constraint)
 	teamID := testutils.CreateTestTeam(t, client)
@@ -31,7 +30,7 @@ func TestDeleteTemplateAliases_NoAlias(t *testing.T) {
 	t.Parallel()
 	// Setup test database with migrations
 	client := testutils.SetupDatabase(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Create a test team first (required by foreign key constraint)
 	teamID := testutils.CreateTestTeam(t, client)

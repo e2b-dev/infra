@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -61,7 +60,7 @@ func TestIsNonEnvdTrafficRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := isNonEnvdTrafficRequest(context.Background(), tt.md, "test-sandbox")
+			result := isNonEnvdTrafficRequest(t.Context(), tt.md, "test-sandbox")
 			assert.Equal(t, tt.expected, result)
 		})
 	}

@@ -1,7 +1,6 @@
 package discovery
 
 import (
-	"context"
 	"net"
 	"strconv"
 	"testing"
@@ -59,7 +58,7 @@ func TestKubernetesDiscovery_PodsWithSharedPrefix(t *testing.T) {
 	client := fake.NewSimpleClientset(pod1, pod2)
 	d := NewKubernetes(client, testNamespace, testLabelSelector)
 
-	nodes, err := d.ListNodes(context.Background())
+	nodes, err := d.ListNodes(t.Context())
 	require.NoError(t, err)
 	require.Len(t, nodes, 2)
 
@@ -96,7 +95,7 @@ func TestKubernetesDiscovery_FiltersNotReady(t *testing.T) {
 	client := fake.NewSimpleClientset(ready, notReady)
 	d := NewKubernetes(client, testNamespace, testLabelSelector)
 
-	nodes, err := d.ListNodes(context.Background())
+	nodes, err := d.ListNodes(t.Context())
 	require.NoError(t, err)
 	require.Len(t, nodes, 1)
 	assert.Equal(t, ready.Name, nodes[0].ShortID)
@@ -122,7 +121,7 @@ func TestKubernetesDiscovery_FiltersPending(t *testing.T) {
 	client := fake.NewSimpleClientset(pending)
 	d := NewKubernetes(client, testNamespace, testLabelSelector)
 
-	nodes, err := d.ListNodes(context.Background())
+	nodes, err := d.ListNodes(t.Context())
 	require.NoError(t, err)
 	assert.Empty(t, nodes)
 }
@@ -149,7 +148,7 @@ func TestKubernetesDiscovery_FiltersMissingIP(t *testing.T) {
 	client := fake.NewSimpleClientset(noIP)
 	d := NewKubernetes(client, testNamespace, testLabelSelector)
 
-	nodes, err := d.ListNodes(context.Background())
+	nodes, err := d.ListNodes(t.Context())
 	require.NoError(t, err)
 	assert.Empty(t, nodes)
 }

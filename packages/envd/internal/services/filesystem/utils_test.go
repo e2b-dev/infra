@@ -45,7 +45,7 @@ func TestIsPathOnNetworkMount_FuseMount(t *testing.T) {
 	mountDir := t.TempDir()
 
 	// Mount sourceDir onto mountDir using bindfs (FUSE)
-	ctx := context.Background()
+	ctx := t.Context()
 	cmd := exec.CommandContext(ctx, "bindfs", sourceDir, mountDir)
 	require.NoError(t, cmd.Run(), "failed to mount bindfs")
 
