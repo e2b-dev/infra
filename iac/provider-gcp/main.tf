@@ -361,6 +361,7 @@ module "redis" {
 
   shard_count    = var.redis_shard_count
   engine_version = var.gcp_redis_engine_version
+  node_type      = var.gcp_redis_node_type
   prefix         = var.prefix
 }
 
