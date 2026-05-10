@@ -18,6 +18,11 @@ const (
 	// It will also keep redis populated to allow for seamless migration to redis.
 	SandboxStorageBackendMemory = "memory"
 	SandboxStorageBackendRedis  = "redis"
+
+	// ServiceDiscoveryProviderNomad queries Nomad's HTTP API (the original / Nomad-based deploy).
+	ServiceDiscoveryProviderNomad = "nomad"
+	// ServiceDiscoveryProviderKubernetes queries the in-cluster K8s API (the K8s deploy).
+	ServiceDiscoveryProviderKubernetes = "kubernetes"
 )
 
 type Config struct {
@@ -32,8 +37,19 @@ type Config struct {
 	LokiURL      string `env:"LOKI_URL,required"`
 	LokiUser     string `env:"LOKI_USER"`
 
+	// ServiceDiscoveryProvider selects how the API discovers orchestrator and template-manager instances.
+	// Allowed values:
+	//   "nomad"      (default) - query the local Nomad agent's HTTP API.
+	//   "kubernetes"           - list pods via the in-cluster K8s API.
+	ServiceDiscoveryProvider string `env:"SERVICE_DISCOVERY_PROVIDER" envDefault:"nomad"`
+
 	NomadAddress string `env:"NOMAD_ADDRESS" envDefault:"http://localhost:4646"`
 	NomadToken   string `env:"NOMAD_TOKEN"`
+
+	// Used when ServiceDiscoveryProvider=kubernetes.
+	K8sNamespace                       string `env:"K8S_NAMESPACE"                           envDefault:"default"`
+	K8sOrchestratorPodLabelSelector    string `env:"K8S_ORCHESTRATOR_POD_LABEL_SELECTOR"     envDefault:"app.kubernetes.io/name=orchestrator"`
+	K8sTemplateManagerPodLabelSelector string `env:"K8S_TEMPLATE_MANAGER_POD_LABEL_SELECTOR" envDefault:"app.kubernetes.io/name=template-manager"`
 
 	PostgresConnectionString string `env:"POSTGRES_CONNECTION_STRING,required,notEmpty"`
 	DBMaxOpenConnections     int32  `env:"DB_MAX_OPEN_CONNECTIONS"                      envDefault:"40"`
@@ -139,6 +155,10 @@ func Parse() (Config, error) {
 
 	if !slices.Contains([]string{SandboxStorageBackendMemory, SandboxStorageBackendRedis}, config.SandboxStorageBackend) {
 		return config, fmt.Errorf("invalid sandbox storage backend: %s", config.SandboxStorageBackend)
+	}
+
+	if !slices.Contains([]string{ServiceDiscoveryProviderNomad, ServiceDiscoveryProviderKubernetes}, config.ServiceDiscoveryProvider) {
+		return config, fmt.Errorf("invalid service discovery provider: %s", config.ServiceDiscoveryProvider)
 	}
 
 	return config, nil

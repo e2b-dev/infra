@@ -1,14 +1,19 @@
 // Package discovery enumerates running orchestrator (Firecracker host) instances
 // for the API to route sandbox calls to.
 //
-// Currently the only implementation is NomadDiscovery, which queries the local
-// Nomad agent's HTTP /v1/nodes endpoint. The interface exists so additional
-// backends can be plugged in without touching the orchestrator code path.
+// The Discovery interface has two implementations:
 //
-// The shape of the returned []Node mirrors what the orchestrator package was
-// deriving from a Nomad node listing (NomadServiceDiscovery /
-// *nomadapi.NodeListStub) so that callers can be switched without changing the
-// rest of the orchestrator code path.
+//   - NomadDiscovery: queries the local Nomad agent's HTTP /v1/nodes endpoint.
+//     Used by the original Nomad-based deploy where every Nomad client node
+//     also runs an orchestrator process.
+//
+//   - KubernetesDiscovery: lists pods of the orchestrator DaemonSet via the
+//     in-cluster K8s API. Used by the K8s deploy.
+//
+// The shape of the returned []Node mirrors what the existing
+// orchestrator package was deriving from a Nomad node listing
+// (NomadServiceDiscovery / *nomadapi.NodeListStub) so that callers can be
+// switched without touching the rest of the orchestrator code path.
 package discovery
 
 import (
@@ -22,8 +27,9 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/orchest
 // Node is a single discovered orchestrator instance.
 type Node struct {
 	// ShortID identifies the orchestrator at the discovery layer. It is the
-	// (truncated) Nomad node ID for the Nomad backend. The orchestrator stores
-	// it on nodemanager.Node.NomadNodeShortID, which is what
+	// (truncated) Nomad node ID for the Nomad backend, and the (truncated) pod
+	// name for the Kubernetes backend. The orchestrator stores it on
+	// nodemanager.Node.NomadNodeShortID, which is what
 	// Orchestrator.GetNodeByNomadShortID linearly scans for; it is not used as
 	// the key in Orchestrator.nodes (that map is keyed by
 	// scopedNodeID(clusterID, instanceNodeID), where instanceNodeID comes from
@@ -31,8 +37,10 @@ type Node struct {
 	// retained for legacy reasons but is provider-agnostic.
 	ShortID string
 
-	// IPAddress is the orchestrator host's IP (Nomad node IP for the Nomad
-	// backend).
+	// IPAddress is the orchestrator host's IP. For Nomad it's the Nomad node
+	// IP; for Kubernetes it's the pod's status.HostIP (orchestrator pods run
+	// with host_network=true, so status.HostIP and status.PodIP are the same
+	// and directly reachable from API pods).
 	IPAddress string
 
 	// OrchestratorAddress is "<IPAddress>:<gRPC port>", precomputed for callers.
