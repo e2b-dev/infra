@@ -1,0 +1,27 @@
+[Unit]
+Description=MaxiCore Sandbox Manager (orchestrator-lite, Firecracker MicroVM warmpool)
+Documentation=https://github.com/Helix12-Labs/helix12-maxicore-vmm-e2b
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /opt/maxicore/sandbox-manager/sandbox_manager.py
+Restart=on-failure
+RestartSec=5s
+EnvironmentFile=-/etc/maxicore/sandbox-manager.env
+
+# Firecracker requires KVM
+DeviceAllow=/dev/kvm rw
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=maxicore-sandbox-manager
+
+# Allow loop-mount for snapshot template build
+PrivateMounts=false
+
+[Install]
+WantedBy=multi-user.target
