@@ -108,10 +108,10 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		return nil, fmt.Errorf("error while creating build cache: %w", err)
 	}
 
-	// Add new core that will log all messages using logger (zap.Logger) to the logs buffer too
-	encoder := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
-	bufferCore := zapcore.NewCore(encoder, logs, zapcore.DebugLevel)
-	core := zapcore.NewTee(bufferCore, s.buildLogger.Detach(ctx).Core().
+	// LogEntryLogger is itself a zapcore.Core that captures every entry into
+	// an in-memory slice; tee it with the regular build logger so logs go to
+	// both destinations.
+	core := zapcore.NewTee(logs, s.buildLogger.Detach(ctx).Core().
 		With([]zap.Field{
 			{Type: zapcore.StringType, Key: "envID", String: cfg.GetTemplateID()},
 			{Type: zapcore.StringType, Key: "buildID", String: metadata.BuildID},
