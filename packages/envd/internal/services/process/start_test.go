@@ -60,7 +60,7 @@ func TestStart_ShortCommand(t *testing.T) {
 	client, cleanup := newTestService(t)
 	defer cleanup()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 
 	stream, err := client.Start(ctx, connect.NewRequest(&rpc.StartRequest{
@@ -97,7 +97,7 @@ func TestStart_ClientDisconnectMidStream(t *testing.T) {
 	client, cleanup := newTestService(t)
 	defer cleanup()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 
 	// Use a long-running command so there's data flowing when we cancel.

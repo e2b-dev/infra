@@ -1,7 +1,6 @@
 package featureflags
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -164,7 +163,7 @@ func TestSetContext(t *testing.T) {
 	t.Run("empty_contexts_returns_original_context", func(t *testing.T) {
 		t.Parallel()
 
-		ctx := context.Background()
+		ctx := t.Context()
 		result := AddToContext(ctx)
 
 		assert.Equal(t, ctx, result)
@@ -175,7 +174,7 @@ func TestSetContext(t *testing.T) {
 	t.Run("single_context", func(t *testing.T) {
 		t.Parallel()
 
-		ctx := context.Background()
+		ctx := t.Context()
 		teamCtx := TeamContext("team-123")
 
 		result := AddToContext(ctx, teamCtx)
@@ -189,7 +188,7 @@ func TestSetContext(t *testing.T) {
 	t.Run("multiple_contexts", func(t *testing.T) {
 		t.Parallel()
 
-		ctx := context.Background()
+		ctx := t.Context()
 		teamCtx := TeamContext("team-123")
 		userCtx := UserContext("user-456")
 
@@ -207,7 +206,7 @@ func TestSetContext(t *testing.T) {
 	t.Run("sequential_calls_merge_contexts", func(t *testing.T) {
 		t.Parallel()
 
-		ctx := context.Background()
+		ctx := t.Context()
 
 		// First call adds team context
 		ctx = AddToContext(ctx, TeamContext("team-123"))
@@ -227,7 +226,7 @@ func TestSetContext(t *testing.T) {
 	t.Run("same_kind_second_takes_precedence", func(t *testing.T) {
 		t.Parallel()
 
-		ctx := context.Background()
+		ctx := t.Context()
 
 		// First call with team-123
 		ctx = AddToContext(ctx, TeamContextWithName("team-123", "First Team"))

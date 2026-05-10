@@ -34,7 +34,7 @@ func TestNewVerifierConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			verifier, err := NewVerifier(context.Background(), tt.issuerURL)
+			verifier, err := NewVerifier(t.Context(), tt.issuerURL)
 			require.NoError(t, err)
 			require.NotNil(t, verifier)
 		})
@@ -44,10 +44,10 @@ func TestNewVerifierConfig(t *testing.T) {
 func TestNoopVerifierRejectsClaims(t *testing.T) {
 	t.Parallel()
 
-	verifier, err := NewVerifier(context.Background(), "")
+	verifier, err := NewVerifier(t.Context(), "")
 	require.NoError(t, err)
 
-	claims, err := verifier.VerifyClaims(context.Background(), "token")
+	claims, err := verifier.VerifyClaims(t.Context(), "token")
 	require.Error(t, err)
 	require.Empty(t, claims)
 }
@@ -72,7 +72,7 @@ func TestNewVerifierLoadsOIDCProvider(t *testing.T) {
 	t.Cleanup(server.Close)
 	issuerURL = server.URL
 
-	verifier, err := NewVerifier(context.Background(), server.URL)
+	verifier, err := NewVerifier(t.Context(), server.URL)
 	require.NoError(t, err)
 	require.NotNil(t, verifier)
 }
@@ -179,7 +179,7 @@ func TestRequireClaims(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			claims, err := RequireClaims(context.Background(), tt.md, tt.verifier)
+			claims, err := RequireClaims(t.Context(), tt.md, tt.verifier)
 			if tt.wantErr {
 				require.Error(t, err)
 

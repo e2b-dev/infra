@@ -3,7 +3,6 @@
 package nbd_test
 
 import (
-	"context"
 	"crypto/rand"
 	"fmt"
 	"os"
@@ -269,8 +268,7 @@ func setupNBDDevice(t *testing.T, featureFlags *featureflags.Client, size int64,
 		overlay.Close()
 	})
 
-	nbdContext := context.Background()
-	devicePath, deviceCleanup, err := testutils.GetNBDDevice(nbdContext, overlay, featureFlags)
+	devicePath, deviceCleanup, err := testutils.GetNBDDevice(t.Context(), overlay, featureFlags)
 	t.Cleanup(func() {
 		deviceCleanup.Run(t.Context(), 30*time.Second)
 	})

@@ -18,7 +18,7 @@ func TestPromiseSuccess(t *testing.T) {
 		return 42, nil
 	})
 
-	value, err := p.Wait(context.Background())
+	value, err := p.Wait(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, 42, value)
 }
@@ -31,7 +31,7 @@ func TestPromiseError(t *testing.T) {
 		return 0, expectedErr
 	})
 
-	value, err := p.Wait(context.Background())
+	value, err := p.Wait(t.Context())
 	require.ErrorIs(t, err, expectedErr)
 	assert.Equal(t, 0, value)
 }
@@ -45,7 +45,7 @@ func TestPromiseDelayedResult(t *testing.T) {
 		return "delayed", nil
 	})
 
-	value, err := p.Wait(context.Background())
+	value, err := p.Wait(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "delayed", value)
 }
@@ -59,7 +59,7 @@ func TestPromiseContextCancelled(t *testing.T) {
 		return 42, nil
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
 	defer cancel()
 
 	_, err := p.Wait(ctx)
@@ -83,7 +83,7 @@ func TestPromiseMultipleWaiters(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			results[idx], errs[idx] = p.Wait(context.Background())
+			results[idx], errs[idx] = p.Wait(t.Context())
 		}(i)
 	}
 
