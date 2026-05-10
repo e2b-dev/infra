@@ -178,7 +178,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         if: ${{ !cancelled() && env.CODECOV_TOKEN != '' && hashFiles(format('{0}/coverage.txt', matrix.package)) != '' }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ${{ matrix.package }}/coverage.txt
@@ -187,9 +187,10 @@ jobs:
 
       - name: Upload test results to Codecov
         if: ${{ !cancelled() && env.CODECOV_TOKEN != '' && hashFiles(format('{0}/junit.xml', matrix.package)) != '' }}
-        uses: codecov/test-results-action@v1
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ${{ matrix.package }}/junit.xml
           flags: ${{ matrix.flag }},unit
           disable_search: true
+          report_type: test_results
