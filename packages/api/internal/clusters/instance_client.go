@@ -51,13 +51,13 @@ func createClient(tel *telemetry.Client, auth *instanceAuthorization, endpoint s
 		grpcOptions = append(grpcOptions, grpc.WithPerRPCCredentials(auth))
 	}
 
-	if endpointTLS {
-		// (2025-06) AWS ALB with TLS termination is using TLS 1.2 as default so this is why we are not using TLS 1.3+ here
-		cred := credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
-		grpcOptions = append(grpcOptions, grpc.WithAuthority(endpoint), grpc.WithTransportCredentials(cred))
-	} else {
-		grpcOptions = append(grpcOptions, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if !endpointTLS {
+		return nil, fmt.Errorf("TLS is required for instance client connections")
 	}
+
+	// (2025-06) AWS ALB with TLS termination is using TLS 1.2 as default so this is why we are not using TLS 1.3+ here
+	cred := credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
+	grpcOptions = append(grpcOptions, grpc.WithAuthority(endpoint), grpc.WithTransportCredentials(cred))
 
 	conn, err := grpc.NewClient(endpoint, grpcOptions...)
 	if err != nil {
