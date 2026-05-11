@@ -1,5 +1,8 @@
 packages:
   github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build:
+    config:
+      template-data:
+        mock-build-tags: linux
     interfaces:
       Diff:
         config:
@@ -8,6 +11,9 @@ packages:
           pkgname: buildmocks
 
   github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block:
+    config:
+      template-data:
+        mock-build-tags: linux
     interfaces:
       ReadonlyDevice:
         config:
@@ -16,6 +22,9 @@ packages:
           pkgname: blockmocks
 
   github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerserver:
+    config:
+      template-data:
+        mock-build-tags: linux
     interfaces:
       Cache:
         config:
@@ -24,6 +33,9 @@ packages:
           pkgname: peerservermocks
 
   github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template:
+    config:
+      template-data:
+        mock-build-tags: linux
     interfaces:
       Template:
         config:
