@@ -158,14 +158,14 @@ func (r *peerResolver) peerState(buildID string) *peerState {
 	return actual.(*peerState)
 }
 
-// Purge removes the per-build state, called on template cache eviction so
-// the entry doesn't accumulate forever.
+// Purge removes the uploaded state for a build, called on template
+// cache eviction so the entry doesn't accumulate forever.
 func (r *peerResolver) Purge(buildID string) {
 	r.uploadedBuilds.Delete(buildID)
 }
 
 // resolve looks up the peer for the given build and returns a gRPC client if
-// a remote peer is found. Returns a zero result when the base provider should
+// a remote peer is found. Returns a nil client when the base provider should
 // be used instead (uploaded, no peer, self, or error).
 func (r *peerResolver) resolve(ctx context.Context, buildID string) (attribute.KeyValue, resolveResult) {
 	// Fast path: a prior resolve flagged this build as peer-served and a

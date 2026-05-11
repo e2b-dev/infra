@@ -133,7 +133,6 @@ func (b *peerBlob) Put(ctx context.Context, data []byte, opts ...storage.PutOpti
 
 // openPeerBlobStream opens a GetBuildBlob stream, checks peer availability,
 // and returns a recv function that yields data chunks starting with the first message's data.
-// Mid-stream availability changes are side-effect only; the in-flight stream completes from peer.
 // The passed context HAS to be canceled by the caller when done with the stream to avoid leaks.
 func openPeerBlobStream(
 	ctx context.Context,
@@ -170,6 +169,9 @@ func openPeerBlobStream(
 			return nil, err
 		}
 
+		// Flip the uploaded flag if the peer signals use_storage; the current
+		// stream keeps reading from the peer, but subsequent operations will
+		// go directly to GCS.
 		_ = checkPeerAvailability(ctx, m.GetAvailability(), state, req.GetName())
 
 		return m.GetData(), nil
