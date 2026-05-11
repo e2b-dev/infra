@@ -302,6 +302,7 @@ func (s *Storage) MarkKilled(ctx context.Context, teamID uuid.UUID, sandboxID st
 	if err != nil {
 		return fmt.Errorf("failed to marshal kill info: %w", err)
 	}
+
 	return s.redisClient.Set(ctx, key, data, killedSandboxTTL).Err()
 }
 
@@ -321,5 +322,6 @@ func (s *Storage) WasKilled(ctx context.Context, teamID uuid.UUID, sandboxID str
 		// Fallback for old format (just the reason string)
 		return &sandbox.KillInfo{Reason: sandbox.KillReason(result)}, nil
 	}
+
 	return &info, nil
 }

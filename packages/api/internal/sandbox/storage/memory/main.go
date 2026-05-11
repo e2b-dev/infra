@@ -1,10 +1,14 @@
 package memory
 
 import (
+	"time"
+
 	cmap "github.com/orcaman/concurrent-map/v2"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 )
+
+const killedSandboxTTL = 24 * time.Hour
 
 var _ sandbox.Storage = (*Storage)(nil)
 

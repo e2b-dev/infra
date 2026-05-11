@@ -28,10 +28,6 @@ func SandboxKilledMsg(sandboxID string, info *sandbox.KillInfo) string {
 	}
 }
 
-func SandboxPausedMsg(sandboxID string) string {
-	return fmt.Sprintf("Sandbox %q is paused", sandboxID)
-}
-
 func SandboxChangingStateMsg(sandboxID string, transition *sandbox.TransitionInfo) string {
 	if transition == nil {
 		return fmt.Sprintf("Sandbox %q is in a transitional state", sandboxID)
@@ -42,13 +38,13 @@ func SandboxChangingStateMsg(sandboxID string, transition *sandbox.TransitionInf
 
 	switch transition.ToState {
 	case sandbox.StateKilling:
-		return fmt.Sprintf("Sandbox %q is being killed (started at %s %s)", sandboxID, startedAt, reasonStr)
+		return fmt.Sprintf("Sandbox %q is being killed %s (started at %s)", sandboxID, reasonStr, startedAt)
 	case sandbox.StatePausing:
-		return fmt.Sprintf("Sandbox %q is being paused (started at %s %s)", sandboxID, startedAt, reasonStr)
+		return fmt.Sprintf("Sandbox %q is being paused %s (started at %s)", sandboxID, reasonStr, startedAt)
 	case sandbox.StateSnapshotting:
-		return fmt.Sprintf("Sandbox %q is being snapshotted (started at %s %s)", sandboxID, startedAt, reasonStr)
+		return fmt.Sprintf("Sandbox %q is being snapshotted %s (started at %s)", sandboxID, reasonStr, startedAt)
 	default:
-		return fmt.Sprintf("Sandbox %q is transitioning to %s state (started at %s %s)", sandboxID, transition.ToState, startedAt, reasonStr)
+		return fmt.Sprintf("Sandbox %q is transitioning to %s state %s (started at %s)", sandboxID, transition.ToState, reasonStr, startedAt)
 	}
 }
 

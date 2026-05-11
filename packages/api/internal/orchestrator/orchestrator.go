@@ -345,7 +345,9 @@ func (o *Orchestrator) WasSandboxKilled(ctx context.Context, teamID uuid.UUID, s
 			logger.WithSandboxID(sandboxID),
 			zap.Error(err),
 		)
+
 		return nil
 	}
+
 	return info
 }

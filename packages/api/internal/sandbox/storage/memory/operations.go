@@ -290,14 +290,24 @@ func (s *Storage) MarkKilled(_ context.Context, teamID uuid.UUID, sandboxID stri
 		KilledAt: time.Now().UnixMilli(),
 	}
 	s.killed.Set(killedKey(teamID.String(), sandboxID), info)
+
 	return nil
 }
 
 // WasKilled checks if a sandbox was killed and returns the kill info.
+// Returns nil if the sandbox was not killed or if the kill record has expired.
 func (s *Storage) WasKilled(_ context.Context, teamID uuid.UUID, sandboxID string) (*sandbox.KillInfo, error) {
-	info, ok := s.killed.Get(killedKey(teamID.String(), sandboxID))
+	key := killedKey(teamID.String(), sandboxID)
+	info, ok := s.killed.Get(key)
 	if !ok {
 		return nil, nil
 	}
+
+	// Check if the kill record has expired
+	if time.Since(time.UnixMilli(info.KilledAt)) > killedSandboxTTL {
+		s.killed.Remove(key)
+		return nil, nil
+	}
+
 	return &info, nil
 }

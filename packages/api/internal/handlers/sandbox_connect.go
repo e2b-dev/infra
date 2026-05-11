@@ -89,6 +89,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		}
 
 		if notRunningErr.State == sandbox.StateKilling {
+			// Check if the sandbox was killed (return 410 Gone) - killInfo may be nil if kill is still in progress
 			killInfo := a.orchestrator.WasSandboxKilled(ctx, teamID, sandboxID)
 			a.sendAPIStoreError(c, http.StatusGone, utils.SandboxKilledMsg(sandboxID, killInfo))
 

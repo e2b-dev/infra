@@ -105,7 +105,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 		return ErrSandboxOperationFailed
 	}
 
-	// Mark sandbox as killed so the API can return 410 Gone instead of 404 Not Found
+	// Mark sandbox as killed so the API can distinguish between "never existed" (404) and "was killed" (410)
 	if opts.Action == sandbox.StateActionKill {
 		reason := sandbox.KillReasonAPI
 		if opts.Eviction {
