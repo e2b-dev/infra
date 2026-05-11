@@ -45,7 +45,7 @@ resource "nomad_job" "dashboard_api" {
 
   lifecycle {
     precondition {
-      condition     = length(var.connect_rollout_dependencies) >= 0
+      condition     = !var.clickhouse_connect_enabled || length(var.connect_rollout_dependencies) > 0
       error_message = "Connect rollout dependencies must be available before the dashboard-api job rolls."
     }
   }

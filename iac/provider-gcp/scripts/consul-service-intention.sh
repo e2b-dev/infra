@@ -21,24 +21,23 @@ case "$action" in
     ;;
 esac
 
-server=""
 attempts=1
 if [[ "$action" == "upsert" ]]; then
   attempts=60
 fi
 
+servers=""
 for _ in $(seq 1 "$attempts"); do
-  server=$(gcloud compute instances list \
+  servers=$(gcloud compute instances list \
     --project="$gcp_project" \
     --filter="name~^${prefix}orch-server-" \
-    --format='value(name,zone)' \
-    | head -n1)
+    --format='value(name,zone)')
 
-  [[ -n "$server" ]] && break
+  [[ -n "$servers" ]] && break
   sleep 10
 done
 
-if [[ -z "$server" ]]; then
+if [[ -z "$servers" ]]; then
   if [[ "$action" == "delete" ]]; then
     exit 0
   fi
@@ -46,8 +45,6 @@ if [[ -z "$server" ]]; then
   echo "No Consul server instance found for prefix ${prefix}" >&2
   exit 1
 fi
-
-read -r name zone <<<"$server"
 
 read -r -d '' remote_script <<'REMOTE' || true
 set -euo pipefail
@@ -70,7 +67,9 @@ if [[ "$ACTION" == "upsert" ]]; then
   fi
 
   consul config write "$updated" || true
-  exit 0
+  consul config read -kind service-intentions -name "$DESTINATION" \
+    | jq -e --arg source "$SOURCE" '.Sources[]? | select(.Name == $source) | select(.Action == "allow")' >/dev/null
+  exit $?
 fi
 
 consul config read -kind service-intentions -name "$DESTINATION" >"$config" 2>/dev/null || exit 0
@@ -81,8 +80,11 @@ jq --arg source "$SOURCE" '
 
 if [[ "$(jq ".Sources | length" "$updated")" == "0" ]]; then
   consul config delete -kind service-intentions -name "$DESTINATION" || true
+  consul config read -kind service-intentions -name "$DESTINATION" >/dev/null 2>&1 && exit 1
 else
   consul config write "$updated" || true
+  consul config read -kind service-intentions -name "$DESTINATION" \
+    | jq -e --arg source "$SOURCE" 'if (.Sources // [] | map(select(.Name == $source)) | length) == 0 then true else empty end' >/dev/null
 fi
 REMOTE
 
@@ -93,25 +95,35 @@ printf -v quoted_destination '%q' "$destination"
 
 ssh_command() {
   local script="$1"
-  local quoted
-  printf -v quoted '%q' "$script"
 
-  gcloud compute ssh "$name" \
-    --zone "$zone" \
-    --project="$gcp_project" \
-    --command="ACTION=$quoted_action SOURCE=$quoted_source DESTINATION=$quoted_destination bash -lc $quoted"
+  local attempted=0
+  while IFS=$'\t' read -r name zone <&3; do
+    [[ -z "$name" || -z "$zone" ]] && continue
+    attempted=1
+
+    if printf '%s\n' "$script" | gcloud compute ssh "$name" \
+      --zone "$zone" \
+      --project="$gcp_project" \
+      --command="tmp=\$(mktemp); cat > \"\$tmp\"; chmod +x \"\$tmp\"; ACTION=$quoted_action SOURCE=$quoted_source DESTINATION=$quoted_destination \"\$tmp\"; rc=\$?; rm -f \"\$tmp\"; exit \$rc"; then
+      return 0
+    fi
+  done 3<<<"$servers"
+
+  if [[ "$attempted" == "0" ]]; then
+    echo "No Consul server instance found for prefix ${prefix}" >&2
+  fi
+
+  return 1
 }
 
-if ssh_command "$remote_script"; then
-  exit 0
-fi
+ssh_command "$remote_script"
 
 read -r -d '' verify_script <<'REMOTE' || true
 set -euo pipefail
 
 if [[ "$ACTION" == "upsert" ]]; then
   consul config read -kind service-intentions -name "$DESTINATION" \
-    | jq -e --arg source "$SOURCE" '((.Sources // []) | map(select(.Name == $source and .Action == "allow")) | length) > 0' >/dev/null
+    | jq -e --arg source "$SOURCE" '.Sources[]? | select(.Name == $source) | select(.Action == "allow")' >/dev/null
   exit 0
 fi
 
@@ -119,7 +131,7 @@ if ! consul config read -kind service-intentions -name "$DESTINATION" > /tmp/con
   exit 0
 fi
 
-jq -e --arg source "$SOURCE" '((.Sources // []) | map(select(.Name == $source)) | length) == 0' /tmp/consul-intention-check.json >/dev/null
+jq -e --arg source "$SOURCE" 'if (.Sources // [] | map(select(.Name == $source)) | length) == 0 then true else empty end' /tmp/consul-intention-check.json >/dev/null
 REMOTE
 
-ssh_command "$verify_script" || true
+ssh_command "$verify_script"

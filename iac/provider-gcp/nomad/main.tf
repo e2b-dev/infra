@@ -130,8 +130,6 @@ module "ingress_cert_renewer" {
 module "api" {
   source = "../../modules/job-api"
 
-  depends_on = [module.clickhouse]
-
   update_stanza = var.api_machine_count > 1
   node_pool     = var.api_node_pool
   // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
@@ -194,8 +192,6 @@ module "api" {
 module "dashboard_api" {
   source = "../../modules/job-dashboard-api"
   count  = var.dashboard_api_count > 0 ? 1 : 0
-
-  depends_on = [module.clickhouse]
 
   count_instances = var.dashboard_api_count
   node_pool       = var.api_node_pool

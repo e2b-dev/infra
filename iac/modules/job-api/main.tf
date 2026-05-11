@@ -59,7 +59,7 @@ resource "nomad_job" "api" {
 
   lifecycle {
     precondition {
-      condition     = length(var.connect_rollout_dependencies) >= 0
+      condition     = !var.consul_connect_enabled || length(var.connect_rollout_dependencies) > 0
       error_message = "Connect rollout dependencies must be available before the API job rolls."
     }
   }
