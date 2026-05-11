@@ -109,6 +109,10 @@ variable "ingress_http2_cert_renewer" {
     private_key_consul_key = string
     client_ca_consul_key   = string
     reload_consul_key      = string
+    lb_client_cert_name    = string
+    lb_client_cert_id      = string
+    lb_client_dns_name     = string
+    cert_manager_iam_id    = string
   })
   default = null
 }

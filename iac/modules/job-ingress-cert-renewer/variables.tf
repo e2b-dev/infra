@@ -51,6 +51,22 @@ variable "reload_consul_key" {
   type = string
 }
 
+variable "lb_client_certificate_name" {
+  type = string
+}
+
+variable "lb_client_certificate_id" {
+  type = string
+}
+
+variable "lb_client_dns_name" {
+  type = string
+}
+
+variable "cert_manager_iam_id" {
+  type = string
+}
+
 variable "consul_endpoint" {
   type = string
 }

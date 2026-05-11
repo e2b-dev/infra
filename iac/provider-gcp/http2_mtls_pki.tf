@@ -37,7 +37,32 @@ locals {
     private_key_consul_key = local.effective_ingress_http2_tls.private_key_consul_key
     client_ca_consul_key   = local.effective_ingress_http2_tls.client_ca_consul_key
     reload_consul_key      = coalesce(local.effective_ingress_http2_tls.reload_consul_key, "ingress/http2/grpc-api/tls/reload")
+    lb_client_cert_name    = "${var.prefix}grpc-api-http2-lb-client"
+    lb_client_cert_id      = terraform_data.grpc_api_http2_lb_client_certificate[0].output
+    lb_client_dns_name     = "gcp-lb-client.${var.domain_name}"
+    cert_manager_iam_id    = google_project_iam_member.grpc_api_http2_instances_certificate_manager[0].id
   } : null
+}
+
+resource "terraform_data" "grpc_api_http2_mtls_validation" {
+  input = var.grpc_api_http2_mtls_managed_pki_enabled
+
+  lifecycle {
+    precondition {
+      condition     = !var.grpc_api_http2_mtls_managed_pki_enabled || var.grpc_api_http2_ingress_enabled
+      error_message = "grpc_api_http2_ingress_enabled must be true when grpc_api_http2_mtls_managed_pki_enabled is true."
+    }
+
+    precondition {
+      condition     = !var.grpc_api_http2_ingress_enabled || (local.effective_ingress_http2_tls != null && local.effective_grpc_api_http2_backend_tls != null)
+      error_message = "grpc_api_http2_ingress_enabled requires ingress_http2_tls and grpc_api_http2_backend_tls, either directly or through managed mTLS."
+    }
+
+    precondition {
+      condition     = var.grpc_api_http2_ingress_enabled || (var.ingress_http2_tls == null && var.grpc_api_http2_backend_tls == null && !var.grpc_api_http2_mtls_managed_pki_enabled)
+      error_message = "HTTP/2 TLS/mTLS backend settings require grpc_api_http2_ingress_enabled=true."
+    }
+  }
 }
 
 resource "google_privateca_ca_pool" "grpc_api_http2" {
@@ -45,7 +70,9 @@ resource "google_privateca_ca_pool" "grpc_api_http2" {
 
   name     = "${var.prefix}grpc-api-http2"
   location = local.grpc_api_http2_mtls_ca_location
-  tier     = "DEVOPS"
+  # DEVOPS tier is intentionally short-lived-leaf oriented: individual leaf
+  # cert revocation/lifecycle is unavailable, so compromise response is CA rotation.
+  tier = "DEVOPS"
 
   issuance_policy {
     maximum_lifetime = "2592000s"
@@ -133,10 +160,12 @@ resource "google_privateca_ca_pool_iam_member" "grpc_api_http2_instances_auditor
   member  = "serviceAccount:${module.init.service_account_email}"
 }
 
-resource "time_rotating" "grpc_api_http2_lb_client_certificate" {
+resource "google_project_iam_member" "grpc_api_http2_instances_certificate_manager" {
   count = var.grpc_api_http2_mtls_managed_pki_enabled ? 1 : 0
 
-  rotation_days = 20
+  project = var.gcp_project_id
+  role    = "roles/certificatemanager.editor"
+  member  = "serviceAccount:${module.init.service_account_email}"
 }
 
 resource "terraform_data" "grpc_api_http2_lb_client_certificate" {
@@ -145,9 +174,7 @@ resource "terraform_data" "grpc_api_http2_lb_client_certificate" {
   input = local.grpc_api_http2_lb_client_certificate_id
 
   triggers_replace = {
-    certificate_id       = local.grpc_api_http2_lb_client_certificate_id
-    certificate_validity = var.grpc_api_http2_mtls_certificate_validity
-    rotation             = time_rotating.grpc_api_http2_lb_client_certificate[0].id
+    certificate_id = local.grpc_api_http2_lb_client_certificate_id
   }
 
   provisioner "local-exec" {
@@ -194,5 +221,6 @@ resource "terraform_data" "grpc_api_http2_lb_client_certificate" {
 
   depends_on = [
     google_privateca_certificate_authority.grpc_api_http2,
+    google_project_iam_member.grpc_api_http2_instances_certificate_manager,
   ]
 }

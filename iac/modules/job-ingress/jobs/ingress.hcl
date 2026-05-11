@@ -114,6 +114,7 @@ EOF
         destination = "local/tls/http2.crt"
         perms       = "0444"
         change_mode = "${ingress_http2_tls.reload_consul_key == null ? "restart" : "noop"}"
+        error_on_missing_key = true
       }
 
       template {
@@ -123,6 +124,7 @@ EOF
         destination = "secrets/tls/http2.key"
         perms       = "0400"
         change_mode = "${ingress_http2_tls.reload_consul_key == null ? "restart" : "noop"}"
+        error_on_missing_key = true
       }
 
 %{ if ingress_http2_tls.require_client_certificate }
@@ -133,6 +135,7 @@ EOF
         destination = "local/tls/client-ca.crt"
         perms       = "0444"
         change_mode = "${ingress_http2_tls.reload_consul_key == null ? "restart" : "noop"}"
+        error_on_missing_key = true
       }
 %{ endif }
 %{ if ingress_http2_tls.reload_consul_key != null }
@@ -143,6 +146,7 @@ EOF
         destination = "local/tls/http2.reload"
         perms       = "0444"
         change_mode = "restart"
+        error_on_missing_key = true
       }
 %{ endif }
 %{ endif }

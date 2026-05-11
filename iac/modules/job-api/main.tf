@@ -49,6 +49,7 @@ resource "nomad_job" "api" {
     launch_darkly_api_key                   = trimspace(var.launch_darkly_api_key)
     default_persistent_volume_type          = var.default_persistent_volume_type
     job_env_vars                            = local.job_env_vars
+    grpc_api_http2_tls_enabled              = var.grpc_api_http2_tls_enabled
     grpc_api_http2_mtls_enabled             = var.grpc_api_http2_mtls_enabled
   })
 }

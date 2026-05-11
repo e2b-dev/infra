@@ -115,6 +115,11 @@ module "ingress_cert_renewer" {
   client_ca_consul_key   = var.ingress_http2_cert_renewer.client_ca_consul_key
   reload_consul_key      = var.ingress_http2_cert_renewer.reload_consul_key
 
+  lb_client_certificate_name = var.ingress_http2_cert_renewer.lb_client_cert_name
+  lb_client_certificate_id   = var.ingress_http2_cert_renewer.lb_client_cert_id
+  lb_client_dns_name         = var.ingress_http2_cert_renewer.lb_client_dns_name
+  cert_manager_iam_id        = var.ingress_http2_cert_renewer.cert_manager_iam_id
+
   consul_endpoint = "http://localhost:8500"
   consul_token    = var.consul_acl_token_secret
 }
@@ -163,6 +168,7 @@ module "api" {
   db_migrator_docker_image                = data.google_artifact_registry_docker_image.db_migrator_image.self_link
   launch_darkly_api_key                   = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   default_persistent_volume_type          = var.default_persistent_volume_type
+  grpc_api_http2_tls_enabled              = var.ingress_http2_tls != null
   grpc_api_http2_mtls_enabled             = try(var.ingress_http2_tls.require_client_certificate, false)
 
   job_env_vars = {

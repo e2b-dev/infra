@@ -185,6 +185,12 @@ variable "job_env_vars" {
   default = {}
 }
 
+variable "grpc_api_http2_tls_enabled" {
+  type        = bool
+  description = "Expose grpc-api on the HTTP/2 TLS entrypoint."
+  default     = false
+}
+
 variable "grpc_api_http2_mtls_enabled" {
   type        = bool
   description = "Require the GCP load balancer client certificate on the grpc-api router when it is reached through the HTTP/2 TLS entrypoint."

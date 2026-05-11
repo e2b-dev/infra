@@ -89,13 +89,15 @@ job "api" {
         "traefik.http.routers.grpc-api-web.ruleSyntax=v2",
         "traefik.http.routers.grpc-api-web.priority=500",
         "traefik.http.routers.grpc-api-web.service=grpc-api",
-        %{ if grpc_api_http2_mtls_enabled }
+        %{ if grpc_api_http2_tls_enabled }
         "traefik.http.routers.grpc-api-websecure.rule=Host(`grpc-api.${domain_name}`)",
         "traefik.http.routers.grpc-api-websecure.entrypoints=websecure",
         "traefik.http.routers.grpc-api-websecure.priority=600",
         "traefik.http.routers.grpc-api-websecure.service=grpc-api",
         "traefik.http.routers.grpc-api-websecure.tls=true",
+        %{ if grpc_api_http2_mtls_enabled }
         "traefik.http.routers.grpc-api-websecure.tls.options=gcp-lb-mtls@file",
+        %{ endif }
         %{ endif }
         "traefik.http.services.grpc-api.loadbalancer.server.scheme=h2c"
       ]
