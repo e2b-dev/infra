@@ -85,13 +85,8 @@ func (e *Evictor) Start(ctx context.Context) {
 			}
 
 			for _, item := range sbxs {
-				// TryGo so we never block the ticker loop when at the limit;
-				// items left behind stay expired and are retried on the next
-				// tick.
 				if !g.TryGo(func() error {
-					// Dedupe concurrent eviction attempts for the same sandbox
-					// inside the goroutine so the singleflight key is held for
-					// the duration of the actual eviction work.
+					// Deduplicate eviction attempts
 					e.evictGroup.Do(item.SandboxID, func() (any, error) {
 						e.inFlight.Add(1)
 						defer e.inFlight.Add(-1)
