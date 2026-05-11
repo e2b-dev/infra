@@ -4,13 +4,11 @@ package build
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"sync/atomic"
 
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -18,8 +16,13 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
+type headerProvider interface {
+	PendingHeader(buildID, name string) *header.Header
+}
+
 type File struct {
 	header      atomic.Pointer[header.Header]
+	headers     headerProvider
 	store       *DiffStore
 	fileType    DiffType
 	persistence storage.StorageProvider
@@ -33,10 +36,12 @@ func NewFile(
 	persistence storage.StorageProvider,
 	metrics blockmetrics.Metrics,
 ) *File {
+	hp, _ := persistence.(headerProvider)
 	f := &File{
 		store:       store,
 		fileType:    fileType,
 		persistence: persistence,
+		headers:     hp,
 		metrics:     metrics,
 	}
 	f.header.Store(header)
@@ -52,9 +57,10 @@ func (b *File) SwapHeader(h *header.Header) {
 	b.header.Store(h)
 }
 
-func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
+func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
+	var n int
 	for n < len(p) {
-		h := b.Header()
+		h := b.installPendingHeader()
 
 		mappedToBuild, err := h.GetShiftedMapping(ctx, off+int64(n))
 		if err != nil {
@@ -105,12 +111,6 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 			ft,
 		)
 		if err != nil {
-			if retry, swapErr := b.retryOnTransition(ctx, err); retry {
-				continue
-			} else if swapErr != nil {
-				return 0, swapErr
-			}
-
 			return 0, fmt.Errorf("failed to read from source: %w", err)
 		}
 
@@ -122,68 +122,49 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 
 // The slice access must be in the predefined blocksize of the build.
 func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
-	for {
-		h := b.Header()
+	h := b.installPendingHeader()
 
-		mappedBuild, err := h.GetShiftedMapping(ctx, off)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get mapping: %w", err)
-		}
-
-		// Pass empty huge page when the build id is nil.
-		if mappedBuild.BuildId == uuid.Nil {
-			return header.EmptyHugePage, nil
-		}
-
-		size := b.buildFileSize(h, mappedBuild.BuildId)
-		ft := h.GetBuildFrameData(mappedBuild.BuildId)
-		diff, err := b.getBuild(ctx, mappedBuild.BuildId, size, ft.CompressionType())
-		if err != nil {
-			return nil, fmt.Errorf("failed to get build: %w", err)
-		}
-
-		result, err := diff.Slice(ctx, int64(mappedBuild.Offset), int64(h.Metadata.BlockSize), ft)
-		if err != nil {
-			if retry, swapErr := b.retryOnTransition(ctx, err); retry {
-				continue
-			} else if swapErr != nil {
-				return nil, swapErr
-			}
-
-			return nil, err
-		}
-
-		return result, nil
+	mappedBuild, err := h.GetShiftedMapping(ctx, off)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get mapping: %w", err)
 	}
+
+	// Pass empty huge page when the build id is nil.
+	if mappedBuild.BuildId == uuid.Nil {
+		return header.EmptyHugePage, nil
+	}
+
+	size := b.buildFileSize(h, mappedBuild.BuildId)
+	ft := h.GetBuildFrameData(mappedBuild.BuildId)
+	diff, err := b.getBuild(ctx, mappedBuild.BuildId, size, ft.CompressionType())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get build: %w", err)
+	}
+
+	return diff.Slice(ctx, int64(mappedBuild.Offset), int64(h.Metadata.BlockSize), ft)
 }
 
-// retryOnTransition catches a PeerTransitionedError and swaps the header from
-// storage. Returns (true, nil) to signal the caller should continue the loop,
-// or (false, swapErr) if the swap itself failed. peerSeekable emits the
-// transition error at most once per seekable, so the loop is naturally
-// bounded — no retry counter needed here.
-//
-// The transition is signaled only after the source upload has finalized, so
-// the header object already exists in storage. A single LoadHeader is enough;
-// polling here would multiply GCS reads under high peer-transition rates.
-func (b *File) retryOnTransition(ctx context.Context, err error) (bool, error) {
-	var transErr *storage.PeerTransitionedError
-	if !errors.As(err, &transErr) {
-		return false, nil
+// installPendingHeader installs a header the peer delivered via UseStorage
+// and returns the current header — either the freshly-installed one or the
+// pre-existing one if no install was needed. Idempotent: concurrent readers
+// all CAS the same value. Skips the CAS once the pending header is already
+// installed (pointer equality), keeping the per-iteration cost to one atomic
+// Load on the steady-state path.
+func (b *File) installPendingHeader() *header.Header {
+	cur := b.header.Load()
+	if b.headers == nil {
+		return cur
 	}
-
-	logger.L().Info(ctx, "peer transition detected, swapping header",
-		zap.String("file_type", string(b.fileType)),
-	)
-
-	hdrPath := storage.Paths{BuildID: b.Header().Metadata.BuildId.String()}.HeaderFile(string(b.fileType))
-	h, loadErr := header.LoadHeader(ctx, b.persistence, hdrPath)
-	if loadErr != nil {
-		return false, fmt.Errorf("failed to swap header: %w", loadErr)
+	h := b.headers.PendingHeader(cur.Metadata.BuildId.String(), string(b.fileType))
+	if h == nil || h == cur {
+		return cur
 	}
-	b.SwapHeader(h)
-
-	return true, nil
+	if b.header.CompareAndSwap(cur, h) {
+		return h
+	}
+	// Lost the CAS — an external SwapHeader landed concurrently. Re-load to
+	// surface whatever's now authoritative.
+	return b.header.Load()
 }
 
 // buildFileSize returns the uncompressed file size for a build. Returns 0 for

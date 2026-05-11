@@ -3,7 +3,6 @@ package peerclient
 import (
 	"bytes"
 	"io"
-	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -29,7 +28,7 @@ func TestPeerStorageProvider_OpenBlob_ExtractsFileName(t *testing.T) {
 
 	base := storage.NewMockStorageProvider(t)
 
-	p := newPeerStorageProvider(base, client, &atomic.Bool{})
+	p := newPeerStorageProvider(base, client, &peerState{})
 	blob, err := p.OpenBlob(t.Context(), "build-1/snapfile", storage.SnapfileObjectType)
 	require.NoError(t, err)
 
@@ -49,7 +48,7 @@ func TestPeerStorageProvider_OpenSeekable_ExtractsFileName(t *testing.T) {
 
 	base := storage.NewMockStorageProvider(t)
 
-	p := newPeerStorageProvider(base, client, &atomic.Bool{})
+	p := newPeerStorageProvider(base, client, &peerState{})
 	ff, err := p.OpenSeekable(t.Context(), "build-1/memfile", storage.MemfileObjectType)
 	require.NoError(t, err)
 

@@ -16,6 +16,8 @@ message PeerAvailability {
   // caller should switch to reading from remote storage directly instead of
   // this peer.
   bool use_storage = 2;
+  // header_bytes carries the post-upload V4 header (framed files only).
+  bytes header_bytes = 3;
 }
 
 message GetBuildFileSizeRequest {

@@ -167,14 +167,9 @@ func UploadBlob(ctx context.Context, provider StorageProvider, remotePath string
 	return blob.Put(ctx, data, opts...)
 }
 
-// PeerTransitionedError is returned by the peer Seekable when the remote
-// storage upload has completed; the caller should re-load the V4 header from
-// storage.
-type PeerTransitionedError struct{}
-
-func (e *PeerTransitionedError) Error() string {
-	return "peer upload completed, reload header from storage"
-}
+// ErrPeerAborted signals the peer aborted an in-flight stream; the caller
+// should close and re-issue OpenRangeReader (next attempt hits base).
+var ErrPeerAborted = errors.New("peer aborted stream mid-flight")
 
 // StorageConfig holds the configuration for creating a storage provider.
 // Both GetLocalBasePath and GetBucketName are evaluated lazily so that

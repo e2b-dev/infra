@@ -86,8 +86,19 @@ func (u *Upload) uploadFramed(
 	}
 	h.Builds[u.buildID] = selfBuild
 
-	if err := headers.StoreHeader(ctx, u.store, u.paths.HeaderFile(string(fileType)), h); err != nil {
+	data, err := headers.StoreHeader(ctx, u.store, u.paths.HeaderFile(string(fileType)), h)
+	if err != nil {
 		return fmt.Errorf("store %s header: %w", fileType, err)
+	}
+
+	// Retain the just-serialized bytes for inline delivery on post-upload
+	// UseStorage responses. Each goroutine writes its own field; reads happen
+	// after Run() returns (errgroup.Wait happens-before).
+	switch fileType {
+	case build.Memfile:
+		u.memfileHeader = data
+	case build.Rootfs:
+		u.rootfsHeader = data
 	}
 
 	return u.publish(ctx, fileType, h)

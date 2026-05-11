@@ -200,6 +200,10 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, ft *storage.Fra
 	fetchTimer := c.metrics.RemoteReadsTimerFactory.Begin()
 
 	readBytes, err := c.progressiveRead(ctx, s, mmapSlice, ft)
+	// Retry once on ErrPeerAborted; second read will go to remote storage.
+	if errors.Is(err, storage.ErrPeerAborted) {
+		readBytes, err = c.progressiveRead(ctx, s, mmapSlice, ft)
+	}
 	if err != nil {
 		fetchTimer.RecordRaw(ctx, readBytes, attrs.remoteFailure)
 

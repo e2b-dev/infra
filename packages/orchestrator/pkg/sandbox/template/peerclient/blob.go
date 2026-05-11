@@ -2,11 +2,9 @@ package peerclient
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"sync"
-	"sync/atomic"
 
 	"go.uber.org/zap"
 
@@ -49,19 +47,24 @@ func (b *peerBlob) getBase(ctx context.Context) (storage.Blob, error) {
 }
 
 func (b *peerBlob) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
-	res, err := tryPeer(ctx, &b.peerHandle, "peer-blob-write-to", attrOpWriteTo,
+	n, hit, err := tryPeer(ctx, &b.peerHandle, "peer-blob-write-to", attrOpWriteTo,
 		func(ctx context.Context) (peerAttempt[int64], error) {
 			streamCtx, cancel := context.WithCancel(ctx)
 
-			recv, err := openPeerBlobStream(streamCtx, b.client, &orchestrator.GetBuildBlobRequest{
+			recv, outcome, err := openPeerBlobStream(streamCtx, b.client, &orchestrator.GetBuildBlobRequest{
 				BuildId: b.buildID,
 				Name:    b.name,
-			}, b.uploaded)
+			}, b.state)
 			if err != nil {
 				cancel()
 				logger.L().Warn(ctx, "failed to open peer blob stream", logger.WithBuildID(b.buildID), zap.String("file_name", b.name), zap.Error(err))
 
-				return peerAttempt[int64]{}, nil
+				return peerAttempt[int64]{}, err
+			}
+			if outcome != served {
+				cancel()
+
+				return peerAttempt[int64]{result: outcome}, nil
 			}
 
 			reader := newPeerStreamReader(recv, cancel)
@@ -69,14 +72,14 @@ func (b *peerBlob) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 
 			n, err := io.Copy(dst, reader)
 			if err != nil {
-				return peerAttempt[int64]{value: n, bytes: n, hit: true},
+				return peerAttempt[int64]{value: n, bytes: n, result: served},
 					fmt.Errorf("failed to stream file %q from peer: %w", b.name, err)
 			}
 
-			return peerAttempt[int64]{value: n, bytes: n, hit: true}, nil
+			return peerAttempt[int64]{value: n, bytes: n, result: served}, nil
 		})
-	if res.hit {
-		return res.value, err
+	if hit {
+		return n, err
 	}
 
 	base, err := b.getBase(ctx)
@@ -88,24 +91,26 @@ func (b *peerBlob) WriteTo(ctx context.Context, dst io.Writer) (int64, error) {
 }
 
 func (b *peerBlob) Exists(ctx context.Context) (bool, error) {
-	res, err := tryPeer(ctx, &b.peerHandle, "peer-blob-exists", attrOpExists,
+	exists, hit, err := tryPeer(ctx, &b.peerHandle, "peer-blob-exists", attrOpExists,
 		func(ctx context.Context) (peerAttempt[bool], error) {
 			resp, err := b.client.GetBuildFileExists(ctx, &orchestrator.GetBuildFileExistsRequest{
 				BuildId: b.buildID,
 				Name:    b.name,
 			})
-			if err == nil && checkPeerAvailability(resp.GetAvailability(), b.uploaded) {
-				return peerAttempt[bool]{value: true, hit: true}, nil
-			}
-
 			if err != nil {
 				logger.L().Warn(ctx, "failed to check build file exists from peer", logger.WithBuildID(b.buildID), zap.String("file_name", b.name), zap.Error(err))
+
+				return peerAttempt[bool]{}, err
+			}
+			outcome := checkPeerAvailability(resp.GetAvailability(), b.state, b.name)
+			if outcome != served {
+				return peerAttempt[bool]{result: outcome}, nil
 			}
 
-			return peerAttempt[bool]{}, nil
+			return peerAttempt[bool]{value: true, result: served}, nil
 		})
-	if res.hit {
-		return res.value, err
+	if hit {
+		return exists, err
 	}
 
 	base, err := b.getBase(ctx)
@@ -128,25 +133,26 @@ func (b *peerBlob) Put(ctx context.Context, data []byte, opts ...storage.PutOpti
 
 // openPeerBlobStream opens a GetBuildBlob stream, checks peer availability,
 // and returns a recv function that yields data chunks starting with the first message's data.
+// Mid-stream availability changes are side-effect only; the in-flight stream completes from peer.
 // The passed context HAS to be canceled by the caller when done with the stream to avoid leaks.
 func openPeerBlobStream(
 	ctx context.Context,
 	client orchestrator.ChunkServiceClient,
 	req *orchestrator.GetBuildBlobRequest,
-	uploaded *atomic.Bool,
-) (func() ([]byte, error), error) {
+	state *peerState,
+) (func() ([]byte, error), result, error) {
 	stream, err := client.GetBuildBlob(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("open blob stream: %w", err)
+		return nil, 0, fmt.Errorf("open blob stream: %w", err)
 	}
 
 	msg, err := stream.Recv()
 	if err != nil {
-		return nil, fmt.Errorf("recv first blob message: %w", err)
+		return nil, 0, fmt.Errorf("recv first blob message: %w", err)
 	}
 
-	if !checkPeerAvailability(msg.GetAvailability(), uploaded) {
-		return nil, errors.New("peer not available for blob stream")
+	if outcome := checkPeerAvailability(msg.GetAvailability(), state, req.GetName()); outcome != served {
+		return nil, outcome, nil
 	}
 
 	first := msg.GetData()
@@ -164,11 +170,8 @@ func openPeerBlobStream(
 			return nil, err
 		}
 
-		// Flip the uploaded flag if the peer signals use_storage; the current
-		// stream keeps reading from the peer, but subsequent operations will
-		// go directly to GCS.
-		checkPeerAvailability(m.GetAvailability(), uploaded)
+		_ = checkPeerAvailability(m.GetAvailability(), state, req.GetName())
 
 		return m.GetData(), nil
-	}, nil
+	}, served, nil
 }

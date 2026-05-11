@@ -15,6 +15,8 @@ import (
 
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 const peerConnectTimeout = 5 * time.Second
@@ -27,14 +29,51 @@ const peerConnectTimeout = 5 * time.Second
 type Resolver interface {
 	resolve(ctx context.Context, buildID string) (attribute.KeyValue, resolveResult)
 	IsActive(buildID string) bool
+	PendingHeader(buildID, name string) *header.Header
 	Purge(buildID string)
 	Close()
 }
 
+// peerState is per-buildID state shared across every peer{Blob,Seekable}.
+// uploaded routes future reads to base; memfile/rootfs hold V4 headers
+// delivered in UseStorage responses for build.File to install.
+type peerState struct {
+	uploaded atomic.Bool
+	memfile  atomic.Pointer[header.Header]
+	rootfs   atomic.Pointer[header.Header]
+}
+
+func (b *peerState) setHeader(name string, h *header.Header) {
+	switch name {
+	case storage.MemfileName:
+		b.memfile.Store(h)
+	case storage.RootfsName:
+		b.rootfs.Store(h)
+	}
+}
+
+func (b *peerState) header(name string) *header.Header {
+	// Gate on uploaded: writer sequences setHeader before uploaded.Store(true);
+	// a reader observing uploaded=true is guaranteed (Go atomic ordering) to
+	// see the prior header store on its subsequent atomic load. V3 stores
+	// nothing — header() correctly returns nil for those builds.
+	if !b.uploaded.Load() {
+		return nil
+	}
+	switch name {
+	case storage.MemfileName:
+		return b.memfile.Load()
+	case storage.RootfsName:
+		return b.rootfs.Load()
+	}
+
+	return nil
+}
+
 type resolveResult struct {
-	client   orchestrator.ChunkServiceClient
-	uploaded *atomic.Bool
-	addr     string
+	client orchestrator.ChunkServiceClient
+	state  *peerState
+	addr   string
 }
 
 // NopResolver returns a Resolver that always falls back to the base provider.
@@ -45,16 +84,17 @@ type nopResolver struct{}
 func (nopResolver) resolve(context.Context, string) (attribute.KeyValue, resolveResult) {
 	return attrResolveNoPeer, resolveResult{}
 }
-func (nopResolver) IsActive(string) bool { return false }
-func (nopResolver) Purge(string)         {}
-func (nopResolver) Close()               {}
+func (nopResolver) IsActive(string) bool                        { return false }
+func (nopResolver) PendingHeader(string, string) *header.Header { return nil }
+func (nopResolver) Purge(string)                                {}
+func (nopResolver) Close()                                      {}
 
 // peerResolver is the real implementation that looks up peers via the Registry.
 type peerResolver struct {
 	registry       Registry
 	selfAddress    string
 	peerConns      sync.Map // address → *grpc.ClientConn
-	uploadedBuilds sync.Map // buildID → *atomic.Bool
+	uploadedBuilds sync.Map // buildID → *peerState
 	dialGroup      singleflight.Group
 }
 
@@ -106,36 +146,31 @@ func (r *peerResolver) isSelfAddress(address string) bool {
 	return address == r.selfAddress
 }
 
-// peerFlag returns the shared atomic "switched-to-storage" flag for buildID,
-// creating it on first call. The presence of an entry in uploadedBuilds means
-// "this build is/was peer-served on this orch"; the flag's value tracks
-// whether a reader has observed the source switch to storage. Only resolve()
-// creates entries (in the peer-found branch) so absence is meaningful: no
-// peer ever existed for this build from this orch's perspective.
-func (r *peerResolver) peerFlag(buildID string) *atomic.Bool {
-	if v, ok := r.uploadedBuilds.Load(buildID); ok {
-		return v.(*atomic.Bool)
-	}
+// peerState returns the shared per-build state, creating it on first call.
+// The presence of an entry in builds means "this build is/was peer-served on
+// this orch"; the uploaded flag tracks whether a reader has observed the
+// source switch to storage. Only resolve() creates entries (in the peer-found
+// branch) so absence is meaningful: no peer ever existed for this build from
+// this orch's perspective.
+func (r *peerResolver) peerState(buildID string) *peerState {
+	actual, _ := r.uploadedBuilds.LoadOrStore(buildID, &peerState{})
 
-	flag := &atomic.Bool{}
-	actual, _ := r.uploadedBuilds.LoadOrStore(buildID, flag)
-
-	return actual.(*atomic.Bool)
+	return actual.(*peerState)
 }
 
-// Purge removes the uploaded state for a build, called on template
-// cache eviction so the entry doesn't accumulate forever.
+// Purge removes the per-build state, called on template cache eviction so
+// the entry doesn't accumulate forever.
 func (r *peerResolver) Purge(buildID string) {
 	r.uploadedBuilds.Delete(buildID)
 }
 
 // resolve looks up the peer for the given build and returns a gRPC client if
-// a remote peer is found. Returns a nil client when the base provider should
+// a remote peer is found. Returns a zero result when the base provider should
 // be used instead (uploaded, no peer, self, or error).
 func (r *peerResolver) resolve(ctx context.Context, buildID string) (attribute.KeyValue, resolveResult) {
 	// Fast path: a prior resolve flagged this build as peer-served and a
 	// reader has since observed the switch to storage.
-	if v, ok := r.uploadedBuilds.Load(buildID); ok && v.(*atomic.Bool).Load() {
+	if v, ok := r.uploadedBuilds.Load(buildID); ok && v.(*peerState).uploaded.Load() {
 		return attrResolveUploaded, resolveResult{}
 	}
 
@@ -157,17 +192,12 @@ func (r *peerResolver) resolve(ctx context.Context, buildID string) (attribute.K
 		return attrResolveDialError, resolveResult{}
 	}
 
-	// Peer found and dialable — register the flag now so IsActive and
-	// future resolves can answer locally without touching Redis.
-	uploaded := r.peerFlag(buildID)
-	if uploaded.Load() {
-		return attrResolveUploaded, resolveResult{}
-	}
-
+	// Peer found and dialable — register state now so IsActive and future
+	// resolves can answer locally without touching Redis.
 	return attrResolvePeer, resolveResult{
-		client:   orchestrator.NewChunkServiceClient(conn),
-		uploaded: uploaded,
-		addr:     addr,
+		client: orchestrator.NewChunkServiceClient(conn),
+		state:  r.peerState(buildID),
+		addr:   addr,
 	}
 }
 
@@ -180,7 +210,16 @@ func (r *peerResolver) resolve(ctx context.Context, buildID string) (attribute.K
 func (r *peerResolver) IsActive(buildID string) bool {
 	v, ok := r.uploadedBuilds.Load(buildID)
 
-	return ok && !v.(*atomic.Bool).Load()
+	return ok && !v.(*peerState).uploaded.Load()
+}
+
+func (r *peerResolver) PendingHeader(buildID, name string) *header.Header {
+	v, ok := r.uploadedBuilds.Load(buildID)
+	if !ok {
+		return nil
+	}
+
+	return v.(*peerState).header(name)
 }
 
 func (r *peerResolver) Close() {

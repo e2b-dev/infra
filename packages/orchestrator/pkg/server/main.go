@@ -46,7 +46,7 @@ type Server struct {
 	sbxEventsService      *events.EventsService
 	startingSandboxes     *semaphore.Weighted
 	peerRegistry          peerclient.Registry
-	uploadedBuilds        *ttlcache.Cache[string, struct{}]
+	uploadedBuilds        *ttlcache.Cache[string, uploadedHeaders]
 	uploads               *sandbox.Uploads
 	sandboxCreateDuration metric.Int64Histogram
 }
@@ -68,8 +68,9 @@ type ServiceConfig struct {
 }
 
 func New(cfg ServiceConfig) (*Server, error) {
-	uploadedBuilds := ttlcache.New[string, struct{}](
-		ttlcache.WithTTL[string, struct{}](uploadedBuildsTTL),
+	// TODO - we should not be caching the headers (for 1hr) if P2P FF is off.
+	uploadedBuilds := ttlcache.New(
+		ttlcache.WithTTL[string, uploadedHeaders](uploadedBuildsTTL),
 	)
 	go uploadedBuilds.Start()
 

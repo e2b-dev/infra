@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -42,8 +42,10 @@ var (
 	attrResolvePeer       = attribute.String("peer_resolve", "peer")
 	attrResolveUploaded   = attribute.String("peer_resolve", "uploaded")
 
-	attrPeerHitTrue  = attribute.Bool("peer_hit", true)
-	attrPeerHitFalse = attribute.Bool("peer_hit", false)
+	attrPeerHitTrue       = attribute.String("peer_hit", "true")
+	attrPeerHitFalse      = attribute.String("peer_hit", "false")
+	attrPeerHitTransition = attribute.String("peer_hit", "transitioned")
+	attrPeerHitMiss       = attribute.String("peer_hit", "miss")
 )
 
 var _ storage.StorageProvider = (*routingProvider)(nil)
@@ -76,7 +78,12 @@ func (p *routingProvider) resolveProvider(ctx context.Context, buildID string) s
 
 	span.SetAttributes(attribute.String("peer_address", res.addr))
 
-	return newPeerStorageProvider(p.base, res.client, res.uploaded)
+	return newPeerStorageProvider(p.base, res.client, res.state)
+}
+
+// PendingHeader implements storage.HeaderProvider.
+func (p *routingProvider) PendingHeader(buildID, name string) *header.Header {
+	return p.resolver.PendingHeader(buildID, name)
 }
 
 func (p *routingProvider) OpenBlob(ctx context.Context, path string, objType storage.ObjectType) (storage.Blob, error) {
@@ -109,20 +116,21 @@ var _ storage.StorageProvider = (*peerStorageProvider)(nil)
 type peerStorageProvider struct {
 	base       storage.StorageProvider
 	peerClient orchestrator.ChunkServiceClient
-	// uploaded is set to true when the peer signals that GCS upload is complete
-	// (use_storage=true). Once set, all subsequent reads skip the peer and go to base.
-	uploaded *atomic.Bool
+	// state holds the per-buildID coordination shared by all peer{Blob,Seekable}
+	// for this build: uploaded flag (route to base post-flip) and parsed V4
+	// headers (delivered inline on UseStorage; build.File installs them).
+	state *peerState
 }
 
 func newPeerStorageProvider(
 	base storage.StorageProvider,
 	peerClient orchestrator.ChunkServiceClient,
-	uploaded *atomic.Bool,
+	state *peerState,
 ) storage.StorageProvider {
 	return &peerStorageProvider{
 		base:       base,
 		peerClient: peerClient,
-		uploaded:   uploaded,
+		state:      state,
 	}
 }
 
@@ -131,10 +139,10 @@ func (p *peerStorageProvider) OpenBlob(_ context.Context, path string, objType s
 
 	return &peerBlob{
 		peerHandle: peerHandle{
-			client:   p.peerClient,
-			buildID:  buildID,
-			name:     t,
-			uploaded: p.uploaded,
+			client:  p.peerClient,
+			buildID: buildID,
+			name:    t,
+			state:   p.state,
 		},
 		openBase: func(ctx context.Context) (storage.Blob, error) {
 			return p.base.OpenBlob(ctx, path, objType)
@@ -156,10 +164,10 @@ func (p *peerStorageProvider) OpenSeekable(_ context.Context, path string, objTy
 
 	return &peerSeekable{
 		peerHandle: peerHandle{
-			client:   p.peerClient,
-			buildID:  buildID,
-			name:     t,
-			uploaded: p.uploaded,
+			client:  p.peerClient,
+			buildID: buildID,
+			name:    t,
+			state:   p.state,
 		},
 		basePersistence: p.base,
 		objType:         objType,
@@ -178,86 +186,112 @@ func (p *peerStorageProvider) GetDetails() string {
 	return p.base.GetDetails()
 }
 
-// checkPeerAvailability also marks the uploaded flag when UseStorage is set.
-func checkPeerAvailability(avail *orchestrator.PeerAvailability, uploaded *atomic.Bool) bool {
-	if avail.GetNotAvailable() {
-		return false
-	}
-
+// checkPeerAvailability classifies a peer availability message. On UseStorage
+// it flips state.uploaded and (if header bytes are present) stashes the
+// parsed V4 header for File to install. Parse errors are dropped silently.
+func checkPeerAvailability(avail *orchestrator.PeerAvailability, state *peerState, name string) result {
 	if avail.GetUseStorage() {
-		uploaded.Store(true)
+		if state != nil {
+			if bytes := avail.GetHeaderBytes(); len(bytes) > 0 {
+				if h, err := header.DeserializeBytes(bytes); err == nil {
+					state.setHeader(name, h)
+				}
+			}
+			state.uploaded.Store(true)
+		}
 
-		return false
+		return transitioned
 	}
 
-	return true
+	if avail.GetNotAvailable() {
+		return missed
+	}
+
+	return served
 }
 
 // peerHandle holds the peer-side identity shared by peerBlob and peerSeekable.
-// fileName is the basic (uncompressed) name — peer fetches always use it.
 type peerHandle struct {
-	client   orchestrator.ChunkServiceClient
-	buildID  string
-	name     string
-	uploaded *atomic.Bool
+	client  orchestrator.ChunkServiceClient
+	buildID string
+	name    string
+	state   *peerState
 }
 
-// peerAttempt is the result of a peer read attempt.
-// hit=true means the peer had data (value is populated); when hit=true and the
-// caller also returns a non-nil error the helper records a partial failure.
+// result enumerates how a peer attempt resolved. Zero value is unnamed and
+// covers the early-return / real-error paths; tryPeer's default arm handles
+// it as a failure.
+type result int
+
+const (
+	served       result = iota + 1 // peer returned data
+	missed                         // NotAvailable signal
+	transitioned                   // UseStorage signal
+)
+
 type peerAttempt[T any] struct {
-	value T
-	bytes int64
-	hit   bool
+	value  T
+	bytes  int64
+	result result
 }
 
-// tryPeer attempts a peer read if the peer is still authoritative for this
-// build. It records peer telemetry and returns the attempt; the caller
-// inspects res.hit to decide whether to fall through to base. tryPeer never
-// opens base.
+// tryPeer runs peerFn if state.uploaded is still false, records telemetry,
+// and returns (value, served, err). Availability signals (Miss/Transitioned)
+// are recorded as Success and surface as served=false; only real RPC errors
+// propagate as err.
 func tryPeer[T any](
 	ctx context.Context,
 	h *peerHandle,
 	spanName string,
 	opAttr attribute.KeyValue,
 	peerFn func(ctx context.Context) (peerAttempt[T], error),
-) (peerAttempt[T], error) {
+) (T, bool, error) {
 	ctx, span := tracer.Start(ctx, spanName, trace.WithAttributes(
 		attribute.String("file_name", h.name),
 	))
 	defer span.End()
 
-	if h.uploaded.Load() {
+	var zero T
+	if h.state != nil && h.state.uploaded.Load() {
 		span.SetAttributes(attrPeerHitFalse)
 
-		return peerAttempt[T]{}, nil
+		return zero, false, nil
 	}
 
 	timer := peerReadTimerFactory.Begin(opAttr)
 
 	res, err := peerFn(ctx)
-	if res.hit {
+	switch res.result {
+	case served:
 		if err != nil {
+			// partial failure: data was returned but streaming/closing failed
 			span.RecordError(err)
 			timer.Failure(ctx, res.bytes)
 
-			return res, err
+			return res.value, true, err
 		}
-
 		span.SetAttributes(attrPeerHitTrue)
 		timer.Success(ctx, res.bytes)
 
-		return res, nil
+		return res.value, true, nil
+
+	case transitioned:
+		span.SetAttributes(attrPeerHitTransition)
+		timer.Success(ctx, 0)
+
+	case missed:
+		span.SetAttributes(attrPeerHitMiss)
+		timer.Success(ctx, 0)
+
+	default:
+		if err != nil {
+			span.RecordError(err)
+		}
+		span.SetAttributes(attrPeerHitFalse)
+		timer.Failure(ctx, 0)
 	}
 
-	if err != nil {
-		span.RecordError(err)
-	}
-
-	timer.Failure(ctx, 0)
-	span.SetAttributes(attrPeerHitFalse)
-
-	return peerAttempt[T]{}, nil
+	return zero, false, nil
 }
 
 var _ io.ReadCloser = (*peerStreamReader)(nil)

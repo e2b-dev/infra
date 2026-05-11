@@ -12,13 +12,30 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerserver"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-var (
-	peerNotAvailable = &orchestrator.PeerAvailability{NotAvailable: true}
-	peerUseStorage   = &orchestrator.PeerAvailability{UseStorage: true}
-)
+var peerNotAvailable = &orchestrator.PeerAvailability{NotAvailable: true}
+
+// uploadedHeaders carries serialized V4 headers inline on UseStorage
+// responses so the client skips a separate storage round-trip. V3: both nil.
+type uploadedHeaders struct {
+	memfile []byte
+	rootfs  []byte
+}
+
+func (b uploadedHeaders) useStorage(name string) *orchestrator.PeerAvailability {
+	avail := &orchestrator.PeerAvailability{UseStorage: true}
+	switch name {
+	case storage.MemfileName:
+		avail.HeaderBytes = b.memfile
+	case storage.RootfsName:
+		avail.HeaderBytes = b.rootfs
+	}
+
+	return avail
+}
 
 // seekableStreamSender implements peerserver.Sender over a gRPC server stream (for seekable files).
 type seekableStreamSender struct {
@@ -52,10 +69,10 @@ func toGRPCError(err error) error {
 func (s *Server) GetBuildFileSize(ctx context.Context, req *orchestrator.GetBuildFileSizeRequest) (*orchestrator.GetBuildFileSizeResponse, error) {
 	telemetry.SetAttributes(ctx, telemetry.WithBuildID(req.GetBuildId()), attribute.String("file_name", req.GetName()))
 
-	if s.uploadedBuilds.Get(req.GetBuildId()) != nil {
+	if u := s.uploadedBuilds.Get(req.GetBuildId()); u != nil {
 		telemetry.SetAttributes(ctx, attribute.Bool("uploaded", true))
 
-		return &orchestrator.GetBuildFileSizeResponse{Availability: peerUseStorage}, nil
+		return &orchestrator.GetBuildFileSizeResponse{Availability: u.Value().useStorage(req.GetName())}, nil
 	}
 
 	src, err := peerserver.ResolveSeekable(s.templateCache, req.GetBuildId(), req.GetName())
@@ -80,10 +97,10 @@ func (s *Server) GetBuildFileSize(ctx context.Context, req *orchestrator.GetBuil
 func (s *Server) GetBuildFileExists(ctx context.Context, req *orchestrator.GetBuildFileExistsRequest) (*orchestrator.GetBuildFileExistsResponse, error) {
 	telemetry.SetAttributes(ctx, telemetry.WithBuildID(req.GetBuildId()), attribute.String("file_name", req.GetName()))
 
-	if s.uploadedBuilds.Get(req.GetBuildId()) != nil {
+	if u := s.uploadedBuilds.Get(req.GetBuildId()); u != nil {
 		telemetry.SetAttributes(ctx, attribute.Bool("uploaded", true))
 
-		return &orchestrator.GetBuildFileExistsResponse{Availability: peerUseStorage}, nil
+		return &orchestrator.GetBuildFileExistsResponse{Availability: u.Value().useStorage(req.GetName())}, nil
 	}
 
 	src, err := peerserver.ResolveBlob(s.templateCache, req.GetBuildId(), req.GetName())
@@ -124,10 +141,10 @@ func (s *Server) ReadAtBuildSeekable(req *orchestrator.ReadAtBuildSeekableReques
 		attribute.Int64("length", length),
 	)
 
-	if s.uploadedBuilds.Get(req.GetBuildId()) != nil {
+	if u := s.uploadedBuilds.Get(req.GetBuildId()); u != nil {
 		telemetry.SetAttributes(ctx, attribute.Bool("uploaded", true))
 
-		return stream.Send(&orchestrator.ReadAtBuildSeekableResponse{Availability: peerUseStorage})
+		return stream.Send(&orchestrator.ReadAtBuildSeekableResponse{Availability: u.Value().useStorage(req.GetName())})
 	}
 
 	src, err := peerserver.ResolveSeekable(s.templateCache, req.GetBuildId(), req.GetName())
@@ -159,10 +176,10 @@ func (s *Server) GetBuildBlob(req *orchestrator.GetBuildBlobRequest, stream orch
 		attribute.String("file_name", req.GetName()),
 	)
 
-	if s.uploadedBuilds.Get(req.GetBuildId()) != nil {
+	if u := s.uploadedBuilds.Get(req.GetBuildId()); u != nil {
 		telemetry.SetAttributes(ctx, attribute.Bool("uploaded", true))
 
-		return stream.Send(&orchestrator.GetBuildBlobResponse{Availability: peerUseStorage})
+		return stream.Send(&orchestrator.GetBuildBlobResponse{Availability: u.Value().useStorage(req.GetName())})
 	}
 
 	src, err := peerserver.ResolveBlob(s.templateCache, req.GetBuildId(), req.GetName())

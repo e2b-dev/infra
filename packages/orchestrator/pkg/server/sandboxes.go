@@ -790,7 +790,10 @@ func (s *Server) snapshotAndCacheSandbox(
 			return
 		}
 
-		s.uploadedBuilds.Set(meta.Template.BuildID, struct{}{}, ttlcache.DefaultTTL)
+		s.uploadedBuilds.Set(meta.Template.BuildID, uploadedHeaders{
+			memfile: upload.MemfileHeader(),
+			rootfs:  upload.RootfsHeader(),
+		}, ttlcache.DefaultTTL)
 
 		if err := s.peerRegistry.Unregister(ctx, meta.Template.BuildID); err != nil {
 			logger.L().Warn(ctx, "failed to unregister peer address from routing", zap.String("build_id", meta.Template.BuildID), zap.Error(err))

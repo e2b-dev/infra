@@ -27,7 +27,22 @@ type Upload struct {
 	root           storage.CompressConfig
 	objectMetadata storage.ObjectMetadata
 	future         *utils.ErrorOnce
+
+	// V4 header bytes captured during runV4 for inline delivery on
+	// post-upload UseStorage responses. Nil for V3 builds and for files
+	// whose upload failed. Written by runV4's per-fileType goroutine,
+	// read after Run() returns (happens-before via errgroup.Wait).
+	memfileHeader []byte
+	rootfsHeader  []byte
 }
+
+// MemfileHeader returns the serialized V4 memfile header captured during a
+// successful V4 upload, or nil for V3 builds. Safe to call after Run() returns.
+func (u *Upload) MemfileHeader() []byte { return u.memfileHeader }
+
+// RootfsHeader returns the serialized V4 rootfs header captured during a
+// successful V4 upload, or nil for V3 builds. Safe to call after Run() returns.
+func (u *Upload) RootfsHeader() []byte { return u.rootfsHeader }
 
 func NewUpload(
 	ctx context.Context,
