@@ -9,8 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Tests for MultiplexedChannel fan-out, covering the fix for the goroutine
-// leak that occurred when a subscriber disconnected mid-send.
+// Tests for MultiplexedChannel fan-out.
 
 const multiplexTestTimeout = 500 * time.Millisecond
 
@@ -84,7 +83,7 @@ func TestMultiplexedChannel_BasicFanOut(t *testing.T) {
 	assert.Equal(t, []int{1, 2, 3}, gotB)
 }
 
-// Regression: an abandoned consumer must not wedge the fan-out loop.
+// An abandoned consumer must not wedge the fan-out loop.
 func TestMultiplexedChannel_AbandonedConsumerDoesNotWedgeFanOut(t *testing.T) {
 	t.Parallel()
 
@@ -92,7 +91,7 @@ func TestMultiplexedChannel_AbandonedConsumerDoesNotWedgeFanOut(t *testing.T) {
 
 	abandoned, cancelAbandoned := m.Fork()
 
-	// Consumer reads one value then exits, modeling a disconnected client.
+	// Consumer reads one value then exits.
 	abandonReader := make(chan struct{})
 	go func() {
 		<-abandoned
@@ -110,7 +109,7 @@ func TestMultiplexedChannel_AbandonedConsumerDoesNotWedgeFanOut(t *testing.T) {
 		t.Fatal("abandoned consumer should have read its single value")
 	}
 
-	// Simulate the handler's deferred cancel after return.
+	// Cancel the subscriber.
 	cancelDone := make(chan struct{})
 	go func() {
 		cancelAbandoned()
@@ -122,9 +121,7 @@ func TestMultiplexedChannel_AbandonedConsumerDoesNotWedgeFanOut(t *testing.T) {
 		t.Fatal("cancel func did not return promptly; fan-out is wedged")
 	}
 
-	// With no subscribers, the fan-out stops draining Source to apply
-	// back-pressure.  After the in-flight value is consumed, Source
-	// fills and further sends block.
+	// With no subscribers, back-pressure kicks in and further sends block.
 	sent := 0
 	for i := 2; i <= 8; i++ {
 		if !sendOrTimeout(t, m.Source, i, 100*time.Millisecond) {
@@ -132,8 +129,7 @@ func TestMultiplexedChannel_AbandonedConsumerDoesNotWedgeFanOut(t *testing.T) {
 		}
 		sent++
 	}
-	// The buffer (size 1) plus at most one in-flight value means
-	// at most ~2 sends succeed before blocking.
+	// Buffer (size 1) plus at most one in-flight value.
 	assert.LessOrEqual(t, sent, 3,
 		"fan-out should stop draining Source when no subscribers remain (back-pressure)")
 
@@ -146,7 +142,7 @@ func TestMultiplexedChannel_AbandonedConsumerDoesNotWedgeFanOut(t *testing.T) {
 	}
 }
 
-// Regression: an abandoned consumer must not starve other subscribers.
+// An abandoned consumer must not starve other subscribers.
 func TestMultiplexedChannel_AbandonedConsumerDoesNotStarveOthers(t *testing.T) {
 	t.Parallel()
 
@@ -191,7 +187,7 @@ func TestMultiplexedChannel_AbandonedConsumerDoesNotStarveOthers(t *testing.T) {
 	}
 }
 
-// cancel must be idempotent and non-blocking even under producer load.
+// Cancel must be idempotent and non-blocking even under producer load.
 func TestMultiplexedChannel_CancelIsIdempotentAndPrompt(t *testing.T) {
 	t.Parallel()
 
@@ -199,7 +195,7 @@ func TestMultiplexedChannel_CancelIsIdempotentAndPrompt(t *testing.T) {
 
 	_, cancel := m.Fork()
 
-	// Concurrently push values without anyone draining the consumer chan.
+	// Push values without anyone draining.
 	stop := make(chan struct{})
 	producerDone := make(chan struct{})
 	go func() {
@@ -286,44 +282,23 @@ func TestMultiplexedChannel_ForkAfterSourceCloseReturnsClosedChan(t *testing.T) 
 	assert.False(t, ok, "Fork after shutdown must return a pre-closed channel")
 }
 
-// Regression: sending to Source after the last subscriber cancelled
-// must not deadlock.  This reproduces the bug where handler.Wait()
-// calls `p.EndEvent.Source <- event` after the handleStart/handleConnect
-// handler has returned and run `defer endCancel()`.
-//
-// The fix is to give EndEvent a buffer of 1 so the single send in
-// Wait() always succeeds, and then call CloseSource() so the fan-out
-// goroutine can exit cleanly.
+// Sending to a buffered Source after the last subscriber cancelled must
+// not deadlock.  This mirrors the EndEvent pattern in handler.Wait().
 func TestMultiplexedChannel_SendToSourceAfterLastCancelDoesNotDeadlock(t *testing.T) {
 	t.Parallel()
 
-	// Mirror EndEvent: buffer=1 (the fix — was 0 before).
 	m := NewMultiplexedChannel[int](1)
 
 	_, cancel := m.Fork()
-
-	// Cancel the only subscriber immediately, without ever
-	// consuming a value.  This simulates the case where
-	// handleStart returns (running `defer endCancel()`) before
-	// the child process exits and Wait() tries to send the
-	// EndEvent.
 	cancel()
 
-	// Give the fan-out goroutine time to re-enter receiveWhenReady,
-	// observe HasSubscribers()==false, and park on <-sig.
 	time.Sleep(50 * time.Millisecond)
 
-	// Now attempt to send — this models handler.Wait()'s
-	// `p.EndEvent.Source <- event`.  With buffer=1 the send
-	// succeeds immediately even though no subscriber is draining.
 	sent := sendOrTimeout(t, m.Source, 1, 2*time.Second)
 	if !sent {
-		t.Fatal("Source send deadlocked after last subscriber cancelled; " +
-			"EndEvent must use buffer >= 1 so Wait() never blocks")
+		t.Fatal("Source send deadlocked after last subscriber cancelled")
 	}
 
-	// CloseSource wakes the fan-out so it drains the buffered
-	// value and exits.  Without this the fan-out goroutine leaks.
 	m.CloseSource()
 
 	select {
@@ -333,12 +308,8 @@ func TestMultiplexedChannel_SendToSourceAfterLastCancelDoesNotDeadlock(t *testin
 	}
 }
 
-// Regression: CloseSource after the last subscriber is cancelled must
-// not leak the fan-out goroutine.  This reproduces the pattern from
-// start.go where startCancel() runs before CloseSource() (LIFO defer
-// order).  Previously start.go used bare close(Source) which bypassed
-// the closed flag and NotifySubscriberChange, leaving the fan-out
-// goroutine parked on <-sig forever.
+// CloseSource after the last subscriber is cancelled must not leak
+// the fan-out goroutine. Mirrors the LIFO defer order in handleStart.
 func TestMultiplexedChannel_CloseSourceAfterCancelDoesNotLeakFanOut(t *testing.T) {
 	t.Parallel()
 
@@ -348,11 +319,8 @@ func TestMultiplexedChannel_CloseSourceAfterCancelDoesNotLeakFanOut(t *testing.T
 		m := NewMultiplexedChannel[int](0)
 		_, cancel := m.Fork()
 
-		// Simulate LIFO defer order in handleStart:
-		//   1. startCancel() runs first — removes subscriber
-		//   2. CloseSource() runs second (the fix — was bare close before)
 		cancel()
-		time.Sleep(10 * time.Millisecond) // let fan-out park on <-sig
+		time.Sleep(10 * time.Millisecond)
 		m.CloseSource()
 
 		select {
@@ -363,7 +331,7 @@ func TestMultiplexedChannel_CloseSourceAfterCancelDoesNotLeakFanOut(t *testing.T
 	}
 }
 
-// Fan-out goroutine must exit after cancelled subscribers and CloseSource.
+// Fan-out goroutine exits after cancelled subscribers and CloseSource.
 func TestMultiplexedChannel_NoGoroutineLeakOnAbandon(t *testing.T) {
 	t.Parallel()
 
