@@ -78,7 +78,6 @@ components:
         - healthy
         - draining
         - unhealthy
-        - standby
 
     ClusterOrchestratorRole:
       type: string
@@ -254,7 +253,6 @@ components:
         - cpu_count
         - mem_total
         - mem_used
-        - mem_cache
         - disk_total
         - disk_used
       properties:
@@ -282,10 +280,6 @@ components:
           type: integer
           format: int64
           description: Used memory in bytes
-        mem_cache:
-          type: integer
-          format: int64
-          description: Cached memory (page cache) in bytes
         disk_total:
           type: integer
           format: int64
@@ -342,29 +336,6 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  # todo: remove deprecated endpoint when all APIs are redeployed (https://linear.app/e2b/issue/ENG-3464)
-  /v1/service-discovery/nodes/orchestrators:
-    get:
-      operationId: v1ServiceDiscoveryGetOrchestrators
-      description: Deprecated way how to get the orchestrators, use v2 endpoint instead.
-      deprecated: true
-      security:
-        - ApiKeyAuth: []
-      tags: [service-discovery]
-      responses:
-        "200":
-          description: Successfully returned all orchestrators
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/ClusterOrchestratorNode"
-        "401":
-          $ref: "#/components/responses/401"
-        "500":
-          $ref: "#/components/responses/500"
-
   /v1/service-discovery:
     get:
       operationId: v1ServiceDiscovery
@@ -408,7 +379,8 @@ paths:
             type: integer
             format: int64
             minimum: 0
-          description: Starting timestamp of the logs that should be returned in milliseconds
+          description: Starting timestamp of the logs that should be returned in
+            milliseconds
         - in: query
           name: end
           schema:
@@ -574,14 +546,16 @@ paths:
             type: integer
             format: int32
             minimum: 0
-          description: Index of the starting build log that should be returned with the template
+          description: Index of the starting build log that should be returned with the
+            template
         - in: query
           name: start
           schema:
             type: integer
             format: int64
             minimum: 0
-          description: Starting timestamp of the logs that should be returned in milliseconds
+          description: Starting timestamp of the logs that should be returned in
+            milliseconds
         - in: query
           name: end
           schema:
