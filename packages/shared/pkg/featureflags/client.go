@@ -108,7 +108,10 @@ func (c *Client) JSONFlag(ctx context.Context, flag JSONFlag, contexts ...ldcont
 
 func (c *Client) WatchJSONFlag(ctx context.Context, flag JSONFlag, contexts ...ldcontext.Context) (<-chan interfaces.FlagValueChangeEvent, func()) {
 	if c.ld == nil {
-		return nil, func() {}
+		ch := make(chan interfaces.FlagValueChangeEvent)
+		close(ch)
+
+		return ch, func() {}
 	}
 
 	listener := c.ld.GetFlagTracker().AddFlagValueChangeListener(
