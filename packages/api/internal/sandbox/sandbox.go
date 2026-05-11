@@ -167,7 +167,7 @@ func (s Sandbox) IsExpired(now time.Time) bool {
 }
 
 func (s Sandbox) TrafficKeepalive() *types.SandboxTrafficKeepaliveConfig {
-	if s.Lifecycle.Keepalive == nil || s.Lifecycle.Keepalive.Traffic == nil || !s.Lifecycle.Keepalive.Traffic.Enabled {
+	if s.Lifecycle.Keepalive == nil || s.Lifecycle.Keepalive.Traffic == nil {
 		return nil
 	}
 

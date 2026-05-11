@@ -112,9 +112,8 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 		var keepalive *types.SandboxKeepaliveConfig
 		if keepaliveCfg := config.GetKeepalive(); keepaliveCfg != nil {
 			keepalive = &types.SandboxKeepaliveConfig{}
-			if trafficCfg := keepaliveCfg.GetTraffic(); trafficCfg != nil {
+			if trafficCfg := keepaliveCfg.GetTraffic(); trafficCfg != nil && trafficCfg.GetEnabled() {
 				keepalive.Traffic = &types.SandboxTrafficKeepaliveConfig{
-					Enabled: trafficCfg.GetEnabled(),
 					Timeout: trafficCfg.GetTimeoutSeconds(),
 				}
 			}

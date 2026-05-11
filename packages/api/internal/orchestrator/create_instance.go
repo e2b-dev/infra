@@ -395,7 +395,7 @@ func (o *Orchestrator) orchestratorKeepalivePayload(ctx context.Context, teamID 
 	orchKeepalive := &orchestrator.SandboxKeepaliveConfig{}
 	if keepalive.Traffic != nil {
 		orchKeepalive.Traffic = &orchestrator.SandboxTrafficKeepaliveConfig{
-			Enabled:        keepalive.Traffic.Enabled,
+			Enabled:        true,
 			TimeoutSeconds: keepalive.Traffic.Timeout,
 		}
 	}
@@ -404,5 +404,5 @@ func (o *Orchestrator) orchestratorKeepalivePayload(ctx context.Context, teamID 
 }
 
 func trafficKeepaliveEnabled(keepalive *types.SandboxKeepaliveConfig) bool {
-	return keepalive != nil && keepalive.Traffic != nil && keepalive.Traffic.Enabled
+	return keepalive != nil && keepalive.Traffic != nil
 }

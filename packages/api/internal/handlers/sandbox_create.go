@@ -347,7 +347,7 @@ func validateLifecycleAliases(body api.NewSandbox) *api.APIError {
 }
 
 func buildKeepaliveConfig(lifecycle *api.NewSandboxLifecycle) (*types.SandboxKeepaliveConfig, *api.APIError) {
-	if lifecycle == nil || lifecycle.Keepalive == nil || lifecycle.Keepalive.Traffic == nil {
+	if lifecycle == nil || lifecycle.Keepalive == nil || lifecycle.Keepalive.Traffic == nil || !lifecycle.Keepalive.Traffic.Enabled {
 		return nil, nil
 	}
 
@@ -365,7 +365,6 @@ func buildKeepaliveConfig(lifecycle *api.NewSandboxLifecycle) (*types.SandboxKee
 
 	return &types.SandboxKeepaliveConfig{
 		Traffic: &types.SandboxTrafficKeepaliveConfig{
-			Enabled: lifecycle.Keepalive.Traffic.Enabled,
 			Timeout: timeout,
 		},
 	}, nil

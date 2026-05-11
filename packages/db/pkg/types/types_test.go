@@ -96,7 +96,7 @@ func TestPausedSandboxConfigLifecycleConfig(t *testing.T) {
 	t.Parallel()
 
 	autoResume := &SandboxAutoResumeConfig{Policy: SandboxAutoResumeAny, Timeout: 120}
-	keepalive := &SandboxKeepaliveConfig{Traffic: &SandboxTrafficKeepaliveConfig{Enabled: true, Timeout: 300}}
+	keepalive := &SandboxKeepaliveConfig{Traffic: &SandboxTrafficKeepaliveConfig{Timeout: 300}}
 
 	t.Run("prefers nested lifecycle", func(t *testing.T) {
 		t.Parallel()

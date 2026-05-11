@@ -251,7 +251,6 @@ func TestCreateSandbox_GatesKeepaliveForOrchestrator(t *testing.T) {
 						Lifecycle: types.SandboxLifecycleConfig{
 							Keepalive: &types.SandboxKeepaliveConfig{
 								Traffic: &types.SandboxTrafficKeepaliveConfig{
-									Enabled: true,
 									Timeout: 180,
 								},
 							},
@@ -314,7 +313,6 @@ func TestCreateSandbox_PreservesRoutingKeepaliveWhenOrchestratorPayloadGated(t *
 				Lifecycle: types.SandboxLifecycleConfig{
 					Keepalive: &types.SandboxKeepaliveConfig{
 						Traffic: &types.SandboxTrafficKeepaliveConfig{
-							Enabled: true,
 							Timeout: 180,
 						},
 					},

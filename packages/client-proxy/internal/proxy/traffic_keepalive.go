@@ -26,7 +26,7 @@ func newTrafficKeepaliveManager(resumer SandboxLifecycleClient) *trafficKeepaliv
 	}
 }
 
-func trafficKeepaliveEnabled(info *sandboxroutingcatalog.SandboxInfo) bool {
+func routingInfoHasTrafficKeepalive(info *sandboxroutingcatalog.SandboxInfo) bool {
 	// Older catalog entries can have keepalive metadata without team_id until they expire.
 	if info == nil || info.TeamID == "" {
 		return false
@@ -37,6 +37,8 @@ func trafficKeepaliveEnabled(info *sandboxroutingcatalog.SandboxInfo) bool {
 
 func releaseTrafficKeepaliveOnFailure(err error) bool {
 	switch status.Code(err) {
+	// FailedPrecondition includes API-side policy rejection, e.g. traffic keepalive
+	// was disabled after the routing catalog entry was written.
 	case codes.InvalidArgument, codes.Unauthenticated, codes.PermissionDenied, codes.FailedPrecondition:
 		return true
 	default:
@@ -48,7 +50,7 @@ func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID st
 	if m.resumer == nil {
 		return
 	}
-	if !trafficKeepaliveEnabled(info) {
+	if !routingInfoHasTrafficKeepalive(info) {
 		logger.L().Debug(
 			ctx,
 			"traffic keepalive disabled in routing catalog",

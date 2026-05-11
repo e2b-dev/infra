@@ -111,7 +111,6 @@ type SandboxAutoResumeConfig struct {
 const SandboxTrafficKeepaliveTimeoutDefault uint64 = 300
 
 type SandboxTrafficKeepaliveConfig struct {
-	Enabled bool   `json:"enabled"`
 	Timeout uint64 `json:"timeout,omitempty"`
 }
 

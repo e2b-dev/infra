@@ -45,7 +45,7 @@ func keepaliveConfigToAPI(keepalive *dbtypes.SandboxKeepaliveConfig) *api.Sandbo
 
 	result := &api.SandboxKeepalive{}
 	result.Traffic = &api.SandboxTrafficKeepalive{
-		Enabled: keepalive.Traffic.Enabled,
+		Enabled: true,
 		Timeout: &timeout,
 	}
 
