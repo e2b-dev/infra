@@ -249,11 +249,19 @@ func (o *Orchestrator) CreateSandbox(
 
 	var orchKeepalive *orchestrator.SandboxKeepaliveConfig
 	if sbxData.Lifecycle.Keepalive != nil {
-		orchKeepalive = &orchestrator.SandboxKeepaliveConfig{}
-		if sbxData.Lifecycle.Keepalive.Traffic != nil {
-			orchKeepalive.Traffic = &orchestrator.SandboxTrafficKeepaliveConfig{
-				Enabled:        sbxData.Lifecycle.Keepalive.Traffic.Enabled,
-				TimeoutSeconds: sbxData.Lifecycle.Keepalive.Traffic.Timeout,
+		orchestratorSupportsKeepalive := o.featureFlagsClient.BoolFlag(
+			ctx,
+			featureflags.OrchAcceptsSandboxKeepaliveFlag,
+			featureflags.TeamContext(team.ID.String()),
+			featureflags.SandboxContext(sandboxID),
+		)
+		if orchestratorSupportsKeepalive {
+			orchKeepalive = &orchestrator.SandboxKeepaliveConfig{}
+			if sbxData.Lifecycle.Keepalive.Traffic != nil {
+				orchKeepalive.Traffic = &orchestrator.SandboxTrafficKeepaliveConfig{
+					Enabled:        sbxData.Lifecycle.Keepalive.Traffic.Enabled,
+					TimeoutSeconds: sbxData.Lifecycle.Keepalive.Traffic.Timeout,
+				}
 			}
 		}
 	}

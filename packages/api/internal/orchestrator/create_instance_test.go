@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
+	"google.golang.org/grpc"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
@@ -19,8 +20,10 @@ import (
 	sandboxmemory "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
 	teamtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	orchgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -89,6 +92,17 @@ func testTeam() *teamtypes.Team {
 			MaxLengthHours:     24,
 		},
 	}
+}
+
+type captureSandboxClient struct {
+	orchgrpc.SandboxServiceClient
+	req *orchgrpc.SandboxCreateRequest
+}
+
+func (c *captureSandboxClient) Create(_ context.Context, req *orchgrpc.SandboxCreateRequest, _ ...grpc.CallOption) (*orchgrpc.SandboxCreateResponse, error) {
+	c.req = req
+
+	return &orchgrpc.SandboxCreateResponse{}, nil
 }
 
 // TestCreateSandbox_StaleDataAfterConcurrentPause exercises CreateSandbox with
@@ -180,4 +194,85 @@ func TestCreateSandbox_StaleDataAfterConcurrentPause(t *testing.T) {
 		assert.Equal(t, "v2", sbx2.Metadata["snapshot"],
 			"CreateSandbox must use the latest metadata, not stale pre-lock values")
 	})
+}
+
+func TestCreateSandbox_GatesKeepaliveForOrchestrator(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name             string
+		flagEnabled      bool
+		expectRPCPayload bool
+	}{
+		{
+			name:             "flag disabled",
+			expectRPCPayload: false,
+		},
+		{
+			name:             "flag enabled",
+			flagEnabled:      true,
+			expectRPCPayload: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			o, node := newCreateSandboxTestOrchestrator(t)
+			source := ldtestdata.DataSource()
+			source.Update(source.Flag(featureflags.OrchAcceptsSandboxKeepaliveFlag.Key()).VariationForAll(tc.flagEnabled))
+
+			ffClient, err := featureflags.NewClientWithDatasource(source)
+			require.NoError(t, err)
+			o.featureFlagsClient = ffClient
+
+			capture := &captureSandboxClient{}
+			node.SetSandboxClient(capture)
+
+			team := testTeam()
+			now := time.Now()
+			sandboxID := "sbx-keepalive-" + uuid.New().String()[:8]
+
+			_, apiErr := o.CreateSandbox(
+				t.Context(),
+				sandboxID,
+				uuid.New().String(),
+				team,
+				func(context.Context) (SandboxMetadata, *api.APIError) {
+					return SandboxMetadata{
+						TemplateID:     "tpl",
+						BaseTemplateID: "base-tpl",
+						Build:          testBuild(),
+						Lifecycle: types.SandboxLifecycleConfig{
+							Keepalive: &types.SandboxKeepaliveConfig{
+								Traffic: &types.SandboxTrafficKeepaliveConfig{
+									Enabled: true,
+									Timeout: 180,
+								},
+							},
+						},
+					}, nil
+				},
+				now,
+				now.Add(time.Hour),
+				time.Hour,
+				false,
+				sandbox.CreationMetadata{},
+			)
+			require.Nil(t, apiErr)
+			require.NotNil(t, capture.req)
+
+			if !tc.expectRPCPayload {
+				require.Nil(t, capture.req.GetSandbox().GetKeepalive())
+
+				return
+			}
+
+			require.NotNil(t, capture.req.GetSandbox().GetKeepalive())
+			require.NotNil(t, capture.req.GetSandbox().GetKeepalive().GetTraffic())
+			assert.True(t, capture.req.GetSandbox().GetKeepalive().GetTraffic().GetEnabled())
+			assert.Equal(t, uint64(180), capture.req.GetSandbox().GetKeepalive().GetTraffic().GetTimeoutSeconds())
+		})
+	}
 }
