@@ -3,38 +3,69 @@ package evictor
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/e2b-dev/infra/packages/api/internal/pause"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
 	pollInterval = 50 * time.Millisecond
+
+	// maxConcurrentEvictions caps the number of evictions that can run in
+	// parallel. Excess items remain expired in the store and are picked up by
+	// the next tick.
+	maxConcurrentEvictions = 256
 )
 
 type Evictor struct {
 	store         *sandbox.Store
 	removeSandbox func(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) error
+
+	// evictGroup dedupes concurrent eviction attempts for the same sandbox so
+	// that overlapping ticks don't kick off multiple removeSandbox calls.
+	evictGroup singleflight.Group
+
+	// inFlight counts evictions currently being processed. Observed via the
+	// in-flight gauge.
+	inFlight atomic.Int64
 }
 
 func New(
 	store *sandbox.Store,
 	removeSandbox func(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) error,
-) *Evictor {
-	return &Evictor{
+	meter metric.Meter,
+) (*Evictor, error) {
+	e := &Evictor{
 		store:         store,
 		removeSandbox: removeSandbox,
 	}
+
+	if _, err := telemetry.GetObservableUpDownCounter(meter, telemetry.EvictionsRunningCounterName,
+		func(_ context.Context, observer metric.Int64Observer) error {
+			observer.Observe(e.inFlight.Load())
+
+			return nil
+		}); err != nil {
+		return nil, fmt.Errorf("failed to create evictor in-flight gauge: %w", err)
+	}
+
+	return e, nil
 }
 
 func (e *Evictor) Start(ctx context.Context) {
 	g := errgroup.Group{}
+	g.SetLimit(maxConcurrentEvictions)
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
@@ -54,44 +85,66 @@ func (e *Evictor) Start(ctx context.Context) {
 			}
 
 			for _, item := range sbxs {
-				g.Go(func() error {
-					action := sandbox.StateActionKill
-					if item.AutoPause {
-						action = sandbox.StateActionPause
-						pause.LogInitiated(ctx, item.SandboxID, item.TeamID.String(), pause.ReasonTimeout)
-					}
+				// TryGo so we never block the ticker loop when at the limit;
+				// items left behind stay expired and are retried on the next
+				// tick.
+				if !g.TryGo(func() error {
+					// Dedupe concurrent eviction attempts for the same sandbox
+					// inside the goroutine so the singleflight key is held for
+					// the duration of the actual eviction work.
+					e.evictGroup.Do(item.SandboxID, func() (any, error) {
+						e.inFlight.Add(1)
+						defer e.inFlight.Add(-1)
 
-					if err := e.removeSandbox(context.WithoutCancel(ctx), item.TeamID, item.SandboxID, sandbox.RemoveOpts{Action: action, Eviction: true}); err != nil {
-						if action == sandbox.StateActionPause {
-							switch {
-							case isNotEvictableError(err):
-								pause.LogSkipped(ctx, item.SandboxID, item.TeamID.String(), pause.ReasonTimeout, pause.SkipReasonNotEvictable)
-							case errors.Is(err, sandbox.ErrNotFound):
-								pause.LogSkipped(ctx, item.SandboxID, item.TeamID.String(), pause.ReasonTimeout, pause.SkipReasonNotFound)
-							default:
-								pause.LogFailure(ctx, item.SandboxID, item.TeamID.String(), pause.ReasonTimeout, err)
-							}
-						} else if !isKnownEvictionError(err) {
-							logger.L().Debug(ctx, "Evicting sandbox failed",
-								zap.Error(err),
-								logger.WithSandboxID(item.SandboxID),
-								logger.WithTeamID(item.TeamID.String()),
-							)
-						}
+						e.evictSandbox(ctx, item)
 
-						return nil
-					} else if action == sandbox.StateActionPause {
-						pause.LogSuccess(ctx, item.SandboxID, item.TeamID.String(), pause.ReasonTimeout)
-					}
-
-					if action != sandbox.StateActionPause {
-						logger.L().Debug(ctx, "Sandbox evicted", logger.WithSandboxID(item.SandboxID))
-					}
+						return nil, nil
+					})
 
 					return nil
-				})
+				}) {
+					logger.L().Debug(ctx, "Max concurrent evictions reached, skipping eviction this tick",
+						logger.WithSandboxID(item.SandboxID),
+						logger.WithTeamID(item.TeamID.String()),
+					)
+				}
 			}
 		}
+	}
+}
+
+func (e *Evictor) evictSandbox(ctx context.Context, sbx sandbox.Sandbox) {
+	action := sandbox.StateActionKill
+	if sbx.AutoPause {
+		action = sandbox.StateActionPause
+		pause.LogInitiated(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout)
+	}
+
+	if err := e.removeSandbox(context.WithoutCancel(ctx), sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: action, Eviction: true}); err != nil {
+		if action == sandbox.StateActionPause {
+			switch {
+			case isNotEvictableError(err):
+				pause.LogSkipped(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout, pause.SkipReasonNotEvictable)
+			case errors.Is(err, sandbox.ErrNotFound):
+				pause.LogSkipped(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout, pause.SkipReasonNotFound)
+			default:
+				pause.LogFailure(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout, err)
+			}
+		} else if !isKnownEvictionError(err) {
+			logger.L().Debug(ctx, "Evicting sandbox failed",
+				zap.Error(err),
+				logger.WithSandboxID(sbx.SandboxID),
+				logger.WithTeamID(sbx.TeamID.String()),
+			)
+		}
+
+		return
+	} else if action == sandbox.StateActionPause {
+		pause.LogSuccess(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout)
+	}
+
+	if action != sandbox.StateActionPause {
+		logger.L().Debug(ctx, "Sandbox evicted", logger.WithSandboxID(sbx.SandboxID))
 	}
 }
 
