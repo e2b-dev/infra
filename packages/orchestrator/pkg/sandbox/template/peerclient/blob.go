@@ -102,7 +102,7 @@ func (b *peerBlob) Exists(ctx context.Context) (bool, error) {
 
 				return peerAttempt[bool]{}, err
 			}
-			outcome := checkPeerAvailability(resp.GetAvailability(), b.state, b.name)
+			outcome := checkPeerAvailability(ctx, resp.GetAvailability(), b.state, b.name)
 			if outcome != served {
 				return peerAttempt[bool]{result: outcome}, nil
 			}
@@ -151,7 +151,7 @@ func openPeerBlobStream(
 		return nil, 0, fmt.Errorf("recv first blob message: %w", err)
 	}
 
-	if outcome := checkPeerAvailability(msg.GetAvailability(), state, req.GetName()); outcome != served {
+	if outcome := checkPeerAvailability(ctx, msg.GetAvailability(), state, req.GetName()); outcome != served {
 		return nil, outcome, nil
 	}
 
@@ -170,7 +170,7 @@ func openPeerBlobStream(
 			return nil, err
 		}
 
-		_ = checkPeerAvailability(m.GetAvailability(), state, req.GetName())
+		_ = checkPeerAvailability(ctx, m.GetAvailability(), state, req.GetName())
 
 		return m.GetData(), nil
 	}, served, nil

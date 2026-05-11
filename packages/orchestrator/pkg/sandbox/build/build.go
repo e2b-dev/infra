@@ -57,8 +57,7 @@ func (b *File) SwapHeader(h *header.Header) {
 	b.header.Store(h)
 }
 
-func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
-	var n int
+func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
 	for n < len(p) {
 		h := b.installPendingHeader()
 
@@ -144,12 +143,9 @@ func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
 	return diff.Slice(ctx, int64(mappedBuild.Offset), int64(h.Metadata.BlockSize), ft)
 }
 
-// installPendingHeader installs a header the peer delivered via UseStorage
-// and returns the current header — either the freshly-installed one or the
-// pre-existing one if no install was needed. Idempotent: concurrent readers
-// all CAS the same value. Skips the CAS once the pending header is already
-// installed (pointer equality), keeping the per-iteration cost to one atomic
-// Load on the steady-state path.
+// installPendingHeader CAS-installs a peer-delivered post-upload header if
+// one is pending and returns the current header. Steady-state cost is one
+// atomic Load (pointer equality short-circuits the CAS).
 func (b *File) installPendingHeader() *header.Header {
 	cur := b.header.Load()
 	if b.headers == nil {
@@ -162,8 +158,7 @@ func (b *File) installPendingHeader() *header.Header {
 	if b.header.CompareAndSwap(cur, h) {
 		return h
 	}
-	// Lost the CAS — an external SwapHeader landed concurrently. Re-load to
-	// surface whatever's now authoritative.
+
 	return b.header.Load()
 }
 

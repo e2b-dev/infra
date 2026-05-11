@@ -69,7 +69,7 @@ func (s *peerSeekable) Size(ctx context.Context) (int64, error) {
 
 				return peerAttempt[int64]{}, err
 			}
-			outcome := checkPeerAvailability(resp.GetAvailability(), s.state, s.name)
+			outcome := checkPeerAvailability(ctx, resp.GetAvailability(), s.state, s.name)
 			if outcome != served {
 				return peerAttempt[int64]{result: outcome}, nil
 			}
@@ -162,7 +162,7 @@ func openPeerSeekableStream(
 		return nil, 0, fmt.Errorf("recv first seekable message: %w", err)
 	}
 
-	if outcome := checkPeerAvailability(msg.GetAvailability(), state, req.GetName()); outcome != served {
+	if outcome := checkPeerAvailability(ctx, msg.GetAvailability(), state, req.GetName()); outcome != served {
 		return nil, outcome, nil
 	}
 
@@ -181,7 +181,7 @@ func openPeerSeekableStream(
 			return nil, err
 		}
 
-		if checkPeerAvailability(m.GetAvailability(), state, req.GetName()) != served {
+		if checkPeerAvailability(ctx, m.GetAvailability(), state, req.GetName()) != served {
 			return nil, storage.ErrPeerAborted
 		}
 

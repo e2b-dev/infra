@@ -11,8 +11,10 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -188,13 +190,17 @@ func (p *peerStorageProvider) GetDetails() string {
 
 // checkPeerAvailability classifies a peer availability message. On UseStorage
 // it flips state.uploaded and (if header bytes are present) stashes the
-// parsed V4 header for File to install. Parse errors are dropped silently.
-func checkPeerAvailability(avail *orchestrator.PeerAvailability, state *peerState, name string) result {
+// parsed V4 header for File to install. Parse failures are logged and the
+// transition still proceeds — the File keeps its existing header rather
+// than installing a corrupted one, matching the V3 fallback path.
+func checkPeerAvailability(ctx context.Context, avail *orchestrator.PeerAvailability, state *peerState, name string) result {
 	if avail.GetUseStorage() {
 		if state != nil {
 			if bytes := avail.GetHeaderBytes(); len(bytes) > 0 {
 				if h, err := header.DeserializeBytes(bytes); err == nil {
 					state.setHeader(name, h)
+				} else {
+					logger.L().Error(ctx, "peer header deserialize failed", zap.String("file_name", name), zap.Error(err))
 				}
 			}
 			state.uploaded.Store(true)
