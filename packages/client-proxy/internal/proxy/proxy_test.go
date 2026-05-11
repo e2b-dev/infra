@@ -153,14 +153,6 @@ func requireNoResumerCall(t *testing.T, calls <-chan resumeCall) {
 	}
 }
 
-func testKeepalive() *sandboxroutingcatalog.Keepalive {
-	return &sandboxroutingcatalog.Keepalive{
-		Traffic: &sandboxroutingcatalog.TrafficKeepalive{
-			Enabled: true,
-		},
-	}
-}
-
 func newFF(t *testing.T, autoResumeEnabled bool) *featureflags.Client {
 	t.Helper()
 
@@ -316,11 +308,11 @@ func TestCatalogResolution_CatalogHit_TrafficKeepaliveRefreshes(t *testing.T) {
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 
 	err := c.StoreSandbox(t.Context(), "sbx", &sandboxroutingcatalog.SandboxInfo{
-		OrchestratorIP: "10.0.0.1",
-		TeamID:         "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
-		ExecutionID:    "exec",
-		StartedAt:      now.Add(-time.Minute),
-		Keepalive:      testKeepalive(),
+		OrchestratorIP:   "10.0.0.1",
+		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		ExecutionID:      "exec",
+		StartedAt:        now.Add(-time.Minute),
+		TrafficKeepalive: true,
 	}, time.Minute)
 	require.NoError(t, err)
 
@@ -347,11 +339,11 @@ func TestCatalogResolution_CatalogHit_TrafficKeepaliveRefreshesWhenAutoResumeFla
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 
 	err := c.StoreSandbox(t.Context(), "sbx", &sandboxroutingcatalog.SandboxInfo{
-		OrchestratorIP: "10.0.0.1",
-		TeamID:         "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
-		ExecutionID:    "exec",
-		StartedAt:      now.Add(-time.Minute),
-		Keepalive:      testKeepalive(),
+		OrchestratorIP:   "10.0.0.1",
+		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		ExecutionID:      "exec",
+		StartedAt:        now.Add(-time.Minute),
+		TrafficKeepalive: true,
 	}, time.Minute)
 	require.NoError(t, err)
 
@@ -374,8 +366,8 @@ func TestTrafficKeepaliveManager_RefreshesWhenNotNearExpiry(t *testing.T) {
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, &sandboxroutingcatalog.SandboxInfo{
-		TeamID:    "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
-		Keepalive: testKeepalive(),
+		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		TrafficKeepalive: true,
 	})
 
 	requireResumerCall(t, resumer.calls)
@@ -389,7 +381,7 @@ func TestTrafficKeepaliveManager_SkipsWhenTeamIDMissing(t *testing.T) {
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, &sandboxroutingcatalog.SandboxInfo{
-		Keepalive: testKeepalive(),
+		TrafficKeepalive: true,
 	})
 
 	requireNoResumerCall(t, resumer.calls)
@@ -404,9 +396,6 @@ func TestTrafficKeepaliveManager_SkipsWhenCatalogPolicyDisabled(t *testing.T) {
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, &sandboxroutingcatalog.SandboxInfo{
 		TeamID: "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
-		Keepalive: &sandboxroutingcatalog.Keepalive{
-			Traffic: &sandboxroutingcatalog.TrafficKeepalive{Enabled: false},
-		},
 	})
 
 	requireNoResumerCall(t, resumer.calls)
@@ -423,8 +412,8 @@ func TestTrafficKeepaliveManager_SuppressesConcurrentRefreshes(t *testing.T) {
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
 	info := &sandboxroutingcatalog.SandboxInfo{
-		TeamID:    "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
-		Keepalive: testKeepalive(),
+		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		TrafficKeepalive: true,
 	}
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
@@ -444,8 +433,8 @@ func TestTrafficKeepaliveManager_SkipsWhenCatalogTimerHeld(t *testing.T) {
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
 	info := &sandboxroutingcatalog.SandboxInfo{
-		TeamID:    "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
-		Keepalive: testKeepalive(),
+		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		TrafficKeepalive: true,
 	}
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
@@ -465,8 +454,8 @@ func TestTrafficKeepaliveManager_ReleasesThrottleAfterValidationFailure(t *testi
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
 	info := &sandboxroutingcatalog.SandboxInfo{
-		TeamID:    "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
-		Keepalive: testKeepalive(),
+		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		TrafficKeepalive: true,
 	}
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "bad-token", "envd-token", c, info)
@@ -486,8 +475,8 @@ func TestTrafficKeepaliveManager_KeepsThrottleAfterInternalFailure(t *testing.T)
 	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
 	info := &sandboxroutingcatalog.SandboxInfo{
-		TeamID:    "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
-		Keepalive: testKeepalive(),
+		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		TrafficKeepalive: true,
 	}
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)

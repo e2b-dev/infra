@@ -333,7 +333,5 @@ func TestCreateSandbox_PreservesRoutingKeepaliveWhenOrchestratorPayloadGated(t *
 
 	event, err := edge.ParseSandboxCatalogCreateEvent(capture.md)
 	require.NoError(t, err)
-	require.NotNil(t, event.Keepalive)
-	require.NotNil(t, event.Keepalive.Traffic)
-	require.True(t, event.Keepalive.Traffic.Enabled)
+	require.True(t, event.TrafficKeepalive)
 }

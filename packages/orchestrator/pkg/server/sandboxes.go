@@ -292,7 +292,7 @@ func (s *Server) storeSandboxRoutingInfo(ctx context.Context) {
 		ExecutionID:      event.ExecutionID,
 		StartedAt:        event.SandboxStartTime,
 		MaxLengthInHours: event.SandboxMaxLengthInHours,
-		Keepalive:        event.Keepalive,
+		TrafficKeepalive: event.TrafficKeepalive,
 	}
 
 	lifetime := time.Until(event.SandboxStartTime.Add(time.Duration(event.SandboxMaxLengthInHours) * time.Hour))

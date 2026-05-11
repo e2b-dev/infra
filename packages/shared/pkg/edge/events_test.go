@@ -6,8 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
-
-	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 func TestSandboxCatalogCreateEventRoundTrip(t *testing.T) {
@@ -22,11 +20,7 @@ func TestSandboxCatalogCreateEventRoundTrip(t *testing.T) {
 		OrchestratorIP:          "10.0.0.7",
 		SandboxMaxLengthInHours: 24,
 		SandboxStartTime:        startTime,
-		Keepalive: &catalog.Keepalive{
-			Traffic: &catalog.TrafficKeepalive{
-				Enabled: true,
-			},
-		},
+		TrafficKeepalive:        true,
 	}
 
 	parsed, err := ParseSandboxCatalogCreateEvent(SerializeSandboxCatalogCreateEvent(event))
@@ -51,5 +45,5 @@ func TestSandboxCatalogCreateEventParseAllowsMissingKeepaliveFields(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, startTime, parsed.SandboxStartTime)
 	require.Empty(t, parsed.TeamID)
-	require.Nil(t, parsed.Keepalive)
+	require.False(t, parsed.TrafficKeepalive)
 }

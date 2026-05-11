@@ -26,7 +26,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	sandboxroutingcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -249,7 +248,7 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	orchKeepalive := o.orchestratorKeepalivePayload(ctx, team.ID.String(), sandboxID, sbxData.Lifecycle.Keepalive)
-	routingKeepalive := routingCatalogKeepalive(sbxData.Lifecycle.Keepalive)
+	trafficKeepalive := trafficKeepaliveEnabled(sbxData.Lifecycle.Keepalive)
 
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
@@ -300,7 +299,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
 
-	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, routingKeepalive, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels)
+	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, trafficKeepalive, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels)
 	if err != nil {
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
@@ -404,15 +403,6 @@ func (o *Orchestrator) orchestratorKeepalivePayload(ctx context.Context, teamID 
 	return orchKeepalive
 }
 
-func routingCatalogKeepalive(keepalive *types.SandboxKeepaliveConfig) *sandboxroutingcatalog.Keepalive {
-	if keepalive == nil {
-		return nil
-	}
-
-	routingKeepalive := &sandboxroutingcatalog.Keepalive{}
-	if keepalive.Traffic != nil && keepalive.Traffic.Enabled {
-		routingKeepalive.Traffic = &sandboxroutingcatalog.TrafficKeepalive{Enabled: true}
-	}
-
-	return routingKeepalive
+func trafficKeepaliveEnabled(keepalive *types.SandboxKeepaliveConfig) bool {
+	return keepalive != nil && keepalive.Traffic != nil && keepalive.Traffic.Enabled
 }

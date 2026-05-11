@@ -10,7 +10,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/edge"
 	grpcshared "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	sandboxroutingcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 type NodeMetadata struct {
@@ -36,7 +35,7 @@ func (n *Node) Metadata() NodeMetadata {
 	return n.meta
 }
 
-func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest, routingKeepalive *sandboxroutingcatalog.Keepalive) (*clusters.GRPCClient, context.Context) {
+func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest, trafficKeepalive bool) (*clusters.GRPCClient, context.Context) {
 	md := metadata.MD{}
 
 	if !n.IsNomadManaged() {
@@ -46,7 +45,7 @@ func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.Sandbo
 				TeamID:                  req.GetSandbox().GetTeamId(),
 				SandboxMaxLengthInHours: req.GetSandbox().GetMaxSandboxLength(),
 				SandboxStartTime:        req.GetStartTime().AsTime(),
-				Keepalive:               routingKeepalive,
+				TrafficKeepalive:        trafficKeepalive,
 
 				ExecutionID:    req.GetSandbox().GetExecutionId(),
 				OrchestratorID: n.Metadata().ServiceInstanceID,

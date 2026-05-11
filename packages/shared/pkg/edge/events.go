@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"google.golang.org/grpc/metadata"
-
-	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 const (
@@ -49,7 +47,7 @@ type SandboxCatalogCreateEvent struct {
 	OrchestratorIP          string
 	SandboxMaxLengthInHours int64
 	SandboxStartTime        time.Time // Formatted as RFC3339 (ISO 8601)
-	Keepalive               *catalog.Keepalive
+	TrafficKeepalive        bool
 }
 
 type SandboxCatalogDeleteEvent struct {
@@ -69,7 +67,7 @@ func SerializeSandboxCatalogCreateEvent(e SandboxCatalogCreateEvent) metadata.MD
 		sbxStartTimeHeader:        e.SandboxStartTime.Format(time.RFC3339),
 		sbxMaxLengthInHoursHeader: strconv.Itoa(int(e.SandboxMaxLengthInHours)),
 	}
-	if e.Keepalive != nil && e.Keepalive.Traffic != nil && e.Keepalive.Traffic.Enabled {
+	if e.TrafficKeepalive {
 		values[sbxTrafficKeepaliveHeader] = strconv.FormatBool(true)
 	}
 
@@ -127,20 +125,12 @@ func ParseSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEven
 		return nil, ErrSandboxCreationParse
 	}
 
-	var keepalive *catalog.Keepalive
+	var trafficKeepalive bool
 	trafficKeepaliveStr, found := getMetadataValue(md, sbxTrafficKeepaliveHeader)
 	if found {
-		trafficKeepalive, err := strconv.ParseBool(trafficKeepaliveStr)
+		trafficKeepalive, err = strconv.ParseBool(trafficKeepaliveStr)
 		if err != nil {
 			return nil, ErrSandboxCreationParse
-		}
-
-		if trafficKeepalive {
-			keepalive = &catalog.Keepalive{
-				Traffic: &catalog.TrafficKeepalive{
-					Enabled: true,
-				},
-			}
 		}
 	}
 
@@ -152,7 +142,7 @@ func ParseSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEven
 		OrchestratorIP:          orchestratorIP,
 		SandboxMaxLengthInHours: int64(maxLengthInHours),
 		SandboxStartTime:        sandboxStartTime,
-		Keepalive:               keepalive,
+		TrafficKeepalive:        trafficKeepalive,
 	}, nil
 }
 
