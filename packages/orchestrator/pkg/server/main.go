@@ -124,7 +124,7 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to register sandbox count metric: %w", err)
 	}
 
-	go server.refreshStartingSandboxesLimit(ctx, int64(startingLimit))
+	go server.refreshStartingSandboxesLimit(ctx)
 
 	return server, nil
 }
