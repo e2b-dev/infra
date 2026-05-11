@@ -15,12 +15,22 @@ job "api" {
     }
 
     network {
+      %{ if consul_connect_enabled }
+      mode = "bridge"
+
+      %{ endif }
       port "api" {
         static = "${port_number}"
+        %{ if consul_connect_enabled }
+        to     = "${port_number}"
+        %{ endif }
       }
 
       port "api_internal_grpc" {
         static = "${api_internal_grpc_port}"
+        %{ if consul_connect_enabled }
+        to     = "${api_internal_grpc_port}"
+        %{ endif }
       }
 
       port "grpc_api" {}
@@ -41,8 +51,9 @@ job "api" {
 
     service {
       name = "api"
-      port = "${port_number}"
+      port = "${port_name}"
       task = "start"
+      address_mode = "host"
 
       tags = [
         "traefik.enable=true",
@@ -54,12 +65,13 @@ job "api" {
       ]
 
       check {
+        address_mode = "host"
         type     = "http"
         name     = "health"
         path     = "/health"
         interval = "3s"
         timeout  = "3s"
-        port     = "${port_number}"
+        port     = "${port_name}"
       }
     }
 
@@ -68,6 +80,18 @@ job "api" {
       port = "api_internal_grpc"
       task = "start"
 
+      %{ if consul_connect_enabled }
+      connect {
+        sidecar_service {
+          proxy {
+            local_service_address = "127.0.0.1"
+            local_service_port    = ${api_internal_grpc_port}
+          }
+        }
+      }
+
+      %{ endif }
+      %{ if !consul_connect_enabled }
       check {
         type     = "tcp"
         name     = "api-internal-grpc"
@@ -75,12 +99,14 @@ job "api" {
         timeout  = "3s"
         port     = "api_internal_grpc"
       }
+      %{ endif }
     }
 
     service {
       name = "grpc-api"
       port = "grpc_api"
       task = "start"
+      address_mode = "host"
 
       tags = [
         "traefik.enable=true",
@@ -103,6 +129,7 @@ job "api" {
       ]
 
       check {
+        address_mode = "host"
         type     = "tcp"
         name     = "grpc-api"
         interval = "3s"
@@ -151,6 +178,7 @@ job "api" {
         NODE_ID                        = "$${node.unique.id}"
         NOMAD_TOKEN                    = "${nomad_acl_token}"
         ORCHESTRATOR_PORT              = "${orchestrator_port}"
+        NOMAD_ADDRESS                  = "${nomad_address}"
         API_INTERNAL_GRPC_PORT         = "${api_internal_grpc_port}"
         API_EDGE_GRPC_PORT             = "$${NOMAD_PORT_grpc_api}"
         ADMIN_TOKEN                    = "${admin_token}"
@@ -200,9 +228,11 @@ job "api" {
       }
 
       config {
+        %{ if !consul_connect_enabled }
         network_mode = "host"
+        %{ endif }
         image        = "${api_docker_image}"
-        ports        = ["${port_name}", "grpc_api"]
+        ports        = ["${port_name}", "api_internal_grpc", "grpc_api"]
         args         = [
           "--port", "${port_number}",
         ]

@@ -65,6 +65,12 @@ variable "api_internal_grpc_port" {
   default = 5009
 }
 
+variable "api_consul_connect_enabled" {
+  type        = bool
+  description = "Expose api-internal-grpc through a Consul service mesh sidecar."
+  default     = false
+}
+
 variable "client_proxy_oidc_issuer_url" {
   type    = string
   default = ""

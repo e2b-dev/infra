@@ -255,6 +255,7 @@ module "nomad" {
   api_node_pool                                          = var.api_node_pool
   api_port                                               = var.api_port
   api_internal_grpc_port                                 = var.api_internal_grpc_port
+  api_consul_connect_enabled                             = var.api_consul_connect_enabled
   client_proxy_oidc_issuer_url                           = var.client_proxy_oidc_issuer_url
   environment                                            = var.environment
   google_service_account_key                             = module.init.google_service_account_key

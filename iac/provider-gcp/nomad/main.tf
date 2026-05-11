@@ -139,11 +139,13 @@ module "api" {
 
   domain_name                             = var.domain_name
   orchestrator_port                       = var.orchestrator_port
-  otel_collector_grpc_endpoint            = "localhost:${var.otel_collector_grpc_port}"
-  logs_collector_address                  = "http://localhost:${var.logs_proxy_port.port}"
+  nomad_address                           = var.api_consul_connect_enabled ? "http://$${attr.unique.network.ip-address}:${var.nomad_port}" : "http://localhost:${var.nomad_port}"
+  otel_collector_grpc_endpoint            = var.api_consul_connect_enabled ? "$${attr.unique.network.ip-address}:${var.otel_collector_grpc_port}" : "localhost:${var.otel_collector_grpc_port}"
+  logs_collector_address                  = var.api_consul_connect_enabled ? "http://$${attr.unique.network.ip-address}:${var.logs_proxy_port.port}" : "http://localhost:${var.logs_proxy_port.port}"
   port_name                               = var.api_port.name
   port_number                             = var.api_port.port
   api_internal_grpc_port                  = var.api_internal_grpc_port
+  consul_connect_enabled                  = var.api_consul_connect_enabled
   api_docker_image                        = data.google_artifact_registry_docker_image.api_image.self_link
   postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   postgres_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)

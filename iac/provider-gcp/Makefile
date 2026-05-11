@@ -95,6 +95,7 @@ tf_vars := \
 	$(call tfvar, CLIENT_PROXY_OIDC_ISSUER_URL) \
 	$(call tfvar, GCS_GRPC_CONNECTION_POOL_SIZE) \
 	$(call tfvar, ADDITIONAL_API_PATHS_HANDLED_BY_INGRESS) \
+	$(call tfvar, API_CONSUL_CONNECT_ENABLED) \
 	$(call tfvar, GRPC_API_HTTP2_INGRESS_ENABLED) \
 	$(call tfvar, GRPC_API_HTTP2_BACKEND_TLS) \
 	$(call tfvar, INGRESS_HTTP2_TLS) \

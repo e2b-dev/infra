@@ -19,6 +19,7 @@ resource "nomad_job" "api" {
     domain_name                             = var.domain_name
     environment                             = var.environment
     orchestrator_port                       = var.orchestrator_port
+    nomad_address                           = var.nomad_address
     otel_collector_grpc_endpoint            = var.otel_collector_grpc_endpoint
     logs_collector_address                  = var.logs_collector_address
     port_name                               = var.port_name
@@ -51,5 +52,6 @@ resource "nomad_job" "api" {
     job_env_vars                            = local.job_env_vars
     grpc_api_http2_tls_enabled              = var.grpc_api_http2_tls_enabled
     grpc_api_http2_mtls_enabled             = var.grpc_api_http2_mtls_enabled
+    consul_connect_enabled                  = var.consul_connect_enabled
   })
 }

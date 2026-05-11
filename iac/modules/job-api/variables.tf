@@ -48,6 +48,10 @@ variable "orchestrator_port" {
   type = number
 }
 
+variable "nomad_address" {
+  type = string
+}
+
 variable "api_docker_image" {
   type = string
 }
@@ -194,5 +198,11 @@ variable "grpc_api_http2_tls_enabled" {
 variable "grpc_api_http2_mtls_enabled" {
   type        = bool
   description = "Require the GCP load balancer client certificate on the grpc-api router when it is reached through the HTTP/2 TLS entrypoint."
+  default     = false
+}
+
+variable "consul_connect_enabled" {
+  type        = bool
+  description = "Expose api-internal-grpc through a Consul service mesh sidecar."
   default     = false
 }

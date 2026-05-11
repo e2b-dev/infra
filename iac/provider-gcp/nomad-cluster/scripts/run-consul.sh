@@ -257,6 +257,9 @@ EOF
   "connect": {
     "enabled": true
   },
+  "ports": {
+    "grpc": 8502
+  },
   "acl": {
     "enabled": true,
     "default_policy": "deny",
