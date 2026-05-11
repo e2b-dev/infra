@@ -26,6 +26,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	sandboxroutingcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -247,24 +248,8 @@ func (o *Orchestrator) CreateSandbox(
 		}
 	}
 
-	var orchKeepalive *orchestrator.SandboxKeepaliveConfig
-	if sbxData.Lifecycle.Keepalive != nil {
-		orchestratorSupportsKeepalive := o.featureFlagsClient.BoolFlag(
-			ctx,
-			featureflags.OrchAcceptsSandboxKeepaliveFlag,
-			featureflags.TeamContext(team.ID.String()),
-			featureflags.SandboxContext(sandboxID),
-		)
-		if orchestratorSupportsKeepalive {
-			orchKeepalive = &orchestrator.SandboxKeepaliveConfig{}
-			if sbxData.Lifecycle.Keepalive.Traffic != nil {
-				orchKeepalive.Traffic = &orchestrator.SandboxTrafficKeepaliveConfig{
-					Enabled:        sbxData.Lifecycle.Keepalive.Traffic.Enabled,
-					TimeoutSeconds: sbxData.Lifecycle.Keepalive.Traffic.Timeout,
-				}
-			}
-		}
-	}
+	orchKeepalive := o.orchestratorKeepalivePayload(ctx, team.ID.String(), sandboxID, sbxData.Lifecycle.Keepalive)
+	routingKeepalive := routingCatalogKeepalive(sbxData.Lifecycle.Keepalive)
 
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
@@ -315,7 +300,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
 
-	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels)
+	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, routingKeepalive, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels)
 	if err != nil {
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
@@ -392,4 +377,42 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	return sbx, nil
+}
+
+func (o *Orchestrator) orchestratorKeepalivePayload(ctx context.Context, teamID string, sandboxID string, keepalive *types.SandboxKeepaliveConfig) *orchestrator.SandboxKeepaliveConfig {
+	if keepalive == nil {
+		return nil
+	}
+
+	if !o.featureFlagsClient.BoolFlag(
+		ctx,
+		featureflags.OrchAcceptsSandboxKeepaliveFlag,
+		featureflags.TeamContext(teamID),
+		featureflags.SandboxContext(sandboxID),
+	) {
+		return nil
+	}
+
+	orchKeepalive := &orchestrator.SandboxKeepaliveConfig{}
+	if keepalive.Traffic != nil {
+		orchKeepalive.Traffic = &orchestrator.SandboxTrafficKeepaliveConfig{
+			Enabled:        keepalive.Traffic.Enabled,
+			TimeoutSeconds: keepalive.Traffic.Timeout,
+		}
+	}
+
+	return orchKeepalive
+}
+
+func routingCatalogKeepalive(keepalive *types.SandboxKeepaliveConfig) *sandboxroutingcatalog.Keepalive {
+	if keepalive == nil {
+		return nil
+	}
+
+	routingKeepalive := &sandboxroutingcatalog.Keepalive{}
+	if keepalive.Traffic != nil && keepalive.Traffic.Enabled {
+		routingKeepalive.Traffic = &sandboxroutingcatalog.TrafficKeepalive{Enabled: true}
+	}
+
+	return routingKeepalive
 }

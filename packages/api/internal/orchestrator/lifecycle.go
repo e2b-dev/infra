@@ -28,14 +28,6 @@ func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox san
 
 	nodeIP := routeNodeIPAddress(node, env.IsLocal())
 
-	var keepalive *sandboxroutingcatalog.Keepalive
-	if sandbox.Lifecycle.Keepalive != nil {
-		keepalive = &sandboxroutingcatalog.Keepalive{}
-		if sandbox.Lifecycle.Keepalive.Traffic != nil && sandbox.Lifecycle.Keepalive.Traffic.Enabled {
-			keepalive.Traffic = &sandboxroutingcatalog.TrafficKeepalive{Enabled: true}
-		}
-	}
-
 	info := sandboxroutingcatalog.SandboxInfo{
 		TeamID:         sandbox.TeamID.String(),
 		OrchestratorID: node.Metadata().ServiceInstanceID,
@@ -44,7 +36,7 @@ func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox san
 		ExecutionID:      sandbox.ExecutionID,
 		StartedAt:        sandbox.StartTime,
 		MaxLengthInHours: int64(sandbox.MaxInstanceLength / time.Hour),
-		Keepalive:        keepalive,
+		Keepalive:        routingCatalogKeepalive(sandbox.Lifecycle.Keepalive),
 	}
 
 	lifetime := time.Until(sandbox.StartTime.Add(sandbox.MaxInstanceLength))

@@ -22,9 +22,11 @@ import (
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	orchgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"google.golang.org/grpc/metadata"
 )
 
 // testBuild returns a minimal queries.EnvBuild that satisfies CreateSandbox.
@@ -97,10 +99,12 @@ func testTeam() *teamtypes.Team {
 type captureSandboxClient struct {
 	orchgrpc.SandboxServiceClient
 	req *orchgrpc.SandboxCreateRequest
+	md  metadata.MD
 }
 
-func (c *captureSandboxClient) Create(_ context.Context, req *orchgrpc.SandboxCreateRequest, _ ...grpc.CallOption) (*orchgrpc.SandboxCreateResponse, error) {
+func (c *captureSandboxClient) Create(ctx context.Context, req *orchgrpc.SandboxCreateRequest, _ ...grpc.CallOption) (*orchgrpc.SandboxCreateResponse, error) {
 	c.req = req
+	c.md, _ = metadata.FromOutgoingContext(ctx)
 
 	return &orchgrpc.SandboxCreateResponse{}, nil
 }
@@ -275,4 +279,61 @@ func TestCreateSandbox_GatesKeepaliveForOrchestrator(t *testing.T) {
 			assert.Equal(t, uint64(180), capture.req.GetSandbox().GetKeepalive().GetTraffic().GetTimeoutSeconds())
 		})
 	}
+}
+
+func TestCreateSandbox_PreservesRoutingKeepaliveWhenOrchestratorPayloadGated(t *testing.T) {
+	t.Parallel()
+
+	o, node := newCreateSandboxTestOrchestrator(t)
+	node.NomadNodeShortID = nodemanager.UnknownNomadNodeShortID
+
+	source := ldtestdata.DataSource()
+	source.Update(source.Flag(featureflags.OrchAcceptsSandboxKeepaliveFlag.Key()).VariationForAll(false))
+
+	ffClient, err := featureflags.NewClientWithDatasource(source)
+	require.NoError(t, err)
+	o.featureFlagsClient = ffClient
+
+	capture := &captureSandboxClient{}
+	node.SetSandboxClient(capture)
+
+	team := testTeam()
+	now := time.Now()
+	sandboxID := "sbx-routing-keepalive-" + uuid.New().String()[:8]
+
+	_, apiErr := o.CreateSandbox(
+		t.Context(),
+		sandboxID,
+		uuid.New().String(),
+		team,
+		func(context.Context) (SandboxMetadata, *api.APIError) {
+			return SandboxMetadata{
+				TemplateID:     "tpl",
+				BaseTemplateID: "base-tpl",
+				Build:          testBuild(),
+				Lifecycle: types.SandboxLifecycleConfig{
+					Keepalive: &types.SandboxKeepaliveConfig{
+						Traffic: &types.SandboxTrafficKeepaliveConfig{
+							Enabled: true,
+							Timeout: 180,
+						},
+					},
+				},
+			}, nil
+		},
+		now,
+		now.Add(time.Hour),
+		time.Hour,
+		false,
+		sandbox.CreationMetadata{},
+	)
+	require.Nil(t, apiErr)
+	require.NotNil(t, capture.req)
+	require.Nil(t, capture.req.GetSandbox().GetKeepalive())
+
+	event, err := edge.ParseSandboxCatalogCreateEvent(capture.md)
+	require.NoError(t, err)
+	require.NotNil(t, event.Keepalive)
+	require.NotNil(t, event.Keepalive.Traffic)
+	require.True(t, event.Keepalive.Traffic.Enabled)
 }

@@ -36,27 +36,17 @@ func (n *Node) Metadata() NodeMetadata {
 	return n.meta
 }
 
-func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*clusters.GRPCClient, context.Context) {
+func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest, routingKeepalive *sandboxroutingcatalog.Keepalive) (*clusters.GRPCClient, context.Context) {
 	md := metadata.MD{}
 
 	if !n.IsNomadManaged() {
-		var keepalive *sandboxroutingcatalog.Keepalive
-		if keepaliveConfig := req.GetSandbox().GetKeepalive(); keepaliveConfig != nil {
-			keepalive = &sandboxroutingcatalog.Keepalive{}
-			if traffic := keepaliveConfig.GetTraffic(); traffic != nil && traffic.GetEnabled() {
-				keepalive.Traffic = &sandboxroutingcatalog.TrafficKeepalive{
-					Enabled: true,
-				}
-			}
-		}
-
 		md = edge.SerializeSandboxCatalogCreateEvent(
 			edge.SandboxCatalogCreateEvent{
 				SandboxID:               req.GetSandbox().GetSandboxId(),
 				TeamID:                  req.GetSandbox().GetTeamId(),
 				SandboxMaxLengthInHours: req.GetSandbox().GetMaxSandboxLength(),
 				SandboxStartTime:        req.GetStartTime().AsTime(),
-				Keepalive:               keepalive,
+				Keepalive:               routingKeepalive,
 
 				ExecutionID:    req.GetSandbox().GetExecutionId(),
 				OrchestratorID: n.Metadata().ServiceInstanceID,
