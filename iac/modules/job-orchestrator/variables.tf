@@ -53,7 +53,7 @@ variable "artifact_source" {
 
 variable "orchestrator_checksum" {
   type        = string
-  description = "Artifact revision for the orchestrator binary, used for change detection"
+  description = "Hex checksum of the orchestrator binary, used for change detection"
 }
 
 # Env vars - required
