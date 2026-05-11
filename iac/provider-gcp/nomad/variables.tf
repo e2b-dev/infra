@@ -71,6 +71,18 @@ variable "api_consul_connect_enabled" {
   default     = false
 }
 
+variable "consul_connect_enabled" {
+  type        = bool
+  description = "Enable broader Consul service mesh routes for supported Nomad Docker jobs."
+  default     = false
+}
+
+variable "consul_connect_intention_ids" {
+  type        = list(string)
+  description = "Consul intention resource IDs that Connect caller jobs should wait for before rolling."
+  default     = []
+}
+
 variable "client_proxy_oidc_issuer_url" {
   type    = string
   default = ""

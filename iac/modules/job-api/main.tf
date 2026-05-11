@@ -53,5 +53,14 @@ resource "nomad_job" "api" {
     grpc_api_http2_tls_enabled              = var.grpc_api_http2_tls_enabled
     grpc_api_http2_mtls_enabled             = var.grpc_api_http2_mtls_enabled
     consul_connect_enabled                  = var.consul_connect_enabled
+    clickhouse_connect_enabled              = var.clickhouse_connect_enabled
+    clickhouse_port                         = var.clickhouse_port
   })
+
+  lifecycle {
+    precondition {
+      condition     = length(var.connect_rollout_dependencies) >= 0
+      error_message = "Connect rollout dependencies must be available before the API job rolls."
+    }
+  }
 }

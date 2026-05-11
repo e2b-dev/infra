@@ -1,11 +1,14 @@
 locals {
   clickhouse_connection_string            = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
+  clickhouse_connect_connection_string    = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@127.0.0.1:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
   redis_url                               = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
   redis_cluster_url                       = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
   loki_url                                = "http://loki.service.consul:${var.loki_service_port.port}"
   enable_billing_http_team_provision_sink = var.enable_billing_http_team_provision_sink
   dashboard_api_billing_server_url        = local.enable_billing_http_team_provision_sink ? trimspace(data.google_secret_manager_secret_version.billing_server_url[0].secret_data) : ""
   dashboard_api_billing_server_api_token  = local.enable_billing_http_team_provision_sink ? trimspace(data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data) : ""
+  api_connect_enabled                     = var.api_consul_connect_enabled || var.consul_connect_enabled
+  clickhouse_connect_enabled              = var.consul_connect_enabled && var.clickhouse_server_count > 0
 }
 
 # API
@@ -127,6 +130,8 @@ module "ingress_cert_renewer" {
 module "api" {
   source = "../../modules/job-api"
 
+  depends_on = [module.clickhouse]
+
   update_stanza = var.api_machine_count > 1
   node_pool     = var.api_node_pool
   // We use colocation 2 here to ensure that there are at least 2 nodes for API to do rolling updates.
@@ -139,13 +144,16 @@ module "api" {
 
   domain_name                             = var.domain_name
   orchestrator_port                       = var.orchestrator_port
-  nomad_address                           = var.api_consul_connect_enabled ? "http://$${attr.unique.network.ip-address}:${var.nomad_port}" : "http://localhost:${var.nomad_port}"
-  otel_collector_grpc_endpoint            = var.api_consul_connect_enabled ? "$${attr.unique.network.ip-address}:${var.otel_collector_grpc_port}" : "localhost:${var.otel_collector_grpc_port}"
-  logs_collector_address                  = var.api_consul_connect_enabled ? "http://$${attr.unique.network.ip-address}:${var.logs_proxy_port.port}" : "http://localhost:${var.logs_proxy_port.port}"
+  nomad_address                           = local.api_connect_enabled ? "http://$${attr.unique.network.ip-address}:${var.nomad_port}" : "http://localhost:${var.nomad_port}"
+  otel_collector_grpc_endpoint            = local.api_connect_enabled ? "$${attr.unique.network.ip-address}:${var.otel_collector_grpc_port}" : "localhost:${var.otel_collector_grpc_port}"
+  logs_collector_address                  = local.api_connect_enabled ? "http://$${attr.unique.network.ip-address}:${var.logs_proxy_port.port}" : "http://localhost:${var.logs_proxy_port.port}"
   port_name                               = var.api_port.name
   port_number                             = var.api_port.port
   api_internal_grpc_port                  = var.api_internal_grpc_port
-  consul_connect_enabled                  = var.api_consul_connect_enabled
+  consul_connect_enabled                  = local.api_connect_enabled
+  connect_rollout_dependencies            = var.consul_connect_intention_ids
+  clickhouse_connect_enabled              = local.clickhouse_connect_enabled
+  clickhouse_port                         = var.clickhouse_server_port.port
   api_docker_image                        = data.google_artifact_registry_docker_image.api_image.self_link
   postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   postgres_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
@@ -159,7 +167,7 @@ module "api" {
   redis_url                               = local.redis_url
   redis_cluster_url                       = local.redis_cluster_url
   redis_tls_ca_base64                     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-  clickhouse_connection_string            = local.clickhouse_connection_string
+  clickhouse_connection_string            = local.clickhouse_connect_enabled ? local.clickhouse_connect_connection_string : local.clickhouse_connection_string
   loki_url                                = local.loki_url
   sandbox_access_token_hash_seed          = var.sandbox_access_token_hash_seed
   sandbox_storage_backend                 = var.sandbox_storage_backend
@@ -187,6 +195,8 @@ module "dashboard_api" {
   source = "../../modules/job-dashboard-api"
   count  = var.dashboard_api_count > 0 ? 1 : 0
 
+  depends_on = [module.clickhouse]
+
   count_instances = var.dashboard_api_count
   node_pool       = var.api_node_pool
   update_stanza   = var.dashboard_api_count > 1
@@ -199,7 +209,7 @@ module "dashboard_api" {
   auth_db_connection_string               = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   auth_db_read_replica_connection_string  = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
   supabase_db_connection_string           = trimspace(data.google_secret_manager_secret_version.supabase_db_connection_string.secret_data)
-  clickhouse_connection_string            = local.clickhouse_connection_string
+  clickhouse_connection_string            = local.clickhouse_connect_enabled ? local.clickhouse_connect_connection_string : local.clickhouse_connection_string
   supabase_jwt_secrets                    = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
   redis_url                               = local.redis_url
   redis_cluster_url                       = local.redis_cluster_url
@@ -211,6 +221,12 @@ module "dashboard_api" {
 
   otel_collector_grpc_port = var.otel_collector_grpc_port
   logs_proxy_port          = var.logs_proxy_port
+
+  otel_collector_grpc_endpoint = local.clickhouse_connect_enabled ? "$${attr.unique.network.ip-address}:${var.otel_collector_grpc_port}" : ""
+  logs_collector_address       = local.clickhouse_connect_enabled ? "http://$${attr.unique.network.ip-address}:${var.logs_proxy_port.port}" : ""
+  connect_rollout_dependencies = var.consul_connect_intention_ids
+  clickhouse_connect_enabled   = local.clickhouse_connect_enabled
+  clickhouse_port              = var.clickhouse_server_port.port
 }
 
 module "redis" {
@@ -259,12 +275,12 @@ module "client_proxy" {
   redis_cluster_url         = local.redis_cluster_url
   redis_tls_ca_base64       = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
   image                     = data.google_artifact_registry_docker_image.client_proxy_image.self_link
-  consul_connect_enabled    = var.api_consul_connect_enabled
+  consul_connect_enabled    = local.api_connect_enabled
   api_internal_grpc_port    = var.api_internal_grpc_port
-  api_internal_grpc_address = var.api_consul_connect_enabled ? "127.0.0.1:${var.api_internal_grpc_port}" : "api-internal-grpc.service.consul:${var.api_internal_grpc_port}"
+  api_internal_grpc_address = local.api_connect_enabled ? "127.0.0.1:${var.api_internal_grpc_port}" : "api-internal-grpc.service.consul:${var.api_internal_grpc_port}"
 
-  otel_collector_grpc_endpoint = var.api_consul_connect_enabled ? "$${attr.unique.network.ip-address}:${var.otel_collector_grpc_port}" : "localhost:${var.otel_collector_grpc_port}"
-  logs_collector_address       = var.api_consul_connect_enabled ? "http://$${attr.unique.network.ip-address}:${var.logs_proxy_port.port}" : "http://localhost:${var.logs_proxy_port.port}"
+  otel_collector_grpc_endpoint = local.api_connect_enabled ? "$${attr.unique.network.ip-address}:${var.otel_collector_grpc_port}" : "localhost:${var.otel_collector_grpc_port}"
+  logs_collector_address       = local.api_connect_enabled ? "http://$${attr.unique.network.ip-address}:${var.logs_proxy_port.port}" : "http://localhost:${var.logs_proxy_port.port}"
   launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
 }
 
@@ -664,10 +680,11 @@ module "clickhouse" {
   cpu_count     = var.clickhouse_resources_cpu_count
   memory_mb     = var.clickhouse_resources_memory_mb
 
-  clickhouse_database = var.clickhouse_database
-  clickhouse_username = var.clickhouse_username
-  clickhouse_password = random_password.clickhouse_password.result
-  clickhouse_port     = var.clickhouse_server_port.port
+  clickhouse_database    = var.clickhouse_database
+  clickhouse_username    = var.clickhouse_username
+  clickhouse_password    = random_password.clickhouse_password.result
+  clickhouse_port        = var.clickhouse_server_port.port
+  consul_connect_enabled = local.clickhouse_connect_enabled
 
   clickhouse_metrics_port = var.clickhouse_metrics_port
   otel_exporter_endpoint  = "http://localhost:${var.otel_collector_grpc_port}"

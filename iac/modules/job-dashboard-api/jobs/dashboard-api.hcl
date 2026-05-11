@@ -13,6 +13,10 @@ job "dashboard-api" {
     }
 
     network {
+      %{ if clickhouse_connect_enabled }
+      mode = "bridge"
+
+      %{ endif }
       port "api" {}
     }
 
@@ -20,6 +24,7 @@ job "dashboard-api" {
       name = "dashboard-api"
       port = "api"
       task = "start"
+      address_mode = "host"
 
       tags = [
 
@@ -32,6 +37,7 @@ job "dashboard-api" {
       ]
 
       check {
+        address_mode = "host"
         type     = "http"
         name     = "health"
         path     = "/health"
@@ -40,6 +46,25 @@ job "dashboard-api" {
         port     = "api"
       }
     }
+
+    %{ if clickhouse_connect_enabled }
+    service {
+      name = "dashboard-api-connect"
+      port = "api"
+      task = "start"
+
+      connect {
+        sidecar_service {
+          proxy {
+            upstreams {
+              destination_name = "clickhouse"
+              local_bind_port  = ${clickhouse_port}
+            }
+          }
+        }
+      }
+    }
+    %{ endif }
 
 %{ if update_stanza }
     # An update stanza to enable rolling updates of the service
@@ -81,7 +106,9 @@ job "dashboard-api" {
       }
 
       config {
+        %{ if !clickhouse_connect_enabled }
         network_mode = "host"
+        %{ endif }
         image        = "${image_name}"
         ports        = ["api"]
       }

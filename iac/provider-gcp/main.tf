@@ -256,6 +256,8 @@ module "nomad" {
   api_port                                               = var.api_port
   api_internal_grpc_port                                 = var.api_internal_grpc_port
   api_consul_connect_enabled                             = var.api_consul_connect_enabled
+  consul_connect_enabled                                 = var.consul_connect_enabled
+  consul_connect_intention_ids                           = concat(values(terraform_data.api_consul_connect_intention)[*].id, values(terraform_data.clickhouse_consul_connect_intention)[*].id)
   client_proxy_oidc_issuer_url                           = var.client_proxy_oidc_issuer_url
   environment                                            = var.environment
   google_service_account_key                             = module.init.google_service_account_key

@@ -18,6 +18,23 @@ variable "count_instances" {
   type = number
 }
 
+variable "clickhouse_connect_enabled" {
+  type        = bool
+  description = "Route dashboard-api ClickHouse traffic through a Consul Connect upstream."
+  default     = false
+}
+
+variable "connect_rollout_dependencies" {
+  type        = list(string)
+  description = "Opaque dependency IDs that must exist before this Connect-enabled job rolls."
+  default     = []
+}
+
+variable "clickhouse_port" {
+  type    = number
+  default = 9000
+}
+
 variable "postgres_connection_string" {
   type      = string
   sensitive = true
@@ -67,6 +84,16 @@ variable "enable_billing_http_team_provision_sink" {
 variable "otel_collector_grpc_port" {
   type    = number
   default = 4317
+}
+
+variable "otel_collector_grpc_endpoint" {
+  type    = string
+  default = ""
+}
+
+variable "logs_collector_address" {
+  type    = string
+  default = ""
 }
 
 variable "redis_url" {

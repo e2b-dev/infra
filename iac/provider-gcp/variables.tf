@@ -223,6 +223,12 @@ variable "api_consul_connect_enabled" {
   default     = false
 }
 
+variable "consul_connect_enabled" {
+  type        = bool
+  description = "Enable broader Consul service mesh routes for supported Nomad Docker jobs."
+  default     = false
+}
+
 variable "client_proxy_oidc_issuer_url" {
   type    = string
   default = ""

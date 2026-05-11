@@ -206,3 +206,20 @@ variable "consul_connect_enabled" {
   description = "Expose api-internal-grpc through a Consul service mesh sidecar."
   default     = false
 }
+
+variable "connect_rollout_dependencies" {
+  type        = list(string)
+  description = "Opaque dependency IDs that must exist before this Connect-enabled job rolls."
+  default     = []
+}
+
+variable "clickhouse_connect_enabled" {
+  type        = bool
+  description = "Route API ClickHouse traffic through a Consul Connect upstream."
+  default     = false
+}
+
+variable "clickhouse_port" {
+  type    = number
+  default = 9000
+}

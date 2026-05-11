@@ -1,4 +1,7 @@
 locals {
+  logs_collector_address       = trimspace(var.logs_collector_address) != "" ? trimspace(var.logs_collector_address) : "http://localhost:${var.logs_proxy_port.port}"
+  otel_collector_grpc_endpoint = trimspace(var.otel_collector_grpc_endpoint) != "" ? trimspace(var.otel_collector_grpc_endpoint) : "localhost:${var.otel_collector_grpc_port}"
+
   base_env = {
     GIN_MODE                                = "release"
     ENVIRONMENT                             = var.environment
@@ -16,8 +19,8 @@ locals {
     ENABLE_BILLING_HTTP_TEAM_PROVISION_SINK = tostring(var.enable_billing_http_team_provision_sink)
     BILLING_SERVER_URL                      = var.billing_server_url
     BILLING_SERVER_API_TOKEN                = var.billing_server_api_token
-    OTEL_COLLECTOR_GRPC_ENDPOINT            = "localhost:${var.otel_collector_grpc_port}"
-    LOGS_COLLECTOR_ADDRESS                  = "http://localhost:${var.logs_proxy_port.port}"
+    OTEL_COLLECTOR_GRPC_ENDPOINT            = local.otel_collector_grpc_endpoint
+    LOGS_COLLECTOR_ADDRESS                  = local.logs_collector_address
   }
 }
 
@@ -35,5 +38,15 @@ resource "nomad_job" "dashboard_api" {
     env = local.base_env
 
     subdomain = "dashboard-api"
+
+    clickhouse_connect_enabled = var.clickhouse_connect_enabled
+    clickhouse_port            = var.clickhouse_port
   })
+
+  lifecycle {
+    precondition {
+      condition     = length(var.connect_rollout_dependencies) >= 0
+      error_message = "Connect rollout dependencies must be available before the dashboard-api job rolls."
+    }
+  }
 }

@@ -60,6 +60,12 @@ variable "clickhouse_port" {
   type = number
 }
 
+variable "consul_connect_enabled" {
+  type        = bool
+  description = "Expose ClickHouse through a Consul Connect sidecar."
+  default     = false
+}
+
 variable "clickhouse_metrics_port" {
   type = number
 }

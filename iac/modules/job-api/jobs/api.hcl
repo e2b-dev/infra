@@ -86,6 +86,12 @@ job "api" {
           proxy {
             local_service_address = "127.0.0.1"
             local_service_port    = ${api_internal_grpc_port}
+            %{ if clickhouse_connect_enabled }
+            upstreams {
+              destination_name = "clickhouse"
+              local_bind_port  = ${clickhouse_port}
+            }
+            %{ endif }
           }
         }
       }

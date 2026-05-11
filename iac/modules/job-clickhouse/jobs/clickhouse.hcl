@@ -47,6 +47,17 @@ job "clickhouse" {
       port = "clickhouse-server"
       tags = ["server-${i + 1}"]
 
+      %{ if consul_connect_enabled }
+      connect {
+        sidecar_service {
+          proxy {
+            local_service_address = "127.0.0.1"
+            local_service_port    = ${clickhouse_server_port}
+          }
+        }
+      }
+
+      %{ endif }
       check {
         type     = "http"
         path     = "/ping"

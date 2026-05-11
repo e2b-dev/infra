@@ -53,6 +53,7 @@ resource "nomad_job" "clickhouse" {
     clickhouse_metrics_port = var.clickhouse_metrics_port
     clickhouse_server_port  = var.clickhouse_port
     server_count            = var.server_count
+    consul_connect_enabled  = var.consul_connect_enabled
 
     clickhouse_config       = local.clickhouse_config
     clickhouse_users_config = local.clickhouse_users_config

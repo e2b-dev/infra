@@ -1,6 +1,13 @@
 locals {
-  api_consul_connect_intention_sources = var.api_consul_connect_enabled ? toset([
+  consul_service_intention_script = "${path.module}/scripts/consul-service-intention.sh"
+
+  api_consul_connect_intention_sources = (var.api_consul_connect_enabled || var.consul_connect_enabled) ? toset([
     "client-proxy",
+  ]) : toset([])
+
+  clickhouse_consul_connect_intention_sources = var.consul_connect_enabled ? toset([
+    "api-internal-grpc",
+    "dashboard-api-connect",
   ]) : toset([])
 }
 
@@ -11,56 +18,43 @@ resource "terraform_data" "api_consul_connect_intention" {
     destination = "api-internal-grpc"
     gcp_project = var.gcp_project_id
     prefix      = var.prefix
+    script_hash = filesha256(local.consul_service_intention_script)
+    script_path = local.consul_service_intention_script
     source      = each.key
   }
 
   provisioner "local-exec" {
     interpreter = ["bash", "-c"]
-    command     = <<-EOT
-      set -euo pipefail
-
-      server=$(gcloud compute instances list \
-        --project='${self.triggers_replace.gcp_project}' \
-        --filter='name~^${self.triggers_replace.prefix}orch-server-' \
-        --format='value(name,zone)' \
-        | head -n1)
-
-      if [[ -z "$${server}" ]]; then
-        echo "No Consul server instance found for prefix ${self.triggers_replace.prefix}" >&2
-        exit 1
-      fi
-
-      read -r name zone <<<"$${server}"
-
-      gcloud compute ssh "$${name}" \
-        --zone "$${zone}" \
-        --project='${self.triggers_replace.gcp_project}' \
-        --command='consul intention create -allow ${self.triggers_replace.source} ${self.triggers_replace.destination} || consul intention get ${self.triggers_replace.source} ${self.triggers_replace.destination} >/dev/null'
-    EOT
+    command     = "'${self.triggers_replace.script_path}' upsert '${self.triggers_replace.gcp_project}' '${self.triggers_replace.prefix}' '${self.triggers_replace.source}' '${self.triggers_replace.destination}'"
   }
 
   provisioner "local-exec" {
     when        = destroy
     interpreter = ["bash", "-c"]
-    command     = <<-EOT
-      set -euo pipefail
+    command     = "'${try(self.triggers_replace.script_path, "./scripts/consul-service-intention.sh")}' delete '${self.triggers_replace.gcp_project}' '${self.triggers_replace.prefix}' '${self.triggers_replace.source}' '${self.triggers_replace.destination}'"
+  }
+}
 
-      server=$(gcloud compute instances list \
-        --project='${self.triggers_replace.gcp_project}' \
-        --filter='name~^${self.triggers_replace.prefix}orch-server-' \
-        --format='value(name,zone)' \
-        | head -n1)
+resource "terraform_data" "clickhouse_consul_connect_intention" {
+  for_each = local.clickhouse_consul_connect_intention_sources
 
-      if [[ -z "$${server}" ]]; then
-        exit 0
-      fi
+  triggers_replace = {
+    destination = "clickhouse"
+    gcp_project = var.gcp_project_id
+    prefix      = var.prefix
+    script_hash = filesha256(local.consul_service_intention_script)
+    script_path = local.consul_service_intention_script
+    source      = each.key
+  }
 
-      read -r name zone <<<"$${server}"
+  provisioner "local-exec" {
+    interpreter = ["bash", "-c"]
+    command     = "'${self.triggers_replace.script_path}' upsert '${self.triggers_replace.gcp_project}' '${self.triggers_replace.prefix}' '${self.triggers_replace.source}' '${self.triggers_replace.destination}'"
+  }
 
-      gcloud compute ssh "$${name}" \
-        --zone "$${zone}" \
-        --project='${self.triggers_replace.gcp_project}' \
-        --command='consul intention delete ${self.triggers_replace.source} ${self.triggers_replace.destination} || true'
-    EOT
+  provisioner "local-exec" {
+    when        = destroy
+    interpreter = ["bash", "-c"]
+    command     = "'${try(self.triggers_replace.script_path, "./scripts/consul-service-intention.sh")}' delete '${self.triggers_replace.gcp_project}' '${self.triggers_replace.prefix}' '${self.triggers_replace.source}' '${self.triggers_replace.destination}'"
   }
 }
