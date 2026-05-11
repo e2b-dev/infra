@@ -47,6 +47,7 @@ job "client-proxy" {
         "traefik.enable=true",
 
         "traefik.http.routers.client-proxy.rule=PathPrefix(`/`)",
+        "traefik.http.routers.client-proxy.entrypoints=web",
         "traefik.http.routers.client-proxy.ruleSyntax=v2",
         "traefik.http.routers.client-proxy.priority=100",
 

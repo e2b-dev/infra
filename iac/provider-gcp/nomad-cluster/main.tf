@@ -111,6 +111,7 @@ module "network" {
   api_nat_min_ports_per_vm = var.api_nat_min_ports_per_vm
 
   ingress_port                            = var.ingress_port
+  ingress_http2_port                      = var.ingress_http2_port
   api_port                                = var.api_port
   docker_reverse_proxy_port               = var.docker_reverse_proxy_port
   network_name                            = var.network_name
@@ -118,6 +119,8 @@ module "network" {
   additional_domains                      = var.additional_domains
   additional_api_paths_handled_by_ingress = var.additional_api_paths_handled_by_ingress
   ingress_timeout_seconds                 = var.ingress_timeout_seconds
+  grpc_api_http2_ingress_enabled          = var.grpc_api_http2_ingress_enabled
+  grpc_api_http2_backend_tls              = var.grpc_api_http2_backend_tls
 
   client_proxy_port        = var.client_proxy_port
   client_proxy_health_port = var.client_proxy_health_port

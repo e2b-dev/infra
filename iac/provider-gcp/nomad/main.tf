@@ -81,9 +81,11 @@ data "google_secret_manager_secret_version" "redis_tls_ca_base64" {
 module "ingress" {
   source = "../../modules/job-ingress"
 
-  ingress_count        = var.ingress_count
-  ingress_proxy_port   = var.ingress_port.port
-  traefik_config_files = var.traefik_config_files
+  ingress_count            = var.ingress_count
+  ingress_proxy_port       = var.ingress_port.port
+  ingress_http2_proxy_port = var.ingress_http2_port.port
+  ingress_http2_tls        = var.ingress_http2_tls
+  traefik_config_files     = var.traefik_config_files
 
   node_pool     = var.api_node_pool
   update_stanza = var.api_machine_count > 1
@@ -92,6 +94,28 @@ module "ingress" {
   consul_token = var.consul_acl_token_secret
 
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
+}
+
+module "ingress_cert_renewer" {
+  source = "../../modules/job-ingress-cert-renewer"
+  count  = var.ingress_http2_cert_renewer == null ? 0 : 1
+
+  node_pool = var.api_node_pool
+
+  gcp_project_id = var.ingress_http2_cert_renewer.gcp_project_id
+  ca_pool        = var.ingress_http2_cert_renewer.ca_pool
+  ca_id          = var.ingress_http2_cert_renewer.ca_id
+  ca_location    = var.ingress_http2_cert_renewer.ca_location
+  server_name    = var.ingress_http2_cert_renewer.server_name
+  cert_validity  = var.ingress_http2_cert_renewer.cert_validity
+  renew_interval = var.ingress_http2_cert_renewer.renew_interval
+
+  certificate_consul_key = var.ingress_http2_cert_renewer.certificate_consul_key
+  private_key_consul_key = var.ingress_http2_cert_renewer.private_key_consul_key
+  client_ca_consul_key   = var.ingress_http2_cert_renewer.client_ca_consul_key
+
+  consul_endpoint = "http://localhost:8500"
+  consul_token    = var.consul_acl_token_secret
 }
 
 module "api" {
@@ -138,6 +162,7 @@ module "api" {
   db_migrator_docker_image                = data.google_artifact_registry_docker_image.db_migrator_image.self_link
   launch_darkly_api_key                   = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   default_persistent_volume_type          = var.default_persistent_volume_type
+  grpc_api_http2_mtls_enabled             = try(var.ingress_http2_tls.require_client_certificate, false)
 
   job_env_vars = {
     VOLUME_TOKEN_ISSUER           = var.volume_token_issuer

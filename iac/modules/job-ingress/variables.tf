@@ -22,6 +22,25 @@ variable "ingress_proxy_port" {
   type = number
 }
 
+variable "ingress_http2_proxy_port" {
+  type = number
+}
+
+variable "ingress_http2_tls" {
+  type = object({
+    certificate_consul_key     = string
+    private_key_consul_key     = string
+    client_ca_consul_key       = optional(string)
+    require_client_certificate = optional(bool, false)
+  })
+  default = null
+
+  validation {
+    condition     = !try(var.ingress_http2_tls.require_client_certificate, false) || try(var.ingress_http2_tls.client_ca_consul_key, null) != null
+    error_message = "ingress_http2_tls.client_ca_consul_key is required when require_client_certificate is true."
+  }
+}
+
 variable "ingress_control_port" {
   type    = number
   default = 8900

@@ -34,6 +34,55 @@ resource "google_compute_health_check" "ingress" {
   }
 }
 
+resource "google_compute_health_check" "http2_ingress" {
+  name = "${var.prefix}http2-ingress"
+
+  timeout_sec         = 3
+  check_interval_sec  = 5
+  healthy_threshold   = 2
+  unhealthy_threshold = 2
+
+  http2_health_check {
+    port         = var.ingress_http2_port.port
+    request_path = "/ping"
+  }
+}
+
+resource "google_certificate_manager_trust_config" "http2_ingress" {
+  count = var.grpc_api_http2_backend_tls == null ? 0 : 1
+
+  name     = "${var.prefix}http2-ingress"
+  location = "global"
+
+  trust_stores {
+    dynamic "trust_anchors" {
+      for_each = var.grpc_api_http2_backend_tls.trust_anchor_pems
+
+      content {
+        pem_certificate = trust_anchors.value
+      }
+    }
+
+    dynamic "intermediate_cas" {
+      for_each = var.grpc_api_http2_backend_tls.intermediate_ca_pems
+
+      content {
+        pem_certificate = intermediate_cas.value
+      }
+    }
+  }
+}
+
+resource "google_network_security_backend_authentication_config" "http2_ingress" {
+  count = var.grpc_api_http2_backend_tls == null ? 0 : 1
+
+  name         = "${var.prefix}http2-ingress"
+  location     = "global"
+  trust_config = google_certificate_manager_trust_config.http2_ingress[0].id
+
+  client_certificate = var.grpc_api_http2_backend_tls.require_client_certificate ? var.grpc_api_http2_backend_tls.client_certificate : null
+}
+
 resource "google_compute_backend_service" "ingress" {
   name = "${var.prefix}ingress"
 
@@ -76,6 +125,40 @@ resource "google_compute_backend_service" "h2c_ingress" {
   }
 }
 
+resource "google_compute_backend_service" "http2_ingress" {
+  name = "${var.prefix}http2-ingress"
+
+  protocol  = "HTTP2"
+  port_name = var.ingress_http2_port.name
+
+  session_affinity = null
+  health_checks    = [google_compute_health_check.http2_ingress.id]
+
+  timeout_sec = var.ingress_timeout_seconds
+
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  locality_lb_policy    = "ROUND_ROBIN"
+
+  security_policy = google_compute_security_policy.ingress.id
+
+  dynamic "tls_settings" {
+    for_each = var.grpc_api_http2_backend_tls == null ? [] : [var.grpc_api_http2_backend_tls]
+
+    content {
+      authentication_config = "//networksecurity.googleapis.com/${google_network_security_backend_authentication_config.http2_ingress[0].id}"
+      sni                   = tls_settings.value.server_name
+
+      subject_alt_names {
+        dns_name = tls_settings.value.server_name
+      }
+    }
+  }
+
+  backend {
+    group = var.api_instance_group
+  }
+}
+
 resource "google_compute_security_policy" "ingress" {
   name = "${var.prefix}ingress"
 
@@ -97,7 +180,7 @@ resource "google_compute_url_map" "ingress" {
 
   path_matcher {
     name            = "grpc-api-paths"
-    default_service = google_compute_backend_service.h2c_ingress.self_link
+    default_service = var.grpc_api_http2_ingress_enabled ? google_compute_backend_service.http2_ingress.self_link : google_compute_backend_service.h2c_ingress.self_link
   }
 }
 

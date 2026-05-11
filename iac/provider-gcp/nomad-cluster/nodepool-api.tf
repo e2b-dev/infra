@@ -70,6 +70,11 @@ resource "google_compute_instance_group_manager" "api_pool" {
     port = var.ingress_port.port
   }
 
+  named_port {
+    name = var.ingress_http2_port.name
+    port = var.ingress_http2_port.port
+  }
+
   auto_healing_policies {
     health_check      = google_compute_health_check.api_nomad_check.id
     initial_delay_sec = 600

@@ -235,6 +235,91 @@ variable "ingress_port" {
   }
 }
 
+variable "ingress_http2_port" {
+  type = object({
+    name = string
+    port = number
+  })
+  default = {
+    name = "ingress-http2"
+    port = 8801
+  }
+}
+
+variable "grpc_api_http2_ingress_enabled" {
+  type        = bool
+  description = "Route grpc-api ingress traffic through the TLS HTTP/2 backend instead of the H2C backend."
+  default     = false
+}
+
+variable "grpc_api_http2_backend_tls" {
+  type = object({
+    server_name                = string
+    trust_anchor_pems          = list(string)
+    intermediate_ca_pems       = optional(list(string), [])
+    client_certificate         = optional(string)
+    require_client_certificate = optional(bool, false)
+  })
+  description = "Backend authenticated TLS/mTLS settings for grpc-api HTTP/2 ingress. The Traefik backend cert must contain server_name as a DNS SAN. client_certificate is a Certificate Manager certificate resource with CLIENT_AUTH scope."
+  default     = null
+
+  validation {
+    condition     = var.grpc_api_http2_backend_tls == null || try(length(var.grpc_api_http2_backend_tls.trust_anchor_pems), 0) > 0
+    error_message = "grpc_api_http2_backend_tls.trust_anchor_pems must contain at least one CA certificate when backend TLS authentication is enabled."
+  }
+
+  validation {
+    condition     = !try(var.grpc_api_http2_backend_tls.require_client_certificate, false) || try(var.grpc_api_http2_backend_tls.client_certificate, null) != null
+    error_message = "grpc_api_http2_backend_tls.client_certificate is required when require_client_certificate is true."
+  }
+}
+
+variable "ingress_http2_tls" {
+  type = object({
+    certificate_consul_key     = string
+    private_key_consul_key     = string
+    client_ca_consul_key       = optional(string)
+    require_client_certificate = optional(bool, false)
+  })
+  description = "Consul KV paths that Nomad templates into Traefik for the HTTP/2 TLS backend listener. Updating these KV values restarts the Traefik task so certificate rotation is picked up."
+  default     = null
+
+  validation {
+    condition     = !try(var.ingress_http2_tls.require_client_certificate, false) || try(var.ingress_http2_tls.client_ca_consul_key, null) != null
+    error_message = "ingress_http2_tls.client_ca_consul_key is required when require_client_certificate is true."
+  }
+}
+
+variable "grpc_api_http2_mtls_managed_pki_enabled" {
+  type        = bool
+  description = "Provision and operate the Private CA, LB client cert, and Nomad cert-renewal job for grpc-api HTTP/2 backend mTLS."
+  default     = false
+}
+
+variable "grpc_api_http2_mtls_ca_location" {
+  type        = string
+  description = "Private CA location for grpc-api HTTP/2 backend mTLS. Defaults to gcp_region when empty."
+  default     = ""
+}
+
+variable "grpc_api_http2_mtls_backend_server_name" {
+  type        = string
+  description = "DNS SAN used by the Traefik HTTP/2 backend certificate. Defaults to grpc-api-backend.<domain_name> when empty."
+  default     = ""
+}
+
+variable "grpc_api_http2_mtls_certificate_validity" {
+  type        = string
+  description = "Validity for Traefik backend certificates issued by the Nomad renewer."
+  default     = "P30D"
+}
+
+variable "grpc_api_http2_mtls_renew_interval_seconds" {
+  type        = number
+  description = "How often the Nomad renewer refreshes the Traefik backend certificate in Consul KV."
+  default     = 43200
+}
+
 variable "dashboard_api_count" {
   type    = number
   default = 0

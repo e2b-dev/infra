@@ -7,6 +7,9 @@
 [entryPoints]
   [entryPoints.web]
     address = ":${ingress_port}"
+  [entryPoints.websecure]
+    address = ":${ingress_http2_port}"
+    [entryPoints.websecure.http.tls]
   [entryPoints.traefik]
     address = ":${control_port}"
 
@@ -17,7 +20,7 @@
       insecure = true
 
 [ping]
-  entryPoint = "web"
+  manualRouting = true
 
 [providers]
   [providers.consulCatalog]
@@ -27,7 +30,7 @@
       token = "${consul_token}"
   [providers.file]
     directory = "/local/config"
-    watch = false
+    watch = true
   [providers.nomad]
     exposedByDefault = false
     [providers.nomad.endpoint]

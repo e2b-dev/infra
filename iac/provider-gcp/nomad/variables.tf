@@ -78,6 +78,39 @@ variable "ingress_port" {
   })
 }
 
+variable "ingress_http2_port" {
+  type = object({
+    name = string
+    port = number
+  })
+}
+
+variable "ingress_http2_tls" {
+  type = object({
+    certificate_consul_key     = string
+    private_key_consul_key     = string
+    client_ca_consul_key       = optional(string)
+    require_client_certificate = optional(bool, false)
+  })
+  default = null
+}
+
+variable "ingress_http2_cert_renewer" {
+  type = object({
+    gcp_project_id         = string
+    ca_pool                = string
+    ca_id                  = string
+    ca_location            = string
+    server_name            = string
+    cert_validity          = string
+    renew_interval         = string
+    certificate_consul_key = string
+    private_key_consul_key = string
+    client_ca_consul_key   = string
+  })
+  default = null
+}
+
 variable "traefik_config_files" {
   type        = map(string)
   description = "Map of filename => content for additional Traefik dynamic configuration files"

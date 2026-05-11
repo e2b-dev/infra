@@ -48,6 +48,7 @@ job "api" {
         "traefik.enable=true",
 
         "traefik.http.routers.api.rule=HostRegexp(`api.{domain:.+}`)",
+        "traefik.http.routers.api.entrypoints=web",
         "traefik.http.routers.api.ruleSyntax=v2",
         "traefik.http.routers.api.priority=500"
       ]
@@ -83,10 +84,19 @@ job "api" {
 
       tags = [
         "traefik.enable=true",
-        "traefik.http.routers.grpc-api.rule=HostRegexp(`grpc-api.{domain:.+}`)",
-        "traefik.http.routers.grpc-api.ruleSyntax=v2",
-        "traefik.http.routers.grpc-api.priority=500",
-        "traefik.http.routers.grpc-api.service=grpc-api",
+        "traefik.http.routers.grpc-api-web.rule=HostRegexp(`grpc-api.{domain:.+}`)",
+        "traefik.http.routers.grpc-api-web.entrypoints=web",
+        "traefik.http.routers.grpc-api-web.ruleSyntax=v2",
+        "traefik.http.routers.grpc-api-web.priority=500",
+        "traefik.http.routers.grpc-api-web.service=grpc-api",
+        %{ if grpc_api_http2_mtls_enabled }
+        "traefik.http.routers.grpc-api-websecure.rule=Host(`grpc-api.${domain_name}`)",
+        "traefik.http.routers.grpc-api-websecure.entrypoints=websecure",
+        "traefik.http.routers.grpc-api-websecure.priority=600",
+        "traefik.http.routers.grpc-api-websecure.service=grpc-api",
+        "traefik.http.routers.grpc-api-websecure.tls=true",
+        "traefik.http.routers.grpc-api-websecure.tls.options=gcp-lb-mtls@file",
+        %{ endif }
         "traefik.http.services.grpc-api.loadbalancer.server.scheme=h2c"
       ]
 

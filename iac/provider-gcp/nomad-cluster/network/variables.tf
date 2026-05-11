@@ -63,6 +63,13 @@ variable "ingress_port" {
   })
 }
 
+variable "ingress_http2_port" {
+  type = object({
+    name = string
+    port = number
+  })
+}
+
 variable "docker_reverse_proxy_port" {
   type = object({
     name        = string
@@ -112,4 +119,19 @@ variable "additional_api_paths_handled_by_ingress" {
 
 variable "ingress_timeout_seconds" {
   type = number
+}
+
+variable "grpc_api_http2_ingress_enabled" {
+  type = bool
+}
+
+variable "grpc_api_http2_backend_tls" {
+  type = object({
+    server_name                = string
+    trust_anchor_pems          = list(string)
+    intermediate_ca_pems       = optional(list(string), [])
+    client_certificate         = optional(string)
+    require_client_certificate = optional(bool, false)
+  })
+  default = null
 }

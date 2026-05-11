@@ -15,6 +15,10 @@ job "ingress" {
         static = "${ingress_port}"
       }
 
+      port "ingress-http2" {
+        static = "${ingress_http2_port}"
+      }
+
       port "control" {
         static = "${control_port}"
       }
@@ -79,7 +83,7 @@ job "ingress" {
       config {
         network_mode = "host"
         image        = "traefik:v3.5"
-        ports        = ["control", "ingress"]
+        ports        = ["control", "ingress", "ingress-http2"]
         args = [
           "--configFile=/local/traefik.toml",
         ]
@@ -96,6 +100,42 @@ EOF
         data = "# content ignored, ensures the directory exists"
         destination = "local/config/.keep"
       }
+
+%{ if ingress_http2_tls != null }
+      template {
+        data = "# content ignored, ensures the directory exists"
+        destination = "local/tls/.keep"
+      }
+
+      template {
+        data        = <<EOF
+{{ key "${ingress_http2_tls.certificate_consul_key}" }}
+EOF
+        destination = "local/tls/http2.crt"
+        perms       = "0444"
+        change_mode = "restart"
+      }
+
+      template {
+        data        = <<EOF
+{{ key "${ingress_http2_tls.private_key_consul_key}" }}
+EOF
+        destination = "secrets/tls/http2.key"
+        perms       = "0400"
+        change_mode = "restart"
+      }
+
+%{ if ingress_http2_tls.require_client_certificate }
+      template {
+        data        = <<EOF
+{{ key "${ingress_http2_tls.client_ca_consul_key}" }}
+EOF
+        destination = "local/tls/client-ca.crt"
+        perms       = "0444"
+        change_mode = "restart"
+      }
+%{ endif }
+%{ endif }
 
 %{ for filename, content in config_files }
       template {

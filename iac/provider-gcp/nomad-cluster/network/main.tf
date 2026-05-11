@@ -100,7 +100,6 @@ locals {
     for backend_index, backend_value in local.backends : backend_index => backend_value
     if contains(["api", "session", "docker-reverse-proxy"], backend_index)
   }
-
   health_checked_backends = { for backend_index, backend_value in local.backends : backend_index => backend_value }
 }
 
@@ -504,7 +503,7 @@ resource "google_compute_firewall" "default-hc" {
 
   allow {
     protocol = "tcp"
-    ports    = [var.ingress_port.port]
+    ports    = [var.ingress_port.port, var.ingress_http2_port.port]
   }
 }
 

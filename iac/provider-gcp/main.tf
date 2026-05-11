@@ -30,6 +30,16 @@ terraform {
       source  = "hashicorp/random"
       version = "3.8.1"
     }
+
+    time = {
+      source  = "hashicorp/time"
+      version = "0.13.1"
+    }
+
+    tls = {
+      source  = "hashicorp/tls"
+      version = "4.2.1"
+    }
   }
 }
 
@@ -159,13 +169,16 @@ module "cluster" {
   client_proxy_port        = var.client_proxy_port
   client_proxy_health_port = var.client_proxy_health_port
 
-  ingress_port                 = var.ingress_port
-  api_port                     = var.api_port
-  docker_reverse_proxy_port    = var.docker_reverse_proxy_port
-  nomad_port                   = var.nomad_port
-  google_service_account_email = module.init.service_account_email
-  domain_name                  = var.domain_name
-  ingress_timeout_seconds      = var.ingress_timeout_seconds
+  ingress_port                   = var.ingress_port
+  ingress_http2_port             = var.ingress_http2_port
+  api_port                       = var.api_port
+  docker_reverse_proxy_port      = var.docker_reverse_proxy_port
+  nomad_port                     = var.nomad_port
+  google_service_account_email   = module.init.service_account_email
+  domain_name                    = var.domain_name
+  ingress_timeout_seconds        = var.ingress_timeout_seconds
+  grpc_api_http2_ingress_enabled = var.grpc_api_http2_ingress_enabled
+  grpc_api_http2_backend_tls     = local.effective_grpc_api_http2_backend_tls
 
   additional_domains                      = local.additional_domains
   additional_api_paths_handled_by_ingress = local.normalized_api_paths_handled_by_ingress
@@ -230,6 +243,7 @@ module "nomad" {
 
   # Ingress
   ingress_port         = var.ingress_port
+  ingress_http2_port   = var.ingress_http2_port
   ingress_count        = var.ingress_count
   traefik_config_files = var.traefik_config_files
 
@@ -268,8 +282,10 @@ module "nomad" {
   client_proxy_resources_memory_mb = var.client_proxy_resources_memory_mb
   client_proxy_update_max_parallel = var.client_proxy_update_max_parallel
 
-  client_proxy_session_port = var.client_proxy_port.port
-  client_proxy_health_port  = var.client_proxy_health_port.port
+  client_proxy_session_port  = var.client_proxy_port.port
+  client_proxy_health_port   = var.client_proxy_health_port.port
+  ingress_http2_tls          = local.effective_ingress_http2_tls
+  ingress_http2_cert_renewer = local.grpc_api_http2_cert_renewer
 
   domain_name = var.domain_name
 
