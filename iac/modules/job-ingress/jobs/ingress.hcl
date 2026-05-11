@@ -33,8 +33,8 @@ job "ingress" {
       canary           = 1
       # Time to wait for the canary to be healthy
       min_healthy_time = "10s"
-      # Time to wait for the canary to be healthy, if not it will be marked as failed
-      healthy_deadline = "30s"
+      # Give TLS-backed ingress enough time to wait for initial cert material.
+      healthy_deadline = "5m"
       # Whether to promote the canary if the rest of the group is not healthy
       auto_promote     = true
       # Deadline for the update to be completed
