@@ -115,18 +115,13 @@ func (m *MultiplexedChannel[T]) run() {
 // so the fan-out loop wakes up and observes the closed channel.
 func (m *MultiplexedChannel[T]) receiveWhenReady() (v T, ok bool) {
 	for {
-		if m.HasSubscribers() {
-			v, ok = <-m.Source
-
-			return v, ok
-		}
-
-		// No active subscribers — wait for a change notification.
+		// Grab the signal before checking conditions so any change
+		// that happens after the check closes the channel we wait on.
 		m.subMu.Lock()
 		sig := m.subSignal
 		m.subMu.Unlock()
 
-		if m.closed.Load() {
+		if m.HasSubscribers() || m.closed.Load() {
 			v, ok = <-m.Source
 
 			return v, ok
