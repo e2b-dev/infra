@@ -82,6 +82,10 @@ func (s *AdjustableSemaphore) SetLimit(limit int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if limit == s.limit {
+		return nil // no change
+	}
+
 	s.limit = limit
 	s.cond.Broadcast()
 
