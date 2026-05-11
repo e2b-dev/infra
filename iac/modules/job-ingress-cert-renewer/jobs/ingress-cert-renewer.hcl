@@ -44,8 +44,8 @@ set -eu
 apk add --no-cache curl openssl >/dev/null
 
 put_consul_key() {
-  path="$${1}"
-  file="$${2}"
+  path="$1"
+  file="$2"
   curl --fail --show-error --silent \
     --request PUT \
     --header "X-Consul-Token: $${CONSUL_TOKEN}" \

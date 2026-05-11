@@ -17,7 +17,7 @@ locals {
 
   grpc_api_http2_managed_backend_tls = var.grpc_api_http2_mtls_managed_pki_enabled ? {
     server_name                = local.grpc_api_http2_mtls_backend_server_name
-    trust_anchor_pems          = [google_privateca_certificate_authority.grpc_api_http2[0].pem_ca_certificate]
+    trust_anchor_pems          = google_privateca_certificate_authority.grpc_api_http2[0].pem_ca_certificates
     intermediate_ca_pems       = []
     client_certificate         = terraform_data.grpc_api_http2_lb_client_certificate[0].output
     require_client_certificate = true
