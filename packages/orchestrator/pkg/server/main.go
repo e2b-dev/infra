@@ -107,8 +107,6 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		done:              make(chan struct{}),
 	}
 
-	go server.refreshStartingSandboxesLimit(ctx)
-
 	meter := cfg.Tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")
 
 	sandboxCreateDuration, err := telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxCreateDurationName)
@@ -125,6 +123,8 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to register sandbox count metric: %w", err)
 	}
+
+	go server.refreshStartingSandboxesLimit(ctx, int64(startingLimit))
 
 	return server, nil
 }
