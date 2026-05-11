@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/user"
+	"strings"
 	"testing"
 	"time"
 
@@ -171,6 +172,44 @@ func TestStart_ProcessSurvivesClientDisconnect(t *testing.T) {
 	// Clean up.
 	proc, _ := os.FindProcess(pid)
 	_ = proc.Kill()
+}
+
+// TestStart_FastCommandOutputNotTruncated verifies that a fast command's
+// stdout is fully delivered. This catches the bug where cmd.Wait() closing
+// the pipe races with outCancel(), causing the reader to drop its last chunk.
+func TestStart_FastCommandOutputNotTruncated(t *testing.T) {
+	t.Parallel()
+
+	client, cleanup := newTestService(t)
+	defer cleanup()
+
+	const expected = "hello-truncation-test\n"
+
+	for i := range 50 {
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+
+		stream, err := client.Start(ctx, connect.NewRequest(&rpc.StartRequest{
+			Process: &rpc.ProcessConfig{
+				Cmd:  "echo",
+				Args: []string{"hello-truncation-test"},
+			},
+		}))
+		require.NoError(t, err)
+
+		var stdout strings.Builder
+		for stream.Receive() {
+			if data := stream.Msg().GetEvent().GetData(); data != nil {
+				if out := data.GetStdout(); out != nil {
+					stdout.Write(out)
+				}
+			}
+		}
+		require.NoError(t, stream.Err())
+		_ = stream.Close()
+		cancel()
+
+		require.Equalf(t, expected, stdout.String(), "iteration %d: output mismatch", i)
+	}
 }
 
 // processAlive checks whether a process with the given PID exists.

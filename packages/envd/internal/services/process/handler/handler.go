@@ -54,8 +54,9 @@ type Handler struct {
 	outCtx    context.Context //nolint:containedctx // todo: refactor so this can be removed
 	outCancel context.CancelFunc
 
-	stdinMu sync.Mutex
-	stdin   io.WriteCloser
+	stdinMu  sync.Mutex
+	stdin    io.WriteCloser
+	pipeRead []*os.File // read-ends of stdout/stderr; closed in Wait
 
 	DataEvent *MultiplexedChannel[rpc.ProcessEvent_Data]
 	EndEvent  *MultiplexedChannel[rpc.ProcessEvent_End]
@@ -214,11 +215,7 @@ func New(
 						},
 					}
 
-					select {
-					case outMultiplex.Source <- event:
-					case <-outCtx.Done():
-						return
-					}
+					outMultiplex.Source <- event
 				}
 
 				if errors.Is(readErr, io.EOF) {
@@ -235,10 +232,13 @@ func New(
 
 		h.tty = tty
 	} else {
-		stdout, err := cmd.StdoutPipe()
+		stdoutR, stdoutW, err := os.Pipe()
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stdout pipe for command '%s': %w", userCmd, err))
 		}
+
+		cmd.Stdout = stdoutW
+		stdout := stdoutR
 
 		outWg.Go(func() {
 			stdoutLogs := make(chan []byte, outputBufferSize)
@@ -262,11 +262,7 @@ func New(
 						},
 					}
 
-					select {
-					case outMultiplex.Source <- event:
-					case <-outCtx.Done():
-						return
-					}
+					outMultiplex.Source <- event
 
 					stdoutLogs <- buf[:n]
 				}
@@ -283,10 +279,15 @@ func New(
 			}
 		})
 
-		stderr, err := cmd.StderrPipe()
+		stderrR, stderrW, err := os.Pipe()
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stderr pipe for command '%s': %w", userCmd, err))
 		}
+
+		cmd.Stderr = stderrW
+		stderr := stderrR
+
+		h.pipeRead = []*os.File{stdoutR, stderrR}
 
 		outWg.Go(func() {
 			stderrLogs := make(chan []byte, outputBufferSize)
@@ -310,11 +311,7 @@ func New(
 						},
 					}
 
-					select {
-					case outMultiplex.Source <- event:
-					case <-outCtx.Done():
-						return
-					}
+					outMultiplex.Source <- event
 
 					stderrLogs <- buf[:n]
 				}
@@ -444,6 +441,16 @@ func (p *Handler) Start(requestTimeout time.Duration) (uint32, error) {
 		if err != nil {
 			return 0, fmt.Errorf("error starting process '%s': %w", p.userCommand(), err)
 		}
+
+		// Close parent's copy of the write-ends so readers see EOF
+		// when the child (and any orphan grandchildren) exit.
+		if p.cmd.Stdout != nil {
+			p.cmd.Stdout.(*os.File).Close()
+		}
+
+		if p.cmd.Stderr != nil {
+			p.cmd.Stderr.(*os.File).Close()
+		}
 	}
 
 	p.logger.
@@ -458,11 +465,26 @@ func (p *Handler) Start(requestTimeout time.Duration) (uint32, error) {
 }
 
 func (p *Handler) Wait() {
-	// cmd.Wait reaps the child and closes the pipe read-ends.
-	// Then we cancel outCtx to unblock any reader goroutine that
-	// is blocked on a full Source channel send (back-pressure).
+	// Reap the child. With manual os.Pipe, cmd.Wait does not
+	// close our read-ends, so readers can finish draining.
 	err := p.cmd.Wait()
-	p.outCancel()
+
+	// Disable back-pressure so any reader stuck on a full Source
+	// send unblocks, loops back, and sees EOF.
+	p.DataEvent.Drain()
+
+	// Wait for readers to finish. If they don't exit promptly
+	// (orphan grandchildren keeping the pipe open), close the
+	// read-ends to force them out.
+	select {
+	case <-p.outCtx.Done():
+	case <-time.After(5 * time.Second):
+		for _, f := range p.pipeRead {
+			f.Close()
+		}
+
+		<-p.outCtx.Done()
+	}
 
 	p.tty.Close()
 

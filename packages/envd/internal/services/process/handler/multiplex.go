@@ -131,6 +131,15 @@ func (m *MultiplexedChannel[T]) receiveWhenReady() (v T, ok bool) {
 	}
 }
 
+// Drain disables back-pressure so the fan-out drains Source even
+// with no subscribers. Call this when the producer is done (e.g.
+// child process exited) so readers can flush their last chunks
+// without blocking. Source remains open for further sends.
+func (m *MultiplexedChannel[T]) Drain() {
+	m.closed.Store(true)
+	m.NotifySubscriberChange()
+}
+
 // CloseSource closes the Source channel and wakes the fan-out loop.
 func (m *MultiplexedChannel[T]) CloseSource() {
 	m.closed.Store(true)
