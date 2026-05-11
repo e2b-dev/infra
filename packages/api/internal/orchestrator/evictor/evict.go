@@ -4,14 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync/atomic"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
-	"golang.org/x/sync/singleflight"
 
 	"github.com/e2b-dev/infra/packages/api/internal/pause"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -32,13 +31,9 @@ type Evictor struct {
 	store         *sandbox.Store
 	removeSandbox func(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) error
 
-	// evictGroup dedupes concurrent eviction attempts for the same sandbox so
-	// that overlapping ticks don't kick off multiple removeSandbox calls.
-	evictGroup singleflight.Group
-
-	// inFlight counts evictions currently being processed. Observed via the
-	// in-flight gauge.
-	inFlight atomic.Int64
+	// activeEvictions tracks concurrent eviction attempts for the same sandbox
+	// so that overlapping ticks don't kick off multiple removeSandbox calls.
+	activeEvictions sync.Map
 }
 
 func New(
@@ -53,7 +48,14 @@ func New(
 
 	if _, err := telemetry.GetObservableUpDownCounter(meter, telemetry.EvictionsRunningCounterName,
 		func(_ context.Context, observer metric.Int64Observer) error {
-			observer.Observe(e.inFlight.Load())
+			var count int64
+			e.activeEvictions.Range(func(_, _ any) bool {
+				count++
+
+				return true
+			})
+
+			observer.Observe(count)
 
 			return nil
 		}); err != nil {
@@ -85,19 +87,20 @@ func (e *Evictor) Start(ctx context.Context) {
 			}
 
 			for _, item := range sbxs {
-				if !g.TryGo(func() error {
-					// Deduplicate eviction attempts
-					e.evictGroup.Do(item.SandboxID, func() (any, error) {
-						e.inFlight.Add(1)
-						defer e.inFlight.Add(-1)
+				// Skip if an eviction for this sandbox is already in flight.
+				if _, loaded := e.activeEvictions.LoadOrStore(item.SandboxID, struct{}{}); loaded {
+					continue
+				}
 
-						e.evictSandbox(ctx, item)
+				if ok := g.TryGo(func() error {
+					defer e.activeEvictions.Delete(item.SandboxID)
 
-						return nil, nil
-					})
+					e.evictSandbox(ctx, item)
 
 					return nil
-				}) {
+				}); !ok {
+					e.activeEvictions.Delete(item.SandboxID)
+
 					logger.L().Debug(ctx, "Max concurrent evictions reached, skipping eviction this tick",
 						logger.WithSandboxID(item.SandboxID),
 						logger.WithTeamID(item.TeamID.String()),
