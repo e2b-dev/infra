@@ -120,7 +120,7 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 	}
 
 	// Only remove from routing table if the node is managed by Nomad
-	// For remote cluster nodes we are using gPRC metadata for routing registration instead
+	// For remote cluster nodes we are using gRPC metadata for routing registration instead
 	if node.IsNomadManaged() || env.IsLocal() {
 		// Remove the sandbox resources after the sandbox is deleted
 		err := o.routingCatalog.DeleteSandbox(ctx, sbx.SandboxID, sbx.ExecutionID)
