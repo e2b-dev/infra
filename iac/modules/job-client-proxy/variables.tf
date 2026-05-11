@@ -39,6 +39,17 @@ variable "health_port" {
   default = 3001
 }
 
+variable "consul_connect_enabled" {
+  type        = bool
+  description = "Route client-proxy internal API gRPC calls through a Consul Connect upstream."
+  default     = false
+}
+
+variable "api_internal_grpc_port" {
+  type    = number
+  default = 5009
+}
+
 variable "redis_url" {
   type      = string
   sensitive = true

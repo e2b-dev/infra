@@ -17,6 +17,9 @@ resource "nomad_job" "client_proxy" {
     proxy_port  = var.proxy_port
     health_port = var.health_port
 
+    consul_connect_enabled = var.consul_connect_enabled
+    api_internal_grpc_port = var.api_internal_grpc_port
+
     redis_url           = var.redis_url
     redis_cluster_url   = var.redis_cluster_url
     redis_tls_ca_base64 = var.redis_tls_ca_base64

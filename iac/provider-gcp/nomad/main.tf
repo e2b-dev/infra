@@ -259,10 +259,12 @@ module "client_proxy" {
   redis_cluster_url         = local.redis_cluster_url
   redis_tls_ca_base64       = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
   image                     = data.google_artifact_registry_docker_image.client_proxy_image.self_link
-  api_internal_grpc_address = "api-internal-grpc.service.consul:${var.api_internal_grpc_port}"
+  consul_connect_enabled    = var.api_consul_connect_enabled
+  api_internal_grpc_port    = var.api_internal_grpc_port
+  api_internal_grpc_address = var.api_consul_connect_enabled ? "127.0.0.1:${var.api_internal_grpc_port}" : "api-internal-grpc.service.consul:${var.api_internal_grpc_port}"
 
-  otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
-  logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
+  otel_collector_grpc_endpoint = var.api_consul_connect_enabled ? "$${attr.unique.network.ip-address}:${var.otel_collector_grpc_port}" : "localhost:${var.otel_collector_grpc_port}"
+  logs_collector_address       = var.api_consul_connect_enabled ? "http://$${attr.unique.network.ip-address}:${var.logs_proxy_port.port}" : "http://localhost:${var.logs_proxy_port.port}"
   launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
 }
 

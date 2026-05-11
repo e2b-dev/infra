@@ -29,18 +29,29 @@ job "client-proxy" {
     }
 
     network {
+      %{ if consul_connect_enabled }
+      mode = "bridge"
+
+      %{ endif }
       port "proxy" {
         static = "${proxy_port}"
+        %{ if consul_connect_enabled }
+        to     = "${proxy_port}"
+        %{ endif }
       }
 
       port "health" {
         static = "${health_port}"
+        %{ if consul_connect_enabled }
+        to     = "${health_port}"
+        %{ endif }
       }
     }
 
     service {
       name = "client-proxy"
       port = "proxy"
+      address_mode = "host"
 
       // This route is fallback (with lowest priority) to catch all requests as it serves sandbox traffic with dynamic subdomains
       tags = [
@@ -54,7 +65,21 @@ job "client-proxy" {
         "traefik.http.services.client-proxy.loadbalancer.server.port=$${NOMAD_PORT_proxy}"
       ]
 
+      %{ if consul_connect_enabled }
+      connect {
+        sidecar_service {
+          proxy {
+            upstreams {
+              destination_name = "api-internal-grpc"
+              local_bind_port  = ${api_internal_grpc_port}
+            }
+          }
+        }
+      }
+
+      %{ endif }
       check {
+        address_mode = "host"
         type     = "http"
         name     = "health"
         path     = "/health"
@@ -135,7 +160,9 @@ job "client-proxy" {
       }
 
       config {
+        %{ if !consul_connect_enabled }
         network_mode = "host"
+        %{ endif }
         image        = "${image}"
         ports        = ["proxy", "health"]
       }
