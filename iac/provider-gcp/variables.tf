@@ -248,7 +248,7 @@ variable "ingress_http2_port" {
 
 variable "grpc_api_http2_ingress_enabled" {
   type        = bool
-  description = "Route grpc-api ingress traffic through the TLS HTTP/2 backend instead of the H2C backend."
+  description = "Flip the grpc-api URL map to the TLS HTTP/2 backend instead of the H2C backend. Leave false during the first managed mTLS rollout apply so PKI, Traefik routes, and backend auth can come up before traffic moves."
   default     = false
 }
 
@@ -293,7 +293,7 @@ variable "ingress_http2_tls" {
 
 variable "grpc_api_http2_mtls_managed_pki_enabled" {
   type        = bool
-  description = "Provision and operate the Private CA, LB client Certificate Manager upload, and Nomad cert-renewal job for grpc-api HTTP/2 backend mTLS."
+  description = "Provision and operate the Private CA, LB client Certificate Manager upload, GCP backend auth, Traefik TLS routes, and Nomad cert-renewal job for grpc-api HTTP/2 backend mTLS. This can be enabled before grpc_api_http2_ingress_enabled to stage the backend without moving URL-map traffic."
   default     = false
 }
 

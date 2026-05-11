@@ -49,18 +49,8 @@ resource "terraform_data" "grpc_api_http2_mtls_validation" {
 
   lifecycle {
     precondition {
-      condition     = !var.grpc_api_http2_mtls_managed_pki_enabled || var.grpc_api_http2_ingress_enabled
-      error_message = "grpc_api_http2_ingress_enabled must be true when grpc_api_http2_mtls_managed_pki_enabled is true."
-    }
-
-    precondition {
       condition     = !var.grpc_api_http2_ingress_enabled || (local.effective_ingress_http2_tls != null && local.effective_grpc_api_http2_backend_tls != null)
       error_message = "grpc_api_http2_ingress_enabled requires ingress_http2_tls and grpc_api_http2_backend_tls, either directly or through managed mTLS."
-    }
-
-    precondition {
-      condition     = var.grpc_api_http2_ingress_enabled || (var.ingress_http2_tls == null && var.grpc_api_http2_backend_tls == null && !var.grpc_api_http2_mtls_managed_pki_enabled)
-      error_message = "HTTP/2 TLS/mTLS backend settings require grpc_api_http2_ingress_enabled=true."
     }
   }
 }
