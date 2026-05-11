@@ -202,6 +202,10 @@ var (
 	// Reserved blocks are only usable by root (uid 0), protecting the guest OS from disk-full conditions.
 	BuildReservedDiskSpaceMB = NewIntFlag("build-reserved-disk-space-mb", 0)
 
+	// MaxStartingInstancesPerNode limits concurrent sandbox start/resume operations on a single orchestrator node.
+	// Must be > 0.
+	MaxStartingInstancesPerNode = NewIntFlag("max-starting-instances-per-node", 3)
+
 	// MaxConcurrentSnapshotUpserts limits concurrent UpsertSnapshot calls (pause + snapshot template paths).
 	// 0 or negative disables throttling (unlimited concurrency).
 	MaxConcurrentSnapshotUpserts = NewIntFlag("max-concurrent-snapshot-upserts", 0)

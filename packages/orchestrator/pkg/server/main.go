@@ -5,11 +5,12 @@ package server
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
 	"go.opentelemetry.io/otel/metric"
-	"golang.org/x/sync/semaphore"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/events"
@@ -22,13 +23,19 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // Matches the template cache TTL so entries live as long as the
 // templates they refer to and are cleaned up automatically.
 const uploadedBuildsTTL = 1 * time.Hour
+
+// startingSandboxesLimitRefreshInterval is how often we re-read the
+// MaxStartingInstancesPerNode feature flag and resize the semaphore.
+const startingSandboxesLimitRefreshInterval = 30 * time.Second
 
 type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
@@ -44,11 +51,14 @@ type Server struct {
 	persistence           storage.StorageProvider
 	featureFlags          *featureflags.Client
 	sbxEventsService      *events.EventsService
-	startingSandboxes     *semaphore.Weighted
+	startingSandboxes     *utils.AdjustableSemaphore
 	peerRegistry          peerclient.Registry
 	uploadedBuilds        *ttlcache.Cache[string, struct{}]
 	uploads               *sandbox.Uploads
 	sandboxCreateDuration metric.Int64Histogram
+
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 type ServiceConfig struct {
@@ -67,11 +77,17 @@ type ServiceConfig struct {
 	Uploads          *sandbox.Uploads
 }
 
-func New(cfg ServiceConfig) (*Server, error) {
+func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 	uploadedBuilds := ttlcache.New[string, struct{}](
 		ttlcache.WithTTL[string, struct{}](uploadedBuildsTTL),
 	)
 	go uploadedBuilds.Start()
+
+	startingLimit := cfg.FeatureFlags.IntFlag(ctx, featureflags.MaxStartingInstancesPerNode)
+	startingSandboxes, err := utils.NewAdjustableSemaphore(int64(startingLimit))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create starting sandboxes semaphore: %w", err)
+	}
 
 	server := &Server{
 		config:            cfg.Config,
@@ -84,10 +100,11 @@ func New(cfg ServiceConfig) (*Server, error) {
 		persistence:       cfg.Persistence,
 		featureFlags:      cfg.FeatureFlags,
 		sbxEventsService:  cfg.SbxEventsService,
-		startingSandboxes: semaphore.NewWeighted(maxStartingInstancesPerNode),
+		startingSandboxes: startingSandboxes,
 		peerRegistry:      cfg.PeerRegistry,
 		uploadedBuilds:    uploadedBuilds,
 		uploads:           cfg.Uploads,
+		done:              make(chan struct{}),
 	}
 
 	meter := cfg.Tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")
@@ -107,11 +124,39 @@ func New(cfg ServiceConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to register sandbox count metric: %w", err)
 	}
 
+	go server.refreshStartingSandboxesLimit(ctx)
+
 	return server, nil
 }
 
 func (s *Server) Close() error {
+	s.closeOnce.Do(func() {
+		close(s.done)
+	})
+
 	s.uploadedBuilds.Stop()
 
 	return nil
+}
+
+func (s *Server) refreshStartingSandboxesLimit(ctx context.Context) {
+	ticker := time.NewTicker(startingSandboxesLimitRefreshInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.done:
+			return
+		case <-ticker.C:
+			limit := s.featureFlags.IntFlag(ctx, featureflags.MaxStartingInstancesPerNode)
+			if limit <= 0 {
+				continue
+			}
+
+			if err := s.startingSandboxes.SetLimit(int64(limit)); err != nil {
+				logger.L().Error(ctx, "failed to adjust starting sandboxes semaphore",
+					zap.Int("limit", limit), zap.Error(err))
+			}
+		}
+	}
 }
