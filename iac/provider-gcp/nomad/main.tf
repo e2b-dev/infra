@@ -113,6 +113,7 @@ module "ingress_cert_renewer" {
   certificate_consul_key = var.ingress_http2_cert_renewer.certificate_consul_key
   private_key_consul_key = var.ingress_http2_cert_renewer.private_key_consul_key
   client_ca_consul_key   = var.ingress_http2_cert_renewer.client_ca_consul_key
+  reload_consul_key      = var.ingress_http2_cert_renewer.reload_consul_key
 
   consul_endpoint = "http://localhost:8500"
   consul_token    = var.consul_acl_token_secret

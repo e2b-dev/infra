@@ -90,6 +90,7 @@ variable "ingress_http2_tls" {
     certificate_consul_key     = string
     private_key_consul_key     = string
     client_ca_consul_key       = optional(string)
+    reload_consul_key          = optional(string)
     require_client_certificate = optional(bool, false)
   })
   default = null
@@ -107,6 +108,7 @@ variable "ingress_http2_cert_renewer" {
     certificate_consul_key = string
     private_key_consul_key = string
     client_ca_consul_key   = string
+    reload_consul_key      = string
   })
   default = null
 }

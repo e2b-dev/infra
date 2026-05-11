@@ -47,6 +47,10 @@ variable "client_ca_consul_key" {
   type = string
 }
 
+variable "reload_consul_key" {
+  type = string
+}
+
 variable "consul_endpoint" {
   type = string
 }

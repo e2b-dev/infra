@@ -279,6 +279,7 @@ variable "ingress_http2_tls" {
     certificate_consul_key     = string
     private_key_consul_key     = string
     client_ca_consul_key       = optional(string)
+    reload_consul_key          = optional(string)
     require_client_certificate = optional(bool, false)
   })
   description = "Consul KV paths that Nomad templates into Traefik for the HTTP/2 TLS backend listener. Updating these KV values restarts the Traefik task so certificate rotation is picked up."
@@ -292,7 +293,7 @@ variable "ingress_http2_tls" {
 
 variable "grpc_api_http2_mtls_managed_pki_enabled" {
   type        = bool
-  description = "Provision and operate the Private CA, LB client cert, and Nomad cert-renewal job for grpc-api HTTP/2 backend mTLS."
+  description = "Provision and operate the Private CA, LB client Certificate Manager upload, and Nomad cert-renewal job for grpc-api HTTP/2 backend mTLS."
   default     = false
 }
 
@@ -304,7 +305,7 @@ variable "grpc_api_http2_mtls_ca_location" {
 
 variable "grpc_api_http2_mtls_backend_server_name" {
   type        = string
-  description = "DNS SAN used by the Traefik HTTP/2 backend certificate. Defaults to grpc-api-backend.<domain_name> when empty."
+  description = "DNS SAN used by the Traefik HTTP/2 backend certificate. Defaults to grpc-api.<domain_name> when empty."
   default     = ""
 }
 

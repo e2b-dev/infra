@@ -15,6 +15,7 @@ resource "nomad_job" "ingress_cert_renewer" {
     certificate_consul_key = var.certificate_consul_key
     private_key_consul_key = var.private_key_consul_key
     client_ca_consul_key   = var.client_ca_consul_key
+    reload_consul_key      = var.reload_consul_key
 
     consul_endpoint = var.consul_endpoint
     consul_token    = var.consul_token

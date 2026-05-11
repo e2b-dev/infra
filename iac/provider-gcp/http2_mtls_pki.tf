@@ -3,11 +3,13 @@ data "google_project" "current" {}
 locals {
   grpc_api_http2_mtls_ca_location         = var.grpc_api_http2_mtls_ca_location != "" ? var.grpc_api_http2_mtls_ca_location : var.gcp_region
   grpc_api_http2_mtls_backend_server_name = var.grpc_api_http2_mtls_backend_server_name != "" ? var.grpc_api_http2_mtls_backend_server_name : "grpc-api.${var.domain_name}"
+  grpc_api_http2_lb_client_certificate_id = "projects/${var.gcp_project_id}/locations/global/certificates/${var.prefix}grpc-api-http2-lb-client"
 
   grpc_api_http2_managed_ingress_tls = var.grpc_api_http2_mtls_managed_pki_enabled ? {
     certificate_consul_key     = "ingress/http2/grpc-api/tls/cert"
     private_key_consul_key     = "ingress/http2/grpc-api/tls/key"
     client_ca_consul_key       = "ingress/http2/grpc-api/tls/client-ca"
+    reload_consul_key          = "ingress/http2/grpc-api/tls/reload"
     require_client_certificate = true
   } : null
 
@@ -17,7 +19,7 @@ locals {
     server_name                = local.grpc_api_http2_mtls_backend_server_name
     trust_anchor_pems          = [google_privateca_certificate_authority.grpc_api_http2[0].pem_ca_certificate]
     intermediate_ca_pems       = []
-    client_certificate         = google_certificate_manager_certificate.grpc_api_http2_lb_client[0].id
+    client_certificate         = terraform_data.grpc_api_http2_lb_client_certificate[0].output
     require_client_certificate = true
   } : null
 
@@ -34,6 +36,7 @@ locals {
     certificate_consul_key = local.effective_ingress_http2_tls.certificate_consul_key
     private_key_consul_key = local.effective_ingress_http2_tls.private_key_consul_key
     client_ca_consul_key   = local.effective_ingress_http2_tls.client_ca_consul_key
+    reload_consul_key      = coalesce(local.effective_ingress_http2_tls.reload_consul_key, "ingress/http2/grpc-api/tls/reload")
   } : null
 }
 
@@ -136,53 +139,60 @@ resource "time_rotating" "grpc_api_http2_lb_client_certificate" {
   rotation_days = 20
 }
 
-resource "tls_private_key" "grpc_api_http2_lb_client" {
+resource "terraform_data" "grpc_api_http2_lb_client_certificate" {
   count = var.grpc_api_http2_mtls_managed_pki_enabled ? 1 : 0
 
-  algorithm = "RSA"
-  rsa_bits  = 2048
+  input = local.grpc_api_http2_lb_client_certificate_id
 
-  lifecycle {
-    replace_triggered_by = [time_rotating.grpc_api_http2_lb_client_certificate[0]]
+  triggers_replace = {
+    certificate_id       = local.grpc_api_http2_lb_client_certificate_id
+    certificate_validity = var.grpc_api_http2_mtls_certificate_validity
+    rotation             = time_rotating.grpc_api_http2_lb_client_certificate[0].id
   }
-}
 
-resource "tls_cert_request" "grpc_api_http2_lb_client" {
-  count = var.grpc_api_http2_mtls_managed_pki_enabled ? 1 : 0
+  provisioner "local-exec" {
+    command = <<-EOF
+      set -eu
 
-  private_key_pem = tls_private_key.grpc_api_http2_lb_client[0].private_key_pem
-  dns_names       = ["gcp-lb-client.${var.domain_name}"]
+      workdir="$(mktemp -d)"
+      trap 'rm -rf "$${workdir}"' EXIT
 
-  subject {
-    organization = "E2B"
-    common_name  = "gcp-lb-client.${var.domain_name}"
+      cert_id="${var.prefix}grpc-api-http2-lb-client-$(date -u +%Y%m%d%H%M%S)"
+
+      gcloud privateca certificates create "$${cert_id}" \
+        --project "${var.gcp_project_id}" \
+        --issuer-pool "${google_privateca_ca_pool.grpc_api_http2[0].name}" \
+        --issuer-location "${local.grpc_api_http2_mtls_ca_location}" \
+        --generate-key \
+        --key-output-file "$${workdir}/lb-client.key" \
+        --cert-output-file "$${workdir}/lb-client.crt" \
+        --dns-san "gcp-lb-client.${var.domain_name}" \
+        --use-preset-profile "leaf_client_tls" \
+        --validity "${var.grpc_api_http2_mtls_certificate_validity}" \
+        --quiet
+
+      if gcloud certificate-manager certificates describe "${var.prefix}grpc-api-http2-lb-client" \
+        --project "${var.gcp_project_id}" \
+        --location "global" >/dev/null 2>&1; then
+        gcloud certificate-manager certificates update "${var.prefix}grpc-api-http2-lb-client" \
+          --project "${var.gcp_project_id}" \
+          --location "global" \
+          --certificate-file "$${workdir}/lb-client.crt" \
+          --private-key-file "$${workdir}/lb-client.key" \
+          --quiet
+      else
+        gcloud certificate-manager certificates create "${var.prefix}grpc-api-http2-lb-client" \
+          --project "${var.gcp_project_id}" \
+          --location "global" \
+          --scope "client-auth" \
+          --certificate-file "$${workdir}/lb-client.crt" \
+          --private-key-file "$${workdir}/lb-client.key" \
+          --quiet
+      fi
+    EOF
   }
-}
 
-resource "google_privateca_certificate" "grpc_api_http2_lb_client" {
-  count = var.grpc_api_http2_mtls_managed_pki_enabled ? 1 : 0
-
-  name                  = "${var.prefix}grpc-api-http2-lb-client"
-  pool                  = google_privateca_ca_pool.grpc_api_http2[0].name
-  certificate_authority = google_privateca_certificate_authority.grpc_api_http2[0].certificate_authority_id
-  location              = local.grpc_api_http2_mtls_ca_location
-  lifetime              = "2592000s"
-  pem_csr               = tls_cert_request.grpc_api_http2_lb_client[0].cert_request_pem
-
-  lifecycle {
-    replace_triggered_by = [tls_cert_request.grpc_api_http2_lb_client[0]]
-  }
-}
-
-resource "google_certificate_manager_certificate" "grpc_api_http2_lb_client" {
-  count = var.grpc_api_http2_mtls_managed_pki_enabled ? 1 : 0
-
-  name     = "${var.prefix}grpc-api-http2-lb-client"
-  location = "global"
-  scope    = "CLIENT_AUTH"
-
-  self_managed {
-    pem_certificate = join("\n", google_privateca_certificate.grpc_api_http2_lb_client[0].pem_certificate_chain)
-    pem_private_key = tls_private_key.grpc_api_http2_lb_client[0].private_key_pem
-  }
+  depends_on = [
+    google_privateca_certificate_authority.grpc_api_http2,
+  ]
 }

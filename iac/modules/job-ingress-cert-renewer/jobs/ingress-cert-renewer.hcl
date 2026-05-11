@@ -32,6 +32,7 @@ job "ingress-http2-cert-renewer" {
         CERTIFICATE_CONSUL_KEY  = "${certificate_consul_key}"
         PRIVATE_KEY_CONSUL_KEY  = "${private_key_consul_key}"
         CLIENT_CA_CONSUL_KEY    = "${client_ca_consul_key}"
+        RELOAD_CONSUL_KEY       = "${reload_consul_key}"
         CONSUL_ENDPOINT         = "${consul_endpoint}"
       }
 
@@ -79,6 +80,8 @@ renew_once() {
   put_consul_key "$${CERTIFICATE_CONSUL_KEY}" "$${workdir}/tls.crt"
   put_consul_key "$${PRIVATE_KEY_CONSUL_KEY}" "$${workdir}/tls.key"
   put_consul_key "$${CLIENT_CA_CONSUL_KEY}" "$${workdir}/client-ca.crt"
+  printf '%s\n' "$${cert_id}" > "$${workdir}/reload"
+  put_consul_key "$${RELOAD_CONSUL_KEY}" "$${workdir}/reload"
   rm -rf "$${workdir}"
   trap - EXIT
 }
