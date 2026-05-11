@@ -91,16 +91,8 @@ func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64
 		return "", fmt.Errorf("failed to get sandbox from catalog: %w", err)
 	}
 
-	if s.Keepalive != nil && s.Keepalive.Traffic != nil && s.Keepalive.Traffic.Enabled {
+	if trafficKeepalive != nil {
 		trafficKeepalive.MaybeRefresh(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken, c, s)
-	} else {
-		logger.L().Debug(
-			ctx,
-			"traffic keepalive disabled in routing catalog",
-			logger.WithSandboxID(sandboxId),
-			zap.Bool("team_id_present", s.TeamID != ""),
-			zap.Bool("keepalive_present", s.Keepalive != nil),
-		)
 	}
 
 	return catalogSandboxNodeIP(s)

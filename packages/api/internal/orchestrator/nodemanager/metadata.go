@@ -59,7 +59,7 @@ func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.Sandbo
 	// can include it in otelgrpc metric attributes during TagRPC.
 	md.Set(grpcshared.IsResumeMetadataKey, strconv.FormatBool(req.GetSandbox().GetSnapshot()))
 
-	// Merge medata from client (auth, routing with service instance id) and event metadata.
+	// Merge metadata from client (auth, routing with service instance id) and event metadata.
 	return n.client, appendMetadataCtx(ctx, md)
 }
 

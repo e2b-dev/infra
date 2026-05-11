@@ -49,7 +49,18 @@ func releaseTrafficKeepaliveOnFailure(err error) bool {
 }
 
 func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, catalogStore sandboxroutingcatalog.SandboxesCatalog, info *sandboxroutingcatalog.SandboxInfo) {
-	if m.resumer == nil || !trafficKeepaliveEnabled(info) {
+	if m.resumer == nil {
+		return
+	}
+	if !trafficKeepaliveEnabled(info) {
+		logger.L().Debug(
+			ctx,
+			"traffic keepalive disabled in routing catalog",
+			logger.WithSandboxID(sandboxID),
+			zap.Bool("team_id_present", info != nil && info.TeamID != ""),
+			zap.Bool("keepalive_present", info != nil && info.Keepalive != nil),
+		)
+
 		return
 	}
 
