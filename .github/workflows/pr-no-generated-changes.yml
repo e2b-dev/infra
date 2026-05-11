@@ -59,9 +59,7 @@ jobs:
           ./scripts/fix-tracers.sh
           ./scripts/fix-meters.sh
 
-      - uses: jdx/mise-action@v3
-        with:
-          install_args: "buf protoc protoc-gen-connect-go protoc-gen-go protoc-gen-go-grpc"
+      - uses: jdx/mise-action@v4
 
       - name: Generate all code
         run: make generate  # cannot do this in parallel, as there are some race conditions
