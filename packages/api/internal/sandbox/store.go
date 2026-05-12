@@ -89,7 +89,7 @@ func NewStore(
 // Add inserts a sandbox into the store. A non-nil creation argument fires the
 // AsyncNewlyCreatedSandbox callback; nil indicates a sync/reconcile re-add.
 func (s *Store) Add(ctx context.Context, sandbox Sandbox, creation *CreationMetadata) error {
-	sbxlogger.I(sandbox).Debug(ctx, "Adding sandbox to cache",
+	sbxlogger.I(&sandbox).Debug(ctx, "Adding sandbox to cache",
 		zap.Bool("newly_created", creation != nil),
 		logger.Time("start_time", sandbox.StartTime),
 		logger.Time("end_time", sandbox.EndTime),

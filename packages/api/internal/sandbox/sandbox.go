@@ -110,6 +110,7 @@ func (s *Sandbox) UnmarshalJSON(data []byte) error {
 	type sandboxAlias Sandbox
 	var raw struct {
 		sandboxAlias
+
 		AutoPause  *bool                          `json:"autoPause,omitempty"`
 		AutoResume *types.SandboxAutoResumeConfig `json:"autoResume,omitempty"`
 	}
@@ -130,8 +131,10 @@ func (s *Sandbox) UnmarshalJSON(data []byte) error {
 
 func (s Sandbox) MarshalJSON() ([]byte, error) {
 	type sandboxAlias Sandbox
+
 	return json.Marshal(struct {
 		sandboxAlias
+
 		AutoPause  bool                           `json:"autoPause"`
 		AutoResume *types.SandboxAutoResumeConfig `json:"autoResume,omitempty"`
 	}{
@@ -141,7 +144,7 @@ func (s Sandbox) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func (s Sandbox) ToAPISandbox() *api.Sandbox {
+func (s *Sandbox) ToAPISandbox() *api.Sandbox {
 	return &api.Sandbox{
 		SandboxID:          s.SandboxID,
 		TemplateID:         s.BaseTemplateID,
@@ -154,7 +157,7 @@ func (s Sandbox) ToAPISandbox() *api.Sandbox {
 	}
 }
 
-func (s Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
+func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 	return sbxlogger.SandboxMetadata{
 		SandboxID:  s.SandboxID,
 		TemplateID: s.TemplateID,
@@ -162,11 +165,11 @@ func (s Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 	}
 }
 
-func (s Sandbox) IsExpired(now time.Time) bool {
+func (s *Sandbox) IsExpired(now time.Time) bool {
 	return now.After(s.EndTime)
 }
 
-func (s Sandbox) TrafficKeepalive() *types.SandboxTrafficKeepaliveConfig {
+func (s *Sandbox) TrafficKeepalive() *types.SandboxTrafficKeepaliveConfig {
 	if s.Lifecycle.Keepalive == nil || s.Lifecycle.Keepalive.Traffic == nil {
 		return nil
 	}

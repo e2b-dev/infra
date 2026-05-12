@@ -129,7 +129,7 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 		}
 	}
 
-	sbxlogger.I(sbx).Debug(ctx, "Removing sandbox",
+	sbxlogger.I(&sbx).Debug(ctx, "Removing sandbox",
 		zap.Bool("auto_pause", sbx.Lifecycle.AutoPause),
 		zap.String("state_action", stateAction.Name),
 	)

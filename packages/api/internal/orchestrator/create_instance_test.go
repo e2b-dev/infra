@@ -98,6 +98,7 @@ func testTeam() *teamtypes.Team {
 
 type captureSandboxClient struct {
 	orchgrpc.SandboxServiceClient
+
 	req *orchgrpc.SandboxCreateRequest
 	md  metadata.MD
 }
