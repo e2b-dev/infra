@@ -93,14 +93,13 @@ func (m *MultiplexedChannel[T]) run() {
 
 	// Close all remaining consumer channels so `for range` loops exit.
 	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	for _, s := range m.channels {
 		s.cancel()
 		close(s.ch)
 	}
 	m.channels = nil
-
-	m.mu.Unlock()
 
 	// Signal that run() has finished. Fork() uses this to detect shutdown.
 	close(m.done)
