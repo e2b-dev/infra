@@ -153,6 +153,11 @@ func requireNoResumerCall(t *testing.T, calls <-chan resumeCall) {
 	}
 }
 
+func storeTrafficKeepaliveInfo(t *testing.T, catalog sandboxroutingcatalog.SandboxesCatalog, info *sandboxroutingcatalog.SandboxInfo) {
+	t.Helper()
+	require.NoError(t, catalog.StoreSandbox(t.Context(), "sbx", info, time.Minute))
+}
+
 func newFF(t *testing.T, autoResumeEnabled bool) *featureflags.Client {
 	t.Helper()
 
@@ -364,11 +369,13 @@ func TestTrafficKeepaliveManager_RefreshesWhenNotNearExpiry(t *testing.T) {
 	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
 	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
 	trafficKeepalive := newTrafficKeepaliveManager(resumer, c)
-
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", &sandboxroutingcatalog.SandboxInfo{
+	info := &sandboxroutingcatalog.SandboxInfo{
 		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
 		TrafficKeepalive: true,
-	})
+	}
+	storeTrafficKeepaliveInfo(t, c, info)
+
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
 
 	requireResumerCall(t, resumer.calls)
 }
@@ -415,6 +422,7 @@ func TestTrafficKeepaliveManager_SuppressesConcurrentRefreshes(t *testing.T) {
 		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
 		TrafficKeepalive: true,
 	}
+	storeTrafficKeepaliveInfo(t, c, info)
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
 	call := requireResumerCall(t, resumer.calls)
@@ -436,6 +444,7 @@ func TestTrafficKeepaliveManager_SkipsWhenCatalogTimerHeld(t *testing.T) {
 		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
 		TrafficKeepalive: true,
 	}
+	storeTrafficKeepaliveInfo(t, c, info)
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
 	requireResumerCall(t, resumer.calls)
@@ -457,6 +466,7 @@ func TestTrafficKeepaliveManager_KeepsThrottleAfterValidationFailure(t *testing.
 		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
 		TrafficKeepalive: true,
 	}
+	storeTrafficKeepaliveInfo(t, c, info)
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "bad-token", "envd-token", info)
 	requireResumerCall(t, resumer.calls)
@@ -478,6 +488,7 @@ func TestTrafficKeepaliveManager_ReleasesThrottleAfterPolicyFailure(t *testing.T
 		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
 		TrafficKeepalive: true,
 	}
+	storeTrafficKeepaliveInfo(t, c, info)
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
 	requireResumerCall(t, resumer.calls)
@@ -499,6 +510,7 @@ func TestTrafficKeepaliveManager_KeepsThrottleAfterInternalFailure(t *testing.T)
 		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
 		TrafficKeepalive: true,
 	}
+	storeTrafficKeepaliveInfo(t, c, info)
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
 	requireResumerCall(t, resumer.calls)

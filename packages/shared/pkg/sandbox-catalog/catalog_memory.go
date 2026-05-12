@@ -11,9 +11,13 @@ import (
 )
 
 type MemorySandboxCatalog struct {
-	cache             *ttlcache.Cache[string, *SandboxInfo]
-	trafficKeepalives map[string]time.Time
-	mtx               sync.RWMutex
+	cache *ttlcache.Cache[string, *memorySandboxInfo]
+	mtx   sync.RWMutex
+}
+
+type memorySandboxInfo struct {
+	info                      *SandboxInfo
+	trafficKeepaliveExpiresAt time.Time
 }
 
 const (
@@ -21,12 +25,11 @@ const (
 )
 
 func NewMemorySandboxesCatalog() SandboxesCatalog {
-	cache := ttlcache.New(ttlcache.WithTTL[string, *SandboxInfo](catalogMemoryLocalCacheTtl), ttlcache.WithDisableTouchOnHit[string, *SandboxInfo]())
+	cache := ttlcache.New(ttlcache.WithTTL[string, *memorySandboxInfo](catalogMemoryLocalCacheTtl), ttlcache.WithDisableTouchOnHit[string, *memorySandboxInfo]())
 	go cache.Start()
 
 	return &MemorySandboxCatalog{
-		cache:             cache,
-		trafficKeepalives: make(map[string]time.Time),
+		cache: cache,
 	}
 }
 
@@ -39,7 +42,7 @@ func (c *MemorySandboxCatalog) GetSandbox(ctx context.Context, sandboxID string)
 
 	sandboxInfo := c.cache.Get(sandboxID)
 	if sandboxInfo != nil {
-		return sandboxInfo.Value(), nil
+		return sandboxInfo.Value().info, nil
 	}
 
 	return nil, ErrSandboxNotFound
@@ -54,7 +57,7 @@ func (c *MemorySandboxCatalog) StoreSandbox(ctx context.Context, sandboxID strin
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	c.cache.Set(sandboxID, sandboxInfo, expiration)
+	c.cache.Set(sandboxID, &memorySandboxInfo{info: sandboxInfo}, expiration)
 
 	return nil
 }
@@ -64,29 +67,30 @@ func (c *MemorySandboxCatalog) AcquireTrafficKeepalive(_ context.Context, sandbo
 	defer c.mtx.Unlock()
 
 	now := time.Now()
-	c.deleteExpiredTrafficKeepalives(now)
-	if expiresAt, ok := c.trafficKeepalives[sandboxID]; ok && now.Before(expiresAt) {
+	item := c.cache.Get(sandboxID)
+	if item == nil || item.IsExpired() || item.Value() == nil {
+		return false, ErrSandboxNotFound
+	}
+
+	if now.Before(item.Value().trafficKeepaliveExpiresAt) {
 		return false, nil
 	}
 
-	c.trafficKeepalives[sandboxID] = now.Add(TrafficKeepaliveThrottleInterval)
+	item.Value().trafficKeepaliveExpiresAt = now.Add(TrafficKeepaliveThrottleInterval)
 
 	return true, nil
-}
-
-func (c *MemorySandboxCatalog) deleteExpiredTrafficKeepalives(now time.Time) {
-	for sandboxID, expiresAt := range c.trafficKeepalives {
-		if !now.Before(expiresAt) {
-			delete(c.trafficKeepalives, sandboxID)
-		}
-	}
 }
 
 func (c *MemorySandboxCatalog) ReleaseTrafficKeepalive(_ context.Context, sandboxID string) error {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	delete(c.trafficKeepalives, sandboxID)
+	item := c.cache.Get(sandboxID)
+	if item == nil || item.Value() == nil {
+		return nil
+	}
+
+	item.Value().trafficKeepaliveExpiresAt = time.Time{}
 
 	return nil
 }
@@ -109,13 +113,12 @@ func (c *MemorySandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID stri
 	}
 
 	// Different execution is stored in the cache, we don't want to remove it
-	if item.Value().ExecutionID != executionID {
+	if item.Value().info.ExecutionID != executionID {
 		return nil
 	}
 
 	logger.L().Debug(ctx, "deleting sandbox from memory catalog", logger.WithSandboxID(sandboxID))
 	c.cache.Delete(sandboxID)
-	delete(c.trafficKeepalives, sandboxID)
 
 	return nil
 }

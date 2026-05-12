@@ -12,6 +12,7 @@ func TestMemorySandboxCatalogAcquireTrafficKeepalive(t *testing.T) {
 
 	c := NewMemorySandboxesCatalog()
 	t.Cleanup(func() { require.NoError(t, c.Close(t.Context())) })
+	require.NoError(t, c.StoreSandbox(t.Context(), "sbx", &SandboxInfo{ExecutionID: "exec"}, time.Minute))
 
 	acquired, err := c.AcquireTrafficKeepalive(t.Context(), "sbx")
 	require.NoError(t, err)
@@ -22,17 +23,31 @@ func TestMemorySandboxCatalogAcquireTrafficKeepalive(t *testing.T) {
 	require.False(t, acquired)
 }
 
-func TestMemorySandboxCatalogPrunesExpiredTrafficKeepalives(t *testing.T) {
+func TestMemorySandboxCatalogReleaseTrafficKeepalive(t *testing.T) {
 	t.Parallel()
 
-	catalog := NewMemorySandboxesCatalog()
-	t.Cleanup(func() { require.NoError(t, catalog.Close(t.Context())) })
-
-	c := catalog.(*MemorySandboxCatalog)
-	c.trafficKeepalives["expired"] = time.Now().Add(-time.Second)
+	c := NewMemorySandboxesCatalog()
+	t.Cleanup(func() { require.NoError(t, c.Close(t.Context())) })
+	require.NoError(t, c.StoreSandbox(t.Context(), "sbx", &SandboxInfo{ExecutionID: "exec"}, time.Minute))
 
 	acquired, err := c.AcquireTrafficKeepalive(t.Context(), "sbx")
 	require.NoError(t, err)
 	require.True(t, acquired)
-	require.NotContains(t, c.trafficKeepalives, "expired")
+
+	require.NoError(t, c.ReleaseTrafficKeepalive(t.Context(), "sbx"))
+
+	acquired, err = c.AcquireTrafficKeepalive(t.Context(), "sbx")
+	require.NoError(t, err)
+	require.True(t, acquired)
+}
+
+func TestMemorySandboxCatalogAcquireTrafficKeepaliveRequiresCatalogEntry(t *testing.T) {
+	t.Parallel()
+
+	c := NewMemorySandboxesCatalog()
+	t.Cleanup(func() { require.NoError(t, c.Close(t.Context())) })
+
+	acquired, err := c.AcquireTrafficKeepalive(t.Context(), "missing")
+	require.ErrorIs(t, err, ErrSandboxNotFound)
+	require.False(t, acquired)
 }
