@@ -212,6 +212,55 @@ func TestStart_FastCommandOutputNotTruncated(t *testing.T) {
 	}
 }
 
+// TestStart_OrphanGrandchildDoesNotHangStream verifies that killing a
+// process whose child still holds stdout open does not hang the stream.
+// The stream must deliver the EndEvent within a reasonable time.
+func TestStart_OrphanGrandchildDoesNotHangStream(t *testing.T) {
+	t.Parallel()
+
+	client, cleanup := newTestService(t)
+	defer cleanup()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	// bash spawns a background child that inherits stdout and keeps
+	// the pipe open after the parent is killed.
+	stream, err := client.Start(ctx, connect.NewRequest(&rpc.StartRequest{
+		Process: &rpc.ProcessConfig{
+			Cmd:  "bash",
+			Args: []string{"-c", "sleep 300 & wait"},
+		},
+	}))
+	require.NoError(t, err)
+
+	// Wait for start event to get PID.
+	require.True(t, stream.Receive(), "expected start event")
+	startEvt := stream.Msg().GetEvent().GetStart()
+	require.NotNil(t, startEvt)
+	pid := startEvt.GetPid()
+
+	// Kill the process via SendSignal (same as TestCommandKillNextApp).
+	_, err = client.SendSignal(ctx, connect.NewRequest(&rpc.SendSignalRequest{
+		Signal: rpc.Signal_SIGNAL_SIGKILL,
+		Process: &rpc.ProcessSelector{
+			Selector: &rpc.ProcessSelector_Pid{Pid: pid},
+		},
+	}))
+	require.NoError(t, err)
+
+	var gotEnd bool
+	for stream.Receive() {
+		if stream.Msg().GetEvent().GetEnd() != nil {
+			gotEnd = true
+		}
+	}
+	require.NoError(t, stream.Err())
+	_ = stream.Close()
+
+	assert.True(t, gotEnd, "stream should deliver EndEvent even with orphan grandchild")
+}
+
 // processAlive checks whether a process with the given PID exists.
 func processAlive(pid int) bool {
 	// /proc/<pid>/stat exists iff the process is alive (Linux-specific).
