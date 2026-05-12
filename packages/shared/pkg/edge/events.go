@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"time"
 
 	"google.golang.org/grpc/metadata"
 )
@@ -21,7 +20,6 @@ const (
 	SandboxOrchestratorIDHeader   = "orchestrator-id"
 	SandboxOrchestratorIPHeader   = "orchestrator-ip"
 	SandboxMaxLengthInHoursHeader = "sandbox-max-length-in-hours"
-	SandboxStartTimeHeader        = "sandbox-start-time"
 	SandboxTrafficKeepaliveHeader = "traffic-keepalive"
 )
 
@@ -46,7 +44,6 @@ type SandboxCatalogCreateEvent struct {
 	OrchestratorID          string
 	OrchestratorIP          string
 	SandboxMaxLengthInHours int64
-	SandboxStartTime        time.Time // Formatted as RFC3339 (ISO 8601)
 	TrafficKeepalive        bool
 }
 
@@ -64,7 +61,6 @@ func SerializeSandboxCatalogCreateEvent(e SandboxCatalogCreateEvent) metadata.MD
 		SandboxExecutionIDHeader:      e.ExecutionID,
 		SandboxOrchestratorIDHeader:   e.OrchestratorID,
 		SandboxOrchestratorIPHeader:   e.OrchestratorIP,
-		SandboxStartTimeHeader:        e.SandboxStartTime.Format(time.RFC3339),
 		SandboxMaxLengthInHoursHeader: strconv.Itoa(int(e.SandboxMaxLengthInHours)),
 	}
 	if e.TrafficKeepalive {
@@ -115,16 +111,6 @@ func ParseSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEven
 		return nil, ErrSandboxLifetimeParse
 	}
 
-	sandboxStartTimeStr, found := getMetadataValue(md, SandboxStartTimeHeader)
-	if !found {
-		return nil, SandboxEventFieldMissingError{eventName: CatalogCreateEventType, fieldName: SandboxStartTimeHeader}
-	}
-
-	sandboxStartTime, err := time.Parse(time.RFC3339, sandboxStartTimeStr)
-	if err != nil {
-		return nil, ErrSandboxCreationParse
-	}
-
 	var trafficKeepalive bool
 	trafficKeepaliveStr, found := getMetadataValue(md, SandboxTrafficKeepaliveHeader)
 	if found {
@@ -142,7 +128,6 @@ func ParseSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEven
 		OrchestratorID:          orchestratorID,
 		OrchestratorIP:          orchestratorIP,
 		SandboxMaxLengthInHours: int64(maxLengthInHours),
-		SandboxStartTime:        sandboxStartTime,
 		TrafficKeepalive:        trafficKeepalive,
 	}, nil
 }

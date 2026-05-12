@@ -2,7 +2,6 @@ package edge
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
@@ -11,7 +10,6 @@ import (
 func TestSandboxCatalogCreateEventRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	startTime := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
 	event := SandboxCatalogCreateEvent{
 		SandboxID:               "sbx",
 		TeamID:                  "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
@@ -19,7 +17,6 @@ func TestSandboxCatalogCreateEventRoundTrip(t *testing.T) {
 		OrchestratorID:          "orch",
 		OrchestratorIP:          "10.0.0.7",
 		SandboxMaxLengthInHours: 24,
-		SandboxStartTime:        startTime,
 		TrafficKeepalive:        true,
 	}
 
@@ -31,19 +28,16 @@ func TestSandboxCatalogCreateEventRoundTrip(t *testing.T) {
 func TestSandboxCatalogCreateEventParseAllowsMissingKeepaliveFields(t *testing.T) {
 	t.Parallel()
 
-	startTime := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
 	md := metadata.New(map[string]string{
 		EventTypeHeader:               CatalogCreateEventType,
 		SandboxIDHeader:               "sbx",
 		SandboxExecutionIDHeader:      "exec",
 		SandboxOrchestratorIDHeader:   "orch",
 		SandboxMaxLengthInHoursHeader: "24",
-		SandboxStartTimeHeader:        startTime.Format(time.RFC3339),
 	})
 
 	parsed, err := ParseSandboxCatalogCreateEvent(md)
 	require.NoError(t, err)
-	require.Equal(t, startTime, parsed.SandboxStartTime)
 	require.Empty(t, parsed.TeamID)
 	require.False(t, parsed.TrafficKeepalive)
 }

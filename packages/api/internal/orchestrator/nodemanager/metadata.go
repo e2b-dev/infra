@@ -45,7 +45,6 @@ func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.Sandbo
 				SandboxID:               req.GetSandbox().GetSandboxId(),
 				TeamID:                  req.GetSandbox().GetTeamId(),
 				SandboxMaxLengthInHours: req.GetSandbox().GetMaxSandboxLength(),
-				SandboxStartTime:        req.GetStartTime().AsTime(),
 				TrafficKeepalive:        keepalive.GetTraffic().GetEnabled(),
 
 				ExecutionID:    req.GetSandbox().GetExecutionId(),
@@ -100,7 +99,6 @@ var sandboxEventMetadataKeys = []string{
 	edge.SandboxOrchestratorIDHeader,
 	edge.SandboxOrchestratorIPHeader,
 	edge.SandboxMaxLengthInHoursHeader,
-	edge.SandboxStartTimeHeader,
 	edge.SandboxTrafficKeepaliveHeader,
 	grpcshared.IsResumeMetadataKey,
 }
