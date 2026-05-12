@@ -238,7 +238,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}
 
 	s.setupSandboxLifecycle(ctx, sbx)
-	s.storeSandboxRoutingInfo(ctx)
+	s.storeSandboxRoutingInfo(ctx, sbx.GetStartedAt())
 
 	eventType := events.SandboxCreatedEventPair
 	if req.GetSandbox().GetSnapshot() {
@@ -269,7 +269,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}, nil
 }
 
-func (s *Server) storeSandboxRoutingInfo(ctx context.Context) {
+func (s *Server) storeSandboxRoutingInfo(ctx context.Context, startedAt time.Time) {
 	if s.routingCatalog == nil {
 		return
 	}
@@ -291,12 +291,12 @@ func (s *Server) storeSandboxRoutingInfo(ctx context.Context) {
 		OrchestratorID:   event.OrchestratorID,
 		OrchestratorIP:   event.OrchestratorIP,
 		ExecutionID:      event.ExecutionID,
-		StartedAt:        event.SandboxStartTime,
+		StartedAt:        startedAt,
 		MaxLengthInHours: event.SandboxMaxLengthInHours,
 		TrafficKeepalive: event.TrafficKeepalive,
 	}
 
-	lifetime := time.Until(event.SandboxStartTime.Add(time.Duration(event.SandboxMaxLengthInHours) * time.Hour))
+	lifetime := time.Until(startedAt.Add(time.Duration(event.SandboxMaxLengthInHours) * time.Hour))
 	if lifetime <= 0 {
 		logger.L().Warn(ctx, "skipping sandbox routing info with expired lifetime", logger.WithSandboxID(event.SandboxID), zap.Duration("lifetime", lifetime))
 
@@ -584,6 +584,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 		return nil, status.Error(codes.Internal, "failed to pause sandbox")
 	}
+	defer s.deleteSandboxRoutingInfo(ctx)
 
 	sbxlogger.E(sbx).Info(ctx, "Pausing sandbox")
 
