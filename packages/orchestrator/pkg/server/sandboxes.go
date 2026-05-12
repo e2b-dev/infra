@@ -285,6 +285,16 @@ func (s *Server) storeSandboxRoutingInfo(ctx context.Context, startedAt time.Tim
 
 		return
 	}
+	if event.OrchestratorIP == "" {
+		logger.L().Error(ctx, "skipping sandbox routing info with empty orchestrator ip", logger.WithSandboxID(event.SandboxID))
+
+		return
+	}
+	if event.TrafficKeepalive && event.TeamID == "" {
+		logger.L().Error(ctx, "skipping traffic keepalive routing info with empty team id", logger.WithSandboxID(event.SandboxID))
+
+		return
+	}
 
 	info := &sandboxroutingcatalog.SandboxInfo{
 		TeamID:           event.TeamID,
@@ -471,6 +481,7 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	sbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId())
 	if !ok {
 		telemetry.ReportCriticalError(ctx, "sandbox not found", nil, telemetry.WithSandboxID(in.GetSandboxId()))
+		s.deleteSandboxRoutingInfo(ctxConn)
 
 		return nil, status.Errorf(codes.NotFound, "sandbox '%s' not found", in.GetSandboxId())
 	}
@@ -574,6 +585,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	sbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId())
 	if !ok {
 		telemetry.ReportCriticalError(ctx, "sandbox not found", nil, telemetry.WithSandboxID(in.GetSandboxId()))
+		s.deleteSandboxRoutingInfo(ctx)
 
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
