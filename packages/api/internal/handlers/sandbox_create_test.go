@@ -112,14 +112,13 @@ func TestValidateLifecycleAliases(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "defaulted top level auto pause still conflicts with lifecycle on timeout when present",
+			name: "defaulted top level auto pause does not conflict with lifecycle on timeout",
 			body: api.NewSandbox{
 				AutoPause: &defaultedAutoPause,
 				Lifecycle: &api.NewSandboxLifecycle{
 					OnTimeout: &onTimeout,
 				},
 			},
-			wantErr: true,
 		},
 		{
 			name: "top level auto resume conflicts with lifecycle auto resume",

@@ -335,7 +335,7 @@ func validateLifecycleAliases(body api.NewSandbox) *api.APIError {
 		return nil
 	}
 
-	if body.AutoPause != nil && body.Lifecycle.OnTimeout != nil {
+	if body.AutoPause != nil && *body.AutoPause && body.Lifecycle.OnTimeout != nil {
 		return &api.APIError{Code: http.StatusBadRequest, ClientMsg: "autoPause and lifecycle.onTimeout cannot both be set"}
 	}
 
