@@ -1,6 +1,7 @@
 package redis
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -207,6 +208,10 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 		return sandbox.Sandbox{}, err
 	}
 
+	if sandboxUpdateIsNoop(data, newData) {
+		return updatedSbx, nil
+	}
+
 	// Execute transaction
 	err = s.redisClient.Set(ctx, key, newData, redis.KeepTTL).Err()
 	if err != nil {
@@ -224,6 +229,10 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 	}
 
 	return updatedSbx, nil
+}
+
+func sandboxUpdateIsNoop(currentData []byte, newData []byte) bool {
+	return bytes.Equal(currentData, newData)
 }
 
 func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int64, error) {
