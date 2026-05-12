@@ -206,27 +206,6 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 
 	timeout := calculateAutoResumeTimeout(autoResume, minAutoResumeTimeout, team)
 
-	var envdAccessToken *string
-	if snap.Snapshot.EnvSecure {
-		accessToken, tokenErr := s.api.getEnvdAccessToken(snap.EnvBuild.EnvdVersion, sandboxID)
-		if tokenErr != nil {
-			logger.L().Error(ctx, "Secure envd access token error", zap.Error(tokenErr.Err), logger.WithSandboxID(sandboxID))
-
-			return nil, status.Error(codes.Internal, "failed to create envd access token")
-		}
-
-		envdAccessToken = &accessToken
-	}
-
-	var network *dbtypes.SandboxNetworkConfig
-	if snap.Snapshot.Config != nil {
-		network = snap.Snapshot.Config.Network
-	}
-
-	if trafficErr := s.validateSandboxTraffic(ctx, sandboxID, network, envdAccessToken); trafficErr != nil {
-		return nil, trafficErr
-	}
-
 	sandboxData, sandboxErr := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 	if sandboxErr != nil {
 		if !errors.Is(sandboxErr, sandbox.ErrNotFound) {
@@ -256,6 +235,27 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		if handled {
 			return &proxygrpc.SandboxResumeResponse{OrchestratorIp: nodeIP}, nil
 		}
+	}
+
+	var envdAccessToken *string
+	if snap.Snapshot.EnvSecure {
+		accessToken, tokenErr := s.api.getEnvdAccessToken(snap.EnvBuild.EnvdVersion, sandboxID)
+		if tokenErr != nil {
+			logger.L().Error(ctx, "Secure envd access token error", zap.Error(tokenErr.Err), logger.WithSandboxID(sandboxID))
+
+			return nil, status.Error(codes.Internal, "failed to create envd access token")
+		}
+
+		envdAccessToken = &accessToken
+	}
+
+	var network *dbtypes.SandboxNetworkConfig
+	if snap.Snapshot.Config != nil {
+		network = snap.Snapshot.Config.Network
+	}
+
+	if trafficErr := s.validateSandboxTraffic(ctx, sandboxID, network, envdAccessToken); trafficErr != nil {
+		return nil, trafficErr
 	}
 
 	headers := http.Header{}
