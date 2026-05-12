@@ -113,9 +113,14 @@ func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID strin
 
 	ctx, ctxCancel := context.WithTimeout(spanCtx, catalogRedisTimeout)
 	defer ctxCancel()
+	defer func() {
+		if err := c.redisClient.Del(ctx, c.getTrafficKeepaliveKey(sandboxID)).Err(); err != nil {
+			logger.L().Warn(ctx, "failed to delete traffic keepalive throttle from redis catalog", logger.WithSandboxID(sandboxID), zap.Error(err))
+		}
+	}()
 
 	data, err := c.redisClient.Get(ctx, c.getCatalogKey(sandboxID)).Bytes()
-	// If sandbox does not exist, we can return early
+	// If sandbox does not exist, keep the throttle cleanup above but return early.
 	if err != nil {
 		return nil
 	}
@@ -133,7 +138,6 @@ func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID strin
 
 	logger.L().Debug(ctx, "deleting sandbox from redis catalog", logger.WithSandboxID(sandboxID))
 	c.redisClient.Del(ctx, c.getCatalogKey(sandboxID))
-	c.redisClient.Del(ctx, c.getTrafficKeepaliveKey(sandboxID))
 
 	return nil
 }
