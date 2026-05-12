@@ -212,7 +212,7 @@ func New(
 					outMultiplex.Source <- event
 				}
 
-				if errors.Is(readErr, io.EOF) {
+				if errors.Is(readErr, io.EOF) || os.IsTimeout(readErr) {
 					break
 				}
 
@@ -467,12 +467,18 @@ func (p *Handler) Wait() {
 	// send unblocks, loops back, and sees EOF.
 	p.DataEvent.Drain()
 
-	// Set a read deadline on the pipe read-ends so readers drain
+	// Set a read deadline on the pipe/pty read-ends so readers drain
 	// any buffered data (reads with available data return instantly)
 	// and then exit cleanly instead of blocking forever when an
 	// orphan grandchild holds the write-end open.
+	deadline := time.Now().Add(1 * time.Second)
+
 	for _, f := range p.pipeRead {
-		f.SetReadDeadline(time.Now().Add(1 * time.Second))
+		f.SetReadDeadline(deadline)
+	}
+
+	if p.tty != nil {
+		p.tty.SetReadDeadline(deadline)
 	}
 
 	<-p.readersDone
