@@ -17,12 +17,14 @@ const (
 )
 
 type trafficKeepaliveManager struct {
-	resumer SandboxLifecycleClient
+	resumer      SandboxLifecycleClient
+	catalogStore sandboxroutingcatalog.SandboxesCatalog
 }
 
-func newTrafficKeepaliveManager(resumer SandboxLifecycleClient) *trafficKeepaliveManager {
+func newTrafficKeepaliveManager(resumer SandboxLifecycleClient, catalogStore sandboxroutingcatalog.SandboxesCatalog) *trafficKeepaliveManager {
 	return &trafficKeepaliveManager{
-		resumer: resumer,
+		resumer:      resumer,
+		catalogStore: catalogStore,
 	}
 }
 
@@ -37,6 +39,7 @@ func routingInfoHasTrafficKeepalive(info *sandboxroutingcatalog.SandboxInfo) boo
 
 func releaseTrafficKeepaliveOnFailure(err error) bool {
 	switch status.Code(err) {
+	// Release for caller-side errors that a client retry will not fix.
 	// FailedPrecondition includes API-side policy rejection, e.g. traffic keepalive
 	// was disabled after the routing catalog entry was written.
 	case codes.InvalidArgument, codes.Unauthenticated, codes.PermissionDenied, codes.FailedPrecondition:
@@ -46,8 +49,8 @@ func releaseTrafficKeepaliveOnFailure(err error) bool {
 	}
 }
 
-func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, catalogStore sandboxroutingcatalog.SandboxesCatalog, info *sandboxroutingcatalog.SandboxInfo) {
-	if m.resumer == nil {
+func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, info *sandboxroutingcatalog.SandboxInfo) {
+	if m.resumer == nil || m.catalogStore == nil {
 		return
 	}
 	if !routingInfoHasTrafficKeepalive(info) {
@@ -62,7 +65,7 @@ func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID st
 		return
 	}
 
-	acquired, err := catalogStore.AcquireTrafficKeepalive(ctx, sandboxID)
+	acquired, err := m.catalogStore.AcquireTrafficKeepalive(ctx, sandboxID)
 	if err != nil {
 		logger.L().Warn(ctx, "traffic keepalive acquire failed", logger.WithSandboxID(sandboxID), zap.Error(err))
 
@@ -88,7 +91,7 @@ func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID st
 		if err != nil {
 			logger.L().Warn(refreshCtx, "traffic keepalive refresh failed", logger.WithSandboxID(sandboxID), zap.Error(err))
 			if releaseTrafficKeepaliveOnFailure(err) {
-				if releaseErr := catalogStore.ReleaseTrafficKeepalive(refreshCtx, sandboxID); releaseErr != nil {
+				if releaseErr := m.catalogStore.ReleaseTrafficKeepalive(refreshCtx, sandboxID); releaseErr != nil {
 					logger.L().Warn(refreshCtx, "traffic keepalive release failed", logger.WithSandboxID(sandboxID), zap.Error(releaseErr))
 				}
 			}

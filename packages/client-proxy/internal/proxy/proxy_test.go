@@ -305,7 +305,7 @@ func TestCatalogResolution_CatalogHit_TrafficKeepaliveRefreshes(t *testing.T) {
 	ff := newFF(t, true)
 	now := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
 	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
-	trafficKeepalive := newTrafficKeepaliveManager(resumer)
+	trafficKeepalive := newTrafficKeepaliveManager(resumer, c)
 
 	err := c.StoreSandbox(t.Context(), "sbx", &sandboxroutingcatalog.SandboxInfo{
 		OrchestratorIP:   "10.0.0.1",
@@ -336,7 +336,7 @@ func TestCatalogResolution_CatalogHit_TrafficKeepaliveRefreshesWhenAutoResumeFla
 	ff := newFF(t, false)
 	now := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
 	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
-	trafficKeepalive := newTrafficKeepaliveManager(resumer)
+	trafficKeepalive := newTrafficKeepaliveManager(resumer, c)
 
 	err := c.StoreSandbox(t.Context(), "sbx", &sandboxroutingcatalog.SandboxInfo{
 		OrchestratorIP:   "10.0.0.1",
@@ -363,9 +363,9 @@ func TestTrafficKeepaliveManager_RefreshesWhenNotNearExpiry(t *testing.T) {
 
 	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
 	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
-	trafficKeepalive := newTrafficKeepaliveManager(resumer)
+	trafficKeepalive := newTrafficKeepaliveManager(resumer, c)
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, &sandboxroutingcatalog.SandboxInfo{
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", &sandboxroutingcatalog.SandboxInfo{
 		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
 		TrafficKeepalive: true,
 	})
@@ -378,9 +378,9 @@ func TestTrafficKeepaliveManager_SkipsWhenTeamIDMissing(t *testing.T) {
 
 	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
 	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
-	trafficKeepalive := newTrafficKeepaliveManager(resumer)
+	trafficKeepalive := newTrafficKeepaliveManager(resumer, c)
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, &sandboxroutingcatalog.SandboxInfo{
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", &sandboxroutingcatalog.SandboxInfo{
 		TrafficKeepalive: true,
 	})
 
@@ -392,9 +392,9 @@ func TestTrafficKeepaliveManager_SkipsWhenCatalogPolicyDisabled(t *testing.T) {
 
 	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
 	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
-	trafficKeepalive := newTrafficKeepaliveManager(resumer)
+	trafficKeepalive := newTrafficKeepaliveManager(resumer, c)
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, &sandboxroutingcatalog.SandboxInfo{
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", &sandboxroutingcatalog.SandboxInfo{
 		TeamID: "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
 	})
 
@@ -409,18 +409,18 @@ func TestTrafficKeepaliveManager_SuppressesConcurrentRefreshes(t *testing.T) {
 		calls: make(chan resumeCall, 2),
 		block: release,
 	}
-	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
+	trafficKeepalive := newTrafficKeepaliveManager(resumer, c)
 	info := &sandboxroutingcatalog.SandboxInfo{
 		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
 		TrafficKeepalive: true,
 	}
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
 	call := requireResumerCall(t, resumer.calls)
 	require.Equal(t, "keepalive", call.method)
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
 	requireNoResumerCall(t, resumer.calls)
 
 	close(release)
@@ -430,17 +430,17 @@ func TestTrafficKeepaliveManager_SkipsWhenCatalogTimerHeld(t *testing.T) {
 	t.Parallel()
 
 	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
-	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
+	trafficKeepalive := newTrafficKeepaliveManager(resumer, c)
 	info := &sandboxroutingcatalog.SandboxInfo{
 		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
 		TrafficKeepalive: true,
 	}
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
 	requireResumerCall(t, resumer.calls)
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
 	requireNoResumerCall(t, resumer.calls)
 }
 
@@ -451,17 +451,17 @@ func TestTrafficKeepaliveManager_ReleasesThrottleAfterValidationFailure(t *testi
 		calls: make(chan resumeCall, 2),
 		err:   status.Error(codes.PermissionDenied, "invalid traffic token"),
 	}
-	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
+	trafficKeepalive := newTrafficKeepaliveManager(resumer, c)
 	info := &sandboxroutingcatalog.SandboxInfo{
 		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
 		TrafficKeepalive: true,
 	}
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "bad-token", "envd-token", c, info)
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "bad-token", "envd-token", info)
 	requireResumerCall(t, resumer.calls)
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
 	requireResumerCall(t, resumer.calls)
 }
 
@@ -472,17 +472,17 @@ func TestTrafficKeepaliveManager_KeepsThrottleAfterInternalFailure(t *testing.T)
 		calls: make(chan resumeCall, 2),
 		err:   status.Error(codes.Internal, "api unavailable"),
 	}
-	trafficKeepalive := newTrafficKeepaliveManager(resumer)
 	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
+	trafficKeepalive := newTrafficKeepaliveManager(resumer, c)
 	info := &sandboxroutingcatalog.SandboxInfo{
 		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
 		TrafficKeepalive: true,
 	}
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
 	requireResumerCall(t, resumer.calls)
 
-	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", c, info)
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
 	requireNoResumerCall(t, resumer.calls)
 }
 

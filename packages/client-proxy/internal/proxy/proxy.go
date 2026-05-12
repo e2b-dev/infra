@@ -92,7 +92,7 @@ func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64
 	}
 
 	if trafficKeepalive != nil {
-		trafficKeepalive.MaybeRefresh(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken, c, s)
+		trafficKeepalive.MaybeRefresh(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken, s)
 	}
 
 	return catalogSandboxNodeIP(s)
@@ -148,7 +148,7 @@ func handlePausedSandbox(
 
 func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog sandboxroutingcatalog.SandboxesCatalog, sandboxLifecycleClient SandboxLifecycleClient, featureFlagsClient *featureflags.Client) (*reverseproxy.Proxy, error) {
 	getTargetFromRequest := reverseproxy.GetTargetFromRequest()
-	trafficKeepalive := newTrafficKeepaliveManager(sandboxLifecycleClient)
+	trafficKeepalive := newTrafficKeepaliveManager(sandboxLifecycleClient, catalog)
 	proxy := reverseproxy.New(
 		port,
 		// Retries that are needed to handle port forwarding delays in sandbox envd are handled by the orchestrator proxy
