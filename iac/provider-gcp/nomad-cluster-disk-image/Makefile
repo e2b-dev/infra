@@ -6,7 +6,8 @@ PACKER_SUBNET_NAME ?= "e2b-build-cluster-disk-image-subnetwork"
 
 tf_vars := TF_VAR_gcp_project_id=$(GCP_PROJECT_ID) \
 	TF_VAR_gcp_region=$(GCP_REGION) \
-	TF_VAR_network_name=$(NETWORK_NAME)
+	TF_VAR_network_name=$(PACKER_NETWORK_NAME) \
+	TF_VAR_subnet_name=$(PACKER_SUBNET_NAME)
 
 init:
 	packer init -upgrade .

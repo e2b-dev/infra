@@ -23,7 +23,7 @@ resource "google_compute_network" "packer_network" {
 
 resource "google_compute_subnetwork" "packer_subnetwork" {
   ip_cidr_range = "10.0.0.0/8"
-  name          = "${var.network_name}-subnetwork"
+  name          = var.subnet_name
   network       = google_compute_network.packer_network.id
 
   log_config {
@@ -49,3 +49,4 @@ resource "google_compute_firewall" "internal_remote_connection_firewall_ingress"
   # https://googlecloudplatform.github.io/iap-desktop/setup-iap/
   source_ranges = ["35.235.240.0/20"]
 }
+
