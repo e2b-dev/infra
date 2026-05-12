@@ -247,7 +247,7 @@ func (o *Orchestrator) CreateSandbox(
 		}
 	}
 
-	orchKeepalive := o.orchestratorKeepalivePayload(ctx, team.ID.String(), sandboxID, sbxData.Lifecycle.Keepalive)
+	orchKeepalive := orchestratorKeepalivePayload(sbxData.Lifecycle.Keepalive)
 	createOpts := nodemanager.SandboxCreateOptions{
 		TrafficKeepalive: trafficKeepaliveEnabled(sbxData.Lifecycle.Keepalive),
 	}
@@ -380,19 +380,8 @@ func (o *Orchestrator) CreateSandbox(
 	return sbx, nil
 }
 
-func (o *Orchestrator) orchestratorKeepalivePayload(ctx context.Context, teamID string, sandboxID string, keepalive *types.SandboxKeepaliveConfig) *orchestrator.SandboxKeepaliveConfig {
+func orchestratorKeepalivePayload(keepalive *types.SandboxKeepaliveConfig) *orchestrator.SandboxKeepaliveConfig {
 	if keepalive == nil {
-		return nil
-	}
-
-	// TODO(keepalive-rollout): remove this compatibility gate after every deployed
-	// orchestrator can decode SandboxConfig.keepalive.
-	if !o.featureFlagsClient.BoolFlag(
-		ctx,
-		featureflags.OrchAcceptsSandboxKeepaliveFlag,
-		featureflags.TeamContext(teamID),
-		featureflags.SandboxContext(sandboxID),
-	) {
 		return nil
 	}
 

@@ -201,98 +201,57 @@ func TestCreateSandbox_StaleDataAfterConcurrentPause(t *testing.T) {
 	})
 }
 
-func TestCreateSandbox_GatesKeepaliveForOrchestrator(t *testing.T) {
+func TestCreateSandbox_SendsKeepaliveToOrchestrator(t *testing.T) {
 	t.Parallel()
 
-	testCases := []struct {
-		name             string
-		flagEnabled      bool
-		expectRPCPayload bool
-	}{
-		{
-			name:             "flag disabled",
-			expectRPCPayload: false,
-		},
-		{
-			name:             "flag enabled",
-			flagEnabled:      true,
-			expectRPCPayload: true,
-		},
-	}
+	o, node := newCreateSandboxTestOrchestrator(t)
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+	capture := &captureSandboxClient{}
+	node.SetSandboxClient(capture)
 
-			o, node := newCreateSandboxTestOrchestrator(t)
-			source := ldtestdata.DataSource()
-			source.Update(source.Flag(featureflags.OrchAcceptsSandboxKeepaliveFlag.Key()).VariationForAll(tc.flagEnabled))
+	team := testTeam()
+	now := time.Now()
+	sandboxID := "sbx-keepalive-" + uuid.New().String()[:8]
 
-			ffClient, err := featureflags.NewClientWithDatasource(source)
-			require.NoError(t, err)
-			o.featureFlagsClient = ffClient
-
-			capture := &captureSandboxClient{}
-			node.SetSandboxClient(capture)
-
-			team := testTeam()
-			now := time.Now()
-			sandboxID := "sbx-keepalive-" + uuid.New().String()[:8]
-
-			_, apiErr := o.CreateSandbox(
-				t.Context(),
-				sandboxID,
-				uuid.New().String(),
-				team,
-				func(context.Context) (SandboxMetadata, *api.APIError) {
-					return SandboxMetadata{
-						TemplateID:     "tpl",
-						BaseTemplateID: "base-tpl",
-						Build:          testBuild(),
-						Lifecycle: types.SandboxLifecycleConfig{
-							Keepalive: &types.SandboxKeepaliveConfig{
-								Traffic: &types.SandboxTrafficKeepaliveConfig{
-									Timeout: 180,
-								},
-							},
+	_, apiErr := o.CreateSandbox(
+		t.Context(),
+		sandboxID,
+		uuid.New().String(),
+		team,
+		func(context.Context) (SandboxMetadata, *api.APIError) {
+			return SandboxMetadata{
+				TemplateID:     "tpl",
+				BaseTemplateID: "base-tpl",
+				Build:          testBuild(),
+				Lifecycle: types.SandboxLifecycleConfig{
+					Keepalive: &types.SandboxKeepaliveConfig{
+						Traffic: &types.SandboxTrafficKeepaliveConfig{
+							Timeout: 180,
 						},
-					}, nil
+					},
 				},
-				now,
-				now.Add(time.Hour),
-				time.Hour,
-				false,
-				sandbox.CreationMetadata{},
-			)
-			require.Nil(t, apiErr)
-			require.NotNil(t, capture.req)
+			}, nil
+		},
+		now,
+		now.Add(time.Hour),
+		time.Hour,
+		false,
+		sandbox.CreationMetadata{},
+	)
+	require.Nil(t, apiErr)
+	require.NotNil(t, capture.req)
 
-			if !tc.expectRPCPayload {
-				require.Nil(t, capture.req.GetSandbox().GetKeepalive())
-
-				return
-			}
-
-			require.NotNil(t, capture.req.GetSandbox().GetKeepalive())
-			require.NotNil(t, capture.req.GetSandbox().GetKeepalive().GetTraffic())
-			assert.True(t, capture.req.GetSandbox().GetKeepalive().GetTraffic().GetEnabled())
-			assert.Equal(t, uint64(180), capture.req.GetSandbox().GetKeepalive().GetTraffic().GetTimeoutSeconds())
-		})
-	}
+	require.NotNil(t, capture.req.GetSandbox().GetKeepalive())
+	require.NotNil(t, capture.req.GetSandbox().GetKeepalive().GetTraffic())
+	assert.True(t, capture.req.GetSandbox().GetKeepalive().GetTraffic().GetEnabled())
+	assert.Equal(t, uint64(180), capture.req.GetSandbox().GetKeepalive().GetTraffic().GetTimeoutSeconds())
 }
 
-func TestCreateSandbox_PreservesRoutingKeepaliveWhenOrchestratorPayloadGated(t *testing.T) {
+func TestCreateSandbox_SendsRoutingKeepaliveForBYOC(t *testing.T) {
 	t.Parallel()
 
 	o, node := newCreateSandboxTestOrchestrator(t)
 	node.NomadNodeShortID = nodemanager.UnknownNomadNodeShortID
-
-	source := ldtestdata.DataSource()
-	source.Update(source.Flag(featureflags.OrchAcceptsSandboxKeepaliveFlag.Key()).VariationForAll(false))
-
-	ffClient, err := featureflags.NewClientWithDatasource(source)
-	require.NoError(t, err)
-	o.featureFlagsClient = ffClient
 
 	capture := &captureSandboxClient{}
 	node.SetSandboxClient(capture)
@@ -328,7 +287,6 @@ func TestCreateSandbox_PreservesRoutingKeepaliveWhenOrchestratorPayloadGated(t *
 	)
 	require.Nil(t, apiErr)
 	require.NotNil(t, capture.req)
-	require.Nil(t, capture.req.GetSandbox().GetKeepalive())
 
 	event, err := edge.ParseSandboxCatalogCreateEvent(capture.md)
 	require.NoError(t, err)
