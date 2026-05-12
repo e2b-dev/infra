@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -54,6 +55,10 @@ func TestProcessFile(t *testing.T) {
 
 	t.Run("fail to create file", func(t *testing.T) {
 		t.Parallel()
+		// /proc as a virtual filesystem with specific error semantics is Linux-only.
+		if runtime.GOOS != "linux" {
+			t.Skip("relies on Linux /proc virtual filesystem semantics")
+		}
 		httpStatus, err := processFile(&emptyReq, "/proc/invalid-filename", emptyPart, uid, gid, emptyLogger)
 		require.Error(t, err)
 		assert.Equal(t, http.StatusInternalServerError, httpStatus)

@@ -1,9 +1,12 @@
+//go:build linux
+
 package proxy
 
 import (
 	"context"
 	"crypto/subtle"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -96,7 +99,7 @@ func NewSandboxProxy(meterProvider metric.MeterProvider, port uint16, sandboxes 
 
 			url := &url.URL{
 				Scheme: "http",
-				Host:   fmt.Sprintf("%s:%d", sbx.Slot.HostIPString(), port),
+				Host:   net.JoinHostPort(sbx.Slot.HostIPString(), strconv.FormatUint(port, 10)),
 			}
 
 			logger := logger.L().With(

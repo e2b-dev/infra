@@ -1,3 +1,5 @@
+//go:build linux
+
 package fc
 
 import (
@@ -422,6 +424,33 @@ func (c *apiClient) startVM(ctx context.Context) error {
 	_, err := c.client.Operations.CreateSyncAction(&startActionParams)
 	if err != nil {
 		return fmt.Errorf("error starting fc: %w", err)
+	}
+
+	return nil
+}
+
+// installBalloon attaches a zero-MiB balloon device. Individual balloon
+// features (free-page-reporting today, free-page-hinting next) are toggled
+// via parameters so callers can opt in to any subset independently.
+func (c *apiClient) installBalloon(ctx context.Context, freePageReporting bool) error {
+	ctx, span := tracer.Start(ctx, "install-balloon")
+	defer span.End()
+
+	amountMib := int64(0)
+	deflateOnOom := false
+
+	balloonConfig := operations.PutBalloonParams{
+		Context: ctx,
+		Body: &models.Balloon{
+			AmountMib:         &amountMib,
+			DeflateOnOom:      &deflateOnOom,
+			FreePageReporting: freePageReporting,
+		},
+	}
+
+	_, err := c.client.Operations.PutBalloon(&balloonConfig)
+	if err != nil {
+		return fmt.Errorf("error installing balloon device: %w", err)
 	}
 
 	return nil

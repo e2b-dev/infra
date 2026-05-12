@@ -1,3 +1,5 @@
+//go:build linux
+
 package server
 
 import (
@@ -45,8 +47,7 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/ser
 const (
 	requestTimeout = 60 * time.Second
 	// acquireTimeout is the max time to wait for a semaphore for resuming sandboxes snapshot.
-	acquireTimeout              = 15 * time.Second
-	maxStartingInstancesPerNode = 3
+	acquireTimeout = 15 * time.Second
 
 	// uploadTimeout is the max time allowed for uploading snapshot files to
 	// remote storage.

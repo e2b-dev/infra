@@ -457,6 +457,12 @@ exporters:
         name: "metrics_gauge"
       sum:
         name: "metrics_sum"
+%{ if enable_otel_router_metrics }
+  otlp/otel_router:
+    endpoint: 127.0.0.1:${otel_router_grpc_port}
+    tls:
+      insecure: true
+%{ endif }
 service:
   telemetry:
     logs:
@@ -524,6 +530,16 @@ service:
         - batch/clickhouse
       exporters:
         - clickhouse
+%{ if enable_otel_router_metrics }
+    metrics/external/otel_router:
+      receivers:
+        - otlp
+      processors:
+        - filter/external_metrics
+        - batch
+      exporters:
+        - otlp/otel_router
+%{ endif }
     traces:
       receivers:
         - otlp

@@ -1,3 +1,5 @@
+//go:build linux
+
 package peerserver
 
 // collectSender accumulates all data passed to Send.

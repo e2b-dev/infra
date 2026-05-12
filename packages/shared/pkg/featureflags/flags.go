@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
@@ -123,6 +124,7 @@ var (
 	ExecutionMetricsOnWebhooksFlag   = NewBoolFlag("execution-metrics-on-webhooks", false) // TODO: Remove NLT 20250315
 	SandboxLabelBasedSchedulingFlag  = NewBoolFlag("sandbox-label-based-scheduling", false)
 	OptimisticResourceAccountingFlag = NewBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
+	FreePageReportingFlag            = NewBoolFlag("free-page-reporting", false)
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
 )
@@ -201,6 +203,10 @@ var (
 	// Reserved blocks are only usable by root (uid 0), protecting the guest OS from disk-full conditions.
 	BuildReservedDiskSpaceMB = NewIntFlag("build-reserved-disk-space-mb", 0)
 
+	// MaxStartingInstancesPerNode limits concurrent sandbox start/resume operations on a single orchestrator node.
+	// Must be > 0.
+	MaxStartingInstancesPerNode = NewIntFlag("max-starting-instances-per-node", 3)
+
 	// MaxConcurrentSnapshotUpserts limits concurrent UpsertSnapshot calls (pause + snapshot template paths).
 	// 0 or negative disables throttling (unlimited concurrency).
 	MaxConcurrentSnapshotUpserts = NewIntFlag("max-concurrent-snapshot-upserts", 0)
@@ -213,6 +219,32 @@ var (
 
 	MinChunkerReadSizeKB = NewIntFlag("min-chunker-read-size-kb", 16)
 )
+
+// ReclaimConfigFlag holds per-step caps in milliseconds for the pre-pause
+// reclaim chain. Missing/zero/negative values disable the step.
+// Example: {"sync":500,"drop_caches":200,"compact_memory":1000,"fstrim":500}
+var ReclaimConfigFlag = NewJSONFlag("guest-pause-reclaim", ldvalue.Null())
+
+type ReclaimConfig struct {
+	Sync          time.Duration
+	DropCaches    time.Duration
+	CompactMemory time.Duration
+	Fstrim        time.Duration
+}
+
+func GetReclaimConfig(ctx context.Context, ff *Client, contexts ...ldcontext.Context) ReclaimConfig {
+	v := ff.JSONFlag(ctx, ReclaimConfigFlag, contexts...)
+	ms := func(key string) time.Duration {
+		return time.Duration(v.GetByKey(key).IntValue()) * time.Millisecond
+	}
+
+	return ReclaimConfig{
+		Sync:          ms("sync"),
+		DropCaches:    ms("drop_caches"),
+		CompactMemory: ms("compact_memory"),
+		Fstrim:        ms("fstrim"),
+	}
+}
 
 type StringFlag struct {
 	name     string
@@ -239,7 +271,6 @@ func NewStringFlag(name string, fallback string) StringFlag {
 	return flag
 }
 
-// This is currently not configurable via feature flags.
 const (
 	DefaultKernelVersion = "vmlinux-6.1.158"
 )
@@ -262,6 +293,7 @@ var FirecrackerVersionMap = map[string]string{
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
 var (
 	BuildFirecrackerVersion     = NewStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
+	BuildKernelVersion          = NewStringFlag("build-kernel-version", env.GetEnv("DEFAULT_KERNEL_VERSION", DefaultKernelVersion))
 	BuildIoEngine               = NewStringFlag("build-io-engine", "Sync")
 	DefaultPersistentVolumeType = NewStringFlag("default-persistent-volume-type", "")
 	BuildNodeInfo               = NewJSONFlag("preferred-build-node", ldvalue.Null())

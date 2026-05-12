@@ -11,6 +11,7 @@ locals {
       grafana_api_key       = var.grafana_api_key
 
       enable_otel_router_logs = var.enable_otel_router_logs
+      otel_router_http_port   = var.otel_router_http_port
     },
   )
 

@@ -1,3 +1,5 @@
+//go:build linux
+
 package userfaultfd
 
 // https://docs.kernel.org/admin-guide/mm/userfaultfd.html

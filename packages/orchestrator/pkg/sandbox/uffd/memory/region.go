@@ -1,3 +1,5 @@
+//go:build linux
+
 package memory
 
 // Region is a mapping of a region of memory of the guest to a region of memory on the host.

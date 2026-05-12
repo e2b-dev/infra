@@ -322,6 +322,9 @@ module "otel_collector" {
   grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
   consul_token                 = var.consul_acl_token_secret
 
+  enable_otel_router_metrics = var.enable_otel_router_metrics
+  otel_router_grpc_port      = var.otel_router_grpc_port
+
   clickhouse_username = var.clickhouse_username
   clickhouse_password = random_password.clickhouse_password.result
   clickhouse_port     = var.clickhouse_server_port.port
@@ -417,6 +420,7 @@ module "logs_collector" {
   loki_endpoint = "http://loki.service.consul:${var.loki_service_port.port}"
 
   enable_otel_router_logs = var.enable_otel_router_logs
+  otel_router_http_port   = var.otel_router_http_port
 
   vector_health_port = var.logs_health_proxy_port.port
   vector_api_port    = var.logs_proxy_port.port

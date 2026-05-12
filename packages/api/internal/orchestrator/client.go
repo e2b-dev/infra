@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	nomadapi "github.com/hashicorp/nomad/api"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
@@ -95,25 +94,24 @@ func (o *Orchestrator) scopedNodeID(clusterID uuid.UUID, nodeID string) string {
 	return fmt.Sprintf("%s-%s", clusterID.String(), nodeID)
 }
 
+// listNomadNodes is the legacy name for the orchestrator-listing call. It now
+// dispatches to whatever Discovery the Orchestrator was constructed with
+// (Nomad, Kubernetes, ...). The returned slice is in the nodemanager shape
+// because callers use it directly to dial the orchestrator gRPC server.
+//
+// (Name kept for blast-radius reasons; renaming touches >20 sites.)
 func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]nodemanager.NomadServiceDiscovery, error) {
-	_, listSpan := tracer.Start(ctx, "list-nomad-nodes")
-	defer listSpan.End()
-
-	options := &nomadapi.QueryOptions{
-		// TODO: Use variable for node pool name ("default")
-		Filter: "Status == \"ready\" and NodePool == \"default\"",
-	}
-	nomadNodes, _, err := o.nomadClient.Nodes().List(options.WithContext(ctx))
+	nodes, err := o.nodeDiscovery.ListNodes(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	result := make([]nodemanager.NomadServiceDiscovery, 0, len(nomadNodes))
-	for _, n := range nomadNodes {
+	result := make([]nodemanager.NomadServiceDiscovery, 0, len(nodes))
+	for _, n := range nodes {
 		result = append(result, nodemanager.NomadServiceDiscovery{
-			NomadNodeShortID:    n.ID[:consts.NodeIDLength],
-			OrchestratorAddress: fmt.Sprintf("%s:%d", n.Address, consts.OrchestratorAPIPort),
-			IPAddress:           n.Address,
+			NomadNodeShortID:    n.ShortID,
+			OrchestratorAddress: n.OrchestratorAddress,
+			IPAddress:           n.IPAddress,
 		})
 	}
 

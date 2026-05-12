@@ -1,3 +1,5 @@
+//go:build linux
+
 package factories
 
 import (
@@ -560,7 +562,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		return nil
 	}})
 
-	orchestratorService, err := server.New(server.ServiceConfig{
+	orchestratorService, err := server.New(ctx, server.ServiceConfig{
 		Config:           config,
 		SandboxFactory:   sandboxFactory,
 		Tel:              tel,

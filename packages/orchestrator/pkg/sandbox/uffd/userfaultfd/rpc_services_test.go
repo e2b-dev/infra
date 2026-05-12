@@ -1,3 +1,5 @@
+//go:build linux
+
 package userfaultfd
 
 // RPC service implementations for the cross-process UFFD test harness;

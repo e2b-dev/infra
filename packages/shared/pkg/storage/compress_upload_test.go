@@ -161,7 +161,7 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 			cfg := defaultCfg(tc.codec, tc.workers, tc.frameSize)
 
 			ft, checksum, err := compressStream(
-				context.Background(),
+				t.Context(),
 				bytes.NewReader(original),
 				cfg,
 				up,
@@ -197,7 +197,7 @@ func TestCompressStreamContextCancel(t *testing.T) {
 
 	data := generateSemiRandomData(10 * megabyte)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	go func() {
 		time.Sleep(10 * time.Millisecond)
 		cancel()
@@ -237,7 +237,7 @@ func TestCompressStreamPartSizeMinimum(t *testing.T) {
 			cfg := defaultCfg(CompressionZstd, 4, tc.frameSize)
 			cfg.MinPartSizeMB = tc.minPartSizeMB
 
-			_, _, err := compressStream(context.Background(), bytes.NewReader(data), cfg, up, 4)
+			_, _, err := compressStream(t.Context(), bytes.NewReader(data), cfg, up, 4)
 			require.NoError(t, err)
 
 			// Verify: no non-final part is under 5 MiB.
@@ -278,7 +278,7 @@ func TestCompressStreamRace(t *testing.T) {
 	wantChecksum := sha256.Sum256(data)
 
 	// Use an errgroup to run all streams concurrently.
-	eg, ctx := errgroup.WithContext(context.Background())
+	eg, ctx := errgroup.WithContext(t.Context())
 	for i := range streams {
 		codec := CompressionZstd
 		if i%2 == 1 {
@@ -356,7 +356,7 @@ func BenchmarkCompress(b *testing.B) {
 				up := &ThrottledPartUploader{bandwidth: bcfg.bandwidth}
 
 				_, _, err := compressStream(
-					context.Background(),
+					b.Context(),
 					bytes.NewReader(data),
 					compCfg,
 					up, 4,

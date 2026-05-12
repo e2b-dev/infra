@@ -1,3 +1,5 @@
+//go:build linux
+
 package sandbox
 
 import (
@@ -68,8 +70,9 @@ type Config struct {
 	RamMB int64
 
 	// TotalDiskSizeMB optional, now used only for metrics.
-	TotalDiskSizeMB int64
-	HugePages       bool
+	TotalDiskSizeMB   int64
+	HugePages         bool
+	FreePageReporting bool
 
 	Envd EnvdMetadata
 
@@ -216,6 +219,8 @@ type Sandbox struct {
 	config  cfg.BuilderConfig
 	files   *storage.SandboxFiles
 	cleanup *Cleanup
+
+	featureFlags *featureflags.Client
 
 	process      *fc.Process
 	cgroupHandle *cgroup.CgroupHandle
@@ -457,7 +462,8 @@ func (f *Factory) CreateSandbox(
 		files:    sandboxFiles,
 		process:  fcHandle,
 
-		cleanup: cleanup,
+		cleanup:      cleanup,
+		featureFlags: f.featureFlags,
 
 		APIStoredConfig: apiConfigToStore,
 
@@ -495,6 +501,7 @@ func (f *Factory) CreateSandbox(
 		config.Vcpu,
 		config.RamMB,
 		config.HugePages,
+		config.FreePageReporting,
 		processOptions,
 		fc.RateLimiterConfig{
 			Ops:       fc.TokenBucketConfig(throttleConfig.Ops),
@@ -797,7 +804,8 @@ func (f *Factory) ResumeSandbox(
 		files:    sandboxFiles,
 		process:  fcHandle,
 
-		cleanup: cleanup,
+		cleanup:      cleanup,
+		featureFlags: f.featureFlags,
 
 		APIStoredConfig: apiConfigToStore,
 		CABundle:        f.egressProxy.CABundle(),
@@ -1050,6 +1058,11 @@ func (s *Sandbox) Pause(
 
 	// Stop the health check before pausing the VM
 	s.Checks.Stop()
+
+	// Best-effort pre-pause guest reclaim (fstrim, sync, drop_caches,
+	// compact_memory) on the live VM via envd. Per-step caps are LD-flag-driven;
+	// all default to 0 which disables the chain entirely. Non-fatal.
+	s.bestEffortReclaim(ctx)
 
 	if err := s.process.Pause(ctx); err != nil {
 		return nil, fmt.Errorf("failed to pause VM: %w", err)

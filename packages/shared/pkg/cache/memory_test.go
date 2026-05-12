@@ -133,7 +133,7 @@ func TestCache_GetOrSet_CacheMiss(t *testing.T) {
 		return fmt.Sprintf("value-%s", key), nil
 	}
 
-	value, err := cache.GetOrSet(context.Background(), "key1", callback)
+	value, err := cache.GetOrSet(t.Context(), "key1", callback)
 	require.NoError(t, err)
 	assert.Equal(t, "value-key1", value)
 	assert.Equal(t, 1, callCount)
@@ -161,13 +161,13 @@ func TestCache_GetOrSet_CacheHit(t *testing.T) {
 	}
 
 	// First call - cache miss
-	value1, err := cache.GetOrSet(context.Background(), "key1", callback)
+	value1, err := cache.GetOrSet(t.Context(), "key1", callback)
 	require.NoError(t, err)
 	assert.Equal(t, "value-key1", value1)
 	assert.Equal(t, 1, callCount)
 
 	// Second call - cache hit
-	value2, err := cache.GetOrSet(context.Background(), "key1", callback)
+	value2, err := cache.GetOrSet(t.Context(), "key1", callback)
 	require.NoError(t, err)
 	assert.Equal(t, "value-key1", value2)
 	assert.Equal(t, 1, callCount) // Callback should not be called again
@@ -186,7 +186,7 @@ func TestCache_GetOrSet_CallbackError(t *testing.T) {
 		return "", expectedErr
 	}
 
-	value, err := cache.GetOrSet(context.Background(), "key1", callback)
+	value, err := cache.GetOrSet(t.Context(), "key1", callback)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "callback error")
 	assert.Empty(t, value)
@@ -213,13 +213,13 @@ func TestCache_GetOrSet_WithRefreshInterval(t *testing.T) {
 	}
 
 	// Initial call - cache miss
-	value1, err := cache.GetOrSet(context.Background(), "key1", callback)
+	value1, err := cache.GetOrSet(t.Context(), "key1", callback)
 	require.NoError(t, err)
 	assert.Equal(t, 1, value1)
 	assert.Equal(t, int32(1), callCount.Load())
 
 	// Immediate second call - cache hit, no refresh yet
-	value2, err := cache.GetOrSet(context.Background(), "key1", callback)
+	value2, err := cache.GetOrSet(t.Context(), "key1", callback)
 	require.NoError(t, err)
 	assert.Equal(t, 1, value2) // Still returns original value
 	assert.Equal(t, int32(1), callCount.Load())
@@ -228,7 +228,7 @@ func TestCache_GetOrSet_WithRefreshInterval(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// This call should trigger background refresh but still return stale value
-	value3, err := cache.GetOrSet(context.Background(), "key1", callback)
+	value3, err := cache.GetOrSet(t.Context(), "key1", callback)
 	require.NoError(t, err)
 	assert.Equal(t, 1, value3) // Still returns stale value immediately
 
@@ -260,7 +260,7 @@ func TestCache_GetOrSet_RefreshOnlyOnce(t *testing.T) {
 	}
 
 	// Initial call
-	value1, err := cache.GetOrSet(context.Background(), "key1", callback)
+	value1, err := cache.GetOrSet(t.Context(), "key1", callback)
 	require.NoError(t, err)
 	assert.Equal(t, 1, value1)
 
@@ -272,7 +272,7 @@ func TestCache_GetOrSet_RefreshOnlyOnce(t *testing.T) {
 	results := make([]int, 10)
 	for i := range 10 {
 		wg.Go(func() error {
-			value, err := cache.GetOrSet(context.Background(), "key1", callback)
+			value, err := cache.GetOrSet(t.Context(), "key1", callback)
 			if err != nil {
 				return err
 			}
@@ -318,7 +318,7 @@ func TestCache_GetOrSet_CacheMissSingleflight(t *testing.T) {
 	results := make([]int, 10)
 	for i := range 10 {
 		wg.Go(func() error {
-			value, err := cache.GetOrSet(context.Background(), "key1", callback)
+			value, err := cache.GetOrSet(t.Context(), "key1", callback)
 			if err != nil {
 				return err
 			}
@@ -366,7 +366,7 @@ func TestCache_Refresh_DeletesOnError(t *testing.T) {
 	}
 
 	// Initial successful call
-	value, err := cache.GetOrSet(context.Background(), "key1", callback)
+	value, err := cache.GetOrSet(t.Context(), "key1", callback)
 	require.NoError(t, err)
 	assert.Equal(t, "success", value)
 
@@ -381,7 +381,7 @@ func TestCache_Refresh_DeletesOnError(t *testing.T) {
 	shouldFail.Store(true)
 
 	// Trigger refresh
-	_, err = cache.GetOrSet(context.Background(), "key1", callback)
+	_, err = cache.GetOrSet(t.Context(), "key1", callback)
 	require.NoError(t, err) // GetOrSet returns the stale value
 
 	// Wait for refresh to complete
@@ -400,7 +400,7 @@ func TestCache_ContextCancellation(t *testing.T) {
 	}
 	cache := NewMemoryCache[string](config)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel() // Cancel immediately
 
 	callback := func(ctx context.Context, _ string) (string, error) {
@@ -426,7 +426,7 @@ func TestCache_CallbackTimeout(t *testing.T) {
 	}
 	cache := NewMemoryCache[string](config)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel() // Cancel immediately
 
 	callback := func(ctx context.Context, _ string) (string, error) {
@@ -467,7 +467,7 @@ func TestCache_ExtractKeyFunc(t *testing.T) {
 		}
 
 		// Call with a different key, but ExtractKeyFunc should use the ID from the value
-		value, err := cache.GetOrSet(context.Background(), "any-key", callback)
+		value, err := cache.GetOrSet(t.Context(), "any-key", callback)
 		require.NoError(t, err)
 		assert.Equal(t, "user-123", value.ID)
 		assert.Equal(t, "Alice", value.Name)
@@ -495,7 +495,7 @@ func TestCache_ExtractKeyFunc(t *testing.T) {
 		}
 
 		// Without ExtractKeyFunc, should use the provided key
-		value, err := cache.GetOrSet(context.Background(), "custom-key", callback)
+		value, err := cache.GetOrSet(t.Context(), "custom-key", callback)
 		require.NoError(t, err)
 		assert.Equal(t, "user-456", value.ID)
 		assert.Equal(t, "Bob", value.Name)

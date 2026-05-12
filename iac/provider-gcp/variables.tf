@@ -335,6 +335,24 @@ variable "enable_otel_router_logs" {
   description = "Enable teeing non-internal customer logs from Vector to otel-router."
 }
 
+variable "otel_router_http_port" {
+  type        = number
+  default     = 4321
+  description = "Local otel-router Vector-compatible logs port used by Vector when otel-router log teeing is enabled."
+}
+
+variable "enable_otel_router_metrics" {
+  type        = bool
+  default     = false
+  description = "Enable teeing external customer metrics from otel-collector to otel-router."
+}
+
+variable "otel_router_grpc_port" {
+  type        = number
+  default     = 4320
+  description = "Local otel-router OTLP gRPC port used by otel-collector when otel-router metric teeing is enabled."
+}
+
 variable "clickhouse_resources_memory_mb" {
   type    = number
   default = 8192
@@ -409,6 +427,12 @@ variable "redis_managed" {
 variable "redis_shard_count" {
   type    = number
   default = 1
+}
+
+variable "gcp_redis_node_type" {
+  type        = string
+  description = "The node type for managed GCP Redis/Valkey. Can be set via TF_VAR_gcp_redis_node_type or GCP_REDIS_NODE_TYPE env var."
+  default     = "STANDARD_SMALL"
 }
 
 variable "gcp_redis_engine_version" {

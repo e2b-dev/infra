@@ -1,3 +1,5 @@
+//go:build linux
+
 package finalize
 
 import (
@@ -149,9 +151,10 @@ func (ppb *PostProcessingBuilder) Build(
 
 	// Configure sandbox for final layer
 	sbxConfig := sandbox.NewConfig(sandbox.Config{
-		Vcpu:      ppb.Config.VCpuCount,
-		RamMB:     ppb.Config.MemoryMB,
-		HugePages: ppb.Config.HugePages,
+		Vcpu:              ppb.Config.VCpuCount,
+		RamMB:             ppb.Config.MemoryMB,
+		HugePages:         ppb.Config.HugePages,
+		FreePageReporting: ppb.Config.FreePageReporting,
 
 		Envd: sandbox.EnvdMetadata{
 			Version:        ppb.EnvdVersion,

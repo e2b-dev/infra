@@ -89,7 +89,7 @@ func TestExec_SuccessOnFirstAttempt(t *testing.T) {
 	}
 
 	wrapped := Wrap(mock, testConfig())
-	ctx := context.Background()
+	ctx := t.Context()
 
 	result, err := wrapped.Exec(ctx, "INSERT INTO test VALUES (1)")
 	require.NoError(t, err)
@@ -112,7 +112,7 @@ func TestExec_RetryOnConnectionError(t *testing.T) {
 	}
 
 	wrapped := Wrap(mock, testConfig())
-	ctx := context.Background()
+	ctx := t.Context()
 
 	result, err := wrapped.Exec(ctx, "INSERT INTO test VALUES (1)")
 	require.NoError(t, err)
@@ -132,7 +132,7 @@ func TestExec_NoRetryOnDeadlock(t *testing.T) {
 	}
 
 	wrapped := Wrap(mock, testConfig())
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := wrapped.Exec(ctx, "UPDATE test SET val = 1")
 	require.Error(t, err)
@@ -155,7 +155,7 @@ func TestExec_NoRetryOnConstraintViolation(t *testing.T) {
 	}
 
 	wrapped := Wrap(mock, testConfig())
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := wrapped.Exec(ctx, "INSERT INTO test VALUES (1)")
 	require.Error(t, err)
@@ -180,7 +180,7 @@ func TestExec_MaxAttemptsExceeded(t *testing.T) {
 	config := testConfig()
 	config.MaxAttempts = 3
 	wrapped := Wrap(mock, config)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := wrapped.Exec(ctx, "INSERT INTO test VALUES (1)")
 	require.Error(t, err)
@@ -201,7 +201,7 @@ func TestExec_ContextCancellation(t *testing.T) {
 	config := testConfig()
 	config.InitialBackoff = 100 * time.Millisecond
 	wrapped := Wrap(mock, config)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	// Cancel context after a short delay
 	go func() {
@@ -230,7 +230,7 @@ func TestQuery_RetryOnConnectionError(t *testing.T) {
 	}
 
 	wrapped := Wrap(mock, testConfig())
-	ctx := context.Background()
+	ctx := t.Context()
 
 	rows, err := wrapped.Query(ctx, "SELECT id FROM test")
 	if rows != nil {
@@ -265,7 +265,7 @@ func TestQueryRow_RetryOnConnectionError(t *testing.T) {
 	}
 
 	wrapped := Wrap(mock, testConfig())
-	ctx := context.Background()
+	ctx := t.Context()
 
 	var result int
 	err := wrapped.QueryRow(ctx, "SELECT count(*) FROM test").Scan(&result)
@@ -290,7 +290,7 @@ func TestQueryRow_NoRetryOnNoRows(t *testing.T) {
 	}
 
 	wrapped := Wrap(mock, testConfig())
-	ctx := context.Background()
+	ctx := t.Context()
 
 	var result int
 	err := wrapped.QueryRow(ctx, "SELECT count(*) FROM test").Scan(&result)

@@ -21,6 +21,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/discovery"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
@@ -40,9 +41,9 @@ func newTestOrchestrator(t *testing.T, nomad *nomadapi.Client) *Orchestrator {
 	logger.ReplaceGlobals(ctx, logger.NewNopLogger())
 
 	return &Orchestrator{
-		nodes:       smap.New[*nodemanager.Node](),
-		nomadClient: nomad,
-		tel:         telemetry.NewNoopClient(),
+		nodes:         smap.New[*nodemanager.Node](),
+		nodeDiscovery: discovery.NewNomad(nomad, "default"),
+		tel:           telemetry.NewNoopClient(),
 	}
 }
 

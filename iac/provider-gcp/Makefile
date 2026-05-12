@@ -59,11 +59,16 @@ tf_vars := \
 	$(call tfvar, LOKI_RESOURCES_MEMORY_MB) \
 	$(call tfvar, OTEL_COLLECTOR_RESOURCES_CPU_COUNT) \
 	$(call tfvar, OTEL_COLLECTOR_RESOURCES_MEMORY_MB) \
+	$(call tfvar, ENABLE_OTEL_ROUTER_LOGS) \
+	$(call tfvar, OTEL_ROUTER_HTTP_PORT) \
+	$(call tfvar, ENABLE_OTEL_ROUTER_METRICS) \
+	$(call tfvar, OTEL_ROUTER_GRPC_PORT) \
 	$(call tfvar, TEMPLATE_BUCKET_NAME) \
 	$(call tfvar, TEMPLATE_BUCKET_LOCATION) \
 	$(call tfvar, ENVD_TIMEOUT) \
 	$(call tfvar, REDIS_MANAGED) \
 	$(call tfvar, REDIS_SHARD_COUNT) \
+	$(call tfvar, GCP_REDIS_NODE_TYPE) \
 	$(call tfvar, GCP_REDIS_ENGINE_VERSION) \
 	$(call tfvar, GRAFANA_MANAGED) \
 	$(call tfvar, FILESTORE_CACHE_ENABLED) \

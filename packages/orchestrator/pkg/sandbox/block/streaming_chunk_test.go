@@ -1,3 +1,5 @@
+//go:build linux
+
 package block
 
 import (
@@ -134,7 +136,7 @@ func (s *fakeSeekable) OpenRangeReader(_ context.Context, offsetU int64, length 
 func makeCompressedTestData(tb testing.TB, data []byte) (*storage.FrameTable, *fakeSeekable) {
 	tb.Helper()
 
-	ft, compressed, _, err := storage.CompressBytes(context.Background(), data, storage.CompressConfig{
+	ft, compressed, _, err := storage.CompressBytes(tb.Context(), data, storage.CompressConfig{
 		Enabled:            true,
 		Type:               "lz4",
 		EncoderConcurrency: 1,

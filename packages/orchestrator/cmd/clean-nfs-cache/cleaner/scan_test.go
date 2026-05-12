@@ -25,7 +25,7 @@ func TestScanDir(t *testing.T) {
 		Path: path,
 	}, logger.NewNopLogger())
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	c.statRequestCh = make(chan *statReq, 1)

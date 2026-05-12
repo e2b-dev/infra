@@ -16,7 +16,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/txn2/txeh"
 	"golang.org/x/sync/errgroup"
-	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
@@ -175,9 +174,7 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 		// Check if current time differs significantly from the received timestamp
 		if shouldSetSystemTime(time.Now(), *data.Timestamp) {
 			logger.Debug().Msgf("Setting sandbox start time to: %v", *data.Timestamp)
-			ts := unix.NsecToTimespec(data.Timestamp.UnixNano())
-			err := unix.ClockSettime(unix.CLOCK_REALTIME, &ts)
-			if err != nil {
+			if err := setSystemTime(*data.Timestamp); err != nil {
 				logger.Error().Msgf("Failed to set system time: %v", err)
 			}
 		} else {
