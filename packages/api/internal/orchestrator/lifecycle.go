@@ -36,7 +36,7 @@ func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox san
 		ExecutionID:      sandbox.ExecutionID,
 		StartedAt:        sandbox.StartTime,
 		MaxLengthInHours: int64(sandbox.MaxInstanceLength / time.Hour),
-		TrafficKeepalive: trafficKeepaliveEnabled(sandbox.Lifecycle.Keepalive),
+		TrafficKeepalive: sandbox.Lifecycle.Keepalive != nil && sandbox.Lifecycle.Keepalive.Traffic != nil,
 	}
 
 	lifetime := time.Until(sandbox.StartTime.Add(sandbox.MaxInstanceLength))
