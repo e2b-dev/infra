@@ -39,10 +39,11 @@ func routingInfoHasTrafficKeepalive(info *sandboxroutingcatalog.SandboxInfo) boo
 
 func releaseTrafficKeepaliveOnFailure(err error) bool {
 	switch status.Code(err) {
-	// Release for caller-side errors that a client retry will not fix.
 	// FailedPrecondition includes API-side policy rejection, e.g. traffic keepalive
-	// was disabled after the routing catalog entry was written.
-	case codes.InvalidArgument, codes.Unauthenticated, codes.PermissionDenied, codes.FailedPrecondition:
+	// was disabled after the routing catalog entry was written. Auth and
+	// validation errors keep the throttle held because immediate retries will
+	// hit the same caller-side failure.
+	case codes.FailedPrecondition:
 		return true
 	default:
 		return false

@@ -444,7 +444,7 @@ func TestTrafficKeepaliveManager_SkipsWhenCatalogTimerHeld(t *testing.T) {
 	requireNoResumerCall(t, resumer.calls)
 }
 
-func TestTrafficKeepaliveManager_ReleasesThrottleAfterValidationFailure(t *testing.T) {
+func TestTrafficKeepaliveManager_KeepsThrottleAfterValidationFailure(t *testing.T) {
 	t.Parallel()
 
 	resumer := &asyncRecordingResumer{
@@ -459,6 +459,27 @@ func TestTrafficKeepaliveManager_ReleasesThrottleAfterValidationFailure(t *testi
 	}
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "bad-token", "envd-token", info)
+	requireResumerCall(t, resumer.calls)
+
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
+	requireNoResumerCall(t, resumer.calls)
+}
+
+func TestTrafficKeepaliveManager_ReleasesThrottleAfterPolicyFailure(t *testing.T) {
+	t.Parallel()
+
+	resumer := &asyncRecordingResumer{
+		calls: make(chan resumeCall, 2),
+		err:   status.Error(codes.FailedPrecondition, "traffic keepalive disabled"),
+	}
+	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
+	trafficKeepalive := newTrafficKeepaliveManager(resumer, c)
+	info := &sandboxroutingcatalog.SandboxInfo{
+		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		TrafficKeepalive: true,
+	}
+
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
 	requireResumerCall(t, resumer.calls)
 
 	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", info)
