@@ -64,6 +64,7 @@ func (c *MemorySandboxCatalog) AcquireTrafficKeepalive(_ context.Context, sandbo
 	defer c.mtx.Unlock()
 
 	now := time.Now()
+	c.deleteExpiredTrafficKeepalives(now)
 	if expiresAt, ok := c.trafficKeepalives[sandboxID]; ok && now.Before(expiresAt) {
 		return false, nil
 	}
@@ -71,6 +72,14 @@ func (c *MemorySandboxCatalog) AcquireTrafficKeepalive(_ context.Context, sandbo
 	c.trafficKeepalives[sandboxID] = now.Add(TrafficKeepaliveThrottleInterval)
 
 	return true, nil
+}
+
+func (c *MemorySandboxCatalog) deleteExpiredTrafficKeepalives(now time.Time) {
+	for sandboxID, expiresAt := range c.trafficKeepalives {
+		if !now.Before(expiresAt) {
+			delete(c.trafficKeepalives, sandboxID)
+		}
+	}
 }
 
 func (c *MemorySandboxCatalog) ReleaseTrafficKeepalive(_ context.Context, sandboxID string) error {
