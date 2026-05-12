@@ -51,8 +51,7 @@ type Handler struct {
 
 	cancel context.CancelFunc
 
-	outCtx    context.Context //nolint:containedctx // todo: refactor so this can be removed
-	outCancel context.CancelFunc
+	readersDone chan struct{} // closed when stdout/stderr reader goroutines have exited
 
 	stdinMu  sync.Mutex
 	stdin    io.WriteCloser
@@ -173,20 +172,15 @@ func New(
 
 	var outWg sync.WaitGroup
 
-	// Create a context for waiting for and cancelling output pipes.
-	// Cancellation of the process via timeout will propagate and cancel this context too.
-	outCtx, outCancel := context.WithCancel(ctx)
-
 	h := &Handler{
-		Config:    req.GetProcess(),
-		cmd:       cmd,
-		Tag:       req.Tag,
-		DataEvent: outMultiplex,
-		cancel:    cancel,
-		outCtx:    outCtx,
-		outCancel: outCancel,
-		EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](1),
-		logger:    logger,
+		Config:      req.GetProcess(),
+		cmd:         cmd,
+		Tag:         req.Tag,
+		DataEvent:   outMultiplex,
+		cancel:      cancel,
+		readersDone: make(chan struct{}),
+		EndEvent:    NewMultiplexedChannel[rpc.ProcessEvent_End](1),
+		logger:      logger,
 	}
 
 	if req.GetPty() != nil {
@@ -267,7 +261,7 @@ func New(
 					stdoutLogs <- buf[:n]
 				}
 
-				if errors.Is(readErr, io.EOF) {
+				if errors.Is(readErr, io.EOF) || os.IsTimeout(readErr) {
 					break
 				}
 
@@ -316,7 +310,7 @@ func New(
 					stderrLogs <- buf[:n]
 				}
 
-				if errors.Is(readErr, io.EOF) {
+				if errors.Is(readErr, io.EOF) || os.IsTimeout(readErr) {
 					break
 				}
 
@@ -343,9 +337,9 @@ func New(
 	go func() {
 		outWg.Wait()
 
-		outMultiplex.CloseSource()
+		close(h.readersDone)
 
-		outCancel()
+		outMultiplex.CloseSource()
 	}()
 
 	return h, nil
@@ -362,10 +356,6 @@ func getProcType(req *rpc.StartRequest) cgroups.ProcessType {
 func (p *Handler) SendSignal(signal syscall.Signal) error {
 	if p.cmd.Process == nil {
 		return errors.New("process not started")
-	}
-
-	if signal == syscall.SIGKILL || signal == syscall.SIGTERM {
-		p.outCancel()
 	}
 
 	return p.cmd.Process.Signal(signal)
@@ -473,18 +463,15 @@ func (p *Handler) Wait() {
 	// send unblocks, loops back, and sees EOF.
 	p.DataEvent.Drain()
 
-	// Wait for readers to finish. If they don't exit promptly
-	// (orphan grandchildren keeping the pipe open), close the
-	// read-ends to force them out.
-	select {
-	case <-p.outCtx.Done():
-	case <-time.After(5 * time.Second):
-		for _, f := range p.pipeRead {
-			f.Close()
-		}
-
-		<-p.outCtx.Done()
+	// Set a read deadline on the pipe read-ends so readers drain
+	// any buffered data (reads with available data return instantly)
+	// and then exit cleanly instead of blocking forever when an
+	// orphan grandchild holds the write-end open.
+	for _, f := range p.pipeRead {
+		f.SetReadDeadline(time.Now().Add(1 * time.Second))
 	}
+
+	<-p.readersDone
 
 	p.tty.Close()
 
