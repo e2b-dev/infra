@@ -13,7 +13,7 @@ echo "Starting provisioning script"
 
 # Configure apt proxy if URL is provided.
 if [ -n "$APT_PROXY_URL" ]; then
-    echo "Configuring apt cache proxy: $APT_PROXY_URL"
+    echo "Configuring apt cache proxy"
     mkdir -p /etc/apt/apt.conf.d
     echo "Acquire::http::Proxy \"$APT_PROXY_URL\";" > /etc/apt/apt.conf.d/00-e2b-build-proxy
 fi
