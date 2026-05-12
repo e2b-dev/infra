@@ -99,6 +99,23 @@ job "api" {
       }
     }
 
+    # Compatibility alias for service name `api-grpc`, which was renamed to `api-internal-grpc` in #2470.
+    # Old client-proxy allocations were rendered with API_GRPC_ADDRESS=api-grpc.service.consul:<port> and still expect that name.
+    # Drop this block once all old client-proxy allocations have been replaced.
+    service {
+      name = "api-grpc"
+      port = "api_internal_grpc"
+      task = "start"
+
+      check {
+        type     = "tcp"
+        name     = "api-grpc"
+        interval = "3s"
+        timeout  = "3s"
+        port     = "api_internal_grpc"
+      }
+    }
+
 %{ if update_stanza }
     # An update stanza to enable rolling updates of the service
     update {
