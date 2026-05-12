@@ -128,7 +128,7 @@ type PausedSandboxConfig struct {
 	Version      string                      `json:"version"`
 	Network      *SandboxNetworkConfig       `json:"network,omitempty"`
 	Lifecycle    *SandboxLifecycleConfig     `json:"lifecycle,omitempty"`
-	AutoResume   *SandboxAutoResumeConfig    `json:"autoResume,omitempty"` // Deprecated: use Lifecycle.
+	AutoResume   *SandboxAutoResumeConfig    `json:"autoResume,omitempty"` // Deprecated: remove after all paused-sandbox readers use Lifecycle.
 	VolumeMounts []*SandboxVolumeMountConfig `json:"volumeMounts,omitempty"`
 }
 
