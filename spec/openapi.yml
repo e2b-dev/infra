@@ -684,6 +684,7 @@ components:
           description: Time to live for the sandbox in seconds.
         autoPause:
           type: boolean
+          default: false
           deprecated: true
           description: Deprecated. Use lifecycle.onTimeout instead.
         autoResume:
