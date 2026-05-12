@@ -42,7 +42,6 @@ tf_vars := \
 	$(call tfvar, PREFIX) \
 	$(call tfvar, SANDBOX_STORAGE_BACKEND) \
 	$(call tfvar, ORCHESTRATOR_ENABLED) \
-	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
 	$(call tfvar, API_INTERNAL_GRPC_PORT) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNAL_CIDRS) \
 	$(call tfvar, API_SERVER_COUNT) \
