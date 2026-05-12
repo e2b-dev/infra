@@ -383,6 +383,8 @@ func (o *Orchestrator) orchestratorKeepalivePayload(ctx context.Context, teamID 
 		return nil
 	}
 
+	// TODO(keepalive-rollout): remove this compatibility gate after every deployed
+	// orchestrator can decode SandboxConfig.keepalive.
 	if !o.featureFlagsClient.BoolFlag(
 		ctx,
 		featureflags.OrchAcceptsSandboxKeepaliveFlag,

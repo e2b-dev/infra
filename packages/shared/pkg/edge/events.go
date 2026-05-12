@@ -133,6 +133,7 @@ func ParseSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEven
 			return nil, ErrSandboxCreationParse
 		}
 	}
+	// Missing header means false; create events only serialize true values.
 
 	return &SandboxCatalogCreateEvent{
 		SandboxID:               sandboxID,

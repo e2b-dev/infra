@@ -107,6 +107,8 @@ type Sandbox struct {
 }
 
 func (s *Sandbox) UnmarshalJSON(data []byte) error {
+	// Compatibility shim for Redis state written during lifecycle rollout.
+	// Remove after one full deploy where all readers and writers use lifecycle.
 	type sandboxAlias Sandbox
 	var raw struct {
 		sandboxAlias
@@ -130,6 +132,8 @@ func (s *Sandbox) UnmarshalJSON(data []byte) error {
 }
 
 func (s Sandbox) MarshalJSON() ([]byte, error) {
+	// Compatibility shim for Redis state written during lifecycle rollout.
+	// Remove after one full deploy where all readers and writers use lifecycle.
 	type sandboxAlias Sandbox
 
 	return json.Marshal(struct {

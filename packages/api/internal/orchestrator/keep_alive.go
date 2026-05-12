@@ -33,12 +33,9 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 			return sbx, errMaxInstanceLengthExceeded
 		}
 
-		if !allowShorter && !endTime.After(sbx.EndTime) {
-			// If shorter than the current end time, we don't extend, so we can return
-			return sbx, nil
-		}
-		if endTime.Equal(sbx.EndTime) {
-			// allowShorter=true can still produce an exact no-op update.
+		if endTime.Equal(sbx.EndTime) || (!allowShorter && endTime.Before(sbx.EndTime)) {
+			// Exact no-op updates never need propagation; shorter updates are only allowed
+			// for explicit callers such as timeout changes.
 			return sbx, nil
 		}
 
@@ -64,6 +61,9 @@ func (o *Orchestrator) KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandb
 		}
 	}
 
+	// Only propagate when this update function actually changed the end time.
+	// The store can return current state after a no-op or a concurrent update, and
+	// those should not trigger an orchestrator timeout write from this request.
 	if updatedEndTime.IsZero() || !sbx.EndTime.Equal(updatedEndTime) {
 		return &sbx, nil
 	}

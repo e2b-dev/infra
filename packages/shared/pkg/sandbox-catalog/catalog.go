@@ -9,6 +9,9 @@ import (
 )
 
 type SandboxInfo struct {
+	// Written by the API Nomad path (packages/api/internal/orchestrator/lifecycle.go)
+	// and the BYOC edge metadata path (packages/orchestrator/pkg/server/sandboxes.go).
+	// Keep both writers in lockstep when this routing schema changes.
 	TeamID         string `json:"team_id"`
 	OrchestratorID string `json:"orchestrator_id"`
 	OrchestratorIP string `json:"orchestrator_ip"` // used only for cases where orchestrator is not registered in edge pool
