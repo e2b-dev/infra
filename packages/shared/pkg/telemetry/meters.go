@@ -44,7 +44,8 @@ const (
 	OrchestratorProxyPoolConnectionsMeterCounterName   ObservableUpDownCounterType = "orchestrator.proxy.pool.connections.open"
 	OrchestratorProxyPoolSizeMeterCounterName          ObservableUpDownCounterType = "orchestrator.proxy.pool.size"
 
-	BuildCounterMeterName ObservableUpDownCounterType = "api.env.build.running"
+	BuildCounterMeterName       ObservableUpDownCounterType = "api.env.build.running"
+	EvictionsRunningCounterName ObservableUpDownCounterType = "api.evictor.evictions.running"
 
 	TCPFirewallActiveConnections ObservableUpDownCounterType = "orchestrator.tcpfirewall.connections.active"
 )
@@ -209,6 +210,7 @@ var observableUpDownCounterDesc = map[ObservableUpDownCounterType]string{
 	OrchestratorProxyPoolConnectionsMeterCounterName:   "Open connections from the orchestrator proxy to sandboxes.",
 	OrchestratorProxyPoolSizeMeterCounterName:          "Size of the orchestrator proxy pool.",
 	BuildCounterMeterName:                              "Counter of running builds.",
+	EvictionsRunningCounterName:                        "Counter of currently running evictions.",
 
 	TCPFirewallActiveConnections: "Number of currently active TCP firewall connections.",
 }
@@ -222,6 +224,7 @@ var observableUpDownCounterUnits = map[ObservableUpDownCounterType]string{
 	OrchestratorProxyPoolConnectionsMeterCounterName:   "{connection}",
 	OrchestratorProxyPoolSizeMeterCounterName:          "{transport}",
 	BuildCounterMeterName:                              "{build}",
+	EvictionsRunningCounterName:                        "{eviction}",
 
 	TCPFirewallActiveConnections: "{connection}",
 }
