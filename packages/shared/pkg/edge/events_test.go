@@ -33,12 +33,12 @@ func TestSandboxCatalogCreateEventParseAllowsMissingKeepaliveFields(t *testing.T
 
 	startTime := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
 	md := metadata.New(map[string]string{
-		EventTypeHeader:           CatalogCreateEventType,
-		sbxIdHeader:               "sbx",
-		sbxExecutionIdHeader:      "exec",
-		sbxOrchestratorIdHeader:   "orch",
-		sbxMaxLengthInHoursHeader: "24",
-		sbxStartTimeHeader:        startTime.Format(time.RFC3339),
+		EventTypeHeader:               CatalogCreateEventType,
+		SandboxIDHeader:               "sbx",
+		SandboxExecutionIDHeader:      "exec",
+		SandboxOrchestratorIDHeader:   "orch",
+		SandboxMaxLengthInHoursHeader: "24",
+		SandboxStartTimeHeader:        startTime.Format(time.RFC3339),
 	})
 
 	parsed, err := ParseSandboxCatalogCreateEvent(md)
