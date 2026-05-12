@@ -1,8 +1,10 @@
 terraform {
-  required_version = ">= 1.5.0, < 1.6.0"
+  required_version = ">= 1.7.0, < 1.8.0"
+
   backend "gcs" {
     prefix = "terraform/cluster-disk-image/state"
   }
+
   required_providers {
     google = {
       source  = "hashicorp/google"
@@ -49,4 +51,3 @@ resource "google_compute_firewall" "internal_remote_connection_firewall_ingress"
   # https://googlecloudplatform.github.io/iap-desktop/setup-iap/
   source_ranges = ["35.235.240.0/20"]
 }
-
