@@ -248,7 +248,9 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	orchKeepalive := o.orchestratorKeepalivePayload(ctx, team.ID.String(), sandboxID, sbxData.Lifecycle.Keepalive)
-	trafficKeepalive := trafficKeepaliveEnabled(sbxData.Lifecycle.Keepalive)
+	createOpts := nodemanager.SandboxCreateOptions{
+		TrafficKeepalive: trafficKeepaliveEnabled(sbxData.Lifecycle.Keepalive),
+	}
 
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
@@ -299,7 +301,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
 
-	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, trafficKeepalive, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels)
+	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, createOpts, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels)
 	if err != nil {
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,

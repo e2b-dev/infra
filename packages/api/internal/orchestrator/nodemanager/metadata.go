@@ -35,7 +35,7 @@ func (n *Node) Metadata() NodeMetadata {
 	return n.meta
 }
 
-func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest, trafficKeepalive bool) (*clusters.GRPCClient, context.Context) {
+func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest, opts SandboxCreateOptions) (*clusters.GRPCClient, context.Context) {
 	md := metadata.MD{}
 
 	if !n.IsNomadManaged() {
@@ -45,7 +45,7 @@ func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.Sandbo
 				TeamID:                  req.GetSandbox().GetTeamId(),
 				SandboxMaxLengthInHours: req.GetSandbox().GetMaxSandboxLength(),
 				SandboxStartTime:        req.GetStartTime().AsTime(),
-				TrafficKeepalive:        trafficKeepalive,
+				TrafficKeepalive:        opts.TrafficKeepalive,
 
 				ExecutionID:    req.GetSandbox().GetExecutionId(),
 				OrchestratorID: n.Metadata().ServiceInstanceID,
