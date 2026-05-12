@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"go.uber.org/zap"
@@ -68,6 +69,13 @@ func (m *trafficKeepaliveManager) MaybeRefresh(ctx context.Context, sandboxID st
 
 	acquired, err := m.catalogStore.AcquireTrafficKeepalive(ctx, sandboxID)
 	if err != nil {
+		// The memory catalog can expire between catalog resolution and throttle acquire.
+		if errors.Is(err, sandboxroutingcatalog.ErrSandboxNotFound) {
+			logger.L().Debug(ctx, "traffic keepalive catalog entry expired before acquire", logger.WithSandboxID(sandboxID))
+
+			return
+		}
+
 		logger.L().Warn(ctx, "traffic keepalive acquire failed", logger.WithSandboxID(sandboxID), zap.Error(err))
 
 		return

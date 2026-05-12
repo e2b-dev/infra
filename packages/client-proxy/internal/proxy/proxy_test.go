@@ -408,6 +408,21 @@ func TestTrafficKeepaliveManager_SkipsWhenCatalogPolicyDisabled(t *testing.T) {
 	requireNoResumerCall(t, resumer.calls)
 }
 
+func TestTrafficKeepaliveManager_SkipsWhenCatalogEntryExpiresBeforeAcquire(t *testing.T) {
+	t.Parallel()
+
+	c := sandboxroutingcatalog.NewMemorySandboxesCatalog()
+	resumer := &asyncRecordingResumer{calls: make(chan resumeCall, 1)}
+	trafficKeepalive := newTrafficKeepaliveManager(resumer, c)
+
+	trafficKeepalive.MaybeRefresh(t.Context(), "sbx", 49983, "traffic-token", "envd-token", &sandboxroutingcatalog.SandboxInfo{
+		TeamID:           "8f56d6bc-9b6d-4cbb-8e31-86b62359f716",
+		TrafficKeepalive: true,
+	})
+
+	requireNoResumerCall(t, resumer.calls)
+}
+
 func TestTrafficKeepaliveManager_SuppressesConcurrentRefreshes(t *testing.T) {
 	t.Parallel()
 
