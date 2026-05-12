@@ -467,7 +467,6 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		telemetry.WithSandboxID(in.GetSandboxId()),
 		attribute.String("client.id", s.info.ClientId),
 	)
-	defer s.deleteSandboxRoutingInfo(ctxConn)
 
 	sbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId())
 	if !ok {
@@ -486,6 +485,7 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 		return nil, status.Errorf(codes.Internal, "failed to delete sandbox '%s'", in.GetSandboxId())
 	}
+	defer s.deleteSandboxRoutingInfo(ctxConn)
 
 	sbxlogger.E(sbx).Info(ctx, "Killing sandbox")
 
