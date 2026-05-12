@@ -55,7 +55,7 @@ type Handler struct {
 
 	stdinMu  sync.Mutex
 	stdin    io.WriteCloser
-	pipeRead []*os.File // read-ends of stdout/stderr; closed in Wait
+	pipeRead []*os.File // read-ends of stdout/stderr
 
 	DataEvent *MultiplexedChannel[rpc.ProcessEvent_Data]
 	EndEvent  *MultiplexedChannel[rpc.ProcessEvent_End]
@@ -235,6 +235,8 @@ func New(
 		stdout := stdoutR
 
 		outWg.Go(func() {
+			defer stdout.Close()
+
 			stdoutLogs := make(chan []byte, outputBufferSize)
 			defer close(stdoutLogs)
 
@@ -284,6 +286,8 @@ func New(
 		h.pipeRead = []*os.File{stdoutR, stderrR}
 
 		outWg.Go(func() {
+			defer stderr.Close()
+
 			stderrLogs := make(chan []byte, outputBufferSize)
 			defer close(stderrLogs)
 
