@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
@@ -26,7 +27,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	orchgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
-	"google.golang.org/grpc/metadata"
 )
 
 // testBuild returns a minimal queries.EnvBuild that satisfies CreateSandbox.

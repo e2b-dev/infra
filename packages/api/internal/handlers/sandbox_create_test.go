@@ -200,20 +200,20 @@ func TestBuildKeepaliveConfig(t *testing.T) {
 		},
 		{
 			name: "timeout must exceed throttle",
-				lifecycle: &api.NewSandboxLifecycle{
-					Keepalive: &api.SandboxKeepalive{
-						Traffic: &api.SandboxTrafficKeepalive{Enabled: true, Timeout: &shortTimeout},
-					},
+			lifecycle: &api.NewSandboxLifecycle{
+				Keepalive: &api.SandboxKeepalive{
+					Traffic: &api.SandboxTrafficKeepalive{Enabled: true, Timeout: &shortTimeout},
 				},
+			},
 			wantErr: true,
 		},
 		{
 			name: "explicit valid timeout",
-				lifecycle: &api.NewSandboxLifecycle{
-					Keepalive: &api.SandboxKeepalive{
-						Traffic: &api.SandboxTrafficKeepalive{Enabled: true, Timeout: &validTimeout},
-					},
+			lifecycle: &api.NewSandboxLifecycle{
+				Keepalive: &api.SandboxKeepalive{
+					Traffic: &api.SandboxTrafficKeepalive{Enabled: true, Timeout: &validTimeout},
 				},
+			},
 			wantTimeout: uint64(validTimeout),
 		},
 	}
