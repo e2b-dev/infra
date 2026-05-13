@@ -11,9 +11,9 @@ import (
 )
 
 var (
-	snapshotDiffBytes   = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotDiffBytes))
-	snapshotDiffRatioBp = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotDiffRatioBp))
-	snapshotTotalBytes  = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotTotalBytes))
+	snapshotDiffBytes    = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotDiffBytes))
+	snapshotDiffRatioPct = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotDiffRatioPct))
+	snapshotTotalBytes   = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotTotalBytes))
 )
 
 type SnapshotUseCase string
@@ -40,21 +40,21 @@ func emitSnapshotDiff(ctx context.Context, fileType string, s SnapshotDiffStats,
 	for kind, b := range map[string]int64{"full": s.DirtyBytes, "empty": s.EmptyBytes} {
 		attrs := metric.WithAttributes(ft, attribute.String("kind", kind), uc)
 		snapshotDiffBytes.Record(ctx, b, attrs)
-		snapshotDiffRatioBp.Record(ctx, ratioBp(b, s.TotalBytes), attrs)
+		snapshotDiffRatioPct.Record(ctx, ratioPct(b, s.TotalBytes), attrs)
 	}
 }
 
-func ratioBp(num, denom int64) int64 {
+func ratioPct(num, denom int64) int64 {
 	if denom <= 0 {
 		return 0
 	}
-	bp := num * 10000 / denom
-	if bp < 0 {
+	pct := num * 100 / denom
+	if pct < 0 {
 		return 0
 	}
-	if bp > 10000 {
-		return 10000
+	if pct > 100 {
+		return 100
 	}
 
-	return bp
+	return pct
 }

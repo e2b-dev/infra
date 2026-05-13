@@ -123,9 +123,9 @@ const (
 	SandboxFCBlockRemainingReqs         HistogramType = "orchestrator.sandbox.fc.block.remaining_reqs"
 
 	// Snapshot diff histograms (file_type=memfile|rootfs, kind=full|empty, use_case=pause|build).
-	SnapshotDiffBytes   HistogramType = "orchestrator.sandbox.snapshot.diff.bytes"
-	SnapshotDiffRatioBp HistogramType = "orchestrator.sandbox.snapshot.diff.ratio_bp"
-	SnapshotTotalBytes  HistogramType = "orchestrator.sandbox.snapshot.total.bytes"
+	SnapshotDiffBytes    HistogramType = "orchestrator.sandbox.snapshot.diff.bytes"
+	SnapshotDiffRatioPct HistogramType = "orchestrator.sandbox.snapshot.diff.ratio_pct"
+	SnapshotTotalBytes   HistogramType = "orchestrator.sandbox.snapshot.total.bytes"
 )
 
 const (
@@ -358,9 +358,9 @@ var histogramDesc = map[HistogramType]string{
 	SandboxFCBlockIOEngineThrottled:     "Distribution of Firecracker VMM block ops throttled by io_uring engine per metrics flush",
 	SandboxFCBlockRemainingReqs:         "Distribution of Firecracker VMM block queue remaining-request events per metrics flush",
 
-	SnapshotDiffBytes:   "Per-snapshot full/empty bytes per file",
-	SnapshotDiffRatioBp: "Per-snapshot full/empty as fraction of total mapped size, in basis points (10000=100%)",
-	SnapshotTotalBytes:  "Per-snapshot total mapped size of the file",
+	SnapshotDiffBytes:    "Per-snapshot full/empty bytes per file",
+	SnapshotDiffRatioPct: "Per-snapshot full/empty as percentage of total mapped size",
+	SnapshotTotalBytes:   "Per-snapshot total mapped size of the file",
 }
 
 var histogramUnits = map[HistogramType]string{
@@ -392,9 +392,9 @@ var histogramUnits = map[HistogramType]string{
 	SandboxFCBlockIOEngineThrottled:     "{op}",
 	SandboxFCBlockRemainingReqs:         "{event}",
 
-	SnapshotDiffBytes:   "{By}",
-	SnapshotDiffRatioBp: "{1}",
-	SnapshotTotalBytes:  "{By}",
+	SnapshotDiffBytes:    "{By}",
+	SnapshotDiffRatioPct: "%",
+	SnapshotTotalBytes:   "{By}",
 }
 
 func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram, error) {
