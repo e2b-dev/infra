@@ -83,6 +83,8 @@ func (c *Cleaner) evictExpired(ctx context.Context, expired []sandbox.Sandbox) {
 		return
 	}
 
+	logger.L().Info(ctx, "Cleaner found expired sandboxes", zap.Int("count", len(expired)))
+
 	for _, sbx := range expired {
 		if time.Since(sbx.EndTime) < sandbox.StaleCutoff {
 			continue
