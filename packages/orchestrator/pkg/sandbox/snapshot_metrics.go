@@ -24,11 +24,6 @@ const (
 	SnapshotUseCaseBuild SnapshotUseCase = "build"
 )
 
-// recordSnapshotDiff emits per-snapshot full/empty/total bytes for one file.
-// Call right after the per-pause DiffMetadata for that file is produced.
-// "full" = blocks carrying data (DiffMetadata.Dirty); "empty" = zero-mapped
-// blocks (DiffMetadata.Empty). Total comes from the original (pre-merge)
-// header so the denominator is the file's full mapped size.
 func recordSnapshotDiff(
 	ctx context.Context,
 	fileType string,
@@ -47,15 +42,15 @@ func recordSnapshotDiff(
 
 	snapshotTotalBytes.Record(ctx, total, metric.WithAttributes(ft, uc))
 
-	var fullBytes, emptyBytes int64
+	var dirtyBytes, emptyBytes int64
 	if dm.Dirty != nil {
-		fullBytes = int64(dm.Dirty.GetCardinality()) * bs
+		dirtyBytes = int64(dm.Dirty.GetCardinality()) * bs
 	}
 	if dm.Empty != nil {
 		emptyBytes = int64(dm.Empty.GetCardinality()) * bs
 	}
 	for kind, b := range map[string]int64{
-		"full":  fullBytes,
+		"dirty": dirtyBytes,
 		"empty": emptyBytes,
 	} {
 		attrs := metric.WithAttributes(ft, attribute.String("kind", kind), uc)
