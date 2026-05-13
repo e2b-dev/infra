@@ -122,7 +122,7 @@ const (
 	SandboxFCBlockIOEngineThrottled     HistogramType = "orchestrator.sandbox.fc.block.io_engine_throttled"
 	SandboxFCBlockRemainingReqs         HistogramType = "orchestrator.sandbox.fc.block.remaining_reqs"
 
-	// Snapshot diff histograms (file_type=memfile|rootfs, kind=dirty|empty, use_case=pause|build).
+	// Snapshot diff histograms (file_type=memfile|rootfs, kind=full|empty, use_case=pause|build).
 	SnapshotDiffBytes   HistogramType = "orchestrator.sandbox.snapshot.diff.bytes"
 	SnapshotDiffRatioBp HistogramType = "orchestrator.sandbox.snapshot.diff.ratio_bp"
 	SnapshotTotalBytes  HistogramType = "orchestrator.sandbox.snapshot.total.bytes"
@@ -358,8 +358,8 @@ var histogramDesc = map[HistogramType]string{
 	SandboxFCBlockIOEngineThrottled:     "Distribution of Firecracker VMM block ops throttled by io_uring engine per metrics flush",
 	SandboxFCBlockRemainingReqs:         "Distribution of Firecracker VMM block queue remaining-request events per metrics flush",
 
-	SnapshotDiffBytes:   "Per-snapshot dirty/empty bytes per file",
-	SnapshotDiffRatioBp: "Per-snapshot dirty/empty as fraction of total mapped size, in basis points (10000=100%)",
+	SnapshotDiffBytes:   "Per-snapshot full/empty bytes per file",
+	SnapshotDiffRatioBp: "Per-snapshot full/empty as fraction of total mapped size, in basis points (10000=100%)",
 	SnapshotTotalBytes:  "Per-snapshot total mapped size of the file",
 }
 

@@ -35,7 +35,9 @@ func RecordSnapshotDiffMetrics(ctx context.Context, snap *Snapshot, useCase Snap
 func emitSnapshotDiff(ctx context.Context, fileType string, s SnapshotDiffStats, uc attribute.KeyValue) {
 	ft := attribute.String("file_type", fileType)
 	snapshotTotalBytes.Record(ctx, s.TotalBytes, metric.WithAttributes(ft, uc))
-	for kind, b := range map[string]int64{"dirty": s.DirtyBytes, "empty": s.EmptyBytes} {
+	// "full" = blocks that carry data in this snapshot (DiffMetadata.Dirty);
+	// "empty" = zero/Empty-mapped blocks (DiffMetadata.Empty).
+	for kind, b := range map[string]int64{"full": s.DirtyBytes, "empty": s.EmptyBytes} {
 		attrs := metric.WithAttributes(ft, attribute.String("kind", kind), uc)
 		snapshotDiffBytes.Record(ctx, b, attrs)
 		snapshotDiffRatioBp.Record(ctx, ratioBp(b, s.TotalBytes), attrs)
