@@ -84,7 +84,6 @@ func NewMeterProvider(metricsExporter sdkmetric.Exporter, metricExportPeriod tim
 		// limit and we don't query them in any dashboard. Callers can still
 		// override this via extraOption since later options take precedence.
 		sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter),
-		sdkmetric.WithView(snapshotBytesView),
 	}
 
 	if res != nil {
@@ -92,6 +91,7 @@ func NewMeterProvider(metricsExporter sdkmetric.Exporter, metricExportPeriod tim
 	}
 
 	opts = append(opts, extraOption...)
+	opts = append(opts, sdkmetric.WithView(snapshotBytesView))
 
 	return sdkmetric.NewMeterProvider(opts...), nil
 }
