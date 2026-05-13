@@ -76,6 +76,11 @@ func main() {
 		log.Fatal("-to-build required")
 	}
 
+	// Bake free-page-hinting into the balloon device at boot. The install bit
+	// is read from the offline LD store at the boot-time Create call and
+	// cannot be added on resume, so it must be flipped before builder.Build.
+	featureflags.NewBoolFlag("free-page-hinting-install", true)
+
 	// Suppress other noisy output unless verbose, but keep std log for fatal errors
 	if !*verbose {
 		cmdutil.SuppressNoisyLogsKeepStdLog()
@@ -363,6 +368,8 @@ func doBuild(
 		ReadyCmd:           readyCmd,
 		KernelVersion:      kernel,
 		FirecrackerVersion: fc,
+		FreePageReporting:  true,
+		TeamID:             "local",
 		Steps:              steps,
 	}
 

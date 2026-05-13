@@ -71,10 +71,18 @@ func main() {
 	optimize := flag.Bool("optimize", false, "collect fresh prefetch mapping after pause (resumes snapshot to record page faults)")
 	shell := flag.Bool("shell", false, "attach an interactive PTY shell via envd (no sshd required in the sandbox)")
 
-	// Enables the pre-pause reclaim chain with sensible per-step caps.
+	fphTimeoutMs := flag.Int("fph-timeout-ms", 0, "override free-page-hinting-timeout-ms LD flag (0 = use LD default)")
 	reclaim := flag.Bool("reclaim", false, "enable pre-pause reclaim chain (fstrim 500ms, sync 500ms, drop_caches 200ms, compact 1s)")
 
+	fphBench := flag.Bool("fph-bench", false, "compare pause memfile size with vs without FPH; requires -cmd-pause workload, uses -iterations (default 3), forces FPR on")
+	fphBenchDelay := flag.Duration("fph-bench-delay", 0, "wait this long between workload completion and pause (lets FPR settle)")
+
 	flag.Parse()
+
+	if *fphTimeoutMs > 0 {
+		featureflags.NewIntFlag("free-page-hinting-timeout-ms", *fphTimeoutMs)
+		featureflags.NewBoolFlag("free-page-hinting-install", true)
+	}
 
 	if *reclaim {
 		featureflags.NewJSONFlag("guest-pause-reclaim", ldvalue.FromJSONMarshal(map[string]int{
@@ -119,8 +127,9 @@ func main() {
 
 	isPauseMode := pauseCount > 0
 
-	// Interactive pause modes are incompatible with iterations.
-	if *iterations > 0 && (*signalPause != "" || *cmdPause != "" || *cmdSignalPause != "") {
+	// Interactive pause modes are incompatible with iterations (fph-bench
+	// reuses -cmd-pause as its workload and runs its own iteration loop).
+	if !*fphBench && *iterations > 0 && (*signalPause != "" || *cmdPause != "" || *cmdSignalPause != "") {
 		log.Fatal("-signal-pause, -cmd-pause, and -cmd-signal-pause are incompatible with -iterations")
 	}
 
@@ -138,6 +147,15 @@ func main() {
 
 	if *shell && (isCmdMode || isPauseMode || *iterations > 0) {
 		log.Fatal("-shell can only be used in interactive mode (no -cmd, no pause flags, no -iterations)")
+	}
+
+	if *fphBench {
+		if *cmdPause == "" {
+			log.Fatal("-fph-bench requires -cmd-pause to specify the workload")
+		}
+		if *fphTimeoutMs > 0 {
+			log.Fatal("-fph-bench manages -fph-timeout-ms internally; do not set it")
+		}
 	}
 
 	// Generate new build ID if not specified and pause mode is enabled
@@ -174,7 +192,17 @@ func main() {
 		iterations: *iterations,
 	}
 
-	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *noEgress, *verbose, *shell, pauseOpts, runOpts)
+	fphBenchOpts := fphBenchOptions{
+		enabled:    *fphBench,
+		workload:   *cmdPause,
+		iterations: *iterations,
+		delay:      *fphBenchDelay,
+	}
+	if *fphBench && fphBenchOpts.iterations <= 0 {
+		fphBenchOpts.iterations = 3
+	}
+
+	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *noEgress, *verbose, *shell, pauseOpts, runOpts, fphBenchOpts)
 	cancel()
 
 	if err != nil {
@@ -989,7 +1017,7 @@ func (r *runner) benchmark(ctx context.Context, n int) error {
 	return lastErr
 }
 
-func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, noEgress, verbose, shell bool, pauseOpts pauseOptions, runOpts runOptions) error {
+func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, noEgress, verbose, shell bool, pauseOpts pauseOptions, runOpts runOptions, fphBenchOpts fphBenchOptions) error {
 	// Silence other loggers unless verbose mode
 	var l logger.Logger
 	if !verbose {
@@ -1135,10 +1163,11 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 
 	token := "local"
 	sbxCfg := sandbox.NewConfig(sandbox.Config{
-		BaseTemplateID: buildID,
-		Vcpu:           1,
-		RamMB:          512,
-		Envd:           sandbox.EnvdMetadata{Vars: map[string]string{}, AccessToken: &token, Version: "1.0.0"},
+		BaseTemplateID:    buildID,
+		Vcpu:              1,
+		RamMB:             512,
+		FreePageReporting: fphBenchOpts.enabled,
+		Envd:              sandbox.EnvdMetadata{Vars: map[string]string{}, AccessToken: &token, Version: "1.0.0"},
 		FirecrackerConfig: fc.Config{
 			KernelVersion:      meta.Template.KernelVersion,
 			FirecrackerVersion: meta.Template.FirecrackerVersion,
@@ -1156,6 +1185,10 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		config:     config.BuilderConfig,
 		storage:    persistence,
 		sbxConfig:  sbxCfg,
+	}
+
+	if fphBenchOpts.enabled {
+		return r.fphBench(ctx, fphBenchOpts)
 	}
 
 	if runOpts.enabled() {
