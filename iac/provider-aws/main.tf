@@ -199,7 +199,6 @@ module "nomad" {
   client_proxy_repository_name = module.init.client_proxy_repository_name
 
   orchestrator_node_pool              = local.client_pool_name
-  allow_sandbox_internet              = var.allow_sandbox_internet
   allow_sandbox_internal_cidrs        = var.allow_sandbox_internal_cidrs
   orchestrator_port                   = var.orchestrator_port
   orchestrator_proxy_port             = var.orchestrator_proxy_port
