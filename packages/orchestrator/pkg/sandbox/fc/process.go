@@ -137,9 +137,8 @@ type Process struct {
 
 	client *apiClient
 
-	// balloonAccum holds the cumulative virtio-balloon counters across
-	// all FC metrics flushes. FC's SharedIncMetric resets on each flush,
-	// so the metrics-reader goroutine sums per-line deltas into here.
+	// balloonAccum is the cumulative virtio-balloon snapshot summed by the
+	// metrics-reader goroutine (FC's SharedIncMetric resets per flush).
 	balloonAccum atomic.Pointer[BalloonMetricsSnapshot]
 }
 

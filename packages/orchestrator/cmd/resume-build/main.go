@@ -127,8 +127,7 @@ func main() {
 
 	isPauseMode := pauseCount > 0
 
-	// Interactive pause modes are incompatible with iterations (fph-bench
-	// reuses -cmd-pause as its workload and runs its own iteration loop).
+	// fph-bench reuses -cmd-pause and -iterations.
 	if !*fphBench && *iterations > 0 && (*signalPause != "" || *cmdPause != "" || *cmdSignalPause != "") {
 		log.Fatal("-signal-pause, -cmd-pause, and -cmd-signal-pause are incompatible with -iterations")
 	}
@@ -149,13 +148,8 @@ func main() {
 		log.Fatal("-shell can only be used in interactive mode (no -cmd, no pause flags, no -iterations)")
 	}
 
-	if *fphBench {
-		if *cmdPause == "" {
-			log.Fatal("-fph-bench requires -cmd-pause to specify the workload")
-		}
-		if *fphTimeoutMs > 0 {
-			log.Fatal("-fph-bench manages -fph-timeout-ms internally; do not set it")
-		}
+	if *fphBench && (*cmdPause == "" || *fphTimeoutMs > 0) {
+		log.Fatal("-fph-bench requires -cmd-pause and is incompatible with -fph-timeout-ms")
 	}
 
 	// Generate new build ID if not specified and pause mode is enabled
@@ -192,15 +186,11 @@ func main() {
 		iterations: *iterations,
 	}
 
-	fphBenchOpts := fphBenchOptions{
-		enabled:    *fphBench,
-		workload:   *cmdPause,
-		iterations: *iterations,
-		delay:      *fphBenchDelay,
+	benchIters := *iterations
+	if *fphBench && benchIters <= 0 {
+		benchIters = 3
 	}
-	if *fphBench && fphBenchOpts.iterations <= 0 {
-		fphBenchOpts.iterations = 3
-	}
+	fphBenchOpts := fphBenchOptions{enabled: *fphBench, workload: *cmdPause, iterations: benchIters, delay: *fphBenchDelay}
 
 	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *noEgress, *verbose, *shell, pauseOpts, runOpts, fphBenchOpts)
 	cancel()

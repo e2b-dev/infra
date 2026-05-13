@@ -76,9 +76,7 @@ func main() {
 		log.Fatal("-to-build required")
 	}
 
-	// Bake free-page-hinting into the balloon device at boot. The install bit
-	// is read from the offline LD store at the boot-time Create call and
-	// cannot be added on resume, so it must be flipped before builder.Build.
+	// FPH must be installed at boot — flag is read by Create, not Resume.
 	featureflags.NewBoolFlag("free-page-hinting-install", true)
 
 	// Suppress other noisy output unless verbose, but keep std log for fatal errors
