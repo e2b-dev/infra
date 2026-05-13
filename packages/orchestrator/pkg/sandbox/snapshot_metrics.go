@@ -47,9 +47,16 @@ func recordSnapshotDiff(
 
 	snapshotTotalBytes.Record(ctx, total, metric.WithAttributes(ft, uc))
 
+	var fullBytes, emptyBytes int64
+	if dm.Dirty != nil {
+		fullBytes = int64(dm.Dirty.GetCardinality()) * bs
+	}
+	if dm.Empty != nil {
+		emptyBytes = int64(dm.Empty.GetCardinality()) * bs
+	}
 	for kind, b := range map[string]int64{
-		"full":  int64(dm.Dirty.GetCardinality()) * bs,
-		"empty": int64(dm.Empty.GetCardinality()) * bs,
+		"full":  fullBytes,
+		"empty": emptyBytes,
 	} {
 		attrs := metric.WithAttributes(ft, attribute.String("kind", kind), uc)
 		snapshotDiffBytes.Record(ctx, b, attrs)
