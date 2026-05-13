@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -242,21 +243,25 @@ func New(
 
 			go logs.LogBufferedDataEvents(stdoutLogs, &stdoutLogger, "data")
 
+			// Reusable read buffer to avoid allocation per Read cycle when no
+			// subscribers are connected.
+			readBuf := make([]byte, stdChunkSize)
+
 			for {
-				buf := make([]byte, stdChunkSize)
+				n, readErr := stdout.Read(readBuf)
 
-				n, readErr := stdout.Read(buf)
+				if n > 0 && outMultiplex.HasSubscribers() {
+					data := slices.Clone(readBuf[:n])
 
-				if n > 0 {
 					outMultiplex.Source <- rpc.ProcessEvent_Data{
 						Data: &rpc.ProcessEvent_DataEvent{
 							Output: &rpc.ProcessEvent_DataEvent_Stdout{
-								Stdout: buf[:n],
+								Stdout: data,
 							},
 						},
 					}
 
-					stdoutLogs <- buf[:n]
+					stdoutLogs <- data
 				}
 
 				if errors.Is(readErr, io.EOF) {
@@ -284,21 +289,23 @@ func New(
 
 			go logs.LogBufferedDataEvents(stderrLogs, &stderrLogger, "data")
 
+			readBuf := make([]byte, stdChunkSize)
+
 			for {
-				buf := make([]byte, stdChunkSize)
+				n, readErr := stderr.Read(readBuf)
 
-				n, readErr := stderr.Read(buf)
+				if n > 0 && outMultiplex.HasSubscribers() {
+					data := slices.Clone(readBuf[:n])
 
-				if n > 0 {
 					outMultiplex.Source <- rpc.ProcessEvent_Data{
 						Data: &rpc.ProcessEvent_DataEvent{
 							Output: &rpc.ProcessEvent_DataEvent_Stderr{
-								Stderr: buf[:n],
+								Stderr: data,
 							},
 						},
 					}
 
-					stderrLogs <- buf[:n]
+					stderrLogs <- data
 				}
 
 				if errors.Is(readErr, io.EOF) {
