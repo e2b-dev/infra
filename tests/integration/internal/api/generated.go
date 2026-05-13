@@ -1433,6 +1433,12 @@ type supabase1TokenAuthContextKey string
 // supabase2TeamAuthContextKey is the context key for Supabase2TeamAuth security scheme
 type supabase2TeamAuthContextKey string
 
+// GetNodesParams defines parameters for GetNodes.
+type GetNodesParams struct {
+	// ClusterID Identifier of the cluster
+	ClusterID *openapi_types.UUID `form:"clusterID,omitempty" json:"clusterID,omitempty"`
+}
+
 // GetNodesNodeIDParams defines parameters for GetNodesNodeID.
 type GetNodesNodeIDParams struct {
 	// ClusterID Identifier of the cluster
@@ -1891,7 +1897,7 @@ type ClientInterface interface {
 	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetNodes request
-	GetNodes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetNodes(ctx context.Context, params *GetNodesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetNodesNodeID request
 	GetNodesNodeID(ctx context.Context, nodeID NodeID, params *GetNodesNodeIDParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2206,8 +2212,8 @@ func (c *Client) GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetNodes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetNodesRequest(c.Server)
+func (c *Client) GetNodes(ctx context.Context, params *GetNodesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetNodesRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -3280,7 +3286,7 @@ func NewGetHealthRequest(server string) (*http.Request, error) {
 }
 
 // NewGetNodesRequest generates requests for GetNodes
-func NewGetNodesRequest(server string) (*http.Request, error) {
+func NewGetNodesRequest(server string, params *GetNodesParams) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -3296,6 +3302,33 @@ func NewGetNodesRequest(server string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.ClusterID != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "clusterID", *params.ClusterID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "uuid"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -5676,7 +5709,7 @@ type ClientWithResponsesInterface interface {
 	GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error)
 
 	// GetNodesWithResponse request
-	GetNodesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetNodesResponse, error)
+	GetNodesWithResponse(ctx context.Context, params *GetNodesParams, reqEditors ...RequestEditorFn) (*GetNodesResponse, error)
 
 	// GetNodesNodeIDWithResponse request
 	GetNodesNodeIDWithResponse(ctx context.Context, nodeID NodeID, params *GetNodesNodeIDParams, reqEditors ...RequestEditorFn) (*GetNodesNodeIDResponse, error)
@@ -7717,8 +7750,8 @@ func (c *ClientWithResponses) GetHealthWithResponse(ctx context.Context, reqEdit
 }
 
 // GetNodesWithResponse request returning *GetNodesResponse
-func (c *ClientWithResponses) GetNodesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetNodesResponse, error) {
-	rsp, err := c.GetNodes(ctx, reqEditors...)
+func (c *ClientWithResponses) GetNodesWithResponse(ctx context.Context, params *GetNodesParams, reqEditors ...RequestEditorFn) (*GetNodesResponse, error) {
+	rsp, err := c.GetNodes(ctx, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}

@@ -3091,6 +3091,14 @@ paths:
       tags: [admin]
       security:
         - AdminTokenAuth: []
+      parameters:
+        - in: query
+          name: clusterID
+          description: Identifier of the cluster
+          required: false
+          schema:
+            type: string
+            format: uuid
       responses:
         "200":
           description: Successfully returned all nodes
