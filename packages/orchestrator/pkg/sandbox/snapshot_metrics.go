@@ -12,9 +12,9 @@ import (
 )
 
 var (
-	snapshotDiffBytes    = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotDiffBytes))
-	snapshotDiffRatioPct = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotDiffRatioPct))
-	snapshotTotalBytes   = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotTotalBytes))
+	snapshotDiffBytes   = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotDiffBytes))
+	snapshotDiffRatioBp = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotDiffRatioBp))
+	snapshotTotalBytes  = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotTotalBytes))
 )
 
 type SnapshotUseCase string
@@ -55,21 +55,23 @@ func recordSnapshotDiff(
 	} {
 		attrs := metric.WithAttributes(ft, attribute.String("kind", kind), uc)
 		snapshotDiffBytes.Record(ctx, b, attrs)
-		snapshotDiffRatioPct.Record(ctx, ratioPct(b, total), attrs)
+		snapshotDiffRatioBp.Record(ctx, ratioBp(b, total), attrs)
 	}
 }
 
-func ratioPct(num, denom int64) int64 {
+// ratioBp returns num/denom in basis points (10000 = 100.00%) so we keep
+// sub-percent resolution. Grafana panels divide by 100 to display percent.
+func ratioBp(num, denom int64) int64 {
 	if denom <= 0 {
 		return 0
 	}
-	pct := num * 100 / denom
-	if pct < 0 {
+	bp := num * 10000 / denom
+	if bp < 0 {
 		return 0
 	}
-	if pct > 100 {
-		return 100
+	if bp > 10000 {
+		return 10000
 	}
 
-	return pct
+	return bp
 }
