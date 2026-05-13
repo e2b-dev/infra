@@ -145,8 +145,6 @@ func RegisterBuild(
 
 	cpuCount, ramMB, apiError := team.LimitResources(data.Team.Limits, data.CpuCount, data.MemoryMB)
 	if apiError != nil {
-		telemetry.ReportCriticalError(ctx, "error when getting CPU and RAM", apiError.Err)
-
 		return nil, apiError
 	}
 

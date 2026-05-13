@@ -137,7 +137,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	template, apiError := template.RegisterBuild(ctx, a.templateCache, a.sqlcDB, buildReq)
 	if apiError != nil {
 		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
-		telemetry.ReportCriticalError(ctx, "build template register failed", apiError.Err)
+		telemetry.ReportErrorByCode(ctx, apiError.Code, "build template register failed", apiError.Err)
 
 		return nil
 	}
