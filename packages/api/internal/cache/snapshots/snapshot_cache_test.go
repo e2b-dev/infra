@@ -1,5 +1,4 @@
 package snapshotcache
-package snapshotcache
 
 import (
 	"testing"
