@@ -53,6 +53,23 @@ func NewMeterExporter(ctx context.Context, extraOption ...otlpmetricgrpc.Option)
 	return metricExporter, nil
 }
 
+// byteHistogramView routes all byte-unit histograms to a base-2 exponential
+// aggregation. The SDK's default explicit buckets max out at 10_000 (tuned for
+// ms) so byte values get collapsed into +Inf and percentile queries lose
+// resolution.
+var byteHistogramView = sdkmetric.NewView(
+	sdkmetric.Instrument{
+		Kind: sdkmetric.InstrumentKindHistogram,
+		Unit: "{By}",
+	},
+	sdkmetric.Stream{
+		Aggregation: sdkmetric.AggregationBase2ExponentialHistogram{
+			MaxSize:  160,
+			MaxScale: 20,
+		},
+	},
+)
+
 func NewMeterProvider(metricsExporter sdkmetric.Exporter, metricExportPeriod time.Duration, res *resource.Resource, extraOption ...sdkmetric.Option) (metric.MeterProvider, error) {
 	opts := []sdkmetric.Option{
 		sdkmetric.WithReader(
@@ -65,6 +82,7 @@ func NewMeterProvider(metricsExporter sdkmetric.Exporter, metricExportPeriod tim
 		// limit and we don't query them in any dashboard. Callers can still
 		// override this via extraOption since later options take precedence.
 		sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter),
+		sdkmetric.WithView(byteHistogramView),
 	}
 
 	if res != nil {
