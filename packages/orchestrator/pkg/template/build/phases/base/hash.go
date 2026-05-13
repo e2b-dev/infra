@@ -42,17 +42,32 @@ func (bb *BaseBuilder) Hash(ctx context.Context, _ phases.LayerResult) (string, 
 		provisionVersion = strconv.FormatInt(int64(val), 10)
 	}
 
+	// Resolve apt proxy URL the same way as in constructLayerFilesFromOCI
+	// so that toggling the flag or changing the URL invalidates the cache.
+	var aptProxyURL string
+	if bb.featureFlags.BoolFlag(ctx, featureflags.AptCacheEnabledFlag) {
+		aptProxyURL = bb.BuilderConfig.AptProxyURL
+	}
+
 	telemetry.SetAttributes(ctx,
 		attribute.String("index_version", bb.index.Version()),
 		attribute.String("provision_version", provisionVersion),
 		attribute.String("base_source", baseSource),
 		attribute.Int64("disk_size_mb", bb.Config.DiskSizeMB),
+		attribute.String("apt_proxy_url", aptProxyURL),
 	)
 
-	return cache.HashKeys(
-		bb.index.Version(),
+	hashKeys := []string{
 		provisionVersion,
 		strconv.FormatInt(bb.Config.DiskSizeMB, 10),
 		baseSource,
+	}
+	if aptProxyURL != "" {
+		hashKeys = append(hashKeys, aptProxyURL)
+	}
+
+	return cache.HashKeys(
+		bb.index.Version(),
+		hashKeys...,
 	), nil
 }
