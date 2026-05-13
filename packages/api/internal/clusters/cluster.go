@@ -269,7 +269,7 @@ func (c *Cluster) GetOrchestrators() []*Instance {
 func (c *Cluster) GetTemplateBuilders() []*Instance {
 	instances := make([]*Instance, 0)
 	for _, i := range c.instances.Items() {
-		if i.GetInfo().IsBuilder {
+		if i != nil && i.GetInfo().IsBuilder {
 			instances = append(instances, i)
 		}
 	}
