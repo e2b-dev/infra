@@ -633,12 +633,13 @@ components:
             $ref: "#/components/schemas/SandboxMetric"
 
     NewSandbox:
-      required:
-        - templateID
       properties:
         templateID:
           type: string
-          description: Identifier of the required template
+          description: Identifier of the required template. Either templateID or snapshotID must be provided.
+        snapshotID:
+          type: string
+          description: Identifier of the snapshot to resume from. Either templateID or snapshotID must be provided. When specified, the sandbox will be created from the snapshot state.
         timeout:
           type: integer
           format: int32
@@ -1987,7 +1988,7 @@ paths:
         "500":
           $ref: "#/components/responses/500"
     post:
-      description: Create a sandbox from the template
+      description: Create a sandbox from a template or snapshot. Provide either templateID to create from a template, or snapshotID to resume from a paused sandbox snapshot.
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
@@ -2001,7 +2002,7 @@ paths:
               $ref: "#/components/schemas/NewSandbox"
       responses:
         "201":
-          description: The sandbox was created successfully
+          description: The sandbox was created successfully from the template or snapshot
           content:
             application/json:
               schema:
@@ -2273,10 +2274,9 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  # TODO: Pause and resume might be exposed as POST /sandboxes/{sandboxID}/snapshot and then POST /sandboxes with specified snapshotting setup
   /sandboxes/{sandboxID}/pause:
     post:
-      description: Pause the sandbox
+      description: Pause the sandbox. This creates an automatic snapshot of the sandbox state that can be used to resume it later via POST /sandboxes with the snapshotID parameter.
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
@@ -2286,7 +2286,7 @@ paths:
         - $ref: "#/components/parameters/sandboxID"
       responses:
         "204":
-          description: The sandbox was paused successfully and can be resumed
+          description: The sandbox was paused successfully. An automatic snapshot was created and can be used to resume the sandbox later.
         "409":
           $ref: "#/components/responses/409"
         "404":
@@ -2299,7 +2299,7 @@ paths:
   /sandboxes/{sandboxID}/resume:
     post:
       deprecated: true
-      description: Resume the sandbox
+      description: Resume the sandbox. DEPRECATED - Use POST /sandboxes with snapshotID parameter instead to create a new sandbox from a snapshot.
       tags: [sandboxes]
       security:
         - ApiKeyAuth: []
@@ -2315,7 +2315,7 @@ paths:
               $ref: "#/components/schemas/ResumedSandbox"
       responses:
         "201":
-          description: The sandbox was resumed successfully
+          description: The sandbox was resumed successfully. This endpoint is deprecated - use POST /sandboxes with snapshotID instead.
           content:
             application/json:
               schema:

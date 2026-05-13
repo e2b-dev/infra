@@ -81,18 +81,8 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 }
 
 func pauseHandleNotRunningSandbox(ctx context.Context, cache *snapshotcache.SnapshotCache, sandboxID string, teamID uuid.UUID) api.APIError {
-	// TODO: ENG-3544 scope GetLastSnapshot query by teamID to avoid post-fetch ownership check.
-	snap, err := cache.Get(ctx, sandboxID)
+	_, err := cache.GetByTeam(ctx, sandboxID, teamID)
 	if err == nil {
-		if snap.Snapshot.TeamID != teamID {
-			logger.L().Debug(ctx, "Snapshot team mismatch on pause", logger.WithSandboxID(sandboxID), logger.WithTeamID(teamID.String()))
-
-			return api.APIError{
-				Code:      http.StatusNotFound,
-				ClientMsg: utils.SandboxNotFoundMsg(sandboxID),
-			}
-		}
-
 		logger.L().Warn(ctx, "Sandbox is already paused", logger.WithSandboxID(sandboxID))
 
 		return api.APIError{
