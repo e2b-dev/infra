@@ -291,14 +291,14 @@ components:
           additionalProperties:
             type: array
             items:
-              $ref: '#/components/schemas/SandboxNetworkRule'
+              $ref: "#/components/schemas/SandboxNetworkRule"
 
     SandboxNetworkRule:
       type: object
       description: Transform rule applied to egress requests matching a domain pattern.
       properties:
         transform:
-          $ref: '#/components/schemas/SandboxNetworkTransform'
+          $ref: "#/components/schemas/SandboxNetworkTransform"
 
     SandboxNetworkTransform:
       type: object
@@ -2431,7 +2431,7 @@ paths:
                   additionalProperties:
                     type: array
                     items:
-                      $ref: '#/components/schemas/SandboxNetworkRule'
+                      $ref: "#/components/schemas/SandboxNetworkRule"
                 allow_internet_access:
                   type: boolean
                   description:
@@ -3091,6 +3091,14 @@ paths:
       tags: [admin]
       security:
         - AdminTokenAuth: []
+      parameters:
+        - in: query
+          name: clusterID
+          description: Identifier of the cluster
+          required: false
+          schema:
+            type: string
+            format: uuid
       responses:
         "200":
           description: Successfully returned all nodes
