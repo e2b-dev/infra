@@ -74,11 +74,13 @@ func (a *CommonAuthenticator[T]) GetHeaderKeysFromRequest(req *http.Request) (st
 func (a *CommonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.Context, input *openapi3filter.AuthenticationInput) error {
 	headerKey, err := a.GetHeaderKeysFromRequest(input.RequestValidationInput.Request)
 	if err != nil {
-		telemetry.ReportError(ctx,
-			"authorization header is missing",
-			err,
-			attribute.String("error.message", a.ErrorMessage),
-		)
+		if !errors.Is(err, ErrNoAuthHeader) {
+			telemetry.ReportError(ctx,
+				"authorization header is missing",
+				err,
+				attribute.String("error.message", a.ErrorMessage),
+			)
+		}
 
 		ginCtx.Status(http.StatusUnauthorized)
 
