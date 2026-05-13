@@ -1,8 +1,8 @@
+//go:build linux
+
 package server
 
 import (
-	"encoding/json"
-	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/buildlogger"
@@ -100,21 +101,36 @@ func newTestServerStore(t *testing.T, logLines []testLogLine) (*ServerStore, str
 func writeTestBuildLogs(t *testing.T, buildLogs *buildlogger.LogEntryLogger, lines []testLogLine) {
 	t.Helper()
 
-	var input strings.Builder
 	for _, line := range lines {
-		payload, err := json.Marshal(map[string]any{
-			"ts":    line.ts,
-			"msg":   line.message,
-			"level": line.level,
-		})
+		err := buildLogs.Write(zapcore.Entry{
+			Level:   stringToZapLevel(line.level),
+			Time:    epochToTime(line.ts),
+			Message: line.message,
+		}, nil)
 		require.NoError(t, err)
-
-		input.Write(payload)
-		input.WriteByte('\n')
 	}
+}
 
-	_, err := buildLogs.Write([]byte(input.String()))
-	require.NoError(t, err)
+func stringToZapLevel(level string) zapcore.Level {
+	switch level {
+	case "debug":
+		return zapcore.DebugLevel
+	case "info":
+		return zapcore.InfoLevel
+	case "warn":
+		return zapcore.WarnLevel
+	case "error":
+		return zapcore.ErrorLevel
+	default:
+		return zapcore.InfoLevel
+	}
+}
+
+func epochToTime(epoch float64) time.Time {
+	sec := int64(epoch)
+	nsec := int64((epoch - float64(sec)) * 1e9)
+
+	return time.Unix(sec, nsec).UTC()
 }
 
 func timeToEpoch(t time.Time) float64 {

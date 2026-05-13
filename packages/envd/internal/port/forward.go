@@ -144,10 +144,9 @@ func (f *Forwarder) startPortForwarding(ctx context.Context, p *PortToForward) {
 	cgroupFD, ok := f.cgroupManager.GetFileDescriptor(cgroups.ProcessTypeSocat)
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid:     true,
-		CgroupFD:    cgroupFD,
-		UseCgroupFD: ok,
+		Setpgid: true,
 	}
+	applyCgroupFD(cmd.SysProcAttr, cgroupFD, ok)
 
 	f.logger.Debug().
 		Str("socatCmd", cmd.String()).

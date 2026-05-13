@@ -29,6 +29,11 @@ variable "engine_version" {
   type = string
 }
 
+variable "node_type" {
+  type    = string
+  default = "STANDARD_SMALL"
+}
+
 // https://registry.terraform.io/providers/hashicorp/google/6.38.0/docs/resources/memorystore_instance#replica_count-1
 variable "replica_count" {
   type    = number

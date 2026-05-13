@@ -11,8 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/e2b-dev/infra/packages/api/internal/auth"
-	"github.com/e2b-dev/infra/packages/api/internal/db"
+	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -123,11 +122,11 @@ func processCustomErrors(e *openapi3filter.SecurityRequirementsError) error {
 	unwrapped := e.Errors
 	err := unwrapped[0]
 
-	var teamForbidden *db.TeamForbiddenError
-	var teamBlocked *db.TeamBlockedError
+	var teamForbidden *sharedauth.TeamForbiddenError
+	var teamBlocked *sharedauth.TeamBlockedError
 	// Return only the first non-missing authorization header error (if possible)
 	for _, errW := range unwrapped {
-		if errors.Is(errW, auth.ErrNoAuthHeader) {
+		if errors.Is(errW, sharedauth.ErrNoAuthHeader) {
 			continue
 		}
 

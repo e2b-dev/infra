@@ -1,3 +1,5 @@
+//go:build linux
+
 package testutils
 
 // FirstDifferentByte returns the first byte index where a and b differ.

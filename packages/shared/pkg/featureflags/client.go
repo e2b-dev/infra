@@ -9,6 +9,7 @@ import (
 	"github.com/launchdarkly/go-sdk-common/v3/ldlog"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	ldclient "github.com/launchdarkly/go-server-sdk/v7"
+	"github.com/launchdarkly/go-server-sdk/v7/interfaces"
 	"github.com/launchdarkly/go-server-sdk/v7/ldcomponents"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"go.uber.org/zap"
@@ -103,6 +104,25 @@ func (c *Client) BoolFlag(ctx context.Context, flag BoolFlag, contexts ...ldcont
 
 func (c *Client) JSONFlag(ctx context.Context, flag JSONFlag, contexts ...ldcontext.Context) ldvalue.Value {
 	return getFlag(ctx, c.ld, c.ld.JSONVariationCtx, flag, c.allContexts(contexts))
+}
+
+func (c *Client) WatchJSONFlag(ctx context.Context, flag JSONFlag, contexts ...ldcontext.Context) (<-chan interfaces.FlagValueChangeEvent, func()) {
+	if c.ld == nil {
+		ch := make(chan interfaces.FlagValueChangeEvent)
+		close(ch)
+
+		return ch, func() {}
+	}
+
+	listener := c.ld.GetFlagTracker().AddFlagValueChangeListener(
+		flag.Key(),
+		mergeContexts(ctx, c.allContexts(contexts)),
+		flag.Fallback(),
+	)
+
+	return listener, func() {
+		c.ld.GetFlagTracker().RemoveFlagValueChangeListener(listener)
+	}
 }
 
 func (c *Client) IntFlag(ctx context.Context, flag IntFlag, contexts ...ldcontext.Context) int {

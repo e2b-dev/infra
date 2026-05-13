@@ -223,12 +223,10 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 		proc.Wait()
 	}()
 
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-exitChan:
-		return nil
-	}
+	// Wait for the sender goroutine; returning early panics envd.
+	<-exitChan
+
+	return ctx.Err()
 }
 
 func determineTimeoutFromHeader(header http.Header) (time.Duration, error) {

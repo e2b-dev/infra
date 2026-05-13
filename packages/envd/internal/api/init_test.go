@@ -340,7 +340,7 @@ func TestCheckMMDSHash(t *testing.T) {
 
 func TestSetData(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	ctx := t.Context()
 	logger := zerolog.Nop()
 
 	t.Run("access token updates", func(t *testing.T) {

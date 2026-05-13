@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -17,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/metrics"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/discovery"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/evictor"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
@@ -47,7 +47,7 @@ type SnapshotCacheInvalidator interface {
 
 type Orchestrator struct {
 	httpClient                    *http.Client
-	nomadClient                   *nomadapi.Client
+	nodeDiscovery                 discovery.Discovery
 	sandboxStore                  *sandbox.Store
 	nodes                         *smap.Map[*nodemanager.Node]
 	placementAlgorithm            *placement.BestOfK
@@ -89,7 +89,7 @@ func New(
 	ctx context.Context,
 	config cfg.Config,
 	tel *telemetry.Client,
-	nomadClient *nomadapi.Client,
+	nodeDiscovery discovery.Discovery,
 	posthogClient *analyticscollector.PosthogClient,
 	redisClient redis.UniversalClient,
 	sqlcDB *sqlcdb.Client,
@@ -110,12 +110,7 @@ func New(
 	}
 	analyticsInstance.Init(ctx)
 
-	var routingCatalog e2bcatalog.SandboxesCatalog
-	if redisClient != nil {
-		routingCatalog = e2bcatalog.NewRedisSandboxCatalog(redisClient)
-	} else {
-		routingCatalog = e2bcatalog.NewMemorySandboxesCatalog()
-	}
+	routingCatalog := e2bcatalog.NewRedisSandboxCatalog(redisClient)
 
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
 	// right now we load them from Orchestrator
@@ -141,7 +136,7 @@ func New(
 		httpClient:           httpClient,
 		analytics:            analyticsInstance,
 		posthogClient:        posthogClient,
-		nomadClient:          nomadClient,
+		nodeDiscovery:        nodeDiscovery,
 		nodes:                smap.New[*nodemanager.Node](),
 		placementAlgorithm:   bestOfKAlgorithm,
 		featureFlagsClient:   featureFlags,
@@ -166,6 +161,8 @@ func New(
 		reservationStorage = reservations.NewReservationStorage()
 		sandboxStorage = populate_redis.NewStorage(memory.NewStorage(), redisStorage)
 		logger.L().Info(ctx, "Using populate_redis sandbox storage backend")
+
+		go redisbackend.NewCleaner(redisStorage).Start(ctx)
 	case cfg.SandboxStorageBackendRedis:
 		reservationStorage = redisreservations.NewReservationStorage(redisClient)
 		sandboxStorage = redisStorage
@@ -185,7 +182,10 @@ func New(
 	)
 
 	// Evict old sandboxes
-	sandboxEvictor := evictor.New(o.sandboxStore, o.RemoveSandbox)
+	sandboxEvictor, err := evictor.New(o.sandboxStore, o.RemoveSandbox, meter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sandbox evictor: %w", err)
+	}
 	go sandboxEvictor.Start(ctx)
 
 	teamMetricsObserver, err := metrics.NewTeamObserver(ctx, o.sandboxStore)

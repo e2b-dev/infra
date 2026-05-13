@@ -390,6 +390,24 @@ variable "enable_otel_router_logs" {
   description = "Enable teeing non-internal customer logs from Vector to otel-router."
 }
 
+variable "otel_router_http_port" {
+  type        = number
+  default     = 4321
+  description = "Local otel-router Vector-compatible logs port used by Vector when otel-router log teeing is enabled."
+}
+
+variable "enable_otel_router_metrics" {
+  type        = bool
+  default     = false
+  description = "Enable teeing external customer metrics from otel-collector to otel-router."
+}
+
+variable "otel_router_grpc_port" {
+  type        = number
+  default     = 4320
+  description = "Local otel-router OTLP gRPC port used by otel-collector when otel-router metric teeing is enabled."
+}
+
 variable "clickhouse_server_port" {
   type = object({
     name = string

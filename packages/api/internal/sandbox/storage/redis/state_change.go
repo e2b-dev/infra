@@ -34,9 +34,10 @@ import (
 func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) (sandbox.Sandbox, bool, func(context.Context, error), error) {
 	key := getSandboxKey(teamID.String(), sandboxID)
 	transitionKey := getTransitionKey(teamID.String(), sandboxID)
+	lockKey := redis_utils.GetLockKey(key)
 
 	// Acquire distributed lock
-	lock, err := s.lockService.Obtain(ctx, redis_utils.GetLockKey(key), lockTimeout, s.lockOption)
+	lock, err := s.locker.Obtain(ctx, lockKey, lockTimeout)
 	if err != nil {
 		return sandbox.Sandbox{}, false, nil, fmt.Errorf("failed to obtain lock: %w", err)
 	}
@@ -156,7 +157,8 @@ func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, res
 			restoreErr = s.restoreToRunning(cbCtx, teamID, sandboxID, stateAction.TargetState)
 		}
 
-		lock, err := s.lockService.Obtain(cbCtx, redis_utils.GetLockKey(transitionKey), lockTimeout, s.lockOption)
+		lockKey := redis_utils.GetLockKey(transitionKey)
+		lock, err := s.locker.Obtain(cbCtx, lockKey, lockTimeout)
 		if err != nil {
 			logger.L().Warn(cbCtx, "Failed to obtain lock in callback", logger.WithSandboxID(sandboxID), zap.String("transitionID", transitionID), zap.Error(err))
 
@@ -198,7 +200,7 @@ func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, res
 		// The routing key is published as the payload so the single global channel
 		// can serve all sandboxes across all teams.
 		routingKey := getTransitionRoutingKey(teamID.String(), sandboxID, transitionID)
-		pubErr := s.redisClient.Publish(cbCtx, globalTransitionNotifyChannel, routingKey).Err()
+		pubErr := s.redisClient.Publish(cbCtx, globalStorageNotifyChannel, routingKey).Err()
 		if pubErr != nil {
 			logger.L().Warn(cbCtx, "Failed to publish transition notification",
 				logger.WithSandboxID(sandboxID),
