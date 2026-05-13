@@ -110,12 +110,7 @@ func New(
 	}
 	analyticsInstance.Init(ctx)
 
-	var routingCatalog e2bcatalog.SandboxesCatalog
-	if redisClient != nil {
-		routingCatalog = e2bcatalog.NewRedisSandboxCatalog(redisClient)
-	} else {
-		routingCatalog = e2bcatalog.NewMemorySandboxesCatalog()
-	}
+	routingCatalog := e2bcatalog.NewRedisSandboxCatalog(redisClient)
 
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
 	// right now we load them from Orchestrator
