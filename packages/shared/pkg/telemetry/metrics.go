@@ -53,6 +53,25 @@ func NewMeterExporter(ctx context.Context, extraOption ...otlpmetricgrpc.Option)
 	return metricExporter, nil
 }
 
+// snapshotBytesView routes the per-snapshot byte histograms to a base-2
+// exponential aggregation. The SDK's default explicit buckets max out at
+// 10_000 (tuned for ms), which collapses byte values into +Inf and makes
+// percentile queries unusable for the 0–tens-of-GiB range these metrics
+// cover.
+var snapshotBytesView = sdkmetric.NewView(
+	sdkmetric.Instrument{
+		Kind: sdkmetric.InstrumentKindHistogram,
+		Name: "orchestrator.sandbox.snapshot.*",
+		Unit: "{By}",
+	},
+	sdkmetric.Stream{
+		Aggregation: sdkmetric.AggregationBase2ExponentialHistogram{
+			MaxSize:  160,
+			MaxScale: 20,
+		},
+	},
+)
+
 func NewMeterProvider(metricsExporter sdkmetric.Exporter, metricExportPeriod time.Duration, res *resource.Resource, extraOption ...sdkmetric.Option) (metric.MeterProvider, error) {
 	opts := []sdkmetric.Option{
 		sdkmetric.WithReader(
@@ -72,6 +91,7 @@ func NewMeterProvider(metricsExporter sdkmetric.Exporter, metricExportPeriod tim
 	}
 
 	opts = append(opts, extraOption...)
+	opts = append(opts, sdkmetric.WithView(snapshotBytesView))
 
 	return sdkmetric.NewMeterProvider(opts...), nil
 }
