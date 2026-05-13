@@ -255,7 +255,6 @@ func RegisterBuild(
 
 		if exists {
 			err := fmt.Errorf("alias '%s' is already used", alias)
-			telemetry.ReportCriticalError(ctx, "conflict of alias", err, attribute.String("alias", alias))
 
 			return nil, &api.APIError{
 				Err:       err,
@@ -317,7 +316,6 @@ func RegisterBuild(
 			telemetry.ReportEvent(ctx, "created new alias", attribute.String("env.alias", alias))
 		} else if aliasDB.EnvID != data.TemplateID {
 			err := fmt.Errorf("alias '%s' already used", alias)
-			telemetry.ReportCriticalError(ctx, "alias already used", err, attribute.String("alias", alias))
 
 			return nil, &api.APIError{
 				Err:       err,
