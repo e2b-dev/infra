@@ -58,7 +58,7 @@ func (c *Cleaner) Start(ctx context.Context) {
 func (c *Cleaner) RunOnce(ctx context.Context) error {
 	var errs []error
 
-	// 1. globalExpirationSet: ExpiredItems internally ZREMs members whose sandbox JSON is gone (items.go:131-135).
+	// 1. globalExpirationSet: ExpiredItems internally ZREMs members whose sandbox JSON is gone.
 	// 2. evictExpired removes sandboxes whose EndTime is older than StaleCutoff;
 	//    recently expired ones are left to the evictor to avoid racing it.
 	expired, err := c.storage.ExpiredItems(ctx)
@@ -89,7 +89,7 @@ func (c *Cleaner) evictExpired(ctx context.Context, expired []sandbox.Sandbox) {
 		}
 
 		if rmErr := c.storage.Remove(context.WithoutCancel(ctx), sbx.TeamID, sbx.SandboxID); rmErr != nil {
-			logger.L().Warn(ctx, "Cleaner failed to remove stale expired sandbox",
+			logger.L().Error(ctx, "Cleaner failed to remove stale expired sandbox",
 				zap.Error(rmErr),
 				logger.WithSandboxID(sbx.SandboxID),
 				logger.WithTeamID(sbx.TeamID.String()),
