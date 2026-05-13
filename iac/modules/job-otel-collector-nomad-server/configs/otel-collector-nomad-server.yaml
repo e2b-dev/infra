@@ -62,6 +62,15 @@ processors:
   batch:
     timeout: 5s
 
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+  batch/gcp_telemetry:
+    timeout: 5s
+    send_batch_size: 200
+    send_batch_max_size: 200
+
+  metricstarttime/gcp_telemetry:
+    strategy: subtract_initial_point
+%{ endif }
 
   resourcedetection:
     # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/resourcedetectionprocessor
@@ -123,6 +132,34 @@ processors:
       - set(datapoint.attributes["deployment.environment"], resource.attributes["cloud.account.id"])
       - delete_key(resource.attributes, "service.name")
 
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+  resource/gcp_telemetry_project:
+    attributes:
+      - key: gcp.project_id
+        value: ${gcp_telemetry_project_id}
+        action: insert
+
+  transform/gcp_telemetry_collision:
+    # The Google Cloud OTLP metrics endpoint reserves these datapoint attribute
+    # names. This processor is used only by GCP Telemetry pipelines, so existing
+    # Grafana Cloud exports keep their original labels.
+    metric_statements:
+      - context: datapoint
+        statements:
+          - set(attributes["exported_location"], attributes["location"]) where attributes["location"] != nil
+          - delete_key(attributes, "location")
+          - set(attributes["exported_cluster"], attributes["cluster"]) where attributes["cluster"] != nil
+          - delete_key(attributes, "cluster")
+          - set(attributes["exported_namespace"], attributes["namespace"]) where attributes["namespace"] != nil
+          - delete_key(attributes, "namespace")
+          - set(attributes["exported_job"], attributes["job"]) where attributes["job"] != nil
+          - delete_key(attributes, "job")
+          - set(attributes["exported_instance"], attributes["instance"]) where attributes["instance"] != nil
+          - delete_key(attributes, "instance")
+          - set(attributes["exported_project_id"], attributes["project_id"]) where attributes["project_id"] != nil
+          - delete_key(attributes, "project_id")
+%{ endif }
+
 extensions:
   basicauth/grafana_cloud:
     # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/extension/basicauthextension
@@ -132,12 +169,22 @@ extensions:
 
   health_check:
     endpoint: 0.0.0.0:13134
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+  googleclientauth:
+%{ endif }
 exporters:
   otlp_http/grafana_cloud:
     # https://github.com/open-telemetry/opentelemetry-collector/tree/main/exporter/otlpexporter
     endpoint: "${grafana_otlp_url}/otlp"
     auth:
       authenticator: basicauth/grafana_cloud
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+  otlphttp/gcp_telemetry:
+    endpoint: https://telemetry.googleapis.com
+    encoding: proto
+    auth:
+      authenticator: googleclientauth
+%{ endif }
 service:
   telemetry:
     metrics:
@@ -145,6 +192,9 @@ service:
   extensions:
     - basicauth/grafana_cloud
     - health_check
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+    - googleclientauth
+%{ endif }
   pipelines:
     metrics/prometheus:
       receivers:
@@ -156,3 +206,18 @@ service:
         - batch
       exporters:
         - otlp_http/grafana_cloud
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+    metrics/gcp_telemetry/prometheus:
+      receivers:
+        - prometheus
+      processors:
+        - filter/nomad_metrics
+        - resourcedetection
+        - transform/set-name
+        - resource/gcp_telemetry_project
+        - transform/gcp_telemetry_collision
+        - metricstarttime/gcp_telemetry
+        - batch/gcp_telemetry
+      exporters:
+        - otlphttp/gcp_telemetry
+%{ endif }

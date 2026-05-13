@@ -111,6 +111,8 @@ module "init" {
   gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region
 
+  enable_gcp_telemetry_metrics = var.enable_gcp_telemetry_metrics
+
   template_bucket_location = var.template_bucket_location
   template_bucket_name     = var.template_bucket_name
 
@@ -283,12 +285,14 @@ module "nomad" {
   loki_service_port        = var.loki_service_port
 
   # Otel Colelctor
-  otel_collector_resources_memory_mb = var.otel_collector_resources_memory_mb
-  otel_collector_resources_cpu_count = var.otel_collector_resources_cpu_count
-  enable_otel_router_logs            = var.enable_otel_router_logs
-  otel_router_http_port              = var.otel_router_http_port
-  enable_otel_router_metrics         = var.enable_otel_router_metrics
-  otel_router_grpc_port              = var.otel_router_grpc_port
+  otel_collector_resources_memory_mb    = var.otel_collector_resources_memory_mb
+  otel_collector_resources_cpu_count    = var.otel_collector_resources_cpu_count
+  enable_otel_router_logs               = var.enable_otel_router_logs
+  otel_router_http_port                 = var.otel_router_http_port
+  enable_otel_router_metrics            = var.enable_otel_router_metrics
+  otel_router_grpc_port                 = var.otel_router_grpc_port
+  enable_gcp_telemetry_metrics          = var.enable_gcp_telemetry_metrics
+  enable_gcp_telemetry_external_metrics = var.enable_gcp_telemetry_external_metrics
 
   # Dashboard API
   dashboard_api_count                          = var.dashboard_api_count

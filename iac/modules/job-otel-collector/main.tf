@@ -15,6 +15,10 @@ locals {
 
       enable_otel_router_metrics = var.enable_otel_router_metrics
       otel_router_grpc_port      = var.otel_router_grpc_port
+
+      enable_gcp_telemetry_metrics          = var.enable_gcp_telemetry_metrics
+      enable_gcp_telemetry_external_metrics = var.enable_gcp_telemetry_external_metrics
+      gcp_telemetry_project_id              = var.gcp_telemetry_project_id
     },
   )
 
@@ -30,6 +34,18 @@ resource "nomad_job" "otel_collector" {
     otel_collector_grpc_port = var.otel_collector_grpc_port
     otel_collector_config    = local.otel_collector_config
   })
+
+  lifecycle {
+    precondition {
+      condition     = !var.enable_gcp_telemetry_metrics || var.gcp_telemetry_project_id != ""
+      error_message = "gcp_telemetry_project_id must be set when enable_gcp_telemetry_metrics is true."
+    }
+
+    precondition {
+      condition     = !var.enable_gcp_telemetry_external_metrics || var.enable_gcp_telemetry_metrics
+      error_message = "enable_gcp_telemetry_metrics must be true when enable_gcp_telemetry_external_metrics is true."
+    }
+  }
 }
 
 variable "provider_name" {
@@ -120,4 +136,22 @@ variable "otel_collector_config_override" {
   type        = string
   default     = ""
   description = "Custom OTel collector YAML config. When set, replaces the default config entirely."
+}
+
+variable "enable_gcp_telemetry_metrics" {
+  type        = bool
+  default     = false
+  description = "Enable exporting selected metrics to Google Cloud Telemetry API using OTLP/HTTP."
+}
+
+variable "enable_gcp_telemetry_external_metrics" {
+  type        = bool
+  default     = false
+  description = "Enable exporting external e2b.* metrics to Google Cloud Telemetry API. Requires enable_gcp_telemetry_metrics."
+}
+
+variable "gcp_telemetry_project_id" {
+  type        = string
+  default     = ""
+  description = "Google Cloud project ID used for OTLP metric ingestion. Required when enable_gcp_telemetry_metrics is true."
 }

@@ -207,6 +207,16 @@ processors:
     timeout: 5s
     send_batch_size: 50000
 
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+  batch/gcp_telemetry:
+    timeout: 5s
+    send_batch_size: 200
+    send_batch_max_size: 200
+
+  metricstarttime/gcp_telemetry:
+    strategy: subtract_initial_point
+%{ endif }
+
   # keep only metrics that are used
   filter/otlp:
     # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/filterprocessor
@@ -391,6 +401,34 @@ processors:
       - delete_key(datapoint.attributes, "node_status")
       - delete_key(datapoint.attributes, "service_name")
 
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+  resource/gcp_telemetry_project:
+    attributes:
+      - key: gcp.project_id
+        value: ${gcp_telemetry_project_id}
+        action: insert
+
+  transform/gcp_telemetry_collision:
+    # The Google Cloud OTLP metrics endpoint reserves these datapoint attribute
+    # names. This processor is used only by GCP Telemetry pipelines, so existing
+    # Grafana Cloud and ClickHouse exports keep their original labels.
+    metric_statements:
+      - context: datapoint
+        statements:
+          - set(attributes["exported_location"], attributes["location"]) where attributes["location"] != nil
+          - delete_key(attributes, "location")
+          - set(attributes["exported_cluster"], attributes["cluster"]) where attributes["cluster"] != nil
+          - delete_key(attributes, "cluster")
+          - set(attributes["exported_namespace"], attributes["namespace"]) where attributes["namespace"] != nil
+          - delete_key(attributes, "namespace")
+          - set(attributes["exported_job"], attributes["job"]) where attributes["job"] != nil
+          - delete_key(attributes, "job")
+          - set(attributes["exported_instance"], attributes["instance"]) where attributes["instance"] != nil
+          - delete_key(attributes, "instance")
+          - set(attributes["exported_project_id"], attributes["project_id"]) where attributes["project_id"] != nil
+          - delete_key(attributes, "project_id")
+%{ endif }
+
   filter/rpc_duration_only:
     metrics:
       include:
@@ -436,6 +474,9 @@ extensions:
 
   health_check:
     endpoint: 0.0.0.0:13133
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+  googleclientauth:
+%{ endif }
 exporters:
   debug:
     verbosity: detailed
@@ -445,6 +486,13 @@ exporters:
     endpoint: "${grafana_otlp_url}/otlp"
     auth:
       authenticator: basicauth/grafana_cloud
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+  otlphttp/gcp_telemetry:
+    endpoint: https://telemetry.googleapis.com
+    encoding: proto
+    auth:
+      authenticator: googleclientauth
+%{ endif }
   clickhouse:
     endpoint: tcp://${clickhouse_host}:${clickhouse_port}
     database: ${clickhouse_database}
@@ -478,6 +526,9 @@ service:
   extensions:
     - basicauth/grafana_cloud
     - health_check
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+    - googleclientauth
+%{ endif }
   pipelines:
     metrics:
       receivers:
@@ -522,6 +573,72 @@ service:
         - batch
       exporters:
         - otlp_http/grafana_cloud
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+    metrics/gcp_telemetry:
+      receivers:
+        - otlp
+      processors:
+        - filter/otlp
+        - resourcedetection
+        - transform/set-name
+        - resource/gcp_telemetry_project
+        - transform/gcp_telemetry_collision
+        - batch/gcp_telemetry
+      exporters:
+        - otlphttp/gcp_telemetry
+    metrics/gcp_telemetry/prometheus:
+      receivers:
+        - prometheus
+      processors:
+        - filter/only_client_allocs
+        - resourcedetection
+        - transform/set-name
+        - resource/gcp_telemetry_project
+        - transform/gcp_telemetry_collision
+        - metricstarttime/gcp_telemetry
+        - batch/gcp_telemetry
+      exporters:
+        - otlphttp/gcp_telemetry
+    metrics/gcp_telemetry/rpc_only:
+      receivers:
+        - otlp
+      processors:
+        - filter/rpc_duration_only
+        - resource/remove_instance
+        - resourcedetection
+        - transform/set-name
+        - resource/gcp_telemetry_project
+        - transform/gcp_telemetry_collision
+        - batch/gcp_telemetry
+      exporters:
+        - otlphttp/gcp_telemetry
+    metrics/gcp_telemetry/host:
+      receivers:
+        - hostmetrics
+      processors:
+        - resourcedetection
+        - transform/set-name
+        - metricstransform/single_cpu
+        - transform/aggregate_nvme
+        - metricstransform/aggregate_disks
+        - resource/gcp_telemetry_project
+        - transform/gcp_telemetry_collision
+        - batch/gcp_telemetry
+      exporters:
+        - otlphttp/gcp_telemetry
+%{ if enable_gcp_telemetry_external_metrics }
+    metrics/gcp_telemetry/external:
+      receivers:
+        - otlp
+      processors:
+        - filter/external_metrics
+        - resource/gcp_telemetry_project
+        - transform/gcp_telemetry_collision
+        - batch/gcp_telemetry
+      exporters:
+        - otlphttp/gcp_telemetry
+%{ endif }
+%{ endif }
     metrics/external:
       receivers:
         - otlp
