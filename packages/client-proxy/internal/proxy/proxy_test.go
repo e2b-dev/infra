@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
+	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
@@ -78,7 +79,7 @@ func ptr[T any](v T) *T {
 func TestCatalogResolution_CatalogHit(t *testing.T) {
 	t.Parallel()
 
-	c := catalog.NewMemorySandboxesCatalog()
+	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
 	ff := newFF(t, true)
 
 	err := c.StoreSandbox(t.Context(), "sbx", &catalog.SandboxInfo{
@@ -154,7 +155,7 @@ func TestClientProxyMaskRequestHost(t *testing.T) {
 func TestCatalogResolution_CatalogHit_EmptyIPReturnsRouteUnavailable(t *testing.T) {
 	t.Parallel()
 
-	c := catalog.NewMemorySandboxesCatalog()
+	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
 	ff := newFF(t, true)
 
 	err := c.StoreSandbox(t.Context(), "sbx", &catalog.SandboxInfo{
@@ -172,7 +173,7 @@ func TestCatalogResolution_CatalogHit_EmptyIPReturnsRouteUnavailable(t *testing.
 func TestCatalogResolution_CatalogMiss(t *testing.T) {
 	t.Parallel()
 
-	c := catalog.NewMemorySandboxesCatalog()
+	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
 	ff := newFF(t, true)
 
 	_, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
@@ -182,7 +183,7 @@ func TestCatalogResolution_CatalogMiss(t *testing.T) {
 func TestCatalogResolution_CatalogMiss_ResumeEmptyIPReturnsRouteUnavailable(t *testing.T) {
 	t.Parallel()
 
-	c := catalog.NewMemorySandboxesCatalog()
+	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
 	ff := newFF(t, true)
 
 	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, stubResumer{nodeIP: ""}, ff)
