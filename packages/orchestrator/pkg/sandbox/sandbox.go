@@ -1094,7 +1094,7 @@ func (s *Sandbox) Pause(
 	}
 
 	// Start POSTPROCESSING
-	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
+	memfileDiff, memfileDiffHeader, memfileDiffStats, err := pauseProcessMemory(
 		ctx,
 		buildID,
 		originalMemfile.Header(),
@@ -1107,7 +1107,7 @@ func (s *Sandbox) Pause(
 	}
 	cleanup.AddNoContext(ctx, memfileDiff.Close)
 
-	rootfsDiff, rootfsDiffHeader, err := pauseProcessRootfs(
+	rootfsDiff, rootfsDiffHeader, rootfsDiffStats, err := pauseProcessRootfs(
 		ctx,
 		buildID,
 		originalRootfs.Header(),
@@ -1135,8 +1135,10 @@ func (s *Sandbox) Pause(
 		Metafile:          metadataFileLink,
 		MemfileDiff:       memfileDiff,
 		MemfileDiffHeader: memfileDiffHeader,
+		MemfileDiffStats:  memfileDiffStats,
 		RootfsDiff:        rootfsDiff,
 		RootfsDiffHeader:  rootfsDiffHeader,
+		RootfsDiffStats:   rootfsDiffStats,
 
 		BuildID: buildID,
 
@@ -1161,14 +1163,16 @@ func pauseProcessMemory(
 	diffMetadata *header.DiffMetadata,
 	cacheDir string,
 	fc *fc.Process,
-) (d build.Diff, h *header.Header, e error) {
+) (d build.Diff, h *header.Header, s SnapshotDiffStats, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
 	header, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create memfile header: %w", err)
+		return nil, nil, SnapshotDiffStats{}, fmt.Errorf("failed to create memfile header: %w", err)
 	}
+
+	stats := diffStatsFromMetadata(diffMetadata, originalHeader)
 
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
 
@@ -1179,7 +1183,7 @@ func pauseProcessMemory(
 		diffMetadata.BlockSize,
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
+		return nil, nil, SnapshotDiffStats{}, fmt.Errorf("failed to export memory: %w", err)
 	}
 
 	diff, err := build.NewLocalDiffFromCache(
@@ -1188,10 +1192,10 @@ func pauseProcessMemory(
 	)
 	if err != nil {
 		// Close the cache even if the diff creation fails.
-		return nil, nil, fmt.Errorf("failed to create local diff from cache: %w", errors.Join(err, cache.Close()))
+		return nil, nil, SnapshotDiffStats{}, fmt.Errorf("failed to create local diff from cache: %w", errors.Join(err, cache.Close()))
 	}
 
-	return diff, header, nil
+	return diff, header, stats, nil
 }
 
 func pauseProcessRootfs(
@@ -1200,26 +1204,26 @@ func pauseProcessRootfs(
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
 	cacheDir string,
-) (d build.Diff, h *header.Header, e error) {
+) (d build.Diff, h *header.Header, s SnapshotDiffStats, e error) {
 	ctx, span := tracer.Start(ctx, "process-rootfs")
 	defer span.End()
 
 	rootfsDiffFile, err := build.NewLocalDiffFile(cacheDir, buildId.String(), build.Rootfs)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create rootfs diff: %w", err)
+		return nil, nil, SnapshotDiffStats{}, fmt.Errorf("failed to create rootfs diff: %w", err)
 	}
 
 	rootfsDiffMetadata, err := diffCreator.process(ctx, rootfsDiffFile.File)
 	if err != nil {
 		err = errors.Join(err, rootfsDiffFile.Close())
 
-		return nil, nil, fmt.Errorf("error creating diff: %w", err)
+		return nil, nil, SnapshotDiffStats{}, fmt.Errorf("error creating diff: %w", err)
 	}
 	telemetry.ReportEvent(ctx, "exported rootfs")
 
 	rootfsDiff, err := rootfsDiffFile.CloseToDiff(int64(originalHeader.Metadata.BlockSize))
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to convert rootfs diff file to local diff: %w", err)
+		return nil, nil, SnapshotDiffStats{}, fmt.Errorf("failed to convert rootfs diff file to local diff: %w", err)
 	}
 	telemetry.ReportEvent(ctx, "converted rootfs diff file to local diff")
 
@@ -1227,10 +1231,25 @@ func pauseProcessRootfs(
 	if err != nil {
 		err = errors.Join(err, rootfsDiff.Close())
 
-		return nil, nil, fmt.Errorf("failed to create rootfs header: %w", err)
+		return nil, nil, SnapshotDiffStats{}, fmt.Errorf("failed to create rootfs header: %w", err)
 	}
 
-	return rootfsDiff, rootfsHeader, nil
+	stats := diffStatsFromMetadata(rootfsDiffMetadata, originalHeader)
+
+	return rootfsDiff, rootfsHeader, stats, nil
+}
+
+func diffStatsFromMetadata(d *header.DiffMetadata, original *header.Header) SnapshotDiffStats {
+	if d == nil || original == nil {
+		return SnapshotDiffStats{}
+	}
+	bs := int64(original.Metadata.BlockSize)
+
+	return SnapshotDiffStats{
+		DirtyBytes: int64(d.Dirty.GetCardinality()) * bs,
+		EmptyBytes: int64(d.Empty.GetCardinality()) * bs,
+		TotalBytes: int64(original.Metadata.Size),
+	}
 }
 
 // createCgroup creates a cgroup for sandbox resource accounting.

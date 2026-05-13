@@ -264,6 +264,7 @@ func (lb *LayerExecutor) PauseAndUpload(
 	if err != nil {
 		return fmt.Errorf("error processing vm: %w", err)
 	}
+	sandbox.RecordSnapshotDiffMetrics(ctx, snapshot, sandbox.SnapshotUseCaseBuild)
 
 	// Add snapshot to template cache so it can be used immediately
 	err = lb.templateCache.AddSnapshot(

@@ -750,6 +750,7 @@ func (s *Server) snapshotAndCacheSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("error snapshotting sandbox: %w", err)
 	}
+	sandbox.RecordSnapshotDiffMetrics(ctx, snapshot, sandbox.SnapshotUseCasePause)
 
 	err = s.templateCache.AddSnapshot(
 		ctx,
