@@ -28,7 +28,7 @@ func (p *Process) ExportMemory(
 	include *roaring.Bitmap,
 	cachePath string,
 	blockSize int64,
-) (*block.Cache, error) {
+) (block.Cacher, error) {
 	m, err := p.client.memoryMapping(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memory mappings: %w", err)
