@@ -38,6 +38,8 @@ tf_vars := \
 	$(call tfvar, GCP_PROJECT_ID) \
 	$(call tfvar, GCP_REGION) \
 	$(call tfvar, GCP_ZONE) \
+	$(call tfvar, NETWORK_NAME) \
+	$(call tfvar, SUBNET_NAME) \
 	$(call tfvar, DOMAIN_NAME) \
 	$(call tfvar, PREFIX) \
 	$(call tfvar, SANDBOX_STORAGE_BACKEND) \

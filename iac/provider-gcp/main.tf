@@ -121,6 +121,21 @@ module "init" {
   }
 }
 
+# Manifest fork addition — provisions e2b control-plane Postgres in
+# `manifest-harness` (Cloud SQL) instead of relying on external Supabase.
+# See cloud-sql-e2b/main.tf for full rationale.
+module "cloud_sql_e2b" {
+  source = "./cloud-sql-e2b"
+
+  gcp_project_id = var.gcp_project_id
+  gcp_region     = var.gcp_region
+  network_name   = var.network_name
+  prefix         = var.prefix
+  labels         = var.labels
+
+  postgres_connection_string_secret_name = module.init.postgres_connection_string_secret_name
+}
+
 module "cluster" {
   source = "./nomad-cluster"
 
@@ -132,6 +147,7 @@ module "cluster" {
   gcp_zone                         = var.gcp_zone
   google_service_account_key       = module.init.google_service_account_key
   network_name                     = var.network_name
+  subnet_name                      = var.subnet_name
 
   build_clusters_config  = var.build_clusters_config
   client_clusters_config = var.client_clusters_config

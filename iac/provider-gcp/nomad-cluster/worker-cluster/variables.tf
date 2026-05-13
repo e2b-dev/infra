@@ -86,6 +86,13 @@ variable "network_name" {
   type        = string
 }
 
+# Manifest fork addition: subnet binding for instance templates on custom-mode VPC.
+variable "subnet_name" {
+  description = "Name of the subnetwork inside `network_name` to bind instance_template network_interface to. Required for custom-mode VPCs. Empty keeps upstream auto-mode behavior."
+  type        = string
+  default     = ""
+}
+
 variable "cluster_tag_name" {
   description = "Network tag applied to cluster instances for firewall rules"
   type        = string

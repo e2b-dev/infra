@@ -733,6 +733,15 @@ variable "network_name" {
   default = "default"
 }
 
+# Manifest fork addition: on a custom-mode VPC (auto_create_subnetworks=false)
+# every google_compute_instance_template needs an explicit subnetwork — GCE API
+# rejects the apply otherwise. Leave empty to keep upstream behavior on
+# auto-mode VPCs.
+variable "subnet_name" {
+  type    = string
+  default = ""
+}
+
 variable "volume_token_issuer" {
   type    = string
   default = ""

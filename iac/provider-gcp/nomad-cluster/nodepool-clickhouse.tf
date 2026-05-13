@@ -139,7 +139,8 @@ resource "google_compute_instance_template" "clickhouse" {
   }
 
   network_interface {
-    network = var.network_name
+    network    = var.network_name
+    subnetwork = var.subnet_name
 
     access_config {}
   }

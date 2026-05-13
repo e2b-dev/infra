@@ -183,6 +183,14 @@ variable "network_name" {
   type = string
 }
 
+# Manifest fork addition: subnet to bind instance_template network_interface
+# blocks to (required for custom-mode VPCs). Empty string keeps upstream
+# behavior on auto-mode VPCs unchanged.
+variable "subnet_name" {
+  type    = string
+  default = ""
+}
+
 variable "google_service_account_email" {
   type = string
 }

@@ -134,7 +134,8 @@ resource "google_compute_instance_template" "api" {
   }
 
   network_interface {
-    network = var.network_name
+    network    = var.network_name
+    subnetwork = var.subnet_name
 
     dynamic "access_config" {
       for_each = var.api_use_nat ? [] : ["public_ip"]
