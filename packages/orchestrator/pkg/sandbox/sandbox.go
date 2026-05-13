@@ -1172,7 +1172,12 @@ func pauseProcessMemory(
 		return nil, nil, SnapshotDiffStats{}, fmt.Errorf("failed to create memfile header: %w", err)
 	}
 
-	stats := diffStatsFromMetadata(diffMetadata, originalHeader)
+	bs := int64(originalHeader.Metadata.BlockSize)
+	stats := SnapshotDiffStats{
+		DirtyBytes: int64(diffMetadata.Dirty.GetCardinality()) * bs,
+		EmptyBytes: int64(diffMetadata.Empty.GetCardinality()) * bs,
+		TotalBytes: int64(originalHeader.Metadata.Size),
+	}
 
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
 
@@ -1234,22 +1239,14 @@ func pauseProcessRootfs(
 		return nil, nil, SnapshotDiffStats{}, fmt.Errorf("failed to create rootfs header: %w", err)
 	}
 
-	stats := diffStatsFromMetadata(rootfsDiffMetadata, originalHeader)
+	bs := int64(originalHeader.Metadata.BlockSize)
+	stats := SnapshotDiffStats{
+		DirtyBytes: int64(rootfsDiffMetadata.Dirty.GetCardinality()) * bs,
+		EmptyBytes: int64(rootfsDiffMetadata.Empty.GetCardinality()) * bs,
+		TotalBytes: int64(originalHeader.Metadata.Size),
+	}
 
 	return rootfsDiff, rootfsHeader, stats, nil
-}
-
-func diffStatsFromMetadata(d *header.DiffMetadata, original *header.Header) SnapshotDiffStats {
-	if d == nil || original == nil {
-		return SnapshotDiffStats{}
-	}
-	bs := int64(original.Metadata.BlockSize)
-
-	return SnapshotDiffStats{
-		DirtyBytes: int64(d.Dirty.GetCardinality()) * bs,
-		EmptyBytes: int64(d.Empty.GetCardinality()) * bs,
-		TotalBytes: int64(original.Metadata.Size),
-	}
 }
 
 // createCgroup creates a cgroup for sandbox resource accounting.
