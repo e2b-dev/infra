@@ -406,6 +406,16 @@ func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram
 	)
 }
 
+func GetFloat64Histogram(meter metric.Meter, name HistogramType) (metric.Float64Histogram, error) {
+	desc := histogramDesc[name]
+	unit := histogramUnits[name]
+
+	return meter.Float64Histogram(string(name),
+		metric.WithDescription(desc),
+		metric.WithUnit(unit),
+	)
+}
+
 type TimerFactory struct {
 	duration metric.Int64Histogram
 	bytes    metric.Int64Counter

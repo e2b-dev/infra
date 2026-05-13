@@ -12,9 +12,11 @@ import (
 )
 
 var (
-	snapshotDiffBytes   = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotDiffBytes))
+	// Byte histograms use float64 so the cumulative _sum can't overflow int64
+	// on long-running orchestrators (worst case ~53 days at peak rate).
+	snapshotDiffBytes   = utils.Must(telemetry.GetFloat64Histogram(meter, telemetry.SnapshotDiffBytes))
+	snapshotTotalBytes  = utils.Must(telemetry.GetFloat64Histogram(meter, telemetry.SnapshotTotalBytes))
 	snapshotDiffRatioBp = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotDiffRatioBp))
-	snapshotTotalBytes  = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotTotalBytes))
 )
 
 type SnapshotUseCase string
@@ -40,7 +42,7 @@ func recordSnapshotDiff(
 	ft := attribute.String("file_type", fileType)
 	uc := attribute.String("use_case", string(useCase))
 
-	snapshotTotalBytes.Record(ctx, total, metric.WithAttributes(ft, uc))
+	snapshotTotalBytes.Record(ctx, float64(total), metric.WithAttributes(ft, uc))
 
 	var dirtyBytes, emptyBytes int64
 	if dm.Dirty != nil {
@@ -54,7 +56,7 @@ func recordSnapshotDiff(
 		"empty": emptyBytes,
 	} {
 		attrs := metric.WithAttributes(ft, attribute.String("kind", kind), uc)
-		snapshotDiffBytes.Record(ctx, b, attrs)
+		snapshotDiffBytes.Record(ctx, float64(b), attrs)
 		snapshotDiffRatioBp.Record(ctx, ratioBp(b, total), attrs)
 	}
 }
