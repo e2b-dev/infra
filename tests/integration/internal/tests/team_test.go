@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
@@ -41,9 +42,20 @@ UPDATE teams SET is_banned = $1 WHERE id = $2
 
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode())
 	assert.Equal(t, http.StatusForbidden, errResp.Code)
-	assert.Equal(t, "forbidden: team is banned", errResp.Message)
+	assert.Equal(t, "team is banned", errResp.Message)
 }
 
+// TestBlockedTeam verifies the per-endpoint blocked-team enforcement
+// implemented via ActionIntent (see packages/auth/pkg/auth/intent.go).
+//
+// Blocked teams are:
+//   - allowed for IntentView and IntentDelete (recovery + cleanup)
+//   - denied for IntentCreate and IntentMutate (resource-consuming)
+//
+// Mutate / Delete subtests use a synthetic sandbox ID because the
+// blocked-team check runs in middleware before the handler resolves the
+// resource — we only care that the request was (not) rejected by the
+// blocked-team policy.
 func TestBlockedTeam(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
@@ -61,14 +73,54 @@ UPDATE teams SET is_blocked = $1, blocked_reason = $2 WHERE id = $3
 `, true, blockReason, teamID)
 	require.NoError(t, err)
 
-	resp, err := c.GetSandboxesWithResponse(ctx, nil, setup.WithAPIKey(apiKey))
-	require.NoError(t, err)
+	assertBlocked := func(t *testing.T, body []byte, status int) {
+		t.Helper()
 
-	var errResp ForbiddenErrorResponse
-	err = json.Unmarshal(resp.Body, &errResp)
-	require.NoError(t, err)
+		var errResp ForbiddenErrorResponse
+		require.NoError(t, json.Unmarshal(body, &errResp))
+		assert.Equal(t, http.StatusForbidden, status)
+		assert.Equal(t, http.StatusForbidden, errResp.Code)
+		assert.Equal(t, "team is blocked: test-reason", errResp.Message)
+	}
 
-	assert.Equal(t, http.StatusForbidden, resp.StatusCode())
-	assert.Equal(t, http.StatusForbidden, errResp.Code)
-	assert.Equal(t, "blocked: team is blocked: test-reason", errResp.Message)
+	assertNotBlocked := func(t *testing.T, body []byte, status int) {
+		t.Helper()
+
+		assert.NotEqual(t, http.StatusForbidden, status, "request should not be rejected by blocked-team policy")
+		assert.NotContains(t, string(body), "team is blocked", "response body should not surface blocked-team error")
+	}
+
+	t.Run("view is allowed (GET /sandboxes)", func(t *testing.T) {
+		t.Parallel()
+
+		resp, err := c.GetSandboxesWithResponse(ctx, nil, setup.WithAPIKey(apiKey))
+		require.NoError(t, err)
+		assertNotBlocked(t, resp.Body, resp.StatusCode())
+	})
+
+	t.Run("create is denied (POST /sandboxes)", func(t *testing.T) {
+		t.Parallel()
+
+		resp, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
+			TemplateID: setup.SandboxTemplateID,
+		}, setup.WithAPIKey(apiKey))
+		require.NoError(t, err)
+		assertBlocked(t, resp.Body, resp.StatusCode())
+	})
+
+	t.Run("mutate is denied (POST /sandboxes/:sandboxID/pause)", func(t *testing.T) {
+		t.Parallel()
+
+		resp, err := c.PostSandboxesSandboxIDPauseWithResponse(ctx, "nonexistent-sandbox", setup.WithAPIKey(apiKey))
+		require.NoError(t, err)
+		assertBlocked(t, resp.Body, resp.StatusCode())
+	})
+
+	t.Run("delete is allowed (DELETE /sandboxes/:sandboxID)", func(t *testing.T) {
+		t.Parallel()
+
+		resp, err := c.DeleteSandboxesSandboxIDWithResponse(ctx, "nonexistent-sandbox", setup.WithAPIKey(apiKey))
+		require.NoError(t, err)
+		assertNotBlocked(t, resp.Body, resp.StatusCode())
+	})
 }

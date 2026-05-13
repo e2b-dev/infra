@@ -102,25 +102,9 @@ func (s *authService) ValidateAPIKey(ctx context.Context, ginCtx *gin.Context, a
 		return s.store.GetTeamByHashedAPIKey(ctx, key)
 	})
 	if err != nil {
-		var forbiddenErr *TeamForbiddenError
-		if errors.As(err, &forbiddenErr) {
-			return nil, &APIError{
-				Err:       err,
-				ClientMsg: err.Error(),
-				Code:      http.StatusForbidden,
-			}
-		}
+		var zero *types.Team
 
-		var blockedErr *TeamBlockedError
-		if errors.As(err, &blockedErr) {
-			return nil, &APIError{
-				Err:       err,
-				ClientMsg: err.Error(),
-				Code:      http.StatusForbidden,
-			}
-		}
-
-		return nil, &APIError{
+		return zero, &APIError{
 			Err:       fmt.Errorf("failed to get the team from db for an api key: %w", err),
 			ClientMsg: "Cannot get the team for the given API key",
 			Code:      http.StatusUnauthorized,
@@ -233,25 +217,9 @@ func (s *authService) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.Cont
 		return s.store.GetTeamByIDAndUserID(ctx, userID, teamID)
 	})
 	if err != nil {
-		var forbiddenErr *TeamForbiddenError
-		if errors.As(err, &forbiddenErr) {
-			return nil, &APIError{
-				Err:       fmt.Errorf("failed getting team: %w", err),
-				ClientMsg: fmt.Sprintf("Forbidden: %s", err.Error()),
-				Code:      http.StatusForbidden,
-			}
-		}
+		var zero *types.Team
 
-		var blockedErr *TeamBlockedError
-		if errors.As(err, &blockedErr) {
-			return nil, &APIError{
-				Err:       fmt.Errorf("failed getting team: %w", err),
-				ClientMsg: fmt.Sprintf("Blocked: %s", err.Error()),
-				Code:      http.StatusForbidden,
-			}
-		}
-
-		return nil, &APIError{
+		return zero, &APIError{
 			Err:       fmt.Errorf("failed getting team: %w", err),
 			ClientMsg: "Backend authentication failed",
 			Code:      http.StatusUnauthorized,

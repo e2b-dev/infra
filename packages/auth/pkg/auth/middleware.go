@@ -97,11 +97,6 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.C
 			return fmt.Errorf("forbidden: %w", validationError.Err)
 		}
 
-		var blockedError *TeamBlockedError
-		if errors.As(validationError.Err, &blockedError) {
-			return fmt.Errorf("blocked: %w", validationError.Err)
-		}
-
 		return fmt.Errorf("%s\n%s (%w)", a.errorMessage, validationError.ClientMsg, validationError.Err)
 	}
 

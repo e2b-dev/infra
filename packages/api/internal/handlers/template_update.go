@@ -11,6 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -89,6 +90,13 @@ func (a *APIStore) updateTemplate(ctx context.Context, c *gin.Context, aliasOrTe
 	team, aliasInfo, apiErr := a.resolveTemplateAndTeam(ctx, c, identifier)
 	if apiErr != nil {
 		return nil, nil, apiErr
+	}
+
+	// Per-endpoint blocked-team enforcement for the late-team
+	// (AccessTokenAuth) path. For ApiKeyAuth requests the middleware has
+	// already checked; the second call is a cheap no-op when not blocked.
+	if accessErr := auth.AuthorizeTeamCtx(c, team); accessErr != nil {
+		return nil, nil, intentErrorToAPIError(accessErr)
 	}
 
 	telemetry.SetAttributes(ctx,

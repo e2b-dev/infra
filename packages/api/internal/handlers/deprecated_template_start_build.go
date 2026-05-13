@@ -129,6 +129,15 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		return
 	}
 
+	// Per-endpoint blocked-team enforcement for the late-team
+	// (AccessTokenAuth) path. IntentMutate is denied for blocked teams.
+	if accessErr := auth.AuthorizeTeamCtx(c, team); accessErr != nil {
+		apiErr := intentErrorToAPIError(accessErr)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+
+		return
+	}
+
 	telemetry.SetAttributes(ctx,
 		attribute.String("user.id", userID.String()),
 		telemetry.WithTeamID(team.ID.String()),

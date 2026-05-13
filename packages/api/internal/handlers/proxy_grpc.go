@@ -18,6 +18,7 @@ import (
 	apiorchestrator "github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -146,6 +147,10 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	team, err := s.api.authService.GetTeamByID(ctx, teamID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
+	}
+
+	if err := auth.AuthorizeTeam(*team, auth.IntentMutate); err != nil {
+		return nil, status.Error(codes.PermissionDenied, err.Error())
 	}
 
 	if s.requireEdgeClientProxyAuth {

@@ -222,6 +222,10 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 			}),
 	)
 
+
+	// Per-endpoint blocked-team enforcement
+	r.Use(customMiddleware.AuthorizeTeamAccess(customMiddleware.DefaultRouteIntents))
+
 	r.Use(customMiddleware.InitLaunchDarklyContext)
 
 	// Per-team rate limiting (after auth + LD context, before handlers).
@@ -235,6 +239,12 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 			utils.ErrorHandler(c, err.Error(), statusCode)
 		},
 	})
+
+	// Validate that every registered route has a declared action intent.
+	// Fail fast so a forgotten registry entry never reaches production.
+	if err := customMiddleware.ValidateAllRoutesIntentsDeclared(r.Routes(), customMiddleware.DefaultRouteIntents); err != nil {
+		l.Fatal(ctx, "action-intent registry incomplete; refusing to start", zap.Error(err))
+	}
 
 	r.MaxMultipartMemory = maxMultipartMemory
 

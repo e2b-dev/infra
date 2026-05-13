@@ -10,6 +10,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -35,6 +36,17 @@ func (a *APIStore) DeleteTemplatesTemplateID(c *gin.Context, aliasOrTemplateID a
 		if apiErr.Code != http.StatusNotFound {
 			telemetry.ReportCriticalError(ctx, "error resolving template", apiErr.Err)
 		}
+
+		return
+	}
+
+	// Per-endpoint blocked-team enforcement for the late-team
+	// (AccessTokenAuth) path. IntentDelete is allowed for blocked teams
+	// by policy, so this is effectively defense-in-depth for the banned
+	// case and a no-op for non-blocked teams.
+	if accessErr := auth.AuthorizeTeamCtx(c, team); accessErr != nil {
+		apiErr := intentErrorToAPIError(accessErr)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
 	}
