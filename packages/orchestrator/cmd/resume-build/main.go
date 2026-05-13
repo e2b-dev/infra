@@ -640,7 +640,7 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 
 	// Pause and create snapshot
 	pauseStart := time.Now()
-	snapshot, err := sbx.Pause(ctx, newMeta)
+	snapshot, err := sbx.Pause(ctx, newMeta, sandbox.SnapshotUseCasePause)
 	pauseDur := time.Since(pauseStart)
 	totalDur := time.Since(t0)
 

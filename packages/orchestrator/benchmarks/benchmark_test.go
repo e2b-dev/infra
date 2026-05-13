@@ -386,7 +386,7 @@ func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVer
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: fcVersion,
 	})
-	snap, err := sbx.Pause(ctx, templateMetadata)
+	snap, err := sbx.Pause(ctx, templateMetadata, sandbox.SnapshotUseCasePause)
 	require.NoError(b, err)
 	require.NotNil(b, snap)
 

@@ -6,6 +6,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -23,24 +24,36 @@ const (
 	SnapshotUseCaseBuild SnapshotUseCase = "build"
 )
 
-func RecordSnapshotDiffMetrics(ctx context.Context, snap *Snapshot, useCase SnapshotUseCase) {
-	if snap == nil {
+// recordSnapshotDiff emits per-snapshot full/empty/total bytes for one file.
+// Call right after the per-pause DiffMetadata for that file is produced.
+// "full" = blocks carrying data (DiffMetadata.Dirty); "empty" = zero-mapped
+// blocks (DiffMetadata.Empty). Total comes from the original (pre-merge)
+// header so the denominator is the file's full mapped size.
+func recordSnapshotDiff(
+	ctx context.Context,
+	fileType string,
+	dm *header.DiffMetadata,
+	original *header.Header,
+	useCase SnapshotUseCase,
+) {
+	if dm == nil || original == nil || original.Metadata == nil {
 		return
 	}
-	uc := attribute.String("use_case", string(useCase))
-	emitSnapshotDiff(ctx, "memfile", snap.MemfileDiffStats, uc)
-	emitSnapshotDiff(ctx, "rootfs", snap.RootfsDiffStats, uc)
-}
+	bs := int64(original.Metadata.BlockSize)
+	total := int64(original.Metadata.Size)
 
-func emitSnapshotDiff(ctx context.Context, fileType string, s SnapshotDiffStats, uc attribute.KeyValue) {
 	ft := attribute.String("file_type", fileType)
-	snapshotTotalBytes.Record(ctx, s.TotalBytes, metric.WithAttributes(ft, uc))
-	// "full" = blocks that carry data in this snapshot (DiffMetadata.Dirty);
-	// "empty" = zero/Empty-mapped blocks (DiffMetadata.Empty).
-	for kind, b := range map[string]int64{"full": s.DirtyBytes, "empty": s.EmptyBytes} {
+	uc := attribute.String("use_case", string(useCase))
+
+	snapshotTotalBytes.Record(ctx, total, metric.WithAttributes(ft, uc))
+
+	for kind, b := range map[string]int64{
+		"full":  int64(dm.Dirty.GetCardinality()) * bs,
+		"empty": int64(dm.Empty.GetCardinality()) * bs,
+	} {
 		attrs := metric.WithAttributes(ft, attribute.String("kind", kind), uc)
 		snapshotDiffBytes.Record(ctx, b, attrs)
-		snapshotDiffRatioPct.Record(ctx, ratioPct(b, s.TotalBytes), attrs)
+		snapshotDiffRatioPct.Record(ctx, ratioPct(b, total), attrs)
 	}
 }
 

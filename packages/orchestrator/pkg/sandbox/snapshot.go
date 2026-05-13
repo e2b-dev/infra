@@ -13,19 +13,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-type SnapshotDiffStats struct {
-	DirtyBytes int64
-	EmptyBytes int64
-	TotalBytes int64
-}
-
 type Snapshot struct {
 	MemfileDiff       build.Diff
 	MemfileDiffHeader *header.Header
-	MemfileDiffStats  SnapshotDiffStats
 	RootfsDiff        build.Diff
 	RootfsDiffHeader  *header.Header
-	RootfsDiffStats   SnapshotDiffStats
 	Snapfile          template.File
 	Metafile          template.File
 	BuildID           uuid.UUID
