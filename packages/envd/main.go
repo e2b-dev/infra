@@ -208,7 +208,7 @@ func main() {
 
 	err := s.ListenAndServe()
 	if err != nil {
-		log.Fatalf("error starting server: %v", err)
+		log.Fatalf("error starting server: %v", err) //nolint:gocritic // last line of main; process exits anyway
 	}
 }
 
