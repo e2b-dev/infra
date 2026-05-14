@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"slices"
 	"sync"
 	"sync/atomic"
 )
@@ -128,7 +129,8 @@ func (m *MultiplexedChannel[T]) remove(s *subscriber[T]) {
 
 	for i, sub := range m.channels {
 		if sub == s {
-			m.channels = append(m.channels[:i], m.channels[i+1:]...)
+			// New backing array so run()'s lock-free iteration is safe.
+			m.channels = slices.Concat(m.channels[:i], m.channels[i+1:])
 
 			return
 		}
