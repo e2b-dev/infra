@@ -248,7 +248,7 @@ func TestAdd_NewSandbox(t *testing.T) {
 
 func TestAdd_AlreadyInCache(t *testing.T) {
 	t.Parallel()
-	t.Run("second add returns ErrAlreadyExists", func(t *testing.T) {
+	t.Run("create path tolerates ErrAlreadyExists (sync/create race)", func(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
@@ -268,8 +268,11 @@ func TestAdd_AlreadyInCache(t *testing.T) {
 		tracker1.WaitForCalls(t, 2*time.Second)
 		require.NoError(t, err)
 
-		// Second add returns ErrAlreadyExists — no callbacks fired
-		tracker2 := NewCallbackTracker(0)
+		// Second add with creation!=nil (simulates sync winning the race before create):
+		// must return nil so CreateSandbox does not kill a valid VM.
+		// AddSandboxToRoutingTable is NOT called (sandbox already routed).
+		// AsyncNewlyCreatedSandbox IS called because creation!=nil.
+		tracker2 := NewCallbackTracker(1) // only AsyncNewlyCreatedSandbox
 		callbacks2 := sandbox.Callbacks{
 			AddSandboxToRoutingTable: tracker2.Track("AddSandboxToRoutingTable"),
 			AsyncNewlyCreatedSandbox: tracker2.TrackCreation("AsyncNewlyCreatedSandbox"),
@@ -277,13 +280,12 @@ func TestAdd_AlreadyInCache(t *testing.T) {
 		store2 := sandbox.NewStore(storage, reservations, callbacks2)
 
 		err = store2.Add(ctx, sbx, &sandbox.CreationMetadata{})
-		require.ErrorIs(t, err, sandbox.ErrAlreadyExists)
+		require.NoError(t, err, "create path must not return ErrAlreadyExists (would kill a valid VM)")
 
-		// Give a small delay for any async callbacks (there should be none)
-		time.Sleep(100 * time.Millisecond)
+		tracker2.WaitForCalls(t, 2*time.Second)
 
 		tracker2.AssertNotCalled(t, "AddSandboxToRoutingTable")
-		tracker2.AssertNotCalled(t, "AsyncNewlyCreatedSandbox")
+		tracker2.AssertCallCount(t, "AsyncNewlyCreatedSandbox", 1)
 	})
 }
 
@@ -452,7 +454,7 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		}
 	})
 
-	t.Run("concurrent creates for same sandbox - only one succeeds", func(t *testing.T) {
+	t.Run("concurrent creates for same sandbox - all succeed, one routes", func(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
@@ -463,8 +465,11 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		sbx := createTestSandbox()
 		sbx.SandboxID = "concurrent-same-sandbox-create"
 
-		// creation != nil: exactly one goroutine wins; the rest get ErrAlreadyExists.
-		tracker := NewCallbackTracker(2) // AddSandboxToRoutingTable + AsyncNewlyCreatedSandbox
+		// creation != nil: all goroutines must return nil (ErrAlreadyExists is tolerated
+		// to prevent killing a valid VM on sync/create races).
+		// AddSandboxToRoutingTable fires once (first insert).
+		// AsyncNewlyCreatedSandbox fires for every call with creation!=nil.
+		tracker := NewCallbackTracker(1 + numGoroutines) // 1 routing + N creation callbacks
 
 		callbacks := sandbox.Callbacks{
 			AddSandboxToRoutingTable: tracker.Track("AddSandboxToRoutingTable"),
@@ -474,28 +479,23 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 
 		var wg sync.WaitGroup
 		successCount := atomic.Int32{}
-		errorCount := atomic.Int32{}
 
 		for range numGoroutines {
 			wg.Go(func() {
 				err := store.Add(ctx, sbx, &sandbox.CreationMetadata{})
 				if err == nil {
 					successCount.Add(1)
-				} else {
-					require.ErrorIs(t, err, sandbox.ErrAlreadyExists)
-					errorCount.Add(1)
 				}
 			})
 		}
 
 		wg.Wait()
 
-		assert.Equal(t, int32(1), successCount.Load(), "exactly one create must succeed")
-		assert.Equal(t, int32(numGoroutines-1), errorCount.Load(), "all other creates must return ErrAlreadyExists")
+		assert.Equal(t, int32(numGoroutines), successCount.Load(), "all creates must succeed (ErrAlreadyExists tolerated)")
 
 		tracker.WaitForCalls(t, 5*time.Second)
-		tracker.AssertCallCount(t, "AddSandboxToRoutingTable", 1)
-		tracker.AssertCallCount(t, "AsyncNewlyCreatedSandbox", 1)
+		tracker.AssertCallCount(t, "AddSandboxToRoutingTable", 1)             // only the first insert routes
+		tracker.AssertCallCount(t, "AsyncNewlyCreatedSandbox", numGoroutines) // every create call fires this
 
 		stored, err := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
 		require.NoError(t, err)
