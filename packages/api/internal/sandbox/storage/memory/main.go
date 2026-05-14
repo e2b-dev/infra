@@ -12,7 +12,7 @@ type Storage struct {
 	items cmap.ConcurrentMap[string, *memorySandbox]
 }
 
-func (s *Storage) Name() string { return sandbox.StorageNameMemory }
+func (s *Storage) IsSourceOfTruth() bool { return false }
 
 func NewStorage() *Storage {
 	instanceCache := &Storage{

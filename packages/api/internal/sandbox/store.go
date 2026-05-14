@@ -28,10 +28,6 @@ type (
 )
 
 const (
-	StorageNameMemory        = "memory"
-	StorageNameRedis         = "redis"
-	StorageNamePopulateRedis = "populate_redis"
-
 	sbxRemoveTimeout = 10 * time.Second
 )
 
@@ -40,9 +36,11 @@ type ReservationStorage interface {
 	Release(ctx context.Context, teamID uuid.UUID, sandboxID string) error
 }
 
-// TODO [ENG-3514]: Remove Name() and Sync() and nolint once migrated to Redis
 type Storage interface { //nolint: interfacebloat
-	Name() string
+	// IsSourceOfTruth reports whether this storage backend is the authoritative
+	// source of truth for sandbox state. When true, orphaned sandboxes (present
+	// on a node but absent from storage) are killed rather than re-added.
+	IsSourceOfTruth() bool
 	Add(ctx context.Context, sandbox Sandbox) error
 	Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (Sandbox, error)
 	Remove(ctx context.Context, teamID uuid.UUID, sandboxID string) error
@@ -102,32 +100,12 @@ func (s *Store) Add(ctx context.Context, sandbox Sandbox, creation *CreationMeta
 	}
 
 	err := s.storage.Add(ctx, sandbox)
-	if err == nil {
-		// Count only newly added sandboxes to the store
-		s.callbacks.AddSandboxToRoutingTable(ctx, sandbox)
-	} else {
-		// TODO [ENG-3514]: Remove once migrated to Redis
-		// There's a race condition when the sandbox is added from node sync
-		// This should be fixed once the sync is improved
-		if !errors.Is(err, ErrAlreadyExists) {
-			return err
-		}
-
-		logger.L().Warn(ctx, "Sandbox already exists in cache", logger.WithSandboxID(sandbox.SandboxID))
+	if err != nil {
+		return err
 	}
 
-	// TODO [ENG-3514]: Simplify once migrated to Redis
-	// Ensure the team reservation is set - no limit.
-	if s.storage.Name() != StorageNameRedis {
-		finishStart, _, err := s.reservations.Reserve(ctx, sandbox.TeamID, sandbox.SandboxID, -1)
-		if err != nil {
-			logger.L().Error(ctx, "Failed to reserve sandbox", zap.Error(err), logger.WithSandboxID(sandbox.SandboxID))
-		}
-
-		if finishStart != nil {
-			finishStart(sandbox, nil)
-		}
-	}
+	// Count only newly added sandboxes to the store
+	s.callbacks.AddSandboxToRoutingTable(ctx, sandbox)
 
 	if creation != nil {
 		meta := *creation
@@ -180,7 +158,7 @@ func (s *Store) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandbo
 func (s *Store) Reconcile(ctx context.Context, sandboxes []Sandbox, nodeID string) {
 	sbxsToBeSynced := s.storage.Reconcile(ctx, sandboxes, nodeID)
 
-	if s.storage.Name() == StorageNameRedis {
+	if s.storage.IsSourceOfTruth() {
 		// Redis is the source of truth — divergent sandboxes are orphans running
 		// on the node but not present in the store. Kill them.
 		wg := sync.WaitGroup{}
@@ -194,8 +172,8 @@ func (s *Store) Reconcile(ctx context.Context, sandboxes []Sandbox, nodeID strin
 
 		wg.Wait()
 	} else {
-		// Memory backend — divergent sandboxes are ones discovered on the node
-		// that aren't in the local cache yet. Re-add them.
+		// Memory/populate_redis backend — divergent sandboxes are ones discovered
+		// on the node that aren't in the local cache yet. Re-add them.
 		for _, sbx := range sbxsToBeSynced {
 			err := s.Add(ctx, sbx, nil)
 			if err != nil {

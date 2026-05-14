@@ -19,7 +19,7 @@ type PopulateRedisStorage struct {
 	redisBackend  *redis.Storage
 }
 
-func (m *PopulateRedisStorage) Name() string { return sandbox.StorageNamePopulateRedis }
+func (m *PopulateRedisStorage) IsSourceOfTruth() bool { return false }
 
 func (m *PopulateRedisStorage) Add(ctx context.Context, sandbox sandbox.Sandbox) error {
 	err := m.memoryBackend.Add(ctx, sandbox)

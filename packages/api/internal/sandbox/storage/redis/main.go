@@ -34,7 +34,7 @@ type Storage struct {
 	subManager  *subscriptionManager
 }
 
-func (s *Storage) Name() string { return sandbox.StorageNameRedis }
+func (s *Storage) IsSourceOfTruth() bool { return true }
 
 func NewStorage(
 	redisClient redis.UniversalClient,
