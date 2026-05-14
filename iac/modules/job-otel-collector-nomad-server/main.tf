@@ -5,6 +5,8 @@ locals {
       grafana_otel_collector_token = var.grafana_otel_collector_token
       grafana_otlp_url             = var.grafana_otlp_url
       grafana_username             = var.grafana_username
+      enable_gcp_telemetry_metrics = var.enable_gcp_telemetry_metrics
+      gcp_telemetry_project_id     = var.gcp_telemetry_project_id
     },
   )
 
@@ -17,6 +19,13 @@ resource "nomad_job" "otel_collector_nomad_server" {
     node_pool             = var.node_pool
     otel_collector_config = local.otel_collector_config
   })
+
+  lifecycle {
+    precondition {
+      condition     = !var.enable_gcp_telemetry_metrics || var.gcp_telemetry_project_id != ""
+      error_message = "gcp_telemetry_project_id must be set when enable_gcp_telemetry_metrics is true."
+    }
+  }
 }
 
 variable "provider_name" {
@@ -50,4 +59,16 @@ variable "otel_collector_config_override" {
   type        = string
   default     = ""
   description = "Custom OTel collector YAML config. When set, replaces the default config entirely."
+}
+
+variable "enable_gcp_telemetry_metrics" {
+  type        = bool
+  default     = false
+  description = "Enable exporting selected metrics to Google Cloud Monitoring using the googlecloud exporter."
+}
+
+variable "gcp_telemetry_project_id" {
+  type        = string
+  default     = ""
+  description = "Google Cloud project ID used for native Cloud Monitoring metric export. Required when enable_gcp_telemetry_metrics is true."
 }
