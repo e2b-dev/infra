@@ -36,7 +36,7 @@ func intentErrorToAPIError(err error) *api.APIError {
 
 	return &api.APIError{
 		Code:      http.StatusForbidden,
-		ClientMsg: err.Error(),
+		ClientMsg: "Access denied",
 		Err:       err,
 	}
 }

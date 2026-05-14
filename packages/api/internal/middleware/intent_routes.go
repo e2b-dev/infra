@@ -102,7 +102,7 @@ var DefaultRouteIntents = RouteIntents{
 	http.MethodDelete: {
 		"/sandboxes/:sandboxID":         auth.IntentDelete,
 		"/templates/:templateID":        auth.IntentDelete,
-		"/templates/tags":               auth.IntentMutate,
+		"/templates/tags":               auth.IntentDelete,
 		"/volumes/:volumeID":            auth.IntentDelete,
 		"/api-keys/:apiKeyID":           auth.IntentDelete,
 		"/access-tokens/:accessTokenID": auth.IntentDelete,

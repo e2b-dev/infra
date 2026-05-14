@@ -35,7 +35,8 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 	}
 
 	if err := auth.AuthorizeTeamCtx(c, team); err != nil {
-		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
+		apiErr := intentErrorToAPIError(err)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when authorizing team", err)
 
 		return
