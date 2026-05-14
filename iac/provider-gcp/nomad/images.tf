@@ -1,36 +1,36 @@
 data "google_artifact_registry_docker_image" "api_image" {
-  location      = var.gcp_region
-  repository_id = var.core_repository_name
+  location      = var.infra_config.gcp.region
+  repository_id = var.infra_config.storage.core_repository_name
   image_name    = "api:latest"
 }
 
 data "google_artifact_registry_docker_image" "db_migrator_image" {
-  location      = var.gcp_region
+  location      = var.infra_config.gcp.region
   image_name    = "db-migrator:latest"
-  repository_id = var.core_repository_name
+  repository_id = var.infra_config.storage.core_repository_name
 }
 
 data "google_artifact_registry_docker_image" "docker_reverse_proxy_image" {
-  location      = var.gcp_region
+  location      = var.infra_config.gcp.region
   image_name    = "docker-reverse-proxy:latest"
-  repository_id = var.core_repository_name
+  repository_id = var.infra_config.storage.core_repository_name
 }
 
 data "google_artifact_registry_docker_image" "client_proxy_image" {
-  location      = var.gcp_region
+  location      = var.infra_config.gcp.region
   image_name    = "client-proxy:latest"
-  repository_id = var.core_repository_name
+  repository_id = var.infra_config.storage.core_repository_name
 }
 
 data "google_artifact_registry_docker_image" "clickhouse_migrator_image" {
-  location      = var.gcp_region
+  location      = var.infra_config.gcp.region
   image_name    = "clickhouse-migrator:latest"
-  repository_id = var.core_repository_name
+  repository_id = var.infra_config.storage.core_repository_name
 }
 
 data "google_artifact_registry_docker_image" "dashboard_api_image" {
-  count         = var.dashboard_api_count > 0 ? 1 : 0
-  location      = var.gcp_region
-  repository_id = var.core_repository_name
+  count         = var.infra_config.services.dashboard_api.count > 0 ? 1 : 0
+  location      = var.infra_config.gcp.region
+  repository_id = var.infra_config.storage.core_repository_name
   image_name    = "dashboard-api:latest"
 }

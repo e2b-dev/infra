@@ -1,227 +1,20 @@
-variable "envd_timeout" {
-  type = string
+# Variables with defaults that are used directly (not via infra_config)
+
+variable "clickhouse_username" {
+  type    = string
+  default = "e2b"
 }
 
-variable "prefix" {
-  type = string
-}
-
-variable "gcp_zone" {
-  type = string
-}
-
-variable "orchestrator_node_pool" {
-  type = string
-}
-
-variable "core_repository_name" {
-  type = string
-}
-
-variable "consul_acl_token_secret" {
-  type = string
-}
-
-variable "template_bucket_name" {
-  type = string
-}
-
-variable "build_cache_bucket_name" {
-  type = string
-}
-
-variable "builder_node_pool" {
-  type = string
-}
-
-
-variable "nomad_acl_token_secret" {
-  type = string
-}
-
-variable "nomad_port" {
-  type = number
-}
-
-variable "otel_collector_resources_memory_mb" {
-  type = number
-}
-
-variable "otel_collector_resources_cpu_count" {
-  type = number
-}
-
-# API
-variable "api_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
-}
-
-variable "api_internal_grpc_port" {
+variable "clickhouse_metrics_port" {
   type    = number
-  default = 5009
+  default = 9363
 }
 
-variable "client_proxy_oidc_issuer_url" {
-  type    = string
-  default = ""
+variable "otel_collector_grpc_port" {
+  type    = number
+  default = 4317
 }
 
-variable "ingress_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
-}
-
-variable "traefik_config_files" {
-  type        = map(string)
-  description = "Map of filename => content for additional Traefik dynamic configuration files"
-}
-
-variable "ingress_count" {
-  type = number
-}
-
-variable "api_resources_cpu_count" {
-  type = number
-}
-
-variable "api_resources_memory_mb" {
-  type = number
-}
-
-variable "api_secret" {
-  type = string
-}
-
-variable "api_admin_token_secret_name" {
-  type = string
-}
-
-variable "dashboard_api_admin_token_secret_name" {
-  type = string
-}
-
-variable "sandbox_access_token_hash_seed" {
-  type = string
-}
-
-variable "sandbox_storage_backend" {
-  type    = string
-  default = "memory"
-}
-
-variable "db_max_open_connections" {
-  type = number
-}
-
-variable "db_min_idle_connections" {
-  type = number
-}
-
-variable "auth_db_max_open_connections" {
-  type = number
-}
-
-variable "auth_db_min_idle_connections" {
-  type = number
-}
-
-variable "environment" {
-  type = string
-}
-
-variable "api_server_count" {
-  type = number
-}
-
-variable "api_machine_count" {
-  type = number
-}
-
-variable "api_node_pool" {
-  type = string
-}
-
-variable "loki_use_v13_schema_from" {
-  type    = string
-  default = ""
-}
-
-variable "loki_machine_count" {
-  type = number
-}
-
-variable "loki_node_pool" {
-  type = string
-}
-
-variable "custom_envs_repository_name" {
-  type = string
-}
-
-variable "gcp_project_id" {
-  type = string
-}
-
-variable "gcp_region" {
-  type = string
-}
-
-variable "google_service_account_key" {
-  type = string
-}
-
-variable "posthog_api_key_secret_name" {
-  type = string
-}
-
-variable "postgres_connection_string_secret_name" {
-  type = string
-}
-
-variable "postgres_read_replica_connection_string_secret_version" {
-  type = any
-}
-
-variable "supabase_jwt_secrets_secret_name" {
-  type = string
-}
-
-variable "client_proxy_count" {
-  type = number
-}
-
-variable "client_proxy_resources_memory_mb" {
-  type = number
-}
-
-variable "client_proxy_resources_cpu_count" {
-  type = number
-}
-
-variable "client_proxy_update_max_parallel" {
-  type = number
-}
-
-variable "client_proxy_session_port" {
-  type = number
-}
-
-variable "client_proxy_health_port" {
-  type = number
-}
-
-variable "domain_name" {
-  type = string
-}
-
-# Telemetry
 variable "logs_proxy_port" {
   type = object({
     name = string
@@ -246,299 +39,191 @@ variable "logs_health_proxy_port" {
   }
 }
 
-variable "analytics_collector_host_secret_name" {
-  type = string
-}
-
-variable "analytics_collector_api_token_secret_name" {
-  type = string
-}
-
-variable "launch_darkly_api_key_secret_name" {
-  type = string
-}
-
-variable "clickhouse_backups_bucket_name" {
-  type = string
-}
-
-variable "loki_resources_memory_mb" {
-  type = number
-}
-
-variable "loki_resources_cpu_count" {
-  type = number
-}
-
-variable "loki_bucket_name" {
-  type = string
-}
-
-variable "loki_service_port" {
-  type = object({
-    name = string
-    port = number
-  })
-}
-
-variable "redis_cluster_url_secret_version" {
-  type = any
-}
-
-variable "redis_tls_ca_base64_secret_version" {
-  type = any
-}
-
-# Docker reverse proxy
-variable "docker_reverse_proxy_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
-}
-
-variable "docker_reverse_proxy_service_account_key" {
-  type = string
-}
-
-# Orchestrator
-variable "orchestrator_port" {
-  type = number
-}
-
-variable "orchestrator_proxy_port" {
-  type = number
-}
-
-variable "fc_env_pipeline_bucket_name" {
-  type = string
-}
-
-variable "allow_sandbox_internet" {
-  type = bool
-}
-
-variable "allow_sandbox_internal_cidrs" {
-  type        = string
-  description = "Comma-separated CIDRs to allow through the sandbox firewall deny list"
-  default     = ""
-}
-
-# Template manager
-variable "template_manager_port" {
-  type = number
-}
-
-variable "template_manages_clusters_size_gt_1" {
-  type = bool
-}
-
 variable "nomad_autoscaler_version" {
   type        = string
   description = "Version of the Nomad Autoscaler to deploy"
   default     = "0.4.5"
 }
 
-# Redis
-variable "redis_port" {
+# Structured configuration passed from the parent provider-gcp module.
+
+variable "infra_config" {
+  description = "Structured configuration from provider-gcp module."
   type = object({
-    name = string
-    port = number
+    gcp = object({
+      project_id = string
+      region     = string
+      zone       = string
+    })
+
+    prefix      = string
+    environment = string
+    domain_name = string
+
+    acl = object({
+      consul_token = string
+      nomad_token  = string
+      nomad_port   = number
+    })
+
+    service_account = object({
+      key                              = string
+      docker_reverse_proxy_private_key = string
+    })
+
+    secrets = object({
+      postgres_connection_string_name    = string
+      supabase_jwt_name                  = string
+      posthog_api_key_name               = string
+      analytics_collector_host_name      = string
+      analytics_collector_api_token_name = string
+      api_admin_token_name               = string
+      dashboard_api_admin_token_name     = string
+      launch_darkly_api_key_name         = string
+    })
+
+    secret_versions = object({
+      redis_cluster_url                       = any
+      redis_tls_ca_base64                     = any
+      postgres_read_replica_connection_string = any
+      supabase_db_connection_string           = any
+    })
+
+    storage = object({
+      core_repository_name            = string
+      template_bucket_name            = string
+      build_cache_bucket_name         = string
+      fc_env_pipeline_bucket_name     = string
+      clickhouse_backups_bucket_name  = string
+      loki_bucket_name                = string
+      custom_envs_repository_name     = string
+      dockerhub_remote_repository_url = string
+    })
+
+    generated = object({
+      api_secret                     = string
+      sandbox_access_token_hash_seed = string
+    })
+
+    volume_token = object({
+      issuer           = string
+      signing_key      = string
+      signing_key_name = string
+      signing_method   = string
+      duration         = string
+    })
+
+    infrastructure = object({
+      shared_chunk_cache_path  = string
+      persistent_volume_mounts = map(string)
+    })
+
+    services = object({
+      api = object({
+        port                         = any
+        internal_grpc_port           = number
+        resources_cpu_count          = number
+        resources_memory_mb          = number
+        server_count                 = number
+        machine_count                = number
+        node_pool                    = string
+        db_max_open_connections      = number
+        db_min_idle_connections      = number
+        auth_db_max_open_connections = number
+        auth_db_min_idle_connections = number
+        sandbox_storage_backend      = string
+      })
+
+      ingress = object({
+        port         = any
+        count        = number
+        config_files = map(string)
+      })
+
+      client_proxy = object({
+        count               = number
+        resources_cpu_count = number
+        resources_memory_mb = number
+        update_max_parallel = number
+        session_port        = number
+        health_port         = number
+        oidc_issuer_url     = string
+      })
+
+      clickhouse = object({
+        resources_cpu_count   = number
+        resources_memory_mb   = number
+        database              = string
+        server_count          = number
+        server_port           = any
+        job_constraint_prefix = string
+        node_pool             = string
+      })
+
+      orchestrator = object({
+        node_pool                      = string
+        port                           = number
+        proxy_port                     = number
+        envd_timeout                   = string
+        allow_sandbox_internet         = bool
+        allow_sandbox_internal_cidrs   = string
+        env_vars                       = map(string)
+        enabled                        = bool
+        default_persistent_volume_type = string
+        gcs_grpc_connection_pool_size  = number
+      })
+
+      template_manager = object({
+        builder_node_pool  = string
+        port               = number
+        clusters_size_gt_1 = bool
+      })
+
+      loki = object({
+        node_pool           = string
+        machine_count       = number
+        resources_cpu_count = number
+        resources_memory_mb = number
+        service_port        = any
+        use_v13_schema_from = string
+      })
+
+      otel_collector = object({
+        resources_cpu_count   = number
+        resources_memory_mb   = number
+        enable_router_logs    = bool
+        router_http_port      = number
+        enable_router_metrics = bool
+        router_grpc_port      = number
+      })
+
+      docker_reverse_proxy = object({
+        port = any
+      })
+
+      redis = object({
+        port    = any
+        managed = bool
+      })
+
+      dashboard_api = object({
+        count                                   = number
+        enable_auth_user_sync_background_worker = bool
+        enable_billing_http_team_provision_sink = bool
+      })
+
+      filestore_cache_cleanup = object({
+        disk_usage_target     = number
+        dry_run               = bool
+        deletions_per_loop    = number
+        files_per_loop        = number
+        max_concurrent_stat   = number
+        max_concurrent_scan   = number
+        max_concurrent_delete = number
+        max_retries           = number
+      })
+    })
   })
-}
 
-variable "redis_managed" {
-  type = bool
-}
-
-# Clickhouse
-variable "clickhouse_resources_memory_mb" {
-  type = number
-}
-
-variable "clickhouse_resources_cpu_count" {
-  type = number
-}
-
-variable "clickhouse_username" {
-  type    = string
-  default = "e2b"
-}
-
-variable "clickhouse_database" {
-  type = string
-}
-
-variable "clickhouse_server_count" {
-  type = number
-}
-
-variable "clickhouse_metrics_port" {
-  type    = number
-  default = 9363
-}
-
-variable "otel_collector_grpc_port" {
-  type    = number
-  default = 4317
-}
-
-variable "enable_otel_router_logs" {
-  type        = bool
-  default     = false
-  description = "Enable teeing non-internal customer logs from Vector to otel-router."
-}
-
-variable "otel_router_http_port" {
-  type        = number
-  default     = 4321
-  description = "Local otel-router Vector-compatible logs port used by Vector when otel-router log teeing is enabled."
-}
-
-variable "enable_otel_router_metrics" {
-  type        = bool
-  default     = false
-  description = "Enable teeing external customer metrics from otel-collector to otel-router."
-}
-
-variable "otel_router_grpc_port" {
-  type        = number
-  default     = 4320
-  description = "Local otel-router OTLP gRPC port used by otel-collector when otel-router metric teeing is enabled."
-}
-
-variable "clickhouse_server_port" {
-  type = object({
-    name = string
-    port = number
-  })
-}
-
-variable "clickhouse_job_constraint_prefix" {
-  description = "The prefix to use for the job constraint of the instance in the metadata."
-  type        = string
-}
-
-variable "clickhouse_node_pool" {
-  description = "The name of the Nomad pool."
-  type        = string
-}
-
-variable "shared_chunk_cache_path" {
-  type    = string
-  default = ""
-}
-
-variable "filestore_cache_cleanup_disk_usage_target" {
-  type        = number
-  description = "The disk usage target for the Filestore cache in percent"
-  validation {
-    condition     = var.filestore_cache_cleanup_disk_usage_target >= 0 && var.filestore_cache_cleanup_disk_usage_target < 100
-    error_message = "Must be between 0 and 100"
-  }
-}
-
-variable "filestore_cache_cleanup_dry_run" {
-  type = bool
-}
-
-variable "filestore_cache_cleanup_deletions_per_loop" {
-  type = number
-  validation {
-    condition     = var.filestore_cache_cleanup_deletions_per_loop > 0
-    error_message = "Must be greater than 0"
-  }
-}
-
-variable "filestore_cache_cleanup_files_per_loop" {
-  type = number
-}
-
-variable "filestore_cache_cleanup_max_concurrent_stat" {
-  type        = number
-  description = "Number of concurrent stat goroutines"
-}
-
-variable "filestore_cache_cleanup_max_concurrent_scan" {
-  type        = number
-  description = "Number of concurrent scanner goroutines"
-}
-
-variable "filestore_cache_cleanup_max_concurrent_delete" {
-  type        = number
-  description = "Number of concurrent deleter goroutines"
-}
-
-variable "filestore_cache_cleanup_max_retries" {
-  type        = number
-  description = "Maximum number of continuous error or miss retries before giving up"
-}
-
-variable "dockerhub_remote_repository_url" {
-  type = string
-}
-
-variable "persistent_volume_mounts" {
-  type = map(string)
-}
-
-variable "default_persistent_volume_type" {
-  type    = string
-  default = ""
-}
-
-# Dashboard API
-variable "dashboard_api_count" {
-  type    = number
-  default = 0
-}
-
-variable "supabase_db_connection_string_secret_version" {
-  type = any
-}
-
-variable "enable_auth_user_sync_background_worker" {
-  type    = bool
-  default = false
-}
-
-variable "enable_billing_http_team_provision_sink" {
-  type    = bool
-  default = false
-}
-variable "volume_token_issuer" {
-  type = string
-}
-
-variable "volume_token_signing_key" {
-  type = string
-}
-
-variable "volume_token_signing_key_name" {
-  type = string
-}
-
-variable "volume_token_signing_method" {
-  type = string
-}
-
-variable "volume_token_duration" {
-  type = string
-}
-
-variable "gcs_grpc_connection_pool_size" {
-  description = "Number of gRPC connections in the GCS connection pool"
-  type        = number
-}
-
-variable "orchestrator_env_vars" {
-  type    = map(string)
-  default = {}
-}
-
-variable "orchestrator_enabled" {
-  type        = bool
-  default     = true
-  description = "Whether the orchestrator job should be deployed"
+  sensitive = true
 }

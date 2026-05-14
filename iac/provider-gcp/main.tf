@@ -205,147 +205,17 @@ module "cluster" {
   clickhouse_stateful_disk_size_gb = var.clickhouse_stateful_disk_size_gb
 }
 
+moved {
+  from = module.nomad
+  to   = module.nomad[0]
+}
+
 module "nomad" {
   source = "./nomad"
 
-  prefix         = var.prefix
-  gcp_project_id = var.gcp_project_id
-  gcp_region     = var.gcp_region
-  gcp_zone       = var.gcp_zone
+  count = var.include_nomad ? 1 : 0
 
-  consul_acl_token_secret = module.init.consul_acl_token_secret
-  nomad_acl_token_secret  = module.init.nomad_acl_token_secret
-  nomad_port              = var.nomad_port
-  core_repository_name    = module.init.core_repository_name
-
-  # Clickhouse
-  clickhouse_resources_cpu_count   = var.clickhouse_resources_cpu_count
-  clickhouse_resources_memory_mb   = var.clickhouse_resources_memory_mb
-  clickhouse_database              = var.clickhouse_database_name
-  clickhouse_backups_bucket_name   = module.init.clickhouse_backups_bucket_name
-  clickhouse_server_count          = var.clickhouse_cluster_size
-  clickhouse_server_port           = var.clickhouse_server_service_port
-  clickhouse_job_constraint_prefix = var.clickhouse_job_constraint_prefix
-  clickhouse_node_pool             = var.clickhouse_node_pool
-
-  # Ingress
-  ingress_port         = var.ingress_port
-  ingress_count        = var.ingress_count
-  traefik_config_files = var.traefik_config_files
-
-  # API
-  api_server_count                                       = var.api_server_count
-  api_resources_cpu_count                                = var.api_resources_cpu_count
-  api_resources_memory_mb                                = var.api_resources_memory_mb
-  api_machine_count                                      = var.api_cluster_size
-  api_node_pool                                          = var.api_node_pool
-  api_port                                               = var.api_port
-  api_internal_grpc_port                                 = var.api_internal_grpc_port
-  client_proxy_oidc_issuer_url                           = var.client_proxy_oidc_issuer_url
-  environment                                            = var.environment
-  google_service_account_key                             = module.init.google_service_account_key
-  api_secret                                             = random_password.api_secret.result
-  custom_envs_repository_name                            = google_artifact_registry_repository.custom_environments_repository.name
-  postgres_connection_string_secret_name                 = module.init.postgres_connection_string_secret_name
-  postgres_read_replica_connection_string_secret_version = google_secret_manager_secret_version.postgres_read_replica_connection_string
-  supabase_jwt_secrets_secret_name                       = module.init.supabase_jwt_secret_name
-  posthog_api_key_secret_name                            = module.init.posthog_api_key_secret_name
-  analytics_collector_host_secret_name                   = module.init.analytics_collector_host_secret_name
-  analytics_collector_api_token_secret_name              = module.init.analytics_collector_api_token_secret_name
-  api_admin_token_secret_name                            = module.init.api_admin_token_secret_name
-  redis_cluster_url_secret_version                       = module.init.redis_cluster_url_secret_version
-  redis_tls_ca_base64_secret_version                     = module.init.redis_tls_ca_base64_secret_version
-  sandbox_access_token_hash_seed                         = random_password.sandbox_access_token_hash_seed.result
-  sandbox_storage_backend                                = var.sandbox_storage_backend
-  db_max_open_connections                                = var.db_max_open_connections
-  db_min_idle_connections                                = var.db_min_idle_connections
-  auth_db_max_open_connections                           = var.auth_db_max_open_connections
-  auth_db_min_idle_connections                           = var.auth_db_min_idle_connections
-
-  # Click Proxy
-  client_proxy_count               = var.client_proxy_count
-  client_proxy_resources_cpu_count = var.client_proxy_resources_cpu_count
-  client_proxy_resources_memory_mb = var.client_proxy_resources_memory_mb
-  client_proxy_update_max_parallel = var.client_proxy_update_max_parallel
-
-  client_proxy_session_port = var.client_proxy_port.port
-  client_proxy_health_port  = var.client_proxy_health_port.port
-
-  domain_name = var.domain_name
-
-  # Logs
-  loki_node_pool           = var.loki_node_pool
-  loki_machine_count       = var.loki_cluster_size
-  loki_resources_memory_mb = var.loki_resources_memory_mb
-  loki_resources_cpu_count = var.loki_resources_cpu_count
-  loki_use_v13_schema_from = var.loki_use_v13_schema_from
-  loki_bucket_name         = module.init.loki_bucket_name
-  loki_service_port        = var.loki_service_port
-
-  # Otel Colelctor
-  otel_collector_resources_memory_mb = var.otel_collector_resources_memory_mb
-  otel_collector_resources_cpu_count = var.otel_collector_resources_cpu_count
-  enable_otel_router_logs            = var.enable_otel_router_logs
-  otel_router_http_port              = var.otel_router_http_port
-  enable_otel_router_metrics         = var.enable_otel_router_metrics
-  otel_router_grpc_port              = var.otel_router_grpc_port
-
-  # Dashboard API
-  dashboard_api_count                          = var.dashboard_api_count
-  dashboard_api_admin_token_secret_name        = module.init.dashboard_api_admin_token_secret_name
-  supabase_db_connection_string_secret_version = module.init.supabase_db_connection_string_secret_version
-  enable_auth_user_sync_background_worker      = var.enable_auth_user_sync_background_worker
-  enable_billing_http_team_provision_sink      = var.enable_billing_http_team_provision_sink
-
-  # Docker reverse proxy
-  docker_reverse_proxy_port                = var.docker_reverse_proxy_port
-  docker_reverse_proxy_service_account_key = google_service_account_key.google_service_key.private_key
-
-  # Orchestrator
-  orchestrator_node_pool         = var.orchestrator_node_pool
-  allow_sandbox_internet         = var.allow_sandbox_internet
-  allow_sandbox_internal_cidrs   = var.allow_sandbox_internal_cidrs
-  orchestrator_port              = var.orchestrator_port
-  orchestrator_proxy_port        = var.orchestrator_proxy_port
-  fc_env_pipeline_bucket_name    = module.init.fc_env_pipeline_bucket_name
-  envd_timeout                   = var.envd_timeout
-  persistent_volume_mounts       = { for key, config in local.persistent_volume_types : key => config["local_mount_path"] }
-  default_persistent_volume_type = var.default_persistent_volume_type
-  orchestrator_env_vars          = var.orchestrator_env_vars
-  orchestrator_enabled           = var.orchestrator_enabled
-
-  # Template manager
-  builder_node_pool                   = var.build_node_pool
-  template_manager_port               = var.template_manager_port
-  template_bucket_name                = module.init.fc_template_bucket_name
-  build_cache_bucket_name             = module.init.fc_build_cache_bucket_name
-  template_manages_clusters_size_gt_1 = local.template_manages_clusters_size_gt_1
-  dockerhub_remote_repository_url     = var.remote_repository_enabled ? module.remote_repository[0].dockerhub_remote_repository_url : ""
-
-  # Redis
-  redis_managed = var.redis_managed
-  redis_port    = var.redis_port
-
-  launch_darkly_api_key_secret_name = module.init.launch_darkly_api_key_secret_version.secret
-
-  # Filestore
-  shared_chunk_cache_path                       = module.cluster.shared_chunk_cache_path
-  filestore_cache_cleanup_disk_usage_target     = var.filestore_cache_cleanup_disk_usage_target
-  filestore_cache_cleanup_dry_run               = var.filestore_cache_cleanup_dry_run
-  filestore_cache_cleanup_deletions_per_loop    = var.filestore_cache_cleanup_deletions_per_loop
-  filestore_cache_cleanup_files_per_loop        = var.filestore_cache_cleanup_files_per_loop
-  filestore_cache_cleanup_max_concurrent_stat   = var.filestore_cache_cleanup_max_concurrent_stat
-  filestore_cache_cleanup_max_concurrent_scan   = var.filestore_cache_cleanup_max_concurrent_scan
-  filestore_cache_cleanup_max_concurrent_delete = var.filestore_cache_cleanup_max_concurrent_delete
-  filestore_cache_cleanup_max_retries           = var.filestore_cache_cleanup_max_retries
-
-  volume_token_issuer           = local.volume_token_issuer
-  volume_token_signing_key      = local.volume_token_signing_key
-  volume_token_signing_key_name = local.volume_token_signature_name
-  volume_token_signing_method   = local.volume_token_signature_method
-  volume_token_duration         = var.volume_token_valid_for
-
-  gcs_grpc_connection_pool_size = var.gcs_grpc_connection_pool_size
+  infra_config = local.nomad_config
 }
 
 

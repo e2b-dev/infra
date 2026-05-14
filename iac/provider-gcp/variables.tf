@@ -813,3 +813,8 @@ variable "ingress_timeout_seconds" {
   type    = number
   default = 80
 }
+
+variable "include_nomad" {
+  type    = bool
+  default = true
+}
