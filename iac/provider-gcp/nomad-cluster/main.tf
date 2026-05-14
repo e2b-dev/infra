@@ -31,12 +31,8 @@ locals {
   }
 }
 
-resource "google_secret_manager_secret" "consul_gossip_encryption_key" {
+data "google_secret_manager_secret" "consul_gossip_encryption_key" {
   secret_id = "${var.prefix}consul-gossip-key"
-
-  replication {
-    auto {}
-  }
 }
 
 resource "random_id" "consul_gossip_encryption_key" {
@@ -44,23 +40,19 @@ resource "random_id" "consul_gossip_encryption_key" {
 }
 
 resource "google_secret_manager_secret_version" "consul_gossip_encryption_key" {
-  secret      = google_secret_manager_secret.consul_gossip_encryption_key.name
+  secret      = data.google_secret_manager_secret.consul_gossip_encryption_key.name
   secret_data = random_id.consul_gossip_encryption_key.b64_std
 }
 
-resource "google_secret_manager_secret" "consul_dns_request_token" {
+data "google_secret_manager_secret" "consul_dns_request_token" {
   secret_id = "${var.prefix}consul-dns-request-token"
-
-  replication {
-    auto {}
-  }
 }
 
 resource "random_uuid" "consul_dns_request_token" {
 }
 
 resource "google_secret_manager_secret_version" "consul_dns_request_token" {
-  secret      = google_secret_manager_secret.consul_dns_request_token.name
+  secret      = data.google_secret_manager_secret.consul_dns_request_token.name
   secret_data = random_uuid.consul_dns_request_token.result
 }
 
@@ -166,6 +158,7 @@ module "build_cluster" {
   cluster_name              = "${var.prefix}${var.build_cluster_name}-${each.key}"
   image_family              = var.build_image_family
   network_name              = var.network_name
+  subnetwork_name           = var.subnetwork_name
   base_hugepages_percentage = coalesce((each.value.hugepages_percentage), local.build_base_hugepages_percentage)
   network_interface_type    = each.value.network_interface_type
   node_labels               = each.value.node_labels
@@ -225,6 +218,7 @@ module "client_cluster" {
   cluster_name              = each.key == "default" ? "${var.prefix}${var.client_cluster_name}" : "${var.prefix}${var.client_cluster_name}-${each.key}"
   image_family              = var.client_image_family
   network_name              = var.network_name
+  subnetwork_name           = var.subnetwork_name
   base_hugepages_percentage = coalesce((each.value.hugepages_percentage), local.client_base_hugepages_percentage)
   network_interface_type    = each.value.network_interface_type
   node_labels               = each.value.node_labels

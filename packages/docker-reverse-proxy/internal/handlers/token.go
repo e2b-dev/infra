@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/docker-reverse-proxy/internal/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"golang.org/x/oauth2/google"
 )
 
 type DockerToken struct {
@@ -129,8 +131,11 @@ func getToken(ctx context.Context, templateID string) (*DockerToken, error) {
 		return nil, fmt.Errorf("failed to create request for scope - %s: %w", templateID, err)
 	}
 
-	// Use the service account credentials for the request
-	r.Header.Set("Authorization", fmt.Sprintf("Basic %s", consts.EncodedDockerCredentials))
+	authHeader, err := dockerRegistryAuthorization(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve docker registry auth: %w", err)
+	}
+	r.Header.Set("Authorization", authHeader)
 
 	resp, err := http.DefaultClient.Do(r)
 	if err != nil {
@@ -161,4 +166,25 @@ func getToken(ctx context.Context, templateID string) (*DockerToken, error) {
 	}
 
 	return parsedBody, nil
+}
+
+func dockerRegistryAuthorization(ctx context.Context) (string, error) {
+	if consts.GoogleServiceAccountSecret != "" {
+		encoded := base64.StdEncoding.EncodeToString(
+			fmt.Appendf(nil, "_json_key_base64:%s", consts.GoogleServiceAccountSecret),
+		)
+		return fmt.Sprintf("Basic %s", encoded), nil
+	}
+
+	creds, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform")
+	if err != nil {
+		return "", fmt.Errorf("failed to find default credentials: %w", err)
+	}
+
+	token, err := creds.TokenSource.Token()
+	if err != nil {
+		return "", fmt.Errorf("failed to get default credential token: %w", err)
+	}
+
+	return fmt.Sprintf("Bearer %s", token.AccessToken), nil
 }

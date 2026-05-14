@@ -11,6 +11,11 @@ variable "network_name" {
   type = string
 }
 
+variable "subnetwork_name" {
+  type    = string
+  default = ""
+}
+
 variable "cluster_tag_name" {
   description = "Network tag applied to cluster instances for firewall rules and Consul auto-discovery."
   type        = string

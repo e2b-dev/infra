@@ -73,8 +73,16 @@ resource "google_service_account" "infra_instances_service_account" {
   display_name = "Infra Instances Service Account"
 }
 
-resource "google_service_account_key" "google_service_key" {
+resource "google_service_account_iam_member" "infra_instances_service_account_token_creator" {
   service_account_id = google_service_account.infra_instances_service_account.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
+}
+
+resource "google_project_iam_member" "infra_instances_project_token_creator" {
+  project = var.gcp_project_id
+  role    = "roles/iam.serviceAccountTokenCreator"
+  member  = "serviceAccount:${google_service_account.infra_instances_service_account.email}"
 }
 
 // todo: delete after migration period

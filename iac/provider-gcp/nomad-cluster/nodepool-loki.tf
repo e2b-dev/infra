@@ -110,7 +110,8 @@ resource "google_compute_instance_template" "loki" {
   }
 
   network_interface {
-    network = var.network_name
+    network    = var.network_name
+    subnetwork = coalesce(var.subnetwork_name, var.network_name)
 
     dynamic "access_config" {
       for_each = ["public_ip"]

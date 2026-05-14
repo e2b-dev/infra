@@ -599,7 +599,7 @@ resource "google_secret_manager_secret_version" "clickhouse_server_secret_value"
 }
 
 resource "google_service_account" "clickhouse_service_account" {
-  account_id   = "${var.prefix}clickhouse-service-account"
+  account_id   = "${var.prefix}clickhouse-sa"
   display_name = "${var.prefix}clickhouse-service-account"
 }
 
@@ -607,14 +607,6 @@ resource "google_storage_bucket_iam_member" "clickhouse_service_account_iam" {
   bucket = var.clickhouse_backups_bucket_name
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.clickhouse_service_account.email}"
-}
-
-resource "google_storage_hmac_key" "clickhouse_hmac_key" {
-  service_account_email = google_service_account.clickhouse_service_account.email
-}
-
-resource "google_service_account_key" "clickhouse_service_account_key" {
-  service_account_id = google_service_account.clickhouse_service_account.id
 }
 
 module "clickhouse" {
@@ -641,7 +633,7 @@ module "clickhouse" {
 
   # Backup
   backup_bucket                = var.clickhouse_backups_bucket_name
-  gcs_credentials_json_encoded = google_service_account_key.clickhouse_service_account_key.private_key
+  gcs_credentials_json_encoded = ""
 
   # Migrator
   clickhouse_migrator_image = data.google_artifact_registry_docker_image.clickhouse_migrator_image.self_link

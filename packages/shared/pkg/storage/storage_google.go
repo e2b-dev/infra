@@ -18,6 +18,8 @@ import (
 	"github.com/googleapis/gax-go/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
+	"golang.org/x/oauth2/google"
+	iamcredentials "google.golang.org/api/iamcredentials/v1"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/api/option/internaloption"
@@ -144,7 +146,11 @@ func (s *gcpStorage) GetDetails() string {
 	return fmt.Sprintf("[GCP Storage, bucket set to %s]", s.bucket.BucketName())
 }
 
-func (s *gcpStorage) UploadSignedURL(_ context.Context, path string, ttl time.Duration) (string, error) {
+func (s *gcpStorage) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
+	if consts.GoogleServiceAccountSecret == "" {
+		return s.uploadSignedURLWithADC(ctx, path, ttl)
+	}
+
 	token, err := parseServiceAccountBase64(consts.GoogleServiceAccountSecret)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse GCP service account: %w", err)
@@ -158,6 +164,55 @@ func (s *gcpStorage) UploadSignedURL(_ context.Context, path string, ttl time.Du
 	}
 
 	url, err := storage.SignedURL(s.bucket.BucketName(), path, opts)
+	if err != nil {
+		return "", fmt.Errorf("failed to create signed URL for GCS object (%s): %w", path, err)
+	}
+
+	return url, nil
+}
+
+func (s *gcpStorage) uploadSignedURLWithADC(ctx context.Context, path string, ttl time.Duration) (string, error) {
+	creds, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform")
+	if err != nil {
+		return "", fmt.Errorf("failed to find default credentials: %w", err)
+	}
+
+	serviceAccountEmail, err := googleCredentialsServiceAccountEmail(creds.JSON)
+	if err != nil {
+		serviceAccountEmail, err = metadataServiceAccountEmail(ctx)
+		if err != nil {
+			return "", fmt.Errorf("failed to resolve service account email: %w", err)
+		}
+	}
+
+	iamService, err := iamcredentials.NewService(ctx, option.WithCredentials(creds))
+	if err != nil {
+		return "", fmt.Errorf("failed to create IAM credentials service: %w", err)
+	}
+
+	signBytes := func(b []byte) ([]byte, error) {
+		name := fmt.Sprintf("projects/-/serviceAccounts/%s", serviceAccountEmail)
+		resp, err := iamService.Projects.ServiceAccounts.SignBlob(name, &iamcredentials.SignBlobRequest{
+			Payload: base64.StdEncoding.EncodeToString(b),
+		}).Context(ctx).Do()
+		if err != nil {
+			return nil, fmt.Errorf("failed to sign blob with IAM Credentials: %w", err)
+		}
+
+		decoded, err := base64.StdEncoding.DecodeString(resp.SignedBlob)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode signed blob: %w", err)
+		}
+
+		return decoded, nil
+	}
+
+	url, err := storage.SignedURL(s.bucket.BucketName(), path, &storage.SignedURLOptions{
+		GoogleAccessID: serviceAccountEmail,
+		Method:         http.MethodPut,
+		Expires:        time.Now().Add(ttl),
+		SignBytes:      signBytes,
+	})
 	if err != nil {
 		return "", fmt.Errorf("failed to create signed URL for GCS object (%s): %w", path, err)
 	}
@@ -532,6 +587,58 @@ func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, c
 type gcpServiceToken struct {
 	ClientEmail string `json:"client_email"`
 	PrivateKey  string `json:"private_key"`
+}
+
+func googleCredentialsServiceAccountEmail(rawJSON []byte) (string, error) {
+	if len(rawJSON) == 0 {
+		return "", errors.New("credentials JSON is empty")
+	}
+
+	var token gcpServiceToken
+	if err := json.Unmarshal(rawJSON, &token); err != nil {
+		return "", fmt.Errorf("failed to parse credentials JSON: %w", err)
+	}
+
+	if token.ClientEmail == "" {
+		return "", errors.New("credentials JSON does not include client_email")
+	}
+
+	return token.ClientEmail, nil
+}
+
+func metadataServiceAccountEmail(ctx context.Context) (string, error) {
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		"http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email",
+		nil,
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to create metadata request: %w", err)
+	}
+	req.Header.Set("Metadata-Flavor", "Google")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to query metadata service account email: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("metadata service returned %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read metadata service account email: %w", err)
+	}
+
+	email := string(bytes.TrimSpace(body))
+	if email == "" {
+		return "", errors.New("metadata service returned empty service account email")
+	}
+
+	return email, nil
 }
 
 func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) {

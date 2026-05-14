@@ -3,7 +3,7 @@ output "service_account_email" {
 }
 
 output "google_service_account_key" {
-  value = google_service_account_key.google_service_key.private_key
+  value = ""
 }
 
 output "consul_acl_token_secret" {

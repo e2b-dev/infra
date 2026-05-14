@@ -262,6 +262,7 @@ EOF
     "default_policy": "deny",
     "enable_token_persistence": true,
     "tokens": {
+      "agent": "$consul_token",
       "default": "$consul_token"
     }
   },

@@ -526,6 +526,20 @@ resource "google_compute_firewall" "client_proxy_firewall_ingress" {
   source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
 }
 
+resource "google_compute_firewall" "cluster_internal_allow_all" {
+  name    = "${var.prefix}${var.cluster_tag_name}-internal-allow-all"
+  network = var.network_name
+
+  allow {
+    protocol = "all"
+  }
+
+  direction   = "INGRESS"
+  priority    = 900
+  source_tags = [var.cluster_tag_name]
+  target_tags = [var.cluster_tag_name]
+}
+
 resource "google_compute_firewall" "internal_remote_connection_firewall_ingress" {
   name    = "${var.prefix}${var.cluster_tag_name}-internal-remote-connection-firewall-ingress"
   network = var.network_name

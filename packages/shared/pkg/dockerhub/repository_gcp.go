@@ -11,6 +11,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"golang.org/x/oauth2/google"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
@@ -59,9 +60,32 @@ func (g *GCPRemoteRepository) GetImage(_ context.Context, tag string, platform c
 	return img, nil
 }
 
-func getAuthToken(_ context.Context) (authn.Authenticator, error) {
+type gcpADCAuthenticator struct {
+	ctx context.Context
+}
+
+func (a gcpADCAuthenticator) Authorization() (*authn.AuthConfig, error) {
+	creds, err := google.FindDefaultCredentials(a.ctx, "https://www.googleapis.com/auth/cloud-platform")
+	if err != nil {
+		return nil, fmt.Errorf("failed to find default credentials: %w", err)
+	}
+
+	token, err := creds.TokenSource.Token()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get default credential token: %w", err)
+	}
+
+	return &authn.AuthConfig{
+		RegistryToken: token.AccessToken,
+	}, nil
+}
+
+func getAuthToken(ctx context.Context) (authn.Authenticator, error) {
 	authCfg := consts.DockerAuthConfig
 	if authCfg == "" {
+		if consts.GoogleServiceAccountSecret == "" {
+			return gcpADCAuthenticator{ctx: ctx}, nil
+		}
 		return &gcpAuthConfig, nil
 	}
 

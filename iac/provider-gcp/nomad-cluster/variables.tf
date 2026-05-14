@@ -183,6 +183,11 @@ variable "network_name" {
   type = string
 }
 
+variable "subnetwork_name" {
+  type    = string
+  default = ""
+}
+
 variable "google_service_account_email" {
   type = string
 }

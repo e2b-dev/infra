@@ -368,6 +368,12 @@ variable "domain_name" {
   description = "The domain name where e2b will run"
 }
 
+variable "cloudflare_api_token_secret_name" {
+  type        = string
+  description = "Secret Manager secret name containing the Cloudflare API token. Defaults to the token secret created by module.init."
+  default     = ""
+}
+
 variable "prefix" {
   type        = string
   description = "The prefix to use for all resources in this module"
@@ -743,6 +749,11 @@ variable "default_persistent_volume_type" {
 variable "network_name" {
   type    = string
   default = "default"
+}
+
+variable "subnetwork_name" {
+  type    = string
+  default = ""
 }
 
 variable "volume_token_issuer" {

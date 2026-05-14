@@ -190,18 +190,14 @@ gsutil cp "gs://${SCRIPTS_BUCKET}/run-nomad-${RUN_NOMAD_FILE_HASH}.sh" /opt/noma
 chmod +x /opt/consul/bin/run-consul.sh /opt/nomad/bin/run-nomad.sh
 
 mkdir -p /root/docker
-touch /root/docker/config.json
 cat <<EOF >/root/docker/config.json
 {
-    "auths": {
-        "${GCP_REGION}-docker.pkg.dev": {
-            "username": "_json_key_base64",
-            "password": "${GOOGLE_SERVICE_ACCOUNT_KEY}",
-            "server_address": "https://${GCP_REGION}-docker.pkg.dev"
-        }
-    }
+  "credHelpers": {
+    "${GCP_REGION}-docker.pkg.dev": "gcloud"
+  }
 }
 EOF
+gcloud auth configure-docker --quiet "${GCP_REGION}-docker.pkg.dev" || true
 
 mkdir -p /etc/systemd/resolved.conf.d/
 touch /etc/systemd/resolved.conf.d/consul.conf

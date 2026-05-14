@@ -40,6 +40,8 @@ tf_vars := \
 	$(call tfvar, GCP_ZONE) \
 	$(call tfvar, DOMAIN_NAME) \
 	$(call tfvar, PREFIX) \
+	$(call tfvar, NETWORK_NAME) \
+	$(call tfvar, SUBNETWORK_NAME) \
 	$(call tfvar, SANDBOX_STORAGE_BACKEND) \
 	$(call tfvar, ORCHESTRATOR_ENABLED) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
@@ -94,6 +96,7 @@ tf_vars := \
 	$(call tfvar, DB_MIN_IDLE_CONNECTIONS) \
 	$(call tfvar, AUTH_DB_MAX_OPEN_CONNECTIONS) \
 	$(call tfvar, AUTH_DB_MIN_IDLE_CONNECTIONS) \
+	$(call tfvar, CLOUDFLARE_API_TOKEN_SECRET_NAME) \
 	$(call tfvar, CLIENT_PROXY_OIDC_ISSUER_URL) \
 	$(call tfvar, GCS_GRPC_CONNECTION_POOL_SIZE) \
 	$(call tfvar, ADDITIONAL_API_PATHS_HANDLED_BY_INGRESS) \

@@ -126,12 +126,13 @@ module "cluster" {
 
   environment = var.environment
 
-  cloudflare_api_token_secret_name = module.init.cloudflare_api_token_secret_name
+  cloudflare_api_token_secret_name = coalesce(var.cloudflare_api_token_secret_name, module.init.cloudflare_api_token_secret_name)
   gcp_project_id                   = var.gcp_project_id
   gcp_region                       = var.gcp_region
   gcp_zone                         = var.gcp_zone
   google_service_account_key       = module.init.google_service_account_key
   network_name                     = var.network_name
+  subnetwork_name                  = var.subnetwork_name
 
   build_clusters_config  = var.build_clusters_config
   client_clusters_config = var.client_clusters_config
@@ -247,7 +248,7 @@ module "nomad" {
   api_secret                                             = random_password.api_secret.result
   custom_envs_repository_name                            = google_artifact_registry_repository.custom_environments_repository.name
   postgres_connection_string_secret_name                 = module.init.postgres_connection_string_secret_name
-  postgres_read_replica_connection_string_secret_version = google_secret_manager_secret_version.postgres_read_replica_connection_string
+  postgres_read_replica_connection_string_secret_version = data.google_secret_manager_secret_version.postgres_read_replica_connection_string
   supabase_jwt_secrets_secret_name                       = module.init.supabase_jwt_secret_name
   posthog_api_key_secret_name                            = module.init.posthog_api_key_secret_name
   analytics_collector_host_secret_name                   = module.init.analytics_collector_host_secret_name
@@ -299,7 +300,7 @@ module "nomad" {
 
   # Docker reverse proxy
   docker_reverse_proxy_port                = var.docker_reverse_proxy_port
-  docker_reverse_proxy_service_account_key = google_service_account_key.google_service_key.private_key
+  docker_reverse_proxy_service_account_key = ""
 
   # Orchestrator
   orchestrator_node_pool         = var.orchestrator_node_pool
