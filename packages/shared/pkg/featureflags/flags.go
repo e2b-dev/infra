@@ -124,12 +124,6 @@ var (
 	SandboxLabelBasedSchedulingFlag  = NewBoolFlag("sandbox-label-based-scheduling", false)
 	OptimisticResourceAccountingFlag = NewBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
 	FreePageReportingFlag            = NewBoolFlag("free-page-reporting", false)
-	// FreePageHintingInstallFlag controls whether FreePageHinting=true is
-	// configured on the balloon at install time. Just having FPH on the
-	// balloon doesn't trigger the kernel race fixed in
-	// https://lore.kernel.org/lkml/20240429125100.7393-1-david@redhat.com/
-	// — that race is on the actual hinting flow, gated by FreePageHintingTimeoutMs.
-	FreePageHintingInstallFlag = NewBoolFlag("free-page-hinting-install", false)
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
 )
@@ -170,11 +164,7 @@ var (
 	BestOfKMaxOvercommit          = NewIntFlag("best-of-k-max-overcommit", 400)              // Default R=4 (stored as percentage, max over-commit ratio)
 	BestOfKAlpha                  = NewIntFlag("best-of-k-alpha", 50)                        // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
 	EnvdInitTimeoutMilliseconds   = NewIntFlag("envd-init-request-timeout-milliseconds", 50) // Timeout for envd init request in milliseconds
-	// FreePageHintingTimeoutMs gates the pre-pause balloon FPH drain. 0
-	// disables. Evaluated with sandbox/kernel-version LD context so operators
-	// can roll out only on guests with the kernel race fix.
-	FreePageHintingTimeoutMs      = NewIntFlag("free-page-hinting-timeout-ms", 0)
-	HostStatsSamplingInterval     = NewIntFlag("host-stats-sampling-interval", 5000) // Host stats sampling interval in milliseconds (default 5s)
+	HostStatsSamplingInterval     = NewIntFlag("host-stats-sampling-interval", 5000)         // Host stats sampling interval in milliseconds (default 5s)
 	MaxCacheWriterConcurrencyFlag = NewIntFlag("max-cache-writer-concurrency", 10)
 
 	// BuildCacheMaxUsagePercentage the maximum percentage of the cache disk storage
@@ -233,6 +223,33 @@ var (
 // reclaim chain. Missing/zero/negative values disable the step.
 // Example: {"sync":500,"drop_caches":200,"compact_memory":1000,"fstrim":500}
 var ReclaimConfigFlag = NewJSONFlag("guest-pause-reclaim", ldvalue.Null())
+
+// FreePageHintingConfig controls virtio-balloon free-page-hinting.
+// "enabled" configures FreePageHinting=true on the balloon at install time
+// (kernel-side eligibility is targeted separately via the LD context — the
+// race fixed in https://lore.kernel.org/lkml/20240429125100.7393-1-david@redhat.com/
+// is on the hinting flow, gated by the per-use-case timeouts below).
+// "pause"/"build" are pre-pause drain timeouts in ms keyed by SnapshotUseCase;
+// missing/zero/negative disables the drain for that use case.
+// Example: {"enabled": true, "pause": 500, "build": 0}
+var FreePageHintingConfig = NewJSONFlag("free-page-hinting-config", ldvalue.Null())
+
+// IsFreePageHintingEnabled reports whether FPH should be configured on the
+// balloon at install time.
+func IsFreePageHintingEnabled(ctx context.Context, ff *Client, contexts ...ldcontext.Context) bool {
+	return ff.JSONFlag(ctx, FreePageHintingConfig, contexts...).GetByKey("enabled").BoolValue()
+}
+
+// GetFreePageHintingTimeout returns the pre-pause FPH drain timeout for the
+// given SnapshotUseCase. Zero means disabled.
+func GetFreePageHintingTimeout(ctx context.Context, ff *Client, useCase string, contexts ...ldcontext.Context) time.Duration {
+	ms := ff.JSONFlag(ctx, FreePageHintingConfig, contexts...).GetByKey(useCase).IntValue()
+	if ms <= 0 {
+		return 0
+	}
+
+	return time.Duration(ms) * time.Millisecond
+}
 
 type ReclaimConfig struct {
 	Sync          time.Duration

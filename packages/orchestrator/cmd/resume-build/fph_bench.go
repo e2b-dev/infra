@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
@@ -102,11 +103,12 @@ func (r *runner) fphBenchArm(ctx context.Context, opts fphBenchOptions, withFph 
 
 func (r *runner) fphBenchOnce(ctx context.Context, opts fphBenchOptions, withFph bool) fphBenchSample {
 	if withFph {
-		featureflags.NewBoolFlag("free-page-hinting-install", true)
-		featureflags.NewIntFlag("free-page-hinting-timeout-ms", int(fphBenchDrainTimeout/time.Millisecond))
+		featureflags.NewJSONFlag("free-page-hinting-config", ldvalue.FromJSONMarshal(map[string]any{
+			"enabled": true,
+			"pause":   int(fphBenchDrainTimeout / time.Millisecond),
+		}))
 	} else {
-		featureflags.NewBoolFlag("free-page-hinting-install", false)
-		featureflags.NewIntFlag("free-page-hinting-timeout-ms", 0)
+		featureflags.NewJSONFlag("free-page-hinting-config", ldvalue.Null())
 	}
 
 	buildID := uuid.New().String()

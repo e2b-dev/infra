@@ -71,7 +71,7 @@ func main() {
 	optimize := flag.Bool("optimize", false, "collect fresh prefetch mapping after pause (resumes snapshot to record page faults)")
 	shell := flag.Bool("shell", false, "attach an interactive PTY shell via envd (no sshd required in the sandbox)")
 
-	fphTimeoutMs := flag.Int("fph-timeout-ms", 0, "override free-page-hinting-timeout-ms LD flag (0 = use LD default)")
+	fphTimeoutMs := flag.Int("fph-timeout-ms", 0, "override free-page-hinting-config pause timeout LD flag (0 = use LD default)")
 	reclaim := flag.Bool("reclaim", false, "enable pre-pause reclaim chain (fstrim 500ms, sync 500ms, drop_caches 200ms, compact 1s)")
 
 	fphBench := flag.Bool("fph-bench", false, "compare pause memfile size with vs without FPH; requires -cmd-pause workload, uses -iterations (default 3), forces FPR on")
@@ -80,8 +80,10 @@ func main() {
 	flag.Parse()
 
 	if *fphTimeoutMs > 0 {
-		featureflags.NewIntFlag("free-page-hinting-timeout-ms", *fphTimeoutMs)
-		featureflags.NewBoolFlag("free-page-hinting-install", true)
+		featureflags.NewJSONFlag("free-page-hinting-config", ldvalue.FromJSONMarshal(map[string]any{
+			"enabled": true,
+			"pause":   *fphTimeoutMs,
+		}))
 	}
 
 	if *reclaim {

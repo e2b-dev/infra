@@ -504,7 +504,7 @@ func (f *Factory) CreateSandbox(
 	})
 
 	freePageHinting := fc.FCSupportsFreePageHinting(config.FirecrackerConfig.FirecrackerVersion) &&
-		f.featureFlags.BoolFlag(ctx, featureflags.FreePageHintingInstallFlag, sandboxLDContext(runtime, config))
+		featureflags.IsFreePageHintingEnabled(ctx, f.featureFlags, sandboxLDContext(runtime, config))
 
 	err = fcHandle.Create(
 		ctx,
@@ -1082,8 +1082,8 @@ func (s *Sandbox) Pause(
 	s.bestEffortReclaim(ctx)
 
 	// Drain free-page-hinting before pause so the snapshot doesn't capture
-	// pages the guest already considers free. Timeout=0 disables.
-	if t := time.Duration(s.featureFlags.IntFlag(ctx, featureflags.FreePageHintingTimeoutMs, sandboxLDContext(s.Runtime, s.Config))) * time.Millisecond; t > 0 {
+	// pages the guest already considers free. Timeout per use case; 0 disables.
+	if t := featureflags.GetFreePageHintingTimeout(ctx, s.featureFlags, string(useCase), sandboxLDContext(s.Runtime, s.Config)); t > 0 {
 		drainCtx, cancel := context.WithTimeout(ctx, t)
 		if err := s.process.DrainBalloon(drainCtx); err != nil {
 			telemetry.ReportError(ctx, "balloon hinting drain failed (continuing pause)", err)
