@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"errors"
 	"net/http/httptest"
 	"testing"
 
@@ -78,10 +77,10 @@ func TestAuthorizeTeam(t *testing.T) {
 			switch tc.wantErrType.(type) {
 			case *TeamForbiddenError:
 				var typed *TeamForbiddenError
-				assert.True(t, errors.As(err, &typed), "expected TeamForbiddenError")
+				require.ErrorAs(t, err, &typed, "expected TeamForbiddenError")
 			case *TeamBlockedError:
 				var typed *TeamBlockedError
-				assert.True(t, errors.As(err, &typed), "expected TeamBlockedError")
+				require.ErrorAs(t, err, &typed, "expected TeamBlockedError")
 			}
 			if tc.wantMsgHas != "" {
 				assert.Contains(t, err.Error(), tc.wantMsgHas)
@@ -104,7 +103,6 @@ func TestAuthorizeTeam_NilTeamRow(t *testing.T) {
 func TestSetAndGetIntent(t *testing.T) {
 	t.Parallel()
 
-	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 
 	_, ok := GetIntent(c)
@@ -118,8 +116,6 @@ func TestSetAndGetIntent(t *testing.T) {
 
 func TestAuthorizeTeamCtx(t *testing.T) {
 	t.Parallel()
-
-	gin.SetMode(gin.TestMode)
 
 	t.Run("nil team", func(t *testing.T) {
 		t.Parallel()
@@ -140,7 +136,7 @@ func TestAuthorizeTeamCtx(t *testing.T) {
 		err := AuthorizeTeamCtx(c, team)
 		require.Error(t, err)
 		var blocked *TeamBlockedError
-		assert.True(t, errors.As(err, &blocked))
+		assert.ErrorAs(t, err, &blocked)
 	})
 
 	t.Run("blocked + view allowed", func(t *testing.T) {
@@ -164,7 +160,7 @@ func TestAuthorizeTeamCtx(t *testing.T) {
 		err := AuthorizeTeamCtx(c, team)
 		require.Error(t, err)
 		var blocked *TeamBlockedError
-		assert.True(t, errors.As(err, &blocked))
+		assert.ErrorAs(t, err, &blocked)
 	})
 
 	t.Run("clean team always allowed", func(t *testing.T) {

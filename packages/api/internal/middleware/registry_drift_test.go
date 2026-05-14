@@ -12,7 +12,8 @@ import (
 type registryNoopHandlers struct{ api.ServerInterface }
 
 func TestDefaultRouteIntentsCoversAllRegisteredRoutes(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+	t.Parallel()
+
 	r := gin.New()
 	api.RegisterHandlersWithOptions(r, registryNoopHandlers{}, api.GinServerOptions{})
 

@@ -16,7 +16,6 @@ import (
 )
 
 func newTestRouter(intents RouteIntents, team *types.Team) *gin.Engine {
-	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	if team != nil {
 		r.Use(func(c *gin.Context) {
@@ -63,6 +62,7 @@ func testIntents() RouteIntents {
 
 func blockedTeam(reason string) *types.Team {
 	r := reason
+
 	return types.NewTeam(&authqueries.Team{IsBlocked: true, BlockedReason: &r}, &authqueries.TeamLimit{})
 }
 
@@ -171,10 +171,9 @@ func TestEnforceIntent_BannedTeamDeniedEvenForView(t *testing.T) {
 func TestValidateAllRoutesIntentsDeclared_HappyPath(t *testing.T) {
 	t.Parallel()
 
-	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/sandboxes", func(c *gin.Context) {})
-	r.POST("/sandboxes", func(c *gin.Context) {})
+	r.GET("/sandboxes", func(_ *gin.Context) {})
+	r.POST("/sandboxes", func(_ *gin.Context) {})
 
 	intents := RouteIntents{
 		http.MethodGet:  {"/sandboxes": auth.IntentView},
@@ -187,10 +186,9 @@ func TestValidateAllRoutesIntentsDeclared_HappyPath(t *testing.T) {
 func TestValidateAllRoutesIntentsDeclared_MissingRoute(t *testing.T) {
 	t.Parallel()
 
-	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/sandboxes", func(c *gin.Context) {})
-	r.DELETE("/sandboxes/:id", func(c *gin.Context) {})
+	r.GET("/sandboxes", func(_ *gin.Context) {})
+	r.DELETE("/sandboxes/:id", func(_ *gin.Context) {})
 
 	intents := RouteIntents{
 		http.MethodGet: {"/sandboxes": auth.IntentView},
@@ -204,9 +202,8 @@ func TestValidateAllRoutesIntentsDeclared_MissingRoute(t *testing.T) {
 func TestValidateAllRoutesIntentsDeclared_ExemptRoutesIgnored(t *testing.T) {
 	t.Parallel()
 
-	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/health", func(c *gin.Context) {})
+	r.GET("/health", func(_ *gin.Context) {})
 
 	assert.NoError(t, ValidateAllRoutesIntentsDeclared(r.Routes(), RouteIntents{}))
 }
