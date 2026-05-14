@@ -1133,6 +1133,7 @@ func (s *Sandbox) Pause(
 		memfileDiffMetadata,
 		s.config.DefaultCacheDir,
 		s.process,
+		s.memory.Memfd(ctx),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -1200,13 +1201,19 @@ func pauseProcessMemory(
 	diffMetadata *header.DiffMetadata,
 	cacheDir string,
 	fc *fc.Process,
+	memfd *block.Memfd,
 ) (d build.Diff, h *header.Header, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
 	header, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create memfile header: %w", err)
+		var closeErr error
+		if memfd != nil {
+			closeErr = memfd.Close()
+		}
+
+		return nil, nil, errors.Join(fmt.Errorf("failed to create memfile header: %w", err), closeErr)
 	}
 
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
@@ -1216,6 +1223,7 @@ func pauseProcessMemory(
 		diffMetadata.Dirty,
 		memfileDiffPath,
 		diffMetadata.BlockSize,
+		memfd,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
