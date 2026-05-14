@@ -56,6 +56,7 @@ func (r *runner) fphBench(ctx context.Context, opts fphBenchOptions) error {
 		if n == 0 {
 			return 0
 		}
+
 		return sum / n
 	}
 	memfile := func(s fphBenchSample) int64 { return s.memfileBytes }
@@ -71,6 +72,7 @@ func (r *runner) fphBench(ctx context.Context, opts fphBenchOptions) error {
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -84,6 +86,7 @@ func (r *runner) fphBenchArm(ctx context.Context, opts fphBenchOptions, withFph 
 		out = append(out, s)
 		if s.err != nil {
 			fmt.Printf("[%d/%d] %s: %v\n", i+1, opts.iterations, label, s.err)
+
 			continue
 		}
 		fmt.Printf("[%d/%d] %s: memfile %s  fpr_freed %s  fph_freed %s  pause %s\n",
@@ -93,6 +96,7 @@ func (r *runner) fphBenchArm(ctx context.Context, opts fphBenchOptions, withFph 
 			fmtMiB(int64(s.hintBytes)),
 			s.pause.Round(time.Millisecond))
 	}
+
 	return out
 }
 
@@ -175,6 +179,7 @@ func readLocalMemfileSize(buildID string) (int64, error) {
 	if basePath == "" {
 		return 0, errors.New("LOCAL_TEMPLATE_STORAGE_BASE_PATH not set; -fph-bench requires local storage")
 	}
+
 	return cmdutil.GetActualFileSize(filepath.Join(basePath, buildID, storage.MemfileName))
 }
 
