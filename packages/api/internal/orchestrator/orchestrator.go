@@ -226,6 +226,7 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 			return
 		case <-ticker.C:
 			connectedNodes := make([]map[string]any, 0, o.nodes.Count())
+			templateManagers := make([]map[string]any, 0)
 
 			for _, nodeItem := range o.nodes.Items() {
 				if nodeItem == nil {
@@ -241,9 +242,23 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 				}
 			}
 
+			for _, cluster := range o.clusters.GetClusters() {
+				for _, templateManager := range cluster.GetTemplateBuilders() {
+					info := templateManager.GetInfo()
+					templateManagers = append(templateManagers, map[string]any{
+						"cluster_id":          templateManager.ClusterID,
+						"node_id":             templateManager.NodeID,
+						"service_instance_id": info.ServiceInstanceID,
+						"status":              info.Status.String(),
+					})
+				}
+			}
+
 			logger.L().Info(ctx, "API internal status",
 				zap.Int("nodes_count", o.nodes.Count()),
 				zap.Any("nodes", connectedNodes),
+				zap.Int("template_managers_count", len(templateManagers)),
+				zap.Any("template_managers", templateManagers),
 			)
 		}
 	}
