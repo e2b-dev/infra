@@ -121,6 +121,10 @@ const (
 	SandboxFCBlockRateLimiterEventCount HistogramType = "orchestrator.sandbox.fc.block.rate_limiter_event_count"
 	SandboxFCBlockIOEngineThrottled     HistogramType = "orchestrator.sandbox.fc.block.io_engine_throttled"
 	SandboxFCBlockRemainingReqs         HistogramType = "orchestrator.sandbox.fc.block.remaining_reqs"
+
+	SnapshotDiffBytes   HistogramType = "orchestrator.sandbox.snapshot.diff.bytes"
+	SnapshotDiffRatioBp HistogramType = "orchestrator.sandbox.snapshot.diff.ratio_bp"
+	SnapshotTotalBytes  HistogramType = "orchestrator.sandbox.snapshot.total.bytes"
 )
 
 const (
@@ -352,6 +356,10 @@ var histogramDesc = map[HistogramType]string{
 	SandboxFCBlockRateLimiterEventCount: "Distribution of Firecracker VMM block rate limiter events per metrics flush",
 	SandboxFCBlockIOEngineThrottled:     "Distribution of Firecracker VMM block ops throttled by io_uring engine per metrics flush",
 	SandboxFCBlockRemainingReqs:         "Distribution of Firecracker VMM block queue remaining-request events per metrics flush",
+
+	SnapshotDiffBytes:   "Per-snapshot dirty/empty bytes per file",
+	SnapshotDiffRatioBp: "Per-snapshot dirty/empty as fraction of total mapped size, in basis points (10000=100%)",
+	SnapshotTotalBytes:  "Per-snapshot total mapped size of the file",
 }
 
 var histogramUnits = map[HistogramType]string{
@@ -382,6 +390,10 @@ var histogramUnits = map[HistogramType]string{
 	SandboxFCBlockRateLimiterEventCount: "{event}",
 	SandboxFCBlockIOEngineThrottled:     "{op}",
 	SandboxFCBlockRemainingReqs:         "{event}",
+
+	SnapshotDiffBytes:   "{By}",
+	SnapshotDiffRatioBp: "{1}",
+	SnapshotTotalBytes:  "{By}",
 }
 
 func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram, error) {

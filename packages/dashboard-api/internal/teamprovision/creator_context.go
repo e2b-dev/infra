@@ -6,10 +6,13 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sharedteamprovision "github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -23,7 +26,8 @@ const (
 )
 
 // resolveCreatorContext reads signup IP/UA and auth provider from
-// auth.users.raw_app_meta_data, which Supabase populates for every signup flow.
+// auth.users.raw_app_meta_data and falls back to auth.sessions for social
+// providers when metadata is missing.
 // Returns nil when the user cannot be found so callers can keep going without
 // the optional context.
 func resolveCreatorContext(ctx context.Context, supabaseDB *supabasedb.Client, userID uuid.UUID) (*sharedteamprovision.CreatorContextV1, error) {
@@ -44,13 +48,36 @@ func resolveCreatorContext(ctx context.Context, supabaseDB *supabasedb.Client, u
 	}
 
 	authMethod := sharedteamprovision.AuthMethodPassword
+	ipAddress := stringFromMetadata(metadata, signupIPMetadataKey)
+	userAgent := stringFromMetadata(metadata, signupUserAgentMetadataKey)
+
 	if hasOAuthProvider(metadata) {
 		authMethod = sharedteamprovision.AuthMethodSocial
+
+		if ipAddress == "" || userAgent == "" {
+			session, sessionErr := supabaseDB.Write.GetLatestAuthSessionByUserID(ctx, userID)
+
+			if sessionErr != nil {
+				if !dberrors.IsNotFoundError(sessionErr) {
+					logger.L().Warn(ctx, "failed to resolve latest auth session for creator context, falling back to metadata",
+						zap.String("user_id", userID.String()),
+						zap.Error(sessionErr),
+					)
+				}
+			} else {
+				if ipAddress == "" {
+					ipAddress = utils.DerefOrDefault(session.Ip, "")
+				}
+				if userAgent == "" {
+					userAgent = utils.DerefOrDefault(session.UserAgent, "")
+				}
+			}
+		}
 	}
 
 	return &sharedteamprovision.CreatorContextV1{
-		IPAddress:  stringFromMetadata(metadata, signupIPMetadataKey),
-		UserAgent:  stringFromMetadata(metadata, signupUserAgentMetadataKey),
+		IPAddress:  ipAddress,
+		UserAgent:  userAgent,
 		AuthMethod: authMethod,
 	}, nil
 }

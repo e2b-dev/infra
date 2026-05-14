@@ -8,6 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -15,8 +16,9 @@ const cleanerInterval = time.Minute
 
 // TODO: Remove once fully migrated to Redis
 //
-// Cleaner prunes stale entries from the two Redis sandbox indexes
-// (`globalExpirationSet` and `globalTeamsSet`).
+// Cleaner:
+// - prunes stale entries from the two Redis sandbox indexes (`globalExpirationSet` and `globalTeamsSet`).
+// - removes expired sandboxes
 //
 // Multi-pod safety: every operation the Cleaner triggers (ZREM/SREM of
 // possibly-absent members) is idempotent. Concurrent Cleaners across pods
@@ -53,22 +55,20 @@ func (c *Cleaner) Start(ctx context.Context) {
 
 // RunOnce performs one cleanup pass. Each sub-step is independent; a failure
 // in one is logged but does not abort the other.
-//
-// Per-cycle work is bounded:
-//   - ExpiredItems caps internally at expiredItemsBatchSize (256) members.
-//   - TeamsWithSandboxCount is one ZRANGE + one pipelined SCARD batch.
 func (c *Cleaner) RunOnce(ctx context.Context) error {
 	var errs []error
 
-	// 1. globalExpirationSet: ExpiredItems internally ZREMs members whose
-	//    sandbox JSON is gone (items.go:131-135). Discard the returned
-	//    sandbox list — actually evicting still-running sandboxes is the
-	//    evictor's job, which in memory mode reads the memory backend.
-	if _, err := c.storage.ExpiredItems(ctx); err != nil {
+	// 1. globalExpirationSet: ExpiredItems internally ZREMs members whose sandbox JSON is gone.
+	// 2. evictExpired removes sandboxes whose EndTime is older than StaleCutoff;
+	//    recently expired ones are left to the evictor to avoid racing it.
+	expired, err := c.storage.ExpiredItems(ctx)
+	if err != nil {
 		errs = append(errs, fmt.Errorf("expiration index sweep: %w", err))
+	} else {
+		c.evictExpired(ctx, expired)
 	}
 
-	// 2. globalTeamsSet: TeamsWithSandboxCount internally ZREMs teams whose
+	// 3. globalTeamsSet: TeamsWithSandboxCount internally ZREMs teams whose
 	//    per-team SCARD is 0 AND whose score is older than StaleCutoff
 	//    (operations.go:268-288). Discard the returned counts.
 	if _, err := c.storage.TeamsWithSandboxCount(ctx); err != nil {
@@ -76,4 +76,26 @@ func (c *Cleaner) RunOnce(ctx context.Context) error {
 	}
 
 	return errors.Join(errs...)
+}
+
+func (c *Cleaner) evictExpired(ctx context.Context, expired []sandbox.Sandbox) {
+	if len(expired) == 0 {
+		return
+	}
+
+	logger.L().Info(ctx, "Cleaner found expired sandboxes", zap.Int("count", len(expired)))
+
+	for _, sbx := range expired {
+		if time.Since(sbx.EndTime) < sandbox.StaleCutoff {
+			continue
+		}
+
+		if rmErr := c.storage.Remove(context.WithoutCancel(ctx), sbx.TeamID, sbx.SandboxID); rmErr != nil {
+			logger.L().Error(ctx, "Cleaner failed to remove stale expired sandbox",
+				zap.Error(rmErr),
+				logger.WithSandboxID(sbx.SandboxID),
+				logger.WithTeamID(sbx.TeamID.String()),
+			)
+		}
+	}
 }

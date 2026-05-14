@@ -9,12 +9,11 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
 
-func (o *Orchestrator) AdminNodes() ([]*api.Node, error) {
+func (o *Orchestrator) AdminNodes(clusterID uuid.UUID) ([]*api.Node, error) {
 	var result []*api.Node
 
 	for _, n := range o.nodes.Items() {
-		// Skip all nodes that are not running in local (Nomad) cluster
-		if !n.IsNomadManaged() {
+		if n.ClusterID != clusterID {
 			continue
 		}
 

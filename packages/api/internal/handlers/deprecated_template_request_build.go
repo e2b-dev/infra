@@ -51,7 +51,7 @@ func (a *APIStore) PostTemplates(c *gin.Context) {
 
 	template, apiErr := a.buildTemplate(ctx, userID, team, templateID, body)
 	if apiErr != nil {
-		telemetry.ReportCriticalError(ctx, "error when requesting template build", apiErr.Err, telemetry.WithTemplateID(templateID))
+		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error when requesting template build", apiErr.Err, telemetry.WithTemplateID(templateID))
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return
@@ -130,7 +130,7 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 
 	template, apiErr := a.buildTemplate(ctx, userID, team, templateID, body)
 	if apiErr != nil {
-		telemetry.ReportCriticalError(ctx, "error when requesting template build", apiErr.Err, telemetry.WithTemplateID(templateID))
+		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error when requesting template build", apiErr.Err, telemetry.WithTemplateID(templateID))
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 		return

@@ -41,7 +41,7 @@ const (
 	googleMaxBackoff               = 10 * time.Second
 	googleBackoffMultiplier        = 2
 	googleMaxAttempts              = 10
-	defaultGRPCConnectionPoolSize  = 4
+	defaultGRPCConnectionPoolSize  = 8
 	defaultGCSEnableDirectPath     = false
 	gcloudDefaultUploadConcurrency = 16
 
