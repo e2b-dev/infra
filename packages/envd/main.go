@@ -25,7 +25,6 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 	filesystemRpc "github.com/e2b-dev/infra/packages/envd/internal/services/filesystem"
 	processRpc "github.com/e2b-dev/infra/packages/envd/internal/services/process"
-	processSpec "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 	"github.com/e2b-dev/infra/packages/envd/pkg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/httpserver"
@@ -54,10 +53,9 @@ var (
 	isNotFC bool
 	port    int64
 
-	versionFlag  bool
-	commitFlag   bool
-	startCmdFlag string
-	cgroupRoot   string
+	versionFlag bool
+	commitFlag  bool
+	cgroupRoot  string
 )
 
 func parseFlags() {
@@ -87,13 +85,6 @@ func parseFlags() {
 		"port",
 		defaultPort,
 		"a port on which the daemon should run",
-	)
-
-	flag.StringVar(
-		&startCmdFlag,
-		"cmd",
-		"",
-		"a command to run on the daemon start",
 	)
 
 	flag.StringVar(
@@ -185,7 +176,7 @@ func main() {
 	}()
 
 	processLogger := l.With().Str("logger", "process").Logger()
-	processService := processRpc.Handle(m, &processLogger, defaults, cgroupManager)
+	processRpc.Handle(m, &processLogger, defaults, cgroupManager)
 
 	service := api.New(&envLogger, defaults, mmdsChan, isNotFC)
 	handler := api.HandlerFromMux(service, m)
@@ -204,28 +195,6 @@ func main() {
 		IdleTimeout:  idleTimeout,
 	}
 	httpserver.ConfigureH2C(s)
-
-	// TODO: Not used anymore in template build, replaced by direct envd command call.
-	if startCmdFlag != "" {
-		tag := "startCmd"
-		cwd := "/home/user"
-		user, err := permissions.GetUser("root")
-		if err != nil {
-			log.Fatalf("error getting user: %v", err) //nolint:gocritic // probably fine to bail if we're done?
-		}
-
-		if err = processService.InitializeStartProcess(ctx, user, &processSpec.StartRequest{
-			Tag: &tag,
-			Process: &processSpec.ProcessConfig{
-				Envs: make(map[string]string),
-				Cmd:  "/bin/bash",
-				Args: []string{"-l", "-c", startCmdFlag},
-				Cwd:  &cwd,
-			},
-		}); err != nil {
-			log.Fatalf("error starting process: %v", err)
-		}
-	}
 
 	// Bind all open ports on 127.0.0.1 and localhost to the eth0 interface
 	portScanner := publicport.NewScanner(portScannerInterval)
