@@ -3,6 +3,7 @@
 package block
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/edsrzf/mmap-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -201,6 +203,135 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	)
 
 	return diffMetadata, nil
+}
+
+// Dedup compares the packed contents of this cache against originalMemfile
+// at 4 KiB-page granularity and writes only the differing pages, packed
+// contiguously, to a new cache at outPath. Single pass with pwrite (the
+// memfd fast-path's writeAll helper).
+//
+// The receiver `c` is expected to be a packed-by-range export cache (as
+// produced by NewCacheFromProcessMemory): bytes from each dirty range
+// concatenated in BitsetRanges iteration order. `dirtyBlocks` is the bitmap
+// those ranges came from, and `blockSize` is the export's block size.
+//
+// Empty stays empty: pages not in Dirty must keep the parent's mapping so
+// they fall through to base content at restore. Marking them as Empty
+// would emit uuid.Nil mappings that override the parent (MergeMappings lets
+// diff override base) and serve zeros for content that legitimately belongs
+// to the parent.
+func (c *Cache) Dedup(
+	ctx context.Context,
+	originalMemfile ReadonlyDevice,
+	dirtyBlocks *roaring.Bitmap,
+	blockSize int64,
+	outPath string,
+) (*Cache, *header.DiffMetadata, error) {
+	ctx, span := tracer.Start(ctx, "dedup-cache")
+	defer span.End()
+
+	f, err := os.OpenFile(outPath, os.O_RDWR|os.O_CREATE, 0o644)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error opening dedup cache file: %w", err)
+	}
+
+	pageDirty := roaring.New()
+	pageEmpty := roaring.New()
+	srcBuf := make([]byte, blockSize)
+	baseBuf := make([]byte, blockSize)
+
+	var fileOff, cacheOff, exportedSize int64
+
+	for r := range BitsetRanges(dirtyBlocks, blockSize) {
+		exportedSize += r.Size
+
+		for chunkOff := int64(0); chunkOff < r.Size; chunkOff += blockSize {
+			select {
+			case <-ctx.Done():
+				return nil, nil, errors.Join(ctx.Err(), f.Close(), os.Remove(outPath))
+			default:
+			}
+
+			if _, err := c.ReadAt(srcBuf, cacheOff); err != nil {
+				return nil, nil, errors.Join(
+					fmt.Errorf("read source cache at %d: %w", cacheOff, err),
+					f.Close(), os.Remove(outPath),
+				)
+			}
+
+			if _, err := originalMemfile.ReadAt(ctx, baseBuf, r.Start+chunkOff); err != nil {
+				return nil, nil, errors.Join(
+					fmt.Errorf("read original memfile at %d: %w", r.Start+chunkOff, err),
+					f.Close(), os.Remove(outPath),
+				)
+			}
+
+			for i := int64(0); i < blockSize; i += header.PageSize {
+				srcPage := srcBuf[i : i+header.PageSize]
+				pageIdx := uint32((r.Start + chunkOff + i) / header.PageSize)
+
+				if bytes.Equal(srcPage, baseBuf[i:i+header.PageSize]) {
+					// Page matches base. If it's all-zero, mark it as Empty
+					// so the merged header emits a uuid.Nil mapping for it —
+					// the read path serves zero locally instead of falling
+					// through to the parent's diff (which may be the
+					// synthetic Empty template with no real backing).
+					// Non-zero matches stay unmapped so the merge keeps the
+					// parent mapping and reads from the parent.
+					if header.IsZero(srcPage) {
+						pageEmpty.Add(pageIdx)
+					}
+
+					continue
+				}
+
+				pageDirty.Add(pageIdx)
+				if err := writeAll(int(f.Fd()), fileOff, srcPage); err != nil {
+					return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
+				}
+				fileOff += header.PageSize
+			}
+
+			cacheOff += blockSize
+		}
+	}
+
+	if err := f.Close(); err != nil {
+		return nil, nil, errors.Join(err, os.Remove(outPath))
+	}
+
+	dedupCache, err := NewCache(fileOff, header.PageSize, outPath, false)
+	if err != nil {
+		return nil, nil, errors.Join(err, os.Remove(outPath))
+	}
+	dedupCache.setIsCached(0, fileOff)
+
+	totalPages := exportedSize / header.PageSize
+	uniquePages := int64(pageDirty.GetCardinality())
+	dedupedPages := totalPages - uniquePages
+
+	telemetry.SetAttributes(ctx,
+		attribute.Int64("dedup.total_pages", totalPages),
+		attribute.Int64("dedup.deduped_pages", dedupedPages),
+		attribute.Int64("dedup.unique_pages", uniquePages),
+		attribute.Float64("dedup.ratio", safeDivide(float64(dedupedPages), float64(totalPages))),
+	)
+
+	logger.L().Info(ctx, "4KiB page dedup completed",
+		zap.Uint64("dirty_blocks", dirtyBlocks.GetCardinality()),
+		zap.Int64("total_4k_pages", totalPages),
+		zap.Int64("deduped_pages", dedupedPages),
+		zap.Int64("unique_pages", uniquePages),
+		zap.Int64("exported_size_bytes", exportedSize),
+		zap.Int64("dedup_size_bytes", fileOff),
+		zap.String("reduction", fmt.Sprintf("%.1f%%", safeDivide(float64(dedupedPages), float64(totalPages))*100)),
+	)
+
+	return dedupCache, &header.DiffMetadata{
+		Dirty:     pageDirty,
+		Empty:     pageEmpty,
+		BlockSize: header.PageSize,
+	}, nil
 }
 
 func (c *Cache) ReadAt(b []byte, off int64) (int, error) {
