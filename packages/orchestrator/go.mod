@@ -35,7 +35,7 @@ require (
 	github.com/getkin/kin-openapi v0.137.0
 	github.com/gin-contrib/size v1.0.2
 	github.com/gin-gonic/gin v1.12.0
-	github.com/go-git/go-billy/v5 v5.7.0
+	github.com/go-git/go-billy/v5 v5.9.0
 	github.com/go-openapi/strfmt v0.25.0
 	github.com/google/go-containerregistry v0.21.5
 	github.com/google/nftables v0.3.0
@@ -318,7 +318,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/arch v0.25.0 // indirect
 	golang.org/x/crypto v0.50.0 // indirect
-	golang.org/x/exp v0.0.0-20260212183809-81e46e3db34a // indirect
+	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/mod v0.35.0 // indirect
 	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
