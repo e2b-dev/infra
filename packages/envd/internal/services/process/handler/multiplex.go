@@ -129,7 +129,7 @@ func (m *MultiplexedChannel[T]) remove(s *subscriber[T]) {
 
 	for i, sub := range m.channels {
 		if sub == s {
-			// New backing array so run()'s lock-free iteration is safe.
+			// New backing array so run()'s concurrent iteration is safe.
 			m.channels = slices.Concat(m.channels[:i], m.channels[i+1:])
 
 			return
