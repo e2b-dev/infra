@@ -222,7 +222,6 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 			}),
 	)
 
-
 	// Per-endpoint blocked-team enforcement
 	r.Use(customMiddleware.AuthorizeTeamAccess(customMiddleware.DefaultRouteIntents))
 
