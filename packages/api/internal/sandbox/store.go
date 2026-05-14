@@ -101,11 +101,40 @@ func (s *Store) Add(ctx context.Context, sandbox Sandbox, creation *CreationMeta
 
 	err := s.storage.Add(ctx, sandbox)
 	if err != nil {
-		return err
+		if !errors.Is(err, ErrAlreadyExists) {
+			return err
+		}
+
+		if creation != nil {
+			// A newly-created sandbox must not already exist in the store.
+			// Return the error so the caller can handle it (e.g. kill the VM).
+			return err
+		}
+
+		// Sync/reconcile re-add: the sandbox is already in storage (e.g. a
+		// create and a node-sync raced). This is benign — just ensure the
+		// in-memory reservation index knows about it so concurrency limits
+		// remain accurate.
+		logger.L().Warn(ctx, "Sandbox already exists in cache during sync re-add", logger.WithSandboxID(sandbox.SandboxID))
+	} else {
+		// Count only newly added sandboxes to the store
+		s.callbacks.AddSandboxToRoutingTable(ctx, sandbox)
 	}
 
-	// Count only newly added sandboxes to the store
-	s.callbacks.AddSandboxToRoutingTable(ctx, sandbox)
+	if !s.storage.IsSourceOfTruth() {
+		// On non-Redis backends the ReservationStorage is an in-memory index
+		// that must be kept in sync with the actual running sandboxes.
+		// Reserve with limit=-1 (unlimited) so that reconcile re-adds and
+		// newly-created sandboxes are both recorded without enforcing a cap here.
+		finishStart, _, reserveErr := s.reservations.Reserve(ctx, sandbox.TeamID, sandbox.SandboxID, -1)
+		if reserveErr != nil {
+			logger.L().Error(ctx, "Failed to reserve sandbox", zap.Error(reserveErr), logger.WithSandboxID(sandbox.SandboxID))
+		}
+
+		if finishStart != nil {
+			finishStart(sandbox, nil)
+		}
+	}
 
 	if creation != nil {
 		meta := *creation

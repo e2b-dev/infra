@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	reservations_pkg "github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
@@ -312,14 +313,14 @@ func TestAdd_NotNewlyCreated(t *testing.T) {
 		tracker.AssertNotCalled(t, "AsyncNewlyCreatedSandbox")
 	})
 
-	t.Run("already in cache - returns ErrAlreadyExists", func(t *testing.T) {
+	t.Run("already in cache - sync re-add is tolerated", func(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
 		storage := memory.NewStorage()
 		reservations := &NoOpReservationStorage{}
 
-		// First add
+		// First add (sync path, creation=nil)
 		tracker1 := NewCallbackTracker(1)
 		callbacks1 := sandbox.Callbacks{
 			AddSandboxToRoutingTable: tracker1.Track("AddSandboxToRoutingTable"),
@@ -332,7 +333,8 @@ func TestAdd_NotNewlyCreated(t *testing.T) {
 		tracker1.WaitForCalls(t, 2*time.Second)
 		require.NoError(t, err)
 
-		// Second add with same sandbox returns ErrAlreadyExists — no callbacks fired
+		// Second sync re-add of the same sandbox: ErrAlreadyExists is tolerated,
+		// returns nil, and no routing-table callback is fired.
 		tracker2 := NewCallbackTracker(0)
 		callbacks2 := sandbox.Callbacks{
 			AddSandboxToRoutingTable: tracker2.Track("AddSandboxToRoutingTable"),
@@ -341,7 +343,7 @@ func TestAdd_NotNewlyCreated(t *testing.T) {
 		store2 := sandbox.NewStore(storage, reservations, callbacks2)
 
 		err = store2.Add(ctx, sbx, nil)
-		require.ErrorIs(t, err, sandbox.ErrAlreadyExists)
+		require.NoError(t, err, "sync re-add of existing sandbox must not return an error")
 
 		// Give a small delay for any async callbacks (there should be none)
 		time.Sleep(100 * time.Millisecond)
@@ -450,7 +452,7 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		}
 	})
 
-	t.Run("concurrent adds for same sandbox", func(t *testing.T) {
+	t.Run("concurrent creates for same sandbox - only one succeeds", func(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
@@ -459,10 +461,9 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 
 		numGoroutines := 10
 		sbx := createTestSandbox()
-		sbx.SandboxID = "concurrent-same-sandbox"
+		sbx.SandboxID = "concurrent-same-sandbox-create"
 
-		// Exactly one goroutine wins the race; it fires both callbacks.
-		// The rest receive ErrAlreadyExists and fire no callbacks.
+		// creation != nil: exactly one goroutine wins; the rest get ErrAlreadyExists.
 		tracker := NewCallbackTracker(2) // AddSandboxToRoutingTable + AsyncNewlyCreatedSandbox
 
 		callbacks := sandbox.Callbacks{
@@ -475,13 +476,13 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		successCount := atomic.Int32{}
 		errorCount := atomic.Int32{}
 
-		// Launch concurrent adds for the same sandbox
 		for range numGoroutines {
 			wg.Go(func() {
 				err := store.Add(ctx, sbx, &sandbox.CreationMetadata{})
 				if err == nil {
 					successCount.Add(1)
 				} else {
+					require.ErrorIs(t, err, sandbox.ErrAlreadyExists)
 					errorCount.Add(1)
 				}
 			})
@@ -489,20 +490,187 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 
 		wg.Wait()
 
-		// Exactly one goroutine succeeds; the rest get ErrAlreadyExists
-		assert.Equal(t, int32(1), successCount.Load())
-		assert.Equal(t, int32(numGoroutines-1), errorCount.Load())
+		assert.Equal(t, int32(1), successCount.Load(), "exactly one create must succeed")
+		assert.Equal(t, int32(numGoroutines-1), errorCount.Load(), "all other creates must return ErrAlreadyExists")
 
-		// Wait for callbacks from the single successful add
 		tracker.WaitForCalls(t, 5*time.Second)
-
-		// Only the one successful add fires callbacks
 		tracker.AssertCallCount(t, "AddSandboxToRoutingTable", 1)
 		tracker.AssertCallCount(t, "AsyncNewlyCreatedSandbox", 1)
 
-		// Verify sandbox exists in storage
 		stored, err := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
 		require.NoError(t, err)
 		assert.Equal(t, sbx.SandboxID, stored.SandboxID)
+	})
+
+	t.Run("concurrent sync re-adds for same sandbox - all succeed", func(t *testing.T) {
+		t.Parallel()
+		ctx := t.Context()
+
+		storage := memory.NewStorage()
+		reservations := &NoOpReservationStorage{}
+
+		numGoroutines := 10
+		sbx := createTestSandbox()
+		sbx.SandboxID = "concurrent-same-sandbox-sync"
+
+		// creation == nil (sync/reconcile path): ErrAlreadyExists is tolerated,
+		// so all goroutines must return nil.
+		// Only the first successful storage.Add fires AddSandboxToRoutingTable.
+		tracker := NewCallbackTracker(1) // only AddSandboxToRoutingTable from the winner
+
+		callbacks := sandbox.Callbacks{
+			AddSandboxToRoutingTable: tracker.Track("AddSandboxToRoutingTable"),
+			AsyncNewlyCreatedSandbox: tracker.TrackCreation("AsyncNewlyCreatedSandbox"),
+		}
+		store := sandbox.NewStore(storage, reservations, callbacks)
+
+		var wg sync.WaitGroup
+		successCount := atomic.Int32{}
+
+		for range numGoroutines {
+			wg.Go(func() {
+				err := store.Add(ctx, sbx, nil)
+				if err == nil {
+					successCount.Add(1)
+				}
+			})
+		}
+
+		wg.Wait()
+
+		assert.Equal(t, int32(numGoroutines), successCount.Load(), "all sync re-adds must succeed")
+
+		tracker.WaitForCalls(t, 5*time.Second)
+		tracker.AssertCallCount(t, "AddSandboxToRoutingTable", 1) // only the first insert
+		tracker.AssertNotCalled(t, "AsyncNewlyCreatedSandbox")    // never fired for sync path
+
+		stored, err := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
+		require.NoError(t, err)
+		assert.Equal(t, sbx.SandboxID, stored.SandboxID)
+	})
+}
+
+// =============================================================================
+// Reservation bookkeeping tests (P1-2: non-Redis backends must not drift)
+// =============================================================================
+
+// TrackingReservationStorage records every Reserve call so tests can assert
+// that the in-memory reservation index is kept in sync with the store.
+type TrackingReservationStorage struct {
+	mu       sync.Mutex
+	reserved map[string]int // sandboxID → number of Reserve calls
+}
+
+func newTrackingReservationStorage() *TrackingReservationStorage {
+	return &TrackingReservationStorage{
+		reserved: make(map[string]int),
+	}
+}
+
+func (tr *TrackingReservationStorage) Reserve(_ context.Context, _ uuid.UUID, sandboxID string, _ int) (func(sandbox.Sandbox, error), func(ctx context.Context) (sandbox.Sandbox, error), error) {
+	tr.mu.Lock()
+	tr.reserved[sandboxID]++
+	tr.mu.Unlock()
+
+	return func(_ sandbox.Sandbox, _ error) {}, nil, nil
+}
+
+func (tr *TrackingReservationStorage) Release(_ context.Context, _ uuid.UUID, _ string) error {
+	return nil
+}
+
+func (tr *TrackingReservationStorage) ReserveCount(sandboxID string) int {
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+
+	return tr.reserved[sandboxID]
+}
+
+// TestAdd_ReservationBookkeeping verifies that the in-memory reservation index
+// is updated correctly on both the create path and the sync re-add path so that
+// concurrency limits remain accurate (P1-2 regression guard).
+func TestAdd_ReservationBookkeeping(t *testing.T) {
+	t.Parallel()
+
+	t.Run("create path records reservation", func(t *testing.T) {
+		t.Parallel()
+		ctx := t.Context()
+
+		storage := memory.NewStorage()
+		reservations := newTrackingReservationStorage()
+
+		store := sandbox.NewStore(storage, reservations, sandbox.Callbacks{
+			AddSandboxToRoutingTable: func(_ context.Context, _ sandbox.Sandbox) {},
+			AsyncNewlyCreatedSandbox: func(_ context.Context, _ sandbox.Sandbox, _ sandbox.CreationMetadata) {},
+		})
+		sbx := createTestSandbox()
+
+		err := store.Add(ctx, sbx, &sandbox.CreationMetadata{})
+		require.NoError(t, err)
+
+		assert.Equal(t, 1, reservations.ReserveCount(sbx.SandboxID),
+			"create path must register sandbox in reservation index")
+	})
+
+	t.Run("sync re-add path records reservation even when already in storage", func(t *testing.T) {
+		t.Parallel()
+		ctx := t.Context()
+
+		storage := memory.NewStorage()
+		reservations := newTrackingReservationStorage()
+
+		store := sandbox.NewStore(storage, reservations, sandbox.Callbacks{
+			AddSandboxToRoutingTable: func(_ context.Context, _ sandbox.Sandbox) {},
+			AsyncNewlyCreatedSandbox: func(_ context.Context, _ sandbox.Sandbox, _ sandbox.CreationMetadata) {},
+		})
+		sbx := createTestSandbox()
+
+		// First add (create path)
+		require.NoError(t, store.Add(ctx, sbx, &sandbox.CreationMetadata{}))
+		firstCount := reservations.ReserveCount(sbx.SandboxID)
+
+		// Second add (sync/reconcile path) — sandbox already in storage.
+		// Must return nil AND call Reserve again so the index stays accurate.
+		err := store.Add(ctx, sbx, nil)
+		require.NoError(t, err, "sync re-add must not return an error")
+
+		assert.Greater(t, reservations.ReserveCount(sbx.SandboxID), firstCount,
+			"sync re-add must call Reserve to keep the reservation index in sync")
+	})
+
+	t.Run("repeated sync re-adds are idempotent in real ReservationStorage", func(t *testing.T) {
+		t.Parallel()
+		ctx := t.Context()
+
+		// Use the real in-memory ReservationStorage to verify idempotency.
+		storage := memory.NewStorage()
+		realReservations := reservations_pkg.NewReservationStorage()
+
+		store := sandbox.NewStore(storage, realReservations, sandbox.Callbacks{
+			AddSandboxToRoutingTable: func(_ context.Context, _ sandbox.Sandbox) {},
+			AsyncNewlyCreatedSandbox: func(_ context.Context, _ sandbox.Sandbox, _ sandbox.CreationMetadata) {},
+		})
+		sbx := createTestSandbox()
+		teamID := sbx.TeamID
+
+		// First add (create path)
+		require.NoError(t, store.Add(ctx, sbx, &sandbox.CreationMetadata{}))
+
+		// Simulate three node-sync re-adds of the same sandbox
+		for range 3 {
+			require.NoError(t, store.Add(ctx, sbx, nil))
+		}
+
+		// The real ReservationStorage uses a map keyed by sandboxID, so repeated
+		// Reserve(limit=-1) calls for the same ID are idempotent — the sandbox
+		// is counted exactly once. Verify by reserving a second sandbox with
+		// limit=2: if the first is counted once, this must succeed.
+		otherSbx := createTestSandbox()
+		otherSbx.TeamID = teamID
+		finishStart, _, err := realReservations.Reserve(ctx, teamID, otherSbx.SandboxID, 2)
+		require.NoError(t, err, "team should have capacity for a second sandbox (limit=2, count=1)")
+		if finishStart != nil {
+			finishStart(otherSbx, nil)
+		}
 	})
 }
