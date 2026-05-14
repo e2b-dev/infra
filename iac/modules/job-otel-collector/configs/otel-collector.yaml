@@ -386,6 +386,26 @@ processors:
           enabled: false
 %{ endif }
 
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+  resourcedetection/gcp_telemetry:
+    detectors: [gcp]
+    override: true
+    gcp:
+      resource_attributes:
+        cloud.account.id:
+          enabled: true
+        cloud.availability_zone:
+          enabled: true
+        cloud.platform:
+          enabled: true
+        cloud.provider:
+          enabled: true
+        host.id:
+          enabled: true
+        host.name:
+          enabled: true
+%{ endif }
+
   # For some reason, the metrics require us to set datapoint.attribute and won't accept the resource.attribute
   # That is why we can't use the resource/set_attributes processor
   transform/set-name:
@@ -400,34 +420,6 @@ processors:
       - delete_key(datapoint.attributes, "node_class")
       - delete_key(datapoint.attributes, "node_status")
       - delete_key(datapoint.attributes, "service_name")
-
-%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
-  resource/gcp_telemetry_project:
-    attributes:
-      - key: gcp.project_id
-        value: ${gcp_telemetry_project_id}
-        action: insert
-
-  transform/gcp_telemetry_collision:
-    # The Google Cloud OTLP metrics endpoint reserves these datapoint attribute
-    # names. This processor is used only by GCP Telemetry pipelines, so existing
-    # Grafana Cloud and ClickHouse exports keep their original labels.
-    metric_statements:
-      - context: datapoint
-        statements:
-          - set(attributes["exported_location"], attributes["location"]) where attributes["location"] != nil
-          - delete_key(attributes, "location")
-          - set(attributes["exported_cluster"], attributes["cluster"]) where attributes["cluster"] != nil
-          - delete_key(attributes, "cluster")
-          - set(attributes["exported_namespace"], attributes["namespace"]) where attributes["namespace"] != nil
-          - delete_key(attributes, "namespace")
-          - set(attributes["exported_job"], attributes["job"]) where attributes["job"] != nil
-          - delete_key(attributes, "job")
-          - set(attributes["exported_instance"], attributes["instance"]) where attributes["instance"] != nil
-          - delete_key(attributes, "instance")
-          - set(attributes["exported_project_id"], attributes["project_id"]) where attributes["project_id"] != nil
-          - delete_key(attributes, "project_id")
-%{ endif }
 
   filter/rpc_duration_only:
     metrics:
@@ -474,9 +466,6 @@ extensions:
 
   health_check:
     endpoint: 0.0.0.0:13133
-%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
-  googleclientauth:
-%{ endif }
 exporters:
   debug:
     verbosity: detailed
@@ -487,11 +476,12 @@ exporters:
     auth:
       authenticator: basicauth/grafana_cloud
 %{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
-  otlphttp/gcp_telemetry:
-    endpoint: https://telemetry.googleapis.com
-    encoding: proto
-    auth:
-      authenticator: googleclientauth
+  googlecloud/gcp_telemetry:
+    project: ${gcp_telemetry_project_id}
+    metric:
+      # transform/set-name already adds service.instance.id as a datapoint label.
+      # Avoid a duplicate service_instance_id label from resource attributes.
+      service_resource_labels: false
 %{ endif }
   clickhouse:
     endpoint: tcp://${clickhouse_host}:${clickhouse_port}
@@ -526,9 +516,6 @@ service:
   extensions:
     - basicauth/grafana_cloud
     - health_check
-%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
-    - googleclientauth
-%{ endif }
   pipelines:
     metrics:
       receivers:
@@ -579,64 +566,55 @@ service:
         - otlp
       processors:
         - filter/otlp
-        - resourcedetection
+        - resourcedetection/gcp_telemetry
         - transform/set-name
-        - resource/gcp_telemetry_project
-        - transform/gcp_telemetry_collision
         - batch/gcp_telemetry
       exporters:
-        - otlphttp/gcp_telemetry
+        - googlecloud/gcp_telemetry
     metrics/gcp_telemetry/prometheus:
       receivers:
         - prometheus
       processors:
         - filter/only_client_allocs
-        - resourcedetection
+        - resourcedetection/gcp_telemetry
         - transform/set-name
-        - resource/gcp_telemetry_project
-        - transform/gcp_telemetry_collision
         - metricstarttime/gcp_telemetry
         - batch/gcp_telemetry
       exporters:
-        - otlphttp/gcp_telemetry
+        - googlecloud/gcp_telemetry
     metrics/gcp_telemetry/rpc_only:
       receivers:
         - otlp
       processors:
         - filter/rpc_duration_only
         - resource/remove_instance
-        - resourcedetection
+        - resourcedetection/gcp_telemetry
         - transform/set-name
-        - resource/gcp_telemetry_project
-        - transform/gcp_telemetry_collision
         - batch/gcp_telemetry
       exporters:
-        - otlphttp/gcp_telemetry
+        - googlecloud/gcp_telemetry
     metrics/gcp_telemetry/host:
       receivers:
         - hostmetrics
       processors:
-        - resourcedetection
+        - resourcedetection/gcp_telemetry
         - transform/set-name
         - metricstransform/single_cpu
         - transform/aggregate_nvme
         - metricstransform/aggregate_disks
-        - resource/gcp_telemetry_project
-        - transform/gcp_telemetry_collision
         - batch/gcp_telemetry
       exporters:
-        - otlphttp/gcp_telemetry
+        - googlecloud/gcp_telemetry
 %{ if enable_gcp_telemetry_external_metrics }
     metrics/gcp_telemetry/external:
       receivers:
         - otlp
       processors:
         - filter/external_metrics
-        - resource/gcp_telemetry_project
-        - transform/gcp_telemetry_collision
+        - resourcedetection/gcp_telemetry
         - batch/gcp_telemetry
       exporters:
-        - otlphttp/gcp_telemetry
+        - googlecloud/gcp_telemetry
 %{ endif }
 %{ endif }
     metrics/external:

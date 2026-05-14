@@ -356,13 +356,13 @@ variable "otel_router_grpc_port" {
 variable "enable_gcp_telemetry_metrics" {
   type        = bool
   default     = false
-  description = "Enable exporting selected otel-collector metrics to Google Cloud Telemetry API using OTLP/HTTP."
+  description = "Enable exporting selected otel-collector metrics to Google Cloud Monitoring using the googlecloud exporter."
 }
 
 variable "enable_gcp_telemetry_external_metrics" {
   type        = bool
   default     = false
-  description = "Enable exporting external e2b.* metrics to Google Cloud Telemetry API. Requires enable_gcp_telemetry_metrics."
+  description = "Enable exporting external e2b.* metrics to Google Cloud Monitoring. Requires enable_gcp_telemetry_metrics."
 }
 
 variable "clickhouse_resources_memory_mb" {

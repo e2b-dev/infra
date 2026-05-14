@@ -64,11 +64,11 @@ variable "otel_collector_config_override" {
 variable "enable_gcp_telemetry_metrics" {
   type        = bool
   default     = false
-  description = "Enable exporting selected metrics to Google Cloud Telemetry API using OTLP/HTTP."
+  description = "Enable exporting selected metrics to Google Cloud Monitoring using the googlecloud exporter."
 }
 
 variable "gcp_telemetry_project_id" {
   type        = string
   default     = ""
-  description = "Google Cloud project ID used for OTLP metric ingestion. Required when enable_gcp_telemetry_metrics is true."
+  description = "Google Cloud project ID used for native Cloud Monitoring metric export. Required when enable_gcp_telemetry_metrics is true."
 }

@@ -111,8 +111,6 @@ module "init" {
   gcp_project_id = var.gcp_project_id
   gcp_region     = var.gcp_region
 
-  enable_gcp_telemetry_metrics = var.enable_gcp_telemetry_metrics
-
   template_bucket_location = var.template_bucket_location
   template_bucket_name     = var.template_bucket_name
 

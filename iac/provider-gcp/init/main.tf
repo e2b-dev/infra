@@ -46,15 +46,6 @@ resource "google_project_service" "monitoring_api" {
   disable_on_destroy = false
 }
 
-resource "google_project_service" "telemetry_api" {
-  count = var.enable_gcp_telemetry_metrics ? 1 : 0
-
-  #project = var.gcp_project_id
-  service = "telemetry.googleapis.com"
-
-  disable_on_destroy = false
-}
-
 # Enable Stackdriver Logging API
 resource "google_project_service" "logging_api" {
   #project = var.gcp_project_id

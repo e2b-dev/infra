@@ -20,12 +20,6 @@ variable "gcp_region" {
   type = string
 }
 
-variable "enable_gcp_telemetry_metrics" {
-  type        = bool
-  default     = false
-  description = "Enable the Google Cloud Telemetry API used by optional otel-collector OTLP metric export."
-}
-
 variable "template_bucket_location" {
   type        = string
   description = "The location of the FC template bucket"
