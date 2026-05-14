@@ -23,7 +23,7 @@ func (p *Process) DirtyMemory(ctx context.Context, blockSize int64) (*header.Dif
 	return p.client.dirtyMemory(ctx, blockSize)
 }
 
-func (p *Process) ExportMemory(
+func (p *Process) exportMemoryFromFc(
 	ctx context.Context,
 	include *roaring.Bitmap,
 	cachePath string,
@@ -56,4 +56,18 @@ func (p *Process) ExportMemory(
 	}
 
 	return cache, nil
+}
+
+func (p *Process) ExportMemory(
+	ctx context.Context,
+	include *roaring.Bitmap,
+	cachePath string,
+	blockSize int64,
+	memfd *block.Memfd,
+) (*block.Cache, error) {
+	if memfd == nil {
+		return p.exportMemoryFromFc(ctx, include, cachePath, blockSize)
+	}
+
+	return block.NewCacheFromMemfd(ctx, blockSize, cachePath, memfd, include)
 }
