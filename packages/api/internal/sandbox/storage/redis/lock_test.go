@@ -238,12 +238,20 @@ func setupTestLocker(t *testing.T, startSubManager bool) (*storageLocker, *subsc
 
 	redisClient := redis_utils.SetupInstance(t)
 	subManager := newSubscriptionManager(redisClient, globalStorageNotifyChannel)
+	pub := newPublisher(redisClient, globalStorageNotifyChannel)
+
+	// The publisher always runs: lock release tests assert PubSub payloads
+	// arrive, even when the in-process subscription manager is intentionally
+	// disabled to exercise the timer fallback.
+	go pub.run(t.Context())
+	t.Cleanup(pub.close)
+
 	if startSubManager {
 		go subManager.start(t.Context())
 		t.Cleanup(subManager.close)
 	}
 
-	return newStorageLocker(redisClient, subManager), subManager
+	return newStorageLocker(redisClient, subManager, pub), subManager
 }
 
 func waitForLockWaiter(t *testing.T, subManager *subscriptionManager, routingKey string, waiterDone <-chan error) {

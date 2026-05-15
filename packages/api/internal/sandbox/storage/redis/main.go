@@ -32,6 +32,7 @@ type Storage struct {
 	redisClient redis.UniversalClient
 	locker      *storageLocker
 	subManager  *subscriptionManager
+	publisher   *publisher
 }
 
 func (s *Storage) Name() string { return sandbox.StorageNameRedis }
@@ -40,23 +41,36 @@ func NewStorage(
 	redisClient redis.UniversalClient,
 ) *Storage {
 	subManager := newSubscriptionManager(redisClient, globalStorageNotifyChannel)
+	pub := newPublisher(redisClient, globalStorageNotifyChannel)
 
 	return &Storage{
 		redisClient: redisClient,
-		locker:      newStorageLocker(redisClient, subManager),
+		locker:      newStorageLocker(redisClient, subManager, pub),
 		subManager:  subManager,
+		publisher:   pub,
 	}
 }
 
-// Start subscribes to the global PubSub channel and blocks until the context
-// is cancelled or Close is called. It is intended to be called in a goroutine.
+// Start subscribes to the global PubSub channel and launches the publish
+// worker. Blocks until the context is cancelled or Close is called. It is
+// intended to be called in a goroutine.
 func (s *Storage) Start(ctx context.Context) {
+	pubDone := make(chan struct{})
+	go func() {
+		defer close(pubDone)
+		s.publisher.run(ctx)
+	}()
+
 	s.subManager.start(ctx)
+	<-pubDone
 }
 
-// Close shuts down the subscription manager and its background goroutine.
+// Close shuts down the subscription manager and the publish worker.
+// Pending notifications are drained with a bounded budget so a hung Redis
+// cannot block teardown indefinitely.
 func (s *Storage) Close() {
 	s.subManager.close()
+	s.publisher.close()
 }
 
 // Reconcile returns a list of sandboxes that are considered orphans on the current node.

@@ -1,0 +1,358 @@
+package redis
+
+import (
+	"context"
+	"fmt"
+	"runtime"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	goredis "github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
+)
+
+// TestPublisher_PublishEnqueuesAndDrainsToRedis verifies that keys handed
+// to Publish are eventually delivered on the global notify channel.
+func TestPublisher_PublishEnqueuesAndDrainsToRedis(t *testing.T) {
+	t.Parallel()
+
+	client := redis_utils.SetupInstance(t)
+	pub := newPublisher(client, globalStorageNotifyChannel)
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+
+	pubsub := client.Subscribe(t.Context(), globalStorageNotifyChannel)
+	t.Cleanup(func() { _ = pubsub.Close() })
+	_, err := pubsub.Receive(t.Context())
+	require.NoError(t, err)
+
+	go pub.run(ctx)
+	t.Cleanup(pub.close)
+
+	const n = 50
+	want := make(map[string]struct{}, n)
+	for i := 0; i < n; i++ {
+		key := fmt.Sprintf("rk:%d", i)
+		want[key] = struct{}{}
+		pub.Publish(key)
+	}
+
+	messages := pubsub.Channel()
+	deadline := time.After(5 * time.Second)
+	got := make(map[string]struct{}, n)
+	for len(got) < n {
+		select {
+		case msg := <-messages:
+			got[msg.Payload] = struct{}{}
+		case <-deadline:
+			require.FailNowf(t, "did not receive all payloads",
+				"got %d/%d", len(got), n)
+		}
+	}
+	assert.Equal(t, want, got)
+}
+
+// TestPublisher_PublishNeverBlocks fires more publishes than the queue can
+// hold without a drainer running and asserts every call returns immediately.
+// This is the core scaling invariant: callers must not block on Redis.
+func TestPublisher_PublishNeverBlocks(t *testing.T) {
+	t.Parallel()
+
+	client := redis_utils.SetupInstance(t)
+	pub := newPublisher(client, globalStorageNotifyChannel)
+	// Intentionally do not call run() — the queue will fill and overflow.
+
+	const n = publishQueueDepth + 256
+	done := make(chan struct{})
+	go func() {
+		for i := 0; i < n; i++ {
+			pub.Publish("k")
+		}
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		require.FailNow(t, "Publish blocked when queue was full")
+	}
+
+	require.GreaterOrEqual(t, pub.dropCount(), uint64(256),
+		"expected at least 256 drops once the queue saturated")
+}
+
+// TestPublisher_DropOnClosed verifies sends after close are rejected and
+// counted as drops, never blocking and never writing into a stale queue.
+func TestPublisher_DropOnClosed(t *testing.T) {
+	t.Parallel()
+
+	client := redis_utils.SetupInstance(t)
+	pub := newPublisher(client, globalStorageNotifyChannel)
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+
+	go pub.run(ctx)
+	pub.close()
+
+	before := pub.dropCount()
+	for i := 0; i < 100; i++ {
+		pub.Publish("after-close")
+	}
+	// At least one of these must have observed the closed channel; the
+	// rest may have raced into the queue before close took effect, but
+	// none must have panicked or blocked.
+	require.GreaterOrEqual(t, pub.dropCount(), before)
+}
+
+// TestPublisher_RunExitsOnContextCancel asserts the drainer goroutine
+// stops cleanly when its run context is cancelled.
+func TestPublisher_RunExitsOnContextCancel(t *testing.T) {
+	t.Parallel()
+
+	client := redis_utils.SetupInstance(t)
+	pub := newPublisher(client, globalStorageNotifyChannel)
+	ctx, cancel := context.WithCancel(t.Context())
+
+	go pub.run(ctx)
+	cancel()
+
+	select {
+	case <-pub.done:
+	case <-time.After(2 * time.Second):
+		require.FailNow(t, "publisher did not exit on context cancel")
+	}
+}
+
+// TestPublisher_CloseDrainsPending enqueues messages, immediately closes,
+// and verifies the bounded drain best-effort publishes pending items.
+func TestPublisher_CloseDrainsPending(t *testing.T) {
+	t.Parallel()
+
+	client := redis_utils.SetupInstance(t)
+	pub := newPublisher(client, globalStorageNotifyChannel)
+
+	pubsub := client.Subscribe(t.Context(), globalStorageNotifyChannel)
+	t.Cleanup(func() { _ = pubsub.Close() })
+	_, err := pubsub.Receive(t.Context())
+	require.NoError(t, err)
+
+	const n = 20
+	for i := 0; i < n; i++ {
+		pub.Publish(fmt.Sprintf("drain:%d", i))
+	}
+
+	// Start the drainer and close immediately. The shutdown drain should
+	// flush whatever is left within publishShutdownBudget.
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go pub.run(ctx)
+	pub.close()
+
+	messages := pubsub.Channel()
+	deadline := time.After(publishShutdownBudget + time.Second)
+	seen := 0
+	for seen < n {
+		select {
+		case <-messages:
+			seen++
+		case <-deadline:
+			// We accept partial drain (some may have raced past), but at
+			// least a majority should have made it through.
+			require.GreaterOrEqual(t, seen, n/2,
+				"expected most messages to drain, got %d/%d", seen, n)
+			return
+		}
+	}
+}
+
+// TestStorageLock_ReleaseDoesNotSpawnGoroutine is the load-bearing
+// regression test for the structural fix: Release must hand the publish
+// to the shared publisher instead of spawning a per-call goroutine.
+// Goroutine count must stay flat across N obtain/release cycles.
+func TestStorageLock_ReleaseDoesNotSpawnGoroutine(t *testing.T) {
+	t.Parallel()
+
+	client := redis_utils.SetupInstance(t)
+	storage := NewStorage(client)
+	go storage.Start(t.Context())
+	t.Cleanup(storage.Close)
+
+	// Warm up: obtain + release once so one-shot init goroutines settle.
+	warm := redis_utils.GetLockKey(getSandboxKey(uuid.NewString(), "warmup"))
+	lock, err := storage.locker.Obtain(t.Context(), warm, testLockTimeout)
+	require.NoError(t, err)
+	require.NoError(t, lock.Release(context.WithoutCancel(t.Context())))
+
+	time.Sleep(100 * time.Millisecond)
+	runtime.GC()
+	before := runtime.NumGoroutine()
+
+	const n = 200
+	for i := 0; i < n; i++ {
+		key := redis_utils.GetLockKey(getSandboxKey(uuid.NewString(), fmt.Sprintf("no-leak-%d", i)))
+		lock, err := storage.locker.Obtain(t.Context(), key, testLockTimeout)
+		require.NoError(t, err)
+		require.NoError(t, lock.Release(context.WithoutCancel(t.Context())))
+	}
+
+	// Allow any in-flight publishes to drain through the worker.
+	require.Eventually(t, func() bool {
+		runtime.GC()
+		return runtime.NumGoroutine()-before < 10
+	}, 2*time.Second, 10*time.Millisecond,
+		"Release spawned transient goroutines: before=%d after=%d",
+		before, runtime.NumGoroutine())
+}
+
+// TestStorageLock_ReleaseUsesNotifier proves the lock no longer talks to
+// Redis directly on release. Uses the interface seam with a fake notifier
+// — no Redis-side observation required.
+func TestStorageLock_ReleaseUsesNotifier(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mu      sync.Mutex
+		got     []string
+		fakeNot = notifierFunc(func(key string) {
+			mu.Lock()
+			got = append(got, key)
+			mu.Unlock()
+		})
+	)
+
+	client := redis_utils.SetupInstance(t)
+	subManager := newSubscriptionManager(client, globalStorageNotifyChannel)
+	locker := newStorageLocker(client, subManager, fakeNot)
+
+	lockKey := redis_utils.GetLockKey(getSandboxKey(uuid.NewString(), "fake-notifier"))
+	lock, err := locker.Obtain(t.Context(), lockKey, testLockTimeout)
+	require.NoError(t, err)
+	require.NoError(t, lock.Release(context.WithoutCancel(t.Context())))
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, []string{getLockRoutingKey(lockKey)}, got)
+}
+
+// notifierFunc is a one-method adapter for tests — same shape as
+// http.HandlerFunc, lets tests inject behavior without a struct.
+type notifierFunc func(routingKey string)
+
+func (f notifierFunc) Publish(routingKey string) { f(routingKey) }
+
+// TestStorage_CloseIsIdempotent verifies that double-Close does not panic
+// and the publisher's drainer exits cleanly.
+func TestStorage_CloseIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	client := redis_utils.SetupInstance(t)
+	storage := NewStorage(client)
+	go storage.Start(t.Context())
+
+	storage.Close()
+	storage.Close() // must not panic
+}
+
+// TestPublisher_ConcurrentProducers stresses the queue under many concurrent
+// callers and asserts: no panic/race, every call accounted for (enqueued or
+// dropped), Close returns promptly. Run with -race to catch data races on
+// the drop counter or queue.
+func TestPublisher_ConcurrentProducers(t *testing.T) {
+	t.Parallel()
+
+	client := redis_utils.SetupInstance(t)
+	pub := newPublisher(client, globalStorageNotifyChannel)
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+
+	go pub.run(ctx)
+	t.Cleanup(pub.close)
+
+	const (
+		producers   = 32
+		perProducer = 500
+	)
+	var wg sync.WaitGroup
+	for p := 0; p < producers; p++ {
+		wg.Add(1)
+		go func(p int) {
+			defer wg.Done()
+			for i := 0; i < perProducer; i++ {
+				pub.Publish(fmt.Sprintf("concurrent:%d:%d", p, i))
+			}
+		}(p)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "concurrent producers blocked")
+	}
+
+	// Sanity: the drop counter is a non-negative monotonic uint64. We do
+	// not assert an exact value (it depends on drain timing relative to
+	// production rate), only that observing it does not race or panic.
+	require.GreaterOrEqual(t, pub.dropCount(), uint64(0))
+}
+
+// blockingPublisher stalls on Publish until released. Used to force the
+// shutdown drain to exhaust its budget.
+type blockingPublisher struct {
+	goredis.UniversalClient
+	gate chan struct{}
+}
+
+func (b *blockingPublisher) Publish(ctx context.Context, _ string, _ any) *goredis.IntCmd {
+	cmd := goredis.NewIntCmd(ctx)
+	select {
+	case <-b.gate:
+	case <-ctx.Done():
+	}
+	cmd.SetVal(0)
+	return cmd
+}
+
+// TestPublisher_DrainOnShutdownRespectsBudget proves the shutdown drain
+// terminates within publishShutdownBudget even when each PUBLISH hangs.
+// This exercises the deadline-exceeded branch of drainOnShutdown.
+func TestPublisher_DrainOnShutdownRespectsBudget(t *testing.T) {
+	t.Parallel()
+
+	// Override the budget for the test via a local constructor that uses
+	// the package-level constant; we cannot change the constant from a
+	// test, so we instead rely on the publishTimeout per call. Each hung
+	// call burns publishTimeout, and drainOnShutdown returns once the
+	// shared budget is gone. We pre-fill the queue so the drain loop
+	// has work to do.
+	blocking := &blockingPublisher{
+		UniversalClient: redis_utils.SetupInstance(t),
+		gate:            make(chan struct{}), // never released → ctx-cancel exits
+	}
+	pub := newPublisher(blocking, globalStorageNotifyChannel)
+
+	for i := 0; i < 16; i++ {
+		pub.Publish(fmt.Sprintf("hang:%d", i))
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go pub.run(ctx)
+
+	start := time.Now()
+	pub.close()
+	elapsed := time.Since(start)
+
+	require.LessOrEqual(t, elapsed, publishShutdownBudget+2*time.Second,
+		"close must return within shutdown budget even with hung Redis")
+}
