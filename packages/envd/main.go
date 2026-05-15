@@ -144,6 +144,12 @@ func main() {
 		return
 	}
 
+	if err := run(); err != nil {
+		log.Fatalf("server stopped: %v", err)
+	}
+}
+
+func run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -218,9 +224,8 @@ func main() {
 	// Signal goroutines to stop before deferred cleanup closes their resources.
 	// TODO: shutdown synchronization needs to be revisited.
 	cancel()
-	if err != nil {
-		log.Fatalf("error starting server: %v", err) //nolint:gocritic // last line of main; process exits anyway
-	}
+
+	return err
 }
 
 func createCgroupManager() (m cgroups.Manager) {
