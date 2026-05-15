@@ -21,7 +21,7 @@ const (
 
 // Entry describes a single OIDC issuer.
 type Entry struct {
-	Issuer            Issuer        `json:"issuer"`
+	Issuer        Issuer        `json:"issuer"`
 	CacheDuration time.Duration `json:"cacheDuration"`
 }
 
