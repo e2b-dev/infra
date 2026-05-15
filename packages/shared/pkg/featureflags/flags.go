@@ -127,6 +127,14 @@ var (
 	// directly instead of using process_vm_readv on pause.
 	UseMemFdFlag = NewBoolFlag("use-memfd", false)
 
+	// MemfileDiffDedupFlag enables 4 KiB-page deduplication of the memfile
+	// diff against the base template's memfile during snapshot post-processing.
+	// When enabled, pages inside dirty blocks that match the base byte-for-byte
+	// are dropped from the uploaded diff, shrinking the diff and producing
+	// page-granular DiffMetadata for sparser restores. Costs an extra read pass
+	// over the dirty region during pause.
+	MemfileDiffDedupFlag = NewBoolFlag("memfile-diff-dedup", false)
+
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.
 	PeerToPeerChunkTransferFlag = NewBoolFlag("peer-to-peer-chunk-transfer", false)
 	// PeerToPeerAsyncCheckpointFlag makes Checkpoint upload fire-and-forget instead

@@ -46,7 +46,51 @@ func fullDirty(size, blockSize int64) *roaring.Bitmap {
 	return b
 }
 
+<<<<<<< HEAD
 func TestNewCacheFromMemfd_NonAdjacentBlocks(t *testing.T) {
+=======
+// fullDirty returns a bitmap marking every block in [0, size/blockSize) dirty.
+func fullDirty(size, blockSize int64) *roaring.Bitmap {
+	b := roaring.New()
+	b.AddRange(0, uint64(size/blockSize))
+
+	return b
+}
+
+func TestMemfd_SliceOutOfBounds(t *testing.T) {
+	t.Parallel()
+
+	const size = 4 * header.PageSize
+	m, _ := newTestMemfd(t, size)
+	t.Cleanup(func() { _ = m.Close() })
+
+	_, err := m.Slice(size-header.PageSize+1, header.PageSize)
+	require.Error(t, err)
+}
+
+func TestMemfdCache_FullRange(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	numPages := uint32(30)
+
+	memfd, expected := newTestMemfd(t, pageSize*int64(numPages))
+	dirty := roaring.New()
+	dirty.AddRange(0, uint64(numPages))
+
+	cache, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/cache", memfd, dirty)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	got := make([]byte, len(expected))
+	n, err := cache.ReadAt(got, 0)
+	require.NoError(t, err)
+	require.Equal(t, len(expected), n)
+	require.Equal(t, expected, got)
+}
+
+func TestMemfdCache_MultipleRanges(t *testing.T) {
+>>>>>>> e4d69ade1 (feat(cache): wire deduplication logic)
 	t.Parallel()
 
 	pageSize := int64(header.PageSize)
@@ -163,13 +207,22 @@ func TestNewCacheFromMemfdDeduped_AllPagesMatch(t *testing.T) {
 
 	memfd := newTestMemfdWith(t, data) // memfd content == base content
 
+<<<<<<< HEAD
+=======
+	dirty := roaring.New(); dirty.AddRange(0, uint64(size/blockSize))
+
+>>>>>>> e4d69ade1 (feat(cache): wire deduplication logic)
 	cache, meta, err := NewCacheFromMemfdDeduped(
 		t.Context(),
 		&fakeOriginalDevice{data: data},
 		blockSize,
 		t.TempDir()+"/dedup",
 		memfd,
+<<<<<<< HEAD
 		fullDirty(size, blockSize),
+=======
+		dirty,
+>>>>>>> e4d69ade1 (feat(cache): wire deduplication logic)
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
@@ -197,13 +250,22 @@ func TestNewCacheFromMemfdDeduped_AllPagesDiffer(t *testing.T) {
 
 	memfd := newTestMemfdWith(t, srcData)
 
+<<<<<<< HEAD
+=======
+	dirty := roaring.New(); dirty.AddRange(0, uint64(size/blockSize))
+
+>>>>>>> e4d69ade1 (feat(cache): wire deduplication logic)
 	cache, meta, err := NewCacheFromMemfdDeduped(
 		t.Context(),
 		&fakeOriginalDevice{data: origData},
 		blockSize,
 		t.TempDir()+"/dedup",
 		memfd,
+<<<<<<< HEAD
 		fullDirty(size, blockSize),
+=======
+		dirty,
+>>>>>>> e4d69ade1 (feat(cache): wire deduplication logic)
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
@@ -244,13 +306,22 @@ func TestNewCacheFromMemfdDeduped_MixedPages(t *testing.T) {
 
 	memfd := newTestMemfdWith(t, srcData)
 
+<<<<<<< HEAD
+=======
+	dirty := roaring.New(); dirty.AddRange(0, uint64(size/blockSize))
+
+>>>>>>> e4d69ade1 (feat(cache): wire deduplication logic)
 	cache, meta, err := NewCacheFromMemfdDeduped(
 		t.Context(),
 		&fakeOriginalDevice{data: origData},
 		blockSize,
 		t.TempDir()+"/dedup",
 		memfd,
+<<<<<<< HEAD
 		fullDirty(size, blockSize),
+=======
+		dirty,
+>>>>>>> e4d69ade1 (feat(cache): wire deduplication logic)
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
