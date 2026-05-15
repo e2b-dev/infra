@@ -140,7 +140,7 @@ func (c Cgroup2Manager) Freeze(procType ProcessType) error {
 	return os.WriteFile(filepath.Join(path, "cgroup.freeze"), []byte("1"), 0o644)
 }
 
-func (c Cgroup2Manager) Thaw(procType ProcessType) error {
+func (c Cgroup2Manager) Unfreeze(procType ProcessType) error {
 	path, ok := c.cgroupPaths[procType]
 	if !ok {
 		return fmt.Errorf("unknown process type: %s", procType)

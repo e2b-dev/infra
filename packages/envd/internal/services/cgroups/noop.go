@@ -16,7 +16,7 @@ func (n NoopManager) Freeze(ProcessType) error {
 	return nil
 }
 
-func (n NoopManager) Thaw(ProcessType) error {
+func (n NoopManager) Unfreeze(ProcessType) error {
 	return nil
 }
 

@@ -226,11 +226,11 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 		}
 	}
 
-	// Thaw user processes that may have been frozen before snapshot.
+	// Unfreeze user processes that may have been frozen before snapshot.
 	// This is safe to call even if the cgroup is not frozen (writing "0"
-	// to an already-thawed cgroup is a no-op).
-	if err := a.cgroupManager.Thaw(cgroups.ProcessTypeUser); err != nil {
-		logger.Warn().Err(err).Msg("Failed to thaw user cgroup (non-fatal)")
+	// to an already-unfrozen cgroup is a no-op).
+	if err := a.cgroupManager.Unfreeze(cgroups.ProcessTypeUser); err != nil {
+		logger.Warn().Err(err).Msg("Failed to unfreeze user cgroup (non-fatal)")
 	}
 
 	return nil

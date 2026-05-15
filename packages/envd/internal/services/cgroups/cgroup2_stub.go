@@ -47,7 +47,7 @@ func (c Cgroup2Manager) Freeze(ProcessType) error {
 	return nil
 }
 
-func (c Cgroup2Manager) Thaw(ProcessType) error {
+func (c Cgroup2Manager) Unfreeze(ProcessType) error {
 	return nil
 }
 

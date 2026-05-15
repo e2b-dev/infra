@@ -148,7 +148,7 @@ func TestCgroupRoundTrip(t *testing.T) {
 	})
 }
 
-func TestFreezThaw(t *testing.T) {
+func TestFreezeUnfreeze(t *testing.T) {
 	t.Parallel()
 
 	if os.Geteuid() != 0 {
@@ -190,20 +190,20 @@ func TestFreezThaw(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "1\n", readFreeze())
 
-	// Thaw.
-	err = m.Thaw(ProcessTypeUser)
+	// Unfreeze.
+	err = m.Unfreeze(ProcessTypeUser)
 	require.NoError(t, err)
 	assert.Equal(t, "0\n", readFreeze())
 
-	// Thaw again (idempotent).
-	err = m.Thaw(ProcessTypeUser)
+	// Unfreeze again (idempotent).
+	err = m.Unfreeze(ProcessTypeUser)
 	require.NoError(t, err)
 	assert.Equal(t, "0\n", readFreeze())
 
 	// Unknown process type.
 	err = m.Freeze("unknown")
 	require.Error(t, err)
-	err = m.Thaw("unknown")
+	err = m.Unfreeze("unknown")
 	require.Error(t, err)
 }
 
