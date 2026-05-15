@@ -42,7 +42,7 @@ func (l *storageLock) Release(ctx context.Context) error {
 	}
 
 	// Hand off to the shared publisher
-	l.notifier.Publish(getLockRoutingKey(l.Key()))
+	l.notifier.Publish(ctx, getLockRoutingKey(l.Key()))
 
 	return nil
 }

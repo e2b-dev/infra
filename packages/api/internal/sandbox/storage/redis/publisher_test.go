@@ -39,7 +39,7 @@ func TestPublisher_PublishEnqueuesAndDrainsToRedis(t *testing.T) {
 	for i := range n {
 		key := fmt.Sprintf("rk:%d", i)
 		want[key] = struct{}{}
-		pub.Publish(key)
+		pub.Publish(ctx, key)
 	}
 
 	messages := pubsub.Channel()
@@ -71,7 +71,7 @@ func TestPublisher_PublishNeverBlocks(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		for range n {
-			pub.Publish("k")
+			pub.Publish(t.Context(), "k")
 		}
 		close(done)
 	}()
@@ -101,7 +101,7 @@ func TestPublisher_DropOnClosed(t *testing.T) {
 
 	before := pub.dropCount()
 	for range 100 {
-		pub.Publish("after-close")
+		pub.Publish(t.Context(), "after-close")
 	}
 	// At least one of these must have observed the closed channel; the
 	// rest may have raced into the queue before close took effect, but
@@ -143,7 +143,7 @@ func TestPublisher_CloseDrainsPending(t *testing.T) {
 
 	const n = 20
 	for i := range n {
-		pub.Publish(fmt.Sprintf("drain:%d", i))
+		pub.Publish(t.Context(), fmt.Sprintf("drain:%d", i))
 	}
 
 	// Start the drainer and close immediately. The shutdown drain should
@@ -247,7 +247,7 @@ func TestStorageLock_ReleaseUsesNotifier(t *testing.T) {
 // http.HandlerFunc, lets tests inject behavior without a struct.
 type notifierFunc func(routingKey string)
 
-func (f notifierFunc) Publish(routingKey string) { f(routingKey) }
+func (f notifierFunc) Publish(_ context.Context, routingKey string) { f(routingKey) }
 
 // TestStorage_CloseIsIdempotent verifies that double-Close does not panic
 // and the publisher's drainer exits cleanly.
@@ -333,7 +333,7 @@ func TestPublisher_ConcurrentProducers(t *testing.T) {
 		go func(p int) {
 			defer wg.Done()
 			for i := range perProducer {
-				pub.Publish(fmt.Sprintf("concurrent:%d:%d", p, i))
+				pub.Publish(t.Context(), fmt.Sprintf("concurrent:%d:%d", p, i))
 			}
 		}(p)
 	}
@@ -394,7 +394,7 @@ func TestPublisher_DrainOnShutdownRespectsBudget(t *testing.T) {
 	pub := newPublisher(blocking, globalStorageNotifyChannel)
 
 	for i := range 16 {
-		pub.Publish(fmt.Sprintf("hang:%d", i))
+		pub.Publish(t.Context(), fmt.Sprintf("hang:%d", i))
 	}
 
 	ctx, cancel := context.WithCancel(t.Context())

@@ -59,7 +59,7 @@ type publisher struct {
 // Defining it where it is consumed (lock.go-side) lets storageLock be
 // faked in tests without standing up Redis.
 type notifier interface {
-	Publish(routingKey string)
+	Publish(ctx context.Context, routingKey string)
 }
 
 func newPublisher(redisClient redis.UniversalClient, channel string) *publisher {
@@ -75,12 +75,12 @@ func newPublisher(redisClient redis.UniversalClient, channel string) *publisher 
 // Publish enqueues a routing key for asynchronous PUBLISH. Never blocks.
 // Drops silently (with rate-limited warn) when the queue is full or the
 // publisher has been closed.
-func (p *publisher) Publish(routingKey string) {
+func (p *publisher) Publish(ctx context.Context, routingKey string) {
 	// Fast reject if Close has been signalled; otherwise a send into a
 	// closing publisher could land in the queue after the drainer exits.
 	select {
 	case <-p.closed:
-		p.drop(routingKey)
+		p.drop(ctx, routingKey)
 
 		return
 	default:
@@ -89,14 +89,14 @@ func (p *publisher) Publish(routingKey string) {
 	select {
 	case p.queue <- routingKey:
 	default:
-		p.drop(routingKey)
+		p.drop(ctx, routingKey)
 	}
 }
 
-func (p *publisher) drop(routingKey string) {
+func (p *publisher) drop(ctx context.Context, routingKey string) {
 	n := p.dropped.Add(1)
 	if n%publishDropLogInterval == 1 {
-		logger.L().Warn(context.Background(),
+		logger.L().Warn(ctx,
 			"Dropping storage notification: publish queue saturated or closed",
 			zap.String("routing_key", routingKey),
 			zap.Uint64("total_drops", n),
@@ -143,9 +143,9 @@ func (p *publisher) run(ctx context.Context) {
 
 // drainOnShutdown opportunistically publishes any keys still in the queue,
 // using a single shared deadline so a hung Redis cannot block teardown.
-// The parent ctx is used without cancel because drainOnShutdown,
-// because ctx is already cancelled (or close() fired); the drain budget is
-// the only bound we want here.
+// The parent ctx is detached via WithoutCancel because drainOnShutdown
+// runs precisely when ctx is already cancelled (or close() fired); the
+// drain budget is the only bound we want here.
 func (p *publisher) drainOnShutdown(ctx context.Context) {
 	drainCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), publishShutdownBudget)
 	defer cancel()
