@@ -137,6 +137,7 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 				attribute.String("version", server.info.SourceVersion),
 				attribute.String("commit", server.info.SourceCommit),
 			))
+
 			return nil
 		}, statusGauge)
 	if err != nil {
