@@ -82,7 +82,7 @@ func TestPublisher_PublishNeverBlocks(t *testing.T) {
 		require.FailNow(t, "Publish blocked when queue was full")
 	}
 
-	require.GreaterOrEqual(t, pub.dropCount(), uint64(256),
+	require.GreaterOrEqual(t, pub.dropped.Load(), uint64(256),
 		"expected at least 256 drops once the queue saturated")
 }
 
@@ -99,14 +99,14 @@ func TestPublisher_DropOnClosed(t *testing.T) {
 	go pub.run(ctx)
 	pub.close()
 
-	before := pub.dropCount()
+	before := pub.dropped.Load()
 	for range 100 {
 		pub.Publish(t.Context(), "after-close")
 	}
 	// At least one of these must have observed the closed channel; the
 	// rest may have raced into the queue before close took effect, but
 	// none must have panicked or blocked.
-	require.GreaterOrEqual(t, pub.dropCount(), before)
+	require.GreaterOrEqual(t, pub.dropped.Load(), before)
 }
 
 // TestPublisher_RunExitsOnContextCancel asserts the drainer goroutine
@@ -353,7 +353,7 @@ func TestPublisher_ConcurrentProducers(t *testing.T) {
 	// Touch the drop counter. We do not assert an exact value (it depends
 	// on drain timing relative to production rate); this test exists so
 	// the race detector can observe concurrent producers + counter reads.
-	_ = pub.dropCount()
+	_ = pub.dropped.Load()
 }
 
 // blockingPublisher stalls on Publish until released. Used to force the

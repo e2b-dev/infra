@@ -17,11 +17,9 @@ const (
 	// Drops here are correctness-safe: lock waiters fall back to the
 	// jittered 200ms-1s timer in storageLocker.Obtain and transition
 	// waiters fall back to the 1s poll ticker in waitForTransition.
-	publishQueueDepth = 4096
+	publishQueueDepth = 8192
 
-	// publishTimeout bounds a single PUBLISH round-trip. Mirrors the
-	// previous per-goroutine timeout so behavior on a slow/dead Redis
-	// is unchanged: log and move on.
+	// publishTimeout bounds a single PUBLISH round-trip
 	publishTimeout = 5 * time.Second
 
 	// publishShutdownBudget caps the total time spent draining the queue
@@ -30,7 +28,7 @@ const (
 
 	// publishDropLogInterval rate-limits drop warnings: only every Nth
 	// drop produces a log line, with the running total attached.
-	publishDropLogInterval = 1024
+	publishDropLogInterval = 64
 )
 
 // publisher serializes best-effort PubSub notifications onto a single
@@ -104,14 +102,9 @@ func (p *publisher) drop(ctx context.Context, routingKey string) {
 	}
 }
 
-// run drains the queue. Intended to run in a single goroutine for the
-// lifetime of Storage. Returns when ctx is cancelled OR close() is called.
+// run drains the queue.
 // On exit it performs a bounded best-effort drain of pending items so a
 // graceful shutdown does not lose every in-flight notification.
-//
-// In-flight publishes inherit a derived context that is cancelled by
-// either the parent ctx or close(), so a hung Redis cannot delay Close
-// beyond publishShutdownBudget.
 func (p *publisher) run(ctx context.Context) {
 	p.started.Store(true)
 	defer close(p.done)
@@ -143,9 +136,6 @@ func (p *publisher) run(ctx context.Context) {
 
 // drainOnShutdown opportunistically publishes any keys still in the queue,
 // using a single shared deadline so a hung Redis cannot block teardown.
-// The parent ctx is detached via WithoutCancel because drainOnShutdown
-// runs precisely when ctx is already cancelled (or close() fired); the
-// drain budget is the only bound we want here.
 func (p *publisher) drainOnShutdown(ctx context.Context) {
 	drainCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), publishShutdownBudget)
 	defer cancel()
@@ -176,19 +166,10 @@ func (p *publisher) publishOne(ctx context.Context, routingKey string) {
 }
 
 // close signals the drainer to stop and blocks until it has exited (or
-// the shutdown budget elapses). Safe to call multiple times and safe to
-// call before run() has ever started (e.g. on an early-init failure path
-// where Storage.Close is invoked before Storage.Start). In the
-// not-started case there is no drainer to wait on, so we skip the join.
+// the shutdown budget elapses). Safe to call multiple times.
 func (p *publisher) close() {
 	p.closeOnce.Do(func() { close(p.closed) })
 	if p.started.Load() {
 		<-p.done
 	}
-}
-
-// dropCount returns the total number of dropped publishes since creation.
-// Intended for observability and tests; not load-bearing for correctness.
-func (p *publisher) dropCount() uint64 {
-	return p.dropped.Load()
 }
