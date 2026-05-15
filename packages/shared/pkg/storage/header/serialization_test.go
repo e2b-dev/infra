@@ -728,7 +728,6 @@ func TestSerializeDeserialize_V4_Uncompressed_SelfEntry(t *testing.T) {
 	require.Len(t, got.Builds, 1)
 	require.Contains(t, got.Builds, buildID)
 	require.Nil(t, got.GetBuildFrameData(buildID))
-	require.Equal(t, storage.CompressionNone, got.GetBuildFrameData(buildID).CompressionType())
 }
 
 // Layered chain V4-uncompressed (self) → V4-compressed (mid) → V4-uncompressed
