@@ -256,6 +256,11 @@ type ReclaimConfig struct {
 	DropCaches    time.Duration
 	CompactMemory time.Duration
 	Fstrim        time.Duration
+
+	// FreezeUserCgroup freezes user/pty/socat cgroups before reclaim. The
+	// frozen state persists in the snapshot; on resume envd unfreezes all
+	// cgroups at the end of /init, eliminating I/O contention.
+	FreezeUserCgroup bool
 }
 
 func GetReclaimConfig(ctx context.Context, ff *Client, contexts ...ldcontext.Context) ReclaimConfig {
@@ -265,10 +270,11 @@ func GetReclaimConfig(ctx context.Context, ff *Client, contexts ...ldcontext.Con
 	}
 
 	return ReclaimConfig{
-		Sync:          ms("sync"),
-		DropCaches:    ms("drop_caches"),
-		CompactMemory: ms("compact_memory"),
-		Fstrim:        ms("fstrim"),
+		Sync:             ms("sync"),
+		DropCaches:       ms("drop_caches"),
+		CompactMemory:    ms("compact_memory"),
+		Fstrim:           ms("fstrim"),
+		FreezeUserCgroup: v.GetByKey("freeze_user_cgroup").BoolValue(),
 	}
 }
 
