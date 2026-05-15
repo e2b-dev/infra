@@ -343,7 +343,17 @@ func New(
 	return h, nil
 }
 
+// systemTag is a reserved process tag that places the process in the root
+// cgroup (outside user/pty/socat). Used by the orchestrator for maintenance
+// commands (e.g., pre-pause reclaim + freeze) that must not be affected by
+// cgroup freezing.
+const systemTag = "_system"
+
 func getProcType(req *rpc.StartRequest) cgroups.ProcessType {
+	if req != nil && req.GetTag() == systemTag {
+		return cgroups.ProcessTypeSystem
+	}
+
 	if req != nil && req.GetPty() != nil {
 		return cgroups.ProcessTypePTY
 	}

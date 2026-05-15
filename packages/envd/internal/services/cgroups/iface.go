@@ -6,6 +6,12 @@ const (
 	ProcessTypePTY   ProcessType = "pty"
 	ProcessTypeUser  ProcessType = "user"
 	ProcessTypeSocat ProcessType = "socat"
+
+	// ProcessTypeSystem is for envd-internal maintenance processes (e.g.,
+	// pre-pause reclaim). It is not registered as a cgroup, so
+	// GetFileDescriptor returns (0, false) and the process stays in envd's
+	// root cgroup — unaffected by freezing the other three cgroups.
+	ProcessTypeSystem ProcessType = "system"
 )
 
 type Manager interface {

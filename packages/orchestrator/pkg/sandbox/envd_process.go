@@ -27,11 +27,43 @@ func (s *Sandbox) StartEnvdShell(
 	user string,
 	timeout time.Duration,
 ) (*connect.ServerStreamForClient[process.StartResponse], error) {
+	return s.startEnvdProcess(ctx, shell, shellArgs, user, timeout, nil)
+}
+
+// systemTag is a reserved process tag that tells envd to run the process
+// in the root cgroup (outside user/pty/socat). Used for maintenance
+// commands that must not be affected by cgroup freezing.
+const systemTag = "_system"
+
+// StartEnvdSystemShell is like StartEnvdShell but runs the process in envd's
+// root cgroup (not user/pty/socat) by setting the reserved "_system" tag.
+// This ensures the process is unaffected by cgroup freezing.
+func (s *Sandbox) StartEnvdSystemShell(
+	ctx context.Context,
+	shell string,
+	shellArgs []string,
+	user string,
+	timeout time.Duration,
+) (*connect.ServerStreamForClient[process.StartResponse], error) {
+	tag := systemTag
+
+	return s.startEnvdProcess(ctx, shell, shellArgs, user, timeout, &tag)
+}
+
+func (s *Sandbox) startEnvdProcess(
+	ctx context.Context,
+	shell string,
+	shellArgs []string,
+	user string,
+	timeout time.Duration,
+	tag *string,
+) (*connect.ServerStreamForClient[process.StartResponse], error) {
 	addr := fmt.Sprintf("http://%s:%d", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
 	pc := processconnect.NewProcessClient(&http.Client{Transport: sandboxHttpClient.Transport}, addr)
 
 	req := connect.NewRequest(&process.StartRequest{
 		Process: &process.ProcessConfig{Cmd: shell, Args: shellArgs},
+		Tag:     tag,
 	})
 	if timeout > 0 {
 		req.Header().Set("Connect-Timeout-Ms", strconv.FormatInt(timeout.Milliseconds(), 10))
