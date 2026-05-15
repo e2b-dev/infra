@@ -148,6 +148,65 @@ func TestCgroupRoundTrip(t *testing.T) {
 	})
 }
 
+func TestFreezThaw(t *testing.T) {
+	t.Parallel()
+
+	if os.Geteuid() != 0 {
+		t.Skip("must run as root")
+
+		return
+	}
+
+	cgroupPath := createCgroupPath(t, "freeze-thaw")
+
+	m, err := NewCgroup2Manager(
+		WithCgroup2ProcessType(ProcessTypeUser, cgroupPath, map[string]string{}),
+	)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		err := m.Close()
+		assert.NoError(t, err)
+	})
+
+	fullPath := m.cgroupPaths[ProcessTypeUser]
+	readFreeze := func() string {
+		data, err := os.ReadFile(fullPath + "/cgroup.freeze")
+		require.NoError(t, err)
+
+		return string(data)
+	}
+
+	// Initially thawed.
+	assert.Equal(t, "0\n", readFreeze())
+
+	// Freeze.
+	err = m.Freeze(ProcessTypeUser)
+	require.NoError(t, err)
+	assert.Equal(t, "1\n", readFreeze())
+
+	// Freeze again (idempotent).
+	err = m.Freeze(ProcessTypeUser)
+	require.NoError(t, err)
+	assert.Equal(t, "1\n", readFreeze())
+
+	// Thaw.
+	err = m.Thaw(ProcessTypeUser)
+	require.NoError(t, err)
+	assert.Equal(t, "0\n", readFreeze())
+
+	// Thaw again (idempotent).
+	err = m.Thaw(ProcessTypeUser)
+	require.NoError(t, err)
+	assert.Equal(t, "0\n", readFreeze())
+
+	// Unknown process type.
+	err = m.Freeze("unknown")
+	require.Error(t, err)
+	err = m.Thaw("unknown")
+	require.Error(t, err)
+}
+
 func createCgroupPath(t *testing.T, s string) string {
 	t.Helper()
 
