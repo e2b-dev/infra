@@ -43,6 +43,14 @@ func (c Cgroup2Manager) GetFileDescriptor(ProcessType) (int, bool) {
 	return 0, false
 }
 
+func (c Cgroup2Manager) Freeze(ProcessType) error {
+	return nil
+}
+
+func (c Cgroup2Manager) Thaw(ProcessType) error {
+	return nil
+}
+
 func (c Cgroup2Manager) Close() error {
 	return nil
 }

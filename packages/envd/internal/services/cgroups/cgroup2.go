@@ -12,7 +12,8 @@ import (
 )
 
 type Cgroup2Manager struct {
-	cgroupFDs map[ProcessType]int
+	cgroupFDs    map[ProcessType]int
+	cgroupPaths  map[ProcessType]string
 }
 
 var _ Manager = (*Cgroup2Manager)(nil)
@@ -65,18 +66,19 @@ func NewCgroup2Manager(opts ...Cgroup2ManagerOption) (*Cgroup2Manager, error) {
 		return nil, fmt.Errorf("cgroup root %s is not a cgroup2 filesystem (type=0x%x)", config.rootPath, st.Type)
 	}
 
-	cgroupFDs, err := createCgroups(config)
+	cgroupFDs, cgroupPaths, err := createCgroups(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cgroups: %w", err)
 	}
 
-	return &Cgroup2Manager{cgroupFDs: cgroupFDs}, nil
+	return &Cgroup2Manager{cgroupFDs: cgroupFDs, cgroupPaths: cgroupPaths}, nil
 }
 
-func createCgroups(configs cgroup2Config) (map[ProcessType]int, error) {
+func createCgroups(configs cgroup2Config) (map[ProcessType]int, map[ProcessType]string, error) {
 	var (
-		results = make(map[ProcessType]int)
-		errs    []error
+		fdResults   = make(map[ProcessType]int)
+		pathResults = make(map[ProcessType]string)
+		errs        []error
 	)
 
 	for procType, config := range configs.processTypes {
@@ -87,21 +89,22 @@ func createCgroups(configs cgroup2Config) (map[ProcessType]int, error) {
 
 			continue
 		}
-		results[procType] = fd
+		fdResults[procType] = fd
+		pathResults[procType] = fullPath
 	}
 
 	if len(errs) > 0 {
-		for procType, fd := range results {
+		for procType, fd := range fdResults {
 			err := unix.Close(fd)
 			if err != nil {
 				errs = append(errs, fmt.Errorf("failed to close cgroup fd for %s: %w", procType, err))
 			}
 		}
 
-		return nil, errors.Join(errs...)
+		return nil, nil, errors.Join(errs...)
 	}
 
-	return results, nil
+	return fdResults, pathResults, nil
 }
 
 func createCgroup(fullPath string, properties map[string]string) (int, error) {
@@ -126,6 +129,24 @@ func (c Cgroup2Manager) GetFileDescriptor(procType ProcessType) (int, bool) {
 	fd, ok := c.cgroupFDs[procType]
 
 	return fd, ok
+}
+
+func (c Cgroup2Manager) Freeze(procType ProcessType) error {
+	path, ok := c.cgroupPaths[procType]
+	if !ok {
+		return fmt.Errorf("unknown process type: %s", procType)
+	}
+
+	return os.WriteFile(filepath.Join(path, "cgroup.freeze"), []byte("1"), 0o644)
+}
+
+func (c Cgroup2Manager) Thaw(procType ProcessType) error {
+	path, ok := c.cgroupPaths[procType]
+	if !ok {
+		return fmt.Errorf("unknown process type: %s", procType)
+	}
+
+	return os.WriteFile(filepath.Join(path, "cgroup.freeze"), []byte("0"), 0o644)
 }
 
 func (c Cgroup2Manager) Close() error {
