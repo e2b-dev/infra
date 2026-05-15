@@ -143,7 +143,7 @@ func (p *publisher) run(ctx context.Context) {
 
 // drainOnShutdown opportunistically publishes any keys still in the queue,
 // using a single shared deadline so a hung Redis cannot block teardown.
-// The parent ctx is used without cancel because drainOnShutdown, 
+// The parent ctx is used without cancel because drainOnShutdown,
 // because ctx is already cancelled (or close() fired); the drain budget is
 // the only bound we want here.
 func (p *publisher) drainOnShutdown(ctx context.Context) {
