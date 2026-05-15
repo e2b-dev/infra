@@ -33,6 +33,7 @@ func resolveV4(t *testing.T, ff *featureflags.Client) bool {
 	t.Helper()
 	_, useV4, err := resolveCompressConfig(t.Context(), storage.CompressConfig{}, ff, storage.MemfileName, 4096, storage.UseCaseBuild)
 	require.NoError(t, err)
+
 	return useV4
 }
 
