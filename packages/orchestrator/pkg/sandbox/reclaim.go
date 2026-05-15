@@ -17,18 +17,37 @@ import (
 // Slack covers shell start + envd round-trip overhead.
 const reclaimOuterSlack = 500 * time.Millisecond
 
-// Order: fstrim → sync → drop_caches → compact_memory. fstrim runs first so
-// that the fs metadata it pulls into the page cache and the superblock dirties
-// (last-trim timestamps) get flushed by sync and evicted by drop_caches in the
-// same pass; compact_memory then consolidates the minimal RSS so the snapshot
-// has long contiguous zero runs that compress well. Each step is disabled at
-// sub-ms cap. Returns ("", 0) when every step is disabled.
+// Order: freeze_user_cgroup → fstrim → sync → drop_caches → compact_memory.
+//
+// Freeze is first: it stops user processes from generating new dirty pages so
+// that the subsequent reclaim steps operate on a quiet filesystem. fstrim runs
+// next so that the fs metadata it pulls into the page cache and the superblock
+// dirties (last-trim timestamps) get flushed by sync and evicted by
+// drop_caches in the same pass; compact_memory then consolidates the minimal
+// RSS so the snapshot has long contiguous zero runs that compress well.
+//
+// The frozen state persists across the Firecracker snapshot. On resume, user
+// processes remain frozen until envd thaws the cgroup at the end of /init,
+// eliminating I/O contention during initialization.
+//
+// Each reclaim step is disabled at sub-ms cap. Returns ("", 0) when every step
+// (including freeze) is disabled.
 func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration) {
 	cfg := featureflags.GetReclaimConfig(ctx, s.featureFlags,
 		featureflags.SandboxContext(s.Runtime.SandboxID),
 		featureflags.TeamContext(s.Runtime.TeamID),
 		featureflags.TemplateContext(s.Runtime.TemplateID),
 	)
+
+	var (
+		parts []string
+		sum   time.Duration
+	)
+
+	// Freeze user cgroup first to stop new dirty pages before reclaim.
+	if cfg.FreezeUserCgroup {
+		parts = append(parts, "echo 1 > /sys/fs/cgroup/user/cgroup.freeze 2>/dev/null || rc=$?")
+	}
 
 	steps := []struct {
 		cap time.Duration
@@ -40,10 +59,6 @@ func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration
 		{cfg.CompactMemory, "echo 1 > /proc/sys/vm/compact_memory"},
 	}
 
-	var (
-		parts []string
-		sum   time.Duration
-	)
 	for _, st := range steps {
 		// %.3f at <1ms renders as 0.000 → GNU timeout reads as "no timeout".
 		if st.cap < time.Millisecond {

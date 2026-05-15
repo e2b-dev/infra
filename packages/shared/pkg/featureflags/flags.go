@@ -252,10 +252,11 @@ func GetFreePageHintingTimeout(ctx context.Context, ff *Client, useCase string, 
 }
 
 type ReclaimConfig struct {
-	Sync          time.Duration
-	DropCaches    time.Duration
-	CompactMemory time.Duration
-	Fstrim        time.Duration
+	Sync             time.Duration
+	DropCaches       time.Duration
+	CompactMemory    time.Duration
+	Fstrim           time.Duration
+	FreezeUserCgroup bool
 }
 
 func GetReclaimConfig(ctx context.Context, ff *Client, contexts ...ldcontext.Context) ReclaimConfig {
@@ -265,10 +266,11 @@ func GetReclaimConfig(ctx context.Context, ff *Client, contexts ...ldcontext.Con
 	}
 
 	return ReclaimConfig{
-		Sync:          ms("sync"),
-		DropCaches:    ms("drop_caches"),
-		CompactMemory: ms("compact_memory"),
-		Fstrim:        ms("fstrim"),
+		Sync:             ms("sync"),
+		DropCaches:       ms("drop_caches"),
+		CompactMemory:    ms("compact_memory"),
+		Fstrim:           ms("fstrim"),
+		FreezeUserCgroup: v.GetByKey("freeze_user_cgroup").BoolValue(),
 	}
 }
 
