@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -51,6 +52,11 @@ var (
 		"Duration of NFS writes",
 		"Total bytes written to NFS",
 		"Total writes to NFS",
+	))
+	nfsCacheConcurrentReads = utils.Must(meter.Int64UpDownCounter(
+		"orchestrator.storage.slab.nfs.read.concurrent",
+		metric.WithDescription("Number of NFS cache range readers currently open"),
+		metric.WithUnit("{read}"),
 	))
 )
 
@@ -119,7 +125,7 @@ func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off int64, length 
 		rc := io.ReadCloser(&fsRangeReadCloser{Reader: io.NewSectionReader(fp, 0, length), file: fp})
 		rc = withSpan(rc, span)
 
-		return rc, nil
+		return withNFSGauge(ctx, rc), nil
 	}
 
 	if !os.IsNotExist(err) {
@@ -167,6 +173,25 @@ func (r *spanReadCloser) Close() error {
 	r.span.End()
 
 	return err
+}
+
+// nfsGaugeReadCloser wraps a reader and decrements the NFS concurrent reads
+// gauge on Close.
+type nfsGaugeReadCloser struct {
+	io.ReadCloser
+	ctx context.Context //nolint:containedctx // needed for gauge decrement in Close
+}
+
+func (r *nfsGaugeReadCloser) Close() error {
+	nfsCacheConcurrentReads.Add(r.ctx, -1)
+
+	return r.ReadCloser.Close()
+}
+
+func withNFSGauge(ctx context.Context, rc io.ReadCloser) io.ReadCloser {
+	nfsCacheConcurrentReads.Add(ctx, 1)
+
+	return &nfsGaugeReadCloser{ReadCloser: rc, ctx: ctx}
 }
 
 // newCacheWriteThroughReader wraps a reader, buffering all data read through it.

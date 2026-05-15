@@ -17,6 +17,7 @@ import (
 	"cloud.google.com/go/storage"
 	"github.com/googleapis/gax-go/v2"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
@@ -67,6 +68,11 @@ var (
 		"Duration of GCS writes",
 		"Total bytes written to GCS",
 		"Total writes to GCS",
+	))
+	gcsConcurrentReads = utils.Must(meter.Int64UpDownCounter(
+		"orchestrator.storage.gcs.read.concurrent",
+		metric.WithDescription("Number of GCS range readers currently open"),
+		metric.WithUnit("{read}"),
 	))
 )
 
@@ -559,6 +565,8 @@ func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length i
 			return nil, err
 		}
 
+		gcsConcurrentReads.Add(ctx, 1)
+
 		return &timedReadCloser{inner: rc, timer: timer, ctx: ctx}, nil
 	}
 
@@ -583,6 +591,8 @@ func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length i
 
 		return nil, err
 	}
+
+	gcsConcurrentReads.Add(ctx, 1)
 
 	return &timedReadCloser{inner: decompressed, timer: timer, ctx: ctx}, nil
 }
@@ -609,6 +619,8 @@ func (r *timedReadCloser) Read(p []byte) (int, error) {
 }
 
 func (r *timedReadCloser) Close() error {
+	gcsConcurrentReads.Add(r.ctx, -1)
+
 	err := r.inner.Close()
 
 	if r.closeErr != nil || err != nil {
