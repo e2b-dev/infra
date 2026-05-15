@@ -36,7 +36,7 @@ func TestPublisher_PublishEnqueuesAndDrainsToRedis(t *testing.T) {
 
 	const n = 50
 	want := make(map[string]struct{}, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		key := fmt.Sprintf("rk:%d", i)
 		want[key] = struct{}{}
 		pub.Publish(key)
@@ -70,7 +70,7 @@ func TestPublisher_PublishNeverBlocks(t *testing.T) {
 	const n = publishQueueDepth + 256
 	done := make(chan struct{})
 	go func() {
-		for i := 0; i < n; i++ {
+		for range n {
 			pub.Publish("k")
 		}
 		close(done)
@@ -100,7 +100,7 @@ func TestPublisher_DropOnClosed(t *testing.T) {
 	pub.close()
 
 	before := pub.dropCount()
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		pub.Publish("after-close")
 	}
 	// At least one of these must have observed the closed channel; the
@@ -142,7 +142,7 @@ func TestPublisher_CloseDrainsPending(t *testing.T) {
 	require.NoError(t, err)
 
 	const n = 20
-	for i := 0; i < n; i++ {
+	for i := range n {
 		pub.Publish(fmt.Sprintf("drain:%d", i))
 	}
 
@@ -165,6 +165,7 @@ func TestPublisher_CloseDrainsPending(t *testing.T) {
 			// least a majority should have made it through.
 			require.GreaterOrEqual(t, seen, n/2,
 				"expected most messages to drain, got %d/%d", seen, n)
+
 			return
 		}
 	}
@@ -189,11 +190,13 @@ func TestStorageLock_ReleaseDoesNotSpawnGoroutine(t *testing.T) {
 	require.NoError(t, lock.Release(context.WithoutCancel(t.Context())))
 
 	time.Sleep(100 * time.Millisecond)
-	runtime.GC()
+	// Explicit GC reaps any exited-but-not-yet-collected goroutines so the
+	// goroutine count below is a stable baseline rather than a noisy one.
+	runtime.GC() //nolint:revive // test-only stability shim
 	before := runtime.NumGoroutine()
 
 	const n = 200
-	for i := 0; i < n; i++ {
+	for i := range n {
 		key := redis_utils.GetLockKey(getSandboxKey(uuid.NewString(), fmt.Sprintf("no-leak-%d", i)))
 		lock, err := storage.locker.Obtain(t.Context(), key, testLockTimeout)
 		require.NoError(t, err)
@@ -202,7 +205,8 @@ func TestStorageLock_ReleaseDoesNotSpawnGoroutine(t *testing.T) {
 
 	// Allow any in-flight publishes to drain through the worker.
 	require.Eventually(t, func() bool {
-		runtime.GC()
+		runtime.GC() //nolint:revive // test-only stability shim
+
 		return runtime.NumGoroutine()-before < 10
 	}, 2*time.Second, 10*time.Millisecond,
 		"Release spawned transient goroutines: before=%d after=%d",
@@ -324,11 +328,11 @@ func TestPublisher_ConcurrentProducers(t *testing.T) {
 		perProducer = 500
 	)
 	var wg sync.WaitGroup
-	for p := 0; p < producers; p++ {
+	for p := range producers {
 		wg.Add(1)
 		go func(p int) {
 			defer wg.Done()
-			for i := 0; i < perProducer; i++ {
+			for i := range perProducer {
 				pub.Publish(fmt.Sprintf("concurrent:%d:%d", p, i))
 			}
 		}(p)
@@ -346,16 +350,17 @@ func TestPublisher_ConcurrentProducers(t *testing.T) {
 		require.FailNow(t, "concurrent producers blocked")
 	}
 
-	// Sanity: the drop counter is a non-negative monotonic uint64. We do
-	// not assert an exact value (it depends on drain timing relative to
-	// production rate), only that observing it does not race or panic.
-	require.GreaterOrEqual(t, pub.dropCount(), uint64(0))
+	// Touch the drop counter. We do not assert an exact value (it depends
+	// on drain timing relative to production rate); this test exists so
+	// the race detector can observe concurrent producers + counter reads.
+	_ = pub.dropCount()
 }
 
 // blockingPublisher stalls on Publish until released. Used to force the
 // shutdown drain to exhaust its budget.
 type blockingPublisher struct {
 	goredis.UniversalClient
+
 	gate chan struct{}
 }
 
@@ -366,6 +371,7 @@ func (b *blockingPublisher) Publish(ctx context.Context, _ string, _ any) *gored
 	case <-ctx.Done():
 	}
 	cmd.SetVal(0)
+
 	return cmd
 }
 
@@ -387,7 +393,7 @@ func TestPublisher_DrainOnShutdownRespectsBudget(t *testing.T) {
 	}
 	pub := newPublisher(blocking, globalStorageNotifyChannel)
 
-	for i := 0; i < 16; i++ {
+	for i := range 16 {
 		pub.Publish(fmt.Sprintf("hang:%d", i))
 	}
 

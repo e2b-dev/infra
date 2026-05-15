@@ -81,6 +81,7 @@ func (p *publisher) Publish(routingKey string) {
 	select {
 	case <-p.closed:
 		p.drop(routingKey)
+
 		return
 	default:
 	}
@@ -131,7 +132,8 @@ func (p *publisher) run(ctx context.Context) {
 	for {
 		select {
 		case <-pubCtx.Done():
-			p.drainOnShutdown()
+			p.drainOnShutdown(ctx)
+
 			return
 		case key := <-p.queue:
 			p.publishOne(pubCtx, key)
@@ -141,8 +143,11 @@ func (p *publisher) run(ctx context.Context) {
 
 // drainOnShutdown opportunistically publishes any keys still in the queue,
 // using a single shared deadline so a hung Redis cannot block teardown.
-func (p *publisher) drainOnShutdown() {
-	drainCtx, cancel := context.WithTimeout(context.Background(), publishShutdownBudget)
+// The parent ctx is used without cancel because drainOnShutdown, 
+// because ctx is already cancelled (or close() fired); the drain budget is
+// the only bound we want here.
+func (p *publisher) drainOnShutdown(ctx context.Context) {
+	drainCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), publishShutdownBudget)
 	defer cancel()
 
 	for {

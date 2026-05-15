@@ -201,6 +201,10 @@ func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, res
 		// can serve all sandboxes across all teams. The publish is handed off to
 		// the shared publisher worker; on overflow the 1s fallback ticker in
 		// waitForTransition covers any dropped notification.
+		//
+		// The publisher is intentionally context-free: it is a fire-and-forget
+		// hand-off to a long-lived drainer that owns its own publish context.
+		//nolint:contextcheck // by design — see publisher.Publish
 		s.publisher.Publish(getTransitionRoutingKey(teamID.String(), sandboxID, transitionID))
 	}
 }
