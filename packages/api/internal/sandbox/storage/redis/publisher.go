@@ -29,13 +29,15 @@ const (
 	// publishDropLogInterval rate-limits drop warnings: only every Nth
 	// drop produces a log line, with the running total attached.
 	publishDropLogInterval = 64
+
+	// publishWorkerCount is the size of the goroutine pool draining the
+	// publish queue. Each worker is mostly blocked in Redis RTT, so the
+	// effective steady-state throughput is ~N / RTT. Sized to comfortably
+	// exceed any realistic Release()/transition notification rate while
+	// staying well under the Redis client's connection pool.
+	publishWorkerCount = 16
 )
 
-// publisher serializes best-effort PubSub notifications onto a single
-// long-lived goroutine, eliminating the per-Release goroutine spawn.
-// Callers hand it a routing-key string via Publish; one drainer goroutine
-// publishes them on the global notify channel.
-//
 // Backpressure policy: drop and count. Subscribers tolerate dropped
 // notifications by design (see Obtain and waitForTransition fallback
 // timers), so a bounded queue is the correct primitive — an unbounded
@@ -102,7 +104,7 @@ func (p *publisher) drop(ctx context.Context, routingKey string) {
 	}
 }
 
-// run drains the queue.
+// run starts the worker pool and blocks until the pool exits.
 // On exit it performs a bounded best-effort drain of pending items so a
 // graceful shutdown does not lose every in-flight notification.
 func (p *publisher) run(ctx context.Context) {
@@ -112,7 +114,7 @@ func (p *publisher) run(ctx context.Context) {
 	pubCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// Bridge close() into pubCtx so an in-flight publishOne aborts when
+	// Bridge close() into pubCtx so in-flight publishOne calls abort when
 	// the publisher is closed, not just when the parent is cancelled.
 	go func() {
 		select {
@@ -122,14 +124,29 @@ func (p *publisher) run(ctx context.Context) {
 		}
 	}()
 
+	var wg sync.WaitGroup
+	for range publishWorkerCount {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			p.workerLoop(pubCtx)
+		}()
+	}
+	wg.Wait()
+
+	p.drainOnShutdown(ctx)
+}
+
+// workerLoop is the per-worker drain loop. Multiple workers contend on
+// the same queue; Go channel receives are serialized internally, so each
+// key is delivered to exactly one worker.
+func (p *publisher) workerLoop(ctx context.Context) {
 	for {
 		select {
-		case <-pubCtx.Done():
-			p.drainOnShutdown(ctx)
-
+		case <-ctx.Done():
 			return
 		case key := <-p.queue:
-			p.publishOne(pubCtx, key)
+			p.publishOne(ctx, key)
 		}
 	}
 }
