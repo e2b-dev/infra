@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	utilsShared "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -142,7 +143,7 @@ func newTestAPI(accessToken *SecureToken, mmdsClient MMDSClient) *API {
 	defaults := &execcontext.Defaults{
 		EnvVars: utils.NewMap[string, string](),
 	}
-	api := New(&logger, defaults, nil, false)
+	api := New(&logger, defaults, nil, false, cgroups.NewNoopManager())
 	if accessToken != nil {
 		api.accessToken.TakeFrom(accessToken)
 	}

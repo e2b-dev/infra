@@ -11,6 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
@@ -40,11 +41,12 @@ type API struct {
 	initLock    sync.Mutex
 
 	caCertInstaller *host.CACertInstaller
+	cgroupManager   cgroups.Manager
 	isMountingNFS   atomic.Bool
 	mountedPaths    sync.Map // map[path]lifecycleID - tracks which lifecycle each path was mounted for
 }
 
-func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool) *API {
+func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool, cgroupManager cgroups.Manager) *API {
 	return &API{
 		logger:          l,
 		defaults:        defaults,
@@ -54,6 +56,7 @@ func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.
 		lastSetTime:     utils.NewAtomicMax(),
 		accessToken:     &SecureToken{},
 		caCertInstaller: host.NewCACertInstaller(l),
+		cgroupManager:   cgroupManager,
 	}
 }
 

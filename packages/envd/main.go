@@ -186,7 +186,7 @@ func main() {
 	processLogger := l.With().Str("logger", "process").Logger()
 	processRpc.Handle(m, &processLogger, defaults, cgroupManager)
 
-	service := api.New(&envLogger, defaults, mmdsChan, isNotFC)
+	service := api.New(&envLogger, defaults, mmdsChan, isNotFC, cgroupManager)
 	handler := api.HandlerFromMux(service, m)
 	middleware := authn.NewMiddleware(permissions.AuthenticateUsername)
 

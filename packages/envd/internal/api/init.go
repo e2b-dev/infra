@@ -19,6 +19,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 
@@ -223,6 +224,13 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 		if err := a.setupNFS(ctx, logger, data.LifecycleID, *data.VolumeMounts); err != nil {
 			return fmt.Errorf("failed to setup NFS volumes: %w", err)
 		}
+	}
+
+	// Thaw user processes that may have been frozen before snapshot.
+	// This is safe to call even if the cgroup is not frozen (writing "0"
+	// to an already-thawed cgroup is a no-op).
+	if err := a.cgroupManager.Thaw(cgroups.ProcessTypeUser); err != nil {
+		logger.Warn().Err(err).Msg("Failed to thaw user cgroup (non-fatal)")
 	}
 
 	return nil
