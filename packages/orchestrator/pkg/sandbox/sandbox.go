@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -167,6 +168,17 @@ type RuntimeMetadata struct {
 	// BuildID is the ID of the associated template build.
 	BuildID     string
 	SandboxType SandboxType
+}
+
+// sandboxLDContext builds an LD context with kernel/FC-version attributes for
+// per-sandbox flag targeting.
+func sandboxLDContext(runtime RuntimeMetadata, config *Config) ldcontext.Context {
+	return ldcontext.NewBuilder(runtime.SandboxID).
+		Kind(featureflags.SandboxKind).
+		SetString(featureflags.SandboxTemplateAttribute, runtime.TemplateID).
+		SetString(featureflags.SandboxKernelVersionAttribute, config.FirecrackerConfig.KernelVersion).
+		SetString(featureflags.SandboxFirecrackerVersionAttribute, config.FirecrackerConfig.FirecrackerVersion).
+		Build()
 }
 
 type Resources struct {
@@ -491,6 +503,9 @@ func (f *Factory) CreateSandbox(
 		return nil
 	})
 
+	freePageHinting := fc.FCSupportsFreePageHinting(config.FirecrackerConfig.FirecrackerVersion) &&
+		featureflags.IsFreePageHintingEnabled(ctx, f.featureFlags, sandboxLDContext(runtime, config))
+
 	err = fcHandle.Create(
 		ctx,
 		sbxlogger.SandboxMetadata{
@@ -502,6 +517,7 @@ func (f *Factory) CreateSandbox(
 		config.RamMB,
 		config.HugePages,
 		config.FreePageReporting,
+		freePageHinting,
 		processOptions,
 		fc.RateLimiterConfig{
 			Ops:       fc.TokenBucketConfig(throttleConfig.Ops),
@@ -1065,9 +1081,23 @@ func (s *Sandbox) Pause(
 	// all default to 0 which disables the chain entirely. Non-fatal.
 	s.bestEffortReclaim(ctx)
 
+	// Drain free-page-hinting before pause so the snapshot doesn't capture
+	// pages the guest already considers free. Timeout per use case; 0 disables.
+	if t := featureflags.GetFreePageHintingTimeout(ctx, s.featureFlags, string(useCase), sandboxLDContext(s.Runtime, s.Config)); t > 0 {
+		drainCtx, cancel := context.WithTimeout(ctx, t)
+		if err := s.process.DrainBalloon(drainCtx); err != nil {
+			telemetry.ReportError(ctx, "balloon hinting drain failed (continuing pause)", err)
+		}
+		cancel()
+	}
+
 	if err := s.process.Pause(ctx); err != nil {
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
+
+	// Best-effort flush before the rootfs export goroutine closes the FC API
+	// socket. Non-blocking on the reader; trades precision for pause latency.
+	_ = s.process.FlushMetrics(ctx)
 
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
 	snapfile := template.NewLocalFileLink(cachePaths.CacheSnapfile())
@@ -1145,6 +1175,12 @@ func (s *Sandbox) Pause(
 
 		cleanup: cleanup,
 	}, nil
+}
+
+// FlushAndReadBalloonMetrics triggers an FC metrics flush and returns the
+// updated cumulative virtio-balloon counters. Used by the FPH bench.
+func (s *Sandbox) FlushAndReadBalloonMetrics(ctx context.Context) (fc.BalloonMetricsSnapshot, error) {
+	return s.process.FlushAndReadBalloonMetrics(ctx)
 }
 
 // MemoryPrefetchData returns the ordered page fault data for prefetch mapping.
