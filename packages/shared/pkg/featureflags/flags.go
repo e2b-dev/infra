@@ -224,6 +224,33 @@ var (
 // Example: {"sync":500,"drop_caches":200,"compact_memory":1000,"fstrim":500}
 var ReclaimConfigFlag = NewJSONFlag("guest-pause-reclaim", ldvalue.Null())
 
+// FreePageHintingConfig controls virtio-balloon free-page-hinting.
+// "enabled" configures FreePageHinting=true on the balloon at install time
+// (kernel-side eligibility is targeted separately via the LD context — the
+// race fixed in https://lore.kernel.org/lkml/20240429125100.7393-1-david@redhat.com/
+// is on the hinting flow, gated by the per-use-case timeouts below).
+// "pause"/"build" are pre-pause drain timeouts in ms keyed by SnapshotUseCase;
+// missing/zero/negative disables the drain for that use case.
+// Example: {"enabled": true, "pause": 500, "build": 0}
+var FreePageHintingConfig = NewJSONFlag("free-page-hinting-config", ldvalue.Null())
+
+// IsFreePageHintingEnabled reports whether FPH should be configured on the
+// balloon at install time.
+func IsFreePageHintingEnabled(ctx context.Context, ff *Client, contexts ...ldcontext.Context) bool {
+	return ff.JSONFlag(ctx, FreePageHintingConfig, contexts...).GetByKey("enabled").BoolValue()
+}
+
+// GetFreePageHintingTimeout returns the pre-pause FPH drain timeout for the
+// given SnapshotUseCase. Zero means disabled.
+func GetFreePageHintingTimeout(ctx context.Context, ff *Client, useCase string, contexts ...ldcontext.Context) time.Duration {
+	ms := ff.JSONFlag(ctx, FreePageHintingConfig, contexts...).GetByKey(useCase).IntValue()
+	if ms <= 0 {
+		return 0
+	}
+
+	return time.Duration(ms) * time.Millisecond
+}
+
 type ReclaimConfig struct {
 	Sync          time.Duration
 	DropCaches    time.Duration

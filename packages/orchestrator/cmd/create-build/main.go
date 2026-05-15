@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldlog"
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -39,6 +40,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/metrics"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
+	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -75,6 +77,11 @@ func main() {
 	if *toBuild == "" {
 		log.Fatal("-to-build required")
 	}
+
+	// FPH must be installed at boot — flag is read by Create, not Resume.
+	featureflags.NewJSONFlag("free-page-hinting-config", ldvalue.FromJSONMarshal(map[string]any{
+		"enabled": true,
+	}))
 
 	// Suppress other noisy output unless verbose, but keep std log for fatal errors
 	if !*verbose {
@@ -351,6 +358,13 @@ func doBuild(
 		})
 	}
 
+	// Mirror prod gating in pkg/template/server/create_template.go: balloon
+	// is rejected on FC <1.14, so we can't unconditionally request FPR.
+	fcInfo, err := fcversion.New(fc)
+	if err != nil {
+		return fmt.Errorf("invalid firecracker version %q: %w", fc, err)
+	}
+
 	tmpl := config.TemplateConfig{
 		Version:            templates.TemplateV2LatestVersion,
 		TemplateID:         templateID,
@@ -363,6 +377,8 @@ func doBuild(
 		ReadyCmd:           readyCmd,
 		KernelVersion:      kernel,
 		FirecrackerVersion: fc,
+		FreePageReporting:  fcInfo.HasFreePageReporting(),
+		TeamID:             "local",
 		Steps:              steps,
 	}
 

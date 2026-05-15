@@ -29,6 +29,8 @@ func putLZ4Decoder(dec *lz4.Reader) {
 
 // zstd concurrency is hardcoded to 1: benchmarks show higher values hurt
 // throughput for single 2MiB frame decodes.
+const zstdDecoderConcurrency = 1
+
 var zstdDecoderPool sync.Pool
 
 func getZstdDecoder(r io.Reader) (*zstd.Decoder, error) {
@@ -43,7 +45,7 @@ func getZstdDecoder(r io.Reader) (*zstd.Decoder, error) {
 		return dec, nil
 	}
 
-	return zstd.NewReader(r)
+	return zstd.NewReader(r, zstd.WithDecoderConcurrency(zstdDecoderConcurrency))
 }
 
 func putZstdDecoder(dec *zstd.Decoder) {

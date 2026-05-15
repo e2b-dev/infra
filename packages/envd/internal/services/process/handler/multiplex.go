@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"slices"
 	"sync"
 	"sync/atomic"
 )
@@ -83,6 +84,20 @@ func (m *MultiplexedChannel[T]) run() {
 	m.channels = nil
 }
 
+// HasSubscribers reports whether any non-cancelled subscriber exists.
+func (m *MultiplexedChannel[T]) HasSubscribers() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for _, s := range m.channels {
+		if !s.isCancelled() {
+			return true
+		}
+	}
+
+	return false
+}
+
 // Fork registers a new subscriber and returns its channel plus a cancel func.
 // If Source is already closed it returns a pre-closed channel and a no-op cancel.
 // The channel is bidirectional for backwards compat with start.go which writes
@@ -128,7 +143,8 @@ func (m *MultiplexedChannel[T]) remove(s *subscriber[T]) {
 
 	for i, sub := range m.channels {
 		if sub == s {
-			m.channels = append(m.channels[:i], m.channels[i+1:]...)
+			// New backing array so run()'s concurrent iteration is safe.
+			m.channels = slices.Concat(m.channels[:i], m.channels[i+1:])
 
 			return
 		}
