@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
@@ -122,6 +123,24 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to register sandbox count metric: %w", err)
+	}
+
+	statusGauge, err := telemetry.GetGaugeInt(meter, telemetry.OrchestratorStatusGaugeName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create orchestrator status gauge: %w", err)
+	}
+
+	_, err = meter.RegisterCallback(
+		func(_ context.Context, obs metric.Observer) error {
+			obs.ObserveInt64(statusGauge, 1, metric.WithAttributes(
+				attribute.String("status", server.info.GetStatus().String()),
+				attribute.String("version", server.info.SourceVersion),
+				attribute.String("commit", server.info.SourceCommit),
+			))
+			return nil
+		}, statusGauge)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register orchestrator status gauge: %w", err)
 	}
 
 	go server.refreshStartingSandboxesLimit(ctx)
