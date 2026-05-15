@@ -356,15 +356,17 @@ func GetTrackedTemplatesSet(ctx context.Context, ff *Client) map[string]struct{}
 
 // CompressConfigFlag controls compression during template builds.
 // When compressBuilds is true, builds upload exclusively compressed data
-// (no uncompressed fallback). When false, exclusively uncompressed with V3 headers.
+// (no uncompressed fallback). When false, exclusively uncompressed.
+// v4HeaderForUncompressed forces the V4 header layout on uncompressed uploads.
 var CompressConfigFlag = NewJSONFlag("compress-config", ldvalue.FromJSONMarshal(map[string]any{
-	"compressBuilds":     false,
-	"compressionType":    "",
-	"compressionLevel":   0,
-	"frameSizeKB":        0,
-	"minPartSizeMB":      0,
-	"frameEncodeWorkers": 0,
-	"encoderConcurrency": 0,
+	"compressBuilds":          false,
+	"compressionType":         "",
+	"compressionLevel":        0,
+	"frameSizeKB":             0,
+	"minPartSizeMB":           0,
+	"frameEncodeWorkers":      0,
+	"encoderConcurrency":      0,
+	"v4HeaderForUncompressed": false,
 }))
 
 // TCPFirewallEgressThrottleConfig controls per-sandbox egress throttling via Firecracker's
