@@ -2,7 +2,7 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 -include ../../.env.${ENV}
 
 BUILD := $(shell git rev-parse --short HEAD)
-LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD)"
+LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD) -s -w -buildid="
 
 AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
 GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
@@ -27,7 +27,7 @@ else
 endif
 
 build:
-	CGO_ENABLED=0 GOOS=linux GOARCH=$(BUILD_ARCH) go build -a -o bin/envd ${LDFLAGS}
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(BUILD_ARCH) go build -trimpath -buildvcs=false -a -o bin/envd ${LDFLAGS}
 
 build-debug:
 	CGO_ENABLED=1 go build -race -gcflags=all="-N -l" -o bin/debug/envd ${LDFLAGS}
