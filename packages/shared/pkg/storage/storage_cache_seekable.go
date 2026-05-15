@@ -179,6 +179,7 @@ func (r *spanReadCloser) Close() error {
 // gauge on Close.
 type nfsGaugeReadCloser struct {
 	io.ReadCloser
+
 	ctx context.Context //nolint:containedctx // needed for gauge decrement in Close
 }
 
