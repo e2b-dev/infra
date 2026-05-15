@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // Slack covers shell start + envd round-trip overhead.
@@ -55,7 +56,10 @@ func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration
 	)
 
 	// Freeze all managed cgroups first to stop new dirty pages before reclaim.
-	if cfg.FreezeUserCgroup {
+	// Only freeze if the envd version supports unfreezing at the end of /init,
+	// otherwise the cgroups would stay frozen permanently after resume.
+	canFreeze, _ := utils.IsGTEVersion(s.Config.Envd.Version, utils.MinEnvdVersionForCgroupFreeze)
+	if cfg.FreezeUserCgroup && canFreeze {
 		parts = append(parts, freezeCgroupCmd)
 	}
 
