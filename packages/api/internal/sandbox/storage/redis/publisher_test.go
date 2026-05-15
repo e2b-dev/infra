@@ -258,6 +258,52 @@ func TestStorage_CloseIsIdempotent(t *testing.T) {
 	storage.Close() // must not panic
 }
 
+// TestStorage_CloseBeforeStartDoesNotDeadlock covers the early-init
+// failure path where Storage.Close is invoked before Storage.Start has
+// ever run (e.g. a defer s.Close() on a failing initializer). The
+// publisher's close() must not block on its done channel in this case.
+func TestStorage_CloseBeforeStartDoesNotDeadlock(t *testing.T) {
+	t.Parallel()
+
+	client := redis_utils.SetupInstance(t)
+	storage := NewStorage(client)
+	// Deliberately do NOT call Start.
+
+	done := make(chan struct{})
+	go func() {
+		storage.Close()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		require.FailNow(t, "Close blocked when Start was never called")
+	}
+}
+
+// TestPublisher_CloseBeforeRunDoesNotDeadlock is the publisher-level
+// equivalent of the above: close() must return promptly even when run()
+// has never been invoked.
+func TestPublisher_CloseBeforeRunDoesNotDeadlock(t *testing.T) {
+	t.Parallel()
+
+	client := redis_utils.SetupInstance(t)
+	pub := newPublisher(client, globalStorageNotifyChannel)
+
+	done := make(chan struct{})
+	go func() {
+		pub.close()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		require.FailNow(t, "publisher.close blocked when run was never called")
+	}
+}
+
 // TestPublisher_ConcurrentProducers stresses the queue under many concurrent
 // callers and asserts: no panic/race, every call accounted for (enqueued or
 // dropped), Close returns promptly. Run with -race to catch data races on

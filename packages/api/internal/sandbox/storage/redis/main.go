@@ -52,8 +52,7 @@ func NewStorage(
 }
 
 // Start subscribes to the global PubSub channel and launches the publish
-// worker. Blocks until the context is cancelled or Close is called. It is
-// intended to be called in a goroutine.
+// worker. Blocks until the context is cancelled or Close is called.
 func (s *Storage) Start(ctx context.Context) {
 	pubDone := make(chan struct{})
 	go func() {
@@ -66,8 +65,6 @@ func (s *Storage) Start(ctx context.Context) {
 }
 
 // Close shuts down the subscription manager and the publish worker.
-// Pending notifications are drained with a bounded budget so a hung Redis
-// cannot block teardown indefinitely.
 func (s *Storage) Close() {
 	s.subManager.close()
 	s.publisher.close()

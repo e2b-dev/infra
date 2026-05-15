@@ -41,10 +41,7 @@ func (l *storageLock) Release(ctx context.Context) error {
 		return err
 	}
 
-	// Hand off to the shared publisher. Non-blocking; never spawns a
-	// goroutine on this hot path. If the queue is full or the publisher
-	// is shutting down, the drop is absorbed by the Obtain waiter's
-	// jittered 200ms-1s backoff timer.
+	// Hand off to the shared publisher
 	l.notifier.Publish(getLockRoutingKey(l.Key()))
 
 	return nil

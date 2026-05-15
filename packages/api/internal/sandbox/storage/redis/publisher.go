@@ -51,6 +51,7 @@ type publisher struct {
 	done   chan struct{} // closed when the drainer has fully exited
 
 	closeOnce sync.Once
+	started   atomic.Bool // set true on entry to run()
 	dropped   atomic.Uint64
 }
 
@@ -111,6 +112,7 @@ func (p *publisher) drop(routingKey string) {
 // either the parent ctx or close(), so a hung Redis cannot delay Close
 // beyond publishShutdownBudget.
 func (p *publisher) run(ctx context.Context) {
+	p.started.Store(true)
 	defer close(p.done)
 
 	pubCtx, cancel := context.WithCancel(ctx)
@@ -169,10 +171,15 @@ func (p *publisher) publishOne(ctx context.Context, routingKey string) {
 }
 
 // close signals the drainer to stop and blocks until it has exited (or
-// the shutdown budget elapses). Safe to call multiple times.
+// the shutdown budget elapses). Safe to call multiple times and safe to
+// call before run() has ever started (e.g. on an early-init failure path
+// where Storage.Close is invoked before Storage.Start). In the
+// not-started case there is no drainer to wait on, so we skip the join.
 func (p *publisher) close() {
 	p.closeOnce.Do(func() { close(p.closed) })
-	<-p.done
+	if p.started.Load() {
+		<-p.done
+	}
 }
 
 // dropCount returns the total number of dropped publishes since creation.
