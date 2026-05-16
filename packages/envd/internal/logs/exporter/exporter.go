@@ -13,7 +13,14 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 )
 
-const ExporterTimeout = 10 * time.Second
+const (
+	ExporterTimeout = 10 * time.Second
+
+	// maxBufferedLogs caps the in-memory log queue so that if the orchestrator
+	// log collector is unreachable, w.logs cannot grow unbounded. Oldest logs
+	// are dropped under back-pressure.
+	maxBufferedLogs = 10000
+)
 
 type HTTPExporter struct {
 	client   http.Client
@@ -95,6 +102,10 @@ func (w *HTTPExporter) listenForMMDSOptsAndStart(ctx context.Context, mmdsChan <
 }
 
 func (w *HTTPExporter) start(ctx context.Context) {
+	// Suppress repeated failures so a wedged collector doesn't 1:1-amplify
+	// envd logs into journald via the log.Printf default (stderr).
+	var loggedJSONErr, loggedSendErr bool
+
 	for range w.triggers {
 		logs := w.getAllLogs()
 
@@ -115,7 +126,10 @@ func (w *HTTPExporter) start(ctx context.Context) {
 			logLineWithOpts, err := w.mmdsOpts.AddOptsToJSON(logLine)
 			w.mmdsLock.RUnlock()
 			if err != nil {
-				log.Printf("error adding instance logging options (%+v) to JSON (%+v) with logs : %v\n", w.mmdsOpts, logLine, err)
+				if !loggedJSONErr {
+					log.Printf("error adding instance logging options (%+v) to JSON (%+v) with logs (suppressing further failures): %v\n", w.mmdsOpts, logLine, err)
+					loggedJSONErr = true
+				}
 
 				printLog(logLine)
 
@@ -124,12 +138,17 @@ func (w *HTTPExporter) start(ctx context.Context) {
 
 			err = w.sendInstanceLogs(ctx, logLineWithOpts, w.mmdsOpts.LogsCollectorAddress)
 			if err != nil {
-				log.Printf("error sending instance logs: %+v", err)
+				if !loggedSendErr {
+					log.Printf("error sending instance logs (suppressing further failures): %+v", err)
+					loggedSendErr = true
+				}
 
 				printLog(logLine)
 
 				continue
 			}
+
+			loggedSendErr = false
 		}
 	}
 }
@@ -166,6 +185,11 @@ func (w *HTTPExporter) addLogs(logs []byte) {
 	w.logLock.Lock()
 	defer w.logLock.Unlock()
 
+	// Drop oldest under back-pressure so the queue can't grow unbounded if
+	// the collector is unreachable.
+	if len(w.logs) >= maxBufferedLogs {
+		w.logs = w.logs[len(w.logs)-maxBufferedLogs+1:]
+	}
 	w.logs = append(w.logs, logs)
 
 	w.resumeProcessing()
