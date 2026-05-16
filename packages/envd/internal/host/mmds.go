@@ -135,18 +135,33 @@ func GetAccessTokenHashFromMMDS(ctx context.Context) (string, error) {
 	return opts.AccessTokenHash, nil
 }
 
+// MMDS poll backoff: start fast for the common happy path (MMDS up at boot),
+// then double on each failure up to mmdsMaxBackoff so a persistently broken
+// endpoint doesn't keep firing HTTP requests every 50ms.
+const (
+	mmdsInitialBackoff = 50 * time.Millisecond
+	mmdsMaxBackoff     = 1 * time.Second
+)
+
 func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *utils.Map[string, string]) {
 	httpClient := &http.Client{}
 	defer httpClient.CloseIdleConnections()
 
-	ticker := time.NewTicker(50 * time.Millisecond)
-	defer ticker.Stop()
-
-	// Polling runs at 50ms — log the first failure of each kind only so a
-	// persistently broken MMDS endpoint doesn't spam journald until ctx
-	// cancellation. Tagged as syslog WARNING (<4>) since MMDS hiccups are
-	// expected during early boot and recoverable.
+	// Log only the first failure of each kind. Tagged as syslog WARNING (<4>)
+	// since MMDS hiccups are expected during early boot and recoverable.
 	var loggedTokenErr, loggedOptsErr bool
+
+	backoff := mmdsInitialBackoff
+	timer := time.NewTimer(backoff)
+	defer timer.Stop()
+
+	advanceBackoff := func() {
+		backoff *= 2
+		if backoff > mmdsMaxBackoff {
+			backoff = mmdsMaxBackoff
+		}
+		timer.Reset(backoff)
+	}
 
 	for {
 		select {
@@ -154,7 +169,7 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 			fmt.Fprintf(os.Stderr, "<4>context cancelled while waiting for mmds opts\n")
 
 			return
-		case <-ticker.C:
+		case <-timer.C:
 			token, err := getMMDSToken(ctx, httpClient)
 			if err != nil {
 				if !loggedTokenErr {
@@ -162,6 +177,7 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 					loggedTokenErr = true
 				}
 
+				advanceBackoff()
 				continue
 			}
 
@@ -172,6 +188,7 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 					loggedOptsErr = true
 				}
 
+				advanceBackoff()
 				continue
 			}
 

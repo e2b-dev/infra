@@ -19,12 +19,21 @@ const (
 	// log collector is unreachable, w.logs cannot grow unbounded. Oldest logs
 	// are dropped under back-pressure.
 	maxBufferedLogs = 10000
+
+	// Exporter send-failure backoff: each failure waits sendInitialBackoff,
+	// doubling up to sendMaxBackoff, before any further send is attempted.
+	// During the cooldown window logs are dropped (we already report the
+	// outage to journald and the orchestrator was supposed to receive them
+	// anyway). Resets to the initial value on the next successful send.
+	sendInitialBackoff = 1 * time.Second
+	sendMaxBackoff     = 5 * time.Minute
 )
 
 type HTTPExporter struct {
 	client   http.Client
 	logs     [][]byte
 	isNotFC  bool
+	verbose  bool
 	mmdsOpts *host.MMDSOpts
 
 	// Concurrency coordination
@@ -34,13 +43,14 @@ type HTTPExporter struct {
 	startOnce sync.Once
 }
 
-func NewHTTPLogsExporter(ctx context.Context, isNotFC bool, mmdsChan <-chan *host.MMDSOpts) *HTTPExporter {
+func NewHTTPLogsExporter(ctx context.Context, isNotFC bool, verbose bool, mmdsChan <-chan *host.MMDSOpts) *HTTPExporter {
 	exporter := &HTTPExporter{
 		client: http.Client{
 			Timeout: ExporterTimeout,
 		},
 		triggers:  make(chan struct{}, 1),
 		isNotFC:   isNotFC,
+		verbose:   verbose,
 		startOnce: sync.Once{},
 		mmdsOpts: &host.MMDSOpts{
 			SandboxID:            "unknown",
@@ -75,7 +85,12 @@ func (w *HTTPExporter) sendInstanceLogs(ctx context.Context, logs []byte, addres
 	return nil
 }
 
-func printLog(logs []byte) {
+func (w *HTTPExporter) printLog(logs []byte) {
+	// Only emit on -verbose. Inside FC stdout flows into journald, which is
+	// what this PR is trying to keep clean during send outages.
+	if !w.verbose {
+		return
+	}
 	fmt.Fprintf(os.Stdout, "%v", string(logs))
 }
 
@@ -102,8 +117,14 @@ func (w *HTTPExporter) listenForMMDSOptsAndStart(ctx context.Context, mmdsChan <
 
 func (w *HTTPExporter) start(ctx context.Context) {
 	// Suppress repeated failures so a wedged collector doesn't 1:1-amplify
-	// envd logs into journald via the log.Printf default (stderr).
+	// envd logs into journald.
 	var loggedJSONErr, loggedSendErr bool
+
+	// Exponential backoff between send attempts after a failure, so a
+	// persistently broken collector doesn't keep wasting ExporterTimeout
+	// (10s) per log line.
+	var cooldownUntil time.Time
+	cooldown := sendInitialBackoff
 
 	for range w.triggers {
 		logs := w.getAllLogs()
@@ -113,8 +134,10 @@ func (w *HTTPExporter) start(ctx context.Context) {
 		}
 
 		if w.isNotFC {
-			for _, log := range logs {
-				fmt.Fprintf(os.Stdout, "%v", string(log))
+			if w.verbose {
+				for _, log := range logs {
+					fmt.Fprintf(os.Stdout, "%v", string(log))
+				}
 			}
 
 			continue
@@ -130,8 +153,13 @@ func (w *HTTPExporter) start(ctx context.Context) {
 					loggedJSONErr = true
 				}
 
-				printLog(logLine)
+				w.printLog(logLine)
 
+				continue
+			}
+
+			if time.Now().Before(cooldownUntil) {
+				// Skip send during cooldown; the log is dropped.
 				continue
 			}
 
@@ -142,11 +170,19 @@ func (w *HTTPExporter) start(ctx context.Context) {
 					loggedSendErr = true
 				}
 
-				printLog(logLine)
+				cooldownUntil = time.Now().Add(cooldown)
+				cooldown *= 2
+				if cooldown > sendMaxBackoff {
+					cooldown = sendMaxBackoff
+				}
+
+				w.printLog(logLine)
 
 				continue
 			}
 
+			cooldown = sendInitialBackoff
+			cooldownUntil = time.Time{}
 			loggedSendErr = false
 		}
 	}

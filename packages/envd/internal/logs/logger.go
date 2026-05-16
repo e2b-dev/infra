@@ -19,7 +19,7 @@ func NewLogger(ctx context.Context, isNotFC bool, verbose bool, mmdsChan <-chan 
 	exporters := []io.Writer{}
 
 	if !isNotFC {
-		exporters = append(exporters, exporter.NewHTTPLogsExporter(ctx, isNotFC, mmdsChan))
+		exporters = append(exporters, exporter.NewHTTPLogsExporter(ctx, isNotFC, verbose, mmdsChan))
 	}
 	// Stdout is opt-in via -verbose. Inside FC stdout flows into journald and
 	// dirties guest pages on every snapshot, so we keep it off by default and
