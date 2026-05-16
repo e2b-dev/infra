@@ -139,26 +139,32 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 	httpClient := &http.Client{}
 	defer httpClient.CloseIdleConnections()
 
+	var lastErr error
+
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Fprintf(os.Stderr, "context cancelled while waiting for mmds opts")
+			if lastErr != nil {
+				fmt.Fprintf(os.Stderr, "<4>gave up polling for mmds opts: %v (last error: %v)\n", ctx.Err(), lastErr)
+			} else {
+				fmt.Fprintf(os.Stderr, "<4>gave up polling for mmds opts: %v\n", ctx.Err())
+			}
 
 			return
 		case <-ticker.C:
 			token, err := getMMDSToken(ctx, httpClient)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "error getting mmds token: %v\n", err)
+				lastErr = fmt.Errorf("get mmds token: %w", err)
 
 				continue
 			}
 
 			mmdsOpts, err := getMMDSOpts(ctx, httpClient, token)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "error getting mmds opts: %v\n", err)
+				lastErr = fmt.Errorf("get mmds opts: %w", err)
 
 				continue
 			}
