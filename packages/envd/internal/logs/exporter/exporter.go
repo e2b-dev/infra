@@ -15,10 +15,12 @@ import (
 const (
 	ExporterTimeout = 10 * time.Second
 
-	// maxBufferedLogs caps the in-memory log queue so that if the orchestrator
-	// log collector is unreachable, w.logs cannot grow unbounded. Oldest logs
-	// are dropped under back-pressure.
-	maxBufferedLogs = 10000
+	// maxBufferedBytes caps the total in-memory size of the log queue, so the
+	// queue stays bounded even when the collector is unreachable for a long
+	// time (e.g. before MMDS opts arrive on boot). Oldest logs are dropped on
+	// over-cap so the most recent — and most useful for whatever just
+	// happened — are the ones the orchestrator gets once it can be reached.
+	maxBufferedBytes = 4 << 20 // 4 MiB
 
 	// Exporter send-failure backoff: each failure waits sendInitialBackoff,
 	// doubling up to sendMaxBackoff, before any further send is attempted.
@@ -30,11 +32,12 @@ const (
 )
 
 type HTTPExporter struct {
-	client   http.Client
-	logs     [][]byte
-	isNotFC  bool
-	verbose  bool
-	mmdsOpts *host.MMDSOpts
+	client        http.Client
+	logs          [][]byte
+	bufferedBytes int
+	isNotFC       bool
+	verbose       bool
+	mmdsOpts      *host.MMDSOpts
 
 	// Concurrency coordination
 	triggers  chan struct{}
@@ -212,6 +215,7 @@ func (w *HTTPExporter) getAllLogs() [][]byte {
 
 	logs := w.logs
 	w.logs = nil
+	w.bufferedBytes = 0
 
 	return logs
 }
@@ -220,11 +224,16 @@ func (w *HTTPExporter) addLogs(logs []byte) {
 	w.logLock.Lock()
 	defer w.logLock.Unlock()
 
-	// Drop oldest under back-pressure so the queue can't grow unbounded if
-	// the collector is unreachable.
-	if len(w.logs) >= maxBufferedLogs {
-		w.logs = w.logs[len(w.logs)-maxBufferedLogs+1:]
+	// Drop oldest so total buffered size stays at or below maxBufferedBytes.
+	// Most recent logs are kept (those are usually the ones we want to see
+	// after a long buffering window, e.g. early boot before MMDS is up).
+	for w.bufferedBytes+len(logs) > maxBufferedBytes && len(w.logs) > 0 {
+		w.bufferedBytes -= len(w.logs[0])
+		w.logs[0] = nil // let GC reclaim the dropped log content
+		w.logs = w.logs[1:]
 	}
+
+	w.bufferedBytes += len(logs)
 	w.logs = append(w.logs, logs)
 
 	w.resumeProcessing()
