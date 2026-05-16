@@ -169,8 +169,8 @@ type RuntimeMetadata struct {
 }
 
 // sandboxLDContexts builds LD contexts (sandbox + team + template) for
-// per-sandbox flag targeting. Empty IDs produce undefined contexts that are
-// filtered out by the flag client.
+// per-sandbox flag targeting. Empty IDs produce invalid contexts that are
+// filtered out during context merging in the flag client.
 func sandboxLDContexts(runtime RuntimeMetadata, config *Config) []ldcontext.Context {
 	return []ldcontext.Context{
 		ldcontext.NewBuilder(runtime.SandboxID).

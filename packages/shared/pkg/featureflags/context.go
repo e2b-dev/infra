@@ -81,11 +81,14 @@ func mergeSameKind(first ldcontext.Context, second ldcontext.Context) ldcontext.
 	return builder.Build()
 }
 
-func removeUndefined(contexts []ldcontext.Context) []ldcontext.Context {
+// removeInvalid drops contexts that are undefined or invalid (e.g. empty key).
+// Invalid contexts would otherwise poison the multi-context built by
+// ldcontext.NewMulti and silently force all flag reads to fallback.
+func removeInvalid(contexts []ldcontext.Context) []ldcontext.Context {
 	var result []ldcontext.Context
 
 	for _, item := range contexts {
-		if !item.IsDefined() {
+		if !item.IsDefined() || item.Err() != nil {
 			continue
 		}
 
@@ -103,7 +106,7 @@ func mergeContexts(ctx context.Context, contexts []ldcontext.Context) ldcontext.
 
 	contexts = flattenContexts(contexts)
 
-	contexts = removeUndefined(contexts)
+	contexts = removeInvalid(contexts)
 
 	if len(contexts) == 0 {
 		return ldcontext.NewWithKind("none", "none")
