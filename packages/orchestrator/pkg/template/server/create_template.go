@@ -68,6 +68,11 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	}
 	hugePages := fcInfo.HasHugePages()
 	freePageReporting := fcInfo.HasFreePageReporting() && s.featureFlags.BoolFlag(ctx, featureflags.FreePageReportingFlag)
+	// Decide FPH at template create with team context, then propagate the
+	// decision through the build via TemplateConfig so the team targeting
+	// applies to every install+run sandbox the build creates regardless of
+	// downstream ctx state.
+	freePageHinting := fcInfo.HasFreePageHinting() && featureflags.IsFreePageHintingEnabled(ctx, s.featureFlags)
 
 	childSpan.SetAttributes(
 		telemetry.WithTemplateID(cfg.GetTemplateID()),
@@ -79,6 +84,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		attribute.Int64("env.vcpu_count", int64(cfg.GetVCpuCount())),
 		attribute.Bool("env.huge_pages", hugePages),
 		attribute.Bool("env.free_page_reporting", freePageReporting),
+		attribute.Bool("env.free_page_hinting", freePageHinting),
 	)
 
 	template := config.TemplateConfig{
@@ -93,6 +99,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		DiskSizeMB:           int64(cfg.GetDiskSizeMB()),
 		HugePages:            hugePages,
 		FreePageReporting:    freePageReporting,
+		FreePageHinting:      freePageHinting,
 		FromImage:            cfg.GetFromImage(),
 		FromTemplate:         cfg.GetFromTemplate(),
 		RegistryAuthProvider: authProvider,

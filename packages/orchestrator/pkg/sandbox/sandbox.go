@@ -74,6 +74,10 @@ type Config struct {
 	TotalDiskSizeMB   int64
 	HugePages         bool
 	FreePageReporting bool
+	// FreePageHinting is the build-time install decision for virtio-balloon
+	// FPH. Set only by the build pipeline; runtime resumes inherit the
+	// balloon configuration from the snapshot.
+	FreePageHinting bool
 
 	Envd EnvdMetadata
 
@@ -508,8 +512,10 @@ func (f *Factory) CreateSandbox(
 		return nil
 	})
 
-	freePageHinting := fc.FCSupportsFreePageHinting(config.FirecrackerConfig.FirecrackerVersion) &&
-		featureflags.IsFreePageHintingEnabled(ctx, f.featureFlags, sandboxLDContext(runtime, config))
+	// Build-time install decision (see TemplateConfig.FreePageHinting).
+	// Runtime resumes inherit the balloon config from the snapshot and never
+	// reach this branch.
+	freePageHinting := fc.FCSupportsFreePageHinting(config.FirecrackerConfig.FirecrackerVersion) && config.FreePageHinting
 
 	err = fcHandle.Create(
 		ctx,

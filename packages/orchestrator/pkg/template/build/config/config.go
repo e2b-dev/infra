@@ -44,6 +44,13 @@ type TemplateConfig struct {
 	// FreePageReporting enables Firecracker's balloon free-page-reporting.
 	FreePageReporting bool
 
+	// FreePageHinting enables Firecracker's balloon free-page-hinting at
+	// install time. Decided at template create with team context available
+	// (see create_template.go) and propagated through the build phases so the
+	// decision applies to every install+run sandbox the build creates, even
+	// when team context is not present further down the call chain.
+	FreePageHinting bool
+
 	// Command to run to check if the template is ready.
 	ReadyCmd string
 
