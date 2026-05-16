@@ -3,10 +3,8 @@ package exporter
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
@@ -18,7 +16,6 @@ const ExporterTimeout = 10 * time.Second
 type HTTPExporter struct {
 	client   http.Client
 	logs     [][]byte
-	isNotFC  bool
 	mmdsOpts *host.MMDSOpts
 
 	// Concurrency coordination
@@ -28,13 +25,12 @@ type HTTPExporter struct {
 	startOnce sync.Once
 }
 
-func NewHTTPLogsExporter(ctx context.Context, isNotFC bool, mmdsChan <-chan *host.MMDSOpts) *HTTPExporter {
+func NewHTTPLogsExporter(ctx context.Context, mmdsChan <-chan *host.MMDSOpts) *HTTPExporter {
 	exporter := &HTTPExporter{
 		client: http.Client{
 			Timeout: ExporterTimeout,
 		},
 		triggers:  make(chan struct{}, 1),
-		isNotFC:   isNotFC,
 		startOnce: sync.Once{},
 		mmdsOpts: &host.MMDSOpts{
 			SandboxID:            "unknown",
@@ -69,10 +65,6 @@ func (w *HTTPExporter) sendInstanceLogs(ctx context.Context, logs []byte, addres
 	return nil
 }
 
-func printLog(logs []byte) {
-	fmt.Fprintf(os.Stdout, "%v", string(logs))
-}
-
 func (w *HTTPExporter) listenForMMDSOptsAndStart(ctx context.Context, mmdsChan <-chan *host.MMDSOpts) {
 	for {
 		select {
@@ -102,14 +94,6 @@ func (w *HTTPExporter) start(ctx context.Context) {
 			continue
 		}
 
-		if w.isNotFC {
-			for _, log := range logs {
-				fmt.Fprintf(os.Stdout, "%v", string(log))
-			}
-
-			continue
-		}
-
 		for _, logLine := range logs {
 			w.mmdsLock.RLock()
 			logLineWithOpts, err := w.mmdsOpts.AddOptsToJSON(logLine)
@@ -117,16 +101,12 @@ func (w *HTTPExporter) start(ctx context.Context) {
 			if err != nil {
 				log.Printf("error adding instance logging options (%+v) to JSON (%+v) with logs : %v\n", w.mmdsOpts, logLine, err)
 
-				printLog(logLine)
-
 				continue
 			}
 
 			err = w.sendInstanceLogs(ctx, logLineWithOpts, w.mmdsOpts.LogsCollectorAddress)
 			if err != nil {
 				log.Printf("error sending instance logs: %+v", err)
-
-				printLog(logLine)
 
 				continue
 			}
