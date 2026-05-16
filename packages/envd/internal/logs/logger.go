@@ -21,10 +21,11 @@ func NewLogger(ctx context.Context, isNotFC bool, verbose bool, mmdsChan <-chan 
 	if !isNotFC {
 		exporters = append(exporters, exporter.NewHTTPLogsExporter(ctx, isNotFC, mmdsChan))
 	}
-	// Stdout is opt-in via -verbose. Inside FC stdout flows into journald and
-	// dirties guest pages on every snapshot, so we keep it off by default and
-	// rely on the HTTP exporter to ship debug logs to the orchestrator.
-	if verbose {
+	// Stdout is opt-in via -verbose inside FC mode. Inside FC, stdout flows into
+	// journald and dirties guest pages on every snapshot, so we keep it off by
+	// default and rely on the HTTP exporter. In local dev mode, stdout is always
+	// enabled since there's no page-dirtying concern.
+	if verbose || isNotFC {
 		exporters = append(exporters, os.Stdout)
 	}
 
