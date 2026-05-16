@@ -7,6 +7,7 @@ import (
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFlattenContexts(t *testing.T) {
@@ -248,7 +249,7 @@ func TestSetContext(t *testing.T) {
 
 		invalidTeam := TeamContext("")
 		assert.True(t, invalidTeam.IsDefined())
-		assert.NotNil(t, invalidTeam.Err())
+		require.Error(t, invalidTeam.Err())
 
 		ctx := AddToContext(t.Context(), invalidTeam, UserContext(""), SandboxContext("sandbox-123"))
 
@@ -257,6 +258,6 @@ func TestSetContext(t *testing.T) {
 		assert.False(t, embedded.Multiple())
 		assert.Equal(t, "sandbox-123", embedded.Key())
 		assert.Equal(t, SandboxKind, embedded.Kind())
-		assert.Nil(t, embedded.Err())
+		require.NoError(t, embedded.Err())
 	})
 }
