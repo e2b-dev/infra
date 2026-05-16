@@ -38,12 +38,6 @@ type MMDSOpts struct {
 	AccessTokenHash      string `json:"accessTokenHash"`
 }
 
-func (opts *MMDSOpts) Update(sandboxID, templateID, collectorAddress string) {
-	opts.SandboxID = sandboxID
-	opts.TemplateID = templateID
-	opts.LogsCollectorAddress = collectorAddress
-}
-
 func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
 	parsed := make(map[string]any)
 
@@ -136,7 +130,7 @@ func GetAccessTokenHashFromMMDS(ctx context.Context) (string, error) {
 }
 
 func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *utils.Map[string, string]) {
-	httpClient := &http.Client{}
+	httpClient := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
 	defer httpClient.CloseIdleConnections()
 
 	ticker := time.NewTicker(50 * time.Millisecond)

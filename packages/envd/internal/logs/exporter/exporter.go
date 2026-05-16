@@ -6,37 +6,39 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 )
 
-const ExporterTimeout = 10 * time.Second
+const (
+	ExporterTimeout = 10 * time.Second
+
+	// Under Loki's 256 KiB max_line_size default.
+	maxLogLineBytes  = 192 << 10
+	maxBufferedBytes = 8 << 20
+)
 
 type HTTPExporter struct {
-	client   http.Client
-	logs     [][]byte
-	mmdsOpts *host.MMDSOpts
+	client        http.Client
+	logs          [][]byte
+	bufferedBytes int
+	mmdsOpts      atomic.Pointer[host.MMDSOpts]
 
 	// Concurrency coordination
 	triggers  chan struct{}
-	logLock   sync.RWMutex
-	mmdsLock  sync.RWMutex
+	logLock   sync.Mutex
 	startOnce sync.Once
 }
 
 func NewHTTPLogsExporter(ctx context.Context, mmdsChan <-chan *host.MMDSOpts) *HTTPExporter {
 	exporter := &HTTPExporter{
 		client: http.Client{
-			Timeout: ExporterTimeout,
+			Timeout:   ExporterTimeout,
+			Transport: &http.Transport{DisableKeepAlives: true},
 		},
-		triggers:  make(chan struct{}, 1),
-		startOnce: sync.Once{},
-		mmdsOpts: &host.MMDSOpts{
-			SandboxID:            "unknown",
-			TemplateID:           "unknown",
-			LogsCollectorAddress: "",
-		},
+		triggers: make(chan struct{}, 1),
 	}
 
 	go exporter.listenForMMDSOptsAndStart(ctx, mmdsChan)
@@ -75,9 +77,7 @@ func (w *HTTPExporter) listenForMMDSOptsAndStart(ctx context.Context, mmdsChan <
 				return
 			}
 
-			w.mmdsLock.Lock()
-			w.mmdsOpts.Update(mmdsOpts.SandboxID, mmdsOpts.TemplateID, mmdsOpts.LogsCollectorAddress)
-			w.mmdsLock.Unlock()
+			w.mmdsOpts.Store(mmdsOpts)
 
 			w.startOnce.Do(func() {
 				go w.start(ctx)
@@ -87,6 +87,11 @@ func (w *HTTPExporter) listenForMMDSOptsAndStart(ctx context.Context, mmdsChan <
 }
 
 func (w *HTTPExporter) start(ctx context.Context) {
+	// Cap stderr noise: log each error kind at most once per logFloor so a
+	// fast-failing collector (e.g. TCP RST) can't flood journald.
+	const logFloor = time.Minute
+	var lastLoggedJSONErr, lastLoggedSendErr time.Time
+
 	for range w.triggers {
 		logs := w.getAllLogs()
 
@@ -94,19 +99,27 @@ func (w *HTTPExporter) start(ctx context.Context) {
 			continue
 		}
 
+		opts := w.mmdsOpts.Load()
+		if opts == nil {
+			continue
+		}
+
 		for _, logLine := range logs {
-			w.mmdsLock.RLock()
-			logLineWithOpts, err := w.mmdsOpts.AddOptsToJSON(logLine)
-			w.mmdsLock.RUnlock()
+			logLineWithOpts, err := opts.AddOptsToJSON(logLine)
 			if err != nil {
-				log.Printf("error adding instance logging options (%+v) to JSON (%+v) with logs : %v\n", w.mmdsOpts, logLine, err)
+				if time.Since(lastLoggedJSONErr) > logFloor {
+					log.Printf("error adding instance logging options to JSON: %v", err)
+					lastLoggedJSONErr = time.Now()
+				}
 
 				continue
 			}
 
-			err = w.sendInstanceLogs(ctx, logLineWithOpts, w.mmdsOpts.LogsCollectorAddress)
-			if err != nil {
-				log.Printf("error sending instance logs: %+v", err)
+			if err := w.sendInstanceLogs(ctx, logLineWithOpts, opts.LogsCollectorAddress); err != nil {
+				if time.Since(lastLoggedSendErr) > logFloor {
+					log.Printf("error sending instance logs: %+v", err)
+					lastLoggedSendErr = time.Now()
+				}
 
 				continue
 			}
@@ -124,6 +137,11 @@ func (w *HTTPExporter) resumeProcessing() {
 }
 
 func (w *HTTPExporter) Write(logs []byte) (int, error) {
+	// Drop oversized lines: Loki would reject them anyway.
+	if len(logs) > maxLogLineBytes {
+		return len(logs), nil
+	}
+
 	logsCopy := make([]byte, len(logs))
 	copy(logsCopy, logs)
 
@@ -138,6 +156,7 @@ func (w *HTTPExporter) getAllLogs() [][]byte {
 
 	logs := w.logs
 	w.logs = nil
+	w.bufferedBytes = 0
 
 	return logs
 }
@@ -146,6 +165,16 @@ func (w *HTTPExporter) addLogs(logs []byte) {
 	w.logLock.Lock()
 	defer w.logLock.Unlock()
 
+	// Drop the oldest entries to stay under maxBufferedBytes. Happens when
+	// the collector is unreachable or the producer outruns the send loop;
+	// keeping the queue bounded matters more than not losing old lines.
+	for w.bufferedBytes+len(logs) > maxBufferedBytes && len(w.logs) > 0 {
+		w.bufferedBytes -= len(w.logs[0])
+		w.logs[0] = nil
+		w.logs = w.logs[1:]
+	}
+
+	w.bufferedBytes += len(logs)
 	w.logs = append(w.logs, logs)
 
 	w.resumeProcessing()
