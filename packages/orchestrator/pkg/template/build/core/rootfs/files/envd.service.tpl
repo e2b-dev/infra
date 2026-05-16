@@ -12,10 +12,6 @@ Type=simple
 Restart=always
 User=root
 Group=root
-# Discard envd stdout (debug logs still ship via the HTTP exporter); only
-# stderr (envd panics/fatal errors) reaches journald.
-StandardOutput=null
-StandardError=journal
 Environment=GOTRACEBACK=all
 LimitCORE=infinity
 ExecStartPre=/bin/sh -c 'mountpoint -q /etc/ssl/certs || (mkdir -p /run/e2b/certs && mount --bind /run/e2b/certs /etc/ssl/certs) && ([ -s /etc/ssl/certs/ca-certificates.crt ] || update-ca-certificates)'

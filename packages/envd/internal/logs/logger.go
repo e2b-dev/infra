@@ -12,16 +12,20 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/logs/exporter"
 )
 
-func NewLogger(ctx context.Context, isNotFC bool, mmdsChan <-chan *host.MMDSOpts) *zerolog.Logger {
+func NewLogger(ctx context.Context, isNotFC bool, verbose bool, mmdsChan <-chan *host.MMDSOpts) *zerolog.Logger {
 	zerolog.TimestampFieldName = "timestamp"
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 
 	exporters := []io.Writer{}
 
-	if isNotFC {
+	if !isNotFC {
+		exporters = append(exporters, exporter.NewHTTPLogsExporter(ctx, isNotFC, mmdsChan))
+	}
+	// Stdout is opt-in via -verbose. Inside FC stdout flows into journald and
+	// dirties guest pages on every snapshot, so we keep it off by default and
+	// rely on the HTTP exporter to ship debug logs to the orchestrator.
+	if verbose {
 		exporters = append(exporters, os.Stdout)
-	} else {
-		exporters = append(exporters, exporter.NewHTTPLogsExporter(ctx, isNotFC, mmdsChan), os.Stdout)
 	}
 
 	l := zerolog.

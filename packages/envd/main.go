@@ -56,6 +56,7 @@ var (
 	versionFlag bool
 	commitFlag  bool
 	cgroupRoot  string
+	verbose     bool
 )
 
 func parseFlags() {
@@ -92,6 +93,13 @@ func parseFlags() {
 		"cgroup-root",
 		"/sys/fs/cgroup",
 		"cgroup root directory",
+	)
+
+	flag.BoolVar(
+		&verbose,
+		"verbose",
+		false,
+		"write envd logs to stdout (inside FC this would dirty journald pages; HTTP exporter still ships full debug regardless)",
 	)
 
 	flag.Parse()
@@ -159,7 +167,7 @@ func main() {
 		go host.PollForMMDSOpts(ctx, mmdsChan, defaults.EnvVars)
 	}
 
-	l := logs.NewLogger(ctx, isNotFC, mmdsChan)
+	l := logs.NewLogger(ctx, isNotFC, verbose, mmdsChan)
 
 	m := chi.NewRouter()
 
