@@ -68,10 +68,6 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	}
 	hugePages := fcInfo.HasHugePages()
 	freePageReporting := fcInfo.HasFreePageReporting() && s.featureFlags.BoolFlag(ctx, featureflags.FreePageReportingFlag)
-	// Decide FPH at template create with team context, then propagate the
-	// decision through the build via TemplateConfig so the team targeting
-	// applies to every install+run sandbox the build creates regardless of
-	// downstream ctx state.
 	freePageHinting := fcInfo.HasFreePageHinting() && featureflags.IsFreePageHintingEnabled(ctx, s.featureFlags)
 
 	childSpan.SetAttributes(

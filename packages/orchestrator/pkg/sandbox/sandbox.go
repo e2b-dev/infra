@@ -74,10 +74,7 @@ type Config struct {
 	TotalDiskSizeMB   int64
 	HugePages         bool
 	FreePageReporting bool
-	// FreePageHinting is the build-time install decision for virtio-balloon
-	// FPH. Set only by the build pipeline; runtime resumes inherit the
-	// balloon configuration from the snapshot.
-	FreePageHinting bool
+	FreePageHinting   bool
 
 	Envd EnvdMetadata
 
@@ -166,14 +163,10 @@ type RuntimeMetadata struct {
 	SandboxID   string
 	ExecutionID string
 
-	// TeamID is best-effort metadata for logging/telemetry only; it is not
-	// always populated (e.g. some build paths) so do not use it for control
-	// flow or feature-flag targeting. For team targeting rely on the team
-	// context embedded in ctx by the caller (e.g. the build entrypoint or the
-	// orchestrator gRPC handler).
+	// TeamID is best-effort metadata; not always populated so do not use for
+	// decisions or feature-flag targeting.
 	TeamID string
 
-	// BuildID is the ID of the associated template build.
 	BuildID     string
 	SandboxType SandboxType
 }
@@ -512,9 +505,6 @@ func (f *Factory) CreateSandbox(
 		return nil
 	})
 
-	// Build-time install decision (see TemplateConfig.FreePageHinting).
-	// Runtime resumes inherit the balloon config from the snapshot and never
-	// reach this branch.
 	freePageHinting := fc.FCSupportsFreePageHinting(config.FirecrackerConfig.FirecrackerVersion) && config.FreePageHinting
 
 	err = fcHandle.Create(
