@@ -206,6 +206,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		RamMB:             bb.Config.MemoryMB,
 		HugePages:         bb.Config.HugePages,
 		FreePageReporting: bb.Config.FreePageReporting,
+		FreePageHinting:   bb.Config.FreePageHinting,
 
 		Envd: sandbox.EnvdMetadata{
 			Version: bb.EnvdVersion,
