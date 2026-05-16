@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/xml"
 	"fmt"
+	"hash"
 	"io"
 	"math"
 	"math/rand"
@@ -382,7 +383,7 @@ func (m *MultipartUploader) completeUpload(ctx context.Context, uploadID string,
 	return nil
 }
 
-func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath string, maxConcurrency int) (int64, error) {
+func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath string, maxConcurrency int, hasher hash.Hash) (int64, error) {
 	// Open file
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -409,7 +410,28 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 		return 0, fmt.Errorf("failed to initiate upload: %w", err)
 	}
 
-	parts, err := m.uploadParts(ctx, maxConcurrency, numParts, fileSize, file, uploadID)
+	eg, egCtx := errgroup.WithContext(ctx)
+	var parts []Part
+	if hasher != nil {
+		eg.Go(func() error {
+			// Own file handle so it doesn't race the part uploaders' ReadAt.
+			hashFile, err := os.Open(filePath)
+			if err != nil {
+				return fmt.Errorf("failed to open file for checksum: %w", err)
+			}
+			defer hashFile.Close()
+
+			if _, err := io.Copy(hasher, hashFile); err != nil {
+				return fmt.Errorf("failed to checksum file: %w", err)
+			}
+
+			return nil
+		})
+	}
+	parts, err = m.uploadParts(egCtx, maxConcurrency, numParts, fileSize, file, uploadID)
+	if waitErr := eg.Wait(); err == nil {
+		err = waitErr
+	}
 	if err != nil {
 		return 0, fmt.Errorf("failed to upload parts: %w", err)
 	}

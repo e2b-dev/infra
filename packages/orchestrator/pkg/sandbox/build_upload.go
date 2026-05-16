@@ -113,10 +113,11 @@ func (u *Upload) publish(ctx context.Context, t build.DiffType, h *headers.Heade
 }
 
 // resolveCompressConfig returns the effective compression config for a given
-// file type and use case, plus the v4HeaderForUncompressed bit. Feature flags
-// override the base config when active. Returns zero-value CompressConfig when
-// compression is disabled. fileType, useCase are added to the LD evaluation
-// context; blockSize constrains legal frame sizes — see validateCompressConfig.
+// file type and use case, plus whether the V4 header layout should be used for
+// an uncompressed upload. Feature flags override the base config when active.
+// Returns zero-value CompressConfig when compression is disabled. fileType,
+// useCase are added to the LD evaluation context; blockSize constrains legal
+// frame sizes — see validateCompressConfig.
 func resolveCompressConfig(ctx context.Context, base storage.CompressConfig, ff *featureflags.Client, fileType string, blockSize uint64, useCase string) (storage.CompressConfig, bool, error) {
 	resolved := base
 	var useV4 bool
@@ -131,9 +132,9 @@ func resolveCompressConfig(ctx context.Context, base storage.CompressConfig, ff 
 		}
 		ctx = featureflags.AddToContext(ctx, extra...)
 
-		v := ff.JSONFlag(ctx, featureflags.CompressConfigFlag).AsValueMap()
-		useV4 = v.Get("v4HeaderForUncompressed").BoolValue()
+		useV4 = ff.BoolFlag(ctx, featureflags.V4HeaderForUncompressedFlag)
 
+		v := ff.JSONFlag(ctx, featureflags.CompressConfigFlag).AsValueMap()
 		if v.Get("compressBuilds").BoolValue() {
 			ct := v.Get("compressionType").StringValue()
 			ldCfg := storage.CompressConfig{

@@ -5,7 +5,6 @@ package sandbox
 import (
 	"testing"
 
-	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"github.com/stretchr/testify/require"
 
@@ -13,11 +12,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-func newCompressConfigFF(t *testing.T, cfg map[string]any) *featureflags.Client {
+func newV4HeaderFF(t *testing.T, on bool) *featureflags.Client {
 	t.Helper()
 
 	td := ldtestdata.DataSource()
-	td.Update(td.Flag(featureflags.CompressConfigFlag.Key()).ValueForAll(ldvalue.CopyArbitraryValue(cfg)))
+	td.Update(td.Flag(featureflags.V4HeaderForUncompressedFlag.Key()).VariationForAll(on))
 
 	ff, err := featureflags.NewClientWithDatasource(td)
 	require.NoError(t, err)
@@ -46,13 +45,13 @@ func TestResolveCompressConfig_V4_NilClient(t *testing.T) {
 func TestResolveCompressConfig_V4_FlagOff(t *testing.T) {
 	t.Parallel()
 
-	ff := newCompressConfigFF(t, map[string]any{"v4HeaderForUncompressed": false})
+	ff := newV4HeaderFF(t, false)
 	require.False(t, resolveV4(t, ff))
 }
 
 func TestResolveCompressConfig_V4_FlagOn(t *testing.T) {
 	t.Parallel()
 
-	ff := newCompressConfigFF(t, map[string]any{"v4HeaderForUncompressed": true})
+	ff := newV4HeaderFF(t, true)
 	require.True(t, resolveV4(t, ff))
 }
