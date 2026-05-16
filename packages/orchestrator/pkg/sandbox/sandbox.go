@@ -161,27 +161,29 @@ type RuntimeMetadata struct {
 	TemplateID  string
 	SandboxID   string
 	ExecutionID string
-	TeamID      string
+
+	// TeamID is best-effort metadata for logging/telemetry only; it is not
+	// always populated (e.g. some build paths) so do not use it for control
+	// flow or feature-flag targeting. For team targeting rely on the team
+	// context embedded in ctx by the caller (e.g. the build entrypoint or the
+	// orchestrator gRPC handler).
+	TeamID string
 
 	// BuildID is the ID of the associated template build.
 	BuildID     string
 	SandboxType SandboxType
 }
 
-// sandboxLDContexts builds LD contexts (sandbox + team + template) for
-// per-sandbox flag targeting. Empty IDs produce invalid contexts that are
-// filtered out during context merging in the flag client.
-func sandboxLDContexts(runtime RuntimeMetadata, config *Config) []ldcontext.Context {
-	return []ldcontext.Context{
-		ldcontext.NewBuilder(runtime.SandboxID).
-			Kind(featureflags.SandboxKind).
-			SetString(featureflags.SandboxTemplateAttribute, runtime.TemplateID).
-			SetString(featureflags.SandboxKernelVersionAttribute, config.FirecrackerConfig.KernelVersion).
-			SetString(featureflags.SandboxFirecrackerVersionAttribute, config.FirecrackerConfig.FirecrackerVersion).
-			Build(),
-		featureflags.TeamContext(runtime.TeamID),
-		featureflags.TemplateContext(runtime.TemplateID),
-	}
+// sandboxLDContext builds an LD context with kernel/FC-version attributes for
+// per-sandbox flag targeting. Team/template targeting comes from the team and
+// template contexts the caller embeds in ctx.
+func sandboxLDContext(runtime RuntimeMetadata, config *Config) ldcontext.Context {
+	return ldcontext.NewBuilder(runtime.SandboxID).
+		Kind(featureflags.SandboxKind).
+		SetString(featureflags.SandboxTemplateAttribute, runtime.TemplateID).
+		SetString(featureflags.SandboxKernelVersionAttribute, config.FirecrackerConfig.KernelVersion).
+		SetString(featureflags.SandboxFirecrackerVersionAttribute, config.FirecrackerConfig.FirecrackerVersion).
+		Build()
 }
 
 type Resources struct {
@@ -507,7 +509,7 @@ func (f *Factory) CreateSandbox(
 	})
 
 	freePageHinting := fc.FCSupportsFreePageHinting(config.FirecrackerConfig.FirecrackerVersion) &&
-		featureflags.IsFreePageHintingEnabled(ctx, f.featureFlags, sandboxLDContexts(runtime, config)...)
+		featureflags.IsFreePageHintingEnabled(ctx, f.featureFlags, sandboxLDContext(runtime, config))
 
 	err = fcHandle.Create(
 		ctx,
@@ -1086,7 +1088,7 @@ func (s *Sandbox) Pause(
 
 	// Drain free-page-hinting before pause so the snapshot doesn't capture
 	// pages the guest already considers free. Timeout per use case; 0 disables.
-	if t := featureflags.GetFreePageHintingTimeout(ctx, s.featureFlags, string(useCase), sandboxLDContexts(s.Runtime, s.Config)...); t > 0 {
+	if t := featureflags.GetFreePageHintingTimeout(ctx, s.featureFlags, string(useCase), sandboxLDContext(s.Runtime, s.Config)); t > 0 {
 		drainCtx, cancel := context.WithTimeout(ctx, t)
 		if err := s.process.DrainBalloon(drainCtx); err != nil {
 			telemetry.ReportError(ctx, "balloon hinting drain failed (continuing pause)", err)
