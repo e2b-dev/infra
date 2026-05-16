@@ -16,6 +16,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	storage_redis "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
@@ -26,10 +27,18 @@ const (
 
 var testTeamID = uuid.New()
 
+// setupTestReservationStorage wires the reservation store to a real storage
+// pub/sub seam: one Redis container, one subscription manager, one publish
+// worker pool. Mirrors the production wiring in orchestrator.go.
 func setupTestReservationStorage(t *testing.T) (*ReservationStorage, goredis.UniversalClient) {
 	t.Helper()
 	client := redis_utils.SetupInstance(t)
-	storage := NewReservationStorage(client)
+
+	storageInstance := storage_redis.NewStorage(client)
+	go storageInstance.Start(t.Context())
+	t.Cleanup(storageInstance.Close)
+
+	storage := NewReservationStorage(client, storageInstance.Notifier())
 
 	return storage, client
 }
@@ -496,7 +505,10 @@ func TestReservation_StalePendingCleanup(t *testing.T) {
 	assert.Equal(t, int64(1), count)
 
 	// Create a new storage instance (simulating a fresh/restarted API)
-	storage := NewReservationStorage(client)
+	storageInstance := storage_redis.NewStorage(client)
+	go storageInstance.Start(t.Context())
+	t.Cleanup(storageInstance.Close)
+	storage := NewReservationStorage(client, storageInstance.Notifier())
 
 	// Reserve with limit=1 — this should succeed because the stale entry
 	// gets cleaned up by the reserveScript before counting

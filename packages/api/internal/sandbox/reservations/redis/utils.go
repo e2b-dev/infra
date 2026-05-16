@@ -9,6 +9,7 @@ const (
 	reservationsKey = "reservations"
 	pendingKey      = "pending"
 	resultKey       = "result"
+	notifySuffix    = "notify"
 )
 
 // getStorageIndexKey returns the existing storage team index key (read-only).
@@ -32,4 +33,14 @@ func getPendingSetKey(teamID string) string {
 // e.g. sandbox:storage:{teamID}:reservations:sandboxID:result
 func getResultKey(teamID, sandboxID string) string {
 	return redis_utils.CreateKey(getReservationPrefix(teamID), sandboxID, resultKey)
+}
+
+// getReservationRoutingKey is the per-(team, sandbox) PubSub routing key
+// for reservation completion notifications. It is published as the payload
+// of messages on the shared storage notify channel and consumed by
+// in-process waiters subscribed via the storage Notifier.
+//
+// e.g. sandbox:storage:{teamID}:reservations:sandboxID:notify
+func getReservationRoutingKey(teamID, sandboxID string) string {
+	return redis_utils.CreateKey(getReservationPrefix(teamID), sandboxID, notifySuffix)
 }
