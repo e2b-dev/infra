@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"sync"
@@ -127,7 +126,7 @@ func (w *HTTPExporter) start(ctx context.Context) {
 			w.mmdsLock.RUnlock()
 			if err != nil {
 				if !loggedJSONErr {
-					log.Printf("error adding instance logging options (%+v) to JSON (%+v) with logs (suppressing further failures): %v\n", w.mmdsOpts, logLine, err)
+					fmt.Fprintf(os.Stderr, "<4>error adding instance logging options (%+v) to JSON (%+v) with logs (suppressing further failures): %v\n", w.mmdsOpts, logLine, err)
 					loggedJSONErr = true
 				}
 
@@ -139,7 +138,7 @@ func (w *HTTPExporter) start(ctx context.Context) {
 			err = w.sendInstanceLogs(ctx, logLineWithOpts, w.mmdsOpts.LogsCollectorAddress)
 			if err != nil {
 				if !loggedSendErr {
-					log.Printf("error sending instance logs (suppressing further failures): %+v", err)
+					fmt.Fprintf(os.Stderr, "<4>error sending instance logs (suppressing further failures): %v\n", err)
 					loggedSendErr = true
 				}
 

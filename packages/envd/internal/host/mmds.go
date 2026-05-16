@@ -144,20 +144,21 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 
 	// Polling runs at 50ms — log the first failure of each kind only so a
 	// persistently broken MMDS endpoint doesn't spam journald until ctx
-	// cancellation.
+	// cancellation. Tagged as syslog WARNING (<4>) since MMDS hiccups are
+	// expected during early boot and recoverable.
 	var loggedTokenErr, loggedOptsErr bool
 
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Fprintf(os.Stderr, "context cancelled while waiting for mmds opts")
+			fmt.Fprintf(os.Stderr, "<4>context cancelled while waiting for mmds opts\n")
 
 			return
 		case <-ticker.C:
 			token, err := getMMDSToken(ctx, httpClient)
 			if err != nil {
 				if !loggedTokenErr {
-					fmt.Fprintf(os.Stderr, "error getting mmds token (suppressing further failures): %v\n", err)
+					fmt.Fprintf(os.Stderr, "<4>error getting mmds token (suppressing further failures): %v\n", err)
 					loggedTokenErr = true
 				}
 
@@ -167,7 +168,7 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 			mmdsOpts, err := getMMDSOpts(ctx, httpClient, token)
 			if err != nil {
 				if !loggedOptsErr {
-					fmt.Fprintf(os.Stderr, "error getting mmds opts (suppressing further failures): %v\n", err)
+					fmt.Fprintf(os.Stderr, "<4>error getting mmds opts (suppressing further failures): %v\n", err)
 					loggedOptsErr = true
 				}
 
