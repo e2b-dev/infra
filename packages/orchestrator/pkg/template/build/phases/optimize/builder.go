@@ -134,7 +134,7 @@ func (pb *OptimizeBuilder) Build(
 	}
 
 	// Resume the sandbox from the finalize snapshot
-	memoryPrefetchMapping, err := pb.collectMemoryPrefetchMapping(ctx, localTemplate)
+	memoryPrefetchMapping, rootfsPrefetchMapping, err := pb.collectPrefetchMappings(ctx, localTemplate)
 	if err != nil {
 		// Log but don't fail the build - prefetch is an optimization
 		pb.logger.Warn(ctx, "failed to collect prefetch mapping, continuing without prefetch",
@@ -148,9 +148,10 @@ func (pb *OptimizeBuilder) Build(
 		}, nil
 	}
 
-	// Update metadata with prefetch mapping
+	// Update metadata with prefetch mappings (memory + rootfs).
 	updatedMetadata := sourceLayer.Metadata.WithPrefetch(&metadata.Prefetch{
 		Memory: memoryPrefetchMapping,
+		Rootfs: rootfsPrefetchMapping,
 	})
 
 	// Upload the updated metadata
@@ -181,10 +182,10 @@ func (pb *OptimizeBuilder) Build(
 	}, nil
 }
 
-func (pb *OptimizeBuilder) collectMemoryPrefetchMapping(
+func (pb *OptimizeBuilder) collectPrefetchMappings(
 	ctx context.Context,
 	localTemplate sbxtemplate.Template,
-) (*metadata.MemoryPrefetchMapping, error) {
+) (*metadata.MemoryPrefetchMapping, *metadata.MemoryPrefetchMapping, error) {
 	ctx, span := tracer.Start(ctx, "collect prefetch-mapping")
 	defer span.End()
 
@@ -207,53 +208,71 @@ func (pb *OptimizeBuilder) collectMemoryPrefetchMapping(
 	// Create sandbox creator for resuming
 	sandboxCreator := layer.NewResumeSandbox(sbxConfig, pb.sandboxFactory, prefetchTimeout)
 
-	// Run sandbox multiple times and collect prefetch data
-	var allPrefetchData []block.PrefetchData
+	// Run sandbox multiple times and collect prefetch data for both surfaces
+	var allMemory, allRootfs []block.PrefetchData
 	for i := range prefetchIterations {
 		pb.logger.Debug(ctx, fmt.Sprintf("starting sandbox run %d/%d for prefetch collection", i+1, prefetchIterations))
-		prefetchData, err := pb.runSandboxAndCollectPrefetch(ctx, sandboxCreator, localTemplate)
+		memData, rootfsData, err := pb.runSandboxAndCollectPrefetch(ctx, sandboxCreator, localTemplate)
 		if err != nil {
-			return nil, fmt.Errorf("failed to collect prefetch data from run %d: %w", i+1, err)
+			return nil, nil, fmt.Errorf("failed to collect prefetch data from run %d: %w", i+1, err)
 		}
-		allPrefetchData = append(allPrefetchData, prefetchData)
+		allMemory = append(allMemory, memData)
+		allRootfs = append(allRootfs, rootfsData)
 	}
 
-	// Compute intersection with average order across all runs
-	commonEntries := computeCommonPrefetchEntries(allPrefetchData)
-
-	if len(commonEntries) == 0 {
-		pb.logger.Debug(ctx, "no common blocks found for prefetch mapping")
-
-		return nil, nil
-	}
+	memoryMapping := mappingFromRuns(allMemory)
+	rootfsMapping := mappingFromRuns(allRootfs)
 
 	span.SetAttributes(
 		attribute.Int64("prefetch_iterations", int64(prefetchIterations)),
-		attribute.Int64("prefetch_blocks_common", int64(len(commonEntries))),
-		attribute.Int64("block_size", allPrefetchData[0].BlockSize),
+		attribute.Int("prefetch_memory_blocks", lenIndices(memoryMapping)),
+		attribute.Int("prefetch_rootfs_blocks", lenIndices(rootfsMapping)),
 	)
 
-	return metadata.PrefetchEntriesToMapping(commonEntries, allPrefetchData[0].BlockSize), nil
+	return memoryMapping, rootfsMapping, nil
 }
 
-// runSandboxAndCollectPrefetch runs a sandbox and collects the prefetch data.
+// mappingFromRuns intersects PrefetchData across N runs and returns the
+// derived mapping. Returns nil when nothing common was seen.
+func mappingFromRuns(runs []block.PrefetchData) *metadata.MemoryPrefetchMapping {
+	if len(runs) == 0 || runs[0].BlockSize == 0 {
+		return nil
+	}
+	common := computeCommonPrefetchEntries(runs)
+	if len(common) == 0 {
+		return nil
+	}
+
+	return metadata.PrefetchEntriesToMapping(common, runs[0].BlockSize)
+}
+
+func lenIndices(m *metadata.MemoryPrefetchMapping) int {
+	if m == nil {
+		return 0
+	}
+
+	return len(m.Indices)
+}
+
+// runSandboxAndCollectPrefetch runs a sandbox and collects both memory and
+// rootfs prefetch data observed during the run.
 func (pb *OptimizeBuilder) runSandboxAndCollectPrefetch(
 	ctx context.Context,
 	sandboxCreator *layer.ResumeSandbox,
 	localTemplate sbxtemplate.Template,
-) (block.PrefetchData, error) {
+) (block.PrefetchData, block.PrefetchData, error) {
 	sbx, err := sandboxCreator.Sandbox(ctx, pb.layerExecutor, localTemplate)
 	if err != nil {
-		return block.PrefetchData{}, fmt.Errorf("failed to resume sandbox: %w", err)
+		return block.PrefetchData{}, block.PrefetchData{}, fmt.Errorf("failed to resume sandbox: %w", err)
 	}
 	defer sbx.Close(ctx)
 
-	prefetchData, err := sbx.MemoryPrefetchData(ctx)
+	memData, err := sbx.MemoryPrefetchData(ctx)
 	if err != nil {
-		return block.PrefetchData{}, fmt.Errorf("failed to get prefetch data: %w", err)
+		return block.PrefetchData{}, block.PrefetchData{}, fmt.Errorf("failed to get memory prefetch data: %w", err)
 	}
 
-	return prefetchData, nil
+	return memData, sbx.RootfsPrefetchData(), nil
 }
 
 // updateMetadata updates the template metadata in storages.

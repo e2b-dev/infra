@@ -187,6 +187,12 @@ type Resources struct {
 	Slot   *network.Slot
 	rootfs rootfs.Provider
 	memory uffd.MemoryBackend
+
+	// rootfsTracker observes reads against the rootfs source so that build
+	// optimize / Checkpoint can collect a workload-derived rootfs prefetch
+	// mapping (parallel to the UFFD-side memory prefetch tracker). Always
+	// allocated; ignored by code paths that don't query it.
+	rootfsTracker *block.PrefetchTracker
 }
 
 type internalConfig struct {
@@ -361,6 +367,8 @@ func (f *Factory) CreateSandbox(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rootfs: %w", err)
 	}
+	rootfsTracker := block.NewPrefetchTracker(rootFS.BlockSize())
+	rootFS = block.NewTrackingReadonlyDevice(rootFS, rootfsTracker)
 
 	var rootfsProvider rootfs.Provider
 	if rootfsCachePath == "" {
@@ -447,9 +455,10 @@ func (f *Factory) CreateSandbox(
 	telemetry.ReportEvent(ctx, "created fc client")
 
 	resources := &Resources{
-		Slot:   ips,
-		rootfs: rootfsProvider,
-		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize()),
+		Slot:          ips,
+		rootfs:        rootfsProvider,
+		rootfsTracker: rootfsTracker,
+		memory:        uffd.NewNoopMemory(memfileSize, memfile.BlockSize()),
 	}
 
 	metadata := &Metadata{
@@ -656,10 +665,27 @@ func (f *Factory) ResumeSandbox(
 				}
 			}()
 		}
+
+		// Background rootfs prefetcher — fetches blocks the build/optimize phase
+		// observed the guest reading, so the chunker cache is warm by the time
+		// the guest demands them via NBD. Fetch-only; no UFFD copy phase.
+		if meta.Prefetch != nil && meta.Prefetch.Rootfs != nil {
+			rootfsDev, err := t.Rootfs()
+			if err == nil {
+				l := logger.L().With(logger.WithSandboxID(runtime.SandboxID), logger.WithTemplateID(runtime.TemplateID), logger.WithTeamID(runtime.TeamID))
+				go rootfs.NewPrefetcher(l, rootfsDev, meta.Prefetch.Rootfs, f.featureFlags).Start(execCtx)
+			}
+		}
 	}()
 
 	// Slot initialization
 	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network, f.Sandboxes.NetworkReleased)
+
+	// rootfsTracker observes reads against the rootfs source so a subsequent
+	// Checkpoint can collect a workload-derived rootfs prefetch mapping. We
+	// always create the tracker — it's cheap — but PrefetchData is only
+	// queried when needed.
+	var rootfsTracker *block.PrefetchTracker
 
 	// Rootfs initialization
 	overlayPromise := utils.NewPromise(func() (rootfs.Provider, error) {
@@ -667,6 +693,8 @@ func (f *Factory) ResumeSandbox(
 		if err != nil {
 			return nil, fmt.Errorf("failed to get rootfs: %w", err)
 		}
+		rootfsTracker = block.NewPrefetchTracker(readonlyRootfs.BlockSize())
+		readonlyRootfs = block.NewTrackingReadonlyDevice(readonlyRootfs, rootfsTracker)
 
 		telemetry.ReportEvent(ctx, "got template rootfs")
 
@@ -792,9 +820,10 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	resources := &Resources{
-		Slot:   ips,
-		rootfs: overlay,
-		memory: fcUffd,
+		Slot:          ips,
+		rootfs:        overlay,
+		rootfsTracker: rootfsTracker,
+		memory:        fcUffd,
 	}
 
 	metadata := &Metadata{
@@ -1182,6 +1211,17 @@ func (s *Sandbox) Pause(
 // updated cumulative virtio-balloon counters. Used by the FPH bench.
 func (s *Sandbox) FlushAndReadBalloonMetrics(ctx context.Context) (fc.BalloonMetricsSnapshot, error) {
 	return s.process.FlushAndReadBalloonMetrics(ctx)
+}
+
+// RootfsPrefetchData returns the ordered rootfs read access data for prefetch
+// mapping. Empty if the rootfs source wasn't wrapped in a tracking shim
+// (e.g. paths that don't run the optimize phase).
+func (s *Sandbox) RootfsPrefetchData() block.PrefetchData {
+	if s.Resources == nil || s.Resources.rootfsTracker == nil {
+		return block.PrefetchData{}
+	}
+
+	return s.Resources.rootfsTracker.PrefetchData()
 }
 
 // MemoryPrefetchData returns the ordered page fault data for prefetch mapping.

@@ -640,21 +640,30 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	if prefetchErr != nil {
 		sbxlogger.I(resumedSbx).Warn(ctx, "failed to get prefetch data for checkpoint", zap.Error(prefetchErr))
 	}
+	rootfsPrefetchData := resumedSbx.RootfsPrefetchData()
 
 	// Setup lifecycle for the resumed sandbox
 	s.setupSandboxLifecycle(ctx, resumedSbx)
 
 	// Embed prefetch data into the metadata so it's uploaded with the snapshot files in a single pass.
+	var (
+		memoryMapping *metadata.MemoryPrefetchMapping
+		rootfsMapping *metadata.MemoryPrefetchMapping
+	)
 	if prefetchErr == nil {
-		prefetchMapping := metadata.PrefetchEntriesToMapping(slices.Collect(maps.Values(prefetchData.BlockEntries)), prefetchData.BlockSize)
-		if prefetchMapping != nil {
-			res.meta = res.meta.WithPrefetch(&metadata.Prefetch{
-				Memory: prefetchMapping,
-			})
+		memoryMapping = metadata.PrefetchEntriesToMapping(slices.Collect(maps.Values(prefetchData.BlockEntries)), prefetchData.BlockSize)
+	}
+	if len(rootfsPrefetchData.BlockEntries) > 0 {
+		rootfsMapping = metadata.PrefetchEntriesToMapping(slices.Collect(maps.Values(rootfsPrefetchData.BlockEntries)), rootfsPrefetchData.BlockSize)
+	}
+	if memoryMapping != nil || rootfsMapping != nil {
+		res.meta = res.meta.WithPrefetch(&metadata.Prefetch{
+			Memory: memoryMapping,
+			Rootfs: rootfsMapping,
+		})
 
-			if err := s.templateCache.UpdateMetadata(in.GetBuildId(), res.meta); err != nil {
-				sbxlogger.I(resumedSbx).Warn(ctx, "failed to update local metadata with prefetch", zap.Error(err))
-			}
+		if err := s.templateCache.UpdateMetadata(in.GetBuildId(), res.meta); err != nil {
+			sbxlogger.I(resumedSbx).Warn(ctx, "failed to update local metadata with prefetch", zap.Error(err))
 		}
 	}
 
