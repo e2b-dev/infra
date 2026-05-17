@@ -64,7 +64,7 @@ func (c *CACertInstaller) Install(ctx context.Context, certPEM string) error {
 //
 // All goroutine work runs under mu to keep the bundle and extra-certs file
 // consistent with concurrent foreground appends.
-func (c *CACertInstaller) install(_ context.Context, certPEM, bundlePath, extraPath string) error {
+func (c *CACertInstaller) install(ctx context.Context, certPEM, bundlePath, extraPath string) error {
 	if certPEM == "" {
 		return nil
 	}
@@ -75,7 +75,9 @@ func (c *CACertInstaller) install(_ context.Context, certPEM, bundlePath, extraP
 	// consistent regardless of how the caller formatted the PEM.
 	normalized := strings.TrimRight(certPEM, "\n") + "\n"
 
-	c.mu.Lock()
+	if err := lockMutexCtx(ctx, &c.mu); err != nil {
+		return fmt.Errorf("acquire CA install lock: %w", err)
+	}
 	defer c.mu.Unlock()
 
 	if c.lastCACert == normalized {
@@ -145,6 +147,30 @@ func (c *CACertInstaller) install(_ context.Context, certPEM, bundlePath, extraP
 	}()
 
 	return nil
+}
+
+// lockMutexCtx acquires mu but bails out if ctx is cancelled first. Lets a
+// caller bound how long /init holds initLock waiting on a slow background
+// goroutine still holding mu (typically a previous install's NBD write).
+func lockMutexCtx(ctx context.Context, mu *sync.Mutex) error {
+	acquired := make(chan struct{})
+	go func() {
+		mu.Lock()
+		close(acquired)
+	}()
+	select {
+	case <-acquired:
+		return nil
+	case <-ctx.Done():
+		// The lock will be acquired by the goroutine above eventually; release
+		// it as soon as it gets the lock so we don't leak ownership.
+		go func() {
+			<-acquired
+			mu.Unlock()
+		}()
+
+		return ctx.Err()
+	}
 }
 
 // removeCertFromBundle rewrites bundlePath removing all occurrences of certPEM.

@@ -30,6 +30,13 @@ var (
 const (
 	maxTimeInPast   = 50 * time.Millisecond
 	maxTimeInFuture = 5 * time.Second
+
+	// caBundleInstallTimeout caps how long the CA bundle install can block
+	// the /init handler. The foreground append is on tmpfs and finishes in
+	// sub-ms; the cap covers the case where a background cleanup goroutine
+	// from a previous install (NBD write to the persistent extra-certs dir)
+	// is still holding CACertInstaller's mutex.
+	caBundleInstallTimeout = 5 * time.Second
 )
 
 // validateInitAccessToken validates the access token for /init requests.
@@ -214,7 +221,14 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	}
 
 	if data.CaBundle != nil && *data.CaBundle != "" {
-		err := a.caCertInstaller.Install(context.WithoutCancel(ctx), *data.CaBundle)
+		// WithoutCancel(ctx) so a 50 ms orchestrator-side client cancel doesn't
+		// abort a half-written bundle update. Bound the work with a hard deadline
+		// so the installer cannot hold initLock indefinitely if the underlying
+		// mutex (held by the background cleanup goroutine doing NBD writes) is
+		// slow to release — see CACertInstaller in packages/envd/internal/host.
+		installCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), caBundleInstallTimeout)
+		err := a.caCertInstaller.Install(installCtx, *data.CaBundle)
+		cancel()
 		if err != nil {
 			return fmt.Errorf("failed to install CA bundle: %w", err)
 		}
