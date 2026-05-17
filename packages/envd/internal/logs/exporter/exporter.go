@@ -3,7 +3,6 @@ package exporter
 import (
 	"bytes"
 	"context"
-	"log"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -18,14 +17,21 @@ const (
 	// Under Loki's 256 KiB max_line_size default.
 	maxLogLineBytes  = 192 << 10
 	maxBufferedBytes = 8 << 20
+
+	// logFloor caps stderr noise so a fast-failing collector or a stream
+	// of oversized lines can't flood journald.
+	logFloor = time.Minute
 )
 
 type HTTPExporter struct {
-	client           http.Client
-	logs             [][]byte
-	bufferedBytes    int
-	mmdsOpts         atomic.Pointer[host.MMDSOpts]
-	droppedOversized atomic.Int64
+	client        http.Client
+	logs          [][]byte
+	bufferedBytes int
+	mmdsOpts      atomic.Pointer[host.MMDSOpts]
+
+	jsonErrLog   *rateLimitedLogger
+	sendErrLog   *rateLimitedLogger
+	oversizedLog *rateLimitedLogger
 
 	// Concurrency coordination
 	triggers  chan struct{}
@@ -39,7 +45,10 @@ func NewHTTPLogsExporter(ctx context.Context, mmdsChan <-chan *host.MMDSOpts) *H
 			Timeout:   ExporterTimeout,
 			Transport: &http.Transport{DisableKeepAlives: true},
 		},
-		triggers: make(chan struct{}, 1),
+		triggers:     make(chan struct{}, 1),
+		jsonErrLog:   newRateLimitedLogger(logFloor, "error adding instance logging options to JSON: %v"),
+		sendErrLog:   newRateLimitedLogger(logFloor, "error sending instance logs: %+v"),
+		oversizedLog: newRateLimitedLogger(logFloor, "dropped log line exceeding %d bytes"),
 	}
 
 	go exporter.listenForMMDSOptsAndStart(ctx, mmdsChan)
@@ -88,20 +97,7 @@ func (w *HTTPExporter) listenForMMDSOptsAndStart(ctx context.Context, mmdsChan <
 }
 
 func (w *HTTPExporter) start(ctx context.Context) {
-	// Cap stderr noise: log each error kind at most once per logFloor so a
-	// fast-failing collector (e.g. TCP RST) can't flood journald. The
-	// suppressed count is included on the next emitted line.
-	const logFloor = time.Minute
-	var lastLoggedJSONErr, lastLoggedSendErr, lastLoggedOversized time.Time
-	var suppressedJSONErrs, suppressedSendErrs int
-
 	for range w.triggers {
-		if dropped := w.droppedOversized.Load(); dropped > 0 && time.Since(lastLoggedOversized) > logFloor {
-			log.Printf("dropped %d log lines exceeding %d bytes", dropped, maxLogLineBytes)
-			w.droppedOversized.Add(-dropped)
-			lastLoggedOversized = time.Now()
-		}
-
 		logs := w.getAllLogs()
 
 		if len(logs) == 0 {
@@ -116,25 +112,13 @@ func (w *HTTPExporter) start(ctx context.Context) {
 		for _, logLine := range logs {
 			logLineWithOpts, err := opts.AddOptsToJSON(logLine)
 			if err != nil {
-				if time.Since(lastLoggedJSONErr) > logFloor {
-					log.Printf("error adding instance logging options to JSON (%d suppressed since last log): %v", suppressedJSONErrs, err)
-					lastLoggedJSONErr = time.Now()
-					suppressedJSONErrs = 0
-				} else {
-					suppressedJSONErrs++
-				}
+				w.jsonErrLog.log(err)
 
 				continue
 			}
 
 			if err := w.sendInstanceLogs(ctx, logLineWithOpts, opts.LogsCollectorAddress); err != nil {
-				if time.Since(lastLoggedSendErr) > logFloor {
-					log.Printf("error sending instance logs (%d suppressed since last log): %+v", suppressedSendErrs, err)
-					lastLoggedSendErr = time.Now()
-					suppressedSendErrs = 0
-				} else {
-					suppressedSendErrs++
-				}
+				w.sendErrLog.log(err)
 
 				continue
 			}
@@ -154,8 +138,7 @@ func (w *HTTPExporter) resumeProcessing() {
 func (w *HTTPExporter) Write(logs []byte) (int, error) {
 	// Drop oversized lines: Loki would reject them anyway.
 	if len(logs) > maxLogLineBytes {
-		w.droppedOversized.Add(1)
-		w.resumeProcessing()
+		w.oversizedLog.log(maxLogLineBytes)
 		return len(logs), nil
 	}
 
