@@ -37,7 +37,9 @@ type API struct {
 	mmdsClient    MMDSClient
 
 	lastSetTime *utils.AtomicMax
-	initLock    sync.Mutex
+	// initLock serializes /init handlers but, unlike sync.Mutex, respects the
+	// caller's ctx so a stuck predecessor cannot pile up retry goroutines.
+	initLock chan struct{}
 
 	caCertInstaller *host.CACertInstaller
 	isMountingNFS   atomic.Bool
@@ -54,6 +56,7 @@ func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.
 		lastSetTime:     utils.NewAtomicMax(),
 		accessToken:     &SecureToken{},
 		caCertInstaller: host.NewCACertInstaller(l),
+		initLock:        make(chan struct{}, 1),
 	}
 }
 
