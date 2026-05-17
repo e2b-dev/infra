@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"syscall"
 
@@ -17,6 +18,15 @@ import (
 
 	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 )
+
+// envPortForwarderIPv4Iptables, when "1"/"true", switches IPv4 port
+// forwarding from per-port socat to iptables DNAT (IPv6 keeps socat).
+const envPortForwarderIPv4Iptables = "ENVD_PORT_FORWARDER_IPV4_IPTABLES"
+
+func iptablesIPv4Enabled() bool {
+	v := os.Getenv(envPortForwarderIPv4Iptables)
+	return v == "1" || v == "true"
+}
 
 type PortState string
 
@@ -33,6 +43,10 @@ type PortToForward struct {
 	state       PortState
 	port        uint32
 	missedScans int
+	// iptables is true when this port is forwarded via an iptables DNAT rule
+	// instead of a socat process. Only set for IPv4 listeners when the
+	// PortForwarderIPv4UseIptables flag is on.
+	iptables bool
 }
 
 // portDeleteThreshold is the number of consecutive scans without seeing the
@@ -46,6 +60,8 @@ type Forwarder struct {
 	ports             map[string]*PortToForward
 	scannerSubscriber *ScannerSubscriber
 	sourceIP          net.IP
+	iptables          *iptablesBackend
+	useIptables       bool
 }
 
 func NewForwarder(
@@ -69,6 +85,8 @@ func NewForwarder(
 		ports:             make(map[string]*PortToForward),
 		scannerSubscriber: scannerSub,
 		cgroupManager:     cgroupManager,
+		iptables:          newIPtablesBackend(defaultGatewayIP.String()),
+		useIptables:       iptablesIPv4Enabled(),
 	}
 }
 
@@ -77,6 +95,12 @@ func (f *Forwarder) StartForwarding(ctx context.Context) {
 		f.logger.Error().Msg("Cannot start forwarding because scanner subscriber is nil")
 
 		return
+	}
+
+	if f.useIptables {
+		if err := setupIPv4DNAT(); err != nil {
+			f.logger.Warn().Err(err).Msg("Failed to enable route_localnet; iptables IPv4 forwarding may fail")
+		}
 	}
 
 	for {
@@ -133,6 +157,16 @@ func (f *Forwarder) StartForwarding(ctx context.Context) {
 }
 
 func (f *Forwarder) startPortForwarding(ctx context.Context, p *PortToForward) {
+	if p.family == 4 && f.useIptables {
+		if err := f.iptables.addRule(ctx, p.port); err != nil {
+			f.logger.Error().Err(err).Uint32("port", p.port).Msg("iptables DNAT add failed; falling back to socat")
+		} else {
+			p.iptables = true
+			f.logger.Debug().Uint32("port", p.port).Msg("Started IPv4 port forwarding via iptables DNAT")
+			return
+		}
+	}
+
 	// https://unix.stackexchange.com/questions/311492/redirect-application-listening-on-localhost-to-listening-on-external-interface
 	// socat -d -d TCP4-LISTEN:4000,bind=169.254.0.21,fork TCP4:localhost:4000
 	// reuseaddr is used to fix the "Address already in use" error when restarting socat quickly.
@@ -180,6 +214,14 @@ func (f *Forwarder) startPortForwarding(ctx context.Context, p *PortToForward) {
 }
 
 func (f *Forwarder) stopPortForwarding(p *PortToForward) {
+	if p.iptables {
+		if err := f.iptables.deleteRule(context.Background(), p.port); err != nil {
+			f.logger.Error().Err(err).Uint32("port", p.port).Msg("iptables DNAT delete failed")
+		}
+		p.iptables = false
+		return
+	}
+
 	if p.socat == nil {
 		return
 	}
