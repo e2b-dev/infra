@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -26,7 +28,35 @@ import (
 
 const (
 	loopDelay = 5 * time.Millisecond
+
+	tcpProbeInterval = 250 * time.Millisecond
+	tcpProbeTimeout  = 200 * time.Millisecond
 )
+
+// probeTCPFirstAccept dials the envd HTTP port on a background goroutine
+// and atomically records the first wall-clock duration at which TCP accepts.
+// Separates "guest network or envd listener never came up" from "listener up
+// but HTTP handler blocked" — the two failure modes both surface as
+// `failed to init envd` today.
+func probeTCPFirstAccept(ctx context.Context, addr string, firstAcceptMs *atomic.Int64, start time.Time) {
+	dialer := &net.Dialer{Timeout: tcpProbeTimeout}
+	ticker := time.NewTicker(tcpProbeInterval)
+	defer ticker.Stop()
+	for {
+		conn, err := dialer.DialContext(ctx, "tcp", addr)
+		if err == nil {
+			_ = conn.Close()
+			firstAcceptMs.CompareAndSwap(0, time.Since(start).Milliseconds())
+
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
 
 // doRequestWithInfiniteRetries does a request with infinite retries until the context is done.
 // The parent context should have a deadline or a timeout.
@@ -113,7 +143,16 @@ func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
 	attributesFail := append(attributes, attribute.Bool("success", false))
 	attributesSuccess := append(attributes, attribute.Bool("success", true))
 
-	address := fmt.Sprintf("http://%s:%d/init", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
+	hostIP := s.Slot.HostIPString()
+	address := fmt.Sprintf("http://%s:%d/init", hostIP, consts.DefaultEnvdServerPort)
+
+	// Background TCP probe: records the first wall-clock time the listener
+	// accepts. Used purely for log correlation — does not gate anything.
+	probeCtx, cancelProbe := context.WithCancel(ctx)
+	defer cancelProbe()
+	start := time.Now()
+	var tcpFirstAcceptMs atomic.Int64
+	go probeTCPFirstAccept(probeCtx, fmt.Sprintf("%s:%d", hostIP, consts.DefaultEnvdServerPort), &tcpFirstAcceptMs, start)
 
 	response, count, err := s.doRequestWithInfiniteRetries(ctx, http.MethodPost, address)
 	if err != nil {
@@ -122,6 +161,7 @@ func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
 			logger.WithEnvdVersion(s.Config.Envd.Version),
 			zap.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
 			zap.Int64("attempts", count),
+			zap.Int64("tcp_first_accept_ms", tcpFirstAcceptMs.Load()),
 			zap.Error(err),
 		)
 
@@ -160,6 +200,7 @@ func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
 		logger.WithEnvdVersion(s.Config.Envd.Version),
 		zap.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
 		zap.Int64("attempts", count),
+		zap.Int64("tcp_first_accept_ms", tcpFirstAcceptMs.Load()),
 	)
 
 	span.SetStatus(codes.Ok, fmt.Sprintf("envd init returned %d", response.StatusCode))
