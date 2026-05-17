@@ -132,8 +132,8 @@ func New(
 		},
 	}
 	applyCgroupFD(cmd.SysProcAttr, cgroupFD, ok)
-		// CAP_SYS_NICE so the wrapper's chrt(1) can drop SCHED_FIFO to SCHED_OTHER.
-		applyAmbientCapSysNice(cmd.SysProcAttr)
+	// CAP_SYS_NICE so the wrapper's chrt(1) can drop SCHED_FIFO to SCHED_OTHER.
+	applyAmbientCapSysNice(cmd.SysProcAttr)
 
 	resolvedPath, err := permissions.ExpandAndResolve(req.GetProcess().GetCwd(), user, defaults.Workdir)
 	if err != nil {
