@@ -131,8 +131,12 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		a.initLock.Lock()
 		defer a.initLock.Unlock()
 
-		// Update data only if the request is newer or if there's no timestamp at all
-		if initRequest.Timestamp == nil || a.lastSetTime.SetToGreater(initRequest.Timestamp.UnixNano()) {
+		// Update data only if the request is newer or if there's no timestamp at all.
+		// We check without mutating so that a failed SetData doesn't permanently
+		// raise lastSetTime — retries with the same pinned Timestamp must be able
+		// to re-run SetData until it succeeds.
+		shouldRun := initRequest.Timestamp == nil || initRequest.Timestamp.UnixNano() > a.lastSetTime.Load()
+		if shouldRun {
 			err = a.SetData(ctx, logger, initRequest)
 			if err != nil {
 				switch {
@@ -145,6 +149,9 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 				w.Write([]byte(err.Error()))
 
 				return
+			}
+			if initRequest.Timestamp != nil {
+				a.lastSetTime.SetToGreater(initRequest.Timestamp.UnixNano())
 			}
 		}
 	}

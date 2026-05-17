@@ -25,3 +25,11 @@ func (a *AtomicMax) SetToGreater(newValue int64) bool {
 
 	return true
 }
+
+// Load returns the current value.
+func (a *AtomicMax) Load() int64 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	return a.val
+}
