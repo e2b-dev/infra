@@ -30,6 +30,13 @@ var (
 const (
 	maxTimeInPast   = 50 * time.Millisecond
 	maxTimeInFuture = 5 * time.Second
+
+	// mmdsLookupTimeout caps the MMDS hash lookup inside the /init handler.
+	// The handler holds initLock; if MMDS is starved (e.g. host-side MMDS
+	// thread blocked by FC's single VMM thread) a stuck call would queue
+	// every retry behind it. A short cap is safe because MMDS lookups are
+	// otherwise sub-millisecond on healthy hosts.
+	mmdsLookupTimeout = 1 * time.Second
 )
 
 // validateInitAccessToken validates the access token for /init requests.
@@ -70,7 +77,12 @@ func (a *API) checkMMDSHash(ctx context.Context, requestToken *SecureToken) (boo
 		return false, false
 	}
 
-	mmdsHash, err := a.mmdsClient.GetAccessTokenHash(ctx)
+	// Bound the MMDS lookup so a stuck MMDS thread cannot hold initLock
+	// indefinitely and queue every retry behind it.
+	lookupCtx, cancel := context.WithTimeout(ctx, mmdsLookupTimeout)
+	defer cancel()
+
+	mmdsHash, err := a.mmdsClient.GetAccessTokenHash(lookupCtx)
 	if err != nil {
 		return false, false
 	}
