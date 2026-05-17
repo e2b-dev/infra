@@ -75,6 +75,7 @@ func (p *Prefetcher) Start(ctx context.Context) {
 			for off := range jobs {
 				if _, err := p.source.Slice(ctx, off, blockSize); err != nil {
 					failed.Add(1)
+
 					continue
 				}
 				fetched.Add(1)
@@ -82,9 +83,11 @@ func (p *Prefetcher) Start(ctx context.Context) {
 		})
 	}
 
+producer:
 	for _, idx := range indices {
 		select {
 		case <-ctx.Done():
+			break producer
 		case jobs <- header.BlockOffset(int64(idx), blockSize):
 		}
 	}

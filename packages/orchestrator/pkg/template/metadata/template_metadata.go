@@ -177,6 +177,7 @@ func (t Template) WithRootfsPrefetch(rootfs *MemoryPrefetchMapping) Template {
 	pf.Rootfs = rootfs
 	out := t
 	out.Prefetch = &pf
+
 	return out
 }
 
@@ -189,6 +190,7 @@ func (t Template) WithMemoryPrefetch(memory *MemoryPrefetchMapping) Template {
 	pf.Memory = memory
 	out := t
 	out.Prefetch = &pf
+
 	return out
 }
 

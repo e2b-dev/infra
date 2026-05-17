@@ -625,11 +625,6 @@ func (f *Factory) ResumeSandbox(
 
 	// Prefetching
 	go func() {
-		memfile, err := t.Memfile(ctx)
-		if err != nil {
-			return
-		}
-
 		meta, err := t.Metadata()
 		if err != nil {
 			return
@@ -637,37 +632,29 @@ func (f *Factory) ResumeSandbox(
 
 		telemetry.ReportEvent(ctx, "got metadata")
 
-		// Start background prefetcher as early as possible if prefetch mapping exists
-		// Fetching from source starts immediately; copying waits for uffd to be ready
+		l := logger.L().With(logger.WithSandboxID(runtime.SandboxID), logger.WithTemplateID(runtime.TemplateID), logger.WithTeamID(runtime.TeamID))
+
+		// Memory prefetcher: must wait for uffd before copying pages in.
 		if meta.Prefetch != nil && meta.Prefetch.Memory != nil {
-			fcUffd, err := uffdPromise.Wait(ctx)
-			if err != nil {
-				return
+			memfile, err := t.Memfile(ctx)
+			if err == nil {
+				go func() {
+					fcUffd, err := uffdPromise.Wait(ctx)
+					if err != nil {
+						return
+					}
+					telemetry.ReportEvent(ctx, "starting prefetcher")
+					p := prefetch.New(l, memfile, fcUffd, meta.Prefetch.Memory, f.featureFlags)
+					if err := p.Start(execCtx); err != nil {
+						l.Error(ctx, "failed to start prefetcher", zap.Error(err))
+					}
+				}()
 			}
-
-			telemetry.ReportEvent(ctx, "starting prefetcher")
-			l := logger.L().With(logger.WithSandboxID(runtime.SandboxID), logger.WithTemplateID(runtime.TemplateID), logger.WithTeamID(runtime.TeamID))
-
-			go func() {
-				p := prefetch.New(
-					l,
-					memfile,
-					fcUffd,
-					meta.Prefetch.Memory,
-					f.featureFlags,
-				)
-				err := p.Start(execCtx)
-				if err != nil {
-					l.Error(ctx, "failed to start prefetcher", zap.Error(err))
-				}
-			}()
 		}
 
-		// Background rootfs prefetcher; fetches only (no UFFD copy).
+		// Rootfs prefetcher: independent of uffd; warms the chunker cache only.
 		if meta.Prefetch != nil && meta.Prefetch.Rootfs != nil {
-			rootfsDev, err := t.Rootfs()
-			if err == nil {
-				l := logger.L().With(logger.WithSandboxID(runtime.SandboxID), logger.WithTemplateID(runtime.TemplateID), logger.WithTeamID(runtime.TeamID))
+			if rootfsDev, err := t.Rootfs(); err == nil {
 				go rootfs.NewPrefetcher(l, rootfsDev, meta.Prefetch.Rootfs, f.featureFlags).Start(execCtx)
 			}
 		}
@@ -1209,6 +1196,7 @@ func (s *Sandbox) RootfsPrefetchData() block.PrefetchData {
 	if s.Resources == nil || s.Resources.rootfsTracker == nil {
 		return block.PrefetchData{}
 	}
+
 	return s.Resources.rootfsTracker.PrefetchData()
 }
 

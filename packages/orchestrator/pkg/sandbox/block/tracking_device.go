@@ -21,11 +21,13 @@ func NewTrackingReadonlyDevice(inner ReadonlyDevice, tracker *PrefetchTracker) *
 
 func (t *TrackingReadonlyDevice) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
 	t.tracker.Add(off, Read)
+
 	return t.inner.ReadAt(ctx, p, off)
 }
 
 func (t *TrackingReadonlyDevice) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	t.tracker.Add(off, Read)
+
 	return t.inner.Slice(ctx, off, length)
 }
 
