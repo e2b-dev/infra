@@ -80,14 +80,14 @@ func (f *LocalDiffFile) CloseToDiff(
 
 type localDiff struct {
 	cacheKey DiffStoreKey
-	cache    block.DiffSource
+	cache    *block.Cache
 }
 
 var _ Diff = (*localDiff)(nil)
 
 func NewLocalDiffFromCache(
 	cacheKey DiffStoreKey,
-	cache block.DiffSource,
+	cache *block.Cache,
 ) (Diff, error) {
 	return &localDiff{
 		cache:    cache,

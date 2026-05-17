@@ -132,9 +132,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 	unixConn := conn.(*net.UnixConn)
 
 	regionMappingsBuf := make([]byte, regionMappingsSize)
-	// Firecracker might send us up to 2 file descriptors. Older Firecracker versions will just
-	// send us the UFFD file descriptor. Newer ones will also send the memfd used to back the
-	// guest memory
+	// Firecracker may send 1 fd (UFFD) or 2 (UFFD + memfd, on newer versions).
 	fdBuf := make([]byte, syscall.CmsgSpace(2*fdSize))
 
 	numBytesMappings, numBytesFd, _, _, err := unixConn.ReadMsgUnix(regionMappingsBuf, fdBuf)
@@ -178,9 +176,8 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 		logger.L().With(logger.WithSandboxID(sandboxId)),
 	)
 	if err != nil {
-		syscall.Close(fds[0])
-		if len(fds) > 1 {
-			syscall.Close(fds[1])
+		for _, fd := range fds {
+			_ = syscall.Close(fd)
 		}
 
 		return fmt.Errorf("failed to create uffd: %w", err)

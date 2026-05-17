@@ -60,45 +60,29 @@ func (m *Memfd) Close() error {
 	return err
 }
 
-// MemfdCache is a Cache populated from a memfd. The memfd is consumed (and
-// closed) during construction; the wrapper exists so the upcoming async-copy
-// and dedup PRs can attach extra state without churning callers.
-type MemfdCache struct {
-	*Cache
-}
-
+// NewCacheFromMemfd builds a Cache populated from a memfd. The memfd is
+// consumed and closed during construction.
 func NewCacheFromMemfd(
 	ctx context.Context,
 	blockSize int64,
 	filePath string,
 	memfd *Memfd,
 	dirty *roaring.Bitmap,
-) (*MemfdCache, error) {
+) (*Cache, error) {
 	cache, err := NewCache(int64(dirty.GetCardinality())*blockSize, blockSize, filePath, false)
 	if err != nil {
 		return nil, errors.Join(err, memfd.Close())
 	}
-	if err := copyFromMemfd(ctx, cache, memfd, dirty, blockSize); err != nil {
-		return nil, errors.Join(fmt.Errorf("copy from memfd: %w", err), memfd.Close(), cache.Close())
-	}
-	if err := memfd.Close(); err != nil {
-		return nil, errors.Join(fmt.Errorf("close memfd: %w", err), cache.Close())
-	}
 
-	return &MemfdCache{Cache: cache}, nil
-}
-
-// copyFromMemfd is the seam the upcoming async-copy and dedup PRs replace.
-func copyFromMemfd(ctx context.Context, cache *Cache, memfd *Memfd, dirty *roaring.Bitmap, blockSize int64) error {
 	var cacheOff int64
 	for r := range BitsetRanges(dirty, blockSize) {
 		if err := ctx.Err(); err != nil {
-			return err
+			return nil, errors.Join(err, memfd.Close(), cache.Close())
 		}
 
 		src, err := memfd.Slice(r.Start, r.Size)
 		if err != nil {
-			return fmt.Errorf("memfd slice [%d,%d): %w", r.Start, r.Start+r.Size, err)
+			return nil, errors.Join(fmt.Errorf("memfd slice [%d,%d): %w", r.Start, r.Start+r.Size, err), memfd.Close(), cache.Close())
 		}
 
 		copy((*cache.mmap)[cacheOff:cacheOff+r.Size], src)
@@ -106,5 +90,9 @@ func copyFromMemfd(ctx context.Context, cache *Cache, memfd *Memfd, dirty *roari
 		cacheOff += r.Size
 	}
 
-	return nil
+	if err := memfd.Close(); err != nil {
+		return nil, errors.Join(fmt.Errorf("close memfd: %w", err), cache.Close())
+	}
+
+	return cache, nil
 }

@@ -18,8 +18,7 @@ const (
 	SandboxTemplateAttribute           string         = "template-id"
 	SandboxKernelVersionAttribute      string         = "kernel-version"
 	SandboxFirecrackerVersionAttribute string         = "firecracker-version"
-	// SandboxTypeAttribute is "sandbox" or "build" — lets flags target
-	// production sandbox-resume separately from template-build runs.
+	// SandboxTypeAttribute distinguishes "sandbox" from "build" runs.
 	SandboxTypeAttribute string = "sandbox-type"
 
 	TeamKind             ldcontext.Kind = "team"
@@ -123,10 +122,9 @@ var (
 	SandboxAutoResumeFlag               = NewBoolFlag("sandbox-auto-resume", env.IsDevelopment())
 	OrchAcceptsCombinedHostFlag         = NewBoolFlag("orch-accepts-combined-host", false)
 
-	// UseMemFdFlag enables memfd-backed guest memory. When enabled, Firecracker
-	// allocates guest memory via memfd_create and passes the fd over the UFFD
-	// socket on snapshot restore. The orchestrator mmaps the memfd to copy
-	// dirty pages instead of calling process_vm_readv() across processes.
+	// UseMemFdFlag asks Firecracker to back guest memory with a memfd and
+	// pass the fd over the UFFD socket; the orchestrator then mmaps it
+	// directly instead of using process_vm_readv on pause.
 	UseMemFdFlag = NewBoolFlag("use-memfd", false)
 
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.

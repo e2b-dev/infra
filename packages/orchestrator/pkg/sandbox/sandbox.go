@@ -831,9 +831,6 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlag)
-	// sandboxLDContext adds the sandbox-type attribute so flags can target
-	// production sandboxes separately from template-builds; team and the rest
-	// of the SandboxKind attributes come through ctx.
 	useMemfd := f.featureFlags.BoolFlag(ctx, featureflags.UseMemFdFlag, sandboxLDContext(runtime, config))
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
@@ -1212,8 +1209,7 @@ func pauseProcessMemory(
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
-	// ExportMemory owns memfd and closes it on all paths; running it first
-	// keeps the memfd cleanup out of the ToDiffHeader error branch below.
+	// ExportMemory owns memfd and closes it on all paths.
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
 	cache, err := fc.ExportMemory(ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd)
 	if err != nil {
