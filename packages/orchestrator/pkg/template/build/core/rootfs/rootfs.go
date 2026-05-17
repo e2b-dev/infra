@@ -249,6 +249,8 @@ func additionalOCILayers(
 			"etc/systemd/system/multi-user.target.wants/envd.service": "etc/systemd/system/envd.service",
 			// Enable chrony service autostart
 			"etc/systemd/system/multi-user.target.wants/chrony.service": "etc/systemd/system/chrony.service",
+			// Enable blanket IPv4 PREROUTING DNAT to 127.0.0.1
+			"etc/systemd/system/multi-user.target.wants/e2b-ipv4-forward.service": "etc/systemd/system/e2b-ipv4-forward.service",
 		},
 	)
 	if err != nil {
