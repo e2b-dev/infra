@@ -57,10 +57,10 @@ func Middleware(meterProvider metric.MeterProvider, service string, options ...O
 	return func(ginCtx *gin.Context) {
 		ctx := ginCtx.Request.Context()
 
-		// Install the request-scoped omitHolder so any descendant code path
-		// (orchestrator, storage layer, etc.) can mark the request via the
-		// package helpers without needing access to *gin.Context.
-		ctx, holder := WithOmitHolder(ctx)
+		// Install the request-scoped joinedHolder so any descendant code
+		// path (orchestrator, storage layer, etc.) can mark the request via
+		// the package helpers without needing access to *gin.Context.
+		ctx, holder := withJoinedHolder(ctx)
 		ginCtx.Request = ginCtx.Request.WithContext(ctx)
 
 		route := ginCtx.FullPath()
