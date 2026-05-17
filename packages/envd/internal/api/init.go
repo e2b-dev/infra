@@ -330,24 +330,28 @@ func (a *API) unmountNFS(ctx context.Context, logger zerolog.Logger, path string
 	data, err = exec.CommandContext(ctx, "umount", "--force", path).CombinedOutput()
 	if err == nil {
 		a.mountedPaths.Delete(path)
+
 		return nil
 	}
 
-	// Lazy fallback (MNT_DETACH): detach from namespace now, kernel cleans up
-	// when surviving FDs close.
+	// Lazy fallback (MNT_DETACH) on a fresh, short-lived context so the
+	// forced umount running out of ctx budget doesn't also kill the fallback.
 	logger.Warn().
 		Err(err).
 		Str("path", path).
 		Str("umount_output", string(data)).
 		Msg("Forced NFS unmount failed, falling back to lazy detach")
 
-	lazyData, lazyErr := exec.CommandContext(ctx, "umount", "--lazy", path).CombinedOutput()
+	lazyCtx, lazyCancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+	defer lazyCancel()
+	lazyData, lazyErr := exec.CommandContext(lazyCtx, "umount", "--lazy", path).CombinedOutput()
 	if lazyErr != nil {
 		return fmt.Errorf("failed to unmount stale NFS mount at %q: forced umount: %w (%s); lazy umount: %w (%s)",
 			path, err, strings.TrimSpace(string(data)), lazyErr, strings.TrimSpace(string(lazyData)))
 	}
 
 	a.mountedPaths.Delete(path)
+
 	return nil
 }
 
