@@ -88,9 +88,11 @@ func (w *HTTPExporter) listenForMMDSOptsAndStart(ctx context.Context, mmdsChan <
 
 func (w *HTTPExporter) start(ctx context.Context) {
 	// Cap stderr noise: log each error kind at most once per logFloor so a
-	// fast-failing collector (e.g. TCP RST) can't flood journald.
+	// fast-failing collector (e.g. TCP RST) can't flood journald. The
+	// suppressed count is included on the next emitted line.
 	const logFloor = time.Minute
 	var lastLoggedJSONErr, lastLoggedSendErr time.Time
+	var suppressedJSONErrs, suppressedSendErrs int
 
 	for range w.triggers {
 		logs := w.getAllLogs()
@@ -108,8 +110,11 @@ func (w *HTTPExporter) start(ctx context.Context) {
 			logLineWithOpts, err := opts.AddOptsToJSON(logLine)
 			if err != nil {
 				if time.Since(lastLoggedJSONErr) > logFloor {
-					log.Printf("error adding instance logging options to JSON: %v", err)
+					log.Printf("error adding instance logging options to JSON (%d suppressed since last log): %v", suppressedJSONErrs, err)
 					lastLoggedJSONErr = time.Now()
+					suppressedJSONErrs = 0
+				} else {
+					suppressedJSONErrs++
 				}
 
 				continue
@@ -117,8 +122,11 @@ func (w *HTTPExporter) start(ctx context.Context) {
 
 			if err := w.sendInstanceLogs(ctx, logLineWithOpts, opts.LogsCollectorAddress); err != nil {
 				if time.Since(lastLoggedSendErr) > logFloor {
-					log.Printf("error sending instance logs: %+v", err)
+					log.Printf("error sending instance logs (%d suppressed since last log): %+v", suppressedSendErrs, err)
 					lastLoggedSendErr = time.Now()
+					suppressedSendErrs = 0
+				} else {
+					suppressedSendErrs++
 				}
 
 				continue
