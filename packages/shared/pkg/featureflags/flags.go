@@ -18,6 +18,9 @@ const (
 	SandboxTemplateAttribute           string         = "template-id"
 	SandboxKernelVersionAttribute      string         = "kernel-version"
 	SandboxFirecrackerVersionAttribute string         = "firecracker-version"
+	// SandboxTypeAttribute is "sandbox" or "build" — lets flags target
+	// production sandbox-resume separately from template-build runs.
+	SandboxTypeAttribute string = "sandbox-type"
 
 	TeamKind             ldcontext.Kind = "team"
 	UserKind             ldcontext.Kind = "user"
