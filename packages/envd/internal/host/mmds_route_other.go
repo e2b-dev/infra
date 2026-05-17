@@ -4,4 +4,4 @@ package host
 
 import "context"
 
-func PinMMDSRoute(_ context.Context) {}
+func PinMMDSRoute(_ context.Context) error { return nil }

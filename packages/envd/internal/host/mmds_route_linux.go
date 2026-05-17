@@ -4,6 +4,7 @@ package host
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
 )
 
@@ -14,20 +15,30 @@ import (
 //
 // Intended for the self-heal path: only called when a real MMDS lookup
 // fails, on the assumption that user iptables in the same netns clobbered
-// our route.
-func PinMMDSRoute(ctx context.Context) {
+// our route. Returns the first -I failure (if any); -D failures are
+// expected (rule absent on first run) and silently swallowed.
+func PinMMDSRoute(ctx context.Context) error {
 	rule := []string{"-d", "169.254.169.254", "-p", "tcp", "--dport", "80", "-j", "RETURN"}
 	for _, chain := range []string{"PREROUTING", "OUTPUT"} {
-		// -D fails when the rule is absent; expected on first run. Swallow.
-		run(ctx, append([]string{"-D", chain}, rule...)...)
-		run(ctx, append([]string{"-I", chain, "1"}, rule...)...)
+		// -D fails when the rule is absent (exit 1, expected on first run);
+		// nothing actionable to log.
+		_ = iptables(ctx, append([]string{"-D", chain}, rule...)...)
+		if err := iptables(ctx, append([]string{"-I", chain, "1"}, rule...)...); err != nil {
+			return fmt.Errorf("iptables -I nat %s: %w", chain, err)
+		}
 	}
+
+	return nil
 }
 
-// run executes iptables in the nat table with -w to wait for the xtables
-// lock (a user iptables process may race us). Errors are intentionally
-// swallowed; this is best-effort self-heal.
-func run(ctx context.Context, args ...string) {
+// iptables runs `iptables -w 5 -t nat ...`. -w waits up to 5s for the
+// xtables lock (a user iptables process may race us).
+func iptables(ctx context.Context, args ...string) error {
 	full := append([]string{"-w", "5", "-t", "nat"}, args...)
-	_ = exec.CommandContext(ctx, "iptables", full...).Run()
+	out, err := exec.CommandContext(ctx, "iptables", full...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%w: %s", err, out)
+	}
+
+	return nil
 }
