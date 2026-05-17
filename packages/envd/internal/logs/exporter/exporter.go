@@ -3,6 +3,7 @@ package exporter
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -74,6 +75,10 @@ func (w *HTTPExporter) sendInstanceLogs(ctx context.Context, logs []byte, addres
 	}
 	defer response.Body.Close()
 
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("collector returned %s", response.Status)
+	}
+
 	return nil
 }
 
@@ -97,7 +102,13 @@ func (w *HTTPExporter) listenForMMDSOptsAndStart(ctx context.Context, mmdsChan <
 }
 
 func (w *HTTPExporter) start(ctx context.Context) {
-	for range w.triggers {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-w.triggers:
+		}
+
 		logs := w.getAllLogs()
 
 		if len(logs) == 0 {
