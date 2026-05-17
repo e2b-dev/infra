@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"testing"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
@@ -33,6 +34,14 @@ func newTestMemfd(t *testing.T, size int64) (memfd *Memfd, data []byte) {
 	return memfd, data
 }
 
+// dirtyBitmap returns a bitmap with the given block indices set.
+func dirtyBitmap(blocks ...uint32) *roaring.Bitmap {
+	b := roaring.New()
+	b.AddMany(blocks)
+
+	return b
+}
+
 func TestMemfd_SliceOutOfBounds(t *testing.T) {
 	t.Parallel()
 
@@ -48,17 +57,20 @@ func TestMemfdCache_FullRange(t *testing.T) {
 	t.Parallel()
 
 	pageSize := int64(header.PageSize)
-	size := pageSize * 30
+	numPages := uint32(30)
 
-	memfd, expected := newTestMemfd(t, size)
-	cache, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/cache", memfd, []Range{{Start: 0, Size: size}})
+	memfd, expected := newTestMemfd(t, pageSize*int64(numPages))
+	dirty := roaring.New()
+	dirty.AddRange(0, uint64(numPages))
+
+	cache, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/cache", memfd, dirty)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
-	got := make([]byte, size)
+	got := make([]byte, len(expected))
 	n, err := cache.ReadAt(got, 0)
 	require.NoError(t, err)
-	require.Equal(t, int(size), n)
+	require.Equal(t, len(expected), n)
 	require.Equal(t, expected, got)
 }
 
@@ -66,16 +78,11 @@ func TestMemfdCache_MultipleRanges(t *testing.T) {
 	t.Parallel()
 
 	pageSize := int64(header.PageSize)
-	size := pageSize * 6
+	memfd, expected := newTestMemfd(t, pageSize*6)
 
-	memfd, expected := newTestMemfd(t, size)
-	ranges := []Range{
-		{Start: 0, Size: pageSize},
-		{Start: pageSize * 2, Size: pageSize},
-		{Start: pageSize * 5, Size: pageSize},
-	}
-
-	cache, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/cache", memfd, ranges)
+	// Pages 0, 2, 5 — non-adjacent so BitsetRanges emits three ranges; cache
+	// packs them in iteration order.
+	cache, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/cache", memfd, dirtyBitmap(0, 2, 5))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -94,15 +101,14 @@ func TestMemfdCache_MultipleRanges(t *testing.T) {
 }
 
 // Regression: copyFromMemfd used to index src[srcOff:...] with srcOff in
-// guest-absolute space, panicking when Range.Start > 0.
+// guest-absolute space, panicking when the first Range.Start was > 0.
 func TestMemfdCache_NonZeroRangeStart(t *testing.T) {
 	t.Parallel()
 
 	pageSize := int64(header.PageSize)
-	size := pageSize * 8
+	memfd, expected := newTestMemfd(t, pageSize*8)
 
-	memfd, expected := newTestMemfd(t, size)
-	cache, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/cache", memfd, []Range{{Start: pageSize * 3, Size: pageSize * 2}})
+	cache, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/cache", memfd, dirtyBitmap(3, 4))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -117,12 +123,15 @@ func TestMemfdCache_ContextCancellation(t *testing.T) {
 	t.Parallel()
 
 	pageSize := int64(header.PageSize)
-	size := pageSize * 16
+	numPages := uint32(16)
+	memfd, _ := newTestMemfd(t, pageSize*int64(numPages))
 
-	memfd, _ := newTestMemfd(t, size)
+	dirty := roaring.New()
+	dirty.AddRange(0, uint64(numPages))
+
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, err := NewCacheFromMemfd(ctx, pageSize, t.TempDir()+"/cache", memfd, []Range{{Start: 0, Size: size}})
+	_, err := NewCacheFromMemfd(ctx, pageSize, t.TempDir()+"/cache", memfd, dirty)
 	require.ErrorIs(t, err, context.Canceled)
 }

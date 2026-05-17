@@ -23,27 +23,6 @@ func (p *Process) DirtyMemory(ctx context.Context, blockSize int64) (*header.Dif
 	return p.client.dirtyMemory(ctx, blockSize)
 }
 
-func (p *Process) exportMemoryFromMemfd(
-	ctx context.Context,
-	include *roaring.Bitmap,
-	cachePath string,
-	blockSize int64,
-	memfd *block.Memfd,
-) (block.Cacher, error) {
-	var guestRanges []block.Range
-
-	for r := range block.BitsetRanges(include, blockSize) {
-		guestRanges = append(guestRanges, r)
-	}
-
-	cache, err := block.NewCacheFromMemfd(ctx, blockSize, cachePath, memfd, guestRanges)
-	if err != nil {
-		return nil, fmt.Errorf("create MemfdCache: %w", err)
-	}
-
-	return cache, nil
-}
-
 func (p *Process) exportMemoryFromFc(
 	ctx context.Context,
 	include *roaring.Bitmap,
@@ -90,5 +69,10 @@ func (p *Process) ExportMemory(
 		return p.exportMemoryFromFc(ctx, include, cachePath, blockSize)
 	}
 
-	return p.exportMemoryFromMemfd(ctx, include, cachePath, blockSize, memfd)
+	cache, err := block.NewCacheFromMemfd(ctx, blockSize, cachePath, memfd, include)
+	if err != nil {
+		return nil, fmt.Errorf("create MemfdCache: %w", err)
+	}
+
+	return cache, nil
 }

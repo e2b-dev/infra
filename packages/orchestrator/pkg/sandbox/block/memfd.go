@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"golang.org/x/sys/unix"
 )
 
@@ -71,13 +72,13 @@ func NewCacheFromMemfd(
 	blockSize int64,
 	filePath string,
 	memfd *Memfd,
-	ranges []Range,
+	dirty *roaring.Bitmap,
 ) (*MemfdCache, error) {
-	cache, err := NewCache(GetSize(ranges), blockSize, filePath, false)
+	cache, err := NewCache(int64(dirty.GetCardinality())*blockSize, blockSize, filePath, false)
 	if err != nil {
 		return nil, errors.Join(err, memfd.Close())
 	}
-	if err := copyFromMemfd(ctx, cache, memfd, ranges); err != nil {
+	if err := copyFromMemfd(ctx, cache, memfd, dirty, blockSize); err != nil {
 		return nil, errors.Join(fmt.Errorf("copy from memfd: %w", err), memfd.Close(), cache.Close())
 	}
 	if err := memfd.Close(); err != nil {
@@ -88,9 +89,9 @@ func NewCacheFromMemfd(
 }
 
 // copyFromMemfd is the seam the upcoming async-copy and dedup PRs replace.
-func copyFromMemfd(ctx context.Context, cache *Cache, memfd *Memfd, ranges []Range) error {
+func copyFromMemfd(ctx context.Context, cache *Cache, memfd *Memfd, dirty *roaring.Bitmap, blockSize int64) error {
 	var cacheOff int64
-	for _, r := range ranges {
+	for r := range BitsetRanges(dirty, blockSize) {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
