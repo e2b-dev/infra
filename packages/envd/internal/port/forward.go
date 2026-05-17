@@ -143,6 +143,9 @@ func (f *Forwarder) startPortForwarding(ctx context.Context, p *PortToForward) {
 
 	cgroupFD, ok := f.cgroupManager.GetFileDescriptor(cgroups.ProcessTypeSocat)
 
+	// socat intentionally inherits envd's SCHED_FIFO + Nice=-20 — port
+	// forwarding is infrastructure-critical and dropping connections under
+	// load is much worse than the small RT budget cost.
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
 	}
