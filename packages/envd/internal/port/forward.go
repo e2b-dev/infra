@@ -29,13 +29,23 @@ var defaultGatewayIP = net.IPv4(169, 254, 0, 21)
 
 type PortToForward struct {
 	socat *exec.Cmd
-	// Process ID of the process that's listening on port.
-	pid int32
 	// family version of the ip.
 	family uint32
 	state  PortState
 	port   uint32
+	// missedScans counts consecutive scans where the listener wasn't seen.
+	// We only stop the socat once it has gone missing for at least
+	// portDeleteThreshold scans so a short flicker (next.js dev HMR rebuild,
+	// docker compose restart, ...) doesn't drop the existing socat and the
+	// in-flight connections with it.
+	missedScans int
 }
+
+// portDeleteThreshold is the number of consecutive scans the listener has to
+// be missing before the corresponding socat is stopped. With the 1 Hz scan
+// interval this gives a ~3 s grace window which covers the common short-lived
+// restart cases without keeping orphaned socats around indefinitely.
+const portDeleteThreshold = 3
 
 type Forwarder struct {
 	logger        *zerolog.Logger
@@ -79,53 +89,63 @@ func (f *Forwarder) StartForwarding(ctx context.Context) {
 
 	for {
 		// procs is an array of currently opened ports.
-		if procs, ok := <-f.scannerSubscriber.Messages; ok {
-			// Now we are going to refresh all ports that are being forwarded in the `ports` map. Maybe add new ones
-			// and maybe remove some.
+		procs, ok := <-f.scannerSubscriber.Messages
+		if !ok {
+			return
+		}
 
-			// Go through the ports that are currently being forwarded and set all of them
-			// to the `DELETE` state. We don't know yet if they will be there after refresh.
-			for _, v := range f.ports {
-				v.state = PortStateDelete
+		// Pre-mark every tracked port as "missed this scan"; the next loop
+		// flips back any port that's still listening. This is the
+		// scan-relative half of the hysteresis: a port that's gone for one
+		// scan increments missedScans, a port that returns within the
+		// portDeleteThreshold window resets it.
+		for _, v := range f.ports {
+			v.state = PortStateDelete
+		}
+
+		// Refresh: mark every listener we still see and start socat for
+		// listeners we haven't seen before. Keyed by (family, ip, port) —
+		// PID is no longer available from the scanner (we trade it for the
+		// /proc walk it would have required) and isn't needed either: if a
+		// new process binds the same (ip, port) the forwarded path is still
+		// correct.
+		for _, p := range procs {
+			key := fmt.Sprintf("%d-%s-%d", p.Family, p.Laddr.IP, p.Laddr.Port)
+
+			if val, portOk := f.ports[key]; portOk {
+				val.state = PortStateForward
+				val.missedScans = 0
+
+				continue
 			}
 
-			// Let's refresh our map of currently forwarded ports and mark the currently opened ones with the "FORWARD" state.
-			// This will make sure we won't delete them later.
-			for _, p := range procs {
-				key := fmt.Sprintf("%d-%d", p.Pid, p.Laddr.Port)
+			f.logger.Debug().
+				Str("ip", p.Laddr.IP).
+				Uint32("port", p.Laddr.Port).
+				Uint32("family", familyToIPVersion(p.Family)).
+				Str("state", p.Status).
+				Msg("Detected new opened port on localhost that is not forwarded")
 
-				// We check if the opened port is in our map of forwarded ports.
-				val, portOk := f.ports[key]
-				if portOk {
-					// Just mark the port as being forwarded so we don't delete it.
-					// The actual socat process that handles forwarding should be running from the last iteration.
-					val.state = PortStateForward
-				} else {
-					f.logger.Debug().
-						Str("ip", p.Laddr.IP).
-						Uint32("port", p.Laddr.Port).
-						Uint32("family", familyToIPVersion(p.Family)).
-						Str("state", p.Status).
-						Msg("Detected new opened port on localhost that is not forwarded")
-
-					// The opened port wasn't in the map so we create a new PortToForward and start forwarding.
-					ptf := &PortToForward{
-						pid:    p.Pid,
-						port:   p.Laddr.Port,
-						state:  PortStateForward,
-						family: familyToIPVersion(p.Family),
-					}
-					f.ports[key] = ptf
-					f.startPortForwarding(ctx, ptf)
-				}
+			ptf := &PortToForward{
+				port:   p.Laddr.Port,
+				state:  PortStateForward,
+				family: familyToIPVersion(p.Family),
 			}
+			f.ports[key] = ptf
+			f.startPortForwarding(ctx, ptf)
+		}
 
-			// We go through the ports map one more time and stop forwarding all ports
-			// that stayed marked as "DELETE".
-			for _, v := range f.ports {
-				if v.state == PortStateDelete {
-					f.stopPortForwarding(v)
-				}
+		// Tear down only ports that have been missing for several consecutive
+		// scans. Short flickers (Next.js HMR rebuild, docker compose restart)
+		// no longer thrash socat.
+		for key, v := range f.ports {
+			if v.state != PortStateDelete {
+				continue
+			}
+			v.missedScans++
+			if v.missedScans >= portDeleteThreshold {
+				f.stopPortForwarding(v)
+				delete(f.ports, key)
 			}
 		}
 	}
@@ -150,7 +170,6 @@ func (f *Forwarder) startPortForwarding(ctx context.Context, p *PortToForward) {
 
 	f.logger.Debug().
 		Str("socatCmd", cmd.String()).
-		Int32("pid", p.pid).
 		Uint32("family", p.family).
 		IPAddr("sourceIP", f.sourceIP.To4()).
 		Uint32("port", p.port).
@@ -188,7 +207,6 @@ func (f *Forwarder) stopPortForwarding(p *PortToForward) {
 
 	logger := f.logger.With().
 		Str("socatCmd", p.socat.String()).
-		Int32("pid", p.pid).
 		Uint32("family", p.family).
 		IPAddr("sourceIP", f.sourceIP.To4()).
 		Uint32("port", p.port).
