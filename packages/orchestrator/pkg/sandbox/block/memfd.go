@@ -130,12 +130,12 @@ func (m *MemfdCache) copyFromMemfd(ctx context.Context, ranges []Range) error {
 	return nil
 }
 
-func (m *MemfdCache) ReadAt(b []byte, off int64) (int, error)  { return m.cache.ReadAt(b, off) }
-func (m *MemfdCache) Slice(off, length int64) ([]byte, error)  { return m.cache.Slice(off, length) }
-func (m *MemfdCache) Size() (int64, error)                     { return m.cache.Size() }
-func (m *MemfdCache) FileSize() (int64, error)                 { return m.cache.FileSize() }
-func (m *MemfdCache) BlockSize() int64                         { return m.cache.BlockSize() }
-func (m *MemfdCache) Path() string                             { return m.cache.Path() }
+func (m *MemfdCache) ReadAt(b []byte, off int64) (int, error) { return m.cache.ReadAt(b, off) }
+func (m *MemfdCache) Slice(off, length int64) ([]byte, error) { return m.cache.Slice(off, length) }
+func (m *MemfdCache) Size() (int64, error)                    { return m.cache.Size() }
+func (m *MemfdCache) FileSize() (int64, error)                { return m.cache.FileSize() }
+func (m *MemfdCache) BlockSize() int64                        { return m.cache.BlockSize() }
+func (m *MemfdCache) Path() string                            { return m.cache.Path() }
 
 func (m *MemfdCache) Close() error {
 	var err error
