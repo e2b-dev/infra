@@ -44,9 +44,13 @@ func (s *Scanner) Unsubscribe(sub *ScannerSubscriber) {
 // ScanAndBroadcast scans LISTEN sockets and broadcasts them to subscribers.
 func (s *Scanner) ScanAndBroadcast() {
 	for {
-		listeners, _ := listListeningSockets()
-		for _, sub := range s.subs.Items() {
-			sub.Signal(listeners)
+		listeners, err := listListeningSockets()
+		// Skip broadcast on transient parser errors so the empty list doesn't
+		// flip every active port into the DELETE path.
+		if err == nil {
+			for _, sub := range s.subs.Items() {
+				sub.Signal(listeners)
+			}
 		}
 		select {
 		case <-s.scanExit:

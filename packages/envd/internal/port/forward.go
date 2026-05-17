@@ -91,7 +91,10 @@ func (f *Forwarder) StartForwarding(ctx context.Context) {
 		}
 
 		for _, p := range procs {
-			key := fmt.Sprintf("%d-%s-%d", p.Family, p.Laddr.IP, p.Laddr.Port)
+			// Key on port only so a dual-stack listener (127.0.0.1 + ::1 same
+			// port) maps to a single socat — socat always binds the v4 gateway
+			// regardless of family, so two entries would collide on bind.
+			key := fmt.Sprintf("%d", p.Laddr.Port)
 
 			if val, portOk := f.ports[key]; portOk {
 				val.state = PortStateForward

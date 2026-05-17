@@ -79,17 +79,17 @@ func parseProcNetTCP(path string, family uint32) ([]gnet.ConnectionStat, error) 
 // decodeProcAddr parses an IIIIIIII:PPPP (or 32-char-hex:PPPP for v6) field.
 // Each 4-byte word in the IP is in CPU byte order.
 func decodeProcAddr(s string, family uint32) (string, uint16, error) {
-	colon := strings.IndexByte(s, ':')
-	if colon < 0 {
+	ipHex, portHex, ok := strings.Cut(s, ":")
+	if !ok {
 		return "", 0, fmt.Errorf("missing colon in %q", s)
 	}
 
-	port64, err := strconv.ParseUint(s[colon+1:], 16, 16)
+	port64, err := strconv.ParseUint(portHex, 16, 16)
 	if err != nil {
 		return "", 0, err
 	}
 
-	raw, err := hex.DecodeString(s[:colon])
+	raw, err := hex.DecodeString(ipHex)
 	if err != nil {
 		return "", 0, err
 	}
@@ -99,6 +99,7 @@ func decodeProcAddr(s string, family uint32) (string, uint16, error) {
 		if len(raw) != 4 {
 			return "", 0, fmt.Errorf("ipv4 expects 4 bytes, got %d", len(raw))
 		}
+
 		return net.IPv4(raw[3], raw[2], raw[1], raw[0]).String(), uint16(port64), nil
 	case syscall.AF_INET6:
 		if len(raw) != 16 {
@@ -111,6 +112,7 @@ func decodeProcAddr(s string, family uint32) (string, uint16, error) {
 			buf[i+2] = raw[i+1]
 			buf[i+3] = raw[i+0]
 		}
+
 		return net.IP(buf).String(), uint16(port64), nil
 	default:
 		return "", 0, fmt.Errorf("unsupported family %d", family)
