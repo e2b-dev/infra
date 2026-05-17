@@ -325,29 +325,14 @@ func (a *API) unmountNFS(ctx context.Context, logger zerolog.Logger, path string
 
 	logger.Debug().Msgf("Unmounting stale NFS mount at %q (was: %s)", path, source)
 
-	// Forced umount; for NFS MNT_FORCE only aborts in-flight RPCs and fails
-	// EBUSY when customer FDs still hold the mount.
-	data, err = exec.CommandContext(ctx, "umount", "--force", path).CombinedOutput()
-	if err == nil {
-		a.mountedPaths.Delete(path)
-
-		return nil
-	}
-
-	// Lazy fallback (MNT_DETACH) on a fresh, short-lived context so the
-	// forced umount running out of ctx budget doesn't also kill the fallback.
-	logger.Warn().
-		Err(err).
-		Str("path", path).
-		Str("umount_output", string(data)).
-		Msg("Forced NFS unmount failed, falling back to lazy detach")
-
-	lazyCtx, lazyCancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
-	defer lazyCancel()
-	lazyData, lazyErr := exec.CommandContext(lazyCtx, "umount", "--lazy", path).CombinedOutput()
-	if lazyErr != nil {
-		return fmt.Errorf("failed to unmount stale NFS mount at %q: forced umount: %w (%s); lazy umount: %w (%s)",
-			path, err, strings.TrimSpace(string(data)), lazyErr, strings.TrimSpace(string(lazyData)))
+	if data, err = exec.CommandContext(ctx, "umount", "--force", path).CombinedOutput(); err != nil {
+		logger.Warn().Err(err).Str("path", path).Str("output", string(data)).Msg("Forced NFS umount failed, falling back to lazy")
+		// Fresh ctx so the forced umount running out of budget doesn't kill the fallback.
+		lazyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancel()
+		if data, err = exec.CommandContext(lazyCtx, "umount", "--lazy", path).CombinedOutput(); err != nil {
+			return fmt.Errorf("failed to unmount stale NFS mount at %q: %w\n%s", path, err, string(data))
+		}
 	}
 
 	a.mountedPaths.Delete(path)
