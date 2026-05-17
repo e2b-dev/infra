@@ -43,19 +43,17 @@ func (m *Memfd) Slice(offset, size int64) ([]byte, error) {
 	return m.mmap[offset : offset+size], nil
 }
 
+// Close releases the mmap and the fd. Single-use: every Memfd has exactly
+// one owner (NewCacheFromMemfd consumes it during construction; the UFFD
+// handshake transfers ownership via atomic Swap), so we don't guard against
+// double-close.
 func (m *Memfd) Close() error {
 	var err error
-	if m.mmap != nil {
-		if e := unix.Munmap(m.mmap); e != nil {
-			err = fmt.Errorf("munmap memfd: %w", e)
-		}
-		m.mmap = nil
+	if e := unix.Munmap(m.mmap); e != nil {
+		err = fmt.Errorf("munmap memfd: %w", e)
 	}
-	if m.fd >= 0 {
-		if e := unix.Close(m.fd); e != nil {
-			err = errors.Join(err, fmt.Errorf("close memfd: %w", e))
-		}
-		m.fd = -1
+	if e := unix.Close(m.fd); e != nil {
+		err = errors.Join(err, fmt.Errorf("close memfd: %w", e))
 	}
 
 	return err
