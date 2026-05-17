@@ -43,7 +43,9 @@ func probeTCPFirstAccept(ctx context.Context, addr string, firstAcceptMs *atomic
 		conn, err := dialer.DialContext(ctx, "tcp", addr)
 		if err == nil {
 			_ = conn.Close()
-			firstAcceptMs.CompareAndSwap(0, time.Since(start).Milliseconds())
+			// Floor to 1 so sub-ms accepts stay distinguishable from the 0
+			// sentinel that means "listener never accepted before init gave up".
+			firstAcceptMs.CompareAndSwap(0, max(int64(1), time.Since(start).Milliseconds()))
 
 			return
 		}
