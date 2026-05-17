@@ -80,14 +80,14 @@ func (f *LocalDiffFile) CloseToDiff(
 
 type localDiff struct {
 	cacheKey DiffStoreKey
-	cache    *block.Cache
+	cache    block.DiffSource
 }
 
 var _ Diff = (*localDiff)(nil)
 
 func NewLocalDiffFromCache(
 	cacheKey DiffStoreKey,
-	cache *block.Cache,
+	cache block.DiffSource,
 ) (Diff, error) {
 	return &localDiff{
 		cache:    cache,
@@ -109,7 +109,21 @@ func newLocalDiff(
 	return NewLocalDiffFromCache(cacheKey, cache)
 }
 
+// waiter is implemented by async caches that must finish background copy
+// before the underlying file is read directly (e.g. for header parsing).
+type waiter interface {
+	Wait(ctx context.Context) error
+}
+
+// CachePath returns the path to the diff file on disk. For async caches
+// the background copy must finish before the file is safe to read directly.
 func (b *localDiff) CachePath() (string, error) {
+	if w, ok := b.cache.(waiter); ok {
+		if err := w.Wait(context.Background()); err != nil {
+			return "", fmt.Errorf("wait for cache: %w", err)
+		}
+	}
+
 	return b.cache.Path(), nil
 }
 
@@ -125,7 +139,7 @@ func (b *localDiff) Slice(_ context.Context, off, length int64, _ *storage.Frame
 	return b.cache.Slice(off, length)
 }
 
-func (b *localDiff) Size(_ context.Context) (int64, error) {
+func (b *localDiff) Size(context.Context) (int64, error) {
 	return b.cache.Size()
 }
 

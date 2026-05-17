@@ -127,6 +127,13 @@ var (
 	// directly instead of using process_vm_readv on pause.
 	UseMemFdFlag = NewBoolFlag("use-memfd", false)
 
+	// MemfdBackgroundCopyFlag asks pauseProcessMemory to copy memfd → diff
+	// cache on a background goroutine, letting Pause return as soon as
+	// snapfile + diff metadata are written. Reads of in-flight diff bytes
+	// demand-page from memfd; readers of the on-disk file (snapshot upload)
+	// wait. Requires UseMemFdFlag.
+	MemfdBackgroundCopyFlag = NewBoolFlag("memfd-background-copy", false)
+
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.
 	PeerToPeerChunkTransferFlag = NewBoolFlag("peer-to-peer-chunk-transfer", false)
 	// PeerToPeerAsyncCheckpointFlag makes Checkpoint upload fire-and-forget instead
