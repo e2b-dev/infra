@@ -325,13 +325,36 @@ func (a *API) unmountNFS(ctx context.Context, logger zerolog.Logger, path string
 
 	logger.Debug().Msgf("Unmounting stale NFS mount at %q (was: %s)", path, source)
 
-	// Force unmount since the handles are stale anyway
+	// First try a forced unmount. For NFS specifically MNT_FORCE only aborts
+	// in-flight RPCs (see fs/nfs/super.c::nfs_umount_begin); when the server is
+	// reachable and the customer's resumed processes still hold open file
+	// descriptors into the mount, this fails with EBUSY ("target is busy").
 	data, err = exec.CommandContext(ctx, "umount", "--force", path).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to unmount stale NFS mount at %q: %w\n%s", path, err, string(data))
+	if err == nil {
+		a.mountedPaths.Delete(path)
+
+		return nil
 	}
 
-	// Clear our tracking state for this path
+	// Fall back to lazy unmount (MNT_DETACH). This detaches the mount from the
+	// namespace immediately and lets the kernel clean up when the surviving
+	// FDs close. The path becomes available for a fresh mount right away —
+	// which is the goal — and the old FDs keep reading from the previous mount
+	// (correct when the NFS source IP is unchanged across resume; otherwise
+	// they'll see ESTALE on next access, same outcome the customer would get
+	// from a successful forced unmount).
+	logger.Warn().
+		Err(err).
+		Str("path", path).
+		Str("umount_output", string(data)).
+		Msg("Forced NFS unmount failed, falling back to lazy detach")
+
+	lazyData, lazyErr := exec.CommandContext(ctx, "umount", "--lazy", path).CombinedOutput()
+	if lazyErr != nil {
+		return fmt.Errorf("failed to unmount stale NFS mount at %q: forced umount: %w (%s); lazy umount: %w (%s)",
+			path, err, strings.TrimSpace(string(data)), lazyErr, strings.TrimSpace(string(lazyData)))
+	}
+
 	a.mountedPaths.Delete(path)
 
 	return nil
