@@ -168,32 +168,6 @@ func (t Template) WithPrefetch(prefetch *Prefetch) Template {
 	}
 }
 
-// WithRootfsPrefetch replaces the rootfs prefetch mapping, preserving Memory.
-func (t Template) WithRootfsPrefetch(rootfs *MemoryPrefetchMapping) Template {
-	var pf Prefetch
-	if t.Prefetch != nil {
-		pf = *t.Prefetch
-	}
-	pf.Rootfs = rootfs
-	out := t
-	out.Prefetch = &pf
-
-	return out
-}
-
-// WithMemoryPrefetch replaces the memory prefetch mapping, preserving Rootfs.
-func (t Template) WithMemoryPrefetch(memory *MemoryPrefetchMapping) Template {
-	var pf Prefetch
-	if t.Prefetch != nil {
-		pf = *t.Prefetch
-	}
-	pf.Memory = memory
-	out := t
-	out.Prefetch = &pf
-
-	return out
-}
-
 func (t Template) ToFile(path string) error {
 	mr, err := serialize(t)
 	if err != nil {
