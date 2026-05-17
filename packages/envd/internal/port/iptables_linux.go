@@ -27,6 +27,12 @@ func setupIPv4DNAT() error {
 }
 
 func (b *iptablesBackend) addRule(ctx context.Context, port uint32) error {
+	// -C first: avoids duplicate rules across envd restarts (previous rules
+	// outlive the process; the internal `ports` map does not).
+	if err := b.runRule(ctx, "-C", port); err == nil {
+		return nil
+	}
+
 	return b.runRule(ctx, "-A", port)
 }
 

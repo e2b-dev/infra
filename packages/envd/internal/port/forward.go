@@ -108,6 +108,11 @@ func (f *Forwarder) StartForwarding(ctx context.Context) {
 		// procs is an array of currently opened ports.
 		procs, ok := <-f.scannerSubscriber.Messages
 		if !ok {
+			// Scanner gone: clean up so iptables rules aren't leaked.
+			for _, v := range f.ports {
+				f.stopPortForwarding(ctx, v)
+			}
+
 			return
 		}
 
