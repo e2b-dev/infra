@@ -80,14 +80,14 @@ func (f *LocalDiffFile) CloseToDiff(
 
 type localDiff struct {
 	cacheKey DiffStoreKey
-	cache    *block.Cache
+	cache    block.DiffSource
 }
 
 var _ Diff = (*localDiff)(nil)
 
 func NewLocalDiffFromCache(
 	cacheKey DiffStoreKey,
-	cache *block.Cache,
+	cache block.DiffSource,
 ) (Diff, error) {
 	return &localDiff{
 		cache:    cache,
@@ -110,6 +110,14 @@ func newLocalDiff(
 }
 
 func (b *localDiff) CachePath() (string, error) {
+	if w, ok := b.cache.(interface {
+		Wait(ctx context.Context) error
+	}); ok {
+		if err := w.Wait(context.Background()); err != nil {
+			return "", fmt.Errorf("memfd copy: %w", err)
+		}
+	}
+
 	return b.cache.Path(), nil
 }
 

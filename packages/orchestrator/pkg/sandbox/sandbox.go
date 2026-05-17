@@ -1138,6 +1138,7 @@ func (s *Sandbox) Pause(
 		s.config.DefaultCacheDir,
 		s.process,
 		s.memory.Memfd(ctx),
+		s.featureFlags.BoolFlag(ctx, featureflags.MemfdBackgroundCopyFlag, sandboxLDContext(s.Runtime, s.Config)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -1206,13 +1207,14 @@ func pauseProcessMemory(
 	cacheDir string,
 	fc *fc.Process,
 	memfd *block.Memfd,
+	bgCopy bool,
 ) (d build.Diff, h *header.Header, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
 	// ExportMemory owns memfd and closes it on all paths.
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
-	cache, err := fc.ExportMemory(ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd)
+	cache, err := fc.ExportMemory(ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
 	}

@@ -46,3 +46,16 @@ type Device interface {
 	io.WriterAt
 	WriteZeroesAt(off, length int64) (int, error)
 }
+
+// DiffSource is what the diff/upload layer reads from. *Cache satisfies it
+// directly; *MemfdCache wraps *Cache and serves in-flight reads from the
+// memfd until the background copy completes, then delegates to *Cache.
+type DiffSource interface {
+	io.Closer
+	ReadAt(b []byte, off int64) (int, error)
+	Slice(off, length int64) ([]byte, error)
+	Size() (int64, error)
+	FileSize() (int64, error)
+	BlockSize() int64
+	Path() string
+}
