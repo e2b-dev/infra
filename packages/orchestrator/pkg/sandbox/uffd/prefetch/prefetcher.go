@@ -91,6 +91,23 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 	maxCopyWorkers := p.featureFlags.IntFlag(ctx, featureflags.MemoryPrefetchMaxCopyWorkers)
 
 	blockSize := p.mapping.BlockSize
+
+	// Cap the total bytes we'll prefetch. Prefetch is access-order so this keeps the
+	// most useful pages and drops the long tail — under high concurrency a 10 GiB
+	// prefetch list would burn the per-region GCS egress budget for no marginal
+	// benefit (the guest only re-touches a small working set on resume).
+	if maxBytes := int64(p.featureFlags.IntFlag(ctx, featureflags.MemoryPrefetchMaxBytes)); maxBytes > 0 && blockSize > 0 {
+		maxBlocks := maxBytes / blockSize
+		if maxBlocks > 0 && int64(len(indices)) > maxBlocks {
+			p.logger.Info(ctx, "prefetch: capping mapping to byte budget",
+				zap.Int64("max_bytes", maxBytes),
+				zap.Int("original_pages", len(indices)),
+				zap.Int64("capped_pages", maxBlocks),
+			)
+			indices = indices[:maxBlocks]
+		}
+	}
+
 	totalPages := len(indices)
 
 	span.SetAttributes(
