@@ -243,13 +243,13 @@ func createCgroupManager() (m cgroups.Manager) {
 	opts := []cgroups.Cgroup2ManagerOption{
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypePTY, "ptys", map[string]string{
 			"cpu.weight":  "200",
-			"io.weight":   "50",
+			"io.weight":   "default 50",
 			"memory.high": fmt.Sprintf("%d", memoryHigh),
 			"memory.max":  fmt.Sprintf("%d", memoryMax),
 		}),
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypeSocat, "socats", map[string]string{
 			"cpu.weight": "150",
-			"io.weight":  "50",
+			"io.weight":  "default 50",
 			"memory.min": fmt.Sprintf("%d", 5*megabyte),
 			"memory.low": fmt.Sprintf("%d", 8*megabyte),
 		}),
@@ -257,7 +257,7 @@ func createCgroupManager() (m cgroups.Manager) {
 			"memory.high": fmt.Sprintf("%d", memoryHigh),
 			"memory.max":  fmt.Sprintf("%d", memoryMax),
 			"cpu.weight":  "50",
-			"io.weight":   "10",
+			"io.weight":   "default 10",
 		}),
 	}
 	if cgroupRoot != "" {
