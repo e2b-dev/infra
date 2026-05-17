@@ -15,15 +15,9 @@ import (
 	gnet "github.com/shirou/gopsutil/v4/net"
 )
 
-// listListeningSockets returns the TCP and TCP6 sockets in LISTEN state by
-// parsing /proc/net/tcp{,6} directly. It is dramatically cheaper than
-// gopsutil's net.Connections, which walks every /proc/<pid>/fd directory to
-// produce inode→PID mappings (O(processes × open fds) syscalls per scan). The
-// port forwarder only needs (family, local addr, local port, status) so the
-// PID lookup is pure overhead.
-//
-// The returned slice is shaped as []net.ConnectionStat for compatibility with
-// the existing subscriber/filter wiring; the Pid field is always 0.
+// listListeningSockets parses /proc/net/tcp{,6} and returns LISTEN sockets.
+// Skips the /proc/<pid>/fd walk that gopsutil.net.Connections does — the
+// forwarder doesn't use PID.
 func listListeningSockets() ([]gnet.ConnectionStat, error) {
 	var out []gnet.ConnectionStat
 
@@ -42,12 +36,10 @@ func listListeningSockets() ([]gnet.ConnectionStat, error) {
 	return out, nil
 }
 
-// tcpStateListen is the on-the-wire encoding of TCP_LISTEN in /proc/net/tcp.
-const tcpStateListen = "0A"
-
-// listenStatus is the human-readable status string the rest of the package
-// expects (matches gopsutil's net.Connections output).
-const listenStatus = "LISTEN"
+const (
+	tcpStateListen = "0A"
+	listenStatus   = "LISTEN"
+)
 
 func parseProcNetTCP(path string, family uint32) ([]gnet.ConnectionStat, error) {
 	f, err := os.Open(path)
@@ -58,18 +50,13 @@ func parseProcNetTCP(path string, family uint32) ([]gnet.ConnectionStat, error) 
 
 	var out []gnet.ConnectionStat
 	scanner := bufio.NewScanner(f)
-	// Skip header.
-	if scanner.Scan() {
+	if scanner.Scan() { // skip header
 		_ = scanner.Text()
 	}
 
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
-		// Need at least: sl, local, rem, st
-		if len(fields) < 4 {
-			continue
-		}
-		if fields[3] != tcpStateListen {
+		if len(fields) < 4 || fields[3] != tcpStateListen {
 			continue
 		}
 
@@ -89,28 +76,22 @@ func parseProcNetTCP(path string, family uint32) ([]gnet.ConnectionStat, error) 
 	return out, scanner.Err()
 }
 
-// decodeProcAddr parses one local_address / remote_address field from
-// /proc/net/tcp{,6}: an upper-case hex IP, ':', and a 4-hex-digit port.
-//
-// The IP bytes are written byte-by-byte but each 4-byte word is in CPU byte
-// order (little-endian on x86/arm64). For IPv4 we just reverse the four bytes;
-// for IPv6 each consecutive 4-byte group is little-endian within the group.
+// decodeProcAddr parses an IIIIIIII:PPPP (or 32-char-hex:PPPP for v6) field.
+// Each 4-byte word in the IP is in CPU byte order.
 func decodeProcAddr(s string, family uint32) (string, uint16, error) {
 	colon := strings.IndexByte(s, ':')
 	if colon < 0 {
 		return "", 0, fmt.Errorf("missing colon in %q", s)
 	}
-	ipHex := s[:colon]
-	portHex := s[colon+1:]
 
-	port64, err := strconv.ParseUint(portHex, 16, 16)
+	port64, err := strconv.ParseUint(s[colon+1:], 16, 16)
 	if err != nil {
-		return "", 0, fmt.Errorf("port %q: %w", portHex, err)
+		return "", 0, err
 	}
 
-	raw, err := hex.DecodeString(ipHex)
+	raw, err := hex.DecodeString(s[:colon])
 	if err != nil {
-		return "", 0, fmt.Errorf("ip %q: %w", ipHex, err)
+		return "", 0, err
 	}
 
 	switch family {
@@ -118,22 +99,18 @@ func decodeProcAddr(s string, family uint32) (string, uint16, error) {
 		if len(raw) != 4 {
 			return "", 0, fmt.Errorf("ipv4 expects 4 bytes, got %d", len(raw))
 		}
-		ip := net.IPv4(raw[3], raw[2], raw[1], raw[0])
-
-		return ip.String(), uint16(port64), nil
+		return net.IPv4(raw[3], raw[2], raw[1], raw[0]).String(), uint16(port64), nil
 	case syscall.AF_INET6:
 		if len(raw) != 16 {
 			return "", 0, fmt.Errorf("ipv6 expects 16 bytes, got %d", len(raw))
 		}
 		buf := make([]byte, 16)
-		// Reverse each 4-byte group.
 		for i := 0; i < 16; i += 4 {
 			buf[i+0] = raw[i+3]
 			buf[i+1] = raw[i+2]
 			buf[i+2] = raw[i+1]
 			buf[i+3] = raw[i+0]
 		}
-
 		return net.IP(buf).String(), uint16(port64), nil
 	default:
 		return "", 0, fmt.Errorf("unsupported family %d", family)

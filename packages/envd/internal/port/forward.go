@@ -28,23 +28,15 @@ const (
 var defaultGatewayIP = net.IPv4(169, 254, 0, 21)
 
 type PortToForward struct {
-	socat *exec.Cmd
-	// family version of the ip.
-	family uint32
-	state  PortState
-	port   uint32
-	// missedScans counts consecutive scans where the listener wasn't seen.
-	// We only stop the socat once it has gone missing for at least
-	// portDeleteThreshold scans so a short flicker (next.js dev HMR rebuild,
-	// docker compose restart, ...) doesn't drop the existing socat and the
-	// in-flight connections with it.
+	socat       *exec.Cmd
+	family      uint32
+	state       PortState
+	port        uint32
 	missedScans int
 }
 
-// portDeleteThreshold is the number of consecutive scans the listener has to
-// be missing before the corresponding socat is stopped. With the 1 Hz scan
-// interval this gives a ~3 s grace window which covers the common short-lived
-// restart cases without keeping orphaned socats around indefinitely.
+// portDeleteThreshold is the number of consecutive scans without seeing the
+// listener before stopping its socat (~3 s at 1 Hz). Absorbs HMR/restart flicker.
 const portDeleteThreshold = 3
 
 type Forwarder struct {
@@ -94,21 +86,10 @@ func (f *Forwarder) StartForwarding(ctx context.Context) {
 			return
 		}
 
-		// Pre-mark every tracked port as "missed this scan"; the next loop
-		// flips back any port that's still listening. This is the
-		// scan-relative half of the hysteresis: a port that's gone for one
-		// scan increments missedScans, a port that returns within the
-		// portDeleteThreshold window resets it.
 		for _, v := range f.ports {
 			v.state = PortStateDelete
 		}
 
-		// Refresh: mark every listener we still see and start socat for
-		// listeners we haven't seen before. Keyed by (family, ip, port) —
-		// PID is no longer available from the scanner (we trade it for the
-		// /proc walk it would have required) and isn't needed either: if a
-		// new process binds the same (ip, port) the forwarded path is still
-		// correct.
 		for _, p := range procs {
 			key := fmt.Sprintf("%d-%s-%d", p.Family, p.Laddr.IP, p.Laddr.Port)
 
@@ -135,9 +116,6 @@ func (f *Forwarder) StartForwarding(ctx context.Context) {
 			f.startPortForwarding(ctx, ptf)
 		}
 
-		// Tear down only ports that have been missing for several consecutive
-		// scans. Short flickers (Next.js HMR rebuild, docker compose restart)
-		// no longer thrash socat.
 		for key, v := range f.ports {
 			if v.state != PortStateDelete {
 				continue

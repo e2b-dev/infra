@@ -41,10 +41,7 @@ func (s *Scanner) Unsubscribe(sub *ScannerSubscriber) {
 	sub.Destroy()
 }
 
-// ScanAndBroadcast starts scanning open TCP ports and broadcasts every open
-// port to all subscribers. Uses a direct /proc/net/tcp{,6} parser instead of
-// gopsutil's net.Connections so the scan does not walk /proc/<pid>/fd for
-// every process (the forwarder doesn't need PID information).
+// ScanAndBroadcast scans LISTEN sockets and broadcasts them to subscribers.
 func (s *Scanner) ScanAndBroadcast() {
 	for {
 		listeners, _ := listListeningSockets()
