@@ -92,10 +92,8 @@ func NewCacheFromMemfd(
 func copyFromMemfd(ctx context.Context, cache *Cache, memfd *Memfd, dirty *roaring.Bitmap, blockSize int64) error {
 	var cacheOff int64
 	for r := range BitsetRanges(dirty, blockSize) {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 
 		src, err := memfd.Slice(r.Start, r.Size)

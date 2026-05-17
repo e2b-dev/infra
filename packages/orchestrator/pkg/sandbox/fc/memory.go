@@ -69,10 +69,5 @@ func (p *Process) ExportMemory(
 		return p.exportMemoryFromFc(ctx, include, cachePath, blockSize)
 	}
 
-	cache, err := block.NewCacheFromMemfd(ctx, blockSize, cachePath, memfd, include)
-	if err != nil {
-		return nil, fmt.Errorf("create MemfdCache: %w", err)
-	}
-
-	return cache, nil
+	return block.NewCacheFromMemfd(ctx, blockSize, cachePath, memfd, include)
 }

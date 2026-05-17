@@ -1212,27 +1212,17 @@ func pauseProcessMemory(
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
-	header, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
-	if err != nil {
-		var closeErr error
-		if memfd != nil {
-			closeErr = memfd.Close()
-		}
-
-		return nil, nil, errors.Join(fmt.Errorf("failed to create memfile header: %w", err), closeErr)
-	}
-
+	// ExportMemory owns memfd and closes it on all paths; running it first
+	// keeps the memfd cleanup out of the ToDiffHeader error branch below.
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
-
-	cache, err := fc.ExportMemory(
-		ctx,
-		diffMetadata.Dirty,
-		memfileDiffPath,
-		diffMetadata.BlockSize,
-		memfd,
-	)
+	cache, err := fc.ExportMemory(ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
+	}
+
+	header, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
+	if err != nil {
+		return nil, nil, errors.Join(fmt.Errorf("failed to create memfile header: %w", err), cache.Close())
 	}
 
 	diff, err := build.NewLocalDiffFromCache(
@@ -1240,7 +1230,6 @@ func pauseProcessMemory(
 		cache,
 	)
 	if err != nil {
-		// Close the cache even if the diff creation fails.
 		return nil, nil, fmt.Errorf("failed to create local diff from cache: %w", errors.Join(err, cache.Close()))
 	}
 
