@@ -13,6 +13,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
 
 	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
+	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/joined"
 )
 
 const MetricPrefix = "metric."
@@ -57,10 +58,11 @@ func Middleware(meterProvider metric.MeterProvider, service string, options ...O
 	return func(ginCtx *gin.Context) {
 		ctx := ginCtx.Request.Context()
 
-		// Install the request-scoped joinedHolder so any descendant code
-		// path (orchestrator, storage layer, etc.) can mark the request via
-		// the package helpers without needing access to *gin.Context.
-		ctx, holder := withJoinedHolder(ctx)
+		// Install the request-scoped joined holder so descendant code paths
+		// (orchestrator, storage layer, etc.) can call joined.Mark via
+		// context.Context. Idempotent: if the tracing middleware already
+		// installed the holder, this reuses it.
+		ctx = joined.WithHolder(ctx)
 		ginCtx.Request = ginCtx.Request.WithContext(ctx)
 
 		route := ginCtx.FullPath()
@@ -97,7 +99,7 @@ func Middleware(meterProvider metric.MeterProvider, service string, options ...O
 			resAttributes = append(resAttributes, attributesFromGinContext(ginCtx, MetricPrefix)...)
 
 			// Distinguish between regular and joined requests
-			resAttributes = append(resAttributes, holder.joinedAttribute())
+			resAttributes = append(resAttributes, joined.Attribute(ctx))
 
 			effectiveStart := start
 			if processingStart, ok := getProcessingStartTime(ginCtx); ok {

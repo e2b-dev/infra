@@ -14,7 +14,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/metrics"
+	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/joined"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
@@ -251,7 +251,7 @@ func (s *Storage) waitForTransition(
 	transitionID string,
 ) error {
 	// Mark as a joined request for telemetry purposes
-	metrics.MarkJoined(ctx)
+	joined.Mark(ctx)
 
 	routingKey := getTransitionRoutingKey(teamID.String(), sandboxID, transitionID)
 	transitionKey := getTransitionKey(teamID.String(), sandboxID)

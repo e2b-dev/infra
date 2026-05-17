@@ -31,6 +31,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
+	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/joined"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -109,6 +110,13 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 
 		ctx, span := tracer.Start(ctx, spanName, opts...)
 		defer span.End()
+
+		// Install the request-scoped joined holder so descendant code paths
+		// (orchestrator, storage layer, etc.) can call joined.Mark and have
+		// the request.joined attribute pinned to this (top-level) server
+		// span. Idempotent: a later joined.WithHolder call from the metrics
+		// middleware will reuse this holder.
+		ctx = joined.WithHolder(ctx)
 
 		// pass the span through the request context
 		c.Request = c.Request.WithContext(ctx)
