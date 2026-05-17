@@ -37,13 +37,8 @@ func (s *Sandbox) doRequestWithInfiniteRetries(
 ) (*http.Response, int64, error) {
 	requestCount := int64(0)
 
-	// Pin Timestamp for the whole retry loop so envd's lastSetTime.SetToGreater
-	// idempotency guard can actually fire on a re-delivered request. With a
-	// fresh time.Now() per retry every queued PostInit looked newer than the
-	// previous one, and envd ran SetData end-to-end on every queued retry —
-	// writing the eventual 204 to a dead socket each time and never letting
-	// the orchestrator observe a success (the livelock described in the
-	// bitfrost / Mode-B investigation).
+	// Pin Timestamp once so envd's lastSetTime.SetToGreater guard can skip
+	// re-delivered retries instead of re-running SetData against dead sockets.
 	now := time.Now()
 	jsonBody := &envd.PostInitJSONBody{
 		LifecycleID:    s.LifecycleID,
