@@ -325,24 +325,16 @@ func (a *API) unmountNFS(ctx context.Context, logger zerolog.Logger, path string
 
 	logger.Debug().Msgf("Unmounting stale NFS mount at %q (was: %s)", path, source)
 
-	// First try a forced unmount. For NFS specifically MNT_FORCE only aborts
-	// in-flight RPCs (see fs/nfs/super.c::nfs_umount_begin); when the server is
-	// reachable and the customer's resumed processes still hold open file
-	// descriptors into the mount, this fails with EBUSY ("target is busy").
+	// Forced umount; for NFS MNT_FORCE only aborts in-flight RPCs and fails
+	// EBUSY when customer FDs still hold the mount.
 	data, err = exec.CommandContext(ctx, "umount", "--force", path).CombinedOutput()
 	if err == nil {
 		a.mountedPaths.Delete(path)
-
 		return nil
 	}
 
-	// Fall back to lazy unmount (MNT_DETACH). This detaches the mount from the
-	// namespace immediately and lets the kernel clean up when the surviving
-	// FDs close. The path becomes available for a fresh mount right away —
-	// which is the goal — and the old FDs keep reading from the previous mount
-	// (correct when the NFS source IP is unchanged across resume; otherwise
-	// they'll see ESTALE on next access, same outcome the customer would get
-	// from a successful forced unmount).
+	// Lazy fallback (MNT_DETACH): detach from namespace now, kernel cleans up
+	// when surviving FDs close.
 	logger.Warn().
 		Err(err).
 		Str("path", path).
@@ -356,7 +348,6 @@ func (a *API) unmountNFS(ctx context.Context, logger zerolog.Logger, path string
 	}
 
 	a.mountedPaths.Delete(path)
-
 	return nil
 }
 
