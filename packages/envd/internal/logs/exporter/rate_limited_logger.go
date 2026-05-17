@@ -21,11 +21,13 @@ func (r *rateLimitedLogger) log(args ...any) {
 	last := r.lastLogged.Load()
 	if last != nil && time.Since(*last) <= r.floor {
 		r.suppressed.Add(1)
+
 		return
 	}
 	now := time.Now()
 	if !r.lastLogged.CompareAndSwap(last, &now) {
 		r.suppressed.Add(1)
+
 		return
 	}
 	suppressed := r.suppressed.Swap(0)

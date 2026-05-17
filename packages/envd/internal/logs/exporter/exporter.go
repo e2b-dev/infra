@@ -148,6 +148,7 @@ func (w *HTTPExporter) Write(logs []byte) (int, error) {
 	// Drop oversized lines: Loki would reject them anyway.
 	if len(logs) > maxLogLineBytes {
 		w.oversizedLog.log(maxLogLineBytes)
+
 		return len(logs), nil
 	}
 
