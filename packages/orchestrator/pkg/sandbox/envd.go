@@ -33,11 +33,8 @@ const (
 	tcpProbeTimeout  = 200 * time.Millisecond
 )
 
-// probeTCPFirstAccept dials the envd HTTP port on a background goroutine
-// and atomically records the first wall-clock duration at which TCP accepts.
-// Separates "guest network or envd listener never came up" from "listener up
-// but HTTP handler blocked" — the two failure modes both surface as
-// `failed to init envd` today.
+// probeTCPFirstAccept records the first wall-clock ms at which TCP accepts.
+// Disambiguates "listener never came up" from "handler blocked".
 func probeTCPFirstAccept(ctx context.Context, addr string, firstAcceptMs *atomic.Int64, start time.Time) {
 	dialer := &net.Dialer{Timeout: tcpProbeTimeout}
 	ticker := time.NewTicker(tcpProbeInterval)
@@ -146,8 +143,6 @@ func (s *Sandbox) initEnvd(ctx context.Context) (e error) {
 	hostIP := s.Slot.HostIPString()
 	address := fmt.Sprintf("http://%s:%d/init", hostIP, consts.DefaultEnvdServerPort)
 
-	// Background TCP probe: records the first wall-clock time the listener
-	// accepts. Used purely for log correlation — does not gate anything.
 	probeCtx, cancelProbe := context.WithCancel(ctx)
 	defer cancelProbe()
 	start := time.Now()
