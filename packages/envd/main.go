@@ -197,10 +197,16 @@ func main() {
 			),
 		),
 		Addr: fmt.Sprintf("0.0.0.0:%d", port),
-		// We remove the timeouts as the connection is terminated by closing of the sandbox and keepalive close.
-		ReadTimeout:  0,
-		WriteTimeout: 0,
-		IdleTimeout:  idleTimeout,
+		// ReadTimeout / WriteTimeout stay 0: connection is terminated by
+		// closing of the sandbox and keepalive close, and we have
+		// long-lived requests we must not cut off.
+		// ReadHeaderTimeout is safe to set and cheap insurance against
+		// slowloris-style header reads that would otherwise hold a goroutine
+		// + (eventually) initLock forever.
+		ReadTimeout:       0,
+		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      0,
+		IdleTimeout:       idleTimeout,
 	}
 	httpserver.ConfigureH2C(s)
 
