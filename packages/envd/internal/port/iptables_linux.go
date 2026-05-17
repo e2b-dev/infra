@@ -22,6 +22,7 @@ func newIPtablesBackend(sourceIP string) *iptablesBackend {
 // setupIPv4DNAT enables route_localnet so DNAT-to-127.0.0.1 works.
 func setupIPv4DNAT() error {
 	const p = "/proc/sys/net/ipv4/conf/all/route_localnet"
+
 	return os.WriteFile(p, []byte("1\n"), 0o644)
 }
 
@@ -43,5 +44,6 @@ func (b *iptablesBackend) runRule(ctx context.Context, op string, port uint32) e
 	if err != nil {
 		return fmt.Errorf("iptables %s :%d: %w (%s)", op, port, err, string(out))
 	}
+
 	return nil
 }

@@ -25,6 +25,7 @@ const envPortForwarderIPv4Iptables = "ENVD_PORT_FORWARDER_IPV4_IPTABLES"
 
 func iptablesIPv4Enabled() bool {
 	v := os.Getenv(envPortForwarderIPv4Iptables)
+
 	return v == "1" || v == "true"
 }
 
@@ -149,7 +150,7 @@ func (f *Forwarder) StartForwarding(ctx context.Context) {
 			}
 			v.missedScans++
 			if v.missedScans >= portDeleteThreshold {
-				f.stopPortForwarding(v)
+				f.stopPortForwarding(ctx, v)
 				delete(f.ports, key)
 			}
 		}
@@ -158,13 +159,14 @@ func (f *Forwarder) StartForwarding(ctx context.Context) {
 
 func (f *Forwarder) startPortForwarding(ctx context.Context, p *PortToForward) {
 	if p.family == 4 && f.useIptables {
-		if err := f.iptables.addRule(ctx, p.port); err != nil {
-			f.logger.Error().Err(err).Uint32("port", p.port).Msg("iptables DNAT add failed; falling back to socat")
-		} else {
+		err := f.iptables.addRule(ctx, p.port)
+		if err == nil {
 			p.iptables = true
 			f.logger.Debug().Uint32("port", p.port).Msg("Started IPv4 port forwarding via iptables DNAT")
+
 			return
 		}
+		f.logger.Error().Err(err).Uint32("port", p.port).Msg("iptables DNAT add failed; falling back to socat")
 	}
 
 	// https://unix.stackexchange.com/questions/311492/redirect-application-listening-on-localhost-to-listening-on-external-interface
@@ -213,12 +215,13 @@ func (f *Forwarder) startPortForwarding(ctx context.Context, p *PortToForward) {
 	p.socat = cmd
 }
 
-func (f *Forwarder) stopPortForwarding(p *PortToForward) {
+func (f *Forwarder) stopPortForwarding(ctx context.Context, p *PortToForward) {
 	if p.iptables {
-		if err := f.iptables.deleteRule(context.Background(), p.port); err != nil {
+		if err := f.iptables.deleteRule(ctx, p.port); err != nil {
 			f.logger.Error().Err(err).Uint32("port", p.port).Msg("iptables DNAT delete failed")
 		}
 		p.iptables = false
+
 		return
 	}
 
