@@ -249,6 +249,8 @@ func additionalOCILayers(
 			"etc/systemd/system/multi-user.target.wants/envd.service": "etc/systemd/system/envd.service",
 			// Enable chrony service autostart
 			"etc/systemd/system/multi-user.target.wants/chrony.service": "etc/systemd/system/chrony.service",
+			// Enable envd netns setup at boot (must run before envd.service)
+			"etc/systemd/system/sysinit.target.wants/e2b-netns.service": "etc/systemd/system/e2b-netns.service",
 		},
 	)
 	if err != nil {
