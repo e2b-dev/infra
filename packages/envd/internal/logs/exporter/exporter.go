@@ -3,7 +3,7 @@ package exporter
 import (
 	"bytes"
 	"context"
-	"log"
+	"fmt"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -18,6 +18,8 @@ const (
 	// Under Loki's 256 KiB max_line_size default.
 	maxLogLineBytes  = 192 << 10
 	maxBufferedBytes = 8 << 20
+
+	logFloor = time.Minute
 )
 
 type HTTPExporter struct {
@@ -25,6 +27,10 @@ type HTTPExporter struct {
 	logs          [][]byte
 	bufferedBytes int
 	mmdsOpts      atomic.Pointer[host.MMDSOpts]
+
+	jsonErrLog   *rateLimitedLogger
+	sendErrLog   *rateLimitedLogger
+	oversizedLog *rateLimitedLogger
 
 	// Concurrency coordination
 	triggers  chan struct{}
@@ -38,7 +44,10 @@ func NewHTTPLogsExporter(ctx context.Context, mmdsChan <-chan *host.MMDSOpts) *H
 			Timeout:   ExporterTimeout,
 			Transport: &http.Transport{DisableKeepAlives: true},
 		},
-		triggers: make(chan struct{}, 1),
+		triggers:     make(chan struct{}, 1),
+		jsonErrLog:   newRateLimitedLogger(logFloor, "error adding instance logging options to JSON: %v"),
+		sendErrLog:   newRateLimitedLogger(logFloor, "error sending instance logs: %+v"),
+		oversizedLog: newRateLimitedLogger(logFloor, "dropped log line exceeding %d bytes"),
 	}
 
 	go exporter.listenForMMDSOptsAndStart(ctx, mmdsChan)
@@ -64,6 +73,10 @@ func (w *HTTPExporter) sendInstanceLogs(ctx context.Context, logs []byte, addres
 	}
 	defer response.Body.Close()
 
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("collector returned %s", response.Status)
+	}
+
 	return nil
 }
 
@@ -87,12 +100,13 @@ func (w *HTTPExporter) listenForMMDSOptsAndStart(ctx context.Context, mmdsChan <
 }
 
 func (w *HTTPExporter) start(ctx context.Context) {
-	// Cap stderr noise: log each error kind at most once per logFloor so a
-	// fast-failing collector (e.g. TCP RST) can't flood journald.
-	const logFloor = time.Minute
-	var lastLoggedJSONErr, lastLoggedSendErr time.Time
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-w.triggers:
+		}
 
-	for range w.triggers {
 		logs := w.getAllLogs()
 
 		if len(logs) == 0 {
@@ -107,19 +121,13 @@ func (w *HTTPExporter) start(ctx context.Context) {
 		for _, logLine := range logs {
 			logLineWithOpts, err := opts.AddOptsToJSON(logLine)
 			if err != nil {
-				if time.Since(lastLoggedJSONErr) > logFloor {
-					log.Printf("error adding instance logging options to JSON: %v", err)
-					lastLoggedJSONErr = time.Now()
-				}
+				w.jsonErrLog.log(err)
 
 				continue
 			}
 
 			if err := w.sendInstanceLogs(ctx, logLineWithOpts, opts.LogsCollectorAddress); err != nil {
-				if time.Since(lastLoggedSendErr) > logFloor {
-					log.Printf("error sending instance logs: %+v", err)
-					lastLoggedSendErr = time.Now()
-				}
+				w.sendErrLog.log(err)
 
 				continue
 			}
@@ -139,6 +147,8 @@ func (w *HTTPExporter) resumeProcessing() {
 func (w *HTTPExporter) Write(logs []byte) (int, error) {
 	// Drop oversized lines: Loki would reject them anyway.
 	if len(logs) > maxLogLineBytes {
+		w.oversizedLog.log(maxLogLineBytes)
+
 		return len(logs), nil
 	}
 
