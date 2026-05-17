@@ -30,6 +30,10 @@ var (
 const (
 	maxTimeInPast   = 50 * time.Millisecond
 	maxTimeInFuture = 5 * time.Second
+
+	// maxInitBodyBytes bounds /init request body. The real payload (env
+	// vars, CA bundle, NFS mounts, token) is well under 256 KiB in practice.
+	maxInitBodyBytes = 1 << 20
 )
 
 // validateInitAccessToken validates the access token for /init requests.
@@ -101,9 +105,9 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	logger := a.logger.With().Str(string(logs.OperationIDKey), operationID).Logger()
 
 	if r.Body != nil {
-		// Read raw body so we can wipe it after parsing
-		body, err := io.ReadAll(r.Body)
-		// Ensure body is wiped after we're done
+		// Cap to avoid a slow / oversized peer holding initLock and a
+		// buffered body in memory. /init JSON is well under this.
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxInitBodyBytes))
 		defer memguard.WipeBytes(body)
 		if err != nil {
 			logger.Error().Msgf("Failed to read request body: %v", err)
