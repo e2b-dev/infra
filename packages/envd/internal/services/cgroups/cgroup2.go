@@ -112,8 +112,7 @@ func createCgroup(fullPath string, properties map[string]string) (int, error) {
 	var errs []error
 	for name, value := range properties {
 		if err := os.WriteFile(filepath.Join(fullPath, name), []byte(value), 0o644); err != nil {
-			// Tolerate properties whose controller isn't enabled in
-			// cgroup.subtree_control (file doesn't exist). Other errors are fatal.
+			// Tolerate properties whose controller isn't enabled in subtree_control.
 			if errors.Is(err, os.ErrNotExist) {
 				fmt.Fprintf(os.Stderr, "cgroup property %q unavailable at %q, skipping\n", name, fullPath)
 				continue
