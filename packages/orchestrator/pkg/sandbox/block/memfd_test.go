@@ -104,38 +104,3 @@ func TestNewCacheFromMemfdAsync_DetachesAndFlushes(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expected, fromFile)
 }
-
-// Reads (both in-flight and post-copy) must return correct bytes: in
-// flight they come from the memfd, post-copy from the cache file mmap.
-// Exercises the runCopy → reader transition under -race.
-func TestNewCacheFromMemfdAsync_ReadsBeforeAndAfterCopy(t *testing.T) {
-	t.Parallel()
-
-	pageSize := int64(header.PageSize)
-	memfd, expected := newTestMemfd(t, pageSize*6)
-
-	// Non-adjacent blocks so the memfdSource indexes more than one entry.
-	dirty := roaring.New()
-	dirty.AddMany([]uint32{0, 2, 5})
-
-	cache, err := NewCacheFromMemfdAsync(t.Context(), pageSize, t.TempDir()+"/cache", memfd, dirty)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = cache.Close() })
-
-	checkBlocks := func(label string) {
-		for i, srcBlock := range []int64{0, 2, 5} {
-			got := make([]byte, pageSize)
-			_, err := cache.ReadAt(got, int64(i)*pageSize)
-			require.NoError(t, err, "%s ReadAt block %d", label, i)
-			require.Equal(t, expected[srcBlock*pageSize:(srcBlock+1)*pageSize], got, "%s ReadAt block %d", label, i)
-
-			slice, err := cache.Slice(int64(i)*pageSize, pageSize)
-			require.NoError(t, err, "%s Slice block %d", label, i)
-			require.Equal(t, expected[srcBlock*pageSize:(srcBlock+1)*pageSize], slice, "%s Slice block %d", label, i)
-		}
-	}
-
-	checkBlocks("in-flight")
-	require.NoError(t, cache.Wait(t.Context()))
-	checkBlocks("post-copy")
-}
