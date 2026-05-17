@@ -72,6 +72,13 @@ func (a *API) checkMMDSHash(ctx context.Context, requestToken *SecureToken) (boo
 
 	mmdsHash, err := a.mmdsClient.GetAccessTokenHash(ctx)
 	if err != nil {
+		// Self-heal: a user-installed PREROUTING/OUTPUT redirect on 169.254.169.254:80
+		// in the same netns can shadow our route. Reinstall our private chain
+		// at position 1 and retry once.
+		host.PinMMDSRoute(ctx)
+		mmdsHash, err = a.mmdsClient.GetAccessTokenHash(ctx)
+	}
+	if err != nil {
 		return false, false
 	}
 
