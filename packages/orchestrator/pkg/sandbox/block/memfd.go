@@ -73,16 +73,26 @@ func NewCacheFromMemfd(
 	if err != nil {
 		return nil, errors.Join(err, memfd.Close())
 	}
+	if err := copyFromMemfd(ctx, cache, memfd, dirty, blockSize); err != nil {
+		return nil, errors.Join(err, memfd.Close(), cache.Close())
+	}
+	if err := memfd.Close(); err != nil {
+		return nil, errors.Join(fmt.Errorf("close memfd: %w", err), cache.Close())
+	}
 
+	return cache, nil
+}
+
+func copyFromMemfd(ctx context.Context, cache *Cache, memfd *Memfd, dirty *roaring.Bitmap, blockSize int64) error {
 	var cacheOff int64
 	for r := range BitsetRanges(dirty, blockSize) {
 		if err := ctx.Err(); err != nil {
-			return nil, errors.Join(err, memfd.Close(), cache.Close())
+			return err
 		}
 
 		src, err := memfd.Slice(r.Start, r.Size)
 		if err != nil {
-			return nil, errors.Join(fmt.Errorf("memfd slice [%d,%d): %w", r.Start, r.Start+r.Size, err), memfd.Close(), cache.Close())
+			return fmt.Errorf("memfd slice [%d,%d): %w", r.Start, r.Start+r.Size, err)
 		}
 
 		copy((*cache.mmap)[cacheOff:cacheOff+r.Size], src)
@@ -90,9 +100,120 @@ func NewCacheFromMemfd(
 		cacheOff += r.Size
 	}
 
-	if err := memfd.Close(); err != nil {
-		return nil, errors.Join(fmt.Errorf("close memfd: %w", err), cache.Close())
+	return nil
+}
+
+// MemfdCache wraps a Cache populated from a memfd on a background
+// goroutine. Reads block on the copy via Wait. Once it finishes, runCopy
+// closes the memfd (releasing the hugetlb pages — potentially tens of GB)
+// and reads delegate to the embedded Cache.
+type MemfdCache struct {
+	cache *Cache
+
+	cancel context.CancelFunc
+	done   chan struct{} // closed by runCopy; happens-before for err
+	err    error
+}
+
+// NewCacheFromMemfdAsync starts the memfd→cache copy on a goroutine so
+// Pause can return as soon as the snapshot file + diff metadata are
+// written. The returned wrapper takes ownership of memfd; runCopy closes
+// it when the copy completes (or is cancelled via Close).
+func NewCacheFromMemfdAsync(
+	ctx context.Context,
+	blockSize int64,
+	filePath string,
+	memfd *Memfd,
+	dirty *roaring.Bitmap,
+) (*MemfdCache, error) {
+	cache, err := NewCache(int64(dirty.GetCardinality())*blockSize, blockSize, filePath, false)
+	if err != nil {
+		return nil, errors.Join(err, memfd.Close())
+	}
+	if dirty.IsEmpty() {
+		if closeErr := memfd.Close(); closeErr != nil {
+			return nil, errors.Join(fmt.Errorf("close memfd: %w", closeErr), cache.Close())
+		}
+
+		return &MemfdCache{cache: cache}, nil
 	}
 
-	return cache, nil
+	// Detach from the request context so the copy outlives Pause.
+	copyCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	m := &MemfdCache{
+		cache:  cache,
+		cancel: cancel,
+		done:   make(chan struct{}),
+	}
+
+	go m.runCopy(copyCtx, memfd, dirty, blockSize)
+
+	return m, nil
 }
+
+func (m *MemfdCache) runCopy(ctx context.Context, memfd *Memfd, dirty *roaring.Bitmap, blockSize int64) {
+	err := copyFromMemfd(ctx, m.cache, memfd, dirty, blockSize)
+	if closeErr := memfd.Close(); closeErr != nil {
+		err = errors.Join(err, fmt.Errorf("close memfd: %w", closeErr))
+	}
+	m.err = err
+	close(m.done)
+}
+
+// Wait blocks until the background copy completes (or ctx is cancelled).
+func (m *MemfdCache) Wait(ctx context.Context) error {
+	if m.done == nil {
+		return nil
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-m.done:
+	}
+
+	return m.err
+}
+
+func (m *MemfdCache) ReadAt(b []byte, off int64) (int, error) {
+	if err := m.Wait(context.Background()); err != nil {
+		return 0, err
+	}
+
+	return m.cache.ReadAt(b, off)
+}
+
+func (m *MemfdCache) Slice(off, length int64) ([]byte, error) {
+	if err := m.Wait(context.Background()); err != nil {
+		return nil, err
+	}
+
+	return m.cache.Slice(off, length)
+}
+
+func (m *MemfdCache) Close() error {
+	if m.cancel != nil {
+		m.cancel()
+		<-m.done
+	}
+
+	return m.cache.Close()
+}
+
+func (m *MemfdCache) Path(ctx context.Context) (string, error) {
+	if err := m.Wait(ctx); err != nil {
+		return "", err
+	}
+
+	return m.cache.filePath, nil
+}
+
+func (m *MemfdCache) FileSize(ctx context.Context) (int64, error) {
+	if err := m.Wait(ctx); err != nil {
+		return 0, err
+	}
+
+	return m.cache.FileSize(ctx)
+}
+
+func (m *MemfdCache) BlockSize() int64     { return m.cache.BlockSize() }
+func (m *MemfdCache) Size() (int64, error) { return m.cache.Size() }
