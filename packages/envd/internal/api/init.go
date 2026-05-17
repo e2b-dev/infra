@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/awnumar/memguard"
@@ -21,6 +22,34 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
+
+// rateLimitedWarn floors a recurring warn to at most one line per `floor`,
+// counting how many were suppressed in between. /init is hammered by the
+// orchestrator's infinite retry loop, so a persistent failure here would
+// otherwise flood the log.
+type rateLimitedWarn struct {
+	floor      time.Duration
+	lastLogged atomic.Pointer[time.Time]
+	suppressed atomic.Int64
+}
+
+func (r *rateLimitedWarn) log(logger *zerolog.Logger, err error, msg string) {
+	last := r.lastLogged.Load()
+	if last != nil && time.Since(*last) <= r.floor {
+		r.suppressed.Add(1)
+
+		return
+	}
+	now := time.Now()
+	if !r.lastLogged.CompareAndSwap(last, &now) {
+		r.suppressed.Add(1)
+
+		return
+	}
+	logger.Warn().Err(err).Int64("suppressed", r.suppressed.Swap(0)).Msg(msg)
+}
+
+var pinMMDSWarn = &rateLimitedWarn{floor: 10 * time.Second}
 
 var (
 	ErrAccessTokenMismatch           = errors.New("access token validation failed")
@@ -77,7 +106,7 @@ func (a *API) checkMMDSHash(ctx context.Context, requestToken *SecureToken) (boo
 		// Re-pin our RETURN rule at position 1 of nat PREROUTING and
 		// OUTPUT, then retry once.
 		if pinErr := host.PinMMDSRoute(ctx); pinErr != nil {
-			a.logger.Warn().Err(pinErr).Msg("failed to pin MMDS iptables route")
+			pinMMDSWarn.log(a.logger, pinErr, "failed to pin MMDS iptables route")
 		}
 		mmdsHash, err = a.mmdsClient.GetAccessTokenHash(ctx)
 	}

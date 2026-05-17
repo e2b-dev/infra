@@ -14,9 +14,8 @@ import (
 // rules added above ours get pushed down.
 //
 // Intended for the self-heal path: only called when a real MMDS lookup
-// fails, on the assumption that user iptables in the same netns clobbered
-// our route. Returns the first -I failure (if any); -D failures are
-// expected (rule absent on first run) and silently swallowed.
+// fails. Returns the first -I failure (if any); -D failures are expected
+// (rule absent on first run) and silently swallowed.
 func PinMMDSRoute(ctx context.Context) error {
 	rule := []string{"-d", "169.254.169.254", "-p", "tcp", "--dport", "80", "-j", "RETURN"}
 	for _, chain := range []string{"PREROUTING", "OUTPUT"} {
