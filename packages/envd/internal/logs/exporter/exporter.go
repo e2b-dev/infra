@@ -21,10 +21,11 @@ const (
 )
 
 type HTTPExporter struct {
-	client        http.Client
-	logs          [][]byte
-	bufferedBytes int
-	mmdsOpts      atomic.Pointer[host.MMDSOpts]
+	client           http.Client
+	logs             [][]byte
+	bufferedBytes    int
+	mmdsOpts         atomic.Pointer[host.MMDSOpts]
+	droppedOversized atomic.Int64
 
 	// Concurrency coordination
 	triggers  chan struct{}
@@ -91,10 +92,16 @@ func (w *HTTPExporter) start(ctx context.Context) {
 	// fast-failing collector (e.g. TCP RST) can't flood journald. The
 	// suppressed count is included on the next emitted line.
 	const logFloor = time.Minute
-	var lastLoggedJSONErr, lastLoggedSendErr time.Time
+	var lastLoggedJSONErr, lastLoggedSendErr, lastLoggedOversized time.Time
 	var suppressedJSONErrs, suppressedSendErrs int
 
 	for range w.triggers {
+		if dropped := w.droppedOversized.Load(); dropped > 0 && time.Since(lastLoggedOversized) > logFloor {
+			log.Printf("dropped %d log lines exceeding %d bytes", dropped, maxLogLineBytes)
+			w.droppedOversized.Add(-dropped)
+			lastLoggedOversized = time.Now()
+		}
+
 		logs := w.getAllLogs()
 
 		if len(logs) == 0 {
@@ -147,6 +154,8 @@ func (w *HTTPExporter) resumeProcessing() {
 func (w *HTTPExporter) Write(logs []byte) (int, error) {
 	// Drop oversized lines: Loki would reject them anyway.
 	if len(logs) > maxLogLineBytes {
+		w.droppedOversized.Add(1)
+		w.resumeProcessing()
 		return len(logs), nil
 	}
 
