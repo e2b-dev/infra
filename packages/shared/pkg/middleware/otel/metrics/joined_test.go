@@ -195,7 +195,7 @@ func TestMiddleware_MarkJoined_TagsServerSpanNotChildSpan(t *testing.T) {
 
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
-	tracer := tp.Tracer("test")
+	tracer := tp.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/metrics")
 
 	rec := &fakeRecorder{}
 	r := gin.New()
