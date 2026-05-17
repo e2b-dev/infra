@@ -243,6 +243,14 @@ var nfsOptions = strings.Join([]string{
 	"nfsvers=3",      // nfs proxy is nfs version 3
 	"noacl",          // no reason for acl in the sandbox
 
+	// Bound kernel-side retries against an unreachable NFS proxy.
+	// timeo is in deciseconds; 20 = 2s. With retrans=2 the in-kernel mount
+	// gives up after ~6s of exponential backoff and returns ETIMEDOUT,
+	// instead of leaving the mount syscall in D-state for SIGKILL to
+	// (eventually) interrupt.
+	"timeo=20",
+	"retrans=2",
+
 	// disable caching so that pause/resume works correctly
 	"noac",
 	"lookupcache=none",
