@@ -217,3 +217,40 @@ type errorReader struct {
 func (er *errorReader) Read([]byte) (n int, err error) {
 	return 0, er.err
 }
+
+func TestPrefetchPreservedAcrossHelpers(t *testing.T) {
+	t.Parallel()
+
+	prefetch := &Prefetch{Memory: &MemoryPrefetchMapping{
+		Indices:     []uint64{1, 2, 3},
+		AccessTypes: []AccessType{AccessRead, AccessRead, AccessPrefetch},
+		BlockSize:   4096,
+	}}
+	original := Template{
+		Version:  CurrentVersion,
+		Template: TemplateMetadata{BuildID: "old"},
+		Prefetch: prefetch,
+	}
+
+	t.Run("SameVersionTemplate", func(t *testing.T) {
+		t.Parallel()
+		updated := original.SameVersionTemplate(TemplateMetadata{BuildID: "new"})
+		assert.Equal(t, "new", updated.Template.BuildID)
+		require.NotNil(t, updated.Prefetch)
+		assert.Equal(t, prefetch.Memory.Indices, updated.Prefetch.Memory.Indices)
+	})
+
+	t.Run("NewVersionTemplate", func(t *testing.T) {
+		t.Parallel()
+		updated := original.NewVersionTemplate(TemplateMetadata{BuildID: "new"})
+		require.NotNil(t, updated.Prefetch)
+		assert.Equal(t, prefetch.Memory.Indices, updated.Prefetch.Memory.Indices)
+	})
+
+	t.Run("BasedOn", func(t *testing.T) {
+		t.Parallel()
+		updated := original.BasedOn(FromTemplate{Alias: "parent", BuildID: "parent-build"})
+		require.NotNil(t, updated.Prefetch)
+		assert.Equal(t, prefetch.Memory.Indices, updated.Prefetch.Memory.Indices)
+	})
+}

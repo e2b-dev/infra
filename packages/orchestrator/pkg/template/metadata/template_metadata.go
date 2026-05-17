@@ -129,6 +129,7 @@ func (t Template) BasedOn(
 		Start:        t.Start,
 		FromTemplate: &ft,
 		FromImage:    nil,
+		Prefetch:     t.Prefetch,
 	}
 }
 
@@ -140,6 +141,7 @@ func (t Template) NewVersionTemplate(metadata TemplateMetadata) Template {
 		Start:        t.Start,
 		FromTemplate: t.FromTemplate,
 		FromImage:    t.FromImage,
+		Prefetch:     t.Prefetch,
 	}
 }
 
@@ -151,6 +153,7 @@ func (t Template) SameVersionTemplate(metadata TemplateMetadata) Template {
 		Start:        t.Start,
 		FromTemplate: t.FromTemplate,
 		FromImage:    t.FromImage,
+		Prefetch:     t.Prefetch,
 	}
 }
 
