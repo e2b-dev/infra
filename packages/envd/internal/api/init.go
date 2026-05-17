@@ -243,13 +243,14 @@ var nfsOptions = strings.Join([]string{
 	"nfsvers=3",      // nfs proxy is nfs version 3
 	"noacl",          // no reason for acl in the sandbox
 
-	// Bound kernel-side retries against an unreachable NFS proxy.
-	// timeo is in deciseconds; 20 = 2s. With retrans=2 the in-kernel mount
-	// gives up after ~6s of exponential backoff and returns ETIMEDOUT,
-	// instead of leaving the mount syscall in D-state for SIGKILL to
-	// (eventually) interrupt.
+	// Bound the mount against an unreachable proxy to ~10s total:
+	//   - timeo=20 (2s per NFS RPC) with retrans=2 → kernel gives up
+	//     after ~6s of exponential backoff (2+4) and returns ETIMEDOUT.
+	//   - retry=0 stops mount(8) from looping further on RPC failure.
+	//   - nfsMountTimeout (10s) is the userspace SIGKILL backstop.
 	"timeo=20",
 	"retrans=2",
+	"retry=0",
 
 	// disable caching so that pause/resume works correctly
 	"noac",
