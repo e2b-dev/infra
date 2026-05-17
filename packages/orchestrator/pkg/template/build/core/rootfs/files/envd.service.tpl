@@ -17,12 +17,6 @@ LimitCORE=infinity
 ExecStartPre=/bin/sh -c 'mountpoint -q /etc/ssl/certs || (mkdir -p /run/e2b/certs && mount --bind /run/e2b/certs /etc/ssl/certs) && ([ -s /etc/ssl/certs/ca-certificates.crt ] || update-ca-certificates)'
 ExecStart=/bin/bash -l -c "/usr/bin/envd"
 Nice=-20
-# Realtime CPU scheduling with the lowest RT priority (1) so envd preempts
-# user-space SCHED_OTHER work but cannot starve higher-priority kernel
-# threads or other RT services. The default kernel.sched_rt_runtime_us
-# throttle (95% per 1s) caps total RT bandwidth so envd cannot DoS the
-# system even if it loops. User processes spawned by envd are reset to
-# SCHED_OTHER via the in-process wrapper using AmbientCaps + chrt(1).
 CPUSchedulingPolicy=fifo
 CPUSchedulingPriority=1
 OOMPolicy=continue

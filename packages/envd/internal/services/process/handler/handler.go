@@ -96,15 +96,8 @@ func New(
 	// User command string for logging (without the internal wrapper details).
 	userCmd := strings.Join(append([]string{req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...), " ")
 
-	// Wrap the command in a shell that resets envd's elevated priorities before exec-ing the actual command.
-	// This eliminates the race window where grandchildren could inherit envd's protected OOM score (-1000),
-	// real-time CPU class (SCHED_FIFO 1) or CPU priority (nice -20) before any post-start fixup runs.
-	//   chrt(1) lowers SCHED_FIFO back to SCHED_OTHER. It needs CAP_SYS_NICE, which is supplied via
-	//   SysProcAttr.AmbientCaps below; setpriv(1) then strips the ambient cap so the final user command
-	//   cannot raise itself back to RT.
-	//   nice(1) applies a relative adjustment, so we compute the delta from the current (inherited) nice
-	//   to the target (0). This is a no-op while the process is still SCHED_FIFO (RT processes ignore
-	//   nice), but takes effect once chrt has switched the policy to SCHED_OTHER.
+	// Wrap in a shell that resets oom_score_adj, lowers SCHED_FIFO to SCHED_OTHER (chrt, needs
+	// CAP_SYS_NICE supplied via AmbientCaps), drops the ambient cap (setpriv), and resets nice.
 	niceDelta := defaultNice - currentNice()
 	oomWrapperScript := fmt.Sprintf(
 		`echo %d > /proc/$$/oom_score_adj && exec /usr/bin/chrt --other 0 /usr/bin/setpriv --ambient-caps -all -- /usr/bin/nice -n %d "${@}"`,
@@ -139,11 +132,8 @@ func New(
 		},
 	}
 	applyCgroupFD(cmd.SysProcAttr, cgroupFD, ok)
-	// Pass CAP_SYS_NICE through setuid so the wrapper can run
-	// `chrt --other 0` (lowering from SCHED_FIFO to SCHED_OTHER requires it).
-	// setpriv in the wrapper drops this from the ambient set before the user
-	// command is exec-ed. No-op on non-Linux platforms.
-	applyAmbientCapSysNice(cmd.SysProcAttr)
+		// CAP_SYS_NICE so the wrapper's chrt(1) can drop SCHED_FIFO to SCHED_OTHER.
+		applyAmbientCapSysNice(cmd.SysProcAttr)
 
 	resolvedPath, err := permissions.ExpandAndResolve(req.GetProcess().GetCwd(), user, defaults.Workdir)
 	if err != nil {
