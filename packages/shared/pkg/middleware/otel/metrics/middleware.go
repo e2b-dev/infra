@@ -57,6 +57,12 @@ func Middleware(meterProvider metric.MeterProvider, service string, options ...O
 	return func(ginCtx *gin.Context) {
 		ctx := ginCtx.Request.Context()
 
+		// Install the request-scoped omitHolder so any descendant code path
+		// (orchestrator, storage layer, etc.) can mark the request via the
+		// package helpers without needing access to *gin.Context.
+		ctx, holder := WithOmitHolder(ctx)
+		ginCtx.Request = ginCtx.Request.WithContext(ctx)
+
 		route := ginCtx.FullPath()
 		if len(route) == 0 {
 			route = "nonconfigured"
@@ -90,7 +96,9 @@ func Middleware(meterProvider metric.MeterProvider, service string, options ...O
 			// Append attributes from ginCtx
 			resAttributes = append(resAttributes, attributesFromGinContext(ginCtx, MetricPrefix)...)
 
-			// Use processing start time if set, otherwise fall back to the middleware start time.
+			// Distinguish between regular and joined requests
+			resAttributes = append(resAttributes, holder.joinedAttribute())
+
 			effectiveStart := start
 			if processingStart, ok := getProcessingStartTime(ginCtx); ok {
 				effectiveStart = processingStart
