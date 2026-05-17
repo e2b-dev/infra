@@ -121,10 +121,9 @@ var (
 	OrchAcceptsCombinedHostFlag         = NewBoolFlag("orch-accepts-combined-host", false)
 
 	// UseMemFdFlag enables memfd-backed guest memory. When enabled, Firecracker
-	// allocates guest memory via memfd_create and passes the fd to the UFFD
-	// handler over the UFFD socket on snapshot restore. This allows the
-	// orchestrator to read dirty pages via pread without having to call
-	// process_vm_readv() to copy memory.
+	// allocates guest memory via memfd_create and passes the fd over the UFFD
+	// socket on snapshot restore. The orchestrator mmaps the memfd to copy
+	// dirty pages instead of calling process_vm_readv() across processes.
 	UseMemFdFlag = NewBoolFlag("use-memfd", false)
 
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.

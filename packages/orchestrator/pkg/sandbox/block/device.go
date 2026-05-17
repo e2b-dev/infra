@@ -47,8 +47,7 @@ type Device interface {
 	WriteZeroesAt(off, length int64) (int, error)
 }
 
-// Cacher is the interface a paused-memory Cache exposes to the diff/upload
-// layer
+// Cacher is the subset of *Cache the diff/upload layer needs.
 type Cacher interface {
 	io.Closer
 	ReadAt(b []byte, off int64) (int, error)
