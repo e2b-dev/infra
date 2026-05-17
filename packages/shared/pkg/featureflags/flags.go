@@ -183,10 +183,7 @@ var (
 	// Copy uses uffd syscalls, so we limit parallelism to avoid overwhelming the system.
 	MemoryPrefetchMaxCopyWorkers = NewIntFlag("memory-prefetch-max-copy-workers", 8)
 
-	// MemoryPrefetchMaxBytes caps the total memory bytes prefetched per sandbox resume.
-	// Mostly a guardrail against snapshots whose prefetch mappings grew larger than the
-	// per-resume GCS bandwidth budget can absorb (e.g. a build that walked 10 GiB of pages
-	// during optimize). 0 disables the cap.
+	// MemoryPrefetchMaxBytes caps total bytes per memory prefetch run. 0 disables.
 	MemoryPrefetchMaxBytes = NewIntFlag("memory-prefetch-max-bytes", 1024*1024*1024)
 
 	// TCPFirewallMaxConnectionsPerSandbox is the maximum number of concurrent TCP firewall
