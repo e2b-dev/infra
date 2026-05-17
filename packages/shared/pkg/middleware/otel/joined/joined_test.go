@@ -73,7 +73,7 @@ func TestMark_TagsServerSpanNotChildSpan(t *testing.T) {
 
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
-	tracer := tp.Tracer("test")
+	tracer := tp.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/joined")
 
 	// Open the server span before installing the holder (mirrors tracing
 	// middleware ordering: tracer.Start -> WithHolder).
