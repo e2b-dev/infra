@@ -4,7 +4,6 @@ package fc
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/RoaringBitmap/roaring/v2"
@@ -39,7 +38,7 @@ func (p *Process) exportMemoryFromMemfd(
 
 	cache, err := block.NewCacheFromMemfd(ctx, blockSize, cachePath, memfd, guestRanges)
 	if err != nil {
-		return nil, errors.Join(fmt.Errorf("failed to create MemfdCache: %w", err), memfd.Close())
+		return nil, fmt.Errorf("create MemfdCache: %w", err)
 	}
 
 	return cache, nil
