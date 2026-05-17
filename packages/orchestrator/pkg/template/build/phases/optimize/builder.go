@@ -232,8 +232,7 @@ func (pb *OptimizeBuilder) collectPrefetchMappings(
 	return memoryMapping, rootfsMapping, nil
 }
 
-// mappingFromRuns intersects PrefetchData across N runs and returns the
-// derived mapping. Returns nil when nothing common was seen.
+// mappingFromRuns intersects PrefetchData across N runs.
 func mappingFromRuns(runs []block.PrefetchData) *metadata.MemoryPrefetchMapping {
 	if len(runs) == 0 || runs[0].BlockSize == 0 {
 		return nil
@@ -254,8 +253,7 @@ func lenIndices(m *metadata.MemoryPrefetchMapping) int {
 	return len(m.Indices)
 }
 
-// runSandboxAndCollectPrefetch runs a sandbox and collects both memory and
-// rootfs prefetch data observed during the run.
+// runSandboxAndCollectPrefetch runs a sandbox and returns memory + rootfs prefetch data.
 func (pb *OptimizeBuilder) runSandboxAndCollectPrefetch(
 	ctx context.Context,
 	sandboxCreator *layer.ResumeSandbox,

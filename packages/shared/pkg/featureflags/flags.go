@@ -183,14 +183,10 @@ var (
 	// Copy uses uffd syscalls, so we limit parallelism to avoid overwhelming the system.
 	MemoryPrefetchMaxCopyWorkers = NewIntFlag("memory-prefetch-max-copy-workers", 8)
 
-	// MemoryPrefetchMaxBytes caps total bytes a single prefetch run will fetch.
-	// Shared between the memory and rootfs prefetchers (each enforces it on its
-	// own mapping). 0 disables. Defaults to 1 GiB.
+	// MemoryPrefetchMaxBytes caps total bytes per prefetch run (memory + rootfs). 0 disables.
 	MemoryPrefetchMaxBytes = NewIntFlag("memory-prefetch-max-bytes", 1024*1024*1024)
 
 	// RootfsPrefetchMaxWorkers bounds parallelism of the rootfs prefetcher.
-	// Reads populate the chunker cache; we keep the default lower so the
-	// rootfs warm-up doesn't compete with the memory prefetcher.
 	RootfsPrefetchMaxWorkers = NewIntFlag("rootfs-prefetch-max-workers", 8)
 
 	// TCPFirewallMaxConnectionsPerSandbox is the maximum number of concurrent TCP firewall

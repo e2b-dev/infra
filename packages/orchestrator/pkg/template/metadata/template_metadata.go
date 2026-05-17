@@ -101,9 +101,6 @@ func (p *MemoryPrefetchMapping) Count() int {
 
 type Prefetch struct {
 	Memory *MemoryPrefetchMapping `json:"memory"`
-	// Rootfs reuses MemoryPrefetchMapping's shape (offset / access type / block size)
-	// for the rootfs source. The prefetcher just warms the chunker cache — no UFFD
-	// copy phase — so the access-type field is informational only there.
 	Rootfs *MemoryPrefetchMapping `json:"rootfs,omitempty"`
 }
 
@@ -171,8 +168,7 @@ func (t Template) WithPrefetch(prefetch *Prefetch) Template {
 	}
 }
 
-// WithRootfsPrefetch returns a copy of the template with the rootfs prefetch
-// mapping replaced. Preserves the existing Memory mapping if any.
+// WithRootfsPrefetch replaces the rootfs prefetch mapping, preserving Memory.
 func (t Template) WithRootfsPrefetch(rootfs *MemoryPrefetchMapping) Template {
 	var pf Prefetch
 	if t.Prefetch != nil {
@@ -181,12 +177,10 @@ func (t Template) WithRootfsPrefetch(rootfs *MemoryPrefetchMapping) Template {
 	pf.Rootfs = rootfs
 	out := t
 	out.Prefetch = &pf
-
 	return out
 }
 
-// WithMemoryPrefetch returns a copy of the template with the memory prefetch
-// mapping replaced. Preserves the existing Rootfs mapping if any.
+// WithMemoryPrefetch replaces the memory prefetch mapping, preserving Rootfs.
 func (t Template) WithMemoryPrefetch(memory *MemoryPrefetchMapping) Template {
 	var pf Prefetch
 	if t.Prefetch != nil {
@@ -195,7 +189,6 @@ func (t Template) WithMemoryPrefetch(memory *MemoryPrefetchMapping) Template {
 	pf.Memory = memory
 	out := t
 	out.Prefetch = &pf
-
 	return out
 }
 

@@ -188,10 +188,7 @@ type Resources struct {
 	rootfs rootfs.Provider
 	memory uffd.MemoryBackend
 
-	// rootfsTracker observes reads against the rootfs source so that build
-	// optimize / Checkpoint can collect a workload-derived rootfs prefetch
-	// mapping (parallel to the UFFD-side memory prefetch tracker). Always
-	// allocated; ignored by code paths that don't query it.
+	// rootfsTracker collects reads against the rootfs source for prefetch capture.
 	rootfsTracker *block.PrefetchTracker
 }
 
@@ -666,9 +663,7 @@ func (f *Factory) ResumeSandbox(
 			}()
 		}
 
-		// Background rootfs prefetcher — fetches blocks the build/optimize phase
-		// observed the guest reading, so the chunker cache is warm by the time
-		// the guest demands them via NBD. Fetch-only; no UFFD copy phase.
+		// Background rootfs prefetcher; fetches only (no UFFD copy).
 		if meta.Prefetch != nil && meta.Prefetch.Rootfs != nil {
 			rootfsDev, err := t.Rootfs()
 			if err == nil {
@@ -681,10 +676,6 @@ func (f *Factory) ResumeSandbox(
 	// Slot initialization
 	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network, f.Sandboxes.NetworkReleased)
 
-	// rootfsTracker observes reads against the rootfs source so a subsequent
-	// Checkpoint can collect a workload-derived rootfs prefetch mapping. We
-	// always create the tracker — it's cheap — but PrefetchData is only
-	// queried when needed.
 	var rootfsTracker *block.PrefetchTracker
 
 	// Rootfs initialization
@@ -1213,14 +1204,11 @@ func (s *Sandbox) FlushAndReadBalloonMetrics(ctx context.Context) (fc.BalloonMet
 	return s.process.FlushAndReadBalloonMetrics(ctx)
 }
 
-// RootfsPrefetchData returns the ordered rootfs read access data for prefetch
-// mapping. Empty if the rootfs source wasn't wrapped in a tracking shim
-// (e.g. paths that don't run the optimize phase).
+// RootfsPrefetchData returns the rootfs read access data collected during this run.
 func (s *Sandbox) RootfsPrefetchData() block.PrefetchData {
 	if s.Resources == nil || s.Resources.rootfsTracker == nil {
 		return block.PrefetchData{}
 	}
-
 	return s.Resources.rootfsTracker.PrefetchData()
 }
 
