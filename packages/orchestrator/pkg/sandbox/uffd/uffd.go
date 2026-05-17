@@ -151,11 +151,6 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 		return fmt.Errorf("failed parsing memory mapping data: %w", err)
 	}
 
-	size := uint64(0)
-	for _, r := range regions {
-		size += uint64(r.Size)
-	}
-
 	controlMsgs, err := syscall.ParseSocketControlMessage(fdBuf[:numBytesFd])
 	if err != nil {
 		return fmt.Errorf("failed parsing control messages: %w", err)
@@ -204,9 +199,11 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 		}
 	}()
 
-	var memfd *block.Memfd
 	if len(fds) > 1 {
-		memfd = block.NewFromFd(fds[1], int(size))
+		memfd, err := block.NewFromFd(fds[1])
+		if err != nil {
+			return fmt.Errorf("failed to wrap memfd: %w", err)
+		}
 		u.memfd.Store(memfd)
 	}
 

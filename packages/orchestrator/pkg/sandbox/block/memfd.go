@@ -6,32 +6,38 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
-// Memfd wraps a memfd received from Firecracker.
+// Memfd wraps a memfd received from Firecracker. NewFromFd takes ownership of
+// the fd and mmaps it; Close releases both.
 type Memfd struct {
 	fd   int
-	size int
 	mmap []byte
 }
 
-func NewFromFd(fd, size int) *Memfd {
-	return &Memfd{fd: fd, size: size}
+func NewFromFd(fd int) (*Memfd, error) {
+	var st unix.Stat_t
+	if err := unix.Fstat(fd, &st); err != nil {
+		_ = unix.Close(fd)
+
+		return nil, fmt.Errorf("fstat memfd: %w", err)
+	}
+	b, err := unix.Mmap(fd, 0, int(st.Size), unix.PROT_READ, unix.MAP_SHARED)
+	if err != nil {
+		_ = unix.Close(fd)
+
+		return nil, fmt.Errorf("mmap memfd: %w", err)
+	}
+
+	return &Memfd{fd: fd, mmap: b}, nil
 }
 
 // Slice returns a zero-copy view of [offset, offset+size). Valid until Close.
-// The underlying mmap is created lazily on first call.
 func (m *Memfd) Slice(offset, size int64) ([]byte, error) {
-	if m.mmap == nil {
-		b, err := syscall.Mmap(m.fd, 0, m.size, syscall.PROT_READ, syscall.MAP_SHARED)
-		if err != nil {
-			return nil, fmt.Errorf("mmap memfd: %w", err)
-		}
-		m.mmap = b
-	}
-	if offset < 0 || offset+size > int64(m.size) {
-		return nil, fmt.Errorf("range [%d, %d) out of bounds (size %d)", offset, offset+size, m.size)
+	if offset < 0 || offset+size > int64(len(m.mmap)) {
+		return nil, fmt.Errorf("range [%d, %d) out of bounds (size %d)", offset, offset+size, len(m.mmap))
 	}
 
 	return m.mmap[offset : offset+size], nil
@@ -40,13 +46,13 @@ func (m *Memfd) Slice(offset, size int64) ([]byte, error) {
 func (m *Memfd) Close() error {
 	var err error
 	if m.mmap != nil {
-		if e := syscall.Munmap(m.mmap); e != nil {
+		if e := unix.Munmap(m.mmap); e != nil {
 			err = fmt.Errorf("munmap memfd: %w", e)
 		}
 		m.mmap = nil
 	}
 	if m.fd >= 0 {
-		if e := syscall.Close(m.fd); e != nil {
+		if e := unix.Close(m.fd); e != nil {
 			err = errors.Join(err, fmt.Errorf("close memfd: %w", e))
 		}
 		m.fd = -1

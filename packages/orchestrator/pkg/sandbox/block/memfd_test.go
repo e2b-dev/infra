@@ -5,7 +5,6 @@ package block
 import (
 	"context"
 	"crypto/rand"
-	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -14,7 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-func newTestMemfd(t *testing.T, size int64) (fd int, data []byte) {
+func newTestMemfd(t *testing.T, size int64) (memfd *Memfd, data []byte) {
 	t.Helper()
 
 	fd, err := unix.MemfdCreate("test", 0)
@@ -25,19 +24,20 @@ func newTestMemfd(t *testing.T, size int64) (fd int, data []byte) {
 	_, err = rand.Read(data)
 	require.NoError(t, err)
 
-	_, err = syscall.Pwrite(fd, data, 0)
+	_, err = unix.Pwrite(fd, data, 0)
 	require.NoError(t, err)
 
-	return fd, data
+	memfd, err = NewFromFd(fd)
+	require.NoError(t, err)
+
+	return memfd, data
 }
 
 func TestMemfd_SliceOutOfBounds(t *testing.T) {
 	t.Parallel()
 
 	const size = 4 * header.PageSize
-	fd, _ := newTestMemfd(t, size)
-
-	m := NewFromFd(fd, size)
+	m, _ := newTestMemfd(t, size)
 	t.Cleanup(func() { _ = m.Close() })
 
 	_, err := m.Slice(size-header.PageSize+1, header.PageSize)
@@ -50,8 +50,8 @@ func TestMemfdCache_FullRange(t *testing.T) {
 	pageSize := int64(header.PageSize)
 	size := pageSize * 30
 
-	fd, expected := newTestMemfd(t, size)
-	cache, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/cache", NewFromFd(fd, int(size)), []Range{{Start: 0, Size: size}})
+	memfd, expected := newTestMemfd(t, size)
+	cache, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/cache", memfd, []Range{{Start: 0, Size: size}})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -68,14 +68,14 @@ func TestMemfdCache_MultipleRanges(t *testing.T) {
 	pageSize := int64(header.PageSize)
 	size := pageSize * 6
 
-	fd, expected := newTestMemfd(t, size)
+	memfd, expected := newTestMemfd(t, size)
 	ranges := []Range{
 		{Start: 0, Size: pageSize},
 		{Start: pageSize * 2, Size: pageSize},
 		{Start: pageSize * 5, Size: pageSize},
 	}
 
-	cache, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/cache", NewFromFd(fd, int(size)), ranges)
+	cache, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/cache", memfd, ranges)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -101,8 +101,8 @@ func TestMemfdCache_NonZeroRangeStart(t *testing.T) {
 	pageSize := int64(header.PageSize)
 	size := pageSize * 8
 
-	fd, expected := newTestMemfd(t, size)
-	cache, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/cache", NewFromFd(fd, int(size)), []Range{{Start: pageSize * 3, Size: pageSize * 2}})
+	memfd, expected := newTestMemfd(t, size)
+	cache, err := NewCacheFromMemfd(t.Context(), pageSize, t.TempDir()+"/cache", memfd, []Range{{Start: pageSize * 3, Size: pageSize * 2}})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -119,10 +119,10 @@ func TestMemfdCache_ContextCancellation(t *testing.T) {
 	pageSize := int64(header.PageSize)
 	size := pageSize * 16
 
-	fd, _ := newTestMemfd(t, size)
+	memfd, _ := newTestMemfd(t, size)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, err := NewCacheFromMemfd(ctx, pageSize, t.TempDir()+"/cache", NewFromFd(fd, int(size)), []Range{{Start: 0, Size: size}})
+	_, err := NewCacheFromMemfd(ctx, pageSize, t.TempDir()+"/cache", memfd, []Range{{Start: 0, Size: size}})
 	require.ErrorIs(t, err, context.Canceled)
 }
