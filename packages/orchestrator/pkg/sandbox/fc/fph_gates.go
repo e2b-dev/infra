@@ -15,3 +15,15 @@ func FCSupportsFreePageHinting(fcVersion string) bool {
 
 	return info.HasFreePageHinting()
 }
+
+// FCSupportsMemfd reports whether the FC build accepts the use_memfd field
+// on snapshot load. Combined with UseMemFdFlag in sandbox.go so an old FC
+// won't reject the request even if the flag is on.
+func FCSupportsMemfd(fcVersion string) bool {
+	info, err := fcversion.New(fcVersion)
+	if err != nil {
+		return false
+	}
+
+	return info.HasMemfd()
+}
