@@ -19,7 +19,15 @@ func PinMMDSRoute(ctx context.Context) {
 	rule := []string{"-d", "169.254.169.254", "-p", "tcp", "--dport", "80", "-j", "RETURN"}
 	for _, chain := range []string{"PREROUTING", "OUTPUT"} {
 		// -D fails when the rule is absent; expected on first run. Swallow.
-		_ = exec.CommandContext(ctx, "iptables", append([]string{"-t", "nat", "-D", chain}, rule...)...).Run()
-		_ = exec.CommandContext(ctx, "iptables", append([]string{"-t", "nat", "-I", chain, "1"}, rule...)...).Run()
+		run(ctx, append([]string{"-D", chain}, rule...)...)
+		run(ctx, append([]string{"-I", chain, "1"}, rule...)...)
 	}
+}
+
+// run executes iptables in the nat table with -w to wait for the xtables
+// lock (a user iptables process may race us). Errors are intentionally
+// swallowed; this is best-effort self-heal.
+func run(ctx context.Context, args ...string) {
+	full := append([]string{"-w", "5", "-t", "nat"}, args...)
+	_ = exec.CommandContext(ctx, "iptables", full...).Run()
 }
