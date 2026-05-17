@@ -149,9 +149,9 @@ func (c *CACertInstaller) install(ctx context.Context, certPEM, bundlePath, extr
 	return nil
 }
 
-// lockMutexCtx acquires mu but bails out if ctx is cancelled first. Lets a
-// caller bound how long /init holds initLock waiting on a slow background
-// goroutine still holding mu (typically a previous install's NBD write).
+// lockMutexCtx acquires mu or returns ctx.Err() if ctx is cancelled first.
+// On cancellation, releases the lock when the background goroutine eventually
+// acquires it so ownership is never leaked.
 func lockMutexCtx(ctx context.Context, mu *sync.Mutex) error {
 	acquired := make(chan struct{})
 	go func() {
@@ -162,13 +162,7 @@ func lockMutexCtx(ctx context.Context, mu *sync.Mutex) error {
 	case <-acquired:
 		return nil
 	case <-ctx.Done():
-		// The lock will be acquired by the goroutine above eventually; release
-		// it as soon as it gets the lock so we don't leak ownership.
-		go func() {
-			<-acquired
-			mu.Unlock()
-		}()
-
+		go func() { <-acquired; mu.Unlock() }()
 		return ctx.Err()
 	}
 }
