@@ -128,12 +128,20 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		// Safe because Destroy() is nil-safe and TakeFrom clears the source.
 		defer initRequest.AccessToken.Destroy()
 
+		lockWaitStart := time.Now()
 		a.initLock.Lock()
+		lockWait := time.Since(lockWaitStart)
 		defer a.initLock.Unlock()
 
 		// Update data only if the request is newer or if there's no timestamp at all
 		if initRequest.Timestamp == nil || a.lastSetTime.SetToGreater(initRequest.Timestamp.UnixNano()) {
+			setDataStart := time.Now()
 			err = a.SetData(ctx, logger, initRequest)
+			setDataDur := time.Since(setDataStart)
+			logger.Info().
+				Dur("init_lock_wait", lockWait).
+				Dur("set_data", setDataDur).
+				Msg("/init handled")
 			if err != nil {
 				switch {
 				case errors.Is(err, ErrAccessTokenMismatch), errors.Is(err, ErrAccessTokenResetNotAuthorized):
@@ -146,6 +154,8 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 
 				return
 			}
+		} else {
+			logger.Debug().Dur("init_lock_wait", lockWait).Msg("/init skipped (older timestamp)")
 		}
 	}
 
@@ -214,14 +224,19 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	}
 
 	if data.CaBundle != nil && *data.CaBundle != "" {
+		caStart := time.Now()
 		err := a.caCertInstaller.Install(context.WithoutCancel(ctx), *data.CaBundle)
+		logger.Debug().Dur("ca_install", time.Since(caStart)).Msg("CA bundle install done")
 		if err != nil {
 			return fmt.Errorf("failed to install CA bundle: %w", err)
 		}
 	}
 
 	if data.VolumeMounts != nil {
-		if err := a.setupNFS(ctx, logger, data.LifecycleID, *data.VolumeMounts); err != nil {
+		nfsStart := time.Now()
+		err := a.setupNFS(ctx, logger, data.LifecycleID, *data.VolumeMounts)
+		logger.Debug().Dur("nfs_setup", time.Since(nfsStart)).Msg("setupNFS done")
+		if err != nil {
 			return fmt.Errorf("failed to setup NFS volumes: %w", err)
 		}
 	}
