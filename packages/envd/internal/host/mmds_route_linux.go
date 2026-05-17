@@ -7,26 +7,19 @@ import (
 	"os/exec"
 )
 
-// PinMMDSRoute installs a private nat chain (E2B_MMDS) that returns early
-// for MMDS traffic (169.254.169.254:80) and pins the jump at position 1 in
-// PREROUTING and OUTPUT, removing any prior copies first. Idempotent.
+// PinMMDSRoute pins a RETURN rule for MMDS traffic (169.254.169.254:80) at
+// position 1 of nat PREROUTING and OUTPUT. Idempotent: each run deletes any
+// existing copy of the rule first, then re-inserts at position 1, so user
+// rules added above ours get pushed down.
 //
 // Intended for the self-heal path: only called when a real MMDS lookup
 // fails, on the assumption that user iptables in the same netns clobbered
-// our route. Re-running puts our jump back at the front of both chains.
+// our route.
 func PinMMDSRoute(ctx context.Context) {
-	commands := [][]string{
-		{"-N", "E2B_MMDS"},
-		{"-F", "E2B_MMDS"},
-		{"-A", "E2B_MMDS", "-d", "169.254.169.254", "-p", "tcp", "--dport", "80", "-j", "RETURN"},
-		{"-D", "PREROUTING", "-j", "E2B_MMDS"},
-		{"-I", "PREROUTING", "1", "-j", "E2B_MMDS"},
-		{"-D", "OUTPUT", "-j", "E2B_MMDS"},
-		{"-I", "OUTPUT", "1", "-j", "E2B_MMDS"},
-	}
-	for _, args := range commands {
-		// -N fails when chain exists; -D fails when jump is absent. Both
-		// are expected on the first / clean-state run; swallow errors.
-		_ = exec.CommandContext(ctx, "iptables", append([]string{"-t", "nat"}, args...)...).Run()
+	rule := []string{"-d", "169.254.169.254", "-p", "tcp", "--dport", "80", "-j", "RETURN"}
+	for _, chain := range []string{"PREROUTING", "OUTPUT"} {
+		// -D fails when the rule is absent; expected on first run. Swallow.
+		_ = exec.CommandContext(ctx, "iptables", append([]string{"-t", "nat", "-D", chain}, rule...)...).Run()
+		_ = exec.CommandContext(ctx, "iptables", append([]string{"-t", "nat", "-I", chain, "1"}, rule...)...).Run()
 	}
 }
