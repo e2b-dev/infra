@@ -163,6 +163,7 @@ func lockMutexCtx(ctx context.Context, mu *sync.Mutex) error {
 		return nil
 	case <-ctx.Done():
 		go func() { <-acquired; mu.Unlock() }()
+
 		return ctx.Err()
 	}
 }
