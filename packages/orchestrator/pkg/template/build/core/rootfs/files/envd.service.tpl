@@ -18,7 +18,12 @@ ExecStartPre=/bin/sh -c 'mountpoint -q /etc/ssl/certs || (mkdir -p /run/e2b/cert
 ExecStart=/bin/bash -l -c "/usr/bin/envd"
 Nice=-20
 OOMPolicy=continue
-OOMScoreAdjust=-1000
+# -999 (not -1000): envd is still extremely low priority for the OOM killer but
+# not fully immune. If envd ever leaks past memory.max for its cgroup, the
+# kernel can recover by killing it; combined with Restart=always +
+# StartLimitIntervalSec=0 below this self-heals into a fresh envd instead of
+# requiring a manual `pkill envd` recipe.
+OOMScoreAdjust=-999
 Environment="GOMEMLIMIT={{ .MemoryLimit }}MiB"
 
 Delegate=yes
