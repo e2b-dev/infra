@@ -47,8 +47,9 @@ type Device interface {
 	WriteZeroesAt(off, length int64) (int, error)
 }
 
-// Cacher is the subset of *Cache the diff/upload layer needs.
-type Cacher interface {
+// DiffSource is the subset of *Cache the diff/upload layer reads from.
+// Both *Cache and *MemfdCache satisfy it.
+type DiffSource interface {
 	io.Closer
 	ReadAt(b []byte, off int64) (int, error)
 	Slice(off, length int64) ([]byte, error)
