@@ -49,7 +49,7 @@ func (p *Prefetcher) Start(ctx context.Context) {
 	indices := p.mapping.Indices
 	blockSize := p.mapping.BlockSize
 
-	if maxBytes := int64(p.featureFlags.IntFlag(ctx, featureflags.MemoryPrefetchMaxBytes)); maxBytes > 0 {
+	if maxBytes := int64(p.featureFlags.IntFlag(ctx, featureflags.RootfsPrefetchMaxBytes)); maxBytes > 0 {
 		if maxBlocks := maxBytes / blockSize; maxBlocks > 0 && int64(len(indices)) > maxBlocks {
 			indices = indices[:maxBlocks]
 		}

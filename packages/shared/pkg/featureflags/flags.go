@@ -183,8 +183,8 @@ var (
 	// Copy uses uffd syscalls, so we limit parallelism to avoid overwhelming the system.
 	MemoryPrefetchMaxCopyWorkers = NewIntFlag("memory-prefetch-max-copy-workers", 8)
 
-	// MemoryPrefetchMaxBytes caps total bytes per prefetch run (memory + rootfs). 0 disables.
-	MemoryPrefetchMaxBytes = NewIntFlag("memory-prefetch-max-bytes", 1024*1024*1024)
+	// RootfsPrefetchMaxBytes caps total bytes fetched per rootfs prefetch run. 0 disables.
+	RootfsPrefetchMaxBytes = NewIntFlag("rootfs-prefetch-max-bytes", 1024*1024*1024)
 
 	// RootfsPrefetchMaxWorkers bounds parallelism of the rootfs prefetcher.
 	RootfsPrefetchMaxWorkers = NewIntFlag("rootfs-prefetch-max-workers", 8)
