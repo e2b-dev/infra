@@ -19,8 +19,6 @@ const (
 	maxLogLineBytes  = 192 << 10
 	maxBufferedBytes = 8 << 20
 
-	// logFloor caps stderr noise so a fast-failing collector or a stream
-	// of oversized lines can't flood journald.
 	logFloor = time.Minute
 )
 
