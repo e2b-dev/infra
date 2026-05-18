@@ -99,14 +99,18 @@ func TestPublisher_DropOnClosed(t *testing.T) {
 	go pub.run(ctx)
 	pub.close()
 
+	const n = 100
 	before := pub.dropped.Load()
-	for range 100 {
+	for range n {
 		pub.Publish(t.Context(), "after-close")
 	}
-	// At least one of these must have observed the closed channel; the
-	// rest may have raced into the queue before close took effect, but
-	// none must have panicked or blocked.
-	require.GreaterOrEqual(t, pub.dropped.Load(), before)
+	// close() runs closeOnce.Do(close(p.closed)) synchronously, so by the
+	// time the loop above starts every Publish call sees p.closed closed
+	// in its fast-reject branch and must increment the drop counter.
+	// Asserting an exact `before+n` lower bound is what makes this a real
+	// regression guard: a future change that silently no-op'd the
+	// post-close branch would no longer satisfy it.
+	require.GreaterOrEqual(t, pub.dropped.Load(), before+n)
 }
 
 // TestPublisher_RunExitsOnContextCancel asserts the drainer goroutine

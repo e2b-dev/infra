@@ -38,6 +38,20 @@ const (
 	publishWorkerCount = 16
 )
 
+// Lifecycle states for the publisher. The transitions are linear:
+// stateInit → stateRunning (when run() enters) or
+// stateInit → stateClosed (when close() wins the race before run() starts).
+// A CAS on this state is what synchronises run() and close(): it removes
+// the happens-before gap between `go publisher.run(ctx)` returning to the
+// caller and run() actually executing on the scheduler, so close() can
+// never observe "not yet started" and skip the join while run() is in
+// flight just behind it.
+const (
+	stateInit uint32 = iota
+	stateRunning
+	stateClosed
+)
+
 // Backpressure policy: drop and count. Subscribers tolerate dropped
 // notifications by design (see Obtain and waitForTransition fallback
 // timers), so a bounded queue is the correct primitive — an unbounded
@@ -51,7 +65,7 @@ type publisher struct {
 	done   chan struct{} // closed when the drainer has fully exited
 
 	closeOnce sync.Once
-	started   atomic.Bool // set true on entry to run()
+	state     atomic.Uint32 // lifecycle: stateInit → stateRunning | stateClosed
 	dropped   atomic.Uint64
 }
 
@@ -107,8 +121,15 @@ func (p *publisher) drop(ctx context.Context, routingKey string) {
 // run starts the worker pool and blocks until the pool exits.
 // On exit it performs a bounded best-effort drain of pending items so a
 // graceful shutdown does not lose every in-flight notification.
+//
+// If close() has already won the lifecycle CAS, run() returns immediately
+// without touching done — close() owns done in that branch.
 func (p *publisher) run(ctx context.Context) {
-	p.started.Store(true)
+	if !p.state.CompareAndSwap(stateInit, stateRunning) {
+		// close() raced ahead and transitioned us to stateClosed; it has
+		// already closed p.done so callers blocked in close() unblock.
+		return
+	}
 	defer close(p.done)
 
 	pubCtx, cancel := context.WithCancel(ctx)
@@ -183,10 +204,29 @@ func (p *publisher) publishOne(ctx context.Context, routingKey string) {
 }
 
 // close signals the drainer to stop and blocks until it has exited (or
-// the shutdown budget elapses). Safe to call multiple times.
+// the shutdown budget elapses). Safe to call multiple times, and safe to
+// call before run() has been scheduled — including the narrow window
+// between `go publisher.run(ctx)` returning and run()'s first instruction.
+//
+// The CAS inside closeOnce is the load-bearing synchronisation: if it
+// succeeds we've atomically claimed the lifecycle before run() could,
+// so run() (if/when it is scheduled) will see its own CAS fail and
+// return immediately without touching done. In that branch close()
+// performs the bounded best-effort drain on the caller's goroutine and
+// then closes done so concurrent close() peers unblock too. If the CAS
+// fails, run() is already in flight (state == stateRunning) and we rely
+// on its deferred close(done) to release us.
 func (p *publisher) close() {
-	p.closeOnce.Do(func() { close(p.closed) })
-	if p.started.Load() {
-		<-p.done
-	}
+	p.closeOnce.Do(func() {
+		close(p.closed)
+		if p.state.CompareAndSwap(stateInit, stateClosed) {
+			// run() either has not been scheduled yet or will never be
+			// invoked. Drain whatever is queued on this goroutine so
+			// notifications enqueued before the race aren't lost, then
+			// release peers blocked in <-p.done below.
+			p.drainOnShutdown(context.Background())
+			close(p.done)
+		}
+	})
+	<-p.done
 }
