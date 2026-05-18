@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/joined"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -192,6 +193,10 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 		// If the transition is to the same state just wait
 		switch {
 		case currentState == newState:
+			// The caller inherits the in-flight transition's result
+			// without doing the work itself: this is a joiner.
+			joined.Mark(ctx)
+
 			return true, func(context.Context, error) {}, nil
 		case sandbox.AllowedTransitions[currentState][newState]:
 			return startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: opts.Action})
