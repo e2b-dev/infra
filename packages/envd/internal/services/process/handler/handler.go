@@ -132,7 +132,6 @@ func New(
 		},
 	}
 	applyCgroupFD(cmd.SysProcAttr, cgroupFD, ok)
-	applyAmbientCapSysNice(cmd.SysProcAttr) // chrt(1) needs CAP_SYS_NICE to drop SCHED_FIFO
 
 	resolvedPath, err := permissions.ExpandAndResolve(req.GetProcess().GetCwd(), user, defaults.Workdir)
 	if err != nil {

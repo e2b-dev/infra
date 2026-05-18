@@ -19,6 +19,7 @@ ExecStart=/bin/bash -l -c "/usr/bin/envd"
 Nice=-20
 CPUSchedulingPolicy=fifo
 CPUSchedulingPriority=1
+AmbientCapabilities=CAP_SYS_NICE
 OOMPolicy=continue
 OOMScoreAdjust=-1000
 Environment="GOMEMLIMIT={{ .MemoryLimit }}MiB"
