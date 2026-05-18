@@ -155,11 +155,9 @@ func New(
 
 	// Add the environment variables from the global environment
 	if defaults.EnvVars != nil {
-		defaults.EnvVars.Range(func(key string, value string) bool {
+		for key, value := range defaults.EnvVars.All() {
 			formattedVars = append(formattedVars, key+"="+value)
-
-			return true
-		})
+		}
 	}
 
 	// Only the last values of the env vars are used - this allows for overwriting defaults

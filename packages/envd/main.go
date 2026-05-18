@@ -153,7 +153,7 @@ func main() {
 
 	defaults := &execcontext.Defaults{
 		User:    defaultUser,
-		EnvVars: utils.NewMap[string, string](),
+		EnvVars: utils.NewEnvVars(),
 	}
 	isFCBoolStr := strconv.FormatBool(!isNotFC)
 	defaults.EnvVars.Store("E2B_SANDBOX", isFCBoolStr)

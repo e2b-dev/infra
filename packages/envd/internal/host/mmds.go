@@ -129,7 +129,7 @@ func GetAccessTokenHashFromMMDS(ctx context.Context) (string, error) {
 	return opts.AccessTokenHash, nil
 }
 
-func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *utils.Map[string, string]) {
+func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *utils.EnvVars) {
 	httpClient := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
 	defer httpClient.CloseIdleConnections()
 

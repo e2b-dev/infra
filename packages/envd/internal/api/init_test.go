@@ -140,7 +140,7 @@ func (m *mockMMDSClient) GetAccessTokenHash(_ context.Context) (string, error) {
 func newTestAPI(accessToken *SecureToken, mmdsClient MMDSClient) *API {
 	logger := zerolog.Nop()
 	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
+		EnvVars: utils.NewEnvVars(),
 	}
 	api := New(&logger, defaults, nil, false)
 	if accessToken != nil {
