@@ -355,99 +355,36 @@ func TestSetData(t *testing.T) {
 			name           string
 			existingToken  *SecureToken
 			requestToken   *SecureToken
-			mmdsHash       string
-			mmdsErr        error
-			wantErr        error
 			wantFinalToken *SecureToken
 		}{
 			{
 				name:           "first-time setup: sets initial token",
 				existingToken:  nil,
 				requestToken:   secureTokenPtr("initial-token"),
-				mmdsHash:       "",
-				mmdsErr:        assert.AnError,
-				wantErr:        nil,
 				wantFinalToken: secureTokenPtr("initial-token"),
 			},
 			{
 				name:           "first-time setup: nil request token leaves token unset",
 				existingToken:  nil,
 				requestToken:   nil,
-				mmdsHash:       "",
-				mmdsErr:        assert.AnError,
-				wantErr:        nil,
 				wantFinalToken: nil,
 			},
 			{
 				name:           "re-init with same token: token unchanged",
 				existingToken:  secureTokenPtr("same-token"),
 				requestToken:   secureTokenPtr("same-token"),
-				mmdsHash:       "",
-				mmdsErr:        assert.AnError,
-				wantErr:        nil,
 				wantFinalToken: secureTokenPtr("same-token"),
 			},
 			{
-				name:           "resume with MMDS: updates token when hash matches",
+				name:           "updates token when request has new token",
 				existingToken:  secureTokenPtr("old-token"),
 				requestToken:   secureTokenPtr("new-token"),
-				mmdsHash:       keys.HashAccessToken("new-token"),
-				mmdsErr:        nil,
-				wantErr:        nil,
 				wantFinalToken: secureTokenPtr("new-token"),
 			},
 			{
-				name:           "resume with MMDS: fails when hash doesn't match",
-				existingToken:  secureTokenPtr("old-token"),
-				requestToken:   secureTokenPtr("new-token"),
-				mmdsHash:       keys.HashAccessToken("different-token"),
-				mmdsErr:        nil,
-				wantErr:        ErrAccessTokenMismatch,
-				wantFinalToken: secureTokenPtr("old-token"),
-			},
-			{
-				name:           "fails when existing token and request token mismatch without MMDS",
-				existingToken:  secureTokenPtr("existing-token"),
-				requestToken:   secureTokenPtr("wrong-token"),
-				mmdsHash:       "",
-				mmdsErr:        assert.AnError,
-				wantErr:        ErrAccessTokenMismatch,
-				wantFinalToken: secureTokenPtr("existing-token"),
-			},
-			{
-				name:           "conflict when existing token but nil request token",
+				name:           "clears token when request is nil and existing token is set",
 				existingToken:  secureTokenPtr("existing-token"),
 				requestToken:   nil,
-				mmdsHash:       "",
-				mmdsErr:        assert.AnError,
-				wantErr:        ErrAccessTokenResetNotAuthorized,
-				wantFinalToken: secureTokenPtr("existing-token"),
-			},
-			{
-				name:           "conflict when existing token but nil request with MMDS present",
-				existingToken:  secureTokenPtr("existing-token"),
-				requestToken:   nil,
-				mmdsHash:       keys.HashAccessToken("some-token"),
-				mmdsErr:        nil,
-				wantErr:        ErrAccessTokenResetNotAuthorized,
-				wantFinalToken: secureTokenPtr("existing-token"),
-			},
-			{
-				name:           "conflict when MMDS returns empty hash and request is nil (prevents unauthorized reset)",
-				existingToken:  secureTokenPtr("existing-token"),
-				requestToken:   nil,
-				mmdsHash:       "",
-				mmdsErr:        nil,
-				wantErr:        ErrAccessTokenResetNotAuthorized,
-				wantFinalToken: secureTokenPtr("existing-token"),
-			},
-			{
-				name:           "resets token when MMDS returns hash of empty string and request is nil (explicit reset)",
-				existingToken:  secureTokenPtr("existing-token"),
-				requestToken:   nil,
-				mmdsHash:       keys.HashAccessToken(""),
-				mmdsErr:        nil,
-				wantErr:        nil,
 				wantFinalToken: nil,
 			},
 		}
@@ -455,7 +392,7 @@ func TestSetData(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				mmdsClient := &mockMMDSClient{hash: tt.mmdsHash, err: tt.mmdsErr}
+				mmdsClient := &mockMMDSClient{}
 				api := newTestAPI(tt.existingToken, mmdsClient)
 
 				data := PostInitJSONBody{
@@ -463,12 +400,7 @@ func TestSetData(t *testing.T) {
 				}
 
 				err := api.SetData(ctx, logger, data)
-
-				if tt.wantErr != nil {
-					require.ErrorIs(t, err, tt.wantErr)
-				} else {
-					require.NoError(t, err)
-				}
+				require.NoError(t, err)
 
 				if tt.wantFinalToken == nil {
 					assert.False(t, api.accessToken.IsSet(), "expected token to not be set")

@@ -171,14 +171,6 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJSONBody) error {
-	// Validate access token before proceeding with any action
-	// The request must provide a token that is either:
-	// 1. Matches the existing access token (if set), OR
-	// 2. Matches the MMDS hash (for token change during resume)
-	if err := a.validateInitAccessToken(ctx, data.AccessToken); err != nil {
-		return err
-	}
-
 	if data.Timestamp != nil {
 		// Check if current time differs significantly from the received timestamp
 		if shouldSetSystemTime(time.Now(), *data.Timestamp) {
