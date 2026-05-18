@@ -129,8 +129,20 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		// Safe because Destroy() is nil-safe and TakeFrom clears the source.
 		defer initRequest.AccessToken.Destroy()
 
-		a.initLock.Lock()
-		defer a.initLock.Unlock()
+		if err := a.initLock.Acquire(ctx, 1); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+
+			return
+		}
+		defer a.initLock.Release(1)
+
+		// Validate auth before installing the unfreeze defer or running SetData,
+		// so stale/replayed but unauthorized requests can't thaw cgroups.
+		if err := a.validateInitAccessToken(ctx, initRequest.AccessToken); err != nil {
+			writeInitError(w, logger, err)
+
+			return
+		}
 
 		// Run on every /init regardless of the Timestamp guard, so stale/replayed
 		// requests still thaw cgroups after pre-pause freeze.
@@ -138,16 +150,8 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 
 		// Update data only if the request is newer or if there's no timestamp at all
 		if initRequest.Timestamp == nil || a.lastSetTime.SetToGreater(initRequest.Timestamp.UnixNano()) {
-			err = a.SetData(ctx, logger, initRequest)
-			if err != nil {
-				switch {
-				case errors.Is(err, ErrAccessTokenMismatch), errors.Is(err, ErrAccessTokenResetNotAuthorized):
-					w.WriteHeader(http.StatusUnauthorized)
-				default:
-					logger.Error().Msgf("Failed to set data: %v", err)
-					w.WriteHeader(http.StatusBadRequest)
-				}
-				w.Write([]byte(err.Error()))
+			if err := a.SetData(ctx, logger, initRequest); err != nil {
+				writeInitError(w, logger, err)
 
 				return
 			}
@@ -240,6 +244,17 @@ func (a *API) unfreezeUserCgroups(logger zerolog.Logger) {
 			logger.Warn().Err(err).Msgf("unfreeze %s cgroup", pt)
 		}
 	}
+}
+
+func writeInitError(w http.ResponseWriter, logger zerolog.Logger, err error) {
+	switch {
+	case errors.Is(err, ErrAccessTokenMismatch), errors.Is(err, ErrAccessTokenResetNotAuthorized):
+		w.WriteHeader(http.StatusUnauthorized)
+	default:
+		logger.Error().Msgf("Failed to set data: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+	}
+	w.Write([]byte(err.Error()))
 }
 
 var nfsOptions = strings.Join([]string{

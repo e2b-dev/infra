@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/rs/zerolog"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
@@ -38,7 +39,7 @@ type API struct {
 	mmdsClient    MMDSClient
 
 	lastSetTime *utils.AtomicMax
-	initLock    sync.Mutex
+	initLock    *semaphore.Weighted
 
 	caCertInstaller *host.CACertInstaller
 	cgroupManager   cgroups.Manager
@@ -57,6 +58,7 @@ func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.
 		accessToken:     &SecureToken{},
 		caCertInstaller: host.NewCACertInstaller(l),
 		cgroupManager:   cgroupManager,
+		initLock:        semaphore.NewWeighted(1),
 	}
 }
 

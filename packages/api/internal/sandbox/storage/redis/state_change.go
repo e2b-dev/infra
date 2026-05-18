@@ -14,6 +14,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/joined"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
@@ -317,7 +318,11 @@ func (s *Storage) handleExistingTransition(
 	transactionID string,
 ) (sandbox.Sandbox, bool, func(context.Context, error), error) {
 	if sbx.State == newState {
-		// Same target state - wait for completion and return alreadyDone=true
+		// Same target state - wait for completion and return alreadyDone=true.
+		// The caller inherits the in-flight transition's result without
+		// doing the work itself: this is a joiner.
+		joined.Mark(ctx)
+
 		logger.L().Debug(ctx, "State transition already in progress to the same state, waiting",
 			logger.WithSandboxID(sbx.SandboxID),
 			zap.String("state", string(newState)))

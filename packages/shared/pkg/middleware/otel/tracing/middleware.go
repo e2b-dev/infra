@@ -31,6 +31,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
+	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/joined"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -110,6 +111,9 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		ctx, span := tracer.Start(ctx, spanName, opts...)
 		defer span.End()
 
+		// Install the request-scoped joined holder
+		ctx = joined.WithHolder(ctx)
+
 		// pass the span through the request context
 		c.Request = c.Request.WithContext(ctx)
 
@@ -129,6 +133,9 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		span.SetAttributes(attrs...)
 		spanStatus, spanMessage := semconv.SpanStatusFromHTTPStatusCode(status)
 		span.SetStatus(spanStatus, spanMessage)
+
+		// Marks the joined requests for telemetry purposes.
+		span.SetAttributes(joined.Attribute(ctx))
 
 		if len(c.Errors) > 0 {
 			span.SetAttributes(attribute.String("gin.errors", strings.TrimSpace(c.Errors.String())))
