@@ -10,7 +10,7 @@ const MinEnvdVersionForSnapshot = "0.5.0"
 
 // MinEnvdVersionForCgroupFreeze is the first envd that unfreezes on /init.
 // Older versions would leave the sandbox frozen permanently after resume.
-const MinEnvdVersionForCgroupFreeze = "0.5.21"
+const MinEnvdVersionForCgroupFreeze = "0.5.25"
 
 func sanitizeVersion(version string) string {
 	if len(version) > 0 && version[0] != 'v' {
