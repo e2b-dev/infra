@@ -131,7 +131,6 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		select {
 		case a.initLock <- struct{}{}:
 		case <-ctx.Done():
-			logger.Warn().Err(ctx.Err()).Msg("Gave up waiting for initLock")
 			w.WriteHeader(http.StatusServiceUnavailable)
 
 			return
