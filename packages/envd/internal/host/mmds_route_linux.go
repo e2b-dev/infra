@@ -6,12 +6,13 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"sync/atomic"
+
+	"golang.org/x/sync/semaphore"
 )
 
-// pinMMDSInflight prevents concurrent /init retries from running iptables
-// in parallel against the same nat table.
-var pinMMDSInflight atomic.Bool
+// pinMMDSSem serializes self-heal calls so concurrent /init retries don't
+// run iptables in parallel against the same nat table.
+var pinMMDSSem = semaphore.NewWeighted(1)
 
 // PinMMDSRoute pins a RETURN rule for MMDS traffic (169.254.169.254:80) at
 // position 1 of nat PREROUTING and OUTPUT. Idempotent: each run deletes any
@@ -19,15 +20,15 @@ var pinMMDSInflight atomic.Bool
 // rules added above ours get pushed down.
 //
 // Intended for the self-heal path: only called when a real MMDS lookup
-// fails. Concurrent callers are coalesced — only one runs at a time, the
-// rest return nil immediately. Returns the first -I failure (if any);
-// -D failures are expected (rule absent on first run) and silently
-// swallowed.
+// fails. Concurrent callers are coalesced via a semaphore — only one runs
+// at a time, the rest return nil immediately. Returns the first -I failure
+// (if any); -D failures are expected (rule absent on first run) and
+// silently swallowed.
 func PinMMDSRoute(ctx context.Context) error {
-	if !pinMMDSInflight.CompareAndSwap(false, true) {
+	if !pinMMDSSem.TryAcquire(1) {
 		return nil
 	}
-	defer pinMMDSInflight.Store(false)
+	defer pinMMDSSem.Release(1)
 
 	rule := []string{"-d", "169.254.169.254", "-p", "tcp", "--dport", "80", "-j", "RETURN"}
 	for _, chain := range []string{"PREROUTING", "OUTPUT"} {
