@@ -128,8 +128,12 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		// Safe because Destroy() is nil-safe and TakeFrom clears the source.
 		defer initRequest.AccessToken.Destroy()
 
-		a.initLock.Lock()
-		defer a.initLock.Unlock()
+		if err := a.initLock.Acquire(ctx, 1); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+
+			return
+		}
+		defer a.initLock.Release(1)
 
 		// Update data only if the request is newer or if there's no timestamp at all
 		if initRequest.Timestamp == nil || a.lastSetTime.SetToGreater(initRequest.Timestamp.UnixNano()) {
