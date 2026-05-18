@@ -18,31 +18,16 @@ import (
 // Slack covers shell start + envd round-trip overhead.
 const reclaimOuterSlack = 500 * time.Millisecond
 
-// freezeCgroupCmd freezes all three managed cgroups (user, ptys, socat).
-// Errors are swallowed with || true so that the script continues even if
-// cgroup.freeze doesn't exist (old kernel / missing cgroup).
+// freezeCgroupCmd freezes user/ptys/socats. Names must match envd's cgroup
+// config; the shell runs in the system cgroup so it's not affected by the freeze.
 const freezeCgroupCmd = "for cg in user ptys socats; do " +
 	`echo 1 > /sys/fs/cgroup/"$cg"/cgroup.freeze 2>/dev/null || true; ` +
 	"done"
 
-// Order: freeze → fstrim → sync → drop_caches → compact_memory.
-//
-// Freeze is first: it stops user/pty/socat processes from generating new dirty
-// pages so that the subsequent reclaim steps operate on a quiet filesystem.
-// fstrim runs next so that the fs metadata it pulls into the page cache and the
-// superblock dirties (last-trim timestamps) get flushed by sync and evicted by
-// drop_caches in the same pass; compact_memory then consolidates the minimal
-// RSS so the snapshot has long contiguous zero runs that compress well.
-//
-// The frozen state persists across the Firecracker snapshot. On resume, envd
-// unfreezes all three cgroups at the end of /init SetData, eliminating I/O
-// contention during initialization.
-//
-// The shell runs in the "system" cgroup (envd's root cgroup) via the _system
-// tag, so it is not affected by the freeze.
-//
-// Each reclaim step is disabled at sub-ms cap. Returns ("", 0) when every step
-// (including freeze) is disabled.
+// Order: freeze → fstrim → sync → drop_caches → compact_memory. Freeze stops
+// new dirty pages so reclaim works on a quiet fs; the frozen state persists
+// into the snapshot and envd unfreezes at the end of /init on resume.
+// Returns ("", 0) when every step is disabled.
 func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration) {
 	cfg := featureflags.GetReclaimConfig(ctx, s.featureFlags,
 		featureflags.SandboxContext(s.Runtime.SandboxID),
@@ -55,9 +40,7 @@ func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration
 		sum   time.Duration
 	)
 
-	// Freeze all managed cgroups first to stop new dirty pages before reclaim.
-	// Only freeze if the envd version supports unfreezing at the end of /init,
-	// otherwise the cgroups would stay frozen permanently after resume.
+	// Gate on envd version: older envds wouldn't unfreeze on resume.
 	canFreeze, _ := utils.IsGTEVersion(s.Config.Envd.Version, utils.MinEnvdVersionForCgroupFreeze)
 	if cfg.FreezeUserCgroup && canFreeze {
 		parts = append(parts, freezeCgroupCmd)
@@ -89,9 +72,7 @@ func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration
 }
 
 // bestEffortReclaim runs the freeze + reclaim chain via envd before pause.
-//
-// The shell is spawned with the _system tag so it runs in envd's root cgroup,
-// unaffected by the cgroup freeze it performs.
+// The shell uses the _system tag so the freeze doesn't catch the shell itself.
 func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 	script, timeout := s.buildReclaimScript(ctx)
 	if script == "" {

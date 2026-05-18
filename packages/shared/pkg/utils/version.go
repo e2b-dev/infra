@@ -8,9 +8,8 @@ import (
 
 const MinEnvdVersionForSnapshot = "0.5.0"
 
-// MinEnvdVersionForCgroupFreeze is the minimum envd version that supports
-// unfreezing cgroups at the end of /init. Older versions would leave
-// frozen cgroups permanently stuck after resume.
+// MinEnvdVersionForCgroupFreeze is the first envd that unfreezes on /init.
+// Older versions would leave the sandbox frozen permanently after resume.
 const MinEnvdVersionForCgroupFreeze = "0.5.21"
 
 func sanitizeVersion(version string) string {

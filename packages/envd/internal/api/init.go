@@ -226,12 +226,10 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 		}
 	}
 
-	// Unfreeze all managed cgroups that may have been frozen before snapshot.
-	// Writing "0" to an already-unfrozen cgroup is a no-op, so this is safe
-	// on sandboxes that were not frozen before pause.
+	// Unfreeze cgroups that were frozen pre-snapshot; idempotent if not frozen.
 	for _, pt := range []cgroups.ProcessType{cgroups.ProcessTypeUser, cgroups.ProcessTypePTY, cgroups.ProcessTypeSocat} {
 		if err := a.cgroupManager.Unfreeze(pt); err != nil {
-			logger.Warn().Err(err).Msgf("Failed to unfreeze %s cgroup (non-fatal)", pt)
+			logger.Warn().Err(err).Msgf("unfreeze %s cgroup", pt)
 		}
 	}
 

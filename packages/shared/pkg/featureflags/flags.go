@@ -257,9 +257,8 @@ type ReclaimConfig struct {
 	CompactMemory time.Duration
 	Fstrim        time.Duration
 
-	// FreezeUserCgroup freezes user/pty/socat cgroups before reclaim. The
-	// frozen state persists in the snapshot; on resume envd unfreezes all
-	// cgroups at the end of /init, eliminating I/O contention.
+	// FreezeUserCgroup freezes user/pty/socat before reclaim; persists into
+	// the snapshot, envd unfreezes at the end of /init on resume.
 	FreezeUserCgroup bool
 }
 
