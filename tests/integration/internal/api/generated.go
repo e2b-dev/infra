@@ -993,7 +993,8 @@ type TeamMetric struct {
 // TeamUser defines model for TeamUser.
 type TeamUser struct {
 	// Email Email of the user
-	Email string `json:"email"`
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	Email *string `json:"email"`
 
 	// Id Identifier of the user
 	Id openapi_types.UUID `json:"id"`

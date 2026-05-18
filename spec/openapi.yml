@@ -192,6 +192,9 @@ components:
           description: Identifier of the user
         email:
           type: string
+          nullable: true
+          deprecated: true
+          default: null
           description: Email of the user
 
     TemplateUpdateRequest:

@@ -22,10 +22,8 @@ SELECT
     tak.api_key_mask_suffix,
     tak.created_by as created_by_id,
     tak.created_at,
-    tak.last_used,
-    u.email AS created_by_email
+    tak.last_used
 FROM "public"."team_api_keys" tak
-LEFT JOIN "public"."users" u ON tak.created_by = u.id
 WHERE tak.team_id = $1
 `
 
@@ -39,7 +37,6 @@ type GetTeamAPIKeysWithCreatorRow struct {
 	CreatedByID      *uuid.UUID
 	CreatedAt        time.Time
 	LastUsed         *time.Time
-	CreatedByEmail   *string
 }
 
 func (q *Queries) GetTeamAPIKeysWithCreator(ctx context.Context, teamID uuid.UUID) ([]GetTeamAPIKeysWithCreatorRow, error) {
@@ -61,7 +58,6 @@ func (q *Queries) GetTeamAPIKeysWithCreator(ctx context.Context, teamID uuid.UUI
 			&i.CreatedByID,
 			&i.CreatedAt,
 			&i.LastUsed,
-			&i.CreatedByEmail,
 		); err != nil {
 			return nil, err
 		}
