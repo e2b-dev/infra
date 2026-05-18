@@ -6,7 +6,12 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"sync/atomic"
 )
+
+// pinMMDSInflight prevents concurrent /init retries from running iptables
+// in parallel against the same nat table.
+var pinMMDSInflight atomic.Bool
 
 // PinMMDSRoute pins a RETURN rule for MMDS traffic (169.254.169.254:80) at
 // position 1 of nat PREROUTING and OUTPUT. Idempotent: each run deletes any
@@ -14,9 +19,16 @@ import (
 // rules added above ours get pushed down.
 //
 // Intended for the self-heal path: only called when a real MMDS lookup
-// fails. Returns the first -I failure (if any); -D failures are expected
-// (rule absent on first run) and silently swallowed.
+// fails. Concurrent callers are coalesced — only one runs at a time, the
+// rest return nil immediately. Returns the first -I failure (if any);
+// -D failures are expected (rule absent on first run) and silently
+// swallowed.
 func PinMMDSRoute(ctx context.Context) error {
+	if !pinMMDSInflight.CompareAndSwap(false, true) {
+		return nil
+	}
+	defer pinMMDSInflight.Store(false)
+
 	rule := []string{"-d", "169.254.169.254", "-p", "tcp", "--dport", "80", "-j", "RETURN"}
 	for _, chain := range []string{"PREROUTING", "OUTPUT"} {
 		// -D fails when the rule is absent (exit 1, expected on first run);
