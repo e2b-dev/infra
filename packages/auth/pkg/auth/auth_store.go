@@ -35,6 +35,10 @@ func (s *authStoreImpl) GetTeamByHashedAPIKey(ctx context.Context, hashedKey str
 		return nil, fmt.Errorf("failed to get team from API key: %w", err)
 	}
 
+	if err := CheckTeamBanned(result.Team); err != nil {
+		return nil, err
+	}
+
 	go func() {
 		// Run the update in a separate context to avoid an extra latency
 		ctx := context.WithoutCancel(ctx)
@@ -58,6 +62,10 @@ func (s *authStoreImpl) GetTeamByID(ctx context.Context, teamID uuid.UUID) (*typ
 		return nil, fmt.Errorf("failed to get team from team ID: %w", err)
 	}
 
+	if err := CheckTeamBanned(result.Team); err != nil {
+		return nil, err
+	}
+
 	team := types.NewTeam(&result.Team, &result.TeamLimit)
 
 	return team, nil
@@ -78,6 +86,10 @@ func (s *authStoreImpl) GetTeamByIDAndUserID(ctx context.Context, userID uuid.UU
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get team from teamID and userID key: %w", err)
+	}
+
+	if err := CheckTeamBanned(result.Team); err != nil {
+		return nil, err
 	}
 
 	team := types.NewTeam(&result.Team, &result.TeamLimit)

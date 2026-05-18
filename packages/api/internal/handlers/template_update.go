@@ -92,11 +92,12 @@ func (a *APIStore) updateTemplate(ctx context.Context, c *gin.Context, aliasOrTe
 		return nil, nil, apiErr
 	}
 
-	// Per-endpoint blocked-team enforcement for the late-team
-	// (AccessTokenAuth) path. For ApiKeyAuth requests the middleware has
-	// already checked; the second call is a cheap no-op when not blocked.
-	if accessErr := auth.AuthorizeTeamCtx(c, team); accessErr != nil {
-		return nil, nil, intentErrorToAPIError(accessErr)
+	if err := auth.CheckTeamBlocked(team); err != nil {
+		return nil, nil, &api.APIError{
+			Code:      http.StatusForbidden,
+			ClientMsg: err.Error(),
+			Err:       err,
+		}
 	}
 
 	telemetry.SetAttributes(ctx,

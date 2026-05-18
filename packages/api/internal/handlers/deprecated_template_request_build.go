@@ -44,12 +44,8 @@ func (a *APIStore) PostTemplates(c *gin.Context) {
 		return
 	}
 
-	// Per-endpoint blocked-team enforcement for the late-team path
-	// (AccessTokenAuth resolves the team from body.TeamID, not the auth
-	// middleware). IntentCreate is denied for blocked teams.
-	if accessErr := auth.AuthorizeTeamCtx(c, team); accessErr != nil {
-		apiErr := intentErrorToAPIError(accessErr)
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+	if err := auth.CheckTeamBlocked(team); err != nil {
+		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
 
 		return
 	}
@@ -117,11 +113,8 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 		return
 	}
 
-	// Per-endpoint blocked-team enforcement for the late-team
-	// (AccessTokenAuth) path. IntentMutate is denied for blocked teams.
-	if accessErr := auth.AuthorizeTeamCtx(c, team); accessErr != nil {
-		apiErr := intentErrorToAPIError(accessErr)
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+	if err := auth.CheckTeamBlocked(team); err != nil {
+		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
 
 		return
 	}

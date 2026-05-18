@@ -46,16 +46,17 @@ UPDATE teams SET is_banned = $1 WHERE id = $2
 }
 
 // TestBlockedTeam verifies the per-endpoint blocked-team enforcement
-// implemented via ActionIntent (see packages/auth/pkg/auth/intent.go).
+// implemented via inline auth.CheckTeamBlocked calls
+// (see packages/auth/pkg/auth/team_state.go).
 //
 // Blocked teams are:
-//   - allowed for IntentView and IntentDelete (recovery + cleanup)
-//   - denied for IntentCreate and IntentMutate (resource-consuming)
+//   - allowed for read and delete operations (recovery + cleanup)
+//   - denied for create and mutate operations (resource-consuming)
 //
 // Mutate / Delete subtests use a synthetic sandbox ID because the
-// blocked-team check runs in middleware before the handler resolves the
-// resource — we only care that the request was (not) rejected by the
-// blocked-team policy.
+// blocked-team check runs at the top of each handler, before the
+// resource is resolved — we only care that the request was (not)
+// rejected by the blocked-team policy.
 func TestBlockedTeam(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()

@@ -149,10 +149,6 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		return nil, status.Errorf(codes.Internal, "failed to get team: %v", err)
 	}
 
-	if err := auth.AuthorizeTeam(*team, auth.IntentMutate); err != nil {
-		return nil, status.Error(codes.PermissionDenied, err.Error())
-	}
-
 	if s.requireEdgeClientProxyAuth {
 		var authOrgID string
 		if team.ClusterID != nil {
@@ -167,6 +163,10 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		if err := oauth.RequireOrgClaims(clientProxyClaims, authOrgID); err != nil {
 			return nil, err
 		}
+	}
+
+	if err := auth.CheckTeamBlocked(team); err != nil {
+		return nil, status.Error(codes.PermissionDenied, err.Error())
 	}
 
 	sandboxData, sandboxErr := s.api.orchestrator.GetSandbox(ctx, teamID, sandboxID)

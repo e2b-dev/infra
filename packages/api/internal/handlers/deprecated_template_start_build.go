@@ -129,11 +129,8 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		return
 	}
 
-	// Per-endpoint blocked-team enforcement for the late-team
-	// (AccessTokenAuth) path. IntentMutate is denied for blocked teams.
-	if accessErr := auth.AuthorizeTeamCtx(c, team); accessErr != nil {
-		apiErr := intentErrorToAPIError(accessErr)
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+	if err := auth.CheckTeamBlocked(team); err != nil {
+		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
 
 		return
 	}
