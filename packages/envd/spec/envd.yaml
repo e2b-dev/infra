@@ -87,6 +87,18 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /unfreeze:
+    post:
+      summary: Unfreeze user/pty/socat cgroups. Used by the orchestrator on the pause error path so a failed pause doesn't leave a live sandbox permanently frozen.
+      security:
+        - AccessTokenAuth: []
+        - {}
+      responses:
+        "204":
+          description: Cgroups unfrozen
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /envs:
     get:
       summary: Get the environment variables

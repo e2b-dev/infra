@@ -86,17 +86,28 @@ func (s *Sandbox) doRequestWithInfiniteRetries(
 	}
 }
 
-// callEnvdFreeze calls envd's POST /freeze endpoint to freeze user/pty/socat
-// cgroups directly (no Process.Start, no shell). Used pre-pause; the
-// orchestrator picks a tight timeout independent of the rest of reclaim.
+// callEnvdFreeze calls envd's native POST /freeze endpoint to freeze
+// user/pty/socat cgroups directly (no Process.Start, no shell). Used pre-pause
+// with a tight, freeze-only timeout.
 func (s *Sandbox) callEnvdFreeze(ctx context.Context, timeout time.Duration) error {
+	return s.callEnvdCgroupOp(ctx, timeout, "freeze")
+}
+
+// callEnvdUnfreeze calls envd's native POST /unfreeze endpoint. Used by the
+// orchestrator on the pause error path so a failed pause doesn't leave a live
+// sandbox permanently frozen.
+func (s *Sandbox) callEnvdUnfreeze(ctx context.Context, timeout time.Duration) error {
+	return s.callEnvdCgroupOp(ctx, timeout, "unfreeze")
+}
+
+func (s *Sandbox) callEnvdCgroupOp(ctx context.Context, timeout time.Duration, op string) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	address := fmt.Sprintf("http://%s:%d/freeze", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
+	address := fmt.Sprintf("http://%s:%d/%s", s.Slot.HostIPString(), consts.DefaultEnvdServerPort, op)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, address, nil)
 	if err != nil {
-		return fmt.Errorf("build freeze request: %w", err)
+		return fmt.Errorf("build %s request: %w", op, err)
 	}
 	if s.Config.Envd.AccessToken != nil {
 		req.Header.Set("X-Access-Token", *s.Config.Envd.AccessToken)
@@ -104,13 +115,13 @@ func (s *Sandbox) callEnvdFreeze(ctx context.Context, timeout time.Duration) err
 
 	resp, err := sandboxHttpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("freeze request: %w", err)
+		return fmt.Errorf("%s request: %w", op, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNoContent {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("freeze returned %d: %s", resp.StatusCode, utils.Truncate(string(body), 100))
+		return fmt.Errorf("%s returned %d: %s", op, resp.StatusCode, utils.Truncate(string(body), 100))
 	}
 
 	return nil

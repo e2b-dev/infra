@@ -106,22 +106,44 @@ func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 	}
 }
 
-// bestEffortFreeze calls envd's native /freeze endpoint with a tight, freeze-
-// only deadline so it doesn't share a timeout budget with the rest of reclaim.
-// Gated on envd version: older envds either don't expose /freeze or wouldn't
-// thaw on resume.
-func (s *Sandbox) bestEffortFreeze(ctx context.Context) {
-	canFreeze, err := utils.IsGTEVersion(s.Config.Envd.Version, utils.MinEnvdVersionForCgroupFreeze)
+// envdSupportsCgroupFreeze reports whether the sandbox's envd exposes the
+// native /freeze and /unfreeze endpoints. Bad version strings log and return
+// false so we never accidentally call an unsupported endpoint.
+func (s *Sandbox) envdSupportsCgroupFreeze(ctx context.Context) bool {
+	ok, err := utils.IsGTEVersion(s.Config.Envd.Version, utils.MinEnvdVersionForCgroupFreeze)
 	if err != nil {
 		logger.L().Warn(ctx, "cgroup freeze version gate: bad envd version", logger.WithSandboxID(s.Runtime.SandboxID), zap.String("envd_version", s.Config.Envd.Version), zap.Error(err))
 
-		return
+		return false
 	}
-	if !canFreeze {
+
+	return ok
+}
+
+// bestEffortFreeze calls envd's native /freeze endpoint with a tight, freeze-
+// only deadline so it doesn't share a timeout budget with the rest of reclaim.
+// Gated on envd version; failures are logged but never block pause.
+func (s *Sandbox) bestEffortFreeze(ctx context.Context) {
+	if !s.envdSupportsCgroupFreeze(ctx) {
 		return
 	}
 
 	if err := s.callEnvdFreeze(ctx, freezeTimeout); err != nil {
 		logger.L().Warn(ctx, "envd freeze failed", logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
+	}
+}
+
+// bestEffortUnfreeze calls envd's native /unfreeze endpoint with a tight
+// deadline. Used by the pause error path so a failed pause doesn't leave a
+// live sandbox permanently frozen. Gated on envd version; failures are logged.
+// Uses context.WithoutCancel because callers run it from cleanup paths whose
+// parent ctx may already be done.
+func (s *Sandbox) bestEffortUnfreeze(ctx context.Context) {
+	if !s.envdSupportsCgroupFreeze(ctx) {
+		return
+	}
+
+	if err := s.callEnvdUnfreeze(context.WithoutCancel(ctx), freezeTimeout); err != nil {
+		logger.L().Warn(ctx, "envd unfreeze failed", logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
 	}
 }

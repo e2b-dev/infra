@@ -697,14 +697,19 @@ func (f *fakeCgroupManager) Unfreeze(pt cgroups.ProcessType) error {
 
 func (f *fakeCgroupManager) Close() error { return nil }
 
+func newAPIWithCgroupManager(mgr cgroups.Manager) *API {
+	logger := zerolog.Nop()
+
+	return New(&logger, &execcontext.Defaults{EnvVars: utils.NewMap[string, string]()}, nil, false, mgr)
+}
+
 func TestPostFreeze(t *testing.T) {
 	t.Parallel()
 
 	t.Run("freezes all user cgroups", func(t *testing.T) {
 		t.Parallel()
 		mgr := &fakeCgroupManager{}
-		logger := zerolog.Nop()
-		api := New(&logger, &execcontext.Defaults{EnvVars: utils.NewMap[string, string]()}, nil, false, mgr)
+		api := newAPIWithCgroupManager(mgr)
 
 		req := httptest.NewRequest(http.MethodPost, "/freeze", http.NoBody)
 		rec := httptest.NewRecorder()
@@ -717,8 +722,7 @@ func TestPostFreeze(t *testing.T) {
 	t.Run("returns 500 and short-circuits on freeze error", func(t *testing.T) {
 		t.Parallel()
 		mgr := &fakeCgroupManager{freezeErr: errors.New("write cgroup.freeze: io error")}
-		logger := zerolog.Nop()
-		api := New(&logger, &execcontext.Defaults{EnvVars: utils.NewMap[string, string]()}, nil, false, mgr)
+		api := newAPIWithCgroupManager(mgr)
 
 		req := httptest.NewRequest(http.MethodPost, "/freeze", http.NoBody)
 		rec := httptest.NewRecorder()
@@ -726,5 +730,35 @@ func TestPostFreeze(t *testing.T) {
 
 		assert.Equal(t, http.StatusInternalServerError, rec.Code)
 		assert.Empty(t, mgr.frozen)
+	})
+}
+
+func TestPostUnfreeze(t *testing.T) {
+	t.Parallel()
+
+	t.Run("unfreezes all user cgroups", func(t *testing.T) {
+		t.Parallel()
+		mgr := &fakeCgroupManager{}
+		api := newAPIWithCgroupManager(mgr)
+
+		req := httptest.NewRequest(http.MethodPost, "/unfreeze", http.NoBody)
+		rec := httptest.NewRecorder()
+		api.PostUnfreeze(rec, req)
+
+		require.Equal(t, http.StatusNoContent, rec.Code)
+		assert.Equal(t, userCgroupsToFreeze, mgr.unfrozen)
+	})
+
+	t.Run("returns 500 and short-circuits on unfreeze error", func(t *testing.T) {
+		t.Parallel()
+		mgr := &fakeCgroupManager{unfreezeErr: errors.New("write cgroup.freeze: io error")}
+		api := newAPIWithCgroupManager(mgr)
+
+		req := httptest.NewRequest(http.MethodPost, "/unfreeze", http.NoBody)
+		rec := httptest.NewRecorder()
+		api.PostUnfreeze(rec, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		assert.Empty(t, mgr.unfrozen)
 	})
 }

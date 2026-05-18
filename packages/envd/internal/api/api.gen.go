@@ -249,6 +249,9 @@ type ServerInterface interface {
 	// Get the stats of the service
 	// (GET /metrics)
 	GetMetrics(w http.ResponseWriter, r *http.Request)
+	// Unfreeze user/pty/socat cgroups. Used by the orchestrator on the pause error path so a failed pause doesn't leave a live sandbox permanently frozen.
+	// (POST /unfreeze)
+	PostUnfreeze(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -300,6 +303,12 @@ func (_ Unimplemented) PostInit(w http.ResponseWriter, r *http.Request) {
 // Get the stats of the service
 // (GET /metrics)
 func (_ Unimplemented) GetMetrics(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Unfreeze user/pty/socat cgroups. Used by the orchestrator on the pause error path so a failed pause doesn't leave a live sandbox permanently frozen.
+// (POST /unfreeze)
+func (_ Unimplemented) PostUnfreeze(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -582,6 +591,26 @@ func (siw *ServerInterfaceWrapper) GetMetrics(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// PostUnfreeze operation middleware
+func (siw *ServerInterfaceWrapper) PostUnfreeze(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostUnfreeze(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -718,6 +747,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/metrics", wrapper.GetMetrics)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/unfreeze", wrapper.PostUnfreeze)
 	})
 
 	return r
