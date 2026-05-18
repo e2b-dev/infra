@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -28,7 +27,10 @@ const (
 // ExecStartPre), so all reads and writes bypass the NBD-backed filesystem and
 // atomic cert rotation via os.Rename works within the same device.
 type CACertInstaller struct {
-	mu     sync.Mutex
+	// mu is a buffered-1 channel acting as a ctx-aware mutex. Lock acquisition
+	// respects the caller's ctx; the actual install work always runs to
+	// completion once the lock is held.
+	mu     chan struct{}
 	logger *zerolog.Logger
 
 	// lastCACert caches the most recently installed PEM so that resume (same
@@ -40,7 +42,10 @@ type CACertInstaller struct {
 }
 
 func NewCACertInstaller(logger *zerolog.Logger) *CACertInstaller {
-	return &CACertInstaller{logger: logger}
+	return &CACertInstaller{
+		logger: logger,
+		mu:     make(chan struct{}, 1),
+	}
 }
 
 // Install injects certPEM into the system CA bundle. Returns an error if the
@@ -75,10 +80,12 @@ func (c *CACertInstaller) install(ctx context.Context, certPEM, bundlePath, extr
 	// consistent regardless of how the caller formatted the PEM.
 	normalized := strings.TrimRight(certPEM, "\n") + "\n"
 
-	if err := lockMutexCtx(ctx, &c.mu); err != nil {
-		return fmt.Errorf("acquire CA install lock: %w", err)
+	select {
+	case c.mu <- struct{}{}:
+	case <-ctx.Done():
+		return fmt.Errorf("acquire CA install lock: %w", ctx.Err())
 	}
-	defer c.mu.Unlock()
+	defer func() { <-c.mu }()
 
 	if c.lastCACert == normalized {
 		c.logger.Debug().
@@ -112,8 +119,8 @@ func (c *CACertInstaller) install(ctx context.Context, certPEM, bundlePath, extr
 	go func() {
 		cleanStart := time.Now()
 
-		c.mu.Lock()
-		defer c.mu.Unlock()
+		c.mu <- struct{}{}
+		defer func() { <-c.mu }()
 
 		// A newer install has taken over; let that goroutine handle cleanup.
 		if c.lastCACert != normalized {
@@ -147,25 +154,6 @@ func (c *CACertInstaller) install(ctx context.Context, certPEM, bundlePath, extr
 	}()
 
 	return nil
-}
-
-// lockMutexCtx acquires mu or returns ctx.Err() if ctx is cancelled first.
-// On cancellation, releases the lock when the background goroutine eventually
-// acquires it so ownership is never leaked.
-func lockMutexCtx(ctx context.Context, mu *sync.Mutex) error {
-	acquired := make(chan struct{})
-	go func() {
-		mu.Lock()
-		close(acquired)
-	}()
-	select {
-	case <-acquired:
-		return nil
-	case <-ctx.Done():
-		go func() { <-acquired; mu.Unlock() }()
-
-		return ctx.Err()
-	}
 }
 
 // removeCertFromBundle rewrites bundlePath removing all occurrences of certPEM.
