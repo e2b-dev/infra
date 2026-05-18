@@ -67,7 +67,7 @@ func Mark(ctx context.Context) {
 
 	if h.joined.CompareAndSwap(false, true) {
 		h.serverSpan.SetAttributes(
-			attribute.String(AttributeKey, "true"),
+			attribute.Bool(AttributeKey, true),
 		)
 	}
 }

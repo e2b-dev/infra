@@ -138,6 +138,13 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		spanStatus, spanMessage := semconv.SpanStatusFromHTTPStatusCode(status)
 		span.SetStatus(spanStatus, spanMessage)
 
+		// Ensure every server span carries request.joined (true or false)
+		// so trace queries can filter joiner vs. normal traffic without
+		// special-casing the "attribute absent" case. Idempotent: if
+		// joined.Mark already set it to true earlier, this re-asserts the
+		// same value; otherwise it pins it to false.
+		span.SetAttributes(joined.Attribute(ctx))
+
 		if len(c.Errors) > 0 {
 			span.SetAttributes(attribute.String("gin.errors", strings.TrimSpace(c.Errors.String())))
 		}

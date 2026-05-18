@@ -103,7 +103,7 @@ func TestMark_TagsServerSpanNotChildSpan(t *testing.T) {
 
 	serverAttr, hasServer := findAttr(server.Attributes(), joined.AttributeKey)
 	require.True(t, hasServer, "request.joined must be on the server span")
-	assert.Equal(t, "true", serverAttr.AsString())
+	assert.True(t, serverAttr.AsBool())
 
 	_, hasChild := findAttr(child.Attributes(), joined.AttributeKey)
 	assert.False(t, hasChild, "request.joined must NOT be on the child span")
