@@ -325,13 +325,16 @@ func (a *API) unmountNFS(ctx context.Context, logger zerolog.Logger, path string
 
 	logger.Debug().Msgf("Unmounting stale NFS mount at %q (was: %s)", path, source)
 
-	// Force unmount since the handles are stale anyway
-	data, err = exec.CommandContext(ctx, "umount", "--force", path).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to unmount stale NFS mount at %q: %w\n%s", path, err, string(data))
+	if data, err = exec.CommandContext(ctx, "umount", "--force", path).CombinedOutput(); err != nil {
+		logger.Warn().Err(err).Str("path", path).Str("output", string(data)).Msg("Forced NFS umount failed, falling back to lazy")
+		// Fresh ctx so the forced umount running out of budget doesn't kill the fallback.
+		lazyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancel()
+		if data, err = exec.CommandContext(lazyCtx, "umount", "--lazy", path).CombinedOutput(); err != nil {
+			return fmt.Errorf("failed to unmount stale NFS mount at %q: %w\n%s", path, err, string(data))
+		}
 	}
 
-	// Clear our tracking state for this path
 	a.mountedPaths.Delete(path)
 
 	return nil
