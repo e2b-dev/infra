@@ -161,8 +161,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error writing sandbox file: %v\n", err)
 	}
 
+	// Not closed - producers may outlive the consumer.
 	mmdsChan := make(chan *host.MMDSOpts, 1)
-	defer close(mmdsChan)
 	if !isNotFC {
 		go host.PollForMMDSOpts(ctx, mmdsChan, defaults.EnvVars)
 	}
