@@ -38,9 +38,7 @@ type API struct {
 	mmdsClient    MMDSClient
 
 	lastSetTime *utils.AtomicMax
-	// initLock serializes /init handlers but, unlike sync.Mutex, respects the
-	// caller's ctx so a stuck predecessor cannot pile up retry goroutines.
-	initLock *semaphore.Weighted
+	initLock    *semaphore.Weighted
 
 	caCertInstaller *host.CACertInstaller
 	isMountingNFS   atomic.Bool
