@@ -139,9 +139,9 @@ job "api" {
 
     task "start" {
       driver       = "docker"
-      # If we need more than 30s we will need to update the max_kill_timeout in nomad
+      # Budget = shutdownDrainWait (15s) + httpShutdownTimeout (requestTimeout 70s) + grpcShutdownTimeout (10s) + cleanup (30s) + slack.
       # https://developer.hashicorp.com/nomad/docs/configuration/client#max_kill_timeout
-      kill_timeout = "30s"
+      kill_timeout = "150s"
       kill_signal  = "SIGTERM"
 
       resources {
