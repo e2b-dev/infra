@@ -165,7 +165,6 @@ module "cluster" {
   nomad_port                   = var.nomad_port
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
-  ingress_timeout_seconds      = var.ingress_timeout_seconds
 
   additional_domains                      = local.additional_domains
   additional_api_paths_handled_by_ingress = local.normalized_api_paths_handled_by_ingress
