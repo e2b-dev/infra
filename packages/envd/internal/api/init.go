@@ -132,6 +132,10 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		a.initLock.Lock()
 		defer a.initLock.Unlock()
 
+		// Run on every /init regardless of the Timestamp guard, so stale/replayed
+		// requests still thaw cgroups after pre-pause freeze.
+		defer a.unfreezeUserCgroups(logger)
+
 		// Update data only if the request is newer or if there's no timestamp at all
 		if initRequest.Timestamp == nil || a.lastSetTime.SetToGreater(initRequest.Timestamp.UnixNano()) {
 			err = a.SetData(ctx, logger, initRequest)
@@ -170,10 +174,6 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	if err := a.validateInitAccessToken(ctx, data.AccessToken); err != nil {
 		return err
 	}
-
-	// Always unfreeze on return; otherwise a SetData error path would leave
-	// user cgroups frozen and the sandbox stuck.
-	defer a.unfreezeUserCgroups(logger)
 
 	if data.Timestamp != nil {
 		// Check if current time differs significantly from the received timestamp
