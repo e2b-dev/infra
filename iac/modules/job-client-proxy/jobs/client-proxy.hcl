@@ -46,10 +46,21 @@ job "client-proxy" {
       tags = [
         "traefik.enable=true",
 
-        "traefik.http.routers.client-proxy.entrypoints=clientProxy",
-        "traefik.http.routers.client-proxy.rule=PathPrefix(`/`)",
-        "traefik.http.routers.client-proxy.ruleSyntax=v2",
-        "traefik.http.routers.client-proxy.priority=100",
+%{ if exposure_type == "public" || exposure_type == "both" ~}
+        "traefik.http.routers.client-proxy-public.entrypoints=web",
+        "traefik.http.routers.client-proxy-public.rule=PathPrefix(`/`)",
+        "traefik.http.routers.client-proxy-public.ruleSyntax=v2",
+        "traefik.http.routers.client-proxy-public.priority=100",
+        "traefik.http.routers.client-proxy-public.service=client-proxy",
+%{ endif ~}
+
+%{ if exposure_type == "private" || exposure_type == "both" ~}
+        "traefik.http.routers.client-proxy-private.entrypoints=internal",
+        "traefik.http.routers.client-proxy-private.rule=PathPrefix(`/`)",
+        "traefik.http.routers.client-proxy-private.ruleSyntax=v2",
+        "traefik.http.routers.client-proxy-private.priority=100",
+        "traefik.http.routers.client-proxy-private.service=client-proxy",
+%{ endif ~}
 
         "traefik.http.services.client-proxy.loadbalancer.server.port=$${NOMAD_PORT_proxy}"
       ]
