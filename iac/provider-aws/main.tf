@@ -65,6 +65,25 @@ locals {
   ingress_port = 8080
   nomad_port   = 4646
 
+  # Filter out empty / too-short HMAC secrets so that placeholder values left in
+  # AWS Secrets Manager on a fresh deploy don't get fed to legacy.NewVerifier,
+  # which rejects secrets shorter than 16 bytes and would fatal the api job.
+  legacy_hmac_secrets = [
+    for s in split(",", trimspace(module.init.supabase_jwt_secrets)) : s
+    if length(s) >= 16
+  ]
+  auth_provider_config = length(local.legacy_hmac_secrets) > 0 ? {
+    jwt = []
+    legacy = {
+      hmac = {
+        secrets = local.legacy_hmac_secrets
+      }
+    }
+    } : {
+    jwt    = []
+    legacy = null
+  }
+
   api_pool_name          = "api"
   client_pool_name       = "default"
   build_pool_name        = "build"
@@ -187,7 +206,7 @@ module "nomad" {
   api_repository_name            = module.init.api_repository_name
   db_migrator_repository_name    = module.init.db_migrator_repository_name
   postgres_connection_string     = module.init.postgres_connection_string
-  supabase_jwt_secrets           = module.init.supabase_jwt_secrets
+  auth_provider_config           = local.auth_provider_config
   admin_token                    = module.init.admin_token
   sandbox_access_token_hash_seed = module.init.sandbox_access_token_hash_seed
 
