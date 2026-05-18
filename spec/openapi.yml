@@ -27,6 +27,8 @@ components:
       type: apiKey
       in: header
       name: X-Supabase-Team
+    # AuthProviderBearerAuth / AuthProviderTeamAuth: B before T in the name
+    # so Bearer is validated before Team (same reason as Supabase1/2 above).
     AuthProviderBearerAuth:
       type: http
       scheme: bearer
@@ -34,7 +36,7 @@ components:
     AuthProviderTeamAuth:
       type: apiKey
       in: header
-      name: X-Team-Id
+      name: X-Team-ID
     AdminTokenAuth:
       type: apiKey
       in: header
