@@ -184,6 +184,14 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 			return false, nil, &sandbox.InvalidStateTransitionError{CurrentState: currentState, TargetState: newState}
 		}
 
+		if currentState == newState {
+			// The caller will inherit the in-flight transition's result
+			// without doing the work itself: this is a joiner. Mark before
+			// waiting so the request stays tagged even if the inherited
+			// transition fails.
+			joined.Mark(ctx)
+		}
+
 		logger.L().Debug(ctx, "State transition already in progress to the same state, waiting", logger.WithSandboxID(sbx.SandboxID()), zap.String("state", string(newState)))
 		err = transition.WaitWithContext(ctx)
 		if err != nil {
@@ -193,10 +201,6 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 		// If the transition is to the same state just wait
 		switch {
 		case currentState == newState:
-			// The caller inherits the in-flight transition's result
-			// without doing the work itself: this is a joiner.
-			joined.Mark(ctx)
-
 			return true, func(context.Context, error) {}, nil
 		case sandbox.AllowedTransitions[currentState][newState]:
 			return startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: opts.Action})
