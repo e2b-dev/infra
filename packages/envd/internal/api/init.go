@@ -186,15 +186,7 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 		newVars := *data.EnvVars
 		logger.Debug().Msg(fmt.Sprintf("Setting %d env vars", len(newVars)))
 
-		// Replace, not merge: drop keys that are no longer present so a customer
-		// who removes a variable from their config sees it actually removed.
-		a.defaults.EnvVars.Range(func(key, _ string) bool {
-			if _, keep := newVars[key]; !keep {
-				a.defaults.EnvVars.Delete(key)
-			}
-
-			return true
-		})
+		a.defaults.EnvVars.Clear()
 		for key, value := range newVars {
 			a.defaults.EnvVars.Store(key, value)
 		}
