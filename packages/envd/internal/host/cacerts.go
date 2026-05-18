@@ -112,7 +112,7 @@ func (c *CACertInstaller) install(ctx context.Context, certPEM, bundlePath, extr
 		Dur("append_duration", time.Since(start)).
 		Msg("CA cert appended to bundle")
 
-	go func() {
+	go func() { //nolint:contextcheck // background cleanup must outlive the caller's ctx
 		cleanStart := time.Now()
 
 		_ = c.mu.Acquire(context.Background(), 1)
