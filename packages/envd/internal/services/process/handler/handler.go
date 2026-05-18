@@ -96,14 +96,16 @@ func New(
 	// User command string for logging (without the internal wrapper details).
 	userCmd := strings.Join(append([]string{req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...), " ")
 
-	// Wrap in a shell that resets oom_score_adj, lowers SCHED_FIFO to SCHED_OTHER (chrt, needs
-	// CAP_SYS_NICE supplied via AmbientCaps), drops the ambient cap (setpriv), and resets nice.
+	// Reset everything we inherit from envd so the child runs at user
+	// priority: write oom_score_adj, then chrt SCHED_FIFO->SCHED_OTHER
+	// (needs CAP_SYS_NICE supplied via AmbientCaps below), setpriv to drop
+	// that cap, and finally nice for SCHED_OTHER weight.
 	niceDelta := defaultNice - currentNice()
-	oomWrapperScript := fmt.Sprintf(
+	wrapperScript := fmt.Sprintf(
 		`echo %d > /proc/$$/oom_score_adj && exec /usr/bin/chrt --other 0 /usr/bin/setpriv --ambient-caps -all -- /usr/bin/nice -n %d "${@}"`,
 		defaultOomScore, niceDelta,
 	)
-	wrapperArgs := append([]string{"-c", oomWrapperScript, "--", req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...)
+	wrapperArgs := append([]string{"-c", wrapperScript, "--", req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...)
 	cmd := exec.CommandContext(ctx, "/bin/sh", wrapperArgs...)
 
 	uid, gid, err := permissions.GetUserIdUints(user)
@@ -132,8 +134,7 @@ func New(
 		},
 	}
 	applyCgroupFD(cmd.SysProcAttr, cgroupFD, ok)
-	// CAP_SYS_NICE so the wrapper's chrt(1) can drop SCHED_FIFO to SCHED_OTHER.
-	applyAmbientCapSysNice(cmd.SysProcAttr)
+	applyAmbientCapSysNice(cmd.SysProcAttr) // chrt(1) needs CAP_SYS_NICE to drop SCHED_FIFO
 
 	resolvedPath, err := permissions.ExpandAndResolve(req.GetProcess().GetCwd(), user, defaults.Workdir)
 	if err != nil {
