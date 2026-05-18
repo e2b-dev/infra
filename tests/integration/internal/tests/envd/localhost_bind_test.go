@@ -72,9 +72,6 @@ func TestBindLocalhost(t *testing.T) {
 				}
 			}()
 
-			// Give the server time to start
-			time.Sleep(5 * time.Second)
-
 			baseURL, err := url.Parse(setup.EnvdProxy)
 			require.NoError(t, err)
 
@@ -82,9 +79,8 @@ func TestBindLocalhost(t *testing.T) {
 				Timeout: 10 * time.Second,
 			}
 
-			req := utils.NewRequest(sbx, baseURL, port, nil)
-			resp, err := httpClient.Do(req)
-			require.NoErrorf(t, err, "Failed to connect to server bound to %s", tc.bindAddress)
+			resp := utils.WaitForStatus(t, httpClient, sbx, baseURL, port, nil, tc.expectStatus)
+			require.NotNilf(t, resp, "Server bound to %s did not become reachable in time", tc.bindAddress)
 			defer resp.Body.Close()
 
 			assert.Equalf(t, tc.expectStatus, resp.StatusCode, "Unexpected status code %d for bind address %s", resp.StatusCode, tc.bindAddress)
