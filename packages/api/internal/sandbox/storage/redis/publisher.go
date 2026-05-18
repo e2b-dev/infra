@@ -147,11 +147,9 @@ func (p *publisher) run(ctx context.Context) {
 
 	var wg sync.WaitGroup
 	for range publishWorkerCount {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			p.workerLoop(pubCtx)
-		}()
+		})
 	}
 	wg.Wait()
 
@@ -216,7 +214,7 @@ func (p *publisher) publishOne(ctx context.Context, routingKey string) {
 // then closes done so concurrent close() peers unblock too. If the CAS
 // fails, run() is already in flight (state == stateRunning) and we rely
 // on its deferred close(done) to release us.
-func (p *publisher) close() {
+func (p *publisher) close(ctx context.Context) {
 	p.closeOnce.Do(func() {
 		close(p.closed)
 		if p.state.CompareAndSwap(stateInit, stateClosed) {
@@ -224,7 +222,7 @@ func (p *publisher) close() {
 			// invoked. Drain whatever is queued on this goroutine so
 			// notifications enqueued before the race aren't lost, then
 			// release peers blocked in <-p.done below.
-			p.drainOnShutdown(context.Background())
+			p.drainOnShutdown(ctx)
 			close(p.done)
 		}
 	})

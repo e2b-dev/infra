@@ -244,7 +244,7 @@ func setupTestLocker(t *testing.T, startSubManager bool) (*storageLocker, *subsc
 	// arrive, even when the in-process subscription manager is intentionally
 	// disabled to exercise the timer fallback.
 	go pub.run(t.Context())
-	t.Cleanup(pub.close)
+	t.Cleanup(func() { pub.close(context.WithoutCancel(t.Context())) })
 
 	if startSubManager {
 		go subManager.start(t.Context())

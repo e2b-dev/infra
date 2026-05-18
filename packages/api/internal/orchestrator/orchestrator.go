@@ -287,7 +287,7 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 		errs = append(errs, err)
 	}
 
-	o.redisStorage.Close()
+	o.redisStorage.Close(ctx)
 
 	return errors.Join(errs...)
 }

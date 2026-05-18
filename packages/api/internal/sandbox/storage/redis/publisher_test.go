@@ -32,7 +32,7 @@ func TestPublisher_PublishEnqueuesAndDrainsToRedis(t *testing.T) {
 	require.NoError(t, err)
 
 	go pub.run(ctx)
-	t.Cleanup(pub.close)
+	t.Cleanup(func() { pub.close(context.WithoutCancel(t.Context())) })
 
 	const n = 50
 	want := make(map[string]struct{}, n)
@@ -97,7 +97,7 @@ func TestPublisher_DropOnClosed(t *testing.T) {
 	t.Cleanup(cancel)
 
 	go pub.run(ctx)
-	pub.close()
+	pub.close(t.Context())
 
 	const n = 100
 	before := pub.dropped.Load()
@@ -155,7 +155,7 @@ func TestPublisher_CloseDrainsPending(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	go pub.run(ctx)
-	pub.close()
+	pub.close(t.Context())
 
 	messages := pubsub.Channel()
 	deadline := time.After(publishShutdownBudget + time.Second)
@@ -185,7 +185,7 @@ func TestStorageLock_ReleaseDoesNotSpawnGoroutine(t *testing.T) {
 	client := redis_utils.SetupInstance(t)
 	storage := NewStorage(client)
 	go storage.Start(t.Context())
-	t.Cleanup(storage.Close)
+	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })
 
 	// Warm up: obtain + release once so one-shot init goroutines settle.
 	warm := redis_utils.GetLockKey(getSandboxKey(uuid.NewString(), "warmup"))
@@ -262,8 +262,8 @@ func TestStorage_CloseIsIdempotent(t *testing.T) {
 	storage := NewStorage(client)
 	go storage.Start(t.Context())
 
-	storage.Close()
-	storage.Close() // must not panic
+	storage.Close(t.Context())
+	storage.Close(t.Context()) // must not panic
 }
 
 // TestStorage_CloseBeforeStartDoesNotDeadlock covers the early-init
@@ -279,7 +279,7 @@ func TestStorage_CloseBeforeStartDoesNotDeadlock(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		storage.Close()
+		storage.Close(t.Context())
 		close(done)
 	}()
 
@@ -301,7 +301,7 @@ func TestPublisher_CloseBeforeRunDoesNotDeadlock(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		pub.close()
+		pub.close(t.Context())
 		close(done)
 	}()
 
@@ -325,7 +325,7 @@ func TestPublisher_ConcurrentProducers(t *testing.T) {
 	t.Cleanup(cancel)
 
 	go pub.run(ctx)
-	t.Cleanup(pub.close)
+	t.Cleanup(func() { pub.close(context.WithoutCancel(t.Context())) })
 
 	const (
 		producers   = 32
@@ -406,7 +406,7 @@ func TestPublisher_DrainOnShutdownRespectsBudget(t *testing.T) {
 	go pub.run(ctx)
 
 	start := time.Now()
-	pub.close()
+	pub.close(t.Context())
 	elapsed := time.Since(start)
 
 	require.LessOrEqual(t, elapsed, publishShutdownBudget+2*time.Second,

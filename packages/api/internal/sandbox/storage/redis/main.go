@@ -65,9 +65,9 @@ func (s *Storage) Start(ctx context.Context) {
 }
 
 // Close shuts down the subscription manager and the publish worker.
-func (s *Storage) Close() {
+func (s *Storage) Close(ctx context.Context) {
 	s.subManager.close()
-	s.publisher.close()
+	s.publisher.close(ctx)
 }
 
 // Reconcile returns a list of sandboxes that are considered orphans on the current node.
