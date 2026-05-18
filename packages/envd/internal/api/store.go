@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/rs/zerolog"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
@@ -39,7 +40,7 @@ type API struct {
 	lastSetTime *utils.AtomicMax
 	// initLock serializes /init handlers but, unlike sync.Mutex, respects the
 	// caller's ctx so a stuck predecessor cannot pile up retry goroutines.
-	initLock chan struct{}
+	initLock *semaphore.Weighted
 
 	caCertInstaller *host.CACertInstaller
 	isMountingNFS   atomic.Bool
@@ -56,7 +57,7 @@ func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.
 		lastSetTime:     utils.NewAtomicMax(),
 		accessToken:     &SecureToken{},
 		caCertInstaller: host.NewCACertInstaller(l),
-		initLock:        make(chan struct{}, 1),
+		initLock:        semaphore.NewWeighted(1),
 	}
 }
 
