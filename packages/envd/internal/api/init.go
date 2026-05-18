@@ -30,9 +30,6 @@ var (
 const (
 	maxTimeInPast   = 50 * time.Millisecond
 	maxTimeInFuture = 5 * time.Second
-
-	// caBundleInstallTimeout caps how long /init waits for the CA install lock.
-	caBundleInstallTimeout = 5 * time.Second
 )
 
 // validateInitAccessToken validates the access token for /init requests.
@@ -217,10 +214,7 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	}
 
 	if data.CaBundle != nil && *data.CaBundle != "" {
-		installCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), caBundleInstallTimeout)
-		err := a.caCertInstaller.Install(installCtx, *data.CaBundle)
-		cancel()
-		if err != nil {
+		if err := a.caCertInstaller.Install(ctx, *data.CaBundle); err != nil {
 			return fmt.Errorf("failed to install CA bundle: %w", err)
 		}
 	}
