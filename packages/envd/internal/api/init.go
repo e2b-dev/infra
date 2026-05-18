@@ -251,9 +251,9 @@ func (a *API) PostFreeze(w http.ResponseWriter, r *http.Request) {
 	a.cgroupFreezeHandler(w, r, "freeze", a.cgroupManager.Freeze)
 }
 
-// PostUnfreeze thaws user/pty/socat cgroups directly. Used by the orchestrator
-// on the pause error path so a failed pause doesn't leave a live sandbox
-// permanently frozen.
+// PostUnfreeze thaws user/pty/socat cgroups directly. Exists ONLY for the
+// orchestrator's pause-failure rollback path; the resume thaw runs via /init's
+// deferred unfreeze and must not be replaced by this endpoint.
 func (a *API) PostUnfreeze(w http.ResponseWriter, r *http.Request) {
 	a.cgroupFreezeHandler(w, r, "unfreeze", a.cgroupManager.Unfreeze)
 }

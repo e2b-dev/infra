@@ -89,7 +89,7 @@ paths:
 
   /unfreeze:
     post:
-      summary: Unfreeze user/pty/socat cgroups. Used by the orchestrator on the pause error path so a failed pause doesn't leave a live sandbox permanently frozen.
+      summary: Unfreeze user/pty/socat cgroups. Intended ONLY for the orchestrator's pause-failure rollback path; the normal resume thaw happens via /init's deferred unfreeze, not here.
       security:
         - AccessTokenAuth: []
         - {}

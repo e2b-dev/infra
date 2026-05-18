@@ -249,7 +249,7 @@ type ServerInterface interface {
 	// Get the stats of the service
 	// (GET /metrics)
 	GetMetrics(w http.ResponseWriter, r *http.Request)
-	// Unfreeze user/pty/socat cgroups. Used by the orchestrator on the pause error path so a failed pause doesn't leave a live sandbox permanently frozen.
+	// Unfreeze user/pty/socat cgroups. Intended ONLY for the orchestrator's pause-failure rollback path; the normal resume thaw happens via /init's deferred unfreeze, not here.
 	// (POST /unfreeze)
 	PostUnfreeze(w http.ResponseWriter, r *http.Request)
 }
@@ -306,7 +306,7 @@ func (_ Unimplemented) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Unfreeze user/pty/socat cgroups. Used by the orchestrator on the pause error path so a failed pause doesn't leave a live sandbox permanently frozen.
+// Unfreeze user/pty/socat cgroups. Intended ONLY for the orchestrator's pause-failure rollback path; the normal resume thaw happens via /init's deferred unfreeze, not here.
 // (POST /unfreeze)
 func (_ Unimplemented) PostUnfreeze(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
