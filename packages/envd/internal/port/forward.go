@@ -143,7 +143,7 @@ func (f *Forwarder) startPortForwarding(ctx context.Context, p *PortToForward) {
 
 	cgroupFD, ok := f.cgroupManager.GetFileDescriptor(cgroups.ProcessTypeSocat)
 
-	// socat intentionally inherits envd's SCHED_FIFO + Nice=-20 (infra-critical).
+	// socat keeps envd's SCHED_FIFO + Nice=-20 by design.
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
 	}

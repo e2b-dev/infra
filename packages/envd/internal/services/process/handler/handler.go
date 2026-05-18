@@ -96,10 +96,8 @@ func New(
 	// User command string for logging (without the internal wrapper details).
 	userCmd := strings.Join(append([]string{req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...), " ")
 
-	// Reset everything we inherit from envd so the child runs at user
-	// priority: write oom_score_adj, then chrt SCHED_FIFO->SCHED_OTHER
-	// (needs CAP_SYS_NICE supplied via AmbientCaps below), setpriv to drop
-	// that cap, and finally nice for SCHED_OTHER weight.
+	// Reset oom_score_adj, drop SCHED_FIFO via chrt, drop the SYS_NICE
+	// ambient cap, then apply nice.
 	niceDelta := defaultNice - currentNice()
 	wrapperScript := fmt.Sprintf(
 		`echo %d > /proc/$$/oom_score_adj && exec /usr/bin/chrt --other 0 /usr/bin/setpriv --ambient-caps -all -- /usr/bin/nice -n %d "${@}"`,
