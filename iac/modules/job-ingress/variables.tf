@@ -27,7 +27,7 @@ variable "ingress_control_port" {
   default = 8900
 }
 
-variable "ingress_client_proxy_port" {
+variable "ingress_internal_port" {
   type = number
 }
 

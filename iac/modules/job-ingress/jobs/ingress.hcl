@@ -19,8 +19,8 @@ job "ingress" {
         static = "${control_port}"
       }
 
-      port "client_proxy" {
-        static = "${client_proxy_port}"
+      port "internal" {
+        static = "${internal_port}"
       }
     }
 

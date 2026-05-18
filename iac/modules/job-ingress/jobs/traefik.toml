@@ -10,7 +10,7 @@
   [entryPoints.traefik]
     address = ":${control_port}"
   [entryPoints.internal]
-    address = ":${client_proxy_port}"
+    address = ":${internal_port}"
 
 [metrics]
   [metrics.otlp]

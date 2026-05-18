@@ -235,14 +235,14 @@ variable "ingress_port" {
   }
 }
 
-variable "ingress_client_proxy_port" {
+variable "ingress_internal_port" {
   type = object({
     name        = string
     port        = number
     health_path = string
   })
   default = {
-    name        = "client-proxy"
+    name        = "internal"
     port        = 9435
     health_path = "/"
   }
