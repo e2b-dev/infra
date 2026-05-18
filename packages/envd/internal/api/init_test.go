@@ -2,9 +2,13 @@ package api
 
 import (
 	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -657,4 +661,70 @@ func TestShouldRemountNFS(t *testing.T) {
 			assert.Equal(t, tt.wantRemount, got)
 		})
 	}
+}
+
+type fakeCgroupManager struct {
+	mu          sync.Mutex
+	frozen      []cgroups.ProcessType
+	freezeErr   error
+	unfrozen    []cgroups.ProcessType
+	unfreezeErr error
+}
+
+func (f *fakeCgroupManager) GetFileDescriptor(cgroups.ProcessType) (int, bool) {
+	return 0, false
+}
+
+func (f *fakeCgroupManager) Freeze(pt cgroups.ProcessType) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.freezeErr != nil {
+		return f.freezeErr
+	}
+	f.frozen = append(f.frozen, pt)
+	return nil
+}
+
+func (f *fakeCgroupManager) Unfreeze(pt cgroups.ProcessType) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.unfreezeErr != nil {
+		return f.unfreezeErr
+	}
+	f.unfrozen = append(f.unfrozen, pt)
+	return nil
+}
+
+func (f *fakeCgroupManager) Close() error { return nil }
+
+func TestPostFreeze(t *testing.T) {
+	t.Parallel()
+
+	t.Run("freezes all user cgroups", func(t *testing.T) {
+		t.Parallel()
+		mgr := &fakeCgroupManager{}
+		logger := zerolog.Nop()
+		api := New(&logger, &execcontext.Defaults{EnvVars: utils.NewMap[string, string]()}, nil, false, mgr)
+
+		req := httptest.NewRequest(http.MethodPost, "/freeze", http.NoBody)
+		rec := httptest.NewRecorder()
+		api.PostFreeze(rec, req)
+
+		require.Equal(t, http.StatusNoContent, rec.Code)
+		assert.Equal(t, userCgroupsToFreeze, mgr.frozen)
+	})
+
+	t.Run("returns 500 and short-circuits on freeze error", func(t *testing.T) {
+		t.Parallel()
+		mgr := &fakeCgroupManager{freezeErr: errors.New("write cgroup.freeze: io error")}
+		logger := zerolog.Nop()
+		api := New(&logger, &execcontext.Defaults{EnvVars: utils.NewMap[string, string]()}, nil, false, mgr)
+
+		req := httptest.NewRequest(http.MethodPost, "/freeze", http.NoBody)
+		rec := httptest.NewRecorder()
+		api.PostFreeze(rec, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		assert.Empty(t, mgr.frozen)
+	})
 }

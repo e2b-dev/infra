@@ -86,6 +86,36 @@ func (s *Sandbox) doRequestWithInfiniteRetries(
 	}
 }
 
+// callEnvdFreeze calls envd's POST /freeze endpoint to freeze user/pty/socat
+// cgroups directly (no Process.Start, no shell). Used pre-pause; the
+// orchestrator picks a tight timeout independent of the rest of reclaim.
+func (s *Sandbox) callEnvdFreeze(ctx context.Context, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	address := fmt.Sprintf("http://%s:%d/freeze", s.Slot.HostIPString(), consts.DefaultEnvdServerPort)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, address, nil)
+	if err != nil {
+		return fmt.Errorf("build freeze request: %w", err)
+	}
+	if s.Config.Envd.AccessToken != nil {
+		req.Header.Set("X-Access-Token", *s.Config.Envd.AccessToken)
+	}
+
+	resp, err := sandboxHttpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("freeze request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("freeze returned %d: %s", resp.StatusCode, utils.Truncate(string(body), 100))
+	}
+
+	return nil
+}
+
 func (s *Sandbox) convertMounts(mounts []VolumeMountConfig) []envd.VolumeMount {
 	results := make([]envd.VolumeMount, 0, len(mounts))
 

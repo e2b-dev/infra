@@ -237,9 +237,37 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	return nil
 }
 
+// userCgroupsToFreeze is the cgroup set frozen pre-pause and thawed on /init.
+var userCgroupsToFreeze = []cgroups.ProcessType{
+	cgroups.ProcessTypeUser,
+	cgroups.ProcessTypePTY,
+	cgroups.ProcessTypeSocat,
+}
+
+// PostFreeze freezes user/pty/socat cgroups directly (no Process.Start / shell).
+// Orchestrator calls this just before pause; the frozen state persists into the
+// snapshot and /init thaws on resume.
+func (a *API) PostFreeze(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	logger := a.logger.With().Str(string(logs.OperationIDKey), logs.AssignOperationID()).Logger()
+
+	for _, pt := range userCgroupsToFreeze {
+		if err := a.cgroupManager.Freeze(pt); err != nil {
+			logger.Error().Err(err).Msgf("freeze %s cgroup", pt)
+			jsonError(w, http.StatusInternalServerError, fmt.Errorf("freeze %s cgroup: %w", pt, err))
+
+			return
+		}
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // unfreezeUserCgroups unfreezes user/pty/socat cgroups (idempotent if not frozen).
 func (a *API) unfreezeUserCgroups(logger zerolog.Logger) {
-	for _, pt := range []cgroups.ProcessType{cgroups.ProcessTypeUser, cgroups.ProcessTypePTY, cgroups.ProcessTypeSocat} {
+	for _, pt := range userCgroupsToFreeze {
 		if err := a.cgroupManager.Unfreeze(pt); err != nil {
 			logger.Warn().Err(err).Msgf("unfreeze %s cgroup", pt)
 		}

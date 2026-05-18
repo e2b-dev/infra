@@ -18,36 +18,18 @@ import (
 // Slack covers shell start + envd round-trip overhead.
 const reclaimOuterSlack = 500 * time.Millisecond
 
-// freezeCgroupCmd freezes user/ptys/socats. Names must match envd's cgroup
-// config; the shell runs in the system cgroup so it's not affected by the freeze.
-const freezeCgroupCmd = "for cg in user ptys socats; do " +
-	`echo 1 > /sys/fs/cgroup/"$cg"/cgroup.freeze 2>/dev/null || true; ` +
-	"done"
+// freezeTimeout bounds the native POST /freeze call. The freeze itself is a
+// single sysfs write but envd may be slow to schedule under load, so this
+// must stay independent of the reclaim shell deadline.
+const freezeTimeout = 2 * time.Second
 
-// Order: freeze → fstrim → sync → drop_caches → compact_memory. Freeze stops
-// new dirty pages so reclaim works on a quiet fs; the frozen state persists
-// into the snapshot and envd unfreezes at the end of /init on resume.
+// buildReclaimScript builds the fstrim/sync/drop_caches/compact_memory chain.
 // Returns ("", 0) when every step is disabled.
-func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration) {
-	cfg := featureflags.GetReclaimConfig(ctx, s.featureFlags,
-		featureflags.SandboxContext(s.Runtime.SandboxID),
-		featureflags.TeamContext(s.Runtime.TeamID),
-		featureflags.TemplateContext(s.Runtime.TemplateID),
-	)
-
+func (s *Sandbox) buildReclaimScript(cfg featureflags.ReclaimConfig) (string, time.Duration) {
 	var (
 		parts []string
 		sum   time.Duration
 	)
-
-	// Gate on envd version: older envds wouldn't unfreeze on resume.
-	canFreeze, err := utils.IsGTEVersion(s.Config.Envd.Version, utils.MinEnvdVersionForCgroupFreeze)
-	if err != nil {
-		logger.L().Warn(ctx, "cgroup freeze version gate: bad envd version", logger.WithSandboxID(s.Runtime.SandboxID), zap.String("envd_version", s.Config.Envd.Version), zap.Error(err))
-	}
-	if cfg.FreezeUserCgroup && canFreeze {
-		parts = append(parts, freezeCgroupCmd)
-	}
 
 	steps := []struct {
 		cap time.Duration
@@ -74,16 +56,28 @@ func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration
 	return "rc=0; " + strings.Join(parts, "; ") + "; exit $rc", sum + reclaimOuterSlack
 }
 
-// bestEffortReclaim runs the freeze + reclaim chain via envd before pause.
-// The shell uses the _system tag so the freeze doesn't catch the shell itself.
+// bestEffortReclaim freezes user cgroups (via the native /freeze endpoint, on
+// its own deadline) and then runs the fstrim/sync/drop_caches/compact_memory
+// chain via envd before pause. The frozen state persists into the snapshot;
+// envd unfreezes at the end of /init on resume.
 func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
-	script, timeout := s.buildReclaimScript(ctx)
+	ctx, span := tracer.Start(ctx, "envd-reclaim")
+	defer span.End()
+
+	cfg := featureflags.GetReclaimConfig(ctx, s.featureFlags,
+		featureflags.SandboxContext(s.Runtime.SandboxID),
+		featureflags.TeamContext(s.Runtime.TeamID),
+		featureflags.TemplateContext(s.Runtime.TemplateID),
+	)
+
+	if cfg.FreezeUserCgroup {
+		s.bestEffortFreeze(ctx)
+	}
+
+	script, timeout := s.buildReclaimScript(cfg)
 	if script == "" {
 		return
 	}
-
-	ctx, span := tracer.Start(ctx, "envd-reclaim")
-	defer span.End()
 
 	rcCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -109,5 +103,25 @@ func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 	}
 	if exitCode != 0 {
 		logger.L().Warn(ctx, "envd reclaim non-zero exit", logger.WithSandboxID(s.Runtime.SandboxID), zap.Int32("exit_code", exitCode))
+	}
+}
+
+// bestEffortFreeze calls envd's native /freeze endpoint with a tight, freeze-
+// only deadline so it doesn't share a timeout budget with the rest of reclaim.
+// Gated on envd version: older envds either don't expose /freeze or wouldn't
+// thaw on resume.
+func (s *Sandbox) bestEffortFreeze(ctx context.Context) {
+	canFreeze, err := utils.IsGTEVersion(s.Config.Envd.Version, utils.MinEnvdVersionForCgroupFreeze)
+	if err != nil {
+		logger.L().Warn(ctx, "cgroup freeze version gate: bad envd version", logger.WithSandboxID(s.Runtime.SandboxID), zap.String("envd_version", s.Config.Envd.Version), zap.Error(err))
+
+		return
+	}
+	if !canFreeze {
+		return
+	}
+
+	if err := s.callEnvdFreeze(ctx, freezeTimeout); err != nil {
+		logger.L().Warn(ctx, "envd freeze failed", logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
 	}
 }

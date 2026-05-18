@@ -75,6 +75,18 @@ paths:
         "204":
           description: Env vars set, the time and metadata is synced with the host
 
+  /freeze:
+    post:
+      summary: Freeze user/pty/socat cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
+      security:
+        - AccessTokenAuth: []
+        - {}
+      responses:
+        "204":
+          description: Cgroups frozen
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /envs:
     get:
       summary: Get the environment variables

@@ -237,6 +237,9 @@ type ServerInterface interface {
 	// Compose multiple files into a single file using zero-copy concatenation. Source files are deleted after successful composition.
 	// (POST /files/compose)
 	PostFilesCompose(w http.ResponseWriter, r *http.Request)
+	// Freeze user/pty/socat cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
+	// (POST /freeze)
+	PostFreeze(w http.ResponseWriter, r *http.Request)
 	// Check the health of the service
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -273,6 +276,12 @@ func (_ Unimplemented) PostFiles(w http.ResponseWriter, r *http.Request, params 
 // Compose multiple files into a single file using zero-copy concatenation. Source files are deleted after successful composition.
 // (POST /files/compose)
 func (_ Unimplemented) PostFilesCompose(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Freeze user/pty/socat cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
+// (POST /freeze)
+func (_ Unimplemented) PostFreeze(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -499,6 +508,26 @@ func (siw *ServerInterfaceWrapper) PostFilesCompose(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// PostFreeze operation middleware
+func (siw *ServerInterfaceWrapper) PostFreeze(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFreeze(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 
@@ -677,6 +706,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/files/compose", wrapper.PostFilesCompose)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/freeze", wrapper.PostFreeze)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/health", wrapper.GetHealth)
