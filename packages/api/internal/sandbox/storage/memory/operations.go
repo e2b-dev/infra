@@ -12,7 +12,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/joined"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -267,10 +266,6 @@ func waitForStateChange(ctx context.Context, sbx *memorySandbox) error {
 	if transition == nil {
 		return nil
 	}
-
-	// Mark as a joined request: we are about to actually block on another
-	// in-flight transition.
-	joined.Mark(ctx)
 
 	return transition.WaitWithContext(ctx)
 }
