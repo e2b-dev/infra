@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"golang.org/x/sync/semaphore"
 )
 
 const (
@@ -27,10 +28,9 @@ const (
 // ExecStartPre), so all reads and writes bypass the NBD-backed filesystem and
 // atomic cert rotation via os.Rename works within the same device.
 type CACertInstaller struct {
-	// mu is a buffered-1 channel acting as a ctx-aware mutex. Lock acquisition
-	// respects the caller's ctx; the actual install work always runs to
-	// completion once the lock is held.
-	mu     chan struct{}
+	// mu is a ctx-aware mutex; Acquire respects the caller's ctx so a stuck
+	// background cleanup can't permanently wedge a foreground /init.
+	mu     *semaphore.Weighted
 	logger *zerolog.Logger
 
 	// lastCACert caches the most recently installed PEM so that resume (same
@@ -44,7 +44,7 @@ type CACertInstaller struct {
 func NewCACertInstaller(logger *zerolog.Logger) *CACertInstaller {
 	return &CACertInstaller{
 		logger: logger,
-		mu:     make(chan struct{}, 1),
+		mu:     semaphore.NewWeighted(1),
 	}
 }
 
@@ -80,12 +80,10 @@ func (c *CACertInstaller) install(ctx context.Context, certPEM, bundlePath, extr
 	// consistent regardless of how the caller formatted the PEM.
 	normalized := strings.TrimRight(certPEM, "\n") + "\n"
 
-	select {
-	case c.mu <- struct{}{}:
-	case <-ctx.Done():
-		return fmt.Errorf("acquire CA install lock: %w", ctx.Err())
+	if err := c.mu.Acquire(ctx, 1); err != nil {
+		return fmt.Errorf("acquire CA install lock: %w", err)
 	}
-	defer func() { <-c.mu }()
+	defer c.mu.Release(1)
 
 	if c.lastCACert == normalized {
 		c.logger.Debug().
@@ -119,8 +117,8 @@ func (c *CACertInstaller) install(ctx context.Context, certPEM, bundlePath, extr
 	go func() {
 		cleanStart := time.Now()
 
-		c.mu <- struct{}{}
-		defer func() { <-c.mu }()
+		_ = c.mu.Acquire(context.Background(), 1)
+		defer c.mu.Release(1)
 
 		// A newer install has taken over; let that goroutine handle cleanup.
 		if c.lastCACert != normalized {
