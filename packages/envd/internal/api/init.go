@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/netip"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 
@@ -183,10 +185,7 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	}
 
 	if data.EnvVars != nil {
-		keys := make([]string, 0, len(*data.EnvVars))
-		for key := range *data.EnvVars {
-			keys = append(keys, key)
-		}
+		keys := slices.Collect(maps.Keys(*data.EnvVars))
 		logger.Debug().Msgf("Setting %d env vars: %s", len(keys), strings.Join(keys, ", "))
 		a.defaults.EnvVars.ReplaceUserVars(*data.EnvVars)
 	}
