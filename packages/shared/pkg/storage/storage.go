@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"time"
@@ -103,6 +104,20 @@ func WithMetadata(metadata ObjectMetadata) PutOption { return storageopts.WithMe
 // stored as `any` in storageopts to avoid importing storage from there;
 // backends use CompressConfigFromOpts to pull it back out.
 func WithCompressConfig(cfg CompressConfig) PutOption { return storageopts.WithCompression(cfg) }
+
+func WithChecksumSHA256() PutOption {
+	return func(o *PutOptions) { o.Checksum = true }
+}
+
+// sum256 finalizes h into a SHA-256 digest, or the zero digest when h is nil.
+func sum256(h hash.Hash) [32]byte {
+	var sum [32]byte
+	if h != nil {
+		copy(sum[:], h.Sum(nil))
+	}
+
+	return sum
+}
 
 func ApplyPutOptions(opts []PutOption) PutOptions { return storageopts.Apply(opts) }
 

@@ -694,3 +694,227 @@ func TestSerializeDeserialize_V4_SparseTrimming(t *testing.T) {
 	_, err = gotFT.LocateCompressed(4096)
 	require.Error(t, err)
 }
+
+func TestSerializeDeserialize_V4_Uncompressed_SelfEntry(t *testing.T) {
+	t.Parallel()
+
+	buildID := uuid.New()
+	metadata := &Metadata{
+		Version:     MetadataVersionV4,
+		BlockSize:   4096,
+		Size:        8192,
+		Generation:  0,
+		BuildId:     buildID,
+		BaseBuildId: buildID,
+	}
+
+	mappings := []BuildMap{
+		{Offset: 0, Length: 8192, BuildId: buildID, BuildStorageOffset: 0},
+	}
+
+	h, err := NewHeader(metadata, mappings)
+	require.NoError(t, err)
+	h.Builds = map[uuid.UUID]BuildData{
+		buildID: {},
+	}
+
+	data, err := SerializeHeader(h)
+	require.NoError(t, err)
+
+	got, err := DeserializeBytes(data)
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(MetadataVersionV4), got.Metadata.Version)
+	require.Len(t, got.Builds, 1)
+	require.Contains(t, got.Builds, buildID)
+	require.Nil(t, got.GetBuildFrameData(buildID))
+}
+
+// Layered chain V4-uncompressed (self) → V4-compressed (mid) → V4-uncompressed
+// (older) → V3 ancestor → V3 ancestor: V4 ancestors round-trip via Builds, V3
+// ancestors stay absent.
+func TestSerializeDeserialize_V4_MixedChain(t *testing.T) {
+	t.Parallel()
+
+	selfID := uuid.New()
+	midID := uuid.New()
+	olderID := uuid.New()
+	v3aID := uuid.New()
+	v3bID := uuid.New()
+
+	midFT := storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+		{U: 4096, C: 1234},
+	})
+
+	metadata := &Metadata{
+		Version:     MetadataVersionV4,
+		BlockSize:   4096,
+		Size:        4096 * 5,
+		Generation:  4,
+		BuildId:     selfID,
+		BaseBuildId: v3bID,
+	}
+
+	mappings := []BuildMap{
+		{Offset: 0, Length: 4096, BuildId: selfID, BuildStorageOffset: 0},
+		{Offset: 4096, Length: 4096, BuildId: midID, BuildStorageOffset: 0},
+		{Offset: 8192, Length: 4096, BuildId: olderID, BuildStorageOffset: 0},
+		{Offset: 12288, Length: 4096, BuildId: v3aID, BuildStorageOffset: 0},
+		{Offset: 16384, Length: 4096, BuildId: v3bID, BuildStorageOffset: 0},
+	}
+
+	h, err := NewHeader(metadata, mappings)
+	require.NoError(t, err)
+	h.Builds = map[uuid.UUID]BuildData{
+		selfID:  {},
+		midID:   {Size: 4096, FrameData: midFT},
+		olderID: {Size: 4096},
+	}
+
+	data, err := SerializeHeader(h)
+	require.NoError(t, err)
+
+	got, err := DeserializeBytes(data)
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(MetadataVersionV4), got.Metadata.Version)
+	require.Len(t, got.Mapping, 5)
+	require.Len(t, got.Builds, 3)
+
+	require.Nil(t, got.GetBuildFrameData(selfID))
+	require.Nil(t, got.GetBuildFrameData(olderID))
+
+	gotMidFT := got.GetBuildFrameData(midID)
+	require.NotNil(t, gotMidFT)
+	require.Equal(t, storage.CompressionZstd, gotMidFT.CompressionType())
+	require.Equal(t, 1, gotMidFT.NumFrames())
+
+	_, hasV3a := got.Builds[v3aID]
+	require.False(t, hasV3a)
+	_, hasV3b := got.Builds[v3bID]
+	require.False(t, hasV3b)
+
+	require.Equal(t, selfID, got.Mapping[0].BuildId)
+	require.Equal(t, midID, got.Mapping[1].BuildId)
+	require.Equal(t, olderID, got.Mapping[2].BuildId)
+	require.Equal(t, v3aID, got.Mapping[3].BuildId)
+	require.Equal(t, v3bID, got.Mapping[4].BuildId)
+}
+
+// Layered chain with a compressed self entry:
+// C-v4 (self) → U-v4 (mid) → C-v4 (older) → V3 → V3. After a serialize round
+// trip, every virtual offset resolves to the right build via GetShiftedMapping
+// and carries the expected compression (FrameData present iff compressed).
+func TestSerializeDeserialize_V4_CompressedSelfChain(t *testing.T) {
+	t.Parallel()
+
+	selfID := uuid.New()
+	midID := uuid.New()
+	olderID := uuid.New()
+	v3aID := uuid.New()
+	v3bID := uuid.New()
+
+	selfFT := storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+		{U: 4096, C: 1100},
+		{U: 4096, C: 1200},
+	})
+	olderFT := storage.NewFrameTable(storage.CompressionZstd, []storage.FrameSize{
+		{U: 4096, C: 1300},
+	})
+
+	metadata := &Metadata{
+		Version:     MetadataVersionV4,
+		BlockSize:   4096,
+		Size:        4096 * 6,
+		Generation:  4,
+		BuildId:     selfID,
+		BaseBuildId: v3bID,
+	}
+
+	// self spans two blocks to exercise the intra-build shift.
+	mappings := []BuildMap{
+		{Offset: 0, Length: 8192, BuildId: selfID, BuildStorageOffset: 0},
+		{Offset: 8192, Length: 4096, BuildId: midID, BuildStorageOffset: 0},
+		{Offset: 12288, Length: 4096, BuildId: olderID, BuildStorageOffset: 0},
+		{Offset: 16384, Length: 4096, BuildId: v3aID, BuildStorageOffset: 0},
+		{Offset: 20480, Length: 4096, BuildId: v3bID, BuildStorageOffset: 0},
+	}
+
+	h, err := NewHeader(metadata, mappings)
+	require.NoError(t, err)
+	h.Builds = map[uuid.UUID]BuildData{
+		selfID:  {Size: 8192, FrameData: selfFT},
+		midID:   {Size: 4096},
+		olderID: {Size: 4096, FrameData: olderFT},
+	}
+
+	data, err := SerializeHeader(h)
+	require.NoError(t, err)
+
+	got, err := DeserializeBytes(data)
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(MetadataVersionV4), got.Metadata.Version)
+	require.Len(t, got.Builds, 3)
+
+	// Walk every virtual block offset and check it resolves to the owning
+	// build with the expected compression.
+	cases := []struct {
+		offset     int64
+		wantBuild  uuid.UUID
+		wantOffset uint64
+		compressed bool
+	}{
+		{0, selfID, 0, true},
+		{4096, selfID, 4096, true}, // shifted read inside self
+		{8192, midID, 0, false},    // uncompressed V4
+		{12288, olderID, 0, true},  // compressed ancestor
+		{16384, v3aID, 0, false},   // V3 ancestor, no Builds entry
+		{20480, v3bID, 0, false},   // V3 ancestor, no Builds entry
+	}
+	for _, tc := range cases {
+		m, err := got.GetShiftedMapping(t.Context(), tc.offset)
+		require.NoError(t, err, "offset %d", tc.offset)
+		require.Equal(t, tc.wantBuild, m.BuildId, "offset %d build", tc.offset)
+		require.Equal(t, tc.wantOffset, m.Offset, "offset %d storage offset", tc.offset)
+
+		ft := got.GetBuildFrameData(m.BuildId)
+		if tc.compressed {
+			require.NotNil(t, ft, "offset %d expected FrameData", tc.offset)
+			require.Equal(t, storage.CompressionZstd, ft.CompressionType(), "offset %d", tc.offset)
+		} else {
+			require.Nil(t, ft, "offset %d expected no FrameData", tc.offset)
+		}
+	}
+
+	// V3 ancestors must not have leaked into Builds.
+	_, hasV3a := got.Builds[v3aID]
+	require.False(t, hasV3a)
+	_, hasV3b := got.Builds[v3bID]
+	require.False(t, hasV3b)
+}
+
+func TestDeserialize_V3_StaysV3(t *testing.T) {
+	t.Parallel()
+
+	buildID := uuid.New()
+	metadata := &Metadata{
+		Version:     3,
+		BlockSize:   4096,
+		Size:        4096,
+		Generation:  0,
+		BuildId:     buildID,
+		BaseBuildId: buildID,
+	}
+	mappings := []BuildMap{{Offset: 0, Length: 4096, BuildId: buildID}}
+
+	data, err := serializeV3(metadata, mappings)
+	require.NoError(t, err)
+
+	got, err := DeserializeBytes(data)
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(3), got.Metadata.Version)
+	require.Nil(t, got.Builds)
+	require.Nil(t, got.GetBuildFrameData(buildID))
+}
