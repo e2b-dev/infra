@@ -28,8 +28,6 @@ const (
 // ExecStartPre), so all reads and writes bypass the NBD-backed filesystem and
 // atomic cert rotation via os.Rename works within the same device.
 type CACertInstaller struct {
-	// mu is a ctx-aware mutex; Acquire respects the caller's ctx so a stuck
-	// background cleanup can't permanently wedge a foreground /init.
 	mu     *semaphore.Weighted
 	logger *zerolog.Logger
 
