@@ -41,7 +41,10 @@ func (s *Sandbox) buildReclaimScript(ctx context.Context) (string, time.Duration
 	)
 
 	// Gate on envd version: older envds wouldn't unfreeze on resume.
-	canFreeze, _ := utils.IsGTEVersion(s.Config.Envd.Version, utils.MinEnvdVersionForCgroupFreeze)
+	canFreeze, err := utils.IsGTEVersion(s.Config.Envd.Version, utils.MinEnvdVersionForCgroupFreeze)
+	if err != nil {
+		logger.L().Warn(ctx, "cgroup freeze version gate: bad envd version", logger.WithSandboxID(s.Runtime.SandboxID), zap.String("envd_version", s.Config.Envd.Version), zap.Error(err))
+	}
 	if cfg.FreezeUserCgroup && canFreeze {
 		parts = append(parts, freezeCgroupCmd)
 	}

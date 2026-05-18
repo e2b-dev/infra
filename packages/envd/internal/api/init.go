@@ -171,6 +171,10 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 		return err
 	}
 
+	// Always unfreeze on return; otherwise a SetData error path would leave
+	// user cgroups frozen and the sandbox stuck.
+	defer a.unfreezeUserCgroups(logger)
+
 	if data.Timestamp != nil {
 		// Check if current time differs significantly from the received timestamp
 		if shouldSetSystemTime(time.Now(), *data.Timestamp) {
@@ -226,14 +230,16 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 		}
 	}
 
-	// Unfreeze cgroups that were frozen pre-snapshot; idempotent if not frozen.
+	return nil
+}
+
+// unfreezeUserCgroups unfreezes user/pty/socat cgroups (idempotent if not frozen).
+func (a *API) unfreezeUserCgroups(logger zerolog.Logger) {
 	for _, pt := range []cgroups.ProcessType{cgroups.ProcessTypeUser, cgroups.ProcessTypePTY, cgroups.ProcessTypeSocat} {
 		if err := a.cgroupManager.Unfreeze(pt); err != nil {
 			logger.Warn().Err(err).Msgf("unfreeze %s cgroup", pt)
 		}
 	}
-
-	return nil
 }
 
 var nfsOptions = strings.Join([]string{
