@@ -121,6 +121,7 @@ func (s *Sandbox) callEnvdCgroupOp(ctx context.Context, timeout time.Duration, o
 
 	if resp.StatusCode != http.StatusNoContent {
 		body, _ := io.ReadAll(resp.Body)
+
 		return fmt.Errorf("%s returned %d: %s", op, resp.StatusCode, utils.Truncate(string(body), 100))
 	}
 

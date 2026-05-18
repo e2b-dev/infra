@@ -682,6 +682,7 @@ func (f *fakeCgroupManager) Freeze(pt cgroups.ProcessType) error {
 		return f.freezeErr
 	}
 	f.frozen = append(f.frozen, pt)
+
 	return nil
 }
 
@@ -692,6 +693,7 @@ func (f *fakeCgroupManager) Unfreeze(pt cgroups.ProcessType) error {
 		return f.unfreezeErr
 	}
 	f.unfrozen = append(f.unfrozen, pt)
+
 	return nil
 }
 

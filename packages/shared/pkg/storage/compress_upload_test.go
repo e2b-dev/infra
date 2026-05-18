@@ -198,10 +198,7 @@ func TestCompressStreamContextCancel(t *testing.T) {
 	data := generateSemiRandomData(10 * megabyte)
 
 	ctx, cancel := context.WithCancel(t.Context())
-	go func() {
-		time.Sleep(10 * time.Millisecond)
-		cancel()
-	}()
+	cancel()
 
 	up := &memPartUploader{}
 	cfg := defaultCfg(CompressionZstd, 4, 2*megabyte)
