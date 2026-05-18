@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/joined"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -251,6 +252,10 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 }
 
 func (s *Storage) WaitForStateChange(ctx context.Context, _ uuid.UUID, sandboxID string) error {
+	// Mark as a joined request for telemetry purposes: the caller explicitly
+	// took the "wait for state change" branch.
+	joined.Mark(ctx)
+
 	sbx, err := s.get(sandboxID)
 	if err != nil {
 		return fmt.Errorf("failed to get sandbox: %w", err)

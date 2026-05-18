@@ -229,6 +229,12 @@ func (s *Storage) restoreToRunning(ctx context.Context, teamID uuid.UUID, sandbo
 
 // WaitForStateChange waits for a sandbox state transition to complete.
 func (s *Storage) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error {
+	// Mark as a joined request for telemetry purposes: the caller explicitly
+	// took the "wait for state change" branch, so it is intentionally racing
+	// another in-flight operation regardless of whether the transition is
+	// still pending or already completed by the time we look it up.
+	joined.Mark(ctx)
+
 	transitionKey := getTransitionKey(teamID.String(), sandboxID)
 	transactionID, err := s.redisClient.Get(ctx, transitionKey).Result()
 	if errors.Is(err, redis.Nil) {
