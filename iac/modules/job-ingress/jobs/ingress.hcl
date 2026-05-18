@@ -18,6 +18,10 @@ job "ingress" {
       port "control" {
         static = "${control_port}"
       }
+
+      port "client_proxy" {
+        static = "${client_proxy_port}"
+      }
     }
 
 # https://developer.hashicorp.com/nomad/docs/job-specification/update

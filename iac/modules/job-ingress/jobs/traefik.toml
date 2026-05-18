@@ -9,6 +9,8 @@
     address = ":${ingress_port}"
   [entryPoints.traefik]
     address = ":${control_port}"
+  [entryPoints.clientProxy]
+    address = ":${client_proxy_port}"
 
 [metrics]
   [metrics.otlp]

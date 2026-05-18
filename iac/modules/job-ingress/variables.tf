@@ -27,6 +27,10 @@ variable "ingress_control_port" {
   default = 8900
 }
 
+variable "ingress_client_proxy_port" {
+  type = number
+}
+
 variable "node_pool" {
   type = string
 }

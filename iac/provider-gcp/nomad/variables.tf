@@ -554,3 +554,8 @@ variable "orchestrator_enabled" {
   default     = true
   description = "Whether the orchestrator job should be deployed"
 }
+
+variable "ingress_client_proxy_port" {
+  type        = number
+  description = "The exposed port that will receive client proxy requests"
+}

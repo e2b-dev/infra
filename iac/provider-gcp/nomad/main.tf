@@ -81,9 +81,10 @@ data "google_secret_manager_secret_version" "redis_tls_ca_base64" {
 module "ingress" {
   source = "../../modules/job-ingress"
 
-  ingress_count        = var.ingress_count
-  ingress_proxy_port   = var.ingress_port.port
-  traefik_config_files = var.traefik_config_files
+  ingress_count             = var.ingress_count
+  ingress_proxy_port        = var.ingress_port.port
+  ingress_client_proxy_port = var.ingress_client_proxy_port
+  traefik_config_files      = var.traefik_config_files
 
   node_pool     = var.api_node_pool
   update_stanza = var.api_machine_count > 1

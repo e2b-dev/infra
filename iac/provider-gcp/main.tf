@@ -270,6 +270,7 @@ module "nomad" {
 
   client_proxy_session_port = var.client_proxy_port.port
   client_proxy_health_port  = var.client_proxy_health_port.port
+  ingress_client_proxy_port = var.ingress_client_proxy_port.port
 
   domain_name = var.domain_name
 

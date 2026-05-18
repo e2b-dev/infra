@@ -235,6 +235,19 @@ variable "ingress_port" {
   }
 }
 
+variable "ingress_client_proxy_port" {
+  type = object({
+    name        = string
+    port        = number
+    health_path = string
+  })
+  default = {
+    name        = "client-proxy"
+    port        = 9435
+    health_path = "/"
+  }
+}
+
 variable "dashboard_api_count" {
   type    = number
   default = 0
