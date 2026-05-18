@@ -252,10 +252,6 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 }
 
 func (s *Storage) WaitForStateChange(ctx context.Context, _ uuid.UUID, sandboxID string) error {
-	// Mark as a joined request for telemetry purposes: the caller explicitly
-	// took the "wait for state change" branch.
-	joined.Mark(ctx)
-
 	sbx, err := s.get(sandboxID)
 	if err != nil {
 		return fmt.Errorf("failed to get sandbox: %w", err)
@@ -271,6 +267,10 @@ func waitForStateChange(ctx context.Context, sbx *memorySandbox) error {
 	if transition == nil {
 		return nil
 	}
+
+	// Mark as a joined request: we are about to actually block on another
+	// in-flight transition.
+	joined.Mark(ctx)
 
 	return transition.WaitWithContext(ctx)
 }
