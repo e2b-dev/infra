@@ -183,13 +183,11 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	}
 
 	if data.EnvVars != nil {
-		newVars := *data.EnvVars
-		logger.Debug().Msg(fmt.Sprintf("Setting %d env vars", len(newVars)))
-
-		a.defaults.EnvVars.Clear()
-		for key, value := range newVars {
-			a.defaults.EnvVars.Store(key, value)
+		logger.Debug().Msg(fmt.Sprintf("Setting %d env vars", len(*data.EnvVars)))
+		for key := range *data.EnvVars {
+			logger.Debug().Msgf("Setting env var for %s", key)
 		}
+		a.defaults.EnvVars.ReplaceUserVars(*data.EnvVars)
 	}
 
 	if data.AccessToken.IsSet() {
