@@ -48,14 +48,16 @@ func (e *EnvVars) Load(key string) (string, bool) {
 	return v.value, true
 }
 
-func (e *EnvVars) Range(f func(key, value string) bool) {
+// All returns a snapshot of all entries as a plain map.
+func (e *EnvVars) All() map[string]string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
+	out := make(map[string]string, len(e.m))
 	for k, v := range e.m {
-		if !f(k, v.value) {
-			return
-		}
+		out[k] = v.value
 	}
+
+	return out
 }
 
 // ReplaceUserVars replaces all user entries with newVars; internal entries

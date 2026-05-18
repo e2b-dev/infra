@@ -7,17 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func collect(e *EnvVars) map[string]string {
-	out := map[string]string{}
-	e.Range(func(k, v string) bool {
-		out[k] = v
-
-		return true
-	})
-
-	return out
-}
-
 func TestEnvVars_StoreUserRejectsInternal(t *testing.T) {
 	t.Parallel()
 	e := NewEnvVars()
@@ -61,7 +50,7 @@ func TestEnvVars_ReplaceUserVars(t *testing.T) {
 		"E2B_SANDBOX_ID": "sbx-1",
 		"BAR":            "two",
 		"BAZ":            "three",
-	}, collect(e))
+	}, e.All())
 
 	assert.True(t, e.StoreUser("BAZ", "four"))
 	v, _ := e.Load("BAZ")
@@ -83,5 +72,5 @@ func TestEnvVars_ReplaceUserVarsClearsOmittedKeys(t *testing.T) {
 	assert.Equal(t, map[string]string{
 		"E2B_SANDBOX": "true",
 		"FOO":         "1",
-	}, collect(e))
+	}, e.All())
 }
