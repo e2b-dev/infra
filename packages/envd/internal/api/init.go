@@ -128,8 +128,12 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		// Safe because Destroy() is nil-safe and TakeFrom clears the source.
 		defer initRequest.AccessToken.Destroy()
 
-		a.initLock.Lock()
-		defer a.initLock.Unlock()
+		if err := a.initLock.Acquire(ctx, 1); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+
+			return
+		}
+		defer a.initLock.Release(1)
 
 		// Update data only if the request is newer or if there's no timestamp at all
 		if initRequest.Timestamp == nil || a.lastSetTime.SetToGreater(initRequest.Timestamp.UnixNano()) {
@@ -214,8 +218,7 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	}
 
 	if data.CaBundle != nil && *data.CaBundle != "" {
-		err := a.caCertInstaller.Install(context.WithoutCancel(ctx), *data.CaBundle)
-		if err != nil {
+		if err := a.caCertInstaller.Install(ctx, *data.CaBundle); err != nil {
 			return fmt.Errorf("failed to install CA bundle: %w", err)
 		}
 	}
@@ -325,13 +328,16 @@ func (a *API) unmountNFS(ctx context.Context, logger zerolog.Logger, path string
 
 	logger.Debug().Msgf("Unmounting stale NFS mount at %q (was: %s)", path, source)
 
-	// Force unmount since the handles are stale anyway
-	data, err = exec.CommandContext(ctx, "umount", "--force", path).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to unmount stale NFS mount at %q: %w\n%s", path, err, string(data))
+	if data, err = exec.CommandContext(ctx, "umount", "--force", path).CombinedOutput(); err != nil {
+		logger.Warn().Err(err).Str("path", path).Str("output", string(data)).Msg("Forced NFS umount failed, falling back to lazy")
+		// Fresh ctx so the forced umount running out of budget doesn't kill the fallback.
+		lazyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancel()
+		if data, err = exec.CommandContext(lazyCtx, "umount", "--lazy", path).CombinedOutput(); err != nil {
+			return fmt.Errorf("failed to unmount stale NFS mount at %q: %w\n%s", path, err, string(data))
+		}
 	}
 
-	// Clear our tracking state for this path
 	a.mountedPaths.Delete(path)
 
 	return nil

@@ -38,12 +38,6 @@ type MMDSOpts struct {
 	AccessTokenHash      string `json:"accessTokenHash"`
 }
 
-func (opts *MMDSOpts) Update(sandboxID, templateID, collectorAddress string) {
-	opts.SandboxID = sandboxID
-	opts.TemplateID = templateID
-	opts.LogsCollectorAddress = collectorAddress
-}
-
 func (opts *MMDSOpts) AddOptsToJSON(jsonLogs []byte) ([]byte, error) {
 	parsed := make(map[string]any)
 
@@ -136,8 +130,10 @@ func GetAccessTokenHashFromMMDS(ctx context.Context) (string, error) {
 }
 
 func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *utils.Map[string, string]) {
-	httpClient := &http.Client{}
+	httpClient := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
 	defer httpClient.CloseIdleConnections()
+
+	var lastErr error
 
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
@@ -145,20 +141,24 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Fprintf(os.Stderr, "context cancelled while waiting for mmds opts")
+			if lastErr != nil {
+				fmt.Fprintf(os.Stderr, "<4>gave up polling for mmds opts: %v (last error: %v)\n", ctx.Err(), lastErr)
+			} else {
+				fmt.Fprintf(os.Stderr, "<4>gave up polling for mmds opts: %v\n", ctx.Err())
+			}
 
 			return
 		case <-ticker.C:
 			token, err := getMMDSToken(ctx, httpClient)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "error getting mmds token: %v\n", err)
+				lastErr = fmt.Errorf("get mmds token: %w", err)
 
 				continue
 			}
 
 			mmdsOpts, err := getMMDSOpts(ctx, httpClient, token)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "error getting mmds opts: %v\n", err)
+				lastErr = fmt.Errorf("get mmds opts: %w", err)
 
 				continue
 			}

@@ -45,8 +45,9 @@ func (h *APIStore) Logs(c *gin.Context) {
 		return
 	}
 
-	// Overwrite instanceID and teamID to avoid spoofing
+	// Overwrite instanceID, envID, and teamID to avoid spoofing
 	payload["instanceID"] = sbxID
+	payload["envID"] = sbx.Runtime.TemplateID
 	payload["teamID"] = sbx.Runtime.TeamID
 
 	logs, err := json.Marshal(payload)

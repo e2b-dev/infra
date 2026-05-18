@@ -169,6 +169,7 @@ func (sb *StepBuilder) Build(
 		RamMB:             sb.Config.MemoryMB,
 		HugePages:         sb.Config.HugePages,
 		FreePageReporting: sb.Config.FreePageReporting,
+		FreePageHinting:   sb.Config.FreePageHinting,
 
 		Envd: sandbox.EnvdMetadata{
 			Version: sb.EnvdVersion,

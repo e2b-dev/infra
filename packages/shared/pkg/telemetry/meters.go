@@ -129,6 +129,7 @@ const (
 
 const (
 	ApiOrchestratorCountMeterName GaugeIntType = "api.orchestrator.status"
+	OrchestratorStatusGaugeName   GaugeIntType = "orchestrator.status"
 
 	// Sandbox metrics
 	SandboxRamUsedGaugeName   GaugeIntType = "e2b.sandbox.ram.used"
@@ -243,6 +244,7 @@ var gaugeFloatUnits = map[GaugeFloatType]string{
 
 var gaugeIntDesc = map[GaugeIntType]string{
 	ApiOrchestratorCountMeterName: "Counter of running orchestrators.",
+	OrchestratorStatusGaugeName:   "Self-reported orchestrator status (always 1, labelled with status and version).",
 	SandboxRamUsedGaugeName:       "Amount of RAM used by the sandbox.",
 	SandboxRamTotalGaugeName:      "Amount of RAM available to the sandbox.",
 	SandboxRamCacheGaugeName:      "Amount of RAM used by the page cache in the sandbox.",
@@ -255,6 +257,7 @@ var gaugeIntDesc = map[GaugeIntType]string{
 
 var gaugeIntUnits = map[GaugeIntType]string{
 	ApiOrchestratorCountMeterName: "{orchestrator}",
+	OrchestratorStatusGaugeName:   "{orchestrator}",
 	SandboxRamUsedGaugeName:       "{By}",
 	SandboxRamTotalGaugeName:      "{By}",
 	SandboxRamCacheGaugeName:      "{By}",

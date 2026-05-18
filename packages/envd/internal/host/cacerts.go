@@ -6,10 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
+	"golang.org/x/sync/semaphore"
 )
 
 const (
@@ -28,7 +28,7 @@ const (
 // ExecStartPre), so all reads and writes bypass the NBD-backed filesystem and
 // atomic cert rotation via os.Rename works within the same device.
 type CACertInstaller struct {
-	mu     sync.Mutex
+	mu     *semaphore.Weighted
 	logger *zerolog.Logger
 
 	// lastCACert caches the most recently installed PEM so that resume (same
@@ -40,7 +40,10 @@ type CACertInstaller struct {
 }
 
 func NewCACertInstaller(logger *zerolog.Logger) *CACertInstaller {
-	return &CACertInstaller{logger: logger}
+	return &CACertInstaller{
+		logger: logger,
+		mu:     semaphore.NewWeighted(1),
+	}
 }
 
 // Install injects certPEM into the system CA bundle. Returns an error if the
@@ -64,7 +67,7 @@ func (c *CACertInstaller) Install(ctx context.Context, certPEM string) error {
 //
 // All goroutine work runs under mu to keep the bundle and extra-certs file
 // consistent with concurrent foreground appends.
-func (c *CACertInstaller) install(_ context.Context, certPEM, bundlePath, extraPath string) error {
+func (c *CACertInstaller) install(ctx context.Context, certPEM, bundlePath, extraPath string) error {
 	if certPEM == "" {
 		return nil
 	}
@@ -75,8 +78,10 @@ func (c *CACertInstaller) install(_ context.Context, certPEM, bundlePath, extraP
 	// consistent regardless of how the caller formatted the PEM.
 	normalized := strings.TrimRight(certPEM, "\n") + "\n"
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	if err := c.mu.Acquire(ctx, 1); err != nil {
+		return fmt.Errorf("acquire CA install lock: %w", err)
+	}
+	defer c.mu.Release(1)
 
 	if c.lastCACert == normalized {
 		c.logger.Debug().
@@ -107,11 +112,11 @@ func (c *CACertInstaller) install(_ context.Context, certPEM, bundlePath, extraP
 		Dur("append_duration", time.Since(start)).
 		Msg("CA cert appended to bundle")
 
-	go func() {
+	go func() { //nolint:contextcheck // background cleanup must outlive the caller's ctx
 		cleanStart := time.Now()
 
-		c.mu.Lock()
-		defer c.mu.Unlock()
+		_ = c.mu.Acquire(context.Background(), 1)
+		defer c.mu.Release(1)
 
 		// A newer install has taken over; let that goroutine handle cleanup.
 		if c.lastCACert != normalized {

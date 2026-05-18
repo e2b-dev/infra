@@ -325,6 +325,10 @@ module "otel_collector" {
   enable_otel_router_metrics = var.enable_otel_router_metrics
   otel_router_grpc_port      = var.otel_router_grpc_port
 
+  enable_gcp_telemetry_metrics          = var.enable_gcp_telemetry_metrics
+  enable_gcp_telemetry_external_metrics = var.enable_gcp_telemetry_external_metrics
+  gcp_telemetry_project_id              = var.gcp_project_id
+
   clickhouse_username = var.clickhouse_username
   clickhouse_password = random_password.clickhouse_password.result
   clickhouse_port     = var.clickhouse_server_port.port
@@ -340,6 +344,9 @@ module "otel_collector_nomad_server" {
   grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
   grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
   grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
+
+  enable_gcp_telemetry_metrics = var.enable_gcp_telemetry_metrics
+  gcp_telemetry_project_id     = var.gcp_project_id
 }
 
 
