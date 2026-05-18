@@ -12,8 +12,8 @@ import (
 )
 
 type Cgroup2Manager struct {
-	cgroupFDs    map[ProcessType]int
-	cgroupPaths  map[ProcessType]string
+	cgroupFDs   map[ProcessType]int
+	cgroupPaths map[ProcessType]string
 }
 
 var _ Manager = (*Cgroup2Manager)(nil)
