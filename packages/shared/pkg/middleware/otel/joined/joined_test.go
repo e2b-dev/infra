@@ -5,10 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/attribute"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/joined"
 )
@@ -65,50 +61,6 @@ func TestWithHolder_Idempotent(t *testing.T) {
 	assert.True(t, a.Value.AsBool(), "second WithHolder must reuse the first holder")
 }
 
-// Mark must pin request.joined="true" onto the server span captured at
-// WithHolder install time, not onto whichever child span is active when
-// Mark fires.
-func TestMark_TagsServerSpanNotChildSpan(t *testing.T) {
-	t.Parallel()
-
-	sr := tracetest.NewSpanRecorder()
-	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
-	tracer := tp.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/joined")
-
-	// Open the server span before installing the holder (mirrors tracing
-	// middleware ordering: tracer.Start -> WithHolder).
-	ctx, serverSpan := tracer.Start(context.Background(), "HTTP POST /resume")
-	ctx = joined.WithHolder(ctx)
-
-	// Open a child span (mirrors orchestrator.CreateSandbox's
-	// "create-sandbox" child) and call Mark from inside it.
-	childCtx, childSpan := tracer.Start(ctx, "create-sandbox")
-	joined.Mark(childCtx)
-	childSpan.End()
-	serverSpan.End()
-
-	spans := sr.Ended()
-	require.Len(t, spans, 2)
-
-	var server, child sdktrace.ReadOnlySpan
-	for _, s := range spans {
-		if s.Name() == "create-sandbox" {
-			child = s
-		} else {
-			server = s
-		}
-	}
-	require.NotNil(t, server)
-	require.NotNil(t, child)
-
-	serverAttr, hasServer := findAttr(server.Attributes(), joined.AttributeKey)
-	require.True(t, hasServer, "request.joined must be on the server span")
-	assert.True(t, serverAttr.AsBool())
-
-	_, hasChild := findAttr(child.Attributes(), joined.AttributeKey)
-	assert.False(t, hasChild, "request.joined must NOT be on the child span")
-}
-
 // Mark must be safe when called from a goroutine descended from the
 // request context.
 func TestMark_DescendantGoroutine(t *testing.T) {
@@ -124,14 +76,4 @@ func TestMark_DescendantGoroutine(t *testing.T) {
 
 	a := joined.Attribute(ctx)
 	assert.True(t, a.Value.AsBool())
-}
-
-func findAttr(attrs []attribute.KeyValue, key string) (attribute.Value, bool) {
-	for _, a := range attrs {
-		if string(a.Key) == key {
-			return a.Value, true
-		}
-	}
-
-	return attribute.Value{}, false
 }

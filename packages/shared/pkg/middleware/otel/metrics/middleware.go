@@ -101,6 +101,7 @@ func Middleware(meterProvider metric.MeterProvider, service string, options ...O
 			// Distinguish between regular and joined requests
 			resAttributes = append(resAttributes, joined.Attribute(ctx))
 
+			// Use processing start time if set, otherwise fall back to the middleware start time.
 			effectiveStart := start
 			if processingStart, ok := getProcessingStartTime(ginCtx); ok {
 				effectiveStart = processingStart

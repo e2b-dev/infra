@@ -111,11 +111,7 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		ctx, span := tracer.Start(ctx, spanName, opts...)
 		defer span.End()
 
-		// Install the request-scoped joined holder so descendant code paths
-		// (orchestrator, storage layer, etc.) can call joined.Mark and have
-		// the request.joined attribute pinned to this (top-level) server
-		// span. Idempotent: a later joined.WithHolder call from the metrics
-		// middleware will reuse this holder.
+		// Install the request-scoped joined holder
 		ctx = joined.WithHolder(ctx)
 
 		// pass the span through the request context
@@ -138,11 +134,7 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		spanStatus, spanMessage := semconv.SpanStatusFromHTTPStatusCode(status)
 		span.SetStatus(spanStatus, spanMessage)
 
-		// Ensure every server span carries request.joined (true or false)
-		// so trace queries can filter joiner vs. normal traffic without
-		// special-casing the "attribute absent" case. Idempotent: if
-		// joined.Mark already set it to true earlier, this re-asserts the
-		// same value; otherwise it pins it to false.
+		// Marks the joined requests for telemetry purposes.
 		span.SetAttributes(joined.Attribute(ctx))
 
 		if len(c.Errors) > 0 {
