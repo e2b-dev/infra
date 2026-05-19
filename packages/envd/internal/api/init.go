@@ -254,30 +254,46 @@ var userCgroupsToFreeze = []cgroups.ProcessType{
 
 // PostFreeze freezes user/pty/socat cgroups directly (no Process.Start / shell).
 // Orchestrator calls this just before pause; the frozen state persists into the
-// snapshot and /init thaws on resume.
+// snapshot and /init thaws on resume. Short-circuits on the first error so the
+// orchestrator can abort and roll back via /unfreeze.
 func (a *API) PostFreeze(w http.ResponseWriter, r *http.Request) {
-	a.cgroupFreezeHandler(w, r, "freeze", a.cgroupManager.Freeze)
-}
-
-// PostUnfreeze thaws user/pty/socat cgroups directly. Exists ONLY for the
-// orchestrator's pause-failure rollback path; the resume thaw runs via /init's
-// deferred unfreeze and must not be replaced by this endpoint.
-func (a *API) PostUnfreeze(w http.ResponseWriter, r *http.Request) {
-	a.cgroupFreezeHandler(w, r, "unfreeze", a.cgroupManager.Unfreeze)
-}
-
-func (a *API) cgroupFreezeHandler(w http.ResponseWriter, r *http.Request, op string, do func(cgroups.ProcessType) error) {
 	defer r.Body.Close()
 
 	logger := a.logger.With().Str(string(logs.OperationIDKey), logs.AssignOperationID()).Logger()
 
 	for _, pt := range userCgroupsToFreeze {
-		if err := do(pt); err != nil {
-			logger.Error().Err(err).Msgf("%s %s cgroup", op, pt)
-			jsonError(w, http.StatusInternalServerError, fmt.Errorf("%s %s cgroup: %w", op, pt, err))
+		if err := a.cgroupManager.Freeze(pt); err != nil {
+			logger.Error().Err(err).Msgf("freeze %s cgroup", pt)
+			jsonError(w, http.StatusInternalServerError, fmt.Errorf("freeze %s cgroup: %w", pt, err))
 
 			return
 		}
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// PostUnfreeze thaws user/pty/socat cgroups directly. Exists ONLY for the
+// orchestrator's pause-failure rollback path; the resume thaw runs via /init's
+// deferred unfreeze and must not be replaced by this endpoint. Best-effort: tries
+// every cgroup even if one fails so a partial failure cannot leave the rest frozen.
+func (a *API) PostUnfreeze(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	logger := a.logger.With().Str(string(logs.OperationIDKey), logs.AssignOperationID()).Logger()
+
+	var errs []error
+	for _, pt := range userCgroupsToFreeze {
+		if err := a.cgroupManager.Unfreeze(pt); err != nil {
+			logger.Error().Err(err).Msgf("unfreeze %s cgroup", pt)
+			errs = append(errs, fmt.Errorf("unfreeze %s cgroup: %w", pt, err))
+		}
+	}
+	if len(errs) > 0 {
+		jsonError(w, http.StatusInternalServerError, errors.Join(errs...))
+
+		return
 	}
 
 	w.Header().Set("Cache-Control", "no-store")

@@ -596,11 +596,12 @@ func TestShouldRemountNFS(t *testing.T) {
 }
 
 type fakeCgroupManager struct {
-	mu          sync.Mutex
-	frozen      []cgroups.ProcessType
-	freezeErr   error
-	unfrozen    []cgroups.ProcessType
-	unfreezeErr error
+	mu               sync.Mutex
+	frozen           []cgroups.ProcessType
+	freezeErr        error
+	unfrozen         []cgroups.ProcessType
+	unfreezeAttempts []cgroups.ProcessType
+	unfreezeErr      error
 }
 
 func (f *fakeCgroupManager) GetFileDescriptor(cgroups.ProcessType) (int, bool) {
@@ -621,6 +622,7 @@ func (f *fakeCgroupManager) Freeze(pt cgroups.ProcessType) error {
 func (f *fakeCgroupManager) Unfreeze(pt cgroups.ProcessType) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.unfreezeAttempts = append(f.unfreezeAttempts, pt)
 	if f.unfreezeErr != nil {
 		return f.unfreezeErr
 	}
@@ -683,7 +685,7 @@ func TestPostUnfreeze(t *testing.T) {
 		assert.Equal(t, userCgroupsToFreeze, mgr.unfrozen)
 	})
 
-	t.Run("returns 500 and short-circuits on unfreeze error", func(t *testing.T) {
+	t.Run("returns 500 but attempts every cgroup on unfreeze error", func(t *testing.T) {
 		t.Parallel()
 		mgr := &fakeCgroupManager{unfreezeErr: errors.New("write cgroup.freeze: io error")}
 		api := newAPIWithCgroupManager(mgr)
@@ -694,5 +696,6 @@ func TestPostUnfreeze(t *testing.T) {
 
 		assert.Equal(t, http.StatusInternalServerError, rec.Code)
 		assert.Empty(t, mgr.unfrozen)
+		assert.Equal(t, userCgroupsToFreeze, mgr.unfreezeAttempts)
 	})
 }
