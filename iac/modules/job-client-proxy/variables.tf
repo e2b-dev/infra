@@ -107,7 +107,7 @@ variable "launch_darkly_api_key" {
 
 variable "exposure_type" {
   type        = string
-  default     = "private"
+  default     = "public"
   description = "Exposure type: public, private, or both"
   validation {
     condition     = contains(["public", "private", "both"], var.exposure_type)
