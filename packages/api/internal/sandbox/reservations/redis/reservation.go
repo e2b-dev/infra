@@ -266,6 +266,9 @@ func (s *ReservationStorage) tryReadResult(
 	// No result yet. Confirm the reservation is still pending; if it's
 	// not, this is a pre-tombstone Release from a legacy instance. Treat
 	// it as a release for compatibility.
+	//
+	// TODO [ENG-4089]: drop this ZSCORE fallback once all
+	// instances are guaranteed to write a tombstone on Release.
 	scoreErr := s.redisClient.ZScore(ctx, pendingSetKey, sandboxID).Err()
 	if errors.Is(scoreErr, redis.Nil) {
 		// Final read in case finishStart/release raced between our GET
