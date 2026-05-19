@@ -10,26 +10,26 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/api/internal/pause"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
-	pollInterval = 50 * time.Millisecond
-
-	// maxConcurrentEvictions caps the number of evictions that can run in
-	// parallel. Excess items remain expired in the store and are picked up by
-	// the next tick.
-	maxConcurrentEvictions = 256
+	pollInterval               = 50 * time.Millisecond
+	concurrencyRefreshInterval = 30 * time.Second
 )
 
 type Evictor struct {
 	store         *sandbox.Store
 	removeSandbox func(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) error
+	featureFlags  *featureflags.Client
+
+	concurrencyLimiter *utils.AdjustableSemaphore
 
 	// activeEvictions tracks concurrent eviction attempts for the same sandbox
 	// so that overlapping ticks don't kick off multiple removeSandbox calls.
@@ -37,13 +37,27 @@ type Evictor struct {
 }
 
 func New(
+	ctx context.Context,
 	store *sandbox.Store,
 	removeSandbox func(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) error,
+	featureFlags *featureflags.Client,
 	meter metric.Meter,
 ) (*Evictor, error) {
+	initialLimit := featureFlags.IntFlag(ctx, featureflags.MaxConcurrentEvictions)
+	if initialLimit <= 0 {
+		initialLimit = featureflags.MaxConcurrentEvictions.Fallback()
+	}
+
+	concurrencyLimiter, err := utils.NewAdjustableSemaphore(int64(initialLimit))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create eviction concurrency semaphore: %w", err)
+	}
+
 	e := &Evictor{
-		store:         store,
-		removeSandbox: removeSandbox,
+		store:              store,
+		removeSandbox:      removeSandbox,
+		featureFlags:       featureFlags,
+		concurrencyLimiter: concurrencyLimiter,
 	}
 
 	if _, err := telemetry.GetObservableUpDownCounter(meter, telemetry.EvictionsRunningCounterName,
@@ -66,18 +80,22 @@ func New(
 }
 
 func (e *Evictor) Start(ctx context.Context) {
-	g := errgroup.Group{}
-	g.SetLimit(maxConcurrentEvictions)
+	var wg sync.WaitGroup
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
+
+	refreshTicker := time.NewTicker(concurrencyRefreshInterval)
+	defer refreshTicker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			// Wait for in-flight evictions to finish for graceful shutdown.
-			g.Wait()
+			wg.Wait()
 
 			return
+		case <-refreshTicker.C:
+			e.refreshConcurrencyLimit(ctx)
 		case <-ticker.C:
 			sbxs, err := e.store.ExpiredItems(ctx)
 			if err != nil {
@@ -92,22 +110,41 @@ func (e *Evictor) Start(ctx context.Context) {
 					continue
 				}
 
-				if ok := g.TryGo(func() error {
-					defer e.activeEvictions.Delete(item.SandboxID)
-
-					e.evictSandbox(ctx, item)
-
-					return nil
-				}); !ok {
+				// Non-blocking acquire: if we're at capacity, skip and let the
+				// next tick retry. Mirrors the previous errgroup.TryGo behavior.
+				if !e.concurrencyLimiter.TryAcquire(1) {
 					e.activeEvictions.Delete(item.SandboxID)
 
 					logger.L().Debug(ctx, "Max concurrent evictions reached, skipping eviction this tick",
 						logger.WithSandboxID(item.SandboxID),
 						logger.WithTeamID(item.TeamID.String()),
 					)
+
+					continue
 				}
+
+				wg.Add(1)
+				go func(item sandbox.Sandbox) {
+					defer wg.Done()
+					defer e.concurrencyLimiter.Release(1)
+					defer e.activeEvictions.Delete(item.SandboxID)
+
+					e.evictSandbox(ctx, item)
+				}(item)
 			}
 		}
+	}
+}
+
+func (e *Evictor) refreshConcurrencyLimit(ctx context.Context) {
+	limit := e.featureFlags.IntFlag(ctx, featureflags.MaxConcurrentEvictions)
+	if limit <= 0 {
+		return
+	}
+
+	if err := e.concurrencyLimiter.SetLimit(int64(limit)); err != nil {
+		logger.L().Error(ctx, "failed to adjust eviction concurrency semaphore",
+			zap.Int("limit", limit), zap.Error(err))
 	}
 }
 

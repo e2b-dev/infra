@@ -65,10 +65,12 @@ func doRequest(t *testing.T, r *gin.Engine) *httptest.ResponseRecorder {
 }
 
 // newRouterWithTeam creates a Gin engine that injects a team then applies rate limiting.
-func newRouterWithTeam(limiter *redis_rate.Limiter, cfg Config, ff *featureflags.Client, teamID uuid.UUID) *gin.Engine {
+func newRouterWithTeam(t *testing.T, limiter *redis_rate.Limiter, cfg Config, ff *featureflags.Client, teamID uuid.UUID) *gin.Engine {
+	t.Helper()
+
 	r := gin.New()
 	r.Use(func(c *gin.Context) {
-		auth.SetTeamInfo(c, &types.Team{
+		auth.SetTeamInfoForTest(t, c, &types.Team{
 			Team: &authqueries.Team{ID: teamID},
 		})
 		c.Next()
@@ -116,7 +118,7 @@ func TestMiddleware_FailOpen(t *testing.T) {
 	defer badClient.Close()
 
 	limiter := redis_rate.NewLimiter(badClient)
-	r := newRouterWithTeam(limiter, Config{FailOpen: true}, ff, uuid.New())
+	r := newRouterWithTeam(t, limiter, Config{FailOpen: true}, ff, uuid.New())
 
 	w := doRequest(t, r)
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -133,7 +135,7 @@ func TestMiddleware_FailClosed(t *testing.T) {
 	defer badClient.Close()
 
 	limiter := redis_rate.NewLimiter(badClient)
-	r := newRouterWithTeam(limiter, Config{FailOpen: false}, ff, uuid.New())
+	r := newRouterWithTeam(t, limiter, Config{FailOpen: false}, ff, uuid.New())
 
 	w := doRequest(t, r)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -148,7 +150,7 @@ func TestMiddleware_UnconfiguredRouteAllowsThrough(t *testing.T) {
 	defer badClient.Close()
 
 	limiter := redis_rate.NewLimiter(badClient)
-	r := newRouterWithTeam(limiter, Config{FailOpen: true}, ff, uuid.New())
+	r := newRouterWithTeam(t, limiter, Config{FailOpen: true}, ff, uuid.New())
 
 	w := doRequest(t, r)
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -169,7 +171,7 @@ func TestIntegration_AllowedRequestSetsHeaders(t *testing.T) {
 	limiter := redis_rate.NewLimiter(redisClient)
 	ff := newTestFF(t, routeConfig(10, 20))
 
-	r := newRouterWithTeam(limiter, Config{FailOpen: true}, ff, uuid.New())
+	r := newRouterWithTeam(t, limiter, Config{FailOpen: true}, ff, uuid.New())
 
 	w := doRequest(t, r)
 
@@ -190,7 +192,7 @@ func TestIntegration_BurstThenDeny(t *testing.T) {
 	limiter := redis_rate.NewLimiter(redisClient)
 	ff := newTestFF(t, routeConfig(1, 3))
 
-	r := newRouterWithTeam(limiter, Config{FailOpen: true}, ff, uuid.New())
+	r := newRouterWithTeam(t, limiter, Config{FailOpen: true}, ff, uuid.New())
 
 	// First 3 requests should succeed (burst).
 	for i := range 3 {
@@ -224,7 +226,7 @@ func TestIntegration_Refill(t *testing.T) {
 	limiter := redis_rate.NewLimiter(redisClient)
 	ff := newTestFF(t, routeConfig(10, 2))
 
-	r := newRouterWithTeam(limiter, Config{FailOpen: true}, ff, uuid.New())
+	r := newRouterWithTeam(t, limiter, Config{FailOpen: true}, ff, uuid.New())
 
 	// Exhaust burst.
 	for range 2 {
@@ -257,8 +259,8 @@ func TestIntegration_IndependentTeams(t *testing.T) {
 	teamA := uuid.New()
 	teamB := uuid.New()
 
-	rA := newRouterWithTeam(limiter, cfg, ff, teamA)
-	rB := newRouterWithTeam(limiter, cfg, ff, teamB)
+	rA := newRouterWithTeam(t, limiter, cfg, ff, teamA)
+	rB := newRouterWithTeam(t, limiter, cfg, ff, teamB)
 
 	// Team A uses its quota.
 	w := doRequest(t, rA)
@@ -285,7 +287,7 @@ func TestIntegration_ConcurrentAccess(t *testing.T) {
 	})
 
 	burst := 10
-	r := newRouterWithTeam(limiter, Config{FailOpen: true}, ff, uuid.New())
+	r := newRouterWithTeam(t, limiter, Config{FailOpen: true}, ff, uuid.New())
 
 	// Fire 20 concurrent requests; only `burst` should be allowed.
 	total := 20

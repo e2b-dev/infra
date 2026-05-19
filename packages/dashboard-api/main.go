@@ -21,12 +21,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"github.com/riverqueue/river"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
 
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
-	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/backgroundworker"
@@ -186,9 +186,15 @@ func run() int {
 		}
 	}()
 
-	authCache := sharedauth.NewAuthCache[*types.Team](redisClient)
-	authStore := sharedauth.NewAuthStore(authDB)
-	authService := sharedauth.NewAuthService[*types.Team](authStore, authCache, config.SupabaseJWTSecrets)
+	authClient := &http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+	authService, err := sharedauth.NewAuthService(ctx, redisClient, authDB, config.AuthProvider, authClient)
+	if err != nil {
+		l.Error(ctx, "Initializing auth service", zap.Error(err))
+
+		return 1
+	}
 	defer authService.Close(ctx)
 
 	teamProvisionSink, err := internalteamprovision.NewProvisionSink(
@@ -217,8 +223,10 @@ func run() int {
 	authenticationFunc := sharedauth.CreateAuthenticationFunc(
 		[]sharedauth.Authenticator{
 			sharedauth.NewAdminTokenAuthenticator(config.AdminToken),
-			sharedauth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromSupabaseToken),
+			sharedauth.NewAuthProviderBearerAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
+			sharedauth.NewSupabaseTokenAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
 			sharedauth.NewSupabaseTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
+			sharedauth.NewAuthProviderTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
 		},
 		nil,
 	)
@@ -291,9 +299,11 @@ func newHTTPServer(
 		"Origin",
 		"Content-Length",
 		"Content-Type",
+		sharedauth.HeaderAuthorization,
 		sharedauth.HeaderAdminToken,
 		sharedauth.HeaderSupabaseToken,
 		sharedauth.HeaderSupabaseTeam,
+		sharedauth.HeaderTeamID,
 	}
 	r.Use(cors.New(corsConfig))
 

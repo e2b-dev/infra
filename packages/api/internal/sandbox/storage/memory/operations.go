@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/joined"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -181,6 +182,14 @@ func startRemoving(ctx context.Context, sbx *memorySandbox, opts sandbox.RemoveO
 
 		if currentState != newState && !sandbox.AllowedTransitions[currentState][newState] {
 			return false, nil, &sandbox.InvalidStateTransitionError{CurrentState: currentState, TargetState: newState}
+		}
+
+		if currentState == newState {
+			// The caller will inherit the in-flight transition's result
+			// without doing the work itself: this is a joiner. Mark before
+			// waiting so the request stays tagged even if the inherited
+			// transition fails.
+			joined.Mark(ctx)
 		}
 
 		logger.L().Debug(ctx, "State transition already in progress to the same state, waiting", logger.WithSandboxID(sbx.SandboxID()), zap.String("state", string(newState)))
