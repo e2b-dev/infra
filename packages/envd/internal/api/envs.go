@@ -12,12 +12,7 @@ func (a *API) GetEnvs(w http.ResponseWriter, _ *http.Request) {
 
 	a.logger.Debug().Str(string(logs.OperationIDKey), operationID).Msg("Getting env vars")
 
-	envs := make(EnvVars)
-	a.defaults.EnvVars.Range(func(key, value string) bool {
-		envs[key] = value
-
-		return true
-	})
+	envs := EnvVars(a.defaults.EnvVars.All())
 
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")

@@ -22,7 +22,7 @@ func (s *APIStore) GetBuildsStatuses(c *gin.Context, params api.GetBuildsStatuse
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "get build statuses")
 
-	teamID := auth.MustGetTeamInfo(c).Team.ID
+	teamID := auth.MustGetTeamID(c)
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamID.String()))
 
 	if len(params.BuildIds) > int(buildIdsLimit) {

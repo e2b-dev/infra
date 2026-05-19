@@ -67,7 +67,7 @@ func TestRequireAuthedTeamMatchesPath_Success(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(recorder)
 
 	teamID := uuid.New()
-	auth.SetTeamInfo(ctx, &authtypes.Team{
+	auth.SetTeamInfoForTest(t, ctx, &authtypes.Team{
 		Team: &authqueries.Team{ID: teamID},
 	})
 
@@ -84,7 +84,7 @@ func TestRequireAuthedTeamMatchesPath_Mismatch(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 
-	auth.SetTeamInfo(ctx, &authtypes.Team{
+	auth.SetTeamInfoForTest(t, ctx, &authtypes.Team{
 		Team: &authqueries.Team{ID: uuid.New()},
 	})
 
@@ -117,8 +117,8 @@ func TestPostTeamsTeamIDMembers_DuplicateMemberReturnsBadRequest(t *testing.T) {
 	request.Header.Set("Content-Type", "application/json")
 	ginCtx.Request = request
 
-	auth.SetUserID(ginCtx, addedByUserID)
-	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+	auth.SetUserIDForTest(t, ginCtx, addedByUserID)
+	auth.SetTeamInfoForTest(t, ginCtx, &authtypes.Team{
 		Team: &authqueries.Team{ID: teamID},
 	})
 
@@ -144,7 +144,7 @@ func TestDeleteTeamsTeamIDMembersUserId_NonMemberReturnsBadRequest(t *testing.T)
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodDelete, "/", nil)
-	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+	auth.SetTeamInfoForTest(t, ginCtx, &authtypes.Team{
 		Team: &authqueries.Team{ID: teamID},
 	})
 
@@ -197,7 +197,7 @@ func TestDeleteTeamsTeamIDMembersUserId_RechecksDefaultAfterLock(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodDelete, "/", nil)
-	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+	auth.SetTeamInfoForTest(t, ginCtx, &authtypes.Team{
 		Team: &authqueries.Team{ID: teamID},
 	})
 
@@ -603,7 +603,7 @@ func TestPostTeams_LocalPolicyDeniedReturnsBadRequestWithoutCreatingTeam(t *test
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"name":"Acme"}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-	auth.SetUserID(ginCtx, userID)
+	auth.SetUserIDForTest(t, ginCtx, userID)
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
@@ -641,7 +641,7 @@ func TestPostTeams_InvalidNameReturnsBadRequest(t *testing.T) {
 		ginCtx, _ := gin.CreateTestContext(recorder)
 		ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(body))
 		ginCtx.Request.Header.Set("Content-Type", "application/json")
-		auth.SetUserID(ginCtx, userID)
+		auth.SetUserIDForTest(t, ginCtx, userID)
 
 		sink := &fakeTeamProvisionSink{}
 		store := &APIStore{
@@ -673,7 +673,7 @@ func TestPostTeams_InvalidRequestBodyReturnsBadRequest(t *testing.T) {
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"name":`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-	auth.SetUserID(ginCtx, userID)
+	auth.SetUserIDForTest(t, ginCtx, userID)
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
@@ -706,7 +706,7 @@ func TestPostTeams_TrimsNameBeforeCreate(t *testing.T) {
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"name":"  Acme  "}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-	auth.SetUserID(ginCtx, userID)
+	auth.SetUserIDForTest(t, ginCtx, userID)
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
@@ -758,7 +758,7 @@ func TestPostTeams_ProvisioningFailureRollsBackCreatedTeam(t *testing.T) {
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"name":"Acme"}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-	auth.SetUserID(ginCtx, userID)
+	auth.SetUserIDForTest(t, ginCtx, userID)
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
@@ -817,7 +817,7 @@ func TestPostTeams_ProvisioningFailurePreservesProvisionErrorStatus(t *testing.T
 			ginCtx, _ := gin.CreateTestContext(recorder)
 			ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"name":"Acme"}`))
 			ginCtx.Request.Header.Set("Content-Type", "application/json")
-			auth.SetUserID(ginCtx, userID)
+			auth.SetUserIDForTest(t, ginCtx, userID)
 
 			store := &APIStore{
 				db:                testDB.SqlcClient,

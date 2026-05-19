@@ -40,7 +40,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		return
 	}
 
-	teamID := auth.MustGetTeamInfo(c).Team.ID
+	teamID := auth.MustGetTeamID(c)
 
 	now := time.Now()
 	_, err = a.authDB.Write.UpdateTeamApiKey(ctx, authqueries.UpdateTeamApiKeyParams{
@@ -67,7 +67,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 func (a *APIStore) GetApiKeys(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	teamID := auth.MustGetTeamInfo(c).Team.ID
+	teamID := auth.MustGetTeamID(c)
 
 	apiKeysDB, err := a.authDB.Read.GetTeamAPIKeysWithCreator(ctx, teamID)
 	if err != nil {
@@ -80,9 +80,9 @@ func (a *APIStore) GetApiKeys(c *gin.Context) {
 	teamAPIKeys := make([]api.TeamAPIKey, len(apiKeysDB))
 	for i, apiKey := range apiKeysDB {
 		var createdBy *api.TeamUser
-		if apiKey.CreatedByID != nil && apiKey.CreatedByEmail != nil {
+		if apiKey.CreatedByID != nil {
 			createdBy = &api.TeamUser{
-				Email: *apiKey.CreatedByEmail,
+				Email: nil,
 				Id:    *apiKey.CreatedByID,
 			}
 		}
@@ -116,7 +116,7 @@ func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		return
 	}
 
-	teamID := auth.MustGetTeamInfo(c).Team.ID
+	teamID := auth.MustGetTeamID(c)
 
 	ids, err := a.authDB.Write.DeleteTeamAPIKey(ctx, authqueries.DeleteTeamAPIKeyParams{
 		ID:     apiKeyIDParsed,
@@ -142,7 +142,7 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	userID := auth.MustGetUserID(c)
-	teamID := auth.MustGetTeamInfo(c).Team.ID
+	teamID := auth.MustGetTeamID(c)
 
 	body, err := ginutils.ParseBody[api.NewTeamAPIKey](ctx, c)
 	if err != nil {
@@ -162,15 +162,6 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 		return
 	}
 
-	user, err := a.authDB.Read.GetUser(ctx, userID)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting user: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when getting user", err)
-
-		return
-	}
-
 	c.JSON(http.StatusCreated, api.CreatedTeamAPIKey{
 		Id:   apiKey.ID,
 		Name: apiKey.Name,
@@ -182,8 +173,8 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 			MaskedValueSuffix: apiKey.ApiKeyMaskSuffix,
 		},
 		CreatedBy: &api.TeamUser{
-			Id:    user.ID,
-			Email: user.Email,
+			Id:    userID,
+			Email: nil,
 		},
 		CreatedAt: apiKey.CreatedAt,
 		LastUsed:  apiKey.LastUsed,
