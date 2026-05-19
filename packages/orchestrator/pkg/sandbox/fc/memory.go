@@ -116,8 +116,8 @@ func (p *Process) ExportMemory(
 		return cache, nil, nil
 	}
 
-	// Fresh suffix so Dedup's NewCache truncate doesn't clobber the source mmap.
-	dedupPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
+	// Distinct path so Dedup's NewCache truncate doesn't clobber the source mmap.
+	dedupPath := cachePath + ".dedup"
 	dedupCache, dedupMetadata, err := cache.Dedup(ctx, originalMemfile, include, blockSize, dedupPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to dedup memfile diff: %w", errors.Join(err, cache.Close()))
