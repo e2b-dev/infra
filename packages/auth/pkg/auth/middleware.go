@@ -149,7 +149,7 @@ func NewApiKeyAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin
 			Prefix: PrefixAPIKey,
 		},
 		ValidationFunc: validationFunc,
-		SetContextFunc: SetTeamInfo,
+		SetContextFunc: setTeamInfo,
 		ErrorMessage:   "Invalid API key, please visit https://e2b.dev/docs/api-key for more information.",
 	}
 }
@@ -164,7 +164,7 @@ func NewAccessTokenAuthenticator(validationFunc func(ctx context.Context, ginCtx
 			RemovePrefix: PrefixBearer,
 		},
 		ValidationFunc: validationFunc,
-		SetContextFunc: SetUserID,
+		SetContextFunc: setUserID,
 		ErrorMessage:   "Invalid Access token, try to login again by running `e2b auth login`.",
 	}
 }
@@ -178,7 +178,7 @@ func NewAuthProviderBearerAuthenticator(validationFunc func(ctx context.Context,
 			RemovePrefix: PrefixBearer,
 		},
 		ValidationFunc: validationFunc,
-		SetContextFunc: SetUserID,
+		SetContextFunc: setUserID,
 		ErrorMessage:   "Invalid auth provider token.",
 	}
 }
@@ -191,7 +191,7 @@ func NewSupabaseTokenAuthenticator(validationFunc func(ctx context.Context, ginC
 			Name: HeaderSupabaseToken,
 		},
 		ValidationFunc: validationFunc,
-		SetContextFunc: SetUserID,
+		SetContextFunc: setUserID,
 		ErrorMessage:   "Invalid Supabase token.",
 	}
 }
@@ -204,7 +204,7 @@ func NewSupabaseTeamAuthenticator(validationFunc func(ctx context.Context, ginCt
 			Name: HeaderSupabaseTeam,
 		},
 		ValidationFunc: validationFunc,
-		SetContextFunc: SetTeamInfo,
+		SetContextFunc: setTeamInfo,
 		ErrorMessage:   "Invalid Supabase token teamID.",
 	}
 }
@@ -217,7 +217,7 @@ func NewAuthProviderTeamAuthenticator(validationFunc func(ctx context.Context, g
 			Name: HeaderTeamID,
 		},
 		ValidationFunc: validationFunc,
-		SetContextFunc: SetTeamInfo,
+		SetContextFunc: setTeamInfo,
 		ErrorMessage:   "Invalid auth provider token teamID.",
 	}
 }
