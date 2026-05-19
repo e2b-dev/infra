@@ -579,8 +579,8 @@ func run() int {
 			}
 		})
 		drainWG.Go(func() {
-			if !e2bgrpc.GracefulStopWithTimeout(edgeGrpcServer, grpcShutdownTimeout) {
-				l.Warn(ctx, "edge gRPC forced stop after graceful timeout", zap.Duration("budget", grpcShutdownTimeout))
+			if !e2bgrpc.GracefulStopWithTimeout(edgeGrpcServer, shutdownTimeout) {
+				l.Warn(ctx, "edge gRPC forced stop after graceful timeout", zap.Duration("budget", shutdownTimeout))
 			}
 		})
 		drainWG.Wait()
