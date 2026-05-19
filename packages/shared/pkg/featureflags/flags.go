@@ -18,6 +18,8 @@ const (
 	SandboxTemplateAttribute           string         = "template-id"
 	SandboxKernelVersionAttribute      string         = "kernel-version"
 	SandboxFirecrackerVersionAttribute string         = "firecracker-version"
+	// SandboxTypeAttribute distinguishes "sandbox" from "build" runs.
+	SandboxTypeAttribute string = "sandbox-type"
 
 	TeamKind             ldcontext.Kind = "team"
 	UserKind             ldcontext.Kind = "user"
@@ -99,6 +101,13 @@ func NewBoolFlag(name string, fallback bool) BoolFlag {
 	return flag
 }
 
+// OverrideBoolFlag forces a bool flag to a specific value in the offline store.
+// Only takes effect when LAUNCH_DARKLY_API_KEY is not set (i.e. dev/CLI tools).
+func OverrideBoolFlag(flag BoolFlag, value bool) {
+	builder := launchDarklyOfflineStore.Flag(flag.name).VariationForAll(value)
+	launchDarklyOfflineStore.Update(builder)
+}
+
 var (
 	MetricsWriteFlag                    = NewBoolFlag("sandbox-metrics-write", true)
 	MetricsReadFlag                     = NewBoolFlag("sandbox-metrics-read", true)
@@ -113,6 +122,16 @@ var (
 	SandboxAutoResumeFlag               = NewBoolFlag("sandbox-auto-resume", env.IsDevelopment())
 	OrchAcceptsCombinedHostFlag         = NewBoolFlag("orch-accepts-combined-host", false)
 
+	// UseMemFdFlag asks Firecracker to back guest memory with a memfd and
+	// pass the fd over the UFFD socket; the orchestrator then mmaps it
+	// directly instead of using process_vm_readv on pause.
+	UseMemFdFlag = NewBoolFlag("use-memfd", false)
+
+	// MemfdBackgroundCopyFlag streams the memfd into the snapshot cache on
+	// a goroutine so Pause returns as soon as the diff metadata is written.
+	// Only takes effect when UseMemFdFlag is also on.
+	MemfdBackgroundCopyFlag = NewBoolFlag("memfd-background-copy", false)
+
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.
 	PeerToPeerChunkTransferFlag = NewBoolFlag("peer-to-peer-chunk-transfer", false)
 	// PeerToPeerAsyncCheckpointFlag makes Checkpoint upload fire-and-forget instead
@@ -126,6 +145,11 @@ var (
 	FreePageReportingFlag            = NewBoolFlag("free-page-reporting", false)
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
+
+	// V4HeaderForUncompressedFlag forces the V4 header layout on uncompressed
+	// uploads. Independent of compress-config: it changes the header format,
+	// not whether data is compressed.
+	V4HeaderForUncompressedFlag = NewBoolFlag("v4-header-for-uncompressed", false)
 )
 
 type IntFlag struct {
@@ -206,6 +230,12 @@ var (
 	// Must be > 0.
 	MaxStartingInstancesPerNode = NewIntFlag("max-starting-instances-per-node", 3)
 
+	// MaxConcurrentEvictions caps the number of sandbox evictions that can run
+	// in parallel per API instance. Excess items remain expired in the store
+	// and are picked up by the next eviction tick. Must be > 0; non-positive
+	// values are ignored at refresh time.
+	MaxConcurrentEvictions = NewIntFlag("max-concurrent-evictions", 256)
+
 	// MaxConcurrentSnapshotUpserts limits concurrent UpsertSnapshot calls (pause + snapshot template paths).
 	// 0 or negative disables throttling (unlimited concurrency).
 	MaxConcurrentSnapshotUpserts = NewIntFlag("max-concurrent-snapshot-upserts", 0)
@@ -223,6 +253,33 @@ var (
 // reclaim chain. Missing/zero/negative values disable the step.
 // Example: {"sync":500,"drop_caches":200,"compact_memory":1000,"fstrim":500}
 var ReclaimConfigFlag = NewJSONFlag("guest-pause-reclaim", ldvalue.Null())
+
+// FreePageHintingConfig controls virtio-balloon free-page-hinting.
+// "enabled" configures FreePageHinting=true on the balloon at install time
+// (kernel-side eligibility is targeted separately via the LD context — the
+// race fixed in https://lore.kernel.org/lkml/20240429125100.7393-1-david@redhat.com/
+// is on the hinting flow, gated by the per-use-case timeouts below).
+// "pause"/"build" are pre-pause drain timeouts in ms keyed by SnapshotUseCase;
+// missing/zero/negative disables the drain for that use case.
+// Example: {"enabled": true, "pause": 500, "build": 0}
+var FreePageHintingConfig = NewJSONFlag("free-page-hinting-config", ldvalue.Null())
+
+// IsFreePageHintingEnabled reports whether FPH should be configured on the
+// balloon at install time.
+func IsFreePageHintingEnabled(ctx context.Context, ff *Client, contexts ...ldcontext.Context) bool {
+	return ff.JSONFlag(ctx, FreePageHintingConfig, contexts...).GetByKey("enabled").BoolValue()
+}
+
+// GetFreePageHintingTimeout returns the pre-pause FPH drain timeout for the
+// given SnapshotUseCase. Zero means disabled.
+func GetFreePageHintingTimeout(ctx context.Context, ff *Client, useCase string, contexts ...ldcontext.Context) time.Duration {
+	ms := ff.JSONFlag(ctx, FreePageHintingConfig, contexts...).GetByKey(useCase).IntValue()
+	if ms <= 0 {
+		return 0
+	}
+
+	return time.Duration(ms) * time.Millisecond
+}
 
 type ReclaimConfig struct {
 	Sync          time.Duration
@@ -356,7 +413,8 @@ func GetTrackedTemplatesSet(ctx context.Context, ff *Client) map[string]struct{}
 
 // CompressConfigFlag controls compression during template builds.
 // When compressBuilds is true, builds upload exclusively compressed data
-// (no uncompressed fallback). When false, exclusively uncompressed with V3 headers.
+// (no uncompressed fallback). When false, exclusively uncompressed with V3
+// headers (unless V4HeaderForUncompressedFlag is set).
 var CompressConfigFlag = NewJSONFlag("compress-config", ldvalue.FromJSONMarshal(map[string]any{
 	"compressBuilds":     false,
 	"compressionType":    "",

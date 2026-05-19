@@ -62,6 +62,15 @@ processors:
   batch:
     timeout: 5s
 
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+  batch/gcp_telemetry:
+    timeout: 5s
+    send_batch_size: 200
+    send_batch_max_size: 200
+
+  metricstarttime/gcp_telemetry:
+    strategy: subtract_initial_point
+%{ endif }
 
   resourcedetection:
     # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/resourcedetectionprocessor
@@ -116,6 +125,26 @@ processors:
           enabled: true
 %{ endif }
 
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+  resourcedetection/gcp_telemetry:
+    detectors: [gcp]
+    override: true
+    gcp:
+      resource_attributes:
+        cloud.account.id:
+          enabled: true
+        cloud.availability_zone:
+          enabled: true
+        cloud.platform:
+          enabled: true
+        cloud.provider:
+          enabled: true
+        host.id:
+          enabled: true
+        host.name:
+          enabled: true
+%{ endif }
+
   transform/set-name:
     metric_statements:
       # We don't want to set host name here as we want to report the nomad server, not the otel collector's host
@@ -138,6 +167,12 @@ exporters:
     endpoint: "${grafana_otlp_url}/otlp"
     auth:
       authenticator: basicauth/grafana_cloud
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+  googlecloud/gcp_telemetry:
+    project: ${gcp_telemetry_project_id}
+    metric:
+      service_resource_labels: true
+%{ endif }
 service:
   telemetry:
     metrics:
@@ -156,3 +191,16 @@ service:
         - batch
       exporters:
         - otlp_http/grafana_cloud
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+    metrics/gcp_telemetry/prometheus:
+      receivers:
+        - prometheus
+      processors:
+        - filter/nomad_metrics
+        - resourcedetection/gcp_telemetry
+        - transform/set-name
+        - metricstarttime/gcp_telemetry
+        - batch/gcp_telemetry
+      exporters:
+        - googlecloud/gcp_telemetry
+%{ endif }

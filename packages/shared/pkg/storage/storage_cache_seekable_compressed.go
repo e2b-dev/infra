@@ -44,7 +44,7 @@ func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64
 			return nil, fmt.Errorf("decompress cached frame: %w", err)
 		}
 
-		return decompressed, nil
+		return withNFSGauge(ctx, decompressed), nil
 	case !os.IsNotExist(err):
 		recordCacheReadError(ctx, cacheTypeSeekable, cacheOpOpenRangeReader, err)
 	}

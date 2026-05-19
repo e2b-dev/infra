@@ -282,6 +282,11 @@ func (tm *TemplateManager) SetStatus(ctx context.Context, buildID uuid.UUID, sta
 
 	var err error
 	if statusGroup.IsTerminal() {
+		logger.L().Warn(ctx, "Setting template build status to terminal failure",
+			logger.WithBuildID(buildID.String()),
+			zap.String("reason", buildReason.Message),
+		)
+
 		err = tm.sqlcDB.FailTemplateBuildAndDeactivate(ctx, queries.FailTemplateBuildAndDeactivateParams{
 			Status:     buildStatus(statusGroup),
 			FinishedAt: &now,

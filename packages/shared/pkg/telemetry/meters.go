@@ -121,10 +121,15 @@ const (
 	SandboxFCBlockRateLimiterEventCount HistogramType = "orchestrator.sandbox.fc.block.rate_limiter_event_count"
 	SandboxFCBlockIOEngineThrottled     HistogramType = "orchestrator.sandbox.fc.block.io_engine_throttled"
 	SandboxFCBlockRemainingReqs         HistogramType = "orchestrator.sandbox.fc.block.remaining_reqs"
+
+	SnapshotDiffBytes   HistogramType = "orchestrator.sandbox.snapshot.diff.bytes"
+	SnapshotDiffRatioBp HistogramType = "orchestrator.sandbox.snapshot.diff.ratio_bp"
+	SnapshotTotalBytes  HistogramType = "orchestrator.sandbox.snapshot.total.bytes"
 )
 
 const (
 	ApiOrchestratorCountMeterName GaugeIntType = "api.orchestrator.status"
+	OrchestratorStatusGaugeName   GaugeIntType = "orchestrator.status"
 
 	// Sandbox metrics
 	SandboxRamUsedGaugeName   GaugeIntType = "e2b.sandbox.ram.used"
@@ -239,6 +244,7 @@ var gaugeFloatUnits = map[GaugeFloatType]string{
 
 var gaugeIntDesc = map[GaugeIntType]string{
 	ApiOrchestratorCountMeterName: "Counter of running orchestrators.",
+	OrchestratorStatusGaugeName:   "Self-reported orchestrator status (always 1, labelled with status and version).",
 	SandboxRamUsedGaugeName:       "Amount of RAM used by the sandbox.",
 	SandboxRamTotalGaugeName:      "Amount of RAM available to the sandbox.",
 	SandboxRamCacheGaugeName:      "Amount of RAM used by the page cache in the sandbox.",
@@ -251,6 +257,7 @@ var gaugeIntDesc = map[GaugeIntType]string{
 
 var gaugeIntUnits = map[GaugeIntType]string{
 	ApiOrchestratorCountMeterName: "{orchestrator}",
+	OrchestratorStatusGaugeName:   "{orchestrator}",
 	SandboxRamUsedGaugeName:       "{By}",
 	SandboxRamTotalGaugeName:      "{By}",
 	SandboxRamCacheGaugeName:      "{By}",
@@ -352,6 +359,10 @@ var histogramDesc = map[HistogramType]string{
 	SandboxFCBlockRateLimiterEventCount: "Distribution of Firecracker VMM block rate limiter events per metrics flush",
 	SandboxFCBlockIOEngineThrottled:     "Distribution of Firecracker VMM block ops throttled by io_uring engine per metrics flush",
 	SandboxFCBlockRemainingReqs:         "Distribution of Firecracker VMM block queue remaining-request events per metrics flush",
+
+	SnapshotDiffBytes:   "Per-snapshot dirty/empty bytes per file",
+	SnapshotDiffRatioBp: "Per-snapshot dirty/empty as fraction of total mapped size, in basis points (10000=100%)",
+	SnapshotTotalBytes:  "Per-snapshot total mapped size of the file",
 }
 
 var histogramUnits = map[HistogramType]string{
@@ -382,6 +393,10 @@ var histogramUnits = map[HistogramType]string{
 	SandboxFCBlockRateLimiterEventCount: "{event}",
 	SandboxFCBlockIOEngineThrottled:     "{op}",
 	SandboxFCBlockRemainingReqs:         "{event}",
+
+	SnapshotDiffBytes:   "{By}",
+	SnapshotDiffRatioBp: "{1}",
+	SnapshotTotalBytes:  "{By}",
 }
 
 func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram, error) {

@@ -139,7 +139,7 @@ variable "additional_api_paths_handled_by_ingress" {
     - Legacy: list(string) - e.g. ["/path1/*", "/path2/*"]
     - New: list(object({paths = list(string), timeout_sec = optional(number)}))
       e.g. [{paths = ["/path1/*", "/path2/*"], timeout_sec = 120}]
-    Per-route timeout_sec overrides the ingress backend default (see ingress_timeout_seconds).
+    Per-route timeout_sec overrides the ingress backend default.
   EOT
   default     = []
 }
@@ -232,6 +232,19 @@ variable "ingress_port" {
     name        = "ingress"
     port        = 8800
     health_path = "/ping"
+  }
+}
+
+variable "ingress_internal_port" {
+  type = object({
+    name        = string
+    port        = number
+    health_path = string
+  })
+  default = {
+    name        = "internal"
+    port        = 9435
+    health_path = "/"
   }
 }
 
@@ -351,6 +364,18 @@ variable "otel_router_grpc_port" {
   type        = number
   default     = 4320
   description = "Local otel-router OTLP gRPC port used by otel-collector when otel-router metric teeing is enabled."
+}
+
+variable "enable_gcp_telemetry_metrics" {
+  type        = bool
+  default     = false
+  description = "Enable exporting selected otel-collector metrics to Google Cloud Monitoring using the googlecloud exporter."
+}
+
+variable "enable_gcp_telemetry_external_metrics" {
+  type        = bool
+  default     = false
+  description = "Enable exporting external e2b.* metrics to Google Cloud Monitoring. Requires enable_gcp_telemetry_metrics."
 }
 
 variable "clickhouse_resources_memory_mb" {
@@ -807,9 +832,4 @@ variable "traefik_config_files" {
   type        = map(string)
   description = "Map of filename => content for additional Traefik dynamic configuration files"
   default     = {}
-}
-
-variable "ingress_timeout_seconds" {
-  type    = number
-  default = 80
 }

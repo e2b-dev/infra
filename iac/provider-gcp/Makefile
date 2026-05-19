@@ -63,6 +63,8 @@ tf_vars := \
 	$(call tfvar, OTEL_ROUTER_HTTP_PORT) \
 	$(call tfvar, ENABLE_OTEL_ROUTER_METRICS) \
 	$(call tfvar, OTEL_ROUTER_GRPC_PORT) \
+	$(call tfvar, ENABLE_GCP_TELEMETRY_METRICS) \
+	$(call tfvar, ENABLE_GCP_TELEMETRY_EXTERNAL_METRICS) \
 	$(call tfvar, TEMPLATE_BUCKET_NAME) \
 	$(call tfvar, TEMPLATE_BUCKET_LOCATION) \
 	$(call tfvar, ENVD_TIMEOUT) \

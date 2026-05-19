@@ -110,12 +110,7 @@ func New(
 	}
 	analyticsInstance.Init(ctx)
 
-	var routingCatalog e2bcatalog.SandboxesCatalog
-	if redisClient != nil {
-		routingCatalog = e2bcatalog.NewRedisSandboxCatalog(redisClient)
-	} else {
-		routingCatalog = e2bcatalog.NewMemorySandboxesCatalog()
-	}
+	routingCatalog := e2bcatalog.NewRedisSandboxCatalog(redisClient)
 
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
 	// right now we load them from Orchestrator
@@ -187,7 +182,7 @@ func New(
 	)
 
 	// Evict old sandboxes
-	sandboxEvictor, err := evictor.New(o.sandboxStore, o.RemoveSandbox, meter)
+	sandboxEvictor, err := evictor.New(ctx, o.sandboxStore, o.RemoveSandbox, o.featureFlagsClient, meter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sandbox evictor: %w", err)
 	}
@@ -231,6 +226,7 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 			return
 		case <-ticker.C:
 			connectedNodes := make([]map[string]any, 0, o.nodes.Count())
+			templateManagers := make([]map[string]any, 0)
 
 			for _, nodeItem := range o.nodes.Items() {
 				if nodeItem == nil {
@@ -246,9 +242,23 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 				}
 			}
 
+			for _, cluster := range o.clusters.GetClusters() {
+				for _, templateManager := range cluster.GetTemplateBuilders() {
+					info := templateManager.GetInfo()
+					templateManagers = append(templateManagers, map[string]any{
+						"cluster_id":          templateManager.ClusterID,
+						"node_id":             templateManager.NodeID,
+						"service_instance_id": info.ServiceInstanceID,
+						"status":              info.Status.String(),
+					})
+				}
+			}
+
 			logger.L().Info(ctx, "API internal status",
 				zap.Int("nodes_count", o.nodes.Count()),
 				zap.Any("nodes", connectedNodes),
+				zap.Int("template_managers_count", len(templateManagers)),
+				zap.Any("template_managers", templateManagers),
 			)
 		}
 	}

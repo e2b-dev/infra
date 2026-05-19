@@ -552,7 +552,7 @@ func TestPostSandboxes_MissingBareAliasUsesPromotedFallbackKey(t *testing.T) {
 
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/sandboxes", bytes.NewReader(body))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+	auth.SetTeamInfoForTest(t, ginCtx, &authtypes.Team{
 		Team: &authqueries.Team{
 			ID:   requesterTeamID,
 			Slug: requesterTeamSlug,
@@ -613,7 +613,7 @@ func TestPostSandboxes_PrivateTemplateHidesAccessDenied(t *testing.T) {
 
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/sandboxes", bytes.NewReader(body))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+	auth.SetTeamInfoForTest(t, ginCtx, &authtypes.Team{
 		Team: &authqueries.Team{
 			ID:   requesterTeamID,
 			Slug: requesterTeamSlug,
@@ -668,7 +668,7 @@ func assertMissingTagDisclosure(t *testing.T, public bool, alias string) {
 
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/sandboxes", bytes.NewReader(body))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+	auth.SetTeamInfoForTest(t, ginCtx, &authtypes.Team{
 		Team: &authqueries.Team{
 			ID:   requesterTeamID,
 			Slug: requesterTeamSlug,
@@ -730,7 +730,7 @@ func assertMissingDefaultTagDisclosure(t *testing.T) {
 
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/sandboxes", bytes.NewReader(body))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+	auth.SetTeamInfoForTest(t, ginCtx, &authtypes.Team{
 		Team: &authqueries.Team{
 			ID:   requesterTeamID,
 			Slug: requesterTeamSlug,

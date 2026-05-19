@@ -44,6 +44,9 @@ type TemplateConfig struct {
 	// FreePageReporting enables Firecracker's balloon free-page-reporting.
 	FreePageReporting bool
 
+	// FreePageHinting enables Firecracker's balloon free-page-hinting.
+	FreePageHinting bool
+
 	// Command to run to check if the template is ready.
 	ReadyCmd string
 

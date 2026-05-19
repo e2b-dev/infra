@@ -77,7 +77,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 		}
 	}
 	defer func() {
-		finish(ctx, err)
+		finish(context.WithoutCancel(ctx), err)
 	}()
 
 	if alreadyDone {

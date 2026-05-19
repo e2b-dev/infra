@@ -33,7 +33,7 @@ func TestListDir(t *testing.T) {
 	t.Cleanup(cancel)
 
 	c := setup.GetAPIClient()
-	sbx := utils.SetupSandboxWithCleanup(t, c)
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithTimeout(120))
 	envdClient := setup.GetEnvdClient(t, ctx)
 
 	utils.CreateDir(t, sbx, testFolder)

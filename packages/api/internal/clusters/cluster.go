@@ -266,6 +266,17 @@ func (c *Cluster) GetOrchestrators() []*Instance {
 	return instances
 }
 
+func (c *Cluster) GetTemplateBuilders() []*Instance {
+	instances := make([]*Instance, 0)
+	for _, i := range c.instances.Items() {
+		if i != nil && i.GetInfo().IsBuilder {
+			instances = append(instances, i)
+		}
+	}
+
+	return instances
+}
+
 func (c *Cluster) GetResources() ClusterResource {
 	return c.resources
 }

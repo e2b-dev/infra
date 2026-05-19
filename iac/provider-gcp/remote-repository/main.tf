@@ -41,7 +41,7 @@ resource "google_artifact_registry_repository" "dockerhub_remote_repository" {
     id     = "delete-older-than-90-days"
     action = "DELETE"
     condition {
-      older_than = "90d"
+      older_than = "7776000s" // 90 days in seconds
     }
   }
 

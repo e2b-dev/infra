@@ -1546,6 +1546,13 @@ definitions:
           2) Path to the UDS where a process is listening for a UFFD initialization
           control payload and open file descriptor that it can use to serve this
           process's guest memory page faults
+      use_memfd:
+        type: boolean
+        description:
+          When true, guest memory is backed by a memfd and its file descriptor is
+          sent to the UFFD handler over the UFFD socket alongside the UFFD itself.
+          Only valid when 'backend_type' is 'Uffd'.
+        default: false
 
   Metrics:
     type: object

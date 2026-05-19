@@ -28,3 +28,23 @@ func (q *Queries) GetAuthUserByID(ctx context.Context, dollar_1 uuid.UUID) (Auth
 	)
 	return i, err
 }
+
+const getLatestAuthSessionByUserID = `-- name: GetLatestAuthSessionByUserID :one
+SELECT user_agent, ip
+FROM auth.sessions
+WHERE user_id = $1::uuid
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+type GetLatestAuthSessionByUserIDRow struct {
+	UserAgent *string
+	Ip        *string
+}
+
+func (q *Queries) GetLatestAuthSessionByUserID(ctx context.Context, dollar_1 uuid.UUID) (GetLatestAuthSessionByUserIDRow, error) {
+	row := q.db.QueryRow(ctx, getLatestAuthSessionByUserID, dollar_1)
+	var i GetLatestAuthSessionByUserIDRow
+	err := row.Scan(&i.UserAgent, &i.Ip)
+	return i, err
+}
