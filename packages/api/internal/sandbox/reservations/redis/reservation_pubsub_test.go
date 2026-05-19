@@ -3,7 +3,6 @@ package redis
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -457,6 +456,3 @@ func (c *cmdCounter) ProcessPipelineHook(next goredis.ProcessPipelineHook) gored
 // Compile-time assertion that the storage Notifier satisfies the local
 // Notifier seam. If this breaks, the orchestrator wiring needs to change too.
 var _ Notifier = (*storage_redis.Notifier)(nil)
-
-// Compile-time check that fmt is used by anything pulled in transitively.
-var _ = fmt.Sprintf

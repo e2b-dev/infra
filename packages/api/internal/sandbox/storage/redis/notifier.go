@@ -6,12 +6,6 @@ import (
 
 // Notifier is the public seam onto the shared storage pub/sub infrastructure.
 //
-// It exposes both the consumer side (Subscribe — register a wakeup channel
-// for a routing key) and the producer side (Publish — enqueue a routing key
-// onto the shared publisher worker pool). Reservations and any future
-// cross-package consumer depend on this rather than on subscriptionManager
-// or publisher directly.
-//
 // Lifecycle is owned by Storage: callers MUST construct Notifier via
 // Storage.Notifier(), and the underlying Storage must be Start()-ed
 // before any Subscribe or Publish call. Close() on Storage shuts both
