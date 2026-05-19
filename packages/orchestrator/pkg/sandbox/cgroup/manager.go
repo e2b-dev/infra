@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
@@ -205,7 +206,50 @@ type Manager interface {
 	Create(ctx context.Context, cgroupName string) (*CgroupHandle, error)
 }
 
-type managerImpl struct{}
+type managerImpl struct {
+	// peakResetSupported indicates whether the running kernel supports
+	// per-FD memory.peak reset via an empty write (requires kernel >= 6.12).
+	// On older kernels any write to memory.peak returns EINVAL.
+	peakResetSupported bool
+}
+
+// parseKernelAtLeast parses a uname release string (e.g. "6.12.3-55-generic")
+// and returns true when the version is >= major.minor.
+// Exported for testing; production code should call kernelAtLeast instead.
+func parseKernelAtLeast(release string, major, minor int) bool {
+	// Parse "6.12.3-generic" → major=6, minor=12
+	parts := strings.SplitN(release, ".", 3)
+	if len(parts) < 2 {
+		return false
+	}
+	kMajor, err1 := strconv.Atoi(parts[0])
+	// Strip any distro suffix from the minor component (e.g. "12-aws" → "12")
+	kMinor, err2 := strconv.Atoi(strings.SplitN(parts[1], "-", 2)[0])
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	if kMajor != major {
+		return kMajor > major
+	}
+	return kMinor >= minor
+}
+
+// kernelAtLeast returns true when the running kernel version is >= major.minor.
+func kernelAtLeast(major, minor int) bool {
+	var uts unix.Utsname
+	if err := unix.Uname(&uts); err != nil {
+		return false
+	}
+	// Utsname.Release is [65]int8 on Linux; convert to string.
+	release := make([]byte, 0, len(uts.Release))
+	for _, c := range uts.Release {
+		if c == 0 {
+			break
+		}
+		release = append(release, byte(c))
+	}
+	return parseKernelAtLeast(string(release), major, minor)
+}
 
 // NewManager creates a new cgroup manager
 // Returns error if cgroups v2 is not available on the system
@@ -214,7 +258,9 @@ func NewManager() (Manager, error) {
 		return nil, fmt.Errorf("cgroups v2 not available: %w", err)
 	}
 
-	return &managerImpl{}, nil
+	peakReset := kernelAtLeast(6, 12)
+
+	return &managerImpl{peakResetSupported: peakReset}, nil
 }
 
 func (m *managerImpl) Initialize(ctx context.Context) error {
@@ -247,16 +293,22 @@ func (m *managerImpl) Create(ctx context.Context, cgroupName string) (*CgroupHan
 		return nil, fmt.Errorf("failed to open cgroup directory: %w", err)
 	}
 
-	// O_RDWR FD must stay open for per-FD peak reset across GetStats() calls
+	// O_RDWR FD must stay open for per-FD peak reset across GetStats() calls.
+	// Per-FD reset via empty write is only supported on kernel >= 6.12;
+	// on older kernels we open the file read-only (for reading peak) and
+	// skip the reset step entirely to avoid EINVAL noise.
 	memPeakPath := filepath.Join(cgroupPath, "memory.peak")
-	memoryPeakFile, peakErr := os.OpenFile(memPeakPath, os.O_RDWR, 0)
-	if peakErr != nil {
-		// Not fatal — memory.peak may not exist on older kernels
-		logger.L().Warn(ctx, "failed to open memory.peak for reset",
-			zap.String("cgroup_name", cgroupName),
-			zap.String("path", memPeakPath),
-			zap.Error(peakErr))
-		memoryPeakFile = nil
+	var memoryPeakFile *os.File
+	if m.peakResetSupported {
+		var peakErr error
+		memoryPeakFile, peakErr = os.OpenFile(memPeakPath, os.O_RDWR, 0)
+		if peakErr != nil {
+			// Not fatal — memory.peak may not exist on some configurations
+			logger.L().Warn(ctx, "failed to open memory.peak for reset",
+				zap.String("cgroup_name", cgroupName),
+				zap.String("path", memPeakPath),
+				zap.Error(peakErr))
+		}
 	}
 
 	handle := &CgroupHandle{
@@ -346,8 +398,12 @@ func (m *managerImpl) readAndResetMemoryPeak(ctx context.Context, memoryPeakFile
 		return 0, fmt.Errorf("failed to parse memory.peak value %q: %w", strings.TrimSpace(string(buf[:n])), parseErr)
 	}
 
-	// Reset per-FD peak for next interval
-	if _, err := memoryPeakFile.WriteString("0"); err != nil {
+	// Reset per-FD peak for next interval.
+	// The kernel requires a zero-length write to reset memory.peak (any
+	// non-empty write returns EINVAL). This FD is only opened when
+	// peakResetSupported is true (kernel >= 6.12), so we never reach here
+	// on older kernels.
+	if _, err := memoryPeakFile.Write([]byte{}); err != nil {
 		logger.L().Warn(ctx, "failed to reset memory.peak, interval peak semantics degraded", zap.Error(err))
 	}
 
