@@ -20,7 +20,7 @@ type AuthStoreImpl struct {
 	authDB *authdb.Client
 }
 
-var _ AuthStore[*types.Team] = (*AuthStoreImpl)(nil)
+var _ AuthStore = (*AuthStoreImpl)(nil)
 
 func NewAuthStore(authDB *authdb.Client) *AuthStoreImpl {
 	return &AuthStoreImpl{authDB: authDB}

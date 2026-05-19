@@ -26,7 +26,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
-	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/backgroundworker"
@@ -186,7 +185,7 @@ func run() int {
 		}
 	}()
 
-	authCache := sharedauth.NewAuthCache[*types.Team](redisClient)
+	authCache := sharedauth.NewAuthCache(redisClient)
 	authStore := sharedauth.NewAuthStore(authDB)
 	authHTTPClient := &http.Client{}
 	authIdentityLookup := sharedauth.NewAuthIdentityLookup(authDB.Read)
@@ -197,7 +196,7 @@ func run() int {
 		return 1
 	}
 
-	authService := sharedauth.NewAuthService[*types.Team](authStore, authCache, authProviderVerifier)
+	authService := sharedauth.NewAuthService(authStore, authCache, authProviderVerifier)
 	defer authService.Close(ctx)
 
 	teamProvisionSink, err := internalteamprovision.NewProvisionSink(
