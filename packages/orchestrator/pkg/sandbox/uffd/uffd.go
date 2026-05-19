@@ -250,7 +250,7 @@ func (u *Uffd) DiffMetadata(ctx context.Context, f *fc.Process) (*header.DiffMet
 	// and escape both bitmaps.
 	_, empty := handler.ExportPageStates()
 
-	diff, err := f.DirtyMemory(ctx, u.memfile.BlockSize())
+	diff, err := f.DirtyMemory(ctx, handler.PageSize())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get dirty memory: %w", err)
 	}

@@ -636,6 +636,12 @@ func (u *Userfaultfd) drainWakeupPipe() {
 	}
 }
 
+// PageSize returns the FC region page size driving this UFFD (4 KiB or
+// 2 MiB), which is the granularity at which FC reports dirty memory.
+func (u *Userfaultfd) PageSize() int64 {
+	return int64(u.pageSize)
+}
+
 func (u *Userfaultfd) Close() error {
 	syscall.Close(u.wakeupPipe[0])
 	syscall.Close(u.wakeupPipe[1])
