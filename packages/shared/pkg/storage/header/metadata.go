@@ -146,7 +146,9 @@ func (d *DiffMetadata) ToDiffHeader(
 	telemetry.ReportEvent(ctx, "normalized mappings")
 
 	metadata := originalHeader.Metadata.NextGeneration(buildID)
-	metadata.BlockSize = uint64(d.BlockSize)
+	// Use the finer of parent and diff granularity so all inherited and new
+	// mappings still align under ValidateMappings.
+	metadata.BlockSize = min(uint64(d.BlockSize), originalHeader.Metadata.BlockSize)
 
 	telemetry.SetAttributes(ctx,
 		attribute.Int64("snapshot.header.mappings.length", int64(len(m))),
