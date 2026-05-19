@@ -71,20 +71,22 @@ variable "client_proxy_oidc_issuer_url" {
 }
 
 variable "ingress_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
+  type        = number
+  description = "External traffic port number"
+}
+
+variable "ingress_internal_port" {
+  type        = number
+  description = "Internal traffic port number"
+}
+
+variable "ingress_count" {
+  type = number
 }
 
 variable "traefik_config_files" {
   type        = map(string)
   description = "Map of filename => content for additional Traefik dynamic configuration files"
-}
-
-variable "ingress_count" {
-  type = number
 }
 
 variable "api_resources_cpu_count" {
@@ -575,9 +577,4 @@ variable "orchestrator_enabled" {
   type        = bool
   default     = true
   description = "Whether the orchestrator job should be deployed"
-}
-
-variable "ingress_internal_port" {
-  type        = number
-  description = "Internal traffic port number"
 }

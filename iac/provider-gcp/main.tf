@@ -228,8 +228,10 @@ module "nomad" {
   clickhouse_node_pool             = var.clickhouse_node_pool
 
   # Ingress
-  ingress_port         = var.ingress_port
-  ingress_count        = var.ingress_count
+  ingress_count         = var.ingress_count
+  ingress_port          = var.ingress_port.port
+  ingress_internal_port = var.ingress_internal_port.port
+
   traefik_config_files = var.traefik_config_files
 
   # API
@@ -269,7 +271,6 @@ module "nomad" {
 
   client_proxy_session_port = var.client_proxy_port.port
   client_proxy_health_port  = var.client_proxy_health_port.port
-  ingress_internal_port     = var.ingress_internal_port.port
 
   domain_name = var.domain_name
 
