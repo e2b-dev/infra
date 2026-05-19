@@ -23,8 +23,8 @@ type ProviderConfig struct {
 	Legacy *legacy.Config `json:"legacy"`
 }
 
-// Enabled returns true when at least one auth provider entry is configured.
-func (c ProviderConfig) Enabled() bool {
+// enabled returns true when at least one auth provider entry is configured.
+func (c ProviderConfig) enabled() bool {
 	return len(c.JWT) > 0 || c.Legacy != nil
 }
 
@@ -83,7 +83,7 @@ func newVerifier(ctx context.Context, config ProviderConfig, oidcHTTPClient *htt
 	if err := normalized.validate(); err != nil {
 		return nil, err
 	}
-	if !normalized.Enabled() {
+	if !normalized.enabled() {
 		return nil, nil
 	}
 
