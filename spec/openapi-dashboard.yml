@@ -10,6 +10,9 @@ components:
       type: apiKey
       in: header
       name: X-Admin-Token
+    # Generated code uses security schemas in the alphabetical order.
+    # In order to check first the token, and then the team (so we can already use the user),
+    # there is a 1 and 2 present in the names of the security schemas.
     Supabase1TokenAuth:
       type: apiKey
       in: header
@@ -18,6 +21,16 @@ components:
       type: apiKey
       in: header
       name: X-Supabase-Team
+    # AuthProviderBearerAuth / AuthProviderTeamAuth: B before T in the name
+    # so Bearer is validated before Team (same reason as Supabase1/2 above).
+    AuthProviderBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: access_token
+    AuthProviderTeamAuth:
+      type: apiKey
+      in: header
+      name: X-Team-ID
 
   parameters:
     build_id:
@@ -617,6 +630,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/build_id_or_template"
         - $ref: "#/components/parameters/build_statuses"
@@ -645,6 +660,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/build_ids"
 
@@ -671,6 +688,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/build_id"
       responses:
@@ -696,6 +715,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -721,6 +742,7 @@ paths:
       tags: [teams]
       security:
         - Supabase1TokenAuth: []
+        - AuthProviderBearerAuth: []
       responses:
         "200":
           description: Successfully returned user teams.
@@ -737,6 +759,7 @@ paths:
       tags: [teams]
       security:
         - Supabase1TokenAuth: []
+        - AuthProviderBearerAuth: []
       requestBody:
         required: true
         content:
@@ -784,6 +807,7 @@ paths:
       tags: [teams]
       security:
         - Supabase1TokenAuth: []
+        - AuthProviderBearerAuth: []
       parameters:
         - $ref: "#/components/parameters/teamSlug"
       responses:
@@ -809,6 +833,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
       requestBody:
@@ -840,6 +866,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
       responses:
@@ -861,6 +889,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
       requestBody:
@@ -890,6 +920,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
         - $ref: "#/components/parameters/userId"
@@ -912,6 +944,7 @@ paths:
       tags: [templates]
       security:
         - Supabase1TokenAuth: []
+        - AuthProviderBearerAuth: []
       responses:
         "200":
           description: Successfully returned default templates.

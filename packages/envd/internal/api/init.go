@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/netip"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 
@@ -19,9 +21,14 @@ import (
 
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
+	"github.com/e2b-dev/infra/packages/envd/internal/logs/ratelimit"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
+
+// /init is hammered by the orchestrator's infinite retry loop, so a
+// persistent pin failure would otherwise flood the log.
+var pinMMDSWarnLimit = ratelimit.New(10 * time.Second)
 
 var (
 	ErrAccessTokenMismatch           = errors.New("access token validation failed")
@@ -72,6 +79,18 @@ func (a *API) checkMMDSHash(ctx context.Context, requestToken *SecureToken) (boo
 	}
 
 	mmdsHash, err := a.mmdsClient.GetAccessTokenHash(ctx)
+	if err != nil {
+		// Self-heal: a user-installed PREROUTING/OUTPUT redirect on
+		// 169.254.169.254:80 in the same netns can shadow our route.
+		// Re-pin our RETURN rule at position 1 of nat PREROUTING and
+		// OUTPUT, then retry once.
+		if pinErr := host.PinMMDSRoute(ctx); pinErr != nil {
+			if ok, suppressed := pinMMDSWarnLimit.Allow(); ok {
+				a.logger.Warn().Err(pinErr).Int64("suppressed", suppressed).Msg("failed to pin MMDS iptables route")
+			}
+		}
+		mmdsHash, err = a.mmdsClient.GetAccessTokenHash(ctx)
+	}
 	if err != nil {
 		return false, false
 	}
@@ -184,12 +203,9 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	}
 
 	if data.EnvVars != nil {
-		logger.Debug().Msg(fmt.Sprintf("Setting %d env vars", len(*data.EnvVars)))
-
-		for key, value := range *data.EnvVars {
-			logger.Debug().Msgf("Setting env var for %s", key)
-			a.defaults.EnvVars.Store(key, value)
-		}
+		keys := slices.Collect(maps.Keys(*data.EnvVars))
+		logger.Debug().Msgf("Setting %d env vars: %s", len(keys), strings.Join(keys, ", "))
+		a.defaults.EnvVars.ReplaceUserVars(*data.EnvVars)
 	}
 
 	if data.AccessToken.IsSet() {

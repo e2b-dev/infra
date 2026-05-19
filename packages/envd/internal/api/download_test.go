@@ -93,7 +93,7 @@ func TestGetFilesContentDisposition(t *testing.T) {
 			// Create test API
 			logger := zerolog.Nop()
 			defaults := &execcontext.Defaults{
-				EnvVars: utils.NewMap[string, string](),
+				EnvVars: utils.NewEnvVars(),
 				User:    currentUser.Username,
 			}
 			api := New(&logger, defaults, nil, false, cgroups.NewNoopManager())
@@ -142,7 +142,7 @@ func TestGetFilesContentDispositionWithNestedPath(t *testing.T) {
 	// Create test API
 	logger := zerolog.Nop()
 	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
+		EnvVars: utils.NewEnvVars(),
 		User:    currentUser.Username,
 	}
 	api := New(&logger, defaults, nil, false, cgroups.NewNoopManager())
@@ -185,7 +185,7 @@ func TestGetFiles_GzipEncoding_ExplicitIdentityOffWithRange(t *testing.T) {
 	// Create test API
 	logger := zerolog.Nop()
 	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
+		EnvVars: utils.NewEnvVars(),
 		User:    currentUser.Username,
 	}
 	api := New(&logger, defaults, nil, false, cgroups.NewNoopManager())
@@ -226,7 +226,7 @@ func TestGetFiles_GzipDownload(t *testing.T) {
 
 	logger := zerolog.Nop()
 	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
+		EnvVars: utils.NewEnvVars(),
 		User:    currentUser.Username,
 	}
 	api := New(&logger, defaults, nil, false, cgroups.NewNoopManager())
@@ -291,7 +291,7 @@ func TestPostFiles_GzipUpload(t *testing.T) {
 
 	logger := zerolog.Nop()
 	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
+		EnvVars: utils.NewEnvVars(),
 		User:    currentUser.Username,
 	}
 	api := New(&logger, defaults, nil, false, cgroups.NewNoopManager())
@@ -331,7 +331,7 @@ func TestPostFiles_RawBodyUpload(t *testing.T) {
 
 	logger := zerolog.Nop()
 	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
+		EnvVars: utils.NewEnvVars(),
 		User:    currentUser.Username,
 	}
 	api := New(&logger, defaults, nil, false, cgroups.NewNoopManager())
@@ -369,7 +369,7 @@ func TestPostFiles_RawBodyUploadCreatesDirectories(t *testing.T) {
 
 	logger := zerolog.Nop()
 	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
+		EnvVars: utils.NewEnvVars(),
 		User:    currentUser.Username,
 	}
 	api := New(&logger, defaults, nil, false, cgroups.NewNoopManager())
@@ -402,7 +402,7 @@ func TestPostFiles_RawBodyUploadRequiresPath(t *testing.T) {
 
 	logger := zerolog.Nop()
 	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
+		EnvVars: utils.NewEnvVars(),
 		User:    currentUser.Username,
 	}
 	api := New(&logger, defaults, nil, false, cgroups.NewNoopManager())
@@ -437,7 +437,7 @@ func TestPostFiles_RawBodyUploadOverwritesExisting(t *testing.T) {
 
 	logger := zerolog.Nop()
 	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
+		EnvVars: utils.NewEnvVars(),
 		User:    currentUser.Username,
 	}
 	api := New(&logger, defaults, nil, false, cgroups.NewNoopManager())
@@ -483,7 +483,7 @@ func TestPostFiles_RawBodyGzipUpload(t *testing.T) {
 
 	logger := zerolog.Nop()
 	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
+		EnvVars: utils.NewEnvVars(),
 		User:    currentUser.Username,
 	}
 	api := New(&logger, defaults, nil, false, cgroups.NewNoopManager())
@@ -517,7 +517,7 @@ func TestPostFiles_UnsupportedContentType(t *testing.T) {
 
 	logger := zerolog.Nop()
 	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
+		EnvVars: utils.NewEnvVars(),
 		User:    currentUser.Username,
 	}
 	api := New(&logger, defaults, nil, false, cgroups.NewNoopManager())
@@ -563,7 +563,7 @@ func TestPostFiles_MultipartStillWorksWithoutContentType(t *testing.T) {
 
 	logger := zerolog.Nop()
 	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
+		EnvVars: utils.NewEnvVars(),
 		User:    currentUser.Username,
 	}
 	api := New(&logger, defaults, nil, false, cgroups.NewNoopManager())
@@ -621,7 +621,7 @@ func TestGzipUploadThenGzipDownload(t *testing.T) {
 
 	logger := zerolog.Nop()
 	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
+		EnvVars: utils.NewEnvVars(),
 		User:    currentUser.Username,
 	}
 	api := New(&logger, defaults, nil, false, cgroups.NewNoopManager())

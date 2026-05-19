@@ -31,7 +31,7 @@ func (s *APIStore) GetBuilds(c *gin.Context, params api.GetBuildsParams) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "list builds")
 
-	teamID := auth.MustGetTeamInfo(c).Team.ID
+	teamID := auth.MustGetTeamID(c)
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamID.String()))
 
 	limit := normalizeBuildsLimit(params.Limit)

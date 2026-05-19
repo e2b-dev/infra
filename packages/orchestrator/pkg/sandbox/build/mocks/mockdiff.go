@@ -130,8 +130,8 @@ func (_c *MockDiff_CacheKey_Call) RunAndReturn(run func() build.DiffStoreKey) *M
 }
 
 // CachePath provides a mock function for the type MockDiff
-func (_mock *MockDiff) CachePath() (string, error) {
-	ret := _mock.Called()
+func (_mock *MockDiff) CachePath(ctx context.Context) (string, error) {
+	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CachePath")
@@ -139,16 +139,16 @@ func (_mock *MockDiff) CachePath() (string, error) {
 
 	var r0 string
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func() (string, error)); ok {
-		return returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (string, error)); ok {
+		return returnFunc(ctx)
 	}
-	if returnFunc, ok := ret.Get(0).(func() string); ok {
-		r0 = returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) string); ok {
+		r0 = returnFunc(ctx)
 	} else {
 		r0 = ret.Get(0).(string)
 	}
-	if returnFunc, ok := ret.Get(1).(func() error); ok {
-		r1 = returnFunc()
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -161,13 +161,20 @@ type MockDiff_CachePath_Call struct {
 }
 
 // CachePath is a helper method to define mock.On call
-func (_e *MockDiff_Expecter) CachePath() *MockDiff_CachePath_Call {
-	return &MockDiff_CachePath_Call{Call: _e.mock.On("CachePath")}
+//   - ctx context.Context
+func (_e *MockDiff_Expecter) CachePath(ctx interface{}) *MockDiff_CachePath_Call {
+	return &MockDiff_CachePath_Call{Call: _e.mock.On("CachePath", ctx)}
 }
 
-func (_c *MockDiff_CachePath_Call) Run(run func()) *MockDiff_CachePath_Call {
+func (_c *MockDiff_CachePath_Call) Run(run func(ctx context.Context)) *MockDiff_CachePath_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
 	})
 	return _c
 }
@@ -177,7 +184,7 @@ func (_c *MockDiff_CachePath_Call) Return(s string, err error) *MockDiff_CachePa
 	return _c
 }
 
-func (_c *MockDiff_CachePath_Call) RunAndReturn(run func() (string, error)) *MockDiff_CachePath_Call {
+func (_c *MockDiff_CachePath_Call) RunAndReturn(run func(ctx context.Context) (string, error)) *MockDiff_CachePath_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -227,8 +234,8 @@ func (_c *MockDiff_Close_Call) RunAndReturn(run func() error) *MockDiff_Close_Ca
 }
 
 // FileSize provides a mock function for the type MockDiff
-func (_mock *MockDiff) FileSize() (int64, error) {
-	ret := _mock.Called()
+func (_mock *MockDiff) FileSize(ctx context.Context) (int64, error) {
+	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FileSize")
@@ -236,16 +243,16 @@ func (_mock *MockDiff) FileSize() (int64, error) {
 
 	var r0 int64
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func() (int64, error)); ok {
-		return returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (int64, error)); ok {
+		return returnFunc(ctx)
 	}
-	if returnFunc, ok := ret.Get(0).(func() int64); ok {
-		r0 = returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) int64); ok {
+		r0 = returnFunc(ctx)
 	} else {
 		r0 = ret.Get(0).(int64)
 	}
-	if returnFunc, ok := ret.Get(1).(func() error); ok {
-		r1 = returnFunc()
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -258,13 +265,20 @@ type MockDiff_FileSize_Call struct {
 }
 
 // FileSize is a helper method to define mock.On call
-func (_e *MockDiff_Expecter) FileSize() *MockDiff_FileSize_Call {
-	return &MockDiff_FileSize_Call{Call: _e.mock.On("FileSize")}
+//   - ctx context.Context
+func (_e *MockDiff_Expecter) FileSize(ctx interface{}) *MockDiff_FileSize_Call {
+	return &MockDiff_FileSize_Call{Call: _e.mock.On("FileSize", ctx)}
 }
 
-func (_c *MockDiff_FileSize_Call) Run(run func()) *MockDiff_FileSize_Call {
+func (_c *MockDiff_FileSize_Call) Run(run func(ctx context.Context)) *MockDiff_FileSize_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
 	})
 	return _c
 }
@@ -274,7 +288,7 @@ func (_c *MockDiff_FileSize_Call) Return(n int64, err error) *MockDiff_FileSize_
 	return _c
 }
 
-func (_c *MockDiff_FileSize_Call) RunAndReturn(run func() (int64, error)) *MockDiff_FileSize_Call {
+func (_c *MockDiff_FileSize_Call) RunAndReturn(run func(ctx context.Context) (int64, error)) *MockDiff_FileSize_Call {
 	_c.Call.Return(run)
 	return _c
 }

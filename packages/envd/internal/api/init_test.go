@@ -145,7 +145,7 @@ func (m *mockMMDSClient) GetAccessTokenHash(_ context.Context) (string, error) {
 func newTestAPI(accessToken *SecureToken, mmdsClient MMDSClient) *API {
 	logger := zerolog.Nop()
 	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
+		EnvVars: utils.NewEnvVars(),
 	}
 	api := New(&logger, defaults, nil, false, cgroups.NewNoopManager())
 	if accessToken != nil {
@@ -634,7 +634,7 @@ func (f *fakeCgroupManager) Close() error { return nil }
 func newAPIWithCgroupManager(mgr cgroups.Manager) *API {
 	logger := zerolog.Nop()
 
-	return New(&logger, &execcontext.Defaults{EnvVars: utils.NewMap[string, string]()}, nil, false, mgr)
+	return New(&logger, &execcontext.Defaults{EnvVars: utils.NewEnvVars()}, nil, false, mgr)
 }
 
 func TestPostFreeze(t *testing.T) {
