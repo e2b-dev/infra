@@ -62,6 +62,14 @@ func httpClientForServers(servers ...*httptest.Server) *http.Client {
 	}
 }
 
+func TestNewVerifier_DisabledConfigReturnsNil(t *testing.T) {
+	t.Parallel()
+
+	verifier, err := NewVerifier(t.Context(), ProviderConfig{}, nil, nil)
+	require.NoError(t, err)
+	require.Nil(t, verifier)
+}
+
 func TestVerifier_VerifyWithMultipleStrategies(t *testing.T) {
 	t.Parallel()
 

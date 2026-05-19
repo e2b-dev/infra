@@ -133,7 +133,20 @@ func (s *AuthService[T]) ValidateAccessToken(ctx context.Context, ginCtx *gin.Co
 }
 
 // ValidateAuthProviderToken verifies a JWT against the configured auth provider and resolves an internal user ID.
+//
+// When no auth provider verifier is configured (AUTH_PROVIDER_CONFIG is unset),
+// every token is denied with 401. This makes "no auth provider" a valid
+// configuration: API key / access token flows keep working, but JWT-based
+// flows are universally rejected.
 func (s *AuthService[T]) ValidateAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError) {
+	if s.authProviderVerifier == nil {
+		return uuid.UUID{}, &APIError{
+			Err:       errors.New("auth provider is not configured"),
+			ClientMsg: "Backend authentication failed",
+			Code:      http.StatusUnauthorized,
+		}
+	}
+
 	return s.validateJWTWithProvider(ctx, ginCtx, s.authProviderVerifier, token, "auth provider")
 }
 
