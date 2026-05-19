@@ -513,7 +513,7 @@ exporters:
       sum:
         name: "metrics_sum"
 %{ if enable_otel_router_metrics }
-  otlp/otel_router:
+  otlp_grpc/otel_router:
     endpoint: 127.0.0.1:${otel_router_grpc_port}
     tls:
       insecure: true
@@ -651,7 +651,7 @@ service:
         - filter/external_metrics
         - batch
       exporters:
-        - otlp/otel_router
+        - otlp_grpc/otel_router
 %{ endif }
     traces:
       receivers:
