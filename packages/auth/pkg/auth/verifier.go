@@ -76,8 +76,8 @@ type verifier struct {
 // When the provided config has no JWT issuers and no legacy entry (i.e. the
 // AUTH_PROVIDER_CONFIG env var is unset or empty), newVerifier returns
 // (nil, nil). This is a valid configuration: the caller can pass the nil
-// verifier to AuthService, and any token verification attempt will be denied
-// at runtime by verifier.Verify / AuthService.ValidateAuthProviderToken.
+// verifier to authService, and any token verification attempt will be denied
+// at runtime by verifier.Verify / Service.ValidateAuthProviderToken.
 func newVerifier(ctx context.Context, config ProviderConfig, oidcHTTPClient *http.Client, identities oidc.IdentityLookup) (*verifier, error) {
 	normalized := config.normalize()
 	if err := normalized.validate(); err != nil {
