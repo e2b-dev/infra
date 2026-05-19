@@ -37,12 +37,13 @@ type Evictor struct {
 }
 
 func New(
+	ctx context.Context,
 	store *sandbox.Store,
 	removeSandbox func(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) error,
 	featureFlags *featureflags.Client,
 	meter metric.Meter,
 ) (*Evictor, error) {
-	initialLimit := featureFlags.IntFlag(context.Background(), featureflags.MaxConcurrentEvictions)
+	initialLimit := featureFlags.IntFlag(ctx, featureflags.MaxConcurrentEvictions)
 	if initialLimit <= 0 {
 		initialLimit = featureflags.MaxConcurrentEvictions.Fallback()
 	}

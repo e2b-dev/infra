@@ -182,7 +182,7 @@ func New(
 	)
 
 	// Evict old sandboxes
-	sandboxEvictor, err := evictor.New(o.sandboxStore, o.RemoveSandbox, o.featureFlagsClient, meter)
+	sandboxEvictor, err := evictor.New(ctx, o.sandboxStore, o.RemoveSandbox, o.featureFlagsClient, meter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sandbox evictor: %w", err)
 	}
