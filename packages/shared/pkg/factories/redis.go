@@ -127,8 +127,12 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 		return nil, ErrRedisDisabled
 	}
 
-	// Enable tracing
-	if err := redisotel.InstrumentTracing(redisClient); err != nil {
+	// Enable tracing.
+	if err := redisotel.InstrumentTracing(
+		redisClient,
+		redisotel.WithDBStatement(false),
+		redisotel.WithCallerEnabled(false),
+	); err != nil {
 		closeErr := redisClient.Close()
 
 		return nil, errors.Join(fmt.Errorf("failed to enable redis tracing: %w", err), closeErr)
