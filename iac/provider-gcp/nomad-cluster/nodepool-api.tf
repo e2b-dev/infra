@@ -112,7 +112,7 @@ resource "google_compute_instance_template" "api" {
       goog-ops-agent-policy = "v2-x86-template-1-2-0-${var.gcp_zone}"
     } : {})
   )
-  tags                    = [var.cluster_tag_name]
+  tags                    = local.api_network_tags
   metadata_startup_script = local.api_startup_script
   metadata = merge(
     { api_cluster = "TRUE" },
@@ -134,7 +134,8 @@ resource "google_compute_instance_template" "api" {
   }
 
   network_interface {
-    network = var.network_name
+    network    = var.network_name
+    subnetwork = local.api_subnetwork_name
 
     dynamic "access_config" {
       for_each = var.api_use_nat ? [] : ["public_ip"]
