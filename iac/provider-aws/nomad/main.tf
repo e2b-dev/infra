@@ -79,6 +79,9 @@ module "ingress" {
   ingress_port          = var.ingress_port
   ingress_internal_port = var.ingress_internal_port
 
+  ingress_cpu_count = var.ingress_cpu_count
+  ingress_memory_mb = var.ingress_memory_mb
+
   traefik_config_files = var.traefik_config_files
 
   node_pool     = var.api_node_pool

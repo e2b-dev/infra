@@ -118,6 +118,9 @@ module "ingress" {
   nomad_token  = var.nomad_acl_token_secret
   consul_token = var.consul_acl_token_secret
 
+  ingress_cpu_count = var.ingress_cpu_count
+  ingress_memory_mb = var.ingress_memory_mb
+
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
 }
 

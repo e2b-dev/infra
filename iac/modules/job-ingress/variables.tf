@@ -45,12 +45,12 @@ variable "ingress_count" {
 
 variable "ingress_cpu_count" {
   type    = number
-  default = 1
+  default = null
 }
 
 variable "ingress_memory_mb" {
   type    = number
-  default = 512
+  default = null
 }
 
 variable "otel_collector_grpc_endpoint" {

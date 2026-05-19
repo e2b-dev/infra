@@ -55,6 +55,18 @@ variable "ingress_count" {
   type = number
 }
 
+variable "ingress_cpu_count" {
+  type        = number
+  default     = null
+  description = "CPU count for each ingress instance"
+}
+
+variable "ingress_memory_mb" {
+  type        = number
+  default     = null
+  description = "Memory in MB for each ingress instance"
+}
+
 # Client Proxy
 variable "client_proxy_count" {
   type    = number

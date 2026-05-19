@@ -212,6 +212,8 @@ module "nomad" {
   sandbox_access_token_hash_seed = module.init.sandbox_access_token_hash_seed
 
   ingress_count         = var.ingress_count
+  ingress_cpu_count     = var.ingress_cpu_count
+  ingress_memory_mb     = var.ingress_memory_mb
   ingress_port          = local.ingress_port
   ingress_internal_port = local.ingress_internal_port
 

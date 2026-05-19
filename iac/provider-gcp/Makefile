@@ -49,6 +49,8 @@ tf_vars := \
 	$(call tfvar, API_RESOURCES_CPU_COUNT) \
 	$(call tfvar, API_RESOURCES_MEMORY_MB) \
 	$(call tfvar, INGRESS_COUNT) \
+	$(call tfvar, INGRESS_MEMORY_MB) \
+	$(call tfvar, INGRESS_CPU_COUNT) \
 	$(call tfvar, CLIENT_PROXY_COUNT) \
 	$(call tfvar, CLIENT_PROXY_RESOURCES_CPU_COUNT) \
 	$(call tfvar, CLIENT_PROXY_RESOURCES_MEMORY_MB) \
