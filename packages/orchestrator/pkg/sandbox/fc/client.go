@@ -45,6 +45,7 @@ func (c *apiClient) loadSnapshot(
 	uffdSocketPath string,
 	uffdReady chan struct{},
 	snapfile template.File,
+	useMemfd bool,
 ) error {
 	ctx, span := tracer.Start(ctx, "load-snapshot")
 	defer span.End()
@@ -53,6 +54,9 @@ func (c *apiClient) loadSnapshot(
 	backend := &models.MemoryBackend{
 		BackendPath: &uffdSocketPath,
 		BackendType: &backendType,
+	}
+	if useMemfd {
+		backend.UseMemfd = &useMemfd
 	}
 
 	snapfilePath := snapfile.Path()
