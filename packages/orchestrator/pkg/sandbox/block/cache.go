@@ -205,21 +205,8 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	return diffMetadata, nil
 }
 
-// Dedup compares the packed contents of this cache against originalMemfile
-// at 4 KiB-page granularity and writes only the differing pages, packed
-// contiguously, to a new cache at outPath. Single pass with pwrite (the
-// memfd fast-path's writeAll helper).
-//
-// The receiver `c` is expected to be a packed-by-range export cache (as
-// produced by NewCacheFromProcessMemory): bytes from each dirty range
-// concatenated in BitsetRanges iteration order. `dirtyBlocks` is the bitmap
-// those ranges came from, and `blockSize` is the export's block size.
-//
-// Empty stays empty: pages not in Dirty must keep the parent's mapping so
-// they fall through to base content at restore. Marking them as Empty
-// would emit uuid.Nil mappings that override the parent (MergeMappings lets
-// diff override base) and serve zeros for content that legitimately belongs
-// to the parent.
+// Dedup writes pages from c that differ from originalMemfile (at 4 KiB
+// granularity) to a new cache at outPath, packed contiguously.
 func (c *Cache) Dedup(
 	ctx context.Context,
 	originalMemfile ReadonlyDevice,
@@ -271,13 +258,9 @@ func (c *Cache) Dedup(
 				pageIdx := uint32((r.Start + chunkOff + i) / header.PageSize)
 
 				if bytes.Equal(srcPage, baseBuf[i:i+header.PageSize]) {
-					// Page matches base. If it's all-zero, mark it as Empty
-					// so the merged header emits a uuid.Nil mapping for it —
-					// the read path serves zero locally instead of falling
-					// through to the parent's diff (which may be the
-					// synthetic Empty template with no real backing).
-					// Non-zero matches stay unmapped so the merge keeps the
-					// parent mapping and reads from the parent.
+					// Zero matches go into Empty so the merged header maps
+					// them to uuid.Nil; non-zero matches stay unmapped so
+					// they fall through to the parent.
 					if header.IsZero(srcPage) {
 						pageEmpty.Add(pageIdx)
 					}

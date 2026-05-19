@@ -120,11 +120,8 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 	return n, nil
 }
 
-// Slice returns the data at the given offset and length. It delegates to
-// ReadAt so a single Slice request can be served from multiple sub-mappings
-// of mixed granularity (e.g. 4 KiB dedup pages alongside 2 MiB template
-// ranges). The previous zero-copy mmap return is gone — callers that hold
-// the result for the full UFFD copy must use a pooled buffer instead.
+// Slice composes a response from any mix of mapping granularities (4 KiB
+// dedup pages alongside 2 MiB template ranges) by delegating to ReadAt.
 func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	out := make([]byte, length)
 	if _, err := b.ReadAt(ctx, out, off); err != nil {

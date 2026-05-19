@@ -50,16 +50,11 @@ func hasEvent(revents, event int16) bool {
 }
 
 // PageReader is the data source UFFD pulls page contents from on a fault.
-// It lets faultPage compose a single huge-page response from any mix of
-// underlying mapping granularities (e.g. 4 KiB dedup pages on top of 2 MiB
-// template ranges). block.ReadonlyDevice satisfies it.
 type PageReader interface {
 	ReadAt(ctx context.Context, p []byte, off int64) (int, error)
 }
 
-// pagePool is a process-wide pool of huge-page-sized scratch buffers used to
-// serve UFFD faults. Sized to header.HugepageSize so the same pool serves
-// both 4 KiB and 2 MiB UFFD page sizes — fault sites slice b[:pageSize].
+// pagePool serves both 4 KiB and 2 MiB faults; sites slice b[:pageSize].
 var pagePool = sync.Pool{
 	New: func() any {
 		buf := make([]byte, header.HugepageSize)
@@ -127,12 +122,9 @@ const (
 	faultDiscarded
 )
 
-// NewUserfaultfdFromFd creates a new userfaultfd instance.
-//
-// The UFFD page size is taken from the FC-registered regions rather than from
-// the source's BlockSize: the source may now expose mixed-granularity
-// mappings (e.g. 4 KiB dedup pages on top of 2 MiB template ranges) while FC
-// still drives faults at huge-page granularity.
+// NewUserfaultfdFromFd creates a new userfaultfd instance. Page size comes
+// from the FC-registered regions rather than the source so src can expose
+// mixed-granularity mappings (e.g. 4 KiB dedup pages on 2 MiB template ranges).
 func NewUserfaultfdFromFd(fd uintptr, src PageReader, m *memory.Mapping, logger logger.Logger) (*Userfaultfd, error) {
 	pageSize := uintptr(header.HugepageSize)
 	if len(m.Regions) > 0 {
@@ -515,18 +507,12 @@ func (u *Userfaultfd) faultPage(
 	case source == nil && u.pageSize == header.HugepageSize:
 		writeErr = u.fd.copy(addr, u.pageSize, header.EmptyHugePage, mode)
 	default:
-		// Borrow a HugepageSize-sized scratch buffer from the pool and slice
-		// it down to u.pageSize. The pool is process-wide so 4 KiB UFFD
-		// instances pay for the over-provisioned allocation just once each.
 		bufPtr := pagePool.Get().(*[]byte)
 		defer pagePool.Put(bufPtr)
 		b := (*bufPtr)[:u.pageSize]
 
-		// Zero the buffer before ReadAt: build.File.ReadAt skips ranges
-		// mapped to uuid.Nil (assumes p is pre-zeroed), and pooled buffers
-		// carry stale data from previous faults. Without this, a fault
-		// resolving to (current-build + uuid.Nil) sub-mappings would leak
-		// the previous fault's bytes for the uuid.Nil ranges.
+		// build.File.ReadAt skips uuid.Nil ranges expecting a pre-zeroed
+		// buffer; pooled buffers carry stale data from previous faults.
 		clear(b)
 
 		// ReadAt retry holds settleRequests.RLock for up to ~2s of

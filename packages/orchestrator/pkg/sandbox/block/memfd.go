@@ -19,8 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-// Memfd wraps a memfd received from Firecracker. NewFromFd takes ownership of
-// the fd and mmaps it; Close releases both.
+// Memfd wraps a memfd received from Firecracker. NewFromFd takes ownership.
 type Memfd struct {
 	fd   int
 	mmap []byte
@@ -43,7 +42,6 @@ func NewFromFd(fd int) (*Memfd, error) {
 	return &Memfd{fd: fd, mmap: b}, nil
 }
 
-// Slice returns a zero-copy view of [offset, offset+size). Valid until Close.
 func (m *Memfd) Slice(offset, size int64) ([]byte, error) {
 	if offset < 0 || offset+size > int64(len(m.mmap)) {
 		return nil, fmt.Errorf("range [%d, %d) out of bounds (size %d)", offset, offset+size, len(m.mmap))
@@ -52,10 +50,6 @@ func (m *Memfd) Slice(offset, size int64) ([]byte, error) {
 	return m.mmap[offset : offset+size], nil
 }
 
-// Close releases the mmap and the fd. Single-use: every Memfd has exactly
-// one owner (NewCacheFromMemfd consumes it during construction; the UFFD
-// handshake transfers ownership via atomic Swap), so we don't guard against
-// double-close.
 func (m *Memfd) Close() error {
 	var err error
 	if e := unix.Munmap(m.mmap); e != nil {
@@ -127,12 +121,6 @@ func dedupRange(
 			pageIdx := uint32((r.Start + chunkOff + i) / header.PageSize)
 
 			if bytes.Equal(srcPage, buff[i:i+header.PageSize]) {
-				// Page matches base. If it's all-zero, mark it as Empty so
-				// the merged header emits a uuid.Nil mapping for it — the
-				// read path serves zero locally instead of falling through
-				// to the parent's diff (which may be the synthetic Empty
-				// template with no real backing). Non-zero matches stay
-				// unmapped so the merge keeps the parent mapping.
 				if header.IsZero(srcPage) {
 					pageEmpty.Add(pageIdx)
 				}
@@ -192,9 +180,6 @@ func NewCacheFromMemfdDeduped(
 	}
 	cache.setIsCached(0, fileOff)
 
-	// All source bytes are on disk in `cache`; the memfd is no longer needed.
-	// Release the mmap (and on hugetlbfs the reservation) eagerly so we
-	// don't pin host memory for the lifetime of the MemfdCache.
 	if err = memfd.Close(); err != nil {
 		logger.L().Warn(ctx, "Could not close memfd after dedup", zap.Error(err))
 	}

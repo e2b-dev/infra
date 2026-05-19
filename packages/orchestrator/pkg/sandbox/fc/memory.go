@@ -27,9 +27,6 @@ func (p *Process) DirtyMemory(ctx context.Context, blockSize int64) (*header.Dif
 	return p.client.dirtyMemory(ctx, blockSize)
 }
 
-// exportMemoryFromMemfd dispatches between the plain and the deduped memfd
-// cache constructors. Both take ownership of `memfd` (close it internally),
-// so this wrapper does not.
 func (p *Process) exportMemoryFromMemfd(
 	ctx context.Context,
 	include *roaring.Bitmap,
@@ -91,11 +88,8 @@ func (p *Process) exportMemoryFromFc(
 }
 
 // ExportMemory writes the dirty guest-memory regions to a local cache file
-// and optionally deduplicates the result against `originalMemfile`.
-//
-// When dedup runs, the returned *header.DiffMetadata is non-nil and reflects
-// the page-granular result; otherwise it is nil and the caller keeps the
-// pre-export diff metadata.
+// and optionally deduplicates the result against originalMemfile. When
+// dedup runs the returned DiffMetadata is non-nil and page-granular.
 func (p *Process) ExportMemory(
 	ctx context.Context,
 	buildID uuid.UUID,
@@ -129,17 +123,13 @@ func (p *Process) ExportMemory(
 		return cache, nil, nil
 	}
 
-	// Use a fresh path for the dedup output. GenerateDiffCachePath appends
-	// a random suffix per call, so dedupPath != cachePath — the truncate
-	// inside NewCache (called from Dedup) won't clobber the source file
-	// while its mmap is still being read.
+	// Fresh suffix so Dedup's NewCache truncate doesn't clobber the source mmap.
 	dedupPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
 	dedupCache, dedupMetadata, err := cache.Dedup(ctx, originalMemfile, include, blockSize, dedupPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to dedup memfile diff: %w", errors.Join(err, cache.Close()))
 	}
 
-	// Cache.Close removes the underlying file, so no separate os.Remove needed.
 	if err := cache.Close(); err != nil {
 		return nil, nil, fmt.Errorf("failed to close pre-dedup cache: %w", errors.Join(err, dedupCache.Close()))
 	}

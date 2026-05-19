@@ -18,8 +18,7 @@ const (
 	SandboxTemplateAttribute           string         = "template-id"
 	SandboxKernelVersionAttribute      string         = "kernel-version"
 	SandboxFirecrackerVersionAttribute string         = "firecracker-version"
-	// SandboxTypeAttribute distinguishes "sandbox" from "build" runs.
-	SandboxTypeAttribute string = "sandbox-type"
+	SandboxTypeAttribute               string         = "sandbox-type"
 
 	TeamKind             ldcontext.Kind = "team"
 	UserKind             ldcontext.Kind = "user"
@@ -101,8 +100,7 @@ func NewBoolFlag(name string, fallback bool) BoolFlag {
 	return flag
 }
 
-// OverrideBoolFlag forces a bool flag to a specific value in the offline store.
-// Only takes effect when LAUNCH_DARKLY_API_KEY is not set (i.e. dev/CLI tools).
+// OverrideBoolFlag forces a flag value in the offline store (dev/CLI only).
 func OverrideBoolFlag(flag BoolFlag, value bool) {
 	builder := launchDarklyOfflineStore.Flag(flag.name).VariationForAll(value)
 	launchDarklyOfflineStore.Update(builder)
@@ -122,17 +120,11 @@ var (
 	SandboxAutoResumeFlag               = NewBoolFlag("sandbox-auto-resume", env.IsDevelopment())
 	OrchAcceptsCombinedHostFlag         = NewBoolFlag("orch-accepts-combined-host", false)
 
-	// UseMemFdFlag asks Firecracker to back guest memory with a memfd and
-	// pass the fd over the UFFD socket; the orchestrator then mmaps it
-	// directly instead of using process_vm_readv on pause.
+	// UseMemFdFlag asks FC to back guest memory with a memfd passed over UFFD.
 	UseMemFdFlag = NewBoolFlag("use-memfd", false)
 
-	// MemfileDiffDedupFlag enables 4 KiB-page deduplication of the memfile
-	// diff against the base template's memfile during snapshot post-processing.
-	// When enabled, pages inside dirty blocks that match the base byte-for-byte
-	// are dropped from the uploaded diff, shrinking the diff and producing
-	// page-granular DiffMetadata for sparser restores. Costs an extra read pass
-	// over the dirty region during pause.
+	// MemfileDiffDedupFlag drops memfile-diff pages that match the base
+	// byte-for-byte at 4 KiB granularity during snapshot post-processing.
 	MemfileDiffDedupFlag = NewBoolFlag("memfile-diff-dedup", false)
 
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.

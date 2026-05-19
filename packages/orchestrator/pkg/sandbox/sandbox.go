@@ -1129,9 +1129,7 @@ func (s *Sandbox) Pause(
 	}
 	recordSnapshotDiff(ctx, "memfile", memfileDiffMetadata, originalMemfile.Header(), useCase)
 
-	// Start POSTPROCESSING.
-	// When the dedup flag is on we pass the base memfile so pauseProcessMemory
-	// can drop pages that match the base byte-for-byte; otherwise nil disables dedup.
+	// Start POSTPROCESSING
 	var dedupBase block.ReadonlyDevice
 	if s.featureFlags.BoolFlag(ctx, featureflags.MemfileDiffDedupFlag) {
 		dedupBase = originalMemfile
@@ -1205,11 +1203,6 @@ func (s *Sandbox) MemoryPrefetchData(ctx context.Context) (block.PrefetchData, e
 	return prefetchData, nil
 }
 
-// pauseProcessMemory exports the dirty guest memory to a local diff cache.
-// When originalMemfile is non-nil, the exported diff is deduplicated at
-// 4 KiB-page granularity against the base template's memfile: pages that
-// match the base byte-for-byte are dropped, and the returned DiffHeader is
-// rebuilt at page granularity.
 func pauseProcessMemory(
 	ctx context.Context,
 	buildID uuid.UUID,
@@ -1223,21 +1216,13 @@ func pauseProcessMemory(
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
-	// ExportMemory owns memfd and closes it on all paths.
 	cache, dedupMeta, err := fc.ExportMemory(ctx, buildID, diffMetadata.Dirty, cacheDir, diffMetadata.BlockSize, memfd, originalMemfile)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
 	}
 
-	// When dedup ran, the diff layout is page-granular; otherwise keep the
-	// pre-export diff metadata.
-	//
-	// Empty bits in the original metadata cover pages the guest zeroed that
-	// were not part of Dirty — Dedup never sees them, so dedupMeta.Empty
-	// only carries zero-pages-that-matched-base. Without re-keying and
-	// unioning the original Empty into dedupMeta.Empty, those pages would
-	// have no diff mapping on restore and would fall through to the
-	// parent's (potentially non-zero) content instead of reading as zero.
+	// Re-key the original Empty into the page-granular dedup metadata so
+	// guest-zeroed pages that weren't Dirty still read as zero on restore.
 	if dedupMeta != nil {
 		if diffMetadata.BlockSize%dedupMeta.BlockSize != 0 {
 			return nil, nil, errors.Join(

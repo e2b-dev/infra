@@ -193,9 +193,7 @@ func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64
 			logger.WithBuildID(t.Metadata.BuildId.String()),
 		)
 	}
-	// Mappings can be PageSize-granular even when Metadata.BlockSize is larger
-	// (e.g. 2 MiB UFFD page size with 4 KiB dedup mappings), so alignment is
-	// checked against PageSize rather than Metadata.BlockSize.
+	// Dedup emits PageSize-granular mappings; align check accordingly.
 	if offset%PageSize != 0 {
 		if t.IsNormalizeFixApplied() {
 			return nil, 0, fmt.Errorf("offset %d is not aligned to page size %d", offset, PageSize)

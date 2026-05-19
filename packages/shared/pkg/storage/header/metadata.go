@@ -163,10 +163,7 @@ func (d *DiffMetadata) ToDiffHeader(
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}
 
-	// Mappings can be PageSize-granular (4 KiB) even when Metadata.BlockSize is
-	// the UFFD/FC page size (e.g. 2 MiB) — the dedup pipeline emits page-level
-	// mappings while keeping Metadata.BlockSize unchanged so FC/UFFD wiring
-	// stays the same. Validate at PageSize accordingly.
+	// Dedup emits PageSize-granular mappings; validate accordingly.
 	err = ValidateMappings(header.Mapping, header.Metadata.Size, PageSize)
 	if err != nil {
 		if header.IsNormalizeFixApplied() {

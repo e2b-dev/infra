@@ -63,11 +63,9 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 	return nil
 }
 
-// directDataSource wraps a byte slice to implement PageReader for prefaulting.
-// The Prefault path already has the page contents in hand and d.data IS the
-// requested page, so ReadAt copies the whole buffer regardless of off — off
-// is the guest memory address (passed through faultPage), not an index into
-// d.data. This mirrors the original Slice impl that returned d.data verbatim.
+// directDataSource wraps a single page's bytes for the prefault path. off is
+// the guest memory address (passed through faultPage), not an index into
+// d.data, so ReadAt copies the whole buffer regardless of off.
 type directDataSource struct {
 	data []byte
 }
