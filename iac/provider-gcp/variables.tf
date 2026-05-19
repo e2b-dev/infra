@@ -139,7 +139,7 @@ variable "additional_api_paths_handled_by_ingress" {
     - Legacy: list(string) - e.g. ["/path1/*", "/path2/*"]
     - New: list(object({paths = list(string), timeout_sec = optional(number)}))
       e.g. [{paths = ["/path1/*", "/path2/*"], timeout_sec = 120}]
-    Per-route timeout_sec overrides the ingress backend default (see ingress_timeout_seconds).
+    Per-route timeout_sec overrides the ingress backend default.
   EOT
   default     = []
 }
@@ -819,9 +819,4 @@ variable "traefik_config_files" {
   type        = map(string)
   description = "Map of filename => content for additional Traefik dynamic configuration files"
   default     = {}
-}
-
-variable "ingress_timeout_seconds" {
-  type    = number
-  default = 80
 }
