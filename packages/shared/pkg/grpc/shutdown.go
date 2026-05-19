@@ -14,8 +14,7 @@ import (
 // built-in deadline. A stuck stream would otherwise block process shutdown
 // past Nomad's kill_timeout and result in SIGKILL.
 //
-// After Stop() is called, we still wait for the inner goroutine to return so
-// the caller can rely on all server resources being released.
+// Stop() force-closes transports
 func GracefulStopWithTimeout(srv *grpc.Server, d time.Duration) bool {
 	done := make(chan struct{})
 
@@ -29,7 +28,6 @@ func GracefulStopWithTimeout(srv *grpc.Server, d time.Duration) bool {
 		return true
 	case <-time.After(d):
 		srv.Stop()
-		<-done
 
 		return false
 	}
