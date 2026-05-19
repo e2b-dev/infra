@@ -96,12 +96,9 @@ func New(
 	// User command string for logging (without the internal wrapper details).
 	userCmd := strings.Join(append([]string{req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...), " ")
 
-	// Wrap the command in a shell that sets the OOM score and nice value before exec-ing the actual command.
-	// This eliminates the race window where grandchildren could inherit the parent's protected OOM score (-1000)
-	// or high CPU priority (nice -20) before the post-start calls had a chance to correct them.
-	// nice(1) applies a relative adjustment, so we compute the delta from the current (inherited) nice to the target.
+	// Wrap in a shell that resets oom_score_adj, ioprio (ionice best-effort/4), and nice.
 	niceDelta := defaultNice - currentNice()
-	oomWrapperScript := fmt.Sprintf(`echo %d > /proc/$$/oom_score_adj && exec /usr/bin/nice -n %d "${@}"`, defaultOomScore, niceDelta)
+	oomWrapperScript := fmt.Sprintf(`echo %d > /proc/$$/oom_score_adj && exec /usr/bin/ionice -c 2 -n 4 /usr/bin/nice -n %d "${@}"`, defaultOomScore, niceDelta)
 	wrapperArgs := append([]string{"-c", oomWrapperScript, "--", req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...)
 	cmd := exec.CommandContext(ctx, "/bin/sh", wrapperArgs...)
 

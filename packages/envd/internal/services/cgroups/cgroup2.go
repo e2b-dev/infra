@@ -104,6 +104,19 @@ func createCgroups(configs cgroup2Config) (map[ProcessType]int, error) {
 	return results, nil
 }
 
+// writeCgroupProp writes a cgroupfs property without O_CREATE so missing
+// properties error out rather than being silently created on a tmpfs fallback.
+func writeCgroupProp(path, value string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString(value)
+
+	return err
+}
+
 func createCgroup(fullPath string, properties map[string]string) (int, error) {
 	if err := os.MkdirAll(fullPath, 0o755); err != nil {
 		return -1, fmt.Errorf("failed to create cgroup root: %w", err)
@@ -111,8 +124,14 @@ func createCgroup(fullPath string, properties map[string]string) (int, error) {
 
 	var errs []error
 	for name, value := range properties {
-		if err := os.WriteFile(filepath.Join(fullPath, name), []byte(value), 0o644); err != nil {
-			errs = append(errs, fmt.Errorf("failed to write cgroup property: %w", err))
+		if err := writeCgroupProp(filepath.Join(fullPath, name), value); err != nil {
+			// Skip properties whose controller isn't enabled in subtree_control.
+			if errors.Is(err, os.ErrNotExist) || errors.Is(err, os.ErrPermission) {
+				fmt.Fprintf(os.Stderr, "cgroup property %q unavailable at %q, skipping\n", name, fullPath)
+
+				continue
+			}
+			errs = append(errs, fmt.Errorf("failed to write cgroup property %q: %w", name, err))
 		}
 	}
 	if len(errs) > 0 {
