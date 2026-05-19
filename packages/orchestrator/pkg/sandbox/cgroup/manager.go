@@ -396,7 +396,10 @@ func (m *managerImpl) getStatsForPath(ctx context.Context, cgroupPath string, me
 //   - Read requires file position 0 (seq_file), so we seek before reading.
 //   - Write resets the per-FD peak to current memory usage. The kernel ignores
 //     both the written content and the file offset, so no seek before write is needed.
-//   - Only a zero-length write is accepted; any non-empty write returns EINVAL.
+//   - On kernel >= 6.12, the peak_write handler accepts any write (including
+//     zero-length); it resets the per-FD watermark regardless of nbytes.
+//   - On kernel < 6.12, memory.peak is read-only; any write returns EINVAL.
+//     We never reach this function on those kernels (peakResetSupported=false).
 //   - This function is only called when peakResetSupported=true (kernel >= 6.12).
 func (m *managerImpl) readAndResetMemoryPeak(ctx context.Context, memoryPeakFile *os.File) (uint64, error) {
 	if _, err := memoryPeakFile.Seek(0, io.SeekStart); err != nil {
@@ -415,10 +418,11 @@ func (m *managerImpl) readAndResetMemoryPeak(ctx context.Context, memoryPeakFile
 	}
 
 	// Reset per-FD peak for next interval.
-	// The kernel requires a zero-length write to reset memory.peak (any
-	// non-empty write returns EINVAL). This FD is only opened when
-	// peakResetSupported is true (kernel >= 6.12), so we never reach here
-	// on older kernels.
+	// On kernel >= 6.12, peak_write() resets the per-FD watermark regardless
+	// of the write content or length. A zero-length write is sufficient and
+	// avoids allocating a buffer. Non-empty writes also work on >= 6.12, but
+	// any write (including "0") returns EINVAL on older kernels — which is
+	// why we gate this FD on peakResetSupported (kernel >= 6.12).
 	if _, err := memoryPeakFile.Write([]byte{}); err != nil {
 		logger.L().Warn(ctx, "failed to reset memory.peak, interval peak semantics degraded", zap.Error(err))
 	}
