@@ -87,8 +87,11 @@ const (
 
 	// grpcShutdownTimeout caps grpc.Server.GracefulStop. After this we
 	// fall back to Stop() so a stuck stream cannot block the process
-	// past Nomad's kill_timeout.
-	grpcShutdownTimeout = 10 * time.Second
+	// past Nomad's kill_timeout. Matches httpShutdownTimeout so legitimate
+	// long-running handlers (e.g. ResumeSandbox waiting up to
+	// autoResumeTransitionWaitBudget for a transitioning sandbox) get the
+	// same drain budget as HTTP requests during rolling deploys.
+	grpcShutdownTimeout = httpShutdownTimeout
 
 	// pprofShutdownTimeout is a best-effort bound for pprof drain.
 	pprofShutdownTimeout = 5 * time.Second
