@@ -19,16 +19,16 @@ func (s *APIStore) GetTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "list team members")
 
-	teamInfo, ok := s.requireAuthedTeamMatchesPath(c, teamID)
+	authTeamID, ok := s.requireAuthedTeamMatchesPath(c, teamID)
 	if !ok {
 		return
 	}
 
-	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamInfo.Team.ID.String()))
+	telemetry.SetAttributes(ctx, telemetry.WithTeamID(authTeamID.String()))
 
-	rows, err := s.db.GetTeamMembers(ctx, teamInfo.Team.ID)
+	rows, err := s.db.GetTeamMembers(ctx, authTeamID)
 	if err != nil {
-		logger.L().Error(ctx, "failed to get team members", zap.Error(err), logger.WithTeamID(teamInfo.Team.ID.String()))
+		logger.L().Error(ctx, "failed to get team members", zap.Error(err), logger.WithTeamID(authTeamID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get team members")
 
 		return
@@ -60,13 +60,13 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "add team member")
 
-	teamInfo, ok := s.requireAuthedTeamMatchesPath(c, teamID)
+	authTeamID, ok := s.requireAuthedTeamMatchesPath(c, teamID)
 	if !ok {
 		return
 	}
 
 	userID := auth.MustGetUserID(c)
-	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamInfo.Team.ID.String()))
+	telemetry.SetAttributes(ctx, telemetry.WithTeamID(authTeamID.String()))
 
 	body, err := ginutils.ParseBody[api.AddTeamMemberRequest](ctx, c)
 	if err != nil {
@@ -91,7 +91,7 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 
 	err = s.db.AddTeamMember(ctx, queries.AddTeamMemberParams{
 		UserID:  user.ID,
-		TeamID:  teamInfo.Team.ID,
+		TeamID:  authTeamID,
 		AddedBy: userID,
 	})
 	if err != nil {
@@ -101,13 +101,13 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 			return
 		}
 
-		logger.L().Error(ctx, "failed to add team member", zap.Error(err), logger.WithTeamID(teamInfo.Team.ID.String()))
+		logger.L().Error(ctx, "failed to add team member", zap.Error(err), logger.WithTeamID(authTeamID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to add team member")
 
 		return
 	}
 
-	s.authService.InvalidateTeamMemberCache(ctx, user.ID, teamInfo.Team.ID.String())
+	s.authService.InvalidateTeamMemberCache(ctx, user.ID, authTeamID.String())
 
 	c.Status(http.StatusCreated)
 }
@@ -116,12 +116,12 @@ func (s *APIStore) DeleteTeamsTeamIDMembersUserId(c *gin.Context, teamID api.Tea
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "remove team member")
 
-	teamInfo, ok := s.requireAuthedTeamMatchesPath(c, teamID)
+	authTeamID, ok := s.requireAuthedTeamMatchesPath(c, teamID)
 	if !ok {
 		return
 	}
 
-	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamInfo.Team.ID.String()))
+	telemetry.SetAttributes(ctx, telemetry.WithTeamID(authTeamID.String()))
 
 	txDB, tx, err := s.db.WithTx(ctx)
 	if err != nil {
@@ -134,7 +134,7 @@ func (s *APIStore) DeleteTeamsTeamIDMembersUserId(c *gin.Context, teamID api.Tea
 		_ = tx.Rollback(ctx)
 	}()
 
-	lockedMembers, err := txDB.LockTeamMembersForUpdate(ctx, teamInfo.Team.ID)
+	lockedMembers, err := txDB.LockTeamMembersForUpdate(ctx, authTeamID)
 	if err != nil {
 		logger.L().Error(ctx, "failed to lock team members", zap.Error(err))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to check team members")
@@ -143,7 +143,7 @@ func (s *APIStore) DeleteTeamsTeamIDMembersUserId(c *gin.Context, teamID api.Tea
 	}
 
 	relation, err := txDB.GetTeamMemberRelation(ctx, queries.GetTeamMemberRelationParams{
-		TeamID: teamInfo.Team.ID,
+		TeamID: authTeamID,
 		UserID: userId,
 	})
 	if err != nil {
@@ -172,24 +172,24 @@ func (s *APIStore) DeleteTeamsTeamIDMembersUserId(c *gin.Context, teamID api.Tea
 	}
 
 	err = txDB.RemoveTeamMember(ctx, queries.RemoveTeamMemberParams{
-		TeamID: teamInfo.Team.ID,
+		TeamID: authTeamID,
 		UserID: userId,
 	})
 	if err != nil {
-		logger.L().Error(ctx, "failed to remove team member", zap.Error(err), logger.WithTeamID(teamInfo.Team.ID.String()))
+		logger.L().Error(ctx, "failed to remove team member", zap.Error(err), logger.WithTeamID(authTeamID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to remove team member")
 
 		return
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		logger.L().Error(ctx, "failed to commit team member removal", zap.Error(err), logger.WithTeamID(teamInfo.Team.ID.String()))
+		logger.L().Error(ctx, "failed to commit team member removal", zap.Error(err), logger.WithTeamID(authTeamID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to remove team member")
 
 		return
 	}
 
-	s.authService.InvalidateTeamMemberCache(ctx, userId, teamInfo.Team.ID.String())
+	s.authService.InvalidateTeamMemberCache(ctx, userId, authTeamID.String())
 
 	c.Status(http.StatusNoContent)
 }
