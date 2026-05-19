@@ -29,6 +29,9 @@ func (p *Process) exportMemoryFromFc(
 	cachePath string,
 	blockSize int64,
 ) (block.DiffSource, error) {
+	ctx, span := tracer.Start(ctx, "export-memory-from-fc")
+	defer span.End()
+
 	m, err := p.client.memoryMapping(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memory mappings: %w", err)

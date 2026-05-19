@@ -8,6 +8,8 @@ import (
 	"fmt"
 
 	"github.com/RoaringBitmap/roaring/v2"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sys/unix"
 )
 
@@ -69,6 +71,13 @@ func NewCacheFromMemfd(
 	memfd *Memfd,
 	dirty *roaring.Bitmap,
 ) (*Cache, error) {
+	ctx, span := tracer.Start(ctx, "export-memory-from-memfd",
+		trace.WithAttributes(
+			attribute.Bool("async", false),
+		),
+	)
+	defer span.End()
+
 	cache, err := NewCache(int64(dirty.GetCardinality())*blockSize, blockSize, filePath, false)
 	if err != nil {
 		return nil, errors.Join(err, memfd.Close())
@@ -126,6 +135,13 @@ func NewCacheFromMemfdAsync(
 	memfd *Memfd,
 	dirty *roaring.Bitmap,
 ) (*MemfdCache, error) {
+	ctx, span := tracer.Start(ctx, "export-memory-from-memfd",
+		trace.WithAttributes(
+			attribute.Bool("async", true),
+		),
+	)
+	defer span.End()
+
 	cache, err := NewCache(int64(dirty.GetCardinality())*blockSize, blockSize, filePath, false)
 	if err != nil {
 		return nil, errors.Join(err, memfd.Close())
