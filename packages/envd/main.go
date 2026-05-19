@@ -144,6 +144,12 @@ func main() {
 		return
 	}
 
+	if err := run(); err != nil {
+		log.Fatalf("server stopped: %v", err)
+	}
+}
+
+func run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -161,8 +167,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error writing sandbox file: %v\n", err)
 	}
 
+	// Not closed - producers may outlive the consumer.
 	mmdsChan := make(chan *host.MMDSOpts, 1)
-	defer close(mmdsChan)
 	if !isNotFC {
 		go host.PollForMMDSOpts(ctx, mmdsChan, defaults.EnvVars)
 	}
@@ -215,9 +221,11 @@ func main() {
 	go portScanner.ScanAndBroadcast()
 
 	err := s.ListenAndServe()
-	if err != nil {
-		log.Fatalf("error starting server: %v", err) //nolint:gocritic // last line of main; process exits anyway
-	}
+	// Signal goroutines to stop before deferred cleanup closes their resources.
+	// TODO: shutdown synchronization needs to be revisited.
+	cancel()
+
+	return err
 }
 
 func createCgroupManager() (m cgroups.Manager) {
