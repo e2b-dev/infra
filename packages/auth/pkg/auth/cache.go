@@ -18,14 +18,14 @@ const (
 	authCacheRedisPrefix = "auth:team"
 )
 
-// AuthCache is a Redis-backed TTL cache for team authentication data.
-type AuthCache struct {
+// authCache is a Redis-backed TTL cache for team authentication data.
+type authCache struct {
 	cache *cache.RedisCache[*types.Team]
 }
 
-// NewAuthCache creates a new Redis-backed AuthCache with default TTL and refresh settings.
-func NewAuthCache(redisClient redis.UniversalClient) *AuthCache {
-	return &AuthCache{
+// newAuthCache creates a new Redis-backed authCache with default TTL and refresh settings.
+func newAuthCache(redisClient redis.UniversalClient) *authCache {
+	return &authCache{
 		cache: cache.NewRedisCache(cache.RedisConfig[*types.Team]{
 			RedisClient:     redisClient,
 			TTL:             authInfoExpiration,
@@ -37,16 +37,16 @@ func NewAuthCache(redisClient redis.UniversalClient) *AuthCache {
 }
 
 // GetOrSet returns the cached value for the key, or calls dataCallback to populate it.
-func (c *AuthCache) GetOrSet(ctx context.Context, key string, dataCallback func(ctx context.Context, key string) (*types.Team, error)) (*types.Team, error) {
+func (c *authCache) GetOrSet(ctx context.Context, key string, dataCallback func(ctx context.Context, key string) (*types.Team, error)) (*types.Team, error) {
 	return c.cache.GetOrSet(ctx, key, dataCallback)
 }
 
 // Invalidate removes a single entry from the cache by key.
-func (c *AuthCache) Invalidate(ctx context.Context, key string) {
+func (c *authCache) Invalidate(ctx context.Context, key string) {
 	c.cache.Delete(ctx, key)
 }
 
 // Close is a no-op for the Redis-backed cache (no background goroutines).
-func (c *AuthCache) Close(ctx context.Context) error {
+func (c *authCache) Close(ctx context.Context) error {
 	return c.cache.Close(ctx)
 }

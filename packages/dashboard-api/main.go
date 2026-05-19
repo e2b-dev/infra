@@ -185,18 +185,12 @@ func run() int {
 		}
 	}()
 
-	authCache := sharedauth.NewAuthCache(redisClient)
-	authStore := sharedauth.NewAuthStore(authDB)
-	authHTTPClient := &http.Client{}
-	authIdentityLookup := sharedauth.NewAuthIdentityLookup(authDB.Read)
-	authProviderVerifier, err := sharedauth.NewVerifier(ctx, config.AuthProvider, authHTTPClient, authIdentityLookup)
+	authService, err := sharedauth.NewAuthService(ctx, redisClient, authDB, config.AuthProvider, &http.Client{})
 	if err != nil {
-		l.Error(ctx, "Initializing auth provider JWT verifier", zap.Error(err))
+		l.Error(ctx, "Initializing auth service", zap.Error(err))
 
 		return 1
 	}
-
-	authService := sharedauth.NewAuthService(authStore, authCache, authProviderVerifier)
 	defer authService.Close(ctx)
 
 	teamProvisionSink, err := internalteamprovision.NewProvisionSink(
