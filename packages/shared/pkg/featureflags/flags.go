@@ -211,6 +211,12 @@ var (
 	// Must be > 0.
 	MaxStartingInstancesPerNode = NewIntFlag("max-starting-instances-per-node", 3)
 
+	// MaxConcurrentEvictions caps the number of sandbox evictions that can run
+	// in parallel per API instance. Excess items remain expired in the store
+	// and are picked up by the next eviction tick. Must be > 0; non-positive
+	// values are ignored at refresh time.
+	MaxConcurrentEvictions = NewIntFlag("max-concurrent-evictions", 256)
+
 	// MaxConcurrentSnapshotUpserts limits concurrent UpsertSnapshot calls (pause + snapshot template paths).
 	// 0 or negative disables throttling (unlimited concurrency).
 	MaxConcurrentSnapshotUpserts = NewIntFlag("max-concurrent-snapshot-upserts", 0)
