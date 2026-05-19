@@ -165,7 +165,7 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 
 		// Run on every /init regardless of the Timestamp guard, so stale/replayed
 		// requests still thaw cgroups after pre-pause freeze.
-		defer a.unfreezeUserCgroups(logger)
+		defer a.unfreezeUserCgroups(logger) //nolint:contextcheck // unfreeze must not be cancellable
 
 		// Update data only if the request is newer or if there's no timestamp at all
 		if initRequest.Timestamp == nil || a.lastSetTime.SetToGreater(initRequest.Timestamp.UnixNano()) {
@@ -261,6 +261,13 @@ func (a *API) PostFreeze(w http.ResponseWriter, r *http.Request) {
 
 	logger := a.logger.With().Str(string(logs.OperationIDKey), logs.AssignOperationID()).Logger()
 
+	if err := a.freezeLock.Acquire(r.Context(), 1); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+
+		return
+	}
+	defer a.freezeLock.Release(1)
+
 	for _, pt := range userCgroupsToFreeze {
 		if err := a.cgroupManager.Freeze(pt); err != nil {
 			logger.Error().Err(err).Msgf("freeze %s cgroup", pt)
@@ -283,6 +290,9 @@ func (a *API) PostUnfreeze(w http.ResponseWriter, r *http.Request) {
 
 	logger := a.logger.With().Str(string(logs.OperationIDKey), logs.AssignOperationID()).Logger()
 
+	_ = a.freezeLock.Acquire(context.Background(), 1) //nolint:contextcheck // unfreeze must not be cancellable
+	defer a.freezeLock.Release(1)
+
 	var errs []error
 	for _, pt := range userCgroupsToFreeze {
 		if err := a.cgroupManager.Unfreeze(pt); err != nil {
@@ -302,6 +312,9 @@ func (a *API) PostUnfreeze(w http.ResponseWriter, r *http.Request) {
 
 // unfreezeUserCgroups unfreezes user/pty/socat cgroups (idempotent if not frozen).
 func (a *API) unfreezeUserCgroups(logger zerolog.Logger) {
+	_ = a.freezeLock.Acquire(context.Background(), 1) //nolint:contextcheck // unfreeze must not be cancellable
+	defer a.freezeLock.Release(1)
+
 	for _, pt := range userCgroupsToFreeze {
 		if err := a.cgroupManager.Unfreeze(pt); err != nil {
 			logger.Warn().Err(err).Msgf("unfreeze %s cgroup", pt)

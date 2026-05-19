@@ -1,7 +1,9 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -647,7 +649,8 @@ func TestPostFreeze(t *testing.T) {
 		mgr := &fakeCgroupManager{}
 		api := newAPIWithCgroupManager(mgr)
 
-		req := httptest.NewRequest(http.MethodPost, "/freeze", http.NoBody)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, "/freeze", http.NoBody)
+		require.NoError(t, err)
 		rec := httptest.NewRecorder()
 		api.PostFreeze(rec, req)
 
@@ -660,7 +663,8 @@ func TestPostFreeze(t *testing.T) {
 		mgr := &fakeCgroupManager{freezeErr: errors.New("write cgroup.freeze: io error")}
 		api := newAPIWithCgroupManager(mgr)
 
-		req := httptest.NewRequest(http.MethodPost, "/freeze", http.NoBody)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, "/freeze", http.NoBody)
+		require.NoError(t, err)
 		rec := httptest.NewRecorder()
 		api.PostFreeze(rec, req)
 
@@ -677,7 +681,8 @@ func TestPostUnfreeze(t *testing.T) {
 		mgr := &fakeCgroupManager{}
 		api := newAPIWithCgroupManager(mgr)
 
-		req := httptest.NewRequest(http.MethodPost, "/unfreeze", http.NoBody)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, "/unfreeze", http.NoBody)
+		require.NoError(t, err)
 		rec := httptest.NewRecorder()
 		api.PostUnfreeze(rec, req)
 
@@ -690,7 +695,8 @@ func TestPostUnfreeze(t *testing.T) {
 		mgr := &fakeCgroupManager{unfreezeErr: errors.New("write cgroup.freeze: io error")}
 		api := newAPIWithCgroupManager(mgr)
 
-		req := httptest.NewRequest(http.MethodPost, "/unfreeze", http.NoBody)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, "/unfreeze", http.NoBody)
+		require.NoError(t, err)
 		rec := httptest.NewRecorder()
 		api.PostUnfreeze(rec, req)
 
@@ -698,4 +704,54 @@ func TestPostUnfreeze(t *testing.T) {
 		assert.Empty(t, mgr.unfrozen)
 		assert.Equal(t, userCgroupsToFreeze, mgr.unfreezeAttempts)
 	})
+}
+
+// Stale /init (Timestamp older than lastSetTime) must still thaw user cgroups
+// even though SetData is skipped.
+func TestPostInit_UnfreezeOnStaleTimestamp(t *testing.T) {
+	t.Parallel()
+
+	mgr := &fakeCgroupManager{}
+	api := newAPIWithCgroupManager(mgr)
+	api.isNotFC = true
+
+	now := time.Now()
+	require.True(t, api.lastSetTime.SetToGreater(now.UnixNano()))
+
+	stale := now.Add(-1 * time.Minute)
+	body, err := json.Marshal(PostInitJSONBody{
+		Timestamp: &stale,
+		EnvVars:   &EnvVars{"SHOULD_NOT_BE_SET": "x"},
+	})
+	require.NoError(t, err)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, "/init", bytes.NewReader(body))
+	require.NoError(t, err)
+	rec := httptest.NewRecorder()
+	api.PostInit(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	_, ok := api.defaults.EnvVars.Load("SHOULD_NOT_BE_SET")
+	assert.False(t, ok, "stale /init should not apply EnvVars")
+	assert.Equal(t, userCgroupsToFreeze, mgr.unfrozen, "stale /init must still unfreeze")
+}
+
+// Unauthorized /init must NOT thaw cgroups.
+func TestPostInit_UnauthorizedDoesNotUnfreeze(t *testing.T) {
+	t.Parallel()
+
+	mgr := &fakeCgroupManager{}
+	api := newAPIWithCgroupManager(mgr)
+	api.isNotFC = true
+	api.accessToken.TakeFrom(secureTokenPtr("real-token"))
+
+	body := []byte(`{"accessToken":"wrong-token"}`)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, "/init", bytes.NewReader(body))
+	require.NoError(t, err)
+	rec := httptest.NewRecorder()
+	api.PostInit(rec, req)
+
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	assert.Empty(t, mgr.unfreezeAttempts, "unauthorized /init must not attempt unfreeze")
 }
