@@ -139,7 +139,7 @@ job "api" {
 
     task "start" {
       driver       = "docker"
-      # Budget = shutdownDrainWait (15s) + httpShutdownTimeout (requestTimeout 70s + 5s) + grpcShutdownTimeout (10s) + cleanup (30s) + slack.
+      # Budget = shutdownDrainWait (15s) + shutdownTimeout (requestTimeout 70s + 5s) + cleanup (30s) + slack.
       # https://developer.hashicorp.com/nomad/docs/configuration/client#max_kill_timeout
       kill_timeout = "150s"
       kill_signal  = "SIGTERM"
