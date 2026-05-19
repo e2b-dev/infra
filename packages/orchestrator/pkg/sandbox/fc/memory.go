@@ -9,7 +9,6 @@ import (
 
 	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
@@ -87,9 +86,9 @@ func (p *Process) exportMemoryFromFc(
 	return cache, nil
 }
 
-// ExportMemory writes the dirty guest-memory regions to a local cache file
-// and optionally deduplicates the result against originalMemfile. When
-// dedup runs the returned DiffMetadata is non-nil and page-granular.
+// ExportMemory writes dirty guest memory to a local cache file and, if
+// originalMemfile != nil, deduplicates the result against it; in that case
+// the returned DiffMetadata is non-nil and page-granular.
 func (p *Process) ExportMemory(
 	ctx context.Context,
 	buildID uuid.UUID,
@@ -102,12 +101,6 @@ func (p *Process) ExportMemory(
 	ctx, span := tracer.Start(ctx, "export-memory")
 	defer span.End()
 
-	dedup := originalMemfile != nil
-	span.SetAttributes(
-		attribute.Bool("export.memfd", memfd != nil),
-		attribute.Bool("export.dedup", dedup),
-	)
-
 	cachePath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
 
 	if memfd != nil {
@@ -119,7 +112,7 @@ func (p *Process) ExportMemory(
 		return nil, nil, err
 	}
 
-	if !dedup {
+	if originalMemfile == nil {
 		return cache, nil, nil
 	}
 
@@ -129,7 +122,6 @@ func (p *Process) ExportMemory(
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to dedup memfile diff: %w", errors.Join(err, cache.Close()))
 	}
-
 	if err := cache.Close(); err != nil {
 		return nil, nil, fmt.Errorf("failed to close pre-dedup cache: %w", errors.Join(err, dedupCache.Close()))
 	}
