@@ -41,7 +41,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 	}
 
 	teamInfo := auth.MustGetTeamInfo(c)
-	
+
 	if err := auth.CheckTeamBlocked(teamInfo); err != nil {
 		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
 
