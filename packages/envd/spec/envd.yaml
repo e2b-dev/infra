@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   title: envd
-  version: 0.1.1
+  version: 0.1.2
   description: API for managing files' content and controlling envd
 
 tags:
@@ -125,6 +125,7 @@ paths:
         - $ref: "#/components/parameters/User"
         - $ref: "#/components/parameters/Signature"
         - $ref: "#/components/parameters/SignatureExpiration"
+        - $ref: "#/components/parameters/Metadata"
       requestBody:
         $ref: "#/components/requestBodies/File"
       responses:
@@ -206,6 +207,21 @@ components:
       description: Unix timestamp (seconds) after which the signature expires. Only used with the signature parameter.
       schema:
         type: integer
+    Metadata:
+      name: metadata
+      in: query
+      required: false
+      description: |
+        User-defined metadata stored as extended attributes on the uploaded file.
+        Pass each key/value pair as `metadata[key]=value`, e.g.
+        `?metadata[author]=mish&metadata[purpose]=upload`. Keys are stored in
+        the `user.` xattr namespace and returned on EntryInfo lookups.
+      style: deepObject
+      explode: true
+      schema:
+        type: object
+        additionalProperties:
+          type: string
 
   requestBodies:
     File:
@@ -330,6 +346,11 @@ components:
           description: Type of the file
           enum:
             - file
+        metadata:
+          type: object
+          description: User-defined metadata stored as extended attributes on the file.
+          additionalProperties:
+            type: string
     EnvVars:
       type: object
       description: Environment variables to set

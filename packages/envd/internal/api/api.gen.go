@@ -48,6 +48,9 @@ type ComposeRequest struct {
 
 // EntryInfo defines model for EntryInfo.
 type EntryInfo struct {
+	// Metadata User-defined metadata stored as extended attributes on the file.
+	Metadata *map[string]string `json:"metadata,omitempty"`
+
 	// Name Name of the file
 	Name string `json:"name"`
 
@@ -118,6 +121,9 @@ type VolumeMount struct {
 // FilePath defines model for FilePath.
 type FilePath = string
 
+// Metadata defines model for Metadata.
+type Metadata map[string]string
+
 // Signature defines model for Signature.
 type Signature = string
 
@@ -184,6 +190,12 @@ type PostFilesParams struct {
 
 	// SignatureExpiration Unix timestamp (seconds) after which the signature expires. Only used with the signature parameter.
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
+
+	// Metadata User-defined metadata stored as extended attributes on the uploaded file.
+	// Pass each key/value pair as `metadata[key]=value`, e.g.
+	// `?metadata[author]=mish&metadata[purpose]=upload`. Keys are stored in
+	// the `user.` xattr namespace and returned on EntryInfo lookups.
+	Metadata *Metadata `json:"metadata,omitempty"`
 }
 
 // PostInitJSONBody defines parameters for PostInit.
@@ -464,6 +476,19 @@ func (siw *ServerInterfaceWrapper) PostFiles(w http.ResponseWriter, r *http.Requ
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "signature_expiration"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "signature_expiration", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "metadata" -------------
+
+	err = runtime.BindQueryParameterWithOptions("deepObject", true, false, "metadata", r.URL.Query(), &params.Metadata, runtime.BindQueryParameterOptions{Type: "object", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "metadata"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "metadata", Err: err})
 		}
 		return
 	}
