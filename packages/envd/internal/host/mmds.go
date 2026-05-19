@@ -129,7 +129,7 @@ func GetAccessTokenHashFromMMDS(ctx context.Context) (string, error) {
 	return opts.AccessTokenHash, nil
 }
 
-func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *utils.Map[string, string]) {
+func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *utils.EnvVars) {
 	// Match mmdsAccessTokenClient: bound any single tick (e.g. -j DROP on
 	// MMDS would otherwise hang on the TCP handshake) and avoid keepalive
 	// so a broken intermediate doesn't poison a kept-open connection.

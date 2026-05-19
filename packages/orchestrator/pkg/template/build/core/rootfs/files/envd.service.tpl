@@ -17,6 +17,8 @@ LimitCORE=infinity
 ExecStartPre=/bin/sh -c 'mountpoint -q /etc/ssl/certs || (mkdir -p /run/e2b/certs && mount --bind /run/e2b/certs /etc/ssl/certs) && ([ -s /etc/ssl/certs/ca-certificates.crt ] || update-ca-certificates)'
 ExecStart=/bin/bash -l -c "/usr/bin/envd"
 Nice=-20
+IOSchedulingClass=realtime
+IOSchedulingPriority=4
 OOMPolicy=continue
 OOMScoreAdjust=-1000
 Environment="GOMEMLIMIT={{ .MemoryLimit }}MiB"
@@ -26,6 +28,8 @@ MemoryMin=50M
 MemoryLow=100M
 CPUAccounting=yes
 CPUWeight=1000
+IOAccounting=yes
+IOWeight=10000
 
 [Install]
 WantedBy=multi-user.target

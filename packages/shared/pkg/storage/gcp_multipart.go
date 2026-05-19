@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/xml"
 	"fmt"
+	"hash"
 	"io"
 	"math"
 	"math/rand"
@@ -382,7 +383,7 @@ func (m *MultipartUploader) completeUpload(ctx context.Context, uploadID string,
 	return nil
 }
 
-func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath string, maxConcurrency int) (int64, error) {
+func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath string, maxConcurrency int, hasher hash.Hash) (int64, error) {
 	// Open file
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -409,9 +410,38 @@ func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath s
 		return 0, fmt.Errorf("failed to initiate upload: %w", err)
 	}
 
+	// Hash on a sibling goroutine while parts upload — the read overlaps the
+	// upload, adding no wall-clock latency. Own file handle (separate from the
+	// part uploaders' ReadAt); opened here so a failed upload can close it.
+	var hashFile *os.File
+	if hasher != nil {
+		hashFile, err = os.Open(filePath)
+		if err != nil {
+			return 0, fmt.Errorf("failed to open file for checksum: %w", err)
+		}
+		defer hashFile.Close()
+	}
+
+	var eg errgroup.Group
+	if hashFile != nil {
+		eg.Go(func() error {
+			if _, err := io.Copy(hasher, hashFile); err != nil {
+				return fmt.Errorf("failed to checksum file: %w", err)
+			}
+
+			return nil
+		})
+	}
+
 	parts, err := m.uploadParts(ctx, maxConcurrency, numParts, fileSize, file, uploadID)
+	if hashFile != nil && err != nil {
+		hashFile.Close() // cancel the now-pointless io.Copy
+	}
+	if hashErr := eg.Wait(); err == nil {
+		err = hashErr
+	}
 	if err != nil {
-		return 0, fmt.Errorf("failed to upload parts: %w", err)
+		return 0, fmt.Errorf("failed to upload file: %w", err)
 	}
 
 	if err := m.completeUpload(ctx, uploadID, parts); err != nil {

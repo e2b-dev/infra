@@ -27,11 +27,11 @@ type APIStore struct {
 	authDB            *authdb.Client
 	supabaseDB        *supabasedb.Client
 	clickhouse        clickhouse.Clickhouse
-	authService       *sharedauth.AuthService[*types.Team]
+	authService       *sharedauth.AuthService
 	teamProvisionSink internalteamprovision.TeamProvisionSink
 }
 
-func NewAPIStore(config cfg.Config, db *sqlcdb.Client, authDB *authdb.Client, supabaseDB *supabasedb.Client, ch clickhouse.Clickhouse, authService *sharedauth.AuthService[*types.Team], teamProvisionSink internalteamprovision.TeamProvisionSink) *APIStore {
+func NewAPIStore(config cfg.Config, db *sqlcdb.Client, authDB *authdb.Client, supabaseDB *supabasedb.Client, ch clickhouse.Clickhouse, authService *sharedauth.AuthService, teamProvisionSink internalteamprovision.TeamProvisionSink) *APIStore {
 	return &APIStore{
 		config:            config,
 		db:                db,
@@ -53,8 +53,8 @@ func (s *APIStore) GetHealth(c *gin.Context) {
 	})
 }
 
-func (s *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, supabaseToken string) (uuid.UUID, *sharedauth.APIError) {
-	return s.authService.ValidateSupabaseToken(ctx, ginCtx, supabaseToken)
+func (s *APIStore) GetUserIDFromAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *sharedauth.APIError) {
+	return s.authService.ValidateAuthProviderToken(ctx, ginCtx, token)
 }
 
 func (s *APIStore) GetTeamFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *sharedauth.APIError) {

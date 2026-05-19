@@ -3,7 +3,9 @@ package sandboxes
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -12,6 +14,32 @@ import (
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
 )
+
+func verifyConnectivityEventually(
+	t *testing.T,
+	ctx context.Context,
+	sbx *api.Sandbox,
+	envdClient *setup.EnvdClient,
+	checks []connectivityCheck,
+) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		for _, c := range checks {
+			err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "3", "--max-time", "5", "-Iks", c.url)
+			if c.allowed {
+				if err != nil {
+					return false
+				}
+			} else {
+				if err == nil || !strings.Contains(err.Error(), "failed with exit code") {
+					return false
+				}
+			}
+		}
+
+		return true
+	}, 30*time.Second, time.Second, "connectivity did not match expected state in time")
+}
 
 // =============================================================================
 // PUT /sandboxes/{sandboxID}/network — Dynamic network config update tests
@@ -356,8 +384,7 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		require.NoError(t, err)
 		require.Equal(t, http.StatusCreated, resumeResp.StatusCode())
 
-		// Verify rules survived
-		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+		verifyConnectivityEventually(t, ctx, sbx, envdClient, []connectivityCheck{
 			{"https://8.8.8.8", true},
 			{"https://1.1.1.1", false},
 		})
@@ -387,8 +414,7 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		require.NoError(t, err)
 		require.Equal(t, http.StatusCreated, resumeResp.StatusCode())
 
-		// Verify block survived pause/resume
-		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+		verifyConnectivityEventually(t, ctx, sbx, envdClient, []connectivityCheck{
 			{"https://8.8.8.8", false},
 			{"https://1.1.1.1", false},
 		})

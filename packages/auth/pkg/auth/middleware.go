@@ -149,7 +149,7 @@ func NewApiKeyAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin
 			Prefix: PrefixAPIKey,
 		},
 		ValidationFunc: validationFunc,
-		SetContextFunc: SetTeamInfo,
+		SetContextFunc: setTeamInfo,
 		ErrorMessage:   "Invalid API key, please visit https://e2b.dev/docs/api-key for more information.",
 	}
 }
@@ -164,8 +164,22 @@ func NewAccessTokenAuthenticator(validationFunc func(ctx context.Context, ginCtx
 			RemovePrefix: PrefixBearer,
 		},
 		ValidationFunc: validationFunc,
-		SetContextFunc: SetUserID,
+		SetContextFunc: setUserID,
 		ErrorMessage:   "Invalid Access token, try to login again by running `e2b auth login`.",
+	}
+}
+
+// NewAuthProviderBearerAuthenticator creates an authenticator for AuthProviderBearerAuth (Authorization Bearer token).
+func NewAuthProviderBearerAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError)) Authenticator {
+	return &CommonAuthenticator[uuid.UUID]{
+		SchemeName: "AuthProviderBearerAuth",
+		Header: HeaderKey{
+			Name:         HeaderAuthorization,
+			RemovePrefix: PrefixBearer,
+		},
+		ValidationFunc: validationFunc,
+		SetContextFunc: setUserID,
+		ErrorMessage:   "Invalid auth provider token.",
 	}
 }
 
@@ -177,7 +191,7 @@ func NewSupabaseTokenAuthenticator(validationFunc func(ctx context.Context, ginC
 			Name: HeaderSupabaseToken,
 		},
 		ValidationFunc: validationFunc,
-		SetContextFunc: SetUserID,
+		SetContextFunc: setUserID,
 		ErrorMessage:   "Invalid Supabase token.",
 	}
 }
@@ -190,8 +204,21 @@ func NewSupabaseTeamAuthenticator(validationFunc func(ctx context.Context, ginCt
 			Name: HeaderSupabaseTeam,
 		},
 		ValidationFunc: validationFunc,
-		SetContextFunc: SetTeamInfo,
+		SetContextFunc: setTeamInfo,
 		ErrorMessage:   "Invalid Supabase token teamID.",
+	}
+}
+
+// NewAuthProviderTeamAuthenticator creates an authenticator for the AuthProviderTeamAuth security scheme (X-Team-Id header).
+func NewAuthProviderTeamAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, token string) (*types.Team, *APIError)) Authenticator {
+	return &CommonAuthenticator[*types.Team]{
+		SchemeName: "AuthProviderTeamAuth",
+		Header: HeaderKey{
+			Name: HeaderTeamID,
+		},
+		ValidationFunc: validationFunc,
+		SetContextFunc: setTeamInfo,
+		ErrorMessage:   "Invalid auth provider token teamID.",
 	}
 }
 

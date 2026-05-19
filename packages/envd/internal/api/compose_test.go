@@ -28,7 +28,7 @@ func newComposeTestAPI(t *testing.T) (*API, *user.User) {
 
 	logger := zerolog.Nop()
 	defaults := &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
+		EnvVars: utils.NewEnvVars(),
 		User:    currentUser.Username,
 	}
 

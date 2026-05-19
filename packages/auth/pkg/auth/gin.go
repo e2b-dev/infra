@@ -12,7 +12,7 @@ const (
 	userIDContextKey = "user_id"
 )
 
-func SetUserID(c *gin.Context, userID uuid.UUID) {
+func setUserID(c *gin.Context, userID uuid.UUID) {
 	setInGinContext(c, userIDContextKey, userID)
 }
 
@@ -29,7 +29,7 @@ func MustGetUserID(c *gin.Context) uuid.UUID {
 	return userID
 }
 
-func SetTeamInfo(c *gin.Context, t *types.Team) {
+func setTeamInfo(c *gin.Context, t *types.Team) {
 	setInGinContext(c, teamContextKey, t)
 }
 

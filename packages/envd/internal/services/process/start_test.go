@@ -37,7 +37,7 @@ func newTestService(t *testing.T) (spec.ProcessClient, func()) {
 	logger := zerolog.Nop()
 
 	svc := newService(&logger, &execcontext.Defaults{
-		EnvVars: utils.NewMap[string, string](),
+		EnvVars: utils.NewEnvVars(),
 		User:    u.Username,
 		Workdir: &cwd,
 	}, cgroups.NewNoopManager())
