@@ -559,36 +559,39 @@ func run() int {
 			time.Sleep(shutdownDrainWait)
 		}
 
-		// Drain in-flight HTTP requests
-		httpShutdownCtx, httpShutdownCancel := context.WithTimeout(ctx, httpShutdownTimeout)
-		defer httpShutdownCancel()
-		if err := s.Shutdown(httpShutdownCtx); err != nil {
-			exitCode.Add(1)
-			l.Error(ctx, "Http service shutdown error", zap.Int("port", port), zap.Error(err))
-		}
+		// Drain HTTP, gRPC in parallel.
+		drainWG := &sync.WaitGroup{}
+
+		drainWG.Go(func() {
+			httpShutdownCtx, httpShutdownCancel := context.WithTimeout(ctx, httpShutdownTimeout)
+			defer httpShutdownCancel()
+			if err := s.Shutdown(httpShutdownCtx); err != nil {
+				exitCode.Add(1)
+				l.Error(ctx, "Http service shutdown error", zap.Int("port", port), zap.Error(err))
+			}
+		})
 
 		// Bounded gRPC stop: GracefulStop has no built-in deadline, so a
 		// stuck stream would block past Nomad's kill_timeout. Fall back to
-		// Stop() after the budget elapses. Run both stops in parallel —
-		// they are independent and serial draining would double the budget.
-		grpcWG := &sync.WaitGroup{}
-		grpcWG.Go(func() {
+		// Stop() after the budget elapses.
+		drainWG.Go(func() {
 			if !e2bgrpc.GracefulStopWithTimeout(grpcServer, grpcShutdownTimeout) {
 				l.Warn(ctx, "internal gRPC forced stop after graceful timeout", zap.Duration("budget", grpcShutdownTimeout))
 			}
 		})
-		grpcWG.Go(func() {
+		drainWG.Go(func() {
 			if !e2bgrpc.GracefulStopWithTimeout(edgeGrpcServer, grpcShutdownTimeout) {
 				l.Warn(ctx, "edge gRPC forced stop after graceful timeout", zap.Duration("budget", grpcShutdownTimeout))
 			}
 		})
-		grpcWG.Wait()
+		drainWG.Wait()
 
+		// Drain pprof after, so that it is still available during the shutdown process for debugging if needed.
 		pprofShutdownCtx, pprofCancel := context.WithTimeout(ctx, pprofShutdownTimeout)
+		defer pprofCancel()
 		if err := pprofServer.Shutdown(pprofShutdownCtx); err != nil {
 			l.Error(ctx, "pprof server shutdown error", zap.Error(err))
 		}
-		pprofCancel()
 	})
 
 	// wait for the HTTP service to complete shutting down first
