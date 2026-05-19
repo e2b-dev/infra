@@ -31,21 +31,13 @@ const (
 	publishDropLogInterval = 64
 
 	// publishWorkerCount is the size of the goroutine pool draining the
-	// publish queue. Each worker is mostly blocked in Redis RTT, so the
-	// effective steady-state throughput is ~N / RTT. Sized to comfortably
-	// exceed any realistic Release()/transition notification rate while
-	// staying well under the Redis client's connection pool.
+	// publish queue.
 	publishWorkerCount = 16
 )
 
 // Lifecycle states for the publisher. The transitions are linear:
 // stateInit → stateRunning (when run() enters) or
 // stateInit → stateClosed (when close() wins the race before run() starts).
-// A CAS on this state is what synchronises run() and close(): it removes
-// the happens-before gap between `go publisher.run(ctx)` returning to the
-// caller and run() actually executing on the scheduler, so close() can
-// never observe "not yet started" and skip the join while run() is in
-// flight just behind it.
 const (
 	stateInit uint32 = iota
 	stateRunning
@@ -201,27 +193,12 @@ func (p *publisher) publishOne(ctx context.Context, routingKey string) {
 	}
 }
 
-// close signals the drainer to stop and blocks until it has exited (or
-// the shutdown budget elapses). Safe to call multiple times, and safe to
-// call before run() has been scheduled — including the narrow window
-// between `go publisher.run(ctx)` returning and run()'s first instruction.
-//
-// The CAS inside closeOnce is the load-bearing synchronisation: if it
-// succeeds we've atomically claimed the lifecycle before run() could,
-// so run() (if/when it is scheduled) will see its own CAS fail and
-// return immediately without touching done. In that branch close()
-// performs the bounded best-effort drain on the caller's goroutine and
-// then closes done so concurrent close() peers unblock too. If the CAS
-// fails, run() is already in flight (state == stateRunning) and we rely
-// on its deferred close(done) to release us.
 func (p *publisher) close(ctx context.Context) {
 	p.closeOnce.Do(func() {
 		close(p.closed)
 		if p.state.CompareAndSwap(stateInit, stateClosed) {
 			// run() either has not been scheduled yet or will never be
-			// invoked. Drain whatever is queued on this goroutine so
-			// notifications enqueued before the race aren't lost, then
-			// release peers blocked in <-p.done below.
+			// invoked. Drain whatever is queued on this goroutine
 			p.drainOnShutdown(ctx)
 			close(p.done)
 		}
