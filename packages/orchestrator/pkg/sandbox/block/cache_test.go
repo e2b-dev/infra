@@ -761,11 +761,8 @@ func BenchmarkCopyFromHugepagesFile(b *testing.B) {
 	}
 }
 
-// --- Cache.Dedup ---------------------------------------------------------
-
-// buildPackedSrcCache builds the packed-by-block source Cache that Cache.Dedup
-// expects: bytes from the dirty ranges of `mem`, concatenated in
-// BitsetRanges iteration order, with cache.blockSize == `blockSize`.
+// buildPackedSrcCache returns a Cache holding mem's dirty ranges concatenated
+// in BitsetRanges order — the layout Cache.Dedup expects from a packed export.
 func buildPackedSrcCache(t *testing.T, mem []byte, dirty *roaring.Bitmap, blockSize int64) *Cache {
 	t.Helper()
 
@@ -786,15 +783,6 @@ func buildPackedSrcCache(t *testing.T, mem []byte, dirty *roaring.Bitmap, blockS
 	return cache
 }
 
-func allBlocksDirty(numBlocks uint32) *roaring.Bitmap {
-	b := roaring.New()
-	for i := range numBlocks {
-		b.Add(i)
-	}
-
-	return b
-}
-
 func TestCacheDedup_AllPagesMatch(t *testing.T) {
 	t.Parallel()
 
@@ -806,7 +794,7 @@ func TestCacheDedup_AllPagesMatch(t *testing.T) {
 	_, err := rand.Read(data)
 	require.NoError(t, err)
 
-	dirty := allBlocksDirty(uint32(size / blockSize))
+	dirty := fullDirty(size, blockSize)
 	src := buildPackedSrcCache(t, data, dirty, blockSize)
 
 	cache, meta, err := src.Dedup(
@@ -840,7 +828,7 @@ func TestCacheDedup_AllPagesDiffer(t *testing.T) {
 	require.NoError(t, err)
 	origData := make([]byte, size) // all zeros — every page differs
 
-	dirty := allBlocksDirty(uint32(size / blockSize))
+	dirty := fullDirty(size, blockSize)
 	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
 
 	cache, meta, err := src.Dedup(
@@ -885,7 +873,7 @@ func TestCacheDedup_MixedPages(t *testing.T) {
 	copy(srcData[2*pageSize:], differingPage2)
 	copy(srcData[7*pageSize:], differingPage7)
 
-	dirty := allBlocksDirty(uint32(size / blockSize))
+	dirty := fullDirty(size, blockSize)
 	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
 
 	cache, meta, err := src.Dedup(
@@ -1110,7 +1098,7 @@ func TestCacheDedup_ContextCancellation(t *testing.T) {
 	_, err := rand.Read(data)
 	require.NoError(t, err)
 
-	dirty := allBlocksDirty(uint32(size / blockSize))
+	dirty := fullDirty(size, blockSize)
 	src := buildPackedSrcCache(t, data, dirty, blockSize)
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -1137,7 +1125,7 @@ func TestCacheDedup_OriginalMemfileReadError(t *testing.T) {
 	_, err := rand.Read(data)
 	require.NoError(t, err)
 
-	dirty := allBlocksDirty(uint32(size / blockSize))
+	dirty := fullDirty(size, blockSize)
 	src := buildPackedSrcCache(t, data, dirty, blockSize)
 
 	sentinel := errors.New("base read failed")
@@ -1174,7 +1162,7 @@ func TestCacheDedup_ZeroMatchingPagesGoIntoEmpty(t *testing.T) {
 	srcData := make([]byte, size)
 	copy(srcData, origData)
 
-	dirty := allBlocksDirty(uint32(size / blockSize))
+	dirty := fullDirty(size, blockSize)
 	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
 
 	cache, meta, err := src.Dedup(

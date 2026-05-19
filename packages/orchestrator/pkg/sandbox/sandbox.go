@@ -1232,7 +1232,10 @@ func pauseProcessMemory(
 			)
 		}
 		ratio := uint64(diffMetadata.BlockSize / dedupMeta.BlockSize)
-		dedupMeta.Empty.Or(header.UpsampleBitmap(diffMetadata.Empty, ratio))
+		for it := diffMetadata.Empty.Iterator(); it.HasNext(); {
+			idx := uint64(it.Next())
+			dedupMeta.Empty.AddRange(idx*ratio, (idx+1)*ratio)
+		}
 		diffMetadata = dedupMeta
 	}
 

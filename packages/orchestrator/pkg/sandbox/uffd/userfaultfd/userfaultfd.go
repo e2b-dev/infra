@@ -511,10 +511,6 @@ func (u *Userfaultfd) faultPage(
 		defer pagePool.Put(bufPtr)
 		b := (*bufPtr)[:u.pageSize]
 
-		// build.File.ReadAt skips uuid.Nil ranges expecting a pre-zeroed
-		// buffer; pooled buffers carry stale data from previous faults.
-		clear(b)
-
 		// ReadAt retry holds settleRequests.RLock for up to ~2s of
 		// exponential backoff, blocking any concurrent REMOVE batch.
 		// Correctness holds (uffd FIFO drains the queued REMOVE before
