@@ -3,6 +3,7 @@
 package network
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"slices"
@@ -109,7 +110,16 @@ func NewFirewall(tapIf string, orchestratorInternalIP string, extraAllowedCIDRs 
 }
 
 func (fw *Firewall) Close() error {
-	return fw.conn.CloseLasting()
+	fw.conn.DelTable(&nftables.Table{
+		Name:   tableName,
+		Family: nftables.TableFamilyINet,
+	})
+	deleteErr := fw.conn.Flush()
+	if errors.Is(deleteErr, unix.ENOENT) {
+		deleteErr = nil
+	}
+
+	return errors.Join(deleteErr, fw.conn.CloseLasting())
 }
 
 // tapIfaceMatch returns expressions that match packets from the tap interface.
