@@ -3,6 +3,16 @@ SELECT id, COALESCE(email, '') AS email, created_at, COALESCE(raw_app_meta_data,
 FROM auth.users
 WHERE id = $1::uuid;
 
+-- name: GetAuthUsersByIDs :many
+SELECT id, COALESCE(email, '') AS email, created_at, COALESCE(raw_app_meta_data, '{}'::jsonb) AS raw_app_meta_data
+FROM auth.users
+WHERE id = ANY(sqlc.arg(ids)::uuid[]);
+
+-- name: GetAuthUsersByEmail :many
+SELECT id, COALESCE(email, '') AS email, created_at, COALESCE(raw_app_meta_data, '{}'::jsonb) AS raw_app_meta_data
+FROM auth.users
+WHERE lower(email) = lower(sqlc.arg(email)::text);
+
 -- name: GetLatestAuthSessionByUserID :one
 SELECT user_agent, ip
 FROM auth.sessions

@@ -4,10 +4,8 @@ SELECT
     ut.team_id,
     ut.is_default,
     ut.added_by,
-    ut.created_at,
-    u.email
+    ut.created_at
 FROM public.users_teams ut
-JOIN public.users u ON u.id = ut.user_id
 WHERE ut.team_id = sqlc.arg(team_id)::uuid;
 
 -- name: GetTeamMemberRelation :one
@@ -19,10 +17,6 @@ WHERE team_id = sqlc.arg(team_id)::uuid
 SELECT user_id FROM public.users_teams
 WHERE team_id = sqlc.arg(team_id)::uuid
 FOR UPDATE;
-
--- name: GetUserByEmail :one
-SELECT id, email FROM public.users
-WHERE email = sqlc.arg(email)::text;
 
 -- name: AddTeamMember :exec
 INSERT INTO public.users_teams (user_id, team_id, is_default, added_by)
