@@ -26,6 +26,9 @@ const (
 	TeamSandboxCreated CounterType = "e2b.team.sandbox.created"
 
 	EnvdInitCalls CounterType = "orchestrator.sandbox.envd.init.calls"
+
+	ApiRedisStoragePublisherPublished CounterType = "api.redis_storage.publisher.published"
+	ApiRedisStoragePublisherDropped   CounterType = "api.redis_storage.publisher.dropped"
 )
 
 const (
@@ -48,6 +51,8 @@ const (
 	EvictionsRunningCounterName ObservableUpDownCounterType = "api.evictor.evictions.running"
 
 	TCPFirewallActiveConnections ObservableUpDownCounterType = "orchestrator.tcpfirewall.connections.active"
+
+	ApiRedisStoragePublisherQueueDepth ObservableUpDownCounterType = "api.redis_storage.publisher.queue.depth"
 )
 
 const (
@@ -125,6 +130,8 @@ const (
 	SnapshotDiffBytes   HistogramType = "orchestrator.sandbox.snapshot.diff.bytes"
 	SnapshotDiffRatioBp HistogramType = "orchestrator.sandbox.snapshot.diff.ratio_bp"
 	SnapshotTotalBytes  HistogramType = "orchestrator.sandbox.snapshot.total.bytes"
+
+	ApiRedisStoragePublisherPublishDuration HistogramType = "api.redis_storage.publisher.publish.duration"
 )
 
 const (
@@ -167,6 +174,9 @@ var counterDesc = map[CounterType]string{
 
 	SandboxFCBlockFails:         "Total Firecracker VMM block device execution/event failures",
 	SandboxFCBlockNoAvailBuffer: "Total Firecracker VMM block events where no virtqueue buffer was available",
+
+	ApiRedisStoragePublisherPublished: "Total Redis PUBLISH calls completed by the storage publisher (result=success|failure)",
+	ApiRedisStoragePublisherDropped:   "Total storage notifications dropped before reaching Redis (reason=queue_full|closed)",
 }
 
 var counterUnits = map[CounterType]string{
@@ -189,6 +199,9 @@ var counterUnits = map[CounterType]string{
 
 	SandboxFCBlockFails:         "{error}",
 	SandboxFCBlockNoAvailBuffer: "{event}",
+
+	ApiRedisStoragePublisherPublished: "{notification}",
+	ApiRedisStoragePublisherDropped:   "{notification}",
 }
 
 var observableCounterDesc = map[ObservableCounterType]string{
@@ -217,6 +230,8 @@ var observableUpDownCounterDesc = map[ObservableUpDownCounterType]string{
 	EvictionsRunningCounterName:                        "Counter of currently running evictions.",
 
 	TCPFirewallActiveConnections: "Number of currently active TCP firewall connections.",
+
+	ApiRedisStoragePublisherQueueDepth: "Current depth of the Redis storage publisher queue (items awaiting PUBLISH).",
 }
 
 var observableUpDownCounterUnits = map[ObservableUpDownCounterType]string{
@@ -231,6 +246,8 @@ var observableUpDownCounterUnits = map[ObservableUpDownCounterType]string{
 	EvictionsRunningCounterName:                        "{eviction}",
 
 	TCPFirewallActiveConnections: "{connection}",
+
+	ApiRedisStoragePublisherQueueDepth: "{notification}",
 }
 
 var gaugeFloatDesc = map[GaugeFloatType]string{
@@ -360,6 +377,8 @@ var histogramDesc = map[HistogramType]string{
 	SnapshotDiffBytes:   "Per-snapshot dirty/empty bytes per file",
 	SnapshotDiffRatioBp: "Per-snapshot dirty/empty as fraction of total mapped size, in basis points (10000=100%)",
 	SnapshotTotalBytes:  "Per-snapshot total mapped size of the file",
+
+	ApiRedisStoragePublisherPublishDuration: "Duration of a single Redis PUBLISH round-trip from the storage publisher",
 }
 
 var histogramUnits = map[HistogramType]string{
@@ -394,6 +413,8 @@ var histogramUnits = map[HistogramType]string{
 	SnapshotDiffBytes:   "{By}",
 	SnapshotDiffRatioBp: "{1}",
 	SnapshotTotalBytes:  "{By}",
+
+	ApiRedisStoragePublisherPublishDuration: "ms",
 }
 
 func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram, error) {

@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
 
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
@@ -238,7 +239,8 @@ func setupTestLocker(t *testing.T, startSubManager bool) (*storageLocker, *subsc
 
 	redisClient := redis_utils.SetupInstance(t)
 	subManager := newSubscriptionManager(redisClient, globalStorageNotifyChannel)
-	pub := newPublisher(redisClient, globalStorageNotifyChannel)
+	pub, err := newPublisher(redisClient, globalStorageNotifyChannel, noop.NewMeterProvider().Meter(meterScope))
+	require.NoError(t, err)
 
 	// The publisher always runs: lock release tests assert PubSub payloads
 	// arrive, even when the in-process subscription manager is intentionally

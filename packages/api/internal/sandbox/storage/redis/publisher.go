@@ -2,28 +2,25 @@ package redis
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 const (
-	// publishQueueDepth caps the in-flight backlog of routing keys.
-	// Drops here are correctness-safe: lock waiters fall back to the
-	// jittered 200ms-1s timer in storageLocker.Obtain and transition
-	// waiters fall back to the 1s poll ticker in waitForTransition.
 	publishQueueDepth = 8192
 
 	// publishTimeout bounds a single PUBLISH round-trip
-	publishTimeout = 5 * time.Second
-
-	// publishShutdownBudget caps the total time spent draining the queue
-	// after Close. A hung Redis cannot block teardown indefinitely.
+	publishTimeout        = 5 * time.Second
 	publishShutdownBudget = 5 * time.Second
 
 	// publishDropLogInterval rate-limits drop warnings: only every Nth
@@ -31,13 +28,11 @@ const (
 	publishDropLogInterval = 64
 
 	// publishWorkerCount is the size of the goroutine pool draining the
-	// publish queue.
-	publishWorkerCount = 16
+	// publish queue. Each worker is mostly blocked in Redis RTT, so the
+	// effective steady-state throughput is ~N / RTT.
+	publishWorkerCount = 32
 )
 
-// Lifecycle states for the publisher. The transitions are linear:
-// stateInit → stateRunning (when run() enters) or
-// stateInit → stateClosed (when close() wins the race before run() starts).
 const (
 	stateInit uint32 = iota
 	stateRunning
@@ -46,8 +41,7 @@ const (
 
 // Backpressure policy: drop and count. Subscribers tolerate dropped
 // notifications by design (see Obtain and waitForTransition fallback
-// timers), so a bounded queue is the correct primitive — an unbounded
-// one would just relocate this from a goroutine leak to a memory leak.
+// timers).
 type publisher struct {
 	redisClient redis.UniversalClient
 	channel     string
@@ -59,7 +53,29 @@ type publisher struct {
 	closeOnce sync.Once
 	state     atomic.Uint32 // lifecycle: stateInit → stateRunning | stateClosed
 	dropped   atomic.Uint64
+
+	metrics publisherMetrics
 }
+
+type publisherMetrics struct {
+	published        metric.Int64Counter
+	publishedSuccess metric.MeasurementOption
+	publishedFailure metric.MeasurementOption
+
+	dropped          metric.Int64Counter
+	droppedQueueFull metric.MeasurementOption
+	droppedClosed    metric.MeasurementOption
+
+	publishDuration        metric.Int64Histogram
+	publishDurationSuccess metric.MeasurementOption
+	publishDurationFailure metric.MeasurementOption
+}
+
+const (
+	dropReasonAttr      = "reason"
+	dropReasonQueueFull = "queue_full"
+	dropReasonClosed    = "closed"
+)
 
 // notifier is the narrow message-only seam consumed by storageLock.
 // Defining it where it is consumed (lock.go-side) lets storageLock be
@@ -68,14 +84,60 @@ type notifier interface {
 	Publish(ctx context.Context, routingKey string)
 }
 
-func newPublisher(redisClient redis.UniversalClient, channel string) *publisher {
-	return &publisher{
+func newPublisher(redisClient redis.UniversalClient, channel string, meter metric.Meter) (*publisher, error) {
+	p := &publisher{
 		redisClient: redisClient,
 		channel:     channel,
 		queue:       make(chan string, publishQueueDepth),
 		closed:      make(chan struct{}),
 		done:        make(chan struct{}),
 	}
+
+	if err := p.initMetrics(meter); err != nil {
+		return nil, fmt.Errorf("failed to init publisher metrics: %w", err)
+	}
+
+	return p, nil
+}
+
+func (p *publisher) initMetrics(meter metric.Meter) error {
+	published, err := telemetry.GetCounter(meter, telemetry.ApiRedisStoragePublisherPublished)
+	if err != nil {
+		return fmt.Errorf("publisher published counter: %w", err)
+	}
+
+	dropped, err := telemetry.GetCounter(meter, telemetry.ApiRedisStoragePublisherDropped)
+	if err != nil {
+		return fmt.Errorf("publisher dropped counter: %w", err)
+	}
+
+	publishDuration, err := telemetry.GetHistogram(meter, telemetry.ApiRedisStoragePublisherPublishDuration)
+	if err != nil {
+		return fmt.Errorf("publisher publish duration histogram: %w", err)
+	}
+
+	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.ApiRedisStoragePublisherQueueDepth, func(_ context.Context, observer metric.Int64Observer) error {
+		observer.Observe(int64(len(p.queue)))
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("publisher queue depth gauge: %w", err)
+	}
+
+	p.metrics = publisherMetrics{
+		published:              published,
+		publishedSuccess:       metric.WithAttributeSet(attribute.NewSet(telemetry.Success)),
+		publishedFailure:       metric.WithAttributeSet(attribute.NewSet(telemetry.Failure)),
+		dropped:                dropped,
+		droppedQueueFull:       metric.WithAttributeSet(attribute.NewSet(attribute.String(dropReasonAttr, dropReasonQueueFull))),
+		droppedClosed:          metric.WithAttributeSet(attribute.NewSet(attribute.String(dropReasonAttr, dropReasonClosed))),
+		publishDuration:        publishDuration,
+		publishDurationSuccess: metric.WithAttributeSet(attribute.NewSet(telemetry.Success)),
+		publishDurationFailure: metric.WithAttributeSet(attribute.NewSet(telemetry.Failure)),
+	}
+
+	return nil
 }
 
 // Publish enqueues a routing key for asynchronous PUBLISH. Never blocks.
@@ -86,7 +148,7 @@ func (p *publisher) Publish(ctx context.Context, routingKey string) {
 	// closing publisher could land in the queue after the drainer exits.
 	select {
 	case <-p.closed:
-		p.drop(ctx, routingKey)
+		p.drop(ctx, routingKey, dropReasonClosed, p.metrics.droppedClosed)
 
 		return
 	default:
@@ -95,16 +157,19 @@ func (p *publisher) Publish(ctx context.Context, routingKey string) {
 	select {
 	case p.queue <- routingKey:
 	default:
-		p.drop(ctx, routingKey)
+		p.drop(ctx, routingKey, dropReasonQueueFull, p.metrics.droppedQueueFull)
 	}
 }
 
-func (p *publisher) drop(ctx context.Context, routingKey string) {
+func (p *publisher) drop(ctx context.Context, routingKey, reason string, attrs metric.MeasurementOption) {
+	p.metrics.dropped.Add(ctx, 1, attrs)
+
 	n := p.dropped.Add(1)
 	if n%publishDropLogInterval == 1 {
 		logger.L().Warn(ctx,
 			"Dropping storage notification: publish queue saturated or closed",
 			zap.String("routing_key", routingKey),
+			zap.String("reason", reason),
 			zap.Uint64("total_drops", n),
 		)
 	}
@@ -113,9 +178,6 @@ func (p *publisher) drop(ctx context.Context, routingKey string) {
 // run starts the worker pool and blocks until the pool exits.
 // On exit it performs a bounded best-effort drain of pending items so a
 // graceful shutdown does not lose every in-flight notification.
-//
-// If close() has already won the lifecycle CAS, run() returns immediately
-// without touching done — close() owns done in that branch.
 func (p *publisher) run(ctx context.Context) {
 	if !p.state.CompareAndSwap(stateInit, stateRunning) {
 		// close() raced ahead and transitioned us to stateClosed; it has
@@ -185,12 +247,23 @@ func (p *publisher) publishOne(ctx context.Context, routingKey string) {
 	pubCtx, cancel := context.WithTimeout(ctx, publishTimeout)
 	defer cancel()
 
-	if err := p.redisClient.Publish(pubCtx, p.channel, routingKey).Err(); err != nil {
+	start := time.Now()
+	err := p.redisClient.Publish(pubCtx, p.channel, routingKey).Err()
+	elapsed := time.Since(start).Milliseconds()
+
+	if err != nil {
+		p.metrics.published.Add(pubCtx, 1, p.metrics.publishedFailure)
+		p.metrics.publishDuration.Record(pubCtx, elapsed, p.metrics.publishDurationFailure)
 		logger.L().Warn(pubCtx, "Failed to publish storage notification",
 			zap.String("routing_key", routingKey),
 			zap.Error(err),
 		)
+
+		return
 	}
+
+	p.metrics.published.Add(pubCtx, 1, p.metrics.publishedSuccess)
+	p.metrics.publishDuration.Record(pubCtx, elapsed, p.metrics.publishDurationSuccess)
 }
 
 func (p *publisher) close(ctx context.Context) {

@@ -12,9 +12,31 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
 
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
+
+// newTestPublisher wraps newPublisher with a noop meter for tests. The
+// publisher's metric recordings exercise a real metric.Meter surface even
+// in tests — using noop keeps assertions focused on PubSub behaviour while
+// still catching nil-Meter bugs and misuse of the OTel API.
+func newTestPublisher(t *testing.T, client goredis.UniversalClient) *publisher {
+	t.Helper()
+	pub, err := newPublisher(client, globalStorageNotifyChannel, noop.NewMeterProvider().Meter(meterScope))
+	require.NoError(t, err)
+
+	return pub
+}
+
+// newTestStorage wraps NewStorage with a noop meter provider for tests.
+func newTestStorage(t *testing.T, client goredis.UniversalClient) *Storage {
+	t.Helper()
+	s, err := NewStorage(client, noop.NewMeterProvider())
+	require.NoError(t, err)
+
+	return s
+}
 
 // TestPublisher_PublishEnqueuesAndDrainsToRedis verifies that keys handed
 // to Publish are eventually delivered on the global notify channel.
@@ -22,7 +44,7 @@ func TestPublisher_PublishEnqueuesAndDrainsToRedis(t *testing.T) {
 	t.Parallel()
 
 	client := redis_utils.SetupInstance(t)
-	pub := newPublisher(client, globalStorageNotifyChannel)
+	pub := newTestPublisher(t, client)
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
@@ -64,7 +86,7 @@ func TestPublisher_PublishNeverBlocks(t *testing.T) {
 	t.Parallel()
 
 	client := redis_utils.SetupInstance(t)
-	pub := newPublisher(client, globalStorageNotifyChannel)
+	pub := newTestPublisher(t, client)
 	// Intentionally do not call run() — the queue will fill and overflow.
 
 	const n = publishQueueDepth + 256
@@ -92,7 +114,7 @@ func TestPublisher_DropOnClosed(t *testing.T) {
 	t.Parallel()
 
 	client := redis_utils.SetupInstance(t)
-	pub := newPublisher(client, globalStorageNotifyChannel)
+	pub := newTestPublisher(t, client)
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
@@ -119,7 +141,7 @@ func TestPublisher_RunExitsOnContextCancel(t *testing.T) {
 	t.Parallel()
 
 	client := redis_utils.SetupInstance(t)
-	pub := newPublisher(client, globalStorageNotifyChannel)
+	pub := newTestPublisher(t, client)
 	ctx, cancel := context.WithCancel(t.Context())
 
 	go pub.run(ctx)
@@ -138,7 +160,7 @@ func TestPublisher_CloseDrainsPending(t *testing.T) {
 	t.Parallel()
 
 	client := redis_utils.SetupInstance(t)
-	pub := newPublisher(client, globalStorageNotifyChannel)
+	pub := newTestPublisher(t, client)
 
 	pubsub := client.Subscribe(t.Context(), globalStorageNotifyChannel)
 	t.Cleanup(func() { _ = pubsub.Close() })
@@ -183,7 +205,7 @@ func TestStorageLock_ReleaseDoesNotSpawnGoroutine(t *testing.T) {
 	t.Parallel()
 
 	client := redis_utils.SetupInstance(t)
-	storage := NewStorage(client)
+	storage := newTestStorage(t, client)
 	go storage.Start(t.Context())
 	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })
 
@@ -259,7 +281,7 @@ func TestStorage_CloseIsIdempotent(t *testing.T) {
 	t.Parallel()
 
 	client := redis_utils.SetupInstance(t)
-	storage := NewStorage(client)
+	storage := newTestStorage(t, client)
 	go storage.Start(t.Context())
 
 	storage.Close(t.Context())
@@ -274,7 +296,7 @@ func TestStorage_CloseBeforeStartDoesNotDeadlock(t *testing.T) {
 	t.Parallel()
 
 	client := redis_utils.SetupInstance(t)
-	storage := NewStorage(client)
+	storage := newTestStorage(t, client)
 	// Deliberately do NOT call Start.
 
 	done := make(chan struct{})
@@ -297,7 +319,7 @@ func TestPublisher_CloseBeforeRunDoesNotDeadlock(t *testing.T) {
 	t.Parallel()
 
 	client := redis_utils.SetupInstance(t)
-	pub := newPublisher(client, globalStorageNotifyChannel)
+	pub := newTestPublisher(t, client)
 
 	done := make(chan struct{})
 	go func() {
@@ -320,7 +342,7 @@ func TestPublisher_ConcurrentProducers(t *testing.T) {
 	t.Parallel()
 
 	client := redis_utils.SetupInstance(t)
-	pub := newPublisher(client, globalStorageNotifyChannel)
+	pub := newTestPublisher(t, client)
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
@@ -395,7 +417,7 @@ func TestPublisher_DrainOnShutdownRespectsBudget(t *testing.T) {
 		UniversalClient: redis_utils.SetupInstance(t),
 		gate:            make(chan struct{}), // never released → ctx-cancel exits
 	}
-	pub := newPublisher(blocking, globalStorageNotifyChannel)
+	pub := newTestPublisher(t, blocking)
 
 	for i := range 16 {
 		pub.Publish(t.Context(), fmt.Sprintf("hang:%d", i))
