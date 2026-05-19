@@ -76,7 +76,7 @@ type APIStore struct {
 	templateCache         *templatecache.TemplateCache
 	templateBuildsCache   *templatecache.TemplatesBuildCache
 	snapshotCache         *snapshotcache.SnapshotCache
-	authService           *sharedauth.AuthService
+	authService           sharedauth.Service
 	templateSpawnCounter  *utils.TemplateSpawnCounter
 	clickhouseStore       clickhouse.Clickhouse
 	accessTokenGenerator  *sandbox.AccessTokenGenerator

@@ -26,23 +26,42 @@ type authStore interface {
 	GetTeamAPIKeyHashes(ctx context.Context, teamID uuid.UUID) ([]string, error)
 }
 
-// AuthService encapsulates the cache, store, and JWT verifier for auth validation.
-type AuthService struct {
+// Service is the interface implemented by the unexported authService. It
+// exposes the auth validation, team lookup, and cache invalidation operations
+// used by callers such as APIStore and the dashboard-api handlers.
+type Service interface {
+	ValidateAPIKey(ctx context.Context, ginCtx *gin.Context, apiKey string) (*types.Team, *APIError)
+	ValidateAccessToken(ctx context.Context, ginCtx *gin.Context, accessToken string) (uuid.UUID, *APIError)
+	ValidateAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError)
+	ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *APIError)
+	GetTeamByID(ctx context.Context, teamID uuid.UUID) (*types.Team, error)
+	InvalidateTeamMemberCache(ctx context.Context, userID uuid.UUID, teamID string)
+	InvalidateTeamCache(ctx context.Context, teamID uuid.UUID) error
+	Close(ctx context.Context) error
+}
+
+// authService encapsulates the cache, store, and JWT verifier for auth validation.
+type authService struct {
 	store                authStore
 	teamCache            *authCache
 	authProviderVerifier *verifier
 }
 
+// Compile-time assertion that *authService satisfies the Service interface.
+var _ Service = (*authService)(nil)
+
 // NewAuthService wires up the team cache, auth store, identity lookup, and JWT
 // verifier from the supplied dependencies. The HTTP client is used for OIDC
 // discovery and JWKS fetches.
+//
+//nolint:revive // returning unexported type is intentional to prevent external instantiation
 func NewAuthService(
 	ctx context.Context,
 	redisClient redis.UniversalClient,
 	authDB *authdb.Client,
 	providerConfig ProviderConfig,
 	httpClient *http.Client,
-) (*AuthService, error) {
+) (*authService, error) {
 	if redisClient == nil {
 		return nil, errors.New("redisClient is required")
 	}
@@ -61,7 +80,7 @@ func NewAuthService(
 		return nil, fmt.Errorf("initializing auth provider JWT verifier: %w", err)
 	}
 
-	return &AuthService{
+	return &authService{
 		store:                store,
 		teamCache:            cache,
 		authProviderVerifier: v,
@@ -69,7 +88,7 @@ func NewAuthService(
 }
 
 // ValidateAPIKey verifies the API key format and fetches the associated team via cache + store.
-func (s *AuthService) ValidateAPIKey(ctx context.Context, ginCtx *gin.Context, apiKey string) (*types.Team, *APIError) {
+func (s *authService) ValidateAPIKey(ctx context.Context, ginCtx *gin.Context, apiKey string) (*types.Team, *APIError) {
 	hashedKey, err := keys.VerifyKey(keys.ApiKeyPrefix, apiKey)
 	if err != nil {
 		return nil, &APIError{
@@ -118,14 +137,14 @@ func (s *AuthService) ValidateAPIKey(ctx context.Context, ginCtx *gin.Context, a
 }
 
 // GetTeamByID fetches team auth data via cache + store.
-func (s *AuthService) GetTeamByID(ctx context.Context, teamID uuid.UUID) (*types.Team, error) {
+func (s *authService) GetTeamByID(ctx context.Context, teamID uuid.UUID) (*types.Team, error) {
 	return s.teamCache.GetOrSet(ctx, teamCacheKey(teamID), func(ctx context.Context, _ string) (*types.Team, error) {
 		return s.store.GetTeamByID(ctx, teamID)
 	})
 }
 
 // ValidateAccessToken verifies the access token format and fetches the associated user ID.
-func (s *AuthService) ValidateAccessToken(ctx context.Context, ginCtx *gin.Context, accessToken string) (uuid.UUID, *APIError) {
+func (s *authService) ValidateAccessToken(ctx context.Context, ginCtx *gin.Context, accessToken string) (uuid.UUID, *APIError) {
 	hashedToken, err := keys.VerifyKey(keys.AccessTokenPrefix, accessToken)
 	if err != nil {
 		return uuid.UUID{}, &APIError{
@@ -159,7 +178,7 @@ func (s *AuthService) ValidateAccessToken(ctx context.Context, ginCtx *gin.Conte
 // every token is denied with 401. This makes "no auth provider" a valid
 // configuration: API key / access token flows keep working, but JWT-based
 // flows are universally rejected.
-func (s *AuthService) ValidateAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError) {
+func (s *authService) ValidateAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError) {
 	if s.authProviderVerifier == nil {
 		return uuid.UUID{}, &APIError{
 			Err:       errors.New("auth provider is not configured"),
@@ -171,7 +190,7 @@ func (s *AuthService) ValidateAuthProviderToken(ctx context.Context, ginCtx *gin
 	return s.validateJWTWithProvider(ctx, ginCtx, s.authProviderVerifier, token, "auth provider")
 }
 
-func (s *AuthService) validateJWTWithProvider(ctx context.Context, ginCtx *gin.Context, v *verifier, token string, tokenSource string) (uuid.UUID, *APIError) {
+func (s *authService) validateJWTWithProvider(ctx context.Context, ginCtx *gin.Context, v *verifier, token string, tokenSource string) (uuid.UUID, *APIError) {
 	userID, _, err := v.Verify(ctx, token)
 	if err != nil {
 		return uuid.UUID{}, &APIError{
@@ -198,7 +217,7 @@ func (s *AuthService) validateJWTWithProvider(ctx context.Context, ginCtx *gin.C
 }
 
 // ValidateSupabaseTeam extracts the user ID from the gin context and fetches the team via cache + store.
-func (s *AuthService) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *APIError) {
+func (s *authService) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *APIError) {
 	userID, ok := GetUserID(ginCtx)
 	if !ok {
 		return nil, &APIError{
@@ -250,12 +269,12 @@ func (s *AuthService) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.Cont
 
 // InvalidateTeamMemberCache removes the cached auth entry for a specific user-team pair.
 // This should be called when team membership changes (member added or removed).
-func (s *AuthService) InvalidateTeamMemberCache(ctx context.Context, userID uuid.UUID, teamID string) {
+func (s *authService) InvalidateTeamMemberCache(ctx context.Context, userID uuid.UUID, teamID string) {
 	s.teamCache.Invalidate(ctx, supabaseTeamCacheKey(userID, teamID))
 }
 
 // InvalidateTeamCache queries the team's API key hashes and removes their cached entries.
-func (s *AuthService) InvalidateTeamCache(ctx context.Context, teamID uuid.UUID) error {
+func (s *authService) InvalidateTeamCache(ctx context.Context, teamID uuid.UUID) error {
 	s.teamCache.Invalidate(ctx, teamCacheKey(teamID))
 
 	hashes, err := s.store.GetTeamAPIKeyHashes(ctx, teamID)
@@ -279,6 +298,6 @@ func teamCacheKey(teamID uuid.UUID) string {
 }
 
 // Close stops the underlying cache's background refresh goroutines.
-func (s *AuthService) Close(ctx context.Context) error {
+func (s *authService) Close(ctx context.Context) error {
 	return s.teamCache.Close(ctx)
 }
