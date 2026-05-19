@@ -9,14 +9,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
+	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-// AuthStore abstracts the DB operations needed for auth validation.
-type AuthStore interface {
+// authStore abstracts the DB operations needed for auth validation.
+type authStore interface {
 	GetTeamByHashedAPIKey(ctx context.Context, hashedKey string) (*types.Team, error)
 	GetTeamByID(ctx context.Context, teamID uuid.UUID) (*types.Team, error)
 	GetTeamByIDAndUserID(ctx context.Context, userID uuid.UUID, teamID string) (*types.Team, error)
@@ -26,18 +28,44 @@ type AuthStore interface {
 
 // AuthService encapsulates the cache, store, and JWT verifier for auth validation.
 type AuthService struct {
-	store                AuthStore
-	teamCache            *AuthCache
-	authProviderVerifier *Verifier
+	store                authStore
+	teamCache            *authCache
+	authProviderVerifier *verifier
 }
 
-// NewAuthService creates an AuthService with the given store, cache, and auth provider verifier.
-func NewAuthService(store AuthStore, teamCache *AuthCache, authProviderVerifier *Verifier) *AuthService {
+// NewAuthService wires up the team cache, auth store, identity lookup, and JWT
+// verifier from the supplied dependencies. The HTTP client is used for OIDC
+// discovery and JWKS fetches.
+func NewAuthService(
+	ctx context.Context,
+	redisClient redis.UniversalClient,
+	authDB *authdb.Client,
+	providerConfig ProviderConfig,
+	httpClient *http.Client,
+) (*AuthService, error) {
+	if redisClient == nil {
+		return nil, errors.New("redisClient is required")
+	}
+	if authDB == nil {
+		return nil, errors.New("authDB is required")
+	}
+	if httpClient == nil {
+		return nil, errors.New("httpClient is required")
+	}
+
+	cache := newAuthCache(redisClient)
+	store := newAuthStore(authDB)
+	identityLookup := newAuthIdentityLookup(authDB.Read)
+	v, err := newVerifier(ctx, providerConfig, httpClient, identityLookup)
+	if err != nil {
+		return nil, fmt.Errorf("initializing auth provider JWT verifier: %w", err)
+	}
+
 	return &AuthService{
 		store:                store,
-		teamCache:            teamCache,
-		authProviderVerifier: authProviderVerifier,
-	}
+		teamCache:            cache,
+		authProviderVerifier: v,
+	}, nil
 }
 
 // ValidateAPIKey verifies the API key format and fetches the associated team via cache + store.
@@ -143,8 +171,8 @@ func (s *AuthService) ValidateAuthProviderToken(ctx context.Context, ginCtx *gin
 	return s.validateJWTWithProvider(ctx, ginCtx, s.authProviderVerifier, token, "auth provider")
 }
 
-func (s *AuthService) validateJWTWithProvider(ctx context.Context, ginCtx *gin.Context, verifier *Verifier, token string, tokenSource string) (uuid.UUID, *APIError) {
-	userID, _, err := verifier.Verify(ctx, token)
+func (s *AuthService) validateJWTWithProvider(ctx context.Context, ginCtx *gin.Context, v *verifier, token string, tokenSource string) (uuid.UUID, *APIError) {
+	userID, _, err := v.Verify(ctx, token)
 	if err != nil {
 		return uuid.UUID{}, &APIError{
 			Err:       err,

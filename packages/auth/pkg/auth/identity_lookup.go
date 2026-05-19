@@ -26,11 +26,11 @@ type authIdentityLookup struct {
 	queries *authqueries.Queries
 }
 
-// NewAuthIdentityLookup constructs an oidc.IdentityLookup backed by the
+// newAuthIdentityLookup constructs an oidc.IdentityLookup backed by the
 // supplied authqueries handle. The handle should typically be the read pool.
 // The returned lookup memoizes successful results in-process for
 // identityCacheTTL to avoid a DB round-trip on every JWT verification.
-func NewAuthIdentityLookup(queries *authqueries.Queries) oidc.IdentityLookup {
+func newAuthIdentityLookup(queries *authqueries.Queries) oidc.IdentityLookup {
 	base := &authIdentityLookup{queries: queries}
 
 	return newCachingIdentityLookup(base)

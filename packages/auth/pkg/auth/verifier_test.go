@@ -65,7 +65,7 @@ func httpClientForServers(servers ...*httptest.Server) *http.Client {
 func TestNewVerifier_DisabledConfigReturnsNil(t *testing.T) {
 	t.Parallel()
 
-	verifier, err := NewVerifier(t.Context(), ProviderConfig{}, nil, nil)
+	verifier, err := newVerifier(t.Context(), ProviderConfig{}, nil, nil)
 	require.NoError(t, err)
 	require.Nil(t, verifier)
 }
@@ -87,7 +87,7 @@ func TestVerifier_VerifyWithMultipleStrategies(t *testing.T) {
 	jwksUserID := uuid.New()
 	lookup.set(testIssuerURL, jwksSub, jwksUserID)
 
-	verifier, err := NewVerifier(t.Context(), ProviderConfig{
+	verifier, err := newVerifier(t.Context(), ProviderConfig{
 		JWT: []oidc.Config{
 			{
 				Issuer: oidc.Issuer{
@@ -154,7 +154,7 @@ func TestVerifier_VerifyMultipleJWTIssuers(t *testing.T) {
 	userID := uuid.New()
 	lookup.set(issuer2URL, tokenSub, userID)
 
-	verifier, err := NewVerifier(t.Context(), ProviderConfig{
+	verifier, err := newVerifier(t.Context(), ProviderConfig{
 		JWT: []oidc.Config{
 			{
 				Issuer: oidc.Issuer{

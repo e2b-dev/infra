@@ -198,15 +198,10 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		logger.L().Fatal(ctx, "Initializing Orchestrator client", zap.Error(err))
 	}
 
-	authCache := sharedauth.NewAuthCache(redisClient)
-	authStore := sharedauth.NewAuthStore(authDB)
-	authHTTPClient := &http.Client{}
-	authIdentityLookup := sharedauth.NewAuthIdentityLookup(authDB.Read)
-	authProviderVerifier, err := sharedauth.NewVerifier(ctx, config.AuthProvider, authHTTPClient, authIdentityLookup)
+	authService, err := sharedauth.NewAuthService(ctx, redisClient, authDB, config.AuthProvider, &http.Client{})
 	if err != nil {
-		logger.L().Fatal(ctx, "Initializing auth provider JWT verifier", zap.Error(err))
+		logger.L().Fatal(ctx, "Initializing auth service", zap.Error(err))
 	}
-	authService := sharedauth.NewAuthService(authStore, authCache, authProviderVerifier)
 	templateCache := templatecache.NewTemplateCache(sqlcDB, redisClient)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(ctx, time.Minute, sqlcDB)
 
