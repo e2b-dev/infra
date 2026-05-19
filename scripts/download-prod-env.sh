@@ -22,7 +22,7 @@ if [[ -f "$ENV_FILE" ]]; then
   if ! diff -q "$ENV_FILE" "$TMP_FILE" > /dev/null; then
     echo "⚠️ Diff detected:"
 
-    git --no-pager diff --no-index "$ENV_FILE" "$TMP_FILE" || true
+    git --no-pager diff --no-index "$ENV_FILE" "$TMP_FILE" || [ $? -eq 1 ]
 
     read -p "Do you want to overwrite $ENV_FILE? (y/N): " CONFIRM
     if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
