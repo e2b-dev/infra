@@ -5,6 +5,7 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
@@ -62,17 +63,23 @@ func (u *Upload) uploadFramed(
 	var selfBuild headers.BuildData
 
 	if srcPath != "" {
-		ft, checksum, err := storage.UploadFramed(ctx, u.store, u.paths.DataFile(string(fileType), cfg.CompressionType()), seekableTypeFor(fileType), srcPath, storage.WithCompressConfig(cfg), storage.WithMetadata(u.objectMetadata))
+		ft, checksum, err := storage.UploadFramed(ctx, u.store, u.paths.DataFile(string(fileType), cfg.CompressionType()), seekableTypeFor(fileType), srcPath, storage.WithCompressConfig(cfg), storage.WithMetadata(u.objectMetadata), storage.WithChecksumSHA256())
 		if err != nil {
 			return fmt.Errorf("%s upload: %w", fileType, err)
 		}
 
-		// FrameTable count, not os.Stat: sparse memfile diffs stream less than
-		// they appear on disk.
-		selfBuild = headers.BuildData{Size: ft.UncompressedSize(), Checksum: checksum}
-		if ft.IsCompressed() {
-			selfBuild.FrameData = ft
+		// Compressed: frame-table byte count, since sparse memfile diffs stream
+		// fewer bytes than they occupy on disk. Uncompressed has no table.
+		size := ft.UncompressedSize()
+		if !ft.IsCompressed() {
+			info, statErr := os.Stat(srcPath)
+			if statErr != nil {
+				return fmt.Errorf("%s stat: %w", fileType, statErr)
+			}
+			size = info.Size()
 		}
+
+		selfBuild = headers.BuildData{Size: size, Checksum: checksum, FrameData: ft}
 	}
 
 	h := srcHeader.CloneForUpload(headers.MetadataVersionV4)

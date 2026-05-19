@@ -75,7 +75,7 @@ type APIStore struct {
 	templateCache         *templatecache.TemplateCache
 	templateBuildsCache   *templatecache.TemplatesBuildCache
 	snapshotCache         *snapshotcache.SnapshotCache
-	authService           *sharedauth.AuthService[*types.Team]
+	authService           *sharedauth.AuthService
 	templateSpawnCounter  *utils.TemplateSpawnCounter
 	clickhouseStore       clickhouse.Clickhouse
 	accessTokenGenerator  *sandbox.AccessTokenGenerator
@@ -198,7 +198,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		logger.L().Fatal(ctx, "Initializing Orchestrator client", zap.Error(err))
 	}
 
-	authCache := sharedauth.NewAuthCache[*types.Team](redisClient)
+	authCache := sharedauth.NewAuthCache(redisClient)
 	authStore := sharedauth.NewAuthStore(authDB)
 	authHTTPClient := &http.Client{}
 	authIdentityLookup := sharedauth.NewAuthIdentityLookup(authDB.Read)
@@ -206,7 +206,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing auth provider JWT verifier", zap.Error(err))
 	}
-	authService := sharedauth.NewAuthService[*types.Team](authStore, authCache, authProviderVerifier)
+	authService := sharedauth.NewAuthService(authStore, authCache, authProviderVerifier)
 	templateCache := templatecache.NewTemplateCache(sqlcDB, redisClient)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(ctx, time.Minute, sqlcDB)
 
