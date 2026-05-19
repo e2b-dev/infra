@@ -36,7 +36,10 @@ type Stats struct {
 	CPUSystemUsec uint64 // microseconds
 
 	MemoryUsageBytes uint64 // bytes
-	MemoryPeakBytes  uint64 // bytes, reset after each GetStats() call
+	// MemoryPeakBytes is the peak memory usage observed since the previous
+	// GetStats() call (interval peak, not lifetime peak).
+	// Zero means peak tracking is unavailable on this kernel (requires >= 6.12).
+	MemoryPeakBytes uint64 // bytes, interval peak; 0 if kernel < 6.12
 }
 
 // CgroupHandle represents a created cgroup for a sandbox.
@@ -48,6 +51,11 @@ type Stats struct {
 // whether Start succeeded or failed). Remove() closes the memory.peak FD,
 // closes the cgroup directory FD as a safety net if ReleaseCgroupFD() was not
 // called, and deletes the cgroup directory.
+//
+// Concurrency: GetStats is NOT safe for concurrent use on the same handle.
+// Each handle is owned by exactly one HostStatsCollector goroutine which calls
+// GetStats serially on a ticker. The memoryPeakFile FD is private to the handle
+// and must not be shared across goroutines.
 type CgroupHandle struct {
 	cgroupName     string
 	path           string
@@ -378,10 +386,18 @@ func (m *managerImpl) getStatsForPath(ctx context.Context, cgroupPath string, me
 
 // readAndResetMemoryPeak reads the current peak memory value and resets it for the next interval.
 // It uses the persistent FD kept open in CgroupHandle for per-FD reset tracking.
+//
+// Thread-safety: this function is NOT goroutine-safe. It must only be called
+// from the single goroutine that owns the CgroupHandle (the HostStatsCollector).
+// The Seek+Read+Write sequence on the shared FD is not atomic; concurrent calls
+// would corrupt the file offset and produce incorrect readings.
+//
 // The cgroups v2 kernel interface works as follows:
 //   - Read requires file position 0 (seq_file), so we seek before reading.
 //   - Write resets the per-FD peak to current memory usage. The kernel ignores
 //     both the written content and the file offset, so no seek before write is needed.
+//   - Only a zero-length write is accepted; any non-empty write returns EINVAL.
+//   - This function is only called when peakResetSupported=true (kernel >= 6.12).
 func (m *managerImpl) readAndResetMemoryPeak(ctx context.Context, memoryPeakFile *os.File) (uint64, error) {
 	if _, err := memoryPeakFile.Seek(0, io.SeekStart); err != nil {
 		return 0, fmt.Errorf("failed to seek memory.peak for read: %w", err)
