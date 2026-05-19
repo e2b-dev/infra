@@ -10,33 +10,30 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-type TeamItem interface {
-	TeamID() string
-}
-
 // AuthStore abstracts the DB operations needed for auth validation.
-type AuthStore[T TeamItem] interface {
-	GetTeamByHashedAPIKey(ctx context.Context, hashedKey string) (T, error)
-	GetTeamByID(ctx context.Context, teamID uuid.UUID) (T, error)
-	GetTeamByIDAndUserID(ctx context.Context, userID uuid.UUID, teamID string) (T, error)
+type AuthStore interface {
+	GetTeamByHashedAPIKey(ctx context.Context, hashedKey string) (*types.Team, error)
+	GetTeamByID(ctx context.Context, teamID uuid.UUID) (*types.Team, error)
+	GetTeamByIDAndUserID(ctx context.Context, userID uuid.UUID, teamID string) (*types.Team, error)
 	GetUserIDByHashedAccessToken(ctx context.Context, hashedToken string) (uuid.UUID, error)
 	GetTeamAPIKeyHashes(ctx context.Context, teamID uuid.UUID) ([]string, error)
 }
 
 // AuthService encapsulates the cache, store, and JWT verifier for auth validation.
-type AuthService[T TeamItem] struct {
-	store                AuthStore[T]
-	teamCache            *AuthCache[T]
+type AuthService struct {
+	store                AuthStore
+	teamCache            *AuthCache
 	authProviderVerifier *Verifier
 }
 
 // NewAuthService creates an AuthService with the given store, cache, and auth provider verifier.
-func NewAuthService[T TeamItem](store AuthStore[T], teamCache *AuthCache[T], authProviderVerifier *Verifier) *AuthService[T] {
-	return &AuthService[T]{
+func NewAuthService(store AuthStore, teamCache *AuthCache, authProviderVerifier *Verifier) *AuthService {
+	return &AuthService{
 		store:                store,
 		teamCache:            teamCache,
 		authProviderVerifier: authProviderVerifier,
@@ -44,27 +41,23 @@ func NewAuthService[T TeamItem](store AuthStore[T], teamCache *AuthCache[T], aut
 }
 
 // ValidateAPIKey verifies the API key format and fetches the associated team via cache + store.
-func (s *AuthService[T]) ValidateAPIKey(ctx context.Context, ginCtx *gin.Context, apiKey string) (T, *APIError) {
+func (s *AuthService) ValidateAPIKey(ctx context.Context, ginCtx *gin.Context, apiKey string) (*types.Team, *APIError) {
 	hashedKey, err := keys.VerifyKey(keys.ApiKeyPrefix, apiKey)
 	if err != nil {
-		var zero T
-
-		return zero, &APIError{
+		return nil, &APIError{
 			Err:       fmt.Errorf("failed to verify api key: %w", err),
 			ClientMsg: "Invalid API key format",
 			Code:      http.StatusUnauthorized,
 		}
 	}
 
-	result, err := s.teamCache.GetOrSet(ctx, hashedKey, func(ctx context.Context, key string) (T, error) {
+	result, err := s.teamCache.GetOrSet(ctx, hashedKey, func(ctx context.Context, key string) (*types.Team, error) {
 		return s.store.GetTeamByHashedAPIKey(ctx, key)
 	})
 	if err != nil {
-		var zero T
-
 		var forbiddenErr *TeamForbiddenError
 		if errors.As(err, &forbiddenErr) {
-			return zero, &APIError{
+			return nil, &APIError{
 				Err:       err,
 				ClientMsg: err.Error(),
 				Code:      http.StatusForbidden,
@@ -73,14 +66,14 @@ func (s *AuthService[T]) ValidateAPIKey(ctx context.Context, ginCtx *gin.Context
 
 		var blockedErr *TeamBlockedError
 		if errors.As(err, &blockedErr) {
-			return zero, &APIError{
+			return nil, &APIError{
 				Err:       err,
 				ClientMsg: err.Error(),
 				Code:      http.StatusForbidden,
 			}
 		}
 
-		return zero, &APIError{
+		return nil, &APIError{
 			Err:       fmt.Errorf("failed to get the team from db for an api key: %w", err),
 			ClientMsg: "Cannot get the team for the given API key",
 			Code:      http.StatusUnauthorized,
@@ -97,14 +90,14 @@ func (s *AuthService[T]) ValidateAPIKey(ctx context.Context, ginCtx *gin.Context
 }
 
 // GetTeamByID fetches team auth data via cache + store.
-func (s *AuthService[T]) GetTeamByID(ctx context.Context, teamID uuid.UUID) (T, error) {
-	return s.teamCache.GetOrSet(ctx, teamCacheKey(teamID), func(ctx context.Context, _ string) (T, error) {
+func (s *AuthService) GetTeamByID(ctx context.Context, teamID uuid.UUID) (*types.Team, error) {
+	return s.teamCache.GetOrSet(ctx, teamCacheKey(teamID), func(ctx context.Context, _ string) (*types.Team, error) {
 		return s.store.GetTeamByID(ctx, teamID)
 	})
 }
 
 // ValidateAccessToken verifies the access token format and fetches the associated user ID.
-func (s *AuthService[T]) ValidateAccessToken(ctx context.Context, ginCtx *gin.Context, accessToken string) (uuid.UUID, *APIError) {
+func (s *AuthService) ValidateAccessToken(ctx context.Context, ginCtx *gin.Context, accessToken string) (uuid.UUID, *APIError) {
 	hashedToken, err := keys.VerifyKey(keys.AccessTokenPrefix, accessToken)
 	if err != nil {
 		return uuid.UUID{}, &APIError{
@@ -138,7 +131,7 @@ func (s *AuthService[T]) ValidateAccessToken(ctx context.Context, ginCtx *gin.Co
 // every token is denied with 401. This makes "no auth provider" a valid
 // configuration: API key / access token flows keep working, but JWT-based
 // flows are universally rejected.
-func (s *AuthService[T]) ValidateAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError) {
+func (s *AuthService) ValidateAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError) {
 	if s.authProviderVerifier == nil {
 		return uuid.UUID{}, &APIError{
 			Err:       errors.New("auth provider is not configured"),
@@ -150,7 +143,7 @@ func (s *AuthService[T]) ValidateAuthProviderToken(ctx context.Context, ginCtx *
 	return s.validateJWTWithProvider(ctx, ginCtx, s.authProviderVerifier, token, "auth provider")
 }
 
-func (s *AuthService[T]) validateJWTWithProvider(ctx context.Context, ginCtx *gin.Context, verifier *Verifier, token string, tokenSource string) (uuid.UUID, *APIError) {
+func (s *AuthService) validateJWTWithProvider(ctx context.Context, ginCtx *gin.Context, verifier *Verifier, token string, tokenSource string) (uuid.UUID, *APIError) {
 	userID, _, err := verifier.Verify(ctx, token)
 	if err != nil {
 		return uuid.UUID{}, &APIError{
@@ -177,12 +170,10 @@ func (s *AuthService[T]) validateJWTWithProvider(ctx context.Context, ginCtx *gi
 }
 
 // ValidateSupabaseTeam extracts the user ID from the gin context and fetches the team via cache + store.
-func (s *AuthService[T]) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.Context, teamID string) (T, *APIError) {
+func (s *AuthService) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *APIError) {
 	userID, ok := GetUserID(ginCtx)
 	if !ok {
-		var zero T
-
-		return zero, &APIError{
+		return nil, &APIError{
 			Err:       errors.New("user ID has invalid type"),
 			ClientMsg: "Backend authentication failed",
 			Code:      http.StatusInternalServerError,
@@ -191,15 +182,13 @@ func (s *AuthService[T]) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.C
 
 	cacheKey := supabaseTeamCacheKey(userID, teamID)
 
-	result, err := s.teamCache.GetOrSet(ctx, cacheKey, func(ctx context.Context, _ string) (T, error) {
+	result, err := s.teamCache.GetOrSet(ctx, cacheKey, func(ctx context.Context, _ string) (*types.Team, error) {
 		return s.store.GetTeamByIDAndUserID(ctx, userID, teamID)
 	})
 	if err != nil {
-		var zero T
-
 		var forbiddenErr *TeamForbiddenError
 		if errors.As(err, &forbiddenErr) {
-			return zero, &APIError{
+			return nil, &APIError{
 				Err:       fmt.Errorf("failed getting team: %w", err),
 				ClientMsg: fmt.Sprintf("Forbidden: %s", err.Error()),
 				Code:      http.StatusForbidden,
@@ -208,14 +197,14 @@ func (s *AuthService[T]) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.C
 
 		var blockedErr *TeamBlockedError
 		if errors.As(err, &blockedErr) {
-			return zero, &APIError{
+			return nil, &APIError{
 				Err:       fmt.Errorf("failed getting team: %w", err),
 				ClientMsg: fmt.Sprintf("Blocked: %s", err.Error()),
 				Code:      http.StatusForbidden,
 			}
 		}
 
-		return zero, &APIError{
+		return nil, &APIError{
 			Err:       fmt.Errorf("failed getting team: %w", err),
 			ClientMsg: "Backend authentication failed",
 			Code:      http.StatusUnauthorized,
@@ -233,12 +222,12 @@ func (s *AuthService[T]) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.C
 
 // InvalidateTeamMemberCache removes the cached auth entry for a specific user-team pair.
 // This should be called when team membership changes (member added or removed).
-func (s *AuthService[T]) InvalidateTeamMemberCache(ctx context.Context, userID uuid.UUID, teamID string) {
+func (s *AuthService) InvalidateTeamMemberCache(ctx context.Context, userID uuid.UUID, teamID string) {
 	s.teamCache.Invalidate(ctx, supabaseTeamCacheKey(userID, teamID))
 }
 
 // InvalidateTeamCache queries the team's API key hashes and removes their cached entries.
-func (s *AuthService[T]) InvalidateTeamCache(ctx context.Context, teamID uuid.UUID) error {
+func (s *AuthService) InvalidateTeamCache(ctx context.Context, teamID uuid.UUID) error {
 	s.teamCache.Invalidate(ctx, teamCacheKey(teamID))
 
 	hashes, err := s.store.GetTeamAPIKeyHashes(ctx, teamID)
@@ -262,6 +251,6 @@ func teamCacheKey(teamID uuid.UUID) string {
 }
 
 // Close stops the underlying cache's background refresh goroutines.
-func (s *AuthService[T]) Close(ctx context.Context) error {
+func (s *AuthService) Close(ctx context.Context) error {
 	return s.teamCache.Close(ctx)
 }
