@@ -1,6 +1,13 @@
 locals {
   api_internal_grpc_address = trimspace(var.api_internal_grpc_address)
   api_edge_grpc_address     = trimspace(var.api_edge_grpc_address)
+
+  # Convert exposure_type to Traefik entrypoints
+  entrypoints = (
+    var.exposure_type == "both" ? "web,internal" :
+    var.exposure_type == "private" ? "internal" :
+    "web"
+  )
 }
 
 resource "nomad_job" "client_proxy" {
@@ -34,6 +41,6 @@ resource "nomad_job" "client_proxy" {
     logs_collector_address       = var.logs_collector_address
     launch_darkly_api_key        = trimspace(var.launch_darkly_api_key)
 
-    exposure_type = var.exposure_type
+    entrypoints = local.entrypoints
   })
 }
