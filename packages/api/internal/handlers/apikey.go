@@ -40,7 +40,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		return
 	}
 
-	teamID := auth.MustGetTeamInfo(c).Team.ID
+	teamID := auth.MustGetTeamID(c)
 
 	now := time.Now()
 	_, err = a.authDB.Write.UpdateTeamApiKey(ctx, authqueries.UpdateTeamApiKeyParams{
@@ -67,7 +67,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 func (a *APIStore) GetApiKeys(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	teamID := auth.MustGetTeamInfo(c).Team.ID
+	teamID := auth.MustGetTeamID(c)
 
 	apiKeysDB, err := a.authDB.Read.GetTeamAPIKeysWithCreator(ctx, teamID)
 	if err != nil {
@@ -116,7 +116,7 @@ func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		return
 	}
 
-	teamID := auth.MustGetTeamInfo(c).Team.ID
+	teamID := auth.MustGetTeamID(c)
 
 	ids, err := a.authDB.Write.DeleteTeamAPIKey(ctx, authqueries.DeleteTeamAPIKeyParams{
 		ID:     apiKeyIDParsed,
@@ -142,7 +142,7 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	userID := auth.MustGetUserID(c)
-	teamID := auth.MustGetTeamInfo(c).Team.ID
+	teamID := auth.MustGetTeamID(c)
 
 	body, err := ginutils.ParseBody[api.NewTeamAPIKey](ctx, c)
 	if err != nil {

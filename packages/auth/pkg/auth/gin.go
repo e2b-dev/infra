@@ -42,6 +42,10 @@ func MustGetTeamInfo(c *gin.Context) *types.Team {
 	return team
 }
 
+func MustGetTeamID(c *gin.Context) uuid.UUID {
+	return MustGetTeamInfo(c).Team.ID
+}
+
 func GetTeamInfo(c *gin.Context) (*types.Team, bool) {
 	return getFromGinContextSafely[*types.Team](c, teamContextKey)
 }

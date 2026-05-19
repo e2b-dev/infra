@@ -27,7 +27,7 @@ func (s *APIStore) GetSandboxesSandboxIDRecord(c *gin.Context, sandboxID api.San
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "get sandbox details")
 
-	teamID := auth.MustGetTeamInfo(c).Team.ID
+	teamID := auth.MustGetTeamID(c)
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamID.String()), telemetry.WithSandboxID(sandboxID))
 
 	row, err := s.db.GetSandboxRecordByTeamAndSandboxID(ctx, queries.GetSandboxRecordByTeamAndSandboxIDParams{
