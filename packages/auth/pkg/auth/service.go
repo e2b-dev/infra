@@ -26,12 +26,29 @@ type authStore interface {
 	GetTeamAPIKeyHashes(ctx context.Context, teamID uuid.UUID) ([]string, error)
 }
 
+// Service is the interface implemented by AuthService. It exposes the auth
+// validation, team lookup, and cache invalidation operations used by callers
+// such as APIStore and the dashboard-api handlers.
+type Service interface {
+	ValidateAPIKey(ctx context.Context, ginCtx *gin.Context, apiKey string) (*types.Team, *APIError)
+	ValidateAccessToken(ctx context.Context, ginCtx *gin.Context, accessToken string) (uuid.UUID, *APIError)
+	ValidateAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError)
+	ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *APIError)
+	GetTeamByID(ctx context.Context, teamID uuid.UUID) (*types.Team, error)
+	InvalidateTeamMemberCache(ctx context.Context, userID uuid.UUID, teamID string)
+	InvalidateTeamCache(ctx context.Context, teamID uuid.UUID) error
+	Close(ctx context.Context) error
+}
+
 // AuthService encapsulates the cache, store, and JWT verifier for auth validation.
 type AuthService struct {
 	store                authStore
 	teamCache            *authCache
 	authProviderVerifier *verifier
 }
+
+// Compile-time assertion that *AuthService satisfies the Service interface.
+var _ Service = (*AuthService)(nil)
 
 // NewAuthService wires up the team cache, auth store, identity lookup, and JWT
 // verifier from the supplied dependencies. The HTTP client is used for OIDC
@@ -42,7 +59,7 @@ func NewAuthService(
 	authDB *authdb.Client,
 	providerConfig ProviderConfig,
 	httpClient *http.Client,
-) (*AuthService, error) {
+) (Service, error) {
 	if redisClient == nil {
 		return nil, errors.New("redisClient is required")
 	}
