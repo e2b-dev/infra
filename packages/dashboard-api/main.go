@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"github.com/riverqueue/river"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -185,7 +186,10 @@ func run() int {
 		}
 	}()
 
-	authService, err := sharedauth.NewAuthService(ctx, redisClient, authDB, config.AuthProvider, &http.Client{})
+	authClient := &http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+	authService, err := sharedauth.NewAuthService(ctx, redisClient, authDB, config.AuthProvider, authClient)
 	if err != nil {
 		l.Error(ctx, "Initializing auth service", zap.Error(err))
 

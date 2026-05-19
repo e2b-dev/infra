@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -198,7 +199,10 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		logger.L().Fatal(ctx, "Initializing Orchestrator client", zap.Error(err))
 	}
 
-	authService, err := sharedauth.NewAuthService(ctx, redisClient, authDB, config.AuthProvider, &http.Client{})
+	authClient := &http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+	authService, err := sharedauth.NewAuthService(ctx, redisClient, authDB, config.AuthProvider, authClient)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing auth service", zap.Error(err))
 	}
