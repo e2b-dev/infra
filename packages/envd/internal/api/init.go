@@ -21,8 +21,13 @@ import (
 
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
+	"github.com/e2b-dev/infra/packages/envd/internal/logs/ratelimit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
+
+// /init is hammered by the orchestrator's infinite retry loop, so a
+// persistent pin failure would otherwise flood the log.
+var pinMMDSWarnLimit = ratelimit.New(10 * time.Second)
 
 var (
 	ErrAccessTokenMismatch           = errors.New("access token validation failed")
@@ -73,6 +78,18 @@ func (a *API) checkMMDSHash(ctx context.Context, requestToken *SecureToken) (boo
 	}
 
 	mmdsHash, err := a.mmdsClient.GetAccessTokenHash(ctx)
+	if err != nil {
+		// Self-heal: a user-installed PREROUTING/OUTPUT redirect on
+		// 169.254.169.254:80 in the same netns can shadow our route.
+		// Re-pin our RETURN rule at position 1 of nat PREROUTING and
+		// OUTPUT, then retry once.
+		if pinErr := host.PinMMDSRoute(ctx); pinErr != nil {
+			if ok, suppressed := pinMMDSWarnLimit.Allow(); ok {
+				a.logger.Warn().Err(pinErr).Int64("suppressed", suppressed).Msg("failed to pin MMDS iptables route")
+			}
+		}
+		mmdsHash, err = a.mmdsClient.GetAccessTokenHash(ctx)
+	}
 	if err != nil {
 		return false, false
 	}
