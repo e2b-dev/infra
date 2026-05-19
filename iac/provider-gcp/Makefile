@@ -101,7 +101,8 @@ tf_vars := \
 	$(call tfvar, CLIENT_PROXY_OIDC_ISSUER_URL) \
 	$(call tfvar, GCS_GRPC_CONNECTION_POOL_SIZE) \
 	$(call tfvar, ADDITIONAL_API_PATHS_HANDLED_BY_INGRESS) \
-	$(call tfvar, ANYWHERE_CACHE_ENABLED)
+	$(call tfvar, ANYWHERE_CACHE_ENABLED) \
+	$(call tfvar, INGRESS_SANDBOX_TRAFFIC_WEIGHT)
 
 .PHONY: init
 init:

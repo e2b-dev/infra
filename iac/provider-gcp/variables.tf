@@ -156,6 +156,12 @@ variable "additional_api_paths_handled_by_ingress" {
   default     = []
 }
 
+variable "ingress_sandbox_traffic_weight" {
+  type        = number
+  description = "Weight (out of 100) of sandbox traffic routed to the ingress backend. The remainder goes to the session backend."
+  default     = 1
+}
+
 variable "client_proxy_resources_memory_mb" {
   type    = number
   default = 1024

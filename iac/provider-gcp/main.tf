@@ -168,6 +168,7 @@ module "cluster" {
 
   additional_domains                      = local.additional_domains
   additional_api_paths_handled_by_ingress = local.normalized_api_paths_handled_by_ingress
+  ingress_sandbox_traffic_weight          = var.ingress_sandbox_traffic_weight
 
   docker_contexts_bucket_name = module.init.envs_docker_context_bucket_name
   cluster_setup_bucket_name   = module.init.cluster_setup_bucket_name
