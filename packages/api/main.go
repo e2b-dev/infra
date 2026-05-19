@@ -78,20 +78,16 @@ const (
 	// us off active backends.
 	shutdownDrainWait = 15 * time.Second
 
-	// httpShutdownTimeout caps how long s.Shutdown waits for in-flight
+	// shutdownTimeout caps how long s.Shutdown waits for in-flight
 	// requests to complete. Must be >= requestTimeout so a request, that
 	// arrived before load balancer stopped sending new traffic,
 	// has its full deadline to finish
 	// (e.g. a slow sandbox pause / snapshot RPC).
-	httpShutdownTimeout = requestTimeout + 5*time.Second
-
-	// grpcShutdownTimeout caps grpc.Server.GracefulStop. After this we
+	//
+	// Also caps grpc.Server.GracefulStop. After this we
 	// fall back to Stop() so a stuck stream cannot block the process
-	// past Nomad's kill_timeout. Matches httpShutdownTimeout so legitimate
-	// long-running handlers (e.g. ResumeSandbox waiting up to
-	// autoResumeTransitionWaitBudget for a transitioning sandbox) get the
-	// same drain budget as HTTP requests during rolling deploys.
-	grpcShutdownTimeout = httpShutdownTimeout
+	// past Nomad's kill_timeout.
+	shutdownTimeout = requestTimeout + 5*time.Second
 
 	// pprofShutdownTimeout is a best-effort bound for pprof drain.
 	pprofShutdownTimeout = 5 * time.Second
@@ -566,7 +562,7 @@ func run() int {
 		drainWG := &sync.WaitGroup{}
 
 		drainWG.Go(func() {
-			httpShutdownCtx, httpShutdownCancel := context.WithTimeout(ctx, httpShutdownTimeout)
+			httpShutdownCtx, httpShutdownCancel := context.WithTimeout(ctx, shutdownTimeout)
 			defer httpShutdownCancel()
 			if err := s.Shutdown(httpShutdownCtx); err != nil {
 				exitCode.Add(1)
@@ -578,8 +574,8 @@ func run() int {
 		// stuck stream would block past Nomad's kill_timeout. Fall back to
 		// Stop() after the budget elapses.
 		drainWG.Go(func() {
-			if !e2bgrpc.GracefulStopWithTimeout(grpcServer, grpcShutdownTimeout) {
-				l.Warn(ctx, "internal gRPC forced stop after graceful timeout", zap.Duration("budget", grpcShutdownTimeout))
+			if !e2bgrpc.GracefulStopWithTimeout(grpcServer, shutdownTimeout) {
+				l.Warn(ctx, "internal gRPC forced stop after graceful timeout", zap.Duration("budget", shutdownTimeout))
 			}
 		})
 		drainWG.Go(func() {
