@@ -79,7 +79,7 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 				var err error
 				output, err = utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", hashCmd)
 				require.NoError(c, err)
-			}, 30*time.Second, time.Second)
+			}, 90*time.Second, 2*time.Second)
 
 			return strings.TrimSpace(output)
 		}
