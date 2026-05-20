@@ -60,7 +60,7 @@ func (c *Cleaner) Statter(ctx context.Context, done *sync.WaitGroup) {
 		case <-ctx.Done():
 			return
 		case req := <-c.statRequestCh:
-			f, err := c.statInDir(req.dirPath, req.name)
+			f, err := c.statInDir(req.df, req.name)
 			req.f = f
 			req.err = err
 			req.response <- req
@@ -185,7 +185,6 @@ func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (out *Dir, err error
 	}
 
 	dirs := make([]*Dir, 0)
-	nFiles := 0
 	var filenames []string
 	for _, e := range entries {
 		name := e.Name()
@@ -195,46 +194,48 @@ func (c *Cleaner) scanDir(ctx context.Context, path []*Dir) (out *Dir, err error
 			dirs = append(dirs, NewDir(name))
 			c.DirC.Add(1)
 		} else {
-			// file
-			nFiles++
 			filenames = append(filenames, name)
 		}
 	}
 
-	// Submit stat requests using the directory path (not the *os.File).
-	// The file descriptor df is closed when scanDir returns (defer above),
-	// but Statter goroutines may still be processing requests concurrently.
-	// Passing the path avoids a race between df.Close() and df.Fd().
+	// Submit stat requests using the directory fd so Statter can use
+	// fd-relative statx — on NFS this avoids per-component LOOKUP RPCs.
+	//
+	// Once a Statter has pulled a request off statRequestCh it will always
+	// send a response (it does not re-check ctx mid-processing). To make
+	// the deferred df.Close() safe, we must drain a response for every
+	// successfully-submitted request before returning, even when ctx is
+	// canceled mid-loop. responseCh is buffered to len(filenames) so a
+	// Statter's send back never blocks.
 	responseCh := make(chan *statReq, len(filenames))
+	submitted := 0
+submitLoop:
 	for _, name := range filenames {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
-		case c.statRequestCh <- &statReq{dirPath: absPath, name: name, response: responseCh}:
-			// submitted
+			err = ctx.Err()
+			break submitLoop
+		case c.statRequestCh <- &statReq{df: df, name: name, response: responseCh}:
+			submitted++
 		}
 	}
 
-	// get all stat responses
-	err = nil
-	files := make([]File, nFiles)
-	for i := range nFiles {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case resp := <-responseCh:
-			if resp.err != nil {
+	files := make([]File, 0, submitted)
+	for range submitted {
+		resp := <-responseCh
+		switch {
+		case resp.err != nil:
+			if err == nil {
 				err = resp.err
-
-				continue
 			}
-			files[i] = *resp.f
+		case err == nil:
+			files = append(files, *resp.f)
 		}
 	}
 	if err != nil {
 		return nil, err
 	}
-	c.FileC.Add(int64(nFiles))
+	c.FileC.Add(int64(len(files)))
 
 	d.mu.Lock()
 	d.Dirs = dirs

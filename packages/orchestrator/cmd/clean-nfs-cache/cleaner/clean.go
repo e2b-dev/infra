@@ -100,7 +100,7 @@ type Candidate struct {
 }
 
 type statReq struct {
-	dirPath  string
+	df       *os.File
 	name     string
 	response chan *statReq
 	f        *File
