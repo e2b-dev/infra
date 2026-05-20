@@ -25,11 +25,10 @@ var (
 	uploadCompressionRatioBp = utils.Must(telemetry.GetHistogram(meter, telemetry.UploadCompressionRatioBp))
 )
 
-func recordUploadCompression(ctx context.Context, artifact, fileType, useCase string, cfg storage.CompressConfig, uncompressed, compressed int64) {
+func recordUploadCompression(ctx context.Context, artifact, fileType string, cfg storage.CompressConfig, uncompressed, compressed int64) {
 	attrs := metric.WithAttributes(
 		attribute.String("artifact", artifact),
-		attribute.String("file_type", fileType),
-		attribute.String("use_case", useCase),
+		attribute.String("file_type", uploadMetricFileType(fileType)),
 		attribute.String("compression.type", cfg.CompressionType().String()),
 		attribute.Int("compression.level", cfg.Level),
 	)
@@ -47,13 +46,13 @@ func uploadRatioBp(compressed, uncompressed int64) int64 {
 	return compressed * 10000 / uncompressed
 }
 
-func storeHeaderWithMetrics(ctx context.Context, store storage.StorageProvider, path, fileType, useCase string, h *headers.Header) error {
+func storeHeaderWithMetrics(ctx context.Context, store storage.StorageProvider, path, fileType string, h *headers.Header) error {
 	size, err := headers.StoreHeader(ctx, store, path, h)
 	if err != nil {
 		return err
 	}
 
-	recordUploadCompression(ctx, uploadArtifactHeader, fileType, useCase, storage.CompressConfig{}, size, size)
+	recordUploadCompression(ctx, uploadArtifactHeader, fileType, storage.CompressConfig{}, size, size)
 
 	return nil
 }
