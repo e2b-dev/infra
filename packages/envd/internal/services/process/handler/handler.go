@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -20,7 +21,6 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
-	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
@@ -57,6 +57,10 @@ type Handler struct {
 
 	stdinMu sync.Mutex
 	stdin   io.WriteCloser
+
+	stdoutBytes atomic.Int64
+	stderrBytes atomic.Int64
+	ptyBytes    atomic.Int64
 
 	DataEvent *MultiplexedChannel[rpc.ProcessEvent_Data]
 	EndEvent  *MultiplexedChannel[rpc.ProcessEvent_End]
@@ -209,6 +213,7 @@ func New(
 							},
 						},
 					}
+					h.ptyBytes.Add(int64(n))
 				}
 
 				if errors.Is(readErr, io.EOF) {
@@ -231,13 +236,6 @@ func New(
 		}
 
 		outWg.Go(func() {
-			stdoutLogs := make(chan []byte, outputBufferSize)
-			defer close(stdoutLogs)
-
-			stdoutLogger := logger.With().Str("event_type", "stdout").Logger()
-
-			go logs.LogBufferedDataEvents(stdoutLogs, &stdoutLogger, "data")
-
 			// Reusable read buffer to avoid allocation per Read cycle when no
 			// subscribers are connected.
 			readBuf := make([]byte, stdChunkSize)
@@ -255,8 +253,7 @@ func New(
 							},
 						},
 					}
-
-					stdoutLogs <- data
+					h.stdoutBytes.Add(int64(len(data)))
 				}
 
 				if errors.Is(readErr, io.EOF) {
@@ -277,13 +274,6 @@ func New(
 		}
 
 		outWg.Go(func() {
-			stderrLogs := make(chan []byte, outputBufferSize)
-			defer close(stderrLogs)
-
-			stderrLogger := logger.With().Str("event_type", "stderr").Logger()
-
-			go logs.LogBufferedDataEvents(stderrLogs, &stderrLogger, "data")
-
 			readBuf := make([]byte, stdChunkSize)
 
 			for {
@@ -299,8 +289,7 @@ func New(
 							},
 						},
 					}
-
-					stderrLogs <- data
+					h.stderrBytes.Add(int64(len(data)))
 				}
 
 				if errors.Is(readErr, io.EOF) {
@@ -473,6 +462,9 @@ func (p *Handler) Wait() {
 		Info().
 		Str("event_type", "process_end").
 		Interface("process_result", endEvent).
+		Int64("stdout_bytes", p.stdoutBytes.Load()).
+		Int64("stderr_bytes", p.stderrBytes.Load()).
+		Int64("pty_bytes", p.ptyBytes.Load()).
 		Msg(fmt.Sprintf("Process with pid %d ended", p.cmd.Process.Pid))
 
 	// Ensure the process cancel is called to cleanup resources.
