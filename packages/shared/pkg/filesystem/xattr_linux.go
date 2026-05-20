@@ -51,10 +51,6 @@ func ReadMetadata(path string) (map[string]string, error) {
 // MetadataXattrPrefix namespace. Existing xattrs in that namespace that are
 // not present in metadata are left untouched.
 //
-// Writes are not atomic: a mid-loop syscall failure leaves earlier keys
-// persisted on disk. Callers should ValidateMetadata first so partial
-// failures only happen for genuine filesystem errors.
-//
 // Safe to call before or after chown — `user.*` xattrs are preserved across
 // ownership changes, and envd runs as root inside the VM so the kernel
 // write-permission check is satisfied regardless of file ownership.
@@ -72,56 +68,37 @@ func WriteMetadata(path string, metadata map[string]string) error {
 	return nil
 }
 
-// listxattr returns the list of xattr names on the given path. The kernel's
-// size-then-fetch interface races with concurrent xattr writes, so we retry
-// on ERANGE.
 func listxattr(path string) ([]string, error) {
-	for {
-		size, err := unix.Listxattr(path, nil)
-		if err != nil {
-			return nil, err
-		}
-		if size == 0 {
-			return nil, nil
-		}
-
-		buf := make([]byte, size)
-		n, err := unix.Listxattr(path, buf)
-		if err == nil {
-			return splitNullTerminated(buf[:n]), nil
-		}
-		if !errors.Is(err, unix.ERANGE) {
-			return nil, err
-		}
+	size, err := unix.Listxattr(path, nil)
+	if err != nil {
+		return nil, err
 	}
+	if size == 0 {
+		return nil, nil
+	}
+
+	buf := make([]byte, size)
+	n, err := unix.Listxattr(path, buf)
+	if err != nil {
+		return nil, err
+	}
+
+	return splitNullTerminated(buf[:n]), nil
 }
 
-// getxattr returns the value of a single xattr. Like listxattr, it retries
-// on ERANGE to tolerate concurrent xattr writes growing the value between
-// the size query and the fetch.
 func getxattr(path, name string) ([]byte, error) {
-	for {
-		size, err := unix.Getxattr(path, name, nil)
-		if err != nil {
-			return nil, err
-		}
-		if size == 0 {
-			// Empty xattr value. Passing a zero-length buffer to Getxattr
-			// would be interpreted by the kernel as another size query,
-			// which could return a non-zero size if the value grew
-			// concurrently and panic on buf[:n]. Return early instead.
-			return []byte{}, nil
-		}
-
-		buf := make([]byte, size)
-		n, err := unix.Getxattr(path, name, buf)
-		if err == nil {
-			return buf[:n], nil
-		}
-		if !errors.Is(err, unix.ERANGE) {
-			return nil, err
-		}
+	size, err := unix.Getxattr(path, name, nil)
+	if err != nil {
+		return nil, err
 	}
+
+	buf := make([]byte, size)
+	n, err := unix.Getxattr(path, name, buf)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf[:n], nil
 }
 
 func splitNullTerminated(buf []byte) []string {
