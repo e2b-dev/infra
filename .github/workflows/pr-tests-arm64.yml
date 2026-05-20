@@ -146,7 +146,14 @@ jobs:
         if: matrix.package == 'packages/orchestrator'
 
       - name: Install gotestsum
-        run: go install gotest.tools/gotestsum@v1.13.0
+        # Retry to ride out transient proxy.golang.org HTTP/2 stream errors.
+        run: |
+          for i in 1 2 3; do
+            go install gotest.tools/gotestsum@v1.13.0 && exit 0
+            echo "gotestsum install attempt $i failed, retrying" >&2
+            sleep $((i * 5))
+          done
+          exit 1
 
       - name: Compile test binaries
         working-directory: ${{ matrix.package }}

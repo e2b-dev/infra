@@ -113,7 +113,14 @@ jobs:
         if: matrix.package == 'packages/orchestrator'
 
       - name: Install gotestsum
-        run: go install gotest.tools/gotestsum@v1.13.0
+        # Retry to ride out transient proxy.golang.org HTTP/2 stream errors.
+        run: |
+          for i in 1 2 3; do
+            go install gotest.tools/gotestsum@v1.13.0 && exit 0
+            echo "gotestsum install attempt $i failed, retrying" >&2
+            sleep $((i * 5))
+          done
+          exit 1
 
       # sudo strips PATH; pass it through so gotestsum/go resolve to the runner's
       # toolchain (1.26.3) instead of /usr/bin/go. Trap chowns reports back to
