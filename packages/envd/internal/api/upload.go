@@ -275,6 +275,13 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 	var metadata map[string]string
 	if params.Metadata != nil {
 		metadata = *params.Metadata
+		if err := filesystem.ValidateMetadata(metadata); err != nil {
+			errMsg = fmt.Errorf("invalid metadata: %w", err)
+			errorCode = http.StatusBadRequest
+			jsonError(w, errorCode, errMsg)
+
+			return
+		}
 	}
 
 	// Use raw body upload only for application/octet-stream, default to multipart for backwards compatibility
