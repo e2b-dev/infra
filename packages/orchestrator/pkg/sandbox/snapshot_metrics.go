@@ -75,10 +75,7 @@ func recordSnapshotDedup(
 	}
 	preBytes := int64(pre.Dirty.GetCardinality()) * pre.BlockSize
 	uniqueBytes := int64(post.Dirty.GetCardinality()) * post.BlockSize
-	dedupedBytes := preBytes - uniqueBytes
-	if dedupedBytes < 0 {
-		dedupedBytes = 0
-	}
+	dedupedBytes := max(preBytes-uniqueBytes, 0)
 
 	ft := attribute.String("file_type", fileType)
 	uc := attribute.String("use_case", string(useCase))
