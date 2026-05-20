@@ -48,16 +48,11 @@ func uploadRatioBp(compressed, uncompressed int64) int64 {
 }
 
 func storeHeaderWithMetrics(ctx context.Context, store storage.StorageProvider, path, fileType, useCase string, h *headers.Header) error {
-	if err := headers.StoreHeader(ctx, store, path, h); err != nil {
-		return err
-	}
-
-	data, err := headers.SerializeHeader(h)
+	size, err := headers.StoreHeader(ctx, store, path, h)
 	if err != nil {
 		return err
 	}
 
-	size := int64(len(data))
 	recordUploadCompression(ctx, uploadArtifactHeader, fileType, useCase, storage.CompressConfig{}, size, size)
 
 	return nil
