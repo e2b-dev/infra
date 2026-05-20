@@ -33,14 +33,6 @@ const (
 	outputChunkSize  = 32 << 10
 )
 
-var outputBufferPool = sync.Pool{
-	New: func() any {
-		buf := make([]byte, outputChunkSize)
-
-		return &buf
-	},
-}
-
 type ProcessExit struct {
 	Error  *string
 	Status string
@@ -221,9 +213,7 @@ func New(
 		h.ttySlave = ttySlave
 
 		outWg.Go(func() {
-			readBufPtr := outputBufferPool.Get().(*[]byte)
-			defer outputBufferPool.Put(readBufPtr)
-			readBuf := *readBufPtr
+			readBuf := make([]byte, outputChunkSize)
 
 			for {
 				n, readErr := tty.Read(readBuf)
@@ -262,9 +252,7 @@ func New(
 		}
 
 		outWg.Go(func() {
-			readBufPtr := outputBufferPool.Get().(*[]byte)
-			defer outputBufferPool.Put(readBufPtr)
-			readBuf := *readBufPtr
+			readBuf := make([]byte, outputChunkSize)
 
 			for {
 				n, readErr := stdout.Read(readBuf)
@@ -303,9 +291,7 @@ func New(
 		}
 
 		outWg.Go(func() {
-			readBufPtr := outputBufferPool.Get().(*[]byte)
-			defer outputBufferPool.Put(readBufPtr)
-			readBuf := *readBufPtr
+			readBuf := make([]byte, outputChunkSize)
 
 			for {
 				n, readErr := stderr.Read(readBuf)
