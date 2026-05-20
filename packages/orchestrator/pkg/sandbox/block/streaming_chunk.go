@@ -95,10 +95,29 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64, ft *storage.Fram
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
-	if err := c.fetch(ctx, off, ft); err != nil {
-		timer.RecordRaw(ctx, length, attrs.failRemoteFetch)
+	// Fetch every chunk the requested range spans. With dedup a single
+	// sub-mapping can straddle a MemoryChunkSize boundary, and each fetch
+	// session covers only one chunk — without the loop sliceDirect would
+	// hand back uninitialized cache bytes for the tail.
+	end := off + length
+	for cur := off; cur < end; {
+		chunkOff, chunkLen, lerr := c.locateChunk(cur, ft)
+		if lerr != nil {
+			timer.RecordRaw(ctx, length, attrs.failRemoteFetch)
 
-		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, err)
+			return nil, fmt.Errorf("failed to locate chunk for offset %d: %w", cur, lerr)
+		}
+		chunkEnd := chunkOff + chunkLen
+		rangeEnd := end
+		if rangeEnd > chunkEnd {
+			rangeEnd = chunkEnd
+		}
+		if err := c.fetch(ctx, cur, rangeEnd-cur, ft); err != nil {
+			timer.RecordRaw(ctx, length, attrs.failRemoteFetch)
+
+			return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", cur, rangeEnd, err)
+		}
+		cur = chunkEnd
 	}
 
 	// sliceDirect skips isCached — the waiter already confirmed the data is in the mmap.
@@ -145,10 +164,16 @@ func (c *Chunker) getOrCreateSession(ctx context.Context, off, length int64, ft 
 	return s, false
 }
 
-// fetch ensures the frame/chunk covering off is fetched into the mmap cache,
-// then waits until the block at off is available. Deduplicates concurrent
-// requests for the same region via the session list.
-func (c *Chunker) fetch(ctx context.Context, off int64, ft *storage.FrameTable) error {
+// fetch ensures the frame/chunk covering [off, off+length) is fetched
+// into the mmap cache, then waits for every block the range spans within
+// that chunk. Deduplicates concurrent requests via the session list.
+//
+// Waiting on every spanned block (not just the start block) is critical
+// for dedup: a sub-mapping can be larger than the chunker's blockSize
+// and a slice straddling a block boundary would otherwise unblock as
+// soon as the start block lands — sliceDirect would then return cache
+// bytes for the unfetched tail block.
+func (c *Chunker) fetch(ctx context.Context, off, length int64, ft *storage.FrameTable) error {
 	chunkOff, chunkLen, err := c.locateChunk(off, ft)
 	if err != nil {
 		return fmt.Errorf("failed to locate chunk for offset %d: %w", off, err)
@@ -160,9 +185,21 @@ func (c *Chunker) fetch(ctx context.Context, off int64, ft *storage.FrameTable) 
 	}
 
 	blockSize := c.cache.BlockSize()
-	blockOff := (off / blockSize) * blockSize
+	startBlock := (off / blockSize) * blockSize
+	endBlock := ((off + length - 1) / blockSize) * blockSize
+	chunkEnd := chunkOff + chunkLen
+	for b := startBlock; b <= endBlock; b += blockSize {
+		if b >= chunkEnd {
+			// Tail crosses into the next chunk; the caller's loop will
+			// trigger that fetch separately.
+			break
+		}
+		if err := session.registerAndWait(ctx, b); err != nil {
+			return err
+		}
+	}
 
-	return session.registerAndWait(ctx, blockOff)
+	return nil
 }
 
 // runFetch fetches data from storage into the mmap cache. Runs in a background goroutine.
