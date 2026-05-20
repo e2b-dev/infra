@@ -135,11 +135,19 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, met
 
 	if len(metadata) > 0 {
 		if err := filesystem.WriteMetadata(path, metadata); err != nil {
-			if errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT) {
+			switch {
+			case errors.Is(err, syscall.ENOTSUP) || errors.Is(err, syscall.EOPNOTSUPP):
+				// Filesystem doesn't support xattrs (e.g. /sys, /proc).
+				// The file body was already written successfully — drop
+				// the metadata silently so the response EntryInfo doesn't
+				// claim it was persisted, and log for diagnostics.
+				logger.Warn().Str("path", path).Err(err).Msg("filesystem does not support xattrs; metadata not persisted")
+				clear(metadata)
+			case errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT):
 				return http.StatusInsufficientStorage, fmt.Errorf("not enough space for file metadata: %w", err)
+			default:
+				return http.StatusInternalServerError, fmt.Errorf("error writing file metadata: %w", err)
 			}
-
-			return http.StatusInternalServerError, fmt.Errorf("error writing file metadata: %w", err)
 		}
 	}
 
