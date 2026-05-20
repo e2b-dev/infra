@@ -4,7 +4,6 @@ package sandbox
 
 import (
 	"context"
-	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -41,21 +40,12 @@ func recordUploadCompression(ctx context.Context, artifact, fileType, useCase st
 }
 
 func storeHeaderWithMetrics(ctx context.Context, store storage.StorageProvider, path, fileType, useCase string, h *headers.Header) error {
-	if h.IncompletePendingUpload {
-		return fmt.Errorf("refusing to persist incomplete header for %s", path)
+	if err := headers.StoreHeader(ctx, store, path, h); err != nil {
+		return err
 	}
 
 	data, err := headers.SerializeHeader(h)
 	if err != nil {
-		return fmt.Errorf("serialize header: %w", err)
-	}
-
-	blob, err := store.OpenBlob(ctx, path, storage.MetadataObjectType)
-	if err != nil {
-		return fmt.Errorf("open blob %s: %w", path, err)
-	}
-
-	if err := blob.Put(ctx, data); err != nil {
 		return err
 	}
 
