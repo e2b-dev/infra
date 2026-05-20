@@ -408,7 +408,7 @@ func (c *Cache) WriteZeroesAt(off, length int64) (int, error) {
 
 // FileSize returns the size of the cache on disk.
 // The size might differ from the dirty size, as it may not be fully on disk.
-func (c *Cache) FileSize() (int64, error) {
+func (c *Cache) FileSize(_ context.Context) (int64, error) {
 	var stat syscall.Stat_t
 	err := syscall.Stat(c.filePath, &stat)
 	if err != nil {
@@ -471,8 +471,8 @@ func (c *Cache) BlockSize() int64 {
 	return c.blockSize
 }
 
-func (c *Cache) Path() string {
-	return c.filePath
+func (c *Cache) Path(_ context.Context) (string, error) {
+	return c.filePath, nil
 }
 
 func NewCacheFromProcessMemory(

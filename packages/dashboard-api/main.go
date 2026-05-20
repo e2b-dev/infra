@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"github.com/riverqueue/river"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -185,18 +186,15 @@ func run() int {
 		}
 	}()
 
-	authCache := sharedauth.NewAuthCache(redisClient)
-	authStore := sharedauth.NewAuthStore(authDB)
-	authHTTPClient := &http.Client{}
-	authIdentityLookup := sharedauth.NewAuthIdentityLookup(authDB.Read)
-	authProviderVerifier, err := sharedauth.NewVerifier(ctx, config.AuthProvider, authHTTPClient, authIdentityLookup)
+	authClient := &http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+	authService, err := sharedauth.NewAuthService(ctx, redisClient, authDB, config.AuthProvider, authClient)
 	if err != nil {
-		l.Error(ctx, "Initializing auth provider JWT verifier", zap.Error(err))
+		l.Error(ctx, "Initializing auth service", zap.Error(err))
 
 		return 1
 	}
-
-	authService := sharedauth.NewAuthService(authStore, authCache, authProviderVerifier)
 	defer authService.Close(ctx)
 
 	teamProvisionSink, err := internalteamprovision.NewProvisionSink(

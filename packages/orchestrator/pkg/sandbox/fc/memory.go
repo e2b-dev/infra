@@ -23,12 +23,15 @@ func (p *Process) DirtyMemory(ctx context.Context, blockSize int64) (*header.Dif
 	return p.client.dirtyMemory(ctx, blockSize)
 }
 
-func (p *Process) ExportMemory(
+func (p *Process) exportMemoryFromFc(
 	ctx context.Context,
 	include *roaring.Bitmap,
 	cachePath string,
 	blockSize int64,
-) (*block.Cache, error) {
+) (block.DiffSource, error) {
+	ctx, span := tracer.Start(ctx, "export-memory-from-fc")
+	defer span.End()
+
 	m, err := p.client.memoryMapping(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memory mappings: %w", err)
@@ -56,4 +59,22 @@ func (p *Process) ExportMemory(
 	}
 
 	return cache, nil
+}
+
+func (p *Process) ExportMemory(
+	ctx context.Context,
+	include *roaring.Bitmap,
+	cachePath string,
+	blockSize int64,
+	memfd *block.Memfd,
+	bgCopy bool,
+) (block.DiffSource, error) {
+	if memfd == nil {
+		return p.exportMemoryFromFc(ctx, include, cachePath, blockSize)
+	}
+	if bgCopy {
+		return block.NewCacheFromMemfdAsync(ctx, blockSize, cachePath, memfd, include)
+	}
+
+	return block.NewCacheFromMemfd(ctx, blockSize, cachePath, memfd, include)
 }

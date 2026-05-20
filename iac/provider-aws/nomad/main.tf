@@ -75,8 +75,10 @@ module "redis" {
 module "ingress" {
   source = "../../modules/job-ingress"
 
-  ingress_count        = var.ingress_count
-  ingress_proxy_port   = var.ingress_port
+  ingress_count         = var.ingress_count
+  ingress_port          = var.ingress_port
+  ingress_internal_port = var.ingress_internal_port
+
   traefik_config_files = var.traefik_config_files
 
   node_pool     = var.api_node_pool

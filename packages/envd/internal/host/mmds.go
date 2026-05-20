@@ -130,7 +130,13 @@ func GetAccessTokenHashFromMMDS(ctx context.Context) (string, error) {
 }
 
 func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *utils.EnvVars) {
-	httpClient := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+	// Match mmdsAccessTokenClient: bound any single tick (e.g. -j DROP on
+	// MMDS would otherwise hang on the TCP handshake) and avoid keepalive
+	// so a broken intermediate doesn't poison a kept-open connection.
+	httpClient := &http.Client{
+		Timeout:   mmdsAccessTokenRequestClientTimeout,
+		Transport: &http.Transport{DisableKeepAlives: true},
+	}
 	defer httpClient.CloseIdleConnections()
 
 	var lastErr error
@@ -174,7 +180,13 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 			}
 
 			if mmdsOpts.LogsCollectorAddress != "" {
-				mmdsChan <- mmdsOpts
+				select {
+				case mmdsChan <- mmdsOpts:
+				case <-ctx.Done():
+					fmt.Fprintf(os.Stderr, "context cancelled while sending mmds opts\n")
+
+					return
+				}
 			}
 
 			return

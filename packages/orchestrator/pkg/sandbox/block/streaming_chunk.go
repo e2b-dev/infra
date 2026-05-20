@@ -295,8 +295,8 @@ func (c *Chunker) Close() error {
 	return c.cache.Close()
 }
 
-func (c *Chunker) FileSize() (int64, error) {
-	return c.cache.FileSize()
+func (c *Chunker) FileSize(ctx context.Context) (int64, error) {
+	return c.cache.FileSize(ctx)
 }
 
 const (

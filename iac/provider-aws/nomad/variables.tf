@@ -42,7 +42,13 @@ variable "api_cluster_size" {
 
 # Ingress
 variable "ingress_port" {
-  type = number
+  type        = number
+  description = "External traffic port number"
+}
+
+variable "ingress_internal_port" {
+  type        = number
+  description = "Internal traffic port number"
 }
 
 variable "ingress_count" {

@@ -28,12 +28,12 @@ type APIStore struct {
 	authDB            *authdb.Client
 	supabaseDB        *supabasedb.Client
 	clickhouse        clickhouse.Clickhouse
-	authService       *sharedauth.AuthService
+	authService       sharedauth.Service
 	teamProvisionSink internalteamprovision.TeamProvisionSink
 	userProfiles      userprofile.Provider
 }
 
-func NewAPIStore(config cfg.Config, db *sqlcdb.Client, authDB *authdb.Client, supabaseDB *supabasedb.Client, ch clickhouse.Clickhouse, authService *sharedauth.AuthService, teamProvisionSink internalteamprovision.TeamProvisionSink) *APIStore {
+func NewAPIStore(config cfg.Config, db *sqlcdb.Client, authDB *authdb.Client, supabaseDB *supabasedb.Client, ch clickhouse.Clickhouse, authService sharedauth.Service, teamProvisionSink internalteamprovision.TeamProvisionSink) *APIStore {
 	return &APIStore{
 		config:            config,
 		db:                db,
