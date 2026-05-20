@@ -265,8 +265,8 @@ func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int6
 		return nil, fmt.Errorf("SCARD pipeline failed: %w", err)
 	}
 
-	now := time.Now().Unix()
-	cutoff := now - int64(sandbox.StaleCutoff.Seconds())
+	nowSec := time.Now().Unix()
+	cutoff := nowSec - int64(sandbox.StaleCutoff.Seconds())
 
 	teams := make(map[uuid.UUID]int64, len(entries))
 	var stale []any

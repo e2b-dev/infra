@@ -95,7 +95,7 @@ func (s *awsStorage) DeleteObjectsWithPrefix(ctx context.Context, prefix string)
 	if len(output.Errors) > 0 {
 		var errStr strings.Builder
 		for _, delErr := range output.Errors {
-			errStr.WriteString(fmt.Sprintf("Key: %s, Code: %s, Message: %s; ", aws.ToString(delErr.Key), aws.ToString(delErr.Code), aws.ToString(delErr.Message)))
+			fmt.Fprintf(&errStr, "Key: %s, Code: %s, Message: %s; ", aws.ToString(delErr.Key), aws.ToString(delErr.Code), aws.ToString(delErr.Message))
 		}
 
 		return errors.New("errors occurred during deletion: " + errStr.String())

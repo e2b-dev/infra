@@ -1,6 +1,7 @@
 package cleaner
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -8,7 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -302,8 +303,8 @@ func (c *Cleaner) Clean(ctx context.Context) error {
 }
 
 func (c *Cleaner) splitBatch(batch []*Candidate) (toDelete []*Candidate, toReinsert []*Candidate) {
-	sort.Slice(batch, func(i, j int) bool {
-		return batch[i].ATimeUnix < batch[j].ATimeUnix
+	slices.SortFunc(batch, func(a, b *Candidate) int {
+		return cmp.Compare(a.ATimeUnix, b.ATimeUnix)
 	})
 
 	del := min(c.DeleteN, len(batch))
@@ -315,8 +316,8 @@ func (c *Cleaner) splitBatch(batch []*Candidate) (toDelete []*Candidate, toReins
 
 func (c *Cleaner) reinsertCandidates(candidates []*Candidate) {
 	// sort the candidates by their parent directory so we lock and re-sort each directory only once.
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].Parent.Name < candidates[j].Parent.Name
+	slices.SortFunc(candidates, func(a, b *Candidate) int {
+		return cmp.Compare(a.Parent.Name, b.Parent.Name)
 	})
 	var prevParent *Dir
 	var files []File
@@ -374,12 +375,12 @@ func (d *Dir) reinsertFiles(files []File) {
 
 func (d *Dir) sort() {
 	// sort the dirs by name
-	sort.Slice(d.Dirs, func(i, j int) bool {
-		return d.Dirs[i].Name < d.Dirs[j].Name
+	slices.SortFunc(d.Dirs, func(a, b *Dir) int {
+		return cmp.Compare(a.Name, b.Name)
 	})
 
-	sort.Slice(d.Files, func(i, j int) bool {
-		return d.Files[i].ATimeUnix > d.Files[j].ATimeUnix
+	slices.SortFunc(d.Files, func(a, b File) int {
+		return cmp.Compare(b.ATimeUnix, a.ATimeUnix)
 	})
 }
 
@@ -446,9 +447,9 @@ func (c *Cleaner) histogram(candidates []*Candidate) []int {
 	buckets := []int64{10, 100, 1000, 10_000, 100_000, 1_000_000, 10_000_000} // seconds
 	hist := make([]int, len(buckets)+1)
 
-	now := time.Now().Unix()
+	nowSec := time.Now().Unix()
 	for _, candidate := range candidates {
-		age := now - candidate.ATimeUnix
+		age := nowSec - candidate.ATimeUnix
 		bucketed := false
 		for i, b := range buckets {
 			if age <= b {

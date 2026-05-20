@@ -18,7 +18,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -52,7 +51,7 @@ func TestReservation_Exceeded(t *testing.T) {
 	_, _, err := storage.Reserve(t.Context(), teamID, testSandboxID, 1)
 	require.NoError(t, err)
 	_, _, err = storage.Reserve(t.Context(), teamID, "sandbox-2", 1)
-	require.ErrorAs(t, err, utils.ToPtr(&sandbox.LimitExceededError{}))
+	require.ErrorAs(t, err, new(&sandbox.LimitExceededError{}))
 }
 
 func TestReservation_SameSandbox(t *testing.T) {
@@ -171,11 +170,11 @@ func TestReservation_MultipleTeams(t *testing.T) {
 
 	// team1 should be at limit
 	_, _, err = storage.Reserve(t.Context(), team1, "sandbox-3", 1)
-	require.ErrorAs(t, err, utils.ToPtr(&sandbox.LimitExceededError{}))
+	require.ErrorAs(t, err, new(&sandbox.LimitExceededError{}))
 
 	// team2 should also be at limit
 	_, _, err = storage.Reserve(t.Context(), team2, "sandbox-4", 1)
-	require.ErrorAs(t, err, utils.ToPtr(&sandbox.LimitExceededError{}))
+	require.ErrorAs(t, err, new(&sandbox.LimitExceededError{}))
 }
 
 func TestReservation_FailedStart(t *testing.T) {

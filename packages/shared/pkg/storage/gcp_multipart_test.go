@@ -22,8 +22,6 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // Test constants
@@ -299,11 +297,11 @@ func TestMultipartUploader_UploadFileInParallel_Checksum(t *testing.T) {
 
 func TestMultipartUploader_InitiateUpload_WithRetries(t *testing.T) {
 	t.Parallel()
-	var requestCount int32
+	var requestCount atomic.Int32
 	expectedUploadID := "retry-upload-id"
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		count := atomic.AddInt32(&requestCount, 1)
+		count := requestCount.Add(1)
 		if count < 2 {
 			w.WriteHeader(http.StatusInternalServerError)
 
@@ -332,7 +330,7 @@ func TestMultipartUploader_InitiateUpload_WithRetries(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, expectedUploadID, uploadID)
-	require.Equal(t, int32(2), atomic.LoadInt32(&requestCount))
+	require.Equal(t, int32(2), requestCount.Load())
 }
 
 // STRESS TESTS AND EDGE CASES
@@ -347,8 +345,8 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 	require.NoError(t, err)
 
 	var initiateCalls, partCalls, completeCalls int32
-	var maxConcurrentParts int32
-	var currentConcurrentParts int32
+	var maxConcurrentParts atomic.Int32
+	var currentConcurrentParts atomic.Int32
 	receivedParts := sync.Map{}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -366,13 +364,13 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 
 		case strings.Contains(r.URL.RawQuery, "partNumber"):
 			// Track concurrent part uploads
-			current := atomic.AddInt32(&currentConcurrentParts, 1)
-			defer atomic.AddInt32(&currentConcurrentParts, -1)
+			current := currentConcurrentParts.Add(1)
+			defer currentConcurrentParts.Add(-1)
 
 			// Update max concurrent parts
 			for {
-				maxConcurrent := atomic.LoadInt32(&maxConcurrentParts)
-				if current <= maxConcurrent || atomic.CompareAndSwapInt32(&maxConcurrentParts, maxConcurrent, current) {
+				maxConcurrent := maxConcurrentParts.Load()
+				if current <= maxConcurrent || maxConcurrentParts.CompareAndSwap(maxConcurrent, current) {
 					break
 				}
 			}
@@ -403,7 +401,7 @@ func TestMultipartUploader_HighConcurrency_StressTest(t *testing.T) {
 	require.Equal(t, int32(1), atomic.LoadInt32(&initiateCalls))
 	require.Equal(t, int32(1), atomic.LoadInt32(&completeCalls))
 	require.Positive(t, atomic.LoadInt32(&partCalls))
-	require.Greater(t, atomic.LoadInt32(&maxConcurrentParts), int32(1), "Should have concurrent uploads")
+	require.Greater(t, maxConcurrentParts.Load(), int32(1), "Should have concurrent uploads")
 
 	// Verify content integrity
 	var reconstructed strings.Builder
@@ -504,7 +502,7 @@ func TestMultipartUploader_PartialFailures_Recovery(t *testing.T) {
 			partNumStr := strings.Split(strings.Split(r.URL.RawQuery, "partNumber=")[1], "&")[0]
 
 			// Track attempts per part
-			val, _ := partAttempts.LoadOrStore(partNumStr, utils.ToPtr(int32(0)))
+			val, _ := partAttempts.LoadOrStore(partNumStr, new(int32(0)))
 			attempts := val.(*int32)
 			currentAttempts := atomic.AddInt32(attempts, 1)
 
@@ -802,10 +800,10 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 	require.NoError(t, err)
 
 	var retryAttempts sync.Map
-	var totalRequests int32
+	var totalRequests atomic.Int32
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&totalRequests, 1)
+		totalRequests.Add(1)
 
 		switch {
 		case r.URL.RawQuery == uploadsPath:
@@ -822,7 +820,7 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 			partNumStr := strings.Split(strings.Split(r.URL.RawQuery, "partNumber=")[1], "&")[0]
 
 			// Track retry attempts per part with race-safe operations
-			val, _ := retryAttempts.LoadOrStore(partNumStr, utils.ToPtr(int32(0)))
+			val, _ := retryAttempts.LoadOrStore(partNumStr, new(int32(0)))
 			attempts := val.(*int32)
 			currentAttempt := atomic.AddInt32(attempts, 1)
 
@@ -854,7 +852,7 @@ func TestMultipartUploader_ConcurrentRetries_RaceCondition(t *testing.T) {
 	_, err = uploader.UploadFileInParallel(t.Context(), testFile, 20, nil) // High concurrency
 	require.NoError(t, err)
 
-	t.Logf("Total HTTP requests made: %d", atomic.LoadInt32(&totalRequests))
+	t.Logf("Total HTTP requests made: %d", totalRequests.Load())
 
 	// Verify that retries happened correctly under concurrent conditions
 	retryAttempts.Range(func(key, value any) bool {
@@ -992,13 +990,13 @@ func TestCreateRetryableClient_ZeroBackoff(t *testing.T) {
 // TestRetryableClient_ActualRetryBehavior tests the retry behavior in practice
 func TestRetryableClient_ActualRetryBehavior(t *testing.T) {
 	t.Parallel()
-	var requestCount int32
+	var requestCount atomic.Int32
 	var retryDelays []time.Duration
 	var retryTimes []time.Time
 	var retryMu sync.Mutex
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		count := atomic.AddInt32(&requestCount, 1)
+		count := requestCount.Add(1)
 		retryMu.Lock()
 		retryTimes = append(retryTimes, time.Now())
 		retryMu.Unlock()
@@ -1033,7 +1031,7 @@ func TestRetryableClient_ActualRetryBehavior(t *testing.T) {
 	resp.Body.Close()
 
 	// Should have made 3 requests (initial + 2 retries)
-	require.Equal(t, int32(3), atomic.LoadInt32(&requestCount))
+	require.Equal(t, int32(3), requestCount.Load())
 	require.Len(t, retryTimes, 3)
 
 	// Calculate actual delays between requests

@@ -26,7 +26,7 @@ func TestDefaultServeMuxBlocksPprofPaths(t *testing.T) {
 
 	for _, path := range paths {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
 
 		http.DefaultServeMux.ServeHTTP(rec, req)
 
@@ -52,7 +52,7 @@ func TestDefaultServeMuxPassesThroughNonPprofPaths(t *testing.T) {
 
 	for _, path := range paths {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
 
 		http.DefaultServeMux.ServeHTTP(rec, req)
 
@@ -73,7 +73,7 @@ func TestDedicatedPprofMuxServes(t *testing.T) {
 
 	for _, path := range paths {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
 
 		mux.ServeHTTP(rec, req)
 

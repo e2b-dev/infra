@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
-	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
@@ -32,11 +31,11 @@ func ensureNetworkTestTemplate(t *testing.T) string {
 		template := utils.BuildTemplate(t, utils.TemplateBuildOptions{
 			Name: "network-egress-test",
 			BuildData: api.TemplateBuildStartV2{
-				FromImage: sharedutils.ToPtr("ubuntu:22.04"),
-				Steps: sharedutils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type: "RUN",
-						Args: sharedutils.ToPtr([]string{"sudo apt-get update && sudo apt-get install -y curl iputils-ping dnsutils openssh-client gnupg && sudo rm -rf /var/lib/apt/lists/*"}),
+						Args: new([]string{"sudo apt-get update && sudo apt-get install -y curl iputils-ping dnsutils openssh-client gnupg && sudo rm -rf /var/lib/apt/lists/*"}),
 					},
 				}),
 			},
