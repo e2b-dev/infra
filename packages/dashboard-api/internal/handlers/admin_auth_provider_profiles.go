@@ -54,10 +54,17 @@ func (s *APIStore) PostAdminUserProfilesResolve(c *gin.Context) {
 	})
 }
 
-func (s *APIStore) GetAdminUserProfilesByEmail(c *gin.Context, params api.GetAdminUserProfilesByEmailParams) {
+func (s *APIStore) PostAdminUserProfilesByEmail(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	profiles, err := s.userProfiles.FindProfilesByEmail(ctx, string(params.Email))
+	body, err := ginutils.ParseBody[api.AdminAuthProviderProfilesLookupEmailRequest](ctx, c)
+	if err != nil {
+		s.sendAPIStoreError(c, http.StatusBadRequest, "Invalid request body")
+
+		return
+	}
+
+	profiles, err := s.userProfiles.FindProfilesByEmail(ctx, string(body.Email))
 	if err != nil {
 		logger.L().Error(ctx, "failed to look up auth provider profiles by email", zap.Error(err))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to look up auth provider profiles")

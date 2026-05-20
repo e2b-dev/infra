@@ -914,18 +914,17 @@ paths:
           $ref: "#/components/responses/500"
 
   /admin/user-profiles/by-email:
-    get:
+    post:
       summary: Lookup user profiles by email
       tags: [admin]
       security:
         - AdminTokenAuth: []
-      parameters:
-        - name: email
-          in: query
-          required: true
-          schema:
-            type: string
-            format: email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAuthProviderProfilesLookupEmailRequest"
       responses:
         "200":
           description: Successfully found matching profiles.
