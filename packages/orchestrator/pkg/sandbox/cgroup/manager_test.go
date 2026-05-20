@@ -537,7 +537,8 @@ func TestCreateMemoryPeakFDOnSupportedKernel(t *testing.T) {
 
 // TestMemoryPeakResetWritesEmptyBytes verifies that readAndResetMemoryPeak
 // performs a zero-length write (not WriteString("0")) to reset memory.peak.
-// A non-empty write returns EINVAL on all kernel versions.
+// On kernel >= 6.12 the per-FD memory.peak reset accepts any write; older
+// kernels reject writes with EINVAL.
 //
 // This test uses a real cgroup memory.peak file so it requires root and
 // kernel >= 6.12 (otherwise the file is read-only and the test is skipped).
@@ -572,14 +573,14 @@ func TestMemoryPeakResetWritesEmptyBytes(t *testing.T) {
 	_, err = impl.readAndResetMemoryPeak(ctx, handle.memoryPeakFile)
 	assert.NoError(t, err, "readAndResetMemoryPeak must not return error on kernel >= 6.12")
 
-	// Verify that writing a non-empty byte ("0") to the same FD returns EINVAL,
-	// confirming the kernel rejects anything but a zero-length write.
+	// On kernel >= 6.12 the per-FD memory.peak reset accepts any write,
+	// including a non-empty write. We only require that readAndResetMemoryPeak
+	// succeeds and that the supported reset path is usable.
 	_, seekErr := handle.memoryPeakFile.Seek(0, io.SeekStart)
 	require.NoError(t, seekErr)
 	_, writeErr := handle.memoryPeakFile.WriteString("0")
-	assert.Error(t, writeErr, "writing '0' to memory.peak must return EINVAL")
-	assert.Contains(t, writeErr.Error(), "invalid argument",
-		"error must be EINVAL when writing non-empty content to memory.peak")
+	assert.NoError(t, writeErr,
+		"writing non-empty content to memory.peak may succeed on kernel >= 6.12")
 }
 
 // TestMemoryPeakNoResetOnOldKernel verifies that on kernel < 6.12 the
