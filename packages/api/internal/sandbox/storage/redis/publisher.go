@@ -23,9 +23,9 @@ const (
 	publishTimeout        = 5 * time.Second
 	publishShutdownBudget = 10 * time.Second
 
-	// publishDropLogInterval rate-limits drop warnings: only every Nth
+	// publishDropLogFrequency rate-limits drop warnings: only every Nth
 	// drop produces a log line, with the running total attached.
-	publishDropLogInterval = 64
+	publishDropLogFrequency = 64
 
 	// publishWorkerCount is the size of the goroutine pool draining the
 	// publish queue. Each worker is mostly blocked in Redis RTT, so the
@@ -165,7 +165,7 @@ func (p *publisher) drop(ctx context.Context, routingKey, reason string, attrs m
 	p.metrics.dropped.Add(ctx, 1, attrs)
 
 	n := p.dropped.Add(1)
-	if n%publishDropLogInterval == 1 {
+	if n%publishDropLogFrequency == 1 {
 		logger.L().Warn(ctx,
 			"Dropping storage notification: publish queue saturated or closed",
 			zap.String("routing_key", routingKey),
