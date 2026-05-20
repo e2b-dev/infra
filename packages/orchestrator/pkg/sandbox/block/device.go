@@ -47,9 +47,8 @@ type Device interface {
 	WriteZeroesAt(off, length int64) (int, error)
 }
 
-// CachePeeker reports whether a byte range is already in local cache without
-// triggering a remote fetch. Used by best-effort dedup to skip blocks whose
-// base data would require network I/O.
+// CachePeeker reports whether [off, off+length) is in the local cache,
+// without triggering a remote fetch.
 type CachePeeker interface {
 	IsCached(ctx context.Context, off, length int64) bool
 }

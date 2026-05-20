@@ -206,11 +206,9 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	return diffMetadata, nil
 }
 
-// baseIsZeroBlock reports whether base's mapping at absOff is uuid.Nil for
-// at least blockSize bytes. When true, base.ReadAt would just clear() the
-// caller's buffer; dedup can skip the call chain and the chunker hop.
-// Returns false if base has no header (test fakes), the lookup fails, or
-// the Empty mapping is smaller than blockSize.
+// baseIsZeroBlock reports whether base's mapping at absOff is uuid.Nil
+// for at least blockSize bytes; if so, dedup can skip base.ReadAt and
+// just zero baseBuf.
 func baseIsZeroBlock(ctx context.Context, base ReadonlyDevice, absOff, blockSize int64) bool {
 	h := base.Header()
 	if h == nil {
@@ -225,10 +223,9 @@ func baseIsZeroBlock(ctx context.Context, base ReadonlyDevice, absOff, blockSize
 }
 
 // dedupPages writes pages from src that differ from base, packed at
-// PageSize granularity, to outPath. When bestEffort is true, blocks whose
-// base data isn't already in the local chunker cache are written through
-// as-is (every non-zero page goes into pageDirty; zero pages still routed
-// to pageEmpty) — trades dedup ratio for avoided remote fetches.
+// PageSize granularity, to outPath. bestEffort skips compare for blocks
+// whose base isn't cached locally. directIO opens the file with O_DIRECT
+// and pre-allocates worst-case extents.
 func dedupPages(
 	ctx context.Context,
 	src func(absOff int64) ([]byte, error),
@@ -244,10 +241,8 @@ func dedupPages(
 
 	openFlags := os.O_RDWR | os.O_CREATE
 	if directIO {
-		// Bypass the page cache so writes go straight to disk; the
-		// orchestrator's dirtyable RAM pool is already pressured by
-		// chunker mmap-backed downloads + concurrent pauses, and our
-		// dedup output never benefits from buffered re-reads.
+		// Bypass the page cache; the dirtyable RAM pool is already
+		// pressured by chunker writes and concurrent pauses.
 		openFlags |= unix.O_DIRECT
 	}
 	f, err := os.OpenFile(outPath, openFlags, 0o644)
@@ -255,10 +250,8 @@ func dedupPages(
 		return nil, nil, fmt.Errorf("open dedup cache: %w", err)
 	}
 	if directIO {
-		// Pre-allocate worst-case extents (every dirty block fully unique)
-		// so per-batch O_DIRECT writes never serialize on XFS's inode lock
-		// during extent allocation under concurrent pauses. Truncated to
-		// the actual data size at the end of the walk.
+		// Pre-allocate worst-case extents so O_DIRECT writes don't
+		// serialize on XFS's inode lock during extent allocation.
 		worst := int64(dirty.GetCardinality()) * blockSize
 		if fErr := unix.Fallocate(int(f.Fd()), 0, 0, worst); fErr != nil {
 			logger.L().Warn(ctx, "fallocate dedup cache; proceeding without preallocation", zap.Error(fErr))
@@ -268,8 +261,7 @@ func dedupPages(
 	pageDirty := roaring.New()
 	pageEmpty := roaring.New()
 	baseBuf := make([]byte, blockSize)
-	// Per-block iovec buffer: reused across blocks. Capacity sized for
-	// max pages per block; Linux IOV_MAX (1024) is well above that.
+	// Per-block iovec buffer, reused across blocks.
 	iovs := make([][]byte, 0, blockSize/header.PageSize)
 	var fileOff, exportedSize int64
 
@@ -290,10 +282,8 @@ func dedupPages(
 			iovs = iovs[:0]
 			blockStartOff := fileOff
 
-			// Best-effort: if base data isn't in the local chunker cache,
-			// skip the compare entirely and write every page through as-is
-			// (still routing zero pages to Empty). Avoids triggering a
-			// remote fetch on the pause hot path.
+			// Best-effort: skip dedup for blocks whose base isn't
+			// cached locally; write every non-zero page through.
 			if bestEffort {
 				if peeker, ok := base.(CachePeeker); ok && !peeker.IsCached(ctx, absOff, blockSize) {
 					for i := int64(0); i < blockSize; i += header.PageSize {
@@ -319,9 +309,7 @@ func dedupPages(
 				}
 			}
 
-			// Fast path: when the parent maps this block to uuid.Nil (Empty),
-			// base.ReadAt would just zero baseBuf via clear() — skip the call
-			// chain and the chunker hop entirely.
+			// uuid.Nil parent mapping ⇒ base reads as zero; skip ReadAt.
 			if baseIsZeroBlock(ctx, base, absOff, blockSize) {
 				clear(baseBuf)
 			} else if _, err := base.ReadAt(ctx, baseBuf, absOff); err != nil {
@@ -354,7 +342,7 @@ func dedupPages(
 	}
 
 	if directIO {
-		// Release the unused tail extents from the worst-case fallocate.
+		// Release the unused fallocate tail.
 		if err := f.Truncate(fileOff); err != nil {
 			return nil, nil, errors.Join(fmt.Errorf("truncate dedup cache: %w", err), f.Close(), os.Remove(outPath))
 		}
@@ -717,8 +705,7 @@ func (c *Cache) copyProcessMemory(
 	pid int,
 	rs []Range,
 ) error {
-	// Pre-split so no single iov exceeds MAX_RW_COUNT; drainIovs caps each
-	// batch by IOV_MAX entries and getAlignedMaxRwCount(blockSize) bytes.
+	// Pre-split so no single iov exceeds MAX_RW_COUNT.
 	ranges := splitOversizedRanges(rs, getAlignedMaxRwCount(c.blockSize))
 
 	return drainIovs(ranges, func(r Range) int64 { return r.Size }, c.blockSize,

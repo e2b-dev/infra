@@ -129,11 +129,9 @@ func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	return out, nil
 }
 
-// IsCached reports whether [off, off+length) is fully available in the local
-// chunker caches for every underlying build mapping. uuid.Nil segments count
-// as cached (no I/O needed). A mapping whose StorageDiff hasn't been Init'd
-// yet counts as uncached — this method never triggers OpenSeekable or any
-// other remote call. Used by best-effort dedup.
+// IsCached reports whether [off, off+length) is fully cached locally for
+// every underlying build mapping. uuid.Nil segments count as cached;
+// uninitialized StorageDiffs count as uncached. Never triggers I/O.
 func (b *File) IsCached(ctx context.Context, off, length int64) bool {
 	h := b.Header()
 	if h == nil {

@@ -40,14 +40,9 @@ func getAlignedMaxRwCount(blockSize int64) int64 {
 	return (MAX_RW_COUNT / blockSize) * blockSize
 }
 
-// drainIovs walks items in order and calls op on each IOV_MAX- and
-// MAX_RW_COUNT-bounded batch, advancing a destination offset by the
-// batch's total bytes after each successful op. Used by both the
-// process_vm_readv copy path and the dedup pwritev write path so the
-// batching invariants live in one place.
-//
-// blockSize sets the granularity for the byte-count cap. Items must be
-// pre-split so no single item exceeds getAlignedMaxRwCount(blockSize).
+// drainIovs walks items, calling op on each IOV_MAX- and MAX_RW_COUNT-
+// bounded batch and advancing the destination offset by the batch bytes.
+// Items must be pre-split so no single item exceeds the byte cap.
 func drainIovs[T any](
 	items []T,
 	sizeOf func(T) int64,

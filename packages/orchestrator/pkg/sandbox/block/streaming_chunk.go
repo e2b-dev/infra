@@ -95,10 +95,7 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64, ft *storage.Fram
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
-	// Fetch every chunk the requested range spans. With dedup a single
-	// sub-mapping can straddle a MemoryChunkSize boundary, and each fetch
-	// session covers only one chunk — without the loop sliceDirect would
-	// hand back uninitialized cache bytes for the tail.
+	// Fetch every chunk the range spans (one fetch session per chunk).
 	end := off + length
 	for cur := off; cur < end; {
 		chunkOff, chunkLen, lerr := c.locateChunk(cur, ft)
@@ -161,15 +158,11 @@ func (c *Chunker) getOrCreateSession(ctx context.Context, off, length int64, ft 
 	return s, false
 }
 
-// fetch ensures the frame/chunk covering [off, off+length) is fetched
-// into the mmap cache, then waits for every block the range spans within
-// that chunk. Deduplicates concurrent requests via the session list.
-//
-// Waiting on every spanned block (not just the start block) is critical
-// for dedup: a sub-mapping can be larger than the chunker's blockSize
-// and a slice straddling a block boundary would otherwise unblock as
-// soon as the start block lands — sliceDirect would then return cache
-// bytes for the unfetched tail block.
+// fetch ensures the chunk covering [off, off+length) is fetched and
+// waits for every block in that range. Required because a dedup
+// sub-mapping can straddle the chunker's block boundary; without
+// waiting on every block, sliceDirect would return uninitialized
+// cache bytes for the tail.
 func (c *Chunker) fetch(ctx context.Context, off, length int64, ft *storage.FrameTable) error {
 	chunkOff, chunkLen, err := c.locateChunk(off, ft)
 	if err != nil {
@@ -187,9 +180,7 @@ func (c *Chunker) fetch(ctx context.Context, off, length int64, ft *storage.Fram
 	chunkEnd := chunkOff + chunkLen
 	for b := startBlock; b <= endBlock; b += blockSize {
 		if b >= chunkEnd {
-			// Tail crosses into the next chunk; the caller's loop will
-			// trigger that fetch separately.
-			break
+			break // tail belongs to the caller's next chunk fetch.
 		}
 		if err := session.registerAndWait(ctx, b); err != nil {
 			return err

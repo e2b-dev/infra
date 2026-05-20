@@ -19,11 +19,8 @@ type Empty struct {
 var _ ReadonlyDevice = (*Empty)(nil)
 
 func NewEmpty(size int64, blockSize int64, buildID uuid.UUID) (*Empty, error) {
-	// Tag the covering mapping with uuid.Nil so reads fall through to
-	// zero-fill and a diff layered on top with the same BuildID stays
-	// distinct from this Empty mapping under MergeMappings/NormalizeMappings.
-	// Defaulting to buildID here lets NormalizeMappings collapse the Empty
-	// span into the diff mappings and corrupts BuildStorageOffsets.
+	// uuid.Nil keeps the Empty span distinct from any diff layered on
+	// top with the same BuildID, so NormalizeMappings can't collapse them.
 	h, err := header.NewHeader(header.NewTemplateMetadata(
 		buildID,
 		uint64(blockSize),
