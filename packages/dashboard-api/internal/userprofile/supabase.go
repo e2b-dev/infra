@@ -67,7 +67,7 @@ func (p *supabaseProvider) SearchProfilesByEmail(ctx context.Context, query stri
 	}
 
 	users, err := p.queries.SearchAuthUsersByEmail(ctx, supabasequeries.SearchAuthUsersByEmailParams{
-		Query:       normalizedQuery,
+		Query:       escapePostgresLikePattern(normalizedQuery),
 		ResultLimit: limit,
 	})
 	if err != nil {
@@ -87,6 +87,12 @@ func profileFromAuthUser(user supabasequeries.AuthUser) Profile {
 		UserID: user.ID,
 		Email:  user.Email,
 	}
+}
+
+func escapePostgresLikePattern(value string) string {
+	replacer := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_")
+
+	return replacer.Replace(value)
 }
 
 func uniqueUUIDs(ids []uuid.UUID) []uuid.UUID {

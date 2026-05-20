@@ -114,7 +114,7 @@ func (q *Queries) GetLatestAuthSessionByUserID(ctx context.Context, dollar_1 uui
 const searchAuthUsersByEmail = `-- name: SearchAuthUsersByEmail :many
 SELECT id, COALESCE(email, '') AS email, created_at, COALESCE(raw_app_meta_data, '{}'::jsonb) AS raw_app_meta_data
 FROM auth.users
-WHERE email ILIKE '%' || $1::text || '%'
+WHERE email ILIKE '%' || $1::text || '%' ESCAPE '\'
 ORDER BY email
 LIMIT $2::int
 `

@@ -16,7 +16,7 @@ WHERE email = sqlc.arg(email)::text;
 -- name: SearchAuthUsersByEmail :many
 SELECT id, COALESCE(email, '') AS email, created_at, COALESCE(raw_app_meta_data, '{}'::jsonb) AS raw_app_meta_data
 FROM auth.users
-WHERE email ILIKE '%' || sqlc.arg(query)::text || '%'
+WHERE email ILIKE '%' || sqlc.arg(query)::text || '%' ESCAPE '\'
 ORDER BY email
 LIMIT sqlc.arg(result_limit)::int;
 
