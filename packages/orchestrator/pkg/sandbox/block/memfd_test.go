@@ -48,8 +48,8 @@ func fullDirty(size, blockSize int64) *roaring.Bitmap {
 // fakeOriginalDevice satisfies ReadonlyDevice over a fixed byte buffer.
 // Tracks ReadAt calls so dedup tests can assert fast-path skipping.
 type fakeOriginalDevice struct {
-	data []byte
-	hdr  *header.Header // optional; nil disables the dedup fast paths
+	data  []byte
+	hdr   *header.Header // optional; nil disables the dedup fast paths
 	reads int
 }
 
