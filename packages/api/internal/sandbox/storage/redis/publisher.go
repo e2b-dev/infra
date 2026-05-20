@@ -21,7 +21,7 @@ const (
 
 	// publishTimeout bounds a single PUBLISH round-trip
 	publishTimeout        = 5 * time.Second
-	publishShutdownBudget = 5 * time.Second
+	publishShutdownBudget = 10 * time.Second
 
 	// publishDropLogInterval rate-limits drop warnings: only every Nth
 	// drop produces a log line, with the running total attached.
