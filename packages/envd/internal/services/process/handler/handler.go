@@ -248,17 +248,20 @@ func New(
 			for {
 				n, readErr := stdout.Read(readBuf)
 
-				if n > 0 && outMultiplex.HasSubscribers() {
-					data := slices.Clone(readBuf[:n])
+				if n > 0 {
+					h.stdoutBytes.Add(int64(n))
 
-					outMultiplex.Source <- rpc.ProcessEvent_Data{
-						Data: &rpc.ProcessEvent_DataEvent{
-							Output: &rpc.ProcessEvent_DataEvent_Stdout{
-								Stdout: data,
+					if outMultiplex.HasSubscribers() {
+						data := slices.Clone(readBuf[:n])
+
+						outMultiplex.Source <- rpc.ProcessEvent_Data{
+							Data: &rpc.ProcessEvent_DataEvent{
+								Output: &rpc.ProcessEvent_DataEvent_Stdout{
+									Stdout: data,
+								},
 							},
-						},
+						}
 					}
-					h.stdoutBytes.Add(int64(len(data)))
 				}
 
 				if errors.Is(readErr, io.EOF) {
@@ -284,17 +287,20 @@ func New(
 			for {
 				n, readErr := stderr.Read(readBuf)
 
-				if n > 0 && outMultiplex.HasSubscribers() {
-					data := slices.Clone(readBuf[:n])
+				if n > 0 {
+					h.stderrBytes.Add(int64(n))
 
-					outMultiplex.Source <- rpc.ProcessEvent_Data{
-						Data: &rpc.ProcessEvent_DataEvent{
-							Output: &rpc.ProcessEvent_DataEvent_Stderr{
-								Stderr: data,
+					if outMultiplex.HasSubscribers() {
+						data := slices.Clone(readBuf[:n])
+
+						outMultiplex.Source <- rpc.ProcessEvent_Data{
+							Data: &rpc.ProcessEvent_DataEvent{
+								Output: &rpc.ProcessEvent_DataEvent_Stderr{
+									Stderr: data,
+								},
 							},
-						},
+						}
 					}
-					h.stderrBytes.Add(int64(len(data)))
 				}
 
 				if errors.Is(readErr, io.EOF) {
