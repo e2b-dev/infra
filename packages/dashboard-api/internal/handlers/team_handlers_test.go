@@ -125,6 +125,7 @@ func TestPostTeamsTeamIDMembers_DuplicateMemberReturnsBadRequest(t *testing.T) {
 
 	store := &APIStore{
 		db:           testDB.SqlcClient,
+		authDB:       testDB.AuthDB,
 		userProfiles: newHandlerTestProfileProvider(targetUserID),
 	}
 	store.PostTeamsTeamIDMembers(ginCtx, teamID)
@@ -134,6 +135,60 @@ func TestPostTeamsTeamIDMembers_DuplicateMemberReturnsBadRequest(t *testing.T) {
 	}
 	if !strings.Contains(recorder.Body.String(), "User is already a member of this team") {
 		t.Fatalf("unexpected response body: %s", recorder.Body.String())
+	}
+}
+
+func TestPostTeamsTeamIDMembers_CreatesPublicUserAnchorForInvitee(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, testDB)
+	inviteeID := uuid.New()
+	addedByUserID := createHandlerTestUser(t, testDB)
+	inviteeEmail := handlerTestUserEmail(inviteeID)
+
+	if err := testDB.SupabaseDB.TestsRawSQL(ctx, `
+INSERT INTO auth.users (id, email)
+VALUES ($1, $2)
+`, inviteeID, inviteeEmail); err != nil {
+		t.Fatalf("failed to create auth user: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	body := `{"email":"` + inviteeEmail + `"}`
+	request := httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	ginCtx.Request = request
+
+	auth.SetUserIDForTest(t, ginCtx, addedByUserID)
+	auth.SetTeamInfoForTest(t, ginCtx, &authtypes.Team{
+		Team: &authqueries.Team{ID: teamID},
+	})
+
+	store := &APIStore{
+		db:           testDB.SqlcClient,
+		authDB:       testDB.AuthDB,
+		authService:  noopAuthService{},
+		userProfiles: newHandlerTestProfileProvider(inviteeID),
+	}
+	store.PostTeamsTeamIDMembers(ginCtx, teamID)
+
+	if ginCtx.Writer.Status() != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d: %s", ginCtx.Writer.Status(), recorder.Body.String())
+	}
+
+	if _, err := testDB.SqlcClient.GetPublicUserID(ctx, inviteeID); err != nil {
+		t.Fatalf("expected public user anchor to be created: %v", err)
+	}
+
+	if _, err := testDB.SqlcClient.GetTeamMemberRelation(ctx, queries.GetTeamMemberRelationParams{
+		TeamID: teamID,
+		UserID: inviteeID,
+	}); err != nil {
+		t.Fatalf("expected invitee team member relation: %v", err)
 	}
 }
 
@@ -332,7 +387,7 @@ func insertHandlerTestTeamMember(t *testing.T, db *testutils.Database, userID, t
 	t.Helper()
 
 	if isDefault {
-		if err := db.AuthDb.TestsRawSQL(t.Context(), `
+		if err := db.AuthDB.TestsRawSQL(t.Context(), `
 UPDATE public.users_teams
 SET is_default = false
 WHERE user_id = $1
@@ -341,7 +396,7 @@ WHERE user_id = $1
 		}
 	}
 
-	err := db.AuthDb.TestsRawSQL(t.Context(), `
+	err := db.AuthDB.TestsRawSQL(t.Context(), `
 INSERT INTO public.users_teams (user_id, team_id, is_default)
 VALUES ($1, $2, $3)
 `, userID, teamID, isDefault)
@@ -1040,4 +1095,36 @@ func (s *fakeTeamProvisionSink) ProvisionTeam(_ context.Context, req teamprovisi
 	s.requests = append(s.requests, req)
 
 	return s.err
+}
+
+type noopAuthService struct{}
+
+func (noopAuthService) ValidateAPIKey(context.Context, *gin.Context, string) (*authtypes.Team, *auth.APIError) {
+	return nil, nil
+}
+
+func (noopAuthService) ValidateAccessToken(context.Context, *gin.Context, string) (uuid.UUID, *auth.APIError) {
+	return uuid.Nil, nil
+}
+
+func (noopAuthService) ValidateAuthProviderToken(context.Context, *gin.Context, string) (uuid.UUID, *auth.APIError) {
+	return uuid.Nil, nil
+}
+
+func (noopAuthService) ValidateSupabaseTeam(context.Context, *gin.Context, string) (*authtypes.Team, *auth.APIError) {
+	return nil, nil
+}
+
+func (noopAuthService) GetTeamByID(context.Context, uuid.UUID) (*authtypes.Team, error) {
+	return nil, nil
+}
+
+func (noopAuthService) InvalidateTeamMemberCache(context.Context, uuid.UUID, string) {}
+
+func (noopAuthService) InvalidateTeamCache(context.Context, uuid.UUID) error {
+	return nil
+}
+
+func (noopAuthService) Close(context.Context) error {
+	return nil
 }
