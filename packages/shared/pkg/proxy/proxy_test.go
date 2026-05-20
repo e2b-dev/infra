@@ -420,7 +420,9 @@ func httpGetWithHeaders(t *testing.T, proxyURL string, headers http.Header) (*ht
 		}
 	}
 
-	rsp, err := (&http.Client{}).Do(req)
+	rsp, err := (&http.Client{
+		Transport: &http.Transport{DisableKeepAlives: true},
+	}).Do(req)
 	if err != nil {
 		return nil, err
 	}
