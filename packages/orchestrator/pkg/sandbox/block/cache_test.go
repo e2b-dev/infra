@@ -794,25 +794,6 @@ func runDedup(t *testing.T, srcMem, baseMem []byte, dirty *roaring.Bitmap, block
 	return cache, meta
 }
 
-func TestCacheDedup_AllPagesMatch(t *testing.T) {
-	t.Parallel()
-
-	blockSize := 4 * int64(header.PageSize)
-	size := blockSize * 2
-	data := make([]byte, size)
-	_, err := rand.Read(data)
-	require.NoError(t, err)
-
-	cache, meta := runDedup(t, data, data, fullDirty(size, blockSize), blockSize)
-
-	sz, err := cache.Size()
-	require.NoError(t, err)
-	require.EqualValues(t, 0, sz)
-	require.EqualValues(t, 0, meta.Dirty.GetCardinality())
-	require.EqualValues(t, 0, meta.Empty.GetCardinality())
-	require.EqualValues(t, header.PageSize, meta.BlockSize)
-}
-
 func TestCacheDedup_AllPagesDiffer(t *testing.T) {
 	t.Parallel()
 
@@ -1004,9 +985,14 @@ func TestCacheDedup_ZeroMatchingPagesGoIntoEmpty(t *testing.T) {
 	srcData := make([]byte, size)
 	copy(srcData, origData)
 
-	_, meta := runDedup(t, srcData, origData, fullDirty(size, blockSize), blockSize)
+	cache, meta := runDedup(t, srcData, origData, fullDirty(size, blockSize), blockSize)
 
 	require.EqualValues(t, 0, meta.Dirty.GetCardinality())
+	require.EqualValues(t, header.PageSize, meta.BlockSize)
+	sz, err := cache.Size()
+	require.NoError(t, err)
+	require.EqualValues(t, 0, sz)
+
 	require.EqualValues(t, 4, meta.Empty.GetCardinality())
 	for i := range uint32(4) {
 		require.True(t, meta.Empty.Contains(i))
