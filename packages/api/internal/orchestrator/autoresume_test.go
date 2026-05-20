@@ -151,13 +151,6 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 	t.Run("pausing sandbox wait failure returns still transitioning", func(t *testing.T) {
 		t.Parallel()
 
-		// The Redis backend's transition key is deleted in the callback, so a
-		// caller that arrives after finish() sees no ongoing transition and
-		// returns nil from WaitForStateChange. The auto-resume loop then sees
-		// the sandbox still in Pausing and exhausts its retries, returning
-		// ErrSandboxStillTransitioning rather than propagating the original
-		// failure. Original-error propagation is not part of the storage
-		// contract.
 		o := newTestAutoResumeOrchestrator(t)
 		sbx := testSandboxForAutoResume(sandbox.StateRunning)
 		addSandbox(t, o, sbx)
