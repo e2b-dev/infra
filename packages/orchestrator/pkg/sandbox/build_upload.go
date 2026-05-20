@@ -17,6 +17,14 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+func diffBlockSize(d build.Diff, h *headers.Header) uint64 {
+	if bs := d.BlockSize(); bs > 0 {
+		return uint64(bs)
+	}
+
+	return h.Metadata.BlockSize
+}
+
 type Upload struct {
 	buildID        uuid.UUID
 	snap           *Snapshot
@@ -44,11 +52,12 @@ func NewUpload(
 	// a non-dedup diff layers on top of a deduped parent, metadata.BlockSize
 	// drops to the dedup page size while the diff itself is still hugepage
 	// granularity, so the merged value would over-relax frame-size validation.
-	mem, memV4, err := resolveCompressConfig(ctx, cfg, ff, storage.MemfileName, uint64(snap.MemfileDiff.BlockSize()), useCase)
+	// NoDiff (empty rootfs) reports 0 — fall back to the header's block size.
+	mem, memV4, err := resolveCompressConfig(ctx, cfg, ff, storage.MemfileName, diffBlockSize(snap.MemfileDiff, snap.MemfileDiffHeader), useCase)
 	if err != nil {
 		return nil, fmt.Errorf("resolve memfile compress config: %w", err)
 	}
-	root, rootV4, err := resolveCompressConfig(ctx, cfg, ff, storage.RootfsName, uint64(snap.RootfsDiff.BlockSize()), useCase)
+	root, rootV4, err := resolveCompressConfig(ctx, cfg, ff, storage.RootfsName, diffBlockSize(snap.RootfsDiff, snap.RootfsDiffHeader), useCase)
 	if err != nil {
 		return nil, fmt.Errorf("resolve rootfs compress config: %w", err)
 	}
