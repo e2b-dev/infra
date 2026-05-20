@@ -18,9 +18,10 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations"
-	sandboxmemory "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
+	redisreservations "github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations/redis"
+	sandboxredis "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -55,9 +56,15 @@ func newOrchestratorWithCounter(t *testing.T) (*Orchestrator, *eventCounter) {
 
 	ec := &eventCounter{}
 
+	client := redis_utils.SetupInstance(t)
+	storage, err := sandboxredis.NewStorage(client, noop.NewMeterProvider())
+	require.NoError(t, err)
+	go storage.Start(t.Context())
+	t.Cleanup(func() { storage.Close(context.Background()) })
+
 	store := sandbox.NewStore(
-		sandboxmemory.NewStorage(),
-		reservations.NewReservationStorage(),
+		storage,
+		redisreservations.NewReservationStorage(client, storage.Notifier()),
 		sandbox.Callbacks{
 			AddSandboxToRoutingTable: func(context.Context, sandbox.Sandbox) {},
 			AsyncNewlyCreatedSandbox: ec.callback(),

@@ -9,19 +9,29 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations"
-	sandboxmemory "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
+	redisreservations "github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations/redis"
+	sandboxredis "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
+	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
-func newTestAutoResumeOrchestrator() *Orchestrator {
+func newTestAutoResumeOrchestrator(t *testing.T) *Orchestrator {
+	t.Helper()
+
+	client := redis_utils.SetupInstance(t)
+	storage, err := sandboxredis.NewStorage(client, noop.NewMeterProvider())
+	require.NoError(t, err)
+	go storage.Start(t.Context())
+	t.Cleanup(func() { storage.Close(context.Background()) })
+
 	return &Orchestrator{
 		sandboxStore: sandbox.NewStore(
-			sandboxmemory.NewStorage(),
-			reservations.NewReservationStorage(),
+			storage,
+			redisreservations.NewReservationStorage(client, storage.Notifier()),
 			sandbox.Callbacks{
 				AddSandboxToRoutingTable: func(context.Context, sandbox.Sandbox) {},
 				AsyncNewlyCreatedSandbox: func(context.Context, sandbox.Sandbox, sandbox.CreationMetadata) {},
@@ -64,7 +74,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 	t.Run("running sandbox returns node ip immediately", func(t *testing.T) {
 		t.Parallel()
 
-		o := newTestAutoResumeOrchestrator()
+		o := newTestAutoResumeOrchestrator(t)
 		sbx := testSandboxForAutoResume(sandbox.StateRunning)
 		registerNode(o, sbx, "10.0.0.1")
 
@@ -77,7 +87,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 	t.Run("running sandbox with empty ip returns error", func(t *testing.T) {
 		t.Parallel()
 
-		o := newTestAutoResumeOrchestrator()
+		o := newTestAutoResumeOrchestrator(t)
 		sbx := testSandboxForAutoResume(sandbox.StateRunning)
 		registerNode(o, sbx, "")
 
@@ -90,7 +100,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 	t.Run("snapshotting sandbox waits and routes when transition finishes", func(t *testing.T) {
 		t.Parallel()
 
-		o := newTestAutoResumeOrchestrator()
+		o := newTestAutoResumeOrchestrator(t)
 		sbx := testSandboxForAutoResume(sandbox.StateRunning)
 		addSandbox(t, o, sbx)
 		registerNode(o, sbx, "10.0.0.2")
@@ -118,7 +128,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 	t.Run("pausing sandbox returns still transitioning after retries", func(t *testing.T) {
 		t.Parallel()
 
-		o := newTestAutoResumeOrchestrator()
+		o := newTestAutoResumeOrchestrator(t)
 		sbx := testSandboxForAutoResume(sandbox.StateRunning)
 		addSandbox(t, o, sbx)
 
@@ -138,10 +148,17 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		assert.ErrorIs(t, err, ErrSandboxStillTransitioning)
 	})
 
-	t.Run("pausing sandbox wait failure returns internal error", func(t *testing.T) {
+	t.Run("pausing sandbox wait failure returns still transitioning", func(t *testing.T) {
 		t.Parallel()
 
-		o := newTestAutoResumeOrchestrator()
+		// The Redis backend's transition key is deleted in the callback, so a
+		// caller that arrives after finish() sees no ongoing transition and
+		// returns nil from WaitForStateChange. The auto-resume loop then sees
+		// the sandbox still in Pausing and exhausts its retries, returning
+		// ErrSandboxStillTransitioning rather than propagating the original
+		// failure. Original-error propagation is not part of the storage
+		// contract.
+		o := newTestAutoResumeOrchestrator(t)
 		sbx := testSandboxForAutoResume(sandbox.StateRunning)
 		addSandbox(t, o, sbx)
 
@@ -157,13 +174,13 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		_, handled, err := o.HandleExistingSandboxAutoResume(t.Context(), sbx.TeamID, sbx.SandboxID, pausingSandbox, time.Minute)
 		require.Error(t, err)
 		assert.False(t, handled)
-		assert.EqualError(t, err, "error waiting for sandbox to pause")
+		assert.ErrorIs(t, err, ErrSandboxStillTransitioning)
 	})
 
 	t.Run("pausing sandbox wait timeout returns failed precondition", func(t *testing.T) {
 		t.Parallel()
 
-		o := newTestAutoResumeOrchestrator()
+		o := newTestAutoResumeOrchestrator(t)
 		sbx := testSandboxForAutoResume(sandbox.StateRunning)
 		addSandbox(t, o, sbx)
 
@@ -183,7 +200,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 	t.Run("killing sandbox returns not found", func(t *testing.T) {
 		t.Parallel()
 
-		o := newTestAutoResumeOrchestrator()
+		o := newTestAutoResumeOrchestrator(t)
 		sbx := testSandboxForAutoResume(sandbox.StateKilling)
 
 		_, handled, err := o.HandleExistingSandboxAutoResume(t.Context(), sbx.TeamID, sbx.SandboxID, sbx, time.Minute)
@@ -195,7 +212,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 	t.Run("unknown sandbox state returns internal error", func(t *testing.T) {
 		t.Parallel()
 
-		o := newTestAutoResumeOrchestrator()
+		o := newTestAutoResumeOrchestrator(t)
 		sbx := testSandboxForAutoResume(sandbox.State("mystery"))
 
 		_, handled, err := o.HandleExistingSandboxAutoResume(t.Context(), sbx.TeamID, sbx.SandboxID, sbx, time.Minute)

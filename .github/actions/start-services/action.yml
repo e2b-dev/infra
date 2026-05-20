@@ -128,7 +128,6 @@ runs:
         # Client-proxy config
         API_INTERNAL_GRPC_ADDRESS: "localhost:5009"
         DEFAULT_PERSISTENT_VOLUME_TYPE: "test-volume-type"
-        SANDBOX_STORAGE_BACKEND: "redis"
         COMPRESS_ENABLED: ${{ inputs.compress_enabled }}
         COMPRESS_TYPE: ${{ inputs.compress_type }}
         COMPRESS_LEVEL: ${{ inputs.compress_level }}

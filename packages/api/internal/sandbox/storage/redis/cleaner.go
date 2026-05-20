@@ -14,8 +14,6 @@ import (
 
 const cleanerInterval = time.Minute
 
-// TODO: Remove once fully migrated to Redis
-//
 // Cleaner:
 // - prunes stale entries from the two Redis sandbox indexes (`globalExpirationSet` and `globalTeamsSet`).
 // - removes expired sandboxes

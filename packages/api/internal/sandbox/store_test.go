@@ -12,10 +12,26 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
 
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
+	sandboxredis "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
+
+// newTestStorage spins up a redis testcontainer and returns a fresh redis-backed
+// sandbox.Storage. The container and storage are cleaned up via t.Cleanup.
+func newTestStorage(t *testing.T) Storage {
+	t.Helper()
+
+	client := redis_utils.SetupInstance(t)
+	storage, err := sandboxredis.NewStorage(client, noop.NewMeterProvider())
+	require.NoError(t, err)
+	go storage.Start(t.Context())
+	t.Cleanup(func() { storage.Close(context.Background()) })
+
+	return storage
+}
 
 // =============================================================================
 // Test Helpers
@@ -212,7 +228,7 @@ func TestAdd_NewSandbox(t *testing.T) {
 		ctx := t.Context()
 
 		// Setup
-		storage := memory.NewStorage()
+		storage := newTestStorage(t)
 		reservations := &NoOpReservationStorage{}
 
 		tracker := NewCallbackTracker(2) // Expect 2 callbacks
@@ -250,7 +266,7 @@ func TestAdd_AlreadyInCache(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
-		storage := memory.NewStorage()
+		storage := newTestStorage(t)
 		reservations := &NoOpReservationStorage{}
 
 		// First add with all 2 callbacks
@@ -287,7 +303,7 @@ func TestAdd_AlreadyInCache(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
-		storage := memory.NewStorage()
+		storage := newTestStorage(t)
 		reservations := &NoOpReservationStorage{}
 
 		// First add with newlyCreated=true
@@ -329,7 +345,7 @@ func TestAdd_NotNewlyCreated(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
-		storage := memory.NewStorage()
+		storage := newTestStorage(t)
 		reservations := &NoOpReservationStorage{}
 
 		// Add with newlyCreated=false, expect 1 callback
@@ -353,7 +369,7 @@ func TestAdd_NotNewlyCreated(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
-		storage := memory.NewStorage()
+		storage := newTestStorage(t)
 		reservations := &NoOpReservationStorage{}
 
 		// First add
@@ -394,7 +410,7 @@ func TestAdd_StorageErrors(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
-		storage := memory.NewStorage()
+		storage := newTestStorage(t)
 		mockStorage := NewMockStorage(storage)
 		customErr := errors.New("storage failure")
 		mockStorage.SetAddError(customErr)
@@ -431,7 +447,7 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
-		storage := memory.NewStorage()
+		storage := newTestStorage(t)
 		reservations := &NoOpReservationStorage{}
 
 		numGoroutines := 100
@@ -491,7 +507,7 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
-		storage := memory.NewStorage()
+		storage := newTestStorage(t)
 		reservations := &NoOpReservationStorage{}
 
 		numGoroutines := 10

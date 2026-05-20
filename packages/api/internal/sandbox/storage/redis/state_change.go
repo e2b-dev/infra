@@ -174,8 +174,7 @@ func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, res
 
 		// Determine result value for waiters:
 		// - Restore failure: propagate so callers know state is inconsistent
-		// - Transient original failure: signal success so concurrent ops
-		//   (e.g. kill) can proceed — matching the memory implementation
+		// - Transient original failure: signal success so concurrent ops (e.g. kill) can proceed
 		// - Non-transient failure: propagate the error
 		resultValue := ""
 		if restoreErr != nil {

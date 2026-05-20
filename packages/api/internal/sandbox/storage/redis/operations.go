@@ -37,7 +37,7 @@ func (s *Storage) Add(ctx context.Context, sbx sandboxtypes.Sandbox) error {
 		return fmt.Errorf("failed to add sandbox to global expiration index: %w", err)
 	}
 
-	// Execute Lua script for atomic SET + SADD
+	// Atomic NX insert + team index.
 	err = addSandboxScript.Run(ctx, s.redisClient, []string{key, teamKey}, data, sbx.SandboxID).Err()
 	if err != nil {
 		return fmt.Errorf("failed to store sandbox in Redis: %w", err)

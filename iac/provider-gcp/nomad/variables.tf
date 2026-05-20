@@ -113,11 +113,6 @@ variable "sandbox_access_token_hash_seed" {
   type = string
 }
 
-variable "sandbox_storage_backend" {
-  type    = string
-  default = "memory"
-}
-
 variable "db_max_open_connections" {
   type = number
 }
