@@ -66,6 +66,7 @@ func recordSnapshotDedup(
 	fileType string,
 	pre, post *header.DiffMetadata,
 	useCase SnapshotUseCase,
+	bestEffort bool,
 ) {
 	if pre == nil || pre.Dirty == nil || post == nil || post.Dirty == nil {
 		return
@@ -76,11 +77,12 @@ func recordSnapshotDedup(
 
 	ft := attribute.String("file_type", fileType)
 	uc := attribute.String("use_case", string(useCase))
+	be := attribute.Bool("dedup_best_effort", bestEffort)
 	for kind, b := range map[string]int64{
 		"deduped": dedupedBytes,
 		"unique":  uniqueBytes,
 	} {
-		attrs := metric.WithAttributes(ft, attribute.String("kind", kind), uc)
+		attrs := metric.WithAttributes(ft, attribute.String("kind", kind), uc, be)
 		snapshotDiffBytes.Record(ctx, b, attrs)
 		snapshotDiffRatioBp.Record(ctx, ratioBp(b, preBytes), attrs)
 	}

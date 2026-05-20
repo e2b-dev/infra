@@ -1250,7 +1250,7 @@ func pauseProcessMemory(
 				cache.Close(),
 			)
 		}
-		recordSnapshotDedup(ctx, "memfile", diffMetadata, dedupMeta, useCase)
+		recordSnapshotDedup(ctx, "memfile", diffMetadata, dedupMeta, useCase, dedupBestEffort)
 		ratio := uint64(diffMetadata.BlockSize / dedupMeta.BlockSize)
 		for start, end := range diffMetadata.Empty.Ranges() {
 			dedupMeta.Empty.AddRange(uint64(start)*ratio, end*ratio)
