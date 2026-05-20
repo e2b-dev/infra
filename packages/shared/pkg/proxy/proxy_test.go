@@ -420,14 +420,25 @@ func httpGetWithHeaders(t *testing.T, proxyURL string, headers http.Header) (*ht
 		}
 	}
 
-	rsp, err := (&http.Client{
-		Transport: &http.Transport{DisableKeepAlives: true},
-	}).Do(req)
+	transport := &http.Transport{}
+	rsp, err := (&http.Client{Transport: transport}).Do(req)
 	if err != nil {
 		return nil, err
 	}
 
+	rsp.Body = closeIdleConnsBody{ReadCloser: rsp.Body, transport: transport}
 	return rsp, nil
+}
+
+type closeIdleConnsBody struct {
+	io.ReadCloser
+	transport *http.Transport
+}
+
+func (b closeIdleConnsBody) Close() error {
+	err := b.ReadCloser.Close()
+	b.transport.CloseIdleConnections()
+	return err
 }
 
 type instrumentedConn struct {
