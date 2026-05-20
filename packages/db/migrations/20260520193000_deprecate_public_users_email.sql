@@ -2,20 +2,16 @@
 -- +goose StatementBegin
 
 ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_email_key;
-ALTER TABLE public.users DROP COLUMN IF EXISTS email;
+ALTER TABLE public.users
+    ALTER COLUMN email SET DEFAULT ('deprecated-' || gen_random_uuid()::text || '@e2b.local');
 
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
 
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email text;
-
-UPDATE public.users u
-SET email = au.email
-FROM auth.users au
-WHERE au.id = u.id
-  AND u.email IS NULL;
+ALTER TABLE public.users
+    ALTER COLUMN email DROP DEFAULT;
 
 DO $$
 BEGIN
