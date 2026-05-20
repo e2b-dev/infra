@@ -59,33 +59,39 @@ func recordSnapshotDiff(
 	}
 }
 
-// recordSnapshotDedup emits deduped/unique samples on the same
-// snapshot.diff.* histograms so existing panels surface dedup savings.
+// recordSnapshotDedup records bytes saved by dedup on the snapshot.diff.*
+// histograms with kind ∈ {none, dedup, best_effort_dedup}; the modes are
+// mutually exclusive per pause so dashboards split cleanly by kind.
 func recordSnapshotDedup(
 	ctx context.Context,
 	fileType string,
 	pre, post *header.DiffMetadata,
-	useCase SnapshotUseCase,
 	bestEffort bool,
 ) {
-	if pre == nil || pre.Dirty == nil || post == nil || post.Dirty == nil {
-		return
+	var kind string
+	switch {
+	case post == nil:
+		kind = "none"
+	case bestEffort:
+		kind = "best_effort_dedup"
+	default:
+		kind = "dedup"
 	}
-	preBytes := int64(pre.Dirty.GetCardinality()) * pre.BlockSize
-	uniqueBytes := int64(post.Dirty.GetCardinality()) * post.BlockSize
-	dedupedBytes := max(preBytes-uniqueBytes, 0)
 
-	ft := attribute.String("file_type", fileType)
-	uc := attribute.String("use_case", string(useCase))
-	be := attribute.Bool("dedup_best_effort", bestEffort)
-	for kind, b := range map[string]int64{
-		"deduped": dedupedBytes,
-		"unique":  uniqueBytes,
-	} {
-		attrs := metric.WithAttributes(ft, attribute.String("kind", kind), uc, be)
-		snapshotDiffBytes.Record(ctx, b, attrs)
-		snapshotDiffRatioBp.Record(ctx, ratioBp(b, preBytes), attrs)
+	var preBytes, savings int64
+	if pre != nil && pre.Dirty != nil {
+		preBytes = int64(pre.Dirty.GetCardinality()) * pre.BlockSize
 	}
+	if post != nil && post.Dirty != nil {
+		savings = max(preBytes-int64(post.Dirty.GetCardinality())*post.BlockSize, 0)
+	}
+
+	attrs := metric.WithAttributes(
+		attribute.String("file_type", fileType),
+		attribute.String("kind", kind),
+	)
+	snapshotDiffBytes.Record(ctx, savings, attrs)
+	snapshotDiffRatioBp.Record(ctx, ratioBp(savings, preBytes), attrs)
 }
 
 // ratioBp returns num/denom in basis points (10000 = 100.00%) so we keep
