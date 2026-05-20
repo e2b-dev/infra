@@ -30,7 +30,8 @@ const (
 	defaultNice      = 0
 	defaultOomScore  = 100
 	outputBufferSize = 64
-	outputChunkSize  = 32 << 10
+	stdChunkSize     = 32 << 10 // 32 KiB
+	ptyChunkSize     = 16 << 10 // 16 KiB
 )
 
 type ProcessExit struct {
@@ -199,7 +200,7 @@ func New(
 		}
 
 		outWg.Go(func() {
-			readBuf := make([]byte, outputChunkSize)
+			readBuf := make([]byte, ptyChunkSize)
 
 			for {
 				n, readErr := tty.Read(readBuf)
@@ -237,7 +238,7 @@ func New(
 		}
 
 		outWg.Go(func() {
-			readBuf := make([]byte, outputChunkSize)
+			readBuf := make([]byte, stdChunkSize)
 
 			for {
 				n, readErr := stdout.Read(readBuf)
@@ -276,7 +277,7 @@ func New(
 		}
 
 		outWg.Go(func() {
-			readBuf := make([]byte, outputChunkSize)
+			readBuf := make([]byte, stdChunkSize)
 
 			for {
 				n, readErr := stderr.Read(readBuf)
