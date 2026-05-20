@@ -124,9 +124,6 @@ type VolumeMount struct {
 // FilePath defines model for FilePath.
 type FilePath = string
 
-// Metadata defines model for Metadata.
-type Metadata map[string]string
-
 // Signature defines model for Signature.
 type Signature = string
 
@@ -193,12 +190,6 @@ type PostFilesParams struct {
 
 	// SignatureExpiration Unix timestamp (seconds) after which the signature expires. Only used with the signature parameter.
 	SignatureExpiration *SignatureExpiration `form:"signature_expiration,omitempty" json:"signature_expiration,omitempty"`
-
-	// Metadata User-defined metadata stored as extended attributes on the uploaded file.
-	// Pass each key/value pair as `metadata[key]=value`, e.g.
-	// `?metadata[author]=mish&metadata[purpose]=upload`. Keys are stored in
-	// the `user.` xattr namespace and returned on EntryInfo lookups.
-	Metadata *Metadata `json:"metadata,omitempty"`
 }
 
 // PostInitJSONBody defines parameters for PostInit.
@@ -629,18 +620,6 @@ func NewPostFilesRequestWithBody(server string, params *PostFilesParams, content
 		if params.SignatureExpiration != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "signature_expiration", *params.SignatureExpiration, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
-				return nil, err
-			} else {
-				for _, qp := range strings.Split(queryFrag, "&") {
-					rawQueryFragments = append(rawQueryFragments, qp)
-				}
-			}
-
-		}
-
-		if params.Metadata != nil {
-
-			if queryFrag, err := runtime.StyleParamWithOptions("deepObject", true, "metadata", *params.Metadata, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "object", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {

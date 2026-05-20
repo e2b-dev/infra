@@ -26,6 +26,32 @@ import (
 
 var ErrNoDiskSpace = errors.New("not enough disk space available")
 
+// metadataHeaderPrefix is the request-header prefix used to attach
+// user-defined metadata to file uploads. Each `<metadataHeaderPrefix><key>:
+// <value>` header becomes a `user.<key>` xattr on the uploaded file.
+const metadataHeaderPrefix = "X-Metadata-"
+
+// extractMetadataHeaders returns all `X-Metadata-*` headers from h, with the
+// prefix stripped and keys lowercased. Returns nil if none are present.
+func extractMetadataHeaders(h http.Header) map[string]string {
+	var metadata map[string]string
+	for name, values := range h {
+		if len(values) == 0 || !strings.HasPrefix(name, metadataHeaderPrefix) {
+			continue
+		}
+		key := strings.ToLower(strings.TrimPrefix(name, metadataHeaderPrefix))
+		if key == "" {
+			continue
+		}
+		if metadata == nil {
+			metadata = make(map[string]string)
+		}
+		metadata[key] = values[0]
+	}
+
+	return metadata
+}
+
 func processFile(r *http.Request, path string, part io.Reader, uid, gid int, metadata map[string]string, logger zerolog.Logger) (int, error) {
 	logger.Debug().
 		Str("path", path).
@@ -272,16 +298,13 @@ func (a *API) PostFiles(w http.ResponseWriter, r *http.Request, params PostFiles
 		return
 	}
 
-	var metadata map[string]string
-	if params.Metadata != nil {
-		metadata = *params.Metadata
-		if err := filesystem.ValidateMetadata(metadata); err != nil {
-			errMsg = fmt.Errorf("invalid metadata: %w", err)
-			errorCode = http.StatusBadRequest
-			jsonError(w, errorCode, errMsg)
+	metadata := extractMetadataHeaders(r.Header)
+	if err := filesystem.ValidateMetadata(metadata); err != nil {
+		errMsg = fmt.Errorf("invalid metadata: %w", err)
+		errorCode = http.StatusBadRequest
+		jsonError(w, errorCode, errMsg)
 
-			return
-		}
+		return
 	}
 
 	// Use raw body upload only for application/octet-stream, default to multipart for backwards compatibility
