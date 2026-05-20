@@ -232,6 +232,30 @@ components:
           maximum: 100
           default: 20
 
+    AdminAuthProviderProfilesLookupEmailParams:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+
+    AdminAuthProviderProfilesSearchParams:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          minLength: 1
+        limit:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 100
+          default: 20
+
     BuildStatus:
       type: string
       description: Build status mapped for dashboard clients.
@@ -863,9 +887,9 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /admin/auth-provider/profiles/resolve:
+  /admin/user-profiles/resolve:
     post:
-      summary: Resolve auth provider profiles
+      summary: Resolve user profiles
       tags: [admin]
       security:
         - AdminTokenAuth: []
@@ -889,18 +913,19 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /admin/auth-provider/profiles/lookup-email:
-    post:
-      summary: Lookup auth provider profiles by email
+  /admin/user-profiles/by-email:
+    get:
+      summary: Lookup user profiles by email
       tags: [admin]
       security:
         - AdminTokenAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AdminAuthProviderProfilesLookupEmailRequest"
+      parameters:
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+            format: email
       responses:
         "200":
           description: Successfully found matching profiles.
@@ -915,18 +940,28 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /admin/auth-provider/profiles/search:
-    post:
-      summary: Search auth provider profiles
+  /admin/user-profiles/search:
+    get:
+      summary: Search user profiles
       tags: [admin]
       security:
         - AdminTokenAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AdminAuthProviderProfilesSearchRequest"
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 20
       responses:
         "200":
           description: Successfully searched profiles.

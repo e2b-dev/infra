@@ -33,15 +33,15 @@ func (s *authTestServer) PostAdminUsersUserIdBootstrap(c *gin.Context, userId Us
 	c.Status(http.StatusNoContent)
 }
 
-func (noopServer) PostAdminAuthProviderProfilesLookupEmail(c *gin.Context) {
+func (noopServer) GetAdminUserProfilesByEmail(c *gin.Context, _ GetAdminUserProfilesByEmailParams) {
 	c.Status(http.StatusNotImplemented)
 }
 
-func (noopServer) PostAdminAuthProviderProfilesResolve(c *gin.Context) {
+func (noopServer) PostAdminUserProfilesResolve(c *gin.Context) {
 	c.Status(http.StatusNotImplemented)
 }
 
-func (noopServer) PostAdminAuthProviderProfilesSearch(c *gin.Context) {
+func (noopServer) GetAdminUserProfilesSearch(c *gin.Context, _ GetAdminUserProfilesSearchParams) {
 	c.Status(http.StatusNotImplemented)
 }
 

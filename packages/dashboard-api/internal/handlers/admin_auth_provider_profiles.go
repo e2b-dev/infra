@@ -15,7 +15,7 @@ import (
 
 const maxAdminProfileResolveUserIDs = 100
 
-func (s *APIStore) PostAdminAuthProviderProfilesResolve(c *gin.Context) {
+func (s *APIStore) PostAdminUserProfilesResolve(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	body, err := ginutils.ParseBody[api.AdminAuthProviderProfilesResolveRequest](ctx, c)
@@ -54,17 +54,10 @@ func (s *APIStore) PostAdminAuthProviderProfilesResolve(c *gin.Context) {
 	})
 }
 
-func (s *APIStore) PostAdminAuthProviderProfilesLookupEmail(c *gin.Context) {
+func (s *APIStore) GetAdminUserProfilesByEmail(c *gin.Context, params api.GetAdminUserProfilesByEmailParams) {
 	ctx := c.Request.Context()
 
-	body, err := ginutils.ParseBody[api.AdminAuthProviderProfilesLookupEmailRequest](ctx, c)
-	if err != nil {
-		s.sendAPIStoreError(c, http.StatusBadRequest, "Invalid request body")
-
-		return
-	}
-
-	profiles, err := s.userProfiles.FindProfilesByEmail(ctx, string(body.Email))
+	profiles, err := s.userProfiles.FindProfilesByEmail(ctx, string(params.Email))
 	if err != nil {
 		logger.L().Error(ctx, "failed to look up auth provider profiles by email", zap.Error(err))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to look up auth provider profiles")
@@ -77,17 +70,8 @@ func (s *APIStore) PostAdminAuthProviderProfilesLookupEmail(c *gin.Context) {
 	})
 }
 
-func (s *APIStore) PostAdminAuthProviderProfilesSearch(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	body, err := ginutils.ParseBody[api.AdminAuthProviderProfilesSearchRequest](ctx, c)
-	if err != nil {
-		s.sendAPIStoreError(c, http.StatusBadRequest, "Invalid request body")
-
-		return
-	}
-
-	userID, err := uuid.Parse(body.Query)
+func (s *APIStore) GetAdminUserProfilesSearch(c *gin.Context, params api.GetAdminUserProfilesSearchParams) {
+	userID, err := uuid.Parse(params.Query)
 	if err != nil {
 		c.JSON(http.StatusOK, api.AdminAuthProviderProfilesResponse{
 			Profiles: []api.AdminAuthProviderProfile{},
@@ -96,6 +80,7 @@ func (s *APIStore) PostAdminAuthProviderProfilesSearch(c *gin.Context) {
 		return
 	}
 
+	ctx := c.Request.Context()
 	profiles, err := s.userProfiles.GetProfilesByUserID(ctx, []uuid.UUID{userID})
 	if err != nil {
 		logger.L().Error(ctx, "failed to resolve auth provider profile search result", zap.Error(err))
