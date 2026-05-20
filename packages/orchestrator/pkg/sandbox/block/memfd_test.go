@@ -46,7 +46,7 @@ func fullDirty(size, blockSize int64) *roaring.Bitmap {
 }
 
 // fakeOriginalDevice satisfies ReadonlyDevice over a fixed byte buffer.
-// Tracks ReadAt calls so dedup tests can assert fast-path skipping.
+// Tracks Slice/ReadAt calls so dedup tests can assert fast-path skipping.
 type fakeOriginalDevice struct {
 	data  []byte
 	hdr   *header.Header // optional; nil disables the dedup fast paths
@@ -66,14 +66,22 @@ func (f *fakeOriginalDevice) ReadAt(_ context.Context, p []byte, off int64) (int
 	return n, nil
 }
 
-func (f *fakeOriginalDevice) Size(context.Context) (int64, error)                 { return int64(len(f.data)), nil }
-func (f *fakeOriginalDevice) Close() error                                        { return nil }
-func (f *fakeOriginalDevice) Slice(context.Context, int64, int64) ([]byte, error) { return nil, nil }
-func (f *fakeOriginalDevice) BlockSize() int64                                    { return int64(header.PageSize) }
-func (f *fakeOriginalDevice) Header() *header.Header                              { return f.hdr }
-func (f *fakeOriginalDevice) SwapHeader(*header.Header)                           {}
+func (f *fakeOriginalDevice) Slice(_ context.Context, off, length int64) ([]byte, error) {
+	f.reads++
+	if off+length > int64(len(f.data)) {
+		return nil, io.EOF
+	}
 
-// erroringOriginalDevice returns sentinel from every ReadAt.
+	return f.data[off : off+length], nil
+}
+
+func (f *fakeOriginalDevice) Size(context.Context) (int64, error) { return int64(len(f.data)), nil }
+func (f *fakeOriginalDevice) Close() error                        { return nil }
+func (f *fakeOriginalDevice) BlockSize() int64                    { return int64(header.PageSize) }
+func (f *fakeOriginalDevice) Header() *header.Header              { return f.hdr }
+func (f *fakeOriginalDevice) SwapHeader(*header.Header)           {}
+
+// erroringOriginalDevice returns sentinel from every ReadAt and Slice.
 type erroringOriginalDevice struct {
 	fakeOriginalDevice
 
@@ -82,6 +90,10 @@ type erroringOriginalDevice struct {
 
 func (e *erroringOriginalDevice) ReadAt(context.Context, []byte, int64) (int, error) {
 	return 0, e.err
+}
+
+func (e *erroringOriginalDevice) Slice(context.Context, int64, int64) ([]byte, error) {
+	return nil, e.err
 }
 
 // peekingOriginalDevice wraps fakeOriginalDevice with a programmable

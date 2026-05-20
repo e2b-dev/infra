@@ -260,7 +260,6 @@ func dedupPages(
 
 	pageDirty := roaring.New()
 	pageEmpty := roaring.New()
-	baseBuf := make([]byte, blockSize)
 	// Per-block iovec buffer, reused across blocks.
 	iovs := make([][]byte, 0, blockSize/header.PageSize)
 	var fileOff, exportedSize int64
@@ -309,18 +308,28 @@ func dedupPages(
 				}
 			}
 
-			// uuid.Nil parent mapping ⇒ base reads as zero; skip ReadAt.
-			if baseIsZeroBlock(ctx, base, absOff, blockSize) {
-				clear(baseBuf)
-			} else if _, err := base.ReadAt(ctx, baseBuf, absOff); err != nil {
-				return nil, nil, errors.Join(fmt.Errorf("read base at %d: %w", absOff, err), f.Close(), os.Remove(outPath))
-			}
+			// uuid.Nil parent mapping ⇒ base reads as zero; skip the
+			// per-page Slice and just check IsZero(srcPage) directly.
+			baseZero := baseIsZeroBlock(ctx, base, absOff, blockSize)
 
 			for i := int64(0); i < blockSize; i += header.PageSize {
 				srcPage := srcBuf[i : i+header.PageSize]
 				pageIdx := uint32((absOff + i) / header.PageSize)
 
-				if bytes.Equal(srcPage, baseBuf[i:i+header.PageSize]) {
+				var equal bool
+				if baseZero {
+					equal = header.IsZero(srcPage)
+				} else {
+					// Slice is zero-copy when the 4 KiB request fits in a
+					// single underlying mapping (always true at PageSize).
+					basePage, sErr := base.Slice(ctx, absOff+i, header.PageSize)
+					if sErr != nil {
+						return nil, nil, errors.Join(fmt.Errorf("slice base at %d: %w", absOff+i, sErr), f.Close(), os.Remove(outPath))
+					}
+					equal = bytes.Equal(srcPage, basePage)
+				}
+
+				if equal {
 					if header.IsZero(srcPage) {
 						pageEmpty.Add(pageIdx)
 					}

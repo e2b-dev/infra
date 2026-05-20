@@ -119,8 +119,30 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 	return n, nil
 }
 
-// Slice delegates to ReadAt to handle mixed-granularity mappings.
+// Slice returns [off, off+length). Zero-copy when length fits in a single
+// mapping (delegates to chunker.Slice on the chunker's mmap, or returns a
+// shared zero slice for uuid.Nil); otherwise composes via ReadAt.
 func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+	if length > 0 {
+		h := b.Header()
+		m, err := h.GetShiftedMapping(ctx, off)
+		if err == nil && int64(m.Length) >= length {
+			if m.BuildId == uuid.Nil && length <= int64(len(header.EmptyHugePage)) {
+				return header.EmptyHugePage[:length], nil
+			}
+			if m.BuildId != uuid.Nil {
+				size := b.buildFileSize(h, m.BuildId)
+				ft := h.GetBuildFrameData(m.BuildId)
+				diff, derr := b.getBuild(ctx, m.BuildId, size, ft.CompressionType())
+				if derr == nil {
+					if slice, sErr := diff.Slice(ctx, int64(m.Offset), length, ft); sErr == nil {
+						return slice, nil
+					}
+				}
+				// Errors fall through to ReadAt's retry-on-transition path.
+			}
+		}
+	}
 	out := make([]byte, length)
 	if _, err := b.ReadAt(ctx, out, off); err != nil {
 		return nil, fmt.Errorf("failed to read at: %w", err)
