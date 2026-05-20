@@ -397,7 +397,8 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 			AllowInternetAccess: ptrB(false),
 		})
 		require.Equal(t, http.StatusNoContent, resp.StatusCode())
-		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+		freshEnvdClient := setup.GetEnvdClient(t, ctx)
+		verifyConnectivity(t, ctx, sbx, freshEnvdClient, []connectivityCheck{
 			{"https://8.8.8.8", false},
 			{"https://1.1.1.1", false},
 		})
