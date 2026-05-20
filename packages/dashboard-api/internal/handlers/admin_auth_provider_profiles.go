@@ -77,27 +77,18 @@ func (s *APIStore) PostAdminUserProfilesByEmail(c *gin.Context) {
 	})
 }
 
-func (s *APIStore) GetAdminUserProfilesSearch(c *gin.Context, params api.GetAdminUserProfilesSearchParams) {
-	userID, err := uuid.Parse(params.Query)
-	if err != nil {
-		c.JSON(http.StatusOK, api.AdminAuthProviderProfilesResponse{
-			Profiles: []api.AdminAuthProviderProfile{},
-		})
-
-		return
-	}
-
+func (s *APIStore) GetAdminUserProfilesUserId(c *gin.Context, userId api.UserId) {
 	ctx := c.Request.Context()
-	profiles, err := s.userProfiles.GetProfilesByUserID(ctx, []uuid.UUID{userID})
+	profiles, err := s.userProfiles.GetProfilesByUserID(ctx, []uuid.UUID{userId})
 	if err != nil {
-		logger.L().Error(ctx, "failed to resolve auth provider profile search result", zap.Error(err))
-		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to search auth provider profiles")
+		logger.L().Error(ctx, "failed to resolve auth provider profile", zap.Error(err))
+		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to resolve auth provider profile")
 
 		return
 	}
 
 	c.JSON(http.StatusOK, api.AdminAuthProviderProfilesResponse{
-		Profiles: apiProfilesFromMap([]uuid.UUID{userID}, profiles),
+		Profiles: apiProfilesFromMap([]uuid.UUID{userId}, profiles),
 	})
 }
 

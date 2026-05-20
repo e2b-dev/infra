@@ -217,45 +217,6 @@ components:
           type: string
           format: email
 
-    AdminAuthProviderProfilesSearchRequest:
-      type: object
-      required:
-        - query
-      properties:
-        query:
-          type: string
-          minLength: 1
-        limit:
-          type: integer
-          format: int32
-          minimum: 1
-          maximum: 100
-          default: 20
-
-    AdminAuthProviderProfilesLookupEmailParams:
-      type: object
-      required:
-        - email
-      properties:
-        email:
-          type: string
-          format: email
-
-    AdminAuthProviderProfilesSearchParams:
-      type: object
-      required:
-        - query
-      properties:
-        query:
-          type: string
-          minLength: 1
-        limit:
-          type: integer
-          format: int32
-          minimum: 1
-          maximum: 100
-          default: 20
-
     BuildStatus:
       type: string
       description: Build status mapped for dashboard clients.
@@ -939,31 +900,17 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /admin/user-profiles/search:
+  /admin/user-profiles/{userId}:
     get:
-      summary: Search user profiles
+      summary: Get user profile
       tags: [admin]
       security:
         - AdminTokenAuth: []
       parameters:
-        - name: query
-          in: query
-          required: true
-          schema:
-            type: string
-            minLength: 1
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            format: int32
-            minimum: 1
-            maximum: 100
-            default: 20
+        - $ref: "#/components/parameters/userId"
       responses:
         "200":
-          description: Successfully searched profiles.
+          description: Successfully found profile.
           content:
             application/json:
               schema:
