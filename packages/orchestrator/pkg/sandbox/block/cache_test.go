@@ -952,7 +952,6 @@ func TestCacheDedup_EmptyParentMappingSkipsBaseReadAt(t *testing.T) {
 	// Block 1 is zero source → exercises pageDirty + pageEmpty in one run.
 	clear(srcData[blockSize : blockSize*2])
 
-
 	hdr, err := header.NewHeader(
 		header.NewTemplateMetadata(uuid.Nil, uint64(blockSize), uint64(size)),
 		[]header.BuildMap{{Offset: 0, Length: uint64(size), BuildId: uuid.Nil}},
@@ -972,10 +971,8 @@ func TestCacheDedup_EmptyParentMappingSkipsBaseReadAt(t *testing.T) {
 
 	require.Zero(t, base.reads, "uuid.Nil parent fast path must not call base.ReadAt")
 
-
 	require.EqualValues(t, blockSize/pageSize, meta.Dirty.GetCardinality())
 	require.EqualValues(t, blockSize/pageSize, meta.Empty.GetCardinality())
-
 
 	for i := range blockSize / pageSize {
 		got := make([]byte, pageSize)
