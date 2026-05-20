@@ -244,28 +244,34 @@ func dedupPages(
 
 	openFlags := os.O_RDWR | os.O_CREATE
 	if directIO {
-		// Bypass the page cache so writes DMA straight from the hugetlb
-		// memfd to NVMe; avoids dirty_ratio buildup on large outputs and
-		// keeps RAM clean. Source pages are 4 KiB-aligned slices of a
-		// hugepage memfd, so DMA-alignment is satisfied.
+		// Bypass the page cache so writes go straight to disk; the
+		// orchestrator's dirtyable RAM pool is already pressured by
+		// chunker mmap-backed downloads + concurrent pauses, and our
+		// dedup output never benefits from buffered re-reads.
 		openFlags |= unix.O_DIRECT
 	}
 	f, err := os.OpenFile(outPath, openFlags, 0o644)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open dedup cache: %w", err)
 	}
+	if directIO {
+		// Pre-allocate worst-case extents (every dirty block fully unique)
+		// so per-batch O_DIRECT writes never serialize on XFS's inode lock
+		// during extent allocation under concurrent pauses. Truncated to
+		// the actual data size at the end of the walk.
+		worst := int64(dirty.GetCardinality()) * blockSize
+		if fErr := unix.Fallocate(int(f.Fd()), 0, 0, worst); fErr != nil {
+			logger.L().Warn(ctx, "fallocate dedup cache; proceeding without preallocation", zap.Error(fErr))
+		}
+	}
 
 	pageDirty := roaring.New()
 	pageEmpty := roaring.New()
 	baseBuf := make([]byte, blockSize)
-	// Two-phase: phase 1 walks the source mmap and accumulates per-page
-	// slice headers (no memcpy) for every dirty page; phase 2 drains the
-	// iov slice via IOV_MAX-bounded pwritev calls at the end. Pre-sized
-	// for the worst case (every dirty block is fully unique) so phase 1
-	// is a single up-front allocation.
-	pagesPerBlock := blockSize / header.PageSize
-	iovs := make([][]byte, 0, int64(dirty.GetCardinality())*pagesPerBlock)
-	var exportedSize int64
+	// Per-block iovec buffer: reused across blocks. Capacity sized for
+	// max pages per block; Linux IOV_MAX (1024) is well above that.
+	iovs := make([][]byte, 0, blockSize/header.PageSize)
+	var fileOff, exportedSize int64
 
 	for r := range BitsetRanges(dirty, blockSize) {
 		exportedSize += r.Size
@@ -280,6 +286,9 @@ func dedupPages(
 			if err != nil {
 				return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
 			}
+
+			iovs = iovs[:0]
+			blockStartOff := fileOff
 
 			// Best-effort: if base data isn't in the local chunker cache,
 			// skip the compare entirely and write every page through as-is
@@ -297,6 +306,13 @@ func dedupPages(
 						}
 						pageDirty.Add(pageIdx)
 						iovs = append(iovs, srcPage)
+						fileOff += header.PageSize
+					}
+
+					if len(iovs) > 0 {
+						if err := pwritevAll(int(f.Fd()), blockStartOff, iovs); err != nil {
+							return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
+						}
 					}
 
 					continue
@@ -326,24 +342,23 @@ func dedupPages(
 
 				pageDirty.Add(pageIdx)
 				iovs = append(iovs, srcPage)
+				fileOff += header.PageSize
+			}
+
+			if len(iovs) > 0 {
+				if err := pwritevAll(int(f.Fd()), blockStartOff, iovs); err != nil {
+					return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
+				}
 			}
 		}
 	}
 
-	// Phase 2: drain the iov slice into the dedup file in IOV_MAX- and
-	// MAX_RW_COUNT-bounded batches. Deferring all writes to the end keeps
-	// the pagecache from accumulating beyond dirty_ratio mid-walk and
-	// triggering balance_dirty_pages throttling on large outputs.
-	fd := int(f.Fd())
-	err = drainIovs(iovs, func(b []byte) int64 { return int64(len(b)) }, header.PageSize,
-		func(off int64, batch [][]byte, _ int64) error {
-			return pwritevAll(fd, off, batch)
-		})
-	if err != nil {
-		return nil, nil, errors.Join(fmt.Errorf("drain dedup iovs: %w", err), f.Close(), os.Remove(outPath))
+	if directIO {
+		// Release the unused tail extents from the worst-case fallocate.
+		if err := f.Truncate(fileOff); err != nil {
+			return nil, nil, errors.Join(fmt.Errorf("truncate dedup cache: %w", err), f.Close(), os.Remove(outPath))
+		}
 	}
-	fileOff := int64(len(iovs)) * header.PageSize
-
 	if err := f.Close(); err != nil {
 		return nil, nil, errors.Join(err, os.Remove(outPath))
 	}
