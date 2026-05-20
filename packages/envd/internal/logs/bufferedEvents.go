@@ -15,10 +15,11 @@ func LogBufferedDataEvents(dataCh <-chan []byte, logger *zerolog.Logger, eventTy
 	timer := time.NewTicker(defaultTimeout)
 	defer timer.Stop()
 
-	var buffer []byte
+	bytesField := eventType + "_bytes"
+	buffer := make([]byte, 0, defaultMaxBufferSize)
 	defer func() {
 		if len(buffer) > 0 {
-			logger.Info().Str(eventType, string(buffer)).Msg("Streaming process event (flush)")
+			logger.Info().Int(bytesField, len(buffer)).Msg("Streaming process event (flush)")
 		}
 	}()
 
@@ -26,8 +27,8 @@ func LogBufferedDataEvents(dataCh <-chan []byte, logger *zerolog.Logger, eventTy
 		select {
 		case <-timer.C:
 			if len(buffer) > 0 {
-				logger.Info().Str(eventType, string(buffer)).Msg("Streaming process event")
-				buffer = nil
+				logger.Info().Int(bytesField, len(buffer)).Msg("Streaming process event")
+				buffer = buffer[:0]
 			}
 		case data, ok := <-dataCh:
 			if !ok {
@@ -37,8 +38,8 @@ func LogBufferedDataEvents(dataCh <-chan []byte, logger *zerolog.Logger, eventTy
 			buffer = append(buffer, data...)
 
 			if len(buffer) >= defaultMaxBufferSize {
-				logger.Info().Str(eventType, string(buffer)).Msg("Streaming process event")
-				buffer = nil
+				logger.Info().Int(bytesField, len(buffer)).Msg("Streaming process event")
+				buffer = buffer[:0]
 
 				continue
 			}
