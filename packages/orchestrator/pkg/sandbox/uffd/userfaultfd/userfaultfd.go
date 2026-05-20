@@ -54,12 +54,18 @@ type PageReader interface {
 	ReadAt(ctx context.Context, p []byte, off int64) (int, error)
 }
 
+// pagePool returns HugepageSize-sized scratch buffers shared across all
+// UFFD instances; 4 KiB-page UFFDs reslice the buffer down to pageSize.
+var pagePool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, header.HugepageSize)
+
+		return &buf
+	},
+}
+
 type Userfaultfd struct {
 	fd Fd
-
-	// pagePool returns pageSize-sized scratch buffers; per-instance so a
-	// 4 KiB-page UFFD doesn't pin HugepageSize-sized buffers per worker.
-	pagePool sync.Pool
 
 	src         PageReader
 	ma          *memory.Mapping
@@ -145,12 +151,6 @@ func NewUserfaultfdFromFd(fd uintptr, src PageReader, m *memory.Mapping, logger 
 		wakeupPipe:      wakeupPipe,
 		logger:          logger,
 	}
-	u.pagePool.New = func() any {
-		buf := make([]byte, pageSize)
-
-		return &buf
-	}
-
 	u.wg.SetLimit(maxRequestsInProgress)
 
 	return u, nil
@@ -506,8 +506,8 @@ func (u *Userfaultfd) faultPage(
 	case source == nil && u.pageSize == header.HugepageSize:
 		writeErr = u.fd.copy(addr, u.pageSize, header.EmptyHugePage, mode)
 	default:
-		bufPtr := u.pagePool.Get().(*[]byte)
-		defer u.pagePool.Put(bufPtr)
+		bufPtr := pagePool.Get().(*[]byte)
+		defer pagePool.Put(bufPtr)
 		b := (*bufPtr)[:u.pageSize]
 
 		// ReadAt retry holds settleRequests.RLock for up to ~2s of

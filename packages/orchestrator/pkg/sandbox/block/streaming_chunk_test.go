@@ -10,7 +10,6 @@ import (
 	"math/rand/v2"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -218,44 +217,6 @@ func TestChunker_CacheHit(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, data[:testBlockSize], slice2)
 	require.Equal(t, firstFetches, file.fetchCount.Load(), "expected no additional upstream fetch")
-}
-
-// TestChunker_CacheStatsContext verifies the chunker reports per-call cache
-// hit/miss counts into a CacheStats collector attached to ctx, with no effect
-// when no collector is attached.
-func TestChunker_CacheStatsContext(t *testing.T) {
-	t.Parallel()
-
-	data := makeTestData(testFileSize)
-	chunker := newTestChunker(t, &fakeSeekable{data: data}, int64(len(data)))
-	defer chunker.Close()
-
-	stats := &CacheStats{}
-	ctx := WithCacheStats(t.Context(), stats)
-
-	// First slice misses (uncached → remote fetch). registerAndWait returns
-	// as soon as the requested block is written, but setIsCached only runs
-	// after the *entire* chunk is fetched, so we poll for full cache
-	// readiness before testing the hit path.
-	_, err := chunker.Slice(ctx, 0, testBlockSize, nil)
-	require.NoError(t, err)
-	require.EqualValues(t, 0, stats.Hits.Load())
-	require.EqualValues(t, 1, stats.Misses.Load())
-
-	require.Eventually(t, func() bool {
-		return chunker.cache.isCached(0, testBlockSize)
-	}, 5*time.Second, 1*time.Millisecond, "chunk fetch did not complete")
-
-	// Cached slice bumps Hits, leaves Misses alone.
-	_, err = chunker.Slice(ctx, 0, testBlockSize, nil)
-	require.NoError(t, err)
-	require.EqualValues(t, 1, stats.Hits.Load())
-	require.EqualValues(t, 1, stats.Misses.Load())
-
-	// A nil collector is a no-op (no panic, no state).
-	_, err = chunker.Slice(t.Context(), 0, testBlockSize, nil)
-	require.NoError(t, err)
-	require.EqualValues(t, 1, stats.Hits.Load(), "stats untouched when ctx has no collector")
 }
 
 // TestChunker_FullChunkCachedAfterPartialRequest verifies that requesting the

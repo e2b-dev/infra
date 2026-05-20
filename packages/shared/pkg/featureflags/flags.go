@@ -108,6 +108,13 @@ func OverrideBoolFlag(flag BoolFlag, value bool) {
 	launchDarklyOfflineStore.Update(builder)
 }
 
+// OverrideJSONFlag forces a JSON flag to a specific value in the offline store.
+// Only takes effect when LAUNCH_DARKLY_API_KEY is not set (i.e. dev/CLI tools).
+func OverrideJSONFlag(flag JSONFlag, value ldvalue.Value) {
+	builder := launchDarklyOfflineStore.Flag(flag.name).ValueForAll(value)
+	launchDarklyOfflineStore.Update(builder)
+}
+
 var (
 	MetricsWriteFlag                    = NewBoolFlag("sandbox-metrics-write", true)
 	MetricsReadFlag                     = NewBoolFlag("sandbox-metrics-read", true)
@@ -132,15 +139,14 @@ var (
 	// Only takes effect when UseMemFdFlag is also on.
 	MemfdBackgroundCopyFlag = NewBoolFlag("memfd-background-copy", false)
 
-	// MemfileDiffDedupFlag drops memfile-diff pages that match the base
-	// byte-for-byte at 4 KiB granularity during snapshot post-processing.
-	MemfileDiffDedupFlag = NewBoolFlag("memfile-diff-dedup", false)
-
-	// MemfileDiffDedupBestEffortFlag, when on alongside MemfileDiffDedupFlag,
-	// skips dedup for any block whose base data isn't already in the chunker's
-	// local cache. Those blocks' pages are written through as-is (zero pages
-	// still routed to Empty). Trades dedup ratio for avoided remote fetches.
-	MemfileDiffDedupBestEffortFlag = NewBoolFlag("memfile-diff-dedup-best-effort", false)
+	// MemfileDiffDedupFlag controls memfile-diff dedup post-processing.
+	// enabled: drop pages that match the base byte-for-byte at 4 KiB.
+	// bestEffort: skip dedup for blocks whose base isn't in the chunker
+	// cache (avoid remote fetches; zero pages still routed to Empty).
+	MemfileDiffDedupFlag = NewJSONFlag("memfile-diff-dedup", ldvalue.FromJSONMarshal(map[string]any{
+		"enabled":    false,
+		"bestEffort": false,
+	}))
 
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.
 	PeerToPeerChunkTransferFlag = NewBoolFlag("peer-to-peer-chunk-transfer", false)

@@ -102,7 +102,9 @@ func main() {
 	}
 
 	if *memfileDiffDedup {
-		featureflags.OverrideBoolFlag(featureflags.MemfileDiffDedupFlag, true)
+		featureflags.OverrideJSONFlag(featureflags.MemfileDiffDedupFlag, ldvalue.FromJSONMarshal(map[string]any{
+			"enabled": true,
+		}))
 	}
 
 	if *fromBuild == "" {

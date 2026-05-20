@@ -85,9 +85,6 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64, ft *storage.Fram
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
 		timer.RecordRaw(ctx, length, attrs.successFromCache)
-		if s := cacheStatsFromContext(ctx); s != nil {
-			s.Hits.Add(1)
-		}
 
 		return b, nil
 	}
@@ -113,9 +110,6 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64, ft *storage.Fram
 	}
 
 	timer.RecordRaw(ctx, length, attrs.successFromRemote)
-	if s := cacheStatsFromContext(ctx); s != nil {
-		s.Misses.Add(1)
-	}
 
 	return b, nil
 }

@@ -1137,9 +1137,10 @@ func (s *Sandbox) Pause(
 	// Start POSTPROCESSING
 	var dedupBase block.ReadonlyDevice
 	var dedupBestEffort bool
-	if s.featureFlags.BoolFlag(ctx, featureflags.MemfileDiffDedupFlag, sandboxLDContext(s.Runtime, s.Config)) {
+	dedupCfg := s.featureFlags.JSONFlag(ctx, featureflags.MemfileDiffDedupFlag, sandboxLDContext(s.Runtime, s.Config)).AsValueMap()
+	if dedupCfg.Get("enabled").BoolValue() {
 		dedupBase = originalMemfile
-		dedupBestEffort = s.featureFlags.BoolFlag(ctx, featureflags.MemfileDiffDedupBestEffortFlag, sandboxLDContext(s.Runtime, s.Config))
+		dedupBestEffort = dedupCfg.Get("bestEffort").BoolValue()
 	}
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
 		ctx,
