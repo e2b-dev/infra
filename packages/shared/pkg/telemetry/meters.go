@@ -125,6 +125,10 @@ const (
 	SnapshotDiffBytes   HistogramType = "orchestrator.sandbox.snapshot.diff.bytes"
 	SnapshotDiffRatioBp HistogramType = "orchestrator.sandbox.snapshot.diff.ratio_bp"
 	SnapshotTotalBytes  HistogramType = "orchestrator.sandbox.snapshot.total.bytes"
+
+	UploadUncompressedBytes  HistogramType = "orchestrator.sandbox.upload.uncompressed.bytes"
+	UploadCompressedBytes    HistogramType = "orchestrator.sandbox.upload.compressed.bytes"
+	UploadCompressionRatioBp HistogramType = "orchestrator.sandbox.upload.compression.ratio_bp"
 )
 
 const (
@@ -363,6 +367,10 @@ var histogramDesc = map[HistogramType]string{
 	SnapshotDiffBytes:   "Per-snapshot dirty/empty bytes per file",
 	SnapshotDiffRatioBp: "Per-snapshot dirty/empty as fraction of total mapped size, in basis points (10000=100%)",
 	SnapshotTotalBytes:  "Per-snapshot total mapped size of the file",
+
+	UploadUncompressedBytes:  "Per-upload uncompressed artifact size",
+	UploadCompressedBytes:    "Per-upload compressed artifact size",
+	UploadCompressionRatioBp: "Per-upload compressed/uncompressed ratio, in basis points (10000=100%)",
 }
 
 var histogramUnits = map[HistogramType]string{
@@ -397,6 +405,10 @@ var histogramUnits = map[HistogramType]string{
 	SnapshotDiffBytes:   "{By}",
 	SnapshotDiffRatioBp: "{1}",
 	SnapshotTotalBytes:  "{By}",
+
+	UploadUncompressedBytes:  "{By}",
+	UploadCompressedBytes:    "{By}",
+	UploadCompressionRatioBp: "{1}",
 }
 
 func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram, error) {

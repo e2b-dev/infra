@@ -71,14 +71,17 @@ func (u *Upload) uploadFramed(
 		// Compressed: frame-table byte count, since sparse memfile diffs stream
 		// fewer bytes than they occupy on disk. Uncompressed has no table.
 		size := ft.UncompressedSize()
+		compressedSize := ft.CompressedSize()
 		if !ft.IsCompressed() {
 			info, statErr := os.Stat(srcPath)
 			if statErr != nil {
 				return fmt.Errorf("%s stat: %w", fileType, statErr)
 			}
 			size = info.Size()
+			compressedSize = size
 		}
 
+		recordUploadCompression(ctx, uploadArtifactData, string(fileType), u.useCase, cfg, size, compressedSize)
 		selfBuild = headers.BuildData{Size: size, Checksum: checksum, FrameData: ft}
 	}
 
@@ -93,7 +96,7 @@ func (u *Upload) uploadFramed(
 	}
 	h.Builds[u.buildID] = selfBuild
 
-	if err := headers.StoreHeader(ctx, u.store, u.paths.HeaderFile(string(fileType)), h); err != nil {
+	if err := storeHeaderWithMetrics(ctx, u.store, u.paths.HeaderFile(string(fileType)), string(fileType), u.useCase, h); err != nil {
 		return fmt.Errorf("store %s header: %w", fileType, err)
 	}
 
