@@ -61,6 +61,12 @@ linters:
 
   exclusions:
     rules:
+      # Suppress modernize's `newexpr` suggestion for our utils.ToPtr helper.
+      # The codebase's convention is utils.ToPtr; we don't want `make lint --fix`
+      # to rewrite every call site to Go 1.26's `new(expr)` form. Other newexpr
+      # suggestions (for non-ToPtr patterns) still fire and auto-fix.
+      - linters: [modernize]
+        text: 'call of ToPtr\(.*\) can be simplified to new'
       - path: '^packages/db/pkg/dberrors/dberrors\.go$'
         linters:
           - forbidigo
@@ -195,14 +201,6 @@ linters:
         - { disabled: true, name: use-waitgroup-go } # todo: enable this
         - { disabled: true, name: var-declaration }
         - { disabled: true, name: var-naming }
-
-    modernize:
-      # Disable analyzers we don't want applied automatically:
-      #   - newexpr: rewrites helpers like utils.ToPtr(x) into Go 1.26's
-      #     `new(expr)` form. The codebase's convention is utils.ToPtr; we don't
-      #     want `make lint --fix` to flip every call site to `new(...)`.
-      disable:
-        - newexpr
 
     staticcheck:
       checks:
