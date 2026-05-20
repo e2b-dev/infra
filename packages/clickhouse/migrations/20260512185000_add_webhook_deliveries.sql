@@ -9,13 +9,13 @@ CREATE TABLE webhook_deliveries_local (
     sandbox_id String CODEC (ZSTD(1)),
     event_type LowCardinality(String) CODEC (ZSTD(1)),
     delivery_status LowCardinality(String) CODEC (ZSTD(1)),
-    http_status_code Nullable(UInt16) CODEC (ZSTD(1)),
     duration_ms UInt32 CODEC (ZSTD(1)),
-    request_url String CODEC (ZSTD(1)),
-    request_headers String CODEC (ZSTD(1)),
     request_body String CODEC (ZSTD(1)),
-    response_headers Nullable(String) CODEC (ZSTD(1)),
+    request_headers String CODEC (ZSTD(1)),
+    request_url String CODEC (ZSTD(1)),
     response_body Nullable(String) CODEC (ZSTD(1)),
+    response_headers Nullable(String) CODEC (ZSTD(1)),
+    response_http_status_code Nullable(UInt16) CODEC (ZSTD(1)),
     error_class LowCardinality(String) CODEC (ZSTD(1)),
     error_message Nullable(String) CODEC (ZSTD(1))
 ) ENGINE = MergeTree
