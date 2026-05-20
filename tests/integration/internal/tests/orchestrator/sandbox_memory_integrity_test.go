@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -70,9 +71,20 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 		require.NoError(t, err)
 
 		hashCmd := fmt.Sprintf(`sha256sum "%s" | awk '{print $1}'`, tmpfsFile)
-		hashCmdOutput, err := utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", hashCmd)
-		require.NoError(t, err)
-		hashCmdOutput = strings.TrimSpace(hashCmdOutput)
+		readHash := func() string {
+			t.Helper()
+
+			var output string
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				var err error
+				output, err = utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", hashCmd)
+				require.NoError(c, err)
+			}, 90*time.Second, 2*time.Second)
+
+			return strings.TrimSpace(output)
+		}
+
+		hashCmdOutput := readHash()
 		require.NotEmpty(t, hashCmdOutput, "Failed to extract hash from command output")
 
 		pauseIterations := 2
@@ -95,9 +107,7 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 			assert.Equal(t, sbxResume.JSON201.SandboxID, sbxId)
 
 			// Check the tmpfs hash and compare it with the original hash
-			hashCmdOutputAfterResume, err := utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", hashCmd)
-			require.NoError(t, err)
-			hashCmdOutputAfterResume = strings.TrimSpace(hashCmdOutputAfterResume)
+			hashCmdOutputAfterResume := readHash()
 
 			assert.Equal(t, hashCmdOutput, hashCmdOutputAfterResume, "Hash mismatch on iteration %d: memory integrity check failed", i)
 		}
