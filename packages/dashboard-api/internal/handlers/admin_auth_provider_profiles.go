@@ -11,6 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const maxAdminProfileResolveUserIDs = 100
@@ -97,12 +98,17 @@ func apiProfilesFromMap(userIDs []uuid.UUID, profiles map[uuid.UUID]userprofile.
 	seen := make(map[uuid.UUID]struct{}, len(userIDs))
 
 	for _, userID := range userIDs {
-		if _, ok := seen[userID]; !ok {
-			seen[userID] = struct{}{}
-			if profile, ok := profiles[userID]; ok {
-				result = append(result, apiProfileFromProfile(profile))
-			}
+		if _, ok := seen[userID]; ok {
+			continue
 		}
+		seen[userID] = struct{}{}
+
+		profile, ok := profiles[userID]
+		if !ok {
+			continue
+		}
+
+		result = append(result, apiProfileFromProfile(profile))
 	}
 
 	return result
@@ -121,7 +127,7 @@ func apiProfilesFromProfiles(profiles []userprofile.Profile) []api.AdminAuthProv
 func apiProfileFromProfile(profile userprofile.Profile) api.AdminAuthProviderProfile {
 	var email *string
 	if profile.Email != "" {
-		email = &profile.Email
+		email = utils.ToPtr(profile.Email)
 	}
 
 	return api.AdminAuthProviderProfile{
