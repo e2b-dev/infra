@@ -129,6 +129,12 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		return
 	}
 
+	if err := auth.CheckTeamBlocked(team); err != nil {
+		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
+
+		return
+	}
+
 	telemetry.SetAttributes(ctx,
 		attribute.String("user.id", userID.String()),
 		telemetry.WithTeamID(team.ID.String()),
