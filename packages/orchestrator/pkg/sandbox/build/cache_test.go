@@ -523,8 +523,7 @@ func flagsWithMaxBuildCachePercentage(tb testing.TB, maxBuildCachePercentage int
 	return flags
 }
 
-// File.IsCached must return true for a uuid.Nil-mapped range without touching
-// the diff store (no Init, no remote calls).
+// uuid.Nil mapping reports cached without touching the diff store.
 func TestFileIsCached_UUIDNilMappingReportsCached(t *testing.T) {
 	t.Parallel()
 
@@ -551,8 +550,7 @@ func TestFileIsCached_UUIDNilMappingReportsCached(t *testing.T) {
 	require.True(t, f.IsCached(t.Context(), 0, size))
 }
 
-// File.IsCached must return false (not panic, not Init) when the underlying
-// StorageDiff hasn't been Get'ed yet.
+// Uninitialized StorageDiff reports uncached without panicking or Init'ing.
 func TestFileIsCached_UninitializedChunkerReportsUncached(t *testing.T) {
 	t.Parallel()
 

@@ -59,11 +59,8 @@ func recordSnapshotDiff(
 	}
 }
 
-// recordSnapshotDedup emits "deduped" / "unique" samples on the same
-// snapshot.diff.* histograms after dedup finishes, so the existing
-// dashboard panels can pick up dedup savings without a new metric.
-// pre is the FC dirty bitmap before dedup; post is the page-granular
-// metadata produced by dedupPages.
+// recordSnapshotDedup emits deduped/unique samples on the same
+// snapshot.diff.* histograms so existing panels surface dedup savings.
 func recordSnapshotDedup(
 	ctx context.Context,
 	fileType string,
