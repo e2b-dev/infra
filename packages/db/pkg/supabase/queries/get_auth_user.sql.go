@@ -110,3 +110,41 @@ func (q *Queries) GetLatestAuthSessionByUserID(ctx context.Context, dollar_1 uui
 	err := row.Scan(&i.UserAgent, &i.Ip)
 	return i, err
 }
+
+const searchAuthUsersByEmail = `-- name: SearchAuthUsersByEmail :many
+SELECT id, COALESCE(email, '') AS email, created_at, COALESCE(raw_app_meta_data, '{}'::jsonb) AS raw_app_meta_data
+FROM auth.users
+WHERE email ILIKE '%' || $1::text || '%'
+ORDER BY email
+LIMIT $2::int
+`
+
+type SearchAuthUsersByEmailParams struct {
+	Query       string
+	ResultLimit int32
+}
+
+func (q *Queries) SearchAuthUsersByEmail(ctx context.Context, arg SearchAuthUsersByEmailParams) ([]AuthUser, error) {
+	rows, err := q.db.Query(ctx, searchAuthUsersByEmail, arg.Query, arg.ResultLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AuthUser
+	for rows.Next() {
+		var i AuthUser
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.CreatedAt,
+			&i.RawAppMetaData,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

@@ -29,6 +29,18 @@ func (s *authTestServer) PostAdminUsersUserIdBootstrap(c *gin.Context, userId Us
 	c.Status(http.StatusNoContent)
 }
 
+func (s *authTestServer) PostAdminAuthProviderProfilesLookupEmail(_ *gin.Context) {
+	panic("unexpected call to PostAdminAuthProviderProfilesLookupEmail")
+}
+
+func (s *authTestServer) PostAdminAuthProviderProfilesResolve(_ *gin.Context) {
+	panic("unexpected call to PostAdminAuthProviderProfilesResolve")
+}
+
+func (s *authTestServer) PostAdminAuthProviderProfilesSearch(_ *gin.Context) {
+	panic("unexpected call to PostAdminAuthProviderProfilesSearch")
+}
+
 func (s *authTestServer) GetBuilds(_ *gin.Context, _ GetBuildsParams) {
 	panic("unexpected call to GetBuilds")
 }
@@ -122,7 +134,7 @@ func TestAdminBootstrapRoute_AcceptsAdminTokenOnly(t *testing.T) {
 	RegisterHandlers(r, server)
 
 	targetUserID := uuid.New()
-	req := httptest.NewRequest(http.MethodPost, "/admin/users/"+targetUserID.String()+"/bootstrap", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/admin/users/"+targetUserID.String()+"/bootstrap", nil)
 	req.Header.Set(sharedauth.HeaderAdminToken, "super-secret-token")
 	recorder := httptest.NewRecorder()
 

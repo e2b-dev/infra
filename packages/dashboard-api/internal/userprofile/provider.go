@@ -14,4 +14,5 @@ type Profile struct {
 type Provider interface {
 	GetProfilesByUserID(ctx context.Context, userIDs []uuid.UUID) (map[uuid.UUID]Profile, error)
 	FindProfilesByEmail(ctx context.Context, email string) ([]Profile, error)
+	SearchProfilesByEmail(ctx context.Context, query string, limit int32) ([]Profile, error)
 }

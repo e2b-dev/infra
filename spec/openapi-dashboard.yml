@@ -169,6 +169,69 @@ components:
           type: string
           description: Error message.
 
+    AdminAuthProviderProfile:
+      type: object
+      required:
+        - userId
+        - email
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: Internal E2B user identifier.
+        email:
+          type: string
+          nullable: true
+          description: Email address from the configured auth provider.
+
+    AdminAuthProviderProfilesResponse:
+      type: object
+      required:
+        - profiles
+      properties:
+        profiles:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminAuthProviderProfile"
+
+    AdminAuthProviderProfilesResolveRequest:
+      type: object
+      required:
+        - userIds
+      properties:
+        userIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+
+    AdminAuthProviderProfilesLookupEmailRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+
+    AdminAuthProviderProfilesSearchRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          minLength: 1
+        limit:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 100
+          default: 20
+
     BuildStatus:
       type: string
       description: Build status mapped for dashboard clients.
@@ -795,6 +858,84 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TeamResolveResponse"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/auth-provider/profiles/resolve:
+    post:
+      summary: Resolve auth provider profiles
+      tags: [admin]
+      security:
+        - AdminTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAuthProviderProfilesResolveRequest"
+      responses:
+        "200":
+          description: Successfully resolved profiles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuthProviderProfilesResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/auth-provider/profiles/lookup-email:
+    post:
+      summary: Lookup auth provider profiles by email
+      tags: [admin]
+      security:
+        - AdminTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAuthProviderProfilesLookupEmailRequest"
+      responses:
+        "200":
+          description: Successfully found matching profiles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuthProviderProfilesResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/auth-provider/profiles/search:
+    post:
+      summary: Search auth provider profiles
+      tags: [admin]
+      security:
+        - AdminTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAuthProviderProfilesSearchRequest"
+      responses:
+        "200":
+          description: Successfully searched profiles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuthProviderProfilesResponse"
+        "400":
+          $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
         "500":
