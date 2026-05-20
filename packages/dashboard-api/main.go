@@ -28,6 +28,7 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/handlers"
+	dashboardmiddleware "github.com/e2b-dev/infra/packages/dashboard-api/internal/middleware"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
@@ -337,6 +338,8 @@ func newHTTPServer(
 				},
 			}),
 	)
+
+	r.Use(dashboardmiddleware.EnforceBlockedTeam)
 
 	api.RegisterHandlers(r, apiStore)
 
