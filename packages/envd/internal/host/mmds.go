@@ -180,7 +180,13 @@ func PollForMMDSOpts(ctx context.Context, mmdsChan chan<- *MMDSOpts, envVars *ut
 			}
 
 			if mmdsOpts.LogsCollectorAddress != "" {
-				mmdsChan <- mmdsOpts
+				select {
+				case mmdsChan <- mmdsOpts:
+				case <-ctx.Done():
+					fmt.Fprintf(os.Stderr, "context cancelled while sending mmds opts\n")
+
+					return
+				}
 			}
 
 			return

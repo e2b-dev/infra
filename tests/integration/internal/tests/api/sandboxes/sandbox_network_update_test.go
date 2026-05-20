@@ -384,7 +384,8 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		require.NoError(t, err)
 		require.Equal(t, http.StatusCreated, resumeResp.StatusCode())
 
-		verifyConnectivityEventually(t, ctx, sbx, envdClient, []connectivityCheck{
+		resumedEnvdClient := setup.GetEnvdClient(t, ctx)
+		verifyConnectivityEventually(t, ctx, sbx, resumedEnvdClient, []connectivityCheck{
 			{"https://8.8.8.8", true},
 			{"https://1.1.1.1", false},
 		})
@@ -396,7 +397,8 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 			AllowInternetAccess: ptrB(false),
 		})
 		require.Equal(t, http.StatusNoContent, resp.StatusCode())
-		verifyConnectivity(t, ctx, sbx, envdClient, []connectivityCheck{
+		freshEnvdClient := setup.GetEnvdClient(t, ctx)
+		verifyConnectivity(t, ctx, sbx, freshEnvdClient, []connectivityCheck{
 			{"https://8.8.8.8", false},
 			{"https://1.1.1.1", false},
 		})
@@ -414,7 +416,8 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		require.NoError(t, err)
 		require.Equal(t, http.StatusCreated, resumeResp.StatusCode())
 
-		verifyConnectivityEventually(t, ctx, sbx, envdClient, []connectivityCheck{
+		resumedEnvdClient := setup.GetEnvdClient(t, ctx)
+		verifyConnectivityEventually(t, ctx, sbx, resumedEnvdClient, []connectivityCheck{
 			{"https://8.8.8.8", false},
 			{"https://1.1.1.1", false},
 		})

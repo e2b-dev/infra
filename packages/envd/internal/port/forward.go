@@ -78,8 +78,15 @@ func (f *Forwarder) StartForwarding(ctx context.Context) {
 	}
 
 	for {
-		// procs is an array of currently opened ports.
-		if procs, ok := <-f.scannerSubscriber.Messages; ok {
+		// Wait for the next scan result or context cancellation.
+		select {
+		case <-ctx.Done():
+			return
+		case procs, ok := <-f.scannerSubscriber.Messages:
+			if !ok {
+				return
+			}
+
 			// Now we are going to refresh all ports that are being forwarded in the `ports` map. Maybe add new ones
 			// and maybe remove some.
 

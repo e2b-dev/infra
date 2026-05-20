@@ -171,7 +171,7 @@ exporters:
   googlecloud/gcp_telemetry:
     project: ${gcp_telemetry_project_id}
     metric:
-      service_resource_labels: false
+      service_resource_labels: true
 %{ endif }
 service:
   telemetry:

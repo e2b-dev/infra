@@ -44,6 +44,12 @@ func (a *APIStore) PostTemplates(c *gin.Context) {
 		return
 	}
 
+	if err := auth.CheckTeamBlocked(team); err != nil {
+		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
+
+		return
+	}
+
 	telemetry.ReportEvent(ctx, "started creating new environment")
 
 	templateID := id.Generate()
@@ -103,6 +109,12 @@ func (a *APIStore) PostTemplatesTemplateID(c *gin.Context, rawTemplateID api.Tem
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+
+		return
+	}
+
+	if err := auth.CheckTeamBlocked(team); err != nil {
+		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
 
 		return
 	}

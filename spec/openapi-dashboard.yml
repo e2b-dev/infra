@@ -169,6 +169,54 @@ components:
           type: string
           description: Error message.
 
+    AdminAuthProviderProfile:
+      type: object
+      required:
+        - userId
+        - email
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: Internal E2B user identifier.
+        email:
+          type: string
+          nullable: true
+          description: Email address from the configured auth provider.
+
+    AdminAuthProviderProfilesResponse:
+      type: object
+      required:
+        - profiles
+      properties:
+        profiles:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminAuthProviderProfile"
+
+    AdminAuthProviderProfilesResolveRequest:
+      type: object
+      required:
+        - userIds
+      properties:
+        userIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+
+    AdminAuthProviderProfilesLookupEmailRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+
     BuildStatus:
       type: string
       description: Build status mapped for dashboard clients.
@@ -795,6 +843,80 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TeamResolveResponse"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/user-profiles/resolve:
+    post:
+      summary: Resolve user profiles
+      tags: [admin]
+      security:
+        - AdminTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAuthProviderProfilesResolveRequest"
+      responses:
+        "200":
+          description: Successfully resolved profiles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuthProviderProfilesResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/user-profiles/by-email:
+    post:
+      summary: Lookup user profiles by email
+      tags: [admin]
+      security:
+        - AdminTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAuthProviderProfilesLookupEmailRequest"
+      responses:
+        "200":
+          description: Successfully found matching profiles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuthProviderProfilesResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/user-profiles/{userId}:
+    get:
+      summary: Get user profile
+      tags: [admin]
+      security:
+        - AdminTokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "200":
+          description: Successfully found profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuthProviderProfilesResponse"
+        "400":
+          $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
         "500":
