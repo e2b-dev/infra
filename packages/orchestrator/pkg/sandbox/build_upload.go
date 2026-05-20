@@ -40,11 +40,15 @@ func NewUpload(
 	useCase string,
 	objectMetadata storage.ObjectMetadata,
 ) (*Upload, error) {
-	mem, memV4, err := resolveCompressConfig(ctx, cfg, ff, storage.MemfileName, snap.MemfileDiffHeader.Metadata.BlockSize, useCase)
+	// Use the new diff's actual block size, not the merged metadata's: when
+	// a non-dedup diff layers on top of a deduped parent, metadata.BlockSize
+	// drops to the dedup page size while the diff itself is still hugepage
+	// granularity, so the merged value would over-relax frame-size validation.
+	mem, memV4, err := resolveCompressConfig(ctx, cfg, ff, storage.MemfileName, uint64(snap.MemfileDiff.BlockSize()), useCase)
 	if err != nil {
 		return nil, fmt.Errorf("resolve memfile compress config: %w", err)
 	}
-	root, rootV4, err := resolveCompressConfig(ctx, cfg, ff, storage.RootfsName, snap.RootfsDiffHeader.Metadata.BlockSize, useCase)
+	root, rootV4, err := resolveCompressConfig(ctx, cfg, ff, storage.RootfsName, uint64(snap.RootfsDiff.BlockSize()), useCase)
 	if err != nil {
 		return nil, fmt.Errorf("resolve rootfs compress config: %w", err)
 	}
