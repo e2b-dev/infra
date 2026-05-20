@@ -207,14 +207,17 @@ func New(
 
 				if n > 0 {
 					h.ptyBytes.Add(int64(n))
-					data := slices.Clone(readBuf[:n])
 
-					outMultiplex.Source <- rpc.ProcessEvent_Data{
-						Data: &rpc.ProcessEvent_DataEvent{
-							Output: &rpc.ProcessEvent_DataEvent_Pty{
-								Pty: data,
+					if outMultiplex.HasSubscribers() {
+						data := slices.Clone(readBuf[:n])
+
+						outMultiplex.Source <- rpc.ProcessEvent_Data{
+							Data: &rpc.ProcessEvent_DataEvent{
+								Output: &rpc.ProcessEvent_DataEvent_Pty{
+									Pty: data,
+								},
 							},
-						},
+						}
 					}
 				}
 
