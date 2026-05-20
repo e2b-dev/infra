@@ -50,7 +50,7 @@ func TestHandler_PUT_Success(t *testing.T) {
 
 	body := "hello upload"
 	reqURL := signedURL(t, hmacKey, "dir/file.txt", 5*time.Minute)
-	req := httptest.NewRequest(http.MethodPut, reqURL, strings.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, reqURL, strings.NewReader(body))
 	rr := httptest.NewRecorder()
 
 	h.ServeHTTP(rr, req)
@@ -73,7 +73,7 @@ func TestHandler_MethodNotAllowed(t *testing.T) {
 			t.Parallel()
 
 			reqURL := signedURL(t, hmacKey, "file.txt", 5*time.Minute)
-			req := httptest.NewRequest(method, reqURL, nil)
+			req := httptest.NewRequestWithContext(t.Context(), method, reqURL, nil)
 			rr := httptest.NewRecorder()
 
 			h.ServeHTTP(rr, req)
@@ -114,7 +114,7 @@ func TestHandler_MissingQueryParams(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			req := httptest.NewRequest(http.MethodPut, "/upload?"+tt.params.Encode(), nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/upload?"+tt.params.Encode(), nil)
 			rr := httptest.NewRecorder()
 
 			h.ServeHTTP(rr, req)
@@ -134,7 +134,7 @@ func TestHandler_InvalidExpires(t *testing.T) {
 	v.Set("expires", "not-a-number")
 	v.Set("token", "abc")
 
-	req := httptest.NewRequest(http.MethodPut, "/upload?"+v.Encode(), nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/upload?"+v.Encode(), nil)
 	rr := httptest.NewRecorder()
 
 	h.ServeHTTP(rr, req)
@@ -154,7 +154,7 @@ func TestHandler_InvalidToken(t *testing.T) {
 	v.Set("expires", strconv.FormatInt(expires, 10))
 	v.Set("token", "definitely-not-valid")
 
-	req := httptest.NewRequest(http.MethodPut, "/upload?"+v.Encode(), nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/upload?"+v.Encode(), nil)
 	rr := httptest.NewRecorder()
 
 	h.ServeHTTP(rr, req)
@@ -169,7 +169,7 @@ func TestHandler_ExpiredToken(t *testing.T) {
 
 	// Token that expired 1 minute ago.
 	reqURL := signedURL(t, hmacKey, "file.txt", -1*time.Minute)
-	req := httptest.NewRequest(http.MethodPut, reqURL, strings.NewReader("data"))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, reqURL, strings.NewReader("data"))
 	rr := httptest.NewRecorder()
 
 	h.ServeHTTP(rr, req)
@@ -193,7 +193,7 @@ func TestHandler_PathTraversal(t *testing.T) {
 			t.Parallel()
 
 			reqURL := signedURL(t, hmacKey, p, 5*time.Minute)
-			req := httptest.NewRequest(http.MethodPut, reqURL, strings.NewReader("evil"))
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, reqURL, strings.NewReader("evil"))
 			rr := httptest.NewRecorder()
 
 			h.ServeHTTP(rr, req)
@@ -210,7 +210,7 @@ func TestHandler_OverwritesExistingFile(t *testing.T) {
 
 	// Write initial content.
 	reqURL := signedURL(t, hmacKey, "overwrite.txt", 5*time.Minute)
-	req := httptest.NewRequest(http.MethodPut, reqURL, strings.NewReader("version1"))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, reqURL, strings.NewReader("version1"))
 	rr := httptest.NewRecorder()
 
 	h.ServeHTTP(rr, req)
@@ -218,7 +218,7 @@ func TestHandler_OverwritesExistingFile(t *testing.T) {
 
 	// Overwrite with new content.
 	reqURL = signedURL(t, hmacKey, "overwrite.txt", 5*time.Minute)
-	req = httptest.NewRequest(http.MethodPut, reqURL, strings.NewReader("version2"))
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodPut, reqURL, strings.NewReader("version2"))
 	rr = httptest.NewRecorder()
 
 	h.ServeHTTP(rr, req)
@@ -235,7 +235,7 @@ func TestHandler_NestedDirectoryCreation(t *testing.T) {
 	h, basePath, hmacKey := newTestHandler(t)
 
 	reqURL := signedURL(t, hmacKey, "a/b/c/d/deep.txt", 5*time.Minute)
-	req := httptest.NewRequest(http.MethodPut, reqURL, strings.NewReader("deep"))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, reqURL, strings.NewReader("deep"))
 	rr := httptest.NewRecorder()
 
 	h.ServeHTTP(rr, req)
@@ -253,7 +253,7 @@ func TestHandler_EmptyBody(t *testing.T) {
 	h, basePath, hmacKey := newTestHandler(t)
 
 	reqURL := signedURL(t, hmacKey, "empty.txt", 5*time.Minute)
-	req := httptest.NewRequest(http.MethodPut, reqURL, strings.NewReader(""))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, reqURL, strings.NewReader(""))
 	rr := httptest.NewRecorder()
 
 	h.ServeHTTP(rr, req)
@@ -279,7 +279,7 @@ func TestHandler_TokenForDifferentPath(t *testing.T) {
 	v.Set("expires", strconv.FormatInt(expires, 10))
 	v.Set("token", token)
 
-	req := httptest.NewRequest(http.MethodPut, "/upload?"+v.Encode(), strings.NewReader("data"))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/upload?"+v.Encode(), strings.NewReader("data"))
 	rr := httptest.NewRecorder()
 
 	h.ServeHTTP(rr, req)

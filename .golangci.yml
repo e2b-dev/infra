@@ -68,6 +68,28 @@ linters:
         text: "Use github.com/e2b-dev/infra/packages/db/pkg/dberrors.IsNotFoundError instead."
         linters:
           - forbidigo
+      # Pre-existing packages with non-recommended names ("types", "utils").
+      # Renaming is high-blast-radius; excluded for now.
+      - path: '^packages/auth/pkg/types/'
+        text: 'package-naming'
+        linters:
+          - revive
+      - path: '^packages/clickhouse/pkg/utils/'
+        text: 'package-naming'
+        linters:
+          - revive
+      - path: '^packages/db/pkg/types/'
+        text: 'package-naming'
+        linters:
+          - revive
+      - path: '^packages/docker-reverse-proxy/internal/utils/'
+        text: 'package-naming'
+        linters:
+          - revive
+      - path: '^packages/orchestrator/pkg/template/build/utils/'
+        text: 'package-naming'
+        linters:
+          - revive
 
   settings:
     forbidigo:
