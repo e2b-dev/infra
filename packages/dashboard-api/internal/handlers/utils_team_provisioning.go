@@ -54,10 +54,7 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 		_ = tx.Rollback(ctx)
 	}()
 
-	if err := authTxDB.UpsertPublicUser(ctx, authqueries.UpsertPublicUserParams{
-		ID:    authUser.ID,
-		Email: authUser.Email,
-	}); err != nil {
+	if err := authTxDB.UpsertPublicUser(ctx, authUser.ID); err != nil {
 		return provisionedTeam{}, fmt.Errorf("upsert public user: %w", err)
 	}
 
@@ -151,10 +148,7 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 		_ = tx.Rollback(ctx)
 	}()
 
-	if err := authTxDB.UpsertPublicUser(ctx, authqueries.UpsertPublicUserParams{
-		ID:    authUser.ID,
-		Email: authUser.Email,
-	}); err != nil {
+	if err := authTxDB.UpsertPublicUser(ctx, authUser.ID); err != nil {
 		return provisionedTeam{}, fmt.Errorf("upsert public user: %w", err)
 	}
 

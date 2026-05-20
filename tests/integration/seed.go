@@ -97,10 +97,7 @@ VALUES ($1, $2)
 		return fmt.Errorf("failed to create user: %w", err)
 	}
 
-	err = authdb.Write.UpsertPublicUser(ctx, authqueries.UpsertPublicUserParams{
-		ID:    data.UserID,
-		Email: "user-test-integration@e2b.dev",
-	})
+	err = authdb.Write.UpsertPublicUser(ctx, data.UserID)
 	if err != nil {
 		return fmt.Errorf("failed to create public user: %w", err)
 	}

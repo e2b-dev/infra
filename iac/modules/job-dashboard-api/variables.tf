@@ -71,11 +71,6 @@ variable "auth_provider_config" {
   default   = null
 }
 
-variable "enable_auth_user_sync_background_worker" {
-  type    = bool
-  default = false
-}
-
 variable "enable_billing_http_team_provision_sink" {
   type    = bool
   default = false

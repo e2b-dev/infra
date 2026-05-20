@@ -24,7 +24,6 @@ type Config struct {
 	RedisClusterURL  string `env:"REDIS_CLUSTER_URL"`
 	RedisTLSCABase64 string `env:"REDIS_TLS_CA_BASE64"`
 
-	EnableAuthUserSyncBackgroundWorker bool   `env:"ENABLE_AUTH_USER_SYNC_BACKGROUND_WORKER" envDefault:"false"`
 	EnableBillingHTTPTeamProvisionSink bool   `env:"ENABLE_BILLING_HTTP_TEAM_PROVISION_SINK" envDefault:"false"`
 	BillingServerURL                   string `env:"BILLING_SERVER_URL"`
 	BillingServerAPIToken              string `env:"BILLING_SERVER_API_TOKEN"`

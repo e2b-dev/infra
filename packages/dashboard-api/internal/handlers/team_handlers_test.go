@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	authtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -122,7 +123,10 @@ func TestPostTeamsTeamIDMembers_DuplicateMemberReturnsBadRequest(t *testing.T) {
 		Team: &authqueries.Team{ID: teamID},
 	})
 
-	store := &APIStore{db: testDB.SqlcClient}
+	store := &APIStore{
+		db:           testDB.SqlcClient,
+		userProfiles: newHandlerTestProfileProvider(targetUserID),
+	}
 	store.PostTeamsTeamIDMembers(ginCtx, teamID)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -218,6 +222,17 @@ func TestDeleteTeamsTeamIDMembersUserId_RechecksDefaultAfterLock(t *testing.T) {
 	_, err = tx.Exec(
 		ctx,
 		`UPDATE public.users_teams
+		SET is_default = false
+		WHERE user_id = $1 AND is_default = true`,
+		targetUserID,
+	)
+	if err != nil {
+		t.Fatalf("failed to clear target default team member: %v", err)
+	}
+
+	_, err = tx.Exec(
+		ctx,
+		`UPDATE public.users_teams
 		SET is_default = true
 		WHERE team_id = $1 AND user_id = $2`,
 		teamID,
@@ -284,6 +299,28 @@ VALUES ($1, $2, $3)
 		t.Fatalf("failed to create test user: %v", err)
 	}
 
+	if err := db.AuthDB.Write.UpsertPublicUser(t.Context(), userID); err != nil {
+		t.Fatalf("failed to create public user: %v", err)
+	}
+
+	team, err := db.AuthDB.Write.CreateTeam(t.Context(), authqueries.CreateTeamParams{
+		Name:  email,
+		Tier:  baseTierID,
+		Email: email,
+	})
+	if err != nil {
+		t.Fatalf("failed to create default team: %v", err)
+	}
+
+	if err := db.AuthDB.Write.CreateTeamMembership(t.Context(), authqueries.CreateTeamMembershipParams{
+		UserID:    userID,
+		TeamID:    team.ID,
+		IsDefault: true,
+		AddedBy:   nil,
+	}); err != nil {
+		t.Fatalf("failed to create default team membership: %v", err)
+	}
+
 	return userID
 }
 
@@ -294,6 +331,16 @@ func handlerTestUserEmail(userID uuid.UUID) string {
 func insertHandlerTestTeamMember(t *testing.T, db *testutils.Database, userID, teamID uuid.UUID, isDefault bool) {
 	t.Helper()
 
+	if isDefault {
+		if err := db.AuthDb.TestsRawSQL(t.Context(), `
+UPDATE public.users_teams
+SET is_default = false
+WHERE user_id = $1
+`, userID); err != nil {
+			t.Fatalf("failed to clear default team member relation: %v", err)
+		}
+	}
+
 	err := db.AuthDb.TestsRawSQL(t.Context(), `
 INSERT INTO public.users_teams (user_id, team_id, is_default)
 VALUES ($1, $2, $3)
@@ -301,6 +348,50 @@ VALUES ($1, $2, $3)
 	if err != nil {
 		t.Fatalf("failed to create team member relation: %v", err)
 	}
+}
+
+type handlerTestProfileProvider struct {
+	profilesByUserID map[uuid.UUID]userprofile.Profile
+	profilesByEmail  map[string]userprofile.Profile
+}
+
+func newHandlerTestProfileProvider(userIDs ...uuid.UUID) handlerTestProfileProvider {
+	provider := handlerTestProfileProvider{
+		profilesByUserID: make(map[uuid.UUID]userprofile.Profile, len(userIDs)),
+		profilesByEmail:  make(map[string]userprofile.Profile, len(userIDs)),
+	}
+
+	for _, userID := range userIDs {
+		email := handlerTestUserEmail(userID)
+		profile := userprofile.Profile{
+			UserID: userID,
+			Email:  email,
+		}
+		provider.profilesByUserID[userID] = profile
+		provider.profilesByEmail[email] = profile
+	}
+
+	return provider
+}
+
+func (p handlerTestProfileProvider) GetProfilesByUserID(_ context.Context, userIDs []uuid.UUID) (map[uuid.UUID]userprofile.Profile, error) {
+	profiles := make(map[uuid.UUID]userprofile.Profile, len(userIDs))
+	for _, userID := range userIDs {
+		if profile, ok := p.profilesByUserID[userID]; ok {
+			profiles[userID] = profile
+		}
+	}
+
+	return profiles, nil
+}
+
+func (p handlerTestProfileProvider) FindProfilesByEmail(_ context.Context, email string) ([]userprofile.Profile, error) {
+	profile, ok := p.profilesByEmail[email]
+	if !ok {
+		return nil, nil
+	}
+
+	return []userprofile.Profile{profile}, nil
 }
 
 func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
@@ -313,13 +404,13 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 
 	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
-		t.Fatalf("expected trigger-created default team: %v", err)
+		t.Fatalf("expected default team: %v", err)
 	}
 	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
-		t.Fatalf("failed to remove trigger-created default team: %v", err)
+		t.Fatalf("failed to remove default team: %v", err)
 	}
 	if err := testDB.AuthDB.Write.DeletePublicUser(ctx, userID); err != nil {
-		t.Fatalf("failed to remove trigger-created public user: %v", err)
+		t.Fatalf("failed to remove public user: %v", err)
 	}
 
 	recorder := httptest.NewRecorder()
@@ -379,13 +470,13 @@ func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testin
 
 	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
-		t.Fatalf("expected trigger-created default team: %v", err)
+		t.Fatalf("expected default team: %v", err)
 	}
 	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
-		t.Fatalf("failed to remove trigger-created default team: %v", err)
+		t.Fatalf("failed to remove default team: %v", err)
 	}
 	if err := testDB.AuthDB.Write.DeletePublicUser(ctx, userID); err != nil {
-		t.Fatalf("failed to remove trigger-created public user: %v", err)
+		t.Fatalf("failed to remove public user: %v", err)
 	}
 
 	recorder := httptest.NewRecorder()
@@ -473,10 +564,10 @@ func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
 
 	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
-		t.Fatalf("expected trigger-created default team: %v", err)
+		t.Fatalf("expected default team: %v", err)
 	}
 	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
-		t.Fatalf("failed to remove trigger-created default team: %v", err)
+		t.Fatalf("failed to remove default team: %v", err)
 	}
 
 	store := &APIStore{
@@ -878,7 +969,7 @@ func TestCreateTeam_ConcurrentRequestsRespectLocalPolicyWithZeroMemberships(t *t
 
 	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
-		t.Fatalf("expected trigger-created default team: %v", err)
+		t.Fatalf("expected default team: %v", err)
 	}
 	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
 		t.Fatalf("failed to remove default team: %v", err)
