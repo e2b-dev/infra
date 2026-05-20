@@ -46,10 +46,10 @@ type Handler struct {
 
 	logger *zerolog.Logger
 
-	Tag      *string
-	cmd      *exec.Cmd
-	tty      *os.File
-	ttySlave *os.File
+	Tag     *string
+	cmd     *exec.Cmd
+	tty     *os.File
+	ttyPeer *os.File
 
 	cancel context.CancelFunc
 
@@ -186,7 +186,7 @@ func New(
 	}
 
 	if req.GetPty() != nil {
-		tty, ttySlave, err := pty.Open()
+		tty, ttyPeer, err := pty.Open()
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("error opening pty for command '%s': %w", userCmd, err))
 		}
@@ -196,18 +196,18 @@ func New(
 			Rows: uint16(req.GetPty().GetSize().GetRows()),
 		}); err != nil {
 			_ = tty.Close()
-			_ = ttySlave.Close()
+			_ = ttyPeer.Close()
 
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("error sizing pty for command '%s': %w", userCmd, err))
 		}
 
-		cmd.Stdin = ttySlave
-		cmd.Stdout = ttySlave
-		cmd.Stderr = ttySlave
+		cmd.Stdin = ttyPeer
+		cmd.Stdout = ttyPeer
+		cmd.Stderr = ttyPeer
 		cmd.SysProcAttr.Setsid = true
 		cmd.SysProcAttr.Setctty = true
 		h.tty = tty
-		h.ttySlave = ttySlave
+		h.ttyPeer = ttyPeer
 
 		outWg.Go(func() {
 			for {
@@ -440,16 +440,16 @@ func (p *Handler) Start(requestTimeout time.Duration) (uint32, error) {
 			_ = p.tty.Close()
 		}
 
-		if p.ttySlave != nil {
-			_ = p.ttySlave.Close()
+		if p.ttyPeer != nil {
+			_ = p.ttyPeer.Close()
 		}
 
 		return 0, fmt.Errorf("error starting process '%s': %w", p.userCommand(), err)
 	}
 
-	if p.ttySlave != nil {
-		_ = p.ttySlave.Close()
-		p.ttySlave = nil
+	if p.ttyPeer != nil {
+		_ = p.ttyPeer.Close()
+		p.ttyPeer = nil
 	}
 
 	p.logger.
