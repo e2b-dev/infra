@@ -118,8 +118,7 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 	return n, nil
 }
 
-// Slice composes a response from any mix of mapping granularities (4 KiB
-// dedup pages alongside 2 MiB template ranges) by delegating to ReadAt.
+// Slice delegates to ReadAt to handle mixed-granularity mappings.
 func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	out := make([]byte, length)
 	if _, err := b.ReadAt(ctx, out, off); err != nil {

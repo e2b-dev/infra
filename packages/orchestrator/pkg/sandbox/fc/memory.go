@@ -62,10 +62,9 @@ func (p *Process) exportMemoryFromFc(
 	return cache, nil
 }
 
-// ExportMemory writes dirty guest memory to a local cache file. If
-// originalMemfile is non-nil the result is deduplicated against it at
-// PageSize granularity (returned DiffMetadata is non-nil; mutually
-// exclusive with bgCopy).
+// ExportMemory writes dirty guest memory to cachePath. If originalMemfile
+// is non-nil the result is deduplicated and DiffMetadata is non-nil;
+// mutually exclusive with bgCopy.
 func (p *Process) ExportMemory(
 	ctx context.Context,
 	include *roaring.Bitmap,

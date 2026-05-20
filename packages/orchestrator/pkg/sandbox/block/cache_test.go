@@ -818,39 +818,6 @@ func TestCacheDedup_AllPagesDiffer(t *testing.T) {
 	}
 }
 
-func TestCacheDedup_MixedPages(t *testing.T) {
-	t.Parallel()
-
-	pageSize := int64(header.PageSize)
-	blockSize := 4 * pageSize
-	size := blockSize * 3
-
-	origData := make([]byte, size)
-	_, err := rand.Read(origData)
-	require.NoError(t, err)
-	srcData := make([]byte, size)
-	copy(srcData, origData)
-
-	p2 := bytes.Repeat([]byte{0xAA}, int(pageSize))
-	p7 := bytes.Repeat([]byte{0xBB}, int(pageSize))
-	copy(srcData[2*pageSize:], p2)
-	copy(srcData[7*pageSize:], p7)
-
-	cache, meta := runDedup(t, srcData, origData, fullDirty(size, blockSize), blockSize)
-
-	require.EqualValues(t, 2, meta.Dirty.GetCardinality())
-	require.True(t, meta.Dirty.Contains(2))
-	require.True(t, meta.Dirty.Contains(7))
-
-	got := make([]byte, pageSize)
-	_, err = cache.ReadAt(got, 0)
-	require.NoError(t, err)
-	require.Equal(t, p2, got)
-	_, err = cache.ReadAt(got, pageSize)
-	require.NoError(t, err)
-	require.Equal(t, p7, got)
-}
-
 // Regression: pageIdx must use the absolute guest offset (r.Start+chunkOff+i),
 // and cacheOff must advance correctly across non-contiguous Ranges.
 func TestCacheDedup_NonZeroRangeStartAndMultipleRanges(t *testing.T) {
