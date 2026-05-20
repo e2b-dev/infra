@@ -19,9 +19,13 @@ import (
 )
 
 type authTestServer struct {
+	noopServer
+
 	receivedUserID uuid.UUID
 	hitBootstrap   bool
 }
+
+type noopServer struct{}
 
 func (s *authTestServer) PostAdminUsersUserIdBootstrap(c *gin.Context, userId UserId) {
 	s.hitBootstrap = true
@@ -29,68 +33,68 @@ func (s *authTestServer) PostAdminUsersUserIdBootstrap(c *gin.Context, userId Us
 	c.Status(http.StatusNoContent)
 }
 
-func (s *authTestServer) PostAdminAuthProviderProfilesLookupEmail(_ *gin.Context) {
-	panic("unexpected call to PostAdminAuthProviderProfilesLookupEmail")
+func (noopServer) PostAdminAuthProviderProfilesLookupEmail(c *gin.Context) {
+	c.Status(http.StatusNotImplemented)
 }
 
-func (s *authTestServer) PostAdminAuthProviderProfilesResolve(_ *gin.Context) {
-	panic("unexpected call to PostAdminAuthProviderProfilesResolve")
+func (noopServer) PostAdminAuthProviderProfilesResolve(c *gin.Context) {
+	c.Status(http.StatusNotImplemented)
 }
 
-func (s *authTestServer) PostAdminAuthProviderProfilesSearch(_ *gin.Context) {
-	panic("unexpected call to PostAdminAuthProviderProfilesSearch")
+func (noopServer) PostAdminAuthProviderProfilesSearch(c *gin.Context) {
+	c.Status(http.StatusNotImplemented)
 }
 
-func (s *authTestServer) GetBuilds(_ *gin.Context, _ GetBuildsParams) {
-	panic("unexpected call to GetBuilds")
+func (noopServer) GetBuilds(c *gin.Context, _ GetBuildsParams) {
+	c.Status(http.StatusNotImplemented)
 }
 
-func (s *authTestServer) GetBuildsStatuses(_ *gin.Context, _ GetBuildsStatusesParams) {
-	panic("unexpected call to GetBuildsStatuses")
+func (noopServer) GetBuildsStatuses(c *gin.Context, _ GetBuildsStatusesParams) {
+	c.Status(http.StatusNotImplemented)
 }
 
-func (s *authTestServer) GetBuildsBuildId(_ *gin.Context, _ BuildId) {
-	panic("unexpected call to GetBuildsBuildId")
+func (noopServer) GetBuildsBuildId(c *gin.Context, _ BuildId) {
+	c.Status(http.StatusNotImplemented)
 }
 
-func (s *authTestServer) GetHealth(_ *gin.Context) {
-	panic("unexpected call to GetHealth")
+func (noopServer) GetHealth(c *gin.Context) {
+	c.Status(http.StatusNotImplemented)
 }
 
-func (s *authTestServer) GetSandboxesSandboxIDRecord(_ *gin.Context, _ SandboxID) {
-	panic("unexpected call to GetSandboxesSandboxIDRecord")
+func (noopServer) GetSandboxesSandboxIDRecord(c *gin.Context, _ SandboxID) {
+	c.Status(http.StatusNotImplemented)
 }
 
-func (s *authTestServer) GetTeams(_ *gin.Context) {
-	panic("unexpected call to GetTeams")
+func (noopServer) GetTeams(c *gin.Context) {
+	c.Status(http.StatusNotImplemented)
 }
 
-func (s *authTestServer) PostTeams(_ *gin.Context) {
-	panic("unexpected call to PostTeams")
+func (noopServer) PostTeams(c *gin.Context) {
+	c.Status(http.StatusNotImplemented)
 }
 
-func (s *authTestServer) GetTeamsResolve(_ *gin.Context, _ GetTeamsResolveParams) {
-	panic("unexpected call to GetTeamsResolve")
+func (noopServer) GetTeamsResolve(c *gin.Context, _ GetTeamsResolveParams) {
+	c.Status(http.StatusNotImplemented)
 }
 
-func (s *authTestServer) PatchTeamsTeamID(_ *gin.Context, _ TeamID) {
-	panic("unexpected call to PatchTeamsTeamID")
+func (noopServer) PatchTeamsTeamID(c *gin.Context, _ TeamID) {
+	c.Status(http.StatusNotImplemented)
 }
 
-func (s *authTestServer) GetTeamsTeamIDMembers(_ *gin.Context, _ TeamID) {
-	panic("unexpected call to GetTeamsTeamIDMembers")
+func (noopServer) GetTeamsTeamIDMembers(c *gin.Context, _ TeamID) {
+	c.Status(http.StatusNotImplemented)
 }
 
-func (s *authTestServer) PostTeamsTeamIDMembers(_ *gin.Context, _ TeamID) {
-	panic("unexpected call to PostTeamsTeamIDMembers")
+func (noopServer) PostTeamsTeamIDMembers(c *gin.Context, _ TeamID) {
+	c.Status(http.StatusNotImplemented)
 }
 
-func (s *authTestServer) DeleteTeamsTeamIDMembersUserId(_ *gin.Context, _ TeamID, _ UserId) {
-	panic("unexpected call to DeleteTeamsTeamIDMembersUserId")
+func (noopServer) DeleteTeamsTeamIDMembersUserId(c *gin.Context, _ TeamID, _ UserId) {
+	c.Status(http.StatusNotImplemented)
 }
 
-func (s *authTestServer) GetTemplatesDefaults(_ *gin.Context) {
-	panic("unexpected call to GetTemplatesDefaults")
+func (noopServer) GetTemplatesDefaults(c *gin.Context) {
+	c.Status(http.StatusNotImplemented)
 }
 
 func TestAdminBootstrapRoute_AcceptsAdminTokenOnly(t *testing.T) {
