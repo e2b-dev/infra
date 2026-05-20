@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 )
@@ -58,10 +57,10 @@ func BuildTemplate(tb testing.TB, opts TemplateBuildOptions) *api.TemplateReques
 
 	// Set defaults
 	if opts.CPUCount == nil {
-		opts.CPUCount = utils.ToPtr(DefaultCPUCount)
+		opts.CPUCount = new(DefaultCPUCount)
 	}
 	if opts.MemoryMB == nil {
-		opts.MemoryMB = utils.ToPtr(DefaultMemoryMB)
+		opts.MemoryMB = new(DefaultMemoryMB)
 	}
 	if opts.Timeout == 0 {
 		opts.Timeout = DefaultBuildTimeout
@@ -123,7 +122,7 @@ func WaitForBuildCompletion(
 			templateID,
 			buildID,
 			&api.GetTemplatesTemplateIDBuildsBuildIDStatusParams{
-				LogsOffset: utils.ToPtr(int32(offset)),
+				LogsOffset: new(int32(offset)),
 				Level:      &logLevel,
 			},
 			reqEditors...,
@@ -166,14 +165,14 @@ func requestTemplateBuild(
 	c := setup.GetAPIClient()
 
 	if cpuCount == nil {
-		cpuCount = utils.ToPtr(DefaultCPUCount)
+		cpuCount = new(DefaultCPUCount)
 	}
 	if memoryMB == nil {
-		memoryMB = utils.ToPtr(DefaultMemoryMB)
+		memoryMB = new(DefaultMemoryMB)
 	}
 
 	req := api.TemplateBuildRequestV3{
-		Name:     utils.ToPtr(name),
+		Name:     new(name),
 		Tags:     tags,
 		CpuCount: cpuCount,
 		MemoryMB: memoryMB,
@@ -228,7 +227,7 @@ func BuildSimpleTemplate(tb testing.TB, name string, reqEditors ...api.RequestEd
 	opts := TemplateBuildOptions{
 		Name: name,
 		BuildData: api.TemplateBuildStartV2{
-			FromImage: utils.ToPtr("ubuntu:22.04"),
+			FromImage: new("ubuntu:22.04"),
 		},
 		ReqEditors: reqEditors,
 	}

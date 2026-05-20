@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
@@ -76,6 +77,12 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team and tier", apiErr.Err)
+
+		return
+	}
+
+	if err := auth.CheckTeamBlocked(team); err != nil {
+		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
 
 		return
 	}
@@ -146,12 +153,12 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	err = a.sqlcDB.UpdateTemplateBuild(ctx, queries.UpdateTemplateBuildParams{
 		StartCmd:        body.StartCmd,
 		ReadyCmd:        body.ReadyCmd,
-		Dockerfile:      utils.ToPtr(string(stepsMarshalled)),
-		ClusterNodeID:   utils.ToPtr(builderNode.NodeID),
-		CpuArchitecture: utils.ToPtr(machineInfo.CPUArchitecture),
-		CpuFamily:       utils.ToPtr(machineInfo.CPUFamily),
-		CpuModel:        utils.ToPtr(machineInfo.CPUModel),
-		CpuModelName:    utils.ToPtr(machineInfo.CPUModelName),
+		Dockerfile:      new(string(stepsMarshalled)),
+		ClusterNodeID:   new(builderNode.NodeID),
+		CpuArchitecture: new(machineInfo.CPUArchitecture),
+		CpuFamily:       new(machineInfo.CPUFamily),
+		CpuModel:        new(machineInfo.CPUModel),
+		CpuModelName:    new(machineInfo.CPUModelName),
 		CpuFlags:        machineInfo.CPUFlags,
 		BuildUuid:       buildUUID,
 	})

@@ -4,19 +4,19 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
-	authtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 )
 
-func (s *APIStore) requireAuthedTeamMatchesPath(c *gin.Context, teamID api.TeamID) (*authtypes.Team, bool) {
-	teamInfo := auth.MustGetTeamInfo(c)
-	if teamInfo.Team.ID != teamID {
+func (s *APIStore) requireAuthedTeamMatchesPath(c *gin.Context, teamID api.TeamID) (uuid.UUID, bool) {
+	authTeamID := auth.MustGetTeamID(c)
+	if authTeamID != teamID {
 		s.sendAPIStoreError(c, http.StatusForbidden, "Team path parameter does not match authenticated team")
 
-		return nil, false
+		return uuid.Nil, false
 	}
 
-	return teamInfo, true
+	return authTeamID, true
 }

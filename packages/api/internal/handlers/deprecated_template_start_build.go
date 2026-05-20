@@ -129,6 +129,12 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		return
 	}
 
+	if err := auth.CheckTeamBlocked(team); err != nil {
+		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
+
+		return
+	}
+
 	telemetry.SetAttributes(ctx,
 		attribute.String("user.id", userID.String()),
 		telemetry.WithTeamID(team.ID.String()),
@@ -169,11 +175,11 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		StartCmd:        build.StartCmd,
 		ReadyCmd:        build.ReadyCmd,
 		Dockerfile:      build.Dockerfile,
-		ClusterNodeID:   utils.ToPtr(builderNode.NodeID),
-		CpuArchitecture: utils.ToPtr(machineInfo.CPUArchitecture),
-		CpuFamily:       utils.ToPtr(machineInfo.CPUFamily),
-		CpuModel:        utils.ToPtr(machineInfo.CPUModel),
-		CpuModelName:    utils.ToPtr(machineInfo.CPUModelName),
+		ClusterNodeID:   new(builderNode.NodeID),
+		CpuArchitecture: new(machineInfo.CPUArchitecture),
+		CpuFamily:       new(machineInfo.CPUFamily),
+		CpuModel:        new(machineInfo.CPUModel),
+		CpuModelName:    new(machineInfo.CPUModelName),
 		CpuFlags:        machineInfo.CPUFlags,
 		BuildUuid:       buildUUID,
 	})

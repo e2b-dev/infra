@@ -287,10 +287,8 @@ func TestSandboxWithTrafficAccessTokenAutoResumeViaProxy(t *testing.T) {
 	require.Equal(t, api.Paused, res.JSON200.State)
 
 	// Valid token request should auto-resume and succeed.
-	req = utils.NewRequest(sbx, proxyURL, port, nil)
-	resp, err = client.Do(req)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp = utils.WaitForStatus(t, client, sbx, proxyURL, port, nil, http.StatusOK)
+	require.NotNil(t, resp)
 	require.NoError(t, resp.Body.Close())
 
 	res, err = c.GetSandboxesSandboxIDWithResponse(ctx, sbx.SandboxID, setup.WithAPIKey())

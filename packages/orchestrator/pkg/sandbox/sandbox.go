@@ -1436,14 +1436,17 @@ func (s *Sandbox) WaitForEnvd(
 	defer span.End()
 
 	defer func() {
-		if e != nil {
-			return
-		}
 		duration := time.Since(start).Milliseconds()
 		waitForEnvdDurationHistogram.Record(ctx, duration, metric.WithAttributes(
 			telemetry.WithEnvdVersion(s.Config.Envd.Version),
 			attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
+			attribute.Bool("success", e == nil),
 		))
+
+		if e != nil {
+			return
+		}
+
 		// Update the sandbox as started now
 		s.SetStartedAt(time.Now())
 	}()

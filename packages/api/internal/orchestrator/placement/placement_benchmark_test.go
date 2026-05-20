@@ -73,8 +73,8 @@ type StandardNode struct {
 
 	mu                 sync.RWMutex
 	sandboxes          map[string]*LiveSandbox
-	totalPlacements    int64
-	rejectedPlacements int64 // counts failed placements due to capacity
+	totalPlacements    atomic.Int64
+	rejectedPlacements atomic.Int64 // counts failed placements due to capacity
 }
 
 // Ensure StandardNode implements the interface
@@ -104,7 +104,7 @@ func (n *StandardNode) PlaceSandbox(sbx *LiveSandbox) bool {
 	metrics := n.Metrics()
 	// Check capacity with overcommit (Original Logic)
 	if metrics.CpuAllocated+uint32(sbx.RequestedCPU) > metrics.CpuCount*4 {
-		atomic.AddInt64(&n.rejectedPlacements, 1)
+		n.rejectedPlacements.Add(1)
 
 		return false
 	}
@@ -120,7 +120,7 @@ func (n *StandardNode) PlaceSandbox(sbx *LiveSandbox) bool {
 		MetricMemoryAllocatedBytes: metrics.MemoryAllocatedBytes + uint64(sbx.RequestedMemory)*1024*1024,
 	})
 	n.sandboxes[sbx.ID] = sbx
-	atomic.AddInt64(&n.totalPlacements, 1)
+	n.totalPlacements.Add(1)
 
 	return true
 }
@@ -195,7 +195,7 @@ func (n *LaggyNode) PlaceSandbox(sbx *LiveSandbox) bool {
 	// Note: we use realCpuAllocated for the check
 	metrics := n.Node.Metrics()
 	if n.realCpuAllocated+uint32(sbx.RequestedCPU) > metrics.CpuCount*4 {
-		atomic.AddInt64(&n.rejectedPlacements, 1)
+		n.rejectedPlacements.Add(1)
 
 		return false
 	}
@@ -206,7 +206,7 @@ func (n *LaggyNode) PlaceSandbox(sbx *LiveSandbox) bool {
 	n.realCpuAllocated += uint32(sbx.RequestedCPU)
 	n.realMemAllocated += uint64(sbx.RequestedMemory) * 1024 * 1024
 
-	atomic.AddInt64(&n.totalPlacements, 1)
+	n.totalPlacements.Add(1)
 
 	// Key: intentionally do NOT call UpdateMetricsFromServiceInfoResponse
 	// The metrics visible to Orchestrator remain unchanged until SyncMetrics is called
@@ -334,12 +334,12 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig, nod
 		mu               sync.Mutex
 		placementTimes   []time.Duration
 		activeSandboxes  sync.Map // sandboxID -> *LiveSandbox
-		sandboxIDCounter int64
+		sandboxIDCounter atomic.Int64
 
 		// Metrics for time series
 		recentPlacements []time.Duration
-		recentSuccesses  int64
-		recentFailures   int64
+		recentSuccesses  atomic.Int64
+		recentFailures   atomic.Int64
 	)
 
 	// Start sandbox cleanup goroutine
@@ -384,7 +384,7 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig, nod
 			select {
 			case <-ticker.C:
 				// Generate sandbox with variance
-				sandboxID := atomic.AddInt64(&sandboxIDCounter, 1)
+				sandboxID := sandboxIDCounter.Add(1)
 
 				cpuVariance := (rand.Float64()*2 - 1) * config.CPUVariance
 				requestedCPU := max(int64(float64(config.AvgSandboxCPU)*(1+cpuVariance)), 1)
@@ -448,7 +448,7 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig, nod
 								if simNode.PlaceSandbox(sbx) {
 									activeSandboxes.Store(sbx.ID, sbx)
 									metrics.SuccessfulPlacements++
-									atomic.AddInt64(&recentSuccesses, 1)
+									recentSuccesses.Add(1)
 									success = true
 								}
 							}
@@ -456,7 +456,7 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig, nod
 
 						if !success {
 							metrics.FailedPlacements++
-							atomic.AddInt64(&recentFailures, 1)
+							recentFailures.Add(1)
 						}
 						mu.Unlock()
 					}
@@ -698,13 +698,13 @@ func BenchmarkPlacementDistribution(b *testing.B) {
 				ticker := time.NewTicker(time.Second / time.Duration(config.SandboxStartRate))
 				defer ticker.Stop()
 
-				var sandboxIDCounter int64
+				var sandboxIDCounter atomic.Int64
 				for {
 					select {
 					case <-ctx.Done():
 						return
 					case <-ticker.C:
-						sandboxID := atomic.AddInt64(&sandboxIDCounter, 1)
+						sandboxID := sandboxIDCounter.Add(1)
 						sbx := &LiveSandbox{
 							ID:              fmt.Sprintf("sbx-%d", sandboxID),
 							RequestedCPU:    config.AvgSandboxCPU,

@@ -29,6 +29,68 @@ func (q *Queries) GetAuthUserByID(ctx context.Context, dollar_1 uuid.UUID) (Auth
 	return i, err
 }
 
+const getAuthUsersByEmail = `-- name: GetAuthUsersByEmail :many
+SELECT id, COALESCE(email, '') AS email, created_at, COALESCE(raw_app_meta_data, '{}'::jsonb) AS raw_app_meta_data
+FROM auth.users
+WHERE email = $1::text
+`
+
+func (q *Queries) GetAuthUsersByEmail(ctx context.Context, email string) ([]AuthUser, error) {
+	rows, err := q.db.Query(ctx, getAuthUsersByEmail, email)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AuthUser
+	for rows.Next() {
+		var i AuthUser
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.CreatedAt,
+			&i.RawAppMetaData,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getAuthUsersByIDs = `-- name: GetAuthUsersByIDs :many
+SELECT id, COALESCE(email, '') AS email, created_at, COALESCE(raw_app_meta_data, '{}'::jsonb) AS raw_app_meta_data
+FROM auth.users
+WHERE id = ANY($1::uuid[])
+`
+
+func (q *Queries) GetAuthUsersByIDs(ctx context.Context, ids []uuid.UUID) ([]AuthUser, error) {
+	rows, err := q.db.Query(ctx, getAuthUsersByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AuthUser
+	for rows.Next() {
+		var i AuthUser
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.CreatedAt,
+			&i.RawAppMetaData,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getLatestAuthSessionByUserID = `-- name: GetLatestAuthSessionByUserID :one
 SELECT user_agent, ip
 FROM auth.sessions
