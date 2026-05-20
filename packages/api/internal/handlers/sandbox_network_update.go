@@ -28,7 +28,7 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(c *gin.Context, sandboxID string
 
 	teamID := auth.MustGetTeamID(c)
 
-	body, err := ginutils.ParseBody[api.PutSandboxesSandboxIDNetworkJSONBody](ctx, c)
+	body, err := ginutils.ParseBody[api.SandboxNetworkUpdateConfig](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
