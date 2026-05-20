@@ -32,7 +32,7 @@ func handleInput(process *handler.Handler, in *rpc.ProcessInput) error {
 	return nil
 }
 
-func (s *Service) SendInput(ctx context.Context, req *connect.Request[rpc.SendInputRequest]) (*connect.Response[rpc.SendInputResponse], error) {
+func (s *Service) SendInput(_ context.Context, req *connect.Request[rpc.SendInputRequest]) (*connect.Response[rpc.SendInputResponse], error) {
 	proc, err := s.getProcess(req.Msg.GetProcess())
 	if err != nil {
 		return nil, err
@@ -50,7 +50,7 @@ func (s *Service) StreamInput(ctx context.Context, stream *connect.ClientStream[
 	return logs.LogClientStreamWithoutEvents(ctx, s.logger, stream, s.streamInputHandler)
 }
 
-func (s *Service) streamInputHandler(ctx context.Context, stream *connect.ClientStream[rpc.StreamInputRequest]) (*connect.Response[rpc.StreamInputResponse], error) {
+func (s *Service) streamInputHandler(_ context.Context, stream *connect.ClientStream[rpc.StreamInputRequest]) (*connect.Response[rpc.StreamInputResponse], error) {
 	var proc *handler.Handler
 
 	for stream.Receive() {
