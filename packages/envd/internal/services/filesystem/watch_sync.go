@@ -10,9 +10,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/e2b-dev/fsnotify"
-	"github.com/rs/zerolog"
 
-	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
@@ -28,7 +26,7 @@ type FileWatcher struct {
 	Lock sync.Mutex
 }
 
-func CreateFileWatcher(ctx context.Context, watchPath string, recursive bool, operationID string, logger *zerolog.Logger) (*FileWatcher, error) {
+func CreateFileWatcher(ctx context.Context, watchPath string, recursive bool) (*FileWatcher, error) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating watcher: %w", err))
@@ -110,24 +108,6 @@ func CreateFileWatcher(ctx context.Context, watchPath string, recursive bool, op
 						Type: op,
 					})
 					fw.Lock.Unlock()
-
-					// these are only used for logging
-					filesystemEvent := &rpc.WatchDirResponse_Filesystem{
-						Filesystem: &rpc.FilesystemEvent{
-							Name: name,
-							Type: op,
-						},
-					}
-					event := &rpc.WatchDirResponse{
-						Event: filesystemEvent,
-					}
-
-					logger.
-						Debug().
-						Str("event_type", "filesystem_event").
-						Str(string(logs.OperationIDKey), operationID).
-						Interface("filesystem_event", event).
-						Msg("Streaming filesystem event")
 				}
 			}
 		}
@@ -176,7 +156,7 @@ func (s Service) CreateWatcher(ctx context.Context, req *connect.Request[rpc.Cre
 
 	watcherId := "w" + id.Generate()
 
-	w, err := CreateFileWatcher(ctx, watchPath, req.Msg.GetRecursive(), watcherId, s.logger)
+	w, err := CreateFileWatcher(ctx, watchPath, req.Msg.GetRecursive())
 	if err != nil {
 		return nil, err
 	}

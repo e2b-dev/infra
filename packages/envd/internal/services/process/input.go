@@ -5,14 +5,13 @@ import (
 	"fmt"
 
 	"connectrpc.com/connect"
-	"github.com/rs/zerolog"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/process/handler"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 )
 
-func handleInput(ctx context.Context, process *handler.Handler, in *rpc.ProcessInput, logger *zerolog.Logger) error {
+func handleInput(process *handler.Handler, in *rpc.ProcessInput) error {
 	switch in.GetInput().(type) {
 	case *rpc.ProcessInput_Pty:
 		err := process.WriteTty(in.GetPty())
@@ -25,12 +24,6 @@ func handleInput(ctx context.Context, process *handler.Handler, in *rpc.ProcessI
 		if err != nil {
 			return connect.NewError(connect.CodeInternal, fmt.Errorf("error writing to stdin: %w", err))
 		}
-
-		logger.Debug().
-			Str("event_type", "stdin").
-			Interface("stdin", in.GetStdin()).
-			Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).
-			Msg("Streaming input to process")
 
 	default:
 		return connect.NewError(connect.CodeUnimplemented, fmt.Errorf("invalid input type %T", in.GetInput()))
@@ -45,7 +38,7 @@ func (s *Service) SendInput(ctx context.Context, req *connect.Request[rpc.SendIn
 		return nil, err
 	}
 
-	err = handleInput(ctx, proc, req.Msg.GetInput(), s.logger)
+	err = handleInput(proc, req.Msg.GetInput())
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +65,7 @@ func (s *Service) streamInputHandler(ctx context.Context, stream *connect.Client
 
 			proc = p
 		case *rpc.StreamInputRequest_Data:
-			err := handleInput(ctx, proc, req.GetData().GetInput(), s.logger)
+			err := handleInput(proc, req.GetData().GetInput())
 			if err != nil {
 				return nil, err
 			}
