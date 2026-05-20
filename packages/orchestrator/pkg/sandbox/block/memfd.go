@@ -248,10 +248,11 @@ func NewCacheFromMemfdDeduped(
 	memfd *Memfd,
 	dirty *roaring.Bitmap,
 	bestEffort bool,
+	directIO bool,
 ) (*Cache, *header.DiffMetadata, error) {
 	src := func(absOff int64) ([]byte, error) { return memfd.Slice(absOff, blockSize) }
 
-	cache, meta, err := dedupPages(ctx, src, base, dirty, blockSize, outPath, bestEffort)
+	cache, meta, err := dedupPages(ctx, src, base, dirty, blockSize, outPath, bestEffort, directIO)
 	if err != nil {
 		return nil, nil, errors.Join(err, memfd.Close())
 	}

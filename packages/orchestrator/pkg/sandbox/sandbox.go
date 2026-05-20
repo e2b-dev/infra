@@ -1136,11 +1136,12 @@ func (s *Sandbox) Pause(
 
 	// Start POSTPROCESSING
 	var dedupBase block.ReadonlyDevice
-	var dedupBestEffort bool
+	var dedupBestEffort, dedupDirectIO bool
 	dedupCfg := s.featureFlags.JSONFlag(ctx, featureflags.MemfileDiffDedupFlag, sandboxLDContext(s.Runtime, s.Config)).AsValueMap()
 	if dedupCfg.Get("enabled").BoolValue() {
 		dedupBase = originalMemfile
 		dedupBestEffort = dedupCfg.Get("bestEffort").BoolValue()
+		dedupDirectIO = dedupCfg.Get("directIO").BoolValue()
 	}
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
 		ctx,
@@ -1153,6 +1154,7 @@ func (s *Sandbox) Pause(
 		s.featureFlags.BoolFlag(ctx, featureflags.MemfdBackgroundCopyFlag, sandboxLDContext(s.Runtime, s.Config)),
 		dedupBase,
 		dedupBestEffort,
+		dedupDirectIO,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -1224,13 +1226,14 @@ func pauseProcessMemory(
 	bgCopy bool,
 	originalMemfile block.ReadonlyDevice,
 	dedupBestEffort bool,
+	dedupDirectIO bool,
 ) (d build.Diff, h *header.Header, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
 	// ExportMemory owns memfd and closes it on all paths.
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
-	cache, dedupMeta, err := fc.ExportMemory(ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy, originalMemfile, dedupBestEffort)
+	cache, dedupMeta, err := fc.ExportMemory(ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy, originalMemfile, dedupBestEffort, dedupDirectIO)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
 	}

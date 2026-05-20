@@ -237,11 +237,20 @@ func dedupPages(
 	blockSize int64,
 	outPath string,
 	bestEffort bool,
+	directIO bool,
 ) (*Cache, *header.DiffMetadata, error) {
 	ctx, span := tracer.Start(ctx, "dedup-pages")
 	defer span.End()
 
-	f, err := os.OpenFile(outPath, os.O_RDWR|os.O_CREATE, 0o644)
+	openFlags := os.O_RDWR | os.O_CREATE
+	if directIO {
+		// Bypass the page cache so writes DMA straight from the hugetlb
+		// memfd to NVMe; avoids dirty_ratio buildup on large outputs and
+		// keeps RAM clean. Source pages are 4 KiB-aligned slices of a
+		// hugepage memfd, so DMA-alignment is satisfied.
+		openFlags |= unix.O_DIRECT
+	}
+	f, err := os.OpenFile(outPath, openFlags, 0o644)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open dedup cache: %w", err)
 	}
@@ -374,6 +383,7 @@ func (c *Cache) Dedup(
 	blockSize int64,
 	outPath string,
 	bestEffort bool,
+	directIO bool,
 ) (*Cache, *header.DiffMetadata, error) {
 	var cacheOff int64
 	src := func(int64) ([]byte, error) {
@@ -386,7 +396,7 @@ func (c *Cache) Dedup(
 		return s, nil
 	}
 
-	return dedupPages(ctx, src, base, dirty, blockSize, outPath, bestEffort)
+	return dedupPages(ctx, src, base, dirty, blockSize, outPath, bestEffort, directIO)
 }
 
 func (c *Cache) ReadAt(b []byte, off int64) (int, error) {

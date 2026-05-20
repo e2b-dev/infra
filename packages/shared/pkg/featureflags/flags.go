@@ -146,6 +146,7 @@ var (
 	MemfileDiffDedupFlag = NewJSONFlag("memfile-diff-dedup", ldvalue.FromJSONMarshal(map[string]any{
 		"enabled":    false,
 		"bestEffort": false,
+		"directIO":   false,
 	}))
 
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.
