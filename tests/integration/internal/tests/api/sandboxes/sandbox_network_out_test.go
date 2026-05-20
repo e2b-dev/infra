@@ -32,8 +32,8 @@ func ensureNetworkTestTemplate(t *testing.T) string {
 		template := utils.BuildTemplate(t, utils.TemplateBuildOptions{
 			Name: "network-egress-test",
 			BuildData: api.TemplateBuildStartV2{
-				FromImage: utilsShared.ToPtr("ubuntu:22.04"),
-				Steps: utilsShared.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type: "RUN",
 						Args: new([]string{"sudo apt-get update && sudo apt-get install -y curl iputils-ping dnsutils openssh-client gnupg && sudo rm -rf /var/lib/apt/lists/*"}),

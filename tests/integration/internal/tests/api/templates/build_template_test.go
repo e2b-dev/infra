@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 )
@@ -50,9 +49,9 @@ func buildTemplate(
 
 	// Request build
 	resp, err := c.PostV3TemplatesWithResponse(ctx, api.TemplateBuildRequestV3{
-		Name:     utils.ToPtr(templateName),
-		CpuCount: utils.ToPtr[int32](2),
-		MemoryMB: utils.ToPtr[int32](1024),
+		Name:     new(templateName),
+		CpuCount: new(api.CPUCount(2)),
+		MemoryMB: new(api.MemoryMB(1024)),
 	}, setup.WithAPIKey(), setup.WithTestsUserAgent())
 	require.NoError(tb, err)
 	require.Equal(tb, http.StatusAccepted, resp.StatusCode())
@@ -88,7 +87,7 @@ func buildTemplate(
 			resp.JSON202.TemplateID,
 			resp.JSON202.BuildID,
 			&api.GetTemplatesTemplateIDBuildsBuildIDStatusParams{
-				LogsOffset: utils.ToPtr(int32(offset)),
+				LogsOffset: new(int32(offset)),
 				Level:      &logLevel,
 			},
 			setup.WithAPIKey(),
@@ -148,8 +147,8 @@ func TestTemplateBuildRUN(t *testing.T) {
 			templateName: "test-ubuntu-run",
 			buildConfig: api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type:  "RUN",
 						Force: new(true),
@@ -182,8 +181,8 @@ func TestTemplateBuildENV(t *testing.T) {
 			templateName: "test-ubuntu-env",
 			buildConfig: api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type:  "ENV",
 						Force: new(true),
@@ -201,16 +200,16 @@ func TestTemplateBuildENV(t *testing.T) {
 			templateName: "test-ubuntu-env-start",
 			buildConfig: api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type:  "ENV",
 						Force: new(true),
 						Args:  new([]string{"ENV_VAR", "Hello, World!"}),
 					},
 				}),
-				StartCmd: utils.ToPtr(": \"${ENV_VAR:?ENV_VAR is not set or empty}\"; echo \"$ENV_VAR\""),
-				ReadyCmd: utils.ToPtr("sleep 5"),
+				StartCmd: new(": \"${ENV_VAR:?ENV_VAR is not set or empty}\"; echo \"$ENV_VAR\""),
+				ReadyCmd: new("sleep 5"),
 			},
 		},
 		{
@@ -218,8 +217,8 @@ func TestTemplateBuildENV(t *testing.T) {
 			templateName: "test-ubuntu-env-recursive",
 			buildConfig: api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type:  "ENV",
 						Force: new(true),
@@ -237,8 +236,8 @@ func TestTemplateBuildENV(t *testing.T) {
 			templateName: "test-ubuntu-env-pem-dashes",
 			buildConfig: api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type:  "ENV",
 						Force: new(true),
@@ -256,8 +255,8 @@ func TestTemplateBuildENV(t *testing.T) {
 			templateName: "test-ubuntu-env-quotes",
 			buildConfig: api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type:  "ENV",
 						Force: new(true),
@@ -275,8 +274,8 @@ func TestTemplateBuildENV(t *testing.T) {
 			templateName: "test-ubuntu-env-single-quotes",
 			buildConfig: api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type:  "ENV",
 						Force: new(true),
@@ -294,8 +293,8 @@ func TestTemplateBuildENV(t *testing.T) {
 			templateName: "test-ubuntu-env-backslash",
 			buildConfig: api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type:  "ENV",
 						Force: new(true),
@@ -313,8 +312,8 @@ func TestTemplateBuildENV(t *testing.T) {
 			templateName: "test-ubuntu-env-multiline",
 			buildConfig: api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type:  "ENV",
 						Force: new(true),
@@ -332,8 +331,8 @@ func TestTemplateBuildENV(t *testing.T) {
 			templateName: "test-ubuntu-env-backticks",
 			buildConfig: api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type:  "ENV",
 						Force: new(true),
@@ -351,8 +350,8 @@ func TestTemplateBuildENV(t *testing.T) {
 			templateName: "test-ubuntu-env-dollarparen",
 			buildConfig: api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type:  "ENV",
 						Force: new(true),
@@ -389,8 +388,8 @@ func TestTemplateBuildWORKDIR(t *testing.T) {
 			templateName: "test-ubuntu-workdir-persistence",
 			buildConfig: api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type:  "WORKDIR",
 						Force: new(true),
@@ -408,16 +407,16 @@ func TestTemplateBuildWORKDIR(t *testing.T) {
 			templateName: "test-ubuntu-workdir-start",
 			buildConfig: api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type:  "WORKDIR",
 						Force: new(true),
 						Args:  new([]string{"/app"}),
 					},
 				}),
-				StartCmd: utils.ToPtr("[[ \"$(pwd)\" == \"/app\" ]] || exit 1"),
-				ReadyCmd: utils.ToPtr("sleep 5"),
+				StartCmd: new("[[ \"$(pwd)\" == \"/app\" ]] || exit 1"),
+				ReadyCmd: new("sleep 5"),
 			},
 		},
 	}
@@ -436,8 +435,8 @@ func TestTemplateBuildCache(t *testing.T) {
 
 	alias := "test-ubuntu-cache"
 	template := api.TemplateBuildStartV2{
-		FromImage: utils.ToPtr("ubuntu:22.04"),
-		Steps: utils.ToPtr([]api.TemplateStep{
+		FromImage: new("ubuntu:22.04"),
+		Steps: new([]api.TemplateStep{
 			{
 				Type: "ENV",
 				Args: new([]string{"ENV_VAR", "Hello, World!"}),
@@ -482,8 +481,8 @@ func TestTemplateBuildFromTemplate(t *testing.T) {
 			baseTemplate: "test-ubuntu-base-template",
 			baseConfig: api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type:  "ENV",
 						Force: new(true),
@@ -498,9 +497,9 @@ func TestTemplateBuildFromTemplate(t *testing.T) {
 			},
 			derivedTemplate: "test-ubuntu-derived-template",
 			derivedConfig: api.TemplateBuildStartV2{
-				Force:        utils.ToPtr(true),
-				FromTemplate: utils.ToPtr("test-ubuntu-base-template"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				Force:        new(true),
+				FromTemplate: new("test-ubuntu-base-template"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type: "ENV",
 						Args: new([]string{"DERIVED_VAR", "derived_value"}),
@@ -542,8 +541,8 @@ func TestTemplateBuildFromTemplateCommandOverride(t *testing.T) {
 			baseTemplate: "test-ubuntu-base-override-start",
 			baseConfig: api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type:  "ENV",
 						Force: new(true),
@@ -556,14 +555,14 @@ func TestTemplateBuildFromTemplateCommandOverride(t *testing.T) {
 					},
 				}),
 				// Base start command - fails if override_check.txt exists (meaning it's running in derived context)
-				StartCmd: utils.ToPtr("[[ ! -f /override_check.txt ]] || exit 97; echo 'base_command_executed'"),
-				ReadyCmd: utils.ToPtr("sleep 5"),
+				StartCmd: new("[[ ! -f /override_check.txt ]] || exit 97; echo 'base_command_executed'"),
+				ReadyCmd: new("sleep 5"),
 			},
 			derivedTemplate: "test-ubuntu-derived-override-start",
 			derivedConfig: api.TemplateBuildStartV2{
-				Force:        utils.ToPtr(true),
-				FromTemplate: utils.ToPtr("test-ubuntu-base-override-start"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				Force:        new(true),
+				FromTemplate: new("test-ubuntu-base-override-start"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type: "ENV",
 						Args: new([]string{"DERIVED_VAR", "derived_value"}),
@@ -578,8 +577,8 @@ func TestTemplateBuildFromTemplateCommandOverride(t *testing.T) {
 					},
 				}),
 				// Override the base start command - simple success proves override worked
-				StartCmd: utils.ToPtr("exit 0"),
-				ReadyCmd: utils.ToPtr("sleep 5"),
+				StartCmd: new("exit 0"),
+				ReadyCmd: new("sleep 5"),
 			},
 		},
 	}
@@ -606,8 +605,8 @@ func TestTemplateBuildFromTemplateInheritance(t *testing.T) {
 	// Base template with ENV and WORKDIR settings
 	baseConfig := api.TemplateBuildStartV2{
 		Force:     new(ForceBaseBuild),
-		FromImage: utils.ToPtr("ubuntu:22.04"),
-		Steps: utils.ToPtr([]api.TemplateStep{
+		FromImage: new("ubuntu:22.04"),
+		Steps: new([]api.TemplateStep{
 			{
 				Type:  "ENV",
 				Force: new(true),
@@ -628,9 +627,9 @@ func TestTemplateBuildFromTemplateInheritance(t *testing.T) {
 
 	// Derived template that tests inheritance and override
 	derivedConfig := api.TemplateBuildStartV2{
-		Force:        utils.ToPtr(true),
-		FromTemplate: utils.ToPtr(baseTemplate),
-		Steps: utils.ToPtr([]api.TemplateStep{
+		Force:        new(true),
+		FromTemplate: new(baseTemplate),
+		Steps: new([]api.TemplateStep{
 			{
 				Type: "ENV",
 				Args: new([]string{"OVERRIDE_VAR", "derived_value"}),
@@ -667,8 +666,8 @@ func TestTemplateBuildFromTemplateStartCommand(t *testing.T) {
 	// Base template with ENV and WORKDIR for start command inheritance
 	baseConfig := api.TemplateBuildStartV2{
 		Force:     new(ForceBaseBuild),
-		FromImage: utils.ToPtr("ubuntu:22.04"),
-		Steps: utils.ToPtr([]api.TemplateStep{
+		FromImage: new("ubuntu:22.04"),
+		Steps: new([]api.TemplateStep{
 			{
 				Type:  "ENV",
 				Force: new(true),
@@ -684,9 +683,9 @@ func TestTemplateBuildFromTemplateStartCommand(t *testing.T) {
 
 	// Derived template with start command that tests ENV and WORKDIR inheritance
 	derivedConfig := api.TemplateBuildStartV2{
-		Force:        utils.ToPtr(true),
-		FromTemplate: utils.ToPtr(baseTemplate),
-		StartCmd: utils.ToPtr(
+		Force:        new(true),
+		FromTemplate: new(baseTemplate),
+		StartCmd: new(
 			// Test ENV inheritance in start command
 			": \"${START_ENV:?START_ENV is not set or empty}\"; " +
 				"[[ \"$START_ENV\" == \"start_value\" ]] || exit 1; " +
@@ -694,7 +693,7 @@ func TestTemplateBuildFromTemplateStartCommand(t *testing.T) {
 				"[[ \"$(pwd)\" == \"/start/workdir\" ]] || exit 2; " +
 				"echo 'Start command inheritance tests passed'",
 		),
-		ReadyCmd: utils.ToPtr("sleep 5"),
+		ReadyCmd: new("sleep 5"),
 	}
 
 	// First build the base template
@@ -719,8 +718,8 @@ func TestTemplateBuildFromTemplateBaseCommandsInheritance(t *testing.T) {
 			baseTemplate: "test-ubuntu-base-with-start",
 			baseConfig: api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type:  "ENV",
 						Force: new(true),
@@ -733,14 +732,14 @@ func TestTemplateBuildFromTemplateBaseCommandsInheritance(t *testing.T) {
 					},
 				}),
 				// Start command runs with base template context (not derived modifications)
-				StartCmd: utils.ToPtr(": \"${BASE_VAR:?BASE_VAR not set}\"; [[ \"$BASE_VAR\" == \"base_value\" ]] || exit 1; [[ \"$(pwd)\" == \"/app/base\" ]] || exit 2; echo \"Base start command runs with original base context\""),
-				ReadyCmd: utils.ToPtr("sleep 5"),
+				StartCmd: new(": \"${BASE_VAR:?BASE_VAR not set}\"; [[ \"$BASE_VAR\" == \"base_value\" ]] || exit 1; [[ \"$(pwd)\" == \"/app/base\" ]] || exit 2; echo \"Base start command runs with original base context\""),
+				ReadyCmd: new("sleep 5"),
 			},
 			derivedTemplate: "test-ubuntu-derived-with-inheritance",
 			derivedConfig: api.TemplateBuildStartV2{
-				Force:        utils.ToPtr(true),
-				FromTemplate: utils.ToPtr("test-ubuntu-base-with-start"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				Force:        new(true),
+				FromTemplate: new("test-ubuntu-base-with-start"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type: "WORKDIR",
 						Args: new([]string{"/app/derived"}), // Override base workdir
@@ -781,8 +780,8 @@ func TestTemplateBuildFromTemplateLayered(t *testing.T) {
 			baseTemplate: "test-ubuntu-layered-base",
 			baseConfig: api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type:  "ENV",
 						Force: new(true),
@@ -797,9 +796,9 @@ func TestTemplateBuildFromTemplateLayered(t *testing.T) {
 			},
 			intermediateTemplate: "test-ubuntu-layered-intermediate",
 			intermediateConfig: api.TemplateBuildStartV2{
-				Force:        utils.ToPtr(true),
-				FromTemplate: utils.ToPtr("test-ubuntu-layered-base"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				Force:        new(true),
+				FromTemplate: new("test-ubuntu-layered-base"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type: "ENV",
 						Args: new([]string{"LEVEL", "intermediate"}),
@@ -812,9 +811,9 @@ func TestTemplateBuildFromTemplateLayered(t *testing.T) {
 			},
 			finalTemplate: "test-ubuntu-layered-final",
 			finalConfig: api.TemplateBuildStartV2{
-				Force:        utils.ToPtr(true),
-				FromTemplate: utils.ToPtr("test-ubuntu-layered-intermediate"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				Force:        new(true),
+				FromTemplate: new("test-ubuntu-layered-intermediate"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type: "ENV",
 						Args: new([]string{"LEVEL", "final"}),
@@ -867,16 +866,16 @@ func TestTemplateBuildStartReadyCommandExecution(t *testing.T) {
 			templateName: "test-ubuntu-start-ready-execution",
 			buildConfig: api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type:  "RUN",
 						Force: new(true),
 						Args:  new([]string{"echo 'Setting up template'"}),
 					},
 				}),
-				StartCmd: utils.ToPtr("echo 'Hello, World!'"),
-				ReadyCmd: utils.ToPtr("sleep 2"),
+				StartCmd: new("echo 'Hello, World!'"),
+				ReadyCmd: new("sleep 2"),
 			},
 			expectedLogs: []string{
 				"Running start command",
@@ -890,16 +889,16 @@ func TestTemplateBuildStartReadyCommandExecution(t *testing.T) {
 			templateName: "test-ubuntu-complex-start-ready",
 			buildConfig: api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:22.04"),
-				Steps: utils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type:  "ENV",
 						Force: new(true),
 						Args:  new([]string{"TEST_VAR", "test_value"}),
 					},
 				}),
-				StartCmd: utils.ToPtr("echo \"Starting with TEST_VAR=$TEST_VAR\"; echo 'Initialization complete'"),
-				ReadyCmd: utils.ToPtr("echo 'Checking readiness...'; sleep 1; echo 'Ready check complete'"),
+				StartCmd: new("echo \"Starting with TEST_VAR=$TEST_VAR\"; echo 'Initialization complete'"),
+				ReadyCmd: new("echo 'Checking readiness...'; sleep 1; echo 'Ready check complete'"),
 			},
 			expectedLogs: []string{
 				"Running start command",
@@ -976,10 +975,10 @@ func TestTemplateBuildWithDifferentSourceImages(t *testing.T) {
 			templateName: "test-ubuntu-24-04-source",
 			buildConfig: api.TemplateBuildStartV2{
 				Force:     new(ForceBaseBuild),
-				FromImage: utils.ToPtr("ubuntu:24.04"),
-				Steps:     utils.ToPtr([]api.TemplateStep{}),
-				StartCmd:  utils.ToPtr("echo 'Initialization complete'"),
-				ReadyCmd:  utils.ToPtr("echo 'Checking readiness...'; sleep 1; echo 'Ready check complete'"),
+				FromImage: new("ubuntu:24.04"),
+				Steps:     new([]api.TemplateStep{}),
+				StartCmd:  new("echo 'Initialization complete'"),
+				ReadyCmd:  new("echo 'Checking readiness...'; sleep 1; echo 'Ready check complete'"),
 			},
 			expectedLogs: []string{
 				"Running start command",
@@ -1046,7 +1045,7 @@ func TestTemplateBuildInstalledPackagesAvailable(t *testing.T) {
 	for _, pkg := range packages {
 		steps = append(steps, api.TemplateStep{
 			Type: "RUN",
-			Args: utils.ToPtr([]string{
+			Args: new([]string{
 				"dpkg-query -W -f='${Status}' " + pkg + " | grep -q 'install ok installed'",
 			}),
 		})
@@ -1054,8 +1053,8 @@ func TestTemplateBuildInstalledPackagesAvailable(t *testing.T) {
 
 	buildConfig := api.TemplateBuildStartV2{
 		Force:     new(ForceBaseBuild),
-		FromImage: utils.ToPtr("ubuntu:22.04"),
-		Steps:     utils.ToPtr(steps),
+		FromImage: new("ubuntu:22.04"),
+		Steps:     new(steps),
 	}
 
 	assert.True(t, buildTemplate(t, "test-ubuntu-packages-available", buildConfig, defaultBuildLogHandler(t)))
@@ -1137,8 +1136,8 @@ func TestTemplateBuildCOPY(t *testing.T) {
 
 	buildConfig := api.TemplateBuildStartV2{
 		Force:     new(ForceBaseBuild),
-		FromImage: utils.ToPtr("ubuntu:24.04"),
-		Steps: utils.ToPtr([]api.TemplateStep{
+		FromImage: new("ubuntu:24.04"),
+		Steps: new([]api.TemplateStep{
 			{
 				Type:      "COPY",
 				Force:     new(true),
@@ -1170,8 +1169,8 @@ func TestTemplateBuildFuseConfiguration(t *testing.T) {
 	// - /dev/fuse has actual permissions 666
 	buildConfig := api.TemplateBuildStartV2{
 		Force:     new(ForceBaseBuild),
-		FromImage: utils.ToPtr("ubuntu:22.04"),
-		Steps: utils.ToPtr([]api.TemplateStep{
+		FromImage: new("ubuntu:22.04"),
+		Steps: new([]api.TemplateStep{
 			{
 				Type: "RUN",
 				Args: new([]string{

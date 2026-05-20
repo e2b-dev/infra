@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	utilsShared "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	testutils "github.com/e2b-dev/infra/tests/integration/internal/utils"
@@ -18,8 +17,8 @@ func TestDeleteTemplate(t *testing.T) {
 	alias := "test-to-delete"
 	res := buildTemplate(t, alias, api.TemplateBuildStartV2{
 		Force:     new(ForceBaseBuild),
-		FromImage: utilsShared.ToPtr("ubuntu:22.04"),
-		Steps: utilsShared.ToPtr([]api.TemplateStep{
+		FromImage: new("ubuntu:22.04"),
+		Steps: new([]api.TemplateStep{
 			{
 				Type:  "RUN",
 				Force: new(true),
@@ -89,8 +88,8 @@ func TestDeleteTemplateFromAnotherTeamAPIKey(t *testing.T) {
 
 	res := buildTemplate(t, alias, api.TemplateBuildStartV2{
 		Force:     new(ForceBaseBuild),
-		FromImage: utilsShared.ToPtr("ubuntu:22.04"),
-		Steps: utilsShared.ToPtr([]api.TemplateStep{
+		FromImage: new("ubuntu:22.04"),
+		Steps: new([]api.TemplateStep{
 			{
 				Type:  "RUN",
 				Force: new(true),

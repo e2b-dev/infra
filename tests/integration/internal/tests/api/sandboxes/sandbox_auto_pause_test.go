@@ -92,7 +92,7 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 		t.Context(),
 		&envd.GetFilesParams{
 			Path:     &path,
-			Username: utilsShared.ToPtr("user"),
+			Username: new("user"),
 		},
 		setup.WithSandbox(t, sbxId),
 	)
@@ -132,7 +132,7 @@ func TestSandboxAutoPauseResumePersisted(t *testing.T) {
 		t.Context(),
 		&envd.GetFilesParams{
 			Path:     &path,
-			Username: utilsShared.ToPtr("user"),
+			Username: new("user"),
 		},
 		setup.WithSandbox(t, sbxId),
 	)

@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
-	utilsShared "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
@@ -34,7 +33,7 @@ func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {
 		ctx,
 		&envd.PostFilesParams{
 			Path:     &filePath,
-			Username: utilsShared.ToPtr("user"),
+			Username: new("user"),
 		},
 		contentType,
 		textFile,
@@ -46,7 +45,7 @@ func TestDownloadFileWhenAuthIsDisabled(t *testing.T) {
 
 	getRes, err := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
-		&envd.GetFilesParams{Path: &filePath, Username: utilsShared.ToPtr("user")},
+		&envd.GetFilesParams{Path: &filePath, Username: new("user")},
 		setup.WithSandbox(t, sbx.JSON201.SandboxID),
 	)
 
@@ -75,7 +74,7 @@ func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
 		ctx,
 		&envd.PostFilesParams{
 			Path:      &filePath,
-			Username:  utilsShared.ToPtr("user"),
+			Username:  new("user"),
 			Signature: &writeFileSigning,
 		},
 		contentType,
@@ -89,7 +88,7 @@ func TestDownloadFileWithoutSigningWhenAuthIsEnabled(t *testing.T) {
 
 	readRes, readErr := envdClient.HTTPClient.GetFiles(
 		ctx,
-		&envd.GetFilesParams{Path: &filePath, Username: utilsShared.ToPtr("user")},
+		&envd.GetFilesParams{Path: &filePath, Username: new("user")},
 		setup.WithSandbox(t, sbx.JSON201.SandboxID),
 	)
 	require.NoError(t, readErr)
@@ -119,7 +118,7 @@ func TestDownloadFileWithSigningWhenAuthIsEnabled(t *testing.T) {
 		ctx,
 		&envd.PostFilesParams{
 			Path:      &filePath,
-			Username:  utilsShared.ToPtr("user"),
+			Username:  new("user"),
 			Signature: &writeFileSigning,
 		},
 		contentType,
@@ -132,7 +131,7 @@ func TestDownloadFileWithSigningWhenAuthIsEnabled(t *testing.T) {
 
 	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
-		&envd.GetFilesParams{Path: &filePath, Username: utilsShared.ToPtr("user"), Signature: &readFileSigning},
+		&envd.GetFilesParams{Path: &filePath, Username: new("user"), Signature: &readFileSigning},
 		setup.WithSandbox(t, sbx.JSON201.SandboxID),
 	)
 
@@ -163,7 +162,7 @@ func TestDownloadWithAlreadyExpiredToken(t *testing.T) {
 		ctx,
 		&envd.GetFilesParams{
 			Path:                &filePath,
-			Username:            utilsShared.ToPtr("user"),
+			Username:            new("user"),
 			Signature:           &signatureForRead,
 			SignatureExpiration: &readExpiration,
 		},
@@ -197,7 +196,7 @@ func TestDownloadWithHealthyToken(t *testing.T) {
 		ctx,
 		&envd.GetFilesParams{
 			Path:                &filePath,
-			Username:            utilsShared.ToPtr("user"),
+			Username:            new("user"),
 			Signature:           &signatureForRead,
 			SignatureExpiration: &readExpiration,
 		},
@@ -231,7 +230,7 @@ func TestAccessWithNotCorrespondingSignatureAndSignatureExpiration(t *testing.T)
 		ctx,
 		&envd.GetFilesParams{
 			Path:                &filePath,
-			Username:            utilsShared.ToPtr("user"),
+			Username:            new("user"),
 			Signature:           &signatureForRead,
 			SignatureExpiration: &readExpiration,
 		},
