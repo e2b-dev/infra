@@ -986,7 +986,7 @@ func TestCacheDedup_EmptyParentMappingSkipsBaseReadAt(t *testing.T) {
 	require.EqualValues(t, blockSize/pageSize, meta.Empty.GetCardinality())
 
 	// Sanity: dirty pages have the original src bytes.
-	for i := int64(0); i < blockSize/pageSize; i++ {
+	for i := range blockSize / pageSize {
 		got := make([]byte, pageSize)
 		_, err := cache.ReadAt(got, i*pageSize)
 		require.NoError(t, err)
@@ -1060,7 +1060,7 @@ func TestCacheDedup_BestEffortUncachedSkipsBaseReadAt(t *testing.T) {
 	require.Zero(t, base.reads, "best-effort uncached path must not call base.ReadAt")
 
 	totalPages := uint64(size / pageSize)
-	require.EqualValues(t, totalPages-1, meta.Dirty.GetCardinality(), "non-zero pages written as dirty")
+	require.Equal(t, totalPages-1, meta.Dirty.GetCardinality(), "non-zero pages written as dirty")
 	require.EqualValues(t, 1, meta.Empty.GetCardinality(), "zero page still routed to Empty")
 	require.True(t, meta.Empty.Contains(uint32(totalPages-1)))
 }

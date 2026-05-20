@@ -220,6 +220,7 @@ func baseIsZeroBlock(ctx context.Context, base ReadonlyDevice, absOff, blockSize
 	if err != nil {
 		return false
 	}
+
 	return m.BuildId == uuid.Nil && int64(m.Length) >= blockSize
 }
 
