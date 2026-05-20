@@ -60,6 +60,10 @@ func LoadHeader(ctx context.Context, s storage.StorageProvider, path string) (*H
 // Refuses to persist a header still flagged as in-flight — the upload pipeline
 // must clear IncompletePendingUpload before reaching here.
 func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h *Header) (int64, error) {
+	if h == nil {
+		return 0, fmt.Errorf("header is nil")
+	}
+
 	if h.IncompletePendingUpload {
 		return 0, fmt.Errorf("refusing to persist incomplete header for %s", path)
 	}
@@ -75,7 +79,7 @@ func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h 
 	}
 
 	if err := blob.Put(ctx, data); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("put blob %s: %w", path, err)
 	}
 
 	return int64(len(data)), nil
