@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"io"
+	"os"
 	"testing"
 
 	"github.com/RoaringBitmap/roaring/v2"
@@ -41,6 +42,41 @@ func fullDirty(size, blockSize int64) *roaring.Bitmap {
 	b.AddRange(0, uint64(size/blockSize))
 
 	return b
+}
+
+// fakeOriginalDevice satisfies ReadonlyDevice over a fixed byte buffer.
+type fakeOriginalDevice struct {
+	data []byte
+}
+
+func (f *fakeOriginalDevice) ReadAt(_ context.Context, p []byte, off int64) (int, error) {
+	if off >= int64(len(f.data)) {
+		return 0, io.EOF
+	}
+	n := copy(p, f.data[off:])
+	if n < len(p) {
+		return n, io.EOF
+	}
+
+	return n, nil
+}
+
+func (f *fakeOriginalDevice) Size(context.Context) (int64, error)                 { return int64(len(f.data)), nil }
+func (f *fakeOriginalDevice) Close() error                                        { return nil }
+func (f *fakeOriginalDevice) Slice(context.Context, int64, int64) ([]byte, error) { return nil, nil }
+func (f *fakeOriginalDevice) BlockSize() int64                                    { return int64(header.PageSize) }
+func (f *fakeOriginalDevice) Header() *header.Header                              { return nil }
+func (f *fakeOriginalDevice) SwapHeader(*header.Header)                           {}
+
+// erroringOriginalDevice returns sentinel from every ReadAt.
+type erroringOriginalDevice struct {
+	fakeOriginalDevice
+
+	err error
+}
+
+func (e *erroringOriginalDevice) ReadAt(context.Context, []byte, int64) (int, error) {
+	return 0, e.err
 }
 
 func TestNewCacheFromMemfd_NonAdjacentBlocks(t *testing.T) {
@@ -87,37 +123,28 @@ func TestNewCacheFromMemfd_NonZeroRangeStart(t *testing.T) {
 	require.Equal(t, expected[pageSize*3:pageSize*5], got)
 }
 
-// fakeOriginalDevice satisfies ReadonlyDevice over a fixed byte buffer.
-type fakeOriginalDevice struct {
-	data []byte
-}
+// Async: the copy detaches from the request context (cancelling the parent
+// ctx doesn't abort it). After Wait the file on disk has the full payload.
+func TestNewCacheFromMemfdAsync_DetachesAndFlushes(t *testing.T) {
+	t.Parallel()
 
-func (f *fakeOriginalDevice) ReadAt(_ context.Context, p []byte, off int64) (int, error) {
-	if off >= int64(len(f.data)) {
-		return 0, io.EOF
-	}
-	n := copy(p, f.data[off:])
-	if n < len(p) {
-		return n, io.EOF
-	}
+	pageSize := int64(header.PageSize)
+	numPages := uint32(16)
+	memfd, expected := newTestMemfd(t, pageSize*int64(numPages))
 
-	return n, nil
-}
+	dirty := roaring.New()
+	dirty.AddRange(0, uint64(numPages))
 
-func (f *fakeOriginalDevice) Size(context.Context) (int64, error)                 { return int64(len(f.data)), nil }
-func (f *fakeOriginalDevice) Close() error                                        { return nil }
-func (f *fakeOriginalDevice) Slice(context.Context, int64, int64) ([]byte, error) { return nil, nil }
-func (f *fakeOriginalDevice) BlockSize() int64                                    { return int64(header.PageSize) }
-func (f *fakeOriginalDevice) Header() *header.Header                              { return nil }
-func (f *fakeOriginalDevice) SwapHeader(*header.Header)                           {}
+	ctx, cancel := context.WithCancel(t.Context())
+	cachePath := t.TempDir() + "/cache"
+	cache, err := NewCacheFromMemfdAsync(ctx, pageSize, cachePath, memfd, dirty)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
 
-// erroringOriginalDevice returns sentinel from every ReadAt.
-type erroringOriginalDevice struct {
-	fakeOriginalDevice
+	cancel()
+	require.NoError(t, cache.Wait(t.Context()))
 
-	err error
-}
-
-func (e *erroringOriginalDevice) ReadAt(context.Context, []byte, int64) (int, error) {
-	return 0, e.err
+	fromFile, err := os.ReadFile(cachePath)
+	require.NoError(t, err)
+	require.Equal(t, expected, fromFile)
 }

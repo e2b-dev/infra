@@ -388,6 +388,7 @@ func doBuild(
 		KernelVersion:      kernel,
 		FirecrackerVersion: fc,
 		FreePageReporting:  fcInfo.HasFreePageReporting(),
+		FreePageHinting:    fcInfo.HasFreePageHinting(),
 		TeamID:             "local",
 		Steps:              steps,
 	}

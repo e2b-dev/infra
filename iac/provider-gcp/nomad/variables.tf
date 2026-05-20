@@ -71,20 +71,22 @@ variable "client_proxy_oidc_issuer_url" {
 }
 
 variable "ingress_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
+  type        = number
+  description = "External traffic port number"
+}
+
+variable "ingress_internal_port" {
+  type        = number
+  description = "Internal traffic port number"
+}
+
+variable "ingress_count" {
+  type = number
 }
 
 variable "traefik_config_files" {
   type        = map(string)
   description = "Map of filename => content for additional Traefik dynamic configuration files"
-}
-
-variable "ingress_count" {
-  type = number
 }
 
 variable "api_resources_cpu_count" {
@@ -510,6 +512,27 @@ variable "supabase_db_connection_string_secret_version" {
   type = any
 }
 
+variable "auth_provider_config" {
+  type = object({
+    jwt = optional(list(object({
+      issuer = object({
+        url                 = string
+        discoveryURL        = optional(string)
+        audiences           = list(string)
+        audienceMatchPolicy = optional(string)
+      })
+      cacheDuration = optional(string)
+    })))
+    legacy = optional(object({
+      hmac = object({
+        secrets = list(string)
+      })
+    }))
+  })
+  sensitive = true
+  default   = null
+}
+
 variable "enable_auth_user_sync_background_worker" {
   type    = bool
   default = false
@@ -519,6 +542,7 @@ variable "enable_billing_http_team_provision_sink" {
   type    = bool
   default = false
 }
+
 variable "volume_token_issuer" {
   type = string
 }

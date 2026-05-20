@@ -155,6 +155,7 @@ func (ppb *PostProcessingBuilder) Build(
 		RamMB:             ppb.Config.MemoryMB,
 		HugePages:         ppb.Config.HugePages,
 		FreePageReporting: ppb.Config.FreePageReporting,
+		FreePageHinting:   ppb.Config.FreePageHinting,
 
 		Envd: sandbox.EnvdMetadata{
 			Version:        ppb.EnvdVersion,

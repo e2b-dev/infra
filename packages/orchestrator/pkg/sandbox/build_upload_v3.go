@@ -14,12 +14,12 @@ import (
 )
 
 func (u *Upload) runV3(ctx context.Context) error {
-	memfilePath, err := u.snap.MemfileDiff.CachePath()
+	memfilePath, err := u.snap.MemfileDiff.CachePath(ctx)
 	if err != nil {
 		return fmt.Errorf("error getting memfile diff path: %w", err)
 	}
 
-	rootfsPath, err := u.snap.RootfsDiff.CachePath()
+	rootfsPath, err := u.snap.RootfsDiff.CachePath(ctx)
 	if err != nil {
 		return fmt.Errorf("error getting rootfs diff path: %w", err)
 	}

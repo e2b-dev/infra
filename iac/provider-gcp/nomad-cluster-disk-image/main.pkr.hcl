@@ -28,7 +28,7 @@ source "googlecompute" "orch" {
 
   # Enable IAP for SSH
   network    = var.network_name
-  subnetwork = "${var.network_name}-subnetwork"
+  subnetwork = var.subnet_name
   use_iap    = true
 }
 

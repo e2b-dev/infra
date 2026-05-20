@@ -123,6 +123,11 @@ var (
 	// UseMemFdFlag asks FC to back guest memory with a memfd passed over UFFD.
 	UseMemFdFlag = NewBoolFlag("use-memfd", false)
 
+	// MemfdBackgroundCopyFlag streams the memfd into the snapshot cache on
+	// a goroutine so Pause returns as soon as the diff metadata is written.
+	// Only takes effect when UseMemFdFlag is also on.
+	MemfdBackgroundCopyFlag = NewBoolFlag("memfd-background-copy", false)
+
 	// MemfileDiffDedupFlag drops memfile-diff pages that match the base
 	// byte-for-byte at 4 KiB granularity during snapshot post-processing.
 	MemfileDiffDedupFlag = NewBoolFlag("memfile-diff-dedup", false)
@@ -140,6 +145,11 @@ var (
 	FreePageReportingFlag            = NewBoolFlag("free-page-reporting", false)
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
+
+	// V4HeaderForUncompressedFlag forces the V4 header layout on uncompressed
+	// uploads. Independent of compress-config: it changes the header format,
+	// not whether data is compressed.
+	V4HeaderForUncompressedFlag = NewBoolFlag("v4-header-for-uncompressed", false)
 )
 
 type IntFlag struct {
@@ -219,6 +229,12 @@ var (
 	// MaxStartingInstancesPerNode limits concurrent sandbox start/resume operations on a single orchestrator node.
 	// Must be > 0.
 	MaxStartingInstancesPerNode = NewIntFlag("max-starting-instances-per-node", 3)
+
+	// MaxConcurrentEvictions caps the number of sandbox evictions that can run
+	// in parallel per API instance. Excess items remain expired in the store
+	// and are picked up by the next eviction tick. Must be > 0; non-positive
+	// values are ignored at refresh time.
+	MaxConcurrentEvictions = NewIntFlag("max-concurrent-evictions", 256)
 
 	// MaxConcurrentSnapshotUpserts limits concurrent UpsertSnapshot calls (pause + snapshot template paths).
 	// 0 or negative disables throttling (unlimited concurrency).
@@ -397,7 +413,8 @@ func GetTrackedTemplatesSet(ctx context.Context, ff *Client) map[string]struct{}
 
 // CompressConfigFlag controls compression during template builds.
 // When compressBuilds is true, builds upload exclusively compressed data
-// (no uncompressed fallback). When false, exclusively uncompressed with V3 headers.
+// (no uncompressed fallback). When false, exclusively uncompressed with V3
+// headers (unless V4HeaderForUncompressedFlag is set).
 var CompressConfigFlag = NewJSONFlag("compress-config", ldvalue.FromJSONMarshal(map[string]any{
 	"compressBuilds":     false,
 	"compressionType":    "",

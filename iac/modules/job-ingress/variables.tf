@@ -18,13 +18,17 @@ variable "consul_endpoint" {
   default = "http://localhost:8500"
 }
 
-variable "ingress_proxy_port" {
+variable "control_port" {
+  type    = number
+  default = 8900
+}
+
+variable "ingress_port" {
   type = number
 }
 
-variable "ingress_control_port" {
-  type    = number
-  default = 8900
+variable "ingress_internal_port" {
+  type = number
 }
 
 variable "node_pool" {

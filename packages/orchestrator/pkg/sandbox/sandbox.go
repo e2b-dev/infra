@@ -74,6 +74,7 @@ type Config struct {
 	TotalDiskSizeMB   int64
 	HugePages         bool
 	FreePageReporting bool
+	FreePageHinting   bool
 
 	Envd EnvdMetadata
 
@@ -162,16 +163,17 @@ type RuntimeMetadata struct {
 	SandboxID   string
 	ExecutionID string
 
-	// TeamID optional, used only for logging
+	// TeamID is best-effort metadata; not always populated so do not use for
+	// decisions or feature-flag targeting.
 	TeamID string
 
-	// BuildID is the ID of the associated template build.
 	BuildID     string
 	SandboxType SandboxType
 }
 
 // sandboxLDContext builds an LD context with kernel/FC-version attributes for
-// per-sandbox flag targeting.
+// per-sandbox flag targeting. Team/template targeting comes from the team and
+// template contexts the caller embeds in ctx.
 func sandboxLDContext(runtime RuntimeMetadata, config *Config) ldcontext.Context {
 	return ldcontext.NewBuilder(runtime.SandboxID).
 		Kind(featureflags.SandboxKind).
@@ -508,8 +510,7 @@ func (f *Factory) CreateSandbox(
 		return nil
 	})
 
-	freePageHinting := fc.FCSupportsFreePageHinting(config.FirecrackerConfig.FirecrackerVersion) &&
-		featureflags.IsFreePageHintingEnabled(ctx, f.featureFlags, sandboxLDContext(runtime, config))
+	freePageHinting := fc.FCSupportsFreePageHinting(config.FirecrackerConfig.FirecrackerVersion) && config.FreePageHinting
 
 	err = fcHandle.Create(
 		ctx,
@@ -1146,6 +1147,7 @@ func (s *Sandbox) Pause(
 		s.config.DefaultCacheDir,
 		s.process,
 		s.memory.Memfd(ctx),
+		s.featureFlags.BoolFlag(ctx, featureflags.MemfdBackgroundCopyFlag, sandboxLDContext(s.Runtime, s.Config)),
 		dedupBase,
 	)
 	if err != nil {
@@ -1215,12 +1217,15 @@ func pauseProcessMemory(
 	cacheDir string,
 	fc *fc.Process,
 	memfd *block.Memfd,
+	bgCopy bool,
 	originalMemfile block.ReadonlyDevice,
 ) (d build.Diff, h *header.Header, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
-	cache, dedupMeta, err := fc.ExportMemory(ctx, buildID, diffMetadata.Dirty, cacheDir, diffMetadata.BlockSize, memfd, originalMemfile)
+	// ExportMemory owns memfd and closes it on all paths.
+	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
+	cache, dedupMeta, err := fc.ExportMemory(ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy, originalMemfile)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
 	}

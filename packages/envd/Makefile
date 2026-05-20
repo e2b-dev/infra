@@ -46,7 +46,7 @@ start-docker:
 	-p 8001:8001 \
 	--rm \
 	-i envd-debug \
-	/usr/bin/envd -isnotfc
+	/usr/bin/envd -isnotfc -verbose
 
 build-and-upload:
 	make build
