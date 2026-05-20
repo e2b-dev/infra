@@ -45,11 +45,15 @@ func fullDirty(size, blockSize int64) *roaring.Bitmap {
 }
 
 // fakeOriginalDevice satisfies ReadonlyDevice over a fixed byte buffer.
+// Tracks ReadAt calls so dedup tests can assert fast-path skipping.
 type fakeOriginalDevice struct {
 	data []byte
+	hdr  *header.Header // optional; nil disables the dedup fast paths
+	reads int
 }
 
 func (f *fakeOriginalDevice) ReadAt(_ context.Context, p []byte, off int64) (int, error) {
+	f.reads++
 	if off >= int64(len(f.data)) {
 		return 0, io.EOF
 	}
@@ -65,7 +69,7 @@ func (f *fakeOriginalDevice) Size(context.Context) (int64, error)               
 func (f *fakeOriginalDevice) Close() error                                        { return nil }
 func (f *fakeOriginalDevice) Slice(context.Context, int64, int64) ([]byte, error) { return nil, nil }
 func (f *fakeOriginalDevice) BlockSize() int64                                    { return int64(header.PageSize) }
-func (f *fakeOriginalDevice) Header() *header.Header                              { return nil }
+func (f *fakeOriginalDevice) Header() *header.Header                              { return f.hdr }
 func (f *fakeOriginalDevice) SwapHeader(*header.Header)                           {}
 
 // erroringOriginalDevice returns sentinel from every ReadAt.

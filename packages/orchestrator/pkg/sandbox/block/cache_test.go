@@ -935,6 +935,64 @@ func TestCacheDedup_OriginalMemfileReadError(t *testing.T) {
 	require.ErrorIs(t, err, sentinel)
 }
 
+// When the parent maps the block to uuid.Nil, dedup must skip base.ReadAt
+// and treat baseBuf as zero. This regression test pins the fast path: the
+// fake records ReadAt calls, and we assert the count is zero for the dirty
+// block whose parent mapping is Empty.
+func TestCacheDedup_EmptyParentMappingSkipsBaseReadAt(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	blockSize := 4 * pageSize
+	size := blockSize * 2
+
+	// Source: random data. Base byte buffer doesn't matter because the
+	// header reports the block as Empty, so dedup must treat base as zero.
+	srcData := make([]byte, size)
+	_, err := rand.Read(srcData)
+	require.NoError(t, err)
+
+	// Set the second block to all-zero in the source so we exercise both
+	// pageDirty (non-zero pages in block 0) and pageEmpty (zero pages in
+	// block 1).
+	clear(srcData[blockSize : blockSize*2])
+
+	// Header maps the entire range to uuid.Nil (Empty).
+	hdr, err := header.NewHeader(
+		header.NewTemplateMetadata(uuid.Nil, uint64(blockSize), uint64(size)),
+		[]header.BuildMap{{Offset: 0, Length: uint64(size), BuildId: uuid.Nil}},
+	)
+	require.NoError(t, err)
+
+	dirty := fullDirty(size, blockSize)
+	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
+
+	// Fill baseData with non-zero junk to prove the fast path doesn't read
+	// it: if dedup accidentally calls base.ReadAt, the junk would diff
+	// against src and we'd see wrong page classifications.
+	junk := bytes.Repeat([]byte{0xFF}, int(size))
+	base := &fakeOriginalDevice{data: junk, hdr: hdr}
+
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	require.Zero(t, base.reads, "uuid.Nil parent fast path must not call base.ReadAt")
+
+	// Block 0 (non-zero source): every page differs from zero base → all dirty.
+	// Block 1 (zero source): every page matches zero base → all empty.
+	require.EqualValues(t, blockSize/pageSize, meta.Dirty.GetCardinality())
+	require.EqualValues(t, blockSize/pageSize, meta.Empty.GetCardinality())
+
+	// Sanity: dirty pages have the original src bytes.
+	for i := int64(0); i < blockSize/pageSize; i++ {
+		got := make([]byte, pageSize)
+		_, err := cache.ReadAt(got, i*pageSize)
+		require.NoError(t, err)
+		require.Equal(t, srcData[i*pageSize:(i+1)*pageSize], got, "dirty page %d", i)
+	}
+}
+
 // Zero-matching pages must go into Empty so the merged header maps them to
 // uuid.Nil; non-zero matches must stay unmapped so they fall through to the
 // parent.

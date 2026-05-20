@@ -18,6 +18,7 @@ import (
 
 	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/edsrzf/mmap-go"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -205,6 +206,23 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	return diffMetadata, nil
 }
 
+// baseIsZeroBlock reports whether base's mapping at absOff is uuid.Nil for
+// at least blockSize bytes. When true, base.ReadAt would just clear() the
+// caller's buffer; dedup can skip the call chain and the chunker hop.
+// Returns false if base has no header (test fakes), the lookup fails, or
+// the Empty mapping is smaller than blockSize.
+func baseIsZeroBlock(ctx context.Context, base ReadonlyDevice, absOff, blockSize int64) bool {
+	h := base.Header()
+	if h == nil {
+		return false
+	}
+	m, err := h.GetShiftedMapping(ctx, absOff)
+	if err != nil {
+		return false
+	}
+	return m.BuildId == uuid.Nil && int64(m.Length) >= blockSize
+}
+
 // dedupPages writes pages from src that differ from base, packed at
 // PageSize granularity, to outPath.
 func dedupPages(
@@ -241,7 +259,12 @@ func dedupPages(
 			if err != nil {
 				return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
 			}
-			if _, err := base.ReadAt(ctx, baseBuf, absOff); err != nil {
+			// Fast path: when the parent maps this block to uuid.Nil (Empty),
+			// base.ReadAt would just zero baseBuf via clear() — skip the call
+			// chain and the chunker hop entirely.
+			if baseIsZeroBlock(ctx, base, absOff, blockSize) {
+				clear(baseBuf)
+			} else if _, err := base.ReadAt(ctx, baseBuf, absOff); err != nil {
 				return nil, nil, errors.Join(fmt.Errorf("read base at %d: %w", absOff, err), f.Close(), os.Remove(outPath))
 			}
 
