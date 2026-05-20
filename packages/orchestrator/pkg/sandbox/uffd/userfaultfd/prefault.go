@@ -63,9 +63,8 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 	return nil
 }
 
-// directDataSource wraps a single page's bytes for the prefault path. off is
-// the guest memory address (passed through faultPage), not an index into
-// d.data, so ReadAt copies the whole buffer regardless of off.
+// directDataSource wraps a single page's bytes; off is ignored because the
+// caller hands us exactly the page contents.
 type directDataSource struct {
 	data []byte
 }

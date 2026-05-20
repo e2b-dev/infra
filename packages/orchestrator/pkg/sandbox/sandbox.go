@@ -1247,7 +1247,7 @@ func pauseProcessMemory(
 		diffMetadata = dedupMeta
 	}
 
-	diffHeader, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
+	header, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
 	if err != nil {
 		return nil, nil, errors.Join(fmt.Errorf("failed to create memfile header: %w", err), cache.Close())
 	}
@@ -1260,7 +1260,7 @@ func pauseProcessMemory(
 		return nil, nil, fmt.Errorf("failed to create local diff from cache: %w", errors.Join(err, cache.Close()))
 	}
 
-	return diff, diffHeader, nil
+	return diff, header, nil
 }
 
 func pauseProcessRootfs(

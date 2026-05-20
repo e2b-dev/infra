@@ -123,8 +123,8 @@ const (
 )
 
 // NewUserfaultfdFromFd creates a new userfaultfd instance. Page size comes
-// from the FC-registered regions rather than the source so src can expose
-// mixed-granularity mappings (e.g. 4 KiB dedup pages on 2 MiB template ranges).
+// from the FC-registered regions, not the source, so src can expose
+// mixed-granularity mappings (4 KiB dedup pages on 2 MiB template ranges).
 func NewUserfaultfdFromFd(fd uintptr, src PageReader, m *memory.Mapping, logger logger.Logger) (*Userfaultfd, error) {
 	pageSize := uintptr(header.HugepageSize)
 	if len(m.Regions) > 0 {
@@ -636,8 +636,7 @@ func (u *Userfaultfd) drainWakeupPipe() {
 	}
 }
 
-// PageSize returns the FC region page size driving this UFFD (4 KiB or
-// 2 MiB), which is the granularity at which FC reports dirty memory.
+// PageSize returns the FC region page size driving this UFFD.
 func (u *Userfaultfd) PageSize() int64 {
 	return int64(u.pageSize)
 }

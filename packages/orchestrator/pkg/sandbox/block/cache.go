@@ -205,9 +205,8 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	return diffMetadata, nil
 }
 
-// dedupPages compares src against base at PageSize granularity over the
-// dirty ranges (in BitsetRanges order), writes differing pages packed to
-// outPath, and returns the resulting cache and DiffMetadata.
+// dedupPages writes pages from src that differ from base, packed at
+// PageSize granularity, to outPath.
 func dedupPages(
 	ctx context.Context,
 	src func(absOff int64) ([]byte, error),
@@ -298,8 +297,7 @@ func dedupPages(
 	}, nil
 }
 
-// Dedup writes pages from c that differ from base (at PageSize granularity)
-// to a new packed cache at outPath.
+// Dedup deduplicates c against base; see dedupPages.
 func (c *Cache) Dedup(
 	ctx context.Context,
 	base ReadonlyDevice,

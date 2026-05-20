@@ -238,9 +238,8 @@ func (m *MemfdCache) FileSize(ctx context.Context) (int64, error) {
 func (m *MemfdCache) BlockSize() int64     { return m.cache.BlockSize() }
 func (m *MemfdCache) Size() (int64, error) { return m.cache.Size() }
 
-// NewCacheFromMemfdDeduped builds a packed page-granular dedup cache by
-// comparing memfd contents against base over the dirty ranges. Consumes
-// memfd.
+// NewCacheFromMemfdDeduped deduplicates memfd contents against base; see
+// dedupPages. Consumes memfd.
 func NewCacheFromMemfdDeduped(
 	ctx context.Context,
 	base ReadonlyDevice,

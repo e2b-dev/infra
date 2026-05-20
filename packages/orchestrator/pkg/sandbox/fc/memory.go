@@ -62,10 +62,10 @@ func (p *Process) exportMemoryFromFc(
 	return cache, nil
 }
 
-// ExportMemory writes dirty guest memory to a local cache file. When
-// originalMemfile is non-nil, the result is deduplicated against it at
-// PageSize granularity and the returned DiffMetadata is non-nil. Dedup is
-// mutually exclusive with bgCopy.
+// ExportMemory writes dirty guest memory to a local cache file. If
+// originalMemfile is non-nil the result is deduplicated against it at
+// PageSize granularity (returned DiffMetadata is non-nil; mutually
+// exclusive with bgCopy).
 func (p *Process) ExportMemory(
 	ctx context.Context,
 	include *roaring.Bitmap,
@@ -96,7 +96,7 @@ func (p *Process) ExportMemory(
 	if originalMemfile == nil {
 		return cache, nil, nil
 	}
-	// Distinct path so Dedup's NewCache truncate doesn't clobber the source mmap.
+	// .dedup suffix avoids clobbering the source mmap during truncate.
 	dedupCache, meta, err := cache.Dedup(ctx, originalMemfile, include, blockSize, cachePath+".dedup")
 	if err != nil {
 		return nil, nil, fmt.Errorf("dedup memfile diff: %w", errors.Join(err, cache.Close()))
