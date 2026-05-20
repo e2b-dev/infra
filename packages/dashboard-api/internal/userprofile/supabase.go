@@ -60,39 +60,11 @@ func (p *supabaseProvider) FindProfilesByEmail(ctx context.Context, email string
 	return profiles, nil
 }
 
-func (p *supabaseProvider) SearchProfilesByEmail(ctx context.Context, query string, limit int32) ([]Profile, error) {
-	normalizedQuery := strings.TrimSpace(query)
-	if normalizedQuery == "" || limit <= 0 {
-		return []Profile{}, nil
-	}
-
-	users, err := p.queries.SearchAuthUsersByEmail(ctx, supabasequeries.SearchAuthUsersByEmailParams{
-		Query:       escapePostgresLikePattern(normalizedQuery),
-		ResultLimit: limit,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	profiles := make([]Profile, 0, len(users))
-	for _, user := range users {
-		profiles = append(profiles, profileFromAuthUser(user))
-	}
-
-	return profiles, nil
-}
-
 func profileFromAuthUser(user supabasequeries.AuthUser) Profile {
 	return Profile{
 		UserID: user.ID,
 		Email:  user.Email,
 	}
-}
-
-func escapePostgresLikePattern(value string) string {
-	replacer := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_")
-
-	return replacer.Replace(value)
 }
 
 func uniqueUUIDs(ids []uuid.UUID) []uuid.UUID {

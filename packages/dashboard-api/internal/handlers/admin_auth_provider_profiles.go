@@ -13,8 +13,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-const defaultAdminProfileSearchLimit int32 = 20
-
 func (s *APIStore) PostAdminAuthProviderProfilesResolve(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -71,21 +69,25 @@ func (s *APIStore) PostAdminAuthProviderProfilesSearch(c *gin.Context) {
 		return
 	}
 
-	limit := defaultAdminProfileSearchLimit
-	if body.Limit != nil {
-		limit = *body.Limit
+	userID, err := uuid.Parse(body.Query)
+	if err != nil {
+		c.JSON(http.StatusOK, api.AdminAuthProviderProfilesResponse{
+			Profiles: []api.AdminAuthProviderProfile{},
+		})
+
+		return
 	}
 
-	profiles, err := s.userProfiles.SearchProfilesByEmail(ctx, body.Query, limit)
+	profiles, err := s.userProfiles.GetProfilesByUserID(ctx, []uuid.UUID{userID})
 	if err != nil {
-		logger.L().Error(ctx, "failed to search auth provider profiles", zap.Error(err))
+		logger.L().Error(ctx, "failed to resolve auth provider profile search result", zap.Error(err))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to search auth provider profiles")
 
 		return
 	}
 
 	c.JSON(http.StatusOK, api.AdminAuthProviderProfilesResponse{
-		Profiles: apiProfilesFromProfiles(profiles),
+		Profiles: apiProfilesFromMap([]uuid.UUID{userID}, profiles),
 	})
 }
 
