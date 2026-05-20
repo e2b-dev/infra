@@ -196,6 +196,14 @@ linters:
         - { disabled: true, name: var-declaration }
         - { disabled: true, name: var-naming }
 
+    modernize:
+      # Disable analyzers we don't want applied automatically:
+      #   - newexpr: rewrites helpers like utils.ToPtr(x) into Go 1.26's
+      #     `new(expr)` form. The codebase's convention is utils.ToPtr; we don't
+      #     want `make lint --fix` to flip every call site to `new(...)`.
+      disable:
+        - newexpr
+
     staticcheck:
       checks:
         - all
