@@ -91,9 +91,7 @@ func TestReadMetadataIgnoresNonUserPrefix(t *testing.T) {
 	if _, ok := got["keep"]; !ok {
 		t.Errorf("expected key %q in %v", "keep", got)
 	}
-	for k := range got {
-		if k == MetadataXattrPrefix+"keep" {
-			t.Errorf("prefix %q leaked into key %q", MetadataXattrPrefix, k)
-		}
+	if _, leaked := got[MetadataXattrPrefix+"keep"]; leaked {
+		t.Errorf("prefix %q leaked into keys: %v", MetadataXattrPrefix, got)
 	}
 }
