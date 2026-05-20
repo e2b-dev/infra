@@ -46,9 +46,10 @@ type Handler struct {
 
 	logger *zerolog.Logger
 
-	Tag *string
-	cmd *exec.Cmd
-	tty *os.File
+	Tag      *string
+	cmd      *exec.Cmd
+	tty      *os.File
+	ttySlave *os.File
 
 	cancel context.CancelFunc
 
@@ -185,15 +186,28 @@ func New(
 	}
 
 	if req.GetPty() != nil {
-		// The pty should ideally start only in the Start method, but the package does not support that and we would have to code it manually.
-		// The output of the pty should correctly be passed though.
-		tty, err := pty.StartWithSize(cmd, &pty.Winsize{
+		tty, ttySlave, err := pty.Open()
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("error opening pty for command '%s': %w", userCmd, err))
+		}
+
+		if err := pty.Setsize(tty, &pty.Winsize{
 			Cols: uint16(req.GetPty().GetSize().GetCols()),
 			Rows: uint16(req.GetPty().GetSize().GetRows()),
-		})
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("error starting pty with command '%s' in dir '%s' with '%d' cols and '%d' rows: %w", userCmd, cmd.Dir, req.GetPty().GetSize().GetCols(), req.GetPty().GetSize().GetRows(), err))
+		}); err != nil {
+			_ = tty.Close()
+			_ = ttySlave.Close()
+
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("error sizing pty for command '%s': %w", userCmd, err))
 		}
+
+		cmd.Stdin = ttySlave
+		cmd.Stdout = ttySlave
+		cmd.Stderr = ttySlave
+		cmd.SysProcAttr.Setsid = true
+		cmd.SysProcAttr.Setctty = true
+		h.tty = tty
+		h.ttySlave = ttySlave
 
 		outWg.Go(func() {
 			for {
@@ -222,8 +236,6 @@ func New(
 				}
 			}
 		})
-
-		h.tty = tty
 	} else {
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
@@ -422,12 +434,22 @@ func (p *Handler) WriteTty(data []byte) error {
 }
 
 func (p *Handler) Start(requestTimeout time.Duration) (uint32, error) {
-	// Pty is already started in the New method
-	if p.tty == nil {
-		err := p.cmd.Start()
-		if err != nil {
-			return 0, fmt.Errorf("error starting process '%s': %w", p.userCommand(), err)
+	err := p.cmd.Start()
+	if err != nil {
+		if p.tty != nil {
+			_ = p.tty.Close()
 		}
+
+		if p.ttySlave != nil {
+			_ = p.ttySlave.Close()
+		}
+
+		return 0, fmt.Errorf("error starting process '%s': %w", p.userCommand(), err)
+	}
+
+	if p.ttySlave != nil {
+		_ = p.ttySlave.Close()
+		p.ttySlave = nil
 	}
 
 	p.logger.
@@ -447,7 +469,9 @@ func (p *Handler) Wait() {
 
 	err := p.cmd.Wait()
 
-	p.tty.Close()
+	if p.tty != nil {
+		_ = p.tty.Close()
+	}
 
 	var errMsg *string
 
