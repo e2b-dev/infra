@@ -28,7 +28,7 @@ var (
 func recordUploadCompression(ctx context.Context, artifact, fileType, useCase string, cfg storage.CompressConfig, uncompressed, compressed int64) {
 	attrs := metric.WithAttributes(
 		attribute.String("artifact", artifact),
-		attribute.String("file_type", fileType),
+		attribute.String("file_type", uploadMetricFileType(fileType)),
 		attribute.String("use_case", useCase),
 		attribute.String("compression.type", cfg.CompressionType().String()),
 		attribute.Int("compression.level", cfg.Level),
