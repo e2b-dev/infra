@@ -12,9 +12,27 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
+	"github.com/e2b-dev/infra/packages/api/internal/middleware"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 )
+
+// applyBlockedTeamCheck mirrors middleware.EnforceBlockedTeam for code
+// paths that resolve the team late (i.e. access-token / user-id auth, where
+// the team is not on the gin context when the middleware runs). Returns a
+// 403 *api.APIError if the team is blocked AND the matched route is not in
+// the blocked-team allowlist.
+func applyBlockedTeamCheck(c *gin.Context, team *types.Team) *api.APIError {
+	if err := middleware.CheckBlockedTeamForRoute(c, team); err != nil {
+		return &api.APIError{
+			Code:      http.StatusForbidden,
+			ClientMsg: err.Error(),
+			Err:       err,
+		}
+	}
+
+	return nil
+}
 
 func (a *APIStore) GetTeam(
 	ctx context.Context,
@@ -26,6 +44,14 @@ func (a *APIStore) GetTeam(
 	defer span.End()
 
 	if team, ok := auth.GetTeamInfo(c); ok {
+		// Middleware has already gated team-on-context routes; this branch
+		// is reached when no middleware ran (e.g. internal callers) or
+		// reached defensively before the gin response is written. Cheap to
+		// re-check.
+		if apiErr := applyBlockedTeamCheck(c, team); apiErr != nil {
+			return nil, apiErr
+		}
+
 		return team, nil
 	}
 
@@ -50,6 +76,10 @@ func (a *APIStore) GetTeam(
 				ClientMsg: "You are not allowed to access this team",
 				Err:       err,
 			}
+		}
+
+		if apiErr := applyBlockedTeamCheck(c, team); apiErr != nil {
+			return nil, apiErr
 		}
 
 		return team, nil
@@ -131,6 +161,10 @@ func (a *APIStore) resolveTemplateAndTeam(
 			}
 		}
 
+		if apiErr := applyBlockedTeamCheck(c, team); apiErr != nil {
+			return nil, nil, apiErr
+		}
+
 		return team, aliasInfo, nil
 	}
 
@@ -147,6 +181,10 @@ func (a *APIStore) resolveTemplateAndTeam(
 
 		for _, t := range userTeams {
 			if t.Team.ID == aliasInfo.TeamID {
+				if apiErr := applyBlockedTeamCheck(c, t.Team); apiErr != nil {
+					return nil, nil, apiErr
+				}
+
 				return t.Team, aliasInfo, nil
 			}
 		}

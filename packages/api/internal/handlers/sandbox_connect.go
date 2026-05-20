@@ -27,12 +27,6 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	// Get team from context, use TeamContextKey
 	teamInfo := auth.MustGetTeamInfo(c)
 
-	if err := auth.CheckTeamBlocked(teamInfo); err != nil {
-		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
-
-		return
-	}
-
 	span := trace.SpanFromContext(ctx)
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)

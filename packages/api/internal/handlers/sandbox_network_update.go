@@ -28,12 +28,6 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(c *gin.Context, sandboxID string
 
 	teamInfo := auth.MustGetTeamInfo(c)
 
-	if err := auth.CheckTeamBlocked(teamInfo); err != nil {
-		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
-
-		return
-	}
-
 	teamID := teamInfo.Team.ID
 
 	body, err := ginutils.ParseBody[api.SandboxNetworkUpdateConfig](ctx, c)

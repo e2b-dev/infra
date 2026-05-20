@@ -42,12 +42,6 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 
 	teamInfo := auth.MustGetTeamInfo(c)
 
-	if err := auth.CheckTeamBlocked(teamInfo); err != nil {
-		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
-
-		return
-	}
-
 	teamID := teamInfo.Team.ID
 
 	now := time.Now()
@@ -151,12 +145,6 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 
 	userID := auth.MustGetUserID(c)
 	teamInfo := auth.MustGetTeamInfo(c)
-
-	if err := auth.CheckTeamBlocked(teamInfo); err != nil {
-		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
-
-		return
-	}
 
 	teamID := teamInfo.Team.ID
 

@@ -32,12 +32,6 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 
 	teamInfo := auth.MustGetTeamInfo(c)
 
-	if err := auth.CheckTeamBlocked(teamInfo); err != nil {
-		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
-
-		return
-	}
-
 	teamID := teamInfo.Team.ID
 
 	var duration time.Duration
