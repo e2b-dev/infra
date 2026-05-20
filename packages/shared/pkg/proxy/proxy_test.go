@@ -41,6 +41,8 @@ func (b *testBackend) RequestCount() uint64 {
 
 const bodyWriteDelayHeader = "body-write-delay"
 
+var testHTTPClients sync.Map
+
 // newTestBackend creates a new test backend server
 func newTestBackend(listener net.Listener, id string) (*testBackend, error) {
 	var requestCount atomic.Uint64
@@ -420,25 +422,29 @@ func httpGetWithHeaders(t *testing.T, proxyURL string, headers http.Header) (*ht
 		}
 	}
 
-	transport := &http.Transport{}
-	rsp, err := (&http.Client{Transport: transport}).Do(req)
+	rsp, err := testHTTPClient(t).Do(req)
 	if err != nil {
 		return nil, err
 	}
 
-	rsp.Body = closeIdleConnsBody{ReadCloser: rsp.Body, transport: transport}
 	return rsp, nil
 }
 
-type closeIdleConnsBody struct {
-	io.ReadCloser
-	transport *http.Transport
-}
+func testHTTPClient(t *testing.T) *http.Client {
+	t.Helper()
 
-func (b closeIdleConnsBody) Close() error {
-	err := b.ReadCloser.Close()
-	b.transport.CloseIdleConnections()
-	return err
+	transport := &http.Transport{}
+	client := &http.Client{Transport: transport}
+
+	actual, loaded := testHTTPClients.LoadOrStore(t.Name(), client)
+	if !loaded {
+		t.Cleanup(func() {
+			transport.CloseIdleConnections()
+			testHTTPClients.Delete(t.Name())
+		})
+	}
+
+	return actual.(*http.Client)
 }
 
 type instrumentedConn struct {
