@@ -1155,6 +1155,7 @@ func (s *Sandbox) Pause(
 		dedupBase,
 		dedupBestEffort,
 		dedupDirectIO,
+		useCase,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -1227,6 +1228,7 @@ func pauseProcessMemory(
 	originalMemfile block.ReadonlyDevice,
 	dedupBestEffort bool,
 	dedupDirectIO bool,
+	useCase SnapshotUseCase,
 ) (d build.Diff, h *header.Header, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
@@ -1248,6 +1250,7 @@ func pauseProcessMemory(
 				cache.Close(),
 			)
 		}
+		recordSnapshotDedup(ctx, "memfile", diffMetadata, dedupMeta, useCase)
 		ratio := uint64(diffMetadata.BlockSize / dedupMeta.BlockSize)
 		for start, end := range diffMetadata.Empty.Ranges() {
 			dedupMeta.Empty.AddRange(uint64(start)*ratio, end*ratio)

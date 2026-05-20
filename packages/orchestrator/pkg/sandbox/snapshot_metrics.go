@@ -59,6 +59,39 @@ func recordSnapshotDiff(
 	}
 }
 
+// recordSnapshotDedup emits "deduped" / "unique" samples on the same
+// snapshot.diff.* histograms after dedup finishes, so the existing
+// dashboard panels can pick up dedup savings without a new metric.
+// pre is the FC dirty bitmap before dedup; post is the page-granular
+// metadata produced by dedupPages.
+func recordSnapshotDedup(
+	ctx context.Context,
+	fileType string,
+	pre, post *header.DiffMetadata,
+	useCase SnapshotUseCase,
+) {
+	if pre == nil || pre.Dirty == nil || post == nil || post.Dirty == nil {
+		return
+	}
+	preBytes := int64(pre.Dirty.GetCardinality()) * pre.BlockSize
+	uniqueBytes := int64(post.Dirty.GetCardinality()) * post.BlockSize
+	dedupedBytes := preBytes - uniqueBytes
+	if dedupedBytes < 0 {
+		dedupedBytes = 0
+	}
+
+	ft := attribute.String("file_type", fileType)
+	uc := attribute.String("use_case", string(useCase))
+	for kind, b := range map[string]int64{
+		"deduped": dedupedBytes,
+		"unique":  uniqueBytes,
+	} {
+		attrs := metric.WithAttributes(ft, attribute.String("kind", kind), uc)
+		snapshotDiffBytes.Record(ctx, b, attrs)
+		snapshotDiffRatioBp.Record(ctx, ratioBp(b, preBytes), attrs)
+	}
+}
+
 // ratioBp returns num/denom in basis points (10000 = 100.00%) so we keep
 // sub-percent resolution. Grafana panels divide by 100 to display percent.
 func ratioBp(num, denom int64) int64 {
