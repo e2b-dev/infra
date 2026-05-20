@@ -163,8 +163,7 @@ func (d *DiffMetadata) ToDiffHeader(
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}
 
-	// Dedup may emit PageSize-granular mappings while Metadata.BlockSize
-	// stays at FC page size; validate at PageSize so both align cleanly.
+	// Dedup emits PageSize-granular mappings; validate at PageSize.
 	err = ValidateMappings(header.Mapping, header.Metadata.Size, PageSize)
 	if err != nil {
 		if header.IsNormalizeFixApplied() {

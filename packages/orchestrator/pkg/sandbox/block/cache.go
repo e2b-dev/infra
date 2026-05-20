@@ -206,9 +206,7 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	return diffMetadata, nil
 }
 
-// baseIsZeroBlock reports whether base's mapping at absOff is uuid.Nil
-// for at least blockSize bytes; if so, dedup can skip base.ReadAt and
-// just zero baseBuf.
+// baseIsZeroBlock: parent mapping is uuid.Nil for at least blockSize bytes.
 func baseIsZeroBlock(ctx context.Context, base ReadonlyDevice, absOff, blockSize int64) bool {
 	h := base.Header()
 	if h == nil {
@@ -222,10 +220,8 @@ func baseIsZeroBlock(ctx context.Context, base ReadonlyDevice, absOff, blockSize
 	return m.BuildId == uuid.Nil && int64(m.Length) >= blockSize
 }
 
-// dedupPages writes pages from src that differ from base, packed at
-// PageSize granularity, to outPath. bestEffort skips compare for blocks
-// whose base isn't cached locally. directIO opens the file with O_DIRECT
-// and pre-allocates worst-case extents.
+// dedupPages writes src pages that differ from base, packed at PageSize,
+// to outPath. bestEffort skips uncached blocks; directIO uses O_DIRECT.
 func dedupPages(
 	ctx context.Context,
 	src func(absOff int64) ([]byte, error),
@@ -241,8 +237,7 @@ func dedupPages(
 
 	openFlags := os.O_RDWR | os.O_CREATE
 	if directIO {
-		// Bypass the page cache; the dirtyable RAM pool is already
-		// pressured by chunker writes and concurrent pauses.
+		// Bypass the page cache (chunker mmap writes + concurrent pauses).
 		openFlags |= unix.O_DIRECT
 	}
 	f, err := os.OpenFile(outPath, openFlags, 0o644)
@@ -250,8 +245,7 @@ func dedupPages(
 		return nil, nil, fmt.Errorf("open dedup cache: %w", err)
 	}
 	if directIO {
-		// Pre-allocate worst-case extents so O_DIRECT writes don't
-		// serialize on XFS's inode lock during extent allocation.
+		// Pre-allocate worst-case extents (XFS inode-lock serialization).
 		worst := int64(dirty.GetCardinality()) * blockSize
 		if fErr := unix.Fallocate(int(f.Fd()), 0, 0, worst); fErr != nil {
 			logger.L().Warn(ctx, "fallocate dedup cache; proceeding without preallocation", zap.Error(fErr))
@@ -260,17 +254,10 @@ func dedupPages(
 
 	pageDirty := roaring.New()
 	pageEmpty := roaring.New()
-	// Phase 1 accumulates iov headers (no memcpy); phase 2 drains in
-	// IOV_MAX-bounded pwritev batches. Pre-sized worst-case (every dirty
-	// block fully unique) — at HugepageSize blocks that's ~96 MiB of slice
-	// headers per 16 GiB sandbox, irrelevant on this host.
-	// TODO(parallel-walk): split the dirty bitmap across goroutines, run
-	// compare in parallel, merge per-goroutine roaring bitmaps with Or,
-	// drain iovs in offset order. Walk is single-thread today.
-	// TODO(io_uring): replace the synchronous pwritev drain with multiple
-	// in-flight writes (io_uring or N goroutines on the same fd) so we
-	// reach NVMe queue depth instead of being capped by single-thread
-	// syscall throughput.
+	// Phase 1 walks src + base, accumulates iov headers (no memcpy);
+	// phase 2 drains via IOV_MAX-bounded pwritev. Pre-sized worst-case.
+	// TODO: parallelize the walk and use io_uring / N-goroutine pwritev
+	// to reach NVMe queue depth.
 	pagesPerBlock := blockSize / header.PageSize
 	iovs := make([][]byte, 0, int64(dirty.GetCardinality())*pagesPerBlock)
 	var exportedSize int64
@@ -290,8 +277,7 @@ func dedupPages(
 				return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
 			}
 
-			// Best-effort: skip compare for blocks whose base isn't
-			// cached locally; write every non-zero page through.
+			// Best-effort: write through when base isn't cached locally.
 			if bestEffort {
 				if peeker, ok := base.(CachePeeker); ok && !peeker.IsCached(ctx, absOff, blockSize) {
 					for i := int64(0); i < blockSize; i += header.PageSize {
@@ -310,8 +296,7 @@ func dedupPages(
 				}
 			}
 
-			// uuid.Nil parent mapping ⇒ base reads as zero; skip the
-			// per-page Slice and just check IsZero(srcPage) directly.
+			// Empty parent: IsZero(srcPage) is the equality check.
 			baseZero := baseIsZeroBlock(ctx, base, absOff, blockSize)
 
 			for i := int64(0); i < blockSize; i += header.PageSize {
@@ -319,15 +304,12 @@ func dedupPages(
 				pageIdx := uint32((absOff + i) / header.PageSize)
 
 				if baseZero {
-					// IsZero IS the equality check here, no need to re-check.
 					if header.IsZero(srcPage) {
 						pageEmpty.Add(pageIdx)
 
 						continue
 					}
 				} else {
-					// Slice is zero-copy when the 4 KiB request fits in a
-					// single underlying mapping (always true at PageSize).
 					basePage, sErr := base.Slice(ctx, absOff+i, header.PageSize)
 					if sErr != nil {
 						return nil, nil, errors.Join(fmt.Errorf("slice base at %d: %w", absOff+i, sErr), f.Close(), os.Remove(outPath))
@@ -361,7 +343,6 @@ func dedupPages(
 	fileOff := int64(len(iovs)) * header.PageSize
 
 	if directIO {
-		// Release the unused fallocate tail.
 		if err := f.Truncate(fileOff); err != nil {
 			return nil, nil, errors.Join(fmt.Errorf("truncate dedup cache: %w", err), f.Close(), os.Remove(outPath))
 		}

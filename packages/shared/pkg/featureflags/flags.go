@@ -139,10 +139,9 @@ var (
 	// Only takes effect when UseMemFdFlag is also on.
 	MemfdBackgroundCopyFlag = NewBoolFlag("memfd-background-copy", false)
 
-	// MemfileDiffDedupFlag controls memfile-diff dedup post-processing.
-	// enabled: drop pages that match the base byte-for-byte at 4 KiB.
-	// bestEffort: skip dedup for blocks whose base isn't in the chunker
-	// cache (avoid remote fetches; zero pages still routed to Empty).
+	// MemfileDiffDedupFlag enables 4 KiB-page dedup of the memfile diff
+	// against the base memfile. bestEffort skips uncached blocks;
+	// directIO opens the dedup output with O_DIRECT.
 	MemfileDiffDedupFlag = NewJSONFlag("memfile-diff-dedup", ldvalue.FromJSONMarshal(map[string]any{
 		"enabled":    false,
 		"bestEffort": false,
