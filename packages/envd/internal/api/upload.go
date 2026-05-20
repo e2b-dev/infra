@@ -135,6 +135,10 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, met
 
 	if len(metadata) > 0 {
 		if err := filesystem.WriteMetadata(path, metadata); err != nil {
+			if errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT) {
+				return http.StatusInsufficientStorage, fmt.Errorf("not enough space for file metadata: %w", err)
+			}
+
 			return http.StatusInternalServerError, fmt.Errorf("error writing file metadata: %w", err)
 		}
 	}
