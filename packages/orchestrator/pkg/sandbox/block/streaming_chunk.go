@@ -108,10 +108,7 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64, ft *storage.Fram
 			return nil, fmt.Errorf("failed to locate chunk for offset %d: %w", cur, lerr)
 		}
 		chunkEnd := chunkOff + chunkLen
-		rangeEnd := end
-		if rangeEnd > chunkEnd {
-			rangeEnd = chunkEnd
-		}
+		rangeEnd := min(end, chunkEnd)
 		if err := c.fetch(ctx, cur, rangeEnd-cur, ft); err != nil {
 			timer.RecordRaw(ctx, length, attrs.failRemoteFetch)
 
