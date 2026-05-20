@@ -33,6 +33,17 @@ func (q *Queries) AddTeamMember(ctx context.Context, arg AddTeamMemberParams) er
 	return err
 }
 
+const getPublicUserID = `-- name: GetPublicUserID :one
+SELECT id FROM public.users
+WHERE id = $1::uuid
+`
+
+func (q *Queries) GetPublicUserID(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getPublicUserID, id)
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getTeamMemberRelation = `-- name: GetTeamMemberRelation :one
 SELECT id, user_id, team_id, is_default, added_by, created_at, uuid_id FROM public.users_teams
 WHERE team_id = $1::uuid
@@ -65,10 +76,8 @@ SELECT
     ut.team_id,
     ut.is_default,
     ut.added_by,
-    ut.created_at,
-    u.email
+    ut.created_at
 FROM public.users_teams ut
-JOIN public.users u ON u.id = ut.user_id
 WHERE ut.team_id = $1::uuid
 `
 
@@ -78,7 +87,6 @@ type GetTeamMembersRow struct {
 	IsDefault bool
 	AddedBy   *uuid.UUID
 	CreatedAt pgtype.Timestamp
-	Email     string
 }
 
 func (q *Queries) GetTeamMembers(ctx context.Context, teamID uuid.UUID) ([]GetTeamMembersRow, error) {
@@ -96,7 +104,6 @@ func (q *Queries) GetTeamMembers(ctx context.Context, teamID uuid.UUID) ([]GetTe
 			&i.IsDefault,
 			&i.AddedBy,
 			&i.CreatedAt,
-			&i.Email,
 		); err != nil {
 			return nil, err
 		}
@@ -106,23 +113,6 @@ func (q *Queries) GetTeamMembers(ctx context.Context, teamID uuid.UUID) ([]GetTe
 		return nil, err
 	}
 	return items, nil
-}
-
-const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email FROM public.users
-WHERE email = $1::text
-`
-
-type GetUserByEmailRow struct {
-	ID    uuid.UUID
-	Email string
-}
-
-func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error) {
-	row := q.db.QueryRow(ctx, getUserByEmail, email)
-	var i GetUserByEmailRow
-	err := row.Scan(&i.ID, &i.Email)
-	return i, err
 }
 
 const lockTeamMembersForUpdate = `-- name: LockTeamMembersForUpdate :many

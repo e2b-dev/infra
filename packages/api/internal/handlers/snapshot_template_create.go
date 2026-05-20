@@ -26,6 +26,13 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 	ctx := c.Request.Context()
 
 	teamInfo := auth.MustGetTeamInfo(c)
+
+	if err := auth.CheckTeamBlocked(teamInfo); err != nil {
+		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
+
+		return
+	}
+
 	teamID := teamInfo.Team.ID
 
 	span := trace.SpanFromContext(ctx)
