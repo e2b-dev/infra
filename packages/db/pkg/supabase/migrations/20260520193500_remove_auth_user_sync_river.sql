@@ -9,7 +9,11 @@ DROP FUNCTION IF EXISTS auth_custom.enqueue_user_sync_on_insert();
 DROP FUNCTION IF EXISTS auth_custom.enqueue_user_sync_on_update();
 DROP FUNCTION IF EXISTS auth_custom.enqueue_user_sync_on_delete();
 
-DROP SCHEMA IF EXISTS auth_custom CASCADE;
+DROP TABLE IF EXISTS auth_custom.river_job CASCADE;
+DROP TABLE IF EXISTS auth_custom.river_leader CASCADE;
+DROP TABLE IF EXISTS auth_custom.river_migration CASCADE;
+DROP TABLE IF EXISTS auth_custom.river_queue CASCADE;
+DROP TABLE IF EXISTS auth_custom.river_workflow CASCADE;
 
 -- +goose StatementEnd
 
