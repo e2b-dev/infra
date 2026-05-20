@@ -50,13 +50,13 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		_, _, err := storage.UploadFramed(egCtx, u.store, u.paths.Memfile(), storage.MemfileObjectType, memfilePath, meta)
-		if err != nil {
-			return err
-		}
 		info, err := os.Stat(memfilePath)
 		if err != nil {
 			return fmt.Errorf("memfile stat: %w", err)
+		}
+		_, _, err = storage.UploadFramed(egCtx, u.store, u.paths.Memfile(), storage.MemfileObjectType, memfilePath, meta)
+		if err != nil {
+			return err
 		}
 		recordUploadCompression(egCtx, uploadArtifactData, string(build.Memfile), u.useCase, storage.CompressConfig{}, info.Size(), info.Size())
 
@@ -68,13 +68,13 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		_, _, err := storage.UploadFramed(egCtx, u.store, u.paths.Rootfs(), storage.RootFSObjectType, rootfsPath, meta)
-		if err != nil {
-			return err
-		}
 		info, err := os.Stat(rootfsPath)
 		if err != nil {
 			return fmt.Errorf("rootfs stat: %w", err)
+		}
+		_, _, err = storage.UploadFramed(egCtx, u.store, u.paths.Rootfs(), storage.RootFSObjectType, rootfsPath, meta)
+		if err != nil {
+			return err
 		}
 		recordUploadCompression(egCtx, uploadArtifactData, string(build.Rootfs), u.useCase, storage.CompressConfig{}, info.Size(), info.Size())
 
