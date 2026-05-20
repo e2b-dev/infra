@@ -22,6 +22,11 @@ const (
 	// and cleaned up. This handles the case where an API instance crashes mid-creation.
 	// 90 seconds is well beyond any realistic sandbox creation time.
 	staleTTL = 90 * time.Second
+
+	// redisOpTimeout bounds a single Redis round trip. Each call site wraps its
+	// context with this timeout so a stuck Redis call cannot block callers
+	// indefinitely.
+	redisOpTimeout = 5 * time.Second
 )
 
 var _ sandbox.ReservationStorage = (*ReservationStorage)(nil)
@@ -45,10 +50,12 @@ func (s *ReservationStorage) Reserve(ctx context.Context, teamID uuid.UUID, sand
 	now := float64(time.Now().Unix())
 	staleCutoff := float64(time.Now().Add(-staleTTL).Unix())
 
-	result, err := reserveScript.Run(ctx, s.redisClient,
+	reserveCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	result, err := reserveScript.Run(reserveCtx, s.redisClient,
 		[]string{storageIndexKey, pendingSetKey, resultKeyStr},
 		sandboxID, limit, now, staleCutoff,
 	).Int()
+	cancel()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to run reserve script: %w", err)
 	}
@@ -76,7 +83,9 @@ func (s *ReservationStorage) Release(ctx context.Context, teamID uuid.UUID, sand
 	pendingSetKey := getPendingSetKey(teamIDStr)
 	resultKeyStr := getResultKey(teamIDStr, sandboxID)
 
-	err := releaseScript.Run(ctx, s.redisClient, []string{pendingSetKey, resultKeyStr}, sandboxID).Err()
+	releaseCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	err := releaseScript.Run(releaseCtx, s.redisClient, []string{pendingSetKey, resultKeyStr}, sandboxID).Err()
+	cancel()
 	if err != nil {
 		return fmt.Errorf("failed to run release script: %w", err)
 	}
@@ -100,16 +109,20 @@ func (s *ReservationStorage) createFinishStart(ctx context.Context, teamID uuid.
 			)
 
 			// Still try to remove from pending even if encoding fails
-			_ = s.redisClient.ZRem(context.WithoutCancel(ctx), pendingSetKey, sandboxID).Err()
+			zremCtx, zremCancel := context.WithTimeout(context.WithoutCancel(ctx), redisOpTimeout)
+			_ = s.redisClient.ZRem(zremCtx, pendingSetKey, sandboxID).Err()
+			zremCancel()
 
 			return
 		}
 
 		ttlSeconds := int(resultTTL.Seconds())
-		err := finishStartScript.Run(context.WithoutCancel(ctx), s.redisClient,
+		finishCtx, finishCancel := context.WithTimeout(context.WithoutCancel(ctx), redisOpTimeout)
+		err := finishStartScript.Run(finishCtx, s.redisClient,
 			[]string{pendingSetKey, resultKeyStr},
 			sandboxID, resultData, ttlSeconds,
 		).Err()
+		finishCancel()
 		if err != nil {
 			logger.L().Error(ctx, "failed to run finishStart script",
 				zap.Error(err),
@@ -129,7 +142,9 @@ func (s *ReservationStorage) createWaitForStart(teamID uuid.UUID, sandboxID stri
 
 		for {
 			// Check for result
-			data, err := s.redisClient.Get(ctx, resultKeyStr).Bytes()
+			getCtx, getCancel := context.WithTimeout(ctx, redisOpTimeout)
+			data, err := s.redisClient.Get(getCtx, resultKeyStr).Bytes()
+			getCancel()
 			if err == nil {
 				return decodeResult(data)
 			}
@@ -138,10 +153,14 @@ func (s *ReservationStorage) createWaitForStart(teamID uuid.UUID, sandboxID stri
 			}
 
 			// No result yet — check if still pending (ZSCORE returns nil if not a member)
-			err = s.redisClient.ZScore(ctx, pendingSetKey, sandboxID).Err()
+			zscoreCtx, zscoreCancel := context.WithTimeout(ctx, redisOpTimeout)
+			err = s.redisClient.ZScore(zscoreCtx, pendingSetKey, sandboxID).Err()
+			zscoreCancel()
 			if errors.Is(err, redis.Nil) {
 				// Not pending anymore, final check
-				data, err = s.redisClient.Get(ctx, resultKeyStr).Bytes()
+				finalGetCtx, finalGetCancel := context.WithTimeout(ctx, redisOpTimeout)
+				data, err = s.redisClient.Get(finalGetCtx, resultKeyStr).Bytes()
+				finalGetCancel()
 				if err == nil {
 					return decodeResult(data)
 				}

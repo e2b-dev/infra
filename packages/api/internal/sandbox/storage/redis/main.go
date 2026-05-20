@@ -20,6 +20,11 @@ const (
 	lockRetryJitter        = 0.25
 	pollInterval           = 1 * time.Second // fallback polling interval; PubSub is the primary notification mechanism
 
+	// redisOpTimeout bounds a single Redis round trip (GET/SET/ZADD/Lua/pipeline).
+	// Each call site wraps its context with this timeout so a stuck Redis call
+	// cannot block callers (e.g. holding a distributed lock) indefinitely.
+	redisOpTimeout = 5 * time.Second
+
 	// orphanGracePeriod is the minimum age a sandbox must have before it can be
 	// considered an orphan and killed. This prevents killing sandboxes that are
 	// still in the process of being created (store write happens before the VM starts).
@@ -109,7 +114,9 @@ func (s *Storage) Reconcile(ctx context.Context, sbxs []sandbox.Sandbox, nodeID 
 		batches = append(batches, batchInfo{cmd: cmd, candidates: candidates})
 	}
 
-	_, err := pipe.Exec(ctx)
+	pipeCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	_, err := pipe.Exec(pipeCtx)
+	cancel()
 	if err != nil {
 		// Pipeline error — skip entirely to avoid mass kills.
 		logger.L().Error(ctx, "Redis pipeline error during orphan sync, skipping",

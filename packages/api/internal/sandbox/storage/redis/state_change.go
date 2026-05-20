@@ -56,7 +56,9 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 	}()
 
 	// Get current sandbox state first
-	data, err := s.redisClient.Get(ctx, key).Bytes()
+	getCtx, getCancel := context.WithTimeout(ctx, redisOpTimeout)
+	data, err := s.redisClient.Get(getCtx, key).Bytes()
+	getCancel()
 	if errors.Is(err, redis.Nil) {
 		return sandbox.Sandbox{}, false, nil, fmt.Errorf("sandbox %q: %w", sandboxID, sandbox.ErrNotFound)
 	}
@@ -70,7 +72,9 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 	}
 
 	// Check if there's an existing transition
-	transactionID, err := s.redisClient.Get(ctx, transitionKey).Result()
+	transitionGetCtx, transitionGetCancel := context.WithTimeout(ctx, redisOpTimeout)
+	transactionID, err := s.redisClient.Get(transitionGetCtx, transitionKey).Result()
+	transitionGetCancel()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return sbx, false, nil, fmt.Errorf("failed to check transition key: %w", err)
 	}
@@ -135,7 +139,9 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 	ttlSeconds := int(transitionKeyTTL.Seconds())
 	resultTtlSeconds := int(transitionResultKeyTTL.Seconds())
 
-	err = startTransitionScript.Run(ctx, s.redisClient, []string{key, transitionKey, resultKey}, newData, transitionID, ttlSeconds, resultTtlSeconds).Err()
+	scriptCtx, scriptCancel := context.WithTimeout(ctx, redisOpTimeout)
+	err = startTransitionScript.Run(scriptCtx, s.redisClient, []string{key, transitionKey, resultKey}, newData, transitionID, ttlSeconds, resultTtlSeconds).Err()
+	scriptCancel()
 	if err != nil {
 		return sbx, false, nil, fmt.Errorf("failed to update sandbox state: %w", err)
 	}
@@ -185,13 +191,17 @@ func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, res
 		}
 
 		// Set result key with short TTL
-		setErr := s.redisClient.Set(cbCtx, resultKey, resultValue, transitionResultKeyTTL).Err()
+		setCtx, setCancel := context.WithTimeout(cbCtx, redisOpTimeout)
+		setErr := s.redisClient.Set(setCtx, resultKey, resultValue, transitionResultKeyTTL).Err()
+		setCancel()
 		if setErr != nil {
 			logger.L().Warn(cbCtx, "Failed to set transition result", logger.WithSandboxID(sandboxID), zap.String("transitionID", transitionID), zap.Error(setErr))
 		}
 
 		// Delete transition key
-		delErr := s.redisClient.Del(cbCtx, transitionKey).Err()
+		delCtx, delCancel := context.WithTimeout(cbCtx, redisOpTimeout)
+		delErr := s.redisClient.Del(delCtx, transitionKey).Err()
+		delCancel()
 		if delErr != nil {
 			logger.L().Warn(cbCtx, "Failed to delete transition key", logger.WithSandboxID(sandboxID), zap.Error(delErr))
 		}
@@ -201,7 +211,9 @@ func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, res
 		// The routing key is published as the payload so the single global channel
 		// can serve all sandboxes across all teams.
 		routingKey := getTransitionRoutingKey(teamID.String(), sandboxID, transitionID)
-		pubErr := s.redisClient.Publish(cbCtx, globalStorageNotifyChannel, routingKey).Err()
+		pubCtx, pubCancel := context.WithTimeout(cbCtx, redisOpTimeout)
+		pubErr := s.redisClient.Publish(pubCtx, globalStorageNotifyChannel, routingKey).Err()
+		pubCancel()
 		if pubErr != nil {
 			logger.L().Warn(cbCtx, "Failed to publish transition notification",
 				logger.WithSandboxID(sandboxID),
@@ -230,7 +242,9 @@ func (s *Storage) restoreToRunning(ctx context.Context, teamID uuid.UUID, sandbo
 // WaitForStateChange waits for a sandbox state transition to complete.
 func (s *Storage) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error {
 	transitionKey := getTransitionKey(teamID.String(), sandboxID)
-	transactionID, err := s.redisClient.Get(ctx, transitionKey).Result()
+	getCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	transactionID, err := s.redisClient.Get(getCtx, transitionKey).Result()
+	cancel()
 	if errors.Is(err, redis.Nil) {
 		logger.L().Debug(ctx, "No ongoing transition", logger.WithSandboxID(sandboxID))
 
@@ -260,7 +274,9 @@ func (s *Storage) waitForTransition(
 	defer cleanup()
 
 	// Initial check: the transition may have completed before we subscribed.
-	currentID, err := s.redisClient.Get(ctx, transitionKey).Result()
+	initialGetCtx, initialGetCancel := context.WithTimeout(ctx, redisOpTimeout)
+	currentID, err := s.redisClient.Get(initialGetCtx, transitionKey).Result()
+	initialGetCancel()
 	if errors.Is(err, redis.Nil) || currentID != transitionID {
 		return s.checkTransitionResult(ctx, resultKey)
 	}
@@ -280,7 +296,9 @@ func (s *Storage) waitForTransition(
 			return s.checkTransitionResult(ctx, resultKey)
 		case <-ticker.C:
 			// Fallback poll: check whether the transition key is still present.
-			currentID, err := s.redisClient.Get(ctx, transitionKey).Result()
+			pollCtx, pollCancel := context.WithTimeout(ctx, redisOpTimeout)
+			currentID, err := s.redisClient.Get(pollCtx, transitionKey).Result()
+			pollCancel()
 			if errors.Is(err, redis.Nil) || currentID != transitionID {
 				return s.checkTransitionResult(ctx, resultKey)
 			}
@@ -293,7 +311,9 @@ func (s *Storage) waitForTransition(
 
 // checkTransitionResult checks the result key for the outcome of a completed transition.
 func (s *Storage) checkTransitionResult(ctx context.Context, resultKey string) error {
-	result, err := s.redisClient.Get(ctx, resultKey).Result()
+	getCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	result, err := s.redisClient.Get(getCtx, resultKey).Result()
+	cancel()
 	if errors.Is(err, redis.Nil) {
 		// Result expired or never set - assume success (transition key was deleted)
 		return nil

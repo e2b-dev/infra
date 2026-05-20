@@ -30,25 +30,33 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 
 	// Add to the index before adding to the cache, so there's no possibility of leaking
 	// Index by EndTime so ExpiredItems can use ZRANGEBYSCORE instead of scanning all sandboxes.
-	if err := s.redisClient.ZAdd(ctx, globalExpirationSet, redis.Z{
+	zaddCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	zaddErr := s.redisClient.ZAdd(zaddCtx, globalExpirationSet, redis.Z{
 		Score:  float64(sbx.EndTime.UnixMilli()),
 		Member: expirationMember(sbx.TeamID.String(), sbx.SandboxID),
-	}).Err(); err != nil {
-		return fmt.Errorf("failed to add sandbox to global expiration index: %w", err)
+	}).Err()
+	cancel()
+	if zaddErr != nil {
+		return fmt.Errorf("failed to add sandbox to global expiration index: %w", zaddErr)
 	}
 
 	// Execute Lua script for atomic SET + SADD
-	err = addSandboxScript.Run(ctx, s.redisClient, []string{key, teamKey}, data, sbx.SandboxID).Err()
+	scriptCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	err = addSandboxScript.Run(scriptCtx, s.redisClient, []string{key, teamKey}, data, sbx.SandboxID).Err()
+	cancel()
 	if err != nil {
 		return fmt.Errorf("failed to store sandbox in Redis: %w", err)
 	}
 
 	// We can't set the globalTeamsSet in Lua script as they can be in different shards
-	if err := s.redisClient.ZAdd(ctx, globalTeamsSet, redis.Z{
+	teamsCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	teamsErr := s.redisClient.ZAdd(teamsCtx, globalTeamsSet, redis.Z{
 		Score:  float64(time.Now().Unix()),
 		Member: sbx.TeamID.String(),
-	}).Err(); err != nil {
-		logger.L().Warn(ctx, "failed to add team to global teams index", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
+	}).Err()
+	cancel()
+	if teamsErr != nil {
+		logger.L().Warn(ctx, "failed to add team to global teams index", zap.Error(teamsErr), logger.WithSandboxID(sbx.SandboxID))
 	}
 
 	return nil
@@ -57,7 +65,9 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 // Get retrieves a sandbox from Redis
 func (s *Storage) Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (sandbox.Sandbox, error) {
 	key := getSandboxKey(teamID.String(), sandboxID)
-	data, err := s.redisClient.Get(ctx, key).Bytes()
+	getCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	defer cancel()
+	data, err := s.redisClient.Get(getCtx, key).Bytes()
 	if errors.Is(err, redis.Nil) {
 		return sandbox.Sandbox{}, fmt.Errorf("sandbox %q: %w", sandboxID, sandbox.ErrNotFound)
 	}
@@ -93,15 +103,20 @@ func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string
 	}()
 
 	// Execute Lua script for atomic DEL + SREM
-	err = removeSandboxScript.Run(ctx, s.redisClient, []string{key, teamKey}, sandboxID).Err()
+	scriptCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	err = removeSandboxScript.Run(scriptCtx, s.redisClient, []string{key, teamKey}, sandboxID).Err()
+	cancel()
 	if err != nil {
 		return fmt.Errorf("failed to remove sandbox from Redis: %w", err)
 	}
 
 	// Clean up from the global expiration index.
 	// Do it after the removal to prevent leaking expired sandboxes.
-	if err := s.redisClient.ZRem(ctx, globalExpirationSet, expirationMember(teamID.String(), sandboxID)).Err(); err != nil {
-		logger.L().Warn(ctx, "Failed to remove sandbox from global expiration index", zap.Error(err), logger.WithSandboxID(sandboxID))
+	zremCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	zremErr := s.redisClient.ZRem(zremCtx, globalExpirationSet, expirationMember(teamID.String(), sandboxID)).Err()
+	cancel()
+	if zremErr != nil {
+		logger.L().Warn(ctx, "Failed to remove sandbox from global expiration index", zap.Error(zremErr), logger.WithSandboxID(sandboxID))
 	}
 
 	return nil
@@ -111,7 +126,9 @@ func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string
 func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sandbox.State) ([]sandbox.Sandbox, error) {
 	// Get sandbox IDs from team index
 	teamKey := GetSandboxStorageTeamIndexKey(teamID.String())
-	sandboxIDs, err := s.redisClient.SMembers(ctx, teamKey).Result()
+	smembersCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	sandboxIDs, err := s.redisClient.SMembers(smembersCtx, teamKey).Result()
+	cancel()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sandbox IDs from team index: %w", err)
 	}
@@ -126,7 +143,9 @@ func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sand
 		return getSandboxKey(team, id)
 	})
 
-	results, err := s.redisClient.MGet(ctx, keys...).Result()
+	mgetCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	results, err := s.redisClient.MGet(mgetCtx, keys...).Result()
+	cancel()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sandboxes from Redis: %w", err)
 	}
@@ -181,7 +200,9 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 	}()
 
 	// Get current value
-	data, err := s.redisClient.Get(ctx, key).Bytes()
+	getCtx, getCancel := context.WithTimeout(ctx, redisOpTimeout)
+	data, err := s.redisClient.Get(getCtx, key).Bytes()
+	getCancel()
 	if errors.Is(err, redis.Nil) {
 		return sandbox.Sandbox{}, fmt.Errorf("sandbox %q: %w", sandboxID, sandbox.ErrNotFound)
 	}
@@ -208,18 +229,23 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 	}
 
 	// Execute transaction
-	err = s.redisClient.Set(ctx, key, newData, redis.KeepTTL).Err()
+	setCtx, setCancel := context.WithTimeout(ctx, redisOpTimeout)
+	err = s.redisClient.Set(setCtx, key, newData, redis.KeepTTL).Err()
+	setCancel()
 	if err != nil {
 		return sandbox.Sandbox{}, fmt.Errorf("failed to store sandbox in Redis: %w", err)
 	}
 
 	// Re-score the expiration index if EndTime changed.
 	if !updatedSbx.EndTime.Equal(sbx.EndTime) {
-		if err := s.redisClient.ZAdd(ctx, globalExpirationSet, redis.Z{
+		zaddCtx, zaddCancel := context.WithTimeout(ctx, redisOpTimeout)
+		zaddErr := s.redisClient.ZAdd(zaddCtx, globalExpirationSet, redis.Z{
 			Score:  float64(updatedSbx.EndTime.UnixMilli()),
 			Member: expirationMember(teamID.String(), sandboxID),
-		}).Err(); err != nil {
-			return sandbox.Sandbox{}, fmt.Errorf("failed to update sandbox in global expiration index: %w", err)
+		}).Err()
+		zaddCancel()
+		if zaddErr != nil {
+			return sandbox.Sandbox{}, fmt.Errorf("failed to update sandbox in global expiration index: %w", zaddErr)
 		}
 	}
 
@@ -227,7 +253,9 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 }
 
 func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int64, error) {
-	members, err := s.redisClient.ZRangeWithScores(ctx, globalTeamsSet, 0, -1).Result()
+	zrangeCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	members, err := s.redisClient.ZRangeWithScores(zrangeCtx, globalTeamsSet, 0, -1).Result()
+	cancel()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get teams from global index: %w", err)
 	}
@@ -260,7 +288,9 @@ func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int6
 		return map[uuid.UUID]int64{}, nil
 	}
 
-	_, err = pipe.Exec(ctx)
+	pipeCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	_, err = pipe.Exec(pipeCtx)
+	cancel()
 	if err != nil {
 		return nil, fmt.Errorf("SCARD pipeline failed: %w", err)
 	}
@@ -282,8 +312,11 @@ func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int6
 
 	// Prune stale entries from the global teams index
 	if len(stale) > 0 {
-		if err := s.redisClient.ZRem(ctx, globalTeamsSet, stale...).Err(); err != nil {
-			logger.L().Warn(ctx, "Failed to prune stale teams from global index", zap.Error(err), zap.Int("count", len(stale)))
+		zremCtx, zremCancel := context.WithTimeout(ctx, redisOpTimeout)
+		zremErr := s.redisClient.ZRem(zremCtx, globalTeamsSet, stale...).Err()
+		zremCancel()
+		if zremErr != nil {
+			logger.L().Warn(ctx, "Failed to prune stale teams from global index", zap.Error(zremErr), zap.Int("count", len(stale)))
 		}
 	}
 
