@@ -200,20 +200,25 @@ func New(
 		}
 
 		outWg.Go(func() {
-			for {
-				buf := make([]byte, ptyChunkSize)
+			readBuf := make([]byte, ptyChunkSize)
 
-				n, readErr := tty.Read(buf)
+			for {
+				n, readErr := tty.Read(readBuf)
 
 				if n > 0 {
-					outMultiplex.Source <- rpc.ProcessEvent_Data{
-						Data: &rpc.ProcessEvent_DataEvent{
-							Output: &rpc.ProcessEvent_DataEvent_Pty{
-								Pty: buf[:n],
-							},
-						},
-					}
 					h.ptyBytes.Add(int64(n))
+
+					if outMultiplex.HasSubscribers() {
+						data := slices.Clone(readBuf[:n])
+
+						outMultiplex.Source <- rpc.ProcessEvent_Data{
+							Data: &rpc.ProcessEvent_DataEvent{
+								Output: &rpc.ProcessEvent_DataEvent_Pty{
+									Pty: data,
+								},
+							},
+						}
+					}
 				}
 
 				if errors.Is(readErr, io.EOF) {
