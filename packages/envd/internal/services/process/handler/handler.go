@@ -30,9 +30,16 @@ const (
 	defaultNice      = 0
 	defaultOomScore  = 100
 	outputBufferSize = 64
-	stdChunkSize     = 32 << 10 // 32 KiB
-	ptyChunkSize     = 16 << 10 // 16 KiB
+	outputChunkSize  = 32 << 10
 )
+
+var outputBufferPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, outputChunkSize)
+
+		return &buf
+	},
+}
 
 type ProcessExit struct {
 	Error  *string
@@ -200,7 +207,9 @@ func New(
 		}
 
 		outWg.Go(func() {
-			readBuf := make([]byte, ptyChunkSize)
+			readBufPtr := outputBufferPool.Get().(*[]byte)
+			defer outputBufferPool.Put(readBufPtr)
+			readBuf := *readBufPtr
 
 			for {
 				n, readErr := tty.Read(readBuf)
@@ -241,7 +250,9 @@ func New(
 		}
 
 		outWg.Go(func() {
-			readBuf := make([]byte, stdChunkSize)
+			readBufPtr := outputBufferPool.Get().(*[]byte)
+			defer outputBufferPool.Put(readBufPtr)
+			readBuf := *readBufPtr
 
 			for {
 				n, readErr := stdout.Read(readBuf)
@@ -280,7 +291,9 @@ func New(
 		}
 
 		outWg.Go(func() {
-			readBuf := make([]byte, stdChunkSize)
+			readBufPtr := outputBufferPool.Get().(*[]byte)
+			defer outputBufferPool.Put(readBufPtr)
+			readBuf := *readBufPtr
 
 			for {
 				n, readErr := stderr.Read(readBuf)
