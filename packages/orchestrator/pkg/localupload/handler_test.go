@@ -32,12 +32,12 @@ func newTestHandler(t *testing.T) (*Handler, string, []byte) {
 func signedURL(t *testing.T, hmacKey []byte, path string, ttl time.Duration) string {
 	t.Helper()
 
-	expires := time.Now().Add(ttl).Unix()
-	token := storage.ComputeUploadHMAC(hmacKey, path, expires)
+	expiresSec := time.Now().Add(ttl).Unix()
+	token := storage.ComputeUploadHMAC(hmacKey, path, expiresSec)
 
 	v := url.Values{}
 	v.Set("path", path)
-	v.Set("expires", strconv.FormatInt(expires, 10))
+	v.Set("expires", strconv.FormatInt(expiresSec, 10))
 	v.Set("token", token)
 
 	return "/upload?" + v.Encode()
@@ -147,11 +147,11 @@ func TestHandler_InvalidToken(t *testing.T) {
 
 	h, _, _ := newTestHandler(t)
 
-	expires := time.Now().Add(5 * time.Minute).Unix()
+	expiresSec := time.Now().Add(5 * time.Minute).Unix()
 
 	v := url.Values{}
 	v.Set("path", "file.txt")
-	v.Set("expires", strconv.FormatInt(expires, 10))
+	v.Set("expires", strconv.FormatInt(expiresSec, 10))
 	v.Set("token", "definitely-not-valid")
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/upload?"+v.Encode(), nil)
@@ -271,12 +271,12 @@ func TestHandler_TokenForDifferentPath(t *testing.T) {
 	h, _, hmacKey := newTestHandler(t)
 
 	// Sign for "legit.txt" but try to upload to "other.txt"
-	expires := time.Now().Add(5 * time.Minute).Unix()
-	token := storage.ComputeUploadHMAC(hmacKey, "legit.txt", expires)
+	expiresSec := time.Now().Add(5 * time.Minute).Unix()
+	token := storage.ComputeUploadHMAC(hmacKey, "legit.txt", expiresSec)
 
 	v := url.Values{}
 	v.Set("path", "other.txt")
-	v.Set("expires", strconv.FormatInt(expires, 10))
+	v.Set("expires", strconv.FormatInt(expiresSec, 10))
 	v.Set("token", token)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/upload?"+v.Encode(), strings.NewReader("data"))

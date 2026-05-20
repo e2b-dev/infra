@@ -15,7 +15,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
-	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
+	utilsShared "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	envdAPI "github.com/e2b-dev/infra/tests/integration/internal/envd"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
@@ -400,7 +400,7 @@ func TestConcurrentFileUpload(t *testing.T) {
 
 			writeRes, err := envdClient.HTTPClient.PostFilesWithBodyWithResponse(
 				gCtx,
-				&envdAPI.PostFilesParams{Path: &filePath, Username: sharedUtils.ToPtr("user")},
+				&envdAPI.PostFilesParams{Path: &filePath, Username: utilsShared.ToPtr("user")},
 				contentType,
 				buffer,
 				reqEditors...,

@@ -46,7 +46,7 @@ func TestFilesystemClient_FieldFormatter(t *testing.T) {
 	t.Run("can return all fields", func(t *testing.T) {
 		t.Parallel()
 		buf := bytes.NewBufferString(`{}`)
-		req := httptest.NewRequest(http.MethodPost, filesystemconnect.FilesystemMoveProcedure, buf)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, filesystemconnect.FilesystemMoveProcedure, buf)
 		req.Header.Set("content-type", "application/json")
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
@@ -66,7 +66,7 @@ func TestFilesystemClient_FieldFormatter(t *testing.T) {
 	t.Run("can hide fields when appropriate", func(t *testing.T) {
 		t.Parallel()
 		buf := bytes.NewBufferString(`{}`)
-		req := httptest.NewRequest(http.MethodPost, filesystemconnect.FilesystemMoveProcedure, buf)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, filesystemconnect.FilesystemMoveProcedure, buf)
 		req.Header.Set("user-agent", brokenUserAgent)
 		req.Header.Set("content-type", "application/json")
 		w := httptest.NewRecorder()

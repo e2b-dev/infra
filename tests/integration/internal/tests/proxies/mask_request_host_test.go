@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
-	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
+	utilsShared "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
@@ -86,7 +86,7 @@ func TestMaskRequestHostIncorrectUrl(t *testing.T) {
 	// Create sandbox without maskRequestHost
 	utils.AcquireSandboxSlot(t)
 	sbxNet := &api.SandboxNetworkConfig{
-		MaskRequestHost: sharedUtils.ToPtr("-https://abcd"),
+		MaskRequestHost: utilsShared.ToPtr("-https://abcd"),
 	}
 	createSandboxResponse, err := c.PostSandboxesWithResponse(ctx, api.NewSandbox{
 		TemplateID: setup.SandboxTemplateID,

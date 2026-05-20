@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
+	utilsShared "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
@@ -31,7 +31,7 @@ func TestAccessingHyperloopServerViaIP(t *testing.T) {
 	readPath := "output.txt"
 	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
-		&envd.GetFilesParams{Path: &readPath, Username: sharedUtils.ToPtr("user")},
+		&envd.GetFilesParams{Path: &readPath, Username: utilsShared.ToPtr("user")},
 		setup.WithSandbox(t, sbx.SandboxID),
 	)
 
@@ -56,7 +56,7 @@ func TestAccessingHyperloopServerViaDomain(t *testing.T) {
 	readPath := "output.txt"
 	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
-		&envd.GetFilesParams{Path: &readPath, Username: sharedUtils.ToPtr("user")},
+		&envd.GetFilesParams{Path: &readPath, Username: utilsShared.ToPtr("user")},
 		setup.WithSandbox(t, sbx.SandboxID),
 	)
 
@@ -81,7 +81,7 @@ func TestAccessingHyperloopServerViaIPWithBlockedInternet(t *testing.T) {
 	readPath := "output.txt"
 	readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
 		ctx,
-		&envd.GetFilesParams{Path: &readPath, Username: sharedUtils.ToPtr("user")},
+		&envd.GetFilesParams{Path: &readPath, Username: utilsShared.ToPtr("user")},
 		setup.WithSandbox(t, sbx.SandboxID),
 	)
 

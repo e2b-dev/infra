@@ -134,19 +134,19 @@ func TestSplitIdentifier(t *testing.T) {
 		{
 			name:          "with namespace",
 			identifier:    "acme/my-template",
-			wantNamespace: ptrStr("acme"),
+			wantNamespace: utils.ToPtr("acme"),
 			wantAlias:     "my-template",
 		},
 		{
 			name:          "empty namespace prefix",
 			identifier:    "/my-template",
-			wantNamespace: ptrStr(""),
+			wantNamespace: utils.ToPtr(""),
 			wantAlias:     "my-template",
 		},
 		{
 			name:          "multiple slashes - only first split",
 			identifier:    "a/b/c",
-			wantNamespace: ptrStr("a"),
+			wantNamespace: utils.ToPtr("a"),
 			wantAlias:     "b/c",
 		},
 	}
@@ -167,10 +167,6 @@ func TestSplitIdentifier(t *testing.T) {
 			assert.Equal(t, tt.wantAlias, gotAlias)
 		})
 	}
-}
-
-func ptrStr(s string) *string {
-	return &s
 }
 
 func TestValidateAndDeduplicateTags(t *testing.T) {

@@ -22,7 +22,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // testBackend represents a test backend server
@@ -941,7 +940,7 @@ func TestChangeResponseHeader(t *testing.T) {
 			RequestLogger:                      logger.L(),
 			ConnectionKey:                      "connection-key",
 			IncludeSandboxIdInProxyErrorLogger: true,
-			MaskRequestHost:                    utils.ToPtr(maskedHost),
+			MaskRequestHost:                    new(maskedHost),
 		}, nil
 	}, nil, false)
 

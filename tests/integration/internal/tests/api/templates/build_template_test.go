@@ -147,13 +147,13 @@ func TestTemplateBuildRUN(t *testing.T) {
 			name:         "Single RUN command",
 			templateName: "test-ubuntu-run",
 			buildConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
+				Force:     new(ForceBaseBuild),
 				FromImage: utils.ToPtr("ubuntu:22.04"),
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type:  "RUN",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"echo 'Hello, World!'"}),
+						Force: new(true),
+						Args:  new([]string{"echo 'Hello, World!'"}),
 					},
 				}),
 			},
@@ -181,17 +181,17 @@ func TestTemplateBuildENV(t *testing.T) {
 			name:         "ENV variable persistence",
 			templateName: "test-ubuntu-env",
 			buildConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
+				Force:     new(ForceBaseBuild),
 				FromImage: utils.ToPtr("ubuntu:22.04"),
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"ENV_VAR", "Hello, World!"}),
+						Force: new(true),
+						Args:  new([]string{"ENV_VAR", "Hello, World!"}),
 					},
 					{
 						Type: "RUN",
-						Args: utils.ToPtr([]string{": \"${ENV_VAR:?ENV_VAR is not set or empty}\"; echo \"$ENV_VAR\""}),
+						Args: new([]string{": \"${ENV_VAR:?ENV_VAR is not set or empty}\"; echo \"$ENV_VAR\""}),
 					},
 				}),
 			},
@@ -200,13 +200,13 @@ func TestTemplateBuildENV(t *testing.T) {
 			name:         "ENV variable persistence for start command",
 			templateName: "test-ubuntu-env-start",
 			buildConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
+				Force:     new(ForceBaseBuild),
 				FromImage: utils.ToPtr("ubuntu:22.04"),
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"ENV_VAR", "Hello, World!"}),
+						Force: new(true),
+						Args:  new([]string{"ENV_VAR", "Hello, World!"}),
 					},
 				}),
 				StartCmd: utils.ToPtr(": \"${ENV_VAR:?ENV_VAR is not set or empty}\"; echo \"$ENV_VAR\""),
@@ -217,17 +217,17 @@ func TestTemplateBuildENV(t *testing.T) {
 			name:         "ENV variable recursive",
 			templateName: "test-ubuntu-env-recursive",
 			buildConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
+				Force:     new(ForceBaseBuild),
 				FromImage: utils.ToPtr("ubuntu:22.04"),
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"PATH", "${PATH}:/my/path"}),
+						Force: new(true),
+						Args:  new([]string{"PATH", "${PATH}:/my/path"}),
 					},
 					{
 						Type: "RUN",
-						Args: utils.ToPtr([]string{"[[ \"$PATH\" == *:/my/path* ]] || exit 1"}),
+						Args: new([]string{"[[ \"$PATH\" == *:/my/path* ]] || exit 1"}),
 					},
 				}),
 			},
@@ -236,17 +236,17 @@ func TestTemplateBuildENV(t *testing.T) {
 			name:         "ENV with PEM-style dashes",
 			templateName: "test-ubuntu-env-pem-dashes",
 			buildConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
+				Force:     new(ForceBaseBuild),
 				FromImage: utils.ToPtr("ubuntu:22.04"),
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"PEM_HEADER", "-----BEGIN DATA-----"}),
+						Force: new(true),
+						Args:  new([]string{"PEM_HEADER", "-----BEGIN DATA-----"}),
 					},
 					{
 						Type: "RUN",
-						Args: utils.ToPtr([]string{"[[ \"$PEM_HEADER\" == \"-----BEGIN DATA-----\" ]] || exit 1"}),
+						Args: new([]string{"[[ \"$PEM_HEADER\" == \"-----BEGIN DATA-----\" ]] || exit 1"}),
 					},
 				}),
 			},
@@ -255,17 +255,17 @@ func TestTemplateBuildENV(t *testing.T) {
 			name:         "ENV with double quotes",
 			templateName: "test-ubuntu-env-quotes",
 			buildConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
+				Force:     new(ForceBaseBuild),
 				FromImage: utils.ToPtr("ubuntu:22.04"),
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"QUOTED_VAR", `say "hello"`}),
+						Force: new(true),
+						Args:  new([]string{"QUOTED_VAR", `say "hello"`}),
 					},
 					{
 						Type: "RUN",
-						Args: utils.ToPtr([]string{`[[ "$QUOTED_VAR" == 'say "hello"' ]] || exit 1`}),
+						Args: new([]string{`[[ "$QUOTED_VAR" == 'say "hello"' ]] || exit 1`}),
 					},
 				}),
 			},
@@ -274,17 +274,17 @@ func TestTemplateBuildENV(t *testing.T) {
 			name:         "ENV with single quotes",
 			templateName: "test-ubuntu-env-single-quotes",
 			buildConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
+				Force:     new(ForceBaseBuild),
 				FromImage: utils.ToPtr("ubuntu:22.04"),
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"SINGLE_QUOTED", "it's working"}),
+						Force: new(true),
+						Args:  new([]string{"SINGLE_QUOTED", "it's working"}),
 					},
 					{
 						Type: "RUN",
-						Args: utils.ToPtr([]string{`[[ "$SINGLE_QUOTED" == "it's working" ]] || exit 1`}),
+						Args: new([]string{`[[ "$SINGLE_QUOTED" == "it's working" ]] || exit 1`}),
 					},
 				}),
 			},
@@ -293,17 +293,17 @@ func TestTemplateBuildENV(t *testing.T) {
 			name:         "ENV with backslashes",
 			templateName: "test-ubuntu-env-backslash",
 			buildConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
+				Force:     new(ForceBaseBuild),
 				FromImage: utils.ToPtr("ubuntu:22.04"),
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"PATH_VAR", `path\to\file`}),
+						Force: new(true),
+						Args:  new([]string{"PATH_VAR", `path\to\file`}),
 					},
 					{
 						Type: "RUN",
-						Args: utils.ToPtr([]string{`[[ "$PATH_VAR" == 'path\to\file' ]] || exit 1`}),
+						Args: new([]string{`[[ "$PATH_VAR" == 'path\to\file' ]] || exit 1`}),
 					},
 				}),
 			},
@@ -312,17 +312,17 @@ func TestTemplateBuildENV(t *testing.T) {
 			name:         "ENV with multiline value",
 			templateName: "test-ubuntu-env-multiline",
 			buildConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
+				Force:     new(ForceBaseBuild),
 				FromImage: utils.ToPtr("ubuntu:22.04"),
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"MULTILINE", "line1\nline2\nline3"}),
+						Force: new(true),
+						Args:  new([]string{"MULTILINE", "line1\nline2\nline3"}),
 					},
 					{
 						Type: "RUN",
-						Args: utils.ToPtr([]string{`[[ $(echo "$MULTILINE" | wc -l) -eq 3 ]] || exit 1`}),
+						Args: new([]string{`[[ $(echo "$MULTILINE" | wc -l) -eq 3 ]] || exit 1`}),
 					},
 				}),
 			},
@@ -331,17 +331,17 @@ func TestTemplateBuildENV(t *testing.T) {
 			name:         "ENV blocks command substitution with backticks",
 			templateName: "test-ubuntu-env-backticks",
 			buildConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
+				Force:     new(ForceBaseBuild),
 				FromImage: utils.ToPtr("ubuntu:22.04"),
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"LITERAL_CMD", "`echo pwned`"}),
+						Force: new(true),
+						Args:  new([]string{"LITERAL_CMD", "`echo pwned`"}),
 					},
 					{
 						Type: "RUN",
-						Args: utils.ToPtr([]string{`[[ "$LITERAL_CMD" == '` + "`echo pwned`" + `' ]] || exit 1`}),
+						Args: new([]string{`[[ "$LITERAL_CMD" == '` + "`echo pwned`" + `' ]] || exit 1`}),
 					},
 				}),
 			},
@@ -350,17 +350,17 @@ func TestTemplateBuildENV(t *testing.T) {
 			name:         "ENV blocks command substitution with dollar paren",
 			templateName: "test-ubuntu-env-dollarparen",
 			buildConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
+				Force:     new(ForceBaseBuild),
 				FromImage: utils.ToPtr("ubuntu:22.04"),
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"LITERAL_CMD2", "$(echo pwned)"}),
+						Force: new(true),
+						Args:  new([]string{"LITERAL_CMD2", "$(echo pwned)"}),
 					},
 					{
 						Type: "RUN",
-						Args: utils.ToPtr([]string{`[[ "$LITERAL_CMD2" == '$(echo pwned)' ]] || exit 1`}),
+						Args: new([]string{`[[ "$LITERAL_CMD2" == '$(echo pwned)' ]] || exit 1`}),
 					},
 				}),
 			},
@@ -388,17 +388,17 @@ func TestTemplateBuildWORKDIR(t *testing.T) {
 			name:         "WORKDIR persistence",
 			templateName: "test-ubuntu-workdir-persistence",
 			buildConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
+				Force:     new(ForceBaseBuild),
 				FromImage: utils.ToPtr("ubuntu:22.04"),
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type:  "WORKDIR",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"/app"}),
+						Force: new(true),
+						Args:  new([]string{"/app"}),
 					},
 					{
 						Type: "RUN",
-						Args: utils.ToPtr([]string{"[[ \"$(pwd)\" == \"/app\" ]] || exit 1"}),
+						Args: new([]string{"[[ \"$(pwd)\" == \"/app\" ]] || exit 1"}),
 					},
 				}),
 			},
@@ -407,13 +407,13 @@ func TestTemplateBuildWORKDIR(t *testing.T) {
 			name:         "WORKDIR persistence in start command",
 			templateName: "test-ubuntu-workdir-start",
 			buildConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
+				Force:     new(ForceBaseBuild),
 				FromImage: utils.ToPtr("ubuntu:22.04"),
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type:  "WORKDIR",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"/app"}),
+						Force: new(true),
+						Args:  new([]string{"/app"}),
 					},
 				}),
 				StartCmd: utils.ToPtr("[[ \"$(pwd)\" == \"/app\" ]] || exit 1"),
@@ -440,11 +440,11 @@ func TestTemplateBuildCache(t *testing.T) {
 		Steps: utils.ToPtr([]api.TemplateStep{
 			{
 				Type: "ENV",
-				Args: utils.ToPtr([]string{"ENV_VAR", "Hello, World!"}),
+				Args: new([]string{"ENV_VAR", "Hello, World!"}),
 			},
 			{
 				Type: "RUN",
-				Args: utils.ToPtr([]string{": \"${ENV_VAR:?ENV_VAR is not set or empty}\"; echo \"$ENV_VAR\""}),
+				Args: new([]string{": \"${ENV_VAR:?ENV_VAR is not set or empty}\"; echo \"$ENV_VAR\""}),
 			},
 		}),
 	}
@@ -481,18 +481,18 @@ func TestTemplateBuildFromTemplate(t *testing.T) {
 			name:         "Basic fromTemplate functionality",
 			baseTemplate: "test-ubuntu-base-template",
 			baseConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
+				Force:     new(ForceBaseBuild),
 				FromImage: utils.ToPtr("ubuntu:22.04"),
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"BASE_VAR", "base_value"}),
+						Force: new(true),
+						Args:  new([]string{"BASE_VAR", "base_value"}),
 					},
 					{
 						Type:  "WORKDIR",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"/app"}),
+						Force: new(true),
+						Args:  new([]string{"/app"}),
 					},
 				}),
 			},
@@ -503,11 +503,11 @@ func TestTemplateBuildFromTemplate(t *testing.T) {
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type: "ENV",
-						Args: utils.ToPtr([]string{"DERIVED_VAR", "derived_value"}),
+						Args: new([]string{"DERIVED_VAR", "derived_value"}),
 					},
 					{
 						Type: "RUN",
-						Args: utils.ToPtr([]string{": \"${BASE_VAR:?BASE_VAR not inherited}\"; [[ \"$BASE_VAR\" == \"base_value\" ]] || exit 1; [[ \"$(pwd)\" == \"/app\" ]] || exit 2; [[ \"$DERIVED_VAR\" == \"derived_value\" ]] || exit 3; echo 'Inheritance verification passed'"}),
+						Args: new([]string{": \"${BASE_VAR:?BASE_VAR not inherited}\"; [[ \"$BASE_VAR\" == \"base_value\" ]] || exit 1; [[ \"$(pwd)\" == \"/app\" ]] || exit 2; [[ \"$DERIVED_VAR\" == \"derived_value\" ]] || exit 3; echo 'Inheritance verification passed'"}),
 					},
 				}),
 			},
@@ -541,18 +541,18 @@ func TestTemplateBuildFromTemplateCommandOverride(t *testing.T) {
 			name:         "Start command override in derived template",
 			baseTemplate: "test-ubuntu-base-override-start",
 			baseConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
+				Force:     new(ForceBaseBuild),
 				FromImage: utils.ToPtr("ubuntu:22.04"),
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"BASE_VAR", "base_value"}),
+						Force: new(true),
+						Args:  new([]string{"BASE_VAR", "base_value"}),
 					},
 					{
 						Type:  "WORKDIR",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"/app/base"}),
+						Force: new(true),
+						Args:  new([]string{"/app/base"}),
 					},
 				}),
 				// Base start command - fails if override_check.txt exists (meaning it's running in derived context)
@@ -566,15 +566,15 @@ func TestTemplateBuildFromTemplateCommandOverride(t *testing.T) {
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type: "ENV",
-						Args: utils.ToPtr([]string{"DERIVED_VAR", "derived_value"}),
+						Args: new([]string{"DERIVED_VAR", "derived_value"}),
 					},
 					{
 						Type: "WORKDIR",
-						Args: utils.ToPtr([]string{"/app/derived"}),
+						Args: new([]string{"/app/derived"}),
 					},
 					{
 						Type: "RUN",
-						Args: utils.ToPtr([]string{"echo 'override_expected' > /override_check.txt", "root"}),
+						Args: new([]string{"echo 'override_expected' > /override_check.txt", "root"}),
 					},
 				}),
 				// Override the base start command - simple success proves override worked
@@ -605,23 +605,23 @@ func TestTemplateBuildFromTemplateInheritance(t *testing.T) {
 
 	// Base template with ENV and WORKDIR settings
 	baseConfig := api.TemplateBuildStartV2{
-		Force:     utils.ToPtr(ForceBaseBuild),
+		Force:     new(ForceBaseBuild),
 		FromImage: utils.ToPtr("ubuntu:22.04"),
 		Steps: utils.ToPtr([]api.TemplateStep{
 			{
 				Type:  "ENV",
-				Force: utils.ToPtr(true),
-				Args:  utils.ToPtr([]string{"BASE_ENV", "inherited_value"}),
+				Force: new(true),
+				Args:  new([]string{"BASE_ENV", "inherited_value"}),
 			},
 			{
 				Type:  "ENV",
-				Force: utils.ToPtr(true),
-				Args:  utils.ToPtr([]string{"OVERRIDE_VAR", "base_value"}),
+				Force: new(true),
+				Args:  new([]string{"OVERRIDE_VAR", "base_value"}),
 			},
 			{
 				Type:  "WORKDIR",
-				Force: utils.ToPtr(true),
-				Args:  utils.ToPtr([]string{"/base/workdir"}),
+				Force: new(true),
+				Args:  new([]string{"/base/workdir"}),
 			},
 		}),
 	}
@@ -633,11 +633,11 @@ func TestTemplateBuildFromTemplateInheritance(t *testing.T) {
 		Steps: utils.ToPtr([]api.TemplateStep{
 			{
 				Type: "ENV",
-				Args: utils.ToPtr([]string{"OVERRIDE_VAR", "derived_value"}),
+				Args: new([]string{"OVERRIDE_VAR", "derived_value"}),
 			},
 			{
 				Type: "RUN",
-				Args: utils.ToPtr([]string{
+				Args: new([]string{
 					// Test ENV inheritance
 					": \"${BASE_ENV:?BASE_ENV is not set or empty}\"; " +
 						"[[ \"$BASE_ENV\" == \"inherited_value\" ]] || exit 1; " +
@@ -666,18 +666,18 @@ func TestTemplateBuildFromTemplateStartCommand(t *testing.T) {
 
 	// Base template with ENV and WORKDIR for start command inheritance
 	baseConfig := api.TemplateBuildStartV2{
-		Force:     utils.ToPtr(ForceBaseBuild),
+		Force:     new(ForceBaseBuild),
 		FromImage: utils.ToPtr("ubuntu:22.04"),
 		Steps: utils.ToPtr([]api.TemplateStep{
 			{
 				Type:  "ENV",
-				Force: utils.ToPtr(true),
-				Args:  utils.ToPtr([]string{"START_ENV", "start_value"}),
+				Force: new(true),
+				Args:  new([]string{"START_ENV", "start_value"}),
 			},
 			{
 				Type:  "WORKDIR",
-				Force: utils.ToPtr(true),
-				Args:  utils.ToPtr([]string{"/start/workdir"}),
+				Force: new(true),
+				Args:  new([]string{"/start/workdir"}),
 			},
 		}),
 	}
@@ -718,18 +718,18 @@ func TestTemplateBuildFromTemplateBaseCommandsInheritance(t *testing.T) {
 			name:         "Start command inherited from base template uses original base context",
 			baseTemplate: "test-ubuntu-base-with-start",
 			baseConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
+				Force:     new(ForceBaseBuild),
 				FromImage: utils.ToPtr("ubuntu:22.04"),
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"BASE_VAR", "base_value"}),
+						Force: new(true),
+						Args:  new([]string{"BASE_VAR", "base_value"}),
 					},
 					{
 						Type:  "WORKDIR",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"/app/base"}),
+						Force: new(true),
+						Args:  new([]string{"/app/base"}),
 					},
 				}),
 				// Start command runs with base template context (not derived modifications)
@@ -743,7 +743,7 @@ func TestTemplateBuildFromTemplateBaseCommandsInheritance(t *testing.T) {
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type: "WORKDIR",
-						Args: utils.ToPtr([]string{"/app/derived"}), // Override base workdir
+						Args: new([]string{"/app/derived"}), // Override base workdir
 					},
 				}),
 				// No StartCmd/ReadyCmd - inherit from base, runs with original base context
@@ -780,18 +780,18 @@ func TestTemplateBuildFromTemplateLayered(t *testing.T) {
 			name:         "Three-level template inheritance with ENV accumulation",
 			baseTemplate: "test-ubuntu-layered-base",
 			baseConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
+				Force:     new(ForceBaseBuild),
 				FromImage: utils.ToPtr("ubuntu:22.04"),
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"LEVEL", "base"}),
+						Force: new(true),
+						Args:  new([]string{"LEVEL", "base"}),
 					},
 					{
 						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"BASE_VAR", "base_value"}),
+						Force: new(true),
+						Args:  new([]string{"BASE_VAR", "base_value"}),
 					},
 				}),
 			},
@@ -802,11 +802,11 @@ func TestTemplateBuildFromTemplateLayered(t *testing.T) {
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type: "ENV",
-						Args: utils.ToPtr([]string{"LEVEL", "intermediate"}),
+						Args: new([]string{"LEVEL", "intermediate"}),
 					},
 					{
 						Type: "ENV",
-						Args: utils.ToPtr([]string{"INTERMEDIATE_VAR", "intermediate_value"}),
+						Args: new([]string{"INTERMEDIATE_VAR", "intermediate_value"}),
 					},
 				}),
 			},
@@ -817,15 +817,15 @@ func TestTemplateBuildFromTemplateLayered(t *testing.T) {
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type: "ENV",
-						Args: utils.ToPtr([]string{"LEVEL", "final"}),
+						Args: new([]string{"LEVEL", "final"}),
 					},
 					{
 						Type: "ENV",
-						Args: utils.ToPtr([]string{"FINAL_VAR", "final_value"}),
+						Args: new([]string{"FINAL_VAR", "final_value"}),
 					},
 					{
 						Type: "RUN",
-						Args: utils.ToPtr([]string{
+						Args: new([]string{
 							"[[ \"$LEVEL\" == \"final\" ]] || exit 1; " +
 								"[[ \"$BASE_VAR\" == \"base_value\" ]] || exit 2; " +
 								"[[ \"$INTERMEDIATE_VAR\" == \"intermediate_value\" ]] || exit 3; " +
@@ -866,13 +866,13 @@ func TestTemplateBuildStartReadyCommandExecution(t *testing.T) {
 			name:         "Start and Ready commands are executed",
 			templateName: "test-ubuntu-start-ready-execution",
 			buildConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
+				Force:     new(ForceBaseBuild),
 				FromImage: utils.ToPtr("ubuntu:22.04"),
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type:  "RUN",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"echo 'Setting up template'"}),
+						Force: new(true),
+						Args:  new([]string{"echo 'Setting up template'"}),
 					},
 				}),
 				StartCmd: utils.ToPtr("echo 'Hello, World!'"),
@@ -889,13 +889,13 @@ func TestTemplateBuildStartReadyCommandExecution(t *testing.T) {
 			name:         "Complex Start and Ready commands with environment variables",
 			templateName: "test-ubuntu-complex-start-ready",
 			buildConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
+				Force:     new(ForceBaseBuild),
 				FromImage: utils.ToPtr("ubuntu:22.04"),
 				Steps: utils.ToPtr([]api.TemplateStep{
 					{
 						Type:  "ENV",
-						Force: utils.ToPtr(true),
-						Args:  utils.ToPtr([]string{"TEST_VAR", "test_value"}),
+						Force: new(true),
+						Args:  new([]string{"TEST_VAR", "test_value"}),
 					},
 				}),
 				StartCmd: utils.ToPtr("echo \"Starting with TEST_VAR=$TEST_VAR\"; echo 'Initialization complete'"),
@@ -975,7 +975,7 @@ func TestTemplateBuildWithDifferentSourceImages(t *testing.T) {
 			name:         "Test with Ubuntu 24.04 base image",
 			templateName: "test-ubuntu-24-04-source",
 			buildConfig: api.TemplateBuildStartV2{
-				Force:     utils.ToPtr(ForceBaseBuild),
+				Force:     new(ForceBaseBuild),
 				FromImage: utils.ToPtr("ubuntu:24.04"),
 				Steps:     utils.ToPtr([]api.TemplateStep{}),
 				StartCmd:  utils.ToPtr("echo 'Initialization complete'"),
@@ -1053,7 +1053,7 @@ func TestTemplateBuildInstalledPackagesAvailable(t *testing.T) {
 	}
 
 	buildConfig := api.TemplateBuildStartV2{
-		Force:     utils.ToPtr(ForceBaseBuild),
+		Force:     new(ForceBaseBuild),
 		FromImage: utils.ToPtr("ubuntu:22.04"),
 		Steps:     utils.ToPtr(steps),
 	}
@@ -1136,18 +1136,18 @@ func TestTemplateBuildCOPY(t *testing.T) {
 	filesHash := computeSHA256Hex(tarData)
 
 	buildConfig := api.TemplateBuildStartV2{
-		Force:     utils.ToPtr(ForceBaseBuild),
+		Force:     new(ForceBaseBuild),
 		FromImage: utils.ToPtr("ubuntu:24.04"),
 		Steps: utils.ToPtr([]api.TemplateStep{
 			{
 				Type:      "COPY",
-				Force:     utils.ToPtr(true),
-				Args:      utils.ToPtr([]string{".", "/app/"}),
-				FilesHash: utils.ToPtr(filesHash),
+				Force:     new(true),
+				Args:      new([]string{".", "/app/"}),
+				FilesHash: new(filesHash),
 			},
 			{
 				Type: "RUN",
-				Args: utils.ToPtr([]string{
+				Args: new([]string{
 					fmt.Sprintf(`cat /app/hello.txt | grep '%s'`, fileContent),
 				}),
 			},
@@ -1169,18 +1169,18 @@ func TestTemplateBuildFuseConfiguration(t *testing.T) {
 	// - /etc/tmpfiles.d/fuse.conf sets /dev/fuse permissions at boot
 	// - /dev/fuse has actual permissions 666
 	buildConfig := api.TemplateBuildStartV2{
-		Force:     utils.ToPtr(ForceBaseBuild),
+		Force:     new(ForceBaseBuild),
 		FromImage: utils.ToPtr("ubuntu:22.04"),
 		Steps: utils.ToPtr([]api.TemplateStep{
 			{
 				Type: "RUN",
-				Args: utils.ToPtr([]string{
+				Args: new([]string{
 					"grep -q 'z /dev/fuse 0666 root root -' /etc/tmpfiles.d/fuse.conf",
 				}),
 			},
 			{
 				Type: "RUN",
-				Args: utils.ToPtr([]string{
+				Args: new([]string{
 					"echo \"Checking /dev/fuse permissions:\"; ls -la /dev/fuse; stat -c 'mode=%a owner=%U group=%G' /dev/fuse; test $(stat -c %a /dev/fuse) = '666'",
 				}),
 			},

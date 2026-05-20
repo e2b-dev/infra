@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+	utilsShared "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	testutils "github.com/e2b-dev/infra/tests/integration/internal/utils"
@@ -25,7 +25,7 @@ func TestUpdateTemplateVisibilityToPublicWithAPIKey(t *testing.T) {
 		t.Context(),
 		template.TemplateID,
 		api.TemplateUpdateRequest{
-			Public: utils.ToPtr(true),
+			Public: utilsShared.ToPtr(true),
 		},
 		setup.WithAPIKey(),
 	)
@@ -64,7 +64,7 @@ func TestUpdateTemplateVisibilityToPrivateWithAPIKey(t *testing.T) {
 		t.Context(),
 		template.TemplateID,
 		api.TemplateUpdateRequest{
-			Public: utils.ToPtr(true),
+			Public: utilsShared.ToPtr(true),
 		},
 		setup.WithAPIKey(),
 	)
@@ -75,7 +75,7 @@ func TestUpdateTemplateVisibilityToPrivateWithAPIKey(t *testing.T) {
 		t.Context(),
 		template.TemplateID,
 		api.TemplateUpdateRequest{
-			Public: utils.ToPtr(false),
+			Public: utilsShared.ToPtr(false),
 		},
 		setup.WithAPIKey(),
 	)
@@ -114,7 +114,7 @@ func TestUpdateTemplateWithInvalidAPIKey(t *testing.T) {
 		t.Context(),
 		template.TemplateID,
 		api.TemplateUpdateRequest{
-			Public: utils.ToPtr(true),
+			Public: utilsShared.ToPtr(true),
 		},
 		setup.WithAPIKey("invalid-api-key"),
 	)
@@ -134,7 +134,7 @@ func TestUpdateNonExistentTemplateWithAPIKey(t *testing.T) {
 		t.Context(),
 		nonExistentTemplateID,
 		api.TemplateUpdateRequest{
-			Public: utils.ToPtr(true),
+			Public: utilsShared.ToPtr(true),
 		},
 		setup.WithAPIKey(),
 	)
@@ -155,7 +155,7 @@ func TestUpdateTemplateWithSupabaseToken(t *testing.T) {
 		t.Context(),
 		template.TemplateID,
 		api.TemplateUpdateRequest{
-			Public: utils.ToPtr(true),
+			Public: utilsShared.ToPtr(true),
 		},
 		setup.WithSupabaseToken(t),
 		setup.WithSupabaseTeam(t),
@@ -167,7 +167,7 @@ func TestUpdateTemplateWithSupabaseToken(t *testing.T) {
 	getResp, err := c.GetTemplatesWithResponse(
 		t.Context(),
 		&api.GetTemplatesParams{
-			TeamID: utils.ToPtr(setup.TeamID),
+			TeamID: utilsShared.ToPtr(setup.TeamID),
 		},
 		setup.WithSupabaseToken(t),
 		setup.WithSupabaseTeam(t),
@@ -211,7 +211,7 @@ func TestUpdateTemplateNotOwnedByTeam(t *testing.T) {
 		ctx,
 		team1TemplateID,
 		api.TemplateUpdateRequest{
-			Public: utils.ToPtr(true),
+			Public: utilsShared.ToPtr(true),
 		},
 		setup.WithAPIKey(team2APIKey),
 	)
@@ -225,7 +225,7 @@ func TestUpdateTemplateNotOwnedByTeam(t *testing.T) {
 		ctx,
 		team1TemplateID,
 		api.TemplateUpdateRequest{
-			Public: utils.ToPtr(true),
+			Public: utilsShared.ToPtr(true),
 		},
 		setup.WithAPIKey(),
 	)
