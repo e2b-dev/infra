@@ -57,6 +57,7 @@ snapshot as (
     ON CONFLICT (sandbox_id) DO UPDATE SET
         metadata = excluded.metadata,
         sandbox_started_at = excluded.sandbox_started_at,
+        env_secure = excluded.env_secure,
         allow_internet_access = excluded.allow_internet_access,
         origin_node_id = excluded.origin_node_id,
         auto_pause = excluded.auto_pause,
