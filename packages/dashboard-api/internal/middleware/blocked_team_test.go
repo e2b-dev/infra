@@ -16,8 +16,6 @@ import (
 func runBlockedTeamMiddleware(t *testing.T, method, routePattern, requestPath string, team *authtypes.Team) (*httptest.ResponseRecorder, bool) {
 	t.Helper()
 
-	gin.SetMode(gin.TestMode)
-
 	handlerRan := false
 	recorder := httptest.NewRecorder()
 	router := gin.New()
@@ -32,7 +30,7 @@ func runBlockedTeamMiddleware(t *testing.T, method, routePattern, requestPath st
 		c.Status(http.StatusNoContent)
 	})
 
-	request := httptest.NewRequest(method, requestPath, nil)
+	request := httptest.NewRequestWithContext(t.Context(), method, requestPath, nil)
 	router.ServeHTTP(recorder, request)
 
 	return recorder, handlerRan

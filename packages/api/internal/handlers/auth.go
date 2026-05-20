@@ -44,10 +44,6 @@ func (a *APIStore) GetTeam(
 	defer span.End()
 
 	if team, ok := auth.GetTeamInfo(c); ok {
-		// Middleware has already gated team-on-context routes; this branch
-		// is reached when no middleware ran (e.g. internal callers) or
-		// reached defensively before the gin response is written. Cheap to
-		// re-check.
 		if apiErr := applyBlockedTeamCheck(c, team); apiErr != nil {
 			return nil, apiErr
 		}
