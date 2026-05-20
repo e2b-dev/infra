@@ -249,10 +249,14 @@ func dedupPages(
 	pageDirty := roaring.New()
 	pageEmpty := roaring.New()
 	baseBuf := make([]byte, blockSize)
-	// Per-block iovec buffer: reused across blocks. Capacity sized for
-	// max pages per block; Linux IOV_MAX (1024) is well above that.
-	iovs := make([][]byte, 0, blockSize/header.PageSize)
-	var fileOff, exportedSize int64
+	// Two-phase: phase 1 walks the source mmap and accumulates per-page
+	// slice headers (no memcpy) for every dirty page; phase 2 drains the
+	// iov slice via IOV_MAX-bounded pwritev calls at the end. Pre-sized
+	// for the worst case (every dirty block is fully unique) so phase 1
+	// is a single up-front allocation.
+	pagesPerBlock := blockSize / header.PageSize
+	iovs := make([][]byte, 0, int64(dirty.GetCardinality())*pagesPerBlock)
+	var exportedSize int64
 
 	for r := range BitsetRanges(dirty, blockSize) {
 		exportedSize += r.Size
@@ -267,9 +271,6 @@ func dedupPages(
 			if err != nil {
 				return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
 			}
-
-			iovs = iovs[:0]
-			blockStartOff := fileOff
 
 			// Best-effort: if base data isn't in the local chunker cache,
 			// skip the compare entirely and write every page through as-is
@@ -287,13 +288,6 @@ func dedupPages(
 						}
 						pageDirty.Add(pageIdx)
 						iovs = append(iovs, srcPage)
-						fileOff += header.PageSize
-					}
-
-					if len(iovs) > 0 {
-						if err := pwritevAll(int(f.Fd()), blockStartOff, iovs); err != nil {
-							return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
-						}
 					}
 
 					continue
@@ -323,16 +317,23 @@ func dedupPages(
 
 				pageDirty.Add(pageIdx)
 				iovs = append(iovs, srcPage)
-				fileOff += header.PageSize
-			}
-
-			if len(iovs) > 0 {
-				if err := pwritevAll(int(f.Fd()), blockStartOff, iovs); err != nil {
-					return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
-				}
 			}
 		}
 	}
+
+	// Phase 2: drain the iov slice into the dedup file in IOV_MAX- and
+	// MAX_RW_COUNT-bounded batches. Deferring all writes to the end keeps
+	// the pagecache from accumulating beyond dirty_ratio mid-walk and
+	// triggering balance_dirty_pages throttling on large outputs.
+	fd := int(f.Fd())
+	err = drainIovs(iovs, func(b []byte) int64 { return int64(len(b)) }, header.PageSize,
+		func(off int64, batch [][]byte, _ int64) error {
+			return pwritevAll(fd, off, batch)
+		})
+	if err != nil {
+		return nil, nil, errors.Join(fmt.Errorf("drain dedup iovs: %w", err), f.Close(), os.Remove(outPath))
+	}
+	fileOff := int64(len(iovs)) * header.PageSize
 
 	if err := f.Close(); err != nil {
 		return nil, nil, errors.Join(err, os.Remove(outPath))
@@ -691,101 +692,50 @@ func (c *Cache) copyProcessMemory(
 	pid int,
 	rs []Range,
 ) error {
-	// We need to align the maximum read/write count to the block size, so we can use mark the offsets as dirty correctly.
-	// Because the MAX_RW_COUNT is not aligned to arbitrary block sizes, we need to align it to the block size we use for the cache.
-	alignedRwCount := getAlignedMaxRwCount(c.blockSize)
+	// Pre-split so no single iov exceeds MAX_RW_COUNT; drainIovs caps each
+	// batch by IOV_MAX entries and getAlignedMaxRwCount(blockSize) bytes.
+	ranges := splitOversizedRanges(rs, getAlignedMaxRwCount(c.blockSize))
 
-	// We need to split the ranges because the Kernel does not support reading/writing more than MAX_RW_COUNT bytes in a single operation.
-	ranges := splitOversizedRanges(rs, alignedRwCount)
-
-	var offset int64
-	var rangeIdx int64
-
-	for {
-		var remote []unix.RemoteIovec
-
-		var segmentSize int64
-
-		// We iterate over the range of all ranges until we have reached the limit of the IOV_MAX,
-		// or until the next range would overflow the MAX_RW_COUNT.
-		for ; rangeIdx < int64(len(ranges)); rangeIdx++ {
-			r := ranges[rangeIdx]
-
-			if len(remote) == IOV_MAX {
-				break
+	return drainIovs(ranges, func(r Range) int64 { return r.Size }, c.blockSize,
+		func(off int64, batch []Range, batchBytes int64) error {
+			remote := make([]unix.RemoteIovec, len(batch))
+			for i, r := range batch {
+				remote[i] = unix.RemoteIovec{Base: uintptr(r.Start), Len: int(r.Size)}
 			}
-
-			if segmentSize+r.Size > alignedRwCount {
-				break
-			}
-
-			remote = append(remote, unix.RemoteIovec{
-				Base: uintptr(r.Start),
-				Len:  int(r.Size),
-			})
-
-			segmentSize += r.Size
-		}
-
-		if len(remote) == 0 {
-			break
-		}
-
-		address, err := c.address(offset)
-		if err != nil {
-			return fmt.Errorf("failed to get address: %w", err)
-		}
-
-		local := []unix.Iovec{
-			{
-				Base: address,
-				// We could keep this as full cache length, but we might as well be exact here.
-				Len: uint64(segmentSize),
-			},
-		}
-
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-			}
-
-			// We could retry only on the remaining segment size, but for simplicity we retry the whole segment.
-			n, err := unix.ProcessVMReadv(pid,
-				local,
-				remote,
-				0,
-			)
-			if errors.Is(err, unix.EAGAIN) {
-				continue
-			}
-			if errors.Is(err, unix.EINTR) {
-				continue
-			}
-			if errors.Is(err, unix.ENOMEM) {
-				time.Sleep(oomMinBackoff + time.Duration(rand.Intn(int(oomMaxJitter.Milliseconds())))*time.Millisecond)
-
-				continue
-			}
-
+			address, err := c.address(off)
 			if err != nil {
-				return fmt.Errorf("failed to read memory: %w", err)
+				return fmt.Errorf("failed to get address: %w", err)
 			}
+			local := []unix.Iovec{{Base: address, Len: uint64(batchBytes)}}
 
-			if int64(n) != segmentSize {
-				return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
+			for {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+				}
+
+				n, err := unix.ProcessVMReadv(pid, local, remote, 0)
+				if errors.Is(err, unix.EAGAIN) || errors.Is(err, unix.EINTR) {
+					continue
+				}
+				if errors.Is(err, unix.ENOMEM) {
+					time.Sleep(oomMinBackoff + time.Duration(rand.Intn(int(oomMaxJitter.Milliseconds())))*time.Millisecond)
+
+					continue
+				}
+				if err != nil {
+					return fmt.Errorf("failed to read memory: %w", err)
+				}
+				if int64(n) != batchBytes {
+					return fmt.Errorf("failed to read memory: expected %d bytes, got %d", batchBytes, n)
+				}
+
+				c.setIsCached(off, batchBytes)
+
+				return nil
 			}
-
-			c.setIsCached(offset, segmentSize)
-
-			offset += segmentSize
-
-			break
-		}
-	}
-
-	return nil
+		})
 }
 
 // Split ranges so there are no ranges larger than maxSize.
