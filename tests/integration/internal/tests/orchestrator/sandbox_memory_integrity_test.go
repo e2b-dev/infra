@@ -38,8 +38,7 @@ func TestSandboxMemoryIntegrity(t *testing.T) {
 	t.Run("tmpfs hash", func(t *testing.T) {
 		t.Parallel()
 
-		// Create a sandbox with auto-pause disabled
-		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false), utils.WithTemplateID(tmpl.TemplateID))
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false), utils.WithTimeout(300), utils.WithTemplateID(tmpl.TemplateID))
 		sbxId := sbx.SandboxID
 
 		envdClient := setup.GetEnvdClient(t, t.Context())
@@ -107,7 +106,7 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 	t.Run("write after read survives pause", func(t *testing.T) {
 		t.Parallel()
 
-		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false), utils.WithTimeout(300))
 		sbxId := sbx.SandboxID
 		envdClient := setup.GetEnvdClient(t, t.Context())
 
@@ -143,8 +142,7 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 	t.Run("stress-ng verify", func(t *testing.T) {
 		t.Parallel()
 
-		// Create a sandbox with auto-pause disabled
-		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false), utils.WithTemplateID(tmpl.TemplateID))
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false), utils.WithTimeout(300), utils.WithTemplateID(tmpl.TemplateID))
 
 		envdClient := setup.GetEnvdClient(t, t.Context())
 

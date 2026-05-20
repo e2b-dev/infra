@@ -1036,6 +1036,10 @@ func TestTemplateBuildInstalledPackagesAvailable(t *testing.T) {
 		"fuse3",
 		"iptables",
 		"git",
+		"less",
+		"nftables",
+		"iputils-ping",
+		"jq",
 	}
 
 	steps := make([]api.TemplateStep, 0, len(packages))

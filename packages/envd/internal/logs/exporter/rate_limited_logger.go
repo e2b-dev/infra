@@ -2,34 +2,24 @@ package exporter
 
 import (
 	"log"
-	"sync/atomic"
 	"time"
+
+	"github.com/e2b-dev/infra/packages/envd/internal/logs/ratelimit"
 )
 
 type rateLimitedLogger struct {
-	floor      time.Duration
-	format     string
-	lastLogged atomic.Pointer[time.Time]
-	suppressed atomic.Int64
+	limit  *ratelimit.Limiter
+	format string
 }
 
 func newRateLimitedLogger(floor time.Duration, format string) *rateLimitedLogger {
-	return &rateLimitedLogger{floor: floor, format: format}
+	return &rateLimitedLogger{limit: ratelimit.New(floor), format: format}
 }
 
 func (r *rateLimitedLogger) log(args ...any) {
-	last := r.lastLogged.Load()
-	if last != nil && time.Since(*last) <= r.floor {
-		r.suppressed.Add(1)
-
+	ok, suppressed := r.limit.Allow()
+	if !ok {
 		return
 	}
-	now := time.Now()
-	if !r.lastLogged.CompareAndSwap(last, &now) {
-		r.suppressed.Add(1)
-
-		return
-	}
-	suppressed := r.suppressed.Swap(0)
 	log.Printf(r.format+" (%d suppressed since last log)", append(args, suppressed)...)
 }

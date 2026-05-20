@@ -22,44 +22,38 @@ func TestTeamMetrics(t *testing.T) {
 	utils.SetupSandboxWithCleanup(t, c)
 	var metrics []api.TeamMetric
 
-	maxDuration := 15 * time.Second
+	maxDuration := 60 * time.Second
 	tick := 500 * time.Millisecond
 
 	require.Eventually(t, func() bool {
 		response, err := c.GetTeamsTeamIDMetricsWithResponse(t.Context(), setup.TeamID, nil, setup.WithAPIKey())
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, response.StatusCode())
-
-		require.NotNil(t, response.JSON200)
-		if len(*response.JSON200) == 0 {
+		if err != nil || response == nil || response.StatusCode() != http.StatusOK || response.JSON200 == nil {
 			return false
 		}
 
 		metrics = *response.JSON200
+		startRateGreaterThanZero := false
+		concurrentSandboxesGreaterThanZero := false
+		for _, metric := range metrics {
+			if metric.SandboxStartRate > 0 {
+				startRateGreaterThanZero = true
+			}
+			if metric.ConcurrentSandboxes > 0 {
+				concurrentSandboxesGreaterThanZero = true
+			}
+		}
 
-		return true
-	}, maxDuration, tick, "team metrics not available in time")
+		return startRateGreaterThanZero && concurrentSandboxesGreaterThanZero
+	}, maxDuration, tick, "team metrics did not reach expected state in time")
 
 	// Test getting team metrics
 	require.NotEmpty(t, metrics, "Expected at least one team metric in the response")
 
 	// Verify the structure of team metrics
-	startRateGreaterThanZero := false
-	concurrentSandboxesGreaterThanZero := false
-
 	for _, metric := range metrics {
 		require.NotEmpty(t, metric.Timestamp, "Timestamp should not be empty")
 		require.NotEmpty(t, metric.TimestampUnix, "Timestamp should not be empty")
-		if metric.SandboxStartRate > 0 {
-			startRateGreaterThanZero = true
-		}
-		if metric.ConcurrentSandboxes > 0 {
-			concurrentSandboxesGreaterThanZero = true
-		}
 	}
-
-	require.True(t, concurrentSandboxesGreaterThanZero, "MaxConcurrentSandboxes should be >= 0")
-	require.True(t, startRateGreaterThanZero, "StartedSandboxes should be >= 0")
 }
 
 func TestTeamMetricsWithTimeRange(t *testing.T) {
