@@ -262,30 +262,6 @@ func NewCacheFromMemfdDeduped(
 	return cache, meta, nil
 }
 
-func writeAll(fd int, off int64, buff []byte) error {
-	remaining := len(buff)
-	buffOff := 0
-
-	for remaining > 0 {
-		n, err := unix.Pwrite(fd, buff[buffOff:], off)
-		if errors.Is(err, unix.EINTR) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			return fmt.Errorf("pwrite: EOF with %d bytes remaining", remaining)
-		}
-
-		remaining -= n
-		buffOff += n
-		off += int64(n)
-	}
-
-	return nil
-}
-
 // pwritevAll writes the iovecs at off, handling EINTR and short writes by
 // advancing through the list (slicing the first partially-written entry).
 // IOV_MAX on Linux is 1024, so callers must keep the slice short enough —
