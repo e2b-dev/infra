@@ -31,6 +31,7 @@ struct uffd_remove {
 import "C"
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 	"syscall"
@@ -152,7 +153,7 @@ type Fd uintptr
 // copy requires UFFDIO_COPY_MODE_WP when both MISSING and WP tracking are active.
 func (f Fd) copy(addr, pagesize uintptr, data []byte, mode CULong) error {
 	if len(data) == 0 {
-		return fmt.Errorf("cannot copy from an empty buffer")
+		return errors.New("cannot copy from an empty buffer")
 	}
 
 	// UFFDIO_COPY hides src as an integer, so keep data pinned while the kernel reads it.
