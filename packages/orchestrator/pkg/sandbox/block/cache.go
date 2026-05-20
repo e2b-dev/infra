@@ -260,17 +260,22 @@ func dedupPages(
 
 	pageDirty := roaring.New()
 	pageEmpty := roaring.New()
-	// Per-block iovec buffer, reused across blocks.
-	iovs := make([][]byte, 0, blockSize/header.PageSize)
-	var fileOff, exportedSize int64
-	var compareDur, writeDur time.Duration
+	// Phase 1 accumulates iov headers (no memcpy); phase 2 drains in
+	// IOV_MAX-bounded pwritev batches. Pre-sized worst-case (every dirty
+	// block fully unique) — at HugepageSize blocks that's ~96 MiB of slice
+	// headers per 16 GiB sandbox, irrelevant on this host.
+	// TODO(parallel-walk): split the dirty bitmap across goroutines, run
+	// compare in parallel, merge per-goroutine roaring bitmaps with Or,
+	// drain iovs in offset order. Walk is single-thread today.
+	// TODO(io_uring): replace the synchronous pwritev drain with multiple
+	// in-flight writes (io_uring or N goroutines on the same fd) so we
+	// reach NVMe queue depth instead of being capped by single-thread
+	// syscall throughput.
+	pagesPerBlock := blockSize / header.PageSize
+	iovs := make([][]byte, 0, int64(dirty.GetCardinality())*pagesPerBlock)
+	var exportedSize int64
 
-	// TODO: parallelize the compare phase. Per-block work (Slice + bytes.Equal
-	// + bitmap classify) is independent and pure-CPU once chunker pages are
-	// resident; could split the dirty bitmap into N chunks, run each on a
-	// goroutine, merge per-chunk roaring bitmaps via Or, then drain iovs in
-	// offset order. Walk is currently ~10× faster than the pwritev phase
-	// though, so write throughput is the bottleneck — measure first.
+	compareStart := time.Now()
 	for r := range BitsetRanges(dirty, blockSize) {
 		exportedSize += r.Size
 
@@ -285,11 +290,7 @@ func dedupPages(
 				return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
 			}
 
-			iovs = iovs[:0]
-			blockStartOff := fileOff
-			blockCompareStart := time.Now()
-
-			// Best-effort: skip dedup for blocks whose base isn't
+			// Best-effort: skip compare for blocks whose base isn't
 			// cached locally; write every non-zero page through.
 			if bestEffort {
 				if peeker, ok := base.(CachePeeker); ok && !peeker.IsCached(ctx, absOff, blockSize) {
@@ -303,16 +304,6 @@ func dedupPages(
 						}
 						pageDirty.Add(pageIdx)
 						iovs = append(iovs, srcPage)
-						fileOff += header.PageSize
-					}
-
-					compareDur += time.Since(blockCompareStart)
-					if len(iovs) > 0 {
-						writeStart := time.Now()
-						if err := pwritevAll(int(f.Fd()), blockStartOff, iovs); err != nil {
-							return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
-						}
-						writeDur += time.Since(writeStart)
 					}
 
 					continue
@@ -350,19 +341,22 @@ func dedupPages(
 
 				pageDirty.Add(pageIdx)
 				iovs = append(iovs, srcPage)
-				fileOff += header.PageSize
-			}
-
-			compareDur += time.Since(blockCompareStart)
-			if len(iovs) > 0 {
-				writeStart := time.Now()
-				if err := pwritevAll(int(f.Fd()), blockStartOff, iovs); err != nil {
-					return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
-				}
-				writeDur += time.Since(writeStart)
 			}
 		}
 	}
+	compareDur := time.Since(compareStart)
+
+	writeStart := time.Now()
+	fd := int(f.Fd())
+	err = drainIovs(iovs, func(b []byte) int64 { return int64(len(b)) }, header.PageSize,
+		func(off int64, batch [][]byte, _ int64) error {
+			return pwritevAll(fd, off, batch)
+		})
+	if err != nil {
+		return nil, nil, errors.Join(fmt.Errorf("drain dedup iovs: %w", err), f.Close(), os.Remove(outPath))
+	}
+	writeDur := time.Since(writeStart)
+	fileOff := int64(len(iovs)) * header.PageSize
 
 	if directIO {
 		// Release the unused fallocate tail.
