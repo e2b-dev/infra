@@ -117,17 +117,16 @@ const (
 	faultDiscarded
 )
 
-// NewUserfaultfdFromFd creates a new userfaultfd instance. Page size comes
-// from the FC-registered regions, not the source, so src can expose
-// mixed-granularity mappings (4 KiB dedup pages on 2 MiB template ranges).
+// NewUserfaultfdFromFd creates a new userfaultfd instance. Page size is
+// taken from the FC-registered regions; all regions must agree.
 func NewUserfaultfdFromFd(fd uintptr, src PageReader, m *memory.Mapping, logger logger.Logger) (*Userfaultfd, error) {
-	pageSize := uintptr(header.HugepageSize)
-	if len(m.Regions) > 0 {
-		pageSize = m.Regions[0].PageSize
+	if len(m.Regions) == 0 {
+		return nil, errors.New("memory mapping has no regions")
 	}
-	for _, region := range m.Regions {
-		if region.PageSize != pageSize {
-			return nil, fmt.Errorf("region page size mismatch: %d != %d for region %d", region.PageSize, pageSize, region.BaseHostVirtAddr)
+	pageSize := m.Regions[0].PageSize
+	for _, r := range m.Regions[1:] {
+		if r.PageSize != pageSize {
+			return nil, fmt.Errorf("region page size mismatch: %d != %d for region %d", r.PageSize, pageSize, r.BaseHostVirtAddr)
 		}
 	}
 
