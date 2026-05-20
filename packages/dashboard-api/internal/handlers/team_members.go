@@ -52,8 +52,7 @@ func (s *APIStore) GetTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 	for _, row := range rows {
 		profile, ok := profiles[row.UserID]
 		if !ok || profile.Email == "" {
-			logger.L().Warn(ctx, "skipping team member with missing profile", logger.WithTeamID(authTeamID.String()), logger.WithUserID(row.UserID.String()))
-			continue
+			logger.L().Warn(ctx, "team member has missing profile", logger.WithTeamID(authTeamID.String()), logger.WithUserID(row.UserID.String()))
 		}
 
 		member := api.TeamMember{
