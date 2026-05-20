@@ -35,10 +35,15 @@ func (c *Cleaner) Scanner(ctx context.Context, candidateCh chan<- *Candidate, er
 
 				continue
 
+			case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+				// Shutdown in progress; the outer select will exit on the
+				// next iteration. Don't log it as an error or pollute errCh.
+				return
+
 			default:
 				if !errors.Is(err, ErrNoFiles) {
 					c.Info(ctx, "error during scanning",
-						zap.Int("continousCount", continuousErrors),
+						zap.Int("continuousCount", continuousErrors),
 						zap.Error(err))
 				}
 				continuousErrors++
@@ -214,6 +219,7 @@ submitLoop:
 		select {
 		case <-ctx.Done():
 			err = ctx.Err()
+
 			break submitLoop
 		case c.statRequestCh <- &statReq{df: df, name: name, response: responseCh}:
 			submitted++
