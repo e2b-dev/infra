@@ -301,6 +301,12 @@ func (c *Chunker) Close() error {
 	return c.cache.Close()
 }
 
+// IsCached reports whether [off, off+length) is fully present in the local
+// mmap cache (no remote fetch needed). Used by best-effort dedup.
+func (c *Chunker) IsCached(_ context.Context, off, length int64) bool {
+	return c.cache.isCached(off, length)
+}
+
 func (c *Chunker) FileSize(ctx context.Context) (int64, error) {
 	return c.cache.FileSize(ctx)
 }

@@ -47,6 +47,13 @@ type Device interface {
 	WriteZeroesAt(off, length int64) (int, error)
 }
 
+// CachePeeker reports whether a byte range is already in local cache without
+// triggering a remote fetch. Used by best-effort dedup to skip blocks whose
+// base data would require network I/O.
+type CachePeeker interface {
+	IsCached(ctx context.Context, off, length int64) bool
+}
+
 // DiffSource is what the diff/upload layer reads from. *Cache satisfies it
 // directly; *MemfdCache wraps *Cache, waits for the background copy to complete
 // and then delegates to *Cache.

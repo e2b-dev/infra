@@ -64,7 +64,9 @@ func (p *Process) exportMemoryFromFc(
 
 // ExportMemory writes dirty guest memory to cachePath. If originalMemfile
 // is non-nil the result is deduplicated and DiffMetadata is non-nil;
-// mutually exclusive with bgCopy.
+// mutually exclusive with bgCopy. When dedupBestEffort is true, blocks whose
+// base data isn't already in the chunker's local cache are written through
+// as-is (see block.dedupPages).
 func (p *Process) ExportMemory(
 	ctx context.Context,
 	include *roaring.Bitmap,
@@ -73,10 +75,11 @@ func (p *Process) ExportMemory(
 	memfd *block.Memfd,
 	bgCopy bool,
 	originalMemfile block.ReadonlyDevice,
+	dedupBestEffort bool,
 ) (block.DiffSource, *header.DiffMetadata, error) {
 	if memfd != nil {
 		if originalMemfile != nil {
-			return block.NewCacheFromMemfdDeduped(ctx, originalMemfile, blockSize, cachePath, memfd, include)
+			return block.NewCacheFromMemfdDeduped(ctx, originalMemfile, blockSize, cachePath, memfd, include, dedupBestEffort)
 		}
 		if bgCopy {
 			src, err := block.NewCacheFromMemfdAsync(ctx, blockSize, cachePath, memfd, include)
@@ -96,7 +99,7 @@ func (p *Process) ExportMemory(
 		return cache, nil, nil
 	}
 	// .dedup suffix avoids clobbering the source mmap during truncate.
-	dedupCache, meta, err := cache.Dedup(ctx, originalMemfile, include, blockSize, cachePath+".dedup")
+	dedupCache, meta, err := cache.Dedup(ctx, originalMemfile, include, blockSize, cachePath+".dedup", dedupBestEffort)
 	if err != nil {
 		return nil, nil, fmt.Errorf("dedup memfile diff: %w", errors.Join(err, cache.Close()))
 	}

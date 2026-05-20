@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -126,6 +127,42 @@ func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	}
 
 	return out, nil
+}
+
+// IsCached reports whether [off, off+length) is fully available in the local
+// chunker caches for every underlying build mapping. uuid.Nil segments count
+// as cached (no I/O needed). A mapping whose StorageDiff hasn't been Init'd
+// yet counts as uncached — this method never triggers OpenSeekable or any
+// other remote call. Used by best-effort dedup.
+func (b *File) IsCached(ctx context.Context, off, length int64) bool {
+	h := b.Header()
+	if h == nil {
+		return false
+	}
+
+	var n int64
+	for n < length {
+		m, err := h.GetShiftedMapping(ctx, off+n)
+		if err != nil {
+			return false
+		}
+		segLen := min(int64(m.Length), length-n)
+		if segLen <= 0 {
+			return false
+		}
+
+		if m.BuildId != uuid.Nil {
+			diff := b.store.Peek(GetDiffStoreKey(m.BuildId.String(), b.fileType))
+			peeker, ok := diff.(block.CachePeeker)
+			if !ok || !peeker.IsCached(ctx, int64(m.Offset), segLen) {
+				return false
+			}
+		}
+
+		n += segLen
+	}
+
+	return true
 }
 
 // retryOnTransition catches a PeerTransitionedError and swaps the header from

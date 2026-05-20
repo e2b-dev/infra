@@ -156,6 +156,18 @@ func (s *DiffStore) Add(d Diff) {
 	s.insertionTimes.LoadOrStore(d.CacheKey(), time.Now())
 }
 
+// Peek returns the already-initialized Diff for key, or nil if it hasn't been
+// Get'ed yet. Unlike Get, never calls diff.Init — safe for best-effort code
+// paths that must avoid triggering remote I/O.
+func (s *DiffStore) Peek(key DiffStoreKey) Diff {
+	item := s.cache.Get(key)
+	if item == nil {
+		return nil
+	}
+
+	return item.Value()
+}
+
 func (s *DiffStore) Has(d Diff) bool {
 	return s.cache.Has(d.CacheKey())
 }

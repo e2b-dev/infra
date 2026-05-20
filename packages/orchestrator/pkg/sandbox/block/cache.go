@@ -224,7 +224,10 @@ func baseIsZeroBlock(ctx context.Context, base ReadonlyDevice, absOff, blockSize
 }
 
 // dedupPages writes pages from src that differ from base, packed at
-// PageSize granularity, to outPath.
+// PageSize granularity, to outPath. When bestEffort is true, blocks whose
+// base data isn't already in the local chunker cache are written through
+// as-is (every non-zero page goes into pageDirty; zero pages still routed
+// to pageEmpty) — trades dedup ratio for avoided remote fetches.
 func dedupPages(
 	ctx context.Context,
 	src func(absOff int64) ([]byte, error),
@@ -232,6 +235,7 @@ func dedupPages(
 	dirty *roaring.Bitmap,
 	blockSize int64,
 	outPath string,
+	bestEffort bool,
 ) (*Cache, *header.DiffMetadata, error) {
 	ctx, span := tracer.Start(ctx, "dedup-pages")
 	defer span.End()
@@ -262,6 +266,32 @@ func dedupPages(
 			if err != nil {
 				return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
 			}
+
+			// Best-effort: if base data isn't in the local chunker cache,
+			// skip the compare entirely and write every page through as-is
+			// (still routing zero pages to Empty). Avoids triggering a
+			// remote fetch on the pause hot path.
+			if bestEffort {
+				if peeker, ok := base.(CachePeeker); ok && !peeker.IsCached(ctx, absOff, blockSize) {
+					for i := int64(0); i < blockSize; i += header.PageSize {
+						srcPage := srcBuf[i : i+header.PageSize]
+						pageIdx := uint32((absOff + i) / header.PageSize)
+						if header.IsZero(srcPage) {
+							pageEmpty.Add(pageIdx)
+
+							continue
+						}
+						pageDirty.Add(pageIdx)
+						if err := writeAll(int(f.Fd()), fileOff, srcPage); err != nil {
+							return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
+						}
+						fileOff += header.PageSize
+					}
+
+					continue
+				}
+			}
+
 			// Fast path: when the parent maps this block to uuid.Nil (Empty),
 			// base.ReadAt would just zero baseBuf via clear() — skip the call
 			// chain and the chunker hop entirely.
@@ -341,6 +371,7 @@ func (c *Cache) Dedup(
 	dirty *roaring.Bitmap,
 	blockSize int64,
 	outPath string,
+	bestEffort bool,
 ) (*Cache, *header.DiffMetadata, error) {
 	var cacheOff int64
 	src := func(int64) ([]byte, error) {
@@ -353,7 +384,7 @@ func (c *Cache) Dedup(
 		return s, nil
 	}
 
-	return dedupPages(ctx, src, base, dirty, blockSize, outPath)
+	return dedupPages(ctx, src, base, dirty, blockSize, outPath, bestEffort)
 }
 
 func (c *Cache) ReadAt(b []byte, off int64) (int, error) {

@@ -787,7 +787,7 @@ func runDedup(t *testing.T, srcMem, baseMem []byte, dirty *roaring.Bitmap, block
 	t.Helper()
 
 	src := buildPackedSrcCache(t, srcMem, dirty, blockSize)
-	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseMem}, dirty, blockSize, t.TempDir()+"/dedup")
+	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseMem}, dirty, blockSize, t.TempDir()+"/dedup", false)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -909,7 +909,7 @@ func TestCacheDedup_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, _, err = src.Dedup(ctx, &fakeOriginalDevice{data: data}, dirty, blockSize, t.TempDir()+"/dedup")
+	_, _, err = src.Dedup(ctx, &fakeOriginalDevice{data: data}, dirty, blockSize, t.TempDir()+"/dedup", false)
 	require.ErrorIs(t, err, context.Canceled)
 }
 
@@ -931,6 +931,7 @@ func TestCacheDedup_OriginalMemfileReadError(t *testing.T) {
 		dirty,
 		blockSize,
 		t.TempDir()+"/dedup",
+		false,
 	)
 	require.ErrorIs(t, err, sentinel)
 }
@@ -973,7 +974,7 @@ func TestCacheDedup_EmptyParentMappingSkipsBaseReadAt(t *testing.T) {
 	junk := bytes.Repeat([]byte{0xFF}, int(size))
 	base := &fakeOriginalDevice{data: junk, hdr: hdr}
 
-	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup")
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", false)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -1025,4 +1026,70 @@ func TestCacheDedup_ZeroMatchingPagesGoIntoEmpty(t *testing.T) {
 	for i := uint32(4); i < 8; i++ {
 		require.False(t, meta.Empty.Contains(i))
 	}
+}
+
+// Best-effort: when base reports as uncached, dedup skips base.ReadAt and
+// writes every non-zero page through as Dirty; zero pages still routed to
+// Empty. The fake records ReadAt calls — we assert it's never called.
+func TestCacheDedup_BestEffortUncachedSkipsBaseReadAt(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	blockSize := 4 * pageSize
+	size := blockSize * 2
+
+	srcData := make([]byte, size)
+	_, err := rand.Read(srcData)
+	require.NoError(t, err)
+	// Zero the last page so we exercise the empty routing.
+	clear(srcData[size-pageSize : size])
+
+	// Identical base — if best-effort accidentally fell through to the
+	// compare path, every page would be classified as a match.
+	baseData := make([]byte, size)
+	copy(baseData, srcData)
+
+	dirty := fullDirty(size, blockSize)
+	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
+	base := &peekingOriginalDevice{fakeOriginalDevice: fakeOriginalDevice{data: baseData}, cached: false}
+
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	require.Zero(t, base.reads, "best-effort uncached path must not call base.ReadAt")
+
+	totalPages := uint64(size / pageSize)
+	require.EqualValues(t, totalPages-1, meta.Dirty.GetCardinality(), "non-zero pages written as dirty")
+	require.EqualValues(t, 1, meta.Empty.GetCardinality(), "zero page still routed to Empty")
+	require.True(t, meta.Empty.Contains(uint32(totalPages-1)))
+}
+
+// Best-effort with peeker reporting cached should behave identically to a
+// non-best-effort run.
+func TestCacheDedup_BestEffortCachedMatchesNormalPath(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	blockSize := 4 * pageSize
+	size := blockSize * 2
+
+	srcData := make([]byte, size)
+	_, err := rand.Read(srcData)
+	require.NoError(t, err)
+	baseData := make([]byte, size)
+	copy(baseData, srcData)
+	// Force one differing page in block 0.
+	srcData[pageSize] ^= 0xFF
+
+	dirty := fullDirty(size, blockSize)
+	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
+	base := &peekingOriginalDevice{fakeOriginalDevice: fakeOriginalDevice{data: baseData}, cached: true}
+
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	require.EqualValues(t, 1, meta.Dirty.GetCardinality(), "only the genuinely differing page is dirty")
+	require.EqualValues(t, 0, meta.Empty.GetCardinality())
 }

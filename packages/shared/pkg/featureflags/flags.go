@@ -136,6 +136,12 @@ var (
 	// byte-for-byte at 4 KiB granularity during snapshot post-processing.
 	MemfileDiffDedupFlag = NewBoolFlag("memfile-diff-dedup", false)
 
+	// MemfileDiffDedupBestEffortFlag, when on alongside MemfileDiffDedupFlag,
+	// skips dedup for any block whose base data isn't already in the chunker's
+	// local cache. Those blocks' pages are written through as-is (zero pages
+	// still routed to Empty). Trades dedup ratio for avoided remote fetches.
+	MemfileDiffDedupBestEffortFlag = NewBoolFlag("memfile-diff-dedup-best-effort", false)
+
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.
 	PeerToPeerChunkTransferFlag = NewBoolFlag("peer-to-peer-chunk-transfer", false)
 	// PeerToPeerAsyncCheckpointFlag makes Checkpoint upload fire-and-forget instead

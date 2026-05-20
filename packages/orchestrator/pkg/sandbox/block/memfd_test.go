@@ -83,6 +83,17 @@ func (e *erroringOriginalDevice) ReadAt(context.Context, []byte, int64) (int, er
 	return 0, e.err
 }
 
+// peekingOriginalDevice wraps fakeOriginalDevice with a programmable
+// CachePeeker implementation, so dedup best-effort tests can force a
+// "uncached" answer without touching real chunkers.
+type peekingOriginalDevice struct {
+	fakeOriginalDevice
+
+	cached bool
+}
+
+func (p *peekingOriginalDevice) IsCached(context.Context, int64, int64) bool { return p.cached }
+
 func TestNewCacheFromMemfd_NonAdjacentBlocks(t *testing.T) {
 	t.Parallel()
 

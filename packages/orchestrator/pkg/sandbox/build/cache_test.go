@@ -20,13 +20,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
+	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 const (
@@ -517,4 +521,69 @@ func flagsWithMaxBuildCachePercentage(tb testing.TB, maxBuildCachePercentage int
 	})
 
 	return flags
+}
+
+// File.IsCached must return true for a uuid.Nil-mapped range without touching
+// the diff store (no Init, no remote calls).
+func TestFileIsCached_UUIDNilMappingReportsCached(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewDiffStore(
+		mustParseCfg(t),
+		flagsWithMaxBuildCachePercentage(t, 90),
+		t.TempDir(),
+		time.Hour,
+		time.Minute,
+	)
+	require.NoError(t, err)
+
+	const size = 4096
+	hdr, err := header.NewHeader(
+		header.NewTemplateMetadata(uuid.Nil, size, size),
+		[]header.BuildMap{{Offset: 0, Length: size, BuildId: uuid.Nil}},
+	)
+	require.NoError(t, err)
+
+	m, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
+	require.NoError(t, err)
+	f := NewFile(hdr, store, Memfile, nil, m)
+
+	require.True(t, f.IsCached(t.Context(), 0, size))
+}
+
+// File.IsCached must return false (not panic, not Init) when the underlying
+// StorageDiff hasn't been Get'ed yet.
+func TestFileIsCached_UninitializedChunkerReportsUncached(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewDiffStore(
+		mustParseCfg(t),
+		flagsWithMaxBuildCachePercentage(t, 90),
+		t.TempDir(),
+		time.Hour,
+		time.Minute,
+	)
+	require.NoError(t, err)
+
+	parentBuildID := uuid.New()
+	const size = 4096
+	hdr, err := header.NewHeader(
+		header.NewTemplateMetadata(parentBuildID, size, size),
+		[]header.BuildMap{{Offset: 0, Length: size, BuildId: parentBuildID}},
+	)
+	require.NoError(t, err)
+
+	m, err := blockmetrics.NewMetrics(noop.NewMeterProvider())
+	require.NoError(t, err)
+	f := NewFile(hdr, store, Memfile, nil, m)
+
+	require.False(t, f.IsCached(t.Context(), 0, size))
+}
+
+func mustParseCfg(t *testing.T) cfg.Config {
+	t.Helper()
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+
+	return c
 }
