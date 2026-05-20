@@ -236,6 +236,9 @@ func dedupPages(
 	ctx, span := tracer.Start(ctx, "dedup-pages")
 	defer span.End()
 
+	stats := &CacheStats{}
+	ctx = WithCacheStats(ctx, stats)
+
 	f, err := os.OpenFile(outPath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open dedup cache: %w", err)
@@ -306,11 +309,22 @@ func dedupPages(
 	if totalPages > 0 {
 		ratio = float64(dedupedPages) / float64(totalPages)
 	}
+	hits := stats.Hits.Load()
+	misses := stats.Misses.Load()
+	// Default 1.0 when no chunker reads happened (e.g. uuid.Nil fast path or
+	// test fakes); avoids dividing by zero and reads as "no remote I/O".
+	hitRatio := 1.0
+	if total := hits + misses; total > 0 {
+		hitRatio = float64(hits) / float64(total)
+	}
 	telemetry.SetAttributes(ctx,
 		attribute.Int64("dedup.total_pages", totalPages),
 		attribute.Int64("dedup.deduped_pages", dedupedPages),
 		attribute.Int64("dedup.unique_pages", uniquePages),
 		attribute.Float64("dedup.ratio", ratio),
+		attribute.Int64("dedup.base_cache_hits", hits),
+		attribute.Int64("dedup.base_cache_misses", misses),
+		attribute.Float64("dedup.base_cache_hit_ratio", hitRatio),
 	)
 
 	return cache, &header.DiffMetadata{
