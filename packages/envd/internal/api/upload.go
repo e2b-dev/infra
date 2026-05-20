@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -138,11 +137,10 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, met
 			switch {
 			case errors.Is(err, syscall.ENOTSUP) || errors.Is(err, syscall.EOPNOTSUPP):
 				// Filesystem doesn't support xattrs (e.g. /sys, /proc).
-				// The file body was already written successfully — drop
-				// the metadata silently so the response EntryInfo doesn't
-				// claim it was persisted, and log for diagnostics.
+				// The file body was already written successfully — log and
+				// continue; the response EntryInfo reads xattrs back from
+				// disk so it won't falsely claim metadata was persisted.
 				logger.Warn().Str("path", path).Err(err).Msg("filesystem does not support xattrs; metadata not persisted")
-				clear(metadata)
 			case errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT):
 				return http.StatusInsufficientStorage, fmt.Errorf("not enough space for file metadata: %w", err)
 			default:
@@ -223,10 +221,8 @@ func (a *API) handlePart(r *http.Request, part *multipart.Part, paths UploadSucc
 		Name: filepath.Base(filePath),
 		Type: File,
 	}
-	if len(metadata) > 0 {
-		m := make(map[string]string, len(metadata))
-		maps.Copy(m, metadata)
-		entry.Metadata = &m
+	if persisted, _ := filesystem.ReadMetadata(filePath); len(persisted) > 0 {
+		entry.Metadata = &persisted
 	}
 
 	return entry, http.StatusOK, nil
@@ -410,10 +406,8 @@ func (a *API) handleRawUpload(r *http.Request, u *user.User, uid, gid int, metad
 		Name: filepath.Base(filePath),
 		Type: File,
 	}
-	if len(metadata) > 0 {
-		m := make(map[string]string, len(metadata))
-		maps.Copy(m, metadata)
-		entry.Metadata = &m
+	if persisted, _ := filesystem.ReadMetadata(filePath); len(persisted) > 0 {
+		entry.Metadata = &persisted
 	}
 
 	return UploadSuccess{entry}, http.StatusOK, nil
