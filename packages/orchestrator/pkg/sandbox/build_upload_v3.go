@@ -32,7 +32,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		return storeHeaderWithMetrics(egCtx, u.store, u.paths.MemfileHeader(), string(build.Memfile), u.useCase, finalizeV3(u.snap.MemfileDiffHeader))
+		return storeHeaderWithMetrics(egCtx, u.store, u.paths.MemfileHeader(), string(build.Memfile), finalizeV3(u.snap.MemfileDiffHeader))
 	})
 
 	eg.Go(func() error {
@@ -40,7 +40,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		return storeHeaderWithMetrics(egCtx, u.store, u.paths.RootfsHeader(), string(build.Rootfs), u.useCase, finalizeV3(u.snap.RootfsDiffHeader))
+		return storeHeaderWithMetrics(egCtx, u.store, u.paths.RootfsHeader(), string(build.Rootfs), finalizeV3(u.snap.RootfsDiffHeader))
 	})
 
 	meta := storage.WithMetadata(u.objectMetadata)
@@ -58,7 +58,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		recordUploadCompression(egCtx, uploadArtifactData, string(build.Memfile), u.useCase, storage.CompressConfig{}, info.Size(), info.Size())
+		recordUploadCompression(egCtx, uploadArtifactData, string(build.Memfile), storage.CompressConfig{}, info.Size(), info.Size())
 
 		return nil
 	})
@@ -76,7 +76,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		recordUploadCompression(egCtx, uploadArtifactData, string(build.Rootfs), u.useCase, storage.CompressConfig{}, info.Size(), info.Size())
+		recordUploadCompression(egCtx, uploadArtifactData, string(build.Rootfs), storage.CompressConfig{}, info.Size(), info.Size())
 
 		return nil
 	})

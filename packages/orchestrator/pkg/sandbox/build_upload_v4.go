@@ -81,7 +81,7 @@ func (u *Upload) uploadFramed(
 			compressedSize = size
 		}
 
-		recordUploadCompression(ctx, uploadArtifactData, string(fileType), u.useCase, cfg, size, compressedSize)
+		recordUploadCompression(ctx, uploadArtifactData, string(fileType), cfg, size, compressedSize)
 		selfBuild = headers.BuildData{Size: size, Checksum: checksum, FrameData: ft}
 	}
 
@@ -96,7 +96,7 @@ func (u *Upload) uploadFramed(
 	}
 	h.Builds[u.buildID] = selfBuild
 
-	if err := storeHeaderWithMetrics(ctx, u.store, u.paths.HeaderFile(string(fileType)), string(fileType), u.useCase, h); err != nil {
+	if err := storeHeaderWithMetrics(ctx, u.store, u.paths.HeaderFile(string(fileType)), string(fileType), h); err != nil {
 		return fmt.Errorf("store %s header: %w", fileType, err)
 	}
 
