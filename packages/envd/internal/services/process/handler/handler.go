@@ -241,8 +241,6 @@ func New(
 		}
 
 		outWg.Go(func() {
-			// Reusable read buffer to avoid allocation per Read cycle when no
-			// subscribers are connected.
 			readBuf := make([]byte, stdChunkSize)
 
 			for {
