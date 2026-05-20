@@ -1136,7 +1136,7 @@ func (s *Sandbox) Pause(
 
 	// Start POSTPROCESSING
 	var dedupBase block.ReadonlyDevice
-	if s.featureFlags.BoolFlag(ctx, featureflags.MemfileDiffDedupFlag) {
+	if s.featureFlags.BoolFlag(ctx, featureflags.MemfileDiffDedupFlag, sandboxLDContext(s.Runtime, s.Config)) {
 		dedupBase = originalMemfile
 	}
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
