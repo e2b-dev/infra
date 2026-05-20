@@ -13,6 +13,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+const maxAdminProfileResolveUserIDs = 100
+
 func (s *APIStore) PostAdminAuthProviderProfilesResolve(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -21,6 +23,22 @@ func (s *APIStore) PostAdminAuthProviderProfilesResolve(c *gin.Context) {
 		s.sendAPIStoreError(c, http.StatusBadRequest, "Invalid request body")
 
 		return
+	}
+
+	if len(body.UserIds) == 0 || len(body.UserIds) > maxAdminProfileResolveUserIDs {
+		s.sendAPIStoreError(c, http.StatusBadRequest, "userIds must contain between 1 and 100 items")
+
+		return
+	}
+
+	seen := make(map[uuid.UUID]struct{}, len(body.UserIds))
+	for _, userID := range body.UserIds {
+		if _, ok := seen[userID]; ok {
+			s.sendAPIStoreError(c, http.StatusBadRequest, "userIds must be unique")
+
+			return
+		}
+		seen[userID] = struct{}{}
 	}
 
 	profiles, err := s.userProfiles.GetProfilesByUserID(ctx, body.UserIds)
