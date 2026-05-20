@@ -263,7 +263,14 @@ func dedupPages(
 	// Per-block iovec buffer, reused across blocks.
 	iovs := make([][]byte, 0, blockSize/header.PageSize)
 	var fileOff, exportedSize int64
+	var compareDur, writeDur time.Duration
 
+	// TODO: parallelize the compare phase. Per-block work (Slice + bytes.Equal
+	// + bitmap classify) is independent and pure-CPU once chunker pages are
+	// resident; could split the dirty bitmap into N chunks, run each on a
+	// goroutine, merge per-chunk roaring bitmaps via Or, then drain iovs in
+	// offset order. Walk is currently ~10× faster than the pwritev phase
+	// though, so write throughput is the bottleneck — measure first.
 	for r := range BitsetRanges(dirty, blockSize) {
 		exportedSize += r.Size
 
@@ -280,6 +287,7 @@ func dedupPages(
 
 			iovs = iovs[:0]
 			blockStartOff := fileOff
+			blockCompareStart := time.Now()
 
 			// Best-effort: skip dedup for blocks whose base isn't
 			// cached locally; write every non-zero page through.
@@ -298,10 +306,13 @@ func dedupPages(
 						fileOff += header.PageSize
 					}
 
+					compareDur += time.Since(blockCompareStart)
 					if len(iovs) > 0 {
+						writeStart := time.Now()
 						if err := pwritevAll(int(f.Fd()), blockStartOff, iovs); err != nil {
 							return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
 						}
+						writeDur += time.Since(writeStart)
 					}
 
 					continue
@@ -342,10 +353,13 @@ func dedupPages(
 				fileOff += header.PageSize
 			}
 
+			compareDur += time.Since(blockCompareStart)
 			if len(iovs) > 0 {
+				writeStart := time.Now()
 				if err := pwritevAll(int(f.Fd()), blockStartOff, iovs); err != nil {
 					return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
 				}
+				writeDur += time.Since(writeStart)
 			}
 		}
 	}
@@ -378,6 +392,8 @@ func dedupPages(
 		attribute.Int64("dedup.deduped_pages", dedupedPages),
 		attribute.Int64("dedup.unique_pages", uniquePages),
 		attribute.Float64("dedup.ratio", ratio),
+		attribute.Int64("dedup.compare_ms", compareDur.Milliseconds()),
+		attribute.Int64("dedup.write_ms", writeDur.Milliseconds()),
 	)
 
 	return cache, &header.DiffMetadata{
