@@ -32,7 +32,7 @@ func (q *Queries) GetAuthUserByID(ctx context.Context, dollar_1 uuid.UUID) (Auth
 const getAuthUsersByEmail = `-- name: GetAuthUsersByEmail :many
 SELECT id, COALESCE(email, '') AS email, created_at, COALESCE(raw_app_meta_data, '{}'::jsonb) AS raw_app_meta_data
 FROM auth.users
-WHERE lower(email) = lower($1::text)
+WHERE email = $1::text
 `
 
 func (q *Queries) GetAuthUsersByEmail(ctx context.Context, email string) ([]AuthUser, error) {

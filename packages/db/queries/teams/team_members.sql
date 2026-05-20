@@ -18,6 +18,10 @@ SELECT user_id FROM public.users_teams
 WHERE team_id = sqlc.arg(team_id)::uuid
 FOR UPDATE;
 
+-- name: GetPublicUserID :one
+SELECT id FROM public.users
+WHERE id = sqlc.arg(id)::uuid;
+
 -- name: AddTeamMember :exec
 INSERT INTO public.users_teams (user_id, team_id, is_default, added_by)
 VALUES (

@@ -52,10 +52,8 @@ func (s *APIStore) GetTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 	for _, row := range rows {
 		profile, ok := profiles[row.UserID]
 		if !ok || profile.Email == "" {
-			logger.L().Error(ctx, "missing team member profile", logger.WithTeamID(teamInfo.Team.ID.String()), logger.WithUserID(row.UserID.String()))
-			s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get team member profile")
-
-			return
+			logger.L().Warn(ctx, "skipping team member with missing profile", logger.WithTeamID(teamInfo.Team.ID.String()), logger.WithUserID(row.UserID.String()))
+			continue
 		}
 
 		member := api.TeamMember{
@@ -119,6 +117,20 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 	}
 
 	user := profiles[0]
+	_, err = s.db.GetPublicUserID(ctx, user.UserID)
+	if err != nil {
+		if dberrors.IsNotFoundError(err) {
+			s.sendAPIStoreError(c, http.StatusNotFound, "User with this email does not exist. Please ask them to sign up first.")
+
+			return
+		}
+
+		logger.L().Error(ctx, "failed to look up public user", zap.Error(err), logger.WithUserID(user.UserID.String()))
+		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to look up user")
+
+		return
+	}
+
 	err = s.db.AddTeamMember(ctx, queries.AddTeamMemberParams{
 		UserID:  user.UserID,
 		TeamID:  teamInfo.Team.ID,

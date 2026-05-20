@@ -33,6 +33,17 @@ func (q *Queries) AddTeamMember(ctx context.Context, arg AddTeamMemberParams) er
 	return err
 }
 
+const getPublicUserID = `-- name: GetPublicUserID :one
+SELECT id FROM public.users
+WHERE id = $1::uuid
+`
+
+func (q *Queries) GetPublicUserID(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getPublicUserID, id)
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getTeamMemberRelation = `-- name: GetTeamMemberRelation :one
 SELECT id, user_id, team_id, is_default, added_by, created_at, uuid_id FROM public.users_teams
 WHERE team_id = $1::uuid
