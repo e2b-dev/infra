@@ -57,7 +57,7 @@ snapshot as (
     ON CONFLICT (sandbox_id) DO UPDATE SET
         metadata = excluded.metadata,
         sandbox_started_at = excluded.sandbox_started_at,
-        allow_internet_access = excluded.allow_internet_access,
+        allow_internet_access = COALESCE(excluded.allow_internet_access, snapshots.allow_internet_access),
         origin_node_id = excluded.origin_node_id,
         auto_pause = excluded.auto_pause,
         config = excluded.config
