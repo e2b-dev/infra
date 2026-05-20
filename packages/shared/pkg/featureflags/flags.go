@@ -18,7 +18,8 @@ const (
 	SandboxTemplateAttribute           string         = "template-id"
 	SandboxKernelVersionAttribute      string         = "kernel-version"
 	SandboxFirecrackerVersionAttribute string         = "firecracker-version"
-	SandboxTypeAttribute               string         = "sandbox-type"
+	// SandboxTypeAttribute distinguishes "sandbox" from "build" runs.
+	SandboxTypeAttribute string = "sandbox-type"
 
 	TeamKind             ldcontext.Kind = "team"
 	UserKind             ldcontext.Kind = "user"
@@ -100,7 +101,8 @@ func NewBoolFlag(name string, fallback bool) BoolFlag {
 	return flag
 }
 
-// OverrideBoolFlag forces a flag value in the offline store (dev/CLI only).
+// OverrideBoolFlag forces a bool flag to a specific value in the offline store.
+// Only takes effect when LAUNCH_DARKLY_API_KEY is not set (i.e. dev/CLI tools).
 func OverrideBoolFlag(flag BoolFlag, value bool) {
 	builder := launchDarklyOfflineStore.Flag(flag.name).VariationForAll(value)
 	launchDarklyOfflineStore.Update(builder)
@@ -120,7 +122,9 @@ var (
 	SandboxAutoResumeFlag               = NewBoolFlag("sandbox-auto-resume", env.IsDevelopment())
 	OrchAcceptsCombinedHostFlag         = NewBoolFlag("orch-accepts-combined-host", false)
 
-	// UseMemFdFlag asks FC to back guest memory with a memfd passed over UFFD.
+	// UseMemFdFlag asks Firecracker to back guest memory with a memfd and
+	// pass the fd over the UFFD socket; the orchestrator then mmaps it
+	// directly instead of using process_vm_readv on pause.
 	UseMemFdFlag = NewBoolFlag("use-memfd", false)
 
 	// MemfdBackgroundCopyFlag streams the memfd into the snapshot cache on
