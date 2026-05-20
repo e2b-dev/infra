@@ -132,7 +132,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 	unixConn := conn.(*net.UnixConn)
 
 	regionMappingsBuf := make([]byte, regionMappingsSize)
-	// FC sends 1 fd (UFFD) or 2 (UFFD + memfd).
+	// Firecracker may send 1 fd (UFFD) or 2 (UFFD + memfd, on newer versions).
 	fdBuf := make([]byte, syscall.CmsgSpace(2*fdSize))
 
 	numBytesMappings, numBytesFd, _, _, err := unixConn.ReadMsgUnix(regionMappingsBuf, fdBuf)
@@ -276,7 +276,8 @@ func (u *Uffd) PrefetchData(ctx context.Context) (block.PrefetchData, error) {
 	return uffd.PrefetchData(), nil
 }
 
-// Memfd transfers ownership of the FC-supplied memfd to the caller.
+// Memfd returns the memfd received from Firecracker and transfers ownership to
+// the caller. The uffd teardown defer will no longer close it.
 func (u *Uffd) Memfd(_ context.Context) *block.Memfd {
 	return u.memfd.Swap(nil)
 }
