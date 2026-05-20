@@ -256,11 +256,9 @@ func dedupPages(
 	pageEmpty := roaring.New()
 	var exportedSize int64
 
-	// Phase 1 classifies pages into pageDirty/pageEmpty. Phase 2
-	// reconstructs zero-copy iov headers from pageDirty + src and drains
-	// them via IOV_MAX-bounded pwritev.
-	// TODO: parallelize phase 1 (per-block work is independent) and use
-	// io_uring or N-goroutine pwritev in phase 2 for NVMe queue depth.
+	// Phase 1 classifies pages into pageDirty/pageEmpty; phase 2 drains
+	// zero-copy iovs from src into pwritev batches.
+	// TODO: parallel walk + io_uring drain for NVMe queue depth.
 	compareStart := time.Now()
 	for r := range BitsetRanges(dirty, blockSize) {
 		exportedSize += r.Size
@@ -276,9 +274,7 @@ func dedupPages(
 				return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
 			}
 
-			// Skip per-page compare when base would read as zero or, in
-			// best-effort mode, when base isn't cached locally; classify
-			// by IsZero(srcPage) alone.
+			// Empty parent or best-effort cache miss: classify by IsZero alone.
 			skipBase := baseIsZeroBlock(ctx, base, absOff, blockSize)
 			if !skipBase && bestEffort {
 				if peeker, ok := base.(CachePeeker); ok && !peeker.IsCached(ctx, absOff, blockSize) {
@@ -363,9 +359,7 @@ func dedupPages(
 	}, nil
 }
 
-// drainDirtyPages reconstructs iov headers from the pageDirty bitmap
-// (slicing zero-copy into src) and drains them via drainIovs. Returns the
-// total bytes written.
+// drainDirtyPages reconstructs iovs from the bitmap and drains them.
 func drainDirtyPages(ctx context.Context, fd int, src func(absOff int64) ([]byte, error), pageDirty *roaring.Bitmap, blockSize int64) (int64, error) {
 	iovs := make([][]byte, 0, pageDirty.GetCardinality())
 	var curBlockOff int64 = -1
@@ -410,8 +404,7 @@ func (c *Cache) Dedup(
 	bestEffort bool,
 	directIO bool,
 ) (*Cache, *header.DiffMetadata, error) {
-	// c is packed in BitsetRanges order; map each abs block offset to its
-	// position in the packed cache so dedupPages can do random-access src.
+	// c is packed in BitsetRanges order; map abs offset → packed offset.
 	packed := make(map[int64]int64, dirty.GetCardinality())
 	var cum int64
 	for r := range BitsetRanges(dirty, blockSize) {

@@ -119,9 +119,8 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 	return n, nil
 }
 
-// Slice returns [off, off+length). Zero-copy when length fits in a single
-// mapping (delegates to chunker.Slice on the chunker's mmap, or returns a
-// shared zero slice for uuid.Nil); otherwise composes via ReadAt.
+// Slice returns [off, off+length). Zero-copy when the range fits in a
+// single mapping; otherwise composes via ReadAt.
 func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	if length > 0 {
 		h := b.Header()
@@ -151,9 +150,8 @@ func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	return out, nil
 }
 
-// IsCached reports whether [off, off+length) is fully cached locally for
-// every underlying build mapping. uuid.Nil segments count as cached;
-// uninitialized StorageDiffs count as uncached. Never triggers I/O.
+// IsCached reports whether the range is fully resident locally; uuid.Nil
+// counts as cached, uninitialized StorageDiffs as uncached. No I/O.
 func (b *File) IsCached(ctx context.Context, off, length int64) bool {
 	h := b.Header()
 	if h == nil {

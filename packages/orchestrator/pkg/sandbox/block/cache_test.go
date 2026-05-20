@@ -761,8 +761,7 @@ func BenchmarkCopyFromHugepagesFile(b *testing.B) {
 	}
 }
 
-// buildPackedSrcCache returns a Cache holding mem's dirty ranges concatenated
-// in BitsetRanges order — the layout Cache.Dedup expects from a packed export.
+// buildPackedSrcCache packs mem's dirty ranges in BitsetRanges order.
 func buildPackedSrcCache(t *testing.T, mem []byte, dirty *roaring.Bitmap, blockSize int64) *Cache {
 	t.Helper()
 
@@ -937,10 +936,7 @@ func TestCacheDedup_OriginalMemfileReadError(t *testing.T) {
 	require.ErrorIs(t, err, sentinel)
 }
 
-// When the parent maps the block to uuid.Nil, dedup must skip base.ReadAt
-// and treat baseBuf as zero. This regression test pins the fast path: the
-// fake records ReadAt calls, and we assert the count is zero for the dirty
-// block whose parent mapping is Empty.
+// Empty parent mapping: dedup must skip base.ReadAt entirely.
 func TestCacheDedup_EmptyParentMappingSkipsBaseReadAt(t *testing.T) {
 	t.Parallel()
 
@@ -948,18 +944,15 @@ func TestCacheDedup_EmptyParentMappingSkipsBaseReadAt(t *testing.T) {
 	blockSize := 4 * pageSize
 	size := blockSize * 2
 
-	// Source: random data. Base byte buffer doesn't matter because the
-	// header reports the block as Empty, so dedup must treat base as zero.
+	// Header reports Empty, so base bytes don't matter.
 	srcData := make([]byte, size)
 	_, err := rand.Read(srcData)
 	require.NoError(t, err)
 
-	// Set the second block to all-zero in the source so we exercise both
-	// pageDirty (non-zero pages in block 0) and pageEmpty (zero pages in
-	// block 1).
+	// Block 1 is zero source → exercises pageDirty + pageEmpty in one run.
 	clear(srcData[blockSize : blockSize*2])
 
-	// Header maps the entire range to uuid.Nil (Empty).
+
 	hdr, err := header.NewHeader(
 		header.NewTemplateMetadata(uuid.Nil, uint64(blockSize), uint64(size)),
 		[]header.BuildMap{{Offset: 0, Length: uint64(size), BuildId: uuid.Nil}},
@@ -969,9 +962,7 @@ func TestCacheDedup_EmptyParentMappingSkipsBaseReadAt(t *testing.T) {
 	dirty := fullDirty(size, blockSize)
 	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
 
-	// Fill baseData with non-zero junk to prove the fast path doesn't read
-	// it: if dedup accidentally calls base.ReadAt, the junk would diff
-	// against src and we'd see wrong page classifications.
+	// Non-zero base junk: a regression that read base would misclassify pages.
 	junk := bytes.Repeat([]byte{0xFF}, int(size))
 	base := &fakeOriginalDevice{data: junk, hdr: hdr}
 
@@ -981,12 +972,11 @@ func TestCacheDedup_EmptyParentMappingSkipsBaseReadAt(t *testing.T) {
 
 	require.Zero(t, base.reads, "uuid.Nil parent fast path must not call base.ReadAt")
 
-	// Block 0 (non-zero source): every page differs from zero base → all dirty.
-	// Block 1 (zero source): every page matches zero base → all empty.
+
 	require.EqualValues(t, blockSize/pageSize, meta.Dirty.GetCardinality())
 	require.EqualValues(t, blockSize/pageSize, meta.Empty.GetCardinality())
 
-	// Sanity: dirty pages have the original src bytes.
+
 	for i := range blockSize / pageSize {
 		got := make([]byte, pageSize)
 		_, err := cache.ReadAt(got, i*pageSize)
@@ -995,9 +985,7 @@ func TestCacheDedup_EmptyParentMappingSkipsBaseReadAt(t *testing.T) {
 	}
 }
 
-// Zero-matching pages must go into Empty so the merged header maps them to
-// uuid.Nil; non-zero matches must stay unmapped so they fall through to the
-// parent.
+// Zero matches → pageEmpty (uuid.Nil); non-zero matches → drop to parent.
 func TestCacheDedup_ZeroMatchingPagesGoIntoEmpty(t *testing.T) {
 	t.Parallel()
 
@@ -1029,9 +1017,8 @@ func TestCacheDedup_ZeroMatchingPagesGoIntoEmpty(t *testing.T) {
 	}
 }
 
-// Best-effort: when base reports as uncached, dedup skips base.ReadAt and
-// writes every non-zero page through as Dirty; zero pages still routed to
-// Empty. The fake records ReadAt calls — we assert it's never called.
+// Best-effort + base uncached: skip base.ReadAt, write every non-zero
+// page through.
 func TestCacheDedup_BestEffortUncachedSkipsBaseReadAt(t *testing.T) {
 	t.Parallel()
 
@@ -1045,8 +1032,7 @@ func TestCacheDedup_BestEffortUncachedSkipsBaseReadAt(t *testing.T) {
 	// Zero the last page so we exercise the empty routing.
 	clear(srcData[size-pageSize : size])
 
-	// Identical base — if best-effort accidentally fell through to the
-	// compare path, every page would be classified as a match.
+	// Identical base catches accidental fallthrough to the compare path.
 	baseData := make([]byte, size)
 	copy(baseData, srcData)
 
@@ -1066,8 +1052,7 @@ func TestCacheDedup_BestEffortUncachedSkipsBaseReadAt(t *testing.T) {
 	require.True(t, meta.Empty.Contains(uint32(totalPages-1)))
 }
 
-// Best-effort with peeker reporting cached should behave identically to a
-// non-best-effort run.
+// Best-effort + cache hit must behave like the normal compare path.
 func TestCacheDedup_BestEffortCachedMatchesNormalPath(t *testing.T) {
 	t.Parallel()
 

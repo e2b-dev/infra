@@ -158,11 +158,9 @@ func (c *Chunker) getOrCreateSession(ctx context.Context, off, length int64, ft 
 	return s, false
 }
 
-// fetch ensures the chunk covering [off, off+length) is fetched and
-// waits for every block in that range. Required because a dedup
-// sub-mapping can straddle the chunker's block boundary; without
-// waiting on every block, sliceDirect would return uninitialized
-// cache bytes for the tail.
+// fetch ensures the chunk for [off, off+length) is fetched and waits
+// for every block the range spans (a span can cross block boundaries
+// after dedup; waiting only on the start block leaves the tail unfetched).
 func (c *Chunker) fetch(ctx context.Context, off, length int64, ft *storage.FrameTable) error {
 	chunkOff, chunkLen, err := c.locateChunk(off, ft)
 	if err != nil {
