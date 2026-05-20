@@ -51,7 +51,6 @@ func TestParse(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, content, result.VolumesToken.SigningKey)
 	})
-
 }
 
 // removeEnv was mostly copied from the implementation of t.Setenv
