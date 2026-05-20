@@ -410,68 +410,110 @@ func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram
 }
 
 type TimerFactory struct {
-	duration metric.Int64Histogram
-	bytes    metric.Int64Counter
-	count    metric.Int64Counter
+	legacyDuration metric.Int64Histogram
+	legacyBytes    metric.Int64Counter
+	legacyCount    metric.Int64Counter
+	splitDuration  metric.Int64Histogram
+	splitBytes     metric.Int64Counter
+	splitCount     metric.Int64Counter
 }
 
 func NewTimerFactory(
 	blocksMeter metric.Meter,
 	metricName, durationDescription, bytesDescription, counterDescription string,
 ) (TimerFactory, error) {
-	duration, err := blocksMeter.Int64Histogram(metricName,
+	durationName := fmt.Sprintf("%s.duration", metricName)
+	bytesName := fmt.Sprintf("%s.bytes", metricName)
+	countName := fmt.Sprintf("%s.count", metricName)
+
+	legacyDuration, err := blocksMeter.Int64Histogram(metricName,
 		metric.WithDescription(durationDescription),
 		metric.WithUnit("ms"),
 	)
 	if err != nil {
-		return TimerFactory{}, fmt.Errorf("failed to get slices metric: %w", err)
+		return TimerFactory{}, fmt.Errorf("failed to create legacy duration histogram %q: %w", metricName, err)
 	}
 
-	bytes, err := blocksMeter.Int64Counter(metricName,
+	legacyBytes, err := blocksMeter.Int64Counter(metricName,
 		metric.WithDescription(bytesDescription),
 		metric.WithUnit("By"),
 	)
 	if err != nil {
-		return TimerFactory{}, fmt.Errorf("failed to create total bytes requested metric: %w", err)
+		return TimerFactory{}, fmt.Errorf("failed to create legacy bytes counter %q: %w", metricName, err)
 	}
 
-	count, err := blocksMeter.Int64Counter(metricName,
+	legacyCount, err := blocksMeter.Int64Counter(metricName,
 		metric.WithDescription(counterDescription),
 	)
 	if err != nil {
-		return TimerFactory{}, fmt.Errorf("failed to create total page faults metric: %w", err)
+		return TimerFactory{}, fmt.Errorf("failed to create legacy count counter %q: %w", metricName, err)
 	}
 
-	return TimerFactory{duration, bytes, count}, nil
+	splitDuration, err := blocksMeter.Int64Histogram(durationName,
+		metric.WithDescription(durationDescription),
+		metric.WithUnit("ms"),
+	)
+	if err != nil {
+		return TimerFactory{}, fmt.Errorf("failed to create split duration histogram %q: %w", durationName, err)
+	}
+
+	splitBytes, err := blocksMeter.Int64Counter(bytesName,
+		metric.WithDescription(bytesDescription),
+		metric.WithUnit("By"),
+	)
+	if err != nil {
+		return TimerFactory{}, fmt.Errorf("failed to create split bytes counter %q: %w", bytesName, err)
+	}
+
+	splitCount, err := blocksMeter.Int64Counter(countName,
+		metric.WithDescription(counterDescription),
+	)
+	if err != nil {
+		return TimerFactory{}, fmt.Errorf("failed to create split count counter %q: %w", countName, err)
+	}
+
+	return TimerFactory{legacyDuration, legacyBytes, legacyCount, splitDuration, splitBytes, splitCount}, nil
 }
 
 func (f *TimerFactory) Begin(kv ...attribute.KeyValue) *Stopwatch {
 	return &Stopwatch{
-		histogram: f.duration,
-		sum:       f.bytes,
-		count:     f.count,
-		start:     time.Now(),
-		kv:        kv,
+		legacyHistogram: f.legacyDuration,
+		legacySum:       f.legacyBytes,
+		legacyCount:     f.legacyCount,
+		splitHistogram:  f.splitDuration,
+		splitSum:        f.splitBytes,
+		splitCount:      f.splitCount,
+		start:           time.Now(),
+		kv:              kv,
 	}
 }
 
 type Stopwatch struct {
-	histogram  metric.Int64Histogram
-	sum, count metric.Int64Counter
-	start      time.Time
-	kv         []attribute.KeyValue
+	legacyHistogram metric.Int64Histogram
+	legacySum       metric.Int64Counter
+	legacyCount     metric.Int64Counter
+	splitHistogram  metric.Int64Histogram
+	splitSum        metric.Int64Counter
+	splitCount      metric.Int64Counter
+	start           time.Time
+	kv              []attribute.KeyValue
 }
 
 const (
-	resultAttr        = "result"
-	resultTypeSuccess = "success"
-	resultTypeFailure = "failure"
+	resultAttr          = "result"
+	resultTypeSuccess   = "success"
+	resultTypeFailure   = "failure"
+	metricVariantAttr   = "e2b.metric_variant"
+	metricVariantLegacy = "legacy"
+	metricVariantSplit  = "split"
 )
 
 var (
 	// Pre-allocated result attributes for use with PrecomputeAttrs.
-	Success = attribute.String(resultAttr, resultTypeSuccess)
-	Failure = attribute.String(resultAttr, resultTypeFailure)
+	Success             = attribute.String(resultAttr, resultTypeSuccess)
+	Failure             = attribute.String(resultAttr, resultTypeFailure)
+	legacyMetricVariant = metric.WithAttributes(attribute.String(metricVariantAttr, metricVariantLegacy))
+	splitMetricVariant  = metric.WithAttributes(attribute.String(metricVariantAttr, metricVariantSplit))
 )
 
 func (t Stopwatch) Success(ctx context.Context, total int64, kv ...attribute.KeyValue) {
@@ -485,7 +527,7 @@ func (t Stopwatch) Failure(ctx context.Context, total int64, kv ...attribute.Key
 func (t Stopwatch) end(ctx context.Context, result string, total int64, kv ...attribute.KeyValue) {
 	kv = append(kv, attribute.KeyValue{Key: resultAttr, Value: attribute.StringValue(result)})
 	kv = append(t.kv, kv...)
-	opt := metric.WithAttributeSet(attribute.NewSet(kv...))
+	opt := PrecomputeAttrs(kv...)
 	t.RecordRaw(ctx, total, opt)
 }
 
@@ -501,7 +543,10 @@ func PrecomputeAttrs(kv ...attribute.KeyValue) metric.MeasurementOption {
 // alternative to Success/Failure for hot paths.
 func (t Stopwatch) RecordRaw(ctx context.Context, total int64, precomputedAttrs metric.MeasurementOption) {
 	amount := time.Since(t.start).Milliseconds()
-	t.histogram.Record(ctx, amount, precomputedAttrs)
-	t.sum.Add(ctx, total, precomputedAttrs)
-	t.count.Add(ctx, 1, precomputedAttrs)
+	t.legacyHistogram.Record(ctx, amount, precomputedAttrs, legacyMetricVariant)
+	t.legacySum.Add(ctx, total, precomputedAttrs, legacyMetricVariant)
+	t.legacyCount.Add(ctx, 1, precomputedAttrs, legacyMetricVariant)
+	t.splitHistogram.Record(ctx, amount, precomputedAttrs, splitMetricVariant)
+	t.splitSum.Add(ctx, total, precomputedAttrs, splitMetricVariant)
+	t.splitCount.Add(ctx, 1, precomputedAttrs, splitMetricVariant)
 }
