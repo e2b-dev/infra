@@ -2,6 +2,7 @@ package header
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -61,7 +62,7 @@ func LoadHeader(ctx context.Context, s storage.StorageProvider, path string) (*H
 // must clear IncompletePendingUpload before reaching here.
 func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h *Header) (int64, error) {
 	if h == nil {
-		return 0, fmt.Errorf("header is nil")
+		return 0, errors.New("header is nil")
 	}
 
 	if h.IncompletePendingUpload {
