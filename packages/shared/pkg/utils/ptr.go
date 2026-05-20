@@ -2,9 +2,8 @@ package utils
 
 import "fmt"
 
-//go:fix inline
 func ToPtr[T any](v T) *T {
-	return new(v)
+	return &v
 }
 
 func FromPtr[T any](s *T) T {
