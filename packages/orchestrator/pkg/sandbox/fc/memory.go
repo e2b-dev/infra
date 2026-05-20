@@ -81,9 +81,11 @@ func (p *Process) ExportMemory(
 		}
 		if bgCopy {
 			src, err := block.NewCacheFromMemfdAsync(ctx, blockSize, cachePath, memfd, include)
+
 			return src, nil, err
 		}
 		src, err := block.NewCacheFromMemfd(ctx, blockSize, cachePath, memfd, include)
+
 		return src, nil, err
 	}
 
@@ -102,5 +104,6 @@ func (p *Process) ExportMemory(
 	if err := cache.Close(); err != nil {
 		return nil, nil, fmt.Errorf("close pre-dedup cache: %w", errors.Join(err, dedupCache.Close()))
 	}
+
 	return dedupCache, meta, nil
 }
