@@ -318,9 +318,13 @@ func dedupPages(
 				srcPage := srcBuf[i : i+header.PageSize]
 				pageIdx := uint32((absOff + i) / header.PageSize)
 
-				var equal bool
 				if baseZero {
-					equal = header.IsZero(srcPage)
+					// IsZero IS the equality check here, no need to re-check.
+					if header.IsZero(srcPage) {
+						pageEmpty.Add(pageIdx)
+
+						continue
+					}
 				} else {
 					// Slice is zero-copy when the 4 KiB request fits in a
 					// single underlying mapping (always true at PageSize).
@@ -328,15 +332,13 @@ func dedupPages(
 					if sErr != nil {
 						return nil, nil, errors.Join(fmt.Errorf("slice base at %d: %w", absOff+i, sErr), f.Close(), os.Remove(outPath))
 					}
-					equal = bytes.Equal(srcPage, basePage)
-				}
+					if bytes.Equal(srcPage, basePage) {
+						if header.IsZero(srcPage) {
+							pageEmpty.Add(pageIdx)
+						}
 
-				if equal {
-					if header.IsZero(srcPage) {
-						pageEmpty.Add(pageIdx)
+						continue
 					}
-
-					continue
 				}
 
 				pageDirty.Add(pageIdx)

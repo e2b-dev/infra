@@ -523,12 +523,11 @@ func (u *Userfaultfd) faultPage(
 		for attempt = range sliceMaxRetries + 1 {
 			var n int
 			n, dataErr = source.ReadAt(ctx, b, offset)
+			if dataErr == nil && int64(n) != int64(u.pageSize) {
+				dataErr = fmt.Errorf("short read at %d: got %d, want %d", offset, n, u.pageSize)
+			}
 			if dataErr == nil {
-				if int64(n) != int64(u.pageSize) {
-					dataErr = fmt.Errorf("short read at %d: got %d, want %d", offset, n, u.pageSize)
-				} else {
-					break
-				}
+				break
 			}
 
 			if attempt >= sliceMaxRetries || ctx.Err() != nil {
