@@ -36,7 +36,15 @@ func recordUploadCompression(ctx context.Context, artifact, fileType, useCase st
 
 	uploadUncompressedBytes.Record(ctx, uncompressed, attrs)
 	uploadCompressedBytes.Record(ctx, compressed, attrs)
-	uploadCompressionRatioBp.Record(ctx, ratioBp(compressed, uncompressed), attrs)
+	uploadCompressionRatioBp.Record(ctx, uploadRatioBp(compressed, uncompressed), attrs)
+}
+
+func uploadRatioBp(compressed, uncompressed int64) int64 {
+	if uncompressed <= 0 || compressed < 0 {
+		return 0
+	}
+
+	return compressed * 10000 / uncompressed
 }
 
 func storeHeaderWithMetrics(ctx context.Context, store storage.StorageProvider, path, fileType, useCase string, h *headers.Header) error {
