@@ -146,9 +146,6 @@ func (d *DiffMetadata) ToDiffHeader(
 	telemetry.ReportEvent(ctx, "normalized mappings")
 
 	metadata := originalHeader.Metadata.NextGeneration(buildID)
-	// Use the finer of parent and diff granularity so all inherited and new
-	// mappings still align under ValidateMappings.
-	metadata.BlockSize = min(uint64(d.BlockSize), originalHeader.Metadata.BlockSize)
 
 	telemetry.SetAttributes(ctx,
 		attribute.Int64("snapshot.header.mappings.length", int64(len(m))),
@@ -166,7 +163,9 @@ func (d *DiffMetadata) ToDiffHeader(
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}
 
-	err = ValidateMappings(header.Mapping, header.Metadata.Size, header.Metadata.BlockSize)
+	// Dedup may emit PageSize-granular mappings while Metadata.BlockSize
+	// stays at FC page size; validate at PageSize so both align cleanly.
+	err = ValidateMappings(header.Mapping, header.Metadata.Size, PageSize)
 	if err != nil {
 		if header.IsNormalizeFixApplied() {
 			return nil, fmt.Errorf("invalid header mappings: %w", err)
