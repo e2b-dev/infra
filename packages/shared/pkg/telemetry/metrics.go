@@ -75,7 +75,7 @@ var snapshotBytesView = sdkmetric.NewView(
 var uploadBytesView = sdkmetric.NewView(
 	sdkmetric.Instrument{
 		Kind: sdkmetric.InstrumentKindHistogram,
-		Name: "orchestrator.sandbox.upload.*.bytes",
+		Name: "orchestrator.sandbox.upload.*",
 		Unit: "{By}",
 	},
 	sdkmetric.Stream{
