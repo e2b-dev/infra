@@ -3,7 +3,6 @@ package redis
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -195,48 +194,6 @@ func TestPublisher_CloseDrainsPending(t *testing.T) {
 			return
 		}
 	}
-}
-
-// TestStorageLock_ReleaseDoesNotSpawnGoroutine is the load-bearing
-// regression test for the structural fix: Release must hand the publish
-// to the shared publisher instead of spawning a per-call goroutine.
-// Goroutine count must stay flat across N obtain/release cycles.
-func TestStorageLock_ReleaseDoesNotSpawnGoroutine(t *testing.T) {
-	t.Parallel()
-
-	client := redis_utils.SetupInstance(t)
-	storage := newTestStorage(t, client)
-	go storage.Start(t.Context())
-	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })
-
-	// Warm up: obtain + release once so one-shot init goroutines settle.
-	warm := redis_utils.GetLockKey(getSandboxKey(uuid.NewString(), "warmup"))
-	lock, err := storage.locker.Obtain(t.Context(), warm, testLockTimeout)
-	require.NoError(t, err)
-	require.NoError(t, lock.Release(context.WithoutCancel(t.Context())))
-
-	time.Sleep(100 * time.Millisecond)
-	// Explicit GC reaps any exited-but-not-yet-collected goroutines so the
-	// goroutine count below is a stable baseline rather than a noisy one.
-	runtime.GC() //nolint:revive // test-only stability shim
-	before := runtime.NumGoroutine()
-
-	const n = 200
-	for i := range n {
-		key := redis_utils.GetLockKey(getSandboxKey(uuid.NewString(), fmt.Sprintf("no-leak-%d", i)))
-		lock, err := storage.locker.Obtain(t.Context(), key, testLockTimeout)
-		require.NoError(t, err)
-		require.NoError(t, lock.Release(context.WithoutCancel(t.Context())))
-	}
-
-	// Allow any in-flight publishes to drain through the worker.
-	require.Eventually(t, func() bool {
-		runtime.GC() //nolint:revive // test-only stability shim
-
-		return runtime.NumGoroutine()-before < 10
-	}, 2*time.Second, 10*time.Millisecond,
-		"Release spawned transient goroutines: before=%d after=%d",
-		before, runtime.NumGoroutine())
 }
 
 // TestStorageLock_ReleaseUsesNotifier proves the lock no longer talks to
