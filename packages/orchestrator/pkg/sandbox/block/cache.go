@@ -251,6 +251,9 @@ func dedupPages(
 	pageDirty := roaring.New()
 	pageEmpty := roaring.New()
 	baseBuf := make([]byte, blockSize)
+	// Per-block iovec buffer: reused across blocks. Capacity sized for
+	// max pages per block; Linux IOV_MAX (1024) is well above that.
+	iovs := make([][]byte, 0, blockSize/header.PageSize)
 	var fileOff, exportedSize int64
 
 	for r := range BitsetRanges(dirty, blockSize) {
@@ -267,6 +270,9 @@ func dedupPages(
 				return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
 			}
 
+			iovs = iovs[:0]
+			blockStartOff := fileOff
+
 			// Best-effort: if base data isn't in the local chunker cache,
 			// skip the compare entirely and write every page through as-is
 			// (still routing zero pages to Empty). Avoids triggering a
@@ -282,10 +288,14 @@ func dedupPages(
 							continue
 						}
 						pageDirty.Add(pageIdx)
-						if err := writeAll(int(f.Fd()), fileOff, srcPage); err != nil {
+						iovs = append(iovs, srcPage)
+						fileOff += header.PageSize
+					}
+
+					if len(iovs) > 0 {
+						if err := pwritevAll(int(f.Fd()), blockStartOff, iovs); err != nil {
 							return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
 						}
-						fileOff += header.PageSize
 					}
 
 					continue
@@ -314,10 +324,14 @@ func dedupPages(
 				}
 
 				pageDirty.Add(pageIdx)
-				if err := writeAll(int(f.Fd()), fileOff, srcPage); err != nil {
+				iovs = append(iovs, srcPage)
+				fileOff += header.PageSize
+			}
+
+			if len(iovs) > 0 {
+				if err := pwritevAll(int(f.Fd()), blockStartOff, iovs); err != nil {
 					return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
 				}
-				fileOff += header.PageSize
 			}
 		}
 	}

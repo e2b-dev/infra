@@ -3,6 +3,7 @@
 package block
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"io"
@@ -93,6 +94,28 @@ type peekingOriginalDevice struct {
 }
 
 func (p *peekingOriginalDevice) IsCached(context.Context, int64, int64) bool { return p.cached }
+
+// pwritevAll must concatenate non-contiguous iovecs at off and survive a
+// kernel short-write (the helper retries with the remaining tail).
+func TestPwritevAllConcatenatesIovecs(t *testing.T) {
+	t.Parallel()
+
+	path := t.TempDir() + "/out"
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = f.Close() })
+
+	a := bytes.Repeat([]byte{0xAA}, 13)
+	b := bytes.Repeat([]byte{0xBB}, 7)
+	c := bytes.Repeat([]byte{0xCC}, 5)
+
+	require.NoError(t, pwritevAll(int(f.Fd()), 42, [][]byte{a, b, c}))
+
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	expected := append(append(make([]byte, 42), a...), append(b, c...)...)
+	require.Equal(t, expected, got)
+}
 
 func TestNewCacheFromMemfd_NonAdjacentBlocks(t *testing.T) {
 	t.Parallel()

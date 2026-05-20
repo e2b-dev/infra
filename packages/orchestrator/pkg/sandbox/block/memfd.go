@@ -285,3 +285,36 @@ func writeAll(fd int, off int64, buff []byte) error {
 
 	return nil
 }
+
+// pwritevAll writes the iovecs at off, handling EINTR and short writes by
+// advancing through the list (slicing the first partially-written entry).
+// IOV_MAX on Linux is 1024, so callers must keep the slice short enough —
+// for dedup, one block has at most HugepageSize/PageSize = 512 pages, well
+// within the limit. iovs is mutated in place during retries.
+func pwritevAll(fd int, off int64, iovs [][]byte) error {
+	for len(iovs) > 0 {
+		n, err := unix.Pwritev(fd, iovs, off)
+		if errors.Is(err, unix.EINTR) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return fmt.Errorf("pwritev: EOF with %d iovec(s) remaining", len(iovs))
+		}
+
+		off += int64(n)
+		for n > 0 && len(iovs) > 0 {
+			if len(iovs[0]) <= n {
+				n -= len(iovs[0])
+				iovs = iovs[1:]
+			} else {
+				iovs[0] = iovs[0][n:]
+				n = 0
+			}
+		}
+	}
+
+	return nil
+}
