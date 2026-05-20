@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -34,11 +35,31 @@ func (s *APIStore) GetTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 		return
 	}
 
+	userIDs := make([]uuid.UUID, 0, len(rows))
+	for _, row := range rows {
+		userIDs = append(userIDs, row.UserID)
+	}
+
+	profiles, err := s.userProfiles.GetProfilesByUserID(ctx, userIDs)
+	if err != nil {
+		logger.L().Error(ctx, "failed to get member profiles", zap.Error(err), logger.WithTeamID(authTeamID.String()))
+		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to get team member profiles")
+
+		return
+	}
+
 	members := make([]api.TeamMember, 0, len(rows))
 	for _, row := range rows {
+		profile, ok := profiles[row.UserID]
+		if !ok || profile.Email == "" {
+			logger.L().Warn(ctx, "team member has missing profile", logger.WithTeamID(authTeamID.String()), logger.WithUserID(row.UserID.String()))
+
+			continue
+		}
+
 		member := api.TeamMember{
 			Id:        row.UserID,
-			Email:     row.Email,
+			Email:     profile.Email,
 			IsDefault: row.IsDefault,
 			AddedBy:   row.AddedBy,
 		}
@@ -75,7 +96,29 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 		return
 	}
 
-	user, err := s.db.GetUserByEmail(ctx, string(body.Email))
+	profiles, err := s.userProfiles.FindProfilesByEmail(ctx, string(body.Email))
+	if err != nil {
+		logger.L().Error(ctx, "failed to look up user by email", zap.Error(err))
+		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to look up user")
+
+		return
+	}
+
+	if len(profiles) == 0 {
+		s.sendAPIStoreError(c, http.StatusNotFound, "User with this email does not exist. Please ask them to sign up first.")
+
+		return
+	}
+
+	if len(profiles) > 1 {
+		logger.L().Error(ctx, "ambiguous user email lookup", zap.Int("matches", len(profiles)))
+		s.sendAPIStoreError(c, http.StatusConflict, "Multiple users with this email exist. Please contact support.")
+
+		return
+	}
+
+	user := profiles[0]
+	_, err = s.db.GetPublicUserID(ctx, user.UserID)
 	if err != nil {
 		if dberrors.IsNotFoundError(err) {
 			s.sendAPIStoreError(c, http.StatusNotFound, "User with this email does not exist. Please ask them to sign up first.")
@@ -83,14 +126,14 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 			return
 		}
 
-		logger.L().Error(ctx, "failed to look up user by email", zap.Error(err))
+		logger.L().Error(ctx, "failed to look up public user", zap.Error(err), logger.WithUserID(user.UserID.String()))
 		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to look up user")
 
 		return
 	}
 
 	err = s.db.AddTeamMember(ctx, queries.AddTeamMemberParams{
-		UserID:  user.ID,
+		UserID:  user.UserID,
 		TeamID:  authTeamID,
 		AddedBy: userID,
 	})
@@ -107,7 +150,7 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 		return
 	}
 
-	s.authService.InvalidateTeamMemberCache(ctx, user.ID, authTeamID.String())
+	s.authService.InvalidateTeamMemberCache(ctx, user.UserID, authTeamID.String())
 
 	c.Status(http.StatusCreated)
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
@@ -29,6 +30,7 @@ type APIStore struct {
 	clickhouse        clickhouse.Clickhouse
 	authService       sharedauth.Service
 	teamProvisionSink internalteamprovision.TeamProvisionSink
+	userProfiles      userprofile.Provider
 }
 
 func NewAPIStore(config cfg.Config, db *sqlcdb.Client, authDB *authdb.Client, supabaseDB *supabasedb.Client, ch clickhouse.Clickhouse, authService sharedauth.Service, teamProvisionSink internalteamprovision.TeamProvisionSink) *APIStore {
@@ -40,6 +42,7 @@ func NewAPIStore(config cfg.Config, db *sqlcdb.Client, authDB *authdb.Client, su
 		clickhouse:        ch,
 		authService:       authService,
 		teamProvisionSink: teamProvisionSink,
+		userProfiles:      userprofile.NewSupabaseProvider(supabaseDB),
 	}
 }
 
