@@ -96,11 +96,6 @@ build {
   }
 
   provisioner "shell" {
-    script          = "${local.shared_setup_dir}/install-go.sh"
-    execute_command = "chmod +x {{ .Path }}; {{ .Vars }} {{ .Path }} --version ${var.go_version}"
-  }
-
-  provisioner "shell" {
     inline = [
       "sudo systemctl start docker",
       "sudo usermod -aG docker $USER",
@@ -123,11 +118,6 @@ build {
   provisioner "shell" {
     script          = "${local.shared_setup_dir}/install-nomad.sh"
     execute_command = "chmod +x {{ .Path }}; {{ .Vars }} {{ .Path }} --version ${var.nomad_version}"
-  }
-
-  provisioner "shell" {
-    script          = "${local.shared_setup_dir}/install-vault.sh"
-    execute_command = "chmod +x {{ .Path }}; {{ .Vars }} {{ .Path }} --version ${var.vault_version}"
   }
 
   # Install the ClickHouse client at the same version as the server so it's
