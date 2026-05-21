@@ -32,20 +32,13 @@ func testSandbox(teamID uuid.UUID, sandboxID string) sandbox.Sandbox {
 }
 
 // setupReservationStorageWithoutSubManager wires the reservation store so that
-// PubSub messages are never delivered in-process. The publisher worker still
-// runs (so PUBLISH commands hit Redis) but no subscription manager is
-// listening; in-process waiters only resolve via the fallback ticker. Used to
-// exercise the safety-net path.
+// PubSub messages are never delivered in-process. Used to exercise the safety-net path.
 func setupReservationStorageWithoutSubManager(t *testing.T) (*ReservationStorage, goredis.UniversalClient) {
 	t.Helper()
 
 	client := redis_utils.SetupInstance(t)
 
 	storageInstance := newTestSandboxStorage(t, client)
-	// Deliberately do NOT call storageInstance.Start — no subManager.start
-	// goroutine, no fan-out. Publish() still works through the in-process
-	// queue but its drainer is also not running. The waiter must rely
-	// entirely on its 1s fallback ticker.
 	t.Cleanup(func() { storageInstance.Close(context.WithoutCancel(t.Context())) })
 
 	storage := NewReservationStorage(client, storageInstance.Notifier())
@@ -53,10 +46,6 @@ func setupReservationStorageWithoutSubManager(t *testing.T) (*ReservationStorage
 	return storage, client
 }
 
-// TestWaitForStart_WokenByFinishStartPublish is the load-bearing regression
-// test for the polling bug. With pub/sub working, the waiter must wake
-// well under the 1s fallback ticker — anything that fast can only come
-// from a PubSub delivery.
 func TestWaitForStart_WokenByFinishStartPublish(t *testing.T) {
 	t.Parallel()
 
@@ -98,8 +87,6 @@ func TestWaitForStart_WokenByFinishStartPublish(t *testing.T) {
 	}
 }
 
-// TestWaitForStart_WokenByReleasePublish proves Release also drives a fast
-// wakeup and that the waiter returns the typed ErrReservationReleased.
 func TestWaitForStart_WokenByReleasePublish(t *testing.T) {
 	t.Parallel()
 
@@ -135,9 +122,6 @@ func TestWaitForStart_WokenByReleasePublish(t *testing.T) {
 	}
 }
 
-// TestWaitForStart_FallbackTickerWhenPubSubMissed disables the subscription
-// manager entirely so no in-process wakeup can fire. The waiter must still
-// resolve via the 1s fallback ticker.
 func TestWaitForStart_FallbackTickerWhenPubSubMissed(t *testing.T) {
 	t.Parallel()
 
@@ -335,10 +319,6 @@ func TestWaitForStart_FailedStartPropagatesPromptly(t *testing.T) {
 	}
 }
 
-// TestWaitForStart_RedisOpsBounded is the explicit regression test for the
-// production incident: a 1s wait must NOT generate dozens of Redis ops. We
-// install a redis.Hook on the client, run a waiter that resolves via
-// PubSub, and assert the GET/ZSCORE count is single-digit.
 func TestWaitForStart_RedisOpsBounded(t *testing.T) {
 	t.Parallel()
 
@@ -362,10 +342,6 @@ func TestWaitForStart_RedisOpsBounded(t *testing.T) {
 	_, waitForStart, err := storage.Reserve(t.Context(), teamID, sbxID, 10)
 	require.NoError(t, err)
 
-	// Hold the producer for ~1.5s so the OLD 20ms-polling implementation
-	// would have done ~75 GETs + ~75 ZSCOREs = ~150 ops. The new pubsub
-	// implementation should do exactly one initial GET (+ one ZSCORE for
-	// the legacy-compat path) plus one final GET on wake.
 	waiterDone := make(chan error, 1)
 	go func() {
 		_, err := waitForStart(t.Context())
