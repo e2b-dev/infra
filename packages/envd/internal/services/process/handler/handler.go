@@ -221,7 +221,7 @@ func New(
 					}
 				}
 
-				if errors.Is(readErr, io.EOF) {
+				if errors.Is(readErr, io.EOF) || errors.Is(readErr, syscall.EIO) {
 					break
 				}
 
