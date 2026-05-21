@@ -122,13 +122,13 @@ const (
 	SandboxFCBlockIOEngineThrottled     HistogramType = "orchestrator.sandbox.fc.block.io_engine_throttled"
 	SandboxFCBlockRemainingReqs         HistogramType = "orchestrator.sandbox.fc.block.remaining_reqs"
 
-	SnapshotDiffBytes   HistogramType = "orchestrator.sandbox.snapshot.diff.bytes"
-	SnapshotDiffRatioBp HistogramType = "orchestrator.sandbox.snapshot.diff.ratio_bp"
-	SnapshotTotalBytes  HistogramType = "orchestrator.sandbox.snapshot.total.bytes"
+	SnapshotDiffBytes  HistogramType = "orchestrator.sandbox.snapshot.diff.bytes"
+	SnapshotDiffRatio  HistogramType = "orchestrator.sandbox.snapshot.diff.ratio"
+	SnapshotTotalBytes HistogramType = "orchestrator.sandbox.snapshot.total.bytes"
 
-	UploadUncompressedBytes  HistogramType = "orchestrator.sandbox.upload.uncompressed.bytes"
-	UploadCompressedBytes    HistogramType = "orchestrator.sandbox.upload.compressed.bytes"
-	UploadCompressionRatioBp HistogramType = "orchestrator.sandbox.upload.compression.ratio_bp"
+	UploadUncompressedBytes HistogramType = "orchestrator.sandbox.upload.uncompressed.bytes"
+	UploadCompressedBytes   HistogramType = "orchestrator.sandbox.upload.compressed.bytes"
+	UploadCompressionRatio  HistogramType = "orchestrator.sandbox.upload.compression.ratio"
 )
 
 const (
@@ -364,13 +364,13 @@ var histogramDesc = map[HistogramType]string{
 	SandboxFCBlockIOEngineThrottled:     "Distribution of Firecracker VMM block ops throttled by io_uring engine per metrics flush",
 	SandboxFCBlockRemainingReqs:         "Distribution of Firecracker VMM block queue remaining-request events per metrics flush",
 
-	SnapshotDiffBytes:   "Per-snapshot dirty/empty bytes per file",
-	SnapshotDiffRatioBp: "Per-snapshot dirty/empty as fraction of total mapped size, in basis points (10000=100%)",
-	SnapshotTotalBytes:  "Per-snapshot total mapped size of the file",
+	SnapshotDiffBytes:  "Per-snapshot dirty/empty bytes per file",
+	SnapshotDiffRatio:  "Per-snapshot dirty/empty as fraction of total mapped size (1.0 = 100%)",
+	SnapshotTotalBytes: "Per-snapshot total mapped size of the file",
 
-	UploadUncompressedBytes:  "Per-upload uncompressed artifact size",
-	UploadCompressedBytes:    "Per-upload compressed artifact size",
-	UploadCompressionRatioBp: "Per-upload compressed/uncompressed ratio, in basis points (10000=100%)",
+	UploadUncompressedBytes: "Per-upload uncompressed artifact size",
+	UploadCompressedBytes:   "Per-upload compressed artifact size",
+	UploadCompressionRatio:  "Per-upload compressed/uncompressed ratio (1.0 = no compression)",
 }
 
 var histogramUnits = map[HistogramType]string{
@@ -402,13 +402,13 @@ var histogramUnits = map[HistogramType]string{
 	SandboxFCBlockIOEngineThrottled:     "{op}",
 	SandboxFCBlockRemainingReqs:         "{event}",
 
-	SnapshotDiffBytes:   "{By}",
-	SnapshotDiffRatioBp: "{1}",
-	SnapshotTotalBytes:  "{By}",
+	SnapshotDiffBytes:  "{By}",
+	SnapshotDiffRatio:  "{1}",
+	SnapshotTotalBytes: "{By}",
 
-	UploadUncompressedBytes:  "{By}",
-	UploadCompressedBytes:    "{By}",
-	UploadCompressionRatioBp: "{1}",
+	UploadUncompressedBytes: "{By}",
+	UploadCompressedBytes:   "{By}",
+	UploadCompressionRatio:  "{1}",
 }
 
 func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram, error) {
@@ -416,6 +416,16 @@ func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram
 	unit := histogramUnits[name]
 
 	return meter.Int64Histogram(string(name),
+		metric.WithDescription(desc),
+		metric.WithUnit(unit),
+	)
+}
+
+func GetFloatHistogram(meter metric.Meter, name HistogramType) (metric.Float64Histogram, error) {
+	desc := histogramDesc[name]
+	unit := histogramUnits[name]
+
+	return meter.Float64Histogram(string(name),
 		metric.WithDescription(desc),
 		metric.WithUnit(unit),
 	)
