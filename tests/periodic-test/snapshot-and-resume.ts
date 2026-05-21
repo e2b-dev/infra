@@ -13,7 +13,7 @@ await runTestWithSandbox(sbx, "snapshot-and-resume", async () => {
   });
   log("Sandbox code executed");
 
-  await sbx.betaPause();
+  await sbx.pause();
   log("Sandbox paused");
 
   // Resume the sandbox from the same state
@@ -32,7 +32,7 @@ await runTestWithSandbox(sbx, "snapshot-and-resume", async () => {
   }
   log("Sandbox resumed successfully");
 
-  await sbx.betaPause();
+  await sbx.pause();
   log("Sandbox paused");
 
   execution = await sameSbx.runCode("x+=1; x", {
