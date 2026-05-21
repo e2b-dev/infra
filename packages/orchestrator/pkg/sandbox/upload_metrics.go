@@ -20,9 +20,9 @@ const (
 )
 
 var (
-	uploadUncompressedBytes  = utils.Must(telemetry.GetHistogram(meter, telemetry.UploadUncompressedBytes))
-	uploadCompressedBytes    = utils.Must(telemetry.GetHistogram(meter, telemetry.UploadCompressedBytes))
-	uploadCompressionRatioBp = utils.Must(telemetry.GetHistogram(meter, telemetry.UploadCompressionRatioBp))
+	uploadUncompressedBytes = utils.Must(telemetry.GetHistogram(meter, telemetry.UploadUncompressedBytes))
+	uploadCompressedBytes   = utils.Must(telemetry.GetHistogram(meter, telemetry.UploadCompressedBytes))
+	uploadCompressionRatio  = utils.Must(telemetry.GetFloatHistogram(meter, telemetry.UploadCompressionRatio))
 )
 
 func recordUploadCompression(ctx context.Context, artifact, fileType string, cfg storage.CompressConfig, uncompressed, compressed int64) {
@@ -35,15 +35,17 @@ func recordUploadCompression(ctx context.Context, artifact, fileType string, cfg
 
 	uploadUncompressedBytes.Record(ctx, uncompressed, attrs)
 	uploadCompressedBytes.Record(ctx, compressed, attrs)
-	uploadCompressionRatioBp.Record(ctx, uploadRatioBp(compressed, uncompressed), attrs)
+	uploadCompressionRatio.Record(ctx, uploadRatio(compressed, uncompressed), attrs)
 }
 
-func uploadRatioBp(compressed, uncompressed int64) int64 {
+// uploadRatio returns compressed/uncompressed as a fraction (1.0 = no
+// compression). May exceed 1 when an artifact expands; emitted with unit {1}.
+func uploadRatio(compressed, uncompressed int64) float64 {
 	if uncompressed <= 0 || compressed < 0 {
 		return 0
 	}
 
-	return compressed * 10000 / uncompressed
+	return float64(compressed) / float64(uncompressed)
 }
 
 func storeHeaderWithMetrics(ctx context.Context, store storage.StorageProvider, path, fileType string, h *headers.Header) error {
