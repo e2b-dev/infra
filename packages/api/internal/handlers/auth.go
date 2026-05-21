@@ -44,10 +44,6 @@ func (a *APIStore) GetTeam(
 	defer span.End()
 
 	if team, ok := auth.GetTeamInfo(c); ok {
-		if apiErr := applyBlockedTeamCheck(c, team); apiErr != nil {
-			return nil, apiErr
-		}
-
 		return team, nil
 	}
 
@@ -155,10 +151,6 @@ func (a *APIStore) resolveTemplateAndTeam(
 				ClientMsg: fmt.Sprintf("You don't have access to template '%s'", identifier),
 				Err:       fmt.Errorf("team '%s' does not own template", team.ID),
 			}
-		}
-
-		if apiErr := applyBlockedTeamCheck(c, team); apiErr != nil {
-			return nil, nil, apiErr
 		}
 
 		return team, aliasInfo, nil
