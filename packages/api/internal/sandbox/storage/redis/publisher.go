@@ -51,6 +51,8 @@ type publisher struct {
 	done   chan struct{} // closed when the drainer has fully exited
 
 	closeOnce sync.Once
+	mu        sync.RWMutex
+	closing   bool
 	state     atomic.Uint32 // lifecycle: stateInit → stateRunning | stateClosed
 	dropped   atomic.Uint64
 
@@ -144,19 +146,19 @@ func (p *publisher) initMetrics(meter metric.Meter) error {
 // Drops silently (with rate-limited warn) when the queue is full or the
 // publisher has been closed.
 func (p *publisher) Publish(ctx context.Context, routingKey string) {
-	// Fast reject if Close has been signalled; otherwise a send into a
-	// closing publisher could land in the queue after the drainer exits.
-	select {
-	case <-p.closed:
+	p.mu.RLock()
+	if p.closing {
+		p.mu.RUnlock()
 		p.drop(ctx, routingKey, dropReasonClosed, p.metrics.droppedClosed)
 
 		return
-	default:
 	}
 
 	select {
 	case p.queue <- routingKey:
+		p.mu.RUnlock()
 	default:
+		p.mu.RUnlock()
 		p.drop(ctx, routingKey, dropReasonQueueFull, p.metrics.droppedQueueFull)
 	}
 }
@@ -268,7 +270,11 @@ func (p *publisher) publishOne(ctx context.Context, routingKey string) {
 
 func (p *publisher) close(ctx context.Context) {
 	p.closeOnce.Do(func() {
+		p.mu.Lock()
+		p.closing = true
 		close(p.closed)
+		p.mu.Unlock()
+
 		if p.state.CompareAndSwap(stateInit, stateClosed) {
 			// run() either has not been scheduled yet or will never be
 			// invoked. Drain whatever is queued on this goroutine
