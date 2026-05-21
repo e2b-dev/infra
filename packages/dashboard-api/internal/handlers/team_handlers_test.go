@@ -126,7 +126,7 @@ func TestPostTeamsTeamIDMembers_DuplicateMemberReturnsBadRequest(t *testing.T) {
 	store := &APIStore{
 		db:           testDB.SqlcClient,
 		authDB:       testDB.AuthDB,
-		userProfiles: newHandlerTestProfileProvider(targetUserID),
+		userProfiles: userprofile.NewSupabaseProvider(testDB.SupabaseDB),
 	}
 	store.PostTeamsTeamIDMembers(ginCtx, teamID)
 
@@ -172,7 +172,7 @@ VALUES ($1, $2)
 		db:           testDB.SqlcClient,
 		authDB:       testDB.AuthDB,
 		authService:  noopAuthService{},
-		userProfiles: newHandlerTestProfileProvider(inviteeID),
+		userProfiles: userprofile.NewSupabaseProvider(testDB.SupabaseDB),
 	}
 	store.PostTeamsTeamIDMembers(ginCtx, teamID)
 
@@ -403,50 +403,6 @@ VALUES ($1, $2, $3)
 	if err != nil {
 		t.Fatalf("failed to create team member relation: %v", err)
 	}
-}
-
-type handlerTestProfileProvider struct {
-	profilesByUserID map[uuid.UUID]userprofile.Profile
-	profilesByEmail  map[string]userprofile.Profile
-}
-
-func newHandlerTestProfileProvider(userIDs ...uuid.UUID) handlerTestProfileProvider {
-	provider := handlerTestProfileProvider{
-		profilesByUserID: make(map[uuid.UUID]userprofile.Profile, len(userIDs)),
-		profilesByEmail:  make(map[string]userprofile.Profile, len(userIDs)),
-	}
-
-	for _, userID := range userIDs {
-		email := handlerTestUserEmail(userID)
-		profile := userprofile.Profile{
-			UserID: userID,
-			Email:  email,
-		}
-		provider.profilesByUserID[userID] = profile
-		provider.profilesByEmail[email] = profile
-	}
-
-	return provider
-}
-
-func (p handlerTestProfileProvider) GetProfilesByUserID(_ context.Context, userIDs []uuid.UUID) (map[uuid.UUID]userprofile.Profile, error) {
-	profiles := make(map[uuid.UUID]userprofile.Profile, len(userIDs))
-	for _, userID := range userIDs {
-		if profile, ok := p.profilesByUserID[userID]; ok {
-			profiles[userID] = profile
-		}
-	}
-
-	return profiles, nil
-}
-
-func (p handlerTestProfileProvider) FindProfilesByEmail(_ context.Context, email string) ([]userprofile.Profile, error) {
-	profile, ok := p.profilesByEmail[email]
-	if !ok {
-		return nil, nil
-	}
-
-	return []userprofile.Profile{profile}, nil
 }
 
 func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {

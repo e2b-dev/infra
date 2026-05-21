@@ -120,7 +120,7 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 	user := profiles[0]
 	if err := s.authDB.Write.UpsertPublicUser(ctx, user.UserID); err != nil {
 		logger.L().Error(ctx, "failed to create public user anchor", zap.Error(err), logger.WithUserID(user.UserID.String()))
-		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to look up user")
+		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to add team member")
 
 		return
 	}

@@ -15,8 +15,7 @@ const upsertPublicUser = `-- name: UpsertPublicUser :exec
 INSERT INTO public.users (id)
 VALUES ($1::uuid)
 ON CONFLICT (id)
-DO UPDATE SET
-    updated_at = now()
+DO NOTHING
 `
 
 func (q *Queries) UpsertPublicUser(ctx context.Context, id uuid.UUID) error {
