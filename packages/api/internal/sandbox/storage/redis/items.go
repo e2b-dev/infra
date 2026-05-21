@@ -22,11 +22,13 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
 	nowMs := float64(now.UnixMilli())
 
 	// Fetch members whose score (EndTime in ms) is <= now, bounded to 256 per cycle.
-	expiredMembers, err := s.redisClient.ZRangeByScore(ctx, globalExpirationSet, &redis.ZRangeBy{
+	zrangeCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	expiredMembers, err := s.redisClient.ZRangeByScore(zrangeCtx, globalExpirationSet, &redis.ZRangeBy{
 		Min:   "-inf",
 		Max:   fmt.Sprintf("%v", nowMs),
 		Count: expiredItemsBatchSize,
 	}).Result()
+	cancel()
 	if err != nil {
 		return nil, fmt.Errorf("failed to query global expiration index: %w", err)
 	}
@@ -75,7 +77,9 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
 		batches = append(batches, batchInfo{cmd: cmd, members: entry.members})
 	}
 
-	_, err = pipe.Exec(ctx)
+	pipeCtx, cancel := context.WithTimeout(ctx, redisOpTimeout)
+	_, err = pipe.Exec(pipeCtx)
+	cancel()
 	if err != nil {
 		return nil, fmt.Errorf("MGET pipeline failed: %w", err)
 	}
@@ -130,8 +134,11 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
 
 	// Remove orphaned ZSET entries so the set doesn't grow unboundedly.
 	if len(staleMembers) > 0 {
-		if err := s.redisClient.ZRem(ctx, globalExpirationSet, staleMembers...).Err(); err != nil {
-			logger.L().Warn(ctx, "Failed to clean up stale expiration index entries", zap.Error(err), zap.Int("count", len(staleMembers)))
+		zremCtx, zremCancel := context.WithTimeout(ctx, redisOpTimeout)
+		zremErr := s.redisClient.ZRem(zremCtx, globalExpirationSet, staleMembers...).Err()
+		zremCancel()
+		if zremErr != nil {
+			logger.L().Warn(ctx, "Failed to clean up stale expiration index entries", zap.Error(zremErr), zap.Int("count", len(staleMembers)))
 		}
 	}
 
