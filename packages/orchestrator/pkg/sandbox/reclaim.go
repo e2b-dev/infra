@@ -56,10 +56,8 @@ func (s *Sandbox) buildReclaimScript(cfg featureflags.ReclaimConfig) (string, ti
 	return "rc=0; " + strings.Join(parts, "; ") + "; exit $rc", sum + reclaimOuterSlack
 }
 
-// bestEffortReclaim freezes user cgroups (via the native /freeze endpoint, on
-// its own deadline) and then runs the fstrim/sync/drop_caches/compact_memory
-// chain via envd before pause. The frozen state persists into the snapshot;
-// envd unfreezes at the end of /init on resume.
+// bestEffortReclaim optionally freezes user cgroups, then runs the
+// fstrim/sync/drop_caches/compact_memory chain via envd before pause.
 func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 	ctx, span := tracer.Start(ctx, "envd-reclaim")
 	defer span.End()
@@ -70,7 +68,11 @@ func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 		featureflags.TemplateContext(s.Runtime.TemplateID),
 	)
 
-	if cfg.FreezeUserCgroup {
+	if s.featureFlags.BoolFlag(ctx, featureflags.FreezeUserCgroupFlag,
+		featureflags.SandboxContext(s.Runtime.SandboxID),
+		featureflags.TeamContext(s.Runtime.TeamID),
+		featureflags.TemplateContext(s.Runtime.TemplateID),
+	) {
 		s.bestEffortFreeze(ctx)
 	}
 

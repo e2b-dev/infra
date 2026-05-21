@@ -1,3 +1,3 @@
 package pkg
 
-const Version = "0.5.29"
+const Version = "0.6.0"

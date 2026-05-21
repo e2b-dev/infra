@@ -143,6 +143,7 @@ var (
 	SandboxLabelBasedSchedulingFlag  = NewBoolFlag("sandbox-label-based-scheduling", false)
 	OptimisticResourceAccountingFlag = NewBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
 	FreePageReportingFlag            = NewBoolFlag("free-page-reporting", false)
+	FreezeUserCgroupFlag             = NewBoolFlag("freeze-user-cgroup", false)
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
 
@@ -286,10 +287,6 @@ type ReclaimConfig struct {
 	DropCaches    time.Duration
 	CompactMemory time.Duration
 	Fstrim        time.Duration
-
-	// FreezeUserCgroup freezes user/pty/socat before reclaim; persists into
-	// the snapshot, envd unfreezes at the end of /init on resume.
-	FreezeUserCgroup bool
 }
 
 func GetReclaimConfig(ctx context.Context, ff *Client, contexts ...ldcontext.Context) ReclaimConfig {
@@ -299,11 +296,10 @@ func GetReclaimConfig(ctx context.Context, ff *Client, contexts ...ldcontext.Con
 	}
 
 	return ReclaimConfig{
-		Sync:             ms("sync"),
-		DropCaches:       ms("drop_caches"),
-		CompactMemory:    ms("compact_memory"),
-		Fstrim:           ms("fstrim"),
-		FreezeUserCgroup: v.GetByKey("freeze_user_cgroup").BoolValue(),
+		Sync:          ms("sync"),
+		DropCaches:    ms("drop_caches"),
+		CompactMemory: ms("compact_memory"),
+		Fstrim:        ms("fstrim"),
 	}
 }
 
