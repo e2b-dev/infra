@@ -18,9 +18,3 @@ When creation completes, it removes the sandbox from the pending zset, writes a 
 A waiter subscribes to the routing key, probes the result key immediately, then waits for PubSub notifications or the 1 second fallback ticker. PubSub is best-effort; the fallback ticker is required for correctness.
 
 `Release` is called when the sandbox is removed from storage (`Store.Remove`). It removes the sandbox from the pending zset, writes a TTL tombstone result key, and publishes the routing key. The tombstone decodes to `sandbox.ErrReservationReleased`.
-
-## Migration Note
-
-The waiter still has a legacy compatibility path: if the result key is missing and the sandbox is no longer in the pending zset, it treats the reservation as released. This supports old instances that removed pending entries without writing tombstones.
-
-After all instances write tombstones on release, this waiter-side `ZSCORE` fallback can be removed. The pending zset itself must remain unless reservation and limit accounting are redesigned.
