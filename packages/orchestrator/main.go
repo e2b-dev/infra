@@ -7,15 +7,14 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/factories"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/tcpfirewall"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/version"
 )
-
-const version = "0.2.0"
 
 var commitSHA string
 
 func main() {
 	factories.Run(factories.Options{
-		Version:       version,
+		Version:       version.Version,
 		CommitSHA:     commitSHA,
 		EgressFactory: defaultEgressFactory,
 	})
