@@ -87,6 +87,9 @@ func (s *ReservationStorage) Release(ctx context.Context, teamID uuid.UUID, sand
 	pendingSetKey := getPendingSetKey(teamIDStr)
 	resultKeyStr := getResultKey(teamIDStr, sandboxID)
 
+	// Add a tombstone to prevent a race condition when a waiter doesn't check the pending set in time and we remove the pending entry
+	// but before we set the result key. The waiter treats a missing pending entry as a release,
+	// so without the tombstone it might miss the release and end up waiting indefinitely for a result that will never come.
 	tombstone, err := encodeReleased()
 	if err != nil {
 		return fmt.Errorf("failed to encode release tombstone: %w", err)
@@ -222,16 +225,18 @@ func (s *ReservationStorage) tryReadResult(
 		return true, sandbox.Sandbox{}, fmt.Errorf("failed to check result key: %w", getErr)
 	}
 
-	// No result yet. Confirm the reservation is still pending; if it's
-	// not, this is a pre-tombstone Release from a legacy instance. Treat
-	// it as a release for compatibility.
+	// No result yet. New Release calls write a tombstone result key, so a
+	// missing result normally means the reservation is still pending. This
+	// ZSCORE check is only for compatibility with legacy instances that
+	// released reservations by removing the pending entry without writing a
+	// tombstone; in that case, a missing pending entry means released.
 	//
 	// TODO [ENG-4089]: drop this ZSCORE fallback once all
 	// instances are guaranteed to write a tombstone on Release.
 	scoreErr := s.redisClient.ZScore(ctx, pendingSetKey, sandboxID).Err()
 	if errors.Is(scoreErr, redis.Nil) {
-		// Final read in case finishStart/release raced between our GET
-		// and ZSCORE.
+		// Re-read the result in case finishStart or a new Release wrote it
+		// between the initial GET and the legacy pending-set check.
 		data, getErr = s.redisClient.Get(ctx, resultKey).Bytes()
 		if getErr == nil {
 			sbx, err = decodeResult(data)
