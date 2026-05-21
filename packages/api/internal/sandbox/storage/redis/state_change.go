@@ -199,16 +199,10 @@ func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, res
 		// Notify subscribers that the transition is complete so waitForTransition
 		// goroutines wake up immediately rather than waiting for the next poll tick.
 		// The routing key is published as the payload so the single global channel
-		// can serve all sandboxes across all teams.
-		routingKey := getTransitionRoutingKey(teamID.String(), sandboxID, transitionID)
-		pubErr := s.redisClient.Publish(cbCtx, globalStorageNotifyChannel, routingKey).Err()
-		if pubErr != nil {
-			logger.L().Warn(cbCtx, "Failed to publish transition notification",
-				logger.WithSandboxID(sandboxID),
-				zap.String("transitionID", transitionID),
-				zap.Error(pubErr),
-			)
-		}
+		// can serve all sandboxes across all teams. The publish is handed off to
+		// the shared publisher worker; on overflow the 1s fallback ticker in
+		// waitForTransition covers any dropped notification.
+		s.publisher.Publish(cbCtx, getTransitionRoutingKey(teamID.String(), sandboxID, transitionID))
 	}
 }
 

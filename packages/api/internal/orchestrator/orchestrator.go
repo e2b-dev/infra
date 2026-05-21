@@ -129,7 +129,10 @@ func New(
 
 	bestOfKAlgorithm := placement.NewBestOfK(getBestOfKConfig(ctx, featureFlags)).(*placement.BestOfK)
 
-	redisStorage := redisbackend.NewStorage(redisClient)
+	redisStorage, err := redisbackend.NewStorage(redisClient, tel.MeterProvider)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create redis sandbox storage: %w", err)
+	}
 	go redisStorage.Start(ctx)
 
 	o := Orchestrator{
@@ -302,7 +305,7 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 		errs = append(errs, err)
 	}
 
-	o.redisStorage.Close()
+	o.redisStorage.Close(ctx)
 
 	return errors.Join(errs...)
 }

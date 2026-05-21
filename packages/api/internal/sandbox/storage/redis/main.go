@@ -2,9 +2,11 @@ package redis
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -32,31 +34,50 @@ type Storage struct {
 	redisClient redis.UniversalClient
 	locker      *storageLocker
 	subManager  *subscriptionManager
+	publisher   *publisher
 }
 
 func (s *Storage) Name() string { return sandbox.StorageNameRedis }
 
+const meterScope = "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
+
 func NewStorage(
 	redisClient redis.UniversalClient,
-) *Storage {
+	meterProvider metric.MeterProvider,
+) (*Storage, error) {
+	meter := meterProvider.Meter(meterScope)
+
 	subManager := newSubscriptionManager(redisClient, globalStorageNotifyChannel)
+	pub, err := newPublisher(redisClient, globalStorageNotifyChannel, meter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create publisher: %w", err)
+	}
 
 	return &Storage{
 		redisClient: redisClient,
-		locker:      newStorageLocker(redisClient, subManager),
+		locker:      newStorageLocker(redisClient, subManager, pub),
 		subManager:  subManager,
-	}
+		publisher:   pub,
+	}, nil
 }
 
-// Start subscribes to the global PubSub channel and blocks until the context
-// is cancelled or Close is called. It is intended to be called in a goroutine.
+// Start subscribes to the global PubSub channel and launches the publish
+// worker. Blocks until the context is cancelled or Close is called.
 func (s *Storage) Start(ctx context.Context) {
+	pubDone := make(chan struct{})
+	go func() {
+		defer close(pubDone)
+		s.publisher.run(ctx)
+	}()
+
 	s.subManager.start(ctx)
+	<-pubDone
 }
 
-// Close shuts down the subscription manager and its background goroutine.
-func (s *Storage) Close() {
+// Close shuts down the subscription manager and the publish worker.
+func (s *Storage) Close(ctx context.Context) {
 	s.subManager.close()
+	s.publisher.close(ctx)
 }
 
 // Reconcile returns a list of sandboxes that are considered orphans on the current node.
