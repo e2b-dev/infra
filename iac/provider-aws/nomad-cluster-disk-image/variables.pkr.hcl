@@ -36,6 +36,11 @@ variable "cni_plugin_version" {
   default = "v1.6.2"
 }
 
+variable "go_version" {
+  type    = string
+  default = "1.26.3"
+}
+
 variable "base_instance_type" {
   type    = string
   default = "t3.large"

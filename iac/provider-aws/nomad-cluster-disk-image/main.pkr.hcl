@@ -97,9 +97,8 @@ build {
   }
 
   provisioner "shell" {
-    inline = [
-      "sudo snap install go --classic"
-    ]
+    script          = "${local.shared_setup_dir}/install-go.sh"
+    execute_command = "chmod +x {{ .Path }}; {{ .Vars }} {{ .Path }} --version ${var.go_version}"
   }
 
   provisioner "shell" {

@@ -14,7 +14,7 @@ source "googlecompute" "orch" {
   # TODO: Overwrite the image instead of creating timestamped images every time we build its
   image_name    = "${var.prefix}orch-${formatdate("YYYY-MM-DD-hh-mm-ss", timestamp())}"
   project_id    = var.gcp_project_id
-  source_image  = "ubuntu-2404-noble-amd64-v20260402"
+  source_image  = "ubuntu-2404-noble-amd64-v20260517"
   ssh_username  = "ubuntu"
   zone          = var.gcp_zone
   disk_size     = 10
@@ -96,9 +96,8 @@ build {
   }
 
   provisioner "shell" {
-    inline = [
-      "sudo snap install go --classic"
-    ]
+    script          = "${local.shared_setup_dir}/install-go.sh"
+    execute_command = "chmod +x {{ .Path }}; {{ .Vars }} {{ .Path }} --version ${var.go_version}"
   }
 
   provisioner "shell" {
