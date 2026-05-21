@@ -27,6 +27,7 @@ permissions:
 jobs:
   changes:
     name: Check
+    if: github.repository == 'e2b-dev/infra'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
