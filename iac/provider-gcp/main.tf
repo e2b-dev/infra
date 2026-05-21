@@ -297,7 +297,6 @@ module "nomad" {
   dashboard_api_count                          = var.dashboard_api_count
   dashboard_api_admin_token_secret_name        = module.init.dashboard_api_admin_token_secret_name
   supabase_db_connection_string_secret_version = module.init.supabase_db_connection_string_secret_version
-  enable_billing_http_team_provision_sink      = var.enable_billing_http_team_provision_sink
 
   # Docker reverse proxy
   docker_reverse_proxy_port                = var.docker_reverse_proxy_port
