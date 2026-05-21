@@ -197,7 +197,6 @@ module "dashboard_api" {
   redis_url                               = local.redis_url
   redis_cluster_url                       = local.redis_cluster_url
   redis_tls_ca_base64                     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-  enable_auth_user_sync_background_worker = var.enable_auth_user_sync_background_worker
   enable_billing_http_team_provision_sink = var.enable_billing_http_team_provision_sink
   billing_server_url                      = local.dashboard_api_billing_server_url
   billing_server_api_token                = local.dashboard_api_billing_server_api_token
