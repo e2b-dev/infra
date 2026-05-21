@@ -142,7 +142,7 @@ func (o *Orchestrator) failSnapshotBuild(ctx context.Context, buildID uuid.UUID,
 
 func checkpointFailureState(err error) (orchestrator.SandboxCheckpointSandboxState, error) {
 	checkpointErr := fmt.Errorf("checkpoint failed: %w", err)
-	st, ok := grpcstatus.FromError(checkpointErr)
+	st, ok := grpcstatus.FromError(err)
 	if ok {
 		for _, detail := range st.Details() {
 			failure, ok := detail.(*orchestrator.SandboxCheckpointFailure)
@@ -175,7 +175,7 @@ func (o *Orchestrator) removeCheckpointSandboxAPIState(ctx context.Context, sbx 
 	// state remains to be cleaned up here.
 	cleanupCtx := context.WithoutCancel(ctx)
 	if err := o.routingCatalog.DeleteSandbox(cleanupCtx, sbx.SandboxID, sbx.ExecutionID); err != nil {
-		telemetry.ReportError(ctx, "error removing routing record after failed checkpoint", err)
+		telemetry.ReportError(cleanupCtx, "error removing routing record after failed checkpoint", err)
 	}
 
 	o.sandboxStore.Remove(cleanupCtx, sbx.TeamID, sbx.SandboxID)
