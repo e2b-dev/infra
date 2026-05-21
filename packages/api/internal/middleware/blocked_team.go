@@ -49,8 +49,8 @@ func EnforceBlockedTeam() gin.HandlerFunc {
 	return auth.EnforceBlockedTeam(blockedTeamAllowlist)
 }
 
-// CheckBlockedTeamForRoute applies the api allowlist to a late-resolved
-// team (access-token / user-id auth), mirroring EnforceBlockedTeam.
-func CheckBlockedTeamForRoute(c *gin.Context, team *types.Team) error {
-	return auth.CheckBlockedTeamForRoute(c, team, blockedTeamAllowlist)
+// CheckTeamAccessForRoute applies CheckTeamBanned + the api blocked-team
+// allowlist to a late-resolved team.
+func CheckTeamAccessForRoute(c *gin.Context, team *types.Team) error {
+	return auth.CheckTeamAccess(c, team, blockedTeamAllowlist)
 }

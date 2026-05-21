@@ -17,13 +17,9 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 )
 
-// applyBlockedTeamCheck mirrors middleware.EnforceBlockedTeam for code
-// paths that resolve the team late (i.e. access-token / user-id auth, where
-// the team is not on the gin context when the middleware runs). Returns a
-// 403 *api.APIError if the team is blocked AND the matched route is not in
-// the blocked-team allowlist.
-func applyBlockedTeamCheck(c *gin.Context, team *types.Team) *api.APIError {
-	if err := middleware.CheckBlockedTeamForRoute(c, team); err != nil {
+// applyTeamAccessCheck maps a team-access denial to a 403 *api.APIError.
+func applyTeamAccessCheck(c *gin.Context, team *types.Team) *api.APIError {
+	if err := middleware.CheckTeamAccessForRoute(c, team); err != nil {
 		return &api.APIError{
 			Code:      http.StatusForbidden,
 			ClientMsg: err.Error(),
@@ -70,7 +66,7 @@ func (a *APIStore) GetTeam(
 			}
 		}
 
-		if apiErr := applyBlockedTeamCheck(c, team); apiErr != nil {
+		if apiErr := applyTeamAccessCheck(c, team); apiErr != nil {
 			return nil, apiErr
 		}
 
@@ -169,7 +165,7 @@ func (a *APIStore) resolveTemplateAndTeam(
 
 		for _, t := range userTeams {
 			if t.Team.ID == aliasInfo.TeamID {
-				if apiErr := applyBlockedTeamCheck(c, t.Team); apiErr != nil {
+				if apiErr := applyTeamAccessCheck(c, t.Team); apiErr != nil {
 					return nil, nil, apiErr
 				}
 

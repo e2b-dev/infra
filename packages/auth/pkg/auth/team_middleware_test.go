@@ -99,8 +99,6 @@ func TestEnforceBlockedTeam(t *testing.T) {
 	}
 }
 
-// TestEnforceBlockedTeam_AllowlistParameterization proves the same blocked
-// team flips allow vs. deny purely as a function of the allowlist.
 func TestEnforceBlockedTeam_AllowlistParameterization(t *testing.T) {
 	t.Parallel()
 
@@ -117,6 +115,121 @@ func TestEnforceBlockedTeam_AllowlistParameterization(t *testing.T) {
 	wDenied, ranDenied := runEnforceBlockedTeam(t, restrictive, method, path, team)
 	require.False(t, ranDenied)
 	assert.Equal(t, http.StatusForbidden, wDenied.Code)
+}
+
+func TestCheckTeamAccess(t *testing.T) {
+	t.Parallel()
+
+	reason := "payment failed"
+	allowlist := BlockedTeamAllowlist{
+		http.MethodGet: {"/sandboxes": {}},
+	}
+
+	cleanTeam := types.NewTeam(&authqueries.Team{}, &authqueries.TeamLimit{})
+	bannedTeam := types.NewTeam(&authqueries.Team{IsBanned: true}, &authqueries.TeamLimit{})
+	blockedTeam := types.NewTeam(&authqueries.Team{IsBlocked: true, BlockedReason: &reason}, &authqueries.TeamLimit{})
+	bannedAndBlockedTeam := types.NewTeam(&authqueries.Team{IsBanned: true, IsBlocked: true, BlockedReason: &reason}, &authqueries.TeamLimit{})
+
+	cases := []struct {
+		name     string
+		method   string
+		fullPath string
+		team     *types.Team
+		wantErr  error
+	}{
+		{
+			name:     "nil team passes",
+			method:   http.MethodPost,
+			fullPath: "/sandboxes",
+			team:     nil,
+		},
+		{
+			name:     "clean team passes",
+			method:   http.MethodPost,
+			fullPath: "/sandboxes",
+			team:     cleanTeam,
+		},
+		{
+			name:     "banned non-allowlisted denied",
+			method:   http.MethodPost,
+			fullPath: "/sandboxes",
+			team:     bannedTeam,
+			wantErr:  (*TeamForbiddenError)(nil),
+		},
+		{
+			name:     "banned allowlisted still denied",
+			method:   http.MethodGet,
+			fullPath: "/sandboxes",
+			team:     bannedTeam,
+			wantErr:  (*TeamForbiddenError)(nil),
+		},
+		{
+			name:     "blocked allowlisted passes",
+			method:   http.MethodGet,
+			fullPath: "/sandboxes",
+			team:     blockedTeam,
+		},
+		{
+			name:     "blocked non-allowlisted denied",
+			method:   http.MethodPost,
+			fullPath: "/sandboxes",
+			team:     blockedTeam,
+			wantErr:  (*TeamBlockedError)(nil),
+		},
+		{
+			name:     "banned and blocked allowlisted reports banned",
+			method:   http.MethodGet,
+			fullPath: "/sandboxes",
+			team:     bannedAndBlockedTeam,
+			wantErr:  (*TeamForbiddenError)(nil),
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := runCheckTeamAccess(t, allowlist, tc.method, tc.fullPath, tc.team)
+
+			if tc.wantErr == nil {
+				assert.NoError(t, err)
+
+				return
+			}
+
+			require.Error(t, err)
+			switch tc.wantErr.(type) {
+			case *TeamForbiddenError:
+				var target *TeamForbiddenError
+				assert.ErrorAs(t, err, &target)
+			case *TeamBlockedError:
+				var target *TeamBlockedError
+				assert.ErrorAs(t, err, &target)
+			}
+		})
+	}
+}
+
+func runCheckTeamAccess(
+	t *testing.T,
+	allowlist BlockedTeamAllowlist,
+	method, fullPath string,
+	team *types.Team,
+) error {
+	t.Helper()
+
+	gin.SetMode(gin.TestMode)
+
+	var gotErr error
+
+	r := gin.New()
+	r.Handle(method, fullPath, func(c *gin.Context) {
+		gotErr = CheckTeamAccess(c, team, allowlist)
+	})
+
+	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), method, concretePath(fullPath), nil))
+
+	return gotErr
 }
 
 func runEnforceBlockedTeam(
@@ -150,9 +263,8 @@ func runEnforceBlockedTeam(
 	return w, handlerRan
 }
 
-// concretePath substitutes ":param" segments in a gin route pattern with
-// "x" so httptest can hit the route while c.FullPath() still reports the
-// original pattern.
+// concretePath substitutes ":param" segments with "x" so httptest hits
+// the route while c.FullPath() still reports the original pattern.
 func concretePath(pattern string) string {
 	var b strings.Builder
 	b.Grow(len(pattern))

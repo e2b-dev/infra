@@ -26,8 +26,7 @@ func (a BlockedTeamAllowlist) Allows(c *gin.Context) bool {
 }
 
 // CheckBlockedTeamForRoute returns *TeamBlockedError if team is blocked
-// and the matched route is not in allowlist. Used by code paths that
-// resolve the team after EnforceBlockedTeam has run (e.g. access-token auth).
+// and the matched route is not in allowlist.
 func CheckBlockedTeamForRoute(c *gin.Context, team *types.Team, allowlist BlockedTeamAllowlist) error {
 	err := CheckTeamBlocked(team)
 	if err == nil {
@@ -39,6 +38,20 @@ func CheckBlockedTeamForRoute(c *gin.Context, team *types.Team, allowlist Blocke
 	}
 
 	return err
+}
+
+// CheckTeamAccess returns an error if team is banned, or if team is
+// blocked and the matched route is not in allowlist.
+func CheckTeamAccess(c *gin.Context, team *types.Team, allowlist BlockedTeamAllowlist) error {
+	if team == nil || team.Team == nil {
+		return nil
+	}
+
+	if err := CheckTeamBanned(*team.Team); err != nil {
+		return err
+	}
+
+	return CheckBlockedTeamForRoute(c, team, allowlist)
 }
 
 // EnforceBlockedTeam returns a gin middleware that denies blocked teams
