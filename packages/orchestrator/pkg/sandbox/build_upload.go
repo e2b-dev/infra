@@ -25,6 +25,7 @@ type Upload struct {
 	store          storage.StorageProvider
 	mem            storage.CompressConfig
 	root           storage.CompressConfig
+	useCase        string
 	objectMetadata storage.ObjectMetadata
 	future         *utils.ErrorOnce
 	useV4          bool
@@ -57,6 +58,7 @@ func NewUpload(
 		store:          store,
 		mem:            mem,
 		root:           root,
+		useCase:        useCase,
 		objectMetadata: objectMetadata,
 		useV4:          memV4 || rootV4,
 	}

@@ -29,7 +29,6 @@ func recordSnapshotDiff(
 	fileType string,
 	dm *header.DiffMetadata,
 	original *header.Header,
-	useCase SnapshotUseCase,
 ) {
 	if dm == nil || original == nil || original.Metadata == nil {
 		return
@@ -38,9 +37,8 @@ func recordSnapshotDiff(
 	total := int64(original.Metadata.Size)
 
 	ft := attribute.String("file_type", fileType)
-	uc := attribute.String("use_case", string(useCase))
 
-	snapshotTotalBytes.Record(ctx, total, metric.WithAttributes(ft, uc))
+	snapshotTotalBytes.Record(ctx, total, metric.WithAttributes(ft))
 
 	var dirtyBytes, emptyBytes int64
 	if dm.Dirty != nil {
@@ -53,7 +51,7 @@ func recordSnapshotDiff(
 		"dirty": dirtyBytes,
 		"empty": emptyBytes,
 	} {
-		attrs := metric.WithAttributes(ft, attribute.String("kind", kind), uc)
+		attrs := metric.WithAttributes(ft, attribute.String("kind", kind))
 		snapshotDiffBytes.Record(ctx, b, attrs)
 		snapshotDiffRatioBp.Record(ctx, ratioBp(b, total), attrs)
 	}

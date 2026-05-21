@@ -25,10 +25,7 @@ VALUES ($1, $2)
 `, userID, fmt.Sprintf("user-test-integration-%s@e2b.dev", userID))
 	require.NoError(t, err)
 
-	err = db.AuthDb.Write.UpsertPublicUser(t.Context(), authqueries.UpsertPublicUserParams{
-		ID:    userID,
-		Email: fmt.Sprintf("user-test-integration-%s@e2b.dev", userID),
-	})
+	err = db.AuthDb.Write.UpsertPublicUser(t.Context(), userID)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
