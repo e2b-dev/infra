@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -108,10 +109,98 @@ type firecrackerBlockMetrics struct {
 	RemainingReqsCount         uint64 `json:"remaining_reqs_count"`
 }
 
+// firecrackerBalloonMetrics is a subset of Firecracker's BalloonDeviceMetrics.
+// Counters are SharedIncMetric — each flush emits the delta since the previous
+// serialize, so we accumulate them in the reader.
+type firecrackerBalloonMetrics struct {
+	FreePageHintCount   uint64 `json:"free_page_hint_count"`
+	FreePageHintFreed   uint64 `json:"free_page_hint_freed"`
+	FreePageHintFails   uint64 `json:"free_page_hint_fails"`
+	FreePageReportCount uint64 `json:"free_page_report_count"`
+	FreePageReportFreed uint64 `json:"free_page_report_freed"`
+	FreePageReportFails uint64 `json:"free_page_report_fails"`
+}
+
 // firecrackerMetrics is the top-level structure of one Firecracker metrics JSON line.
 type firecrackerMetrics struct {
-	Net   firecrackerNetMetrics   `json:"net"`
-	Block firecrackerBlockMetrics `json:"block"`
+	Net     firecrackerNetMetrics     `json:"net"`
+	Block   firecrackerBlockMetrics   `json:"block"`
+	Balloon firecrackerBalloonMetrics `json:"balloon"`
+}
+
+// BalloonMetricsSnapshot is the cumulative-since-FC-start view of
+// virtio-balloon counters, exposed via Process.BalloonMetrics.
+type BalloonMetricsSnapshot struct {
+	HintCount   uint64
+	HintFreed   uint64
+	HintFails   uint64
+	ReportCount uint64
+	ReportFreed uint64
+	ReportFails uint64
+}
+
+// fphFlushReadTimeout caps how long FlushAndReadBalloonMetrics waits for the
+// metrics-reader goroutine to consume FC's response line.
+const fphFlushReadTimeout = 2 * time.Second
+
+func accumulateBalloon(prev *BalloonMetricsSnapshot, b firecrackerBalloonMetrics) BalloonMetricsSnapshot {
+	next := BalloonMetricsSnapshot{
+		HintCount:   b.FreePageHintCount,
+		HintFreed:   b.FreePageHintFreed,
+		HintFails:   b.FreePageHintFails,
+		ReportCount: b.FreePageReportCount,
+		ReportFreed: b.FreePageReportFreed,
+		ReportFails: b.FreePageReportFails,
+	}
+	if prev != nil {
+		next.HintCount += prev.HintCount
+		next.HintFreed += prev.HintFreed
+		next.HintFails += prev.HintFails
+		next.ReportCount += prev.ReportCount
+		next.ReportFreed += prev.ReportFreed
+		next.ReportFails += prev.ReportFails
+	}
+
+	return next
+}
+
+// BalloonMetrics returns the cumulative virtio-balloon counters observed so far.
+func (p *Process) BalloonMetrics() BalloonMetricsSnapshot {
+	if cur := p.balloonAccum.Load(); cur != nil {
+		return *cur
+	}
+
+	return BalloonMetricsSnapshot{}
+}
+
+// FlushMetrics triggers an FC metrics flush. Non-blocking on the reader.
+func (p *Process) FlushMetrics(ctx context.Context) error {
+	return p.client.flushMetrics(ctx)
+}
+
+// FlushAndReadBalloonMetrics flushes and waits for the reader to ingest the
+// resulting line, returning the updated cumulative snapshot. On flush error
+// (e.g. FC already torn down) returns the last observed snapshot.
+func (p *Process) FlushAndReadBalloonMetrics(ctx context.Context) (BalloonMetricsSnapshot, error) {
+	pre := p.balloonAccum.Load()
+	if err := p.client.flushMetrics(ctx); err != nil {
+		return p.BalloonMetrics(), fmt.Errorf("flush metrics: %w", err)
+	}
+
+	deadline := time.Now().Add(fphFlushReadTimeout)
+	for {
+		if cur := p.balloonAccum.Load(); cur != pre {
+			return p.BalloonMetrics(), nil
+		}
+		if time.Now().After(deadline) {
+			return p.BalloonMetrics(), errors.New("timeout waiting for fresh balloon metrics line")
+		}
+		select {
+		case <-time.After(5 * time.Millisecond):
+		case <-ctx.Done():
+			return p.BalloonMetrics(), ctx.Err()
+		}
+	}
 }
 
 // startMetricsReader opens the metrics FIFO and starts a goroutine that reads
@@ -262,6 +351,10 @@ func (p *Process) startMetricsReader(ctx context.Context) {
 			if b.NoAvailBuffer > 0 {
 				fcBlockNoAvailBuffer.Add(ctx, int64(b.NoAvailBuffer))
 			}
+
+			// Balloon: SharedIncMetric resets on flush, so accumulate.
+			next := accumulateBalloon(p.balloonAccum.Load(), m.Balloon)
+			p.balloonAccum.Store(&next)
 		}
 
 		if err := scanner.Err(); err != nil {

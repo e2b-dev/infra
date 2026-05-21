@@ -1,6 +1,6 @@
 module github.com/e2b-dev/infra/packages/nomad-nodepool-apm
 
-go 1.25.9
+go 1.26.3
 
 require (
 	github.com/hashicorp/go-hclog v1.6.3

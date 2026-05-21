@@ -71,20 +71,22 @@ variable "client_proxy_oidc_issuer_url" {
 }
 
 variable "ingress_port" {
-  type = object({
-    name        = string
-    port        = number
-    health_path = string
-  })
+  type        = number
+  description = "External traffic port number"
+}
+
+variable "ingress_internal_port" {
+  type        = number
+  description = "Internal traffic port number"
+}
+
+variable "ingress_count" {
+  type = number
 }
 
 variable "traefik_config_files" {
   type        = map(string)
   description = "Map of filename => content for additional Traefik dynamic configuration files"
-}
-
-variable "ingress_count" {
-  type = number
 }
 
 variable "api_resources_cpu_count" {
@@ -408,6 +410,18 @@ variable "otel_router_grpc_port" {
   description = "Local otel-router OTLP gRPC port used by otel-collector when otel-router metric teeing is enabled."
 }
 
+variable "enable_gcp_telemetry_metrics" {
+  type        = bool
+  default     = false
+  description = "Enable exporting selected otel-collector metrics to Google Cloud Monitoring using the googlecloud exporter."
+}
+
+variable "enable_gcp_telemetry_external_metrics" {
+  type        = bool
+  default     = false
+  description = "Enable exporting external e2b.* metrics to Google Cloud Monitoring. Requires enable_gcp_telemetry_metrics."
+}
+
 variable "clickhouse_server_port" {
   type = object({
     name = string
@@ -498,15 +512,32 @@ variable "supabase_db_connection_string_secret_version" {
   type = any
 }
 
-variable "enable_auth_user_sync_background_worker" {
-  type    = bool
-  default = false
+variable "auth_provider_config" {
+  type = object({
+    jwt = optional(list(object({
+      issuer = object({
+        url                 = string
+        discoveryURL        = optional(string)
+        audiences           = list(string)
+        audienceMatchPolicy = optional(string)
+      })
+      cacheDuration = optional(string)
+    })))
+    legacy = optional(object({
+      hmac = object({
+        secrets = list(string)
+      })
+    }))
+  })
+  sensitive = true
+  default   = null
 }
 
 variable "enable_billing_http_team_provision_sink" {
   type    = bool
   default = false
 }
+
 variable "volume_token_issuer" {
   type = string
 }

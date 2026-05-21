@@ -5,6 +5,7 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"golang.org/x/sync/errgroup"
 
@@ -14,12 +15,12 @@ import (
 )
 
 func (u *Upload) runV3(ctx context.Context) error {
-	memfilePath, err := u.snap.MemfileDiff.CachePath()
+	memfilePath, err := u.snap.MemfileDiff.CachePath(ctx)
 	if err != nil {
 		return fmt.Errorf("error getting memfile diff path: %w", err)
 	}
 
-	rootfsPath, err := u.snap.RootfsDiff.CachePath()
+	rootfsPath, err := u.snap.RootfsDiff.CachePath(ctx)
 	if err != nil {
 		return fmt.Errorf("error getting rootfs diff path: %w", err)
 	}
@@ -31,7 +32,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		return headers.StoreHeader(egCtx, u.store, u.paths.MemfileHeader(), finalizeV3(u.snap.MemfileDiffHeader))
+		return storeHeaderWithMetrics(egCtx, u.store, u.paths.MemfileHeader(), string(build.Memfile), finalizeV3(u.snap.MemfileDiffHeader))
 	})
 
 	eg.Go(func() error {
@@ -39,7 +40,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		return headers.StoreHeader(egCtx, u.store, u.paths.RootfsHeader(), finalizeV3(u.snap.RootfsDiffHeader))
+		return storeHeaderWithMetrics(egCtx, u.store, u.paths.RootfsHeader(), string(build.Rootfs), finalizeV3(u.snap.RootfsDiffHeader))
 	})
 
 	meta := storage.WithMetadata(u.objectMetadata)
@@ -49,9 +50,17 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		_, _, err := storage.UploadFramed(egCtx, u.store, u.paths.Memfile(), storage.MemfileObjectType, memfilePath, meta)
+		info, err := os.Stat(memfilePath)
+		if err != nil {
+			return fmt.Errorf("memfile stat: %w", err)
+		}
+		_, _, err = storage.UploadFramed(egCtx, u.store, u.paths.Memfile(), storage.MemfileObjectType, memfilePath, meta)
+		if err != nil {
+			return err
+		}
+		recordUploadCompression(egCtx, uploadArtifactData, string(build.Memfile), storage.CompressConfig{}, info.Size(), info.Size())
 
-		return err
+		return nil
 	})
 
 	eg.Go(func() error {
@@ -59,9 +68,17 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		_, _, err := storage.UploadFramed(egCtx, u.store, u.paths.Rootfs(), storage.RootFSObjectType, rootfsPath, meta)
+		info, err := os.Stat(rootfsPath)
+		if err != nil {
+			return fmt.Errorf("rootfs stat: %w", err)
+		}
+		_, _, err = storage.UploadFramed(egCtx, u.store, u.paths.Rootfs(), storage.RootFSObjectType, rootfsPath, meta)
+		if err != nil {
+			return err
+		}
+		recordUploadCompression(egCtx, uploadArtifactData, string(build.Rootfs), storage.CompressConfig{}, info.Size(), info.Size())
 
-		return err
+		return nil
 	})
 
 	eg.Go(func() error {

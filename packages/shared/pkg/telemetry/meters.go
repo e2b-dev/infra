@@ -107,6 +107,8 @@ const (
 )
 
 const (
+  ApiRedisStoragePublisherPublishDuration HistogramType = "api.redis_storage.publisher.publish.duration"
+
 	// Firecracker net histograms — per-sandbox distribution per metrics flush, no sandbox_id.
 	// Firecracker serializes SharedIncMetric as per-flush deltas (default flush interval: 60 s).
 	// Symmetric TX/RX metrics carry a direction=tx/rx attribute; TX-only metrics always use direction=tx.
@@ -127,15 +129,18 @@ const (
 	SandboxFCBlockIOEngineThrottled     HistogramType = "orchestrator.sandbox.fc.block.io_engine_throttled"
 	SandboxFCBlockRemainingReqs         HistogramType = "orchestrator.sandbox.fc.block.remaining_reqs"
 
-	SnapshotDiffBytes   HistogramType = "orchestrator.sandbox.snapshot.diff.bytes"
-	SnapshotDiffRatioBp HistogramType = "orchestrator.sandbox.snapshot.diff.ratio_bp"
-	SnapshotTotalBytes  HistogramType = "orchestrator.sandbox.snapshot.total.bytes"
+	SnapshotDiffBytes  HistogramType = "orchestrator.sandbox.snapshot.diff.bytes"
+	SnapshotDiffRatio  HistogramType = "orchestrator.sandbox.snapshot.diff.ratio"
+	SnapshotTotalBytes HistogramType = "orchestrator.sandbox.snapshot.total.bytes"
 
-	ApiRedisStoragePublisherPublishDuration HistogramType = "api.redis_storage.publisher.publish.duration"
+	UploadUncompressedBytes HistogramType = "orchestrator.sandbox.upload.uncompressed.bytes"
+	UploadCompressedBytes   HistogramType = "orchestrator.sandbox.upload.compressed.bytes"
+	UploadCompressionRatio  HistogramType = "orchestrator.sandbox.upload.compression.ratio"
 )
 
 const (
 	ApiOrchestratorCountMeterName GaugeIntType = "api.orchestrator.status"
+	OrchestratorStatusGaugeName   GaugeIntType = "orchestrator.status"
 
 	// Sandbox metrics
 	SandboxRamUsedGaugeName   GaugeIntType = "e2b.sandbox.ram.used"
@@ -260,6 +265,7 @@ var gaugeFloatUnits = map[GaugeFloatType]string{
 
 var gaugeIntDesc = map[GaugeIntType]string{
 	ApiOrchestratorCountMeterName: "Counter of running orchestrators.",
+	OrchestratorStatusGaugeName:   "Self-reported orchestrator status (always 1, labelled with status and version).",
 	SandboxRamUsedGaugeName:       "Amount of RAM used by the sandbox.",
 	SandboxRamTotalGaugeName:      "Amount of RAM available to the sandbox.",
 	SandboxRamCacheGaugeName:      "Amount of RAM used by the page cache in the sandbox.",
@@ -272,6 +278,7 @@ var gaugeIntDesc = map[GaugeIntType]string{
 
 var gaugeIntUnits = map[GaugeIntType]string{
 	ApiOrchestratorCountMeterName: "{orchestrator}",
+	OrchestratorStatusGaugeName:   "{orchestrator}",
 	SandboxRamUsedGaugeName:       "{By}",
 	SandboxRamTotalGaugeName:      "{By}",
 	SandboxRamCacheGaugeName:      "{By}",
@@ -345,6 +352,8 @@ func GetGaugeInt(meter metric.Meter, name GaugeIntType) (metric.Int64ObservableG
 }
 
 var histogramDesc = map[HistogramType]string{
+  ApiRedisStoragePublisherPublishDuration: "Duration of a single Redis PUBLISH round-trip from the storage publisher",
+
 	BuildDurationHistogramName:            "Time taken to build a template",
 	BuildPhaseDurationHistogramName:       "Time taken to build each phase of a template",
 	BuildStepDurationHistogramName:        "Time taken to build each step of a template",
@@ -374,14 +383,18 @@ var histogramDesc = map[HistogramType]string{
 	SandboxFCBlockIOEngineThrottled:     "Distribution of Firecracker VMM block ops throttled by io_uring engine per metrics flush",
 	SandboxFCBlockRemainingReqs:         "Distribution of Firecracker VMM block queue remaining-request events per metrics flush",
 
-	SnapshotDiffBytes:   "Per-snapshot dirty/empty bytes per file",
-	SnapshotDiffRatioBp: "Per-snapshot dirty/empty as fraction of total mapped size, in basis points (10000=100%)",
-	SnapshotTotalBytes:  "Per-snapshot total mapped size of the file",
+	SnapshotDiffBytes:  "Per-snapshot dirty/empty bytes per file",
+	SnapshotDiffRatio:  "Per-snapshot dirty/empty as fraction of total mapped size (1.0 = 100%)",
+	SnapshotTotalBytes: "Per-snapshot total mapped size of the file",
 
-	ApiRedisStoragePublisherPublishDuration: "Duration of a single Redis PUBLISH round-trip from the storage publisher",
+	UploadUncompressedBytes: "Per-upload uncompressed artifact size",
+	UploadCompressedBytes:   "Per-upload compressed artifact size",
+	UploadCompressionRatio:  "Per-upload compressed/uncompressed ratio (1.0 = no compression)",
 }
 
 var histogramUnits = map[HistogramType]string{
+  ApiRedisStoragePublisherPublishDuration: "ms",
+
 	BuildDurationHistogramName:                    "ms",
 	BuildPhaseDurationHistogramName:               "ms",
 	BuildStepDurationHistogramName:                "ms",
@@ -410,11 +423,13 @@ var histogramUnits = map[HistogramType]string{
 	SandboxFCBlockIOEngineThrottled:     "{op}",
 	SandboxFCBlockRemainingReqs:         "{event}",
 
-	SnapshotDiffBytes:   "{By}",
-	SnapshotDiffRatioBp: "{1}",
-	SnapshotTotalBytes:  "{By}",
+	SnapshotDiffBytes:  "{By}",
+	SnapshotDiffRatio:  "{1}",
+	SnapshotTotalBytes: "{By}",
 
-	ApiRedisStoragePublisherPublishDuration: "ms",
+	UploadUncompressedBytes: "{By}",
+	UploadCompressedBytes:   "{By}",
+	UploadCompressionRatio:  "{1}",
 }
 
 func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram, error) {
@@ -422,6 +437,16 @@ func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram
 	unit := histogramUnits[name]
 
 	return meter.Int64Histogram(string(name),
+		metric.WithDescription(desc),
+		metric.WithUnit(unit),
+	)
+}
+
+func GetFloatHistogram(meter metric.Meter, name HistogramType) (metric.Float64Histogram, error) {
+	desc := histogramDesc[name]
+	unit := histogramUnits[name]
+
+	return meter.Float64Histogram(string(name),
 		metric.WithDescription(desc),
 		metric.WithUnit(unit),
 	)

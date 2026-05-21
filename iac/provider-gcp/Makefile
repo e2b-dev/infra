@@ -63,6 +63,8 @@ tf_vars := \
 	$(call tfvar, OTEL_ROUTER_HTTP_PORT) \
 	$(call tfvar, ENABLE_OTEL_ROUTER_METRICS) \
 	$(call tfvar, OTEL_ROUTER_GRPC_PORT) \
+	$(call tfvar, ENABLE_GCP_TELEMETRY_METRICS) \
+	$(call tfvar, ENABLE_GCP_TELEMETRY_EXTERNAL_METRICS) \
 	$(call tfvar, TEMPLATE_BUCKET_NAME) \
 	$(call tfvar, TEMPLATE_BUCKET_LOCATION) \
 	$(call tfvar, ENVD_TIMEOUT) \
@@ -86,7 +88,6 @@ tf_vars := \
 	$(call tfvar, LOKI_BOOT_DISK_TYPE) \
 	$(call tfvar, LOKI_USE_V13_SCHEMA_FROM) \
 	$(call tfvar, DASHBOARD_API_COUNT) \
-	$(call tfvar, ENABLE_AUTH_USER_SYNC_BACKGROUND_WORKER) \
 	$(call tfvar, ENABLE_BILLING_HTTP_TEAM_PROVISION_SINK) \
 	$(call tfvar, DEFAULT_PERSISTENT_VOLUME_TYPE) \
 	$(call tfvar, PERSISTENT_VOLUME_TYPES) \

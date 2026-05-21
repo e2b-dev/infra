@@ -68,6 +68,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	}
 	hugePages := fcInfo.HasHugePages()
 	freePageReporting := fcInfo.HasFreePageReporting() && s.featureFlags.BoolFlag(ctx, featureflags.FreePageReportingFlag)
+	freePageHinting := fcInfo.HasFreePageHinting() && featureflags.IsFreePageHintingEnabled(ctx, s.featureFlags)
 
 	childSpan.SetAttributes(
 		telemetry.WithTemplateID(cfg.GetTemplateID()),
@@ -79,6 +80,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		attribute.Int64("env.vcpu_count", int64(cfg.GetVCpuCount())),
 		attribute.Bool("env.huge_pages", hugePages),
 		attribute.Bool("env.free_page_reporting", freePageReporting),
+		attribute.Bool("env.free_page_hinting", freePageHinting),
 	)
 
 	template := config.TemplateConfig{
@@ -93,6 +95,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		DiskSizeMB:           int64(cfg.GetDiskSizeMB()),
 		HugePages:            hugePages,
 		FreePageReporting:    freePageReporting,
+		FreePageHinting:      freePageHinting,
 		FromImage:            cfg.GetFromImage(),
 		FromTemplate:         cfg.GetFromTemplate(),
 		RegistryAuthProvider: authProvider,

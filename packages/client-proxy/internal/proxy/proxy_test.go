@@ -72,10 +72,6 @@ func newFFWithOrchAcceptsCombinedHost(t *testing.T, enabled bool) *featureflags.
 	return ff
 }
 
-func ptr[T any](v T) *T {
-	return &v
-}
-
 func TestCatalogResolution_CatalogHit(t *testing.T) {
 	t.Parallel()
 
@@ -107,7 +103,7 @@ func TestClientProxyMaskRequestHost(t *testing.T) {
 			name:        "flag disabled masks sandbox shared host",
 			flagEnabled: false,
 			host:        "sandbox.e2b.app",
-			want:        ptr("49983-sbx.e2b.app"),
+			want:        new("49983-sbx.e2b.app"),
 		},
 		{
 			name:        "flag enabled preserves sandbox shared host",

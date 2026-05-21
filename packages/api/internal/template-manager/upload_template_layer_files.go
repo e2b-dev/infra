@@ -8,7 +8,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
-	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (tm *TemplateManager) InitLayerFileUpload(ctx context.Context, clusterID uuid.UUID, nodeID string, teamID uuid.UUID, templateID string, hash string) (*templatemanager.InitLayerFileUploadResponse, error) {
@@ -19,7 +18,7 @@ func (tm *TemplateManager) InitLayerFileUpload(ctx context.Context, clusterID uu
 
 	resp, err := client.Template.InitLayerFileUpload(
 		ctx, &templatemanager.InitLayerFileUploadRequest{
-			CacheScope: ut.ToPtr(teamID.String()),
+			CacheScope: new(teamID.String()),
 			TemplateID: templateID,
 			Hash:       hash,
 		},

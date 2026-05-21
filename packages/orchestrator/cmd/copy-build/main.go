@@ -12,7 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
-	"sort"
+	"slices"
 	"strings"
 	"sync/atomic"
 
@@ -285,7 +285,7 @@ func main() {
 	filesToCopy = append(filesToCopy, metadataPath)
 
 	// sort files to copy
-	sort.Strings(filesToCopy)
+	slices.Sort(filesToCopy)
 
 	googleStorageClient, err := googleStorage.NewClient(ctx)
 	if err != nil {

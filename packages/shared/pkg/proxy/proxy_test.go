@@ -22,7 +22,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // testBackend represents a test backend server
@@ -40,6 +39,8 @@ func (b *testBackend) RequestCount() uint64 {
 }
 
 const bodyWriteDelayHeader = "body-write-delay"
+
+var testHTTPClients sync.Map
 
 // newTestBackend creates a new test backend server
 func newTestBackend(listener net.Listener, id string) (*testBackend, error) {
@@ -420,12 +421,29 @@ func httpGetWithHeaders(t *testing.T, proxyURL string, headers http.Header) (*ht
 		}
 	}
 
-	rsp, err := (&http.Client{}).Do(req)
+	rsp, err := testHTTPClient(t).Do(req)
 	if err != nil {
 		return nil, err
 	}
 
 	return rsp, nil
+}
+
+func testHTTPClient(t *testing.T) *http.Client {
+	t.Helper()
+
+	transport := &http.Transport{}
+	client := &http.Client{Transport: transport}
+
+	actual, loaded := testHTTPClients.LoadOrStore(t.Name(), client)
+	if !loaded {
+		t.Cleanup(func() {
+			transport.CloseIdleConnections()
+			testHTTPClients.Delete(t.Name())
+		})
+	}
+
+	return actual.(*http.Client)
 }
 
 type instrumentedConn struct {
@@ -922,7 +940,7 @@ func TestChangeResponseHeader(t *testing.T) {
 			RequestLogger:                      logger.L(),
 			ConnectionKey:                      "connection-key",
 			IncludeSandboxIdInProxyErrorLogger: true,
-			MaskRequestHost:                    utils.ToPtr(maskedHost),
+			MaskRequestHost:                    new(maskedHost),
 		}, nil
 	}, nil, false)
 

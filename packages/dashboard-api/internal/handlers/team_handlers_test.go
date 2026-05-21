@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	authtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -67,7 +68,7 @@ func TestRequireAuthedTeamMatchesPath_Success(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(recorder)
 
 	teamID := uuid.New()
-	auth.SetTeamInfo(ctx, &authtypes.Team{
+	auth.SetTeamInfoForTest(t, ctx, &authtypes.Team{
 		Team: &authqueries.Team{ID: teamID},
 	})
 
@@ -84,7 +85,7 @@ func TestRequireAuthedTeamMatchesPath_Mismatch(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 
-	auth.SetTeamInfo(ctx, &authtypes.Team{
+	auth.SetTeamInfoForTest(t, ctx, &authtypes.Team{
 		Team: &authqueries.Team{ID: uuid.New()},
 	})
 
@@ -117,12 +118,16 @@ func TestPostTeamsTeamIDMembers_DuplicateMemberReturnsBadRequest(t *testing.T) {
 	request.Header.Set("Content-Type", "application/json")
 	ginCtx.Request = request
 
-	auth.SetUserID(ginCtx, addedByUserID)
-	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+	auth.SetUserIDForTest(t, ginCtx, addedByUserID)
+	auth.SetTeamInfoForTest(t, ginCtx, &authtypes.Team{
 		Team: &authqueries.Team{ID: teamID},
 	})
 
-	store := &APIStore{db: testDB.SqlcClient}
+	store := &APIStore{
+		db:           testDB.SqlcClient,
+		authDB:       testDB.AuthDB,
+		userProfiles: userprofile.NewSupabaseProvider(testDB.SupabaseDB),
+	}
 	store.PostTeamsTeamIDMembers(ginCtx, teamID)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -130,6 +135,60 @@ func TestPostTeamsTeamIDMembers_DuplicateMemberReturnsBadRequest(t *testing.T) {
 	}
 	if !strings.Contains(recorder.Body.String(), "User is already a member of this team") {
 		t.Fatalf("unexpected response body: %s", recorder.Body.String())
+	}
+}
+
+func TestPostTeamsTeamIDMembers_CreatesPublicUserAnchorForInvitee(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+
+	teamID := testutils.CreateTestTeam(t, testDB)
+	inviteeID := uuid.New()
+	addedByUserID := createHandlerTestUser(t, testDB)
+	inviteeEmail := handlerTestUserEmail(inviteeID)
+
+	if err := testDB.SupabaseDB.TestsRawSQL(ctx, `
+INSERT INTO auth.users (id, email)
+VALUES ($1, $2)
+`, inviteeID, inviteeEmail); err != nil {
+		t.Fatalf("failed to create auth user: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	body := `{"email":"` + inviteeEmail + `"}`
+	request := httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	ginCtx.Request = request
+
+	auth.SetUserIDForTest(t, ginCtx, addedByUserID)
+	auth.SetTeamInfoForTest(t, ginCtx, &authtypes.Team{
+		Team: &authqueries.Team{ID: teamID},
+	})
+
+	store := &APIStore{
+		db:           testDB.SqlcClient,
+		authDB:       testDB.AuthDB,
+		authService:  noopAuthService{},
+		userProfiles: userprofile.NewSupabaseProvider(testDB.SupabaseDB),
+	}
+	store.PostTeamsTeamIDMembers(ginCtx, teamID)
+
+	if ginCtx.Writer.Status() != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d: %s", ginCtx.Writer.Status(), recorder.Body.String())
+	}
+
+	if _, err := testDB.SqlcClient.GetPublicUserID(ctx, inviteeID); err != nil {
+		t.Fatalf("expected public user anchor to be created: %v", err)
+	}
+
+	if _, err := testDB.SqlcClient.GetTeamMemberRelation(ctx, queries.GetTeamMemberRelationParams{
+		TeamID: teamID,
+		UserID: inviteeID,
+	}); err != nil {
+		t.Fatalf("expected invitee team member relation: %v", err)
 	}
 }
 
@@ -144,7 +203,7 @@ func TestDeleteTeamsTeamIDMembersUserId_NonMemberReturnsBadRequest(t *testing.T)
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodDelete, "/", nil)
-	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+	auth.SetTeamInfoForTest(t, ginCtx, &authtypes.Team{
 		Team: &authqueries.Team{ID: teamID},
 	})
 
@@ -197,7 +256,7 @@ func TestDeleteTeamsTeamIDMembersUserId_RechecksDefaultAfterLock(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodDelete, "/", nil)
-	auth.SetTeamInfo(ginCtx, &authtypes.Team{
+	auth.SetTeamInfoForTest(t, ginCtx, &authtypes.Team{
 		Team: &authqueries.Team{ID: teamID},
 	})
 
@@ -213,6 +272,17 @@ func TestDeleteTeamsTeamIDMembersUserId_RechecksDefaultAfterLock(t *testing.T) {
 	case <-done:
 		t.Fatalf("expected delete handler to wait for the locked member row")
 	case <-time.After(100 * time.Millisecond):
+	}
+
+	_, err = tx.Exec(
+		ctx,
+		`UPDATE public.users_teams
+		SET is_default = false
+		WHERE user_id = $1 AND is_default = true`,
+		targetUserID,
+	)
+	if err != nil {
+		t.Fatalf("failed to clear target default team member: %v", err)
 	}
 
 	_, err = tx.Exec(
@@ -284,6 +354,28 @@ VALUES ($1, $2, $3)
 		t.Fatalf("failed to create test user: %v", err)
 	}
 
+	if err := db.AuthDB.Write.UpsertPublicUser(t.Context(), userID); err != nil {
+		t.Fatalf("failed to create public user: %v", err)
+	}
+
+	team, err := db.AuthDB.Write.CreateTeam(t.Context(), authqueries.CreateTeamParams{
+		Name:  email,
+		Tier:  baseTierID,
+		Email: email,
+	})
+	if err != nil {
+		t.Fatalf("failed to create default team: %v", err)
+	}
+
+	if err := db.AuthDB.Write.CreateTeamMembership(t.Context(), authqueries.CreateTeamMembershipParams{
+		UserID:    userID,
+		TeamID:    team.ID,
+		IsDefault: true,
+		AddedBy:   nil,
+	}); err != nil {
+		t.Fatalf("failed to create default team membership: %v", err)
+	}
+
 	return userID
 }
 
@@ -294,7 +386,17 @@ func handlerTestUserEmail(userID uuid.UUID) string {
 func insertHandlerTestTeamMember(t *testing.T, db *testutils.Database, userID, teamID uuid.UUID, isDefault bool) {
 	t.Helper()
 
-	err := db.AuthDb.TestsRawSQL(t.Context(), `
+	if isDefault {
+		if err := db.AuthDB.TestsRawSQL(t.Context(), `
+UPDATE public.users_teams
+SET is_default = false
+WHERE user_id = $1
+`, userID); err != nil {
+			t.Fatalf("failed to clear default team member relation: %v", err)
+		}
+	}
+
+	err := db.AuthDB.TestsRawSQL(t.Context(), `
 INSERT INTO public.users_teams (user_id, team_id, is_default)
 VALUES ($1, $2, $3)
 `, userID, teamID, isDefault)
@@ -313,13 +415,13 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 
 	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
-		t.Fatalf("expected trigger-created default team: %v", err)
+		t.Fatalf("expected default team: %v", err)
 	}
 	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
-		t.Fatalf("failed to remove trigger-created default team: %v", err)
+		t.Fatalf("failed to remove default team: %v", err)
 	}
 	if err := testDB.AuthDB.Write.DeletePublicUser(ctx, userID); err != nil {
-		t.Fatalf("failed to remove trigger-created public user: %v", err)
+		t.Fatalf("failed to remove public user: %v", err)
 	}
 
 	recorder := httptest.NewRecorder()
@@ -379,13 +481,13 @@ func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testin
 
 	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
-		t.Fatalf("expected trigger-created default team: %v", err)
+		t.Fatalf("expected default team: %v", err)
 	}
 	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
-		t.Fatalf("failed to remove trigger-created default team: %v", err)
+		t.Fatalf("failed to remove default team: %v", err)
 	}
 	if err := testDB.AuthDB.Write.DeletePublicUser(ctx, userID); err != nil {
-		t.Fatalf("failed to remove trigger-created public user: %v", err)
+		t.Fatalf("failed to remove public user: %v", err)
 	}
 
 	recorder := httptest.NewRecorder()
@@ -473,10 +575,10 @@ func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
 
 	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
-		t.Fatalf("expected trigger-created default team: %v", err)
+		t.Fatalf("expected default team: %v", err)
 	}
 	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
-		t.Fatalf("failed to remove trigger-created default team: %v", err)
+		t.Fatalf("failed to remove default team: %v", err)
 	}
 
 	store := &APIStore{
@@ -603,7 +705,7 @@ func TestPostTeams_LocalPolicyDeniedReturnsBadRequestWithoutCreatingTeam(t *test
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"name":"Acme"}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-	auth.SetUserID(ginCtx, userID)
+	auth.SetUserIDForTest(t, ginCtx, userID)
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
@@ -641,7 +743,7 @@ func TestPostTeams_InvalidNameReturnsBadRequest(t *testing.T) {
 		ginCtx, _ := gin.CreateTestContext(recorder)
 		ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(body))
 		ginCtx.Request.Header.Set("Content-Type", "application/json")
-		auth.SetUserID(ginCtx, userID)
+		auth.SetUserIDForTest(t, ginCtx, userID)
 
 		sink := &fakeTeamProvisionSink{}
 		store := &APIStore{
@@ -673,7 +775,7 @@ func TestPostTeams_InvalidRequestBodyReturnsBadRequest(t *testing.T) {
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"name":`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-	auth.SetUserID(ginCtx, userID)
+	auth.SetUserIDForTest(t, ginCtx, userID)
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
@@ -706,7 +808,7 @@ func TestPostTeams_TrimsNameBeforeCreate(t *testing.T) {
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"name":"  Acme  "}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-	auth.SetUserID(ginCtx, userID)
+	auth.SetUserIDForTest(t, ginCtx, userID)
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
@@ -758,7 +860,7 @@ func TestPostTeams_ProvisioningFailureRollsBackCreatedTeam(t *testing.T) {
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"name":"Acme"}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
-	auth.SetUserID(ginCtx, userID)
+	auth.SetUserIDForTest(t, ginCtx, userID)
 
 	store := &APIStore{
 		db:                testDB.SqlcClient,
@@ -817,7 +919,7 @@ func TestPostTeams_ProvisioningFailurePreservesProvisionErrorStatus(t *testing.T
 			ginCtx, _ := gin.CreateTestContext(recorder)
 			ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/", strings.NewReader(`{"name":"Acme"}`))
 			ginCtx.Request.Header.Set("Content-Type", "application/json")
-			auth.SetUserID(ginCtx, userID)
+			auth.SetUserIDForTest(t, ginCtx, userID)
 
 			store := &APIStore{
 				db:                testDB.SqlcClient,
@@ -878,7 +980,7 @@ func TestCreateTeam_ConcurrentRequestsRespectLocalPolicyWithZeroMemberships(t *t
 
 	existingTeam, err := testDB.AuthDB.Write.GetDefaultTeamByUserID(ctx, userID)
 	if err != nil {
-		t.Fatalf("expected trigger-created default team: %v", err)
+		t.Fatalf("expected default team: %v", err)
 	}
 	if err := testDB.AuthDB.Write.DeleteTeamByID(ctx, existingTeam.ID); err != nil {
 		t.Fatalf("failed to remove default team: %v", err)
@@ -949,4 +1051,36 @@ func (s *fakeTeamProvisionSink) ProvisionTeam(_ context.Context, req teamprovisi
 	s.requests = append(s.requests, req)
 
 	return s.err
+}
+
+type noopAuthService struct{}
+
+func (noopAuthService) ValidateAPIKey(context.Context, *gin.Context, string) (*authtypes.Team, *auth.APIError) {
+	return nil, nil
+}
+
+func (noopAuthService) ValidateAccessToken(context.Context, *gin.Context, string) (uuid.UUID, *auth.APIError) {
+	return uuid.Nil, nil
+}
+
+func (noopAuthService) ValidateAuthProviderToken(context.Context, *gin.Context, string) (uuid.UUID, *auth.APIError) {
+	return uuid.Nil, nil
+}
+
+func (noopAuthService) ValidateSupabaseTeam(context.Context, *gin.Context, string) (*authtypes.Team, *auth.APIError) {
+	return nil, nil
+}
+
+func (noopAuthService) GetTeamByID(context.Context, uuid.UUID) (*authtypes.Team, error) {
+	return nil, nil
+}
+
+func (noopAuthService) InvalidateTeamMemberCache(context.Context, uuid.UUID, string) {}
+
+func (noopAuthService) InvalidateTeamCache(context.Context, uuid.UUID) error {
+	return nil
+}
+
+func (noopAuthService) Close(context.Context) error {
+	return nil
 }

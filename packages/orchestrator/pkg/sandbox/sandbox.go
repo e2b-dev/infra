@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -73,6 +74,7 @@ type Config struct {
 	TotalDiskSizeMB   int64
 	HugePages         bool
 	FreePageReporting bool
+	FreePageHinting   bool
 
 	Envd EnvdMetadata
 
@@ -161,12 +163,25 @@ type RuntimeMetadata struct {
 	SandboxID   string
 	ExecutionID string
 
-	// TeamID optional, used only for logging
+	// TeamID is best-effort metadata; not always populated so do not use for
+	// decisions or feature-flag targeting.
 	TeamID string
 
-	// BuildID is the ID of the associated template build.
 	BuildID     string
 	SandboxType SandboxType
+}
+
+// sandboxLDContext builds an LD context with kernel/FC-version attributes for
+// per-sandbox flag targeting. Team/template targeting comes from the team and
+// template contexts the caller embeds in ctx.
+func sandboxLDContext(runtime RuntimeMetadata, config *Config) ldcontext.Context {
+	return ldcontext.NewBuilder(runtime.SandboxID).
+		Kind(featureflags.SandboxKind).
+		SetString(featureflags.SandboxTemplateAttribute, runtime.TemplateID).
+		SetString(featureflags.SandboxKernelVersionAttribute, config.FirecrackerConfig.KernelVersion).
+		SetString(featureflags.SandboxFirecrackerVersionAttribute, config.FirecrackerConfig.FirecrackerVersion).
+		SetString(featureflags.SandboxTypeAttribute, runtime.SandboxType.String()).
+		Build()
 }
 
 type Resources struct {
@@ -491,6 +506,8 @@ func (f *Factory) CreateSandbox(
 		return nil
 	})
 
+	freePageHinting := fc.FCSupportsFreePageHinting(config.FirecrackerConfig.FirecrackerVersion) && config.FreePageHinting
+
 	err = fcHandle.Create(
 		ctx,
 		sbxlogger.SandboxMetadata{
@@ -502,6 +519,7 @@ func (f *Factory) CreateSandbox(
 		config.RamMB,
 		config.HugePages,
 		config.FreePageReporting,
+		freePageHinting,
 		processOptions,
 		fc.RateLimiterConfig{
 			Ops:       fc.TokenBucketConfig(throttleConfig.Ops),
@@ -814,6 +832,8 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlag)
+	useMemfd := fc.FCSupportsMemfd(config.FirecrackerConfig.FirecrackerVersion) &&
+		f.featureFlags.BoolFlag(ctx, featureflags.UseMemFdFlag, sandboxLDContext(runtime, config))
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
@@ -865,6 +885,7 @@ func (f *Factory) ResumeSandbox(
 		fcUffd.Ready(),
 		config.Envd.AccessToken,
 		cgroupFD,
+		useMemfd,
 		fc.RateLimiterConfig{
 			Ops:       fc.TokenBucketConfig(resumeThrottleConfig.Ops),
 			Bandwidth: fc.TokenBucketConfig(resumeThrottleConfig.Bandwidth),
@@ -1065,9 +1086,23 @@ func (s *Sandbox) Pause(
 	// all default to 0 which disables the chain entirely. Non-fatal.
 	s.bestEffortReclaim(ctx)
 
+	// Drain free-page-hinting before pause so the snapshot doesn't capture
+	// pages the guest already considers free. Timeout per use case; 0 disables.
+	if t := featureflags.GetFreePageHintingTimeout(ctx, s.featureFlags, string(useCase), sandboxLDContext(s.Runtime, s.Config)); t > 0 {
+		drainCtx, cancel := context.WithTimeout(ctx, t)
+		if err := s.process.DrainBalloon(drainCtx); err != nil {
+			telemetry.ReportError(ctx, "balloon hinting drain failed (continuing pause)", err)
+		}
+		cancel()
+	}
+
 	if err := s.process.Pause(ctx); err != nil {
 		return nil, fmt.Errorf("failed to pause VM: %w", err)
 	}
+
+	// Best-effort flush before the rootfs export goroutine closes the FC API
+	// socket. Non-blocking on the reader; trades precision for pause latency.
+	_ = s.process.FlushMetrics(ctx)
 
 	// Snapfile is not closed as it's returned and cached for later use (like resume)
 	snapfile := template.NewLocalFileLink(cachePaths.CacheSnapfile())
@@ -1093,7 +1128,7 @@ func (s *Sandbox) Pause(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memfile metadata: %w", err)
 	}
-	recordSnapshotDiff(ctx, "memfile", memfileDiffMetadata, originalMemfile.Header(), useCase)
+	recordSnapshotDiff(ctx, "memfile", memfileDiffMetadata, originalMemfile.Header())
 
 	// Start POSTPROCESSING
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
@@ -1103,6 +1138,8 @@ func (s *Sandbox) Pause(
 		memfileDiffMetadata,
 		s.config.DefaultCacheDir,
 		s.process,
+		s.memory.Memfd(ctx),
+		s.featureFlags.BoolFlag(ctx, featureflags.MemfdBackgroundCopyFlag, sandboxLDContext(s.Runtime, s.Config)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -1118,7 +1155,6 @@ func (s *Sandbox) Pause(
 			closeHook: s.Close,
 		},
 		s.config.DefaultCacheDir,
-		useCase,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -1147,6 +1183,12 @@ func (s *Sandbox) Pause(
 	}, nil
 }
 
+// FlushAndReadBalloonMetrics triggers an FC metrics flush and returns the
+// updated cumulative virtio-balloon counters. Used by the FPH bench.
+func (s *Sandbox) FlushAndReadBalloonMetrics(ctx context.Context) (fc.BalloonMetricsSnapshot, error) {
+	return s.process.FlushAndReadBalloonMetrics(ctx)
+}
+
 // MemoryPrefetchData returns the ordered page fault data for prefetch mapping.
 func (s *Sandbox) MemoryPrefetchData(ctx context.Context) (block.PrefetchData, error) {
 	prefetchData, err := s.Resources.memory.PrefetchData(ctx)
@@ -1164,25 +1206,22 @@ func pauseProcessMemory(
 	diffMetadata *header.DiffMetadata,
 	cacheDir string,
 	fc *fc.Process,
+	memfd *block.Memfd,
+	bgCopy bool,
 ) (d build.Diff, h *header.Header, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
-	header, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create memfile header: %w", err)
-	}
-
+	// ExportMemory owns memfd and closes it on all paths.
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
-
-	cache, err := fc.ExportMemory(
-		ctx,
-		diffMetadata.Dirty,
-		memfileDiffPath,
-		diffMetadata.BlockSize,
-	)
+	cache, err := fc.ExportMemory(ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
+	}
+
+	header, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
+	if err != nil {
+		return nil, nil, errors.Join(fmt.Errorf("failed to create memfile header: %w", err), cache.Close())
 	}
 
 	diff, err := build.NewLocalDiffFromCache(
@@ -1190,7 +1229,6 @@ func pauseProcessMemory(
 		cache,
 	)
 	if err != nil {
-		// Close the cache even if the diff creation fails.
 		return nil, nil, fmt.Errorf("failed to create local diff from cache: %w", errors.Join(err, cache.Close()))
 	}
 
@@ -1203,7 +1241,6 @@ func pauseProcessRootfs(
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
 	cacheDir string,
-	useCase SnapshotUseCase,
 ) (d build.Diff, h *header.Header, e error) {
 	ctx, span := tracer.Start(ctx, "process-rootfs")
 	defer span.End()
@@ -1220,7 +1257,7 @@ func pauseProcessRootfs(
 		return nil, nil, fmt.Errorf("error creating diff: %w", err)
 	}
 	telemetry.ReportEvent(ctx, "exported rootfs")
-	recordSnapshotDiff(ctx, "rootfs", rootfsDiffMetadata, originalHeader, useCase)
+	recordSnapshotDiff(ctx, "rootfs", rootfsDiffMetadata, originalHeader)
 
 	rootfsDiff, err := rootfsDiffFile.CloseToDiff(int64(originalHeader.Metadata.BlockSize))
 	if err != nil {
@@ -1359,14 +1396,17 @@ func (s *Sandbox) WaitForEnvd(
 	defer span.End()
 
 	defer func() {
-		if e != nil {
-			return
-		}
 		duration := time.Since(start).Milliseconds()
 		waitForEnvdDurationHistogram.Record(ctx, duration, metric.WithAttributes(
 			telemetry.WithEnvdVersion(s.Config.Envd.Version),
 			attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
+			attribute.Bool("success", e == nil),
 		))
+
+		if e != nil {
+			return
+		}
+
 		// Update the sandbox as started now
 		s.SetStartedAt(time.Now())
 	}()

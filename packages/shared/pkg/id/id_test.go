@@ -29,7 +29,7 @@ func TestParseName(t *testing.T) {
 			name:           "alias with tag",
 			input:          "my-template:v1",
 			wantIdentifier: "my-template",
-			wantTag:        utils.ToPtr("v1"),
+			wantTag:        new("v1"),
 		},
 		{
 			name:           "namespace and alias",
@@ -41,13 +41,13 @@ func TestParseName(t *testing.T) {
 			name:           "namespace, alias and tag",
 			input:          "acme/my-template:v1",
 			wantIdentifier: "acme/my-template",
-			wantTag:        utils.ToPtr("v1"),
+			wantTag:        new("v1"),
 		},
 		{
 			name:           "namespace with hyphens",
 			input:          "my-team/my-template:prod",
 			wantIdentifier: "my-team/my-template",
-			wantTag:        utils.ToPtr("prod"),
+			wantTag:        new("prod"),
 		},
 		{
 			name:           "default tag normalized to nil",
@@ -59,13 +59,13 @@ func TestParseName(t *testing.T) {
 			name:           "uppercase converted to lowercase",
 			input:          "MyTemplate:Prod",
 			wantIdentifier: "mytemplate",
-			wantTag:        utils.ToPtr("prod"),
+			wantTag:        new("prod"),
 		},
 		{
 			name:           "whitespace trimmed",
 			input:          "  my-template  :  v1  ",
 			wantIdentifier: "my-template",
-			wantTag:        utils.ToPtr("v1"),
+			wantTag:        new("v1"),
 		},
 		{
 			name:    "invalid - empty namespace",
@@ -134,19 +134,19 @@ func TestSplitIdentifier(t *testing.T) {
 		{
 			name:          "with namespace",
 			identifier:    "acme/my-template",
-			wantNamespace: ptrStr("acme"),
+			wantNamespace: new("acme"),
 			wantAlias:     "my-template",
 		},
 		{
 			name:          "empty namespace prefix",
 			identifier:    "/my-template",
-			wantNamespace: ptrStr(""),
+			wantNamespace: new(""),
 			wantAlias:     "my-template",
 		},
 		{
 			name:          "multiple slashes - only first split",
 			identifier:    "a/b/c",
-			wantNamespace: ptrStr("a"),
+			wantNamespace: new("a"),
 			wantAlias:     "b/c",
 		},
 	}
@@ -167,10 +167,6 @@ func TestSplitIdentifier(t *testing.T) {
 			assert.Equal(t, tt.wantAlias, gotAlias)
 		})
 	}
-}
-
-func ptrStr(s string) *string {
-	return &s
 }
 
 func TestValidateAndDeduplicateTags(t *testing.T) {

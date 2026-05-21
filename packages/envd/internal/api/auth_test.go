@@ -23,15 +23,15 @@ func TestKeyGenerationAlgorithmIsStable(t *testing.T) {
 	path := "/path/to/demo.txt"
 	username := "root"
 	operation := "write"
-	timestamp := time.Now().Unix()
+	timestampSec := time.Now().Unix()
 
-	signature, err := api.generateSignature(path, username, operation, &timestamp)
+	signature, err := api.generateSignature(path, username, operation, &timestampSec)
 	require.NoError(t, err)
 	assert.NotEmpty(t, signature)
 
 	// locally generated signature
 	hasher := keys.NewSHA256Hashing()
-	localSignatureTmp := fmt.Sprintf("%s:%s:%s:%s:%s", path, operation, username, apiToken, strconv.FormatInt(timestamp, 10))
+	localSignatureTmp := fmt.Sprintf("%s:%s:%s:%s:%s", path, operation, username, apiToken, strconv.FormatInt(timestampSec, 10))
 	localSignature := fmt.Sprintf("v1_%s", hasher.HashWithoutPrefix([]byte(localSignatureTmp)))
 
 	assert.Equal(t, localSignature, signature)

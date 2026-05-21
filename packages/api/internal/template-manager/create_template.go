@@ -19,7 +19,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type FromTemplateError struct {
@@ -144,7 +143,7 @@ func (tm *TemplateManager) CreateTemplate(
 			types.BuildStatusGroupFailed,
 			&templatemanagergrpc.TemplateBuildStatusReason{
 				Message: err.Error(),
-				Step:    ut.ToPtr("base"),
+				Step:    new("base"),
 			},
 		)
 		if err != nil {
@@ -157,7 +156,7 @@ func (tm *TemplateManager) CreateTemplate(
 	_, err = client.Template.TemplateCreate(
 		ctx, &templatemanagergrpc.TemplateCreateRequest{
 			Template:   template,
-			CacheScope: ut.ToPtr(teamID.String()),
+			CacheScope: new(teamID.String()),
 			Version:    &version,
 		},
 	)

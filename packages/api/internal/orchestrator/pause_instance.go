@@ -18,7 +18,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type PauseQueueExhaustedError struct{}
@@ -139,10 +138,10 @@ func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) quer
 		},
 		OriginNodeID:    node.ID,
 		Status:          types.BuildStatusSnapshotting,
-		CpuArchitecture: utils.ToPtr(machineInfo.CPUArchitecture),
-		CpuFamily:       utils.ToPtr(machineInfo.CPUFamily),
-		CpuModel:        utils.ToPtr(machineInfo.CPUModel),
-		CpuModelName:    utils.ToPtr(machineInfo.CPUModelName),
+		CpuArchitecture: new(machineInfo.CPUArchitecture),
+		CpuFamily:       new(machineInfo.CPUFamily),
+		CpuModel:        new(machineInfo.CPUModel),
+		CpuModelName:    new(machineInfo.CPUModelName),
 		CpuFlags:        machineInfo.CPUFlags,
 	}
 }

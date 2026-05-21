@@ -14,7 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type SnapshotTemplateResult struct {
@@ -128,7 +127,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 func (o *Orchestrator) failSnapshotBuild(ctx context.Context, buildID uuid.UUID, cause error) {
 	err := o.sqlcDB.UpdateEnvBuildStatus(ctx, queries.UpdateEnvBuildStatusParams{
 		Status:     types.BuildStatusFailed,
-		FinishedAt: sharedUtils.ToPtr(time.Now()),
+		FinishedAt: new(time.Now()),
 		Reason:     types.BuildReason{Message: cause.Error()},
 		BuildID:    buildID,
 	})

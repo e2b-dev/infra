@@ -207,6 +207,16 @@ processors:
     timeout: 5s
     send_batch_size: 50000
 
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+  batch/gcp_telemetry:
+    timeout: 5s
+    send_batch_size: 200
+    send_batch_max_size: 200
+
+  metricstarttime/gcp_telemetry:
+    strategy: subtract_initial_point
+%{ endif }
+
   # keep only metrics that are used
   filter/otlp:
     # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/filterprocessor
@@ -376,6 +386,26 @@ processors:
           enabled: false
 %{ endif }
 
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+  resourcedetection/gcp_telemetry:
+    detectors: [gcp]
+    override: true
+    gcp:
+      resource_attributes:
+        cloud.account.id:
+          enabled: true
+        cloud.availability_zone:
+          enabled: true
+        cloud.platform:
+          enabled: true
+        cloud.provider:
+          enabled: true
+        host.id:
+          enabled: true
+        host.name:
+          enabled: true
+%{ endif }
+
   # For some reason, the metrics require us to set datapoint.attribute and won't accept the resource.attribute
   # That is why we can't use the resource/set_attributes processor
   transform/set-name:
@@ -390,6 +420,25 @@ processors:
       - delete_key(datapoint.attributes, "node_class")
       - delete_key(datapoint.attributes, "node_status")
       - delete_key(datapoint.attributes, "service_name")
+
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+  transform/gcp_telemetry_labels:
+    metric_statements:
+      - context: datapoint
+        statements:
+          - set(attributes["deployment.environment"], resource.attributes["cloud.account.id"]) where resource.attributes["cloud.account.id"] != nil
+          - delete_key(attributes, "service_name")
+          - delete_key(attributes, "service.instance.id")
+
+  transform/gcp_metric_unit_suffixes:
+    metric_statements:
+      - context: metric
+        statements:
+          - set(metric.name, Concat([metric.name, ".milliseconds"], "")) where metric.type == "Histogram" and metric.unit == "ms"
+          - set(metric.name, Concat([metric.name, ".bytes.total"], "")) where metric.type == "Sum" and metric.unit == "By" and metric.is_monotonic == true
+          - set(metric.name, Concat([metric.name, ".bytes"], "")) where metric.type == "Sum" and metric.unit == "By" and metric.is_monotonic == false
+          - set(metric.name, Concat([metric.name, ".total"], "")) where metric.type == "Sum" and metric.unit == "" and metric.is_monotonic == true
+%{ endif }
 
   filter/rpc_duration_only:
     metrics:
@@ -445,6 +494,12 @@ exporters:
     endpoint: "${grafana_otlp_url}/otlp"
     auth:
       authenticator: basicauth/grafana_cloud
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+  googlecloud/gcp_telemetry:
+    project: ${gcp_telemetry_project_id}
+    metric:
+      service_resource_labels: true
+%{ endif }
   clickhouse:
     endpoint: tcp://${clickhouse_host}:${clickhouse_port}
     database: ${clickhouse_database}
@@ -458,7 +513,7 @@ exporters:
       sum:
         name: "metrics_sum"
 %{ if enable_otel_router_metrics }
-  otlp/otel_router:
+  otlp_grpc/otel_router:
     endpoint: 127.0.0.1:${otel_router_grpc_port}
     tls:
       insecure: true
@@ -522,6 +577,64 @@ service:
         - batch
       exporters:
         - otlp_http/grafana_cloud
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+    metrics/gcp_telemetry:
+      receivers:
+        - otlp
+      processors:
+        - filter/otlp
+        - resourcedetection/gcp_telemetry
+        - transform/gcp_telemetry_labels
+        - transform/gcp_metric_unit_suffixes
+        - batch/gcp_telemetry
+      exporters:
+        - googlecloud/gcp_telemetry
+    metrics/gcp_telemetry/prometheus:
+      receivers:
+        - prometheus
+      processors:
+        - filter/only_client_allocs
+        - resourcedetection/gcp_telemetry
+        - transform/gcp_telemetry_labels
+        - metricstarttime/gcp_telemetry
+        - batch/gcp_telemetry
+      exporters:
+        - googlecloud/gcp_telemetry
+    metrics/gcp_telemetry/rpc_only:
+      receivers:
+        - otlp
+      processors:
+        - filter/rpc_duration_only
+        - resourcedetection/gcp_telemetry
+        - transform/gcp_telemetry_labels
+        - batch/gcp_telemetry
+      exporters:
+        - googlecloud/gcp_telemetry
+    metrics/gcp_telemetry/host:
+      receivers:
+        - hostmetrics
+      processors:
+        - resourcedetection/gcp_telemetry
+        - transform/gcp_telemetry_labels
+        - metricstransform/single_cpu
+        - transform/aggregate_nvme
+        - metricstransform/aggregate_disks
+        - batch/gcp_telemetry
+      exporters:
+        - googlecloud/gcp_telemetry
+%{ if enable_gcp_telemetry_external_metrics }
+    metrics/gcp_telemetry/external:
+      receivers:
+        - otlp
+      processors:
+        - filter/external_metrics
+        - resourcedetection/gcp_telemetry
+        - transform/gcp_telemetry_labels
+        - batch/gcp_telemetry
+      exporters:
+        - googlecloud/gcp_telemetry
+%{ endif }
+%{ endif }
     metrics/external:
       receivers:
         - otlp
@@ -538,7 +651,7 @@ service:
         - filter/external_metrics
         - batch
       exporters:
-        - otlp/otel_router
+        - otlp_grpc/otel_router
 %{ endif }
     traces:
       receivers:

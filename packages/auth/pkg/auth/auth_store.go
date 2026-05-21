@@ -10,40 +10,23 @@ import (
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
-	"github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/auth/pkg/auth")
 
-type AuthStoreImpl struct {
+type authStoreImpl struct {
 	authDB *authdb.Client
 }
 
-var _ AuthStore[*types.Team] = (*AuthStoreImpl)(nil)
+var _ authStore = (*authStoreImpl)(nil)
 
-func NewAuthStore(authDB *authdb.Client) *AuthStoreImpl {
-	return &AuthStoreImpl{authDB: authDB}
+func newAuthStore(authDB *authdb.Client) *authStoreImpl {
+	return &authStoreImpl{authDB: authDB}
 }
 
-func validateTeamUsage(team authqueries.Team) error {
-	if team.IsBanned {
-		return &TeamForbiddenError{Message: "team is banned"}
-	}
-
-	if team.IsBlocked {
-		msg := "team is blocked"
-		if team.BlockedReason != nil && *team.BlockedReason != "" {
-			msg = fmt.Sprintf("%s: %s", msg, *team.BlockedReason)
-		}
-
-		return &TeamBlockedError{Message: msg}
-	}
-
-	return nil
-}
-
-func (s *AuthStoreImpl) GetTeamByHashedAPIKey(ctx context.Context, hashedKey string) (*types.Team, error) {
+func (s *authStoreImpl) GetTeamByHashedAPIKey(ctx context.Context, hashedKey string) (*types.Team, error) {
 	ctx, span := tracer.Start(ctx, "get team auth")
 	defer span.End()
 
@@ -52,8 +35,7 @@ func (s *AuthStoreImpl) GetTeamByHashedAPIKey(ctx context.Context, hashedKey str
 		return nil, fmt.Errorf("failed to get team from API key: %w", err)
 	}
 
-	err = validateTeamUsage(result.Team)
-	if err != nil {
+	if err := CheckTeamBanned(result.Team); err != nil {
 		return nil, err
 	}
 
@@ -71,7 +53,7 @@ func (s *AuthStoreImpl) GetTeamByHashedAPIKey(ctx context.Context, hashedKey str
 	return team, nil
 }
 
-func (s *AuthStoreImpl) GetTeamByID(ctx context.Context, teamID uuid.UUID) (*types.Team, error) {
+func (s *authStoreImpl) GetTeamByID(ctx context.Context, teamID uuid.UUID) (*types.Team, error) {
 	ctx, span := tracer.Start(ctx, "get team by id auth")
 	defer span.End()
 
@@ -80,8 +62,7 @@ func (s *AuthStoreImpl) GetTeamByID(ctx context.Context, teamID uuid.UUID) (*typ
 		return nil, fmt.Errorf("failed to get team from team ID: %w", err)
 	}
 
-	err = validateTeamUsage(result.Team)
-	if err != nil {
+	if err := CheckTeamBanned(result.Team); err != nil {
 		return nil, err
 	}
 
@@ -90,7 +71,7 @@ func (s *AuthStoreImpl) GetTeamByID(ctx context.Context, teamID uuid.UUID) (*typ
 	return team, nil
 }
 
-func (s *AuthStoreImpl) GetTeamByIDAndUserID(ctx context.Context, userID uuid.UUID, teamID string) (*types.Team, error) {
+func (s *authStoreImpl) GetTeamByIDAndUserID(ctx context.Context, userID uuid.UUID, teamID string) (*types.Team, error) {
 	ctx, span := tracer.Start(ctx, "get team by id and user id auth")
 	defer span.End()
 
@@ -107,8 +88,7 @@ func (s *AuthStoreImpl) GetTeamByIDAndUserID(ctx context.Context, userID uuid.UU
 		return nil, fmt.Errorf("failed to get team from teamID and userID key: %w", err)
 	}
 
-	err = validateTeamUsage(result.Team)
-	if err != nil {
+	if err := CheckTeamBanned(result.Team); err != nil {
 		return nil, err
 	}
 
@@ -117,10 +97,10 @@ func (s *AuthStoreImpl) GetTeamByIDAndUserID(ctx context.Context, userID uuid.UU
 	return team, nil
 }
 
-func (s *AuthStoreImpl) GetUserIDByHashedAccessToken(ctx context.Context, hashedToken string) (uuid.UUID, error) {
+func (s *authStoreImpl) GetUserIDByHashedAccessToken(ctx context.Context, hashedToken string) (uuid.UUID, error) {
 	return s.authDB.Read.GetUserIDFromAccessToken(ctx, hashedToken)
 }
 
-func (s *AuthStoreImpl) GetTeamAPIKeyHashes(ctx context.Context, teamID uuid.UUID) ([]string, error) {
+func (s *authStoreImpl) GetTeamAPIKeyHashes(ctx context.Context, teamID uuid.UUID) ([]string, error) {
 	return s.authDB.Read.GetTeamAPIKeyHashes(ctx, teamID)
 }

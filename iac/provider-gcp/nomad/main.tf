@@ -6,6 +6,31 @@ locals {
   enable_billing_http_team_provision_sink = var.enable_billing_http_team_provision_sink
   dashboard_api_billing_server_url        = local.enable_billing_http_team_provision_sink ? trimspace(data.google_secret_manager_secret_version.billing_server_url[0].secret_data) : ""
   dashboard_api_billing_server_api_token  = local.enable_billing_http_team_provision_sink ? trimspace(data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data) : ""
+  # Filter out empty / too-short HMAC secrets so that placeholder values left in
+  # Secret Manager on a fresh deploy don't get fed to legacy.NewVerifier, which
+  # rejects secrets shorter than 16 bytes and would fatal the api/dashboard-api
+  # jobs at startup.
+  default_legacy_hmac_secrets = [
+    for s in split(",", trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)) : s
+    if length(s) >= 16
+  ]
+  default_auth_provider_config = length(local.default_legacy_hmac_secrets) > 0 ? {
+    jwt = []
+    legacy = {
+      hmac = {
+        secrets = local.default_legacy_hmac_secrets
+      }
+    }
+    } : {
+    jwt    = []
+    legacy = null
+  }
+  # jsonencode/jsondecode strips Terraform's static type info from
+  # var.auth_provider_config so that the conditional below does not fail with
+  # "Inconsistent conditional result types" when the typed object literal in
+  # `default_auth_provider_config` (a tuple of objects) is compared with the
+  # variable's declared object type (a list of objects).
+  auth_provider_config = var.auth_provider_config != null ? jsondecode(jsonencode(var.auth_provider_config)) : local.default_auth_provider_config
 }
 
 # API
@@ -81,8 +106,10 @@ data "google_secret_manager_secret_version" "redis_tls_ca_base64" {
 module "ingress" {
   source = "../../modules/job-ingress"
 
-  ingress_count        = var.ingress_count
-  ingress_proxy_port   = var.ingress_port.port
+  ingress_count         = var.ingress_count
+  ingress_port          = var.ingress_port
+  ingress_internal_port = var.ingress_internal_port
+
   traefik_config_files = var.traefik_config_files
 
   node_pool     = var.api_node_pool
@@ -117,7 +144,7 @@ module "api" {
   api_docker_image                        = data.google_artifact_registry_docker_image.api_image.self_link
   postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   postgres_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
-  supabase_jwt_secrets                    = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
+  auth_provider_config                    = local.auth_provider_config
   posthog_api_key                         = trimspace(data.google_secret_manager_secret_version.posthog_api_key.secret_data)
   environment                             = var.environment
   analytics_collector_host                = trimspace(data.google_secret_manager_secret_version.analytics_collector_host.secret_data)
@@ -166,11 +193,10 @@ module "dashboard_api" {
   auth_db_read_replica_connection_string  = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
   supabase_db_connection_string           = trimspace(data.google_secret_manager_secret_version.supabase_db_connection_string.secret_data)
   clickhouse_connection_string            = local.clickhouse_connection_string
-  supabase_jwt_secrets                    = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
+  auth_provider_config                    = local.auth_provider_config
   redis_url                               = local.redis_url
   redis_cluster_url                       = local.redis_cluster_url
   redis_tls_ca_base64                     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-  enable_auth_user_sync_background_worker = var.enable_auth_user_sync_background_worker
   enable_billing_http_team_provision_sink = var.enable_billing_http_team_provision_sink
   billing_server_url                      = local.dashboard_api_billing_server_url
   billing_server_api_token                = local.dashboard_api_billing_server_api_token
@@ -325,6 +351,10 @@ module "otel_collector" {
   enable_otel_router_metrics = var.enable_otel_router_metrics
   otel_router_grpc_port      = var.otel_router_grpc_port
 
+  enable_gcp_telemetry_metrics          = var.enable_gcp_telemetry_metrics
+  enable_gcp_telemetry_external_metrics = var.enable_gcp_telemetry_external_metrics
+  gcp_telemetry_project_id              = var.gcp_project_id
+
   clickhouse_username = var.clickhouse_username
   clickhouse_password = random_password.clickhouse_password.result
   clickhouse_port     = var.clickhouse_server_port.port
@@ -340,6 +370,9 @@ module "otel_collector_nomad_server" {
   grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
   grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
   grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
+
+  enable_gcp_telemetry_metrics = var.enable_gcp_telemetry_metrics
+  gcp_telemetry_project_id     = var.gcp_project_id
 }
 
 
