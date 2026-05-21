@@ -47,12 +47,13 @@ func uploadRatioBp(compressed, uncompressed int64) int64 {
 }
 
 func storeHeaderWithMetrics(ctx context.Context, store storage.StorageProvider, path, fileType string, h *headers.Header) error {
-	size, err := headers.StoreHeader(ctx, store, path, h)
+	stats, err := headers.StoreHeader(ctx, store, path, h)
 	if err != nil {
 		return err
 	}
 
-	recordUploadCompression(ctx, uploadArtifactHeader, fileType, storage.CompressConfig{}, size, size)
+	cfg := storage.CompressConfig{Type: stats.Compression.String()}
+	recordUploadCompression(ctx, uploadArtifactHeader, fileType, cfg, stats.Uncompressed, stats.Stored)
 
 	return nil
 }

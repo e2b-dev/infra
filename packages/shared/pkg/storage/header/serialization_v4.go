@@ -43,10 +43,12 @@ type v4SerializableBuildInfo struct {
 
 // serializeV4 writes [Metadata] [uint8 flags] [uint32 LZ4 size] [LZ4( Builds[] + Mappings[] )].
 // Frame tables are sparse-trimmed to only frames referenced by mappings.
-func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings []BuildMap, incomplete bool) ([]byte, error) {
+// Returns the serialized bytes and the uncompressed inner-block size (the
+// LZ4 input length), so callers can report a meaningful compression ratio.
+func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings []BuildMap, incomplete bool) ([]byte, int64, error) {
 	var metaBuf bytes.Buffer
 	if err := binary.Write(&metaBuf, binary.LittleEndian, metadata); err != nil {
-		return nil, fmt.Errorf("failed to write metadata: %w", err)
+		return nil, 0, fmt.Errorf("failed to write metadata: %w", err)
 	}
 
 	var block bytes.Buffer
@@ -61,7 +63,7 @@ func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings []
 	})
 
 	if err := binary.Write(&block, binary.LittleEndian, uint32(len(buildIDs))); err != nil {
-		return nil, fmt.Errorf("failed to write build count: %w", err)
+		return nil, 0, fmt.Errorf("failed to write build count: %w", err)
 	}
 
 	buildRanges := extractRelevantRanges(mappings)
@@ -75,17 +77,17 @@ func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings []
 		}
 
 		if err := binary.Write(&block, binary.LittleEndian, &entry); err != nil {
-			return nil, fmt.Errorf("failed to write build info: %w", err)
+			return nil, 0, fmt.Errorf("failed to write build info: %w", err)
 		}
 
 		trimmed := bd.FrameData.TrimToRanges(buildRanges[id])
 		if err := trimmed.Serialize(&block); err != nil {
-			return nil, fmt.Errorf("failed to write build frame data: %w", err)
+			return nil, 0, fmt.Errorf("failed to write build frame data: %w", err)
 		}
 	}
 
 	if err := binary.Write(&block, binary.LittleEndian, uint32(len(mappings))); err != nil {
-		return nil, fmt.Errorf("failed to write mappings count: %w", err)
+		return nil, 0, fmt.Errorf("failed to write mappings count: %w", err)
 	}
 
 	for _, mapping := range mappings {
@@ -97,7 +99,7 @@ func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings []
 		}
 
 		if err := binary.Write(&block, binary.LittleEndian, v4); err != nil {
-			return nil, fmt.Errorf("failed to write block mapping: %w", err)
+			return nil, 0, fmt.Errorf("failed to write block mapping: %w", err)
 		}
 	}
 
@@ -105,7 +107,7 @@ func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings []
 	blockBytes := block.Bytes()
 	compressed, err := compressLZ4(blockBytes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to LZ4-compress v4 header block: %w", err)
+		return nil, 0, fmt.Errorf("failed to LZ4-compress v4 header block: %w", err)
 	}
 
 	var flags uint8
@@ -119,7 +121,7 @@ func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings []
 	binary.LittleEndian.PutUint32(result[metadataSize+v4FlagsLen:], uint32(len(blockBytes)))
 	copy(result[metadataSize+v4FlagsLen+v4SizePrefixLen:], compressed)
 
-	return result, nil
+	return result, int64(len(blockBytes)), nil
 }
 
 // deserializeV4 decompresses and reads the V4 block.
