@@ -26,8 +26,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	ctx := c.Request.Context()
 	// Get team from context, use TeamContextKey
 
-	team := auth.MustGetTeamInfo(c)
-	teamID := team.Team.ID
+	teamID := auth.MustGetTeamID(c)
 
 	var err error
 	sandboxID, err = utils.ShortID(sandboxID)

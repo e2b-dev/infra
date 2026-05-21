@@ -30,9 +30,7 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 
 	telemetry.SetAttributes(ctx, telemetry.WithSandboxID(sandboxID))
 
-	teamInfo := auth.MustGetTeamInfo(c)
-
-	teamID := teamInfo.Team.ID
+	teamID := auth.MustGetTeamID(c)
 
 	var duration time.Duration
 

@@ -40,9 +40,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		return
 	}
 
-	teamInfo := auth.MustGetTeamInfo(c)
-
-	teamID := teamInfo.Team.ID
+	teamID := auth.MustGetTeamID(c)
 
 	now := time.Now()
 	_, err = a.authDB.Write.UpdateTeamApiKey(ctx, authqueries.UpdateTeamApiKeyParams{
@@ -144,9 +142,7 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	userID := auth.MustGetUserID(c)
-	teamInfo := auth.MustGetTeamInfo(c)
-
-	teamID := teamInfo.Team.ID
+	teamID := auth.MustGetTeamID(c)
 
 	body, err := ginutils.ParseBody[api.NewTeamAPIKey](ctx, c)
 	if err != nil {

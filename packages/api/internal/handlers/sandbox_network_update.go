@@ -26,9 +26,7 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(c *gin.Context, sandboxID string
 		return
 	}
 
-	teamInfo := auth.MustGetTeamInfo(c)
-
-	teamID := teamInfo.Team.ID
+	teamID := auth.MustGetTeamID(c)
 
 	body, err := ginutils.ParseBody[api.SandboxNetworkUpdateConfig](ctx, c)
 	if err != nil {

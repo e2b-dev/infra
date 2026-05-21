@@ -31,8 +31,7 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 
 	telemetry.SetAttributes(ctx, telemetry.WithSandboxID(sandboxID))
 
-	team := auth.MustGetTeamInfo(c)
-	teamID := team.Team.ID
+	teamID := auth.MustGetTeamID(c)
 
 	var duration time.Duration
 
