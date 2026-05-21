@@ -12,7 +12,12 @@ import (
 )
 
 const getAuthUserByID = `-- name: GetAuthUserByID :one
-SELECT id, COALESCE(email, '') AS email, created_at, COALESCE(raw_app_meta_data, '{}'::jsonb) AS raw_app_meta_data
+SELECT
+    id,
+    COALESCE(email, '') AS email,
+    created_at,
+    COALESCE(raw_app_meta_data, '{}'::jsonb) AS raw_app_meta_data,
+    COALESCE(raw_user_meta_data, '{}'::jsonb) AS raw_user_meta_data
 FROM auth.users
 WHERE id = $1::uuid
 `
@@ -25,12 +30,18 @@ func (q *Queries) GetAuthUserByID(ctx context.Context, dollar_1 uuid.UUID) (Auth
 		&i.Email,
 		&i.CreatedAt,
 		&i.RawAppMetaData,
+		&i.RawUserMetaData,
 	)
 	return i, err
 }
 
 const getAuthUsersByEmail = `-- name: GetAuthUsersByEmail :many
-SELECT id, COALESCE(email, '') AS email, created_at, COALESCE(raw_app_meta_data, '{}'::jsonb) AS raw_app_meta_data
+SELECT
+    id,
+    COALESCE(email, '') AS email,
+    created_at,
+    COALESCE(raw_app_meta_data, '{}'::jsonb) AS raw_app_meta_data,
+    COALESCE(raw_user_meta_data, '{}'::jsonb) AS raw_user_meta_data
 FROM auth.users
 WHERE email = $1::text
 `
@@ -49,6 +60,7 @@ func (q *Queries) GetAuthUsersByEmail(ctx context.Context, email string) ([]Auth
 			&i.Email,
 			&i.CreatedAt,
 			&i.RawAppMetaData,
+			&i.RawUserMetaData,
 		); err != nil {
 			return nil, err
 		}
@@ -61,7 +73,12 @@ func (q *Queries) GetAuthUsersByEmail(ctx context.Context, email string) ([]Auth
 }
 
 const getAuthUsersByIDs = `-- name: GetAuthUsersByIDs :many
-SELECT id, COALESCE(email, '') AS email, created_at, COALESCE(raw_app_meta_data, '{}'::jsonb) AS raw_app_meta_data
+SELECT
+    id,
+    COALESCE(email, '') AS email,
+    created_at,
+    COALESCE(raw_app_meta_data, '{}'::jsonb) AS raw_app_meta_data,
+    COALESCE(raw_user_meta_data, '{}'::jsonb) AS raw_user_meta_data
 FROM auth.users
 WHERE id = ANY($1::uuid[])
 `
@@ -80,6 +97,7 @@ func (q *Queries) GetAuthUsersByIDs(ctx context.Context, ids []uuid.UUID) ([]Aut
 			&i.Email,
 			&i.CreatedAt,
 			&i.RawAppMetaData,
+			&i.RawUserMetaData,
 		); err != nil {
 			return nil, err
 		}
