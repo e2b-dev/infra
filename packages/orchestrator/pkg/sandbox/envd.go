@@ -28,6 +28,13 @@ const (
 	loopDelay = 5 * time.Millisecond
 )
 
+type envdCgroupOp string
+
+const (
+	envdCgroupOpFreeze   envdCgroupOp = "freeze"
+	envdCgroupOpUnfreeze envdCgroupOp = "unfreeze"
+)
+
 // doRequestWithInfiniteRetries does a request with infinite retries until the context is done.
 // The parent context should have a deadline or a timeout.
 func (s *Sandbox) doRequestWithInfiniteRetries(
@@ -90,17 +97,17 @@ func (s *Sandbox) doRequestWithInfiniteRetries(
 // user/pty/socat cgroups directly (no Process.Start, no shell). Used pre-pause
 // with a tight, freeze-only timeout.
 func (s *Sandbox) callEnvdFreeze(ctx context.Context, timeout time.Duration) error {
-	return s.callEnvdCgroupOp(ctx, timeout, "freeze")
+	return s.callEnvdCgroupOp(ctx, timeout, envdCgroupOpFreeze)
 }
 
 // callEnvdUnfreeze calls envd's native POST /unfreeze endpoint. Reserved for
 // the pause-failure rollback path; the resume thaw runs via /init's deferred
 // unfreeze and does not use this.
 func (s *Sandbox) callEnvdUnfreeze(ctx context.Context, timeout time.Duration) error {
-	return s.callEnvdCgroupOp(ctx, timeout, "unfreeze")
+	return s.callEnvdCgroupOp(ctx, timeout, envdCgroupOpUnfreeze)
 }
 
-func (s *Sandbox) callEnvdCgroupOp(ctx context.Context, timeout time.Duration, op string) error {
+func (s *Sandbox) callEnvdCgroupOp(ctx context.Context, timeout time.Duration, op envdCgroupOp) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
