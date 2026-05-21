@@ -20,6 +20,7 @@
 
   [entryPoints.internal]
     address = ":${ingress_internal_port}"
+    asDefault = false
 
     [entryPoints.internal.transport.lifecycle]
       # Keep accepting requests (and /ping) until LB detects health failure and stops routing
