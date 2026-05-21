@@ -2,11 +2,14 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
@@ -34,7 +37,7 @@ type SnapshotTemplateOpts struct {
 
 // CreateSnapshotTemplate creates a persistent snapshot template from a running sandbox and immediately resumes it.
 // The handler is responsible for parsing the name, resolving aliases via the cache, and populating opts.
-func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.UUID, sandboxID string, opts SnapshotTemplateOpts) (result SnapshotTemplateResult, e error) {
+func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.UUID, sandboxID string, opts SnapshotTemplateOpts) (SnapshotTemplateResult, error) {
 	ctx, span := tracer.Start(ctx, "create-snapshot-template")
 	defer span.End()
 
@@ -80,27 +83,27 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	}
 
 	// Checkpoint pauses the sandbox, snapshots it, and resumes it on the
-	// orchestrator with the same ExecutionID. On error the orchestrator
-	// kills the sandbox itself; RemoveSandbox is still needed to clean up
-	// API-side state (store, routing, analytics).
+	// orchestrator with the same ExecutionID. Failed checkpoints include a
+	// SandboxCheckpointFailure detail that tells the API whether the sandbox is
+	// still running or should be removed from API-side state.
 	client, childCtx := node.GetClient(ctx)
 	_, err = client.Sandbox.Checkpoint(childCtx, &orchestrator.SandboxCheckpointRequest{
 		SandboxId: sbx.SandboxID,
 		BuildId:   upsertResult.BuildID.String(),
 	})
 	if err != nil {
-		o.failSnapshotBuild(ctx, upsertResult.BuildID, err)
+		sandboxState, checkpointErr := checkpointFailureState(err)
+		o.failSnapshotBuild(ctx, upsertResult.BuildID, checkpointErr)
 
-		// Complete the snapshotting transition with error — leaves state as
-		// Snapshotting (no restore to Running) and clears the transition key
-		// so RemoveSandbox can proceed without deadlock.
-		finish(err)
-
-		if killErr := o.RemoveSandbox(ctx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill}); killErr != nil {
-			telemetry.ReportError(ctx, "error killing sandbox after failed checkpoint", killErr)
+		switch sandboxState {
+		case orchestrator.SandboxCheckpointSandboxState_SANDBOX_CHECKPOINT_SANDBOX_STATE_RUNNING:
+			finish(nil)
+		default:
+			finish(checkpointErr)
+			o.removeCheckpointSandboxAPIState(ctx, sbx)
 		}
 
-		return SnapshotTemplateResult{}, fmt.Errorf("checkpoint failed: %w", err)
+		return SnapshotTemplateResult{}, checkpointErr
 	}
 
 	now := time.Now()
@@ -125,15 +128,58 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 }
 
 func (o *Orchestrator) failSnapshotBuild(ctx context.Context, buildID uuid.UUID, cause error) {
-	err := o.sqlcDB.UpdateEnvBuildStatus(ctx, queries.UpdateEnvBuildStatusParams{
+	now := time.Now()
+	err := o.sqlcDB.UpdateEnvBuildStatus(context.WithoutCancel(ctx), queries.UpdateEnvBuildStatusParams{
 		Status:     types.BuildStatusFailed,
-		FinishedAt: new(time.Now()),
+		FinishedAt: &now,
 		Reason:     types.BuildReason{Message: cause.Error()},
 		BuildID:    buildID,
 	})
 	if err != nil {
 		telemetry.ReportError(ctx, "error failing build", err)
 	}
+}
+
+func checkpointFailureState(err error) (orchestrator.SandboxCheckpointSandboxState, error) {
+	checkpointErr := fmt.Errorf("checkpoint failed: %w", err)
+	st, ok := grpcstatus.FromError(checkpointErr)
+	if ok {
+		for _, detail := range st.Details() {
+			failure, ok := detail.(*orchestrator.SandboxCheckpointFailure)
+			if !ok {
+				continue
+			}
+
+			message := failure.GetErrorMessage()
+			if message == "" {
+				message = fmt.Sprintf("checkpoint failed with sandbox state %s", failure.GetSandboxState())
+			}
+
+			return failure.GetSandboxState(), errors.New(message)
+		}
+
+		if st.Code() == codes.Canceled || st.Code() == codes.DeadlineExceeded {
+			return orchestrator.SandboxCheckpointSandboxState_SANDBOX_CHECKPOINT_SANDBOX_STATE_RUNNING, checkpointErr
+		}
+	}
+
+	if errors.Is(checkpointErr, context.Canceled) || errors.Is(checkpointErr, context.DeadlineExceeded) {
+		return orchestrator.SandboxCheckpointSandboxState_SANDBOX_CHECKPOINT_SANDBOX_STATE_RUNNING, checkpointErr
+	}
+
+	return orchestrator.SandboxCheckpointSandboxState_SANDBOX_CHECKPOINT_SANDBOX_STATE_KILLED, checkpointErr
+}
+
+func (o *Orchestrator) removeCheckpointSandboxAPIState(ctx context.Context, sbx sandbox.Sandbox) {
+	// The orchestrator reported the runtime sandbox as gone; only API-owned
+	// state remains to be cleaned up here.
+	cleanupCtx := context.WithoutCancel(ctx)
+	if err := o.routingCatalog.DeleteSandbox(cleanupCtx, sbx.SandboxID, sbx.ExecutionID); err != nil {
+		telemetry.ReportError(ctx, "error removing routing record after failed checkpoint", err)
+	}
+
+	o.sandboxStore.Remove(cleanupCtx, sbx.TeamID, sbx.SandboxID)
+	go o.analyticsRemove(cleanupCtx, sbx, sandbox.StateActionKill)
 }
 
 func (o *Orchestrator) resolveOrCreateSnapshotTemplate(

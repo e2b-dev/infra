@@ -565,17 +565,23 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	if !ok {
 		telemetry.ReportCriticalError(ctx, "sandbox not found", nil, telemetry.WithSandboxID(in.GetSandboxId()))
 
-		return nil, status.Errorf(codes.NotFound, "sandbox '%s' not found", in.GetSandboxId())
+		return nil, checkpointStatus(
+			orchestrator.SandboxCheckpointSandboxState_SANDBOX_CHECKPOINT_SANDBOX_STATE_KILLED,
+			status.Errorf(codes.NotFound, "sandbox '%s' not found", in.GetSandboxId()),
+		)
 	}
 
 	// Check envd version before snapshotting.
 	if err := utils.CheckEnvdVersionForSnapshot(sbx.Config.Envd.Version); err != nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "%s", err.Error())
+		return nil, checkpointStatus(
+			orchestrator.SandboxCheckpointSandboxState_SANDBOX_CHECKPOINT_SANDBOX_STATE_RUNNING,
+			status.Error(codes.FailedPrecondition, err.Error()),
+		)
 	}
 
 	// Acquire the starting semaphore before resuming, same as Create/Pause.
 	if err := s.waitForAcquire(ctx); err != nil {
-		return nil, err
+		return nil, checkpointStatus(orchestrator.SandboxCheckpointSandboxState_SANDBOX_CHECKPOINT_SANDBOX_STATE_RUNNING, err)
 	}
 	defer s.startingSandboxes.Release(1)
 
@@ -583,7 +589,15 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	if !marked {
 		telemetry.ReportCriticalError(ctx, "failed to mark sandbox as stopping", nil, telemetry.WithSandboxID(in.GetSandboxId()))
 
-		return nil, status.Errorf(codes.Internal, "failed to checkpoint sandbox '%s'", in.GetSandboxId())
+		sandboxState := orchestrator.SandboxCheckpointSandboxState_SANDBOX_CHECKPOINT_SANDBOX_STATE_KILLED
+		if _, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId()); ok {
+			sandboxState = orchestrator.SandboxCheckpointSandboxState_SANDBOX_CHECKPOINT_SANDBOX_STATE_RUNNING
+		}
+
+		return nil, checkpointStatus(
+			sandboxState,
+			status.Errorf(codes.Internal, "failed to checkpoint sandbox '%s'", in.GetSandboxId()),
+		)
 	}
 
 	// Always stop the old sandbox when done — on success the resumed sandbox
@@ -597,7 +611,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
-		return nil, status.Errorf(codes.Internal, "error snapshotting sandbox '%s': %s", in.GetSandboxId(), err)
+		return nil, checkpointStatus(orchestrator.SandboxCheckpointSandboxState_SANDBOX_CHECKPOINT_SANDBOX_STATE_KILLED, err)
 	}
 
 	// Get the template for resume
@@ -606,7 +620,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error getting template for resume after checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
-		return nil, status.Errorf(codes.Internal, "error getting template for resume: %s", err)
+		return nil, checkpointStatus(orchestrator.SandboxCheckpointSandboxState_SANDBOX_CHECKPOINT_SANDBOX_STATE_KILLED, err)
 	}
 
 	// Resume the sandbox keeping the same ExecutionID (stable identity for
@@ -632,7 +646,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error resuming sandbox after checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
-		return nil, status.Errorf(codes.Internal, "error resuming sandbox after checkpoint: %s", err)
+		return nil, checkpointStatus(orchestrator.SandboxCheckpointSandboxState_SANDBOX_CHECKPOINT_SANDBOX_STATE_KILLED, err)
 	}
 
 	// Collect prefetch data immediately after resume while it's most accurate
@@ -658,13 +672,12 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		}
 	}
 
-	if s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerAsyncCheckpointFlag) {
+	if s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerAsyncCheckpointFlag) && res.peerAvailable {
 		// Async: return immediately; peer nodes can pull chunks from us during the upload window.
 		s.uploadSnapshotAsync(ctx, resumedSbx, res)
 	} else {
 		// Sync: wait for upload before returning so a failed upload is surfaced to the caller.
-		// On failure, tear down the resumed sandbox — without a persisted snapshot it cannot
-		// be paused or resumed later.
+		// Upload failure does not invalidate the resumed sandbox.
 		uploadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadTimeout)
 		defer cancel()
 
@@ -674,10 +687,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		if err != nil {
 			telemetry.ReportCriticalError(ctx, "error uploading snapshot for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
-			s.sandboxFactory.Sandboxes.MarkStopping(ctx, resumedSbx.Runtime.SandboxID, resumedSbx.LifecycleID)
-			s.stopSandboxAsync(context.WithoutCancel(ctx), resumedSbx)
-
-			return nil, status.Errorf(codes.Internal, "error uploading snapshot for checkpoint '%s': %s", in.GetSandboxId(), err)
+			return nil, checkpointStatus(orchestrator.SandboxCheckpointSandboxState_SANDBOX_CHECKPOINT_SANDBOX_STATE_RUNNING, err)
 		}
 	}
 
@@ -686,6 +696,26 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	telemetry.ReportEvent(ctx, "Checkpoint completed")
 
 	return &orchestrator.SandboxCheckpointResponse{}, nil
+}
+
+func checkpointStatus(sandboxState orchestrator.SandboxCheckpointSandboxState, err error) error {
+	code := codes.Internal
+	message := err.Error()
+	if st, ok := status.FromError(err); ok {
+		code = st.Code()
+		message = st.Message()
+	}
+
+	st := status.New(code, message)
+	withDetails, detailsErr := st.WithDetails(&orchestrator.SandboxCheckpointFailure{
+		SandboxState: sandboxState,
+		ErrorMessage: message,
+	})
+	if detailsErr != nil {
+		return st.Err()
+	}
+
+	return withDetails.Err()
 }
 
 // Extracts common data needed for sandbox events
@@ -724,6 +754,7 @@ func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
 type snapshotResult struct {
 	meta           metadata.Template
 	upload         *sandbox.Upload
+	peerAvailable  bool
 	completeUpload func(ctx context.Context, uploadErr error)
 }
 
@@ -796,22 +827,25 @@ func (s *Server) snapshotAndCacheSandbox(
 		}
 	}
 
+	peerAvailable := false
 	if peerEnabled {
 		if err := s.peerRegistry.Register(ctx, meta.Template.BuildID, redisPeerKeyTTL); err != nil {
 			logger.L().Warn(ctx, "failed to register peer address for routing", zap.String("build_id", meta.Template.BuildID), zap.Error(err))
+		} else {
+			peerAvailable = true
 		}
 	}
 
 	return &snapshotResult{
 		meta:           meta,
 		upload:         upload,
+		peerAvailable:  peerAvailable,
 		completeUpload: completeUpload,
 	}, nil
 }
 
 // uploadSnapshotAsync uploads snapshot files to remote storage in the
-// background and cleans up the Redis peer key once done. Used by the Pause
-// handler where no prefetch data is available.
+// background and cleans up the Redis peer key once done.
 func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, res *snapshotResult) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadTimeout)
 
