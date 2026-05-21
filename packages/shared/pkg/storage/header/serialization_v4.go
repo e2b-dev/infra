@@ -43,8 +43,7 @@ type v4SerializableBuildInfo struct {
 
 // serializeV4 writes [Metadata] [uint8 flags] [uint32 LZ4 size] [LZ4( Builds[] + Mappings[] )].
 // Frame tables are sparse-trimmed to only frames referenced by mappings.
-// Returns the serialized bytes and the uncompressed inner-block size (the
-// LZ4 input length), so callers can report a meaningful compression ratio.
+// Also returns the uncompressed inner-block size (LZ4 input length).
 func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings []BuildMap, incomplete bool) ([]byte, int64, error) {
 	var metaBuf bytes.Buffer
 	if err := binary.Write(&metaBuf, binary.LittleEndian, metadata); err != nil {
