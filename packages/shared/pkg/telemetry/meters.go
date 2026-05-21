@@ -107,7 +107,7 @@ const (
 )
 
 const (
-  ApiRedisStoragePublisherPublishDuration HistogramType = "api.redis_storage.publisher.publish.duration"
+	ApiRedisStoragePublisherPublishDuration HistogramType = "api.redis_storage.publisher.publish.duration"
 
 	// Firecracker net histograms — per-sandbox distribution per metrics flush, no sandbox_id.
 	// Firecracker serializes SharedIncMetric as per-flush deltas (default flush interval: 60 s).
@@ -352,7 +352,7 @@ func GetGaugeInt(meter metric.Meter, name GaugeIntType) (metric.Int64ObservableG
 }
 
 var histogramDesc = map[HistogramType]string{
-  ApiRedisStoragePublisherPublishDuration: "Duration of a single Redis PUBLISH round-trip from the storage publisher",
+	ApiRedisStoragePublisherPublishDuration: "Duration of a single Redis PUBLISH round-trip from the storage publisher",
 
 	BuildDurationHistogramName:            "Time taken to build a template",
 	BuildPhaseDurationHistogramName:       "Time taken to build each phase of a template",
@@ -393,7 +393,7 @@ var histogramDesc = map[HistogramType]string{
 }
 
 var histogramUnits = map[HistogramType]string{
-  ApiRedisStoragePublisherPublishDuration: "ms",
+	ApiRedisStoragePublisherPublishDuration: "ms",
 
 	BuildDurationHistogramName:                    "ms",
 	BuildPhaseDurationHistogramName:               "ms",
