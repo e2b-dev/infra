@@ -32,9 +32,9 @@ func TestNewProvisionSink(t *testing.T) {
 			apiToken: "token",
 		},
 		{
-			name:     "error when only url is configured",
-			baseURL:  "https://billing.example.com",
-			wantErr:  ErrMissingAPIToken,
+			name:    "error when only url is configured",
+			baseURL: "https://billing.example.com",
+			wantErr: ErrMissingAPIToken,
 		},
 		{
 			name:     "error when only token is configured",
