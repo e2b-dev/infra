@@ -130,12 +130,25 @@ func TestCheckTeamAccess(t *testing.T) {
 	blockedTeam := types.NewTeam(&authqueries.Team{IsBlocked: true, BlockedReason: &reason}, &authqueries.TeamLimit{})
 	bannedAndBlockedTeam := types.NewTeam(&authqueries.Team{IsBanned: true, IsBlocked: true, BlockedReason: &reason}, &authqueries.TeamLimit{})
 
+	wantForbidden := func(t *testing.T, err error) {
+		t.Helper()
+
+		var target *TeamForbiddenError
+		require.ErrorAs(t, err, &target)
+	}
+	wantBlocked := func(t *testing.T, err error) {
+		t.Helper()
+
+		var target *TeamBlockedError
+		require.ErrorAs(t, err, &target)
+	}
+
 	cases := []struct {
-		name     string
-		method   string
-		fullPath string
-		team     *types.Team
-		wantErr  error
+		name      string
+		method    string
+		fullPath  string
+		team      *types.Team
+		wantErrAs func(t *testing.T, err error)
 	}{
 		{
 			name:     "nil team passes",
@@ -150,18 +163,18 @@ func TestCheckTeamAccess(t *testing.T) {
 			team:     cleanTeam,
 		},
 		{
-			name:     "banned non-allowlisted denied",
-			method:   http.MethodPost,
-			fullPath: "/sandboxes",
-			team:     bannedTeam,
-			wantErr:  (*TeamForbiddenError)(nil),
+			name:      "banned non-allowlisted denied",
+			method:    http.MethodPost,
+			fullPath:  "/sandboxes",
+			team:      bannedTeam,
+			wantErrAs: wantForbidden,
 		},
 		{
-			name:     "banned allowlisted still denied",
-			method:   http.MethodGet,
-			fullPath: "/sandboxes",
-			team:     bannedTeam,
-			wantErr:  (*TeamForbiddenError)(nil),
+			name:      "banned allowlisted still denied",
+			method:    http.MethodGet,
+			fullPath:  "/sandboxes",
+			team:      bannedTeam,
+			wantErrAs: wantForbidden,
 		},
 		{
 			name:     "blocked allowlisted passes",
@@ -170,18 +183,18 @@ func TestCheckTeamAccess(t *testing.T) {
 			team:     blockedTeam,
 		},
 		{
-			name:     "blocked non-allowlisted denied",
-			method:   http.MethodPost,
-			fullPath: "/sandboxes",
-			team:     blockedTeam,
-			wantErr:  (*TeamBlockedError)(nil),
+			name:      "blocked non-allowlisted denied",
+			method:    http.MethodPost,
+			fullPath:  "/sandboxes",
+			team:      blockedTeam,
+			wantErrAs: wantBlocked,
 		},
 		{
-			name:     "banned and blocked allowlisted reports banned",
-			method:   http.MethodGet,
-			fullPath: "/sandboxes",
-			team:     bannedAndBlockedTeam,
-			wantErr:  (*TeamForbiddenError)(nil),
+			name:      "banned and blocked allowlisted reports banned",
+			method:    http.MethodGet,
+			fullPath:  "/sandboxes",
+			team:      bannedAndBlockedTeam,
+			wantErrAs: wantForbidden,
 		},
 	}
 
@@ -191,21 +204,14 @@ func TestCheckTeamAccess(t *testing.T) {
 
 			err := runCheckTeamAccess(t, allowlist, tc.method, tc.fullPath, tc.team)
 
-			if tc.wantErr == nil {
+			if tc.wantErrAs == nil {
 				assert.NoError(t, err)
 
 				return
 			}
 
 			require.Error(t, err)
-			switch tc.wantErr.(type) {
-			case *TeamForbiddenError:
-				var target *TeamForbiddenError
-				assert.ErrorAs(t, err, &target)
-			case *TeamBlockedError:
-				var target *TeamBlockedError
-				assert.ErrorAs(t, err, &target)
-			}
+			tc.wantErrAs(t, err)
 		})
 	}
 }
@@ -217,8 +223,6 @@ func runCheckTeamAccess(
 	team *types.Team,
 ) error {
 	t.Helper()
-
-	gin.SetMode(gin.TestMode)
 
 	var gotErr error
 
@@ -239,8 +243,6 @@ func runEnforceBlockedTeam(
 	team *types.Team,
 ) (*httptest.ResponseRecorder, bool) {
 	t.Helper()
-
-	gin.SetMode(gin.TestMode)
 
 	handlerRan := false
 
