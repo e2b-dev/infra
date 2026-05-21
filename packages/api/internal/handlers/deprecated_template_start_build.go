@@ -2,12 +2,14 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel/attribute"
 
@@ -32,6 +34,8 @@ func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateI
 		CurrentBuildID: buildID,
 	})
 	if err != nil {
+		telemetry.ReportErrorByCode(ctx, http.StatusInternalServerError, "Error when getting running builds", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID.String()))
+
 		return fmt.Errorf("error when getting running builds: %w", err)
 	}
 
@@ -60,6 +64,8 @@ func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateI
 
 		deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIDs)
 		if deleteJobErr != nil {
+			telemetry.ReportErrorByCode(ctx, http.StatusInternalServerError, "Error when canceling running build", deleteJobErr, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID.String()))
+
 			return fmt.Errorf("error when canceling running build: %w", deleteJobErr)
 		}
 
@@ -100,8 +106,13 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		BuildID:    buildUUID,
 	})
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))
-		telemetry.ReportErrorByCode(ctx, http.StatusNotFound, "error when getting env", err, telemetry.WithTemplateID(templateID))
+		if errors.Is(err, pgx.ErrNoRows) {
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))
+			telemetry.ReportErrorByCode(ctx, http.StatusNotFound, "error when getting env", err, telemetry.WithTemplateID(templateID))
+		} else {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting template: %s", err))
+			telemetry.ReportCriticalError(ctx, "error when getting env", err, telemetry.WithTemplateID(templateID))
+		}
 
 		return
 	}
@@ -118,7 +129,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 
 	if team == nil {
 		a.sendAPIStoreError(c, http.StatusForbidden, "User does not have access to the template")
-		telemetry.ReportErrorByCode(ctx, http.StatusForbidden, "user does not have access to the template", err, telemetry.WithTemplateID(templateID))
+		telemetry.ReportErrorByCode(ctx, http.StatusForbidden, "user does not have access to the template", errors.New("user does not have access to the template"), telemetry.WithTemplateID(templateID))
 
 		return
 	}
