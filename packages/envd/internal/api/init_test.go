@@ -657,7 +657,7 @@ func TestPostFreeze(t *testing.T) {
 		assert.Equal(t, userCgroupsToFreeze, mgr.frozen)
 	})
 
-	t.Run("returns 500 and short-circuits on freeze error", func(t *testing.T) {
+	t.Run("returns 500 on freeze error", func(t *testing.T) {
 		t.Parallel()
 		mgr := &fakeCgroupManager{freezeErr: errors.New("write cgroup.freeze: io error")}
 		api := newAPIWithCgroupManager(mgr)

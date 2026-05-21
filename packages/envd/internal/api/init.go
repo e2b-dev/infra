@@ -254,8 +254,8 @@ var userCgroupsToFreeze = []cgroups.ProcessType{
 
 // PostFreeze freezes user/pty/socat cgroups directly (no Process.Start / shell).
 // Orchestrator calls this just before pause; the frozen state persists into the
-// snapshot and /init thaws on resume. Short-circuits on the first error so the
-// orchestrator can abort and roll back via /unfreeze.
+// snapshot and /init thaws on resume. Best-effort: tries every cgroup even if
+// one fails so we freeze as many as possible before the snapshot.
 func (a *API) PostFreeze(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
@@ -268,13 +268,17 @@ func (a *API) PostFreeze(w http.ResponseWriter, r *http.Request) {
 	}
 	defer a.freezeLock.Release(1)
 
+	var errs []error
 	for _, pt := range userCgroupsToFreeze {
 		if err := a.cgroupManager.Freeze(pt); err != nil {
 			logger.Error().Err(err).Msgf("freeze %s cgroup", pt)
-			jsonError(w, http.StatusInternalServerError, fmt.Errorf("freeze %s cgroup: %w", pt, err))
-
-			return
+			errs = append(errs, fmt.Errorf("freeze %s cgroup: %w", pt, err))
 		}
+	}
+	if len(errs) > 0 {
+		jsonError(w, http.StatusInternalServerError, errors.Join(errs...))
+
+		return
 	}
 
 	w.Header().Set("Cache-Control", "no-store")
