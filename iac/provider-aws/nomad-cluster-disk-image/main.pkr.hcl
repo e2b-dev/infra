@@ -94,6 +94,7 @@ build {
       "sudo apt-get -y update",
       "sudo apt-get install -y nfs-common",
     ]
+}   
 
   provisioner "shell" {
     inline = [
