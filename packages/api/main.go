@@ -232,7 +232,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	// Deny blocked teams on every mutating route unless allowlisted in
 	// EnforceBlockedTeam. Must run after auth (which populates team info on
 	// the gin context) and before the handlers.
-	r.Use(customMiddleware.EnforceBlockedTeam)
+	r.Use(customMiddleware.EnforceBlockedTeam())
 
 	// We now register our store above as the handler for the interface
 	api.RegisterHandlersWithOptions(r, apiStore, api.GinServerOptions{

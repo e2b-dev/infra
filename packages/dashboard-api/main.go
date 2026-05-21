@@ -339,7 +339,7 @@ func newHTTPServer(
 			}),
 	)
 
-	r.Use(dashboardmiddleware.EnforceBlockedTeam)
+	r.Use(dashboardmiddleware.EnforceBlockedTeam())
 
 	api.RegisterHandlers(r, apiStore)
 
