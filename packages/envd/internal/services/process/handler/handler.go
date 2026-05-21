@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
 const (
@@ -336,12 +337,8 @@ func New(
 	return h, nil
 }
 
-// systemTag opts the process into the root cgroup. Must match the const in
-// orchestrator/pkg/sandbox/envd_process.go.
-const systemTag = "_system"
-
 func getProcType(req *rpc.StartRequest) cgroups.ProcessType {
-	if req != nil && req.GetTag() == systemTag {
+	if req != nil && req.GetTag() == consts.SystemTag {
 		return cgroups.ProcessTypeSystem
 	}
 

@@ -30,12 +30,7 @@ func (s *Sandbox) StartEnvdShell(
 	return s.startEnvdProcess(ctx, shell, shellArgs, user, timeout, nil)
 }
 
-// systemTag opts the process into envd's root cgroup (no user/pty/socat).
-// Must match handler.systemTag in envd. Used for maintenance commands that
-// must outlive cgroup freezing.
-const systemTag = "_system"
-
-// StartEnvdSystemShell runs the process in envd's root cgroup via the systemTag.
+// StartEnvdSystemShell runs the process in envd's root cgroup via the SystemTag.
 func (s *Sandbox) StartEnvdSystemShell(
 	ctx context.Context,
 	shell string,
@@ -43,7 +38,7 @@ func (s *Sandbox) StartEnvdSystemShell(
 	user string,
 	timeout time.Duration,
 ) (*connect.ServerStreamForClient[process.StartResponse], error) {
-	tag := systemTag
+	tag := consts.SystemTag
 
 	return s.startEnvdProcess(ctx, shell, shellArgs, user, timeout, &tag)
 }
