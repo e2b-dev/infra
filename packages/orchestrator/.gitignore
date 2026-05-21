@@ -3,7 +3,6 @@
 alloc
 plugin
 orchestrator
-bin
 .clickhouse
 .shared
 /tmp
