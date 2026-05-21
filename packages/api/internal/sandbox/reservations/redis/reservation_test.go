@@ -28,9 +28,6 @@ const (
 
 var testTeamID = uuid.New()
 
-// setupTestReservationStorage wires the reservation store to a real storage
-// pub/sub seam: one Redis container, one subscription manager, one publish
-// worker pool. Mirrors the production wiring in orchestrator.go.
 func setupTestReservationStorage(t *testing.T) (*ReservationStorage, goredis.UniversalClient) {
 	t.Helper()
 	client := redis_utils.SetupInstance(t)

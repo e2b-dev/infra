@@ -5,11 +5,6 @@ import (
 )
 
 // Notifier is the public seam onto the shared storage pub/sub infrastructure.
-//
-// Lifecycle is owned by Storage: callers MUST construct Notifier via
-// Storage.Notifier(), and the underlying Storage must be Start()-ed
-// before any Subscribe or Publish call. Close() on Storage shuts both
-// sides down.
 type Notifier struct {
 	sub *subscriptionManager
 	pub *publisher
@@ -24,16 +19,12 @@ func (n *Notifier) Subscribe(routingKey string) (<-chan struct{}, func()) {
 }
 
 // Publish enqueues routingKey for asynchronous PUBLISH on the shared
-// notify channel. Never blocks: drops silently (with rate-limited warn)
-// when the publish queue is saturated. Drop tolerance is part of the
-// contract — every consumer ships with a fallback ticker.
+// notify channel. Every consumer should use a fallback ticker.
 func (n *Notifier) Publish(ctx context.Context, routingKey string) {
 	n.pub.Publish(ctx, routingKey)
 }
 
-// Notifier returns the cross-package pub/sub seam. The returned value is
-// cheap; callers may cache or re-fetch as convenient. Safe to call before
-// Storage.Start, but Subscribe/Publish only function once Start is running.
+// Notifier returns the cross-package pub/sub seam
 func (s *Storage) Notifier() *Notifier {
 	return &Notifier{sub: s.subManager, pub: s.publisher}
 }
