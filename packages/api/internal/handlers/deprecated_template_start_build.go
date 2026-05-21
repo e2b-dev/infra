@@ -9,7 +9,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/posthog/posthog-go"
 	"go.opentelemetry.io/otel/attribute"
 
@@ -18,6 +17,7 @@ import (
 	templatemanager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	apiutils "github.com/e2b-dev/infra/packages/shared/pkg/clusters"
@@ -106,7 +106,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		BuildID:    buildUUID,
 	})
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if dberrors.IsNotFoundError(err) {
 			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))
 			telemetry.ReportErrorByCode(ctx, http.StatusNotFound, "error when getting env", err, telemetry.WithTemplateID(templateID))
 		} else {
