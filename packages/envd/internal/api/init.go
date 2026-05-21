@@ -296,7 +296,7 @@ func (a *API) PostUnfreeze(w http.ResponseWriter, r *http.Request) {
 	logger := a.logger.With().Str(string(logs.OperationIDKey), logs.AssignOperationID()).Logger()
 
 	if err := a.freezeLock.Acquire(context.WithoutCancel(ctx), 1); err != nil {
-		jsonError(w, http.StatusInternalServerError, err)
+		w.WriteHeader(http.StatusServiceUnavailable)
 
 		return
 	}

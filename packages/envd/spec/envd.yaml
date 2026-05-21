@@ -86,6 +86,8 @@ paths:
           description: Cgroups frozen
         "500":
           $ref: "#/components/responses/InternalServerError"
+        "503":
+          description: Freeze lock is held by another operation
 
   /unfreeze:
     post:
@@ -98,6 +100,8 @@ paths:
           description: Cgroups unfrozen
         "500":
           $ref: "#/components/responses/InternalServerError"
+        "503":
+          description: Freeze lock is held by another operation
 
   /envs:
     get:
