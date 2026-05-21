@@ -5,19 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
-	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
-	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -36,59 +32,6 @@ type provisionedTeam struct {
 	Slug          string
 	IsBlocked     bool
 	BlockedReason *string
-}
-
-func (s *APIStore) PostAdminUsersUserIdBootstrap(c *gin.Context, userId api.UserId) {
-	ctx := c.Request.Context()
-	telemetry.ReportEvent(ctx, "bootstrap user")
-
-	team, err := s.bootstrapUser(ctx, userId)
-	if err != nil {
-		s.handleProvisioningError(ctx, c, "bootstrap user", err)
-
-		return
-	}
-
-	c.JSON(http.StatusOK, api.TeamResolveResponse{
-		Id:   team.ID,
-		Slug: team.Slug,
-	})
-}
-
-func (s *APIStore) PostTeams(c *gin.Context) {
-	ctx := c.Request.Context()
-	telemetry.ReportEvent(ctx, "create team")
-
-	userID := auth.MustGetUserID(c)
-	attrs := []attribute.KeyValue{
-		attribute.String("team.provision.operation", "create team"),
-	}
-	body, err := ginutils.ParseBody[api.CreateTeamRequest](ctx, c)
-	if err != nil {
-		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "create team failed", fmt.Errorf("parse create team request: %w", err), attrs...)
-		s.sendAPIStoreError(c, http.StatusBadRequest, "Invalid request body")
-
-		return
-	}
-	name := strings.TrimSpace(body.Name)
-	if name == "" {
-		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "create team failed", errors.New("team name is required"), attrs...)
-		s.sendAPIStoreError(c, http.StatusBadRequest, "Team name is required")
-
-		return
-	}
-
-	team, err := s.createTeam(ctx, userID, name)
-	if err != nil {
-		s.handleProvisioningError(ctx, c, "create team", err)
-
-		return
-	}
-
-	c.JSON(http.StatusOK, api.TeamResolveResponse{
-		Id:   team.ID,
-		Slug: team.Slug,
-	})
 }
 
 func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisionedTeam, error) {
@@ -111,10 +54,7 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 		_ = tx.Rollback(ctx)
 	}()
 
-	if err := authTxDB.UpsertPublicUser(ctx, authqueries.UpsertPublicUserParams{
-		ID:    authUser.ID,
-		Email: authUser.Email,
-	}); err != nil {
+	if err := authTxDB.UpsertPublicUser(ctx, authUser.ID); err != nil {
 		return provisionedTeam{}, fmt.Errorf("upsert public user: %w", err)
 	}
 
@@ -208,10 +148,7 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 		_ = tx.Rollback(ctx)
 	}()
 
-	if err := authTxDB.UpsertPublicUser(ctx, authqueries.UpsertPublicUserParams{
-		ID:    authUser.ID,
-		Email: authUser.Email,
-	}); err != nil {
+	if err := authTxDB.UpsertPublicUser(ctx, authUser.ID); err != nil {
 		return provisionedTeam{}, fmt.Errorf("upsert public user: %w", err)
 	}
 

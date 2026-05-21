@@ -15,7 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager")
@@ -64,7 +63,7 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 
 			if ingress := config.GetNetwork().GetIngress(); ingress != nil {
 				network.Ingress = &types.SandboxNetworkIngressConfig{
-					AllowPublicAccess: ut.ToPtr(networkTrafficAccessToken == nil),
+					AllowPublicAccess: new(networkTrafficAccessToken == nil),
 					MaskRequestHost:   ingress.MaskRequestHost,
 				}
 			}

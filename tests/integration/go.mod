@@ -1,6 +1,6 @@
 module github.com/e2b-dev/infra/tests/integration
 
-go 1.25.9
+go 1.26.3
 
 replace github.com/e2b-dev/infra/packages/shared => ../../packages/shared
 

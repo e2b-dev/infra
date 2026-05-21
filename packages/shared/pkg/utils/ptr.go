@@ -2,10 +2,6 @@ package utils
 
 import "fmt"
 
-func ToPtr[T any](v T) *T {
-	return &v
-}
-
 func FromPtr[T any](s *T) T {
 	if s == nil {
 		var zero T

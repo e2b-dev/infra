@@ -22,7 +22,6 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
-	utilsShared "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func TestSimpleCases(t *testing.T) {
@@ -441,7 +440,7 @@ func TestSetData(t *testing.T) {
 		api := newTestAPI(nil, mmdsClient)
 
 		data := PostInitJSONBody{
-			DefaultUser: utilsShared.ToPtr("testuser"),
+			DefaultUser: new("testuser"),
 		}
 
 		err := api.SetData(ctx, logger, data)
@@ -457,7 +456,7 @@ func TestSetData(t *testing.T) {
 		api.defaults.User = "original"
 
 		data := PostInitJSONBody{
-			DefaultUser: utilsShared.ToPtr(""),
+			DefaultUser: new(""),
 		}
 
 		err := api.SetData(ctx, logger, data)
@@ -472,7 +471,7 @@ func TestSetData(t *testing.T) {
 		api := newTestAPI(nil, mmdsClient)
 
 		data := PostInitJSONBody{
-			DefaultWorkdir: utilsShared.ToPtr("/home/user"),
+			DefaultWorkdir: new("/home/user"),
 		}
 
 		err := api.SetData(ctx, logger, data)
@@ -490,7 +489,7 @@ func TestSetData(t *testing.T) {
 		api.defaults.Workdir = &originalWorkdir
 
 		data := PostInitJSONBody{
-			DefaultWorkdir: utilsShared.ToPtr(""),
+			DefaultWorkdir: new(""),
 		}
 
 		err := api.SetData(ctx, logger, data)
@@ -508,8 +507,8 @@ func TestSetData(t *testing.T) {
 		envVars := EnvVars{"KEY": "value"}
 		data := PostInitJSONBody{
 			AccessToken:    secureTokenPtr("token"),
-			DefaultUser:    utilsShared.ToPtr("user"),
-			DefaultWorkdir: utilsShared.ToPtr("/workdir"),
+			DefaultUser:    new("user"),
+			DefaultWorkdir: new("/workdir"),
 			EnvVars:        &envVars,
 		}
 

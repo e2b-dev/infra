@@ -1137,7 +1137,7 @@ func (s *Sandbox) Pause(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memfile metadata: %w", err)
 	}
-	recordSnapshotDiff(ctx, "memfile", memfileDiffMetadata, originalMemfile.Header(), useCase)
+	recordSnapshotDiff(ctx, "memfile", memfileDiffMetadata, originalMemfile.Header())
 
 	// Start POSTPROCESSING
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
@@ -1164,7 +1164,6 @@ func (s *Sandbox) Pause(
 			closeHook: s.Close,
 		},
 		s.config.DefaultCacheDir,
-		useCase,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -1251,7 +1250,6 @@ func pauseProcessRootfs(
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
 	cacheDir string,
-	useCase SnapshotUseCase,
 ) (d build.Diff, h *header.Header, e error) {
 	ctx, span := tracer.Start(ctx, "process-rootfs")
 	defer span.End()
@@ -1268,7 +1266,7 @@ func pauseProcessRootfs(
 		return nil, nil, fmt.Errorf("error creating diff: %w", err)
 	}
 	telemetry.ReportEvent(ctx, "exported rootfs")
-	recordSnapshotDiff(ctx, "rootfs", rootfsDiffMetadata, originalHeader, useCase)
+	recordSnapshotDiff(ctx, "rootfs", rootfsDiffMetadata, originalHeader)
 
 	rootfsDiff, err := rootfsDiffFile.CloseToDiff(int64(originalHeader.Metadata.BlockSize))
 	if err != nil {
@@ -1407,14 +1405,17 @@ func (s *Sandbox) WaitForEnvd(
 	defer span.End()
 
 	defer func() {
-		if e != nil {
-			return
-		}
 		duration := time.Since(start).Milliseconds()
 		waitForEnvdDurationHistogram.Record(ctx, duration, metric.WithAttributes(
 			telemetry.WithEnvdVersion(s.Config.Envd.Version),
 			attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
+			attribute.Bool("success", e == nil),
 		))
+
+		if e != nil {
+			return
+		}
+
 		// Update the sandbox as started now
 		s.SetStartedAt(time.Now())
 	}()

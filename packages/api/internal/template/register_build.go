@@ -21,7 +21,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	gutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/template")
@@ -218,8 +217,8 @@ func RegisterBuild(
 		FreeDiskSizeMb:     data.Team.Limits.DiskMb,
 		StartCmd:           data.StartCmd,
 		ReadyCmd:           data.ReadyCmd,
-		Dockerfile:         gutils.ToPtr(data.Dockerfile),
-		Version:            gutils.ToPtr(data.Version),
+		Dockerfile:         new(data.Dockerfile),
+		Version:            new(data.Version),
 	})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when inserting build", err)

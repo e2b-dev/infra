@@ -28,6 +28,11 @@ type Checks struct {
 
 	mu        sync.Mutex
 	cancelCtx context.CancelCauseFunc
+	// stopped records that Stop ran. Start is launched in its own goroutine, so
+	// a short-lived sandbox can Stop before Start is scheduled — at which point
+	// cancelCtx is still nil and Stop has nothing to cancel. Without this flag
+	// Start would then enter an uncancellable health-check loop that leaks.
+	stopped bool
 
 	healthy atomic.Bool
 
@@ -52,6 +57,13 @@ func NewChecks(sandbox *Sandbox, useClickhouseMetrics bool) *Checks {
 
 func (c *Checks) Start(ctx context.Context) {
 	c.mu.Lock()
+	if c.stopped {
+		// Stop already ran before this goroutine was scheduled; don't start the
+		// health-check loop, it would never be cancelled.
+		c.mu.Unlock()
+
+		return
+	}
 	ctx, c.cancelCtx = context.WithCancelCause(ctx)
 	c.mu.Unlock()
 
@@ -61,6 +73,8 @@ func (c *Checks) Start(ctx context.Context) {
 func (c *Checks) Stop() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	c.stopped = true
 
 	if c.cancelCtx != nil {
 		c.cancelCtx(ErrChecksStopped)

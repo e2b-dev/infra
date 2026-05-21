@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 )
@@ -18,8 +17,8 @@ func TestRequestTemplateBuild(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
-		CpuCount: utils.ToPtr[int32](2),
-		MemoryMB: utils.ToPtr[int32](1024),
+		CpuCount: new(api.CPUCount(2)),
+		MemoryMB: new(api.MemoryMB(1024)),
 	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusAccepted, resp.StatusCode())
@@ -30,8 +29,8 @@ func TestRequestTemplateTooLowCPU(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
-		CpuCount: utils.ToPtr[int32](0),
-		MemoryMB: utils.ToPtr[int32](1024),
+		CpuCount: new(api.CPUCount(0)),
+		MemoryMB: new(api.MemoryMB(1024)),
 	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
@@ -44,8 +43,8 @@ func TestRequestTemplateTooLowRAM(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
-		CpuCount: utils.ToPtr[int32](2),
-		MemoryMB: utils.ToPtr[int32](32),
+		CpuCount: new(api.CPUCount(2)),
+		MemoryMB: new(api.MemoryMB(32)),
 	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
@@ -58,8 +57,8 @@ func TestRequestTemplateTooHighCPU(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
-		CpuCount: utils.ToPtr[int32](1024),
-		MemoryMB: utils.ToPtr[int32](1024),
+		CpuCount: new(api.CPUCount(1024)),
+		MemoryMB: new(api.MemoryMB(1024)),
 	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
@@ -72,8 +71,8 @@ func TestRequestTemplateOddCPU(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
-		CpuCount: utils.ToPtr[int32](3),
-		MemoryMB: utils.ToPtr[int32](1024),
+		CpuCount: new(api.CPUCount(3)),
+		MemoryMB: new(api.MemoryMB(1024)),
 	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
@@ -86,8 +85,8 @@ func TestRequestTemplateTooHighMemory(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
-		CpuCount: utils.ToPtr[int32](2),
-		MemoryMB: utils.ToPtr[int32](1024 * 1024),
+		CpuCount: new(api.CPUCount(2)),
+		MemoryMB: new(api.MemoryMB(1024 * 1024)),
 	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())
@@ -100,8 +99,8 @@ func TestRequestTemplateMemoryNonDivisibleBy2(t *testing.T) {
 	c := setup.GetAPIClient()
 
 	resp, err := c.PostTemplatesWithResponse(t.Context(), api.TemplateBuildRequest{
-		CpuCount: utils.ToPtr[int32](2),
-		MemoryMB: utils.ToPtr[int32](1001),
+		CpuCount: new(api.CPUCount(2)),
+		MemoryMB: new(api.MemoryMB(1001)),
 	}, setup.WithAccessToken())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode())

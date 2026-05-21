@@ -15,9 +15,11 @@ type = "remap"
 inputs = ["http_server"]
 source = """
 del(."_path")
-.sandboxID = .instanceID
 .timestamp = parse_timestamp(.timestamp, format: "%+") ?? now()
 # Normalize keys
+if exists(.instanceID) && .instanceID != null {
+  .sandboxID = .instanceID
+}
 if exists(.sandbox_id) {
   .sandboxID = .sandbox_id
 }
