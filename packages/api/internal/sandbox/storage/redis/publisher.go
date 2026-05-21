@@ -147,8 +147,9 @@ func (p *publisher) initMetrics(meter metric.Meter) error {
 // publisher has been closed.
 func (p *publisher) Publish(ctx context.Context, routingKey string) {
 	p.mu.RLock()
+	defer p.mu.RUnlock()
+
 	if p.closing {
-		p.mu.RUnlock()
 		p.drop(ctx, routingKey, dropReasonClosed, p.metrics.droppedClosed)
 
 		return
@@ -156,9 +157,7 @@ func (p *publisher) Publish(ctx context.Context, routingKey string) {
 
 	select {
 	case p.queue <- routingKey:
-		p.mu.RUnlock()
 	default:
-		p.mu.RUnlock()
 		p.drop(ctx, routingKey, dropReasonQueueFull, p.metrics.droppedQueueFull)
 	}
 }
