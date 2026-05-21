@@ -1,11 +1,8 @@
 locals {
-  clickhouse_connection_string           = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
-  redis_url                              = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
-  redis_cluster_url                      = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
-  loki_url                               = "http://loki.service.consul:${var.loki_service_port.port}"
-  dashboard_api_billing_enabled          = var.dashboard_api_count > 0
-  dashboard_api_billing_server_url       = local.dashboard_api_billing_enabled ? trimspace(data.google_secret_manager_secret_version.billing_server_url[0].secret_data) : ""
-  dashboard_api_billing_server_api_token = local.dashboard_api_billing_enabled ? trimspace(data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data) : ""
+  clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
+  redis_url                    = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
+  redis_cluster_url            = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
+  loki_url                     = "http://loki.service.consul:${var.loki_service_port.port}"
   # Filter out empty / too-short HMAC secrets so that placeholder values left in
   # Secret Manager on a fresh deploy don't get fed to legacy.NewVerifier, which
   # rejects secrets shorter than 16 bytes and would fatal the api/dashboard-api
@@ -73,20 +70,6 @@ data "google_secret_manager_secret_version" "analytics_collector_api_token" {
 
 data "google_secret_manager_secret_version" "launch_darkly_api_key" {
   secret = var.launch_darkly_api_key_secret_name
-}
-
-data "google_secret_manager_secret_version" "billing_server_api_token" {
-  count = local.dashboard_api_billing_enabled ? 1 : 0
-
-  project = var.gcp_project_id
-  secret  = "${var.prefix}billing-server-api-token"
-}
-
-data "google_secret_manager_secret_version" "billing_server_url" {
-  count = local.dashboard_api_billing_enabled ? 1 : 0
-
-  project = var.gcp_project_id
-  secret  = "${var.prefix}billing-server-url"
 }
 
 provider "nomad" {
