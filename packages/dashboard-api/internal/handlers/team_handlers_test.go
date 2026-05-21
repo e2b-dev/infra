@@ -20,6 +20,7 @@ import (
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	supabasequeries "github.com/e2b-dev/infra/packages/db/pkg/supabase/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
@@ -383,6 +384,66 @@ func handlerTestUserEmail(userID uuid.UUID) string {
 	return "user-" + userID.String() + "@example.com"
 }
 
+func TestDefaultTeamNameFromAuthUser(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		authUser supabasequeries.AuthUser
+		want     string
+	}{
+		{
+			name: "first name",
+			authUser: supabasequeries.AuthUser{
+				Email:           "fallback@example.com",
+				RawUserMetaData: []byte(`{"first_name":"ada","username":"fallback"}`),
+			},
+			want: "Ada's Default Team",
+		},
+		{
+			name: "full name first word",
+			authUser: supabasequeries.AuthUser{
+				Email:           "fallback@example.com",
+				RawUserMetaData: []byte(`{"full_name":"grace hopper"}`),
+			},
+			want: "Grace's Default Team",
+		},
+		{
+			name: "username",
+			authUser: supabasequeries.AuthUser{
+				Email:           "fallback@example.com",
+				RawUserMetaData: []byte(`{"username":"linus"}`),
+			},
+			want: "Linus's Default Team",
+		},
+		{
+			name: "email prefix",
+			authUser: supabasequeries.AuthUser{
+				Email: "barbara@example.com",
+			},
+			want: "Barbara's Default Team",
+		},
+		{
+			name: "fallback",
+			authUser: supabasequeries.AuthUser{
+				RawUserMetaData: []byte(`{`),
+			},
+			want: "User's Default Team",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := defaultTeamNameFromAuthUser(tt.authUser)
+			if got != tt.want {
+				t.Fatalf("defaultTeamNameFromAuthUser() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func insertHandlerTestTeamMember(t *testing.T, db *testutils.Database, userID, teamID uuid.UUID, isDefault bool) {
 	t.Helper()
 
@@ -423,6 +484,13 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 	if err := testDB.AuthDB.Write.DeletePublicUser(ctx, userID); err != nil {
 		t.Fatalf("failed to remove public user: %v", err)
 	}
+	if err := testDB.SupabaseDB.TestsRawSQL(ctx, `
+UPDATE auth.users
+SET raw_user_meta_data = '{"first_name":"ada"}'::jsonb
+WHERE id = $1
+`, userID); err != nil {
+		t.Fatalf("failed to update auth user metadata: %v", err)
+	}
 
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
@@ -444,6 +512,9 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected default team to be created: %v", err)
 	}
+	if team.Name != "Ada's Default Team" {
+		t.Fatalf("expected team name %q, got %q", "Ada's Default Team", team.Name)
+	}
 
 	if len(sink.requests) != 1 {
 		t.Fatalf("expected one billing provisioning call, got %d", len(sink.requests))
@@ -455,6 +526,9 @@ func TestPostUsersBootstrap_CreatesDefaultTeamAndCallsSink(t *testing.T) {
 	}
 	if req.Reason != teamprovision.ReasonDefaultSignupTeam {
 		t.Fatalf("expected default signup reason, got %s", req.Reason)
+	}
+	if req.TeamName != team.Name {
+		t.Fatalf("expected sink team name %q, got %q", team.Name, req.TeamName)
 	}
 
 	var responseBody map[string]any

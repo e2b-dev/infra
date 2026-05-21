@@ -2,10 +2,13 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -14,6 +17,7 @@ import (
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
+	supabasequeries "github.com/e2b-dev/infra/packages/db/pkg/supabase/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -91,8 +95,9 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 		return provisionedTeam{}, fmt.Errorf("get default team: %w", err)
 	}
 
+	defaultTeamName := defaultTeamNameFromAuthUser(authUser)
 	team, err := authTxDB.CreateTeam(ctx, authqueries.CreateTeamParams{
-		Name:          authUser.Email,
+		Name:          defaultTeamName,
 		Tier:          baseTierID,
 		Email:         authUser.Email,
 		IsBlocked:     false,
@@ -253,6 +258,91 @@ func validateTeamCreationAllowed(ctx context.Context, authTxDB *authqueries.Quer
 	}
 
 	return nil
+}
+
+func defaultTeamNameFromAuthUser(authUser supabasequeries.AuthUser) string {
+	metadata := rawUserMetadata(authUser.RawUserMetaData)
+
+	baseName := firstNonEmpty(
+		firstWord(metadataString(metadata, "first_name")),
+		firstWord(metadataString(metadata, "firstName")),
+		firstWord(metadataString(metadata, "given_name")),
+		firstWord(metadataString(metadata, "givenName")),
+		firstWord(metadataString(metadata, "name")),
+		firstWord(metadataString(metadata, "full_name")),
+		firstWord(metadataString(metadata, "fullName")),
+		metadataString(metadata, "username"),
+		metadataString(metadata, "user_name"),
+		metadataString(metadata, "userName"),
+		metadataString(metadata, "preferred_username"),
+		metadataString(metadata, "preferredUsername"),
+		emailPrefix(authUser.Email),
+		"User",
+	)
+
+	return capitalizeFirstLetter(baseName) + "'s Default Team"
+}
+
+func rawUserMetadata(raw []byte) map[string]any {
+	if len(raw) == 0 {
+		return nil
+	}
+
+	var metadata map[string]any
+	if err := json.Unmarshal(raw, &metadata); err != nil {
+		return nil
+	}
+
+	return metadata
+}
+
+func metadataString(metadata map[string]any, key string) string {
+	if metadata == nil {
+		return ""
+	}
+
+	value, ok := metadata[key].(string)
+	if !ok {
+		return ""
+	}
+
+	return strings.TrimSpace(value)
+}
+
+func firstWord(value string) string {
+	parts := strings.Fields(value)
+	if len(parts) == 0 {
+		return ""
+	}
+
+	return parts[0]
+}
+
+func emailPrefix(email string) string {
+	prefix, _, _ := strings.Cut(strings.TrimSpace(email), "@")
+
+	return prefix
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+
+	return ""
+}
+
+func capitalizeFirstLetter(value string) string {
+	runes := []rune(strings.TrimSpace(value))
+	if len(runes) == 0 {
+		return ""
+	}
+
+	runes[0] = unicode.ToUpper(runes[0])
+
+	return string(runes)
 }
 
 func (s *APIStore) handleProvisioningError(ctx context.Context, c *gin.Context, operation string, err error) {
