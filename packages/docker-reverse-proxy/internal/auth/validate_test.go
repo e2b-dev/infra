@@ -110,14 +110,7 @@ func TestValidate(t *testing.T) {
 func setupValidateTest(tb testing.TB, db *testutils.Database, userID uuid.UUID, accessToken keys.Key, envID, createdEnvStatus string) {
 	tb.Helper()
 
-	// Create user
-	err := db.SupabaseDB.TestsRawSQL(tb.Context(), `
-		INSERT INTO auth.users (id, email)
-		VALUES ($1, 'test@e2b.dev')
-	`, userID)
-	require.NoError(tb, err)
-
-	err = db.AuthDB.Write.UpsertPublicUser(tb.Context(), userID)
+	err := db.AuthDB.Write.UpsertPublicUser(tb.Context(), userID)
 	require.NoError(tb, err)
 
 	team, err := db.AuthDB.Write.CreateTeam(tb.Context(), authqueries.CreateTeamParams{
