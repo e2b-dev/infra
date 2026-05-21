@@ -41,12 +41,12 @@ func setupReservationStorageWithoutSubManager(t *testing.T) (*ReservationStorage
 
 	client := redis_utils.SetupInstance(t)
 
-	storageInstance := storage_redis.NewStorage(client)
+	storageInstance := newTestSandboxStorage(t, client)
 	// Deliberately do NOT call storageInstance.Start — no subManager.start
 	// goroutine, no fan-out. Publish() still works through the in-process
 	// queue but its drainer is also not running. The waiter must rely
 	// entirely on its 1s fallback ticker.
-	t.Cleanup(storageInstance.Close)
+	t.Cleanup(func() { storageInstance.Close(context.WithoutCancel(t.Context())) })
 
 	storage := NewReservationStorage(client, storageInstance.Notifier())
 
@@ -347,9 +347,9 @@ func TestWaitForStart_RedisOpsBounded(t *testing.T) {
 	counter := &cmdCounter{}
 	client.AddHook(counter)
 
-	storageInstance := storage_redis.NewStorage(client)
+	storageInstance := newTestSandboxStorage(t, client)
 	go storageInstance.Start(t.Context())
-	t.Cleanup(storageInstance.Close)
+	t.Cleanup(func() { storageInstance.Close(context.WithoutCancel(t.Context())) })
 
 	storage := NewReservationStorage(client, storageInstance.Notifier())
 
