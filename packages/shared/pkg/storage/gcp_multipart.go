@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/md5"
 	"encoding/base64"
@@ -13,7 +14,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
@@ -346,8 +347,8 @@ func (m *MultipartUploader) uploadPartSlices(ctx context.Context, uploadID strin
 
 func (m *MultipartUploader) completeUpload(ctx context.Context, uploadID string, parts []Part) error {
 	// Sort parts by part number
-	sort.Slice(parts, func(i, j int) bool {
-		return parts[i].PartNumber < parts[j].PartNumber
+	slices.SortFunc(parts, func(a, b Part) int {
+		return cmp.Compare(a.PartNumber, b.PartNumber)
 	})
 
 	completeReq := CompleteMultipartUpload{Parts: parts}

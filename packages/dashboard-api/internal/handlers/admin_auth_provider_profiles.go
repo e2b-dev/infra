@@ -11,7 +11,6 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const maxAdminProfileResolveUserIDs = 100
@@ -127,7 +126,7 @@ func apiProfilesFromProfiles(profiles []userprofile.Profile) []api.AdminAuthProv
 func apiProfileFromProfile(profile userprofile.Profile) api.AdminAuthProviderProfile {
 	var email *string
 	if profile.Email != "" {
-		email = utils.ToPtr(profile.Email)
+		email = new(profile.Email)
 	}
 
 	return api.AdminAuthProviderProfile{

@@ -12,20 +12,13 @@ import (
 )
 
 const upsertPublicUser = `-- name: UpsertPublicUser :exec
-INSERT INTO public.users (id, email)
-VALUES ($1::uuid, $2::text)
+INSERT INTO public.users (id)
+VALUES ($1::uuid)
 ON CONFLICT (id)
-DO UPDATE SET
-    email = EXCLUDED.email,
-    updated_at = now()
+DO NOTHING
 `
 
-type UpsertPublicUserParams struct {
-	ID    uuid.UUID
-	Email string
-}
-
-func (q *Queries) UpsertPublicUser(ctx context.Context, arg UpsertPublicUserParams) error {
-	_, err := q.db.Exec(ctx, upsertPublicUser, arg.ID, arg.Email)
+func (q *Queries) UpsertPublicUser(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, upsertPublicUser, id)
 	return err
 }

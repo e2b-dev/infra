@@ -20,7 +20,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const archARM64 = "arm64"
@@ -402,9 +401,9 @@ func (c *apiClient) setEntropyDevice(ctx context.Context) error {
 		Body: &models.EntropyDevice{
 			RateLimiter: &models.RateLimiter{
 				Bandwidth: &models.TokenBucket{
-					OneTimeBurst: utils.ToPtr(entropyOneTimeBurst),
-					Size:         utils.ToPtr(entropyBytesSize),
-					RefillTime:   utils.ToPtr(entropyRefillTime),
+					OneTimeBurst: new(entropyOneTimeBurst),
+					Size:         new(entropyBytesSize),
+					RefillTime:   new(entropyRefillTime),
 				},
 			},
 		},

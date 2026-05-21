@@ -70,6 +70,17 @@ func main() {
 		zap.Int("max_concurrent_delete", opts.MaxConcurrentDelete),
 	)
 
+	// preRun leaves both targets at 0 when disk usage is already at or
+	// below disk-usage-target-percent. Short-circuit here so we don't spin
+	// up workers just to immediately drain (which also produced a misleading
+	// "target bytes deleted reached" log).
+	if opts.TargetBytesToDelete == 0 && opts.TargetFilesToDelete == 0 {
+		log.Info(ctx, "disk already at or below target, nothing to do",
+			zap.Float64("target_disk_usage_percent", opts.TargetDiskUsagePercent))
+
+		return
+	}
+
 	c := cleaner.NewCleaner(opts, log)
 	if err = c.Clean(ctx); err != nil {
 		return

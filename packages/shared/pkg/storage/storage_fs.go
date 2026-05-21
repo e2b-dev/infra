@@ -72,11 +72,11 @@ func (s *fsStorage) UploadSignedURL(_ context.Context, path string, ttl time.Dur
 		return "", errors.New("file system storage does not support signed URLs (no local upload endpoint configured)")
 	}
 
-	expires := time.Now().Add(ttl).Unix()
-	token := ComputeUploadHMAC(s.hmacKey, path, expires)
+	expiresSec := time.Now().Add(ttl).Unix()
+	token := ComputeUploadHMAC(s.hmacKey, path, expiresSec)
 
 	u := fmt.Sprintf("%s/upload?path=%s&expires=%d&token=%s",
-		s.uploadURL, url.QueryEscape(path), expires, url.QueryEscape(token))
+		s.uploadURL, url.QueryEscape(path), expiresSec, url.QueryEscape(token))
 
 	return u, nil
 }

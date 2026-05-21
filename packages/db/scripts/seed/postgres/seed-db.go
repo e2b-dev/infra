@@ -102,7 +102,7 @@ DELETE FROM volumes WHERE team_id IN (SELECT id FROM teams WHERE email = $1)
 	}
 
 	err = authDb.TestsRawSQL(ctx, `
-DELETE FROM addons WHERE added_by IN (SELECT id FROM public.users WHERE email = $1)
+DELETE FROM addons WHERE added_by IN (SELECT id FROM auth.users WHERE email = $1)
 `, email)
 	if err != nil {
 		panic(err)
@@ -116,9 +116,8 @@ DELETE FROM teams WHERE email = $1
 		panic(err)
 	}
 
-	// Delete the projected user row so access_tokens and users_teams cascade.
 	err = authDb.TestsRawSQL(ctx, `
-DELETE FROM public.users WHERE email = $1
+DELETE FROM public.users WHERE id IN (SELECT id FROM auth.users WHERE email = $1)
 `, email)
 	if err != nil {
 		panic(err)
@@ -132,7 +131,6 @@ DELETE FROM auth.users WHERE email = $1
 		panic(err)
 	}
 
-	// Create the auth user and its projected public user row explicitly.
 	userID := uuid.New()
 	err = authDb.TestsRawSQL(ctx, `
 INSERT INTO auth.users (id, email)
@@ -142,10 +140,7 @@ VALUES ($1, $2)
 		panic(err)
 	}
 
-	err = authDb.Write.UpsertPublicUser(ctx, authqueries.UpsertPublicUserParams{
-		ID:    userID,
-		Email: email,
-	})
+	err = authDb.Write.UpsertPublicUser(ctx, userID)
 	if err != nil {
 		panic(err)
 	}

@@ -153,12 +153,12 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	err = a.sqlcDB.UpdateTemplateBuild(ctx, queries.UpdateTemplateBuildParams{
 		StartCmd:        body.StartCmd,
 		ReadyCmd:        body.ReadyCmd,
-		Dockerfile:      utils.ToPtr(string(stepsMarshalled)),
-		ClusterNodeID:   utils.ToPtr(builderNode.NodeID),
-		CpuArchitecture: utils.ToPtr(machineInfo.CPUArchitecture),
-		CpuFamily:       utils.ToPtr(machineInfo.CPUFamily),
-		CpuModel:        utils.ToPtr(machineInfo.CPUModel),
-		CpuModelName:    utils.ToPtr(machineInfo.CPUModelName),
+		Dockerfile:      new(string(stepsMarshalled)),
+		ClusterNodeID:   new(builderNode.NodeID),
+		CpuArchitecture: new(machineInfo.CPUArchitecture),
+		CpuFamily:       new(machineInfo.CPUFamily),
+		CpuModel:        new(machineInfo.CPUModel),
+		CpuModelName:    new(machineInfo.CPUModelName),
 		CpuFlags:        machineInfo.CPUFlags,
 		BuildUuid:       buildUUID,
 	})

@@ -330,7 +330,7 @@ func TestSandboxListPaginationRunningLargerLimit(t *testing.T) { //nolint:tparal
 	t.Run("check all sandboxes list", func(t *testing.T) {
 		t.Parallel()
 		listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
-			Limit:    sharedUtils.ToPtr(int32(sbxsCount)),
+			Limit:    new(int32(sbxsCount)),
 			State:    &[]api.SandboxState{api.Running},
 			Metadata: &metadataString,
 		}, setup.WithAPIKey())
@@ -352,7 +352,7 @@ func TestSandboxListPaginationRunningLargerLimit(t *testing.T) { //nolint:tparal
 			sbxID := sandboxes[i]
 
 			listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
-				Limit:     sharedUtils.ToPtr(int32(limit)),
+				Limit:     new(int32(limit)),
 				NextToken: nextToken,
 				State:     &[]api.SandboxState{api.Running},
 				Metadata:  &metadataString,
@@ -367,7 +367,7 @@ func TestSandboxListPaginationRunningLargerLimit(t *testing.T) { //nolint:tparal
 			require.NoError(t, err)
 			assert.Equal(t, sbxsCount, total)
 
-			nextToken = sharedUtils.ToPtr(listResponse.HTTPResponse.Header.Get("X-Next-Token"))
+			nextToken = new(listResponse.HTTPResponse.Header.Get("X-Next-Token"))
 
 			if i+limit == sbxsCount {
 				assert.Empty(t, *nextToken)

@@ -389,13 +389,15 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 	}
 
 	cfg := CompressConfigFromOpts(putOpts)
+	compressionType := cfg.CompressionType()
+	compressionMetricType := compressionType.String()
+	if cfg.IsCompressionEnabled() && compressionType == CompressionZstd {
+		compressionMetricType = fmt.Sprintf("%s-%d", compressionMetricType, cfg.Level)
+	}
 
-	// Tag the upload timer with the compression mode so dashboards can split
-	// duration/throughput by codec and level. Type is "none" when disabled.
 	timer := googleWriteTimerFactory.Begin(
 		attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystem),
-		attribute.String("compression.type", cfg.CompressionType().String()),
-		attribute.Int("compression.level", cfg.Level),
+		attribute.String("compression.type", compressionMetricType),
 	)
 
 	maxConcurrency := gcloudDefaultUploadConcurrency

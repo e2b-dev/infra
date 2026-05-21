@@ -47,8 +47,7 @@ func verifyConnectivityEventually(
 
 const blockAll = sandbox_network.AllInternetTrafficCIDR
 
-func ptrS(s ...string) *[]string { return &s }
-func ptrB(b bool) *bool          { return &b }
+func ptrS(s ...string) *[]string { return new(s) }
 
 // putNetwork is a helper to call the update network endpoint.
 func putNetwork(
@@ -314,7 +313,7 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		// ── allow_internet_access bool ───────────────────────────────
 		{
 			name:                "12_allow_internet_access_false_blocks_all",
-			allowInternetAccess: ptrB(false),
+			allowInternetAccess: new(false),
 			checks: []connectivityCheck{
 				{"https://8.8.8.8", false},
 				{"https://1.1.1.1", false},
@@ -322,7 +321,7 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 		},
 		{
 			name:                "13_allow_internet_access_true_is_noop",
-			allowInternetAccess: ptrB(true),
+			allowInternetAccess: new(true),
 			checks: []connectivityCheck{
 				{"https://8.8.8.8", true},
 				{"https://1.1.1.1", true},
@@ -394,7 +393,7 @@ func TestUpdateNetworkConfig(t *testing.T) { //nolint:tparallel // subtests are 
 	t.Run("pause_resume_preserves_allow_internet_access_false", func(t *testing.T) { //nolint:paralleltest // sequential
 		// Block all via allow_internet_access=false
 		resp := putNetwork(t, ctx, client, sbx.SandboxID, api.PutSandboxesSandboxIDNetworkJSONRequestBody{
-			AllowInternetAccess: ptrB(false),
+			AllowInternetAccess: new(false),
 		})
 		require.Equal(t, http.StatusNoContent, resp.StatusCode())
 		freshEnvdClient := setup.GetEnvdClient(t, ctx)
