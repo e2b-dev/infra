@@ -1,10 +1,10 @@
 locals {
-  clickhouse_connection_string            = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
-  redis_url                               = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
-  redis_cluster_url                       = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
-  loki_url                         = "http://loki.service.consul:${var.loki_service_port.port}"
-  dashboard_api_billing_enabled    = var.dashboard_api_count > 0
-  dashboard_api_billing_server_url = local.dashboard_api_billing_enabled ? trimspace(data.google_secret_manager_secret_version.billing_server_url[0].secret_data) : ""
+  clickhouse_connection_string           = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
+  redis_url                              = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
+  redis_cluster_url                      = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
+  loki_url                               = "http://loki.service.consul:${var.loki_service_port.port}"
+  dashboard_api_billing_enabled          = var.dashboard_api_count > 0
+  dashboard_api_billing_server_url       = local.dashboard_api_billing_enabled ? trimspace(data.google_secret_manager_secret_version.billing_server_url[0].secret_data) : ""
   dashboard_api_billing_server_api_token = local.dashboard_api_billing_enabled ? trimspace(data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data) : ""
   # Filter out empty / too-short HMAC secrets so that placeholder values left in
   # Secret Manager on a fresh deploy don't get fed to legacy.NewVerifier, which
@@ -187,18 +187,18 @@ module "dashboard_api" {
 
   image = data.google_artifact_registry_docker_image.dashboard_api_image[0].self_link
 
-  admin_token                             = trimspace(data.google_secret_manager_secret_version.dashboard_api_admin_token.secret_data)
-  postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-  auth_db_connection_string               = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-  auth_db_read_replica_connection_string  = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
-  supabase_db_connection_string           = trimspace(data.google_secret_manager_secret_version.supabase_db_connection_string.secret_data)
-  clickhouse_connection_string            = local.clickhouse_connection_string
-  auth_provider_config                    = local.auth_provider_config
-  redis_url                               = local.redis_url
-  redis_cluster_url                       = local.redis_cluster_url
-  redis_tls_ca_base64            = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-  billing_server_url             = local.dashboard_api_billing_server_url
-  billing_server_api_token       = local.dashboard_api_billing_server_api_token
+  admin_token                            = trimspace(data.google_secret_manager_secret_version.dashboard_api_admin_token.secret_data)
+  postgres_connection_string             = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+  auth_db_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+  auth_db_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
+  supabase_db_connection_string          = trimspace(data.google_secret_manager_secret_version.supabase_db_connection_string.secret_data)
+  clickhouse_connection_string           = local.clickhouse_connection_string
+  auth_provider_config                   = local.auth_provider_config
+  redis_url                              = local.redis_url
+  redis_cluster_url                      = local.redis_cluster_url
+  redis_tls_ca_base64                    = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+  billing_server_url                     = local.dashboard_api_billing_server_url
+  billing_server_api_token               = local.dashboard_api_billing_server_api_token
 
   otel_collector_grpc_port = var.otel_collector_grpc_port
   logs_proxy_port          = var.logs_proxy_port
