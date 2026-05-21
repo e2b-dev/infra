@@ -238,6 +238,9 @@ func (s *ReservationStorage) tryReadResult(
 
 			return true, sbx, err
 		}
+		if !errors.Is(getErr, redis.Nil) {
+			return true, sandbox.Sandbox{}, fmt.Errorf("failed to check result key: %w", getErr)
+		}
 
 		return true, sandbox.Sandbox{}, sandbox.ErrReservationReleased
 	}
