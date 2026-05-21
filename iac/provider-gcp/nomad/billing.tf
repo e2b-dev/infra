@@ -18,8 +18,8 @@ data "google_secret_manager_secrets" "billing_server_api_token" {
 }
 
 locals {
-  billing_server_url_secret_exists       = local.dashboard_api_deployed && length(data.google_secret_manager_secrets.billing_server_url[0].secrets) > 0
-  billing_server_api_token_secret_exists = local.dashboard_api_deployed && length(data.google_secret_manager_secrets.billing_server_api_token[0].secrets) > 0
+  billing_server_url_secret_exists       = try(length(data.google_secret_manager_secrets.billing_server_url[0].secrets) > 0, false)
+  billing_server_api_token_secret_exists = try(length(data.google_secret_manager_secrets.billing_server_api_token[0].secrets) > 0, false)
 }
 
 data "google_secret_manager_secret_version" "billing_server_url" {
@@ -35,6 +35,6 @@ data "google_secret_manager_secret_version" "billing_server_api_token" {
 }
 
 locals {
-  dashboard_api_billing_server_url       = local.billing_server_url_secret_exists ? trimspace(data.google_secret_manager_secret_version.billing_server_url[0].secret_data) : ""
-  dashboard_api_billing_server_api_token = local.billing_server_api_token_secret_exists ? trimspace(data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data) : ""
+  dashboard_api_billing_server_url       = try(trimspace(data.google_secret_manager_secret_version.billing_server_url[0].secret_data), "")
+  dashboard_api_billing_server_api_token = try(trimspace(data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data), "")
 }
