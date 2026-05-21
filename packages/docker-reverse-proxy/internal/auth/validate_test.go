@@ -11,6 +11,7 @@ import (
 
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
+	dbqueries "github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 
@@ -22,7 +23,6 @@ func TestValidate(t *testing.T) {
 	require.NoError(t, err)
 
 	userID := uuid.New()
-	teamID := uuid.New()
 	envID := "test-env-id"
 
 	testcases := []struct {
@@ -94,7 +94,7 @@ func TestValidate(t *testing.T) {
 			t.Parallel()
 
 			dbClient := testutils.SetupDatabase(t)
-			setupValidateTest(t, dbClient, userID, teamID, accessToken, tc.createdEnvId, tc.createdEnvStatus)
+			setupValidateTest(t, dbClient, userID, accessToken, tc.createdEnvId, tc.createdEnvStatus)
 
 			valid, err := Validate(t.Context(), dbClient.SqlcClient, tc.accessTokenUsed, tc.validateEnvId)
 			if tc.error {
@@ -107,32 +107,30 @@ func TestValidate(t *testing.T) {
 	}
 }
 
-func setupValidateTest(tb testing.TB, db *testutils.Database, userID, teamID uuid.UUID, accessToken keys.Key, envID, createdEnvStatus string) {
+func setupValidateTest(tb testing.TB, db *testutils.Database, userID uuid.UUID, accessToken keys.Key, envID, createdEnvStatus string) {
 	tb.Helper()
 
-	// Create user
-	err := db.AuthDb.TestsRawSQL(tb.Context(), `
-		INSERT INTO "public"."users" (id, email)
-		VALUES ($1, 'test@e2b.dev')
-	`, userID)
+	err := db.AuthDB.Write.UpsertPublicUser(tb.Context(), userID)
 	require.NoError(tb, err)
 
-	// Create team
-	err = db.AuthDb.TestsRawSQL(tb.Context(), `
-		INSERT INTO teams (id, name, email, tier, slug)
-		VALUES ($1, 'test-team', 'test@e2b.dev', 'base_v1', 'test-team-slug')
-	`, teamID)
+	team, err := db.AuthDB.Write.CreateTeam(tb.Context(), authqueries.CreateTeamParams{
+		Name:      "test-team",
+		Tier:      "base_v1",
+		Email:     "test@e2b.dev",
+		IsBlocked: false,
+	})
 	require.NoError(tb, err)
 
-	// Link user to team
-	err = db.AuthDb.TestsRawSQL(tb.Context(), `
-		INSERT INTO users_teams (user_id, team_id, is_default)
-		VALUES ($1, $2, true)
-	`, userID, teamID)
+	err = db.AuthDB.Write.CreateTeamMembership(tb.Context(), authqueries.CreateTeamMembershipParams{
+		UserID:    userID,
+		TeamID:    team.ID,
+		IsDefault: true,
+		AddedBy:   nil,
+	})
 	require.NoError(tb, err)
 
 	// Create access token
-	_, err = db.AuthDb.Write.CreateAccessToken(tb.Context(), authqueries.CreateAccessTokenParams{
+	_, err = db.AuthDB.Write.CreateAccessToken(tb.Context(), authqueries.CreateAccessTokenParams{
 		ID:                    uuid.New(),
 		UserID:                userID,
 		AccessTokenHash:       accessToken.HashedValue,
@@ -148,7 +146,7 @@ func setupValidateTest(tb testing.TB, db *testutils.Database, userID, teamID uui
 	err = db.SqlcClient.TestsRawSQL(tb.Context(), `
 		INSERT INTO envs (id, team_id, updated_at, source)
 		VALUES ($1, $2, NOW(), 'template')
-	`, envID, teamID)
+	`, envID, team.ID)
 	require.NoError(tb, err)
 
 	// Create env_build
@@ -164,9 +162,10 @@ func setupValidateTest(tb testing.TB, db *testutils.Database, userID, teamID uui
 	`, buildID, createdEnvStatus, finishedAt)
 	require.NoError(tb, err)
 
-	err = db.SqlcClient.TestsRawSQL(tb.Context(), `
-		INSERT INTO env_build_assignments (env_id, build_id, tag)
-		VALUES ($1, $2, 'default')
-	`, envID, buildID)
+	err = db.SqlcClient.CreateTemplateBuildAssignment(tb.Context(), dbqueries.CreateTemplateBuildAssignmentParams{
+		TemplateID: envID,
+		BuildID:    buildID,
+		Tag:        "default",
+	})
 	require.NoError(tb, err)
 }
