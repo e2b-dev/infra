@@ -173,13 +173,13 @@ func checkpointFailureState(err error) (orchestrator.SandboxCheckpointSandboxSta
 func (o *Orchestrator) removeCheckpointSandboxAPIState(ctx context.Context, sbx sandbox.Sandbox) {
 	// The orchestrator reported the runtime sandbox as gone; only API-owned
 	// state remains to be cleaned up here.
-	cleanupCtx := context.WithoutCancel(ctx)
-	if err := o.routingCatalog.DeleteSandbox(cleanupCtx, sbx.SandboxID, sbx.ExecutionID); err != nil {
-		telemetry.ReportError(cleanupCtx, "error removing routing record after failed checkpoint", err)
+	ctx = context.WithoutCancel(ctx)
+	if err := o.routingCatalog.DeleteSandbox(ctx, sbx.SandboxID, sbx.ExecutionID); err != nil {
+		telemetry.ReportError(ctx, "error removing routing record after failed checkpoint", err)
 	}
 
-	o.sandboxStore.Remove(cleanupCtx, sbx.TeamID, sbx.SandboxID)
-	go o.analyticsRemove(cleanupCtx, sbx, sandbox.StateActionKill)
+	o.sandboxStore.Remove(ctx, sbx.TeamID, sbx.SandboxID)
+	go o.analyticsRemove(ctx, sbx, sandbox.StateActionKill)
 }
 
 func (o *Orchestrator) resolveOrCreateSnapshotTemplate(
