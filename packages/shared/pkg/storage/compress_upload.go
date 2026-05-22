@@ -83,16 +83,37 @@ func newPart(index int, parentCtx context.Context, workers int) (*part, context.
 	return p, ctx
 }
 
-func (p *part) addFrame(ctx context.Context, uncompressedData []byte, pool *sync.Pool) {
-	frameInPart := &frame{uncompressedSize: len(uncompressedData)}
+// srcBufPool holds frame-sized scratch buffers reused as the readLoop's
+// per-frame source. Recycled inside addFrame's goroutine once the
+// compressor has consumed the bytes.
+var srcBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 0)
+		return &b
+	},
+}
+
+func getSrcBuf(size int) *[]byte {
+	b := srcBufPool.Get().(*[]byte)
+	if cap(*b) < size {
+		*b = make([]byte, size)
+	} else {
+		*b = (*b)[:size]
+	}
+	return b
+}
+
+func (p *part) addFrame(ctx context.Context, src *[]byte, validLen int, pool *sync.Pool) {
+	frameInPart := &frame{uncompressedSize: validLen}
 	p.frames = append(p.frames, frameInPart)
 
 	p.compress.Go(func() error {
+		defer srcBufPool.Put(src)
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		c := pool.Get().(compressor)
-		out, err := c.compress(uncompressedData)
+		out, err := c.compress((*src)[:validLen])
 		pool.Put(c)
 		if err != nil {
 			return err
@@ -194,17 +215,20 @@ func readLoop(ctx context.Context, in io.Reader, cfg CompressConfig, hasher io.W
 			return err
 		}
 
-		buf := make([]byte, frameSize)
-		n, err := io.ReadFull(in, buf)
+		buf := getSrcBuf(frameSize)
+		n, err := io.ReadFull(in, *buf)
 
 		eof := errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 		if err != nil && !eof {
+			srcBufPool.Put(buf)
 			return fmt.Errorf("read frame: %w", err)
 		}
 
 		if n > 0 {
-			hasher.Write(buf[:n])
-			p.addFrame(compressCtx, buf[:n], compressors)
+			hasher.Write((*buf)[:n])
+			p.addFrame(compressCtx, buf, n, compressors)
+		} else {
+			srcBufPool.Put(buf)
 		}
 
 		if eof {
