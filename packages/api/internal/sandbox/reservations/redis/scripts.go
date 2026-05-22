@@ -75,13 +75,19 @@ var (
 		return 1
 	`)
 
-	// releaseScript removes a sandbox from the pending zset and deletes the result key.
+	// releaseScript removes a sandbox from the pending zset and writes a
+	// tombstone result so any concurrent waiter resolves to
+	// sandbox.ErrReservationReleased via a single GET on the result key,
+	// without ever consulting the pending zset.
+	//
 	// KEYS[1] = pending zset key
 	// KEYS[2] = result key
 	// ARGV[1] = sandboxID
+	// ARGV[2] = tombstone JSON
+	// ARGV[3] = TTL in seconds
 	releaseScript = redis.NewScript(`
 		redis.call('ZREM', KEYS[1], ARGV[1])
-		redis.call('DEL', KEYS[2])
+		redis.call('SET', KEYS[2], ARGV[2], 'EX', tonumber(ARGV[3]))
 		return 1
 	`)
 )

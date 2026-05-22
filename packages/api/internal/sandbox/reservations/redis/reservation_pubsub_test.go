@@ -114,8 +114,7 @@ func TestWaitForStart_WokenByReleasePublish(t *testing.T) {
 
 	select {
 	case err := <-waiterErr:
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "no longer pending")
+		require.ErrorIs(t, err, sandbox.ErrReservationReleased)
 		assert.Less(t, time.Since(start), 500*time.Millisecond,
 			"release should wake the waiter via PubSub")
 	case <-time.After(3 * time.Second):

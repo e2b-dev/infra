@@ -87,15 +87,24 @@ func (s *ReservationStorage) Release(ctx context.Context, teamID uuid.UUID, sand
 	pendingSetKey := getPendingSetKey(teamIDStr)
 	resultKeyStr := getResultKey(teamIDStr, sandboxID)
 
-	err := releaseScript.Run(ctx, s.redisClient,
+	// Add a tombstone to prevent a race condition when a waiter doesn't check the pending set in time and we remove the pending entry
+	// but before we set the result key. The waiter treats a missing pending entry as a release,
+	// so without the tombstone it might miss the release and end up waiting indefinitely for a result that will never come.
+	tombstone, err := encodeReleased()
+	if err != nil {
+		return fmt.Errorf("failed to encode release tombstone: %w", err)
+	}
+	ttlSeconds := int(resultTTL.Seconds())
+
+	err = releaseScript.Run(ctx, s.redisClient,
 		[]string{pendingSetKey, resultKeyStr},
-		sandboxID,
+		sandboxID, tombstone, ttlSeconds,
 	).Err()
 	if err != nil {
 		return fmt.Errorf("failed to run release script: %w", err)
 	}
 
-	// Wake any in-process waiter so it checks the pending set immediately.
+	// Wake any in-process waiter so it reads the tombstone immediately
 	s.notifier.Publish(ctx, getReservationRoutingKey(teamIDStr, sandboxID))
 
 	return nil
@@ -118,10 +127,19 @@ func (s *ReservationStorage) createFinishStart(ctx context.Context, teamID uuid.
 				logger.WithSandboxID(sandboxID),
 			)
 
-			// Still try to remove from pending even if encoding fails.
-			_ = s.redisClient.ZRem(bgCtx, pendingSetKey, sandboxID).Err()
+			// Still try to remove from pending even if encoding fails
+			tombstone, tsErr := encodeReleased()
+			if tsErr != nil {
+				// If we can't encode the tombstone either, just delete the pending entry without a result key
+				_ = s.redisClient.ZRem(bgCtx, pendingSetKey, sandboxID).Err()
+			} else {
+				_ = releaseScript.Run(bgCtx, s.redisClient,
+					[]string{pendingSetKey, resultKeyStr},
+					sandboxID, tombstone, int(resultTTL.Seconds()),
+				).Err()
+			}
 
-			// Wake waiters so they can observe that the reservation is gone.
+			// Wake waiters so they read the tombstone
 			s.notifier.Publish(bgCtx, routingKey)
 
 			return
@@ -187,7 +205,8 @@ func (s *ReservationStorage) createWaitForStart(teamID uuid.UUID, sandboxID stri
 //
 // Returns done=true when the wait is over:
 //   - the result key holds an encoded terminal result, or
-//   - the sandbox vanished from the pending set without a result, or
+//   - the sandbox vanished from the pending set without a tombstone
+//     (legacy compatibility path), or
 //   - the Redis call itself failed.
 //
 // Returns done=false when the reservation is still pending and the caller
@@ -206,7 +225,14 @@ func (s *ReservationStorage) tryReadResult(
 		return true, sandbox.Sandbox{}, fmt.Errorf("failed to check result key: %w", getErr)
 	}
 
-	// No result yet, so check whether another instance is still creating the sandbox.
+	// No result yet. New Release calls write a tombstone result key, so a
+	// missing result normally means the reservation is still pending. This
+	// ZSCORE check is only for compatibility with legacy instances that
+	// released reservations by removing the pending entry without writing a
+	// tombstone; in that case, a missing pending entry means released.
+	//
+	// TODO [ENG-4089]: drop this ZSCORE fallback once all
+	// instances are guaranteed to write a tombstone on Release.
 	scoreErr := s.redisClient.ZScore(ctx, pendingSetKey, sandboxID).Err()
 	if errors.Is(scoreErr, redis.Nil) {
 		// Re-read the result in case finishStart or a new Release wrote it
@@ -221,7 +247,7 @@ func (s *ReservationStorage) tryReadResult(
 			return true, sandbox.Sandbox{}, fmt.Errorf("failed to check result key: %w", getErr)
 		}
 
-		return true, sandbox.Sandbox{}, fmt.Errorf("sandbox %s is no longer pending and has no result", sandboxID)
+		return true, sandbox.Sandbox{}, sandbox.ErrReservationReleased
 	}
 	if scoreErr != nil {
 		return true, sandbox.Sandbox{}, fmt.Errorf("failed to check pending set: %w", scoreErr)

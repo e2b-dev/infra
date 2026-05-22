@@ -40,3 +40,10 @@ var ErrAlreadyExists = errors.New("sandbox already exists")
 var ErrEvictionInProgress = errors.New("sandbox eviction already in progress")
 
 var ErrEvictionNotNeeded = errors.New("sandbox eviction not needed")
+
+// ErrReservationReleased is returned by ReservationStorage.Reserve's
+// waitForStart callback when the producer released the reservation
+// instead of completing the sandbox creation. It is the structural
+// equivalent of "the other instance gave up": the caller can retry
+// Reserve from scratch.
+var ErrReservationReleased = errors.New("reservation released")
