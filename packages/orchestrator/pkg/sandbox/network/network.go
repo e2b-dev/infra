@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"runtime"
 	"strconv"
 
@@ -17,6 +18,21 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
+
+// disableIPv6OnLink turns IPv6 off for the named link in the current netns.
+// Writing the sysctl is best-effort: if the link has no IPv6 sysctl entry
+// (e.g. IPv6 already disabled host-wide), the write fails and we treat that
+// as a no-op rather than failing the whole sandbox provisioning.
+func disableIPv6OnLink(name string) error {
+	path := fmt.Sprintf("/proc/sys/net/ipv6/conf/%s/disable_ipv6", name)
+	if err := os.WriteFile(path, []byte("1"), 0o644); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return nil
+}
 
 func (s *Slot) CreateNetwork(ctx context.Context) error {
 	// Prevent thread changes so we can safely manipulate with namespaces
@@ -82,6 +98,17 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		return fmt.Errorf("error adding vpeer device address: %w", err)
 	}
 
+	// Sandbox veth pairs only talk to the host gateway. Disable ARP and IPv6
+	// here so we never participate in L2 discovery and never count against
+	// the IPv4/IPv6 neigh GC thresholds. The matching NUD_PERMANENT entries
+	// are installed below once both link indices and MACs are known.
+	if err := netlink.LinkSetARPOff(vpeer); err != nil {
+		return fmt.Errorf("error disabling ARP on vpeer: %w", err)
+	}
+	if err := disableIPv6OnLink(s.VpeerName()); err != nil {
+		return fmt.Errorf("error disabling IPv6 on vpeer: %w", err)
+	}
+
 	// Move Veth device to the host NS
 	err = netlink.LinkSetNsFd(veth, int(hostNS))
 	if err != nil {
@@ -113,9 +140,41 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		return fmt.Errorf("error adding veth device address: %w", err)
 	}
 
+	// Mirror the per-link hardening from the sandbox side. ARP off is fine
+	// because the only L2 next hop on this veth is vpeer, which we pin
+	// below as NUD_PERMANENT.
+	if err := netlink.LinkSetARPOff(vethInHost); err != nil {
+		return fmt.Errorf("error disabling ARP on vethInHost: %w", err)
+	}
+	if err := disableIPv6OnLink(s.VethName()); err != nil {
+		return fmt.Errorf("error disabling IPv6 on vethInHost: %w", err)
+	}
+
+	// Pin the host-side L2 next hop: vethInHost -> vpeer's IP/MAC. NUD_PERMANENT
+	// entries are never garbage-collected and never trigger ARP, so the host
+	// neigh table cannot overflow on this path regardless of sandbox count.
+	if err := netlink.NeighSet(&netlink.Neigh{
+		LinkIndex:    vethInHost.Attrs().Index,
+		State:        netlink.NUD_PERMANENT,
+		IP:           s.VpeerIP(),
+		HardwareAddr: vpeer.Attrs().HardwareAddr,
+	}); err != nil {
+		return fmt.Errorf("error pinning vpeer neighbour on vethInHost: %w", err)
+	}
+
 	err = netns.Set(ns)
 	if err != nil {
 		return fmt.Errorf("error setting network namespace to %s: %w", ns.String(), err)
+	}
+
+	// Symmetric pin on the sandbox side now that we are back in its netns.
+	if err := netlink.NeighSet(&netlink.Neigh{
+		LinkIndex:    vpeer.Attrs().Index,
+		State:        netlink.NUD_PERMANENT,
+		IP:           s.VethIP(),
+		HardwareAddr: vethInHost.Attrs().HardwareAddr,
+	}); err != nil {
+		return fmt.Errorf("error pinning vethInHost neighbour on vpeer: %w", err)
 	}
 
 	// Create Tap device for FC in NS
