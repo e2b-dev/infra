@@ -551,6 +551,7 @@ type NewSandbox struct {
 	AllowInternetAccess *bool `json:"allow_internet_access,omitempty"`
 
 	// AutoPause Automatically pauses the sandbox after the timeout
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	AutoPause *bool `json:"autoPause,omitempty"`
 
 	// AutoResume Auto-resume configuration for paused sandboxes.
