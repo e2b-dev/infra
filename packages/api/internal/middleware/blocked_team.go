@@ -35,10 +35,10 @@ var blockedTeamAllowlist = auth.BlockedTeamAllowlist{
 		"/volumes/:volumeID":                            {},
 	},
 	http.MethodDelete: {
-		"/sandboxes/:sandboxID":         {},
-		"/templates/:templateID":        {},
-		"/volumes/:volumeID":            {},
-		"/api-keys/:apiKeyID":           {},
+		"/sandboxes/:sandboxID":  {},
+		"/templates/:templateID": {},
+		"/volumes/:volumeID":     {},
+		"/api-keys/:apiKeyID":    {},
 	},
 }
 
