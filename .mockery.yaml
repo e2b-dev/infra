@@ -1,5 +1,7 @@
 packages:
   github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem/filesystemconnect:
+    config:
+      include-auto-generated: true
     interfaces:
       FilesystemHandler:
         config:
@@ -8,6 +10,8 @@ packages:
           pkgname: filesystemconnectmocks
 
   github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator:
+    config:
+      include-auto-generated: true
     interfaces:
       ChunkServiceClient:
         config:
