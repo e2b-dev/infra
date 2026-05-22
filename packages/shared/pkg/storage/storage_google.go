@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash"
 	"io"
 	"maps"
 	"net/http"
@@ -441,12 +440,6 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 		return ft, checksum, err
 	}
 
-	// Uncompressed uploads only hash when the caller asked for a checksum.
-	var hasher hash.Hash
-	if putOpts.Checksum {
-		hasher = sha256.New()
-	}
-
 	// If the file is too small, the overhead of writing in parallel isn't worth the effort.
 	// Write it in one shot instead.
 	if fileInfo.Size() < gcpMultipartUploadChunkSize {
@@ -474,11 +467,12 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 			zap.String("compression", "none"),
 		)
 
-		if hasher != nil {
-			hasher.Write(data)
+		var checksum [32]byte
+		if putOpts.Checksum {
+			checksum = sha256.Sum256(data)
 		}
 
-		return nil, sum256(hasher), e
+		return nil, checksum, e
 	}
 
 	uploader, err := NewMultipartUploaderWithRetryConfig(
@@ -495,7 +489,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 	}
 
 	start := time.Now()
-	count, err := uploader.UploadFileInParallel(ctx, path, maxConcurrency, hasher)
+	count, err := uploader.UploadFileInParallel(ctx, path, maxConcurrency)
 	if err != nil {
 		timer.Failure(ctx, count)
 
@@ -514,7 +508,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 
 	timer.Success(ctx, count)
 
-	return nil, sum256(hasher), e
+	return nil, [32]byte{}, e
 }
 
 func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, cfg CompressConfig, maxConcurrency int, putOpts PutOptions) (*FrameTable, [32]byte, error) {

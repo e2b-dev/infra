@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"encoding/xml"
 	"fmt"
-	"hash"
 	"io"
 	"math"
 	"math/rand"
@@ -253,23 +252,17 @@ func (m *MultipartUploader) initiateUpload(ctx context.Context) (string, error) 
 	return result.UploadID, nil
 }
 
-func (m *MultipartUploader) uploadPart(ctx context.Context, uploadID string, partNumber int, data []byte) (string, error) {
-	// Calculate MD5 for data integrity
-	hasher := md5.New()
-	hasher.Write(data)
-	md5Sum := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
-
+func (m *MultipartUploader) uploadPart(ctx context.Context, uploadID string, partNumber int, body retryablehttp.ReaderFunc, contentLen int64) (string, error) {
 	url := fmt.Sprintf("%s/%s?partNumber=%d&uploadId=%s",
 		m.baseURL, m.objectName, partNumber, uploadID)
 
-	req, err := retryablehttp.NewRequestWithContext(ctx, "PUT", url, bytes.NewReader(data))
+	req, err := retryablehttp.NewRequestWithContext(ctx, "PUT", url, body)
 	if err != nil {
 		return "", err
 	}
 
 	req.Header.Set("Authorization", "Bearer "+m.token)
-	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(data)))
-	req.Header.Set("Content-MD5", md5Sum)
+	req.ContentLength = contentLen
 
 	resp, err := m.client.Do(req)
 	if err != nil {
@@ -278,9 +271,9 @@ func (m *MultipartUploader) uploadPart(ctx context.Context, uploadID string, par
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(resp.Body)
 
-		return "", fmt.Errorf("failed to upload part %d (status %d): %s", partNumber, resp.StatusCode, string(body))
+		return "", fmt.Errorf("failed to upload part %d (status %d): %s", partNumber, resp.StatusCode, string(respBody))
 	}
 
 	etag := resp.Header.Get("ETag")
@@ -384,63 +377,30 @@ func (m *MultipartUploader) completeUpload(ctx context.Context, uploadID string,
 	return nil
 }
 
-func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath string, maxConcurrency int, hasher hash.Hash) (int64, error) {
-	// Open file
+func (m *MultipartUploader) UploadFileInParallel(ctx context.Context, filePath string, maxConcurrency int) (int64, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
-	// Get file size
 	fileInfo, err := file.Stat()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get file info: %w", err)
 	}
 	fileSize := fileInfo.Size()
 
-	// Calculate number of parts
 	numParts := int(math.Ceil(float64(fileSize) / float64(gcpMultipartUploadChunkSize)))
 	if numParts == 0 {
-		numParts = 1 // Always upload at least 1 part, even for empty files
+		numParts = 1
 	}
 
-	// Initiate multipart upload
 	uploadID, err := m.initiateUpload(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("failed to initiate upload: %w", err)
 	}
 
-	// Hash on a sibling goroutine while parts upload — the read overlaps the
-	// upload, adding no wall-clock latency. Own file handle (separate from the
-	// part uploaders' ReadAt); opened here so a failed upload can close it.
-	var hashFile *os.File
-	if hasher != nil {
-		hashFile, err = os.Open(filePath)
-		if err != nil {
-			return 0, fmt.Errorf("failed to open file for checksum: %w", err)
-		}
-		defer hashFile.Close()
-	}
-
-	var eg errgroup.Group
-	if hashFile != nil {
-		eg.Go(func() error {
-			if _, err := io.Copy(hasher, hashFile); err != nil {
-				return fmt.Errorf("failed to checksum file: %w", err)
-			}
-
-			return nil
-		})
-	}
-
 	parts, err := m.uploadParts(ctx, maxConcurrency, numParts, fileSize, file, uploadID)
-	if hashFile != nil && err != nil {
-		hashFile.Close() // cancel the now-pointless io.Copy
-	}
-	if hashErr := eg.Wait(); err == nil {
-		err = hashErr
-	}
 	if err != nil {
 		return 0, fmt.Errorf("failed to upload file: %w", err)
 	}
@@ -470,21 +430,17 @@ func (m *MultipartUploader) uploadParts(ctx context.Context, maxConcurrency int,
 			default:
 			}
 
-			// Read chunk from file
 			offset := int64(partNumber-1) * gcpMultipartUploadChunkSize
-			chunkSize := gcpMultipartUploadChunkSize
-			if offset+int64(chunkSize) > fileSize {
-				chunkSize = int(fileSize - offset)
+			chunkSize := int64(gcpMultipartUploadChunkSize)
+			if offset+chunkSize > fileSize {
+				chunkSize = fileSize - offset
 			}
 
-			chunk := make([]byte, chunkSize)
-			_, err := file.ReadAt(chunk, offset)
-			if err != nil {
-				return fmt.Errorf("failed to read chunk for part %d: %w", partNumber, err)
-			}
+			body := retryablehttp.ReaderFunc(func() (io.Reader, error) {
+				return io.NewSectionReader(file, offset, chunkSize), nil
+			})
 
-			// Upload part
-			etag, err := m.uploadPart(ctx, uploadID, partNumber, chunk)
+			etag, err := m.uploadPart(ctx, uploadID, partNumber, body, chunkSize)
 			if err != nil {
 				return fmt.Errorf("failed to upload part %d: %w", partNumber, err)
 			}
