@@ -8,11 +8,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// Start, Length and SourceStart are in bytes of the data file
-// Length will be a multiple of BlockSize
-// The list of block mappings will be in order of increasing Start, covering the entire file
+// BuildMap maps a byte range in the block device to a region in a build's storage.
+// Offset, Length, and BuildStorageOffset are in bytes.
 type BuildMap struct {
-	// Offset defines which block of the current layer this mapping starts at
+	// Offset is the starting position of this range in the block device.
 	Offset             uint64
 	Length             uint64
 	BuildId            uuid.UUID
