@@ -202,12 +202,15 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		return fmt.Errorf("error adding route from host to FC: %w", err)
 	}
 
-	if err := s.hostFirewall.AddSandbox(s.VethName()); err != nil {
-		return fmt.Errorf("error registering sandbox in host firewall: %w", err)
-	}
-
 	if err := s.egressProxy.OnSlotCreate(s); err != nil {
 		return err
+	}
+
+	// Register with the host firewall last so a partial CreateNetwork
+	// never leaves a veth name in the shared set after a non-AddSandbox
+	// step failed (createNetworkSlot does not run RemoveNetwork on error).
+	if err := s.hostFirewall.AddSandbox(s.VethName()); err != nil {
+		return fmt.Errorf("error registering sandbox in host firewall: %w", err)
 	}
 
 	return nil
