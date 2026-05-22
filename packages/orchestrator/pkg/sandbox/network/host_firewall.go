@@ -15,59 +15,40 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// IFNAMSIZ from <linux/if.h>. nftables `ifname` set keys are null-padded to
-// this size.
+// IFNAMSIZ; nftables `ifname` set keys are null-padded to this size.
 const ifNameMaxLen = 16
 
-// Names used by the host-side nftables ruleset. They are stable across
-// orchestrator restarts so we can replace the table on boot without leaking
-// previous rulesets.
 const (
 	hostFirewallTableName   = "e2b_host"
 	hostFirewallVethSetName = "sandbox_veths"
 )
 
-// Hook priorities for our table. Both run before the legacy iptables-nft
-// compat chains (which sit at priorities 0 / -100), so this ruleset always
-// gets first crack at packets and any leftover per-sandbox iptables rules
-// from older binaries become harmless no-ops.
+// Hook priorities run before the legacy iptables-nft compat chains (0 / -100)
+// so this ruleset always sees packets first.
 const (
 	hostForwardPriority    = -10
 	hostNATPostroutingPrio = -90
 	hostNATPreroutingPrio  = -110
 )
 
-// HostFirewall owns the host-side nftables ruleset shared by every sandbox
-// on the node. The static chains hook every sandbox's traffic through a
-// single `sandbox_veths` ifname set; per-sandbox add/remove is a single
-// netlink set-element insert (O(1) regardless of N).
-//
-// This replaces ~6 per-sandbox iptables shellouts that grew O(N²) under
-// iptables-nft (every Append rewrote the whole table under the xtables
-// lock).
+// HostFirewall holds the shared host-side nftables ruleset. Per-sandbox
+// add/remove is a single set-element insert keyed by veth interface name —
+// O(1) regardless of fleet size.
 type HostFirewall struct {
 	conn    *nftables.Conn
 	table   *nftables.Table
 	vethSet *nftables.Set
-
-	mu sync.Mutex // serialises Flush across goroutines
+	mu      sync.Mutex
 }
 
-// NewHostFirewall installs (or replaces) the table+chains+set on the host
-// and returns a handle the network slot lifecycle can use to add / remove
-// sandboxes.
 func NewHostFirewall(ctx context.Context, config Config, externalIface string) (*HostFirewall, error) {
 	conn, err := nftables.New(nftables.AsLasting())
 	if err != nil {
 		return nil, fmt.Errorf("nftables lasting conn: %w", err)
 	}
 
-	// Replace any previous instance of our table so a binary downgrade or
-	// config change doesn't leave stale rules behind. Both ops are buffered;
-	// the real commit happens at Flush below.
 	conn.DelTable(&nftables.Table{Name: hostFirewallTableName, Family: nftables.TableFamilyINet})
 	if err := conn.Flush(); err != nil && !isNoSuchFileOrDirectory(err) {
-		// Allow ENOENT — the table may not have existed yet.
 		return nil, fmt.Errorf("delete stale host firewall table: %w", err)
 	}
 
@@ -95,9 +76,6 @@ func NewHostFirewall(ctx context.Context, config Config, externalIface string) (
 	return fw, nil
 }
 
-// AddSandbox inserts the given veth interface name into the sandbox set so
-// the global forward / nat rules start matching traffic from this sandbox.
-// One netlink message + one commit; O(1) regardless of fleet size.
 func (h *HostFirewall) AddSandbox(vethName string) error {
 	key, err := ifnameKey(vethName)
 	if err != nil {
@@ -114,8 +92,6 @@ func (h *HostFirewall) AddSandbox(vethName string) error {
 	return nil
 }
 
-// RemoveSandbox removes the given veth interface name from the sandbox set.
-// Missing elements are not an error: teardown is best-effort.
 func (h *HostFirewall) RemoveSandbox(vethName string) error {
 	key, err := ifnameKey(vethName)
 	if err != nil {
@@ -135,8 +111,6 @@ func (h *HostFirewall) RemoveSandbox(vethName string) error {
 	return nil
 }
 
-// Close releases the lasting netlink connection. The kernel ruleset stays
-// in place so existing sandboxes keep working across orchestrator restarts.
 func (h *HostFirewall) Close() error {
 	if h == nil || h.conn == nil {
 		return nil
@@ -155,7 +129,6 @@ func (h *HostFirewall) installChains(config Config, externalIface string) error 
 		Priority: nftables.ChainPriorityRef(hostForwardPriority),
 		Policy:   &policyAccept,
 	})
-
 	postroutingNAT := h.conn.AddChain(&nftables.Chain{
 		Name:     "postrouting_nat",
 		Table:    h.table,
@@ -164,7 +137,6 @@ func (h *HostFirewall) installChains(config Config, externalIface string) error 
 		Priority: nftables.ChainPriorityRef(hostNATPostroutingPrio),
 		Policy:   &policyAccept,
 	})
-
 	preroutingNAT := h.conn.AddChain(&nftables.Chain{
 		Name:     "prerouting_nat",
 		Table:    h.table,
@@ -176,74 +148,45 @@ func (h *HostFirewall) installChains(config Config, externalIface string) error 
 
 	ifname := append([]byte(externalIface), 0)
 
-	// forward: iifname @sandbox_veths && oifname == external → accept
 	h.conn.AddRule(&nftables.Rule{
 		Table: h.table, Chain: forward,
-		Exprs: concat(
-			matchIifnameInSet(h.vethSet),
-			matchMetaEq(expr.MetaKeyOIFNAME, ifname),
-			verdictAccept(),
-		),
+		Exprs: concat(matchIifnameInSet(h.vethSet), matchMetaEq(expr.MetaKeyOIFNAME, ifname), verdictAccept()),
 	})
-	// forward: iifname == external && oifname @sandbox_veths → accept
 	h.conn.AddRule(&nftables.Rule{
 		Table: h.table, Chain: forward,
-		Exprs: concat(
-			matchMetaEq(expr.MetaKeyIIFNAME, ifname),
-			matchOifnameInSet(h.vethSet),
-			verdictAccept(),
-		),
+		Exprs: concat(matchMetaEq(expr.MetaKeyIIFNAME, ifname), matchOifnameInSet(h.vethSet), verdictAccept()),
 	})
 
-	// postrouting nat: ip saddr in hostNetworkCIDR && oifname == external → masquerade
 	saddrMatch, err := matchIPv4SrcInCIDR(hostNetworkCIDR)
 	if err != nil {
 		return fmt.Errorf("masquerade source match: %w", err)
 	}
 	h.conn.AddRule(&nftables.Rule{
 		Table: h.table, Chain: postroutingNAT,
-		Exprs: concat(
-			saddrMatch,
-			matchMetaEq(expr.MetaKeyOIFNAME, ifname),
-			[]expr.Any{&expr.Masq{}},
-		),
+		Exprs: concat(saddrMatch, matchMetaEq(expr.MetaKeyOIFNAME, ifname), []expr.Any{&expr.Masq{}}),
 	})
 
-	// prerouting nat: host services exposed to sandboxes (global, dst-IP keyed).
 	orchIP := net.ParseIP(config.OrchestratorInSandboxIPAddress).To4()
 	if orchIP == nil {
 		return fmt.Errorf("invalid OrchestratorInSandboxIPAddress %q", config.OrchestratorInSandboxIPAddress)
 	}
-	hostServiceRules := []struct {
-		port    uint16
-		toPort  uint16
-		comment string
-	}{
-		{port: 80, toPort: config.HyperloopProxyPort, comment: "hyperloop"},
-		{port: 111, toPort: config.PortmapperPort, comment: "portmapper"},
-		{port: 2049, toPort: config.NFSProxyPort, comment: "nfs-proxy"},
-	}
-	for _, r := range hostServiceRules {
+	for _, r := range []struct{ dport, toPort uint16 }{
+		{80, config.HyperloopProxyPort},
+		{111, config.PortmapperPort},
+		{2049, config.NFSProxyPort},
+	} {
 		h.conn.AddRule(&nftables.Rule{
 			Table: h.table, Chain: preroutingNAT,
-			Exprs: concat(
-				matchIPv4DstEq(orchIP),
-				matchTCPDport(r.port),
-				redirectTo(r.toPort),
-			),
+			Exprs: concat(matchIPv4DstEq(orchIP), matchTCPDport(r.dport), redirectTo(r.toPort)),
 		})
 	}
 
-	// prerouting nat: per-sandbox TCP firewall.
-	tcpfwRules := []struct {
-		dport  uint16 // 0 = catchall
-		toPort uint16
-	}{
-		{dport: 80, toPort: config.SandboxTCPFirewallHTTPPort},
-		{dport: 443, toPort: config.SandboxTCPFirewallTLSPort},
-		{dport: 0, toPort: config.SandboxTCPFirewallOtherPort},
-	}
-	for _, r := range tcpfwRules {
+	// Per-sandbox TCP firewall: specific ports first, then catchall.
+	for _, r := range []struct{ dport, toPort uint16 }{
+		{80, config.SandboxTCPFirewallHTTPPort},
+		{443, config.SandboxTCPFirewallTLSPort},
+		{0, config.SandboxTCPFirewallOtherPort},
+	} {
 		var match []expr.Any
 		if r.dport != 0 {
 			match = concat(matchIifnameInSet(h.vethSet), matchTCPDport(r.dport))
@@ -258,9 +201,6 @@ func (h *HostFirewall) installChains(config Config, externalIface string) error 
 
 	return nil
 }
-
-// Expression helpers below. Each returns a slice that can be concatenated
-// into a Rule.Exprs.
 
 func matchMetaEq(key expr.MetaKey, want []byte) []expr.Any {
 	return []expr.Any{
@@ -293,31 +233,15 @@ func matchIPv4SrcInCIDR(cidr *net.IPNet) ([]expr.Any, error) {
 		return nil, fmt.Errorf("not IPv4 mask: %s", cidr)
 	}
 	return []expr.Any{
-		// payload: ip saddr (offset 12, length 4)
-		&expr.Payload{
-			DestRegister: 1,
-			Base:         expr.PayloadBaseNetworkHeader,
-			Offset:       12,
-			Len:          4,
-		},
-		// mask saddr
-		&expr.Bitwise{
-			SourceRegister: 1, DestRegister: 1, Len: 4,
-			Mask: mask, Xor: []byte{0, 0, 0, 0},
-		},
+		&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseNetworkHeader, Offset: 12, Len: 4},
+		&expr.Bitwise{SourceRegister: 1, DestRegister: 1, Len: 4, Mask: mask, Xor: []byte{0, 0, 0, 0}},
 		&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: ip4.Mask(cidr.Mask)},
 	}, nil
 }
 
 func matchIPv4DstEq(ip net.IP) []expr.Any {
 	return []expr.Any{
-		// payload: ip daddr (offset 16, length 4)
-		&expr.Payload{
-			DestRegister: 1,
-			Base:         expr.PayloadBaseNetworkHeader,
-			Offset:       16,
-			Len:          4,
-		},
+		&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseNetworkHeader, Offset: 16, Len: 4},
 		&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: ip},
 	}
 }
@@ -333,13 +257,7 @@ func matchTCPDport(port uint16) []expr.Any {
 	return concat(
 		matchL4Proto(unix.IPPROTO_TCP),
 		[]expr.Any{
-			// payload: tcp dport (offset 2 in transport header, length 2)
-			&expr.Payload{
-				DestRegister: 1,
-				Base:         expr.PayloadBaseTransportHeader,
-				Offset:       2,
-				Len:          2,
-			},
+			&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2},
 			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: binaryutil.BigEndian.PutUint16(port)},
 		},
 	)
@@ -364,8 +282,6 @@ func concat(parts ...[]expr.Any) []expr.Any {
 	return out
 }
 
-// ifnameKey null-pads an interface name to IFNAMSIZ for use as an nftables
-// `ifname` set key.
 func ifnameKey(name string) ([]byte, error) {
 	if len(name) >= ifNameMaxLen {
 		return nil, fmt.Errorf("interface name %q too long (max %d bytes)", name, ifNameMaxLen-1)

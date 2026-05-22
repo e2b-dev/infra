@@ -3,11 +3,8 @@
 package network
 
 // EgressProxy is notified of per-sandbox lifecycle so it can perform any
-// extra setup the slot creation alone can't express (e.g. removing the
-// default route from a no-egress sandbox). It used to inject per-sandbox
-// iptables rules; the host-side ruleset now lives in HostFirewall and is
-// driven by veth-set membership, so the callbacks no longer take an
-// iptables / RuleSet handle.
+// extra netns setup the slot creation alone can't express (e.g. removing
+// the default route from a no-egress sandbox).
 type EgressProxy interface {
 	OnSlotCreate(s *Slot) error
 	OnSlotDelete(s *Slot) error

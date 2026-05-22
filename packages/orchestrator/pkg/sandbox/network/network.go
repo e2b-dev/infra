@@ -202,11 +202,6 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		return fmt.Errorf("error adding route from host to FC: %w", err)
 	}
 
-	// Hand the per-sandbox host-side rules off to the shared nftables
-	// ruleset (HostFirewall). All sandbox-specific behaviour — forward
-	// accept, source MASQUERADE, TCP-firewall redirects — is keyed on
-	// veth interface name, so adding the veth to a single set is one
-	// O(1) netlink message regardless of fleet size.
 	if err := s.hostFirewall.AddSandbox(s.VethName()); err != nil {
 		return fmt.Errorf("error registering sandbox in host firewall: %w", err)
 	}
@@ -225,9 +220,6 @@ func (s *Slot) RemoveNetwork() error {
 		errs = append(errs, fmt.Errorf("error closing firewall: %w", err))
 	}
 
-	// Drop this sandbox from the host firewall's veth set so the global
-	// rules stop matching its traffic. Best-effort: kernel `ENOENT` is
-	// tolerated (already removed).
 	if err := s.hostFirewall.RemoveSandbox(s.VethName()); err != nil {
 		errs = append(errs, fmt.Errorf("error deregistering sandbox from host firewall: %w", err))
 	}

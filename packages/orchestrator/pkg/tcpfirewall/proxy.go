@@ -119,10 +119,8 @@ func (p *Proxy) Start(ctx context.Context) error {
 	return err
 }
 
-// OnSlotCreate / OnSlotDelete are no-ops: the per-veth REDIRECT rules now
-// live in the shared host nftables ruleset (HostFirewall) and are keyed on
-// `@sandbox_veths` set membership, so adding a veth to that set is all the
-// per-sandbox plumbing needed.
+// REDIRECT rules live in the shared host nftables ruleset; per-sandbox
+// plumbing is just veth set membership, handled by HostFirewall.
 func (p *Proxy) OnSlotCreate(_ *network.Slot) error { return nil }
 func (p *Proxy) OnSlotDelete(_ *network.Slot) error { return nil }
 
