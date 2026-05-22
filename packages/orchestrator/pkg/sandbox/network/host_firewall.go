@@ -77,6 +77,9 @@ func NewHostFirewall(ctx context.Context, config Config, externalIface string) (
 }
 
 func (h *HostFirewall) AddSandbox(vethName string) error {
+	if h == nil {
+		return nil
+	}
 	key, err := ifnameKey(vethName)
 	if err != nil {
 		return err
@@ -93,6 +96,9 @@ func (h *HostFirewall) AddSandbox(vethName string) error {
 }
 
 func (h *HostFirewall) RemoveSandbox(vethName string) error {
+	if h == nil {
+		return nil
+	}
 	key, err := ifnameKey(vethName)
 	if err != nil {
 		return err
