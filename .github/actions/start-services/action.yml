@@ -129,6 +129,8 @@ runs:
         COMPRESS_TYPE: ${{ inputs.compress_type }}
         COMPRESS_LEVEL: ${{ inputs.compress_level }}
         COMPRESS_FRAME_ENCODE_WORKERS: ${{ inputs.compress_workers }}
+        TESTS_USE_MEMFD: "true"
+        TESTS_MEMFILE_DIFF_DEDUP: "true"
         E2B_DEBUG: "true"
       run: |
         mkdir -p $SHARED_CHUNK_CACHE_PATH

@@ -4,20 +4,37 @@ package main
 
 import (
 	"context"
+	"os"
+	"strconv"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/factories"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/tcpfirewall"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/version"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 )
 
 var commitSHA string
 
 func main() {
+	applyTestFlagOverrides()
+
 	factories.Run(factories.Options{
 		Version:       version.Version,
 		CommitSHA:     commitSHA,
 		EgressFactory: defaultEgressFactory,
 	})
+}
+
+func applyTestFlagOverrides() {
+	if enabled, _ := strconv.ParseBool(os.Getenv("TESTS_USE_MEMFD")); enabled {
+		featureflags.OverrideBoolFlag(featureflags.UseMemFdFlag, true)
+	}
+	if enabled, _ := strconv.ParseBool(os.Getenv("TESTS_MEMFILE_DIFF_DEDUP")); enabled {
+		featureflags.OverrideJSONFlag(featureflags.MemfileDiffDedupFlag, ldvalue.FromJSONMarshal(map[string]any{
+			"enabled": true,
+		}))
+	}
 }
 
 func defaultEgressFactory(_ context.Context, deps *factories.Deps) (*factories.EgressSetup, error) {
