@@ -217,6 +217,21 @@ components:
           type: string
           format: email
 
+    InternalHeadlessTeamCreateRequest:
+      type: object
+      required:
+        - name
+        - email
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Team name.
+        email:
+          type: string
+          format: email
+          description: Billing/contact email for the team.
+
     BuildStatus:
       type: string
       description: Build status mapped for dashboard clients.
@@ -843,6 +858,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TeamResolveResponse"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /internal/teams:
+    post:
+      summary: Create headless team
+      tags: [admin]
+      security:
+        - AdminTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InternalHeadlessTeamCreateRequest"
+      responses:
+        "200":
+          description: Successfully created headless team.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamResolveResponse"
+        "400":
+          $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
         "500":
