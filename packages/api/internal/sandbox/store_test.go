@@ -28,7 +28,7 @@ func newTestStorage(t *testing.T) Storage {
 	storage, err := sandboxredis.NewStorage(client, noop.NewMeterProvider())
 	require.NoError(t, err)
 	go storage.Start(t.Context())
-	t.Cleanup(func() { storage.Close(context.Background()) })
+	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })
 
 	return storage
 }

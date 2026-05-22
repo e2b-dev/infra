@@ -50,7 +50,7 @@ func newCreateSandboxTestOrchestrator(t *testing.T) (*Orchestrator, *nodemanager
 	storage, err := sandboxredis.NewStorage(client, noop.NewMeterProvider())
 	require.NoError(t, err)
 	go storage.Start(t.Context())
-	t.Cleanup(func() { storage.Close(context.Background()) })
+	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })
 
 	store := sandbox.NewStore(
 		storage,
