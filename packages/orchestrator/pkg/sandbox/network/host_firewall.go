@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/coreos/go-iptables/iptables"
 	"github.com/google/nftables"
 	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
@@ -73,7 +74,37 @@ func NewHostFirewall(config Config, externalIface string) (*HostFirewall, error)
 		return nil, fmt.Errorf("flush host firewall table: %w", err)
 	}
 
+	if err := installLegacyForwardAccept(); err != nil {
+		return nil, err
+	}
+
 	return fw, nil
+}
+
+// installLegacyForwardAccept adds two global ACCEPT rules to the legacy
+// `filter FORWARD` chain so sandbox <-> external traffic is allowed even
+// when something else (Docker, etc.) has set the chain policy to DROP.
+// Our nftables `inet e2b_host` chain at priority -10 returns `accept`
+// for sandbox traffic, but kernel hooks still evaluate later chains, so
+// without these rules a Docker-installed `FORWARD -P DROP` drops the
+// packet at priority 0.
+func installLegacyForwardAccept() error {
+	t, err := iptables.New()
+	if err != nil {
+		return fmt.Errorf("init iptables: %w", err)
+	}
+	cidr := hostNetworkCIDR.String()
+	rules := [][]string{
+		{"-s", cidr, "-j", "ACCEPT"},
+		{"-d", cidr, "-j", "ACCEPT"},
+	}
+	for _, args := range rules {
+		if err := t.AppendUnique("filter", "FORWARD", args...); err != nil {
+			return fmt.Errorf("install forward accept %v: %w", args, err)
+		}
+	}
+
+	return nil
 }
 
 func (h *HostFirewall) AddSandbox(vethName string) error {
