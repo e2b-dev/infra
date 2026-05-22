@@ -238,6 +238,7 @@ processors:
           - "otelcol.exporter.send.*"
           - "otelcol.exporter.sent.*"
           - "otelcol.receiver.refused.*"
+          - "otel\\.router\\..*"
           - "pgxpool.*"
           - "go\\..*"
           - "traefik.*"

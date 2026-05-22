@@ -7,6 +7,8 @@ package queries
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 const getRowLevelSecurity = `-- name: GetRowLevelSecurity :many
@@ -57,4 +59,67 @@ func (q *Queries) GetRowLevelSecurity(ctx context.Context) ([]GetRowLevelSecurit
 		return nil, err
 	}
 	return items, nil
+}
+
+const insertTestEnv = `-- name: InsertTestEnv :exec
+INSERT INTO public.envs (id, team_id, public, updated_at, source)
+VALUES (
+    $1::text,
+    $2::uuid,
+    $3::boolean,
+    NOW(),
+    $4::text
+)
+`
+
+type InsertTestEnvParams struct {
+	ID     string
+	TeamID uuid.UUID
+	Public bool
+	Source string
+}
+
+// Inserts an env (template) row used as a base for tests. Mirrors what
+// production code does via CreateOrUpdateTemplate but without the build_count
+// bookkeeping so tests can seed deterministic rows.
+func (q *Queries) InsertTestEnv(ctx context.Context, arg InsertTestEnvParams) error {
+	_, err := q.db.Exec(ctx, insertTestEnv,
+		arg.ID,
+		arg.TeamID,
+		arg.Public,
+		arg.Source,
+	)
+	return err
+}
+
+const insertTestTeam = `-- name: InsertTestTeam :exec
+INSERT INTO public.teams (id, name, tier, email, slug)
+VALUES (
+    $1::uuid,
+    $2::text,
+    $3::text,
+    $4::text,
+    $5::text
+)
+`
+
+type InsertTestTeamParams struct {
+	ID    uuid.UUID
+	Name  string
+	Tier  string
+	Email string
+	Slug  string
+}
+
+// Inserts a team for tests with explicit id/slug. Uses the default 'base_v1'
+// tier created in migrations.
+func (q *Queries) InsertTestTeam(ctx context.Context, arg InsertTestTeamParams) error {
+	_, err := q.db.Exec(ctx, insertTestTeam,
+		arg.ID,
+		arg.Name,
+		arg.Tier,
+		arg.Email,
+		arg.Slug,
+	)
+	return err
 }

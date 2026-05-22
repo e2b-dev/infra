@@ -40,7 +40,9 @@ func (h *APIStore) Logs(c *gin.Context) {
 	err = h.validatePayloadSandboxID(payload, sbxID)
 	if err != nil {
 		h.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandboxID in logs payload")
-		h.logger.Error(ctx, "error when parsing sandbox logs request", zap.Error(err), logger.WithSandboxID(sbxID))
+		// Inflight logs with old sandboxID from snapshotted sandbox
+		// Change to error once we have a way how to tell sandbox to flush and stop sending logs when being paused
+		h.logger.Warn(ctx, "error when parsing sandbox logs request", zap.Error(err), logger.WithSandboxID(sbxID))
 
 		return
 	}

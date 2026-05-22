@@ -13,9 +13,11 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	storage_redis "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
@@ -29,9 +31,23 @@ var testTeamID = uuid.New()
 func setupTestReservationStorage(t *testing.T) (*ReservationStorage, goredis.UniversalClient) {
 	t.Helper()
 	client := redis_utils.SetupInstance(t)
-	storage := NewReservationStorage(client)
+
+	storageInstance := newTestSandboxStorage(t, client)
+	go storageInstance.Start(t.Context())
+	t.Cleanup(func() { storageInstance.Close(context.WithoutCancel(t.Context())) })
+
+	storage := NewReservationStorage(client, storageInstance.Notifier())
 
 	return storage, client
+}
+
+func newTestSandboxStorage(t *testing.T, client goredis.UniversalClient) *storage_redis.Storage {
+	t.Helper()
+
+	storageInstance, err := storage_redis.NewStorage(client, noop.NewMeterProvider())
+	require.NoError(t, err)
+
+	return storageInstance
 }
 
 func TestReservation(t *testing.T) {
@@ -496,7 +512,10 @@ func TestReservation_StalePendingCleanup(t *testing.T) {
 	assert.Equal(t, int64(1), count)
 
 	// Create a new storage instance (simulating a fresh/restarted API)
-	storage := NewReservationStorage(client)
+	storageInstance := newTestSandboxStorage(t, client)
+	go storageInstance.Start(t.Context())
+	t.Cleanup(func() { storageInstance.Close(context.WithoutCancel(t.Context())) })
+	storage := NewReservationStorage(client, storageInstance.Notifier())
 
 	// Reserve with limit=1 — this should succeed because the stale entry
 	// gets cleaned up by the reserveScript before counting

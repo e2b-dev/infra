@@ -14,8 +14,8 @@ init:
 
 build:
 	terraform init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
-	$(tf_vars) terraform apply -auto-approve -input=false -upgrade -compact-warnings
-	packer build -var "gcp_project_id=$(GCP_PROJECT_ID)" -var "gcp_zone=$(GCP_ZONE)" -var "network_name=$(PACKER_NETWORK_NAME)" -var "subnet_name=$(PACKER_NETWORK_NAME)" .
+	$(tf_vars) terraform apply -auto-approve -input=false -compact-warnings
+	packer build -var "gcp_project_id=$(GCP_PROJECT_ID)" -var "gcp_zone=$(GCP_ZONE)" -var "network_name=$(PACKER_NETWORK_NAME)" -var "subnet_name=$(PACKER_SUBNET_NAME)" .
 
 format:
 	packer fmt .

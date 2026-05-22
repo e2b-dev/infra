@@ -91,7 +91,6 @@ sql:
     queries: "pkg/supabase/sql_queries/**"
     schema:
       - "pkg/supabase/schema"
-      - "pkg/supabase/migrations"
     gen:
       go:
         emit_pointers_for_null_types: true
@@ -101,6 +100,9 @@ sql:
 
   - engine: "postgresql"
     queries: "pkg/testutils/*.sql"
+    schema:
+      - "migrations"
+      - "schema"
     gen:
       go:
         package: "queries"

@@ -159,6 +159,7 @@ var (
 	SandboxLabelBasedSchedulingFlag  = NewBoolFlag("sandbox-label-based-scheduling", false)
 	OptimisticResourceAccountingFlag = NewBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
 	FreePageReportingFlag            = NewBoolFlag("free-page-reporting", false)
+	FreezeUserCgroupFlag             = NewBoolFlag("freeze-user-cgroup", env.IsDevelopment())
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
 

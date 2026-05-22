@@ -195,7 +195,6 @@ func run() int {
 
 	teamProvisionSink, err := internalteamprovision.NewProvisionSink(
 		ctx,
-		config.EnableBillingHTTPTeamProvisionSink,
 		config.BillingServerURL,
 		config.BillingServerAPIToken,
 		supabaseDB,

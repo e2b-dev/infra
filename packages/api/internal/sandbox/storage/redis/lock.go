@@ -8,21 +8,17 @@ import (
 
 	"github.com/bsm/redislock"
 	"github.com/redis/go-redis/v9"
-	"go.uber.org/zap"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
-
-const lockNotifyTimeout = 5 * time.Second
 
 type storageLocker struct {
 	redisClient redis.UniversalClient
 	client      *redislock.Client
 	option      *redislock.Options
 	subManager  *subscriptionManager
+	notifier    notifier
 }
 
-func newStorageLocker(redisClient redis.UniversalClient, subManager *subscriptionManager) *storageLocker {
+func newStorageLocker(redisClient redis.UniversalClient, subManager *subscriptionManager, n notifier) *storageLocker {
 	return &storageLocker{
 		redisClient: redisClient,
 		client:      redislock.New(redisClient),
@@ -30,13 +26,14 @@ func newStorageLocker(redisClient redis.UniversalClient, subManager *subscriptio
 			RetryStrategy: redislock.NoRetry(),
 		},
 		subManager: subManager,
+		notifier:   n,
 	}
 }
 
 type storageLock struct {
 	*redislock.Lock
 
-	redisClient redis.UniversalClient
+	notifier notifier
 }
 
 func (l *storageLock) Release(ctx context.Context) error {
@@ -44,8 +41,8 @@ func (l *storageLock) Release(ctx context.Context) error {
 		return err
 	}
 
-	routingKey := getLockRoutingKey(l.Key())
-	go l.publishReleaseNotification(context.WithoutCancel(ctx), routingKey)
+	// Hand off to the shared publisher
+	l.notifier.Publish(ctx, getLockRoutingKey(l.Key()))
 
 	return nil
 }
@@ -95,16 +92,7 @@ func (l *storageLocker) tryLock(ctx context.Context, lockKey string, timeout tim
 		return nil, err
 	}
 
-	return &storageLock{Lock: lock, redisClient: l.redisClient}, nil
-}
-
-func (l *storageLock) publishReleaseNotification(ctx context.Context, routingKey string) {
-	ctx, cancel := context.WithTimeout(ctx, lockNotifyTimeout)
-	defer cancel()
-
-	if err := l.redisClient.Publish(ctx, globalStorageNotifyChannel, routingKey).Err(); err != nil {
-		logger.L().Warn(ctx, "Failed to publish lock release notification", zap.Error(err))
-	}
+	return &storageLock{Lock: lock, notifier: l.notifier}, nil
 }
 
 func jitterBackoff(backoff time.Duration) time.Duration {

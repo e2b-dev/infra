@@ -24,6 +24,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
 const (
@@ -337,6 +338,10 @@ func New(
 }
 
 func getProcType(req *rpc.StartRequest) cgroups.ProcessType {
+	if req != nil && req.GetTag() == consts.SystemTag {
+		return cgroups.ProcessTypeSystem
+	}
+
 	if req != nil && req.GetPty() != nil {
 		return cgroups.ProcessTypePTY
 	}

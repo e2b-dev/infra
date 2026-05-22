@@ -116,7 +116,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	// only waiting builds can be triggered
 	if build.StatusGroup != types.BuildStatusGroupPending {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "build is not in waiting state")
-		telemetry.ReportCriticalError(ctx, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.StatusGroup), telemetry.WithTemplateID(templateID))
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "build is not in waiting state", fmt.Errorf("build is not in waiting state - current state: %s", build.StatusGroup), telemetry.WithTemplateID(templateID))
 
 		return
 	}
@@ -136,7 +136,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	version, err := userAgentToTemplateVersion(ctx, logger.L().With(logger.WithTemplateID(templateID), logger.WithBuildID(buildID)), c.Request.UserAgent())
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing user agent: %s", err))
-		telemetry.ReportCriticalError(ctx, "error when parsing user agent", err, telemetry.WithTemplateID(templateID))
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "error when parsing user agent", err, telemetry.WithTemplateID(templateID))
 
 		return
 	}

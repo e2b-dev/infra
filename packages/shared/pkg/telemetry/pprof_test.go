@@ -1,4 +1,4 @@
-package telemetry_test
+package telemetry
 
 import (
 	"net/http"
@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func TestDefaultServeMuxBlocksPprofPaths(t *testing.T) {
@@ -63,7 +61,7 @@ func TestDefaultServeMuxPassesThroughNonPprofPaths(t *testing.T) {
 func TestDedicatedPprofMuxServes(t *testing.T) {
 	t.Parallel()
 
-	mux := telemetry.NewPprofMux()
+	mux := NewPprofMux()
 
 	paths := []string{
 		"/debug/pprof/",

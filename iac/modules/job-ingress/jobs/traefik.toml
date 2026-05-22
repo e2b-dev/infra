@@ -10,6 +10,7 @@
 
   [entryPoints.web]
     address = ":${ingress_port}"
+    asDefault = true
 
     [entryPoints.web.transport.lifecycle]
       # Keep accepting requests (and /ping) until LB detects health failure and stops routing
@@ -20,6 +21,7 @@
 
   [entryPoints.internal]
     address = ":${ingress_internal_port}"
+    asDefault = false
 
     [entryPoints.internal.transport.lifecycle]
       # Keep accepting requests (and /ping) until LB detects health failure and stops routing

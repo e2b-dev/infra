@@ -1,6 +1,6 @@
 //go:build linux
 
-package testutils
+package nbd
 
 import (
 	"context"
@@ -8,14 +8,18 @@ import (
 	"os"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 )
 
-func GetNBDDevice(ctx context.Context, backend block.Device, featureFlags *featureflags.Client, mountOpts ...nbd.MountOption) (nbd.DevicePath, *Cleaner, error) {
-	var cleaner Cleaner
+// GetNBDDevice provisions a one-shot device pool, opens a direct-path mount
+// against the supplied backend, and returns the resulting device path along
+// with a Cleaner that tears everything down. Intended for the mount-build-rootfs
+// debug utility and package tests.
+func GetNBDDevice(ctx context.Context, backend block.Device, featureFlags *featureflags.Client, mountOpts ...MountOption) (DevicePath, *testutils.Cleaner, error) {
+	var cleaner testutils.Cleaner
 
-	devicePool, err := nbd.NewDevicePool(64)
+	devicePool, err := NewDevicePool(64)
 	if err != nil {
 		return "", &cleaner, fmt.Errorf("failed to create device pool: %w", err)
 	}
@@ -46,7 +50,7 @@ func GetNBDDevice(ctx context.Context, backend block.Device, featureFlags *featu
 		close(poolClosed)
 	}()
 
-	mnt := nbd.NewDirectPathMount(backend, devicePool, featureFlags, mountOpts...)
+	mnt := NewDirectPathMount(backend, devicePool, featureFlags, mountOpts...)
 
 	mntIndex, err := mnt.Open(ctx)
 	if err != nil {
@@ -62,5 +66,5 @@ func GetNBDDevice(ctx context.Context, backend block.Device, featureFlags *featu
 		return nil
 	})
 
-	return nbd.GetDevicePath(mntIndex), &cleaner, nil
+	return GetDevicePath(mntIndex), &cleaner, nil
 }

@@ -71,11 +71,6 @@ variable "auth_provider_config" {
   default   = null
 }
 
-variable "enable_billing_http_team_provision_sink" {
-  type    = bool
-  default = false
-}
-
 variable "otel_collector_grpc_port" {
   type    = number
   default = 4317

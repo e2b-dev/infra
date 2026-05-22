@@ -1089,6 +1089,15 @@ func (s *Sandbox) Pause(
 	// compact_memory) on the live VM via envd. Per-step caps are LD-flag-driven;
 	// all default to 0 which disables the chain entirely. Non-fatal.
 	s.bestEffortReclaim(ctx)
+	// reclaim freezes user cgroups; if pause/snapshot fails the sandbox stays
+	// live, so unfreeze on error to avoid a permanently frozen live VM.
+	// Only runs via cleanup.Run on the error path; success leaves the frozen
+	// state intact so it persists into the snapshot.
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		s.bestEffortUnfreeze(ctx)
+
+		return nil
+	})
 
 	// Drain free-page-hinting before pause so the snapshot doesn't capture
 	// pages the guest already considers free. Timeout per use case; 0 disables.

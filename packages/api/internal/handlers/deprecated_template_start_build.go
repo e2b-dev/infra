@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -16,6 +17,7 @@ import (
 	templatemanager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	apiutils "github.com/e2b-dev/infra/packages/shared/pkg/clusters"
@@ -32,7 +34,7 @@ func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateI
 		CurrentBuildID: buildID,
 	})
 	if err != nil {
-		telemetry.ReportCriticalError(ctx, "Error when getting running builds", err)
+		telemetry.ReportErrorByCode(ctx, http.StatusInternalServerError, "Error when getting running builds", err, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID.String()))
 
 		return fmt.Errorf("error when getting running builds: %w", err)
 	}
@@ -62,10 +64,11 @@ func (a *APIStore) CheckAndCancelConcurrentBuilds(ctx context.Context, templateI
 
 		deleteJobErr := a.templateManager.DeleteBuilds(ctx, buildIDs)
 		if deleteJobErr != nil {
-			telemetry.ReportCriticalError(ctx, "error when canceling running build", deleteJobErr)
+			telemetry.ReportErrorByCode(ctx, http.StatusInternalServerError, "Error when canceling running build", deleteJobErr, telemetry.WithTemplateID(templateID), telemetry.WithBuildID(buildID.String()))
 
 			return fmt.Errorf("error when canceling running build: %w", deleteJobErr)
 		}
+
 		telemetry.ReportEvent(ctx, "canceled running builds")
 	}
 
@@ -79,8 +82,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	buildUUID, err := uuid.Parse(buildID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid build ID: %s", buildID))
-
-		telemetry.ReportCriticalError(ctx, "invalid build ID", err)
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "invalid build ID", err)
 
 		return
 	}
@@ -104,9 +106,13 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		BuildID:    buildUUID,
 	})
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))
-
-		telemetry.ReportCriticalError(ctx, "error when getting env", err, telemetry.WithTemplateID(templateID))
+		if dberrors.IsNotFoundError(err) {
+			a.sendAPIStoreError(c, http.StatusNotFound, fmt.Sprintf("Error when getting template: %s", err))
+			telemetry.ReportErrorByCode(ctx, http.StatusNotFound, "error when getting env", err, telemetry.WithTemplateID(templateID))
+		} else {
+			a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting template: %s", err))
+			telemetry.ReportCriticalError(ctx, "error when getting env", err, telemetry.WithTemplateID(templateID))
+		}
 
 		return
 	}
@@ -123,14 +129,14 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 
 	if team == nil {
 		a.sendAPIStoreError(c, http.StatusForbidden, "User does not have access to the template")
-
-		telemetry.ReportCriticalError(ctx, "user does not have access to the template", err, telemetry.WithTemplateID(templateID))
+		telemetry.ReportErrorByCode(ctx, http.StatusForbidden, "user does not have access to the template", errors.New("user does not have access to the template"), telemetry.WithTemplateID(templateID))
 
 		return
 	}
 
 	if err := auth.CheckTeamBlocked(team); err != nil {
 		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
+		telemetry.ReportErrorByCode(ctx, http.StatusForbidden, "team is blocked", err)
 
 		return
 	}
@@ -157,7 +163,7 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 	// only waiting builds can be triggered
 	if build.StatusGroup != dbtypes.BuildStatusGroupPending {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "build is not in waiting state")
-		telemetry.ReportCriticalError(ctx, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.StatusGroup), telemetry.WithTemplateID(templateID))
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "build is not in waiting state", fmt.Errorf("build is not in waiting state - current state: %s", build.StatusGroup), telemetry.WithTemplateID(templateID))
 
 		return
 	}

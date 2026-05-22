@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 	"github.com/e2b-dev/infra/packages/envd/internal/utils"
 )
 
@@ -32,7 +33,7 @@ func newComposeTestAPI(t *testing.T) (*API, *user.User) {
 		User:    currentUser.Username,
 	}
 
-	return New(&logger, defaults, nil, false), currentUser
+	return New(&logger, defaults, nil, false, cgroups.NewNoopManager()), currentUser
 }
 
 func writeSourceFile(t *testing.T, dir string, name string, data []byte) string {
