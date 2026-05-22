@@ -13,12 +13,13 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	storage_redis "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -30,9 +31,23 @@ var testTeamID = uuid.New()
 func setupTestReservationStorage(t *testing.T) (*ReservationStorage, goredis.UniversalClient) {
 	t.Helper()
 	client := redis_utils.SetupInstance(t)
-	storage := NewReservationStorage(client)
+
+	storageInstance := newTestSandboxStorage(t, client)
+	go storageInstance.Start(t.Context())
+	t.Cleanup(func() { storageInstance.Close(context.WithoutCancel(t.Context())) })
+
+	storage := NewReservationStorage(client, storageInstance.Notifier())
 
 	return storage, client
+}
+
+func newTestSandboxStorage(t *testing.T, client goredis.UniversalClient) *storage_redis.Storage {
+	t.Helper()
+
+	storageInstance, err := storage_redis.NewStorage(client, noop.NewMeterProvider())
+	require.NoError(t, err)
+
+	return storageInstance
 }
 
 func TestReservation(t *testing.T) {
@@ -52,7 +67,7 @@ func TestReservation_Exceeded(t *testing.T) {
 	_, _, err := storage.Reserve(t.Context(), teamID, testSandboxID, 1)
 	require.NoError(t, err)
 	_, _, err = storage.Reserve(t.Context(), teamID, "sandbox-2", 1)
-	require.ErrorAs(t, err, utils.ToPtr(&sandbox.LimitExceededError{}))
+	require.ErrorAs(t, err, new(&sandbox.LimitExceededError{}))
 }
 
 func TestReservation_SameSandbox(t *testing.T) {
@@ -171,11 +186,11 @@ func TestReservation_MultipleTeams(t *testing.T) {
 
 	// team1 should be at limit
 	_, _, err = storage.Reserve(t.Context(), team1, "sandbox-3", 1)
-	require.ErrorAs(t, err, utils.ToPtr(&sandbox.LimitExceededError{}))
+	require.ErrorAs(t, err, new(&sandbox.LimitExceededError{}))
 
 	// team2 should also be at limit
 	_, _, err = storage.Reserve(t.Context(), team2, "sandbox-4", 1)
-	require.ErrorAs(t, err, utils.ToPtr(&sandbox.LimitExceededError{}))
+	require.ErrorAs(t, err, new(&sandbox.LimitExceededError{}))
 }
 
 func TestReservation_FailedStart(t *testing.T) {
@@ -497,7 +512,10 @@ func TestReservation_StalePendingCleanup(t *testing.T) {
 	assert.Equal(t, int64(1), count)
 
 	// Create a new storage instance (simulating a fresh/restarted API)
-	storage := NewReservationStorage(client)
+	storageInstance := newTestSandboxStorage(t, client)
+	go storageInstance.Start(t.Context())
+	t.Cleanup(func() { storageInstance.Close(context.WithoutCancel(t.Context())) })
+	storage := NewReservationStorage(client, storageInstance.Notifier())
 
 	// Reserve with limit=1 — this should succeed because the stale entry
 	// gets cleaned up by the reserveScript before counting

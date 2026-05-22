@@ -15,7 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type ClusterResourceProviderImpl struct {
@@ -185,12 +184,12 @@ func (r *ClusterResourceProviderImpl) getBuildLogsFromEdge(ctx context.Context, 
 				Offset:     &offset,
 				Limit:      &limit,
 				Level:      logToEdgeLevel(level),
-				Start:      utils.ToPtr(start.UnixMilli()),
-				End:        utils.ToPtr(end.UnixMilli()),
+				Start:      new(start.UnixMilli()),
+				End:        new(end.UnixMilli()),
 				Direction:  direction,
 
 				// TODO: remove this once the API spec is not required to have orchestratorID (https://linear.app/e2b/issue/ENG-3352)
-				OrchestratorID: utils.ToPtr("unused"),
+				OrchestratorID: new("unused"),
 			},
 		)
 		if err != nil {

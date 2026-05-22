@@ -129,7 +129,10 @@ func New(
 
 	bestOfKAlgorithm := placement.NewBestOfK(getBestOfKConfig(ctx, featureFlags)).(*placement.BestOfK)
 
-	redisStorage := redisbackend.NewStorage(redisClient)
+	redisStorage, err := redisbackend.NewStorage(redisClient, tel.MeterProvider)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create redis sandbox storage: %w", err)
+	}
 	go redisStorage.Start(ctx)
 
 	o := Orchestrator{
@@ -164,7 +167,7 @@ func New(
 
 		go redisbackend.NewCleaner(redisStorage).Start(ctx)
 	case cfg.SandboxStorageBackendRedis:
-		reservationStorage = redisreservations.NewReservationStorage(redisClient)
+		reservationStorage = redisreservations.NewReservationStorage(redisClient, redisStorage.Notifier())
 		sandboxStorage = redisStorage
 		logger.L().Info(ctx, "Using redis sandbox storage backend")
 	default:
@@ -182,7 +185,7 @@ func New(
 	)
 
 	// Evict old sandboxes
-	sandboxEvictor, err := evictor.New(o.sandboxStore, o.RemoveSandbox, meter)
+	sandboxEvictor, err := evictor.New(ctx, o.sandboxStore, o.RemoveSandbox, o.featureFlagsClient, meter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sandbox evictor: %w", err)
 	}
@@ -302,7 +305,7 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 		errs = append(errs, err)
 	}
 
-	o.redisStorage.Close()
+	o.redisStorage.Close(ctx)
 
 	return errors.Join(errs...)
 }

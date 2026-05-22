@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/netip"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 
@@ -19,8 +21,14 @@ import (
 
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
+	"github.com/e2b-dev/infra/packages/envd/internal/logs/ratelimit"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
+
+// /init is hammered by the orchestrator's infinite retry loop, so a
+// persistent pin failure would otherwise flood the log.
+var pinMMDSWarnLimit = ratelimit.New(10 * time.Second)
 
 var (
 	ErrAccessTokenMismatch           = errors.New("access token validation failed")
@@ -71,6 +79,18 @@ func (a *API) checkMMDSHash(ctx context.Context, requestToken *SecureToken) (boo
 	}
 
 	mmdsHash, err := a.mmdsClient.GetAccessTokenHash(ctx)
+	if err != nil {
+		// Self-heal: a user-installed PREROUTING/OUTPUT redirect on
+		// 169.254.169.254:80 in the same netns can shadow our route.
+		// Re-pin our RETURN rule at position 1 of nat PREROUTING and
+		// OUTPUT, then retry once.
+		if pinErr := host.PinMMDSRoute(ctx); pinErr != nil {
+			if ok, suppressed := pinMMDSWarnLimit.Allow(); ok {
+				a.logger.Warn().Err(pinErr).Int64("suppressed", suppressed).Msg("failed to pin MMDS iptables route")
+			}
+		}
+		mmdsHash, err = a.mmdsClient.GetAccessTokenHash(ctx)
+	}
 	if err != nil {
 		return false, false
 	}
@@ -135,18 +155,22 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		}
 		defer a.initLock.Release(1)
 
+		// Validate auth before installing the unfreeze defer or running SetData,
+		// so stale/replayed but unauthorized requests can't thaw cgroups.
+		if err := a.validateInitAccessToken(ctx, initRequest.AccessToken); err != nil {
+			writeInitError(w, logger, err)
+
+			return
+		}
+
+		// Run on every /init regardless of the Timestamp guard, so stale/replayed
+		// requests still thaw cgroups after pre-pause freeze.
+		defer a.unfreezeUserCgroups(ctx, logger)
+
 		// Update data only if the request is newer or if there's no timestamp at all
 		if initRequest.Timestamp == nil || a.lastSetTime.SetToGreater(initRequest.Timestamp.UnixNano()) {
-			err = a.SetData(ctx, logger, initRequest)
-			if err != nil {
-				switch {
-				case errors.Is(err, ErrAccessTokenMismatch), errors.Is(err, ErrAccessTokenResetNotAuthorized):
-					w.WriteHeader(http.StatusUnauthorized)
-				default:
-					logger.Error().Msgf("Failed to set data: %v", err)
-					w.WriteHeader(http.StatusBadRequest)
-				}
-				w.Write([]byte(err.Error()))
+			if err := a.SetData(ctx, logger, initRequest); err != nil {
+				writeInitError(w, logger, err)
 
 				return
 			}
@@ -165,14 +189,6 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJSONBody) error {
-	// Validate access token before proceeding with any action
-	// The request must provide a token that is either:
-	// 1. Matches the existing access token (if set), OR
-	// 2. Matches the MMDS hash (for token change during resume)
-	if err := a.validateInitAccessToken(ctx, data.AccessToken); err != nil {
-		return err
-	}
-
 	if data.Timestamp != nil {
 		// Check if current time differs significantly from the received timestamp
 		if shouldSetSystemTime(time.Now(), *data.Timestamp) {
@@ -186,12 +202,9 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	}
 
 	if data.EnvVars != nil {
-		logger.Debug().Msg(fmt.Sprintf("Setting %d env vars", len(*data.EnvVars)))
-
-		for key, value := range *data.EnvVars {
-			logger.Debug().Msgf("Setting env var for %s", key)
-			a.defaults.EnvVars.Store(key, value)
-		}
+		keys := slices.Collect(maps.Keys(*data.EnvVars))
+		logger.Debug().Msgf("Setting %d env vars: %s", len(keys), strings.Join(keys, ", "))
+		a.defaults.EnvVars.ReplaceUserVars(*data.EnvVars)
 	}
 
 	if data.AccessToken.IsSet() {
@@ -229,6 +242,104 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	}
 
 	return nil
+}
+
+// userCgroupsToFreeze is the cgroup set frozen pre-pause and thawed on /init.
+var userCgroupsToFreeze = []cgroups.ProcessType{
+	cgroups.ProcessTypeUser,
+	cgroups.ProcessTypePTY,
+	cgroups.ProcessTypeSocat,
+}
+
+// PostFreeze freezes user/pty/socat cgroups directly (no Process.Start / shell).
+// Orchestrator calls this just before pause; the frozen state persists into the
+// snapshot and /init thaws on resume. Best-effort: tries every cgroup even if
+// one fails so we freeze as many as possible before the snapshot.
+func (a *API) PostFreeze(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	logger := a.logger.With().Str(string(logs.OperationIDKey), logs.AssignOperationID()).Logger()
+
+	if err := a.freezeLock.Acquire(r.Context(), 1); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+
+		return
+	}
+	defer a.freezeLock.Release(1)
+
+	var errs []error
+	for _, pt := range userCgroupsToFreeze {
+		if err := a.cgroupManager.Freeze(pt); err != nil {
+			logger.Error().Err(err).Msgf("freeze %s cgroup", pt)
+			errs = append(errs, fmt.Errorf("freeze %s cgroup: %w", pt, err))
+		}
+	}
+	if len(errs) > 0 {
+		jsonError(w, http.StatusInternalServerError, errors.Join(errs...))
+
+		return
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// PostUnfreeze thaws user/pty/socat cgroups directly. Exists ONLY for the
+// orchestrator's pause-failure rollback path; the resume thaw runs via /init's
+// deferred unfreeze and must not be replaced by this endpoint. Best-effort: tries
+// every cgroup even if one fails so a partial failure cannot leave the rest frozen.
+func (a *API) PostUnfreeze(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	ctx := r.Context()
+	logger := a.logger.With().Str(string(logs.OperationIDKey), logs.AssignOperationID()).Logger()
+
+	if err := a.freezeLock.Acquire(context.WithoutCancel(ctx), 1); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+
+		return
+	}
+	defer a.freezeLock.Release(1)
+
+	var errs []error
+	for _, pt := range userCgroupsToFreeze {
+		if err := a.cgroupManager.Unfreeze(pt); err != nil {
+			logger.Error().Err(err).Msgf("unfreeze %s cgroup", pt)
+			errs = append(errs, fmt.Errorf("unfreeze %s cgroup: %w", pt, err))
+		}
+	}
+	if len(errs) > 0 {
+		jsonError(w, http.StatusInternalServerError, errors.Join(errs...))
+
+		return
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// unfreezeUserCgroups unfreezes user/pty/socat cgroups (idempotent if not frozen).
+// Wraps the context with WithoutCancel so the unfreeze always completes.
+func (a *API) unfreezeUserCgroups(ctx context.Context, logger zerolog.Logger) {
+	_ = a.freezeLock.Acquire(context.WithoutCancel(ctx), 1)
+	defer a.freezeLock.Release(1)
+
+	for _, pt := range userCgroupsToFreeze {
+		if err := a.cgroupManager.Unfreeze(pt); err != nil {
+			logger.Warn().Err(err).Msgf("unfreeze %s cgroup", pt)
+		}
+	}
+}
+
+func writeInitError(w http.ResponseWriter, logger zerolog.Logger, err error) {
+	switch {
+	case errors.Is(err, ErrAccessTokenMismatch), errors.Is(err, ErrAccessTokenResetNotAuthorized):
+		w.WriteHeader(http.StatusUnauthorized)
+	default:
+		logger.Error().Msgf("Failed to set data: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+	}
+	w.Write([]byte(err.Error()))
 }
 
 var nfsOptions = strings.Join([]string{

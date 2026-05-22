@@ -238,6 +238,7 @@ processors:
           - "otelcol.exporter.send.*"
           - "otelcol.exporter.sent.*"
           - "otelcol.receiver.refused.*"
+          - "otel\\.router\\..*"
           - "pgxpool.*"
           - "go\\..*"
           - "traefik.*"
@@ -426,18 +427,18 @@ processors:
     metric_statements:
       - context: datapoint
         statements:
-          # Preserve app process identity for Cloud Monitoring; host.name would
-          # collapse multiple allocations on one VM into duplicate TimeSeries.
-          - set(attributes["service.instance.id"], resource.attributes["service.instance.id"]) where resource.attributes["service.instance.id"] != nil
-          - set(attributes["service.instance.id"], resource.attributes["host.name"]) where attributes["service.instance.id"] == nil and resource.attributes["host.name"] != nil
           - set(attributes["deployment.environment"], resource.attributes["cloud.account.id"]) where resource.attributes["cloud.account.id"] != nil
-          - delete_key(attributes, "datacenter")
-          - delete_key(attributes, "instance")
-          - delete_key(attributes, "node_id")
-          - delete_key(attributes, "node_scheduling_eligibility")
-          - delete_key(attributes, "node_class")
-          - delete_key(attributes, "node_status")
           - delete_key(attributes, "service_name")
+          - delete_key(attributes, "service.instance.id")
+
+  transform/gcp_metric_unit_suffixes:
+    metric_statements:
+      - context: metric
+        statements:
+          - set(metric.name, Concat([metric.name, ".milliseconds"], "")) where metric.type == "Histogram" and metric.unit == "ms"
+          - set(metric.name, Concat([metric.name, ".bytes.total"], "")) where metric.type == "Sum" and metric.unit == "By" and metric.is_monotonic == true
+          - set(metric.name, Concat([metric.name, ".bytes"], "")) where metric.type == "Sum" and metric.unit == "By" and metric.is_monotonic == false
+          - set(metric.name, Concat([metric.name, ".total"], "")) where metric.type == "Sum" and metric.unit == "" and metric.is_monotonic == true
 %{ endif }
 
   filter/rpc_duration_only:
@@ -498,9 +499,7 @@ exporters:
   googlecloud/gcp_telemetry:
     project: ${gcp_telemetry_project_id}
     metric:
-      # transform/set-name already adds service.instance.id as a datapoint label.
-      # Avoid a duplicate service_instance_id label from resource attributes.
-      service_resource_labels: false
+      service_resource_labels: true
 %{ endif }
   clickhouse:
     endpoint: tcp://${clickhouse_host}:${clickhouse_port}
@@ -515,7 +514,7 @@ exporters:
       sum:
         name: "metrics_sum"
 %{ if enable_otel_router_metrics }
-  otlp/otel_router:
+  otlp_grpc/otel_router:
     endpoint: 127.0.0.1:${otel_router_grpc_port}
     tls:
       insecure: true
@@ -587,6 +586,7 @@ service:
         - filter/otlp
         - resourcedetection/gcp_telemetry
         - transform/gcp_telemetry_labels
+        - transform/gcp_metric_unit_suffixes
         - batch/gcp_telemetry
       exporters:
         - googlecloud/gcp_telemetry
@@ -652,7 +652,7 @@ service:
         - filter/external_metrics
         - batch
       exporters:
-        - otlp/otel_router
+        - otlp_grpc/otel_router
 %{ endif }
     traces:
       receivers:

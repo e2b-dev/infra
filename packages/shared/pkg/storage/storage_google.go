@@ -3,10 +3,12 @@ package storage
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"maps"
 	"net/http"
@@ -387,13 +389,15 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 	}
 
 	cfg := CompressConfigFromOpts(putOpts)
+	compressionType := cfg.CompressionType()
+	compressionMetricType := compressionType.String()
+	if cfg.IsCompressionEnabled() && compressionType == CompressionZstd {
+		compressionMetricType = fmt.Sprintf("%s-%d", compressionMetricType, cfg.Level)
+	}
 
-	// Tag the upload timer with the compression mode so dashboards can split
-	// duration/throughput by codec and level. Type is "none" when disabled.
 	timer := googleWriteTimerFactory.Begin(
 		attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystem),
-		attribute.String("compression.type", cfg.CompressionType().String()),
-		attribute.Int("compression.level", cfg.Level),
+		attribute.String("compression.type", compressionMetricType),
 	)
 
 	maxConcurrency := gcloudDefaultUploadConcurrency
@@ -437,6 +441,12 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 		return ft, checksum, err
 	}
 
+	// Uncompressed uploads only hash when the caller asked for a checksum.
+	var hasher hash.Hash
+	if putOpts.Checksum {
+		hasher = sha256.New()
+	}
+
 	// If the file is too small, the overhead of writing in parallel isn't worth the effort.
 	// Write it in one shot instead.
 	if fileInfo.Size() < gcpMultipartUploadChunkSize {
@@ -464,7 +474,11 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 			zap.String("compression", "none"),
 		)
 
-		return nil, [32]byte{}, e
+		if hasher != nil {
+			hasher.Write(data)
+		}
+
+		return nil, sum256(hasher), e
 	}
 
 	uploader, err := NewMultipartUploaderWithRetryConfig(
@@ -481,7 +495,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 	}
 
 	start := time.Now()
-	count, err := uploader.UploadFileInParallel(ctx, path, maxConcurrency)
+	count, err := uploader.UploadFileInParallel(ctx, path, maxConcurrency, hasher)
 	if err != nil {
 		timer.Failure(ctx, count)
 
@@ -500,7 +514,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 
 	timer.Success(ctx, count)
 
-	return nil, [32]byte{}, e
+	return nil, sum256(hasher), e
 }
 
 func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, cfg CompressConfig, maxConcurrency int, putOpts PutOptions) (*FrameTable, [32]byte, error) {

@@ -165,7 +165,6 @@ module "cluster" {
   nomad_port                   = var.nomad_port
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
-  ingress_timeout_seconds      = var.ingress_timeout_seconds
 
   additional_domains                      = local.additional_domains
   additional_api_paths_handled_by_ingress = local.normalized_api_paths_handled_by_ingress
@@ -229,8 +228,10 @@ module "nomad" {
   clickhouse_node_pool             = var.clickhouse_node_pool
 
   # Ingress
-  ingress_port         = var.ingress_port
-  ingress_count        = var.ingress_count
+  ingress_count         = var.ingress_count
+  ingress_port          = var.ingress_port.port
+  ingress_internal_port = var.ingress_internal_port.port
+
   traefik_config_files = var.traefik_config_files
 
   # API
@@ -296,8 +297,6 @@ module "nomad" {
   dashboard_api_count                          = var.dashboard_api_count
   dashboard_api_admin_token_secret_name        = module.init.dashboard_api_admin_token_secret_name
   supabase_db_connection_string_secret_version = module.init.supabase_db_connection_string_secret_version
-  enable_auth_user_sync_background_worker      = var.enable_auth_user_sync_background_worker
-  enable_billing_http_team_provision_sink      = var.enable_billing_http_team_provision_sink
 
   # Docker reverse proxy
   docker_reverse_proxy_port                = var.docker_reverse_proxy_port

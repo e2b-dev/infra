@@ -167,11 +167,9 @@ func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploa
 		return nil, [32]byte{}, fmt.Errorf("complete upload: %w", err)
 	}
 
-	var checksum [32]byte
-	copy(checksum[:], hasher.Sum(nil))
 	ft := NewFrameTable(cfg.CompressionType(), frameSizes)
 
-	return ft, checksum, nil
+	return ft, sum256(hasher), nil
 }
 
 func readLoop(ctx context.Context, in io.Reader, cfg CompressConfig, hasher io.Writer, q chan<- *part) error {

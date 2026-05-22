@@ -5,6 +5,7 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
@@ -15,12 +16,12 @@ import (
 )
 
 func (u *Upload) runV4(ctx context.Context) error {
-	memSrc, err := u.snap.MemfileDiff.CachePath()
+	memSrc, err := u.snap.MemfileDiff.CachePath(ctx)
 	if err != nil {
 		return fmt.Errorf("memfile diff path: %w", err)
 	}
 
-	rootfsSrc, err := u.snap.RootfsDiff.CachePath()
+	rootfsSrc, err := u.snap.RootfsDiff.CachePath(ctx)
 	if err != nil {
 		return fmt.Errorf("rootfs diff path: %w", err)
 	}
@@ -62,17 +63,26 @@ func (u *Upload) uploadFramed(
 	var selfBuild headers.BuildData
 
 	if srcPath != "" {
-		ft, checksum, err := storage.UploadFramed(ctx, u.store, u.paths.DataFile(string(fileType), cfg.CompressionType()), seekableTypeFor(fileType), srcPath, storage.WithCompressConfig(cfg), storage.WithMetadata(u.objectMetadata))
+		ft, checksum, err := storage.UploadFramed(ctx, u.store, u.paths.DataFile(string(fileType), cfg.CompressionType()), seekableTypeFor(fileType), srcPath, storage.WithCompressConfig(cfg), storage.WithMetadata(u.objectMetadata), storage.WithChecksumSHA256())
 		if err != nil {
 			return fmt.Errorf("%s upload: %w", fileType, err)
 		}
 
-		// FrameTable count, not os.Stat: sparse memfile diffs stream less than
-		// they appear on disk.
-		selfBuild = headers.BuildData{Size: ft.UncompressedSize(), Checksum: checksum}
-		if ft.IsCompressed() {
-			selfBuild.FrameData = ft
+		// Compressed: frame-table byte count, since sparse memfile diffs stream
+		// fewer bytes than they occupy on disk. Uncompressed has no table.
+		size := ft.UncompressedSize()
+		compressedSize := ft.CompressedSize()
+		if !ft.IsCompressed() {
+			info, statErr := os.Stat(srcPath)
+			if statErr != nil {
+				return fmt.Errorf("%s stat: %w", fileType, statErr)
+			}
+			size = info.Size()
+			compressedSize = size
 		}
+
+		recordUploadCompression(ctx, uploadArtifactData, string(fileType), cfg, size, compressedSize)
+		selfBuild = headers.BuildData{Size: size, Checksum: checksum, FrameData: ft}
 	}
 
 	h := srcHeader.CloneForUpload(headers.MetadataVersionV4)
@@ -86,7 +96,7 @@ func (u *Upload) uploadFramed(
 	}
 	h.Builds[u.buildID] = selfBuild
 
-	if err := headers.StoreHeader(ctx, u.store, u.paths.HeaderFile(string(fileType)), h); err != nil {
+	if err := storeHeaderWithMetrics(ctx, u.store, u.paths.HeaderFile(string(fileType)), string(fileType), h); err != nil {
 		return fmt.Errorf("store %s header: %w", fileType, err)
 	}
 

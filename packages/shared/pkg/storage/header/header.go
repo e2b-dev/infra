@@ -44,16 +44,18 @@ type Header struct {
 	IncompletePendingUpload bool
 }
 
-// CloneForUpload returns a clone with copied Mapping and Builds, safe to
-// mutate for serialization without racing with concurrent readers of the
-// original. The version is set on the clone.
+// CloneForUpload returns a clone the upload path can mutate for serialization
+// without racing with concurrent readers of the original. The version is set
+// on the clone and the Builds map is copied (the upload path adds the self
+// entry). Mapping is shared by reference: it is immutable once a Header is
+// constructed.
 func (t *Header) CloneForUpload(version uint64) *Header {
 	metaCopy := *t.Metadata
 	metaCopy.Version = version
 
 	clone := &Header{
 		Metadata: &metaCopy,
-		Mapping:  slices.Clone(t.Mapping),
+		Mapping:  t.Mapping,
 	}
 
 	if t.Builds != nil {

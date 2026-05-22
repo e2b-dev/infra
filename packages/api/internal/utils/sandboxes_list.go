@@ -47,7 +47,7 @@ func ParseMetadata(ctx context.Context, metadata *string) (*map[string]string, e
 	if metadata != nil {
 		parsedMetadataFilter, err := parseFilters(*metadata)
 		if err != nil {
-			logger.L().Error(ctx, "Error parsing metadata", zap.Error(err))
+			logger.L().Warn(ctx, "Error parsing metadata", zap.Error(err))
 
 			return nil, fmt.Errorf("error parsing metadata: %w", err)
 		}

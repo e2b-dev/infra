@@ -9,8 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func TestDeserialize(t *testing.T) {
@@ -33,7 +31,7 @@ func TestDeserialize(t *testing.T) {
 				},
 				Context: Context{
 					User:    "testuser",
-					WorkDir: utils.ToPtr("/app"),
+					WorkDir: new("/app"),
 					EnvVars: map[string]string{"KEY": "value"},
 				},
 				Start: &Start{
@@ -43,7 +41,7 @@ func TestDeserialize(t *testing.T) {
 						User: "root",
 					},
 				},
-				FromImage: utils.ToPtr("ubuntu:20.04"),
+				FromImage: new("ubuntu:20.04"),
 			},
 		},
 		{

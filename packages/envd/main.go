@@ -144,6 +144,12 @@ func main() {
 		return
 	}
 
+	if err := run(); err != nil {
+		log.Fatalf("server stopped: %v", err)
+	}
+}
+
+func run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -153,7 +159,7 @@ func main() {
 
 	defaults := &execcontext.Defaults{
 		User:    defaultUser,
-		EnvVars: utils.NewMap[string, string](),
+		EnvVars: utils.NewEnvVars(),
 	}
 	isFCBoolStr := strconv.FormatBool(!isNotFC)
 	defaults.EnvVars.Store("E2B_SANDBOX", isFCBoolStr)
@@ -161,8 +167,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error writing sandbox file: %v\n", err)
 	}
 
+	// Not closed - producers may outlive the consumer.
 	mmdsChan := make(chan *host.MMDSOpts, 1)
-	defer close(mmdsChan)
 	if !isNotFC {
 		go host.PollForMMDSOpts(ctx, mmdsChan, defaults.EnvVars)
 	}
@@ -186,7 +192,7 @@ func main() {
 	processLogger := l.With().Str("logger", "process").Logger()
 	processRpc.Handle(m, &processLogger, defaults, cgroupManager)
 
-	service := api.New(&envLogger, defaults, mmdsChan, isNotFC)
+	service := api.New(&envLogger, defaults, mmdsChan, isNotFC, cgroupManager)
 	handler := api.HandlerFromMux(service, m)
 	middleware := authn.NewMiddleware(permissions.AuthenticateUsername)
 
@@ -215,9 +221,11 @@ func main() {
 	go portScanner.ScanAndBroadcast()
 
 	err := s.ListenAndServe()
-	if err != nil {
-		log.Fatalf("error starting server: %v", err) //nolint:gocritic // last line of main; process exits anyway
-	}
+	// Signal goroutines to stop before deferred cleanup closes their resources.
+	// TODO: shutdown synchronization needs to be revisited.
+	cancel()
+
+	return err
 }
 
 func createCgroupManager() (m cgroups.Manager) {
@@ -242,19 +250,22 @@ func createCgroupManager() (m cgroups.Manager) {
 
 	opts := []cgroups.Cgroup2ManagerOption{
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypePTY, "ptys", map[string]string{
-			"cpu.weight":  "200", // gets much preferred cpu access, to help keep these real time
+			"cpu.weight":  "200",
+			"io.weight":   "default 50",
 			"memory.high": fmt.Sprintf("%d", memoryHigh),
 			"memory.max":  fmt.Sprintf("%d", memoryMax),
 		}),
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypeSocat, "socats", map[string]string{
-			"cpu.weight": "150", // gets slightly preferred cpu access
+			"cpu.weight": "150",
+			"io.weight":  "default 50",
 			"memory.min": fmt.Sprintf("%d", 5*megabyte),
 			"memory.low": fmt.Sprintf("%d", 8*megabyte),
 		}),
 		cgroups.WithCgroup2ProcessType(cgroups.ProcessTypeUser, "user", map[string]string{
 			"memory.high": fmt.Sprintf("%d", memoryHigh),
 			"memory.max":  fmt.Sprintf("%d", memoryMax),
-			"cpu.weight":  "50", // less than envd, and less than core processes that default to 100
+			"cpu.weight":  "50",
+			"io.weight":   "default 10",
 		}),
 	}
 	if cgroupRoot != "" {
