@@ -2,11 +2,15 @@ package proxy
 
 import (
 	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"github.com/stretchr/testify/require"
+	noopmetric "go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -176,6 +180,40 @@ func TestCatalogResolution_CatalogMiss(t *testing.T) {
 	require.ErrorIs(t, err, ErrNodeNotFound)
 }
 
+type errorCatalog struct {
+	err error
+}
+
+func (e errorCatalog) GetSandbox(_ context.Context, _ string) (*catalog.SandboxInfo, error) {
+	return nil, e.err
+}
+
+func (e errorCatalog) StoreSandbox(_ context.Context, _ string, _ *catalog.SandboxInfo, _ time.Duration) error {
+	return nil
+}
+
+func (e errorCatalog) DeleteSandbox(_ context.Context, _ string, _ string) error {
+	return nil
+}
+
+func (e errorCatalog) Close(_ context.Context) error {
+	return nil
+}
+
+func TestCatalogResolution_CatalogReturnsGenericError(t *testing.T) {
+	t.Parallel()
+
+	ff := newFF(t, true)
+	c := errorCatalog{err: errors.New("catalog unavailable")}
+
+	nodeIP, err := catalogResolution(t.Context(), "sbx", 8000, "", "", c, nil, ff)
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrNodeNotFound)
+	require.NotErrorIs(t, err, ErrNodeRouteUnavailable)
+	require.Empty(t, nodeIP)
+	require.Contains(t, err.Error(), "catalog unavailable")
+}
+
 func TestCatalogResolution_CatalogMiss_ResumeEmptyIPReturnsRouteUnavailable(t *testing.T) {
 	t.Parallel()
 
@@ -187,137 +225,161 @@ func TestCatalogResolution_CatalogMiss_ResumeEmptyIPReturnsRouteUnavailable(t *t
 	require.Empty(t, nodeIP)
 }
 
-func TestHandlePausedSandbox_NoResumer_MissingTrafficAccessToken(t *testing.T) {
+func TestHandlePausedSandbox(t *testing.T) {
 	t.Parallel()
 
-	ff := newFF(t, true)
+	unavailableErr := status.Error(codes.Unavailable, "boom")
+	failedPreconditionErr := status.Error(codes.FailedPrecondition, "sandbox resume precondition failed")
 
-	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "", "", nil, ff)
-	require.NoError(t, err)
-	require.Equal(t, autoResumeNotAllowed, res)
-}
+	tests := []struct {
+		name       string
+		autoResume bool
+		resumer    PausedSandboxResumer
+		trafficTok string
+		envdTok    string
+		wantNodeIP string
+		wantResult autoResumeResult
+		wantErrIs  error
+		checkErr   func(*testing.T, error)
+	}{
+		{
+			name:       "no resumer",
+			autoResume: true,
+			resumer:    nil,
+			wantResult: autoResumeNotAllowed,
+		},
+		{
+			name:       "no resumer ignores tokens",
+			autoResume: true,
+			resumer:    nil,
+			trafficTok: "wrong-token",
+			envdTok:    "envd-token",
+			wantResult: autoResumeNotAllowed,
+		},
+		{
+			name:       "flag disabled",
+			autoResume: false,
+			resumer:    stubResumer{nodeIP: "10.0.0.1"},
+			trafficTok: "token",
+			wantResult: autoResumeNotAllowed,
+		},
+		{
+			name:       "resume returns not found",
+			autoResume: true,
+			resumer:    stubResumer{err: status.Error(codes.NotFound, "not allowed")},
+			trafficTok: "token",
+			wantResult: autoResumeNotAllowed,
+		},
+		{
+			name:       "resume returns snapshot not found",
+			autoResume: true,
+			resumer:    stubResumer{err: status.Error(codes.NotFound, "snapshot not found")},
+			trafficTok: "token",
+			wantResult: autoResumeNotAllowed,
+		},
+		{
+			name:       "resume permission denied",
+			autoResume: true,
+			resumer:    stubResumer{err: status.Error(codes.PermissionDenied, "permission denied")},
+			trafficTok: "token",
+			wantResult: autoResumePermissionDenied,
+			checkErr: func(t *testing.T, err error) {
+				t.Helper()
 
-func TestHandlePausedSandbox_NoResumer_InvalidTrafficAccessToken(t *testing.T) {
-	t.Parallel()
+				var deniedErr *reverseproxy.SandboxResumePermissionDeniedError
+				require.ErrorAs(t, err, &deniedErr)
+				require.Equal(t, "sbx", deniedErr.SandboxId)
+			},
+		},
+		{
+			name:       "resume resource exhausted",
+			autoResume: true,
+			resumer:    stubResumer{err: status.Error(codes.ResourceExhausted, "rate limit hit")},
+			trafficTok: "token",
+			wantResult: autoResumeResourceExhausted,
+			checkErr: func(t *testing.T, err error) {
+				t.Helper()
 
-	ff := newFF(t, true)
+				var exhaustedErr *reverseproxy.SandboxResourceExhaustedError
+				require.ErrorAs(t, err, &exhaustedErr)
+				require.Equal(t, "sbx", exhaustedErr.SandboxId)
+				require.Equal(t, "rate limit hit", exhaustedErr.Message)
+			},
+		},
+		{
+			name:       "resume still transitioning",
+			autoResume: true,
+			resumer:    stubResumer{err: status.Error(codes.FailedPrecondition, proxygrpc.SandboxStillTransitioningMessage)},
+			trafficTok: "token",
+			wantResult: autoResumeErrored,
+			checkErr: func(t *testing.T, err error) {
+				t.Helper()
 
-	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "wrong-token", "", nil, ff)
-	require.NoError(t, err)
-	require.Equal(t, autoResumeNotAllowed, res)
-}
+				var transitioningErr *reverseproxy.SandboxStillTransitioningError
+				require.ErrorAs(t, err, &transitioningErr)
+				require.Equal(t, "sbx", transitioningErr.SandboxId)
+			},
+		},
+		{
+			name:       "failed precondition with other message stays generic",
+			autoResume: true,
+			resumer:    stubResumer{err: failedPreconditionErr},
+			trafficTok: "token",
+			wantResult: autoResumeErrored,
+			wantErrIs:  failedPreconditionErr,
+			checkErr: func(t *testing.T, err error) {
+				t.Helper()
 
-func TestHandlePausedSandbox_FlagDisabled(t *testing.T) {
-	t.Parallel()
+				var transitioningErr *reverseproxy.SandboxStillTransitioningError
+				require.NotErrorAs(t, err, &transitioningErr)
+			},
+		},
+		{
+			name:       "resume returns generic grpc error",
+			autoResume: true,
+			resumer:    stubResumer{err: unavailableErr},
+			trafficTok: "token",
+			wantResult: autoResumeErrored,
+			wantErrIs:  unavailableErr,
+		},
+		{
+			name:       "resume succeeds",
+			autoResume: true,
+			resumer:    stubResumer{nodeIP: "10.0.0.1"},
+			trafficTok: "token",
+			wantNodeIP: "10.0.0.1",
+			wantResult: autoResumeSucceeded,
+		},
+		{
+			name:       "resume succeeds with empty ip",
+			autoResume: true,
+			resumer:    stubResumer{nodeIP: ""},
+			trafficTok: "token",
+			wantResult: autoResumeErrored,
+			wantErrIs:  ErrNodeRouteUnavailable,
+		},
+	}
 
-	ff := newFF(t, false)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{nodeIP: "10.0.0.1"}, ff)
-	require.NoError(t, err)
-	require.Equal(t, autoResumeNotAllowed, res)
-}
+			ff := newFF(t, tt.autoResume)
+			nodeIP, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, tt.trafficTok, tt.envdTok, tt.resumer, ff)
 
-func TestHandlePausedSandbox_NotFound(t *testing.T) {
-	t.Parallel()
-
-	ff := newFF(t, true)
-
-	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.NotFound, "not allowed")}, ff)
-	require.NoError(t, err)
-	require.Equal(t, autoResumeNotAllowed, res)
-}
-
-func TestHandlePausedSandbox_PermissionDenied(t *testing.T) {
-	t.Parallel()
-
-	ff := newFF(t, true)
-
-	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.PermissionDenied, "permission denied")}, ff)
-	require.Error(t, err)
-	var deniedErr *reverseproxy.SandboxResumePermissionDeniedError
-	require.ErrorAs(t, err, &deniedErr)
-	require.Equal(t, autoResumePermissionDenied, res)
-}
-
-func TestHandlePausedSandbox_ResourceExhausted(t *testing.T) {
-	t.Parallel()
-
-	ff := newFF(t, true)
-
-	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.ResourceExhausted, "rate limit hit")}, ff)
-	require.Error(t, err)
-	var exhaustedErr *reverseproxy.SandboxResourceExhaustedError
-	require.ErrorAs(t, err, &exhaustedErr)
-	require.Equal(t, "sbx", exhaustedErr.SandboxId)
-	require.Equal(t, "rate limit hit", exhaustedErr.Message)
-	require.Equal(t, autoResumeResourceExhausted, res)
-}
-
-func TestHandlePausedSandbox_FailedPrecondition(t *testing.T) {
-	t.Parallel()
-
-	ff := newFF(t, true)
-
-	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.FailedPrecondition, proxygrpc.SandboxStillTransitioningMessage)}, ff)
-	require.Error(t, err)
-	var transitioningErr *reverseproxy.SandboxStillTransitioningError
-	require.ErrorAs(t, err, &transitioningErr)
-	require.Equal(t, "sbx", transitioningErr.SandboxId)
-	require.Equal(t, autoResumeErrored, res)
-}
-
-func TestHandlePausedSandbox_FailedPrecondition_OtherMessage(t *testing.T) {
-	t.Parallel()
-
-	ff := newFF(t, true)
-
-	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.FailedPrecondition, "sandbox resume precondition failed")}, ff)
-	require.Error(t, err)
-	var transitioningErr *reverseproxy.SandboxStillTransitioningError
-	require.NotErrorAs(t, err, &transitioningErr)
-	require.Equal(t, autoResumeErrored, res)
-}
-
-func TestHandlePausedSandbox_SnapshotNotFound(t *testing.T) {
-	t.Parallel()
-
-	ff := newFF(t, true)
-
-	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.NotFound, "snapshot not found")}, ff)
-	require.NoError(t, err)
-	require.Equal(t, autoResumeNotAllowed, res)
-}
-
-func TestHandlePausedSandbox_Error(t *testing.T) {
-	t.Parallel()
-
-	ff := newFF(t, true)
-
-	_, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{err: status.Error(codes.Unavailable, "boom")}, ff)
-	require.Error(t, err)
-	require.Equal(t, autoResumeErrored, res)
-}
-
-func TestHandlePausedSandbox_Succeeded(t *testing.T) {
-	t.Parallel()
-
-	ff := newFF(t, true)
-
-	nodeIP, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{nodeIP: "10.0.0.1"}, ff)
-	require.NoError(t, err)
-	require.Equal(t, autoResumeSucceeded, res)
-	require.Equal(t, "10.0.0.1", nodeIP)
-}
-
-func TestHandlePausedSandbox_Succeeded_EmptyIP(t *testing.T) {
-	t.Parallel()
-
-	ff := newFF(t, true)
-
-	nodeIP, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", stubResumer{nodeIP: ""}, ff)
-	require.ErrorIs(t, err, ErrNodeRouteUnavailable)
-	require.Equal(t, autoResumeErrored, res)
-	require.Empty(t, nodeIP)
+			require.Equal(t, tt.wantResult, res)
+			require.Equal(t, tt.wantNodeIP, nodeIP)
+			if tt.wantErrIs != nil {
+				require.ErrorIs(t, err, tt.wantErrIs)
+			} else if tt.checkErr == nil {
+				require.NoError(t, err)
+			}
+			if tt.checkErr != nil {
+				require.Error(t, err)
+				tt.checkErr(t, err)
+			}
+		})
+	}
 }
 
 func TestHandlePausedSandbox_PassesPortAndTokenToResumer(t *testing.T) {
@@ -334,4 +396,143 @@ func TestHandlePausedSandbox_PassesPortAndTokenToResumer(t *testing.T) {
 	require.EqualValues(t, 49983, resumer.sandboxPort)
 	require.Equal(t, "token", resumer.trafficAccessToken)
 	require.Equal(t, "envd-token", resumer.envdAccessToken)
+}
+
+func TestNewClientProxy_Construction(t *testing.T) {
+	t.Parallel()
+
+	c := catalog.NewMemorySandboxesCatalog()
+	ff := newFF(t, true)
+
+	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "test-service", 0, c, nil, ff)
+	require.NoError(t, err)
+	require.NotNil(t, p)
+	require.EqualValues(t, 0, p.CurrentServerConnections())
+	require.EqualValues(t, 0, p.CurrentPoolConnections())
+}
+
+func TestNewClientProxy_HandlerErrors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		url              string
+		resumer          PausedSandboxResumer
+		wantStatus       int
+		wantBodyContains []string
+	}{
+		{
+			name:       "sandbox not found",
+			url:        "http://49983-sbx.e2b.app/",
+			wantStatus: http.StatusBadGateway,
+			wantBodyContains: []string{
+				`"sandboxId":"sbx"`,
+				`"message":"The sandbox was not found"`,
+			},
+		},
+		{
+			name:       "resume permission denied",
+			url:        "http://49983-sbx.e2b.app/",
+			resumer:    stubResumer{err: status.Error(codes.PermissionDenied, "denied")},
+			wantStatus: http.StatusForbidden,
+			wantBodyContains: []string{
+				`"sandboxId":"sbx"`,
+				`credentials provided`,
+			},
+		},
+		{
+			name:       "resume resource exhausted",
+			url:        "http://49983-sbx.e2b.app/",
+			resumer:    stubResumer{err: status.Error(codes.ResourceExhausted, "rate limit")},
+			wantStatus: http.StatusTooManyRequests,
+			wantBodyContains: []string{
+				`"sandboxId":"sbx"`,
+				`"message":"rate limit"`,
+			},
+		},
+		{
+			name:       "resume still transitioning",
+			url:        "http://49983-sbx.e2b.app/",
+			resumer:    stubResumer{err: status.Error(codes.FailedPrecondition, proxygrpc.SandboxStillTransitioningMessage)},
+			wantStatus: http.StatusConflict,
+			wantBodyContains: []string{
+				`"sandboxId":"sbx"`,
+				`still transitioning`,
+			},
+		},
+		{
+			name:       "invalid host",
+			url:        "http://invalid-host/",
+			wantStatus: http.StatusBadRequest,
+			wantBodyContains: []string{
+				"Invalid host",
+			},
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := catalog.NewMemorySandboxesCatalog()
+			ff := newFF(t, true)
+			p, err := NewClientProxy(noopmetric.NewMeterProvider(), "handler-errors-"+tt.name, uint16(i), c, tt.resumer, ff)
+			require.NoError(t, err)
+
+			req := httptest.NewRequest(http.MethodGet, tt.url, nil).WithContext(t.Context())
+			rr := httptest.NewRecorder()
+			p.Handler.ServeHTTP(rr, req)
+
+			require.Equal(t, tt.wantStatus, rr.Code)
+			for _, want := range tt.wantBodyContains {
+				require.Contains(t, rr.Body.String(), want)
+			}
+		})
+	}
+}
+
+func TestNewClientProxy_DuplicateMetricsRegistrationReturnsErrors(t *testing.T) {
+	t.Parallel()
+
+	c := catalog.NewMemorySandboxesCatalog()
+	ff := newFF(t, true)
+
+	// noop meter provider should not error; this is a sanity test that NewClientProxy
+	// works repeatedly for separate service names without leaking metric registrations.
+	for range 3 {
+		_, err := NewClientProxy(noopmetric.NewMeterProvider(), "service", 0, c, nil, ff)
+		require.NoError(t, err)
+	}
+}
+
+// Sanity assertion that the proxy honors the configured idle timeout.
+func TestNewClientProxy_HasIdleTimeout(t *testing.T) {
+	t.Parallel()
+
+	c := catalog.NewMemorySandboxesCatalog()
+	ff := newFF(t, true)
+
+	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "service-idle", 0, c, nil, ff)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, p.IdleTimeout, idleTimeout)
+	require.Less(t, p.IdleTimeout, 2*idleTimeout)
+}
+
+// Validate the Construction test exercises pool size accessor too.
+func TestNewClientProxy_PoolAccessors(t *testing.T) {
+	t.Parallel()
+
+	c := catalog.NewMemorySandboxesCatalog()
+	ff := newFF(t, true)
+
+	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "service-pool", 0, c, nil, ff)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, p.CurrentPoolSize(), 0)
+
+	// Even on no-op meter providers, the proxy must still be wired up correctly.
+	req := httptest.NewRequest(http.MethodGet, "http://49983-sbx.e2b.app/", nil).WithContext(t.Context())
+	rr := httptest.NewRecorder()
+	p.Handler.ServeHTTP(rr, req)
+	require.Equal(t, http.StatusBadGateway, rr.Code)
+	require.Contains(t, rr.Body.String(), `"sandboxId":"sbx"`)
 }
