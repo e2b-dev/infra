@@ -249,6 +249,35 @@ func TestProcessFile(t *testing.T) {
 		require.NoError(t, err)
 		assert.Empty(t, metadata)
 	})
+
+	t.Run("overwrite replaces old metadata", func(t *testing.T) {
+		t.Parallel()
+		tempDir := t.TempDir()
+		tempFile := filepath.Join(tempDir, "test-file")
+
+		initialContent := []byte("old-contents")
+		request, buffer := newRequest(initialContent)
+		httpStatus, err := processFile(request, tempFile, buffer, uid, gid, map[string]string{"author": "old", "purpose": "old"}, emptyLogger)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusNoContent, httpStatus)
+
+		metadata, err := filesystem.ReadMetadata(tempFile)
+		require.NoError(t, err)
+		if len(metadata) == 0 {
+			t.Skip("filesystem does not support xattrs")
+		}
+		require.Equal(t, map[string]string{"author": "old", "purpose": "old"}, metadata)
+
+		newContent := []byte("new-contents")
+		request, buffer = newRequest(newContent)
+		httpStatus, err = processFile(request, tempFile, buffer, uid, gid, map[string]string{"author": "new"}, emptyLogger)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusNoContent, httpStatus)
+
+		metadata, err = filesystem.ReadMetadata(tempFile)
+		require.NoError(t, err)
+		assert.Equal(t, map[string]string{"author": "new"}, metadata)
+	})
 }
 
 func createTmpfsMount(t *testing.T, sizeInBytes int) string {
