@@ -24,6 +24,7 @@ type StorageLocal struct {
 	acquiredNs   map[string]struct{}
 	acquiredNsMu sync.Mutex
 	egressProxy  EgressProxy
+	hostFirewall *HostFirewall
 }
 
 const netNamespacesDir = "/var/run/netns"
@@ -41,6 +42,11 @@ func NewStorageLocal(ctx context.Context, config Config, egressProxy EgressProxy
 		logger.L().Info(ctx, fmt.Sprintf("Found foreign namespace: %s", ns))
 	}
 
+	hostFirewall, err := NewHostFirewall(ctx, config, defaultGateway)
+	if err != nil {
+		return nil, fmt.Errorf("init host firewall: %w", err)
+	}
+
 	return &StorageLocal{
 		config:       config,
 		foreignNs:    foreignNsMap,
@@ -48,6 +54,7 @@ func NewStorageLocal(ctx context.Context, config Config, egressProxy EgressProxy
 		acquiredNs:   make(map[string]struct{}, vrtSlotsSize),
 		acquiredNsMu: sync.Mutex{},
 		egressProxy:  egressProxy,
+		hostFirewall: hostFirewall,
 	}, nil
 }
 
@@ -102,7 +109,7 @@ func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 			s.acquiredNs[slotName] = struct{}{}
 			slotKey := getLocalKey(slotIdx)
 
-			return NewSlot(slotKey, slotIdx, s.config, s.egressProxy)
+			return NewSlot(slotKey, slotIdx, s.config, s.egressProxy, s.hostFirewall)
 		}
 	}
 }

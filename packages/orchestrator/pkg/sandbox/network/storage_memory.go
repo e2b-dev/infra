@@ -10,20 +10,22 @@ import (
 )
 
 type StorageMemory struct {
-	config      Config
-	slotsSize   int
-	freeSlots   []bool
-	freeSlotsMu sync.Mutex
-	egressProxy EgressProxy
+	config       Config
+	slotsSize    int
+	freeSlots    []bool
+	freeSlotsMu  sync.Mutex
+	egressProxy  EgressProxy
+	hostFirewall *HostFirewall
 }
 
-func NewStorageMemory(slotsSize int, config Config, egressProxy EgressProxy) (*StorageMemory, error) {
+func NewStorageMemory(slotsSize int, config Config, egressProxy EgressProxy, hostFirewall *HostFirewall) (*StorageMemory, error) {
 	return &StorageMemory{
-		config:      config,
-		slotsSize:   slotsSize,
-		freeSlots:   make([]bool, slotsSize),
-		freeSlotsMu: sync.Mutex{},
-		egressProxy: egressProxy,
+		config:       config,
+		slotsSize:    slotsSize,
+		freeSlots:    make([]bool, slotsSize),
+		freeSlotsMu:  sync.Mutex{},
+		egressProxy:  egressProxy,
+		hostFirewall: hostFirewall,
 	}, nil
 }
 
@@ -38,7 +40,7 @@ func (s *StorageMemory) Acquire(_ context.Context) (*Slot, error) {
 		if !s.freeSlots[slotIdx] {
 			s.freeSlots[slotIdx] = true
 
-			return NewSlot(key, slotIdx, s.config, s.egressProxy)
+			return NewSlot(key, slotIdx, s.config, s.egressProxy, s.hostFirewall)
 		}
 	}
 

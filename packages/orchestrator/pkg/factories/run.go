@@ -896,5 +896,5 @@ func newStorage(ctx context.Context, nodeID string, config network.Config, egres
 		return network.NewStorageLocal(ctx, config, egressProxy)
 	}
 
-	return network.NewStorageKV(nodeID, config, egressProxy)
+	return network.NewStorageKV(ctx, nodeID, config, egressProxy)
 }

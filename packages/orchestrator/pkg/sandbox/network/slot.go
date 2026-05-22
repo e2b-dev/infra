@@ -81,11 +81,12 @@ type Slot struct {
 
 	hyperloopPort string
 
-	egressProxy EgressProxy
-	config      Config
+	egressProxy  EgressProxy
+	hostFirewall *HostFirewall
+	config       Config
 }
 
-func NewSlot(key string, idx int, config Config, egressProxy EgressProxy) (*Slot, error) {
+func NewSlot(key string, idx int, config Config, egressProxy EgressProxy, hostFirewall *HostFirewall) (*Slot, error) {
 	if idx < 1 || idx > vrtSlotsSize {
 		return nil, fmt.Errorf("slot index %d is out of range [1, %d)", idx, vrtSlotsSize)
 	}
@@ -140,8 +141,9 @@ func NewSlot(key string, idx int, config Config, egressProxy EgressProxy) (*Slot
 
 		hyperloopPort: strconv.FormatUint(uint64(config.HyperloopProxyPort), 10),
 
-		config:      config,
-		egressProxy: egressProxy,
+		config:       config,
+		egressProxy:  egressProxy,
+		hostFirewall: hostFirewall,
 	}
 
 	return slot, nil

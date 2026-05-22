@@ -20,18 +20,24 @@ type StorageKV struct {
 	consulClient *consulApi.Client
 	nodeID       string
 	egressProxy  EgressProxy
+	hostFirewall *HostFirewall
 }
 
 func (s *StorageKV) getKVKey(slotIdx int) string {
 	return fmt.Sprintf("%s/%d", s.nodeID, slotIdx)
 }
 
-func NewStorageKV(nodeID string, config Config, egressProxy EgressProxy) (*StorageKV, error) {
+func NewStorageKV(ctx context.Context, nodeID string, config Config, egressProxy EgressProxy) (*StorageKV, error) {
 	consulToken := utils.RequiredEnv("CONSUL_TOKEN", "Consul token for authenticating requests to the Consul API")
 
 	consulClient, err := newConsulClient(consulToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init StorageKV consul client: %w", err)
+	}
+
+	hostFirewall, err := NewHostFirewall(ctx, config, defaultGateway)
+	if err != nil {
+		return nil, fmt.Errorf("init host firewall: %w", err)
 	}
 
 	return &StorageKV{
@@ -40,6 +46,7 @@ func NewStorageKV(nodeID string, config Config, egressProxy EgressProxy) (*Stora
 		consulClient: consulClient,
 		nodeID:       nodeID,
 		egressProxy:  egressProxy,
+		hostFirewall: hostFirewall,
 	}, nil
 }
 
@@ -70,7 +77,7 @@ func (s *StorageKV) Acquire(_ context.Context) (*Slot, error) {
 		}
 
 		if status {
-			return NewSlot(key, slotIdx, s.config, s.egressProxy)
+			return NewSlot(key, slotIdx, s.config, s.egressProxy, s.hostFirewall)
 		}
 
 		return nil, nil

@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/containernetworking/plugins/pkg/ns"
-	"github.com/coreos/go-iptables/iptables"
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldlog"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
@@ -1525,7 +1524,7 @@ type noEgressProxy struct {
 	network.NoopEgressProxy
 }
 
-func (noEgressProxy) OnSlotCreate(s *network.Slot, _ *iptables.IPTables) error {
+func (noEgressProxy) OnSlotCreate(s *network.Slot) error {
 	nsPath := filepath.Join("/var/run/netns", s.NamespaceID())
 
 	handle, err := ns.GetNS(nsPath)

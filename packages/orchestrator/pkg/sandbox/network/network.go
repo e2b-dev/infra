@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net"
 	"runtime"
-	"strconv"
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
@@ -203,56 +202,16 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		return fmt.Errorf("error adding route from host to FC: %w", err)
 	}
 
-	// Add host forwarding rules
-	err = tables.Append("filter", "FORWARD", "-i", s.VethName(), "-o", defaultGateway, "-j", "ACCEPT")
-	if err != nil {
-		return fmt.Errorf("error creating forwarding rule to default gateway: %w", err)
+	// Hand the per-sandbox host-side rules off to the shared nftables
+	// ruleset (HostFirewall). All sandbox-specific behaviour — forward
+	// accept, source MASQUERADE, TCP-firewall redirects — is keyed on
+	// veth interface name, so adding the veth to a single set is one
+	// O(1) netlink message regardless of fleet size.
+	if err := s.hostFirewall.AddSandbox(s.VethName()); err != nil {
+		return fmt.Errorf("error registering sandbox in host firewall: %w", err)
 	}
 
-	err = tables.Append("filter", "FORWARD", "-i", defaultGateway, "-o", s.VethName(), "-j", "ACCEPT")
-	if err != nil {
-		return fmt.Errorf("error creating forwarding rule from default gateway: %w", err)
-	}
-
-	// Add host postrouting rules
-	err = tables.Append("nat", "POSTROUTING", "-s", s.HostCIDR(), "-o", defaultGateway, "-j", "MASQUERADE")
-	if err != nil {
-		return fmt.Errorf("error creating postrouting rule: %w", err)
-	}
-
-	// Redirect traffic destined for hyperloop proxy
-	err = tables.Append(
-		"nat", "PREROUTING", "-i", s.VethName(),
-		"-p", "tcp", "-d", s.config.OrchestratorInSandboxIPAddress, "--dport", "80",
-		"-j", "REDIRECT", "--to-port", s.hyperloopPort,
-	)
-	if err != nil {
-		return fmt.Errorf("error creating HTTP redirect rule to sandbox hyperloop proxy server: %w", err)
-	}
-
-	// Redirect traffic destined for portmapper
-	err = tables.Append("nat", "PREROUTING",
-		"--in-interface", s.VethName(), "--protocol", "tcp",
-		"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "111",
-		"--jump", "REDIRECT", "--to-port", fmt.Sprintf("%d", s.config.PortmapperPort),
-	)
-	if err != nil {
-		return fmt.Errorf("error creating NFS redirect rule to sandbox portmapper server: %w", err)
-	}
-
-	// Redirect traffic destined for NFS proxy
-	err = tables.Append("nat", "PREROUTING",
-		"--in-interface", s.VethName(), "--protocol", "tcp",
-		"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "2049",
-		"--jump", "REDIRECT", "--to-port", fmt.Sprintf("%d", s.config.NFSProxyPort),
-	)
-	if err != nil {
-		return fmt.Errorf("error creating NFS redirect rule to sandbox NFS proxy server: %w", err)
-	}
-
-	// Create rules needed by egress proxy
-	err = s.egressProxy.OnSlotCreate(s, tables)
-	if err != nil {
+	if err := s.egressProxy.OnSlotCreate(s); err != nil {
 		return err
 	}
 
@@ -262,94 +221,41 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 func (s *Slot) RemoveNetwork() error {
 	var errs []error
 
-	err := s.CloseFirewall()
-	if err != nil {
+	if err := s.CloseFirewall(); err != nil {
 		errs = append(errs, fmt.Errorf("error closing firewall: %w", err))
 	}
 
-	tables, err := iptables.New()
-	if err != nil {
-		errs = append(errs, fmt.Errorf("error initializing iptables: %w", err))
-	} else {
-		// Delete host forwarding rules
-		err = tables.Delete("filter", "FORWARD", "-i", s.VethName(), "-o", defaultGateway, "-j", "ACCEPT")
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting host forwarding rule to default gateway: %w", err))
-		}
+	// Drop this sandbox from the host firewall's veth set so the global
+	// rules stop matching its traffic. Best-effort: kernel `ENOENT` is
+	// tolerated (already removed).
+	if err := s.hostFirewall.RemoveSandbox(s.VethName()); err != nil {
+		errs = append(errs, fmt.Errorf("error deregistering sandbox from host firewall: %w", err))
+	}
 
-		err = tables.Delete("filter", "FORWARD", "-i", defaultGateway, "-o", s.VethName(), "-j", "ACCEPT")
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting host forwarding rule from default gateway: %w", err))
-		}
-
-		// Delete host postrouting rules
-		err = tables.Delete("nat", "POSTROUTING", "-s", s.HostCIDR(), "-o", defaultGateway, "-j", "MASQUERADE")
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting host postrouting rule: %w", err))
-		}
-
-		// Delete hyperloop proxy redirect rule
-		err = tables.Delete(
-			"nat", "PREROUTING", "-i", s.VethName(),
-			"-p", "tcp", "-d", s.config.OrchestratorInSandboxIPAddress, "--dport", "80",
-			"-j", "REDIRECT", "--to-port", s.hyperloopPort,
-		)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting sandbox hyperloop proxy redirect rule: %w", err))
-		}
-
-		// Delete changes made by egress proxy
-		err = s.egressProxy.OnSlotDelete(s, tables)
-		if err != nil {
-			errs = append(errs, err)
-		}
+	if err := s.egressProxy.OnSlotDelete(s); err != nil {
+		errs = append(errs, err)
 	}
 
 	// Delete routing from host to FC namespace
-	err = netlink.RouteDel(&netlink.Route{
+	if err := netlink.RouteDel(&netlink.Route{
 		Gw:  s.VpeerIP(),
 		Dst: s.HostNet(),
-	})
-	if err != nil {
+	}); err != nil {
 		errs = append(errs, fmt.Errorf("error deleting route from host to FC: %w", err))
 	}
 
-	// Delete veth device
-	// We explicitly delete the veth device from the host namespace because even though deleting
-	// is deleting the device there may be a race condition when creating a new veth device with
-	// the same name immediately after deleting the namespace.
+	// Delete veth device.
+	// We explicitly delete the veth device from the host namespace because deleting
+	// the netns alone can race with creating a new veth with the same name immediately
+	// after.
 	veth, err := netlink.LinkByName(s.VethName())
 	if err != nil {
 		errs = append(errs, fmt.Errorf("error finding veth: %w", err))
-	} else {
-		err = netlink.LinkDel(veth)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting veth device: %w", err))
-		}
+	} else if err := netlink.LinkDel(veth); err != nil {
+		errs = append(errs, fmt.Errorf("error deleting veth device: %w", err))
 	}
 
-	// Delete NFS proxy redirect rule
-	err = tables.Delete("nat", "PREROUTING",
-		"--in-interface", s.VethName(), "--protocol", "tcp",
-		"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "2049",
-		"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(s.config.NFSProxyPort)),
-	)
-	if err != nil {
-		errs = append(errs, fmt.Errorf("error deleting sandbox NFS proxy redirect rule: %w", err))
-	}
-
-	// Delete portmapper redirect rule
-	err = tables.Delete("nat", "PREROUTING",
-		"--in-interface", s.VethName(), "--protocol", "tcp",
-		"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "111",
-		"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(s.config.PortmapperPort)),
-	)
-	if err != nil {
-		errs = append(errs, fmt.Errorf("error deleting sandbox portmapper redirect rule: %w", err))
-	}
-
-	err = netns.DeleteNamed(s.NamespaceID())
-	if err != nil {
+	if err := netns.DeleteNamed(s.NamespaceID()); err != nil {
 		errs = append(errs, fmt.Errorf("error deleting namespace: %w", err))
 	}
 
