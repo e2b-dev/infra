@@ -222,6 +222,27 @@ variable "client_proxy_oidc_issuer_url" {
   default = ""
 }
 
+variable "auth_provider_config" {
+  type = object({
+    jwt = optional(list(object({
+      issuer = object({
+        url                 = string
+        discoveryURL        = optional(string)
+        audiences           = list(string)
+        audienceMatchPolicy = optional(string)
+      })
+      cacheDuration = optional(string)
+    })))
+    legacy = optional(object({
+      hmac = object({
+        secrets = list(string)
+      })
+    }))
+  })
+  sensitive = true
+  default   = null
+}
+
 variable "ingress_port" {
   type = object({
     name        = string
