@@ -164,7 +164,7 @@ func (c Cgroup2Manager) setFreezeState(procType ProcessType, value string) error
 		return fmt.Errorf("unknown process type: %s", procType)
 	}
 
-	return os.WriteFile(filepath.Join(path, "cgroup.freeze"), []byte(value), 0o644)
+	return writeCgroupProp(filepath.Join(path, "cgroup.freeze"), value)
 }
 
 func (c Cgroup2Manager) Close() error {
