@@ -220,7 +220,6 @@ type User struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	ID        uuid.UUID
-	Email     string
 }
 
 type UserIdentity struct {
