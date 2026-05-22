@@ -66,8 +66,7 @@ func (a *APIStore) GetTeam(
 			}
 		}
 
-		// More restrictive than the API-key path used to be here, but the
-		// user-id flow is deprecated so the stricter gate is acceptable.
+		// More restrictive than before, but OK on this deprecated path.
 		if apiErr := applyTeamAccessCheck(c, team); apiErr != nil {
 			return nil, apiErr
 		}
@@ -167,8 +166,7 @@ func (a *APIStore) resolveTemplateAndTeam(
 
 		for _, t := range userTeams {
 			if t.Team.ID == aliasInfo.TeamID {
-				// More restrictive than the API-key path used to be here, but the
-				// user-id flow is deprecated so the stricter gate is acceptable.
+				// More restrictive than before, but OK on this deprecated path.
 				if apiErr := applyTeamAccessCheck(c, t.Team); apiErr != nil {
 					return nil, nil, apiErr
 				}
