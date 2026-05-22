@@ -401,7 +401,7 @@ func TestHandlePausedSandbox_PassesPortAndTokenToResumer(t *testing.T) {
 func TestNewClientProxy_Construction(t *testing.T) {
 	t.Parallel()
 
-	c := catalog.NewMemorySandboxesCatalog()
+	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
 	ff := newFF(t, true)
 
 	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "test-service", 0, c, nil, ff)
@@ -474,12 +474,12 @@ func TestNewClientProxy_HandlerErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			c := catalog.NewMemorySandboxesCatalog()
+			c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
 			ff := newFF(t, true)
 			p, err := NewClientProxy(noopmetric.NewMeterProvider(), "handler-errors-"+tt.name, uint16(i), c, tt.resumer, ff)
 			require.NoError(t, err)
 
-			req := httptest.NewRequest(http.MethodGet, tt.url, nil).WithContext(t.Context())
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.url, nil)
 			rr := httptest.NewRecorder()
 			p.Handler.ServeHTTP(rr, req)
 
@@ -494,7 +494,7 @@ func TestNewClientProxy_HandlerErrors(t *testing.T) {
 func TestNewClientProxy_DuplicateMetricsRegistrationReturnsErrors(t *testing.T) {
 	t.Parallel()
 
-	c := catalog.NewMemorySandboxesCatalog()
+	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
 	ff := newFF(t, true)
 
 	// noop meter provider should not error; this is a sanity test that NewClientProxy
@@ -509,7 +509,7 @@ func TestNewClientProxy_DuplicateMetricsRegistrationReturnsErrors(t *testing.T) 
 func TestNewClientProxy_HasIdleTimeout(t *testing.T) {
 	t.Parallel()
 
-	c := catalog.NewMemorySandboxesCatalog()
+	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
 	ff := newFF(t, true)
 
 	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "service-idle", 0, c, nil, ff)
@@ -522,7 +522,7 @@ func TestNewClientProxy_HasIdleTimeout(t *testing.T) {
 func TestNewClientProxy_PoolAccessors(t *testing.T) {
 	t.Parallel()
 
-	c := catalog.NewMemorySandboxesCatalog()
+	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
 	ff := newFF(t, true)
 
 	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "service-pool", 0, c, nil, ff)
@@ -530,7 +530,7 @@ func TestNewClientProxy_PoolAccessors(t *testing.T) {
 	require.GreaterOrEqual(t, p.CurrentPoolSize(), 0)
 
 	// Even on no-op meter providers, the proxy must still be wired up correctly.
-	req := httptest.NewRequest(http.MethodGet, "http://49983-sbx.e2b.app/", nil).WithContext(t.Context())
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://49983-sbx.e2b.app/", nil)
 	rr := httptest.NewRecorder()
 	p.Handler.ServeHTTP(rr, req)
 	require.Equal(t, http.StatusBadGateway, rr.Code)
