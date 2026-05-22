@@ -151,6 +151,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	autoPause := sharedUtils.DerefOrDefault(body.AutoPause, sandbox.AutoPauseDefault)
 	if err := validateAutoResumeConfig(autoPause, body.AutoResume); err != nil {
 		a.sendAPIStoreError(c, err.Code, err.ClientMsg)
+		telemetry.ReportErrorByCode(ctx, err.Code, "invalid auto resume config", err.Err)
 
 		return
 	}
