@@ -114,35 +114,28 @@ mount -t tmpfs -o size=65G tmpfs /mnt/snapshot-cache
 ulimit -n 1048576
 export GOMAXPROCS=$(nproc)
 
+# Match nf_conntrack hash buckets to nf_conntrack_max (avg chain length ~1).
+# Install before loading so netfilter sysctls below apply on first sysctl -p.
+install -m 0644 /dev/stdin /etc/modprobe.d/nf_conntrack.conf <<'EOH'
+options nf_conntrack hashsize=524288
+EOH
+modprobe nf_conntrack
+
 tee -a /etc/sysctl.conf <<EOF
-# Increase the maximum number of socket connections
 net.core.somaxconn = 65535
-
-# Increase the maximum number of backlogged connections
 net.core.netdev_max_backlog = 65535
-
-# Increase maximum number of TCP sockets
 net.ipv4.tcp_max_syn_backlog = 65535
+vm.max_map_count = 1048576
 
-# Increase the maximum number of memory map areas
-vm.max_map_count=1048576
-
-# Neighbour cache sizing for high sandbox count.
-# Each sandbox produces >=3 neigh entries (host-side veth peer, in-NS veth, in-VM gw),
-# so the default 128/512/1024 overflows around ~150 sandboxes.
-net.ipv4.neigh.default.gc_thresh1 = 8192
-net.ipv4.neigh.default.gc_thresh2 = 16384
-net.ipv4.neigh.default.gc_thresh3 = 32768
-net.ipv6.neigh.default.gc_thresh1 = 8192
-net.ipv6.neigh.default.gc_thresh2 = 16384
-net.ipv6.neigh.default.gc_thresh3 = 32768
-
-# Sandboxes are IPv4-only; disable IPv6 to halve the neigh-table surface and
-# remove RA/RS noise on every per-sandbox link-up.
+# Sandbox networking is IPv4-only; disable IPv6 host-wide.
 net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 
-# Strict reverse-path filtering + drop ICMP redirects / source routing.
+# Default 128/512/1024 overflows around ~150 sandboxes (~3 entries each).
+net.ipv4.neigh.default.gc_thresh1 = 8192
+net.ipv4.neigh.default.gc_thresh2 = 16384
+net.ipv4.neigh.default.gc_thresh3 = 32768
+
 net.ipv4.conf.all.rp_filter = 1
 net.ipv4.conf.default.rp_filter = 1
 net.ipv4.conf.default.proxy_arp = 0
@@ -150,50 +143,27 @@ net.ipv4.conf.default.send_redirects = 0
 net.ipv4.conf.default.accept_redirects = 0
 net.ipv4.conf.default.accept_source_route = 0
 
-# Ephemeral port / TIME_WAIT budget for the orchestrator -> envd traffic
-# and any other host-namespace connection load.
 net.ipv4.ip_local_port_range = 1024 65535
 net.ipv4.tcp_tw_reuse = 1
 net.ipv4.tcp_fin_timeout = 15
 net.ipv4.tcp_max_tw_buckets = 2000000
-
-# Faster conntrack churn for short-lived TCP (TIME_WAIT side).
 net.netfilter.nf_conntrack_tcp_timeout_time_wait = 30
 
-# Larger socket buffers for in-host data-plane workloads.
 net.core.rmem_max = 16777216
 net.core.wmem_max = 16777216
 net.ipv4.tcp_rmem = 4096 87380 16777216
 net.ipv4.tcp_wmem = 4096 65536 16777216
 
-# File / inotify caps; defaults are too low for thousands of FCs / NBDs.
-fs.file-max = 4194304
 fs.nr_open = 4194304
 fs.inotify.max_user_watches = 524288
 fs.inotify.max_user_instances = 8192
 
-# Process ID space + memory overcommit for Go services that mmap aggressively.
 kernel.pid_max = 4194304
 vm.overcommit_memory = 1
-
 EOF
 sysctl -p
 
-# nf_conntrack_max=2097152 with the default ~64K buckets means average chain
-# length of ~32 under load. Match the buckets to capacity so lookups stay
-# O(1) under softirq. Install the modprobe config so the module picks it up
-# whenever it is auto-loaded (e.g. by the first iptables nat rule), and also
-# apply at runtime in case the module is already loaded.
-install -m 0644 /dev/stdin /etc/modprobe.d/nf_conntrack.conf <<'EOH'
-options nf_conntrack hashsize=524288
-EOH
-if [ -w /sys/module/nf_conntrack/parameters/hashsize ]; then
-  echo 524288 > /sys/module/nf_conntrack/parameters/hashsize || true
-fi
-
-# Pin the iptables backend so AMI rebuilds don't silently flip between legacy
-# and nft. The orchestrator's per-sandbox rules use the standard iptables
-# binary; nft is the modern default on Ubuntu 22+.
+# Pin iptables backend so AMI rebuilds don't silently flip legacy/nft.
 update-alternatives --set iptables  /usr/sbin/iptables-nft  || true
 update-alternatives --set ip6tables /usr/sbin/ip6tables-nft || true
 
