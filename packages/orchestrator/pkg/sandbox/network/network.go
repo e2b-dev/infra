@@ -18,9 +18,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-// Per-sandbox veth/vpeer only talk to the host gateway, so ARP is disabled
-// and the single L2 next hop is pinned NUD_PERMANENT on both sides. IPv6 is
-// disabled host-wide via sysctl, so no per-link IPv6 handling is needed.
+// The single L2 next hop on each sandbox veth/vpeer is pinned NUD_PERMANENT
+// on both sides so the IPv4 neigh table is never consulted for this path.
 
 func (s *Slot) CreateNetwork(ctx context.Context) error {
 	// Prevent thread changes so we can safely manipulate with namespaces
@@ -71,10 +70,6 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		return fmt.Errorf("error finding vpeer: %w", err)
 	}
 
-	if err := netlink.LinkSetARPOff(vpeer); err != nil {
-		return fmt.Errorf("error disabling ARP on vpeer: %w", err)
-	}
-
 	err = netlink.LinkSetUp(vpeer)
 	if err != nil {
 		return fmt.Errorf("error setting vpeer device up: %w", err)
@@ -104,10 +99,6 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 	vethInHost, err := netlink.LinkByName(s.VethName())
 	if err != nil {
 		return fmt.Errorf("error finding veth: %w", err)
-	}
-
-	if err := netlink.LinkSetARPOff(vethInHost); err != nil {
-		return fmt.Errorf("error disabling ARP on vethInHost: %w", err)
 	}
 
 	err = netlink.LinkSetUp(vethInHost)
