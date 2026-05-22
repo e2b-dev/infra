@@ -689,6 +689,7 @@ components:
           type: boolean
           default: false
           deprecated: true
+          x-deprecated-reason: Use lifecycle.onTimeout instead.
           description: Automatically pauses the sandbox after the timeout
         autoResume:
           $ref: "#/components/schemas/SandboxAutoResumeConfig"
@@ -724,6 +725,7 @@ components:
         autoPause:
           type: boolean
           deprecated: true
+          x-deprecated-reason: Use lifecycle.onTimeout instead.
           description: Automatically pauses the sandbox after the timeout
 
     ConnectSandbox:

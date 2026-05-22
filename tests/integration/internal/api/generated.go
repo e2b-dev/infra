@@ -551,7 +551,7 @@ type NewSandbox struct {
 	AllowInternetAccess *bool `json:"allow_internet_access,omitempty"`
 
 	// AutoPause Automatically pauses the sandbox after the timeout
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	// Deprecated: Use lifecycle.onTimeout instead.
 	AutoPause *bool `json:"autoPause,omitempty"`
 
 	// AutoResume Auto-resume configuration for paused sandboxes.
@@ -707,7 +707,7 @@ type NodeStatusChange struct {
 // ResumedSandbox defines model for ResumedSandbox.
 type ResumedSandbox struct {
 	// AutoPause Automatically pauses the sandbox after the timeout
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	// Deprecated: Use lifecycle.onTimeout instead.
 	AutoPause *bool `json:"autoPause,omitempty"`
 
 	// Timeout Time to live for the sandbox in seconds.
