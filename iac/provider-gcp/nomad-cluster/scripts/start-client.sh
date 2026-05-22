@@ -168,18 +168,34 @@ net.ipv4.tcp_wmem = 4096 65536 16777216
 
 # File / inotify caps; defaults are too low for thousands of FCs / NBDs.
 fs.file-max = 4194304
+fs.nr_open = 4194304
 fs.inotify.max_user_watches = 524288
 fs.inotify.max_user_instances = 8192
+
+# Process ID space + memory overcommit for Go services that mmap aggressively.
+kernel.pid_max = 4194304
+vm.overcommit_memory = 1
 
 EOF
 sysctl -p
 
-# nf_conntrack hash size lives behind a module parameter (set in the Packer
-# modprobe.d config), but apply it at runtime too so freshly-baked AMIs and
-# nodes that hot-load the module both end up with the same shape.
+# nf_conntrack_max=2097152 with the default ~64K buckets means average chain
+# length of ~32 under load. Match the buckets to capacity so lookups stay
+# O(1) under softirq. Install the modprobe config so the module picks it up
+# whenever it is auto-loaded (e.g. by the first iptables nat rule), and also
+# apply at runtime in case the module is already loaded.
+install -m 0644 /dev/stdin /etc/modprobe.d/nf_conntrack.conf <<'EOH'
+options nf_conntrack hashsize=524288
+EOH
 if [ -w /sys/module/nf_conntrack/parameters/hashsize ]; then
   echo 524288 > /sys/module/nf_conntrack/parameters/hashsize || true
 fi
+
+# Pin the iptables backend so AMI rebuilds don't silently flip between legacy
+# and nft. The orchestrator's per-sandbox rules use the standard iptables
+# binary; nft is the modern default on Ubuntu 22+.
+update-alternatives --set iptables  /usr/sbin/iptables-nft  || true
+update-alternatives --set ip6tables /usr/sbin/ip6tables-nft || true
 
 echo "Disabling inotify for NBD devices"
 # https://lore.kernel.org/lkml/20220422054224.19527-1-matthew.ruffell@canonical.com/

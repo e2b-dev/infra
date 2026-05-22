@@ -171,22 +171,6 @@ build {
       "sudo mv /tmp/limits.conf /etc/security/limits.conf",
       # Increase the maximum number of connections by 4x
       "echo 'net.netfilter.nf_conntrack_max = 2097152' | sudo tee -a /etc/sysctl.conf",
-      # Image-level kernel caps. Per-node sysctls live in start-client.sh; these
-      # are the ones we want applied even before that script runs (e.g. for the
-      # build image, packer setup itself, etc).
-      "echo 'fs.file-max = 4194304'        | sudo tee -a /etc/sysctl.conf",
-      "echo 'fs.nr_open = 4194304'         | sudo tee -a /etc/sysctl.conf",
-      "echo 'kernel.pid_max = 4194304'     | sudo tee -a /etc/sysctl.conf",
-      "echo 'vm.overcommit_memory = 1'     | sudo tee -a /etc/sysctl.conf",
-      # nf_conntrack_max=2097152 with the default ~64K buckets means average
-      # chain length of 32 under load. Match buckets to capacity so lookups
-      # stay O(1) under softirq.
-      "echo 'options nf_conntrack hashsize=524288' | sudo tee /etc/modprobe.d/nf_conntrack.conf",
-      # Pin the iptables backend so AMI rebuilds don't silently flip between
-      # legacy and nft. The orchestrator's per-sandbox rules are appended via
-      # the standard iptables binary; nft is the modern default on Ubuntu 22+.
-      "sudo update-alternatives --set iptables  /usr/sbin/iptables-nft  || true",
-      "sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-nft || true",
     ]
   }
 
