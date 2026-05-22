@@ -18,6 +18,33 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+// installGlobalSandboxRules installs the host-side iptables rules that are
+// identical for every sandbox on this node. Previously these were appended
+// per sandbox with `-i veth-N`; since they all match dst IP
+// OrchestratorInSandboxIPAddress (only routable from inside a sandbox netns
+// and never seen on the host's external NIC), dropping the inbound-interface
+// constraint is safe and lets us install them once at orchestrator boot
+// instead of 3× per sandbox.
+func installGlobalSandboxRules(config Config) error {
+	tables, err := iptables.New()
+	if err != nil {
+		return fmt.Errorf("init iptables: %w", err)
+	}
+
+	dst := config.OrchestratorInSandboxIPAddress
+	rules := [][]string{
+		{"-p", "tcp", "-d", dst, "--dport", "111", "-j", "REDIRECT", "--to-port", strconv.Itoa(int(config.PortmapperPort))},
+		{"-p", "tcp", "-d", dst, "--dport", "2049", "-j", "REDIRECT", "--to-port", strconv.Itoa(int(config.NFSProxyPort))},
+		{"-p", "tcp", "-d", dst, "--dport", "80", "-j", "REDIRECT", "--to-port", strconv.Itoa(int(config.HyperloopProxyPort))},
+	}
+	for _, args := range rules {
+		if err := tables.AppendUnique("nat", "PREROUTING", args...); err != nil {
+			return fmt.Errorf("install global rule %v: %w", args, err)
+		}
+	}
+	return nil
+}
+
 func (s *Slot) CreateNetwork(ctx context.Context) error {
 	// Prevent thread changes so we can safely manipulate with namespaces
 	runtime.LockOSThread()
@@ -203,63 +230,35 @@ func (s *Slot) CreateNetwork(ctx context.Context) error {
 		return fmt.Errorf("error adding route from host to FC: %w", err)
 	}
 
-	// Add host forwarding rules
-	err = tables.Append("filter", "FORWARD", "-i", s.VethName(), "-o", defaultGateway, "-j", "ACCEPT")
-	if err != nil {
-		return fmt.Errorf("error creating forwarding rule to default gateway: %w", err)
-	}
+	// Batch the per-sandbox host-side iptables work so a single
+	// `iptables-restore --noflush` invocation handles all rules at once.
+	// On iptables-nft this avoids one full table rewrite per rule (the
+	// O(N²) cost that grows with the rule count on the host).
+	//
+	// The hyperloop / portmapper / NFS-proxy REDIRECT rules are *not*
+	// added here: they match on dst = OrchestratorInSandboxIPAddress and
+	// are installed once at orchestrator boot by installGlobalSandboxRules
+	// rather than per-sandbox.
+	hostRules := NewRuleSet()
 
-	err = tables.Append("filter", "FORWARD", "-i", defaultGateway, "-o", s.VethName(), "-j", "ACCEPT")
-	if err != nil {
-		return fmt.Errorf("error creating forwarding rule from default gateway: %w", err)
-	}
+	hostRules.Append("filter", "FORWARD", "-i", s.VethName(), "-o", defaultGateway, "-j", "ACCEPT")
+	hostRules.Append("filter", "FORWARD", "-i", defaultGateway, "-o", s.VethName(), "-j", "ACCEPT")
+	hostRules.Append("nat", "POSTROUTING", "-s", s.HostCIDR(), "-o", defaultGateway, "-j", "MASQUERADE")
 
-	// Add host postrouting rules
-	err = tables.Append("nat", "POSTROUTING", "-s", s.HostCIDR(), "-o", defaultGateway, "-j", "MASQUERADE")
-	if err != nil {
-		return fmt.Errorf("error creating postrouting rule: %w", err)
-	}
-
-	// Redirect traffic destined for hyperloop proxy
-	err = tables.Append(
-		"nat", "PREROUTING", "-i", s.VethName(),
-		"-p", "tcp", "-d", s.config.OrchestratorInSandboxIPAddress, "--dport", "80",
-		"-j", "REDIRECT", "--to-port", s.hyperloopPort,
-	)
-	if err != nil {
-		return fmt.Errorf("error creating HTTP redirect rule to sandbox hyperloop proxy server: %w", err)
-	}
-
-	// Redirect traffic destined for portmapper
-	err = tables.Append("nat", "PREROUTING",
-		"--in-interface", s.VethName(), "--protocol", "tcp",
-		"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "111",
-		"--jump", "REDIRECT", "--to-port", fmt.Sprintf("%d", s.config.PortmapperPort),
-	)
-	if err != nil {
-		return fmt.Errorf("error creating NFS redirect rule to sandbox portmapper server: %w", err)
-	}
-
-	// Redirect traffic destined for NFS proxy
-	err = tables.Append("nat", "PREROUTING",
-		"--in-interface", s.VethName(), "--protocol", "tcp",
-		"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "2049",
-		"--jump", "REDIRECT", "--to-port", fmt.Sprintf("%d", s.config.NFSProxyPort),
-	)
-	if err != nil {
-		return fmt.Errorf("error creating NFS redirect rule to sandbox NFS proxy server: %w", err)
-	}
-
-	// Create rules needed by egress proxy
-	err = s.egressProxy.OnSlotCreate(s, tables)
-	if err != nil {
+	// Egress proxy contributes its per-sandbox PREROUTING REDIRECTs into
+	// the same RuleSet so everything lands in one syscall.
+	if err := s.egressProxy.OnSlotCreate(s, hostRules); err != nil {
 		return err
+	}
+
+	if err := hostRules.Apply(ctx); err != nil {
+		return fmt.Errorf("error applying host iptables rules for slot: %w", err)
 	}
 
 	return nil
 }
 
-func (s *Slot) RemoveNetwork() error {
+func (s *Slot) RemoveNetwork(ctx context.Context) error {
 	var errs []error
 
 	err := s.CloseFirewall()
@@ -267,42 +266,24 @@ func (s *Slot) RemoveNetwork() error {
 		errs = append(errs, fmt.Errorf("error closing firewall: %w", err))
 	}
 
-	tables, err := iptables.New()
-	if err != nil {
-		errs = append(errs, fmt.Errorf("error initializing iptables: %w", err))
-	} else {
-		// Delete host forwarding rules
-		err = tables.Delete("filter", "FORWARD", "-i", s.VethName(), "-o", defaultGateway, "-j", "ACCEPT")
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting host forwarding rule to default gateway: %w", err))
-		}
+	// Mirror of CreateNetwork's host-side batched setup: collect every
+	// per-sandbox rule we want gone into a single RuleSet and flush via
+	// iptables-restore --noflush. Global PREROUTING REDIRECTs are not
+	// touched: they live for the orchestrator's lifetime.
+	hostRules := NewRuleSet()
+	hostRules.Delete("filter", "FORWARD", "-i", s.VethName(), "-o", defaultGateway, "-j", "ACCEPT")
+	hostRules.Delete("filter", "FORWARD", "-i", defaultGateway, "-o", s.VethName(), "-j", "ACCEPT")
+	hostRules.Delete("nat", "POSTROUTING", "-s", s.HostCIDR(), "-o", defaultGateway, "-j", "MASQUERADE")
 
-		err = tables.Delete("filter", "FORWARD", "-i", defaultGateway, "-o", s.VethName(), "-j", "ACCEPT")
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting host forwarding rule from default gateway: %w", err))
-		}
+	if err := s.egressProxy.OnSlotDelete(s, hostRules); err != nil {
+		errs = append(errs, err)
+	}
 
-		// Delete host postrouting rules
-		err = tables.Delete("nat", "POSTROUTING", "-s", s.HostCIDR(), "-o", defaultGateway, "-j", "MASQUERADE")
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting host postrouting rule: %w", err))
-		}
-
-		// Delete hyperloop proxy redirect rule
-		err = tables.Delete(
-			"nat", "PREROUTING", "-i", s.VethName(),
-			"-p", "tcp", "-d", s.config.OrchestratorInSandboxIPAddress, "--dport", "80",
-			"-j", "REDIRECT", "--to-port", s.hyperloopPort,
-		)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting sandbox hyperloop proxy redirect rule: %w", err))
-		}
-
-		// Delete changes made by egress proxy
-		err = s.egressProxy.OnSlotDelete(s, tables)
-		if err != nil {
-			errs = append(errs, err)
-		}
+	// Teardown happens on best-effort paths (e.g. a partial CreateNetwork
+	// may leave some rules missing). Fall back to per-rule shellouts so a
+	// missing rule does not abort the whole removal.
+	if err := hostRules.ApplyBestEffort(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("error applying host iptables removals for slot: %w", err))
 	}
 
 	// Delete routing from host to FC namespace
@@ -326,26 +307,6 @@ func (s *Slot) RemoveNetwork() error {
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error deleting veth device: %w", err))
 		}
-	}
-
-	// Delete NFS proxy redirect rule
-	err = tables.Delete("nat", "PREROUTING",
-		"--in-interface", s.VethName(), "--protocol", "tcp",
-		"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "2049",
-		"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(s.config.NFSProxyPort)),
-	)
-	if err != nil {
-		errs = append(errs, fmt.Errorf("error deleting sandbox NFS proxy redirect rule: %w", err))
-	}
-
-	// Delete portmapper redirect rule
-	err = tables.Delete("nat", "PREROUTING",
-		"--in-interface", s.VethName(), "--protocol", "tcp",
-		"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "111",
-		"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(s.config.PortmapperPort)),
-	)
-	if err != nil {
-		errs = append(errs, fmt.Errorf("error deleting sandbox portmapper redirect rule: %w", err))
 	}
 
 	err = netns.DeleteNamed(s.NamespaceID())

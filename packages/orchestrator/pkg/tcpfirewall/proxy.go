@@ -4,12 +4,10 @@ package tcpfirewall
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"strings"
 
-	"github.com/coreos/go-iptables/iptables"
 	"github.com/inetaf/tcpproxy"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -146,27 +144,18 @@ func (p *Proxy) ruleArgs(s *network.Slot, rule proxyRule) []string {
 	return args
 }
 
-func (p *Proxy) OnSlotCreate(s *network.Slot, tables *iptables.IPTables) error {
+func (p *Proxy) OnSlotCreate(s *network.Slot, rules *network.RuleSet) error {
 	for _, rule := range p.proxyRules {
-		err := tables.Append("nat", "PREROUTING", p.ruleArgs(s, rule)...)
-		if err != nil {
-			return fmt.Errorf("error creating redirect rule for %s traffic: %w", rule.desc, err)
-		}
+		rules.Append("nat", "PREROUTING", p.ruleArgs(s, rule)...)
 	}
-
 	return nil
 }
 
-func (p *Proxy) OnSlotDelete(s *network.Slot, tables *iptables.IPTables) error {
-	var errs []error
+func (p *Proxy) OnSlotDelete(s *network.Slot, rules *network.RuleSet) error {
 	for _, rule := range p.proxyRules {
-		err := tables.Delete("nat", "PREROUTING", p.ruleArgs(s, rule)...)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting %s egress proxy redirect rule: %w", rule.desc, err))
-		}
+		rules.Delete("nat", "PREROUTING", p.ruleArgs(s, rule)...)
 	}
-
-	return errors.Join(errs...)
+	return nil
 }
 
 func (p *Proxy) Close(_ context.Context) error {

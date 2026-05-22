@@ -41,6 +41,10 @@ func NewStorageLocal(ctx context.Context, config Config, egressProxy EgressProxy
 		logger.L().Info(ctx, fmt.Sprintf("Found foreign namespace: %s", ns))
 	}
 
+	if err := installGlobalSandboxRules(config); err != nil {
+		return nil, fmt.Errorf("error installing global sandbox rules: %w", err)
+	}
+
 	return &StorageLocal{
 		config:       config,
 		foreignNs:    foreignNsMap,

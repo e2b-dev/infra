@@ -300,7 +300,7 @@ func (p *Pool) recycle(ctx context.Context, slot *Slot) error {
 func (p *Pool) cleanup(ctx context.Context, slot *Slot) error {
 	var errs []error
 
-	err := slot.RemoveNetwork()
+	err := slot.RemoveNetwork(ctx)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("cannot remove network when releasing slot '%d': %w", slot.Idx, err))
 	}

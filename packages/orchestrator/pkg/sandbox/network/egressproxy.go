@@ -2,13 +2,12 @@
 
 package network
 
-import (
-	"github.com/coreos/go-iptables/iptables"
-)
-
+// EgressProxy participates in per-sandbox host-side iptables setup by
+// appending its own PREROUTING rules into the shared RuleSet that is flushed
+// once per CreateNetwork / RemoveNetwork.
 type EgressProxy interface {
-	OnSlotCreate(s *Slot, tables *iptables.IPTables) error
-	OnSlotDelete(s *Slot, tables *iptables.IPTables) error
+	OnSlotCreate(s *Slot, rules *RuleSet) error
+	OnSlotDelete(s *Slot, rules *RuleSet) error
 
 	CABundle() string
 }
@@ -22,11 +21,11 @@ func NewNoopEgressProxy() NoopEgressProxy {
 	return NoopEgressProxy{}
 }
 
-func (NoopEgressProxy) OnSlotCreate(_ *Slot, _ *iptables.IPTables) error {
+func (NoopEgressProxy) OnSlotCreate(_ *Slot, _ *RuleSet) error {
 	return nil
 }
 
-func (NoopEgressProxy) OnSlotDelete(_ *Slot, _ *iptables.IPTables) error {
+func (NoopEgressProxy) OnSlotDelete(_ *Slot, _ *RuleSet) error {
 	return nil
 }
 
