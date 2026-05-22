@@ -151,21 +151,20 @@ func (c Cgroup2Manager) GetFileDescriptor(procType ProcessType) (int, bool) {
 }
 
 func (c Cgroup2Manager) Freeze(procType ProcessType) error {
-	path, ok := c.cgroupPaths[procType]
-	if !ok {
-		return fmt.Errorf("unknown process type: %s", procType)
-	}
-
-	return os.WriteFile(filepath.Join(path, "cgroup.freeze"), []byte("1"), 0o644)
+	return c.setFreezeState(procType, "1")
 }
 
 func (c Cgroup2Manager) Unfreeze(procType ProcessType) error {
+	return c.setFreezeState(procType, "0")
+}
+
+func (c Cgroup2Manager) setFreezeState(procType ProcessType, value string) error {
 	path, ok := c.cgroupPaths[procType]
 	if !ok {
 		return fmt.Errorf("unknown process type: %s", procType)
 	}
 
-	return os.WriteFile(filepath.Join(path, "cgroup.freeze"), []byte("0"), 0o644)
+	return writeCgroupProp(filepath.Join(path, "cgroup.freeze"), value)
 }
 
 func (c Cgroup2Manager) Close() error {
