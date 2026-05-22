@@ -86,6 +86,60 @@ func TestBuildAutoResumeConfig(t *testing.T) {
 	}
 }
 
+func TestValidateAutoResumeConfig(t *testing.T) {
+	t.Parallel()
+
+	configPtr := func(v bool) *api.SandboxAutoResumeConfig {
+		return &api.SandboxAutoResumeConfig{Enabled: v}
+	}
+
+	tests := []struct {
+		name       string
+		autoPause  bool
+		autoResume *api.SandboxAutoResumeConfig
+		wantErr    bool
+	}{
+		{
+			name:      "nil auto resume is valid with auto pause disabled",
+			autoPause: false,
+		},
+		{
+			name:       "disabled auto resume is valid with auto pause disabled",
+			autoPause:  false,
+			autoResume: configPtr(false),
+		},
+		{
+			name:       "enabled auto resume requires auto pause",
+			autoPause:  false,
+			autoResume: configPtr(true),
+			wantErr:    true,
+		},
+		{
+			name:       "enabled auto resume is valid with auto pause enabled",
+			autoPause:  true,
+			autoResume: configPtr(true),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := validateAutoResumeConfig(tt.autoPause, tt.autoResume)
+
+			if tt.wantErr {
+				require.NotNil(t, got)
+				assert.Equal(t, http.StatusBadRequest, got.Code)
+				assert.Equal(t, ErrMsgAutoResumeRequiresAutoPause, got.ClientMsg)
+
+				return
+			}
+
+			require.Nil(t, got)
+		})
+	}
+}
+
 func TestValidateNetworkConfig(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

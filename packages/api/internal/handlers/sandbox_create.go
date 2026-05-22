@@ -45,8 +45,9 @@ const (
 	metricTemplateAlias         = metrics.MetricPrefix + "template.alias"
 	minEnvdVersionForSecureFlag = "0.2.0" // Minimum version of envd that supports secure flag
 
-	// Network validation error messages
-	ErrMsgDomainsRequireBlockAll = "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic."
+	// Validation error messages
+	ErrMsgDomainsRequireBlockAll      = "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic."
+	ErrMsgAutoResumeRequiresAutoPause = "autoResume can only be enabled when autoPause is true"
 
 	maxNetworkRuleDomains             = 10
 	maxNetworkRuleTransformsPerDomain = 1
@@ -148,6 +149,12 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	)
 
 	autoPause := sharedUtils.DerefOrDefault(body.AutoPause, sandbox.AutoPauseDefault)
+	if err := validateAutoResumeConfig(autoPause, body.AutoResume); err != nil {
+		a.sendAPIStoreError(c, err.Code, err.ClientMsg)
+
+		return
+	}
+
 	envVars := sharedUtils.DerefOrDefault(body.EnvVars, nil)
 	mcp := sharedUtils.DerefOrDefault(body.Mcp, nil)
 	metadata := sharedUtils.DerefOrDefault(body.Metadata, nil)
@@ -308,6 +315,18 @@ func buildAutoResumeConfig(autoResume *api.SandboxAutoResumeConfig) *types.Sandb
 	return &types.SandboxAutoResumeConfig{
 		Policy: policy,
 	}
+}
+
+func validateAutoResumeConfig(autoPause bool, autoResume *api.SandboxAutoResumeConfig) *api.APIError {
+	if autoResume != nil && autoResume.Enabled && !autoPause {
+		return &api.APIError{
+			Err:       errors.New(ErrMsgAutoResumeRequiresAutoPause),
+			ClientMsg: ErrMsgAutoResumeRequiresAutoPause,
+			Code:      http.StatusBadRequest,
+		}
+	}
+
+	return nil
 }
 
 func dedupeVolumeNames(items []api.SandboxVolumeMount) []string {
