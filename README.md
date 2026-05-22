@@ -20,5 +20,3 @@ Supported cloud providers:
 - 🟢 AWS (Beta)
 - [ ] Azure
 - [ ] General linux machine
-
-
