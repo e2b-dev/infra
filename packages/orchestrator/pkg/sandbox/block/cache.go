@@ -52,6 +52,7 @@ type Cache struct {
 	size      int64
 	blockSize int64
 	mmap      *mmap.MMap
+	file      *os.File
 	mu        sync.RWMutex
 	tracker   *Tracker // Dirty: payload in mmap; Zero: punched, emitted as Empty in the diff
 	dirtyFile bool
@@ -64,7 +65,12 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		return nil, fmt.Errorf("error opening file: %w", err)
 	}
 
-	defer f.Close()
+	keepFile := false
+	defer func() {
+		if !keepFile {
+			f.Close()
+		}
+	}()
 
 	if size == 0 {
 		return &Cache{
@@ -91,8 +97,11 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		return nil, fmt.Errorf("error mapping file: %w", err)
 	}
 
+	keepFile = true
+
 	return &Cache{
 		mmap:      &mm,
+		file:      f,
 		filePath:  filePath,
 		size:      size,
 		blockSize: blockSize,
@@ -256,6 +265,10 @@ func (c *Cache) Close() (e error) {
 		e = errors.Join(e, fmt.Errorf("error unmapping mmap: %w", err))
 	}
 
+	if err := c.file.Close(); err != nil {
+		e = errors.Join(e, fmt.Errorf("error closing file: %w", err))
+	}
+
 	// TODO: Move to to the scope of the caller
 	e = errors.Join(e, os.RemoveAll(c.filePath))
 
@@ -373,6 +386,9 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 		runZero = z
 	}
 	flush(runStart, end, runZero)
+
+	// Pace dirty pages so a large fill doesn't trip balance_dirty_pages.
+	_ = unix.SyncFileRange(int(c.file.Fd()), off, end-off, unix.SYNC_FILE_RANGE_WRITE)
 
 	return int(end - off), nil
 }
