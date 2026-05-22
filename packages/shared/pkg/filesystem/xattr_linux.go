@@ -10,6 +10,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// xattrNameSeparator separates the null-terminated names returned by
+// listxattr(2).
+const xattrNameSeparator = "\x00"
+
 // ReadMetadata returns user-defined metadata stored in xattrs under the
 // MetadataXattrPrefix namespace. Returns nil (not an error) when the
 // filesystem does not support xattrs or the file has no metadata set.
@@ -83,7 +87,14 @@ func listxattr(path string) ([]string, error) {
 		return nil, err
 	}
 
-	return splitNullTerminated(buf[:n]), nil
+	// listxattr(2) returns names as `name1\0name2\0...\0`;
+	// drop the trailing terminator before splitting
+	s := strings.TrimRight(string(buf[:n]), xattrNameSeparator)
+	if s == "" {
+		return nil, nil
+	}
+
+	return strings.Split(s, xattrNameSeparator), nil
 }
 
 func getxattr(path, name string) ([]byte, error) {
@@ -99,24 +110,6 @@ func getxattr(path, name string) ([]byte, error) {
 	}
 
 	return buf[:n], nil
-}
-
-func splitNullTerminated(buf []byte) []string {
-	var out []string
-	start := 0
-	for i, b := range buf {
-		if b == 0 {
-			if i > start {
-				out = append(out, string(buf[start:i]))
-			}
-			start = i + 1
-		}
-	}
-	if start < len(buf) {
-		out = append(out, string(buf[start:]))
-	}
-
-	return out
 }
 
 func isXattrUnsupported(err error) bool {
