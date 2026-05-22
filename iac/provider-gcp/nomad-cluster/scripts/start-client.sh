@@ -112,7 +112,7 @@ mkdir -p /mnt/snapshot-cache
 mount -t tmpfs -o size=65G tmpfs /mnt/snapshot-cache
 
 ulimit -n 1048576
-export GOMAXPROCS='nproc'
+export GOMAXPROCS=$(nproc)
 
 tee -a /etc/sysctl.conf <<EOF
 # Increase the maximum number of socket connections
@@ -127,8 +127,59 @@ net.ipv4.tcp_max_syn_backlog = 65535
 # Increase the maximum number of memory map areas
 vm.max_map_count=1048576
 
+# Neighbour cache sizing for high sandbox count.
+# Each sandbox produces >=3 neigh entries (host-side veth peer, in-NS veth, in-VM gw),
+# so the default 128/512/1024 overflows around ~150 sandboxes.
+net.ipv4.neigh.default.gc_thresh1 = 8192
+net.ipv4.neigh.default.gc_thresh2 = 16384
+net.ipv4.neigh.default.gc_thresh3 = 32768
+net.ipv6.neigh.default.gc_thresh1 = 8192
+net.ipv6.neigh.default.gc_thresh2 = 16384
+net.ipv6.neigh.default.gc_thresh3 = 32768
+
+# Sandboxes are IPv4-only; disable IPv6 to halve the neigh-table surface and
+# remove RA/RS noise on every per-sandbox link-up.
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+
+# Strict reverse-path filtering + drop ICMP redirects / source routing.
+net.ipv4.conf.all.rp_filter = 1
+net.ipv4.conf.default.rp_filter = 1
+net.ipv4.conf.default.proxy_arp = 0
+net.ipv4.conf.default.send_redirects = 0
+net.ipv4.conf.default.accept_redirects = 0
+net.ipv4.conf.default.accept_source_route = 0
+
+# Ephemeral port / TIME_WAIT budget for the orchestrator -> envd traffic
+# and any other host-namespace connection load.
+net.ipv4.ip_local_port_range = 1024 65535
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_fin_timeout = 15
+net.ipv4.tcp_max_tw_buckets = 2000000
+
+# Faster conntrack churn for short-lived TCP (TIME_WAIT side).
+net.netfilter.nf_conntrack_tcp_timeout_time_wait = 30
+
+# Larger socket buffers for in-host data-plane workloads.
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+
+# File / inotify caps; defaults are too low for thousands of FCs / NBDs.
+fs.file-max = 4194304
+fs.inotify.max_user_watches = 524288
+fs.inotify.max_user_instances = 8192
+
 EOF
 sysctl -p
+
+# nf_conntrack hash size lives behind a module parameter (set in the Packer
+# modprobe.d config), but apply it at runtime too so freshly-baked AMIs and
+# nodes that hot-load the module both end up with the same shape.
+if [ -w /sys/module/nf_conntrack/parameters/hashsize ]; then
+  echo 524288 > /sys/module/nf_conntrack/parameters/hashsize || true
+fi
 
 echo "Disabling inotify for NBD devices"
 # https://lore.kernel.org/lkml/20220422054224.19527-1-matthew.ruffell@canonical.com/
