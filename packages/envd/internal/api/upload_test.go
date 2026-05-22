@@ -15,6 +15,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/filesystem"
 )
 
 func TestProcessFile(t *testing.T) {
@@ -217,6 +219,35 @@ func TestProcessFile(t *testing.T) {
 		data, err := os.ReadFile(tempFile)
 		require.NoError(t, err)
 		assert.Equal(t, newContent, data)
+	})
+
+	t.Run("overwrite clears old metadata", func(t *testing.T) {
+		t.Parallel()
+		tempDir := t.TempDir()
+		tempFile := filepath.Join(tempDir, "test-file")
+
+		initialContent := []byte("old-contents")
+		request, buffer := newRequest(initialContent)
+		httpStatus, err := processFile(request, tempFile, buffer, uid, gid, map[string]string{"purpose": "old"}, emptyLogger)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusNoContent, httpStatus)
+
+		metadata, err := filesystem.ReadMetadata(tempFile)
+		require.NoError(t, err)
+		if len(metadata) == 0 {
+			t.Skip("filesystem does not support xattrs")
+		}
+		require.Equal(t, "old", metadata["purpose"])
+
+		newContent := []byte("new-contents")
+		request, buffer = newRequest(newContent)
+		httpStatus, err = processFile(request, tempFile, buffer, uid, gid, nil, emptyLogger)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusNoContent, httpStatus)
+
+		metadata, err = filesystem.ReadMetadata(tempFile)
+		require.NoError(t, err)
+		assert.Empty(t, metadata)
 	})
 }
 
