@@ -27,7 +27,7 @@ func (s *StorageKV) getKVKey(slotIdx int) string {
 	return fmt.Sprintf("%s/%d", s.nodeID, slotIdx)
 }
 
-func NewStorageKV(ctx context.Context, nodeID string, config Config, egressProxy EgressProxy) (*StorageKV, error) {
+func NewStorageKV(nodeID string, config Config, egressProxy EgressProxy) (*StorageKV, error) {
 	consulToken := utils.RequiredEnv("CONSUL_TOKEN", "Consul token for authenticating requests to the Consul API")
 
 	consulClient, err := newConsulClient(consulToken)

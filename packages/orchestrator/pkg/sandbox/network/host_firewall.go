@@ -72,6 +72,7 @@ func NewHostFirewall(config Config, externalIface string) (*HostFirewall, error)
 	if err := conn.Flush(); err != nil {
 		return nil, fmt.Errorf("flush host firewall table: %w", err)
 	}
+
 	return fw, nil
 }
 
@@ -125,6 +126,7 @@ func (h *HostFirewall) Close() error {
 	if h == nil || h.conn == nil {
 		return nil
 	}
+
 	return h.conn.CloseLasting()
 }
 
@@ -242,6 +244,7 @@ func matchIPv4SrcInCIDR(cidr *net.IPNet) ([]expr.Any, error) {
 	if mask == nil {
 		return nil, fmt.Errorf("not IPv4 mask: %s", cidr)
 	}
+
 	return []expr.Any{
 		&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseNetworkHeader, Offset: 12, Len: 4},
 		&expr.Bitwise{SourceRegister: 1, DestRegister: 1, Len: 4, Mask: mask, Xor: []byte{0, 0, 0, 0}},
@@ -289,6 +292,7 @@ func concat(parts ...[]expr.Any) []expr.Any {
 	for _, p := range parts {
 		out = append(out, p...)
 	}
+
 	return out
 }
 
