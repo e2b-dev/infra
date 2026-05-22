@@ -220,7 +220,3 @@ func (s *Store) Reserve(ctx context.Context, teamID uuid.UUID, sandboxID string,
 
 	return finishStart, waitForStart, nil
 }
-
-func (s *Store) Release(ctx context.Context, teamID uuid.UUID, sandboxID string) error {
-	return s.reservations.Release(ctx, teamID, sandboxID)
-}

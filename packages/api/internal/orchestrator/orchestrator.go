@@ -167,7 +167,7 @@ func New(
 
 		go redisbackend.NewCleaner(redisStorage).Start(ctx)
 	case cfg.SandboxStorageBackendRedis:
-		reservationStorage = redisreservations.NewReservationStorage(redisClient)
+		reservationStorage = redisreservations.NewReservationStorage(redisClient, redisStorage.Notifier())
 		sandboxStorage = redisStorage
 		logger.L().Info(ctx, "Using redis sandbox storage backend")
 	default:
