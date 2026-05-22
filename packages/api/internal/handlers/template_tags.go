@@ -129,7 +129,7 @@ func (a *APIStore) PostTemplatesTags(c *gin.Context) {
 	tags, err := id.ValidateAndDeduplicateTags(body.Tags)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err))
-		telemetry.ReportCriticalError(ctx, "invalid tag", err)
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "invalid tag", err)
 
 		return
 	}
@@ -197,7 +197,7 @@ func (a *APIStore) DeleteTemplatesTags(c *gin.Context) {
 	tags, err := id.ValidateAndDeduplicateTags(body.Tags)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err))
-		telemetry.ReportError(ctx, "invalid tag", err)
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "invalid tag", err)
 
 		return
 	}
