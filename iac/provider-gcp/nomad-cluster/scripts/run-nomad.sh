@@ -311,7 +311,6 @@ numprocs=1
 autostart=true
 autorestart=true
 stopsignal=INT
-minfds=1048576
 user=$nomad_user
 EOF
 }

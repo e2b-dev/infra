@@ -167,6 +167,17 @@ sysctl -p
 update-alternatives --set iptables  /usr/sbin/iptables-nft  || true
 update-alternatives --set ip6tables /usr/sbin/ip6tables-nft || true
 
+# Raise the FD ceiling on supervisor's systemd unit so Nomad (and the
+# orchestrator launched under raw_exec) inherit the host limit instead of
+# the unit's default LimitNOFILE.
+install -d /etc/systemd/system/supervisor.service.d
+install -m 0644 /dev/stdin /etc/systemd/system/supervisor.service.d/limits.conf <<'EOH'
+[Service]
+LimitNOFILE=1048576
+EOH
+systemctl daemon-reload
+systemctl restart supervisor
+
 echo "Disabling inotify for NBD devices"
 # https://lore.kernel.org/lkml/20220422054224.19527-1-matthew.ruffell@canonical.com/
 cat <<EOH >/etc/udev/rules.d/97-nbd-device.rules
