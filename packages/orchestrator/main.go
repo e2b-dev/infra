@@ -7,11 +7,12 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
+
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/factories"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/tcpfirewall"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/version"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
-	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 )
 
 var commitSHA string
