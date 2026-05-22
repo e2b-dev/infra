@@ -1,4 +1,4 @@
-package db_test
+package db
 
 import (
 	"testing"
@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	apidb "github.com/e2b-dev/infra/packages/api/internal/db"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -119,7 +118,7 @@ func TestGetSnapshotWithBuilds_Success(t *testing.T) {
 	buildID2 := createTestEnvBuild(t, db, templateID)
 
 	// Execute GetSnapshotBuilds
-	result, err := apidb.GetSnapshotBuilds(t.Context(), db.SqlcClient, teamID, sandboxID)
+	result, err := GetSnapshotBuilds(t.Context(), db.SqlcClient, teamID, sandboxID)
 	require.NoError(t, err, "GetSnapshotBuilds should succeed")
 
 	// Verify snapshot data
@@ -149,7 +148,7 @@ func TestGetSnapshotWithBuilds_NoAdditionalBuilds(t *testing.T) {
 	sandboxID, templateID, _ := createTestSnapshot(t, db, teamID, baseEnvID)
 
 	// Execute GetSnapshotBuilds (only the build created by UpsertSnapshot)
-	result, err := apidb.GetSnapshotBuilds(t.Context(), db.SqlcClient, teamID, sandboxID)
+	result, err := GetSnapshotBuilds(t.Context(), db.SqlcClient, teamID, sandboxID)
 	require.NoError(t, err, "GetSnapshotBuilds should succeed")
 
 	// Verify snapshot data
@@ -171,11 +170,11 @@ func TestGetSnapshotWithBuilds_NotFound(t *testing.T) {
 	nonExistentSandboxID := "sandbox-does-not-exist"
 
 	// Execute GetSnapshotBuilds with non-existent sandbox ID
-	_, err := apidb.GetSnapshotBuilds(t.Context(), db.SqlcClient, teamID, nonExistentSandboxID)
+	_, err := GetSnapshotBuilds(t.Context(), db.SqlcClient, teamID, nonExistentSandboxID)
 
 	// Verify error is returned
 	require.Error(t, err, "GetSnapshotBuilds should return an error")
-	assert.ErrorIs(t, err, apidb.ErrSnapshotNotFound, "Error should be ErrSnapshotNotFound")
+	assert.ErrorIs(t, err, ErrSnapshotNotFound, "Error should be ErrSnapshotNotFound")
 }
 
 func TestGetSnapshotWithBuilds_WrongTeamID(t *testing.T) {
@@ -192,11 +191,11 @@ func TestGetSnapshotWithBuilds_WrongTeamID(t *testing.T) {
 	differentTeamID := testutils.CreateTestTeam(t, db)
 
 	// Execute GetSnapshotBuilds with wrong team ID
-	_, err := apidb.GetSnapshotBuilds(t.Context(), db.SqlcClient, differentTeamID, sandboxID)
+	_, err := GetSnapshotBuilds(t.Context(), db.SqlcClient, differentTeamID, sandboxID)
 
 	// Verify error is returned (snapshot exists but doesn't belong to this team)
 	require.Error(t, err, "GetSnapshotBuilds should return an error for wrong team")
-	assert.ErrorIs(t, err, apidb.ErrSnapshotNotFound, "Error should be ErrSnapshotNotFound")
+	assert.ErrorIs(t, err, ErrSnapshotNotFound, "Error should be ErrSnapshotNotFound")
 }
 
 func TestGetSnapshotWithBuilds_NoBuilds(t *testing.T) {
@@ -211,7 +210,7 @@ func TestGetSnapshotWithBuilds_NoBuilds(t *testing.T) {
 	deleteBuild(t, db, buildID)
 
 	// Execute GetSnapshotBuilds
-	result, err := apidb.GetSnapshotBuilds(t.Context(), db.SqlcClient, teamID, sandboxID)
+	result, err := GetSnapshotBuilds(t.Context(), db.SqlcClient, teamID, sandboxID)
 	require.NoError(t, err, "GetSnapshotBuilds should succeed")
 	assert.Empty(t, result.Builds, "Should have 0 builds after deletion")
 }
