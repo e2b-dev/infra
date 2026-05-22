@@ -1,3 +1,5 @@
+//go:build linux
+
 package network
 
 import (
@@ -5,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/caarlos0/env/v11"
 	"go.opentelemetry.io/otel"
@@ -21,6 +24,10 @@ import (
 const (
 	NewSlotsPoolSize    = 32
 	ReusedSlotsPoolSize = 100
+
+	// ReturnDelay is how long we wait before returning a slot to the reused pool,
+	// to let inflight requests on the previous sandbox drain and reduce reuse churn.
+	ReturnDelay = 3 * time.Second
 )
 
 var (
@@ -48,6 +55,8 @@ var (
 	))
 )
 
+type ReleaseNotify func(ctx context.Context, ip string)
+
 type Config struct {
 	// Using reserver IPv4 in range that is used for experiments and documentation
 	// https://en.wikipedia.org/wiki/Reserved_IP_addresses
@@ -58,6 +67,11 @@ type Config struct {
 	PortmapperPort     uint16 `env:"SANDBOX_PORTMAPPER_PORT"      envDefault:"5012"`
 
 	UseLocalNamespaceStorage bool `env:"USE_LOCAL_NAMESPACE_STORAGE"`
+
+	// Comma-separated CIDRs to allow through the predefined firewall deny list.
+	// These are allowed before the private-range deny rules, so they can
+	// reach hosts in the 10.0.0.0/8, 172.16.0.0/12, etc. blocks.
+	AllowSandboxInternalCIDRs []string `env:"ALLOW_SANDBOX_INTERNAL_CIDRS" envDefault:"" envSeparator:","`
 
 	// TCP firewall ports - separate ports for different traffic types to avoid
 	// protocol detection blocking on server-first protocols like SSH.
@@ -176,7 +190,7 @@ func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConf
 	if err != nil {
 		// Return the slot to the pool if configuring internet fails
 		go func() {
-			if returnErr := p.Return(context.WithoutCancel(ctx), slot); returnErr != nil {
+			if returnErr := p.recycle(context.WithoutCancel(ctx), slot); returnErr != nil {
 				logger.L().Error(ctx, "failed to return slot to the pool", zap.Error(returnErr), zap.Int("slot_index", slot.Idx))
 			}
 		}()
@@ -187,7 +201,18 @@ func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConf
 	return slot, nil
 }
 
-func (p *Pool) Return(ctx context.Context, slot *Slot) error {
+// Return recycles a slot that was used by a sandbox. It waits returnDelay
+// before making the slot reusable to let inflight requests on the previous
+// sandbox drain.
+func (p *Pool) Return(ctx context.Context, slot *Slot, releasedFn ReleaseNotify, returnDelay time.Duration) error {
+	notifyNetworkRelease := sync.OnceFunc(func() {
+		releasedFn(ctx, slot.HostIPString())
+	})
+	// Make sure we notify for all code paths
+	defer notifyNetworkRelease()
+
+	// If the pool is closed or the context is cancelled during the delay we
+	// still fall through and clean up the slot to avoid leaking it.
 	select {
 	case <-ctx.Done():
 		if cerr := p.cleanup(ctx, slot); cerr != nil {
@@ -201,9 +226,18 @@ func (p *Pool) Return(ctx context.Context, slot *Slot) error {
 		}
 
 		return ErrClosed
-	default:
+	case <-time.After(returnDelay):
 	}
 
+	// Notify right before the release
+	notifyNetworkRelease()
+
+	return p.recycle(ctx, slot)
+}
+
+// recycle resets the slot's internet configuration and puts it back into the
+// reused pool, or cleans it up if the pool is full or closed.
+func (p *Pool) recycle(ctx context.Context, slot *Slot) error {
 	err := slot.ResetInternet(ctx)
 	if err != nil {
 		if cerr := p.cleanup(ctx, slot); cerr != nil {

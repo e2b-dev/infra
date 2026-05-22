@@ -31,6 +31,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
+	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/joined"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -87,24 +88,31 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		if c.Request.Header.Get("traceparent") != "" {
 			c.Request.Header.Del("traceparent")
 		}
-		if edgeTraceID, ok := telemetry.ParseEdgeTraceID(
-			c.Request.Header.Get(telemetry.GCPTraceContextHeader),
-			c.Request.Header.Get(telemetry.AWSTraceContextHeader),
-		); ok {
-			ctx = logger.ContextWithEdgeTraceID(ctx, edgeTraceID)
-		}
 		opts := []oteltrace.SpanStartOption{
 			oteltrace.WithAttributes(semconv.NetAttributesFromHTTPRequest("tcp", c.Request)...),
 			oteltrace.WithAttributes(semconv.EndUserAttributesFromHTTPRequest(c.Request)...),
 			oteltrace.WithAttributes(semconv.HTTPServerAttributesFromHTTPRequest(service, c.FullPath(), c.Request)...),
 			oteltrace.WithSpanKind(oteltrace.SpanKindServer),
 		}
+
+		if edgeTraceID, ok := telemetry.ParseEdgeTraceID(
+			c.Request.Header.Get(telemetry.GCPTraceContextHeader),
+			c.Request.Header.Get(telemetry.AWSTraceContextHeader),
+		); ok {
+			ctx = logger.ContextWithEdgeTraceID(ctx, edgeTraceID)
+			opts = append(opts, oteltrace.WithAttributes(telemetry.WithEdgeTraceID(edgeTraceID)))
+		}
+
 		spanName := c.FullPath()
 		if spanName == "" {
 			spanName = fmt.Sprintf("HTTP %s route not found", c.Request.Method)
 		}
+
 		ctx, span := tracer.Start(ctx, spanName, opts...)
 		defer span.End()
+
+		// Install the request-scoped joined holder
+		ctx = joined.WithHolder(ctx)
 
 		// pass the span through the request context
 		c.Request = c.Request.WithContext(ctx)
@@ -125,6 +133,9 @@ func Middleware(tracerProvider oteltrace.TracerProvider, service string) gin.Han
 		span.SetAttributes(attrs...)
 		spanStatus, spanMessage := semconv.SpanStatusFromHTTPStatusCode(status)
 		span.SetStatus(spanStatus, spanMessage)
+
+		// Marks the joined requests for telemetry purposes.
+		span.SetAttributes(joined.Attribute(ctx))
 
 		if len(c.Errors) > 0 {
 			span.SetAttributes(attribute.String("gin.errors", strings.TrimSpace(c.Errors.String())))

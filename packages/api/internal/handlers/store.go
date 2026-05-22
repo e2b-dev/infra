@@ -13,7 +13,10 @@ import (
 	"github.com/google/uuid"
 	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -21,7 +24,9 @@ import (
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
+	clustersdiscovery "github.com/e2b-dev/infra/packages/api/internal/clusters/discovery"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
+	orchdiscovery "github.com/e2b-dev/infra/packages/api/internal/orchestrator/discovery"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -32,12 +37,29 @@ import (
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+// newInClusterKubeClient builds a Kubernetes API client using the pod's
+// in-cluster ServiceAccount token. The api Pod must be running in K8s with a
+// projected SA token (the default for any pod with a ServiceAccount).
+func newInClusterKubeClient() (kubernetes.Interface, error) {
+	cfg, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, fmt.Errorf("rest.InClusterConfig: %w", err)
+	}
+	c, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("kubernetes.NewForConfig: %w", err)
+	}
+
+	return c, nil
+}
 
 var _ api.ServerInterface = (*APIStore)(nil)
 
@@ -54,7 +76,7 @@ type APIStore struct {
 	templateCache         *templatecache.TemplateCache
 	templateBuildsCache   *templatecache.TemplatesBuildCache
 	snapshotCache         *snapshotcache.SnapshotCache
-	authService           *sharedauth.AuthService[*types.Team]
+	authService           sharedauth.Service
 	templateSpawnCounter  *utils.TemplateSpawnCounter
 	clickhouseStore       clickhouse.Clickhouse
 	accessTokenGenerator  *sandbox.AccessTokenGenerator
@@ -103,14 +125,50 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		logger.L().Fatal(ctx, "Initializing Posthog client", zap.Error(posthogErr))
 	}
 
-	nomadConfig := &nomadapi.Config{
-		Address:  config.NomadAddress,
-		SecretID: config.NomadToken,
-	}
-
-	nomadClient, err := nomadapi.NewClient(nomadConfig)
-	if err != nil {
-		logger.L().Fatal(ctx, "Initializing Nomad client", zap.Error(err))
+	// Build the orchestrator-discovery and template-builder-discovery backends
+	// based on cfg.ServiceDiscoveryProvider:
+	//   nomad      - both go through the local Nomad agent
+	//   kubernetes - both list pods via the in-cluster K8s API
+	var (
+		nodeDiscovery            orchdiscovery.Discovery
+		templateBuilderDiscovery clustersdiscovery.Discovery
+	)
+	switch config.ServiceDiscoveryProvider {
+	case cfg.ServiceDiscoveryProviderKubernetes:
+		k8sClient, k8sErr := newInClusterKubeClient()
+		if k8sErr != nil {
+			logger.L().Fatal(ctx, "Initializing in-cluster Kubernetes client", zap.Error(k8sErr))
+		}
+		nodeDiscovery = orchdiscovery.NewKubernetes(
+			k8sClient,
+			config.K8sNamespace,
+			config.K8sOrchestratorPodLabelSelector,
+		)
+		templateBuilderDiscovery = clustersdiscovery.NewKubernetesDiscovery(
+			consts.LocalClusterID,
+			k8sClient,
+			config.K8sNamespace,
+			config.K8sTemplateManagerPodLabelSelector,
+		)
+	case cfg.ServiceDiscoveryProviderLocal:
+		localND, localErr := orchdiscovery.NewLocal(config.LocalOrchestratorAddress)
+		if localErr != nil {
+			logger.L().Fatal(ctx, "Initializing local orchestrator discovery", zap.Error(localErr))
+		}
+		nodeDiscovery = localND
+		// No template builders in local dev — return an empty list so the
+		// clusters pool initializes cleanly.
+		templateBuilderDiscovery = clustersdiscovery.NewStaticDiscovery(nil)
+	default: // ServiceDiscoveryProviderNomad
+		nomadClient, nomadErr := nomadapi.NewClient(&nomadapi.Config{
+			Address:  config.NomadAddress,
+			SecretID: config.NomadToken,
+		})
+		if nomadErr != nil {
+			logger.L().Fatal(ctx, "Initializing Nomad client", zap.Error(nomadErr))
+		}
+		nodeDiscovery = orchdiscovery.NewNomad(nomadClient, "default")
+		templateBuilderDiscovery = clustersdiscovery.NewLocalDiscovery(consts.LocalClusterID, nomadClient)
 	}
 
 	queryLogsProvider, err := loki.NewLokiQueryProvider(config.LokiURL, config.LokiUser, config.LokiPassword)
@@ -118,7 +176,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		logger.L().Fatal(ctx, "error when getting logs query provider", zap.Error(err))
 	}
 
-	clusters, err := clusters.NewPool(ctx, tel, sqlcDB, nomadClient, clickhouseStore, queryLogsProvider, config)
+	clusters, err := clusters.NewPool(ctx, tel, sqlcDB, templateBuilderDiscovery, clickhouseStore, queryLogsProvider, config)
 	if err != nil {
 		logger.L().Fatal(ctx, "initializing edge clusters pool failed", zap.Error(err))
 	}
@@ -145,14 +203,18 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		logger.L().Fatal(ctx, "failed to create snapshot build query semaphore", zap.Error(err))
 	}
 
-	orch, err := orchestrator.New(ctx, config, tel, nomadClient, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator, snapshotCache, snapshotUpsertSem)
+	orch, err := orchestrator.New(ctx, config, tel, nodeDiscovery, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator, snapshotCache, snapshotUpsertSem)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Orchestrator client", zap.Error(err))
 	}
 
-	authCache := sharedauth.NewAuthCache[*types.Team](redisClient)
-	authStore := sharedauth.NewAuthStore(authDB)
-	authService := sharedauth.NewAuthService[*types.Team](authStore, authCache, config.SupabaseJWTSecrets)
+	authClient := &http.Client{
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+	authService, err := sharedauth.NewAuthService(ctx, redisClient, authDB, config.AuthProvider, authClient)
+	if err != nil {
+		logger.L().Fatal(ctx, "Initializing auth service", zap.Error(err))
+	}
 	templateCache := templatecache.NewTemplateCache(sqlcDB, redisClient)
 	templateSpawnCounter := utils.NewTemplateSpawnCounter(ctx, time.Minute, sqlcDB)
 
@@ -314,15 +376,22 @@ func (a *APIStore) GetUserFromAccessToken(ctx context.Context, ginCtx *gin.Conte
 	return a.authService.ValidateAccessToken(ctx, ginCtx, accessToken)
 }
 
-func (a *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, supabaseToken string) (uuid.UUID, *api.APIError) {
-	ctx, span := tracer.Start(ctx, "get user id from supabase token")
+func (a *APIStore) GetUserIDFromAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "get user id from auth provider token")
 	defer span.End()
 
-	return a.authService.ValidateSupabaseToken(ctx, ginCtx, supabaseToken)
+	return a.authService.ValidateAuthProviderToken(ctx, ginCtx, token)
 }
 
 func (a *APIStore) GetTeamFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *api.APIError) {
 	ctx, span := tracer.Start(ctx, "get team from supabase token")
+	defer span.End()
+
+	return a.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID)
+}
+
+func (a *APIStore) GetTeamFromAuthProviderToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *api.APIError) {
+	ctx, span := tracer.Start(ctx, "get team from auth provider token")
 	defer span.End()
 
 	return a.authService.ValidateSupabaseTeam(ctx, ginCtx, teamID)

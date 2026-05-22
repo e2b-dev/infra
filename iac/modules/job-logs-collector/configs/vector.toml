@@ -15,9 +15,11 @@ type = "remap"
 inputs = ["http_server"]
 source = """
 del(."_path")
-.sandboxID = .instanceID
 .timestamp = parse_timestamp(.timestamp, format: "%+") ?? now()
 # Normalize keys
+if exists(.instanceID) && .instanceID != null {
+  .sandboxID = .instanceID
+}
 if exists(.sandbox_id) {
   .sandboxID = .sandbox_id
 }
@@ -110,6 +112,24 @@ envID = "{{ envID }}"
 buildID = "{{ buildID }}"
 sandboxID = "{{ sandboxID }}"
 category = "{{ category }}"
+
+%{ if enable_otel_router_logs }
+[sinks.otel_router_non_internal]
+type = "http"
+inputs = [ "remove_internal" ]
+uri = "http://127.0.0.1:${otel_router_http_port}/logs"
+method = "post"
+healthcheck.enabled = false
+buffer.type = "memory"
+buffer.max_events = 500
+buffer.when_full = "drop_newest"
+encoding.codec = "json"
+framing.method = "newline_delimited"
+
+[sinks.otel_router_non_internal.request]
+retry_attempts = 0
+timeout_secs = 2
+%{ endif }
 
 %{ if grafana_logs_endpoint != "" }
 [sinks.grafana]

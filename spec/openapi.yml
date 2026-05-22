@@ -27,6 +27,16 @@ components:
       type: apiKey
       in: header
       name: X-Supabase-Team
+    # AuthProviderBearerAuth / AuthProviderTeamAuth: B before T in the name
+    # so Bearer is validated before Team (same reason as Supabase1/2 above).
+    AuthProviderBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: access_token
+    AuthProviderTeamAuth:
+      type: apiKey
+      in: header
+      name: X-Team-ID
     AdminTokenAuth:
       type: apiKey
       in: header
@@ -184,6 +194,9 @@ components:
           description: Identifier of the user
         email:
           type: string
+          nullable: true
+          deprecated: true
+          default: null
           description: Email of the user
 
     TemplateUpdateRequest:
@@ -282,6 +295,63 @@ components:
         maskRequestHost:
           type: string
           description: Specify host mask which will be used for all sandbox requests
+        rules:
+          type: object
+          description: >
+            Per-domain transform rules applied to matching egress HTTP/HTTPS requests.
+            Keys are domains (e.g. "api.example.com", "example.com").
+            A domain listed here is not automatically allowed - use allowOut to permit the traffic.
+          additionalProperties:
+            type: array
+            items:
+              $ref: "#/components/schemas/SandboxNetworkRule"
+
+    SandboxNetworkUpdateConfig:
+      type: object
+      description: Network configuration update for a running sandbox. Replaces the current egress rules with the provided configuration. Omitting a field clears it.
+      properties:
+        allowOut:
+          type: array
+          description: List of allowed destinations for egress traffic. Each entry can be a CIDR block (e.g. "8.8.8.8/32"), a bare IP address (e.g. "8.8.8.8"), or a domain name (e.g. "example.com", "*.example.com"). Allowed entries always take precedence over denied entries.
+          items:
+            type: string
+        denyOut:
+          type: array
+          description: List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
+          items:
+            type: string
+        rules:
+          type: object
+          description: Per-domain transform rules. Replaces all existing rules when provided.
+          additionalProperties:
+            type: array
+            items:
+              $ref: "#/components/schemas/SandboxNetworkRule"
+        allow_internet_access:
+          type: boolean
+          description:
+            Allow sandbox to access the internet. When set to false, it behaves the same as specifying denyOut
+            to 0.0.0.0/0 in the network config.
+
+    SandboxNetworkRule:
+      type: object
+      description: Transform rule applied to egress requests matching a domain pattern.
+      properties:
+        transform:
+          $ref: "#/components/schemas/SandboxNetworkTransform"
+
+    SandboxNetworkTransform:
+      type: object
+      description: Transformations applied to matching egress requests before forwarding.
+      properties:
+        headers:
+          type: object
+          description: >
+            HTTP headers to inject or override in matching requests.
+            An existing header with the same name is replaced. Values are plain strings;
+            secret resolution happens client-side before sending to the API.
+          additionalProperties:
+            type: string
 
     SandboxAutoResumeEnabled:
       type: boolean
@@ -1821,6 +1891,7 @@ paths:
       security:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
+        - AuthProviderBearerAuth: []
       responses:
         "200":
           description: Successfully returned all teams
@@ -1844,6 +1915,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
         - in: query
@@ -1886,6 +1959,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
         - in: query
@@ -1933,6 +2008,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - name: metadata
           in: query
@@ -1963,6 +2040,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       requestBody:
         required: true
         content:
@@ -1991,6 +2070,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - name: metadata
           in: query
@@ -2035,6 +2116,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - name: sandbox_ids
           in: query
@@ -2070,6 +2153,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
         - in: query
@@ -2109,6 +2194,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
         - in: query
@@ -2165,6 +2252,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -2188,6 +2277,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -2208,6 +2299,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
         - in: query
@@ -2252,6 +2345,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -2275,6 +2370,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       requestBody:
@@ -2307,6 +2404,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       requestBody:
@@ -2344,6 +2443,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       tags: [sandboxes]
       requestBody:
         content:
@@ -2372,34 +2473,20 @@ paths:
 
   /sandboxes/{sandboxID}/network:
     put:
-      description: Update the network configuration for a running sandbox. Replaces the current egress rules with the provided configuration. Omitting both fields clears all egress rules.
+      description: Update the network configuration for a running sandbox. Replaces the current egress rules with the provided configuration. Omitting field clears it.
       security:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       tags: [sandboxes]
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                allowOut:
-                  type: array
-                  description: List of allowed destinations for egress traffic. Each entry can be a CIDR block (e.g. "8.8.8.8/32"), a bare IP address (e.g. "8.8.8.8"), or a domain name (e.g. "example.com", "*.example.com"). Allowed entries always take precedence over denied entries.
-                  items:
-                    type: string
-                denyOut:
-                  type: array
-                  description: List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
-                  items:
-                    type: string
-                allow_internet_access:
-                  type: boolean
-                  description:
-                    Allow sandbox to access the internet. When set to false, it behaves the same as specifying denyOut
-                    to 0.0.0.0/0 in the network config.
+              $ref: "#/components/schemas/SandboxNetworkUpdateConfig"
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -2421,6 +2508,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       tags: [sandboxes]
       requestBody:
         content:
@@ -2451,6 +2540,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       requestBody:
@@ -2487,6 +2578,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - name: sandboxID
           in: query
@@ -2518,6 +2611,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       requestBody:
         required: true
         content:
@@ -2548,6 +2643,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       requestBody:
         required: true
         content:
@@ -2578,6 +2675,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - in: path
@@ -2612,6 +2711,8 @@ paths:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - in: query
           required: false
@@ -2641,6 +2742,8 @@ paths:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       requestBody:
         required: true
         content:
@@ -2670,6 +2773,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/paginationNextToken"
@@ -2693,6 +2798,8 @@ paths:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -2721,6 +2828,8 @@ paths:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       responses:
@@ -2739,6 +2848,8 @@ paths:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -2766,6 +2877,8 @@ paths:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2785,6 +2898,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2811,6 +2926,8 @@ paths:
         - AccessTokenAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       requestBody:
@@ -2842,6 +2959,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2889,6 +3008,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -2943,6 +3064,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       requestBody:
         required: true
         content:
@@ -2971,6 +3094,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       requestBody:
         required: true
         content:
@@ -2997,6 +3122,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       responses:
@@ -3025,6 +3152,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - name: alias
           in: path
@@ -3054,6 +3183,14 @@ paths:
       tags: [admin]
       security:
         - AdminTokenAuth: []
+      parameters:
+        - in: query
+          name: clusterID
+          description: Identifier of the cluster
+          required: false
+          schema:
+            type: string
+            format: uuid
       responses:
         "200":
           description: Successfully returned all nodes
@@ -3183,6 +3320,7 @@ paths:
       tags: [access-tokens]
       security:
         - Supabase1TokenAuth: []
+        - AuthProviderBearerAuth: []
       requestBody:
         required: true
         content:
@@ -3207,6 +3345,7 @@ paths:
       tags: [access-tokens]
       security:
         - Supabase1TokenAuth: []
+        - AuthProviderBearerAuth: []
       parameters:
         - $ref: "#/components/parameters/accessTokenID"
       responses:
@@ -3226,6 +3365,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       responses:
         "200":
           description: Successfully returned all team API keys
@@ -3245,6 +3386,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       requestBody:
         required: true
         content:
@@ -3270,6 +3413,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/apiKeyID"
       requestBody:
@@ -3293,6 +3438,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/apiKeyID"
       responses:
@@ -3313,6 +3460,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       responses:
         "200":
           description: Successfully listed all team volumes
@@ -3334,6 +3483,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       requestBody:
         required: true
         content:
@@ -3362,6 +3513,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/volumeID"
       responses:
@@ -3385,6 +3538,8 @@ paths:
         - ApiKeyAuth: []
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/volumeID"
       responses:

@@ -19,7 +19,7 @@ is_package_installed() {
 }
 
 # Install required packages if not already installed
-PACKAGES="systemd systemd-sysv openssh-server sudo chrony socat curl ca-certificates fuse3 iptables git nfs-common"
+PACKAGES="systemd systemd-sysv openssh-server sudo chrony socat curl ca-certificates fuse3 iptables git nfs-common less nftables iputils-ping jq"
 echo "Checking presence of the following packages: $PACKAGES"
 
 MISSING=""
@@ -37,6 +37,11 @@ if [ -n "$MISSING" ]; then
 else
     echo "All required packages are already installed."
 fi
+
+# Set /dev/fuse permissions to 666 for non-root access
+# Use systemd-tmpfiles to set permissions at boot
+mkdir -p /etc/tmpfiles.d
+echo 'z /dev/fuse 0666 root root -' > /etc/tmpfiles.d/fuse.conf
 
 echo "Setting up shell"
 echo "export SHELL='/bin/bash'" >/etc/profile.d/shell.sh
@@ -69,6 +74,14 @@ EOF
 
 echo "Increasing inotify watch limit"
 echo 'fs.inotify.max_user_watches=65536' | tee -a /etc/sysctl.conf
+
+# Disable kcompactd background page migration. With 2 MiB host-side hugepage
+# backing of guest RAM, every migration dirties a destination hugepage from
+# the host UFFD's perspective and lands in the next memfile diff, with no
+# corresponding workload benefit between snapshots. We trigger compaction
+# explicitly pre-pause instead.
+echo "Disabling proactive memory compaction"
+echo 'vm.compaction_proactiveness=0' | tee -a /etc/sysctl.conf
 
 echo "Don't wait for ttyS0 (serial console kernel logs)"
 # This is required when the Firecracker kernel args has specified console=ttyS0

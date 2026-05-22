@@ -1,3 +1,5 @@
+//go:build linux
+
 // Concurrent sandbox creation benchmark.
 //
 // Measures how many sandboxes can be effectively resumed in parallel on a
@@ -324,6 +326,7 @@ func BenchmarkConcurrentResume(b *testing.B) {
 		config.BuilderConfig, l, featureFlags, sandboxFactory,
 		persistenceTemplate, persistenceBuild, artifactRegistry,
 		dockerhubRepository, sandboxProxy, sandboxes, templateCache, buildMetrics,
+		nil,
 	)
 
 	// build template if not cached

@@ -42,7 +42,13 @@ variable "api_cluster_size" {
 
 # Ingress
 variable "ingress_port" {
-  type = number
+  type        = number
+  description = "External traffic port number"
+}
+
+variable "ingress_internal_port" {
+  type        = number
+  description = "Internal traffic port number"
 }
 
 variable "ingress_count" {
@@ -160,6 +166,11 @@ variable "api_port" {
   default = 80
 }
 
+variable "api_internal_grpc_port" {
+  type    = number
+  default = 5009
+}
+
 variable "api_memory_mb" {
   type    = number
   default = 512
@@ -183,9 +194,25 @@ variable "postgres_connection_string" {
   sensitive = true
 }
 
-variable "supabase_jwt_secrets" {
-  type      = string
+variable "auth_provider_config" {
+  type = object({
+    jwt = optional(list(object({
+      issuer = object({
+        url                 = string
+        discoveryURL        = optional(string)
+        audiences           = list(string)
+        audienceMatchPolicy = optional(string)
+      })
+      cacheDuration = optional(string)
+    })))
+    legacy = optional(object({
+      hmac = object({
+        secrets = list(string)
+      })
+    }))
+  })
   sensitive = true
+  default   = null
 }
 
 variable "admin_token" {
@@ -216,6 +243,12 @@ variable "orchestrator_proxy_port" {
 variable "allow_sandbox_internet" {
   type    = bool
   default = true
+}
+
+variable "allow_sandbox_internal_cidrs" {
+  type        = string
+  description = "Comma-separated CIDRs to allow through the sandbox firewall deny list"
+  default     = ""
 }
 
 variable "envd_timeout" {
@@ -284,6 +317,30 @@ variable "otel_collector_grpc_port" {
 variable "logs_proxy_port" {
   type    = number
   default = 30006
+}
+
+variable "enable_otel_router_logs" {
+  type        = bool
+  default     = false
+  description = "Enable teeing non-internal customer logs from Vector to otel-router."
+}
+
+variable "otel_router_http_port" {
+  type        = number
+  default     = 4321
+  description = "Local otel-router Vector-compatible logs port used by Vector when otel-router log teeing is enabled."
+}
+
+variable "enable_otel_router_metrics" {
+  type        = bool
+  default     = false
+  description = "Enable teeing external customer metrics from otel-collector to otel-router."
+}
+
+variable "otel_router_grpc_port" {
+  type        = number
+  default     = 4320
+  description = "Local otel-router OTLP gRPC port used by otel-collector when otel-router metric teeing is enabled."
 }
 
 # Feature flags

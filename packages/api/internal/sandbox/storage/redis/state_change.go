@@ -14,6 +14,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/joined"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
@@ -34,9 +35,10 @@ import (
 func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) (sandbox.Sandbox, bool, func(context.Context, error), error) {
 	key := getSandboxKey(teamID.String(), sandboxID)
 	transitionKey := getTransitionKey(teamID.String(), sandboxID)
+	lockKey := redis_utils.GetLockKey(key)
 
 	// Acquire distributed lock
-	lock, err := s.lockService.Obtain(ctx, redis_utils.GetLockKey(key), lockTimeout, s.lockOption)
+	lock, err := s.locker.Obtain(ctx, lockKey, lockTimeout)
 	if err != nil {
 		return sandbox.Sandbox{}, false, nil, fmt.Errorf("failed to obtain lock: %w", err)
 	}
@@ -156,7 +158,8 @@ func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, res
 			restoreErr = s.restoreToRunning(cbCtx, teamID, sandboxID, stateAction.TargetState)
 		}
 
-		lock, err := s.lockService.Obtain(cbCtx, redis_utils.GetLockKey(transitionKey), lockTimeout, s.lockOption)
+		lockKey := redis_utils.GetLockKey(transitionKey)
+		lock, err := s.locker.Obtain(cbCtx, lockKey, lockTimeout)
 		if err != nil {
 			logger.L().Warn(cbCtx, "Failed to obtain lock in callback", logger.WithSandboxID(sandboxID), zap.String("transitionID", transitionID), zap.Error(err))
 
@@ -196,16 +199,10 @@ func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, res
 		// Notify subscribers that the transition is complete so waitForTransition
 		// goroutines wake up immediately rather than waiting for the next poll tick.
 		// The routing key is published as the payload so the single global channel
-		// can serve all sandboxes across all teams.
-		routingKey := getTransitionRoutingKey(teamID.String(), sandboxID, transitionID)
-		pubErr := s.redisClient.Publish(cbCtx, globalTransitionNotifyChannel, routingKey).Err()
-		if pubErr != nil {
-			logger.L().Warn(cbCtx, "Failed to publish transition notification",
-				logger.WithSandboxID(sandboxID),
-				zap.String("transitionID", transitionID),
-				zap.Error(pubErr),
-			)
-		}
+		// can serve all sandboxes across all teams. The publish is handed off to
+		// the shared publisher worker; on overflow the 1s fallback ticker in
+		// waitForTransition covers any dropped notification.
+		s.publisher.Publish(cbCtx, getTransitionRoutingKey(teamID.String(), sandboxID, transitionID))
 	}
 }
 
@@ -315,7 +312,11 @@ func (s *Storage) handleExistingTransition(
 	transactionID string,
 ) (sandbox.Sandbox, bool, func(context.Context, error), error) {
 	if sbx.State == newState {
-		// Same target state - wait for completion and return alreadyDone=true
+		// Same target state - wait for completion and return alreadyDone=true.
+		// The caller inherits the in-flight transition's result without
+		// doing the work itself: this is a joiner.
+		joined.Mark(ctx)
+
 		logger.L().Debug(ctx, "State transition already in progress to the same state, waiting",
 			logger.WithSandboxID(sbx.SandboxID),
 			zap.String("state", string(newState)))

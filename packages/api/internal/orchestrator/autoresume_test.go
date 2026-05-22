@@ -24,7 +24,7 @@ func newTestAutoResumeOrchestrator() *Orchestrator {
 			reservations.NewReservationStorage(),
 			sandbox.Callbacks{
 				AddSandboxToRoutingTable: func(context.Context, sandbox.Sandbox) {},
-				AsyncNewlyCreatedSandbox: func(context.Context, sandbox.Sandbox) {},
+				AsyncNewlyCreatedSandbox: func(context.Context, sandbox.Sandbox, sandbox.CreationMetadata) {},
 			},
 		),
 		nodes: smap.New[*nodemanager.Node](),
@@ -46,7 +46,7 @@ func testSandboxForAutoResume(state sandbox.State) sandbox.Sandbox {
 
 func addSandbox(t *testing.T, o *Orchestrator, sbx sandbox.Sandbox) {
 	t.Helper()
-	require.NoError(t, o.sandboxStore.Add(t.Context(), sbx, false))
+	require.NoError(t, o.sandboxStore.Add(t.Context(), sbx, nil))
 }
 
 func registerNode(o *Orchestrator, sbx sandbox.Sandbox, ip string) {
@@ -72,6 +72,19 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, handled)
 		assert.Equal(t, "10.0.0.1", nodeIP)
+	})
+
+	t.Run("running sandbox with empty ip returns error", func(t *testing.T) {
+		t.Parallel()
+
+		o := newTestAutoResumeOrchestrator()
+		sbx := testSandboxForAutoResume(sandbox.StateRunning)
+		registerNode(o, sbx, "")
+
+		nodeIP, handled, err := o.HandleExistingSandboxAutoResume(t.Context(), sbx.TeamID, sbx.SandboxID, sbx, time.Minute)
+		require.ErrorContains(t, err, "routing info is not available")
+		assert.False(t, handled)
+		assert.Empty(t, nodeIP)
 	})
 
 	t.Run("snapshotting sandbox waits and routes when transition finishes", func(t *testing.T) {

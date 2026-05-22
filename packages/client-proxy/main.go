@@ -107,39 +107,45 @@ func run() int {
 	}
 	featureFlagsClient.SetServiceName(serviceName)
 
-	var catalog e2bcatalog.SandboxesCatalog
-
 	redisClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
 		RedisURL:         config.RedisURL,
 		RedisClusterURL:  config.RedisClusterURL,
 		RedisTLSCABase64: config.RedisTLSCABase64,
 		PoolSize:         config.RedisPoolSize,
 	})
-	if err == nil {
-		defer func() {
-			err := factories.CloseCleanly(redisClient)
-			if err != nil {
-				l.Error(ctx, "Failed to close redis client", zap.Error(err))
-			}
-		}()
-		catalog = e2bcatalog.NewRedisSandboxCatalog(redisClient)
-	} else {
-		if !errors.Is(err, factories.ErrRedisDisabled) {
-			l.Error(ctx, "Failed to create redis client", zap.Error(err))
+	if err != nil {
+		l.Error(ctx, "Failed to create redis client", zap.Error(err))
 
-			return 1
-		}
-
-		l.Warn(ctx, "Redis environment variable is not set, will fallback to in-memory sandboxes catalog that works only with one instance setup")
-		catalog = e2bcatalog.NewMemorySandboxesCatalog()
+		return 1
 	}
+	defer func() {
+		err := factories.CloseCleanly(redisClient)
+		if err != nil {
+			l.Error(ctx, "Failed to close redis client", zap.Error(err))
+		}
+	}()
+
+	catalog := e2bcatalog.NewRedisSandboxCatalog(redisClient)
 
 	info := &internal.ServiceInfo{}
 	info.SetStatus(ctx, internal.Healthy)
 
 	var pausedSandboxResumer e2bproxy.PausedSandboxResumer
-	if strings.TrimSpace(config.ApiGrpcAddress) != "" {
-		pausedSandboxResumer, err = e2bproxy.NewGrpcPausedSandboxResumer(config.ApiGrpcAddress)
+	apiGRPCAddress := strings.TrimSpace(config.APIInternalGRPCAddress)
+	apiGRPCOAuthConfig := e2bproxy.GRPCOAuthConfig{}
+	apiGRPCUseTLS := false
+	if apiGRPCAddress == "" {
+		apiGRPCAddress = strings.TrimSpace(config.APIEdgeGRPCAddress)
+		apiGRPCUseTLS = true
+		apiGRPCOAuthConfig = e2bproxy.GRPCOAuthConfig{
+			ClientID:     config.APIEdgeGRPCOAuthClientID,
+			ClientSecret: config.APIEdgeGRPCOAuthClientSecret,
+			TokenURL:     config.APIEdgeGRPCOAuthTokenURL,
+		}
+	}
+
+	if apiGRPCAddress != "" {
+		pausedSandboxResumer, err = e2bproxy.NewGRPCPausedSandboxResumer(ctx, apiGRPCAddress, apiGRPCOAuthConfig, apiGRPCUseTLS)
 		if err != nil {
 			l.Error(ctx, "Failed to create paused sandbox checker", zap.Error(err))
 

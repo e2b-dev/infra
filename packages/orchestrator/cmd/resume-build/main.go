@@ -1,3 +1,5 @@
+//go:build linux
+
 package main
 
 import (
@@ -7,7 +9,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -16,9 +17,12 @@ import (
 	"syscall"
 	"time"
 
-	"connectrpc.com/connect"
+	"github.com/containernetworking/plugins/pkg/ns"
+	"github.com/coreos/go-iptables/iptables"
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldlog"
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
+	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
@@ -36,11 +40,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/tcpfirewall"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -56,6 +57,8 @@ func main() {
 	iterations := flag.Int("iterations", 0, "run N iterations (0 = interactive)")
 	coldStart := flag.Bool("cold", false, "clear cache between iterations (cold start each time)")
 	noPrefetch := flag.Bool("no-prefetch", false, "disable memory prefetching")
+	noEgress := flag.Bool("no-egress", false, "block all guest internet egress")
+	useMemfd := flag.Bool("use-memfd", false, "enable memfd-backed guest memory (passes use_memfd on snapshot load)")
 	verbose := flag.Bool("v", false, "verbose logging")
 
 	// Command execution (no pause)
@@ -67,8 +70,35 @@ func main() {
 	cmdPause := flag.String("cmd-pause", "", "execute command in sandbox, then pause on success")
 	cmdSignalPause := flag.String("cmd-signal-pause", "", "execute command in sandbox, then wait for SIGUSR1 before pausing")
 	optimize := flag.Bool("optimize", false, "collect fresh prefetch mapping after pause (resumes snapshot to record page faults)")
+	shell := flag.Bool("shell", false, "attach an interactive PTY shell via envd (no sshd required in the sandbox)")
+
+	fphTimeoutMs := flag.Int("fph-timeout-ms", 0, "override free-page-hinting-config pause timeout LD flag (0 = use LD default)")
+	reclaim := flag.Bool("reclaim", false, "enable pre-pause reclaim chain (fstrim 500ms, sync 500ms, drop_caches 200ms, compact 1s)")
+
+	fphBench := flag.Bool("fph-bench", false, "compare pause memfile size with vs without FPH; requires -cmd-pause workload, uses -iterations (default 3), forces FPR on")
+	fphBenchDelay := flag.Duration("fph-bench-delay", 0, "wait this long between workload completion and pause (lets FPR settle)")
 
 	flag.Parse()
+
+	if *fphTimeoutMs > 0 {
+		featureflags.NewJSONFlag("free-page-hinting-config", ldvalue.FromJSONMarshal(map[string]any{
+			"enabled": true,
+			"pause":   *fphTimeoutMs,
+		}))
+	}
+
+	if *reclaim {
+		featureflags.NewJSONFlag("guest-pause-reclaim", ldvalue.FromJSONMarshal(map[string]int{
+			"sync":           500,
+			"drop_caches":    200,
+			"compact_memory": 1000,
+			"fstrim":         500,
+		}))
+	}
+
+	if *useMemfd {
+		featureflags.OverrideBoolFlag(featureflags.UseMemFdFlag, true)
+	}
 
 	if *fromBuild == "" {
 		log.Fatal("-from-build required")
@@ -104,8 +134,8 @@ func main() {
 
 	isPauseMode := pauseCount > 0
 
-	// Interactive pause modes are incompatible with iterations.
-	if *iterations > 0 && (*signalPause != "" || *cmdPause != "" || *cmdSignalPause != "") {
+	// fph-bench reuses -cmd-pause and -iterations.
+	if !*fphBench && *iterations > 0 && (*signalPause != "" || *cmdPause != "" || *cmdSignalPause != "") {
 		log.Fatal("-signal-pause, -cmd-pause, and -cmd-signal-pause are incompatible with -iterations")
 	}
 
@@ -119,6 +149,14 @@ func main() {
 	}
 	if *optimize && *iterations > 0 {
 		log.Fatal("-optimize is incompatible with -iterations (benchmarking doesn't upload)")
+	}
+
+	if *shell && (isCmdMode || isPauseMode || *iterations > 0) {
+		log.Fatal("-shell can only be used in interactive mode (no -cmd, no pause flags, no -iterations)")
+	}
+
+	if *fphBench && (*cmdPause == "" || *fphTimeoutMs > 0) {
+		log.Fatal("-fph-bench requires -cmd-pause and is incompatible with -fph-timeout-ms")
 	}
 
 	// Generate new build ID if not specified and pause mode is enabled
@@ -155,7 +193,13 @@ func main() {
 		iterations: *iterations,
 	}
 
-	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *verbose, pauseOpts, runOpts)
+	benchIters := *iterations
+	if *fphBench && benchIters <= 0 {
+		benchIters = 3
+	}
+	fphBenchOpts := fphBenchOptions{enabled: *fphBench, workload: *cmdPause, iterations: benchIters, delay: *fphBenchDelay}
+
+	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *noEgress, *verbose, *shell, pauseOpts, runOpts, fphBenchOpts)
 	cancel()
 
 	if err != nil {
@@ -270,6 +314,7 @@ type runner struct {
 	cache      *template.Cache
 	coldStart  bool
 	noPrefetch bool
+	shell      bool
 	config     cfg.BuilderConfig
 	storage    storage.StorageProvider
 }
@@ -310,11 +355,23 @@ func (r *runner) interactive(ctx context.Context) error {
 
 	fmt.Printf("✅ Running (resumed in %s)\n", time.Since(t0))
 	fmt.Printf("   sudo nsenter --net=/var/run/netns/%s ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@169.254.0.21\n", sbx.Slot.NamespaceID())
-	fmt.Println("Ctrl+C to stop")
 
+	defer func() {
+		fmt.Println("🧹 Cleanup...")
+		sbx.Close(context.WithoutCancel(ctx))
+	}()
+
+	if r.shell {
+		err := attachShell(ctx, sbx)
+		if err != nil && !isShellExited(err) {
+			return err
+		}
+
+		return nil
+	}
+
+	fmt.Println("Ctrl+C to stop")
 	<-ctx.Done()
-	fmt.Println("🧹 Cleanup...")
-	sbx.Close(context.WithoutCancel(ctx))
 
 	return nil
 }
@@ -608,7 +665,7 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 
 	// Pause and create snapshot
 	pauseStart := time.Now()
-	snapshot, err := sbx.Pause(ctx, newMeta)
+	snapshot, err := sbx.Pause(ctx, newMeta, sandbox.SnapshotUseCasePause)
 	pauseDur := time.Since(pauseStart)
 	totalDur := time.Since(t0)
 
@@ -634,20 +691,22 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 
 	// Only upload when not in benchmark mode (verbose = true means single run)
 	if verbose {
-		paths := storage.Paths{BuildID: opts.newBuildID}
 		if opts.isRemoteStorage {
 			fmt.Println("📤 Uploading snapshot...")
-			if err := snapshot.Upload(ctx, r.storage, paths); err != nil {
-				return timings, fmt.Errorf("failed to upload snapshot: %w", err)
-			}
-			fmt.Println("✅ Snapshot uploaded successfully")
 		} else {
 			fmt.Println("💾 Saving snapshot to local storage...")
-			if err := snapshot.Upload(ctx, r.storage, paths); err != nil {
-				return timings, fmt.Errorf("failed to save snapshot: %w", err)
-			}
-			fmt.Println("✅ Snapshot saved successfully")
 		}
+
+		upload, err := sandbox.NewUpload(ctx, nil, snapshot, r.storage, storage.CompressConfig{}, nil, "", nil)
+		if err != nil {
+			return timings, fmt.Errorf("failed to prepare upload: %w", err)
+		}
+
+		if err := upload.Run(ctx); err != nil {
+			return timings, fmt.Errorf("failed to upload snapshot: %w", err)
+		}
+
+		fmt.Println("✅ Snapshot uploaded successfully")
 
 		fmt.Printf("\n✅ Build finished: %s\n", opts.newBuildID)
 		printArtifactSizes(opts.storagePath, opts.newBuildID)
@@ -860,7 +919,7 @@ func (r *runner) collectAndUploadPrefetch(ctx context.Context, opts pauseOptions
 		Memory: mapping,
 	})
 
-	if err := metadata.UploadMetadata(ctx, r.storage, updatedMeta); err != nil {
+	if err := metadata.UploadMetadata(ctx, r.storage, updatedMeta, nil); err != nil {
 		return fmt.Errorf("upload metadata: %w", err)
 	}
 
@@ -955,16 +1014,23 @@ func (r *runner) benchmark(ctx context.Context, n int) error {
 	return lastErr
 }
 
-func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, verbose bool, pauseOpts pauseOptions, runOpts runOptions) error {
+func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, noEgress, verbose, shell bool, pauseOpts pauseOptions, runOpts runOptions, fphBenchOpts fphBenchOptions) error {
 	// Silence other loggers unless verbose mode
 	var l logger.Logger
 	if !verbose {
 		cmdutil.SuppressNoisyLogs()
 		l = logger.NewNopLogger()
+		sbxlogger.SetSandboxLoggerInternal(logger.NewNopLogger())
 	} else {
-		l, _ = logger.NewDevelopmentLogger()
+		var err error
+		l, err = logger.NewDevelopmentLogger()
+		if err != nil {
+			return fmt.Errorf("logger: %w", err)
+		}
+		logger.ReplaceGlobals(ctx, l)
+		sbxlogger.SetSandboxLoggerExternal(l)
+		sbxlogger.SetSandboxLoggerInternal(l)
 	}
-	sbxlogger.SetSandboxLoggerInternal(logger.NewNopLogger())
 
 	tel, err := telemetry.NewAnonymous(ctx, "resume-build")
 	if err != nil {
@@ -1006,10 +1072,15 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	go tcpFw.Start(ctx)
 	defer tcpFw.Close(context.WithoutCancel(ctx))
 
+	var egressProxy network.EgressProxy = network.NoopEgressProxy{}
+	if noEgress {
+		egressProxy = noEgressProxy{}
+	}
+
 	if verbose {
 		fmt.Println("🔧 Creating network storage...")
 	}
-	slotStorage, err := network.NewStorageLocal(ctx, config.NetworkConfig, network.NoopEgressProxy{})
+	slotStorage, err := network.NewStorageLocal(ctx, config.NetworkConfig, egressProxy)
 	if err != nil {
 		return fmt.Errorf("network storage: %w", err)
 	}
@@ -1066,7 +1137,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating sandbox factory...")
 	}
-	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), network.NewNoopEgressProxy(), sandboxes)
+	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), egressProxy, sandboxes)
 
 	fmt.Printf("📦 Loading %s...\n", buildID)
 	tmpl, err := cache.GetTemplate(ctx, buildID, false, false)
@@ -1089,10 +1160,11 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 
 	token := "local"
 	sbxCfg := sandbox.NewConfig(sandbox.Config{
-		BaseTemplateID: buildID,
-		Vcpu:           1,
-		RamMB:          512,
-		Envd:           sandbox.EnvdMetadata{Vars: map[string]string{}, AccessToken: &token, Version: "1.0.0"},
+		BaseTemplateID:    buildID,
+		Vcpu:              1,
+		RamMB:             512,
+		FreePageReporting: fphBenchOpts.enabled,
+		Envd:              sandbox.EnvdMetadata{Vars: map[string]string{}, AccessToken: &token, Version: "1.0.0"},
 		FirecrackerConfig: fc.Config{
 			KernelVersion:      meta.Template.KernelVersion,
 			FirecrackerVersion: meta.Template.FirecrackerVersion,
@@ -1106,9 +1178,14 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		cache:      cache,
 		coldStart:  coldStart,
 		noPrefetch: noPrefetch,
+		shell:      shell,
 		config:     config.BuilderConfig,
 		storage:    persistence,
 		sbxConfig:  sbxCfg,
+	}
+
+	if fphBenchOpts.enabled {
+		return r.fphBench(ctx, fphBenchOpts)
 	}
 
 	if runOpts.enabled() {
@@ -1147,32 +1224,15 @@ func printTemplateInfo(ctx context.Context, tmpl template.Template, meta metadat
 	}
 }
 
-// runCommandInSandbox runs a command inside the sandbox via envd
+// runCommandInSandboxTimeout caps how long a single resume-build command may
+// run before envd kills it. Restores the prior 10-minute upper bound that the
+// shared http.Client used to enforce, so a stuck command can't block the CLI.
+const runCommandInSandboxTimeout = 10 * time.Minute
+
+// runCommandInSandbox runs a command inside the sandbox via envd as a
+// login shell so /etc/profile is sourced.
 func runCommandInSandbox(ctx context.Context, sbx *sandbox.Sandbox, command string) error {
-	// Connect directly to envd on the sandbox
-	envdURL := fmt.Sprintf("http://%s:%d", sbx.Slot.HostIPString(), consts.DefaultEnvdServerPort)
-
-	hc := http.Client{
-		Timeout:   10 * time.Minute,
-		Transport: sandbox.SandboxHttpTransport,
-	}
-
-	processC := processconnect.NewProcessClient(&hc, envdURL)
-
-	req := connect.NewRequest(&process.StartRequest{
-		Process: &process.ProcessConfig{
-			Cmd:  "/bin/bash",
-			Args: []string{"-l", "-c", command},
-		},
-	})
-	grpc.SetUserHeader(req.Header(), "root")
-
-	// Set access token if available
-	if sbx.Config.Envd.AccessToken != nil {
-		req.Header().Set("X-Access-Token", *sbx.Config.Envd.AccessToken)
-	}
-
-	stream, err := processC.Start(ctx, req)
+	stream, err := sbx.StartEnvdShell(ctx, "/bin/bash", []string{"-l", "-c", command}, "root", runCommandInSandboxTimeout)
 	if err != nil {
 		return fmt.Errorf("failed to start process: %w", err)
 	}
@@ -1457,4 +1517,33 @@ func (t *noPrefetchTemplate) Metadata() (metadata.Template, error) {
 	meta.Prefetch = nil
 
 	return meta, nil
+}
+
+// noEgressProxy is an EgressProxy that removes the default route from the
+// sandbox's netns at slot-creation time.
+type noEgressProxy struct {
+	network.NoopEgressProxy
+}
+
+func (noEgressProxy) OnSlotCreate(s *network.Slot, _ *iptables.IPTables) error {
+	nsPath := filepath.Join("/var/run/netns", s.NamespaceID())
+
+	handle, err := ns.GetNS(nsPath)
+	if err != nil {
+		return fmt.Errorf("get netns %q: %w", nsPath, err)
+	}
+	defer handle.Close()
+
+	// Match the route installed earlier in Slot.CreateNetwork:
+	//   Scope = SCOPE_UNIVERSE, Gw = VethIP.
+	return handle.Do(func(_ ns.NetNS) error {
+		if err := netlink.RouteDel(&netlink.Route{
+			Scope: netlink.SCOPE_UNIVERSE,
+			Gw:    s.VethIP(),
+		}); err != nil {
+			return fmt.Errorf("delete default route in %s: %w", s.NamespaceID(), err)
+		}
+
+		return nil
+	})
 }

@@ -59,13 +59,33 @@ linters:
     - wsl
     - wsl_v5
 
+  exclusions:
+    rules:
+      - path: '^packages/db/pkg/dberrors/dberrors\.go$'
+        linters:
+          - forbidigo
+      - path: '.*_test\.go$'
+        text: "Use github.com/e2b-dev/infra/packages/db/pkg/dberrors.IsNotFoundError instead."
+        linters:
+          - forbidigo
+      # Pre-existing packages with non-recommended names ("types", "utils").
+      # excluded for now.
+      - path: ".*"
+        text: "package-naming"
+        linters:
+          - revive
+
   settings:
     forbidigo:
       forbid:
-        - pattern: "^new$"
-          msg: "Use &Type{} instead."
-    #        - pattern: os\.Getenv
-    #          msg: "Add your field to the configuration model instead."
+        - pattern: '.*\.ErrNoRows$'
+          pkg: "^database/sql$"
+          msg: "Use github.com/e2b-dev/infra/packages/db/pkg/dberrors.IsNotFoundError instead."
+        - pattern: '.*\.ErrNoRows$'
+          pkg: '^github\.com/jackc/pgx/v5$'
+          msg: "Use github.com/e2b-dev/infra/packages/db/pkg/dberrors.IsNotFoundError instead."
+        #        - pattern: os\.Getenv
+        #          msg: "Add your field to the configuration model instead."
         - pattern: 'zap\.New$'
           pkg: '^go\.uber\.org/zap$'
           msg: "Use github.com/e2b-dev/infra/packages/shared/pkg/logger instead of zap.New()"
@@ -188,7 +208,6 @@ linters:
         - -QF1008 # Omit embedded fields from selector expression
 
 run:
-  go: 1.25.9
   allow-parallel-runners: true
 
 issues:

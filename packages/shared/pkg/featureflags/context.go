@@ -81,11 +81,13 @@ func mergeSameKind(first ldcontext.Context, second ldcontext.Context) ldcontext.
 	return builder.Build()
 }
 
-func removeUndefined(contexts []ldcontext.Context) []ldcontext.Context {
+// removeInvalid drops undefined or invalid (e.g. empty key) contexts that
+// would otherwise poison the resulting multi-context.
+func removeInvalid(contexts []ldcontext.Context) []ldcontext.Context {
 	var result []ldcontext.Context
 
 	for _, item := range contexts {
-		if !item.IsDefined() {
+		if !item.IsDefined() || item.Err() != nil {
 			continue
 		}
 
@@ -103,7 +105,7 @@ func mergeContexts(ctx context.Context, contexts []ldcontext.Context) ldcontext.
 
 	contexts = flattenContexts(contexts)
 
-	contexts = removeUndefined(contexts)
+	contexts = removeInvalid(contexts)
 
 	if len(contexts) == 0 {
 		return ldcontext.NewWithKind("none", "none")
@@ -162,6 +164,14 @@ func TemplateContext(templateID string) ldcontext.Context {
 
 func VolumeContext(volumeName string) ldcontext.Context {
 	return ldcontext.NewWithKind(VolumeKind, volumeName)
+}
+
+func CompressFileTypeContext(fileType string) ldcontext.Context {
+	return ldcontext.NewWithKind(CompressFileTypeKind, fileType)
+}
+
+func CompressUseCaseContext(useCase string) ldcontext.Context {
+	return ldcontext.NewWithKind(CompressUseCaseKind, useCase)
 }
 
 func VersionContext(orchestratorID, commit string) ldcontext.Context {

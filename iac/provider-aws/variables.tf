@@ -39,6 +39,11 @@ variable "api_cluster_size" {
   default = 1
 }
 
+variable "api_internal_grpc_port" {
+  type    = number
+  default = 5009
+}
+
 variable "api_server_machine_type" {
   type    = string
   default = "t3.xlarge"
@@ -125,6 +130,12 @@ variable "allow_sandbox_internet" {
   default = true
 }
 
+variable "allow_sandbox_internal_cidrs" {
+  type        = string
+  description = "Comma-separated CIDRs to allow through the sandbox firewall deny list (e.g. 10.0.0.1/32,10.0.0.2/32)"
+  default     = ""
+}
+
 variable "envd_timeout" {
   type    = string
   default = "40s"
@@ -180,4 +191,28 @@ variable "auth_db_max_open_connections" {
 variable "auth_db_min_idle_connections" {
   type    = number
   default = 5
+}
+
+variable "enable_otel_router_logs" {
+  type        = bool
+  default     = false
+  description = "Enable teeing non-internal customer logs from Vector to otel-router."
+}
+
+variable "otel_router_http_port" {
+  type        = number
+  default     = 4321
+  description = "Local otel-router Vector-compatible logs port used by Vector when otel-router log teeing is enabled."
+}
+
+variable "enable_otel_router_metrics" {
+  type        = bool
+  default     = false
+  description = "Enable teeing external customer metrics from otel-collector to otel-router."
+}
+
+variable "otel_router_grpc_port" {
+  type        = number
+  default     = 4320
+  description = "Local otel-router OTLP gRPC port used by otel-collector when otel-router metric teeing is enabled."
 }

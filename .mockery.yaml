@@ -1,5 +1,7 @@
 packages:
   github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem/filesystemconnect:
+    config:
+      include-auto-generated: true
     interfaces:
       FilesystemHandler:
         config:
@@ -8,6 +10,8 @@ packages:
           pkgname: filesystemconnectmocks
 
   github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator:
+    config:
+      include-auto-generated: true
     interfaces:
       ChunkServiceClient:
         config:
@@ -39,34 +43,38 @@ packages:
     interfaces:
       featureFlagsClient:
         config:
-          dir: packages/shared/pkg/storage/mocks
-          filename: mockfeatureflagsclient.go
-          pkgname: storagemocks
+          dir: packages/shared/pkg/storage
+          filename: mock_featureflagsclient.go
+          pkgname: storage
+          inpackage: true
           structname: MockFeatureFlagsClient
       Blob:
         config:
-          dir: packages/shared/pkg/storage/mocks
-          filename: mockobjectprovider.go
-          pkgname: storagemocks
+          dir: packages/shared/pkg/storage
+          filename: mock_blob.go
+          pkgname: storage
+          inpackage: true
       Seekable:
         config:
-          dir: packages/shared/pkg/storage/mocks
-          filename: mockseekableobjectprovider.go
-          pkgname: storagemocks
+          dir: packages/shared/pkg/storage
+          filename: mock_seekable.go
+          pkgname: storage
+          inpackage: true
       StorageProvider:
         config:
-          dir: packages/shared/pkg/storage/mocks/provider
-          filename: mockstorageprovider.go
-          pkgname: providermocks
-
+          dir: packages/shared/pkg/storage
+          filename: mock_storageprovider.go
+          pkgname: storage
+          inpackage: true
 
   io:
     interfaces:
       Reader:
         config:
-          dir: packages/shared/pkg/storage/mocks
-          filename: mockioreader.go
-          pkgname: storagemocks
+          dir: packages/shared/pkg/storage
+          filename: mock_ioreader.go
+          pkgname: storage
+          inpackage: true
 
   github.com/e2b-dev/infra/packages/shared/pkg/utils:
     interfaces:

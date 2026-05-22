@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
+	"os"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/storageopts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -41,6 +44,10 @@ const (
 
 	// MemoryChunkSize must always be bigger or equal to the block size.
 	MemoryChunkSize = 4 * 1024 * 1024 // 4 MB
+
+	// MetadataKeyUncompressedSize stores the original size so that Size()
+	// returns the uncompressed size for compressed objects.
+	MetadataKeyUncompressedSize = "uncompressed-size"
 )
 
 // GetProviderType returns the configured storage provider type from the
@@ -83,32 +90,105 @@ type StorageProvider interface {
 	GetDetails() string
 }
 
+type (
+	ObjectMetadata = storageopts.ObjectMetadata
+	PutOptions     = storageopts.PutOptions
+	PutOption      = storageopts.PutOption
+)
+
+const ObjectMetadataTeamID = storageopts.ObjectMetadataTeamID
+
+func WithMetadata(metadata ObjectMetadata) PutOption { return storageopts.WithMetadata(metadata) }
+
+// WithCompressConfig threads a typed CompressConfig through PutOptions. It is
+// stored as `any` in storageopts to avoid importing storage from there;
+// backends use CompressConfigFromOpts to pull it back out.
+func WithCompressConfig(cfg CompressConfig) PutOption { return storageopts.WithCompression(cfg) }
+
+func WithChecksumSHA256() PutOption {
+	return func(o *PutOptions) { o.Checksum = true }
+}
+
+// sum256 finalizes h into a SHA-256 digest, or the zero digest when h is nil.
+func sum256(h hash.Hash) [32]byte {
+	var sum [32]byte
+	if h != nil {
+		copy(sum[:], h.Sum(nil))
+	}
+
+	return sum
+}
+
+func ApplyPutOptions(opts []PutOption) PutOptions { return storageopts.Apply(opts) }
+
+// CompressConfigFromOpts returns the typed CompressConfig set by
+// WithCompressConfig, or the zero value if absent.
+func CompressConfigFromOpts(p PutOptions) CompressConfig {
+	if c, ok := p.Compression.(CompressConfig); ok {
+		return c
+	}
+
+	return CompressConfig{}
+}
+
 type Blob interface {
 	WriteTo(ctx context.Context, dst io.Writer) (int64, error)
-	Put(ctx context.Context, data []byte) error
+	Put(ctx context.Context, data []byte, opts ...storageopts.PutOption) error
 	Exists(ctx context.Context) (bool, error)
 }
 
 type SeekableReader interface {
 	// Random slice access, off and buffer length must be aligned to block size
-	ReadAt(ctx context.Context, buffer []byte, off int64) (int, error)
+	ReadAt(ctx context.Context, buffer []byte, off int64, ft *FrameTable) (int, error)
 	Size(ctx context.Context) (int64, error)
 }
 
 // StreamingReader supports progressive reads via a streaming range reader.
 type StreamingReader interface {
-	OpenRangeReader(ctx context.Context, off, length int64) (io.ReadCloser, error)
+	OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error)
 }
 
 type SeekableWriter interface {
-	// Store entire file
-	StoreFile(ctx context.Context, path string) error
+	// Store entire file. Compression is opt-in via WithCompressConfig.
+	StoreFile(ctx context.Context, path string, opts ...PutOption) (*FrameTable, [32]byte, error)
 }
 
 type Seekable interface {
-	SeekableReader
-	SeekableWriter
 	StreamingReader
+	SeekableWriter
+	Size(ctx context.Context) (int64, error)
+}
+
+func UploadFramed(ctx context.Context, provider StorageProvider, remotePath string, objType SeekableObjectType, localPath string, opts ...PutOption) (*FrameTable, [32]byte, error) {
+	object, err := provider.OpenSeekable(ctx, remotePath, objType)
+	if err != nil {
+		return nil, [32]byte{}, err
+	}
+
+	return object.StoreFile(ctx, localPath, opts...)
+}
+
+func UploadBlob(ctx context.Context, provider StorageProvider, remotePath string, objType ObjectType, localPath string, opts ...PutOption) error {
+	blob, err := provider.OpenBlob(ctx, remotePath, objType)
+	if err != nil {
+		return err
+	}
+
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		return fmt.Errorf("failed to read file %s: %w", localPath, err)
+	}
+
+	return blob.Put(ctx, data, opts...)
+}
+
+// PeerTransitionedError is returned by the peer Seekable when the remote
+// storage upload has completed; the caller should re-load the V4 header from
+// storage.
+type PeerTransitionedError struct{}
+
+func (e *PeerTransitionedError) Error() string {
+	return "peer upload completed, reload header from storage"
 }
 
 // StorageConfig holds the configuration for creating a storage provider.

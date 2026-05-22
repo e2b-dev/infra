@@ -1,3 +1,5 @@
+//go:build linux
+
 package factories
 
 import (
@@ -548,7 +550,14 @@ func run(config cfg.Config, opts Options) (success bool) {
 	builder := chrooted.NewBuilder(config)
 	volumeService := volumes.New(config, builder)
 
-	orchestratorService, err := server.New(server.ServiceConfig{
+	uploads := sandbox.NewUploads(templateCache, persistence, peerResolver, redisClient)
+	closers = append(closers, closer{"pending uploads", func(context.Context) error {
+		uploads.Stop()
+
+		return nil
+	}})
+
+	orchestratorService, err := server.New(ctx, server.ServiceConfig{
 		Config:           config,
 		SandboxFactory:   sandboxFactory,
 		Tel:              tel,
@@ -561,10 +570,14 @@ func run(config cfg.Config, opts Options) (success bool) {
 		FeatureFlags:     featureFlags,
 		SbxEventsService: events.NewEventsService(sbxEventsDeliveryTargets),
 		PeerRegistry:     peerRegistry,
+		Uploads:          uploads,
 	})
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create orchestrator server", zap.Error(err))
 	}
+	closers = append(closers, closer{"orchestrator server", func(context.Context) error {
+		return orchestratorService.Close()
+	}})
 
 	// template manager sandbox logger
 	tmplSbxLoggerExternal := sbxlogger.NewLogger(
@@ -639,6 +652,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 			templateCache,
 			persistence,
 			buildPersistence,
+			uploads,
 		)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to create template manager", zap.Error(err))

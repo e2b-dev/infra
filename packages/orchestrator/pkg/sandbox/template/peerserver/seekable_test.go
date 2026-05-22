@@ -1,3 +1,5 @@
+//go:build linux
+
 package peerserver
 
 import (
@@ -36,7 +38,7 @@ func TestSeekableSource_Stream(t *testing.T) {
 	data := []byte("diff bytes")
 
 	diff := buildmocks.NewMockDiff(t)
-	diff.EXPECT().Slice(mock.Anything, int64(0), int64(len(data))).Return(data, nil)
+	diff.EXPECT().Slice(mock.Anything, int64(0), int64(len(data)), (*storage.FrameTable)(nil)).Return(data, nil)
 	diff.EXPECT().BlockSize().Return(int64(len(data)))
 
 	cache := peerservermocks.NewMockCache(t)

@@ -46,7 +46,7 @@ func (e *ProvisionError) Unwrap() error {
 func provisionLogFields(req sharedteamprovision.TeamBillingProvisionRequestedV1, sink string) []zap.Field {
 	return []zap.Field{
 		logger.WithTeamID(req.TeamID.String()),
-		logger.WithUserID(req.OwnerUserID.String()),
+		logger.WithUserID(req.CreatorUserID.String()),
 		zap.String("team.provision.reason", req.Reason),
 		zap.String("team.provision.sink", sink),
 	}
@@ -55,7 +55,7 @@ func provisionLogFields(req sharedteamprovision.TeamBillingProvisionRequestedV1,
 func provisionTelemetryAttrs(req sharedteamprovision.TeamBillingProvisionRequestedV1, sink string, attrs ...attribute.KeyValue) []attribute.KeyValue {
 	base := []attribute.KeyValue{
 		telemetry.WithTeamID(req.TeamID.String()),
-		telemetry.WithUserID(req.OwnerUserID.String()),
+		telemetry.WithUserID(req.CreatorUserID.String()),
 		attribute.String("team.provision.reason", req.Reason),
 		attribute.String("team.provision.sink", sink),
 	}

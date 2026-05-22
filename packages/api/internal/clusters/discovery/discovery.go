@@ -16,8 +16,8 @@ type Item struct {
 	// Instance ID that changes on each restart, available only for edge-backend service discovery.
 	InstanceID string
 
-	// Following fields are available only for local cluster.
-	// For remote clusters gRPC proxy is used and these fields are not needed.
+	// LocalIPAddress is the node IP/host. Local clusters also use it for direct
+	// control-plane calls; remote clusters use it only for data-plane routing.
 	LocalIPAddress       string
 	LocalInstanceApiPort uint16
 }

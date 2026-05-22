@@ -110,12 +110,9 @@ DNSStubListenerExtra=172.17.0.1
 EOF
 systemctl restart systemd-resolved
 
-# Install CNI plugin for networking in Nomad (bridge mode)
-ARCH_CNI=$([ "$(uname -m)" = aarch64 ] && echo arm64 || echo amd64)
-CNI_PLUGIN_VERSION=v1.6.2
-curl -L -o cni-plugins.tgz "https://github.com/containernetworking/plugins/releases/download/$${CNI_PLUGIN_VERSION}/cni-plugins-linux-$${ARCH_CNI}-$${CNI_PLUGIN_VERSION}".tgz &&
-  sudo mkdir -p /opt/cni/bin &&
-  sudo tar -C /opt/cni/bin -xzf cni-plugins.tgz
+# Note: CNI plugins (needed for Nomad bridge-mode networking) are pre-installed
+# in the cluster disk image at build time. See
+# iac/nomad-cluster-disk-image/setup/install-cni-plugins.sh
 
 # These variables are passed in via Terraform template interpolation
 /opt/consul/bin/run-consul.sh --client \
@@ -127,5 +124,5 @@ curl -L -o cni-plugins.tgz "https://github.com/containernetworking/plugins/relea
 
 /opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" &
 
-# Install clickhouse client to make it easier to interact with the ClickHouse server
-cd /usr/local/bin && curl https://clickhouse.com/ | sh && sudo ./clickhouse install &
+# Note: the clickhouse client is pre-installed in the cluster disk image at build
+# time (see iac/nomad-cluster-disk-image/setup/install-clickhouse-client.sh).

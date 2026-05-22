@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
+	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sharedteamprovision "github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -32,13 +33,16 @@ const (
 	provisionBackoffMultiplier       = 2.0
 	// Error responses only need enough body to extract a short API message without buffering large upstream payloads.
 	provisionErrorMessageReadLimit = 2 * 1024
+	// short cap so a slow auth.users lookup can't eat into the provisioning timeout.
+	creatorContextResolveTimeout = 2 * time.Second
 )
 
 type HTTPProvisionSink struct {
-	baseURL  string
-	apiToken string
-	client   *retryablehttp.Client
-	timeout  time.Duration
+	baseURL    string
+	apiToken   string
+	client     *retryablehttp.Client
+	timeout    time.Duration
+	supabaseDB *supabasedb.Client
 }
 
 var _ TeamProvisionSink = (*HTTPProvisionSink)(nil)
@@ -47,12 +51,13 @@ type errorResponse struct {
 	Message string `json:"message"`
 }
 
-func NewHTTPProvisionSink(baseURL, apiToken string) *HTTPProvisionSink {
+func NewHTTPProvisionSink(baseURL, apiToken string, supabaseDB *supabasedb.Client) *HTTPProvisionSink {
 	return &HTTPProvisionSink{
-		baseURL:  strings.TrimRight(baseURL, "/"),
-		apiToken: apiToken,
-		client:   newRetryableProvisionClient(defaultProvisionAttemptTimeout),
-		timeout:  defaultProvisionTimeout,
+		baseURL:    strings.TrimRight(baseURL, "/"),
+		apiToken:   apiToken,
+		client:     newRetryableProvisionClient(defaultProvisionAttemptTimeout),
+		timeout:    defaultProvisionTimeout,
+		supabaseDB: supabaseDB,
 	}
 }
 
@@ -73,6 +78,20 @@ func (s *HTTPProvisionSink) ProvisionTeam(ctx context.Context, req sharedteampro
 		telemetry.ReportErrorByCode(ctx, err.StatusCode, "team provisioning failed", err, failureAttrs...)
 
 		return err
+	}
+
+	if s.supabaseDB != nil && req.CreatorContext == nil {
+		resolveCtx, cancel := context.WithTimeout(ctx, creatorContextResolveTimeout)
+		creatorContext, resolveErr := resolveCreatorContext(resolveCtx, s.supabaseDB, req.CreatorUserID)
+		cancel()
+		if resolveErr != nil {
+			// creator context is best-effort; keep going without it
+			logger.L().Warn(ctx, "failed to resolve creator context for team provisioning",
+				append(provisionLogFields(req, provisionSinkHTTP), zap.Error(resolveErr))...,
+			)
+		} else {
+			req.CreatorContext = creatorContext
+		}
 	}
 
 	body, err := json.Marshal(req)

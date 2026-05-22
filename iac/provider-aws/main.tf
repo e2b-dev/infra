@@ -61,9 +61,29 @@ module "init" {
 }
 
 locals {
-  redis_port   = 6379
-  ingress_port = 8080
-  nomad_port   = 4646
+  redis_port            = 6379
+  ingress_port          = 8080
+  ingress_internal_port = 9435
+  nomad_port            = 4646
+
+  # Filter out empty / too-short HMAC secrets so that placeholder values left in
+  # AWS Secrets Manager on a fresh deploy don't get fed to legacy.NewVerifier,
+  # which rejects secrets shorter than 16 bytes and would fatal the api job.
+  legacy_hmac_secrets = [
+    for s in split(",", trimspace(module.init.supabase_jwt_secrets)) : s
+    if length(s) >= 16
+  ]
+  auth_provider_config = length(local.legacy_hmac_secrets) > 0 ? {
+    jwt = []
+    legacy = {
+      hmac = {
+        secrets = local.legacy_hmac_secrets
+      }
+    }
+    } : {
+    jwt    = []
+    legacy = null
+  }
 
   api_pool_name          = "api"
   client_pool_name       = "default"
@@ -183,15 +203,18 @@ module "nomad" {
   clickhouse_jobs_prefix = local.clickhouse_jobs_prefix
 
   api_cluster_size               = var.api_cluster_size
+  api_internal_grpc_port         = var.api_internal_grpc_port
   api_repository_name            = module.init.api_repository_name
   db_migrator_repository_name    = module.init.db_migrator_repository_name
   postgres_connection_string     = module.init.postgres_connection_string
-  supabase_jwt_secrets           = module.init.supabase_jwt_secrets
+  auth_provider_config           = local.auth_provider_config
   admin_token                    = module.init.admin_token
   sandbox_access_token_hash_seed = module.init.sandbox_access_token_hash_seed
 
-  ingress_port         = local.ingress_port
-  ingress_count        = var.ingress_count
+  ingress_count         = var.ingress_count
+  ingress_port          = local.ingress_port
+  ingress_internal_port = local.ingress_internal_port
+
   traefik_config_files = var.traefik_config_files
 
   client_proxy_count           = var.client_proxy_count
@@ -199,6 +222,7 @@ module "nomad" {
 
   orchestrator_node_pool              = local.client_pool_name
   allow_sandbox_internet              = var.allow_sandbox_internet
+  allow_sandbox_internal_cidrs        = var.allow_sandbox_internal_cidrs
   orchestrator_port                   = var.orchestrator_port
   orchestrator_proxy_port             = var.orchestrator_proxy_port
   envd_timeout                        = var.envd_timeout
@@ -227,6 +251,12 @@ module "nomad" {
   clickhouse_migrator_repository_name = module.init.clickhouse_migrator_repository_name
 
   launch_darkly_api_key = module.init.launch_darkly_api_key
+
+  enable_otel_router_logs = var.enable_otel_router_logs
+  otel_router_http_port   = var.otel_router_http_port
+
+  enable_otel_router_metrics = var.enable_otel_router_metrics
+  otel_router_grpc_port      = var.otel_router_grpc_port
 
   db_max_open_connections      = var.db_max_open_connections
   db_min_idle_connections      = var.db_min_idle_connections

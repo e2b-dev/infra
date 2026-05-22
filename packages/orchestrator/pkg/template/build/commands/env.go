@@ -1,3 +1,5 @@
+//go:build linux
+
 package commands
 
 import (
@@ -72,6 +74,7 @@ func evaluateValue(
 
 	cmd := fmt.Sprintf(`printf "%%s" "%s"`, escaped)
 
+	var out strings.Builder
 	err := sandboxtools.RunCommandWithOutput(
 		ctx,
 		proxy,
@@ -81,12 +84,12 @@ func evaluateValue(
 			User: "root",
 		},
 		func(stdout, _ string) {
-			envValue = stdout
+			out.WriteString(stdout)
 		},
 	)
 	if err != nil {
 		return "", err
 	}
 
-	return envValue, nil
+	return out.String(), nil
 }

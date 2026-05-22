@@ -12,7 +12,7 @@ import (
 	"github.com/caarlos0/env/v11"
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 )
 
 const (
@@ -20,6 +20,15 @@ const (
 	// It will also keep redis populated to allow for seamless migration to redis.
 	SandboxStorageBackendMemory = "memory"
 	SandboxStorageBackendRedis  = "redis"
+
+	// ServiceDiscoveryProviderNomad queries Nomad's HTTP API (the original / Nomad-based deploy).
+	ServiceDiscoveryProviderNomad = "nomad"
+	// ServiceDiscoveryProviderKubernetes queries the in-cluster K8s API (the K8s deploy).
+	ServiceDiscoveryProviderKubernetes = "kubernetes"
+	// ServiceDiscoveryProviderLocal returns a single statically configured
+	// orchestrator address. Used to develop the API against the darwin dummy
+	// orchestrator on macOS, where neither Nomad nor Kubernetes is available.
+	ServiceDiscoveryProviderLocal = "local"
 )
 
 type Config struct {
@@ -34,8 +43,25 @@ type Config struct {
 	LokiURL      string `env:"LOKI_URL,required"`
 	LokiUser     string `env:"LOKI_USER"`
 
+	// ServiceDiscoveryProvider selects how the API discovers orchestrator and template-manager instances.
+	// Allowed values:
+	//   "nomad"      (default) - query the local Nomad agent's HTTP API.
+	//   "kubernetes"           - list pods via the in-cluster K8s API.
+	ServiceDiscoveryProvider string `env:"SERVICE_DISCOVERY_PROVIDER" envDefault:"nomad"`
+
 	NomadAddress string `env:"NOMAD_ADDRESS" envDefault:"http://localhost:4646"`
 	NomadToken   string `env:"NOMAD_TOKEN"`
+
+	// LocalOrchestratorAddress is the "host:port" address of a statically
+	// configured orchestrator instance. Required when
+	// ServiceDiscoveryProvider=local. Used for local dev against the darwin
+	// dummy orchestrator.
+	LocalOrchestratorAddress string `env:"LOCAL_ORCHESTRATOR_ADDRESS" envDefault:"127.0.0.1:5008"`
+
+	// Used when ServiceDiscoveryProvider=kubernetes.
+	K8sNamespace                       string `env:"K8S_NAMESPACE"                           envDefault:"default"`
+	K8sOrchestratorPodLabelSelector    string `env:"K8S_ORCHESTRATOR_POD_LABEL_SELECTOR"     envDefault:"app.kubernetes.io/name=orchestrator"`
+	K8sTemplateManagerPodLabelSelector string `env:"K8S_TEMPLATE_MANAGER_POD_LABEL_SELECTOR" envDefault:"app.kubernetes.io/name=template-manager"`
 
 	PostgresConnectionString string `env:"POSTGRES_CONNECTION_STRING,required,notEmpty"`
 	DBMaxOpenConnections     int32  `env:"DB_MAX_OPEN_CONNECTIONS"                      envDefault:"40"`
@@ -53,18 +79,16 @@ type Config struct {
 	RedisTLSCABase64 string `env:"REDIS_TLS_CA_BASE64"`
 	RedisPoolSize    int    `env:"REDIS_POOL_SIZE"     envDefault:"160"`
 
-	APIGrpcPort uint16 `env:"API_GRPC_PORT" envDefault:"5009"`
+	APIInternalGrpcPort uint16 `env:"API_INTERNAL_GRPC_PORT" envDefault:"5009"`
+	APIEdgeGrpcPort     uint16 `env:"API_EDGE_GRPC_PORT"     envDefault:"5109"`
+
+	ClientProxyOIDCIssuerURL string `env:"CLIENT_PROXY_OIDC_ISSUER_URL"`
 
 	SandboxAccessTokenHashSeed string `env:"SANDBOX_ACCESS_TOKEN_HASH_SEED"`
 
 	VolumesToken VolumesTokenConfig
 
-	// SupabaseJWTSecrets is a list of secrets used to verify the Supabase JWT.
-	// More secrets are possible in the case of JWT secret rotation where we need to accept
-	// tokens signed with the old secret for some time.
-	SupabaseJWTSecrets []string `env:"SUPABASE_JWT_SECRETS"`
-
-	DefaultKernelVersion string `env:"DEFAULT_KERNEL_VERSION"`
+	AuthProvider auth.ProviderConfig `env:"AUTH_PROVIDER_CONFIG"`
 
 	DefaultPersistentVolumeType string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`
 
@@ -90,6 +114,9 @@ var (
 	ErrUnknownKeyType       = errors.New("unknown JWT signing key type")
 
 	parserFuncs = map[reflect.Type]env.ParserFunc{
+		reflect.TypeFor[auth.ProviderConfig](): func(v string) (any, error) {
+			return auth.ParseProviderConfig(v)
+		},
 		reflect.TypeFor[JWTSigningKey](): func(v string) (any, error) {
 			keyPieces := strings.SplitN(v, ":", 2)
 			if len(keyPieces) != 2 {
@@ -134,16 +161,16 @@ func Parse() (Config, error) {
 		return Config{}, err
 	}
 
-	if config.DefaultKernelVersion == "" {
-		config.DefaultKernelVersion = featureflags.DefaultKernelVersion
-	}
-
 	if config.AuthDBConnectionString == "" {
 		config.AuthDBConnectionString = config.PostgresConnectionString
 	}
 
 	if !slices.Contains([]string{SandboxStorageBackendMemory, SandboxStorageBackendRedis}, config.SandboxStorageBackend) {
 		return config, fmt.Errorf("invalid sandbox storage backend: %s", config.SandboxStorageBackend)
+	}
+
+	if !slices.Contains([]string{ServiceDiscoveryProviderNomad, ServiceDiscoveryProviderKubernetes, ServiceDiscoveryProviderLocal}, config.ServiceDiscoveryProvider) {
+		return config, fmt.Errorf("invalid service discovery provider: %s", config.ServiceDiscoveryProvider)
 	}
 
 	return config, nil

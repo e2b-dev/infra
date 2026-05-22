@@ -1,3 +1,5 @@
+//go:build linux
+
 package peerserver
 
 import (
@@ -33,7 +35,8 @@ func (f *seekableSource) Stream(ctx context.Context, offset, length int64, sende
 	))
 	defer span.End()
 
-	data, err := f.diff.Slice(ctx, offset, length)
+	// P2P always serves uncompressed bytes — pass nil FrameTable.
+	data, err := f.diff.Slice(ctx, offset, length, nil)
 	if err != nil {
 		span.RecordError(err)
 

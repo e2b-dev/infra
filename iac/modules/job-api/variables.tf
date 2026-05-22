@@ -31,7 +31,7 @@ variable "port_number" {
   type = number
 }
 
-variable "api_grpc_port" {
+variable "api_internal_grpc_port" {
   type    = number
   default = 5009
 }
@@ -67,9 +67,25 @@ variable "postgres_read_replica_connection_string" {
   sensitive = true
 }
 
-variable "supabase_jwt_secrets" {
-  type      = string
+variable "auth_provider_config" {
+  type = object({
+    jwt = optional(list(object({
+      issuer = object({
+        url                 = string
+        discoveryURL        = optional(string)
+        audiences           = list(string)
+        audienceMatchPolicy = optional(string)
+      })
+      cacheDuration = optional(string)
+    })))
+    legacy = optional(object({
+      hmac = object({
+        secrets = list(string)
+      })
+    }))
+  })
   sensitive = true
+  default   = null
 }
 
 variable "posthog_api_key" {

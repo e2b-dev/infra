@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	nomadapi "github.com/hashicorp/nomad/api"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -17,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/metrics"
+	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/discovery"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/evictor"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
@@ -47,7 +47,7 @@ type SnapshotCacheInvalidator interface {
 
 type Orchestrator struct {
 	httpClient                    *http.Client
-	nomadClient                   *nomadapi.Client
+	nodeDiscovery                 discovery.Discovery
 	sandboxStore                  *sandbox.Store
 	nodes                         *smap.Map[*nodemanager.Node]
 	placementAlgorithm            *placement.BestOfK
@@ -89,7 +89,7 @@ func New(
 	ctx context.Context,
 	config cfg.Config,
 	tel *telemetry.Client,
-	nomadClient *nomadapi.Client,
+	nodeDiscovery discovery.Discovery,
 	posthogClient *analyticscollector.PosthogClient,
 	redisClient redis.UniversalClient,
 	sqlcDB *sqlcdb.Client,
@@ -110,12 +110,7 @@ func New(
 	}
 	analyticsInstance.Init(ctx)
 
-	var routingCatalog e2bcatalog.SandboxesCatalog
-	if redisClient != nil {
-		routingCatalog = e2bcatalog.NewRedisSandboxCatalog(redisClient)
-	} else {
-		routingCatalog = e2bcatalog.NewMemorySandboxesCatalog()
-	}
+	routingCatalog := e2bcatalog.NewRedisSandboxCatalog(redisClient)
 
 	// We will need to either use Redis or Consul's KV for storing active sandboxes to keep everything in sync,
 	// right now we load them from Orchestrator
@@ -134,14 +129,17 @@ func New(
 
 	bestOfKAlgorithm := placement.NewBestOfK(getBestOfKConfig(ctx, featureFlags)).(*placement.BestOfK)
 
-	redisStorage := redisbackend.NewStorage(redisClient)
+	redisStorage, err := redisbackend.NewStorage(redisClient, tel.MeterProvider)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create redis sandbox storage: %w", err)
+	}
 	go redisStorage.Start(ctx)
 
 	o := Orchestrator{
 		httpClient:           httpClient,
 		analytics:            analyticsInstance,
 		posthogClient:        posthogClient,
-		nomadClient:          nomadClient,
+		nodeDiscovery:        nodeDiscovery,
 		nodes:                smap.New[*nodemanager.Node](),
 		placementAlgorithm:   bestOfKAlgorithm,
 		featureFlagsClient:   featureFlags,
@@ -166,8 +164,10 @@ func New(
 		reservationStorage = reservations.NewReservationStorage()
 		sandboxStorage = populate_redis.NewStorage(memory.NewStorage(), redisStorage)
 		logger.L().Info(ctx, "Using populate_redis sandbox storage backend")
+
+		go redisbackend.NewCleaner(redisStorage).Start(ctx)
 	case cfg.SandboxStorageBackendRedis:
-		reservationStorage = redisreservations.NewReservationStorage(redisClient)
+		reservationStorage = redisreservations.NewReservationStorage(redisClient, redisStorage.Notifier())
 		sandboxStorage = redisStorage
 		logger.L().Info(ctx, "Using redis sandbox storage backend")
 	default:
@@ -185,7 +185,10 @@ func New(
 	)
 
 	// Evict old sandboxes
-	sandboxEvictor := evictor.New(o.sandboxStore, o.RemoveSandbox)
+	sandboxEvictor, err := evictor.New(ctx, o.sandboxStore, o.RemoveSandbox, o.featureFlagsClient, meter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sandbox evictor: %w", err)
+	}
 	go sandboxEvictor.Start(ctx)
 
 	teamMetricsObserver, err := metrics.NewTeamObserver(ctx, o.sandboxStore)
@@ -226,6 +229,7 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 			return
 		case <-ticker.C:
 			connectedNodes := make([]map[string]any, 0, o.nodes.Count())
+			templateManagers := make([]map[string]any, 0)
 
 			for _, nodeItem := range o.nodes.Items() {
 				if nodeItem == nil {
@@ -241,9 +245,23 @@ func (o *Orchestrator) startStatusLogging(ctx context.Context) {
 				}
 			}
 
+			for _, cluster := range o.clusters.GetClusters() {
+				for _, templateManager := range cluster.GetTemplateBuilders() {
+					info := templateManager.GetInfo()
+					templateManagers = append(templateManagers, map[string]any{
+						"cluster_id":          templateManager.ClusterID,
+						"node_id":             templateManager.NodeID,
+						"service_instance_id": info.ServiceInstanceID,
+						"status":              info.Status.String(),
+					})
+				}
+			}
+
 			logger.L().Info(ctx, "API internal status",
 				zap.Int("nodes_count", o.nodes.Count()),
 				zap.Any("nodes", connectedNodes),
+				zap.Int("template_managers_count", len(templateManagers)),
+				zap.Any("template_managers", templateManagers),
 			)
 		}
 	}
@@ -287,7 +305,7 @@ func (o *Orchestrator) Close(ctx context.Context) error {
 		errs = append(errs, err)
 	}
 
-	o.redisStorage.Close()
+	o.redisStorage.Close(ctx)
 
 	return errors.Join(errs...)
 }

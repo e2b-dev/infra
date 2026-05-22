@@ -20,9 +20,9 @@ func setupTestStorage(t *testing.T) (*Storage, redis.UniversalClient) {
 	t.Helper()
 
 	client := redis_utils.SetupInstance(t)
-	storage := NewStorage(client)
+	storage := newTestStorage(t, client)
 	go storage.Start(t.Context())
-	t.Cleanup(storage.Close)
+	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })
 
 	return storage, client
 }
@@ -68,7 +68,7 @@ func TestStartRemoving_BasicTransitions(t *testing.T) {
 			t.Parallel()
 
 			storage, _ := setupTestStorage(t)
-			ctx := context.Background()
+			ctx := t.Context()
 
 			sbx := createTestSandbox("test-" + tt.name)
 			sbx.State = tt.fromState
@@ -114,7 +114,7 @@ func TestStartRemoving_PauseThenKill(t *testing.T) {
 	t.Parallel()
 
 	storage, _ := setupTestStorage(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	sbx := createTestSandbox("pause-then-kill")
 	err := storage.Add(ctx, sbx)
@@ -173,7 +173,7 @@ func TestStartRemoving_ConcurrentSameState(t *testing.T) {
 	t.Parallel()
 
 	storage, _ := setupTestStorage(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	sbx := createTestSandbox("concurrent-same")
 	err := storage.Add(ctx, sbx)
@@ -250,7 +250,7 @@ func TestStartRemoving_NotFound(t *testing.T) {
 	t.Parallel()
 
 	storage, _ := setupTestStorage(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	teamID := uuid.New()
 	_, alreadyDone, callback, err := storage.StartRemoving(ctx, teamID, "non-existent", sandbox.RemoveOpts{Action: sandbox.StateActionKill})
@@ -267,17 +267,17 @@ func TestStartRemoving_ContextCancellation(t *testing.T) {
 	storage, _ := setupTestStorage(t)
 
 	sbx := createTestSandbox("context-cancel")
-	err := storage.Add(context.Background(), sbx)
+	err := storage.Add(t.Context(), sbx)
 	require.NoError(t, err)
 
 	// Start a transition
-	_, alreadyDone1, callback1, err := storage.StartRemoving(context.Background(), sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	_, alreadyDone1, callback1, err := storage.StartRemoving(t.Context(), sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyDone1)
 	require.NotNil(t, callback1)
 
 	// Another request with a short timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
 	defer cancel()
 
 	start := time.Now()
@@ -299,7 +299,7 @@ func TestWaitForStateChange_NoTransition(t *testing.T) {
 	t.Parallel()
 
 	storage, _ := setupTestStorage(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	sbx := createTestSandbox("no-transition")
 	err := storage.Add(ctx, sbx)
@@ -314,7 +314,7 @@ func TestWaitForStateChange_WaitForCompletion(t *testing.T) {
 	t.Parallel()
 
 	storage, _ := setupTestStorage(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	sbx := createTestSandbox("wait-completion")
 	err := storage.Add(ctx, sbx)
@@ -356,17 +356,17 @@ func TestWaitForStateChange_ContextCancellation(t *testing.T) {
 	storage, _ := setupTestStorage(t)
 
 	sbx := createTestSandbox("wait-cancel")
-	err := storage.Add(context.Background(), sbx)
+	err := storage.Add(t.Context(), sbx)
 	require.NoError(t, err)
 
 	// Start a transition
-	_, alreadyDone, callback, err := storage.StartRemoving(context.Background(), sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	_, alreadyDone, callback, err := storage.StartRemoving(t.Context(), sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	require.NotNil(t, callback)
 
 	// Wait with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
 	defer cancel()
 
 	var waitErr error
@@ -394,7 +394,7 @@ func TestWaitForStateChange_MultipleWaiters(t *testing.T) {
 	t.Parallel()
 
 	storage, _ := setupTestStorage(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	sbx := createTestSandbox("multi-waiters")
 	err := storage.Add(ctx, sbx)
@@ -438,7 +438,7 @@ func TestStartRemoving_TransitionKeyTTL(t *testing.T) {
 	t.Parallel()
 
 	storage, client := setupTestStorage(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	sbx := createTestSandbox("ttl-test")
 	err := storage.Add(ctx, sbx)
@@ -466,7 +466,7 @@ func TestStartRemoving_CallbackMarksTransitionCompleted(t *testing.T) {
 	t.Parallel()
 
 	storage, client := setupTestStorage(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	sbx := createTestSandbox("callback-complete")
 	err := storage.Add(ctx, sbx)
@@ -508,7 +508,7 @@ func TestStartRemoving_CallbackSetsErrorOnFailure(t *testing.T) {
 	t.Parallel()
 
 	storage, client := setupTestStorage(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	sbx := createTestSandbox("callback-error")
 	err := storage.Add(ctx, sbx)
@@ -550,7 +550,7 @@ func TestStartRemoving_SetsEndTimeWhenNotExpired(t *testing.T) {
 	t.Parallel()
 
 	storage, _ := setupTestStorage(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	sbx := createTestSandbox("end-time-test")
 	sbx.EndTime = time.Now().Add(time.Hour) // Not expired
@@ -580,7 +580,7 @@ func TestStartRemoving_WaiterCompletesOnCallbackSuccess(t *testing.T) {
 	t.Parallel()
 
 	storage, _ := setupTestStorage(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	sbx := createTestSandbox("waiter-complete-success")
 	err := storage.Add(ctx, sbx)
@@ -626,7 +626,7 @@ func TestStartRemoving_WaiterReceivesErrorOnCallbackFailure(t *testing.T) {
 	t.Parallel()
 
 	storage, _ := setupTestStorage(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	sbx := createTestSandbox("waiter-complete-error")
 	err := storage.Add(ctx, sbx)
@@ -668,7 +668,7 @@ func TestStartRemoving_DifferentExecutionID(t *testing.T) {
 	t.Parallel()
 
 	storage, client := setupTestStorage(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	sbx := createTestSandbox("exec-id-test")
 	sbx.State = sandbox.StateRunning
@@ -802,7 +802,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		t.Parallel()
 
 		storage, _ := setupTestStorage(t)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		sbx := createTestSandbox("evict-ok")
 		sbx.StartTime = time.Now().Add(-2 * time.Hour)
@@ -827,7 +827,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		t.Parallel()
 
 		storage, _ := setupTestStorage(t)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		sbx := createTestSandbox("evict-not-expired")
 		// EndTime defaults to 1 hour from now (not expired)
@@ -850,7 +850,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		t.Parallel()
 
 		storage, _ := setupTestStorage(t)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		sbx := createTestSandbox("evict-in-transition")
 		sbx.StartTime = time.Now().Add(-2 * time.Hour)
@@ -882,7 +882,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		t.Parallel()
 
 		storage, _ := setupTestStorage(t)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		sbx := createTestSandbox("evict-autopause")
 		sbx.StartTime = time.Now().Add(-2 * time.Hour)
@@ -911,7 +911,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		// If EndTime is extended mid-flight (simulating KeepAliveFor),
 		// the retry must still proceed because it is not an eviction.
 		storage, _ := setupTestStorage(t)
-		ctx := context.Background()
+		ctx := t.Context()
 
 		sbx := createTestSandbox("evict-retry-no-flag")
 		sbx.StartTime = time.Now().Add(-2 * time.Hour)
@@ -972,7 +972,7 @@ func TestWaitForStateChange_PubSubWakesWaiterFast(t *testing.T) {
 	t.Parallel()
 
 	storage, _ := setupTestStorage(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	sbx := createTestSandbox("pubsub-fast-wake")
 	err := storage.Add(ctx, sbx)
@@ -1020,7 +1020,7 @@ func TestWaitForStateChange_MultipleWaitersPubSub(t *testing.T) {
 	t.Parallel()
 
 	storage, _ := setupTestStorage(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	sbx := createTestSandbox("pubsub-multi-waiters")
 	err := storage.Add(ctx, sbx)
@@ -1075,19 +1075,19 @@ func TestWaitForStateChange_MultipleWaitersPubSub(t *testing.T) {
 }
 
 // TestCallback_PublishesNotification verifies that the transition callback publishes
-// a notification to the global PubSub channel with the correct routing key.
+// a notification to the global storage PubSub channel with the correct routing key.
 func TestCallback_PublishesNotification(t *testing.T) {
 	t.Parallel()
 
 	storage, client := setupTestStorage(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	sbx := createTestSandbox("callback-publishes")
 	err := storage.Add(ctx, sbx)
 	require.NoError(t, err)
 
 	// Subscribe to the global notification channel directly
-	pubsub := client.Subscribe(ctx, globalTransitionNotifyChannel)
+	pubsub := client.Subscribe(ctx, globalStorageNotifyChannel)
 	defer pubsub.Close()
 
 	// Wait for the subscription to be ready
@@ -1103,15 +1103,22 @@ func TestCallback_PublishesNotification(t *testing.T) {
 	transitionID, err := client.Get(ctx, transitionKey).Result()
 	require.NoError(t, err)
 
+	expectedRoutingKey := getTransitionRoutingKey(sbx.TeamID.String(), sbx.SandboxID, transitionID)
+
 	// Complete the transition
 	callback(ctx, nil)
 
-	// Read the published message
-	msg, err := pubsub.ReceiveMessage(ctx)
-	require.NoError(t, err)
+	readCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
 
-	expectedRoutingKey := getTransitionRoutingKey(sbx.TeamID.String(), sbx.SandboxID, transitionID)
-	assert.Equal(t, expectedRoutingKey, msg.Payload, "published payload should be the per-transition routing key")
+	for {
+		msg, err := pubsub.ReceiveMessage(readCtx)
+		require.NoError(t, err)
+
+		if msg.Payload == expectedRoutingKey {
+			return
+		}
+	}
 }
 
 // TestStartRemoving_PauseThenKill_PubSubFastWake verifies that the PubSub path
@@ -1120,7 +1127,7 @@ func TestStartRemoving_PauseThenKill_PubSubFastWake(t *testing.T) {
 	t.Parallel()
 
 	storage, _ := setupTestStorage(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	sbx := createTestSandbox("pubsub-pause-kill")
 	err := storage.Add(ctx, sbx)
@@ -1206,7 +1213,7 @@ func TestWaitForTransition_StalePubSubNotification(t *testing.T) {
 
 	// Publish a notification using transition A's routing key (stale).
 	staleRoutingKey := getTransitionRoutingKey(sbx.TeamID.String(), sbx.SandboxID, transitionIDA)
-	require.NoError(t, client.Publish(t.Context(), globalTransitionNotifyChannel, staleRoutingKey).Err())
+	require.NoError(t, client.Publish(t.Context(), globalStorageNotifyChannel, staleRoutingKey).Err())
 
 	// Give time for the stale notification to be (not) delivered.
 	time.Sleep(200 * time.Millisecond)
@@ -1236,7 +1243,7 @@ func TestStartRemoving_CompletedTransitionAllowsNewTransition(t *testing.T) {
 	t.Parallel()
 
 	storage, _ := setupTestStorage(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	sbx := createTestSandbox("completed-allows-new")
 	sbx.State = sandbox.StateRunning

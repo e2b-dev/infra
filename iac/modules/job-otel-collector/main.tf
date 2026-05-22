@@ -12,6 +12,13 @@ locals {
       clickhouse_port     = var.clickhouse_port
       clickhouse_host     = var.clickhouse_host
       clickhouse_database = var.clickhouse_database
+
+      enable_otel_router_metrics = var.enable_otel_router_metrics
+      otel_router_grpc_port      = var.otel_router_grpc_port
+
+      enable_gcp_telemetry_metrics          = var.enable_gcp_telemetry_metrics
+      enable_gcp_telemetry_external_metrics = var.enable_gcp_telemetry_external_metrics
+      gcp_telemetry_project_id              = var.gcp_telemetry_project_id
     },
   )
 
@@ -27,6 +34,18 @@ resource "nomad_job" "otel_collector" {
     otel_collector_grpc_port = var.otel_collector_grpc_port
     otel_collector_config    = local.otel_collector_config
   })
+
+  lifecycle {
+    precondition {
+      condition     = !var.enable_gcp_telemetry_metrics || var.gcp_telemetry_project_id != ""
+      error_message = "gcp_telemetry_project_id must be set when enable_gcp_telemetry_metrics is true."
+    }
+
+    precondition {
+      condition     = !var.enable_gcp_telemetry_external_metrics || var.enable_gcp_telemetry_metrics
+      error_message = "enable_gcp_telemetry_metrics must be true when enable_gcp_telemetry_external_metrics is true."
+    }
+  }
 }
 
 variable "provider_name" {
@@ -101,8 +120,38 @@ variable "clickhouse_database" {
   default = ""
 }
 
+variable "enable_otel_router_metrics" {
+  type        = bool
+  default     = false
+  description = "Enable teeing external customer metrics from otel-collector to otel-router."
+}
+
+variable "otel_router_grpc_port" {
+  type        = number
+  default     = 4320
+  description = "Local otel-router OTLP gRPC port used by otel-collector when otel-router metric teeing is enabled."
+}
+
 variable "otel_collector_config_override" {
   type        = string
   default     = ""
   description = "Custom OTel collector YAML config. When set, replaces the default config entirely."
+}
+
+variable "enable_gcp_telemetry_metrics" {
+  type        = bool
+  default     = false
+  description = "Enable exporting selected metrics to Google Cloud Monitoring using the googlecloud exporter."
+}
+
+variable "enable_gcp_telemetry_external_metrics" {
+  type        = bool
+  default     = false
+  description = "Enable exporting external e2b.* metrics to Google Cloud Monitoring. Requires enable_gcp_telemetry_metrics."
+}
+
+variable "gcp_telemetry_project_id" {
+  type        = string
+  default     = ""
+  description = "Google Cloud project ID used for native Cloud Monitoring metric export. Required when enable_gcp_telemetry_metrics is true."
 }

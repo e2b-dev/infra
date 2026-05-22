@@ -12,9 +12,29 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-
-	storagemocks "github.com/e2b-dev/infra/packages/shared/pkg/storage/mocks"
 )
+
+// testReadAt emulates the removed cachedSeekable.ReadAt via OpenRangeReader.
+// This preserves the base test structure after ReadAt was removed from the Seekable interface.
+func testReadAt(ctx context.Context, c *cachedSeekable, buff []byte, off int64) (int, error) {
+	rc, err := c.OpenRangeReader(ctx, off, int64(len(buff)), nil)
+	if err != nil {
+		return 0, err
+	}
+
+	n, err := io.ReadFull(rc, buff)
+
+	closeErr := rc.Close()
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		err = io.EOF
+	}
+
+	if err == nil {
+		err = closeErr
+	}
+
+	return n, err
+}
 
 func TestCachedFileObjectProvider_MakeChunkFilename(t *testing.T) {
 	t.Parallel()
@@ -32,7 +52,7 @@ func TestCachedFileObjectProvider_Size(t *testing.T) {
 
 		const expectedSize int64 = 1024
 
-		inner := storagemocks.NewMockSeekable(t)
+		inner := NewMockSeekable(t)
 		inner.EXPECT().Size(mock.Anything).Return(expectedSize, nil)
 
 		c := cachedSeekable{path: t.TempDir(), inner: inner, tracer: noopTracer}
@@ -71,19 +91,19 @@ func TestCachedFileObjectProvider_WriteFromFileSystem(t *testing.T) {
 		err = os.WriteFile(tempFilename, data, 0o644)
 		require.NoError(t, err)
 
-		inner := storagemocks.NewMockSeekable(t)
+		inner := NewMockSeekable(t)
 		inner.EXPECT().
 			StoreFile(mock.Anything, mock.Anything).
-			Return(nil)
+			Return(nil, [32]byte{}, nil)
 
-		featureFlags := storagemocks.NewMockFeatureFlagsClient(t)
+		featureFlags := NewMockFeatureFlagsClient(t)
 		featureFlags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(true)
 		featureFlags.EXPECT().IntFlag(mock.Anything, mock.Anything).Return(10)
 
 		c := cachedSeekable{path: cacheDir, inner: inner, chunkSize: 1024, flags: featureFlags, tracer: noopTracer}
 
 		// write temp file
-		err = c.StoreFile(t.Context(), tempFilename)
+		_, _, err = c.StoreFile(t.Context(), tempFilename)
 		require.NoError(t, err)
 
 		// file is written asynchronously, wait for it to finish
@@ -98,7 +118,7 @@ func TestCachedFileObjectProvider_WriteFromFileSystem(t *testing.T) {
 
 		// verify that the size has been cached
 		buff := make([]byte, len(data))
-		bytesRead, err := c.ReadAt(t.Context(), buff, 0)
+		bytesRead, err := testReadAt(t.Context(), &c, buff, 0)
 		require.NoError(t, err)
 		assert.Equal(t, data, buff)
 		assert.Equal(t, len(data), bytesRead)
@@ -125,7 +145,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		require.NoError(t, err)
 
 		buffer := make([]byte, 3)
-		read, err := c.ReadAt(t.Context(), buffer, 0)
+		read, err := testReadAt(t.Context(), &c, buffer, 0)
 		require.NoError(t, err)
 		assert.Equal(t, []byte{1, 2, 3}, buffer)
 		assert.Equal(t, 3, read)
@@ -147,7 +167,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		// per the io.ReaderAt contract. This is a cache hit — the caller
 		// sees the data with EOF indicating end of file.
 		buffer := make([]byte, 10)
-		read, err := c.ReadAt(t.Context(), buffer, 0)
+		read, err := testReadAt(t.Context(), &c, buffer, 0)
 		require.ErrorIs(t, err, io.EOF)
 		assert.Equal(t, 3, read)
 		assert.Equal(t, []byte{1, 2, 3}, buffer[:read])
@@ -157,30 +177,27 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		t.Parallel()
 
 		fakeData := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-		fakeStorageObjectProvider := storagemocks.NewMockSeekable(t)
+		inner := NewMockSeekable(t)
 
-		fakeStorageObjectProvider.EXPECT().
-			ReadAt(mock.Anything, mock.Anything, mock.Anything).
-			RunAndReturn(func(_ context.Context, buff []byte, off int64) (int, error) {
-				start := off
-				end := off + int64(len(buff))
-				end = min(end, int64(len(fakeData)))
-				copy(buff, fakeData[start:end])
+		inner.EXPECT().
+			OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, (*FrameTable)(nil)).
+			RunAndReturn(func(_ context.Context, off int64, length int64, _ *FrameTable) (io.ReadCloser, error) {
+				end := min(int(off)+int(length), len(fakeData))
 
-				return int(end - start), nil
+				return io.NopCloser(bytes.NewReader(fakeData[off:end])), nil
 			})
 
 		tempDir := t.TempDir()
 		c := cachedSeekable{
 			path:      tempDir,
 			chunkSize: 3,
-			inner:     fakeStorageObjectProvider,
+			inner:     inner,
 			tracer:    noopTracer,
 		}
 
 		// first read goes to source
 		buffer := make([]byte, 3)
-		read, err := c.ReadAt(t.Context(), buffer, 3)
+		read, err := testReadAt(t.Context(), &c, buffer, 3)
 		require.NoError(t, err)
 		assert.Equal(t, []byte{4, 5, 6}, buffer)
 		assert.Equal(t, 3, read)
@@ -191,7 +208,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 		// second read pulls from cache
 		c.inner = nil // prevent remote reads, force cache read
 		buffer = make([]byte, 3)
-		read, err = c.ReadAt(t.Context(), buffer, 3)
+		read, err = testReadAt(t.Context(), &c, buffer, 3)
 		require.NoError(t, err)
 		assert.Equal(t, []byte{4, 5, 6}, buffer)
 		assert.Equal(t, 3, read)
@@ -202,7 +219,7 @@ func TestCachedFileObjectProvider_WriteTo(t *testing.T) {
 
 		fakeData := []byte{1, 2, 3}
 
-		fakeStorageObjectProvider := storagemocks.NewMockBlob(t)
+		fakeStorageObjectProvider := NewMockBlob(t)
 		fakeStorageObjectProvider.EXPECT().
 			WriteTo(mock.Anything, mock.Anything).
 			RunAndReturn(func(_ context.Context, dst io.Writer) (int64, error) {
@@ -279,7 +296,7 @@ func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
 				chunkSize: tc.chunkSize,
 				tracer:    noopTracer,
 			}
-			err := c.validateReadAtParams(tc.bufferSize, tc.offset)
+			err := c.validateReadParams(tc.bufferSize, tc.offset)
 			if tc.expected == nil {
 				require.NoError(t, err)
 			} else {
@@ -292,39 +309,24 @@ func TestCachedFileObjectProvider_validateReadAtParams(t *testing.T) {
 func TestCachedSeekableObjectProvider_ReadAt(t *testing.T) {
 	t.Parallel()
 
-	t.Run("failed but returns count on short read", func(t *testing.T) {
-		t.Parallel()
-
-		c := cachedSeekable{chunkSize: 10, tracer: noopTracer}
-		errTarget := errors.New("find me")
-		mockSeeker := storagemocks.NewMockSeekable(t)
-		mockSeeker.EXPECT().ReadAt(mock.Anything, mock.Anything, mock.Anything).Return(5, errTarget)
-		c.inner = mockSeeker
-
-		buff := make([]byte, 10)
-		count, err := c.ReadAt(t.Context(), buff, 0)
-		require.ErrorIs(t, err, errTarget)
-		assert.Equal(t, 5, count)
-	})
-
 	t.Run("zero byte read with EOF is not cached", func(t *testing.T) {
 		t.Parallel()
 
 		tempDir := t.TempDir()
-		mockSeeker := storagemocks.NewMockSeekable(t)
-		mockSeeker.EXPECT().
-			ReadAt(mock.Anything, mock.Anything, mock.Anything).
-			Return(0, io.EOF)
+		inner := NewMockSeekable(t)
+		inner.EXPECT().
+			OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, (*FrameTable)(nil)).
+			Return(io.NopCloser(bytes.NewReader(nil)), nil)
 
 		c := cachedSeekable{
 			path:      tempDir,
 			chunkSize: 10,
-			inner:     mockSeeker,
+			inner:     inner,
 			tracer:    noopTracer,
 		}
 
 		buff := make([]byte, 10)
-		count, err := c.ReadAt(t.Context(), buff, 0)
+		count, err := testReadAt(t.Context(), &c, buff, 0)
 		require.ErrorIs(t, err, io.EOF)
 		assert.Equal(t, 0, count)
 
@@ -333,104 +335,6 @@ func TestCachedSeekableObjectProvider_ReadAt(t *testing.T) {
 		chunkPath := c.makeChunkFilename(0)
 		_, err = os.Stat(chunkPath)
 		assert.True(t, os.IsNotExist(err), "zero-byte read should not be cached")
-	})
-
-	t.Run("zero byte read without EOF is not cached", func(t *testing.T) {
-		t.Parallel()
-
-		tempDir := t.TempDir()
-		mockSeeker := storagemocks.NewMockSeekable(t)
-		mockSeeker.EXPECT().
-			ReadAt(mock.Anything, mock.Anything, mock.Anything).
-			Return(0, nil)
-
-		c := cachedSeekable{
-			path:      tempDir,
-			chunkSize: 10,
-			inner:     mockSeeker,
-			tracer:    noopTracer,
-		}
-
-		buff := make([]byte, 10)
-		count, err := c.ReadAt(t.Context(), buff, 0)
-		require.NoError(t, err)
-		assert.Equal(t, 0, count)
-
-		c.wg.Wait()
-
-		chunkPath := c.makeChunkFilename(0)
-		_, err = os.Stat(chunkPath)
-		assert.True(t, os.IsNotExist(err), "zero-byte read should not be cached")
-	})
-
-	t.Run("short read without EOF is not cached", func(t *testing.T) {
-		t.Parallel()
-
-		tempDir := t.TempDir()
-		mockSeeker := storagemocks.NewMockSeekable(t)
-		mockSeeker.EXPECT().
-			ReadAt(mock.Anything, mock.Anything, mock.Anything).
-			RunAndReturn(func(_ context.Context, buff []byte, _ int64) (int, error) {
-				// Simulate a truncated upstream response: return fewer
-				// bytes than requested with no error and no EOF.
-				copy(buff[:2], []byte{0xAA, 0xBB})
-
-				return 2, nil
-			})
-
-		c := cachedSeekable{
-			path:      tempDir,
-			chunkSize: 10,
-			inner:     mockSeeker,
-			tracer:    noopTracer,
-		}
-
-		buff := make([]byte, 10)
-		count, err := c.ReadAt(t.Context(), buff, 0)
-		require.NoError(t, err)
-		assert.Equal(t, 2, count)
-
-		c.wg.Wait()
-
-		// Verify no cache file was written.
-		chunkPath := c.makeChunkFilename(0)
-		_, err = os.Stat(chunkPath)
-		assert.True(t, os.IsNotExist(err), "truncated data should not be cached")
-	})
-
-	t.Run("short read with EOF is cached", func(t *testing.T) {
-		t.Parallel()
-
-		tempDir := t.TempDir()
-		mockSeeker := storagemocks.NewMockSeekable(t)
-		mockSeeker.EXPECT().
-			ReadAt(mock.Anything, mock.Anything, mock.Anything).
-			RunAndReturn(func(_ context.Context, buff []byte, _ int64) (int, error) {
-				// Last chunk: fewer bytes than the buffer with EOF.
-				copy(buff[:3], []byte{1, 2, 3})
-
-				return 3, io.EOF
-			})
-
-		c := cachedSeekable{
-			path:      tempDir,
-			chunkSize: 10,
-			inner:     mockSeeker,
-			tracer:    noopTracer,
-		}
-
-		buff := make([]byte, 10)
-		count, err := c.ReadAt(t.Context(), buff, 0)
-		require.ErrorIs(t, err, io.EOF)
-		assert.Equal(t, 3, count)
-
-		c.wg.Wait()
-
-		// Verify the data was cached.
-		chunkPath := c.makeChunkFilename(0)
-		cached, err := os.ReadFile(chunkPath)
-		require.NoError(t, err)
-		assert.Equal(t, []byte{1, 2, 3}, cached)
 	})
 
 	t.Run("full read without EOF is cached", func(t *testing.T) {
@@ -438,24 +342,20 @@ func TestCachedSeekableObjectProvider_ReadAt(t *testing.T) {
 
 		tempDir := t.TempDir()
 		data := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-		mockSeeker := storagemocks.NewMockSeekable(t)
-		mockSeeker.EXPECT().
-			ReadAt(mock.Anything, mock.Anything, mock.Anything).
-			RunAndReturn(func(_ context.Context, buff []byte, _ int64) (int, error) {
-				copy(buff, data)
-
-				return len(data), nil
-			})
+		inner := NewMockSeekable(t)
+		inner.EXPECT().
+			OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, (*FrameTable)(nil)).
+			Return(io.NopCloser(bytes.NewReader(data)), nil)
 
 		c := cachedSeekable{
 			path:      tempDir,
 			chunkSize: 10,
-			inner:     mockSeeker,
+			inner:     inner,
 			tracer:    noopTracer,
 		}
 
 		buff := make([]byte, 10)
-		count, err := c.ReadAt(t.Context(), buff, 0)
+		count, err := testReadAt(t.Context(), &c, buff, 0)
 		require.NoError(t, err)
 		assert.Equal(t, 10, count)
 
@@ -504,24 +404,20 @@ func TestCachedSeekable_ReadAt_PreservesEOF(t *testing.T) {
 		t.Parallel()
 
 		tempDir := t.TempDir()
-		mockSeeker := storagemocks.NewMockSeekable(t)
-		mockSeeker.EXPECT().
-			ReadAt(mock.Anything, mock.Anything, mock.Anything).
-			RunAndReturn(func(_ context.Context, buff []byte, _ int64) (int, error) {
-				copy(buff[:3], []byte{1, 2, 3})
-
-				return 3, io.EOF
-			})
+		inner := NewMockSeekable(t)
+		inner.EXPECT().
+			OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, (*FrameTable)(nil)).
+			Return(io.NopCloser(bytes.NewReader([]byte{1, 2, 3})), nil)
 
 		c := cachedSeekable{
 			path:      tempDir,
 			chunkSize: 10,
-			inner:     mockSeeker,
+			inner:     inner,
 			tracer:    noopTracer,
 		}
 
 		buff := make([]byte, 10)
-		n, err := c.ReadAt(t.Context(), buff, 0)
+		n, err := testReadAt(t.Context(), &c, buff, 0)
 		assert.Equal(t, 3, n)
 		require.ErrorIs(t, err, io.EOF, "cachedSeekable must not swallow io.EOF")
 
@@ -532,24 +428,20 @@ func TestCachedSeekable_ReadAt_PreservesEOF(t *testing.T) {
 		t.Parallel()
 
 		tempDir := t.TempDir()
-		mockSeeker := storagemocks.NewMockSeekable(t)
-		mockSeeker.EXPECT().
-			ReadAt(mock.Anything, mock.Anything, mock.Anything).
-			RunAndReturn(func(_ context.Context, buff []byte, _ int64) (int, error) {
-				copy(buff, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
-
-				return 10, nil
-			})
+		inner := NewMockSeekable(t)
+		inner.EXPECT().
+			OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, (*FrameTable)(nil)).
+			Return(io.NopCloser(bytes.NewReader([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10})), nil)
 
 		c := cachedSeekable{
 			path:      tempDir,
 			chunkSize: 10,
-			inner:     mockSeeker,
+			inner:     inner,
 			tracer:    noopTracer,
 		}
 
 		buff := make([]byte, 10)
-		n, err := c.ReadAt(t.Context(), buff, 0)
+		n, err := testReadAt(t.Context(), &c, buff, 0)
 		assert.Equal(t, 10, n)
 		require.NoError(t, err, "cachedSeekable must not inject errors on full read")
 
@@ -562,25 +454,23 @@ func TestCachedSeekable_ReadAt_SkipCacheWriteback(t *testing.T) {
 
 	tempDir := t.TempDir()
 	data := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-	mockSeeker := storagemocks.NewMockSeekable(t)
-	mockSeeker.EXPECT().
-		ReadAt(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, buff []byte, _ int64) (int, error) {
-			copy(buff, data)
-
-			return len(data), nil
+	inner := NewMockSeekable(t)
+	inner.EXPECT().
+		OpenRangeReader(mock.Anything, mock.Anything, mock.Anything, (*FrameTable)(nil)).
+		RunAndReturn(func(_ context.Context, _ int64, _ int64, _ *FrameTable) (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(data)), nil
 		})
 
 	c := cachedSeekable{
 		path:      tempDir,
 		chunkSize: 10,
-		inner:     mockSeeker,
+		inner:     inner,
 		tracer:    noopTracer,
 	}
 
 	ctx := WithSkipCacheWriteback(t.Context())
 	buff := make([]byte, 10)
-	n, err := c.ReadAt(ctx, buff, 0)
+	n, err := testReadAt(ctx, &c, buff, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 10, n)
 
@@ -600,21 +490,21 @@ func TestCachedSeekable_OpenRangeReader(t *testing.T) {
 		tempDir := t.TempDir()
 		data := []byte("hello")
 
-		mockSeeker := storagemocks.NewMockSeekable(t)
-		mockSeeker.EXPECT().
-			OpenRangeReader(mock.Anything, int64(0), int64(len(data))).
+		inner := NewMockSeekable(t)
+		inner.EXPECT().
+			OpenRangeReader(mock.Anything, int64(0), int64(len(data)), (*FrameTable)(nil)).
 			Return(io.NopCloser(bytes.NewReader(data)), nil).
 			Once()
 
 		c := cachedSeekable{
 			path:      tempDir,
 			chunkSize: 10,
-			inner:     mockSeeker,
+			inner:     inner,
 			tracer:    noopTracer,
 		}
 
 		// First call: cache miss, reads from inner.
-		rc, err := c.OpenRangeReader(t.Context(), 0, int64(len(data)))
+		rc, err := c.OpenRangeReader(t.Context(), 0, int64(len(data)), nil)
 		require.NoError(t, err)
 
 		got, err := io.ReadAll(rc)
@@ -626,7 +516,7 @@ func TestCachedSeekable_OpenRangeReader(t *testing.T) {
 
 		// Second call: should serve from NFS cache, inner not called again.
 		c.inner = nil
-		rc2, err := c.OpenRangeReader(t.Context(), 0, int64(len(data)))
+		rc2, err := c.OpenRangeReader(t.Context(), 0, int64(len(data)), nil)
 		require.NoError(t, err)
 
 		got2, err := io.ReadAll(rc2)
@@ -641,10 +531,10 @@ func TestCachedSeekable_OpenRangeReader(t *testing.T) {
 		tempDir := t.TempDir()
 		data := []byte("hello")
 
-		mockSeeker := storagemocks.NewMockSeekable(t)
-		mockSeeker.EXPECT().
-			OpenRangeReader(mock.Anything, int64(0), int64(len(data))).
-			RunAndReturn(func(_ context.Context, _ int64, _ int64) (io.ReadCloser, error) {
+		inner := NewMockSeekable(t)
+		inner.EXPECT().
+			OpenRangeReader(mock.Anything, int64(0), int64(len(data)), (*FrameTable)(nil)).
+			RunAndReturn(func(_ context.Context, _ int64, _ int64, _ *FrameTable) (io.ReadCloser, error) {
 				return io.NopCloser(bytes.NewReader(data)), nil
 			}).
 			Times(2)
@@ -652,13 +542,13 @@ func TestCachedSeekable_OpenRangeReader(t *testing.T) {
 		c := cachedSeekable{
 			path:      tempDir,
 			chunkSize: 10,
-			inner:     mockSeeker,
+			inner:     inner,
 			tracer:    noopTracer,
 		}
 
 		ctx := WithSkipCacheWriteback(t.Context())
 
-		rc, err := c.OpenRangeReader(ctx, 0, int64(len(data)))
+		rc, err := c.OpenRangeReader(ctx, 0, int64(len(data)), nil)
 		require.NoError(t, err)
 
 		got, err := io.ReadAll(rc)
@@ -673,7 +563,7 @@ func TestCachedSeekable_OpenRangeReader(t *testing.T) {
 		_, err = os.Stat(chunkPath)
 		assert.True(t, os.IsNotExist(err), "skip writeback should not populate cache")
 
-		rc2, err := c.OpenRangeReader(ctx, 0, int64(len(data)))
+		rc2, err := c.OpenRangeReader(ctx, 0, int64(len(data)), nil)
 		require.NoError(t, err)
 
 		got2, err := io.ReadAll(rc2)
@@ -687,19 +577,19 @@ func TestCachedSeekable_OpenRangeReader(t *testing.T) {
 
 		tempDir := t.TempDir()
 
-		mockSeeker := storagemocks.NewMockSeekable(t)
-		mockSeeker.EXPECT().
-			OpenRangeReader(mock.Anything, int64(0), int64(5)).
+		inner := NewMockSeekable(t)
+		inner.EXPECT().
+			OpenRangeReader(mock.Anything, int64(0), int64(5), (*FrameTable)(nil)).
 			Return(io.NopCloser(bytes.NewReader([]byte{0xAA, 0xBB})), nil)
 
 		c := cachedSeekable{
 			path:      tempDir,
 			chunkSize: 10,
-			inner:     mockSeeker,
+			inner:     inner,
 			tracer:    noopTracer,
 		}
 
-		rc, err := c.OpenRangeReader(t.Context(), 0, 5)
+		rc, err := c.OpenRangeReader(t.Context(), 0, 5, nil)
 		require.NoError(t, err)
 
 		got, err := io.ReadAll(rc)

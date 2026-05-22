@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
+	"github.com/e2b-dev/infra/packages/shared/pkg/httpserver"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/tracking"
 )
@@ -25,7 +26,7 @@ type ConnectionLimitConfig struct {
 
 const (
 	maxClientConns                      = 16384 // Reasonably big number that is lower than the number of available ports.
-	idleTimeoutBufferUpstreamDownstream = 10
+	idleTimeoutBufferUpstreamDownstream = 10 * time.Second
 )
 
 type Proxy struct {
@@ -57,7 +58,7 @@ func New(
 		disableKeepAlives,
 	)
 
-	return &Proxy{
+	proxy := &Proxy{
 		Server: http.Server{
 			Addr:         fmt.Sprintf(":%d", port),
 			ReadTimeout:  0,
@@ -70,6 +71,9 @@ func New(
 		},
 		pool: p,
 	}
+	httpserver.ConfigureH2C(&proxy.Server)
+
+	return proxy
 }
 
 // TotalPoolConnections returns the total number of connections that have been established across whole pool.

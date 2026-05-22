@@ -1,3 +1,5 @@
+//go:build linux
+
 package finalize
 
 import (
@@ -133,7 +135,7 @@ func (ppb *PostProcessingBuilder) Build(
 	))
 	defer span.End()
 
-	defaultUser := utils.ToPtr(currentLayer.Metadata.Context.User)
+	defaultUser := new(currentLayer.Metadata.Context.User)
 	defaultWorkdir := currentLayer.Metadata.Context.WorkDir
 
 	ok, err := utils.IsGTEVersion(ppb.Version, templates.TemplateV2ReleaseVersion)
@@ -143,15 +145,17 @@ func (ppb *PostProcessingBuilder) Build(
 	if !ok {
 		// For older builds, always use "user" as the default user
 		// and do not set a default workdir (defaults to the user homedir).
-		defaultUser = utils.ToPtr("user")
+		defaultUser = new("user")
 		defaultWorkdir = nil
 	}
 
 	// Configure sandbox for final layer
 	sbxConfig := sandbox.NewConfig(sandbox.Config{
-		Vcpu:      ppb.Config.VCpuCount,
-		RamMB:     ppb.Config.MemoryMB,
-		HugePages: ppb.Config.HugePages,
+		Vcpu:              ppb.Config.VCpuCount,
+		RamMB:             ppb.Config.MemoryMB,
+		HugePages:         ppb.Config.HugePages,
+		FreePageReporting: ppb.Config.FreePageReporting,
+		FreePageHinting:   ppb.Config.FreePageHinting,
 
 		Envd: sandbox.EnvdMetadata{
 			Version:        ppb.EnvdVersion,

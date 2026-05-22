@@ -139,7 +139,7 @@ variable "additional_api_paths_handled_by_ingress" {
     - Legacy: list(string) - e.g. ["/path1/*", "/path2/*"]
     - New: list(object({paths = list(string), timeout_sec = optional(number)}))
       e.g. [{paths = ["/path1/*", "/path2/*"], timeout_sec = 120}]
-    Per-route timeout_sec overrides the ingress backend default (see ingress_timeout_seconds).
+    Per-route timeout_sec overrides the ingress backend default.
   EOT
   default     = []
 }
@@ -212,6 +212,16 @@ variable "api_port" {
   }
 }
 
+variable "api_internal_grpc_port" {
+  type    = number
+  default = 5009
+}
+
+variable "client_proxy_oidc_issuer_url" {
+  type    = string
+  default = ""
+}
+
 variable "ingress_port" {
   type = object({
     name        = string
@@ -225,19 +235,22 @@ variable "ingress_port" {
   }
 }
 
+variable "ingress_internal_port" {
+  type = object({
+    name        = string
+    port        = number
+    health_path = string
+  })
+  default = {
+    name        = "internal"
+    port        = 9435
+    health_path = "/"
+  }
+}
+
 variable "dashboard_api_count" {
   type    = number
   default = 0
-}
-
-variable "enable_auth_user_sync_background_worker" {
-  type    = bool
-  default = false
-}
-
-variable "enable_billing_http_team_provision_sink" {
-  type    = bool
-  default = false
 }
 variable "docker_reverse_proxy_port" {
   type = object({
@@ -271,6 +284,12 @@ variable "nomad_port" {
 variable "allow_sandbox_internet" {
   type    = bool
   default = true
+}
+
+variable "allow_sandbox_internal_cidrs" {
+  type        = string
+  description = "Comma-separated CIDRs to allow through the sandbox firewall deny list (e.g. 10.0.0.1/32,10.0.0.2/32)"
+  default     = ""
 }
 
 variable "orchestrator_node_pool" {
@@ -311,6 +330,42 @@ variable "otel_collector_resources_memory_mb" {
 variable "otel_collector_resources_cpu_count" {
   type    = number
   default = 0.5
+}
+
+variable "enable_otel_router_logs" {
+  type        = bool
+  default     = false
+  description = "Enable teeing non-internal customer logs from Vector to otel-router."
+}
+
+variable "otel_router_http_port" {
+  type        = number
+  default     = 4321
+  description = "Local otel-router Vector-compatible logs port used by Vector when otel-router log teeing is enabled."
+}
+
+variable "enable_otel_router_metrics" {
+  type        = bool
+  default     = false
+  description = "Enable teeing external customer metrics from otel-collector to otel-router."
+}
+
+variable "otel_router_grpc_port" {
+  type        = number
+  default     = 4320
+  description = "Local otel-router OTLP gRPC port used by otel-collector when otel-router metric teeing is enabled."
+}
+
+variable "enable_gcp_telemetry_metrics" {
+  type        = bool
+  default     = false
+  description = "Enable exporting selected otel-collector metrics to Google Cloud Monitoring using the googlecloud exporter."
+}
+
+variable "enable_gcp_telemetry_external_metrics" {
+  type        = bool
+  default     = false
+  description = "Enable exporting external e2b.* metrics to Google Cloud Monitoring. Requires enable_gcp_telemetry_metrics."
 }
 
 variable "clickhouse_resources_memory_mb" {
@@ -387,6 +442,12 @@ variable "redis_managed" {
 variable "redis_shard_count" {
   type    = number
   default = 1
+}
+
+variable "gcp_redis_node_type" {
+  type        = string
+  description = "The node type for managed GCP Redis/Valkey. Can be set via TF_VAR_gcp_redis_node_type or GCP_REDIS_NODE_TYPE env var."
+  default     = "STANDARD_SMALL"
 }
 
 variable "gcp_redis_engine_version" {
@@ -751,13 +812,14 @@ variable "orchestrator_env_vars" {
   default = {}
 }
 
+variable "orchestrator_enabled" {
+  type        = bool
+  default     = true
+  description = "Whether the orchestrator Nomad job should be deployed. Set to false to skip deployment without removing the module."
+}
+
 variable "traefik_config_files" {
   type        = map(string)
   description = "Map of filename => content for additional Traefik dynamic configuration files"
   default     = {}
-}
-
-variable "ingress_timeout_seconds" {
-  type    = number
-  default = 80
 }

@@ -1,12 +1,16 @@
+//go:build linux
+
 package fc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime"
 
 	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/firecracker-microvm/firecracker-go-sdk"
+	openapiruntime "github.com/go-openapi/runtime"
 	"github.com/go-openapi/strfmt"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
@@ -16,7 +20,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const archARM64 = "arm64"
@@ -41,6 +44,7 @@ func (c *apiClient) loadSnapshot(
 	uffdSocketPath string,
 	uffdReady chan struct{},
 	snapfile template.File,
+	useMemfd bool,
 ) error {
 	ctx, span := tracer.Start(ctx, "load-snapshot")
 	defer span.End()
@@ -49,6 +53,9 @@ func (c *apiClient) loadSnapshot(
 	backend := &models.MemoryBackend{
 		BackendPath: &uffdSocketPath,
 		BackendType: &backendType,
+	}
+	if useMemfd {
+		backend.UseMemfd = &useMemfd
 	}
 
 	snapfilePath := snapfile.Path()
@@ -394,9 +401,9 @@ func (c *apiClient) setEntropyDevice(ctx context.Context) error {
 		Body: &models.EntropyDevice{
 			RateLimiter: &models.RateLimiter{
 				Bandwidth: &models.TokenBucket{
-					OneTimeBurst: utils.ToPtr(entropyOneTimeBurst),
-					Size:         utils.ToPtr(entropyBytesSize),
-					RefillTime:   utils.ToPtr(entropyRefillTime),
+					OneTimeBurst: new(entropyOneTimeBurst),
+					Size:         new(entropyBytesSize),
+					RefillTime:   new(entropyRefillTime),
 				},
 			},
 		},
@@ -425,6 +432,68 @@ func (c *apiClient) startVM(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// installBalloon attaches a zero-MiB balloon device. Individual balloon
+// features (free-page-reporting, free-page-hinting) are toggled via
+// parameters so callers can opt in to any subset independently.
+func (c *apiClient) installBalloon(ctx context.Context, freePageReporting, freePageHinting bool) error {
+	ctx, span := tracer.Start(ctx, "install-balloon")
+	defer span.End()
+
+	amountMib := int64(0)
+	deflateOnOom := false
+
+	balloonConfig := operations.PutBalloonParams{
+		Context: ctx,
+		Body: &models.Balloon{
+			AmountMib:         &amountMib,
+			DeflateOnOom:      &deflateOnOom,
+			FreePageReporting: freePageReporting,
+			FreePageHinting:   freePageHinting,
+		},
+	}
+
+	_, err := c.client.Operations.PutBalloon(&balloonConfig)
+	if err != nil {
+		return fmt.Errorf("error installing balloon device: %w", err)
+	}
+
+	return nil
+}
+
+func (c *apiClient) startBalloonHinting(ctx context.Context, acknowledgeOnStop bool) error {
+	params := operations.StartBalloonHintingParams{
+		Context: ctx,
+		Body:    &models.BalloonStartCmd{AcknowledgeOnStop: acknowledgeOnStop},
+	}
+	_, err := c.client.Operations.StartBalloonHinting(&params)
+	if err != nil {
+		// FC returns 204 (no content) on success, but the FC OpenAPI spec only
+		// declares 200/400 — go-swagger treats any other 2xx as "unexpected
+		// success" and surfaces it as a *runtime.APIError. Honour the 2xx.
+		var apiErr *openapiruntime.APIError
+		if errors.As(err, &apiErr) && apiErr.IsSuccess() {
+			return nil
+		}
+
+		return fmt.Errorf("error starting balloon hinting: %w", err)
+	}
+
+	return nil
+}
+
+func (c *apiClient) describeBalloonHinting(ctx context.Context) (hostCmd int64, err error) {
+	params := operations.DescribeBalloonHintingParams{Context: ctx}
+	res, err := c.client.Operations.DescribeBalloonHinting(&params)
+	if err != nil {
+		return 0, err
+	}
+	if res.Payload.HostCmd != nil {
+		hostCmd = *res.Payload.HostCmd
+	}
+
+	return hostCmd, nil
 }
 
 func (c *apiClient) memoryMapping(ctx context.Context) (*memory.Mapping, error) {

@@ -22,9 +22,11 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/joined"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	ut "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -54,17 +56,36 @@ type SandboxMetadata struct {
 // allow/deny entry lists. It splits allowed entries into CIDRs and domains,
 // and adds the default nameserver when domains are present so the sandbox can
 // resolve them.
-func buildEgressConfig(allowedEntries, deniedEntries []string) *orchestrator.SandboxNetworkEgressConfig {
+func buildEgressConfig(allowedEntries, deniedEntries []string, rules map[string][]types.SandboxNetworkRule) *orchestrator.SandboxNetworkEgressConfig {
 	allowedAddresses, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowedEntries)
 
 	if len(allowedDomains) > 0 {
 		allowedAddresses = append(allowedAddresses, sandbox_network.DefaultNameserver)
 	}
 
+	var orchRules map[string]*orchestrator.SandboxNetworkDomainRules
+	if rules != nil {
+		orchRules = make(map[string]*orchestrator.SandboxNetworkDomainRules, len(rules))
+		for domain, domainRules := range rules {
+			orchRuleList := make([]*orchestrator.SandboxNetworkRule, 0, len(domainRules))
+			for _, r := range domainRules {
+				orchRule := &orchestrator.SandboxNetworkRule{}
+				if r.Transform != nil {
+					orchRule.Transform = &orchestrator.SandboxNetworkTransform{
+						Headers: r.Transform.Headers,
+					}
+				}
+				orchRuleList = append(orchRuleList, orchRule)
+			}
+			orchRules[domain] = &orchestrator.SandboxNetworkDomainRules{Rules: orchRuleList}
+		}
+	}
+
 	return &orchestrator.SandboxNetworkEgressConfig{
 		AllowedCidrs:   sandbox_network.AddressStringsToCIDRs(allowedAddresses),
 		DeniedCidrs:    sandbox_network.AddressStringsToCIDRs(deniedEntries),
 		AllowedDomains: allowedDomains,
+		Rules:          orchRules,
 	}
 }
 
@@ -78,7 +99,7 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 	}
 
 	if network != nil && network.Egress != nil {
-		orchNetwork.Egress = buildEgressConfig(network.Egress.AllowedAddresses, network.Egress.DeniedAddresses)
+		orchNetwork.Egress = buildEgressConfig(network.Egress.AllowedAddresses, network.Egress.DeniedAddresses, network.Egress.Rules)
 	}
 
 	if network != nil && network.Ingress != nil {
@@ -105,6 +126,7 @@ func (o *Orchestrator) CreateSandbox(
 	endTime time.Time,
 	timeout time.Duration,
 	isResume bool,
+	creationMeta sandbox.CreationMetadata,
 ) (sbx sandbox.Sandbox, apiErr *api.APIError) {
 	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -138,6 +160,9 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	if waitForStart != nil {
+		// Mark as a joined request for telemetry purposes
+		joined.Mark(ctx)
+
 		logger.L().Info(ctx, "sandbox is already being started, waiting for it to be ready", logger.WithSandboxID(sandboxID))
 
 		sbx, err = waitForStart(ctx)
@@ -175,7 +200,7 @@ func (o *Orchestrator) CreateSandbox(
 		return sandbox.Sandbox{}, fetchErr
 	}
 
-	fcSemver, err := sandbox.NewVersionInfo(sbxData.Build.FirecrackerVersion)
+	fcSemver, err := fcversion.New(sbxData.Build.FirecrackerVersion)
 	if err != nil {
 		errMsg := fmt.Errorf("failed to get fcSemver for firecracker fcSemver '%s': %w", sbxData.Build.FirecrackerVersion, err)
 
@@ -332,7 +357,7 @@ func (o *Orchestrator) CreateSandbox(
 		nodemanager.ConvertOrchestratorMountsToDatabaseMounts(sbxData.VolumeMounts),
 	)
 
-	err = o.sandboxStore.Add(ctx, sbx, true)
+	err = o.sandboxStore.Add(ctx, sbx, &creationMeta)
 	if err != nil {
 		telemetry.ReportError(ctx, "failed to add sandbox to store", err)
 

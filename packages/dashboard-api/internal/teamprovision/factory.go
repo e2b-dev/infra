@@ -3,19 +3,24 @@ package teamprovision
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"go.uber.org/zap"
 
+	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 var (
-	ErrMissingBaseURL  = errors.New("billing server url is required when billing http team provision sink is enabled")
-	ErrMissingAPIToken = errors.New("billing server api token is required when billing http team provision sink is enabled")
+	ErrMissingBaseURL  = errors.New("billing server url is required when billing server api token is configured")
+	ErrMissingAPIToken = errors.New("billing server api token is required when billing server url is configured")
 )
 
-func NewProvisionSink(ctx context.Context, enabled bool, baseURL, apiToken string) (TeamProvisionSink, error) {
-	if !enabled {
+func NewProvisionSink(ctx context.Context, baseURL, apiToken string, supabaseDB *supabasedb.Client) (TeamProvisionSink, error) {
+	baseURL = strings.TrimSpace(baseURL)
+	apiToken = strings.TrimSpace(apiToken)
+
+	if baseURL == "" && apiToken == "" {
 		logger.L().Info(ctx, "team provision sink configured",
 			zap.String("sink", "noop"),
 			zap.String("result", "disabled"),
@@ -38,5 +43,5 @@ func NewProvisionSink(ctx context.Context, enabled bool, baseURL, apiToken strin
 		zap.String("base_url", baseURL),
 	)
 
-	return NewHTTPProvisionSink(baseURL, apiToken), nil
+	return NewHTTPProvisionSink(baseURL, apiToken, supabaseDB), nil
 }

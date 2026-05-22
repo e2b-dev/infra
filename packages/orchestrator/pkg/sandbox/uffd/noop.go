@@ -1,3 +1,5 @@
+//go:build linux
+
 package uffd
 
 import (
@@ -80,4 +82,8 @@ func (m *NoopMemory) Ready() chan struct{} {
 
 func (m *NoopMemory) Exit() *utils.ErrorOnce {
 	return m.exit
+}
+
+func (m *NoopMemory) Memfd(context.Context) *block.Memfd {
+	return nil
 }

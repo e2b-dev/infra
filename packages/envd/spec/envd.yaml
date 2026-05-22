@@ -75,6 +75,34 @@ paths:
         "204":
           description: Env vars set, the time and metadata is synced with the host
 
+  /freeze:
+    post:
+      summary: Freeze user/pty/socat cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
+      security:
+        - AccessTokenAuth: []
+        - {}
+      responses:
+        "204":
+          description: Cgroups frozen
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          description: Freeze lock is held by another operation
+
+  /unfreeze:
+    post:
+      summary: Unfreeze user/pty/socat cgroups. Intended ONLY for the orchestrator's pause-failure rollback path; the normal resume thaw happens via /init's deferred unfreeze, not here.
+      security:
+        - AccessTokenAuth: []
+        - {}
+      responses:
+        "204":
+          description: Cgroups unfrozen
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "503":
+          description: Freeze lock is held by another operation
+
   /envs:
     get:
       summary: Get the environment variables

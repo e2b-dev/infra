@@ -165,7 +165,6 @@ module "cluster" {
   nomad_port                   = var.nomad_port
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
-  ingress_timeout_seconds      = var.ingress_timeout_seconds
 
   additional_domains                      = local.additional_domains
   additional_api_paths_handled_by_ingress = local.normalized_api_paths_handled_by_ingress
@@ -229,8 +228,10 @@ module "nomad" {
   clickhouse_node_pool             = var.clickhouse_node_pool
 
   # Ingress
-  ingress_port         = var.ingress_port
-  ingress_count        = var.ingress_count
+  ingress_count         = var.ingress_count
+  ingress_port          = var.ingress_port.port
+  ingress_internal_port = var.ingress_internal_port.port
+
   traefik_config_files = var.traefik_config_files
 
   # API
@@ -240,6 +241,8 @@ module "nomad" {
   api_machine_count                                      = var.api_cluster_size
   api_node_pool                                          = var.api_node_pool
   api_port                                               = var.api_port
+  api_internal_grpc_port                                 = var.api_internal_grpc_port
+  client_proxy_oidc_issuer_url                           = var.client_proxy_oidc_issuer_url
   environment                                            = var.environment
   google_service_account_key                             = module.init.google_service_account_key
   api_secret                                             = random_password.api_secret.result
@@ -281,15 +284,19 @@ module "nomad" {
   loki_service_port        = var.loki_service_port
 
   # Otel Colelctor
-  otel_collector_resources_memory_mb = var.otel_collector_resources_memory_mb
-  otel_collector_resources_cpu_count = var.otel_collector_resources_cpu_count
+  otel_collector_resources_memory_mb    = var.otel_collector_resources_memory_mb
+  otel_collector_resources_cpu_count    = var.otel_collector_resources_cpu_count
+  enable_otel_router_logs               = var.enable_otel_router_logs
+  otel_router_http_port                 = var.otel_router_http_port
+  enable_otel_router_metrics            = var.enable_otel_router_metrics
+  otel_router_grpc_port                 = var.otel_router_grpc_port
+  enable_gcp_telemetry_metrics          = var.enable_gcp_telemetry_metrics
+  enable_gcp_telemetry_external_metrics = var.enable_gcp_telemetry_external_metrics
 
   # Dashboard API
   dashboard_api_count                          = var.dashboard_api_count
   dashboard_api_admin_token_secret_name        = module.init.dashboard_api_admin_token_secret_name
   supabase_db_connection_string_secret_version = module.init.supabase_db_connection_string_secret_version
-  enable_auth_user_sync_background_worker      = var.enable_auth_user_sync_background_worker
-  enable_billing_http_team_provision_sink      = var.enable_billing_http_team_provision_sink
 
   # Docker reverse proxy
   docker_reverse_proxy_port                = var.docker_reverse_proxy_port
@@ -298,6 +305,7 @@ module "nomad" {
   # Orchestrator
   orchestrator_node_pool         = var.orchestrator_node_pool
   allow_sandbox_internet         = var.allow_sandbox_internet
+  allow_sandbox_internal_cidrs   = var.allow_sandbox_internal_cidrs
   orchestrator_port              = var.orchestrator_port
   orchestrator_proxy_port        = var.orchestrator_proxy_port
   fc_env_pipeline_bucket_name    = module.init.fc_env_pipeline_bucket_name
@@ -305,6 +313,7 @@ module "nomad" {
   persistent_volume_mounts       = { for key, config in local.persistent_volume_types : key => config["local_mount_path"] }
   default_persistent_volume_type = var.default_persistent_volume_type
   orchestrator_env_vars          = var.orchestrator_env_vars
+  orchestrator_enabled           = var.orchestrator_enabled
 
   # Template manager
   builder_node_pool                   = var.build_node_pool
@@ -355,6 +364,7 @@ module "redis" {
 
   shard_count    = var.redis_shard_count
   engine_version = var.gcp_redis_engine_version
+  node_type      = var.gcp_redis_node_type
   prefix         = var.prefix
 }
 

@@ -41,7 +41,10 @@ tf_vars := \
 	$(call tfvar, DOMAIN_NAME) \
 	$(call tfvar, PREFIX) \
 	$(call tfvar, SANDBOX_STORAGE_BACKEND) \
+	$(call tfvar, ORCHESTRATOR_ENABLED) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
+	$(call tfvar, API_INTERNAL_GRPC_PORT) \
+	$(call tfvar, ALLOW_SANDBOX_INTERNAL_CIDRS) \
 	$(call tfvar, API_SERVER_COUNT) \
 	$(call tfvar, API_RESOURCES_CPU_COUNT) \
 	$(call tfvar, API_RESOURCES_MEMORY_MB) \
@@ -56,11 +59,18 @@ tf_vars := \
 	$(call tfvar, LOKI_RESOURCES_MEMORY_MB) \
 	$(call tfvar, OTEL_COLLECTOR_RESOURCES_CPU_COUNT) \
 	$(call tfvar, OTEL_COLLECTOR_RESOURCES_MEMORY_MB) \
+	$(call tfvar, ENABLE_OTEL_ROUTER_LOGS) \
+	$(call tfvar, OTEL_ROUTER_HTTP_PORT) \
+	$(call tfvar, ENABLE_OTEL_ROUTER_METRICS) \
+	$(call tfvar, OTEL_ROUTER_GRPC_PORT) \
+	$(call tfvar, ENABLE_GCP_TELEMETRY_METRICS) \
+	$(call tfvar, ENABLE_GCP_TELEMETRY_EXTERNAL_METRICS) \
 	$(call tfvar, TEMPLATE_BUCKET_NAME) \
 	$(call tfvar, TEMPLATE_BUCKET_LOCATION) \
 	$(call tfvar, ENVD_TIMEOUT) \
 	$(call tfvar, REDIS_MANAGED) \
 	$(call tfvar, REDIS_SHARD_COUNT) \
+	$(call tfvar, GCP_REDIS_NODE_TYPE) \
 	$(call tfvar, GCP_REDIS_ENGINE_VERSION) \
 	$(call tfvar, GRAFANA_MANAGED) \
 	$(call tfvar, FILESTORE_CACHE_ENABLED) \
@@ -78,14 +88,13 @@ tf_vars := \
 	$(call tfvar, LOKI_BOOT_DISK_TYPE) \
 	$(call tfvar, LOKI_USE_V13_SCHEMA_FROM) \
 	$(call tfvar, DASHBOARD_API_COUNT) \
-	$(call tfvar, ENABLE_AUTH_USER_SYNC_BACKGROUND_WORKER) \
-	$(call tfvar, ENABLE_BILLING_HTTP_TEAM_PROVISION_SINK) \
 	$(call tfvar, DEFAULT_PERSISTENT_VOLUME_TYPE) \
 	$(call tfvar, PERSISTENT_VOLUME_TYPES) \
 	$(call tfvar, DB_MAX_OPEN_CONNECTIONS) \
 	$(call tfvar, DB_MIN_IDLE_CONNECTIONS) \
 	$(call tfvar, AUTH_DB_MAX_OPEN_CONNECTIONS) \
 	$(call tfvar, AUTH_DB_MIN_IDLE_CONNECTIONS) \
+	$(call tfvar, CLIENT_PROXY_OIDC_ISSUER_URL) \
 	$(call tfvar, GCS_GRPC_CONNECTION_POOL_SIZE) \
 	$(call tfvar, ADDITIONAL_API_PATHS_HANDLED_BY_INGRESS) \
 	$(call tfvar, ANYWHERE_CACHE_ENABLED)

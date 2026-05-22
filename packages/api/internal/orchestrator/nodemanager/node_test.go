@@ -1,7 +1,6 @@
-package nodemanager_test
+package nodemanager
 
 import (
-	"context"
 	"testing"
 
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
@@ -9,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 )
 
@@ -27,15 +25,15 @@ func TestNode_OptimisticAdd_FlagEnabled(t *testing.T) {
 	require.NoError(t, err)
 
 	// 4. Initialize Node with the injected ffClient
-	node := nodemanager.NewTestNode("test-node", api.NodeStatusReady, 0, 4, nodemanager.WithFeatureFlags(ffClient))
+	node := NewTestNode("test-node", api.NodeStatusReady, 0, 4, WithFeatureFlags(ffClient))
 	initialMetrics := node.Metrics()
 
 	// 5. Call the method
-	res := nodemanager.SandboxResources{
+	res := SandboxResources{
 		CPUs:      2,
 		MiBMemory: 1024,
 	}
-	node.OptimisticAdd(context.Background(), res)
+	node.OptimisticAdd(t.Context(), res)
 
 	// 6. Assert: When flag is enabled, resources should be successfully accumulated
 	newMetrics := node.Metrics()
@@ -57,15 +55,15 @@ func TestNode_OptimisticAdd_FlagDisabled(t *testing.T) {
 	require.NoError(t, err)
 
 	// 4. Initialize Node with the injected ffClient
-	node := nodemanager.NewTestNode("test-node", api.NodeStatusReady, 0, 4, nodemanager.WithFeatureFlags(ffClient))
+	node := NewTestNode("test-node", api.NodeStatusReady, 0, 4, WithFeatureFlags(ffClient))
 	initialMetrics := node.Metrics()
 
 	// 5. Call the method
-	res := nodemanager.SandboxResources{
+	res := SandboxResources{
 		CPUs:      2,
 		MiBMemory: 1024,
 	}
-	node.OptimisticAdd(context.Background(), res)
+	node.OptimisticAdd(t.Context(), res)
 
 	// 6. Assert: When flag is disabled, return early, resources should not be accumulated
 	newMetrics := node.Metrics()
@@ -87,15 +85,15 @@ func TestNode_OptimisticRemove_FlagEnabled(t *testing.T) {
 	require.NoError(t, err)
 
 	// 4. Initialize Node with the injected ffClient - some resources are already allocated at initialization
-	node := nodemanager.NewTestNode("test-node", api.NodeStatusReady, 4, 8192, nodemanager.WithFeatureFlags(ffClient))
+	node := NewTestNode("test-node", api.NodeStatusReady, 4, 8192, WithFeatureFlags(ffClient))
 	initialMetrics := node.Metrics()
 
 	// 5. Call the method
-	res := nodemanager.SandboxResources{
+	res := SandboxResources{
 		CPUs:      2,
 		MiBMemory: 1024,
 	}
-	node.OptimisticRemove(context.Background(), res)
+	node.OptimisticRemove(t.Context(), res)
 
 	// 6. Assert: When flag is enabled, resources should be successfully deducted
 	newMetrics := node.Metrics()
@@ -117,15 +115,15 @@ func TestNode_OptimisticRemove_FlagDisabled(t *testing.T) {
 	require.NoError(t, err)
 
 	// 4. Initialize Node with the injected ffClient - some resources are already allocated at initialization
-	node := nodemanager.NewTestNode("test-node", api.NodeStatusReady, 4, 8192, nodemanager.WithFeatureFlags(ffClient))
+	node := NewTestNode("test-node", api.NodeStatusReady, 4, 8192, WithFeatureFlags(ffClient))
 	initialMetrics := node.Metrics()
 
 	// 5. Call the method
-	res := nodemanager.SandboxResources{
+	res := SandboxResources{
 		CPUs:      2,
 		MiBMemory: 1024,
 	}
-	node.OptimisticRemove(context.Background(), res)
+	node.OptimisticRemove(t.Context(), res)
 
 	// 6. Assert: When flag is disabled, return early, resources should remain unchanged
 	newMetrics := node.Metrics()

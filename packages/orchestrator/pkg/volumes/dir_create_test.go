@@ -1,3 +1,5 @@
+//go:build linux
+
 package volumes
 
 import (
@@ -10,7 +12,6 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func TestDirCreate(t *testing.T) {
@@ -72,9 +73,9 @@ func TestDirCreate(t *testing.T) {
 		_, err := s.CreateDir(t.Context(), &orchestrator.CreateDirRequest{
 			Volume: volumeInfo,
 			Path:   dirname,
-			Mode:   utils.ToPtr(mode),
-			Uid:    utils.ToPtr(uid),
-			Gid:    utils.ToPtr(gid),
+			Mode:   new(mode),
+			Uid:    new(uid),
+			Gid:    new(gid),
 		})
 		require.NoError(t, err)
 
@@ -137,9 +138,9 @@ func TestDirCreate(t *testing.T) {
 			Volume:        volumeInfo,
 			Path:          dirname,
 			CreateParents: true,
-			Mode:          utils.ToPtr(newMode),
-			Uid:           utils.ToPtr(uint32(1100)),
-			Gid:           utils.ToPtr(uint32(1200)),
+			Mode:          new(newMode),
+			Uid:           new(uint32(1100)),
+			Gid:           new(uint32(1200)),
 		}
 		_, err = s.CreateDir(t.Context(), request)
 		require.NoError(t, err)

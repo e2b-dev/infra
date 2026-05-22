@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os/user"
 	"strconv"
 	"time"
 
@@ -16,41 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/services/process/handler"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
 )
-
-func (s *Service) InitializeStartProcess(ctx context.Context, user *user.User, req *rpc.StartRequest) error {
-	var err error
-
-	ctx = logs.AddRequestIDToContext(ctx)
-
-	defer s.logger.
-		Err(err).
-		Interface("request", req).
-		Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).
-		Msg("Initialized startCmd")
-
-	handlerL := s.logger.With().Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).Logger()
-
-	startProcCtx, startProcCancel := context.WithCancel(ctx)
-	proc, err := handler.New(startProcCtx, user, req, &handlerL, s.defaults, s.cgroupManager, startProcCancel)
-	if err != nil {
-		return err
-	}
-
-	pid, err := proc.Start(0)
-	if err != nil {
-		return err
-	}
-
-	s.processes.Store(pid, proc)
-
-	go func() {
-		defer s.processes.Delete(pid)
-
-		proc.Wait()
-	}()
-
-	return nil
-}
 
 func (s *Service) Start(ctx context.Context, req *connect.Request[rpc.StartRequest], stream *connect.ServerStream[rpc.StartResponse]) error {
 	return logs.LogServerStreamWithoutEvents(ctx, s.logger, req, stream, s.handleStart)
@@ -223,12 +187,10 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 		proc.Wait()
 	}()
 
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-exitChan:
-		return nil
-	}
+	// Wait for the sender goroutine; returning early panics envd.
+	<-exitChan
+
+	return ctx.Err()
 }
 
 func determineTimeoutFromHeader(header http.Header) (time.Duration, error) {

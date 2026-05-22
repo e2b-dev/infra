@@ -1,5 +1,5 @@
 locals {
-  subdomains = ["dashboard-api"]
+  subdomains = ["grpc-api", "dashboard-api"]
 
   ingress_zones = toset([for info in local.domain_info : info.root_domain])
 
@@ -43,7 +43,30 @@ resource "google_compute_backend_service" "ingress" {
   session_affinity = null
   health_checks    = [google_compute_health_check.ingress.id]
 
-  timeout_sec = var.ingress_timeout_seconds
+  timeout_sec                     = 86400
+  connection_draining_timeout_sec = 1
+
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  locality_lb_policy    = "ROUND_ROBIN"
+
+  security_policy = google_compute_security_policy.ingress.id
+
+  backend {
+    group = var.api_instance_group
+  }
+}
+
+resource "google_compute_backend_service" "h2c_ingress" {
+  name = "${var.prefix}h2c-ingress"
+
+  protocol  = "H2C"
+  port_name = var.ingress_port.name
+
+  session_affinity = null
+  health_checks    = [google_compute_health_check.ingress.id]
+
+  timeout_sec                     = 86400
+  connection_draining_timeout_sec = 1
 
   load_balancing_scheme = "EXTERNAL_MANAGED"
   locality_lb_policy    = "ROUND_ROBIN"
@@ -68,6 +91,16 @@ resource "google_compute_security_policy" "ingress" {
 resource "google_compute_url_map" "ingress" {
   name            = "${var.prefix}ingress"
   default_service = google_compute_backend_service.ingress.self_link
+
+  host_rule {
+    hosts        = concat(["grpc-api.${var.domain_name}"], [for d in var.additional_domains : "grpc-api.${d}"])
+    path_matcher = "grpc-api-paths"
+  }
+
+  path_matcher {
+    name            = "grpc-api-paths"
+    default_service = google_compute_backend_service.h2c_ingress.self_link
+  }
 }
 
 resource "google_compute_global_forwarding_rule" "ingress" {

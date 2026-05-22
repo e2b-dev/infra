@@ -1,3 +1,5 @@
+//go:build linux
+
 package userfaultfd
 
 // safeInvoke calls fn and returns its result, or nil if fn is nil.

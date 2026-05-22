@@ -11,7 +11,6 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/metric/exemplar"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -39,7 +38,7 @@ func NewTeamObserver(ctx context.Context, sandboxStore *sandbox.Store) (*TeamObs
 		return nil, fmt.Errorf("failed to create external meter exporter: %w", err)
 	}
 
-	meterProvider, err := telemetry.NewMeterProvider(externalMeterExporter, ExportPeriod, nil, sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter))
+	meterProvider, err := telemetry.NewMeterProvider(externalMeterExporter, ExportPeriod, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create external metric provider: %w", err)
 	}

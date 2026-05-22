@@ -11,7 +11,12 @@ type Config struct {
 	RedisTLSCABase64 string `env:"REDIS_TLS_CA_BASE64"`
 	RedisPoolSize    int    `env:"REDIS_POOL_SIZE"     envDefault:"40"`
 
-	ApiGrpcAddress string `env:"API_GRPC_ADDRESS"`
+	APIInternalGRPCAddress string `env:"API_INTERNAL_GRPC_ADDRESS"`
+	APIEdgeGRPCAddress     string `env:"API_EDGE_GRPC_ADDRESS"`
+
+	APIEdgeGRPCOAuthClientID     string `env:"API_EDGE_GRPC_OAUTH_CLIENT_ID"`
+	APIEdgeGRPCOAuthClientSecret string `env:"API_EDGE_GRPC_OAUTH_CLIENT_SECRET"`
+	APIEdgeGRPCOAuthTokenURL     string `env:"API_EDGE_GRPC_OAUTH_TOKEN_URL"`
 }
 
 func Parse() (Config, error) {

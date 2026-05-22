@@ -1,8 +1,10 @@
+//go:build linux
+
 package fc
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -17,7 +19,7 @@ func (ka KernelArgs) String() string {
 			args = append(args, fmt.Sprintf("%s=%s", k, v))
 		}
 	}
-	sort.Strings(args) // optional: for consistent output
+	slices.Sort(args) // optional: for consistent output
 
 	return strings.Join(args, " ")
 }

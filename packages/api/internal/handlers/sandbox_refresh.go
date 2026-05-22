@@ -32,6 +32,14 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 	telemetry.SetAttributes(ctx, telemetry.WithSandboxID(sandboxID))
 
 	team := auth.MustGetTeamInfo(c)
+	teamID := team.Team.ID
+
+	if err := auth.CheckTeamBlocked(team); err != nil {
+		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
+
+		return
+	}
+
 	var duration time.Duration
 
 	body, err := ginutils.ParseBody[api.PostSandboxesSandboxIDRefreshesJSONBody](ctx, c)
@@ -53,7 +61,7 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 		duration = sandbox.SandboxTimeoutDefault
 	}
 
-	_, apiErr := a.orchestrator.KeepAliveFor(ctx, team.ID, sandboxID, duration, false)
+	_, apiErr := a.orchestrator.KeepAliveFor(ctx, teamID, sandboxID, duration, false)
 	if apiErr != nil {
 		telemetry.ReportError(ctx, "error when refreshing sandbox", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)

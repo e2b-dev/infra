@@ -11,6 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/template"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
@@ -46,6 +47,13 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team, limits", apiErr.Err)
+
+		return nil
+	}
+
+	// Shared by PostV2Templates and PostV3Templates.
+	if err := auth.CheckTeamBlocked(team); err != nil {
+		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
 
 		return nil
 	}
@@ -115,7 +123,11 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	}
 	span.End()
 
+	// TODO(ENG-3852): Stop sending the firecracker/kernel versions from the API.
+	// The orchestrator resolves them itself via the BuildFirecrackerVersion /
+	// BuildKernelVersion feature flags (see packages/orchestrator/pkg/template/server/create_template.go).
 	firecrackerVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
+	kernelVersion := a.featureFlags.StringFlag(ctx, featureflags.BuildKernelVersion)
 	buildReq := template.RegisterBuildData{
 		ClusterID:          clusters.WithClusterFallback(team.ClusterID),
 		TemplateID:         templateID,
@@ -126,14 +138,14 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 		CpuCount:           body.CpuCount,
 		MemoryMB:           body.MemoryMB,
 		Version:            templates.TemplateV2LatestVersion,
-		KernelVersion:      a.config.DefaultKernelVersion,
+		KernelVersion:      kernelVersion,
 		FirecrackerVersion: firecrackerVersion,
 	}
 
 	template, apiError := template.RegisterBuild(ctx, a.templateCache, a.sqlcDB, buildReq)
 	if apiError != nil {
 		a.sendAPIStoreError(c, apiError.Code, apiError.ClientMsg)
-		telemetry.ReportCriticalError(ctx, "build template register failed", apiError.Err)
+		telemetry.ReportErrorByCode(ctx, apiError.Code, "error when requesting template build", apiError.Err, telemetry.WithTemplateID(templateID))
 
 		return nil
 	}

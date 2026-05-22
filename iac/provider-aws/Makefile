@@ -34,6 +34,7 @@ tf_vars := AWS_PROFILE=$(AWS_PROFILE) AWS_REGION=$(AWS_REGION) \
 	$(call tfvar, REDIS_INSTANCE_TYPE) \
 	$(call tfvar, REDIS_MANAGED) \
 	$(call tfvar, API_CLUSTER_SIZE) \
+	$(call tfvar, API_INTERNAL_GRPC_PORT) \
 	$(call tfvar, API_SERVER_MACHINE_TYPE) \
 	$(call tfvar, CLIENT_PROXY_COUNT) \
 	$(call tfvar, INGRESS_COUNT) \
@@ -42,10 +43,15 @@ tf_vars := AWS_PROFILE=$(AWS_PROFILE) AWS_REGION=$(AWS_REGION) \
 	$(call tfvar, BUILD_SERVER_NESTED_VIRTUALIZATION) \
 	$(call tfvar, AWS_ACCOUNT_ID) \
 	$(call tfvar, AWS_REGION) \
+	$(call tfvar, ENABLE_OTEL_ROUTER_LOGS) \
+	$(call tfvar, OTEL_ROUTER_HTTP_PORT) \
+	$(call tfvar, ENABLE_OTEL_ROUTER_METRICS) \
+	$(call tfvar, OTEL_ROUTER_GRPC_PORT) \
 	$(call tfvar, DB_MAX_OPEN_CONNECTIONS) \
 	$(call tfvar, DB_MIN_IDLE_CONNECTIONS) \
 	$(call tfvar, AUTH_DB_MAX_OPEN_CONNECTIONS) \
-	$(call tfvar, AUTH_DB_MIN_IDLE_CONNECTIONS)
+	$(call tfvar, AUTH_DB_MIN_IDLE_CONNECTIONS) \
+	$(call tfvar, ALLOW_SANDBOX_INTERNAL_CIDRS)
 
 .PHONY: provider-login
 provider-login:

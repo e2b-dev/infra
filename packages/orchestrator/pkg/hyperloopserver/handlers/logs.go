@@ -1,3 +1,5 @@
+//go:build linux
+
 package handlers
 
 import (
@@ -38,13 +40,16 @@ func (h *APIStore) Logs(c *gin.Context) {
 	err = h.validatePayloadSandboxID(payload, sbxID)
 	if err != nil {
 		h.sendAPIStoreError(c, http.StatusBadRequest, "Invalid sandboxID in logs payload")
-		h.logger.Error(ctx, "error when parsing sandbox logs request", zap.Error(err), logger.WithSandboxID(sbxID))
+		// Inflight logs with old sandboxID from snapshotted sandbox
+		// Change to error once we have a way how to tell sandbox to flush and stop sending logs when being paused
+		h.logger.Warn(ctx, "error when parsing sandbox logs request", zap.Error(err), logger.WithSandboxID(sbxID))
 
 		return
 	}
 
-	// Overwrite instanceID and teamID to avoid spoofing
+	// Overwrite instanceID, envID, and teamID to avoid spoofing
 	payload["instanceID"] = sbxID
+	payload["envID"] = sbx.Runtime.TemplateID
 	payload["teamID"] = sbx.Runtime.TeamID
 
 	logs, err := json.Marshal(payload)

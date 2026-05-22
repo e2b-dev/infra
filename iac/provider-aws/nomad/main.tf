@@ -43,6 +43,9 @@ module "otel_collector" {
   grafana_username             = var.grafana_username
   consul_token                 = var.consul_acl_token
 
+  enable_otel_router_metrics = var.enable_otel_router_metrics
+  otel_router_grpc_port      = var.otel_router_grpc_port
+
   clickhouse_username = var.clickhouse_username
   clickhouse_password = var.clickhouse_password
   clickhouse_port     = var.clickhouse_port
@@ -72,8 +75,10 @@ module "redis" {
 module "ingress" {
   source = "../../modules/job-ingress"
 
-  ingress_count        = var.ingress_count
-  ingress_proxy_port   = var.ingress_port
+  ingress_count         = var.ingress_count
+  ingress_port          = var.ingress_port
+  ingress_internal_port = var.ingress_internal_port
+
   traefik_config_files = var.traefik_config_files
 
   node_pool     = var.api_node_pool
@@ -94,10 +99,11 @@ module "client_proxy" {
   node_pool   = var.api_node_pool
   environment = var.environment
 
-  redis_url           = var.redis_url
-  redis_cluster_url   = var.redis_cluster_url
-  redis_tls_ca_base64 = var.redis_tls_ca_base64
-  image               = data.aws_ecr_image.client_proxy.image_uri
+  redis_url                 = var.redis_url
+  redis_cluster_url         = var.redis_cluster_url
+  redis_tls_ca_base64       = var.redis_tls_ca_base64
+  image                     = data.aws_ecr_image.client_proxy.image_uri
+  api_internal_grpc_address = "api-internal-grpc.service.consul:${var.api_internal_grpc_port}"
 
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
   logs_collector_address       = "http://localhost:${var.logs_proxy_port}"
@@ -121,10 +127,11 @@ module "api" {
   logs_collector_address         = "http://localhost:${var.logs_proxy_port}"
   port_name                      = "api"
   port_number                    = var.api_port
+  api_internal_grpc_port         = var.api_internal_grpc_port
   environment                    = var.environment
   api_docker_image               = data.aws_ecr_image.api.image_uri
   postgres_connection_string     = var.postgres_connection_string
-  supabase_jwt_secrets           = var.supabase_jwt_secrets
+  auth_provider_config           = var.auth_provider_config
   nomad_acl_token                = var.nomad_acl_token
   admin_token                    = var.admin_token
   redis_url                      = var.redis_url
@@ -180,6 +187,7 @@ module "orchestrator" {
   envd_timeout                 = var.envd_timeout
   template_bucket_name         = var.template_bucket_name
   allow_sandbox_internet       = var.allow_sandbox_internet
+  allow_sandbox_internal_cidrs = var.allow_sandbox_internal_cidrs
   clickhouse_connection_string = local.clickhouse_connection_string
   redis_url                    = var.redis_url
   redis_cluster_url            = var.redis_cluster_url
@@ -267,6 +275,9 @@ module "logs_collector" {
   source = "../../modules/job-logs-collector"
 
   loki_endpoint = "http://loki.service.consul:${var.loki_port}"
+
+  enable_otel_router_logs = var.enable_otel_router_logs
+  otel_router_http_port   = var.otel_router_http_port
 
   vector_health_port = var.logs_health_proxy_port
   vector_api_port    = var.logs_proxy_port

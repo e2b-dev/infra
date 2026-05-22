@@ -23,6 +23,11 @@ DELETE FROM public.active_template_builds
 WHERE build_id IN (SELECT id FROM invalidated);
 
 -- name: CreateTemplateBuild :exec
+-- kernel_version and firecracker_version are populated here for backwards
+-- compatibility with consumers that read the env_builds row before the build
+-- completes. The template-manager reports the versions it actually used via
+-- TemplateBuildMetadata, and FinishTemplateBuild overwrites these fields with
+-- the reported values.
 INSERT INTO "public"."env_builds" (
     id,
     updated_at,

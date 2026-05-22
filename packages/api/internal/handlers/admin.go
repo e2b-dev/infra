@@ -14,8 +14,9 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-func (a *APIStore) GetNodes(c *gin.Context) {
-	result, err := a.orchestrator.AdminNodes()
+func (a *APIStore) GetNodes(c *gin.Context, params api.GetNodesParams) {
+	clusterID := clusters.WithClusterFallback(params.ClusterID)
+	result, err := a.orchestrator.AdminNodes(clusterID)
 	if err != nil {
 		telemetry.ReportCriticalError(c.Request.Context(), "error when getting nodes", err)
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting nodes")

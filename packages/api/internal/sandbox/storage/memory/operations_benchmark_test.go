@@ -1,7 +1,6 @@
 package memory
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -105,7 +104,7 @@ func BenchmarkStorageGetItemsRunningByTeam(b *testing.B) {
 }
 
 func BenchmarkStorageExpiredItems(b *testing.B) {
-	ctx := context.Background()
+	ctx := b.Context()
 	benchmarkSizes(b, func(b *testing.B, f benchFixture) {
 		b.Helper()
 
@@ -116,7 +115,7 @@ func BenchmarkStorageExpiredItems(b *testing.B) {
 }
 
 func BenchmarkStorageTeamsWithSandboxCount(b *testing.B) {
-	ctx := context.Background()
+	ctx := b.Context()
 	benchmarkSizes(b, func(b *testing.B, f benchFixture) {
 		b.Helper()
 

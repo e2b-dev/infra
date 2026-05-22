@@ -10,8 +10,17 @@ import (
 	"github.com/google/uuid"
 )
 
+type AuthSession struct {
+	UserID    uuid.UUID
+	CreatedAt time.Time
+	UserAgent *string
+	Ip        *string
+}
+
 type AuthUser struct {
-	ID        uuid.UUID
-	Email     string
-	CreatedAt *time.Time
+	ID              uuid.UUID
+	Email           string
+	CreatedAt       *time.Time
+	RawAppMetaData  []byte
+	RawUserMetaData []byte
 }

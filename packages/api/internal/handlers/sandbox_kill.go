@@ -54,8 +54,7 @@ func (a *APIStore) DeleteSandboxesSandboxID(
 		return
 	}
 
-	team := auth.MustGetTeamInfo(c)
-	teamID := team.ID
+	teamID := auth.MustGetTeamID(c)
 
 	telemetry.SetAttributes(ctx,
 		telemetry.WithSandboxID(sandboxID),

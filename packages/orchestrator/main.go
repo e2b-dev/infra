@@ -1,3 +1,5 @@
+//go:build linux
+
 package main
 
 import (
@@ -5,15 +7,14 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/factories"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/tcpfirewall"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/version"
 )
-
-const version = "0.1.0"
 
 var commitSHA string
 
 func main() {
 	factories.Run(factories.Options{
-		Version:       version,
+		Version:       version.Version,
 		CommitSHA:     commitSHA,
 		EgressFactory: defaultEgressFactory,
 	})

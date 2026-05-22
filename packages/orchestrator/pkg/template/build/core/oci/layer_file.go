@@ -1,10 +1,12 @@
+//go:build linux
+
 package oci
 
 import (
 	"archive/tar"
 	"bytes"
 	"io"
-	"sort"
+	"slices"
 
 	containerregistry "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
@@ -25,7 +27,7 @@ func LayerFile(filemap map[string]File) (containerregistry.Layer, error) {
 	for f := range filemap {
 		names = append(names, f)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 
 	for _, f := range names {
 		c := filemap[f]
@@ -59,7 +61,7 @@ func LayerSymlink(symlinks map[string]string) (containerregistry.Layer, error) {
 	for name := range symlinks {
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 
 	for _, name := range names {
 		target := symlinks[name]

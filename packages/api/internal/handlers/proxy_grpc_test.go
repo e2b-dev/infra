@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,8 +9,6 @@ import (
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 )
-
-func boolPtr(b bool) *bool { return &b }
 
 func TestIsNonEnvdTrafficRequest(t *testing.T) {
 	t.Parallel()
@@ -61,7 +58,7 @@ func TestIsNonEnvdTrafficRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := isNonEnvdTrafficRequest(context.Background(), tt.md, "test-sandbox")
+			result := isNonEnvdTrafficRequest(t.Context(), tt.md, "test-sandbox")
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -92,12 +89,12 @@ func TestIsPrivateIngressTraffic(t *testing.T) {
 		},
 		{
 			name:     "AllowPublicAccess true",
-			network:  &dbtypes.SandboxNetworkConfig{Ingress: &dbtypes.SandboxNetworkIngressConfig{AllowPublicAccess: boolPtr(true)}},
+			network:  &dbtypes.SandboxNetworkConfig{Ingress: &dbtypes.SandboxNetworkIngressConfig{AllowPublicAccess: new(true)}},
 			expected: false,
 		},
 		{
 			name:     "AllowPublicAccess false",
-			network:  &dbtypes.SandboxNetworkConfig{Ingress: &dbtypes.SandboxNetworkIngressConfig{AllowPublicAccess: boolPtr(false)}},
+			network:  &dbtypes.SandboxNetworkConfig{Ingress: &dbtypes.SandboxNetworkIngressConfig{AllowPublicAccess: new(false)}},
 			expected: true,
 		},
 	}

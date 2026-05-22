@@ -21,25 +21,29 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	gutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/template")
 
 type RegisterBuildData struct {
-	ClusterID          uuid.UUID
-	TemplateID         api.TemplateID
-	UserID             *uuid.UUID
-	Team               *types.Team
-	Dockerfile         string
-	Alias              *string
-	Tags               []string
-	StartCmd           *string
-	ReadyCmd           *string
-	CpuCount           *int32
-	MemoryMB           *int32
-	Version            string
-	KernelVersion      string
+	ClusterID  uuid.UUID
+	TemplateID api.TemplateID
+	UserID     *uuid.UUID
+	Team       *types.Team
+	Dockerfile string
+	Alias      *string
+	Tags       []string
+	StartCmd   *string
+	ReadyCmd   *string
+	CpuCount   *int32
+	MemoryMB   *int32
+	Version    string
+
+	// TODO(ENG-3852): Remove once the template manager resolves the kernel and firecracker versions itself.
+	//
+	// Deprecated: Template manager should use its own.
+	KernelVersion string
+	// Deprecated: Template manager should use its own.
 	FirecrackerVersion string
 }
 
@@ -140,8 +144,6 @@ func RegisterBuild(
 
 	cpuCount, ramMB, apiError := team.LimitResources(data.Team.Limits, data.CpuCount, data.MemoryMB)
 	if apiError != nil {
-		telemetry.ReportCriticalError(ctx, "error when getting CPU and RAM", apiError.Err)
-
 		return nil, apiError
 	}
 
@@ -202,6 +204,9 @@ func RegisterBuild(
 
 	// Insert the new build
 	// TODO(ENG-3469): Switch to dbtypes.BuildStatusPending once all consumers are migrated.
+	// kernel_version and firecracker_version are seeded here for backwards
+	// compatibility; the template-manager reports the versions it actually
+	// used in TemplateBuildMetadata and SetFinished overwrites these rows.
 	err = client.CreateTemplateBuild(ctx, queries.CreateTemplateBuildParams{
 		BuildID:            buildID,
 		Status:             dbtypes.BuildStatusWaiting,
@@ -212,8 +217,8 @@ func RegisterBuild(
 		FreeDiskSizeMb:     data.Team.Limits.DiskMb,
 		StartCmd:           data.StartCmd,
 		ReadyCmd:           data.ReadyCmd,
-		Dockerfile:         gutils.ToPtr(data.Dockerfile),
-		Version:            gutils.ToPtr(data.Version),
+		Dockerfile:         new(data.Dockerfile),
+		Version:            new(data.Version),
 	})
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when inserting build", err)
@@ -249,7 +254,6 @@ func RegisterBuild(
 
 		if exists {
 			err := fmt.Errorf("alias '%s' is already used", alias)
-			telemetry.ReportCriticalError(ctx, "conflict of alias", err, attribute.String("alias", alias))
 
 			return nil, &api.APIError{
 				Err:       err,
@@ -311,7 +315,6 @@ func RegisterBuild(
 			telemetry.ReportEvent(ctx, "created new alias", attribute.String("env.alias", alias))
 		} else if aliasDB.EnvID != data.TemplateID {
 			err := fmt.Errorf("alias '%s' already used", alias)
-			telemetry.ReportCriticalError(ctx, "alias already used", err, attribute.String("alias", alias))
 
 			return nil, &api.APIError{
 				Err:       err,

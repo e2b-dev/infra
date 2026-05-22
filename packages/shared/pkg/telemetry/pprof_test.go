@@ -1,4 +1,4 @@
-package telemetry_test
+package telemetry
 
 import (
 	"net/http"
@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func TestDefaultServeMuxBlocksPprofPaths(t *testing.T) {
@@ -26,7 +24,7 @@ func TestDefaultServeMuxBlocksPprofPaths(t *testing.T) {
 
 	for _, path := range paths {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
 
 		http.DefaultServeMux.ServeHTTP(rec, req)
 
@@ -52,7 +50,7 @@ func TestDefaultServeMuxPassesThroughNonPprofPaths(t *testing.T) {
 
 	for _, path := range paths {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
 
 		http.DefaultServeMux.ServeHTTP(rec, req)
 
@@ -63,7 +61,7 @@ func TestDefaultServeMuxPassesThroughNonPprofPaths(t *testing.T) {
 func TestDedicatedPprofMuxServes(t *testing.T) {
 	t.Parallel()
 
-	mux := telemetry.NewPprofMux()
+	mux := NewPprofMux()
 
 	paths := []string{
 		"/debug/pprof/",
@@ -73,7 +71,7 @@ func TestDedicatedPprofMuxServes(t *testing.T) {
 
 	for _, path := range paths {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
 
 		mux.ServeHTTP(rec, req)
 

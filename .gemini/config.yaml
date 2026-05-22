@@ -1,0 +1,22 @@
+have_fun: false
+
+code_review:
+  disable: false
+  # Only surface high-severity findings; drop nits and lower-severity suggestions.
+  comment_severity_threshold: HIGH
+  # Cap the number of review comments per PR to avoid noise floods.
+  max_review_comments: 10
+  pull_request_opened:
+    help: false
+    # Suppress the auto PR summary. We rely on the author's description.
+    summary: false
+    code_review: true
+    include_drafts: true
+
+ignore_patterns:
+  - "**/*.gen.go"
+  - "**/*.sql.go"
+  - "**/*.pb.go"
+  - "**/mocks/**"
+  - "**/testdata/**"
+  - "**/*.md"

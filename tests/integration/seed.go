@@ -97,10 +97,7 @@ VALUES ($1, $2)
 		return fmt.Errorf("failed to create user: %w", err)
 	}
 
-	err = authdb.Write.UpsertPublicUser(ctx, authqueries.UpsertPublicUserParams{
-		ID:    data.UserID,
-		Email: "user-test-integration@e2b.dev",
-	})
+	err = authdb.Write.UpsertPublicUser(ctx, data.UserID)
 	if err != nil {
 		return fmt.Errorf("failed to create public user: %w", err)
 	}
@@ -140,6 +137,16 @@ VALUES ($1, $2, $3, $4, $5, $6)
 `, data.TeamID, "test-integration@e2b.dev", "E2B", "base_v1", false, "e2b-integration")
 	if err != nil {
 		return fmt.Errorf("failed to create team: %w", err)
+	}
+
+	// Grant the integration test team extra capacity so parallel tests don't
+	// hit the base tier's 20-sandbox cap.
+	err = db.TestsRawSQL(ctx, `
+INSERT INTO addons (team_id, name, extra_concurrent_sandboxes, extra_concurrent_template_builds, added_by)
+VALUES ($1, 'integration-tests-extra-capacity', 200, 50, '00000000-0000-0000-0000-000000000000')
+`, data.TeamID)
+	if err != nil {
+		return fmt.Errorf("failed to create test team addon: %w", err)
 	}
 
 	// User-Team

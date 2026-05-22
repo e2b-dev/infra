@@ -1,3 +1,5 @@
+//go:build linux
+
 package fc
 
 import (
@@ -26,6 +28,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/socket"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/fc/client/operations"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
@@ -133,6 +136,10 @@ type Process struct {
 	Exit *utils.ErrorOnce
 
 	client *apiClient
+
+	// balloonAccum is the cumulative virtio-balloon snapshot summed by the
+	// metrics-reader goroutine (FC's SharedIncMetric resets per flush).
+	balloonAccum atomic.Pointer[BalloonMetricsSnapshot]
 }
 
 func NewProcess(
@@ -299,6 +306,8 @@ func (p *Process) Create(
 	vCPUCount int64,
 	memoryMB int64,
 	hugePages bool,
+	freePageReporting bool,
+	freePageHinting bool,
 	options ProcessOptions,
 	txRateLimit RateLimiterConfig,
 	driveRateLimit RateLimiterConfig,
@@ -363,6 +372,9 @@ func (p *Process) Create(
 		"i8042.nokbd":      "",
 		"i8042.noaux":      "",
 		"random.trust_cpu": "on",
+
+		// discard: ext4 issues TRIM on freed blocks so they are elided from the snapshot diff.
+		"rootflags": "discard",
 	}
 
 	if options.KvmClock {
@@ -438,6 +450,18 @@ func (p *Process) Create(
 	}
 	telemetry.ReportEvent(ctx, "set fc entropy config")
 
+	if freePageReporting || freePageHinting {
+		if err := p.client.installBalloon(ctx, freePageReporting, freePageHinting); err != nil {
+			fcStopErr := p.Stop(ctx)
+
+			return errors.Join(fmt.Errorf("error installing balloon device: %w", err), fcStopErr)
+		}
+		telemetry.ReportEvent(ctx, "installed balloon device",
+			attribute.Bool("balloon.free_page_reporting", freePageReporting),
+			attribute.Bool("balloon.free_page_hinting", freePageHinting),
+		)
+	}
+
 	err = p.client.startVM(ctx)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
@@ -458,6 +482,7 @@ func (p *Process) Resume(
 	uffdReady chan struct{},
 	accessToken *string,
 	cgroupFD int,
+	useMemfd bool,
 	txRateLimit RateLimiterConfig,
 	driveRateLimit RateLimiterConfig,
 ) error {
@@ -546,6 +571,7 @@ func (p *Process) Resume(
 		uffdSocketPath,
 		uffdReady,
 		snapfile,
+		useMemfd,
 	)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)
@@ -697,6 +723,72 @@ func (p *Process) Pause(ctx context.Context) error {
 	defer childSpan.End()
 
 	return p.client.pauseVM(ctx)
+}
+
+// freePageHintDone is FC's FREE_PAGE_HINT_DONE: the host_cmd value FC writes
+// back after the guest's FREE_PAGE_HINT_STOP when start used acknowledge_on_stop.
+const freePageHintDone int64 = 1
+
+// DrainBalloon triggers a free-page-hinting run and blocks until the cycle
+// completes or ctx fires. No-op on FC < v1.14 and when no balloon is configured.
+func (p *Process) DrainBalloon(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "drain-balloon")
+	outcome := "ok"
+	defer func() {
+		span.SetAttributes(attribute.String("drain-balloon.outcome", outcome))
+		span.End()
+	}()
+
+	if !FCSupportsFreePageHinting(p.Versions.FirecrackerVersion) {
+		outcome = "fc-unsupported"
+
+		return nil
+	}
+
+	if err := p.client.startBalloonHinting(ctx, true); err != nil {
+		var notConfigured *operations.StartBalloonHintingBadRequest
+		if errors.As(err, &notConfigured) {
+			outcome = "not-configured"
+
+			return nil
+		}
+
+		outcome = "start-failed"
+
+		return fmt.Errorf("start balloon hinting: %w", err)
+	}
+
+	if err := pollFphDone(ctx, p.client.describeBalloonHinting); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			outcome = "timeout"
+		} else {
+			outcome = "describe-failed"
+		}
+
+		return err
+	}
+
+	return nil
+}
+
+func pollFphDone(ctx context.Context, describe func(ctx context.Context) (int64, error)) error {
+	backoff := 5 * time.Millisecond
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+
+		host, err := describe(ctx)
+		if err != nil {
+			return fmt.Errorf("balloon hinting status: %w", err)
+		}
+		if host == freePageHintDone {
+			return nil
+		}
+		backoff = min(backoff*2, 50*time.Millisecond)
+	}
 }
 
 // CreateSnapshot VM needs to be paused before creating a snapshot.

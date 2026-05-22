@@ -1,3 +1,5 @@
+//go:build linux
+
 package build
 
 import (
@@ -266,7 +268,7 @@ func (s *DiffStore) deleteOldestFromCache(ctx context.Context) (suc bool, e erro
 			return true
 		}
 
-		sfSize, err := item.Value().FileSize()
+		sfSize, err := item.Value().FileSize(ctx)
 		if err != nil {
 			logger.L().Warn(ctx, "failed to get size of deleted item from cache", zap.Error(err))
 			sfSize = fallbackDiffSize

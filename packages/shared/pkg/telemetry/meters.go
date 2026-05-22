@@ -26,6 +26,9 @@ const (
 	TeamSandboxCreated CounterType = "e2b.team.sandbox.created"
 
 	EnvdInitCalls CounterType = "orchestrator.sandbox.envd.init.calls"
+
+	ApiRedisStoragePublisherPublished CounterType = "api.redis_storage.publisher.published"
+	ApiRedisStoragePublisherDropped   CounterType = "api.redis_storage.publisher.dropped"
 )
 
 const (
@@ -44,9 +47,12 @@ const (
 	OrchestratorProxyPoolConnectionsMeterCounterName   ObservableUpDownCounterType = "orchestrator.proxy.pool.connections.open"
 	OrchestratorProxyPoolSizeMeterCounterName          ObservableUpDownCounterType = "orchestrator.proxy.pool.size"
 
-	BuildCounterMeterName ObservableUpDownCounterType = "api.env.build.running"
+	BuildCounterMeterName       ObservableUpDownCounterType = "api.env.build.running"
+	EvictionsRunningCounterName ObservableUpDownCounterType = "api.evictor.evictions.running"
 
 	TCPFirewallActiveConnections ObservableUpDownCounterType = "orchestrator.tcpfirewall.connections.active"
+
+	ApiRedisStoragePublisherQueueDepth ObservableUpDownCounterType = "api.redis_storage.publisher.queue.depth"
 )
 
 const (
@@ -101,6 +107,8 @@ const (
 )
 
 const (
+	ApiRedisStoragePublisherPublishDuration HistogramType = "api.redis_storage.publisher.publish.duration"
+
 	// Firecracker net histograms — per-sandbox distribution per metrics flush, no sandbox_id.
 	// Firecracker serializes SharedIncMetric as per-flush deltas (default flush interval: 60 s).
 	// Symmetric TX/RX metrics carry a direction=tx/rx attribute; TX-only metrics always use direction=tx.
@@ -120,10 +128,19 @@ const (
 	SandboxFCBlockRateLimiterEventCount HistogramType = "orchestrator.sandbox.fc.block.rate_limiter_event_count"
 	SandboxFCBlockIOEngineThrottled     HistogramType = "orchestrator.sandbox.fc.block.io_engine_throttled"
 	SandboxFCBlockRemainingReqs         HistogramType = "orchestrator.sandbox.fc.block.remaining_reqs"
+
+	SnapshotDiffBytes  HistogramType = "orchestrator.sandbox.snapshot.diff.bytes"
+	SnapshotDiffRatio  HistogramType = "orchestrator.sandbox.snapshot.diff.ratio"
+	SnapshotTotalBytes HistogramType = "orchestrator.sandbox.snapshot.total.bytes"
+
+	UploadUncompressedBytes HistogramType = "orchestrator.sandbox.upload.uncompressed.bytes"
+	UploadCompressedBytes   HistogramType = "orchestrator.sandbox.upload.compressed.bytes"
+	UploadCompressionRatio  HistogramType = "orchestrator.sandbox.upload.compression.ratio"
 )
 
 const (
 	ApiOrchestratorCountMeterName GaugeIntType = "api.orchestrator.status"
+	OrchestratorStatusGaugeName   GaugeIntType = "orchestrator.status"
 
 	// Sandbox metrics
 	SandboxRamUsedGaugeName   GaugeIntType = "e2b.sandbox.ram.used"
@@ -162,6 +179,9 @@ var counterDesc = map[CounterType]string{
 
 	SandboxFCBlockFails:         "Total Firecracker VMM block device execution/event failures",
 	SandboxFCBlockNoAvailBuffer: "Total Firecracker VMM block events where no virtqueue buffer was available",
+
+	ApiRedisStoragePublisherPublished: "Total Redis PUBLISH calls completed by the storage publisher (result=success|failure)",
+	ApiRedisStoragePublisherDropped:   "Total storage notifications dropped before reaching Redis (reason=queue_full|closed)",
 }
 
 var counterUnits = map[CounterType]string{
@@ -184,6 +204,9 @@ var counterUnits = map[CounterType]string{
 
 	SandboxFCBlockFails:         "{error}",
 	SandboxFCBlockNoAvailBuffer: "{event}",
+
+	ApiRedisStoragePublisherPublished: "{notification}",
+	ApiRedisStoragePublisherDropped:   "{notification}",
 }
 
 var observableCounterDesc = map[ObservableCounterType]string{
@@ -209,8 +232,11 @@ var observableUpDownCounterDesc = map[ObservableUpDownCounterType]string{
 	OrchestratorProxyPoolConnectionsMeterCounterName:   "Open connections from the orchestrator proxy to sandboxes.",
 	OrchestratorProxyPoolSizeMeterCounterName:          "Size of the orchestrator proxy pool.",
 	BuildCounterMeterName:                              "Counter of running builds.",
+	EvictionsRunningCounterName:                        "Counter of currently running evictions.",
 
 	TCPFirewallActiveConnections: "Number of currently active TCP firewall connections.",
+
+	ApiRedisStoragePublisherQueueDepth: "Current depth of the Redis storage publisher queue (items awaiting PUBLISH).",
 }
 
 var observableUpDownCounterUnits = map[ObservableUpDownCounterType]string{
@@ -222,8 +248,11 @@ var observableUpDownCounterUnits = map[ObservableUpDownCounterType]string{
 	OrchestratorProxyPoolConnectionsMeterCounterName:   "{connection}",
 	OrchestratorProxyPoolSizeMeterCounterName:          "{transport}",
 	BuildCounterMeterName:                              "{build}",
+	EvictionsRunningCounterName:                        "{eviction}",
 
 	TCPFirewallActiveConnections: "{connection}",
+
+	ApiRedisStoragePublisherQueueDepth: "{notification}",
 }
 
 var gaugeFloatDesc = map[GaugeFloatType]string{
@@ -236,6 +265,7 @@ var gaugeFloatUnits = map[GaugeFloatType]string{
 
 var gaugeIntDesc = map[GaugeIntType]string{
 	ApiOrchestratorCountMeterName: "Counter of running orchestrators.",
+	OrchestratorStatusGaugeName:   "Self-reported orchestrator status (always 1, labelled with status and version).",
 	SandboxRamUsedGaugeName:       "Amount of RAM used by the sandbox.",
 	SandboxRamTotalGaugeName:      "Amount of RAM available to the sandbox.",
 	SandboxRamCacheGaugeName:      "Amount of RAM used by the page cache in the sandbox.",
@@ -248,6 +278,7 @@ var gaugeIntDesc = map[GaugeIntType]string{
 
 var gaugeIntUnits = map[GaugeIntType]string{
 	ApiOrchestratorCountMeterName: "{orchestrator}",
+	OrchestratorStatusGaugeName:   "{orchestrator}",
 	SandboxRamUsedGaugeName:       "{By}",
 	SandboxRamTotalGaugeName:      "{By}",
 	SandboxRamCacheGaugeName:      "{By}",
@@ -321,6 +352,8 @@ func GetGaugeInt(meter metric.Meter, name GaugeIntType) (metric.Int64ObservableG
 }
 
 var histogramDesc = map[HistogramType]string{
+	ApiRedisStoragePublisherPublishDuration: "Duration of a single Redis PUBLISH round-trip from the storage publisher",
+
 	BuildDurationHistogramName:            "Time taken to build a template",
 	BuildPhaseDurationHistogramName:       "Time taken to build each phase of a template",
 	BuildStepDurationHistogramName:        "Time taken to build each step of a template",
@@ -349,9 +382,19 @@ var histogramDesc = map[HistogramType]string{
 	SandboxFCBlockRateLimiterEventCount: "Distribution of Firecracker VMM block rate limiter events per metrics flush",
 	SandboxFCBlockIOEngineThrottled:     "Distribution of Firecracker VMM block ops throttled by io_uring engine per metrics flush",
 	SandboxFCBlockRemainingReqs:         "Distribution of Firecracker VMM block queue remaining-request events per metrics flush",
+
+	SnapshotDiffBytes:  "Per-snapshot dirty/empty bytes per file",
+	SnapshotDiffRatio:  "Per-snapshot dirty/empty as fraction of total mapped size (1.0 = 100%)",
+	SnapshotTotalBytes: "Per-snapshot total mapped size of the file",
+
+	UploadUncompressedBytes: "Per-upload uncompressed artifact size",
+	UploadCompressedBytes:   "Per-upload compressed artifact size",
+	UploadCompressionRatio:  "Per-upload compressed/uncompressed ratio (1.0 = no compression)",
 }
 
 var histogramUnits = map[HistogramType]string{
+	ApiRedisStoragePublisherPublishDuration: "ms",
+
 	BuildDurationHistogramName:                    "ms",
 	BuildPhaseDurationHistogramName:               "ms",
 	BuildStepDurationHistogramName:                "ms",
@@ -379,6 +422,14 @@ var histogramUnits = map[HistogramType]string{
 	SandboxFCBlockRateLimiterEventCount: "{event}",
 	SandboxFCBlockIOEngineThrottled:     "{op}",
 	SandboxFCBlockRemainingReqs:         "{event}",
+
+	SnapshotDiffBytes:  "{By}",
+	SnapshotDiffRatio:  "{1}",
+	SnapshotTotalBytes: "{By}",
+
+	UploadUncompressedBytes: "{By}",
+	UploadCompressedBytes:   "{By}",
+	UploadCompressionRatio:  "{1}",
 }
 
 func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram, error) {
@@ -386,6 +437,16 @@ func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram
 	unit := histogramUnits[name]
 
 	return meter.Int64Histogram(string(name),
+		metric.WithDescription(desc),
+		metric.WithUnit(unit),
+	)
+}
+
+func GetFloatHistogram(meter metric.Meter, name HistogramType) (metric.Float64Histogram, error) {
+	desc := histogramDesc[name]
+	unit := histogramUnits[name]
+
+	return meter.Float64Histogram(string(name),
 		metric.WithDescription(desc),
 		metric.WithUnit(unit),
 	)

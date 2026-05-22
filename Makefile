@@ -205,7 +205,7 @@ lint:
 
 .PHONY: generate-mocks
 generate-mocks:
-	go run github.com/vektra/mockery/v3@v3.5.0
+	GOOS=linux mockery
 
 .PHONY: tidy
 tidy:

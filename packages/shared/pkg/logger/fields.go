@@ -47,6 +47,10 @@ func WithClusterID(clusterID uuid.UUID) zap.Field {
 	return zap.String("cluster.id", clusterID.String())
 }
 
+func WithEdgeTraceID(traceID string) zap.Field {
+	return zap.String("edge.trace.id", traceID)
+}
+
 func WithServiceInstanceID(instanceID string) zap.Field {
 	return zap.String("service.instance.id", instanceID)
 }

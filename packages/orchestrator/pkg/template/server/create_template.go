@@ -1,3 +1,5 @@
+//go:build linux
+
 package server
 
 import (
@@ -14,6 +16,8 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/buildlogger"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/config"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/oci/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -25,16 +29,6 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	defer childSpan.End()
 
 	cfg := templateRequest.GetTemplate()
-	childSpan.SetAttributes(
-		telemetry.WithTemplateID(cfg.GetTemplateID()),
-		telemetry.WithBuildID(cfg.GetBuildID()),
-		attribute.String("env.kernel.version", cfg.GetKernelVersion()),
-		attribute.String("env.firecracker.version", cfg.GetFirecrackerVersion()),
-		attribute.String("env.start_cmd", cfg.GetStartCommand()),
-		attribute.Int64("env.memory_mb", int64(cfg.GetMemoryMB())),
-		attribute.Int64("env.vcpu_count", int64(cfg.GetVCpuCount())),
-		attribute.Bool("env.huge_pages", cfg.GetHugePages()),
-	)
 
 	metadata := storage.Paths{
 		BuildID: cfg.GetBuildID(),
@@ -59,6 +53,36 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		}
 	}
 
+	ctx = featureflags.AddToContext(
+		ctx,
+		featureflags.TemplateContext(cfg.GetTemplateID()),
+		featureflags.TeamContext(cfg.GetTeamID()),
+	)
+
+	kernelVersion := s.featureFlags.StringFlag(ctx, featureflags.BuildKernelVersion)
+	firecrackerVersion := s.featureFlags.StringFlag(ctx, featureflags.BuildFirecrackerVersion)
+
+	fcInfo, err := fcversion.New(firecrackerVersion)
+	if err != nil {
+		return nil, fmt.Errorf("invalid resolved firecracker version %q: %w", firecrackerVersion, err)
+	}
+	hugePages := fcInfo.HasHugePages()
+	freePageReporting := fcInfo.HasFreePageReporting() && s.featureFlags.BoolFlag(ctx, featureflags.FreePageReportingFlag)
+	freePageHinting := fcInfo.HasFreePageHinting() && featureflags.IsFreePageHintingEnabled(ctx, s.featureFlags)
+
+	childSpan.SetAttributes(
+		telemetry.WithTemplateID(cfg.GetTemplateID()),
+		telemetry.WithBuildID(cfg.GetBuildID()),
+		telemetry.WithKernelVersion(kernelVersion),
+		telemetry.WithFirecrackerVersion(firecrackerVersion),
+		attribute.String("env.start_cmd", cfg.GetStartCommand()),
+		attribute.Int64("env.memory_mb", int64(cfg.GetMemoryMB())),
+		attribute.Int64("env.vcpu_count", int64(cfg.GetVCpuCount())),
+		attribute.Bool("env.huge_pages", hugePages),
+		attribute.Bool("env.free_page_reporting", freePageReporting),
+		attribute.Bool("env.free_page_hinting", freePageHinting),
+	)
+
 	template := config.TemplateConfig{
 		Version:              version,
 		TeamID:               cfg.GetTeamID(),
@@ -69,14 +93,16 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		StartCmd:             cfg.GetStartCommand(),
 		ReadyCmd:             cfg.GetReadyCommand(),
 		DiskSizeMB:           int64(cfg.GetDiskSizeMB()),
-		HugePages:            cfg.GetHugePages(),
+		HugePages:            hugePages,
+		FreePageReporting:    freePageReporting,
+		FreePageHinting:      freePageHinting,
 		FromImage:            cfg.GetFromImage(),
 		FromTemplate:         cfg.GetFromTemplate(),
 		RegistryAuthProvider: authProvider,
 		Force:                cfg.Force,
 		Steps:                cfg.GetSteps(),
-		KernelVersion:        cfg.GetKernelVersion(),
-		FirecrackerVersion:   cfg.GetFirecrackerVersion(),
+		KernelVersion:        kernelVersion,
+		FirecrackerVersion:   firecrackerVersion,
 	}
 
 	logs := buildlogger.NewLogEntryLogger()
@@ -85,10 +111,10 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		return nil, fmt.Errorf("error while creating build cache: %w", err)
 	}
 
-	// Add new core that will log all messages using logger (zap.Logger) to the logs buffer too
-	encoder := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
-	bufferCore := zapcore.NewCore(encoder, logs, zapcore.DebugLevel)
-	core := zapcore.NewTee(bufferCore, s.buildLogger.Detach(ctx).Core().
+	// LogEntryLogger is itself a zapcore.Core that captures every entry into
+	// an in-memory slice; tee it with the regular build logger so logs go to
+	// both destinations.
+	core := zapcore.NewTee(logs, s.buildLogger.Detach(ctx).Core().
 		With([]zap.Field{
 			{Type: zapcore.StringType, Key: "envID", String: cfg.GetTemplateID()},
 			{Type: zapcore.StringType, Key: "buildID", String: metadata.BuildID},
@@ -151,8 +177,10 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 			buildInfo.SetFail(userError)
 		} else {
 			buildInfo.SetSuccess(&templatemanager.TemplateBuildMetadata{
-				RootfsSizeKey:  int32(res.RootfsSizeMB),
-				EnvdVersionKey: res.EnvdVersion,
+				RootfsSizeKey:      int32(res.RootfsSizeMB),
+				EnvdVersionKey:     res.EnvdVersion,
+				KernelVersion:      res.KernelVersion,
+				FirecrackerVersion: res.FirecrackerVersion,
 			})
 			telemetry.ReportEvent(ctx, "Environment built")
 		}

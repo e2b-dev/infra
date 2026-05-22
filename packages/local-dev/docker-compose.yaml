@@ -103,7 +103,7 @@ services:
       - tempo:/var/tempo
 
   vector:
-    image: timberio/vector:0.34.X-alpine
+    image: timberio/vector:0.51.X-alpine
     depends_on:
       - loki
     environment:

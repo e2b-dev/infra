@@ -1,3 +1,5 @@
+//go:build linux
+
 package uffd
 
 import (
@@ -17,4 +19,5 @@ type MemoryBackend interface {
 	Stop() error
 	Ready() chan struct{}
 	Exit() *utils.ErrorOnce
+	Memfd(ctx context.Context) *block.Memfd
 }

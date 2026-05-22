@@ -1,3 +1,5 @@
+//go:build linux
+
 package server
 
 import (
@@ -38,6 +40,7 @@ type ServerStore struct {
 	builder           *build.Builder
 	buildCache        *cache.BuildCache
 	buildLogger       logger.Logger
+	featureFlags      *featureflags.Client
 	artifactsregistry artifactsregistry.ArtifactsRegistry
 	templateStorage   storage.StorageProvider
 	buildStorage      storage.StorageProvider
@@ -60,6 +63,7 @@ func New(
 	templateCache *sbxtemplate.Cache,
 	templatePersistence storage.StorageProvider,
 	buildPersistence storage.StorageProvider,
+	uploads *sandbox.Uploads,
 ) (s *ServerStore, e error) {
 	logger.Info(ctx, "Initializing template manager")
 
@@ -106,6 +110,7 @@ func New(
 		sandboxFactory.Sandboxes,
 		templateCache,
 		buildMetrics,
+		uploads,
 	)
 
 	store := &ServerStore{
@@ -113,6 +118,7 @@ func New(
 		builder:           builder,
 		buildCache:        buildCache,
 		buildLogger:       buildLogger,
+		featureFlags:      featureFlags,
 		artifactsregistry: artifactsRegistry,
 		templateStorage:   templatePersistence,
 		buildStorage:      buildPersistence,

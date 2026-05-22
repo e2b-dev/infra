@@ -142,7 +142,7 @@ resource "aws_ec2_instance_connect_endpoint" "connect" {
   ]
 
   tags = {
-    Name = "${var.prefix}-instance-connect-vpc-endpoint"
+    Name = "${var.prefix}instance-connect-vpc-endpoint"
   }
 }
 

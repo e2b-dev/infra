@@ -47,7 +47,7 @@ job "logs-collector" {
 
       config {
         network_mode = "host"
-        image        = "timberio/vector:0.34.X-alpine"
+        image        = "timberio/vector:0.51.X-alpine"
 
         ports = [
           "health",

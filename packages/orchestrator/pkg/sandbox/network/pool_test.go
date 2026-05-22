@@ -1,3 +1,5 @@
+//go:build linux
+
 package network
 
 import (
@@ -39,6 +41,11 @@ func newTestSlot(idx int) *Slot {
 	return &Slot{Idx: idx + testSlotIdxOffset, egressProxy: NoopEgressProxy{}}
 }
 
+// noopRelease satisfies Pool.Return's ReleaseNotify parameter without doing
+// anything. Tests cover Return's cleanup path and don't care about the
+// network-release notification.
+func noopRelease(context.Context, string) {}
+
 // TestReturn_NoPanicDuringClose races Return against Close to guard
 // against regressions of the send-on-closed-channel panic.
 func TestReturn_NoPanicDuringClose(t *testing.T) {
@@ -67,7 +74,7 @@ func TestReturn_NoPanicDuringClose(t *testing.T) {
 				<-start
 
 				for i := range iters {
-					_ = pool.Return(t.Context(), newTestSlot(w*iters+i+1))
+					_ = pool.Return(t.Context(), newTestSlot(w*iters+i+1), noopRelease, 0)
 				}
 			})
 		}
@@ -99,7 +106,7 @@ func TestReturn_AfterCloseCleansUpLocally(t *testing.T) {
 	require.NoError(t, pool.Close(t.Context()))
 
 	before := storage.released.Load()
-	err := pool.Return(t.Context(), newTestSlot(1))
+	err := pool.Return(t.Context(), newTestSlot(1), noopRelease, 0)
 	after := storage.released.Load()
 
 	assert.Equal(t, int64(1), after-before, "Return after Close must invoke Storage.Release via cleanup")
@@ -116,7 +123,7 @@ func TestReturn_AfterClose_CleanupFailure_PreservesErrClosed(t *testing.T) {
 
 	require.NoError(t, pool.Close(t.Context()))
 
-	err := pool.Return(t.Context(), newTestSlot(1))
+	err := pool.Return(t.Context(), newTestSlot(1), noopRelease, 0)
 	require.ErrorIs(t, err, ErrClosed)
 	require.ErrorIs(t, err, boom)
 }

@@ -1,3 +1,5 @@
+//go:build linux
+
 package nbd_test
 
 import (
@@ -57,6 +59,10 @@ func (s *SlowDevice) Header() *header.Header {
 	return s.inner.Header()
 }
 
+func (s *SlowDevice) SwapHeader(h *header.Header) {
+	s.inner.SwapHeader(h)
+}
+
 func (s *SlowDevice) Close() error {
 	return s.inner.Close()
 }
@@ -98,7 +104,7 @@ func TestSlowBackend_ShortTimeout(t *testing.T) {
 	// The 8s backend delay exceeds the 5s I/O timeout, so the kernel
 	// will declare the connection dead and return EIO.
 	devicePath, cleanup, err := testutils.GetNBDDevice(
-		context.Background(), overlay, featureFlags,
+		t.Context(), overlay, featureFlags,
 		nbd.WithIOTimeout(5*time.Second),
 		nbd.WithDeadconnTimeout(5*time.Second),
 	)
@@ -149,7 +155,7 @@ func TestSlowBackend_SufficientTimeout(t *testing.T) {
 
 	// Kernel I/O timeout of 30s — well above the 3s backend delay.
 	devicePath, cleanup, err := testutils.GetNBDDevice(
-		context.Background(), overlay, featureFlags,
+		t.Context(), overlay, featureFlags,
 		nbd.WithIOTimeout(30*time.Second),
 		nbd.WithDeadconnTimeout(30*time.Second),
 	)

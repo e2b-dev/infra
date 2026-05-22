@@ -1,6 +1,7 @@
 package redis
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -15,9 +16,9 @@ func setupTestManager(t *testing.T) *subscriptionManager {
 	t.Helper()
 
 	client := redis_utils.SetupInstance(t)
-	storage := NewStorage(client)
+	storage := newTestStorage(t, client)
 	go storage.Start(t.Context())
-	t.Cleanup(storage.Close)
+	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })
 
 	return storage.subManager
 }
@@ -222,9 +223,9 @@ func TestSubscriptionManager_PubSubEndToEnd(t *testing.T) {
 	t.Parallel()
 
 	client := redis_utils.SetupInstance(t)
-	storage := NewStorage(client)
+	storage := newTestStorage(t, client)
 	go storage.Start(t.Context())
-	t.Cleanup(storage.Close)
+	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })
 
 	routingKey := "test:routing:key"
 	ch, cleanup := storage.subManager.subscribe(routingKey)
@@ -233,8 +234,8 @@ func TestSubscriptionManager_PubSubEndToEnd(t *testing.T) {
 	// Allow time for the PubSub subscription to be established
 	time.Sleep(50 * time.Millisecond)
 
-	// Publish via Redis (simulating what the callback does)
-	err := client.Publish(t.Context(), globalTransitionNotifyChannel, routingKey).Err()
+	// Publish via Redis (simulating what storage callbacks do)
+	err := client.Publish(t.Context(), globalStorageNotifyChannel, routingKey).Err()
 	require.NoError(t, err)
 
 	select {
@@ -249,9 +250,9 @@ func TestSubscriptionManager_PubSubIgnoresUnrelatedKeys(t *testing.T) {
 	t.Parallel()
 
 	client := redis_utils.SetupInstance(t)
-	storage := NewStorage(client)
+	storage := newTestStorage(t, client)
 	go storage.Start(t.Context())
-	t.Cleanup(storage.Close)
+	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })
 
 	ch, cleanup := storage.subManager.subscribe("my:sandbox:key")
 	t.Cleanup(cleanup)
@@ -259,7 +260,7 @@ func TestSubscriptionManager_PubSubIgnoresUnrelatedKeys(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Publish a message with a different routing key
-	err := client.Publish(t.Context(), globalTransitionNotifyChannel, "other:sandbox:key").Err()
+	err := client.Publish(t.Context(), globalStorageNotifyChannel, "other:sandbox:key").Err()
 	require.NoError(t, err)
 
 	select {

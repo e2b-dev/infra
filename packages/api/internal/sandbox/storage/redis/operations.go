@@ -79,7 +79,8 @@ func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string
 	key := getSandboxKey(teamID.String(), sandboxID)
 	teamKey := GetSandboxStorageTeamIndexKey(teamID.String())
 
-	lock, err := s.lockService.Obtain(ctx, redis_utils.GetLockKey(key), lockTimeout, s.lockOption)
+	lockKey := redis_utils.GetLockKey(key)
+	lock, err := s.locker.Obtain(ctx, lockKey, lockTimeout)
 	if err != nil {
 		return fmt.Errorf("failed to obtain lock: %w", err)
 	}
@@ -166,7 +167,8 @@ func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sand
 func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
 	key := getSandboxKey(teamID.String(), sandboxID)
 
-	lock, err := s.lockService.Obtain(ctx, redis_utils.GetLockKey(key), lockTimeout, s.lockOption)
+	lockKey := redis_utils.GetLockKey(key)
+	lock, err := s.locker.Obtain(ctx, lockKey, lockTimeout)
 	if err != nil {
 		return sandbox.Sandbox{}, fmt.Errorf("failed to obtain lock: %w", err)
 	}
@@ -263,8 +265,8 @@ func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int6
 		return nil, fmt.Errorf("SCARD pipeline failed: %w", err)
 	}
 
-	now := time.Now().Unix()
-	cutoff := now - int64(sandbox.StaleCutoff.Seconds())
+	nowSec := time.Now().Unix()
+	cutoff := nowSec - int64(sandbox.StaleCutoff.Seconds())
 
 	teams := make(map[uuid.UUID]int64, len(entries))
 	var stale []any

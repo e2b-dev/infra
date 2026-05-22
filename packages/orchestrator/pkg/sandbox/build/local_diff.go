@@ -1,3 +1,5 @@
+//go:build linux
+
 package build
 
 import (
@@ -6,6 +8,7 @@ import (
 	"os"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 type LocalDiffFile struct {
@@ -77,14 +80,14 @@ func (f *LocalDiffFile) CloseToDiff(
 
 type localDiff struct {
 	cacheKey DiffStoreKey
-	cache    *block.Cache
+	cache    block.DiffSource
 }
 
 var _ Diff = (*localDiff)(nil)
 
 func NewLocalDiffFromCache(
 	cacheKey DiffStoreKey,
-	cache *block.Cache,
+	cache block.DiffSource,
 ) (Diff, error) {
 	return &localDiff{
 		cache:    cache,
@@ -106,19 +109,19 @@ func newLocalDiff(
 	return NewLocalDiffFromCache(cacheKey, cache)
 }
 
-func (b *localDiff) CachePath() (string, error) {
-	return b.cache.Path(), nil
+func (b *localDiff) CachePath(ctx context.Context) (string, error) {
+	return b.cache.Path(ctx)
 }
 
 func (b *localDiff) Close() error {
 	return b.cache.Close()
 }
 
-func (b *localDiff) ReadAt(_ context.Context, p []byte, off int64) (int, error) {
+func (b *localDiff) ReadAt(_ context.Context, p []byte, off int64, _ *storage.FrameTable) (int, error) {
 	return b.cache.ReadAt(p, off)
 }
 
-func (b *localDiff) Slice(_ context.Context, off, length int64) ([]byte, error) {
+func (b *localDiff) Slice(_ context.Context, off, length int64, _ *storage.FrameTable) ([]byte, error) {
 	return b.cache.Slice(off, length)
 }
 
@@ -126,8 +129,8 @@ func (b *localDiff) Size(_ context.Context) (int64, error) {
 	return b.cache.Size()
 }
 
-func (b *localDiff) FileSize() (int64, error) {
-	return b.cache.FileSize()
+func (b *localDiff) FileSize(ctx context.Context) (int64, error) {
+	return b.cache.FileSize(ctx)
 }
 
 func (b *localDiff) CacheKey() DiffStoreKey {

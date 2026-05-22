@@ -1,11 +1,33 @@
 locals {
-  clickhouse_connection_string            = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
-  redis_url                               = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
-  redis_cluster_url                       = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
-  loki_url                                = "http://loki.service.consul:${var.loki_service_port.port}"
-  enable_billing_http_team_provision_sink = var.enable_billing_http_team_provision_sink
-  dashboard_api_billing_server_url        = local.enable_billing_http_team_provision_sink ? trimspace(data.google_secret_manager_secret_version.billing_server_url[0].secret_data) : ""
-  dashboard_api_billing_server_api_token  = local.enable_billing_http_team_provision_sink ? trimspace(data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data) : ""
+  clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
+  redis_url                    = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
+  redis_cluster_url            = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
+  loki_url                     = "http://loki.service.consul:${var.loki_service_port.port}"
+  # Filter out empty / too-short HMAC secrets so that placeholder values left in
+  # Secret Manager on a fresh deploy don't get fed to legacy.NewVerifier, which
+  # rejects secrets shorter than 16 bytes and would fatal the api/dashboard-api
+  # jobs at startup.
+  default_legacy_hmac_secrets = [
+    for s in split(",", trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)) : s
+    if length(s) >= 16
+  ]
+  default_auth_provider_config = length(local.default_legacy_hmac_secrets) > 0 ? {
+    jwt = []
+    legacy = {
+      hmac = {
+        secrets = local.default_legacy_hmac_secrets
+      }
+    }
+    } : {
+    jwt    = []
+    legacy = null
+  }
+  # jsonencode/jsondecode strips Terraform's static type info from
+  # var.auth_provider_config so that the conditional below does not fail with
+  # "Inconsistent conditional result types" when the typed object literal in
+  # `default_auth_provider_config` (a tuple of objects) is compared with the
+  # variable's declared object type (a list of objects).
+  auth_provider_config = var.auth_provider_config != null ? jsondecode(jsonencode(var.auth_provider_config)) : local.default_auth_provider_config
 }
 
 # API
@@ -50,20 +72,6 @@ data "google_secret_manager_secret_version" "launch_darkly_api_key" {
   secret = var.launch_darkly_api_key_secret_name
 }
 
-data "google_secret_manager_secret_version" "billing_server_api_token" {
-  count = local.enable_billing_http_team_provision_sink ? 1 : 0
-
-  project = var.gcp_project_id
-  secret  = "${var.prefix}billing-server-api-token"
-}
-
-data "google_secret_manager_secret_version" "billing_server_url" {
-  count = local.enable_billing_http_team_provision_sink ? 1 : 0
-
-  project = var.gcp_project_id
-  secret  = "${var.prefix}billing-server-url"
-}
-
 provider "nomad" {
   address      = "https://nomad.${var.domain_name}"
   secret_id    = var.nomad_acl_token_secret
@@ -81,8 +89,10 @@ data "google_secret_manager_secret_version" "redis_tls_ca_base64" {
 module "ingress" {
   source = "../../modules/job-ingress"
 
-  ingress_count        = var.ingress_count
-  ingress_proxy_port   = var.ingress_port.port
+  ingress_count         = var.ingress_count
+  ingress_port          = var.ingress_port
+  ingress_internal_port = var.ingress_internal_port
+
   traefik_config_files = var.traefik_config_files
 
   node_pool     = var.api_node_pool
@@ -113,11 +123,11 @@ module "api" {
   logs_collector_address                  = "http://localhost:${var.logs_proxy_port.port}"
   port_name                               = var.api_port.name
   port_number                             = var.api_port.port
-  api_grpc_port                           = var.api_grpc_port
+  api_internal_grpc_port                  = var.api_internal_grpc_port
   api_docker_image                        = data.google_artifact_registry_docker_image.api_image.self_link
   postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   postgres_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
-  supabase_jwt_secrets                    = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
+  auth_provider_config                    = local.auth_provider_config
   posthog_api_key                         = trimspace(data.google_secret_manager_secret_version.posthog_api_key.secret_data)
   environment                             = var.environment
   analytics_collector_host                = trimspace(data.google_secret_manager_secret_version.analytics_collector_host.secret_data)
@@ -145,6 +155,7 @@ module "api" {
     VOLUME_TOKEN_SIGNING_KEY_NAME = var.volume_token_signing_key_name
     VOLUME_TOKEN_DURATION         = var.volume_token_duration
     VOLUME_TOKEN_SIGNING_METHOD   = var.volume_token_signing_method
+    CLIENT_PROXY_OIDC_ISSUER_URL  = var.client_proxy_oidc_issuer_url
   }
 }
 
@@ -159,20 +170,18 @@ module "dashboard_api" {
 
   image = data.google_artifact_registry_docker_image.dashboard_api_image[0].self_link
 
-  admin_token                             = trimspace(data.google_secret_manager_secret_version.dashboard_api_admin_token.secret_data)
-  postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-  auth_db_connection_string               = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-  auth_db_read_replica_connection_string  = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
-  supabase_db_connection_string           = trimspace(data.google_secret_manager_secret_version.supabase_db_connection_string.secret_data)
-  clickhouse_connection_string            = local.clickhouse_connection_string
-  supabase_jwt_secrets                    = trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)
-  redis_url                               = local.redis_url
-  redis_cluster_url                       = local.redis_cluster_url
-  redis_tls_ca_base64                     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-  enable_auth_user_sync_background_worker = var.enable_auth_user_sync_background_worker
-  enable_billing_http_team_provision_sink = var.enable_billing_http_team_provision_sink
-  billing_server_url                      = local.dashboard_api_billing_server_url
-  billing_server_api_token                = local.dashboard_api_billing_server_api_token
+  admin_token                            = trimspace(data.google_secret_manager_secret_version.dashboard_api_admin_token.secret_data)
+  postgres_connection_string             = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+  auth_db_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+  auth_db_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
+  supabase_db_connection_string          = trimspace(data.google_secret_manager_secret_version.supabase_db_connection_string.secret_data)
+  clickhouse_connection_string           = local.clickhouse_connection_string
+  auth_provider_config                   = local.auth_provider_config
+  redis_url                              = local.redis_url
+  redis_cluster_url                      = local.redis_cluster_url
+  redis_tls_ca_base64                    = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+  billing_server_url                     = local.dashboard_api_billing_server_url
+  billing_server_api_token               = local.dashboard_api_billing_server_api_token
 
   otel_collector_grpc_port = var.otel_collector_grpc_port
   logs_proxy_port          = var.logs_proxy_port
@@ -190,7 +199,6 @@ module "redis" {
 resource "nomad_job" "docker_reverse_proxy" {
   jobspec = templatefile("${path.module}/jobs/docker-reverse-proxy.hcl",
     {
-      gcp_zone                      = var.gcp_zone
       node_pool                     = var.api_node_pool
       image_name                    = data.google_artifact_registry_docker_image.docker_reverse_proxy_image.self_link
       postgres_connection_string    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
@@ -221,11 +229,11 @@ module "client_proxy" {
   proxy_port  = var.client_proxy_session_port
   health_port = var.client_proxy_health_port
 
-  redis_url           = local.redis_url
-  redis_cluster_url   = local.redis_cluster_url
-  redis_tls_ca_base64 = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-  image               = data.google_artifact_registry_docker_image.client_proxy_image.self_link
-  api_grpc_address    = "api-grpc.service.consul:${var.api_grpc_port}"
+  redis_url                 = local.redis_url
+  redis_cluster_url         = local.redis_cluster_url
+  redis_tls_ca_base64       = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+  image                     = data.google_artifact_registry_docker_image.client_proxy_image.self_link
+  api_internal_grpc_address = "api-internal-grpc.service.consul:${var.api_internal_grpc_port}"
 
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
   logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
@@ -322,6 +330,13 @@ module "otel_collector" {
   grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
   consul_token                 = var.consul_acl_token_secret
 
+  enable_otel_router_metrics = var.enable_otel_router_metrics
+  otel_router_grpc_port      = var.otel_router_grpc_port
+
+  enable_gcp_telemetry_metrics          = var.enable_gcp_telemetry_metrics
+  enable_gcp_telemetry_external_metrics = var.enable_gcp_telemetry_external_metrics
+  gcp_telemetry_project_id              = var.gcp_project_id
+
   clickhouse_username = var.clickhouse_username
   clickhouse_password = random_password.clickhouse_password.result
   clickhouse_port     = var.clickhouse_server_port.port
@@ -337,6 +352,9 @@ module "otel_collector_nomad_server" {
   grafana_otel_collector_token = data.google_secret_manager_secret_version.grafana_otel_collector_token.secret_data
   grafana_otlp_url             = data.google_secret_manager_secret_version.grafana_otlp_url.secret_data
   grafana_username             = data.google_secret_manager_secret_version.grafana_username.secret_data
+
+  enable_gcp_telemetry_metrics = var.enable_gcp_telemetry_metrics
+  gcp_telemetry_project_id     = var.gcp_project_id
 }
 
 
@@ -416,6 +434,9 @@ module "logs_collector" {
 
   loki_endpoint = "http://loki.service.consul:${var.loki_service_port.port}"
 
+  enable_otel_router_logs = var.enable_otel_router_logs
+  otel_router_http_port   = var.otel_router_http_port
+
   vector_health_port = var.logs_health_proxy_port.port
   vector_api_port    = var.logs_proxy_port.port
 
@@ -425,16 +446,19 @@ module "logs_collector" {
 }
 
 data "google_storage_bucket_object" "orchestrator" {
+  count  = var.orchestrator_enabled ? 1 : 0
   name   = "orchestrator"
   bucket = var.fc_env_pipeline_bucket_name
 }
 
 locals {
-  orchestrator_checksum        = data.google_storage_bucket_object.orchestrator.generation
-  orchestrator_artifact_source = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/orchestrator?version=${local.orchestrator_checksum}"
+  orchestrator_checksum        = var.orchestrator_enabled ? data.google_storage_bucket_object.orchestrator[0].generation : ""
+  orchestrator_artifact_source = var.orchestrator_enabled ? "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/orchestrator?version=${local.orchestrator_checksum}" : ""
 }
 
 module "orchestrator" {
+  count = var.orchestrator_enabled ? 1 : 0
+
   source = "../../modules/job-orchestrator"
 
   provider_name = "gcp"
@@ -455,6 +479,7 @@ module "orchestrator" {
   envd_timeout                 = var.envd_timeout
   template_bucket_name         = var.template_bucket_name
   allow_sandbox_internet       = var.allow_sandbox_internet
+  allow_sandbox_internal_cidrs = var.allow_sandbox_internal_cidrs
   clickhouse_connection_string = local.clickhouse_connection_string
   redis_url                    = local.redis_url
   redis_cluster_url            = local.redis_cluster_url

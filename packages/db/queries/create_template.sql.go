@@ -81,6 +81,11 @@ type CreateTemplateBuildParams struct {
 	Version            *string
 }
 
+// kernel_version and firecracker_version are populated here for backwards
+// compatibility with consumers that read the env_builds row before the build
+// completes. The template-manager reports the versions it actually used via
+// TemplateBuildMetadata, and FinishTemplateBuild overwrites these fields with
+// the reported values.
 func (q *Queries) CreateTemplateBuild(ctx context.Context, arg CreateTemplateBuildParams) error {
 	_, err := q.db.Exec(ctx, createTemplateBuild,
 		arg.BuildID,

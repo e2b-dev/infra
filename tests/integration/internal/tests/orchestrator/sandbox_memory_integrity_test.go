@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,18 +21,28 @@ func TestSandboxMemoryIntegrity(t *testing.T) {
 
 	c := setup.GetAPIClient()
 
+	// Build a template with stress-ng and time pre-installed so subtests
+	// skip the page-fault-heavy apt-get phase that saturates decompression
+	// under parallel load.
+	tmpl := utils.BuildTemplate(t, utils.TemplateBuildOptions{
+		Name: "memory-integrity-deps",
+		BuildData: api.TemplateBuildStartV2{
+			FromTemplate: &setup.SandboxTemplateID,
+			Steps: &[]api.TemplateStep{{
+				Type: "RUN",
+				Args: &[]string{"apt-get update && apt-get install -y stress-ng time", "root"},
+			}},
+		},
+		ReqEditors: []api.RequestEditorFn{setup.WithAPIKey()},
+	})
+
 	t.Run("tmpfs hash", func(t *testing.T) {
 		t.Parallel()
 
-		// Create a sandbox with auto-pause disabled
-		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false), utils.WithTimeout(300), utils.WithTemplateID(tmpl.TemplateID))
 		sbxId := sbx.SandboxID
 
 		envdClient := setup.GetEnvdClient(t, t.Context())
-
-		installCmd := `apt-get update && apt-get install -y time`
-		err := utils.ExecCommandAsRoot(t, t.Context(), sbx, envdClient, "bash", "-c", installCmd)
-		require.NoError(t, err)
 
 		tmpfsFile := "/mnt/testfile"
 
@@ -56,13 +67,24 @@ USED_MEM_MB_AFTER=$(free -m | awk '/^Mem:/ {print $3}')
 echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 `, percentageOfFreeMemoryToUse, percentageOfFreeMemoryToUse, percentageOfFreeMemoryToUse, tmpfsFile)
 
-		_, err = utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", memCmd)
+		_, err := utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", memCmd)
 		require.NoError(t, err)
 
 		hashCmd := fmt.Sprintf(`sha256sum "%s" | awk '{print $1}'`, tmpfsFile)
-		hashCmdOutput, err := utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", hashCmd)
-		require.NoError(t, err)
-		hashCmdOutput = strings.TrimSpace(hashCmdOutput)
+		readHash := func() string {
+			t.Helper()
+
+			var output string
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				var err error
+				output, err = utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", hashCmd)
+				require.NoError(c, err)
+			}, 90*time.Second, 2*time.Second)
+
+			return strings.TrimSpace(output)
+		}
+
+		hashCmdOutput := readHash()
 		require.NotEmpty(t, hashCmdOutput, "Failed to extract hash from command output")
 
 		pauseIterations := 2
@@ -85,9 +107,7 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 			assert.Equal(t, sbxResume.JSON201.SandboxID, sbxId)
 
 			// Check the tmpfs hash and compare it with the original hash
-			hashCmdOutputAfterResume, err := utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", hashCmd)
-			require.NoError(t, err)
-			hashCmdOutputAfterResume = strings.TrimSpace(hashCmdOutputAfterResume)
+			hashCmdOutputAfterResume := readHash()
 
 			assert.Equal(t, hashCmdOutput, hashCmdOutputAfterResume, "Hash mismatch on iteration %d: memory integrity check failed", i)
 		}
@@ -96,7 +116,7 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 	t.Run("write after read survives pause", func(t *testing.T) {
 		t.Parallel()
 
-		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false), utils.WithTimeout(300))
 		sbxId := sbx.SandboxID
 		envdClient := setup.GetEnvdClient(t, t.Context())
 
@@ -132,14 +152,9 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 	t.Run("stress-ng verify", func(t *testing.T) {
 		t.Parallel()
 
-		// Create a sandbox with auto-pause disabled
-		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false))
+		sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithAutoPause(false), utils.WithTimeout(300), utils.WithTemplateID(tmpl.TemplateID))
 
 		envdClient := setup.GetEnvdClient(t, t.Context())
-
-		installCmd := `apt-get update && apt-get install -y stress-ng time`
-		err := utils.ExecCommandAsRoot(t, t.Context(), sbx, envdClient, "bash", "-c", installCmd)
-		require.NoError(t, err)
 
 		// get 80% size of the free memory and use it as the vm-bytes
 		percentageOfFreeMemoryToUse := 80

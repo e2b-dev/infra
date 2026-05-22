@@ -1,13 +1,13 @@
 package featureflags
 
 import (
-	"context"
 	"strings"
 	"testing"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFlattenContexts(t *testing.T) {
@@ -164,7 +164,7 @@ func TestSetContext(t *testing.T) {
 	t.Run("empty_contexts_returns_original_context", func(t *testing.T) {
 		t.Parallel()
 
-		ctx := context.Background()
+		ctx := t.Context()
 		result := AddToContext(ctx)
 
 		assert.Equal(t, ctx, result)
@@ -175,7 +175,7 @@ func TestSetContext(t *testing.T) {
 	t.Run("single_context", func(t *testing.T) {
 		t.Parallel()
 
-		ctx := context.Background()
+		ctx := t.Context()
 		teamCtx := TeamContext("team-123")
 
 		result := AddToContext(ctx, teamCtx)
@@ -189,7 +189,7 @@ func TestSetContext(t *testing.T) {
 	t.Run("multiple_contexts", func(t *testing.T) {
 		t.Parallel()
 
-		ctx := context.Background()
+		ctx := t.Context()
 		teamCtx := TeamContext("team-123")
 		userCtx := UserContext("user-456")
 
@@ -207,7 +207,7 @@ func TestSetContext(t *testing.T) {
 	t.Run("sequential_calls_merge_contexts", func(t *testing.T) {
 		t.Parallel()
 
-		ctx := context.Background()
+		ctx := t.Context()
 
 		// First call adds team context
 		ctx = AddToContext(ctx, TeamContext("team-123"))
@@ -227,7 +227,7 @@ func TestSetContext(t *testing.T) {
 	t.Run("same_kind_second_takes_precedence", func(t *testing.T) {
 		t.Parallel()
 
-		ctx := context.Background()
+		ctx := t.Context()
 
 		// First call with team-123
 		ctx = AddToContext(ctx, TeamContextWithName("team-123", "First Team"))
@@ -240,5 +240,24 @@ func TestSetContext(t *testing.T) {
 		assert.False(t, embedded.Multiple(), "should have single context after same-kind merge")
 		assert.Equal(t, "team-456", embedded.Key())
 		assert.Equal(t, "Second Team", embedded.Name().String())
+	})
+
+	// Empty-key contexts are IsDefined()==true but Err()!=nil; without
+	// filtering they would poison the resulting multi-context.
+	t.Run("invalid_contexts_filtered_out", func(t *testing.T) {
+		t.Parallel()
+
+		invalidTeam := TeamContext("")
+		assert.True(t, invalidTeam.IsDefined())
+		require.Error(t, invalidTeam.Err())
+
+		ctx := AddToContext(t.Context(), invalidTeam, UserContext(""), SandboxContext("sandbox-123"))
+
+		embedded, ok := getContext(ctx)
+		assert.True(t, ok)
+		assert.False(t, embedded.Multiple())
+		assert.Equal(t, "sandbox-123", embedded.Key())
+		assert.Equal(t, SandboxKind, embedded.Kind())
+		require.NoError(t, embedded.Err())
 	})
 }

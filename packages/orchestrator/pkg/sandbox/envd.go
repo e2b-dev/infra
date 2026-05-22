@@ -1,3 +1,5 @@
+//go:build linux
+
 package sandbox
 
 import (
@@ -24,6 +26,13 @@ import (
 
 const (
 	loopDelay = 5 * time.Millisecond
+)
+
+type envdCgroupOp string
+
+const (
+	envdCgroupOpFreeze   envdCgroupOp = "freeze"
+	envdCgroupOpUnfreeze envdCgroupOp = "unfreeze"
 )
 
 // doRequestWithInfiniteRetries does a request with infinite retries until the context is done.
@@ -82,6 +91,48 @@ func (s *Sandbox) doRequestWithInfiniteRetries(
 		case <-time.After(loopDelay):
 		}
 	}
+}
+
+// callEnvdFreeze calls envd's native POST /freeze endpoint to freeze
+// user/pty/socat cgroups directly (no Process.Start, no shell). Used pre-pause
+// with a tight, freeze-only timeout.
+func (s *Sandbox) callEnvdFreeze(ctx context.Context, timeout time.Duration) error {
+	return s.callEnvdCgroupOp(ctx, timeout, envdCgroupOpFreeze)
+}
+
+// callEnvdUnfreeze calls envd's native POST /unfreeze endpoint. Reserved for
+// the pause-failure rollback path; the resume thaw runs via /init's deferred
+// unfreeze and does not use this.
+func (s *Sandbox) callEnvdUnfreeze(ctx context.Context, timeout time.Duration) error {
+	return s.callEnvdCgroupOp(ctx, timeout, envdCgroupOpUnfreeze)
+}
+
+func (s *Sandbox) callEnvdCgroupOp(ctx context.Context, timeout time.Duration, op envdCgroupOp) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	address := fmt.Sprintf("http://%s:%d/%s", s.Slot.HostIPString(), consts.DefaultEnvdServerPort, op)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, address, nil)
+	if err != nil {
+		return fmt.Errorf("build %s request: %w", op, err)
+	}
+	if s.Config.Envd.AccessToken != nil {
+		req.Header.Set("X-Access-Token", *s.Config.Envd.AccessToken)
+	}
+
+	resp, err := sandboxHttpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("%s request: %w", op, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+
+		return fmt.Errorf("%s returned %d: %s", op, resp.StatusCode, utils.Truncate(string(body), 100))
+	}
+
+	return nil
 }
 
 func (s *Sandbox) convertMounts(mounts []VolumeMountConfig) []envd.VolumeMount {

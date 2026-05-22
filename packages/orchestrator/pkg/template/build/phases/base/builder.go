@@ -1,3 +1,5 @@
+//go:build linux
+
 package base
 
 import (
@@ -34,7 +36,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -200,9 +201,11 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 
 	// Allow sandbox internet access during provisioning (nil network = no restrictions).
 	baseSbxConfig := sandbox.NewConfig(sandbox.Config{
-		Vcpu:      bb.Config.VCpuCount,
-		RamMB:     bb.Config.MemoryMB,
-		HugePages: bb.Config.HugePages,
+		Vcpu:              bb.Config.VCpuCount,
+		RamMB:             bb.Config.MemoryMB,
+		HugePages:         bb.Config.HugePages,
+		FreePageReporting: bb.Config.FreePageReporting,
+		FreePageHinting:   bb.Config.FreePageHinting,
 
 		Envd: sandbox.EnvdMetadata{
 			Version: bb.EnvdVersion,
@@ -343,7 +346,7 @@ func (bb *BaseBuilder) Layer(
 
 		// This is a compatibility for v1 template builds
 		if bb.IsV1Build {
-			cmdMeta.WorkDir = utils.ToPtr("/home/user")
+			cmdMeta.WorkDir = new("/home/user")
 		}
 
 		meta := metadata.Template{

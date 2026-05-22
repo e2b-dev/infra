@@ -15,5 +15,14 @@ CREATE TABLE auth.users (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
     email text NOT NULL,
     created_at timestamptz DEFAULT now(),
+    raw_app_meta_data jsonb,
+    raw_user_meta_data jsonb,
     PRIMARY KEY (id)
+);
+
+CREATE TABLE auth.sessions (
+    user_id uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    user_agent text,
+    ip text
 );

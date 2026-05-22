@@ -1,3 +1,5 @@
+//go:build linux
+
 // run with something like:
 //
 // sudo `which go` test -benchtime=15s -bench=. -v
@@ -275,6 +277,7 @@ func BenchmarkBaseImageLaunch(b *testing.B) {
 		sandboxes,
 		templateCache,
 		buildMetrics,
+		nil,
 	)
 
 	buildPath := filepath.Join(os.Getenv("LOCAL_TEMPLATE_STORAGE_BASE_PATH"), buildID, "rootfs.ext4")
@@ -383,7 +386,7 @@ func (tc *testContainer) testOneItem(b *testing.B, buildID, kernelVersion, fcVer
 		KernelVersion:      kernelVersion,
 		FirecrackerVersion: fcVersion,
 	})
-	snap, err := sbx.Pause(ctx, templateMetadata)
+	snap, err := sbx.Pause(ctx, templateMetadata, sandbox.SnapshotUseCasePause)
 	require.NoError(b, err)
 	require.NotNil(b, snap)
 

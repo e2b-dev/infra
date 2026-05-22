@@ -1,6 +1,24 @@
 name: "Build Sandbox Template"
 description: "Builds the Firecracker sandbox template."
 
+inputs:
+  compress_enabled:
+    description: "Enable compression (true/false)"
+    required: false
+    default: "false"
+  compress_type:
+    description: "Compression type (zstd, lz4)"
+    required: false
+    default: ""
+  compress_level:
+    description: "Compression level (zstd: 1=fastest, 2=default; lz4: 0)"
+    required: false
+    default: ""
+  compress_workers:
+    description: "Number of frame encode workers"
+    required: false
+    default: ""
+
 runs:
   using: "composite"
   steps:
@@ -9,6 +27,10 @@ runs:
         TEMPLATE_ID: "2j6ly824owf4awgai1xo"
         KERNEL_VERSION: "vmlinux-6.1.158"
         FIRECRACKER_VERSION: "v1.14.1_458ca91"
+        COMPRESS_ENABLED: ${{ inputs.compress_enabled }}
+        COMPRESS_TYPE: ${{ inputs.compress_type }}
+        COMPRESS_LEVEL: ${{ inputs.compress_level }}
+        COMPRESS_FRAME_ENCODE_WORKERS: ${{ inputs.compress_workers }}
       run: |
         # Generate an unique build ID for the template for this run
         export BUILD_ID=$(uuidgen)
@@ -17,6 +39,10 @@ runs:
 
         echo "TESTS_SANDBOX_TEMPLATE_ID=${TEMPLATE_ID}" >> .env.test
         echo "TESTS_SANDBOX_BUILD_ID=${BUILD_ID}" >> .env.test
+        echo "COMPRESS_ENABLED=${COMPRESS_ENABLED}" >> .env.test
+        echo "COMPRESS_TYPE=${COMPRESS_TYPE}" >> .env.test
+        echo "COMPRESS_LEVEL=${COMPRESS_LEVEL}" >> .env.test
+        echo "COMPRESS_FRAME_ENCODE_WORKERS=${COMPRESS_FRAME_ENCODE_WORKERS}" >> .env.test
 
         sudo -E make -C packages/orchestrator build-template \
           ARTIFACTS_REGISTRY_PROVIDER=Local \

@@ -1,3 +1,5 @@
+//go:build linux
+
 package steps
 
 import (
@@ -163,9 +165,11 @@ func (sb *StepBuilder) Build(
 	step := sb.step
 
 	sbxConfig := sandbox.NewConfig(sandbox.Config{
-		Vcpu:      sb.Config.VCpuCount,
-		RamMB:     sb.Config.MemoryMB,
-		HugePages: sb.Config.HugePages,
+		Vcpu:              sb.Config.VCpuCount,
+		RamMB:             sb.Config.MemoryMB,
+		HugePages:         sb.Config.HugePages,
+		FreePageReporting: sb.Config.FreePageReporting,
+		FreePageHinting:   sb.Config.FreePageHinting,
 
 		Envd: sandbox.EnvdMetadata{
 			Version: sb.EnvdVersion,

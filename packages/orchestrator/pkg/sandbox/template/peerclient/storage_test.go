@@ -13,7 +13,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	orchestratormocks "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator/mocks"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	providermocks "github.com/e2b-dev/infra/packages/shared/pkg/storage/mocks/provider"
 )
 
 func TestPeerStorageProvider_OpenBlob_ExtractsFileName(t *testing.T) {
@@ -25,10 +24,10 @@ func TestPeerStorageProvider_OpenBlob_ExtractsFileName(t *testing.T) {
 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
 	client.EXPECT().GetBuildBlob(mock.Anything, mock.MatchedBy(func(req *orchestrator.GetBuildBlobRequest) bool {
-		return req.GetBuildId() == "build-1" && req.GetFileName() == "snapfile"
+		return req.GetBuildId() == "build-1" && req.GetName() == "snapfile"
 	})).Return(stream, nil)
 
-	base := providermocks.NewMockStorageProvider(t)
+	base := storage.NewMockStorageProvider(t)
 
 	p := newPeerStorageProvider(base, client, &atomic.Bool{})
 	blob, err := p.OpenBlob(t.Context(), "build-1/snapfile", storage.SnapfileObjectType)
@@ -45,16 +44,16 @@ func TestPeerStorageProvider_OpenSeekable_ExtractsFileName(t *testing.T) {
 
 	client := orchestratormocks.NewMockChunkServiceClient(t)
 	client.EXPECT().GetBuildFileSize(mock.Anything, mock.MatchedBy(func(req *orchestrator.GetBuildFileSizeRequest) bool {
-		return req.GetBuildId() == "build-1" && req.GetFileName() == "memfile"
+		return req.GetBuildId() == "build-1" && req.GetName() == "memfile"
 	})).Return(&orchestrator.GetBuildFileSizeResponse{TotalSize: 512}, nil)
 
-	base := providermocks.NewMockStorageProvider(t)
+	base := storage.NewMockStorageProvider(t)
 
 	p := newPeerStorageProvider(base, client, &atomic.Bool{})
-	seekable, err := p.OpenSeekable(t.Context(), "build-1/memfile", storage.MemfileObjectType)
+	ff, err := p.OpenSeekable(t.Context(), "build-1/memfile", storage.MemfileObjectType)
 	require.NoError(t, err)
 
-	size, err := seekable.Size(t.Context())
+	size, err := ff.Size(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, int64(512), size)
 }

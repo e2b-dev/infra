@@ -1,3 +1,5 @@
+//go:build linux
+
 package testutils
 
 import (
@@ -35,6 +37,10 @@ func (m *BuildDevice) BlockSize() int64 {
 
 func (m *BuildDevice) Header() *header.Header {
 	return m.header
+}
+
+func (m *BuildDevice) SwapHeader(h *header.Header) {
+	m.header = h
 }
 
 func (m *BuildDevice) Size(_ context.Context) (int64, error) {

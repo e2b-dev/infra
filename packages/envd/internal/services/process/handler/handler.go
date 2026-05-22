@@ -8,9 +8,11 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -19,10 +21,10 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
-	"github.com/e2b-dev/infra/packages/envd/internal/logs"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
 const (
@@ -56,6 +58,10 @@ type Handler struct {
 
 	stdinMu sync.Mutex
 	stdin   io.WriteCloser
+
+	stdoutBytes atomic.Int64
+	stderrBytes atomic.Int64
+	ptyBytes    atomic.Int64
 
 	DataEvent *MultiplexedChannel[rpc.ProcessEvent_Data]
 	EndEvent  *MultiplexedChannel[rpc.ProcessEvent_End]
@@ -95,12 +101,9 @@ func New(
 	// User command string for logging (without the internal wrapper details).
 	userCmd := strings.Join(append([]string{req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...), " ")
 
-	// Wrap the command in a shell that sets the OOM score and nice value before exec-ing the actual command.
-	// This eliminates the race window where grandchildren could inherit the parent's protected OOM score (-1000)
-	// or high CPU priority (nice -20) before the post-start calls had a chance to correct them.
-	// nice(1) applies a relative adjustment, so we compute the delta from the current (inherited) nice to the target.
+	// Wrap in a shell that resets oom_score_adj, ioprio (ionice best-effort/4), and nice.
 	niceDelta := defaultNice - currentNice()
-	oomWrapperScript := fmt.Sprintf(`echo %d > /proc/$$/oom_score_adj && exec /usr/bin/nice -n %d "${@}"`, defaultOomScore, niceDelta)
+	oomWrapperScript := fmt.Sprintf(`echo %d > /proc/$$/oom_score_adj && exec /usr/bin/ionice -c 2 -n 4 /usr/bin/nice -n %d "${@}"`, defaultOomScore, niceDelta)
 	wrapperArgs := append([]string{"-c", oomWrapperScript, "--", req.GetProcess().GetCmd()}, req.GetProcess().GetArgs()...)
 	cmd := exec.CommandContext(ctx, "/bin/sh", wrapperArgs...)
 
@@ -123,14 +126,13 @@ func New(
 	cgroupFD, ok := cgroupManager.GetFileDescriptor(getProcType(req))
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		UseCgroupFD: ok,
-		CgroupFD:    cgroupFD,
 		Credential: &syscall.Credential{
 			Uid:    uid,
 			Gid:    gid,
 			Groups: groups,
 		},
 	}
+	applyCgroupFD(cmd.SysProcAttr, cgroupFD, ok)
 
 	resolvedPath, err := permissions.ExpandAndResolve(req.GetProcess().GetCwd(), user, defaults.Workdir)
 	if err != nil {
@@ -155,11 +157,9 @@ func New(
 
 	// Add the environment variables from the global environment
 	if defaults.EnvVars != nil {
-		defaults.EnvVars.Range(func(key string, value string) bool {
+		for key, value := range defaults.EnvVars.All() {
 			formattedVars = append(formattedVars, key+"="+value)
-
-			return true
-		})
+		}
 	}
 
 	// Only the last values of the env vars are used - this allows for overwriting defaults
@@ -201,27 +201,33 @@ func New(
 		}
 
 		outWg.Go(func() {
-			for {
-				buf := make([]byte, ptyChunkSize)
+			readBuf := make([]byte, ptyChunkSize)
 
-				n, readErr := tty.Read(buf)
+			for {
+				n, readErr := tty.Read(readBuf)
 
 				if n > 0 {
-					outMultiplex.Source <- rpc.ProcessEvent_Data{
-						Data: &rpc.ProcessEvent_DataEvent{
-							Output: &rpc.ProcessEvent_DataEvent_Pty{
-								Pty: buf[:n],
+					h.ptyBytes.Add(int64(n))
+
+					if outMultiplex.HasSubscribers() {
+						data := slices.Clone(readBuf[:n])
+
+						outMultiplex.Source <- rpc.ProcessEvent_Data{
+							Data: &rpc.ProcessEvent_DataEvent{
+								Output: &rpc.ProcessEvent_DataEvent_Pty{
+									Pty: data,
+								},
 							},
-						},
+						}
 					}
 				}
 
-				if errors.Is(readErr, io.EOF) {
+				if errors.Is(readErr, io.EOF) || errors.Is(readErr, syscall.EIO) {
 					break
 				}
 
 				if readErr != nil {
-					fmt.Fprintf(os.Stderr, "error reading from pty: %s\n", readErr)
+					logger.Error().Err(readErr).Msg("error reading from pty")
 
 					break
 				}
@@ -236,28 +242,25 @@ func New(
 		}
 
 		outWg.Go(func() {
-			stdoutLogs := make(chan []byte, outputBufferSize)
-			defer close(stdoutLogs)
-
-			stdoutLogger := logger.With().Str("event_type", "stdout").Logger()
-
-			go logs.LogBufferedDataEvents(stdoutLogs, &stdoutLogger, "data")
+			readBuf := make([]byte, stdChunkSize)
 
 			for {
-				buf := make([]byte, stdChunkSize)
-
-				n, readErr := stdout.Read(buf)
+				n, readErr := stdout.Read(readBuf)
 
 				if n > 0 {
-					outMultiplex.Source <- rpc.ProcessEvent_Data{
-						Data: &rpc.ProcessEvent_DataEvent{
-							Output: &rpc.ProcessEvent_DataEvent_Stdout{
-								Stdout: buf[:n],
-							},
-						},
-					}
+					h.stdoutBytes.Add(int64(n))
 
-					stdoutLogs <- buf[:n]
+					if outMultiplex.HasSubscribers() {
+						data := slices.Clone(readBuf[:n])
+
+						outMultiplex.Source <- rpc.ProcessEvent_Data{
+							Data: &rpc.ProcessEvent_DataEvent{
+								Output: &rpc.ProcessEvent_DataEvent_Stdout{
+									Stdout: data,
+								},
+							},
+						}
+					}
 				}
 
 				if errors.Is(readErr, io.EOF) {
@@ -265,7 +268,7 @@ func New(
 				}
 
 				if readErr != nil {
-					fmt.Fprintf(os.Stderr, "error reading from stdout: %s\n", readErr)
+					logger.Error().Err(readErr).Msg("error reading from stdout")
 
 					break
 				}
@@ -278,28 +281,25 @@ func New(
 		}
 
 		outWg.Go(func() {
-			stderrLogs := make(chan []byte, outputBufferSize)
-			defer close(stderrLogs)
-
-			stderrLogger := logger.With().Str("event_type", "stderr").Logger()
-
-			go logs.LogBufferedDataEvents(stderrLogs, &stderrLogger, "data")
+			readBuf := make([]byte, stdChunkSize)
 
 			for {
-				buf := make([]byte, stdChunkSize)
-
-				n, readErr := stderr.Read(buf)
+				n, readErr := stderr.Read(readBuf)
 
 				if n > 0 {
-					outMultiplex.Source <- rpc.ProcessEvent_Data{
-						Data: &rpc.ProcessEvent_DataEvent{
-							Output: &rpc.ProcessEvent_DataEvent_Stderr{
-								Stderr: buf[:n],
-							},
-						},
-					}
+					h.stderrBytes.Add(int64(n))
 
-					stderrLogs <- buf[:n]
+					if outMultiplex.HasSubscribers() {
+						data := slices.Clone(readBuf[:n])
+
+						outMultiplex.Source <- rpc.ProcessEvent_Data{
+							Data: &rpc.ProcessEvent_DataEvent{
+								Output: &rpc.ProcessEvent_DataEvent_Stderr{
+									Stderr: data,
+								},
+							},
+						}
+					}
 				}
 
 				if errors.Is(readErr, io.EOF) {
@@ -307,7 +307,7 @@ func New(
 				}
 
 				if readErr != nil {
-					fmt.Fprintf(os.Stderr, "error reading from stderr: %s\n", readErr)
+					logger.Error().Err(readErr).Msg("error reading from stderr")
 
 					break
 				}
@@ -338,6 +338,10 @@ func New(
 }
 
 func getProcType(req *rpc.StartRequest) cgroups.ProcessType {
+	if req != nil && req.GetTag() == consts.SystemTag {
+		return cgroups.ProcessTypeSystem
+	}
+
 	if req != nil && req.GetPty() != nil {
 		return cgroups.ProcessTypePTY
 	}
@@ -472,6 +476,9 @@ func (p *Handler) Wait() {
 		Info().
 		Str("event_type", "process_end").
 		Interface("process_result", endEvent).
+		Int64("stdout_bytes", p.stdoutBytes.Load()).
+		Int64("stderr_bytes", p.stderrBytes.Load()).
+		Int64("pty_bytes", p.ptyBytes.Load()).
 		Msg(fmt.Sprintf("Process with pid %d ended", p.cmd.Process.Pid))
 
 	// Ensure the process cancel is called to cleanup resources.

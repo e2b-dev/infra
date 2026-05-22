@@ -1,3 +1,5 @@
+//go:build linux
+
 package smoketest_test
 
 import (
@@ -237,6 +239,7 @@ func newTestInfra(t *testing.T, ctx context.Context) *testInfra {
 		builderConfig, l, flags, factory,
 		persistenceTemplate, persistenceBuild, artifactRegistry,
 		dockerhubRepo, sandboxProxy, sandboxes, templateCache, buildMetrics,
+		nil,
 	)
 
 	return ti

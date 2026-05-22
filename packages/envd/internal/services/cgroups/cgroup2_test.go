@@ -1,3 +1,5 @@
+//go:build linux
+
 package cgroups
 
 import (
@@ -146,6 +148,65 @@ func TestCgroupRoundTrip(t *testing.T) {
 	})
 }
 
+func TestFreezeUnfreeze(t *testing.T) {
+	t.Parallel()
+
+	if os.Geteuid() != 0 {
+		t.Skip("must run as root")
+
+		return
+	}
+
+	cgroupPath := createCgroupPath(t, "freeze-thaw")
+
+	m, err := NewCgroup2Manager(
+		WithCgroup2ProcessType(ProcessTypeUser, cgroupPath, map[string]string{}),
+	)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		err := m.Close()
+		assert.NoError(t, err)
+	})
+
+	fullPath := m.cgroupPaths[ProcessTypeUser]
+	readFreeze := func() string {
+		data, err := os.ReadFile(fullPath + "/cgroup.freeze")
+		require.NoError(t, err)
+
+		return string(data)
+	}
+
+	// Initially thawed.
+	assert.Equal(t, "0\n", readFreeze())
+
+	// Freeze.
+	err = m.Freeze(ProcessTypeUser)
+	require.NoError(t, err)
+	assert.Equal(t, "1\n", readFreeze())
+
+	// Freeze again (idempotent).
+	err = m.Freeze(ProcessTypeUser)
+	require.NoError(t, err)
+	assert.Equal(t, "1\n", readFreeze())
+
+	// Unfreeze.
+	err = m.Unfreeze(ProcessTypeUser)
+	require.NoError(t, err)
+	assert.Equal(t, "0\n", readFreeze())
+
+	// Unfreeze again (idempotent).
+	err = m.Unfreeze(ProcessTypeUser)
+	require.NoError(t, err)
+	assert.Equal(t, "0\n", readFreeze())
+
+	// Unknown process type.
+	err = m.Freeze("unknown")
+	require.Error(t, err)
+	err = m.Unfreeze("unknown")
+	require.Error(t, err)
+}
+
 func createCgroupPath(t *testing.T, s string) string {
 	t.Helper()
 
@@ -157,19 +218,32 @@ func createCgroupPath(t *testing.T, s string) string {
 func startProcess(t *testing.T, m *Cgroup2Manager, pt ProcessType) *exec.Cmd {
 	t.Helper()
 
-	cmdName, args := "bash", []string{"-c", `sleep 1 && tail /dev/zero`}
+	cmdName, args := "bash", []string{"-c", `sleep 1 && exec perl -e 'my $x = "A" x (512*1024*1024); sleep 300'`}
 	cmd := exec.CommandContext(t.Context(), cmdName, args...)
 
 	fd, ok := m.GetFileDescriptor(pt)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		UseCgroupFD: ok,
 		CgroupFD:    fd,
+		Setpgid:     true,
 	}
 
 	err := cmd.Start()
 	require.NoError(t, err)
 
+	t.Cleanup(func() { killProcessGroup(cmd) })
+
 	return cmd
+}
+
+func killProcessGroup(cmd *exec.Cmd) {
+	if cmd.Process == nil {
+		return
+	}
+
+	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err != nil {
+		_ = cmd.Process.Kill()
+	}
 }
 
 func waitForProcess(t *testing.T, cmd *exec.Cmd, timeout time.Duration) error {
@@ -183,10 +257,13 @@ func waitForProcess(t *testing.T, cmd *exec.Cmd, timeout time.Duration) error {
 	}()
 
 	ctx, cancel := context.WithTimeout(t.Context(), timeout)
-	t.Cleanup(cancel)
+	defer cancel()
 
 	select {
 	case <-ctx.Done():
+		killProcessGroup(cmd)
+		<-done
+
 		return ctx.Err()
 	case err := <-done:
 		return err

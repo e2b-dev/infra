@@ -2,16 +2,20 @@ package proxy
 
 import (
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 )
 
-func GetTargetFromRequest(processHeaders bool) func(r *http.Request) (sandboxId string, port uint64, err error) {
+const sandboxSharedHostSubdomain = "sandbox."
+
+func GetTargetFromRequest() func(r *http.Request) (sandboxId string, port uint64, err error) {
 	return func(r *http.Request) (sandboxId string, port uint64, err error) {
-		if processHeaders {
+		if shouldParseHeaders(r.Host) && hasRoutingHeaders(r.Header) {
 			var ok bool
 			sandboxId, port, ok, err = parseHeaders(r.Header)
 			if err != nil {
@@ -36,6 +40,35 @@ func GetTargetFromRequest(processHeaders bool) func(r *http.Request) (sandboxId 
 
 		return sandboxId, port, nil
 	}
+}
+
+func shouldParseHeaders(host string) bool {
+	_, sharedHost := SandboxSharedHostDomain(host)
+
+	return isLocalRequestHost(host) || sharedHost
+}
+
+func requestHostname(host string) string {
+	return (&url.URL{Host: host}).Hostname()
+}
+
+func isLocalRequestHost(host string) bool {
+	host = requestHostname(host)
+	ip := net.ParseIP(host)
+
+	// An IP address cannot encode sandbox routing info (like {port}-{sandboxId}.{domain}),
+	// so header-based routing is the only mechanism that can work for IP hosts.
+	return host == "localhost" || ip != nil
+}
+
+func SandboxSharedHostDomain(host string) (string, bool) {
+	domain, ok := strings.CutPrefix(requestHostname(host), sandboxSharedHostSubdomain)
+
+	return domain, ok && domain != ""
+}
+
+func hasRoutingHeaders(h http.Header) bool {
+	return h.Get(headerSandboxID) != "" || h.Get(headerSandboxPort) != ""
 }
 
 func parseHost(host string) (sandboxID string, port uint64, err error) {

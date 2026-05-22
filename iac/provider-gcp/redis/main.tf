@@ -80,7 +80,7 @@ resource "google_memorystore_instance" "valkey_cluster" {
 
   shard_count             = var.shard_count
   replica_count           = var.replica_count
-  node_type               = "STANDARD_SMALL"
+  node_type               = var.node_type
   transit_encryption_mode = "SERVER_AUTHENTICATION"
   authorization_mode      = "AUTH_DISABLED"
 

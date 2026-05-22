@@ -1,7 +1,6 @@
 package snapshots
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -19,7 +18,7 @@ func TestUpsertSnapshot_NewSnapshot(t *testing.T) {
 	t.Parallel()
 	// Setup test database with migrations
 	client := testutils.SetupDatabase(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Create a test team first (required by foreign key constraint)
 	teamID := testutils.CreateTestTeam(t, client)
@@ -103,7 +102,7 @@ func TestUpsertSnapshot_ExistingSnapshot(t *testing.T) {
 	t.Parallel()
 	// Setup test database with migrations
 	client := testutils.SetupDatabase(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Create a test team first (required by foreign key constraint)
 	teamID := testutils.CreateTestTeam(t, client)

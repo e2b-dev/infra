@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
@@ -12,6 +14,20 @@ import (
 	api "github.com/e2b-dev/infra/packages/shared/pkg/http/edge"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+func ipAddressFromServiceHost(serviceHost string) string {
+	serviceHost = strings.TrimSpace(serviceHost)
+	if serviceHost == "" {
+		return ""
+	}
+
+	host, _, err := net.SplitHostPort(serviceHost)
+	if err == nil {
+		return host
+	}
+
+	return serviceHost
+}
 
 type RemoteServiceDiscovery struct {
 	clusterID uuid.UUID
@@ -49,6 +65,7 @@ func (sd *RemoteServiceDiscovery) Query(ctx context.Context) ([]Item, error) {
 			UniqueIdentifier: n.ServiceInstanceID,
 			NodeID:           n.NodeID,
 			InstanceID:       n.ServiceInstanceID,
+			LocalIPAddress:   ipAddressFromServiceHost(n.ServiceHost),
 		}
 	}
 

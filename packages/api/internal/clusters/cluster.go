@@ -5,12 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	nomadapi "github.com/hashicorp/nomad/api"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
@@ -38,6 +39,7 @@ const (
 type Cluster struct {
 	ID            uuid.UUID
 	SandboxDomain *string
+	AuthOrgID     string
 
 	instances       *smap.Map[*Instance]
 	synchronization *synchronization.Synchronize[discovery.Item, *Instance]
@@ -52,6 +54,7 @@ var (
 func NewCluster(
 	clusterID uuid.UUID,
 	domain *string,
+	authOrgID string,
 	sandboxes *smap.Map[*Instance],
 	synchronization *synchronization.Synchronize[discovery.Item, *Instance],
 	resources ClusterResource,
@@ -59,6 +62,7 @@ func NewCluster(
 	return &Cluster{
 		ID:              clusterID,
 		SandboxDomain:   domain,
+		AuthOrgID:       authOrgID,
 		instances:       sandboxes,
 		synchronization: synchronization,
 		resources:       resources,
@@ -68,7 +72,7 @@ func NewCluster(
 func newLocalCluster(
 	ctx context.Context,
 	tel *telemetry.Client,
-	nomad *nomadapi.Client,
+	storeDiscovery discovery.Discovery,
 	clickhouse clickhouse.Clickhouse,
 	queryLogsProvider *loki.LokiQueryProvider,
 	config cfg.Config,
@@ -78,15 +82,15 @@ func newLocalCluster(
 	instances := smap.New[*Instance]()
 	instanceCreation := func(ctx context.Context, item discovery.Item) (*Instance, error) {
 		// For local cluster we are doing direct connection to instance IP and API port and without additional cluster auth.
-		return newInstance(ctx, tel, nil, clusterID, item, fmt.Sprintf("%s:%d", item.LocalIPAddress, item.LocalInstanceApiPort), false)
+		return newInstance(ctx, tel, nil, clusterID, item, net.JoinHostPort(item.LocalIPAddress, strconv.FormatUint(uint64(item.LocalInstanceApiPort), 10)), false)
 	}
 
-	storeDiscovery := discovery.NewLocalDiscovery(clusterID, nomad)
 	store := instancesSyncStore{clusterID: clusterID, instances: instances, discovery: storeDiscovery, instanceCreation: instanceCreation}
 
 	c := NewCluster(
 		clusterID,
 		nil,
+		"",
 		instances,
 		synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
 		newLocalClusterResourceProvider(clickhouse, queryLogsProvider, instances, config),
@@ -106,6 +110,7 @@ func newRemoteCluster(
 	secret string,
 	clusterID uuid.UUID,
 	sandboxDomain *string,
+	authOrgID string,
 ) (*Cluster, error) {
 	scheme := "http"
 	if endpointTLS {
@@ -147,6 +152,7 @@ func newRemoteCluster(
 	c := NewCluster(
 		clusterID,
 		sandboxDomain,
+		authOrgID,
 		instances,
 		synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
 		newRemoteClusterResourceProvider(clusterID, instances, httpClient),
@@ -253,6 +259,17 @@ func (c *Cluster) GetOrchestrators() []*Instance {
 	instances := make([]*Instance, 0)
 	for _, i := range c.instances.Items() {
 		if i.GetInfo().IsOrchestrator {
+			instances = append(instances, i)
+		}
+	}
+
+	return instances
+}
+
+func (c *Cluster) GetTemplateBuilders() []*Instance {
+	instances := make([]*Instance, 0)
+	for _, i := range c.instances.Items() {
+		if i != nil && i.GetInfo().IsBuilder {
 			instances = append(instances, i)
 		}
 	}

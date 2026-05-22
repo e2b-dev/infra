@@ -19,9 +19,11 @@ job "api" {
         static = "${port_number}"
       }
 
-      port "grpc" {
-        static = "${api_grpc_port}"
+      port "api_internal_grpc" {
+        static = "${api_internal_grpc_port}"
       }
+
+      port "grpc_api" {}
 
       %{ if prevent_colocation }
       port "scheduling-block" {
@@ -44,6 +46,7 @@ job "api" {
 
       tags = [
         "traefik.enable=true",
+        "traefik.http.routers.api.entrypoints=web",
 
         "traefik.http.routers.api.rule=HostRegexp(`api.{domain:.+}`)",
         "traefik.http.routers.api.ruleSyntax=v2",
@@ -61,16 +64,57 @@ job "api" {
     }
 
     service {
-      name = "api-grpc"
-      port = "grpc"
+      name = "api-internal-grpc"
+      port = "api_internal_grpc"
       task = "start"
 
       check {
         type     = "tcp"
-        name     = "grpc"
+        name     = "api-internal-grpc"
         interval = "3s"
         timeout  = "3s"
-        port     = "grpc"
+        port     = "api_internal_grpc"
+      }
+    }
+
+    service {
+      name = "grpc-api"
+      port = "grpc_api"
+      task = "start"
+
+      tags = [
+        "traefik.enable=true",
+        "traefik.http.routers.grpc-api.entrypoints=web",
+        "traefik.http.routers.grpc-api.rule=HostRegexp(`grpc-api.{domain:.+}`)",
+        "traefik.http.routers.grpc-api.ruleSyntax=v2",
+        "traefik.http.routers.grpc-api.priority=500",
+        "traefik.http.routers.grpc-api.service=grpc-api",
+        "traefik.http.services.grpc-api.loadbalancer.server.scheme=h2c"
+      ]
+
+      check {
+        type     = "tcp"
+        name     = "grpc-api"
+        interval = "3s"
+        timeout  = "3s"
+        port     = "grpc_api"
+      }
+    }
+
+    # Compatibility alias for service name `api-grpc`, which was renamed to `api-internal-grpc` in #2470.
+    # Old client-proxy allocations were rendered with API_GRPC_ADDRESS=api-grpc.service.consul:<port> and still expect that name.
+    # Drop this block once all old client-proxy allocations have been replaced.
+    service {
+      name = "api-grpc"
+      port = "api_internal_grpc"
+      task = "start"
+
+      check {
+        type     = "tcp"
+        name     = "api-grpc"
+        interval = "3s"
+        timeout  = "3s"
+        port     = "api_internal_grpc"
       }
     }
 
@@ -97,9 +141,9 @@ job "api" {
 
     task "start" {
       driver       = "docker"
-      # If we need more than 30s we will need to update the max_kill_timeout in nomad
+      # Budget = shutdownDrainWait (15s) + shutdownTimeout (requestTimeout 70s + 5s) + cleanup (30s) + slack.
       # https://developer.hashicorp.com/nomad/docs/configuration/client#max_kill_timeout
-      kill_timeout = "30s"
+      kill_timeout = "150s"
       kill_signal  = "SIGTERM"
 
       resources {
@@ -114,7 +158,8 @@ job "api" {
         NODE_ID                        = "$${node.unique.id}"
         NOMAD_TOKEN                    = "${nomad_acl_token}"
         ORCHESTRATOR_PORT              = "${orchestrator_port}"
-        API_GRPC_PORT                  = "${api_grpc_port}"
+        API_INTERNAL_GRPC_PORT         = "${api_internal_grpc_port}"
+        API_EDGE_GRPC_PORT             = "$${NOMAD_PORT_grpc_api}"
         ADMIN_TOKEN                    = "${admin_token}"
         SANDBOX_ACCESS_TOKEN_HASH_SEED = "${sandbox_access_token_hash_seed}"
 
@@ -125,7 +170,6 @@ job "api" {
         AUTH_DB_READ_REPLICA_CONNECTION_STRING  = "${postgres_read_replica_connection_string}"
         AUTH_DB_MAX_OPEN_CONNECTIONS           = "${auth_db_max_open_connections}"
         AUTH_DB_MIN_IDLE_CONNECTIONS           = "${auth_db_min_idle_connections}"
-        SUPABASE_JWT_SECRETS                    = "${supabase_jwt_secrets}"
 
         LOKI_URL                      = "${loki_url}"
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
@@ -164,7 +208,7 @@ job "api" {
       config {
         network_mode = "host"
         image        = "${api_docker_image}"
-        ports        = ["${port_name}"]
+        ports        = ["${port_name}", "grpc_api"]
         args         = [
           "--port", "${port_number}",
         ]
