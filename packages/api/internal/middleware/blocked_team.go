@@ -39,7 +39,6 @@ var blockedTeamAllowlist = auth.BlockedTeamAllowlist{
 		"/templates/:templateID":        {},
 		"/volumes/:volumeID":            {},
 		"/api-keys/:apiKeyID":           {},
-		"/access-tokens/:accessTokenID": {},
 	},
 }
 
