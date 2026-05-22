@@ -35,7 +35,7 @@ func NewStorageKV(ctx context.Context, nodeID string, config Config, egressProxy
 		return nil, fmt.Errorf("failed to init StorageKV consul client: %w", err)
 	}
 
-	hostFirewall, err := NewHostFirewall(ctx, config, defaultGateway)
+	hostFirewall, err := NewHostFirewall(config, defaultGateway)
 	if err != nil {
 		return nil, fmt.Errorf("init host firewall: %w", err)
 	}

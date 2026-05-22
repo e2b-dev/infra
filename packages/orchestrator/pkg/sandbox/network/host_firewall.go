@@ -3,7 +3,6 @@
 package network
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"strings"
@@ -41,7 +40,7 @@ type HostFirewall struct {
 	mu      sync.Mutex
 }
 
-func NewHostFirewall(ctx context.Context, config Config, externalIface string) (*HostFirewall, error) {
+func NewHostFirewall(config Config, externalIface string) (*HostFirewall, error) {
 	conn, err := nftables.New(nftables.AsLasting())
 	if err != nil {
 		return nil, fmt.Errorf("nftables lasting conn: %w", err)
@@ -80,6 +79,7 @@ func (h *HostFirewall) AddSandbox(vethName string) error {
 	if h == nil {
 		return nil
 	}
+
 	key, err := ifnameKey(vethName)
 	if err != nil {
 		return err
@@ -92,6 +92,7 @@ func (h *HostFirewall) AddSandbox(vethName string) error {
 	if err := h.conn.Flush(); err != nil {
 		return fmt.Errorf("flush veth %q add: %w", vethName, err)
 	}
+
 	return nil
 }
 
@@ -99,6 +100,7 @@ func (h *HostFirewall) RemoveSandbox(vethName string) error {
 	if h == nil {
 		return nil
 	}
+
 	key, err := ifnameKey(vethName)
 	if err != nil {
 		return err
@@ -112,8 +114,10 @@ func (h *HostFirewall) RemoveSandbox(vethName string) error {
 		if isNoSuchFileOrDirectory(err) {
 			return nil
 		}
+
 		return fmt.Errorf("flush veth %q remove: %w", vethName, err)
 	}
+
 	return nil
 }
 
