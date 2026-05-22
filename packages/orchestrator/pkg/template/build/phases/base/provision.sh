@@ -3,12 +3,20 @@ set -eu
 
 BUSYBOX="{{ .BusyBox }}"
 RESULT_PATH="{{ .ResultPath }}"
+APT_PROXY_URL="{{ .AptProxyURL }}"
 
 echo "Starting provisioning script"
 
 {{ if eq .Provider "gcp" }}
 # GCP Specific logic
 {{ end }}
+
+# Configure apt proxy if URL is provided.
+if [ -n "$APT_PROXY_URL" ]; then
+    echo "Configuring apt cache proxy"
+    mkdir -p /etc/apt/apt.conf.d
+    echo "Acquire::http::Proxy \"$APT_PROXY_URL\";" > /etc/apt/apt.conf.d/00-e2b-build-proxy
+fi
 
 echo "Making configuration immutable"
 $BUSYBOX chattr +i /etc/resolv.conf

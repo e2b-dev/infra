@@ -37,6 +37,15 @@ func constructLayerFilesFromOCI(
 	ctx, span := tracer.Start(ctx, "template-build")
 	defer span.End()
 
+	// Resolve apt proxy URL from feature flag + config
+	var aptProxyURL string
+	if featureFlags.BoolFlag(ctx, featureflags.AptCacheEnabledFlag) {
+		aptProxyURL = buildContext.BuilderConfig.AptProxyURL
+		if aptProxyURL == "" {
+			logger.L().Warn(ctx, "apt-cache-enabled flag is on but APT_PROXY_URL is not set")
+		}
+	}
+
 	// Create a rootfs file
 	rtfs := rootfs.New(
 		artifactRegistry,
@@ -45,9 +54,10 @@ func constructLayerFilesFromOCI(
 		featureFlags,
 	)
 	provisionScript, err := getProvisionScript(ctx, ProvisionScriptParams{
-		BusyBox:    rootfs.SandboxBusyBoxPath,
-		ResultPath: provisionScriptResultPath,
-		Provider:   buildContext.BuilderConfig.Provider,
+		BusyBox:     rootfs.SandboxBusyBoxPath,
+		ResultPath:  provisionScriptResultPath,
+		Provider:    buildContext.BuilderConfig.Provider,
+		AptProxyURL: aptProxyURL,
 	})
 	if err != nil {
 		return nil, nil, containerregistry.Config{}, fmt.Errorf("error getting provision script: %w", err)

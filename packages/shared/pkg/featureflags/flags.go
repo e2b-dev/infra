@@ -145,6 +145,8 @@ var (
 	FreePageReportingFlag            = NewBoolFlag("free-page-reporting", false)
 	FreezeUserCgroupFlag             = NewBoolFlag("freeze-user-cgroup", env.IsDevelopment())
 
+	AptCacheEnabledFlag = NewBoolFlag("apt-cache-enabled", env.IsLocal())
+
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
 
 	// V4HeaderForUncompressedFlag forces the V4 header layout on uncompressed
