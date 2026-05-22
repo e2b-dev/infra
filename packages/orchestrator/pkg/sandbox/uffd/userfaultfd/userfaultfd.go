@@ -54,8 +54,8 @@ type PageReader interface {
 	ReadAt(ctx context.Context, p []byte, off int64) (int, error)
 }
 
-// pagePool returns HugepageSize-sized scratch buffers shared across all
-// UFFD instances; 4 KiB-page UFFDs reslice the buffer down to pageSize.
+// pagePool returns HugepageSize-sized scratch buffers shared across all UFFD
+// instances. 4 KiB-page UFFDs allocate per fault instead.
 var pagePool = sync.Pool{
 	New: func() any {
 		buf := make([]byte, header.HugepageSize)
@@ -506,9 +506,14 @@ func (u *Userfaultfd) faultPage(
 	case source == nil && u.pageSize == header.HugepageSize:
 		writeErr = u.fd.copy(addr, u.pageSize, header.EmptyHugePage, mode)
 	default:
-		bufPtr := pagePool.Get().(*[]byte)
-		defer pagePool.Put(bufPtr)
-		b := (*bufPtr)[:u.pageSize]
+		var b []byte
+		if u.pageSize == header.HugepageSize {
+			bufPtr := pagePool.Get().(*[]byte)
+			defer pagePool.Put(bufPtr)
+			b = (*bufPtr)[:u.pageSize]
+		} else {
+			b = make([]byte, u.pageSize)
+		}
 
 		// ReadAt retry holds settleRequests.RLock for up to ~2s of
 		// exponential backoff, blocking any concurrent REMOVE batch.

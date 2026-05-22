@@ -405,7 +405,12 @@ func (c *Cache) Dedup(
 		}
 	}
 	src := func(absOff int64) ([]byte, error) {
-		return c.Slice(packed[absOff], blockSize)
+		idx, ok := packed[absOff]
+		if !ok {
+			return nil, fmt.Errorf("dedup src: %d not packed", absOff)
+		}
+
+		return c.Slice(idx, blockSize)
 	}
 
 	return dedupPages(ctx, src, base, dirty, blockSize, outPath, bestEffort, directIO)
