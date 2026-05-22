@@ -148,8 +148,14 @@ func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploa
 		}
 
 		pi := p.index
+		frames := p.frames
 		work.Go(func() error {
-			return uploader.UploadPart(workCtx, pi, compressed...)
+			err := uploader.UploadPart(workCtx, pi, compressed...)
+			for _, f := range frames {
+				putDstBuf(f.compressed)
+				f.compressed = nil
+			}
+			return err
 		})
 	}
 

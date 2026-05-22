@@ -43,8 +43,33 @@ type zstdCompressor struct {
 	enc *zstd.Encoder
 }
 
+// dstBufPool holds frame-sized scratch buffers reused for zstd EncodeAll dst.
+// Caller recycles via putDstBuf after the part upload completes.
+var dstBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 0)
+		return &b
+	},
+}
+
+func getDstBuf(want int) []byte {
+	b := dstBufPool.Get().(*[]byte)
+	if cap(*b) < want {
+		*b = make([]byte, 0, want)
+	}
+	return (*b)[:0]
+}
+
+func putDstBuf(b []byte) {
+	if cap(b) == 0 {
+		return
+	}
+	b = b[:0]
+	dstBufPool.Put(&b)
+}
+
 func (z *zstdCompressor) compress(src []byte) ([]byte, error) { //nolint:unparam // satisfies compressor interface
-	return z.enc.EncodeAll(src, make([]byte, 0, len(src))), nil
+	return z.enc.EncodeAll(src, getDstBuf(len(src))), nil
 }
 
 // newCompressorPool returns a pool of compressors for the given config.
