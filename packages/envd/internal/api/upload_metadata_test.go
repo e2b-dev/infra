@@ -57,4 +57,17 @@ func TestExtractMetadataHeaders(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("multiple values for one header uses first value", func(t *testing.T) {
+		t.Parallel()
+
+		h := http.Header{}
+		h.Add("X-Metadata-Author", "first")
+		h.Add("X-Metadata-Author", "second")
+
+		got := extractMetadataHeaders(h)
+		if got["author"] != "first" {
+			t.Fatalf("got %v, want author=first", got)
+		}
+	})
 }
