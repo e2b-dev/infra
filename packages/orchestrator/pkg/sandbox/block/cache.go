@@ -206,20 +206,6 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	return diffMetadata, nil
 }
 
-// baseIsZeroBlock: parent mapping is uuid.Nil for at least blockSize bytes.
-func baseIsZeroBlock(ctx context.Context, base ReadonlyDevice, absOff, blockSize int64) bool {
-	h := base.Header()
-	if h == nil {
-		return false
-	}
-	m, err := h.GetShiftedMapping(ctx, absOff)
-	if err != nil {
-		return false
-	}
-
-	return m.BuildId == uuid.Nil && int64(m.Length) >= blockSize
-}
-
 // dedupPages writes src pages that differ from base, packed at PageSize,
 // to outPath. bestEffort skips uncached blocks; directIO uses O_DIRECT.
 func dedupPages(
@@ -275,7 +261,12 @@ func dedupPages(
 			}
 
 			// Empty parent or best-effort cache miss: classify by IsZero alone.
-			skipBase := baseIsZeroBlock(ctx, base, absOff, blockSize)
+			skipBase := false
+			if h := base.Header(); h != nil {
+				if m, err := h.GetShiftedMapping(ctx, absOff); err == nil {
+					skipBase = m.BuildId == uuid.Nil && int64(m.Length) >= blockSize
+				}
+			}
 			if !skipBase && bestEffort {
 				if peeker, ok := base.(CachePeeker); ok && !peeker.IsCached(ctx, absOff, blockSize) {
 					skipBase = true

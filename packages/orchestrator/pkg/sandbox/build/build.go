@@ -170,7 +170,10 @@ func (b *File) IsCached(ctx context.Context, off, length int64) bool {
 		}
 
 		if m.BuildId != uuid.Nil {
-			diff := b.store.Peek(GetDiffStoreKey(m.BuildId.String(), b.fileType))
+			diff, ok := b.store.Lookup(GetDiffStoreKey(m.BuildId.String(), b.fileType))
+			if !ok {
+				return false
+			}
 			peeker, ok := diff.(block.CachePeeker)
 			if !ok || !peeker.IsCached(ctx, int64(m.Offset), segLen) {
 				return false
