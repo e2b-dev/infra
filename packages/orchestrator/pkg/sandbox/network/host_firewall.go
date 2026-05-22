@@ -302,6 +302,7 @@ func ifnameKey(name string) ([]byte, error) {
 	}
 	key := make([]byte, ifNameMaxLen)
 	copy(key, name)
+
 	return key, nil
 }
 
