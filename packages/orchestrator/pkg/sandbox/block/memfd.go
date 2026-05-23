@@ -268,6 +268,13 @@ func NewCacheFromMemfdDeduped(
 // Callers (drainIovs) keep |iovs| ≤ IOV_MAX. iovs is mutated in place.
 func pwritevAll(fd int, off int64, iovs [][]byte) error {
 	for len(iovs) > 0 {
+		for len(iovs) > 0 && len(iovs[0]) == 0 {
+			iovs = iovs[1:]
+		}
+		if len(iovs) == 0 {
+			return nil
+		}
+
 		n, err := unix.Pwritev(fd, iovs, off)
 		if errors.Is(err, unix.EINTR) {
 			continue
