@@ -153,6 +153,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    "502":
+      description: Upstream error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
 
   schemas:
     Error:
@@ -886,6 +892,8 @@ paths:
           $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
+        "502":
+          $ref: "#/components/responses/502"
         "500":
           $ref: "#/components/responses/500"
 
