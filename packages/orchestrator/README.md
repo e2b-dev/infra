@@ -303,22 +303,33 @@ Automatically set in local mode. Set before running to override:
 
 ## Limitations
 
+The orchestrator and template build tooling make a number of platform assumptions. These are small, intentional constraints that influence which base images and environments are supported today.
 
-## Known Limitations
+### Custom template builds: Debian/Ubuntu only
 
-### Custom template build: Debian/Ubuntu-only base images
+Summary
 
-#### Summary
+Custom template builds currently require Debian or Ubuntu base images that provide the `apt` package manager. The provisioning and build scripts assume Debian-style package names, `apt` usage, and filesystem layout. Using non-Debian images (Alpine, CentOS, RHEL, etc.) will typically result in build failures.
 
-E2B currently requires that base images used for custom template builds are Debian/Ubuntu-based and provide the `apt` package manager. The template build and provisioning scripts assume Debian package manager behavior and Debian-style filesystem layouts; using images without `apt` (for example, Alpine, CentOS, RHEL, or other non-Debian distributions) will cause the build to fail.
+Why
 
-#### Why this limitation exists
+- Provisioning scripts call `apt` and expect Debian package names and file locations.
+- File system layout and tooling conventions (paths, init scripts, package hooks) are tailored to Debian/Ubuntu images.
 
-- The provisioning scripts used during template build call `apt` and expect Debian-specific package names and file locations.
-- Debian/Ubuntu images use a filesystem layout and package tooling the scripts rely upon.
+Workarounds
 
-#### Workarounds and contribution
+- There is no supported workaround at present. If you need to build from a non-Debian base image, consider creating a small Debian-based wrapper image that adds the packages and layout your provisioning expects.
 
-There is no known workaround at the moment. If you need non-Debian support, please open an issue describing the use case or submit a PR that updates the provisioning scripts to support alternative package managers (e.g., `apk`, `yum`, `dnf`) and corresponding filesystem differences.
+Contributing non-Debian support
 
-Suggested PR wording: "Custom template builds require Debian/Ubuntu-based base images (apt). Non-Debian images (Alpine, CentOS/RHEL, etc.) are not supported and will fail during the build process. Contributions to add non-Debian support are welcome; please open an issue or PR."
+Contributions that broaden platform support are welcome. A viable PR would do one of the following:
+
+- Add support for alternative package managers (`apk`, `yum`, `dnf`) and detect the distribution at build time.
+- Make provisioning scripts distribution-agnostic (extract package-install and layout logic into pluggable adapters).
+
+Suggested PR description
+
+"Custom template builds currently require Debian/Ubuntu base images (apt). This PR adds detection/adapter logic to support [distro], and updates provisioning scripts to use the appropriate package manager and filesystem layout when building from that base image."
+
+If you're unsure where to start, open an issue describing your target distribution and build goals and we'll help prioritize and review a PR.
+
