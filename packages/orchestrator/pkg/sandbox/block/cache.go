@@ -277,13 +277,13 @@ func dedupPages(
 				srcPage := srcBuf[i : i+header.PageSize]
 				pageIdx := uint32((absOff + i) / header.PageSize)
 
-				if skipBase {
-					if header.IsZero(srcPage) {
-						pageEmpty.Add(pageIdx)
-					} else {
-						pageDirty.Add(pageIdx)
-					}
+				if header.IsZero(srcPage) {
+					pageEmpty.Add(pageIdx)
+					continue
+				}
 
+				if skipBase {
+					pageDirty.Add(pageIdx)
 					continue
 				}
 
@@ -292,10 +292,6 @@ func dedupPages(
 					return nil, nil, errors.Join(fmt.Errorf("slice base at %d: %w", absOff+i, sErr), f.Close(), os.Remove(outPath))
 				}
 				if bytes.Equal(srcPage, basePage) {
-					if header.IsZero(srcPage) {
-						pageEmpty.Add(pageIdx)
-					}
-
 					continue
 				}
 

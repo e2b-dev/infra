@@ -1014,6 +1014,27 @@ func TestCacheDedup_ZeroMatchingPagesGoIntoEmpty(t *testing.T) {
 	}
 }
 
+func TestCacheDedup_ZeroPagesOverrideNonZeroBase(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	blockSize := 4 * pageSize
+	size := blockSize
+
+	origData := make([]byte, size)
+	_, err := rand.Read(origData)
+	require.NoError(t, err)
+	srcData := make([]byte, size)
+
+	cache, meta := runDedup(t, srcData, origData, fullDirty(size, blockSize), blockSize)
+
+	require.EqualValues(t, 0, meta.Dirty.GetCardinality())
+	require.EqualValues(t, size/pageSize, meta.Empty.GetCardinality())
+	sz, err := cache.Size()
+	require.NoError(t, err)
+	require.Zero(t, sz)
+}
+
 // Best-effort + base uncached: skip base.ReadAt, write every non-zero
 // page through.
 func TestCacheDedup_BestEffortUncachedSkipsBaseReadAt(t *testing.T) {
