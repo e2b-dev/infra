@@ -28,8 +28,6 @@ const (
 	teamProvisionRollbackTimeout = 5 * time.Second
 )
 
-var oidcUserNamespace = uuid.MustParse("2f4c7cc1-b0e5-4ec8-b8ee-6f0d7a8c23f0")
-
 type provisionedTeam struct {
 	ID            uuid.UUID
 	Name          string
@@ -138,11 +136,7 @@ func (s *APIStore) resolveOIDCUserID(ctx context.Context, issuer, subject string
 		return uuid.Nil, fmt.Errorf("get user identity: %w", err)
 	}
 
-	if parsed, err := uuid.Parse(subject); err == nil {
-		return parsed, nil
-	}
-
-	return uuid.NewSHA1(oidcUserNamespace, []byte(issuer+"\x00"+subject)), nil
+	return uuid.New(), nil
 }
 
 func (s *APIStore) bootstrapUser(ctx context.Context, profile bootstrapUserProfile) (provisionedTeam, error) {
