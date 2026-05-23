@@ -59,7 +59,6 @@ func main() {
 	noPrefetch := flag.Bool("no-prefetch", false, "disable memory prefetching")
 	noEgress := flag.Bool("no-egress", false, "block all guest internet egress")
 	useMemfd := flag.Bool("use-memfd", false, "enable memfd-backed guest memory (passes use_memfd on snapshot load)")
-	memfileDiffDedup := flag.Bool("memfile-diff-dedup", false, "enable 4KiB-page deduplication of memfile diff against the base template")
 	verbose := flag.Bool("v", false, "verbose logging")
 
 	// Command execution (no pause)
@@ -99,12 +98,6 @@ func main() {
 
 	if *useMemfd {
 		featureflags.OverrideBoolFlag(featureflags.UseMemFdFlag, true)
-	}
-
-	if *memfileDiffDedup {
-		featureflags.OverrideJSONFlag(featureflags.MemfileDiffDedupFlag, ldvalue.FromJSONMarshal(map[string]any{
-			"enabled": true,
-		}))
 	}
 
 	if *fromBuild == "" {

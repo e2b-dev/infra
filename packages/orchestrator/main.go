@@ -5,7 +5,6 @@ package main
 import (
 	"context"
 	"os"
-	"strconv"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 
@@ -28,15 +27,16 @@ func main() {
 }
 
 func applyTestFlagOverrides() {
-	if enabled, _ := strconv.ParseBool(os.Getenv("TESTS_MEMFILE_DIFF_DEDUP")); enabled {
-		bestEffort, _ := strconv.ParseBool(os.Getenv("TESTS_MEMFILE_DIFF_DEDUP_BEST_EFFORT"))
-		directIO, _ := strconv.ParseBool(os.Getenv("TESTS_MEMFILE_DIFF_DEDUP_DIRECT_IO"))
-		featureflags.OverrideJSONFlag(featureflags.MemfileDiffDedupFlag, ldvalue.FromJSONMarshal(map[string]any{
-			"enabled":    true,
-			"bestEffort": bestEffort,
-			"directIO":   directIO,
-		}))
+	mode := os.Getenv("TESTS_MEMFILE_DIFF_DEDUP_MODE")
+	if mode == "" {
+		return
 	}
+
+	featureflags.OverrideJSONFlag(featureflags.MemfileDiffDedupFlag, ldvalue.FromJSONMarshal(map[string]any{
+		"enabled":    true,
+		"bestEffort": mode == "best_effort",
+		"directIO":   mode == "direct_io",
+	}))
 }
 
 func defaultEgressFactory(_ context.Context, deps *factories.Deps) (*factories.EgressSetup, error) {

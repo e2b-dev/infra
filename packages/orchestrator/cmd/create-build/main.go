@@ -68,7 +68,6 @@ func main() {
 	disk := flag.Int("disk", 1024, "disk MB")
 	hugePages := flag.Bool("hugepages", true, "use 2MB huge pages for memory (false = 4KB pages)")
 	useMemfd := flag.Bool("use-memfd", false, "enable memfd-backed guest memory (passes use_memfd on snapshot load)")
-	memfileDiffDedup := flag.Bool("memfile-diff-dedup", false, "enable 4KiB-page deduplication of memfile diff against the base template")
 	startCmd := flag.String("start-cmd", "", "start command")
 	setupCmd := flag.String("setup-cmd", "", "setup command to run during build (e.g., install deps)")
 	readyCmd := flag.String("ready-cmd", "", "ready check command")
@@ -78,12 +77,6 @@ func main() {
 
 	if *useMemfd {
 		featureflags.OverrideBoolFlag(featureflags.UseMemFdFlag, true)
-	}
-
-	if *memfileDiffDedup {
-		featureflags.OverrideJSONFlag(featureflags.MemfileDiffDedupFlag, ldvalue.FromJSONMarshal(map[string]any{
-			"enabled": true,
-		}))
 	}
 
 	if *toBuild == "" {

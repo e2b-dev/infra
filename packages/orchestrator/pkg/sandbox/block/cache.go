@@ -223,7 +223,6 @@ func dedupPages(
 
 	openFlags := os.O_RDWR | os.O_CREATE
 	if directIO {
-		// Bypass the page cache (chunker mmap writes + concurrent pauses).
 		openFlags |= unix.O_DIRECT
 	}
 	f, err := os.OpenFile(outPath, openFlags, 0o644)
@@ -231,7 +230,6 @@ func dedupPages(
 		return nil, nil, fmt.Errorf("open dedup cache: %w", err)
 	}
 	if directIO {
-		// Pre-allocate worst-case extents (XFS inode-lock serialization).
 		worst := int64(dirty.GetCardinality()) * blockSize
 		if fErr := unix.Fallocate(int(f.Fd()), 0, 0, worst); fErr != nil {
 			logger.L().Warn(ctx, "fallocate dedup cache; proceeding without preallocation", zap.Error(fErr))
@@ -242,9 +240,6 @@ func dedupPages(
 	pageEmpty := roaring.New()
 	var exportedSize int64
 
-	// Phase 1 classifies pages into pageDirty/pageEmpty; phase 2 drains
-	// zero-copy iovs from src into pwritev batches.
-	// TODO: parallel walk + io_uring drain for NVMe queue depth.
 	compareStart := time.Now()
 	for r := range BitsetRanges(dirty, blockSize) {
 		exportedSize += r.Size
