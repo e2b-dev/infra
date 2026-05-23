@@ -61,6 +61,7 @@ func TestPostInternalTeamsCreatesHeadlessTeam(t *testing.T) {
 		if !rows.Next() {
 			return pgx.ErrNoRows
 		}
+
 		return rows.Scan(&name, &email)
 	}, body.ID); err != nil {
 		t.Fatalf("failed to query created team: %v", err)
@@ -125,6 +126,7 @@ func TestPostInternalTeamsRollsBackOnProvisioningFailure(t *testing.T) {
 		if !rows.Next() {
 			return pgx.ErrNoRows
 		}
+
 		return rows.Scan(&count)
 	}, "stripe-projects@example.com"); err != nil {
 		t.Fatalf("failed to count teams: %v", err)

@@ -17,6 +17,7 @@ func (s *APIStore) PostInternalTeams(c *gin.Context) {
 	body, err := ginutils.ParseBody[api.InternalHeadlessTeamCreateRequest](ctx, c)
 	if err != nil {
 		s.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
+
 		return
 	}
 
@@ -24,12 +25,14 @@ func (s *APIStore) PostInternalTeams(c *gin.Context) {
 	email := strings.TrimSpace(string(body.Email))
 	if name == "" || email == "" {
 		s.sendAPIStoreError(c, http.StatusBadRequest, "Team name and email are required")
+
 		return
 	}
 
 	team, err := s.createHeadlessTeam(ctx, name, email)
 	if err != nil {
 		s.handleProvisioningError(ctx, c, "provision internal team", err)
+
 		return
 	}
 
