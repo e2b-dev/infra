@@ -279,11 +279,13 @@ func dedupPages(
 
 				if header.IsZero(srcPage) {
 					pageEmpty.Add(pageIdx)
+
 					continue
 				}
 
 				if skipBase {
 					pageDirty.Add(pageIdx)
+
 					continue
 				}
 
