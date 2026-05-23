@@ -20,23 +20,27 @@ func (a *APIStore) PostAdminTeamsTeamIDApiKeys(c *gin.Context, teamID openapi_ty
 	body, err := ginutils.ParseBody[api.NewTeamAPIKey](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
+
 		return
 	}
 
 	teamInfo, err := a.authService.GetTeamByID(ctx, teamID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting team: %s", err))
+
 		return
 	}
 
 	if err := sharedauth.CheckTeamBlocked(teamInfo); err != nil {
 		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
+
 		return
 	}
 
 	apiKey, err := team.CreateAPIKey(ctx, a.authDB, teamID, nil, body.Name)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when creating team API key: %s", err))
+
 		return
 	}
 
@@ -62,16 +66,19 @@ func (a *APIStore) DeleteAdminTeamsTeamIDApiKeysApiKeyID(c *gin.Context, teamID 
 	apiKeyUUID, err := uuid.Parse(apiKeyID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing API key ID: %s", err))
+
 		return
 	}
 
 	deleted, err := team.DeleteAPIKey(ctx, a.authDB, teamID, apiKeyUUID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when deleting API key: %s", err))
+
 		return
 	}
 	if !deleted {
 		c.String(http.StatusNotFound, "id not found")
+
 		return
 	}
 

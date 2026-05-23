@@ -140,7 +140,7 @@ func TestDeleteAdminTeamsTeamIDApiKeysDeletesTeamKey(t *testing.T) {
 	deleteCtx, _ := gin.CreateTestContext(deleteRecorder)
 	deleteCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/admin/teams/"+teamID.String()+"/api-keys/"+created.Id.String(), nil)
 
-	store.DeleteAdminTeamsTeamIDApiKeysApiKeyID(deleteCtx, teamID, api.ApiKeyID(created.Id.String()))
+	store.DeleteAdminTeamsTeamIDApiKeysApiKeyID(deleteCtx, teamID, created.Id.String())
 	if deleteCtx.Writer.Status() != http.StatusNoContent {
 		t.Fatalf("expected delete status 204, got %d: %s", deleteCtx.Writer.Status(), deleteRecorder.Body.String())
 	}
@@ -182,6 +182,7 @@ func (f fakeAPIKeyAuthService) GetTeamByID(context.Context, uuid.UUID) (*authtyp
 	if f.team == nil {
 		return nil, errors.New("team not found")
 	}
+
 	return f.team, nil
 }
 
