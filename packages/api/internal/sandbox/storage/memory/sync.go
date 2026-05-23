@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -13,13 +13,13 @@ import (
 // This is to prevent remove instances that are still being started
 const syncSandboxRemoveGracePeriod = 10 * time.Second
 
-func (s *Storage) Reconcile(ctx context.Context, sandboxes []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
-	sandboxMap := make(map[string]sandbox.Sandbox)
+func (s *Storage) Reconcile(ctx context.Context, sandboxes []sandboxtypes.Sandbox, nodeID string) []sandboxtypes.Sandbox {
+	sandboxMap := make(map[string]sandboxtypes.Sandbox)
 	now := time.Now()
 
 	// Use a map for faster lookup
-	for _, sandbox := range sandboxes {
-		sandboxMap[sandbox.SandboxID] = sandbox
+	for _, sbx := range sandboxes {
+		sandboxMap[sbx.SandboxID] = sbx
 	}
 
 	// Remove sandboxes that are not in Orchestrator anymore
@@ -50,21 +50,21 @@ func (s *Storage) Reconcile(ctx context.Context, sandboxes []sandbox.Sandbox, no
 		}
 	})
 
-	toBeAdded := make([]sandbox.Sandbox, 0, len(sandboxes))
+	toBeAdded := make([]sandboxtypes.Sandbox, 0, len(sandboxes))
 	// Add sandboxes that are not in the cache with the default TTL
-	for _, sandbox := range sandboxes {
-		if s.exists(sandbox.SandboxID) {
+	for _, sbx := range sandboxes {
+		if s.exists(sbx.SandboxID) {
 			continue
 		}
 
 		logger.L().Debug(
 			ctx,
 			"sync discovered sandbox missing from cache",
-			logger.WithSandboxID(sandbox.SandboxID),
-			logger.WithTeamID(sandbox.TeamID.String()),
+			logger.WithSandboxID(sbx.SandboxID),
+			logger.WithTeamID(sbx.TeamID.String()),
 			logger.WithNodeID(nodeID),
 		)
-		toBeAdded = append(toBeAdded, sandbox)
+		toBeAdded = append(toBeAdded, sbx)
 	}
 
 	return toBeAdded

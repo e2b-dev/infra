@@ -6,17 +6,17 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type sandboxReservation struct {
-	start *utils.SetOnce[sandbox.Sandbox]
+	start *utils.SetOnce[sandboxtypes.Sandbox]
 }
 
-func newSandboxReservation(start *utils.SetOnce[sandbox.Sandbox]) *sandboxReservation {
+func newSandboxReservation(start *utils.SetOnce[sandboxtypes.Sandbox]) *sandboxReservation {
 	return &sandboxReservation{
 		start: start,
 	}
@@ -28,7 +28,7 @@ type ReservationStorage struct {
 	reservations *smap.Map[TeamSandboxes]
 }
 
-var _ sandbox.ReservationStorage = &ReservationStorage{}
+var _ sandboxtypes.ReservationStorage = &ReservationStorage{}
 
 func NewReservationStorage() *ReservationStorage {
 	return &ReservationStorage{
@@ -36,10 +36,10 @@ func NewReservationStorage() *ReservationStorage {
 	}
 }
 
-func (s *ReservationStorage) Reserve(ctx context.Context, teamID uuid.UUID, sandboxID string, limit int) (finishStart func(sandbox.Sandbox, error), waitForStart func(ctx context.Context) (sandbox.Sandbox, error), err error) {
+func (s *ReservationStorage) Reserve(ctx context.Context, teamID uuid.UUID, sandboxID string, limit int) (finishStart func(sandboxtypes.Sandbox, error), waitForStart func(ctx context.Context) (sandboxtypes.Sandbox, error), err error) {
 	alreadyPresent := false
 	limitExceeded := false
-	var startResult *utils.SetOnce[sandbox.Sandbox]
+	var startResult *utils.SetOnce[sandboxtypes.Sandbox]
 
 	teamIDStr := teamID.String()
 	s.reservations.Upsert(teamIDStr, nil, func(exist bool, teamSandboxes, _ TeamSandboxes) TeamSandboxes {
@@ -60,21 +60,21 @@ func (s *ReservationStorage) Reserve(ctx context.Context, teamID uuid.UUID, sand
 			return teamSandboxes
 		}
 
-		startResult = utils.NewSetOnce[sandbox.Sandbox]()
+		startResult = utils.NewSetOnce[sandboxtypes.Sandbox]()
 		teamSandboxes[sandboxID] = newSandboxReservation(startResult)
 
 		return teamSandboxes
 	})
 
 	if limitExceeded {
-		return nil, nil, &sandbox.LimitExceededError{TeamID: teamID}
+		return nil, nil, &sandboxtypes.LimitExceededError{TeamID: teamID}
 	}
 
 	if alreadyPresent {
 		return nil, startResult.WaitWithContext, nil
 	}
 
-	return func(sbx sandbox.Sandbox, err error) {
+	return func(sbx sandboxtypes.Sandbox, err error) {
 		setErr := startResult.SetResult(sbx, err)
 		if setErr != nil {
 			logger.L().Error(ctx, "failed to set the result of the reservation", zap.Error(setErr), logger.WithSandboxID(sandboxID))

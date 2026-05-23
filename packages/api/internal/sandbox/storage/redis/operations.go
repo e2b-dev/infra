@@ -12,14 +12,14 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // Add stores a sandbox in Redis atomically with its team index entry.
-func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
+func (s *Storage) Add(ctx context.Context, sbx sandboxtypes.Sandbox) error {
 	data, err := json.Marshal(sbx)
 	if err != nil {
 		return fmt.Errorf("failed to marshal sandbox: %w", err)
@@ -55,20 +55,20 @@ func (s *Storage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 }
 
 // Get retrieves a sandbox from Redis
-func (s *Storage) Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (sandbox.Sandbox, error) {
+func (s *Storage) Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (sandboxtypes.Sandbox, error) {
 	key := getSandboxKey(teamID.String(), sandboxID)
 	data, err := s.redisClient.Get(ctx, key).Bytes()
 	if errors.Is(err, redis.Nil) {
-		return sandbox.Sandbox{}, fmt.Errorf("sandbox %q: %w", sandboxID, sandbox.ErrNotFound)
+		return sandboxtypes.Sandbox{}, fmt.Errorf("sandbox %q: %w", sandboxID, sandboxtypes.ErrNotFound)
 	}
 	if err != nil {
-		return sandbox.Sandbox{}, fmt.Errorf("failed to get sandbox from Redis: %w", err)
+		return sandboxtypes.Sandbox{}, fmt.Errorf("failed to get sandbox from Redis: %w", err)
 	}
 
-	var sbx sandbox.Sandbox
+	var sbx sandboxtypes.Sandbox
 	err = json.Unmarshal(data, &sbx)
 	if err != nil {
-		return sandbox.Sandbox{}, fmt.Errorf("failed to unmarshal sandbox: %w", err)
+		return sandboxtypes.Sandbox{}, fmt.Errorf("failed to unmarshal sandbox: %w", err)
 	}
 
 	return sbx, nil
@@ -108,7 +108,7 @@ func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string
 }
 
 // TeamItems retrieves sandboxes for a specific team, filtered by states and options
-func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sandbox.State) ([]sandbox.Sandbox, error) {
+func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sandboxtypes.State) ([]sandboxtypes.Sandbox, error) {
 	// Get sandbox IDs from team index
 	teamKey := GetSandboxStorageTeamIndexKey(teamID.String())
 	sandboxIDs, err := s.redisClient.SMembers(ctx, teamKey).Result()
@@ -117,7 +117,7 @@ func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sand
 	}
 
 	if len(sandboxIDs) == 0 {
-		return []sandbox.Sandbox{}, nil
+		return []sandboxtypes.Sandbox{}, nil
 	}
 
 	// Build keys and batch fetch with MGET
@@ -132,13 +132,13 @@ func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sand
 	}
 
 	// Deserialize and filter
-	var sandboxes []sandbox.Sandbox
+	var sandboxes []sandboxtypes.Sandbox
 	for _, rawResult := range results {
 		if rawResult == nil {
 			continue // Stale index entry - sandbox was deleted
 		}
 
-		var sbx sandbox.Sandbox
+		var sbx sandboxtypes.Sandbox
 		result, ok := rawResult.(string)
 		if !ok {
 			logger.L().Error(ctx, "Invalid sandbox data type in Redis")
@@ -164,13 +164,13 @@ func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sand
 }
 
 // Update modifies a sandbox atomically
-func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
+func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandboxtypes.Sandbox) (sandboxtypes.Sandbox, error)) (sandboxtypes.Sandbox, error) {
 	key := getSandboxKey(teamID.String(), sandboxID)
 
 	lockKey := redis_utils.GetLockKey(key)
 	lock, err := s.locker.Obtain(ctx, lockKey, lockTimeout)
 	if err != nil {
-		return sandbox.Sandbox{}, fmt.Errorf("failed to obtain lock: %w", err)
+		return sandboxtypes.Sandbox{}, fmt.Errorf("failed to obtain lock: %w", err)
 	}
 
 	defer func() {
@@ -183,34 +183,34 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 	// Get current value
 	data, err := s.redisClient.Get(ctx, key).Bytes()
 	if errors.Is(err, redis.Nil) {
-		return sandbox.Sandbox{}, fmt.Errorf("sandbox %q: %w", sandboxID, sandbox.ErrNotFound)
+		return sandboxtypes.Sandbox{}, fmt.Errorf("sandbox %q: %w", sandboxID, sandboxtypes.ErrNotFound)
 	}
 	if err != nil {
-		return sandbox.Sandbox{}, err
+		return sandboxtypes.Sandbox{}, err
 	}
 
-	var sbx sandbox.Sandbox
+	var sbx sandboxtypes.Sandbox
 	err = json.Unmarshal(data, &sbx)
 	if err != nil {
-		return sandbox.Sandbox{}, err
+		return sandboxtypes.Sandbox{}, err
 	}
 
 	// Apply update
 	updatedSbx, err := updateFunc(sbx)
 	if err != nil {
-		return sandbox.Sandbox{}, fmt.Errorf("failed to update sandbox: %w", err)
+		return sandboxtypes.Sandbox{}, fmt.Errorf("failed to update sandbox: %w", err)
 	}
 
 	// Serialize updated sandbox
 	newData, err := json.Marshal(updatedSbx)
 	if err != nil {
-		return sandbox.Sandbox{}, err
+		return sandboxtypes.Sandbox{}, err
 	}
 
 	// Execute transaction
 	err = s.redisClient.Set(ctx, key, newData, redis.KeepTTL).Err()
 	if err != nil {
-		return sandbox.Sandbox{}, fmt.Errorf("failed to store sandbox in Redis: %w", err)
+		return sandboxtypes.Sandbox{}, fmt.Errorf("failed to store sandbox in Redis: %w", err)
 	}
 
 	// Re-score the expiration index if EndTime changed.
@@ -219,7 +219,7 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 			Score:  float64(updatedSbx.EndTime.UnixMilli()),
 			Member: expirationMember(teamID.String(), sandboxID),
 		}).Err(); err != nil {
-			return sandbox.Sandbox{}, fmt.Errorf("failed to update sandbox in global expiration index: %w", err)
+			return sandboxtypes.Sandbox{}, fmt.Errorf("failed to update sandbox in global expiration index: %w", err)
 		}
 	}
 
@@ -266,7 +266,7 @@ func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int6
 	}
 
 	nowSec := time.Now().Unix()
-	cutoff := nowSec - int64(sandbox.StaleCutoff.Seconds())
+	cutoff := nowSec - int64(sandboxtypes.StaleCutoff.Seconds())
 
 	teams := make(map[uuid.UUID]int64, len(entries))
 	var stale []any
