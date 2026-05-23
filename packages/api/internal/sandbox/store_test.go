@@ -1,4 +1,4 @@
-package sandbox_test
+package sandbox
 
 import (
 	"context"
@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
@@ -25,8 +24,8 @@ import (
 // CallbackTracker tracks callback invocations with synchronization for async callbacks
 type CallbackTracker struct {
 	mu            sync.Mutex
-	calls         map[string][]sandbox.Sandbox
-	creationMeta  map[string][]sandbox.CreationMetadata
+	calls         map[string][]Sandbox
+	creationMeta  map[string][]CreationMetadata
 	expectedCalls int
 	actualCalls   atomic.Int32
 	done          chan struct{}
@@ -35,16 +34,16 @@ type CallbackTracker struct {
 
 func NewCallbackTracker(expectedCalls int) *CallbackTracker {
 	return &CallbackTracker{
-		calls:         make(map[string][]sandbox.Sandbox),
-		creationMeta:  make(map[string][]sandbox.CreationMetadata),
+		calls:         make(map[string][]Sandbox),
+		creationMeta:  make(map[string][]CreationMetadata),
 		expectedCalls: expectedCalls,
 		done:          make(chan struct{}),
 	}
 }
 
 // Track returns a callback function that tracks invocations
-func (ct *CallbackTracker) Track(name string) sandbox.InsertCallback {
-	return func(_ context.Context, sbx sandbox.Sandbox) {
+func (ct *CallbackTracker) Track(name string) InsertCallback {
+	return func(_ context.Context, sbx Sandbox) {
 		ct.mu.Lock()
 		ct.calls[name] = append(ct.calls[name], sbx)
 		ct.mu.Unlock()
@@ -58,8 +57,8 @@ func (ct *CallbackTracker) Track(name string) sandbox.InsertCallback {
 }
 
 // TrackCreation returns a CreationCallback that tracks invocations and per-call CreationMetadata.
-func (ct *CallbackTracker) TrackCreation(name string) sandbox.CreationCallback {
-	return func(_ context.Context, sbx sandbox.Sandbox, meta sandbox.CreationMetadata) {
+func (ct *CallbackTracker) TrackCreation(name string) CreationCallback {
+	return func(_ context.Context, sbx Sandbox, meta CreationMetadata) {
 		ct.mu.Lock()
 		ct.calls[name] = append(ct.calls[name], sbx)
 		ct.creationMeta[name] = append(ct.creationMeta[name], meta)
@@ -73,11 +72,11 @@ func (ct *CallbackTracker) TrackCreation(name string) sandbox.CreationCallback {
 	}
 }
 
-func (ct *CallbackTracker) GetCreationMeta(name string) []sandbox.CreationMetadata {
+func (ct *CallbackTracker) GetCreationMeta(name string) []CreationMetadata {
 	ct.mu.Lock()
 	defer ct.mu.Unlock()
 
-	return append([]sandbox.CreationMetadata{}, ct.creationMeta[name]...)
+	return append([]CreationMetadata{}, ct.creationMeta[name]...)
 }
 
 // WaitForCalls blocks until expected number of callbacks received or timeout
@@ -116,17 +115,17 @@ func (ct *CallbackTracker) AssertCallCount(t *testing.T, name string, count int)
 }
 
 // GetCalls returns all invocations for a callback
-func (ct *CallbackTracker) GetCalls(name string) []sandbox.Sandbox {
+func (ct *CallbackTracker) GetCalls(name string) []Sandbox {
 	ct.mu.Lock()
 	defer ct.mu.Unlock()
 
-	return append([]sandbox.Sandbox{}, ct.calls[name]...)
+	return append([]Sandbox{}, ct.calls[name]...)
 }
 
 // NoOpReservationStorage is a no-op implementation for testing
 type NoOpReservationStorage struct{}
 
-func (n *NoOpReservationStorage) Reserve(_ context.Context, _ uuid.UUID, _ string, _ int) (func(sandbox.Sandbox, error), func(ctx context.Context) (sandbox.Sandbox, error), error) {
+func (n *NoOpReservationStorage) Reserve(_ context.Context, _ uuid.UUID, _ string, _ int) (func(Sandbox, error), func(ctx context.Context) (Sandbox, error), error) {
 	return nil, nil, nil
 }
 
@@ -136,13 +135,13 @@ func (n *NoOpReservationStorage) Release(_ context.Context, _ uuid.UUID, _ strin
 
 // MockStorage wraps real storage and can inject errors
 type MockStorage struct {
-	sandbox.Storage
+	Storage
 
 	addError error
 	mu       sync.Mutex
 }
 
-func NewMockStorage(storage sandbox.Storage) *MockStorage {
+func NewMockStorage(storage Storage) *MockStorage {
 	return &MockStorage{
 		Storage: storage,
 	}
@@ -156,7 +155,7 @@ func (m *MockStorage) SetAddError(err error) {
 }
 
 // Add wraps Storage.Add() with error injection
-func (m *MockStorage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
+func (m *MockStorage) Add(ctx context.Context, sbx Sandbox) error {
 	m.mu.Lock()
 	err := m.addError
 	m.mu.Unlock()
@@ -169,8 +168,8 @@ func (m *MockStorage) Add(ctx context.Context, sbx sandbox.Sandbox) error {
 }
 
 // createTestSandbox creates a test sandbox with default values
-func createTestSandbox() sandbox.Sandbox {
-	return sandbox.NewSandbox(
+func createTestSandbox() Sandbox {
+	return NewSandbox(
 		"test-sandbox-"+uuid.New().String()[:8],
 		"test-template",
 		consts.ClientID,
@@ -217,16 +216,16 @@ func TestAdd_NewSandbox(t *testing.T) {
 		reservations := &NoOpReservationStorage{}
 
 		tracker := NewCallbackTracker(2) // Expect 2 callbacks
-		callbacks := sandbox.Callbacks{
+		callbacks := Callbacks{
 			AddSandboxToRoutingTable: tracker.Track("AddSandboxToRoutingTable"),
 			AsyncNewlyCreatedSandbox: tracker.TrackCreation("AsyncNewlyCreatedSandbox"),
 		}
 
-		store := sandbox.NewStore(storage, reservations, callbacks)
+		store := NewStore(storage, reservations, callbacks)
 		sbx := createTestSandbox()
 
 		// Execute
-		err := store.Add(ctx, sbx, &sandbox.CreationMetadata{})
+		err := store.Add(ctx, sbx, &CreationMetadata{})
 
 		// Wait for async callbacks
 		tracker.WaitForCalls(t, 2*time.Second)
@@ -256,27 +255,27 @@ func TestAdd_AlreadyInCache(t *testing.T) {
 
 		// First add with all 2 callbacks
 		tracker1 := NewCallbackTracker(2)
-		callbacks1 := sandbox.Callbacks{
+		callbacks1 := Callbacks{
 			AddSandboxToRoutingTable: tracker1.Track("AddSandboxToRoutingTable"),
 			AsyncNewlyCreatedSandbox: tracker1.TrackCreation("AsyncNewlyCreatedSandbox"),
 		}
-		store1 := sandbox.NewStore(storage, reservations, callbacks1)
+		store1 := NewStore(storage, reservations, callbacks1)
 		sbx := createTestSandbox()
 
-		err := store1.Add(ctx, sbx, &sandbox.CreationMetadata{})
+		err := store1.Add(ctx, sbx, &CreationMetadata{})
 		tracker1.WaitForCalls(t, 2*time.Second)
 		require.NoError(t, err)
 
 		// Second add with newlyCreated=true, only AsyncNewlyCreatedSandbox callback
 		// (AddSandboxToRoutingTable is NOT called because already in cache)
 		tracker2 := NewCallbackTracker(1)
-		callbacks2 := sandbox.Callbacks{
+		callbacks2 := Callbacks{
 			AddSandboxToRoutingTable: tracker2.Track("AddSandboxToRoutingTable"),
 			AsyncNewlyCreatedSandbox: tracker2.TrackCreation("AsyncNewlyCreatedSandbox"),
 		}
-		store2 := sandbox.NewStore(storage, reservations, callbacks2)
+		store2 := NewStore(storage, reservations, callbacks2)
 
-		err = store2.Add(ctx, sbx, &sandbox.CreationMetadata{})
+		err = store2.Add(ctx, sbx, &CreationMetadata{})
 		tracker2.WaitForCalls(t, 2*time.Second)
 
 		require.NoError(t, err)
@@ -293,25 +292,25 @@ func TestAdd_AlreadyInCache(t *testing.T) {
 
 		// First add with newlyCreated=true
 		tracker1 := NewCallbackTracker(2)
-		callbacks1 := sandbox.Callbacks{
+		callbacks1 := Callbacks{
 			AddSandboxToRoutingTable: tracker1.Track("AddSandboxToRoutingTable"),
 			AsyncNewlyCreatedSandbox: tracker1.TrackCreation("AsyncNewlyCreatedSandbox"),
 		}
-		store1 := sandbox.NewStore(storage, reservations, callbacks1)
+		store1 := NewStore(storage, reservations, callbacks1)
 		sbx := createTestSandbox()
 
-		err := store1.Add(ctx, sbx, &sandbox.CreationMetadata{})
+		err := store1.Add(ctx, sbx, &CreationMetadata{})
 		tracker1.WaitForCalls(t, 2*time.Second)
 		require.NoError(t, err)
 
 		// Second add with newlyCreated=false, no callbacks expected
 		// (No callbacks called because already in cache)
 		tracker2 := NewCallbackTracker(0)
-		callbacks2 := sandbox.Callbacks{
+		callbacks2 := Callbacks{
 			AddSandboxToRoutingTable: tracker2.Track("AddSandboxToRoutingTable"),
 			AsyncNewlyCreatedSandbox: tracker2.TrackCreation("AsyncNewlyCreatedSandbox"),
 		}
-		store2 := sandbox.NewStore(storage, reservations, callbacks2)
+		store2 := NewStore(storage, reservations, callbacks2)
 
 		err = store2.Add(ctx, sbx, nil)
 		require.NoError(t, err)
@@ -335,11 +334,11 @@ func TestAdd_NotNewlyCreated(t *testing.T) {
 
 		// Add with newlyCreated=false, expect 1 callback
 		tracker := NewCallbackTracker(1)
-		callbacks := sandbox.Callbacks{
+		callbacks := Callbacks{
 			AddSandboxToRoutingTable: tracker.Track("AddSandboxToRoutingTable"),
 			AsyncNewlyCreatedSandbox: tracker.TrackCreation("AsyncNewlyCreatedSandbox"),
 		}
-		store := sandbox.NewStore(storage, reservations, callbacks)
+		store := NewStore(storage, reservations, callbacks)
 		sbx := createTestSandbox()
 
 		err := store.Add(ctx, sbx, nil)
@@ -359,11 +358,11 @@ func TestAdd_NotNewlyCreated(t *testing.T) {
 
 		// First add
 		tracker1 := NewCallbackTracker(1)
-		callbacks1 := sandbox.Callbacks{
+		callbacks1 := Callbacks{
 			AddSandboxToRoutingTable: tracker1.Track("AddSandboxToRoutingTable"),
 			AsyncNewlyCreatedSandbox: tracker1.TrackCreation("AsyncNewlyCreatedSandbox"),
 		}
-		store1 := sandbox.NewStore(storage, reservations, callbacks1)
+		store1 := NewStore(storage, reservations, callbacks1)
 		sbx := createTestSandbox()
 
 		err := store1.Add(ctx, sbx, nil)
@@ -372,11 +371,11 @@ func TestAdd_NotNewlyCreated(t *testing.T) {
 
 		// Second add with same sandbox, newlyCreated=false, no callbacks expected
 		tracker2 := NewCallbackTracker(0)
-		callbacks2 := sandbox.Callbacks{
+		callbacks2 := Callbacks{
 			AddSandboxToRoutingTable: tracker2.Track("AddSandboxToRoutingTable"),
 			AsyncNewlyCreatedSandbox: tracker2.TrackCreation("AsyncNewlyCreatedSandbox"),
 		}
-		store2 := sandbox.NewStore(storage, reservations, callbacks2)
+		store2 := NewStore(storage, reservations, callbacks2)
 
 		err = store2.Add(ctx, sbx, nil)
 		require.NoError(t, err)
@@ -404,14 +403,14 @@ func TestAdd_StorageErrors(t *testing.T) {
 
 		// Expect 0 callbacks since error should be returned immediately
 		tracker := NewCallbackTracker(1)
-		callbacks := sandbox.Callbacks{
+		callbacks := Callbacks{
 			AddSandboxToRoutingTable: tracker.Track("AddSandboxToRoutingTable"),
 			AsyncNewlyCreatedSandbox: tracker.TrackCreation("AsyncNewlyCreatedSandbox"),
 		}
-		store := sandbox.NewStore(mockStorage, reservations, callbacks)
+		store := NewStore(mockStorage, reservations, callbacks)
 		sbx := createTestSandbox()
 
-		err := store.Add(ctx, sbx, &sandbox.CreationMetadata{})
+		err := store.Add(ctx, sbx, &CreationMetadata{})
 
 		// Error should be returned
 		require.Error(t, err)
@@ -438,11 +437,11 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		numGoroutines := 100
 		tracker := NewCallbackTracker(numGoroutines * 2) // Each add calls 2 callbacks
 
-		callbacks := sandbox.Callbacks{
+		callbacks := Callbacks{
 			AddSandboxToRoutingTable: tracker.Track("AddSandboxToRoutingTable"),
 			AsyncNewlyCreatedSandbox: tracker.TrackCreation("AsyncNewlyCreatedSandbox"),
 		}
-		store := sandbox.NewStore(storage, reservations, callbacks)
+		store := NewStore(storage, reservations, callbacks)
 
 		teamID := uuid.New()
 		var wg sync.WaitGroup
@@ -456,7 +455,7 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 				sbx := createTestSandbox()
 				sbx.SandboxID = fmt.Sprintf("concurrent-sandbox-%d", id)
 				sbx.TeamID = teamID
-				err := store.Add(ctx, sbx, &sandbox.CreationMetadata{})
+				err := store.Add(ctx, sbx, &CreationMetadata{})
 				if err != nil {
 					errorsChan <- err
 				}
@@ -503,11 +502,11 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		// Total: 2 + 9 = 11 callbacks (AddSandboxToRoutingTable: 1, AsyncNewlyCreatedSandbox: 10)
 		tracker := NewCallbackTracker(1 + numGoroutines)
 
-		callbacks := sandbox.Callbacks{
+		callbacks := Callbacks{
 			AddSandboxToRoutingTable: tracker.Track("AddSandboxToRoutingTable"),
 			AsyncNewlyCreatedSandbox: tracker.TrackCreation("AsyncNewlyCreatedSandbox"),
 		}
-		store := sandbox.NewStore(storage, reservations, callbacks)
+		store := NewStore(storage, reservations, callbacks)
 
 		var wg sync.WaitGroup
 		successCount := atomic.Int32{}
@@ -515,7 +514,7 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		// Launch concurrent adds for the same sandbox
 		for range numGoroutines {
 			wg.Go(func() {
-				err := store.Add(ctx, sbx, &sandbox.CreationMetadata{})
+				err := store.Add(ctx, sbx, &CreationMetadata{})
 				if err == nil {
 					successCount.Add(1)
 				}

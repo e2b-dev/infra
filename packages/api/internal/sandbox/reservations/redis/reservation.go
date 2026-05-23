@@ -10,7 +10,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -27,7 +27,7 @@ const (
 	staleTTL = 90 * time.Second
 )
 
-var _ sandbox.ReservationStorage = (*ReservationStorage)(nil)
+var _ sandboxtypes.ReservationStorage = (*ReservationStorage)(nil)
 
 // Publish is fire-and-forget — drops on queue saturation are recovered by the waiter's fallback ticker.
 type Notifier interface {
@@ -47,7 +47,7 @@ func NewReservationStorage(redisClient redis.UniversalClient, notifier Notifier)
 	}
 }
 
-func (s *ReservationStorage) Reserve(ctx context.Context, teamID uuid.UUID, sandboxID string, limit int) (finishStart func(sandbox.Sandbox, error), waitForStart func(ctx context.Context) (sandbox.Sandbox, error), err error) {
+func (s *ReservationStorage) Reserve(ctx context.Context, teamID uuid.UUID, sandboxID string, limit int) (finishStart func(sandboxtypes.Sandbox, error), waitForStart func(ctx context.Context) (sandboxtypes.Sandbox, error), err error) {
 	teamIDStr := teamID.String()
 	storageIndexKey := getStorageIndexKey(teamIDStr)
 	pendingSetKey := getPendingSetKey(teamIDStr)
@@ -69,13 +69,13 @@ func (s *ReservationStorage) Reserve(ctx context.Context, teamID uuid.UUID, sand
 		return s.createFinishStart(ctx, teamID, sandboxID), nil, nil
 
 	case reserveResultAlreadyInStorage:
-		return nil, nil, sandbox.ErrAlreadyExists
+		return nil, nil, sandboxtypes.ErrAlreadyExists
 
 	case reserveResultAlreadyPending:
 		return nil, s.createWaitForStart(teamID, sandboxID), nil
 
 	case reserveResultLimitExceeded:
-		return nil, nil, &sandbox.LimitExceededError{TeamID: teamID}
+		return nil, nil, &sandboxtypes.LimitExceededError{TeamID: teamID}
 
 	default:
 		return nil, nil, fmt.Errorf("unexpected reserve script result: %d", result)
@@ -102,8 +102,8 @@ func (s *ReservationStorage) Release(ctx context.Context, teamID uuid.UUID, sand
 }
 
 // createFinishStart returns a callback that completes the reservation.
-func (s *ReservationStorage) createFinishStart(ctx context.Context, teamID uuid.UUID, sandboxID string) func(sandbox.Sandbox, error) {
-	return func(sbx sandbox.Sandbox, startErr error) {
+func (s *ReservationStorage) createFinishStart(ctx context.Context, teamID uuid.UUID, sandboxID string) func(sandboxtypes.Sandbox, error) {
+	return func(sbx sandboxtypes.Sandbox, startErr error) {
 		teamIDStr := teamID.String()
 		pendingSetKey := getPendingSetKey(teamIDStr)
 		resultKeyStr := getResultKey(teamIDStr, sandboxID)
@@ -149,8 +149,8 @@ func (s *ReservationStorage) createFinishStart(ctx context.Context, teamID uuid.
 
 // createWaitForStart returns a function that polls Redis for the result of a sandbox creation
 // initiated by another instance.
-func (s *ReservationStorage) createWaitForStart(teamID uuid.UUID, sandboxID string) func(ctx context.Context) (sandbox.Sandbox, error) {
-	return func(ctx context.Context) (sandbox.Sandbox, error) {
+func (s *ReservationStorage) createWaitForStart(teamID uuid.UUID, sandboxID string) func(ctx context.Context) (sandboxtypes.Sandbox, error) {
+	return func(ctx context.Context) (sandboxtypes.Sandbox, error) {
 		teamIDStr := teamID.String()
 		resultKeyStr := getResultKey(teamIDStr, sandboxID)
 		pendingSetKey := getPendingSetKey(teamIDStr)
@@ -171,7 +171,7 @@ func (s *ReservationStorage) createWaitForStart(teamID uuid.UUID, sandboxID stri
 		for {
 			select {
 			case <-ctx.Done():
-				return sandbox.Sandbox{}, ctx.Err()
+				return sandboxtypes.Sandbox{}, ctx.Err()
 			case <-ch:
 			case <-ticker.C:
 			}
@@ -195,7 +195,7 @@ func (s *ReservationStorage) createWaitForStart(teamID uuid.UUID, sandboxID stri
 func (s *ReservationStorage) tryReadResult(
 	ctx context.Context,
 	resultKey, pendingSetKey, sandboxID string,
-) (done bool, sbx sandbox.Sandbox, err error) {
+) (done bool, sbx sandboxtypes.Sandbox, err error) {
 	data, getErr := s.redisClient.Get(ctx, resultKey).Bytes()
 	if getErr == nil {
 		sbx, err = decodeResult(data)
@@ -203,7 +203,7 @@ func (s *ReservationStorage) tryReadResult(
 		return true, sbx, err
 	}
 	if !errors.Is(getErr, redis.Nil) {
-		return true, sandbox.Sandbox{}, fmt.Errorf("failed to check result key: %w", getErr)
+		return true, sandboxtypes.Sandbox{}, fmt.Errorf("failed to check result key: %w", getErr)
 	}
 
 	// No result yet, so check whether another instance is still creating the sandbox.
@@ -218,15 +218,15 @@ func (s *ReservationStorage) tryReadResult(
 			return true, sbx, err
 		}
 		if !errors.Is(getErr, redis.Nil) {
-			return true, sandbox.Sandbox{}, fmt.Errorf("failed to check result key: %w", getErr)
+			return true, sandboxtypes.Sandbox{}, fmt.Errorf("failed to check result key: %w", getErr)
 		}
 
-		return true, sandbox.Sandbox{}, fmt.Errorf("sandbox %s is no longer pending and has no result", sandboxID)
+		return true, sandboxtypes.Sandbox{}, fmt.Errorf("sandbox %s is no longer pending and has no result", sandboxID)
 	}
 	if scoreErr != nil {
-		return true, sandbox.Sandbox{}, fmt.Errorf("failed to check pending set: %w", scoreErr)
+		return true, sandboxtypes.Sandbox{}, fmt.Errorf("failed to check pending set: %w", scoreErr)
 	}
 
 	// Still pending, no result yet.
-	return false, sandbox.Sandbox{}, nil
+	return false, sandboxtypes.Sandbox{}, nil
 }

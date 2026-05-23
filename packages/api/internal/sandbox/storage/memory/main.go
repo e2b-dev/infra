@@ -3,16 +3,16 @@ package memory
 import (
 	cmap "github.com/orcaman/concurrent-map/v2"
 
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 )
 
-var _ sandbox.Storage = (*Storage)(nil)
+var _ sandboxtypes.Storage = (*Storage)(nil)
 
 type Storage struct {
 	items cmap.ConcurrentMap[string, *memorySandbox]
 }
 
-func (s *Storage) Name() string { return sandbox.StorageNameMemory }
+func (s *Storage) Name() string { return sandboxtypes.StorageNameMemory }
 
 func NewStorage() *Storage {
 	instanceCache := &Storage{

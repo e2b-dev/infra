@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -78,7 +78,7 @@ func (c *Cleaner) RunOnce(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-func (c *Cleaner) evictExpired(ctx context.Context, expired []sandbox.Sandbox) {
+func (c *Cleaner) evictExpired(ctx context.Context, expired []sandboxtypes.Sandbox) {
 	if len(expired) == 0 {
 		return
 	}
@@ -86,7 +86,7 @@ func (c *Cleaner) evictExpired(ctx context.Context, expired []sandbox.Sandbox) {
 	logger.L().Info(ctx, "Cleaner found expired sandboxes", zap.Int("count", len(expired)))
 
 	for _, sbx := range expired {
-		if time.Since(sbx.EndTime) < sandbox.StaleCutoff {
+		if time.Since(sbx.EndTime) < sandboxtypes.StaleCutoff {
 			continue
 		}
 

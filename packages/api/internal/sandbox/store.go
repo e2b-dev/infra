@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
@@ -27,35 +28,24 @@ type (
 	CreationCallback func(ctx context.Context, sbx Sandbox, meta CreationMetadata)
 )
 
-const (
-	StorageNameMemory        = "memory"
-	StorageNameRedis         = "redis"
-	StorageNamePopulateRedis = "populate_redis"
+const sbxRemoveTimeout = 10 * time.Second
 
-	sbxRemoveTimeout = 10 * time.Second
+// Storage names are re-exported from sandboxtypes for callers using this package.
+const (
+	StorageNameMemory        = sandboxtypes.StorageNameMemory
+	StorageNameRedis         = sandboxtypes.StorageNameRedis
+	StorageNamePopulateRedis = sandboxtypes.StorageNamePopulateRedis
 )
 
-type ReservationStorage interface {
-	Reserve(ctx context.Context, teamID uuid.UUID, sandboxID string, limit int) (finishStart func(Sandbox, error), waitForStart func(ctx context.Context) (Sandbox, error), err error)
-	Release(ctx context.Context, teamID uuid.UUID, sandboxID string) error
-}
-
-// TODO [ENG-3514]: Remove Name() and Sync() and nolint once migrated to Redis
-type Storage interface { //nolint: interfacebloat
-	Name() string
-	Add(ctx context.Context, sandbox Sandbox) error
-	Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (Sandbox, error)
-	Remove(ctx context.Context, teamID uuid.UUID, sandboxID string) error
-
-	TeamItems(ctx context.Context, teamID uuid.UUID, states []State) ([]Sandbox, error)
-	ExpiredItems(ctx context.Context) ([]Sandbox, error)
-	TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int64, error)
-
-	Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error)
-	StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts RemoveOpts) (Sandbox, bool, func(context.Context, error), error)
-	WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error
-	Reconcile(ctx context.Context, sandboxes []Sandbox, nodeID string) []Sandbox
-}
+// Storage and ReservationStorage are re-exported from sandboxtypes so external
+// callers can continue to use sandbox.Storage / sandbox.ReservationStorage.
+// They live in sandboxtypes (a leaf package) so storage backends like
+// sandbox/storage/memory can implement them without creating an import cycle
+// back into package sandbox.
+type (
+	Storage            = sandboxtypes.Storage
+	ReservationStorage = sandboxtypes.ReservationStorage
+)
 
 type Callbacks struct {
 	// AddSandboxToRoutingTable should be called sync to prevent race conditions where we would know where to route the sandbox
