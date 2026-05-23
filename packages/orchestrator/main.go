@@ -28,9 +28,6 @@ func main() {
 }
 
 func applyTestFlagOverrides() {
-	if enabled, _ := strconv.ParseBool(os.Getenv("TESTS_USE_MEMFD")); enabled {
-		featureflags.OverrideBoolFlag(featureflags.UseMemFdFlag, true)
-	}
 	if enabled, _ := strconv.ParseBool(os.Getenv("TESTS_MEMFILE_DIFF_DEDUP")); enabled {
 		bestEffort, _ := strconv.ParseBool(os.Getenv("TESTS_MEMFILE_DIFF_DEDUP_BEST_EFFORT"))
 		directIO, _ := strconv.ParseBool(os.Getenv("TESTS_MEMFILE_DIFF_DEDUP_DIRECT_IO"))
