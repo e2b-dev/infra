@@ -11,8 +11,8 @@ import (
 
 // reservationResult is the serializable result stored in Redis for cross-instance communication.
 type reservationResult struct {
-	Sandbox sandboxtypes.Sandbox   `json:"sandbox,omitzero"`
-	Error   *reservationError `json:"error,omitempty"`
+	Sandbox sandboxtypes.Sandbox `json:"sandbox,omitzero"`
+	Error   *reservationError    `json:"error,omitempty"`
 }
 
 // reservationError preserves api.APIError fields for cross-instance error propagation.
