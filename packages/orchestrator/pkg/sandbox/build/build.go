@@ -136,11 +136,11 @@ func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 				if derr != nil {
 					logger.L().Warn(ctx, "failed to get build for slice fast path", zap.Error(derr))
 				} else {
-					if slice, sErr := diff.Slice(ctx, int64(m.Offset), length, ft); sErr == nil {
+					slice, sErr := diff.Slice(ctx, int64(m.Offset), length, ft)
+					if sErr == nil {
 						return slice, nil
-					} else {
-						logger.L().Warn(ctx, "failed to slice build fast path", zap.Error(sErr))
 					}
+					logger.L().Warn(ctx, "failed to slice build fast path", zap.Error(sErr))
 				}
 				// Errors fall through to ReadAt's retry-on-transition path.
 			}

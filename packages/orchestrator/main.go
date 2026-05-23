@@ -32,8 +32,12 @@ func applyTestFlagOverrides() {
 		featureflags.OverrideBoolFlag(featureflags.UseMemFdFlag, true)
 	}
 	if enabled, _ := strconv.ParseBool(os.Getenv("TESTS_MEMFILE_DIFF_DEDUP")); enabled {
+		bestEffort, _ := strconv.ParseBool(os.Getenv("TESTS_MEMFILE_DIFF_DEDUP_BEST_EFFORT"))
+		directIO, _ := strconv.ParseBool(os.Getenv("TESTS_MEMFILE_DIFF_DEDUP_DIRECT_IO"))
 		featureflags.OverrideJSONFlag(featureflags.MemfileDiffDedupFlag, ldvalue.FromJSONMarshal(map[string]any{
-			"enabled": true,
+			"enabled":    true,
+			"bestEffort": bestEffort,
+			"directIO":   directIO,
 		}))
 	}
 }

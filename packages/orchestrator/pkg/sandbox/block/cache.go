@@ -329,7 +329,8 @@ func dedupPages(
 
 	totalPages := exportedSize / header.PageSize
 	uniquePages := int64(pageDirty.GetCardinality())
-	dedupedPages := totalPages - uniquePages
+	emptyPages := int64(pageEmpty.GetCardinality())
+	dedupedPages := totalPages - uniquePages - emptyPages
 	ratio := 0.0
 	if totalPages > 0 {
 		ratio = float64(dedupedPages) / float64(totalPages)
@@ -338,6 +339,7 @@ func dedupPages(
 		attribute.Int64("dedup.total_pages", totalPages),
 		attribute.Int64("dedup.deduped_pages", dedupedPages),
 		attribute.Int64("dedup.unique_pages", uniquePages),
+		attribute.Int64("dedup.empty_pages", emptyPages),
 		attribute.Float64("dedup.ratio", ratio),
 		attribute.Int64("dedup.compare_ms", compareDur.Milliseconds()),
 		attribute.Int64("dedup.write_ms", writeDur.Milliseconds()),

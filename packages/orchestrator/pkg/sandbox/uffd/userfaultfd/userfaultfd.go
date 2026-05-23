@@ -130,6 +130,9 @@ func NewUserfaultfdFromFd(fd uintptr, src PageReader, m *memory.Mapping, logger 
 		return nil, errors.New("memory mapping has no regions")
 	}
 	pageSize := m.Regions[0].PageSize
+	if pageSize != header.PageSize && pageSize != header.HugepageSize {
+		return nil, fmt.Errorf("unsupported page size: %d", pageSize)
+	}
 	for _, r := range m.Regions[1:] {
 		if r.PageSize != pageSize {
 			return nil, fmt.Errorf("region page size mismatch: %d != %d for region %d", r.PageSize, pageSize, r.BaseHostVirtAddr)
