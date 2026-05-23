@@ -95,7 +95,7 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	tags, err := id.ValidateAndDeduplicateTags(allTags)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid tag: %s", err))
-		telemetry.ReportError(ctx, "invalid tag", err)
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "invalid tag", err)
 
 		return nil
 	}
