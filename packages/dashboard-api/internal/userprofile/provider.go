@@ -9,6 +9,7 @@ import (
 type Profile struct {
 	UserID uuid.UUID
 	Email  string
+	Name   string
 }
 
 type Provider interface {

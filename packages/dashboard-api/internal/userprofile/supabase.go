@@ -2,6 +2,7 @@ package userprofile
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/google/uuid"
@@ -61,10 +62,62 @@ func (p *supabaseProvider) FindProfilesByEmail(ctx context.Context, email string
 }
 
 func profileFromAuthUser(user supabasequeries.AuthUser) Profile {
+	metadata := rawUserMetadata(user.RawUserMetaData)
+
 	return Profile{
 		UserID: user.ID,
 		Email:  user.Email,
+		Name: firstNonEmpty(
+			metadataString(metadata, "first_name"),
+			metadataString(metadata, "firstName"),
+			metadataString(metadata, "given_name"),
+			metadataString(metadata, "givenName"),
+			metadataString(metadata, "name"),
+			metadataString(metadata, "full_name"),
+			metadataString(metadata, "fullName"),
+			metadataString(metadata, "username"),
+			metadataString(metadata, "user_name"),
+			metadataString(metadata, "userName"),
+			metadataString(metadata, "preferred_username"),
+			metadataString(metadata, "preferredUsername"),
+		),
 	}
+}
+
+func rawUserMetadata(raw []byte) map[string]any {
+	if len(raw) == 0 {
+		return nil
+	}
+
+	var metadata map[string]any
+	if err := json.Unmarshal(raw, &metadata); err != nil {
+		return nil
+	}
+
+	return metadata
+}
+
+func metadataString(metadata map[string]any, key string) string {
+	if metadata == nil {
+		return ""
+	}
+
+	value, ok := metadata[key].(string)
+	if !ok {
+		return ""
+	}
+
+	return strings.TrimSpace(value)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+
+	return ""
 }
 
 func uniqueUUIDs(ids []uuid.UUID) []uuid.UUID {

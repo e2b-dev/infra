@@ -16,11 +16,12 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth/oidc"
 	authtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
-	supabasequeries "github.com/e2b-dev/infra/packages/db/pkg/supabase/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
@@ -384,51 +385,41 @@ func handlerTestUserEmail(userID uuid.UUID) string {
 	return "user-" + userID.String() + "@example.com"
 }
 
-func TestDefaultTeamNameFromAuthUser(t *testing.T) {
+func TestDefaultTeamNameFromProfile(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		authUser supabasequeries.AuthUser
-		want     string
+		name    string
+		profile userprofile.Profile
+		want    string
 	}{
 		{
-			name: "first name",
-			authUser: supabasequeries.AuthUser{
-				Email:           "fallback@example.com",
-				RawUserMetaData: []byte(`{"first_name":"ada","username":"fallback"}`),
+			name: "profile name",
+			profile: userprofile.Profile{
+				Email: "fallback@example.com",
+				Name:  "ada",
 			},
 			want: "Ada's Default Team",
 		},
 		{
 			name: "full name first word",
-			authUser: supabasequeries.AuthUser{
-				Email:           "fallback@example.com",
-				RawUserMetaData: []byte(`{"full_name":"grace hopper"}`),
+			profile: userprofile.Profile{
+				Email: "fallback@example.com",
+				Name:  "grace hopper",
 			},
 			want: "Grace's Default Team",
 		},
 		{
-			name: "username",
-			authUser: supabasequeries.AuthUser{
-				Email:           "fallback@example.com",
-				RawUserMetaData: []byte(`{"username":"linus"}`),
-			},
-			want: "Linus's Default Team",
-		},
-		{
 			name: "email prefix",
-			authUser: supabasequeries.AuthUser{
+			profile: userprofile.Profile{
 				Email: "barbara@example.com",
 			},
 			want: "Barbara's Default Team",
 		},
 		{
-			name: "fallback",
-			authUser: supabasequeries.AuthUser{
-				RawUserMetaData: []byte(`{`),
-			},
-			want: "User's Default Team",
+			name:    "fallback",
+			profile: userprofile.Profile{},
+			want:    "User's Default Team",
 		},
 	}
 
@@ -436,9 +427,9 @@ func TestDefaultTeamNameFromAuthUser(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := defaultTeamNameFromAuthUser(tt.authUser)
+			got := defaultTeamNameFromProfile(tt.profile)
 			if got != tt.want {
-				t.Fatalf("defaultTeamNameFromAuthUser() = %q, want %q", got, tt.want)
+				t.Fatalf("defaultTeamNameFromProfile() = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -501,6 +492,7 @@ WHERE id = $1
 		authDB:            testDB.AuthDB,
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
+		userProfiles:      userprofile.NewSupabaseProvider(testDB.SupabaseDB),
 	}
 	store.PostAdminUsersUserIdBootstrap(ginCtx, userID)
 
@@ -540,6 +532,73 @@ WHERE id = $1
 	}
 }
 
+func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	sink := &fakeTeamProvisionSink{}
+
+	store := &APIStore{
+		config: cfg.Config{
+			AuthProvider: auth.ProviderConfig{
+				JWT: []oidc.Config{
+					{
+						Issuer: oidc.Issuer{
+							URL:       "https://ory.example.test",
+							Audiences: []string{"https://dashboard-api.example.test"},
+						},
+					},
+				},
+			},
+		},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
+		teamProvisionSink: sink,
+	}
+
+	input := oidcUserBootstrapInput{
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+		OIDCUserName:  nil,
+	}
+
+	team, err := store.bootstrapOIDCUser(ctx, input)
+	if err != nil {
+		t.Fatalf("expected bootstrap to succeed: %v", err)
+	}
+
+	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+		OidcIss: "https://ory.example.test",
+		OidcSub: input.OIDCUserID,
+	})
+	if err != nil {
+		t.Fatalf("expected user identity to be created: %v", err)
+	}
+
+	defaultTeam, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, userIdentity.UserID)
+	if err != nil {
+		t.Fatalf("expected default team to be created: %v", err)
+	}
+	if defaultTeam.ID != team.ID {
+		t.Fatalf("expected response team %s, got %s", defaultTeam.ID, team.ID)
+	}
+	if defaultTeam.Name != "Default Team" {
+		t.Fatalf("expected team name %q, got %q", "Default Team", defaultTeam.Name)
+	}
+	if defaultTeam.Email != "ada@example.test" {
+		t.Fatalf("expected team email %q, got %q", "ada@example.test", defaultTeam.Email)
+	}
+
+	if len(sink.requests) != 1 {
+		t.Fatalf("expected one billing provisioning call, got %d", len(sink.requests))
+	}
+	if sink.requests[0].CreatorUserID != userIdentity.UserID {
+		t.Fatalf("expected sink creator %s, got %s", userIdentity.UserID, sink.requests[0].CreatorUserID)
+	}
+}
+
 func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testing.T) {
 	t.Parallel()
 
@@ -573,6 +632,7 @@ func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testin
 		authDB:            testDB.AuthDB,
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
+		userProfiles:      userprofile.NewSupabaseProvider(testDB.SupabaseDB),
 	}
 	store.PostAdminUsersUserIdBootstrap(ginCtx, userID)
 
@@ -620,6 +680,7 @@ func TestPostUsersBootstrap_UnknownUserReturnsNotFound(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
+		userProfiles:      userprofile.NewSupabaseProvider(testDB.SupabaseDB),
 	}
 	store.PostAdminUsersUserIdBootstrap(ginCtx, userID)
 
@@ -660,6 +721,11 @@ func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
+		userProfiles:      userprofile.NewSupabaseProvider(testDB.SupabaseDB),
+	}
+	profile, err := store.bootstrapUserProfileFromSupabase(ctx, userID)
+	if err != nil {
+		t.Fatalf("failed to resolve bootstrap profile: %v", err)
 	}
 
 	var wg sync.WaitGroup
@@ -668,7 +734,7 @@ func TestBootstrapUser_ConcurrentRequestsCreateSingleDefaultTeam(t *testing.T) {
 
 	for range 2 {
 		wg.Go(func() {
-			team, err := store.bootstrapUser(ctx, userID)
+			team, err := store.bootstrapUser(ctx, profile)
 			if err != nil {
 				errs <- err
 

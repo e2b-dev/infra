@@ -217,6 +217,23 @@ components:
           type: string
           format: email
 
+    AdminAuthProviderUserBootstrapRequest:
+      type: object
+      required:
+        - oidc_user_id
+        - oidc_user_email
+        - oidc_user_name
+      properties:
+        oidc_user_id:
+          type: string
+          minLength: 1
+        oidc_user_email:
+          type: string
+          format: email
+        oidc_user_name:
+          type: string
+          nullable: true
+
     BuildStatus:
       type: string
       description: Build status mapped for dashboard clients.
@@ -843,6 +860,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TeamResolveResponse"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/users/bootstrap:
+    post:
+      summary: Bootstrap auth provider user
+      tags: [teams]
+      security:
+        - AdminTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAuthProviderUserBootstrapRequest"
+      responses:
+        "200":
+          description: Successfully bootstrapped user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamResolveResponse"
+        "400":
+          $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
         "500":

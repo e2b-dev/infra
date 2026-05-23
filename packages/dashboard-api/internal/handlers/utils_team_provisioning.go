@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -15,9 +14,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
-	supabasequeries "github.com/e2b-dev/infra/packages/db/pkg/supabase/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -29,6 +28,8 @@ const (
 	teamProvisionRollbackTimeout = 5 * time.Second
 )
 
+var oidcUserNamespace = uuid.MustParse("2f4c7cc1-b0e5-4ec8-b8ee-6f0d7a8c23f0")
+
 type provisionedTeam struct {
 	ID            uuid.UUID
 	Name          string
@@ -38,18 +39,117 @@ type provisionedTeam struct {
 	BlockedReason *string
 }
 
-func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisionedTeam, error) {
-	authUser, err := s.supabaseDB.Write.GetAuthUserByID(ctx, userID)
-	if dberrors.IsNotFoundError(err) {
-		return provisionedTeam{}, &internalteamprovision.ProvisionError{
+type bootstrapUserProfile struct {
+	UserID          uuid.UUID
+	Email           string
+	DefaultTeamName string
+}
+
+type bootstrapUserIdentity struct {
+	Issuer  string
+	Subject string
+}
+
+type oidcUserBootstrapInput struct {
+	OIDCUserID    string
+	OIDCUserEmail string
+	OIDCUserName  *string
+}
+
+func (s *APIStore) bootstrapSupabaseUser(ctx context.Context, userID uuid.UUID) (provisionedTeam, error) {
+	profile, err := s.bootstrapUserProfileFromSupabase(ctx, userID)
+	if err != nil {
+		return provisionedTeam{}, err
+	}
+
+	return s.bootstrapUser(ctx, profile)
+}
+
+func (s *APIStore) bootstrapUserProfileFromSupabase(ctx context.Context, userID uuid.UUID) (bootstrapUserProfile, error) {
+	profiles, err := s.userProfiles.GetProfilesByUserID(ctx, []uuid.UUID{userID})
+	if err != nil {
+		return bootstrapUserProfile{}, fmt.Errorf("get user profile: %w", err)
+	}
+
+	profile, ok := profiles[userID]
+	if !ok {
+		return bootstrapUserProfile{}, &internalteamprovision.ProvisionError{
 			StatusCode: http.StatusNotFound,
 			Message:    "User not found",
 		}
 	}
+
+	return bootstrapUserProfile{
+		UserID:          userID,
+		Email:           profile.Email,
+		DefaultTeamName: defaultTeamNameFromProfile(profile),
+	}, nil
+}
+
+func (s *APIStore) bootstrapOIDCUser(ctx context.Context, input oidcUserBootstrapInput) (provisionedTeam, error) {
+	issuer, err := s.oidcIssuer()
 	if err != nil {
-		return provisionedTeam{}, fmt.Errorf("get auth user: %w", err)
+		return provisionedTeam{}, err
+	}
+	userID, err := s.resolveOIDCUserID(ctx, issuer, input.OIDCUserID)
+	if err != nil {
+		return provisionedTeam{}, err
 	}
 
+	profile := bootstrapUserProfile{
+		UserID:          userID,
+		Email:           input.OIDCUserEmail,
+		DefaultTeamName: defaultTeamNameFromOIDCUserName(input.OIDCUserName),
+	}
+
+	return s.bootstrapUserWithIdentity(ctx, profile, &bootstrapUserIdentity{
+		Issuer:  issuer,
+		Subject: input.OIDCUserID,
+	})
+}
+
+func (s *APIStore) oidcIssuer() (string, error) {
+	if len(s.config.AuthProvider.JWT) != 1 {
+		return "", &internalteamprovision.ProvisionError{
+			StatusCode: http.StatusBadRequest,
+			Message:    "Expected exactly one OIDC auth provider issuer",
+		}
+	}
+	issuer := strings.TrimSpace(s.config.AuthProvider.JWT[0].Issuer.URL)
+	if issuer == "" {
+		return "", &internalteamprovision.ProvisionError{
+			StatusCode: http.StatusBadRequest,
+			Message:    "OIDC auth provider issuer is not configured",
+		}
+	}
+
+	return issuer, nil
+}
+
+func (s *APIStore) resolveOIDCUserID(ctx context.Context, issuer, subject string) (uuid.UUID, error) {
+	row, err := s.authDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+		OidcIss: issuer,
+		OidcSub: subject,
+	})
+	if err == nil {
+		return row.UserID, nil
+	}
+	if !dberrors.IsNotFoundError(err) {
+		return uuid.Nil, fmt.Errorf("get user identity: %w", err)
+	}
+
+	if parsed, err := uuid.Parse(subject); err == nil {
+		return parsed, nil
+	}
+
+	return uuid.NewSHA1(oidcUserNamespace, []byte(issuer+"\x00"+subject)), nil
+}
+
+func (s *APIStore) bootstrapUser(ctx context.Context, profile bootstrapUserProfile) (provisionedTeam, error) {
+	return s.bootstrapUserWithIdentity(ctx, profile, nil)
+}
+
+func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootstrapUserProfile, identity *bootstrapUserIdentity) (provisionedTeam, error) {
 	authTxDB, tx, err := s.authDB.WithTx(ctx)
 	if err != nil {
 		return provisionedTeam{}, fmt.Errorf("start transaction: %w", err)
@@ -58,16 +158,25 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 		_ = tx.Rollback(ctx)
 	}()
 
-	if err := authTxDB.UpsertPublicUser(ctx, authUser.ID); err != nil {
+	if err := authTxDB.UpsertPublicUser(ctx, profile.UserID); err != nil {
 		return provisionedTeam{}, fmt.Errorf("upsert public user: %w", err)
+	}
+	if identity != nil {
+		if err := authTxDB.UpsertPublicIdentity(ctx, authqueries.UpsertPublicIdentityParams{
+			OidcIss: identity.Issuer,
+			OidcSub: identity.Subject,
+			UserID:  profile.UserID,
+		}); err != nil {
+			return provisionedTeam{}, fmt.Errorf("upsert public identity: %w", err)
+		}
 	}
 
 	// Serialize bootstrap for a user even when they have no team memberships yet.
-	if _, err := authTxDB.LockPublicUserForUpdate(ctx, authUser.ID); err != nil {
+	if _, err := authTxDB.LockPublicUserForUpdate(ctx, profile.UserID); err != nil {
 		return provisionedTeam{}, fmt.Errorf("lock public user: %w", err)
 	}
 
-	existingTeam, err := authTxDB.GetDefaultTeamByUserID(ctx, userID)
+	existingTeam, err := authTxDB.GetDefaultTeamByUserID(ctx, profile.UserID)
 	if err == nil {
 		if err := tx.Commit(ctx); err != nil {
 			return provisionedTeam{}, fmt.Errorf("commit existing user bootstrap transaction: %w", err)
@@ -77,7 +186,7 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 			TeamID:        existingTeam.ID,
 			TeamName:      existingTeam.Name,
 			TeamEmail:     existingTeam.Email,
-			CreatorUserID: userID,
+			CreatorUserID: profile.UserID,
 			Reason:        teamprovision.ReasonDefaultSignupTeam,
 		}
 		_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
@@ -95,11 +204,10 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 		return provisionedTeam{}, fmt.Errorf("get default team: %w", err)
 	}
 
-	defaultTeamName := defaultTeamNameFromAuthUser(authUser)
 	team, err := authTxDB.CreateTeam(ctx, authqueries.CreateTeamParams{
-		Name:          defaultTeamName,
+		Name:          profile.DefaultTeamName,
 		Tier:          baseTierID,
-		Email:         authUser.Email,
+		Email:         profile.Email,
 		IsBlocked:     false,
 		BlockedReason: nil,
 	})
@@ -108,7 +216,7 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 	}
 
 	if err := authTxDB.CreateTeamMembership(ctx, authqueries.CreateTeamMembershipParams{
-		UserID:    userID,
+		UserID:    profile.UserID,
 		TeamID:    team.ID,
 		IsDefault: true,
 		AddedBy:   nil,
@@ -124,7 +232,7 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 		TeamID:        team.ID,
 		TeamName:      team.Name,
 		TeamEmail:     team.Email,
-		CreatorUserID: userID,
+		CreatorUserID: profile.UserID,
 		Reason:        teamprovision.ReasonDefaultSignupTeam,
 	}
 	_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
@@ -260,53 +368,22 @@ func validateTeamCreationAllowed(ctx context.Context, authTxDB *authqueries.Quer
 	return nil
 }
 
-func defaultTeamNameFromAuthUser(authUser supabasequeries.AuthUser) string {
-	metadata := rawUserMetadata(authUser.RawUserMetaData)
-
+func defaultTeamNameFromProfile(profile userprofile.Profile) string {
 	baseName := firstNonEmpty(
-		firstWord(metadataString(metadata, "first_name")),
-		firstWord(metadataString(metadata, "firstName")),
-		firstWord(metadataString(metadata, "given_name")),
-		firstWord(metadataString(metadata, "givenName")),
-		firstWord(metadataString(metadata, "name")),
-		firstWord(metadataString(metadata, "full_name")),
-		firstWord(metadataString(metadata, "fullName")),
-		metadataString(metadata, "username"),
-		metadataString(metadata, "user_name"),
-		metadataString(metadata, "userName"),
-		metadataString(metadata, "preferred_username"),
-		metadataString(metadata, "preferredUsername"),
-		emailPrefix(authUser.Email),
+		firstWord(profile.Name),
+		emailPrefix(profile.Email),
 		"User",
 	)
 
 	return capitalizeFirstLetter(baseName) + "'s Default Team"
 }
 
-func rawUserMetadata(raw []byte) map[string]any {
-	if len(raw) == 0 {
-		return nil
+func defaultTeamNameFromOIDCUserName(name *string) string {
+	if name == nil || strings.TrimSpace(*name) == "" {
+		return "Default Team"
 	}
 
-	var metadata map[string]any
-	if err := json.Unmarshal(raw, &metadata); err != nil {
-		return nil
-	}
-
-	return metadata
-}
-
-func metadataString(metadata map[string]any, key string) string {
-	if metadata == nil {
-		return ""
-	}
-
-	value, ok := metadata[key].(string)
-	if !ok {
-		return ""
-	}
-
-	return strings.TrimSpace(value)
+	return capitalizeFirstLetter(firstWord(*name)) + "'s Default Team"
 }
 
 func firstWord(value string) string {
