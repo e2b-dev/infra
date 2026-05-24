@@ -4,6 +4,7 @@ package fc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/RoaringBitmap/roaring/v2"
@@ -28,7 +29,7 @@ func (p *Process) exportMemoryFromFc(
 	include *roaring.Bitmap,
 	cachePath string,
 	blockSize int64,
-) (block.DiffSource, error) {
+) (*block.Cache, error) {
 	ctx, span := tracer.Start(ctx, "export-memory-from-fc")
 	defer span.End()
 
@@ -61,6 +62,11 @@ func (p *Process) exportMemoryFromFc(
 	return cache, nil
 }
 
+// ExportMemory writes dirty guest memory to cachePath. If originalMemfile
+// is non-nil the result is deduplicated and DiffMetadata is non-nil;
+// mutually exclusive with bgCopy. When dedupBestEffort is true, blocks whose
+// base data isn't already in the chunker's local cache are written through
+// as-is (see block.dedupPages).
 func (p *Process) ExportMemory(
 	ctx context.Context,
 	include *roaring.Bitmap,
@@ -68,13 +74,39 @@ func (p *Process) ExportMemory(
 	blockSize int64,
 	memfd *block.Memfd,
 	bgCopy bool,
-) (block.DiffSource, error) {
-	if memfd == nil {
-		return p.exportMemoryFromFc(ctx, include, cachePath, blockSize)
-	}
-	if bgCopy {
-		return block.NewCacheFromMemfdAsync(ctx, blockSize, cachePath, memfd, include)
+	originalMemfile block.ReadonlyDevice,
+	dedupBestEffort bool,
+	dedupDirectIO bool,
+) (block.DiffSource, *header.DiffMetadata, error) {
+	if memfd != nil {
+		if originalMemfile != nil {
+			return block.NewCacheFromMemfdDeduped(ctx, originalMemfile, blockSize, cachePath, memfd, include, dedupBestEffort, dedupDirectIO)
+		}
+		if bgCopy {
+			src, err := block.NewCacheFromMemfdAsync(ctx, blockSize, cachePath, memfd, include)
+
+			return src, nil, err
+		}
+		src, err := block.NewCacheFromMemfd(ctx, blockSize, cachePath, memfd, include)
+
+		return src, nil, err
 	}
 
-	return block.NewCacheFromMemfd(ctx, blockSize, cachePath, memfd, include)
+	cache, err := p.exportMemoryFromFc(ctx, include, cachePath, blockSize)
+	if err != nil {
+		return nil, nil, err
+	}
+	if originalMemfile == nil {
+		return cache, nil, nil
+	}
+	// .dedup suffix avoids clobbering the source mmap during truncate.
+	dedupCache, meta, err := cache.Dedup(ctx, originalMemfile, include, blockSize, cachePath+".dedup", dedupBestEffort, dedupDirectIO)
+	if err != nil {
+		return nil, nil, fmt.Errorf("dedup memfile diff: %w", errors.Join(err, cache.Close()))
+	}
+	if err := cache.Close(); err != nil {
+		return nil, nil, fmt.Errorf("close pre-dedup cache: %w", errors.Join(err, dedupCache.Close()))
+	}
+
+	return dedupCache, meta, nil
 }

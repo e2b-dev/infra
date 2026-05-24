@@ -19,11 +19,12 @@ type Empty struct {
 var _ ReadonlyDevice = (*Empty)(nil)
 
 func NewEmpty(size int64, blockSize int64, buildID uuid.UUID) (*Empty, error) {
-	h, err := header.NewHeader(header.NewTemplateMetadata(
-		buildID,
-		uint64(blockSize),
-		uint64(size),
-	), nil)
+	// uuid.Nil keeps this span distinct from any diff layered on top with
+	// the same BuildID, so NormalizeMappings can't collapse them together.
+	h, err := header.NewHeader(
+		header.NewTemplateMetadata(buildID, uint64(blockSize), uint64(size)),
+		[]header.BuildMap{{Offset: 0, Length: uint64(size), BuildId: uuid.Nil}},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}

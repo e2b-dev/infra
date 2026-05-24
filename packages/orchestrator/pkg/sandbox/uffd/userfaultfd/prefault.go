@@ -41,7 +41,7 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		addr,
 		offset,
 		block.Read,
-		directDataSource{data, int64(u.pageSize)},
+		directDataSource{data: data},
 		nil,
 	)
 	if err != nil {
@@ -63,16 +63,12 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 	return nil
 }
 
-// directDataSource wraps a byte slice to implement block.Slicer for prefaulting.
+// directDataSource wraps a single page's bytes; off is ignored because the
+// caller hands us exactly the page contents.
 type directDataSource struct {
-	data     []byte
-	pagesize int64
+	data []byte
 }
 
-func (d directDataSource) Slice(_ context.Context, _, _ int64) ([]byte, error) {
-	return d.data, nil
-}
-
-func (d directDataSource) BlockSize() int64 {
-	return d.pagesize
+func (d directDataSource) ReadAt(_ context.Context, p []byte, _ int64) (int, error) {
+	return copy(p, d.data), nil
 }

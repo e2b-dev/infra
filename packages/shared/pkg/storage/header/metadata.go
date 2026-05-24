@@ -149,7 +149,7 @@ func (d *DiffMetadata) ToDiffHeader(
 
 	telemetry.SetAttributes(ctx,
 		attribute.Int64("snapshot.header.mappings.length", int64(len(m))),
-		attribute.Int64("snapshot.diff.size", int64(d.Dirty.GetCardinality())*int64(originalHeader.Metadata.BlockSize)),
+		attribute.Int64("snapshot.diff.size", int64(d.Dirty.GetCardinality())*d.BlockSize),
 		attribute.Int64("snapshot.mapped_size", int64(metadata.Size)),
 		attribute.Int64("snapshot.block_size", int64(metadata.BlockSize)),
 		attribute.Int64("snapshot.metadata.version", int64(metadata.Version)),
@@ -163,7 +163,8 @@ func (d *DiffMetadata) ToDiffHeader(
 		return nil, fmt.Errorf("failed to create header: %w", err)
 	}
 
-	err = ValidateMappings(header.Mapping, header.Metadata.Size, header.Metadata.BlockSize)
+	// Dedup emits PageSize-granular mappings; validate at PageSize.
+	err = ValidateMappings(header.Mapping, header.Metadata.Size, PageSize)
 	if err != nil {
 		if header.IsNormalizeFixApplied() {
 			return nil, fmt.Errorf("invalid header mappings: %w", err)

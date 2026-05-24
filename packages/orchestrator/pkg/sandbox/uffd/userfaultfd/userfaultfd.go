@@ -49,10 +49,25 @@ func hasEvent(revents, event int16) bool {
 	return revents&event != 0
 }
 
+// PageReader is the data source UFFD pulls page contents from on a fault.
+type PageReader interface {
+	ReadAt(ctx context.Context, p []byte, off int64) (int, error)
+}
+
+// pagePool returns HugepageSize-sized scratch buffers shared across all UFFD
+// instances. 4 KiB-page UFFDs allocate per fault instead.
+var pagePool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, header.HugepageSize)
+
+		return &buf
+	},
+}
+
 type Userfaultfd struct {
 	fd Fd
 
-	src         block.Slicer
+	src         PageReader
 	ma          *memory.Mapping
 	pageSize    uintptr
 	pageTracker *block.Tracker
@@ -108,13 +123,19 @@ const (
 	faultDiscarded
 )
 
-// NewUserfaultfdFromFd creates a new userfaultfd instance with optional configuration.
-func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logger logger.Logger) (*Userfaultfd, error) {
-	blockSize := src.BlockSize()
-
-	for _, region := range m.Regions {
-		if region.PageSize != uintptr(blockSize) {
-			return nil, fmt.Errorf("block size mismatch: %d != %d for region %d", region.PageSize, blockSize, region.BaseHostVirtAddr)
+// NewUserfaultfdFromFd creates a new userfaultfd instance. Page size is
+// taken from the FC-registered regions; all regions must agree.
+func NewUserfaultfdFromFd(fd uintptr, src PageReader, m *memory.Mapping, logger logger.Logger) (*Userfaultfd, error) {
+	if len(m.Regions) == 0 {
+		return nil, errors.New("memory mapping has no regions")
+	}
+	pageSize := m.Regions[0].PageSize
+	if pageSize != header.PageSize && pageSize != header.HugepageSize {
+		return nil, fmt.Errorf("unsupported page size: %d", pageSize)
+	}
+	for _, r := range m.Regions[1:] {
+		if r.PageSize != pageSize {
+			return nil, fmt.Errorf("region page size mismatch: %d != %d for region %d", r.PageSize, pageSize, r.BaseHostVirtAddr)
 		}
 	}
 
@@ -126,14 +147,13 @@ func NewUserfaultfdFromFd(fd uintptr, src block.Slicer, m *memory.Mapping, logge
 	u := &Userfaultfd{
 		fd:              Fd(fd),
 		src:             src,
-		pageSize:        uintptr(blockSize),
+		pageSize:        pageSize,
 		pageTracker:     block.NewTracker(),
-		prefetchTracker: block.NewPrefetchTracker(blockSize),
+		prefetchTracker: block.NewPrefetchTracker(int64(pageSize)),
 		ma:              m,
 		wakeupPipe:      wakeupPipe,
 		logger:          logger,
 	}
-
 	u.wg.SetLimit(maxRequestsInProgress)
 
 	return u, nil
@@ -379,7 +399,7 @@ func (u *Userfaultfd) Serve(
 				u.settleRequests.RLock()
 				defer u.settleRequests.RUnlock()
 
-				var source block.Slicer
+				var source PageReader
 
 				idx := uint32(header.BlockIdx(offset, int64(u.pageSize)))
 
@@ -448,7 +468,7 @@ func (u *Userfaultfd) faultPage(
 	addr uintptr,
 	offset int64,
 	accessType block.AccessType,
-	source block.Slicer,
+	source PageReader,
 	onFailure func() error,
 ) (outcome faultOutcome, err error) {
 	span := trace.SpanFromContext(ctx)
@@ -481,6 +501,8 @@ func (u *Userfaultfd) faultPage(
 		}
 		writeErr = u.fd.writeProtect(addr, u.pageSize, UFFDIO_WRITEPROTECT_MODE_WP)
 		if writeErr != nil {
+			writeErr = errors.Join(writeErr, u.fd.wake(addr, u.pageSize))
+
 			break
 		}
 		writeErr = u.fd.wake(addr, u.pageSize)
@@ -489,19 +511,31 @@ func (u *Userfaultfd) faultPage(
 	case source == nil && u.pageSize == header.HugepageSize:
 		writeErr = u.fd.copy(addr, u.pageSize, header.EmptyHugePage, mode)
 	default:
-		// Slice retry holds settleRequests.RLock for up to ~2s of
+		var b []byte
+		if u.pageSize == header.HugepageSize {
+			bufPtr := pagePool.Get().(*[]byte)
+			defer pagePool.Put(bufPtr)
+			b = (*bufPtr)[:u.pageSize]
+		} else {
+			b = make([]byte, u.pageSize)
+		}
+
+		// ReadAt retry holds settleRequests.RLock for up to ~2s of
 		// exponential backoff, blocking any concurrent REMOVE batch.
 		// Correctness holds (uffd FIFO drains the queued REMOVE before
 		// the next same-page fault); if the blocking latency ever shows
-		// up, move Slice outside the lock and re-check state before
+		// up, move ReadAt outside the lock and re-check state before
 		// UFFDIO_COPY.
-		var b []byte
 		var dataErr error
 		var attempt int
 
 	retryLoop:
 		for attempt = range sliceMaxRetries + 1 {
-			b, dataErr = source.Slice(ctx, offset, int64(u.pageSize))
+			var n int
+			n, dataErr = source.ReadAt(ctx, b, offset)
+			if dataErr == nil && int64(n) != int64(u.pageSize) {
+				dataErr = fmt.Errorf("short read at %d: got %d, want %d", offset, n, u.pageSize)
+			}
 			if dataErr == nil {
 				break
 			}
@@ -510,7 +544,7 @@ func (u *Userfaultfd) faultPage(
 				break
 			}
 
-			u.logger.Warn(ctx, "UFFD serve slice error, retrying",
+			u.logger.Warn(ctx, "UFFD serve read error, retrying",
 				zap.Int("attempt", attempt+1),
 				zap.Int("max_attempts", sliceMaxRetries+1),
 				zap.Error(dataErr),
@@ -613,6 +647,11 @@ func (u *Userfaultfd) drainWakeupPipe() {
 			break
 		}
 	}
+}
+
+// PageSize returns the FC region page size driving this UFFD.
+func (u *Userfaultfd) PageSize() int64 {
+	return int64(u.pageSize)
 }
 
 func (u *Userfaultfd) Close() error {

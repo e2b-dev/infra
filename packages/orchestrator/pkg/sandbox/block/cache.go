@@ -3,6 +3,7 @@
 package block
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,7 +16,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/edsrzf/mmap-go"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -201,6 +204,229 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	)
 
 	return diffMetadata, nil
+}
+
+// dedupPages writes src pages that differ from base, packed at PageSize,
+// to outPath. bestEffort skips uncached blocks; directIO uses O_DIRECT.
+func dedupPages(
+	ctx context.Context,
+	src func(absOff int64) ([]byte, error),
+	base ReadonlyDevice,
+	dirty *roaring.Bitmap,
+	blockSize int64,
+	outPath string,
+	bestEffort bool,
+	directIO bool,
+) (*Cache, *header.DiffMetadata, error) {
+	ctx, span := tracer.Start(ctx, "dedup-pages")
+	defer span.End()
+
+	openFlags := os.O_RDWR | os.O_CREATE
+	if directIO {
+		openFlags |= unix.O_DIRECT
+	}
+	f, err := os.OpenFile(outPath, openFlags, 0o644)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open dedup cache: %w", err)
+	}
+	if directIO {
+		worst := int64(dirty.GetCardinality()) * blockSize
+		if fErr := unix.Fallocate(int(f.Fd()), 0, 0, worst); fErr != nil {
+			logger.L().Warn(ctx, "fallocate dedup cache; proceeding without preallocation", zap.Error(fErr))
+		}
+	}
+
+	pageDirty := roaring.New()
+	pageEmpty := roaring.New()
+	var exportedSize int64
+
+	compareStart := time.Now()
+	for r := range BitsetRanges(dirty, blockSize) {
+		exportedSize += r.Size
+
+		for chunkOff := int64(0); chunkOff < r.Size; chunkOff += blockSize {
+			if err := ctx.Err(); err != nil {
+				return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
+			}
+
+			absOff := r.Start + chunkOff
+			srcBuf, err := src(absOff)
+			if err != nil {
+				return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
+			}
+
+			// Empty parent or best-effort cache miss: classify by IsZero alone.
+			skipBase := false
+			if h := base.Header(); h != nil {
+				if m, err := h.GetShiftedMapping(ctx, absOff); err == nil {
+					skipBase = m.BuildId == uuid.Nil && int64(m.Length) >= blockSize
+				}
+			}
+			if !skipBase && bestEffort {
+				if peeker, ok := base.(CachePeeker); ok && !peeker.IsCached(ctx, absOff, blockSize) {
+					skipBase = true
+				}
+			}
+
+			for i := int64(0); i < blockSize; i += header.PageSize {
+				srcPage := srcBuf[i : i+header.PageSize]
+				pageIdx := uint32((absOff + i) / header.PageSize)
+
+				if header.IsZero(srcPage) {
+					pageEmpty.Add(pageIdx)
+
+					continue
+				}
+
+				if skipBase {
+					pageDirty.Add(pageIdx)
+
+					continue
+				}
+
+				basePage, sErr := base.Slice(ctx, absOff+i, header.PageSize)
+				if sErr != nil {
+					return nil, nil, errors.Join(fmt.Errorf("slice base at %d: %w", absOff+i, sErr), f.Close(), os.Remove(outPath))
+				}
+				if bytes.Equal(srcPage, basePage) {
+					continue
+				}
+
+				pageDirty.Add(pageIdx)
+			}
+		}
+	}
+	compareDur := time.Since(compareStart)
+
+	writeStart := time.Now()
+	fileOff, err := drainDirtyPages(ctx, int(f.Fd()), src, pageDirty, blockSize)
+	if err != nil {
+		return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
+	}
+	writeDur := time.Since(writeStart)
+
+	if directIO {
+		if err := f.Truncate(fileOff); err != nil {
+			return nil, nil, errors.Join(fmt.Errorf("truncate dedup cache: %w", err), f.Close(), os.Remove(outPath))
+		}
+	}
+	if err := f.Close(); err != nil {
+		return nil, nil, errors.Join(err, os.Remove(outPath))
+	}
+
+	cache, err := NewCache(fileOff, header.PageSize, outPath, false)
+	if err != nil {
+		return nil, nil, errors.Join(err, os.Remove(outPath))
+	}
+	cache.setIsCached(0, fileOff)
+
+	totalPages := exportedSize / header.PageSize
+	uniquePages := int64(pageDirty.GetCardinality())
+	emptyPages := int64(pageEmpty.GetCardinality())
+	dedupedPages := totalPages - uniquePages - emptyPages
+	ratio := 0.0
+	if totalPages > 0 {
+		ratio = float64(dedupedPages) / float64(totalPages)
+	}
+	telemetry.SetAttributes(ctx,
+		attribute.Int64("dedup.total_pages", totalPages),
+		attribute.Int64("dedup.deduped_pages", dedupedPages),
+		attribute.Int64("dedup.unique_pages", uniquePages),
+		attribute.Int64("dedup.empty_pages", emptyPages),
+		attribute.Float64("dedup.ratio", ratio),
+		attribute.Int64("dedup.compare_ms", compareDur.Milliseconds()),
+		attribute.Int64("dedup.write_ms", writeDur.Milliseconds()),
+	)
+
+	return cache, &header.DiffMetadata{
+		Dirty:     pageDirty,
+		Empty:     pageEmpty,
+		BlockSize: header.PageSize,
+	}, nil
+}
+
+func drainDirtyPages(ctx context.Context, fd int, src func(absOff int64) ([]byte, error), pageDirty *roaring.Bitmap, blockSize int64) (int64, error) {
+	maxBytes := getAlignedMaxRwCount(header.PageSize)
+	batch := make([][]byte, 0, IOV_MAX)
+	var batchBytes int64
+	var fileOff int64
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		if err := pwritevAll(fd, fileOff, batch); err != nil {
+			return err
+		}
+
+		fileOff += batchBytes
+		batch = batch[:0]
+		batchBytes = 0
+
+		return nil
+	}
+
+	var curBlockOff int64 = -1
+	var curBuf []byte
+	it := pageDirty.Iterator()
+	for it.HasNext() {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		absOff := int64(it.Next()) * header.PageSize
+		blockOff := (absOff / blockSize) * blockSize
+		if blockOff != curBlockOff {
+			buf, err := src(blockOff)
+			if err != nil {
+				return 0, fmt.Errorf("slice src at %d: %w", blockOff, err)
+			}
+			curBuf = buf
+			curBlockOff = blockOff
+		}
+		inner := absOff - curBlockOff
+		if len(batch) >= IOV_MAX || batchBytes+header.PageSize > maxBytes {
+			if err := flush(); err != nil {
+				return 0, fmt.Errorf("drain dedup iovs: %w", err)
+			}
+		}
+		batch = append(batch, curBuf[inner:inner+header.PageSize])
+		batchBytes += header.PageSize
+	}
+	if err := flush(); err != nil {
+		return 0, fmt.Errorf("drain dedup iovs: %w", err)
+	}
+
+	return fileOff, nil
+}
+
+// Dedup deduplicates c against base; see dedupPages.
+func (c *Cache) Dedup(
+	ctx context.Context,
+	base ReadonlyDevice,
+	dirty *roaring.Bitmap,
+	blockSize int64,
+	outPath string,
+	bestEffort bool,
+	directIO bool,
+) (*Cache, *header.DiffMetadata, error) {
+	// c is packed in BitsetRanges order; map abs offset → packed offset.
+	packed := make(map[int64]int64, dirty.GetCardinality())
+	var cum int64
+	for r := range BitsetRanges(dirty, blockSize) {
+		for chunkOff := int64(0); chunkOff < r.Size; chunkOff += blockSize {
+			packed[r.Start+chunkOff] = cum
+			cum += blockSize
+		}
+	}
+	src := func(absOff int64) ([]byte, error) {
+		idx, ok := packed[absOff]
+		if !ok {
+			return nil, fmt.Errorf("dedup src: %d not packed", absOff)
+		}
+
+		return c.Slice(idx, blockSize)
+	}
+
+	return dedupPages(ctx, src, base, dirty, blockSize, outPath, bestEffort, directIO)
 }
 
 func (c *Cache) ReadAt(b []byte, off int64) (int, error) {
@@ -506,101 +732,49 @@ func (c *Cache) copyProcessMemory(
 	pid int,
 	rs []Range,
 ) error {
-	// We need to align the maximum read/write count to the block size, so we can use mark the offsets as dirty correctly.
-	// Because the MAX_RW_COUNT is not aligned to arbitrary block sizes, we need to align it to the block size we use for the cache.
-	alignedRwCount := getAlignedMaxRwCount(c.blockSize)
+	// Pre-split so no single iov exceeds MAX_RW_COUNT.
+	ranges := splitOversizedRanges(rs, getAlignedMaxRwCount(c.blockSize))
 
-	// We need to split the ranges because the Kernel does not support reading/writing more than MAX_RW_COUNT bytes in a single operation.
-	ranges := splitOversizedRanges(rs, alignedRwCount)
-
-	var offset int64
-	var rangeIdx int64
-
-	for {
-		var remote []unix.RemoteIovec
-
-		var segmentSize int64
-
-		// We iterate over the range of all ranges until we have reached the limit of the IOV_MAX,
-		// or until the next range would overflow the MAX_RW_COUNT.
-		for ; rangeIdx < int64(len(ranges)); rangeIdx++ {
-			r := ranges[rangeIdx]
-
-			if len(remote) == IOV_MAX {
-				break
+	return drainIovs(ranges, func(r Range) int64 { return r.Size }, c.blockSize,
+		func(off int64, batch []Range, batchBytes int64) error {
+			remote := make([]unix.RemoteIovec, len(batch))
+			for i, r := range batch {
+				remote[i] = unix.RemoteIovec{Base: uintptr(r.Start), Len: int(r.Size)}
 			}
-
-			if segmentSize+r.Size > alignedRwCount {
-				break
-			}
-
-			remote = append(remote, unix.RemoteIovec{
-				Base: uintptr(r.Start),
-				Len:  int(r.Size),
-			})
-
-			segmentSize += r.Size
-		}
-
-		if len(remote) == 0 {
-			break
-		}
-
-		address, err := c.address(offset)
-		if err != nil {
-			return fmt.Errorf("failed to get address: %w", err)
-		}
-
-		local := []unix.Iovec{
-			{
-				Base: address,
-				// We could keep this as full cache length, but we might as well be exact here.
-				Len: uint64(segmentSize),
-			},
-		}
-
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-			}
-
-			// We could retry only on the remaining segment size, but for simplicity we retry the whole segment.
-			n, err := unix.ProcessVMReadv(pid,
-				local,
-				remote,
-				0,
-			)
-			if errors.Is(err, unix.EAGAIN) {
-				continue
-			}
-			if errors.Is(err, unix.EINTR) {
-				continue
-			}
-			if errors.Is(err, unix.ENOMEM) {
-				time.Sleep(oomMinBackoff + time.Duration(rand.Intn(int(oomMaxJitter.Milliseconds())))*time.Millisecond)
-
-				continue
-			}
-
+			address, err := c.address(off)
 			if err != nil {
-				return fmt.Errorf("failed to read memory: %w", err)
+				return fmt.Errorf("failed to get address: %w", err)
 			}
+			local := []unix.Iovec{{Base: address, Len: uint64(batchBytes)}}
 
-			if int64(n) != segmentSize {
-				return fmt.Errorf("failed to read memory: expected %d bytes, got %d", segmentSize, n)
+			for {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+				}
+
+				n, err := unix.ProcessVMReadv(pid, local, remote, 0)
+				if errors.Is(err, unix.EAGAIN) || errors.Is(err, unix.EINTR) {
+					continue
+				}
+				if errors.Is(err, unix.ENOMEM) {
+					time.Sleep(oomMinBackoff + time.Duration(rand.Intn(int(oomMaxJitter.Milliseconds())))*time.Millisecond)
+
+					continue
+				}
+				if err != nil {
+					return fmt.Errorf("failed to read memory: %w", err)
+				}
+				if int64(n) != batchBytes {
+					return fmt.Errorf("failed to read memory: expected %d bytes, got %d", batchBytes, n)
+				}
+
+				c.setIsCached(off, batchBytes)
+
+				return nil
 			}
-
-			c.setIsCached(offset, segmentSize)
-
-			offset += segmentSize
-
-			break
-		}
-	}
-
-	return nil
+		})
 }
 
 // Split ranges so there are no ranges larger than maxSize.

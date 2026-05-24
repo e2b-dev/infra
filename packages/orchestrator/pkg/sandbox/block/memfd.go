@@ -10,7 +10,11 @@ import (
 	"github.com/RoaringBitmap/roaring/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"golang.org/x/sys/unix"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 // Memfd wraps a memfd received from Firecracker. NewFromFd takes ownership of
@@ -233,3 +237,66 @@ func (m *MemfdCache) FileSize(ctx context.Context) (int64, error) {
 
 func (m *MemfdCache) BlockSize() int64     { return m.cache.BlockSize() }
 func (m *MemfdCache) Size() (int64, error) { return m.cache.Size() }
+
+// NewCacheFromMemfdDeduped deduplicates memfd contents against base; see
+// dedupPages. Consumes memfd.
+func NewCacheFromMemfdDeduped(
+	ctx context.Context,
+	base ReadonlyDevice,
+	blockSize int64,
+	outPath string,
+	memfd *Memfd,
+	dirty *roaring.Bitmap,
+	bestEffort bool,
+	directIO bool,
+) (*Cache, *header.DiffMetadata, error) {
+	src := func(absOff int64) ([]byte, error) { return memfd.Slice(absOff, blockSize) }
+
+	cache, meta, err := dedupPages(ctx, src, base, dirty, blockSize, outPath, bestEffort, directIO)
+	if err != nil {
+		return nil, nil, errors.Join(err, memfd.Close())
+	}
+	if err := memfd.Close(); err != nil {
+		logger.L().Warn(ctx, "close memfd after dedup", zap.Error(err))
+	}
+
+	return cache, meta, nil
+}
+
+// pwritevAll writes the iovecs at off, handling EINTR and short writes by
+// advancing through the list (slicing the first partially-written entry).
+// Callers (drainIovs) keep |iovs| ≤ IOV_MAX. iovs is mutated in place.
+func pwritevAll(fd int, off int64, iovs [][]byte) error {
+	for len(iovs) > 0 {
+		for len(iovs) > 0 && len(iovs[0]) == 0 {
+			iovs = iovs[1:]
+		}
+		if len(iovs) == 0 {
+			return nil
+		}
+
+		n, err := unix.Pwritev(fd, iovs, off)
+		if errors.Is(err, unix.EINTR) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return fmt.Errorf("pwritev: EOF with %d iovec(s) remaining", len(iovs))
+		}
+
+		off += int64(n)
+		for n > 0 && len(iovs) > 0 {
+			if len(iovs[0]) <= n {
+				n -= len(iovs[0])
+				iovs = iovs[1:]
+			} else {
+				iovs[0] = iovs[0][n:]
+				n = 0
+			}
+		}
+	}
+
+	return nil
+}
