@@ -501,6 +501,7 @@ func (u *Userfaultfd) faultPage(
 		}
 		writeErr = u.fd.writeProtect(addr, u.pageSize, UFFDIO_WRITEPROTECT_MODE_WP)
 		if writeErr != nil {
+			writeErr = errors.Join(writeErr, u.fd.wake(addr, u.pageSize))
 			break
 		}
 		writeErr = u.fd.wake(addr, u.pageSize)
