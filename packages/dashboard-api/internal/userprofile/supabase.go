@@ -67,21 +67,32 @@ func profileFromAuthUser(user supabasequeries.AuthUser) Profile {
 	return Profile{
 		UserID: user.ID,
 		Email:  user.Email,
-		Name: firstNonEmpty(
-			metadataString(metadata, "first_name"),
-			metadataString(metadata, "firstName"),
-			metadataString(metadata, "given_name"),
-			metadataString(metadata, "givenName"),
-			metadataString(metadata, "name"),
-			metadataString(metadata, "full_name"),
-			metadataString(metadata, "fullName"),
-			metadataString(metadata, "username"),
-			metadataString(metadata, "user_name"),
-			metadataString(metadata, "userName"),
-			metadataString(metadata, "preferred_username"),
-			metadataString(metadata, "preferredUsername"),
-		),
+		Name:   displayNameFromMetadata(metadata),
 	}
+}
+
+func displayNameFromMetadata(metadata map[string]any) string {
+	firstName := firstNonEmpty(
+		metadataString(metadata, "first_name"),
+		metadataString(metadata, "firstName"),
+		metadataString(metadata, "given_name"),
+		metadataString(metadata, "givenName"),
+	)
+	lastName := firstNonEmpty(
+		metadataString(metadata, "last_name"),
+		metadataString(metadata, "lastName"),
+		metadataString(metadata, "family_name"),
+		metadataString(metadata, "familyName"),
+	)
+	if firstName != "" || lastName != "" {
+		return strings.TrimSpace(strings.Join([]string{firstName, lastName}, " "))
+	}
+
+	return firstNonEmpty(
+		metadataString(metadata, "name"),
+		metadataString(metadata, "full_name"),
+		metadataString(metadata, "fullName"),
+	)
 }
 
 func rawUserMetadata(raw []byte) map[string]any {

@@ -402,7 +402,7 @@ func TestDefaultTeamNameFromProfile(t *testing.T) {
 			want: "Ada's Default Team",
 		},
 		{
-			name: "full name first word",
+			name: "profile full name first word",
 			profile: userprofile.Profile{
 				Email: "fallback@example.com",
 				Name:  "grace hopper",
