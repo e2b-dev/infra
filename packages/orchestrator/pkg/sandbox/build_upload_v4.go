@@ -26,17 +26,26 @@ func (u *Upload) runV4(ctx context.Context) error {
 		return fmt.Errorf("rootfs diff path: %w", err)
 	}
 
+	memfileDiffHeader, err := u.snap.MemfileDiffHeader.WaitWithContext(ctx)
+	if err != nil {
+		return fmt.Errorf("wait memfile diff header: %w", err)
+	}
+	rootfsDiffHeader, err := u.snap.RootfsDiffHeader.WaitWithContext(ctx)
+	if err != nil {
+		return fmt.Errorf("wait rootfs diff header: %w", err)
+	}
+
 	eg, ctx := errgroup.WithContext(ctx)
 
-	if u.snap.MemfileDiffHeader != nil {
+	if memfileDiffHeader != nil {
 		eg.Go(func() error {
-			return u.uploadFramed(ctx, build.Memfile, memSrc, u.snap.MemfileDiffHeader, u.mem)
+			return u.uploadFramed(ctx, build.Memfile, memSrc, memfileDiffHeader, u.mem)
 		})
 	}
 
-	if u.snap.RootfsDiffHeader != nil {
+	if rootfsDiffHeader != nil {
 		eg.Go(func() error {
-			return u.uploadFramed(ctx, build.Rootfs, rootfsSrc, u.snap.RootfsDiffHeader, u.root)
+			return u.uploadFramed(ctx, build.Rootfs, rootfsSrc, rootfsDiffHeader, u.root)
 		})
 	}
 

@@ -41,11 +41,11 @@ func NewUpload(
 	useCase string,
 	objectMetadata storage.ObjectMetadata,
 ) (*Upload, error) {
-	mem, memV4, err := resolveCompressConfig(ctx, cfg, ff, storage.MemfileName, snap.MemfileDiffHeader.Metadata.BlockSize, useCase)
+	mem, memV4, err := resolveCompressConfig(ctx, cfg, ff, storage.MemfileName, uint64(snap.MemfileDiff.BlockSize()), useCase)
 	if err != nil {
 		return nil, fmt.Errorf("resolve memfile compress config: %w", err)
 	}
-	root, rootV4, err := resolveCompressConfig(ctx, cfg, ff, storage.RootfsName, snap.RootfsDiffHeader.Metadata.BlockSize, useCase)
+	root, rootV4, err := resolveCompressConfig(ctx, cfg, ff, storage.RootfsName, uint64(snap.RootfsDiff.BlockSize()), useCase)
 	if err != nil {
 		return nil, fmt.Errorf("resolve rootfs compress config: %w", err)
 	}

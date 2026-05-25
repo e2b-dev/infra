@@ -25,22 +25,31 @@ func (u *Upload) runV3(ctx context.Context) error {
 		return fmt.Errorf("error getting rootfs diff path: %w", err)
 	}
 
+	memfileDiffHeader, err := u.snap.MemfileDiffHeader.WaitWithContext(ctx)
+	if err != nil {
+		return fmt.Errorf("wait memfile diff header: %w", err)
+	}
+	rootfsDiffHeader, err := u.snap.RootfsDiffHeader.WaitWithContext(ctx)
+	if err != nil {
+		return fmt.Errorf("wait rootfs diff header: %w", err)
+	}
+
 	eg, egCtx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
-		if u.snap.MemfileDiffHeader == nil {
+		if memfileDiffHeader == nil {
 			return nil
 		}
 
-		return storeHeaderWithMetrics(egCtx, u.store, u.paths.MemfileHeader(), string(build.Memfile), finalizeV3(u.snap.MemfileDiffHeader))
+		return storeHeaderWithMetrics(egCtx, u.store, u.paths.MemfileHeader(), string(build.Memfile), finalizeV3(memfileDiffHeader))
 	})
 
 	eg.Go(func() error {
-		if u.snap.RootfsDiffHeader == nil {
+		if rootfsDiffHeader == nil {
 			return nil
 		}
 
-		return storeHeaderWithMetrics(egCtx, u.store, u.paths.RootfsHeader(), string(build.Rootfs), finalizeV3(u.snap.RootfsDiffHeader))
+		return storeHeaderWithMetrics(egCtx, u.store, u.paths.RootfsHeader(), string(build.Rootfs), finalizeV3(rootfsDiffHeader))
 	})
 
 	meta := storage.WithMetadata(u.objectMetadata)
@@ -93,23 +102,23 @@ func (u *Upload) runV3(ctx context.Context) error {
 		return err
 	}
 
-	if u.snap.MemfileDiffHeader != nil {
-		if err := u.appendAncestorBuilds(ctx, nil, u.snap.MemfileDiffHeader.Mapping, build.Memfile); err != nil {
+	if memfileDiffHeader != nil {
+		if err := u.appendAncestorBuilds(ctx, nil, memfileDiffHeader.Mapping, build.Memfile); err != nil {
 			return err
 		}
 	}
-	if h := finalizeV3(u.snap.MemfileDiffHeader); h != nil {
+	if h := finalizeV3(memfileDiffHeader); h != nil {
 		if err := u.publish(ctx, build.Memfile, h); err != nil {
 			return err
 		}
 	}
 
-	if u.snap.RootfsDiffHeader != nil {
-		if err := u.appendAncestorBuilds(ctx, nil, u.snap.RootfsDiffHeader.Mapping, build.Rootfs); err != nil {
+	if rootfsDiffHeader != nil {
+		if err := u.appendAncestorBuilds(ctx, nil, rootfsDiffHeader.Mapping, build.Rootfs); err != nil {
 			return err
 		}
 	}
-	if h := finalizeV3(u.snap.RootfsDiffHeader); h != nil {
+	if h := finalizeV3(rootfsDiffHeader); h != nil {
 		if err := u.publish(ctx, build.Rootfs, h); err != nil {
 			return err
 		}

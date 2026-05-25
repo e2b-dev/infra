@@ -11,6 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // MemoryInfo returns the memory info for the sandbox.
@@ -62,12 +63,11 @@ func (p *Process) exportMemoryFromFc(
 	return cache, nil
 }
 
-// ExportMemory writes dirty guest memory to cachePath. If originalMemfile
-// is non-nil the result is deduplicated and DiffMetadata is non-nil; the
-// memfd dedup path detaches its drain to a goroutine (see
-// NewCacheFromMemfdDeduped). When dedupBestEffort is true, blocks whose
-// base data isn't already in the chunker's local cache are written through
-// as-is.
+// ExportMemory writes dirty guest memory to cachePath and resolves metaOut
+// with the diff metadata once it is known. metaOut resolves asynchronously
+// only for the memfd-dedup path; all other paths resolve it before returning.
+// For the FC-dedup path, input.Empty is merged into the page-granular dedup
+// Empty before metaOut is resolved.
 func (p *Process) ExportMemory(
 	ctx context.Context,
 	include *roaring.Bitmap,
@@ -78,36 +78,53 @@ func (p *Process) ExportMemory(
 	originalMemfile block.ReadonlyDevice,
 	dedupBestEffort bool,
 	dedupDirectIO bool,
-) (block.DiffSource, *header.DiffMetadata, error) {
+	inputEmpty *roaring.Bitmap,
+	metaOut *utils.SetOnce[*header.DiffMetadata],
+) (block.DiffSource, error) {
+	inputMeta := &header.DiffMetadata{Dirty: include, Empty: inputEmpty, BlockSize: blockSize}
 	if memfd != nil {
 		if originalMemfile != nil {
-			return block.NewCacheFromMemfdDeduped(ctx, originalMemfile, blockSize, cachePath, memfd, include, dedupBestEffort, dedupDirectIO)
+			return block.NewCacheFromMemfdDeduped(ctx, originalMemfile, blockSize, cachePath, memfd, include,
+				dedupBestEffort, dedupDirectIO, inputEmpty, metaOut)
 		}
 		if bgCopy {
 			src, err := block.NewCacheFromMemfdAsync(ctx, blockSize, cachePath, memfd, include)
 
-			return src, nil, err
+			return src, errors.Join(metaOut.SetValue(inputMeta), err)
 		}
 		src, err := block.NewCacheFromMemfd(ctx, blockSize, cachePath, memfd, include)
 
-		return src, nil, err
+		return src, errors.Join(metaOut.SetValue(inputMeta), err)
 	}
 
 	cache, err := p.exportMemoryFromFc(ctx, include, cachePath, blockSize)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if originalMemfile == nil {
-		return cache, nil, nil
+		_ = metaOut.SetValue(inputMeta)
+
+		return cache, nil
 	}
 	// .dedup suffix avoids clobbering the source mmap during truncate.
 	dedupCache, meta, err := cache.Dedup(ctx, originalMemfile, include, blockSize, cachePath+".dedup", dedupBestEffort, dedupDirectIO)
 	if err != nil {
-		return nil, nil, fmt.Errorf("dedup memfile diff: %w", errors.Join(err, cache.Close()))
+		return nil, fmt.Errorf("dedup memfile diff: %w", errors.Join(err, cache.Close()))
 	}
 	if err := cache.Close(); err != nil {
-		return nil, nil, fmt.Errorf("close pre-dedup cache: %w", errors.Join(err, dedupCache.Close()))
+		return nil, fmt.Errorf("close pre-dedup cache: %w", errors.Join(err, dedupCache.Close()))
 	}
+	if blockSize%meta.BlockSize != 0 {
+		return nil, errors.Join(
+			fmt.Errorf("diff block size %d not a multiple of dedup block size %d", blockSize, meta.BlockSize),
+			dedupCache.Close(),
+		)
+	}
+	ratio := uint64(blockSize / meta.BlockSize)
+	for start, end := range inputEmpty.Ranges() {
+		meta.Empty.AddRange(uint64(start)*ratio, end*ratio)
+	}
+	_ = metaOut.SetValue(meta)
 
-	return dedupCache, meta, nil
+	return dedupCache, nil
 }

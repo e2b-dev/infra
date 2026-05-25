@@ -1170,7 +1170,7 @@ func (s *Sandbox) Pause(
 	}
 	cleanup.AddNoContext(ctx, memfileDiff.Close)
 
-	rootfsDiff, rootfsDiffHeader, err := pauseProcessRootfs(
+	rootfsDiff, rootfsHeader, err := pauseProcessRootfs(
 		ctx,
 		buildID,
 		originalRootfs.Header(),
@@ -1199,7 +1199,7 @@ func (s *Sandbox) Pause(
 		MemfileDiff:       memfileDiff,
 		MemfileDiffHeader: memfileDiffHeader,
 		RootfsDiff:        rootfsDiff,
-		RootfsDiffHeader:  rootfsDiffHeader,
+		RootfsDiffHeader:  NewResolvedDiffHeader(rootfsHeader),
 
 		BuildID: buildID,
 
@@ -1235,39 +1235,19 @@ func pauseProcessMemory(
 	originalMemfile block.ReadonlyDevice,
 	dedupBestEffort bool,
 	dedupDirectIO bool,
-) (d build.Diff, h *header.Header, e error) {
+) (d build.Diff, h *DiffHeader, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
-	// ExportMemory owns memfd and closes it on all paths.
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
-	cache, dedupMeta, err := fc.ExportMemory(ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy, originalMemfile, dedupBestEffort, dedupDirectIO)
+	metaOut := utils.NewSetOnce[*header.DiffMetadata]()
+	// ExportMemory owns memfd and closes it on all paths.
+	cache, err := fc.ExportMemory(
+		ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy,
+		originalMemfile, dedupBestEffort, dedupDirectIO, diffMetadata.Empty, metaOut,
+	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
-	}
-
-	recordSnapshotDedup(ctx, "memfile", diffMetadata, dedupMeta, dedupBestEffort)
-
-	// Re-key the original Empty into the page-granular dedup metadata so
-	// guest-zeroed pages that weren't Dirty still read as zero on restore.
-	if dedupMeta != nil {
-		if diffMetadata.BlockSize%dedupMeta.BlockSize != 0 {
-			return nil, nil, errors.Join(
-				fmt.Errorf("diff block size %d not a multiple of dedup block size %d",
-					diffMetadata.BlockSize, dedupMeta.BlockSize),
-				cache.Close(),
-			)
-		}
-		ratio := uint64(diffMetadata.BlockSize / dedupMeta.BlockSize)
-		for start, end := range diffMetadata.Empty.Ranges() {
-			dedupMeta.Empty.AddRange(uint64(start)*ratio, end*ratio)
-		}
-		diffMetadata = dedupMeta
-	}
-
-	header, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
-	if err != nil {
-		return nil, nil, errors.Join(fmt.Errorf("failed to create memfile header: %w", err), cache.Close())
 	}
 
 	diff, err := build.NewLocalDiffFromCache(
@@ -1278,7 +1258,23 @@ func pauseProcessMemory(
 		return nil, nil, fmt.Errorf("failed to create local diff from cache: %w", errors.Join(err, cache.Close()))
 	}
 
-	return diff, header, nil
+	headerOut := utils.NewSetOnce[*header.Header]()
+	go func() {
+		meta, err := metaOut.Wait()
+		if err != nil {
+			_ = headerOut.SetError(err)
+			return
+		}
+		if originalMemfile != nil {
+			recordSnapshotDedup(ctx, "memfile", diffMetadata, meta, dedupBestEffort)
+		} else {
+			recordSnapshotDedup(ctx, "memfile", diffMetadata, nil, dedupBestEffort)
+		}
+		h, err := meta.ToDiffHeader(ctx, originalHeader, buildID)
+		_ = headerOut.SetResult(h, err)
+	}()
+
+	return diff, headerOut, nil
 }
 
 func pauseProcessRootfs(

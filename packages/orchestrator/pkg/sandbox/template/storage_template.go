@@ -32,8 +32,8 @@ type storageTemplate struct {
 	snapfile *utils.SetOnce[File]
 	metafile *utils.SetOnce[File]
 
-	memfileHeader *header.Header
-	rootfsHeader  *header.Header
+	memfileHeader *utils.SetOnce[*header.Header]
+	rootfsHeader  *utils.SetOnce[*header.Header]
 	localSnapfile File
 	localMetafile File
 
@@ -44,8 +44,8 @@ type storageTemplate struct {
 func newTemplateFromStorage(
 	config cfg.BuilderConfig,
 	buildId string,
-	memfileHeader *header.Header,
-	rootfsHeader *header.Header,
+	memfileHeader *utils.SetOnce[*header.Header],
+	rootfsHeader *utils.SetOnce[*header.Header],
 	persistence storage.StorageProvider,
 	metrics blockmetrics.Metrics,
 	localSnapfile File,
@@ -174,12 +174,22 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 	})
 
 	wg.Go(func() error {
+		memHdr, hdrErr := t.memfileHeader.WaitWithContext(ctx)
+		if hdrErr != nil {
+			errMsg := fmt.Errorf("failed to resolve memfile header: %w", hdrErr)
+			if err := t.memfile.SetError(errMsg); err != nil {
+				return fmt.Errorf("failed to set memfile error: %w", errors.Join(errMsg, err))
+			}
+
+			return nil
+		}
+
 		memfileStorage, memfileErr := NewStorage(
 			ctx,
 			buildStore,
 			t.paths.BuildID,
 			build.Memfile,
-			t.memfileHeader,
+			memHdr,
 			t.persistence,
 			t.metrics,
 		)
@@ -202,12 +212,22 @@ func (t *storageTemplate) Fetch(ctx context.Context, buildStore *build.DiffStore
 	})
 
 	wg.Go(func() error {
+		rootHdr, hdrErr := t.rootfsHeader.WaitWithContext(ctx)
+		if hdrErr != nil {
+			errMsg := fmt.Errorf("failed to resolve rootfs header: %w", hdrErr)
+			if err := t.rootfs.SetError(errMsg); err != nil {
+				return fmt.Errorf("failed to set rootfs error: %w", errors.Join(errMsg, err))
+			}
+
+			return nil
+		}
+
 		rootfsStorage, rootfsErr := NewStorage(
 			ctx,
 			buildStore,
 			t.paths.BuildID,
 			build.Rootfs,
-			t.rootfsHeader,
+			rootHdr,
 			t.persistence,
 			t.metrics,
 		)

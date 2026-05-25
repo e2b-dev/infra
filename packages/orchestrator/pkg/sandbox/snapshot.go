@@ -11,13 +11,25 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+// DiffHeader resolves sync for every path except the memfd-dedup one,
+// which resolves it from a goroutine so Pause can return before compare.
+type DiffHeader = utils.SetOnce[*header.Header]
+
+func NewResolvedDiffHeader(h *header.Header) *DiffHeader {
+	d := utils.NewSetOnce[*header.Header]()
+	_ = d.SetValue(h)
+
+	return d
+}
 
 type Snapshot struct {
 	MemfileDiff       build.Diff
-	MemfileDiffHeader *header.Header
+	MemfileDiffHeader *DiffHeader
 	RootfsDiff        build.Diff
-	RootfsDiffHeader  *header.Header
+	RootfsDiffHeader  *DiffHeader
 	Snapfile          template.File
 	Metafile          template.File
 	BuildID           uuid.UUID
