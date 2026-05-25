@@ -7,16 +7,11 @@ import (
 )
 
 const (
-	StorageNameMemory        = "memory"
-	StorageNameRedis         = "redis"
-	StorageNamePopulateRedis = "populate_redis"
+	StorageNameRedis = "redis"
 )
 
-// Storage is the persistence interface implemented by the memory and redis backends.
-//
-// TODO [ENG-3514]: Remove Name() and Sync() and nolint once migrated to Redis
-type Storage interface { //nolint: interfacebloat
-	Name() string
+// Storage is the persistence interface implemented by the redis backend.
+type Storage interface {
 	Add(ctx context.Context, sandbox Sandbox) error
 	Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (Sandbox, error)
 	Remove(ctx context.Context, teamID uuid.UUID, sandboxID string) error

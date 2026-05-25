@@ -37,8 +37,6 @@ type Storage struct {
 	publisher   *publisher
 }
 
-func (s *Storage) Name() string { return sandboxtypes.StorageNameRedis }
-
 const meterScope = "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 
 func NewStorage(

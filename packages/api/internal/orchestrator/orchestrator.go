@@ -21,10 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations"
 	redisreservations "github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations/redis"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/populate_redis"
 	redisbackend "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
@@ -156,27 +153,9 @@ func New(
 		snapshotUpsertSem: snapshotUpsertSem,
 	}
 
-	var reservationStorage sandbox.ReservationStorage
-	var sandboxStorage sandbox.Storage
-
-	switch config.SandboxStorageBackend {
-	case cfg.SandboxStorageBackendMemory:
-		reservationStorage = reservations.NewReservationStorage()
-		sandboxStorage = populate_redis.NewStorage(memory.NewStorage(), redisStorage)
-		logger.L().Info(ctx, "Using populate_redis sandbox storage backend")
-
-		go redisbackend.NewCleaner(redisStorage).Start(ctx)
-	case cfg.SandboxStorageBackendRedis:
-		reservationStorage = redisreservations.NewReservationStorage(redisClient, redisStorage.Notifier())
-		sandboxStorage = redisStorage
-		logger.L().Info(ctx, "Using redis sandbox storage backend")
-	default:
-		return nil, fmt.Errorf("invalid sandbox storage backend: %s", config.SandboxStorageBackend)
-	}
-
 	o.sandboxStore = sandbox.NewStore(
-		sandboxStorage,
-		reservationStorage,
+		redisStorage,
+		redisreservations.NewReservationStorage(redisClient, redisStorage.Notifier()),
 		sandbox.Callbacks{
 			AddSandboxToRoutingTable: o.addSandboxToRoutingTable,
 			AsyncNewlyCreatedSandbox: o.handleNewlyCreatedSandbox,

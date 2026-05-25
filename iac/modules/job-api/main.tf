@@ -47,7 +47,6 @@ resource "nomad_job" "api" {
     clickhouse_connection_string            = var.clickhouse_connection_string
     loki_url                                = var.loki_url
     sandbox_access_token_hash_seed          = var.sandbox_access_token_hash_seed
-    sandbox_storage_backend                 = var.sandbox_storage_backend
     db_migrator_docker_image                = var.db_migrator_docker_image
     launch_darkly_api_key                   = trimspace(var.launch_darkly_api_key)
     default_persistent_volume_type          = var.default_persistent_volume_type

@@ -715,12 +715,6 @@ variable "loki_boot_disk_type" {
   default     = "pd-ssd"
 }
 
-variable "sandbox_storage_backend" {
-  description = "The sandbox storage backend to use. Valid values: 'memory', 'redis'."
-  type        = string
-  default     = ""
-}
-
 variable "db_max_open_connections" {
   type    = number
   default = 40

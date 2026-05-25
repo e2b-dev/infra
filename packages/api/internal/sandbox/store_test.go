@@ -12,10 +12,26 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
 
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
+	sandboxredis "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
+
+// newTestStorage spins up a redis testcontainer and returns a fresh redis-backed
+// sandbox.Storage. The container and storage are cleaned up via t.Cleanup.
+func newTestStorage(t *testing.T) Storage {
+	t.Helper()
+
+	client := redis_utils.SetupInstance(t)
+	storage, err := sandboxredis.NewStorage(client, noop.NewMeterProvider())
+	require.NoError(t, err)
+	go storage.Start(t.Context())
+	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })
+
+	return storage
+}
 
 // =============================================================================
 // Test Helpers
@@ -212,7 +228,7 @@ func TestAdd_NewSandbox(t *testing.T) {
 		ctx := t.Context()
 
 		// Setup
-		storage := memory.NewStorage()
+		storage := newTestStorage(t)
 		reservations := &NoOpReservationStorage{}
 
 		tracker := NewCallbackTracker(2) // Expect 2 callbacks
@@ -244,92 +260,13 @@ func TestAdd_NewSandbox(t *testing.T) {
 	})
 }
 
-func TestAdd_AlreadyInCache(t *testing.T) {
-	t.Parallel()
-	t.Run("newlyCreated=true - only AsyncNewlyCreatedSandbox called when already in cache", func(t *testing.T) {
-		t.Parallel()
-		ctx := t.Context()
-
-		storage := memory.NewStorage()
-		reservations := &NoOpReservationStorage{}
-
-		// First add with all 2 callbacks
-		tracker1 := NewCallbackTracker(2)
-		callbacks1 := Callbacks{
-			AddSandboxToRoutingTable: tracker1.Track("AddSandboxToRoutingTable"),
-			AsyncNewlyCreatedSandbox: tracker1.TrackCreation("AsyncNewlyCreatedSandbox"),
-		}
-		store1 := NewStore(storage, reservations, callbacks1)
-		sbx := createTestSandbox()
-
-		err := store1.Add(ctx, sbx, &CreationMetadata{})
-		tracker1.WaitForCalls(t, 2*time.Second)
-		require.NoError(t, err)
-
-		// Second add with newlyCreated=true, only AsyncNewlyCreatedSandbox callback
-		// (AddSandboxToRoutingTable is NOT called because already in cache)
-		tracker2 := NewCallbackTracker(1)
-		callbacks2 := Callbacks{
-			AddSandboxToRoutingTable: tracker2.Track("AddSandboxToRoutingTable"),
-			AsyncNewlyCreatedSandbox: tracker2.TrackCreation("AsyncNewlyCreatedSandbox"),
-		}
-		store2 := NewStore(storage, reservations, callbacks2)
-
-		err = store2.Add(ctx, sbx, &CreationMetadata{})
-		tracker2.WaitForCalls(t, 2*time.Second)
-
-		require.NoError(t, err)
-		tracker2.AssertNotCalled(t, "AddSandboxToRoutingTable")
-		tracker2.AssertCallCount(t, "AsyncNewlyCreatedSandbox", 1)
-	})
-
-	t.Run("newlyCreated=false - no callbacks called when already in cache", func(t *testing.T) {
-		t.Parallel()
-		ctx := t.Context()
-
-		storage := memory.NewStorage()
-		reservations := &NoOpReservationStorage{}
-
-		// First add with newlyCreated=true
-		tracker1 := NewCallbackTracker(2)
-		callbacks1 := Callbacks{
-			AddSandboxToRoutingTable: tracker1.Track("AddSandboxToRoutingTable"),
-			AsyncNewlyCreatedSandbox: tracker1.TrackCreation("AsyncNewlyCreatedSandbox"),
-		}
-		store1 := NewStore(storage, reservations, callbacks1)
-		sbx := createTestSandbox()
-
-		err := store1.Add(ctx, sbx, &CreationMetadata{})
-		tracker1.WaitForCalls(t, 2*time.Second)
-		require.NoError(t, err)
-
-		// Second add with newlyCreated=false, no callbacks expected
-		// (No callbacks called because already in cache)
-		tracker2 := NewCallbackTracker(0)
-		callbacks2 := Callbacks{
-			AddSandboxToRoutingTable: tracker2.Track("AddSandboxToRoutingTable"),
-			AsyncNewlyCreatedSandbox: tracker2.TrackCreation("AsyncNewlyCreatedSandbox"),
-		}
-		store2 := NewStore(storage, reservations, callbacks2)
-
-		err = store2.Add(ctx, sbx, nil)
-		require.NoError(t, err)
-
-		// Give a small delay for any async callbacks (there should be none)
-		time.Sleep(100 * time.Millisecond)
-
-		tracker2.AssertNotCalled(t, "AddSandboxToRoutingTable")
-		tracker2.AssertNotCalled(t, "AsyncNewlyCreatedSandbox")
-	})
-}
-
 func TestAdd_NotNewlyCreated(t *testing.T) {
 	t.Parallel()
 	t.Run("not in cache - AddSandboxToRoutingTable called", func(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
-		storage := memory.NewStorage()
+		storage := newTestStorage(t)
 		reservations := &NoOpReservationStorage{}
 
 		// Add with newlyCreated=false, expect 1 callback
@@ -348,44 +285,6 @@ func TestAdd_NotNewlyCreated(t *testing.T) {
 		tracker.AssertCallCount(t, "AddSandboxToRoutingTable", 1)
 		tracker.AssertNotCalled(t, "AsyncNewlyCreatedSandbox")
 	})
-
-	t.Run("already in cache - no callbacks called", func(t *testing.T) {
-		t.Parallel()
-		ctx := t.Context()
-
-		storage := memory.NewStorage()
-		reservations := &NoOpReservationStorage{}
-
-		// First add
-		tracker1 := NewCallbackTracker(1)
-		callbacks1 := Callbacks{
-			AddSandboxToRoutingTable: tracker1.Track("AddSandboxToRoutingTable"),
-			AsyncNewlyCreatedSandbox: tracker1.TrackCreation("AsyncNewlyCreatedSandbox"),
-		}
-		store1 := NewStore(storage, reservations, callbacks1)
-		sbx := createTestSandbox()
-
-		err := store1.Add(ctx, sbx, nil)
-		tracker1.WaitForCalls(t, 2*time.Second)
-		require.NoError(t, err)
-
-		// Second add with same sandbox, newlyCreated=false, no callbacks expected
-		tracker2 := NewCallbackTracker(0)
-		callbacks2 := Callbacks{
-			AddSandboxToRoutingTable: tracker2.Track("AddSandboxToRoutingTable"),
-			AsyncNewlyCreatedSandbox: tracker2.TrackCreation("AsyncNewlyCreatedSandbox"),
-		}
-		store2 := NewStore(storage, reservations, callbacks2)
-
-		err = store2.Add(ctx, sbx, nil)
-		require.NoError(t, err)
-
-		// Give a small delay for any async callbacks (there should be none)
-		time.Sleep(100 * time.Millisecond)
-
-		tracker2.AssertNotCalled(t, "AddSandboxToRoutingTable")
-		tracker2.AssertNotCalled(t, "AsyncNewlyCreatedSandbox")
-	})
 }
 
 func TestAdd_StorageErrors(t *testing.T) {
@@ -394,7 +293,7 @@ func TestAdd_StorageErrors(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
-		storage := memory.NewStorage()
+		storage := newTestStorage(t)
 		mockStorage := NewMockStorage(storage)
 		customErr := errors.New("storage failure")
 		mockStorage.SetAddError(customErr)
@@ -431,7 +330,7 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
-		storage := memory.NewStorage()
+		storage := newTestStorage(t)
 		reservations := &NoOpReservationStorage{}
 
 		numGoroutines := 100
@@ -485,57 +384,5 @@ func TestAdd_ConcurrentCalls(t *testing.T) {
 			_, err := storage.Get(ctx, teamID, sandboxID)
 			assert.NoError(t, err, "expected sandbox %s to be in storage", sandboxID)
 		}
-	})
-
-	t.Run("concurrent adds for same sandbox", func(t *testing.T) {
-		t.Parallel()
-		ctx := t.Context()
-
-		storage := memory.NewStorage()
-		reservations := &NoOpReservationStorage{}
-
-		numGoroutines := 10
-		sbx := createTestSandbox()
-		sbx.SandboxID = "concurrent-same-sandbox"
-
-		// One will succeed with all 2 callbacks, rest will get ErrAlreadyExists with only AsyncNewlyCreatedSandbox callback
-		// Total: 2 + 9 = 11 callbacks (AddSandboxToRoutingTable: 1, AsyncNewlyCreatedSandbox: 10)
-		tracker := NewCallbackTracker(1 + numGoroutines)
-
-		callbacks := Callbacks{
-			AddSandboxToRoutingTable: tracker.Track("AddSandboxToRoutingTable"),
-			AsyncNewlyCreatedSandbox: tracker.TrackCreation("AsyncNewlyCreatedSandbox"),
-		}
-		store := NewStore(storage, reservations, callbacks)
-
-		var wg sync.WaitGroup
-		successCount := atomic.Int32{}
-
-		// Launch concurrent adds for the same sandbox
-		for range numGoroutines {
-			wg.Go(func() {
-				err := store.Add(ctx, sbx, &CreationMetadata{})
-				if err == nil {
-					successCount.Add(1)
-				}
-			})
-		}
-
-		wg.Wait()
-
-		// All should succeed (Add returns nil even for ErrAlreadyExists)
-		assert.Equal(t, int32(numGoroutines), successCount.Load())
-
-		// Wait for all callbacks
-		tracker.WaitForCalls(t, 5*time.Second)
-
-		// Verify callbacks
-		tracker.AssertCallCount(t, "AddSandboxToRoutingTable", 1)             // Only called once (first successful add)
-		tracker.AssertCallCount(t, "AsyncNewlyCreatedSandbox", numGoroutines) // All calls have newlyCreated=true
-
-		// Verify sandbox exists in storage
-		stored, err := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
-		require.NoError(t, err)
-		assert.Equal(t, sbx.SandboxID, stored.SandboxID)
 	})
 }
