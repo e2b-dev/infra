@@ -1258,6 +1258,9 @@ func pauseProcessMemory(
 		return nil, nil, fmt.Errorf("failed to create local diff from cache: %w", errors.Join(err, cache.Close()))
 	}
 
+	// Build the diff header on a goroutine so Pause returns without waiting
+	// on memfd-dedup compare. ExportMemory resolves metaOut sync for every
+	// other path, so Wait there is non-blocking; the goroutine is harmless.
 	headerOut := utils.NewSetOnce[*header.Header]()
 	go func() {
 		setHeader := func(h *header.Header, err error) {
@@ -1271,6 +1274,8 @@ func pauseProcessMemory(
 
 			return
 		}
+		// post == nil signals "no dedup ran" to the metric so it records
+		// kind="none" with zero savings.
 		post := meta
 		if originalMemfile == nil {
 			post = nil

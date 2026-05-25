@@ -249,6 +249,9 @@ func NewCacheFromMemfdDeduped(
 	inputEmpty *roaring.Bitmap,
 	metaOut *utils.SetOnce[*header.DiffMetadata],
 ) (*DedupedMemfdCache, error) {
+	if blockSize%header.PageSize != 0 {
+		return nil, fmt.Errorf("diff block size %d not a multiple of dedup page size %d", blockSize, header.PageSize)
+	}
 	drainCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	d := &DedupedMemfdCache{
 		outPath: outPath,
