@@ -222,7 +222,6 @@ components:
       required:
         - oidc_user_id
         - oidc_user_email
-        - oidc_user_name
       properties:
         oidc_user_id:
           type: string
