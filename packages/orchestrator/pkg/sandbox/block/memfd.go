@@ -229,8 +229,8 @@ func (m *MemfdCache) FileSize(ctx context.Context) (int64, error) {
 func (m *MemfdCache) BlockSize() int64     { return m.cache.BlockSize() }
 func (m *MemfdCache) Size() (int64, error) { return m.cache.Size() }
 
-// DedupedMemfdCache is the dedup analogue of MemfdCache: compare runs
-// synchronously so the diff metadata is ready, drain runs on a goroutine.
+// DedupedMemfdCache runs compare+drain on a goroutine; metaOut resolves
+// after compare, reads against the cache block on done until drain finishes.
 type DedupedMemfdCache struct {
 	outPath string
 	cancel  context.CancelFunc
@@ -246,66 +246,80 @@ func NewCacheFromMemfdDeduped(
 	dirty *roaring.Bitmap,
 	bestEffort bool,
 	directIO bool,
-) (*DedupedMemfdCache, *header.DiffMetadata, error) {
-	ctx, span := tracer.Start(ctx, "dedup-compare")
-	defer span.End()
-
-	src := func(absOff int64) ([]byte, error) { return memfd.Slice(absOff, blockSize) }
-
-	compareStart := time.Now()
-	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort)
-	if err != nil {
-		return nil, nil, errors.Join(err, memfd.Close())
+	inputEmpty *roaring.Bitmap,
+	metaOut *utils.SetOnce[*header.DiffMetadata],
+) (*DedupedMemfdCache, error) {
+	if blockSize%header.PageSize != 0 {
+		return nil, fmt.Errorf("diff block size %d not a multiple of dedup page size %d", blockSize, header.PageSize)
 	}
-	compareDur := time.Since(compareStart)
-
-	// Snapshot counts before exposing the bitmaps via meta; pauseProcessMemory
-	// mutates Empty after we return, which would race with recordDedupAttrs.
-	totalPages := plan.exportedSize / header.PageSize
-	uniquePages := int64(plan.pageDirty.GetCardinality())
-	emptyPages := int64(plan.pageEmpty.GetCardinality())
-
-	meta := &header.DiffMetadata{
-		Dirty:     plan.pageDirty,
-		Empty:     plan.pageEmpty,
-		BlockSize: header.PageSize,
-	}
-
 	drainCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	d := &DedupedMemfdCache{
 		outPath: outPath,
 		cancel:  cancel,
 		done:    utils.NewSetOnce[*Cache](),
 	}
-	go d.runDrain(drainCtx, src, memfd, plan.pageDirty, blockSize, directIO, compareDur, totalPages, uniquePages, emptyPages)
+	go d.runDedup(drainCtx, base, blockSize, memfd, dirty, bestEffort, directIO, inputEmpty, metaOut)
 
-	return d, meta, nil
+	return d, nil
 }
 
-func (d *DedupedMemfdCache) runDrain(
+func (d *DedupedMemfdCache) runDedup(
 	ctx context.Context,
-	src func(absOff int64) ([]byte, error),
-	memfd *Memfd,
-	pageDirty *roaring.Bitmap,
+	base ReadonlyDevice,
 	blockSize int64,
-	directIO bool,
-	compareDur time.Duration,
-	totalPages, uniquePages, emptyPages int64,
+	memfd *Memfd,
+	dirty *roaring.Bitmap,
+	bestEffort, directIO bool,
+	inputEmpty *roaring.Bitmap,
+	metaOut *utils.SetOnce[*header.DiffMetadata],
 ) {
-	ctx, span := tracer.Start(ctx, "dedup-drain")
+	ctx, span := tracer.Start(ctx, "dedup-pages")
 	defer span.End()
 
-	writeStart := time.Now()
-	cache, err := dedupDrain(ctx, src, pageDirty, blockSize, d.outPath, directIO)
-	writeDur := time.Since(writeStart)
+	src := func(absOff int64) ([]byte, error) { return memfd.Slice(absOff, blockSize) }
 
-	// Log only: a memfd close failure shouldn't fail in-flight Wait callers.
+	compareStart := time.Now()
+	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort)
+	compareDur := time.Since(compareStart)
+	if err != nil {
+		logSetOnceErr(ctx, "dedup metaOut", metaOut.SetError(err))
+		logSetOnceErr(ctx, "dedup done", d.done.SetError(errors.Join(err, memfd.Close())))
+
+		return
+	}
+
+	meta := &header.DiffMetadata{Dirty: plan.pageDirty, Empty: plan.pageEmpty, BlockSize: header.PageSize}
+	if inputEmpty != nil {
+		ratio := uint64(blockSize / header.PageSize)
+		for start, end := range inputEmpty.Ranges() {
+			meta.Empty.AddRange(uint64(start)*ratio, end*ratio)
+		}
+	}
+	logSetOnceErr(ctx, "dedup metaOut", metaOut.SetValue(meta))
+
+	writeStart := time.Now()
+	cache, err := dedupDrain(ctx, src, plan.pageDirty, blockSize, d.outPath, directIO)
+	writeDur := time.Since(writeStart)
 	if closeErr := memfd.Close(); closeErr != nil {
 		logger.L().Warn(ctx, "close memfd after dedup drain", zap.Error(closeErr))
 	}
 
-	recordDedupAttrs(ctx, totalPages, uniquePages, emptyPages, compareDur, writeDur)
-	_ = d.done.SetResult(cache, err)
+	recordDedupAttrs(ctx,
+		plan.exportedSize/header.PageSize,
+		int64(plan.pageDirty.GetCardinality()),
+		int64(plan.pageEmpty.GetCardinality()),
+		compareDur, writeDur,
+	)
+	logSetOnceErr(ctx, "dedup done", d.done.SetResult(cache, err))
+}
+
+// logSetOnceErr warns on a SetOnce.SetValue/SetError failure (i.e. a
+// repeated set), which signals a misuse rather than a runtime problem;
+// keep going so the original outcome still wins.
+func logSetOnceErr(ctx context.Context, what string, err error) {
+	if err != nil {
+		logger.L().Warn(ctx, "set once already resolved", zap.String("what", what), zap.Error(err))
+	}
 }
 
 func (d *DedupedMemfdCache) Wait(ctx context.Context) (*Cache, error) {
