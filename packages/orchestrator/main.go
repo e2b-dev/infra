@@ -27,16 +27,16 @@ func main() {
 }
 
 func applyTestFlagOverrides() {
-	mode := os.Getenv("TESTS_MEMFILE_DIFF_DEDUP_MODE")
-	if mode == "" {
-		return
+	if mode := os.Getenv("TESTS_MEMFILE_DIFF_DEDUP_MODE"); mode != "" {
+		featureflags.OverrideJSONFlag(featureflags.MemfileDiffDedupFlag, ldvalue.FromJSONMarshal(map[string]any{
+			"enabled":    true,
+			"bestEffort": mode == "best_effort",
+			"directIO":   mode == "direct_io",
+		}))
 	}
-
-	featureflags.OverrideJSONFlag(featureflags.MemfileDiffDedupFlag, ldvalue.FromJSONMarshal(map[string]any{
-		"enabled":    true,
-		"bestEffort": mode == "best_effort",
-		"directIO":   mode == "direct_io",
-	}))
+	if os.Getenv("TESTS_USE_MEMFD") == "true" {
+		featureflags.OverrideBoolFlag(featureflags.UseMemFdFlag, true)
+	}
 }
 
 func defaultEgressFactory(_ context.Context, deps *factories.Deps) (*factories.EgressSetup, error) {

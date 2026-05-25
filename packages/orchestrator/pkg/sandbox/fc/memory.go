@@ -63,10 +63,11 @@ func (p *Process) exportMemoryFromFc(
 }
 
 // ExportMemory writes dirty guest memory to cachePath. If originalMemfile
-// is non-nil the result is deduplicated and DiffMetadata is non-nil;
-// mutually exclusive with bgCopy. When dedupBestEffort is true, blocks whose
+// is non-nil the result is deduplicated and DiffMetadata is non-nil; the
+// memfd dedup path detaches its drain to a goroutine (see
+// NewCacheFromMemfdDeduped). When dedupBestEffort is true, blocks whose
 // base data isn't already in the chunker's local cache are written through
-// as-is (see block.dedupPages).
+// as-is.
 func (p *Process) ExportMemory(
 	ctx context.Context,
 	include *roaring.Bitmap,

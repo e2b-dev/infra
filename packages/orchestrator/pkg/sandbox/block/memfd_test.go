@@ -198,3 +198,47 @@ func TestNewCacheFromMemfdAsync_DetachesAndFlushes(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expected, fromFile)
 }
+
+// Compare returns metadata synchronously while drain detaches; after Wait the
+// deduped cache contains only pages that differ from base.
+func TestNewCacheFromMemfdDeduped_DrainIsAsync(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	numPages := uint32(8)
+	size := pageSize * int64(numPages)
+
+	memfd, srcData := newTestMemfd(t, size)
+	baseData := make([]byte, size)
+	copy(baseData, srcData)
+	for _, p := range []uint32{1, 4} {
+		off := int64(p) * pageSize
+		for i := range pageSize {
+			baseData[off+i] ^= 0xFF
+		}
+	}
+
+	dirty := roaring.New()
+	dirty.AddRange(0, uint64(numPages))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cachePath := t.TempDir() + "/dedup-async"
+	cache, meta, err := NewCacheFromMemfdDeduped(
+		ctx, &fakeOriginalDevice{data: baseData}, pageSize, cachePath, memfd, dirty, false, false,
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	require.Equal(t, uint64(2), meta.Dirty.GetCardinality())
+
+	cancel()
+	_, err = cache.Wait(t.Context())
+	require.NoError(t, err)
+
+	got := make([]byte, pageSize*2)
+	_, err = cache.ReadAt(got, 0)
+	require.NoError(t, err)
+	expected := append([]byte{}, srcData[pageSize:pageSize*2]...)
+	expected = append(expected, srcData[pageSize*4:pageSize*5]...)
+	require.Equal(t, expected, got)
+}

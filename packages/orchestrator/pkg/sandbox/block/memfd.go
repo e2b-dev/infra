@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"time"
 
 	"github.com/RoaringBitmap/roaring/v2"
 	"go.opentelemetry.io/otel/attribute"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // Memfd wraps a memfd received from Firecracker. NewFromFd takes ownership of
@@ -121,11 +124,9 @@ func copyFromMemfd(ctx context.Context, cache *Cache, memfd *Memfd, dirty *roari
 // closes the memfd (releasing the hugetlb pages — potentially tens of GB)
 // and reads delegate to the embedded Cache.
 type MemfdCache struct {
-	cache *Cache
-
+	cache  *Cache
 	cancel context.CancelFunc
-	done   chan struct{} // closed by runCopy; happens-before for err
-	err    error
+	done   *utils.SetOnce[struct{}]
 }
 
 // NewCacheFromMemfdAsync starts the memfd→cache copy on a goroutine so
@@ -150,21 +151,19 @@ func NewCacheFromMemfdAsync(
 	if err != nil {
 		return nil, errors.Join(err, memfd.Close())
 	}
+	done := utils.NewSetOnce[struct{}]()
 	if dirty.IsEmpty() {
 		if closeErr := memfd.Close(); closeErr != nil {
 			return nil, errors.Join(fmt.Errorf("close memfd: %w", closeErr), cache.Close())
 		}
+		_ = done.SetValue(struct{}{})
 
-		return &MemfdCache{cache: cache}, nil
+		return &MemfdCache{cache: cache, done: done}, nil
 	}
 
 	// Detach from the request context so the copy outlives Pause.
 	copyCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	m := &MemfdCache{
-		cache:  cache,
-		cancel: cancel,
-		done:   make(chan struct{}),
-	}
+	m := &MemfdCache{cache: cache, cancel: cancel, done: done}
 
 	go m.runCopy(copyCtx, memfd, dirty, blockSize)
 
@@ -176,22 +175,14 @@ func (m *MemfdCache) runCopy(ctx context.Context, memfd *Memfd, dirty *roaring.B
 	if closeErr := memfd.Close(); closeErr != nil {
 		err = errors.Join(err, fmt.Errorf("close memfd: %w", closeErr))
 	}
-	m.err = err
-	close(m.done)
+	_ = m.done.SetResult(struct{}{}, err)
 }
 
 // Wait blocks until the background copy completes (or ctx is cancelled).
 func (m *MemfdCache) Wait(ctx context.Context) error {
-	if m.done == nil {
-		return nil
-	}
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-m.done:
-	}
+	_, err := m.done.WaitWithContext(ctx)
 
-	return m.err
+	return err
 }
 
 func (m *MemfdCache) ReadAt(b []byte, off int64) (int, error) {
@@ -213,7 +204,7 @@ func (m *MemfdCache) Slice(off, length int64) ([]byte, error) {
 func (m *MemfdCache) Close() error {
 	if m.cancel != nil {
 		m.cancel()
-		<-m.done
+		<-m.done.Done
 	}
 
 	return m.cache.Close()
@@ -238,8 +229,14 @@ func (m *MemfdCache) FileSize(ctx context.Context) (int64, error) {
 func (m *MemfdCache) BlockSize() int64     { return m.cache.BlockSize() }
 func (m *MemfdCache) Size() (int64, error) { return m.cache.Size() }
 
-// NewCacheFromMemfdDeduped deduplicates memfd contents against base; see
-// dedupPages. Consumes memfd.
+// DedupedMemfdCache is the dedup analogue of MemfdCache: compare runs
+// synchronously so the diff metadata is ready, drain runs on a goroutine.
+type DedupedMemfdCache struct {
+	outPath string
+	cancel  context.CancelFunc
+	done    *utils.SetOnce[*Cache]
+}
+
 func NewCacheFromMemfdDeduped(
 	ctx context.Context,
 	base ReadonlyDevice,
@@ -249,18 +246,127 @@ func NewCacheFromMemfdDeduped(
 	dirty *roaring.Bitmap,
 	bestEffort bool,
 	directIO bool,
-) (*Cache, *header.DiffMetadata, error) {
+) (*DedupedMemfdCache, *header.DiffMetadata, error) {
+	ctx, span := tracer.Start(ctx, "dedup-compare")
+	defer span.End()
+
 	src := func(absOff int64) ([]byte, error) { return memfd.Slice(absOff, blockSize) }
 
-	cache, meta, err := dedupPages(ctx, src, base, dirty, blockSize, outPath, bestEffort, directIO)
+	compareStart := time.Now()
+	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort)
 	if err != nil {
 		return nil, nil, errors.Join(err, memfd.Close())
 	}
-	if err := memfd.Close(); err != nil {
-		logger.L().Warn(ctx, "close memfd after dedup", zap.Error(err))
+	compareDur := time.Since(compareStart)
+
+	// Snapshot counts before exposing the bitmaps via meta; pauseProcessMemory
+	// mutates Empty after we return, which would race with recordDedupAttrs.
+	totalPages := plan.exportedSize / header.PageSize
+	uniquePages := int64(plan.pageDirty.GetCardinality())
+	emptyPages := int64(plan.pageEmpty.GetCardinality())
+
+	meta := &header.DiffMetadata{
+		Dirty:     plan.pageDirty,
+		Empty:     plan.pageEmpty,
+		BlockSize: header.PageSize,
 	}
 
-	return cache, meta, nil
+	drainCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	d := &DedupedMemfdCache{
+		outPath: outPath,
+		cancel:  cancel,
+		done:    utils.NewSetOnce[*Cache](),
+	}
+	go d.runDrain(drainCtx, src, memfd, plan.pageDirty, blockSize, directIO, compareDur, totalPages, uniquePages, emptyPages)
+
+	return d, meta, nil
+}
+
+func (d *DedupedMemfdCache) runDrain(
+	ctx context.Context,
+	src func(absOff int64) ([]byte, error),
+	memfd *Memfd,
+	pageDirty *roaring.Bitmap,
+	blockSize int64,
+	directIO bool,
+	compareDur time.Duration,
+	totalPages, uniquePages, emptyPages int64,
+) {
+	ctx, span := tracer.Start(ctx, "dedup-drain")
+	defer span.End()
+
+	writeStart := time.Now()
+	cache, err := dedupDrain(ctx, src, pageDirty, blockSize, d.outPath, directIO)
+	writeDur := time.Since(writeStart)
+
+	// Log only: a memfd close failure shouldn't fail in-flight Wait callers.
+	if closeErr := memfd.Close(); closeErr != nil {
+		logger.L().Warn(ctx, "close memfd after dedup drain", zap.Error(closeErr))
+	}
+
+	recordDedupAttrs(ctx, totalPages, uniquePages, emptyPages, compareDur, writeDur)
+	_ = d.done.SetResult(cache, err)
+}
+
+func (d *DedupedMemfdCache) Wait(ctx context.Context) (*Cache, error) {
+	return d.done.WaitWithContext(ctx)
+}
+
+func (d *DedupedMemfdCache) ReadAt(b []byte, off int64) (int, error) {
+	c, err := d.Wait(context.Background())
+	if err != nil {
+		return 0, err
+	}
+
+	return c.ReadAt(b, off)
+}
+
+func (d *DedupedMemfdCache) Slice(off, length int64) ([]byte, error) {
+	c, err := d.Wait(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
+	return c.Slice(off, length)
+}
+
+func (d *DedupedMemfdCache) Close() error {
+	d.cancel()
+	c, _ := d.done.Wait()
+	if c != nil {
+		return c.Close()
+	}
+	_ = os.Remove(d.outPath)
+
+	return nil
+}
+
+func (d *DedupedMemfdCache) Path(ctx context.Context) (string, error) {
+	c, err := d.Wait(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	return c.filePath, nil
+}
+
+func (d *DedupedMemfdCache) FileSize(ctx context.Context) (int64, error) {
+	c, err := d.Wait(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	return c.FileSize(ctx)
+}
+
+func (d *DedupedMemfdCache) BlockSize() int64 { return header.PageSize }
+func (d *DedupedMemfdCache) Size() (int64, error) {
+	c, err := d.Wait(context.Background())
+	if err != nil {
+		return 0, err
+	}
+
+	return c.Size()
 }
 
 // pwritevAll writes the iovecs at off, handling EINTR and short writes by
