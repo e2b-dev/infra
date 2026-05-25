@@ -25,31 +25,30 @@ func (u *Upload) runV3(ctx context.Context) error {
 		return fmt.Errorf("error getting rootfs diff path: %w", err)
 	}
 
-	memfileDiffHeader, err := u.snap.MemfileDiffHeader.WaitWithContext(ctx)
-	if err != nil {
-		return fmt.Errorf("wait memfile diff header: %w", err)
-	}
-	rootfsDiffHeader, err := u.snap.RootfsDiffHeader.WaitWithContext(ctx)
-	if err != nil {
-		return fmt.Errorf("wait rootfs diff header: %w", err)
-	}
-
 	eg, egCtx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
-		if memfileDiffHeader == nil {
+		h, err := u.snap.MemfileDiffHeader.WaitWithContext(egCtx)
+		if err != nil {
+			return fmt.Errorf("wait memfile diff header: %w", err)
+		}
+		if h == nil {
 			return nil
 		}
 
-		return storeHeaderWithMetrics(egCtx, u.store, u.paths.MemfileHeader(), string(build.Memfile), finalizeV3(memfileDiffHeader))
+		return storeHeaderWithMetrics(egCtx, u.store, u.paths.MemfileHeader(), string(build.Memfile), finalizeV3(h))
 	})
 
 	eg.Go(func() error {
-		if rootfsDiffHeader == nil {
+		h, err := u.snap.RootfsDiffHeader.WaitWithContext(egCtx)
+		if err != nil {
+			return fmt.Errorf("wait rootfs diff header: %w", err)
+		}
+		if h == nil {
 			return nil
 		}
 
-		return storeHeaderWithMetrics(egCtx, u.store, u.paths.RootfsHeader(), string(build.Rootfs), finalizeV3(rootfsDiffHeader))
+		return storeHeaderWithMetrics(egCtx, u.store, u.paths.RootfsHeader(), string(build.Rootfs), finalizeV3(h))
 	})
 
 	meta := storage.WithMetadata(u.objectMetadata)
@@ -100,6 +99,17 @@ func (u *Upload) runV3(ctx context.Context) error {
 
 	if err := eg.Wait(); err != nil {
 		return err
+	}
+
+	// Body uploads done; headers must be ready by now (the per-file Goroutines
+	// above already Wait-ed). Wait() is a fast lookup here.
+	memfileDiffHeader, err := u.snap.MemfileDiffHeader.WaitWithContext(ctx)
+	if err != nil {
+		return fmt.Errorf("wait memfile diff header: %w", err)
+	}
+	rootfsDiffHeader, err := u.snap.RootfsDiffHeader.WaitWithContext(ctx)
+	if err != nil {
+		return fmt.Errorf("wait rootfs diff header: %w", err)
 	}
 
 	if memfileDiffHeader != nil {
