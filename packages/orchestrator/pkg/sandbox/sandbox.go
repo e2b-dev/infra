@@ -315,6 +315,10 @@ func NewFactory(
 	}
 }
 
+func (f *Factory) EgressProxy() network.EgressProxy {
+	return f.egressProxy
+}
+
 // PreBootFn is an optional callback invoked after the rootfs is ready but before
 // Firecracker boots. It receives the rootfs device path (e.g., a file path for
 // DirectProvider or /dev/nbdX for NBDProvider) and may modify the filesystem
