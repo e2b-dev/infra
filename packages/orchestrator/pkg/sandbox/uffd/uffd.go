@@ -289,9 +289,9 @@ func (u *Uffd) Memfd(ctx context.Context) *block.Memfd {
 	handler, err := u.handler.WaitWithContext(ctx)
 	if err != nil {
 		handler, err = u.handler.Result()
-	}
-	if err != nil {
-		return nil
+		if err != nil {
+			return nil
+		}
 	}
 
 	handler.SetMemfd(nil)
