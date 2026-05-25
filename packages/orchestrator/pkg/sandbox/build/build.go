@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"sync/atomic"
+	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -192,9 +193,8 @@ func (b *File) IsCached(ctx context.Context, off, length int64) bool {
 
 // retryOnTransition catches a PeerTransitionedError and swaps the header from
 // storage. Returns (true, nil) to signal the caller should continue the loop,
-// or (false, swapErr) if the swap itself failed. peerSeekable emits the
-// transition error at most once per seekable, so the loop is naturally
-// bounded — no retry counter needed here.
+// or (false, swapErr) if the swap itself failed. RetryAfter backs off repeated
+// post-transition storage 404s.
 //
 // The transition is signaled only after the source upload has finalized, so
 // the header object already exists in storage. A single LoadHeader is enough;
@@ -203,6 +203,16 @@ func (b *File) retryOnTransition(ctx context.Context, err error) (bool, error) {
 	var transErr *storage.PeerTransitionedError
 	if !errors.As(err, &transErr) {
 		return false, nil
+	}
+	if transErr.RetryAfter > 0 {
+		timer := time.NewTimer(transErr.RetryAfter)
+		defer timer.Stop()
+
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			return false, ctx.Err()
+		}
 	}
 
 	logger.L().Info(ctx, "peer transition detected, swapping header",
