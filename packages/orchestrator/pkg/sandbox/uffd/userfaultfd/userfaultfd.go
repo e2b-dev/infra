@@ -99,13 +99,7 @@ type Userfaultfd struct {
 	// testFaultHook is set only by SetTestFaultHook in test builds.
 	testFaultHook atomic.Pointer[func(uintptr, faultPhase)]
 
-	memfd atomic.Pointer[block.Memfd]
-
 	logger logger.Logger
-}
-
-func (u *Userfaultfd) SetMemfd(m *block.Memfd) {
-	u.memfd.Store(m)
 }
 
 // faultPhase identifies the worker fault hook call site (test-only).
@@ -434,18 +428,14 @@ func (u *Userfaultfd) Serve(
 					(*h)(addr, faultPhaseBeforeFaultPage)
 				}
 
-				// memfd-wake only resolves a pending UFFD fault (the kernel
-				// thread is blocked); Prefault has no blocked thread and
-				// must go through faultPage's atomic UFFDIO_COPY install.
-				var (
-					outcome faultOutcome
-					err     error
+				outcome, err := u.faultPage(
+					ctx,
+					addr,
+					offset,
+					accessType,
+					source,
+					fdExit.SignalExit,
 				)
-				if memfd := u.memfd.Load(); memfd != nil && source != nil {
-					outcome, err = u.faultPageViaMemfdWake(ctx, addr, offset, accessType, source, memfd, fdExit.SignalExit)
-				} else {
-					outcome, err = u.faultPage(ctx, addr, offset, accessType, source, fdExit.SignalExit)
-				}
 				if err != nil {
 					return err
 				}

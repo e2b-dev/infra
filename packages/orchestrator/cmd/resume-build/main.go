@@ -79,9 +79,6 @@ func main() {
 	fphBench := flag.Bool("fph-bench", false, "compare pause memfile size with vs without FPH; requires -cmd-pause workload, uses -iterations (default 3), forces FPR on")
 	fphBenchDelay := flag.Duration("fph-bench-delay", 0, "wait this long between workload completion and pause (lets FPR settle)")
 
-	resumeBench := flag.Bool("resume-bench", false, "compare resume timing across default / memfd-copy / memfd-wake arms; uses -iterations (default 5)")
-	resumeBenchWarmup := flag.Int("resume-bench-warmup", 1, "discard the first N resumes per arm before measuring")
-
 	flag.Parse()
 
 	if *fphTimeoutMs > 0 {
@@ -209,13 +206,7 @@ func main() {
 	}
 	fphBenchOpts := fphBenchOptions{enabled: *fphBench, workload: *cmdPause, iterations: benchIters, delay: *fphBenchDelay}
 
-	resumeBenchIters := *iterations
-	if *resumeBench && resumeBenchIters <= 0 {
-		resumeBenchIters = 5
-	}
-	resumeBenchOpts := resumeBenchOptions{enabled: *resumeBench, iterations: resumeBenchIters, warmup: *resumeBenchWarmup}
-
-	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *noEgress, *verbose, *shell, pauseOpts, runOpts, fphBenchOpts, resumeBenchOpts)
+	err := run(ctx, *fromBuild, *iterations, *coldStart, *noPrefetch, *noEgress, *verbose, *shell, pauseOpts, runOpts, fphBenchOpts)
 	cancel()
 
 	if err != nil {
@@ -1030,7 +1021,7 @@ func (r *runner) benchmark(ctx context.Context, n int) error {
 	return lastErr
 }
 
-func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, noEgress, verbose, shell bool, pauseOpts pauseOptions, runOpts runOptions, fphBenchOpts fphBenchOptions, resumeBenchOpts resumeBenchOptions) error {
+func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefetch, noEgress, verbose, shell bool, pauseOpts pauseOptions, runOpts runOptions, fphBenchOpts fphBenchOptions) error {
 	// Silence other loggers unless verbose mode
 	var l logger.Logger
 	if !verbose {
@@ -1202,10 +1193,6 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 
 	if fphBenchOpts.enabled {
 		return r.fphBench(ctx, fphBenchOpts)
-	}
-
-	if resumeBenchOpts.enabled {
-		return r.resumeBench(ctx, resumeBenchOpts)
 	}
 
 	if runOpts.enabled() {
