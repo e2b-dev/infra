@@ -23,6 +23,12 @@ build:
 	$(eval EXPECTED_MIGRATION_TIMESTAMP ?= $(expectedMigration))
 	CGO_ENABLED=0 go build -o bin/dashboard-api -ldflags "-X=main.commitSHA=$(COMMIT_SHA) -X=main.expectedMigrationTimestamp=$(EXPECTED_MIGRATION_TIMESTAMP)" .
 
+.PHONY: build-debug
+build-debug:
+	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
+	$(eval EXPECTED_MIGRATION_TIMESTAMP ?= $(expectedMigration))
+	CGO_ENABLED=1 go build -race -gcflags=all="-N -l" -o bin/dashboard-api -ldflags "-X=main.commitSHA=$(COMMIT_SHA) -X=main.expectedMigrationTimestamp=$(EXPECTED_MIGRATION_TIMESTAMP)" .
+
 .PHONY: build-and-upload
 build-and-upload:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
