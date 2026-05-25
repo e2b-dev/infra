@@ -206,71 +206,48 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	return diffMetadata, nil
 }
 
-// dedupPages writes src pages that differ from base, packed at PageSize,
-// to outPath. bestEffort skips uncached blocks; directIO uses O_DIRECT.
-func dedupPages(
+type dedupPlan struct {
+	pageDirty    *roaring.Bitmap
+	pageEmpty    *roaring.Bitmap
+	exportedSize int64
+}
+
+// dedupCompare classifies each dirty page against base into pageDirty or
+// pageEmpty. Per-page IsCached so a single uncached neighbour can't poison
+// cached pages of the same block when the parent header is page-granular.
+func dedupCompare(
 	ctx context.Context,
 	src func(absOff int64) ([]byte, error),
 	base ReadonlyDevice,
 	dirty *roaring.Bitmap,
 	blockSize int64,
-	outPath string,
 	bestEffort bool,
-	directIO bool,
-) (*Cache, *header.DiffMetadata, error) {
-	ctx, span := tracer.Start(ctx, "dedup-pages")
-	defer span.End()
-
-	openFlags := os.O_RDWR | os.O_CREATE
-	if directIO {
-		openFlags |= unix.O_DIRECT
-	}
-	f, err := os.OpenFile(outPath, openFlags, 0o644)
-	if err != nil {
-		return nil, nil, fmt.Errorf("open dedup cache: %w", err)
-	}
-	if directIO {
-		worst := int64(dirty.GetCardinality()) * blockSize
-		if fErr := unix.Fallocate(int(f.Fd()), 0, 0, worst); fErr != nil {
-			logger.L().Warn(ctx, "fallocate dedup cache; proceeding without preallocation", zap.Error(fErr))
-		}
-	}
-
+) (*dedupPlan, error) {
 	pageDirty := roaring.New()
 	pageEmpty := roaring.New()
 	var exportedSize int64
 
-	compareStart := time.Now()
+	baseHeader := base.Header()
+	peeker, _ := base.(CachePeeker)
+
 	for r := range BitsetRanges(dirty, blockSize) {
 		exportedSize += r.Size
 
 		for chunkOff := int64(0); chunkOff < r.Size; chunkOff += blockSize {
 			if err := ctx.Err(); err != nil {
-				return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
+				return nil, err
 			}
 
 			absOff := r.Start + chunkOff
 			srcBuf, err := src(absOff)
 			if err != nil {
-				return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
-			}
-
-			// Empty parent or best-effort cache miss: classify by IsZero alone.
-			skipBase := false
-			if h := base.Header(); h != nil {
-				if m, err := h.GetShiftedMapping(ctx, absOff); err == nil {
-					skipBase = m.BuildId == uuid.Nil && int64(m.Length) >= blockSize
-				}
-			}
-			if !skipBase && bestEffort {
-				if peeker, ok := base.(CachePeeker); ok && !peeker.IsCached(ctx, absOff, blockSize) {
-					skipBase = true
-				}
+				return nil, err
 			}
 
 			for i := int64(0); i < blockSize; i += header.PageSize {
 				srcPage := srcBuf[i : i+header.PageSize]
 				pageIdx := uint32((absOff + i) / header.PageSize)
+				pageOff := absOff + i
 
 				if header.IsZero(srcPage) {
 					pageEmpty.Add(pageIdx)
@@ -278,15 +255,26 @@ func dedupPages(
 					continue
 				}
 
-				if skipBase {
+				skip := false
+				if baseHeader != nil {
+					if m, err := baseHeader.GetShiftedMapping(ctx, pageOff); err == nil {
+						if m.BuildId == uuid.Nil && int64(m.Length) >= header.PageSize {
+							skip = true
+						}
+					}
+				}
+				if !skip && bestEffort && peeker != nil && !peeker.IsCached(ctx, pageOff, header.PageSize) {
+					skip = true
+				}
+				if skip {
 					pageDirty.Add(pageIdx)
 
 					continue
 				}
 
-				basePage, sErr := base.Slice(ctx, absOff+i, header.PageSize)
+				basePage, sErr := base.Slice(ctx, pageOff, header.PageSize)
 				if sErr != nil {
-					return nil, nil, errors.Join(fmt.Errorf("slice base at %d: %w", absOff+i, sErr), f.Close(), os.Remove(outPath))
+					return nil, fmt.Errorf("slice base at %d: %w", pageOff, sErr)
 				}
 				if bytes.Equal(srcPage, basePage) {
 					continue
@@ -296,33 +284,57 @@ func dedupPages(
 			}
 		}
 	}
-	compareDur := time.Since(compareStart)
 
-	writeStart := time.Now()
+	return &dedupPlan{pageDirty: pageDirty, pageEmpty: pageEmpty, exportedSize: exportedSize}, nil
+}
+
+// dedupDrain writes pageDirty pages from src to outPath packed at PageSize.
+func dedupDrain(
+	ctx context.Context,
+	src func(absOff int64) ([]byte, error),
+	pageDirty *roaring.Bitmap,
+	blockSize int64,
+	outPath string,
+	directIO bool,
+) (*Cache, error) {
+	openFlags := os.O_RDWR | os.O_CREATE
+	if directIO {
+		openFlags |= unix.O_DIRECT
+	}
+	f, err := os.OpenFile(outPath, openFlags, 0o644)
+	if err != nil {
+		return nil, fmt.Errorf("open dedup cache: %w", err)
+	}
+	if want := int64(pageDirty.GetCardinality()) * header.PageSize; directIO && want > 0 {
+		if fErr := unix.Fallocate(int(f.Fd()), 0, 0, want); fErr != nil {
+			logger.L().Warn(ctx, "fallocate dedup cache; proceeding without preallocation", zap.Error(fErr))
+		}
+	}
+
 	fileOff, err := drainDirtyPages(ctx, int(f.Fd()), src, pageDirty, blockSize)
 	if err != nil {
-		return nil, nil, errors.Join(err, f.Close(), os.Remove(outPath))
+		return nil, errors.Join(err, f.Close(), os.Remove(outPath))
 	}
-	writeDur := time.Since(writeStart)
 
 	if directIO {
 		if err := f.Truncate(fileOff); err != nil {
-			return nil, nil, errors.Join(fmt.Errorf("truncate dedup cache: %w", err), f.Close(), os.Remove(outPath))
+			return nil, errors.Join(fmt.Errorf("truncate dedup cache: %w", err), f.Close(), os.Remove(outPath))
 		}
 	}
 	if err := f.Close(); err != nil {
-		return nil, nil, errors.Join(err, os.Remove(outPath))
+		return nil, errors.Join(err, os.Remove(outPath))
 	}
 
 	cache, err := NewCache(fileOff, header.PageSize, outPath, false)
 	if err != nil {
-		return nil, nil, errors.Join(err, os.Remove(outPath))
+		return nil, errors.Join(err, os.Remove(outPath))
 	}
 	cache.setIsCached(0, fileOff)
 
-	totalPages := exportedSize / header.PageSize
-	uniquePages := int64(pageDirty.GetCardinality())
-	emptyPages := int64(pageEmpty.GetCardinality())
+	return cache, nil
+}
+
+func recordDedupAttrs(ctx context.Context, totalPages, uniquePages, emptyPages int64, compareDur, writeDur time.Duration) {
 	dedupedPages := totalPages - uniquePages - emptyPages
 	ratio := 0.0
 	if totalPages > 0 {
@@ -337,68 +349,51 @@ func dedupPages(
 		attribute.Int64("dedup.compare_ms", compareDur.Milliseconds()),
 		attribute.Int64("dedup.write_ms", writeDur.Milliseconds()),
 	)
-
-	return cache, &header.DiffMetadata{
-		Dirty:     pageDirty,
-		Empty:     pageEmpty,
-		BlockSize: header.PageSize,
-	}, nil
 }
 
+// drainDirtyPages packs pageDirty pages from src into fd. Mirrors
+// Cache.copyProcessMemory: coalesce contiguous pages into ranges, carve at
+// source-block boundaries, pre-split over MAX_RW_COUNT, then drainIovs.
 func drainDirtyPages(ctx context.Context, fd int, src func(absOff int64) ([]byte, error), pageDirty *roaring.Bitmap, blockSize int64) (int64, error) {
-	maxBytes := getAlignedMaxRwCount(header.PageSize)
-	batch := make([][]byte, 0, IOV_MAX)
-	var batchBytes int64
-	var fileOff int64
-	flush := func() error {
-		if len(batch) == 0 {
+	var ranges []Range
+	for r := range BitsetRanges(pageDirty, header.PageSize) {
+		for off := r.Start; off < r.End(); {
+			blockOff := (off / blockSize) * blockSize
+			chunkEnd := min(r.End(), blockOff+blockSize)
+			ranges = append(ranges, Range{Start: off, Size: chunkEnd - off})
+			off = chunkEnd
+		}
+	}
+	ranges = splitOversizedRanges(ranges, getAlignedMaxRwCount(header.PageSize))
+
+	if err := drainIovs(ranges, func(r Range) int64 { return r.Size }, header.PageSize,
+		func(destOff int64, batch []Range, _ int64) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			iovs := make([][]byte, len(batch))
+			for i, r := range batch {
+				blockOff := (r.Start / blockSize) * blockSize
+				buf, srcErr := src(blockOff)
+				if srcErr != nil {
+					return fmt.Errorf("slice src at %d: %w", blockOff, srcErr)
+				}
+				iovs[i] = buf[r.Start-blockOff : r.Start-blockOff+r.Size]
+			}
+			if err := pwritevAll(fd, destOff, iovs); err != nil {
+				return fmt.Errorf("pwritev dedup pages: %w", err)
+			}
+
 			return nil
-		}
-		if err := pwritevAll(fd, fileOff, batch); err != nil {
-			return err
-		}
-
-		fileOff += batchBytes
-		batch = batch[:0]
-		batchBytes = 0
-
-		return nil
+		}); err != nil {
+		return 0, err
 	}
 
-	var curBlockOff int64 = -1
-	var curBuf []byte
-	it := pageDirty.Iterator()
-	for it.HasNext() {
-		if err := ctx.Err(); err != nil {
-			return 0, err
-		}
-		absOff := int64(it.Next()) * header.PageSize
-		blockOff := (absOff / blockSize) * blockSize
-		if blockOff != curBlockOff {
-			buf, err := src(blockOff)
-			if err != nil {
-				return 0, fmt.Errorf("slice src at %d: %w", blockOff, err)
-			}
-			curBuf = buf
-			curBlockOff = blockOff
-		}
-		inner := absOff - curBlockOff
-		if len(batch) >= IOV_MAX || batchBytes+header.PageSize > maxBytes {
-			if err := flush(); err != nil {
-				return 0, fmt.Errorf("drain dedup iovs: %w", err)
-			}
-		}
-		batch = append(batch, curBuf[inner:inner+header.PageSize])
-		batchBytes += header.PageSize
-	}
-	if err := flush(); err != nil {
-		return 0, fmt.Errorf("drain dedup iovs: %w", err)
-	}
-
-	return fileOff, nil
+	return GetSize(ranges), nil
 }
 
-// Dedup deduplicates c against base; see dedupPages.
+// Dedup writes pages from c that differ from base, packed at PageSize, to
+// outPath. bestEffort skips uncached blocks; directIO uses O_DIRECT.
 func (c *Cache) Dedup(
 	ctx context.Context,
 	base ReadonlyDevice,
@@ -408,6 +403,9 @@ func (c *Cache) Dedup(
 	bestEffort bool,
 	directIO bool,
 ) (*Cache, *header.DiffMetadata, error) {
+	ctx, span := tracer.Start(ctx, "dedup-pages")
+	defer span.End()
+
 	// c is packed in BitsetRanges order; map abs offset → packed offset.
 	packed := make(map[int64]int64, dirty.GetCardinality())
 	var cum int64
@@ -426,7 +424,30 @@ func (c *Cache) Dedup(
 		return c.Slice(idx, blockSize)
 	}
 
-	return dedupPages(ctx, src, base, dirty, blockSize, outPath, bestEffort, directIO)
+	compareStart := time.Now()
+	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort)
+	if err != nil {
+		return nil, nil, err
+	}
+	compareDur := time.Since(compareStart)
+
+	writeStart := time.Now()
+	cache, err := dedupDrain(ctx, src, plan.pageDirty, blockSize, outPath, directIO)
+	if err != nil {
+		return nil, nil, err
+	}
+	recordDedupAttrs(ctx,
+		plan.exportedSize/header.PageSize,
+		int64(plan.pageDirty.GetCardinality()),
+		int64(plan.pageEmpty.GetCardinality()),
+		compareDur, time.Since(writeStart),
+	)
+
+	return cache, &header.DiffMetadata{
+		Dirty:     plan.pageDirty,
+		Empty:     plan.pageEmpty,
+		BlockSize: header.PageSize,
+	}, nil
 }
 
 func (c *Cache) ReadAt(b []byte, off int64) (int, error) {

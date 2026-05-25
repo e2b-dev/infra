@@ -1097,3 +1097,46 @@ func TestCacheDedup_BestEffortCachedMatchesNormalPath(t *testing.T) {
 	require.EqualValues(t, 1, meta.Dirty.GetCardinality(), "only the genuinely differing page is dirty")
 	require.EqualValues(t, 0, meta.Empty.GetCardinality())
 }
+
+type perPagePeeker struct {
+	fakeOriginalDevice
+
+	cachedPages map[uint32]bool
+}
+
+func (p *perPagePeeker) IsCached(_ context.Context, off, _ int64) bool {
+	return p.cachedPages[uint32(off/int64(header.PageSize))]
+}
+
+// Best-effort decides per page, not per block: when the parent has cached and
+// uncached pages inside the same dedup block, only the uncached ones get
+// written through. The earlier block-granular check gave up dedup on the
+// whole block as soon as any page inside it was uncached.
+func TestCacheDedup_BestEffortPerPageCacheCheck(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	blockSize := 4 * pageSize
+	size := blockSize
+
+	srcData := make([]byte, size)
+	_, err := rand.Read(srcData)
+	require.NoError(t, err)
+	baseData := make([]byte, size)
+	copy(baseData, srcData)
+
+	dirty := fullDirty(size, blockSize)
+	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
+	base := &perPagePeeker{
+		fakeOriginalDevice: fakeOriginalDevice{data: baseData},
+		cachedPages:        map[uint32]bool{0: true, 1: false, 2: true, 3: false},
+	}
+
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	require.EqualValues(t, 2, meta.Dirty.GetCardinality())
+	require.True(t, meta.Dirty.Contains(1))
+	require.True(t, meta.Dirty.Contains(3))
+}
