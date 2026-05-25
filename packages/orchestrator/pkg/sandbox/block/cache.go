@@ -223,7 +223,6 @@ func dedupPages(
 
 	openFlags := os.O_RDWR | os.O_CREATE
 	if directIO {
-		// Bypass the page cache (chunker mmap writes + concurrent pauses).
 		openFlags |= unix.O_DIRECT
 	}
 	f, err := os.OpenFile(outPath, openFlags, 0o644)
@@ -231,7 +230,6 @@ func dedupPages(
 		return nil, nil, fmt.Errorf("open dedup cache: %w", err)
 	}
 	if directIO {
-		// Pre-allocate worst-case extents (XFS inode-lock serialization).
 		worst := int64(dirty.GetCardinality()) * blockSize
 		if fErr := unix.Fallocate(int(f.Fd()), 0, 0, worst); fErr != nil {
 			logger.L().Warn(ctx, "fallocate dedup cache; proceeding without preallocation", zap.Error(fErr))
@@ -242,9 +240,6 @@ func dedupPages(
 	pageEmpty := roaring.New()
 	var exportedSize int64
 
-	// Phase 1 classifies pages into pageDirty/pageEmpty; phase 2 drains
-	// zero-copy iovs from src into pwritev batches.
-	// TODO: parallel walk + io_uring drain for NVMe queue depth.
 	compareStart := time.Now()
 	for r := range BitsetRanges(dirty, blockSize) {
 		exportedSize += r.Size
@@ -350,9 +345,26 @@ func dedupPages(
 	}, nil
 }
 
-// drainDirtyPages reconstructs iovs from the bitmap and drains them.
 func drainDirtyPages(ctx context.Context, fd int, src func(absOff int64) ([]byte, error), pageDirty *roaring.Bitmap, blockSize int64) (int64, error) {
-	iovs := make([][]byte, 0, pageDirty.GetCardinality())
+	maxBytes := getAlignedMaxRwCount(header.PageSize)
+	batch := make([][]byte, 0, IOV_MAX)
+	var batchBytes int64
+	var fileOff int64
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		if err := pwritevAll(fd, fileOff, batch); err != nil {
+			return err
+		}
+
+		fileOff += batchBytes
+		batch = batch[:0]
+		batchBytes = 0
+
+		return nil
+	}
+
 	var curBlockOff int64 = -1
 	var curBuf []byte
 	it := pageDirty.Iterator()
@@ -371,18 +383,19 @@ func drainDirtyPages(ctx context.Context, fd int, src func(absOff int64) ([]byte
 			curBlockOff = blockOff
 		}
 		inner := absOff - curBlockOff
-		iovs = append(iovs, curBuf[inner:inner+header.PageSize])
+		if len(batch) >= IOV_MAX || batchBytes+header.PageSize > maxBytes {
+			if err := flush(); err != nil {
+				return 0, fmt.Errorf("drain dedup iovs: %w", err)
+			}
+		}
+		batch = append(batch, curBuf[inner:inner+header.PageSize])
+		batchBytes += header.PageSize
 	}
-
-	err := drainIovs(iovs, func(b []byte) int64 { return int64(len(b)) }, header.PageSize,
-		func(off int64, batch [][]byte, _ int64) error {
-			return pwritevAll(fd, off, batch)
-		})
-	if err != nil {
+	if err := flush(); err != nil {
 		return 0, fmt.Errorf("drain dedup iovs: %w", err)
 	}
 
-	return int64(len(iovs)) * header.PageSize, nil
+	return fileOff, nil
 }
 
 // Dedup deduplicates c against base; see dedupPages.

@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 )
 
 // TestCleaner_PrunesOrphanedExpirationEntry is the smoke test for the whole
@@ -230,14 +230,14 @@ func TestCleaner_EvictsStaleExpiredSandbox(t *testing.T) {
 	ctx := t.Context()
 
 	sbx := createTestSandbox("stale-expired-" + uuid.NewString())
-	sbx.EndTime = time.Now().Add(-sandbox.StaleCutoff - time.Minute)
+	sbx.EndTime = time.Now().Add(-sandboxtypes.StaleCutoff - time.Minute)
 	require.NoError(t, storage.Add(ctx, sbx))
 
 	cleaner := NewCleaner(storage)
 	require.NoError(t, cleaner.RunOnce(ctx))
 
 	_, err := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
-	require.ErrorIs(t, err, sandbox.ErrNotFound, "stale expired sandbox JSON should be removed")
+	require.ErrorIs(t, err, sandboxtypes.ErrNotFound, "stale expired sandbox JSON should be removed")
 
 	_, err = client.ZScore(ctx, globalExpirationSet,
 		expirationMember(sbx.TeamID.String(), sbx.SandboxID)).Result()
@@ -271,11 +271,11 @@ func TestCleaner_PreservesRecentlyExpiredSandbox(t *testing.T) {
 	require.Equal(t, sbx.SandboxID, got.SandboxID)
 }
 
-// Compile-time guard so future refactors of sandbox.StaleCutoff get noticed
+// Compile-time guard so future refactors of sandboxtypes.StaleCutoff get noticed
 // here: the cleaner's correctness depends on it being > 0.
 var _ = func() bool {
-	if sandbox.StaleCutoff <= 0 {
-		panic("sandbox.StaleCutoff must be positive for cleaner race guards to hold")
+	if sandboxtypes.StaleCutoff <= 0 {
+		panic("sandboxtypes.StaleCutoff must be positive for cleaner race guards to hold")
 	}
 
 	return true

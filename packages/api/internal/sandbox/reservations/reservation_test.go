@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
@@ -45,7 +45,7 @@ func TestReservation_Exceeded(t *testing.T) {
 	_, _, err := cache.Reserve(t.Context(), teamID, sandboxID, 1)
 	require.NoError(t, err)
 	_, _, err = cache.Reserve(t.Context(), teamID, "sandbox-2", 1)
-	require.ErrorAs(t, err, new(&sandbox.LimitExceededError{}))
+	require.ErrorAs(t, err, new(&sandboxtypes.LimitExceededError{}))
 }
 
 func TestReservation_SameSandbox(t *testing.T) {
@@ -99,7 +99,7 @@ func TestReservation_WaitForStart(t *testing.T) {
 	require.NotNil(t, waitForStart)
 
 	// Finish the start operation
-	expectedSbx := sandbox.Sandbox{
+	expectedSbx := sandboxtypes.Sandbox{
 		ClientID:          consts.ClientID,
 		SandboxID:         sandboxID,
 		TemplateID:        "test",
@@ -133,7 +133,7 @@ func TestReservation_WaitForStartError(t *testing.T) {
 
 	// Finish with an error
 	expectedErr := assert.AnError
-	finishStart(sandbox.Sandbox{}, expectedErr)
+	finishStart(sandboxtypes.Sandbox{}, expectedErr)
 
 	// Wait should return the error
 	ctx := t.Context()
@@ -160,7 +160,7 @@ func TestReservation_MultipleWaiters(t *testing.T) {
 	require.NotNil(t, waitForStart2)
 
 	// Finish the start operation
-	expectedSbx := sandbox.Sandbox{
+	expectedSbx := sandboxtypes.Sandbox{
 		ClientID:          consts.ClientID,
 		SandboxID:         sandboxID,
 		TemplateID:        "test",
@@ -190,7 +190,7 @@ func TestReservation_Remove(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, finishStart)
 
-	expectedSbx := sandbox.Sandbox{
+	expectedSbx := sandboxtypes.Sandbox{
 		ClientID:          consts.ClientID,
 		SandboxID:         sandboxID,
 		TemplateID:        "test",
@@ -230,11 +230,11 @@ func TestReservation_MultipleTeams(t *testing.T) {
 
 	// team1 should be at limit
 	_, _, err = cache.Reserve(t.Context(), team1, "sandbox-3", 1)
-	require.ErrorAs(t, err, new(&sandbox.LimitExceededError{}))
+	require.ErrorAs(t, err, new(&sandboxtypes.LimitExceededError{}))
 
 	// team2 should also be at limit
 	_, _, err = cache.Reserve(t.Context(), team2, "sandbox-4", 1)
-	require.ErrorAs(t, err, new(&sandbox.LimitExceededError{}))
+	require.ErrorAs(t, err, new(&sandboxtypes.LimitExceededError{}))
 }
 
 func TestReservation_FailedStart(t *testing.T) {
@@ -250,7 +250,7 @@ func TestReservation_FailedStart(t *testing.T) {
 
 	// Finish with an error
 	expectedErr := errors.New("start failed")
-	finishStart(sandbox.Sandbox{}, expectedErr)
+	finishStart(sandboxtypes.Sandbox{}, expectedErr)
 
 	// After failed start, should be able to reserve again
 	finishStart2, _, err := cache.Reserve(t.Context(), team, sbxID, 10)
@@ -271,7 +271,7 @@ func TestReservation_FailedStartWithWaiters(t *testing.T) {
 	require.NotNil(t, finishStart)
 
 	var wg errgroup.Group
-	waiters := make([]func(ctx context.Context) (sandbox.Sandbox, error), numWaiters)
+	waiters := make([]func(ctx context.Context) (sandboxtypes.Sandbox, error), numWaiters)
 
 	// Multiple waiters
 	for i := range numWaiters {
@@ -294,7 +294,7 @@ func TestReservation_FailedStartWithWaiters(t *testing.T) {
 
 	// Finish with an error
 	expectedErr := errors.New("start failed")
-	finishStart(sandbox.Sandbox{}, expectedErr)
+	finishStart(sandboxtypes.Sandbox{}, expectedErr)
 
 	// All waiters should receive the error
 	var wg2 sync.WaitGroup
@@ -302,7 +302,7 @@ func TestReservation_FailedStartWithWaiters(t *testing.T) {
 
 	for _, waiter := range waiters {
 		wg2.Add(1)
-		go func(w func(ctx context.Context) (sandbox.Sandbox, error)) {
+		go func(w func(ctx context.Context) (sandboxtypes.Sandbox, error)) {
 			defer wg2.Done()
 			_, err := w(t.Context())
 			if err != nil {
@@ -333,7 +333,7 @@ func TestReservation_ConcurrentReservations(t *testing.T) {
 			if err == nil {
 				successCount.Add(1)
 			} else {
-				var limitExceededError *sandbox.LimitExceededError
+				var limitExceededError *sandboxtypes.LimitExceededError
 				if errors.As(err, &limitExceededError) {
 					limitExceededCount.Add(1)
 				}
@@ -398,7 +398,7 @@ func TestReservation_ConcurrentWaitAndFinish(t *testing.T) {
 	require.NotNil(t, finishStart)
 
 	var wg errgroup.Group
-	waiters := make([]func(ctx context.Context) (sandbox.Sandbox, error), numWaiters)
+	waiters := make([]func(ctx context.Context) (sandboxtypes.Sandbox, error), numWaiters)
 
 	// Multiple waiters
 	for i := range numWaiters {
@@ -421,7 +421,7 @@ func TestReservation_ConcurrentWaitAndFinish(t *testing.T) {
 	wg.Wait()
 
 	// Finish the start operation
-	expectedSbx := sandbox.Sandbox{
+	expectedSbx := sandboxtypes.Sandbox{
 		ClientID:          consts.ClientID,
 		SandboxID:         sbxID,
 		TemplateID:        "test",
@@ -438,7 +438,7 @@ func TestReservation_ConcurrentWaitAndFinish(t *testing.T) {
 
 	for _, waiter := range waiters {
 		wg2.Add(1)
-		go func(w func(ctx context.Context) (sandbox.Sandbox, error)) {
+		go func(w func(ctx context.Context) (sandboxtypes.Sandbox, error)) {
 			defer wg2.Done()
 			result, err := w(t.Context())
 			if err == nil && result.SandboxID == sbxID {
@@ -516,7 +516,7 @@ func TestReservation_RaceConditionStressTest(t *testing.T) {
 						// Immediately finish
 						go func() {
 							time.Sleep(time.Millisecond)
-							finishStart(sandbox.Sandbox{
+							finishStart(sandboxtypes.Sandbox{
 								SandboxID: sbxID,
 								TeamID:    team,
 							}, nil)
@@ -529,7 +529,7 @@ func TestReservation_RaceConditionStressTest(t *testing.T) {
 						}()
 					}
 				} else {
-					var limitExceededError *sandbox.LimitExceededError
+					var limitExceededError *sandboxtypes.LimitExceededError
 					if errors.As(err, &limitExceededError) {
 						operationCount.Add(1)
 					}

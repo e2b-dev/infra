@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 )
 
 func createTestSandbox() *memorySandbox {
-	return newMemorySandbox(sandbox.Sandbox{
+	return newMemorySandbox(sandboxtypes.Sandbox{
 		SandboxID:         "test-sandbox",
 		TemplateID:        "test-template",
 		ClientID:          "test-client",
@@ -25,7 +25,7 @@ func createTestSandbox() *memorySandbox {
 		StartTime:         time.Now(),
 		EndTime:           time.Now().Add(time.Hour),
 		MaxInstanceLength: time.Hour,
-		State:             sandbox.StateRunning,
+		State:             sandboxtypes.StateRunning,
 	})
 }
 
@@ -35,20 +35,20 @@ func TestStartRemoving_BasicTransitions(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		fromState   sandbox.State
-		stateAction sandbox.StateAction
-		expState    sandbox.State
+		fromState   sandboxtypes.State
+		stateAction sandboxtypes.StateAction
+		expState    sandboxtypes.State
 		shouldError bool
 	}{
-		{"Running to Paused", sandbox.StateRunning, sandbox.StateActionPause, sandbox.StatePausing, false},
-		{"Running to Killed", sandbox.StateRunning, sandbox.StateActionKill, sandbox.StateKilling, false},
-		{"Running to Snapshotting", sandbox.StateRunning, sandbox.StateActionSnapshot, sandbox.StateSnapshotting, false},
-		{"Paused to Killed", sandbox.StatePausing, sandbox.StateActionKill, sandbox.StateKilling, false},
-		{"Killed to Paused (invalid)", sandbox.StateKilling, sandbox.StateActionPause, sandbox.StatePausing, true},
-		{"Killed to Killed (same)", sandbox.StateKilling, sandbox.StateActionKill, sandbox.StateKilling, false},
-		{"Paused to Paused (same)", sandbox.StatePausing, sandbox.StateActionPause, sandbox.StatePausing, false},
-		{"Snapshotting to Killed", sandbox.StateSnapshotting, sandbox.StateActionKill, sandbox.StateKilling, false},
-		{"Snapshotting to Paused", sandbox.StateSnapshotting, sandbox.StateActionPause, sandbox.StatePausing, false},
+		{"Running to Paused", sandboxtypes.StateRunning, sandboxtypes.StateActionPause, sandboxtypes.StatePausing, false},
+		{"Running to Killed", sandboxtypes.StateRunning, sandboxtypes.StateActionKill, sandboxtypes.StateKilling, false},
+		{"Running to Snapshotting", sandboxtypes.StateRunning, sandboxtypes.StateActionSnapshot, sandboxtypes.StateSnapshotting, false},
+		{"Paused to Killed", sandboxtypes.StatePausing, sandboxtypes.StateActionKill, sandboxtypes.StateKilling, false},
+		{"Killed to Paused (invalid)", sandboxtypes.StateKilling, sandboxtypes.StateActionPause, sandboxtypes.StatePausing, true},
+		{"Killed to Killed (same)", sandboxtypes.StateKilling, sandboxtypes.StateActionKill, sandboxtypes.StateKilling, false},
+		{"Paused to Paused (same)", sandboxtypes.StatePausing, sandboxtypes.StateActionPause, sandboxtypes.StatePausing, false},
+		{"Snapshotting to Killed", sandboxtypes.StateSnapshotting, sandboxtypes.StateActionKill, sandboxtypes.StateKilling, false},
+		{"Snapshotting to Paused", sandboxtypes.StateSnapshotting, sandboxtypes.StateActionPause, sandboxtypes.StatePausing, false},
 	}
 
 	for _, tt := range tests {
@@ -59,7 +59,7 @@ func TestStartRemoving_BasicTransitions(t *testing.T) {
 			sbx._data.State = tt.fromState
 			ctx := t.Context()
 
-			alreadyDone, finish, err := startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: tt.stateAction})
+			alreadyDone, finish, err := startRemoving(ctx, sbx, sandboxtypes.RemoveOpts{Action: tt.stateAction})
 
 			switch {
 			case tt.shouldError:
@@ -89,13 +89,13 @@ func TestStartRemoving_PauseThenKill(t *testing.T) {
 	ctx := t.Context()
 
 	// Simulate a pause operation that takes time
-	alreadyDone, finish, err := startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	alreadyDone, finish, err := startRemoving(ctx, sbx, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	require.NotNil(t, finish)
 
 	// The state should be changed immediately
-	assert.Equal(t, sandbox.StatePausing, sbx.State())
+	assert.Equal(t, sandboxtypes.StatePausing, sbx.State())
 
 	// Simulate the actual pause operation taking time
 	started := make(chan struct{})
@@ -104,7 +104,7 @@ func TestStartRemoving_PauseThenKill(t *testing.T) {
 		started <- struct{}{}
 		time.Sleep(100 * time.Millisecond)
 		// The state should still be Paused
-		assert.Equal(t, sandbox.StatePausing, sbx.State())
+		assert.Equal(t, sandboxtypes.StatePausing, sbx.State())
 		finish(ctx, nil)
 	}()
 
@@ -112,7 +112,7 @@ func TestStartRemoving_PauseThenKill(t *testing.T) {
 	<-started // Ensure the pause operation has started
 
 	start := time.Now()
-	alreadyDone2, finish2, err2 := startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionKill})
+	alreadyDone2, finish2, err2 := startRemoving(ctx, sbx, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionKill})
 	elapsed := time.Since(start)
 
 	// Should have waited for the pause to complete
@@ -120,11 +120,11 @@ func TestStartRemoving_PauseThenKill(t *testing.T) {
 	require.NoError(t, err2)
 	assert.False(t, alreadyDone2)
 	assert.NotNil(t, finish2)
-	assert.Equal(t, sandbox.StateKilling, sbx.State())
+	assert.Equal(t, sandboxtypes.StateKilling, sbx.State())
 
 	// Complete the kill operation
 	finish2(ctx, nil)
-	assert.Equal(t, sandbox.StateKilling, sbx.State())
+	assert.Equal(t, sandboxtypes.StateKilling, sbx.State())
 }
 
 // Test concurrent requests to transition to the same state (idempotency)
@@ -142,7 +142,7 @@ func TestStartRemoving_ConcurrentSameState(t *testing.T) {
 	// Three concurrent requests to pause the sandbox
 	for range 3 {
 		go func() {
-			alreadyDone, finish, err := startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+			alreadyDone, finish, err := startRemoving(ctx, sbx, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause})
 			if err == nil {
 				if alreadyDone {
 					// Already alreadyDone (waited for another transition)
@@ -185,7 +185,7 @@ func TestStartRemoving_ConcurrentSameState(t *testing.T) {
 	// But others waiting should get alreadyDone=true after the transition completes
 	assert.Equal(t, 1, performedCount, "Only one request should actually perform the transition")
 	assert.Equal(t, 2, alreadyDoneCount, "Two concurrent requests should see it's already alreadyDone")
-	assert.Equal(t, sandbox.StatePausing, sbx.State())
+	assert.Equal(t, sandboxtypes.StatePausing, sbx.State())
 }
 
 // Test transition fails and subsequent request handles it
@@ -196,7 +196,7 @@ func TestStartRemoving_Error(t *testing.T) {
 	ctx := t.Context()
 
 	// First attempt to pause
-	alreadyDone1, finish1, err := startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	alreadyDone1, finish1, err := startRemoving(ctx, sbx, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyDone1)
 	require.NotNil(t, finish1)
@@ -209,7 +209,7 @@ func TestStartRemoving_Error(t *testing.T) {
 
 	go func() {
 		// This should wait for the first transition, then try to go to Killed
-		alreadyDone2, finish2, err2 = startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionKill})
+		alreadyDone2, finish2, err2 = startRemoving(ctx, sbx, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionKill})
 		completed <- true
 	}()
 
@@ -230,14 +230,14 @@ func TestStartRemoving_Error(t *testing.T) {
 	assert.Nil(t, finish2)
 
 	// From Failed state, no transitions are allowed
-	alreadyDone3, finish3, err3 := startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	alreadyDone3, finish3, err3 := startRemoving(ctx, sbx, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause})
 	require.Error(t, err3)
 	require.ErrorIs(t, err3, failureErr)
 	assert.False(t, alreadyDone3)
 	assert.Nil(t, finish3)
 
 	// Trying to transition to Killed should also fail
-	alreadyDone4, finish4, err4 := startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionKill})
+	alreadyDone4, finish4, err4 := startRemoving(ctx, sbx, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionKill})
 	require.Error(t, err4)
 	require.ErrorIs(t, err4, failureErr)
 	assert.False(t, alreadyDone4)
@@ -251,7 +251,7 @@ func TestStartRemoving_ContextTimeout(t *testing.T) {
 	sbx := createTestSandbox()
 
 	// Start a long-running transition
-	alreadyDone1, finish1, err := startRemoving(t.Context(), sbx, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	alreadyDone1, finish1, err := startRemoving(t.Context(), sbx, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyDone1)
 	require.NotNil(t, finish1)
@@ -261,7 +261,7 @@ func TestStartRemoving_ContextTimeout(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	_, _, err2 := startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionKill})
+	_, _, err2 := startRemoving(ctx, sbx, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionKill})
 	elapsed := time.Since(start)
 
 	// Should timeout after about 20ms
@@ -271,7 +271,7 @@ func TestStartRemoving_ContextTimeout(t *testing.T) {
 
 	// Clean up
 	finish1(ctx, nil)
-	assert.Equal(t, sandbox.StatePausing, sbx.State())
+	assert.Equal(t, sandboxtypes.StatePausing, sbx.State())
 }
 
 func TestWaitForStateChange_NoTransition(t *testing.T) {
@@ -294,7 +294,7 @@ func TestWaitForStateChange_WaitForCompletion(t *testing.T) {
 	ctx := t.Context()
 
 	// Start a transition
-	alreadyalreadyDone, finish, err := startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	alreadyalreadyDone, finish, err := startRemoving(ctx, sbx, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyalreadyDone)
 	require.NotNil(t, finish)
@@ -325,7 +325,7 @@ func TestWaitForStateChange_WaitWithError(t *testing.T) {
 	ctx := t.Context()
 
 	// Start a transition
-	alreadyalreadyDone, finish, err := startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	alreadyalreadyDone, finish, err := startRemoving(ctx, sbx, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyalreadyDone)
 	require.NotNil(t, finish)
@@ -358,7 +358,7 @@ func TestWaitForStateChange_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 
 	// Start a transition
-	alreadyalreadyDone, finish, err := startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	alreadyalreadyDone, finish, err := startRemoving(ctx, sbx, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyalreadyDone)
 	require.NotNil(t, finish)
@@ -393,7 +393,7 @@ func TestWaitForStateChange_MultipleWaiters(t *testing.T) {
 	ctx := t.Context()
 
 	// Start a transition
-	alreadyalreadyDone, finish, err := startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	alreadyalreadyDone, finish, err := startRemoving(ctx, sbx, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause})
 	require.NoError(t, err)
 	assert.False(t, alreadyalreadyDone)
 	require.NotNil(t, finish)
@@ -435,7 +435,7 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 		ctx := t.Context()
 		storage := NewStorage()
 
-		sbx := sandbox.Sandbox{
+		sbx := sandboxtypes.Sandbox{
 			SandboxID:         "snap-pause-test",
 			TemplateID:        "test-template",
 			ClientID:          "test-client",
@@ -443,13 +443,13 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 			StartTime:         time.Now(),
 			EndTime:           time.Now().Add(time.Hour),
 			MaxInstanceLength: time.Hour,
-			State:             sandbox.StateRunning,
+			State:             sandboxtypes.StateRunning,
 		}
 
 		err := storage.Add(ctx, sbx)
 		require.NoError(t, err)
 
-		_, snapAlreadyDone, finishSnap, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionSnapshot})
+		_, snapAlreadyDone, finishSnap, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionSnapshot})
 		require.NoError(t, err)
 		assert.False(t, snapAlreadyDone)
 		require.NotNil(t, finishSnap)
@@ -461,14 +461,14 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 
 		go func() {
 			defer close(pauseDone)
-			_, pauseAlreadyDone, pauseFinish, pauseErr = storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+			_, pauseAlreadyDone, pauseFinish, pauseErr = storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause})
 		}()
 
 		time.Sleep(50 * time.Millisecond)
 
 		got, getErr := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
 		require.NoError(t, getErr)
-		assert.Equal(t, sandbox.StateSnapshotting, got.State)
+		assert.Equal(t, sandboxtypes.StateSnapshotting, got.State)
 
 		finishSnap(ctx, nil)
 
@@ -480,7 +480,7 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 
 		got, getErr = storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
 		require.NoError(t, getErr)
-		assert.Equal(t, sandbox.StatePausing, got.State)
+		assert.Equal(t, sandboxtypes.StatePausing, got.State)
 
 		pauseFinish(ctx, nil)
 	})
@@ -491,7 +491,7 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 		ctx := t.Context()
 		storage := NewStorage()
 
-		sbx := sandbox.Sandbox{
+		sbx := sandboxtypes.Sandbox{
 			SandboxID:         "snap-kill-test",
 			TemplateID:        "test-template",
 			ClientID:          "test-client",
@@ -499,13 +499,13 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 			StartTime:         time.Now(),
 			EndTime:           time.Now().Add(time.Hour),
 			MaxInstanceLength: time.Hour,
-			State:             sandbox.StateRunning,
+			State:             sandboxtypes.StateRunning,
 		}
 
 		err := storage.Add(ctx, sbx)
 		require.NoError(t, err)
 
-		_, snapAlreadyDone, finishSnap, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionSnapshot})
+		_, snapAlreadyDone, finishSnap, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionSnapshot})
 		require.NoError(t, err)
 		assert.False(t, snapAlreadyDone)
 
@@ -517,7 +517,7 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 
 		go func() {
 			defer close(killDone)
-			_, killAlreadyDone, killFinish, killErr = storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill})
+			_, killAlreadyDone, killFinish, killErr = storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionKill})
 		}()
 
 		// Give the kill goroutine time to start waiting
@@ -526,7 +526,7 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 		// Verify the sandbox is still snapshotting (kill is blocked)
 		got, getErr := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
 		require.NoError(t, getErr)
-		assert.Equal(t, sandbox.StateSnapshotting, got.State)
+		assert.Equal(t, sandboxtypes.StateSnapshotting, got.State)
 
 		// Complete snapshotting — this unblocks the kill
 		finishSnap(ctx, nil)
@@ -539,7 +539,7 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 
 		got, getErr = storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
 		require.NoError(t, getErr)
-		assert.Equal(t, sandbox.StateKilling, got.State)
+		assert.Equal(t, sandboxtypes.StateKilling, got.State)
 
 		killFinish(ctx, nil)
 	})
@@ -550,7 +550,7 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 		ctx := t.Context()
 		storage := NewStorage()
 
-		sbx := sandbox.Sandbox{
+		sbx := sandboxtypes.Sandbox{
 			SandboxID:         "snap-fail-kill-test",
 			TemplateID:        "test-template",
 			ClientID:          "test-client",
@@ -558,13 +558,13 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 			StartTime:         time.Now(),
 			EndTime:           time.Now().Add(time.Hour),
 			MaxInstanceLength: time.Hour,
-			State:             sandbox.StateRunning,
+			State:             sandboxtypes.StateRunning,
 		}
 
 		err := storage.Add(ctx, sbx)
 		require.NoError(t, err)
 
-		_, _, finishSnap, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionSnapshot})
+		_, _, finishSnap, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionSnapshot})
 		require.NoError(t, err)
 
 		// Finish with error — state stays Snapshotting, transition cleared
@@ -572,17 +572,17 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 
 		got, getErr := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
 		require.NoError(t, getErr)
-		assert.Equal(t, sandbox.StateSnapshotting, got.State)
+		assert.Equal(t, sandboxtypes.StateSnapshotting, got.State)
 
 		// Kill proceeds immediately — no active transition, Snapshotting→Killing is allowed
-		_, killAlreadyDone, killFinish, killErr := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill})
+		_, killAlreadyDone, killFinish, killErr := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionKill})
 		require.NoError(t, killErr)
 		assert.False(t, killAlreadyDone)
 		require.NotNil(t, killFinish)
 
 		got, getErr = storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
 		require.NoError(t, getErr)
-		assert.Equal(t, sandbox.StateKilling, got.State)
+		assert.Equal(t, sandboxtypes.StateKilling, got.State)
 
 		killFinish(ctx, nil)
 	})
@@ -593,7 +593,7 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 		ctx := t.Context()
 		storage := NewStorage()
 
-		sbx := sandbox.Sandbox{
+		sbx := sandboxtypes.Sandbox{
 			SandboxID:         "snap-resume-test",
 			TemplateID:        "test-template",
 			ClientID:          "test-client",
@@ -601,19 +601,19 @@ func TestStartRemoving_DuringSnapshotting(t *testing.T) {
 			StartTime:         time.Now(),
 			EndTime:           time.Now().Add(time.Hour),
 			MaxInstanceLength: time.Hour,
-			State:             sandbox.StateRunning,
+			State:             sandboxtypes.StateRunning,
 		}
 
 		err := storage.Add(ctx, sbx)
 		require.NoError(t, err)
 
-		_, snapAlreadyDone, finishSnap, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionSnapshot})
+		_, snapAlreadyDone, finishSnap, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionSnapshot})
 		require.NoError(t, err)
 		assert.False(t, snapAlreadyDone)
 
 		got, getErr := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
 		require.NoError(t, getErr)
-		assert.Equal(t, sandbox.StateSnapshotting, got.State)
+		assert.Equal(t, sandboxtypes.StateSnapshotting, got.State)
 
 		finishSnap(ctx, nil)
 	})
@@ -630,7 +630,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		ctx := t.Context()
 		storage := NewStorage()
 
-		sbx := sandbox.Sandbox{
+		sbx := sandboxtypes.Sandbox{
 			SandboxID:         "evict-ok",
 			TemplateID:        "test-template",
 			ClientID:          "test-client",
@@ -638,20 +638,20 @@ func TestStartRemoving_Eviction(t *testing.T) {
 			StartTime:         time.Now().Add(-2 * time.Hour),
 			EndTime:           time.Now().Add(-time.Second), // already expired
 			MaxInstanceLength: time.Hour,
-			State:             sandbox.StateRunning,
+			State:             sandboxtypes.StateRunning,
 		}
 
 		err := storage.Add(ctx, sbx)
 		require.NoError(t, err)
 
-		_, alreadyDone, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill, Eviction: true})
+		_, alreadyDone, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionKill, Eviction: true})
 		require.NoError(t, err)
 		assert.False(t, alreadyDone)
 		require.NotNil(t, finish)
 
 		got, getErr := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
 		require.NoError(t, getErr)
-		assert.Equal(t, sandbox.StateKilling, got.State)
+		assert.Equal(t, sandboxtypes.StateKilling, got.State)
 
 		finish(ctx, nil)
 	})
@@ -662,7 +662,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		ctx := t.Context()
 		storage := NewStorage()
 
-		sbx := sandbox.Sandbox{
+		sbx := sandboxtypes.Sandbox{
 			SandboxID:         "evict-not-expired",
 			TemplateID:        "test-template",
 			ClientID:          "test-client",
@@ -670,21 +670,21 @@ func TestStartRemoving_Eviction(t *testing.T) {
 			StartTime:         time.Now(),
 			EndTime:           time.Now().Add(time.Hour), // not expired
 			MaxInstanceLength: time.Hour,
-			State:             sandbox.StateRunning,
+			State:             sandboxtypes.StateRunning,
 		}
 
 		err := storage.Add(ctx, sbx)
 		require.NoError(t, err)
 
-		_, alreadyDone, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill, Eviction: true})
-		require.ErrorIs(t, err, sandbox.ErrEvictionNotNeeded)
+		_, alreadyDone, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionKill, Eviction: true})
+		require.ErrorIs(t, err, sandboxtypes.ErrEvictionNotNeeded)
 		assert.False(t, alreadyDone)
 		assert.Nil(t, finish)
 
 		// State must remain Running — sandbox was not touched.
 		got, getErr := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
 		require.NoError(t, getErr)
-		assert.Equal(t, sandbox.StateRunning, got.State)
+		assert.Equal(t, sandboxtypes.StateRunning, got.State)
 	})
 
 	t.Run("expired sandbox with active transition returns eviction in progress", func(t *testing.T) {
@@ -693,7 +693,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		ctx := t.Context()
 		storage := NewStorage()
 
-		sbx := sandbox.Sandbox{
+		sbx := sandboxtypes.Sandbox{
 			SandboxID:         "evict-in-transition",
 			TemplateID:        "test-template",
 			ClientID:          "test-client",
@@ -701,23 +701,23 @@ func TestStartRemoving_Eviction(t *testing.T) {
 			StartTime:         time.Now().Add(-2 * time.Hour),
 			EndTime:           time.Now().Add(-time.Second), // expired
 			MaxInstanceLength: time.Hour,
-			State:             sandbox.StateRunning,
+			State:             sandboxtypes.StateRunning,
 		}
 
 		err := storage.Add(ctx, sbx)
 		require.NoError(t, err)
 
 		// Start a non-eviction pause transition to occupy the transition slot.
-		_, _, pauseFinish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+		_, _, pauseFinish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause})
 		require.NoError(t, err)
 		require.NotNil(t, pauseFinish)
 
 		// Eviction should be rejected immediately (not block).
 		start := time.Now()
-		_, alreadyDone, finish, evictErr := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionKill, Eviction: true})
+		_, alreadyDone, finish, evictErr := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionKill, Eviction: true})
 		elapsed := time.Since(start)
 
-		require.ErrorIs(t, evictErr, sandbox.ErrEvictionInProgress)
+		require.ErrorIs(t, evictErr, sandboxtypes.ErrEvictionInProgress)
 		assert.False(t, alreadyDone)
 		assert.Nil(t, finish)
 		assert.Less(t, elapsed, 50*time.Millisecond, "eviction should return immediately, not wait for the transition")
@@ -732,7 +732,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		ctx := t.Context()
 		storage := NewStorage()
 
-		sbx := sandbox.Sandbox{
+		sbx := sandboxtypes.Sandbox{
 			SandboxID:         "evict-autopause",
 			TemplateID:        "test-template",
 			ClientID:          "test-client",
@@ -741,20 +741,20 @@ func TestStartRemoving_Eviction(t *testing.T) {
 			EndTime:           time.Now().Add(-time.Second), // expired
 			MaxInstanceLength: time.Hour,
 			AutoPause:         true,
-			State:             sandbox.StateRunning,
+			State:             sandboxtypes.StateRunning,
 		}
 
 		err := storage.Add(ctx, sbx)
 		require.NoError(t, err)
 
-		_, alreadyDone, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause, Eviction: true})
+		_, alreadyDone, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause, Eviction: true})
 		require.NoError(t, err)
 		assert.False(t, alreadyDone)
 		require.NotNil(t, finish)
 
 		got, getErr := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
 		require.NoError(t, getErr)
-		assert.Equal(t, sandbox.StatePausing, got.State)
+		assert.Equal(t, sandboxtypes.StatePausing, got.State)
 
 		finish(ctx, nil)
 	})
@@ -775,7 +775,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		sbx._data.EndTime = time.Now().Add(-time.Second)
 
 		// Start a non-eviction pause.
-		alreadyDone, pauseFinish, err := startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+		alreadyDone, pauseFinish, err := startRemoving(ctx, sbx, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause})
 		require.NoError(t, err)
 		assert.False(t, alreadyDone)
 		require.NotNil(t, pauseFinish)
@@ -788,7 +788,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 
 		go func() {
 			defer close(killDone)
-			killAlreadyDone, killFinish, killErr = startRemoving(ctx, sbx, sandbox.RemoveOpts{Action: sandbox.StateActionKill})
+			killAlreadyDone, killFinish, killErr = startRemoving(ctx, sbx, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionKill})
 		}()
 
 		time.Sleep(50 * time.Millisecond)
@@ -809,7 +809,7 @@ func TestStartRemoving_Eviction(t *testing.T) {
 		require.NoError(t, killErr)
 		assert.False(t, killAlreadyDone)
 		require.NotNil(t, killFinish)
-		assert.Equal(t, sandbox.StateKilling, sbx.State())
+		assert.Equal(t, sandboxtypes.StateKilling, sbx.State())
 
 		killFinish(ctx, nil)
 	})
@@ -849,10 +849,10 @@ func TestConcurrency_StressTest(t *testing.T) {
 					// Random operation
 					switch workerID % 4 {
 					case 0: // State transitions
-						stateActions := []sandbox.StateAction{sandbox.StateActionPause, sandbox.StateActionKill}
+						stateActions := []sandboxtypes.StateAction{sandboxtypes.StateActionPause, sandboxtypes.StateActionKill}
 						stateAction := stateActions[rand.Intn(len(stateActions))]
 
-						alreadyDone, finish, err := startRemoving(t.Context(), sbx, sandbox.RemoveOpts{Action: stateAction})
+						alreadyDone, finish, err := startRemoving(t.Context(), sbx, sandboxtypes.RemoveOpts{Action: stateAction})
 						if err == nil && (finish != nil || alreadyDone) {
 							if finish != nil {
 								finish(t.Context(), nil)

@@ -18,14 +18,10 @@ inputs:
     description: "Number of frame encode workers"
     required: false
     default: ""
-  dedup_best_effort:
-    description: "Enable best-effort memfile dedup"
+  dedup_mode:
+    description: "Memfile dedup mode"
     required: false
-    default: "false"
-  dedup_direct_io:
-    description: "Enable O_DIRECT memfile dedup writes"
-    required: false
-    default: "false"
+    default: "default"
 
 runs:
   using: "composite"
@@ -137,9 +133,7 @@ runs:
         COMPRESS_TYPE: ${{ inputs.compress_type }}
         COMPRESS_LEVEL: ${{ inputs.compress_level }}
         COMPRESS_FRAME_ENCODE_WORKERS: ${{ inputs.compress_workers }}
-        TESTS_MEMFILE_DIFF_DEDUP: "true"
-        TESTS_MEMFILE_DIFF_DEDUP_BEST_EFFORT: ${{ inputs.dedup_best_effort }}
-        TESTS_MEMFILE_DIFF_DEDUP_DIRECT_IO: ${{ inputs.dedup_direct_io }}
+        TESTS_MEMFILE_DIFF_DEDUP_MODE: ${{ inputs.dedup_mode }}
         E2B_DEBUG: "true"
       run: |
         mkdir -p $SHARED_CHUNK_CACHE_PATH

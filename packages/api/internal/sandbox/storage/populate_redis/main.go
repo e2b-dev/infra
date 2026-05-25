@@ -6,22 +6,22 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-var _ sandbox.Storage = (*PopulateRedisStorage)(nil)
+var _ sandboxtypes.Storage = (*PopulateRedisStorage)(nil)
 
 type PopulateRedisStorage struct {
 	memoryBackend *memory.Storage
 	redisBackend  *redis.Storage
 }
 
-func (m *PopulateRedisStorage) Name() string { return sandbox.StorageNamePopulateRedis }
+func (m *PopulateRedisStorage) Name() string { return sandboxtypes.StorageNamePopulateRedis }
 
-func (m *PopulateRedisStorage) Add(ctx context.Context, sandbox sandbox.Sandbox) error {
+func (m *PopulateRedisStorage) Add(ctx context.Context, sandbox sandboxtypes.Sandbox) error {
 	err := m.memoryBackend.Add(ctx, sandbox)
 	if err != nil {
 		return err
@@ -35,7 +35,7 @@ func (m *PopulateRedisStorage) Add(ctx context.Context, sandbox sandbox.Sandbox)
 	return nil
 }
 
-func (m *PopulateRedisStorage) Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (sandbox.Sandbox, error) {
+func (m *PopulateRedisStorage) Get(ctx context.Context, teamID uuid.UUID, sandboxID string) (sandboxtypes.Sandbox, error) {
 	return m.memoryBackend.Get(ctx, teamID, sandboxID)
 }
 
@@ -53,11 +53,11 @@ func (m *PopulateRedisStorage) Remove(ctx context.Context, teamID uuid.UUID, san
 	return nil
 }
 
-func (m *PopulateRedisStorage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sandbox.State) ([]sandbox.Sandbox, error) {
+func (m *PopulateRedisStorage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sandboxtypes.State) ([]sandboxtypes.Sandbox, error) {
 	return m.memoryBackend.TeamItems(ctx, teamID, states)
 }
 
-func (m *PopulateRedisStorage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
+func (m *PopulateRedisStorage) ExpiredItems(ctx context.Context) ([]sandboxtypes.Sandbox, error) {
 	return m.memoryBackend.ExpiredItems(ctx)
 }
 
@@ -65,10 +65,10 @@ func (m *PopulateRedisStorage) TeamsWithSandboxCount(ctx context.Context) (map[u
 	return m.memoryBackend.TeamsWithSandboxCount(ctx)
 }
 
-func (m *PopulateRedisStorage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox sandbox.Sandbox) (sandbox.Sandbox, error)) (sandbox.Sandbox, error) {
+func (m *PopulateRedisStorage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox sandboxtypes.Sandbox) (sandboxtypes.Sandbox, error)) (sandboxtypes.Sandbox, error) {
 	sbx, err := m.memoryBackend.Update(ctx, teamID, sandboxID, updateFunc)
 	if err != nil {
-		return sandbox.Sandbox{}, err
+		return sandboxtypes.Sandbox{}, err
 	}
 
 	_, err = m.redisBackend.Update(ctx, teamID, sandboxID, updateFunc)
@@ -79,7 +79,7 @@ func (m *PopulateRedisStorage) Update(ctx context.Context, teamID uuid.UUID, san
 	return sbx, nil
 }
 
-func (m *PopulateRedisStorage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) (sandbox.Sandbox, bool, func(context.Context, error), error) {
+func (m *PopulateRedisStorage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandboxtypes.RemoveOpts) (sandboxtypes.Sandbox, bool, func(context.Context, error), error) {
 	return m.memoryBackend.StartRemoving(ctx, teamID, sandboxID, opts)
 }
 
@@ -87,7 +87,7 @@ func (m *PopulateRedisStorage) WaitForStateChange(ctx context.Context, teamID uu
 	return m.memoryBackend.WaitForStateChange(ctx, teamID, sandboxID)
 }
 
-func (m *PopulateRedisStorage) Reconcile(ctx context.Context, sandboxes []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
+func (m *PopulateRedisStorage) Reconcile(ctx context.Context, sandboxes []sandboxtypes.Sandbox, nodeID string) []sandboxtypes.Sandbox {
 	return m.memoryBackend.Reconcile(ctx, sandboxes, nodeID)
 }
 
