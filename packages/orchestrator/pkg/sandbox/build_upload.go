@@ -41,11 +41,25 @@ func NewUpload(
 	useCase string,
 	objectMetadata storage.ObjectMetadata,
 ) (*Upload, error) {
+	// Rootfs header is always sync-resolved at this point; Wait returns
+	// immediately and gives us the template block size, which stays correct
+	// even when the diff is NoDiff (where Diff.BlockSize() would be 0).
+	rootfsHdr, err := snap.RootfsDiffHeader.WaitWithContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("wait rootfs diff header: %w", err)
+	}
+	var rootfsBlockSize uint64
+	if rootfsHdr != nil {
+		rootfsBlockSize = rootfsHdr.Metadata.BlockSize
+	}
+	// Memfile is never NoDiff, so Diff.BlockSize() is always the template
+	// block size (== header.Metadata.BlockSize). Using it here avoids
+	// blocking on the memfile header future.
 	mem, memV4, err := resolveCompressConfig(ctx, cfg, ff, storage.MemfileName, uint64(snap.MemfileDiff.BlockSize()), useCase)
 	if err != nil {
 		return nil, fmt.Errorf("resolve memfile compress config: %w", err)
 	}
-	root, rootV4, err := resolveCompressConfig(ctx, cfg, ff, storage.RootfsName, uint64(snap.RootfsDiff.BlockSize()), useCase)
+	root, rootV4, err := resolveCompressConfig(ctx, cfg, ff, storage.RootfsName, rootfsBlockSize, useCase)
 	if err != nil {
 		return nil, fmt.Errorf("resolve rootfs compress config: %w", err)
 	}

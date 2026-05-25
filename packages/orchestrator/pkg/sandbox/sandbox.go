@@ -1263,6 +1263,7 @@ func pauseProcessMemory(
 		meta, err := metaOut.Wait()
 		if err != nil {
 			_ = headerOut.SetError(err)
+
 			return
 		}
 		if originalMemfile != nil {

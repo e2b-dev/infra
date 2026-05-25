@@ -80,21 +80,36 @@ func (p *Process) ExportMemory(
 	dedupDirectIO bool,
 	inputEmpty *roaring.Bitmap,
 	metaOut *utils.SetOnce[*header.DiffMetadata],
-) (block.DiffSource, error) {
+) (_ block.DiffSource, e error) {
+	// Resolve metaOut on every sync error so Wait-ers don't hang. Success paths
+	// resolve it inline; the memfd-dedup goroutine owns metaOut after this returns.
+	defer func() {
+		if e != nil {
+			_ = metaOut.SetError(e)
+		}
+	}()
+
 	inputMeta := &header.DiffMetadata{Dirty: include, Empty: inputEmpty, BlockSize: blockSize}
 	if memfd != nil {
 		if originalMemfile != nil {
 			return block.NewCacheFromMemfdDeduped(ctx, originalMemfile, blockSize, cachePath, memfd, include,
 				dedupBestEffort, dedupDirectIO, inputEmpty, metaOut)
 		}
+		var (
+			src block.DiffSource
+			err error
+		)
 		if bgCopy {
-			src, err := block.NewCacheFromMemfdAsync(ctx, blockSize, cachePath, memfd, include)
-
-			return src, errors.Join(metaOut.SetValue(inputMeta), err)
+			src, err = block.NewCacheFromMemfdAsync(ctx, blockSize, cachePath, memfd, include)
+		} else {
+			src, err = block.NewCacheFromMemfd(ctx, blockSize, cachePath, memfd, include)
 		}
-		src, err := block.NewCacheFromMemfd(ctx, blockSize, cachePath, memfd, include)
+		if err != nil {
+			return nil, err
+		}
+		_ = metaOut.SetValue(inputMeta)
 
-		return src, errors.Join(metaOut.SetValue(inputMeta), err)
+		return src, nil
 	}
 
 	cache, err := p.exportMemoryFromFc(ctx, include, cachePath, blockSize)
