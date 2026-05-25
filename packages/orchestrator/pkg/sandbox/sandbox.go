@@ -1260,19 +1260,23 @@ func pauseProcessMemory(
 
 	headerOut := utils.NewSetOnce[*header.Header]()
 	go func() {
+		setHeader := func(h *header.Header, err error) {
+			if setErr := headerOut.SetResult(h, err); setErr != nil {
+				logger.L().Warn(ctx, "set memfile diff header", zap.Error(setErr))
+			}
+		}
 		meta, err := metaOut.Wait()
 		if err != nil {
-			_ = headerOut.SetError(err)
+			setHeader(nil, err)
 
 			return
 		}
-		if originalMemfile != nil {
-			recordSnapshotDedup(ctx, "memfile", diffMetadata, meta, dedupBestEffort)
-		} else {
-			recordSnapshotDedup(ctx, "memfile", diffMetadata, nil, dedupBestEffort)
+		post := meta
+		if originalMemfile == nil {
+			post = nil
 		}
-		h, err := meta.ToDiffHeader(ctx, originalHeader, buildID)
-		_ = headerOut.SetResult(h, err)
+		recordSnapshotDedup(ctx, "memfile", diffMetadata, post, dedupBestEffort)
+		setHeader(meta.ToDiffHeader(ctx, originalHeader, buildID))
 	}()
 
 	return diff, headerOut, nil

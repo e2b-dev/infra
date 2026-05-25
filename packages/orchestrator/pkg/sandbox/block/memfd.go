@@ -279,8 +279,8 @@ func (d *DedupedMemfdCache) runDedup(
 	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort)
 	compareDur := time.Since(compareStart)
 	if err != nil {
-		_ = metaOut.SetError(err)
-		_ = d.done.SetError(errors.Join(err, memfd.Close()))
+		logSetOnceErr(ctx, "dedup metaOut", metaOut.SetError(err))
+		logSetOnceErr(ctx, "dedup done", d.done.SetError(errors.Join(err, memfd.Close())))
 
 		return
 	}
@@ -292,7 +292,7 @@ func (d *DedupedMemfdCache) runDedup(
 			meta.Empty.AddRange(uint64(start)*ratio, end*ratio)
 		}
 	}
-	_ = metaOut.SetValue(meta)
+	logSetOnceErr(ctx, "dedup metaOut", metaOut.SetValue(meta))
 
 	writeStart := time.Now()
 	cache, err := dedupDrain(ctx, src, plan.pageDirty, blockSize, d.outPath, directIO)
@@ -307,7 +307,16 @@ func (d *DedupedMemfdCache) runDedup(
 		int64(plan.pageEmpty.GetCardinality()),
 		compareDur, writeDur,
 	)
-	_ = d.done.SetResult(cache, err)
+	logSetOnceErr(ctx, "dedup done", d.done.SetResult(cache, err))
+}
+
+// logSetOnceErr warns on a SetOnce.SetValue/SetError failure (i.e. a
+// repeated set), which signals a misuse rather than a runtime problem;
+// keep going so the original outcome still wins.
+func logSetOnceErr(ctx context.Context, what string, err error) {
+	if err != nil {
+		logger.L().Warn(ctx, "set once already resolved", zap.String("what", what), zap.Error(err))
+	}
 }
 
 func (d *DedupedMemfdCache) Wait(ctx context.Context) (*Cache, error) {

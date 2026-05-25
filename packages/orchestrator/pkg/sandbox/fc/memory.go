@@ -8,8 +8,10 @@ import (
 	"fmt"
 
 	"github.com/RoaringBitmap/roaring/v2"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -84,8 +86,11 @@ func (p *Process) ExportMemory(
 	// Resolve metaOut on every sync error so Wait-ers don't hang. Success paths
 	// resolve it inline; the memfd-dedup goroutine owns metaOut after this returns.
 	defer func() {
-		if e != nil {
-			_ = metaOut.SetError(e)
+		if e == nil {
+			return
+		}
+		if setErr := metaOut.SetError(e); setErr != nil {
+			logger.L().Warn(ctx, "set metaOut error", zap.Error(setErr))
 		}
 	}()
 
@@ -107,7 +112,9 @@ func (p *Process) ExportMemory(
 		if err != nil {
 			return nil, err
 		}
-		_ = metaOut.SetValue(inputMeta)
+		if setErr := metaOut.SetValue(inputMeta); setErr != nil {
+			logger.L().Warn(ctx, "set metaOut", zap.Error(setErr))
+		}
 
 		return src, nil
 	}
@@ -117,7 +124,9 @@ func (p *Process) ExportMemory(
 		return nil, err
 	}
 	if originalMemfile == nil {
-		_ = metaOut.SetValue(inputMeta)
+		if setErr := metaOut.SetValue(inputMeta); setErr != nil {
+			logger.L().Warn(ctx, "set metaOut", zap.Error(setErr))
+		}
 
 		return cache, nil
 	}
@@ -139,7 +148,9 @@ func (p *Process) ExportMemory(
 	for start, end := range inputEmpty.Ranges() {
 		meta.Empty.AddRange(uint64(start)*ratio, end*ratio)
 	}
-	_ = metaOut.SetValue(meta)
+	if setErr := metaOut.SetValue(meta); setErr != nil {
+		logger.L().Warn(ctx, "set metaOut", zap.Error(setErr))
+	}
 
 	return dedupCache, nil
 }
