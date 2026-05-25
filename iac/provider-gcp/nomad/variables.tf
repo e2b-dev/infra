@@ -312,10 +312,6 @@ variable "fc_env_pipeline_bucket_name" {
   type = string
 }
 
-variable "allow_sandbox_internet" {
-  type = bool
-}
-
 variable "allow_sandbox_internal_cidrs" {
   type        = string
   description = "Comma-separated CIDRs to allow through the sandbox firewall deny list"

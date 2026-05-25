@@ -240,11 +240,6 @@ variable "orchestrator_proxy_port" {
   default = 5007
 }
 
-variable "allow_sandbox_internet" {
-  type    = bool
-  default = true
-}
-
 variable "allow_sandbox_internal_cidrs" {
   type        = string
   description = "Comma-separated CIDRs to allow through the sandbox firewall deny list"
