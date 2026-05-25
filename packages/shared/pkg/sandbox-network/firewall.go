@@ -1,6 +1,7 @@
 package sandbox_network
 
 import (
+	"fmt"
 	"net"
 	"strings"
 
@@ -29,6 +30,21 @@ var DeniedSandboxCIDRs = []string{
 }
 
 var DeniedSandboxSetData = utils.Must(set.AddressStringsToSetData(DeniedSandboxCIDRs))
+
+// parsedDeniedSandboxCIDRs is DeniedSandboxCIDRs pre-parsed for
+// IsIPInDeniedSandboxCIDRs to avoid re-parsing on every call.
+var parsedDeniedSandboxCIDRs = func() []*net.IPNet {
+	out := make([]*net.IPNet, 0, len(DeniedSandboxCIDRs))
+	for _, c := range DeniedSandboxCIDRs {
+		_, ipNet, err := net.ParseCIDR(c)
+		if err != nil {
+			panic(fmt.Sprintf("sandbox_network: invalid CIDR in DeniedSandboxCIDRs: %q: %v", c, err))
+		}
+		out = append(out, ipNet)
+	}
+
+	return out
+}()
 
 // AddressStringToCIDR converts a string address to the CIDR format.
 // Supports only IPv4 addresses.

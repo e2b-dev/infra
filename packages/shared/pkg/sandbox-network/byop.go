@@ -20,6 +20,22 @@ import (
 // not set the variable; the allowlist is empty and behavior is unchanged.
 var DevAllowedProxyEndpointCIDRs = parseCIDRsEnv("BYOP_DEV_ALLOWED_PROXY_CIDRS")
 
+// parsedDevAllowedProxyEndpointCIDRs is DevAllowedProxyEndpointCIDRs pre-parsed
+// for IsIPDevAllowedAsProxyEndpoint. parseCIDRsEnv already filters malformed
+// entries; the err check is defensive against future changes.
+var parsedDevAllowedProxyEndpointCIDRs = func() []*net.IPNet {
+	out := make([]*net.IPNet, 0, len(DevAllowedProxyEndpointCIDRs))
+	for _, c := range DevAllowedProxyEndpointCIDRs {
+		_, ipNet, err := net.ParseCIDR(c)
+		if err != nil {
+			continue
+		}
+		out = append(out, ipNet)
+	}
+
+	return out
+}()
+
 func parseCIDRsEnv(name string) []string {
 	raw := strings.TrimSpace(os.Getenv(name))
 	if raw == "" {
@@ -45,11 +61,7 @@ func parseCIDRsEnv(name string) []string {
 // DevAllowedProxyEndpointCIDRs. Exported so the orchestrator dial-time check
 // can apply the same override.
 func IsIPDevAllowedAsProxyEndpoint(ip net.IP) bool {
-	for _, cidr := range DevAllowedProxyEndpointCIDRs {
-		_, ipNet, err := net.ParseCIDR(cidr)
-		if err != nil {
-			continue
-		}
+	for _, ipNet := range parsedDevAllowedProxyEndpointCIDRs {
 		if ipNet.Contains(ip) {
 			return true
 		}
@@ -182,11 +194,7 @@ func ValidateEgressProxy(ctx context.Context, cfg *EgressProxyConfig, resolve Ho
 // DeniedSandboxCIDRs. Used by both API-time validation and the orchestrator's
 // dial-time check so a single denylist drives both layers.
 func IsIPInDeniedSandboxCIDRs(ip net.IP) bool {
-	for _, cidr := range DeniedSandboxCIDRs {
-		_, ipNet, err := net.ParseCIDR(cidr)
-		if err != nil {
-			continue
-		}
+	for _, ipNet := range parsedDeniedSandboxCIDRs {
 		if ipNet.Contains(ip) {
 			return true
 		}
