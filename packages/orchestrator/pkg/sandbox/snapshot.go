@@ -34,6 +34,14 @@ type Snapshot struct {
 	Metafile          template.File
 	BuildID           uuid.UUID
 
+	// Template block sizes captured sync at Pause time. They equal
+	// MemfileDiffHeader.Metadata.BlockSize once that header resolves, but
+	// are needed sync by NewUpload's compression validation — the dedup
+	// memfile path produces a page-granular Diff.BlockSize() that doesn't
+	// match the chunker-read granularity on restore.
+	MemfileBlockSize uint64
+	RootfsBlockSize  uint64
+
 	cleanup *Cleanup
 }
 

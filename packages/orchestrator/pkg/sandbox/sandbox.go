@@ -1200,6 +1200,8 @@ func (s *Sandbox) Pause(
 		MemfileDiffHeader: memfileDiffHeader,
 		RootfsDiff:        rootfsDiff,
 		RootfsDiffHeader:  NewResolvedDiffHeader(rootfsHeader),
+		MemfileBlockSize:  originalMemfile.Header().Metadata.BlockSize,
+		RootfsBlockSize:   originalRootfs.Header().Metadata.BlockSize,
 
 		BuildID: buildID,
 
