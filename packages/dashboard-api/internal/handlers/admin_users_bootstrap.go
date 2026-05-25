@@ -43,6 +43,13 @@ func (s *APIStore) PostAdminUsersBootstrap(c *gin.Context) {
 
 	oidcUserID := strings.TrimSpace(body.OidcUserId)
 	oidcUserEmail := strings.TrimSpace(string(body.OidcUserEmail))
+	if oidcUserID == "" || oidcUserEmail == "" {
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "bootstrap auth provider user failed", fmt.Errorf("oidc_user_id and oidc_user_email must be non-empty"))
+		s.sendAPIStoreError(c, http.StatusBadRequest, "oidc_user_id and oidc_user_email must be non-empty")
+
+		return
+	}
+
 	team, err := s.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
 		OIDCUserID:    oidcUserID,
 		OIDCUserEmail: oidcUserEmail,

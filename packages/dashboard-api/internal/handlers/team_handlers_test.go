@@ -599,6 +599,125 @@ func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
 	}
 }
 
+func TestBootstrapOIDCUser_ConcurrentRequestsSingleIdentityAndTeam(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	sink := &fakeTeamProvisionSink{}
+
+	store := &APIStore{
+		config: cfg.Config{
+			AuthProvider: auth.ProviderConfig{
+				JWT: []oidc.Config{
+					{
+						Issuer: oidc.Issuer{
+							URL:       "https://ory.example.test",
+							Audiences: []string{"https://dashboard-api.example.test"},
+						},
+					},
+				},
+			},
+		},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
+		teamProvisionSink: sink,
+	}
+
+	input := oidcUserBootstrapInput{
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+		OIDCUserName:  nil,
+	}
+
+	const concurrency = 4
+	var wg sync.WaitGroup
+	results := make(chan provisionedTeam, concurrency)
+	errs := make(chan error, concurrency)
+
+	for range concurrency {
+		wg.Go(func() {
+			team, err := store.bootstrapOIDCUser(ctx, input)
+			if err != nil {
+				errs <- err
+
+				return
+			}
+
+			results <- team
+		})
+	}
+
+	wg.Wait()
+	close(results)
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("expected bootstrap to succeed, got %v", err)
+		}
+	}
+
+	var teamIDs []uuid.UUID
+	for team := range results {
+		teamIDs = append(teamIDs, team.ID)
+	}
+	if len(teamIDs) != concurrency {
+		t.Fatalf("expected %d bootstrap results, got %d", concurrency, len(teamIDs))
+	}
+	for _, id := range teamIDs[1:] {
+		if id != teamIDs[0] {
+			t.Fatalf("expected all bootstrap calls to share team %s, got %s", teamIDs[0], id)
+		}
+	}
+
+	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+		OidcIss: "https://ory.example.test",
+		OidcSub: input.OIDCUserID,
+	})
+	if err != nil {
+		t.Fatalf("expected single user identity to exist: %v", err)
+	}
+
+	var defaultTeamCount int
+	err = testDB.AuthDB.TestsRawSQLQuery(ctx,
+		`SELECT count(*)
+		FROM public.users_teams
+		WHERE user_id = $1 AND is_default = true`,
+		func(rows pgx.Rows) error {
+			if !rows.Next() {
+				return errors.New("missing default team count row")
+			}
+
+			return rows.Scan(&defaultTeamCount)
+		},
+		userIdentity.UserID,
+	)
+	if err != nil {
+		t.Fatalf("failed to count default team memberships: %v", err)
+	}
+	if defaultTeamCount != 1 {
+		t.Fatalf("expected exactly one default team for canonical user, got %d", defaultTeamCount)
+	}
+}
+
+func TestPostAdminUsersBootstrap_EmptyOIDCUserIDReturnsBadRequest(t *testing.T) {
+	t.Parallel()
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(`{"oidc_user_id":"   ","oidc_user_email":"ada@example.test","oidc_user_name":null}`))
+	ginCtx.Request.Header.Set("Content-Type", "application/json")
+
+	store := &APIStore{}
+	store.PostAdminUsersBootstrap(ginCtx)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400 for blank oidc_user_id, got %d", recorder.Code)
+	}
+}
+
 func TestPostUsersBootstrap_ProvisioningFailureKeepsCreatedDefaultTeam(t *testing.T) {
 	t.Parallel()
 

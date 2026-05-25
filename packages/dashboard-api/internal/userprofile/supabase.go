@@ -72,13 +72,13 @@ func profileFromAuthUser(user supabasequeries.AuthUser) Profile {
 }
 
 func displayNameFromMetadata(metadata map[string]any) string {
-	firstName := firstNonEmpty(
+	firstName := FirstNonEmpty(
 		metadataString(metadata, "first_name"),
 		metadataString(metadata, "firstName"),
 		metadataString(metadata, "given_name"),
 		metadataString(metadata, "givenName"),
 	)
-	lastName := firstNonEmpty(
+	lastName := FirstNonEmpty(
 		metadataString(metadata, "last_name"),
 		metadataString(metadata, "lastName"),
 		metadataString(metadata, "family_name"),
@@ -88,7 +88,7 @@ func displayNameFromMetadata(metadata map[string]any) string {
 		return strings.TrimSpace(strings.Join([]string{firstName, lastName}, " "))
 	}
 
-	return firstNonEmpty(
+	return FirstNonEmpty(
 		metadataString(metadata, "name"),
 		metadataString(metadata, "full_name"),
 		metadataString(metadata, "fullName"),
@@ -121,10 +121,10 @@ func metadataString(metadata map[string]any, key string) string {
 	return strings.TrimSpace(value)
 }
 
-func firstNonEmpty(values ...string) string {
+func FirstNonEmpty(values ...string) string {
 	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
 		}
 	}
 

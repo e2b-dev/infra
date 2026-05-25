@@ -89,13 +89,9 @@ func (s *APIStore) bootstrapOIDCUser(ctx context.Context, input oidcUserBootstra
 	if err != nil {
 		return provisionedTeam{}, err
 	}
-	userID, err := s.resolveOIDCUserID(ctx, issuer, input.OIDCUserID)
-	if err != nil {
-		return provisionedTeam{}, err
-	}
 
 	profile := bootstrapUserProfile{
-		UserID:          userID,
+		UserID:          uuid.New(),
 		Email:           input.OIDCUserEmail,
 		DefaultTeamName: defaultTeamNameFromOIDCUserName(input.OIDCUserName),
 	}
@@ -124,21 +120,6 @@ func (s *APIStore) oidcIssuer() (string, error) {
 	return issuer, nil
 }
 
-func (s *APIStore) resolveOIDCUserID(ctx context.Context, issuer, subject string) (uuid.UUID, error) {
-	row, err := s.authDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
-		OidcIss: issuer,
-		OidcSub: subject,
-	})
-	if err == nil {
-		return row.UserID, nil
-	}
-	if !dberrors.IsNotFoundError(err) {
-		return uuid.Nil, fmt.Errorf("get user identity: %w", err)
-	}
-
-	return uuid.New(), nil
-}
-
 func (s *APIStore) bootstrapUser(ctx context.Context, profile bootstrapUserProfile) (provisionedTeam, error) {
 	return s.bootstrapUserWithIdentity(ctx, profile, nil)
 }
@@ -152,16 +133,38 @@ func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootst
 		_ = tx.Rollback(ctx)
 	}()
 
-	if err := authTxDB.UpsertPublicUser(ctx, profile.UserID); err != nil {
+	if identity != nil {
+		existing, err := authTxDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+			OidcIss: identity.Issuer,
+			OidcSub: identity.Subject,
+		})
+		switch {
+		case err == nil:
+			profile.UserID = existing.UserID
+		case !dberrors.IsNotFoundError(err):
+			return provisionedTeam{}, fmt.Errorf("get user identity: %w", err)
+		}
+	}
+
+	candidateUserID := profile.UserID
+	if err := authTxDB.UpsertPublicUser(ctx, candidateUserID); err != nil {
 		return provisionedTeam{}, fmt.Errorf("upsert public user: %w", err)
 	}
 	if identity != nil {
-		if err := authTxDB.UpsertPublicIdentity(ctx, authqueries.UpsertPublicIdentityParams{
+		canonicalUserID, err := authTxDB.UpsertPublicIdentity(ctx, authqueries.UpsertPublicIdentityParams{
 			OidcIss: identity.Issuer,
 			OidcSub: identity.Subject,
-			UserID:  profile.UserID,
-		}); err != nil {
+			UserID:  candidateUserID,
+		})
+		if err != nil {
 			return provisionedTeam{}, fmt.Errorf("upsert public identity: %w", err)
+		}
+		if canonicalUserID != candidateUserID {
+			// concurrent bootstrap claimed the identity first; drop the orphan candidate row
+			if err := authTxDB.DeletePublicUser(ctx, candidateUserID); err != nil {
+				return provisionedTeam{}, fmt.Errorf("delete orphan public user: %w", err)
+			}
+			profile.UserID = canonicalUserID
 		}
 	}
 
@@ -363,7 +366,7 @@ func validateTeamCreationAllowed(ctx context.Context, authTxDB *authqueries.Quer
 }
 
 func defaultTeamNameFromProfile(profile userprofile.Profile) string {
-	baseName := firstNonEmpty(
+	baseName := userprofile.FirstNonEmpty(
 		firstWord(profile.Name),
 		emailPrefix(profile.Email),
 		"User",
@@ -393,16 +396,6 @@ func emailPrefix(email string) string {
 	prefix, _, _ := strings.Cut(strings.TrimSpace(email), "@")
 
 	return prefix
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-
-	return ""
 }
 
 func capitalizeFirstLetter(value string) string {
