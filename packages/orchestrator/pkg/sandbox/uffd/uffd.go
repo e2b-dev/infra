@@ -285,6 +285,12 @@ func (u *Uffd) PrefetchData(ctx context.Context) (block.PrefetchData, error) {
 
 // Memfd returns the memfd received from Firecracker and transfers ownership to
 // the caller. The uffd teardown defer will no longer close it.
+//
+// Order matters: SetMemfd(nil) cuts off new workers from the memfd-wake path,
+// then ExportPageStates takes settleRequests.Lock as a barrier that drains
+// any worker that already loaded the memfd pointer before the clear.
+// Reversing it leaves a window where a fresh worker can pick up the
+// soon-to-be-closed memfd after the drain returns.
 func (u *Uffd) Memfd(ctx context.Context) *block.Memfd {
 	handler, err := u.handler.WaitWithContext(ctx)
 	if err != nil {
