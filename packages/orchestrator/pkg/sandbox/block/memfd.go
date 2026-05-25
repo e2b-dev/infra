@@ -34,7 +34,7 @@ func NewFromFd(fd int) (*Memfd, error) {
 
 		return nil, fmt.Errorf("fstat memfd: %w", err)
 	}
-	b, err := unix.Mmap(fd, 0, int(st.Size), unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED)
+	b, err := unix.Mmap(fd, 0, int(st.Size), unix.PROT_READ, unix.MAP_SHARED)
 	if err != nil {
 		_ = unix.Close(fd)
 
@@ -51,11 +51,6 @@ func (m *Memfd) Slice(offset, size int64) ([]byte, error) {
 	}
 
 	return m.mmap[offset : offset+size], nil
-}
-
-// Bytes returns the shared writable mmap of the memfd. Valid until Close.
-func (m *Memfd) Bytes() []byte {
-	return m.mmap
 }
 
 // Close releases the mmap and the fd. Single-use: every Memfd has exactly

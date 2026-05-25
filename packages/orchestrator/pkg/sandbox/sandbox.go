@@ -611,7 +611,6 @@ func (f *Factory) ResumeSandbox(
 
 	// Uffd initialization
 	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
-	useMemfdWake := f.featureFlags.BoolFlag(ctx, featureflags.UseMemfdWakeFlag, sandboxLDContext(runtime, config))
 	uffdPromise := utils.NewPromise(func() (*uffd.Uffd, error) {
 		memfile, err := t.Memfile(ctx)
 		if err != nil {
@@ -620,7 +619,7 @@ func (f *Factory) ResumeSandbox(
 
 		telemetry.ReportEvent(ctx, "got template memfile")
 
-		return uffd.New(memfile, fcUffdPath, useMemfdWake), nil
+		return uffd.New(memfile, fcUffdPath), nil
 	})
 
 	// Prefetching

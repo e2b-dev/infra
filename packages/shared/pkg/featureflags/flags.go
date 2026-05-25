@@ -139,12 +139,6 @@ var (
 	// Only takes effect when UseMemFdFlag is also on.
 	MemfdBackgroundCopyFlag = NewBoolFlag("memfd-background-copy", false)
 
-	// UseMemfdWakeFlag installs UFFD MISSING faults by writing into the
-	// FC-shared memfd and calling UFFDIO_WAKE instead of UFFDIO_COPY,
-	// skipping the kernel-side memcpy. Only takes effect when UseMemFdFlag
-	// is also on.
-	UseMemfdWakeFlag = NewBoolFlag("use-memfd-wake", false)
-
 	// MemfileDiffDedupFlag enables 4 KiB-page dedup of the memfile diff
 	// against the base memfile. bestEffort skips uncached blocks;
 	// directIO opens the dedup output with O_DIRECT.
