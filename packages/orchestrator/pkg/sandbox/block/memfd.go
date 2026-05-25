@@ -288,7 +288,7 @@ func pwritevAll(fd int, off int64, iovs [][]byte) error {
 			return err
 		}
 		if n == 0 {
-			return fmt.Errorf("pwritev: EOF with %d iovec(s) remaining", len(iovs))
+			return fmt.Errorf("pwritev: no progress, %d iovec(s) remaining", len(iovs))
 		}
 
 		off += int64(n)
