@@ -342,6 +342,10 @@ func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 		return 0, nil
 	}
 
+	if int64(len(b))%c.blockSize != 0 || off%c.blockSize != 0 {
+		return 0, fmt.Errorf("misaligned write: len=%d off=%d block=%d", len(b), off, c.blockSize)
+	}
+
 	end := min(off+int64(len(b)), c.size)
 	if end <= off {
 		return 0, nil
