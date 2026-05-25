@@ -12,15 +12,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 	storage_redis "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
 // testSandbox is the canonical successful-finish payload used across pubsub tests.
-func testSandbox(teamID uuid.UUID, sandboxID string) sandbox.Sandbox {
-	return sandbox.Sandbox{
+func testSandbox(teamID uuid.UUID, sandboxID string) sandboxtypes.Sandbox {
+	return sandboxtypes.Sandbox{
 		ClientID:          consts.ClientID,
 		SandboxID:         sandboxID,
 		TemplateID:        "test",
@@ -62,7 +62,7 @@ func TestWaitForStart_WokenByFinishStartPublish(t *testing.T) {
 	require.NotNil(t, waitForStart)
 
 	waiterDone := make(chan struct{})
-	var got sandbox.Sandbox
+	var got sandboxtypes.Sandbox
 	var waitErr error
 	go func() {
 		got, waitErr = waitForStart(t.Context())
@@ -186,7 +186,7 @@ func TestWaitForStart_ResultLandedBeforeSubscribe(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	done := make(chan struct{})
-	var got sandbox.Sandbox
+	var got sandboxtypes.Sandbox
 	var waitErr error
 	start := time.Now()
 	go func() {
@@ -244,7 +244,7 @@ func TestWaitForStart_MultipleWaitersOnePublish(t *testing.T) {
 	finishStart, _, err := storage.Reserve(t.Context(), teamID, sbxID, 50)
 	require.NoError(t, err)
 
-	waiters := make([]func(ctx context.Context) (sandbox.Sandbox, error), numWaiters)
+	waiters := make([]func(ctx context.Context) (sandboxtypes.Sandbox, error), numWaiters)
 	for i := range numWaiters {
 		_, w, err := storage.Reserve(t.Context(), teamID, sbxID, 50)
 		require.NoError(t, err)
@@ -257,7 +257,7 @@ func TestWaitForStart_MultipleWaitersOnePublish(t *testing.T) {
 	completions := make([]time.Duration, numWaiters)
 	for i, w := range waiters {
 		wg.Add(1)
-		go func(i int, w func(ctx context.Context) (sandbox.Sandbox, error)) {
+		go func(i int, w func(ctx context.Context) (sandboxtypes.Sandbox, error)) {
 			defer wg.Done()
 			start := time.Now()
 			_, errs[i] = w(t.Context())
@@ -308,7 +308,7 @@ func TestWaitForStart_FailedStartPropagatesPromptly(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	start := time.Now()
-	finishStart(sandbox.Sandbox{}, errors.New("boom"))
+	finishStart(sandboxtypes.Sandbox{}, errors.New("boom"))
 
 	select {
 	case err := <-waiterErr:

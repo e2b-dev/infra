@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 )
 
 type benchFixture struct {
@@ -15,7 +15,7 @@ type benchFixture struct {
 	teamIDs     []uuid.UUID
 	runningTeam uuid.UUID
 	syncNodeID  string
-	syncInput   []sandbox.Sandbox
+	syncInput   []sandboxtypes.Sandbox
 }
 
 func buildFixture(total int) benchFixture {
@@ -36,25 +36,25 @@ func buildFixture(total int) benchFixture {
 
 	runningTeam := teamIDs[0]
 	syncNodeID := nodeIDs[0]
-	syncInput := make([]sandbox.Sandbox, 0, total/nodeCount+1)
+	syncInput := make([]sandboxtypes.Sandbox, 0, total/nodeCount+1)
 
 	for i := range total {
 		teamID := teamIDs[i%teamCount]
 		nodeID := nodeIDs[i%nodeCount]
 
-		state := sandbox.StateRunning
+		state := sandboxtypes.StateRunning
 		if i%5 == 0 {
-			state = sandbox.StatePausing
+			state = sandboxtypes.StatePausing
 		}
 
 		endTime := now.Add(1 * time.Hour)
 		// Keep a stable 5% expired-running subset for ExpiredItems benchmarks.
 		if i%20 == 0 {
-			state = sandbox.StateRunning
+			state = sandboxtypes.StateRunning
 			endTime = now.Add(-1 * time.Minute)
 		}
 
-		sbx := sandbox.Sandbox{
+		sbx := sandboxtypes.Sandbox{
 			SandboxID: fmt.Sprintf("sbx-%06d", i),
 			TeamID:    teamID,
 			NodeID:    nodeID,
@@ -98,7 +98,7 @@ func BenchmarkStorageGetItemsRunningByTeam(b *testing.B) {
 		b.Helper()
 
 		for range b.N {
-			_ = f.storage.getItems(&f.runningTeam, []sandbox.State{sandbox.StateRunning})
+			_ = f.storage.getItems(&f.runningTeam, []sandboxtypes.State{sandboxtypes.StateRunning})
 		}
 	})
 }

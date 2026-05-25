@@ -6,18 +6,18 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type memorySandbox struct {
-	_data sandbox.Sandbox
+	_data sandboxtypes.Sandbox
 
 	transition *utils.ErrorOnce
 	mu         sync.RWMutex
 }
 
-func newMemorySandbox(data sandbox.Sandbox) *memorySandbox {
+func newMemorySandbox(data sandboxtypes.Sandbox) *memorySandbox {
 	return &memorySandbox{
 		_data: data,
 	}
@@ -37,14 +37,14 @@ func (i *memorySandbox) setExpired() {
 	}
 }
 
-func (i *memorySandbox) Data() sandbox.Sandbox {
+func (i *memorySandbox) Data() sandboxtypes.Sandbox {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
 	return i._data
 }
 
-func (i *memorySandbox) State() sandbox.State {
+func (i *memorySandbox) State() sandboxtypes.State {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 

@@ -447,10 +447,14 @@ func (f *Factory) CreateSandbox(
 
 	telemetry.ReportEvent(ctx, "created fc client")
 
+	fcPageSize := int64(header.PageSize)
+	if config.HugePages {
+		fcPageSize = int64(header.HugepageSize)
+	}
 	resources := &Resources{
 		Slot:   ips,
 		rootfs: rootfsProvider,
-		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize()),
+		memory: uffd.NewNoopMemory(memfileSize, fcPageSize),
 	}
 
 	metadata := &Metadata{
@@ -607,6 +611,7 @@ func (f *Factory) ResumeSandbox(
 
 	// Uffd initialization
 	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
+	useMemfdWake := f.featureFlags.BoolFlag(ctx, featureflags.UseMemfdWakeFlag, sandboxLDContext(runtime, config))
 	uffdPromise := utils.NewPromise(func() (*uffd.Uffd, error) {
 		memfile, err := t.Memfile(ctx)
 		if err != nil {
@@ -615,7 +620,7 @@ func (f *Factory) ResumeSandbox(
 
 		telemetry.ReportEvent(ctx, "got template memfile")
 
-		return uffd.New(memfile, fcUffdPath), nil
+		return uffd.New(memfile, fcUffdPath, useMemfdWake), nil
 	})
 
 	// Prefetching
@@ -1140,6 +1145,14 @@ func (s *Sandbox) Pause(
 	recordSnapshotDiff(ctx, "memfile", memfileDiffMetadata, originalMemfile.Header())
 
 	// Start POSTPROCESSING
+	var dedupBase block.ReadonlyDevice
+	var dedupBestEffort, dedupDirectIO bool
+	dedupCfg := s.featureFlags.JSONFlag(ctx, featureflags.MemfileDiffDedupFlag, sandboxLDContext(s.Runtime, s.Config)).AsValueMap()
+	if dedupCfg.Get("enabled").BoolValue() {
+		dedupBase = originalMemfile
+		dedupBestEffort = dedupCfg.Get("bestEffort").BoolValue()
+		dedupDirectIO = dedupCfg.Get("directIO").BoolValue()
+	}
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
 		ctx,
 		buildID,
@@ -1149,6 +1162,9 @@ func (s *Sandbox) Pause(
 		s.process,
 		s.memory.Memfd(ctx),
 		s.featureFlags.BoolFlag(ctx, featureflags.MemfdBackgroundCopyFlag, sandboxLDContext(s.Runtime, s.Config)),
+		dedupBase,
+		dedupBestEffort,
+		dedupDirectIO,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -1217,15 +1233,37 @@ func pauseProcessMemory(
 	fc *fc.Process,
 	memfd *block.Memfd,
 	bgCopy bool,
+	originalMemfile block.ReadonlyDevice,
+	dedupBestEffort bool,
+	dedupDirectIO bool,
 ) (d build.Diff, h *header.Header, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
 	// ExportMemory owns memfd and closes it on all paths.
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
-	cache, err := fc.ExportMemory(ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy)
+	cache, dedupMeta, err := fc.ExportMemory(ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy, originalMemfile, dedupBestEffort, dedupDirectIO)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
+	}
+
+	recordSnapshotDedup(ctx, "memfile", diffMetadata, dedupMeta, dedupBestEffort)
+
+	// Re-key the original Empty into the page-granular dedup metadata so
+	// guest-zeroed pages that weren't Dirty still read as zero on restore.
+	if dedupMeta != nil {
+		if diffMetadata.BlockSize%dedupMeta.BlockSize != 0 {
+			return nil, nil, errors.Join(
+				fmt.Errorf("diff block size %d not a multiple of dedup block size %d",
+					diffMetadata.BlockSize, dedupMeta.BlockSize),
+				cache.Close(),
+			)
+		}
+		ratio := uint64(diffMetadata.BlockSize / dedupMeta.BlockSize)
+		for start, end := range diffMetadata.Empty.Ranges() {
+			dedupMeta.Empty.AddRange(uint64(start)*ratio, end*ratio)
+		}
+		diffMetadata = dedupMeta
 	}
 
 	header, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)

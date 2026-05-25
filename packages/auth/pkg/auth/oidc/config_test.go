@@ -63,6 +63,36 @@ func TestEntry_Validate(t *testing.T) {
 			wantErr: "must be https",
 		},
 		{
+			// Loopback carve-out: http is allowed when the host is
+			// localhost. Used by the local devenv stack to point at
+			// self-hosted Hydra on http://localhost:4444/.
+			name: "http issuer URL with localhost host is accepted",
+			entry: Config{
+				Issuer: Issuer{
+					URL:       "http://localhost:4444/",
+					Audiences: []string{"a"},
+				},
+			},
+		},
+		{
+			name: "http issuer URL with 127.0.0.1 host is accepted",
+			entry: Config{
+				Issuer: Issuer{
+					URL:       "http://127.0.0.1:4444/",
+					Audiences: []string{"a"},
+				},
+			},
+		},
+		{
+			name: "http issuer URL with IPv6 loopback is accepted",
+			entry: Config{
+				Issuer: Issuer{
+					URL:       "http://[::1]:4444/",
+					Audiences: []string{"a"},
+				},
+			},
+		},
+		{
 			name: "issuer URL with userinfo",
 			entry: Config{
 				Issuer: Issuer{

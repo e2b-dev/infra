@@ -3,8 +3,10 @@
 package block
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"io"
 	"os"
 	"testing"
 
@@ -33,6 +35,98 @@ func newTestMemfd(t *testing.T, size int64) (memfd *Memfd, data []byte) {
 	require.NoError(t, err)
 
 	return memfd, data
+}
+
+// fullDirty returns a bitmap marking every block in [0, size/blockSize) dirty.
+func fullDirty(size, blockSize int64) *roaring.Bitmap {
+	b := roaring.New()
+	b.AddRange(0, uint64(size/blockSize))
+
+	return b
+}
+
+// fakeOriginalDevice satisfies ReadonlyDevice over a fixed byte buffer.
+// Tracks Slice/ReadAt calls so dedup tests can assert fast-path skipping.
+type fakeOriginalDevice struct {
+	data  []byte
+	hdr   *header.Header // optional; nil disables the dedup fast paths
+	reads int
+}
+
+func (f *fakeOriginalDevice) ReadAt(_ context.Context, p []byte, off int64) (int, error) {
+	f.reads++
+	if off >= int64(len(f.data)) {
+		return 0, io.EOF
+	}
+	n := copy(p, f.data[off:])
+	if n < len(p) {
+		return n, io.EOF
+	}
+
+	return n, nil
+}
+
+func (f *fakeOriginalDevice) Slice(_ context.Context, off, length int64) ([]byte, error) {
+	f.reads++
+	if off+length > int64(len(f.data)) {
+		return nil, io.EOF
+	}
+
+	return f.data[off : off+length], nil
+}
+
+func (f *fakeOriginalDevice) Size(context.Context) (int64, error) { return int64(len(f.data)), nil }
+func (f *fakeOriginalDevice) Close() error                        { return nil }
+func (f *fakeOriginalDevice) BlockSize() int64                    { return int64(header.PageSize) }
+func (f *fakeOriginalDevice) Header() *header.Header              { return f.hdr }
+func (f *fakeOriginalDevice) SwapHeader(*header.Header)           {}
+
+// erroringOriginalDevice returns sentinel from every ReadAt and Slice.
+type erroringOriginalDevice struct {
+	fakeOriginalDevice
+
+	err error
+}
+
+func (e *erroringOriginalDevice) ReadAt(context.Context, []byte, int64) (int, error) {
+	return 0, e.err
+}
+
+func (e *erroringOriginalDevice) Slice(context.Context, int64, int64) ([]byte, error) {
+	return nil, e.err
+}
+
+// peekingOriginalDevice wraps fakeOriginalDevice with a programmable
+// CachePeeker implementation, so dedup best-effort tests can force a
+// "uncached" answer without touching real chunkers.
+type peekingOriginalDevice struct {
+	fakeOriginalDevice
+
+	cached bool
+}
+
+func (p *peekingOriginalDevice) IsCached(context.Context, int64, int64) bool { return p.cached }
+
+// pwritevAll must concatenate non-contiguous iovecs at off and survive a
+// kernel short-write (the helper retries with the remaining tail).
+func TestPwritevAllConcatenatesIovecs(t *testing.T) {
+	t.Parallel()
+
+	path := t.TempDir() + "/out"
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = f.Close() })
+
+	a := bytes.Repeat([]byte{0xAA}, 13)
+	b := bytes.Repeat([]byte{0xBB}, 7)
+	c := bytes.Repeat([]byte{0xCC}, 5)
+
+	require.NoError(t, pwritevAll(int(f.Fd()), 42, [][]byte{a, b, c}))
+
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	expected := append(append(make([]byte, 42), a...), append(b, c...)...)
+	require.Equal(t, expected, got)
 }
 
 func TestNewCacheFromMemfd_NonAdjacentBlocks(t *testing.T) {

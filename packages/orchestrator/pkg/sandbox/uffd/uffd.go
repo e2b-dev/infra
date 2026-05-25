@@ -45,11 +45,13 @@ type Uffd struct {
 	memfd      atomic.Pointer[block.Memfd]
 	handler    utils.SetOnce[*userfaultfd.Userfaultfd]
 	fdExit     utils.SetOnce[*fdexit.FdExit]
+
+	useMemfdWake bool
 }
 
 var _ MemoryBackend = (*Uffd)(nil)
 
-func New(memfile block.ReadonlyDevice, socketPath string) *Uffd {
+func New(memfile block.ReadonlyDevice, socketPath string, useMemfdWake bool) *Uffd {
 	return &Uffd{
 		exit:       utils.NewErrorOnce(),
 		readyCh:    make(chan struct{}),
@@ -57,6 +59,8 @@ func New(memfile block.ReadonlyDevice, socketPath string) *Uffd {
 		memfile:    memfile,
 		handler:    *utils.NewSetOnce[*userfaultfd.Userfaultfd](),
 		fdExit:     *utils.NewSetOnce[*fdexit.FdExit](),
+
+		useMemfdWake: useMemfdWake,
 	}
 }
 
@@ -202,6 +206,9 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 			return fmt.Errorf("failed to wrap memfd: %w", err)
 		}
 		u.memfd.Store(memfd)
+		if u.useMemfdWake {
+			uffd.SetMemfd(memfd)
+		}
 	}
 
 	u.handler.SetValue(uffd)
@@ -250,7 +257,7 @@ func (u *Uffd) DiffMetadata(ctx context.Context, f *fc.Process) (*header.DiffMet
 	// and escape both bitmaps.
 	_, empty := handler.ExportPageStates()
 
-	diff, err := f.DirtyMemory(ctx, u.memfile.BlockSize())
+	diff, err := f.DirtyMemory(ctx, handler.PageSize())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get dirty memory: %w", err)
 	}
@@ -278,6 +285,23 @@ func (u *Uffd) PrefetchData(ctx context.Context) (block.PrefetchData, error) {
 
 // Memfd returns the memfd received from Firecracker and transfers ownership to
 // the caller. The uffd teardown defer will no longer close it.
-func (u *Uffd) Memfd(_ context.Context) *block.Memfd {
+//
+// Order matters: SetMemfd(nil) cuts off new workers from the memfd-wake path,
+// then ExportPageStates takes settleRequests.Lock as a barrier that drains
+// any worker that already loaded the memfd pointer before the clear.
+// Reversing it leaves a window where a fresh worker can pick up the
+// soon-to-be-closed memfd after the drain returns.
+func (u *Uffd) Memfd(ctx context.Context) *block.Memfd {
+	handler, err := u.handler.WaitWithContext(ctx)
+	if err != nil {
+		handler, err = u.handler.Result()
+		if err != nil {
+			return nil
+		}
+	}
+
+	handler.SetMemfd(nil)
+	handler.ExportPageStates()
+
 	return u.memfd.Swap(nil)
 }

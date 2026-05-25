@@ -57,6 +57,41 @@ func recordSnapshotDiff(
 	}
 }
 
+// recordSnapshotDedup records bytes saved by dedup on the snapshot.diff.*
+// histograms with kind ∈ {none, dedup, best_effort_dedup}; the modes are
+// mutually exclusive per pause so dashboards split cleanly by kind.
+func recordSnapshotDedup(
+	ctx context.Context,
+	fileType string,
+	pre, post *header.DiffMetadata,
+	bestEffort bool,
+) {
+	var kind string
+	switch {
+	case post == nil:
+		kind = "none"
+	case bestEffort:
+		kind = "best_effort_dedup"
+	default:
+		kind = "dedup"
+	}
+
+	var preBytes, savings int64
+	if pre != nil && pre.Dirty != nil {
+		preBytes = int64(pre.Dirty.GetCardinality()) * pre.BlockSize
+	}
+	if post != nil && post.Dirty != nil {
+		savings = max(preBytes-int64(post.Dirty.GetCardinality())*post.BlockSize, 0)
+	}
+
+	attrs := metric.WithAttributes(
+		attribute.String("file_type", fileType),
+		attribute.String("kind", kind),
+	)
+	snapshotDiffBytes.Record(ctx, savings, attrs)
+	snapshotDiffRatio.Record(ctx, ratioFraction(savings, preBytes), attrs)
+}
+
 // ratioFraction returns num/denom as a fraction in [0,1] (1.0 = 100%). Emitted
 // with unit {1} so Grafana percent formatting renders it directly.
 func ratioFraction(num, denom int64) float64 {

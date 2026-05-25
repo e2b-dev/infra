@@ -1,6 +1,6 @@
 //go:build linux
 
-package testutils
+package nbd
 
 import (
 	"context"
@@ -10,11 +10,14 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd/testutils"
 )
 
-func MountNBDDevice(device nbd.DevicePath, mountPath string) (*Cleaner, error) {
-	var cleaner Cleaner
+// MountNBDDevice mounts the supplied nbd device path as ext4 at mountPath and
+// returns a Cleaner that unmounts it. Intended for the mount-build-rootfs
+// debug utility and package tests.
+func MountNBDDevice(device DevicePath, mountPath string) (*testutils.Cleaner, error) {
+	var cleaner testutils.Cleaner
 
 	err := unix.Mount(device, mountPath, "ext4", 0, "")
 	if err != nil {
