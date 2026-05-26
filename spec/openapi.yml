@@ -2631,6 +2631,8 @@ paths:
           $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
         "500":
           $ref: "#/components/responses/500"
 
@@ -3307,6 +3309,71 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminBuildCancelResult"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/teams/{teamID}/api-keys:
+    post:
+      summary: Create team API key as admin
+      description: Creates a team API key for internal service workflows.
+      tags: [admin]
+      security:
+        - AdminTokenAuth: []
+      parameters:
+        - name: teamID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Team ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewTeamAPIKey"
+      responses:
+        "201":
+          description: Team API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedTeamAPIKey"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/teams/{teamID}/api-keys/{apiKeyID}:
+    delete:
+      summary: Delete team API key as admin
+      description: Deletes a team API key for internal service workflows.
+      tags: [admin]
+      security:
+        - AdminTokenAuth: []
+      parameters:
+        - name: teamID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Team ID
+        - $ref: "#/components/parameters/apiKeyID"
+      responses:
+        "204":
+          description: Team API key deleted successfully
+        "400":
+          $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
         "404":

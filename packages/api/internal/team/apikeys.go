@@ -18,7 +18,7 @@ type CreateAPIKeyResponse struct {
 	RawAPIKey string
 }
 
-func CreateAPIKey(ctx context.Context, authDB *authdb.Client, teamID uuid.UUID, userID uuid.UUID, name string) (CreateAPIKeyResponse, error) {
+func CreateAPIKey(ctx context.Context, authDB *authdb.Client, teamID uuid.UUID, createdBy *uuid.UUID, name string) (CreateAPIKeyResponse, error) {
 	teamApiKey, err := keys.GenerateKey(keys.ApiKeyPrefix)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error when generating team API key", err)
@@ -28,7 +28,7 @@ func CreateAPIKey(ctx context.Context, authDB *authdb.Client, teamID uuid.UUID, 
 
 	apiKey, err := authDB.Write.CreateTeamAPIKey(ctx, authqueries.CreateTeamAPIKeyParams{
 		TeamID:           teamID,
-		CreatedBy:        &userID,
+		CreatedBy:        createdBy,
 		ApiKeyHash:       teamApiKey.HashedValue,
 		ApiKeyPrefix:     teamApiKey.Masked.Prefix,
 		ApiKeyLength:     int32(teamApiKey.Masked.ValueLength),
@@ -46,4 +46,18 @@ func CreateAPIKey(ctx context.Context, authDB *authdb.Client, teamID uuid.UUID, 
 		TeamApiKey: &apiKey,
 		RawAPIKey:  teamApiKey.PrefixedRawValue,
 	}, nil
+}
+
+func DeleteAPIKey(ctx context.Context, authDB *authdb.Client, teamID uuid.UUID, apiKeyID uuid.UUID) (bool, error) {
+	ids, err := authDB.Write.DeleteTeamAPIKey(ctx, authqueries.DeleteTeamAPIKeyParams{
+		ID:     apiKeyID,
+		TeamID: teamID,
+	})
+	if err != nil {
+		telemetry.ReportCriticalError(ctx, "error when deleting API key", err)
+
+		return false, fmt.Errorf("error when deleting API key: %w", err)
+	}
+
+	return len(ids) > 0, nil
 }
