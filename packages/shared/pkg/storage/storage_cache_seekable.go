@@ -355,8 +355,18 @@ func (c *cachedSeekable) frameSink(ctx context.Context) FrameSink {
 	sem := make(chan struct{}, maxConcurrency)
 
 	return func(ctx context.Context, cOffset int64, data []byte) {
+		// Acquire BEFORE spawning so the goroutine count is bounded — otherwise
+		// every frame still spawns a goroutine that just blocks on sem, and
+		// large uploads with a low concurrency cap pile up thousands of live
+		// goroutines in wg. Pushes backpressure into the sink caller (the
+		// upload loop in compressStream), which is the right place to slow.
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			return
+		}
+
 		c.goCtx(ctx, func(ctx context.Context) {
-			sem <- struct{}{}
 			defer func() { <-sem }()
 
 			framePath := makeFrameFilename(c.path, Range{Offset: cOffset, Length: len(data)})

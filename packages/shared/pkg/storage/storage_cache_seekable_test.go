@@ -636,6 +636,7 @@ func TestCachedSeekable_StoreFile_Compressed_WriteThrough(t *testing.T) {
 
 			ft, sum, err := compressStream(ctx, f, cfg, up, 4, po.FrameSink)
 			capturedFT = ft
+
 			return ft, sum, err
 		})
 
@@ -675,6 +676,7 @@ func TestCachedSeekable_StoreFile_Compressed_FlagOff_NoSink(t *testing.T) {
 		RunAndReturn(func(_ context.Context, _ string, opts ...PutOption) (*FrameTable, [32]byte, error) {
 			po := ApplyPutOptions(opts)
 			assert.Nil(t, po.FrameSink, "FrameSink must NOT be attached when write-through flag is off")
+
 			return nil, [32]byte{}, nil
 		})
 
