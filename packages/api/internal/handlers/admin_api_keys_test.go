@@ -28,7 +28,7 @@ func TestPostAdminTeamsTeamIDApiKeysCreatesTeamKey(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/teams/"+teamID.String()+"/api-keys", strings.NewReader(`{
-		"name": "Stripe Projects"
+		"name": "Admin integration"
 	}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
@@ -49,7 +49,7 @@ func TestPostAdminTeamsTeamIDApiKeysCreatesTeamKey(t *testing.T) {
 	if body.Id == uuid.Nil {
 		t.Fatal("expected API key id")
 	}
-	if body.Name != "Stripe Projects" {
+	if body.Name != "Admin integration" {
 		t.Fatalf("expected API key name, got %q", body.Name)
 	}
 	if body.Key == "" {
@@ -66,7 +66,7 @@ func TestPostAdminTeamsTeamIDApiKeysCreatesTeamKey(t *testing.T) {
 	if len(keys) != 1 {
 		t.Fatalf("expected one API key, got %d", len(keys))
 	}
-	if keys[0].Name != "Stripe Projects" {
+	if keys[0].Name != "Admin integration" {
 		t.Fatalf("expected persisted API key name, got %q", keys[0].Name)
 	}
 	if keys[0].CreatedByID != nil {
@@ -84,7 +84,7 @@ func TestPostAdminTeamsTeamIDApiKeysRejectsBlockedTeam(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/teams/"+teamID.String()+"/api-keys", strings.NewReader(`{
-		"name": "Stripe Projects"
+		"name": "Admin integration"
 	}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
@@ -120,7 +120,7 @@ func TestPostAdminTeamsTeamIDApiKeysRejectsBannedTeam(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/teams/"+teamID.String()+"/api-keys", strings.NewReader(`{
-		"name": "Stripe Projects"
+		"name": "Admin integration"
 	}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
@@ -144,7 +144,7 @@ func TestPostAdminTeamsTeamIDApiKeysRejectsMissingTeam(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/teams/"+teamID.String()+"/api-keys", strings.NewReader(`{
-		"name": "Stripe Projects"
+		"name": "Admin integration"
 	}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
@@ -168,7 +168,7 @@ func TestPostAdminTeamsTeamIDApiKeysRejectsNilTeam(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/teams/"+teamID.String()+"/api-keys", strings.NewReader(`{
-		"name": "Stripe Projects"
+		"name": "Admin integration"
 	}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
@@ -191,7 +191,7 @@ func TestDeleteAdminTeamsTeamIDApiKeysDeletesTeamKey(t *testing.T) {
 
 	createRecorder := httptest.NewRecorder()
 	createCtx, _ := gin.CreateTestContext(createRecorder)
-	createCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/teams/"+teamID.String()+"/api-keys", strings.NewReader(`{"name":"Stripe Projects"}`))
+	createCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/teams/"+teamID.String()+"/api-keys", strings.NewReader(`{"name":"Admin integration"}`))
 	createCtx.Request.Header.Set("Content-Type", "application/json")
 
 	store := &APIStore{
