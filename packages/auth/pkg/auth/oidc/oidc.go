@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -227,10 +228,14 @@ func validateHTTPSURL(rawURL string, field string) error {
 // validateURL enforces the same constraints Kubernetes requires of issuer
 // URLs:
 //   - parseable via url.Parse
-//   - https scheme
+//   - https scheme (with one exception, see isLoopbackHost below)
 //   - no userinfo (username/password)
 //   - no query string
 //   - no fragment
+//
+// Loopback exception: an http:// URL is accepted when its host resolves to
+// a loopback address (`localhost`, `127.0.0.1`, `[::1]`). Any non-loopback host
+// still requires https.
 //
 // The field name is included in error messages to help operators locate the
 // offending value. All applicable errors are returned together.
@@ -241,8 +246,8 @@ func validateURL(rawURL string, field string) []error {
 	if err != nil {
 		return []error{fmt.Errorf("invalid %s: %w", field, err)}
 	}
-	if u.Scheme != "https" {
-		errs = append(errs, fmt.Errorf("invalid %s scheme %q (must be https)", field, u.Scheme))
+	if u.Scheme != "https" && (u.Scheme != "http" || !isLoopbackHost(u.Hostname())) {
+		errs = append(errs, fmt.Errorf("invalid %s scheme %q (must be https, or http for loopback hosts)", field, u.Scheme))
 	}
 	if u.User != nil {
 		errs = append(errs, fmt.Errorf("invalid %s: must not contain a username or password", field))
@@ -255,6 +260,28 @@ func validateURL(rawURL string, field string) []error {
 	}
 
 	return errs
+}
+
+// isLoopbackHost reports whether the given URL host is a loopback address.
+// It accepts:
+//   - the literal name "localhost" (case-insensitive)
+//   - any IPv4 address in 127.0.0.0/8
+//   - the IPv6 loopback ::1 (Hostname() strips the brackets, so we receive "::1")
+//
+// We deliberately *do not* resolve the name via DNS: that would make
+// validation depend on host resolver state and turn this into a TOCTOU
+// surface. Matching string-and-literal-IP only is enough for the local-dev
+// use case and keeps the check pure.
+func isLoopbackHost(host string) bool {
+	if host == "" {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+
+	return ip != nil && ip.IsLoopback()
 }
 
 // validateIssuerURL enforces presence + URL constraints on the issuer URL.

@@ -56,6 +56,7 @@ var (
 	versionFlag bool
 	commitFlag  bool
 	cgroupRoot  string
+	noCgroups   bool
 	verbose     bool
 )
 
@@ -93,6 +94,13 @@ func parseFlags() {
 		"cgroup-root",
 		"/sys/fs/cgroup",
 		"cgroup root directory",
+	)
+
+	flag.BoolVar(
+		&noCgroups,
+		"no-cgroups",
+		false,
+		"disable cgroup management; use a no-op cgroup manager instead",
 	)
 
 	flag.BoolVar(
@@ -235,6 +243,15 @@ func createCgroupManager() (m cgroups.Manager) {
 			m = cgroups.NewNoopManager()
 		}
 	}()
+
+	// Explicit opt-out: callers can tell envd to skip cgroup setup entirely.
+	// We return the no-op manager directly without touching /sys/fs/cgroup
+	// so we don't log spurious errors.
+	if noCgroups {
+		fmt.Fprintf(os.Stderr, "cgroups disabled via --no-cgroups; using no-op cgroup manager\n")
+
+		return cgroups.NewNoopManager()
+	}
 
 	metrics, err := host.GetMetrics()
 	if err != nil {

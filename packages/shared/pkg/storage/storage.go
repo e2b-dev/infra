@@ -185,7 +185,9 @@ func UploadBlob(ctx context.Context, provider StorageProvider, remotePath string
 // PeerTransitionedError is returned by the peer Seekable when the remote
 // storage upload has completed; the caller should re-load the V4 header from
 // storage.
-type PeerTransitionedError struct{}
+type PeerTransitionedError struct {
+	RetryAfter time.Duration
+}
 
 func (e *PeerTransitionedError) Error() string {
 	return "peer upload completed, reload header from storage"

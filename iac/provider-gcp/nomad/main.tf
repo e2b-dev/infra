@@ -140,7 +140,6 @@ module "api" {
   clickhouse_connection_string            = local.clickhouse_connection_string
   loki_url                                = local.loki_url
   sandbox_access_token_hash_seed          = var.sandbox_access_token_hash_seed
-  sandbox_storage_backend                 = var.sandbox_storage_backend
   db_max_open_connections                 = var.db_max_open_connections
   db_min_idle_connections                 = var.db_min_idle_connections
   auth_db_max_open_connections            = var.auth_db_max_open_connections
@@ -478,7 +477,6 @@ module "orchestrator" {
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
   envd_timeout                 = var.envd_timeout
   template_bucket_name         = var.template_bucket_name
-  allow_sandbox_internet       = var.allow_sandbox_internet
   allow_sandbox_internal_cidrs = var.allow_sandbox_internal_cidrs
   clickhouse_connection_string = local.clickhouse_connection_string
   redis_url                    = local.redis_url

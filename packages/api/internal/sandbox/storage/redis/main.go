@@ -9,7 +9,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -28,7 +28,7 @@ const (
 	orphanGracePeriod = time.Minute
 )
 
-var _ sandbox.Storage = (*Storage)(nil)
+var _ sandboxtypes.Storage = (*Storage)(nil)
 
 type Storage struct {
 	redisClient redis.UniversalClient
@@ -36,8 +36,6 @@ type Storage struct {
 	subManager  *subscriptionManager
 	publisher   *publisher
 }
-
-func (s *Storage) Name() string { return sandbox.StorageNameRedis }
 
 const meterScope = "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 
@@ -81,7 +79,7 @@ func (s *Storage) Close(ctx context.Context) {
 }
 
 // Reconcile returns a list of sandboxes that are considered orphans on the current node.
-func (s *Storage) Reconcile(ctx context.Context, sbxs []sandbox.Sandbox, nodeID string) []sandbox.Sandbox {
+func (s *Storage) Reconcile(ctx context.Context, sbxs []sandboxtypes.Sandbox, nodeID string) []sandboxtypes.Sandbox {
 	if len(sbxs) == 0 {
 		return nil
 	}
@@ -90,7 +88,7 @@ func (s *Storage) Reconcile(ctx context.Context, sbxs []sandbox.Sandbox, nodeID 
 
 	// Filter out sandboxes that are too young to be considered orphans.
 	type candidate struct {
-		sbx sandbox.Sandbox
+		sbx sandboxtypes.Sandbox
 		key string
 	}
 
@@ -141,7 +139,7 @@ func (s *Storage) Reconcile(ctx context.Context, sbxs []sandbox.Sandbox, nodeID 
 		return nil
 	}
 
-	var orphans []sandbox.Sandbox
+	var orphans []sandboxtypes.Sandbox
 	for _, batch := range batches {
 		results := batch.cmd.Val()
 		for i, raw := range results {

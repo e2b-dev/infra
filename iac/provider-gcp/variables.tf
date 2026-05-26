@@ -222,6 +222,27 @@ variable "client_proxy_oidc_issuer_url" {
   default = ""
 }
 
+variable "auth_provider_config" {
+  type = object({
+    jwt = optional(list(object({
+      issuer = object({
+        url                 = string
+        discoveryURL        = optional(string)
+        audiences           = list(string)
+        audienceMatchPolicy = optional(string)
+      })
+      cacheDuration = optional(string)
+    })))
+    legacy = optional(object({
+      hmac = object({
+        secrets = list(string)
+      })
+    }))
+  })
+  sensitive = true
+  default   = null
+}
+
 variable "ingress_port" {
   type = object({
     name        = string
@@ -279,11 +300,6 @@ variable "redis_port" {
 variable "nomad_port" {
   type    = number
   default = 4646
-}
-
-variable "allow_sandbox_internet" {
-  type    = bool
-  default = true
 }
 
 variable "allow_sandbox_internal_cidrs" {
@@ -692,12 +708,6 @@ variable "loki_boot_disk_type" {
   description = "The GCE boot disk type for the Loki machines."
   type        = string
   default     = "pd-ssd"
-}
-
-variable "sandbox_storage_backend" {
-  description = "The sandbox storage backend to use. Valid values: 'memory', 'redis'."
-  type        = string
-  default     = ""
 }
 
 variable "db_max_open_connections" {

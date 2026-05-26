@@ -185,8 +185,6 @@ job "api" {
         REDIS_TLS_CA_BASE64            = "${redis_tls_ca_base64}"
         REDIS_URL                      = "${redis_url}"
 
-        SANDBOX_STORAGE_BACKEND        = "${sandbox_storage_backend}"
-
 %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
 %{ endif }

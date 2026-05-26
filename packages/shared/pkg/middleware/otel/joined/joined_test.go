@@ -1,26 +1,24 @@
-package joined_test
+package joined
 
 import (
 	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/joined"
 )
 
 // Mark must be safe even when the context carries no holder.
 func TestMark_NoHolder_Noop(t *testing.T) {
 	t.Parallel()
-	joined.Mark(context.Background())
+	Mark(context.Background())
 }
 
 // Attribute must return request.joined=false when no holder is on ctx.
 func TestAttribute_NoHolder_ReturnsFalse(t *testing.T) {
 	t.Parallel()
 
-	a := joined.Attribute(context.Background())
-	assert.Equal(t, joined.AttributeKey, string(a.Key))
+	a := Attribute(context.Background())
+	assert.Equal(t, AttributeKey, string(a.Key))
 	assert.False(t, a.Value.AsBool())
 }
 
@@ -29,9 +27,9 @@ func TestAttribute_NoHolder_ReturnsFalse(t *testing.T) {
 func TestAttribute_FreshHolder_ReturnsFalse(t *testing.T) {
 	t.Parallel()
 
-	ctx := joined.WithHolder(context.Background())
+	ctx := WithHolder(context.Background())
 
-	a := joined.Attribute(ctx)
+	a := Attribute(ctx)
 	assert.False(t, a.Value.AsBool())
 }
 
@@ -39,10 +37,10 @@ func TestAttribute_FreshHolder_ReturnsFalse(t *testing.T) {
 func TestMark_FlipsAttributeToTrue(t *testing.T) {
 	t.Parallel()
 
-	ctx := joined.WithHolder(context.Background())
-	joined.Mark(ctx)
+	ctx := WithHolder(context.Background())
+	Mark(ctx)
 
-	a := joined.Attribute(ctx)
+	a := Attribute(ctx)
 	assert.True(t, a.Value.AsBool())
 }
 
@@ -52,12 +50,12 @@ func TestMark_FlipsAttributeToTrue(t *testing.T) {
 func TestWithHolder_Idempotent(t *testing.T) {
 	t.Parallel()
 
-	ctx1 := joined.WithHolder(context.Background())
-	ctx2 := joined.WithHolder(ctx1)
+	ctx1 := WithHolder(context.Background())
+	ctx2 := WithHolder(ctx1)
 
-	joined.Mark(ctx1)
+	Mark(ctx1)
 
-	a := joined.Attribute(ctx2)
+	a := Attribute(ctx2)
 	assert.True(t, a.Value.AsBool(), "second WithHolder must reuse the first holder")
 }
 
@@ -66,14 +64,14 @@ func TestWithHolder_Idempotent(t *testing.T) {
 func TestMark_DescendantGoroutine(t *testing.T) {
 	t.Parallel()
 
-	ctx := joined.WithHolder(context.Background())
+	ctx := WithHolder(context.Background())
 	done := make(chan struct{})
 	go func() {
-		joined.Mark(ctx)
+		Mark(ctx)
 		close(done)
 	}()
 	<-done
 
-	a := joined.Attribute(ctx)
+	a := Attribute(ctx)
 	assert.True(t, a.Value.AsBool())
 }

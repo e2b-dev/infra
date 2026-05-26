@@ -184,7 +184,6 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Content-Type", "")
 
 	w.WriteHeader(http.StatusNoContent)
 }

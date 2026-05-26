@@ -1,4 +1,4 @@
-package nodemanager_test
+package nodemanager
 
 import (
 	"testing"
@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 )
 
@@ -26,11 +25,11 @@ func TestNode_OptimisticAdd_FlagEnabled(t *testing.T) {
 	require.NoError(t, err)
 
 	// 4. Initialize Node with the injected ffClient
-	node := nodemanager.NewTestNode("test-node", api.NodeStatusReady, 0, 4, nodemanager.WithFeatureFlags(ffClient))
+	node := NewTestNode("test-node", api.NodeStatusReady, 0, 4, WithFeatureFlags(ffClient))
 	initialMetrics := node.Metrics()
 
 	// 5. Call the method
-	res := nodemanager.SandboxResources{
+	res := SandboxResources{
 		CPUs:      2,
 		MiBMemory: 1024,
 	}
@@ -56,11 +55,11 @@ func TestNode_OptimisticAdd_FlagDisabled(t *testing.T) {
 	require.NoError(t, err)
 
 	// 4. Initialize Node with the injected ffClient
-	node := nodemanager.NewTestNode("test-node", api.NodeStatusReady, 0, 4, nodemanager.WithFeatureFlags(ffClient))
+	node := NewTestNode("test-node", api.NodeStatusReady, 0, 4, WithFeatureFlags(ffClient))
 	initialMetrics := node.Metrics()
 
 	// 5. Call the method
-	res := nodemanager.SandboxResources{
+	res := SandboxResources{
 		CPUs:      2,
 		MiBMemory: 1024,
 	}
@@ -86,11 +85,11 @@ func TestNode_OptimisticRemove_FlagEnabled(t *testing.T) {
 	require.NoError(t, err)
 
 	// 4. Initialize Node with the injected ffClient - some resources are already allocated at initialization
-	node := nodemanager.NewTestNode("test-node", api.NodeStatusReady, 4, 8192, nodemanager.WithFeatureFlags(ffClient))
+	node := NewTestNode("test-node", api.NodeStatusReady, 4, 8192, WithFeatureFlags(ffClient))
 	initialMetrics := node.Metrics()
 
 	// 5. Call the method
-	res := nodemanager.SandboxResources{
+	res := SandboxResources{
 		CPUs:      2,
 		MiBMemory: 1024,
 	}
@@ -116,11 +115,11 @@ func TestNode_OptimisticRemove_FlagDisabled(t *testing.T) {
 	require.NoError(t, err)
 
 	// 4. Initialize Node with the injected ffClient - some resources are already allocated at initialization
-	node := nodemanager.NewTestNode("test-node", api.NodeStatusReady, 4, 8192, nodemanager.WithFeatureFlags(ffClient))
+	node := NewTestNode("test-node", api.NodeStatusReady, 4, 8192, WithFeatureFlags(ffClient))
 	initialMetrics := node.Metrics()
 
 	// 5. Call the method
-	res := nodemanager.SandboxResources{
+	res := SandboxResources{
 		CPUs:      2,
 		MiBMemory: 1024,
 	}

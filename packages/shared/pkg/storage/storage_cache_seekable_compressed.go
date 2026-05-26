@@ -29,23 +29,34 @@ func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64
 
 	timer := cacheSlabReadTimerFactory.Begin(compressedCacheReadAttrs...)
 
-	// Cache hit: open compressed frame from NFS and wrap with decompressor.
-	f, err := os.Open(path)
+	// Cache hit: open compressed frame from NFS, validate size, wrap with decompressor.
+	if f, err := os.Open(path); err == nil {
+		fi, statErr := f.Stat()
+		switch {
+		case statErr == nil && fi.Size() == int64(r.Length):
+			recordCacheRead(ctx, true, int64(r.Length), cacheTypeSeekable, cacheOpOpenRangeReader)
+			timer.Success(ctx, int64(r.Length))
 
-	switch {
-	case err == nil:
-		recordCacheRead(ctx, true, int64(r.Length), cacheTypeSeekable, cacheOpOpenRangeReader)
-		timer.Success(ctx, int64(r.Length))
+			decompressed, err := newDecompressingReadCloser(f, frameTable.CompressionType())
+			if err != nil {
+				f.Close()
 
-		decompressed, err := newDecompressingReadCloser(f, frameTable.CompressionType())
-		if err != nil {
+				return nil, fmt.Errorf("decompress cached frame: %w", err)
+			}
+
+			return withNFSGauge(ctx, decompressed), nil
+		case statErr == nil:
+			// Confirmed size mismatch: drop the file so the miss path rewrites it.
 			f.Close()
-
-			return nil, fmt.Errorf("decompress cached frame: %w", err)
+			_ = os.Remove(path)
+			recordCacheReadError(ctx, cacheTypeSeekable, cacheOpOpenRangeReader,
+				fmt.Errorf("cached frame %s size %d != expected %d", path, fi.Size(), r.Length))
+		default:
+			// Transient stat error: leave the file in place, fall through to miss.
+			f.Close()
+			recordCacheReadError(ctx, cacheTypeSeekable, cacheOpOpenRangeReader, statErr)
 		}
-
-		return withNFSGauge(ctx, decompressed), nil
-	case !os.IsNotExist(err):
+	} else if !os.IsNotExist(err) {
 		recordCacheReadError(ctx, cacheTypeSeekable, cacheOpOpenRangeReader, err)
 	}
 
