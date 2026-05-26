@@ -3,6 +3,7 @@ package header
 import (
 	"fmt"
 	"os"
+	"slices"
 
 	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/google/uuid"
@@ -204,6 +205,10 @@ func MergeMappings(
 }
 
 // NormalizeMappings joins adjacent mappings that have the same buildId.
+//
+// Clone the result so the oversized intermediate (cap == len(input)) is
+// released; the merged Header is cached for up to 25h. slices.Clip will
+// not do — it only retightens cap on the same backing array.
 func NormalizeMappings(mappings []BuildMap) []BuildMap {
 	if len(mappings) == 0 {
 		return nil
@@ -225,5 +230,5 @@ func NormalizeMappings(mappings []BuildMap) []BuildMap {
 
 	result = append(result, current)
 
-	return result
+	return slices.Clone(result)
 }
