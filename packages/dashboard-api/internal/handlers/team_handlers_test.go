@@ -720,6 +720,80 @@ func TestPostAdminUsersBootstrap_EmptyOIDCUserIDReturnsBadRequest(t *testing.T) 
 	}
 }
 
+func TestBootstrapOIDCUser_OryIssuerWithoutJWTConfigIsAccepted(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	sink := &fakeTeamProvisionSink{}
+
+	const oryIssuer = "https://ory.example.test"
+
+	store := &APIStore{
+		config: cfg.Config{
+			OryIssuerURL: oryIssuer,
+		},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
+		teamProvisionSink: sink,
+	}
+
+	team, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
+		OIDCIssuer:    oryIssuer,
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+		OIDCUserName:  nil,
+	})
+	if err != nil {
+		t.Fatalf("expected bootstrap to succeed with Ory issuer but no JWT config: %v", err)
+	}
+	if team.ID == uuid.Nil {
+		t.Fatal("expected provisioned team")
+	}
+}
+
+func TestBootstrapOIDCUser_OryModeRejectsNonOryJWTIssuer(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	sink := &fakeTeamProvisionSink{}
+
+	const oryIssuer = "https://ory.example.test"
+	const otherIssuer = "https://workos.example.test"
+
+	store := &APIStore{
+		config: cfg.Config{
+			UserProfileProvider: userprofile.ModeOry,
+			OryIssuerURL:        oryIssuer,
+			AuthProvider: auth.ProviderConfig{
+				JWT: []oidc.Config{
+					{Issuer: oidc.Issuer{URL: otherIssuer}},
+				},
+			},
+		},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
+		teamProvisionSink: sink,
+	}
+
+	_, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
+		OIDCIssuer:    otherIssuer,
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+		OIDCUserName:  nil,
+	})
+	if err == nil {
+		t.Fatal("expected ory mode to reject a non-Ory JWT issuer at bootstrap")
+	}
+	var provErr *internalteamprovision.ProvisionError
+	if !errors.As(err, &provErr) || provErr.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected ProvisionError with status 400, got %v", err)
+	}
+}
+
 func TestBootstrapOIDCUser_UnknownIssuerReturnsBadRequest(t *testing.T) {
 	t.Parallel()
 
