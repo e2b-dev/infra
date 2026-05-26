@@ -88,11 +88,10 @@ func TestParseUserProfileProviderOryRequiresOryEnv(t *testing.T) {
 			wantErrSubstr: "ORY_PROJECT_API_TOKEN",
 		},
 		{
-			name:          "ory mode without issuer errors",
+			name:          "ory mode without sdk url or issuer errors on sdk url",
 			mode:          "ory",
-			sdkURL:        "https://ory.example.test",
 			token:         "pat",
-			wantErrSubstr: "ORY_ISSUER_URL",
+			wantErrSubstr: "ORY_SDK_URL",
 		},
 		{
 			name:          "fallback mode applies same requirements",
@@ -136,6 +135,34 @@ func TestParseUserProfileProviderOryHappyPathIsIndependentOfAuthProvider(t *test
 	require.Equal(t, "pat", config.OryProjectAPIToken)
 	require.Equal(t, "https://ory.example.test", config.OryIssuerURL)
 	require.Empty(t, config.AuthProvider.JWT)
+}
+
+func TestParseUserProfileProviderOryIssuerDefaultsToSDKURL(t *testing.T) {
+	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres://example")
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	t.Setenv("REDIS_URL", "redis://example")
+	t.Setenv("USER_PROFILE_PROVIDER", "ory")
+	t.Setenv("ORY_SDK_URL", "https://tenant.projects.oryapis.com")
+	t.Setenv("ORY_PROJECT_API_TOKEN", "pat")
+
+	config, err := Parse()
+	require.NoError(t, err)
+	require.Equal(t, "https://tenant.projects.oryapis.com", config.OryIssuerURL)
+}
+
+func TestParseUserProfileProviderOryIssuerOverrideForCustomDomain(t *testing.T) {
+	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres://example")
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	t.Setenv("REDIS_URL", "redis://example")
+	t.Setenv("USER_PROFILE_PROVIDER", "ory")
+	t.Setenv("ORY_SDK_URL", "https://tenant.projects.oryapis.com")
+	t.Setenv("ORY_PROJECT_API_TOKEN", "pat")
+	t.Setenv("ORY_ISSUER_URL", "https://auth.mycompany.com")
+
+	config, err := Parse()
+	require.NoError(t, err)
+	require.Equal(t, "https://tenant.projects.oryapis.com", config.OrySDKURL)
+	require.Equal(t, "https://auth.mycompany.com", config.OryIssuerURL)
 }
 
 func TestParseUserProfileProviderInvalidModeErrors(t *testing.T) {

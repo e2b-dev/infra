@@ -55,6 +55,10 @@ func Parse() (Config, error) {
 		config.SupabaseDBConnectionString = config.PostgresConnectionString
 	}
 
+	if config.OryIssuerURL == "" {
+		config.OryIssuerURL = config.OrySDKURL
+	}
+
 	if err == nil && config.RedisURL == "" && config.RedisClusterURL == "" {
 		err = errors.New("at least one of REDIS_URL or REDIS_CLUSTER_URL must be set")
 	}
