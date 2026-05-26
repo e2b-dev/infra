@@ -223,7 +223,7 @@ components:
           type: string
           format: email
 
-    ServiceCreatedTeamRequest:
+    AdminTeamBootstrapRequest:
       type: object
       required:
         - name
@@ -869,10 +869,10 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /internal/service-created-teams:
+  /admin/teams/bootstrap:
     post:
-      summary: Create service-created team
-      description: Creates a team on behalf of an internal service workflow.
+      summary: Bootstrap team
+      description: Creates and provisions a team for an admin-authenticated bootstrap workflow.
       tags: [admin]
       security:
         - AdminTokenAuth: []
@@ -881,10 +881,10 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ServiceCreatedTeamRequest"
+              $ref: "#/components/schemas/AdminTeamBootstrapRequest"
       responses:
         "200":
-          description: Successfully created service-created team.
+          description: Successfully bootstrapped team.
           content:
             application/json:
               schema:

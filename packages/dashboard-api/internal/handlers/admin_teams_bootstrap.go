@@ -11,10 +11,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 )
 
-func (s *APIStore) PostInternalServiceCreatedTeams(c *gin.Context) {
+func (s *APIStore) PostAdminTeamsBootstrap(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	body, err := ginutils.ParseBody[api.ServiceCreatedTeamRequest](ctx, c)
+	body, err := ginutils.ParseBody[api.AdminTeamBootstrapRequest](ctx, c)
 	if err != nil {
 		s.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 
@@ -29,9 +29,9 @@ func (s *APIStore) PostInternalServiceCreatedTeams(c *gin.Context) {
 		return
 	}
 
-	team, err := s.createServiceCreatedTeam(ctx, name, email)
+	team, err := s.bootstrapTeam(ctx, name, email)
 	if err != nil {
-		s.handleProvisioningError(ctx, c, "provision service-created team", err)
+		s.handleProvisioningError(ctx, c, "provision team", err)
 
 		return
 	}
