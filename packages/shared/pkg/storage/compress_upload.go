@@ -147,7 +147,7 @@ func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploa
 			frameSizes = append(frameSizes, FrameSize{U: int32(f.uncompressedSize), C: int32(len(f.compressed))})
 			compressed = append(compressed, f.compressed)
 			if sink != nil {
-				sink(cOffset, f.compressed)
+				sink(ctx, cOffset, f.compressed)
 			}
 			cOffset += int64(len(f.compressed))
 		}

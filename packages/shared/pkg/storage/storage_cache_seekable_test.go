@@ -611,7 +611,9 @@ func TestCachedSeekable_FrameSinkPopulatesNFS(t *testing.T) {
 	const frameSize = 64 * 1024
 	data := generateSemiRandomData(3 * frameSize)
 
-	c := &cachedSeekable{path: t.TempDir(), tracer: noopTracer}
+	flags := NewMockFeatureFlagsClient(t)
+	flags.EXPECT().IntFlag(mock.Anything, mock.Anything).Return(4)
+	c := &cachedSeekable{path: t.TempDir(), flags: flags, tracer: noopTracer}
 	up := &memPartUploader{}
 	cfg := defaultCfg(CompressionZstd, 2, frameSize)
 

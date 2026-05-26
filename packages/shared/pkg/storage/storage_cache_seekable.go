@@ -338,12 +338,28 @@ func (c *cachedSeekable) StoreFile(ctx context.Context, path string, opts ...Put
 	return c.inner.StoreFile(ctx, path, opts...)
 }
 
-// frameSink tees each compressed frame to a .frm file at its C-space offset,
-// matching the layout openReaderCompressed expects. Async; best-effort.
+// frameSink builds a FrameSink that writes each compressed frame to a .frm
+// file at its C-space offset, matching the layout openReaderCompressed expects.
+//
+// Fire-and-forget: writes are spawned via goCtx so they survive caller
+// cancellation, the upload doesn't wait. Concurrent NFS writes for this
+// upload are capped by MaxCacheWriterConcurrencyFlag, the same knob
+// createCacheBlocksFromFile reads for the uncompressed write-through path.
 func (c *cachedSeekable) frameSink(ctx context.Context) FrameSink {
-	return func(cOffset int64, data []byte) {
-		framePath := makeFrameFilename(c.path, Range{Offset: cOffset, Length: len(data)})
+	maxConcurrency := c.flags.IntFlag(ctx, featureflags.MaxCacheWriterConcurrencyFlag)
+	if maxConcurrency <= 0 {
+		logger.L().Warn(ctx, "max cache writer concurrency is too low, falling back to 1",
+			zap.Int("max_concurrency", maxConcurrency))
+		maxConcurrency = 1
+	}
+	sem := make(chan struct{}, maxConcurrency)
+
+	return func(ctx context.Context, cOffset int64, data []byte) {
 		c.goCtx(ctx, func(ctx context.Context) {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			framePath := makeFrameFilename(c.path, Range{Offset: cOffset, Length: len(data)})
 			if err := c.writeToCache(ctx, cOffset, framePath, data); err != nil {
 				recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpWriteFromFileSystem, err)
 			}
