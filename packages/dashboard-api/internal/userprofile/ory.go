@@ -228,7 +228,9 @@ func identitySubjects(identities []ory.Identity) []string {
 // profileFromOryIdentity reads the standardized E2B identity schema traits:
 // name, email, profile_picture_url. The Ory project is configured to populate
 // these from OIDC provider claims (e.g. Google profile scope, GitHub user
-// scope) so the underlying upstream is transparent here.
+// scope) so the underlying upstream is transparent here. See
+// packages/dashboard-api/fixtures/ory/identity.v1.schema.json for the canonical
+// trait shape uploaded to Ory.
 func profileFromOryIdentity(userID uuid.UUID, identity ory.Identity) Profile {
 	traits, _ := identity.Traits.(map[string]any)
 
