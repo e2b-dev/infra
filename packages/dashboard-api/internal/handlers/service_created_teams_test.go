@@ -17,7 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 )
 
-func TestPostInternalTeamsCreatesInternalTeam(t *testing.T) {
+func TestPostInternalServiceCreatedTeamsCreatesServiceCreatedTeam(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
@@ -26,9 +26,9 @@ func TestPostInternalTeamsCreatesInternalTeam(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
-	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/internal/teams", strings.NewReader(`{
-		"name": "  Internal team  ",
-		"email": "  internal-team@example.com  "
+	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/internal/service-created-teams", strings.NewReader(`{
+		"name": "  Service-created team  ",
+		"email": "  service-created-team@example.com  "
 	}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
@@ -36,7 +36,7 @@ func TestPostInternalTeamsCreatesInternalTeam(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 	}
-	store.PostInternalTeams(ginCtx)
+	store.PostInternalServiceCreatedTeams(ginCtx)
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d: %s", recorder.Code, recorder.Body.String())
@@ -66,10 +66,10 @@ func TestPostInternalTeamsCreatesInternalTeam(t *testing.T) {
 	}, body.ID); err != nil {
 		t.Fatalf("failed to query created team: %v", err)
 	}
-	if name != "Internal team" {
+	if name != "Service-created team" {
 		t.Fatalf("expected trimmed name, got %q", name)
 	}
-	if email != "internal-team@example.com" {
+	if email != "service-created-team@example.com" {
 		t.Fatalf("expected trimmed email, got %q", email)
 	}
 
@@ -81,14 +81,14 @@ func TestPostInternalTeamsCreatesInternalTeam(t *testing.T) {
 		t.Fatalf("unexpected provisioning request: %+v", req)
 	}
 	if req.CreatorUserID != uuid.Nil {
-		t.Fatalf("expected internal creator user id, got %s", req.CreatorUserID)
+		t.Fatalf("expected service-created creator user id, got %s", req.CreatorUserID)
 	}
 	if req.Reason != teamprovision.ReasonAdditionalTeam {
 		t.Fatalf("expected additional team reason, got %q", req.Reason)
 	}
 }
 
-func TestPostInternalTeamsRollsBackOnProvisioningFailure(t *testing.T) {
+func TestPostInternalServiceCreatedTeamsRollsBackOnProvisioningFailure(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
@@ -102,9 +102,9 @@ func TestPostInternalTeamsRollsBackOnProvisioningFailure(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
-	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/internal/teams", strings.NewReader(`{
-		"name": "Internal team",
-		"email": "internal-team@example.com"
+	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/internal/service-created-teams", strings.NewReader(`{
+		"name": "Service-created team",
+		"email": "service-created-team@example.com"
 	}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
@@ -112,7 +112,7 @@ func TestPostInternalTeamsRollsBackOnProvisioningFailure(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: sink,
 	}
-	store.PostInternalTeams(ginCtx)
+	store.PostInternalServiceCreatedTeams(ginCtx)
 
 	if recorder.Code != http.StatusBadGateway {
 		t.Fatalf("expected status 502, got %d: %s", recorder.Code, recorder.Body.String())
@@ -128,7 +128,7 @@ func TestPostInternalTeamsRollsBackOnProvisioningFailure(t *testing.T) {
 		}
 
 		return rows.Scan(&count)
-	}, "internal-team@example.com"); err != nil {
+	}, "service-created-team@example.com"); err != nil {
 		t.Fatalf("failed to count teams: %v", err)
 	}
 	if count != 0 {
@@ -136,14 +136,14 @@ func TestPostInternalTeamsRollsBackOnProvisioningFailure(t *testing.T) {
 	}
 }
 
-func TestPostInternalTeamsRejectsMissingFields(t *testing.T) {
+func TestPostInternalServiceCreatedTeamsRejectsMissingFields(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
-	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/teams", strings.NewReader(`{
-		"name": "Internal team",
+	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/service-created-teams", strings.NewReader(`{
+		"name": "Service-created team",
 		"email": "   "
 	}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
@@ -152,7 +152,7 @@ func TestPostInternalTeamsRejectsMissingFields(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		teamProvisionSink: &fakeTeamProvisionSink{err: errors.New("should not provision")},
 	}
-	store.PostInternalTeams(ginCtx)
+	store.PostInternalServiceCreatedTeams(ginCtx)
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d: %s", recorder.Code, recorder.Body.String())

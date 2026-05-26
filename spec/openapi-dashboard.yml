@@ -223,7 +223,7 @@ components:
           type: string
           format: email
 
-    InternalTeamCreateRequest:
+    ServiceCreatedTeamRequest:
       type: object
       required:
         - name
@@ -869,9 +869,10 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /internal/teams:
+  /internal/service-created-teams:
     post:
-      summary: Create internal team
+      summary: Create service-created team
+      description: Creates a team on behalf of an internal service workflow.
       tags: [admin]
       security:
         - AdminTokenAuth: []
@@ -880,10 +881,10 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/InternalTeamCreateRequest"
+              $ref: "#/components/schemas/ServiceCreatedTeamRequest"
       responses:
         "200":
-          description: Successfully created internal team.
+          description: Successfully created service-created team.
           content:
             application/json:
               schema:

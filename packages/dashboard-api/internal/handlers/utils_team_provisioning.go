@@ -218,7 +218,7 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 	}, nil
 }
 
-func (s *APIStore) createInternalTeam(ctx context.Context, name string, email string) (provisionedTeam, error) {
+func (s *APIStore) createServiceCreatedTeam(ctx context.Context, name string, email string) (provisionedTeam, error) {
 	team, err := s.authDB.Write.CreateTeam(ctx, authqueries.CreateTeamParams{
 		Name:          name,
 		Tier:          baseTierID,
@@ -227,7 +227,7 @@ func (s *APIStore) createInternalTeam(ctx context.Context, name string, email st
 		BlockedReason: nil,
 	})
 	if err != nil {
-		return provisionedTeam{}, fmt.Errorf("create internal team: %w", err)
+		return provisionedTeam{}, fmt.Errorf("create service-created team: %w", err)
 	}
 
 	req := teamprovision.TeamBillingProvisionRequestedV1{
@@ -242,7 +242,7 @@ func (s *APIStore) createInternalTeam(ctx context.Context, name string, email st
 		defer cancel()
 
 		if deleteErr := s.authDB.Write.DeleteTeamByID(rollbackCtx, team.ID); deleteErr != nil {
-			return provisionedTeam{}, fmt.Errorf("delete internal team after provisioning failure: provision=%s delete=%w", err.Error(), deleteErr)
+			return provisionedTeam{}, fmt.Errorf("delete service-created team after provisioning failure: provision=%s delete=%w", err.Error(), deleteErr)
 		}
 
 		return provisionedTeam{}, err
