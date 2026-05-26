@@ -657,41 +657,6 @@ func TestNormalizeMappingsZeroLengthMapping(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func BenchmarkNormalizeMappingsHeavyMerge(b *testing.B) {
-	// Worst case for the old preallocation: many short input runs that
-	// collapse to very few output runs. Each cached header used to retain
-	// the full input-sized backing array.
-	id1 := uuid.New()
-	id2 := uuid.New()
-	input := make([]BuildMap, 0, 10_000)
-	for i := 0; i < 5_000; i++ {
-		input = append(input,
-			BuildMap{Offset: uint64(i * 2), Length: 1, BuildId: id1},
-			BuildMap{Offset: uint64(i*2 + 1), Length: 1, BuildId: id1},
-		)
-	}
-	input[len(input)/2].BuildId = id2
-
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		_ = NormalizeMappings(input)
-	}
-}
-
-func BenchmarkNormalizeMappingsNoMerge(b *testing.B) {
-	// Worst case for the new two-pass: every entry has a distinct buildId
-	// so the second pass cannot collapse anything.
-	input := make([]BuildMap, 10_000)
-	for i := range input {
-		input[i] = BuildMap{Offset: uint64(i), Length: 1, BuildId: uuid.New()}
-	}
-
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		_ = NormalizeMappings(input)
-	}
-}
-
 func TestNormalizeMappingsDoesNotModifyInput(t *testing.T) {
 	t.Parallel()
 	input := []BuildMap{
