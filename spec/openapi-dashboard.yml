@@ -235,7 +235,6 @@ components:
           description: Team name.
         email:
           type: string
-          format: email
           description: Billing/contact email for the team.
 
     BuildStatus:
