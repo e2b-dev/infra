@@ -559,6 +559,7 @@ func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
 	}
 
 	input := oidcUserBootstrapInput{
+		OIDCIssuer:    "https://ory.example.test",
 		OIDCUserID:    uuid.NewString(),
 		OIDCUserEmail: "ada@example.test",
 		OIDCUserName:  nil,
@@ -570,7 +571,7 @@ func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
 	}
 
 	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
-		OidcIss: "https://ory.example.test",
+		OidcIss: input.OIDCIssuer,
 		OidcSub: input.OIDCUserID,
 	})
 	if err != nil {
@@ -626,6 +627,7 @@ func TestBootstrapOIDCUser_ConcurrentRequestsSingleIdentityAndTeam(t *testing.T)
 	}
 
 	input := oidcUserBootstrapInput{
+		OIDCIssuer:    "https://ory.example.test",
 		OIDCUserID:    uuid.NewString(),
 		OIDCUserEmail: "ada@example.test",
 		OIDCUserName:  nil,
@@ -673,7 +675,7 @@ func TestBootstrapOIDCUser_ConcurrentRequestsSingleIdentityAndTeam(t *testing.T)
 	}
 
 	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
-		OidcIss: "https://ory.example.test",
+		OidcIss: input.OIDCIssuer,
 		OidcSub: input.OIDCUserID,
 	})
 	if err != nil {
@@ -707,7 +709,7 @@ func TestPostAdminUsersBootstrap_EmptyOIDCUserIDReturnsBadRequest(t *testing.T) 
 
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
-	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(`{"oidc_user_id":"   ","oidc_user_email":"ada@example.test","oidc_user_name":null}`))
+	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(`{"oidc_issuer":"https://ory.example.test","oidc_user_id":"   ","oidc_user_email":"ada@example.test","oidc_user_name":null}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
 	store := &APIStore{}
@@ -715,6 +717,116 @@ func TestPostAdminUsersBootstrap_EmptyOIDCUserIDReturnsBadRequest(t *testing.T) 
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400 for blank oidc_user_id, got %d", recorder.Code)
+	}
+}
+
+func TestBootstrapOIDCUser_UnknownIssuerReturnsBadRequest(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	sink := &fakeTeamProvisionSink{}
+
+	store := &APIStore{
+		config: cfg.Config{
+			AuthProvider: auth.ProviderConfig{
+				JWT: []oidc.Config{
+					{Issuer: oidc.Issuer{URL: "https://ory.example.test"}},
+				},
+			},
+		},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
+		teamProvisionSink: sink,
+	}
+
+	_, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
+		OIDCIssuer:    "https://attacker.example.test",
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+		OIDCUserName:  nil,
+	})
+	if err == nil {
+		t.Fatal("expected unknown issuer to be rejected")
+	}
+
+	var provErr *internalteamprovision.ProvisionError
+	if !errors.As(err, &provErr) || provErr.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected ProvisionError with status 400, got %v", err)
+	}
+	if len(sink.requests) != 0 {
+		t.Fatalf("expected no provisioning calls, got %d", len(sink.requests))
+	}
+}
+
+func TestBootstrapOIDCUser_MultipleConfiguredIssuersIsolatesIdentities(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	sink := &fakeTeamProvisionSink{}
+
+	const issuerA = "https://ory-a.example.test"
+	const issuerB = "https://ory-b.example.test"
+
+	store := &APIStore{
+		config: cfg.Config{
+			AuthProvider: auth.ProviderConfig{
+				JWT: []oidc.Config{
+					{Issuer: oidc.Issuer{URL: issuerA}},
+					{Issuer: oidc.Issuer{URL: issuerB}},
+				},
+			},
+		},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
+		teamProvisionSink: sink,
+	}
+
+	sharedSubject := uuid.NewString()
+
+	teamA, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
+		OIDCIssuer:    issuerA,
+		OIDCUserID:    sharedSubject,
+		OIDCUserEmail: "ada-a@example.test",
+		OIDCUserName:  nil,
+	})
+	if err != nil {
+		t.Fatalf("issuer A bootstrap failed: %v", err)
+	}
+
+	teamB, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
+		OIDCIssuer:    issuerB,
+		OIDCUserID:    sharedSubject,
+		OIDCUserEmail: "ada-b@example.test",
+		OIDCUserName:  nil,
+	})
+	if err != nil {
+		t.Fatalf("issuer B bootstrap failed: %v", err)
+	}
+
+	if teamA.ID == teamB.ID {
+		t.Fatalf("expected distinct teams for same subject under different issuers, both got %s", teamA.ID)
+	}
+
+	identityA, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+		OidcIss: issuerA,
+		OidcSub: sharedSubject,
+	})
+	if err != nil {
+		t.Fatalf("expected identity under issuer A: %v", err)
+	}
+	identityB, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+		OidcIss: issuerB,
+		OidcSub: sharedSubject,
+	})
+	if err != nil {
+		t.Fatalf("expected identity under issuer B: %v", err)
+	}
+	if identityA.UserID == identityB.UserID {
+		t.Fatalf("expected distinct user ids for same subject under different issuers, both got %s", identityA.UserID)
 	}
 }
 

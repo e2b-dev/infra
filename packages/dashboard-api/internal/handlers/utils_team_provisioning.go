@@ -49,6 +49,7 @@ type bootstrapUserIdentity struct {
 }
 
 type oidcUserBootstrapInput struct {
+	OIDCIssuer    string
 	OIDCUserID    string
 	OIDCUserEmail string
 	OIDCUserName  *string
@@ -85,8 +86,7 @@ func (s *APIStore) bootstrapUserProfileFromSupabase(ctx context.Context, userID 
 }
 
 func (s *APIStore) bootstrapOIDCUser(ctx context.Context, input oidcUserBootstrapInput) (provisionedTeam, error) {
-	issuer, err := s.oidcIssuer()
-	if err != nil {
+	if err := s.requireConfiguredOIDCIssuer(input.OIDCIssuer); err != nil {
 		return provisionedTeam{}, err
 	}
 
@@ -97,27 +97,25 @@ func (s *APIStore) bootstrapOIDCUser(ctx context.Context, input oidcUserBootstra
 	}
 
 	return s.bootstrapUserWithIdentity(ctx, profile, &bootstrapUserIdentity{
-		Issuer:  issuer,
+		Issuer:  input.OIDCIssuer,
 		Subject: input.OIDCUserID,
 	})
 }
 
-func (s *APIStore) oidcIssuer() (string, error) {
-	if len(s.config.AuthProvider.JWT) != 1 {
-		return "", &internalteamprovision.ProvisionError{
-			StatusCode: http.StatusBadRequest,
-			Message:    "Expected exactly one OIDC auth provider issuer",
-		}
-	}
-	issuer := strings.TrimSpace(s.config.AuthProvider.JWT[0].Issuer.URL)
-	if issuer == "" {
-		return "", &internalteamprovision.ProvisionError{
-			StatusCode: http.StatusBadRequest,
-			Message:    "OIDC auth provider issuer is not configured",
+// requireConfiguredOIDCIssuer rejects bootstrap requests whose issuer is not in
+// the configured provider list. Without this an admin-token holder could plant
+// an identity under any arbitrary iss string.
+func (s *APIStore) requireConfiguredOIDCIssuer(issuer string) error {
+	for _, jwt := range s.config.AuthProvider.JWT {
+		if strings.TrimSpace(jwt.Issuer.URL) == issuer {
+			return nil
 		}
 	}
 
-	return issuer, nil
+	return &internalteamprovision.ProvisionError{
+		StatusCode: http.StatusBadRequest,
+		Message:    "oidc_issuer is not a configured auth provider",
+	}
 }
 
 func (s *APIStore) bootstrapUser(ctx context.Context, profile bootstrapUserProfile) (provisionedTeam, error) {

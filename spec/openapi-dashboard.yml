@@ -220,9 +220,13 @@ components:
     AdminAuthProviderUserBootstrapRequest:
       type: object
       required:
+        - oidc_issuer
         - oidc_user_id
         - oidc_user_email
       properties:
+        oidc_issuer:
+          type: string
+          minLength: 1
         oidc_user_id:
           type: string
           minLength: 1
