@@ -2,7 +2,9 @@ package cfg
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/caarlos0/env/v11"
 
@@ -55,22 +57,22 @@ func Parse() (Config, error) {
 		config.SupabaseDBConnectionString = config.PostgresConnectionString
 	}
 
-	if config.OryIssuerURL == "" {
-		config.OryIssuerURL = config.OrySDKURL
-	}
-
 	if err == nil && config.RedisURL == "" && config.RedisClusterURL == "" {
 		err = errors.New("at least one of REDIS_URL or REDIS_CLUSTER_URL must be set")
 	}
 
 	if err == nil {
-		err = validateUserProfileProvider(config)
+		err = validateUserProfileProvider(&config)
 	}
 
 	return config, err
 }
 
-func validateUserProfileProvider(config Config) error {
+// validateUserProfileProvider enforces Ory-specific env requirements and keeps
+// ORY_ISSUER_URL aligned with the configured auth-provider issuer. The Ory
+// profile provider filters public.user_identities by oidc_iss, so a mismatch
+// against the iss claim stored at bootstrap silently strands every user.
+func validateUserProfileProvider(config *Config) error {
 	if !config.UserProfileProvider.RequiresOry() {
 		return nil
 	}
@@ -81,8 +83,22 @@ func validateUserProfileProvider(config Config) error {
 	if config.OryProjectAPIToken == "" {
 		return errors.New("ORY_PROJECT_API_TOKEN is required when USER_PROFILE_PROVIDER uses ory")
 	}
+
+	if config.OryIssuerURL == "" && len(config.AuthProvider.JWT) == 1 {
+		config.OryIssuerURL = strings.TrimSpace(config.AuthProvider.JWT[0].Issuer.URL)
+	}
 	if config.OryIssuerURL == "" {
 		return errors.New("ORY_ISSUER_URL is required when USER_PROFILE_PROVIDER uses ory")
+	}
+
+	if len(config.AuthProvider.JWT) > 0 {
+		for _, jwt := range config.AuthProvider.JWT {
+			if strings.TrimSpace(jwt.Issuer.URL) == config.OryIssuerURL {
+				return nil
+			}
+		}
+
+		return fmt.Errorf("ORY_ISSUER_URL %q does not match any AUTH_PROVIDER_CONFIG.jwt[].issuer.url; identities stored at bootstrap would be invisible to the Ory profile provider", config.OryIssuerURL)
 	}
 
 	return nil

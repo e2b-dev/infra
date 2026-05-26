@@ -137,7 +137,7 @@ func TestParseUserProfileProviderOryHappyPathIsIndependentOfAuthProvider(t *test
 	require.Empty(t, config.AuthProvider.JWT)
 }
 
-func TestParseUserProfileProviderOryIssuerDefaultsToSDKURL(t *testing.T) {
+func TestParseUserProfileProviderOryIssuerRequiredWhenAuthProviderEmpty(t *testing.T) {
 	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres://example")
 	t.Setenv("ADMIN_TOKEN", "admin-token")
 	t.Setenv("REDIS_URL", "redis://example")
@@ -145,12 +145,49 @@ func TestParseUserProfileProviderOryIssuerDefaultsToSDKURL(t *testing.T) {
 	t.Setenv("ORY_SDK_URL", "https://tenant.projects.oryapis.com")
 	t.Setenv("ORY_PROJECT_API_TOKEN", "pat")
 
-	config, err := Parse()
-	require.NoError(t, err)
-	require.Equal(t, "https://tenant.projects.oryapis.com", config.OryIssuerURL)
+	_, err := Parse()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "ORY_ISSUER_URL")
 }
 
-func TestParseUserProfileProviderOryIssuerOverrideForCustomDomain(t *testing.T) {
+func TestParseUserProfileProviderOryIssuerDefaultsFromSingleAuthProviderJWT(t *testing.T) {
+	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres://example")
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	t.Setenv("REDIS_URL", "redis://example")
+	t.Setenv("USER_PROFILE_PROVIDER", "ory")
+	t.Setenv("ORY_SDK_URL", "https://tenant.projects.oryapis.com")
+	t.Setenv("ORY_PROJECT_API_TOKEN", "pat")
+	t.Setenv("AUTH_PROVIDER_CONFIG", `{
+		"jwt": [
+			{"issuer": {"url": "https://auth.mycompany.com", "audiences": ["dashboard-api"]}}
+		]
+	}`)
+
+	config, err := Parse()
+	require.NoError(t, err)
+	require.Equal(t, "https://auth.mycompany.com", config.OryIssuerURL)
+}
+
+func TestParseUserProfileProviderOryIssuerRejectsMismatchAgainstAuthProvider(t *testing.T) {
+	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres://example")
+	t.Setenv("ADMIN_TOKEN", "admin-token")
+	t.Setenv("REDIS_URL", "redis://example")
+	t.Setenv("USER_PROFILE_PROVIDER", "ory")
+	t.Setenv("ORY_SDK_URL", "https://tenant.projects.oryapis.com")
+	t.Setenv("ORY_PROJECT_API_TOKEN", "pat")
+	t.Setenv("ORY_ISSUER_URL", "https://tenant.projects.oryapis.com")
+	t.Setenv("AUTH_PROVIDER_CONFIG", `{
+		"jwt": [
+			{"issuer": {"url": "https://auth.mycompany.com", "audiences": ["dashboard-api"]}}
+		]
+	}`)
+
+	_, err := Parse()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "does not match any AUTH_PROVIDER_CONFIG")
+}
+
+func TestParseUserProfileProviderOryIssuerOverrideWithoutAuthProvider(t *testing.T) {
 	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres://example")
 	t.Setenv("ADMIN_TOKEN", "admin-token")
 	t.Setenv("REDIS_URL", "redis://example")
