@@ -62,13 +62,56 @@ func (p *supabaseProvider) FindProfilesByEmail(ctx context.Context, email string
 }
 
 func profileFromAuthUser(user supabasequeries.AuthUser) Profile {
-	metadata := rawUserMetadata(user.RawUserMetaData)
+	userMetadata := rawUserMetadata(user.RawUserMetaData)
+	appMetadata := rawUserMetadata(user.RawAppMetaData)
 
 	return Profile{
-		UserID: user.ID,
-		Email:  user.Email,
-		Name:   displayNameFromMetadata(metadata),
+		UserID:            user.ID,
+		Email:             user.Email,
+		Name:              displayNameFromMetadata(userMetadata),
+		ProfilePictureURL: FirstNonEmpty(metadataString(userMetadata, "picture"), metadataString(userMetadata, "avatar_url")),
+		Providers:         supabaseLinkedProviders(appMetadata),
 	}
+}
+
+// supabaseLinkedProviders mirrors the way Supabase records linked OAuth
+// providers under raw_app_meta_data: a `providers` array plus an `provider`
+// scalar for the most recently used one.
+func supabaseLinkedProviders(appMetadata map[string]any) []string {
+	if appMetadata == nil {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, 4)
+	providers := make([]string, 0, 4)
+	add := func(p string) {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return
+		}
+		if _, dup := seen[p]; dup {
+			return
+		}
+		seen[p] = struct{}{}
+		providers = append(providers, p)
+	}
+
+	if list, ok := appMetadata["providers"].([]any); ok {
+		for _, entry := range list {
+			if name, ok := entry.(string); ok {
+				add(name)
+			}
+		}
+	}
+	if name, ok := appMetadata["provider"].(string); ok {
+		add(name)
+	}
+
+	if len(providers) == 0 {
+		return nil
+	}
+
+	return providers
 }
 
 func displayNameFromMetadata(metadata map[string]any) string {

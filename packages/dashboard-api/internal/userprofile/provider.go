@@ -12,6 +12,7 @@ type Profile struct {
 	Email             string
 	Name              string
 	ProfilePictureURL string
+	Providers         []string
 }
 
 type Provider interface {

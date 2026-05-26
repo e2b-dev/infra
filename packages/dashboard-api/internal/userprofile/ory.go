@@ -139,7 +139,9 @@ func (p *oryProvider) FindProfilesByEmail(ctx context.Context, email string) ([]
 	}
 
 	identities, resp, err := p.identities.ListIdentitiesExecute(
-		p.identities.ListIdentities(ctx).CredentialsIdentifier(normalized),
+		p.identities.ListIdentities(ctx).
+			CredentialsIdentifier(normalized).
+			IncludeCredential([]string{"oidc"}),
 	)
 	closeOryResponse(resp)
 	if err != nil {
@@ -204,7 +206,10 @@ func (p *oryProvider) listIdentitiesByIDs(ctx context.Context, ids []string) ([]
 	identities := make([]ory.Identity, 0, len(ids))
 	for page := range slices.Chunk(ids, oryListPageSize) {
 		batch, resp, err := p.identities.ListIdentitiesExecute(
-			p.identities.ListIdentities(ctx).Ids(page).PageSize(int64(len(page))),
+			p.identities.ListIdentities(ctx).
+				Ids(page).
+				PageSize(int64(len(page))).
+				IncludeCredential([]string{"oidc"}),
 		)
 		closeOryResponse(resp)
 		if err != nil {
@@ -239,5 +244,62 @@ func profileFromOryIdentity(userID uuid.UUID, identity ory.Identity) Profile {
 		Email:             metadataString(traits, "email"),
 		Name:              metadataString(traits, "name"),
 		ProfilePictureURL: metadataString(traits, "picture"),
+		Providers:         oryLinkedProviders(identity),
 	}
+}
+
+// oryLinkedProviders extracts the upstream OIDC providers (e.g. "google",
+// "github") linked to an Ory identity. The list lives at
+// credentials.oidc.config.providers[].provider; if the Console didn't expose
+// config (depends on include_credential), fall back to parsing the
+// "provider:subject" prefix from credentials.oidc.identifiers.
+func oryLinkedProviders(identity ory.Identity) []string {
+	if identity.Credentials == nil {
+		return nil
+	}
+	oidc, ok := (*identity.Credentials)["oidc"]
+	if !ok {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, 4)
+	providers := make([]string, 0, 4)
+	add := func(p string) {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return
+		}
+		if _, dup := seen[p]; dup {
+			return
+		}
+		seen[p] = struct{}{}
+		providers = append(providers, p)
+	}
+
+	if entries, ok := oidc.Config["providers"].([]any); ok {
+		for _, entry := range entries {
+			obj, ok := entry.(map[string]any)
+			if !ok {
+				continue
+			}
+			if name, ok := obj["provider"].(string); ok {
+				add(name)
+			}
+		}
+	}
+
+	if len(providers) == 0 {
+		for _, identifier := range oidc.Identifiers {
+			provider, _, found := strings.Cut(identifier, ":")
+			if found {
+				add(provider)
+			}
+		}
+	}
+
+	if len(providers) == 0 {
+		return nil
+	}
+
+	return providers
 }

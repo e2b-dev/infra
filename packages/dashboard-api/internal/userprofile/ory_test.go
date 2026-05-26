@@ -1,6 +1,7 @@
 package userprofile
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/google/uuid"
@@ -13,11 +14,13 @@ func TestProfileFromOryIdentity(t *testing.T) {
 	userID := uuid.New()
 
 	tests := []struct {
-		name        string
-		traits      any
-		wantName    string
-		wantEmail   string
-		wantPicture string
+		name          string
+		traits        any
+		credentials   *map[string]ory.IdentityCredentials
+		wantName      string
+		wantEmail     string
+		wantPicture   string
+		wantProviders []string
 	}{
 		{
 			name: "all three standardized traits",
@@ -31,16 +34,43 @@ func TestProfileFromOryIdentity(t *testing.T) {
 			wantPicture: "https://example.com/ada.jpg",
 		},
 		{
-			name: "missing picture is empty",
+			name: "providers from oidc config",
 			traits: map[string]any{
 				"email": "grace@example.com",
 				"name":  "grace hopper",
 			},
-			wantName:  "grace hopper",
-			wantEmail: "grace@example.com",
+			credentials: &map[string]ory.IdentityCredentials{
+				"oidc": {
+					Config: map[string]any{
+						"providers": []any{
+							map[string]any{"provider": "google"},
+							map[string]any{"provider": "github"},
+						},
+					},
+					Identifiers: []string{"google:111", "github:222"},
+				},
+			},
+			wantName:      "grace hopper",
+			wantEmail:     "grace@example.com",
+			wantProviders: []string{"google", "github"},
 		},
 		{
-			name:   "nil traits returns zero values",
+			name: "providers fallback from identifiers when config missing",
+			credentials: &map[string]ory.IdentityCredentials{
+				"oidc": {
+					Identifiers: []string{"google:111", "github:222", "google:111"},
+				},
+			},
+			wantProviders: []string{"google", "github"},
+		},
+		{
+			name: "providers ignored when only password credential",
+			credentials: &map[string]ory.IdentityCredentials{
+				"password": {Identifiers: []string{"ada@example.com"}},
+			},
+		},
+		{
+			name:   "nil traits and credentials returns zero values",
 			traits: nil,
 		},
 		{
@@ -57,7 +87,7 @@ func TestProfileFromOryIdentity(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			identity := ory.Identity{Id: uuid.NewString(), Traits: tt.traits}
+			identity := ory.Identity{Id: uuid.NewString(), Traits: tt.traits, Credentials: tt.credentials}
 			got := profileFromOryIdentity(userID, identity)
 			if got.UserID != userID {
 				t.Fatalf("UserID = %s, want %s", got.UserID, userID)
@@ -70,6 +100,9 @@ func TestProfileFromOryIdentity(t *testing.T) {
 			}
 			if got.ProfilePictureURL != tt.wantPicture {
 				t.Fatalf("ProfilePictureURL = %q, want %q", got.ProfilePictureURL, tt.wantPicture)
+			}
+			if !reflect.DeepEqual(got.Providers, tt.wantProviders) {
+				t.Fatalf("Providers = %v, want %v", got.Providers, tt.wantProviders)
 			}
 		})
 	}
