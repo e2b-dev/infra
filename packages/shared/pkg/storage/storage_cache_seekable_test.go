@@ -605,6 +605,89 @@ func TestCachedSeekable_OpenRangeReader(t *testing.T) {
 	})
 }
 
+func TestCachedSeekable_StoreFile_Compressed_WriteThrough(t *testing.T) {
+	t.Parallel()
+
+	const frameSize = 64 * 1024
+	cfg := defaultCfg(CompressionZstd, 2, frameSize)
+	data := generateSemiRandomData(3 * frameSize)
+
+	tempDir := t.TempDir()
+	cacheDir := filepath.Join(tempDir, "cache")
+	require.NoError(t, os.MkdirAll(cacheDir, os.ModePerm))
+
+	srcPath := filepath.Join(tempDir, "src.bin")
+	require.NoError(t, os.WriteFile(srcPath, data, 0o644))
+
+	// Stub inner.StoreFile: open the file and run compressStream with the sink
+	// pulled from opts — mirrors what fs/GCS backends do for compressed puts.
+	up := &memPartUploader{}
+	var capturedFT *FrameTable
+	inner := NewMockSeekable(t)
+	inner.EXPECT().
+		StoreFile(mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(ctx context.Context, path string, opts ...PutOption) (*FrameTable, [32]byte, error) {
+			po := ApplyPutOptions(opts)
+			require.NotNil(t, po.FrameSink, "cachedSeekable must attach a FrameSink for compressed+writeThrough")
+
+			f, err := os.Open(path)
+			require.NoError(t, err)
+			defer f.Close()
+
+			ft, sum, err := compressStream(ctx, f, cfg, up, 4, po.FrameSink)
+			capturedFT = ft
+			return ft, sum, err
+		})
+
+	flags := NewMockFeatureFlagsClient(t)
+	flags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(true)
+	flags.EXPECT().IntFlag(mock.Anything, mock.Anything).Return(4)
+
+	c := cachedSeekable{path: cacheDir, inner: inner, chunkSize: frameSize, flags: flags, tracer: noopTracer}
+
+	_, _, err := c.StoreFile(t.Context(), srcPath, WithCompressConfig(cfg))
+	require.NoError(t, err)
+
+	c.wg.Wait()
+
+	require.Equal(t, 3, capturedFT.NumFrames())
+	assembled := up.Assemble()
+	for i := range capturedFT.NumFrames() {
+		_, _, startC, endC := capturedFT.FrameAt(i)
+		framePath := makeFrameFilename(c.path, Range{Offset: startC, Length: int(endC - startC)})
+		onDisk, err := os.ReadFile(framePath)
+		require.NoError(t, err)
+		assert.Equal(t, assembled[startC:endC], onDisk)
+	}
+}
+
+func TestCachedSeekable_StoreFile_Compressed_FlagOff_NoSink(t *testing.T) {
+	t.Parallel()
+
+	cfg := defaultCfg(CompressionZstd, 1, 64*1024)
+	tempDir := t.TempDir()
+	srcPath := filepath.Join(tempDir, "src.bin")
+	require.NoError(t, os.WriteFile(srcPath, []byte("x"), 0o644))
+
+	inner := NewMockSeekable(t)
+	inner.EXPECT().
+		StoreFile(mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, _ string, opts ...PutOption) (*FrameTable, [32]byte, error) {
+			po := ApplyPutOptions(opts)
+			assert.Nil(t, po.FrameSink, "FrameSink must NOT be attached when write-through flag is off")
+			return nil, [32]byte{}, nil
+		})
+
+	flags := NewMockFeatureFlagsClient(t)
+	flags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(false)
+
+	c := cachedSeekable{path: t.TempDir(), inner: inner, chunkSize: 64 * 1024, flags: flags, tracer: noopTracer}
+
+	_, _, err := c.StoreFile(t.Context(), srcPath, WithCompressConfig(cfg))
+	require.NoError(t, err)
+	c.wg.Wait()
+}
+
 func TestCachedSeekable_FrameSinkPopulatesNFS(t *testing.T) {
 	t.Parallel()
 
