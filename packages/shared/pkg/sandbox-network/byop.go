@@ -11,18 +11,12 @@ import (
 )
 
 // DevAllowedProxyEndpointCIDRs is a dev-only allowlist that overrides
-// DeniedSandboxCIDRs at BYOP validation time. Empty in production. Populated
-// from BYOP_DEV_ALLOWED_PROXY_CIDRS (comma-separated CIDRs) so a developer
-// can point a sandbox at a SOCKS5 proxy on 127.0.0.1 / docker bridge IPs
-// without weakening the deny-list itself.
-//
-// Malformed entries are silently dropped at parse time. Production envs do
-// not set the variable; the allowlist is empty and behavior is unchanged.
+// DeniedSandboxCIDRs at BYOP validation time. Populated from
+// BYOP_DEV_ALLOWED_PROXY_CIDRS (comma-separated CIDRs). Empty in production.
 var DevAllowedProxyEndpointCIDRs = parseCIDRsEnv("BYOP_DEV_ALLOWED_PROXY_CIDRS")
 
 // parsedDevAllowedProxyEndpointCIDRs is DevAllowedProxyEndpointCIDRs pre-parsed
-// for IsIPDevAllowedAsProxyEndpoint. parseCIDRsEnv already filters malformed
-// entries; the err check is defensive against future changes.
+// for IsIPDevAllowedAsProxyEndpoint.
 var parsedDevAllowedProxyEndpointCIDRs = func() []*net.IPNet {
 	out := make([]*net.IPNet, 0, len(DevAllowedProxyEndpointCIDRs))
 	for _, c := range DevAllowedProxyEndpointCIDRs {
@@ -58,8 +52,7 @@ func parseCIDRsEnv(name string) []string {
 }
 
 // IsIPDevAllowedAsProxyEndpoint reports whether ip falls into any CIDR in
-// DevAllowedProxyEndpointCIDRs. Exported so the orchestrator dial-time check
-// can apply the same override.
+// DevAllowedProxyEndpointCIDRs.
 func IsIPDevAllowedAsProxyEndpoint(ip net.IP) bool {
 	for _, ipNet := range parsedDevAllowedProxyEndpointCIDRs {
 		if ipNet.Contains(ip) {
@@ -71,34 +64,27 @@ func IsIPDevAllowedAsProxyEndpoint(ip net.IP) bool {
 }
 
 // EgressProxyConfig is a transport-agnostic view of a BYOP SOCKS5 proxy
-// configuration. The fields mirror the EgressProxy{Address,Username,Password}
-// columns on packages/db/pkg/types.SandboxNetworkEgressConfig so callers can
-// validate without importing db. Callers copy between the two.
+// configuration. Mirrors EgressProxy{Address,Username,Password} on
+// db/pkg/types.SandboxNetworkEgressConfig.
 type EgressProxyConfig struct {
 	Address  string
 	Username string
 	Password string
 }
 
-// SandboxIDPlaceholder is substituted with the sandbox ID at dial time in
-// Username and Password. Validation-time code must leave it literal.
+// SandboxIDPlaceholder is substituted with the sandbox ID at dial time.
+// Validation leaves it literal.
 const SandboxIDPlaceholder = "{{sandboxID}}"
 
 // ErrEgressProxyInternalEndpoint is returned when a configured BYOP endpoint
-// resolves to an IP that would bridge the sandbox back into E2B infrastructure
-// (DeniedSandboxCIDRs: 10/8, 127/8, 169.254/16, 172.16/12, 192.168/16, ::1,
-// fc00::/7, fe80::/10). Kept as a sentinel so callers can distinguish this
-// class of rejection from malformed input.
+// resolves to an IP in DeniedSandboxCIDRs.
 var ErrEgressProxyInternalEndpoint = errors.New("egress proxy endpoint resolves to an internal / denied IP range")
 
-// HostResolver resolves a hostname to one or more IPs. For IP literals an
-// implementation should return the literal without touching DNS. Implementations
-// must honor ctx (cancellation/deadline). Injected into ValidateEgressProxy so
-// tests can substitute a deterministic table.
+// HostResolver resolves a hostname to one or more IPs. IP literals are
+// returned without touching DNS. Implementations must honor ctx.
 type HostResolver func(ctx context.Context, host string) ([]net.IP, error)
 
-// DefaultHostResolver uses net.DefaultResolver.LookupIPAddr and honors the
-// caller's context. IP literals are returned without a lookup.
+// DefaultHostResolver uses net.DefaultResolver.LookupIPAddr and honors ctx.
 func DefaultHostResolver(ctx context.Context, host string) ([]net.IP, error) {
 	if ip := net.ParseIP(host); ip != nil {
 		return []net.IP{ip}, nil
@@ -121,25 +107,14 @@ func DefaultHostResolver(ctx context.Context, host string) ([]net.IP, error) {
 // ValidateEgressProxy checks a BYOP SOCKS5 config and rejects configurations
 // that would expose E2B infrastructure or are malformed. On success it returns
 // a canonical copy (host lower-cased, whitespace trimmed); the input is not
-// mutated.
-//
-// The validator is intentionally orchestrator-agnostic: it does NOT check the
-// per-orchestrator OrchestratorInSandboxIPAddress. That check happens at dial
-// time in the egress proxy, which also re-resolves the hostname to guard
-// against DNS-rebind attacks.
-//
-// resolve is the resolver used to map host to IPs. Pass DefaultHostResolver
-// in production; tests pass a stub. If nil, DefaultHostResolver is used.
+// mutated. cfg == nil returns (nil, nil). resolve defaults to DefaultHostResolver.
 //
 // Rules:
 //   - Address must parse as "host:port" with a non-zero port.
 //   - Host must be an IP literal or resolve via the provided resolver.
 //   - Every resolved A/AAAA record must NOT be in DeniedSandboxCIDRs.
 //   - If Username == "" then Password must also be "" (no orphan password).
-//   - Username and Password may contain {{sandboxID}}; the placeholder is
-//     left unsubstituted at validation time.
-//
-// Passing cfg == nil is valid and returns nil, nil (BYOP not configured).
+//   - Username and Password may contain {{sandboxID}} literally.
 func ValidateEgressProxy(ctx context.Context, cfg *EgressProxyConfig, resolve HostResolver) (*EgressProxyConfig, error) {
 	if cfg == nil {
 		return nil, nil
@@ -191,8 +166,7 @@ func ValidateEgressProxy(ctx context.Context, cfg *EgressProxyConfig, resolve Ho
 }
 
 // IsIPInDeniedSandboxCIDRs reports whether ip falls into any entry of
-// DeniedSandboxCIDRs. Used by both API-time validation and the orchestrator's
-// dial-time check so a single denylist drives both layers.
+// DeniedSandboxCIDRs.
 func IsIPInDeniedSandboxCIDRs(ip net.IP) bool {
 	for _, ipNet := range parsedDeniedSandboxCIDRs {
 		if ipNet.Contains(ip) {

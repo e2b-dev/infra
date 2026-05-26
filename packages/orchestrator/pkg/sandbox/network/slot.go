@@ -309,8 +309,7 @@ func (s *Slot) UpdateInternet(ctx context.Context, egress *orchestrator.SandboxN
 	}
 	defer n.Close()
 
-	// Set before invoking any mutating Firewall call: a partial failure can
-	// still leave nft state modified, and ResetInternet must run cleanup.
+	// Set before mutating: a partial failure must still trigger cleanup.
 	s.firewallCustomRules.Store(true)
 
 	err = n.Do(func(_ ns.NetNS) error {
@@ -350,9 +349,9 @@ func (s *Slot) ResetInternet(ctx context.Context) error {
 	defer n.Close()
 
 	err = n.Do(func(_ ns.NetNS) error {
-		// Revert any BYOP narrowing on Rule 3 before clearing user sets,
-		// so a non-BYOP tenant cannot inherit a kernel firewall that
-		// allows TCP to predefined-deny ranges.
+		// Revert BYOP narrowing before clearing user sets so a non-BYOP
+		// tenant cannot inherit a kernel firewall with TCP allowed to
+		// predefined-deny ranges.
 		if err := s.Firewall.DisableBYOPProxy(); err != nil {
 			return fmt.Errorf("disable BYOP proxy mode: %w", err)
 		}

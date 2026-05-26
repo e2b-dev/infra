@@ -32,7 +32,7 @@ var DeniedSandboxCIDRs = []string{
 var DeniedSandboxSetData = utils.Must(set.AddressStringsToSetData(DeniedSandboxCIDRs))
 
 // parsedDeniedSandboxCIDRs is DeniedSandboxCIDRs pre-parsed for
-// IsIPInDeniedSandboxCIDRs to avoid re-parsing on every call.
+// IsIPInDeniedSandboxCIDRs.
 var parsedDeniedSandboxCIDRs = func() []*net.IPNet {
 	out := make([]*net.IPNet, 0, len(DeniedSandboxCIDRs))
 	for _, c := range DeniedSandboxCIDRs {
