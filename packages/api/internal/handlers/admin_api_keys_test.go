@@ -2,8 +2,8 @@ package handlers
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -111,6 +111,78 @@ func TestPostAdminTeamsTeamIDApiKeysRejectsBlockedTeam(t *testing.T) {
 	}
 }
 
+func TestPostAdminTeamsTeamIDApiKeysRejectsBannedTeam(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	teamID := testutils.CreateTestTeam(t, testDB)
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/teams/"+teamID.String()+"/api-keys", strings.NewReader(`{
+		"name": "Stripe Projects"
+	}`))
+	ginCtx.Request.Header.Set("Content-Type", "application/json")
+
+	store := &APIStore{
+		authDB:      testDB.AuthDB,
+		authService: fakeAPIKeyAuthService{err: &sharedauth.TeamForbiddenError{Message: "team is banned"}},
+	}
+	store.PostAdminTeamsTeamIDApiKeys(ginCtx, teamID)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("expected status 403, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestPostAdminTeamsTeamIDApiKeysRejectsMissingTeam(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	teamID := uuid.New()
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/teams/"+teamID.String()+"/api-keys", strings.NewReader(`{
+		"name": "Stripe Projects"
+	}`))
+	ginCtx.Request.Header.Set("Content-Type", "application/json")
+
+	store := &APIStore{
+		authDB:      testDB.AuthDB,
+		authService: fakeAPIKeyAuthService{err: sql.ErrNoRows},
+	}
+	store.PostAdminTeamsTeamIDApiKeys(ginCtx, teamID)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestPostAdminTeamsTeamIDApiKeysRejectsNilTeam(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	teamID := uuid.New()
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/teams/"+teamID.String()+"/api-keys", strings.NewReader(`{
+		"name": "Stripe Projects"
+	}`))
+	ginCtx.Request.Header.Set("Content-Type", "application/json")
+
+	store := &APIStore{
+		authDB:      testDB.AuthDB,
+		authService: fakeAPIKeyAuthService{},
+	}
+	store.PostAdminTeamsTeamIDApiKeys(ginCtx, teamID)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestDeleteAdminTeamsTeamIDApiKeysDeletesTeamKey(t *testing.T) {
 	t.Parallel()
 
@@ -178,9 +250,6 @@ func (f fakeAPIKeyAuthService) ValidateSupabaseTeam(context.Context, *gin.Contex
 func (f fakeAPIKeyAuthService) GetTeamByID(context.Context, uuid.UUID) (*authtypes.Team, error) {
 	if f.err != nil {
 		return nil, f.err
-	}
-	if f.team == nil {
-		return nil, errors.New("team not found")
 	}
 
 	return f.team, nil

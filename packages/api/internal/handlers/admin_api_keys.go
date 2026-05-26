@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/team"
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 )
 
@@ -26,7 +28,24 @@ func (a *APIStore) PostAdminTeamsTeamIDApiKeys(c *gin.Context, teamID openapi_ty
 
 	teamInfo, err := a.authService.GetTeamByID(ctx, teamID)
 	if err != nil {
+		var forbiddenErr *sharedauth.TeamForbiddenError
+		if errors.As(err, &forbiddenErr) {
+			a.sendAPIStoreError(c, http.StatusForbidden, forbiddenErr.Error())
+
+			return
+		}
+		if dberrors.IsNotFoundError(err) {
+			a.sendAPIStoreError(c, http.StatusNotFound, "Team not found")
+
+			return
+		}
+
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when getting team: %s", err))
+
+		return
+	}
+	if teamInfo == nil {
+		a.sendAPIStoreError(c, http.StatusNotFound, "Team not found")
 
 		return
 	}
