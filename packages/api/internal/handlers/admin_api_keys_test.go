@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -224,6 +225,25 @@ func TestDeleteAdminTeamsTeamIDApiKeysDeletesTeamKey(t *testing.T) {
 	if len(keys) != 0 {
 		t.Fatalf("expected API key to be deleted, got %d keys", len(keys))
 	}
+}
+
+func TestDeleteAdminTeamsTeamIDApiKeysRejectsMissingKey(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	teamID := testutils.CreateTestTeam(t, testDB)
+
+	store := &APIStore{authDB: testDB.AuthDB}
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	missingKeyID := uuid.New()
+	ctx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/admin/teams/"+teamID.String()+"/api-keys/"+missingKeyID.String(), nil)
+
+	store.DeleteAdminTeamsTeamIDApiKeysApiKeyID(ctx, teamID, missingKeyID.String())
+
+	require.Equal(t, http.StatusNotFound, recorder.Code)
+	require.Contains(t, recorder.Header().Get("Content-Type"), "application/json")
+	require.JSONEq(t, `{"code":404,"message":"API key not found"}`, recorder.Body.String())
 }
 
 type fakeAPIKeyAuthService struct {

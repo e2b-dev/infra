@@ -96,7 +96,7 @@ func (a *APIStore) DeleteAdminTeamsTeamIDApiKeysApiKeyID(c *gin.Context, teamID 
 		return
 	}
 	if !deleted {
-		c.String(http.StatusNotFound, "id not found")
+		a.sendAPIStoreError(c, http.StatusNotFound, "API key not found")
 
 		return
 	}
