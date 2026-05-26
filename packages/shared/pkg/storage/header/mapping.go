@@ -3,6 +3,7 @@ package header
 import (
 	"fmt"
 	"os"
+	"slices"
 
 	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/google/uuid"
@@ -205,25 +206,17 @@ func MergeMappings(
 
 // NormalizeMappings joins adjacent mappings that have the same buildId.
 //
-// The returned slice is allocated with cap == len so the merged header
-// can be cached without retaining unused trailing capacity from the
-// pre-merge input (which can be 10–100x larger than the normalized
-// result on snapshot-heavy workloads).
+// The returned slice has cap == len so the merged header can be cached
+// without retaining unused trailing capacity from the pre-merge input
+// (which can be 10–100x larger than the normalized result on
+// snapshot-heavy workloads). The intermediate oversized slice is freed
+// once the clone is returned.
 func NormalizeMappings(mappings []BuildMap) []BuildMap {
 	if len(mappings) == 0 {
 		return nil
 	}
 
-	// First pass: count distinct adjacent runs so the result slice can
-	// be allocated at exactly the final length.
-	runs := 1
-	for i := 1; i < len(mappings); i++ {
-		if mappings[i].BuildId != mappings[i-1].BuildId {
-			runs++
-		}
-	}
-
-	result := make([]BuildMap, 0, runs)
+	result := make([]BuildMap, 0, len(mappings))
 
 	current := mappings[0]
 
@@ -239,5 +232,5 @@ func NormalizeMappings(mappings []BuildMap) []BuildMap {
 
 	result = append(result, current)
 
-	return result
+	return slices.Clone(result)
 }
