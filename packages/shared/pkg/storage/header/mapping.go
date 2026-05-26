@@ -204,12 +204,26 @@ func MergeMappings(
 }
 
 // NormalizeMappings joins adjacent mappings that have the same buildId.
+//
+// The returned slice is allocated with cap == len so the merged header
+// can be cached without retaining unused trailing capacity from the
+// pre-merge input (which can be 10–100x larger than the normalized
+// result on snapshot-heavy workloads).
 func NormalizeMappings(mappings []BuildMap) []BuildMap {
 	if len(mappings) == 0 {
 		return nil
 	}
 
-	result := make([]BuildMap, 0, len(mappings))
+	// First pass: count distinct adjacent runs so the result slice can
+	// be allocated at exactly the final length.
+	runs := 1
+	for i := 1; i < len(mappings); i++ {
+		if mappings[i].BuildId != mappings[i-1].BuildId {
+			runs++
+		}
+	}
+
+	result := make([]BuildMap, 0, runs)
 
 	current := mappings[0]
 
