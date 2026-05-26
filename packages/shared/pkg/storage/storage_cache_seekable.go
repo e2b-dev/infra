@@ -306,11 +306,13 @@ func (c *cachedSeekable) StoreFile(ctx context.Context, path string, opts ...Put
 	}()
 
 	cfg := CompressConfigFromOpts(ApplyPutOptions(opts))
+	writeThrough := c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag)
 
-	// write the file to the disk and the remote system at the same time.
-	// this opens the file twice, but the API makes it difficult to use a MultiWriter
+	if cfg.IsCompressionEnabled() && writeThrough {
+		opts = append(opts, WithFrameSink(c.frameSink(ctx)))
+	}
 
-	if !cfg.IsCompressionEnabled() && c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
+	if !cfg.IsCompressionEnabled() && writeThrough {
 		c.goCtx(ctx, func(ctx context.Context) {
 			ctx, span := c.tracer.Start(ctx, "write cache object from file system",
 				trace.WithAttributes(attribute.String("path", path)))
@@ -334,6 +336,19 @@ func (c *cachedSeekable) StoreFile(ctx context.Context, path string, opts ...Put
 	}
 
 	return c.inner.StoreFile(ctx, path, opts...)
+}
+
+// frameSink tees each compressed frame to a .frm file at its C-space offset,
+// matching the layout openReaderCompressed expects. Async; best-effort.
+func (c *cachedSeekable) frameSink(ctx context.Context) FrameSink {
+	return func(cOffset int64, data []byte) {
+		framePath := makeFrameFilename(c.path, Range{Offset: cOffset, Length: len(data)})
+		c.goCtx(ctx, func(ctx context.Context) {
+			if err := c.writeToCache(ctx, cOffset, framePath, data); err != nil {
+				recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpWriteFromFileSystem, err)
+			}
+		})
+	}
 }
 
 func (c *cachedSeekable) goCtx(ctx context.Context, fn func(context.Context)) {

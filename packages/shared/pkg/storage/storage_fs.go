@@ -131,9 +131,10 @@ func (o *fsObject) Put(_ context.Context, data []byte, _ ...PutOption) error {
 }
 
 func (o *fsObject) StoreFile(ctx context.Context, path string, opts ...PutOption) (*FrameTable, [32]byte, error) {
-	cfg := CompressConfigFromOpts(ApplyPutOptions(opts))
+	putOpts := ApplyPutOptions(opts)
+	cfg := CompressConfigFromOpts(putOpts)
 	if cfg.IsCompressionEnabled() {
-		ft, checksum, err := o.storeFileCompressed(ctx, path, cfg)
+		ft, checksum, err := o.storeFileCompressed(ctx, path, cfg, putOpts.FrameSink)
 		if err == nil {
 			logger.L().Debug(ctx, "Stored file to filesystem",
 				zap.String("object", o.path),
@@ -173,7 +174,7 @@ func (o *fsObject) StoreFile(ctx context.Context, path string, opts ...PutOption
 	return nil, [32]byte{}, err
 }
 
-func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, cfg CompressConfig) (*FrameTable, [32]byte, error) {
+func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, cfg CompressConfig, sink FrameSink) (*FrameTable, [32]byte, error) {
 	file, err := os.Open(localPath)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("failed to open local file %s: %w", localPath, err)
@@ -188,7 +189,7 @@ func (o *fsObject) storeFileCompressed(ctx context.Context, localPath string, cf
 	uploader := &fsPartUploader{fullPath: o.path}
 
 	const noConcurrencyForMemUploader = 1
-	ft, checksum, err := compressStream(ctx, file, cfg, uploader, noConcurrencyForMemUploader)
+	ft, checksum, err := compressStream(ctx, file, cfg, uploader, noConcurrencyForMemUploader, sink)
 	if err != nil {
 		return nil, [32]byte{}, err
 	}

@@ -8,14 +8,22 @@ type ObjectMetadata map[string]string
 
 const ObjectMetadataTeamID = "team_id"
 
+// FrameSink fires once per compressed frame produced by a compressed
+// StoreFile, with the frame's absolute C-space offset and bytes.
+// Best-effort, non-blocking.
+type FrameSink func(cOffset int64, compressed []byte)
+
 // PutOptions holds parameters for blob/seekable writes. Compression is held
 // as `any` so that storage.CompressConfig (which has heavy storage-internal
 // dependencies) doesn't have to be moved here. Backends type-assert it back.
 type PutOptions struct {
 	Metadata    ObjectMetadata
 	Compression any
+	FrameSink   FrameSink
 	Checksum    bool
 }
+
+func WithFrameSink(s FrameSink) PutOption { return func(o *PutOptions) { o.FrameSink = s } }
 
 type PutOption func(*PutOptions)
 

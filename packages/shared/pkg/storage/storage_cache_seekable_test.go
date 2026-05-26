@@ -605,6 +605,32 @@ func TestCachedSeekable_OpenRangeReader(t *testing.T) {
 	})
 }
 
+func TestCachedSeekable_FrameSinkPopulatesNFS(t *testing.T) {
+	t.Parallel()
+
+	const frameSize = 64 * 1024
+	data := generateSemiRandomData(3 * frameSize)
+
+	c := &cachedSeekable{path: t.TempDir(), tracer: noopTracer}
+	up := &memPartUploader{}
+	cfg := defaultCfg(CompressionZstd, 2, frameSize)
+
+	ft, _, err := compressStream(t.Context(), bytes.NewReader(data), cfg, up, 4, c.frameSink(t.Context()))
+	require.NoError(t, err)
+	c.wg.Wait()
+
+	require.Equal(t, 3, ft.NumFrames())
+	assembled := up.Assemble()
+
+	for i := range ft.NumFrames() {
+		_, _, startC, endC := ft.FrameAt(i)
+		framePath := makeFrameFilename(c.path, Range{Offset: startC, Length: int(endC - startC)})
+		onDisk, err := os.ReadFile(framePath)
+		require.NoError(t, err)
+		assert.Equal(t, assembled[startC:endC], onDisk)
+	}
+}
+
 func TestCacheWriteThroughReader(t *testing.T) {
 	t.Parallel()
 

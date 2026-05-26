@@ -94,6 +94,7 @@ type (
 	ObjectMetadata = storageopts.ObjectMetadata
 	PutOptions     = storageopts.PutOptions
 	PutOption      = storageopts.PutOption
+	FrameSink      = storageopts.FrameSink
 )
 
 const ObjectMetadataTeamID = storageopts.ObjectMetadataTeamID
@@ -104,6 +105,8 @@ func WithMetadata(metadata ObjectMetadata) PutOption { return storageopts.WithMe
 // stored as `any` in storageopts to avoid importing storage from there;
 // backends use CompressConfigFromOpts to pull it back out.
 func WithCompressConfig(cfg CompressConfig) PutOption { return storageopts.WithCompression(cfg) }
+
+func WithFrameSink(s FrameSink) PutOption { return storageopts.WithFrameSink(s) }
 
 func WithChecksumSHA256() PutOption {
 	return func(o *PutOptions) { o.Checksum = true }
