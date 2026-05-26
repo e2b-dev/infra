@@ -113,11 +113,6 @@ variable "sandbox_access_token_hash_seed" {
   type = string
 }
 
-variable "sandbox_storage_backend" {
-  type    = string
-  default = "memory"
-}
-
 variable "db_max_open_connections" {
   type = number
 }
@@ -315,10 +310,6 @@ variable "orchestrator_proxy_port" {
 
 variable "fc_env_pipeline_bucket_name" {
   type = string
-}
-
-variable "allow_sandbox_internet" {
-  type = bool
 }
 
 variable "allow_sandbox_internal_cidrs" {

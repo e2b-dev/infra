@@ -447,10 +447,14 @@ func (f *Factory) CreateSandbox(
 
 	telemetry.ReportEvent(ctx, "created fc client")
 
+	fcPageSize := int64(header.PageSize)
+	if config.HugePages {
+		fcPageSize = int64(header.HugepageSize)
+	}
 	resources := &Resources{
 		Slot:   ips,
 		rootfs: rootfsProvider,
-		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize()),
+		memory: uffd.NewNoopMemory(memfileSize, fcPageSize),
 	}
 
 	metadata := &Metadata{
@@ -1140,6 +1144,14 @@ func (s *Sandbox) Pause(
 	recordSnapshotDiff(ctx, "memfile", memfileDiffMetadata, originalMemfile.Header())
 
 	// Start POSTPROCESSING
+	var dedupBase block.ReadonlyDevice
+	var dedupBestEffort, dedupDirectIO bool
+	dedupCfg := s.featureFlags.JSONFlag(ctx, featureflags.MemfileDiffDedupFlag, sandboxLDContext(s.Runtime, s.Config)).AsValueMap()
+	if dedupCfg.Get("enabled").BoolValue() {
+		dedupBase = originalMemfile
+		dedupBestEffort = dedupCfg.Get("bestEffort").BoolValue()
+		dedupDirectIO = dedupCfg.Get("directIO").BoolValue()
+	}
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
 		ctx,
 		buildID,
@@ -1149,13 +1161,16 @@ func (s *Sandbox) Pause(
 		s.process,
 		s.memory.Memfd(ctx),
 		s.featureFlags.BoolFlag(ctx, featureflags.MemfdBackgroundCopyFlag, sandboxLDContext(s.Runtime, s.Config)),
+		dedupBase,
+		dedupBestEffort,
+		dedupDirectIO,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
 	cleanup.AddNoContext(ctx, memfileDiff.Close)
 
-	rootfsDiff, rootfsDiffHeader, err := pauseProcessRootfs(
+	rootfsDiff, rootfsHeader, err := pauseProcessRootfs(
 		ctx,
 		buildID,
 		originalRootfs.Header(),
@@ -1184,7 +1199,9 @@ func (s *Sandbox) Pause(
 		MemfileDiff:       memfileDiff,
 		MemfileDiffHeader: memfileDiffHeader,
 		RootfsDiff:        rootfsDiff,
-		RootfsDiffHeader:  rootfsDiffHeader,
+		RootfsDiffHeader:  NewResolvedDiffHeader(rootfsHeader),
+		MemfileBlockSize:  originalMemfile.Header().Metadata.BlockSize,
+		RootfsBlockSize:   originalRootfs.Header().Metadata.BlockSize,
 
 		BuildID: buildID,
 
@@ -1217,20 +1234,22 @@ func pauseProcessMemory(
 	fc *fc.Process,
 	memfd *block.Memfd,
 	bgCopy bool,
-) (d build.Diff, h *header.Header, e error) {
+	originalMemfile block.ReadonlyDevice,
+	dedupBestEffort bool,
+	dedupDirectIO bool,
+) (d build.Diff, h *DiffHeader, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
-	// ExportMemory owns memfd and closes it on all paths.
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
-	cache, err := fc.ExportMemory(ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy)
+	metaOut := utils.NewSetOnce[*header.DiffMetadata]()
+	// ExportMemory owns memfd and closes it on all paths.
+	cache, err := fc.ExportMemory(
+		ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy,
+		originalMemfile, dedupBestEffort, dedupDirectIO, diffMetadata.Empty, metaOut,
+	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
-	}
-
-	header, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
-	if err != nil {
-		return nil, nil, errors.Join(fmt.Errorf("failed to create memfile header: %w", err), cache.Close())
 	}
 
 	diff, err := build.NewLocalDiffFromCache(
@@ -1241,7 +1260,33 @@ func pauseProcessMemory(
 		return nil, nil, fmt.Errorf("failed to create local diff from cache: %w", errors.Join(err, cache.Close()))
 	}
 
-	return diff, header, nil
+	// Build the diff header on a goroutine so Pause returns without waiting
+	// on memfd-dedup compare. ExportMemory resolves metaOut sync for every
+	// other path, so Wait there is non-blocking; the goroutine is harmless.
+	headerOut := utils.NewSetOnce[*header.Header]()
+	go func() {
+		setHeader := func(h *header.Header, err error) {
+			if setErr := headerOut.SetResult(h, err); setErr != nil {
+				logger.L().Warn(ctx, "set memfile diff header", zap.Error(setErr))
+			}
+		}
+		meta, err := metaOut.Wait()
+		if err != nil {
+			setHeader(nil, err)
+
+			return
+		}
+		// post == nil signals "no dedup ran" to the metric so it records
+		// kind="none" with zero savings.
+		post := meta
+		if originalMemfile == nil {
+			post = nil
+		}
+		recordSnapshotDedup(ctx, "memfile", diffMetadata, post, dedupBestEffort)
+		setHeader(meta.ToDiffHeader(ctx, originalHeader, buildID))
+	}()
+
+	return diff, headerOut, nil
 }
 
 func pauseProcessRootfs(

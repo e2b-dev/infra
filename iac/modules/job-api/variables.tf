@@ -120,11 +120,6 @@ variable "sandbox_access_token_hash_seed" {
   sensitive = true
 }
 
-variable "sandbox_storage_backend" {
-  type    = string
-  default = "memory"
-}
-
 variable "redis_url" {
   type      = string
   sensitive = true

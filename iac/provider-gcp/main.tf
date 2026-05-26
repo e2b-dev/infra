@@ -258,7 +258,6 @@ module "nomad" {
   redis_cluster_url_secret_version                       = module.init.redis_cluster_url_secret_version
   redis_tls_ca_base64_secret_version                     = module.init.redis_tls_ca_base64_secret_version
   sandbox_access_token_hash_seed                         = random_password.sandbox_access_token_hash_seed.result
-  sandbox_storage_backend                                = var.sandbox_storage_backend
   db_max_open_connections                                = var.db_max_open_connections
   db_min_idle_connections                                = var.db_min_idle_connections
   auth_db_max_open_connections                           = var.auth_db_max_open_connections
@@ -305,7 +304,6 @@ module "nomad" {
 
   # Orchestrator
   orchestrator_node_pool         = var.orchestrator_node_pool
-  allow_sandbox_internet         = var.allow_sandbox_internet
   allow_sandbox_internal_cidrs   = var.allow_sandbox_internal_cidrs
   orchestrator_port              = var.orchestrator_port
   orchestrator_proxy_port        = var.orchestrator_proxy_port

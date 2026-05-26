@@ -145,6 +145,12 @@ func (d *Storage) Slice(ctx context.Context, off, length int64) ([]byte, error) 
 	return d.source.Slice(ctx, off, length)
 }
 
+// IsCached forwards to the underlying build.File so dedup best-effort can
+// peek the chunker cache through this wrapper.
+func (d *Storage) IsCached(ctx context.Context, off, length int64) bool {
+	return d.source.IsCached(ctx, off, length)
+}
+
 func (d *Storage) Header() *header.Header {
 	return d.source.Header()
 }

@@ -108,6 +108,13 @@ func OverrideBoolFlag(flag BoolFlag, value bool) {
 	launchDarklyOfflineStore.Update(builder)
 }
 
+// OverrideJSONFlag forces a JSON flag to a specific value in the offline store.
+// Only takes effect when LAUNCH_DARKLY_API_KEY is not set (i.e. dev/CLI tools).
+func OverrideJSONFlag(flag JSONFlag, value ldvalue.Value) {
+	builder := launchDarklyOfflineStore.Flag(flag.name).ValueForAll(value)
+	launchDarklyOfflineStore.Update(builder)
+}
+
 var (
 	MetricsWriteFlag                    = NewBoolFlag("sandbox-metrics-write", true)
 	MetricsReadFlag                     = NewBoolFlag("sandbox-metrics-read", true)
@@ -131,6 +138,15 @@ var (
 	// a goroutine so Pause returns as soon as the diff metadata is written.
 	// Only takes effect when UseMemFdFlag is also on.
 	MemfdBackgroundCopyFlag = NewBoolFlag("memfd-background-copy", false)
+
+	// MemfileDiffDedupFlag enables 4 KiB-page dedup of the memfile diff
+	// against the base memfile. bestEffort skips uncached blocks;
+	// directIO opens the dedup output with O_DIRECT.
+	MemfileDiffDedupFlag = NewJSONFlag("memfile-diff-dedup", ldvalue.FromJSONMarshal(map[string]any{
+		"enabled":    false,
+		"bestEffort": false,
+		"directIO":   false,
+	}))
 
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.
 	PeerToPeerChunkTransferFlag = NewBoolFlag("peer-to-peer-chunk-transfer", false)
@@ -337,7 +353,7 @@ const (
 const (
 	DefaultFirecackerV1_10Version = "v1.10.1_30cbb07"
 	DefaultFirecackerV1_12Version = "v1.12.1_210cbac"
-	DefaultFirecackerV1_14Version = "v1.14.1_458ca91"
+	DefaultFirecackerV1_14Version = "v1.14.1_bd85e43"
 	DefaultFirecrackerVersion     = DefaultFirecackerV1_12Version
 )
 

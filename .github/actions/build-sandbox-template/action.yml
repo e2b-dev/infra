@@ -25,8 +25,8 @@ runs:
     - name: Build Sandbox Template
       env:
         TEMPLATE_ID: "2j6ly824owf4awgai1xo"
-        KERNEL_VERSION: "vmlinux-6.1.158"
-        FIRECRACKER_VERSION: "v1.14.1_458ca91"
+        KERNEL_VERSION: "vmlinux-6.1.158-c1a568c"
+        FIRECRACKER_VERSION: "v1.14.1_bd85e43"
         COMPRESS_ENABLED: ${{ inputs.compress_enabled }}
         COMPRESS_TYPE: ${{ inputs.compress_type }}
         COMPRESS_LEVEL: ${{ inputs.compress_level }}

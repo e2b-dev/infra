@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"io"
 	"sync/atomic"
+	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -83,10 +85,8 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 			return n, io.EOF
 		}
 
-		// Skip reading when the uuid is nil.
-		// We will use this to handle base builds that are already diffs.
-		// The passed slice p must start as empty, otherwise we would need to copy the empty values there.
 		if mappedToBuild.BuildId == uuid.Nil {
+			clear(p[n : int64(n)+readLength])
 			n += int(readLength)
 
 			continue
@@ -120,48 +120,81 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 	return n, nil
 }
 
-// The slice access must be in the predefined blocksize of the build.
-func (b *File) Slice(ctx context.Context, off, _ int64) ([]byte, error) {
-	for {
+// Slice returns [off, off+length). Zero-copy when the range fits in a
+// single mapping; otherwise composes via ReadAt.
+func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
+	if length > 0 {
 		h := b.Header()
-
-		mappedBuild, err := h.GetShiftedMapping(ctx, off)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get mapping: %w", err)
-		}
-
-		// Pass empty huge page when the build id is nil.
-		if mappedBuild.BuildId == uuid.Nil {
-			return header.EmptyHugePage, nil
-		}
-
-		size := b.buildFileSize(h, mappedBuild.BuildId)
-		ft := h.GetBuildFrameData(mappedBuild.BuildId)
-		diff, err := b.getBuild(ctx, mappedBuild.BuildId, size, ft.CompressionType())
-		if err != nil {
-			return nil, fmt.Errorf("failed to get build: %w", err)
-		}
-
-		result, err := diff.Slice(ctx, int64(mappedBuild.Offset), int64(h.Metadata.BlockSize), ft)
-		if err != nil {
-			if retry, swapErr := b.retryOnTransition(ctx, err); retry {
-				continue
-			} else if swapErr != nil {
-				return nil, swapErr
+		m, err := h.GetShiftedMapping(ctx, off)
+		if err == nil && int64(m.Length) >= length {
+			if m.BuildId == uuid.Nil && length <= int64(len(header.EmptyHugePage)) {
+				return header.EmptyHugePage[:length], nil
 			}
+			if m.BuildId != uuid.Nil {
+				size := b.buildFileSize(h, m.BuildId)
+				ft := h.GetBuildFrameData(m.BuildId)
+				diff, derr := b.getBuild(ctx, m.BuildId, size, ft.CompressionType())
+				if derr != nil {
+					logger.L().Warn(ctx, "failed to get build for slice fast path", zap.Error(derr))
+				} else {
+					slice, sErr := diff.Slice(ctx, int64(m.Offset), length, ft)
+					if sErr == nil {
+						return slice, nil
+					}
+					logger.L().Warn(ctx, "failed to slice build fast path", zap.Error(sErr))
+				}
+				// Errors fall through to ReadAt's retry-on-transition path.
+			}
+		}
+	}
+	out := make([]byte, length)
+	if _, err := b.ReadAt(ctx, out, off); err != nil {
+		return nil, fmt.Errorf("failed to read at: %w", err)
+	}
 
-			return nil, err
+	return out, nil
+}
+
+// IsCached reports whether the range is fully resident locally; uuid.Nil
+// counts as cached, uninitialized StorageDiffs as uncached. No I/O.
+func (b *File) IsCached(ctx context.Context, off, length int64) bool {
+	h := b.Header()
+	if h == nil {
+		return false
+	}
+
+	var n int64
+	for n < length {
+		m, err := h.GetShiftedMapping(ctx, off+n)
+		if err != nil {
+			return false
+		}
+		segLen := min(int64(m.Length), length-n)
+		if segLen <= 0 {
+			return false
 		}
 
-		return result, nil
+		if m.BuildId != uuid.Nil {
+			diff, ok := b.store.Lookup(GetDiffStoreKey(m.BuildId.String(), b.fileType))
+			if !ok {
+				return false
+			}
+			peeker, ok := diff.(block.CachePeeker)
+			if !ok || !peeker.IsCached(ctx, int64(m.Offset), segLen) {
+				return false
+			}
+		}
+
+		n += segLen
 	}
+
+	return true
 }
 
 // retryOnTransition catches a PeerTransitionedError and swaps the header from
 // storage. Returns (true, nil) to signal the caller should continue the loop,
-// or (false, swapErr) if the swap itself failed. peerSeekable emits the
-// transition error at most once per seekable, so the loop is naturally
-// bounded — no retry counter needed here.
+// or (false, swapErr) if the swap itself failed. RetryAfter backs off repeated
+// post-transition storage 404s.
 //
 // The transition is signaled only after the source upload has finalized, so
 // the header object already exists in storage. A single LoadHeader is enough;
@@ -170,6 +203,16 @@ func (b *File) retryOnTransition(ctx context.Context, err error) (bool, error) {
 	var transErr *storage.PeerTransitionedError
 	if !errors.As(err, &transErr) {
 		return false, nil
+	}
+	if transErr.RetryAfter > 0 {
+		timer := time.NewTimer(transErr.RetryAfter)
+		defer timer.Stop()
+
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			return false, ctx.Err()
+		}
 	}
 
 	logger.L().Info(ctx, "peer transition detected, swapping header",

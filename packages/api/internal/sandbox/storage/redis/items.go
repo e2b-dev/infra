@@ -9,7 +9,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -17,7 +17,7 @@ const expiredItemsBatchSize = 256
 
 // ExpiredItems returns running sandboxes whose EndTime has passed.
 // It bounds per-cycle work via LIMIT and cleans up orphaned ZSET entries.
-func (s *Storage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
+func (s *Storage) ExpiredItems(ctx context.Context) ([]sandboxtypes.Sandbox, error) {
 	now := time.Now()
 	nowMs := float64(now.UnixMilli())
 
@@ -81,7 +81,7 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
 	}
 
 	// Deserialize and filter; collect stale ZSET members for cleanup.
-	var result []sandbox.Sandbox
+	var result []sandboxtypes.Sandbox
 	var staleMembers []any
 
 	for _, batch := range batches {
@@ -98,7 +98,7 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
 				continue
 			}
 
-			var sbx sandbox.Sandbox
+			var sbx sandboxtypes.Sandbox
 			if err := json.Unmarshal([]byte(str), &sbx); err != nil {
 				logger.L().Error(ctx, "Failed to unmarshal sandbox", zap.Error(err))
 
@@ -113,9 +113,9 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandbox.Sandbox, error) {
 			}
 
 			// Only evict running sandboxes
-			if sbx.State != sandbox.StateRunning {
+			if sbx.State != sandboxtypes.StateRunning {
 				// If the sandbox is in transitioning state for more than stale cutoff, it's likely failed removal. Let it be cleaned up by the regular expiration process.
-				if time.Since(sbx.EndTime) <= sandbox.StaleCutoff {
+				if time.Since(sbx.EndTime) <= sandboxtypes.StaleCutoff {
 					// Let the current removal finish
 
 					continue

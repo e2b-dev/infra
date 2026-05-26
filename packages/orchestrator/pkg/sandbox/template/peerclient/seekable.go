@@ -7,12 +7,18 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+)
+
+const (
+	postTransitionRetryWindow = 30 * time.Second
+	postTransitionRetryDelay  = 250 * time.Millisecond
 )
 
 var _ storage.Seekable = (*peerSeekable)(nil)
@@ -33,13 +39,11 @@ type peerSeekable struct {
 	baseCT storage.CompressionType
 	loaded bool
 
-	// transitionEmitted ensures we signal PeerTransitionedError at most once
-	// after the peer flips uploaded=true. The caller (build.File) reacts by
-	// loading the post-upload header from storage; whether that ends up V4
-	// (compressed) or V3 (no upgrade) determines how subsequent reads route.
-	// Either way, after the first emission we fall through to base so V3
-	// builds don't loop forever against PeerTransitionedError.
-	transitionEmitted atomic.Bool
+	// transitionAt is set on first PeerTransitionedError emission after
+	// uploaded flips to true; nil otherwise. Subsequent base 404s within
+	// postTransitionRetryWindow re-emit PeerTransitionedError so concurrent
+	// readers retry against the post-upload header.
+	transitionAt atomic.Pointer[time.Time]
 }
 
 // getBase returns a base Seekable opened against the storage path composed
@@ -126,8 +130,11 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length in
 		return res.value, err
 	}
 
-	if s.uploaded != nil && s.uploaded.Load() && s.transitionEmitted.CompareAndSwap(false, true) {
-		return nil, &storage.PeerTransitionedError{}
+	if s.uploaded != nil && s.uploaded.Load() {
+		now := time.Now()
+		if s.transitionAt.CompareAndSwap(nil, &now) {
+			return nil, &storage.PeerTransitionedError{}
+		}
 	}
 
 	base, err := s.getBase(ctx, frameTable.CompressionType())
@@ -135,7 +142,16 @@ func (s *peerSeekable) OpenRangeReader(ctx context.Context, off int64, length in
 		return nil, err
 	}
 
-	return base.OpenRangeReader(ctx, off, length, frameTable)
+	rc, err := base.OpenRangeReader(ctx, off, length, frameTable)
+	// GCS can briefly 404 a just-finalized object; within the retry window
+	// re-emit so build.File reloads the header and retries with backoff.
+	if errors.Is(err, storage.ErrObjectNotExist) {
+		if at := s.transitionAt.Load(); at != nil && time.Since(*at) < postTransitionRetryWindow {
+			return nil, &storage.PeerTransitionedError{RetryAfter: postTransitionRetryDelay}
+		}
+	}
+
+	return rc, err
 }
 
 func (s *peerSeekable) StoreFile(context.Context, string, ...storage.PutOption) (*storage.FrameTable, [32]byte, error) {

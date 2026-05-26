@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -27,7 +28,10 @@ type MemorySlicer struct {
 	pagesize int64
 }
 
-var _ block.Slicer = (*MemorySlicer)(nil)
+var (
+	_ block.Slicer = (*MemorySlicer)(nil)
+	_ PageReader   = (*MemorySlicer)(nil)
+)
 
 func NewMemorySlicer(content []byte, pagesize int64) *MemorySlicer {
 	return &MemorySlicer{content: content, pagesize: pagesize}
@@ -35,6 +39,14 @@ func NewMemorySlicer(content []byte, pagesize int64) *MemorySlicer {
 
 func (s *MemorySlicer) Slice(_ context.Context, offset, size int64) ([]byte, error) {
 	return s.content[offset : offset+size], nil
+}
+
+func (s *MemorySlicer) ReadAt(_ context.Context, p []byte, off int64) (int, error) {
+	if off < 0 || off >= int64(len(s.content)) {
+		return 0, io.EOF
+	}
+
+	return copy(p, s.content[off:]), nil
 }
 
 func (s *MemorySlicer) Size() (int64, error) {

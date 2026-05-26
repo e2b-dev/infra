@@ -18,6 +18,14 @@ inputs:
     description: "Number of frame encode workers"
     required: false
     default: ""
+  dedup_mode:
+    description: "Memfile dedup mode"
+    required: false
+    default: "default"
+  use_memfd:
+    description: "Run sandboxes with memfd-backed guest memory"
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
@@ -124,11 +132,12 @@ runs:
         # Client-proxy config
         API_INTERNAL_GRPC_ADDRESS: "localhost:5009"
         DEFAULT_PERSISTENT_VOLUME_TYPE: "test-volume-type"
-        SANDBOX_STORAGE_BACKEND: "redis"
         COMPRESS_ENABLED: ${{ inputs.compress_enabled }}
         COMPRESS_TYPE: ${{ inputs.compress_type }}
         COMPRESS_LEVEL: ${{ inputs.compress_level }}
         COMPRESS_FRAME_ENCODE_WORKERS: ${{ inputs.compress_workers }}
+        TESTS_MEMFILE_DIFF_DEDUP_MODE: ${{ inputs.dedup_mode }}
+        TESTS_USE_MEMFD: ${{ inputs.use_memfd }}
         E2B_DEBUG: "true"
       run: |
         mkdir -p $SHARED_CHUNK_CACHE_PATH
@@ -148,7 +157,7 @@ runs:
         ./scripts/start-service.sh "Orchestrator" packages/orchestrator run-debug ~/logs/orchestrator.log http://localhost:5008/health
 
         echo "Start API"
-        ./scripts/start-service.sh "API" packages/api run ~/logs/api.log http://localhost:3000/health
+        STARTUP_TIMEOUT=60 ./scripts/start-service.sh "API" packages/api run ~/logs/api.log http://localhost:3000/health
 
         # Start client-proxy (needed for auto-resume tests)
         ./scripts/start-service.sh "ClientProxy" packages/client-proxy run ~/logs/client-proxy.log http://localhost:3003

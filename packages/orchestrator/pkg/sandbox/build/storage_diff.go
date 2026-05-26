@@ -138,3 +138,14 @@ func (b *StorageDiff) Size(ctx context.Context) (int64, error) {
 func (b *StorageDiff) BlockSize() int64 {
 	return b.blockSize
 }
+
+// IsCached reports whether [off, off+length) is in the chunker's local cache.
+// Returns false if the chunker hasn't been Init'd yet (would otherwise trigger
+// OpenSeekable). Side-effect-free.
+func (b *StorageDiff) IsCached(ctx context.Context, off, length int64) bool {
+	if b.chunker == nil {
+		return false
+	}
+
+	return b.chunker.IsCached(ctx, off, length)
+}
