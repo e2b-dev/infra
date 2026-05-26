@@ -75,6 +75,12 @@ func NewUpload(
 }
 
 func (u *Upload) Run(ctx context.Context) error {
+	// Attach the upload's use case ("build" for template builds, "pause" for
+	// snapshots) so downstream flag reads can target only one — e.g. the NFS
+	// write-through-on-write FF firing only for template builds. Matches the
+	// kind already wired into resolveCompressConfig.
+	ctx = featureflags.AddToContext(ctx, featureflags.CompressUseCaseContext(u.useCase))
+
 	if !u.mem.IsCompressionEnabled() && !u.root.IsCompressionEnabled() && !u.useV4 {
 		return u.runV3(ctx)
 	}
