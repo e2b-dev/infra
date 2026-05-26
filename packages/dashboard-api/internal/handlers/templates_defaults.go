@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -14,6 +15,15 @@ import (
 func (s *APIStore) GetTemplatesDefaults(c *gin.Context) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "list default templates")
+
+	team := auth.MustGetTeamInfo(c)
+	if team.ClusterID != nil {
+		c.JSON(http.StatusOK, api.DefaultTemplatesResponse{
+			Templates: []api.DefaultTemplate{},
+		})
+
+		return
+	}
 
 	rows, err := s.db.Dashboard.GetDefaultTemplates(ctx)
 	if err != nil {

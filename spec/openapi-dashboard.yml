@@ -1066,7 +1066,9 @@ paths:
       tags: [templates]
       security:
         - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
         - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       responses:
         "200":
           description: Successfully returned default templates.
