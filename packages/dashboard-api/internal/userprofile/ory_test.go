@@ -13,65 +13,43 @@ func TestProfileFromOryIdentity(t *testing.T) {
 	userID := uuid.New()
 
 	tests := []struct {
-		name      string
-		traits    any
-		wantName  string
-		wantEmail string
+		name        string
+		traits      any
+		wantName    string
+		wantEmail   string
+		wantPicture string
 	}{
 		{
-			name: "flat name and email",
+			name: "all three standardized traits",
 			traits: map[string]any{
-				"email": "ada@example.com",
-				"name":  "ada lovelace",
+				"email":               "ada@example.com",
+				"name":                "ada lovelace",
+				"profile_picture_url": "https://example.com/ada.jpg",
 			},
-			wantName:  "ada lovelace",
-			wantEmail: "ada@example.com",
+			wantName:    "ada lovelace",
+			wantEmail:   "ada@example.com",
+			wantPicture: "https://example.com/ada.jpg",
 		},
 		{
-			name: "nested first and last name",
+			name: "missing picture is empty",
 			traits: map[string]any{
 				"email": "grace@example.com",
-				"name": map[string]any{
-					"first": "grace",
-					"last":  "hopper",
-				},
+				"name":  "grace hopper",
 			},
 			wantName:  "grace hopper",
 			wantEmail: "grace@example.com",
 		},
 		{
-			name: "first name only nested",
-			traits: map[string]any{
-				"name": map[string]any{
-					"first": "barbara",
-				},
-			},
-			wantName:  "barbara",
-			wantEmail: "",
+			name:   "nil traits returns zero values",
+			traits: nil,
 		},
 		{
-			name: "given/family fallback",
+			name: "non-string trait values are ignored",
 			traits: map[string]any{
-				"given_name":  "marie",
-				"family_name": "curie",
-				"email":       "marie@example.com",
+				"email":               42,
+				"name":                map[string]any{"first": "barbara"},
+				"profile_picture_url": nil,
 			},
-			wantName:  "marie curie",
-			wantEmail: "marie@example.com",
-		},
-		{
-			name: "full name fallback when no flat name and no nested",
-			traits: map[string]any{
-				"full_name": "alan turing",
-			},
-			wantName:  "alan turing",
-			wantEmail: "",
-		},
-		{
-			name:      "missing traits returns zero values",
-			traits:    nil,
-			wantName:  "",
-			wantEmail: "",
 		},
 	}
 
@@ -82,13 +60,16 @@ func TestProfileFromOryIdentity(t *testing.T) {
 			identity := ory.Identity{Id: uuid.NewString(), Traits: tt.traits}
 			got := profileFromOryIdentity(userID, identity)
 			if got.UserID != userID {
-				t.Fatalf("profileFromOryIdentity().UserID = %s, want %s", got.UserID, userID)
+				t.Fatalf("UserID = %s, want %s", got.UserID, userID)
 			}
 			if got.Name != tt.wantName {
-				t.Fatalf("profileFromOryIdentity().Name = %q, want %q", got.Name, tt.wantName)
+				t.Fatalf("Name = %q, want %q", got.Name, tt.wantName)
 			}
 			if got.Email != tt.wantEmail {
-				t.Fatalf("profileFromOryIdentity().Email = %q, want %q", got.Email, tt.wantEmail)
+				t.Fatalf("Email = %q, want %q", got.Email, tt.wantEmail)
+			}
+			if got.ProfilePictureURL != tt.wantPicture {
+				t.Fatalf("ProfilePictureURL = %q, want %q", got.ProfilePictureURL, tt.wantPicture)
 			}
 		})
 	}

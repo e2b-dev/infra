@@ -225,59 +225,17 @@ func identitySubjects(identities []ory.Identity) []string {
 	return subjects
 }
 
+// profileFromOryIdentity reads the standardized E2B identity schema traits:
+// name, email, profile_picture_url. The Ory project is configured to populate
+// these from OIDC provider claims (e.g. Google profile scope, GitHub user
+// scope) so the underlying upstream is transparent here.
 func profileFromOryIdentity(userID uuid.UUID, identity ory.Identity) Profile {
 	traits, _ := identity.Traits.(map[string]any)
 
 	return Profile{
-		UserID: userID,
-		Email:  metadataString(traits, "email"),
-		Name:   oryDisplayName(traits),
+		UserID:            userID,
+		Email:             metadataString(traits, "email"),
+		Name:              metadataString(traits, "name"),
+		ProfilePictureURL: metadataString(traits, "profile_picture_url"),
 	}
-}
-
-// mirrors dashboard.full-stack/src/core/server/auth/ory/identity.ts readDisplayName.
-func oryDisplayName(traits map[string]any) string {
-	if name := metadataString(traits, "name"); name != "" {
-		return name
-	}
-	if name := nestedNameTrait(traits); name != "" {
-		return name
-	}
-	if name := splitNameTraits(traits); name != "" {
-		return name
-	}
-
-	return FirstNonEmpty(
-		metadataString(traits, "full_name"),
-		metadataString(traits, "fullName"),
-	)
-}
-
-func nestedNameTrait(traits map[string]any) string {
-	nested, ok := traits["name"].(map[string]any)
-	if !ok {
-		return ""
-	}
-
-	return strings.TrimSpace(metadataString(nested, "first") + " " + metadataString(nested, "last"))
-}
-
-func splitNameTraits(traits map[string]any) string {
-	first := FirstNonEmpty(
-		metadataString(traits, "first_name"),
-		metadataString(traits, "firstName"),
-		metadataString(traits, "given_name"),
-		metadataString(traits, "givenName"),
-	)
-	last := FirstNonEmpty(
-		metadataString(traits, "last_name"),
-		metadataString(traits, "lastName"),
-		metadataString(traits, "family_name"),
-		metadataString(traits, "familyName"),
-	)
-	if first == "" && last == "" {
-		return ""
-	}
-
-	return strings.TrimSpace(first + " " + last)
 }

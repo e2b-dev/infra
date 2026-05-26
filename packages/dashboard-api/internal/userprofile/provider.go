@@ -8,9 +8,10 @@ import (
 )
 
 type Profile struct {
-	UserID uuid.UUID
-	Email  string
-	Name   string
+	UserID            uuid.UUID
+	Email             string
+	Name              string
+	ProfilePictureURL string
 }
 
 type Provider interface {
