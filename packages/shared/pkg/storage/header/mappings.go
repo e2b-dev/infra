@@ -138,4 +138,3 @@ func (b *mappingsBuilder) build() Mappings { return b.m }
 // (parallel slices, ignoring slice-header overhead and the small builds
 // dictionary). Exposed for tests and tooling.
 func (m Mappings) entrySize() int { return 8 + 8 + 8 + 2 }
-
