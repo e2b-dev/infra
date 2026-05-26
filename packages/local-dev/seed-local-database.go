@@ -120,7 +120,7 @@ func upsertTeamAPIKey(ctx context.Context, db *authdb.Client, teamID uuid.UUID, 
 }
 
 func upsertUserIdentity(ctx context.Context, db *authdb.Client, oidcIssuer, oidcSubject string) error {
-	if err := db.Write.UpsertPublicIdentity(ctx, authqueries.UpsertPublicIdentityParams{
+	if _, err := db.Write.UpsertPublicIdentity(ctx, authqueries.UpsertPublicIdentityParams{
 		OidcIss: oidcIssuer,
 		OidcSub: oidcSubject,
 		UserID:  userID,

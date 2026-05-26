@@ -30,7 +30,7 @@ type Config struct {
 	BillingServerURL      string `env:"BILLING_SERVER_URL"`
 	BillingServerAPIToken string `env:"BILLING_SERVER_API_TOKEN"`
 
-	UserProfileProvider userprofile.Mode `env:"USER_PROFILE_PROVIDER" envDefault:"supabase"`
+	UserProfileProvider userprofile.Mode `env:"USER_PROFILE_PROVIDER"       envDefault:"supabase"`
 	OrySDKURL           string           `env:"ORY_SDK_URL"`
 	OryProjectAPIToken  string           `env:"ORY_PROJECT_API_TOKEN,unset"`
 	OryIssuerURL        string           `env:"ORY_ISSUER_URL"`

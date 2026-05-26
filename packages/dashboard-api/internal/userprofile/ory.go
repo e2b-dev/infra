@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net/http"
 	"slices"
@@ -92,6 +93,16 @@ func (t *oryBearerTransport) RoundTrip(req *http.Request) (*http.Response, error
 	return t.base.RoundTrip(cloned)
 }
 
+// ory's generated client returns the raw *http.Response alongside the parsed
+// body, so callers must close it (even on error) to release the connection.
+func closeOryResponse(resp *http.Response) {
+	if resp == nil || resp.Body == nil {
+		return
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+}
+
 func (p *oryProvider) GetProfilesByUserID(ctx context.Context, userIDs []uuid.UUID) (map[uuid.UUID]Profile, error) {
 	unique := uniqueUUIDs(userIDs)
 	if len(unique) == 0 {
@@ -127,9 +138,10 @@ func (p *oryProvider) FindProfilesByEmail(ctx context.Context, email string) ([]
 		return []Profile{}, nil
 	}
 
-	identities, _, err := p.identities.ListIdentitiesExecute(
+	identities, resp, err := p.identities.ListIdentitiesExecute(
 		p.identities.ListIdentities(ctx).CredentialsIdentifier(normalized),
 	)
+	closeOryResponse(resp)
 	if err != nil {
 		return nil, fmt.Errorf("ory list identities by credentials identifier: %w", err)
 	}
@@ -191,9 +203,10 @@ func (p *oryProvider) userIDsForSubjects(ctx context.Context, subjects []string)
 func (p *oryProvider) listIdentitiesByIDs(ctx context.Context, ids []string) ([]ory.Identity, error) {
 	identities := make([]ory.Identity, 0, len(ids))
 	for page := range slices.Chunk(ids, oryListPageSize) {
-		batch, _, err := p.identities.ListIdentitiesExecute(
+		batch, resp, err := p.identities.ListIdentitiesExecute(
 			p.identities.ListIdentities(ctx).Ids(page).PageSize(int64(len(page))),
 		)
+		closeOryResponse(resp)
 		if err != nil {
 			return nil, fmt.Errorf("ory list identities: %w", err)
 		}
