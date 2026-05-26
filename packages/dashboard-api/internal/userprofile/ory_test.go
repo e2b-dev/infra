@@ -22,9 +22,9 @@ func TestProfileFromOryIdentity(t *testing.T) {
 		{
 			name: "all three standardized traits",
 			traits: map[string]any{
-				"email":               "ada@example.com",
-				"name":                "ada lovelace",
-				"profile_picture_url": "https://example.com/ada.jpg",
+				"email":   "ada@example.com",
+				"name":    "ada lovelace",
+				"picture": "https://example.com/ada.jpg",
 			},
 			wantName:    "ada lovelace",
 			wantEmail:   "ada@example.com",
@@ -46,9 +46,9 @@ func TestProfileFromOryIdentity(t *testing.T) {
 		{
 			name: "non-string trait values are ignored",
 			traits: map[string]any{
-				"email":               42,
-				"name":                map[string]any{"first": "barbara"},
-				"profile_picture_url": nil,
+				"email":   42,
+				"name":    map[string]any{"first": "barbara"},
+				"picture": nil,
 			},
 		},
 	}
