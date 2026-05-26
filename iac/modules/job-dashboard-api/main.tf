@@ -1,5 +1,12 @@
 locals {
-  base_env = {
+  ory_env = merge(
+    var.user_profile_provider != "" ? { USER_PROFILE_PROVIDER = var.user_profile_provider } : {},
+    var.ory_sdk_url != "" ? { ORY_SDK_URL = var.ory_sdk_url } : {},
+    var.ory_issuer_url != "" ? { ORY_ISSUER_URL = var.ory_issuer_url } : {},
+    var.ory_project_api_token != "" ? { ORY_PROJECT_API_TOKEN = var.ory_project_api_token } : {},
+  )
+
+  base_env = merge({
     GIN_MODE                               = "release"
     ENVIRONMENT                            = var.environment
     ADMIN_TOKEN                            = var.admin_token
@@ -19,7 +26,7 @@ locals {
     BILLING_SERVER_API_TOKEN     = var.billing_server_api_token
     OTEL_COLLECTOR_GRPC_ENDPOINT = "localhost:${var.otel_collector_grpc_port}"
     LOGS_COLLECTOR_ADDRESS       = "http://localhost:${var.logs_proxy_port.port}"
-  }
+  }, local.ory_env)
 }
 
 resource "nomad_job" "dashboard_api" {

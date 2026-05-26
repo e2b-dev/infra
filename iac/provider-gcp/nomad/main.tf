@@ -55,6 +55,10 @@ data "google_secret_manager_secret_version" "dashboard_api_admin_token" {
   secret = var.dashboard_api_admin_token_secret_name
 }
 
+data "google_secret_manager_secret_version" "ory_project_api_token" {
+  secret = var.ory_project_api_token_secret_name
+}
+
 data "google_secret_manager_secret_version" "supabase_db_connection_string" {
   secret = var.supabase_db_connection_string_secret_version.secret
 }
@@ -181,6 +185,10 @@ module "dashboard_api" {
   redis_tls_ca_base64                    = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
   billing_server_url                     = local.dashboard_api_billing_server_url
   billing_server_api_token               = local.dashboard_api_billing_server_api_token
+  user_profile_provider                  = var.user_profile_provider
+  ory_sdk_url                            = var.ory_sdk_url
+  ory_issuer_url                         = var.ory_issuer_url
+  ory_project_api_token                  = trimspace(data.google_secret_manager_secret_version.ory_project_api_token.secret_data)
 
   otel_collector_grpc_port = var.otel_collector_grpc_port
   logs_proxy_port          = var.logs_proxy_port

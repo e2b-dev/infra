@@ -259,6 +259,26 @@ resource "google_secret_manager_secret_version" "posthog_api_key" {
 }
 
 
+resource "google_secret_manager_secret" "ory_project_api_token" {
+  secret_id = "${var.prefix}ory-project-api-token"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
+}
+
+resource "google_secret_manager_secret_version" "ory_project_api_token" {
+  secret      = google_secret_manager_secret.ory_project_api_token.name
+  secret_data = " "
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+
 resource "google_secret_manager_secret" "redis_cluster_url" {
   secret_id = "${var.prefix}redis-cluster-url"
 
