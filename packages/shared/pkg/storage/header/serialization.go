@@ -14,10 +14,10 @@ import (
 // V4 (Version >= 4): [Metadata] [uint8 flags] [uint32 uncompressedSize] [LZ4( Builds + v4 mappings )]
 func SerializeHeader(h *Header) ([]byte, error) {
 	if h.Metadata.Version <= 3 {
-		return serializeV3(h.Metadata, h.Mapping)
+		return serializeV3(h.Metadata, h.Mapping.Slice())
 	}
 
-	data, _, err := serializeV4(h.Metadata, h.Builds, h.Mapping, h.IncompletePendingUpload)
+	data, _, err := serializeV4(h.Metadata, h.Builds, h.Mapping.Slice(), h.IncompletePendingUpload)
 
 	return data, err
 }
@@ -74,14 +74,14 @@ func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h 
 
 	var data []byte
 	if h.Metadata.Version <= 3 {
-		data, err = serializeV3(h.Metadata, h.Mapping)
+		data, err = serializeV3(h.Metadata, h.Mapping.Slice())
 		if err != nil {
 			return storage.CompressConfig{}, 0, 0, fmt.Errorf("serialize header: %w", err)
 		}
 		uncompressed = int64(len(data))
 	} else {
 		var blockUncompressed int64
-		data, blockUncompressed, err = serializeV4(h.Metadata, h.Builds, h.Mapping, h.IncompletePendingUpload)
+		data, blockUncompressed, err = serializeV4(h.Metadata, h.Builds, h.Mapping.Slice(), h.IncompletePendingUpload)
 		if err != nil {
 			return storage.CompressConfig{}, 0, 0, fmt.Errorf("serialize header: %w", err)
 		}

@@ -136,7 +136,7 @@ func (d *DiffMetadata) ToDiffHeader(
 	diffMapping := d.toDiffMapping(ctx, buildID)
 
 	m := MergeMappings(
-		originalHeader.Mapping,
+		originalHeader.Mapping.Slice(),
 		diffMapping,
 	)
 	telemetry.ReportEvent(ctx, "merged mappings")
@@ -164,7 +164,7 @@ func (d *DiffMetadata) ToDiffHeader(
 	}
 
 	// Dedup emits PageSize-granular mappings; validate at PageSize.
-	err = ValidateMappings(header.Mapping, header.Metadata.Size, PageSize)
+	err = ValidateMappings(header.Mapping.Slice(), header.Metadata.Size, PageSize)
 	if err != nil {
 		if header.IsNormalizeFixApplied() {
 			return nil, fmt.Errorf("invalid header mappings: %w", err)

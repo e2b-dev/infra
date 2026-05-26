@@ -131,8 +131,8 @@ func NewHeaderFromPath(ctx context.Context, from, headerPath string) (*header.He
 func getReferencedData(h *header.Header, objectType storage.ObjectType) []string {
 	builds := make(map[string]struct{})
 
-	for _, mapping := range h.Mapping {
-		builds[mapping.BuildId.String()] = struct{}{}
+	for _, id := range h.Mapping.Builds() {
+		builds[id.String()] = struct{}{}
 	}
 
 	delete(builds, uuid.Nil.String())

@@ -103,7 +103,7 @@ func (u *Upload) uploadFramed(
 		h.Builds = make(map[uuid.UUID]headers.BuildData)
 	}
 
-	if err := u.appendAncestorBuilds(ctx, h.Builds, srcHeader.Mapping, fileType); err != nil {
+	if err := u.appendAncestorBuilds(ctx, h.Builds, srcHeader.Mapping.Builds(), fileType); err != nil {
 		return err
 	}
 	h.Builds[u.buildID] = selfBuild
@@ -115,7 +115,7 @@ func (u *Upload) uploadFramed(
 	return u.publish(ctx, fileType, h)
 }
 
-// appendAncestorBuilds waits on every unique buildID referenced by mappings
+// appendAncestorBuilds waits on every unique buildID in ancestorBuilds
 // (excluding self) — gating publish on parents' header finalization — and,
 // when dst is non-nil, writes the freshest BuildData into it. Existing dst
 // entries are overwritten (Wait is more authoritative than CloneForUpload).
@@ -130,33 +130,28 @@ func (u *Upload) uploadFramed(
 func (u *Upload) appendAncestorBuilds(
 	ctx context.Context,
 	dst map[uuid.UUID]headers.BuildData,
-	mappings []headers.BuildMap,
+	ancestorBuilds []uuid.UUID,
 	fileType build.DiffType,
 ) error {
 	if u.uploads == nil {
 		return nil
 	}
 
-	seen := make(map[uuid.UUID]struct{}, len(mappings))
-	for _, m := range mappings {
-		if m.BuildId == u.buildID || m.BuildId == uuid.Nil {
+	for _, id := range ancestorBuilds {
+		if id == u.buildID || id == uuid.Nil {
 			continue
 		}
-		if _, dup := seen[m.BuildId]; dup {
-			continue
-		}
-		seen[m.BuildId] = struct{}{}
 
-		h, err := u.uploads.Wait(ctx, m.BuildId, fileType)
+		h, err := u.uploads.Wait(ctx, id, fileType)
 		if err != nil {
-			return fmt.Errorf("wait for ancestor %s/%s: %w", m.BuildId, fileType, err)
+			return fmt.Errorf("wait for ancestor %s/%s: %w", id, fileType, err)
 		}
 		if h == nil || dst == nil {
 			continue
 		}
 
-		if bd, ok := h.Builds[m.BuildId]; ok {
-			dst[m.BuildId] = bd
+		if bd, ok := h.Builds[id]; ok {
+			dst[id] = bd
 		}
 	}
 

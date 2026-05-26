@@ -46,16 +46,16 @@ func TestSerializeDeserialize_V3_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, metadata, got.Metadata)
-	require.Len(t, got.Mapping, 2)
-	require.Equal(t, uint64(0), got.Mapping[0].Offset)
-	require.Equal(t, uint64(4096), got.Mapping[0].Length)
-	require.Equal(t, buildID, got.Mapping[0].BuildId)
-	require.Equal(t, uint64(0), got.Mapping[0].BuildStorageOffset)
+	require.Equal(t, 2, got.Mapping.Len())
+	require.Equal(t, uint64(0), got.Mapping.At(0).Offset)
+	require.Equal(t, uint64(4096), got.Mapping.At(0).Length)
+	require.Equal(t, buildID, got.Mapping.At(0).BuildId)
+	require.Equal(t, uint64(0), got.Mapping.At(0).BuildStorageOffset)
 
-	require.Equal(t, uint64(4096), got.Mapping[1].Offset)
-	require.Equal(t, uint64(4096), got.Mapping[1].Length)
-	require.Equal(t, baseID, got.Mapping[1].BuildId)
-	require.Equal(t, uint64(123), got.Mapping[1].BuildStorageOffset)
+	require.Equal(t, uint64(4096), got.Mapping.At(1).Offset)
+	require.Equal(t, uint64(4096), got.Mapping.At(1).Length)
+	require.Equal(t, baseID, got.Mapping.At(1).BuildId)
+	require.Equal(t, uint64(123), got.Mapping.At(1).BuildStorageOffset)
 
 	// V3 headers have no Builds
 	require.Nil(t, got.Builds)
@@ -88,10 +88,10 @@ func TestSerializeDeserialize_EmptyMappings_Defaults(t *testing.T) {
 	require.NoError(t, err)
 
 	// NewHeader creates a default mapping when none provided
-	require.Len(t, got.Mapping, 1)
-	require.Equal(t, uint64(0), got.Mapping[0].Offset)
-	require.Equal(t, metadata.Size, got.Mapping[0].Length)
-	require.Equal(t, metadata.BuildId, got.Mapping[0].BuildId)
+	require.Equal(t, 1, got.Mapping.Len())
+	require.Equal(t, uint64(0), got.Mapping.At(0).Offset)
+	require.Equal(t, metadata.Size, got.Mapping.At(0).Length)
+	require.Equal(t, metadata.BuildId, got.Mapping.At(0).BuildId)
 }
 
 func TestDeserialize_BlockSizeZero(t *testing.T) {
@@ -165,9 +165,9 @@ func TestSerializeDeserialize_V4_WithFrameTable(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, uint64(4), got.Metadata.Version)
-	require.Len(t, got.Mapping, 2)
-	require.Equal(t, buildID, got.Mapping[0].BuildId)
-	require.Equal(t, baseID, got.Mapping[1].BuildId)
+	require.Equal(t, 2, got.Mapping.Len())
+	require.Equal(t, buildID, got.Mapping.At(0).BuildId)
+	require.Equal(t, baseID, got.Mapping.At(1).BuildId)
 
 	// Builds round-trip
 	require.Len(t, got.Builds, 2)
@@ -236,8 +236,8 @@ func TestSerializeDeserialize_V4_Zstd(t *testing.T) {
 	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
-	require.Len(t, got.Mapping, 1)
-	require.Equal(t, uint64(8192), got.Mapping[0].BuildStorageOffset)
+	require.Equal(t, 1, got.Mapping.Len())
+	require.Equal(t, uint64(8192), got.Mapping.At(0).BuildStorageOffset)
 
 	require.Len(t, got.Builds, 1)
 	fd := got.Builds[buildID].FrameData
@@ -289,7 +289,7 @@ func TestSerializeDeserialize_V4_NoFrames(t *testing.T) {
 	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
-	require.Len(t, got.Mapping, 2)
+	require.Equal(t, 2, got.Mapping.Len())
 	require.Nil(t, got.Builds)
 }
 
@@ -333,7 +333,7 @@ func TestSerializeDeserialize_V4_ManyFrames(t *testing.T) {
 	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
-	require.Len(t, got.Mapping, 1)
+	require.Equal(t, 1, got.Mapping.Len())
 	require.NotNil(t, got.Builds)
 	fd := got.Builds[buildID].FrameData
 	require.NotNil(t, fd)
@@ -380,7 +380,7 @@ func TestSerializeDeserialize_V4_NoBuilds(t *testing.T) {
 	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
-	require.Len(t, got.Mapping, 1)
+	require.Equal(t, 1, got.Mapping.Len())
 	require.Nil(t, got.Builds)
 }
 
@@ -444,7 +444,7 @@ func TestSerializeDeserialize_V4_MultiBuild_LocateCompressed(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, uint64(4), got.Metadata.Version)
-	require.Len(t, got.Mapping, 3)
+	require.Equal(t, 3, got.Mapping.Len())
 	require.Len(t, got.Builds, 2)
 
 	// Verify checksums round-trip.
@@ -778,7 +778,7 @@ func TestSerializeDeserialize_V4_MixedChain(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, uint64(MetadataVersionV4), got.Metadata.Version)
-	require.Len(t, got.Mapping, 5)
+	require.Equal(t, 5, got.Mapping.Len())
 	require.Len(t, got.Builds, 3)
 
 	require.Nil(t, got.GetBuildFrameData(selfID))
@@ -794,11 +794,11 @@ func TestSerializeDeserialize_V4_MixedChain(t *testing.T) {
 	_, hasV3b := got.Builds[v3bID]
 	require.False(t, hasV3b)
 
-	require.Equal(t, selfID, got.Mapping[0].BuildId)
-	require.Equal(t, midID, got.Mapping[1].BuildId)
-	require.Equal(t, olderID, got.Mapping[2].BuildId)
-	require.Equal(t, v3aID, got.Mapping[3].BuildId)
-	require.Equal(t, v3bID, got.Mapping[4].BuildId)
+	require.Equal(t, selfID, got.Mapping.At(0).BuildId)
+	require.Equal(t, midID, got.Mapping.At(1).BuildId)
+	require.Equal(t, olderID, got.Mapping.At(2).BuildId)
+	require.Equal(t, v3aID, got.Mapping.At(3).BuildId)
+	require.Equal(t, v3bID, got.Mapping.At(4).BuildId)
 }
 
 // Layered chain with a compressed self entry:

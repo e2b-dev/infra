@@ -105,7 +105,7 @@ func printUsage() {
 
 func printHeader(h *header.Header, source string) {
 	// Validate mappings
-	err := header.ValidateMappings(h.Mapping, h.Metadata.Size, h.Metadata.BlockSize)
+	err := header.ValidateMappings(h.Mapping.Slice(), h.Metadata.Size, h.Metadata.BlockSize)
 	if err != nil {
 		fmt.Printf("\n⚠️  WARNING: Mapping validation failed!\n%s\n\n", err)
 	}
@@ -121,7 +121,7 @@ func printHeader(h *header.Header, source string) {
 	fmt.Printf("Block size         %d B\n", h.Metadata.BlockSize)
 	fmt.Printf("Blocks             %d\n", (h.Metadata.Size+h.Metadata.BlockSize-1)/h.Metadata.BlockSize)
 
-	totalSize := int64(unsafe.Sizeof(header.BuildMap{})) * int64(len(h.Mapping)) / 1024
+	totalSize := int64(unsafe.Sizeof(header.BuildMap{})) * int64(h.Mapping.Len()) / 1024
 	var sizeMessage string
 	if totalSize == 0 {
 		sizeMessage = "<1 KiB"
@@ -129,10 +129,10 @@ func printHeader(h *header.Header, source string) {
 		sizeMessage = fmt.Sprintf("%d KiB", totalSize)
 	}
 
-	fmt.Printf("\nMAPPING (%d maps, uses %s in storage)\n", len(h.Mapping), sizeMessage)
+	fmt.Printf("\nMAPPING (%d maps, uses %s in storage)\n", h.Mapping.Len(), sizeMessage)
 	fmt.Printf("=======\n")
 
-	for _, mapping := range h.Mapping {
+	for _, mapping := range h.Mapping.All() {
 		fmt.Println(mapping.Format(h.Metadata.BlockSize))
 	}
 
@@ -140,7 +140,7 @@ func printHeader(h *header.Header, source string) {
 	fmt.Printf("===============\n")
 
 	builds := make(map[string]int64)
-	for _, mapping := range h.Mapping {
+	for _, mapping := range h.Mapping.All() {
 		builds[mapping.BuildId.String()] += int64(mapping.Length)
 	}
 

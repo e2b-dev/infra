@@ -113,7 +113,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 	}
 
 	if memfileDiffHeader != nil {
-		if err := u.appendAncestorBuilds(ctx, nil, memfileDiffHeader.Mapping, build.Memfile); err != nil {
+		if err := u.appendAncestorBuilds(ctx, nil, memfileDiffHeader.Mapping.Builds(), build.Memfile); err != nil {
 			return err
 		}
 	}
@@ -124,7 +124,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 	}
 
 	if rootfsDiffHeader != nil {
-		if err := u.appendAncestorBuilds(ctx, nil, rootfsDiffHeader.Mapping, build.Rootfs); err != nil {
+		if err := u.appendAncestorBuilds(ctx, nil, rootfsDiffHeader.Mapping.Builds(), build.Rootfs); err != nil {
 			return err
 		}
 	}

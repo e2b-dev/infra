@@ -34,7 +34,7 @@ type Header struct {
 	// RPC and reads uncompressed data when nil.
 	Builds map[uuid.UUID]BuildData
 
-	Mapping []BuildMap
+	Mapping Mappings
 
 	// IncompletePendingUpload is set on diff headers produced by ToDiffHeader and
 	// cleared on the finalized headers swapped in by the upload pipeline. It
@@ -91,7 +91,7 @@ func NewHeader(metadata *Metadata, mapping []BuildMap) (*Header, error) {
 
 	return &Header{
 		Metadata: metadata,
-		Mapping:  mapping,
+		Mapping:  MappingsFromSlice(mapping),
 	}, nil
 }
 
@@ -102,13 +102,10 @@ func newDiffHeader(metadata *Metadata, mapping []BuildMap, sourceBuilds map[uuid
 	}
 
 	if sourceBuilds != nil {
-		referenced := make(map[uuid.UUID]struct{}, len(h.Mapping))
-		for _, m := range h.Mapping {
-			referenced[m.BuildId] = struct{}{}
-		}
+		referenced := h.Mapping.Builds()
 
 		h.Builds = make(map[uuid.UUID]BuildData, len(referenced))
-		for id := range referenced {
+		for _, id := range referenced {
 			if bd, ok := sourceBuilds[id]; ok {
 				h.Builds[id] = bd
 			}
@@ -131,7 +128,7 @@ func (t *Header) String() string {
 		t.Metadata.BlockSize,
 		t.Metadata.Generation,
 		t.Metadata.BuildId.String(),
-		len(t.Mapping),
+		t.Mapping.Len(),
 	)
 }
 
@@ -183,10 +180,10 @@ func (t *Header) GetBuildFrameData(buildID uuid.UUID) *storage.FrameTable {
 	return t.Builds[buildID].FrameData
 }
 
-func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64, error) {
+func (t *Header) getMapping(ctx context.Context, offset int64) (BuildMap, int64, error) {
 	if offset < 0 || offset >= int64(t.Metadata.Size) {
 		if t.IsNormalizeFixApplied() {
-			return nil, 0, fmt.Errorf("offset %d is out of bounds (size: %d)", offset, t.Metadata.Size)
+			return BuildMap{}, 0, fmt.Errorf("offset %d is out of bounds (size: %d)", offset, t.Metadata.Size)
 		}
 
 		logger.L().Warn(ctx, "offset is out of bounds, but normalize fix is not applied",
@@ -197,7 +194,7 @@ func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64
 	}
 	if offset%PageSize != 0 {
 		if t.IsNormalizeFixApplied() {
-			return nil, 0, fmt.Errorf("offset %d is not aligned to page size %d", offset, PageSize)
+			return BuildMap{}, 0, fmt.Errorf("offset %d is not aligned to page size %d", offset, PageSize)
 		}
 
 		logger.L().Warn(ctx, "offset is not aligned to page size, but normalize fix is not applied",
@@ -207,21 +204,21 @@ func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64
 		)
 	}
 
-	i := sort.Search(len(t.Mapping), func(i int) bool {
-		return int64(t.Mapping[i].Offset) > offset
+	i := sort.Search(t.Mapping.Len(), func(i int) bool {
+		return int64(t.Mapping.OffsetAt(i)) > offset
 	})
 
 	if i == 0 {
-		return nil, 0, fmt.Errorf("no source found for offset %d", offset)
+		return BuildMap{}, 0, fmt.Errorf("no source found for offset %d", offset)
 	}
 
-	mapping := &t.Mapping[i-1]
+	mapping := t.Mapping.At(i - 1)
 	shift := offset - int64(mapping.Offset)
 
 	// Verify that the offset falls within this mapping's range
 	if shift >= int64(mapping.Length) {
 		if t.IsNormalizeFixApplied() {
-			return nil, 0, fmt.Errorf("offset %d is beyond the end of mapping at offset %d (ends at %d)",
+			return BuildMap{}, 0, fmt.Errorf("offset %d is beyond the end of mapping at offset %d (ends at %d)",
 				offset, mapping.Offset, mapping.Offset+mapping.Length)
 		}
 
@@ -254,12 +251,12 @@ func ValidateHeader(h *Header) error {
 	if h.Metadata.Size == 0 {
 		return errors.New("header has zero size")
 	}
-	if len(h.Mapping) == 0 {
+	if h.Mapping.Len() == 0 {
 		return errors.New("header has no mappings")
 	}
 
 	// Sort mappings by offset to check for gaps/overlaps
-	sortedMappings := slices.Clone(h.Mapping)
+	sortedMappings := h.Mapping.Slice()
 	slices.SortFunc(sortedMappings, func(a, b BuildMap) int {
 		return cmp.Compare(a.Offset, b.Offset)
 	})
@@ -300,7 +297,7 @@ func ValidateHeader(h *Header) error {
 	}
 
 	// Validate individual mapping bounds
-	for i, m := range h.Mapping {
+	for i, m := range h.Mapping.All() {
 		if m.Offset > h.Metadata.Size {
 			return fmt.Errorf("mapping[%d] has Offset %d beyond header size %d for buildId %s",
 				i, m.Offset, h.Metadata.Size, m.BuildId.String())
