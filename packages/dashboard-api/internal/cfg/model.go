@@ -2,11 +2,13 @@ package cfg
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 
 	"github.com/caarlos0/env/v11"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 )
 
 type Config struct {
@@ -26,6 +28,10 @@ type Config struct {
 
 	BillingServerURL      string `env:"BILLING_SERVER_URL"`
 	BillingServerAPIToken string `env:"BILLING_SERVER_API_TOKEN"`
+
+	UserProfileProvider userprofile.Mode `env:"USER_PROFILE_PROVIDER" envDefault:"supabase"`
+	OrySDKURL           string           `env:"ORY_SDK_URL"`
+	OryProjectAPIToken  string           `env:"ORY_PROJECT_API_TOKEN,unset"`
 }
 
 func Parse() (Config, error) {
@@ -34,6 +40,9 @@ func Parse() (Config, error) {
 		FuncMap: map[reflect.Type]env.ParserFunc{
 			reflect.TypeFor[auth.ProviderConfig](): func(v string) (any, error) {
 				return auth.ParseProviderConfig(v)
+			},
+			reflect.TypeFor[userprofile.Mode](): func(v string) (any, error) {
+				return userprofile.ParseMode(v)
 			},
 		},
 	})
@@ -50,5 +59,27 @@ func Parse() (Config, error) {
 		err = errors.New("at least one of REDIS_URL or REDIS_CLUSTER_URL must be set")
 	}
 
+	if err == nil {
+		err = validateUserProfileProvider(config)
+	}
+
 	return config, err
+}
+
+func validateUserProfileProvider(config Config) error {
+	if !config.UserProfileProvider.RequiresOry() {
+		return nil
+	}
+
+	if config.OrySDKURL == "" {
+		return errors.New("ORY_SDK_URL is required when USER_PROFILE_PROVIDER uses ory")
+	}
+	if config.OryProjectAPIToken == "" {
+		return errors.New("ORY_PROJECT_API_TOKEN is required when USER_PROFILE_PROVIDER uses ory")
+	}
+	if len(config.AuthProvider.JWT) != 1 {
+		return fmt.Errorf("AUTH_PROVIDER_CONFIG must declare exactly one jwt issuer when USER_PROFILE_PROVIDER uses ory (got %d)", len(config.AuthProvider.JWT))
+	}
+
+	return nil
 }

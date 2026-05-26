@@ -29,6 +29,7 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/handlers"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
@@ -205,7 +206,14 @@ func run() int {
 		return 1
 	}
 
-	apiStore := handlers.NewAPIStore(config, db, authDB, supabaseDB, clickhouseClient, authService, teamProvisionSink)
+	userProfiles, err := buildUserProfileProvider(config, supabaseDB, authDB, authClient)
+	if err != nil {
+		l.Error(ctx, "Initializing user profile provider", zap.Error(err))
+
+		return 1
+	}
+
+	apiStore := handlers.NewAPIStore(config, db, authDB, supabaseDB, clickhouseClient, authService, teamProvisionSink, userProfiles)
 
 	swagger, err := api.GetSwagger()
 	if err != nil {
@@ -389,4 +397,25 @@ func shutdownService(ctx context.Context, s *http.Server) error {
 	}
 
 	return nil
+}
+
+func buildUserProfileProvider(config cfg.Config, supabaseDB *supabasedb.Client, authDB *authdb.Client, httpClient *http.Client) (userprofile.Provider, error) {
+	supaProvider := userprofile.NewSupabaseProvider(supabaseDB)
+
+	var oryProvider userprofile.Provider
+	if config.UserProfileProvider.RequiresOry() {
+		provider, err := userprofile.NewOryProvider(userprofile.OryConfig{
+			HTTPClient: httpClient,
+			SDKURL:     config.OrySDKURL,
+			Token:      config.OryProjectAPIToken,
+			Issuer:     config.AuthProvider.JWT[0].Issuer.URL,
+			Resolver:   authDB.Read,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("build ory user profile provider: %w", err)
+		}
+		oryProvider = provider
+	}
+
+	return userprofile.NewProvider(config.UserProfileProvider, supaProvider, oryProvider)
 }
