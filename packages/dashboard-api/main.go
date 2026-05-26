@@ -408,7 +408,7 @@ func buildUserProfileProvider(config cfg.Config, supabaseDB *supabasedb.Client, 
 			HTTPClient: httpClient,
 			SDKURL:     config.OrySDKURL,
 			Token:      config.OryProjectAPIToken,
-			Issuer:     config.AuthProvider.JWT[0].Issuer.URL,
+			Issuer:     config.OryIssuerURL,
 			Resolver:   authDB.Read,
 		})
 		if err != nil {

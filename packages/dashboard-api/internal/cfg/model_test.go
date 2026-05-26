@@ -64,41 +64,41 @@ func TestParseUserProfileProviderDefaultsToSupabase(t *testing.T) {
 	require.Equal(t, userprofile.ModeSupabase, config.UserProfileProvider)
 }
 
-func TestParseUserProfileProviderOryRequiresEnvAndIssuer(t *testing.T) {
+func TestParseUserProfileProviderOryRequiresOryEnv(t *testing.T) {
 	tests := []struct {
 		name          string
 		mode          string
 		sdkURL        string
 		token         string
-		authConfig    string
+		issuer        string
 		wantErrSubstr string
 	}{
 		{
 			name:          "ory mode without sdk url errors",
 			mode:          "ory",
 			token:         "pat",
-			authConfig:    oryJWTConfigJSON,
+			issuer:        "https://ory.example.test",
 			wantErrSubstr: "ORY_SDK_URL",
 		},
 		{
 			name:          "ory mode without token errors",
 			mode:          "ory",
 			sdkURL:        "https://ory.example.test",
-			authConfig:    oryJWTConfigJSON,
+			issuer:        "https://ory.example.test",
 			wantErrSubstr: "ORY_PROJECT_API_TOKEN",
 		},
 		{
-			name:          "ory mode without jwt issuer errors",
+			name:          "ory mode without issuer errors",
 			mode:          "ory",
 			sdkURL:        "https://ory.example.test",
 			token:         "pat",
-			wantErrSubstr: "AUTH_PROVIDER_CONFIG must declare exactly one jwt issuer",
+			wantErrSubstr: "ORY_ISSUER_URL",
 		},
 		{
 			name:          "fallback mode applies same requirements",
 			mode:          "supabase-ory-fallback",
 			token:         "pat",
-			authConfig:    oryJWTConfigJSON,
+			issuer:        "https://ory.example.test",
 			wantErrSubstr: "ORY_SDK_URL",
 		},
 	}
@@ -111,7 +111,7 @@ func TestParseUserProfileProviderOryRequiresEnvAndIssuer(t *testing.T) {
 			t.Setenv("USER_PROFILE_PROVIDER", tt.mode)
 			t.Setenv("ORY_SDK_URL", tt.sdkURL)
 			t.Setenv("ORY_PROJECT_API_TOKEN", tt.token)
-			t.Setenv("AUTH_PROVIDER_CONFIG", tt.authConfig)
+			t.Setenv("ORY_ISSUER_URL", tt.issuer)
 
 			_, err := Parse()
 			require.Error(t, err)
@@ -120,21 +120,22 @@ func TestParseUserProfileProviderOryRequiresEnvAndIssuer(t *testing.T) {
 	}
 }
 
-func TestParseUserProfileProviderOryHappyPath(t *testing.T) {
+func TestParseUserProfileProviderOryHappyPathIsIndependentOfAuthProvider(t *testing.T) {
 	t.Setenv("POSTGRES_CONNECTION_STRING", "postgres://example")
 	t.Setenv("ADMIN_TOKEN", "admin-token")
 	t.Setenv("REDIS_URL", "redis://example")
 	t.Setenv("USER_PROFILE_PROVIDER", "supabase-ory-fallback")
 	t.Setenv("ORY_SDK_URL", "https://ory.example.test")
 	t.Setenv("ORY_PROJECT_API_TOKEN", "pat")
-	t.Setenv("AUTH_PROVIDER_CONFIG", oryJWTConfigJSON)
+	t.Setenv("ORY_ISSUER_URL", "https://ory.example.test")
 
 	config, err := Parse()
 	require.NoError(t, err)
 	require.Equal(t, userprofile.ModeSupabaseOryFallback, config.UserProfileProvider)
 	require.Equal(t, "https://ory.example.test", config.OrySDKURL)
 	require.Equal(t, "pat", config.OryProjectAPIToken)
-	require.Len(t, config.AuthProvider.JWT, 1)
+	require.Equal(t, "https://ory.example.test", config.OryIssuerURL)
+	require.Empty(t, config.AuthProvider.JWT)
 }
 
 func TestParseUserProfileProviderInvalidModeErrors(t *testing.T) {
@@ -147,14 +148,3 @@ func TestParseUserProfileProviderInvalidModeErrors(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid user profile provider")
 }
-
-const oryJWTConfigJSON = `{
-		"jwt": [
-			{
-				"issuer": {
-					"url": "https://ory.example.test",
-					"audiences": ["dashboard-api"]
-				}
-			}
-		]
-	}`

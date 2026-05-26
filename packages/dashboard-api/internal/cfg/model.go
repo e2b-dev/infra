@@ -2,7 +2,6 @@ package cfg
 
 import (
 	"errors"
-	"fmt"
 	"reflect"
 
 	"github.com/caarlos0/env/v11"
@@ -32,6 +31,7 @@ type Config struct {
 	UserProfileProvider userprofile.Mode `env:"USER_PROFILE_PROVIDER" envDefault:"supabase"`
 	OrySDKURL           string           `env:"ORY_SDK_URL"`
 	OryProjectAPIToken  string           `env:"ORY_PROJECT_API_TOKEN,unset"`
+	OryIssuerURL        string           `env:"ORY_ISSUER_URL"`
 }
 
 func Parse() (Config, error) {
@@ -77,8 +77,8 @@ func validateUserProfileProvider(config Config) error {
 	if config.OryProjectAPIToken == "" {
 		return errors.New("ORY_PROJECT_API_TOKEN is required when USER_PROFILE_PROVIDER uses ory")
 	}
-	if len(config.AuthProvider.JWT) != 1 {
-		return fmt.Errorf("AUTH_PROVIDER_CONFIG must declare exactly one jwt issuer when USER_PROFILE_PROVIDER uses ory (got %d)", len(config.AuthProvider.JWT))
+	if config.OryIssuerURL == "" {
+		return errors.New("ORY_ISSUER_URL is required when USER_PROFILE_PROVIDER uses ory")
 	}
 
 	return nil
