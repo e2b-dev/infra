@@ -206,11 +206,12 @@ func MergeMappings(
 
 // NormalizeMappings joins adjacent mappings that have the same buildId.
 //
-// The returned slice has cap == len so the merged header can be cached
-// without retaining unused trailing capacity from the pre-merge input
-// (which can be 10–100x larger than the normalized result on
-// snapshot-heavy workloads). The intermediate oversized slice is freed
-// once the clone is returned.
+// The merge loop preallocates cap == len(input) to stay single-alloc,
+// but the merged Header lives in the 25h template cache and on
+// snapshot-heavy workloads the input is 10–100x larger than the
+// normalized output. Clone the result so the oversized intermediate
+// drops to GC instead of being retained for a day. slices.Clip is not
+// enough — it only retightens the cap header on the same backing array.
 func NormalizeMappings(mappings []BuildMap) []BuildMap {
 	if len(mappings) == 0 {
 		return nil
