@@ -218,6 +218,46 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 	}, nil
 }
 
+func (s *APIStore) bootstrapTeam(ctx context.Context, name string, email string) (provisionedTeam, error) {
+	team, err := s.authDB.Write.CreateTeam(ctx, authqueries.CreateTeamParams{
+		Name:          name,
+		Tier:          baseTierID,
+		Email:         email,
+		IsBlocked:     false,
+		BlockedReason: nil,
+	})
+	if err != nil {
+		return provisionedTeam{}, fmt.Errorf("create team: %w", err)
+	}
+
+	req := teamprovision.TeamBillingProvisionRequestedV1{
+		TeamID:        team.ID,
+		TeamName:      team.Name,
+		TeamEmail:     team.Email,
+		CreatorUserID: uuid.Nil,
+		Reason:        teamprovision.ReasonAdditionalTeam,
+	}
+	if err := s.teamProvisionSink.ProvisionTeam(ctx, req); err != nil {
+		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), teamProvisionRollbackTimeout)
+		defer cancel()
+
+		if deleteErr := s.authDB.Write.DeleteTeamByID(rollbackCtx, team.ID); deleteErr != nil {
+			return provisionedTeam{}, fmt.Errorf("delete team after provisioning failure: provision=%s delete=%w", err.Error(), deleteErr)
+		}
+
+		return provisionedTeam{}, err
+	}
+
+	return provisionedTeam{
+		ID:            team.ID,
+		Name:          team.Name,
+		Email:         team.Email,
+		Slug:          team.Slug,
+		IsBlocked:     team.IsBlocked,
+		BlockedReason: team.BlockedReason,
+	}, nil
+}
+
 func validateTeamCreationAllowed(ctx context.Context, authTxDB *authqueries.Queries, ownerUserID uuid.UUID) error {
 	teams, err := authTxDB.GetTeamsWithUsersTeamsWithTierForUpdate(ctx, ownerUserID)
 	if err != nil {
