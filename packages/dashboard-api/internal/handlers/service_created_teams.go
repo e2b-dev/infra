@@ -22,7 +22,7 @@ func (s *APIStore) PostInternalServiceCreatedTeams(c *gin.Context) {
 	}
 
 	name := strings.TrimSpace(body.Name)
-	email := strings.TrimSpace(string(body.Email))
+	email := string(body.Email)
 	if name == "" || email == "" {
 		s.sendAPIStoreError(c, http.StatusBadRequest, "Team name and email are required")
 

@@ -28,7 +28,7 @@ func TestPostInternalServiceCreatedTeamsCreatesServiceCreatedTeam(t *testing.T) 
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/internal/service-created-teams", strings.NewReader(`{
 		"name": "  Service-created team  ",
-		"email": "  service-created-team@example.com  "
+		"email": "service-created-team@example.com"
 	}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
@@ -144,7 +144,7 @@ func TestPostInternalServiceCreatedTeamsRejectsMissingFields(t *testing.T) {
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/service-created-teams", strings.NewReader(`{
 		"name": "Service-created team",
-		"email": "   "
+		"email": ""
 	}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
