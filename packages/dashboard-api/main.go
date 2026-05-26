@@ -404,12 +404,15 @@ func buildUserProfileProvider(config cfg.Config, supabaseDB *supabasedb.Client, 
 
 	var oryProvider userprofile.Provider
 	if config.UserProfileProvider.RequiresOry() {
+		// identity rows are written on the primary inside the bootstrap tx;
+		// reading them from the read replica races replication lag, so resolve
+		// (issuer, subject) <-> user_id mappings on the primary.
 		provider, err := userprofile.NewOryProvider(userprofile.OryConfig{
 			HTTPClient: httpClient,
 			SDKURL:     config.OrySDKURL,
 			Token:      config.OryProjectAPIToken,
 			Issuer:     config.OryIssuerURL,
-			Resolver:   authDB.Read,
+			Resolver:   authDB.Write,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("build ory user profile provider: %w", err)
