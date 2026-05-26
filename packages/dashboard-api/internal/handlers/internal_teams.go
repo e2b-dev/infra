@@ -14,7 +14,7 @@ import (
 func (s *APIStore) PostInternalTeams(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	body, err := ginutils.ParseBody[api.InternalHeadlessTeamCreateRequest](ctx, c)
+	body, err := ginutils.ParseBody[api.InternalTeamCreateRequest](ctx, c)
 	if err != nil {
 		s.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 
@@ -29,7 +29,7 @@ func (s *APIStore) PostInternalTeams(c *gin.Context) {
 		return
 	}
 
-	team, err := s.createHeadlessTeam(ctx, name, email)
+	team, err := s.createInternalTeam(ctx, name, email)
 	if err != nil {
 		s.handleProvisioningError(ctx, c, "provision internal team", err)
 

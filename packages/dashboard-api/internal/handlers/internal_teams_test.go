@@ -17,7 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 )
 
-func TestPostInternalTeamsCreatesHeadlessTeam(t *testing.T) {
+func TestPostInternalTeamsCreatesInternalTeam(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
@@ -27,8 +27,8 @@ func TestPostInternalTeamsCreatesHeadlessTeam(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/internal/teams", strings.NewReader(`{
-		"name": "  Stripe acct_1234  ",
-		"email": "  stripe-projects@example.com  "
+		"name": "  Internal team  ",
+		"email": "  internal-team@example.com  "
 	}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
@@ -66,10 +66,10 @@ func TestPostInternalTeamsCreatesHeadlessTeam(t *testing.T) {
 	}, body.ID); err != nil {
 		t.Fatalf("failed to query created team: %v", err)
 	}
-	if name != "Stripe acct_1234" {
+	if name != "Internal team" {
 		t.Fatalf("expected trimmed name, got %q", name)
 	}
-	if email != "stripe-projects@example.com" {
+	if email != "internal-team@example.com" {
 		t.Fatalf("expected trimmed email, got %q", email)
 	}
 
@@ -81,7 +81,7 @@ func TestPostInternalTeamsCreatesHeadlessTeam(t *testing.T) {
 		t.Fatalf("unexpected provisioning request: %+v", req)
 	}
 	if req.CreatorUserID != uuid.Nil {
-		t.Fatalf("expected headless creator user id, got %s", req.CreatorUserID)
+		t.Fatalf("expected internal creator user id, got %s", req.CreatorUserID)
 	}
 	if req.Reason != teamprovision.ReasonAdditionalTeam {
 		t.Fatalf("expected additional team reason, got %q", req.Reason)
@@ -103,8 +103,8 @@ func TestPostInternalTeamsRollsBackOnProvisioningFailure(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/internal/teams", strings.NewReader(`{
-		"name": "Stripe acct_1234",
-		"email": "stripe-projects@example.com"
+		"name": "Internal team",
+		"email": "internal-team@example.com"
 	}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
 
@@ -128,7 +128,7 @@ func TestPostInternalTeamsRollsBackOnProvisioningFailure(t *testing.T) {
 		}
 
 		return rows.Scan(&count)
-	}, "stripe-projects@example.com"); err != nil {
+	}, "internal-team@example.com"); err != nil {
 		t.Fatalf("failed to count teams: %v", err)
 	}
 	if count != 0 {
@@ -143,7 +143,7 @@ func TestPostInternalTeamsRejectsMissingFields(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
 	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/teams", strings.NewReader(`{
-		"name": "Stripe acct_1234",
+		"name": "Internal team",
 		"email": "   "
 	}`))
 	ginCtx.Request.Header.Set("Content-Type", "application/json")
