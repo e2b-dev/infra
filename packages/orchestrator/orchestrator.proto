@@ -130,7 +130,18 @@ message SandboxCheckpointRequest {
   string build_id = 3;
 }
 
+enum SandboxCheckpointSandboxState {
+  SANDBOX_CHECKPOINT_SANDBOX_STATE_UNSPECIFIED = 0;
+  SANDBOX_CHECKPOINT_SANDBOX_STATE_RUNNING = 1;
+  SANDBOX_CHECKPOINT_SANDBOX_STATE_KILLED = 2;
+}
+
 message SandboxCheckpointResponse {
+}
+
+message SandboxCheckpointFailure {
+  SandboxCheckpointSandboxState sandbox_state = 1;
+  string error_message = 2;
 }
 
 message RunningSandbox {
