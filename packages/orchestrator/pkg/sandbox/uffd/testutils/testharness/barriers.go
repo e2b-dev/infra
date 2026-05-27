@@ -15,6 +15,9 @@ const (
 	BeforeRLock Point = iota
 	// BeforeFaultPage parks after settleRequests.RLock, before UFFDIO_COPY.
 	BeforeFaultPage
+	// BeforePrefaultRLock parks inside Prefault(), before settleRequests.RLock.
+	// Value must stay in sync with faultPhaseBeforePrefaultRLock in the parent package.
+	BeforePrefaultRLock
 )
 
 // Registry is the child-side barrier store consulted by the per-fault hook.
