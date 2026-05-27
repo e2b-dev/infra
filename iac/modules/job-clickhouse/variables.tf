@@ -64,6 +64,12 @@ variable "clickhouse_metrics_port" {
   type = number
 }
 
+variable "enable_metric_logs" {
+  type        = bool
+  default     = true
+  description = "Whether to persist ClickHouse system.metric_log and system.asynchronous_metric_log tables."
+}
+
 variable "otel_exporter_endpoint" {
   type        = string
   description = "OTLP exporter endpoint (e.g. http://localhost:4317)"

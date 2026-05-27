@@ -8,6 +8,8 @@ locals {
 
     username = var.clickhouse_username
     password = var.clickhouse_password
+
+    enable_metric_logs = var.enable_metric_logs
   })
 
   clickhouse_users_config = templatefile("${path.module}/configs/users.xml", {

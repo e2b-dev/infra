@@ -47,9 +47,13 @@
 
     <listen_host>0.0.0.0</listen_host>
 
+    %{ if enable_metric_logs }
     <asynchronous_metric_log>
         <ttl>event_date + INTERVAL 1 DAY</ttl>
     </asynchronous_metric_log>
+    %{ else }
+    <asynchronous_metric_log remove="1"/>
+    %{ endif }
 
     <trace_log remove="1"/>
 
@@ -69,9 +73,13 @@
         <ttl>event_date + INTERVAL 1 DAY</ttl>
     </query_views_log>
 
+    %{ if enable_metric_logs }
     <metric_log>
         <ttl>event_date + INTERVAL 1 DAY</ttl>
     </metric_log>
+    %{ else }
+    <metric_log remove="1"/>
+    %{ endif }
 
     <processors_profile_log remove="1"/>
 
