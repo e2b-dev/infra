@@ -324,12 +324,26 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		telemetry.WithEnvdVersion(sbx.Config.Envd.Version),
 	)
 
-	// Mirror the Create-side BYOP gate; defense-in-depth for direct gRPC callers.
-	if req.GetEgress().GetEgressProxyAddress() != "" && !s.sandboxFactory.EgressProxy().SupportsBYOP() {
-		telemetry.ReportEvent(ctx, "egressProxy update rejected: orchestrator build has no BYOP dialer")
+	// Mirror the Create-side BYOP gates; defense-in-depth for direct gRPC
+	// callers.
+	if req.GetEgress().GetEgressProxyAddress() != "" {
+		ctx = featureflags.AddToContext(ctx,
+			ldcontext.NewBuilder(sbx.Runtime.TeamID).
+				Kind(featureflags.TeamKind).
+				Build(),
+		)
+		if !s.featureFlags.BoolFlag(ctx, featureflags.BYOPProxyEnabledFlag) {
+			telemetry.ReportEvent(ctx, "egressProxy update rejected by BYOPProxyEnabledFlag")
 
-		return nil, status.Error(codes.Unimplemented,
-			"egress proxy is not supported by this orchestrator build")
+			return nil, status.Error(codes.PermissionDenied,
+				"egress proxy is not enabled for this team")
+		}
+		if !s.sandboxFactory.EgressProxy().SupportsBYOP() {
+			telemetry.ReportEvent(ctx, "egressProxy update rejected: orchestrator build has no BYOP dialer")
+
+			return nil, status.Error(codes.Unimplemented,
+				"egress proxy is not supported by this orchestrator build")
+		}
 	}
 
 	var updates []utils.UpdateFunc
