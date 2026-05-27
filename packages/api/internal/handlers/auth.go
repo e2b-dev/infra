@@ -12,9 +12,23 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	dbapi "github.com/e2b-dev/infra/packages/api/internal/db"
+	"github.com/e2b-dev/infra/packages/api/internal/middleware"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 )
+
+// applyTeamAccessCheck maps a team-access denial to a 403 *api.APIError.
+func applyTeamAccessCheck(c *gin.Context, team *types.Team) *api.APIError {
+	if err := middleware.CheckTeamAccessForRoute(c, team); err != nil {
+		return &api.APIError{
+			Code:      http.StatusForbidden,
+			ClientMsg: err.Error(),
+			Err:       err,
+		}
+	}
+
+	return nil
+}
 
 func (a *APIStore) GetTeam(
 	ctx context.Context,
@@ -50,6 +64,11 @@ func (a *APIStore) GetTeam(
 				ClientMsg: "You are not allowed to access this team",
 				Err:       err,
 			}
+		}
+
+		// More restrictive than before, but OK on this deprecated path.
+		if apiErr := applyTeamAccessCheck(c, team); apiErr != nil {
+			return nil, apiErr
 		}
 
 		return team, nil
@@ -147,6 +166,11 @@ func (a *APIStore) resolveTemplateAndTeam(
 
 		for _, t := range userTeams {
 			if t.Team.ID == aliasInfo.TeamID {
+				// More restrictive than before, but OK on this deprecated path.
+				if apiErr := applyTeamAccessCheck(c, t.Team); apiErr != nil {
+					return nil, nil, apiErr
+				}
+
 				return t.Team, aliasInfo, nil
 			}
 		}

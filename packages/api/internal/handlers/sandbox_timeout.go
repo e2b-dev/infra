@@ -30,15 +30,7 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 
 	telemetry.SetAttributes(ctx, telemetry.WithSandboxID(sandboxID))
 
-	teamInfo := auth.MustGetTeamInfo(c)
-
-	if err := auth.CheckTeamBlocked(teamInfo); err != nil {
-		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
-
-		return
-	}
-
-	teamID := teamInfo.Team.ID
+	teamID := auth.MustGetTeamID(c)
 
 	var duration time.Duration
 
