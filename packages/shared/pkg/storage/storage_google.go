@@ -285,20 +285,25 @@ func (o *gcpObject) openRangeReader(ctx context.Context, off, length int64) (io.
 		return nil, fmt.Errorf("failed to create GCS range reader for %q at %d+%d: %w", o.path, off, length, err)
 	}
 
+	gcsConcurrentReads.Add(ctx, 1)
+
 	return &idleTimeoutReader{
 		ReadCloser: reader,
 		cancel:     cancel,
 		timer:      time.AfterFunc(googleReadTimeout, cancel),
+		gaugeCtx:   ctx,
 	}, nil
 }
 
 // idleTimeoutReader fires cancel() after googleReadTimeout with no Read
-// activity (in-flight Read with no progress, or no Read called).
+// activity (in-flight Read with no progress, or no Read called). It also
+// pairs with gcsConcurrentReads: +1 on construction, -1 on Close.
 type idleTimeoutReader struct {
 	io.ReadCloser
 
-	cancel context.CancelFunc
-	timer  *time.Timer
+	cancel   context.CancelFunc
+	timer    *time.Timer
+	gaugeCtx context.Context //nolint:containedctx // needed to decrement gcsConcurrentReads on Close
 }
 
 func (r *idleTimeoutReader) Read(p []byte) (int, error) {
@@ -317,6 +322,7 @@ func (r *idleTimeoutReader) Read(p []byte) (int, error) {
 func (r *idleTimeoutReader) Close() error {
 	r.timer.Stop()
 	defer r.cancel()
+	gcsConcurrentReads.Add(r.gaugeCtx, -1)
 
 	return r.ReadCloser.Close()
 }
@@ -598,7 +604,7 @@ func parseServiceAccountBase64(serviceAccount string) (*gcpServiceToken, error) 
 	return &sa, nil
 }
 
-func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
+func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (RangeReader, error) {
 	timer := googleReadTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrReadAt))
 
 	if !frameTable.IsCompressed() {
@@ -609,9 +615,7 @@ func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length i
 			return nil, err
 		}
 
-		gcsConcurrentReads.Add(ctx, 1)
-
-		return &timedReadCloser{inner: rc, timer: timer, ctx: ctx}, nil
+		return newObservableReader(NewRangeReader(rc), timer, nil), nil
 	}
 
 	r, err := frameTable.LocateCompressed(offsetU)
@@ -628,7 +632,7 @@ func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length i
 		return nil, err
 	}
 
-	decompressed, err := newDecompressingReadCloser(raw, frameTable.CompressionType())
+	dec, err := NewDecompressingReader(NewRangeReader(raw), frameTable.CompressionType())
 	if err != nil {
 		raw.Close()
 		timer.Failure(ctx, 0)
@@ -636,44 +640,7 @@ func (o *gcpObject) OpenRangeReader(ctx context.Context, offsetU int64, length i
 		return nil, err
 	}
 
-	gcsConcurrentReads.Add(ctx, 1)
-
-	return &timedReadCloser{inner: decompressed, timer: timer, ctx: ctx}, nil
-}
-
-// timedReadCloser wraps a reader with OTEL timer metrics.
-// Close records success (with total bytes read) or failure on the timer.
-type timedReadCloser struct {
-	inner     io.ReadCloser
-	timer     *telemetry.Stopwatch
-	ctx       context.Context //nolint:containedctx // needed for timer recording in Close
-	bytesRead int64
-	closeErr  error
-}
-
-func (r *timedReadCloser) Read(p []byte) (int, error) {
-	n, err := r.inner.Read(p)
-	r.bytesRead += int64(n)
-
-	if err != nil && err != io.EOF {
-		r.closeErr = err
-	}
-
-	return n, err
-}
-
-func (r *timedReadCloser) Close() error {
-	gcsConcurrentReads.Add(r.ctx, -1)
-
-	err := r.inner.Close()
-
-	if r.closeErr != nil || err != nil {
-		r.timer.Failure(r.ctx, r.bytesRead)
-	} else {
-		r.timer.Success(r.ctx, r.bytesRead)
-	}
-
-	return err
+	return newObservableReader(dec, timer, nil), nil
 }
 
 func isResourceExhausted(err error) bool {

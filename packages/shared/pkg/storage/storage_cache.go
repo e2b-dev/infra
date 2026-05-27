@@ -151,6 +151,10 @@ func ignoreEOF(err error) error {
 // isCompleteRead reports whether a read of n bytes into a buffer of expected
 // size represents a valid, cacheable result. A read is complete when either
 // the full buffer was filled or io.EOF explains a non-empty short read (last chunk).
+//
+// Writeback callers pass err=nil: a streaming reader always ends in io.EOF
+// regardless of whether the upstream was truncated, so the byte count is the
+// only reliable signal that the captured bytes are safe to cache.
 func isCompleteRead(n, expected int, err error) bool {
 	return n == expected || (n > 0 && errors.Is(err, io.EOF))
 }

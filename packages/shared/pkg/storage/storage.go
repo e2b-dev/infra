@@ -146,9 +146,14 @@ type SeekableReader interface {
 	Size(ctx context.Context) (int64, error)
 }
 
+type RangeReader interface {
+	io.Reader
+	Close(ctx context.Context) error
+}
+
 // StreamingReader supports progressive reads via a streaming range reader.
 type StreamingReader interface {
-	OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (io.ReadCloser, error)
+	OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (RangeReader, error)
 }
 
 type SeekableWriter interface {
