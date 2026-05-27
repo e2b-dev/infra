@@ -246,7 +246,7 @@ func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, mmapSlic
 		return 0, fmt.Errorf("failed to open range reader at %d: %w", s.chunkOff, err)
 	}
 	defer func() {
-		if closeErr := reader.Close(); closeErr != nil && err == nil {
+		if closeErr := reader.Close(ctx); closeErr != nil && err == nil {
 			err = closeErr
 		}
 	}()

@@ -74,7 +74,7 @@ func TestPeerSeekable_OpenRangeReader_PeerSucceeds(t *testing.T) {
 	s := &peerSeekable{peerHandle: peerHandle{client: client, buildID: "build-1", name: storage.MemfileName, uploaded: &atomic.Bool{}}}
 	rc, err := s.OpenRangeReader(t.Context(), 10, int64(len(data)), nil)
 	require.NoError(t, err)
-	defer rc.Close()
+	defer rc.Close(t.Context())
 
 	got, err := io.ReadAll(rc)
 	require.NoError(t, err)
@@ -89,7 +89,7 @@ func TestPeerSeekable_OpenRangeReader_PeerError_FallsBackToBase(t *testing.T) {
 	client.EXPECT().ReadAtBuildSeekable(mock.Anything, mock.Anything).Return(nil, errors.New("peer unavailable"))
 
 	baseSeekable := storage.NewMockSeekable(t)
-	baseSeekable.EXPECT().OpenRangeReader(mock.Anything, int64(0), int64(len(baseData)), (*storage.FrameTable)(nil)).Return(io.NopCloser(bytes.NewReader(baseData)), nil)
+	baseSeekable.EXPECT().OpenRangeReader(mock.Anything, int64(0), int64(len(baseData)), (*storage.FrameTable)(nil)).Return(storage.NewRangeReader(io.NopCloser(bytes.NewReader(baseData))), nil)
 
 	base := storage.NewMockStorageProvider(t)
 	base.EXPECT().OpenSeekable(mock.Anything, "build-1/memfile", storage.MemfileObjectType).Return(baseSeekable, nil)
@@ -106,7 +106,7 @@ func TestPeerSeekable_OpenRangeReader_PeerError_FallsBackToBase(t *testing.T) {
 	}
 	rc, err := s.OpenRangeReader(t.Context(), 0, int64(len(baseData)), nil)
 	require.NoError(t, err)
-	defer rc.Close()
+	defer rc.Close(t.Context())
 
 	got, err := io.ReadAll(rc)
 	require.NoError(t, err)
@@ -187,7 +187,7 @@ func TestPeerStorageProvider_FullTransitionFlow(t *testing.T) {
 	postBaseSeekable := storage.NewMockSeekable(t)
 	postBaseSeekable.EXPECT().
 		OpenRangeReader(mock.Anything, int64(0), int64(len(postBaseBytes)), mock.Anything).
-		Return(io.NopCloser(bytes.NewReader(postBaseBytes)), nil).Once()
+		Return(storage.NewRangeReader(io.NopCloser(bytes.NewReader(postBaseBytes))), nil).Once()
 
 	base := storage.NewMockStorageProvider(t)
 	base.EXPECT().
@@ -204,7 +204,7 @@ func TestPeerStorageProvider_FullTransitionFlow(t *testing.T) {
 	require.NoError(t, err)
 	got, err := io.ReadAll(rc)
 	require.NoError(t, err)
-	require.NoError(t, rc.Close())
+	require.NoError(t, rc.Close(t.Context()))
 	assert.Equal(t, prePeerBytes, got)
 	require.True(t, uploaded.Load(), "uploaded flag should be set after peer EOF with UseStorage")
 
@@ -221,6 +221,6 @@ func TestPeerStorageProvider_FullTransitionFlow(t *testing.T) {
 	require.NoError(t, err)
 	got, err = io.ReadAll(rc)
 	require.NoError(t, err)
-	require.NoError(t, rc.Close())
+	require.NoError(t, rc.Close(t.Context()))
 	assert.Equal(t, postBaseBytes, got)
 }

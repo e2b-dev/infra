@@ -260,9 +260,9 @@ func tryPeer[T any](
 	return peerAttempt[T]{}, nil
 }
 
-var _ io.ReadCloser = (*peerStreamReader)(nil)
+var _ storage.RangeReader = (*peerStreamReader)(nil)
 
-// peerStreamReader wraps a gRPC streaming recv function as an io.ReadCloser.
+// peerStreamReader wraps a gRPC streaming recv function as a storage.RangeReader.
 // cancel is called on Close to signal the server to terminate the stream.
 type peerStreamReader struct {
 	recv    func() ([]byte, error)
@@ -304,7 +304,7 @@ func (r *peerStreamReader) Read(p []byte) (int, error) {
 	}
 }
 
-func (r *peerStreamReader) Close() error {
+func (r *peerStreamReader) Close(context.Context) error {
 	r.cancel()
 
 	return nil

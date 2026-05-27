@@ -233,7 +233,7 @@ func (o *awsObject) Put(ctx context.Context, data []byte, opts ...PutOption) err
 	return nil
 }
 
-func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
+func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64, frameTable *FrameTable) (RangeReader, error) {
 	if frameTable.IsCompressed() {
 		return nil, errors.New("compressed reads are not supported on AWS")
 	}
@@ -253,7 +253,7 @@ func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64, fram
 		return nil, fmt.Errorf("failed to create S3 range reader for %q: %w", o.path, err)
 	}
 
-	return resp.Body, nil
+	return NewRangeReader(resp.Body), nil
 }
 
 func (o *awsObject) Size(ctx context.Context) (int64, error) {
