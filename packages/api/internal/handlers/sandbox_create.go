@@ -62,12 +62,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	// Get team from context, use TeamContextKey
 	teamInfo := auth.MustGetTeamInfo(c)
 
-	if err := auth.CheckTeamBlocked(teamInfo); err != nil {
-		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
-
-		return
-	}
-
 	c.Set("teamID", teamInfo.Team.ID.String())
 
 	span := trace.SpanFromContext(ctx)

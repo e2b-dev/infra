@@ -102,18 +102,16 @@ func (s *authService) ValidateAPIKey(ctx context.Context, ginCtx *gin.Context, a
 		return s.store.GetTeamByHashedAPIKey(ctx, key)
 	})
 	if err != nil {
-		var zero *types.Team
-
 		var forbiddenErr *TeamForbiddenError
 		if errors.As(err, &forbiddenErr) {
-			return zero, &APIError{
+			return nil, &APIError{
 				Err:       err,
 				ClientMsg: err.Error(),
 				Code:      http.StatusForbidden,
 			}
 		}
 
-		return zero, &APIError{
+		return nil, &APIError{
 			Err:       fmt.Errorf("failed to get the team from db for an api key: %w", err),
 			ClientMsg: "Cannot get the team for the given API key",
 			Code:      http.StatusUnauthorized,
@@ -226,18 +224,16 @@ func (s *authService) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.Cont
 		return s.store.GetTeamByIDAndUserID(ctx, userID, teamID)
 	})
 	if err != nil {
-		var zero *types.Team
-
 		var forbiddenErr *TeamForbiddenError
 		if errors.As(err, &forbiddenErr) {
-			return zero, &APIError{
+			return nil, &APIError{
 				Err:       fmt.Errorf("failed getting team: %w", err),
 				ClientMsg: fmt.Sprintf("Forbidden: %s", err.Error()),
 				Code:      http.StatusForbidden,
 			}
 		}
 
-		return zero, &APIError{
+		return nil, &APIError{
 			Err:       fmt.Errorf("failed getting team: %w", err),
 			ClientMsg: "Backend authentication failed",
 			Code:      http.StatusUnauthorized,

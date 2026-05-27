@@ -153,6 +153,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    "502":
+      description: Upstream error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
 
   schemas:
     Error:
@@ -236,6 +242,21 @@ components:
         oidc_user_name:
           type: string
           nullable: true
+
+    AdminTeamBootstrapRequest:
+      type: object
+      required:
+        - name
+        - email
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Team name.
+        email:
+          type: string
+          format: email
+          description: Billing/contact email for the team.
 
     BuildStatus:
       type: string
@@ -903,6 +924,35 @@ paths:
           $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/teams/bootstrap:
+    post:
+      summary: Bootstrap team
+      description: Creates and provisions a team for an admin-authenticated bootstrap workflow.
+      tags: [admin]
+      security:
+        - AdminTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminTeamBootstrapRequest"
+      responses:
+        "200":
+          description: Successfully bootstrapped team.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamResolveResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "502":
+          $ref: "#/components/responses/502"
         "500":
           $ref: "#/components/responses/500"
 

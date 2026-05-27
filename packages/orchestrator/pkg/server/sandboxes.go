@@ -277,7 +277,6 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	childSpan.SetAttributes(
 		telemetry.WithSandboxID(req.GetSandboxId()),
-		attribute.String("client.id", s.info.ClientId),
 	)
 
 	sbx, ok := s.sandboxFactory.Sandboxes.Get(req.GetSandboxId())
@@ -286,6 +285,15 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
+
+	childSpan.SetAttributes(
+		telemetry.WithTeamID(sbx.Runtime.TeamID),
+		telemetry.WithTemplateID(sbx.Runtime.TemplateID),
+		telemetry.WithBuildID(sbx.Runtime.BuildID),
+		telemetry.WithFirecrackerVersion(sbx.Config.FirecrackerConfig.FirecrackerVersion),
+		telemetry.WithKernelVersion(sbx.Config.FirecrackerConfig.KernelVersion),
+		telemetry.WithEnvdVersion(sbx.Config.Envd.Version),
+	)
 
 	var updates []utils.UpdateFunc
 
@@ -402,7 +410,6 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	childSpan.SetAttributes(
 		telemetry.WithSandboxID(in.GetSandboxId()),
-		attribute.String("client.id", s.info.ClientId),
 	)
 
 	sbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId())
@@ -411,6 +418,15 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 		return nil, status.Errorf(codes.NotFound, "sandbox '%s' not found", in.GetSandboxId())
 	}
+
+	childSpan.SetAttributes(
+		telemetry.WithTeamID(sbx.Runtime.TeamID),
+		telemetry.WithTemplateID(sbx.Runtime.TemplateID),
+		telemetry.WithBuildID(sbx.Runtime.BuildID),
+		telemetry.WithFirecrackerVersion(sbx.Config.FirecrackerConfig.FirecrackerVersion),
+		telemetry.WithKernelVersion(sbx.Config.FirecrackerConfig.KernelVersion),
+		telemetry.WithEnvdVersion(sbx.Config.Envd.Version),
+	)
 
 	// Mark the sandbox as stopping so it is excluded from live queries (Get, Items,
 	// Count) but remains findable by IP (GetByHostPort) while the Firecracker
@@ -468,6 +484,12 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	ctx, childSpan := tracer.Start(ctx, "sandbox-pause")
 	defer childSpan.End()
 
+	childSpan.SetAttributes(
+		telemetry.WithSandboxID(in.GetSandboxId()),
+		telemetry.WithTemplateID(in.GetTemplateId()),
+		telemetry.WithBuildID(in.GetBuildId()),
+	)
+
 	ctx = featureflags.AddToContext(
 		ctx,
 		ldcontext.NewBuilder(in.GetSandboxId()).
@@ -482,6 +504,13 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
+
+	childSpan.SetAttributes(
+		telemetry.WithTeamID(sbx.Runtime.TeamID),
+		telemetry.WithFirecrackerVersion(sbx.Config.FirecrackerConfig.FirecrackerVersion),
+		telemetry.WithKernelVersion(sbx.Config.FirecrackerConfig.KernelVersion),
+		telemetry.WithEnvdVersion(sbx.Config.Envd.Version),
+	)
 
 	marked := s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
 	if !marked {
@@ -536,6 +565,11 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	ctx, childSpan := tracer.Start(ctx, "sandbox-checkpoint")
 	defer childSpan.End()
 
+	childSpan.SetAttributes(
+		telemetry.WithSandboxID(in.GetSandboxId()),
+		telemetry.WithBuildID(in.GetBuildId()),
+	)
+
 	ctx = featureflags.AddToContext(
 		ctx,
 		ldcontext.NewBuilder(in.GetSandboxId()).
@@ -549,6 +583,14 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 		return nil, status.Errorf(codes.NotFound, "sandbox '%s' not found", in.GetSandboxId())
 	}
+
+	childSpan.SetAttributes(
+		telemetry.WithTeamID(sbx.Runtime.TeamID),
+		telemetry.WithTemplateID(sbx.Runtime.TemplateID),
+		telemetry.WithFirecrackerVersion(sbx.Config.FirecrackerConfig.FirecrackerVersion),
+		telemetry.WithKernelVersion(sbx.Config.FirecrackerConfig.KernelVersion),
+		telemetry.WithEnvdVersion(sbx.Config.Envd.Version),
+	)
 
 	// Check envd version before snapshotting.
 	if err := utils.CheckEnvdVersionForSnapshot(sbx.Config.Envd.Version); err != nil {

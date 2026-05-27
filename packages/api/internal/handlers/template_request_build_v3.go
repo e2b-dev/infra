@@ -11,7 +11,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/template"
-	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
@@ -47,13 +46,6 @@ func requestTemplateBuild(ctx context.Context, c *gin.Context, a *APIStore, body
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team, limits", apiErr.Err)
-
-		return nil
-	}
-
-	// Shared by PostV2Templates and PostV3Templates.
-	if err := auth.CheckTeamBlocked(team); err != nil {
-		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
 
 		return nil
 	}

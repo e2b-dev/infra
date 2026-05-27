@@ -11,7 +11,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
-	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -90,14 +89,6 @@ func (a *APIStore) updateTemplate(ctx context.Context, c *gin.Context, aliasOrTe
 	team, aliasInfo, apiErr := a.resolveTemplateAndTeam(ctx, c, identifier)
 	if apiErr != nil {
 		return nil, nil, apiErr
-	}
-
-	if err := auth.CheckTeamBlocked(team); err != nil {
-		return nil, nil, &api.APIError{
-			Code:      http.StatusForbidden,
-			ClientMsg: err.Error(),
-			Err:       err,
-		}
 	}
 
 	telemetry.SetAttributes(ctx,

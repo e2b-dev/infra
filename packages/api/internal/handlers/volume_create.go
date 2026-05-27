@@ -12,7 +12,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
-	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	clustershared "github.com/e2b-dev/infra/packages/shared/pkg/clusters"
@@ -30,12 +29,6 @@ func (a *APIStore) PostVolumes(c *gin.Context) {
 	if apiErr != nil {
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 		telemetry.ReportCriticalError(ctx, "error when getting team", apiErr.Err)
-
-		return
-	}
-
-	if err := auth.CheckTeamBlocked(team); err != nil {
-		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
 
 		return
 	}

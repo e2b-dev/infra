@@ -229,6 +229,11 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 	limiter := ratelimit.NewLimiter(redisClient)
 	r.Use(ratelimit.Middleware(limiter, ratelimit.Config{FailOpen: true}, ff)) //nolint:contextcheck // Gin middleware sets context via c.Request.WithContext
 
+	// Deny blocked teams on every mutating route unless allowlisted in
+	// EnforceBlockedTeam. Must run after auth (which populates team info on
+	// the gin context) and before the handlers.
+	r.Use(customMiddleware.EnforceBlockedTeam())
+
 	// We now register our store above as the handler for the interface
 	api.RegisterHandlersWithOptions(r, apiStore, api.GinServerOptions{
 		ErrorHandler: func(c *gin.Context, err error, statusCode int) {
