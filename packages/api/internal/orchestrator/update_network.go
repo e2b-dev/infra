@@ -31,6 +31,7 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 	allowInternetAccess *bool,
 	egressProxy *sandbox_network.EgressProxyConfig,
 ) *api.APIError {
+	// PUT is full-replace: omitting egressProxy clears BYOP.
 	egressConfig := &types.SandboxNetworkEgressConfig{
 		AllowedAddresses: allowedEntries,
 		DeniedAddresses:  deniedEntries,
@@ -54,21 +55,7 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 			sbx.Network = &types.SandboxNetworkConfig{}
 		}
 
-		// Build a fresh egress config so the persisted record matches what
-		// was sent to the orch. PUT is full-replace: omitting egressProxy
-		// clears BYOP. Callers needing partial updates should use the
-		// future PATCH endpoint.
-		newEgress := &types.SandboxNetworkEgressConfig{
-			AllowedAddresses: allowedEntries,
-			DeniedAddresses:  deniedEntries,
-			Rules:            rules,
-		}
-		if egressProxy != nil {
-			newEgress.EgressProxyAddress = egressProxy.Address
-			newEgress.EgressProxyUsername = egressProxy.Username
-			newEgress.EgressProxyPassword = egressProxy.Password
-		}
-		sbx.Network.Egress = newEgress
+		sbx.Network.Egress = egressConfig
 
 		if allowInternetAccess != nil {
 			sbx.AllowInternetAccess = allowInternetAccess
