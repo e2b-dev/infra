@@ -328,6 +328,8 @@ components:
           description: List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
           items:
             type: string
+        egressProxy:
+          $ref: "#/components/schemas/SandboxEgressProxyConfig"
         rules:
           type: object
           description: Per-domain transform rules. Replaces all existing rules when provided.

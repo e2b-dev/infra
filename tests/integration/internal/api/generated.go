@@ -940,6 +940,9 @@ type SandboxNetworkUpdateConfig struct {
 	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.
 	DenyOut *[]string `json:"denyOut,omitempty"`
 
+	// EgressProxy SOCKS5 proxy for sandbox egress. Outbound TCP is tunneled through the proxy after allow/deny filtering; the sandbox is unaware. Domain-matched flows use remote DNS (ATYP=domain).
+	EgressProxy *SandboxEgressProxyConfig `json:"egressProxy,omitempty"`
+
 	// Rules Per-domain transform rules. Replaces all existing rules when provided.
 	Rules *map[string][]SandboxNetworkRule `json:"rules,omitempty"`
 }
