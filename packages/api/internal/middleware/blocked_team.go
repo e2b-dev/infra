@@ -37,6 +37,7 @@ var blockedTeamAllowlist = auth.BlockedTeamAllowlist{
 	http.MethodDelete: {
 		"/sandboxes/:sandboxID":  {},
 		"/templates/:templateID": {},
+		"/templates/tags":        {},
 		"/volumes/:volumeID":     {},
 		"/api-keys/:apiKeyID":    {},
 	},
