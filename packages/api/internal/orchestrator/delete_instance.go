@@ -94,7 +94,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 	defer func() { go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action) }()
 	// Once we start the removal process, we want to make sure it gets removed from the store
 	defer o.sandboxStore.Remove(context.WithoutCancel(ctx), teamID, sandboxID)
-	err = o.removeSandboxFromNode(ctx, sbx, opts.Action)
+	err = o.removeSandboxFromNode(ctx, sbx, opts.Action, opts.Reason)
 	if err != nil {
 		logger.L().Error(ctx, "Error removing sandbox",
 			zap.String("state_action", opts.Action.Name),
@@ -108,7 +108,12 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 	return nil
 }
 
-func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sandbox, stateAction sandbox.StateAction) error {
+func (o *Orchestrator) removeSandboxFromNode(
+	ctx context.Context,
+	sbx sandbox.Sandbox,
+	stateAction sandbox.StateAction,
+	reason sandbox.KillReason,
+) error {
 	ctx, span := tracer.Start(ctx, "remove-sandbox-from-node")
 	defer span.End()
 
@@ -139,7 +144,7 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 		err := o.pauseSandbox(ctx, node, sbx)
 		if err != nil {
 			if dberrors.IsForeignKeyViolation(err) {
-				killErr := o.killSandboxOnNode(ctx, node, sbx)
+				killErr := o.killSandboxOnNode(ctx, node, sbx, sandbox.KillReasonBaseTemplateMissing)
 				logger.L().Error(ctx, "Pause failed due to missing base template, killed sandbox as fallback",
 					logger.WithSandboxID(sbx.SandboxID),
 					zap.String("base_template_id", sbx.BaseTemplateID),
@@ -155,7 +160,7 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 
 		return nil
 	case sandbox.StateActionKill:
-		return o.killSandboxOnNode(ctx, node, sbx)
+		return o.killSandboxOnNode(ctx, node, sbx, reason)
 	}
 
 	return nil
@@ -172,7 +177,7 @@ func (o *Orchestrator) killOrphanSandbox(ctx context.Context, sbx sandbox.Sandbo
 		return
 	}
 
-	err := o.killSandboxOnNode(ctx, node, sbx)
+	err := o.killSandboxOnNode(ctx, node, sbx, sandbox.KillReasonOrphaned)
 	if err != nil {
 		logger.L().Error(ctx, "Failed to kill orphan sandbox on node",
 			zap.Error(err),
@@ -182,8 +187,21 @@ func (o *Orchestrator) killOrphanSandbox(ctx context.Context, sbx sandbox.Sandbo
 	}
 }
 
-func (o *Orchestrator) killSandboxOnNode(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox) error {
-	req := &orchestrator.SandboxDeleteRequest{SandboxId: sbx.SandboxID}
+func (o *Orchestrator) killSandboxOnNode(
+	ctx context.Context,
+	node *nodemanager.Node,
+	sbx sandbox.Sandbox,
+	reason sandbox.KillReason,
+) error {
+	if reason == "" {
+		reason = sandbox.KillReasonUnknown
+	}
+
+	killReason := string(reason)
+	req := &orchestrator.SandboxDeleteRequest{
+		SandboxId:  sbx.SandboxID,
+		KillReason: &killReason,
+	}
 
 	client, ctx := node.GetSandboxDeleteCtx(ctx, sbx.SandboxID, sbx.ExecutionID)
 	_, err := client.Sandbox.Delete(ctx, req)
