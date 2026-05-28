@@ -75,7 +75,7 @@ func GetEntryInfo(path string, fileInfo os.FileInfo) EntryInfo {
 		entry.ModifiedTime = fileInfo.ModTime()
 	}
 
-	entry.Metadata = readEntryMetadata(path)
+	entry.Metadata, _ = ReadMetadata(path)
 
 	return entry
 }

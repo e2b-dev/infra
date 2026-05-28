@@ -14,10 +14,6 @@ func extractStatTimes(base *syscall.Stat_t) statTimes {
 	}
 }
 
-func readEntryMetadata(_ string) map[string]string {
-	return nil
-}
-
 // ReadMetadata is a no-op on darwin; envd only reads xattrs on Linux.
 func ReadMetadata(_ string) (map[string]string, error) {
 	return nil, nil

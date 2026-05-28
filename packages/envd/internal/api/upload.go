@@ -132,20 +132,24 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, met
 		return http.StatusInternalServerError, err
 	}
 
-	if len(metadata) > 0 {
-		if err := filesystem.WriteMetadata(path, metadata); err != nil {
-			switch {
-			case errors.Is(err, syscall.ENOTSUP) || errors.Is(err, syscall.EOPNOTSUPP):
-				// Filesystem doesn't support xattrs (e.g. /sys, /proc).
-				// The file body was already written successfully — log and
-				// continue; the response EntryInfo reads xattrs back from
-				// disk so it won't falsely claim metadata was persisted.
-				logger.Warn().Str("path", path).Err(err).Msg("filesystem does not support xattrs; metadata not persisted")
-			case errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT):
-				return http.StatusInsufficientStorage, fmt.Errorf("not enough space for file metadata: %w", err)
-			default:
-				return http.StatusInternalServerError, fmt.Errorf("error writing file metadata: %w", err)
-			}
+	// Always (re)write metadata, even with an empty/nil map, so that
+	// overwriting a file replaces its full metadata set: keys absent from
+	// this request are cleared (O_TRUNC truncates the body but preserves
+	// xattrs from a prior upload).
+	if err := filesystem.WriteMetadata(path, metadata); err != nil {
+		switch {
+		case errors.Is(err, syscall.ENOTSUP) || errors.Is(err, syscall.EOPNOTSUPP):
+			// Filesystem doesn't support xattrs. ext4 (the sandbox rootfs)
+			// always supports them; this branch only triggers for virtual
+			// filesystems such as /sys and /proc that the upload API also
+			// supports. The file body was already persisted, so we log and
+			// continue; the response EntryInfo reads xattrs back from disk
+			// so it won't falsely claim metadata was persisted.
+			logger.Warn().Str("path", path).Err(err).Msg("filesystem does not support xattrs; metadata not persisted")
+		case errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT):
+			return http.StatusInsufficientStorage, fmt.Errorf("not enough space for file metadata: %w", err)
+		default:
+			return http.StatusInternalServerError, fmt.Errorf("error writing file metadata: %w", err)
 		}
 	}
 

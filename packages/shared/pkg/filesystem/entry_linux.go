@@ -13,12 +13,3 @@ func extractStatTimes(base *syscall.Stat_t) statTimes {
 		gid:   base.Gid,
 	}
 }
-
-func readEntryMetadata(path string) map[string]string {
-	metadata, err := ReadMetadata(path)
-	if err != nil {
-		return nil
-	}
-
-	return metadata
-}

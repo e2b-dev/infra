@@ -51,9 +51,12 @@ func ReadMetadata(path string) (map[string]string, error) {
 	return metadata, nil
 }
 
-// WriteMetadata persists the given key/value pairs as xattrs under the
-// MetadataXattrPrefix namespace. Existing xattrs in that namespace that are
-// not present in metadata are left untouched.
+// WriteMetadata replaces the file's user-defined metadata with the given
+// key/value pairs. Any existing xattrs under MetadataXattrPrefix that are
+// absent from metadata are removed, and the supplied keys are written via
+// Setxattr. Passing a nil/empty map therefore clears all metadata, so that
+// overwriting a file (which preserves xattrs across O_TRUNC) does not leak
+// stale metadata from a previous upload.
 //
 // Safe to call before or after chown — `user.*` xattrs are preserved across
 // ownership changes, and envd runs as root inside the VM so the kernel
@@ -61,6 +64,24 @@ func ReadMetadata(path string) (map[string]string, error) {
 func WriteMetadata(path string, metadata map[string]string) error {
 	if err := ValidateMetadata(metadata); err != nil {
 		return err
+	}
+
+	existing, err := listxattr(path)
+	if err != nil {
+		return err
+	}
+
+	for _, name := range existing {
+		if !strings.HasPrefix(name, MetadataXattrPrefix) {
+			continue
+		}
+		key := strings.TrimPrefix(name, MetadataXattrPrefix)
+		if _, keep := metadata[key]; keep {
+			continue
+		}
+		if err := unix.Removexattr(path, name); err != nil && !errors.Is(err, syscall.ENODATA) {
+			return err
+		}
 	}
 
 	for k, v := range metadata {

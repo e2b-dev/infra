@@ -38,7 +38,17 @@ func TestValidateMetadata(t *testing.T) {
 		{
 			name:     "NUL in key rejected",
 			metadata: map[string]string{"bad\x00key": "v"},
-			wantErr:  "NUL",
+			wantErr:  "non-printable-ASCII",
+		},
+		{
+			name:     "non-ASCII key rejected",
+			metadata: map[string]string{"naïve": "v"},
+			wantErr:  "non-printable-ASCII",
+		},
+		{
+			name:     "non-ASCII value rejected",
+			metadata: map[string]string{"k": "naïve"},
+			wantErr:  "non-printable-ASCII",
 		},
 		{
 			name:     "oversized value rejected",
