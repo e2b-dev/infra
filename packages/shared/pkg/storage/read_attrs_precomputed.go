@@ -96,23 +96,47 @@ func init() {
 	}
 }
 
+func safeAttrIdx(o SeekableObjectType, s Source, c CompressionType) (SeekableObjectType, Source, CompressionType) {
+	if uint(o) >= uint(numSeekableObjectTypes) {
+		o = UnknownSeekableObjectType
+	}
+	if uint(s) >= uint(numSources) {
+		s = UnknownSource
+	}
+	if uint(c) >= numCodecs {
+		c = CompressionNone
+	}
+
+	return o, s, c
+}
+
 func OKAttrs(o SeekableObjectType, s Source, c CompressionType) metric.MeasurementOption {
+	o, s, c = safeAttrIdx(o, s, c)
+
 	return tableOK[o][s][c]
 }
 
 func CacheHitAttrs(o SeekableObjectType, s Source, c CompressionType) metric.MeasurementOption {
+	o, s, c = safeAttrIdx(o, s, c)
+
 	return tableCacheHit[o][s][c]
 }
 
 func CacheMissAttrs(o SeekableObjectType, s Source, c CompressionType) metric.MeasurementOption {
+	o, s, c = safeAttrIdx(o, s, c)
+
 	return tableCacheMiss[o][s][c]
 }
 
 func CacheWritebackOKAttrs(o SeekableObjectType, s Source, c CompressionType) metric.MeasurementOption {
+	o, s, c = safeAttrIdx(o, s, c)
+
 	return tableCacheWritebackOK[o][s][c]
 }
 
 func CacheWritebackErrAttrs(o SeekableObjectType, s Source, c CompressionType) metric.MeasurementOption {
+	o, s, c = safeAttrIdx(o, s, c)
+
 	return tableCacheWritebackErr[o][s][c]
 }
 

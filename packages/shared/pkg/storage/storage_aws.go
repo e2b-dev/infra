@@ -253,7 +253,7 @@ func (o *awsObject) OpenRangeReader(ctx context.Context, off, length int64, fram
 		return nil, SourceAWS, fmt.Errorf("failed to create S3 range reader for %q: %w", o.path, err)
 	}
 
-	return NewRangeReader(resp.Body), SourceAWS, nil
+	return newObservableReader(NewRangeReader(resp.Body)), SourceAWS, nil
 }
 
 func (o *awsObject) Size(ctx context.Context) (int64, error) {
