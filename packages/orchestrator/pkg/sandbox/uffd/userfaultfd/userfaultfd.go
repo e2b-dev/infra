@@ -99,6 +99,11 @@ type Userfaultfd struct {
 	// testFaultHook is set only by SetTestFaultHook in test builds.
 	testFaultHook atomic.Pointer[func(uintptr, faultPhase)]
 
+	// closed is set by Close() under settleRequests.Lock(). Prefault() checks
+	// it under settleRequests.RLock() so it never calls UFFDIO_COPY on a fd
+	// that has already been closed (and potentially recycled by the OS).
+	closed bool
+
 	logger logger.Logger
 }
 
@@ -108,6 +113,11 @@ type faultPhase uint8
 const (
 	faultPhaseBeforeRLock faultPhase = iota
 	faultPhaseBeforeFaultPage
+	// faultPhaseBeforePrefaultRLock fires inside Prefault(), before acquiring
+	// settleRequests.RLock. Used by TestPrefaultConcurrentWithClose to park
+	// Prefault here, call Close() concurrently, and verify the closed flag is
+	// checked after the RLock is acquired.
+	faultPhaseBeforePrefaultRLock
 )
 
 // faultOutcome is the terminal classification of a faultPage call.
@@ -655,6 +665,22 @@ func (u *Userfaultfd) PageSize() int64 {
 }
 
 func (u *Userfaultfd) Close() error {
+	// Hold the write lock for the entire close sequence so that:
+	//   (a) any Prefault() caller currently holding RLock finishes its
+	//       UFFDIO_COPY before the fd number is freed and potentially
+	//       recycled by the OS;
+	//   (b) Close() is idempotent — a second call sees closed==true and
+	//       returns immediately without touching already-freed fds.
+	// In production Serve() drains all workers (u.wg.Wait) before
+	// returning, so this Lock() is always uncontended when Close() fires.
+	u.settleRequests.Lock()
+	defer u.settleRequests.Unlock()
+
+	if u.closed {
+		return nil
+	}
+	u.closed = true
+
 	syscall.Close(u.wakeupPipe[0])
 	syscall.Close(u.wakeupPipe[1])
 

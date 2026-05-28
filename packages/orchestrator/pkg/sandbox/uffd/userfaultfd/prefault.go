@@ -13,8 +13,22 @@ import (
 // Prefault proactively copies a page to guest memory at the given offset
 // to speed up sandbox starts. EEXIST (already mapped) is handled gracefully.
 func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) error {
+	// Test hook: fires before settleRequests.RLock so that a test can park
+	// the goroutine here, call Close() concurrently, then release and observe
+	// that the closed check below returns nil without calling UFFDIO_COPY.
+	if h := u.testFaultHook.Load(); h != nil {
+		(*h)(0, faultPhaseBeforePrefaultRLock)
+	}
+
 	u.settleRequests.RLock()
 	defer u.settleRequests.RUnlock()
+
+	// Close() sets closed under Lock(). Seeing it here under RLock means the
+	// fd is already closed and its number may have been recycled by the OS —
+	// skip silently instead of calling UFFDIO_COPY and getting EBADF/ENOTTY.
+	if u.closed {
+		return nil
+	}
 
 	ctx, span := tracer.Start(ctx, "prefault page")
 	defer span.End()
