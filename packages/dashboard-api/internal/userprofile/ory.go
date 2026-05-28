@@ -25,6 +25,7 @@ const oryListIDsBatchSize = 500
 
 type oryProvider struct {
 	identities ory.IdentityAPI
+	token      string
 	resolver   identityResolver
 	issuer     string
 }
@@ -63,19 +64,19 @@ func NewOryProvider(config OryConfig) (Provider, error) {
 	}
 
 	return &oryProvider{
-		identities: newOryIdentityAPI(config.HTTPClient, sdkURL, token),
+		identities: newOryIdentityAPI(config.HTTPClient, sdkURL),
+		token:      token,
 		resolver:   config.Resolver,
 		issuer:     issuer,
 	}, nil
 }
 
-func newOryIdentityAPI(httpClient *http.Client, sdkURL, token string) ory.IdentityAPI {
+func newOryIdentityAPI(httpClient *http.Client, sdkURL string) ory.IdentityAPI {
+	// shallow-copy the injected client so the SDK can never mutate the caller's
+	// shared instance. The token is carried per-request via ContextAccessToken
+	// (see authCtx), never stored on the client, so it cannot leak to other
+	// callers of the shared client.
 	clientCopy := *httpClient
-	base := clientCopy.Transport
-	if base == nil {
-		base = http.DefaultTransport
-	}
-	clientCopy.Transport = &oryBearerTransport{token: token, base: base}
 
 	cfg := ory.NewConfiguration()
 	cfg.Servers = ory.ServerConfigurations{{URL: sdkURL}}
@@ -84,17 +85,8 @@ func newOryIdentityAPI(httpClient *http.Client, sdkURL, token string) ory.Identi
 	return ory.NewAPIClient(cfg).IdentityAPI
 }
 
-// injects the PAT instead of threading context.WithValue(ory.ContextAccessToken, ...) per call.
-type oryBearerTransport struct {
-	token string
-	base  http.RoundTripper
-}
-
-func (t *oryBearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	cloned := req.Clone(req.Context())
-	cloned.Header.Set("Authorization", "Bearer "+t.token)
-
-	return t.base.RoundTrip(cloned)
+func (p *oryProvider) authCtx(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ory.ContextAccessToken, p.token)
 }
 
 // ory's generated client returns the raw *http.Response alongside the parsed
@@ -143,7 +135,7 @@ func (p *oryProvider) FindProfilesByEmail(ctx context.Context, email string) ([]
 	}
 
 	identities, resp, err := p.identities.ListIdentitiesExecute(
-		p.identities.ListIdentities(ctx).
+		p.identities.ListIdentities(p.authCtx(ctx)).
 			CredentialsIdentifier(normalized).
 			IncludeCredential([]string{"oidc"}),
 	)
@@ -217,7 +209,7 @@ func (p *oryProvider) listIdentitiesByIDs(ctx context.Context, ids []string) ([]
 	identities := make([]ory.Identity, 0, len(ids))
 	for batchIDs := range slices.Chunk(ids, oryListIDsBatchSize) {
 		batch, resp, err := p.identities.ListIdentitiesExecute(
-			p.identities.ListIdentities(ctx).
+			p.identities.ListIdentities(p.authCtx(ctx)).
 				Ids(batchIDs).
 				IncludeCredential([]string{"oidc"}),
 		)
