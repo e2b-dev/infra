@@ -393,6 +393,59 @@ type TeamTemplatesResponse struct {
 	NextCursor *string `json:"nextCursor"`
 }
 
+// TemplateTagAssignment defines model for TemplateTagAssignment.
+type TemplateTagAssignment struct {
+	// AssignedAt Time when the tag was assigned to the build.
+	AssignedAt time.Time `json:"assignedAt"`
+
+	// AssignmentId Identifier of the tag assignment event.
+	AssignmentId openapi_types.UUID `json:"assignmentId"`
+
+	// BuildCreatedAt Time when the assigned build was created.
+	BuildCreatedAt time.Time `json:"buildCreatedAt"`
+
+	// BuildFinishedAt Time when the assigned build finished.
+	BuildFinishedAt *time.Time `json:"buildFinishedAt"`
+
+	// BuildId Identifier of the assigned build.
+	BuildId openapi_types.UUID `json:"buildId"`
+}
+
+// TemplateTagAssignmentsResponse defines model for TemplateTagAssignmentsResponse.
+type TemplateTagAssignmentsResponse struct {
+	// Data Ready assignment events for the tag, sorted latest first.
+	Data []TemplateTagAssignment `json:"data"`
+
+	// NextCursor Cursor to pass to the next list request, or `null` if there is no next page.
+	NextCursor *string `json:"nextCursor"`
+}
+
+// TemplateTagExistsResponse defines model for TemplateTagExistsResponse.
+type TemplateTagExistsResponse struct {
+	// Exists Whether the template tag has at least one ready assignment.
+	Exists bool `json:"exists"`
+
+	// NormalizedTag Normalized template tag name.
+	NormalizedTag string `json:"normalizedTag"`
+}
+
+// TemplateTagGroup defines model for TemplateTagGroup.
+type TemplateTagGroup struct {
+	// Assignments Ready assignment events for this tag, sorted latest first.
+	Assignments []TemplateTagAssignment `json:"assignments"`
+
+	// HasMore Whether more ready assignment events exist beyond the requested assignment limit.
+	HasMore bool `json:"hasMore"`
+
+	// Tag Template tag name.
+	Tag string `json:"tag"`
+}
+
+// TemplateTagGroupsResponse defines model for TemplateTagGroupsResponse.
+type TemplateTagGroupsResponse struct {
+	Tags []TemplateTagGroup `json:"tags"`
+}
+
 // UpdateTeamRequest defines model for UpdateTeamRequest.
 type UpdateTeamRequest struct {
 	Name              *string `json:"name,omitempty"`
@@ -458,11 +511,29 @@ type BuildsLimit = int32
 // SandboxID defines model for sandboxID.
 type SandboxID = string
 
+// Tag defines model for tag.
+type Tag = string
+
+// TagAssignmentLimit defines model for tag_assignment_limit.
+type TagAssignmentLimit = int32
+
+// TagAssignmentsCursor defines model for tag_assignments_cursor.
+type TagAssignmentsCursor = string
+
+// TagAssignmentsLimit defines model for tag_assignments_limit.
+type TagAssignmentsLimit = int32
+
+// TagPath defines model for tag_path.
+type TagPath = string
+
 // TeamID defines model for teamID.
 type TeamID = openapi_types.UUID
 
 // TeamSlug defines model for teamSlug.
 type TeamSlug = string
+
+// TemplateID defines model for templateID.
+type TemplateID = string
 
 // TemplatesCpuCount defines model for templates_cpu_count.
 type TemplatesCpuCount = int32
@@ -575,6 +646,27 @@ type GetTemplatesParams struct {
 // GetTemplatesParamsSort defines parameters for GetTemplates.
 type GetTemplatesParamsSort string
 
+// GetTemplatesTemplateIDTagsExistsParams defines parameters for GetTemplatesTemplateIDTagsExists.
+type GetTemplatesTemplateIDTagsExistsParams struct {
+	// Tag Template tag name to check.
+	Tag Tag `form:"tag" json:"tag"`
+}
+
+// GetTemplatesTemplateIDTagsGroupsParams defines parameters for GetTemplatesTemplateIDTagsGroups.
+type GetTemplatesTemplateIDTagsGroupsParams struct {
+	// AssignmentLimit Maximum number of ready assignment rows to return per tag.
+	AssignmentLimit *TagAssignmentLimit `form:"assignmentLimit,omitempty" json:"assignmentLimit,omitempty"`
+}
+
+// GetTemplatesTemplateIDTagsTagAssignmentsParams defines parameters for GetTemplatesTemplateIDTagsTagAssignments.
+type GetTemplatesTemplateIDTagsTagAssignmentsParams struct {
+	// Cursor Cursor returned by the previous list response in `assigned_at|assignment_id` format.
+	Cursor *TagAssignmentsCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Maximum number of assignment rows to return per page.
+	Limit *TagAssignmentsLimit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // PostAdminTeamsBootstrapJSONRequestBody defines body for PostAdminTeamsBootstrap for application/json ContentType.
 type PostAdminTeamsBootstrapJSONRequestBody = AdminTeamBootstrapRequest
 
@@ -658,6 +750,15 @@ type ServerInterface interface {
 	// List default templates
 	// (GET /templates/defaults)
 	GetTemplatesDefaults(c *gin.Context)
+	// Check ready template tag existence
+	// (GET /templates/{templateID}/tags/exists)
+	GetTemplatesTemplateIDTagsExists(c *gin.Context, templateID TemplateID, params GetTemplatesTemplateIDTagsExistsParams)
+	// List template tag groups
+	// (GET /templates/{templateID}/tags/groups)
+	GetTemplatesTemplateIDTagsGroups(c *gin.Context, templateID TemplateID, params GetTemplatesTemplateIDTagsGroupsParams)
+	// List ready assignments for a single template tag
+	// (GET /templates/{templateID}/tags/{tag}/assignments)
+	GetTemplatesTemplateIDTagsTagAssignments(c *gin.Context, templateID TemplateID, tag TagPath, params GetTemplatesTemplateIDTagsTagAssignmentsParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -1262,6 +1363,155 @@ func (siw *ServerInterfaceWrapper) GetTemplatesDefaults(c *gin.Context) {
 	siw.Handler.GetTemplatesDefaults(c)
 }
 
+// GetTemplatesTemplateIDTagsExists operation middleware
+func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDTagsExists(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "templateID" -------------
+	var templateID TemplateID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "templateID", c.Param("templateID"), &templateID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter templateID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(string(Supabase1TokenAuthScopes), []string{})
+
+	c.Set(string(Supabase2TeamAuthScopes), []string{})
+
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
+
+	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTemplatesTemplateIDTagsExistsParams
+
+	// ------------- Required query parameter "tag" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tag", c.Request.URL.Query(), &params.Tag, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tag: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTemplatesTemplateIDTagsExists(c, templateID, params)
+}
+
+// GetTemplatesTemplateIDTagsGroups operation middleware
+func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDTagsGroups(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "templateID" -------------
+	var templateID TemplateID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "templateID", c.Param("templateID"), &templateID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter templateID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(string(Supabase1TokenAuthScopes), []string{})
+
+	c.Set(string(Supabase2TeamAuthScopes), []string{})
+
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
+
+	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTemplatesTemplateIDTagsGroupsParams
+
+	// ------------- Optional query parameter "assignmentLimit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "assignmentLimit", c.Request.URL.Query(), &params.AssignmentLimit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter assignmentLimit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTemplatesTemplateIDTagsGroups(c, templateID, params)
+}
+
+// GetTemplatesTemplateIDTagsTagAssignments operation middleware
+func (siw *ServerInterfaceWrapper) GetTemplatesTemplateIDTagsTagAssignments(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "templateID" -------------
+	var templateID TemplateID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "templateID", c.Param("templateID"), &templateID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter templateID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "tag" -------------
+	var tag TagPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tag", c.Param("tag"), &tag, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tag: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(string(Supabase1TokenAuthScopes), []string{})
+
+	c.Set(string(Supabase2TeamAuthScopes), []string{})
+
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
+
+	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTemplatesTemplateIDTagsTagAssignmentsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", c.Request.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter cursor: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", c.Request.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTemplatesTemplateIDTagsTagAssignments(c, templateID, tag, params)
+}
+
 // GinServerOptions provides options for the Gin server.
 type GinServerOptions struct {
 	BaseURL      string
@@ -1309,6 +1559,9 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.DELETE(options.BaseURL+"/teams/:teamID/members/:userId", wrapper.DeleteTeamsTeamIDMembersUserId)
 	router.GET(options.BaseURL+"/templates", wrapper.GetTemplates)
 	router.GET(options.BaseURL+"/templates/defaults", wrapper.GetTemplatesDefaults)
+	router.GET(options.BaseURL+"/templates/:templateID/tags/exists", wrapper.GetTemplatesTemplateIDTagsExists)
+	router.GET(options.BaseURL+"/templates/:templateID/tags/groups", wrapper.GetTemplatesTemplateIDTagsGroups)
+	router.GET(options.BaseURL+"/templates/:templateID/tags/:tag/assignments", wrapper.GetTemplatesTemplateIDTagsTagAssignments)
 }
 
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
@@ -1316,75 +1569,85 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"HrhxN982/woAAP//",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
