@@ -55,9 +55,20 @@ func (b *File) SwapHeader(h *header.Header) {
 }
 
 func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
+	// Cache some resolved Diffs per BuildId for the duration of one ReadAt to avoid
+	// hitting the DiffStore TTL cache (and its mutex) on every iteration.
+	const buildCacheSize = 16
+	var (
+		underlyingIDs   [buildCacheSize]uuid.UUID
+		underlyingDiffs [buildCacheSize]Diff
+		cacheIDs        = underlyingIDs[:0]
+		cacheDiffs      = underlyingDiffs[:0]
+	)
+
 	for n < len(p) {
 		h := b.Header()
 
+		// Find out what build and ranghe we need to read, from mappings.
 		mappedToBuild, err := h.GetShiftedMapping(ctx, off+int64(n))
 		if err != nil {
 			return 0, fmt.Errorf("failed to get mapping: %w", err)
@@ -94,17 +105,51 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 
 		size := b.buildFileSize(h, mappedToBuild.BuildId)
 		ft := h.GetBuildFrameData(mappedToBuild.BuildId)
-		mappedBuild, err := b.getBuild(ctx, mappedToBuild.BuildId, size, ft.CompressionType())
-		if err != nil {
-			return 0, fmt.Errorf("failed to get build: %w", err)
+
+		// Find the build in the caches.
+		var mappedBuild Diff
+		hitIdx := -1
+		for i, id := range cacheIDs {
+			if id == mappedToBuild.BuildId {
+				mappedBuild = cacheDiffs[i]
+				hitIdx = i
+
+				break
+			}
+		}
+		if mappedBuild == nil {
+			mappedBuild, err = b.getBuild(ctx, mappedToBuild.BuildId, size, ft.CompressionType())
+			if err != nil {
+				return 0, fmt.Errorf("failed to get build: %w", err)
+			}
+			if len(cacheIDs) < cap(cacheIDs) {
+				cacheIDs = append(cacheIDs, mappedToBuild.BuildId)
+				cacheDiffs = append(cacheDiffs, mappedBuild)
+				hitIdx = len(cacheIDs) - 1
+			}
 		}
 
+		// Read from that build, and handle the various retries.
 		buildN, err := mappedBuild.ReadAt(ctx,
 			p[n:int64(n)+readLength],
 			int64(mappedToBuild.Offset),
 			ft,
 		)
 		if err != nil {
+			// Cache may have evicted+closed the Diff between resolve and ReadAt;
+			// drop the stale entry and re-resolve on the next iteration.
+			var closed *block.CacheClosedError
+			if errors.As(err, &closed) {
+				if hitIdx >= 0 {
+					last := len(cacheIDs) - 1
+					cacheIDs[hitIdx] = cacheIDs[last]
+					cacheDiffs[hitIdx] = cacheDiffs[last]
+					cacheIDs = cacheIDs[:last]
+					cacheDiffs = cacheDiffs[:last]
+				}
+
+				continue
+			}
 			if retry, swapErr := b.retryOnTransition(ctx, err); retry {
 				continue
 			} else if swapErr != nil {
