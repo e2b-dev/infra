@@ -54,6 +54,8 @@ const (
 
 	// executionEventDataKey is the key used in webhook event data for sandbox execution metrics.
 	executionEventDataKey = "execution"
+
+	killReasonUnknown = "unknown"
 )
 
 func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (_ *orchestrator.SandboxCreateResponse, createErr error) {
@@ -457,6 +459,9 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	if s.featureFlags.BoolFlag(ctx, featureflags.ExecutionMetricsOnWebhooksFlag) {
 		eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
 	}
+	killReason := in.GetKillReason()
+	addKillReason(eventData, killReason)
+	recordSandboxKill(ctx, s.sandboxKilledCounter, killReason)
 
 	eventType := events.SandboxKilledEventPair
 	go s.sbxEventsService.Publish(
@@ -478,6 +483,25 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	)
 
 	return &emptypb.Empty{}, nil
+}
+
+// addKillReason records the kill reason on killed events. Empty input is
+// normalized to "unknown" so killed events always carry a kill_reason key.
+func addKillReason(eventData map[string]any, killReason string) {
+	if killReason == "" {
+		killReason = killReasonUnknown
+	}
+
+	eventData["kill_reason"] = killReason
+}
+
+// recordSandboxKill increments the kill counter with a bounded reason label.
+func recordSandboxKill(ctx context.Context, counter metric.Int64Counter, killReason string) {
+	if killReason == "" {
+		killReason = killReasonUnknown
+	}
+
+	counter.Add(ctx, 1, metric.WithAttributes(attribute.String("kill_reason", killReason)))
 }
 
 func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {

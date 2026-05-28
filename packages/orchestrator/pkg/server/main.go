@@ -57,6 +57,7 @@ type Server struct {
 	uploadedBuilds        *ttlcache.Cache[string, struct{}]
 	uploads               *sandbox.Uploads
 	sandboxCreateDuration metric.Int64Histogram
+	sandboxKilledCounter  metric.Int64Counter
 
 	done      chan struct{}
 	closeOnce sync.Once
@@ -115,6 +116,12 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to register sandbox create duration histogram: %w", err)
 	}
 	server.sandboxCreateDuration = sandboxCreateDuration
+
+	sandboxKilledCounter, err := telemetry.GetCounter(meter, telemetry.OrchestratorSandboxKilledCounterName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register sandbox kills counter: %w", err)
+	}
+	server.sandboxKilledCounter = sandboxKilledCounter
 
 	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(server.sandboxFactory.Sandboxes.Count()))

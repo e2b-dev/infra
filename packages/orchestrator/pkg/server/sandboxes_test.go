@@ -3,12 +3,17 @@
 package server
 
 import (
+	"context"
 	"net"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -17,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 var (
@@ -127,4 +133,62 @@ func TestGetSandboxExecutionData(t *testing.T) {
 	assert.Equal(t, int64(512), result["memory_mb"])
 	assert.IsType(t, int64(0), result["execution_time"])
 	assert.Positive(t, result["execution_time"].(int64))
+}
+
+func TestAddKillReason(t *testing.T) {
+	t.Parallel()
+
+	t.Run("non-empty reason recorded", func(t *testing.T) {
+		t.Parallel()
+
+		eventData := map[string]any{}
+		addKillReason(eventData, "request")
+
+		assert.Equal(t, "request", eventData["kill_reason"])
+	})
+
+	t.Run("empty reason records unknown", func(t *testing.T) {
+		t.Parallel()
+
+		eventData := map[string]any{}
+		addKillReason(eventData, "")
+
+		assert.Equal(t, killReasonUnknown, eventData["kill_reason"])
+	})
+}
+
+func TestRecordSandboxKill(t *testing.T) {
+	t.Parallel()
+
+	reader := sdkmetric.NewManualReader()
+	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)).Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")
+	counter, err := telemetry.GetCounter(meter, telemetry.OrchestratorSandboxKilledCounterName)
+	require.NoError(t, err)
+
+	recordSandboxKill(context.Background(), counter, "timeout")
+	recordSandboxKill(context.Background(), counter, "")
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &rm))
+
+	got := map[string]int64{}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != string(telemetry.OrchestratorSandboxKilledCounterName) {
+				continue
+			}
+
+			sum, ok := m.Data.(metricdata.Sum[int64])
+			require.True(t, ok)
+
+			for _, dp := range sum.DataPoints {
+				v, ok := dp.Attributes.Value(attribute.Key("kill_reason"))
+				require.True(t, ok)
+				got[v.AsString()] += dp.Value
+			}
+		}
+	}
+
+	assert.Equal(t, int64(1), got["timeout"])
+	assert.Equal(t, int64(1), got[killReasonUnknown])
 }
