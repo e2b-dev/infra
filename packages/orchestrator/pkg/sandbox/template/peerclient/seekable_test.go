@@ -72,7 +72,7 @@ func TestPeerSeekable_OpenRangeReader_PeerSucceeds(t *testing.T) {
 	})).Return(stream, nil)
 
 	s := &peerSeekable{peerHandle: peerHandle{client: client, buildID: "build-1", name: storage.MemfileName, uploaded: &atomic.Bool{}}}
-	rc, err := s.OpenRangeReader(t.Context(), 10, int64(len(data)), nil)
+	rc, _, err := s.OpenRangeReader(t.Context(), 10, int64(len(data)), nil)
 	require.NoError(t, err)
 	defer rc.Close(t.Context())
 
@@ -89,7 +89,7 @@ func TestPeerSeekable_OpenRangeReader_PeerError_FallsBackToBase(t *testing.T) {
 	client.EXPECT().ReadAtBuildSeekable(mock.Anything, mock.Anything).Return(nil, errors.New("peer unavailable"))
 
 	baseSeekable := storage.NewMockSeekable(t)
-	baseSeekable.EXPECT().OpenRangeReader(mock.Anything, int64(0), int64(len(baseData)), (*storage.FrameTable)(nil)).Return(storage.NewRangeReader(io.NopCloser(bytes.NewReader(baseData))), nil)
+	baseSeekable.EXPECT().OpenRangeReader(mock.Anything, int64(0), int64(len(baseData)), (*storage.FrameTable)(nil)).Return(storage.NewRangeReader(io.NopCloser(bytes.NewReader(baseData))), storage.SourceFS, nil)
 
 	base := storage.NewMockStorageProvider(t)
 	base.EXPECT().OpenSeekable(mock.Anything, "build-1/memfile", storage.MemfileObjectType).Return(baseSeekable, nil)
@@ -104,7 +104,7 @@ func TestPeerSeekable_OpenRangeReader_PeerError_FallsBackToBase(t *testing.T) {
 		basePersistence: base,
 		objType:         storage.MemfileObjectType,
 	}
-	rc, err := s.OpenRangeReader(t.Context(), 0, int64(len(baseData)), nil)
+	rc, _, err := s.OpenRangeReader(t.Context(), 0, int64(len(baseData)), nil)
 	require.NoError(t, err)
 	defer rc.Close(t.Context())
 
@@ -136,7 +136,7 @@ func TestPeerSeekable_OpenRangeReader_Uploaded_ReturnsPeerTransitionedError(t *t
 		objType:         storage.MemfileObjectType,
 	}
 
-	_, err := s.OpenRangeReader(t.Context(), 0, 100, nil)
+	_, _, err := s.OpenRangeReader(t.Context(), 0, 100, nil)
 	require.Error(t, err)
 
 	var transErr *storage.PeerTransitionedError
@@ -187,7 +187,7 @@ func TestPeerStorageProvider_FullTransitionFlow(t *testing.T) {
 	postBaseSeekable := storage.NewMockSeekable(t)
 	postBaseSeekable.EXPECT().
 		OpenRangeReader(mock.Anything, int64(0), int64(len(postBaseBytes)), mock.Anything).
-		Return(storage.NewRangeReader(io.NopCloser(bytes.NewReader(postBaseBytes))), nil).Once()
+		Return(storage.NewRangeReader(io.NopCloser(bytes.NewReader(postBaseBytes))), storage.SourceFS, nil).Once()
 
 	base := storage.NewMockStorageProvider(t)
 	base.EXPECT().
@@ -199,28 +199,30 @@ func TestPeerStorageProvider_FullTransitionFlow(t *testing.T) {
 	require.NoError(t, err)
 
 	// 1. Pre-transition read via peer. ft={ct=None} (V3 header).
-	rc, err := seekable.OpenRangeReader(t.Context(), 0, int64(len(prePeerBytes)),
+	rc, _, err := seekable.OpenRangeReader(t.Context(), 0, int64(len(prePeerBytes)),
 		storage.NewFrameTable(storage.CompressionNone, nil))
 	require.NoError(t, err)
 	got, err := io.ReadAll(rc)
 	require.NoError(t, err)
-	require.NoError(t, rc.Close(t.Context()))
+	_, err = rc.Close(t.Context())
+	require.NoError(t, err)
 	assert.Equal(t, prePeerBytes, got)
 	require.True(t, uploaded.Load(), "uploaded flag should be set after peer EOF with UseStorage")
 
 	// 2. First post-transition call: retriable error, no peer/base contact.
-	_, err = seekable.OpenRangeReader(t.Context(), 0, 1,
+	_, _, err = seekable.OpenRangeReader(t.Context(), 0, 1,
 		storage.NewFrameTable(storage.CompressionNone, nil))
 	var transErr *storage.PeerTransitionedError
 	require.ErrorAs(t, err, &transErr)
 
 	// 3. Caller reloads V4 header and retries with ct=Zstd. This must hit the
 	//    compressed path on base.
-	rc, err = seekable.OpenRangeReader(t.Context(), 0, int64(len(postBaseBytes)),
+	rc, _, err = seekable.OpenRangeReader(t.Context(), 0, int64(len(postBaseBytes)),
 		storage.NewFrameTable(storage.CompressionZstd, nil))
 	require.NoError(t, err)
 	got, err = io.ReadAll(rc)
 	require.NoError(t, err)
-	require.NoError(t, rc.Close(t.Context()))
+	_, err = rc.Close(t.Context())
+	require.NoError(t, err)
 	assert.Equal(t, postBaseBytes, got)
 }

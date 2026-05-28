@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Precomputed OTEL attributes for compressed cache reads (avoids per-read allocation).
@@ -17,10 +19,10 @@ var compressedCacheReadAttrs = []attribute.KeyValue{
 // openReaderCompressed handles the compressed cache path for OpenRangeReader.
 // NFS stores compressed frames (.frm); on hit we decompress, on miss we fetch
 // raw compressed bytes and tee them to NFS on Close.
-func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64, frameTable *FrameTable) (RangeReader, error) {
+func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64, frameTable *FrameTable) (RangeReader, Source, error) {
 	r, err := frameTable.LocateCompressed(offsetU)
 	if err != nil {
-		return nil, fmt.Errorf("frame lookup for offset %d: %w", offsetU, err)
+		return nil, UnknownSource, fmt.Errorf("frame lookup for offset %d: %w", offsetU, err)
 	}
 
 	path := makeFrameFilename(c.path, r)
@@ -36,14 +38,15 @@ func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64
 			recordCacheRead(ctx, true, int64(r.Length), cacheTypeSeekable, cacheOpOpenRangeReader)
 			timer.Success(ctx, int64(r.Length))
 
-			dec, err := NewDecompressingReader(NewRangeReader(f), ct)
+			dec, err := newDecompressReader(NewRangeReader(f), ct, SourceNFS, c.objType)
 			if err != nil {
 				f.Close()
 
-				return nil, fmt.Errorf("decompress cached frame: %w", err)
+				return nil, SourceNFS, fmt.Errorf("decompress cached frame: %w", err)
 			}
+			readCache.Add(ctx, 1, CacheHitAttrs(c.objType, SourceNFS, ct))
 
-			return withNFSGauge(ctx, dec), nil
+			return withNFSGauge(ctx, dec), SourceNFS, nil
 		case statErr == nil:
 			// Confirmed size mismatch: drop the file so the miss path rewrites it.
 			f.Close()
@@ -60,36 +63,37 @@ func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64
 	}
 
 	timer.Failure(ctx, 0)
+	readCache.Add(ctx, 1, CacheMissAttrs(c.objType, SourceNFS, ct))
 
 	// Cache miss: fetch raw compressed bytes via OpenRangeReader(nil frameTable).
-	raw, err := c.inner.OpenRangeReader(ctx, r.Offset, int64(r.Length), nil)
+	raw, innerSource, err := c.inner.OpenRangeReader(ctx, r.Offset, int64(r.Length), nil)
 	if err != nil {
-		return nil, fmt.Errorf("raw fetch at C=%d: %w", r.Offset, err)
+		return nil, innerSource, fmt.Errorf("raw fetch at C=%d: %w", r.Offset, err)
 	}
 
 	recordCacheRead(ctx, false, int64(r.Length), cacheTypeSeekable, cacheOpOpenRangeReader)
 
-	in := raw
+	src := raw
 	if !skipCacheWriteback(ctx) {
-		in = newCaptureReader(raw, r.Length, true,
-			c.compressedFrameWriteback(path, offsetU, r.Length))
+		src = newCaptureReader(raw, r.Length, true,
+			c.compressedFrameWriteback(path, offsetU, r.Length, innerSource, ct, trace.SpanContextFromContext(ctx)))
 	}
 
-	dec, err := NewDecompressingReader(in, ct)
+	dec, err := newDecompressReader(src, ct, innerSource, c.objType)
 	if err != nil {
-		in.Close(ctx)
+		src.Close(ctx)
 
-		return nil, fmt.Errorf("create decompressor: %w", err)
+		return nil, innerSource, fmt.Errorf("create decompressor: %w", err)
 	}
 
-	return dec, nil
+	return dec, innerSource, nil
 }
 
 // compressedFrameWriteback returns a captureReader callback that
 // persists the captured frame to the NFS cache in a detached goroutine.
 // Best-effort: a short capture is logged and skipped — the caller already
 // got valid decompressed bytes.
-func (c *cachedSeekable) compressedFrameWriteback(framePath string, offset int64, expectedSize int) func(context.Context, []byte) {
+func (c *cachedSeekable) compressedFrameWriteback(framePath string, offset int64, expectedSize int, src Source, codec CompressionType, fetchSpan trace.SpanContext) func(context.Context, []byte) {
 	return func(ctx context.Context, frame []byte) {
 		if !isCompleteRead(len(frame), expectedSize, nil) {
 			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpOpenRangeReader,
@@ -102,7 +106,10 @@ func (c *cachedSeekable) compressedFrameWriteback(framePath string, offset int64
 			ctx, span := c.tracer.Start(ctx, "write compressed frame back to cache")
 			defer span.End()
 
+			start := time.Now()
 			err := c.writeToCache(ctx, offset, framePath, frame)
+			recordWriteback(ctx, time.Since(start), int64(len(frame)), c.objType, src, codec, err)
+
 			if err != nil {
 				recordError(span, err)
 				recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpOpenRangeReader, err)

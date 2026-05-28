@@ -304,8 +304,8 @@ func (r *peerStreamReader) Read(p []byte) (int, error) {
 	}
 }
 
-func (r *peerStreamReader) Close(context.Context) error {
+func (r *peerStreamReader) Close(context.Context) (*storage.ReadStats, error) {
 	r.cancel()
 
-	return nil
+	return nil, nil
 }

@@ -8,6 +8,7 @@ import (
 
 	lz4 "github.com/pierrec/lz4/v4"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // lz4Compress is a test helper that LZ4-compresses src.
@@ -69,8 +70,8 @@ func TestDecompressingCacheReader(t *testing.T) {
 		framePath := makeFrameFilename(c.path, Range{Offset: 0, Length: len(compressed)})
 
 		capturing := newCaptureReader(bytesRangeReader(compressed), len(compressed), true,
-			c.compressedFrameWriteback(framePath, 0, len(compressed)))
-		rc, err := NewDecompressingReader(capturing, CompressionLZ4)
+			c.compressedFrameWriteback(framePath, 0, len(compressed), SourceFS, CompressionLZ4, trace.SpanContext{}))
+		rc, err := newDecompressReader(capturing, CompressionLZ4, SourceFS, c.objType)
 		require.NoError(t, err)
 
 		got, err := io.ReadAll(rc)
@@ -102,8 +103,8 @@ func TestDecompressingCacheReader(t *testing.T) {
 		framePath := makeFrameFilename(c.path, Range{Offset: 0, Length: len(compressedProd)})
 
 		capturing := newCaptureReader(bytesRangeReader(compressedProd), len(compressedProd), true,
-			c.compressedFrameWriteback(framePath, 0, len(compressedProd)))
-		rc, err := NewDecompressingReader(capturing, CompressionLZ4)
+			c.compressedFrameWriteback(framePath, 0, len(compressedProd), SourceFS, CompressionLZ4, trace.SpanContext{}))
+		rc, err := newDecompressReader(capturing, CompressionLZ4, SourceFS, c.objType)
 		require.NoError(t, err)
 
 		out := make([]byte, len(original))
@@ -112,7 +113,7 @@ func TestDecompressingCacheReader(t *testing.T) {
 		require.Equal(t, len(original), n)
 		require.Equal(t, original, out)
 
-		closeErr := rc.Close(t.Context())
+		_, closeErr := rc.Close(t.Context())
 		require.NoError(t, closeErr, "writeback failure must not surface as a read error")
 		c.wg.Wait()
 
@@ -127,15 +128,15 @@ func TestDecompressingCacheReader(t *testing.T) {
 		framePath := makeFrameFilename(c.path, Range{Offset: 0, Length: len(compressed)})
 
 		capturing := newCaptureReader(bytesRangeReader(compressed), len(compressed)+100, true,
-			c.compressedFrameWriteback(framePath, 0, len(compressed)+100)) // wrong expected size
-		rc, err := NewDecompressingReader(capturing, CompressionLZ4)
+			c.compressedFrameWriteback(framePath, 0, len(compressed)+100, SourceFS, CompressionLZ4, trace.SpanContext{})) // wrong expected size
+		rc, err := newDecompressReader(capturing, CompressionLZ4, SourceFS, c.objType)
 		require.NoError(t, err)
 
 		got, err := io.ReadAll(rc)
 		require.NoError(t, err)
 		require.Equal(t, original, got, "decompressed data should be correct regardless")
 
-		closeErr := rc.Close(t.Context())
+		_, closeErr := rc.Close(t.Context())
 		require.NoError(t, closeErr, "writeback failure must not surface as a read error")
 
 		c.wg.Wait()
