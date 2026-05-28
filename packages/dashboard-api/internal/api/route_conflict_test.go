@@ -15,7 +15,8 @@ import (
 // POST /admin/users/:userId/bootstrap. The pair was flagged as a potential
 // httprouter conflict; this verifies gin handles it correctly.
 func TestStaticAndParamSiblingsCoexist(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+	t.Parallel()
+
 	r := gin.New()
 
 	require.NotPanics(t, func() {
@@ -37,7 +38,14 @@ func TestStaticAndParamSiblingsCoexist(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, tc.path, nil)
+			t.Parallel()
+
+			req := httptest.NewRequestWithContext(
+				t.Context(),
+				http.MethodPost,
+				tc.path,
+				nil,
+			)
 			rec := httptest.NewRecorder()
 			r.ServeHTTP(rec, req)
 
