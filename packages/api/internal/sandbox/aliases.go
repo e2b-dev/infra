@@ -14,6 +14,7 @@ type (
 	Sandbox     = sandboxtypes.Sandbox
 	State       = sandboxtypes.State
 	StateAction = sandboxtypes.StateAction
+	KillReason  = sandboxtypes.KillReason
 	RemoveOpts  = sandboxtypes.RemoveOpts
 
 	TransitionEffect = sandboxtypes.TransitionEffect
@@ -36,6 +37,13 @@ const (
 	StaleCutoff           = sandboxtypes.StaleCutoff
 	SandboxTimeoutDefault = sandboxtypes.SandboxTimeoutDefault
 	AutoPauseDefault      = sandboxtypes.AutoPauseDefault
+
+	KillReasonUnknown             = sandboxtypes.KillReasonUnknown
+	KillReasonRequest             = sandboxtypes.KillReasonRequest
+	KillReasonTimeout             = sandboxtypes.KillReasonTimeout
+	KillReasonAdmin               = sandboxtypes.KillReasonAdmin
+	KillReasonOrphaned            = sandboxtypes.KillReasonOrphaned
+	KillReasonBaseTemplateMissing = sandboxtypes.KillReasonBaseTemplateMissing
 )
 
 // Errors and pre-defined state actions / transition tables.
