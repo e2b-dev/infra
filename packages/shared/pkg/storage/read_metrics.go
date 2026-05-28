@@ -71,6 +71,26 @@ var (
 		metric.WithDescription("In-flight read-path fetches (cache miss → backend), by file_type"),
 		metric.WithUnit("1"),
 	))
+
+	// readRaceEfficiency records the wall-time saved by the concurrent
+	// NFS-vs-remote race: on a cache miss, the NFS os.Open ran in parallel
+	// with the remote fetch start, so its duration equals the time the
+	// sequential path would have blocked before issuing the GCS request.
+	// Emitted only on the compressed concurrent miss path. No attributes.
+	readRaceEfficiency = mustFloatHist(
+		"orchestrator.read.race.efficiency_ms",
+		"Wall-time saved on a cache miss = NFS os.Open duration (concurrent compressed path only)",
+		"ms",
+	)
+
+	// readRaceWasted counts in-flight remote fetches that were started and
+	// then cancelled because the NFS check hit first. Each one ≈ one wasted
+	// class-B GCS request. No attributes.
+	readRaceWasted = utils.Must(meter.Int64Counter(
+		"orchestrator.read.race.wasted_requests",
+		metric.WithDescription("Remote fetches cancelled because NFS won the race (cost of the optimization)"),
+		metric.WithUnit("1"),
+	))
 )
 
 func RecordReadOpen(ctx context.Context, dur time.Duration, bytes int64, attrs metric.MeasurementOption) {
@@ -91,6 +111,18 @@ func RecordReadDecompress(ctx context.Context, dur time.Duration, bytes int64, a
 
 func RecordPipelineEfficiency(ctx context.Context, ratio float64, attrs metric.MeasurementOption) {
 	readPipelineEfficiency.Record(ctx, ratio, attrs)
+}
+
+// RecordRaceEfficiency records the wall-time saved on a concurrent compressed
+// cache miss = the NFS os.Open duration that overlapped with the remote fetch.
+func RecordRaceEfficiency(ctx context.Context, nfsOpenDur time.Duration) {
+	readRaceEfficiency.Record(ctx, float64(nfsOpenDur)/float64(time.Millisecond))
+}
+
+// RecordRaceWasted increments the wasted-requests counter when the NFS check
+// wins and we cancel the in-flight remote fetch.
+func RecordRaceWasted(ctx context.Context) {
+	readRaceWasted.Add(ctx, 1)
 }
 
 // StartInflight increments the read.inflight gauge and returns a func that

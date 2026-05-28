@@ -77,6 +77,7 @@ var (
 
 func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *FrameTable) (RangeReader, Source, error) {
 	compressed := frameTable.IsCompressed()
+	concurrent := c.flags.BoolFlag(ctx, featureflags.ConcurrentNFSCacheCheckFlag)
 
 	ctx, span := c.tracer.Start(ctx, "read", trace.WithAttributes(
 		attribute.Int64("offset", off),
@@ -88,8 +89,14 @@ func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off int64, length 
 	var source Source
 	var err error
 	switch {
+	case compressed && concurrent:
+		rc, source, err = c.openReaderCompressedConcurrent(ctx, off, frameTable)
 	case compressed:
 		rc, source, err = c.openReaderCompressed(ctx, off, frameTable)
+	case concurrent:
+		if err = c.validateReadParams(length, off); err == nil {
+			rc, source, err = c.openReaderUncompressedConcurrent(ctx, off, length)
+		}
 	default:
 		if err = c.validateReadParams(length, off); err == nil {
 			rc, source, err = c.openReaderUncompressed(ctx, off, length)

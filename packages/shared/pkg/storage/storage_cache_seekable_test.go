@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 )
 
 // testCache returns a cachedSeekable with a fresh temp dir, the given chunk
@@ -22,10 +24,14 @@ import (
 func testCache(t *testing.T, chunkSize int64) cachedSeekable {
 	t.Helper()
 
+	ff := NewMockFeatureFlagsClient(t)
+	ff.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(false).Maybe()
+
 	return cachedSeekable{
 		path:      t.TempDir(),
 		chunkSize: chunkSize,
 		inner:     NewMockSeekable(t),
+		flags:     ff,
 		tracer:    noopTracer,
 	}
 }
@@ -37,10 +43,13 @@ func testCacheMock(t *testing.T, chunkSize int64) (c cachedSeekable, m *MockSeek
 	t.Helper()
 
 	m = NewMockSeekable(t)
+	ff := NewMockFeatureFlagsClient(t)
+	ff.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(false).Maybe()
 	c = cachedSeekable{
 		path:      t.TempDir(),
 		chunkSize: chunkSize,
 		inner:     m,
+		flags:     ff,
 		tracer:    noopTracer,
 	}
 
@@ -135,7 +144,8 @@ func TestCachedFileObjectProvider_WriteFromFileSystem(t *testing.T) {
 			Once()
 
 		featureFlags := NewMockFeatureFlagsClient(t)
-		featureFlags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(true)
+		featureFlags.EXPECT().BoolFlag(mock.Anything, featureflags.EnableWriteThroughCacheFlag).Return(true)
+		featureFlags.EXPECT().BoolFlag(mock.Anything, featureflags.ConcurrentNFSCacheCheckFlag).Return(false).Maybe()
 		featureFlags.EXPECT().IntFlag(mock.Anything, mock.Anything).Return(10)
 		c.flags = featureFlags
 
@@ -148,7 +158,6 @@ func TestCachedFileObjectProvider_WriteFromFileSystem(t *testing.T) {
 
 		// Remaining reads should come from cache only.
 		c.inner = nil
-		c.flags = nil
 
 		size, err := c.Size(t.Context())
 		require.NoError(t, err)
