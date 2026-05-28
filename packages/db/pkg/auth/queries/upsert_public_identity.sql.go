@@ -11,13 +11,13 @@ import (
 	"github.com/google/uuid"
 )
 
-const upsertPublicIdentity = `-- name: UpsertPublicIdentity :exec
+const upsertPublicIdentity = `-- name: UpsertPublicIdentity :one
 INSERT INTO public.user_identities (oidc_iss, oidc_sub, user_id)
 VALUES ($1::text, $2::text, $3::uuid)
 ON CONFLICT (oidc_iss, oidc_sub)
 DO UPDATE SET
-    user_id = EXCLUDED.user_id,
     updated_at = now()
+RETURNING user_id
 `
 
 type UpsertPublicIdentityParams struct {
@@ -26,7 +26,9 @@ type UpsertPublicIdentityParams struct {
 	UserID  uuid.UUID
 }
 
-func (q *Queries) UpsertPublicIdentity(ctx context.Context, arg UpsertPublicIdentityParams) error {
-	_, err := q.db.Exec(ctx, upsertPublicIdentity, arg.OidcIss, arg.OidcSub, arg.UserID)
-	return err
+func (q *Queries) UpsertPublicIdentity(ctx context.Context, arg UpsertPublicIdentityParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, upsertPublicIdentity, arg.OidcIss, arg.OidcSub, arg.UserID)
+	var user_id uuid.UUID
+	err := row.Scan(&user_id)
+	return user_id, err
 }
