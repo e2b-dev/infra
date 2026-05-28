@@ -161,7 +161,7 @@ func TestRecordSandboxKill(t *testing.T) {
 	t.Parallel()
 
 	reader := sdkmetric.NewManualReader()
-	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)).Meter("test")
+	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)).Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")
 	counter, err := telemetry.GetCounter(meter, telemetry.OrchestratorSandboxKilledCounterName)
 	require.NoError(t, err)
 
