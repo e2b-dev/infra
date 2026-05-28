@@ -1,8 +1,12 @@
 # Server cluster instances are not currently automatically updated when you create a new
 # orchestrator image with Packer.
 locals {
-  build_base_hugepages_percentage  = 60
-  client_base_hugepages_percentage = 80
+  build_base_hugepages_percentage = 60
+  # Slightly below the previous 80% so a bit more host RAM stays in the
+  # overcommit pool (usable for the orchestrator heap) rather than being
+  # permanently locked as base hugepages. Override per-cluster via
+  # hugepages_percentage in *_clusters_config.
+  client_base_hugepages_percentage = 78
 
   nfs_mount_path   = "/orchestrator/shared-store"
   nfs_mount_subdir = "chunks-cache"
