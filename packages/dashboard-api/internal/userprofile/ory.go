@@ -72,10 +72,8 @@ func NewOryProvider(config OryConfig) (Provider, error) {
 }
 
 func newOryIdentityAPI(httpClient *http.Client, sdkURL string) ory.IdentityAPI {
-	// shallow-copy the injected client so the SDK can never mutate the caller's
-	// shared instance. The token is carried per-request via ContextAccessToken
-	// (see authCtx), never stored on the client, so it cannot leak to other
-	// callers of the shared client.
+	// shallow-copy so the SDK can't mutate the caller's shared client; the token
+	// rides per-request via ContextAccessToken (see authCtx), never on the client.
 	clientCopy := *httpClient
 
 	cfg := ory.NewConfiguration()
@@ -223,12 +221,10 @@ func (p *oryProvider) listIdentitiesByIDs(ctx context.Context, ids []string) ([]
 	return identities, nil
 }
 
-// profileFromOryIdentity reads the standardized E2B identity schema traits:
-// name, email, picture. The Ory project is configured to populate these from
-// OIDC provider claims (e.g. Google profile scope, GitHub user scope) so the
-// underlying upstream is transparent here. See
-// packages/dashboard-api/fixtures/ory/identity.v1.schema.json for the canonical
-// trait shape uploaded to Ory.
+// The Ory project populates these traits from OIDC provider claims (Google
+// profile scope, GitHub user scope, etc.), so the upstream provider is
+// transparent here. The canonical trait shape lives in
+// packages/dashboard-api/fixtures/ory/identity.v1.schema.json.
 func profileFromOryIdentity(userID uuid.UUID, identity ory.Identity) Profile {
 	traits, _ := identity.Traits.(map[string]any)
 
@@ -241,11 +237,9 @@ func profileFromOryIdentity(userID uuid.UUID, identity ory.Identity) Profile {
 	}
 }
 
-// oryLinkedProviders extracts the upstream OIDC providers (e.g. "google",
-// "github") linked to an Ory identity. The list lives at
-// credentials.oidc.config.providers[].provider; if the Console didn't expose
-// config (depends on include_credential), fall back to parsing the
-// "provider:subject" prefix from credentials.oidc.identifiers.
+// The provider list lives at credentials.oidc.config.providers[].provider; when
+// the response omits config (depends on include_credential), fall back to the
+// "provider:subject" prefix of credentials.oidc.identifiers.
 func oryLinkedProviders(identity ory.Identity) []string {
 	if identity.Credentials == nil {
 		return nil

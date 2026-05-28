@@ -68,10 +68,9 @@ func Parse() (Config, error) {
 	return config, err
 }
 
-// validateUserProfileProvider enforces Ory-specific env requirements and keeps
-// ORY_ISSUER_URL aligned with the configured auth-provider issuer. The Ory
-// profile provider filters public.user_identities by oidc_iss, so a mismatch
-// against the iss claim stored at bootstrap silently strands every user.
+// ORY_ISSUER_URL must match the auth-provider's JWT issuer: the Ory profile
+// provider filters public.user_identities by oidc_iss, so a mismatch against
+// the iss claim stored at bootstrap silently strands every user.
 func validateUserProfileProvider(config *Config) error {
 	if !config.UserProfileProvider.RequiresOry() {
 		return nil

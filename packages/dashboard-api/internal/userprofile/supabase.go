@@ -98,8 +98,6 @@ func supabaseLinkedProviders(appMetadata map[string]any) []string {
 	return uniqueNonEmpty(candidates)
 }
 
-// uniqueNonEmpty returns the trimmed, non-empty values in first-seen order with
-// duplicates dropped, or nil when nothing remains.
 func uniqueNonEmpty(values []string) []string {
 	seen := make(map[string]struct{}, len(values))
 	unique := make([]string, 0, len(values))
