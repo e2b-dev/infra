@@ -31,6 +31,7 @@ type Chunker struct {
 	metrics      metrics.Metrics
 	fetchTimeout time.Duration
 	featureFlags *featureflags.Client
+	objType      storage.SeekableObjectType
 
 	size int64
 
@@ -49,6 +50,7 @@ func NewChunker(
 	upstream storage.StreamingReader,
 	cachePath string,
 	metrics metrics.Metrics,
+	objType storage.SeekableObjectType,
 ) (*Chunker, error) {
 	cache, err := NewCache(size, blockSize, cachePath, false)
 	if err != nil {
@@ -62,6 +64,7 @@ func NewChunker(
 		metrics:      metrics,
 		featureFlags: ff,
 		fetchTimeout: defaultFetchTimeout,
+		objType:      objType,
 	}, nil
 }
 
@@ -75,42 +78,52 @@ func (c *Chunker) ReadAt(ctx context.Context, b []byte, off int64, ft *storage.F
 }
 
 func (c *Chunker) Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
+	ct := ft.CompressionType()
 	attrs := chunkerAttrs
 	if ft.IsCompressed() {
 		attrs = chunkerAttrsCompressed
 	}
+
+	sliceStart := time.Now()
 	timer := c.metrics.SlicesTimerFactory.Begin()
 
-	// Fast path: already cached
+	// Fast path: already cached.
 	b, err := c.cache.Slice(off, length)
 	if err == nil {
 		timer.RecordRaw(ctx, length, attrs.successFromCache)
+		c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), length, storage.OKAttrs(c.objType, storage.SourceMmap, ct))
 
 		return b, nil
 	}
 
 	if !errors.As(err, &BytesNotAvailableError{}) {
 		timer.RecordRaw(ctx, length, attrs.failCacheRead)
+		c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), 0, storage.ErrAttrs(c.objType, storage.SourceMmap, ct, err))
 
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
 	// Fetch every chunk the range spans (one fetch session per chunk).
+	var src storage.Source
 	end := off + length
 	for cur := off; cur < end; {
 		chunkOff, chunkLen, lerr := c.locateChunk(cur, ft)
 		if lerr != nil {
 			timer.RecordRaw(ctx, length, attrs.failRemoteFetch)
+			c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), 0, storage.ErrAttrs(c.objType, src, ct, lerr))
 
 			return nil, fmt.Errorf("failed to locate chunk for offset %d: %w", cur, lerr)
 		}
 		chunkEnd := chunkOff + chunkLen
 		rangeEnd := min(end, chunkEnd)
-		if err := c.fetch(ctx, cur, rangeEnd-cur, ft); err != nil {
+		s, err := c.fetch(ctx, cur, rangeEnd-cur, ft)
+		if err != nil {
 			timer.RecordRaw(ctx, length, attrs.failRemoteFetch)
+			c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), 0, storage.ErrAttrs(c.objType, s, ct, err))
 
 			return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", cur, rangeEnd, err)
 		}
+		src = max(src, s)
 		cur = chunkEnd
 	}
 
@@ -118,11 +131,13 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64, ft *storage.Fram
 	b, cacheErr := c.cache.sliceDirect(off, length)
 	if cacheErr != nil {
 		timer.RecordRaw(ctx, length, attrs.failLocalReadAgain)
+		c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), 0, storage.ErrAttrs(c.objType, src, ct, cacheErr))
 
 		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
 	}
 
 	timer.RecordRaw(ctx, length, attrs.successFromRemote)
+	c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), length, storage.OKAttrs(c.objType, src, ct))
 
 	return b, nil
 }
@@ -161,15 +176,15 @@ func (c *Chunker) getOrCreateSession(ctx context.Context, off, length int64, ft 
 // fetch ensures the chunk for [off, off+length) is fetched and waits
 // for every block the range spans (a span can cross block boundaries
 // after dedup; waiting only on the start block leaves the tail unfetched).
-func (c *Chunker) fetch(ctx context.Context, off, length int64, ft *storage.FrameTable) error {
+func (c *Chunker) fetch(ctx context.Context, off, length int64, ft *storage.FrameTable) (storage.Source, error) {
 	chunkOff, chunkLen, err := c.locateChunk(off, ft)
 	if err != nil {
-		return fmt.Errorf("failed to locate chunk for offset %d: %w", off, err)
+		return storage.UnknownSource, fmt.Errorf("failed to locate chunk for offset %d: %w", off, err)
 	}
 
 	session, justGotCached := c.getOrCreateSession(ctx, chunkOff, chunkLen, ft)
 	if justGotCached {
-		return nil
+		return storage.SourceMmap, nil
 	}
 
 	blockSize := c.cache.BlockSize()
@@ -181,17 +196,24 @@ func (c *Chunker) fetch(ctx context.Context, off, length int64, ft *storage.Fram
 			break // tail belongs to the caller's next chunk fetch.
 		}
 		if err := session.registerAndWait(ctx, b); err != nil {
-			return err
+			return session.Source(), err
 		}
 	}
 
-	return nil
+	return session.Source(), nil
 }
 
 // runFetch fetches data from storage into the mmap cache. Runs in a background goroutine.
 func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, ft *storage.FrameTable) {
 	ctx, cancel := context.WithTimeout(ctx, c.fetchTimeout)
 	defer cancel()
+
+	ctx, span := tracer.Start(ctx, "chunk.fetch")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Int64("off", s.chunkOff),
+		attribute.Int64("len", s.chunkLen),
+	)
 
 	defer c.releaseSession(s)
 
@@ -216,15 +238,25 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, ft *storage.Fra
 	}
 	defer releaseLock()
 
+	ct := ft.CompressionType()
+
 	attrs := chunkerAttrs
 	if ft.IsCompressed() {
 		attrs = chunkerAttrsCompressed
 	}
 	fetchTimer := c.metrics.RemoteReadsTimerFactory.Begin()
 
-	readBytes, err := c.progressiveRead(ctx, s, mmapSlice, ft)
+	fetchStart := time.Now()
+
+	stats, src, open, err := c.progressiveRead(ctx, s, mmapSlice, ft)
+	var readBytes int64
+	if stats != nil {
+		readBytes = stats.UncompressedBytes
+	}
 	if err != nil {
 		fetchTimer.RecordRaw(ctx, readBytes, attrs.remoteFailure)
+
+		storage.RecordReadFetch(ctx, time.Since(fetchStart), readBytes, storage.ErrAttrs(c.objType, src, ct, err))
 
 		s.fail(err)
 
@@ -236,24 +268,56 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, ft *storage.Fra
 	// closing the TOCTOU window in getOrCreateSession.
 	c.cache.setIsCached(s.chunkOff, s.chunkLen)
 
+	fetchWall := time.Since(fetchStart)
 	fetchTimer.RecordRaw(ctx, readBytes, attrs.remoteSuccess)
+	storage.RecordReadFetch(ctx, fetchWall, readBytes, storage.OKAttrs(c.objType, src, ct))
+
+	// fetch wall / (open + read + decompress); >1 = unaccounted overhead.
+	if stats != nil {
+		if work := open + stats.Read + stats.Decompress; work > 0 {
+			ratio := fetchWall.Seconds() / work.Seconds()
+			storage.RecordPipelineEfficiency(ctx, ratio, storage.OKAttrs(c.objType, src, ct))
+		}
+	}
+
 	s.setDone()
 }
 
-func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, mmapSlice []byte, ft *storage.FrameTable) (totalRead int64, err error) {
-	reader, err := c.upstream.OpenRangeReader(ctx, s.chunkOff, s.chunkLen, ft)
+func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, mmapSlice []byte, ft *storage.FrameTable) (stats *storage.ReadStats, source storage.Source, open time.Duration, err error) {
+	doneInflight := storage.StartInflight(ctx, storage.InflightFetchAttrs(c.objType))
+	defer doneInflight()
+
+	openStart := time.Now()
+	reader, source, err := c.upstream.OpenRangeReader(ctx, s.chunkOff, s.chunkLen, ft)
+	open = time.Since(openStart)
+	s.setSource(source)
 	if err != nil {
-		return 0, fmt.Errorf("failed to open range reader at %d: %w", s.chunkOff, err)
+		return nil, source, open, fmt.Errorf("failed to open range reader at %d: %w", s.chunkOff, err)
 	}
+
 	defer func() {
-		if closeErr := reader.Close(ctx); closeErr != nil && err == nil {
+		var closeErr error
+		stats, closeErr = reader.Close(ctx)
+		if closeErr != nil && err == nil {
 			err = closeErr
+		}
+		if err != nil {
+			return
+		}
+
+		ct := ft.CompressionType()
+		okAttrs := storage.OKAttrs(c.objType, source, ct)
+
+		storage.RecordReadOpen(ctx, open, 0, okAttrs)
+		if stats != nil {
+			storage.RecordReadRead(ctx, stats.Read, stats.CompressedBytes, okAttrs)
 		}
 	}()
 
 	blockSize := c.cache.BlockSize()
 	readBatch := max(blockSize, int64(c.featureFlags.IntFlag(ctx, featureflags.MinChunkerReadSizeKB))*1024)
 
+	var totalRead int64
 	for totalRead < s.chunkLen {
 		// Read in batches of max(blockSize, minReadBatchSize) to align notification
 		// granularity with the read size and minimize lock/notify overhead.
@@ -272,11 +336,11 @@ func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, mmapSlic
 				break // all bytes received; trailing EOF is expected
 			}
 
-			return totalRead, fmt.Errorf("failed reading at offset %d after %d bytes: %w", s.chunkOff, totalRead, readErr)
+			return stats, source, open, fmt.Errorf("failed reading at offset %d after %d bytes: %w", s.chunkOff, totalRead, readErr)
 		}
 	}
 
-	return totalRead, nil
+	return stats, source, open, nil
 }
 
 // releaseSession removes s from the active list (swap-delete).

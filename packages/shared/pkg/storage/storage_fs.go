@@ -30,7 +30,8 @@ type fsStorage struct {
 var _ StorageProvider = (*fsStorage)(nil)
 
 type fsObject struct {
-	path string
+	path    string
+	objType SeekableObjectType
 }
 
 var (
@@ -71,14 +72,15 @@ func (s *fsStorage) UploadSignedURL(_ context.Context, path string, ttl time.Dur
 	return u, nil
 }
 
-func (s *fsStorage) OpenSeekable(_ context.Context, path string, _ SeekableObjectType) (Seekable, error) {
+func (s *fsStorage) OpenSeekable(_ context.Context, path string, objectType SeekableObjectType) (Seekable, error) {
 	dir := filepath.Dir(s.getPath(path))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
 
 	return &fsObject{
-		path: s.getPath(path),
+		path:    s.getPath(path),
+		objType: objectType,
 	}, nil
 }
 
@@ -301,27 +303,32 @@ func (u *fsPartUploader) Complete(_ context.Context) error {
 	return os.WriteFile(u.fullPath, u.Assemble(), 0o644)
 }
 
-func (o *fsObject) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (RangeReader, error) {
+func (o *fsObject) OpenRangeReader(ctx context.Context, offsetU int64, length int64, frameTable *FrameTable) (RangeReader, Source, error) {
 	if frameTable.IsCompressed() {
 		r, err := frameTable.LocateCompressed(offsetU)
 		if err != nil {
-			return nil, fmt.Errorf("get frame for offset %d, FS:%s: %w", offsetU, o.path, err)
+			return nil, SourceFS, fmt.Errorf("get frame for offset %d, FS:%s: %w", offsetU, o.path, err)
 		}
 
 		raw, err := o.openRangeReader(ctx, r.Offset, int64(r.Length))
 		if err != nil {
-			return nil, err
+			return nil, SourceFS, err
 		}
 
-		dec, err := NewDecompressingReader(raw, frameTable.CompressionType())
+		dec, err := newDecompressReader(raw, frameTable.CompressionType(), SourceFS, o.objType)
 		if err != nil {
 			raw.Close(ctx)
 
-			return nil, err
+			return nil, SourceFS, err
 		}
 
-		return dec, nil
+		return dec, SourceFS, nil
 	}
 
-	return o.openRangeReader(ctx, offsetU, length)
+	raw, err := o.openRangeReader(ctx, offsetU, length)
+	if err != nil {
+		return nil, SourceFS, err
+	}
+
+	return newObservableReader(raw), SourceFS, nil
 }

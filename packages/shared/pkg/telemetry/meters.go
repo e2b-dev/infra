@@ -488,6 +488,51 @@ func NewTimerFactory(
 	return TimerFactory{duration, bytes, count}, nil
 }
 
+// FloatTimerFactory records duration as fractional milliseconds so
+// sub-millisecond operations aren't truncated to 0. Callers supply the
+// duration via Record.
+type FloatTimerFactory struct {
+	duration metric.Float64Histogram
+	bytes    metric.Int64Counter
+	count    metric.Int64Counter
+}
+
+func NewFloatTimerFactory(
+	meter metric.Meter,
+	metricName, durationDescription, bytesDescription, counterDescription string,
+) (FloatTimerFactory, error) {
+	duration, err := meter.Float64Histogram(metricName,
+		metric.WithDescription(durationDescription),
+		metric.WithUnit("ms"),
+	)
+	if err != nil {
+		return FloatTimerFactory{}, fmt.Errorf("failed to create duration histogram: %w", err)
+	}
+
+	bytes, err := meter.Int64Counter(metricName,
+		metric.WithDescription(bytesDescription),
+		metric.WithUnit("By"),
+	)
+	if err != nil {
+		return FloatTimerFactory{}, fmt.Errorf("failed to create bytes counter: %w", err)
+	}
+
+	count, err := meter.Int64Counter(metricName,
+		metric.WithDescription(counterDescription),
+	)
+	if err != nil {
+		return FloatTimerFactory{}, fmt.Errorf("failed to create count counter: %w", err)
+	}
+
+	return FloatTimerFactory{duration, bytes, count}, nil
+}
+
+func (f *FloatTimerFactory) Record(ctx context.Context, dur time.Duration, total int64, attrs metric.MeasurementOption) {
+	f.duration.Record(ctx, float64(dur)/float64(time.Millisecond), attrs)
+	f.bytes.Add(ctx, total, attrs)
+	f.count.Add(ctx, 1, attrs)
+}
+
 func (f *TimerFactory) Begin(kv ...attribute.KeyValue) *Stopwatch {
 	return &Stopwatch{
 		histogram: f.duration,
@@ -542,9 +587,9 @@ func PrecomputeAttrs(kv ...attribute.KeyValue) metric.MeasurementOption {
 // RecordRaw records an operation using a precomputed attribute option, it does
 // not include any previous attributes passed at Begin(). Zero-allocation
 // alternative to Success/Failure for hot paths.
-func (t Stopwatch) RecordRaw(ctx context.Context, total int64, precomputedAttrs metric.MeasurementOption) {
+func (t Stopwatch) RecordRaw(ctx context.Context, total int64, allAttrs metric.MeasurementOption) {
 	amount := time.Since(t.start).Milliseconds()
-	t.histogram.Record(ctx, amount, precomputedAttrs)
-	t.sum.Add(ctx, total, precomputedAttrs)
-	t.count.Add(ctx, 1, precomputedAttrs)
+	t.histogram.Record(ctx, amount, allAttrs)
+	t.sum.Add(ctx, total, allAttrs)
+	t.count.Add(ctx, 1, allAttrs)
 }

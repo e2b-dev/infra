@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
@@ -18,7 +20,13 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+var fileReadAtTimer = utils.Must(telemetry.NewFloatTimerFactory(meter, "orchestrator.file.read_at",
+	"Time to serve a build.File ReadAt across all source builds",
+	"Bytes read", "ReadAt call count"))
 
 type File struct {
 	header      atomic.Pointer[header.Header]
@@ -26,6 +34,8 @@ type File struct {
 	fileType    DiffType
 	persistence storage.StorageProvider
 	metrics     blockmetrics.Metrics
+
+	okAttrs metric.MeasurementOption
 }
 
 func NewFile(
@@ -40,10 +50,21 @@ func NewFile(
 		fileType:    fileType,
 		persistence: persistence,
 		metrics:     metrics,
+		okAttrs: metric.WithAttributes(
+			attribute.String(storage.AttrFileType, string(fileType)),
+			attribute.String(storage.AttrOutcome, storage.OutcomeOK),
+		),
 	}
 	f.header.Store(header)
 
 	return f
+}
+
+func (b *File) errAttrs(err error) metric.MeasurementOption {
+	return metric.WithAttributes(
+		attribute.String(storage.AttrFileType, string(b.fileType)),
+		attribute.String(storage.AttrOutcome, storage.Outcome(err)),
+	)
 }
 
 func (b *File) Header() *header.Header {
@@ -55,6 +76,21 @@ func (b *File) SwapHeader(h *header.Header) {
 }
 
 func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
+	start := time.Now()
+	n, err = b.readAt(ctx, p, off)
+	if err != nil {
+		fileReadAtTimer.Record(ctx, time.Since(start), int64(n), b.errAttrs(err))
+
+		return n, err
+	}
+	fileReadAtTimer.Record(ctx, time.Since(start), int64(n), b.okAttrs)
+
+	return n, nil
+}
+
+// readAt is the uninstrumented worker; Slice's compose path reuses it without
+// double-counting file.read_at.
+func (b *File) readAt(ctx context.Context, p []byte, off int64) (n int, err error) {
 	for n < len(p) {
 		h := b.Header()
 
@@ -148,7 +184,7 @@ func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 		}
 	}
 	out := make([]byte, length)
-	if _, err := b.ReadAt(ctx, out, off); err != nil {
+	if _, err := b.readAt(ctx, out, off); err != nil {
 		return nil, fmt.Errorf("failed to read at: %w", err)
 	}
 

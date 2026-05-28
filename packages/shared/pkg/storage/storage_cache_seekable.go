@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
@@ -64,6 +65,7 @@ type cachedSeekable struct {
 	inner     Seekable
 	flags     featureFlagsClient
 	tracer    trace.Tracer
+	objType   SeekableObjectType
 
 	wg sync.WaitGroup
 }
@@ -73,7 +75,7 @@ var (
 	_ StreamingReader = (*cachedSeekable)(nil)
 )
 
-func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *FrameTable) (RangeReader, error) {
+func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *FrameTable) (RangeReader, Source, error) {
 	compressed := frameTable.IsCompressed()
 
 	ctx, span := c.tracer.Start(ctx, "read", trace.WithAttributes(
@@ -83,24 +85,28 @@ func (c *cachedSeekable) OpenRangeReader(ctx context.Context, off int64, length 
 	))
 
 	var rc RangeReader
+	var source Source
 	var err error
-	if compressed {
-		rc, err = c.openReaderCompressed(ctx, off, frameTable)
-	} else if err = c.validateReadParams(length, off); err == nil {
-		rc, err = c.openReaderUncompressed(ctx, off, length)
+	switch {
+	case compressed:
+		rc, source, err = c.openReaderCompressed(ctx, off, frameTable)
+	default:
+		if err = c.validateReadParams(length, off); err == nil {
+			rc, source, err = c.openReaderUncompressed(ctx, off, length)
+		}
 	}
 
 	if err != nil {
 		recordError(span, err)
 		span.End()
 
-		return nil, err
+		return nil, source, err
 	}
 
-	return newObservableReader(rc, nil, span), nil
+	return newObservableReader(rc).withSpan(span), source, nil
 }
 
-func (c *cachedSeekable) openReaderUncompressed(ctx context.Context, off, length int64) (RangeReader, error) {
+func (c *cachedSeekable) openReaderUncompressed(ctx context.Context, off, length int64) (RangeReader, Source, error) {
 	timer := cacheSlabReadTimerFactory.Begin(
 		attribute.String(nfsCacheOperationAttr, nfsCacheOperationAttrReadAt),
 		attribute.Bool("compressed", false),
@@ -112,8 +118,9 @@ func (c *cachedSeekable) openReaderUncompressed(ctx context.Context, off, length
 	if err == nil {
 		recordCacheRead(ctx, true, length, cacheTypeSeekable, cacheOpOpenRangeReader)
 		timer.Success(ctx, length)
+		readCache.Add(ctx, 1, CacheHitAttrs(c.objType, SourceNFS, CompressionNone))
 
-		return newSectionReader(fp, 0, length), nil
+		return newSectionReader(fp, 0, length), SourceNFS, nil
 	}
 
 	if !os.IsNotExist(err) {
@@ -121,27 +128,28 @@ func (c *cachedSeekable) openReaderUncompressed(ctx context.Context, off, length
 	}
 
 	timer.Failure(ctx, 0)
+	readCache.Add(ctx, 1, CacheMissAttrs(c.objType, SourceNFS, CompressionNone))
 
-	rc, err := c.inner.OpenRangeReader(ctx, off, length, nil)
+	rc, innerSource, err := c.inner.OpenRangeReader(ctx, off, length, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open inner range reader: %w", err)
+		return nil, innerSource, fmt.Errorf("failed to open inner range reader: %w", err)
 	}
 
 	recordCacheRead(ctx, false, length, cacheTypeSeekable, cacheOpOpenRangeReader)
 
 	if !skipCacheWriteback(ctx) {
-		rc = newCaptureReader(rc, int(length), false,
-			c.uncompressedChunkWriteback(chunkPath, off, length, trace.SpanContextFromContext(ctx)))
+		rc = newCaptureReader(rc, int(length),
+			c.uncompressedChunkWriteback(chunkPath, off, length, innerSource, trace.SpanContextFromContext(ctx)))
 	}
 
-	return rc, nil
+	return rc, innerSource, nil
 }
 
 // uncompressedChunkWriteback returns a captureReader callback that persists
 // the captured chunk to the NFS cache in a detached goroutine. Best-effort:
 // a short capture (e.g. upstream truncation) is dropped silently — a streaming
 // reader always ends in EOF, so byte count is the only reliable signal.
-func (c *cachedSeekable) uncompressedChunkWriteback(chunkPath string, off, expectedLen int64, fetchSpan trace.SpanContext) func(context.Context, []byte) {
+func (c *cachedSeekable) uncompressedChunkWriteback(chunkPath string, off, expectedLen int64, src Source, fetchSpan trace.SpanContext) func(context.Context, []byte) {
 	return func(ctx context.Context, captured []byte) {
 		if !isCompleteRead(len(captured), int(expectedLen), nil) {
 			return
@@ -151,7 +159,10 @@ func (c *cachedSeekable) uncompressedChunkWriteback(chunkPath string, off, expec
 			ctx, span := c.tracer.Start(ctx, "write range reader chunk back to cache", writebackSpanOpts(fetchSpan)...)
 			defer span.End()
 
+			start := time.Now()
 			err := c.writeToCache(ctx, off, chunkPath, captured)
+			recordWriteback(ctx, time.Since(start), int64(len(captured)), c.objType, src, CompressionNone, err)
+
 			if err != nil {
 				recordError(span, err)
 				recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpOpenRangeReader, err)
