@@ -454,6 +454,14 @@ processors:
         statements:
           - set(attributes["service.instance.id"], attributes["host.name"]) where attributes["host.name"] != nil
 
+  transform/gcp_hostmetrics_target_resource:
+    metric_statements:
+      - context: resource
+        statements:
+          - set(attributes["service.name"], "hostmetrics")
+          - set(attributes["service.instance.id"], attributes["host.name"]) where attributes["host.name"] != nil
+          - set(attributes["service.instance.id"], attributes["host.id"]) where attributes["host.id"] != nil
+
 %{ endif }
 
   filter/rpc_duration_only:
@@ -632,6 +640,7 @@ service:
         - hostmetrics
       processors:
         - resourcedetection/gcp_telemetry
+        - transform/gcp_hostmetrics_target_resource
         - transform/gcp_telemetry_labels
         - transform/gcp_managed_prometheus_labels
         - metricstransform/single_cpu

@@ -162,6 +162,13 @@ processors:
           - delete_key(attributes, "instance")
           - set(attributes["exported_project_id"], attributes["project_id"]) where attributes["project_id"] != nil
           - delete_key(attributes, "project_id")
+
+  transform/gcp_prometheus_target_resource:
+    metric_statements:
+      - context: resource
+        statements:
+          - set(attributes["service.name"], "nomad-servers")
+          - set(attributes["service.instance.id"], attributes["host.name"]) where attributes["host.name"] != nil
 %{ endif }
 
   transform/set-name:
@@ -217,6 +224,7 @@ service:
         - resourcedetection/gcp_telemetry
         - transform/gcp_managed_prometheus_labels
         - transform/set-name
+        - transform/gcp_prometheus_target_resource
         - metricstarttime/gcp_telemetry
         - batch/gcp_telemetry
       exporters:
