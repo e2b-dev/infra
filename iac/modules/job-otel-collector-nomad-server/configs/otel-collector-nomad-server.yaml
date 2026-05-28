@@ -145,6 +145,25 @@ processors:
           enabled: true
 %{ endif }
 
+%{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
+  transform/gcp_managed_prometheus_labels:
+    metric_statements:
+      - context: datapoint
+        statements:
+          - set(attributes["exported_location"], attributes["location"]) where attributes["location"] != nil
+          - delete_key(attributes, "location")
+          - set(attributes["exported_cluster"], attributes["cluster"]) where attributes["cluster"] != nil
+          - delete_key(attributes, "cluster")
+          - set(attributes["exported_namespace"], attributes["namespace"]) where attributes["namespace"] != nil
+          - delete_key(attributes, "namespace")
+          - set(attributes["exported_job"], attributes["job"]) where attributes["job"] != nil
+          - delete_key(attributes, "job")
+          - set(attributes["exported_instance"], attributes["instance"]) where attributes["instance"] != nil
+          - delete_key(attributes, "instance")
+          - set(attributes["exported_project_id"], attributes["project_id"]) where attributes["project_id"] != nil
+          - delete_key(attributes, "project_id")
+%{ endif }
+
   transform/set-name:
     metric_statements:
       # We don't want to set host name here as we want to report the nomad server, not the otel collector's host
@@ -168,10 +187,8 @@ exporters:
     auth:
       authenticator: basicauth/grafana_cloud
 %{ if provider_name == "gcp" && enable_gcp_telemetry_metrics }
-  googlecloud/gcp_telemetry:
+  googlemanagedprometheus/gcp_telemetry:
     project: ${gcp_telemetry_project_id}
-    metric:
-      service_resource_labels: true
 %{ endif }
 service:
   telemetry:
@@ -198,9 +215,10 @@ service:
       processors:
         - filter/nomad_metrics
         - resourcedetection/gcp_telemetry
+        - transform/gcp_managed_prometheus_labels
         - transform/set-name
         - metricstarttime/gcp_telemetry
         - batch/gcp_telemetry
       exporters:
-        - googlecloud/gcp_telemetry
+        - googlemanagedprometheus/gcp_telemetry
 %{ endif }
