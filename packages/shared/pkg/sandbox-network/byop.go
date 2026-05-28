@@ -8,12 +8,22 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 )
 
 // DevAllowedProxyEndpointCIDRs is a dev-only allowlist that overrides
 // DeniedSandboxCIDRs at BYOP validation time. Populated from
-// BYOP_DEV_ALLOWED_PROXY_CIDRS (comma-separated CIDRs). Empty in production.
-var DevAllowedProxyEndpointCIDRs = parseCIDRsEnv("BYOP_DEV_ALLOWED_PROXY_CIDRS")
+// BYOP_DEV_ALLOWED_PROXY_CIDRS (comma-separated CIDRs) only when running in
+// a development build; ignored in production so a stray env var cannot
+// widen the BYOP endpoint allowlist.
+var DevAllowedProxyEndpointCIDRs = func() []string {
+	if !env.IsDevelopment() {
+		return nil
+	}
+
+	return parseCIDRsEnv("BYOP_DEV_ALLOWED_PROXY_CIDRS")
+}()
 
 // parsedDevAllowedProxyEndpointCIDRs is DevAllowedProxyEndpointCIDRs pre-parsed
 // for IsIPDevAllowedAsProxyEndpoint.
