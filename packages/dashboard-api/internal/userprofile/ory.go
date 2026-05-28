@@ -14,6 +14,7 @@ import (
 	ory "github.com/ory/client-go"
 
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // Ory's admin ListIdentities rejects an `ids` filter with more than 500 entries
@@ -154,7 +155,8 @@ func (p *oryProvider) FindProfilesByEmail(ctx context.Context, email string) ([]
 		return []Profile{}, nil
 	}
 
-	userIDBySubject, err := p.userIDsForSubjects(ctx, identitySubjects(identities))
+	subjects := utils.Map(identities, func(identity ory.Identity) string { return identity.Id })
+	userIDBySubject, err := p.userIDsForSubjects(ctx, subjects)
 	if err != nil {
 		return nil, err
 	}
@@ -199,9 +201,8 @@ func (p *oryProvider) userIDsForSubjects(ctx context.Context, subjects []string)
 	}), nil
 }
 
-// userIDsBySubject indexes identity-resolver rows by their OIDC subject. The two
-// resolver queries return distinct generated row types, so sub extracts the
-// (oidc_sub, user_id) pair from each.
+// userIDsBySubject is generic because the two resolver queries that feed it
+// return distinct generated row types with the same (oidc_sub, user_id) shape.
 func userIDsBySubject[Row any](rows []Row, sub func(Row) (string, uuid.UUID)) map[string]uuid.UUID {
 	bySubject := make(map[string]uuid.UUID, len(rows))
 	for _, row := range rows {
@@ -214,8 +215,6 @@ func userIDsBySubject[Row any](rows []Row, sub func(Row) (string, uuid.UUID)) ma
 
 func (p *oryProvider) listIdentitiesByIDs(ctx context.Context, ids []string) ([]ory.Identity, error) {
 	identities := make([]ory.Identity, 0, len(ids))
-	// the ids filter is not paginated, so a single request per batch returns
-	// every matching identity in that batch.
 	for batchIDs := range slices.Chunk(ids, oryListIDsBatchSize) {
 		batch, resp, err := p.identities.ListIdentitiesExecute(
 			p.identities.ListIdentities(ctx).
@@ -230,15 +229,6 @@ func (p *oryProvider) listIdentitiesByIDs(ctx context.Context, ids []string) ([]
 	}
 
 	return identities, nil
-}
-
-func identitySubjects(identities []ory.Identity) []string {
-	subjects := make([]string, 0, len(identities))
-	for _, identity := range identities {
-		subjects = append(subjects, identity.Id)
-	}
-
-	return subjects
 }
 
 // profileFromOryIdentity reads the standardized E2B identity schema traits:
@@ -273,20 +263,7 @@ func oryLinkedProviders(identity ory.Identity) []string {
 		return nil
 	}
 
-	seen := make(map[string]struct{}, 4)
-	providers := make([]string, 0, 4)
-	add := func(p string) {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			return
-		}
-		if _, dup := seen[p]; dup {
-			return
-		}
-		seen[p] = struct{}{}
-		providers = append(providers, p)
-	}
-
+	candidates := make([]string, 0, 4)
 	if entries, ok := oidc.Config["providers"].([]any); ok {
 		for _, entry := range entries {
 			obj, ok := entry.(map[string]any)
@@ -294,23 +271,18 @@ func oryLinkedProviders(identity ory.Identity) []string {
 				continue
 			}
 			if name, ok := obj["provider"].(string); ok {
-				add(name)
+				candidates = append(candidates, name)
 			}
 		}
 	}
 
-	if len(providers) == 0 {
+	if len(candidates) == 0 {
 		for _, identifier := range oidc.Identifiers {
-			provider, _, found := strings.Cut(identifier, ":")
-			if found {
-				add(provider)
+			if provider, _, found := strings.Cut(identifier, ":"); found {
+				candidates = append(candidates, provider)
 			}
 		}
 	}
 
-	if len(providers) == 0 {
-		return nil
-	}
-
-	return providers
+	return uniqueNonEmpty(candidates)
 }

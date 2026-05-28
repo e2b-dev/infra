@@ -9,6 +9,7 @@ import (
 
 	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	supabasequeries "github.com/e2b-dev/infra/packages/db/pkg/supabase/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type supabaseProvider struct {
@@ -69,7 +70,7 @@ func profileFromAuthUser(user supabasequeries.AuthUser) Profile {
 		UserID:            user.ID,
 		Email:             user.Email,
 		Name:              displayNameFromMetadata(userMetadata),
-		ProfilePictureURL: FirstNonEmpty(metadataString(userMetadata, "picture"), metadataString(userMetadata, "avatar_url")),
+		ProfilePictureURL: utils.FirstNonEmpty(metadataString(userMetadata, "picture"), metadataString(userMetadata, "avatar_url")),
 		Providers:         supabaseLinkedProviders(appMetadata),
 	}
 }
@@ -82,46 +83,53 @@ func supabaseLinkedProviders(appMetadata map[string]any) []string {
 		return nil
 	}
 
-	seen := make(map[string]struct{}, 4)
-	providers := make([]string, 0, 4)
-	add := func(p string) {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			return
-		}
-		if _, dup := seen[p]; dup {
-			return
-		}
-		seen[p] = struct{}{}
-		providers = append(providers, p)
-	}
-
+	candidates := make([]string, 0, 4)
 	if list, ok := appMetadata["providers"].([]any); ok {
 		for _, entry := range list {
 			if name, ok := entry.(string); ok {
-				add(name)
+				candidates = append(candidates, name)
 			}
 		}
 	}
 	if name, ok := appMetadata["provider"].(string); ok {
-		add(name)
+		candidates = append(candidates, name)
 	}
 
-	if len(providers) == 0 {
+	return uniqueNonEmpty(candidates)
+}
+
+// uniqueNonEmpty returns the trimmed, non-empty values in first-seen order with
+// duplicates dropped, or nil when nothing remains.
+func uniqueNonEmpty(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	unique := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, dup := seen[value]; dup {
+			continue
+		}
+		seen[value] = struct{}{}
+		unique = append(unique, value)
+	}
+
+	if len(unique) == 0 {
 		return nil
 	}
 
-	return providers
+	return unique
 }
 
 func displayNameFromMetadata(metadata map[string]any) string {
-	firstName := FirstNonEmpty(
+	firstName := utils.FirstNonEmpty(
 		metadataString(metadata, "first_name"),
 		metadataString(metadata, "firstName"),
 		metadataString(metadata, "given_name"),
 		metadataString(metadata, "givenName"),
 	)
-	lastName := FirstNonEmpty(
+	lastName := utils.FirstNonEmpty(
 		metadataString(metadata, "last_name"),
 		metadataString(metadata, "lastName"),
 		metadataString(metadata, "family_name"),
@@ -131,7 +139,7 @@ func displayNameFromMetadata(metadata map[string]any) string {
 		return strings.TrimSpace(strings.Join([]string{firstName, lastName}, " "))
 	}
 
-	return FirstNonEmpty(
+	return utils.FirstNonEmpty(
 		metadataString(metadata, "name"),
 		metadataString(metadata, "full_name"),
 		metadataString(metadata, "fullName"),
@@ -162,16 +170,6 @@ func metadataString(metadata map[string]any, key string) string {
 	}
 
 	return strings.TrimSpace(value)
-}
-
-func FirstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-
-	return ""
 }
 
 func uniqueUUIDs(ids []uuid.UUID) []uuid.UUID {

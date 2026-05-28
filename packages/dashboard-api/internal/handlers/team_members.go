@@ -68,12 +68,10 @@ func (s *APIStore) GetTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 			member.Providers = []string{}
 		}
 		if profile.Name != "" {
-			name := profile.Name
-			member.Name = &name
+			member.Name = new(profile.Name)
 		}
 		if profile.ProfilePictureURL != "" {
-			url := profile.ProfilePictureURL
-			member.ProfilePictureUrl = &url
+			member.ProfilePictureUrl = new(profile.ProfilePictureURL)
 		}
 
 		if row.CreatedAt.Valid {

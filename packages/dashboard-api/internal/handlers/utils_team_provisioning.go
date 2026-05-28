@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -324,7 +325,7 @@ func validateTeamCreationAllowed(ctx context.Context, authTxDB *authqueries.Quer
 }
 
 func defaultTeamNameFromProfile(profile userprofile.Profile) string {
-	baseName := userprofile.FirstNonEmpty(
+	baseName := utils.FirstNonEmpty(
 		firstWord(profile.Name),
 		emailPrefix(profile.Email),
 		"User",
