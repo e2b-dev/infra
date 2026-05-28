@@ -520,12 +520,24 @@ components:
         - email
         - isDefault
         - createdAt
+        - providers
       properties:
         id:
           type: string
           format: uuid
         email:
           type: string
+        name:
+          type: string
+          nullable: true
+        profilePictureUrl:
+          type: string
+          format: uri
+          nullable: true
+        providers:
+          type: array
+          items:
+            type: string
         isDefault:
           type: boolean
         addedBy:

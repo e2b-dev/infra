@@ -13,7 +13,7 @@ func (s *APIStore) PostAdminUsersUserIdBootstrap(c *gin.Context, userId api.User
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "bootstrap user")
 
-	team, err := s.bootstrapUser(ctx, userId)
+	team, err := s.bootstrapSupabaseUser(ctx, userId)
 	if err != nil {
 		s.handleProvisioningError(ctx, c, "bootstrap user", err)
 
