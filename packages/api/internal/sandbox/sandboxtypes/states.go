@@ -64,6 +64,7 @@ func (r KillReason) String() string {
 	if r == "" {
 		return string(KillReasonUnknown)
 	}
+
 	return string(r)
 }
 
