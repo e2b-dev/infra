@@ -132,6 +132,51 @@ components:
         minimum: 1
         maximum: 100
         default: 50
+    templateID:
+      name: templateID
+      in: path
+      required: true
+      description: Identifier of the template.
+      schema:
+        type: string
+    tag:
+      name: tag
+      in: query
+      required: true
+      description: Template tag name to check.
+      schema:
+        type: string
+        minLength: 1
+    tag_assignment_limit:
+      name: assignmentLimit
+      in: query
+      required: false
+      description: Maximum number of ready assignment rows to return per tag.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 25
+        default: 6
+    tag_path:
+      name: tag
+      in: path
+      required: true
+      description: Template tag name.
+      schema:
+        type: string
+        minLength: 1
+    tag_assignments_limit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of assignment rows to return per page.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 50
     templates_cursor:
       name: cursor
       in: query
@@ -168,6 +213,13 @@ components:
             updated_at_desc,
           ]
         default: created_at_desc
+    tag_assignments_cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Cursor returned by the previous list response in `assigned_at|assignment_id` format.
+      schema:
+        type: string
 
   responses:
     "400":
@@ -863,6 +915,95 @@ components:
           nullable: true
           description: Cursor to pass to the next list request, or `null` if there is no next page.
 
+    TemplateTagAssignment:
+      type: object
+      required:
+        - assignmentId
+        - buildId
+        - assignedAt
+        - buildCreatedAt
+        - buildFinishedAt
+      properties:
+        assignmentId:
+          type: string
+          format: uuid
+          description: Identifier of the tag assignment event.
+        buildId:
+          type: string
+          format: uuid
+          description: Identifier of the assigned build.
+        assignedAt:
+          type: string
+          format: date-time
+          description: Time when the tag was assigned to the build.
+        buildCreatedAt:
+          type: string
+          format: date-time
+          description: Time when the assigned build was created.
+        buildFinishedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Time when the assigned build finished.
+
+    TemplateTagGroup:
+      type: object
+      required:
+        - tag
+        - assignments
+        - hasMore
+      properties:
+        tag:
+          type: string
+          description: Template tag name.
+        assignments:
+          type: array
+          description: Ready assignment events for this tag, sorted latest first.
+          items:
+            $ref: "#/components/schemas/TemplateTagAssignment"
+        hasMore:
+          type: boolean
+          description: Whether more ready assignment events exist beyond the requested assignment limit.
+
+    TemplateTagGroupsResponse:
+      type: object
+      required:
+        - tags
+      properties:
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/TemplateTagGroup"
+
+    TemplateTagExistsResponse:
+      type: object
+      required:
+        - exists
+        - normalizedTag
+      properties:
+        exists:
+          type: boolean
+          description: Whether the template tag has at least one ready assignment.
+        normalizedTag:
+          type: string
+          description: Normalized template tag name.
+
+    TemplateTagAssignmentsResponse:
+      type: object
+      required:
+        - data
+        - nextCursor
+      properties:
+        data:
+          type: array
+          description: Ready assignment events for the tag, sorted latest first.
+          items:
+            $ref: "#/components/schemas/TemplateTagAssignment"
+        nextCursor:
+          type: string
+          nullable: true
+          description: Cursor to pass to the next list request, or `null` if there is no next page.
+
     TeamResolveResponse:
       type: object
       required:
@@ -1385,5 +1526,100 @@ paths:
                 $ref: "#/components/schemas/DefaultTemplatesResponse"
         "401":
           $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/{templateID}/tags/groups:
+    get:
+      summary: List template tag groups
+      description: Returns ready template tag assignment groups with bounded per-tag history.
+      tags: [templates]
+      security:
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+        - $ref: "#/components/parameters/tag_assignment_limit"
+      responses:
+        "200":
+          description: Successfully returned template tag groups.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateTagGroupsResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/{templateID}/tags/exists:
+    get:
+      summary: Check ready template tag existence
+      description: Checks whether a template tag has at least one ready assignment.
+      tags: [templates]
+      security:
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+        - $ref: "#/components/parameters/tag"
+      responses:
+        "200":
+          description: Successfully checked template tag existence.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateTagExistsResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/{templateID}/tags/{tag}/assignments:
+    get:
+      summary: List ready assignments for a single template tag
+      description: Returns ready tag assignment events for a single tag, ordered newest first, with keyset cursor pagination.
+      tags: [templates]
+      security:
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+        - $ref: "#/components/parameters/tag_path"
+        - $ref: "#/components/parameters/tag_assignments_cursor"
+        - $ref: "#/components/parameters/tag_assignments_limit"
+      responses:
+        "200":
+          description: Successfully returned tag assignment page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateTagAssignmentsResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
