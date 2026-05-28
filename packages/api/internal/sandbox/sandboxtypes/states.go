@@ -46,10 +46,22 @@ var (
 	}
 )
 
+type KillReason string
+
+const (
+	KillReasonUnknown             KillReason = "unknown"
+	KillReasonRequest             KillReason = "request"
+	KillReasonTimeout             KillReason = "timeout"
+	KillReasonAdmin               KillReason = "admin"
+	KillReasonOrphaned            KillReason = "orphaned"
+	KillReasonBaseTemplateMissing KillReason = "base_template_missing"
+)
+
 // RemoveOpts bundles the parameters that control sandbox removal.
 type RemoveOpts struct {
 	Action   StateAction
 	Eviction bool
+	Reason   KillReason
 }
 
 var AllowedTransitions = map[State]map[State]bool{

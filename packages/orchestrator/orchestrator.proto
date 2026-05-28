@@ -117,6 +117,7 @@ message SandboxUpdateRequest {
 
 message SandboxDeleteRequest {
   string sandbox_id = 1;
+  optional string kill_reason = 2;
 }
 
 message SandboxPauseRequest {
