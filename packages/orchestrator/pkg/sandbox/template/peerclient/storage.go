@@ -264,11 +264,17 @@ var _ storage.RangeReader = (*peerStreamReader)(nil)
 
 // peerStreamReader wraps a gRPC streaming recv function as a storage.RangeReader.
 // cancel is called on Close to signal the server to terminate the stream.
+// bytes/read accumulate the source-read wall and byte count so Close can
+// return non-nil ReadStats — Chunker.runFetch otherwise records this fetch as
+// 0 bytes and skips orchestrator.read.read for peer-served reads.
 type peerStreamReader struct {
 	recv    func() ([]byte, error)
 	current *bytes.Reader
 	done    bool
 	cancel  context.CancelFunc
+
+	bytes int64
+	read  time.Duration
 }
 
 func newPeerStreamReader(recv func() ([]byte, error), cancel context.CancelFunc) *peerStreamReader {
@@ -279,6 +285,15 @@ func newPeerStreamReader(recv func() ([]byte, error), cancel context.CancelFunc)
 }
 
 func (r *peerStreamReader) Read(p []byte) (int, error) {
+	t0 := time.Now()
+	n, err := r.read1(p)
+	r.read += time.Since(t0)
+	r.bytes += int64(n)
+
+	return n, err
+}
+
+func (r *peerStreamReader) read1(p []byte) (int, error) {
 	for {
 		if r.current != nil && r.current.Len() > 0 {
 			return r.current.Read(p)
@@ -307,5 +322,9 @@ func (r *peerStreamReader) Read(p []byte) (int, error) {
 func (r *peerStreamReader) Close(context.Context) (*storage.ReadStats, error) {
 	r.cancel()
 
-	return nil, nil
+	return &storage.ReadStats{
+		CompressedBytes:   r.bytes,
+		UncompressedBytes: r.bytes,
+		Read:              r.read,
+	}, nil
 }
