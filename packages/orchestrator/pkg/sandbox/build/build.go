@@ -125,6 +125,7 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 			if len(cacheIDs) < cap(cacheIDs) {
 				cacheIDs = append(cacheIDs, mappedToBuild.BuildId)
 				cacheDiffs = append(cacheDiffs, mappedBuild)
+				hitIdx = len(cacheIDs) - 1
 			}
 		}
 
