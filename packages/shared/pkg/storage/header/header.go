@@ -102,15 +102,20 @@ func newDiffHeader(metadata *Metadata, mapping []BuildMap, sourceBuilds map[uuid
 	}
 
 	if sourceBuilds != nil {
-		referenced := make(map[uuid.UUID]struct{}, len(h.Mapping))
+		// Walk mappings directly and dedupe by build ID using a set sized to
+		// the (small) source-builds map. Previously this used a set sized to
+		// len(h.Mapping) to dedupe before the sourceBuilds lookup; on
+		// snapshot-heavy nodes its buckets dominated live heap (each in-flight
+		// ToDiffHeader kept one alive for the duration of the call).
+		seen := make(map[uuid.UUID]struct{}, len(sourceBuilds))
+		h.Builds = make(map[uuid.UUID]BuildData, len(sourceBuilds))
 		for _, m := range h.Mapping {
-			referenced[m.BuildId] = struct{}{}
-		}
-
-		h.Builds = make(map[uuid.UUID]BuildData, len(referenced))
-		for id := range referenced {
-			if bd, ok := sourceBuilds[id]; ok {
-				h.Builds[id] = bd
+			if _, ok := seen[m.BuildId]; ok {
+				continue
+			}
+			seen[m.BuildId] = struct{}{}
+			if bd, ok := sourceBuilds[m.BuildId]; ok {
+				h.Builds[m.BuildId] = bd
 			}
 		}
 	}
