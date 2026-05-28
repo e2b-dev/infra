@@ -113,8 +113,8 @@ func (_c *MockSeekable_OpenRangeReader_Call) Run(run func(ctx context.Context, o
 	return _c
 }
 
-func (_c *MockSeekable_OpenRangeReader_Call) Return(rangeReader RangeReader, s Source, err error) *MockSeekable_OpenRangeReader_Call {
-	_c.Call.Return(rangeReader, s, err)
+func (_c *MockSeekable_OpenRangeReader_Call) Return(rangeReader RangeReader, source Source, err error) *MockSeekable_OpenRangeReader_Call {
+	_c.Call.Return(rangeReader, source, err)
 	return _c
 }
 
