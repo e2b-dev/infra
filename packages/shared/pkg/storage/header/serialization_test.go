@@ -10,6 +10,71 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
+// fragmentedHeader builds a V4 header with n alternating-build mappings so its
+// uncompressed block is large and incompressible enough to exercise the cap.
+func fragmentedHeader(t *testing.T, n int) *Header {
+	t.Helper()
+	bs := uint64(4096)
+	a, b := uuid.New(), uuid.New()
+	mappings := make([]BuildMap, n)
+	var off, sa, sb uint64
+	for i := range mappings {
+		id, so := a, sa
+		if i%2 == 1 {
+			id, so = b, sb
+		}
+		mappings[i] = BuildMap{Offset: off, Length: bs, BuildId: id, BuildStorageOffset: so}
+		off += bs
+		if i%2 == 0 {
+			sa += bs
+		} else {
+			sb += bs
+		}
+	}
+	meta := &Metadata{Version: MetadataVersionV4, BlockSize: bs, Size: off, BuildId: a, BaseBuildId: b}
+	h, err := NewHeader(meta, mappings)
+	require.NoError(t, err)
+	h.Builds = map[uuid.UUID]BuildData{a: {Size: int64(sa)}, b: {Size: int64(sb)}}
+	return h
+}
+
+func TestStoreHeader_RejectsOversizeOnWrite(t *testing.T) {
+	// No t.Parallel: mutates the package-global cap, which parallel tests read.
+
+	orig := v4MaxUncompressedHeaderSize
+	v4MaxUncompressedHeaderSize = 1024
+	t.Cleanup(func() { v4MaxUncompressedHeaderSize = orig })
+
+	// The guard returns before the storage provider is used, so a nil provider
+	// is fine for the rejection path.
+	h := fragmentedHeader(t, 100)
+	_, _, _, err := StoreHeader(t.Context(), nil, "header", h)
+	require.ErrorContains(t, err, "exceeds cap")
+}
+
+func TestDeserialize_AboveOldCapRoundTrips(t *testing.T) {
+	// No t.Parallel: mutates the package-global cap, which parallel tests read.
+
+	// A header above a lowered cap is rejected on read; raising the cap lets it
+	// round-trip. Mirrors raising the production cap so already-uploaded large
+	// headers become resumable again.
+	orig := v4MaxUncompressedHeaderSize
+	v4MaxUncompressedHeaderSize = 4096
+	t.Cleanup(func() { v4MaxUncompressedHeaderSize = orig })
+
+	h := fragmentedHeader(t, 1000) // ~40 KiB uncompressed block, over the 4 KiB cap
+	data, err := SerializeHeader(h)
+	require.NoError(t, err)
+
+	_, err = DeserializeBytes(data)
+	require.ErrorContains(t, err, "exceeds cap")
+
+	v4MaxUncompressedHeaderSize = orig
+	got, err := DeserializeBytes(data)
+	require.NoError(t, err)
+	require.Len(t, got.Mapping, 1000)
+}
+
 func TestSerializeDeserialize_V3_RoundTrip(t *testing.T) {
 	t.Parallel()
 

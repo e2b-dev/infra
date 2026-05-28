@@ -21,7 +21,13 @@ const v4SizePrefixLen = 4
 // v4FlagsLen is the length of the V4 flags byte. Bit 0 = IncompletePendingUpload.
 const v4FlagsLen = 1
 
-const v4MaxUncompressedHeaderSize = 64 << 20
+// v4MaxUncompressedHeaderSize caps the uncompressed V4 header block as an
+// anti-decompression-bomb guard (decompressLZ4 keeps the actual overrun bound).
+// Raised from 64 MiB to 256 MiB: a page-granular memfile diff can legitimately
+// produce a header above 64 MiB, and the old cap rejected such headers only on
+// read, permanently stranding already-uploaded snapshots whose data files are
+// intact. A var (not const) so tests can lower it cheaply.
+var v4MaxUncompressedHeaderSize = 256 << 20
 
 // v4FlagIncomplete is bit 0 of the V4 flags byte: when set, the header
 // describes a build whose upload has not yet finalized (an in-flight diff).
@@ -134,7 +140,7 @@ func deserializeV4(metadata *Metadata, blockData []byte) (*Header, error) {
 
 	flags := blockData[0]
 	size := binary.LittleEndian.Uint32(blockData[v4FlagsLen:])
-	if size > v4MaxUncompressedHeaderSize {
+	if int(size) > v4MaxUncompressedHeaderSize {
 		return nil, fmt.Errorf("v4 header uncompressed size %d exceeds cap %d", size, v4MaxUncompressedHeaderSize)
 	}
 

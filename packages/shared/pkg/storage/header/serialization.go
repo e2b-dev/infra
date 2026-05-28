@@ -85,6 +85,15 @@ func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h 
 		if err != nil {
 			return storage.CompressConfig{}, 0, 0, fmt.Errorf("serialize header: %w", err)
 		}
+
+		// Guard the read-side cap on the write path. The cap is enforced in
+		// deserializeV4; without this symmetric check an oversize header would
+		// upload successfully and then fail every restore, permanently bricking
+		// the snapshot. Fail the Pause loudly instead.
+		if blockUncompressed > int64(v4MaxUncompressedHeaderSize) {
+			return storage.CompressConfig{}, 0, 0, fmt.Errorf("refusing to persist header for %s: uncompressed block %d exceeds cap %d", path, blockUncompressed, v4MaxUncompressedHeaderSize)
+		}
+
 		uncompressed = int64(metadataSize+v4FlagsLen+v4SizePrefixLen) + blockUncompressed
 		cfg.Type = storage.CompressionLZ4.String()
 	}
