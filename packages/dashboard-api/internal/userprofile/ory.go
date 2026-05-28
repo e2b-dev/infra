@@ -16,8 +16,11 @@ import (
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 )
 
-// matches the page cap used by dashboard.full-stack's oryAuthAdmin.
-const oryListPageSize = 1000
+// Ory's admin ListIdentities rejects an `ids` filter with more than 500 entries
+// (400 Bad Request) and does not paginate id-filtered results, so we look
+// identities up in batches of 500 and rely on a single request per batch.
+// https://www.ory.com/docs/kratos/reference/api (listIdentities, ids filter)
+const oryListIDsBatchSize = 500
 
 type oryProvider struct {
 	identities ory.IdentityAPI
@@ -177,12 +180,9 @@ func (p *oryProvider) subjectsForUserIDs(ctx context.Context, userIDs []uuid.UUI
 		return nil, fmt.Errorf("lookup ory subjects: %w", err)
 	}
 
-	userIDBySubject := make(map[string]uuid.UUID, len(rows))
-	for _, row := range rows {
-		userIDBySubject[row.OidcSub] = row.UserID
-	}
-
-	return userIDBySubject, nil
+	return userIDsBySubject(rows, func(r authqueries.GetUserIdentitiesByUserIDsRow) (string, uuid.UUID) {
+		return r.OidcSub, r.UserID
+	}), nil
 }
 
 func (p *oryProvider) userIDsForSubjects(ctx context.Context, subjects []string) (map[string]uuid.UUID, error) {
@@ -194,21 +194,32 @@ func (p *oryProvider) userIDsForSubjects(ctx context.Context, subjects []string)
 		return nil, fmt.Errorf("lookup user ids by ory subjects: %w", err)
 	}
 
-	userIDBySubject := make(map[string]uuid.UUID, len(rows))
+	return userIDsBySubject(rows, func(r authqueries.GetUserIdentitiesBySubjectsRow) (string, uuid.UUID) {
+		return r.OidcSub, r.UserID
+	}), nil
+}
+
+// userIDsBySubject indexes identity-resolver rows by their OIDC subject. The two
+// resolver queries return distinct generated row types, so sub extracts the
+// (oidc_sub, user_id) pair from each.
+func userIDsBySubject[Row any](rows []Row, sub func(Row) (string, uuid.UUID)) map[string]uuid.UUID {
+	bySubject := make(map[string]uuid.UUID, len(rows))
 	for _, row := range rows {
-		userIDBySubject[row.OidcSub] = row.UserID
+		oidcSub, userID := sub(row)
+		bySubject[oidcSub] = userID
 	}
 
-	return userIDBySubject, nil
+	return bySubject
 }
 
 func (p *oryProvider) listIdentitiesByIDs(ctx context.Context, ids []string) ([]ory.Identity, error) {
 	identities := make([]ory.Identity, 0, len(ids))
-	for page := range slices.Chunk(ids, oryListPageSize) {
+	// the ids filter is not paginated, so a single request per batch returns
+	// every matching identity in that batch.
+	for batchIDs := range slices.Chunk(ids, oryListIDsBatchSize) {
 		batch, resp, err := p.identities.ListIdentitiesExecute(
 			p.identities.ListIdentities(ctx).
-				Ids(page).
-				PageSize(int64(len(page))).
+				Ids(batchIDs).
 				IncludeCredential([]string{"oidc"}),
 		)
 		closeOryResponse(resp)
