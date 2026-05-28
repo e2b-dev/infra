@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -37,6 +38,21 @@ const (
 
 	buildCacheTTL           = time.Hour * 25
 	buildCacheDelayEviction = time.Second * 60
+
+	// evictionSweepInterval is how often the size-based sweeper runs.
+	evictionSweepInterval = time.Second * 30
+
+	// evictionGracePeriod protects templates accessed very recently from
+	// size-based eviction, covering the window between GetTemplate and a
+	// sandbox entering the running set (MarkRunning). Comfortably larger than
+	// sandbox start time.
+	evictionGracePeriod = time.Minute * 5
+
+	// approxBuildMapBytes is the per-entry cost used to estimate a cached
+	// header's retained mapping memory. The compact in-memory Mapping is
+	// ~14 bytes/entry; the estimate is intentionally coarse (it only needs to
+	// rank entries and compare against a budget).
+	approxBuildMapBytes = 14
 )
 
 var (
@@ -58,6 +74,24 @@ type Cache struct {
 	rootCachePath string
 	peers         peerclient.Resolver
 	extendMu      sync.Mutex
+
+	// activeBuildIDs reports the set of build IDs currently backing a running
+	// sandbox. Size-based eviction never closes a template in this set, since a
+	// running sandbox reads through its block devices. nil disables size-based
+	// eviction (the safe default until the server wires it in).
+	activeBuildIDs func() map[string]struct{}
+
+	// lastAccess records when each cached build ID was last handed out, used to
+	// shield just-accessed templates from eviction during sandbox startup
+	// (before they appear in activeBuildIDs).
+	lastAccess sync.Map // key string -> time.Time
+}
+
+// SetActiveBuildIDs installs the in-use predicate used by size-based eviction.
+// Must be called before Start. The function is consulted on every sweep and
+// must return the build IDs of all currently running sandboxes.
+func (c *Cache) SetActiveBuildIDs(fn func() map[string]struct{}) {
+	c.activeBuildIDs = fn
 }
 
 // NewCache initializes a template new cache.
@@ -118,6 +152,148 @@ func (c *Cache) Start(ctx context.Context) {
 	c.buildStore.Start(ctx)
 
 	go c.cache.Start()
+	go c.runEviction(ctx)
+}
+
+// runEviction periodically enforces the size-based memory budget, evicting
+// idle templates oldest-first. Each tick is a no-op while the budget flag is 0
+// or the in-use predicate has not been installed (the predicate may be set
+// after Start, so the check is per-tick rather than once up front).
+func (c *Cache) runEviction(ctx context.Context) {
+	ticker := time.NewTicker(evictionSweepInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			c.evictOverBudget(ctx)
+		}
+	}
+}
+
+// mappingFootprint estimates the retained header-mapping memory of a cached
+// template. Only storage-backed templates carry the long-lived merged headers
+// that drive cache memory; other kinds report 0. Headers not yet resolved
+// (fetch in flight) are skipped via the non-blocking SetOnce result.
+func mappingFootprint(t Template) int64 {
+	st, ok := t.(*storageTemplate)
+	if !ok {
+		return 0
+	}
+
+	var bytes int64
+	for _, h := range []*utils.SetOnce[*header.Header]{st.memfileHeader, st.rootfsHeader} {
+		if h == nil {
+			continue
+		}
+		if hdr, err := h.Result(); err == nil && hdr != nil {
+			bytes += int64(hdr.Mapping.Len()) * approxBuildMapBytes
+		}
+	}
+
+	return bytes
+}
+
+// evictOverBudget evicts idle templates (no running sandbox) oldest-first until
+// the estimated retained mapping memory is under the configured budget. A
+// running sandbox reads through its template's block devices, so in-use
+// templates are never evicted regardless of size or age.
+func (c *Cache) evictOverBudget(ctx context.Context) {
+	if c.activeBuildIDs == nil {
+		return
+	}
+
+	budgetMiB := c.flags.IntFlag(ctx, featureflags.TemplateCacheMaxMappingMiBFlag)
+	if budgetMiB <= 0 {
+		return
+	}
+	budget := int64(budgetMiB) << 20
+
+	items := c.cache.Items()
+
+	// Drop last-access entries for keys no longer cached (TTL-evicted elsewhere).
+	c.lastAccess.Range(func(k, _ any) bool {
+		if _, ok := items[k.(string)]; !ok {
+			c.lastAccess.Delete(k)
+		}
+
+		return true
+	})
+
+	entries := make([]evictionEntry, 0, len(items))
+	var total int64
+	for key, item := range items {
+		fp := mappingFootprint(item.Value())
+		total += fp
+
+		var lastAccess time.Time
+		if ts, ok := c.lastAccess.Load(key); ok {
+			lastAccess = ts.(time.Time)
+		}
+
+		entries = append(entries, evictionEntry{
+			key:        key,
+			footprint:  fp,
+			expiresAt:  item.ExpiresAt(),
+			lastAccess: lastAccess,
+		})
+	}
+	if total <= budget {
+		return
+	}
+
+	victims := selectEvictions(entries, c.activeBuildIDs(), time.Now(), budget, total)
+	for _, v := range victims {
+		c.cache.Delete(v) // triggers OnEviction: peer purge + template Close
+		c.lastAccess.Delete(v)
+		logger.L().Info(ctx, "evicted idle template over memory budget",
+			zap.String("build_id", v),
+			zap.Int64("budget_bytes", budget),
+		)
+	}
+}
+
+type evictionEntry struct {
+	key        string
+	footprint  int64
+	expiresAt  time.Time
+	lastAccess time.Time
+}
+
+// selectEvictions returns the build IDs to evict, oldest-first, until the
+// running total drops to budget. An entry is eligible only when it is not in
+// the active set (no running sandbox reads it) and was last accessed before the
+// grace window (shielding sandboxes still starting up). Pure function: no I/O,
+// so the in-use/grace correctness rules are unit-testable.
+func selectEvictions(entries []evictionEntry, active map[string]struct{}, now time.Time, budget, total int64) []string {
+	eligible := make([]evictionEntry, 0, len(entries))
+	for _, e := range entries {
+		if _, inUse := active[e.key]; inUse {
+			continue
+		}
+		if e.lastAccess.IsZero() || now.Sub(e.lastAccess) <= evictionGracePeriod {
+			continue
+		}
+		eligible = append(eligible, e)
+	}
+
+	// Oldest-first: smallest TTL = least-recently set or extended.
+	slices.SortFunc(eligible, func(a, b evictionEntry) int {
+		return a.expiresAt.Compare(b.expiresAt)
+	})
+
+	var victims []string
+	for _, e := range eligible {
+		if total <= budget {
+			break
+		}
+		victims = append(victims, e.key)
+		total -= e.footprint
+	}
+
+	return victims
 }
 
 func (c *Cache) Stop() {
@@ -263,6 +439,8 @@ func (c *Cache) GetCachedTemplate(buildID string) (Template, bool) {
 		return nil, false
 	}
 
+	c.lastAccess.Store(buildID, time.Now())
+
 	return item.Value(), true
 }
 
@@ -336,6 +514,8 @@ func (c *Cache) getTemplateWithFetch(ctx context.Context, tmpl *storageTemplate,
 		c.cache.Set(key, t.Value(), ttl)
 	}
 	c.extendMu.Unlock()
+
+	c.lastAccess.Store(key, time.Now())
 
 	if !found {
 		missesMetric.Add(ctx, 1)

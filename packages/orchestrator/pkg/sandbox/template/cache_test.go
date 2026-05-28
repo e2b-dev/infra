@@ -128,3 +128,65 @@ func TestWithoutExtend_EntryEvictedEarly(t *testing.T) {
 	item := c.cache.Get(key)
 	assert.Nil(t, item, "without TTL extension, the entry should be evicted after the default TTL")
 }
+
+func TestSelectEvictions(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	stale := now.Add(-time.Hour)   // outside grace window
+	fresh := now.Add(-time.Second) // inside grace window
+	mib := int64(1) << 20
+
+	entry := func(key string, fpMiB int64, exp, last time.Time) evictionEntry {
+		return evictionEntry{key: key, footprint: fpMiB * mib, expiresAt: exp, lastAccess: last}
+	}
+
+	t.Run("under budget evicts nothing", func(t *testing.T) {
+		t.Parallel()
+		entries := []evictionEntry{entry("a", 5, now.Add(time.Hour), stale)}
+		got := selectEvictions(entries, nil, now, 10*mib, 5*mib)
+		assert.Empty(t, got)
+	})
+
+	t.Run("evicts oldest-first until under budget", func(t *testing.T) {
+		t.Parallel()
+		entries := []evictionEntry{
+			entry("new", 10, now.Add(3*time.Hour), stale),
+			entry("old", 10, now.Add(time.Hour), stale),
+			entry("mid", 10, now.Add(2*time.Hour), stale),
+		}
+		// total 30 MiB, budget 15 MiB -> must free >=15, evicting 2 oldest.
+		got := selectEvictions(entries, nil, now, 15*mib, 30*mib)
+		assert.Equal(t, []string{"old", "mid"}, got)
+	})
+
+	t.Run("never evicts in-use templates", func(t *testing.T) {
+		t.Parallel()
+		entries := []evictionEntry{
+			entry("running", 100, now.Add(time.Hour), stale),
+			entry("idle", 10, now.Add(2*time.Hour), stale),
+		}
+		active := map[string]struct{}{"running": {}}
+		got := selectEvictions(entries, active, now, 5*mib, 110*mib)
+		// running is skipped even though it is the largest and oldest; only idle
+		// is eligible (and still over budget, but nothing else can be freed).
+		assert.Equal(t, []string{"idle"}, got)
+	})
+
+	t.Run("never evicts within grace window", func(t *testing.T) {
+		t.Parallel()
+		entries := []evictionEntry{
+			entry("starting", 100, now.Add(time.Hour), fresh),
+			entry("idle", 10, now.Add(2*time.Hour), stale),
+		}
+		got := selectEvictions(entries, nil, now, 5*mib, 110*mib)
+		assert.Equal(t, []string{"idle"}, got)
+	})
+
+	t.Run("never evicts entries with no recorded access", func(t *testing.T) {
+		t.Parallel()
+		entries := []evictionEntry{entry("unknown", 100, now.Add(time.Hour), time.Time{})}
+		got := selectEvictions(entries, nil, now, 5*mib, 100*mib)
+		assert.Empty(t, got)
+	})
+}

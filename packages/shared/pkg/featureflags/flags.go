@@ -208,6 +208,12 @@ var (
 	HostStatsSamplingInterval     = NewIntFlag("host-stats-sampling-interval", 5000)         // Host stats sampling interval in milliseconds (default 5s)
 	MaxCacheWriterConcurrencyFlag = NewIntFlag("max-cache-writer-concurrency", 10)
 
+	// TemplateCacheMaxMappingMiBFlag bounds the estimated retained header-mapping
+	// memory (in MiB) held by the template cache. When the total exceeds this,
+	// idle templates (no running sandbox) are evicted oldest-first, independent
+	// of the 25h TTL. 0 disables size-based eviction (TTL-only, current behavior).
+	TemplateCacheMaxMappingMiBFlag = NewIntFlag("template-cache-max-mapping-mib", 0)
+
 	// BuildCacheMaxUsagePercentage the maximum percentage of the cache disk storage
 	// that can be used before the cache starts evicting items.
 	BuildCacheMaxUsagePercentage = NewIntFlag("build-cache-max-usage-percentage", 85)
