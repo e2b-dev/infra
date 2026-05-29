@@ -53,7 +53,7 @@ type v4SerializableBuildInfo struct {
 // serializeV4 writes [Metadata] [uint8 flags] [uint32 LZ4 size] [LZ4( Builds[] + Mappings[] )].
 // Frame tables are sparse-trimmed to only frames referenced by mappings.
 // Also returns the uncompressed inner-block size (LZ4 input length).
-func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings []BuildMap, incomplete bool) ([]byte, int64, error) {
+func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings Mapping, incomplete bool) ([]byte, int64, error) {
 	var metaBuf bytes.Buffer
 	if err := binary.Write(&metaBuf, binary.LittleEndian, metadata); err != nil {
 		return nil, 0, fmt.Errorf("failed to write metadata: %w", err)
@@ -94,11 +94,11 @@ func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings []
 		}
 	}
 
-	if err := binary.Write(&block, binary.LittleEndian, uint32(len(mappings))); err != nil {
+	if err := binary.Write(&block, binary.LittleEndian, uint32(mappings.Len())); err != nil {
 		return nil, 0, fmt.Errorf("failed to write mappings count: %w", err)
 	}
 
-	for _, mapping := range mappings {
+	for _, mapping := range mappings.All() {
 		v4 := &v4SerializableBuildMap{
 			Offset:             mapping.Offset,
 			Length:             mapping.Length,
@@ -246,9 +246,9 @@ func compressLZ4(data []byte) ([]byte, error) {
 
 // extractRelevantRanges groups mappings into per-build U-space [start, end) ranges
 // for sparse frame table trimming during serialization.
-func extractRelevantRanges(mappings []BuildMap) map[uuid.UUID][]storage.Range {
+func extractRelevantRanges(mappings Mapping) map[uuid.UUID][]storage.Range {
 	ranges := make(map[uuid.UUID][]storage.Range)
-	for _, m := range mappings {
+	for _, m := range mappings.All() {
 		ranges[m.BuildId] = append(ranges[m.BuildId], storage.Range{
 			Offset: int64(m.BuildStorageOffset),
 			Length: int(m.Length),
