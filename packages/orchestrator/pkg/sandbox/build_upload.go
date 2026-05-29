@@ -51,6 +51,9 @@ func NewUpload(
 		return nil, fmt.Errorf("resolve rootfs compress config: %w", err)
 	}
 
+	if useCase != "" {
+		ctx = featureflags.AddToContext(ctx, featureflags.CompressUseCaseContext(useCase))
+	}
 	headerVersion := uint64(headers.MetadataVersionV4)
 	if ff != nil {
 		ctx = featureflags.AddToContext(ctx, featureflags.CompressUseCaseContext(useCase))

@@ -84,6 +84,23 @@ func TestV5_RoundTrip(t *testing.T) {
 	require.Equal(t, storage.CompressionZstd, fd.CompressionType())
 }
 
+func TestV5_RoundTripNonAlignedSize(t *testing.T) {
+	t.Parallel()
+
+	bs := uint64(4096)
+	id := uuid.New()
+	metadata := &Metadata{BlockSize: bs, Size: bs + 1, BuildId: id, BaseBuildId: id}
+
+	h := v5Header(t, metadata, nil, nil)
+	data, err := SerializeHeader(h)
+	require.NoError(t, err)
+
+	got, err := DeserializeBytes(data)
+	require.NoError(t, err)
+	require.Equal(t, metadata.Size, got.Metadata.Size)
+	require.Equal(t, uint64(2*bs), got.Mapping.At(0).Length)
+}
+
 // TestV5_MatchesV4Semantics serializes the same logical header as V4 and V5
 // and asserts both deserialize to the same mappings and Builds.
 func TestV5_MatchesV4Semantics(t *testing.T) {

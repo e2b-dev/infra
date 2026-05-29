@@ -182,10 +182,10 @@ func deserializeV5(metadata *Metadata, blockData []byte) (*Header, error) {
 // readV5MappingSection reads the columnar mapping written by
 // writeV5MappingSection and reconstructs the compact Mapping directly.
 func readV5MappingSection(reader *bytes.Reader, blockSize, size uint64) (Mapping, error) {
-	if size%blockSize != 0 {
-		return Mapping{}, fmt.Errorf("mapping size %d is not block-aligned to %d", size, blockSize)
-	}
 	sizeBlocks := size / blockSize
+	if size%blockSize != 0 {
+		sizeBlocks++
+	}
 	if sizeBlocks > maxBlockIdx {
 		return Mapping{}, fmt.Errorf("mapping size block %d exceeds uint32", sizeBlocks)
 	}
@@ -196,6 +196,9 @@ func readV5MappingSection(reader *bytes.Reader, blockSize, size uint64) (Mapping
 	}
 	if m > maxBuildsPerHeader {
 		return Mapping{}, fmt.Errorf("mapping build count %d exceeds maximum %d", m, maxBuildsPerHeader)
+	}
+	if uint64(m) > uint64(reader.Len())/16 {
+		return Mapping{}, fmt.Errorf("mapping build count %d exceeds remaining %d bytes", m, reader.Len())
 	}
 
 	builds := make([]uuid.UUID, m)
@@ -219,9 +222,15 @@ func readV5MappingSection(reader *bytes.Reader, blockSize, size uint64) (Mapping
 		return newMappingFromColumns(blockSize, builds,
 			[]uint32{0}, []uint32{uint32(sizeBlocks)}, []uint32{0}, []uint16{nilBuildIdx})
 	}
-	// Each entry needs at least one byte in each of the four columns. Bound the
-	// allocation against a crafted count before allocating the column slices.
-	if uint64(n) > uint64(reader.Len())/4 {
+	// Each entry needs at least one byte in each of the four encoded columns,
+	// plus four reconstructed columns below. Bound the crafted count against
+	// the remaining data and a conservative entry cap before allocating them.
+	maxEntriesByBytes := uint64(reader.Len()) / 4
+	maxEntriesByMemory := uint64(v4MaxUncompressedHeaderSize) / 32
+	if maxEntriesByBytes > maxEntriesByMemory {
+		maxEntriesByBytes = maxEntriesByMemory
+	}
+	if uint64(n) > maxEntriesByBytes {
 		return Mapping{}, fmt.Errorf("mapping count %d exceeds remaining %d bytes", n, reader.Len())
 	}
 
