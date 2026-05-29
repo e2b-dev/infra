@@ -21,9 +21,11 @@ import (
 )
 
 const (
-	AdminTokenAuthScopes     adminTokenAuthContextKey     = "AdminTokenAuth.Scopes"
-	Supabase1TokenAuthScopes supabase1TokenAuthContextKey = "Supabase1TokenAuth.Scopes"
-	Supabase2TeamAuthScopes  supabase2TeamAuthContextKey  = "Supabase2TeamAuth.Scopes"
+	AdminTokenAuthScopes         adminTokenAuthContextKey         = "AdminTokenAuth.Scopes"
+	AuthProviderBearerAuthScopes authProviderBearerAuthContextKey = "AuthProviderBearerAuth.Scopes"
+	AuthProviderTeamAuthScopes   authProviderTeamAuthContextKey   = "AuthProviderTeamAuth.Scopes"
+	Supabase1TokenAuthScopes     supabase1TokenAuthContextKey     = "Supabase1TokenAuth.Scopes"
+	Supabase2TeamAuthScopes      supabase2TeamAuthContextKey      = "Supabase2TeamAuth.Scopes"
 )
 
 // Defines values for BuildStatus.
@@ -50,6 +52,39 @@ func (e BuildStatus) Valid() bool {
 // AddTeamMemberRequest defines model for AddTeamMemberRequest.
 type AddTeamMemberRequest struct {
 	Email openapi_types.Email `json:"email"`
+}
+
+// AdminAuthProviderProfile defines model for AdminAuthProviderProfile.
+type AdminAuthProviderProfile struct {
+	// Email Email address from the configured auth provider.
+	Email *string `json:"email"`
+
+	// UserId Internal E2B user identifier.
+	UserId openapi_types.UUID `json:"userId"`
+}
+
+// AdminAuthProviderProfilesLookupEmailRequest defines model for AdminAuthProviderProfilesLookupEmailRequest.
+type AdminAuthProviderProfilesLookupEmailRequest struct {
+	Email openapi_types.Email `json:"email"`
+}
+
+// AdminAuthProviderProfilesResolveRequest defines model for AdminAuthProviderProfilesResolveRequest.
+type AdminAuthProviderProfilesResolveRequest struct {
+	UserIds []openapi_types.UUID `json:"userIds"`
+}
+
+// AdminAuthProviderProfilesResponse defines model for AdminAuthProviderProfilesResponse.
+type AdminAuthProviderProfilesResponse struct {
+	Profiles []AdminAuthProviderProfile `json:"profiles"`
+}
+
+// AdminTeamBootstrapRequest defines model for AdminTeamBootstrapRequest.
+type AdminTeamBootstrapRequest struct {
+	// Email Billing/contact email for the team.
+	Email openapi_types.Email `json:"email"`
+
+	// Name Team name.
+	Name string `json:"name"`
 }
 
 // BuildInfo defines model for BuildInfo.
@@ -320,8 +355,17 @@ type N404 = Error
 // N500 defines model for 500.
 type N500 = Error
 
+// N502 defines model for 502.
+type N502 = Error
+
 // adminTokenAuthContextKey is the context key for AdminTokenAuth security scheme
 type adminTokenAuthContextKey string
+
+// authProviderBearerAuthContextKey is the context key for AuthProviderBearerAuth security scheme
+type authProviderBearerAuthContextKey string
+
+// authProviderTeamAuthContextKey is the context key for AuthProviderTeamAuth security scheme
+type authProviderTeamAuthContextKey string
 
 // supabase1TokenAuthContextKey is the context key for Supabase1TokenAuth security scheme
 type supabase1TokenAuthContextKey string
@@ -356,6 +400,15 @@ type GetTeamsResolveParams struct {
 	Slug TeamSlug `form:"slug" json:"slug"`
 }
 
+// PostAdminTeamsBootstrapJSONRequestBody defines body for PostAdminTeamsBootstrap for application/json ContentType.
+type PostAdminTeamsBootstrapJSONRequestBody = AdminTeamBootstrapRequest
+
+// PostAdminUserProfilesByEmailJSONRequestBody defines body for PostAdminUserProfilesByEmail for application/json ContentType.
+type PostAdminUserProfilesByEmailJSONRequestBody = AdminAuthProviderProfilesLookupEmailRequest
+
+// PostAdminUserProfilesResolveJSONRequestBody defines body for PostAdminUserProfilesResolve for application/json ContentType.
+type PostAdminUserProfilesResolveJSONRequestBody = AdminAuthProviderProfilesResolveRequest
+
 // PostTeamsJSONRequestBody defines body for PostTeams for application/json ContentType.
 type PostTeamsJSONRequestBody = CreateTeamRequest
 
@@ -367,6 +420,18 @@ type PostTeamsTeamIDMembersJSONRequestBody = AddTeamMemberRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Bootstrap team
+	// (POST /admin/teams/bootstrap)
+	PostAdminTeamsBootstrap(c *gin.Context)
+	// Lookup user profiles by email
+	// (POST /admin/user-profiles/by-email)
+	PostAdminUserProfilesByEmail(c *gin.Context)
+	// Resolve user profiles
+	// (POST /admin/user-profiles/resolve)
+	PostAdminUserProfilesResolve(c *gin.Context)
+	// Get user profile
+	// (GET /admin/user-profiles/{userId})
+	GetAdminUserProfilesUserId(c *gin.Context, userId UserId)
 	// Bootstrap user
 	// (POST /admin/users/{userId}/bootstrap)
 	PostAdminUsersUserIdBootstrap(c *gin.Context, userId UserId)
@@ -420,6 +485,78 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(c *gin.Context)
 
+// PostAdminTeamsBootstrap operation middleware
+func (siw *ServerInterfaceWrapper) PostAdminTeamsBootstrap(c *gin.Context) {
+
+	c.Set(string(AdminTokenAuthScopes), []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostAdminTeamsBootstrap(c)
+}
+
+// PostAdminUserProfilesByEmail operation middleware
+func (siw *ServerInterfaceWrapper) PostAdminUserProfilesByEmail(c *gin.Context) {
+
+	c.Set(string(AdminTokenAuthScopes), []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostAdminUserProfilesByEmail(c)
+}
+
+// PostAdminUserProfilesResolve operation middleware
+func (siw *ServerInterfaceWrapper) PostAdminUserProfilesResolve(c *gin.Context) {
+
+	c.Set(string(AdminTokenAuthScopes), []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PostAdminUserProfilesResolve(c)
+}
+
+// GetAdminUserProfilesUserId operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminUserProfilesUserId(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "userId" -------------
+	var userId UserId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", c.Param("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter userId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(string(AdminTokenAuthScopes), []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetAdminUserProfilesUserId(c, userId)
+}
+
 // PostAdminUsersUserIdBootstrap operation middleware
 func (siw *ServerInterfaceWrapper) PostAdminUsersUserIdBootstrap(c *gin.Context) {
 
@@ -456,6 +593,10 @@ func (siw *ServerInterfaceWrapper) GetBuilds(c *gin.Context) {
 	c.Set(string(Supabase1TokenAuthScopes), []string{})
 
 	c.Set(string(Supabase2TeamAuthScopes), []string{})
+
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
+
+	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetBuildsParams
@@ -512,6 +653,10 @@ func (siw *ServerInterfaceWrapper) GetBuildsStatuses(c *gin.Context) {
 
 	c.Set(string(Supabase2TeamAuthScopes), []string{})
 
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
+
+	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetBuildsStatusesParams
 
@@ -551,6 +696,10 @@ func (siw *ServerInterfaceWrapper) GetBuildsBuildId(c *gin.Context) {
 	c.Set(string(Supabase1TokenAuthScopes), []string{})
 
 	c.Set(string(Supabase2TeamAuthScopes), []string{})
+
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
+
+	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -594,6 +743,10 @@ func (siw *ServerInterfaceWrapper) GetSandboxesSandboxIDRecord(c *gin.Context) {
 
 	c.Set(string(Supabase2TeamAuthScopes), []string{})
 
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
+
+	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -609,6 +762,8 @@ func (siw *ServerInterfaceWrapper) GetTeams(c *gin.Context) {
 
 	c.Set(string(Supabase1TokenAuthScopes), []string{})
 
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -623,6 +778,8 @@ func (siw *ServerInterfaceWrapper) GetTeams(c *gin.Context) {
 func (siw *ServerInterfaceWrapper) PostTeams(c *gin.Context) {
 
 	c.Set(string(Supabase1TokenAuthScopes), []string{})
+
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -641,6 +798,8 @@ func (siw *ServerInterfaceWrapper) GetTeamsResolve(c *gin.Context) {
 	_ = err
 
 	c.Set(string(Supabase1TokenAuthScopes), []string{})
+
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTeamsResolveParams
@@ -682,6 +841,10 @@ func (siw *ServerInterfaceWrapper) PatchTeamsTeamID(c *gin.Context) {
 
 	c.Set(string(Supabase2TeamAuthScopes), []string{})
 
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
+
+	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -711,6 +874,10 @@ func (siw *ServerInterfaceWrapper) GetTeamsTeamIDMembers(c *gin.Context) {
 
 	c.Set(string(Supabase2TeamAuthScopes), []string{})
 
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
+
+	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -739,6 +906,10 @@ func (siw *ServerInterfaceWrapper) PostTeamsTeamIDMembers(c *gin.Context) {
 	c.Set(string(Supabase1TokenAuthScopes), []string{})
 
 	c.Set(string(Supabase2TeamAuthScopes), []string{})
+
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
+
+	c.Set(string(AuthProviderTeamAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -778,6 +949,10 @@ func (siw *ServerInterfaceWrapper) DeleteTeamsTeamIDMembersUserId(c *gin.Context
 
 	c.Set(string(Supabase2TeamAuthScopes), []string{})
 
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
+
+	c.Set(string(AuthProviderTeamAuthScopes), []string{})
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -792,6 +967,8 @@ func (siw *ServerInterfaceWrapper) DeleteTeamsTeamIDMembersUserId(c *gin.Context
 func (siw *ServerInterfaceWrapper) GetTemplatesDefaults(c *gin.Context) {
 
 	c.Set(string(Supabase1TokenAuthScopes), []string{})
+
+	c.Set(string(AuthProviderBearerAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -830,6 +1007,10 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 		ErrorHandler:       errorHandler,
 	}
 
+	router.POST(options.BaseURL+"/admin/teams/bootstrap", wrapper.PostAdminTeamsBootstrap)
+	router.POST(options.BaseURL+"/admin/user-profiles/by-email", wrapper.PostAdminUserProfilesByEmail)
+	router.POST(options.BaseURL+"/admin/user-profiles/resolve", wrapper.PostAdminUserProfilesResolve)
+	router.GET(options.BaseURL+"/admin/user-profiles/:userId", wrapper.GetAdminUserProfilesUserId)
 	router.POST(options.BaseURL+"/admin/users/:userId/bootstrap", wrapper.PostAdminUsersUserIdBootstrap)
 	router.GET(options.BaseURL+"/builds", wrapper.GetBuilds)
 	router.GET(options.BaseURL+"/builds/statuses", wrapper.GetBuildsStatuses)
@@ -851,55 +1032,63 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

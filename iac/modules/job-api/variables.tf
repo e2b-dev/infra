@@ -67,9 +67,25 @@ variable "postgres_read_replica_connection_string" {
   sensitive = true
 }
 
-variable "supabase_jwt_secrets" {
-  type      = string
+variable "auth_provider_config" {
+  type = object({
+    jwt = optional(list(object({
+      issuer = object({
+        url                 = string
+        discoveryURL        = optional(string)
+        audiences           = list(string)
+        audienceMatchPolicy = optional(string)
+      })
+      cacheDuration = optional(string)
+    })))
+    legacy = optional(object({
+      hmac = object({
+        secrets = list(string)
+      })
+    }))
+  })
   sensitive = true
+  default   = null
 }
 
 variable "posthog_api_key" {
@@ -102,11 +118,6 @@ variable "admin_token" {
 variable "sandbox_access_token_hash_seed" {
   type      = string
   sensitive = true
-}
-
-variable "sandbox_storage_backend" {
-  type    = string
-  default = "memory"
 }
 
 variable "redis_url" {

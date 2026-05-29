@@ -40,9 +40,7 @@ tf_vars := \
 	$(call tfvar, GCP_ZONE) \
 	$(call tfvar, DOMAIN_NAME) \
 	$(call tfvar, PREFIX) \
-	$(call tfvar, SANDBOX_STORAGE_BACKEND) \
 	$(call tfvar, ORCHESTRATOR_ENABLED) \
-	$(call tfvar, ALLOW_SANDBOX_INTERNET) \
 	$(call tfvar, API_INTERNAL_GRPC_PORT) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNAL_CIDRS) \
 	$(call tfvar, API_SERVER_COUNT) \
@@ -88,8 +86,6 @@ tf_vars := \
 	$(call tfvar, LOKI_BOOT_DISK_TYPE) \
 	$(call tfvar, LOKI_USE_V13_SCHEMA_FROM) \
 	$(call tfvar, DASHBOARD_API_COUNT) \
-	$(call tfvar, ENABLE_AUTH_USER_SYNC_BACKGROUND_WORKER) \
-	$(call tfvar, ENABLE_BILLING_HTTP_TEAM_PROVISION_SINK) \
 	$(call tfvar, DEFAULT_PERSISTENT_VOLUME_TYPE) \
 	$(call tfvar, PERSISTENT_VOLUME_TYPES) \
 	$(call tfvar, DB_MAX_OPEN_CONNECTIONS) \

@@ -14,6 +14,7 @@ const ObjectMetadataTeamID = "team_id"
 type PutOptions struct {
 	Metadata    ObjectMetadata
 	Compression any
+	Checksum    bool
 }
 
 type PutOption func(*PutOptions)

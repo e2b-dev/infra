@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
@@ -27,11 +28,12 @@ type APIStore struct {
 	authDB            *authdb.Client
 	supabaseDB        *supabasedb.Client
 	clickhouse        clickhouse.Clickhouse
-	authService       *sharedauth.AuthService[*types.Team]
+	authService       sharedauth.Service
 	teamProvisionSink internalteamprovision.TeamProvisionSink
+	userProfiles      userprofile.Provider
 }
 
-func NewAPIStore(config cfg.Config, db *sqlcdb.Client, authDB *authdb.Client, supabaseDB *supabasedb.Client, ch clickhouse.Clickhouse, authService *sharedauth.AuthService[*types.Team], teamProvisionSink internalteamprovision.TeamProvisionSink) *APIStore {
+func NewAPIStore(config cfg.Config, db *sqlcdb.Client, authDB *authdb.Client, supabaseDB *supabasedb.Client, ch clickhouse.Clickhouse, authService sharedauth.Service, teamProvisionSink internalteamprovision.TeamProvisionSink) *APIStore {
 	return &APIStore{
 		config:            config,
 		db:                db,
@@ -40,6 +42,7 @@ func NewAPIStore(config cfg.Config, db *sqlcdb.Client, authDB *authdb.Client, su
 		clickhouse:        ch,
 		authService:       authService,
 		teamProvisionSink: teamProvisionSink,
+		userProfiles:      userprofile.NewSupabaseProvider(supabaseDB),
 	}
 }
 
@@ -53,8 +56,8 @@ func (s *APIStore) GetHealth(c *gin.Context) {
 	})
 }
 
-func (s *APIStore) GetUserIDFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, supabaseToken string) (uuid.UUID, *sharedauth.APIError) {
-	return s.authService.ValidateSupabaseToken(ctx, ginCtx, supabaseToken)
+func (s *APIStore) GetUserIDFromAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *sharedauth.APIError) {
+	return s.authService.ValidateAuthProviderToken(ctx, ginCtx, token)
 }
 
 func (s *APIStore) GetTeamFromSupabaseToken(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *sharedauth.APIError) {

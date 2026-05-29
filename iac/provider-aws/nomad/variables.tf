@@ -42,7 +42,13 @@ variable "api_cluster_size" {
 
 # Ingress
 variable "ingress_port" {
-  type = number
+  type        = number
+  description = "External traffic port number"
+}
+
+variable "ingress_internal_port" {
+  type        = number
+  description = "Internal traffic port number"
 }
 
 variable "ingress_count" {
@@ -188,9 +194,25 @@ variable "postgres_connection_string" {
   sensitive = true
 }
 
-variable "supabase_jwt_secrets" {
-  type      = string
+variable "auth_provider_config" {
+  type = object({
+    jwt = optional(list(object({
+      issuer = object({
+        url                 = string
+        discoveryURL        = optional(string)
+        audiences           = list(string)
+        audienceMatchPolicy = optional(string)
+      })
+      cacheDuration = optional(string)
+    })))
+    legacy = optional(object({
+      hmac = object({
+        secrets = list(string)
+      })
+    }))
+  })
   sensitive = true
+  default   = null
 }
 
 variable "admin_token" {
@@ -216,11 +238,6 @@ variable "orchestrator_port" {
 variable "orchestrator_proxy_port" {
   type    = number
   default = 5007
-}
-
-variable "allow_sandbox_internet" {
-  type    = bool
-  default = true
 }
 
 variable "allow_sandbox_internal_cidrs" {

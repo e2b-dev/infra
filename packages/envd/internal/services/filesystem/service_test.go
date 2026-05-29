@@ -8,7 +8,7 @@ import (
 func mockService() Service {
 	return Service{
 		defaults: &execcontext.Defaults{
-			EnvVars: utils.NewMap[string, string](),
+			EnvVars: utils.NewEnvVars(),
 		},
 	}
 }

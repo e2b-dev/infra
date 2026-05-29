@@ -16,6 +16,7 @@ CREATE TABLE auth.users (
     email text NOT NULL,
     created_at timestamptz DEFAULT now(),
     raw_app_meta_data jsonb,
+    raw_user_meta_data jsonb,
     PRIMARY KEY (id)
 );
 

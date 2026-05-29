@@ -75,8 +75,10 @@ module "redis" {
 module "ingress" {
   source = "../../modules/job-ingress"
 
-  ingress_count        = var.ingress_count
-  ingress_proxy_port   = var.ingress_port
+  ingress_count         = var.ingress_count
+  ingress_port          = var.ingress_port
+  ingress_internal_port = var.ingress_internal_port
+
   traefik_config_files = var.traefik_config_files
 
   node_pool     = var.api_node_pool
@@ -129,7 +131,7 @@ module "api" {
   environment                    = var.environment
   api_docker_image               = data.aws_ecr_image.api.image_uri
   postgres_connection_string     = var.postgres_connection_string
-  supabase_jwt_secrets           = var.supabase_jwt_secrets
+  auth_provider_config           = var.auth_provider_config
   nomad_acl_token                = var.nomad_acl_token
   admin_token                    = var.admin_token
   redis_url                      = var.redis_url
@@ -184,7 +186,6 @@ module "orchestrator" {
   otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
   envd_timeout                 = var.envd_timeout
   template_bucket_name         = var.template_bucket_name
-  allow_sandbox_internet       = var.allow_sandbox_internet
   allow_sandbox_internal_cidrs = var.allow_sandbox_internal_cidrs
   clickhouse_connection_string = local.clickhouse_connection_string
   redis_url                    = var.redis_url

@@ -44,16 +44,18 @@ type Header struct {
 	IncompletePendingUpload bool
 }
 
-// CloneForUpload returns a clone with copied Mapping and Builds, safe to
-// mutate for serialization without racing with concurrent readers of the
-// original. The version is set on the clone.
+// CloneForUpload returns a clone the upload path can mutate for serialization
+// without racing with concurrent readers of the original. The version is set
+// on the clone and the Builds map is copied (the upload path adds the self
+// entry). Mapping is shared by reference: it is immutable once a Header is
+// constructed.
 func (t *Header) CloneForUpload(version uint64) *Header {
 	metaCopy := *t.Metadata
 	metaCopy.Version = version
 
 	clone := &Header{
 		Metadata: &metaCopy,
-		Mapping:  slices.Clone(t.Mapping),
+		Mapping:  t.Mapping,
 	}
 
 	if t.Builds != nil {
@@ -193,14 +195,14 @@ func (t *Header) getMapping(ctx context.Context, offset int64) (*BuildMap, int64
 			logger.WithBuildID(t.Metadata.BuildId.String()),
 		)
 	}
-	if offset%int64(t.Metadata.BlockSize) != 0 {
+	if offset%PageSize != 0 {
 		if t.IsNormalizeFixApplied() {
-			return nil, 0, fmt.Errorf("offset %d is not aligned to block size %d", offset, t.Metadata.BlockSize)
+			return nil, 0, fmt.Errorf("offset %d is not aligned to page size %d", offset, PageSize)
 		}
 
-		logger.L().Warn(ctx, "offset is not aligned to block size, but normalize fix is not applied",
+		logger.L().Warn(ctx, "offset is not aligned to page size, but normalize fix is not applied",
 			zap.Int64("offset", offset),
-			zap.Int64("blockSize", int64(t.Metadata.BlockSize)),
+			zap.Int64("pageSize", PageSize),
 			logger.WithBuildID(t.Metadata.BuildId.String()),
 		)
 	}

@@ -7,11 +7,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
-	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
 	"github.com/e2b-dev/infra/tests/integration/internal/utils"
@@ -32,11 +33,11 @@ func ensureNetworkTestTemplate(t *testing.T) string {
 		template := utils.BuildTemplate(t, utils.TemplateBuildOptions{
 			Name: "network-egress-test",
 			BuildData: api.TemplateBuildStartV2{
-				FromImage: sharedutils.ToPtr("ubuntu:22.04"),
-				Steps: sharedutils.ToPtr([]api.TemplateStep{
+				FromImage: new("ubuntu:22.04"),
+				Steps: new([]api.TemplateStep{
 					{
 						Type: "RUN",
-						Args: sharedutils.ToPtr([]string{"sudo apt-get update && sudo apt-get install -y curl iputils-ping dnsutils openssh-client gnupg && sudo rm -rf /var/lib/apt/lists/*"}),
+						Args: new([]string{"sudo apt-get update && sudo apt-get install -y curl iputils-ping dnsutils openssh-client gnupg && sudo rm -rf /var/lib/apt/lists/*"}),
 					},
 				}),
 			},
@@ -63,8 +64,10 @@ func ensureNetworkTestTemplate(t *testing.T) string {
 // assertSuccessfulHTTPRequest asserts that an HTTP/HTTPS request to the given URL succeeds
 func assertSuccessfulHTTPRequest(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, url string, msg string) {
 	t.Helper()
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "5", "--max-time", "10", "-Iks", url)
-	require.NoError(t, err, msg)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		err := utils.ExecCommand(t, ctx, sbx, envdClient, "curl", "--connect-timeout", "5", "--max-time", "10", "-Iks", url)
+		require.NoError(c, err, msg)
+	}, 30*time.Second, time.Second)
 }
 
 // assertBlockedHTTPRequest asserts that an HTTP/HTTPS request to the given URL is blocked

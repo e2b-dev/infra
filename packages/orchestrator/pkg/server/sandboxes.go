@@ -33,7 +33,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
-	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -55,6 +54,8 @@ const (
 
 	// executionEventDataKey is the key used in webhook event data for sandbox execution metrics.
 	executionEventDataKey = "execution"
+
+	killReasonUnknown = "unknown"
 )
 
 func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (_ *orchestrator.SandboxCreateResponse, createErr error) {
@@ -142,23 +143,6 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 	// Clone the network config to avoid modifying the original request
 	network := proto.CloneOf(req.GetSandbox().GetNetwork())
-
-	// TODO: Temporarily set this based on global config, should be removed later
-	// https://linear.app/e2b/issue/ENG-3291
-	//  (it should be passed network config from API)
-	allowInternet := s.config.AllowSandboxInternet
-	if req.GetSandbox().AllowInternetAccess != nil {
-		allowInternet = req.GetSandbox().GetAllowInternetAccess()
-	}
-	if !allowInternet {
-		if network == nil {
-			network = &orchestrator.SandboxNetworkConfig{}
-		}
-		if network.GetEgress() == nil {
-			network.Egress = &orchestrator.SandboxNetworkEgressConfig{}
-		}
-		network.Egress.DeniedCidrs = []string{sandbox_network.AllInternetTrafficCIDR}
-	}
 
 	resolvedFCVersion := featureflags.ResolveFirecrackerVersion(ctx, s.featureFlags, req.GetSandbox().GetFirecrackerVersion())
 	volumeMounts, err := createVolumeMountModelsFromAPI(req.GetSandbox().GetVolumeMounts())
@@ -295,7 +279,6 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 	childSpan.SetAttributes(
 		telemetry.WithSandboxID(req.GetSandboxId()),
-		attribute.String("client.id", s.info.ClientId),
 	)
 
 	sbx, ok := s.sandboxFactory.Sandboxes.Get(req.GetSandboxId())
@@ -304,6 +287,15 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
+
+	childSpan.SetAttributes(
+		telemetry.WithTeamID(sbx.Runtime.TeamID),
+		telemetry.WithTemplateID(sbx.Runtime.TemplateID),
+		telemetry.WithBuildID(sbx.Runtime.BuildID),
+		telemetry.WithFirecrackerVersion(sbx.Config.FirecrackerConfig.FirecrackerVersion),
+		telemetry.WithKernelVersion(sbx.Config.FirecrackerConfig.KernelVersion),
+		telemetry.WithEnvdVersion(sbx.Config.Envd.Version),
+	)
 
 	var updates []utils.UpdateFunc
 
@@ -420,7 +412,6 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 	childSpan.SetAttributes(
 		telemetry.WithSandboxID(in.GetSandboxId()),
-		attribute.String("client.id", s.info.ClientId),
 	)
 
 	sbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId())
@@ -429,6 +420,15 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 
 		return nil, status.Errorf(codes.NotFound, "sandbox '%s' not found", in.GetSandboxId())
 	}
+
+	childSpan.SetAttributes(
+		telemetry.WithTeamID(sbx.Runtime.TeamID),
+		telemetry.WithTemplateID(sbx.Runtime.TemplateID),
+		telemetry.WithBuildID(sbx.Runtime.BuildID),
+		telemetry.WithFirecrackerVersion(sbx.Config.FirecrackerConfig.FirecrackerVersion),
+		telemetry.WithKernelVersion(sbx.Config.FirecrackerConfig.KernelVersion),
+		telemetry.WithEnvdVersion(sbx.Config.Envd.Version),
+	)
 
 	// Mark the sandbox as stopping so it is excluded from live queries (Get, Items,
 	// Count) but remains findable by IP (GetByHostPort) while the Firecracker
@@ -441,7 +441,12 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		return nil, status.Errorf(codes.Internal, "failed to delete sandbox '%s'", in.GetSandboxId())
 	}
 
-	sbxlogger.E(sbx).Info(ctx, "Killing sandbox")
+	killReason := in.GetKillReason()
+	if killReason == "" {
+		killReason = killReasonUnknown
+	}
+
+	sbxlogger.E(sbx).Info(ctx, "Killing sandbox", zap.String("kill_reason", killReason))
 
 	// Check health metrics before stopping the sandbox
 	sbx.Checks.Healthcheck(ctx, true)
@@ -451,7 +456,11 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	go func() {
 		err := sbx.Stop(context.WithoutCancel(ctx))
 		if err != nil {
-			sbxlogger.I(sbx).Error(ctx, "error stopping sandbox", logger.WithSandboxID(in.GetSandboxId()), zap.Error(err))
+			sbxlogger.I(sbx).Error(ctx, "error stopping sandbox",
+				logger.WithSandboxID(in.GetSandboxId()),
+				zap.String("kill_reason", killReason),
+				zap.Error(err),
+			)
 		}
 	}()
 
@@ -459,6 +468,8 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	if s.featureFlags.BoolFlag(ctx, featureflags.ExecutionMetricsOnWebhooksFlag) {
 		eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
 	}
+	addKillReason(eventData, killReason)
+	recordSandboxKill(ctx, s.sandboxKilledCounter, killReason)
 
 	eventType := events.SandboxKilledEventPair
 	go s.sbxEventsService.Publish(
@@ -482,9 +493,34 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	return &emptypb.Empty{}, nil
 }
 
+// addKillReason records the kill reason on killed events. Empty input is
+// normalized to "unknown" so killed events always carry a kill_reason key.
+func addKillReason(eventData map[string]any, killReason string) {
+	if killReason == "" {
+		killReason = killReasonUnknown
+	}
+
+	eventData["kill_reason"] = killReason
+}
+
+// recordSandboxKill increments the kill counter with a bounded reason label.
+func recordSandboxKill(ctx context.Context, counter metric.Int64Counter, killReason string) {
+	if killReason == "" {
+		killReason = killReasonUnknown
+	}
+
+	counter.Add(ctx, 1, metric.WithAttributes(attribute.String("kill_reason", killReason)))
+}
+
 func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {
 	ctx, childSpan := tracer.Start(ctx, "sandbox-pause")
 	defer childSpan.End()
+
+	childSpan.SetAttributes(
+		telemetry.WithSandboxID(in.GetSandboxId()),
+		telemetry.WithTemplateID(in.GetTemplateId()),
+		telemetry.WithBuildID(in.GetBuildId()),
+	)
 
 	ctx = featureflags.AddToContext(
 		ctx,
@@ -500,6 +536,13 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
+
+	childSpan.SetAttributes(
+		telemetry.WithTeamID(sbx.Runtime.TeamID),
+		telemetry.WithFirecrackerVersion(sbx.Config.FirecrackerConfig.FirecrackerVersion),
+		telemetry.WithKernelVersion(sbx.Config.FirecrackerConfig.KernelVersion),
+		telemetry.WithEnvdVersion(sbx.Config.Envd.Version),
+	)
 
 	marked := s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
 	if !marked {
@@ -554,6 +597,11 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	ctx, childSpan := tracer.Start(ctx, "sandbox-checkpoint")
 	defer childSpan.End()
 
+	childSpan.SetAttributes(
+		telemetry.WithSandboxID(in.GetSandboxId()),
+		telemetry.WithBuildID(in.GetBuildId()),
+	)
+
 	ctx = featureflags.AddToContext(
 		ctx,
 		ldcontext.NewBuilder(in.GetSandboxId()).
@@ -567,6 +615,14 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 		return nil, status.Errorf(codes.NotFound, "sandbox '%s' not found", in.GetSandboxId())
 	}
+
+	childSpan.SetAttributes(
+		telemetry.WithTeamID(sbx.Runtime.TeamID),
+		telemetry.WithTemplateID(sbx.Runtime.TemplateID),
+		telemetry.WithFirecrackerVersion(sbx.Config.FirecrackerConfig.FirecrackerVersion),
+		telemetry.WithKernelVersion(sbx.Config.FirecrackerConfig.KernelVersion),
+		telemetry.WithEnvdVersion(sbx.Config.Envd.Version),
+	)
 
 	// Check envd version before snapshotting.
 	if err := utils.CheckEnvdVersionForSnapshot(sbx.Config.Envd.Version); err != nil {

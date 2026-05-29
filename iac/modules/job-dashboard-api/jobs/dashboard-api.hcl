@@ -24,6 +24,7 @@ job "dashboard-api" {
       tags = [
 
         "traefik.enable=true",
+        "traefik.http.routers.dashboard-api.entrypoints=web",
 
         "traefik.http.routers.dashboard-api.rule=HostRegexp(`${subdomain}.{domain:.+}`)",
         "traefik.http.routers.dashboard-api.ruleSyntax=v2",

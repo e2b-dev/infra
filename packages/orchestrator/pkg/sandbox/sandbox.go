@@ -180,6 +180,7 @@ func sandboxLDContext(runtime RuntimeMetadata, config *Config) ldcontext.Context
 		SetString(featureflags.SandboxTemplateAttribute, runtime.TemplateID).
 		SetString(featureflags.SandboxKernelVersionAttribute, config.FirecrackerConfig.KernelVersion).
 		SetString(featureflags.SandboxFirecrackerVersionAttribute, config.FirecrackerConfig.FirecrackerVersion).
+		SetString(featureflags.SandboxTypeAttribute, runtime.SandboxType.String()).
 		Build()
 }
 
@@ -446,10 +447,14 @@ func (f *Factory) CreateSandbox(
 
 	telemetry.ReportEvent(ctx, "created fc client")
 
+	fcPageSize := int64(header.PageSize)
+	if config.HugePages {
+		fcPageSize = int64(header.HugepageSize)
+	}
 	resources := &Resources{
 		Slot:   ips,
 		rootfs: rootfsProvider,
-		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize()),
+		memory: uffd.NewNoopMemory(memfileSize, fcPageSize),
 	}
 
 	metadata := &Metadata{
@@ -831,6 +836,8 @@ func (f *Factory) ResumeSandbox(
 	}
 
 	useClickhouseMetrics := f.featureFlags.BoolFlag(ctx, featureflags.MetricsWriteFlag)
+	useMemfd := fc.FCSupportsMemfd(config.FirecrackerConfig.FirecrackerVersion) &&
+		f.featureFlags.BoolFlag(ctx, featureflags.UseMemFdFlag, sandboxLDContext(runtime, config))
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox
@@ -882,6 +889,7 @@ func (f *Factory) ResumeSandbox(
 		fcUffd.Ready(),
 		config.Envd.AccessToken,
 		cgroupFD,
+		useMemfd,
 		fc.RateLimiterConfig{
 			Ops:       fc.TokenBucketConfig(resumeThrottleConfig.Ops),
 			Bandwidth: fc.TokenBucketConfig(resumeThrottleConfig.Bandwidth),
@@ -1081,6 +1089,15 @@ func (s *Sandbox) Pause(
 	// compact_memory) on the live VM via envd. Per-step caps are LD-flag-driven;
 	// all default to 0 which disables the chain entirely. Non-fatal.
 	s.bestEffortReclaim(ctx)
+	// reclaim freezes user cgroups; if pause/snapshot fails the sandbox stays
+	// live, so unfreeze on error to avoid a permanently frozen live VM.
+	// Only runs via cleanup.Run on the error path; success leaves the frozen
+	// state intact so it persists into the snapshot.
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		s.bestEffortUnfreeze(ctx)
+
+		return nil
+	})
 
 	// Drain free-page-hinting before pause so the snapshot doesn't capture
 	// pages the guest already considers free. Timeout per use case; 0 disables.
@@ -1124,9 +1141,17 @@ func (s *Sandbox) Pause(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memfile metadata: %w", err)
 	}
-	recordSnapshotDiff(ctx, "memfile", memfileDiffMetadata, originalMemfile.Header(), useCase)
+	recordSnapshotDiff(ctx, "memfile", memfileDiffMetadata, originalMemfile.Header())
 
 	// Start POSTPROCESSING
+	var dedupBase block.ReadonlyDevice
+	var dedupBestEffort, dedupDirectIO bool
+	dedupCfg := s.featureFlags.JSONFlag(ctx, featureflags.MemfileDiffDedupFlag, sandboxLDContext(s.Runtime, s.Config)).AsValueMap()
+	if dedupCfg.Get("enabled").BoolValue() {
+		dedupBase = originalMemfile
+		dedupBestEffort = dedupCfg.Get("bestEffort").BoolValue()
+		dedupDirectIO = dedupCfg.Get("directIO").BoolValue()
+	}
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
 		ctx,
 		buildID,
@@ -1134,13 +1159,18 @@ func (s *Sandbox) Pause(
 		memfileDiffMetadata,
 		s.config.DefaultCacheDir,
 		s.process,
+		s.memory.Memfd(ctx),
+		s.featureFlags.BoolFlag(ctx, featureflags.MemfdBackgroundCopyFlag, sandboxLDContext(s.Runtime, s.Config)),
+		dedupBase,
+		dedupBestEffort,
+		dedupDirectIO,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
 	cleanup.AddNoContext(ctx, memfileDiff.Close)
 
-	rootfsDiff, rootfsDiffHeader, err := pauseProcessRootfs(
+	rootfsDiff, rootfsHeader, err := pauseProcessRootfs(
 		ctx,
 		buildID,
 		originalRootfs.Header(),
@@ -1149,7 +1179,6 @@ func (s *Sandbox) Pause(
 			closeHook: s.Close,
 		},
 		s.config.DefaultCacheDir,
-		useCase,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -1170,7 +1199,9 @@ func (s *Sandbox) Pause(
 		MemfileDiff:       memfileDiff,
 		MemfileDiffHeader: memfileDiffHeader,
 		RootfsDiff:        rootfsDiff,
-		RootfsDiffHeader:  rootfsDiffHeader,
+		RootfsDiffHeader:  NewResolvedDiffHeader(rootfsHeader),
+		MemfileBlockSize:  originalMemfile.Header().Metadata.BlockSize,
+		RootfsBlockSize:   originalRootfs.Header().Metadata.BlockSize,
 
 		BuildID: buildID,
 
@@ -1201,22 +1232,21 @@ func pauseProcessMemory(
 	diffMetadata *header.DiffMetadata,
 	cacheDir string,
 	fc *fc.Process,
-) (d build.Diff, h *header.Header, e error) {
+	memfd *block.Memfd,
+	bgCopy bool,
+	originalMemfile block.ReadonlyDevice,
+	dedupBestEffort bool,
+	dedupDirectIO bool,
+) (d build.Diff, h *DiffHeader, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
-	header, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create memfile header: %w", err)
-	}
-
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
-
+	metaOut := utils.NewSetOnce[*header.DiffMetadata]()
+	// ExportMemory owns memfd and closes it on all paths.
 	cache, err := fc.ExportMemory(
-		ctx,
-		diffMetadata.Dirty,
-		memfileDiffPath,
-		diffMetadata.BlockSize,
+		ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy,
+		originalMemfile, dedupBestEffort, dedupDirectIO, diffMetadata.Empty, metaOut,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
@@ -1227,11 +1257,36 @@ func pauseProcessMemory(
 		cache,
 	)
 	if err != nil {
-		// Close the cache even if the diff creation fails.
 		return nil, nil, fmt.Errorf("failed to create local diff from cache: %w", errors.Join(err, cache.Close()))
 	}
 
-	return diff, header, nil
+	// Build the diff header on a goroutine so Pause returns without waiting
+	// on memfd-dedup compare. ExportMemory resolves metaOut sync for every
+	// other path, so Wait there is non-blocking; the goroutine is harmless.
+	headerOut := utils.NewSetOnce[*header.Header]()
+	go func() {
+		setHeader := func(h *header.Header, err error) {
+			if setErr := headerOut.SetResult(h, err); setErr != nil {
+				logger.L().Warn(ctx, "set memfile diff header", zap.Error(setErr))
+			}
+		}
+		meta, err := metaOut.Wait()
+		if err != nil {
+			setHeader(nil, err)
+
+			return
+		}
+		// post == nil signals "no dedup ran" to the metric so it records
+		// kind="none" with zero savings.
+		post := meta
+		if originalMemfile == nil {
+			post = nil
+		}
+		recordSnapshotDedup(ctx, "memfile", diffMetadata, post, dedupBestEffort)
+		setHeader(meta.ToDiffHeader(ctx, originalHeader, buildID))
+	}()
+
+	return diff, headerOut, nil
 }
 
 func pauseProcessRootfs(
@@ -1240,7 +1295,6 @@ func pauseProcessRootfs(
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
 	cacheDir string,
-	useCase SnapshotUseCase,
 ) (d build.Diff, h *header.Header, e error) {
 	ctx, span := tracer.Start(ctx, "process-rootfs")
 	defer span.End()
@@ -1257,7 +1311,7 @@ func pauseProcessRootfs(
 		return nil, nil, fmt.Errorf("error creating diff: %w", err)
 	}
 	telemetry.ReportEvent(ctx, "exported rootfs")
-	recordSnapshotDiff(ctx, "rootfs", rootfsDiffMetadata, originalHeader, useCase)
+	recordSnapshotDiff(ctx, "rootfs", rootfsDiffMetadata, originalHeader)
 
 	rootfsDiff, err := rootfsDiffFile.CloseToDiff(int64(originalHeader.Metadata.BlockSize))
 	if err != nil {
@@ -1396,14 +1450,17 @@ func (s *Sandbox) WaitForEnvd(
 	defer span.End()
 
 	defer func() {
-		if e != nil {
-			return
-		}
 		duration := time.Since(start).Milliseconds()
 		waitForEnvdDurationHistogram.Record(ctx, duration, metric.WithAttributes(
 			telemetry.WithEnvdVersion(s.Config.Envd.Version),
 			attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
+			attribute.Bool("success", e == nil),
 		))
+
+		if e != nil {
+			return
+		}
+
 		// Update the sandbox as started now
 		s.SetStartedAt(time.Now())
 	}()

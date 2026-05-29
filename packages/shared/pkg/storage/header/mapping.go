@@ -3,16 +3,16 @@ package header
 import (
 	"fmt"
 	"os"
+	"slices"
 
 	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/google/uuid"
 )
 
-// Start, Length and SourceStart are in bytes of the data file
-// Length will be a multiple of BlockSize
-// The list of block mappings will be in order of increasing Start, covering the entire file
+// BuildMap maps a byte range in the block device to a region in a build's storage.
+// Offset, Length, and BuildStorageOffset are in bytes.
 type BuildMap struct {
-	// Offset defines which block of the current layer this mapping starts at
+	// Offset is the starting position of this range in the block device.
 	Offset             uint64
 	Length             uint64
 	BuildId            uuid.UUID
@@ -205,6 +205,10 @@ func MergeMappings(
 }
 
 // NormalizeMappings joins adjacent mappings that have the same buildId.
+//
+// Clone the result so the oversized intermediate (cap == len(input)) is
+// released; the merged Header is cached for up to 25h. slices.Clip will
+// not do — it only retightens cap on the same backing array.
 func NormalizeMappings(mappings []BuildMap) []BuildMap {
 	if len(mappings) == 0 {
 		return nil
@@ -226,5 +230,5 @@ func NormalizeMappings(mappings []BuildMap) []BuildMap {
 
 	result = append(result, current)
 
-	return result
+	return slices.Clone(result)
 }

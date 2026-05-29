@@ -3,10 +3,12 @@ package storage
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"maps"
 	"net/http"
@@ -263,27 +265,57 @@ func (o *gcpObject) Size(ctx context.Context) (int64, error) {
 }
 
 func (o *gcpObject) openRangeReader(ctx context.Context, off, length int64) (io.ReadCloser, error) {
-	ctx, cancel := context.WithTimeout(ctx, googleReadTimeout)
+	readCtx, cancel := context.WithCancel(ctx)
 
-	reader, err := o.handle.NewRangeReader(ctx, off, length)
+	openTimer := time.AfterFunc(googleReadTimeout, cancel)
+	reader, err := o.handle.NewRangeReader(readCtx, off, length)
+	// Stop returning false means the timer fired and cancel was/is being called,
+	// so readCtx is cancelled and reader (if any) is unusable.
+	if !openTimer.Stop() && err == nil {
+		reader.Close()
+		err = context.DeadlineExceeded
+	}
 	if err != nil {
 		cancel()
+
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			return nil, fmt.Errorf("failed to create GCS range reader for %q at %d+%d: %w", o.path, off, length, ErrObjectNotExist)
+		}
 
 		return nil, fmt.Errorf("failed to create GCS range reader for %q at %d+%d: %w", o.path, off, length, err)
 	}
 
-	return &cancelOnCloseReader{ReadCloser: reader, cancel: cancel}, nil
+	return &idleTimeoutReader{
+		ReadCloser: reader,
+		cancel:     cancel,
+		timer:      time.AfterFunc(googleReadTimeout, cancel),
+	}, nil
 }
 
-// cancelOnCloseReader wraps a ReadCloser and calls a CancelFunc on Close,
-// ensuring the context used to create the reader is cleaned up.
-type cancelOnCloseReader struct {
+// idleTimeoutReader fires cancel() after googleReadTimeout with no Read
+// activity (in-flight Read with no progress, or no Read called).
+type idleTimeoutReader struct {
 	io.ReadCloser
 
 	cancel context.CancelFunc
+	timer  *time.Timer
 }
 
-func (r *cancelOnCloseReader) Close() error {
+func (r *idleTimeoutReader) Read(p []byte) (int, error) {
+	r.timer.Reset(googleReadTimeout)
+
+	n, err := r.ReadCloser.Read(p)
+	if err != nil {
+		r.timer.Stop()
+	} else {
+		r.timer.Reset(googleReadTimeout)
+	}
+
+	return n, err
+}
+
+func (r *idleTimeoutReader) Close() error {
+	r.timer.Stop()
 	defer r.cancel()
 
 	return r.ReadCloser.Close()
@@ -387,13 +419,15 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 	}
 
 	cfg := CompressConfigFromOpts(putOpts)
+	compressionType := cfg.CompressionType()
+	compressionMetricType := compressionType.String()
+	if cfg.IsCompressionEnabled() && compressionType == CompressionZstd {
+		compressionMetricType = fmt.Sprintf("%s-%d", compressionMetricType, cfg.Level)
+	}
 
-	// Tag the upload timer with the compression mode so dashboards can split
-	// duration/throughput by codec and level. Type is "none" when disabled.
 	timer := googleWriteTimerFactory.Begin(
 		attribute.String(gcsOperationAttr, gcsOperationAttrWriteFromFileSystem),
-		attribute.String("compression.type", cfg.CompressionType().String()),
-		attribute.Int("compression.level", cfg.Level),
+		attribute.String("compression.type", compressionMetricType),
 	)
 
 	maxConcurrency := gcloudDefaultUploadConcurrency
@@ -437,6 +471,12 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 		return ft, checksum, err
 	}
 
+	// Uncompressed uploads only hash when the caller asked for a checksum.
+	var hasher hash.Hash
+	if putOpts.Checksum {
+		hasher = sha256.New()
+	}
+
 	// If the file is too small, the overhead of writing in parallel isn't worth the effort.
 	// Write it in one shot instead.
 	if fileInfo.Size() < gcpMultipartUploadChunkSize {
@@ -464,7 +504,11 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 			zap.String("compression", "none"),
 		)
 
-		return nil, [32]byte{}, e
+		if hasher != nil {
+			hasher.Write(data)
+		}
+
+		return nil, sum256(hasher), e
 	}
 
 	uploader, err := NewMultipartUploaderWithRetryConfig(
@@ -481,7 +525,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 	}
 
 	start := time.Now()
-	count, err := uploader.UploadFileInParallel(ctx, path, maxConcurrency)
+	count, err := uploader.UploadFileInParallel(ctx, path, maxConcurrency, hasher)
 	if err != nil {
 		timer.Failure(ctx, count)
 
@@ -500,7 +544,7 @@ func (o *gcpObject) StoreFile(ctx context.Context, path string, opts ...PutOptio
 
 	timer.Success(ctx, count)
 
-	return nil, [32]byte{}, e
+	return nil, sum256(hasher), e
 }
 
 func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, cfg CompressConfig, maxConcurrency int, putOpts PutOptions) (*FrameTable, [32]byte, error) {

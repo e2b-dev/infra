@@ -16,6 +16,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 
+const (
+	defaultOidcIssuer  = "http://localhost:4444/"
+	defaultOidcSubject = "local-dev-user"
+)
+
 var (
 	teamID         = uuid.MustParse("0b8a3ded-4489-4722-afd1-1d82e64ec2d5")
 	tokenID        = uuid.MustParse("3d98c426-d348-446b-bdf6-5be3ca4123e2")
@@ -39,6 +44,16 @@ func run(ctx context.Context) error {
 		connectionString = "postgresql://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable"
 	}
 
+	oidcIssuer := os.Getenv("OIDC_ISSUER")
+	if oidcIssuer == "" {
+		oidcIssuer = defaultOidcIssuer
+	}
+
+	oidcSubject := os.Getenv("OIDC_SUBJECT")
+	if oidcSubject == "" {
+		oidcSubject = defaultOidcSubject
+	}
+
 	authDb, err := authdb.NewClient(ctx, connectionString, connectionString)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
@@ -58,6 +73,10 @@ func run(ctx context.Context) error {
 
 	if err = ensureUserIsOnTeam(ctx, authDb, teamID); err != nil {
 		return fmt.Errorf("failed to ensure user is on team: %w", err)
+	}
+
+	if err = upsertUserIdentity(ctx, authDb, oidcIssuer, oidcSubject); err != nil {
+		return fmt.Errorf("failed to upsert user identity: %w", err)
 	}
 
 	// create user token
@@ -95,6 +114,18 @@ func upsertTeamAPIKey(ctx context.Context, db *authdb.Client, teamID uuid.UUID, 
 		Name:             "local dev seed token",
 	}); ignoreConstraints(err) != nil {
 		return fmt.Errorf("failed to create team api key: %w", err)
+	}
+
+	return nil
+}
+
+func upsertUserIdentity(ctx context.Context, db *authdb.Client, oidcIssuer, oidcSubject string) error {
+	if err := db.Write.UpsertPublicIdentity(ctx, authqueries.UpsertPublicIdentityParams{
+		OidcIss: oidcIssuer,
+		OidcSub: oidcSubject,
+		UserID:  userID,
+	}); err != nil {
+		return fmt.Errorf("failed to upsert user identity: %w", err)
 	}
 
 	return nil
@@ -181,10 +212,7 @@ ON CONFLICT (id) DO UPDATE SET
 		return fmt.Errorf("failed to upsert user: %w", err)
 	}
 
-	err = db.Write.UpsertPublicUser(ctx, authqueries.UpsertPublicUserParams{
-		ID:    userID,
-		Email: "user@e2b-dev.local",
-	})
+	err = db.Write.UpsertPublicUser(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("failed to upsert public user: %w", err)
 	}

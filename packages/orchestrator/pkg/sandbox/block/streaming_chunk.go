@@ -95,10 +95,23 @@ func (c *Chunker) Slice(ctx context.Context, off, length int64, ft *storage.Fram
 		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
-	if err := c.fetch(ctx, off, ft); err != nil {
-		timer.RecordRaw(ctx, length, attrs.failRemoteFetch)
+	// Fetch every chunk the range spans (one fetch session per chunk).
+	end := off + length
+	for cur := off; cur < end; {
+		chunkOff, chunkLen, lerr := c.locateChunk(cur, ft)
+		if lerr != nil {
+			timer.RecordRaw(ctx, length, attrs.failRemoteFetch)
 
-		return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", off, off+length, err)
+			return nil, fmt.Errorf("failed to locate chunk for offset %d: %w", cur, lerr)
+		}
+		chunkEnd := chunkOff + chunkLen
+		rangeEnd := min(end, chunkEnd)
+		if err := c.fetch(ctx, cur, rangeEnd-cur, ft); err != nil {
+			timer.RecordRaw(ctx, length, attrs.failRemoteFetch)
+
+			return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", cur, rangeEnd, err)
+		}
+		cur = chunkEnd
 	}
 
 	// sliceDirect skips isCached — the waiter already confirmed the data is in the mmap.
@@ -145,10 +158,10 @@ func (c *Chunker) getOrCreateSession(ctx context.Context, off, length int64, ft 
 	return s, false
 }
 
-// fetch ensures the frame/chunk covering off is fetched into the mmap cache,
-// then waits until the block at off is available. Deduplicates concurrent
-// requests for the same region via the session list.
-func (c *Chunker) fetch(ctx context.Context, off int64, ft *storage.FrameTable) error {
+// fetch ensures the chunk for [off, off+length) is fetched and waits
+// for every block the range spans (a span can cross block boundaries
+// after dedup; waiting only on the start block leaves the tail unfetched).
+func (c *Chunker) fetch(ctx context.Context, off, length int64, ft *storage.FrameTable) error {
 	chunkOff, chunkLen, err := c.locateChunk(off, ft)
 	if err != nil {
 		return fmt.Errorf("failed to locate chunk for offset %d: %w", off, err)
@@ -160,9 +173,19 @@ func (c *Chunker) fetch(ctx context.Context, off int64, ft *storage.FrameTable) 
 	}
 
 	blockSize := c.cache.BlockSize()
-	blockOff := (off / blockSize) * blockSize
+	startBlock := (off / blockSize) * blockSize
+	endBlock := ((off + length - 1) / blockSize) * blockSize
+	chunkEnd := chunkOff + chunkLen
+	for b := startBlock; b <= endBlock; b += blockSize {
+		if b >= chunkEnd {
+			break // tail belongs to the caller's next chunk fetch.
+		}
+		if err := session.registerAndWait(ctx, b); err != nil {
+			return err
+		}
+	}
 
-	return session.registerAndWait(ctx, blockOff)
+	return nil
 }
 
 // runFetch fetches data from storage into the mmap cache. Runs in a background goroutine.
@@ -295,8 +318,14 @@ func (c *Chunker) Close() error {
 	return c.cache.Close()
 }
 
-func (c *Chunker) FileSize() (int64, error) {
-	return c.cache.FileSize()
+// IsCached reports whether [off, off+length) is fully present in the local
+// mmap cache (no remote fetch needed). Used by best-effort dedup.
+func (c *Chunker) IsCached(_ context.Context, off, length int64) bool {
+	return c.cache.isCached(off, length)
+}
+
+func (c *Chunker) FileSize(ctx context.Context) (int64, error) {
+	return c.cache.FileSize(ctx)
 }
 
 const (

@@ -140,16 +140,7 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 					Event: filesystemEvent,
 				}
 
-				streamErr := stream.Send(event)
-
-				s.logger.
-					Debug().
-					Str("event_type", "filesystem_event").
-					Str(string(logs.OperationIDKey), ctx.Value(logs.OperationIDKey).(string)).
-					Interface("filesystem_event", event).
-					Msg("Streaming filesystem event")
-
-				if streamErr != nil {
+				if streamErr := stream.Send(event); streamErr != nil {
 					return connect.NewError(connect.CodeUnknown, fmt.Errorf("error sending filesystem event: %w", streamErr))
 				}
 

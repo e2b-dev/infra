@@ -33,11 +33,13 @@ func TestParse(t *testing.T) {
 		assert.ErrorContains(t, err, `environment variable "POSTGRES_CONNECTION_STRING" should not be empty`)
 	})
 
-	t.Run("supabase secrets are comma separated", func(t *testing.T) {
-		t.Setenv("SUPABASE_JWT_SECRETS", "aaa,bbb")
+	t.Run("hmac secrets are parsed from auth provider config", func(t *testing.T) {
+		t.Setenv("AUTH_PROVIDER_CONFIG", `{"legacy":{"hmac":{"secrets":["aaa","bbb"]}}}`)
 		result, err := Parse()
 		require.NoError(t, err)
-		assert.Equal(t, []string{"aaa", "bbb"}, result.SupabaseJWTSecrets)
+		require.NotNil(t, result.AuthProvider.Legacy)
+		require.NotNil(t, result.AuthProvider.Legacy.HMAC)
+		assert.Equal(t, []string{"aaa", "bbb"}, result.AuthProvider.Legacy.HMAC.Secrets)
 	})
 
 	t.Run("base64 signing key can be parsed", func(t *testing.T) {
@@ -48,13 +50,6 @@ func TestParse(t *testing.T) {
 		result, err := Parse()
 		require.NoError(t, err)
 		assert.Equal(t, content, result.VolumesToken.SigningKey)
-	})
-
-	t.Run("test sandbox backend empty string", func(t *testing.T) {
-		t.Setenv("SANDBOX_STORAGE_BACKEND", "")
-		result, err := Parse()
-		require.NoError(t, err)
-		assert.Equal(t, SandboxStorageBackendMemory, result.SandboxStorageBackend)
 	})
 }
 

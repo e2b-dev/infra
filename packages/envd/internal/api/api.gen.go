@@ -237,6 +237,9 @@ type ServerInterface interface {
 	// Compose multiple files into a single file using zero-copy concatenation. Source files are deleted after successful composition.
 	// (POST /files/compose)
 	PostFilesCompose(w http.ResponseWriter, r *http.Request)
+	// Freeze user/pty/socat cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
+	// (POST /freeze)
+	PostFreeze(w http.ResponseWriter, r *http.Request)
 	// Check the health of the service
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -246,6 +249,9 @@ type ServerInterface interface {
 	// Get the stats of the service
 	// (GET /metrics)
 	GetMetrics(w http.ResponseWriter, r *http.Request)
+	// Unfreeze user/pty/socat cgroups. Intended ONLY for the orchestrator's pause-failure rollback path; the normal resume thaw happens via /init's deferred unfreeze, not here.
+	// (POST /unfreeze)
+	PostUnfreeze(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -276,6 +282,12 @@ func (_ Unimplemented) PostFilesCompose(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Freeze user/pty/socat cgroups before pause. Written directly by envd to avoid Process.Start / shell overhead under load.
+// (POST /freeze)
+func (_ Unimplemented) PostFreeze(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Check the health of the service
 // (GET /health)
 func (_ Unimplemented) GetHealth(w http.ResponseWriter, r *http.Request) {
@@ -291,6 +303,12 @@ func (_ Unimplemented) PostInit(w http.ResponseWriter, r *http.Request) {
 // Get the stats of the service
 // (GET /metrics)
 func (_ Unimplemented) GetMetrics(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Unfreeze user/pty/socat cgroups. Intended ONLY for the orchestrator's pause-failure rollback path; the normal resume thaw happens via /init's deferred unfreeze, not here.
+// (POST /unfreeze)
+func (_ Unimplemented) PostUnfreeze(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -499,6 +517,26 @@ func (siw *ServerInterfaceWrapper) PostFilesCompose(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// PostFreeze operation middleware
+func (siw *ServerInterfaceWrapper) PostFreeze(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostFreeze(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 
@@ -544,6 +582,26 @@ func (siw *ServerInterfaceWrapper) GetMetrics(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetMetrics(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostUnfreeze operation middleware
+func (siw *ServerInterfaceWrapper) PostUnfreeze(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostUnfreeze(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -679,6 +737,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/files/compose", wrapper.PostFilesCompose)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/freeze", wrapper.PostFreeze)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/health", wrapper.GetHealth)
 	})
 	r.Group(func(r chi.Router) {
@@ -686,6 +747,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/metrics", wrapper.GetMetrics)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/unfreeze", wrapper.PostUnfreeze)
 	})
 
 	return r

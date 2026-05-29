@@ -20,11 +20,6 @@ variable "nomad_version" {
   default = "1.6.2"
 }
 
-variable "vault_version" {
-  type    = string
-  default = "1.20.3"
-}
-
 # Keep in sync with `clickhouse_version` in iac/modules/job-clickhouse/variables.tf
 variable "clickhouse_client_version" {
   type    = string
