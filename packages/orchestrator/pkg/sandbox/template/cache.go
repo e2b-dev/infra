@@ -281,7 +281,8 @@ func (c *Cache) evictOverBudget(ctx context.Context) {
 		if _, inUse := active[v]; inUse {
 			continue
 		}
-		if ts, ok := c.lastAccess.Load(v); ok && now.Sub(ts.(time.Time)) <= evictionGracePeriod {
+		ts, ok := c.lastAccess.Load(v)
+		if !ok || now.Sub(ts.(time.Time)) <= evictionGracePeriod {
 			continue
 		}
 		c.cache.Delete(v) // triggers OnEviction: peer purge + template Close
