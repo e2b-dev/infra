@@ -461,8 +461,9 @@ func (u *Userfaultfd) Serve(
 					}
 					u.prefetchTracker.Add(offset, accessType)
 				case faultDeferred:
-					deferred.push(pf)
-					u.signalWakeup()
+					if deferred.push(pf) {
+						u.signalWakeup()
+					}
 				case faultDiscarded:
 					// No install happened (ESRCH); retry would be pointless.
 				}
