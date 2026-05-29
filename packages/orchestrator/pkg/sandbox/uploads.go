@@ -97,6 +97,23 @@ func (u *Uploads) Start(buildID uuid.UUID) (*utils.ErrorOnce, error) {
 	return fut, nil
 }
 
+// InFlightBuildIDs returns the build IDs whose upload has not yet finished.
+// Their snapshot data may only exist locally and still be served to peers, so
+// the template cache must not evict (and close) them mid-upload.
+func (u *Uploads) InFlightBuildIDs() map[string]struct{} {
+	items := u.futures.Items()
+	ids := make(map[string]struct{}, len(items))
+	for id, item := range items {
+		select {
+		case <-item.Value().Done():
+		default:
+			ids[id.String()] = struct{}{}
+		}
+	}
+
+	return ids
+}
+
 // Wait returns the parent's post-upload header, or (nil, nil) when the
 // ancestor was never opened locally and no peer is mid-upload — the caller
 // already carries its BuildData through srcHeader.Builds.
