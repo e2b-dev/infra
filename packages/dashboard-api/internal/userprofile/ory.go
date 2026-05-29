@@ -219,8 +219,8 @@ func profileFromOryIdentity(userID uuid.UUID, identity ory.Identity) Profile {
 	}
 }
 
-// OIDC provider names live at credentials.oidc.config.providers[].provider; when
-// config is omitted, fall back to the "provider:subject" identifier prefix.
+// OIDC provider names can appear either in config.providers or as the
+// "provider:subject" prefix of identifiers, depending on the response shape.
 func oryLinkedProviders(identity ory.Identity) []string {
 	if identity.Credentials == nil {
 		return nil
@@ -237,7 +237,6 @@ func oryLinkedProviders(identity ory.Identity) []string {
 		return normalizeAuthProviders(candidates)
 	}
 
-	oidcProviders := 0
 	if entries, ok := oidc.Config["providers"].([]any); ok {
 		for _, entry := range entries {
 			obj, ok := entry.(map[string]any)
@@ -246,16 +245,13 @@ func oryLinkedProviders(identity ory.Identity) []string {
 			}
 			if name, ok := obj["provider"].(string); ok {
 				candidates = append(candidates, name)
-				oidcProviders++
 			}
 		}
 	}
 
-	if oidcProviders == 0 {
-		for _, identifier := range oidc.Identifiers {
-			if provider, _, found := strings.Cut(identifier, ":"); found {
-				candidates = append(candidates, provider)
-			}
+	for _, identifier := range oidc.Identifiers {
+		if provider, _, found := strings.Cut(identifier, ":"); found {
+			candidates = append(candidates, provider)
 		}
 	}
 

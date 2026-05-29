@@ -50,8 +50,8 @@ func TestProfileFromOryIdentity(t *testing.T) {
 				"oidc": {
 					Config: map[string]any{
 						"providers": []any{
-							map[string]any{"provider": " Google "},
-							map[string]any{"provider": "github"},
+							map[string]any{"provider": " Google-project "},
+							map[string]any{"provider": "github-main"},
 							map[string]any{"provider": "apple"},
 						},
 					},
@@ -69,7 +69,7 @@ func TestProfileFromOryIdentity(t *testing.T) {
 					Config: map[string]any{"use_password_migration_hook": true},
 				},
 				"oidc": {
-					Identifiers: []string{"github:222", "GOOGLE:111", "google:111", "apple:333"},
+					Identifiers: []string{"github-gQUWnTuT:50748440", "GOOGLE-abC:111", "google:111", "apple:333"},
 				},
 			},
 			wantProviders: []string{"email", "google", "github"},

@@ -45,12 +45,13 @@ func normalizeAuthProviders(values []string) []string {
 }
 
 func normalizeAuthProvider(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case authProviderEmail:
+	provider := strings.ToLower(strings.TrimSpace(value))
+	switch {
+	case provider == authProviderEmail:
 		return authProviderEmail
-	case authProviderGoogle:
+	case provider == authProviderGoogle || strings.HasPrefix(provider, authProviderGoogle+"-"):
 		return authProviderGoogle
-	case authProviderGithub:
+	case provider == authProviderGithub || strings.HasPrefix(provider, authProviderGithub+"-"):
 		return authProviderGithub
 	default:
 		return ""
