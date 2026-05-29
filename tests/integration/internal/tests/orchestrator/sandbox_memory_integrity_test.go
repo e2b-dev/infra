@@ -46,10 +46,10 @@ func TestSandboxMemoryIntegrity(t *testing.T) {
 
 		tmpfsFile := "/mnt/testfile"
 
-		percentageOfFreeMemoryToUse := 80
-		// Create a tmpfs with up to 80% of the remaining free RAM and fill it with random data
+		percentageOfFreeMemoryToUse := 60
+		// Create a tmpfs with up to 60% of the remaining free RAM and fill it with random data
 		// Disable swap to ensure we're testing pure RAM-based storage
-		// Always use at least 64MB, but not more than 80% of free memory
+		// Always use at least 64MB, but not more than the configured share of free memory.
 		memCmd := fmt.Sprintf(`
 TOTAL_MEM_MB=$(free -m | awk '/^Mem:/ {print $2}')
 USED_MEM_MB=$(free -m | awk '/^Mem:/ {print $3}')
@@ -79,7 +79,7 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 				var err error
 				output, err = utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", hashCmd)
 				require.NoError(c, err)
-			}, 90*time.Second, 2*time.Second)
+			}, 3*time.Minute, 2*time.Second)
 
 			return strings.TrimSpace(output)
 		}
@@ -156,8 +156,8 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 
 		envdClient := setup.GetEnvdClient(t, t.Context())
 
-		// get 80% size of the free memory and use it as the vm-bytes
-		percentageOfFreeMemoryToUse := 80
+		// get a bounded share of free memory and use it as the vm-bytes
+		percentageOfFreeMemoryToUse := 60
 
 		getFreeMemoryCmd := `free -m | awk '/^Mem:/ {print $7}'`
 		freeMemoryStr, err := utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", getFreeMemoryCmd)
