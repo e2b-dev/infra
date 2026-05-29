@@ -263,7 +263,28 @@ func (c *Cache) evictOverBudget(ctx context.Context) {
 	}
 
 	victims := selectEvictions(entries, (*activeFn)(), time.Now(), budget, total)
+	if len(victims) == 0 {
+		return
+	}
+
+	// Re-validate under extendMu before deleting: a concurrent GetTemplate/
+	// GetCachedTemplate (which record lastAccess under the same lock) can hand
+	// out a victim between sampling and Delete while the new sandbox is not yet
+	// in the active set. Holding the lock and re-checking the active set and
+	// grace window closes that window — a hand-out either happens-before (fresh
+	// lastAccess, skip) or after the entry is gone (refetch).
+	c.extendMu.Lock()
+	defer c.extendMu.Unlock()
+
+	active := (*activeFn)()
+	now := time.Now()
 	for _, v := range victims {
+		if _, inUse := active[v]; inUse {
+			continue
+		}
+		if ts, ok := c.lastAccess.Load(v); ok && now.Sub(ts.(time.Time)) <= evictionGracePeriod {
+			continue
+		}
 		c.cache.Delete(v) // triggers OnEviction: peer purge + template Close
 		c.lastAccess.Delete(v)
 		logger.L().Info(ctx, "evicted idle template over memory budget",
@@ -452,6 +473,9 @@ func (c *Cache) AddSnapshot(
 
 // GetCachedTemplate returns the template for buildID if it is currently in the cache.
 func (c *Cache) GetCachedTemplate(buildID string) (Template, bool) {
+	c.extendMu.Lock()
+	defer c.extendMu.Unlock()
+
 	item := c.cache.Get(buildID)
 	if item == nil {
 		return nil, false
