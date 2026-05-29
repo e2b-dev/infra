@@ -116,11 +116,14 @@ func NewCache(
 		peers.Purge(item.Key())
 
 		template := item.Value()
+		key := item.Key()
 
-		err := template.Close(ctx)
-		if err != nil {
-			logger.L().Warn(ctx, "failed to cleanup template data", zap.String("item_key", item.Key()), zap.Error(err))
-		}
+		go func() {
+			err := template.Close(context.WithoutCancel(ctx))
+			if err != nil {
+				logger.L().Warn(ctx, "failed to cleanup template data", zap.String("item_key", key), zap.Error(err))
+			}
+		}()
 	})
 
 	// Delete the old build cache directory content.
