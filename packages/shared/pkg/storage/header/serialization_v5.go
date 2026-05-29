@@ -67,12 +67,12 @@ func serializeV5(metadata *Metadata, builds map[uuid.UUID]BuildData, mapping Map
 
 // writeV5MappingSection writes the columnar, varint-coded mapping:
 //
-//	uint32 N                       non-empty entry count
 //	uint32 M                       distinct non-empty build-id count
 //	M × [16]byte                   build-id table
+//	uint32 N                       non-empty entry count
 //	N × uvarint                    offset-block deltas (offset[i]-offset[i-1])
 //	N × uvarint                    length in blocks
-//	N × varint  (zig-zag)          storage-block deltas (storage[i]-storage[i-1])
+//	N × varint                     storage-block deltas (can go negative when switching builds)
 //	N × uvarint                    build-id table index
 func writeV5MappingSection(block *bytes.Buffer, m Mapping) error {
 	var n int
@@ -81,9 +81,6 @@ func writeV5MappingSection(block *bytes.Buffer, m Mapping) error {
 			n++
 		}
 	}
-	if err := binary.Write(block, binary.LittleEndian, uint32(n)); err != nil {
-		return fmt.Errorf("failed to write mapping count: %w", err)
-	}
 	if err := binary.Write(block, binary.LittleEndian, uint32(len(m.builds))); err != nil {
 		return fmt.Errorf("failed to write mapping build count: %w", err)
 	}
@@ -91,6 +88,9 @@ func writeV5MappingSection(block *bytes.Buffer, m Mapping) error {
 		if _, err := block.Write(id[:]); err != nil {
 			return fmt.Errorf("failed to write mapping build id: %w", err)
 		}
+	}
+	if err := binary.Write(block, binary.LittleEndian, uint32(n)); err != nil {
+		return fmt.Errorf("failed to write mapping count: %w", err)
 	}
 
 	var buf [binary.MaxVarintLen64]byte
@@ -188,10 +188,7 @@ func readV5MappingSection(reader *bytes.Reader, blockSize, size uint64) (Mapping
 		return Mapping{}, fmt.Errorf("mapping size block %d exceeds uint32", sizeBlocks)
 	}
 
-	var n, m uint32
-	if err := binary.Read(reader, binary.LittleEndian, &n); err != nil {
-		return Mapping{}, fmt.Errorf("failed to read mapping count: %w", err)
-	}
+	var m, n uint32
 	if err := binary.Read(reader, binary.LittleEndian, &m); err != nil {
 		return Mapping{}, fmt.Errorf("failed to read mapping build count: %w", err)
 	}
@@ -204,6 +201,9 @@ func readV5MappingSection(reader *bytes.Reader, blockSize, size uint64) (Mapping
 		if _, err := io.ReadFull(reader, builds[i][:]); err != nil {
 			return Mapping{}, fmt.Errorf("failed to read mapping build id %d: %w", i, err)
 		}
+	}
+	if err := binary.Read(reader, binary.LittleEndian, &n); err != nil {
+		return Mapping{}, fmt.Errorf("failed to read mapping count: %w", err)
 	}
 
 	if n == 0 {
@@ -220,13 +220,13 @@ func readV5MappingSection(reader *bytes.Reader, blockSize, size uint64) (Mapping
 		return Mapping{}, fmt.Errorf("mapping count %d exceeds remaining %d bytes", n, reader.Len())
 	}
 
-	sparseOffsets := make([]uint32, n)
-	sparseLengths := make([]uint32, n)
-	sparseStorage := make([]uint32, n)
-	sparseBuildIdx := make([]uint16, n)
+	encodedOffsets := make([]uint32, n)
+	encodedLengths := make([]uint32, n)
+	encodedStorage := make([]uint32, n)
+	encodedBuildIdx := make([]uint16, n)
 
 	var prevOffset uint64
-	for i := range sparseOffsets {
+	for i := range int(n) {
 		d, err := binary.ReadUvarint(reader)
 		if err != nil {
 			return Mapping{}, fmt.Errorf("failed to read offset delta %d: %w", i, err)
@@ -240,9 +240,9 @@ func readV5MappingSection(reader *bytes.Reader, blockSize, size uint64) (Mapping
 		if prevOffset > maxBlockIdx {
 			return Mapping{}, fmt.Errorf("offset block %d at entry %d exceeds uint32", prevOffset, i)
 		}
-		sparseOffsets[i] = uint32(prevOffset)
+		encodedOffsets[i] = uint32(prevOffset)
 	}
-	for i := range sparseLengths {
+	for i := range int(n) {
 		v, err := binary.ReadUvarint(reader)
 		if err != nil {
 			return Mapping{}, fmt.Errorf("failed to read length %d: %w", i, err)
@@ -250,10 +250,10 @@ func readV5MappingSection(reader *bytes.Reader, blockSize, size uint64) (Mapping
 		if v > maxBlockIdx {
 			return Mapping{}, fmt.Errorf("length block %d at entry %d exceeds uint32", v, i)
 		}
-		sparseLengths[i] = uint32(v)
+		encodedLengths[i] = uint32(v)
 	}
 	var prevStorage int64
-	for i := range sparseStorage {
+	for i := range int(n) {
 		d, err := binary.ReadVarint(reader)
 		if err != nil {
 			return Mapping{}, fmt.Errorf("failed to read storage delta %d: %w", i, err)
@@ -262,9 +262,9 @@ func readV5MappingSection(reader *bytes.Reader, blockSize, size uint64) (Mapping
 		if prevStorage < 0 || prevStorage > maxBlockIdx {
 			return Mapping{}, fmt.Errorf("storage block %d at entry %d out of range", prevStorage, i)
 		}
-		sparseStorage[i] = uint32(prevStorage)
+		encodedStorage[i] = uint32(prevStorage)
 	}
-	for i := range sparseBuildIdx {
+	for i := range int(n) {
 		v, err := binary.ReadUvarint(reader)
 		if err != nil {
 			return Mapping{}, fmt.Errorf("failed to read build index %d: %w", i, err)
@@ -272,7 +272,7 @@ func readV5MappingSection(reader *bytes.Reader, blockSize, size uint64) (Mapping
 		if v >= uint64(m) {
 			return Mapping{}, fmt.Errorf("build index %d at entry %d out of range (%d builds)", v, i, m)
 		}
-		sparseBuildIdx[i] = uint16(v)
+		encodedBuildIdx[i] = uint16(v)
 	}
 
 	offsets := make([]uint32, 0, int(n)*2+1)
@@ -287,8 +287,8 @@ func readV5MappingSection(reader *bytes.Reader, blockSize, size uint64) (Mapping
 	}
 
 	var current uint32
-	for i := range sparseOffsets {
-		off, length := sparseOffsets[i], sparseLengths[i]
+	for i := range int(n) {
+		off, length := encodedOffsets[i], encodedLengths[i]
 		if length == 0 {
 			return Mapping{}, fmt.Errorf("zero-length mapping at entry %d", i)
 		}
@@ -302,7 +302,7 @@ func readV5MappingSection(reader *bytes.Reader, blockSize, size uint64) (Mapping
 		if end > sizeBlocks {
 			return Mapping{}, fmt.Errorf("mapping end block %d at entry %d exceeds size %d", end, i, sizeBlocks)
 		}
-		appendEntry(off, length, sparseStorage[i], sparseBuildIdx[i])
+		appendEntry(off, length, encodedStorage[i], encodedBuildIdx[i])
 		current = uint32(end)
 	}
 	if uint64(current) < sizeBlocks {

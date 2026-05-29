@@ -168,11 +168,8 @@ var (
 	// not whether data is compressed.
 	V4HeaderForUncompressedFlag = NewBoolFlag("v4-header-for-uncompressed", false)
 
-	// HeaderV5WriteFlag makes Pause emit the V5 (columnar, varint) header
-	// layout instead of V4. Readers understand V5 regardless of this flag;
-	// keep it off until every orchestrator that may read these headers (incl.
-	// P2P peers) ships V5 read support, then enable it to shrink the large
-	// fragmented headers produced by page-granular memfile dedup.
+	// HeaderV5WriteFlag makes Pause emit V5 headers. When enabled it also
+	// supersedes V4HeaderForUncompressedFlag for uncompressed uploads.
 	HeaderV5WriteFlag = NewBoolFlag("header-v5-write", false)
 )
 
