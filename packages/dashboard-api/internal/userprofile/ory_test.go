@@ -14,19 +14,22 @@ func TestProfileFromOryIdentity(t *testing.T) {
 	userID := uuid.New()
 
 	tests := []struct {
-		name          string
-		traits        any
-		credentials   *map[string]ory.IdentityCredentials
-		wantName      string
-		wantEmail     string
-		wantPicture   string
-		wantProviders []string
+		name           string
+		traits         any
+		metadataPublic map[string]any
+		credentials    *map[string]ory.IdentityCredentials
+		wantName       string
+		wantEmail      string
+		wantPicture    string
+		wantProviders  []string
 	}{
 		{
-			name: "all three standardized traits",
+			name: "email and name from traits, picture from metadata_public",
 			traits: map[string]any{
-				"email":   "ada@example.com",
-				"name":    "ada lovelace",
+				"email": "ada@example.com",
+				"name":  "ada lovelace",
+			},
+			metadataPublic: map[string]any{
 				"picture": "https://example.com/ada.jpg",
 			},
 			wantName:    "ada lovelace",
@@ -74,11 +77,13 @@ func TestProfileFromOryIdentity(t *testing.T) {
 			traits: nil,
 		},
 		{
-			name: "non-string trait values are ignored",
+			name: "non-string values are ignored",
 			traits: map[string]any{
-				"email":   42,
-				"name":    map[string]any{"first": "barbara"},
-				"picture": nil,
+				"email": 42,
+				"name":  map[string]any{"first": "barbara"},
+			},
+			metadataPublic: map[string]any{
+				"picture": 42,
 			},
 		},
 	}
@@ -87,7 +92,7 @@ func TestProfileFromOryIdentity(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			identity := ory.Identity{Id: uuid.NewString(), Traits: tt.traits, Credentials: tt.credentials}
+			identity := ory.Identity{Id: uuid.NewString(), Traits: tt.traits, MetadataPublic: tt.metadataPublic, Credentials: tt.credentials}
 			got := profileFromOryIdentity(userID, identity)
 			if got.UserID != userID {
 				t.Fatalf("UserID = %s, want %s", got.UserID, userID)

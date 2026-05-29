@@ -46,12 +46,6 @@
           "type": "string",
           "title": "Name",
           "maxLength": 320
-        },
-        "picture": {
-          "type": "string",
-          "format": "uri",
-          "title": "Profile picture URL",
-          "maxLength": 2048
         }
       },
       "required": [

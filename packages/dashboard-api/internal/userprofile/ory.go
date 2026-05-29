@@ -221,9 +221,10 @@ func (p *oryProvider) listIdentitiesByIDs(ctx context.Context, ids []string) ([]
 	return identities, nil
 }
 
-// The Ory project populates these traits from OIDC provider claims (Google
-// profile scope, GitHub user scope, etc.), so the upstream provider is
-// transparent here. The canonical trait shape lives in
+// email and name are identity traits; picture lives in metadata_public rather
+// than traits so it never renders on Ory's self-service registration form. The
+// OIDC Jsonnet mapper still populates all of them from provider claims (Google
+// profile scope, GitHub user scope, etc.). The canonical trait shape lives in
 // packages/dashboard-api/fixtures/ory/identity.v1.schema.json.
 func profileFromOryIdentity(userID uuid.UUID, identity ory.Identity) Profile {
 	traits, _ := identity.Traits.(map[string]any)
@@ -232,7 +233,7 @@ func profileFromOryIdentity(userID uuid.UUID, identity ory.Identity) Profile {
 		UserID:            userID,
 		Email:             metadataString(traits, "email"),
 		Name:              metadataString(traits, "name"),
-		ProfilePictureURL: metadataString(traits, "picture"),
+		ProfilePictureURL: metadataString(identity.MetadataPublic, "picture"),
 		Providers:         oryLinkedProviders(identity),
 	}
 }
