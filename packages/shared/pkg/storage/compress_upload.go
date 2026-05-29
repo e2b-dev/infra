@@ -104,7 +104,7 @@ func (p *part) addFrame(ctx context.Context, uncompressedData []byte, pool *sync
 	})
 }
 
-func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploader partUploader, maxUploadConcurrency int) (*FrameTable, [32]byte, error) {
+func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploader partUploader, maxUploadConcurrency int, sink FrameSink) (*FrameTable, [32]byte, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -132,6 +132,7 @@ func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploa
 
 	// Upload loop.
 	var frameSizes []FrameSize
+	var cOffset int64
 	var loopErr error
 	for p := range q {
 		if err := p.compress.Wait(); err != nil {
@@ -145,6 +146,10 @@ func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploa
 		for _, f := range p.frames {
 			frameSizes = append(frameSizes, FrameSize{U: int32(f.uncompressedSize), C: int32(len(f.compressed))})
 			compressed = append(compressed, f.compressed)
+			if sink != nil {
+				sink(ctx, cOffset, f.compressed)
+			}
+			cOffset += int64(len(f.compressed))
 		}
 
 		pi := p.index

@@ -75,6 +75,9 @@ func NewUpload(
 }
 
 func (u *Upload) Run(ctx context.Context) error {
+	// Attach the upload use case so flag reads can target it (e.g. write-through only for builds).
+	ctx = featureflags.AddToContext(ctx, featureflags.CompressUseCaseContext(u.useCase))
+
 	if !u.mem.IsCompressionEnabled() && !u.root.IsCompressionEnabled() && !u.useV4 {
 		return u.runV3(ctx)
 	}
