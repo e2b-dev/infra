@@ -688,12 +688,12 @@ resource "google_compute_security_policy_rule" "sandbox-routing-headers-log" {
     exceed_action  = "deny(429)"
 
     enforce_on_key_configs {
-      enforce_on_key_name = "E2b-Sandbox-Id"
+      enforce_on_key_name = "e2b-sandbox-id"
       enforce_on_key_type = "HTTP_HEADER"
     }
 
     enforce_on_key_configs {
-      enforce_on_key_name = "E2b-Sandbox-Port"
+      enforce_on_key_name = "e2b-sandbox-port"
       enforce_on_key_type = "HTTP_HEADER"
     }
 
