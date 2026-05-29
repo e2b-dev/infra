@@ -278,30 +278,29 @@ func (c *Cache) evictOverBudget(ctx context.Context) {
 		return
 	}
 
-	// Re-check under extendMu and mark victims as evicting before releasing it.
-	// Same-key hand-outs wait for cleanup to finish; other keys are not blocked
-	// while Close waits on template files/devices.
-	toDelete := make([]string, 0, len(victims))
-	c.extendMu.Lock()
-	active := (*activeFn)()
-	now := time.Now()
 	for _, v := range victims {
+		c.extendMu.Lock()
+		active := (*activeFn)()
+		now := time.Now()
 		if _, inUse := active[v]; inUse {
+			c.extendMu.Unlock()
+
 			continue
 		}
 		ts, ok := c.lastAccess.Load(v)
 		if !ok || now.Sub(ts.(time.Time)) <= evictionGracePeriod {
+			c.extendMu.Unlock()
+
 			continue
 		}
 		ch := make(chan struct{})
 		if _, loaded := c.evicting.LoadOrStore(v, ch); loaded {
+			c.extendMu.Unlock()
+
 			continue
 		}
-		toDelete = append(toDelete, v)
-	}
-	c.extendMu.Unlock()
+		c.extendMu.Unlock()
 
-	for _, v := range toDelete {
 		c.cache.Delete(v) // triggers OnEviction: peer purge + template Close
 		c.lastAccess.Delete(v)
 		if ch, ok := c.evicting.LoadAndDelete(v); ok {

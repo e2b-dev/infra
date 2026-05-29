@@ -114,6 +114,15 @@ func (u *Uploads) InFlightBuildIDs() map[string]struct{} {
 	return ids
 }
 
+func (u *Uploads) ProtectedBuildIDs() map[string]struct{} {
+	ids := u.InFlightBuildIDs()
+	for id := range u.p2p.ActiveBuildIDs() {
+		ids[id] = struct{}{}
+	}
+
+	return ids
+}
+
 // Wait returns the parent's post-upload header, or (nil, nil) when the
 // ancestor was never opened locally and no peer is mid-upload — the caller
 // already carries its BuildData through srcHeader.Builds.

@@ -158,7 +158,7 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 	server.templateCache.SetActiveBuildIDs(func() map[string]struct{} {
 		active := server.sandboxFactory.Sandboxes.ProtectedBuildIDs()
 		if server.uploads != nil {
-			for id := range server.uploads.InFlightBuildIDs() {
+			for id := range server.uploads.ProtectedBuildIDs() {
 				active[id] = struct{}{}
 			}
 		}
