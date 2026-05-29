@@ -114,13 +114,39 @@ func (c *Cache) waitEvicting(key string) {
 }
 
 func (c *Cache) protectHandout(ctx context.Context, key string) {
-	v, _ := c.handouts.LoadOrStore(key, &atomic.Int64{})
-	count := v.(*atomic.Int64)
-	count.Add(1)
+	var count *atomic.Int64
+	for count == nil {
+		v, _ := c.handouts.LoadOrStore(key, &atomic.Int64{})
+		candidate := v.(*atomic.Int64)
+		for {
+			n := candidate.Load()
+			if n < 0 {
+				c.handouts.CompareAndDelete(key, candidate)
+
+				break
+			}
+			if candidate.CompareAndSwap(n, n+1) {
+				count = candidate
+
+				break
+			}
+		}
+	}
+
 	go func() {
 		<-ctx.Done()
-		if count.Add(-1) == 0 {
-			c.handouts.Delete(key)
+		for {
+			n := count.Load()
+			if n <= 0 {
+				return
+			}
+			if count.CompareAndSwap(n, n-1) {
+				if n == 1 && count.CompareAndSwap(0, -1) {
+					c.handouts.CompareAndDelete(key, count)
+				}
+
+				return
+			}
 		}
 	}()
 }
