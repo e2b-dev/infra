@@ -128,28 +128,25 @@ func NewHeaderFromPath(ctx context.Context, from, headerPath string) (*header.He
 	return h, nil
 }
 
-func getReferencedData(h *header.Header, objectType storage.ObjectType) []string {
-	builds := make(map[string]struct{})
+func getReferencedData(h *header.Header, dataFileName string) []string {
+	builds := make(map[uuid.UUID]struct{})
 
 	for _, mapping := range h.Mapping {
-		builds[mapping.BuildId.String()] = struct{}{}
+		builds[mapping.BuildId] = struct{}{}
 	}
 
-	delete(builds, uuid.Nil.String())
+	delete(builds, uuid.Nil)
 
 	var dataReferences []string
 
 	for build := range builds {
 		paths := storage.Paths{
-			BuildID: build,
+			BuildID: build.String(),
 		}
 
-		switch objectType {
-		case storage.MemfileHeaderObjectType:
-			dataReferences = append(dataReferences, paths.Memfile())
-		case storage.RootFSHeaderObjectType:
-			dataReferences = append(dataReferences, paths.Rootfs())
-		}
+		ct := h.GetBuildFrameData(build).CompressionType()
+
+		dataReferences = append(dataReferences, paths.DataFile(dataFileName, ct))
 	}
 
 	return dataReferences
@@ -246,7 +243,7 @@ func main() {
 		memfileHeader = h
 	}
 
-	dataReferences := getReferencedData(memfileHeader, storage.MemfileHeaderObjectType)
+	dataReferences := getReferencedData(memfileHeader, storage.MemfileName)
 
 	filesToCopy = append(filesToCopy, buildMemfileHeaderPath)
 	filesToCopy = append(filesToCopy, dataReferences...)
@@ -272,7 +269,7 @@ func main() {
 		rootfsHeader = h
 	}
 
-	dataReferences = getReferencedData(rootfsHeader, storage.RootFSHeaderObjectType)
+	dataReferences = getReferencedData(rootfsHeader, storage.RootfsName)
 
 	filesToCopy = append(filesToCopy, buildRootfsHeaderPath)
 	filesToCopy = append(filesToCopy, dataReferences...)
