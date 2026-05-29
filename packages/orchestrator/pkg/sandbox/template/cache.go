@@ -94,8 +94,7 @@ type Cache struct {
 }
 
 // SetActiveBuildIDs installs the in-use predicate used by size-based eviction.
-// Must be called before Start. The function is consulted on every sweep and
-// must return the build IDs of all currently running sandboxes.
+// The function is consulted on every sweep and may be installed after Start.
 func (c *Cache) SetActiveBuildIDs(fn func() map[string]struct{}) {
 	c.activeBuildIDs.Store(&fn)
 }
