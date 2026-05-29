@@ -45,7 +45,7 @@ echo -e "${GREEN}✓ Updated reconciler.go${NC}"
 
 # Step 2: Verify syntax
 echo -e "${BLUE}[2/5] Verifying syntax...${NC}"
-if ! go build ./pkg/orphan/... -C "$ORCHESTRATOR_DIR" 2>&1 | head -20; then
+if ! (cd "$ORCHESTRATOR_DIR" && go build ./pkg/orphan/...) 2>&1 | head -20; then
     echo -e "${RED}✗ Build failed${NC}"
     exit 1
 fi
@@ -53,7 +53,7 @@ echo -e "${GREEN}✓ Syntax OK${NC}"
 
 # Step 3: Run tests
 echo -e "${BLUE}[3/5] Running unit tests...${NC}"
-TEST_OUTPUT=$(go test -v -count=1 -race ./pkg/orphan/... -C "$ORCHESTRATOR_DIR" 2>&1 | tail -10)
+TEST_OUTPUT=$(cd "$ORCHESTRATOR_DIR" && go test -v -count=1 -race ./pkg/orphan/... 2>&1 | tail -10)
 if echo "$TEST_OUTPUT" | grep -q "PASS"; then
     echo -e "${GREEN}✓ All tests passed${NC}"
     echo "$TEST_OUTPUT" | tail -3
@@ -113,7 +113,7 @@ echo -e "${GREEN}✓ Time calculation verified${NC}"
 # Step 5: Build binary
 echo -e "${BLUE}[5/5] Building orchestrator binary...${NC}"
 mkdir -p "$BIN_DIR"
-go build -o "$BIN_DIR/orchestrator" ./main.go -C "$ORCHESTRATOR_DIR"
+(cd "$ORCHESTRATOR_DIR" && go build -o "$BIN_DIR/orchestrator" ./main.go)
 BINARY_SIZE=$(du -h "$BIN_DIR/orchestrator" | cut -f1)
 echo -e "${GREEN}✓ Binary built: ${BINARY_SIZE}${NC}"
 
