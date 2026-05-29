@@ -340,8 +340,10 @@ func defaultTeamNameFromProfile(profile userprofile.Profile) string {
 	baseName := utils.FirstNonEmpty(
 		firstWord(profile.Name),
 		emailPrefix(profile.Email),
-		"User",
 	)
+	if baseName == "" {
+		return "Default Team"
+	}
 
 	return capitalizeFirstLetter(baseName) + "'s Default Team"
 }

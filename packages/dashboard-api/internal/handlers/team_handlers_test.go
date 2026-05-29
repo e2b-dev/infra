@@ -415,9 +415,9 @@ func TestDefaultTeamNameFromProfile(t *testing.T) {
 			want: "Barbara's Default Team",
 		},
 		{
-			name:    "fallback",
+			name:    "no base name",
 			profile: userprofile.Profile{},
-			want:    "User's Default Team",
+			want:    "Default Team",
 		},
 	}
 
