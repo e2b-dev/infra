@@ -1,9 +1,7 @@
 package storage
 
 import (
-	"crypto/md5"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -121,20 +119,11 @@ func TestMultipartUploader_UploadPartSlices_Success(t *testing.T) {
 	expectedETag := `"slice-etag"`
 	slices := [][]byte{[]byte("hello "), []byte("world"), []byte("!")}
 
-	// Compute expected MD5 over all slices.
-	h := md5.New()
-	for _, s := range slices {
-		h.Write(s)
-	}
-	expectedMD5 := base64.StdEncoding.EncodeToString(h.Sum(nil))
-
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "PUT", r.Method)
 		assert.Contains(t, r.URL.RawQuery, "partNumber=3")
 		assert.Contains(t, r.URL.RawQuery, "uploadId=test-upload-id")
-
-		// Verify MD5 matches the expected hash of all slices.
-		assert.Equal(t, expectedMD5, r.Header.Get("Content-MD5"))
+		assert.Empty(t, r.Header.Get("Content-MD5"))
 
 		// Verify body is the concatenation of all slices.
 		body, err := io.ReadAll(r.Body)

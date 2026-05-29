@@ -65,6 +65,7 @@ func (m *memPartUploader) Assemble() []byte {
 type frame struct {
 	uncompressedSize int
 	compressed       []byte
+	input            []byte
 }
 
 type part struct {
@@ -72,10 +73,11 @@ type part struct {
 	frames         []*frame
 	compressedSize atomic.Int64
 	compress       *errgroup.Group
+	inputPool      *sync.Pool
 }
 
-func newPart(index int, parentCtx context.Context, workers int) (*part, context.Context) {
-	p := &part{index: index}
+func newPart(index int, parentCtx context.Context, workers int, inputPool *sync.Pool) (*part, context.Context) {
+	p := &part{index: index, inputPool: inputPool}
 	var ctx context.Context
 	p.compress, ctx = errgroup.WithContext(parentCtx)
 	p.compress.SetLimit(workers)
@@ -84,7 +86,7 @@ func newPart(index int, parentCtx context.Context, workers int) (*part, context.
 }
 
 func (p *part) addFrame(ctx context.Context, uncompressedData []byte, pool *sync.Pool) {
-	frameInPart := &frame{uncompressedSize: len(uncompressedData)}
+	frameInPart := &frame{uncompressedSize: len(uncompressedData), input: uncompressedData[:cap(uncompressedData)]}
 	p.frames = append(p.frames, frameInPart)
 
 	p.compress.Go(func() error {
@@ -102,6 +104,15 @@ func (p *part) addFrame(ctx context.Context, uncompressedData []byte, pool *sync
 
 		return nil
 	})
+}
+
+func (p *part) releaseInputBuffers() {
+	for _, f := range p.frames {
+		if f.input != nil {
+			p.inputPool.Put(f.input)
+			f.input = nil
+		}
+	}
 }
 
 func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploader partUploader, maxUploadConcurrency int, sink FrameSink) (*FrameTable, [32]byte, error) {
@@ -135,7 +146,9 @@ func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploa
 	var cOffset int64
 	var loopErr error
 	for p := range q {
-		if err := p.compress.Wait(); err != nil {
+		err := p.compress.Wait()
+		p.releaseInputBuffers()
+		if err != nil {
 			loopErr = fmt.Errorf("compress frames: %w", err)
 			cancel()
 
@@ -186,24 +199,32 @@ func readLoop(ctx context.Context, in io.Reader, cfg CompressConfig, hasher io.W
 	frameSize := cfg.FrameSize()
 	minPartSize := cfg.MinPartSize()
 	workers := max(cfg.FrameEncodeWorkers, 1)
-	p, compressCtx := newPart(1, ctx, workers)
+	inputPool := &sync.Pool{
+		New: func() any {
+			return make([]byte, frameSize)
+		},
+	}
+	p, compressCtx := newPart(1, ctx, workers, inputPool)
 
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 
-		buf := make([]byte, frameSize)
+		buf := inputPool.Get().([]byte)
 		n, err := io.ReadFull(in, buf)
 
 		eof := errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 		if err != nil && !eof {
+			inputPool.Put(buf)
 			return fmt.Errorf("read frame: %w", err)
 		}
 
 		if n > 0 {
 			hasher.Write(buf[:n])
 			p.addFrame(compressCtx, buf[:n], compressors)
+		} else {
+			inputPool.Put(buf)
 		}
 
 		if eof {
@@ -211,6 +232,7 @@ func readLoop(ctx context.Context, in io.Reader, cfg CompressConfig, hasher io.W
 				select {
 				case q <- p:
 				case <-ctx.Done():
+					p.releaseInputBuffers()
 					return ctx.Err()
 				}
 			}
@@ -222,10 +244,11 @@ func readLoop(ctx context.Context, in io.Reader, cfg CompressConfig, hasher io.W
 			select {
 			case q <- p:
 			case <-ctx.Done():
+				p.releaseInputBuffers()
 				return ctx.Err()
 			}
 
-			p, compressCtx = newPart(p.index+1, ctx, workers)
+			p, compressCtx = newPart(p.index+1, ctx, workers, inputPool)
 		}
 	}
 }
