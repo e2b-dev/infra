@@ -89,6 +89,8 @@ type Cache struct {
 	// shield just-accessed templates from eviction during sandbox startup
 	// (before they appear in activeBuildIDs).
 	lastAccess sync.Map // key string -> time.Time
+
+	evicting sync.Map // key string -> chan struct{}
 }
 
 // SetActiveBuildIDs installs the in-use predicate used by size-based eviction.
@@ -96,6 +98,16 @@ type Cache struct {
 // must return the build IDs of all currently running sandboxes.
 func (c *Cache) SetActiveBuildIDs(fn func() map[string]struct{}) {
 	c.activeBuildIDs.Store(&fn)
+}
+
+func (c *Cache) waitEvicting(key string) {
+	for {
+		ch, ok := c.evicting.Load(key)
+		if !ok {
+			return
+		}
+		<-ch.(chan struct{})
+	}
 }
 
 // NewCache initializes a template new cache.
@@ -116,14 +128,10 @@ func NewCache(
 		peers.Purge(item.Key())
 
 		template := item.Value()
-		key := item.Key()
-
-		go func() {
-			err := template.Close(context.WithoutCancel(ctx))
-			if err != nil {
-				logger.L().Warn(ctx, "failed to cleanup template data", zap.String("item_key", key), zap.Error(err))
-			}
-		}()
+		err := template.Close(ctx)
+		if err != nil {
+			logger.L().Warn(ctx, "failed to cleanup template data", zap.String("item_key", item.Key()), zap.Error(err))
+		}
 	})
 
 	// Delete the old build cache directory content.
@@ -270,11 +278,11 @@ func (c *Cache) evictOverBudget(ctx context.Context) {
 		return
 	}
 
-	// Re-check under extendMu so a concurrent template hand-out either marks
-	// lastAccess before deletion (skip) or happens after deletion (refetch).
+	// Re-check under extendMu and mark victims as evicting before releasing it.
+	// Same-key hand-outs wait for cleanup to finish; other keys are not blocked
+	// while Close waits on template files/devices.
+	toDelete := make([]string, 0, len(victims))
 	c.extendMu.Lock()
-	defer c.extendMu.Unlock()
-
 	active := (*activeFn)()
 	now := time.Now()
 	for _, v := range victims {
@@ -285,8 +293,20 @@ func (c *Cache) evictOverBudget(ctx context.Context) {
 		if !ok || now.Sub(ts.(time.Time)) <= evictionGracePeriod {
 			continue
 		}
+		ch := make(chan struct{})
+		if _, loaded := c.evicting.LoadOrStore(v, ch); loaded {
+			continue
+		}
+		toDelete = append(toDelete, v)
+	}
+	c.extendMu.Unlock()
+
+	for _, v := range toDelete {
 		c.cache.Delete(v) // triggers OnEviction: peer purge + template Close
 		c.lastAccess.Delete(v)
+		if ch, ok := c.evicting.LoadAndDelete(v); ok {
+			close(ch.(chan struct{}))
+		}
 		logger.L().Info(ctx, "evicted idle template over memory budget",
 			zap.String("build_id", v),
 			zap.Int64("budget_bytes", budget),
@@ -476,17 +496,28 @@ func (c *Cache) AddSnapshot(
 
 // GetCachedTemplate returns the template for buildID if it is currently in the cache.
 func (c *Cache) GetCachedTemplate(buildID string) (Template, bool) {
-	c.extendMu.Lock()
-	defer c.extendMu.Unlock()
+	for {
+		c.waitEvicting(buildID)
 
-	item := c.cache.Get(buildID)
-	if item == nil {
-		return nil, false
+		c.extendMu.Lock()
+		if _, ok := c.evicting.Load(buildID); ok {
+			c.extendMu.Unlock()
+
+			continue
+		}
+
+		item := c.cache.Get(buildID)
+		if item == nil {
+			c.extendMu.Unlock()
+
+			return nil, false
+		}
+
+		c.lastAccess.Store(buildID, time.Now())
+		c.extendMu.Unlock()
+
+		return item.Value(), true
 	}
-
-	c.lastAccess.Store(buildID, time.Now())
-
-	return item.Value(), true
 }
 
 // UpdateMetadata overwrites the local metadata file for a cached template so that
@@ -552,14 +583,27 @@ func (c *Cache) getTemplateWithFetch(ctx context.Context, tmpl *storageTemplate,
 
 	key := tmpl.Files().CacheKey()
 
-	c.extendMu.Lock()
-	t, found := c.cache.GetOrSet(key, tmpl, ttlcache.WithTTL[string, Template](ttl))
-	if found && t.TTL() < ttl {
-		// Another team with a shorter max length cached this entry; extend it.
-		c.cache.Set(key, t.Value(), ttl)
+	var t *ttlcache.Item[string, Template]
+	var found bool
+	for {
+		c.waitEvicting(key)
+
+		c.extendMu.Lock()
+		if _, ok := c.evicting.Load(key); ok {
+			c.extendMu.Unlock()
+
+			continue
+		}
+		t, found = c.cache.GetOrSet(key, tmpl, ttlcache.WithTTL[string, Template](ttl))
+		if found && t.TTL() < ttl {
+			// Another team with a shorter max length cached this entry; extend it.
+			c.cache.Set(key, t.Value(), ttl)
+		}
+		c.lastAccess.Store(key, time.Now())
+		c.extendMu.Unlock()
+
+		break
 	}
-	c.lastAccess.Store(key, time.Now())
-	c.extendMu.Unlock()
 
 	if !found {
 		missesMetric.Add(ctx, 1)
