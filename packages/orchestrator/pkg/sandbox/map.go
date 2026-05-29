@@ -69,26 +69,29 @@ func (m *Map) Count() int {
 	return m.live.Count()
 }
 
-// ProtectedBuildIDs returns the build IDs of every sandbox that may still read
-// its template's block devices: both the running (live) set and sandboxes that
-// have been marked stopping but not yet network-released (pause/checkpoint
-// still reads the template while the Firecracker process shuts down). The
-// template cache uses this to avoid evicting a template out from under an
-// active sandbox. The network map is a superset of live, but both are unioned
-// so the guard stays correct regardless of insertion ordering.
+// ProtectedBuildIDs returns template cache keys used by sandboxes that may
+// still read their template's block devices. It includes both Runtime.BuildID
+// and the attached template key; checkpoint resumes can differ.
 func (m *Map) ProtectedBuildIDs() map[string]struct{} {
 	live := m.live.Items()
 	network := m.network.Items()
 
 	ids := make(map[string]struct{}, len(network)+len(live))
 	for _, sbx := range live {
-		ids[sbx.Runtime.BuildID] = struct{}{}
+		addProtectedBuildIDs(ids, sbx)
 	}
 	for _, sbx := range network {
-		ids[sbx.Runtime.BuildID] = struct{}{}
+		addProtectedBuildIDs(ids, sbx)
 	}
 
 	return ids
+}
+
+func addProtectedBuildIDs(ids map[string]struct{}, sbx *Sandbox) {
+	ids[sbx.Runtime.BuildID] = struct{}{}
+	if sbx.Template != nil {
+		ids[sbx.Template.Files().CacheKey()] = struct{}{}
+	}
 }
 
 func (m *Map) Get(sandboxID string) (*Sandbox, bool) {
