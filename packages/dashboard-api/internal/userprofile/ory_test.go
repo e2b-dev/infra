@@ -44,7 +44,9 @@ func TestProfileFromOryIdentity(t *testing.T) {
 				"name":  "grace hopper",
 			},
 			credentials: &map[string]ory.IdentityCredentials{
-				"password": {},
+				"password": {
+					Config: map[string]any{"hashed_password": "$argon2id$v=19$m=65536,t=3,p=4$hash"},
+				},
 				"oidc": {
 					Config: map[string]any{
 						"providers": []any{
@@ -63,16 +65,27 @@ func TestProfileFromOryIdentity(t *testing.T) {
 		{
 			name: "providers fallback from identifiers when config missing",
 			credentials: &map[string]ory.IdentityCredentials{
+				"password": {
+					Config: map[string]any{"use_password_migration_hook": true},
+				},
 				"oidc": {
 					Identifiers: []string{"github:222", "GOOGLE:111", "google:111", "apple:333"},
 				},
 			},
-			wantProviders: []string{"google", "github"},
+			wantProviders: []string{"email", "google", "github"},
 		},
 		{
-			name: "email provider from password credential",
+			name: "empty password credential ignored",
 			credentials: &map[string]ory.IdentityCredentials{
 				"password": {Identifiers: []string{"ada@example.com"}},
+			},
+		},
+		{
+			name: "email provider from usable password credential",
+			credentials: &map[string]ory.IdentityCredentials{
+				"password": {
+					Config: map[string]any{"hashed_password": "$argon2id$v=19$m=65536,t=3,p=4$hash"},
+				},
 			},
 			wantProviders: []string{"email"},
 		},

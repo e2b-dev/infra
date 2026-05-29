@@ -227,11 +227,9 @@ func oryLinkedProviders(identity ory.Identity) []string {
 	}
 
 	credentials := *identity.Credentials
-	candidates := make([]string, 0, 4)
-	for credentialType := range credentials {
-		if isOryEmailCredentialType(credentialType) {
-			candidates = append(candidates, credentialType)
-		}
+	candidates := make([]string, 0, 3)
+	if password, ok := credentials[oryCredentialPassword]; ok && hasUsablePasswordCredential(password) {
+		candidates = append(candidates, authProviderEmail)
 	}
 
 	oidc, ok := credentials[oryCredentialOIDC]
@@ -239,6 +237,7 @@ func oryLinkedProviders(identity ory.Identity) []string {
 		return normalizeAuthProviders(candidates)
 	}
 
+	oidcProviders := 0
 	if entries, ok := oidc.Config["providers"].([]any); ok {
 		for _, entry := range entries {
 			obj, ok := entry.(map[string]any)
@@ -247,11 +246,12 @@ func oryLinkedProviders(identity ory.Identity) []string {
 			}
 			if name, ok := obj["provider"].(string); ok {
 				candidates = append(candidates, name)
+				oidcProviders++
 			}
 		}
 	}
 
-	if len(candidates) == 0 {
+	if oidcProviders == 0 {
 		for _, identifier := range oidc.Identifiers {
 			if provider, _, found := strings.Cut(identifier, ":"); found {
 				candidates = append(candidates, provider)
@@ -260,4 +260,13 @@ func oryLinkedProviders(identity ory.Identity) []string {
 	}
 
 	return normalizeAuthProviders(candidates)
+}
+
+func hasUsablePasswordCredential(credential ory.IdentityCredentials) bool {
+	if hashedPassword, ok := credential.Config["hashed_password"].(string); ok && hashedPassword != "" {
+		return true
+	}
+
+	useMigrationHook, _ := credential.Config["use_password_migration_hook"].(bool)
+	return useMigrationHook
 }

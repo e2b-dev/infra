@@ -9,9 +9,6 @@ const (
 
 	oryCredentialOIDC     = "oidc"
 	oryCredentialPassword = "password"
-	oryCredentialCode     = "code"
-	oryCredentialWebAuthn = "webauthn"
-	oryCredentialPasskey  = "passkey"
 )
 
 var (
@@ -20,9 +17,6 @@ var (
 	oryProfileCredentialTypes = []string{
 		oryCredentialOIDC,
 		oryCredentialPassword,
-		oryCredentialCode,
-		oryCredentialWebAuthn,
-		oryCredentialPasskey,
 	}
 )
 
@@ -52,7 +46,7 @@ func normalizeAuthProviders(values []string) []string {
 
 func normalizeAuthProvider(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case authProviderEmail, oryCredentialPassword, oryCredentialCode, oryCredentialWebAuthn, oryCredentialPasskey:
+	case authProviderEmail:
 		return authProviderEmail
 	case authProviderGoogle:
 		return authProviderGoogle
@@ -60,14 +54,5 @@ func normalizeAuthProvider(value string) string {
 		return authProviderGithub
 	default:
 		return ""
-	}
-}
-
-func isOryEmailCredentialType(value string) bool {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case oryCredentialPassword, oryCredentialCode, oryCredentialWebAuthn, oryCredentialPasskey:
-		return true
-	default:
-		return false
 	}
 }
