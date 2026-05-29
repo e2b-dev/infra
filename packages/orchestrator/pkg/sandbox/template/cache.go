@@ -289,9 +289,10 @@ func (c *Cache) evictOverBudget(ctx context.Context) {
 	}
 
 	for _, v := range victims {
-		c.extendMu.Lock()
 		active := (*activeFn)()
 		now := time.Now()
+
+		c.extendMu.Lock()
 		if _, inUse := active[v]; inUse {
 			c.extendMu.Unlock()
 
@@ -314,7 +315,12 @@ func (c *Cache) evictOverBudget(ctx context.Context) {
 		}
 		c.extendMu.Unlock()
 
-		c.cache.Delete(v) // triggers OnEviction: peer purge + template Close
+		_, deleted := c.cache.GetAndDelete(v) // triggers OnEviction: peer purge + template Close
+		if !deleted {
+			if ch, ok := c.evicting.LoadAndDelete(v); ok {
+				close(ch.(chan struct{}))
+			}
+		}
 		c.lastAccess.Delete(v)
 		logger.L().Info(ctx, "evicted idle template over memory budget",
 			zap.String("build_id", v),
