@@ -786,7 +786,7 @@ func runDedup(t *testing.T, srcMem, baseMem []byte, dirty *roaring.Bitmap, block
 	t.Helper()
 
 	src := buildPackedSrcCache(t, srcMem, dirty, blockSize)
-	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseMem}, dirty, blockSize, t.TempDir()+"/dedup", false, false, 0)
+	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseMem}, dirty, blockSize, t.TempDir()+"/dedup", false, false, 0, 0, 0)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -908,7 +908,7 @@ func TestCacheDedup_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, _, err = src.Dedup(ctx, &fakeOriginalDevice{data: data}, dirty, blockSize, t.TempDir()+"/dedup", false, false, 0)
+	_, _, err = src.Dedup(ctx, &fakeOriginalDevice{data: data}, dirty, blockSize, t.TempDir()+"/dedup", false, false, 0, 0, 0)
 	require.ErrorIs(t, err, context.Canceled)
 }
 
@@ -932,6 +932,8 @@ func TestCacheDedup_OriginalMemfileReadError(t *testing.T) {
 		t.TempDir()+"/dedup",
 		false,
 		false,
+		0,
+		0,
 		0,
 	)
 	require.ErrorIs(t, err, sentinel)
@@ -966,7 +968,7 @@ func TestCacheDedup_EmptyParentMappingSkipsBaseReadAt(t *testing.T) {
 	junk := bytes.Repeat([]byte{0xFF}, int(size))
 	base := &fakeOriginalDevice{data: junk, hdr: hdr}
 
-	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", false, false, 0)
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", false, false, 0, 0, 0)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -1059,7 +1061,7 @@ func TestCacheDedup_BestEffortUncachedSkipsBaseReadAt(t *testing.T) {
 	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
 	base := &peekingOriginalDevice{fakeOriginalDevice: fakeOriginalDevice{data: baseData}, cached: false}
 
-	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false, 0)
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false, 0, 0, 0)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -1091,7 +1093,7 @@ func TestCacheDedup_BestEffortCachedMatchesNormalPath(t *testing.T) {
 	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
 	base := &peekingOriginalDevice{fakeOriginalDevice: fakeOriginalDevice{data: baseData}, cached: true}
 
-	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false, 0)
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false, 0, 0, 0)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -1099,7 +1101,7 @@ func TestCacheDedup_BestEffortCachedMatchesNormalPath(t *testing.T) {
 	require.EqualValues(t, 0, meta.Empty.GetCardinality())
 }
 
-func TestCacheDedup_MinChangedPagesPromotesSparseBlock(t *testing.T) {
+func TestCacheDedup_FetchRunBudgetPromotesSmallParentRun(t *testing.T) {
 	t.Parallel()
 
 	pageSize := int64(header.PageSize)
@@ -1111,19 +1113,21 @@ func TestCacheDedup_MinChangedPagesPromotesSparseBlock(t *testing.T) {
 	require.NoError(t, err)
 	srcData := make([]byte, size)
 	copy(srcData, baseData)
-	srcData[pageSize] ^= 0xFF
+	srcData[0] ^= 0xFF
+	srcData[2*pageSize] ^= 0xFF
+	clear(srcData[3*pageSize : 4*pageSize])
 
 	dirty := fullDirty(size, blockSize)
 	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
 
-	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseData}, dirty, blockSize, t.TempDir()+"/dedup", false, false, 1)
+	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseData}, dirty, blockSize, t.TempDir()+"/dedup", false, false, 1, 1, 4)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
-	require.EqualValues(t, blockSize/pageSize, meta.Dirty.GetCardinality())
-	require.Zero(t, meta.Empty.GetCardinality())
+	require.EqualValues(t, 3, meta.Dirty.GetCardinality())
+	require.EqualValues(t, 1, meta.Empty.GetCardinality())
 
-	for i := range blockSize / pageSize {
+	for _, i := range []int64{0, 1, 2} {
 		got := make([]byte, pageSize)
 		_, err := cache.ReadAt(got, i*pageSize)
 		require.NoError(t, err)
@@ -1165,7 +1169,7 @@ func TestCacheDedup_BestEffortPerPageCacheCheck(t *testing.T) {
 		cachedPages:        map[uint32]bool{0: true, 1: false, 2: true, 3: false},
 	}
 
-	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false, 0)
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false, 0, 0, 0)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 

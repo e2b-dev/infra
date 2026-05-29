@@ -11,6 +11,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -214,6 +215,32 @@ type dedupPlan struct {
 	promotedPages  int64
 }
 
+const (
+	dedupPageEmpty byte = iota
+	dedupPageParent
+	dedupPageCurrent
+)
+
+const (
+	currentFetchSource byte = iota + 1
+	parentFetchSource
+)
+
+const (
+	defaultDedupFetchWindowPages = 2 << 20 / header.PageSize
+)
+
+type dedupFetchKey struct {
+	source byte
+	build  uuid.UUID
+	window uint64
+}
+
+type dedupPageInfo struct {
+	kind byte
+	key  dedupFetchKey
+}
+
 // dedupCompare classifies each dirty page against base into pageDirty or
 // pageEmpty. Per-page IsCached so a single uncached neighbour can't poison
 // cached pages of the same block when the parent header is page-granular.
@@ -224,13 +251,20 @@ func dedupCompare(
 	dirty *roaring.Bitmap,
 	blockSize int64,
 	bestEffort bool,
-	minChangedPagesPerBlock int,
+	maxFetchWindowsPerBlock int,
+	maxPromotedParentPagesPerBlock int,
+	fetchWindowPages int,
 ) (*dedupPlan, error) {
 	pageDirty := roaring.New()
 	pageEmpty := roaring.New()
 	var exportedSize int64
 	var promotedBlocks int64
 	var promotedPages int64
+	var currentStoredPages int64
+
+	if fetchWindowPages <= 0 {
+		fetchWindowPages = defaultDedupFetchWindowPages
+	}
 
 	baseHeader := base.Header()
 	peeker, _ := base.(CachePeeker)
@@ -249,33 +283,33 @@ func dedupCompare(
 				return nil, err
 			}
 
-			blockDirty := roaring.New()
-			blockEmpty := roaring.New()
+			pagesPerBlock := int(blockSize / header.PageSize)
+			blockPages := make([]dedupPageInfo, pagesPerBlock)
 
-			for i := int64(0); i < blockSize; i += header.PageSize {
+			for page := range pagesPerBlock {
+				i := int64(page) * header.PageSize
 				srcPage := srcBuf[i : i+header.PageSize]
-				pageIdx := uint32((absOff + i) / header.PageSize)
 				pageOff := absOff + i
 
 				if header.IsZero(srcPage) {
-					blockEmpty.Add(pageIdx)
-
 					continue
 				}
 
-				skip := false
+				var mapped header.BuildMap
+				hasMapping := false
 				if baseHeader != nil {
 					if m, err := baseHeader.GetShiftedMapping(ctx, pageOff); err == nil {
+						mapped = m
+						hasMapping = true
 						if m.BuildId == uuid.Nil && int64(m.Length) >= header.PageSize {
-							skip = true
+							blockPages[page].kind = dedupPageCurrent
+
+							continue
 						}
 					}
 				}
-				if !skip && bestEffort && peeker != nil && !peeker.IsCached(ctx, pageOff, header.PageSize) {
-					skip = true
-				}
-				if skip {
-					blockDirty.Add(pageIdx)
+				if bestEffort && peeker != nil && !peeker.IsCached(ctx, pageOff, header.PageSize) {
+					blockPages[page].kind = dedupPageCurrent
 
 					continue
 				}
@@ -285,25 +319,35 @@ func dedupCompare(
 					return nil, fmt.Errorf("slice base at %d: %w", pageOff, sErr)
 				}
 				if bytes.Equal(srcPage, basePage) {
+					blockPages[page].kind = dedupPageParent
+					if hasMapping {
+						blockPages[page].key = dedupFetchKey{source: parentFetchSource, build: mapped.BuildId, window: mapped.Offset / uint64(fetchWindowPages*header.PageSize)}
+					} else {
+						blockPages[page].key = dedupFetchKey{source: parentFetchSource, window: uint64(pageOff) / uint64(fetchWindowPages*header.PageSize)}
+					}
+
 					continue
 				}
 
-				blockDirty.Add(pageIdx)
+				blockPages[page].kind = dedupPageCurrent
 			}
 
-			changedPages := int(blockDirty.GetCardinality())
-			if minChangedPagesPerBlock > 0 && changedPages > 0 && changedPages <= minChangedPagesPerBlock {
-				startPage := uint64(absOff / header.PageSize)
-				endPage := startPage + uint64(blockSize/header.PageSize)
-				pageDirty.AddRange(startPage, endPage)
+			promoted := compactDedupFetchWindows(blockPages, maxFetchWindowsPerBlock, maxPromotedParentPagesPerBlock, fetchWindowPages, currentStoredPages)
+			if promoted > 0 {
 				promotedBlocks++
-				promotedPages += int64(endPage - startPage)
-
-				continue
+				promotedPages += int64(promoted)
 			}
 
-			pageDirty.Or(blockDirty)
-			pageEmpty.Or(blockEmpty)
+			for page, info := range blockPages {
+				pageIdx := uint32(absOff/header.PageSize) + uint32(page)
+				switch info.kind {
+				case dedupPageEmpty:
+					pageEmpty.Add(pageIdx)
+				case dedupPageCurrent:
+					pageDirty.Add(pageIdx)
+					currentStoredPages++
+				}
+			}
 		}
 	}
 
@@ -314,6 +358,92 @@ func dedupCompare(
 		promotedBlocks: promotedBlocks,
 		promotedPages:  promotedPages,
 	}, nil
+}
+
+func compactDedupFetchWindows(pages []dedupPageInfo, maxWindows, maxPromoted, windowPages int, currentStart int64) int {
+	if maxWindows <= 0 || maxPromoted <= 0 {
+		return 0
+	}
+
+	var promoted int
+	for promoted < maxPromoted && countFetchWindows(pages, windowPages, currentStart) > maxWindows {
+		start, end := bestParentRunToPromote(pages, maxPromoted-promoted, windowPages, currentStart)
+		if start < 0 {
+			break
+		}
+		for i := start; i < end; i++ {
+			if pages[i].kind == dedupPageParent {
+				pages[i].kind = dedupPageCurrent
+				pages[i].key = dedupFetchKey{}
+				promoted++
+			}
+		}
+	}
+
+	return promoted
+}
+
+func countFetchWindows(pages []dedupPageInfo, windowPages int, currentStart int64) int {
+	keys := make(map[dedupFetchKey]struct{})
+	var currentOrdinal int64
+	for _, p := range pages {
+		switch p.kind {
+		case dedupPageParent:
+			keys[p.key] = struct{}{}
+		case dedupPageCurrent:
+			keys[dedupFetchKey{source: currentFetchSource, window: uint64(currentStart+currentOrdinal) / uint64(windowPages)}] = struct{}{}
+			currentOrdinal++
+		}
+	}
+
+	return len(keys)
+}
+
+func bestParentRunToPromote(pages []dedupPageInfo, budget, windowPages int, currentStart int64) (int, int) {
+	before := countFetchWindows(pages, windowPages, currentStart)
+	bestStart, bestEnd, bestBenefit, bestCost := -1, -1, 0, 0
+	for i := 0; i < len(pages); {
+		for i < len(pages) && pages[i].kind != dedupPageParent {
+			i++
+		}
+		start := i
+		for i < len(pages) && (pages[i].kind == dedupPageParent || pages[i].kind == dedupPageEmpty) {
+			i++
+		}
+		end := i
+		cost := countKind(pages[start:end], dedupPageParent)
+		if cost == 0 || cost > budget {
+			continue
+		}
+
+		candidate := slices.Clone(pages)
+		for j := start; j < end; j++ {
+			if candidate[j].kind == dedupPageParent {
+				candidate[j].kind = dedupPageCurrent
+				candidate[j].key = dedupFetchKey{}
+			}
+		}
+		benefit := before - countFetchWindows(candidate, windowPages, currentStart)
+		if benefit <= 0 {
+			continue
+		}
+		if bestStart < 0 || cost*bestBenefit < bestCost*benefit {
+			bestStart, bestEnd, bestBenefit, bestCost = start, end, benefit, cost
+		}
+	}
+
+	return bestStart, bestEnd
+}
+
+func countKind(pages []dedupPageInfo, kind byte) int {
+	var n int
+	for _, p := range pages {
+		if p.kind == kind {
+			n++
+		}
+	}
+
+	return n
 }
 
 // dedupDrain writes pageDirty pages from src to outPath packed at PageSize.
@@ -432,7 +562,9 @@ func (c *Cache) Dedup(
 	outPath string,
 	bestEffort bool,
 	directIO bool,
-	minChangedPagesPerBlock int,
+	maxFetchWindowsPerBlock int,
+	maxPromotedParentPagesPerBlock int,
+	fetchRunWindowPages int,
 ) (*Cache, *header.DiffMetadata, error) {
 	ctx, span := tracer.Start(ctx, "dedup-pages")
 	defer span.End()
@@ -456,7 +588,7 @@ func (c *Cache) Dedup(
 	}
 
 	compareStart := time.Now()
-	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort, minChangedPagesPerBlock)
+	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort, maxFetchWindowsPerBlock, maxPromotedParentPagesPerBlock, fetchRunWindowPages)
 	if err != nil {
 		return nil, nil, err
 	}

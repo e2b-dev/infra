@@ -246,7 +246,9 @@ func NewCacheFromMemfdDeduped(
 	dirty *roaring.Bitmap,
 	bestEffort bool,
 	directIO bool,
-	minChangedPagesPerBlock int,
+	maxFetchWindowsPerBlock int,
+	maxPromotedParentPagesPerBlock int,
+	fetchRunWindowPages int,
 	inputEmpty *roaring.Bitmap,
 	metaOut *utils.SetOnce[*header.DiffMetadata],
 ) (*DedupedMemfdCache, error) {
@@ -259,7 +261,7 @@ func NewCacheFromMemfdDeduped(
 		cancel:  cancel,
 		done:    utils.NewSetOnce[*Cache](),
 	}
-	go d.runDedup(drainCtx, base, blockSize, memfd, dirty, bestEffort, directIO, minChangedPagesPerBlock, inputEmpty, metaOut)
+	go d.runDedup(drainCtx, base, blockSize, memfd, dirty, bestEffort, directIO, maxFetchWindowsPerBlock, maxPromotedParentPagesPerBlock, fetchRunWindowPages, inputEmpty, metaOut)
 
 	return d, nil
 }
@@ -271,7 +273,9 @@ func (d *DedupedMemfdCache) runDedup(
 	memfd *Memfd,
 	dirty *roaring.Bitmap,
 	bestEffort, directIO bool,
-	minChangedPagesPerBlock int,
+	maxFetchWindowsPerBlock int,
+	maxPromotedParentPagesPerBlock int,
+	fetchRunWindowPages int,
 	inputEmpty *roaring.Bitmap,
 	metaOut *utils.SetOnce[*header.DiffMetadata],
 ) {
@@ -281,7 +285,7 @@ func (d *DedupedMemfdCache) runDedup(
 	src := func(absOff int64) ([]byte, error) { return memfd.Slice(absOff, blockSize) }
 
 	compareStart := time.Now()
-	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort, minChangedPagesPerBlock)
+	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort, maxFetchWindowsPerBlock, maxPromotedParentPagesPerBlock, fetchRunWindowPages)
 	compareDur := time.Since(compareStart)
 	if err != nil {
 		logSetOnceErr(ctx, "dedup metaOut", metaOut.SetError(err))
