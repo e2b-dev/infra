@@ -151,18 +151,12 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to register orchestrator status gauge: %w", err)
 	}
 
-	// Let size-based template-cache eviction skip templates that still back a
-	// running sandbox (their block devices are read live; closing them would
-	// break the sandbox). Keyed by build ID, matching the template cache key.
-	server.templateCache.SetActiveBuildIDs(func() map[string]struct{} {
-		sandboxes := server.sandboxFactory.Sandboxes.Items()
-		active := make(map[string]struct{}, len(sandboxes))
-		for _, sbx := range sandboxes {
-			active[sbx.Runtime.BuildID] = struct{}{}
-		}
-
-		return active
-	})
+	// Let size-based template-cache eviction skip templates that still back an
+	// active sandbox (their block devices are read live; closing them would
+	// break the sandbox or an in-flight pause/checkpoint). Includes stopping
+	// sandboxes, whose snapshot path still reads the template after they leave
+	// the live set. Keyed by build ID, matching the template cache key.
+	server.templateCache.SetActiveBuildIDs(server.sandboxFactory.Sandboxes.ProtectedBuildIDs)
 
 	go server.refreshStartingSandboxesLimit(ctx)
 

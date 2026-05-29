@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient"
@@ -175,8 +176,13 @@ func (c *Cache) runEviction(ctx context.Context) {
 
 // mappingFootprint estimates the retained header-mapping memory of a cached
 // template. Only storage-backed templates carry the long-lived merged headers
-// that drive cache memory; other kinds report 0. Headers not yet resolved
-// (fetch in flight) are skipped via the non-blocking SetOnce result.
+// that drive cache memory; other kinds report 0.
+//
+// The header is read from the resolved device rather than memfileHeader/
+// rootfsHeader: on the GetTemplate path those SetOnces are pre-resolved to nil
+// and the real header is loaded later inside NewStorage during Fetch, so only
+// the device carries it. Devices not yet resolved (fetch in flight) report 0
+// via the non-blocking SetOnce result.
 func mappingFootprint(t Template) int64 {
 	st, ok := t.(*storageTemplate)
 	if !ok {
@@ -184,11 +190,19 @@ func mappingFootprint(t Template) int64 {
 	}
 
 	var bytes int64
-	for _, h := range []*utils.SetOnce[*header.Header]{st.memfileHeader, st.rootfsHeader} {
-		if h == nil {
+	for _, dev := range []*utils.SetOnce[block.ReadonlyDevice]{st.memfile, st.rootfs} {
+		if dev == nil {
 			continue
 		}
-		if hdr, err := h.Result(); err == nil && hdr != nil {
+		d, err := dev.Result()
+		if err != nil || d == nil {
+			continue
+		}
+		s, ok := d.(*Storage)
+		if !ok {
+			continue
+		}
+		if hdr := s.Header(); hdr != nil {
 			bytes += int64(hdr.Mapping.Len()) * approxBuildMapBytes
 		}
 	}
