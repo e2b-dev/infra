@@ -68,12 +68,12 @@ func serializeV5(metadata *Metadata, builds map[uuid.UUID]BuildData, mapping Map
 // writeV5MappingSection writes the columnar, varint-coded mapping:
 //
 //	uint32 N                       entry count
-//	uint32 M                       distinct build-id count
+//	uint32 M                       distinct non-empty build-id count
 //	M × [16]byte                   build-id table
 //	N × uvarint                    offset-block deltas (offset[i]-offset[i-1])
 //	N × uvarint                    length in blocks
 //	N × varint  (zig-zag)          storage-block deltas (storage[i]-storage[i-1])
-//	N × uvarint                    build-id table index
+//	N × uvarint                    build-id table index (M = empty)
 func writeV5MappingSection(block *bytes.Buffer, m Mapping) error {
 	n := len(m.offsets)
 	if err := binary.Write(block, binary.LittleEndian, uint32(n)); err != nil {
@@ -106,7 +106,11 @@ func writeV5MappingSection(block *bytes.Buffer, m Mapping) error {
 		prevStorage = s
 	}
 	for _, v := range m.buildIdx {
-		block.Write(buf[:binary.PutUvarint(buf[:], uint64(v))])
+		idx := uint64(v)
+		if v == nilBuildIdx {
+			idx = uint64(len(m.builds))
+		}
+		block.Write(buf[:binary.PutUvarint(buf[:], idx)])
 	}
 
 	return nil
@@ -238,10 +242,14 @@ func readV5MappingSection(reader *bytes.Reader, blockSize uint64) (Mapping, erro
 		if err != nil {
 			return Mapping{}, fmt.Errorf("failed to read build index %d: %w", i, err)
 		}
-		if v >= uint64(m) {
+		if v > uint64(m) {
 			return Mapping{}, fmt.Errorf("build index %d at entry %d out of range (%d builds)", v, i, m)
 		}
-		buildIdx[i] = uint16(v)
+		if v == uint64(m) {
+			buildIdx[i] = nilBuildIdx
+		} else {
+			buildIdx[i] = uint16(v)
+		}
 	}
 
 	return newMappingFromColumns(blockSize, builds, offsets, lengths, storageCol, buildIdx)
