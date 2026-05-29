@@ -263,28 +263,7 @@ func (c *Cache) evictOverBudget(ctx context.Context) {
 	}
 
 	victims := selectEvictions(entries, (*activeFn)(), time.Now(), budget, total)
-	if len(victims) == 0 {
-		return
-	}
-
-	// Re-validate under extendMu before deleting: a concurrent GetTemplate/
-	// GetCachedTemplate (which record lastAccess under the same lock) can hand
-	// out a victim between sampling and Delete while the new sandbox is not yet
-	// in the active set. Holding the lock and re-checking the active set and
-	// grace window closes that window — a hand-out either happens-before (fresh
-	// lastAccess, skip) or after the entry is gone (refetch).
-	c.extendMu.Lock()
-	defer c.extendMu.Unlock()
-
-	active := (*activeFn)()
-	now := time.Now()
 	for _, v := range victims {
-		if _, inUse := active[v]; inUse {
-			continue
-		}
-		if ts, ok := c.lastAccess.Load(v); ok && now.Sub(ts.(time.Time)) <= evictionGracePeriod {
-			continue
-		}
 		c.cache.Delete(v) // triggers OnEviction: peer purge + template Close
 		c.lastAccess.Delete(v)
 		logger.L().Info(ctx, "evicted idle template over memory budget",
@@ -309,6 +288,9 @@ type evictionEntry struct {
 func selectEvictions(entries []evictionEntry, active map[string]struct{}, now time.Time, budget, total int64) []string {
 	eligible := make([]evictionEntry, 0, len(entries))
 	for _, e := range entries {
+		if e.footprint == 0 {
+			continue
+		}
 		if _, inUse := active[e.key]; inUse {
 			continue
 		}
@@ -473,9 +455,6 @@ func (c *Cache) AddSnapshot(
 
 // GetCachedTemplate returns the template for buildID if it is currently in the cache.
 func (c *Cache) GetCachedTemplate(buildID string) (Template, bool) {
-	c.extendMu.Lock()
-	defer c.extendMu.Unlock()
-
 	item := c.cache.Get(buildID)
 	if item == nil {
 		return nil, false
@@ -555,10 +534,9 @@ func (c *Cache) getTemplateWithFetch(ctx context.Context, tmpl *storageTemplate,
 		// Another team with a shorter max length cached this entry; extend it.
 		c.cache.Set(key, t.Value(), ttl)
 	}
-	// Record under the lock so the eviction sweep's locked re-check observes a
-	// just-handed-out template as fresh and skips it.
-	c.lastAccess.Store(key, time.Now())
 	c.extendMu.Unlock()
+
+	c.lastAccess.Store(key, time.Now())
 
 	if !found {
 		missesMetric.Add(ctx, 1)

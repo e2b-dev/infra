@@ -189,4 +189,14 @@ func TestSelectEvictions(t *testing.T) {
 		got := selectEvictions(entries, nil, now, 5*mib, 100*mib)
 		assert.Empty(t, got)
 	})
+
+	t.Run("never evicts zero-footprint entries", func(t *testing.T) {
+		t.Parallel()
+		entries := []evictionEntry{
+			entry("fetching", 0, now.Add(time.Hour), stale),
+			entry("idle", 10, now.Add(2*time.Hour), stale),
+		}
+		got := selectEvictions(entries, nil, now, 5*mib, 10*mib)
+		assert.Equal(t, []string{"idle"}, got)
+	})
 }
