@@ -334,7 +334,9 @@ func TestSandboxListPaginationRunningLargerLimit(t *testing.T) { //nolint:tparal
 			Metadata: &metadataString,
 		}, setup.WithAPIKey())
 		require.NoError(cT, err)
+		require.NotNil(cT, listResponse)
 		require.Equal(cT, http.StatusOK, listResponse.StatusCode())
+		require.NotNil(cT, listResponse.JSON200)
 		require.Len(cT, *listResponse.JSON200, sbxsCount)
 	}, time.Minute, time.Second)
 
