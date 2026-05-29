@@ -27,7 +27,7 @@ const peerConnectTimeout = 5 * time.Second
 type Resolver interface {
 	resolve(ctx context.Context, buildID string) (attribute.KeyValue, resolveResult)
 	IsActive(buildID string) bool
-	ActiveBuildIDs() map[string]struct{}
+	ActiveBuildIDs(ctx context.Context) map[string]struct{}
 	Purge(buildID string)
 	Close()
 }
@@ -46,10 +46,12 @@ type nopResolver struct{}
 func (nopResolver) resolve(context.Context, string) (attribute.KeyValue, resolveResult) {
 	return attrResolveNoPeer, resolveResult{}
 }
-func (nopResolver) IsActive(string) bool                { return false }
-func (nopResolver) ActiveBuildIDs() map[string]struct{} { return nil }
-func (nopResolver) Purge(string)                        {}
-func (nopResolver) Close()                              {}
+func (nopResolver) IsActive(string) bool { return false }
+func (nopResolver) ActiveBuildIDs(context.Context) map[string]struct{} {
+	return nil
+}
+func (nopResolver) Purge(string) {}
+func (nopResolver) Close()       {}
 
 // peerResolver is the real implementation that looks up peers via the Registry.
 type peerResolver struct {
@@ -185,12 +187,22 @@ func (r *peerResolver) IsActive(buildID string) bool {
 	return ok && !v.(*atomic.Bool).Load()
 }
 
-func (r *peerResolver) ActiveBuildIDs() map[string]struct{} {
+func (r *peerResolver) ActiveBuildIDs(ctx context.Context) map[string]struct{} {
 	ids := make(map[string]struct{})
 	r.uploadedBuilds.Range(func(key, value any) bool {
-		if !value.(*atomic.Bool).Load() {
-			ids[key.(string)] = struct{}{}
+		uploaded := value.(*atomic.Bool)
+		if uploaded.Load() {
+			return true
 		}
+
+		buildID := key.(string)
+		addr, found, err := r.readPeerAddress(ctx, buildID)
+		if err == nil && (!found || r.isSelfAddress(addr)) {
+			uploaded.Store(true)
+
+			return true
+		}
+		ids[buildID] = struct{}{}
 
 		return true
 	})

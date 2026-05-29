@@ -90,7 +90,7 @@ type Cache struct {
 	// (before they appear in activeBuildIDs).
 	lastAccess sync.Map // key string -> time.Time
 
-	evicting sync.Map // key string -> chan struct{}
+	evicting *sync.Map // key string -> chan struct{}
 }
 
 // SetActiveBuildIDs installs the in-use predicate used by size-based eviction.
@@ -101,6 +101,9 @@ func (c *Cache) SetActiveBuildIDs(fn func() map[string]struct{}) {
 }
 
 func (c *Cache) waitEvicting(key string) {
+	if c.evicting == nil {
+		return
+	}
 	for {
 		ch, ok := c.evicting.Load(key)
 		if !ok {
@@ -124,8 +127,14 @@ func NewCache(
 		ttlcache.WithTTL[string, Template](templateExpiration),
 	)
 
+	evicting := &sync.Map{}
 	cache.OnEviction(func(ctx context.Context, _ ttlcache.EvictionReason, item *ttlcache.Item[string, Template]) {
 		peers.Purge(item.Key())
+		defer func() {
+			if ch, ok := evicting.LoadAndDelete(item.Key()); ok {
+				close(ch.(chan struct{}))
+			}
+		}()
 
 		template := item.Value()
 		err := template.Close(ctx)
@@ -160,6 +169,7 @@ func NewCache(
 		flags:         flags,
 		rootCachePath: config.BuilderConfig.SharedChunkCacheDir,
 		peers:         peers,
+		evicting:      evicting,
 	}, nil
 }
 
@@ -294,6 +304,9 @@ func (c *Cache) evictOverBudget(ctx context.Context) {
 			continue
 		}
 		ch := make(chan struct{})
+		if c.evicting == nil {
+			c.evicting = &sync.Map{}
+		}
 		if _, loaded := c.evicting.LoadOrStore(v, ch); loaded {
 			c.extendMu.Unlock()
 
@@ -303,9 +316,6 @@ func (c *Cache) evictOverBudget(ctx context.Context) {
 
 		c.cache.Delete(v) // triggers OnEviction: peer purge + template Close
 		c.lastAccess.Delete(v)
-		if ch, ok := c.evicting.LoadAndDelete(v); ok {
-			close(ch.(chan struct{}))
-		}
 		logger.L().Info(ctx, "evicted idle template over memory budget",
 			zap.String("build_id", v),
 			zap.Int64("budget_bytes", budget),

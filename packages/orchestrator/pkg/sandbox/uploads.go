@@ -114,9 +114,9 @@ func (u *Uploads) InFlightBuildIDs() map[string]struct{} {
 	return ids
 }
 
-func (u *Uploads) ProtectedBuildIDs() map[string]struct{} {
+func (u *Uploads) ProtectedBuildIDs(ctx context.Context) map[string]struct{} {
 	ids := u.InFlightBuildIDs()
-	for id := range u.p2p.ActiveBuildIDs() {
+	for id := range u.p2p.ActiveBuildIDs(ctx) {
 		ids[id] = struct{}{}
 	}
 

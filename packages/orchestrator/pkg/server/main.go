@@ -158,7 +158,9 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 	server.templateCache.SetActiveBuildIDs(func() map[string]struct{} {
 		active := server.sandboxFactory.Sandboxes.ProtectedBuildIDs()
 		if server.uploads != nil {
-			for id := range server.uploads.ProtectedBuildIDs() {
+			ctx, cancel := context.WithTimeout(ctx, time.Second)
+			defer cancel()
+			for id := range server.uploads.ProtectedBuildIDs(ctx) {
 				active[id] = struct{}{}
 			}
 		}
