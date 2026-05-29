@@ -9,6 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
@@ -109,7 +111,12 @@ func (c *TemplateCache) GetMetadata(ctx context.Context, templateID string) (*Te
 // Does NOT do alias resolution - callers should use ResolveAlias first.
 // Performs access control and cluster checks.
 func (c *TemplateCache) Get(ctx context.Context, templateID string, tag *string, teamID uuid.UUID, clusterID uuid.UUID) (*api.Template, *queries.EnvBuild, error) {
-	ctx, span := tracer.Start(ctx, "get template")
+	ctx, span := tracer.Start(ctx, "get template", trace.WithAttributes(
+		attribute.String("template_id", templateID),
+		attribute.String("tag", sharedUtils.DerefOrDefault(tag, "")),
+		attribute.String("team_id", teamID.String()),
+		attribute.String("cluster_id", clusterID.String()),
+	))
 	defer span.End()
 
 	// Step 1: Get template with build by ID and tag
