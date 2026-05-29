@@ -531,9 +531,10 @@ func (c *Cache) getTemplateWithFetch(ctx context.Context, tmpl *storageTemplate,
 		// Another team with a shorter max length cached this entry; extend it.
 		c.cache.Set(key, t.Value(), ttl)
 	}
-	c.extendMu.Unlock()
-
+	// Record under the lock so the eviction sweep's locked re-check observes a
+	// just-handed-out template as fresh and skips it.
 	c.lastAccess.Store(key, time.Now())
+	c.extendMu.Unlock()
 
 	if !found {
 		missesMetric.Add(ctx, 1)
