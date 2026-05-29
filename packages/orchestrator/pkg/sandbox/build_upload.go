@@ -55,9 +55,6 @@ func NewUpload(
 		ctx = featureflags.AddToContext(ctx, featureflags.CompressUseCaseContext(useCase))
 	}
 	headerVersion := uint64(headers.MetadataVersionV4)
-	if ff != nil {
-		ctx = featureflags.AddToContext(ctx, featureflags.CompressUseCaseContext(useCase))
-	}
 	if ff != nil && ff.BoolFlag(ctx, featureflags.HeaderV5WriteFlag) {
 		headerVersion = headers.MetadataVersionV5
 	}

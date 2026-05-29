@@ -98,7 +98,7 @@ func TestV5_RoundTripNonAlignedSize(t *testing.T) {
 	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 	require.Equal(t, metadata.Size, got.Metadata.Size)
-	require.Equal(t, uint64(2*bs), got.Mapping.At(0).Length)
+	require.Equal(t, 2*bs, got.Mapping.At(0).Length)
 }
 
 // TestV5_MatchesV4Semantics serializes the same logical header as V4 and V5

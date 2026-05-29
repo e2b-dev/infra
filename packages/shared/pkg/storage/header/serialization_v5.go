@@ -223,10 +223,11 @@ func readV5MappingSection(reader *bytes.Reader, blockSize, size uint64) (Mapping
 			[]uint32{0}, []uint32{uint32(sizeBlocks)}, []uint32{0}, []uint16{nilBuildIdx})
 	}
 	// Each entry needs at least one byte in each of the four encoded columns,
-	// plus four reconstructed columns below. Bound the crafted count against
-	// the remaining data and a conservative entry cap before allocating them.
+	// and sparse input can reconstruct up to a gap plus mapped entry per
+	// encoded entry. Bound the crafted count before allocating either form.
 	maxEntriesByBytes := uint64(reader.Len()) / 4
-	maxEntriesByMemory := uint64(v4MaxUncompressedHeaderSize) / 32
+	const compactEntryBytes = 3*4 + 2
+	maxEntriesByMemory := uint64(v4MaxUncompressedHeaderSize) / (compactEntryBytes + 2*compactEntryBytes)
 	if maxEntriesByBytes > maxEntriesByMemory {
 		maxEntriesByBytes = maxEntriesByMemory
 	}
