@@ -46,10 +46,10 @@ type nopResolver struct{}
 func (nopResolver) resolve(context.Context, string) (attribute.KeyValue, resolveResult) {
 	return attrResolveNoPeer, resolveResult{}
 }
-func (nopResolver) IsActive(string) bool                 { return false }
-func (nopResolver) ActiveBuildIDs() map[string]struct{}  { return nil }
-func (nopResolver) Purge(string)                         {}
-func (nopResolver) Close()                               {}
+func (nopResolver) IsActive(string) bool                { return false }
+func (nopResolver) ActiveBuildIDs() map[string]struct{} { return nil }
+func (nopResolver) Purge(string)                        {}
+func (nopResolver) Close()                              {}
 
 // peerResolver is the real implementation that looks up peers via the Registry.
 type peerResolver struct {
