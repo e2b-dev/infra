@@ -50,6 +50,12 @@ type v4SerializableBuildInfo struct {
 	Checksum [32]byte
 }
 
+var (
+	v4BuildInfoSize      = binary.Size(v4SerializableBuildInfo{})
+	v4MappingSize        = binary.Size(v4SerializableBuildMap{})
+	frameTableHeaderSize = 2 * binary.Size(uint32(0))
+)
+
 // serializeV4 writes [Metadata] [uint8 flags] [uint32 LZ4 size] [LZ4( Builds[] + Mappings[] )].
 // Frame tables are sparse-trimmed to only frames referenced by mappings.
 // Also returns the uncompressed inner-block size (LZ4 input length).
@@ -133,6 +139,9 @@ func deserializeV4(metadata *Metadata, blockData []byte) (*Header, error) {
 	var numMappings uint32
 	if err := binary.Read(reader, binary.LittleEndian, &numMappings); err != nil {
 		return nil, fmt.Errorf("failed to read mappings count: %w", err)
+	}
+	if uint64(numMappings) > uint64(reader.Len())/uint64(v4MappingSize) {
+		return nil, fmt.Errorf("mapping count %d exceeds remaining %d bytes", numMappings, reader.Len())
 	}
 
 	mappings := make([]BuildMap, 0, numMappings)
@@ -236,6 +245,10 @@ func readV4BuildsSection(reader *bytes.Reader) (map[uuid.UUID]BuildData, error) 
 	}
 	if numBuilds == 0 {
 		return nil, nil
+	}
+	minBuildBytes := v4BuildInfoSize + frameTableHeaderSize
+	if uint64(numBuilds) > uint64(reader.Len())/uint64(minBuildBytes) {
+		return nil, fmt.Errorf("build count %d exceeds remaining %d bytes", numBuilds, reader.Len())
 	}
 
 	builds := make(map[uuid.UUID]BuildData, numBuilds)
