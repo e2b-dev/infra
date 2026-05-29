@@ -91,6 +91,7 @@ type Cache struct {
 	lastAccess sync.Map // key string -> time.Time
 
 	evicting *sync.Map // key string -> chan struct{}
+	handouts sync.Map  // key string -> *atomic.Int64
 }
 
 // SetActiveBuildIDs installs the in-use predicate used by size-based eviction.
@@ -110,6 +111,18 @@ func (c *Cache) waitEvicting(key string) {
 		}
 		<-ch.(chan struct{})
 	}
+}
+
+func (c *Cache) protectHandout(ctx context.Context, key string) {
+	v, _ := c.handouts.LoadOrStore(key, &atomic.Int64{})
+	count := v.(*atomic.Int64)
+	count.Add(1)
+	go func() {
+		<-ctx.Done()
+		if count.Add(-1) == 0 {
+			c.handouts.Delete(key)
+		}
+	}()
 }
 
 // NewCache initializes a template new cache.
@@ -250,6 +263,13 @@ func (c *Cache) evictOverBudget(ctx context.Context) {
 	budget := int64(budgetMiB) << 20
 
 	items := c.cache.Items()
+	c.handouts.Range(func(k, _ any) bool {
+		if _, ok := items[k.(string)]; !ok {
+			c.handouts.Delete(k)
+		}
+
+		return true
+	})
 
 	// Drop last-access entries for keys no longer cached (TTL-evicted elsewhere).
 	c.lastAccess.Range(func(k, _ any) bool {
@@ -293,6 +313,11 @@ func (c *Cache) evictOverBudget(ctx context.Context) {
 
 		c.extendMu.Lock()
 		if _, inUse := active[v]; inUse {
+			c.extendMu.Unlock()
+
+			continue
+		}
+		if _, handedOut := c.handouts.Load(v); handedOut {
 			c.extendMu.Unlock()
 
 			continue
@@ -457,7 +482,10 @@ func (c *Cache) GetTemplate(
 		maxLen = opts[0].MaxSandboxLengthHours
 	}
 
-	return c.getTemplateWithFetch(ctx, storageTemplate, maxLen), nil
+	t := c.getTemplateWithFetch(ctx, storageTemplate, maxLen)
+	c.protectHandout(ctx, t.Files().CacheKey())
+
+	return t, nil
 }
 
 func resolvedHeader(h *header.Header) *utils.SetOnce[*header.Header] {
