@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jellydator/ttlcache/v3"
@@ -79,8 +80,10 @@ type Cache struct {
 	// activeBuildIDs reports the set of build IDs currently backing a running
 	// sandbox. Size-based eviction never closes a template in this set, since a
 	// running sandbox reads through its block devices. nil disables size-based
-	// eviction (the safe default until the server wires it in).
-	activeBuildIDs func() map[string]struct{}
+	// eviction (the safe default until the server wires it in). Stored
+	// atomically: the eviction goroutine (started by Start) reads it while the
+	// server may install it later via SetActiveBuildIDs.
+	activeBuildIDs atomic.Pointer[func() map[string]struct{}]
 
 	// lastAccess records when each cached build ID was last handed out, used to
 	// shield just-accessed templates from eviction during sandbox startup
@@ -92,7 +95,7 @@ type Cache struct {
 // Must be called before Start. The function is consulted on every sweep and
 // must return the build IDs of all currently running sandboxes.
 func (c *Cache) SetActiveBuildIDs(fn func() map[string]struct{}) {
-	c.activeBuildIDs = fn
+	c.activeBuildIDs.Store(&fn)
 }
 
 // NewCache initializes a template new cache.
@@ -215,7 +218,8 @@ func mappingFootprint(t Template) int64 {
 // running sandbox reads through its template's block devices, so in-use
 // templates are never evicted regardless of size or age.
 func (c *Cache) evictOverBudget(ctx context.Context) {
-	if c.activeBuildIDs == nil {
+	activeFn := c.activeBuildIDs.Load()
+	if activeFn == nil {
 		return
 	}
 
@@ -258,7 +262,7 @@ func (c *Cache) evictOverBudget(ctx context.Context) {
 		return
 	}
 
-	victims := selectEvictions(entries, c.activeBuildIDs(), time.Now(), budget, total)
+	victims := selectEvictions(entries, (*activeFn)(), time.Now(), budget, total)
 	for _, v := range victims {
 		c.cache.Delete(v) // triggers OnEviction: peer purge + template Close
 		c.lastAccess.Delete(v)
