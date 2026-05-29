@@ -63,22 +63,6 @@ func TestNewMapping_RoundTrip(t *testing.T) {
 	require.ElementsMatch(t, []uuid.UUID{a, b}, m.Builds())
 }
 
-func TestNewMapping_EmptyBuildIDIsNotStoredInBuildTable(t *testing.T) {
-	t.Parallel()
-
-	bs := uint64(4096)
-	id := uuid.New()
-	src := []BuildMap{
-		{Offset: 0, Length: bs, BuildId: uuid.Nil},
-		{Offset: bs, Length: bs, BuildId: id},
-	}
-
-	m, err := NewMapping(bs, src)
-	require.NoError(t, err)
-	require.True(t, Equal(src, m.Slice()))
-	require.Equal(t, []uuid.UUID{id}, m.Builds())
-}
-
 func TestNewMapping_RejectsUnaligned(t *testing.T) {
 	t.Parallel()
 

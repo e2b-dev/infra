@@ -52,11 +52,12 @@ func TestV5_RoundTrip(t *testing.T) {
 	bs := uint64(4096)
 	a := uuid.New()
 	b := uuid.New()
-	metadata := &Metadata{BlockSize: bs, Size: 5 * bs, Generation: 3, BuildId: a, BaseBuildId: b}
+	metadata := &Metadata{BlockSize: bs, Size: 6 * bs, Generation: 3, BuildId: a, BaseBuildId: b}
 	mappings := []BuildMap{
 		{Offset: 0, Length: 2 * bs, BuildId: a, BuildStorageOffset: 0},
-		{Offset: 2 * bs, Length: bs, BuildId: b, BuildStorageOffset: 0},
-		{Offset: 3 * bs, Length: 2 * bs, BuildId: a, BuildStorageOffset: 2 * bs},
+		{Offset: 2 * bs, Length: bs, BuildId: uuid.Nil},
+		{Offset: 3 * bs, Length: bs, BuildId: b, BuildStorageOffset: 0},
+		{Offset: 4 * bs, Length: 2 * bs, BuildId: a, BuildStorageOffset: 2 * bs},
 	}
 	checksum := sha256.Sum256([]byte("a"))
 	h := v5Header(t, metadata, mappings, map[uuid.UUID]BuildData{
@@ -72,6 +73,7 @@ func TestV5_RoundTrip(t *testing.T) {
 
 	require.Equal(t, uint64(MetadataVersionV5), got.Metadata.Version)
 	require.True(t, Equal(mappings, got.Mapping.Slice()))
+	require.ElementsMatch(t, []uuid.UUID{a, b}, got.Mapping.Builds())
 	require.Len(t, got.Builds, 2)
 	require.Equal(t, int64(100), got.Builds[a].Size)
 	require.Equal(t, checksum, got.Builds[a].Checksum)
@@ -80,26 +82,6 @@ func TestV5_RoundTrip(t *testing.T) {
 	fd := got.Builds[a].FrameData
 	require.NotNil(t, fd)
 	require.Equal(t, storage.CompressionZstd, fd.CompressionType())
-}
-
-func TestV5_EmptyBuildIDIsNotStoredInMappingBuildTable(t *testing.T) {
-	t.Parallel()
-
-	bs := uint64(4096)
-	id := uuid.New()
-	mappings := []BuildMap{
-		{Offset: 0, Length: bs, BuildId: uuid.Nil},
-		{Offset: bs, Length: bs, BuildId: id},
-	}
-	h := v5Header(t, &Metadata{BlockSize: bs, Size: 2 * bs, BuildId: id, BaseBuildId: id}, mappings, map[uuid.UUID]BuildData{id: {Size: 1}})
-
-	data, err := SerializeHeader(h)
-	require.NoError(t, err)
-	got, err := DeserializeBytes(data)
-	require.NoError(t, err)
-
-	require.True(t, Equal(mappings, got.Mapping.Slice()))
-	require.Equal(t, []uuid.UUID{id}, got.Mapping.Builds())
 }
 
 // TestV5_MatchesV4Semantics serializes the same logical header as V4 and V5
