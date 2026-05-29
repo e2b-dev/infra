@@ -296,6 +296,7 @@ func (r *multiSliceReader) Read(p []byte) (int, error) {
 		if r.off >= len(current) {
 			r.idx++
 			r.off = 0
+
 			continue
 		}
 

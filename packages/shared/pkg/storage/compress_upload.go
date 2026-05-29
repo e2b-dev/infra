@@ -65,7 +65,7 @@ func (m *memPartUploader) Assemble() []byte {
 type frame struct {
 	uncompressedSize int
 	compressed       []byte
-	input            []byte
+	input            *[]byte
 }
 
 type part struct {
@@ -86,7 +86,7 @@ func newPart(index int, parentCtx context.Context, workers int, inputPool *sync.
 }
 
 func (p *part) addFrame(ctx context.Context, uncompressedData []byte, pool *sync.Pool) {
-	frameInPart := &frame{uncompressedSize: len(uncompressedData), input: uncompressedData[:cap(uncompressedData)]}
+	frameInPart := &frame{uncompressedSize: len(uncompressedData)}
 	p.frames = append(p.frames, frameInPart)
 
 	p.compress.Go(func() error {
@@ -201,7 +201,8 @@ func readLoop(ctx context.Context, in io.Reader, cfg CompressConfig, hasher io.W
 	workers := max(cfg.FrameEncodeWorkers, 1)
 	inputPool := &sync.Pool{
 		New: func() any {
-			return make([]byte, frameSize)
+			buf := make([]byte, frameSize)
+			return &buf
 		},
 	}
 	p, compressCtx := newPart(1, ctx, workers, inputPool)
@@ -211,20 +212,23 @@ func readLoop(ctx context.Context, in io.Reader, cfg CompressConfig, hasher io.W
 			return err
 		}
 
-		buf := inputPool.Get().([]byte)
+		bufPtr := inputPool.Get().(*[]byte)
+		buf := (*bufPtr)[:frameSize]
 		n, err := io.ReadFull(in, buf)
 
 		eof := errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 		if err != nil && !eof {
-			inputPool.Put(buf)
+			inputPool.Put(bufPtr)
+
 			return fmt.Errorf("read frame: %w", err)
 		}
 
 		if n > 0 {
 			hasher.Write(buf[:n])
 			p.addFrame(compressCtx, buf[:n], compressors)
+			p.frames[len(p.frames)-1].input = bufPtr
 		} else {
-			inputPool.Put(buf)
+			inputPool.Put(bufPtr)
 		}
 
 		if eof {
@@ -233,6 +237,7 @@ func readLoop(ctx context.Context, in io.Reader, cfg CompressConfig, hasher io.W
 				case q <- p:
 				case <-ctx.Done():
 					p.releaseInputBuffers()
+
 					return ctx.Err()
 				}
 			}
@@ -245,6 +250,7 @@ func readLoop(ctx context.Context, in io.Reader, cfg CompressConfig, hasher io.W
 			case q <- p:
 			case <-ctx.Done():
 				p.releaseInputBuffers()
+
 				return ctx.Err()
 			}
 
