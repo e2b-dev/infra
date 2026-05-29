@@ -1,6 +1,10 @@
 locals {
+  # The Nomad jobspec template renders each entry as `${key} = "${value}"`,
+  # so values that themselves contain `"` characters (like a JSON blob)
+  # must have those quotes pre-escaped to produce valid HCL.
   default_job_env_vars = {
-    GIN_MODE : "release"
+    GIN_MODE             = "release"
+    AUTH_PROVIDER_CONFIG = replace(jsonencode(var.auth_provider_config), "\"", "\\\"")
   }
 
   job_env_vars = merge(local.default_job_env_vars, var.job_env_vars)
@@ -27,7 +31,6 @@ resource "nomad_job" "api" {
     api_docker_image                        = var.api_docker_image
     postgres_connection_string              = var.postgres_connection_string
     postgres_read_replica_connection_string = var.postgres_read_replica_connection_string
-    supabase_jwt_secrets                    = var.supabase_jwt_secrets
     posthog_api_key                         = var.posthog_api_key
     analytics_collector_host                = var.analytics_collector_host
     analytics_collector_api_token           = var.analytics_collector_api_token
@@ -44,7 +47,6 @@ resource "nomad_job" "api" {
     clickhouse_connection_string            = var.clickhouse_connection_string
     loki_url                                = var.loki_url
     sandbox_access_token_hash_seed          = var.sandbox_access_token_hash_seed
-    sandbox_storage_backend                 = var.sandbox_storage_backend
     db_migrator_docker_image                = var.db_migrator_docker_image
     launch_darkly_api_key                   = trimspace(var.launch_darkly_api_key)
     default_persistent_volume_type          = var.default_persistent_volume_type

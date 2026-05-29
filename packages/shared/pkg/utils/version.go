@@ -8,6 +8,12 @@ import (
 
 const MinEnvdVersionForSnapshot = "0.5.0"
 
+// MinEnvdVersionForCgroupFreeze is the first envd that exposes a native
+// POST /freeze endpoint and thaws cgroups on /init. We require both so the
+// orchestrator can avoid shell-based freezes (slow under load) and so the
+// sandbox doesn't end up permanently frozen after resume on older envds.
+const MinEnvdVersionForCgroupFreeze = "0.6.0"
+
 func sanitizeVersion(version string) string {
 	if len(version) > 0 && version[0] != 'v' {
 		version = "v" + version

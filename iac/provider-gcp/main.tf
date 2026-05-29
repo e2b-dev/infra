@@ -165,7 +165,6 @@ module "cluster" {
   nomad_port                   = var.nomad_port
   google_service_account_email = module.init.service_account_email
   domain_name                  = var.domain_name
-  ingress_timeout_seconds      = var.ingress_timeout_seconds
 
   additional_domains                      = local.additional_domains
   additional_api_paths_handled_by_ingress = local.normalized_api_paths_handled_by_ingress
@@ -229,8 +228,10 @@ module "nomad" {
   clickhouse_node_pool             = var.clickhouse_node_pool
 
   # Ingress
-  ingress_port         = var.ingress_port
-  ingress_count        = var.ingress_count
+  ingress_count         = var.ingress_count
+  ingress_port          = var.ingress_port.port
+  ingress_internal_port = var.ingress_internal_port.port
+
   traefik_config_files = var.traefik_config_files
 
   # API
@@ -242,6 +243,7 @@ module "nomad" {
   api_port                                               = var.api_port
   api_internal_grpc_port                                 = var.api_internal_grpc_port
   client_proxy_oidc_issuer_url                           = var.client_proxy_oidc_issuer_url
+  auth_provider_config                                   = var.auth_provider_config
   environment                                            = var.environment
   google_service_account_key                             = module.init.google_service_account_key
   api_secret                                             = random_password.api_secret.result
@@ -256,7 +258,6 @@ module "nomad" {
   redis_cluster_url_secret_version                       = module.init.redis_cluster_url_secret_version
   redis_tls_ca_base64_secret_version                     = module.init.redis_tls_ca_base64_secret_version
   sandbox_access_token_hash_seed                         = random_password.sandbox_access_token_hash_seed.result
-  sandbox_storage_backend                                = var.sandbox_storage_backend
   db_max_open_connections                                = var.db_max_open_connections
   db_min_idle_connections                                = var.db_min_idle_connections
   auth_db_max_open_connections                           = var.auth_db_max_open_connections
@@ -296,8 +297,6 @@ module "nomad" {
   dashboard_api_count                          = var.dashboard_api_count
   dashboard_api_admin_token_secret_name        = module.init.dashboard_api_admin_token_secret_name
   supabase_db_connection_string_secret_version = module.init.supabase_db_connection_string_secret_version
-  enable_auth_user_sync_background_worker      = var.enable_auth_user_sync_background_worker
-  enable_billing_http_team_provision_sink      = var.enable_billing_http_team_provision_sink
 
   # Docker reverse proxy
   docker_reverse_proxy_port                = var.docker_reverse_proxy_port
@@ -305,7 +304,6 @@ module "nomad" {
 
   # Orchestrator
   orchestrator_node_pool         = var.orchestrator_node_pool
-  allow_sandbox_internet         = var.allow_sandbox_internet
   allow_sandbox_internal_cidrs   = var.allow_sandbox_internal_cidrs
   orchestrator_port              = var.orchestrator_port
   orchestrator_proxy_port        = var.orchestrator_proxy_port

@@ -48,6 +48,19 @@ build-local:
 build-debug:
 	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -race -gcflags=all="-N -l" -o bin/orchestrator .
 
+# Builds the dummy orchestrator. It only implements the orchestrator.proto
+# SandboxService surface against an in-memory store, and is meant for local
+# API development and lightweight tests where the full Linux orchestrator
+# (firecracker, NBD, NFS, cgroups) is not needed.
+.PHONY: build-dummy
+build-dummy:
+	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
+	CGO_ENABLED=0 go build -o bin/dummy-orchestrator -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" ./cmd/dummy-orchestrator
+
+.PHONY: run-dummy
+run-dummy: build-dummy
+	NODE_ID=$(HOSTNAME) GRPC_PORT=5008 HEALTH_PORT=5018 ./bin/dummy-orchestrator
+
 .PHONY: run-debug
 run-debug:
 	make build-debug

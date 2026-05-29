@@ -109,7 +109,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	// only waiting builds can be triggered
 	if build.StatusGroup != types.BuildStatusGroupPending {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "build is not in waiting state")
-		telemetry.ReportCriticalError(ctx, "build is not in waiting state", fmt.Errorf("build is not in waiting state: %s", build.StatusGroup), telemetry.WithTemplateID(templateID))
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "build is not in waiting state", fmt.Errorf("build is not in waiting state - current state: %s", build.StatusGroup), telemetry.WithTemplateID(templateID))
 
 		return
 	}
@@ -129,7 +129,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	version, err := userAgentToTemplateVersion(ctx, logger.L().With(logger.WithTemplateID(templateID), logger.WithBuildID(buildID)), c.Request.UserAgent())
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing user agent: %s", err))
-		telemetry.ReportCriticalError(ctx, "error when parsing user agent", err, telemetry.WithTemplateID(templateID))
+		telemetry.ReportErrorByCode(ctx, http.StatusBadRequest, "error when parsing user agent", err, telemetry.WithTemplateID(templateID))
 
 		return
 	}
@@ -146,12 +146,12 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	err = a.sqlcDB.UpdateTemplateBuild(ctx, queries.UpdateTemplateBuildParams{
 		StartCmd:        body.StartCmd,
 		ReadyCmd:        body.ReadyCmd,
-		Dockerfile:      utils.ToPtr(string(stepsMarshalled)),
-		ClusterNodeID:   utils.ToPtr(builderNode.NodeID),
-		CpuArchitecture: utils.ToPtr(machineInfo.CPUArchitecture),
-		CpuFamily:       utils.ToPtr(machineInfo.CPUFamily),
-		CpuModel:        utils.ToPtr(machineInfo.CPUModel),
-		CpuModelName:    utils.ToPtr(machineInfo.CPUModelName),
+		Dockerfile:      new(string(stepsMarshalled)),
+		ClusterNodeID:   new(builderNode.NodeID),
+		CpuArchitecture: new(machineInfo.CPUArchitecture),
+		CpuFamily:       new(machineInfo.CPUFamily),
+		CpuModel:        new(machineInfo.CPUModel),
+		CpuModelName:    new(machineInfo.CPUModelName),
 		CpuFlags:        machineInfo.CPUFlags,
 		BuildUuid:       buildUUID,
 	})

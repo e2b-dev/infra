@@ -4,6 +4,7 @@ package cleaner
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"golang.org/x/sys/unix"
@@ -30,18 +31,25 @@ func (c *Cleaner) stat(fullPath string) (*Candidate, error) {
 	}, nil
 }
 
-func (c *Cleaner) statInDir(dirPath string, filename string) (*File, error) {
+// statInDir issues an fd-relative statx against an already-open directory fd.
+// On NFS this is dramatically cheaper than statx(AT_FDCWD, abs_path), because
+// the open dir's file handle is cached on the server and a single GETATTR RPC
+// satisfies the call; AT_FDCWD with an absolute path forces a LOOKUP chain
+// for every uncached path component.
+//
+// Safety: the caller must keep df open until this returns. scanDir enforces
+// that by draining all in-flight stat responses before its deferred Close.
+func (c *Cleaner) statInDir(df *os.File, filename string) (*File, error) {
 	c.StatxC.Add(1)
 	c.StatxInDirC.Add(1)
 	var statx unix.Statx_t
-	fullPath := filepath.Join(dirPath, filename)
-	err := unix.Statx(unix.AT_FDCWD, fullPath,
+	err := unix.Statx(int(df.Fd()), filename,
 		unix.AT_STATX_DONT_SYNC|unix.AT_SYMLINK_NOFOLLOW|unix.AT_NO_AUTOMOUNT,
 		unix.STATX_ATIME|unix.STATX_SIZE,
 		&statx,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to statx %q: %w", fullPath, err)
+		return nil, fmt.Errorf("failed to statx %q: %w", filepath.Join(df.Name(), filename), err)
 	}
 
 	return &File{

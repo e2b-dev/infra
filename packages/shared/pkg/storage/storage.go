@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"time"
@@ -104,6 +105,20 @@ func WithMetadata(metadata ObjectMetadata) PutOption { return storageopts.WithMe
 // backends use CompressConfigFromOpts to pull it back out.
 func WithCompressConfig(cfg CompressConfig) PutOption { return storageopts.WithCompression(cfg) }
 
+func WithChecksumSHA256() PutOption {
+	return func(o *PutOptions) { o.Checksum = true }
+}
+
+// sum256 finalizes h into a SHA-256 digest, or the zero digest when h is nil.
+func sum256(h hash.Hash) [32]byte {
+	var sum [32]byte
+	if h != nil {
+		copy(sum[:], h.Sum(nil))
+	}
+
+	return sum
+}
+
 func ApplyPutOptions(opts []PutOption) PutOptions { return storageopts.Apply(opts) }
 
 // CompressConfigFromOpts returns the typed CompressConfig set by
@@ -170,7 +185,9 @@ func UploadBlob(ctx context.Context, provider StorageProvider, remotePath string
 // PeerTransitionedError is returned by the peer Seekable when the remote
 // storage upload has completed; the caller should re-load the V4 header from
 // storage.
-type PeerTransitionedError struct{}
+type PeerTransitionedError struct {
+	RetryAfter time.Duration
+}
 
 func (e *PeerTransitionedError) Error() string {
 	return "peer upload completed, reload header from storage"

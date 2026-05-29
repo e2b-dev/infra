@@ -22,11 +22,11 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 	ctx, span := tracer.Start(ctx, "team-metrics")
 	defer span.End()
 
-	team := auth.MustGetTeamInfo(c)
+	authTeamID := auth.MustGetTeamID(c)
 
-	if teamID != team.ID.String() {
-		telemetry.ReportError(ctx, "team ids mismatch", fmt.Errorf("you (%s) are not authorized to access this team's (%s) metrics", team.ID, teamID), telemetry.WithTeamID(team.ID.String()))
-		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You (%s) are not authorized to access this team's (%s) metrics", team.ID, teamID))
+	if teamID != authTeamID.String() {
+		telemetry.ReportError(ctx, "team ids mismatch", fmt.Errorf("you (%s) are not authorized to access this team's (%s) metrics", authTeamID, teamID), telemetry.WithTeamID(authTeamID.String()))
+		a.sendAPIStoreError(c, http.StatusForbidden, fmt.Sprintf("You (%s) are not authorized to access this team's (%s) metrics", authTeamID, teamID))
 
 		return
 	}
@@ -55,7 +55,7 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 
 	start, end, err := clickhouseUtils.ValidateRange(start, end)
 	if err != nil {
-		telemetry.ReportError(ctx, "error validating dates", err, telemetry.WithTeamID(team.ID.String()))
+		telemetry.ReportError(ctx, "error validating dates", err, telemetry.WithTeamID(authTeamID.String()))
 		a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
 
 		return
@@ -65,7 +65,7 @@ func (a *APIStore) GetTeamsTeamIDMetrics(c *gin.Context, teamID string, params a
 
 	metrics, err := a.clickhouseStore.QueryTeamMetrics(ctx, teamID, start, end, step)
 	if err != nil {
-		telemetry.ReportError(ctx, "error fetching team metrics", err, telemetry.WithTeamID(team.ID.String()))
+		telemetry.ReportError(ctx, "error fetching team metrics", err, telemetry.WithTeamID(authTeamID.String()))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("error querying team metrics: %s", err))
 
 		return

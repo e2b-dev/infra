@@ -46,6 +46,7 @@ job "api" {
 
       tags = [
         "traefik.enable=true",
+        "traefik.http.routers.api.entrypoints=web",
 
         "traefik.http.routers.api.rule=HostRegexp(`api.{domain:.+}`)",
         "traefik.http.routers.api.ruleSyntax=v2",
@@ -83,6 +84,7 @@ job "api" {
 
       tags = [
         "traefik.enable=true",
+        "traefik.http.routers.grpc-api.entrypoints=web",
         "traefik.http.routers.grpc-api.rule=HostRegexp(`grpc-api.{domain:.+}`)",
         "traefik.http.routers.grpc-api.ruleSyntax=v2",
         "traefik.http.routers.grpc-api.priority=500",
@@ -139,9 +141,9 @@ job "api" {
 
     task "start" {
       driver       = "docker"
-      # If we need more than 30s we will need to update the max_kill_timeout in nomad
+      # Budget = shutdownDrainWait (15s) + shutdownTimeout (requestTimeout 70s + 5s) + cleanup (30s) + slack.
       # https://developer.hashicorp.com/nomad/docs/configuration/client#max_kill_timeout
-      kill_timeout = "30s"
+      kill_timeout = "150s"
       kill_signal  = "SIGTERM"
 
       resources {
@@ -168,7 +170,6 @@ job "api" {
         AUTH_DB_READ_REPLICA_CONNECTION_STRING  = "${postgres_read_replica_connection_string}"
         AUTH_DB_MAX_OPEN_CONNECTIONS           = "${auth_db_max_open_connections}"
         AUTH_DB_MIN_IDLE_CONNECTIONS           = "${auth_db_min_idle_connections}"
-        SUPABASE_JWT_SECRETS                    = "${supabase_jwt_secrets}"
 
         LOKI_URL                      = "${loki_url}"
         CLICKHOUSE_CONNECTION_STRING  = "${clickhouse_connection_string}"
@@ -183,8 +184,6 @@ job "api" {
         REDIS_CLUSTER_URL              = "${redis_cluster_url}"
         REDIS_TLS_CA_BASE64            = "${redis_tls_ca_base64}"
         REDIS_URL                      = "${redis_url}"
-
-        SANDBOX_STORAGE_BACKEND        = "${sandbox_storage_backend}"
 
 %{ if launch_darkly_api_key != "" }
         LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"

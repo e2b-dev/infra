@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -41,6 +42,7 @@ type Uffd struct {
 	lis        *net.UnixListener
 	socketPath string
 	memfile    block.ReadonlyDevice
+	memfd      atomic.Pointer[block.Memfd]
 	handler    utils.SetOnce[*userfaultfd.Userfaultfd]
 	fdExit     utils.SetOnce[*fdexit.FdExit]
 }
@@ -130,9 +132,10 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 	unixConn := conn.(*net.UnixConn)
 
 	regionMappingsBuf := make([]byte, regionMappingsSize)
-	uffdBuf := make([]byte, syscall.CmsgSpace(fdSize))
+	// Firecracker may send 1 fd (UFFD) or 2 (UFFD + memfd, on newer versions).
+	fdBuf := make([]byte, syscall.CmsgSpace(2*fdSize))
 
-	numBytesMappings, numBytesFd, _, _, err := unixConn.ReadMsgUnix(regionMappingsBuf, uffdBuf)
+	numBytesMappings, numBytesFd, _, _, err := unixConn.ReadMsgUnix(regionMappingsBuf, fdBuf)
 	if err != nil {
 		return fmt.Errorf("failed to read unix msg from connection: %w", err)
 	}
@@ -146,13 +149,13 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 		return fmt.Errorf("failed parsing memory mapping data: %w", err)
 	}
 
-	controlMsgs, err := syscall.ParseSocketControlMessage(uffdBuf[:numBytesFd])
+	controlMsgs, err := syscall.ParseSocketControlMessage(fdBuf[:numBytesFd])
 	if err != nil {
 		return fmt.Errorf("failed parsing control messages: %w", err)
 	}
 
 	if len(controlMsgs) != 1 {
-		return fmt.Errorf("expected 1 control message containing UFFD: found %d", len(controlMsgs))
+		return fmt.Errorf("expected 1 control message containing UFFD and (maybe) memfd: found %d", len(controlMsgs))
 	}
 
 	fds, err := syscall.ParseUnixRights(&controlMsgs[0])
@@ -160,8 +163,8 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 		return fmt.Errorf("failed parsing unix write: %w", err)
 	}
 
-	if len(fds) != 1 {
-		return fmt.Errorf("expected 1 fd: found %d", len(fds))
+	if len(fds) == 0 {
+		return errors.New("expected at least 1 file descriptor")
 	}
 
 	m := memory.NewMapping(regions)
@@ -173,17 +176,35 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 		logger.L().With(logger.WithSandboxID(sandboxId)),
 	)
 	if err != nil {
+		for _, fd := range fds {
+			_ = syscall.Close(fd)
+		}
+
 		return fmt.Errorf("failed to create uffd: %w", err)
 	}
-
-	u.handler.SetValue(uffd)
 
 	defer func() {
 		closeErr := uffd.Close()
 		if closeErr != nil {
 			logger.L().Error(ctx, "failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
 		}
+
+		if m := u.memfd.Swap(nil); m != nil {
+			if closeErr := m.Close(); closeErr != nil {
+				logger.L().Error(ctx, "failed to close memfd", logger.WithSandboxID(sandboxId), zap.Error(closeErr))
+			}
+		}
 	}()
+
+	if len(fds) > 1 {
+		memfd, err := block.NewFromFd(fds[1])
+		if err != nil {
+			return fmt.Errorf("failed to wrap memfd: %w", err)
+		}
+		u.memfd.Store(memfd)
+	}
+
+	u.handler.SetValue(uffd)
 
 	u.readyOnce.Do(func() { close(u.readyCh) })
 
@@ -229,7 +250,7 @@ func (u *Uffd) DiffMetadata(ctx context.Context, f *fc.Process) (*header.DiffMet
 	// and escape both bitmaps.
 	_, empty := handler.ExportPageStates()
 
-	diff, err := f.DirtyMemory(ctx, u.memfile.BlockSize())
+	diff, err := f.DirtyMemory(ctx, handler.PageSize())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get dirty memory: %w", err)
 	}
@@ -253,4 +274,10 @@ func (u *Uffd) PrefetchData(ctx context.Context) (block.PrefetchData, error) {
 	}
 
 	return uffd.PrefetchData(), nil
+}
+
+// Memfd returns the memfd received from Firecracker and transfers ownership to
+// the caller. The uffd teardown defer will no longer close it.
+func (u *Uffd) Memfd(_ context.Context) *block.Memfd {
+	return u.memfd.Swap(nil)
 }

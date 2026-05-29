@@ -31,8 +31,8 @@ type Diff interface {
 	storage.SeekableReader
 	block.FramedSlicer
 	CacheKey() DiffStoreKey
-	CachePath() (string, error)
-	FileSize() (int64, error)
+	CachePath(ctx context.Context) (string, error)
+	FileSize(ctx context.Context) (int64, error)
 	BlockSize() int64
 	Init(ctx context.Context) error
 }
@@ -41,7 +41,7 @@ type NoDiff struct{}
 
 var _ Diff = (*NoDiff)(nil)
 
-func (n *NoDiff) CachePath() (string, error) {
+func (n *NoDiff) CachePath(context.Context) (string, error) {
 	return "", nil
 }
 
@@ -57,7 +57,7 @@ func (n *NoDiff) ReadAt(_ context.Context, _ []byte, _ int64, _ *storage.FrameTa
 	return 0, NoDiffError{}
 }
 
-func (n *NoDiff) FileSize() (int64, error) {
+func (n *NoDiff) FileSize(_ context.Context) (int64, error) {
 	return 0, NoDiffError{}
 }
 

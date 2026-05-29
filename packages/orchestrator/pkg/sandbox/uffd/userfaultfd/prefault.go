@@ -13,8 +13,22 @@ import (
 // Prefault proactively copies a page to guest memory at the given offset
 // to speed up sandbox starts. EEXIST (already mapped) is handled gracefully.
 func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) error {
+	// Test hook: fires before settleRequests.RLock so that a test can park
+	// the goroutine here, call Close() concurrently, then release and observe
+	// that the closed check below returns nil without calling UFFDIO_COPY.
+	if h := u.testFaultHook.Load(); h != nil {
+		(*h)(0, faultPhaseBeforePrefaultRLock)
+	}
+
 	u.settleRequests.RLock()
 	defer u.settleRequests.RUnlock()
+
+	// Close() sets closed under Lock(). Seeing it here under RLock means the
+	// fd is already closed and its number may have been recycled by the OS —
+	// skip silently instead of calling UFFDIO_COPY and getting EBADF/ENOTTY.
+	if u.closed {
+		return nil
+	}
 
 	ctx, span := tracer.Start(ctx, "prefault page")
 	defer span.End()
@@ -41,7 +55,7 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		addr,
 		offset,
 		block.Read,
-		directDataSource{data, int64(u.pageSize)},
+		directDataSource{data: data},
 		nil,
 	)
 	if err != nil {
@@ -63,16 +77,12 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 	return nil
 }
 
-// directDataSource wraps a byte slice to implement block.Slicer for prefaulting.
+// directDataSource wraps a single page's bytes; off is ignored because the
+// caller hands us exactly the page contents.
 type directDataSource struct {
-	data     []byte
-	pagesize int64
+	data []byte
 }
 
-func (d directDataSource) Slice(_ context.Context, _, _ int64) ([]byte, error) {
-	return d.data, nil
-}
-
-func (d directDataSource) BlockSize() int64 {
-	return d.pagesize
+func (d directDataSource) ReadAt(_ context.Context, p []byte, _ int64) (int, error) {
+	return copy(p, d.data), nil
 }

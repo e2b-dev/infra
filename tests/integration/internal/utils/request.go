@@ -61,11 +61,13 @@ func NewRequest(sbx *api.Sandbox, url *url.URL, port int, extraHeaders *http.Hea
 func WaitForStatus(tb testing.TB, client *http.Client, sbx *api.Sandbox, url *url.URL, port int, headers *http.Header, expectedStatus int) *http.Response {
 	tb.Helper()
 
-	for range 10 {
+	deadline := time.Now().Add(60 * time.Second)
+	for time.Now().Before(deadline) {
 		req := NewRequest(sbx, url, port, headers)
 		resp, err := client.Do(req)
 		if err != nil {
 			tb.Logf("Error: %v", err)
+			time.Sleep(500 * time.Millisecond)
 
 			continue
 		}

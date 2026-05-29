@@ -313,6 +313,9 @@ type ClientInterface interface {
 
 	PostFilesCompose(ctx context.Context, body PostFilesComposeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PostFreeze request
+	PostFreeze(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetHealth request
 	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -323,6 +326,9 @@ type ClientInterface interface {
 
 	// GetMetrics request
 	GetMetrics(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostUnfreeze request
+	PostUnfreeze(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) GetEnvs(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -385,6 +391,18 @@ func (c *Client) PostFilesCompose(ctx context.Context, body PostFilesComposeJSON
 	return c.Client.Do(req)
 }
 
+func (c *Client) PostFreeze(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostFreezeRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetHealthRequest(c.Server)
 	if err != nil {
@@ -423,6 +441,18 @@ func (c *Client) PostInit(ctx context.Context, body PostInitJSONRequestBody, req
 
 func (c *Client) GetMetrics(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetMetricsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostUnfreeze(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostUnfreezeRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -682,6 +712,33 @@ func NewPostFilesComposeRequestWithBody(server string, contentType string, body 
 	return req, nil
 }
 
+// NewPostFreezeRequest generates requests for PostFreeze
+func NewPostFreezeRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/freeze")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetHealthRequest generates requests for GetHealth
 func NewGetHealthRequest(server string) (*http.Request, error) {
 	var err error
@@ -776,6 +833,33 @@ func NewGetMetricsRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewPostUnfreezeRequest generates requests for PostUnfreeze
+func NewPostUnfreezeRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/unfreeze")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -833,6 +917,9 @@ type ClientWithResponsesInterface interface {
 
 	PostFilesComposeWithResponse(ctx context.Context, body PostFilesComposeJSONRequestBody, reqEditors ...RequestEditorFn) (*PostFilesComposeResponse, error)
 
+	// PostFreezeWithResponse request
+	PostFreezeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostFreezeResponse, error)
+
 	// GetHealthWithResponse request
 	GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error)
 
@@ -843,6 +930,9 @@ type ClientWithResponsesInterface interface {
 
 	// GetMetricsWithResponse request
 	GetMetricsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMetricsResponse, error)
+
+	// PostUnfreezeWithResponse request
+	PostUnfreezeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostUnfreezeResponse, error)
 }
 
 type GetEnvsResponse struct {
@@ -978,6 +1068,36 @@ func (r PostFilesComposeResponse) ContentType() string {
 	return ""
 }
 
+type PostFreezeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON500      *InternalServerError
+}
+
+// Status returns HTTPResponse.Status
+func (r PostFreezeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostFreezeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostFreezeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetHealthResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -1066,6 +1186,36 @@ func (r GetMetricsResponse) ContentType() string {
 	return ""
 }
 
+type PostUnfreezeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON500      *InternalServerError
+}
+
+// Status returns HTTPResponse.Status
+func (r PostUnfreezeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostUnfreezeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostUnfreezeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // GetEnvsWithResponse request returning *GetEnvsResponse
 func (c *ClientWithResponses) GetEnvsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetEnvsResponse, error) {
 	rsp, err := c.GetEnvs(ctx, reqEditors...)
@@ -1110,6 +1260,15 @@ func (c *ClientWithResponses) PostFilesComposeWithResponse(ctx context.Context, 
 	return ParsePostFilesComposeResponse(rsp)
 }
 
+// PostFreezeWithResponse request returning *PostFreezeResponse
+func (c *ClientWithResponses) PostFreezeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostFreezeResponse, error) {
+	rsp, err := c.PostFreeze(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostFreezeResponse(rsp)
+}
+
 // GetHealthWithResponse request returning *GetHealthResponse
 func (c *ClientWithResponses) GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error) {
 	rsp, err := c.GetHealth(ctx, reqEditors...)
@@ -1143,6 +1302,15 @@ func (c *ClientWithResponses) GetMetricsWithResponse(ctx context.Context, reqEdi
 		return nil, err
 	}
 	return ParseGetMetricsResponse(rsp)
+}
+
+// PostUnfreezeWithResponse request returning *PostUnfreezeResponse
+func (c *ClientWithResponses) PostUnfreezeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostUnfreezeResponse, error) {
+	rsp, err := c.PostUnfreeze(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostUnfreezeResponse(rsp)
 }
 
 // ParseGetEnvsResponse parses an HTTP response from a GetEnvsWithResponse call
@@ -1340,6 +1508,32 @@ func ParsePostFilesComposeResponse(rsp *http.Response) (*PostFilesComposeRespons
 	return response, nil
 }
 
+// ParsePostFreezeResponse parses an HTTP response from a PostFreezeWithResponse call
+func ParsePostFreezeResponse(rsp *http.Response) (*PostFreezeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostFreezeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetHealthResponse parses an HTTP response from a GetHealthWithResponse call
 func ParseGetHealthResponse(rsp *http.Response) (*GetHealthResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -1392,6 +1586,32 @@ func ParseGetMetricsResponse(rsp *http.Response) (*GetMetricsResponse, error) {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostUnfreezeResponse parses an HTTP response from a PostUnfreezeWithResponse call
+func ParsePostUnfreezeResponse(rsp *http.Response) (*PostUnfreezeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostUnfreezeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
 
 	}
 

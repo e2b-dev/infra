@@ -18,7 +18,7 @@ import (
 func (s *APIStore) GetBuildsBuildId(c *gin.Context, buildId api.BuildId) {
 	ctx := c.Request.Context()
 	telemetry.ReportEvent(ctx, "get build details")
-	teamID := auth.MustGetTeamInfo(c).Team.ID
+	teamID := auth.MustGetTeamID(c)
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamID.String()), telemetry.WithBuildID(buildId.String()))
 
 	row, err := s.db.GetBuildInfoByTeamAndBuildID(ctx, queries.GetBuildInfoByTeamAndBuildIDParams{

@@ -10,8 +10,6 @@ import (
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 )
 
-func boolPtr(b bool) *bool { return &b }
-
 func TestIsNonEnvdTrafficRequest(t *testing.T) {
 	t.Parallel()
 
@@ -91,12 +89,12 @@ func TestIsPrivateIngressTraffic(t *testing.T) {
 		},
 		{
 			name:     "AllowPublicAccess true",
-			network:  &dbtypes.SandboxNetworkConfig{Ingress: &dbtypes.SandboxNetworkIngressConfig{AllowPublicAccess: boolPtr(true)}},
+			network:  &dbtypes.SandboxNetworkConfig{Ingress: &dbtypes.SandboxNetworkIngressConfig{AllowPublicAccess: new(true)}},
 			expected: false,
 		},
 		{
 			name:     "AllowPublicAccess false",
-			network:  &dbtypes.SandboxNetworkConfig{Ingress: &dbtypes.SandboxNetworkIngressConfig{AllowPublicAccess: boolPtr(false)}},
+			network:  &dbtypes.SandboxNetworkConfig{Ingress: &dbtypes.SandboxNetworkIngressConfig{AllowPublicAccess: new(false)}},
 			expected: true,
 		},
 	}

@@ -10,6 +10,9 @@ components:
       type: apiKey
       in: header
       name: X-Admin-Token
+    # Generated code uses security schemas in the alphabetical order.
+    # In order to check first the token, and then the team (so we can already use the user),
+    # there is a 1 and 2 present in the names of the security schemas.
     Supabase1TokenAuth:
       type: apiKey
       in: header
@@ -18,6 +21,16 @@ components:
       type: apiKey
       in: header
       name: X-Supabase-Team
+    # AuthProviderBearerAuth / AuthProviderTeamAuth: B before T in the name
+    # so Bearer is validated before Team (same reason as Supabase1/2 above).
+    AuthProviderBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: access_token
+    AuthProviderTeamAuth:
+      type: apiKey
+      in: header
+      name: X-Team-ID
 
   parameters:
     build_id:
@@ -140,6 +153,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    "502":
+      description: Upstream error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
 
   schemas:
     Error:
@@ -155,6 +174,69 @@ components:
         message:
           type: string
           description: Error message.
+
+    AdminAuthProviderProfile:
+      type: object
+      required:
+        - userId
+        - email
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: Internal E2B user identifier.
+        email:
+          type: string
+          nullable: true
+          description: Email address from the configured auth provider.
+
+    AdminAuthProviderProfilesResponse:
+      type: object
+      required:
+        - profiles
+      properties:
+        profiles:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminAuthProviderProfile"
+
+    AdminAuthProviderProfilesResolveRequest:
+      type: object
+      required:
+        - userIds
+      properties:
+        userIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+
+    AdminAuthProviderProfilesLookupEmailRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+
+    AdminTeamBootstrapRequest:
+      type: object
+      required:
+        - name
+        - email
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Team name.
+        email:
+          type: string
+          format: email
+          description: Billing/contact email for the team.
 
     BuildStatus:
       type: string
@@ -617,6 +699,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/build_id_or_template"
         - $ref: "#/components/parameters/build_statuses"
@@ -645,6 +729,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/build_ids"
 
@@ -671,6 +757,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/build_id"
       responses:
@@ -696,6 +784,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -721,6 +811,7 @@ paths:
       tags: [teams]
       security:
         - Supabase1TokenAuth: []
+        - AuthProviderBearerAuth: []
       responses:
         "200":
           description: Successfully returned user teams.
@@ -737,6 +828,7 @@ paths:
       tags: [teams]
       security:
         - Supabase1TokenAuth: []
+        - AuthProviderBearerAuth: []
       requestBody:
         required: true
         content:
@@ -777,6 +869,109 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /admin/teams/bootstrap:
+    post:
+      summary: Bootstrap team
+      description: Creates and provisions a team for an admin-authenticated bootstrap workflow.
+      tags: [admin]
+      security:
+        - AdminTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminTeamBootstrapRequest"
+      responses:
+        "200":
+          description: Successfully bootstrapped team.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamResolveResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "502":
+          $ref: "#/components/responses/502"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/user-profiles/resolve:
+    post:
+      summary: Resolve user profiles
+      tags: [admin]
+      security:
+        - AdminTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAuthProviderProfilesResolveRequest"
+      responses:
+        "200":
+          description: Successfully resolved profiles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuthProviderProfilesResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/user-profiles/by-email:
+    post:
+      summary: Lookup user profiles by email
+      tags: [admin]
+      security:
+        - AdminTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAuthProviderProfilesLookupEmailRequest"
+      responses:
+        "200":
+          description: Successfully found matching profiles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuthProviderProfilesResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/user-profiles/{userId}:
+    get:
+      summary: Get user profile
+      tags: [admin]
+      security:
+        - AdminTokenAuth: []
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "200":
+          description: Successfully found profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuthProviderProfilesResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
   /teams/resolve:
     get:
       summary: Resolve team identity
@@ -784,6 +979,7 @@ paths:
       tags: [teams]
       security:
         - Supabase1TokenAuth: []
+        - AuthProviderBearerAuth: []
       parameters:
         - $ref: "#/components/parameters/teamSlug"
       responses:
@@ -809,6 +1005,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
       requestBody:
@@ -840,6 +1038,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
       responses:
@@ -861,6 +1061,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
       requestBody:
@@ -890,6 +1092,8 @@ paths:
       security:
         - Supabase1TokenAuth: []
           Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
         - $ref: "#/components/parameters/userId"
@@ -912,6 +1116,7 @@ paths:
       tags: [templates]
       security:
         - Supabase1TokenAuth: []
+        - AuthProviderBearerAuth: []
       responses:
         "200":
           description: Successfully returned default templates.

@@ -1,6 +1,7 @@
 package redis
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -15,9 +16,9 @@ func setupTestManager(t *testing.T) *subscriptionManager {
 	t.Helper()
 
 	client := redis_utils.SetupInstance(t)
-	storage := NewStorage(client)
+	storage := newTestStorage(t, client)
 	go storage.Start(t.Context())
-	t.Cleanup(storage.Close)
+	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })
 
 	return storage.subManager
 }
@@ -222,9 +223,9 @@ func TestSubscriptionManager_PubSubEndToEnd(t *testing.T) {
 	t.Parallel()
 
 	client := redis_utils.SetupInstance(t)
-	storage := NewStorage(client)
+	storage := newTestStorage(t, client)
 	go storage.Start(t.Context())
-	t.Cleanup(storage.Close)
+	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })
 
 	routingKey := "test:routing:key"
 	ch, cleanup := storage.subManager.subscribe(routingKey)
@@ -249,9 +250,9 @@ func TestSubscriptionManager_PubSubIgnoresUnrelatedKeys(t *testing.T) {
 	t.Parallel()
 
 	client := redis_utils.SetupInstance(t)
-	storage := NewStorage(client)
+	storage := newTestStorage(t, client)
 	go storage.Start(t.Context())
-	t.Cleanup(storage.Close)
+	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })
 
 	ch, cleanup := storage.subManager.subscribe("my:sandbox:key")
 	t.Cleanup(cleanup)

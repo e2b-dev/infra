@@ -7,11 +7,10 @@ SELECT sqlc.embed(e),
        eb.envd_version as build_envd_version,
        COALESCE(eb.firecracker_version, 'N/A') as build_firecracker_version,
        COALESCE(latest_build.status_group, 'pending') as build_status,
-       u.id as creator_id, u.email as creator_email,
+       e.created_by as creator_id,
        COALESCE(ea.aliases, ARRAY[]::text[])::text[] AS aliases,
        COALESCE(ea.names, ARRAY[]::text[])::text[] AS names
 FROM public.envs AS e
-LEFT JOIN public.users AS u ON u.id = e.created_by
 LEFT JOIN LATERAL (
     SELECT 
         ARRAY_AGG(alias ORDER BY alias) AS aliases,

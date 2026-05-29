@@ -1,6 +1,6 @@
 //go:build linux
 
-package smoketest_test
+package smoketest
 
 import (
 	"context"

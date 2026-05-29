@@ -26,9 +26,9 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(c *gin.Context, sandboxID string
 		return
 	}
 
-	team := auth.MustGetTeamInfo(c)
+	teamID := auth.MustGetTeamID(c)
 
-	body, err := ginutils.ParseBody[api.PutSandboxesSandboxIDNetworkJSONBody](ctx, c)
+	body, err := ginutils.ParseBody[api.SandboxNetworkUpdateConfig](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
@@ -53,7 +53,7 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(c *gin.Context, sandboxID string
 	}
 
 	if body.Rules != nil {
-		sbxInfo, err := a.orchestrator.GetSandbox(ctx, team.ID, sandboxID)
+		sbxInfo, err := a.orchestrator.GetSandbox(ctx, teamID, sandboxID)
 		if err != nil {
 			if errors.Is(err, sandbox.ErrNotFound) {
 				a.sendAPIStoreError(c, http.StatusNotFound, utils.SandboxNotFoundMsg(sandboxID))
@@ -65,7 +65,7 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(c *gin.Context, sandboxID string
 			return
 		}
 
-		if apiErr := validateNetworkRules(ctx, a.featureFlags, team.ID, sbxInfo.EnvdVersion, body.Rules); apiErr != nil {
+		if apiErr := validateNetworkRules(ctx, a.featureFlags, teamID, sbxInfo.EnvdVersion, body.Rules); apiErr != nil {
 			a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
 			return
@@ -74,7 +74,7 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(c *gin.Context, sandboxID string
 
 	rules := apiRulesToDBRules(body.Rules)
 
-	if apiErr := a.orchestrator.UpdateSandboxNetworkConfig(ctx, team.ID, sandboxID, allowedEntries, deniedEntries, rules, body.AllowInternetAccess); apiErr != nil {
+	if apiErr := a.orchestrator.UpdateSandboxNetworkConfig(ctx, teamID, sandboxID, allowedEntries, deniedEntries, rules, body.AllowInternetAccess); apiErr != nil {
 		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error updating sandbox network config", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 
@@ -87,7 +87,7 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(c *gin.Context, sandboxID string
 			domains = append(domains, domain)
 		}
 
-		a.posthog.CreateAnalyticsTeamEvent(ctx, team.ID.String(), "sandbox with network transform rules updated",
+		a.posthog.CreateAnalyticsTeamEvent(ctx, teamID.String(), "sandbox with network transform rules updated",
 			a.posthog.GetPackageToPosthogProperties(&c.Request.Header).
 				Set("sandbox_id", sandboxID).
 				Set("domains", domains),

@@ -6,13 +6,13 @@ import (
 	"fmt"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 )
 
 // reservationResult is the serializable result stored in Redis for cross-instance communication.
 type reservationResult struct {
-	Sandbox sandbox.Sandbox   `json:"sandbox,omitzero"`
-	Error   *reservationError `json:"error,omitempty"`
+	Sandbox sandboxtypes.Sandbox `json:"sandbox,omitzero"`
+	Error   *reservationError    `json:"error,omitempty"`
 }
 
 // reservationError preserves api.APIError fields for cross-instance error propagation.
@@ -22,7 +22,7 @@ type reservationError struct {
 	ClientMsg string `json:"client_msg,omitempty"`
 }
 
-func encodeResult(sbx sandbox.Sandbox, err error) ([]byte, error) {
+func encodeResult(sbx sandboxtypes.Sandbox, err error) ([]byte, error) {
 	result := reservationResult{
 		Sandbox: sbx,
 	}
@@ -40,14 +40,14 @@ func encodeResult(sbx sandbox.Sandbox, err error) ([]byte, error) {
 	return json.Marshal(result)
 }
 
-func decodeResult(data []byte) (sandbox.Sandbox, error) {
+func decodeResult(data []byte) (sandboxtypes.Sandbox, error) {
 	var result reservationResult
 	if err := json.Unmarshal(data, &result); err != nil {
-		return sandbox.Sandbox{}, fmt.Errorf("failed to unmarshal reservation result: %w", err)
+		return sandboxtypes.Sandbox{}, fmt.Errorf("failed to unmarshal reservation result: %w", err)
 	}
 
 	if result.Error != nil {
-		return sandbox.Sandbox{}, reconstructError(result.Error)
+		return sandboxtypes.Sandbox{}, reconstructError(result.Error)
 	}
 
 	return result.Sandbox, nil

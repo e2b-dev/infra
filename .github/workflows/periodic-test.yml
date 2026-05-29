@@ -27,6 +27,7 @@ permissions:
 jobs:
   changes:
     name: Check
+    if: github.repository == 'e2b-dev/infra'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
@@ -89,11 +90,23 @@ jobs:
         working-directory: tests/periodic-test
         run: bun install --frozen-lockfile
 
-      - name: Set env variables from secrets
-        if: always()
+      - name: Set env variables from secrets (foxtrot)
+        if: matrix.e2b-domain == 'e2b-foxtrot.dev'
         run: |
-          echo "E2B_API_KEY=${{ secrets[format('{0}', matrix.api_key)] }}" >> $GITHUB_ENV
-          echo "E2B_ACCESS_TOKEN=${{ secrets[format('{0}', matrix.access_token)] }}" >> $GITHUB_ENV
+          echo "E2B_API_KEY=${{ secrets.E2B_API_KEY }}" >> $GITHUB_ENV
+          echo "E2B_ACCESS_TOKEN=${{ secrets.E2B_ACCESS_TOKEN }}" >> $GITHUB_ENV
+
+      - name: Set env variables from secrets (juliett)
+        if: matrix.e2b-domain == 'e2b-juliett.dev'
+        run: |
+          echo "E2B_API_KEY=${{ secrets.E2B_API_KEY_JULIETT }}" >> $GITHUB_ENV
+          echo "E2B_ACCESS_TOKEN=${{ secrets.E2B_ACCESS_TOKEN_JULIETT }}" >> $GITHUB_ENV
+
+      - name: Set env variables from secrets (staging)
+        if: matrix.e2b-domain == 'e2b-staging.dev'
+        run: |
+          echo "E2B_API_KEY=${{ secrets.E2B_API_KEY }}" >> $GITHUB_ENV
+          echo "E2B_ACCESS_TOKEN=${{ secrets.E2B_ACCESS_TOKEN }}" >> $GITHUB_ENV
 
       - name: ${{ matrix.test-command.name }}
         run: bun run ${{ matrix.test-command.command }}

@@ -25,8 +25,7 @@ const (
 func (a *APIStore) GetSnapshots(c *gin.Context, params api.GetSnapshotsParams) {
 	ctx := c.Request.Context()
 
-	teamInfo := auth.MustGetTeamInfo(c)
-	teamID := teamInfo.Team.ID
+	teamID := auth.MustGetTeamID(c)
 
 	span := trace.SpanFromContext(ctx)
 	traceID := span.SpanContext().TraceID().String()

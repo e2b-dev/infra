@@ -15,12 +15,13 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
-	"github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations"
-	sandboxmemory "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/memory"
+	redisreservations "github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations/redis"
+	sandboxredis "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	teamtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -45,9 +46,15 @@ func testBuild() queries.EnvBuild {
 func newCreateSandboxTestOrchestrator(t *testing.T) (*Orchestrator, *nodemanager.Node) {
 	t.Helper()
 
+	client := redis_utils.SetupInstance(t)
+	storage, err := sandboxredis.NewStorage(client, noop.NewMeterProvider())
+	require.NoError(t, err)
+	go storage.Start(t.Context())
+	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })
+
 	store := sandbox.NewStore(
-		sandboxmemory.NewStorage(),
-		reservations.NewReservationStorage(),
+		storage,
+		redisreservations.NewReservationStorage(client, storage.Notifier()),
 		sandbox.Callbacks{
 			AddSandboxToRoutingTable: func(context.Context, sandbox.Sandbox) {},
 			AsyncNewlyCreatedSandbox: func(context.Context, sandbox.Sandbox, sandbox.CreationMetadata) {},
@@ -57,8 +64,8 @@ func newCreateSandboxTestOrchestrator(t *testing.T) (*Orchestrator, *nodemanager
 	meter := noop.NewMeterProvider().Meter("github.com/e2b-dev/infra/packages/api/internal/orchestrator")
 	counter, _ := meter.Int64Counter("test-created-sandboxes")
 
-	ffClient, err := featureflags.NewClientWithDatasource(ldtestdata.DataSource())
-	require.NoError(t, err)
+	ffClient, ffErr := featureflags.NewClientWithDatasource(ldtestdata.DataSource())
+	require.NoError(t, ffErr)
 
 	algo := placement.NewBestOfK(placement.DefaultBestOfKConfig()).(*placement.BestOfK)
 
