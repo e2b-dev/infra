@@ -263,7 +263,24 @@ func (c *Cache) evictOverBudget(ctx context.Context) {
 	}
 
 	victims := selectEvictions(entries, (*activeFn)(), time.Now(), budget, total)
+	if len(victims) == 0 {
+		return
+	}
+
+	// Re-check under extendMu so a concurrent template hand-out either marks
+	// lastAccess before deletion (skip) or happens after deletion (refetch).
+	c.extendMu.Lock()
+	defer c.extendMu.Unlock()
+
+	active := (*activeFn)()
+	now := time.Now()
 	for _, v := range victims {
+		if _, inUse := active[v]; inUse {
+			continue
+		}
+		if ts, ok := c.lastAccess.Load(v); ok && now.Sub(ts.(time.Time)) <= evictionGracePeriod {
+			continue
+		}
 		c.cache.Delete(v) // triggers OnEviction: peer purge + template Close
 		c.lastAccess.Delete(v)
 		logger.L().Info(ctx, "evicted idle template over memory budget",
@@ -455,6 +472,9 @@ func (c *Cache) AddSnapshot(
 
 // GetCachedTemplate returns the template for buildID if it is currently in the cache.
 func (c *Cache) GetCachedTemplate(buildID string) (Template, bool) {
+	c.extendMu.Lock()
+	defer c.extendMu.Unlock()
+
 	item := c.cache.Get(buildID)
 	if item == nil {
 		return nil, false
@@ -534,9 +554,8 @@ func (c *Cache) getTemplateWithFetch(ctx context.Context, tmpl *storageTemplate,
 		// Another team with a shorter max length cached this entry; extend it.
 		c.cache.Set(key, t.Value(), ttl)
 	}
-	c.extendMu.Unlock()
-
 	c.lastAccess.Store(key, time.Now())
+	c.extendMu.Unlock()
 
 	if !found {
 		missesMetric.Add(ctx, 1)
