@@ -45,6 +45,7 @@ job "otel-collector-nomad-server" {
           "local/config:/config",
         ]
         args = [
+          "--feature-gates=exporter.googlemanagedprometheus.intToDouble",
           "--config=local/config/otel-collector-config.yaml",
         ]
 
