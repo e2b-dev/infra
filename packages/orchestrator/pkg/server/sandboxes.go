@@ -441,7 +441,12 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 		return nil, status.Errorf(codes.Internal, "failed to delete sandbox '%s'", in.GetSandboxId())
 	}
 
-	sbxlogger.E(sbx).Info(ctx, "Killing sandbox")
+	killReason := in.GetKillReason()
+	if killReason == "" {
+		killReason = killReasonUnknown
+	}
+
+	sbxlogger.E(sbx).Info(ctx, "Killing sandbox", zap.String("kill_reason", killReason))
 
 	// Check health metrics before stopping the sandbox
 	sbx.Checks.Healthcheck(ctx, true)
@@ -451,7 +456,11 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	go func() {
 		err := sbx.Stop(context.WithoutCancel(ctx))
 		if err != nil {
-			sbxlogger.I(sbx).Error(ctx, "error stopping sandbox", logger.WithSandboxID(in.GetSandboxId()), zap.Error(err))
+			sbxlogger.I(sbx).Error(ctx, "error stopping sandbox",
+				logger.WithSandboxID(in.GetSandboxId()),
+				zap.String("kill_reason", killReason),
+				zap.Error(err),
+			)
 		}
 	}()
 
@@ -459,7 +468,6 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	if s.featureFlags.BoolFlag(ctx, featureflags.ExecutionMetricsOnWebhooksFlag) {
 		eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
 	}
-	killReason := in.GetKillReason()
 	addKillReason(eventData, killReason)
 	recordSandboxKill(ctx, s.sandboxKilledCounter, killReason)
 
