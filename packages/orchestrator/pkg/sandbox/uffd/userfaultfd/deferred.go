@@ -18,10 +18,11 @@ func (d *deferredFaults) push(pf *UffdPagefault) bool {
 	if d.byAddr == nil {
 		d.byAddr = make(map[uint64]struct{})
 	}
-	if _, ok := d.byAddr[pf.address]; ok {
+	addr := uint64(pf.address)
+	if _, ok := d.byAddr[addr]; ok {
 		return false
 	}
-	d.byAddr[pf.address] = struct{}{}
+	d.byAddr[addr] = struct{}{}
 	d.pf = append(d.pf, pf)
 
 	return true
