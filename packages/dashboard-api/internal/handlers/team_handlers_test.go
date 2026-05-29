@@ -731,6 +731,7 @@ func TestCreateTeam_RecentUserCreatesUnblockedTeam(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: &fakeTeamProvisionSink{},
+		userProfiles:      userprofile.NewSupabaseProvider(testDB.SupabaseDB),
 	}
 
 	team, err := store.createTeam(ctx, userID, "Acme")
@@ -783,6 +784,7 @@ func TestPostTeams_LocalPolicyDeniedReturnsBadRequestWithoutCreatingTeam(t *test
 		authDB:            testDB.AuthDB,
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
+		userProfiles:      userprofile.NewSupabaseProvider(testDB.SupabaseDB),
 	}
 	store.PostTeams(ginCtx)
 
@@ -822,6 +824,7 @@ func TestPostTeams_InvalidNameReturnsBadRequest(t *testing.T) {
 			authDB:            testDB.AuthDB,
 			supabaseDB:        testDB.SupabaseDB,
 			teamProvisionSink: sink,
+			userProfiles:      userprofile.NewSupabaseProvider(testDB.SupabaseDB),
 		}
 		store.PostTeams(ginCtx)
 
@@ -853,6 +856,7 @@ func TestPostTeams_InvalidRequestBodyReturnsBadRequest(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
+		userProfiles:      userprofile.NewSupabaseProvider(testDB.SupabaseDB),
 	}
 	store.PostTeams(ginCtx)
 
@@ -886,6 +890,7 @@ func TestPostTeams_TrimsNameBeforeCreate(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
+		userProfiles:      userprofile.NewSupabaseProvider(testDB.SupabaseDB),
 	}
 	store.PostTeams(ginCtx)
 
@@ -938,6 +943,7 @@ func TestPostTeams_ProvisioningFailureRollsBackCreatedTeam(t *testing.T) {
 		authDB:            testDB.AuthDB,
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: sink,
+		userProfiles:      userprofile.NewSupabaseProvider(testDB.SupabaseDB),
 	}
 	store.PostTeams(ginCtx)
 
@@ -997,6 +1003,7 @@ func TestPostTeams_ProvisioningFailurePreservesProvisionErrorStatus(t *testing.T
 				authDB:            testDB.AuthDB,
 				supabaseDB:        testDB.SupabaseDB,
 				teamProvisionSink: sink,
+				userProfiles:      userprofile.NewSupabaseProvider(testDB.SupabaseDB),
 			}
 			store.PostTeams(ginCtx)
 
@@ -1062,6 +1069,7 @@ func TestCreateTeam_ConcurrentRequestsRespectLocalPolicyWithZeroMemberships(t *t
 		authDB:            testDB.AuthDB,
 		supabaseDB:        testDB.SupabaseDB,
 		teamProvisionSink: &fakeTeamProvisionSink{},
+		userProfiles:      userprofile.NewSupabaseProvider(testDB.SupabaseDB),
 	}
 
 	var wg sync.WaitGroup

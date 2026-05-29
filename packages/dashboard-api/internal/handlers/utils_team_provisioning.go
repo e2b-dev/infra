@@ -54,17 +54,9 @@ func (s *APIStore) bootstrapSupabaseUser(ctx context.Context, userID uuid.UUID) 
 }
 
 func (s *APIStore) bootstrapUserProfileFromSupabase(ctx context.Context, userID uuid.UUID) (bootstrapUserProfile, error) {
-	profiles, err := s.userProfiles.GetProfilesByUserID(ctx, []uuid.UUID{userID})
+	profile, err := s.resolveProfile(ctx, userID)
 	if err != nil {
-		return bootstrapUserProfile{}, fmt.Errorf("get user profile: %w", err)
-	}
-
-	profile, ok := profiles[userID]
-	if !ok {
-		return bootstrapUserProfile{}, &internalteamprovision.ProvisionError{
-			StatusCode: http.StatusNotFound,
-			Message:    "User not found",
-		}
+		return bootstrapUserProfile{}, err
 	}
 
 	return bootstrapUserProfile{
@@ -72,6 +64,26 @@ func (s *APIStore) bootstrapUserProfileFromSupabase(ctx context.Context, userID 
 		Email:           profile.Email,
 		DefaultTeamName: defaultTeamNameFromProfile(profile),
 	}, nil
+}
+
+// resolveProfile fetches a single user's profile through the configured profile
+// provider, returning a 404 ProvisionError when the user is unknown. This keeps
+// provisioning independent of which backend (Supabase or Ory) owns the user.
+func (s *APIStore) resolveProfile(ctx context.Context, userID uuid.UUID) (userprofile.Profile, error) {
+	profiles, err := s.userProfiles.GetProfilesByUserID(ctx, []uuid.UUID{userID})
+	if err != nil {
+		return userprofile.Profile{}, fmt.Errorf("get user profile: %w", err)
+	}
+
+	profile, ok := profiles[userID]
+	if !ok {
+		return userprofile.Profile{}, &internalteamprovision.ProvisionError{
+			StatusCode: http.StatusNotFound,
+			Message:    "User not found",
+		}
+	}
+
+	return profile, nil
 }
 
 func (s *APIStore) bootstrapUser(ctx context.Context, profile bootstrapUserProfile) (provisionedTeam, error) {
@@ -164,9 +176,9 @@ func (s *APIStore) bootstrapUser(ctx context.Context, profile bootstrapUserProfi
 }
 
 func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string) (provisionedTeam, error) {
-	authUser, err := s.supabaseDB.Write.GetAuthUserByID(ctx, userID)
+	profile, err := s.resolveProfile(ctx, userID)
 	if err != nil {
-		return provisionedTeam{}, fmt.Errorf("get auth user: %w", err)
+		return provisionedTeam{}, err
 	}
 
 	authTxDB, tx, err := s.authDB.WithTx(ctx)
@@ -177,12 +189,12 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 		_ = tx.Rollback(ctx)
 	}()
 
-	if err := authTxDB.UpsertPublicUser(ctx, authUser.ID); err != nil {
+	if err := authTxDB.UpsertPublicUser(ctx, userID); err != nil {
 		return provisionedTeam{}, fmt.Errorf("upsert public user: %w", err)
 	}
 
 	// Serialize team creation even when the user currently has no team memberships.
-	if _, err := authTxDB.LockPublicUserForUpdate(ctx, authUser.ID); err != nil {
+	if _, err := authTxDB.LockPublicUserForUpdate(ctx, userID); err != nil {
 		return provisionedTeam{}, fmt.Errorf("lock public user: %w", err)
 	}
 
@@ -193,7 +205,7 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 	team, err := authTxDB.CreateTeam(ctx, authqueries.CreateTeamParams{
 		Name:          name,
 		Tier:          baseTierID,
-		Email:         authUser.Email,
+		Email:         profile.Email,
 		IsBlocked:     false,
 		BlockedReason: nil,
 	})
