@@ -24,18 +24,7 @@ func (p *dualProvider) GetProfilesByUserID(ctx context.Context, userIDs []uuid.U
 		return nil, err
 	}
 
-	missing := make([]uuid.UUID, 0, len(userIDs))
-	for _, id := range userIDs {
-		if _, ok := primary[id]; ok {
-			continue
-		}
-		missing = append(missing, id)
-	}
-	if len(missing) == 0 {
-		return primary, nil
-	}
-
-	secondary, err := p.secondary.GetProfilesByUserID(ctx, missing)
+	secondary, err := p.secondary.GetProfilesByUserID(ctx, userIDs)
 	if err != nil {
 		return nil, err
 	}

@@ -40,7 +40,7 @@ func (f *fakeProvider) FindProfilesByEmail(_ context.Context, email string) ([]P
 	return f.byEmail[email], nil
 }
 
-func TestDualProvider_GetProfilesByUserID_PrefersPrimaryFallsBackToSecondary(t *testing.T) {
+func TestDualProvider_GetProfilesByUserID_PrefersSecondaryFallsBackToPrimary(t *testing.T) {
 	t.Parallel()
 
 	primaryOnly := uuid.New()
@@ -51,12 +51,12 @@ func TestDualProvider_GetProfilesByUserID_PrefersPrimaryFallsBackToSecondary(t *
 	primary := &fakeProvider{
 		byID: map[uuid.UUID]Profile{
 			primaryOnly: {UserID: primaryOnly, Email: "primary-only@example.com"},
-			bothShared:  {UserID: bothShared, Email: "primary-wins@example.com"},
+			bothShared:  {UserID: bothShared, Email: "primary-loses@example.com"},
 		},
 	}
 	secondary := &fakeProvider{
 		byID: map[uuid.UUID]Profile{
-			bothShared:    {UserID: bothShared, Email: "secondary-loses@example.com"},
+			bothShared:    {UserID: bothShared, Email: "secondary-wins@example.com"},
 			secondaryOnly: {UserID: secondaryOnly, Email: "secondary-only@example.com"},
 		},
 	}
@@ -73,8 +73,8 @@ func TestDualProvider_GetProfilesByUserID_PrefersPrimaryFallsBackToSecondary(t *
 	if got[primaryOnly].Email != "primary-only@example.com" {
 		t.Fatalf("primaryOnly email = %q, want %q", got[primaryOnly].Email, "primary-only@example.com")
 	}
-	if got[bothShared].Email != "primary-wins@example.com" {
-		t.Fatalf("bothShared email = %q, want primary to win", got[bothShared].Email)
+	if got[bothShared].Email != "secondary-wins@example.com" {
+		t.Fatalf("bothShared email = %q, want secondary to win", got[bothShared].Email)
 	}
 	if got[secondaryOnly].Email != "secondary-only@example.com" {
 		t.Fatalf("secondaryOnly email = %q, want %q", got[secondaryOnly].Email, "secondary-only@example.com")
@@ -84,7 +84,7 @@ func TestDualProvider_GetProfilesByUserID_PrefersPrimaryFallsBackToSecondary(t *
 	}
 }
 
-func TestDualProvider_GetProfilesByUserID_SkipsSecondaryWhenPrimaryFullyResolves(t *testing.T) {
+func TestDualProvider_GetProfilesByUserID_ChecksSecondaryWhenPrimaryFullyResolves(t *testing.T) {
 	t.Parallel()
 
 	id := uuid.New()
@@ -95,8 +95,8 @@ func TestDualProvider_GetProfilesByUserID_SkipsSecondaryWhenPrimaryFullyResolves
 	if _, err := dual.GetProfilesByUserID(t.Context(), []uuid.UUID{id}); err != nil {
 		t.Fatalf("GetProfilesByUserID() error = %v", err)
 	}
-	if secondary.calls != 0 {
-		t.Fatalf("secondary calls = %d, want 0", secondary.calls)
+	if secondary.calls != 1 {
+		t.Fatalf("secondary calls = %d, want 1", secondary.calls)
 	}
 }
 
@@ -110,6 +110,20 @@ func TestDualProvider_GetProfilesByUserID_PropagatesPrimaryError(t *testing.T) {
 	_, err := dual.GetProfilesByUserID(t.Context(), []uuid.UUID{uuid.New()})
 	if err == nil || err.Error() != "primary boom" {
 		t.Fatalf("expected primary error, got %v", err)
+	}
+}
+
+func TestDualProvider_GetProfilesByUserID_PropagatesSecondaryError(t *testing.T) {
+	t.Parallel()
+
+	id := uuid.New()
+	primary := &fakeProvider{byID: map[uuid.UUID]Profile{id: {UserID: id, Email: "p@example.com"}}}
+	secondary := &fakeProvider{err: errors.New("secondary boom")}
+
+	dual := newDualProvider(primary, secondary)
+	_, err := dual.GetProfilesByUserID(t.Context(), []uuid.UUID{id})
+	if err == nil || err.Error() != "secondary boom" {
+		t.Fatalf("expected secondary error, got %v", err)
 	}
 }
 
