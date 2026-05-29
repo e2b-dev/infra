@@ -93,7 +93,11 @@ func (u *Upload) uploadFramed(
 			compressedSize = size
 		}
 
-		recordUploadCompression(ctx, string(fileType), cfg, size, compressedSize)
+		dataFileType := uploadFileMemfile
+		if fileType == build.Rootfs {
+			dataFileType = uploadFileRootfs
+		}
+		recordUploadCompression(ctx, dataFileType, cfg, size, compressedSize)
 		selfBuild = headers.BuildData{Size: size, Checksum: checksum, FrameData: ft}
 	}
 
