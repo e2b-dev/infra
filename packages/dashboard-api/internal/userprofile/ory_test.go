@@ -26,8 +26,9 @@ func TestProfileFromOryIdentity(t *testing.T) {
 		{
 			name: "email and name from traits, picture from metadata_public",
 			traits: map[string]any{
-				"email": "ada@example.com",
-				"name":  "ada lovelace",
+				"email":   "ada@example.com",
+				"name":    "ada lovelace",
+				"picture": "https://example.com/trait-picture.jpg",
 			},
 			metadataPublic: map[string]any{
 				"picture": "https://example.com/ada.jpg",

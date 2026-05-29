@@ -225,7 +225,7 @@ func (p *oryProvider) listIdentitiesByIDs(ctx context.Context, ids []string) ([]
 // than traits so it never renders on Ory's self-service registration form. The
 // OIDC Jsonnet mapper still populates all of them from provider claims (Google
 // profile scope, GitHub user scope, etc.). The canonical trait shape lives in
-// packages/dashboard-api/fixtures/ory/identity.v1.schema.json.
+// fixtures/ory/identity.v1.schema.json.
 func profileFromOryIdentity(userID uuid.UUID, identity ory.Identity) Profile {
 	traits, _ := identity.Traits.(map[string]any)
 
