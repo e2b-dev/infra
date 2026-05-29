@@ -16,7 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils"
 )
 
-// TestSetOnFailure verifies that the failure callback is properly set and can be invoked.
+// TestSetOnFailure verifies that the failure callback is properly set and can be retrieved.
 func TestSetOnFailure(t *testing.T) {
 	t.Parallel()
 
@@ -25,78 +25,14 @@ func TestSetOnFailure(t *testing.T) {
 
 	u := New(memfile, socketPath)
 
-	// Verify callback is initially nil
 	assert.Nil(t, u.GetOnFailure())
 
-	// Set a callback
-	u.SetOnFailure(func(ctx context.Context, sandboxID string, err error) {
-		// Callback set
-	})
+	u.SetOnFailure(func(ctx context.Context, sandboxID string, err error) {})
 
-	// Verify callback is set
 	assert.NotNil(t, u.GetOnFailure())
 }
 
-// TestOnFailureInvokedOnHandleError verifies that the failure callback is invoked when handle fails.
-// This test verifies the callback mechanism by checking that it's called when handle returns an error.
-func TestOnFailureInvokedOnHandleError(t *testing.T) {
-	t.Parallel()
-
-	memfile := testutils.NewMockMemfile(t)
-	socketPath := filepath.Join(t.TempDir(), "test.sock")
-
-	u := New(memfile, socketPath)
-
-	// Track callback invocation
-	var (
-		callbackInvoked atomic.Bool
-		callbackSandbox string
-		callbackErr     error
-		mu              sync.Mutex
-		wg              sync.WaitGroup
-	)
-
-	wg.Add(1)
-	u.SetOnFailure(func(ctx context.Context, sandboxID string, err error) {
-		defer wg.Done()
-		callbackInvoked.Store(true)
-		mu.Lock()
-		defer mu.Unlock()
-		callbackSandbox = sandboxID
-		callbackErr = err
-	})
-
-	// Start UFFD - it will fail because no Firecracker connects
-	// The socket deadline is 10 seconds, so we need to wait for that
-	ctx := context.Background()
-	sandboxID := "test-sandbox-123"
-	err := u.Start(ctx, sandboxID)
-	require.NoError(t, err, "Start should not error immediately")
-
-	// Wait for the goroutine to process the failure (socket timeout is 10 seconds)
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		// Callback was invoked
-	case <-time.After(15 * time.Second):
-		t.Fatal("callback was not invoked within timeout")
-	}
-
-	// Verify callback was invoked
-	assert.True(t, callbackInvoked.Load(), "callback should have been invoked")
-
-	mu.Lock()
-	defer mu.Unlock()
-	assert.Equal(t, sandboxID, callbackSandbox, "callback should receive correct sandbox ID")
-	assert.NotNil(t, callbackErr, "callback should receive error")
-}
-
-// TestOnFailureNotInvokedWhenCallbackNil verifies that nil callback doesn't crash.
+// TestOnFailureNotInvokedWhenCallbackNil verifies that a nil callback doesn't crash.
 func TestOnFailureNotInvokedWhenCallbackNil(t *testing.T) {
 	t.Parallel()
 
@@ -105,7 +41,6 @@ func TestOnFailureNotInvokedWhenCallbackNil(t *testing.T) {
 
 	u := New(memfile, socketPath)
 
-	// Don't set callback - should not crash
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
@@ -114,12 +49,12 @@ func TestOnFailureNotInvokedWhenCallbackNil(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	// Should be able to stop without issues
 	stopErr := u.Stop()
-	assert.NoError(t, stopErr, "Stop should not error")
+	assert.NoError(t, stopErr)
 }
 
-// TestMultipleCallbackSets verifies that SetOnFailure can be called multiple times.
+// TestMultipleCallbackSets verifies that SetOnFailure can be called multiple times,
+// with each call replacing the previous callback.
 func TestMultipleCallbackSets(t *testing.T) {
 	t.Parallel()
 
@@ -128,31 +63,69 @@ func TestMultipleCallbackSets(t *testing.T) {
 
 	u := New(memfile, socketPath)
 
-	// Set first callback
-	firstInvoked := atomic.Bool{}
-	u.SetOnFailure(func(ctx context.Context, sandboxID string, err error) {
-		firstInvoked.Store(true)
-	})
-
-	// Verify first callback is set
+	u.SetOnFailure(func(ctx context.Context, sandboxID string, err error) {})
 	assert.NotNil(t, u.GetOnFailure())
 
-	// Set second callback (should replace first)
-	secondInvoked := atomic.Bool{}
-	u.SetOnFailure(func(ctx context.Context, sandboxID string, err error) {
-		secondInvoked.Store(true)
-	})
-
-	// Verify second callback is set
+	u.SetOnFailure(func(ctx context.Context, sandboxID string, err error) {})
 	assert.NotNil(t, u.GetOnFailure())
 
-	// Note: We don't actually trigger the failure here because it would take 10 seconds
-	// The important thing is that SetOnFailure can be called multiple times
+	u.SetOnFailure(nil)
+	assert.Nil(t, u.GetOnFailure())
 }
 
-// TestCallbackReceivesCorrectParameters verifies callback receives correct context, sandbox ID, and error.
-// This is a long-running test that waits for the socket timeout (10 seconds).
-func TestCallbackReceivesCorrectParameters(t *testing.T) {
+// TestUffdStopAfterFailure verifies that UFFD can be stopped cleanly after a failure.
+func TestUffdStopAfterFailure(t *testing.T) {
+	t.Parallel()
+
+	memfile := testutils.NewMockMemfile(t)
+	socketPath := filepath.Join(t.TempDir(), "test.sock")
+
+	u := New(memfile, socketPath)
+	u.SetOnFailure(func(ctx context.Context, sandboxID string, err error) {})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	err := u.Start(ctx, "test-sandbox")
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	stopErr := u.Stop()
+	assert.NoError(t, stopErr)
+}
+
+// TestCallbackNotInvokedOnCleanStop verifies that the callback is NOT invoked
+// when UFFD is stopped cleanly (no failure).
+func TestCallbackNotInvokedOnCleanStop(t *testing.T) {
+	t.Parallel()
+
+	memfile := testutils.NewMockMemfile(t)
+	socketPath := filepath.Join(t.TempDir(), "test.sock")
+
+	u := New(memfile, socketPath)
+
+	invoked := atomic.Bool{}
+	u.SetOnFailure(func(ctx context.Context, sandboxID string, err error) {
+		invoked.Store(true)
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	err := u.Start(ctx, "test-sandbox")
+	require.NoError(t, err)
+
+	_ = u.Stop()
+
+	time.Sleep(50 * time.Millisecond)
+
+	assert.False(t, invoked.Load(), "callback should not be invoked on clean stop")
+}
+
+// TestOnFailureInvokedOnHandleError verifies that the failure callback is invoked
+// when handle fails (socket timeout). Long-running: waits ~10s for socket deadline.
+func TestOnFailureInvokedOnHandleError(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping long-running test in short mode")
 	}
@@ -165,28 +138,25 @@ func TestCallbackReceivesCorrectParameters(t *testing.T) {
 	u := New(memfile, socketPath)
 
 	var (
-		receivedCtx     context.Context
-		receivedSandbox string
-		receivedErr     error
-		mu              sync.Mutex
 		wg              sync.WaitGroup
+		callbackSandbox string
+		callbackErr     error
+		mu              sync.Mutex
 	)
 
 	wg.Add(1)
-	u.SetOnFailure(func(ctx context.Context, sandboxID string, err error) {
+	sandboxID := "test-sandbox-123"
+	u.SetOnFailure(func(ctx context.Context, sbxID string, err error) {
 		defer wg.Done()
 		mu.Lock()
 		defer mu.Unlock()
-		receivedCtx = ctx
-		receivedSandbox = sandboxID
-		receivedErr = err
+		callbackSandbox = sbxID
+		callbackErr = err
 	})
 
-	sandboxID := "test-sandbox-xyz"
 	err := u.Start(context.Background(), sandboxID)
 	require.NoError(t, err)
 
-	// Wait for callback (socket timeout is 10 seconds)
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -201,14 +171,18 @@ func TestCallbackReceivesCorrectParameters(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-
-	assert.NotNil(t, receivedCtx, "callback should receive context")
-	assert.Equal(t, sandboxID, receivedSandbox, "callback should receive correct sandbox ID")
-	assert.NotNil(t, receivedErr, "callback should receive error")
+	assert.Equal(t, sandboxID, callbackSandbox)
+	assert.NotNil(t, callbackErr)
 }
 
-// TestUffdStopAfterFailure verifies that UFFD can be stopped after a failure.
-func TestUffdStopAfterFailure(t *testing.T) {
+// TestLateCallbackRegistrationAfterFailure verifies the key correctness guarantee
+// from the code review: a callback registered AFTER a failure has already occurred
+// is still invoked immediately with the stored failure details.
+func TestLateCallbackRegistrationAfterFailure(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping long-running test in short mode")
+	}
+
 	t.Parallel()
 
 	memfile := testutils.NewMockMemfile(t)
@@ -216,19 +190,47 @@ func TestUffdStopAfterFailure(t *testing.T) {
 
 	u := New(memfile, socketPath)
 
-	u.SetOnFailure(func(ctx context.Context, sandboxID string, err error) {
-		// Callback does nothing
-	})
+	sandboxID := "test-sandbox-late"
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-
-	err := u.Start(ctx, "test-sandbox")
+	// Start without a callback - UFFD will fail after socket timeout (10 seconds)
+	err := u.Start(context.Background(), sandboxID)
 	require.NoError(t, err)
 
-	time.Sleep(100 * time.Millisecond)
+	// Wait for the internal goroutine to finish (socket timeout = 10 seconds)
+	<-u.readyCh
 
-	// Should be able to stop UFFD after failure
-	stopErr := u.Stop()
-	assert.NoError(t, stopErr, "Stop should not error after failure")
+	// Register callback AFTER failure has already occurred.
+	// It must be invoked immediately in a goroutine with the stored failure details.
+	var (
+		wg              sync.WaitGroup
+		receivedSandbox string
+		receivedErr     error
+		mu              sync.Mutex
+	)
+
+	wg.Add(1)
+	u.SetOnFailure(func(ctx context.Context, sbxID string, cbErr error) {
+		defer wg.Done()
+		mu.Lock()
+		defer mu.Unlock()
+		receivedSandbox = sbxID
+		receivedErr = cbErr
+	})
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("late-registered callback was not invoked")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, sandboxID, receivedSandbox)
+	assert.NotNil(t, receivedErr)
 }
