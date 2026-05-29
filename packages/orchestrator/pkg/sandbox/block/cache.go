@@ -207,9 +207,11 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 }
 
 type dedupPlan struct {
-	pageDirty    *roaring.Bitmap
-	pageEmpty    *roaring.Bitmap
-	exportedSize int64
+	pageDirty      *roaring.Bitmap
+	pageEmpty      *roaring.Bitmap
+	exportedSize   int64
+	promotedBlocks int64
+	promotedPages  int64
 }
 
 // dedupCompare classifies each dirty page against base into pageDirty or
@@ -222,10 +224,13 @@ func dedupCompare(
 	dirty *roaring.Bitmap,
 	blockSize int64,
 	bestEffort bool,
+	minChangedPagesPerBlock int,
 ) (*dedupPlan, error) {
 	pageDirty := roaring.New()
 	pageEmpty := roaring.New()
 	var exportedSize int64
+	var promotedBlocks int64
+	var promotedPages int64
 
 	baseHeader := base.Header()
 	peeker, _ := base.(CachePeeker)
@@ -244,13 +249,16 @@ func dedupCompare(
 				return nil, err
 			}
 
+			blockDirty := roaring.New()
+			blockEmpty := roaring.New()
+
 			for i := int64(0); i < blockSize; i += header.PageSize {
 				srcPage := srcBuf[i : i+header.PageSize]
 				pageIdx := uint32((absOff + i) / header.PageSize)
 				pageOff := absOff + i
 
 				if header.IsZero(srcPage) {
-					pageEmpty.Add(pageIdx)
+					blockEmpty.Add(pageIdx)
 
 					continue
 				}
@@ -267,7 +275,7 @@ func dedupCompare(
 					skip = true
 				}
 				if skip {
-					pageDirty.Add(pageIdx)
+					blockDirty.Add(pageIdx)
 
 					continue
 				}
@@ -280,12 +288,32 @@ func dedupCompare(
 					continue
 				}
 
-				pageDirty.Add(pageIdx)
+				blockDirty.Add(pageIdx)
 			}
+
+			changedPages := int(blockDirty.GetCardinality())
+			if minChangedPagesPerBlock > 0 && changedPages > 0 && changedPages <= minChangedPagesPerBlock {
+				startPage := uint64(absOff / header.PageSize)
+				endPage := startPage + uint64(blockSize/header.PageSize)
+				pageDirty.AddRange(startPage, endPage)
+				promotedBlocks++
+				promotedPages += int64(endPage - startPage)
+
+				continue
+			}
+
+			pageDirty.Or(blockDirty)
+			pageEmpty.Or(blockEmpty)
 		}
 	}
 
-	return &dedupPlan{pageDirty: pageDirty, pageEmpty: pageEmpty, exportedSize: exportedSize}, nil
+	return &dedupPlan{
+		pageDirty:      pageDirty,
+		pageEmpty:      pageEmpty,
+		exportedSize:   exportedSize,
+		promotedBlocks: promotedBlocks,
+		promotedPages:  promotedPages,
+	}, nil
 }
 
 // dedupDrain writes pageDirty pages from src to outPath packed at PageSize.
@@ -334,7 +362,7 @@ func dedupDrain(
 	return cache, nil
 }
 
-func recordDedupAttrs(ctx context.Context, totalPages, uniquePages, emptyPages int64, compareDur, writeDur time.Duration) {
+func recordDedupAttrs(ctx context.Context, totalPages, uniquePages, emptyPages, promotedBlocks, promotedPages int64, compareDur, writeDur time.Duration) {
 	dedupedPages := totalPages - uniquePages - emptyPages
 	ratio := 0.0
 	if totalPages > 0 {
@@ -345,6 +373,8 @@ func recordDedupAttrs(ctx context.Context, totalPages, uniquePages, emptyPages i
 		attribute.Int64("dedup.deduped_pages", dedupedPages),
 		attribute.Int64("dedup.unique_pages", uniquePages),
 		attribute.Int64("dedup.empty_pages", emptyPages),
+		attribute.Int64("dedup.promoted_blocks", promotedBlocks),
+		attribute.Int64("dedup.promoted_pages", promotedPages),
 		attribute.Float64("dedup.ratio", ratio),
 		attribute.Int64("dedup.compare_ms", compareDur.Milliseconds()),
 		attribute.Int64("dedup.write_ms", writeDur.Milliseconds()),
@@ -402,6 +432,7 @@ func (c *Cache) Dedup(
 	outPath string,
 	bestEffort bool,
 	directIO bool,
+	minChangedPagesPerBlock int,
 ) (*Cache, *header.DiffMetadata, error) {
 	ctx, span := tracer.Start(ctx, "dedup-pages")
 	defer span.End()
@@ -425,7 +456,7 @@ func (c *Cache) Dedup(
 	}
 
 	compareStart := time.Now()
-	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort)
+	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort, minChangedPagesPerBlock)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -440,6 +471,8 @@ func (c *Cache) Dedup(
 		plan.exportedSize/header.PageSize,
 		int64(plan.pageDirty.GetCardinality()),
 		int64(plan.pageEmpty.GetCardinality()),
+		plan.promotedBlocks,
+		plan.promotedPages,
 		compareDur, time.Since(writeStart),
 	)
 
