@@ -95,29 +95,7 @@ func supabaseLinkedProviders(appMetadata map[string]any) []string {
 		candidates = append(candidates, name)
 	}
 
-	return uniqueNonEmpty(candidates)
-}
-
-func uniqueNonEmpty(values []string) []string {
-	seen := make(map[string]struct{}, len(values))
-	unique := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if _, dup := seen[value]; dup {
-			continue
-		}
-		seen[value] = struct{}{}
-		unique = append(unique, value)
-	}
-
-	if len(unique) == 0 {
-		return nil
-	}
-
-	return unique
+	return normalizeAuthProviders(candidates)
 }
 
 func displayNameFromMetadata(metadata map[string]any) string {

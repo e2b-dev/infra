@@ -38,17 +38,19 @@ func TestProfileFromOryIdentity(t *testing.T) {
 			wantPicture: "https://example.com/ada.jpg",
 		},
 		{
-			name: "providers from oidc config",
+			name: "providers from credentials and oidc config",
 			traits: map[string]any{
 				"email": "grace@example.com",
 				"name":  "grace hopper",
 			},
 			credentials: &map[string]ory.IdentityCredentials{
+				"password": {},
 				"oidc": {
 					Config: map[string]any{
 						"providers": []any{
-							map[string]any{"provider": "google"},
+							map[string]any{"provider": " Google "},
 							map[string]any{"provider": "github"},
+							map[string]any{"provider": "apple"},
 						},
 					},
 					Identifiers: []string{"google:111", "github:222"},
@@ -56,22 +58,23 @@ func TestProfileFromOryIdentity(t *testing.T) {
 			},
 			wantName:      "grace hopper",
 			wantEmail:     "grace@example.com",
-			wantProviders: []string{"google", "github"},
+			wantProviders: []string{"email", "google", "github"},
 		},
 		{
 			name: "providers fallback from identifiers when config missing",
 			credentials: &map[string]ory.IdentityCredentials{
 				"oidc": {
-					Identifiers: []string{"google:111", "github:222", "google:111"},
+					Identifiers: []string{"github:222", "GOOGLE:111", "google:111", "apple:333"},
 				},
 			},
 			wantProviders: []string{"google", "github"},
 		},
 		{
-			name: "providers ignored when only password credential",
+			name: "email provider from password credential",
 			credentials: &map[string]ory.IdentityCredentials{
 				"password": {Identifiers: []string{"ada@example.com"}},
 			},
+			wantProviders: []string{"email"},
 		},
 		{
 			name:   "nil traits and credentials returns zero values",

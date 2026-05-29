@@ -124,7 +124,7 @@ func (p *oryProvider) FindProfilesByEmail(ctx context.Context, email string) ([]
 	identities, _, err := p.identities.ListIdentitiesExecute(
 		p.identities.ListIdentities(p.authCtx(ctx)).
 			CredentialsIdentifier(normalized).
-			IncludeCredential([]string{"oidc"}),
+			IncludeCredential(oryProfileCredentialTypes),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("ory list identities by credentials identifier: %w", err)
@@ -160,9 +160,12 @@ func (p *oryProvider) subjectsForUserIDs(ctx context.Context, userIDs []uuid.UUI
 		return nil, fmt.Errorf("lookup ory subjects: %w", err)
 	}
 
-	return userIDsBySubject(rows, func(r authqueries.GetUserIdentitiesByUserIDsRow) (string, uuid.UUID) {
-		return r.OidcSub, r.UserID
-	}), nil
+	userIDBySubject := make(map[string]uuid.UUID, len(rows))
+	for _, row := range rows {
+		userIDBySubject[row.OidcSub] = row.UserID
+	}
+
+	return userIDBySubject, nil
 }
 
 func (p *oryProvider) userIDsForSubjects(ctx context.Context, subjects []string) (map[string]uuid.UUID, error) {
@@ -174,21 +177,12 @@ func (p *oryProvider) userIDsForSubjects(ctx context.Context, subjects []string)
 		return nil, fmt.Errorf("lookup user ids by ory subjects: %w", err)
 	}
 
-	return userIDsBySubject(rows, func(r authqueries.GetUserIdentitiesBySubjectsRow) (string, uuid.UUID) {
-		return r.OidcSub, r.UserID
-	}), nil
-}
-
-// userIDsBySubject is generic because the two resolver queries that feed it
-// return distinct generated row types with the same (oidc_sub, user_id) shape.
-func userIDsBySubject[Row any](rows []Row, sub func(Row) (string, uuid.UUID)) map[string]uuid.UUID {
-	bySubject := make(map[string]uuid.UUID, len(rows))
+	userIDBySubject := make(map[string]uuid.UUID, len(rows))
 	for _, row := range rows {
-		oidcSub, userID := sub(row)
-		bySubject[oidcSub] = userID
+		userIDBySubject[row.OidcSub] = row.UserID
 	}
 
-	return bySubject
+	return userIDBySubject, nil
 }
 
 func (p *oryProvider) listIdentitiesByIDs(ctx context.Context, ids []string) ([]ory.Identity, error) {
@@ -197,7 +191,7 @@ func (p *oryProvider) listIdentitiesByIDs(ctx context.Context, ids []string) ([]
 		batch, _, err := p.identities.ListIdentitiesExecute(
 			p.identities.ListIdentities(p.authCtx(ctx)).
 				Ids(batchIDs).
-				IncludeCredential([]string{"oidc"}),
+				IncludeCredential(oryProfileCredentialTypes),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("ory list identities: %w", err)
@@ -225,19 +219,26 @@ func profileFromOryIdentity(userID uuid.UUID, identity ory.Identity) Profile {
 	}
 }
 
-// The provider list lives at credentials.oidc.config.providers[].provider; when
-// the response omits config (depends on include_credential), fall back to the
-// "provider:subject" prefix of credentials.oidc.identifiers.
+// OIDC provider names live at credentials.oidc.config.providers[].provider; when
+// config is omitted, fall back to the "provider:subject" identifier prefix.
 func oryLinkedProviders(identity ory.Identity) []string {
 	if identity.Credentials == nil {
 		return nil
 	}
-	oidc, ok := (*identity.Credentials)["oidc"]
-	if !ok {
-		return nil
+
+	credentials := *identity.Credentials
+	candidates := make([]string, 0, 4)
+	for credentialType := range credentials {
+		if isOryEmailCredentialType(credentialType) {
+			candidates = append(candidates, credentialType)
+		}
 	}
 
-	candidates := make([]string, 0, 4)
+	oidc, ok := credentials[oryCredentialOIDC]
+	if !ok {
+		return normalizeAuthProviders(candidates)
+	}
+
 	if entries, ok := oidc.Config["providers"].([]any); ok {
 		for _, entry := range entries {
 			obj, ok := entry.(map[string]any)
@@ -258,5 +259,5 @@ func oryLinkedProviders(identity ory.Identity) []string {
 		}
 	}
 
-	return uniqueNonEmpty(candidates)
+	return normalizeAuthProviders(candidates)
 }

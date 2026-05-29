@@ -1,6 +1,7 @@
 package userprofile
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/google/uuid"
@@ -54,5 +55,21 @@ func TestProfileFromAuthUserNamePrecedence(t *testing.T) {
 				t.Fatalf("profileFromAuthUser().Name = %q, want %q", got.Name, tt.want)
 			}
 		})
+	}
+}
+
+func TestProfileFromAuthUserProviders(t *testing.T) {
+	t.Parallel()
+
+	user := supabasequeries.AuthUser{
+		ID:             uuid.New(),
+		Email:          "ada@example.com",
+		RawAppMetaData: []byte(`{"providers":["github"," email ","GOOGLE","apple","github"],"provider":"google"}`),
+	}
+
+	got := profileFromAuthUser(user)
+	want := []string{"email", "google", "github"}
+	if !reflect.DeepEqual(got.Providers, want) {
+		t.Fatalf("profileFromAuthUser().Providers = %v, want %v", got.Providers, want)
 	}
 }
