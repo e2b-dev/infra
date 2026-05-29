@@ -11,10 +11,8 @@ type ObjectMetadata map[string]string
 
 const ObjectMetadataTeamID = "team_id"
 
-// FrameSink fires once per compressed frame produced by a compressed
-// StoreFile, with the frame's absolute C-space offset and bytes. Best-effort
-// and expected to return quickly — implementations should schedule any I/O
-// asynchronously and bound their own concurrency.
+// FrameSink fires once per compressed frame with its absolute C-space offset.
+// Best-effort; implementations should return quickly and bound their own I/O.
 type FrameSink func(ctx context.Context, cOffset int64, compressed []byte)
 
 // PutOptions holds parameters for blob/seekable writes. Compression is held

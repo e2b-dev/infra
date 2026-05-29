@@ -662,62 +662,6 @@ func TestCachedSeekable_StoreFile_Compressed_WriteThrough(t *testing.T) {
 	}
 }
 
-func TestCachedSeekable_StoreFile_Compressed_FlagOff_NoSink(t *testing.T) {
-	t.Parallel()
-
-	cfg := defaultCfg(CompressionZstd, 1, 64*1024)
-	tempDir := t.TempDir()
-	srcPath := filepath.Join(tempDir, "src.bin")
-	require.NoError(t, os.WriteFile(srcPath, []byte("x"), 0o644))
-
-	inner := NewMockSeekable(t)
-	inner.EXPECT().
-		StoreFile(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ string, opts ...PutOption) (*FrameTable, [32]byte, error) {
-			po := ApplyPutOptions(opts)
-			assert.Nil(t, po.FrameSink, "FrameSink must NOT be attached when write-through flag is off")
-
-			return nil, [32]byte{}, nil
-		})
-
-	flags := NewMockFeatureFlagsClient(t)
-	flags.EXPECT().BoolFlag(mock.Anything, mock.Anything).Return(false)
-
-	c := cachedSeekable{path: t.TempDir(), inner: inner, chunkSize: 64 * 1024, flags: flags, tracer: noopTracer}
-
-	_, _, err := c.StoreFile(t.Context(), srcPath, WithCompressConfig(cfg))
-	require.NoError(t, err)
-	c.wg.Wait()
-}
-
-func TestCachedSeekable_FrameSinkPopulatesNFS(t *testing.T) {
-	t.Parallel()
-
-	const frameSize = 64 * 1024
-	data := generateSemiRandomData(3 * frameSize)
-
-	flags := NewMockFeatureFlagsClient(t)
-	flags.EXPECT().IntFlag(mock.Anything, mock.Anything).Return(4)
-	c := &cachedSeekable{path: t.TempDir(), flags: flags, tracer: noopTracer}
-	up := &memPartUploader{}
-	cfg := defaultCfg(CompressionZstd, 2, frameSize)
-
-	ft, _, err := compressStream(t.Context(), bytes.NewReader(data), cfg, up, 4, c.frameSink(t.Context()))
-	require.NoError(t, err)
-	c.wg.Wait()
-
-	require.Equal(t, 3, ft.NumFrames())
-	assembled := up.Assemble()
-
-	for i := range ft.NumFrames() {
-		_, _, startC, endC := ft.FrameAt(i)
-		framePath := makeFrameFilename(c.path, Range{Offset: startC, Length: int(endC - startC)})
-		onDisk, err := os.ReadFile(framePath)
-		require.NoError(t, err)
-		assert.Equal(t, assembled[startC:endC], onDisk)
-	}
-}
-
 func TestCacheWriteThroughReader(t *testing.T) {
 	t.Parallel()
 

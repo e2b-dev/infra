@@ -338,13 +338,9 @@ func (c *cachedSeekable) StoreFile(ctx context.Context, path string, opts ...Put
 	return c.inner.StoreFile(ctx, path, opts...)
 }
 
-// frameSink builds a FrameSink that writes each compressed frame to a .frm
-// file at its C-space offset, matching the layout openReaderCompressed expects.
-//
-// Fire-and-forget: writes are spawned via goCtx so they survive caller
-// cancellation, the upload doesn't wait. Concurrent NFS writes for this
-// upload are capped by MaxCacheWriterConcurrencyFlag, the same knob
-// createCacheBlocksFromFile reads for the uncompressed write-through path.
+// frameSink writes each compressed frame to a .frm file at its C-space offset,
+// the layout openReaderCompressed expects. Writes are async (goCtx) and capped
+// by MaxCacheWriterConcurrencyFlag.
 func (c *cachedSeekable) frameSink(ctx context.Context) FrameSink {
 	maxConcurrency := c.flags.IntFlag(ctx, featureflags.MaxCacheWriterConcurrencyFlag)
 	if maxConcurrency <= 0 {
@@ -355,11 +351,8 @@ func (c *cachedSeekable) frameSink(ctx context.Context) FrameSink {
 	sem := make(chan struct{}, maxConcurrency)
 
 	return func(ctx context.Context, cOffset int64, data []byte) {
-		// Acquire BEFORE spawning so the goroutine count is bounded — otherwise
-		// every frame still spawns a goroutine that just blocks on sem, and
-		// large uploads with a low concurrency cap pile up thousands of live
-		// goroutines in wg. Pushes backpressure into the sink caller (the
-		// upload loop in compressStream), which is the right place to slow.
+		// Acquire before spawning so goroutine count stays bounded; this also
+		// backpressures the upload loop in compressStream.
 		select {
 		case sem <- struct{}{}:
 		case <-ctx.Done():
@@ -377,11 +370,8 @@ func (c *cachedSeekable) frameSink(ctx context.Context) FrameSink {
 	}
 }
 
-// goCtx runs fn on c.wg, detached from the caller's cancellation via
-// WithoutCancel so an in-flight cache write isn't aborted when the upload's
-// context is cancelled (it still inherits values for tracing/flags). Tracked
-// by c.wg so it can be awaited; pre-existing pattern from the uncompressed
-// write-through path.
+// goCtx runs fn on c.wg with WithoutCancel so an in-flight cache write isn't
+// aborted when the upload's context is cancelled.
 func (c *cachedSeekable) goCtx(ctx context.Context, fn func(context.Context)) {
 	c.wg.Go(func() {
 		fn(context.WithoutCancel(ctx))
