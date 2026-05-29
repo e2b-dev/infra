@@ -290,6 +290,14 @@ type multiSliceReader struct {
 }
 
 func (r *multiSliceReader) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		if r.idx >= len(r.slices) {
+			return 0, io.EOF
+		}
+
+		return 0, nil
+	}
+
 	var n int
 	for len(p) > 0 && r.idx < len(r.slices) {
 		current := r.slices[r.idx]

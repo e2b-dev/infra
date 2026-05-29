@@ -202,6 +202,7 @@ func readLoop(ctx context.Context, in io.Reader, cfg CompressConfig, hasher io.W
 	inputPool := &sync.Pool{
 		New: func() any {
 			buf := make([]byte, frameSize)
+
 			return &buf
 		},
 	}
