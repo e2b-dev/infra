@@ -45,17 +45,23 @@ func (p *dualProvider) FindProfilesByEmail(ctx context.Context, email string) ([
 		return nil, err
 	}
 
-	seen := make(map[uuid.UUID]struct{}, len(primary)+len(secondary))
-	merged := make([]Profile, 0, len(primary)+len(secondary))
-	for _, source := range [][]Profile{primary, secondary} {
-		for _, profile := range source {
-			if _, ok := seen[profile.UserID]; ok {
-				continue
-			}
-			seen[profile.UserID] = struct{}{}
-			merged = append(merged, profile)
-		}
+	if len(secondary) > 0 {
+		return uniqueProfilesByUserID(secondary), nil
 	}
 
-	return merged, nil
+	return uniqueProfilesByUserID(primary), nil
+}
+
+func uniqueProfilesByUserID(profiles []Profile) []Profile {
+	seen := make(map[uuid.UUID]struct{}, len(profiles))
+	unique := make([]Profile, 0, len(profiles))
+	for _, profile := range profiles {
+		if _, ok := seen[profile.UserID]; ok {
+			continue
+		}
+		seen[profile.UserID] = struct{}{}
+		unique = append(unique, profile)
+	}
+
+	return unique
 }

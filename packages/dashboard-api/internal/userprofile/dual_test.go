@@ -127,19 +127,18 @@ func TestDualProvider_GetProfilesByUserID_PropagatesSecondaryError(t *testing.T)
 	}
 }
 
-func TestDualProvider_FindProfilesByEmail_DedupesByUserIDPrimaryWins(t *testing.T) {
+func TestDualProvider_FindProfilesByEmail_PrefersSecondary(t *testing.T) {
 	t.Parallel()
 
 	sharedID := uuid.New()
-	onlyInSecondaryID := uuid.New()
 
 	primary := &fakeProvider{byEmail: map[string][]Profile{
 		"shared@example.com": {{UserID: sharedID, Email: "shared@example.com", Name: "primary-name"}},
 	}}
 	secondary := &fakeProvider{byEmail: map[string][]Profile{
 		"shared@example.com": {
-			{UserID: sharedID, Email: "shared@example.com", Name: "secondary-name-loses"},
-			{UserID: onlyInSecondaryID, Email: "shared@example.com", Name: "secondary-only"},
+			{UserID: sharedID, Email: "shared@example.com", Name: "secondary-name"},
+			{UserID: sharedID, Email: "shared@example.com", Name: "secondary-duplicate"},
 		},
 	}}
 
@@ -149,19 +148,34 @@ func TestDualProvider_FindProfilesByEmail_DedupesByUserIDPrimaryWins(t *testing.
 		t.Fatalf("FindProfilesByEmail() error = %v", err)
 	}
 
-	if len(got) != 2 {
-		t.Fatalf("got %d profiles, want 2: %+v", len(got), got)
+	if len(got) != 1 {
+		t.Fatalf("got %d profiles, want 1: %+v", len(got), got)
+	}
+	if got[0].Name != "secondary-name" {
+		t.Fatalf("name = %q, want secondary-name", got[0].Name)
+	}
+}
+
+func TestDualProvider_FindProfilesByEmail_FallsBackToPrimary(t *testing.T) {
+	t.Parallel()
+
+	id := uuid.New()
+	primary := &fakeProvider{byEmail: map[string][]Profile{
+		"primary@example.com": {{UserID: id, Email: "primary@example.com", Name: "primary-name"}},
+	}}
+	secondary := &fakeProvider{}
+
+	dual := newDualProvider(primary, secondary)
+	got, err := dual.FindProfilesByEmail(t.Context(), "primary@example.com")
+	if err != nil {
+		t.Fatalf("FindProfilesByEmail() error = %v", err)
 	}
 
-	byID := make(map[uuid.UUID]Profile, len(got))
-	for _, profile := range got {
-		byID[profile.UserID] = profile
+	if len(got) != 1 {
+		t.Fatalf("got %d profiles, want 1: %+v", len(got), got)
 	}
-	if byID[sharedID].Name != "primary-name" {
-		t.Fatalf("shared id name = %q, want primary-name", byID[sharedID].Name)
-	}
-	if byID[onlyInSecondaryID].Name != "secondary-only" {
-		t.Fatalf("secondary-only name = %q, want secondary-only", byID[onlyInSecondaryID].Name)
+	if got[0].Name != "primary-name" {
+		t.Fatalf("name = %q, want primary-name", got[0].Name)
 	}
 }
 
