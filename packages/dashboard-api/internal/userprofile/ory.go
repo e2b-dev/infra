@@ -121,11 +121,14 @@ func (p *oryProvider) FindProfilesByEmail(ctx context.Context, email string) ([]
 		return []Profile{}, nil
 	}
 
-	identities, _, err := p.identities.ListIdentitiesExecute(
+	identities, resp, err := p.identities.ListIdentitiesExecute(
 		p.identities.ListIdentities(p.authCtx(ctx)).
 			CredentialsIdentifier(normalized).
 			IncludeCredential(oryProfileCredentialTypes),
 	)
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
 	if err != nil {
 		return nil, fmt.Errorf("ory list identities by credentials identifier: %w", err)
 	}
@@ -188,11 +191,14 @@ func (p *oryProvider) userIDsForSubjects(ctx context.Context, subjects []string)
 func (p *oryProvider) listIdentitiesByIDs(ctx context.Context, ids []string) ([]ory.Identity, error) {
 	identities := make([]ory.Identity, 0, len(ids))
 	for batchIDs := range slices.Chunk(ids, oryListIDsBatchSize) {
-		batch, _, err := p.identities.ListIdentitiesExecute(
+		batch, resp, err := p.identities.ListIdentitiesExecute(
 			p.identities.ListIdentities(p.authCtx(ctx)).
 				Ids(batchIDs).
 				IncludeCredential(oryProfileCredentialTypes),
 		)
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
 		if err != nil {
 			return nil, fmt.Errorf("ory list identities: %w", err)
 		}
@@ -264,5 +270,6 @@ func hasUsablePasswordCredential(credential ory.IdentityCredentials) bool {
 	}
 
 	useMigrationHook, _ := credential.Config["use_password_migration_hook"].(bool)
+
 	return useMigrationHook
 }
