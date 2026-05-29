@@ -127,7 +127,7 @@ func deserializeV5(metadata *Metadata, blockData []byte) (*Header, error) {
 
 	flags := blockData[0]
 	size := binary.LittleEndian.Uint32(blockData[v4FlagsLen:])
-	if int(size) > v4MaxUncompressedHeaderSize {
+	if uint64(size) > uint64(v4MaxUncompressedHeaderSize) {
 		return nil, fmt.Errorf("v5 header uncompressed size %d exceeds cap %d", size, v4MaxUncompressedHeaderSize)
 	}
 
@@ -187,9 +187,9 @@ func readV5MappingSection(reader *bytes.Reader, blockSize uint64) (Mapping, erro
 	if n == 0 {
 		return newMappingFromColumns(blockSize, builds, nil, nil, nil, nil)
 	}
-	// Each entry needs at least one varint byte per column, so n cannot exceed
-	// the remaining bytes. Bound the allocation against a crafted count.
-	if int(n) > reader.Len() {
+	// Each entry needs at least one byte in each of the four columns. Bound the
+	// allocation against a crafted count before allocating the column slices.
+	if uint64(n) > uint64(reader.Len())/4 {
 		return Mapping{}, fmt.Errorf("mapping count %d exceeds remaining %d bytes", n, reader.Len())
 	}
 
