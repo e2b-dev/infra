@@ -35,12 +35,12 @@ func fragmentedHeader(t *testing.T, n int) *Header {
 	h, err := NewHeader(meta, mappings)
 	require.NoError(t, err)
 	h.Builds = map[uuid.UUID]BuildData{a: {Size: int64(sa)}, b: {Size: int64(sb)}}
+
 	return h
 }
 
+//nolint:paralleltest // mutates the package-global cap; must not run in parallel
 func TestStoreHeader_RejectsOversizeOnWrite(t *testing.T) {
-	// No t.Parallel: mutates the package-global cap, which parallel tests read.
-
 	orig := v4MaxUncompressedHeaderSize
 	v4MaxUncompressedHeaderSize = 1024
 	t.Cleanup(func() { v4MaxUncompressedHeaderSize = orig })
@@ -48,13 +48,12 @@ func TestStoreHeader_RejectsOversizeOnWrite(t *testing.T) {
 	// The guard returns before the storage provider is used, so a nil provider
 	// is fine for the rejection path.
 	h := fragmentedHeader(t, 100)
-	_, _, _, err := StoreHeader(t.Context(), nil, "header", h)
+	_, _, _, err := StoreHeader(t.Context(), nil, "header", h) //nolint:dogsled // only err matters
 	require.ErrorContains(t, err, "exceeds cap")
 }
 
+//nolint:paralleltest // mutates the package-global cap; must not run in parallel
 func TestDeserialize_AboveOldCapRoundTrips(t *testing.T) {
-	// No t.Parallel: mutates the package-global cap, which parallel tests read.
-
 	// A header above a lowered cap is rejected on read; raising the cap lets it
 	// round-trip. Mirrors raising the production cap so already-uploaded large
 	// headers become resumable again.
