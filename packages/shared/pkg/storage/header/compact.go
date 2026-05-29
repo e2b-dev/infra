@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"math"
 
 	"github.com/google/uuid"
 )
@@ -38,7 +39,7 @@ func NewMapping(blockSize uint64, src []BuildMap) (Mapping, error) {
 	}
 
 	// uint32 page-block index caps a single file at ~16 TiB (PageSize units).
-	const maxBlockIdx = (1 << 32) - 1
+	const maxBlockIdx = math.MaxUint32
 
 	idxByBuild := make(map[uuid.UUID]uint16, 8)
 	builds := make([]uuid.UUID, 0, 8)
