@@ -10,6 +10,8 @@ import (
 	"github.com/google/uuid"
 )
 
+const maxV5MappingEntries = 8 << 20
+
 // V5 keeps V4's framing — [Metadata][uint8 flags][uint32 uncompressedSize]
 // [LZ4(block)] — and an identical Builds section. Only the mapping section
 // changes: instead of N fixed 40-byte records, it is columnar and varint-coded.
@@ -204,6 +206,9 @@ func readV5MappingSection(reader *bytes.Reader, blockSize, size uint64) (Mapping
 	}
 	if err := binary.Read(reader, binary.LittleEndian, &n); err != nil {
 		return Mapping{}, fmt.Errorf("failed to read mapping count: %w", err)
+	}
+	if n > maxV5MappingEntries {
+		return Mapping{}, fmt.Errorf("mapping count %d exceeds maximum %d", n, maxV5MappingEntries)
 	}
 
 	if n == 0 {

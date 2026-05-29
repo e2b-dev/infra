@@ -66,7 +66,7 @@ func NewUpload(
 		root:           root,
 		useCase:        useCase,
 		objectMetadata: objectMetadata,
-		useV4:          memV4 || rootV4,
+		useV4:          memV4 || rootV4 || headerVersion == headers.MetadataVersionV5,
 		headerVersion:  headerVersion,
 	}
 
