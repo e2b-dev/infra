@@ -140,7 +140,7 @@ func deserializeV4(metadata *Metadata, blockData []byte) (*Header, error) {
 
 	flags := blockData[0]
 	size := binary.LittleEndian.Uint32(blockData[v4FlagsLen:])
-	if int(size) > v4MaxUncompressedHeaderSize {
+	if uint64(size) > uint64(v4MaxUncompressedHeaderSize) {
 		return nil, fmt.Errorf("v4 header uncompressed size %d exceeds cap %d", size, v4MaxUncompressedHeaderSize)
 	}
 
