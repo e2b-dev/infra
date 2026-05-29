@@ -475,9 +475,7 @@ func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteR
 	}()
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
-	if s.featureFlags.BoolFlag(ctx, featureflags.ExecutionMetricsOnWebhooksFlag) {
-		eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
-	}
+	eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
 	addKillReason(eventData, killReason)
 	recordSandboxKill(ctx, s.sandboxKilledCounter, killReason)
 
@@ -577,9 +575,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	s.uploadSnapshotAsync(ctx, sbx, res)
 
 	teamID, buildId, eventData := s.prepareSandboxEventData(ctx, sbx)
-	if s.featureFlags.BoolFlag(ctx, featureflags.ExecutionMetricsOnWebhooksFlag) {
-		eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
-	}
+	eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
 
 	eventType := events.SandboxPausedEventPair
 	go s.sbxEventsService.Publish(
