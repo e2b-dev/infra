@@ -36,7 +36,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		return storeHeaderWithMetrics(egCtx, u.store, u.paths.MemfileHeader(), string(build.Memfile), finalizeV3(h))
+		return storeHeaderWithMetrics(egCtx, u.store, u.paths.MemfileHeader(), uploadFileMemfileHeader, finalizeV3(h))
 	})
 
 	eg.Go(func() error {
@@ -48,7 +48,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		return storeHeaderWithMetrics(egCtx, u.store, u.paths.RootfsHeader(), string(build.Rootfs), finalizeV3(h))
+		return storeHeaderWithMetrics(egCtx, u.store, u.paths.RootfsHeader(), uploadFileRootfsHeader, finalizeV3(h))
 	})
 
 	meta := storage.WithMetadata(u.objectMetadata)
@@ -66,7 +66,7 @@ func (u *Upload) runV3(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		recordUploadCompression(egCtx, uploadArtifactData, string(build.Memfile), storage.CompressConfig{}, info.Size(), info.Size())
+		recordUploadCompression(egCtx, uploadFileMemfile, storage.CompressConfig{}, info.Size(), info.Size())
 
 		return nil
 	})
@@ -84,17 +84,17 @@ func (u *Upload) runV3(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		recordUploadCompression(egCtx, uploadArtifactData, string(build.Rootfs), storage.CompressConfig{}, info.Size(), info.Size())
+		recordUploadCompression(egCtx, uploadFileRootfs, storage.CompressConfig{}, info.Size(), info.Size())
 
 		return nil
 	})
 
 	eg.Go(func() error {
-		return storage.UploadBlob(egCtx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), meta)
+		return uploadBlobWithMetrics(egCtx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), uploadFileSnap, meta)
 	})
 
 	eg.Go(func() error {
-		return storage.UploadBlob(egCtx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path(), meta)
+		return uploadBlobWithMetrics(egCtx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path(), uploadFileMeta, meta)
 	})
 
 	if err := eg.Wait(); err != nil {
