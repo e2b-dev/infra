@@ -377,6 +377,11 @@ func (c *cachedSeekable) frameSink(ctx context.Context) FrameSink {
 	}
 }
 
+// goCtx runs fn on c.wg, detached from the caller's cancellation via
+// WithoutCancel so an in-flight cache write isn't aborted when the upload's
+// context is cancelled (it still inherits values for tracing/flags). Tracked
+// by c.wg so it can be awaited; pre-existing pattern from the uncompressed
+// write-through path.
 func (c *cachedSeekable) goCtx(ctx context.Context, fn func(context.Context)) {
 	c.wg.Go(func() {
 		fn(context.WithoutCancel(ctx))
