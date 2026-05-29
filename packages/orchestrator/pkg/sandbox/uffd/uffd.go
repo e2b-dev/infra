@@ -43,6 +43,7 @@ type Uffd struct {
 	memfile    block.ReadonlyDevice
 	handler    utils.SetOnce[*userfaultfd.Userfaultfd]
 	fdExit     utils.SetOnce[*fdexit.FdExit]
+	onFailure  func(context.Context, string, error) // callback when handle fails
 }
 
 var _ MemoryBackend = (*Uffd)(nil)
@@ -55,7 +56,19 @@ func New(memfile block.ReadonlyDevice, socketPath string) *Uffd {
 		memfile:    memfile,
 		handler:    *utils.NewSetOnce[*userfaultfd.Userfaultfd](),
 		fdExit:     *utils.NewSetOnce[*fdexit.FdExit](),
+		onFailure:  nil,
 	}
+}
+
+// SetOnFailure sets a callback to be invoked when handle fails.
+// The callback receives the context, sandbox ID, and error.
+func (u *Uffd) SetOnFailure(fn func(context.Context, string, error)) {
+	u.onFailure = fn
+}
+
+// GetOnFailure returns the currently set failure callback (for testing).
+func (u *Uffd) GetOnFailure() func(context.Context, string, error) {
+	return u.onFailure
 }
 
 func (u *Uffd) Prefault(ctx context.Context, offset int64, data []byte) error {
@@ -95,13 +108,19 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 		ctx, span := tracer.Start(ctx, "serve uffd")
 		defer span.End()
 
-		// TODO: If the handle function fails, we should kill the sandbox
 		handleErr := u.handle(ctx, sandboxId, fdExit)
 
 		// If handle failed before setting the handler value, set an error to unblock
 		// any waiters (e.g., prefetcher goroutines waiting on Prefault).
 		if handleErr != nil {
 			u.handler.SetError(handleErr)
+			logger.L().Error(ctx, "uffd handle failed",
+				logger.WithSandboxID(sandboxId),
+				zap.Error(handleErr))
+			// Invoke failure callback to stop the sandbox
+			if u.onFailure != nil {
+				u.onFailure(ctx, sandboxId, handleErr)
+			}
 		}
 
 		closeErr := u.lis.Close()

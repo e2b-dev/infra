@@ -836,6 +836,15 @@ func (f *Factory) ResumeSandbox(
 	// This is to prevent race condition of reporting unhealthy sandbox
 	sbx.Checks = NewChecks(sbx, useClickhouseMetrics)
 
+	// Set UFFD failure callback to stop sandbox on memory handler failure
+	fcUffd.SetOnFailure(func(ctx context.Context, sandboxID string, err error) {
+		if stopErr := sbx.Stop(ctx); stopErr != nil {
+			logger.L().Error(ctx, "failed to stop sandbox after uffd failure",
+				logger.WithSandboxID(sandboxID),
+				zap.Error(stopErr))
+		}
+	})
+
 	cleanup.AddPriority(ctx, func(ctx context.Context) error {
 		// Stop the sandbox first if it is still running, otherwise do nothing
 		return sbx.Stop(ctx)
