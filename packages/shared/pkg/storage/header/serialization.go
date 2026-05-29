@@ -17,6 +17,12 @@ func SerializeHeader(h *Header) ([]byte, error) {
 		return serializeV3(h.Metadata, h.Mapping)
 	}
 
+	if h.Metadata.Version >= MetadataVersionV5 {
+		data, _, err := serializeV5(h.Metadata, h.Builds, h.Mapping, h.IncompletePendingUpload)
+
+		return data, err
+	}
+
 	data, _, err := serializeV4(h.Metadata, h.Builds, h.Mapping, h.IncompletePendingUpload)
 
 	return data, err
@@ -36,7 +42,11 @@ func DeserializeBytes(data []byte) (*Header, error) {
 
 	blockData := data[metadataSize:]
 
-	if metadata.Version >= 4 {
+	if metadata.Version >= MetadataVersionV5 {
+		return deserializeV5(metadata, blockData)
+	}
+
+	if metadata.Version >= MetadataVersionV4 {
 		return deserializeV4(metadata, blockData)
 	}
 
@@ -73,15 +83,20 @@ func StoreHeader(ctx context.Context, s storage.StorageProvider, path string, h 
 	}
 
 	var data []byte
-	if h.Metadata.Version <= 3 {
+	switch {
+	case h.Metadata.Version <= 3:
 		data, err = serializeV3(h.Metadata, h.Mapping)
 		if err != nil {
 			return storage.CompressConfig{}, 0, 0, fmt.Errorf("serialize header: %w", err)
 		}
 		uncompressed = int64(len(data))
-	} else {
+	default:
 		var blockUncompressed int64
-		data, blockUncompressed, err = serializeV4(h.Metadata, h.Builds, h.Mapping, h.IncompletePendingUpload)
+		if h.Metadata.Version >= MetadataVersionV5 {
+			data, blockUncompressed, err = serializeV5(h.Metadata, h.Builds, h.Mapping, h.IncompletePendingUpload)
+		} else {
+			data, blockUncompressed, err = serializeV4(h.Metadata, h.Builds, h.Mapping, h.IncompletePendingUpload)
+		}
 		if err != nil {
 			return storage.CompressConfig{}, 0, 0, fmt.Errorf("serialize header: %w", err)
 		}

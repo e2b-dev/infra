@@ -27,6 +27,11 @@ type Mapping struct {
 // maxBuildsPerHeader caps the per-header build-ID table at the uint16 limit.
 const maxBuildsPerHeader = 1 << 16
 
+// maxBlockIdx is the largest block index representable by the uint32 columns.
+// At PageSize granularity this caps a single file (memfile/rootfs) at ~16 TiB,
+// well above any sandbox; NewMapping errors if a value exceeds it.
+const maxBlockIdx = math.MaxUint32
+
 // NewMapping packs src into the compact representation. blockSize is the unit
 // for the block indices and must divide every Offset, Length, and
 // BuildStorageOffset in src (callers pass PageSize, the universal granularity).
@@ -37,9 +42,6 @@ func NewMapping(blockSize uint64, src []BuildMap) (Mapping, error) {
 	if len(src) == 0 {
 		return Mapping{blockSize: blockSize}, nil
 	}
-
-	// uint32 page-block index caps a single file at ~16 TiB (PageSize units).
-	const maxBlockIdx = math.MaxUint32
 
 	idxByBuild := make(map[uuid.UUID]uint16, 8)
 	builds := make([]uuid.UUID, 0, 8)
@@ -80,6 +82,30 @@ func NewMapping(blockSize uint64, src []BuildMap) (Mapping, error) {
 		lengths[i] = uint32(lenBlocks)
 		storage[i] = uint32(stoBlocks)
 		buildIdx[i] = idx
+	}
+
+	return Mapping{
+		blockSize: blockSize,
+		builds:    builds,
+		offsets:   offsets,
+		lengths:   lengths,
+		storage:   storage,
+		buildIdx:  buildIdx,
+	}, nil
+}
+
+// newMappingFromColumns builds a Mapping from already-decoded columns,
+// avoiding the []BuildMap intermediate on the deserialize path. All column
+// slices must have the same length, and every buildIdx must index builds.
+func newMappingFromColumns(blockSize uint64, builds []uuid.UUID, offsets, lengths, storage []uint32, buildIdx []uint16) (Mapping, error) {
+	n := len(offsets)
+	if len(lengths) != n || len(storage) != n || len(buildIdx) != n {
+		return Mapping{}, fmt.Errorf("compact mapping: column length mismatch (offsets=%d lengths=%d storage=%d buildIdx=%d)", n, len(lengths), len(storage), len(buildIdx))
+	}
+	for i, bi := range buildIdx {
+		if int(bi) >= len(builds) {
+			return Mapping{}, fmt.Errorf("compact mapping: buildIdx %d at entry %d out of range (%d builds)", bi, i, len(builds))
+		}
 	}
 
 	return Mapping{

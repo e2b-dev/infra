@@ -61,37 +61,8 @@ func serializeV4(metadata *Metadata, builds map[uuid.UUID]BuildData, mappings Ma
 
 	var block bytes.Buffer
 
-	// Sort by UUID for deterministic serialization.
-	buildIDs := make([]uuid.UUID, 0, len(builds))
-	for id := range builds {
-		buildIDs = append(buildIDs, id)
-	}
-	slices.SortFunc(buildIDs, func(a, b uuid.UUID) int {
-		return bytes.Compare(a[:], b[:])
-	})
-
-	if err := binary.Write(&block, binary.LittleEndian, uint32(len(buildIDs))); err != nil {
-		return nil, 0, fmt.Errorf("failed to write build count: %w", err)
-	}
-
-	buildRanges := extractRelevantRanges(mappings)
-	for _, id := range buildIDs {
-		bd := builds[id]
-
-		entry := v4SerializableBuildInfo{
-			BuildId:  id,
-			FileSize: bd.Size,
-			Checksum: bd.Checksum,
-		}
-
-		if err := binary.Write(&block, binary.LittleEndian, &entry); err != nil {
-			return nil, 0, fmt.Errorf("failed to write build info: %w", err)
-		}
-
-		trimmed := bd.FrameData.TrimToRanges(buildRanges[id])
-		if err := trimmed.Serialize(&block); err != nil {
-			return nil, 0, fmt.Errorf("failed to write build frame data: %w", err)
-		}
+	if err := writeV4BuildsSection(&block, builds, mappings); err != nil {
+		return nil, 0, err
 	}
 
 	if err := binary.Write(&block, binary.LittleEndian, uint32(mappings.Len())); err != nil {
@@ -154,35 +125,9 @@ func deserializeV4(metadata *Metadata, blockData []byte) (*Header, error) {
 
 	reader := bytes.NewReader(decompressed)
 
-	var numBuilds uint32
-	if err := binary.Read(reader, binary.LittleEndian, &numBuilds); err != nil {
-		return nil, fmt.Errorf("failed to read build count: %w", err)
-	}
-
-	var builds map[uuid.UUID]BuildData
-
-	if numBuilds > 0 {
-		builds = make(map[uuid.UUID]BuildData, numBuilds)
-
-		for range numBuilds {
-			var entry v4SerializableBuildInfo
-			if err := binary.Read(reader, binary.LittleEndian, &entry); err != nil {
-				return nil, fmt.Errorf("failed to read build info: %w", err)
-			}
-
-			bd := BuildData{
-				Size:     entry.FileSize,
-				Checksum: entry.Checksum,
-			}
-
-			ft, err := storage.DeserializeFrameTable(reader)
-			if err != nil {
-				return nil, fmt.Errorf("failed to read frame table for build %s: %w", entry.BuildId, err)
-			}
-
-			bd.FrameData = ft
-			builds[entry.BuildId] = bd
-		}
+	builds, err := readV4BuildsSection(reader)
+	if err != nil {
+		return nil, err
 	}
 
 	var numMappings uint32
@@ -242,6 +187,77 @@ func compressLZ4(data []byte) ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
+}
+
+// writeV4BuildsSection writes the Builds section shared by V4 and V5:
+// [uint32 count] then, per build (sorted by UUID for determinism), the fixed
+// info plus a frame table sparse-trimmed to the ranges referenced by mapping.
+func writeV4BuildsSection(block *bytes.Buffer, builds map[uuid.UUID]BuildData, mapping Mapping) error {
+	buildIDs := make([]uuid.UUID, 0, len(builds))
+	for id := range builds {
+		buildIDs = append(buildIDs, id)
+	}
+	slices.SortFunc(buildIDs, func(a, b uuid.UUID) int {
+		return bytes.Compare(a[:], b[:])
+	})
+
+	if err := binary.Write(block, binary.LittleEndian, uint32(len(buildIDs))); err != nil {
+		return fmt.Errorf("failed to write build count: %w", err)
+	}
+
+	buildRanges := extractRelevantRanges(mapping)
+	for _, id := range buildIDs {
+		bd := builds[id]
+
+		entry := v4SerializableBuildInfo{
+			BuildId:  id,
+			FileSize: bd.Size,
+			Checksum: bd.Checksum,
+		}
+		if err := binary.Write(block, binary.LittleEndian, &entry); err != nil {
+			return fmt.Errorf("failed to write build info: %w", err)
+		}
+
+		trimmed := bd.FrameData.TrimToRanges(buildRanges[id])
+		if err := trimmed.Serialize(block); err != nil {
+			return fmt.Errorf("failed to write build frame data: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// readV4BuildsSection reads the Builds section shared by V4 and V5. Returns a
+// nil map when the build count is zero.
+func readV4BuildsSection(reader *bytes.Reader) (map[uuid.UUID]BuildData, error) {
+	var numBuilds uint32
+	if err := binary.Read(reader, binary.LittleEndian, &numBuilds); err != nil {
+		return nil, fmt.Errorf("failed to read build count: %w", err)
+	}
+	if numBuilds == 0 {
+		return nil, nil
+	}
+
+	builds := make(map[uuid.UUID]BuildData, numBuilds)
+	for range numBuilds {
+		var entry v4SerializableBuildInfo
+		if err := binary.Read(reader, binary.LittleEndian, &entry); err != nil {
+			return nil, fmt.Errorf("failed to read build info: %w", err)
+		}
+
+		ft, err := storage.DeserializeFrameTable(reader)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read frame table for build %s: %w", entry.BuildId, err)
+		}
+
+		builds[entry.BuildId] = BuildData{
+			Size:      entry.FileSize,
+			Checksum:  entry.Checksum,
+			FrameData: ft,
+		}
+	}
+
+	return builds, nil
 }
 
 // extractRelevantRanges groups mappings into per-build U-space [start, end) ranges

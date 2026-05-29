@@ -29,6 +29,7 @@ type Upload struct {
 	objectMetadata storage.ObjectMetadata
 	future         *utils.ErrorOnce
 	useV4          bool
+	headerVersion  uint64
 }
 
 func NewUpload(
@@ -50,6 +51,11 @@ func NewUpload(
 		return nil, fmt.Errorf("resolve rootfs compress config: %w", err)
 	}
 
+	headerVersion := uint64(headers.MetadataVersionV4)
+	if ff != nil && ff.BoolFlag(ctx, featureflags.HeaderV5WriteFlag) {
+		headerVersion = headers.MetadataVersionV5
+	}
+
 	u := &Upload{
 		buildID:        snap.BuildID,
 		snap:           snap,
@@ -61,6 +67,7 @@ func NewUpload(
 		useCase:        useCase,
 		objectMetadata: objectMetadata,
 		useV4:          memV4 || rootV4,
+		headerVersion:  headerVersion,
 	}
 
 	if uploads != nil {
