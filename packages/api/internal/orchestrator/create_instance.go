@@ -298,6 +298,10 @@ func (o *Orchestrator) CreateSandbox(
 
 	nodeClusterID := clusters.WithClusterFallback(team.ClusterID)
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
+	if len(clusterNodes) == 0 {
+		o.discoverClusterNode(ctx, nodeClusterID)
+		clusterNodes = o.GetClusterNodes(nodeClusterID)
+	}
 
 	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
 	affinityBuildID := sbxData.Build.ID.String()
