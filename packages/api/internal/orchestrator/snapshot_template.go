@@ -70,7 +70,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 		return SnapshotTemplateResult{}, fmt.Errorf("node '%s' not found", sbx.NodeID)
 	}
 
-	upsertResult, err := o.throttledUpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node, opts.SkipMemory))
+	upsertResult, err := o.throttledUpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node))
 	if err != nil {
 		return SnapshotTemplateResult{}, fmt.Errorf("error upserting snapshot: %w", err)
 	}

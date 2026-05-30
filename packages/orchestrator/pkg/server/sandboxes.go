@@ -304,6 +304,7 @@ func memorySnapshotEnabled(ctx context.Context) bool {
 
 func rebootFromRootfsEnabled(ctx context.Context) bool {
 	values := grpcmetadata.ValueFromIncomingContext(ctx, orchestrator.SandboxRebootFromRootfsGRPCMetadataKey)
+
 	return len(values) > 0 && values[0] == "true"
 }
 
