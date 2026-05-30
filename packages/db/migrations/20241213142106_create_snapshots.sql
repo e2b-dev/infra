@@ -11,7 +11,6 @@ CREATE TABLE IF NOT EXISTS "public"."snapshots" (
     base_env_id text not null,
     constraint snapshots_pkey primary key (id)
 );
-ALTER TABLE "public"."snapshots" ENABLE ROW LEVEL SECURITY;
 
 COMMIT;
 -- +goose StatementEnd

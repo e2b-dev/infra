@@ -86,41 +86,6 @@ CREATE OR REPLACE TRIGGER create_access_token
     FOR EACH ROW EXECUTE FUNCTION generate_access_token_trigger();
 
 
-CREATE POLICY "Allow to create an access token to new user"
-    ON public.access_tokens
-    AS PERMISSIVE
-    FOR INSERT
-    TO trigger_user
-    WITH CHECK (TRUE);
-
-CREATE POLICY "Allow to create a team to new user"
-    ON public.teams
-    AS PERMISSIVE
-    FOR INSERT
-    TO trigger_user
-    WITH CHECK (TRUE);
-
-CREATE POLICY "Allow to create a user team connection to new user"
-    ON public.users_teams
-    AS PERMISSIVE
-    FOR INSERT
-    TO trigger_user
-    WITH CHECK (TRUE);
-
-CREATE POLICY "Allow to select a team for supabase auth admin"
-    ON public.teams
-    AS PERMISSIVE
-    FOR SELECT
-    TO trigger_user
-    USING (TRUE);
-
-CREATE POLICY "Allow to create a team api key to new user"
-    ON public.team_api_keys
-    AS PERMISSIVE
-    FOR INSERT
-    TO trigger_user
-    WITH CHECK (TRUE);
-
 -- +goose StatementEnd
 
 -- +goose Down
