@@ -288,7 +288,11 @@ func (b *File) cachedBuild(ctx context.Context, h *header.Header, buildID uuid.U
 		}
 	}
 
-	diff, err := b.getBuild(ctx, buildID, b.buildFileSize(h, buildID), h.GetBuildFrameData(buildID).CompressionType())
+	var ct storage.CompressionType
+	if ft := h.GetBuildFrameData(buildID); ft != nil {
+		ct = ft.CompressionType()
+	}
+	diff, err := b.getBuild(ctx, buildID, b.buildFileSize(h, buildID), ct)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build: %w", err)
 	}
@@ -301,6 +305,9 @@ func (b *File) cachedBuild(ctx context.Context, h *header.Header, buildID uuid.U
 }
 
 func shouldRetrySerial(err error) bool {
+	if errors.Is(err, io.EOF) {
+		return true
+	}
 	var closed *block.CacheClosedError
 	if errors.As(err, &closed) {
 		return true
