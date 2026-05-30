@@ -52,7 +52,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	}
 	if schedulingMetadata != nil {
 		if err := o.updateSnapshotSchedulingMetadata(ctx, sbx.SandboxID, schedulingMetadata); err != nil {
-			return err
+			telemetry.ReportError(ctx, "error updating snapshot scheduling metadata", err)
 		}
 	}
 

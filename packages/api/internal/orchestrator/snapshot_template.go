@@ -104,9 +104,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	}
 	if metadata := checkpointRes.GetSchedulingMetadata(); metadata != nil {
 		if err := o.updateSnapshotSchedulingMetadata(ctx, sbx.SandboxID, metadata); err != nil {
-			o.failSnapshotBuild(ctx, upsertResult.BuildID, err)
-
-			return SnapshotTemplateResult{}, err
+			telemetry.ReportError(ctx, "error updating snapshot scheduling metadata", err)
 		}
 	}
 
