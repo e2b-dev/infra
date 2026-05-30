@@ -57,10 +57,7 @@ func (b *File) SwapHeader(h *header.Header) {
 }
 
 func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
-	maxParallel := 1
-	if b.store != nil && b.store.flags != nil {
-		maxParallel = b.store.flags.IntFlag(ctx, featureflags.MaxParallelBuildReadSegments)
-	}
+	maxParallel := b.store.flags.IntFlag(ctx, featureflags.MaxParallelBuildReadSegments)
 	if maxParallel > 1 && len(p) > 0 {
 		if err := b.readAtParallel(ctx, p, off, maxParallel); err == nil {
 			return len(p), nil
