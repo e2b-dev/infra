@@ -123,7 +123,7 @@ function install_binary {
   local -r bin_dir="$install_path/bin"
   local -r consul_dest_path="$bin_dir/consul"
 
-  unzip -n -d /tmp "$DOWNLOAD_PACKAGE_PATH"
+  unzip -o -d /tmp "$DOWNLOAD_PACKAGE_PATH"
 
   log_info "Moving Consul binary to $consul_dest_path"
   sudo mv "/tmp/consul" "$consul_dest_path"

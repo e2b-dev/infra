@@ -141,7 +141,7 @@ function install_binaries {
 
   log_info "Downloading Nomad $version from $url to $download_path"
   curl -o "$download_path" "$url"
-  unzip -n -d /tmp "$download_path"
+  unzip -o -d /tmp "$download_path"
 
   log_info "Moving Nomad binary to $nomad_dest_path"
   sudo mv "/tmp/nomad" "$nomad_dest_path"
