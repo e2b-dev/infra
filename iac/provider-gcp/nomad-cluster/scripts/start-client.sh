@@ -92,8 +92,8 @@ cat <<'EOF' >/etc/modprobe.d/sunrpc.conf
 options sunrpc tcp_slot_table_entries=128 tcp_max_slot_table_entries=128
 EOF
 if [ -d /proc/sys/sunrpc ]; then
-  sysctl -w sunrpc.tcp_slot_table_entries=128 || true
-  sysctl -w sunrpc.tcp_max_slot_table_entries=128 || true
+  sysctl -w sunrpc.tcp_slot_table_entries=128
+  sysctl -w sunrpc.tcp_max_slot_table_entries=128
 fi
 
 # TODO: Optimize the mount more according to https://cloud.google.com/filestore/docs/mounting-fileshares
