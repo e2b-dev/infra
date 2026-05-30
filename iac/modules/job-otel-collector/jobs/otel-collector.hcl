@@ -61,6 +61,7 @@ job "otel-collector" {
           "/:/hostfs:ro",
         ]
         args = [
+          "--feature-gates=exporter.googlemanagedprometheus.intToDouble",
           "--config=local/config/otel-collector-config.yaml",
         ]
 

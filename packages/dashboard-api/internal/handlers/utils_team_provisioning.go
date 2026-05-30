@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -15,11 +14,12 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
-	supabasequeries "github.com/e2b-dev/infra/packages/db/pkg/supabase/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/teamprovision"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -38,18 +38,55 @@ type provisionedTeam struct {
 	BlockedReason *string
 }
 
-func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisionedTeam, error) {
-	authUser, err := s.supabaseDB.Write.GetAuthUserByID(ctx, userID)
-	if dberrors.IsNotFoundError(err) {
-		return provisionedTeam{}, &internalteamprovision.ProvisionError{
+type bootstrapUserProfile struct {
+	UserID          uuid.UUID
+	Email           string
+	DefaultTeamName string
+}
+
+func (s *APIStore) bootstrapSupabaseUser(ctx context.Context, userID uuid.UUID) (provisionedTeam, error) {
+	profile, err := s.bootstrapUserProfileFromSupabase(ctx, userID)
+	if err != nil {
+		return provisionedTeam{}, err
+	}
+
+	return s.bootstrapUser(ctx, profile)
+}
+
+func (s *APIStore) bootstrapUserProfileFromSupabase(ctx context.Context, userID uuid.UUID) (bootstrapUserProfile, error) {
+	profile, err := s.resolveProfile(ctx, userID)
+	if err != nil {
+		return bootstrapUserProfile{}, err
+	}
+
+	return bootstrapUserProfile{
+		UserID:          userID,
+		Email:           profile.Email,
+		DefaultTeamName: defaultTeamNameFromProfile(profile),
+	}, nil
+}
+
+// resolveProfile fetches a single user's profile through the configured profile
+// provider, returning a 404 ProvisionError when the user is unknown. This keeps
+// provisioning independent of which backend (Supabase or Ory) owns the user.
+func (s *APIStore) resolveProfile(ctx context.Context, userID uuid.UUID) (userprofile.Profile, error) {
+	profiles, err := s.userProfiles.GetProfilesByUserID(ctx, []uuid.UUID{userID})
+	if err != nil {
+		return userprofile.Profile{}, fmt.Errorf("get user profile: %w", err)
+	}
+
+	profile, ok := profiles[userID]
+	if !ok {
+		return userprofile.Profile{}, &internalteamprovision.ProvisionError{
 			StatusCode: http.StatusNotFound,
 			Message:    "User not found",
 		}
 	}
-	if err != nil {
-		return provisionedTeam{}, fmt.Errorf("get auth user: %w", err)
-	}
 
+	return profile, nil
+}
+
+func (s *APIStore) bootstrapUser(ctx context.Context, profile bootstrapUserProfile) (provisionedTeam, error) {
 	authTxDB, tx, err := s.authDB.WithTx(ctx)
 	if err != nil {
 		return provisionedTeam{}, fmt.Errorf("start transaction: %w", err)
@@ -58,16 +95,16 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 		_ = tx.Rollback(ctx)
 	}()
 
-	if err := authTxDB.UpsertPublicUser(ctx, authUser.ID); err != nil {
+	if err := authTxDB.UpsertPublicUser(ctx, profile.UserID); err != nil {
 		return provisionedTeam{}, fmt.Errorf("upsert public user: %w", err)
 	}
 
 	// Serialize bootstrap for a user even when they have no team memberships yet.
-	if _, err := authTxDB.LockPublicUserForUpdate(ctx, authUser.ID); err != nil {
+	if _, err := authTxDB.LockPublicUserForUpdate(ctx, profile.UserID); err != nil {
 		return provisionedTeam{}, fmt.Errorf("lock public user: %w", err)
 	}
 
-	existingTeam, err := authTxDB.GetDefaultTeamByUserID(ctx, userID)
+	existingTeam, err := authTxDB.GetDefaultTeamByUserID(ctx, profile.UserID)
 	if err == nil {
 		if err := tx.Commit(ctx); err != nil {
 			return provisionedTeam{}, fmt.Errorf("commit existing user bootstrap transaction: %w", err)
@@ -77,7 +114,7 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 			TeamID:        existingTeam.ID,
 			TeamName:      existingTeam.Name,
 			TeamEmail:     existingTeam.Email,
-			CreatorUserID: userID,
+			CreatorUserID: profile.UserID,
 			Reason:        teamprovision.ReasonDefaultSignupTeam,
 		}
 		_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
@@ -95,11 +132,10 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 		return provisionedTeam{}, fmt.Errorf("get default team: %w", err)
 	}
 
-	defaultTeamName := defaultTeamNameFromAuthUser(authUser)
 	team, err := authTxDB.CreateTeam(ctx, authqueries.CreateTeamParams{
-		Name:          defaultTeamName,
+		Name:          profile.DefaultTeamName,
 		Tier:          baseTierID,
-		Email:         authUser.Email,
+		Email:         profile.Email,
 		IsBlocked:     false,
 		BlockedReason: nil,
 	})
@@ -108,7 +144,7 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 	}
 
 	if err := authTxDB.CreateTeamMembership(ctx, authqueries.CreateTeamMembershipParams{
-		UserID:    userID,
+		UserID:    profile.UserID,
 		TeamID:    team.ID,
 		IsDefault: true,
 		AddedBy:   nil,
@@ -124,7 +160,7 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 		TeamID:        team.ID,
 		TeamName:      team.Name,
 		TeamEmail:     team.Email,
-		CreatorUserID: userID,
+		CreatorUserID: profile.UserID,
 		Reason:        teamprovision.ReasonDefaultSignupTeam,
 	}
 	_ = s.teamProvisionSink.ProvisionTeam(ctx, req)
@@ -140,9 +176,9 @@ func (s *APIStore) bootstrapUser(ctx context.Context, userID uuid.UUID) (provisi
 }
 
 func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string) (provisionedTeam, error) {
-	authUser, err := s.supabaseDB.Write.GetAuthUserByID(ctx, userID)
+	profile, err := s.resolveProfile(ctx, userID)
 	if err != nil {
-		return provisionedTeam{}, fmt.Errorf("get auth user: %w", err)
+		return provisionedTeam{}, err
 	}
 
 	authTxDB, tx, err := s.authDB.WithTx(ctx)
@@ -153,12 +189,12 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 		_ = tx.Rollback(ctx)
 	}()
 
-	if err := authTxDB.UpsertPublicUser(ctx, authUser.ID); err != nil {
+	if err := authTxDB.UpsertPublicUser(ctx, userID); err != nil {
 		return provisionedTeam{}, fmt.Errorf("upsert public user: %w", err)
 	}
 
 	// Serialize team creation even when the user currently has no team memberships.
-	if _, err := authTxDB.LockPublicUserForUpdate(ctx, authUser.ID); err != nil {
+	if _, err := authTxDB.LockPublicUserForUpdate(ctx, userID); err != nil {
 		return provisionedTeam{}, fmt.Errorf("lock public user: %w", err)
 	}
 
@@ -169,7 +205,7 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 	team, err := authTxDB.CreateTeam(ctx, authqueries.CreateTeamParams{
 		Name:          name,
 		Tier:          baseTierID,
-		Email:         authUser.Email,
+		Email:         profile.Email,
 		IsBlocked:     false,
 		BlockedReason: nil,
 	})
@@ -195,6 +231,46 @@ func (s *APIStore) createTeam(ctx context.Context, userID uuid.UUID, name string
 		TeamName:      team.Name,
 		TeamEmail:     team.Email,
 		CreatorUserID: userID,
+		Reason:        teamprovision.ReasonAdditionalTeam,
+	}
+	if err := s.teamProvisionSink.ProvisionTeam(ctx, req); err != nil {
+		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), teamProvisionRollbackTimeout)
+		defer cancel()
+
+		if deleteErr := s.authDB.Write.DeleteTeamByID(rollbackCtx, team.ID); deleteErr != nil {
+			return provisionedTeam{}, fmt.Errorf("delete team after provisioning failure: provision=%s delete=%w", err.Error(), deleteErr)
+		}
+
+		return provisionedTeam{}, err
+	}
+
+	return provisionedTeam{
+		ID:            team.ID,
+		Name:          team.Name,
+		Email:         team.Email,
+		Slug:          team.Slug,
+		IsBlocked:     team.IsBlocked,
+		BlockedReason: team.BlockedReason,
+	}, nil
+}
+
+func (s *APIStore) bootstrapTeam(ctx context.Context, name string, email string) (provisionedTeam, error) {
+	team, err := s.authDB.Write.CreateTeam(ctx, authqueries.CreateTeamParams{
+		Name:          name,
+		Tier:          baseTierID,
+		Email:         email,
+		IsBlocked:     false,
+		BlockedReason: nil,
+	})
+	if err != nil {
+		return provisionedTeam{}, fmt.Errorf("create team: %w", err)
+	}
+
+	req := teamprovision.TeamBillingProvisionRequestedV1{
+		TeamID:        team.ID,
+		TeamName:      team.Name,
+		TeamEmail:     team.Email,
+		CreatorUserID: uuid.Nil,
 		Reason:        teamprovision.ReasonAdditionalTeam,
 	}
 	if err := s.teamProvisionSink.ProvisionTeam(ctx, req); err != nil {
@@ -260,53 +336,16 @@ func validateTeamCreationAllowed(ctx context.Context, authTxDB *authqueries.Quer
 	return nil
 }
 
-func defaultTeamNameFromAuthUser(authUser supabasequeries.AuthUser) string {
-	metadata := rawUserMetadata(authUser.RawUserMetaData)
-
-	baseName := firstNonEmpty(
-		firstWord(metadataString(metadata, "first_name")),
-		firstWord(metadataString(metadata, "firstName")),
-		firstWord(metadataString(metadata, "given_name")),
-		firstWord(metadataString(metadata, "givenName")),
-		firstWord(metadataString(metadata, "name")),
-		firstWord(metadataString(metadata, "full_name")),
-		firstWord(metadataString(metadata, "fullName")),
-		metadataString(metadata, "username"),
-		metadataString(metadata, "user_name"),
-		metadataString(metadata, "userName"),
-		metadataString(metadata, "preferred_username"),
-		metadataString(metadata, "preferredUsername"),
-		emailPrefix(authUser.Email),
-		"User",
+func defaultTeamNameFromProfile(profile userprofile.Profile) string {
+	baseName := utils.FirstNonEmpty(
+		firstWord(profile.Name),
+		emailPrefix(profile.Email),
 	)
+	if baseName == "" {
+		return "Default Team"
+	}
 
 	return capitalizeFirstLetter(baseName) + "'s Default Team"
-}
-
-func rawUserMetadata(raw []byte) map[string]any {
-	if len(raw) == 0 {
-		return nil
-	}
-
-	var metadata map[string]any
-	if err := json.Unmarshal(raw, &metadata); err != nil {
-		return nil
-	}
-
-	return metadata
-}
-
-func metadataString(metadata map[string]any, key string) string {
-	if metadata == nil {
-		return ""
-	}
-
-	value, ok := metadata[key].(string)
-	if !ok {
-		return ""
-	}
-
-	return strings.TrimSpace(value)
 }
 
 func firstWord(value string) string {
@@ -322,16 +361,6 @@ func emailPrefix(email string) string {
 	prefix, _, _ := strings.Cut(strings.TrimSpace(email), "@")
 
 	return prefix
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-
-	return ""
 }
 
 func capitalizeFirstLetter(value string) string {

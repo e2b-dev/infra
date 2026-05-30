@@ -6,8 +6,6 @@ CREATE TABLE IF NOT EXISTS public.env_defaults (
     description TEXT
 );
 
-ALTER TABLE public.env_defaults ENABLE ROW LEVEL SECURITY;
-
 ALTER TABLE public.teams ADD COLUMN IF NOT EXISTS profile_picture_url TEXT;
 
 -- +goose StatementEnd

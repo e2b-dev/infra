@@ -46,11 +46,34 @@ var (
 	}
 )
 
+type KillReason string
+
+const (
+	KillReasonUnknown             KillReason = "unknown"
+	KillReasonRequest             KillReason = "request"
+	KillReasonTimeout             KillReason = "timeout"
+	KillReasonAdmin               KillReason = "admin"
+	KillReasonOrphaned            KillReason = "orphaned"
+	KillReasonBaseTemplateMissing KillReason = "base_template_missing"
+)
+
+// String returns the reason as a string, normalizing the empty value to
+// "unknown". Keeps API-side log/metric fields consistent with the
+// orchestrator-side normalization in pkg/server/sandboxes.go.
+func (r KillReason) String() string {
+	if r == "" {
+		return string(KillReasonUnknown)
+	}
+
+	return string(r)
+}
+
 // RemoveOpts bundles the parameters that control sandbox removal.
 type RemoveOpts struct {
 	Action     StateAction
 	Eviction   bool
 	SkipMemory bool
+	Reason     KillReason
 }
 
 var AllowedTransitions = map[State]map[State]bool{

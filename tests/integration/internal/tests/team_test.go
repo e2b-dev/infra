@@ -45,18 +45,19 @@ UPDATE teams SET is_banned = $1 WHERE id = $2
 	assert.Equal(t, "team is banned", errResp.Message)
 }
 
-// TestBlockedTeam verifies the per-endpoint blocked-team enforcement
-// implemented via inline auth.CheckTeamBlocked calls
-// (see packages/auth/pkg/auth/team_state.go).
+// TestBlockedTeam verifies the blocked-team enforcement performed by
+// middleware.EnforceBlockedTeam against the route allowlist
+// (see packages/api/internal/middleware/blocked_team.go). Late-team-
+// resolution paths (access-token auth) get the same check via
+// APIStore.GetTeam / resolveTemplateAndTeam.
 //
 // Blocked teams are:
 //   - allowed for read and delete operations (recovery + cleanup)
 //   - denied for create and mutate operations (resource-consuming)
 //
 // Mutate / Delete subtests use a synthetic sandbox ID because the
-// blocked-team check runs at the top of each handler, before the
-// resource is resolved — we only care that the request was (not)
-// rejected by the blocked-team policy.
+// blocked-team check runs before the resource is resolved — we only
+// care that the request was (not) rejected by the blocked-team policy.
 func TestBlockedTeam(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()

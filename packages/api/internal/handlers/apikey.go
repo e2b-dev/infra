@@ -40,15 +40,7 @@ func (a *APIStore) PatchApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 		return
 	}
 
-	teamInfo := auth.MustGetTeamInfo(c)
-
-	if err := auth.CheckTeamBlocked(teamInfo); err != nil {
-		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
-
-		return
-	}
-
-	teamID := teamInfo.Team.ID
+	teamID := auth.MustGetTeamID(c)
 
 	now := time.Now()
 	_, err = a.authDB.Write.UpdateTeamApiKey(ctx, authqueries.UpdateTeamApiKeyParams{
@@ -126,10 +118,7 @@ func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 
 	teamID := auth.MustGetTeamID(c)
 
-	ids, err := a.authDB.Write.DeleteTeamAPIKey(ctx, authqueries.DeleteTeamAPIKeyParams{
-		ID:     apiKeyIDParsed,
-		TeamID: teamID,
-	})
+	deleted, err := team.DeleteAPIKey(ctx, a.authDB, teamID, apiKeyIDParsed)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when deleting API key: %s", err))
 
@@ -137,7 +126,7 @@ func (a *APIStore) DeleteApiKeysApiKeyID(c *gin.Context, apiKeyID string) {
 
 		return
 	}
-	if len(ids) == 0 {
+	if !deleted {
 		c.String(http.StatusNotFound, "id not found")
 
 		return
@@ -150,15 +139,7 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	userID := auth.MustGetUserID(c)
-	teamInfo := auth.MustGetTeamInfo(c)
-
-	if err := auth.CheckTeamBlocked(teamInfo); err != nil {
-		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
-
-		return
-	}
-
-	teamID := teamInfo.Team.ID
+	teamID := auth.MustGetTeamID(c)
 
 	body, err := ginutils.ParseBody[api.NewTeamAPIKey](ctx, c)
 	if err != nil {
@@ -169,7 +150,7 @@ func (a *APIStore) PostApiKeys(c *gin.Context) {
 		return
 	}
 
-	apiKey, err := team.CreateAPIKey(ctx, a.authDB, teamID, userID, body.Name)
+	apiKey, err := team.CreateAPIKey(ctx, a.authDB, teamID, &userID, body.Name)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, fmt.Sprintf("Error when creating team API key: %s", err))
 

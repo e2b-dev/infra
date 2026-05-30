@@ -109,6 +109,25 @@ variable "dashboard_api_admin_token_secret_name" {
   type = string
 }
 
+variable "user_profile_provider" {
+  type    = string
+  default = ""
+}
+
+variable "ory_sdk_url" {
+  type    = string
+  default = ""
+}
+
+variable "ory_issuer_url" {
+  type    = string
+  default = ""
+}
+
+variable "ory_project_api_token_secret_name" {
+  type = string
+}
+
 variable "sandbox_access_token_hash_seed" {
   type = string
 }

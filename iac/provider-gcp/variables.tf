@@ -243,6 +243,24 @@ variable "auth_provider_config" {
   default   = null
 }
 
+variable "user_profile_provider" {
+  type        = string
+  default     = ""
+  description = "Source for dashboard-api user profile lookups. One of: supabase, ory, supabase-ory-fallback. Empty leaves the binary default (supabase)."
+}
+
+variable "ory_sdk_url" {
+  type        = string
+  default     = ""
+  description = "Ory Network admin SDK URL (e.g. https://<slug>.projects.oryapis.com). Required when user_profile_provider uses ory."
+}
+
+variable "ory_issuer_url" {
+  type        = string
+  default     = ""
+  description = "Ory OIDC issuer URL used to namespace public.user_identities. Must match one of auth_provider_config.jwt[*].issuer.url; defaults to the single configured JWT issuer if unset."
+}
+
 variable "ingress_port" {
   type = object({
     name        = string

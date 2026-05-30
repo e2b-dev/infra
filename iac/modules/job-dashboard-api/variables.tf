@@ -103,6 +103,27 @@ variable "billing_server_api_token" {
   default   = ""
 }
 
+variable "user_profile_provider" {
+  type    = string
+  default = ""
+}
+
+variable "ory_sdk_url" {
+  type    = string
+  default = ""
+}
+
+variable "ory_issuer_url" {
+  type    = string
+  default = ""
+}
+
+variable "ory_project_api_token" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
 variable "logs_proxy_port" {
   type = object({
     name = string

@@ -167,6 +167,10 @@ var (
 	// uploads. Independent of compress-config: it changes the header format,
 	// not whether data is compressed.
 	V4HeaderForUncompressedFlag = NewBoolFlag("v4-header-for-uncompressed", false)
+
+	// HeaderV5WriteFlag makes Pause emit V5 headers. When enabled it also
+	// supersedes V4HeaderForUncompressedFlag for uncompressed uploads.
+	HeaderV5WriteFlag = NewBoolFlag("header-v5-write", false)
 )
 
 type IntFlag struct {

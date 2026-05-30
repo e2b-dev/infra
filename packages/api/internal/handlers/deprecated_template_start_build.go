@@ -134,9 +134,10 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		return
 	}
 
-	if err := auth.CheckTeamBlocked(team); err != nil {
-		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
-		telemetry.ReportErrorByCode(ctx, http.StatusForbidden, "team is blocked", err)
+	// More restrictive than before, but OK on this deprecated path.
+	if apiErr := applyTeamAccessCheck(c, team); apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportErrorByCode(ctx, apiErr.Code, "team access denied", apiErr.Err)
 
 		return
 	}

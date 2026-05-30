@@ -297,6 +297,10 @@ module "nomad" {
   dashboard_api_count                          = var.dashboard_api_count
   dashboard_api_admin_token_secret_name        = module.init.dashboard_api_admin_token_secret_name
   supabase_db_connection_string_secret_version = module.init.supabase_db_connection_string_secret_version
+  user_profile_provider                        = var.user_profile_provider
+  ory_sdk_url                                  = var.ory_sdk_url
+  ory_issuer_url                               = var.ory_issuer_url
+  ory_project_api_token_secret_name            = module.init.ory_project_api_token_secret_name
 
   # Docker reverse proxy
   docker_reverse_proxy_port                = var.docker_reverse_proxy_port

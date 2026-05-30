@@ -127,6 +127,10 @@ net.ipv4.tcp_max_syn_backlog = 65535
 # Increase the maximum number of memory map areas
 vm.max_map_count=1048576
 
+# Allow larger host writeback bursts before dirty-page throttling.
+vm.dirty_background_ratio=20
+vm.dirty_ratio=40
+
 EOF
 sysctl -p
 

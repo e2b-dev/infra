@@ -44,7 +44,7 @@ type Service interface {
 type authService struct {
 	store                authStore
 	teamCache            *authCache
-	authProviderVerifier *verifier
+	authProviderVerifier *Verifier
 }
 
 // Compile-time assertion that *authService satisfies the Service interface.
@@ -75,7 +75,7 @@ func NewAuthService(
 	cache := newAuthCache(redisClient)
 	store := newAuthStore(authDB)
 	identityLookup := newAuthIdentityLookup(authDB.Read)
-	v, err := newVerifier(ctx, providerConfig, httpClient, identityLookup)
+	v, err := NewVerifier(ctx, providerConfig, httpClient, identityLookup)
 	if err != nil {
 		return nil, fmt.Errorf("initializing auth provider JWT verifier: %w", err)
 	}
@@ -102,18 +102,16 @@ func (s *authService) ValidateAPIKey(ctx context.Context, ginCtx *gin.Context, a
 		return s.store.GetTeamByHashedAPIKey(ctx, key)
 	})
 	if err != nil {
-		var zero *types.Team
-
 		var forbiddenErr *TeamForbiddenError
 		if errors.As(err, &forbiddenErr) {
-			return zero, &APIError{
+			return nil, &APIError{
 				Err:       err,
 				ClientMsg: err.Error(),
 				Code:      http.StatusForbidden,
 			}
 		}
 
-		return zero, &APIError{
+		return nil, &APIError{
 			Err:       fmt.Errorf("failed to get the team from db for an api key: %w", err),
 			ClientMsg: "Cannot get the team for the given API key",
 			Code:      http.StatusUnauthorized,
@@ -183,7 +181,7 @@ func (s *authService) ValidateAuthProviderToken(ctx context.Context, ginCtx *gin
 	return s.validateJWTWithProvider(ctx, ginCtx, s.authProviderVerifier, token, "auth provider")
 }
 
-func (s *authService) validateJWTWithProvider(ctx context.Context, ginCtx *gin.Context, v *verifier, token string, tokenSource string) (uuid.UUID, *APIError) {
+func (s *authService) validateJWTWithProvider(ctx context.Context, ginCtx *gin.Context, v *Verifier, token string, tokenSource string) (uuid.UUID, *APIError) {
 	userID, _, err := v.Verify(ctx, token)
 	if err != nil {
 		return uuid.UUID{}, &APIError{
@@ -226,18 +224,16 @@ func (s *authService) ValidateSupabaseTeam(ctx context.Context, ginCtx *gin.Cont
 		return s.store.GetTeamByIDAndUserID(ctx, userID, teamID)
 	})
 	if err != nil {
-		var zero *types.Team
-
 		var forbiddenErr *TeamForbiddenError
 		if errors.As(err, &forbiddenErr) {
-			return zero, &APIError{
+			return nil, &APIError{
 				Err:       fmt.Errorf("failed getting team: %w", err),
 				ClientMsg: fmt.Sprintf("Forbidden: %s", err.Error()),
 				Code:      http.StatusForbidden,
 			}
 		}
 
-		return zero, &APIError{
+		return nil, &APIError{
 			Err:       fmt.Errorf("failed getting team: %w", err),
 			ClientMsg: "Backend authentication failed",
 			Code:      http.StatusUnauthorized,

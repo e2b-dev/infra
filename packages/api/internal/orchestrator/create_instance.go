@@ -373,9 +373,16 @@ func (o *Orchestrator) CreateSandbox(
 		// Copy to a new variable to avoid race conditions
 		sbxToRemove := sbx
 		go func() {
-			killErr := o.removeSandboxFromNode(context.WithoutCancel(ctx), sbxToRemove, sandbox.RemoveOpts{Action: sandbox.StateActionKill})
+			killErr := o.removeSandboxFromNode(context.WithoutCancel(ctx), sbxToRemove, sandbox.RemoveOpts{
+				Action: sandbox.StateActionKill,
+				Reason: sandbox.KillReasonUnknown,
+			})
 			if killErr != nil {
-				logger.L().Error(ctx, "Error removing sandbox", zap.Error(killErr), logger.WithSandboxID(sbxToRemove.SandboxID))
+				logger.L().Error(ctx, "Error removing sandbox",
+					zap.Error(killErr),
+					logger.WithSandboxID(sbxToRemove.SandboxID),
+					zap.String("kill_reason", sandbox.KillReasonUnknown.String()),
+				)
 			}
 		}()
 
