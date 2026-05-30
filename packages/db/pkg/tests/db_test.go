@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"database/sql"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -33,4 +34,28 @@ func TestNoRowLevelSecurity(t *testing.T) {
 		assert.Falsef(t, item.RowLevelSecurity, "database object %s.%s still has row level security enabled [%s]", item.NamespaceName, item.TableName, item.Kind)
 	}
 	assert.NotEmpty(t, checked)
+
+	sqlDB, err := sql.Open("pgx", db.ConnStr())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, sqlDB.Close())
+	})
+
+	rows, err := sqlDB.QueryContext(t.Context(), `
+		SELECT policyname
+		FROM pg_policies
+		WHERE schemaname = 'public'
+	`)
+	require.NoError(t, err)
+	defer rows.Close()
+
+	var policies []string
+	for rows.Next() {
+		var policy string
+		require.NoError(t, rows.Scan(&policy))
+		policies = append(policies, policy)
+	}
+	require.NoError(t, rows.Err())
+
+	assert.Empty(t, policies, "public RLS policies should not be managed by default")
 }

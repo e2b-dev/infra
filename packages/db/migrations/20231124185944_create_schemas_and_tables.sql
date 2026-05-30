@@ -100,47 +100,6 @@ CREATE TABLE IF NOT EXISTS "public"."users_teams"
     CONSTRAINT "users_teams_users_users" FOREIGN KEY ("user_id") REFERENCES "auth"."users" ("id") ON UPDATE NO ACTION ON DELETE CASCADE
 );
 
--- Create RLS policies
-DO $$
-BEGIN
-    BEGIN
-        CREATE POLICY "Allow selection for users that are in the team"
-            ON "public"."teams"
-            AS PERMISSIVE
-            FOR SELECT
-            TO authenticated
-            USING ((auth.uid() IN ( SELECT users_teams.user_id
-                                    FROM users_teams
-                                    WHERE (users_teams.team_id = teams.id))));
-
-        CREATE POLICY "Enable select for users in relevant team"
-            ON "public"."users_teams"
-            AS PERMISSIVE
-            FOR SELECT
-            TO authenticated
-            USING ((auth.uid() = user_id));
-
-        CREATE POLICY "Enable select for users based on user_id"
-            ON public.access_tokens
-            AS PERMISSIVE
-            FOR SELECT
-            TO authenticated
-            USING ((auth.uid() = user_id));
-
-
-        CREATE POLICY "Allow selection for users that are in the team"
-            ON "public"."team_api_keys"
-            AS PERMISSIVE
-            FOR SELECT
-            TO authenticated
-            USING ((auth.uid() IN ( SELECT users_teams.user_id
-                                    FROM users_teams
-                                    WHERE (users_teams.team_id = team_api_keys.team_id))));
-    EXCEPTION WHEN undefined_function
-        THEN RAISE NOTICE 'Policy were not created, probably because the function auth.uid() does not exist.';
-    END;
-END $$;
-
 -- Create index "usersteams_team_id_user_id" to table: "users_teams"
 CREATE UNIQUE INDEX IF NOT EXISTS "usersteams_team_id_user_id" ON "public"."users_teams" ("team_id", "user_id");
 

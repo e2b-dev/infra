@@ -15,17 +15,6 @@ DROP FUNCTION IF EXISTS public.sync_delete_auth_users_to_public_users_trigger();
 DROP FUNCTION IF EXISTS public.post_user_signup();
 DROP FUNCTION IF EXISTS public.extra_for_post_user_signup(uuid, uuid);
 
-DROP POLICY IF EXISTS "Allow to create a new user" ON public.users;
-DROP POLICY IF EXISTS "Allow to select a user" ON public.users;
-DROP POLICY IF EXISTS "Allow to update a user" ON public.users;
-DROP POLICY IF EXISTS "Allow to delete a user" ON public.users;
-
-DROP POLICY IF EXISTS "Allow to create a team to new user" ON public.teams;
-DROP POLICY IF EXISTS "Allow to create a user team connection to new user" ON public.users_teams;
-DROP POLICY IF EXISTS "Allow to select a team for supabase auth admin" ON public.teams;
-DROP POLICY IF EXISTS "Allow to create a team api key to new user" ON public.team_api_keys;
-DROP POLICY IF EXISTS "Allow to create an access token to new user" ON public.access_tokens;
-
 REVOKE INSERT ON public.users FROM trigger_user;
 REVOKE SELECT (id) ON public.users FROM trigger_user;
 REVOKE UPDATE ON public.users FROM trigger_user;
@@ -55,70 +44,6 @@ GRANT UPDATE ON public.users TO trigger_user;
 GRANT DELETE ON public.users TO trigger_user;
 GRANT INSERT ON public.team_api_keys TO trigger_user;
 GRANT INSERT ON public.access_tokens TO trigger_user;
-
-CREATE POLICY "Allow to create a new user"
-    ON public.users
-    AS PERMISSIVE
-    FOR INSERT
-    TO trigger_user
-    WITH CHECK (TRUE);
-
-CREATE POLICY "Allow to select a user"
-    ON public.users
-    AS PERMISSIVE
-    FOR SELECT
-    TO trigger_user
-    USING (true);
-
-CREATE POLICY "Allow to update a user"
-    ON public.users
-    AS PERMISSIVE
-    FOR UPDATE
-    TO trigger_user
-    USING (true)
-    WITH CHECK (true);
-
-CREATE POLICY "Allow to delete a user"
-    ON public.users
-    AS PERMISSIVE
-    FOR DELETE
-    TO trigger_user
-    USING (true);
-
-CREATE POLICY "Allow to create a team to new user"
-    ON public.teams
-    AS PERMISSIVE
-    FOR INSERT
-    TO trigger_user
-    WITH CHECK (TRUE);
-
-CREATE POLICY "Allow to create a user team connection to new user"
-    ON public.users_teams
-    AS PERMISSIVE
-    FOR INSERT
-    TO trigger_user
-    WITH CHECK (TRUE);
-
-CREATE POLICY "Allow to create a team api key to new user"
-    ON public.team_api_keys
-    AS PERMISSIVE
-    FOR INSERT
-    TO trigger_user
-    WITH CHECK (TRUE);
-
-CREATE POLICY "Allow to create an access token to new user"
-    ON public.access_tokens
-    AS PERMISSIVE
-    FOR INSERT
-    TO trigger_user
-    WITH CHECK (TRUE);
-
-CREATE POLICY "Allow to select a team for supabase auth admin"
-    ON public.teams
-    AS PERMISSIVE
-    FOR SELECT
-    TO trigger_user
-    USING (TRUE);
 
 CREATE OR REPLACE FUNCTION public.extra_for_post_user_signup(user_id uuid, team_id uuid)
     RETURNS void

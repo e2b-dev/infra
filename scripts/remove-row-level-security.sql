@@ -25,6 +25,8 @@ DROP POLICY IF EXISTS "Allow to select a user" ON public.users;
 DROP POLICY IF EXISTS "Allow to update a user" ON public.users;
 DROP POLICY IF EXISTS "Allow to delete a user" ON public.users;
 
+DROP FUNCTION IF EXISTS public.is_member_of_team(uuid, uuid);
+
 ALTER TABLE IF EXISTS public._migrations NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public._migrations DISABLE ROW LEVEL SECURITY;
 
