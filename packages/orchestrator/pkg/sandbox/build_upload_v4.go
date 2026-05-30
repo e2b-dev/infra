@@ -97,7 +97,7 @@ func (u *Upload) uploadFramed(
 		selfBuild = headers.BuildData{Size: size, Checksum: checksum, FrameData: ft}
 	}
 
-	h := srcHeader.CloneForUpload(headers.MetadataVersionV4)
+	h := srcHeader.CloneForUpload(u.headerVersion)
 	h.IncompletePendingUpload = false
 	if h.Builds == nil {
 		h.Builds = make(map[uuid.UUID]headers.BuildData)

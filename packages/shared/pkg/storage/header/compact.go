@@ -24,8 +24,17 @@ type Mapping struct {
 	buildIdx  []uint16
 }
 
-// maxBuildsPerHeader caps the per-header build-ID table at the uint16 limit.
-const maxBuildsPerHeader = 1 << 16
+const (
+	nilBuildIdx = math.MaxUint16
+
+	// maxBuildsPerHeader leaves nilBuildIdx reserved for empty regions.
+	maxBuildsPerHeader = nilBuildIdx
+)
+
+// maxBlockIdx is the largest block index representable by the uint32 columns.
+// At PageSize granularity this caps a single file (memfile/rootfs) at ~16 TiB,
+// well above any sandbox; NewMapping errors if a value exceeds it.
+const maxBlockIdx = math.MaxUint32
 
 // NewMapping packs src into the compact representation. blockSize is the unit
 // for the block indices and must divide every Offset, Length, and
@@ -37,9 +46,6 @@ func NewMapping(blockSize uint64, src []BuildMap) (Mapping, error) {
 	if len(src) == 0 {
 		return Mapping{blockSize: blockSize}, nil
 	}
-
-	// uint32 page-block index caps a single file at ~16 TiB (PageSize units).
-	const maxBlockIdx = math.MaxUint32
 
 	idxByBuild := make(map[uuid.UUID]uint16, 8)
 	builds := make([]uuid.UUID, 0, 8)
@@ -66,20 +72,51 @@ func NewMapping(blockSize uint64, src []BuildMap) (Mapping, error) {
 			return Mapping{}, fmt.Errorf("compact mapping: block index out of uint32 range at entry %d", i)
 		}
 
-		idx, ok := idxByBuild[m.BuildId]
-		if !ok {
-			if len(builds) >= maxBuildsPerHeader {
-				return Mapping{}, fmt.Errorf("compact mapping: more than %d unique build IDs", maxBuildsPerHeader)
+		idx := uint16(nilBuildIdx)
+		if m.BuildId != uuid.Nil {
+			var ok bool
+			idx, ok = idxByBuild[m.BuildId]
+			if !ok {
+				if len(builds) >= maxBuildsPerHeader {
+					return Mapping{}, fmt.Errorf("compact mapping: more than %d unique build IDs", maxBuildsPerHeader)
+				}
+				idx = uint16(len(builds))
+				idxByBuild[m.BuildId] = idx
+				builds = append(builds, m.BuildId)
 			}
-			idx = uint16(len(builds))
-			idxByBuild[m.BuildId] = idx
-			builds = append(builds, m.BuildId)
 		}
 
 		offsets[i] = uint32(offBlocks)
 		lengths[i] = uint32(lenBlocks)
 		storage[i] = uint32(stoBlocks)
 		buildIdx[i] = idx
+	}
+
+	return Mapping{
+		blockSize: blockSize,
+		builds:    builds,
+		offsets:   offsets,
+		lengths:   lengths,
+		storage:   storage,
+		buildIdx:  buildIdx,
+	}, nil
+}
+
+// newMappingFromColumns builds a Mapping from already-decoded columns,
+// avoiding the []BuildMap intermediate on the deserialize path. All column
+// slices must have the same length, and every buildIdx must index builds.
+func newMappingFromColumns(blockSize uint64, builds []uuid.UUID, offsets, lengths, storage []uint32, buildIdx []uint16) (Mapping, error) {
+	n := len(offsets)
+	if len(lengths) != n || len(storage) != n || len(buildIdx) != n {
+		return Mapping{}, fmt.Errorf("compact mapping: column length mismatch (offsets=%d lengths=%d storage=%d buildIdx=%d)", n, len(lengths), len(storage), len(buildIdx))
+	}
+	for i, bi := range buildIdx {
+		if bi == nilBuildIdx {
+			continue
+		}
+		if int(bi) >= len(builds) {
+			return Mapping{}, fmt.Errorf("compact mapping: buildIdx %d at entry %d out of range (%d builds)", bi, i, len(builds))
+		}
 	}
 
 	return Mapping{
@@ -105,10 +142,15 @@ func (m Mapping) Builds() []uuid.UUID { return m.builds }
 // At materializes the i-th entry as a BuildMap. Panics if i is out of range,
 // matching `mapping[i]` semantics.
 func (m Mapping) At(i int) BuildMap {
+	buildID := uuid.Nil
+	if m.buildIdx[i] != nilBuildIdx {
+		buildID = m.builds[m.buildIdx[i]]
+	}
+
 	return BuildMap{
 		Offset:             uint64(m.offsets[i]) * m.blockSize,
 		Length:             uint64(m.lengths[i]) * m.blockSize,
-		BuildId:            m.builds[m.buildIdx[i]],
+		BuildId:            buildID,
 		BuildStorageOffset: uint64(m.storage[i]) * m.blockSize,
 	}
 }
