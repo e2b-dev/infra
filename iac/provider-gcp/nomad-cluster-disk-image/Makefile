@@ -20,7 +20,7 @@ build:
 		$(if $(NOMAD_VERSION),-var "nomad_version=$(NOMAD_VERSION)") \
 		$(if $(PACKER_NETWORK_NAME),-var "network_name=$(PACKER_NETWORK_NAME)") \
 		$(if $(PACKER_SUBNET_NAME),-var "subnet_name=$(PACKER_SUBNET_NAME)") \
-		$(if $(SOURCE_NAME),-var "source_name=$(SOURCE_NAME)") \
+		$(if $(SOURCE_IMAGE),-var "source_image=$(SOURCE_IMAGE)") \
 		-var "gcp_project_id=$(GCP_PROJECT_ID)" \
 		-var "gcp_zone=$(GCP_ZONE)" \
 		.
