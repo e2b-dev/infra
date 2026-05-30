@@ -306,7 +306,7 @@ func (o *Orchestrator) CreateSandbox(
 	}
 	placementCacheAffinityConfig := placementAffinityConfigFromFlags(ctx, o.featureFlagsClient, featureflags.TeamContext(team.ID.String()), featureflags.TemplateContext(sbxData.TemplateID), featureflags.SandboxContext(sandboxID))
 	var affinityScores map[string]float64
-	if placementCacheAffinityConfig.enabled {
+	if placementCacheAffinityConfig.enabled && node == nil {
 		affinityScores = o.placementAffinity.scores(ctx, placementCacheAffinityConfig, nodeClusterID, affinityBuildID, sbxData.TemplateID, sbxData.BaseTemplateID)
 	}
 

@@ -161,7 +161,7 @@ func (a *placementAffinity) scores(ctx context.Context, cfg placementAffinityCon
 		{kind: "template", id: templateID, weight: cfg.templateWeight},
 		{kind: "base-template", id: baseTemplateID, weight: cfg.baseTemplateWeight},
 	} {
-		if item.id == "" {
+		if item.id == "" || item.weight == 0 {
 			continue
 		}
 
