@@ -26,6 +26,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -215,6 +216,12 @@ type dedupPlan struct {
 	promotedPages  int64
 }
 
+type DedupBudget struct {
+	MaxFetchWindowsPerBlock        int
+	MaxPromotedParentPagesPerBlock int
+	FetchRunWindowPages            int
+}
+
 const (
 	dedupPageEmpty byte = iota
 	dedupPageParent
@@ -227,13 +234,13 @@ const (
 )
 
 const (
-	defaultDedupFetchWindowPages = 2 << 20 / header.PageSize
+	defaultDedupFetchWindowPages = storage.DefaultCompressFrameSize / header.PageSize
 )
 
 type dedupFetchKey struct {
 	source byte
 	build  uuid.UUID
-	window uint64
+	window int
 }
 
 type dedupPageInfo struct {
@@ -251,9 +258,7 @@ func dedupCompare(
 	dirty *roaring.Bitmap,
 	blockSize int64,
 	bestEffort bool,
-	maxFetchWindowsPerBlock int,
-	maxPromotedParentPagesPerBlock int,
-	fetchWindowPages int,
+	budget DedupBudget,
 ) (*dedupPlan, error) {
 	pageDirty := roaring.New()
 	pageEmpty := roaring.New()
@@ -262,8 +267,8 @@ func dedupCompare(
 	var promotedPages int64
 	var currentStoredPages int64
 
-	if fetchWindowPages <= 0 {
-		fetchWindowPages = defaultDedupFetchWindowPages
+	if budget.FetchRunWindowPages <= 0 {
+		budget.FetchRunWindowPages = defaultDedupFetchWindowPages
 	}
 
 	baseHeader := base.Header()
@@ -320,11 +325,14 @@ func dedupCompare(
 				}
 				if bytes.Equal(srcPage, basePage) {
 					blockPages[page].kind = dedupPageParent
+					key := dedupFetchKey{source: parentFetchSource}
 					if hasMapping {
-						blockPages[page].key = dedupFetchKey{source: parentFetchSource, build: mapped.BuildId, window: mapped.Offset / uint64(fetchWindowPages*header.PageSize)}
+						key.build = mapped.BuildId
+						key.window = int(mapped.Offset / uint64(budget.FetchRunWindowPages*header.PageSize))
 					} else {
-						blockPages[page].key = dedupFetchKey{source: parentFetchSource, window: uint64(pageOff) / uint64(fetchWindowPages*header.PageSize)}
+						key.window = int(pageOff / int64(budget.FetchRunWindowPages*header.PageSize))
 					}
+					blockPages[page].key = key
 
 					continue
 				}
@@ -332,7 +340,7 @@ func dedupCompare(
 				blockPages[page].kind = dedupPageCurrent
 			}
 
-			promoted := compactDedupFetchWindows(blockPages, maxFetchWindowsPerBlock, maxPromotedParentPagesPerBlock, fetchWindowPages, currentStoredPages)
+			promoted := compactDedupFetchWindows(blockPages, budget.MaxFetchWindowsPerBlock, budget.MaxPromotedParentPagesPerBlock, budget.FetchRunWindowPages, currentStoredPages)
 			if promoted > 0 {
 				promotedBlocks++
 				promotedPages += int64(promoted)
@@ -391,7 +399,7 @@ func countFetchWindows(pages []dedupPageInfo, windowPages int, currentStart int6
 		case dedupPageParent:
 			keys[p.key] = struct{}{}
 		case dedupPageCurrent:
-			keys[dedupFetchKey{source: currentFetchSource, window: uint64(currentStart+currentOrdinal) / uint64(windowPages)}] = struct{}{}
+			keys[dedupFetchKey{source: currentFetchSource, window: int(currentStart+currentOrdinal) / windowPages}] = struct{}{}
 			currentOrdinal++
 		}
 	}
@@ -429,6 +437,49 @@ func bestParentRunToPromote(pages []dedupPageInfo, budget, windowPages int, curr
 		}
 		if bestStart < 0 || cost*bestBenefit < bestCost*benefit {
 			bestStart, bestEnd, bestBenefit, bestCost = start, end, benefit, cost
+		}
+	}
+	if bestStart < 0 {
+		return bestParentKeyToPromote(pages, budget, windowPages, currentStart, before)
+	}
+
+	return bestStart, bestEnd
+}
+
+func bestParentKeyToPromote(pages []dedupPageInfo, budget, windowPages int, currentStart int64, before int) (int, int) {
+	type span struct{ start, end, cost int }
+	spans := make(map[dedupFetchKey]span)
+	for i, p := range pages {
+		if p.kind != dedupPageParent {
+			continue
+		}
+		s := spans[p.key]
+		if s.cost == 0 {
+			s.start = i
+		}
+		s.end = i + 1
+		s.cost++
+		spans[p.key] = s
+	}
+
+	bestStart, bestEnd, bestBenefit, bestCost := -1, -1, 0, 0
+	for key, s := range spans {
+		if s.cost > budget {
+			continue
+		}
+		candidate := slices.Clone(pages)
+		for i := s.start; i < s.end; i++ {
+			if candidate[i].kind == dedupPageParent && candidate[i].key == key {
+				candidate[i].kind = dedupPageCurrent
+				candidate[i].key = dedupFetchKey{}
+			}
+		}
+		benefit := before - countFetchWindows(candidate, windowPages, currentStart)
+		if benefit <= 0 {
+			continue
+		}
+		if bestStart < 0 || s.cost*bestBenefit < bestCost*benefit {
+			bestStart, bestEnd, bestBenefit, bestCost = s.start, s.end, benefit, s.cost
 		}
 	}
 
@@ -562,9 +613,7 @@ func (c *Cache) Dedup(
 	outPath string,
 	bestEffort bool,
 	directIO bool,
-	maxFetchWindowsPerBlock int,
-	maxPromotedParentPagesPerBlock int,
-	fetchRunWindowPages int,
+	budget DedupBudget,
 ) (*Cache, *header.DiffMetadata, error) {
 	ctx, span := tracer.Start(ctx, "dedup-pages")
 	defer span.End()
@@ -588,7 +637,7 @@ func (c *Cache) Dedup(
 	}
 
 	compareStart := time.Now()
-	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort, maxFetchWindowsPerBlock, maxPromotedParentPagesPerBlock, fetchRunWindowPages)
+	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort, budget)
 	if err != nil {
 		return nil, nil, err
 	}

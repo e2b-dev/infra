@@ -1146,15 +1146,17 @@ func (s *Sandbox) Pause(
 	// Start POSTPROCESSING
 	var dedupBase block.ReadonlyDevice
 	var dedupBestEffort, dedupDirectIO bool
-	var dedupMaxFetchWindowsPerBlock, dedupMaxPromotedParentPagesPerBlock, dedupFetchRunWindowPages int
+	var dedupBudget block.DedupBudget
 	dedupCfg := s.featureFlags.JSONFlag(ctx, featureflags.MemfileDiffDedupFlag, sandboxLDContext(s.Runtime, s.Config)).AsValueMap()
 	if dedupCfg.Get("enabled").BoolValue() {
 		dedupBase = originalMemfile
 		dedupBestEffort = dedupCfg.Get("bestEffort").BoolValue()
 		dedupDirectIO = dedupCfg.Get("directIO").BoolValue()
-		dedupMaxFetchWindowsPerBlock = dedupCfg.Get("maxFetchWindowsPerBlock").IntValue()
-		dedupMaxPromotedParentPagesPerBlock = dedupCfg.Get("maxPromotedParentPagesPerBlock").IntValue()
-		dedupFetchRunWindowPages = dedupCfg.Get("fetchRunWindowPages").IntValue()
+		dedupBudget = block.DedupBudget{
+			MaxFetchWindowsPerBlock:        dedupCfg.Get("maxFetchWindowsPerBlock").IntValue(),
+			MaxPromotedParentPagesPerBlock: dedupCfg.Get("maxPromotedParentPagesPerBlock").IntValue(),
+			FetchRunWindowPages:            dedupCfg.Get("fetchRunWindowPages").IntValue(),
+		}
 	}
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
 		ctx,
@@ -1168,9 +1170,7 @@ func (s *Sandbox) Pause(
 		dedupBase,
 		dedupBestEffort,
 		dedupDirectIO,
-		dedupMaxFetchWindowsPerBlock,
-		dedupMaxPromotedParentPagesPerBlock,
-		dedupFetchRunWindowPages,
+		dedupBudget,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -1244,9 +1244,7 @@ func pauseProcessMemory(
 	originalMemfile block.ReadonlyDevice,
 	dedupBestEffort bool,
 	dedupDirectIO bool,
-	dedupMaxFetchWindowsPerBlock int,
-	dedupMaxPromotedParentPagesPerBlock int,
-	dedupFetchRunWindowPages int,
+	dedupBudget block.DedupBudget,
 ) (d build.Diff, h *DiffHeader, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
@@ -1256,7 +1254,7 @@ func pauseProcessMemory(
 	// ExportMemory owns memfd and closes it on all paths.
 	cache, err := fc.ExportMemory(
 		ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy,
-		originalMemfile, dedupBestEffort, dedupDirectIO, dedupMaxFetchWindowsPerBlock, dedupMaxPromotedParentPagesPerBlock, dedupFetchRunWindowPages, diffMetadata.Empty, metaOut,
+		originalMemfile, dedupBestEffort, dedupDirectIO, dedupBudget, diffMetadata.Empty, metaOut,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)

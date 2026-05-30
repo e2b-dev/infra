@@ -786,7 +786,7 @@ func runDedup(t *testing.T, srcMem, baseMem []byte, dirty *roaring.Bitmap, block
 	t.Helper()
 
 	src := buildPackedSrcCache(t, srcMem, dirty, blockSize)
-	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseMem}, dirty, blockSize, t.TempDir()+"/dedup", false, false, 0, 0, 0)
+	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseMem}, dirty, blockSize, t.TempDir()+"/dedup", false, false, DedupBudget{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -908,7 +908,7 @@ func TestCacheDedup_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, _, err = src.Dedup(ctx, &fakeOriginalDevice{data: data}, dirty, blockSize, t.TempDir()+"/dedup", false, false, 0, 0, 0)
+	_, _, err = src.Dedup(ctx, &fakeOriginalDevice{data: data}, dirty, blockSize, t.TempDir()+"/dedup", false, false, DedupBudget{})
 	require.ErrorIs(t, err, context.Canceled)
 }
 
@@ -932,9 +932,7 @@ func TestCacheDedup_OriginalMemfileReadError(t *testing.T) {
 		t.TempDir()+"/dedup",
 		false,
 		false,
-		0,
-		0,
-		0,
+		DedupBudget{},
 	)
 	require.ErrorIs(t, err, sentinel)
 }
@@ -968,7 +966,7 @@ func TestCacheDedup_EmptyParentMappingSkipsBaseReadAt(t *testing.T) {
 	junk := bytes.Repeat([]byte{0xFF}, int(size))
 	base := &fakeOriginalDevice{data: junk, hdr: hdr}
 
-	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", false, false, 0, 0, 0)
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", false, false, DedupBudget{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -1061,7 +1059,7 @@ func TestCacheDedup_BestEffortUncachedSkipsBaseReadAt(t *testing.T) {
 	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
 	base := &peekingOriginalDevice{fakeOriginalDevice: fakeOriginalDevice{data: baseData}, cached: false}
 
-	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false, 0, 0, 0)
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false, DedupBudget{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -1093,7 +1091,7 @@ func TestCacheDedup_BestEffortCachedMatchesNormalPath(t *testing.T) {
 	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
 	base := &peekingOriginalDevice{fakeOriginalDevice: fakeOriginalDevice{data: baseData}, cached: true}
 
-	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false, 0, 0, 0)
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false, DedupBudget{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -1120,7 +1118,7 @@ func TestCacheDedup_FetchRunBudgetPromotesSmallParentRun(t *testing.T) {
 	dirty := fullDirty(size, blockSize)
 	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
 
-	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseData}, dirty, blockSize, t.TempDir()+"/dedup", false, false, 1, 1, 4)
+	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseData}, dirty, blockSize, t.TempDir()+"/dedup", false, false, DedupBudget{MaxFetchWindowsPerBlock: 1, MaxPromotedParentPagesPerBlock: 1, FetchRunWindowPages: 4})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
@@ -1169,7 +1167,7 @@ func TestCacheDedup_BestEffortPerPageCacheCheck(t *testing.T) {
 		cachedPages:        map[uint32]bool{0: true, 1: false, 2: true, 3: false},
 	}
 
-	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false, 0, 0, 0)
+	cache, meta, err := src.Dedup(t.Context(), base, dirty, blockSize, t.TempDir()+"/dedup", true, false, DedupBudget{})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
