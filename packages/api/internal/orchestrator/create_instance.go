@@ -300,10 +300,10 @@ func (o *Orchestrator) CreateSandbox(
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
 	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
-	placementCacheAffinityEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxPlacementCacheAffinityFlag, featureflags.TeamContext(team.ID.String()), featureflags.TemplateContext(sbxData.TemplateID), featureflags.SandboxContext(sandboxID))
+	placementCacheAffinityConfig := placementAffinityConfigFromFlags(ctx, o.featureFlagsClient, featureflags.TeamContext(team.ID.String()), featureflags.TemplateContext(sbxData.TemplateID), featureflags.SandboxContext(sandboxID))
 	var affinityScores map[string]float64
-	if placementCacheAffinityEnabled {
-		affinityScores = o.placementAffinity.scores(ctx, nodeClusterID, sbxData.Build.ID.String(), sbxData.TemplateID, sbxData.BaseTemplateID)
+	if placementCacheAffinityConfig.enabled {
+		affinityScores = o.placementAffinity.scores(ctx, placementCacheAffinityConfig, nodeClusterID, sbxData.Build.ID.String(), sbxData.TemplateID, sbxData.BaseTemplateID)
 	}
 
 	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels, affinityScores)
@@ -322,8 +322,8 @@ func (o *Orchestrator) CreateSandbox(
 		attribute.Bool("node_affinity_success", sbxData.NodeID != nil && node.ID == *sbxData.NodeID),
 	}
 	o.createdSandboxesCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
-	if placementCacheAffinityEnabled {
-		o.placementAffinity.record(ctx, nodeClusterID, node.ID, sbxData.Build.ID.String(), sbxData.TemplateID, sbxData.BaseTemplateID)
+	if placementCacheAffinityConfig.enabled {
+		o.placementAffinity.record(ctx, placementCacheAffinityConfig, nodeClusterID, node.ID, sbxData.Build.ID.String(), sbxData.TemplateID, sbxData.BaseTemplateID)
 	}
 
 	telemetry.SetAttributes(ctx, attribute.String("node.id", node.ID))
