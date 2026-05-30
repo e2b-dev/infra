@@ -104,6 +104,8 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 		case codes.ResourceExhausted:
 			if len(nodesExcluded)+1 < len(clusterNodes) {
 				nodesExcluded[failedNode.ID] = struct{}{}
+			} else {
+				attempt++
 			}
 			failedNode.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
 			logger.L().Warn(ctx, "Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID))
