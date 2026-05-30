@@ -21,7 +21,7 @@ variable "prefix" {
 
 variable "consul_version" {
   type    = string
-  default = "1.19.2"
+  default = "1.21.5"
 }
 
 variable "nomad_version" {
