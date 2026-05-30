@@ -55,11 +55,11 @@ func (u *Upload) runV4(ctx context.Context) error {
 	meta := storage.WithMetadata(u.objectMetadata)
 
 	eg.Go(func() error {
-		return storage.UploadBlob(ctx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), meta)
+		return uploadBlobWithMetrics(ctx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), uploadFileSnap, meta)
 	})
 
 	eg.Go(func() error {
-		return storage.UploadBlob(ctx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path(), meta)
+		return uploadBlobWithMetrics(ctx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path(), uploadFileMeta, meta)
 	})
 
 	return eg.Wait()
@@ -93,7 +93,11 @@ func (u *Upload) uploadFramed(
 			compressedSize = size
 		}
 
-		recordUploadCompression(ctx, uploadArtifactData, string(fileType), cfg, size, compressedSize)
+		dataFileType := uploadFileMemfile
+		if fileType == build.Rootfs {
+			dataFileType = uploadFileRootfs
+		}
+		recordUploadCompression(ctx, dataFileType, cfg, size, compressedSize)
 		selfBuild = headers.BuildData{Size: size, Checksum: checksum, FrameData: ft}
 	}
 
@@ -108,7 +112,11 @@ func (u *Upload) uploadFramed(
 	}
 	h.Builds[u.buildID] = selfBuild
 
-	if err := storeHeaderWithMetrics(ctx, u.store, u.paths.HeaderFile(string(fileType)), string(fileType), h); err != nil {
+	headerFileType := uploadFileMemfileHeader
+	if fileType == build.Rootfs {
+		headerFileType = uploadFileRootfsHeader
+	}
+	if err := storeHeaderWithMetrics(ctx, u.store, u.paths.HeaderFile(string(fileType)), headerFileType, h); err != nil {
 		return fmt.Errorf("store %s header: %w", fileType, err)
 	}
 
