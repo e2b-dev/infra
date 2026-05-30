@@ -3,7 +3,7 @@ UPDATE "public"."snapshots"
 SET metadata = jsonb_set(
     metadata,
     '{snapshot_scheduling_metadata}',
-    (@metadata::text)::jsonb,
+    to_jsonb(@metadata::text),
     true
 )
 WHERE sandbox_id = @sandbox_id;

@@ -41,7 +41,11 @@ snapshot as (
             now()
    )
     ON CONFLICT (sandbox_id) DO UPDATE SET
-        metadata = excluded.metadata,
+        metadata = CASE
+            WHEN snapshots.metadata ? 'snapshot_scheduling_metadata'
+                THEN excluded.metadata || jsonb_build_object('snapshot_scheduling_metadata', snapshots.metadata->'snapshot_scheduling_metadata')
+            ELSE excluded.metadata
+        END,
         sandbox_started_at = excluded.sandbox_started_at,
         allow_internet_access = COALESCE(excluded.allow_internet_access, snapshots.allow_internet_access),
         origin_node_id = excluded.origin_node_id,
