@@ -162,17 +162,14 @@ var (
 	FreezeUserCgroupFlag             = NewBoolFlag("freeze-user-cgroup", env.IsDevelopment())
 
 	SandboxPlacementCacheAffinityFlag = NewJSONFlag("sandbox-placement-cache-affinity", ldvalue.FromJSONMarshal(map[string]any{
-		"enabled":               false,
-		"ttlSeconds":            90000,
-		"topNodes":              20,
-		"readTimeoutMs":         100,
-		"writeTimeoutMs":        1000,
-		"maxAffinityScore":      10,
-		"maxScoreBonusPpm":      20000,
-		"buildWeightPpm":        1000,
-		"teamWeightPpm":         0,
-		"templateWeightPpm":     0,
-		"baseTemplateWeightPpm": 0,
+		"enabled":          false,
+		"ttlSeconds":       90000,
+		"topNodes":         20,
+		"readTimeoutMs":    100,
+		"writeTimeoutMs":   1000,
+		"maxAffinityScore": 10,
+		"maxScoreBonusPpm": 20000,
+		"buildWeightPpm":   1000,
 	}))
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
