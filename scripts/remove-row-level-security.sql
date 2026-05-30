@@ -1,29 +1,17 @@
 -- Manual cleanup for existing non-Supabase Postgres databases.
 -- Do not run this on Supabase projects; new Supabase tables should use Supabase's RLS automation.
+-- Assumes the database has already applied the latest migrations.
 
 BEGIN;
 
 DROP POLICY IF EXISTS "Allow selection for users that are in the team" ON public.teams;
-DROP POLICY IF EXISTS "Allow to create a team to new user" ON public.teams;
-DROP POLICY IF EXISTS "Allow to select a team for supabase auth admin" ON public.teams;
-DROP POLICY IF EXISTS "Allow update for users that are in the team" ON public.teams;
 
 DROP POLICY IF EXISTS "Enable select for users in relevant team" ON public.users_teams;
-DROP POLICY IF EXISTS "Allow to create a user team connection to new user" ON public.users_teams;
-DROP POLICY IF EXISTS "Allow users to create a new team user entry" ON public.users_teams;
-DROP POLICY IF EXISTS "Allow users to delete a team user entry" ON public.users_teams;
 
 DROP POLICY IF EXISTS "Enable select for users based on user_id" ON public.access_tokens;
-DROP POLICY IF EXISTS "Allow to create an access token to new user" ON public.access_tokens;
 
 DROP POLICY IF EXISTS "Allow selection for users that are in the team" ON public.team_api_keys;
-DROP POLICY IF EXISTS "Allow to create a team api key to new user" ON public.team_api_keys;
 DROP POLICY IF EXISTS "Allow users to delete a team api key" ON public.team_api_keys;
-
-DROP POLICY IF EXISTS "Allow to create a new user" ON public.users;
-DROP POLICY IF EXISTS "Allow to select a user" ON public.users;
-DROP POLICY IF EXISTS "Allow to update a user" ON public.users;
-DROP POLICY IF EXISTS "Allow to delete a user" ON public.users;
 
 DROP FUNCTION IF EXISTS public.is_member_of_team(uuid, uuid);
 
