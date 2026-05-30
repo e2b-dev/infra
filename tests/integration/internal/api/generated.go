@@ -556,9 +556,6 @@ type NewSandbox struct {
 	// AutoPause Automatically pauses the sandbox after the timeout
 	AutoPause *bool `json:"autoPause,omitempty"`
 
-	// AutoPauseMemory Whether auto-pause should persist memory state. Set false to snapshot disk only and reboot on next start.
-	AutoPauseMemory *bool `json:"autoPauseMemory,omitempty"`
-
 	// AutoResume Auto-resume configuration for paused sandboxes.
 	AutoResume *SandboxAutoResumeConfig `json:"autoResume,omitempty"`
 	EnvVars    *EnvVars                 `json:"envVars,omitempty"`

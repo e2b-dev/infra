@@ -148,7 +148,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	)
 
 	autoPause := sharedUtils.DerefOrDefault(body.AutoPause, sandbox.AutoPauseDefault)
-	autoPauseMemory := body.AutoPauseMemory
 	envVars := sharedUtils.DerefOrDefault(body.EnvVars, nil)
 	mcp := sharedUtils.DerefOrDefault(body.Mcp, nil)
 	metadata := sharedUtils.DerefOrDefault(body.Metadata, nil)
@@ -258,7 +257,6 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 			TemplateID:          env.TemplateID,
 			BaseTemplateID:      env.TemplateID,
 			AutoPause:           autoPause,
-			AutoPauseMemory:     autoPauseMemory,
 			AutoResume:          autoResume,
 			VolumeMounts:        sbxVolumeMounts,
 			EnvdAccessToken:     envdAccessToken,
