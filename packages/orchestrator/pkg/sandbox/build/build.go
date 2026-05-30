@@ -12,9 +12,11 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -55,6 +57,28 @@ func (b *File) SwapHeader(h *header.Header) {
 }
 
 func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
+	maxParallel := 1
+	if b.store != nil && b.store.flags != nil {
+		maxParallel = b.store.flags.IntFlag(ctx, featureflags.MaxParallelBuildReadSegments)
+	}
+	if maxParallel > 1 && len(p) > 0 {
+		if err := b.readAtParallel(ctx, p, off, maxParallel); err == nil {
+			return len(p), nil
+		} else if shouldRetrySerial(err) {
+			if retry, swapErr := b.retryOnTransition(ctx, err); !retry && swapErr != nil {
+				return 0, swapErr
+			}
+
+			return b.readAtSerial(ctx, p, off)
+		}
+
+		return 0, err
+	}
+
+	return b.readAtSerial(ctx, p, off)
+}
+
+func (b *File) readAtSerial(ctx context.Context, p []byte, off int64) (n int, err error) {
 	// Cache some resolved Diffs per BuildId for the duration of one ReadAt to avoid
 	// hitting the DiffStore TTL cache (and its mutex) on every iteration.
 	const buildCacheSize = 16
@@ -163,6 +187,127 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err erro
 	}
 
 	return n, nil
+}
+
+type readSegment struct {
+	dstOff int
+	srcOff int64
+	length int64
+	diff   Diff
+	ft     *storage.FrameTable
+}
+
+func (b *File) readAtParallel(ctx context.Context, p []byte, off int64, maxParallel int) error {
+	segments, err := b.planRead(ctx, p, off)
+	if err != nil {
+		return err
+	}
+	if len(segments) <= 1 {
+		for _, s := range segments {
+			n, err := s.diff.ReadAt(ctx, p[s.dstOff:s.dstOff+int(s.length)], s.srcOff, s.ft)
+			if err != nil {
+				return err
+			}
+			if int64(n) != s.length {
+				return io.ErrUnexpectedEOF
+			}
+		}
+
+		return nil
+	}
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(maxParallel)
+	for _, s := range segments {
+		seg := s
+		g.Go(func() error {
+			n, err := seg.diff.ReadAt(gctx, p[seg.dstOff:seg.dstOff+int(seg.length)], seg.srcOff, seg.ft)
+			if err != nil {
+				return err
+			}
+			if int64(n) != seg.length {
+				return io.ErrUnexpectedEOF
+			}
+
+			return nil
+		})
+	}
+
+	return g.Wait()
+}
+
+func (b *File) planRead(ctx context.Context, p []byte, off int64) ([]readSegment, error) {
+	const buildCacheSize = 16
+	var (
+		underlyingIDs   [buildCacheSize]uuid.UUID
+		underlyingDiffs [buildCacheSize]Diff
+		cacheIDs        = underlyingIDs[:0]
+		cacheDiffs      = underlyingDiffs[:0]
+		segments        []readSegment
+	)
+
+	var n int
+	for n < len(p) {
+		h := b.Header()
+		mappedToBuild, err := h.GetShiftedMapping(ctx, off+int64(n))
+		if err != nil {
+			return nil, fmt.Errorf("failed to get mapping: %w", err)
+		}
+		readLength := min(int64(mappedToBuild.Length), int64(len(p)-n))
+		if readLength <= 0 {
+			return nil, io.EOF
+		}
+		if mappedToBuild.BuildId == uuid.Nil {
+			clear(p[n : n+int(readLength)])
+			n += int(readLength)
+
+			continue
+		}
+
+		diff, err := b.cachedBuild(ctx, h, mappedToBuild.BuildId, &cacheIDs, &cacheDiffs)
+		if err != nil {
+			return nil, err
+		}
+		segments = append(segments, readSegment{
+			dstOff: n,
+			srcOff: int64(mappedToBuild.Offset),
+			length: readLength,
+			diff:   diff,
+			ft:     h.GetBuildFrameData(mappedToBuild.BuildId),
+		})
+		n += int(readLength)
+	}
+
+	return segments, nil
+}
+
+func (b *File) cachedBuild(ctx context.Context, h *header.Header, buildID uuid.UUID, ids *[]uuid.UUID, diffs *[]Diff) (Diff, error) {
+	for i, id := range *ids {
+		if id == buildID {
+			return (*diffs)[i], nil
+		}
+	}
+
+	diff, err := b.getBuild(ctx, buildID, b.buildFileSize(h, buildID), h.GetBuildFrameData(buildID).CompressionType())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get build: %w", err)
+	}
+	if len(*ids) < cap(*ids) {
+		*ids = append(*ids, buildID)
+		*diffs = append(*diffs, diff)
+	}
+
+	return diff, nil
+}
+
+func shouldRetrySerial(err error) bool {
+	var closed *block.CacheClosedError
+	if errors.As(err, &closed) {
+		return true
+	}
+	var transErr *storage.PeerTransitionedError
+
+	return errors.As(err, &transErr)
 }
 
 // Slice returns [off, off+length). Zero-copy when the range fits in a
