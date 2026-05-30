@@ -689,10 +689,6 @@ components:
           type: boolean
           default: false
           description: Automatically pauses the sandbox after the timeout
-        autoPauseMemory:
-          type: boolean
-          default: true
-          description: Whether auto-pause should persist memory state. Set false to snapshot disk only and reboot on next start.
         autoResume:
           $ref: "#/components/schemas/SandboxAutoResumeConfig"
         secure:

@@ -166,8 +166,7 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 
 	switch opts.Action {
 	case sandbox.StateActionPause:
-		skipMemory := opts.SkipMemory || (opts.Eviction && sbx.AutoPauseMemory != nil && !*sbx.AutoPauseMemory)
-		err := o.pauseSandbox(ctx, node, sbx, skipMemory)
+		err := o.pauseSandbox(ctx, node, sbx, opts.SkipMemory)
 		if err != nil {
 			if dberrors.IsForeignKeyViolation(err) {
 				killErr := o.killSandboxOnNode(ctx, node, sbx, sandbox.KillReasonBaseTemplateMissing)
