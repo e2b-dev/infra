@@ -8,8 +8,8 @@ build:
 	packer build \
 		$(if $(CONSUL_VERSION),-var "consul_version=$(CONSUL_VERSION)") \
 		$(if $(NOMAD_VERSION),-var "nomad_version=$(NOMAD_VERSION)") \
-		$(if $(PACKER_NETWORK_NAME),-var "network_name=$(PACKER_NETWORK_NAME)") \
-		$(if $(PACKER_SUBNET_NAME),-var "subnet_name=$(PACKER_SUBNET_NAME)") \
+		$(if $(PACKER_VPC_ID),-var "vpc_id=$(PACKER_VPC_ID)") \
+		$(if $(PACKER_SUBNET_ID),-var "subnet_id=$(PACKER_SUBNET_ID)") \
 		$(if $(SOURCE_AMI_FILTER_NAME),-var "source_ami_filter_name=$(SOURCE_AMI_FILTER_NAME)") \
 		-var "prefix=$(PREFIX)" \
 		-var "aws_region=$(AWS_REGION)" \
