@@ -3,9 +3,10 @@
 package sandbox
 
 import (
+	"cmp"
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 
 	"github.com/google/uuid"
 
@@ -104,14 +105,14 @@ func NewSnapshotSchedulingMetadata(memfileHeader, rootfsHeader *header.Header, l
 	for _, c := range contributions {
 		chain = append(chain, *c)
 	}
-	sort.Slice(chain, func(i, j int) bool {
-		iBytes := chain[i].memfileBytes + chain[i].rootfsBytes
-		jBytes := chain[j].memfileBytes + chain[j].rootfsBytes
-		if iBytes == jBytes {
-			return chain[i].buildID.String() < chain[j].buildID.String()
+	slices.SortFunc(chain, func(a, b schedulingBuildContribution) int {
+		aBytes := a.memfileBytes + a.rootfsBytes
+		bBytes := b.memfileBytes + b.rootfsBytes
+		if aBytes == bBytes {
+			return cmp.Compare(a.buildID.String(), b.buildID.String())
 		}
 
-		return iBytes > jBytes
+		return cmp.Compare(bBytes, aBytes)
 	})
 	parentBuildID := memfileHeader.Metadata.BuildId
 	if parentBuildID == uuid.Nil {
