@@ -95,6 +95,46 @@ func TestBestOfK_Score_WithPendingResources(t *testing.T) {
 	assert.Greater(t, scorePending, scoreNormal, "Node with pending resources should receive a higher (worse) score")
 }
 
+func TestBestOfK_ChooseNode_ConsidersAffinityOutsideRandomSample(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	config := BestOfKConfig{
+		R:     10,
+		Alpha: 0.5,
+		K:     1,
+	}
+	algo := NewBestOfK(config).(*BestOfK)
+
+	hot := nodemanager.NewTestNode("hot", api.NodeStatusReady, 0, 4)
+	cold := nodemanager.NewTestNode("cold", api.NodeStatusReady, 0, 4)
+	nodes := []*nodemanager.Node{cold, hot}
+
+	selected, err := algo.chooseNode(ctx, nodes, nil, nodemanager.SandboxResources{CPUs: 1, MiBMemory: 512}, machineinfo.MachineInfo{}, false, nil, map[string]float64{"hot": 0.1})
+	require.NoError(t, err)
+	require.Equal(t, "hot", selected.ID)
+}
+
+func TestBestOfK_ChooseNode_IgnoresIneligibleAffinity(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	config := BestOfKConfig{
+		R:     10,
+		Alpha: 0.5,
+		K:     1,
+	}
+	algo := NewBestOfK(config).(*BestOfK)
+
+	hot := nodemanager.NewTestNode("hot", api.NodeStatusDraining, 0, 4)
+	cold := nodemanager.NewTestNode("cold", api.NodeStatusReady, 0, 4)
+	nodes := []*nodemanager.Node{cold, hot}
+
+	selected, err := algo.chooseNode(ctx, nodes, nil, nodemanager.SandboxResources{CPUs: 1, MiBMemory: 512}, machineinfo.MachineInfo{}, false, nil, map[string]float64{"hot": 0.1})
+	require.NoError(t, err)
+	require.Equal(t, "cold", selected.ID)
+}
+
 func TestBestOfK_CanFit(t *testing.T) {
 	t.Parallel()
 	config := DefaultBestOfKConfig()

@@ -65,6 +65,7 @@ type Orchestrator struct {
 
 	snapshotUpsertSem *utils.AdjustableSemaphore
 	redisStorage      *redisbackend.Storage
+	placementAffinity *placementAffinity
 
 	// connectGroup deduplicates concurrent dial+register attempts for the same
 	// physical node. It is keyed by NomadNodeShortID (Nomad-managed nodes) or
@@ -147,6 +148,7 @@ func New(
 		tel:                  tel,
 		clusters:             clusters,
 		redisStorage:         redisStorage,
+		placementAffinity:    newPlacementAffinity(redisClient),
 
 		createdCounter: createdCounter,
 

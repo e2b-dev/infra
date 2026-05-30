@@ -36,7 +36,7 @@ func DefaultBestOfKConfig() BestOfKConfig {
 }
 
 // Score calculates the placement score for this node
-func (b *BestOfK) Score(node *nodemanager.Node, resources nodemanager.SandboxResources, config BestOfKConfig) float64 {
+func (b *BestOfK) Score(node *nodemanager.Node, resources nodemanager.SandboxResources, config BestOfKConfig, affinityScores ...map[string]float64) float64 {
 	metrics := node.Metrics()
 
 	// Get locally recorded resources that haven't been reported yet.
@@ -61,7 +61,12 @@ func (b *BestOfK) Score(node *nodemanager.Node, resources nodemanager.SandboxRes
 
 	cpuRequested := float64(resources.CPUs)
 
-	return (cpuRequested + float64(reserved) + config.Alpha*usageAvg) / totalCapacity
+	score := (cpuRequested + float64(reserved) + config.Alpha*usageAvg) / totalCapacity
+	if len(affinityScores) > 0 {
+		score -= affinityScores[0][node.ID]
+	}
+
+	return score
 }
 
 // CanFit checks if the node can fit a new VM with the given quota
@@ -111,19 +116,40 @@ func (b *BestOfK) UpdateConfig(config BestOfKConfig) {
 }
 
 // chooseNode selects the best node for placing a VM with the given quota
-func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources, buildMachineInfo machineinfo.MachineInfo, filterByLabels bool, requiredLabels []string) (bestNode *nodemanager.Node, err error) {
+func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources, buildMachineInfo machineinfo.MachineInfo, filterByLabels bool, requiredLabels []string, affinityScores ...map[string]float64) (bestNode *nodemanager.Node, err error) {
 	// Fix the config, we want to dynamically update it
 	config := b.getConfig()
+	var affinity map[string]float64
+	if len(affinityScores) > 0 {
+		affinity = affinityScores[0]
+	}
 
 	// Filter eligible nodes
 	candidates := b.sample(nodes, config, excludedNodes, resources, buildMachineInfo, filterByLabels, requiredLabels)
+	if len(affinity) > 0 {
+		seen := make(map[string]struct{}, len(candidates))
+		for _, n := range candidates {
+			seen[n.ID] = struct{}{}
+		}
+		for _, n := range nodes {
+			if affinity[n.ID] <= 0 {
+				continue
+			}
+			if _, ok := seen[n.ID]; ok {
+				continue
+			}
+			if b.isCandidate(n, config, excludedNodes, resources, buildMachineInfo, filterByLabels, requiredLabels) {
+				candidates = append(candidates, n)
+			}
+		}
+	}
 
 	// Find the best node among candidates
 	bestScore := math.MaxFloat64
 
 	for _, node := range candidates {
 		// Calculate score
-		score := b.Score(node, resources, config)
+		score := b.Score(node, resources, config, affinity)
 
 		if score < bestScore {
 			bestNode = node
@@ -136,6 +162,29 @@ func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, exclu
 	}
 
 	return bestNode, nil
+}
+
+func (b *BestOfK) isCandidate(node *nodemanager.Node, config BestOfKConfig, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources, buildMachineInfo machineinfo.MachineInfo, filterByLabels bool, requiredLabels []string) bool {
+	if _, ok := excludedNodes[node.ID]; ok {
+		return false
+	}
+	if node.Status() != api.NodeStatusReady {
+		return false
+	}
+	if !isNodeCPUCompatible(node, buildMachineInfo) {
+		return false
+	}
+	if filterByLabels && !isNodeLabelsCompatible(node, requiredLabels) {
+		return false
+	}
+	if config.CanFit && !b.CanFit(node, resources, config) {
+		return false
+	}
+	if config.TooManyStarting && node.PlacementMetrics.InProgressCount() > maxStartingInstancesPerNode {
+		return false
+	}
+
+	return true
 }
 
 // sample returns up to k items chosen uniformly from those passing ok.
@@ -163,40 +212,9 @@ func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, exclud
 
 		n := items[pick]
 
-		// Excluded filter
-		if _, ok := excludedNodes[n.ID]; ok {
-			continue
+		if b.isCandidate(n, config, excludedNodes, resources, buildMachineInfo, filterByLabels, requiredLabels) {
+			candidates = append(candidates, n)
 		}
-
-		// If the node is not ready, skip it
-		if n.Status() != api.NodeStatusReady {
-			continue
-		}
-
-		// Skip if node is not CPU compatible
-		if !isNodeCPUCompatible(n, buildMachineInfo) {
-			continue
-		}
-
-		// Skip if node doesn't have the required labels
-		if filterByLabels && !isNodeLabelsCompatible(n, requiredLabels) {
-			continue
-		}
-
-		if config.CanFit {
-			if !b.CanFit(n, resources, config) {
-				continue
-			}
-		}
-
-		if config.TooManyStarting {
-			// To prevent overloading the node
-			if n.PlacementMetrics.InProgressCount() > maxStartingInstancesPerNode {
-				continue
-			}
-		}
-
-		candidates = append(candidates, n)
 	}
 
 	return candidates
