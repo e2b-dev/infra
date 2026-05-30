@@ -170,9 +170,9 @@ var (
 		"maxAffinityScore":      10,
 		"maxScoreBonusPpm":      20000,
 		"buildWeightPpm":        1000,
-		"teamWeightPpm":         100,
-		"templateWeightPpm":     500,
-		"baseTemplateWeightPpm": 250,
+		"teamWeightPpm":         0,
+		"templateWeightPpm":     0,
+		"baseTemplateWeightPpm": 0,
 	}))
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())

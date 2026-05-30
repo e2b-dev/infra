@@ -27,9 +27,9 @@ const (
 	defaultPlacementAffinityMaxScore              = 10
 	defaultPlacementAffinityMaxScoreBonusPpm      = 20000
 	defaultPlacementAffinityBuildWeightPpm        = 1000
-	defaultPlacementAffinityTeamWeightPpm         = 100
-	defaultPlacementAffinityTemplateWeightPpm     = 500
-	defaultPlacementAffinityBaseTemplateWeightPpm = 250
+	defaultPlacementAffinityTeamWeightPpm         = 0
+	defaultPlacementAffinityTemplateWeightPpm     = 0
+	defaultPlacementAffinityBaseTemplateWeightPpm = 0
 )
 
 type placementAffinity struct {
