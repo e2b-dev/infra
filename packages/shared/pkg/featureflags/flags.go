@@ -170,6 +170,7 @@ var (
 		"maxAffinityScore":      10,
 		"maxScoreBonusPpm":      20000,
 		"buildWeightPpm":        1000,
+		"teamWeightPpm":         100,
 		"templateWeightPpm":     500,
 		"baseTemplateWeightPpm": 250,
 	}))

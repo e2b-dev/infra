@@ -27,6 +27,7 @@ const (
 	defaultPlacementAffinityMaxScore              = 10
 	defaultPlacementAffinityMaxScoreBonusPpm      = 20000
 	defaultPlacementAffinityBuildWeightPpm        = 1000
+	defaultPlacementAffinityTeamWeightPpm         = 100
 	defaultPlacementAffinityTemplateWeightPpm     = 500
 	defaultPlacementAffinityBaseTemplateWeightPpm = 250
 )
@@ -44,6 +45,7 @@ type placementAffinityConfig struct {
 	maxAffinityScore   float64
 	maxScoreBonus      float64
 	buildWeight        float64
+	teamWeight         float64
 	templateWeight     float64
 	baseTemplateWeight float64
 }
@@ -68,6 +70,7 @@ func placementAffinityConfigFromFlags(ctx context.Context, ff *featureflags.Clie
 		maxAffinityScore:   float64(jsonInt(v, "maxAffinityScore", defaultPlacementAffinityMaxScore, 1, 1000)),
 		maxScoreBonus:      jsonPPM(v, "maxScoreBonusPpm", defaultPlacementAffinityMaxScoreBonusPpm),
 		buildWeight:        jsonPPM(v, "buildWeightPpm", defaultPlacementAffinityBuildWeightPpm),
+		teamWeight:         jsonPPM(v, "teamWeightPpm", defaultPlacementAffinityTeamWeightPpm),
 		templateWeight:     jsonPPM(v, "templateWeightPpm", defaultPlacementAffinityTemplateWeightPpm),
 		baseTemplateWeight: jsonPPM(v, "baseTemplateWeightPpm", defaultPlacementAffinityBaseTemplateWeightPpm),
 	}
@@ -124,6 +127,7 @@ func (a *placementAffinity) record(ctx context.Context, cfg placementAffinityCon
 		weight float64
 	}{
 		{kind: "build", id: buildID, weight: cfg.buildWeight},
+		{kind: "team", id: teamID, weight: cfg.teamWeight},
 		{kind: "template", id: placementAffinityID(teamID, templateID), weight: cfg.templateWeight},
 		{kind: "base-template", id: placementAffinityID(teamID, baseTemplateID), weight: cfg.baseTemplateWeight},
 	} {
@@ -166,6 +170,7 @@ func (a *placementAffinity) scores(ctx context.Context, cfg placementAffinityCon
 		weight float64
 	}{
 		{kind: "build", id: buildID, weight: cfg.buildWeight},
+		{kind: "team", id: teamID, weight: cfg.teamWeight},
 		{kind: "template", id: placementAffinityID(teamID, templateID), weight: cfg.templateWeight},
 		{kind: "base-template", id: placementAffinityID(teamID, baseTemplateID), weight: cfg.baseTemplateWeight},
 	} {
