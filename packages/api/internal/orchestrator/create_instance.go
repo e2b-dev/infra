@@ -47,7 +47,6 @@ type SandboxMetadata struct {
 	TemplateID          string
 	BaseTemplateID      string
 	AutoPause           bool
-	AutoPauseMemory     *bool
 	AutoResume          *types.SandboxAutoResumeConfig
 	VolumeMounts        []*orchestrator.SandboxVolumeMount
 	EnvdAccessToken     *string
@@ -354,7 +353,6 @@ func (o *Orchestrator) CreateSandbox(
 		node.ID,
 		node.ClusterID,
 		sbxData.AutoPause,
-		sbxData.AutoPauseMemory,
 		sbxData.AutoResume,
 		sbxData.EnvdAccessToken,
 		sbxData.AllowInternetAccess,
