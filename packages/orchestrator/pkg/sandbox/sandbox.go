@@ -242,6 +242,8 @@ type Sandbox struct {
 
 	Template template.Template
 
+	DiskOnlySnapshot bool
+
 	Checks *Checks
 
 	hostStatsCollector *HostStatsCollector
@@ -1077,6 +1079,9 @@ func (s *Sandbox) Pause(
 	pauseOpts := pauseOptions{memorySnapshot: true}
 	for _, opt := range opts {
 		opt(&pauseOpts)
+	}
+	if s.DiskOnlySnapshot {
+		pauseOpts.memorySnapshot = false
 	}
 
 	cleanup := NewCleanup()

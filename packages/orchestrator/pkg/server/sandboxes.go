@@ -370,6 +370,7 @@ func (s *Server) createSandboxFromRootfs(
 
 		return nil, errors.Join(fmt.Errorf("wait for envd after rootfs reboot: %w", err), closeErr)
 	}
+	sbx.DiskOnlySnapshot = true
 
 	return sbx, nil
 }
@@ -657,7 +658,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	// Stop the old sandbox in background after we're done
 	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
 
-	memorySnapshot := memorySnapshotEnabled(ctx)
+	memorySnapshot := memorySnapshotEnabled(ctx) && !sbx.DiskOnlySnapshot
 	// Fire and forget - upload completes in the background
 	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), memorySnapshot)
 	if err != nil {
@@ -751,7 +752,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	sbxlogger.E(sbx).Info(ctx, "Checkpointing sandbox")
 
-	memorySnapshot := memorySnapshotEnabled(ctx)
+	memorySnapshot := memorySnapshotEnabled(ctx) && !sbx.DiskOnlySnapshot
 	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), memorySnapshot)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
