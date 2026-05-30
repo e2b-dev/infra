@@ -209,7 +209,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			req.GetEndTime().AsTime(),
 			req.GetSandbox(),
 		)
-		if errors.Is(err, storage.ErrObjectNotExist) {
+		if isResume && errors.Is(err, storage.ErrObjectNotExist) {
 			telemetry.ReportEvent(ctx, "memory snapshot files missing, rebooting from rootfs")
 			rebootFromRootfs = true
 			childSpan.SetAttributes(attribute.Bool("sandbox.reboot_from_rootfs", true))
