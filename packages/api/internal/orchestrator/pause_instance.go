@@ -31,7 +31,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	ctx, span := tracer.Start(ctx, "pause-sandbox")
 	defer span.End()
 
-	result, err := o.throttledUpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node, skipMemory))
+	result, err := o.throttledUpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node))
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error inserting snapshot for env", err)
 
@@ -107,13 +107,14 @@ func (o *Orchestrator) WaitForStateChange(ctx context.Context, teamID uuid.UUID,
 	return o.sandboxStore.WaitForStateChange(ctx, teamID, sandboxID)
 }
 
-func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node, skipMemory bool) queries.UpsertSnapshotParams {
+func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) queries.UpsertSnapshotParams {
 	machineInfo := node.MachineInfo()
 
 	metadata := types.JSONBStringMap(sbx.Metadata)
 	if metadata == nil {
 		metadata = types.JSONBStringMap{}
 	}
+
 	return queries.UpsertSnapshotParams{
 		// Used if there's no snapshot for this sandbox yet
 		TemplateID:     id.Generate(),

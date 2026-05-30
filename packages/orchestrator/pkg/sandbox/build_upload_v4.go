@@ -65,6 +65,7 @@ func (u *Upload) runV4(ctx context.Context) error {
 		if !u.snap.MemorySnapshot {
 			return nil
 		}
+
 		return storage.UploadBlob(ctx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), meta)
 	})
 
