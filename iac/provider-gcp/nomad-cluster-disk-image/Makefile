@@ -15,7 +15,15 @@ init:
 build:
 	terraform init -input=false -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
 	$(tf_vars) terraform apply -auto-approve -input=false -compact-warnings
-	packer build -var "gcp_project_id=$(GCP_PROJECT_ID)" -var "gcp_zone=$(GCP_ZONE)" -var "network_name=$(PACKER_NETWORK_NAME)" -var "subnet_name=$(PACKER_SUBNET_NAME)" .
+	packer build \
+	  	$(if $(CONSUL_VERSION),-var "consul_version=$(CONSUL_VERSION)") \
+		$(if $(NOMAD_VERSION),-var "nomad_version=$(NOMAD_VERSION)") \
+		$(if $(VAULT_VERSION),-var "vault_version=$(VAULT_VERSION)") \
+		$(if $(PACKER_NETWORK_NAME),-var "network_name=$(PACKER_NETWORK_NAME)") \
+		$(if $(PACKER_SUBNET_NAME),-var "subnet_name=$(PACKER_SUBNET_NAME)") \
+		-var "gcp_project_id=$(GCP_PROJECT_ID)" \
+		-var "gcp_zone=$(GCP_ZONE)" \
+		.
 
 format:
 	packer fmt .

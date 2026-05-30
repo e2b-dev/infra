@@ -6,13 +6,15 @@ init:
 
 build:
 	packer build \
-		-var "consul_version=$(CONSUL_VERSION)" \
-		-var "nomad_version=$(NOMAD_VERSION)" \
+		$(if $(CONSUL_VERSION),-var "consul_version=$(CONSUL_VERSION)") \
+		$(if $(NOMAD_VERSION),-var "nomad_version=$(NOMAD_VERSION)") \
+		$(if $(VAULT_VERSION),-var "vault_version=$(VAULT_VERSION)") \
+		$(if $(PACKER_NETWORK_NAME),-var "network_name=$(PACKER_NETWORK_NAME)") \
+		$(if $(PACKER_SUBNET_NAME),-var "subnet_name=$(PACKER_SUBNET_NAME)") \
 		-var "prefix=$(PREFIX)" \
 		-var "aws_region=$(AWS_REGION)" \
 		-var "aws_profile=$(AWS_PROFILE)" \
-		-var "vpc_id=$(PACKER_VPC_ID)" \
-		-var "subnet_id=$(PACKER_SUBNET_ID)" .
+		.
 
 format:
 	packer fmt .
