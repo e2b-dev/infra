@@ -20,7 +20,7 @@ import (
 const (
 	placementAffinityMinTimeoutMs                 = 10
 	placementAffinityMaxTimeoutMs                 = 2000
-	defaultPlacementAffinityTTLSeconds            = 14400
+	defaultPlacementAffinityTTLSeconds            = 90000
 	defaultPlacementAffinityTopNodes              = 20
 	defaultPlacementAffinityReadTimeoutMs         = 100
 	defaultPlacementAffinityWriteTimeoutMs        = 1000
@@ -61,7 +61,7 @@ func placementAffinityConfigFromFlags(ctx context.Context, ff *featureflags.Clie
 
 	return placementAffinityConfig{
 		enabled:            v.GetByKey("enabled").BoolValue(),
-		ttl:                time.Duration(jsonInt(v, "ttlSeconds", defaultPlacementAffinityTTLSeconds, 60, 86400)) * time.Second,
+		ttl:                time.Duration(jsonInt(v, "ttlSeconds", defaultPlacementAffinityTTLSeconds, 60, 90000)) * time.Second,
 		topNodes:           int64(jsonInt(v, "topNodes", defaultPlacementAffinityTopNodes, 1, 100)),
 		readTimeout:        time.Duration(jsonInt(v, "readTimeoutMs", defaultPlacementAffinityReadTimeoutMs, placementAffinityMinTimeoutMs, placementAffinityMaxTimeoutMs)) * time.Millisecond,
 		writeTimeout:       time.Duration(jsonInt(v, "writeTimeoutMs", defaultPlacementAffinityWriteTimeoutMs, placementAffinityMinTimeoutMs, placementAffinityMaxTimeoutMs)) * time.Millisecond,
@@ -111,14 +111,15 @@ func (a *placementAffinity) record(ctx context.Context, cfg placementAffinityCon
 	pipe := a.redis.Pipeline()
 	hasCommands := false
 	for _, item := range []struct {
-		kind string
-		id   string
+		kind   string
+		id     string
+		weight float64
 	}{
-		{kind: "build", id: buildID},
-		{kind: "template", id: templateID},
-		{kind: "base-template", id: baseTemplateID},
+		{kind: "build", id: buildID, weight: cfg.buildWeight},
+		{kind: "template", id: templateID, weight: cfg.templateWeight},
+		{kind: "base-template", id: baseTemplateID, weight: cfg.baseTemplateWeight},
 	} {
-		if item.id == "" {
+		if item.id == "" || item.weight == 0 {
 			continue
 		}
 

@@ -300,10 +300,14 @@ func (o *Orchestrator) CreateSandbox(
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 
 	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
+	affinityBuildID := sbxData.Build.ID.String()
+	if isResume {
+		affinityBuildID = ""
+	}
 	placementCacheAffinityConfig := placementAffinityConfigFromFlags(ctx, o.featureFlagsClient, featureflags.TeamContext(team.ID.String()), featureflags.TemplateContext(sbxData.TemplateID), featureflags.SandboxContext(sandboxID))
 	var affinityScores map[string]float64
 	if placementCacheAffinityConfig.enabled {
-		affinityScores = o.placementAffinity.scores(ctx, placementCacheAffinityConfig, nodeClusterID, sbxData.Build.ID.String(), sbxData.TemplateID, sbxData.BaseTemplateID)
+		affinityScores = o.placementAffinity.scores(ctx, placementCacheAffinityConfig, nodeClusterID, affinityBuildID, sbxData.TemplateID, sbxData.BaseTemplateID)
 	}
 
 	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels, affinityScores)
@@ -323,7 +327,7 @@ func (o *Orchestrator) CreateSandbox(
 	}
 	o.createdSandboxesCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
 	if placementCacheAffinityConfig.enabled {
-		o.placementAffinity.record(ctx, placementCacheAffinityConfig, nodeClusterID, node.ID, sbxData.Build.ID.String(), sbxData.TemplateID, sbxData.BaseTemplateID)
+		o.placementAffinity.record(ctx, placementCacheAffinityConfig, nodeClusterID, node.ID, affinityBuildID, sbxData.TemplateID, sbxData.BaseTemplateID)
 	}
 
 	telemetry.SetAttributes(ctx, attribute.String("node.id", node.ID))

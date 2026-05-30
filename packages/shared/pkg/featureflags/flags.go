@@ -163,7 +163,7 @@ var (
 
 	SandboxPlacementCacheAffinityFlag = NewJSONFlag("sandbox-placement-cache-affinity", ldvalue.FromJSONMarshal(map[string]any{
 		"enabled":               false,
-		"ttlSeconds":            14400,
+		"ttlSeconds":            90000,
 		"topNodes":              20,
 		"readTimeoutMs":         100,
 		"writeTimeoutMs":        1000,
