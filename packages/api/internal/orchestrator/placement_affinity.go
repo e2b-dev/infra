@@ -101,7 +101,15 @@ func placementAffinityKey(clusterID uuid.UUID, kind, id string) string {
 	return fmt.Sprintf("placement-affinity:%s:%s:%s", clusterID, kind, id)
 }
 
-func (a *placementAffinity) record(ctx context.Context, cfg placementAffinityConfig, clusterID uuid.UUID, nodeID, buildID, templateID, baseTemplateID string) {
+func placementAffinityID(teamID, id string) string {
+	if id == "" || teamID == "" {
+		return id
+	}
+
+	return teamID + ":" + id
+}
+
+func (a *placementAffinity) record(ctx context.Context, cfg placementAffinityConfig, clusterID uuid.UUID, teamID, nodeID, buildID, templateID, baseTemplateID string) {
 	if a == nil || nodeID == "" {
 		return
 	}
@@ -116,8 +124,8 @@ func (a *placementAffinity) record(ctx context.Context, cfg placementAffinityCon
 		weight float64
 	}{
 		{kind: "build", id: buildID, weight: cfg.buildWeight},
-		{kind: "template", id: templateID, weight: cfg.templateWeight},
-		{kind: "base-template", id: baseTemplateID, weight: cfg.baseTemplateWeight},
+		{kind: "template", id: placementAffinityID(teamID, templateID), weight: cfg.templateWeight},
+		{kind: "base-template", id: placementAffinityID(teamID, baseTemplateID), weight: cfg.baseTemplateWeight},
 	} {
 		if item.id == "" || item.weight == 0 {
 			continue
@@ -139,7 +147,7 @@ func (a *placementAffinity) record(ctx context.Context, cfg placementAffinityCon
 	}
 }
 
-func (a *placementAffinity) scores(ctx context.Context, cfg placementAffinityConfig, clusterID uuid.UUID, buildID, templateID, baseTemplateID string) map[string]float64 {
+func (a *placementAffinity) scores(ctx context.Context, cfg placementAffinityConfig, clusterID uuid.UUID, teamID, buildID, templateID, baseTemplateID string) map[string]float64 {
 	if a == nil {
 		return nil
 	}
@@ -158,8 +166,8 @@ func (a *placementAffinity) scores(ctx context.Context, cfg placementAffinityCon
 		weight float64
 	}{
 		{kind: "build", id: buildID, weight: cfg.buildWeight},
-		{kind: "template", id: templateID, weight: cfg.templateWeight},
-		{kind: "base-template", id: baseTemplateID, weight: cfg.baseTemplateWeight},
+		{kind: "template", id: placementAffinityID(teamID, templateID), weight: cfg.templateWeight},
+		{kind: "base-template", id: placementAffinityID(teamID, baseTemplateID), weight: cfg.baseTemplateWeight},
 	} {
 		if item.id == "" || item.weight == 0 {
 			continue
