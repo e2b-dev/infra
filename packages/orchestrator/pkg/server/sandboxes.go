@@ -591,7 +591,7 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	)
 
 	return &orchestrator.SandboxPauseResponse{
-		SchedulingMetadata: res.SchedulingMetadata,
+		SchedulingMetadata: res.schedulingMetadata,
 	}, nil
 }
 
@@ -744,7 +744,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	telemetry.ReportEvent(ctx, "Checkpoint completed")
 
 	return &orchestrator.SandboxCheckpointResponse{
-		SchedulingMetadata: res.SchedulingMetadata,
+		SchedulingMetadata: res.schedulingMetadata,
 	}, nil
 }
 
@@ -782,9 +782,10 @@ func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
 // snapshotResult holds the data produced by snapshotAndCacheSandbox that
 // callers need to start the background remote storage upload.
 type snapshotResult struct {
-	meta           metadata.Template
-	upload         *sandbox.Upload
-	completeUpload func(ctx context.Context, uploadErr error)
+	meta               metadata.Template
+	schedulingMetadata *orchestrator.SnapshotSchedulingMetadata
+	upload             *sandbox.Upload
+	completeUpload     func(ctx context.Context, uploadErr error)
 }
 
 // snapshotAndCacheSandbox creates a snapshot of a sandbox and adds it to the
@@ -863,9 +864,10 @@ func (s *Server) snapshotAndCacheSandbox(
 	}
 
 	return &snapshotResult{
-		meta:           meta,
-		upload:         upload,
-		completeUpload: completeUpload,
+		meta:               meta,
+		schedulingMetadata: snapshot.SchedulingMetadata,
+		upload:             upload,
+		completeUpload:     completeUpload,
 	}, nil
 }
 
