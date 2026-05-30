@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"time"
@@ -116,7 +117,7 @@ func (a *placementAffinity) scores(ctx context.Context, clusterID uuid.UUID, bui
 	}
 
 	_, err := pipe.Exec(ctx)
-	if err != nil && err != redis.Nil {
+	if err != nil && !errors.Is(err, redis.Nil) {
 		logger.L().Debug(ctx, "failed to read placement affinity", zap.Error(err))
 
 		return nil
