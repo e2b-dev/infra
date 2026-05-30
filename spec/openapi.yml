@@ -689,6 +689,10 @@ components:
           type: boolean
           default: false
           description: Automatically pauses the sandbox after the timeout
+        autoPauseMemory:
+          type: boolean
+          default: true
+          description: Whether auto-pause should persist memory state. Set false to snapshot disk only and reboot on next start.
         autoResume:
           $ref: "#/components/schemas/SandboxAutoResumeConfig"
         secure:
@@ -724,6 +728,9 @@ components:
           type: boolean
           deprecated: true
           description: Automatically pauses the sandbox after the timeout
+        reboot:
+          type: boolean
+          description: Recreate the sandbox from the snapshot filesystem and discard memory state.
 
     ConnectSandbox:
       type: object
@@ -735,6 +742,9 @@ components:
           type: integer
           format: int32
           minimum: 0
+        reboot:
+          type: boolean
+          description: Recreate the sandbox from the snapshot filesystem and discard memory state.
 
     TeamMetric:
       description: Team metric with timestamp
@@ -2554,6 +2564,10 @@ paths:
                 name:
                   type: string
                   description: Optional name for the snapshot template. If a snapshot template with this name already exists, a new build will be assigned to the existing template instead of creating a new one.
+                memory:
+                  type: boolean
+                  default: true
+                  description: Whether to persist memory state. Set false to snapshot disk only and reboot on next start.
       responses:
         "201":
           description: Snapshot created successfully

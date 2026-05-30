@@ -15,9 +15,13 @@ import (
 )
 
 func (u *Upload) runV3(ctx context.Context) error {
-	memfilePath, err := u.snap.MemfileDiff.CachePath(ctx)
-	if err != nil {
-		return fmt.Errorf("error getting memfile diff path: %w", err)
+	memfilePath := ""
+	if u.snap.MemorySnapshot {
+		var err error
+		memfilePath, err = u.snap.MemfileDiff.CachePath(ctx)
+		if err != nil {
+			return fmt.Errorf("error getting memfile diff path: %w", err)
+		}
 	}
 
 	rootfsPath, err := u.snap.RootfsDiff.CachePath(ctx)
@@ -28,6 +32,9 @@ func (u *Upload) runV3(ctx context.Context) error {
 	eg, egCtx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
+		if !u.snap.MemorySnapshot {
+			return nil
+		}
 		h, err := u.snap.MemfileDiffHeader.WaitWithContext(egCtx)
 		if err != nil {
 			return fmt.Errorf("wait memfile diff header: %w", err)
@@ -54,6 +61,9 @@ func (u *Upload) runV3(ctx context.Context) error {
 	meta := storage.WithMetadata(u.objectMetadata)
 
 	eg.Go(func() error {
+		if !u.snap.MemorySnapshot {
+			return nil
+		}
 		if memfilePath == "" {
 			return nil
 		}
@@ -90,6 +100,10 @@ func (u *Upload) runV3(ctx context.Context) error {
 	})
 
 	eg.Go(func() error {
+		if !u.snap.MemorySnapshot {
+			return nil
+		}
+
 		return uploadBlobWithMetrics(egCtx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), uploadFileSnap, meta)
 	})
 
@@ -103,9 +117,13 @@ func (u *Upload) runV3(ctx context.Context) error {
 
 	// Body uploads done; headers must be ready by now (the per-file Goroutines
 	// above already Wait-ed). Wait() is a fast lookup here.
-	memfileDiffHeader, err := u.snap.MemfileDiffHeader.WaitWithContext(ctx)
-	if err != nil {
-		return fmt.Errorf("wait memfile diff header: %w", err)
+	var memfileDiffHeader *headers.Header
+	if u.snap.MemorySnapshot {
+		var err error
+		memfileDiffHeader, err = u.snap.MemfileDiffHeader.WaitWithContext(ctx)
+		if err != nil {
+			return fmt.Errorf("wait memfile diff header: %w", err)
+		}
 	}
 	rootfsDiffHeader, err := u.snap.RootfsDiffHeader.WaitWithContext(ctx)
 	if err != nil {

@@ -48,6 +48,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 
 		return
 	}
+	rebootFromRootfs := body.Reboot != nil && *body.Reboot
 
 	teamID := teamInfo.Team.ID
 
@@ -152,6 +153,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		a.buildResumeSandboxData(sandboxID, nil),
 		&c.Request.Header,
 		true,
+		rebootFromRootfs,
 		nil, // mcp
 	)
 	if createErr != nil {

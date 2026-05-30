@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
@@ -30,6 +31,8 @@ type SnapshotTemplateOpts struct {
 	Namespace *string
 	// Tag is the build tag parsed from the name, defaults to "default".
 	Tag string
+	// SkipMemory controls whether the snapshot template should omit VM memory.
+	SkipMemory bool
 }
 
 // CreateSnapshotTemplate creates a persistent snapshot template from a running sandbox and immediately resumes it.
@@ -67,7 +70,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 		return SnapshotTemplateResult{}, fmt.Errorf("node '%s' not found", sbx.NodeID)
 	}
 
-	upsertResult, err := o.throttledUpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node))
+	upsertResult, err := o.throttledUpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node, opts.SkipMemory))
 	if err != nil {
 		return SnapshotTemplateResult{}, fmt.Errorf("error upserting snapshot: %w", err)
 	}
@@ -84,6 +87,9 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	// kills the sandbox itself; RemoveSandbox is still needed to clean up
 	// API-side state (store, routing, analytics).
 	client, childCtx := node.GetClient(ctx)
+	if opts.SkipMemory {
+		childCtx = metadata.AppendToOutgoingContext(childCtx, orchestrator.SandboxMemorySnapshotGRPCMetadataKey, "false")
+	}
 	_, err = client.Sandbox.Checkpoint(childCtx, &orchestrator.SandboxCheckpointRequest{
 		SandboxId: sbx.SandboxID,
 		BuildId:   upsertResult.BuildID.String(),

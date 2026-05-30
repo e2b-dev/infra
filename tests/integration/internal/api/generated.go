@@ -325,6 +325,9 @@ type CPUCount = int32
 
 // ConnectSandbox defines model for ConnectSandbox.
 type ConnectSandbox struct {
+	// Reboot Recreate the sandbox from the snapshot filesystem and discard memory state.
+	Reboot *bool `json:"reboot,omitempty"`
+
 	// Timeout Timeout in seconds from the current time after which the sandbox should expire
 	Timeout int32 `json:"timeout"`
 }
@@ -553,6 +556,9 @@ type NewSandbox struct {
 	// AutoPause Automatically pauses the sandbox after the timeout
 	AutoPause *bool `json:"autoPause,omitempty"`
 
+	// AutoPauseMemory Whether auto-pause should persist memory state. Set false to snapshot disk only and reboot on next start.
+	AutoPauseMemory *bool `json:"autoPauseMemory,omitempty"`
+
 	// AutoResume Auto-resume configuration for paused sandboxes.
 	AutoResume *SandboxAutoResumeConfig `json:"autoResume,omitempty"`
 	EnvVars    *EnvVars                 `json:"envVars,omitempty"`
@@ -708,6 +714,9 @@ type ResumedSandbox struct {
 	// AutoPause Automatically pauses the sandbox after the timeout
 	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	AutoPause *bool `json:"autoPause,omitempty"`
+
+	// Reboot Recreate the sandbox from the snapshot filesystem and discard memory state.
+	Reboot *bool `json:"reboot,omitempty"`
 
 	// Timeout Time to live for the sandbox in seconds.
 	Timeout *int32 `json:"timeout,omitempty"`
@@ -1505,6 +1514,9 @@ type PostSandboxesSandboxIDRefreshesJSONBody struct {
 
 // PostSandboxesSandboxIDSnapshotsJSONBody defines parameters for PostSandboxesSandboxIDSnapshots.
 type PostSandboxesSandboxIDSnapshotsJSONBody struct {
+	// Memory Whether to persist memory state. Set false to snapshot disk only and reboot on next start.
+	Memory *bool `json:"memory,omitempty"`
+
 	// Name Optional name for the snapshot template. If a snapshot template with this name already exists, a new build will be assigned to the existing template instead of creating a new one.
 	Name *string `json:"name,omitempty"`
 }

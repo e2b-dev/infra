@@ -54,6 +54,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	}
 
 	telemetry.ReportEvent(ctx, "Parsed body")
+	rebootFromRootfs := body.Reboot != nil && *body.Reboot
 
 	timeout := sandbox.SandboxTimeoutDefault
 	if body.Timeout != nil {
@@ -160,6 +161,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		a.buildResumeSandboxData(sandboxID, body.AutoPause),
 		&c.Request.Header,
 		true,
+		rebootFromRootfs,
 		nil, // mcp
 	)
 	if createErr != nil {
@@ -227,8 +229,10 @@ func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *b
 		var network *types.SandboxNetworkConfig
 		var autoResume *types.SandboxAutoResumeConfig
 		var volumes []*types.SandboxVolumeMountConfig
+		var autoPauseMemory *bool
 		if snap.Config != nil {
 			network = snap.Config.Network
+			autoPauseMemory = snap.Config.AutoPauseMemory
 			autoResume = snap.Config.AutoResume
 			volumes = snap.Config.VolumeMounts
 		}
@@ -242,6 +246,7 @@ func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *b
 			TemplateID:          snap.EnvID,
 			BaseTemplateID:      snap.BaseEnvID,
 			AutoPause:           autoPause,
+			AutoPauseMemory:     autoPauseMemory,
 			AutoResume:          autoResume,
 			VolumeMounts:        convertDatabaseMountsToOrchestratorMounts(volumes),
 			EnvdAccessToken:     envdAccessToken,

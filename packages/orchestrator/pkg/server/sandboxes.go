@@ -19,21 +19,27 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
+	grpcmetadata "google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/events"
+	fcmodels "github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -68,6 +74,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	defer childSpan.End()
 
 	isResume := req.GetSandbox().GetSnapshot()
+	rebootFromRootfs := rebootFromRootfsEnabled(ctx)
 	createStart := time.Now()
 	defer func() {
 		if createErr != nil {
@@ -77,6 +84,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		s.sandboxCreateDuration.Record(ctx, time.Since(createStart).Milliseconds(),
 			metric.WithAttributes(
 				attribute.Bool("sandbox.resume", isResume),
+				attribute.Bool("sandbox.reboot_from_rootfs", rebootFromRootfs),
 			),
 		)
 	}()
@@ -88,6 +96,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		telemetry.WithKernelVersion(req.GetSandbox().GetKernelVersion()),
 		telemetry.WithSandboxID(req.GetSandbox().GetSandboxId()),
 		telemetry.WithEnvdVersion(req.GetSandbox().GetEnvdVersion()),
+		attribute.Bool("sandbox.reboot_from_rootfs", rebootFromRootfs),
 	)
 
 	// setup launch darkly
@@ -187,15 +196,26 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		SandboxType: sandbox.SandboxTypeSandbox,
 	}
 
-	sbx, err := s.sandboxFactory.ResumeSandbox(
-		ctx,
-		template,
-		config,
-		runtime,
-		req.GetStartTime().AsTime(),
-		req.GetEndTime().AsTime(),
-		req.GetSandbox(),
-	)
+	var sbx *sandbox.Sandbox
+	if rebootFromRootfs {
+		sbx, err = s.createSandboxFromRootfs(ctx, template, config, runtime, req)
+	} else {
+		sbx, err = s.sandboxFactory.ResumeSandbox(
+			ctx,
+			template,
+			config,
+			runtime,
+			req.GetStartTime().AsTime(),
+			req.GetEndTime().AsTime(),
+			req.GetSandbox(),
+		)
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			telemetry.ReportEvent(ctx, "memory snapshot files missing, rebooting from rootfs")
+			rebootFromRootfs = true
+			childSpan.SetAttributes(attribute.Bool("sandbox.reboot_from_rootfs", true))
+			sbx, err = s.createSandboxFromRootfs(ctx, template, config, runtime, req)
+		}
+	}
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
 			// Snapshot data not found, let the API know the data aren't probably upload yet
@@ -271,6 +291,85 @@ func createVolumeMountModelsFromAPI(volumeMounts []*orchestrator.SandboxVolumeMo
 	}
 
 	return results, errors.Join(errs...)
+}
+
+func memorySnapshotEnabled(ctx context.Context) bool {
+	values := grpcmetadata.ValueFromIncomingContext(ctx, orchestrator.SandboxMemorySnapshotGRPCMetadataKey)
+	if len(values) == 0 {
+		return true
+	}
+
+	return values[0] != orchestrator.SandboxMemorySnapshotGRPCValueFalse
+}
+
+func rebootFromRootfsEnabled(ctx context.Context) bool {
+	values := grpcmetadata.ValueFromIncomingContext(ctx, orchestrator.SandboxRebootFromRootfsGRPCMetadataKey)
+	return len(values) > 0 && values[0] == "true"
+}
+
+func (s *Server) createSandboxFromRootfs(
+	ctx context.Context,
+	template sbxtemplate.Template,
+	config *sandbox.Config,
+	runtime sandbox.RuntimeMetadata,
+	req *orchestrator.SandboxCreateRequest,
+) (*sandbox.Sandbox, error) {
+	pageSize := int64(header.PageSize)
+	if config.HugePages {
+		pageSize = int64(header.HugepageSize)
+	}
+
+	buildID, err := uuid.Parse(template.Files().BuildID)
+	if err != nil {
+		return nil, fmt.Errorf("parse build id: %w", err)
+	}
+
+	memfile, err := block.NewEmpty(
+		units.MBToBytes(config.RamMB),
+		pageSize,
+		buildID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create empty memfile: %w", err)
+	}
+
+	maskedTemplate := sbxtemplate.NewMaskTemplate(template, sbxtemplate.WithMemfile(memfile))
+	ioEngine := fcmodels.DriveIoEngineSync
+	kvmClock, err := utils.IsGTEVersion(config.Envd.Version, "0.2.11")
+	if err != nil {
+		return nil, fmt.Errorf("compare envd version: %w", err)
+	}
+
+	timeout := req.GetEndTime().AsTime().Sub(req.GetStartTime().AsTime())
+	if timeout <= 0 {
+		timeout = s.config.EnvdTimeout
+	}
+	sbx, err := s.sandboxFactory.CreateSandbox(
+		ctx,
+		config,
+		runtime,
+		maskedTemplate,
+		timeout,
+		"",
+		fc.ProcessOptions{
+			InitScriptPath: constants.SystemdInitPath,
+			KvmClock:       kvmClock,
+			IoEngine:       &ioEngine,
+		},
+		req.GetSandbox(),
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := sbx.WaitForEnvd(ctx, timeout); err != nil {
+		closeErr := sbx.Close(context.WithoutCancel(ctx))
+
+		return nil, errors.Join(fmt.Errorf("wait for envd after rootfs reboot: %w", err), closeErr)
+	}
+
+	return sbx, nil
 }
 
 func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequest) (*emptypb.Empty, error) {
@@ -556,8 +655,9 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	// Stop the old sandbox in background after we're done
 	defer s.stopSandboxAsync(context.WithoutCancel(ctx), sbx)
 
+	memorySnapshot := memorySnapshotEnabled(ctx)
 	// Fire and forget - upload completes in the background
-	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId())
+	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), memorySnapshot)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -649,7 +749,8 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	sbxlogger.E(sbx).Info(ctx, "Checkpointing sandbox")
 
-	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId())
+	memorySnapshot := memorySnapshotEnabled(ctx)
+	res, err := s.snapshotAndCacheSandbox(ctx, sbx, in.GetBuildId(), memorySnapshot)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error snapshotting sandbox for checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -665,26 +766,36 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		return nil, status.Errorf(codes.Internal, "error getting template for resume: %s", err)
 	}
 
+	runtime := sandbox.RuntimeMetadata{
+		TemplateID:  sbx.Runtime.TemplateID,
+		SandboxID:   sbx.Runtime.SandboxID,
+		ExecutionID: sbx.Runtime.ExecutionID,
+		TeamID:      sbx.Runtime.TeamID,
+		BuildID:     sbx.Runtime.BuildID,
+		SandboxType: sbx.Runtime.SandboxType,
+	}
+
 	// Resume the sandbox keeping the same ExecutionID (stable identity for
 	// the API, routing catalog, and analytics) but with a fresh LifecycleID
 	// so the old sandbox's cleanup goroutine won't
 	// accidentally evict the resumed sandbox from the map.
-	resumedSbx, err := s.sandboxFactory.ResumeSandbox(
-		ctx,
-		template,
-		sbx.Config,
-		sandbox.RuntimeMetadata{
-			TemplateID:  sbx.Runtime.TemplateID,
-			SandboxID:   sbx.Runtime.SandboxID,
-			ExecutionID: sbx.Runtime.ExecutionID,
-			TeamID:      sbx.Runtime.TeamID,
-			BuildID:     sbx.Runtime.BuildID,
-			SandboxType: sbx.Runtime.SandboxType,
-		},
-		sbx.GetStartedAt(),
-		sbx.GetEndAt(),
-		sbx.APIStoredConfig,
-	)
+	var resumedSbx *sandbox.Sandbox
+	if memorySnapshot {
+		resumedSbx, err = s.sandboxFactory.ResumeSandbox(
+			ctx,
+			template,
+			sbx.Config,
+			runtime,
+			sbx.GetStartedAt(),
+			sbx.GetEndAt(),
+			sbx.APIStoredConfig,
+		)
+	} else {
+		resumedSbx, err = s.createSandboxFromRootfs(ctx, template, sbx.Config, runtime, &orchestrator.SandboxCreateRequest{
+			StartTime: timestamppb.New(sbx.GetStartedAt()),
+			EndTime:   timestamppb.New(sbx.GetEndAt()),
+		})
+	}
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error resuming sandbox after checkpoint", err, telemetry.WithSandboxID(in.GetSandboxId()))
 
@@ -692,16 +803,20 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	}
 
 	// Collect prefetch data immediately after resume while it's most accurate
-	prefetchData, prefetchErr := resumedSbx.MemoryPrefetchData(ctx)
-	if prefetchErr != nil {
-		sbxlogger.I(resumedSbx).Warn(ctx, "failed to get prefetch data for checkpoint", zap.Error(prefetchErr))
+	var prefetchData block.PrefetchData
+	var prefetchErr error
+	if memorySnapshot {
+		prefetchData, prefetchErr = resumedSbx.MemoryPrefetchData(ctx)
+		if prefetchErr != nil {
+			sbxlogger.I(resumedSbx).Warn(ctx, "failed to get prefetch data for checkpoint", zap.Error(prefetchErr))
+		}
 	}
 
 	// Setup lifecycle for the resumed sandbox
 	s.setupSandboxLifecycle(ctx, resumedSbx)
 
 	// Embed prefetch data into the metadata so it's uploaded with the snapshot files in a single pass.
-	if prefetchErr == nil {
+	if memorySnapshot && prefetchErr == nil {
 		prefetchMapping := metadata.PrefetchEntriesToMapping(slices.Collect(maps.Values(prefetchData.BlockEntries)), prefetchData.BlockSize)
 		if prefetchMapping != nil {
 			res.meta = res.meta.WithPrefetch(&metadata.Prefetch{
@@ -790,6 +905,7 @@ func (s *Server) snapshotAndCacheSandbox(
 	ctx context.Context,
 	sbx *sandbox.Sandbox,
 	buildID string,
+	memorySnapshot bool,
 ) (*snapshotResult, error) {
 	meta, err := sbx.Template.Metadata()
 	if err != nil {
@@ -802,7 +918,7 @@ func (s *Server) snapshotAndCacheSandbox(
 		FirecrackerVersion: sbx.Config.FirecrackerConfig.FirecrackerVersion,
 	})
 
-	snapshot, err := sbx.Pause(ctx, meta, sandbox.SnapshotUseCasePause)
+	snapshot, err := sbx.Pause(ctx, meta, sandbox.SnapshotUseCasePause, sandbox.WithMemorySnapshot(memorySnapshot))
 	if err != nil {
 		return nil, fmt.Errorf("error snapshotting sandbox: %w", err)
 	}

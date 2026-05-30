@@ -108,6 +108,27 @@ func (s *Sandbox) bestEffortReclaim(ctx context.Context) {
 	}
 }
 
+func (s *Sandbox) bestEffortGuestSync(ctx context.Context) {
+	const syncTimeout = 2 * time.Second
+
+	rcCtx, cancel := context.WithTimeout(ctx, syncTimeout)
+	defer cancel()
+
+	stream, err := s.StartEnvdSystemShell(rcCtx, "/bin/sh", []string{"-c", "sync"}, "root", syncTimeout)
+	if err != nil {
+		logger.L().Warn(ctx, "envd sync failed", logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
+
+		return
+	}
+	defer stream.Close()
+
+	for stream.Receive() {
+	}
+	if err := stream.Err(); err != nil {
+		logger.L().Warn(ctx, "envd sync stream error", logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
+	}
+}
+
 // envdSupportsCgroupFreeze reports whether the sandbox's envd exposes the
 // native /freeze and /unfreeze endpoints. Bad version strings log and return
 // false so we never accidentally call an unsupported endpoint.
