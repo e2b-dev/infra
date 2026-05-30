@@ -792,6 +792,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 		)
 	} else {
 		resumedSbx, err = s.createSandboxFromRootfs(ctx, template, sbx.Config, runtime, &orchestrator.SandboxCreateRequest{
+			Sandbox:   sbx.APIStoredConfig,
 			StartTime: timestamppb.New(sbx.GetStartedAt()),
 			EndTime:   timestamppb.New(sbx.GetEndAt()),
 		})
