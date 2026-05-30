@@ -70,9 +70,10 @@ func (r KillReason) String() string {
 
 // RemoveOpts bundles the parameters that control sandbox removal.
 type RemoveOpts struct {
-	Action   StateAction
-	Eviction bool
-	Reason   KillReason
+	Action     StateAction
+	Eviction   bool
+	Reason     KillReason
+	SkipMemory bool
 }
 
 var AllowedTransitions = map[State]map[State]bool{

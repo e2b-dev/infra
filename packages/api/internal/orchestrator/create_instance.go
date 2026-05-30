@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -46,6 +47,7 @@ type SandboxMetadata struct {
 	TemplateID          string
 	BaseTemplateID      string
 	AutoPause           bool
+	AutoPauseMemory     *bool
 	AutoResume          *types.SandboxAutoResumeConfig
 	VolumeMounts        []*orchestrator.SandboxVolumeMount
 	EnvdAccessToken     *string
@@ -127,6 +129,7 @@ func (o *Orchestrator) CreateSandbox(
 	timeout time.Duration,
 	isResume bool,
 	creationMeta sandbox.CreationMetadata,
+	rebootFromRootfsOpt ...bool,
 ) (sbx sandbox.Sandbox, apiErr *api.APIError) {
 	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -252,6 +255,10 @@ func (o *Orchestrator) CreateSandbox(
 			TimeoutSeconds: sbxData.AutoResume.Timeout,
 		}
 	}
+	rebootFromRootfs := len(rebootFromRootfsOpt) > 0 && rebootFromRootfsOpt[0]
+	if rebootFromRootfs {
+		ctx = metadata.AppendToOutgoingContext(ctx, orchestrator.SandboxRebootFromRootfsGRPCMetadataKey, "true")
+	}
 
 	sbxRequest := &orchestrator.SandboxCreateRequest{
 		Sandbox: &orchestrator.SandboxConfig{
@@ -347,6 +354,7 @@ func (o *Orchestrator) CreateSandbox(
 		node.ID,
 		node.ClusterID,
 		sbxData.AutoPause,
+		sbxData.AutoPauseMemory,
 		sbxData.AutoResume,
 		sbxData.EnvdAccessToken,
 		sbxData.AllowInternetAccess,
@@ -365,12 +373,10 @@ func (o *Orchestrator) CreateSandbox(
 		// Copy to a new variable to avoid race conditions
 		sbxToRemove := sbx
 		go func() {
-			killErr := o.removeSandboxFromNode(
-				context.WithoutCancel(ctx),
-				sbxToRemove,
-				sandbox.StateActionKill,
-				sandbox.KillReasonUnknown,
-			)
+			killErr := o.removeSandboxFromNode(context.WithoutCancel(ctx), sbxToRemove, sandbox.RemoveOpts{
+				Action: sandbox.StateActionKill,
+				Reason: sandbox.KillReasonUnknown,
+			})
 			if killErr != nil {
 				logger.L().Error(ctx, "Error removing sandbox",
 					zap.Error(killErr),

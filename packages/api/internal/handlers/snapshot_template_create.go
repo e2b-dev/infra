@@ -59,6 +59,9 @@ func (a *APIStore) PostSandboxesSandboxIDSnapshots(c *gin.Context, sandboxID api
 	opts := orchestrator.SnapshotTemplateOpts{
 		Tag: id.DefaultTag,
 	}
+	if body.Memory != nil {
+		opts.SkipMemory = !*body.Memory
+	}
 
 	if body.Name != nil {
 		identifier, tag, err := id.ParseName(*body.Name)

@@ -104,7 +104,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 	defer func() { go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action) }()
 	// Once we start the removal process, we want to make sure it gets removed from the store
 	defer o.sandboxStore.Remove(context.WithoutCancel(ctx), teamID, sandboxID)
-	err = o.removeSandboxFromNode(ctx, sbx, opts.Action, opts.Reason)
+	err = o.removeSandboxFromNode(ctx, sbx, opts)
 	if err != nil {
 		fields := []zap.Field{
 			zap.String("state_action", opts.Action.Name),
@@ -123,12 +123,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 	return nil
 }
 
-func (o *Orchestrator) removeSandboxFromNode(
-	ctx context.Context,
-	sbx sandbox.Sandbox,
-	stateAction sandbox.StateAction,
-	reason sandbox.KillReason,
-) error {
+func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sandbox, opts sandbox.RemoveOpts) error {
 	ctx, span := tracer.Start(ctx, "remove-sandbox-from-node")
 	defer span.End()
 
@@ -137,8 +132,8 @@ func (o *Orchestrator) removeSandboxFromNode(
 		fields := []zap.Field{
 			logger.WithNodeID(sbx.NodeID),
 		}
-		if stateAction == sandbox.StateActionKill {
-			fields = append(fields, zap.String("kill_reason", reason.String()))
+		if opts.Action == sandbox.StateActionKill {
+			fields = append(fields, zap.String("kill_reason", opts.Reason.String()))
 		}
 
 		logger.L().Error(ctx, "failed to get node", fields...)
@@ -156,8 +151,8 @@ func (o *Orchestrator) removeSandboxFromNode(
 				zap.Error(err),
 				logger.WithSandboxID(sbx.SandboxID),
 			}
-			if stateAction == sandbox.StateActionKill {
-				fields = append(fields, zap.String("kill_reason", reason.String()))
+			if opts.Action == sandbox.StateActionKill {
+				fields = append(fields, zap.String("kill_reason", opts.Reason.String()))
 			}
 
 			logger.L().Error(ctx, "error removing routing record from catalog", fields...)
@@ -166,12 +161,12 @@ func (o *Orchestrator) removeSandboxFromNode(
 
 	sbxlogger.I(sbx).Debug(ctx, "Removing sandbox",
 		zap.Bool("auto_pause", sbx.AutoPause),
-		zap.String("state_action", stateAction.Name),
+		zap.String("state_action", opts.Action.Name),
 	)
 
-	switch stateAction {
+	switch opts.Action {
 	case sandbox.StateActionPause:
-		err := o.pauseSandbox(ctx, node, sbx)
+		err := o.pauseSandbox(ctx, node, sbx, opts.SkipMemory)
 		if err != nil {
 			if dberrors.IsForeignKeyViolation(err) {
 				killErr := o.killSandboxOnNode(ctx, node, sbx, sandbox.KillReasonBaseTemplateMissing)
@@ -191,7 +186,7 @@ func (o *Orchestrator) removeSandboxFromNode(
 
 		return nil
 	case sandbox.StateActionKill:
-		return o.killSandboxOnNode(ctx, node, sbx, reason)
+		return o.killSandboxOnNode(ctx, node, sbx, opts.Reason)
 	}
 
 	return nil

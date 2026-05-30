@@ -206,6 +206,7 @@ func createTestSandbox() Sandbox {
 		"node-1",
 		uuid.New(),
 		false, // autoPause
+		nil,   // autoPauseMemory
 		nil,   // autoResume
 		nil,   // envdAccessToken
 		nil,   // allowInternetAccess

@@ -33,6 +33,7 @@ type Snapshot struct {
 	Snapfile          template.File
 	Metafile          template.File
 	BuildID           uuid.UUID
+	MemorySnapshot    bool
 
 	// Template block sizes captured sync at Pause time. They equal
 	// MemfileDiffHeader.Metadata.BlockSize once that header resolves, but
