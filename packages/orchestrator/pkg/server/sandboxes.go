@@ -512,7 +512,7 @@ func recordSandboxKill(ctx context.Context, counter metric.Int64Counter, killRea
 	counter.Add(ctx, 1, metric.WithAttributes(attribute.String("kill_reason", killReason)))
 }
 
-func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {
+func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*orchestrator.SandboxPauseResponse, error) {
 	ctx, childSpan := tracer.Start(ctx, "sandbox-pause")
 	defer childSpan.End()
 
@@ -590,7 +590,9 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		},
 	)
 
-	return &emptypb.Empty{}, nil
+	return &orchestrator.SandboxPauseResponse{
+		SchedulingMetadata: res.SchedulingMetadata,
+	}, nil
 }
 
 func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpointRequest) (*orchestrator.SandboxCheckpointResponse, error) {
@@ -741,7 +743,9 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	telemetry.ReportEvent(ctx, "Checkpoint completed")
 
-	return &orchestrator.SandboxCheckpointResponse{}, nil
+	return &orchestrator.SandboxCheckpointResponse{
+		SchedulingMetadata: res.SchedulingMetadata,
+	}, nil
 }
 
 // Extracts common data needed for sandbox events

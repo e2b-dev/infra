@@ -1185,6 +1185,9 @@ func (s *Sandbox) Pause(
 	}
 	cleanup.AddNoContext(ctx, rootfsDiff.Close)
 
+	chainLimit := int(s.featureFlags.IntFlag(ctx, featureflags.SnapshotSchedulingMetadataChainLimit))
+	schedulingMetadata := NewSnapshotSchedulingMetadata(originalMemfile.Header(), originalRootfs.Header(), chainLimit)
+
 	metadataFileLink := template.NewLocalFileLink(cachePaths.CacheMetadata())
 	cleanup.AddNoContext(ctx, metadataFileLink.Close)
 
@@ -1194,14 +1197,15 @@ func (s *Sandbox) Pause(
 	}
 
 	return &Snapshot{
-		Snapfile:          snapfile,
-		Metafile:          metadataFileLink,
-		MemfileDiff:       memfileDiff,
-		MemfileDiffHeader: memfileDiffHeader,
-		RootfsDiff:        rootfsDiff,
-		RootfsDiffHeader:  NewResolvedDiffHeader(rootfsHeader),
-		MemfileBlockSize:  originalMemfile.Header().Metadata.BlockSize,
-		RootfsBlockSize:   originalRootfs.Header().Metadata.BlockSize,
+		Snapfile:           snapfile,
+		Metafile:           metadataFileLink,
+		MemfileDiff:        memfileDiff,
+		MemfileDiffHeader:  memfileDiffHeader,
+		RootfsDiff:         rootfsDiff,
+		RootfsDiffHeader:   NewResolvedDiffHeader(rootfsHeader),
+		SchedulingMetadata: schedulingMetadata,
+		MemfileBlockSize:   originalMemfile.Header().Metadata.BlockSize,
+		RootfsBlockSize:    originalRootfs.Header().Metadata.BlockSize,
 
 		BuildID: buildID,
 

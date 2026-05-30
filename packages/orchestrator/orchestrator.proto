@@ -126,12 +126,27 @@ message SandboxPauseRequest {
   string build_id = 3;
 }
 
+message SnapshotSchedulingMetadata {
+  string base_build_id = 1;
+  uint64 generation = 2;
+  uint64 memfile_mapping_count = 3;
+  uint64 rootfs_mapping_count = 4;
+  repeated string chain_build_ids = 5;
+  repeated uint64 chain_memfile_bytes = 6;
+  repeated uint64 chain_rootfs_bytes = 7;
+}
+
+message SandboxPauseResponse {
+  SnapshotSchedulingMetadata scheduling_metadata = 1;
+}
+
 message SandboxCheckpointRequest {
   string sandbox_id = 1;
   string build_id = 3;
 }
 
 message SandboxCheckpointResponse {
+  SnapshotSchedulingMetadata scheduling_metadata = 1;
 }
 
 message RunningSandbox {
@@ -160,7 +175,7 @@ service SandboxService {
   rpc Update(SandboxUpdateRequest) returns (google.protobuf.Empty);
   rpc List(google.protobuf.Empty) returns (SandboxListResponse);
   rpc Delete(SandboxDeleteRequest) returns (google.protobuf.Empty);
-  rpc Pause(SandboxPauseRequest) returns (google.protobuf.Empty);
+  rpc Pause(SandboxPauseRequest) returns (SandboxPauseResponse);
   rpc Checkpoint(SandboxCheckpointRequest) returns (SandboxCheckpointResponse);
 
   rpc ListCachedBuilds(google.protobuf.Empty) returns (SandboxListCachedBuildsResponse);

@@ -84,7 +84,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	// kills the sandbox itself; RemoveSandbox is still needed to clean up
 	// API-side state (store, routing, analytics).
 	client, childCtx := node.GetClient(ctx)
-	_, err = client.Sandbox.Checkpoint(childCtx, &orchestrator.SandboxCheckpointRequest{
+	checkpointRes, err := client.Sandbox.Checkpoint(childCtx, &orchestrator.SandboxCheckpointRequest{
 		SandboxId: sbx.SandboxID,
 		BuildId:   upsertResult.BuildID.String(),
 	})
@@ -101,6 +101,13 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 		}
 
 		return SnapshotTemplateResult{}, fmt.Errorf("checkpoint failed: %w", err)
+	}
+	if metadata := checkpointRes.GetSchedulingMetadata(); metadata != nil {
+		if err := o.updateSnapshotSchedulingMetadata(ctx, sbx.SandboxID, metadata); err != nil {
+			o.failSnapshotBuild(ctx, upsertResult.BuildID, err)
+
+			return SnapshotTemplateResult{}, err
+		}
 	}
 
 	now := time.Now()
