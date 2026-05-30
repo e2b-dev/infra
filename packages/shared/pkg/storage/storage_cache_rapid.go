@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync"
 	"time"
 )
 
@@ -22,6 +21,10 @@ func WrapInRapidBucketCache(_ context.Context, cache StorageProvider, inner Stor
 }
 
 func (p *rapidCacheProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
+	if err := p.cache.DeleteObjectsWithPrefix(ctx, "rapid-cache/"+prefix); err != nil {
+		return err
+	}
+
 	return p.inner.DeleteObjectsWithPrefix(ctx, prefix)
 }
 
@@ -54,8 +57,6 @@ type rapidCachedSeekable struct {
 	path  string
 	cache StorageProvider
 	inner Seekable
-
-	wg sync.WaitGroup
 }
 
 func (c *rapidCachedSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
@@ -126,6 +127,13 @@ func (c *rapidCachedSeekable) openCache(ctx context.Context, path string, length
 	if err != nil {
 		return nil, err
 	}
+	size, err := obj.Size(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if size != length {
+		return nil, fmt.Errorf("rapid cache object %s size %d != expected %d", path, size, length)
+	}
 
 	return obj.OpenRangeReader(ctx, 0, length, nil)
 }
@@ -140,9 +148,9 @@ func (c *rapidCachedSeekable) writeCache(ctx context.Context, path string, data 
 }
 
 func (c *rapidCachedSeekable) goCtx(ctx context.Context, fn func(context.Context)) {
-	c.wg.Go(func() {
+	go func() {
 		fn(context.WithoutCancel(ctx))
-	})
+	}()
 }
 
 type rapidCacheWriteThroughReader struct {
