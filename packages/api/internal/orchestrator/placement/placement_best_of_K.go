@@ -9,6 +9,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
 
@@ -167,6 +169,9 @@ func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, exclu
 func (b *BestOfK) isCandidate(node *nodemanager.Node, config BestOfKConfig, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources, buildMachineInfo machineinfo.MachineInfo, filterByLabels bool, requiredLabels []string) bool {
 	if _, ok := excludedNodes[node.ID]; ok {
 		return false
+	}
+	if env.IsLocal() && node.ClusterID == consts.LocalClusterID {
+		return true
 	}
 	if node.Status() != api.NodeStatusReady {
 		return false
