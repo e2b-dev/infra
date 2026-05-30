@@ -310,9 +310,11 @@ func (o *Orchestrator) CreateSandbox(
 	labelFilteringEnabled := o.featureFlagsClient.BoolFlag(ctx, featureflags.SandboxLabelBasedSchedulingFlag, featureflags.TeamContext(team.ID.String()), featureflags.SandboxContext(sandboxID))
 	affinityBuildID := sbxData.Build.ID.String()
 	if isResume {
+		// Resume targets the previous sandbox's node first; avoid cache affinity fighting that pin.
 		affinityBuildID = ""
 	}
-	placementCacheAffinityConfig := placementAffinityConfigFromFlags(ctx, o.featureFlagsClient, featureflags.TeamContext(team.ID.String()), featureflags.TemplateContext(sbxData.TemplateID), featureflags.SandboxContext(sandboxID))
+	affinityFlagCtx := featureflags.AddToContext(ctx, featureflags.TeamContext(team.ID.String()), featureflags.TemplateContext(sbxData.TemplateID), featureflags.SandboxContext(sandboxID))
+	placementCacheAffinityConfig := placementAffinityConfigFromFlags(affinityFlagCtx, o.featureFlagsClient)
 	var affinityScores map[string]float64
 	if placementCacheAffinityConfig.enabled && node == nil {
 		affinityScores = o.placementAffinity.scores(ctx, placementCacheAffinityConfig, nodeClusterID, affinityBuildID)

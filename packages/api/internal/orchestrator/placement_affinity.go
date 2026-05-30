@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -27,6 +26,8 @@ const (
 	defaultPlacementAffinityMaxScore         = 10
 	defaultPlacementAffinityMaxScoreBonusPpm = 20000
 	defaultPlacementAffinityBuildWeightPpm   = 1000
+
+	placementAffinityKindBuild = "build"
 )
 
 type placementAffinity struct {
@@ -52,8 +53,8 @@ func newPlacementAffinity(redisClient redis.UniversalClient) *placementAffinity 
 	return &placementAffinity{redis: redisClient}
 }
 
-func placementAffinityConfigFromFlags(ctx context.Context, ff *featureflags.Client, contexts ...ldcontext.Context) placementAffinityConfig {
-	v := ff.JSONFlag(ctx, featureflags.SandboxPlacementCacheAffinityFlag, contexts...)
+func placementAffinityConfigFromFlags(ctx context.Context, ff *featureflags.Client) placementAffinityConfig {
+	v := ff.JSONFlag(ctx, featureflags.SandboxPlacementCacheAffinityFlag)
 
 	return placementAffinityConfig{
 		enabled:          v.GetByKey("enabled").BoolValue(),
@@ -81,14 +82,7 @@ func jsonPPM(v ldvalue.Value, key string, fallback int) float64 {
 }
 
 func clampInt(v, minValue, maxValue int) int {
-	if v < minValue {
-		return minValue
-	}
-	if v > maxValue {
-		return maxValue
-	}
-
-	return v
+	return max(minValue, min(v, maxValue))
 }
 
 func placementAffinityKey(clusterID uuid.UUID, kind, id string) string {
@@ -103,7 +97,7 @@ func (a *placementAffinity) record(ctx context.Context, cfg placementAffinityCon
 	defer cancel()
 
 	pipe := a.redis.Pipeline()
-	key := placementAffinityKey(clusterID, "build", buildID)
+	key := placementAffinityKey(clusterID, placementAffinityKindBuild, buildID)
 	pipe.ZIncrBy(ctx, key, 1, nodeID)
 	pipe.ZRemRangeByRank(ctx, key, 0, -cfg.topNodes-1)
 	pipe.Expire(ctx, key, cfg.ttl)
@@ -122,7 +116,7 @@ func (a *placementAffinity) scores(ctx context.Context, cfg placementAffinityCon
 	defer cancel()
 
 	pipe := a.redis.Pipeline()
-	cmd := pipe.ZRevRangeWithScores(ctx, placementAffinityKey(clusterID, "build", buildID), 0, cfg.topNodes-1)
+	cmd := pipe.ZRevRangeWithScores(ctx, placementAffinityKey(clusterID, placementAffinityKindBuild, buildID), 0, cfg.topNodes-1)
 	_, err := pipe.Exec(ctx)
 	if err != nil && !errors.Is(err, redis.Nil) {
 		logger.L().Debug(ctx, "failed to read placement affinity", zap.Error(err))

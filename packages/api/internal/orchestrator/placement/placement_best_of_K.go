@@ -170,21 +170,27 @@ func (b *BestOfK) isCandidate(node *nodemanager.Node, config BestOfKConfig, excl
 	if _, ok := excludedNodes[node.ID]; ok {
 		return false
 	}
+	// Local nodes are synthetic and may not report the full production status/label set.
 	if env.IsLocal() && node.ClusterID == consts.LocalClusterID {
 		return true
 	}
+	// If the node is not ready, we don't want to schedule a new sandbox on it.
 	if node.Status() != api.NodeStatusReady {
 		return false
 	}
+	// If the node CPU doesn't match the requested machine, we skip it.
 	if !isNodeCPUCompatible(node, buildMachineInfo) {
 		return false
 	}
+	// If label filtering is enabled, the node has to match the team's required labels.
 	if filterByLabels && !isNodeLabelsCompatible(node, requiredLabels) {
 		return false
 	}
+	// If can-fit is enabled, the node must have enough capacity for the requested resources.
 	if config.CanFit && !b.CanFit(node, resources, config) {
 		return false
 	}
+	// Avoid placing on nodes that already have too many sandboxes starting.
 	if config.TooManyStarting && node.PlacementMetrics.InProgressCount() > maxStartingInstancesPerNode {
 		return false
 	}
