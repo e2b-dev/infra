@@ -48,8 +48,9 @@ var (
 
 // RemoveOpts bundles the parameters that control sandbox removal.
 type RemoveOpts struct {
-	Action   StateAction
-	Eviction bool
+	Action     StateAction
+	Eviction   bool
+	SkipMemory bool
 }
 
 var AllowedTransitions = map[State]map[State]bool{

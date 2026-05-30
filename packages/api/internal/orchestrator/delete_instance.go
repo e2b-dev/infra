@@ -94,7 +94,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 	defer func() { go o.analyticsRemove(context.WithoutCancel(ctx), sbx, opts.Action) }()
 	// Once we start the removal process, we want to make sure it gets removed from the store
 	defer o.sandboxStore.Remove(context.WithoutCancel(ctx), teamID, sandboxID)
-	err = o.removeSandboxFromNode(ctx, sbx, opts.Action)
+	err = o.removeSandboxFromNode(ctx, sbx, opts)
 	if err != nil {
 		logger.L().Error(ctx, "Error removing sandbox",
 			zap.String("state_action", opts.Action.Name),
@@ -108,7 +108,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 	return nil
 }
 
-func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sandbox, stateAction sandbox.StateAction) error {
+func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sandbox, opts sandbox.RemoveOpts) error {
 	ctx, span := tracer.Start(ctx, "remove-sandbox-from-node")
 	defer span.End()
 
@@ -131,12 +131,13 @@ func (o *Orchestrator) removeSandboxFromNode(ctx context.Context, sbx sandbox.Sa
 
 	sbxlogger.I(sbx).Debug(ctx, "Removing sandbox",
 		zap.Bool("auto_pause", sbx.AutoPause),
-		zap.String("state_action", stateAction.Name),
+		zap.String("state_action", opts.Action.Name),
 	)
 
-	switch stateAction {
+	switch opts.Action {
 	case sandbox.StateActionPause:
-		err := o.pauseSandbox(ctx, node, sbx)
+		skipMemory := opts.SkipMemory || (opts.Eviction && sbx.AutoPauseMemory != nil && !*sbx.AutoPauseMemory)
+		err := o.pauseSandbox(ctx, node, sbx, skipMemory)
 		if err != nil {
 			if dberrors.IsForeignKeyViolation(err) {
 				killErr := o.killSandboxOnNode(ctx, node, sbx)

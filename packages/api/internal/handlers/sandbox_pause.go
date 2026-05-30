@@ -18,9 +18,14 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+type pauseSandboxBody struct {
+	Memory *bool `json:"memory,omitempty"`
+}
 
 func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.SandboxID) {
 	ctx := c.Request.Context()
@@ -49,9 +54,22 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	traceID := span.SpanContext().TraceID().String()
 	c.Set("traceID", traceID)
 
+	memory := true
+	if c.Request.ContentLength != 0 {
+		body, err := ginutils.ParseBody[pauseSandboxBody](ctx, c)
+		if err != nil {
+			a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
+
+			return
+		}
+		if body.Memory != nil {
+			memory = *body.Memory
+		}
+	}
+
 	pause.LogInitiated(ctx, sandboxID, teamID.String(), pause.ReasonRequest)
 
-	err = a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+	err = a.orchestrator.RemoveSandbox(ctx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause, SkipMemory: !memory})
 	var transErr *sandbox.InvalidStateTransitionError
 
 	switch {

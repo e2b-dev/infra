@@ -103,6 +103,11 @@ type ProcessOptions struct {
 	Stderr io.Writer
 }
 
+// ext4RootFlags must not include "noload": filesystem-only reboot fallback
+// relies on ext4 replaying the journal after a snapshot was taken from a
+// previously running guest.
+const ext4RootFlags = "discard"
+
 // TokenBucketConfig holds parameters for a single Firecracker token bucket.
 // BucketSize < 0 disables the bucket.
 type TokenBucketConfig struct {
@@ -374,7 +379,7 @@ func (p *Process) Create(
 		"random.trust_cpu": "on",
 
 		// discard: ext4 issues TRIM on freed blocks so they are elided from the snapshot diff.
-		"rootflags": "discard",
+		"rootflags": ext4RootFlags,
 	}
 
 	if options.KvmClock {

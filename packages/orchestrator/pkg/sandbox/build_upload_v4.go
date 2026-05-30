@@ -16,9 +16,13 @@ import (
 )
 
 func (u *Upload) runV4(ctx context.Context) error {
-	memSrc, err := u.snap.MemfileDiff.CachePath(ctx)
-	if err != nil {
-		return fmt.Errorf("memfile diff path: %w", err)
+	memSrc := ""
+	if u.snap.MemorySnapshot {
+		var err error
+		memSrc, err = u.snap.MemfileDiff.CachePath(ctx)
+		if err != nil {
+			return fmt.Errorf("memfile diff path: %w", err)
+		}
 	}
 
 	rootfsSrc, err := u.snap.RootfsDiff.CachePath(ctx)
@@ -29,6 +33,9 @@ func (u *Upload) runV4(ctx context.Context) error {
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
+		if !u.snap.MemorySnapshot {
+			return nil
+		}
 		h, err := u.snap.MemfileDiffHeader.WaitWithContext(ctx)
 		if err != nil {
 			return fmt.Errorf("wait memfile diff header: %w", err)
@@ -55,6 +62,9 @@ func (u *Upload) runV4(ctx context.Context) error {
 	meta := storage.WithMetadata(u.objectMetadata)
 
 	eg.Go(func() error {
+		if !u.snap.MemorySnapshot {
+			return nil
+		}
 		return storage.UploadBlob(ctx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), meta)
 	})
 
