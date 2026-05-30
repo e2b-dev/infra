@@ -53,6 +53,8 @@ type Cache struct {
 	flags         *featureflags.Client
 	cache         *ttlcache.Cache[string, Template]
 	persistence   storage.StorageProvider
+	rapidCache    storage.StorageProvider
+	rapidCacheMu  sync.Mutex
 	buildStore    *build.DiffStore
 	blockMetrics  blockmetrics.Metrics
 	rootCachePath string
@@ -169,9 +171,10 @@ func (c *Cache) GetTemplate(
 	defer span.End()
 
 	persistence := c.persistence
-	// Because of the template caching, if we enable the NFS cache feature flag,
-	// it will start working only for new orchestrators or new builds.
-	if path, enabled := c.useNFSCache(ctx, isBuilding, isSnapshot); enabled {
+	if cache, enabled := c.useRapidBucketCache(ctx, isBuilding); enabled {
+		persistence = storage.WrapInRapidBucketCache(ctx, cache, persistence)
+		span.SetAttributes(attribute.Bool("use_cache", true))
+	} else if path, enabled := c.useNFSCache(ctx, isBuilding, isSnapshot); enabled {
 		logger.L().Info(ctx, "using local template cache", zap.String("path", c.rootCachePath))
 		persistence = storage.WrapInNFSCache(ctx, path, persistence, c.flags)
 		span.SetAttributes(attribute.Bool("use_cache", true))
@@ -303,6 +306,32 @@ func (c *Cache) useNFSCache(ctx context.Context, isBuilding bool, isSnapshot boo
 	}
 
 	return c.rootCachePath, useNFSCache
+}
+
+func (c *Cache) useRapidBucketCache(ctx context.Context, isBuilding bool) (storage.StorageProvider, bool) {
+	if isBuilding || !c.flags.BoolFlag(ctx, featureflags.RapidBucketCacheFlag) {
+		return nil, false
+	}
+	c.rapidCacheMu.Lock()
+	defer c.rapidCacheMu.Unlock()
+	if c.rapidCache != nil {
+		return c.rapidCache, true
+	}
+	bucketName := storage.RapidBucketCacheStorageConfig.GetBucketName()
+	if bucketName == "" {
+		logger.L().Warn(ctx, "rapid bucket cache feature flag is enabled but bucket is not set")
+
+		return nil, false
+	}
+	p, err := storage.NewGCPRapid(ctx, bucketName, nil)
+	if err != nil {
+		logger.L().Warn(ctx, "failed to initialize rapid bucket cache", zap.Error(err))
+
+		return nil, false
+	}
+	c.rapidCache = p
+
+	return c.rapidCache, true
 }
 
 func cleanDir(path string) error {

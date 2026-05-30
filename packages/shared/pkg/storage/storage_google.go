@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	"cloud.google.com/go/storage/experimental"
 	"github.com/googleapis/gax-go/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -83,6 +84,7 @@ type gcpStorage struct {
 	bucket *storage.BucketHandle
 
 	limiter *limit.Limiter
+	zonal   bool
 }
 
 var _ StorageProvider = (*gcpStorage)(nil)
@@ -102,6 +104,14 @@ var (
 )
 
 func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (StorageProvider, error) {
+	return newGCP(ctx, bucketName, limiter, false)
+}
+
+func NewGCPRapid(ctx context.Context, bucketName string, limiter *limit.Limiter) (StorageProvider, error) {
+	return newGCP(ctx, bucketName, limiter, true)
+}
+
+func newGCP(ctx context.Context, bucketName string, limiter *limit.Limiter, zonal bool) (StorageProvider, error) {
 	grpcPoolSize, err := env.GetEnvAsInt("GCS_GRPC_CONNECTION_POOL_SIZE", defaultGRPCConnectionPoolSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse GCS_GRPC_CONNECTION_POOL_SIZE: %w", err)
@@ -113,6 +123,9 @@ func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (Sto
 		option.WithGRPCDialOption(grpc.WithInitialWindowSize(4 * megabyte)),
 		internaloption.EnableDirectPath(defaultGCSEnableDirectPath),
 	}
+	if zonal {
+		opts = append(opts, experimental.WithZonalBucketAPIs())
+	}
 
 	client, err := storage.NewGRPCClient(ctx, opts...)
 	if err != nil {
@@ -123,6 +136,7 @@ func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (Sto
 		client:  client,
 		bucket:  client.Bucket(bucketName),
 		limiter: limiter,
+		zonal:   zonal,
 	}, nil
 }
 
@@ -325,6 +339,9 @@ func (o *gcpObject) Put(ctx context.Context, data []byte, opts ...PutOption) err
 	timer := googleWriteTimerFactory.Begin(attribute.String(gcsOperationAttr, gcsOperationAttrWrite))
 
 	w := o.handle.NewWriter(ctx)
+	if o.storage.zonal {
+		w.FinalizeOnClose = true
+	}
 	if putOpts := ApplyPutOptions(opts); len(putOpts.Metadata) > 0 {
 		w.Metadata = putOpts.Metadata
 	}

@@ -120,6 +120,7 @@ var (
 	MetricsReadFlag                     = NewBoolFlag("sandbox-metrics-read", true)
 	SnapshotFeatureFlag                 = NewBoolFlag("use-nfs-for-snapshots", env.IsDevelopment())
 	TemplateFeatureFlag                 = NewBoolFlag("use-nfs-for-templates", env.IsDevelopment())
+	RapidBucketCacheFlag                = NewBoolFlag("use-rapid-bucket-cache", false)
 	EnableWriteThroughCacheFlag         = NewBoolFlag("write-to-cache-on-writes", false)
 	UseNFSCacheForBuildingTemplatesFlag = NewBoolFlag("use-nfs-for-building-templates", env.IsDevelopment())
 	BestOfKCanFitFlag                   = NewBoolFlag("best-of-k-can-fit", true)

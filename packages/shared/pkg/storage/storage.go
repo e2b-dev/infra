@@ -243,6 +243,15 @@ var BuildCacheStorageConfig = StorageConfig{
 	},
 }
 
+var RapidBucketCacheStorageConfig = StorageConfig{
+	GetLocalBasePath: func() string {
+		return ""
+	},
+	GetBucketName: func() string {
+		return env.GetEnv("RAPID_BUCKET_CACHE_BUCKET_NAME", "")
+	},
+}
+
 func GetStorageProvider(ctx context.Context, cfg StorageConfig) (StorageProvider, error) {
 	provider := GetProviderType()
 
