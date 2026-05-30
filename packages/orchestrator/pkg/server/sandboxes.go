@@ -333,6 +333,7 @@ func (s *Server) createSandboxFromRootfs(
 	if err != nil {
 		return nil, fmt.Errorf("create empty memfile: %w", err)
 	}
+	defer memfile.Close()
 
 	maskedTemplate := sbxtemplate.NewMaskTemplate(template, sbxtemplate.WithMemfile(memfile))
 	ioEngine := fcmodels.DriveIoEngineSync
