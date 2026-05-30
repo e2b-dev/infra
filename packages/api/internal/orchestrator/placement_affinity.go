@@ -49,6 +49,8 @@ func (a *placementAffinity) record(ctx context.Context, clusterID uuid.UUID, nod
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), placementAffinityWriteTimeout)
 	defer cancel()
 
+	pipe := a.redis.Pipeline()
+	hasCommands := false
 	for _, item := range []struct {
 		kind string
 		id   string
@@ -62,14 +64,18 @@ func (a *placementAffinity) record(ctx context.Context, clusterID uuid.UUID, nod
 		}
 
 		key := placementAffinityKey(clusterID, item.kind, item.id)
-		pipe := a.redis.Pipeline()
 		pipe.ZIncrBy(ctx, key, 1, nodeID)
 		pipe.ZRemRangeByRank(ctx, key, 0, -placementAffinityTop-1)
 		pipe.Expire(ctx, key, placementAffinityTTL)
-		_, err := pipe.Exec(ctx)
-		if err != nil {
-			logger.L().Debug(ctx, "failed to record placement affinity", zap.String("key", key), zap.Error(err))
-		}
+		hasCommands = true
+	}
+	if !hasCommands {
+		return
+	}
+
+	_, err := pipe.Exec(ctx)
+	if err != nil {
+		logger.L().Debug(ctx, "failed to record placement affinity", zap.Error(err))
 	}
 }
 
@@ -80,7 +86,12 @@ func (a *placementAffinity) scores(ctx context.Context, clusterID uuid.UUID, bui
 	ctx, cancel := context.WithTimeout(ctx, placementAffinityReadTimeout)
 	defer cancel()
 
-	scores := make(map[string]float64)
+	pipe := a.redis.Pipeline()
+	type affinityCmd struct {
+		cmd    *redis.ZSliceCmd
+		weight float64
+	}
+	cmds := make([]affinityCmd, 0, 3)
 	for _, item := range []struct {
 		kind   string
 		id     string
@@ -95,9 +106,26 @@ func (a *placementAffinity) scores(ctx context.Context, clusterID uuid.UUID, bui
 		}
 
 		key := placementAffinityKey(clusterID, item.kind, item.id)
-		rows, err := a.redis.ZRevRangeWithScores(ctx, key, 0, placementAffinityTop-1).Result()
+		cmds = append(cmds, affinityCmd{
+			cmd:    pipe.ZRevRangeWithScores(ctx, key, 0, placementAffinityTop-1),
+			weight: item.weight,
+		})
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+
+	_, err := pipe.Exec(ctx)
+	if err != nil && err != redis.Nil {
+		logger.L().Debug(ctx, "failed to read placement affinity", zap.Error(err))
+
+		return nil
+	}
+
+	scores := make(map[string]float64)
+	for _, cmd := range cmds {
+		rows, err := cmd.cmd.Result()
 		if err != nil {
-			logger.L().Debug(ctx, "failed to read placement affinity", zap.String("key", key), zap.Error(err))
 			continue
 		}
 
@@ -106,7 +134,7 @@ func (a *placementAffinity) scores(ctx context.Context, clusterID uuid.UUID, bui
 			if !ok || nodeID == "" {
 				continue
 			}
-			scores[nodeID] += math.Min(row.Score, maxAffinityScore) * item.weight
+			scores[nodeID] += math.Min(row.Score, maxAffinityScore) * cmd.weight
 			scores[nodeID] = math.Min(scores[nodeID], maxTotalAffinityScoreBonus)
 		}
 	}
