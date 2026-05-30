@@ -18,7 +18,6 @@ build:
 	packer build \
 	  	$(if $(CONSUL_VERSION),-var "consul_version=$(CONSUL_VERSION)") \
 		$(if $(NOMAD_VERSION),-var "nomad_version=$(NOMAD_VERSION)") \
-		$(if $(VAULT_VERSION),-var "vault_version=$(VAULT_VERSION)") \
 		$(if $(PACKER_NETWORK_NAME),-var "network_name=$(PACKER_NETWORK_NAME)") \
 		$(if $(PACKER_SUBNET_NAME),-var "subnet_name=$(PACKER_SUBNET_NAME)") \
 		-var "gcp_project_id=$(GCP_PROJECT_ID)" \
