@@ -9,7 +9,6 @@ CREATE TABLE IF NOT EXISTS "public"."snapshot_templates" (
     created_at timestamp with time zone DEFAULT now()
 );
 
-ALTER TABLE "public"."snapshot_templates" ENABLE ROW LEVEL SECURITY;
 -- +goose StatementEnd
 
 -- Create index for looking up snapshot templates by source sandbox

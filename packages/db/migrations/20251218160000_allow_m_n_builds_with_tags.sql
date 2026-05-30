@@ -39,8 +39,6 @@ CREATE TABLE IF NOT EXISTS env_build_assignments (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_legacy_assignments ON env_build_assignments (env_id, build_id, tag)
 WHERE source IN ('trigger', 'migration');
 
-ALTER TABLE "public"."env_build_assignments" ENABLE ROW LEVEL SECURITY;
-
 CREATE INDEX IF NOT EXISTS idx_env_build_assignments_env_tag_created 
     ON env_build_assignments (env_id, tag, created_at DESC);
 

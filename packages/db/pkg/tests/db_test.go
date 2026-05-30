@@ -9,7 +9,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
 
-func TestRequireRowLevelSecurity(t *testing.T) {
+func TestNoRowLevelSecurity(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
@@ -21,31 +21,16 @@ func TestRequireRowLevelSecurity(t *testing.T) {
 	var checked int
 	for _, item := range results {
 		if item.NamespaceName != "public" {
-			// only the "public" namespace requires row level security
+			// only the "public" namespace used to carry Supabase row level security.
+			continue
+		}
+		if item.Kind == "v" {
 			continue
 		}
 
 		checked++
 
-		var isSecure bool
-		if item.Kind == "v" {
-			isSecure = isSecurityInvoker(item.Options)
-		} else {
-			isSecure = item.RowLevelSecurity
-		}
-
-		assert.Truef(t, isSecure, "database object %s.%s is not secure [%s] (%v)", item.NamespaceName, item.TableName, item.Kind, item.Options)
+		assert.Falsef(t, item.RowLevelSecurity, "database object %s.%s still has row level security enabled [%s]", item.NamespaceName, item.TableName, item.Kind)
 	}
 	assert.NotEmpty(t, checked)
-}
-
-func isSecurityInvoker(options []string) bool {
-	for _, option := range options {
-		switch option {
-		case "security_invoker=1", "security_invoker=true", "security_invoker=on":
-			return true
-		}
-	}
-
-	return false
 }

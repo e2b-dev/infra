@@ -19,7 +19,6 @@ CREATE TABLE IF NOT EXISTS "public"."tiers"
     constraint tiers_ram_mb_check check ((ram_mb > 0)),
     constraint tiers_vcpu_check check ((vcpu > 0))
 );
-ALTER TABLE "public"."tiers" ENABLE ROW LEVEL SECURITY;
 
 
 COMMENT ON COLUMN public.tiers.concurrent_instances
@@ -37,7 +36,6 @@ CREATE TABLE IF NOT EXISTS "public"."teams"
     PRIMARY KEY ("id"),
     CONSTRAINT "teams_tiers_teams" FOREIGN KEY ("tier") REFERENCES "public"."tiers" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION
 );
-ALTER TABLE "public"."teams" ENABLE ROW LEVEL SECURITY;
 
 -- Create "envs" table
 CREATE TABLE IF NOT EXISTS "public"."envs"
@@ -55,7 +53,6 @@ CREATE TABLE IF NOT EXISTS "public"."envs"
     PRIMARY KEY ("id"),
     CONSTRAINT "envs_teams_envs" FOREIGN KEY ("team_id") REFERENCES "public"."teams" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION
 );
-ALTER TABLE "public"."envs" ENABLE ROW LEVEL SECURITY;
 
 COMMENT ON COLUMN public.envs.last_spawned_at
     IS 'Timestamp of the last time the env was spawned';
@@ -71,7 +68,6 @@ CREATE TABLE IF NOT EXISTS "public"."env_aliases"
     PRIMARY KEY ("alias"),
     CONSTRAINT "env_aliases_envs_env_aliases" FOREIGN KEY ("env_id") REFERENCES "public"."envs" ("id") ON UPDATE NO ACTION ON DELETE CASCADE
 );
-ALTER TABLE "public"."env_aliases" ENABLE ROW LEVEL SECURITY;
 
 -- Create "team_api_keys" table
 CREATE TABLE IF NOT EXISTS "public"."team_api_keys"
@@ -82,7 +78,6 @@ CREATE TABLE IF NOT EXISTS "public"."team_api_keys"
     PRIMARY KEY ("api_key"),
     CONSTRAINT "team_api_keys_teams_team_api_keys" FOREIGN KEY ("team_id") REFERENCES "public"."teams" ("id") ON UPDATE NO ACTION ON DELETE CASCADE
 );
-ALTER TABLE "public"."team_api_keys" ENABLE ROW LEVEL SECURITY;
 
 -- Create "access_tokens" table
 CREATE TABLE IF NOT EXISTS "public"."access_tokens"
@@ -93,7 +88,6 @@ CREATE TABLE IF NOT EXISTS "public"."access_tokens"
     PRIMARY KEY ("access_token"),
     CONSTRAINT "access_tokens_users_access_tokens" FOREIGN KEY ("user_id") REFERENCES "auth"."users" ("id") ON UPDATE NO ACTION ON DELETE CASCADE
 );
-ALTER TABLE "public"."access_tokens" ENABLE ROW LEVEL SECURITY;
 
 -- Create "users_teams" table
 CREATE TABLE IF NOT EXISTS "public"."users_teams"
@@ -105,7 +99,6 @@ CREATE TABLE IF NOT EXISTS "public"."users_teams"
     CONSTRAINT "users_teams_teams_teams" FOREIGN KEY ("team_id") REFERENCES "public"."teams" ("id") ON UPDATE NO ACTION ON DELETE CASCADE,
     CONSTRAINT "users_teams_users_users" FOREIGN KEY ("user_id") REFERENCES "auth"."users" ("id") ON UPDATE NO ACTION ON DELETE CASCADE
 );
-ALTER TABLE "public"."users_teams" ENABLE ROW LEVEL SECURITY;
 
 -- Create RLS policies
 DO $$

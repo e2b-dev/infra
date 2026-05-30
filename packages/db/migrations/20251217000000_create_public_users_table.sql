@@ -10,9 +10,6 @@ CREATE TABLE IF NOT EXISTS public.users (
     UNIQUE (email)
 );
 
--- Enable row level security
-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-
 -- Grant INSERT permission to trigger_user
 GRANT INSERT ON public.users TO trigger_user;
 CREATE POLICY "Allow to create a new user"
