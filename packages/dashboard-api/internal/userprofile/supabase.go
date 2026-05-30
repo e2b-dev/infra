@@ -2,12 +2,14 @@ package userprofile
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/google/uuid"
 
 	supabasedb "github.com/e2b-dev/infra/packages/db/pkg/supabase"
 	supabasequeries "github.com/e2b-dev/infra/packages/db/pkg/supabase/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 type supabaseProvider struct {
@@ -61,10 +63,89 @@ func (p *supabaseProvider) FindProfilesByEmail(ctx context.Context, email string
 }
 
 func profileFromAuthUser(user supabasequeries.AuthUser) Profile {
+	userMetadata := rawUserMetadata(user.RawUserMetaData)
+	appMetadata := rawUserMetadata(user.RawAppMetaData)
+
 	return Profile{
-		UserID: user.ID,
-		Email:  user.Email,
+		UserID:            user.ID,
+		Email:             user.Email,
+		Name:              displayNameFromMetadata(userMetadata),
+		ProfilePictureURL: utils.FirstNonEmpty(metadataString(userMetadata, "picture"), metadataString(userMetadata, "avatar_url")),
+		Providers:         supabaseLinkedProviders(appMetadata),
 	}
+}
+
+// supabaseLinkedProviders mirrors the way Supabase records linked OAuth
+// providers under raw_app_meta_data: a `providers` array plus an `provider`
+// scalar for the most recently used one.
+func supabaseLinkedProviders(appMetadata map[string]any) []string {
+	if appMetadata == nil {
+		return nil
+	}
+
+	candidates := make([]string, 0, 4)
+	if list, ok := appMetadata["providers"].([]any); ok {
+		for _, entry := range list {
+			if name, ok := entry.(string); ok {
+				candidates = append(candidates, name)
+			}
+		}
+	}
+	if name, ok := appMetadata["provider"].(string); ok {
+		candidates = append(candidates, name)
+	}
+
+	return normalizeAuthProviders(candidates)
+}
+
+func displayNameFromMetadata(metadata map[string]any) string {
+	firstName := utils.FirstNonEmpty(
+		metadataString(metadata, "first_name"),
+		metadataString(metadata, "firstName"),
+		metadataString(metadata, "given_name"),
+		metadataString(metadata, "givenName"),
+	)
+	lastName := utils.FirstNonEmpty(
+		metadataString(metadata, "last_name"),
+		metadataString(metadata, "lastName"),
+		metadataString(metadata, "family_name"),
+		metadataString(metadata, "familyName"),
+	)
+	if firstName != "" || lastName != "" {
+		return strings.TrimSpace(strings.Join([]string{firstName, lastName}, " "))
+	}
+
+	return utils.FirstNonEmpty(
+		metadataString(metadata, "name"),
+		metadataString(metadata, "full_name"),
+		metadataString(metadata, "fullName"),
+	)
+}
+
+func rawUserMetadata(raw []byte) map[string]any {
+	if len(raw) == 0 {
+		return nil
+	}
+
+	var metadata map[string]any
+	if err := json.Unmarshal(raw, &metadata); err != nil {
+		return nil
+	}
+
+	return metadata
+}
+
+func metadataString(metadata map[string]any, key string) string {
+	if metadata == nil {
+		return ""
+	}
+
+	value, ok := metadata[key].(string)
+	if !ok {
+		return ""
+	}
+
+	return strings.TrimSpace(value)
 }
 
 func uniqueUUIDs(ids []uuid.UUID) []uuid.UUID {

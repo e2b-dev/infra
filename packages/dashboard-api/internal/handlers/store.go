@@ -33,7 +33,16 @@ type APIStore struct {
 	userProfiles      userprofile.Provider
 }
 
-func NewAPIStore(config cfg.Config, db *sqlcdb.Client, authDB *authdb.Client, supabaseDB *supabasedb.Client, ch clickhouse.Clickhouse, authService sharedauth.Service, teamProvisionSink internalteamprovision.TeamProvisionSink) *APIStore {
+func NewAPIStore(
+	config cfg.Config,
+	db *sqlcdb.Client,
+	authDB *authdb.Client,
+	supabaseDB *supabasedb.Client,
+	ch clickhouse.Clickhouse,
+	authService sharedauth.Service,
+	teamProvisionSink internalteamprovision.TeamProvisionSink,
+	userProfiles userprofile.Provider,
+) *APIStore {
 	return &APIStore{
 		config:            config,
 		db:                db,
@@ -42,7 +51,7 @@ func NewAPIStore(config cfg.Config, db *sqlcdb.Client, authDB *authdb.Client, su
 		clickhouse:        ch,
 		authService:       authService,
 		teamProvisionSink: teamProvisionSink,
-		userProfiles:      userprofile.NewSupabaseProvider(supabaseDB),
+		userProfiles:      userProfiles,
 	}
 }
 
