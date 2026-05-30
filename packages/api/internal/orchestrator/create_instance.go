@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
-	"os"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -24,7 +22,6 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -302,19 +299,11 @@ func (o *Orchestrator) CreateSandbox(
 	nodeClusterID := clusters.WithClusterFallback(team.ClusterID)
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
 	if len(clusterNodes) == 0 {
-		o.discoverClusterNode(ctx, nodeClusterID)
-		clusterNodes = o.GetClusterNodes(nodeClusterID)
-	}
-	if len(clusterNodes) == 0 && env.IsLocal() {
-		port := os.Getenv("ORCHESTRATOR_PORT")
-		if port == "" {
-			port = "5008"
+		if nodeClusterID == consts.LocalClusterID {
+			o.discoverNomadNodes(ctx)
+		} else {
+			o.discoverClusterNode(ctx, nodeClusterID)
 		}
-		_ = o.connectToNode(ctx, nodemanager.NomadServiceDiscovery{
-			NomadNodeShortID:    "local",
-			OrchestratorAddress: net.JoinHostPort("localhost", port),
-			IPAddress:           "localhost",
-		})
 		clusterNodes = o.GetClusterNodes(nodeClusterID)
 	}
 
