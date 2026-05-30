@@ -130,7 +130,7 @@ func NewSnapshotSchedulingMetadata(memfileHeader, rootfsHeader *header.Header, l
 		chain = nil
 	} else if len(chain) > limit {
 		chain = chain[:limit]
-		if baseBuildID != uuid.Nil {
+		if baseBuildID != uuid.Nil && limit > 1 {
 			hasBase := false
 			for _, c := range chain {
 				if c.buildID == baseBuildID {
