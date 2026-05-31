@@ -1175,3 +1175,39 @@ func TestCacheDedup_BestEffortPerPageCacheCheck(t *testing.T) {
 	require.True(t, meta.Dirty.Contains(1))
 	require.True(t, meta.Dirty.Contains(3))
 }
+
+// With no promotion budget, parent pages that match the base stay deduped even
+// when the block exceeds MaxFetchWindowsPerBlock: the compaction can't spend
+// any promotions, so it must leave the parents out of the diff rather than
+// over-promote them into Dirty.
+func TestCacheDedup_BudgetExhaustionKeepsParentsDeduped(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+	blockSize := 4 * pageSize
+	size := blockSize
+
+	baseData := make([]byte, size)
+	_, err := rand.Read(baseData)
+	require.NoError(t, err)
+	srcData := make([]byte, size)
+	copy(srcData, baseData)
+	// Pages 0 and 2 differ (current); pages 1 and 3 match base (parent).
+	srcData[0] ^= 0xFF
+	srcData[2*pageSize] ^= 0xFF
+
+	dirty := fullDirty(size, blockSize)
+	src := buildPackedSrcCache(t, srcData, dirty, blockSize)
+
+	// MaxFetchWindowsPerBlock unsatisfiable, but no promotions allowed.
+	cache, meta, err := src.Dedup(t.Context(), &fakeOriginalDevice{data: baseData}, dirty, blockSize, t.TempDir()+"/dedup", false, false, DedupBudget{MaxFetchWindowsPerBlock: 0, MaxPromotedParentPagesPerBlock: 0, FetchRunWindowPages: 4})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cache.Close() })
+
+	// Only the two genuinely differing pages are stored; matching parents are
+	// deduped away (not promoted), and nothing is empty.
+	require.EqualValues(t, 2, meta.Dirty.GetCardinality())
+	require.True(t, meta.Dirty.Contains(0))
+	require.True(t, meta.Dirty.Contains(2))
+	require.EqualValues(t, 0, meta.Empty.GetCardinality())
+}
