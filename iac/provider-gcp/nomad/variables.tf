@@ -454,6 +454,26 @@ variable "shared_chunk_cache_path" {
   default = ""
 }
 
+variable "rapid_bucket_cache_bucket_name" {
+  type    = string
+  default = ""
+}
+
+variable "rapid_bucket_cache_cleanup_dry_run" {
+  type    = bool
+  default = true
+}
+
+variable "rapid_bucket_cache_cleanup_max_age" {
+  type    = string
+  default = "168h"
+}
+
+variable "rapid_bucket_cache_cleanup_max_deletions" {
+  type    = number
+  default = 10000
+}
+
 variable "filestore_cache_cleanup_disk_usage_target" {
   type        = number
   description = "The disk usage target for the Filestore cache in percent"

@@ -43,6 +43,7 @@ build-local:
 	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
 	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/orchestrator -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
 	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/clean-nfs-cache -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" ./cmd/clean-nfs-cache
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/clean-rapid-cache ./cmd/clean-rapid-cache
 
 .PHONY: build-debug
 build-debug:
@@ -96,6 +97,15 @@ else
 	gsutil -h "Cache-Control:no-cache, max-age=0" cp ./bin/clean-nfs-cache "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/clean-nfs-cache"
 endif
 
+.PHONY: upload/clean-rapid-cache
+upload/clean-rapid-cache:
+	chmod +x ./bin/clean-rapid-cache
+ifeq ($(PROVIDER),aws)
+	@echo "clean-rapid-cache is GCP-only"
+else
+	gsutil -h "Cache-Control:no-cache, max-age=0" cp ./bin/clean-rapid-cache "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/clean-rapid-cache"
+endif
+
 .PHONY: upload/orchestrator
 upload/orchestrator:
 	chmod +x ./bin/orchestrator
@@ -116,6 +126,9 @@ endif
 
 .PHONY: build-and-upload/clean-nfs-cache
 build-and-upload/clean-nfs-cache: build upload/clean-nfs-cache
+
+.PHONY: build-and-upload/clean-rapid-cache
+build-and-upload/clean-rapid-cache: build upload/clean-rapid-cache
 
 .PHONY: build-and-upload/orchestrator
 build-and-upload/orchestrator: build upload/orchestrator

@@ -315,8 +315,11 @@ module "nomad" {
   envd_timeout                   = var.envd_timeout
   persistent_volume_mounts       = { for key, config in local.persistent_volume_types : key => config["local_mount_path"] }
   default_persistent_volume_type = var.default_persistent_volume_type
-  orchestrator_env_vars          = var.orchestrator_env_vars
-  orchestrator_enabled           = var.orchestrator_enabled
+  orchestrator_env_vars = merge(
+    var.orchestrator_env_vars,
+    var.rapid_bucket_cache_bucket_name != "" ? { RAPID_BUCKET_CACHE_BUCKET_NAME = var.rapid_bucket_cache_bucket_name } : {},
+  )
+  orchestrator_enabled = var.orchestrator_enabled
 
   # Template manager
   builder_node_pool                   = var.build_node_pool
@@ -334,6 +337,10 @@ module "nomad" {
 
   # Filestore
   shared_chunk_cache_path                       = module.cluster.shared_chunk_cache_path
+  rapid_bucket_cache_bucket_name                = var.rapid_bucket_cache_bucket_name
+  rapid_bucket_cache_cleanup_dry_run            = var.rapid_bucket_cache_cleanup_dry_run
+  rapid_bucket_cache_cleanup_max_age            = var.rapid_bucket_cache_cleanup_max_age
+  rapid_bucket_cache_cleanup_max_deletions      = var.rapid_bucket_cache_cleanup_max_deletions
   filestore_cache_cleanup_disk_usage_target     = var.filestore_cache_cleanup_disk_usage_target
   filestore_cache_cleanup_dry_run               = var.filestore_cache_cleanup_dry_run
   filestore_cache_cleanup_deletions_per_loop    = var.filestore_cache_cleanup_deletions_per_loop

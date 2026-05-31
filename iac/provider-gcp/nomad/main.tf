@@ -673,8 +673,15 @@ data "google_storage_bucket_object" "filestore_cleanup" {
   bucket = var.fc_env_pipeline_bucket_name
 }
 
+data "google_storage_bucket_object" "rapid_cache_cleanup" {
+  count  = var.rapid_bucket_cache_bucket_name != "" ? 1 : 0
+  name   = "clean-rapid-cache"
+  bucket = var.fc_env_pipeline_bucket_name
+}
+
 locals {
-  clean_nfs_cache_artifact_source = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/clean-nfs-cache?version=${data.google_storage_bucket_object.filestore_cleanup.generation}"
+  clean_nfs_cache_artifact_source   = "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/clean-nfs-cache?version=${data.google_storage_bucket_object.filestore_cleanup.generation}"
+  clean_rapid_cache_artifact_source = var.rapid_bucket_cache_bucket_name != "" ? "gcs::https://www.googleapis.com/storage/v1/${var.fc_env_pipeline_bucket_name}/clean-rapid-cache?version=${data.google_storage_bucket_object.rapid_cache_cleanup[0].generation}" : ""
 }
 
 resource "nomad_job" "clean_nfs_cache" {
@@ -694,5 +701,18 @@ resource "nomad_job" "clean_nfs_cache" {
     max_retries                  = var.filestore_cache_cleanup_max_retries
     otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
     launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+  })
+}
+
+resource "nomad_job" "clean_rapid_cache" {
+  count = var.rapid_bucket_cache_bucket_name != "" ? 1 : 0
+
+  jobspec = templatefile("${path.module}/jobs/clean-rapid-cache.hcl", {
+    node_pool       = var.builder_node_pool
+    artifact_source = local.clean_rapid_cache_artifact_source
+    bucket_name     = var.rapid_bucket_cache_bucket_name
+    dry_run         = var.rapid_bucket_cache_cleanup_dry_run
+    max_age         = var.rapid_bucket_cache_cleanup_max_age
+    max_deletions   = var.rapid_bucket_cache_cleanup_max_deletions
   })
 }

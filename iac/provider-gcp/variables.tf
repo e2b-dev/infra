@@ -835,6 +835,26 @@ variable "anywhere_cache_ttl" {
   default = null
 }
 
+variable "rapid_bucket_cache_bucket_name" {
+  type    = string
+  default = ""
+}
+
+variable "rapid_bucket_cache_cleanup_dry_run" {
+  type    = bool
+  default = true
+}
+
+variable "rapid_bucket_cache_cleanup_max_age" {
+  type    = string
+  default = "168h"
+}
+
+variable "rapid_bucket_cache_cleanup_max_deletions" {
+  type    = number
+  default = 10000
+}
+
 variable "orchestrator_env_vars" {
   type    = map(string)
   default = {}
