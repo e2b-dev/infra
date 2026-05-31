@@ -150,6 +150,10 @@ func (t *Header) IsNormalizeFixApplied() bool {
 // The read path uses this to find which build owns the data, then calls
 // GetBuildFrameData to get the FrameTable for C-space lookup.
 func (t *Header) GetShiftedMapping(ctx context.Context, offset int64) (BuildMap, error) {
+	if t == nil {
+		return BuildMap{}, errors.New("nil header")
+	}
+
 	mapping, shift, err := t.getMapping(ctx, offset)
 	if err != nil {
 		return BuildMap{}, err
