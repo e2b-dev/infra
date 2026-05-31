@@ -56,9 +56,8 @@ func (b *File) SwapHeader(h *header.Header) {
 	b.header.Store(h)
 }
 
-// ReadAt resolves the mappings covering p (via planRead) and reads their
-// segments, optionally in parallel. A Diff evicted between planning and reading
-// or a peer transition re-resolves and retries; reads are idempotent.
+// ReadAt fills p from the mapped build segments, optionally in parallel.
+// Cache eviction or a peer transition re-resolves and retries.
 func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
 	maxParallel := b.store.flags.IntFlag(ctx, featureflags.MaxParallelBuildReadSegments)
 
@@ -97,8 +96,6 @@ type readSegment struct {
 	ft     *storage.FrameTable
 }
 
-// readSegments reads each segment into p, in parallel when enabled and there is
-// more than one segment, otherwise sequentially.
 func (b *File) readSegments(ctx context.Context, p []byte, segments []readSegment, maxParallel int) error {
 	if maxParallel > 1 && len(segments) > 1 {
 		g, gctx := errgroup.WithContext(ctx)
@@ -132,12 +129,10 @@ func (b *File) readSegment(ctx context.Context, p []byte, s readSegment) error {
 	return nil
 }
 
-// planRead resolves the mappings covering p into read segments, zero-filling
-// uuid.Nil regions in place. It returns the number of bytes covered; a value
-// below len(p) means the mappings ran out, which the caller treats as EOF.
+// planRead resolves the segments covering p, zero-filling uuid.Nil regions.
+// A returned byte count below len(p) means the mappings ran out (EOF).
 func (b *File) planRead(ctx context.Context, p []byte, off int64) ([]readSegment, int, error) {
-	// Cache resolved Diffs per BuildId for the duration of one read to avoid
-	// hitting the DiffStore TTL cache (and its mutex) on every mapping.
+	// Per-read Diff cache: avoids the DiffStore TTL cache mutex on every mapping.
 	const buildCacheSize = 16
 	var (
 		underlyingIDs   [buildCacheSize]uuid.UUID
@@ -189,8 +184,7 @@ func (b *File) cachedBuild(ctx context.Context, h *header.Header, buildID uuid.U
 		}
 	}
 
-	// CompressionType is nil-safe: an uncompressed build (nil frame table)
-	// resolves to CompressionNone.
+	// CompressionType is nil-safe (nil frame table -> CompressionNone).
 	ct := h.GetBuildFrameData(buildID).CompressionType()
 	diff, err := b.getBuild(ctx, buildID, b.buildFileSize(h, buildID), ct)
 	if err != nil {
