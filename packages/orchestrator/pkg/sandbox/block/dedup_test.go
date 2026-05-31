@@ -285,3 +285,131 @@ func TestFetchWindowerBestParentRun(t *testing.T) {
 		require.Equal(t, []int{0, 2}, got)
 	})
 }
+
+func TestRecordBlockPages(t *testing.T) {
+	t.Parallel()
+
+	pageSize := int64(header.PageSize)
+
+	tests := []struct {
+		name       string
+		absOff     int64
+		pages      []dedupPageInfo
+		wantDirty  []uint32
+		wantEmpty  []uint32
+		wantStored int64
+	}{
+		{
+			name:       "empty input writes nothing",
+			absOff:     0,
+			pages:      nil,
+			wantDirty:  nil,
+			wantEmpty:  nil,
+			wantStored: 0,
+		},
+		{
+			name:   "mixed kinds route to the right bitmap",
+			absOff: 0,
+			pages: []dedupPageInfo{
+				emptyPage(),   // page 0 -> empty
+				currentPage(), // page 1 -> dirty
+				parentPage(),  // page 2 -> neither (deduped)
+				currentPage(), // page 3 -> dirty
+			},
+			wantDirty:  []uint32{1, 3},
+			wantEmpty:  []uint32{0},
+			wantStored: 2,
+		},
+		{
+			name:   "absOff offsets the page index",
+			absOff: 4 * pageSize, // base page index 4
+			pages: []dedupPageInfo{
+				currentPage(), // -> index 4
+				emptyPage(),   // -> index 5
+			},
+			wantDirty:  []uint32{4},
+			wantEmpty:  []uint32{5},
+			wantStored: 1,
+		},
+		{
+			name:   "all parents store nothing",
+			absOff: 0,
+			pages:  []dedupPageInfo{parentPage(), parentPage()},
+			// parents go into neither bitmap and are not counted.
+			wantStored: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dirty := roaring.New()
+			empty := roaring.New()
+
+			stored := recordBlockPages(tt.absOff, tt.pages, dirty, empty)
+
+			require.Equal(t, tt.wantStored, stored)
+			require.ElementsMatch(t, tt.wantDirty, dirty.ToArray())
+			require.ElementsMatch(t, tt.wantEmpty, empty.ToArray())
+		})
+	}
+}
+
+func TestFetchWindowerCompact(t *testing.T) {
+	t.Parallel()
+
+	windowPages := 4
+	build := uuid.New()
+
+	t.Run("non-positive maxWindows promotes nothing", func(t *testing.T) {
+		t.Parallel()
+
+		w := fetchWindower{windowPages: windowPages, currentStart: 0}
+		pages := []dedupPageInfo{parentKeyPage(build, 0, windowPages)}
+		require.Equal(t, 0, w.compact(pages, 0, 4))
+		require.Equal(t, dedupPageParent, pages[0].kind, "page must stay parent")
+	})
+
+	t.Run("non-positive maxPromoted promotes nothing", func(t *testing.T) {
+		t.Parallel()
+
+		w := fetchWindower{windowPages: windowPages, currentStart: 0}
+		pages := []dedupPageInfo{parentKeyPage(build, 0, windowPages)}
+		require.Equal(t, 0, w.compact(pages, 1, 0))
+		require.Equal(t, dedupPageParent, pages[0].kind)
+	})
+
+	t.Run("already within window budget promotes nothing", func(t *testing.T) {
+		t.Parallel()
+
+		w := fetchWindower{windowPages: windowPages, currentStart: 0}
+		// A single parent window already satisfies maxWindows=1.
+		pages := []dedupPageInfo{
+			parentKeyPage(build, 0, windowPages),
+			parentKeyPage(build, header.PageSize, windowPages),
+		}
+		require.Equal(t, 0, w.compact(pages, 1, 4))
+		require.Equal(t, dedupPageParent, pages[0].kind)
+		require.Equal(t, dedupPageParent, pages[1].kind)
+	})
+
+	t.Run("promotes a parent run to meet the window budget", func(t *testing.T) {
+		t.Parallel()
+
+		w := fetchWindower{windowPages: windowPages, currentStart: 0}
+		// Two current pages in distinct windows plus one parent: two windows
+		// total, over maxWindows=1. Promoting the lone parent removes its
+		// parent window by folding it into a current window.
+		pages := []dedupPageInfo{
+			currentPage(),
+			parentKeyPage(build, 0, windowPages),
+			currentPage(),
+		}
+
+		promoted := w.compact(pages, 1, 4)
+		require.Positive(t, promoted)
+		require.Equal(t, dedupPageCurrent, pages[1].kind, "parent must be promoted")
+		require.Equal(t, dedupFetchKey{}, pages[1].key, "promoted key is cleared")
+	})
+}
