@@ -130,6 +130,10 @@ func (c *Cache) Items() map[string]*ttlcache.Item[string, Template] {
 	return c.cache.Items()
 }
 
+func (c *Cache) CachedBuildStats(ctx context.Context) []build.CachedBuildStats {
+	return c.buildStore.CachedBuildStats(ctx)
+}
+
 // LookupDiff returns the locally-cached diff for the given build and file name.
 // Returns (nil, false) if the diff is not cached locally.
 func (c *Cache) LookupDiff(buildID string, diffType build.DiffType) (build.Diff, bool) {

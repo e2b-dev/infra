@@ -5,10 +5,8 @@ package server
 import (
 	"context"
 
-	"google.golang.org/protobuf/types/known/emptypb"
-	"google.golang.org/protobuf/types/known/timestamppb"
-
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func (s *Server) ListCachedBuilds(ctx context.Context, _ *emptypb.Empty) (*orchestrator.SandboxListCachedBuildsResponse, error) {
@@ -17,17 +15,13 @@ func (s *Server) ListCachedBuilds(ctx context.Context, _ *emptypb.Empty) (*orche
 
 	var builds []*orchestrator.CachedBuildInfo
 
-	for key, item := range s.templateCache.Items() {
-		var metadata *orchestrator.SchedulingMetadata
-		if provider, ok := item.Value().(interface {
-			SchedulingMetadata() *orchestrator.SchedulingMetadata
-		}); ok {
-			metadata = provider.SchedulingMetadata()
-		}
+	for _, stats := range s.templateCache.CachedBuildStats(ctx) {
 		builds = append(builds, &orchestrator.CachedBuildInfo{
-			BuildId:            key,
-			ExpirationTime:     timestamppb.New(item.ExpiresAt()),
-			SchedulingMetadata: metadata,
+			BuildId:             stats.BuildID,
+			MemfileCachedBytes:  stats.MemfileCachedBytes,
+			MemfileCachedChunks: stats.MemfileCachedChunks,
+			RootfsCachedBytes:   stats.RootfsCachedBytes,
+			RootfsCachedChunks:  stats.RootfsCachedChunks,
 		})
 	}
 

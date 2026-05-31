@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,7 +25,8 @@ import (
 )
 
 var (
-	fallbackDiffSize = units.MBToBytes(100)
+	fallbackDiffSize    = units.MBToBytes(100)
+	cacheStatsChunkSize = uint64(2 << 20)
 
 	meter                   = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build")
 	residenceDurationMetric = utils.Must(meter.Int64Histogram("orchestrator.build.cache.residence_duration",
@@ -101,6 +103,14 @@ func NewDiffStore(
 
 type DiffStoreKey string
 
+type CachedBuildStats struct {
+	BuildID             string
+	MemfileCachedBytes  uint64
+	MemfileCachedChunks uint32
+	RootfsCachedBytes   uint64
+	RootfsCachedChunks  uint32
+}
+
 func GetDiffStoreKey(buildID string, diffType DiffType) DiffStoreKey {
 	return DiffStoreKey(fmt.Sprintf("%s/%s", buildID, diffType))
 }
@@ -169,6 +179,42 @@ func (s *DiffStore) Lookup(key DiffStoreKey) (Diff, bool) {
 	}
 
 	return item.Value(), true
+}
+
+func (s *DiffStore) CachedBuildStats(ctx context.Context) []CachedBuildStats {
+	byBuildID := make(map[string]*CachedBuildStats)
+	for key, item := range s.cache.Items() {
+		buildID, diffType, ok := strings.Cut(string(key), "/")
+		if !ok || item == nil || item.Value() == nil {
+			continue
+		}
+		stats := byBuildID[buildID]
+		if stats == nil {
+			stats = &CachedBuildStats{BuildID: buildID}
+			byBuildID[buildID] = stats
+		}
+
+		size, err := item.Value().FileSize(ctx)
+		if err != nil || size < 0 {
+			continue
+		}
+		chunks := uint32((uint64(size) + cacheStatsChunkSize - 1) / cacheStatsChunkSize)
+		switch DiffType(diffType) {
+		case Memfile:
+			stats.MemfileCachedBytes = uint64(size)
+			stats.MemfileCachedChunks = chunks
+		case Rootfs:
+			stats.RootfsCachedBytes = uint64(size)
+			stats.RootfsCachedChunks = chunks
+		}
+	}
+
+	result := make([]CachedBuildStats, 0, len(byBuildID))
+	for _, stats := range byBuildID {
+		result = append(result, *stats)
+	}
+
+	return result
 }
 
 func (s *DiffStore) startDiskSpaceEviction(
