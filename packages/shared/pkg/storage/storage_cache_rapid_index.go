@@ -30,6 +30,7 @@ func (noopRapidCacheIndex) Evict(context.Context, string, int64) error { return 
 func (noopRapidCacheIndex) Candidates(context.Context, time.Time, int64) ([]string, error) {
 	return nil, nil
 }
+
 func (noopRapidCacheIndex) LastAccess(context.Context, string) (int64, bool, error) {
 	return 0, false, nil
 }
