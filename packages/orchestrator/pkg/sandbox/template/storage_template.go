@@ -16,7 +16,9 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/scheduling"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -268,6 +270,16 @@ func (t *storageTemplate) Close(ctx context.Context) error {
 
 func (t *storageTemplate) Files() storage.CachePaths {
 	return t.paths
+}
+
+func (t *storageTemplate) SchedulingMetadata() *orchestrator.SchedulingMetadata {
+	memfileHeader, memfileErr := t.memfileHeader.Result()
+	rootfsHeader, rootfsErr := t.rootfsHeader.Result()
+	if memfileErr != nil || rootfsErr != nil {
+		return nil
+	}
+
+	return scheduling.FromHeaders(memfileHeader, rootfsHeader)
 }
 
 func (t *storageTemplate) Memfile(ctx context.Context) (block.ReadonlyDevice, error) {

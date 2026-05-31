@@ -1185,8 +1185,7 @@ func (s *Sandbox) Pause(
 	}
 	cleanup.AddNoContext(ctx, rootfsDiff.Close)
 
-	chainLimit := s.featureFlags.IntFlag(ctx, featureflags.SnapshotSchedulingMetadataChainLimit)
-	schedulingMetadata := NewSnapshotSchedulingMetadata(originalMemfile.Header(), originalRootfs.Header(), chainLimit)
+	schedulingMetadata := NewSnapshotSchedulingMetadata(originalMemfile.Header(), originalRootfs.Header())
 
 	metadataFileLink := template.NewLocalFileLink(cachePaths.CacheMetadata())
 	cleanup.AddNoContext(ctx, metadataFileLink.Close)

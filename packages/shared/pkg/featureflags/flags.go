@@ -265,8 +265,7 @@ var (
 	MaxConcurrentSandboxListQueries = NewIntFlag("max-concurrent-sandbox-list-queries", 0)
 	// MaxConcurrentSnapshotBuildQueries limits concurrent GetSnapshotBuilds calls (e.g. sandbox delete).
 	// 0 or negative disables throttling (unlimited concurrency).
-	MaxConcurrentSnapshotBuildQueries    = NewIntFlag("max-concurrent-snapshot-build-queries", 0)
-	SnapshotSchedulingMetadataChainLimit = NewIntFlag("snapshot-scheduling-metadata-chain-limit", 32)
+	MaxConcurrentSnapshotBuildQueries = NewIntFlag("max-concurrent-snapshot-build-queries", 0)
 
 	MinChunkerReadSizeKB = NewIntFlag("min-chunker-read-size-kb", 16)
 )

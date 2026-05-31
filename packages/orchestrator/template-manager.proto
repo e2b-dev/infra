@@ -132,6 +132,19 @@ message TemplateBuildMetadata {
   // The API persists these into the env_builds row once the build finishes.
   string kernelVersion = 3;
   string firecrackerVersion = 4;
+  TemplateSchedulingMetadata schedulingMetadata = 5;
+}
+
+message TemplateSchedulingMetadata {
+  string baseBuildID = 1;
+  uint64 generation = 2;
+  repeated string chainBuildIDs = 3;
+  repeated uint64 memfileLogicalBytes = 4;
+  repeated uint32 memfileChunkCounts = 5;
+  repeated uint32 memfileMappingCounts = 6;
+  repeated uint64 rootfsLogicalBytes = 7;
+  repeated uint32 rootfsChunkCounts = 8;
+  repeated uint32 rootfsMappingCounts = 9;
 }
 
 enum TemplateBuildState {

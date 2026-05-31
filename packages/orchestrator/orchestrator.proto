@@ -126,18 +126,20 @@ message SandboxPauseRequest {
   string build_id = 3;
 }
 
-message SnapshotSchedulingMetadata {
+message SchedulingMetadata {
   string base_build_id = 1;
   uint64 generation = 2;
-  uint64 memfile_mapping_count = 3;
-  uint64 rootfs_mapping_count = 4;
-  repeated string chain_build_ids = 5;
-  repeated uint64 chain_memfile_bytes = 6;
-  repeated uint64 chain_rootfs_bytes = 7;
+  repeated string chain_build_ids = 3;
+  repeated uint64 memfile_logical_bytes = 4;
+  repeated uint32 memfile_chunk_counts = 5;
+  repeated uint32 memfile_mapping_counts = 6;
+  repeated uint64 rootfs_logical_bytes = 7;
+  repeated uint32 rootfs_chunk_counts = 8;
+  repeated uint32 rootfs_mapping_counts = 9;
 }
 
 message SandboxPauseResponse {
-  SnapshotSchedulingMetadata scheduling_metadata = 1;
+  SchedulingMetadata scheduling_metadata = 1;
 }
 
 message SandboxCheckpointRequest {
@@ -146,7 +148,7 @@ message SandboxCheckpointRequest {
 }
 
 message SandboxCheckpointResponse {
-  SnapshotSchedulingMetadata scheduling_metadata = 1;
+  SchedulingMetadata scheduling_metadata = 1;
 }
 
 message RunningSandbox {
@@ -164,6 +166,7 @@ message SandboxListResponse {
 message CachedBuildInfo {
   string build_id = 1;
   google.protobuf.Timestamp expiration_time = 2;
+  SchedulingMetadata scheduling_metadata = 3;
 }
 
 message SandboxListCachedBuildsResponse {

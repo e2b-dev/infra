@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -38,7 +37,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		return err
 	}
 
-	schedulingMetadata, err := snapshotInstance(ctx, node, sbx, result.TemplateID, result.BuildID.String())
+	err = snapshotInstance(ctx, node, sbx, result.TemplateID, result.BuildID.String())
 	if errors.Is(err, PauseQueueExhaustedError{}) {
 		telemetry.ReportCriticalError(ctx, "pause queue exhausted", err)
 
@@ -49,11 +48,6 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)
 
 		return fmt.Errorf("error pausing sandbox: %w", err)
-	}
-	if schedulingMetadata != nil {
-		if err := o.updateSnapshotSchedulingMetadata(ctx, sbx.SandboxID, schedulingMetadata); err != nil {
-			telemetry.ReportError(ctx, "error updating snapshot scheduling metadata", err)
-		}
 	}
 
 	now := time.Now()
@@ -74,12 +68,12 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	return nil
 }
 
-func snapshotInstance(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox, templateID, buildID string) (*orchestrator.SnapshotSchedulingMetadata, error) {
+func snapshotInstance(ctx context.Context, node *nodemanager.Node, sbx sandbox.Sandbox, templateID, buildID string) error {
 	childCtx, childSpan := tracer.Start(ctx, "snapshot-instance")
 	defer childSpan.End()
 
 	client, childCtx := node.GetSandboxDeleteCtx(childCtx, sbx.SandboxID, sbx.ExecutionID)
-	res, err := client.Sandbox.Pause(
+	_, err := client.Sandbox.Pause(
 		childCtx, &orchestrator.SandboxPauseRequest{
 			SandboxId:  sbx.SandboxID,
 			TemplateId: templateID,
@@ -90,35 +84,19 @@ func snapshotInstance(ctx context.Context, node *nodemanager.Node, sbx sandbox.S
 	if err == nil {
 		telemetry.ReportEvent(ctx, "Paused sandbox")
 
-		return res.GetSchedulingMetadata(), nil
+		return nil
 	}
 
 	st, ok := status.FromError(err)
 	if !ok {
-		return nil, err
+		return err
 	}
 
 	if st.Code() == codes.ResourceExhausted {
-		return nil, PauseQueueExhaustedError{}
+		return PauseQueueExhaustedError{}
 	}
 
-	return nil, fmt.Errorf("failed to pause sandbox '%s': %w", sbx.SandboxID, err)
-}
-
-func (o *Orchestrator) updateSnapshotSchedulingMetadata(ctx context.Context, sandboxID string, metadata *orchestrator.SnapshotSchedulingMetadata) error {
-	data, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(metadata)
-	if err != nil {
-		return fmt.Errorf("marshal snapshot scheduling metadata: %w", err)
-	}
-	if err := o.sqlcDB.UpdateSnapshotSchedulingMetadata(ctx, queries.UpdateSnapshotSchedulingMetadataParams{
-		SandboxID: sandboxID,
-		Metadata:  string(data),
-	}); err != nil {
-		return fmt.Errorf("update snapshot scheduling metadata: %w", err)
-	}
-	o.snapshotCache.Invalidate(context.WithoutCancel(ctx), sandboxID)
-
-	return nil
+	return fmt.Errorf("failed to pause sandbox '%s': %w", sbx.SandboxID, err)
 }
 
 func (o *Orchestrator) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error {

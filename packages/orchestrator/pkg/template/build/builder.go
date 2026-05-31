@@ -37,6 +37,8 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -103,6 +105,7 @@ type Result struct {
 	KernelVersion      string
 	FirecrackerVersion string
 	RootfsSizeMB       int64
+	SchedulingMetadata *templatemanager.TemplateSchedulingMetadata
 }
 
 // Build builds the template, uploads it to storage and returns the result metadata.
@@ -387,7 +390,41 @@ func runBuild(
 		KernelVersion:      bc.Config.KernelVersion,
 		FirecrackerVersion: bc.Config.FirecrackerVersion,
 		RootfsSizeMB:       units.BytesToMB(int64(rootfsSize)),
+		SchedulingMetadata: templateSchedulingMetadata(builder.templateCache, lastLayerResult.Metadata.Template.BuildID),
 	}, nil
+}
+
+func templateSchedulingMetadata(cache *sbxtemplate.Cache, buildID string) *templatemanager.TemplateSchedulingMetadata {
+	t, ok := cache.GetCachedTemplate(buildID)
+	if !ok {
+		return nil
+	}
+	provider, ok := t.(interface {
+		SchedulingMetadata() *orchestratorgrpc.SchedulingMetadata
+	})
+	if !ok {
+		return nil
+	}
+
+	return toTemplateSchedulingMetadata(provider.SchedulingMetadata())
+}
+
+func toTemplateSchedulingMetadata(m *orchestratorgrpc.SchedulingMetadata) *templatemanager.TemplateSchedulingMetadata {
+	if m == nil {
+		return nil
+	}
+
+	return &templatemanager.TemplateSchedulingMetadata{
+		BaseBuildID:          m.BaseBuildId,
+		Generation:           m.Generation,
+		ChainBuildIDs:        m.ChainBuildIds,
+		MemfileLogicalBytes:  m.MemfileLogicalBytes,
+		MemfileChunkCounts:   m.MemfileChunkCounts,
+		MemfileMappingCounts: m.MemfileMappingCounts,
+		RootfsLogicalBytes:   m.RootfsLogicalBytes,
+		RootfsChunkCounts:    m.RootfsChunkCounts,
+		RootfsMappingCounts:  m.RootfsMappingCounts,
+	}
 }
 
 // forceSteps sets force for all steps after the first encounter.

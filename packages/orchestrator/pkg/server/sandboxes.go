@@ -783,7 +783,7 @@ func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
 // callers need to start the background remote storage upload.
 type snapshotResult struct {
 	meta               metadata.Template
-	schedulingMetadata *orchestrator.SnapshotSchedulingMetadata
+	schedulingMetadata *orchestrator.SchedulingMetadata
 	upload             *sandbox.Upload
 	completeUpload     func(ctx context.Context, uploadErr error)
 }

@@ -18,9 +18,16 @@ func (s *Server) ListCachedBuilds(ctx context.Context, _ *emptypb.Empty) (*orche
 	var builds []*orchestrator.CachedBuildInfo
 
 	for key, item := range s.templateCache.Items() {
+		var metadata *orchestrator.SchedulingMetadata
+		if provider, ok := item.Value().(interface {
+			SchedulingMetadata() *orchestrator.SchedulingMetadata
+		}); ok {
+			metadata = provider.SchedulingMetadata()
+		}
 		builds = append(builds, &orchestrator.CachedBuildInfo{
-			BuildId:        key,
-			ExpirationTime: timestamppb.New(item.ExpiresAt()),
+			BuildId:            key,
+			ExpirationTime:     timestamppb.New(item.ExpiresAt()),
+			SchedulingMetadata: metadata,
 		})
 	}
 
