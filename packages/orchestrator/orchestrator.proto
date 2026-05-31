@@ -105,6 +105,7 @@ message SandboxCreateRequest {
 
 message SandboxCreateResponse {
   string client_id = 1;
+  SchedulingMetadata scheduling_metadata = 2;
 }
 
 message SandboxUpdateRequest {
