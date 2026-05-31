@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
@@ -72,7 +73,7 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 				// whole exhausted pool since capacity may free up.
 				if len(nodesExhausted) > 0 {
 					clear(nodesExhausted)
-					attempt++
+					time.Sleep(100 * time.Millisecond)
 
 					continue
 				}
