@@ -21,9 +21,7 @@ func WrapInRapidBucketCache(_ context.Context, cache StorageProvider, inner Stor
 }
 
 func (p *rapidCacheProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
-	if err := p.cache.DeleteObjectsWithPrefix(ctx, "rapid-cache/"+prefix); err != nil {
-		return err
-	}
+	_ = p.cache.DeleteObjectsWithPrefix(ctx, "rapid-cache/"+prefix)
 
 	return p.inner.DeleteObjectsWithPrefix(ctx, prefix)
 }
@@ -62,6 +60,9 @@ type rapidCachedSeekable struct {
 func (c *rapidCachedSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
 	if frameTable != nil && frameTable.IsCompressed() {
 		return c.openCompressed(ctx, off, frameTable)
+	}
+	if err := validateRapidReadParams(length, off); err != nil {
+		return nil, err
 	}
 
 	cachePath := fmt.Sprintf("%s/%012d-%d.bin", c.path, off/MemoryChunkSize, length)
@@ -120,6 +121,20 @@ func (c *rapidCachedSeekable) Size(ctx context.Context) (int64, error) {
 
 func (c *rapidCachedSeekable) StoreFile(ctx context.Context, path string, opts ...PutOption) (*FrameTable, [32]byte, error) {
 	return c.inner.StoreFile(ctx, path, opts...)
+}
+
+func validateRapidReadParams(length, off int64) error {
+	if length == 0 {
+		return ErrBufferTooSmall
+	}
+	if length > MemoryChunkSize {
+		return ErrBufferTooLarge
+	}
+	if off%MemoryChunkSize != 0 {
+		return ErrOffsetUnaligned
+	}
+
+	return nil
 }
 
 func (c *rapidCachedSeekable) openCache(ctx context.Context, path string, length int64) (io.ReadCloser, error) {
