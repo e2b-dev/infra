@@ -7,10 +7,9 @@ import "sync"
 // deferredFaults collects pagefaults that returned EAGAIN so they get
 // retried on the next poll iteration. Safe for concurrent push.
 type deferredFaults struct {
-	mu       sync.Mutex
-	pf       []*UffdPagefault
-	byAddr   map[uint64]*UffdPagefault
-	pageSize uintptr
+	mu     sync.Mutex
+	pf     []*UffdPagefault
+	byAddr map[uint64]*UffdPagefault
 }
 
 // push queues a deferred fault, deduping by address. If the same page is
@@ -22,7 +21,7 @@ func (d *deferredFaults) push(pf *UffdPagefault) bool {
 	if d.byAddr == nil {
 		d.byAddr = make(map[uint64]*UffdPagefault)
 	}
-	addr := d.key(pf.address)
+	addr := uint64(pf.address)
 	if existing, ok := d.byAddr[addr]; ok {
 		if pf.flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
 			existing.flags |= UFFD_PAGEFAULT_FLAG_WRITE
@@ -34,14 +33,6 @@ func (d *deferredFaults) push(pf *UffdPagefault) bool {
 	d.pf = append(d.pf, pf)
 
 	return true
-}
-
-func (d *deferredFaults) key(addr uintptr) uint64 {
-	if d.pageSize == 0 {
-		return uint64(addr)
-	}
-
-	return uint64(addr & ^(d.pageSize - 1))
 }
 
 func (d *deferredFaults) drain() []*UffdPagefault {

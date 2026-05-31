@@ -8,13 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDeferredFaultsDedupesByPage(t *testing.T) {
+func TestDeferredFaultsDedupesByAddress(t *testing.T) {
 	t.Parallel()
 
-	d := deferredFaults{pageSize: 4096}
+	var d deferredFaults
 	require.True(t, d.push(&UffdPagefault{address: 42}))
-	require.False(t, d.push(&UffdPagefault{address: 43}))
-	require.True(t, d.push(&UffdPagefault{address: 4096}))
+	require.False(t, d.push(&UffdPagefault{address: 42}))
+	require.True(t, d.push(&UffdPagefault{address: 43}))
 
 	require.Len(t, d.drain(), 2)
 	require.Empty(t, d.drain())
