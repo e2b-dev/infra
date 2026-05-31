@@ -86,6 +86,7 @@ func clean(ctx context.Context, bucket string, prefix string, cutoff time.Time, 
 		}
 		if dryRun {
 			deleted++
+
 			continue
 		}
 		if err := client.Bucket(bucket).Object(attrs.Name).Delete(ctx); err != nil {
