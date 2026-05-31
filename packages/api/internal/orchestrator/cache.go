@@ -13,6 +13,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -147,7 +148,11 @@ func (o *Orchestrator) syncClusterDiscoveredNodes(ctx context.Context) {
 	// Connect clustered nodes that are not in the list, yet
 	// We need to iterate over all clusters and their nodes
 	for _, cluster := range o.clusters.GetClusters() {
-		for _, n := range cluster.GetOrchestrators() {
+		instances := cluster.GetOrchestrators()
+		if len(instances) == 0 && cluster.ID == consts.LocalClusterID {
+			instances = cluster.GetTemplateBuilders()
+		}
+		for _, n := range instances {
 			// If the node is not in the list, connect to it
 			if o.GetNode(cluster.ID, n.NodeID) == nil {
 				wg.Go(func() {
