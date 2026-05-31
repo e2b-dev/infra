@@ -61,12 +61,22 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 			for id := range nodesExhausted {
 				skip[id] = struct{}{}
 			}
-			if len(skip) >= len(clusterNodes) {
-				return nil, errors.New("no nodes available")
-			}
 
-			node, err = algorithm.chooseNode(ctx, clusterNodes, skip, nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()}, buildMachineInfo, labelFilteringEnabled, requiredLabels, affinityScores...)
+			if len(skip) < len(clusterNodes) {
+				node, err = algorithm.chooseNode(ctx, clusterNodes, skip, nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()}, buildMachineInfo, labelFilteringEnabled, requiredLabels, affinityScores...)
+			} else {
+				node, err = nil, errors.New("no nodes available")
+			}
 			if err != nil {
+				// No eligible node. If some were only capacity-exhausted, retry the
+				// whole exhausted pool since capacity may free up.
+				if len(nodesExhausted) > 0 {
+					clear(nodesExhausted)
+					attempt++
+
+					continue
+				}
+
 				return nil, err
 			}
 
@@ -112,12 +122,6 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 		case codes.ResourceExhausted:
 			nodesExhausted[failedNode.ID] = struct{}{}
 			failedNode.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
-			// Once every node is excluded but some were only capacity-exhausted,
-			// retry the whole exhausted pool since capacity may free up.
-			if len(nodesExcluded)+len(nodesExhausted) >= len(clusterNodes) {
-				clear(nodesExhausted)
-				attempt++
-			}
 			logger.L().Warn(ctx, "Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID))
 		default:
 			nodesExcluded[failedNode.ID] = struct{}{}
