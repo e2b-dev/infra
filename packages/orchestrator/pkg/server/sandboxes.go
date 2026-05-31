@@ -115,6 +115,7 @@ func (s *Server) createSandboxFromRootfs(
 
 	if err := sbx.WaitForEnvd(ctx, s.config.EnvdTimeout); err != nil {
 		closeErr := sbx.Close(context.WithoutCancel(ctx))
+
 		return nil, errors.Join(fmt.Errorf("wait for envd after reboot: %w", err), closeErr)
 	}
 
