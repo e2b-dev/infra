@@ -25,9 +25,13 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
+	configpkg "github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/config"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/events"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -57,6 +61,67 @@ const (
 
 	killReasonUnknown = "unknown"
 )
+
+func (s *Server) createSandboxFromRootfs(
+	ctx context.Context,
+	template sbxtemplate.Template,
+	config *sandbox.Config,
+	runtime sandbox.RuntimeMetadata,
+	req *orchestrator.SandboxCreateRequest,
+) (*sandbox.Sandbox, error) {
+	buildID, err := uuid.Parse(template.Files().BuildID)
+	if err != nil {
+		return nil, fmt.Errorf("parse build ID: %w", err)
+	}
+
+	memfile, err := block.NewEmpty(
+		units.MBToBytes(config.RamMB),
+		configpkg.MemfilePageSize(config.HugePages),
+		buildID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create empty memfile: %w", err)
+	}
+
+	maskedTemplate := sbxtemplate.NewMaskTemplate(template, sbxtemplate.WithMemfile(memfile))
+
+	kvmClock, err := utils.IsGTEVersion(config.Envd.Version, "0.2.11")
+	if err != nil {
+		return nil, fmt.Errorf("compare envd version: %w", err)
+	}
+
+	timeout := req.GetEndTime().AsTime().Sub(req.GetStartTime().AsTime())
+	if timeout <= 0 {
+		timeout = s.config.EnvdTimeout
+	}
+
+	sbx, err := s.sandboxFactory.CreateSandbox(
+		ctx,
+		config,
+		runtime,
+		maskedTemplate,
+		timeout,
+		"",
+		fc.ProcessOptions{
+			InitScriptPath: constants.SystemdInitPath,
+			KvmClock:       kvmClock,
+		},
+		req.GetSandbox(),
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := sbx.WaitForEnvd(ctx, s.config.EnvdTimeout); err != nil {
+		closeErr := sbx.Close(context.WithoutCancel(ctx))
+		return nil, errors.Join(fmt.Errorf("wait for envd after reboot: %w", err), closeErr)
+	}
+
+	go sbx.Checks.Start(context.WithoutCancel(ctx))
+
+	return sbx, nil
+}
 
 func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (_ *orchestrator.SandboxCreateResponse, createErr error) {
 	// set max request timeout for this request
@@ -187,18 +252,22 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		SandboxType: sandbox.SandboxTypeSandbox,
 	}
 
-	sbx, err := s.sandboxFactory.ResumeSandbox(
-		ctx,
-		template,
-		config,
-		runtime,
-		req.GetStartTime().AsTime(),
-		req.GetEndTime().AsTime(),
-		req.GetSandbox(),
-	)
+	var sbx *sandbox.Sandbox
+	if req.GetReboot() {
+		sbx, err = s.createSandboxFromRootfs(ctx, template, config, runtime, req)
+	} else {
+		sbx, err = s.sandboxFactory.ResumeSandbox(
+			ctx,
+			template,
+			config,
+			runtime,
+			req.GetStartTime().AsTime(),
+			req.GetEndTime().AsTime(),
+			req.GetSandbox(),
+		)
+	}
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
-			// Snapshot data not found, let the API know the data aren't probably upload yet
 			telemetry.ReportError(ctx, "sandbox files not found", err, telemetry.WithSandboxID(req.GetSandbox().GetSandboxId()))
 
 			return nil, status.Errorf(codes.FailedPrecondition, "sandbox files for '%s' not found", req.GetSandbox().GetSandboxId())

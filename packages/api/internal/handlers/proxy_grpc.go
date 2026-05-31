@@ -257,6 +257,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		s.api.buildResumeSandboxData(sandboxID, nil),
 		&headers,
 		true,
+		false,
 		nil, // mcp
 	)
 	if apiErr != nil {

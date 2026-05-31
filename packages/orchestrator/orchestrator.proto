@@ -101,6 +101,8 @@ message SandboxCreateRequest {
 
   google.protobuf.Timestamp start_time = 2;
   google.protobuf.Timestamp end_time = 3;
+
+  bool reboot = 4;
 }
 
 message SandboxCreateResponse {

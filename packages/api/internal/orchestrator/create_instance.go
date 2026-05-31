@@ -127,6 +127,7 @@ func (o *Orchestrator) CreateSandbox(
 	timeout time.Duration,
 	isResume bool,
 	creationMeta sandbox.CreationMetadata,
+	reboot bool,
 ) (sbx sandbox.Sandbox, apiErr *api.APIError) {
 	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
@@ -282,6 +283,7 @@ func (o *Orchestrator) CreateSandbox(
 		},
 		StartTime: timestamppb.New(startTime),
 		EndTime:   timestamppb.New(endTime),
+		Reboot:    reboot,
 	}
 
 	var node *nodemanager.Node

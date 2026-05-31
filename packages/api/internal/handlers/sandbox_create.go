@@ -265,6 +265,7 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		getSandboxData,
 		&c.Request.Header,
 		false,
+		body.Reboot != nil && *body.Reboot,
 		mcp,
 	)
 	if createErr != nil {

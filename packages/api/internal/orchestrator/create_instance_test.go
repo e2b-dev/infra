@@ -152,6 +152,7 @@ func TestCreateSandbox_StaleDataAfterConcurrentPause(t *testing.T) {
 			time.Hour,
 			true,
 			sandbox.CreationMetadata{IsResume: true},
+			false,
 		)
 		require.Nil(t, apiErr)
 		assert.Equal(t, "tpl-v1", sbx1.TemplateID)
@@ -176,6 +177,7 @@ func TestCreateSandbox_StaleDataAfterConcurrentPause(t *testing.T) {
 			time.Hour,
 			true,
 			sandbox.CreationMetadata{IsResume: true},
+			false,
 		)
 		require.Nil(t, apiErr)
 

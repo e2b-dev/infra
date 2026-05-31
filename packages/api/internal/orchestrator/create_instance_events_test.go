@@ -141,6 +141,7 @@ func TestCreateSandbox_FreshCreate_FiresCallbackOnce(t *testing.T) {
 		now, now.Add(time.Hour), time.Hour,
 		false,
 		sandbox.CreationMetadata{IsResume: false, TeamName: "test-team"},
+		false,
 	)
 	require.Nil(t, apiErr)
 
@@ -169,6 +170,7 @@ func TestCreateSandbox_Resume_FiresCallbackOnceWithResumeFlag(t *testing.T) {
 		now, now.Add(time.Hour), time.Hour,
 		true,
 		sandbox.CreationMetadata{IsResume: true, TeamName: "test-team"},
+		false,
 	)
 	require.Nil(t, apiErr)
 
@@ -219,6 +221,7 @@ func TestCreateSandbox_ConcurrentRace_LoserPathSkipsCallback(t *testing.T) {
 			now, now.Add(time.Hour), time.Hour,
 			false,
 			sandbox.CreationMetadata{TeamName: "winner"},
+			false,
 		)
 	})
 
@@ -232,6 +235,7 @@ func TestCreateSandbox_ConcurrentRace_LoserPathSkipsCallback(t *testing.T) {
 			now, now.Add(time.Hour), time.Hour,
 			false,
 			sandbox.CreationMetadata{TeamName: "loser"},
+			false,
 		)
 	})
 
@@ -290,6 +294,7 @@ func TestCreateSandbox_ManyConcurrentRacers_OnlyOneCallback(t *testing.T) {
 			now, now.Add(time.Hour), time.Hour,
 			false,
 			sandbox.CreationMetadata{},
+			false,
 		)
 		if apiErr == nil {
 			successCount.Add(1)
@@ -307,6 +312,7 @@ func TestCreateSandbox_ManyConcurrentRacers_OnlyOneCallback(t *testing.T) {
 				now, now.Add(time.Hour), time.Hour,
 				false,
 				sandbox.CreationMetadata{},
+				false,
 			)
 			if apiErr == nil {
 				successCount.Add(1)
@@ -343,6 +349,7 @@ func TestCreateSandbox_SequentialDuplicate_SecondCallSkipsCallback(t *testing.T)
 		now, now.Add(time.Hour), time.Hour,
 		false,
 		sandbox.CreationMetadata{},
+		false,
 	)
 	require.Nil(t, apiErr)
 	require.Eventually(t, func() bool { return ec.get() == 1 }, time.Second, 10*time.Millisecond)
@@ -354,6 +361,7 @@ func TestCreateSandbox_SequentialDuplicate_SecondCallSkipsCallback(t *testing.T)
 		now, now.Add(time.Hour), time.Hour,
 		false,
 		sandbox.CreationMetadata{},
+		false,
 	)
 	require.Nil(t, apiErr)
 
@@ -376,6 +384,7 @@ func TestCreateSandbox_FetcherError_NoCallback(t *testing.T) {
 		now, now.Add(time.Hour), time.Hour,
 		false,
 		sandbox.CreationMetadata{},
+		false,
 	)
 	require.NotNil(t, apiErr)
 
@@ -399,6 +408,7 @@ func TestCreateSandbox_QuotaExceeded_NoCallback(t *testing.T) {
 		now, now.Add(time.Hour), time.Hour,
 		false,
 		sandbox.CreationMetadata{},
+		false,
 	)
 	require.Nil(t, apiErr)
 	require.Eventually(t, func() bool { return ec.get() == 1 }, time.Second, 10*time.Millisecond)
@@ -410,6 +420,7 @@ func TestCreateSandbox_QuotaExceeded_NoCallback(t *testing.T) {
 		now, now.Add(time.Hour), time.Hour,
 		false,
 		sandbox.CreationMetadata{},
+		false,
 	)
 	require.NotNil(t, apiErr)
 	assert.Equal(t, http.StatusTooManyRequests, apiErr.Code)

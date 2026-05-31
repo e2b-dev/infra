@@ -152,6 +152,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 		a.buildResumeSandboxData(sandboxID, nil),
 		&c.Request.Header,
 		true,
+		false,
 		nil, // mcp
 	)
 	if createErr != nil {

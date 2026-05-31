@@ -28,6 +28,7 @@ func (a *APIStore) startSandbox(
 	getSandboxData orchestrator.SandboxDataFetcher,
 	requestHeader *http.Header,
 	isResume bool,
+	reboot bool,
 	mcp api.Mcp,
 ) (*api.Sandbox, *api.APIError) {
 	sbx, apiErr := a.startSandboxInternal(
@@ -38,6 +39,7 @@ func (a *APIStore) startSandbox(
 		getSandboxData,
 		requestHeader,
 		isResume,
+		reboot,
 		mcp,
 	)
 	if apiErr != nil {
@@ -56,6 +58,7 @@ func (a *APIStore) startSandboxInternal(
 	getSandboxData orchestrator.SandboxDataFetcher,
 	requestHeader *http.Header,
 	isResume bool,
+	reboot bool,
 	mcp api.Mcp,
 ) (sandbox.Sandbox, *api.APIError) {
 	startTime := time.Now()
@@ -77,6 +80,7 @@ func (a *APIStore) startSandboxInternal(
 		timeout,
 		isResume,
 		creationMeta,
+		reboot,
 	)
 	if instanceErr != nil {
 		telemetry.ReportError(ctx, "error when creating instance", instanceErr.Err)

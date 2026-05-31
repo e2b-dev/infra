@@ -562,6 +562,9 @@ type NewSandbox struct {
 	Metadata *SandboxMetadata      `json:"metadata,omitempty"`
 	Network  *SandboxNetworkConfig `json:"network,omitempty"`
 
+	// Reboot Boot from the template filesystem with fresh memory instead of restoring the memory snapshot.
+	Reboot *bool `json:"reboot,omitempty"`
+
 	// Secure Secure all system communication with sandbox
 	Secure *bool `json:"secure,omitempty"`
 
@@ -708,6 +711,9 @@ type ResumedSandbox struct {
 	// AutoPause Automatically pauses the sandbox after the timeout
 	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	AutoPause *bool `json:"autoPause,omitempty"`
+
+	// Reboot Boot from the snapshot filesystem with fresh memory instead of restoring the memory snapshot.
+	Reboot *bool `json:"reboot,omitempty"`
 
 	// Timeout Time to live for the sandbox in seconds.
 	Timeout *int32 `json:"timeout,omitempty"`

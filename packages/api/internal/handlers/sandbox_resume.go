@@ -54,6 +54,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	}
 
 	telemetry.ReportEvent(ctx, "Parsed body")
+	reboot := body.Reboot != nil && *body.Reboot
 
 	timeout := sandbox.SandboxTimeoutDefault
 	if body.Timeout != nil {
@@ -160,6 +161,7 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		a.buildResumeSandboxData(sandboxID, body.AutoPause),
 		&c.Request.Header,
 		true,
+		reboot,
 		nil, // mcp
 	)
 	if createErr != nil {

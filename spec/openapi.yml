@@ -711,6 +711,9 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SandboxVolumeMount"
+        reboot:
+          type: boolean
+          description: Boot from the template filesystem with fresh memory instead of restoring the memory snapshot.
 
     ResumedSandbox:
       properties:
@@ -724,6 +727,9 @@ components:
           type: boolean
           deprecated: true
           description: Automatically pauses the sandbox after the timeout
+        reboot:
+          type: boolean
+          description: Boot from the snapshot filesystem with fresh memory instead of restoring the memory snapshot.
 
     ConnectSandbox:
       type: object
