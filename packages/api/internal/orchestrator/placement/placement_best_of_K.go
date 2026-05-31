@@ -63,7 +63,7 @@ func (b *BestOfK) Score(node *nodemanager.Node, resources nodemanager.SandboxRes
 
 	score := (cpuRequested + float64(reserved) + config.Alpha*usageAvg) / totalCapacity
 	if len(affinityScores) > 0 {
-		score -= affinityScores[0][node.ID] / totalCapacity
+		score -= affinityScores[0][node.ID]
 	}
 
 	return score
