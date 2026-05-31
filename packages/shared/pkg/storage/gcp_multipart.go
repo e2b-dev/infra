@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/md5"
+	"encoding/base64"
 	"encoding/xml"
 	"fmt"
 	"hash"
@@ -262,6 +264,8 @@ func (m *MultipartUploader) uploadPart(ctx context.Context, uploadID string, par
 
 	req.Header.Set("Authorization", "Bearer "+m.token)
 	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(data)))
+	sum := md5.Sum(data) //nolint:gosec // GCS multipart uses Content-MD5 for transport integrity.
+	req.Header.Set("Content-MD5", base64.StdEncoding.EncodeToString(sum[:]))
 
 	resp, err := m.client.Do(req)
 	if err != nil {
@@ -343,6 +347,11 @@ func (m *MultipartUploader) uploadPartSlices(ctx context.Context, uploadID strin
 
 	req.Header.Set("Authorization", "Bearer "+m.token)
 	req.Header.Set("Content-Length", fmt.Sprintf("%d", totalLen))
+	h := md5.New() //nolint:gosec // GCS multipart uses Content-MD5 for transport integrity.
+	for _, s := range slices {
+		_, _ = h.Write(s)
+	}
+	req.Header.Set("Content-MD5", base64.StdEncoding.EncodeToString(h.Sum(nil)))
 
 	resp, err := m.client.Do(req)
 	if err != nil {

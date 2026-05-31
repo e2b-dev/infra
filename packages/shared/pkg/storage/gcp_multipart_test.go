@@ -1,7 +1,9 @@
 package storage
 
 import (
+	"crypto/md5"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -102,6 +104,8 @@ func TestMultipartUploader_UploadPart_Success(t *testing.T) {
 		body, err := io.ReadAll(r.Body)
 		assert.NoError(t, err)
 		assert.Equal(t, testData, body)
+		sum := md5.Sum(testData) //nolint:gosec // verifying GCS Content-MD5 header.
+		assert.Equal(t, base64.StdEncoding.EncodeToString(sum[:]), r.Header.Get("Content-MD5"))
 
 		w.Header().Set("ETag", expectedETag)
 		w.WriteHeader(http.StatusOK)
@@ -123,12 +127,13 @@ func TestMultipartUploader_UploadPartSlices_Success(t *testing.T) {
 		assert.Equal(t, "PUT", r.Method)
 		assert.Contains(t, r.URL.RawQuery, "partNumber=3")
 		assert.Contains(t, r.URL.RawQuery, "uploadId=test-upload-id")
-		assert.Empty(t, r.Header.Get("Content-MD5"))
-
 		// Verify body is the concatenation of all slices.
 		body, err := io.ReadAll(r.Body)
 		assert.NoError(t, err)
-		assert.Equal(t, []byte("hello world!"), body)
+		expected := []byte("hello world!")
+		assert.Equal(t, expected, body)
+		sum := md5.Sum(expected) //nolint:gosec // verifying GCS Content-MD5 header.
+		assert.Equal(t, base64.StdEncoding.EncodeToString(sum[:]), r.Header.Get("Content-MD5"))
 
 		w.Header().Set("ETag", expectedETag)
 		w.WriteHeader(http.StatusOK)
