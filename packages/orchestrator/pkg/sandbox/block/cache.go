@@ -375,16 +375,14 @@ func compactDedupFetchWindows(pages []dedupPageInfo, maxWindows, maxPromoted, wi
 
 	var promoted int
 	for promoted < maxPromoted && countFetchWindows(pages, windowPages, currentStart) > maxWindows {
-		start, end := bestParentRunToPromote(pages, maxPromoted-promoted, windowPages, currentStart)
-		if start < 0 {
+		idxs := bestParentRunToPromote(pages, maxPromoted-promoted, windowPages, currentStart)
+		if len(idxs) == 0 {
 			break
 		}
-		for i := start; i < end; i++ {
-			if pages[i].kind == dedupPageParent {
-				pages[i].kind = dedupPageCurrent
-				pages[i].key = dedupFetchKey{}
-				promoted++
-			}
+		for _, i := range idxs {
+			pages[i].kind = dedupPageCurrent
+			pages[i].key = dedupFetchKey{}
+			promoted++
 		}
 	}
 
@@ -407,9 +405,13 @@ func countFetchWindows(pages []dedupPageInfo, windowPages int, currentStart int6
 	return len(keys)
 }
 
-func bestParentRunToPromote(pages []dedupPageInfo, budget, windowPages int, currentStart int64) (int, int) {
+// bestParentRunToPromote returns the parent page indices whose promotion to
+// current best reduces fetch windows per promoted page, scanning contiguous
+// parent/empty runs first and falling back to per-key promotion.
+func bestParentRunToPromote(pages []dedupPageInfo, budget, windowPages int, currentStart int64) []int {
 	before := countFetchWindows(pages, windowPages, currentStart)
-	bestStart, bestEnd, bestBenefit, bestCost := -1, -1, 0, 0
+	var best []int
+	bestBenefit, bestCost := 0, 0
 	for i := 0; i < len(pages); {
 		for i < len(pages) && pages[i].kind != dedupPageParent {
 			i++
@@ -418,83 +420,68 @@ func bestParentRunToPromote(pages []dedupPageInfo, budget, windowPages int, curr
 		for i < len(pages) && (pages[i].kind == dedupPageParent || pages[i].kind == dedupPageEmpty) {
 			i++
 		}
-		end := i
-		cost := countKind(pages[start:end], dedupPageParent)
+		var idxs []int
+		for j := start; j < i; j++ {
+			if pages[j].kind == dedupPageParent {
+				idxs = append(idxs, j)
+			}
+		}
+		cost := len(idxs)
 		if cost == 0 || cost > budget {
 			continue
 		}
-
-		candidate := slices.Clone(pages)
-		for j := start; j < end; j++ {
-			if candidate[j].kind == dedupPageParent {
-				candidate[j].kind = dedupPageCurrent
-				candidate[j].key = dedupFetchKey{}
-			}
-		}
-		benefit := before - countFetchWindows(candidate, windowPages, currentStart)
+		benefit := before - countFetchWindowsAfter(pages, idxs, windowPages, currentStart)
 		if benefit <= 0 {
 			continue
 		}
-		if bestStart < 0 || cost*bestBenefit < bestCost*benefit {
-			bestStart, bestEnd, bestBenefit, bestCost = start, end, benefit, cost
+		if best == nil || cost*bestBenefit < bestCost*benefit {
+			best, bestBenefit, bestCost = idxs, benefit, cost
 		}
 	}
-	if bestStart < 0 {
+	if best == nil {
 		return bestParentKeyToPromote(pages, budget, windowPages, currentStart, before)
 	}
 
-	return bestStart, bestEnd
+	return best
 }
 
-func bestParentKeyToPromote(pages []dedupPageInfo, budget, windowPages int, currentStart int64, before int) (int, int) {
-	type span struct{ start, end, cost int }
-	spans := make(map[dedupFetchKey]span)
+func bestParentKeyToPromote(pages []dedupPageInfo, budget, windowPages int, currentStart int64, before int) []int {
+	idxByKey := make(map[dedupFetchKey][]int)
 	for i, p := range pages {
-		if p.kind != dedupPageParent {
-			continue
+		if p.kind == dedupPageParent {
+			idxByKey[p.key] = append(idxByKey[p.key], i)
 		}
-		s := spans[p.key]
-		if s.cost == 0 {
-			s.start = i
-		}
-		s.end = i + 1
-		s.cost++
-		spans[p.key] = s
 	}
 
-	bestStart, bestEnd, bestBenefit, bestCost := -1, -1, 0, 0
-	for key, s := range spans {
-		if s.cost > budget {
+	var best []int
+	bestBenefit, bestCost := 0, 0
+	for _, idxs := range idxByKey {
+		cost := len(idxs)
+		if cost > budget {
 			continue
 		}
-		candidate := slices.Clone(pages)
-		for i := s.start; i < s.end; i++ {
-			if candidate[i].kind == dedupPageParent && candidate[i].key == key {
-				candidate[i].kind = dedupPageCurrent
-				candidate[i].key = dedupFetchKey{}
-			}
-		}
-		benefit := before - countFetchWindows(candidate, windowPages, currentStart)
+		benefit := before - countFetchWindowsAfter(pages, idxs, windowPages, currentStart)
 		if benefit <= 0 {
 			continue
 		}
-		if bestStart < 0 || s.cost*bestBenefit < bestCost*benefit {
-			bestStart, bestEnd, bestBenefit, bestCost = s.start, s.end, benefit, s.cost
+		if best == nil || cost*bestBenefit < bestCost*benefit {
+			best, bestBenefit, bestCost = idxs, benefit, cost
 		}
 	}
 
-	return bestStart, bestEnd
+	return best
 }
 
-func countKind(pages []dedupPageInfo, kind byte) int {
-	var n int
-	for _, p := range pages {
-		if p.kind == kind {
-			n++
-		}
+// countFetchWindowsAfter counts fetch windows as if the given parent indices
+// were promoted to current, without mutating pages.
+func countFetchWindowsAfter(pages []dedupPageInfo, promote []int, windowPages int, currentStart int64) int {
+	candidate := slices.Clone(pages)
+	for _, i := range promote {
+		candidate[i].kind = dedupPageCurrent
+		candidate[i].key = dedupFetchKey{}
 	}
 
-	return n
+	return countFetchWindows(candidate, windowPages, currentStart)
 }
 
 // dedupDrain writes pageDirty pages from src to outPath packed at PageSize.
