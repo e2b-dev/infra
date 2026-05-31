@@ -67,6 +67,8 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
 			err = b.readSegments(ctx, p, segments, maxParallel)
 		}
 		if err == nil {
+			// Fewer bytes than requested means the mappings ran out: report the
+			// bytes filled so far with io.EOF, matching io.ReaderAt semantics.
 			if n < len(p) {
 				return n, io.EOF
 			}
@@ -74,10 +76,14 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
 			return n, nil
 		}
 
+		// A Diff can be evicted and closed between planning and reading. Re-plan
+		// the whole read; reads are idempotent, so re-filling already-written
+		// regions is safe and getBuild re-resolves the closed Diff.
 		var closed *block.CacheClosedError
 		if errors.As(err, &closed) {
 			continue
 		}
+		// A peer transition swaps the header to the finalized one; retry against it.
 		if retry, swapErr := b.retryOnTransition(ctx, err); retry {
 			continue
 		} else if swapErr != nil {
@@ -150,9 +156,12 @@ func (b *File) planRead(ctx context.Context, p []byte, off int64) ([]readSegment
 			return nil, 0, fmt.Errorf("failed to get mapping: %w", err)
 		}
 		readLength := min(int64(mappedToBuild.Length), int64(len(p)-n))
+		// A zero-length mapping means off+n is past the last mapping (EOF); stop
+		// and let the caller surface io.EOF for the bytes covered so far.
 		if readLength <= 0 {
 			return segments, n, nil
 		}
+		// uuid.Nil marks an unmapped/empty region; zero-fill it in place.
 		if mappedToBuild.BuildId == uuid.Nil {
 			clear(p[n : n+int(readLength)])
 			n += int(readLength)
