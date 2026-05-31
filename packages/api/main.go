@@ -538,7 +538,7 @@ func run() int {
 	pprofServer := telemetry.NewPprofServer()
 
 	wg.Go(func() {
-		l.Info(ctx, "pprof server starting", zap.Int("port", telemetry.DefaultPprofPort))
+		l.Info(ctx, "pprof server starting", zap.Int("port", telemetry.PprofPort()))
 
 		if err := pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			l.Error(ctx, "pprof server encountered error", zap.Error(err))
