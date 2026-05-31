@@ -56,134 +56,37 @@ func (b *File) SwapHeader(h *header.Header) {
 	b.header.Store(h)
 }
 
-func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (n int, err error) {
+// ReadAt resolves the mappings covering p (via planRead) and reads their
+// segments, optionally in parallel. A Diff evicted between planning and reading
+// or a peer transition re-resolves and retries; reads are idempotent.
+func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
 	maxParallel := b.store.flags.IntFlag(ctx, featureflags.MaxParallelBuildReadSegments)
-	if maxParallel > 1 && len(p) > 0 {
-		if err := b.readAtParallel(ctx, p, off, maxParallel); err == nil {
-			return len(p), nil
-		} else if shouldRetrySerial(err) {
-			if retry, swapErr := b.retryOnTransition(ctx, err); !retry && swapErr != nil {
-				return 0, swapErr
+
+	for {
+		segments, n, err := b.planRead(ctx, p, off)
+		if err == nil {
+			err = b.readSegments(ctx, p, segments, maxParallel)
+		}
+		if err == nil {
+			if n < len(p) {
+				return n, io.EOF
 			}
 
-			return b.readAtSerial(ctx, p, off)
+			return n, nil
+		}
+
+		var closed *block.CacheClosedError
+		if errors.As(err, &closed) {
+			continue
+		}
+		if retry, swapErr := b.retryOnTransition(ctx, err); retry {
+			continue
+		} else if swapErr != nil {
+			return 0, swapErr
 		}
 
 		return 0, err
 	}
-
-	return b.readAtSerial(ctx, p, off)
-}
-
-func (b *File) readAtSerial(ctx context.Context, p []byte, off int64) (n int, err error) {
-	// Cache some resolved Diffs per BuildId for the duration of one ReadAt to avoid
-	// hitting the DiffStore TTL cache (and its mutex) on every iteration.
-	const buildCacheSize = 16
-	var (
-		underlyingIDs   [buildCacheSize]uuid.UUID
-		underlyingDiffs [buildCacheSize]Diff
-		cacheIDs        = underlyingIDs[:0]
-		cacheDiffs      = underlyingDiffs[:0]
-	)
-
-	for n < len(p) {
-		h := b.Header()
-
-		// Find out what build and ranghe we need to read, from mappings.
-		mappedToBuild, err := h.GetShiftedMapping(ctx, off+int64(n))
-		if err != nil {
-			return 0, fmt.Errorf("failed to get mapping: %w", err)
-		}
-
-		remainingReadLength := int64(len(p)) - int64(n)
-		readLength := min(int64(mappedToBuild.Length), remainingReadLength)
-
-		if readLength <= 0 {
-			logger.L().Error(ctx, fmt.Sprintf(
-				"(%d bytes left to read, off %d) reading %d bytes from %+v/%+v: [%d:] -> [%d:%d] <> %d (mapped length: %d, remaining read length: %d)\n>>> EOF\n",
-				len(p)-n,
-				off,
-				readLength,
-				mappedToBuild.BuildId,
-				b.fileType,
-				mappedToBuild.Offset,
-				n,
-				int64(n)+readLength,
-				n,
-				mappedToBuild.Length,
-				remainingReadLength,
-			))
-
-			return n, io.EOF
-		}
-
-		if mappedToBuild.BuildId == uuid.Nil {
-			clear(p[n : int64(n)+readLength])
-			n += int(readLength)
-
-			continue
-		}
-
-		size := b.buildFileSize(h, mappedToBuild.BuildId)
-		ft := h.GetBuildFrameData(mappedToBuild.BuildId)
-
-		// Find the build in the caches.
-		var mappedBuild Diff
-		hitIdx := -1
-		for i, id := range cacheIDs {
-			if id == mappedToBuild.BuildId {
-				mappedBuild = cacheDiffs[i]
-				hitIdx = i
-
-				break
-			}
-		}
-		if mappedBuild == nil {
-			mappedBuild, err = b.getBuild(ctx, mappedToBuild.BuildId, size, ft.CompressionType())
-			if err != nil {
-				return 0, fmt.Errorf("failed to get build: %w", err)
-			}
-			if len(cacheIDs) < cap(cacheIDs) {
-				cacheIDs = append(cacheIDs, mappedToBuild.BuildId)
-				cacheDiffs = append(cacheDiffs, mappedBuild)
-				hitIdx = len(cacheIDs) - 1
-			}
-		}
-
-		// Read from that build, and handle the various retries.
-		buildN, err := mappedBuild.ReadAt(ctx,
-			p[n:int64(n)+readLength],
-			int64(mappedToBuild.Offset),
-			ft,
-		)
-		if err != nil {
-			// Cache may have evicted+closed the Diff between resolve and ReadAt;
-			// drop the stale entry and re-resolve on the next iteration.
-			var closed *block.CacheClosedError
-			if errors.As(err, &closed) {
-				if hitIdx >= 0 {
-					last := len(cacheIDs) - 1
-					cacheIDs[hitIdx] = cacheIDs[last]
-					cacheDiffs[hitIdx] = cacheDiffs[last]
-					cacheIDs = cacheIDs[:last]
-					cacheDiffs = cacheDiffs[:last]
-				}
-
-				continue
-			}
-			if retry, swapErr := b.retryOnTransition(ctx, err); retry {
-				continue
-			} else if swapErr != nil {
-				return 0, swapErr
-			}
-
-			return 0, fmt.Errorf("failed to read from source: %w", err)
-		}
-
-		n += buildN
-	}
-
-	return n, nil
 }
 
 type readSegment struct {
@@ -194,46 +97,47 @@ type readSegment struct {
 	ft     *storage.FrameTable
 }
 
-func (b *File) readAtParallel(ctx context.Context, p []byte, off int64, maxParallel int) error {
-	segments, err := b.planRead(ctx, p, off)
+// readSegments reads each segment into p, in parallel when enabled and there is
+// more than one segment, otherwise sequentially.
+func (b *File) readSegments(ctx context.Context, p []byte, segments []readSegment, maxParallel int) error {
+	if maxParallel > 1 && len(segments) > 1 {
+		g, gctx := errgroup.WithContext(ctx)
+		g.SetLimit(maxParallel)
+		for _, s := range segments {
+			seg := s
+			g.Go(func() error { return b.readSegment(gctx, p, seg) })
+		}
+
+		return g.Wait()
+	}
+
+	for _, s := range segments {
+		if err := b.readSegment(ctx, p, s); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (b *File) readSegment(ctx context.Context, p []byte, s readSegment) error {
+	n, err := s.diff.ReadAt(ctx, p[s.dstOff:s.dstOff+int(s.length)], s.srcOff, s.ft)
 	if err != nil {
 		return err
 	}
-	if len(segments) <= 1 {
-		for _, s := range segments {
-			n, err := s.diff.ReadAt(ctx, p[s.dstOff:s.dstOff+int(s.length)], s.srcOff, s.ft)
-			if err != nil {
-				return err
-			}
-			if int64(n) != s.length {
-				return io.ErrUnexpectedEOF
-			}
-		}
-
-		return nil
+	if int64(n) != s.length {
+		return io.ErrUnexpectedEOF
 	}
 
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(maxParallel)
-	for _, s := range segments {
-		seg := s
-		g.Go(func() error {
-			n, err := seg.diff.ReadAt(gctx, p[seg.dstOff:seg.dstOff+int(seg.length)], seg.srcOff, seg.ft)
-			if err != nil {
-				return err
-			}
-			if int64(n) != seg.length {
-				return io.ErrUnexpectedEOF
-			}
-
-			return nil
-		})
-	}
-
-	return g.Wait()
+	return nil
 }
 
-func (b *File) planRead(ctx context.Context, p []byte, off int64) ([]readSegment, error) {
+// planRead resolves the mappings covering p into read segments, zero-filling
+// uuid.Nil regions in place. It returns the number of bytes covered; a value
+// below len(p) means the mappings ran out, which the caller treats as EOF.
+func (b *File) planRead(ctx context.Context, p []byte, off int64) ([]readSegment, int, error) {
+	// Cache resolved Diffs per BuildId for the duration of one read to avoid
+	// hitting the DiffStore TTL cache (and its mutex) on every mapping.
 	const buildCacheSize = 16
 	var (
 		underlyingIDs   [buildCacheSize]uuid.UUID
@@ -248,11 +152,11 @@ func (b *File) planRead(ctx context.Context, p []byte, off int64) ([]readSegment
 		h := b.Header()
 		mappedToBuild, err := h.GetShiftedMapping(ctx, off+int64(n))
 		if err != nil {
-			return nil, fmt.Errorf("failed to get mapping: %w", err)
+			return nil, 0, fmt.Errorf("failed to get mapping: %w", err)
 		}
 		readLength := min(int64(mappedToBuild.Length), int64(len(p)-n))
 		if readLength <= 0 {
-			return nil, io.EOF
+			return segments, n, nil
 		}
 		if mappedToBuild.BuildId == uuid.Nil {
 			clear(p[n : n+int(readLength)])
@@ -263,7 +167,7 @@ func (b *File) planRead(ctx context.Context, p []byte, off int64) ([]readSegment
 
 		diff, err := b.cachedBuild(ctx, h, mappedToBuild.BuildId, &cacheIDs, &cacheDiffs)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		segments = append(segments, readSegment{
 			dstOff: n,
@@ -275,7 +179,7 @@ func (b *File) planRead(ctx context.Context, p []byte, off int64) ([]readSegment
 		n += int(readLength)
 	}
 
-	return segments, nil
+	return segments, n, nil
 }
 
 func (b *File) cachedBuild(ctx context.Context, h *header.Header, buildID uuid.UUID, ids *[]uuid.UUID, diffs *[]Diff) (Diff, error) {
@@ -285,10 +189,9 @@ func (b *File) cachedBuild(ctx context.Context, h *header.Header, buildID uuid.U
 		}
 	}
 
-	var ct storage.CompressionType
-	if ft := h.GetBuildFrameData(buildID); ft != nil {
-		ct = ft.CompressionType()
-	}
+	// CompressionType is nil-safe: an uncompressed build (nil frame table)
+	// resolves to CompressionNone.
+	ct := h.GetBuildFrameData(buildID).CompressionType()
 	diff, err := b.getBuild(ctx, buildID, b.buildFileSize(h, buildID), ct)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build: %w", err)
@@ -299,19 +202,6 @@ func (b *File) cachedBuild(ctx context.Context, h *header.Header, buildID uuid.U
 	}
 
 	return diff, nil
-}
-
-func shouldRetrySerial(err error) bool {
-	if errors.Is(err, io.EOF) {
-		return true
-	}
-	var closed *block.CacheClosedError
-	if errors.As(err, &closed) {
-		return true
-	}
-	var transErr *storage.PeerTransitionedError
-
-	return errors.As(err, &transErr)
 }
 
 // Slice returns [off, off+length). Zero-copy when the range fits in a
