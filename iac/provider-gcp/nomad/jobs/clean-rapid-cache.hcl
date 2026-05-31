@@ -23,6 +23,9 @@ job "rapid-cache-cleanup" {
 
           env {
             RAPID_BUCKET_CACHE_BUCKET_NAME = "${bucket_name}"
+            REDIS_URL                      = "${redis_url}"
+            REDIS_CLUSTER_URL              = "${redis_cluster_url}"
+            REDIS_TLS_CA_BASE64            = "${redis_tls_ca_base64}"
           }
 
           config {

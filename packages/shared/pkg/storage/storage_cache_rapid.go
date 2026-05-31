@@ -11,12 +11,18 @@ import (
 type rapidCacheProvider struct {
 	cache StorageProvider
 	inner StorageProvider
+	index RapidCacheIndex
 }
 
-func WrapInRapidBucketCache(_ context.Context, cache StorageProvider, inner StorageProvider) StorageProvider {
+func WrapInRapidBucketCache(_ context.Context, cache StorageProvider, inner StorageProvider, index RapidCacheIndex) StorageProvider {
+	if index == nil {
+		index = NoopRapidCacheIndex()
+	}
+
 	return &rapidCacheProvider{
 		cache: cache,
 		inner: inner,
+		index: index,
 	}
 }
 
@@ -44,6 +50,7 @@ func (p *rapidCacheProvider) OpenSeekable(ctx context.Context, path string, obje
 		path:  "rapid-cache/" + path,
 		cache: p.cache,
 		inner: inner,
+		index: p.index,
 	}, nil
 }
 
@@ -55,6 +62,7 @@ type rapidCachedSeekable struct {
 	path  string
 	cache StorageProvider
 	inner Seekable
+	index RapidCacheIndex
 }
 
 func (c *rapidCachedSeekable) OpenRangeReader(ctx context.Context, off int64, length int64, frameTable *FrameTable) (io.ReadCloser, error) {
@@ -67,6 +75,8 @@ func (c *rapidCachedSeekable) OpenRangeReader(ctx context.Context, off int64, le
 
 	cachePath := fmt.Sprintf("%s/%012d-%d.bin", c.path, off/MemoryChunkSize, length)
 	if rc, err := c.openCache(ctx, cachePath, length); err == nil {
+		c.touch(ctx, cachePath)
+
 		return rc, nil
 	}
 
@@ -90,6 +100,7 @@ func (c *rapidCachedSeekable) openCompressed(ctx context.Context, off int64, fra
 
 	cachePath := makeFrameFilename(c.path, r)
 	if raw, err := c.openCache(ctx, cachePath, int64(r.Length)); err == nil {
+		c.touch(ctx, cachePath)
 		dec, err := newDecompressingReadCloser(raw, frameTable.CompressionType())
 		if err != nil {
 			raw.Close()
@@ -159,13 +170,25 @@ func (c *rapidCachedSeekable) writeCache(ctx context.Context, path string, data 
 		return err
 	}
 
-	return blob.Put(ctx, data)
+	if err := blob.Put(ctx, data); err != nil {
+		return err
+	}
+
+	_ = c.index.Admit(ctx, path, int64(len(data)))
+
+	return nil
 }
 
 func (c *rapidCachedSeekable) goCtx(ctx context.Context, fn func(context.Context)) {
 	go func() {
 		fn(context.WithoutCancel(ctx))
 	}()
+}
+
+func (c *rapidCachedSeekable) touch(ctx context.Context, path string) {
+	c.goCtx(ctx, func(ctx context.Context) {
+		_ = c.index.Touch(ctx, path)
+	})
 }
 
 type rapidCacheWriteThroughReader struct {

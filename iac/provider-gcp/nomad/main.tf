@@ -708,11 +708,14 @@ resource "nomad_job" "clean_rapid_cache" {
   count = var.rapid_bucket_cache_bucket_name != "" ? 1 : 0
 
   jobspec = templatefile("${path.module}/jobs/clean-rapid-cache.hcl", {
-    node_pool       = var.builder_node_pool
-    artifact_source = local.clean_rapid_cache_artifact_source
-    bucket_name     = var.rapid_bucket_cache_bucket_name
-    dry_run         = var.rapid_bucket_cache_cleanup_dry_run
-    max_age         = var.rapid_bucket_cache_cleanup_max_age
-    max_deletions   = var.rapid_bucket_cache_cleanup_max_deletions
+    node_pool           = var.builder_node_pool
+    artifact_source     = local.clean_rapid_cache_artifact_source
+    bucket_name         = var.rapid_bucket_cache_bucket_name
+    dry_run             = var.rapid_bucket_cache_cleanup_dry_run
+    max_age             = var.rapid_bucket_cache_cleanup_max_age
+    max_deletions       = var.rapid_bucket_cache_cleanup_max_deletions
+    redis_url           = local.redis_url
+    redis_cluster_url   = local.redis_cluster_url
+    redis_tls_ca_base64 = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
   })
 }

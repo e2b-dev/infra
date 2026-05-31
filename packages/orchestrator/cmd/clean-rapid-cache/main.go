@@ -9,9 +9,12 @@ import (
 	"os"
 	"time"
 
-	"cloud.google.com/go/storage"
+	gcs "cloud.google.com/go/storage"
 	"cloud.google.com/go/storage/experimental"
 	"google.golang.org/api/iterator"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const defaultPrefix = "rapid-cache/"
@@ -51,13 +54,16 @@ func main() {
 	}
 
 	ctx := context.Background()
-	if err := clean(ctx, bucket, prefix, time.Now().Add(-maxAge), maxDeletions, dryRun); err != nil {
+	index, closeIndex := newRapidIndex(ctx, bucket)
+	defer closeIndex()
+
+	if err := clean(ctx, bucket, prefix, time.Now().Add(-maxAge), maxDeletions, dryRun, index); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func clean(ctx context.Context, bucket string, prefix string, cutoff time.Time, maxDeletions int, dryRun bool) error {
-	client, err := storage.NewGRPCClient(ctx, experimental.WithZonalBucketAPIs())
+func clean(ctx context.Context, bucket string, prefix string, cutoff time.Time, maxDeletions int, dryRun bool, index storage.RapidCacheIndex) error {
+	client, err := gcs.NewGRPCClient(ctx, experimental.WithZonalBucketAPIs())
 	if err != nil {
 		return fmt.Errorf("create storage client: %w", err)
 	}
@@ -65,8 +71,55 @@ func clean(ctx context.Context, bucket string, prefix string, cutoff time.Time, 
 		_ = client.Close()
 	}()
 
+	if deleted, err := cleanFromIndex(ctx, client, bucket, cutoff, maxDeletions, dryRun, index); err != nil {
+		return err
+	} else if deleted > 0 {
+		log.Printf("summary dry_run=%t deleted=%d source=redis", dryRun, deleted)
+
+		return nil
+	}
+
+	return cleanFromBucket(ctx, client, bucket, prefix, cutoff, maxDeletions, dryRun)
+}
+
+func cleanFromIndex(ctx context.Context, client *gcs.Client, bucket string, cutoff time.Time, maxDeletions int, dryRun bool, index storage.RapidCacheIndex) (int, error) {
+	candidates, err := index.Candidates(ctx, cutoff, int64(maxDeletions))
+	if err != nil || len(candidates) == 0 {
+		return 0, nil
+	}
+
+	deleted := 0
+	for _, path := range candidates {
+		obj := client.Bucket(bucket).Object(path)
+		attrs, err := obj.Attrs(ctx)
+		if errors.Is(err, gcs.ErrObjectNotExist) {
+			if !dryRun {
+				_ = index.Evict(ctx, path, 0)
+			}
+
+			continue
+		}
+		if err != nil {
+			return deleted, fmt.Errorf("read cache object metadata: %w", err)
+		}
+		if dryRun {
+			deleted++
+
+			continue
+		}
+		if err := obj.Delete(ctx); err != nil {
+			return deleted, fmt.Errorf("delete cache object: %w", err)
+		}
+		_ = index.Evict(ctx, path, attrs.Size)
+		deleted++
+	}
+
+	return deleted, nil
+}
+
+func cleanFromBucket(ctx context.Context, client *gcs.Client, bucket string, prefix string, cutoff time.Time, maxDeletions int, dryRun bool) error {
 	var scanned, matched, deleted int
-	objects := client.Bucket(bucket).Objects(ctx, &storage.Query{Prefix: prefix})
+	objects := client.Bucket(bucket).Objects(ctx, &gcs.Query{Prefix: prefix})
 	for {
 		attrs, err := objects.Next()
 		if errors.Is(err, iterator.Done) {
@@ -98,4 +151,19 @@ func clean(ctx context.Context, bucket string, prefix string, cutoff time.Time, 
 	log.Printf("summary dry_run=%t scanned=%d matched=%d deleted=%d", dryRun, scanned, matched, deleted)
 
 	return nil
+}
+
+func newRapidIndex(ctx context.Context, bucket string) (storage.RapidCacheIndex, func()) {
+	redisClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
+		RedisURL:         os.Getenv("REDIS_URL"),
+		RedisClusterURL:  os.Getenv("REDIS_CLUSTER_URL"),
+		RedisTLSCABase64: os.Getenv("REDIS_TLS_CA_BASE64"),
+	})
+	if err != nil {
+		return storage.NoopRapidCacheIndex(), func() {}
+	}
+
+	return storage.NewRedisRapidCacheIndex(redisClient, bucket), func() {
+		_ = factories.CloseCleanly(redisClient)
+	}
 }

@@ -405,6 +405,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create template cache", zap.Error(err))
 	}
+	templateCache.SetRapidCacheIndex(storage.NewRedisRapidCacheIndex(redisClient, storage.RapidBucketCacheStorageConfig.GetBucketName()))
 	templateCache.Start(ctx)
 	closers = append(closers, closer{"template cache", func(context.Context) error {
 		templateCache.Stop()

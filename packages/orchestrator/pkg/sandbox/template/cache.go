@@ -54,6 +54,7 @@ type Cache struct {
 	cache         *ttlcache.Cache[string, Template]
 	persistence   storage.StorageProvider
 	rapidCache    storage.StorageProvider
+	rapidIndex    storage.RapidCacheIndex
 	rapidCacheMu  sync.Mutex
 	buildStore    *build.DiffStore
 	blockMetrics  blockmetrics.Metrics
@@ -108,12 +109,19 @@ func NewCache(
 		blockMetrics:  metrics,
 		config:        config,
 		persistence:   persistence,
+		rapidIndex:    storage.NoopRapidCacheIndex(),
 		buildStore:    buildStore,
 		cache:         cache,
 		flags:         flags,
 		rootCachePath: config.BuilderConfig.SharedChunkCacheDir,
 		peers:         peers,
 	}, nil
+}
+
+func (c *Cache) SetRapidCacheIndex(index storage.RapidCacheIndex) {
+	if index != nil {
+		c.rapidIndex = index
+	}
 }
 
 func (c *Cache) Start(ctx context.Context) {
@@ -172,7 +180,7 @@ func (c *Cache) GetTemplate(
 
 	persistence := c.persistence
 	if cache, enabled := c.useRapidBucketCache(ctx, isBuilding); enabled {
-		persistence = storage.WrapInRapidBucketCache(ctx, cache, persistence)
+		persistence = storage.WrapInRapidBucketCache(ctx, cache, persistence, c.rapidIndex)
 		span.SetAttributes(attribute.Bool("use_cache", true))
 	} else if path, enabled := c.useNFSCache(ctx, isBuilding, isSnapshot); enabled {
 		logger.L().Info(ctx, "using local template cache", zap.String("path", c.rootCachePath))
