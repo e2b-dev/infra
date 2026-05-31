@@ -71,22 +71,23 @@ func clean(ctx context.Context, bucket string, prefix string, cutoff time.Time, 
 		_ = client.Close()
 	}()
 
-	deleted, err := cleanFromIndex(ctx, client, bucket, cutoff, maxDeletions, dryRun, index)
-	if err != nil {
-		return err
-	}
+	deleted := cleanFromIndex(ctx, client, bucket, cutoff, maxDeletions, dryRun, index)
 
 	return cleanFromBucket(ctx, client, bucket, prefix, cutoff, maxDeletions-deleted, dryRun, index)
 }
 
-func cleanFromIndex(ctx context.Context, client *gcs.Client, bucket string, cutoff time.Time, maxDeletions int, dryRun bool, index storage.RapidCacheIndex) (int, error) {
-	candidates, _ := index.Candidates(ctx, cutoff, int64(maxDeletions))
-	if len(candidates) == 0 {
-		return 0, nil
+func cleanFromIndex(ctx context.Context, client *gcs.Client, bucket string, cutoff time.Time, maxDeletions int, dryRun bool, index storage.RapidCacheIndex) int {
+	candidates, err := index.Candidates(ctx, cutoff, int64(maxDeletions))
+	if err != nil || len(candidates) == 0 {
+		return 0
 	}
 
 	deleted := 0
 	for _, path := range candidates {
+		lastAccess, ok, err := index.LastAccess(ctx, path)
+		if err != nil || (ok && lastAccess >= cutoff.Unix()) {
+			continue
+		}
 		obj := client.Bucket(bucket).Object(path)
 		attrs, err := obj.Attrs(ctx)
 		if errors.Is(err, gcs.ErrObjectNotExist) {
@@ -97,7 +98,7 @@ func cleanFromIndex(ctx context.Context, client *gcs.Client, bucket string, cuto
 			continue
 		}
 		if err != nil {
-			return deleted, fmt.Errorf("read cache object metadata: %w", err)
+			continue
 		}
 		if dryRun {
 			deleted++
@@ -105,13 +106,13 @@ func cleanFromIndex(ctx context.Context, client *gcs.Client, bucket string, cuto
 			continue
 		}
 		if err := obj.Delete(ctx); err != nil {
-			return deleted, fmt.Errorf("delete cache object: %w", err)
+			continue
 		}
 		_ = index.Evict(ctx, path, attrs.Size)
 		deleted++
 	}
 
-	return deleted, nil
+	return deleted
 }
 
 func cleanFromBucket(ctx context.Context, client *gcs.Client, bucket string, prefix string, cutoff time.Time, maxDeletions int, dryRun bool, index storage.RapidCacheIndex) error {
@@ -135,10 +136,7 @@ func cleanFromBucket(ctx context.Context, client *gcs.Client, bucket string, pre
 			continue
 		}
 		lastAccess, ok, err := index.LastAccess(ctx, attrs.Name)
-		if err != nil {
-			continue
-		}
-		if ok && lastAccess >= cutoff.Unix() {
+		if err == nil && ok && lastAccess >= cutoff.Unix() {
 			continue
 		}
 		matched++
