@@ -78,7 +78,6 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 						return nil, err
 					}
 					clear(nodesExhausted)
-					attempt++
 					time.Sleep(100 * time.Millisecond)
 
 					continue
