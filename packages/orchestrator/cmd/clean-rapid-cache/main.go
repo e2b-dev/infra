@@ -55,9 +55,9 @@ func main() {
 
 	ctx := context.Background()
 	index, closeIndex := newRapidIndex(ctx, bucket)
-	defer closeIndex()
-
-	if err := clean(ctx, bucket, prefix, time.Now().Add(-maxAge), maxDeletions, dryRun, index); err != nil {
+	err := clean(ctx, bucket, prefix, time.Now().Add(-maxAge), maxDeletions, dryRun, index)
+	closeIndex()
+	if err != nil {
 		log.Fatal(err)
 	}
 }
@@ -83,8 +83,8 @@ func clean(ctx context.Context, bucket string, prefix string, cutoff time.Time, 
 }
 
 func cleanFromIndex(ctx context.Context, client *gcs.Client, bucket string, cutoff time.Time, maxDeletions int, dryRun bool, index storage.RapidCacheIndex) (int, error) {
-	candidates, err := index.Candidates(ctx, cutoff, int64(maxDeletions))
-	if err != nil || len(candidates) == 0 {
+	candidates, _ := index.Candidates(ctx, cutoff, int64(maxDeletions))
+	if len(candidates) == 0 {
 		return 0, nil
 	}
 
