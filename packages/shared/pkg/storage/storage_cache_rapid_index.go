@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ type RapidCacheIndex interface {
 	Admit(ctx context.Context, path string, size int64) error
 	Evict(ctx context.Context, path string, size int64) error
 	Candidates(ctx context.Context, before time.Time, limit int64) ([]string, error)
+	LastAccess(ctx context.Context, path string) (int64, bool, error)
 }
 
 type noopRapidCacheIndex struct{}
@@ -27,6 +29,9 @@ func (noopRapidCacheIndex) Admit(context.Context, string, int64) error { return 
 func (noopRapidCacheIndex) Evict(context.Context, string, int64) error { return nil }
 func (noopRapidCacheIndex) Candidates(context.Context, time.Time, int64) ([]string, error) {
 	return nil, nil
+}
+func (noopRapidCacheIndex) LastAccess(context.Context, string) (int64, bool, error) {
+	return 0, false, nil
 }
 
 type redisRapidCacheIndex struct {
@@ -92,7 +97,7 @@ func (i *redisRapidCacheIndex) Evict(ctx context.Context, path string, size int6
 	buildID := rapidCacheBuildID(path)
 	pipe := i.redis.Pipeline()
 	pipe.ZRem(ctx, i.keys.chunks, path)
-	if buildID != "" {
+	if buildID != "" && size > 0 {
 		pipe.HIncrBy(ctx, i.keys.buildBytes, buildID, -size)
 		pipe.HIncrBy(ctx, i.keys.buildChunks, buildID, -1)
 	}
@@ -108,6 +113,18 @@ func (i *redisRapidCacheIndex) Candidates(ctx context.Context, before time.Time,
 		Offset: 0,
 		Count:  limit,
 	}).Result()
+}
+
+func (i *redisRapidCacheIndex) LastAccess(ctx context.Context, path string) (int64, bool, error) {
+	score, err := i.redis.ZScore(ctx, i.keys.chunks, path).Result()
+	if errors.Is(err, redis.Nil) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+
+	return int64(score), true, nil
 }
 
 func rapidCacheBuildID(path string) string {

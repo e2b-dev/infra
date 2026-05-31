@@ -71,15 +71,12 @@ func clean(ctx context.Context, bucket string, prefix string, cutoff time.Time, 
 		_ = client.Close()
 	}()
 
-	if deleted, err := cleanFromIndex(ctx, client, bucket, cutoff, maxDeletions, dryRun, index); err != nil {
+	deleted, err := cleanFromIndex(ctx, client, bucket, cutoff, maxDeletions, dryRun, index)
+	if err != nil {
 		return err
-	} else if deleted > 0 {
-		log.Printf("summary dry_run=%t deleted=%d source=redis", dryRun, deleted)
-
-		return nil
 	}
 
-	return cleanFromBucket(ctx, client, bucket, prefix, cutoff, maxDeletions, dryRun)
+	return cleanFromBucket(ctx, client, bucket, prefix, cutoff, maxDeletions-deleted, dryRun, index)
 }
 
 func cleanFromIndex(ctx context.Context, client *gcs.Client, bucket string, cutoff time.Time, maxDeletions int, dryRun bool, index storage.RapidCacheIndex) (int, error) {
@@ -117,7 +114,11 @@ func cleanFromIndex(ctx context.Context, client *gcs.Client, bucket string, cuto
 	return deleted, nil
 }
 
-func cleanFromBucket(ctx context.Context, client *gcs.Client, bucket string, prefix string, cutoff time.Time, maxDeletions int, dryRun bool) error {
+func cleanFromBucket(ctx context.Context, client *gcs.Client, bucket string, prefix string, cutoff time.Time, maxDeletions int, dryRun bool, index storage.RapidCacheIndex) error {
+	if maxDeletions <= 0 {
+		return nil
+	}
+
 	var scanned, matched, deleted int
 	objects := client.Bucket(bucket).Objects(ctx, &gcs.Query{Prefix: prefix})
 	for {
@@ -133,6 +134,10 @@ func cleanFromBucket(ctx context.Context, client *gcs.Client, bucket string, pre
 		if !attrs.Updated.Before(cutoff) {
 			continue
 		}
+		lastAccess, ok, _ := index.LastAccess(ctx, attrs.Name)
+		if ok && lastAccess >= cutoff.Unix() {
+			continue
+		}
 		matched++
 		if deleted >= maxDeletions {
 			break
@@ -145,6 +150,7 @@ func cleanFromBucket(ctx context.Context, client *gcs.Client, bucket string, pre
 		if err := client.Bucket(bucket).Object(attrs.Name).Delete(ctx); err != nil {
 			return fmt.Errorf("delete cache object: %w", err)
 		}
+		_ = index.Evict(ctx, attrs.Name, attrs.Size)
 		deleted++
 	}
 
