@@ -10,18 +10,13 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-const (
-	chainLimit = 32
-	chunkSize  = 2 << 20
-)
+const chainLimit = 32
 
 type buildContribution struct {
 	buildID             uuid.UUID
 	memfileBytes        uint64
-	memfileChunks       map[uint64]struct{}
 	memfileMappingCount uint32
 	rootfsBytes         uint64
-	rootfsChunks        map[uint64]struct{}
 	rootfsMappingCount  uint32
 }
 
@@ -31,42 +26,29 @@ func FromHeaders(memfileHeader, rootfsHeader *header.Header) *orchestrator.Sched
 	}
 
 	contributions := make(map[uuid.UUID]*buildContribution)
-	add := func(buildID uuid.UUID, storageOffset, length uint64, isMemfile bool) {
+	add := func(buildID uuid.UUID, length uint64, isMemfile bool) {
 		if buildID == uuid.Nil || length == 0 {
 			return
 		}
 		c, ok := contributions[buildID]
 		if !ok {
-			c = &buildContribution{
-				buildID:       buildID,
-				memfileChunks: make(map[uint64]struct{}),
-				rootfsChunks:  make(map[uint64]struct{}),
-			}
+			c = &buildContribution{buildID: buildID}
 			contributions[buildID] = c
 		}
-
-		startChunk := storageOffset / chunkSize
-		endChunk := (storageOffset + length - 1) / chunkSize
 		if isMemfile {
 			c.memfileBytes += length
 			c.memfileMappingCount++
-			for i := startChunk; i <= endChunk; i++ {
-				c.memfileChunks[i] = struct{}{}
-			}
 		} else {
 			c.rootfsBytes += length
 			c.rootfsMappingCount++
-			for i := startChunk; i <= endChunk; i++ {
-				c.rootfsChunks[i] = struct{}{}
-			}
 		}
 	}
 
 	for _, m := range memfileHeader.Mapping.All() {
-		add(m.BuildId, m.BuildStorageOffset, m.Length, true)
+		add(m.BuildId, m.Length, true)
 	}
 	for _, m := range rootfsHeader.Mapping.All() {
-		add(m.BuildId, m.BuildStorageOffset, m.Length, false)
+		add(m.BuildId, m.Length, false)
 	}
 
 	baseBuildID := memfileHeader.Metadata.BaseBuildId
@@ -94,21 +76,19 @@ func FromHeaders(memfileHeader, rootfsHeader *header.Header) *orchestrator.Sched
 	res := &orchestrator.SchedulingMetadata{
 		BaseBuildId:          baseBuildID.String(),
 		Generation:           max(memfileHeader.Metadata.Generation, rootfsHeader.Metadata.Generation) + 1,
+		MemfileSize:          memfileHeader.Metadata.Size,
+		RootfsSize:           rootfsHeader.Metadata.Size,
 		ChainBuildIds:        make([]string, 0, len(chain)),
 		MemfileLogicalBytes:  make([]uint64, 0, len(chain)),
-		MemfileChunkCounts:   make([]uint32, 0, len(chain)),
 		MemfileMappingCounts: make([]uint32, 0, len(chain)),
 		RootfsLogicalBytes:   make([]uint64, 0, len(chain)),
-		RootfsChunkCounts:    make([]uint32, 0, len(chain)),
 		RootfsMappingCounts:  make([]uint32, 0, len(chain)),
 	}
 	for _, c := range chain {
 		res.ChainBuildIds = append(res.ChainBuildIds, c.buildID.String())
 		res.MemfileLogicalBytes = append(res.MemfileLogicalBytes, c.memfileBytes)
-		res.MemfileChunkCounts = append(res.MemfileChunkCounts, uint32(len(c.memfileChunks)))
 		res.MemfileMappingCounts = append(res.MemfileMappingCounts, c.memfileMappingCount)
 		res.RootfsLogicalBytes = append(res.RootfsLogicalBytes, c.rootfsBytes)
-		res.RootfsChunkCounts = append(res.RootfsChunkCounts, uint32(len(c.rootfsChunks)))
 		res.RootfsMappingCounts = append(res.RootfsMappingCounts, c.rootfsMappingCount)
 	}
 

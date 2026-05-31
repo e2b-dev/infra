@@ -130,12 +130,12 @@ message SandboxPauseRequest {
 message SchedulingMetadata {
   string base_build_id = 1;
   uint64 generation = 2;
-  repeated string chain_build_ids = 3;
-  repeated uint64 memfile_logical_bytes = 4;
-  repeated uint32 memfile_chunk_counts = 5;
-  repeated uint32 memfile_mapping_counts = 6;
-  repeated uint64 rootfs_logical_bytes = 7;
-  repeated uint32 rootfs_chunk_counts = 8;
+  uint64 memfile_size = 3;
+  uint64 rootfs_size = 4;
+  repeated string chain_build_ids = 5;
+  repeated uint64 memfile_logical_bytes = 6;
+  repeated uint32 memfile_mapping_counts = 7;
+  repeated uint64 rootfs_logical_bytes = 8;
   repeated uint32 rootfs_mapping_counts = 9;
 }
 
@@ -169,9 +169,9 @@ message CachedBuildInfo {
   google.protobuf.Timestamp expiration_time = 2;
   SchedulingMetadata scheduling_metadata = 3;
   uint64 memfile_cached_bytes = 4;
-  uint32 memfile_cached_chunks = 5;
+  uint64 memfile_total_bytes = 5;
   uint64 rootfs_cached_bytes = 6;
-  uint32 rootfs_cached_chunks = 7;
+  uint64 rootfs_total_bytes = 7;
 }
 
 message SandboxListCachedBuildsResponse {

@@ -18,11 +18,11 @@ func (s *Server) ListCachedBuilds(ctx context.Context, _ *emptypb.Empty) (*orche
 
 	for _, stats := range s.templateCache.CachedBuildStats(ctx) {
 		builds = append(builds, &orchestrator.CachedBuildInfo{
-			BuildId:             stats.BuildID,
-			MemfileCachedBytes:  stats.MemfileCachedBytes,
-			MemfileCachedChunks: stats.MemfileCachedChunks,
-			RootfsCachedBytes:   stats.RootfsCachedBytes,
-			RootfsCachedChunks:  stats.RootfsCachedChunks,
+			BuildId:            stats.BuildID,
+			MemfileCachedBytes: stats.MemfileCachedBytes,
+			MemfileTotalBytes:  stats.MemfileTotalBytes,
+			RootfsCachedBytes:  stats.RootfsCachedBytes,
+			RootfsTotalBytes:   stats.RootfsTotalBytes,
 		})
 	}
 

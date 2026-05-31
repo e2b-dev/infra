@@ -138,12 +138,12 @@ message TemplateBuildMetadata {
 message TemplateSchedulingMetadata {
   string baseBuildID = 1;
   uint64 generation = 2;
-  repeated string chainBuildIDs = 3;
-  repeated uint64 memfileLogicalBytes = 4;
-  repeated uint32 memfileChunkCounts = 5;
-  repeated uint32 memfileMappingCounts = 6;
-  repeated uint64 rootfsLogicalBytes = 7;
-  repeated uint32 rootfsChunkCounts = 8;
+  uint64 memfileSize = 3;
+  uint64 rootfsSize = 4;
+  repeated string chainBuildIDs = 5;
+  repeated uint64 memfileLogicalBytes = 6;
+  repeated uint32 memfileMappingCounts = 7;
+  repeated uint64 rootfsLogicalBytes = 8;
   repeated uint32 rootfsMappingCounts = 9;
 }
 

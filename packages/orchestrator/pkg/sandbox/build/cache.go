@@ -25,8 +25,7 @@ import (
 )
 
 var (
-	fallbackDiffSize    = units.MBToBytes(100)
-	cacheStatsChunkSize = uint64(2 << 20)
+	fallbackDiffSize = units.MBToBytes(100)
 
 	meter                   = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build")
 	residenceDurationMetric = utils.Must(meter.Int64Histogram("orchestrator.build.cache.residence_duration",
@@ -104,11 +103,11 @@ func NewDiffStore(
 type DiffStoreKey string
 
 type CachedBuildStats struct {
-	BuildID             string
-	MemfileCachedBytes  uint64
-	MemfileCachedChunks uint32
-	RootfsCachedBytes   uint64
-	RootfsCachedChunks  uint32
+	BuildID            string
+	MemfileCachedBytes uint64
+	MemfileTotalBytes  uint64
+	RootfsCachedBytes  uint64
+	RootfsTotalBytes   uint64
 }
 
 func GetDiffStoreKey(buildID string, diffType DiffType) DiffStoreKey {
@@ -198,14 +197,13 @@ func (s *DiffStore) CachedBuildStats(ctx context.Context) []CachedBuildStats {
 		if err != nil || size < 0 {
 			continue
 		}
-		chunks := uint32((uint64(size) + cacheStatsChunkSize - 1) / cacheStatsChunkSize)
 		switch DiffType(diffType) {
 		case Memfile:
 			stats.MemfileCachedBytes = uint64(size)
-			stats.MemfileCachedChunks = chunks
+			stats.MemfileTotalBytes = uint64(size)
 		case Rootfs:
 			stats.RootfsCachedBytes = uint64(size)
-			stats.RootfsCachedChunks = chunks
+			stats.RootfsTotalBytes = uint64(size)
 		}
 	}
 
