@@ -39,7 +39,7 @@ func (d *deferredFaults) drain() []*UffdPagefault {
 	d.mu.Lock()
 	out := d.pf
 	d.pf = nil
-	clear(d.byAddr)
+	d.byAddr = nil
 	d.mu.Unlock()
 
 	return out
