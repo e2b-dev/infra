@@ -61,7 +61,9 @@ func clean(ctx context.Context, bucket string, prefix string, cutoff time.Time, 
 	if err != nil {
 		return fmt.Errorf("create storage client: %w", err)
 	}
-	defer client.Close()
+	defer func() {
+		_ = client.Close()
+	}()
 
 	var scanned, matched, deleted int
 	objects := client.Bucket(bucket).Objects(ctx, &storage.Query{Prefix: prefix})
