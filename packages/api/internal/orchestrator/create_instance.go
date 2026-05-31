@@ -337,7 +337,7 @@ func (o *Orchestrator) CreateSandbox(
 	}
 	o.createdSandboxesCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
 	if placementCacheAffinityConfig.enabled {
-		o.placementAffinity.record(ctx, placementCacheAffinityConfig, nodeClusterID, node.ID, affinityBuildID)
+		go o.placementAffinity.record(ctx, placementCacheAffinityConfig, nodeClusterID, node.ID, affinityBuildID)
 	}
 
 	telemetry.SetAttributes(ctx, attribute.String("node.id", node.ID))
