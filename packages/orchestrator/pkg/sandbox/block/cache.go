@@ -222,14 +222,18 @@ type DedupBudget struct {
 	FetchRunWindowPages            int
 }
 
+type dedupPageKind byte
+
 const (
-	dedupPageEmpty byte = iota
+	dedupPageEmpty dedupPageKind = iota
 	dedupPageParent
 	dedupPageCurrent
 )
 
+type fetchSource byte
+
 const (
-	currentFetchSource byte = iota + 1
+	currentFetchSource fetchSource = iota + 1
 	parentFetchSource
 )
 
@@ -238,13 +242,13 @@ const (
 )
 
 type dedupFetchKey struct {
-	source byte
-	build  uuid.UUID
-	window int
+	sourceType fetchSource
+	buildID    uuid.UUID
+	window     int
 }
 
 type dedupPageInfo struct {
-	kind byte
+	kind dedupPageKind
 	key  dedupFetchKey
 }
 
@@ -325,9 +329,9 @@ func dedupCompare(
 				}
 				if bytes.Equal(srcPage, basePage) {
 					blockPages[page].kind = dedupPageParent
-					key := dedupFetchKey{source: parentFetchSource}
+					key := dedupFetchKey{sourceType: parentFetchSource}
 					if hasMapping {
-						key.build = mapped.BuildId
+						key.buildID = mapped.BuildId
 						key.window = int(mapped.Offset / uint64(budget.FetchRunWindowPages*header.PageSize))
 					} else {
 						key.window = int(pageOff / int64(budget.FetchRunWindowPages*header.PageSize))
@@ -397,7 +401,7 @@ func countFetchWindows(pages []dedupPageInfo, windowPages int, currentStart int6
 		case dedupPageParent:
 			keys[p.key] = struct{}{}
 		case dedupPageCurrent:
-			keys[dedupFetchKey{source: currentFetchSource, window: int(currentStart+currentOrdinal) / windowPages}] = struct{}{}
+			keys[dedupFetchKey{sourceType: currentFetchSource, window: int(currentStart+currentOrdinal) / windowPages}] = struct{}{}
 			currentOrdinal++
 		}
 	}
