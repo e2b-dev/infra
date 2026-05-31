@@ -7,36 +7,27 @@ import "sync"
 // deferredFaults collects pagefaults that returned EAGAIN so they get
 // retried on the next poll iteration. Safe for concurrent push.
 type deferredFaults struct {
-	mu       sync.Mutex
-	pf       []*UffdPagefault
-	byAddr   map[uint64]struct{}
-	pageSize uintptr
+	mu     sync.Mutex
+	pf     []*UffdPagefault
+	byAddr map[uint64]struct{}
 }
 
 // push queues a deferred fault, skipping addresses already queued so a page
 // faulted by several threads is retried once instead of once per fault.
+// Fault addresses are already page-aligned by the kernel (UFFDIO_COPY rejects
+// unaligned dst), so the raw address keys per page.
 func (d *deferredFaults) push(pf *UffdPagefault) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.byAddr == nil {
 		d.byAddr = make(map[uint64]struct{})
 	}
-	addr := d.key(uint64(pf.address))
+	addr := uint64(pf.address)
 	if _, ok := d.byAddr[addr]; ok {
 		return
 	}
 	d.byAddr[addr] = struct{}{}
 	d.pf = append(d.pf, pf)
-}
-
-func (d *deferredFaults) key(addr uint64) uint64 {
-	if d.pageSize == 0 {
-		return addr
-	}
-
-	pageSize := uint64(d.pageSize)
-
-	return addr & ^(pageSize - 1)
 }
 
 func (d *deferredFaults) drain() []*UffdPagefault {

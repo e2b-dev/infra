@@ -261,7 +261,7 @@ func (u *Userfaultfd) Serve(
 		unix.POLLNVAL: "POLLNVAL",
 	}
 
-	deferred := deferredFaults{pageSize: u.pageSize}
+	var deferred deferredFaults
 
 	for {
 		if _, err := unix.Poll(
