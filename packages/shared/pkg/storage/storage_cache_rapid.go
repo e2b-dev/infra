@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -27,9 +28,10 @@ func WrapInRapidBucketCache(_ context.Context, cache StorageProvider, inner Stor
 }
 
 func (p *rapidCacheProvider) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error {
-	_ = p.cache.DeleteObjectsWithPrefix(ctx, "rapid-cache/"+prefix)
+	cacheErr := p.cache.DeleteObjectsWithPrefix(ctx, "rapid-cache/"+prefix)
+	innerErr := p.inner.DeleteObjectsWithPrefix(ctx, prefix)
 
-	return p.inner.DeleteObjectsWithPrefix(ctx, prefix)
+	return errors.Join(cacheErr, innerErr)
 }
 
 func (p *rapidCacheProvider) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error) {

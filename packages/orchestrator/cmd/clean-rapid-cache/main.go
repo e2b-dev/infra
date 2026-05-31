@@ -134,7 +134,10 @@ func cleanFromBucket(ctx context.Context, client *gcs.Client, bucket string, pre
 		if !attrs.Updated.Before(cutoff) {
 			continue
 		}
-		lastAccess, ok, _ := index.LastAccess(ctx, attrs.Name)
+		lastAccess, ok, err := index.LastAccess(ctx, attrs.Name)
+		if err != nil {
+			continue
+		}
 		if ok && lastAccess >= cutoff.Unix() {
 			continue
 		}
