@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -301,6 +303,13 @@ func (o *Orchestrator) CreateSandbox(
 	if len(clusterNodes) == 0 {
 		if nodeClusterID == consts.LocalClusterID {
 			o.discoverNomadNodes(ctx)
+			if len(o.GetClusterNodes(nodeClusterID)) == 0 {
+				_ = o.connectToNode(ctx, nodemanager.NomadServiceDiscovery{
+					NomadNodeShortID:    "local",
+					OrchestratorAddress: net.JoinHostPort("localhost", env.GetEnv("ORCHESTRATOR_PORT", "5008")),
+					IPAddress:           "localhost",
+				})
+			}
 		} else {
 			o.discoverClusterNode(ctx, nodeClusterID)
 		}
