@@ -303,13 +303,6 @@ func (o *Orchestrator) CreateSandbox(
 	if len(clusterNodes) == 0 {
 		if nodeClusterID == consts.LocalClusterID {
 			o.discoverClusterNode(ctx, nodeClusterID)
-			if len(o.GetClusterNodes(nodeClusterID)) == 0 {
-				if cluster, ok := o.clusters.GetClusterById(nodeClusterID); ok {
-					for _, instance := range cluster.GetTemplateBuilders() {
-						o.connectToClusterNode(ctx, cluster, instance)
-					}
-				}
-			}
 			o.discoverNomadNodes(ctx)
 			if len(o.GetClusterNodes(nodeClusterID)) == 0 {
 				_ = o.connectToNode(ctx, nodemanager.NomadServiceDiscovery{
@@ -337,7 +330,11 @@ func (o *Orchestrator) CreateSandbox(
 		affinityScores = o.placementAffinity.scores(ctx, placementCacheAffinityConfig, nodeClusterID, affinityBuildID)
 	}
 
-	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels, affinityScores)
+	if affinityScores == nil {
+		node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels)
+	} else {
+		node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels, affinityScores)
+	}
 	if err != nil {
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,

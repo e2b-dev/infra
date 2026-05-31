@@ -226,12 +226,7 @@ func (o *Orchestrator) discoverClusterNode(ctx context.Context, clusterID uuid.U
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	instances := cluster.GetOrchestrators()
-	if len(instances) == 0 && cluster.ID == consts.LocalClusterID {
-		instances = cluster.GetTemplateBuilders()
-	}
-
-	for _, instance := range instances {
+	for _, instance := range cluster.GetOrchestrators() {
 		wg.Go(func() {
 			o.connectToClusterNode(ctx, cluster, instance)
 		})
