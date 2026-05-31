@@ -303,6 +303,13 @@ func (o *Orchestrator) CreateSandbox(
 	if len(clusterNodes) == 0 {
 		if nodeClusterID == consts.LocalClusterID {
 			o.discoverClusterNode(ctx, nodeClusterID)
+			if len(o.GetClusterNodes(nodeClusterID)) == 0 {
+				if cluster, ok := o.clusters.GetClusterById(nodeClusterID); ok {
+					for _, instance := range cluster.GetTemplateBuilders() {
+						o.connectToClusterNode(ctx, cluster, instance)
+					}
+				}
+			}
 			o.discoverNomadNodes(ctx)
 			if len(o.GetClusterNodes(nodeClusterID)) == 0 {
 				_ = o.connectToNode(ctx, nodemanager.NomadServiceDiscovery{
