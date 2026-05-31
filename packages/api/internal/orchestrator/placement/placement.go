@@ -36,6 +36,7 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 
 	nodesExcluded := make(map[string]struct{})  // hard failures, never retried
 	nodesExhausted := make(map[string]struct{}) // capacity-exhausted, retried as a pool
+	exhaustedRetries := 0
 	var err error
 
 	var node *nodemanager.Node
@@ -72,6 +73,10 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 				// No eligible node. If some were only capacity-exhausted, retry the
 				// whole exhausted pool since capacity may free up.
 				if len(nodesExhausted) > 0 {
+					exhaustedRetries++
+					if exhaustedRetries >= maxExhaustedRetries {
+						return nil, err
+					}
 					clear(nodesExhausted)
 					attempt++
 					time.Sleep(100 * time.Millisecond)
