@@ -22,7 +22,7 @@ func (d *deferredFaults) push(pf *UffdPagefault) bool {
 	if d.byAddr == nil {
 		d.byAddr = make(map[uint64]*UffdPagefault)
 	}
-	addr := d.key(pf.address)
+	addr := d.key(uint64(pf.address))
 	if existing, ok := d.byAddr[addr]; ok {
 		if pf.flags&UFFD_PAGEFAULT_FLAG_WRITE != 0 {
 			existing.flags |= UFFD_PAGEFAULT_FLAG_WRITE
@@ -36,12 +36,14 @@ func (d *deferredFaults) push(pf *UffdPagefault) bool {
 	return true
 }
 
-func (d *deferredFaults) key(addr uintptr) uint64 {
+func (d *deferredFaults) key(addr uint64) uint64 {
 	if d.pageSize == 0 {
-		return uint64(addr)
+		return addr
 	}
 
-	return uint64(addr & ^(d.pageSize - 1))
+	pageSize := uint64(d.pageSize)
+
+	return addr & ^(pageSize - 1)
 }
 
 func (d *deferredFaults) drain() []*UffdPagefault {
