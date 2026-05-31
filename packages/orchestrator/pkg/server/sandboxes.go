@@ -90,8 +90,11 @@ func (s *Server) createSandboxFromRootfs(
 		return nil, fmt.Errorf("compare envd version: %w", err)
 	}
 
-	timeout := req.GetEndTime().AsTime().Sub(req.GetStartTime().AsTime())
-	if timeout <= 0 {
+	startTime := req.GetStartTime().AsTime()
+	endTime := req.GetEndTime().AsTime()
+	timeout := endTime.Sub(startTime)
+	honorRequestWindow := timeout > 0
+	if !honorRequestWindow {
 		timeout = s.config.EnvdTimeout
 	}
 
@@ -111,6 +114,13 @@ func (s *Server) createSandboxFromRootfs(
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	// CreateSandbox anchors the lifetime to now; honor the API's absolute
+	// window like the resume path so queue delay can't extend the end time.
+	if honorRequestWindow {
+		sbx.SetStartedAt(startTime)
+		sbx.SetEndAt(endTime)
 	}
 
 	if err := sbx.WaitForEnvd(ctx, s.config.EnvdTimeout); err != nil {
