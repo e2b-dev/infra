@@ -38,7 +38,6 @@ func NewDriver(connectionString string) (driver.Conn, error) {
 
 	options.MaxOpenConns = 10
 	options.MaxIdleConns = 3
-	options.TLS = nil
 
 	conn, err := clickhouse.Open(options)
 	if err != nil {
@@ -55,6 +54,15 @@ func New(connectionString string) (*Client, error) {
 	}
 
 	return &Client{conn: conn}, nil
+}
+
+func DSNEndpointLabel(dsn string) string {
+	options, err := clickhouse.ParseDSN(dsn)
+	if err != nil || len(options.Addr) == 0 {
+		return "unparseable-dsn"
+	}
+
+	return options.Addr[0]
 }
 
 // Close drains the queue and flushes remaining items

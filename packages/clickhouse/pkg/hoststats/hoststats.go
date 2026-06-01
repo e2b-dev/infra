@@ -2,6 +2,7 @@ package hoststats
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -56,3 +57,49 @@ func NewNoopDelivery() Delivery {
 
 func (d *noopDelivery) Push(_ SandboxHostStat) error  { return nil }
 func (d *noopDelivery) Close(_ context.Context) error { return nil }
+
+// multiDelivery fans out host stats to every target. Each target's Push is
+// independent — a failing or slow target does not block the others. Returned
+// errors are joined so callers see every failure.
+type multiDelivery struct {
+	targets []Delivery
+}
+
+var _ Delivery = (*multiDelivery)(nil)
+
+// NewMultiDelivery returns a Delivery for the given targets. Special-cases:
+// zero targets → noop; one target → that target directly (no fan-out
+// overhead). The default fan-out path runs for two or more. Lets callers
+// wrap unconditionally without branching on len(targets).
+func NewMultiDelivery(targets ...Delivery) Delivery {
+	switch len(targets) {
+	case 0:
+		return NewNoopDelivery()
+	case 1:
+		return targets[0]
+	default:
+		return &multiDelivery{targets: targets}
+	}
+}
+
+func (m *multiDelivery) Push(stat SandboxHostStat) error {
+	var err error
+	for _, t := range m.targets {
+		if e := t.Push(stat); e != nil {
+			err = errors.Join(err, e)
+		}
+	}
+
+	return err
+}
+
+func (m *multiDelivery) Close(ctx context.Context) error {
+	var err error
+	for _, t := range m.targets {
+		if e := t.Close(ctx); e != nil {
+			err = errors.Join(err, e)
+		}
+	}
+
+	return err
+}
