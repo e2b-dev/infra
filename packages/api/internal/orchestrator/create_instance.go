@@ -346,6 +346,9 @@ func (o *Orchestrator) CreateSandbox(
 		attribute.Bool("is_resume", isResume),
 		attribute.Bool("node_affinity_requested", sbxData.NodeID != nil),
 		attribute.Bool("node_affinity_success", sbxData.NodeID != nil && node.ID == *sbxData.NodeID),
+		// Whether placement landed on a node the cache-affinity layer preferred,
+		// so the feature's hit rate (and any load skew) is observable on rollout.
+		attribute.Bool("cache_affinity_hit", affinityScores[node.ID] > 0),
 	}
 	o.createdSandboxesCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
 	if placementCacheAffinityConfig.enabled {
