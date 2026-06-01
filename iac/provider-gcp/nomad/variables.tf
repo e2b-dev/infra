@@ -70,6 +70,11 @@ variable "api_env_vars" {
   default = {}
 }
 
+variable "api_db_migrator_env_vars" {
+  type    = map(string)
+  default = {}
+}
+
 variable "client_proxy_oidc_issuer_url" {
   type    = string
   default = ""

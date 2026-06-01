@@ -48,3 +48,8 @@ variable "job_env_vars" {
   type    = map(string)
   default = {}
 }
+
+variable "db_migrator_env_vars" {
+  type    = map(string)
+  default = {}
+}

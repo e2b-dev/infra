@@ -155,6 +155,10 @@ locals {
     VOLUME_TOKEN_DURATION         = "1h"
     VOLUME_TOKEN_SIGNING_METHOD   = "HS256"
   }, var.api_env_vars)
+
+  api_db_migrator_env_vars = merge({
+    POSTGRES_CONNECTION_STRING = module.init.postgres_connection_string
+  }, var.api_db_migrator_env_vars)
 }
 
 module "redis" {
@@ -263,6 +267,7 @@ module "nomad" {
   api_cluster_size            = var.api_cluster_size
   api_internal_grpc_port      = var.api_internal_grpc_port
   api_env_vars                = local.api_env_vars
+  api_db_migrator_env_vars    = local.api_db_migrator_env_vars
   api_repository_name         = module.init.api_repository_name
   db_migrator_repository_name = module.init.db_migrator_repository_name
 

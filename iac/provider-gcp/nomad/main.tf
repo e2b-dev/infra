@@ -82,6 +82,7 @@ module "api" {
   api_docker_image         = data.google_artifact_registry_docker_image.api_image.self_link
   db_migrator_docker_image = data.google_artifact_registry_docker_image.db_migrator_image.self_link
   job_env_vars             = var.api_env_vars
+  db_migrator_env_vars     = var.api_db_migrator_env_vars
 }
 
 module "dashboard_api" {

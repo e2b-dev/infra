@@ -118,6 +118,7 @@ module "api" {
   api_docker_image         = data.aws_ecr_image.api.image_uri
   db_migrator_docker_image = data.aws_ecr_image.db_migrator.image_uri
   job_env_vars             = var.api_env_vars
+  db_migrator_env_vars     = var.api_db_migrator_env_vars
 }
 
 data "aws_s3_object" "orchestrator" {

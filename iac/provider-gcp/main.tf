@@ -134,6 +134,10 @@ locals {
     CLIENT_PROXY_OIDC_ISSUER_URL  = var.client_proxy_oidc_issuer_url
   }, var.api_env_vars)
 
+  api_db_migrator_env_vars = merge({
+    POSTGRES_CONNECTION_STRING = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+  }, var.api_db_migrator_env_vars)
+
   # Normalize additional_api_paths_handled_by_ingress to support both legacy (list of strings)
   # and new (list of objects) formats. Strings are converted to objects with paths = [string].
   normalized_api_paths_handled_by_ingress = [
@@ -328,6 +332,7 @@ module "nomad" {
   api_port                                               = var.api_port
   api_internal_grpc_port                                 = var.api_internal_grpc_port
   api_env_vars                                           = local.api_env_vars
+  api_db_migrator_env_vars                               = local.api_db_migrator_env_vars
   client_proxy_oidc_issuer_url                           = var.client_proxy_oidc_issuer_url
   auth_provider_config                                   = local.auth_provider_config
   environment                                            = var.environment

@@ -49,6 +49,11 @@ variable "api_env_vars" {
   default = {}
 }
 
+variable "api_db_migrator_env_vars" {
+  type    = map(string)
+  default = {}
+}
+
 variable "api_server_machine_type" {
   type    = string
   default = "t3.xlarge"

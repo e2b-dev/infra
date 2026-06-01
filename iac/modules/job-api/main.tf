@@ -14,6 +14,7 @@ locals {
     api_docker_image         = var.api_docker_image
     db_migrator_docker_image = var.db_migrator_docker_image
     job_env_vars             = var.job_env_vars
+    db_migrator_env_vars     = var.db_migrator_env_vars
   })
 }
 

@@ -176,6 +176,11 @@ variable "api_env_vars" {
   default = {}
 }
 
+variable "api_db_migrator_env_vars" {
+  type    = map(string)
+  default = {}
+}
+
 variable "api_memory_mb" {
   type    = number
   default = 512

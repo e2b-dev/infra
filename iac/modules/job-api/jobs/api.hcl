@@ -177,7 +177,11 @@ job "api" {
       driver = "docker"
 
       env {
-        POSTGRES_CONNECTION_STRING="${lookup(job_env_vars, "POSTGRES_CONNECTION_STRING", "")}"
+%{ for key, value in db_migrator_env_vars ~}
+%{ if value != "" ~}
+        ${key} = "${value}"
+%{ endif ~}
+%{ endfor ~}
       }
 
       config {
