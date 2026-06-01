@@ -290,14 +290,9 @@ func readV5MappingSection(reader *bytes.Reader, blockSize, size uint64) (Mapping
 		encodedBuildIdx[i] = uint16(v)
 	}
 
-	// Pre-count the reconstructed entries (mapped entries plus the nil gaps
-	// inserted between them) so the columns are allocated exactly. The
-	// alternative — building into an n*2+1 buffer and trimming — does not help:
-	// the cached Mapping holds these slices for up to 25h, slices.Clip can't
-	// release an oversized backing array (it only lowers cap), and slices.Clone
-	// would add a transient full-header copy during a memory-pressured pause.
-	// A miscount on malformed input only costs a realloc; such input fails the
-	// validation below and the Mapping is discarded.
+	// Size the columns exactly: the Mapping is cached for ~25h, so an oversized
+	// buffer would stay resident (Clip keeps the backing array, Clone adds a
+	// transient copy). Count the mapped entries plus reconstructed nil gaps.
 	total := int(n)
 	var prevEnd uint64
 	for i := range int(n) {

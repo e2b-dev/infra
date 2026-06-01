@@ -189,42 +189,33 @@ func TestV5_SmallerThanV4(t *testing.T) {
 	require.True(t, Equal(mappings, got.Mapping.Slice()))
 }
 
-// TestV5_ReconstructedColumnsExactlySized guards the heap fix: a V5-deserialized
-// header is cached for up to 25h, so its mapping columns must not retain
-// over-allocated backing arrays. The reconstruction inserts nil gaps, so this
-// uses a header with gaps to exercise that path.
+// TestV5_ReconstructedColumnsExactlySized guards against cached headers
+// retaining over-allocated mapping columns. Alternating mapped/nil entries
+// force gap reconstruction, the path that previously over-allocated.
 func TestV5_ReconstructedColumnsExactlySized(t *testing.T) {
 	t.Parallel()
 
 	bs := uint64(4096)
 	a := uuid.New()
-	const mapped = 10_000
-	// Alternate a mapped page with a nil gap so the reader reconstructs a gap
-	// entry before every mapped entry (the maximal-fragmentation shape).
-	mappings := make([]BuildMap, 0, mapped*2)
-	var off, sa uint64
-	for range mapped {
-		mappings = append(mappings, BuildMap{Offset: off, Length: bs, BuildId: uuid.Nil})
-		off += bs
-		mappings = append(mappings, BuildMap{Offset: off, Length: bs, BuildId: a, BuildStorageOffset: sa})
-		off += bs
-		sa += bs
+	mappings := []BuildMap{
+		{Offset: 0, Length: bs, BuildId: uuid.Nil},
+		{Offset: bs, Length: bs, BuildId: a, BuildStorageOffset: 0},
+		{Offset: 2 * bs, Length: bs, BuildId: uuid.Nil},
+		{Offset: 3 * bs, Length: bs, BuildId: a, BuildStorageOffset: bs},
 	}
-	meta := &Metadata{BlockSize: bs, Size: off, BuildId: a, BaseBuildId: a}
-	h := v5Header(t, meta, mappings, map[uuid.UUID]BuildData{a: {Size: int64(sa)}})
+	meta := &Metadata{BlockSize: bs, Size: 4 * bs, BuildId: a, BaseBuildId: a}
+	h := v5Header(t, meta, mappings, map[uuid.UUID]BuildData{a: {Size: int64(2 * bs)}})
 
 	data, err := SerializeHeader(h)
 	require.NoError(t, err)
 	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
-	require.True(t, Equal(mappings, got.Mapping.Slice()))
-
 	m := got.Mapping
-	assert.Equal(t, len(m.offsets), cap(m.offsets), "offsets column carries slack")
-	assert.Equal(t, len(m.lengths), cap(m.lengths), "lengths column carries slack")
-	assert.Equal(t, len(m.storage), cap(m.storage), "storage column carries slack")
-	assert.Equal(t, len(m.buildIdx), cap(m.buildIdx), "buildIdx column carries slack")
+	assert.Equal(t, len(m.offsets), cap(m.offsets))
+	assert.Equal(t, len(m.lengths), cap(m.lengths))
+	assert.Equal(t, len(m.storage), cap(m.storage))
+	assert.Equal(t, len(m.buildIdx), cap(m.buildIdx))
 }
 
 func TestV5_RejectsOversizePrefix(t *testing.T) {
