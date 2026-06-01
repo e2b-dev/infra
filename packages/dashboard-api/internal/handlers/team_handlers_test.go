@@ -16,7 +16,9 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth/oidc"
 	authtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
@@ -527,6 +529,378 @@ WHERE id = $1
 	}
 	if responseBody["slug"] != team.Slug {
 		t.Fatalf("expected slug %s, got %v", team.Slug, responseBody["slug"])
+	}
+}
+
+func TestBootstrapAuthProviderUser_CreatesIdentityAndDefaultTeam(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	sink := &fakeTeamProvisionSink{}
+
+	store := &APIStore{
+		config: cfg.Config{
+			AuthProvider: auth.ProviderConfig{
+				JWT: []oidc.Config{
+					{
+						Issuer: oidc.Issuer{
+							URL:       "https://ory.example.test",
+							Audiences: []string{"https://dashboard-api.example.test"},
+						},
+					},
+				},
+			},
+		},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
+		teamProvisionSink: sink,
+	}
+
+	input := oidcUserBootstrapInput{
+		OIDCIssuer:    "https://ory.example.test",
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+		OIDCUserName:  nil,
+	}
+
+	team, err := store.bootstrapOIDCUser(ctx, input)
+	if err != nil {
+		t.Fatalf("expected bootstrap to succeed: %v", err)
+	}
+
+	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+		OidcIss: input.OIDCIssuer,
+		OidcSub: input.OIDCUserID,
+	})
+	if err != nil {
+		t.Fatalf("expected user identity to be created: %v", err)
+	}
+
+	defaultTeam, err := testDB.AuthDB.Read.GetDefaultTeamByUserID(ctx, userIdentity.UserID)
+	if err != nil {
+		t.Fatalf("expected default team to be created: %v", err)
+	}
+	if defaultTeam.ID != team.ID {
+		t.Fatalf("expected response team %s, got %s", defaultTeam.ID, team.ID)
+	}
+	if defaultTeam.Name != "Default Team" {
+		t.Fatalf("expected team name %q, got %q", "Default Team", defaultTeam.Name)
+	}
+	if defaultTeam.Email != "ada@example.test" {
+		t.Fatalf("expected team email %q, got %q", "ada@example.test", defaultTeam.Email)
+	}
+
+	if len(sink.requests) != 1 {
+		t.Fatalf("expected one billing provisioning call, got %d", len(sink.requests))
+	}
+	if sink.requests[0].CreatorUserID != userIdentity.UserID {
+		t.Fatalf("expected sink creator %s, got %s", userIdentity.UserID, sink.requests[0].CreatorUserID)
+	}
+}
+
+func TestBootstrapOIDCUser_ConcurrentRequestsSingleIdentityAndTeam(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	sink := &fakeTeamProvisionSink{}
+
+	store := &APIStore{
+		config: cfg.Config{
+			AuthProvider: auth.ProviderConfig{
+				JWT: []oidc.Config{
+					{
+						Issuer: oidc.Issuer{
+							URL:       "https://ory.example.test",
+							Audiences: []string{"https://dashboard-api.example.test"},
+						},
+					},
+				},
+			},
+		},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
+		teamProvisionSink: sink,
+	}
+
+	input := oidcUserBootstrapInput{
+		OIDCIssuer:    "https://ory.example.test",
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+		OIDCUserName:  nil,
+	}
+
+	const concurrency = 4
+	var wg sync.WaitGroup
+	results := make(chan provisionedTeam, concurrency)
+	errs := make(chan error, concurrency)
+
+	for range concurrency {
+		wg.Go(func() {
+			team, err := store.bootstrapOIDCUser(ctx, input)
+			if err != nil {
+				errs <- err
+
+				return
+			}
+
+			results <- team
+		})
+	}
+
+	wg.Wait()
+	close(results)
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("expected bootstrap to succeed, got %v", err)
+		}
+	}
+
+	var teamIDs []uuid.UUID
+	for team := range results {
+		teamIDs = append(teamIDs, team.ID)
+	}
+	if len(teamIDs) != concurrency {
+		t.Fatalf("expected %d bootstrap results, got %d", concurrency, len(teamIDs))
+	}
+	for _, id := range teamIDs[1:] {
+		if id != teamIDs[0] {
+			t.Fatalf("expected all bootstrap calls to share team %s, got %s", teamIDs[0], id)
+		}
+	}
+
+	userIdentity, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+		OidcIss: input.OIDCIssuer,
+		OidcSub: input.OIDCUserID,
+	})
+	if err != nil {
+		t.Fatalf("expected single user identity to exist: %v", err)
+	}
+
+	var defaultTeamCount int
+	err = testDB.AuthDB.TestsRawSQLQuery(ctx,
+		`SELECT count(*)
+		FROM public.users_teams
+		WHERE user_id = $1 AND is_default = true`,
+		func(rows pgx.Rows) error {
+			if !rows.Next() {
+				return errors.New("missing default team count row")
+			}
+
+			return rows.Scan(&defaultTeamCount)
+		},
+		userIdentity.UserID,
+	)
+	if err != nil {
+		t.Fatalf("failed to count default team memberships: %v", err)
+	}
+	if defaultTeamCount != 1 {
+		t.Fatalf("expected exactly one default team for canonical user, got %d", defaultTeamCount)
+	}
+}
+
+func TestPostAdminUsersBootstrap_EmptyOIDCUserIDReturnsBadRequest(t *testing.T) {
+	t.Parallel()
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(`{"oidc_issuer":"https://ory.example.test","oidc_user_id":"   ","oidc_user_email":"ada@example.test","oidc_user_name":null}`))
+	ginCtx.Request.Header.Set("Content-Type", "application/json")
+
+	store := &APIStore{}
+	store.PostAdminUsersBootstrap(ginCtx)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400 for blank oidc_user_id, got %d", recorder.Code)
+	}
+}
+
+func TestBootstrapOIDCUser_OryIssuerWithoutJWTConfigIsAccepted(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	sink := &fakeTeamProvisionSink{}
+
+	const oryIssuer = "https://ory.example.test"
+
+	store := &APIStore{
+		config: cfg.Config{
+			OryIssuerURL: oryIssuer,
+		},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
+		teamProvisionSink: sink,
+	}
+
+	team, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
+		OIDCIssuer:    oryIssuer,
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+		OIDCUserName:  nil,
+	})
+	if err != nil {
+		t.Fatalf("expected bootstrap to succeed with Ory issuer but no JWT config: %v", err)
+	}
+	if team.ID == uuid.Nil {
+		t.Fatal("expected provisioned team")
+	}
+}
+
+func TestBootstrapOIDCUser_OryModeRejectsNonOryJWTIssuer(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	sink := &fakeTeamProvisionSink{}
+
+	const oryIssuer = "https://ory.example.test"
+	const otherIssuer = "https://workos.example.test"
+
+	store := &APIStore{
+		config: cfg.Config{
+			UserProfileProvider: userprofile.ModeOry,
+			OryIssuerURL:        oryIssuer,
+			AuthProvider: auth.ProviderConfig{
+				JWT: []oidc.Config{
+					{Issuer: oidc.Issuer{URL: otherIssuer}},
+				},
+			},
+		},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
+		teamProvisionSink: sink,
+	}
+
+	_, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
+		OIDCIssuer:    otherIssuer,
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+		OIDCUserName:  nil,
+	})
+	if err == nil {
+		t.Fatal("expected ory mode to reject a non-Ory JWT issuer at bootstrap")
+	}
+	var provErr *internalteamprovision.ProvisionError
+	if !errors.As(err, &provErr) || provErr.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected ProvisionError with status 400, got %v", err)
+	}
+}
+
+func TestBootstrapOIDCUser_UnknownIssuerReturnsBadRequest(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	sink := &fakeTeamProvisionSink{}
+
+	store := &APIStore{
+		config: cfg.Config{
+			AuthProvider: auth.ProviderConfig{
+				JWT: []oidc.Config{
+					{Issuer: oidc.Issuer{URL: "https://ory.example.test"}},
+				},
+			},
+		},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
+		teamProvisionSink: sink,
+	}
+
+	_, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
+		OIDCIssuer:    "https://attacker.example.test",
+		OIDCUserID:    uuid.NewString(),
+		OIDCUserEmail: "ada@example.test",
+		OIDCUserName:  nil,
+	})
+	if err == nil {
+		t.Fatal("expected unknown issuer to be rejected")
+	}
+
+	var provErr *internalteamprovision.ProvisionError
+	if !errors.As(err, &provErr) || provErr.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected ProvisionError with status 400, got %v", err)
+	}
+	if len(sink.requests) != 0 {
+		t.Fatalf("expected no provisioning calls, got %d", len(sink.requests))
+	}
+}
+
+func TestBootstrapOIDCUser_MultipleConfiguredIssuersIsolatesIdentities(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	sink := &fakeTeamProvisionSink{}
+
+	const issuerA = "https://ory-a.example.test"
+	const issuerB = "https://ory-b.example.test"
+
+	store := &APIStore{
+		config: cfg.Config{
+			AuthProvider: auth.ProviderConfig{
+				JWT: []oidc.Config{
+					{Issuer: oidc.Issuer{URL: issuerA}},
+					{Issuer: oidc.Issuer{URL: issuerB}},
+				},
+			},
+		},
+		db:                testDB.SqlcClient,
+		authDB:            testDB.AuthDB,
+		supabaseDB:        testDB.SupabaseDB,
+		teamProvisionSink: sink,
+	}
+
+	sharedSubject := uuid.NewString()
+
+	teamA, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
+		OIDCIssuer:    issuerA,
+		OIDCUserID:    sharedSubject,
+		OIDCUserEmail: "ada-a@example.test",
+		OIDCUserName:  nil,
+	})
+	if err != nil {
+		t.Fatalf("issuer A bootstrap failed: %v", err)
+	}
+
+	teamB, err := store.bootstrapOIDCUser(ctx, oidcUserBootstrapInput{
+		OIDCIssuer:    issuerB,
+		OIDCUserID:    sharedSubject,
+		OIDCUserEmail: "ada-b@example.test",
+		OIDCUserName:  nil,
+	})
+	if err != nil {
+		t.Fatalf("issuer B bootstrap failed: %v", err)
+	}
+
+	if teamA.ID == teamB.ID {
+		t.Fatalf("expected distinct teams for same subject under different issuers, both got %s", teamA.ID)
+	}
+
+	identityA, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+		OidcIss: issuerA,
+		OidcSub: sharedSubject,
+	})
+	if err != nil {
+		t.Fatalf("expected identity under issuer A: %v", err)
+	}
+	identityB, err := testDB.AuthDB.Read.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+		OidcIss: issuerB,
+		OidcSub: sharedSubject,
+	})
+	if err != nil {
+		t.Fatalf("expected identity under issuer B: %v", err)
+	}
+	if identityA.UserID == identityB.UserID {
+		t.Fatalf("expected distinct user ids for same subject under different issuers, both got %s", identityA.UserID)
 	}
 }
 

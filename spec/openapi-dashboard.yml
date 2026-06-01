@@ -223,6 +223,26 @@ components:
           type: string
           format: email
 
+    AdminAuthProviderUserBootstrapRequest:
+      type: object
+      required:
+        - oidc_issuer
+        - oidc_user_id
+        - oidc_user_email
+      properties:
+        oidc_issuer:
+          type: string
+          minLength: 1
+        oidc_user_id:
+          type: string
+          minLength: 1
+        oidc_user_email:
+          type: string
+          format: email
+        oidc_user_name:
+          type: string
+          nullable: true
+
     AdminTeamBootstrapRequest:
       type: object
       required:
@@ -876,6 +896,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TeamResolveResponse"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/users/bootstrap:
+    post:
+      summary: Bootstrap auth provider user
+      tags: [teams]
+      security:
+        - AdminTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAuthProviderUserBootstrapRequest"
+      responses:
+        "200":
+          description: Successfully bootstrapped user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamResolveResponse"
+        "400":
+          $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
         "500":

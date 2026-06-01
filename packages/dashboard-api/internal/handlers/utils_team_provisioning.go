@@ -44,6 +44,18 @@ type bootstrapUserProfile struct {
 	DefaultTeamName string
 }
 
+type bootstrapUserIdentity struct {
+	Issuer  string
+	Subject string
+}
+
+type oidcUserBootstrapInput struct {
+	OIDCIssuer    string
+	OIDCUserID    string
+	OIDCUserEmail string
+	OIDCUserName  *string
+}
+
 func (s *APIStore) bootstrapSupabaseUser(ctx context.Context, userID uuid.UUID) (provisionedTeam, error) {
 	profile, err := s.bootstrapUserProfileFromSupabase(ctx, userID)
 	if err != nil {
@@ -86,7 +98,63 @@ func (s *APIStore) resolveProfile(ctx context.Context, userID uuid.UUID) (userpr
 	return profile, nil
 }
 
+func (s *APIStore) bootstrapOIDCUser(ctx context.Context, input oidcUserBootstrapInput) (provisionedTeam, error) {
+	if err := s.requireConfiguredOIDCIssuer(input.OIDCIssuer); err != nil {
+		return provisionedTeam{}, err
+	}
+
+	profile := bootstrapUserProfile{
+		UserID:          uuid.New(),
+		Email:           input.OIDCUserEmail,
+		DefaultTeamName: defaultTeamNameFromOIDCUserName(input.OIDCUserName),
+	}
+
+	return s.bootstrapUserWithIdentity(ctx, profile, &bootstrapUserIdentity{
+		Issuer:  input.OIDCIssuer,
+		Subject: input.OIDCUserID,
+	})
+}
+
+// requireConfiguredOIDCIssuer rejects bootstrap requests whose issuer is not in
+// the configured provider list. Without this an admin-token holder could plant
+// an identity under any arbitrary iss string. When the user-profile provider
+// requires Ory, only ORY_ISSUER_URL is accepted: the Ory resolver looks up
+// public.user_identities by exactly that issuer, so any other configured JWT
+// issuer would create rows that profile/membership lookups never read.
+func (s *APIStore) requireConfiguredOIDCIssuer(issuer string) error {
+	oryIssuer := strings.TrimSpace(s.config.OryIssuerURL)
+
+	if s.config.UserProfileProvider.RequiresOry() {
+		if oryIssuer != "" && oryIssuer == issuer {
+			return nil
+		}
+
+		return &internalteamprovision.ProvisionError{
+			StatusCode: http.StatusBadRequest,
+			Message:    "oidc_issuer must equal the configured ORY_ISSUER_URL",
+		}
+	}
+
+	for _, jwt := range s.config.AuthProvider.JWT {
+		if strings.TrimSpace(jwt.Issuer.URL) == issuer {
+			return nil
+		}
+	}
+	if oryIssuer != "" && oryIssuer == issuer {
+		return nil
+	}
+
+	return &internalteamprovision.ProvisionError{
+		StatusCode: http.StatusBadRequest,
+		Message:    "oidc_issuer is not a configured auth provider",
+	}
+}
+
 func (s *APIStore) bootstrapUser(ctx context.Context, profile bootstrapUserProfile) (provisionedTeam, error) {
+	return s.bootstrapUserWithIdentity(ctx, profile, nil)
+}
+
+func (s *APIStore) bootstrapUserWithIdentity(ctx context.Context, profile bootstrapUserProfile, identity *bootstrapUserIdentity) (provisionedTeam, error) {
 	authTxDB, tx, err := s.authDB.WithTx(ctx)
 	if err != nil {
 		return provisionedTeam{}, fmt.Errorf("start transaction: %w", err)
@@ -95,8 +163,39 @@ func (s *APIStore) bootstrapUser(ctx context.Context, profile bootstrapUserProfi
 		_ = tx.Rollback(ctx)
 	}()
 
-	if err := authTxDB.UpsertPublicUser(ctx, profile.UserID); err != nil {
+	if identity != nil {
+		existing, err := authTxDB.GetUserIdentity(ctx, authqueries.GetUserIdentityParams{
+			OidcIss: identity.Issuer,
+			OidcSub: identity.Subject,
+		})
+		switch {
+		case err == nil:
+			profile.UserID = existing.UserID
+		case !dberrors.IsNotFoundError(err):
+			return provisionedTeam{}, fmt.Errorf("get user identity: %w", err)
+		}
+	}
+
+	candidateUserID := profile.UserID
+	if err := authTxDB.UpsertPublicUser(ctx, candidateUserID); err != nil {
 		return provisionedTeam{}, fmt.Errorf("upsert public user: %w", err)
+	}
+	if identity != nil {
+		canonicalUserID, err := authTxDB.UpsertPublicIdentity(ctx, authqueries.UpsertPublicIdentityParams{
+			OidcIss: identity.Issuer,
+			OidcSub: identity.Subject,
+			UserID:  candidateUserID,
+		})
+		if err != nil {
+			return provisionedTeam{}, fmt.Errorf("upsert public identity: %w", err)
+		}
+		if canonicalUserID != candidateUserID {
+			// concurrent bootstrap claimed the identity first; drop the orphan candidate row
+			if err := authTxDB.DeletePublicUser(ctx, candidateUserID); err != nil {
+				return provisionedTeam{}, fmt.Errorf("delete orphan public user: %w", err)
+			}
+			profile.UserID = canonicalUserID
+		}
 	}
 
 	// Serialize bootstrap for a user even when they have no team memberships yet.
@@ -346,6 +445,14 @@ func defaultTeamNameFromProfile(profile userprofile.Profile) string {
 	}
 
 	return capitalizeFirstLetter(baseName) + "'s Default Team"
+}
+
+func defaultTeamNameFromOIDCUserName(name *string) string {
+	if name == nil || strings.TrimSpace(*name) == "" {
+		return "Default Team"
+	}
+
+	return capitalizeFirstLetter(firstWord(*name)) + "'s Default Team"
 }
 
 func firstWord(value string) string {
