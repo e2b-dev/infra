@@ -1113,7 +1113,7 @@ type TemplateBuildMetadata struct {
 	KernelVersion      string `protobuf:"bytes,3,opt,name=kernelVersion,proto3" json:"kernelVersion,omitempty"`
 	FirecrackerVersion string `protobuf:"bytes,4,opt,name=firecrackerVersion,proto3" json:"firecrackerVersion,omitempty"`
 	// Shared with the orchestrator so the API can match the build's scheduling
-	// metadata against create/resume/list responses without a separate format.
+	// metadata against create/resume responses without a separate format.
 	SchedulingMetadata *orchestrator.SchedulingMetadata `protobuf:"bytes,5,opt,name=schedulingMetadata,proto3" json:"schedulingMetadata,omitempty"`
 }
 

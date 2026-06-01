@@ -134,7 +134,7 @@ message TemplateBuildMetadata {
   string kernelVersion = 3;
   string firecrackerVersion = 4;
   // Shared with the orchestrator so the API can match the build's scheduling
-  // metadata against create/resume/list responses without a separate format.
+  // metadata against create/resume responses without a separate format.
   SchedulingMetadata schedulingMetadata = 5;
 }
 

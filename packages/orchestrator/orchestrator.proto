@@ -174,7 +174,6 @@ message SandboxListResponse {
 message CachedBuildInfo {
   string build_id = 1;
   google.protobuf.Timestamp expiration_time = 2;
-  SchedulingMetadata scheduling_metadata = 3;
 }
 
 message SandboxListCachedBuildsResponse {
