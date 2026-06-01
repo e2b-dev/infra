@@ -142,6 +142,8 @@ message TemplateSchedulingMetadata {
   repeated string rootfsBuildIDs = 4;
   uint32 memfileDroppedBuilds = 5;
   uint32 rootfsDroppedBuilds = 6;
+  repeated uint64 memfileBuildBytes = 7;
+  repeated uint64 rootfsBuildBytes = 8;
 }
 
 enum TemplateBuildState {

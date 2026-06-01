@@ -423,6 +423,8 @@ func toTemplateSchedulingMetadata(m *orchestratorgrpc.SchedulingMetadata) *templ
 		RootfsBuildIDs:       m.GetRootfsBuildIds(),
 		MemfileDroppedBuilds: m.GetMemfileDroppedBuilds(),
 		RootfsDroppedBuilds:  m.GetRootfsDroppedBuilds(),
+		MemfileBuildBytes:    m.GetMemfileBuildBytes(),
+		RootfsBuildBytes:     m.GetRootfsBuildBytes(),
 	}
 }
 

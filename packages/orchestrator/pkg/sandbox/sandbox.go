@@ -1187,13 +1187,16 @@ func (s *Sandbox) Pause(
 	cleanup.AddNoContext(ctx, rootfsDiff.Close)
 
 	rootfsDiffHeader := NewResolvedDiffHeader(rootfsHeader)
-	// Derive scheduling metadata synchronously from the resolved parent headers
-	// plus the new build (the last layer), so Pause never blocks on the async
-	// memfile-dedup header. The parent's referenced builds plus the new build
-	// are a superset of the new snapshot's referenced builds. Using the parent
-	// rootfs header (not the new one) keeps this correct even if the rootfs
-	// copy becomes async too.
-	schedulingMetadata := scheduling.FromHeaders(buildID, originalMemfile.Header(), originalRootfs.Header())
+	// Derive scheduling metadata synchronously so Pause never blocks on the
+	// async memfile-dedup header: the memfile chain comes from the resolved
+	// parent header plus the new build, whose exact bytes aren't known yet, so
+	// we pass the pre-dedup dirty size as an upper bound. It is block-granular
+	// (dirty blocks * diff block size) and counts pages before dedup drops the
+	// base-identical ones, so it over-estimates. The rootfs copy is synchronous
+	// today, so its new header carries the exact rootfs chain and bytes; if it
+	// ever becomes async, switch it to the parent plus a dirty proxy like memfile.
+	newMemfileBytes := uint64(memfileDiffMetadata.Dirty.GetCardinality()) * uint64(memfileDiffMetadata.BlockSize)
+	schedulingMetadata := scheduling.FromHeaders(buildID, originalMemfile.Header(), rootfsHeader, newMemfileBytes)
 
 	metadataFileLink := template.NewLocalFileLink(cachePaths.CacheMetadata())
 	cleanup.AddNoContext(ctx, metadataFileLink.Close)

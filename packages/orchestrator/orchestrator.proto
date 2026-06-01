@@ -140,6 +140,10 @@ message SchedulingMetadata {
   repeated string rootfs_build_ids = 4;
   uint32 memfile_dropped_builds = 5;
   uint32 rootfs_dropped_builds = 6;
+  // Referenced bytes per build, aligned with the *_build_ids lists. On save the
+  // new memfile layer's bytes are a pre-dedup, block-granular upper bound.
+  repeated uint64 memfile_build_bytes = 7;
+  repeated uint64 rootfs_build_bytes = 8;
 }
 
 message SandboxPauseResponse {
