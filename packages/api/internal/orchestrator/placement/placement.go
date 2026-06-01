@@ -143,7 +143,14 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 		default:
 			nodesExcluded[failedNode.ID] = struct{}{}
 			failedNode.PlacementMetrics.Fail(sbxRequest.GetSandbox().GetSandboxId())
-			logger.L().Error(ctx, "Failed to create sandbox", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID), logger.WithTemplateID(sbxRequest.GetSandbox().GetTemplateId()), logger.WithBuildID(sbxRequest.GetSandbox().GetBuildId()), zap.Int("attempt", attempt+1), zap.Error(utils.UnwrapGRPCError(err)))
+			logger.L().Error(ctx, "Failed to create sandbox",
+				logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()),
+				logger.WithNodeID(failedNode.ID),
+				logger.WithTemplateID(sbxRequest.GetSandbox().GetTemplateId()),
+				logger.WithBuildID(sbxRequest.GetSandbox().GetBuildId()),
+				zap.Int("attempt", attempt+1),
+				zap.Error(utils.UnwrapGRPCError(err)),
+			)
 			attempt++
 		}
 	}
