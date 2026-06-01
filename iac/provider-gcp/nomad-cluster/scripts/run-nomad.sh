@@ -217,7 +217,6 @@ client {
 plugin "raw_exec" {
   config {
     enabled = true
-    no_cgroups = true
   }
 }
 
