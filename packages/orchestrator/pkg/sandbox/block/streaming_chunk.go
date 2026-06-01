@@ -328,11 +328,6 @@ func (c *Chunker) FileSize(ctx context.Context) (int64, error) {
 	return c.cache.FileSize(ctx)
 }
 
-// Size returns the full logical size of the underlying data.
-func (c *Chunker) Size() int64 {
-	return c.size
-}
-
 const (
 	compressedAttr = "compressed"
 	pullType       = "pull-type"

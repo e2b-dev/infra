@@ -135,13 +135,10 @@ func (b *StorageDiff) FileSize(ctx context.Context) (int64, error) {
 	return b.chunker.FileSize(ctx)
 }
 
-// Size returns the full logical (uncompressed) size of the diff, which can be
-// larger than the on-disk FileSize when only some chunks have been fetched.
+// Size returns the build's logical (uncompressed) size, taken from the header
+// (immutable per layer), which can exceed the on-disk FileSize when only some
+// chunks have been fetched. Zero for V3 headers, which don't carry it.
 func (b *StorageDiff) Size(_ context.Context) (int64, error) {
-	if b.chunker != nil {
-		return b.chunker.Size(), nil
-	}
-
 	return b.uncompressedSize, nil
 }
 
