@@ -13,9 +13,9 @@ variable "cluster_tag_name" {
   default     = "orch"
 }
 
-variable "server_image_family" {
-  type    = string
-  default = "e2b-orch"
+variable "orch_image_id" {
+  description = "Self-link of the e2b-orch node image baked by Packer (passed from the root module)."
+  type        = string
 }
 
 variable "server_cluster_name" {
@@ -29,11 +29,6 @@ variable "server_cluster_size" {
 
 variable "server_machine_type" {
   type = string
-}
-
-variable "api_image_family" {
-  type    = string
-  default = "e2b-orch"
 }
 
 variable "api_cluster_size" {
@@ -50,11 +45,6 @@ variable "loki_cluster_size" {
 
 variable "loki_machine_type" {
   type = string
-}
-
-variable "build_image_family" {
-  type    = string
-  default = "e2b-orch"
 }
 
 variable "client_proxy_health_port" {
@@ -94,11 +84,6 @@ variable "docker_reverse_proxy_port" {
     port        = number
     health_path = string
   })
-}
-
-variable "client_image_family" {
-  type    = string
-  default = "e2b-orch"
 }
 
 variable "client_cluster_name" {

@@ -163,7 +163,7 @@ module "build_cluster" {
   autoscaler       = each.value.autoscaler
 
   cluster_name              = "${var.prefix}${var.build_cluster_name}-${each.key}"
-  image_family              = var.build_image_family
+  image_id                  = var.orch_image_id
   network_name              = var.network_name
   base_hugepages_percentage = coalesce((each.value.hugepages_percentage), local.build_base_hugepages_percentage)
   network_interface_type    = each.value.network_interface_type
@@ -222,7 +222,7 @@ module "client_cluster" {
 
   // This is here for backwards compatibility
   cluster_name              = each.key == "default" ? "${var.prefix}${var.client_cluster_name}" : "${var.prefix}${var.client_cluster_name}-${each.key}"
-  image_family              = var.client_image_family
+  image_id                  = var.orch_image_id
   network_name              = var.network_name
   base_hugepages_percentage = coalesce((each.value.hugepages_percentage), local.client_base_hugepages_percentage)
   network_interface_type    = each.value.network_interface_type

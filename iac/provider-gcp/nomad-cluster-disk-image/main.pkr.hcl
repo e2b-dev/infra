@@ -12,13 +12,13 @@ source "googlecompute" "orch" {
   image_family = "${var.prefix}orch"
 
   # TODO: Overwrite the image instead of creating timestamped images every time we build its
-  image_name    = "${var.prefix}orch-${formatdate("YYYY-MM-DD-hh-mm-ss", timestamp())}"
-  project_id    = var.gcp_project_id
-  source_image  = "ubuntu-2404-noble-amd64-v20260517"
-  ssh_username  = "ubuntu"
-  zone          = var.gcp_zone
-  disk_size     = 10
-  disk_type     = "pd-ssd"
+  image_name   = "${var.prefix}orch-${formatdate("YYYY-MM-DD-hh-mm-ss", timestamp())}"
+  project_id   = var.gcp_project_id
+  source_image = "ubuntu-2404-noble-amd64-v20260517"
+  ssh_username = "ubuntu"
+  zone         = var.gcp_zone
+  disk_size    = 10
+  disk_type    = "pd-ssd"
 
   # This is used only for building the image and the GCE VM is then deleted
   machine_type = "n1-standard-4"
@@ -26,10 +26,11 @@ source "googlecompute" "orch" {
   # Enable nested virtualization
   image_licenses = ["projects/vm-options/global/licenses/enable-vmx"]
 
-  # Enable IAP for SSH
-  network    = var.network_name
-  subnetwork = var.subnet_name
-  use_iap    = true
+  # Build on the shared cluster network (auto-mode "default"); no dedicated subnet.
+  # The network tag scopes the IAP-SSH firewall rule (see ../packer-build-firewall.tf).
+  network = var.network_name
+  tags    = [var.network_tag]
+  use_iap = true
 }
 
 locals {
@@ -170,5 +171,13 @@ build {
       "sudo dpkg-divert --add --rename --divert /etc/systemd/resolved.conf.d/gce-resolved.conf.diverted /etc/systemd/resolved.conf.d/gce-resolved.conf || true",
       "echo 'dpkg-divert configured successfully'",
     ]
+  }
+
+  # Record the built image name so Terraform (toowoxx/packer) can read it back and
+  # wire it into the node-pool instance templates. For the googlecompute builder the
+  # manifest's artifact_id is the GCE image name.
+  post-processor "manifest" {
+    output     = "${path.root}/manifest.json"
+    strip_path = true
   }
 }

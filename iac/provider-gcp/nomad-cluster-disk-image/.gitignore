@@ -1,1 +1,4 @@
 setup/tc-redirect-tap
+
+# Written by the Packer build (toowoxx/packer manifest post-processor) at apply time.
+manifest.json

@@ -143,10 +143,6 @@ resource "google_compute_region_instance_group_manager" "pool" {
   ]
 }
 
-data "google_compute_image" "source_image" {
-  family = var.image_family
-}
-
 resource "google_compute_instance_template" "template" {
   name_prefix = "${var.cluster_name}-"
 
@@ -174,7 +170,7 @@ resource "google_compute_instance_template" "template" {
   disk {
     auto_delete  = true
     boot         = true
-    source_image = data.google_compute_image.source_image.id
+    source_image = var.image_id
     disk_size_gb = var.boot_disk.size_gb
     disk_type    = var.boot_disk.disk_type
   }

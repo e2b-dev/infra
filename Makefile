@@ -11,6 +11,12 @@ GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
 provider-login:
 	$(MAKE) -C iac/provider-$(PROVIDER) provider-login
 
+.PHONY: tf-init
+tf-init:
+	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
+	$(MAKE) -C iac/provider-$(PROVIDER) tf-init
+
+
 .PHONY: init
 init:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)

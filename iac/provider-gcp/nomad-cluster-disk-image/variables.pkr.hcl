@@ -10,7 +10,7 @@ variable "network_name" {
   type = string
 }
 
-variable "subnet_name" {
+variable "network_tag" {
   type = string
 }
 

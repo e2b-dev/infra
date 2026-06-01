@@ -30,6 +30,11 @@ terraform {
       source  = "hashicorp/random"
       version = "3.8.1"
     }
+
+    packer = {
+      source  = "toowoxx/packer"
+      version = "0.17.2"
+    }
   }
 }
 
@@ -43,6 +48,12 @@ provider "google-beta" {
   project = var.gcp_project_id
   region  = var.gcp_region
   zone    = var.gcp_zone
+}
+
+# Use the operator's own Packer binary (resolved on PATH via data.external.packer_binary
+# in packer-image.tf) rather than the provider's embedded, BUSL-pinned pre-1.10 Packer.
+provider "packer" {
+  packer_binary = data.external.packer_binary.result.path
 }
 
 data "google_secret_manager_secret_version" "routing_domains" {
@@ -132,6 +143,10 @@ module "cluster" {
   gcp_zone                         = var.gcp_zone
   google_service_account_key       = module.init.google_service_account_key
   network_name                     = var.network_name
+
+  # Self-link of the node image freshly baked by the packer_image resource (packer-image.tf).
+  # Replaces the previous "latest image in the e2b-orch family" data lookups.
+  orch_image_id = local.orch_image_self_link
 
   build_clusters_config  = var.build_clusters_config
   client_clusters_config = var.client_clusters_config
