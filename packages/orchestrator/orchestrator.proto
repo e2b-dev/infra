@@ -128,10 +128,14 @@ message SandboxPauseRequest {
 }
 
 message SchedulingMetadata {
+  // base_build_id is the root layer (shared across the template's sandboxes);
+  // build_id is the final/current layer. Both also appear in the lists below.
+  string base_build_id = 1;
+  string build_id = 2;
   // Deduplicated build IDs whose data each artifact references (all ancestor
   // layers plus the build itself). Sorted; order is not significant.
-  repeated string memfile_build_ids = 1;
-  repeated string rootfs_build_ids = 2;
+  repeated string memfile_build_ids = 3;
+  repeated string rootfs_build_ids = 4;
 }
 
 message SandboxPauseResponse {

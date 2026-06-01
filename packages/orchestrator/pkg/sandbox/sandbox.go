@@ -1193,7 +1193,7 @@ func (s *Sandbox) Pause(
 	// are a superset of the new snapshot's referenced builds. Using the parent
 	// rootfs header (not the new one) keeps this correct even if the rootfs
 	// copy becomes async too.
-	schedulingMetadata := scheduling.FromHeaders(originalMemfile.Header(), originalRootfs.Header(), buildID)
+	schedulingMetadata := scheduling.FromHeaders(buildID, originalMemfile.Header(), originalRootfs.Header())
 
 	metadataFileLink := template.NewLocalFileLink(cachePaths.CacheMetadata())
 	cleanup.AddNoContext(ctx, metadataFileLink.Close)

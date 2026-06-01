@@ -417,6 +417,8 @@ func toTemplateSchedulingMetadata(m *orchestratorgrpc.SchedulingMetadata) *templ
 	}
 
 	return &templatemanager.TemplateSchedulingMetadata{
+		BaseBuildID:     m.GetBaseBuildId(),
+		BuildID:         m.GetBuildId(),
 		MemfileBuildIDs: m.GetMemfileBuildIds(),
 		RootfsBuildIDs:  m.GetRootfsBuildIds(),
 	}

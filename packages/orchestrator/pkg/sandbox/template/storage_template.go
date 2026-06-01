@@ -282,7 +282,12 @@ func (t *storageTemplate) SchedulingMetadata(ctx context.Context) *orchestrator.
 		return nil
 	}
 
-	return scheduling.FromHeaders(memfile.Header(), rootfs.Header())
+	mh := memfile.Header()
+	if mh == nil || mh.Metadata == nil {
+		return nil
+	}
+
+	return scheduling.FromHeaders(mh.Metadata.BuildId, mh, rootfs.Header())
 }
 
 func (t *storageTemplate) Memfile(ctx context.Context) (block.ReadonlyDevice, error) {
