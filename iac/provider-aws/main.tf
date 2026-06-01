@@ -147,7 +147,8 @@ locals {
     REDIS_URL           = local.redis_url
 
     LAUNCH_DARKLY_API_KEY = module.init.launch_darkly_api_key
-    TEMPLATE_BUCKET_NAME  = "skip"
+    # This is here just because it is required in some part of our code which is transitively imported
+    TEMPLATE_BUCKET_NAME = "skip"
 
     VOLUME_TOKEN_ISSUER           = var.domain_name
     VOLUME_TOKEN_SIGNING_KEY      = "HMAC:${base64encode(random_password.volume_token_key.result)}"

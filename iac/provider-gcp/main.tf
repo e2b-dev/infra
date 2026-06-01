@@ -122,7 +122,8 @@ locals {
     REDIS_TLS_CA_BASE64 = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
     REDIS_URL           = local.redis_url
 
-    LAUNCH_DARKLY_API_KEY          = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+    LAUNCH_DARKLY_API_KEY = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+    # This is here just because it is required in some part of our code which is transitively imported
     TEMPLATE_BUCKET_NAME           = "skip"
     DEFAULT_PERSISTENT_VOLUME_TYPE = var.default_persistent_volume_type
 
