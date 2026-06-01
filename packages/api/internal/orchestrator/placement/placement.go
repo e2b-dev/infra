@@ -75,20 +75,18 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 			node, err = algorithm.chooseNode(ctx, clusterNodes, skip, nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()}, buildMachineInfo, labelFilteringEnabled, requiredLabels)
 			if err != nil {
 				// No selectable node. If exhausted nodes are the only blocker,
-				// back off (bounded) and retry them; otherwise give up.
+				// back off and retry them until the request deadline (capacity is
+				// usually transient); otherwise give up.
 				if len(nodesExhausted) == 0 {
 					return nil, err
 				}
 
 				exhaustedRetries++
-				if exhaustedRetries >= maxResourceExhaustedRetries {
-					logger.L().Warn(ctx, "Placement failed, all nodes exhausted", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithTemplateID(sbxRequest.GetSandbox().GetTemplateId()), logger.WithBuildID(sbxRequest.GetSandbox().GetBuildId()), zap.Int("exhausted_retries", exhaustedRetries))
-
-					return nil, errSandboxCreateFailed
-				}
 
 				select {
 				case <-ctx.Done():
+					logger.L().Warn(ctx, "Placement failed, all nodes exhausted", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithTemplateID(sbxRequest.GetSandbox().GetTemplateId()), logger.WithBuildID(sbxRequest.GetSandbox().GetBuildId()), zap.Int("exhausted_retries", exhaustedRetries))
+
 					return nil, fmt.Errorf("request timed out after %d exhausted retries", exhaustedRetries)
 				case <-time.After(exhaustedBackoff(exhaustedRetries)):
 				}
@@ -161,9 +159,13 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 // exhaustedBackoff returns a jittered, exponentially growing wait for the n-th
 // (1-based) ResourceExhausted retry, capped at resourceExhaustedBackoffMaxWait.
 func exhaustedBackoff(n int) time.Duration {
-	wait := resourceExhaustedBackoffBase << (n - 1)
-	if wait <= 0 || wait > resourceExhaustedBackoffMaxWait {
-		wait = resourceExhaustedBackoffMaxWait
+	wait := resourceExhaustedBackoffMaxWait
+	// Cap the shift to avoid overflow once n grows large; the wait is capped at
+	// the max anyway.
+	if n >= 1 && n <= 16 {
+		if w := resourceExhaustedBackoffBase << (n - 1); w > 0 && w < wait {
+			wait = w
+		}
 	}
 
 	return time.Duration(rand.Int63n(int64(wait)) + 1)
