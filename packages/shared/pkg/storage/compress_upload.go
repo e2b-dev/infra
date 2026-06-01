@@ -64,40 +64,8 @@ func (m *memPartUploader) Assemble() []byte {
 
 // inputBufPool is shared across all uploads so frame-sized buffers (almost
 // always DefaultCompressFrameSize) are reused between streams instead of being
-// reallocated per call. The size guard keeps it correct for any frame size.
-//
-// It is intentionally private to inputBuf: every Get is paired with a getInputBuf
-// and every Put with inputBuf.Free, so the buffer lifecycle is owned by the type
-// and callers never touch the pool directly.
-var inputBufPool sync.Pool
-
-// inputBuf is a pooled frame-input buffer. Bytes exposes the backing slice and
-// Free returns it to the shared pool; Free must be called exactly once, after
-// the bytes are no longer read. Holding the pooled *[]byte (rather than the
-// slice) keeps Free allocation-free.
-type inputBuf struct {
-	ptr *[]byte
-}
-
-func getInputBuf(size int) inputBuf {
-	if v := inputBufPool.Get(); v != nil {
-		bufPtr := v.(*[]byte)
-		if cap(*bufPtr) >= size {
-			*bufPtr = (*bufPtr)[:size]
-
-			return inputBuf{ptr: bufPtr}
-		}
-	}
-	buf := make([]byte, size)
-
-	return inputBuf{ptr: &buf}
-}
-
-// Bytes returns the backing slice. It is only valid until Free is called.
-func (b inputBuf) Bytes() []byte { return *b.ptr }
-
-// Free returns the buffer to the shared pool. It must be called exactly once.
-func (b inputBuf) Free() { inputBufPool.Put(b.ptr) }
+// reallocated per call. See buffer_pool.go for the buffer lifecycle.
+var inputBufPool = newBufferPool()
 
 type frame struct {
 	uncompressedSize int
@@ -232,7 +200,7 @@ func readLoop(ctx context.Context, in io.Reader, cfg CompressConfig, hasher io.W
 			return err
 		}
 
-		buf := getInputBuf(frameSize)
+		buf := inputBufPool.Get(frameSize)
 		data := buf.Bytes()
 		n, err := io.ReadFull(in, data)
 
