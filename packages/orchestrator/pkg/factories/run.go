@@ -699,7 +699,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	pprofServer := telemetry.NewPprofServer()
 	// We handle the pprof in a separate goroutine to prevent any interaction with the main server.
 	go func() {
-		logger.L().Info(ctx, "pprof server starting", zap.Int("port", telemetry.DefaultPprofPort))
+		logger.L().Info(ctx, "pprof server starting", zap.Int("port", telemetry.PprofPort()))
 
 		if err := pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.L().Error(ctx, "pprof server encountered error", zap.Error(err))

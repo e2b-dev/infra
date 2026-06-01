@@ -4,6 +4,8 @@ package sandbox
 
 import (
 	"context"
+	"fmt"
+	"os"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -15,8 +17,12 @@ import (
 )
 
 const (
-	uploadArtifactData   = "data"
-	uploadArtifactHeader = "header"
+	uploadFileMemfile       = "memfile"
+	uploadFileRootfs        = "rootfs"
+	uploadFileMemfileHeader = "memfile-header"
+	uploadFileRootfsHeader  = "rootfs-header"
+	uploadFileSnap          = "snap"
+	uploadFileMeta          = "meta"
 )
 
 var (
@@ -25,10 +31,9 @@ var (
 	uploadCompressionRatio  = utils.Must(telemetry.GetFloatHistogram(meter, telemetry.UploadCompressionRatio))
 )
 
-func recordUploadCompression(ctx context.Context, artifact, fileType string, cfg storage.CompressConfig, uncompressed, compressed int64) {
+func recordUploadCompression(ctx context.Context, fileType string, cfg storage.CompressConfig, uncompressed, compressed int64) {
 	attrs := metric.WithAttributes(
-		attribute.String("artifact", artifact),
-		attribute.String("file_type", uploadMetricFileType(fileType)),
+		attribute.String("file_type", fileType),
 		attribute.String("compression.type", cfg.CompressionType().String()),
 		attribute.Int("compression.level", cfg.Level),
 	)
@@ -54,7 +59,20 @@ func storeHeaderWithMetrics(ctx context.Context, store storage.StorageProvider, 
 		return err
 	}
 
-	recordUploadCompression(ctx, uploadArtifactHeader, fileType, cfg, uncompressed, stored)
+	recordUploadCompression(ctx, fileType, cfg, uncompressed, stored)
+
+	return nil
+}
+
+func uploadBlobWithMetrics(ctx context.Context, store storage.StorageProvider, path string, objectType storage.ObjectType, sourcePath, fileType string, opts ...storage.PutOption) error {
+	info, err := os.Stat(sourcePath)
+	if err != nil {
+		return fmt.Errorf("%s stat: %w", fileType, err)
+	}
+	if err := storage.UploadBlob(ctx, store, path, objectType, sourcePath, opts...); err != nil {
+		return err
+	}
+	recordUploadCompression(ctx, fileType, storage.CompressConfig{}, info.Size(), info.Size())
 
 	return nil
 }
