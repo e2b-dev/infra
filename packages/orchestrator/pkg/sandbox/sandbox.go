@@ -1195,7 +1195,7 @@ func (s *Sandbox) Pause(
 	// base-identical ones, so it over-estimates. The rootfs copy is synchronous
 	// today, so its new header carries the exact rootfs chain and bytes; if it
 	// ever becomes async, switch it to the parent plus a dirty proxy like memfile.
-	newMemfileBytes := uint64(memfileDiffMetadata.Dirty.GetCardinality()) * uint64(memfileDiffMetadata.BlockSize)
+	newMemfileBytes := memfileDiffMetadata.Dirty.GetCardinality() * uint64(memfileDiffMetadata.BlockSize)
 	schedulingMetadata := scheduling.FromHeaders(buildID, originalMemfile.Header(), rootfsHeader, newMemfileBytes)
 
 	metadataFileLink := template.NewLocalFileLink(cachePaths.CacheMetadata())
