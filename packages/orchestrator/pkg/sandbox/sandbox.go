@@ -1185,7 +1185,8 @@ func (s *Sandbox) Pause(
 	}
 	cleanup.AddNoContext(ctx, rootfsDiff.Close)
 
-	schedulingMetadata := NewSnapshotSchedulingMetadata(originalMemfile.Header(), originalRootfs.Header())
+	rootfsDiffHeader := NewResolvedDiffHeader(rootfsHeader)
+	schedulingMetadata := NewSnapshotSchedulingMetadata(ctx, memfileDiffHeader, rootfsDiffHeader)
 
 	metadataFileLink := template.NewLocalFileLink(cachePaths.CacheMetadata())
 	cleanup.AddNoContext(ctx, metadataFileLink.Close)
@@ -1201,7 +1202,7 @@ func (s *Sandbox) Pause(
 		MemfileDiff:        memfileDiff,
 		MemfileDiffHeader:  memfileDiffHeader,
 		RootfsDiff:         rootfsDiff,
-		RootfsDiffHeader:   NewResolvedDiffHeader(rootfsHeader),
+		RootfsDiffHeader:   rootfsDiffHeader,
 		SchedulingMetadata: schedulingMetadata,
 		MemfileBlockSize:   originalMemfile.Header().Metadata.BlockSize,
 		RootfsBlockSize:    originalRootfs.Header().Metadata.BlockSize,

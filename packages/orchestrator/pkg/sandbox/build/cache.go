@@ -193,17 +193,27 @@ func (s *DiffStore) CachedBuildStats(ctx context.Context) []CachedBuildStats {
 			byBuildID[buildID] = stats
 		}
 
-		size, err := item.Value().FileSize(ctx)
-		if err != nil || size < 0 {
+		// FileSize is the on-disk (cached) size; for a partially-fetched diff
+		// loaded from storage it is smaller than the full logical size.
+		cachedSize, err := item.Value().FileSize(ctx)
+		if err != nil || cachedSize < 0 {
 			continue
+		}
+		totalSize := cachedSize
+		if sizer, ok := item.Value().(interface {
+			Size(context.Context) (int64, error)
+		}); ok {
+			if s, err := sizer.Size(ctx); err == nil && s >= 0 {
+				totalSize = s
+			}
 		}
 		switch DiffType(diffType) {
 		case Memfile:
-			stats.MemfileCachedBytes = uint64(size)
-			stats.MemfileTotalBytes = uint64(size)
+			stats.MemfileCachedBytes = uint64(cachedSize)
+			stats.MemfileTotalBytes = uint64(totalSize)
 		case Rootfs:
-			stats.RootfsCachedBytes = uint64(size)
-			stats.RootfsTotalBytes = uint64(size)
+			stats.RootfsCachedBytes = uint64(cachedSize)
+			stats.RootfsTotalBytes = uint64(totalSize)
 		}
 	}
 

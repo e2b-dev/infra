@@ -140,12 +140,6 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	if err != nil {
 		return nil, fmt.Errorf("failed to get template snapshot data: %w", err)
 	}
-	var schedulingMetadata *orchestrator.SchedulingMetadata
-	if provider, ok := template.(interface {
-		SchedulingMetadata() *orchestrator.SchedulingMetadata
-	}); ok {
-		schedulingMetadata = provider.SchedulingMetadata()
-	}
 
 	// Clone the network config to avoid modifying the original request
 	network := proto.CloneOf(req.GetSandbox().GetNetwork())
@@ -225,6 +219,15 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}
 
 	s.setupSandboxLifecycle(ctx, sbx)
+
+	// Read scheduling metadata after the sandbox resumed so the template's
+	// memfile/rootfs devices (and their headers) are resolved.
+	var schedulingMetadata *orchestrator.SchedulingMetadata
+	if provider, ok := template.(interface {
+		SchedulingMetadata(context.Context) *orchestrator.SchedulingMetadata
+	}); ok {
+		schedulingMetadata = provider.SchedulingMetadata(ctx)
+	}
 
 	eventType := events.SandboxCreatedEventPair
 	if req.GetSandbox().GetSnapshot() {

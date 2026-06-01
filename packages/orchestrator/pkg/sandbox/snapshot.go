@@ -57,6 +57,14 @@ func (s *Snapshot) Close(ctx context.Context) error {
 	return nil
 }
 
-func NewSnapshotSchedulingMetadata(memfileHeader, rootfsHeader *header.Header) *orchestrator.SchedulingMetadata {
+// NewSnapshotSchedulingMetadata derives the metadata from the new snapshot's
+// diff headers so the freshly created build and its contributions are included.
+func NewSnapshotSchedulingMetadata(ctx context.Context, memfileDiffHeader, rootfsDiffHeader *DiffHeader) *orchestrator.SchedulingMetadata {
+	memfileHeader, memfileErr := memfileDiffHeader.WaitWithContext(ctx)
+	rootfsHeader, rootfsErr := rootfsDiffHeader.WaitWithContext(ctx)
+	if memfileErr != nil || rootfsErr != nil {
+		return nil
+	}
+
 	return scheduling.FromHeaders(memfileHeader, rootfsHeader)
 }

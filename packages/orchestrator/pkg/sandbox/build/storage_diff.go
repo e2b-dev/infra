@@ -131,8 +131,14 @@ func (b *StorageDiff) FileSize(ctx context.Context) (int64, error) {
 	return b.chunker.FileSize(ctx)
 }
 
-func (b *StorageDiff) Size(ctx context.Context) (int64, error) {
-	return b.FileSize(ctx)
+// Size returns the full logical (uncompressed) size of the diff, which can be
+// larger than the on-disk FileSize when only some chunks have been fetched.
+func (b *StorageDiff) Size(_ context.Context) (int64, error) {
+	if b.chunker != nil {
+		return b.chunker.Size(), nil
+	}
+
+	return b.uncompressedSize, nil
 }
 
 func (b *StorageDiff) BlockSize() int64 {

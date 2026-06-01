@@ -272,14 +272,17 @@ func (t *storageTemplate) Files() storage.CachePaths {
 	return t.paths
 }
 
-func (t *storageTemplate) SchedulingMetadata() *orchestrator.SchedulingMetadata {
-	memfileHeader, memfileErr := t.memfileHeader.Result()
-	rootfsHeader, rootfsErr := t.rootfsHeader.Result()
+// SchedulingMetadata reads the headers from the resolved memfile/rootfs devices
+// rather than the header holders, which stay unset for templates loaded from
+// storage (the headers are resolved internally by NewStorage during Fetch).
+func (t *storageTemplate) SchedulingMetadata(ctx context.Context) *orchestrator.SchedulingMetadata {
+	memfile, memfileErr := t.memfile.WaitWithContext(ctx)
+	rootfs, rootfsErr := t.rootfs.WaitWithContext(ctx)
 	if memfileErr != nil || rootfsErr != nil {
 		return nil
 	}
 
-	return scheduling.FromHeaders(memfileHeader, rootfsHeader)
+	return scheduling.FromHeaders(memfile.Header(), rootfs.Header())
 }
 
 func (t *storageTemplate) Memfile(ctx context.Context) (block.ReadonlyDevice, error) {

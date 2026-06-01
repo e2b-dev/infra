@@ -390,23 +390,25 @@ func runBuild(
 		KernelVersion:      bc.Config.KernelVersion,
 		FirecrackerVersion: bc.Config.FirecrackerVersion,
 		RootfsSizeMB:       units.BytesToMB(int64(rootfsSize)),
-		SchedulingMetadata: templateSchedulingMetadata(builder.templateCache, lastLayerResult.Metadata.Template.BuildID),
+		SchedulingMetadata: templateSchedulingMetadata(ctx, builder.templateCache, lastLayerResult.Metadata.Template.BuildID),
 	}, nil
 }
 
-func templateSchedulingMetadata(cache *sbxtemplate.Cache, buildID string) *templatemanager.TemplateSchedulingMetadata {
-	t, ok := cache.GetCachedTemplate(buildID)
-	if !ok {
+func templateSchedulingMetadata(ctx context.Context, cache *sbxtemplate.Cache, buildID string) *templatemanager.TemplateSchedulingMetadata {
+	// Use GetTemplate (not GetCachedTemplate): the optimize phase invalidates
+	// the final build from the cache, so re-fetch to resolve its headers.
+	t, err := cache.GetTemplate(ctx, buildID, false, false)
+	if err != nil {
 		return nil
 	}
 	provider, ok := t.(interface {
-		SchedulingMetadata() *orchestratorgrpc.SchedulingMetadata
+		SchedulingMetadata(context.Context) *orchestratorgrpc.SchedulingMetadata
 	})
 	if !ok {
 		return nil
 	}
 
-	return toTemplateSchedulingMetadata(provider.SchedulingMetadata())
+	return toTemplateSchedulingMetadata(provider.SchedulingMetadata(ctx))
 }
 
 func toTemplateSchedulingMetadata(m *orchestratorgrpc.SchedulingMetadata) *templatemanager.TemplateSchedulingMetadata {

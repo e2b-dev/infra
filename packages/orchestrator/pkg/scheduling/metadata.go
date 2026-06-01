@@ -75,7 +75,7 @@ func FromHeaders(memfileHeader, rootfsHeader *header.Header) *orchestrator.Sched
 
 	res := &orchestrator.SchedulingMetadata{
 		BaseBuildId:          baseBuildID.String(),
-		Generation:           max(memfileHeader.Metadata.Generation, rootfsHeader.Metadata.Generation) + 1,
+		Generation:           max(memfileHeader.Metadata.Generation, rootfsHeader.Metadata.Generation),
 		MemfileSize:          memfileHeader.Metadata.Size,
 		RootfsSize:           rootfsHeader.Metadata.Size,
 		ChainBuildIds:        make([]string, 0, len(chain)),
