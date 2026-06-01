@@ -44,5 +44,4 @@ RUN --mount=type=cache,target=/root/.cache/go-build make build-local COMMIT_SHA=
 FROM scratch
 
 COPY --from=builder /build/orchestrator/bin/clean-nfs-cache .
-COPY --from=builder /build/orchestrator/bin/clean-rapid-cache .
 COPY --from=builder /build/orchestrator/bin/orchestrator .
