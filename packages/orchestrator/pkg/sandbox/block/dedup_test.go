@@ -479,6 +479,21 @@ func TestFetchWindowerBestByRatio(t *testing.T) {
 		got := w.bestByRatio(pages, windowPages, before, slices.Values([][]int{{0}}))
 		require.Nil(t, got)
 	})
+
+	t.Run("over-budget run is clamped to an affordable, beneficial prefix", func(t *testing.T) {
+		t.Parallel()
+
+		// Three parent pages in three distinct single-page windows: the whole
+		// run costs 3 but budget is 2. Clamping to the first two folds them into
+		// one current window, leaving one parent window (3 -> 2 windows).
+		run := []dedupPageInfo{
+			parentKeyPage(build, 0, windowPages),
+			parentKeyPage(build, int64(windowPages)*header.PageSize, windowPages),
+			parentKeyPage(build, 2*int64(windowPages)*header.PageSize, windowPages),
+		}
+		got := w.bestByRatio(run, 2, w.count(run), slices.Values([][]int{{0, 1, 2}}))
+		require.Equal(t, []int{0, 1}, got)
+	})
 }
 
 // classifyPage maps a source page to empty/parent/current based on the parent

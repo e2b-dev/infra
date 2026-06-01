@@ -505,8 +505,13 @@ func (w fetchWindower) bestByRatio(pages []dedupPageInfo, budget, before int, ca
 	var best []int
 	bestBenefit, bestCost := 0, 0
 	for idxs := range candidates {
+		// An over-budget candidate can still help via an affordable prefix; the
+		// benefit check below discards prefixes that don't remove a window.
+		if len(idxs) > budget {
+			idxs = idxs[:budget]
+		}
 		cost := len(idxs)
-		if cost == 0 || cost > budget {
+		if cost == 0 {
 			continue
 		}
 		benefit := before - w.countAfter(pages, idxs)
