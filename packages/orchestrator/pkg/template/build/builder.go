@@ -37,6 +37,7 @@ import (
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -103,6 +104,7 @@ type Result struct {
 	KernelVersion      string
 	FirecrackerVersion string
 	RootfsSizeMB       int64
+	SchedulingMetadata *orchestratorgrpc.SchedulingMetadata
 }
 
 // Build builds the template, uploads it to storage and returns the result metadata.
@@ -387,7 +389,25 @@ func runBuild(
 		KernelVersion:      bc.Config.KernelVersion,
 		FirecrackerVersion: bc.Config.FirecrackerVersion,
 		RootfsSizeMB:       units.BytesToMB(int64(rootfsSize)),
+		SchedulingMetadata: templateSchedulingMetadata(ctx, builder.templateCache, lastLayerResult.Metadata.Template.BuildID),
 	}, nil
+}
+
+func templateSchedulingMetadata(ctx context.Context, cache *sbxtemplate.Cache, buildID string) *orchestratorgrpc.SchedulingMetadata {
+	// Use GetTemplate (not GetCachedTemplate): the optimize phase invalidates
+	// the final build from the cache, so re-fetch to resolve its headers.
+	t, err := cache.GetTemplate(ctx, buildID, false, false)
+	if err != nil {
+		return nil
+	}
+	provider, ok := t.(interface {
+		SchedulingMetadata(ctx context.Context) *orchestratorgrpc.SchedulingMetadata
+	})
+	if !ok {
+		return nil
+	}
+
+	return provider.SchedulingMetadata(ctx)
 }
 
 // forceSteps sets force for all steps after the first encounter.
