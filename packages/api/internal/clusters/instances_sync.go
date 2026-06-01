@@ -30,15 +30,15 @@ func (d instancesSyncStore) SourceList(ctx context.Context) ([]discovery.Item, e
 	return items, nil
 }
 
-func (d instancesSyncStore) SourceExists(_ context.Context, s []discovery.Item, p *Instance) bool {
+func (d instancesSyncStore) SourceGet(_ context.Context, s []discovery.Item, p *Instance) (discovery.Item, bool) {
 	for _, item := range s {
 		// With comparing unique identifier that should ensure we are not re-adding same instance again
 		if item.UniqueIdentifier == p.uniqueIdentifier {
-			return true
+			return item, true
 		}
 	}
 
-	return false
+	return discovery.Item{}, false
 }
 
 func (d instancesSyncStore) PoolList(_ context.Context) []*Instance {
@@ -50,10 +50,8 @@ func (d instancesSyncStore) PoolList(_ context.Context) []*Instance {
 	return mapped
 }
 
-func (d instancesSyncStore) PoolExists(_ context.Context, s discovery.Item) bool {
-	_, found := d.instances.Get(s.NodeID)
-
-	return found
+func (d instancesSyncStore) PoolGet(_ context.Context, s discovery.Item) (*Instance, bool) {
+	return d.instances.Get(s.NodeID)
 }
 
 func (d instancesSyncStore) PoolInsert(ctx context.Context, item discovery.Item) {
@@ -79,7 +77,7 @@ func (d instancesSyncStore) PoolInsert(ctx context.Context, item discovery.Item)
 	d.instances.Insert(item.NodeID, instance)
 }
 
-func (d instancesSyncStore) PoolUpdate(ctx context.Context, instance *Instance) {
+func (d instancesSyncStore) PoolUpdate(ctx context.Context, instance *Instance, _ discovery.Item) {
 	_ = d.tryToSyncInstance(ctx, instance)
 }
 

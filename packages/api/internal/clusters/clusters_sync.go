@@ -136,14 +136,14 @@ func (d clustersSyncStore) SourceList(ctx context.Context) ([]queries.Cluster, e
 	return entries, nil
 }
 
-func (d clustersSyncStore) SourceExists(_ context.Context, s []queries.Cluster, p *Cluster) bool {
+func (d clustersSyncStore) SourceGet(_ context.Context, s []queries.Cluster, p *Cluster) (queries.Cluster, bool) {
 	for _, item := range s {
 		if item.ID == p.ID {
-			return true
+			return item, true
 		}
 	}
 
-	return false
+	return queries.Cluster{}, false
 }
 
 func (d clustersSyncStore) PoolList(_ context.Context) []*Cluster {
@@ -155,10 +155,8 @@ func (d clustersSyncStore) PoolList(_ context.Context) []*Cluster {
 	return items
 }
 
-func (d clustersSyncStore) PoolExists(_ context.Context, cluster queries.Cluster) bool {
-	_, found := d.clusters.Get(cluster.ID.String())
-
-	return found
+func (d clustersSyncStore) PoolGet(_ context.Context, source queries.Cluster) (*Cluster, bool) {
+	return d.clusters.Get(source.ID.String())
 }
 
 func (d clustersSyncStore) PoolInsert(ctx context.Context, cluster queries.Cluster) {
@@ -204,9 +202,7 @@ func (d clustersSyncStore) PoolInsert(ctx context.Context, cluster queries.Clust
 	logger.L().Info(ctx, "Remote cluster initialized successfully", logger.WithClusterID(cluster.ID))
 }
 
-func (d clustersSyncStore) PoolUpdate(_ context.Context, _ *Cluster) {
-	// Clusters pool currently does not do something special during synchronization
-}
+func (d clustersSyncStore) PoolUpdate(_ context.Context, _ *Cluster, _ queries.Cluster) {}
 
 func (d clustersSyncStore) PoolRemove(ctx context.Context, cluster *Cluster) {
 	logger.L().Info(ctx, "Removing cluster from pool", logger.WithClusterID(cluster.ID))

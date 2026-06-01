@@ -37,8 +37,12 @@ func (s *testStore) SourceList(context.Context) ([]string, error) {
 	return append([]string(nil), s.source...), nil
 }
 
-func (s *testStore) SourceExists(_ context.Context, source []string, p string) bool {
-	return slices.Contains(source, p)
+func (s *testStore) SourceGet(_ context.Context, source []string, p string) (string, bool) {
+	if slices.Contains(source, p) {
+		return p, true
+	}
+
+	return "", false
 }
 
 func (s *testStore) PoolList(context.Context) []string {
@@ -53,12 +57,12 @@ func (s *testStore) PoolList(context.Context) []string {
 	return out
 }
 
-func (s *testStore) PoolExists(_ context.Context, item string) bool {
+func (s *testStore) PoolGet(_ context.Context, item string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, ok := s.pool[item]
+	v, ok := s.pool[item]
 
-	return ok
+	return v, ok
 }
 
 func (s *testStore) PoolInsert(_ context.Context, value string) {
@@ -68,7 +72,7 @@ func (s *testStore) PoolInsert(_ context.Context, value string) {
 	s.inserts++
 }
 
-func (s *testStore) PoolUpdate(context.Context, string) { /* not used */ }
+func (s *testStore) PoolUpdate(context.Context, string, string) { /* not used */ }
 
 func (s *testStore) PoolRemove(_ context.Context, item string) {
 	s.mu.Lock()
@@ -168,5 +172,6 @@ func TestSynchronize_InsertAndRemove(t *testing.T) {
 
 	assert.Equal(t, 1, s.removes)
 	assert.Len(t, s.pool, 1)
-	assert.True(t, s.PoolExists(ctx, "a"))
+	_, ok := s.PoolGet(ctx, "a")
+	assert.True(t, ok)
 }

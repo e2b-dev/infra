@@ -17,13 +17,13 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/synchroni
 
 type Store[SourceItem any, PoolItem any] interface {
 	SourceList(ctx context.Context) ([]SourceItem, error)
-	SourceExists(ctx context.Context, s []SourceItem, p PoolItem) bool
+	SourceGet(ctx context.Context, s []SourceItem, p PoolItem) (SourceItem, bool)
 
 	PoolList(ctx context.Context) []PoolItem
-	PoolExists(ctx context.Context, s SourceItem) bool
+	PoolGet(ctx context.Context, s SourceItem) (PoolItem, bool)
 	PoolInsert(ctx context.Context, s SourceItem)
-	PoolUpdate(ctx context.Context, s PoolItem)
-	PoolRemove(ctx context.Context, s PoolItem)
+	PoolUpdate(ctx context.Context, p PoolItem, s SourceItem)
+	PoolRemove(ctx context.Context, p PoolItem)
 }
 
 // Synchronize is a generic type that provides methods for synchronizing a pool of items with a source.
@@ -124,7 +124,7 @@ func (s *Synchronize[SourceItem, PoolItem]) syncDiscovered(ctx context.Context, 
 			defer wg.Done()
 
 			// item already exists in the pool, skip it
-			if ok := s.store.PoolExists(ctx, item); ok {
+			if _, found := s.store.PoolGet(ctx, item); found {
 				return
 			}
 
@@ -146,9 +146,9 @@ func (s *Synchronize[SourceItem, PoolItem]) syncOutdated(ctx context.Context, so
 		go func(poolItem PoolItem) {
 			defer wg.Done()
 
-			found := s.store.SourceExists(ctx, sourceItems, poolItem)
+			source, found := s.store.SourceGet(ctx, sourceItems, poolItem)
 			if found {
-				s.store.PoolUpdate(ctx, poolItem)
+				s.store.PoolUpdate(ctx, poolItem, source)
 
 				return
 			}
