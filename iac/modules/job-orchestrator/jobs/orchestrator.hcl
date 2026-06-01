@@ -61,9 +61,8 @@ job "orchestrator-${latest_orchestrator_job_id}" {
       }
 
       resources {
-        cpu        = 100 # there is no hard CPU cap, but its required value
         memory     = 1024
-        memory_max = -1 # no limit
+        memory_max = 1024 * 1024 # high memory to avoid OOM
       }
 
       env {
