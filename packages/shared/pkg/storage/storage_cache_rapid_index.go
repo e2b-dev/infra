@@ -136,12 +136,12 @@ func rapidCacheBuildID(path string) string {
 }
 
 var rapidCacheAdmitScript = redis.NewScript(`
-local added = redis.call('ZADD', KEYS[1], 'NX', ARGV[1], ARGV[2])
+local existed = redis.call('ZSCORE', KEYS[1], ARGV[2]) ~= false
 redis.call('ZADD', KEYS[1], ARGV[1], ARGV[2])
 redis.call('ZADD', KEYS[2], ARGV[1], ARGV[3])
-if added == 1 then
+if not existed then
   redis.call('HINCRBY', KEYS[3], ARGV[3], ARGV[4])
   redis.call('HINCRBY', KEYS[4], ARGV[3], 1)
 end
-return added
+return existed and 0 or 1
 `)
