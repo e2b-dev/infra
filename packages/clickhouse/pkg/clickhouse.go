@@ -2,6 +2,7 @@ package clickhouse
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -38,7 +39,6 @@ func NewDriver(connectionString string) (driver.Conn, error) {
 
 	options.MaxOpenConns = 10
 	options.MaxIdleConns = 3
-	options.TLS = nil
 
 	conn, err := clickhouse.Open(options)
 	if err != nil {
@@ -55,6 +55,20 @@ func New(connectionString string) (*Client, error) {
 	}
 
 	return &Client{conn: conn}, nil
+}
+
+// EndpointFromDSN returns the credential-stripped host:port for use in logs
+// and metric attributes. Never use the raw DSN there — it contains the password.
+func EndpointFromDSN(dsn string) (string, error) {
+	options, err := clickhouse.ParseDSN(dsn)
+	if err != nil {
+		return "", fmt.Errorf("parse DSN: %w", err)
+	}
+	if len(options.Addr) == 0 {
+		return "", errors.New("DSN has no addresses")
+	}
+
+	return options.Addr[0], nil
 }
 
 // Close drains the queue and flushes remaining items
