@@ -32,6 +32,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/prefetch"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/scheduling"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -1186,7 +1187,12 @@ func (s *Sandbox) Pause(
 	cleanup.AddNoContext(ctx, rootfsDiff.Close)
 
 	rootfsDiffHeader := NewResolvedDiffHeader(rootfsHeader)
-	schedulingMetadata := NewSnapshotSchedulingMetadata(ctx, memfileDiffHeader, rootfsDiffHeader)
+	// Derive scheduling metadata synchronously from the resolved parent memfile
+	// header and the new rootfs header so Pause does not block on the async
+	// memfile-dedup header. The parent memfile chain plus the new rootfs (which
+	// references the new build) is a superset of the new snapshot's chain, and
+	// max() yields the new generation.
+	schedulingMetadata := scheduling.FromHeaders(originalMemfile.Header(), rootfsHeader)
 
 	metadataFileLink := template.NewLocalFileLink(cachePaths.CacheMetadata())
 	cleanup.AddNoContext(ctx, metadataFileLink.Close)

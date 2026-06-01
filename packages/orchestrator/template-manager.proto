@@ -138,13 +138,7 @@ message TemplateBuildMetadata {
 message TemplateSchedulingMetadata {
   string baseBuildID = 1;
   uint64 generation = 2;
-  uint64 memfileSize = 3;
-  uint64 rootfsSize = 4;
-  repeated string chainBuildIDs = 5;
-  repeated uint64 memfileLogicalBytes = 6;
-  repeated uint32 memfileMappingCounts = 7;
-  repeated uint64 rootfsLogicalBytes = 8;
-  repeated uint32 rootfsMappingCounts = 9;
+  repeated string chainBuildIDs = 3;
 }
 
 enum TemplateBuildState {

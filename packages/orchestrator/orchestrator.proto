@@ -130,13 +130,9 @@ message SandboxPauseRequest {
 message SchedulingMetadata {
   string base_build_id = 1;
   uint64 generation = 2;
-  uint64 memfile_size = 3;
-  uint64 rootfs_size = 4;
-  repeated string chain_build_ids = 5;
-  repeated uint64 memfile_logical_bytes = 6;
-  repeated uint32 memfile_mapping_counts = 7;
-  repeated uint64 rootfs_logical_bytes = 8;
-  repeated uint32 rootfs_mapping_counts = 9;
+  // Deduplicated set of build IDs whose data the snapshot references (union of
+  // the memfile and rootfs chains). Sorted for determinism, not lineage order.
+  repeated string chain_build_ids = 3;
 }
 
 message SandboxPauseResponse {
