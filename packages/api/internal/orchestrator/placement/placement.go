@@ -78,7 +78,14 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 						return nil, err
 					}
 					clear(nodesExhausted)
-					time.Sleep(100 * time.Millisecond)
+
+					// Wait before retrying the exhausted pool, but bail out
+					// promptly if the client has gone away.
+					select {
+					case <-ctx.Done():
+						return nil, fmt.Errorf("request timed out during %d. attempt", attempt+1)
+					case <-time.After(exhaustedRetryBackoff):
+					}
 
 					continue
 				}
