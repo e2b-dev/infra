@@ -90,6 +90,11 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		telemetry.WithEnvdVersion(req.GetSandbox().GetEnvdVersion()),
 	)
 
+	if err := s.enterSandboxStart(ctx, "sandbox-create"); err != nil {
+		return nil, err
+	}
+	defer s.leaveSandboxStart()
+
 	// setup launch darkly
 	ctx = featureflags.AddToContext(
 		ctx,
@@ -185,6 +190,10 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		TeamID:      req.GetSandbox().GetTeamId(),
 		BuildID:     req.GetSandbox().GetBuildId(),
 		SandboxType: sandbox.SandboxTypeSandbox,
+	}
+
+	if err := s.rejectIfDraining(ctx, "sandbox-create-before-start"); err != nil {
+		return nil, err
 	}
 
 	sbx, err := s.sandboxFactory.ResumeSandbox(
@@ -621,6 +630,11 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 			Build(),
 	)
 
+	if err := s.enterSandboxStart(ctx, "sandbox-checkpoint"); err != nil {
+		return nil, err
+	}
+	defer s.leaveSandboxStart()
+
 	sbx, ok := s.sandboxFactory.Sandboxes.Get(in.GetSandboxId())
 	if !ok {
 		telemetry.ReportCriticalError(ctx, "sandbox not found", nil, telemetry.WithSandboxID(in.GetSandboxId()))
@@ -906,7 +920,7 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 
 // setupSandboxLifecycle sets up the cleanup goroutine for a sandbox.
 func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox) {
-	go func() {
+	s.sandboxLifecycleWG.Go(func() {
 		ctx, childSpan := tracer.Start(context.WithoutCancel(ctx), "stop sandbox-lifecycle", trace.WithNewRoot())
 		defer childSpan.End()
 
@@ -926,7 +940,7 @@ func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox
 		}
 
 		sbxlogger.E(sbx).Info(ctx, "Sandbox stopped")
-	}()
+	})
 }
 
 // stopSandboxAsync stops the sandbox in a background goroutine.

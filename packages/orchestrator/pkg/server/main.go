@@ -4,6 +4,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -38,6 +39,19 @@ const uploadedBuildsTTL = 1 * time.Hour
 // MaxStartingInstancesPerNode feature flag and resize the semaphore.
 const startingSandboxesLimitRefreshInterval = 30 * time.Second
 
+const sandboxDrainPollInterval = 5 * time.Second
+
+func sandboxDrainLogInterval(elapsed time.Duration) time.Duration {
+	switch {
+	case elapsed < time.Minute:
+		return 5 * time.Second
+	case elapsed < time.Hour:
+		return time.Minute
+	default:
+		return 15 * time.Minute
+	}
+}
+
 type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	orchestrator.UnimplementedChunkServiceServer
@@ -61,6 +75,9 @@ type Server struct {
 
 	done      chan struct{}
 	closeOnce sync.Once
+
+	sandboxStartMu     sync.RWMutex
+	sandboxLifecycleWG sync.WaitGroup
 }
 
 type ServiceConfig struct {
@@ -156,14 +173,146 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 	return server, nil
 }
 
-func (s *Server) Close() error {
-	s.closeOnce.Do(func() {
-		close(s.done)
-	})
-
+func (s *Server) Close(ctx context.Context) error {
+	s.startDraining(ctx)
 	s.uploadedBuilds.Stop()
 
 	return nil
+}
+
+func (s *Server) startDraining(ctx context.Context) {
+	s.closeOnce.Do(func() {
+		logger.L().Info(ctx, "orchestrator server entering sandbox drain mode",
+			zap.Int("live_sandboxes", s.sandboxFactory.Sandboxes.Count()),
+		)
+		close(s.done)
+	})
+}
+
+func (s *Server) DrainSandboxes(ctx context.Context) error {
+	s.startDraining(ctx)
+	if err := s.waitSandboxStarts(ctx); err != nil {
+		return err
+	}
+
+	live := s.sandboxFactory.Sandboxes.Count()
+	logger.L().Info(ctx, "starting graceful sandbox drain", zap.Int("live_sandboxes", live))
+	if live == 0 {
+		logger.L().Info(ctx, "graceful sandbox drain complete", zap.Int("live_sandboxes", live))
+
+		return s.waitSandboxLifecycles(ctx)
+	}
+
+	ticker := time.NewTicker(sandboxDrainPollInterval)
+	defer ticker.Stop()
+	startedAt := time.Now()
+	lastLoggedAt := startedAt
+
+	for {
+		select {
+		case <-ctx.Done():
+			remaining := s.sandboxFactory.Sandboxes.Count()
+			logger.L().Warn(ctx, "graceful sandbox drain timed out",
+				zap.Int("remaining_sandboxes", remaining),
+				zap.Error(ctx.Err()),
+			)
+
+			return ctx.Err()
+		case <-ticker.C:
+			now := time.Now()
+			remaining := s.sandboxFactory.Sandboxes.Count()
+			if remaining == 0 {
+				logger.L().Info(ctx, "graceful sandbox drain complete", zap.Int("live_sandboxes", remaining))
+
+				return s.waitSandboxLifecycles(ctx)
+			}
+
+			elapsed := now.Sub(startedAt)
+			if now.Sub(lastLoggedAt) >= sandboxDrainLogInterval(elapsed) {
+				logger.L().Info(ctx, "waiting for sandbox drain",
+					zap.Int("remaining_sandboxes", remaining),
+					zap.Duration("elapsed", elapsed),
+				)
+				lastLoggedAt = now
+			}
+		}
+	}
+}
+
+func (s *Server) ForceStopSandboxes(ctx context.Context) error {
+	s.startDraining(ctx)
+	if err := s.waitSandboxStarts(ctx); err != nil {
+		return err
+	}
+
+	sandboxes := s.sandboxFactory.Sandboxes.LifecycleItems()
+	logger.L().Warn(ctx, "starting forced sandbox shutdown", zap.Int("sandbox_count", len(sandboxes)))
+	if len(sandboxes) == 0 {
+		return s.waitSandboxLifecycles(ctx)
+	}
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(sandboxes))
+
+	for _, sbx := range sandboxes {
+		wg.Go(func() {
+			sbxLog := logger.L().With(
+				logger.WithSandboxID(sbx.Runtime.SandboxID),
+				logger.WithLifecycleID(sbx.LifecycleID),
+				logger.WithSandboxIP(sbx.Slot.HostIPString()),
+			)
+			sbxLog.Warn(ctx, "force stopping sandbox during orchestrator shutdown")
+
+			marked := s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
+			if !marked {
+				sbxLog.Info(ctx, "sandbox was already removed from live map before force stop")
+			}
+
+			if err := sbx.Stop(ctx); err != nil {
+				errCh <- fmt.Errorf("stop sandbox %s/%s: %w", sbx.Runtime.SandboxID, sbx.LifecycleID, err)
+				sbxLog.Error(ctx, "failed to force stop sandbox", zap.Error(err))
+			}
+
+			sbxLog.Info(ctx, "forced sandbox stop requested")
+		})
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	var errs []error
+	for err := range errCh {
+		errs = append(errs, err)
+	}
+
+	if err := s.waitSandboxLifecycles(ctx); err != nil {
+		errs = append(errs, err)
+	}
+
+	if err := errors.Join(errs...); err != nil {
+		logger.L().Error(ctx, "forced sandbox shutdown finished with errors", zap.Error(err))
+
+		return err
+	}
+
+	logger.L().Info(ctx, "forced sandbox shutdown complete")
+
+	return nil
+}
+
+func (s *Server) waitSandboxLifecycles(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		s.sandboxLifecycleWG.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("waiting for sandbox lifecycle cleanup: %w", ctx.Err())
+	case <-done:
+		return nil
+	}
 }
 
 func (s *Server) refreshStartingSandboxesLimit(ctx context.Context) {

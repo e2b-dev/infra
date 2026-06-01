@@ -328,24 +328,26 @@ func (s *Slot) RemoveNetwork() error {
 		}
 	}
 
-	// Delete NFS proxy redirect rule
-	err = tables.Delete("nat", "PREROUTING",
-		"--in-interface", s.VethName(), "--protocol", "tcp",
-		"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "2049",
-		"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(s.config.NFSProxyPort)),
-	)
-	if err != nil {
-		errs = append(errs, fmt.Errorf("error deleting sandbox NFS proxy redirect rule: %w", err))
-	}
+	if tables != nil {
+		// Delete NFS proxy redirect rule
+		err = tables.Delete("nat", "PREROUTING",
+			"--in-interface", s.VethName(), "--protocol", "tcp",
+			"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "2049",
+			"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(s.config.NFSProxyPort)),
+		)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("error deleting sandbox NFS proxy redirect rule: %w", err))
+		}
 
-	// Delete portmapper redirect rule
-	err = tables.Delete("nat", "PREROUTING",
-		"--in-interface", s.VethName(), "--protocol", "tcp",
-		"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "111",
-		"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(s.config.PortmapperPort)),
-	)
-	if err != nil {
-		errs = append(errs, fmt.Errorf("error deleting sandbox portmapper redirect rule: %w", err))
+		// Delete portmapper redirect rule
+		err = tables.Delete("nat", "PREROUTING",
+			"--in-interface", s.VethName(), "--protocol", "tcp",
+			"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "111",
+			"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(s.config.PortmapperPort)),
+		)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("error deleting sandbox portmapper redirect rule: %w", err))
+		}
 	}
 
 	err = netns.DeleteNamed(s.NamespaceID())

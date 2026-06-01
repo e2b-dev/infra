@@ -661,21 +661,25 @@ func (p *Process) Stop(ctx context.Context) error {
 		logger.L().Warn(ctx, "failed to remove fc metrics FIFO", zap.Error(removeErr), logger.WithSandboxID(p.files.SandboxID))
 	}
 
-	// Check if process has already exited.
+	pid := p.cmd.Process.Pid
+
+	// Check if process has already exited. The parent exiting is not enough for
+	// cleanup: descendants in the same process group can still hold resources.
 	select {
 	case <-p.Exit.Done():
 		logger.L().Info(ctx, "fc process already exited", logger.WithSandboxID(p.files.SandboxID))
-
-		return nil
+		if !processGroupExists(pid) {
+			return nil
+		}
 	default:
 	}
 
 	// this function should never fail b/c a previous context was canceled.
 	ctx = context.WithoutCancel(ctx)
 
-	err := p.cmd.Process.Signal(syscall.SIGTERM)
+	err := signalProcessGroup(pid, syscall.SIGTERM)
 	if err != nil {
-		if errors.Is(err, os.ErrProcessDone) {
+		if errors.Is(err, os.ErrProcessDone) && !processGroupExists(pid) {
 			logger.L().Info(ctx, "fc process already exited", logger.WithSandboxID(p.files.SandboxID))
 
 			return nil
@@ -684,38 +688,77 @@ func (p *Process) Stop(ctx context.Context) error {
 		logger.L().Warn(ctx, "failed to send SIGTERM to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 	}
 
-	go func() {
+	termDeadline := time.NewTimer(10 * time.Second)
+	defer termDeadline.Stop()
+	poll := time.NewTicker(50 * time.Millisecond)
+	defer poll.Stop()
+
+	for processGroupExists(pid) {
 		select {
-		// Wait 10 sec for the FC process to exit, if it doesn't, send SIGKILL.
-		case <-time.After(10 * time.Second):
-			// Check process status right before Kill — the pre-SIGTERM status
-			// captured above is 10s stale and no longer useful here.
-			status, stateErr := getProcessStatus(p.cmd.Process.Pid)
+		case <-termDeadline.C:
+			status, stateErr := getProcessStatus(pid)
 			if errors.Is(stateErr, process.ErrorProcessNotRunning) {
-				// Process already exited, no need to send SIGKILL.
-				return
+				logger.L().Info(ctx, "fc parent process exited before SIGKILL; checking process group", logger.WithSandboxID(p.files.SandboxID))
 			} else if stateErr != nil {
 				logger.L().Warn(ctx, "failed to get fc process status before SIGKILL", zap.Error(stateErr), logger.WithSandboxID(p.files.SandboxID))
 			}
 
-			err := p.cmd.Process.Kill()
-			if err == nil {
-				logger.L().Info(ctx, "sent SIGKILL to fc process because it was not responding to SIGTERM for 10 seconds",
+			killErr := signalProcessGroup(pid, syscall.SIGKILL)
+			if killErr == nil {
+				logger.L().Info(ctx, "sent SIGKILL to fc process group because it was not responding to SIGTERM for 10 seconds",
 					zap.Strings("status", status),
 					logger.WithSandboxID(p.files.SandboxID),
 				)
 			}
-			if err != nil && !errors.Is(err, os.ErrProcessDone) {
-				logger.L().Warn(ctx, "failed to send SIGKILL to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+			if killErr != nil && !errors.Is(killErr, os.ErrProcessDone) {
+				logger.L().Warn(ctx, "failed to send SIGKILL to fc process", zap.Error(killErr), logger.WithSandboxID(p.files.SandboxID))
 			}
 
-		// If the FC process exited, we can return.
-		case <-p.Exit.Done():
-			return
+			killDeadline := time.NewTimer(time.Second)
+			for processGroupExists(pid) {
+				select {
+				case <-killDeadline.C:
+					return fmt.Errorf("fc process group %d still exists after SIGKILL", pid)
+				case <-poll.C:
+				}
+			}
+			killDeadline.Stop()
+
+			return nil
+		case <-poll.C:
 		}
-	}()
+	}
 
 	return nil
+}
+
+func signalProcessGroup(pid int, signal syscall.Signal) error {
+	if pid <= 0 {
+		return os.ErrProcessDone
+	}
+
+	// Firecracker is launched with Setsid, so the process PID is also the process
+	// group ID. Signal the group so unshare/bash/ip descendants cannot keep the VM
+	// mount namespace or Firecracker process alive after shutdown.
+	if err := syscall.Kill(-pid, signal); err != nil {
+		if errors.Is(err, syscall.ESRCH) {
+			return os.ErrProcessDone
+		}
+
+		return err
+	}
+
+	return nil
+}
+
+func processGroupExists(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+
+	err := syscall.Kill(-pid, 0)
+
+	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
 func (p *Process) Pause(ctx context.Context) error {

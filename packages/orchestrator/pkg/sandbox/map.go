@@ -9,6 +9,8 @@ import (
 	"net"
 	"sync"
 
+	"go.uber.org/zap"
+
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
@@ -25,14 +27,49 @@ type MapSubscriber interface {
 	OnNetworkRelease(ctx context.Context, sbx *Sandbox)
 }
 
-// Map holds sandboxes that are live (running) together with a IP-to-sandbox index
-// The two maps are managed independently.
+type SandboxState string
+
+const (
+	SandboxStateRunning  SandboxState = "running"
+	SandboxStateStopping SandboxState = "stopping"
+)
+
+type lifecycleEntry struct {
+	sandbox   *Sandbox
+	stateLock sync.RWMutex
+	state     SandboxState
+}
+
+func newLifecycleEntry(sbx *Sandbox, state SandboxState) *lifecycleEntry {
+	return &lifecycleEntry{
+		sandbox: sbx,
+		state:   state,
+	}
+}
+
+func (e *lifecycleEntry) setState(state SandboxState) {
+	e.stateLock.Lock()
+	defer e.stateLock.Unlock()
+
+	e.state = state
+}
+
+func (e *lifecycleEntry) getState() SandboxState {
+	e.stateLock.RLock()
+	defer e.stateLock.RUnlock()
+
+	return e.state
+}
+
+// Map holds sandboxes that are live (running), known active lifecycles,
+// together with a IP-to-sandbox index. The indexes are managed independently.
 //
 // AssignNetwork/NetworkReleased manage the IP map,
 // MarkRunning/MarkStopping manage the live set.
 type Map struct {
-	live    *smap.Map[*Sandbox]
-	network *smap.Map[*Sandbox]
+	live       *smap.Map[*Sandbox]
+	lifecycles *smap.Map[*lifecycleEntry]
+	network    *smap.Map[*Sandbox]
 
 	subs     []MapSubscriber
 	subsLock sync.RWMutex
@@ -40,9 +77,14 @@ type Map struct {
 
 func NewSandboxesMap() *Map {
 	return &Map{
-		live:    smap.New[*Sandbox](),
-		network: smap.New[*Sandbox](),
+		live:       smap.New[*Sandbox](),
+		lifecycles: smap.New[*lifecycleEntry](),
+		network:    smap.New[*Sandbox](),
 	}
+}
+
+func sandboxLifecycleKey(sandboxID, lifecycleID string) string {
+	return fmt.Sprintf("%s/%s", sandboxID, lifecycleID)
 }
 
 func (m *Map) Subscribe(subscriber MapSubscriber) {
@@ -73,6 +115,35 @@ func (m *Map) Get(sandboxID string) (*Sandbox, bool) {
 	return m.live.Get(sandboxID)
 }
 
+func (m *Map) LifecycleItems() []*Sandbox {
+	entries := m.lifecycles.Items()
+	sandboxes := make([]*Sandbox, 0, len(entries))
+	for _, entry := range entries {
+		sandboxes = append(sandboxes, entry.sandbox)
+	}
+
+	return sandboxes
+}
+
+func (m *Map) LifecycleItemsByState(states ...SandboxState) []*Sandbox {
+	stateSet := make(map[SandboxState]struct{}, len(states))
+	for _, state := range states {
+		stateSet[state] = struct{}{}
+	}
+
+	entries := m.lifecycles.Items()
+	sandboxes := make([]*Sandbox, 0, len(entries))
+	for _, entry := range entries {
+		if _, ok := stateSet[entry.getState()]; !ok {
+			continue
+		}
+
+		sandboxes = append(sandboxes, entry.sandbox)
+	}
+
+	return sandboxes
+}
+
 // GetByHostPort looks up a sandbox by its host IP address parsed from hostPort.
 func (m *Map) GetByHostPort(hostPort string) (*Sandbox, error) {
 	reqIP, _, err := net.SplitHostPort(hostPort)
@@ -100,11 +171,24 @@ func (m *Map) AssignNetwork(ctx context.Context, sbx *Sandbox) {
 	)
 }
 
+func (m *Map) TrackLifecycle(ctx context.Context, sbx *Sandbox, state SandboxState) {
+	m.lifecycles.Insert(sandboxLifecycleKey(sbx.Runtime.SandboxID, sbx.LifecycleID), newLifecycleEntry(sbx, state))
+
+	logger.L().Info(ctx, "sandbox lifecycle tracked",
+		logger.WithSandboxID(sbx.Runtime.SandboxID),
+		logger.WithLifecycleID(sbx.LifecycleID),
+		logger.WithSandboxIP(sbx.Slot.HostIPString()),
+		zap.String("state", string(state)),
+	)
+}
+
 // MarkRunning makes the sandbox visible to Get/Items/Count and notifies OnInsert subscribers.
 func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) {
 	if !m.live.InsertIfAbsent(sbx.Runtime.SandboxID, sbx) {
 		return
 	}
+
+	m.TrackLifecycle(ctx, sbx, SandboxStateRunning)
 
 	m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
 		s.OnInsert(ctx, sbx)
@@ -126,6 +210,7 @@ func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) {
 // Returns true if the sandbox was successfully removed.
 func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) bool {
 	stopped := false
+	m.markLifecycleState(sandboxID, lifecycleID, SandboxStateStopping)
 
 	m.live.RemoveCb(sandboxID, func(_ string, sbx *Sandbox, exists bool) bool {
 		if !exists {
@@ -148,6 +233,26 @@ func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) b
 	})
 
 	return stopped
+}
+
+func (m *Map) MarkStopped(ctx context.Context, sbx *Sandbox) {
+	m.lifecycles.Remove(sandboxLifecycleKey(sbx.Runtime.SandboxID, sbx.LifecycleID))
+
+	logger.L().Info(ctx, "sandbox lifecycle stopped",
+		logger.WithSandboxID(sbx.Runtime.SandboxID),
+		logger.WithLifecycleID(sbx.LifecycleID),
+		logger.WithSandboxIP(sbx.Slot.HostIPString()),
+	)
+}
+
+func (m *Map) markLifecycleState(sandboxID, lifecycleID string, state SandboxState) {
+	key := sandboxLifecycleKey(sandboxID, lifecycleID)
+	entry, ok := m.lifecycles.Get(key)
+	if !ok {
+		return
+	}
+
+	entry.setState(state)
 }
 
 // NetworkReleased unregisters a sandbox's IP and notifies OnNetworkRelease

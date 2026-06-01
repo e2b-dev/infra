@@ -236,6 +236,8 @@ type Sandbox struct {
 	files   *storage.SandboxFiles
 	cleanup *Cleanup
 
+	sandboxes *Map
+
 	featureFlags *featureflags.Client
 
 	process      *fc.Process
@@ -477,10 +479,11 @@ func (f *Factory) CreateSandbox(
 		Metadata:     metadata,
 		cgroupHandle: cgroupHandle,
 
-		Template: template,
-		config:   f.config,
-		files:    sandboxFiles,
-		process:  fcHandle,
+		Template:  template,
+		config:    f.config,
+		files:     sandboxFiles,
+		process:   fcHandle,
+		sandboxes: f.Sandboxes,
 
 		cleanup:      cleanup,
 		featureFlags: f.featureFlags,
@@ -822,10 +825,11 @@ func (f *Factory) ResumeSandbox(
 		Metadata:     metadata,
 		cgroupHandle: cgroupHandle,
 
-		Template: t,
-		config:   f.config,
-		files:    sandboxFiles,
-		process:  fcHandle,
+		Template:  t,
+		config:    f.config,
+		files:     sandboxFiles,
+		process:   fcHandle,
+		sandboxes: f.Sandboxes,
 
 		cleanup:      cleanup,
 		featureFlags: f.featureFlags,
@@ -964,6 +968,10 @@ func (s *Sandbox) Wait(ctx context.Context) error {
 
 func (s *Sandbox) Close(ctx context.Context) error {
 	err := s.cleanup.Run(ctx)
+	if s.sandboxes != nil {
+		s.sandboxes.MarkStopped(context.WithoutCancel(ctx), s)
+	}
+
 	if err != nil {
 		return fmt.Errorf("failed to cleanup sandbox: %w", err)
 	}
@@ -994,9 +1002,11 @@ func (s *Sandbox) doStop(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("failed to stop FC: %w", fcStopErr))
 	}
 
-	// The process exited, we can continue with the rest of the cleanup.
-	// We could use select with ctx.Done() to wait for cancellation, but if the process is not exited the whole cleanup will be in a bad state and will result in unexpected behavior.
-	<-s.process.Exit.Done()
+	// The process should exit before the rest of cleanup, but memory shutdown
+	// must still run if the wait context is canceled so UFFD can exit.
+	if waitErr := s.process.Exit.WaitWithContext(ctx); waitErr != nil {
+		errs = append(errs, fmt.Errorf("failed waiting for FC exit: %w", waitErr))
+	}
 
 	uffdStopErr := s.Resources.memory.Stop()
 	if uffdStopErr != nil {
@@ -1388,15 +1398,7 @@ func getNetworkSlot(
 			ctx, span := tracer.Start(ctx, "clean network-slot")
 			defer span.End()
 
-			// We can run this cleanup asynchronously, as it is not important for the sandbox lifecycle
-			go func(ctx context.Context) {
-				returnErr := networkPool.Return(ctx, slot, networkReleased, network.ReturnDelay)
-				if returnErr != nil {
-					logger.L().Error(ctx, "failed to return network slot", zap.Error(returnErr))
-				}
-			}(context.WithoutCancel(ctx))
-
-			return nil
+			return networkPool.Return(ctx, slot, networkReleased, network.ReturnDelay)
 		})
 
 		return slot, nil
