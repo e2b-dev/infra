@@ -5,6 +5,7 @@ package chroot
 import (
 	"context"
 	"net"
+	"os"
 	"sync/atomic"
 	"testing"
 
@@ -51,8 +52,8 @@ func (c *countingCounter) Add(_ context.Context, incr int64, _ ...metric.AddOpti
 func TestOnNetworkRelease_CounterOnlyIncrementedOnSuccess(t *testing.T) {
 	t.Parallel()
 
-	if testing.Short() {
-		t.Skip("requires pivot_root, skipping in short mode")
+	if os.Geteuid() != 0 {
+		t.Skip("skipping test because it requires root privileges")
 	}
 
 	dir := t.TempDir()
