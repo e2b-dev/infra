@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
@@ -112,10 +113,10 @@ func (c *TemplateCache) GetMetadata(ctx context.Context, templateID string) (*Te
 // Performs access control and cluster checks.
 func (c *TemplateCache) Get(ctx context.Context, templateID string, tag *string, teamID uuid.UUID, clusterID uuid.UUID) (*api.Template, *queries.EnvBuild, error) {
 	ctx, span := tracer.Start(ctx, "get template", trace.WithAttributes(
-		attribute.String("template_id", templateID),
+		telemetry.WithTemplateID(templateID),
+		telemetry.WithTeamID(teamID.String()),
+		telemetry.WithClusterID(clusterID),
 		attribute.String("tag", sharedUtils.DerefOrDefault(tag, "")),
-		attribute.String("team_id", teamID.String()),
-		attribute.String("cluster_id", clusterID.String()),
 	))
 	defer span.End()
 
