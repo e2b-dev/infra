@@ -14,7 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	dashboardqueries "github.com/e2b-dev/infra/packages/db/pkg/dashboard/queries"
-	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -32,23 +31,7 @@ func (s *APIStore) GetTemplatesTemplateIDTagsTagAssignments(c *gin.Context, temp
 	teamID := auth.MustGetTeamID(c)
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamID.String()), telemetry.WithTemplateID(templateID))
 
-	template, err := s.db.GetTemplateByIDWithAliases(ctx, templateID)
-	if err != nil {
-		if dberrors.IsNotFoundError(err) {
-			s.sendAPIStoreError(c, http.StatusNotFound, "Template not found")
-
-			return
-		}
-
-		logger.L().Error(ctx, "Error getting template", zap.Error(err), logger.WithTeamID(teamID.String()), logger.WithTemplateID(templateID))
-		s.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting template")
-
-		return
-	}
-
-	if template.TeamID != teamID {
-		s.sendAPIStoreError(c, http.StatusForbidden, "You don't have access to this sandbox template")
-
+	if !s.requireTemplateAccess(c, templateID, teamID) {
 		return
 	}
 
