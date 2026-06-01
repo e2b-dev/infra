@@ -60,6 +60,12 @@ job "orchestrator-${latest_orchestrator_job_id}" {
         attempts = 0
       }
 
+      resources {
+        cpu        = 100 # there is no hard CPU cap, but its required value
+        memory     = 1024
+        memory_max = -1 # no limit
+      }
+
       env {
         NODE_ID     = "$${node.unique.name}"
         NODE_IP     = "$${attr.unique.network.ip-address}"

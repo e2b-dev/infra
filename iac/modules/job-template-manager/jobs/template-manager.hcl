@@ -88,8 +88,9 @@ job "template-manager" {
       kill_signal  = "SIGTERM"
 
       resources {
+        cpu        = 100 # there is no hard CPU cap, but its required value
         memory     = 1024
-        cpu        = 256
+        memory_max = -1 # no limit
       }
 
       env {
