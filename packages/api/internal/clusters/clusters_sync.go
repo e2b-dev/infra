@@ -49,11 +49,36 @@ func NewPool(
 	localDiscovery discovery.Discovery,
 	queryMetricsProvider clickhouse.Clickhouse,
 	queryLogsProvider *loki.LokiQueryProvider,
-	config cfg.Config,
+	cfg cfg.Config,
 ) (*Pool, error) {
 	clusters := smap.New[*Cluster]()
+	clusterCreateFunc := func(ctx context.Context, source queries.Cluster) (*Cluster, error) {
+		// Local cluster
+		if source.ID == consts.LocalClusterID {
+			return newLocalCluster(context.WithoutCancel(ctx), tel, localDiscovery, queryMetricsProvider, queryLogsProvider, cfg), nil
+		}
 
-	localCluster := localClusterConfig()
+		// Remote cluster
+		authOrgID := ""
+		if source.AuthOrgID != nil {
+			authOrgID = *source.AuthOrgID
+		}
+
+		config := clusterConfig{
+			endpoint:      source.Endpoint,
+			endpointTLS:   source.EndpointTls,
+			token:         source.Token,
+			sandboxDomain: source.SandboxProxyDomain,
+			oauthOrgID:    authOrgID,
+		}
+
+		c, err := newRemoteCluster(context.WithoutCancel(ctx), tel, source.ID, config)
+		if err != nil {
+			return nil, err
+		}
+
+		return c, nil
+	}
 
 	p := &Pool{
 		db:       db,
@@ -63,14 +88,10 @@ func NewPool(
 			"clusters-pool",
 			"Clusters pool",
 			clustersSyncStore{
-				config:               config,
-				db:                   db,
-				tel:                  tel,
-				clusters:             clusters,
-				local:                localCluster,
-				localDiscovery:       localDiscovery,
-				queryLogsProvider:    queryLogsProvider,
-				queryMetricsProvider: queryMetricsProvider,
+				db:                db,
+				clusters:          clusters,
+				clusterCreateFunc: clusterCreateFunc,
+				local:             localClusterConfig(),
 			},
 		),
 	}
@@ -106,15 +127,12 @@ func (p *Pool) Close(ctx context.Context) {
 }
 
 // SynchronizationStore is an interface that defines methods for synchronizing the clusters pool with the database
+
 type clustersSyncStore struct {
-	db                   *client.Client
-	tel                  *telemetry.Client
-	clusters             *smap.Map[*Cluster]
-	local                *queries.Cluster
-	localDiscovery       discovery.Discovery
-	queryMetricsProvider clickhouse.Clickhouse
-	queryLogsProvider    *loki.LokiQueryProvider
-	config               cfg.Config
+	db                *client.Client
+	local             *queries.Cluster
+	clusters          *smap.Map[*Cluster]
+	clusterCreateFunc func(context.Context, queries.Cluster) (*Cluster, error)
 }
 
 func (d clustersSyncStore) SourceList(ctx context.Context) ([]queries.Cluster, error) {
@@ -123,7 +141,7 @@ func (d clustersSyncStore) SourceList(ctx context.Context) ([]queries.Cluster, e
 		return nil, err
 	}
 
-	entries := make([]queries.Cluster, 0)
+	entries := make([]queries.Cluster, 0, len(db))
 	for _, row := range db {
 		entries = append(entries, row.Cluster)
 	}
@@ -159,50 +177,24 @@ func (d clustersSyncStore) PoolGet(_ context.Context, source queries.Cluster) (*
 	return d.clusters.Get(source.ID.String())
 }
 
-func (d clustersSyncStore) PoolInsert(ctx context.Context, cluster queries.Cluster) {
-	clusterID := cluster.ID.String()
+func (d clustersSyncStore) PoolInsert(ctx context.Context, source queries.Cluster) {
+	clusterID := source.ID
 
-	logger.L().Info(ctx, "Initializing newly discovered cluster", logger.WithClusterID(cluster.ID))
+	logger.L().Info(ctx, "Initializing newly discovered cluster", logger.WithClusterID(clusterID))
 
-	var c *Cluster
-	var err error
-
-	// Local cluster
-	if cluster.ID == consts.LocalClusterID {
-		c = newLocalCluster(context.WithoutCancel(ctx), d.tel, d.localDiscovery, d.queryMetricsProvider, d.queryLogsProvider, d.config)
-		d.clusters.Insert(clusterID, c)
-		logger.L().Info(ctx, "Local cluster initialized successfully", logger.WithClusterID(cluster.ID))
-
-		return
-	}
-
-	// Remote cluster
-	authOrgID := ""
-	if cluster.AuthOrgID != nil {
-		authOrgID = *cluster.AuthOrgID
-	}
-
-	c, err = newRemoteCluster(
-		context.WithoutCancel(ctx),
-		d.tel,
-		cluster.Endpoint,
-		cluster.EndpointTls,
-		cluster.Token,
-		cluster.ID,
-		cluster.SandboxProxyDomain,
-		authOrgID,
-	)
+	c, err := d.clusterCreateFunc(ctx, source)
 	if err != nil {
-		logger.L().Error(ctx, "Initializing remote cluster failed", zap.Error(err), logger.WithClusterID(cluster.ID))
+		logger.L().Error(ctx, "Error during initializing newly discovered cluster", zap.Error(err), logger.WithClusterID(clusterID))
 
 		return
 	}
 
-	d.clusters.Insert(clusterID, c)
-	logger.L().Info(ctx, "Remote cluster initialized successfully", logger.WithClusterID(cluster.ID))
+	d.clusters.Insert(clusterID.String(), c)
+
+	logger.L().Info(ctx, "Cluster initialized successfully", logger.WithClusterID(clusterID))
 }
 
-func (d clustersSyncStore) PoolUpdate(_ context.Context, _ *Cluster, _ queries.Cluster) {}
+func (d clustersSyncStore) PoolUpdate(_ context.Context, e *Cluster, _ queries.Cluster) {}
 
 func (d clustersSyncStore) PoolRemove(ctx context.Context, cluster *Cluster) {
 	logger.L().Info(ctx, "Removing cluster from pool", logger.WithClusterID(cluster.ID))

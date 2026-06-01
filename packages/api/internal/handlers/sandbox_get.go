@@ -104,7 +104,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 			return
 		}
 
-		sbxDomain = cluster.SandboxDomain
+		sbxDomain = cluster.GetSandboxDomain()
 	}
 
 	// Try to get the running sandbox first

@@ -157,7 +157,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 				return nil, status.Errorf(codes.Internal, "cluster with ID '%s' not found", *team.ClusterID)
 			}
 
-			authOrgID = cluster.AuthOrgID
+			authOrgID = cluster.GetOAuthOrgID()
 		}
 
 		if err := oauth.RequireOrgClaims(clientProxyClaims, authOrgID); err != nil {

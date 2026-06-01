@@ -37,13 +37,21 @@ const (
 )
 
 type Cluster struct {
-	ID            uuid.UUID
-	SandboxDomain *string
-	AuthOrgID     string
+	ID uuid.UUID
 
+	config          clusterConfig
+	resources       ClusterResource
 	instances       *smap.Map[*Instance]
 	synchronization *synchronization.Synchronize[discovery.Item, *Instance]
-	resources       ClusterResource
+}
+
+type clusterConfig struct {
+	endpoint    string
+	endpointTLS bool
+	token       string
+
+	sandboxDomain *string
+	oauthOrgID    string
 }
 
 var (
@@ -53,19 +61,18 @@ var (
 
 func NewCluster(
 	clusterID uuid.UUID,
-	domain *string,
-	authOrgID string,
+	config clusterConfig,
 	sandboxes *smap.Map[*Instance],
 	synchronization *synchronization.Synchronize[discovery.Item, *Instance],
 	resources ClusterResource,
 ) *Cluster {
 	return &Cluster{
-		ID:              clusterID,
-		SandboxDomain:   domain,
-		AuthOrgID:       authOrgID,
+		ID: clusterID,
+
+		config:          config,
+		resources:       resources,
 		instances:       sandboxes,
 		synchronization: synchronization,
-		resources:       resources,
 	}
 }
 
@@ -75,7 +82,7 @@ func newLocalCluster(
 	storeDiscovery discovery.Discovery,
 	clickhouse clickhouse.Clickhouse,
 	queryLogsProvider *loki.LokiQueryProvider,
-	config cfg.Config,
+	cfg cfg.Config,
 ) *Cluster {
 	clusterID := consts.LocalClusterID
 
@@ -86,14 +93,14 @@ func newLocalCluster(
 	}
 
 	store := instancesSyncStore{clusterID: clusterID, instances: instances, discovery: storeDiscovery, instanceCreation: instanceCreation}
+	config := clusterConfig{}
 
 	c := NewCluster(
 		clusterID,
-		nil,
-		"",
+		config,
 		instances,
 		synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
-		newLocalClusterResourceProvider(clickhouse, queryLogsProvider, instances, config),
+		newLocalClusterResourceProvider(clickhouse, queryLogsProvider, instances, cfg),
 	)
 
 	// Periodically sync cluster instances
@@ -105,27 +112,22 @@ func newLocalCluster(
 func newRemoteCluster(
 	ctx context.Context,
 	tel *telemetry.Client,
-	endpoint string,
-	endpointTLS bool,
-	secret string,
 	clusterID uuid.UUID,
-	sandboxDomain *string,
-	authOrgID string,
+	config clusterConfig,
 ) (*Cluster, error) {
 	scheme := "http"
-	if endpointTLS {
+	if config.endpointTLS {
 		scheme = "https"
 	}
 
-	endpointBaseUrl := fmt.Sprintf("%s://%s", scheme, endpoint)
-
+	endpointBaseUrl := fmt.Sprintf("%s://%s", scheme, config.endpoint)
 	httpClient, err := api.NewClientWithResponses(
 		endpointBaseUrl,
 		func(c *api.Client) error {
 			c.RequestEditors = append(
 				c.RequestEditors,
 				func(_ context.Context, req *http.Request) error {
-					req.Header.Set(consts.EdgeApiAuthHeader, secret)
+					req.Header.Set(consts.EdgeApiAuthHeader, config.token)
 
 					return nil
 				},
@@ -141,9 +143,9 @@ func newRemoteCluster(
 	instances := smap.New[*Instance]()
 	instanceCreation := func(ctx context.Context, item discovery.Item) (*Instance, error) {
 		// For remote cluster we are doing connection to endpoint that works as gRPC proxy and handles auth and routing for us.
-		auth := &instanceAuthorization{secret: secret, tls: endpointTLS, serviceInstanceID: item.InstanceID}
+		auth := &instanceAuthorization{secret: config.token, tls: config.endpointTLS, serviceInstanceID: item.InstanceID}
 
-		return newInstance(ctx, tel, auth, clusterID, item, endpoint, endpointTLS)
+		return newInstance(ctx, tel, auth, clusterID, item, config.endpoint, config.endpointTLS)
 	}
 
 	storeDiscovery := discovery.NewRemoteServiceDiscovery(clusterID, httpClient)
@@ -151,8 +153,7 @@ func newRemoteCluster(
 
 	c := NewCluster(
 		clusterID,
-		sandboxDomain,
-		authOrgID,
+		config,
 		instances,
 		synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
 		newRemoteClusterResourceProvider(clusterID, instances, httpClient),
@@ -186,6 +187,14 @@ func (c *Cluster) Close(ctx context.Context) error {
 	wg.Wait()
 
 	return nil
+}
+
+func (c *Cluster) GetSandboxDomain() *string {
+	return c.config.sandboxDomain
+}
+
+func (c *Cluster) GetOAuthOrgID() string {
+	return c.config.oauthOrgID
 }
 
 func (c *Cluster) GetTemplateBuilderByNodeID(nodeID string) (*Instance, error) {

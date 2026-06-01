@@ -225,7 +225,7 @@ func (o *Orchestrator) CreateSandbox(
 			}
 		}
 
-		sbxDomain = cluster.SandboxDomain
+		sbxDomain = cluster.GetSandboxDomain()
 	}
 
 	var trafficAccessToken *string = nil

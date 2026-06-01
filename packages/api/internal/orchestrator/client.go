@@ -60,7 +60,7 @@ func (o *Orchestrator) connectToClusterNode(ctx context.Context, cluster *cluste
 		connectCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), nodeConnectTimeout)
 		defer cancel()
 
-		orchestratorNode, err := nodemanager.NewClusterNode(connectCtx, i.GetClient(), cluster.ID, cluster.SandboxDomain, i, o.featureFlagsClient)
+		orchestratorNode, err := nodemanager.NewClusterNode(connectCtx, i.GetClient(), cluster.ID, cluster.GetSandboxDomain(), i, o.featureFlagsClient)
 		if err != nil {
 			logger.L().Error(ctx, "Failed to create node", zap.Error(err))
 
