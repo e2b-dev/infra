@@ -133,9 +133,13 @@ message SchedulingMetadata {
   string base_build_id = 1;
   string build_id = 2;
   // Deduplicated build IDs whose data each artifact references (all ancestor
-  // layers plus the build itself). Sorted; order is not significant.
+  // layers plus the build itself). Sorted; order is not significant. When a
+  // list exceeds the cap, the lightest layers are dropped first and the count
+  // of dropped layers is reported.
   repeated string memfile_build_ids = 3;
   repeated string rootfs_build_ids = 4;
+  uint32 memfile_dropped_builds = 5;
+  uint32 rootfs_dropped_builds = 6;
 }
 
 message SandboxPauseResponse {

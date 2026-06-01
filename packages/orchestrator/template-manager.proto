@@ -140,6 +140,8 @@ message TemplateSchedulingMetadata {
   string buildID = 2;
   repeated string memfileBuildIDs = 3;
   repeated string rootfsBuildIDs = 4;
+  uint32 memfileDroppedBuilds = 5;
+  uint32 rootfsDroppedBuilds = 6;
 }
 
 enum TemplateBuildState {
