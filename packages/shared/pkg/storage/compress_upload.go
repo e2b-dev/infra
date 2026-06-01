@@ -65,21 +65,39 @@ func (m *memPartUploader) Assemble() []byte {
 // inputBufPool is shared across all uploads so frame-sized buffers (almost
 // always DefaultCompressFrameSize) are reused between streams instead of being
 // reallocated per call. The size guard keeps it correct for any frame size.
+//
+// It is intentionally private to inputBuf: every Get is paired with a getInputBuf
+// and every Put with inputBuf.Free, so the buffer lifecycle is owned by the type
+// and callers never touch the pool directly.
 var inputBufPool sync.Pool
 
-func getInputBuf(size int) *[]byte {
+// inputBuf is a pooled frame-input buffer. Bytes exposes the backing slice and
+// Free returns it to the shared pool; Free must be called exactly once, after
+// the bytes are no longer read. Holding the pooled *[]byte (rather than the
+// slice) keeps Free allocation-free.
+type inputBuf struct {
+	ptr *[]byte
+}
+
+func getInputBuf(size int) inputBuf {
 	if v := inputBufPool.Get(); v != nil {
 		bufPtr := v.(*[]byte)
 		if cap(*bufPtr) >= size {
 			*bufPtr = (*bufPtr)[:size]
 
-			return bufPtr
+			return inputBuf{ptr: bufPtr}
 		}
 	}
 	buf := make([]byte, size)
 
-	return &buf
+	return inputBuf{ptr: &buf}
 }
+
+// Bytes returns the backing slice. It is only valid until Free is called.
+func (b inputBuf) Bytes() []byte { return *b.ptr }
+
+// Free returns the buffer to the shared pool. It must be called exactly once.
+func (b inputBuf) Free() { inputBufPool.Put(b.ptr) }
 
 type frame struct {
 	uncompressedSize int
@@ -102,13 +120,13 @@ func newPart(index int, parentCtx context.Context, workers int) (*part, context.
 	return p, ctx
 }
 
-func (p *part) addFrame(ctx context.Context, bufPtr *[]byte, n int, pool *sync.Pool) {
+func (p *part) addFrame(ctx context.Context, buf inputBuf, n int, pool *sync.Pool) {
 	frameInPart := &frame{uncompressedSize: n}
 	p.frames = append(p.frames, frameInPart)
-	uncompressedData := (*bufPtr)[:n]
+	uncompressedData := buf.Bytes()[:n]
 
 	p.compress.Go(func() error {
-		defer inputBufPool.Put(bufPtr)
+		defer buf.Free()
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -214,22 +232,22 @@ func readLoop(ctx context.Context, in io.Reader, cfg CompressConfig, hasher io.W
 			return err
 		}
 
-		bufPtr := getInputBuf(frameSize)
-		buf := *bufPtr
-		n, err := io.ReadFull(in, buf)
+		buf := getInputBuf(frameSize)
+		data := buf.Bytes()
+		n, err := io.ReadFull(in, data)
 
 		eof := errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 		if err != nil && !eof {
-			inputBufPool.Put(bufPtr)
+			buf.Free()
 
 			return fmt.Errorf("read frame: %w", err)
 		}
 
 		if n > 0 {
-			hasher.Write(buf[:n])
-			p.addFrame(compressCtx, bufPtr, n, compressors)
+			hasher.Write(data[:n])
+			p.addFrame(compressCtx, buf, n, compressors)
 		} else {
-			inputBufPool.Put(bufPtr)
+			buf.Free()
 		}
 
 		if eof {
