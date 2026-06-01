@@ -290,10 +290,25 @@ func readV5MappingSection(reader *bytes.Reader, blockSize, size uint64) (Mapping
 		encodedBuildIdx[i] = uint16(v)
 	}
 
-	offsets := make([]uint32, 0, int(n)*2+1)
-	lengths := make([]uint32, 0, int(n)*2+1)
-	storageCol := make([]uint32, 0, int(n)*2+1)
-	buildIdx := make([]uint16, 0, int(n)*2+1)
+	// Size the columns exactly: the Mapping is cached for ~25h, so an oversized
+	// buffer would stay resident (Clip keeps the backing array, Clone adds a
+	// transient copy). Count the mapped entries plus reconstructed nil gaps.
+	total := int(n)
+	var prevEnd uint64
+	for i := range int(n) {
+		if uint64(encodedOffsets[i]) > prevEnd {
+			total++
+		}
+		prevEnd = uint64(encodedOffsets[i]) + uint64(encodedLengths[i])
+	}
+	if prevEnd < sizeBlocks {
+		total++
+	}
+
+	offsets := make([]uint32, 0, total)
+	lengths := make([]uint32, 0, total)
+	storageCol := make([]uint32, 0, total)
+	buildIdx := make([]uint16, 0, total)
 	appendEntry := func(off, length, storage uint32, idx uint16) {
 		offsets = append(offsets, off)
 		lengths = append(lengths, length)

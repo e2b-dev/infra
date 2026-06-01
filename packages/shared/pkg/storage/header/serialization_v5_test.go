@@ -189,6 +189,35 @@ func TestV5_SmallerThanV4(t *testing.T) {
 	require.True(t, Equal(mappings, got.Mapping.Slice()))
 }
 
+// TestV5_ReconstructedColumnsExactlySized guards against cached headers
+// retaining over-allocated mapping columns. Alternating mapped/nil entries
+// force gap reconstruction, the path that previously over-allocated.
+func TestV5_ReconstructedColumnsExactlySized(t *testing.T) {
+	t.Parallel()
+
+	bs := uint64(4096)
+	a := uuid.New()
+	mappings := []BuildMap{
+		{Offset: 0, Length: bs, BuildId: uuid.Nil},
+		{Offset: bs, Length: bs, BuildId: a, BuildStorageOffset: 0},
+		{Offset: 2 * bs, Length: bs, BuildId: uuid.Nil},
+		{Offset: 3 * bs, Length: bs, BuildId: a, BuildStorageOffset: bs},
+	}
+	meta := &Metadata{BlockSize: bs, Size: 4 * bs, BuildId: a, BaseBuildId: a}
+	h := v5Header(t, meta, mappings, map[uuid.UUID]BuildData{a: {Size: int64(2 * bs)}})
+
+	data, err := SerializeHeader(h)
+	require.NoError(t, err)
+	got, err := DeserializeBytes(data)
+	require.NoError(t, err)
+
+	m := got.Mapping
+	assert.Equal(t, len(m.offsets), cap(m.offsets))
+	assert.Equal(t, len(m.lengths), cap(m.lengths))
+	assert.Equal(t, len(m.storage), cap(m.storage))
+	assert.Equal(t, len(m.buildIdx), cap(m.buildIdx))
+}
+
 func TestV5_RejectsOversizePrefix(t *testing.T) {
 	t.Parallel()
 
