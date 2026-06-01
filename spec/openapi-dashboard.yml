@@ -915,6 +915,76 @@ components:
           nullable: true
           description: Cursor to pass to the next list request, or `null` if there is no next page.
 
+    TemplateDetail:
+      type: object
+      description: Dashboard-shaped single-template read. Mirrors the infra-api `Template` schema fields the dashboard renders.
+      required:
+        - templateID
+        - buildID
+        - cpuCount
+        - memoryMB
+        - diskSizeMB
+        - public
+        - aliases
+        - names
+        - createdAt
+        - updatedAt
+        - lastSpawnedAt
+        - spawnCount
+        - buildCount
+        - envdVersion
+      properties:
+        templateID:
+          type: string
+          description: Identifier of the template.
+        buildID:
+          type: string
+          description: Identifier of the latest ready build for the template, or the zero UUID when none.
+        cpuCount:
+          $ref: "#/components/schemas/CPUCount"
+        memoryMB:
+          $ref: "#/components/schemas/MemoryMB"
+        diskSizeMB:
+          $ref: "#/components/schemas/DiskSizeMB"
+        public:
+          type: boolean
+          description: Whether the template is public or only accessible by the team.
+        aliases:
+          type: array
+          description: Aliases of the template.
+          deprecated: true
+          items:
+            type: string
+        names:
+          type: array
+          description: Names of the template (namespace/alias format when namespaced).
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+          description: Time when the template was created.
+        updatedAt:
+          type: string
+          format: date-time
+          description: Time when the template was last updated.
+        lastSpawnedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Time when the template was last used.
+        spawnCount:
+          type: integer
+          format: int64
+          description: Number of times the template was used.
+        buildCount:
+          type: integer
+          format: int32
+          description: Number of times the template was built.
+        envdVersion:
+          type: string
+          description: Envd version of the latest ready build, or an empty string when none.
+
     TemplateTagAssignment:
       type: object
       required:
@@ -1526,6 +1596,34 @@ paths:
                 $ref: "#/components/schemas/DefaultTemplatesResponse"
         "401":
           $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/{templateID}:
+    get:
+      summary: Get template
+      description: Returns a single template owned by the current team. Dashboard-shaped read, indexed by template ID.
+      tags: [templates]
+      security:
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+      responses:
+        "200":
+          description: Successfully returned the template.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateDetail"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
 
