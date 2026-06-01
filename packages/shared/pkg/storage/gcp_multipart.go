@@ -254,11 +254,6 @@ func (m *MultipartUploader) initiateUpload(ctx context.Context) (string, error) 
 }
 
 func (m *MultipartUploader) uploadPart(ctx context.Context, uploadID string, partNumber int, data []byte) (string, error) {
-	// Calculate MD5 for data integrity
-	hasher := md5.New()
-	hasher.Write(data)
-	md5Sum := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
-
 	url := fmt.Sprintf("%s/%s?partNumber=%d&uploadId=%s",
 		m.baseURL, m.objectName, partNumber, uploadID)
 
@@ -269,7 +264,8 @@ func (m *MultipartUploader) uploadPart(ctx context.Context, uploadID string, par
 
 	req.Header.Set("Authorization", "Bearer "+m.token)
 	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(data)))
-	req.Header.Set("Content-MD5", md5Sum)
+	sum := md5.Sum(data) //nolint:gosec // GCS multipart uses Content-MD5 for transport integrity.
+	req.Header.Set("Content-MD5", base64.StdEncoding.EncodeToString(sum[:]))
 
 	resp, err := m.client.Do(req)
 	if err != nil {
@@ -291,29 +287,57 @@ func (m *MultipartUploader) uploadPart(ctx context.Context, uploadID string, par
 	return etag, nil
 }
 
+type multiSliceReader struct {
+	slices [][]byte
+	idx    int
+	off    int
+}
+
+func (r *multiSliceReader) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		if r.idx >= len(r.slices) {
+			return 0, io.EOF
+		}
+
+		return 0, nil
+	}
+
+	var n int
+	for len(p) > 0 && r.idx < len(r.slices) {
+		current := r.slices[r.idx]
+		if r.off >= len(current) {
+			r.idx++
+			r.off = 0
+
+			continue
+		}
+
+		copied := copy(p, current[r.off:])
+		n += copied
+		r.off += copied
+		p = p[copied:]
+	}
+
+	if n > 0 {
+		return n, nil
+	}
+
+	return 0, io.EOF
+}
+
 // uploadPartSlices uploads a part from multiple byte slices without concatenating them.
-// It computes MD5 by hashing each slice and uses a ReaderFunc for retryable reads.
 func (m *MultipartUploader) uploadPartSlices(ctx context.Context, uploadID string, partNumber int, slices [][]byte) (string, error) {
-	// Compute MD5 and total length without copying
-	hasher := md5.New()
 	totalLen := 0
 	for _, s := range slices {
-		hasher.Write(s)
 		totalLen += len(s)
 	}
-	md5Sum := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
 
 	url := fmt.Sprintf("%s/%s?partNumber=%d&uploadId=%s",
 		m.baseURL, m.objectName, partNumber, uploadID)
 
 	// Use a ReaderFunc so the retryable client can replay the body on retries
 	bodyFn := func() (io.Reader, error) {
-		readers := make([]io.Reader, len(slices))
-		for i, s := range slices {
-			readers[i] = bytes.NewReader(s)
-		}
-
-		return io.MultiReader(readers...), nil
+		return &multiSliceReader{slices: slices}, nil
 	}
 
 	req, err := retryablehttp.NewRequestWithContext(ctx, "PUT", url, retryablehttp.ReaderFunc(bodyFn))
@@ -323,7 +347,11 @@ func (m *MultipartUploader) uploadPartSlices(ctx context.Context, uploadID strin
 
 	req.Header.Set("Authorization", "Bearer "+m.token)
 	req.Header.Set("Content-Length", fmt.Sprintf("%d", totalLen))
-	req.Header.Set("Content-MD5", md5Sum)
+	h := md5.New() //nolint:gosec // GCS multipart uses Content-MD5 for transport integrity.
+	for _, s := range slices {
+		_, _ = h.Write(s)
+	}
+	req.Header.Set("Content-MD5", base64.StdEncoding.EncodeToString(h.Sum(nil)))
 
 	resp, err := m.client.Do(req)
 	if err != nil {

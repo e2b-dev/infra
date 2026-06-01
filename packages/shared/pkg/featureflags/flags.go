@@ -268,6 +268,10 @@ var (
 	MaxConcurrentSnapshotBuildQueries = NewIntFlag("max-concurrent-snapshot-build-queries", 0)
 
 	MinChunkerReadSizeKB = NewIntFlag("min-chunker-read-size-kb", 16)
+
+	// MaxParallelBuildReadSegments limits concurrent backing reads within one fragmented build read.
+	// 1 or lower keeps the existing serial path.
+	MaxParallelBuildReadSegments = NewIntFlag("max-parallel-build-read-segments", 1)
 )
 
 // ReclaimConfigFlag holds per-step caps in milliseconds for the pre-pause
