@@ -23,6 +23,7 @@ var blockedTeamAllowlist = auth.BlockedTeamAllowlist{
 		"/templates/defaults":                {},
 		"/templates/:templateID/tags/exists": {},
 		"/templates/:templateID/tags/groups": {},
+		"/templates/:templateID/tags/:tag/assignments": {},
 	},
 }
 
