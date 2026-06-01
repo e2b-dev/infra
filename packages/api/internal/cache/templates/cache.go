@@ -116,7 +116,7 @@ func (c *TemplateCache) Get(ctx context.Context, templateID string, tag *string,
 		telemetry.WithTemplateID(templateID),
 		telemetry.WithTeamID(teamID.String()),
 		telemetry.WithClusterID(clusterID),
-		attribute.String("tag", sharedUtils.DerefOrDefault(tag, "")),
+		attribute.String("tag", sharedUtils.DerefOrDefault(tag, id.DefaultTag)),
 	))
 	defer span.End()
 
