@@ -114,8 +114,7 @@ func normalizeTagAssignmentsLimit(limit *api.TagAssignmentsLimit) int32 {
 func parseTagAssignmentsCursor(cursor *api.TagAssignmentsCursor) (time.Time, uuid.UUID, error) {
 	defaultID := uuid.MustParse(maxCursorID)
 	if cursor == nil || *cursor == "" {
-		// Sentinel: future timestamp + max UUID returns the newest rows on the first page.
-		return time.Now().UTC().Add(time.Hour), defaultID, nil
+		return time.Now().UTC(), defaultID, nil
 	}
 
 	parts := strings.SplitN(*cursor, "|", 2)
