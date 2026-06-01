@@ -1,33 +1,8 @@
 locals {
-  clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
+  clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${var.clickhouse_password}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
   redis_url                    = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
   redis_cluster_url            = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
   loki_url                     = "http://loki.service.consul:${var.loki_service_port.port}"
-  # Filter out empty / too-short HMAC secrets so that placeholder values left in
-  # Secret Manager on a fresh deploy don't get fed to legacy.NewVerifier, which
-  # rejects secrets shorter than 16 bytes and would fatal the api/dashboard-api
-  # jobs at startup.
-  default_legacy_hmac_secrets = [
-    for s in split(",", trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)) : s
-    if length(s) >= 16
-  ]
-  default_auth_provider_config = length(local.default_legacy_hmac_secrets) > 0 ? {
-    jwt = []
-    legacy = {
-      hmac = {
-        secrets = local.default_legacy_hmac_secrets
-      }
-    }
-    } : {
-    jwt    = []
-    legacy = null
-  }
-  # jsonencode/jsondecode strips Terraform's static type info from
-  # var.auth_provider_config so that the conditional below does not fail with
-  # "Inconsistent conditional result types" when the typed object literal in
-  # `default_auth_provider_config` (a tuple of objects) is compared with the
-  # variable's declared object type (a list of objects).
-  auth_provider_config = var.auth_provider_config != null ? jsondecode(jsonencode(var.auth_provider_config)) : local.default_auth_provider_config
 }
 
 # API
@@ -37,18 +12,6 @@ data "google_secret_manager_secret_version" "postgres_connection_string" {
 
 data "google_secret_manager_secret_version" "postgres_read_replica_connection_string" {
   secret = var.postgres_read_replica_connection_string_secret_version.secret
-}
-
-data "google_secret_manager_secret_version" "supabase_jwt_secrets" {
-  secret = var.supabase_jwt_secrets_secret_name
-}
-
-data "google_secret_manager_secret_version" "posthog_api_key" {
-  secret = var.posthog_api_key_secret_name
-}
-
-data "google_secret_manager_secret_version" "api_admin_token" {
-  secret = var.api_admin_token_secret_name
 }
 
 data "google_secret_manager_secret_version" "dashboard_api_admin_token" {
@@ -64,14 +27,6 @@ data "google_secret_manager_secret_version" "supabase_db_connection_string" {
 }
 
 # Telemetry
-data "google_secret_manager_secret_version" "analytics_collector_host" {
-  secret = var.analytics_collector_host_secret_name
-}
-
-data "google_secret_manager_secret_version" "analytics_collector_api_token" {
-  secret = var.analytics_collector_api_token_secret_name
-}
-
 data "google_secret_manager_secret_version" "launch_darkly_api_key" {
   secret = var.launch_darkly_api_key_secret_name
 }
@@ -121,45 +76,12 @@ module "api" {
   memory_mb = var.api_resources_memory_mb
   cpu_count = var.api_resources_cpu_count
 
-  domain_name                             = var.domain_name
-  orchestrator_port                       = var.orchestrator_port
-  otel_collector_grpc_endpoint            = "localhost:${var.otel_collector_grpc_port}"
-  logs_collector_address                  = "http://localhost:${var.logs_proxy_port.port}"
-  port_name                               = var.api_port.name
-  port_number                             = var.api_port.port
-  api_internal_grpc_port                  = var.api_internal_grpc_port
-  api_docker_image                        = data.google_artifact_registry_docker_image.api_image.self_link
-  postgres_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-  postgres_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
-  auth_provider_config                    = local.auth_provider_config
-  posthog_api_key                         = trimspace(data.google_secret_manager_secret_version.posthog_api_key.secret_data)
-  environment                             = var.environment
-  analytics_collector_host                = trimspace(data.google_secret_manager_secret_version.analytics_collector_host.secret_data)
-  analytics_collector_api_token           = trimspace(data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data)
-  nomad_acl_token                         = var.nomad_acl_token_secret
-  admin_token                             = trimspace(data.google_secret_manager_secret_version.api_admin_token.secret_data)
-  redis_url                               = local.redis_url
-  redis_cluster_url                       = local.redis_cluster_url
-  redis_tls_ca_base64                     = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-  clickhouse_connection_string            = local.clickhouse_connection_string
-  loki_url                                = local.loki_url
-  sandbox_access_token_hash_seed          = var.sandbox_access_token_hash_seed
-  db_max_open_connections                 = var.db_max_open_connections
-  db_min_idle_connections                 = var.db_min_idle_connections
-  auth_db_max_open_connections            = var.auth_db_max_open_connections
-  auth_db_min_idle_connections            = var.auth_db_min_idle_connections
-  db_migrator_docker_image                = data.google_artifact_registry_docker_image.db_migrator_image.self_link
-  launch_darkly_api_key                   = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
-  default_persistent_volume_type          = var.default_persistent_volume_type
-
-  job_env_vars = {
-    VOLUME_TOKEN_ISSUER           = var.volume_token_issuer
-    VOLUME_TOKEN_SIGNING_KEY      = var.volume_token_signing_key
-    VOLUME_TOKEN_SIGNING_KEY_NAME = var.volume_token_signing_key_name
-    VOLUME_TOKEN_DURATION         = var.volume_token_duration
-    VOLUME_TOKEN_SIGNING_METHOD   = var.volume_token_signing_method
-    CLIENT_PROXY_OIDC_ISSUER_URL  = var.client_proxy_oidc_issuer_url
-  }
+  port_name                = var.api_port.name
+  port_number              = var.api_port.port
+  api_internal_grpc_port   = var.api_internal_grpc_port
+  api_docker_image         = data.google_artifact_registry_docker_image.api_image.self_link
+  db_migrator_docker_image = data.google_artifact_registry_docker_image.db_migrator_image.self_link
+  job_env_vars             = var.api_env_vars
 }
 
 module "dashboard_api" {
@@ -179,7 +101,7 @@ module "dashboard_api" {
   auth_db_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
   supabase_db_connection_string          = trimspace(data.google_secret_manager_secret_version.supabase_db_connection_string.secret_data)
   clickhouse_connection_string           = local.clickhouse_connection_string
-  auth_provider_config                   = local.auth_provider_config
+  auth_provider_config                   = var.auth_provider_config
   redis_url                              = local.redis_url
   redis_cluster_url                      = local.redis_cluster_url
   redis_tls_ca_base64                    = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
@@ -345,7 +267,7 @@ module "otel_collector" {
   gcp_telemetry_project_id              = var.gcp_project_id
 
   clickhouse_username = var.clickhouse_username
-  clickhouse_password = random_password.clickhouse_password.result
+  clickhouse_password = var.clickhouse_password
   clickhouse_port     = var.clickhouse_server_port.port
   clickhouse_database = var.clickhouse_database
 }
@@ -580,12 +502,6 @@ module "loki" {
   loki_use_v13_schema_from = var.loki_use_v13_schema_from
 }
 
-# Create only one user for simplicity now, will separate users in following PRs
-resource "random_password" "clickhouse_password" {
-  length  = 32
-  special = false
-}
-
 resource "google_secret_manager_secret" "clickhouse_password" {
   secret_id = "${var.prefix}clickhouse-password"
 
@@ -597,12 +513,7 @@ resource "google_secret_manager_secret" "clickhouse_password" {
 resource "google_secret_manager_secret_version" "clickhouse_password_value" {
   secret = google_secret_manager_secret.clickhouse_password.id
 
-  secret_data = random_password.clickhouse_password.result
-}
-
-resource "random_password" "clickhouse_server_secret" {
-  length  = 32
-  special = false
+  secret_data = var.clickhouse_password
 }
 
 resource "google_secret_manager_secret" "clickhouse_server_secret" {
@@ -616,7 +527,7 @@ resource "google_secret_manager_secret" "clickhouse_server_secret" {
 resource "google_secret_manager_secret_version" "clickhouse_server_secret_value" {
   secret = google_secret_manager_secret.clickhouse_server_secret.id
 
-  secret_data = random_password.clickhouse_server_secret.result
+  secret_data = var.clickhouse_server_secret
 }
 
 resource "google_service_account" "clickhouse_service_account" {
@@ -648,13 +559,13 @@ module "clickhouse" {
   server_count          = var.clickhouse_server_count
 
   # Server
-  server_secret = random_password.clickhouse_server_secret.result
+  server_secret = var.clickhouse_server_secret
   cpu_count     = var.clickhouse_resources_cpu_count
   memory_mb     = var.clickhouse_resources_memory_mb
 
   clickhouse_database = var.clickhouse_database
   clickhouse_username = var.clickhouse_username
-  clickhouse_password = random_password.clickhouse_password.result
+  clickhouse_password = var.clickhouse_password
   clickhouse_port     = var.clickhouse_server_port.port
 
   clickhouse_metrics_port = var.clickhouse_metrics_port

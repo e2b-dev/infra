@@ -60,11 +60,25 @@ module "init" {
   allow_force_destroy = var.allow_force_destroy
 }
 
+resource "random_password" "volume_token_key" {
+  length  = 32
+  special = false
+
+  lifecycle {
+    ignore_changes = [length, special]
+  }
+}
+
 locals {
   redis_port            = 6379
   ingress_port          = 8080
   ingress_internal_port = 9435
   nomad_port            = 4646
+  clickhouse_port       = 9000
+  clickhouse_database   = "default"
+  loki_port             = 3100
+  logs_proxy_port       = 30006
+  otel_collector_port   = 4317
 
   # Filter out empty / too-short HMAC secrets so that placeholder values left in
   # AWS Secrets Manager on a fresh deploy don't get fed to legacy.NewVerifier,
@@ -97,6 +111,50 @@ locals {
   redis_cluster_url   = var.redis_managed ? "rediss://${module.redis[0].endpoint_address}:${local.redis_port}" : ""
   redis_tls_ca_base64 = var.redis_managed ? module.redis[0].endpoint_ca_pem_base64 : ""
   redis_url           = local.redis_cluster_url == "" ? "redis.service.consul:${local.redis_port}" : ""
+
+  clickhouse_connection_string = var.clickhouse_cluster_size > 0 ? "clickhouse://${module.init.clickhouse.username}:${module.init.clickhouse.password}@clickhouse.service.consul:${local.clickhouse_port}/${local.clickhouse_database}" : ""
+
+  # The Nomad jobspec template renders each entry as `${key} = "${value}"`,
+  # so values that themselves contain `"` characters (like a JSON blob)
+  # must have those quotes pre-escaped to produce valid HCL.
+  api_env_vars = merge({
+    ENVIRONMENT                    = var.environment
+    GIN_MODE                       = "release"
+    DOMAIN_NAME                    = var.domain_name
+    NOMAD_TOKEN                    = module.init.cluster.nomad_acl_token
+    ORCHESTRATOR_PORT              = tostring(var.orchestrator_port)
+    API_INTERNAL_GRPC_PORT         = tostring(var.api_internal_grpc_port)
+    ADMIN_TOKEN                    = module.init.admin_token
+    SANDBOX_ACCESS_TOKEN_HASH_SEED = module.init.sandbox_access_token_hash_seed
+    AUTH_PROVIDER_CONFIG           = replace(jsonencode(local.auth_provider_config), "\"", "\\\"")
+
+    POSTGRES_CONNECTION_STRING   = module.init.postgres_connection_string
+    DB_MAX_OPEN_CONNECTIONS      = tostring(var.db_max_open_connections)
+    DB_MIN_IDLE_CONNECTIONS      = tostring(var.db_min_idle_connections)
+    AUTH_DB_CONNECTION_STRING    = module.init.postgres_connection_string
+    AUTH_DB_MAX_OPEN_CONNECTIONS = tostring(var.auth_db_max_open_connections)
+    AUTH_DB_MIN_IDLE_CONNECTIONS = tostring(var.auth_db_min_idle_connections)
+
+    LOKI_URL                     = "http://loki.service.consul:${local.loki_port}"
+    CLICKHOUSE_CONNECTION_STRING = local.clickhouse_connection_string
+
+    LOGS_COLLECTOR_ADDRESS       = "http://localhost:${local.logs_proxy_port}"
+    OTEL_COLLECTOR_GRPC_ENDPOINT = "localhost:${local.otel_collector_port}"
+
+    REDIS_POOL_SIZE     = "160"
+    REDIS_CLUSTER_URL   = local.redis_cluster_url
+    REDIS_TLS_CA_BASE64 = local.redis_tls_ca_base64
+    REDIS_URL           = local.redis_url
+
+    LAUNCH_DARKLY_API_KEY = module.init.launch_darkly_api_key
+    TEMPLATE_BUCKET_NAME  = "skip"
+
+    VOLUME_TOKEN_ISSUER           = var.domain_name
+    VOLUME_TOKEN_SIGNING_KEY      = "HMAC:${base64encode(random_password.volume_token_key.result)}"
+    VOLUME_TOKEN_SIGNING_KEY_NAME = "e2b-volume-token-key"
+    VOLUME_TOKEN_DURATION         = "1h"
+    VOLUME_TOKEN_SIGNING_METHOD   = "HS256"
+  }, var.api_env_vars)
 }
 
 module "redis" {
@@ -202,14 +260,11 @@ module "nomad" {
   clickhouse_node_pool   = local.clickhouse_pool_name
   clickhouse_jobs_prefix = local.clickhouse_jobs_prefix
 
-  api_cluster_size               = var.api_cluster_size
-  api_internal_grpc_port         = var.api_internal_grpc_port
-  api_repository_name            = module.init.api_repository_name
-  db_migrator_repository_name    = module.init.db_migrator_repository_name
-  postgres_connection_string     = module.init.postgres_connection_string
-  auth_provider_config           = local.auth_provider_config
-  admin_token                    = module.init.admin_token
-  sandbox_access_token_hash_seed = module.init.sandbox_access_token_hash_seed
+  api_cluster_size            = var.api_cluster_size
+  api_internal_grpc_port      = var.api_internal_grpc_port
+  api_env_vars                = local.api_env_vars
+  api_repository_name         = module.init.api_repository_name
+  db_migrator_repository_name = module.init.db_migrator_repository_name
 
   ingress_count         = var.ingress_count
   ingress_port          = local.ingress_port
@@ -241,15 +296,21 @@ module "nomad" {
   redis_tls_ca_base64 = local.redis_tls_ca_base64
 
   loki_bucket_name = module.init.loki_bucket_name
+  loki_port        = local.loki_port
 
   clickhouse_cluster_size             = var.clickhouse_cluster_size
   clickhouse_username                 = module.init.clickhouse.username
   clickhouse_password                 = module.init.clickhouse.password
   clickhouse_server_secret            = module.init.clickhouse.server_secret
+  clickhouse_port                     = local.clickhouse_port
+  clickhouse_database                 = local.clickhouse_database
   clickhouse_backups_bucket_name      = module.init.clickhouse_backups_bucket_name
   clickhouse_migrator_repository_name = module.init.clickhouse_migrator_repository_name
 
   launch_darkly_api_key = module.init.launch_darkly_api_key
+
+  otel_collector_grpc_port = local.otel_collector_port
+  logs_proxy_port          = local.logs_proxy_port
 
   enable_otel_router_logs = var.enable_otel_router_logs
   otel_router_http_port   = var.otel_router_http_port
@@ -257,10 +318,6 @@ module "nomad" {
   enable_otel_router_metrics = var.enable_otel_router_metrics
   otel_router_grpc_port      = var.otel_router_grpc_port
 
-  db_max_open_connections      = var.db_max_open_connections
-  db_min_idle_connections      = var.db_min_idle_connections
-  auth_db_max_open_connections = var.auth_db_max_open_connections
-  auth_db_min_idle_connections = var.auth_db_min_idle_connections
 }
 
 resource "aws_security_group" "cluster_node" {

@@ -65,6 +65,11 @@ variable "api_internal_grpc_port" {
   default = 5009
 }
 
+variable "api_env_vars" {
+  type    = map(string)
+  default = {}
+}
+
 variable "client_proxy_oidc_issuer_url" {
   type    = string
   default = ""
@@ -101,10 +106,6 @@ variable "api_secret" {
   type = string
 }
 
-variable "api_admin_token_secret_name" {
-  type = string
-}
-
 variable "dashboard_api_admin_token_secret_name" {
   type = string
 }
@@ -125,10 +126,6 @@ variable "ory_issuer_url" {
 }
 
 variable "ory_project_api_token_secret_name" {
-  type = string
-}
-
-variable "sandbox_access_token_hash_seed" {
   type = string
 }
 
@@ -193,20 +190,12 @@ variable "google_service_account_key" {
   type = string
 }
 
-variable "posthog_api_key_secret_name" {
-  type = string
-}
-
 variable "postgres_connection_string_secret_name" {
   type = string
 }
 
 variable "postgres_read_replica_connection_string_secret_version" {
   type = any
-}
-
-variable "supabase_jwt_secrets_secret_name" {
-  type = string
 }
 
 variable "client_proxy_count" {
@@ -260,14 +249,6 @@ variable "logs_health_proxy_port" {
     port        = 44313
     health_path = "/health"
   }
-}
-
-variable "analytics_collector_host_secret_name" {
-  type = string
-}
-
-variable "analytics_collector_api_token_secret_name" {
-  type = string
 }
 
 variable "launch_darkly_api_key_secret_name" {
@@ -376,6 +357,16 @@ variable "clickhouse_resources_cpu_count" {
 variable "clickhouse_username" {
   type    = string
   default = "e2b"
+}
+
+variable "clickhouse_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "clickhouse_server_secret" {
+  type      = string
+  sensitive = true
 }
 
 variable "clickhouse_database" {
