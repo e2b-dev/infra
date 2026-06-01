@@ -175,10 +175,6 @@ message CachedBuildInfo {
   string build_id = 1;
   google.protobuf.Timestamp expiration_time = 2;
   SchedulingMetadata scheduling_metadata = 3;
-  uint64 memfile_cached_bytes = 4;
-  uint64 memfile_total_bytes = 5;
-  uint64 rootfs_cached_bytes = 6;
-  uint64 rootfs_total_bytes = 7;
 }
 
 message SandboxListCachedBuildsResponse {

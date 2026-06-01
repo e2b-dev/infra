@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -102,14 +101,6 @@ func NewDiffStore(
 
 type DiffStoreKey string
 
-type CachedBuildStats struct {
-	BuildID            string
-	MemfileCachedBytes uint64
-	MemfileTotalBytes  uint64
-	RootfsCachedBytes  uint64
-	RootfsTotalBytes   uint64
-}
-
 func GetDiffStoreKey(buildID string, diffType DiffType) DiffStoreKey {
 	return DiffStoreKey(fmt.Sprintf("%s/%s", buildID, diffType))
 }
@@ -178,51 +169,6 @@ func (s *DiffStore) Lookup(key DiffStoreKey) (Diff, bool) {
 	}
 
 	return item.Value(), true
-}
-
-func (s *DiffStore) CachedBuildStats(ctx context.Context) []CachedBuildStats {
-	byBuildID := make(map[string]*CachedBuildStats)
-	for key, item := range s.cache.Items() {
-		buildID, diffType, ok := strings.Cut(string(key), "/")
-		if !ok || item == nil || item.Value() == nil {
-			continue
-		}
-		stats := byBuildID[buildID]
-		if stats == nil {
-			stats = &CachedBuildStats{BuildID: buildID}
-			byBuildID[buildID] = stats
-		}
-
-		// FileSize is the on-disk (cached) size; for a partially-fetched diff
-		// loaded from storage it is smaller than the full logical size.
-		cachedSize, err := item.Value().FileSize(ctx)
-		if err != nil || cachedSize < 0 {
-			continue
-		}
-		totalSize := cachedSize
-		if sizer, ok := item.Value().(interface {
-			Size(ctx context.Context) (int64, error)
-		}); ok {
-			if s, err := sizer.Size(ctx); err == nil && s >= 0 {
-				totalSize = s
-			}
-		}
-		switch DiffType(diffType) {
-		case Memfile:
-			stats.MemfileCachedBytes = uint64(cachedSize)
-			stats.MemfileTotalBytes = uint64(totalSize)
-		case Rootfs:
-			stats.RootfsCachedBytes = uint64(cachedSize)
-			stats.RootfsTotalBytes = uint64(totalSize)
-		}
-	}
-
-	result := make([]CachedBuildStats, 0, len(byBuildID))
-	for _, stats := range byBuildID {
-		result = append(result, *stats)
-	}
-
-	return result
 }
 
 func (s *DiffStore) startDiskSpaceEviction(
