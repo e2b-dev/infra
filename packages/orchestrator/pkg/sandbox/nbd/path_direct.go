@@ -231,7 +231,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 			break
 		}
 
-		time.Sleep(100 * time.Nanosecond)
+		time.Sleep(100 * time.Microsecond)
 	}
 
 	telemetry.ReportEvent(ctx, "connected to NBD")
@@ -324,7 +324,7 @@ func disconnectNBDWithTimeout(ctx context.Context, deviceIndex uint32, timeout t
 		if err == nil && !s.Connected {
 			break
 		}
-		time.Sleep(100 * time.Nanosecond)
+		time.Sleep(100 * time.Microsecond)
 	}
 
 	return nil
