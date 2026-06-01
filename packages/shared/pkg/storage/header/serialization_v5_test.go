@@ -189,6 +189,44 @@ func TestV5_SmallerThanV4(t *testing.T) {
 	require.True(t, Equal(mappings, got.Mapping.Slice()))
 }
 
+// TestV5_ReconstructedColumnsExactlySized guards the heap fix: a V5-deserialized
+// header is cached for up to 25h, so its mapping columns must not retain
+// over-allocated backing arrays. The reconstruction inserts nil gaps, so this
+// uses a header with gaps to exercise that path.
+func TestV5_ReconstructedColumnsExactlySized(t *testing.T) {
+	t.Parallel()
+
+	bs := uint64(4096)
+	a := uuid.New()
+	const mapped = 10_000
+	// Alternate a mapped page with a nil gap so the reader reconstructs a gap
+	// entry before every mapped entry (the maximal-fragmentation shape).
+	mappings := make([]BuildMap, 0, mapped*2)
+	var off, sa uint64
+	for range mapped {
+		mappings = append(mappings, BuildMap{Offset: off, Length: bs, BuildId: uuid.Nil})
+		off += bs
+		mappings = append(mappings, BuildMap{Offset: off, Length: bs, BuildId: a, BuildStorageOffset: sa})
+		off += bs
+		sa += bs
+	}
+	meta := &Metadata{BlockSize: bs, Size: off, BuildId: a, BaseBuildId: a}
+	h := v5Header(t, meta, mappings, map[uuid.UUID]BuildData{a: {Size: int64(sa)}})
+
+	data, err := SerializeHeader(h)
+	require.NoError(t, err)
+	got, err := DeserializeBytes(data)
+	require.NoError(t, err)
+
+	require.True(t, Equal(mappings, got.Mapping.Slice()))
+
+	m := got.Mapping
+	assert.Equal(t, len(m.offsets), cap(m.offsets), "offsets column carries slack")
+	assert.Equal(t, len(m.lengths), cap(m.lengths), "lengths column carries slack")
+	assert.Equal(t, len(m.storage), cap(m.storage), "storage column carries slack")
+	assert.Equal(t, len(m.buildIdx), cap(m.buildIdx), "buildIdx column carries slack")
+}
+
 func TestV5_RejectsOversizePrefix(t *testing.T) {
 	t.Parallel()
 
