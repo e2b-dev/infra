@@ -52,12 +52,7 @@ func FromHeaders(buildID uuid.UUID, memfileHeader, rootfsHeader *header.Header, 
 // an ordered chain there is no natural tail to trim, so over chainLimit the
 // lightest layers are dropped.
 func artifactBuilds(h *header.Header, base, build uuid.UUID, injectBuildBytes uint64) ([]string, []uint64, int) {
-	bytesByID := make(map[uuid.UUID]uint64)
-	for _, m := range h.Mapping.All() {
-		if m.BuildId != uuid.Nil {
-			bytesByID[m.BuildId] += m.Length
-		}
-	}
+	bytesByID := h.Mapping.BytesByBuild()
 	if base != uuid.Nil {
 		if _, ok := bytesByID[base]; !ok {
 			bytesByID[base] = 0

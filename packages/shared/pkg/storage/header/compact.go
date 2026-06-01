@@ -167,6 +167,27 @@ func (m Mapping) All() iter.Seq2[int, BuildMap] {
 	}
 }
 
+// BytesByBuild sums the bytes attributed to each referenced build. It scans the
+// length and buildIdx columns directly (no BuildMap materialization or per-entry
+// uuid hashing), accumulating into a small per-build slice, so it stays cheap
+// even for mappings with millions of entries. Empty (nil-build) regions are
+// skipped. The returned map is non-nil and addressable by the caller.
+func (m Mapping) BytesByBuild() map[uuid.UUID]uint64 {
+	sums := make([]uint64, len(m.builds))
+	for i, bi := range m.buildIdx {
+		if bi != nilBuildIdx {
+			sums[bi] += uint64(m.lengths[i])
+		}
+	}
+
+	out := make(map[uuid.UUID]uint64, len(m.builds))
+	for bi, blocks := range sums {
+		out[m.builds[bi]] = blocks * m.blockSize
+	}
+
+	return out
+}
+
 // Slice materializes the full mapping as []BuildMap (~40 bytes/entry). Use
 // sparingly — for serialization fallbacks, CLI inspection, and tests. Hot
 // paths and the cached form should use At / All instead.
