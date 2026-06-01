@@ -1,5 +1,5 @@
-locals {
-  api_jobspec = templatefile("${path.module}/jobs/api.hcl", {
+resource "nomad_job" "api" {
+  jobspec = templatefile("${path.module}/jobs/api.hcl", {
     update_stanza      = var.update_stanza
     node_pool          = var.node_pool
     prevent_colocation = var.prevent_colocation
@@ -16,8 +16,4 @@ locals {
     job_env_vars             = var.job_env_vars
     db_migrator_env_vars     = var.db_migrator_env_vars
   })
-}
-
-resource "nomad_job" "api" {
-  jobspec = local.api_jobspec
 }
