@@ -59,17 +59,12 @@ func NewPool(
 		}
 
 		// Remote cluster
-		authOrgID := ""
-		if source.AuthOrgID != nil {
-			authOrgID = *source.AuthOrgID
-		}
-
 		config := clusterConfig{
 			endpoint:      source.Endpoint,
 			endpointTLS:   source.EndpointTls,
 			token:         source.Token,
 			sandboxDomain: source.SandboxProxyDomain,
-			oauthOrgID:    authOrgID,
+			oauthOrgID:    source.AuthOrgID,
 		}
 
 		c, err := newRemoteCluster(context.WithoutCancel(ctx), tel, source.ID, config)
@@ -194,7 +189,15 @@ func (d clustersSyncStore) PoolInsert(ctx context.Context, source queries.Cluste
 	logger.L().Info(ctx, "Cluster initialized successfully", logger.WithClusterID(clusterID))
 }
 
-func (d clustersSyncStore) PoolUpdate(_ context.Context, e *Cluster, _ queries.Cluster) {}
+func (d clustersSyncStore) PoolUpdate(ctx context.Context, e *Cluster, s queries.Cluster) {
+	needsRecreation := clusterRecreationNeeded(s, e.config)
+	if needsRecreation {
+		logger.L().Info(ctx, "Cluster configuration changed, recreating cluster", logger.WithClusterID(e.ID))
+		d.PoolRemove(ctx, e)
+		d.PoolInsert(ctx, s)
+		logger.L().Info(ctx, "Cluster recreated successfully", logger.WithClusterID(e.ID))
+	}
+}
 
 func (d clustersSyncStore) PoolRemove(ctx context.Context, cluster *Cluster) {
 	logger.L().Info(ctx, "Removing cluster from pool", logger.WithClusterID(cluster.ID))
@@ -205,4 +208,40 @@ func (d clustersSyncStore) PoolRemove(ctx context.Context, cluster *Cluster) {
 	}
 
 	d.clusters.Remove(cluster.ID.String())
+}
+
+func clusterRecreationNeeded(source queries.Cluster, existing clusterConfig) bool {
+	if source.Endpoint != existing.endpoint {
+		return true
+	}
+
+	if source.EndpointTls != existing.endpointTLS {
+		return true
+	}
+
+	if source.Token != existing.token {
+		return true
+	}
+
+	if !compareNilableStrings(source.SandboxProxyDomain, existing.sandboxDomain) {
+		return true
+	}
+
+	if !compareNilableStrings(source.AuthOrgID, existing.oauthOrgID) {
+		return true
+	}
+
+	return false
+}
+
+func compareNilableStrings(a, b *string) bool {
+	if (a == nil) != (b == nil) {
+		return false
+	}
+
+	if a != nil && b != nil && *a != *b {
+		return false
+	}
+
+	return true
 }

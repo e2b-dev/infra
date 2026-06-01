@@ -51,7 +51,7 @@ type clusterConfig struct {
 	token       string
 
 	sandboxDomain *string
-	oauthOrgID    string
+	oauthOrgID    *string
 }
 
 var (
@@ -194,7 +194,11 @@ func (c *Cluster) GetSandboxDomain() *string {
 }
 
 func (c *Cluster) GetOAuthOrgID() string {
-	return c.config.oauthOrgID
+	if c.config.oauthOrgID == nil {
+		return ""
+	}
+
+	return *c.config.oauthOrgID
 }
 
 func (c *Cluster) GetTemplateBuilderByNodeID(nodeID string) (*Instance, error) {
