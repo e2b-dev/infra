@@ -128,6 +128,10 @@ func (b *StorageDiff) CachePath(context.Context) (string, error) {
 }
 
 func (b *StorageDiff) FileSize(ctx context.Context) (int64, error) {
+	if b.chunker == nil {
+		return 0, nil
+	}
+
 	return b.chunker.FileSize(ctx)
 }
 

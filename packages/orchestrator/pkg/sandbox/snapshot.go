@@ -4,14 +4,17 @@ package sandbox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/scheduling"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -63,6 +66,9 @@ func NewSnapshotSchedulingMetadata(ctx context.Context, memfileDiffHeader, rootf
 	memfileHeader, memfileErr := memfileDiffHeader.WaitWithContext(ctx)
 	rootfsHeader, rootfsErr := rootfsDiffHeader.WaitWithContext(ctx)
 	if memfileErr != nil || rootfsErr != nil {
+		logger.L().Warn(ctx, "omitting scheduling metadata: diff header did not resolve",
+			zap.Error(errors.Join(memfileErr, rootfsErr)))
+
 		return nil
 	}
 
