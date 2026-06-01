@@ -176,7 +176,9 @@ func (c *rapidCachedSeekable) writeCache(ctx context.Context, path string, data 
 		return err
 	}
 
-	_ = c.index.Admit(ctx, path, int64(len(data)))
+	if err := c.index.Admit(ctx, path, int64(len(data))); err != nil {
+		return err
+	}
 
 	return nil
 }

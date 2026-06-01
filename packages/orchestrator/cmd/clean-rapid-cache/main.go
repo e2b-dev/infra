@@ -78,7 +78,11 @@ func clean(ctx context.Context, bucket string, prefix string, cutoff time.Time, 
 
 func cleanFromIndex(ctx context.Context, client *gcs.Client, bucket string, cutoff time.Time, maxDeletions int, dryRun bool, index storage.RapidCacheIndex) int {
 	candidates, err := index.Candidates(ctx, cutoff, int64(maxDeletions))
-	if err != nil || len(candidates) == 0 {
+	if err != nil {
+		log.Printf("error fetching candidates from index: %v", err)
+		return 0
+	}
+	if len(candidates) == 0 {
 		return 0
 	}
 
@@ -167,7 +171,7 @@ func newRapidIndex(ctx context.Context, bucket string) (storage.RapidCacheIndex,
 		RedisTLSCABase64: os.Getenv("REDIS_TLS_CA_BASE64"),
 	})
 	if err != nil {
-		return storage.NoopRapidCacheIndex(), func() {}
+		log.Fatalf("failed to create Redis client: %v", err)
 	}
 
 	return storage.NewRedisRapidCacheIndex(redisClient, bucket), func() {
