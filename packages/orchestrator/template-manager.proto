@@ -2,6 +2,7 @@ syntax = "proto3";
 
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
+import "orchestrator.proto";
 
 option go_package = "https://github.com/e2b-dev/infra/template-manager";
 
@@ -132,18 +133,9 @@ message TemplateBuildMetadata {
   // The API persists these into the env_builds row once the build finishes.
   string kernelVersion = 3;
   string firecrackerVersion = 4;
-  TemplateSchedulingMetadata schedulingMetadata = 5;
-}
-
-message TemplateSchedulingMetadata {
-  string baseBuildID = 1;
-  string buildID = 2;
-  repeated string memfileBuildIDs = 3;
-  repeated string rootfsBuildIDs = 4;
-  uint32 memfileDroppedBuilds = 5;
-  uint32 rootfsDroppedBuilds = 6;
-  repeated uint64 memfileBuildBytes = 7;
-  repeated uint64 rootfsBuildBytes = 8;
+  // Shared with the orchestrator so the API can match the build's scheduling
+  // metadata against create/resume/list responses without a separate format.
+  SchedulingMetadata schedulingMetadata = 5;
 }
 
 enum TemplateBuildState {

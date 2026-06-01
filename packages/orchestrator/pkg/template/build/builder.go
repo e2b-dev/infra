@@ -38,7 +38,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -105,7 +104,7 @@ type Result struct {
 	KernelVersion      string
 	FirecrackerVersion string
 	RootfsSizeMB       int64
-	SchedulingMetadata *templatemanager.TemplateSchedulingMetadata
+	SchedulingMetadata *orchestratorgrpc.SchedulingMetadata
 }
 
 // Build builds the template, uploads it to storage and returns the result metadata.
@@ -394,7 +393,7 @@ func runBuild(
 	}, nil
 }
 
-func templateSchedulingMetadata(ctx context.Context, cache *sbxtemplate.Cache, buildID string) *templatemanager.TemplateSchedulingMetadata {
+func templateSchedulingMetadata(ctx context.Context, cache *sbxtemplate.Cache, buildID string) *orchestratorgrpc.SchedulingMetadata {
 	// Use GetTemplate (not GetCachedTemplate): the optimize phase invalidates
 	// the final build from the cache, so re-fetch to resolve its headers.
 	t, err := cache.GetTemplate(ctx, buildID, false, false)
@@ -408,24 +407,7 @@ func templateSchedulingMetadata(ctx context.Context, cache *sbxtemplate.Cache, b
 		return nil
 	}
 
-	return toTemplateSchedulingMetadata(provider.SchedulingMetadata(ctx))
-}
-
-func toTemplateSchedulingMetadata(m *orchestratorgrpc.SchedulingMetadata) *templatemanager.TemplateSchedulingMetadata {
-	if m == nil {
-		return nil
-	}
-
-	return &templatemanager.TemplateSchedulingMetadata{
-		BaseBuildID:          m.GetBaseBuildId(),
-		BuildID:              m.GetBuildId(),
-		MemfileBuildIDs:      m.GetMemfileBuildIds(),
-		RootfsBuildIDs:       m.GetRootfsBuildIds(),
-		MemfileDroppedBuilds: m.GetMemfileDroppedBuilds(),
-		RootfsDroppedBuilds:  m.GetRootfsDroppedBuilds(),
-		MemfileBuildBytes:    m.GetMemfileBuildBytes(),
-		RootfsBuildBytes:     m.GetRootfsBuildBytes(),
-	}
+	return provider.SchedulingMetadata(ctx)
 }
 
 // forceSteps sets force for all steps after the first encounter.
