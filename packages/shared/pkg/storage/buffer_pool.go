@@ -20,11 +20,15 @@ func newBufferPool() *bufferPool {
 func (p *bufferPool) Get(size int) inputBuf {
 	if v := p.pool.Get(); v != nil {
 		bufPtr := v.(*[]byte)
-		if cap(*bufPtr) >= size {
+		if cap(*bufPtr) < size {
+			// Grow in place so the pooled *[]byte is reused rather than
+			// dropped; only the backing array is reallocated.
+			*bufPtr = make([]byte, size)
+		} else {
 			*bufPtr = (*bufPtr)[:size]
-
-			return inputBuf{pool: p, ptr: bufPtr}
 		}
+
+		return inputBuf{pool: p, ptr: bufPtr}
 	}
 	buf := make([]byte, size)
 
