@@ -24,7 +24,7 @@ func (s *Server) ListCachedBuilds(ctx context.Context, _ *emptypb.Empty) (*orche
 			ExpirationTime: timestamppb.New(item.ExpiresAt()),
 		}
 		if provider, ok := item.Value().(interface {
-			SchedulingMetadata(context.Context) *orchestrator.SchedulingMetadata
+			SchedulingMetadata(ctx context.Context) *orchestrator.SchedulingMetadata
 		}); ok {
 			info.SchedulingMetadata = provider.SchedulingMetadata(ctx)
 		}

@@ -402,7 +402,7 @@ func templateSchedulingMetadata(ctx context.Context, cache *sbxtemplate.Cache, b
 		return nil
 	}
 	provider, ok := t.(interface {
-		SchedulingMetadata(context.Context) *orchestratorgrpc.SchedulingMetadata
+		SchedulingMetadata(ctx context.Context) *orchestratorgrpc.SchedulingMetadata
 	})
 	if !ok {
 		return nil

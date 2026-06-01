@@ -224,7 +224,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	// memfile/rootfs devices (and their headers) are resolved.
 	var schedulingMetadata *orchestrator.SchedulingMetadata
 	if provider, ok := template.(interface {
-		SchedulingMetadata(context.Context) *orchestrator.SchedulingMetadata
+		SchedulingMetadata(ctx context.Context) *orchestrator.SchedulingMetadata
 	}); ok {
 		schedulingMetadata = provider.SchedulingMetadata(ctx)
 	}

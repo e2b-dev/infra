@@ -201,7 +201,7 @@ func (s *DiffStore) CachedBuildStats(ctx context.Context) []CachedBuildStats {
 		}
 		totalSize := cachedSize
 		if sizer, ok := item.Value().(interface {
-			Size(context.Context) (int64, error)
+			Size(ctx context.Context) (int64, error)
 		}); ok {
 			if s, err := sizer.Size(ctx); err == nil && s >= 0 {
 				totalSize = s
