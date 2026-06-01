@@ -300,6 +300,9 @@ func (o *Orchestrator) CreateSandbox(
 
 	nodeClusterID := clusters.WithClusterFallback(team.ClusterID)
 	clusterNodes := o.GetClusterNodes(nodeClusterID)
+	// No nodes are connected yet (e.g. right after startup before background
+	// discovery ran); trigger on-demand discovery so the first create doesn't
+	// fail. Locally, fall back to connecting directly to the local orchestrator.
 	if len(clusterNodes) == 0 {
 		if nodeClusterID == consts.LocalClusterID {
 			o.discoverNomadNodes(ctx)
@@ -329,11 +332,7 @@ func (o *Orchestrator) CreateSandbox(
 		affinityScores = o.placementAffinity.scores(ctx, placementCacheAffinityConfig, nodeClusterID, affinityBuildID)
 	}
 
-	if affinityScores == nil {
-		node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels)
-	} else {
-		node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels, affinityScores)
-	}
+	node, err = placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, team.SandboxSchedulingLabels, affinityScores)
 	if err != nil {
 		return sandbox.Sandbox{}, &api.APIError{
 			Code:      http.StatusInternalServerError,
