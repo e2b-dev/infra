@@ -1187,12 +1187,13 @@ func (s *Sandbox) Pause(
 	cleanup.AddNoContext(ctx, rootfsDiff.Close)
 
 	rootfsDiffHeader := NewResolvedDiffHeader(rootfsHeader)
-	// Derive scheduling metadata synchronously from the resolved parent memfile
-	// header and the new rootfs header so Pause does not block on the async
-	// memfile-dedup header. The parent memfile chain plus the new rootfs (which
-	// references the new build) is a superset of the new snapshot's chain, and
-	// max() yields the new generation.
-	schedulingMetadata := scheduling.FromHeaders(originalMemfile.Header(), rootfsHeader)
+	// Derive scheduling metadata synchronously from the resolved parent headers
+	// plus the new build (the last layer), so Pause never blocks on the async
+	// memfile-dedup header. The parent's referenced builds plus the new build
+	// are a superset of the new snapshot's referenced builds. Using the parent
+	// rootfs header (not the new one) keeps this correct even if the rootfs
+	// copy becomes async too.
+	schedulingMetadata := scheduling.FromHeaders(originalMemfile.Header(), originalRootfs.Header(), buildID)
 
 	metadataFileLink := template.NewLocalFileLink(cachePaths.CacheMetadata())
 	cleanup.AddNoContext(ctx, metadataFileLink.Close)

@@ -136,9 +136,8 @@ message TemplateBuildMetadata {
 }
 
 message TemplateSchedulingMetadata {
-  string baseBuildID = 1;
-  uint64 generation = 2;
-  repeated string chainBuildIDs = 3;
+  repeated string memfileBuildIDs = 1;
+  repeated string rootfsBuildIDs = 2;
 }
 
 enum TemplateBuildState {
