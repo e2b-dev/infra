@@ -35,6 +35,21 @@ resource "google_storage_bucket" "envs_docker_context" {
   labels = var.labels
 }
 
+resource "google_storage_bucket" "argocd_apps" {
+  name     = "${var.bucket_prefix}argocd-apps"
+  location = var.gcp_region
+
+  public_access_prevention    = "enforced"
+  storage_class               = "STANDARD"
+  uniform_bucket_level_access = true
+
+  labels = var.labels
+
+  versioning {
+    enabled = true
+  }
+}
+
 resource "google_storage_bucket" "setup_bucket" {
   location = var.gcp_region
   name     = "${var.bucket_prefix}instance-setup"

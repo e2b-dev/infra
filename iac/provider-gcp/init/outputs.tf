@@ -90,6 +90,10 @@ output "envs_docker_context_bucket_name" {
   value = google_storage_bucket.envs_docker_context.name
 }
 
+output "argocd_apps_bucket_name" {
+  value = google_storage_bucket.argocd_apps.name
+}
+
 output "cluster_setup_bucket_name" {
   value = google_storage_bucket.setup_bucket.name
 }
