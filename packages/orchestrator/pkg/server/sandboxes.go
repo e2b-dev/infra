@@ -111,6 +111,9 @@ func (s *Server) createSandboxFromRootfs(
 		},
 		req.GetSandbox(),
 		nil,
+		// Defer marking running until envd is ready, matching ResumeSandbox so a
+		// rebooted sandbox isn't visible/routable before it can serve traffic.
+		sandbox.WithDeferredMarkRunning(),
 	)
 	if err != nil {
 		return nil, err
@@ -128,6 +131,8 @@ func (s *Server) createSandboxFromRootfs(
 
 		return nil, errors.Join(fmt.Errorf("wait for envd after reboot: %w", err), closeErr)
 	}
+
+	s.sandboxFactory.Sandboxes.MarkRunning(ctx, sbx)
 
 	go sbx.Checks.Start(context.WithoutCancel(ctx))
 
