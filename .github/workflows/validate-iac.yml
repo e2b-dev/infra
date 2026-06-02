@@ -38,8 +38,7 @@ jobs:
           terraform init -backend=false
           terraform validate
 
-  terraform-validation:
-    name: Validate terraform
+  validate_terraform:
     needs: run-terraform-validation
     if: ${{ always() }}
     runs-on: ubuntu-latest

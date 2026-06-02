@@ -203,8 +203,7 @@ jobs:
           disable_search: true
           report_type: test_results
 
-  arm64-tests:
-    name: ARM64 tests
+  arm64_tests:
     needs:
       - cross-compile
       - arm64-unit-tests

@@ -42,10 +42,26 @@ jobs:
               - 'go.work'
               - 'go.work.sum'
               - '.golangci.yml'
+            generated-inputs:
+              - 'packages/**'
+              - 'tests/**'
+              - 'spec/**'
+              - 'iac/**'
+              - 'go.work'
+              - 'go.work.sum'
+              - 'Makefile'
+              - '.golangci.yml'
+              - '.mockery.yaml'
+              - 'packages/**/.mockery.yaml'
+              - 'scripts/fix-tracers.sh'
+              - 'scripts/fix-meters.sh'
+              - 'scripts/golang-dependencies-integrity.sh'
 
   generated-code-check:
+    needs: [detect-changes]
     uses: ./.github/workflows/pr-no-generated-changes.yml
     with:
+      run-check: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'generated-inputs') }}
       commit: false
 
   unit-tests:

@@ -56,7 +56,6 @@ jobs:
           verify: 'false'
 
   lint:
-    name: Lint
     needs:
       - detect-modules
       - golangci-lint
