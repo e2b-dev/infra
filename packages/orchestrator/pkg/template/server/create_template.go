@@ -106,6 +106,20 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	}
 
 	logs := buildlogger.NewLogEntryLogger()
+	if err := s.enterBuildStart(ctx, "template-create"); err != nil {
+		return nil, err
+	}
+	buildStartReleased := false
+	releaseBuildStart := func() {
+		if buildStartReleased {
+			return
+		}
+
+		s.leaveBuildStart()
+		buildStartReleased = true
+	}
+	defer releaseBuildStart()
+
 	buildInfo, err := s.buildCache.Create(template.TeamID, metadata.BuildID, logs)
 	if err != nil {
 		return nil, fmt.Errorf("error while creating build cache: %w", err)
@@ -123,6 +137,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 
 	s.wg.Add(1)
 	s.activeBuilds.Add(1)
+	releaseBuildStart()
 	go func(ctx context.Context) {
 		defer s.wg.Done()
 		defer s.activeBuilds.Add(-1)

@@ -47,6 +47,9 @@ type ServerStore struct {
 
 	wg           *sync.WaitGroup // wait group for running builds
 	activeBuilds atomic.Int64    // counter for active builds (for debugging)
+	drainOnce    sync.Once
+	drainDone    chan struct{}
+	buildStartMu sync.RWMutex
 
 	closers []closeable
 }
@@ -123,6 +126,7 @@ func New(
 		templateStorage:   templatePersistence,
 		buildStorage:      buildPersistence,
 		wg:                &sync.WaitGroup{},
+		drainDone:         make(chan struct{}),
 		closers:           closers,
 	}
 
@@ -130,6 +134,8 @@ func New(
 }
 
 func (s *ServerStore) Close(ctx context.Context) error {
+	s.StartDraining(ctx)
+
 	select {
 	case <-ctx.Done():
 		return errors.New("force exit, not waiting for builds to finish")
@@ -150,6 +156,11 @@ func (s *ServerStore) Close(ctx context.Context) error {
 }
 
 func (s *ServerStore) Wait(ctx context.Context) error {
+	s.StartDraining(ctx)
+	if err := s.waitBuildStarts(ctx); err != nil {
+		return err
+	}
+
 	select {
 	case <-ctx.Done():
 		return errors.New("force exit, not waiting for builds to finish")

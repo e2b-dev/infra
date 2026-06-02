@@ -174,13 +174,13 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 }
 
 func (s *Server) Close(ctx context.Context) error {
-	s.startDraining(ctx)
+	s.StartDraining(ctx)
 	s.uploadedBuilds.Stop()
 
 	return nil
 }
 
-func (s *Server) startDraining(ctx context.Context) {
+func (s *Server) StartDraining(ctx context.Context) {
 	s.closeOnce.Do(func() {
 		logger.L().Info(ctx, "orchestrator server entering sandbox drain mode",
 			zap.Int("live_sandboxes", s.sandboxFactory.Sandboxes.Count()),
@@ -190,7 +190,7 @@ func (s *Server) startDraining(ctx context.Context) {
 }
 
 func (s *Server) DrainSandboxes(ctx context.Context) error {
-	s.startDraining(ctx)
+	s.StartDraining(ctx)
 	if err := s.waitSandboxStarts(ctx); err != nil {
 		return err
 	}
@@ -240,7 +240,7 @@ func (s *Server) DrainSandboxes(ctx context.Context) error {
 }
 
 func (s *Server) ForceStopSandboxes(ctx context.Context) error {
-	s.startDraining(ctx)
+	s.StartDraining(ctx)
 	if err := s.waitSandboxStarts(ctx); err != nil {
 		return err
 	}

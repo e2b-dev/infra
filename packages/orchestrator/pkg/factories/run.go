@@ -782,6 +782,8 @@ func run(config cfg.Config, opts Options) (success bool) {
 		}
 	}
 
+	orchestratorService.StartDraining(ctx)
+
 	// Wait for services to be drained before closing them
 	if tmpl != nil {
 		err := tmpl.Wait(closeCtx)
@@ -799,27 +801,21 @@ func run(config cfg.Config, opts Options) (success bool) {
 		}
 	}
 
-	closers = append(closers, closer{"sandbox drain", func(context.Context) error {
-		logger.L().Info(ctx, "Starting sandbox drain phase",
-			zap.Bool("forced", config.ForceStop),
-			zap.Int("sandbox_count", sandboxes.Count()),
-		)
+	logger.L().Info(ctx, "Starting sandbox drain phase",
+		zap.Bool("forced", config.ForceStop),
+		zap.Int("sandbox_count", sandboxes.Count()),
+	)
 
-		if config.ForceStop {
-			forceStopSandboxes()
-
-			return nil
-		}
-
+	if config.ForceStop {
+		forceStopSandboxes()
+	} else {
 		err := orchestratorService.DrainSandboxes(closeCtx)
 		if err != nil {
 			logger.L().Warn(ctx, "sandbox drain phase did not complete gracefully; forcing sandbox shutdown", zap.Error(err))
 
 			forceStopSandboxes()
 		}
-
-		return nil
-	}})
+	}
 
 	slices.Reverse(closers)
 	for _, closer := range closers {
