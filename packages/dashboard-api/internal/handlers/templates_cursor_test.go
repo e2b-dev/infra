@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"errors"
 	"testing"
 	"time"
 
@@ -32,6 +31,8 @@ func TestParseTemplatesSort(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := parseTemplatesSort(tt.input)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -47,7 +48,7 @@ func TestParseTemplatesSort(t *testing.T) {
 func TestTemplatesCursorRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	token := api.TemplatesCursor(formatTemplatesCursor(templatesSortNameAsc, "org/my-template", "env-abc"))
+	token := formatTemplatesCursor(templatesSortNameAsc, "org/my-template", "env-abc")
 
 	value, id, err := parseTemplatesCursor(&token, templatesSortNameAsc)
 	require.NoError(t, err)
@@ -72,19 +73,19 @@ func TestParseTemplatesCursor(t *testing.T) {
 	assert.Nil(t, id)
 
 	// Sort mismatch is rejected with a dedicated error.
-	mismatched := api.TemplatesCursor(formatTemplatesCursor(templatesSortNameAsc, "x", "env-1"))
+	mismatched := formatTemplatesCursor(templatesSortNameAsc, "x", "env-1")
 	_, _, err = parseTemplatesCursor(&mismatched, templatesSortUpdatedAtDesc)
-	assert.ErrorIs(t, err, errTemplatesCursorSortMismatch)
+	require.ErrorIs(t, err, errTemplatesCursorSortMismatch)
 
 	// Malformed cursors are rejected.
 	malformed := api.TemplatesCursor("not-a-cursor")
 	_, _, err = parseTemplatesCursor(&malformed, templatesSortUpdatedAtDesc)
-	assert.ErrorIs(t, err, errInvalidTemplatesCursor)
+	require.ErrorIs(t, err, errInvalidTemplatesCursor)
 
 	// Empty id segment is rejected.
 	noID := api.TemplatesCursor("updated_at_desc|2026-05-30T00:00:00Z|")
 	_, _, err = parseTemplatesCursor(&noID, templatesSortUpdatedAtDesc)
-	assert.ErrorIs(t, err, errInvalidTemplatesCursor)
+	require.ErrorIs(t, err, errInvalidTemplatesCursor)
 }
 
 func TestNormalizeTemplatesLimit(t *testing.T) {
@@ -151,7 +152,7 @@ func TestCursorTypedParsers(t *testing.T) {
 
 	bad := "not-a-number"
 	_, err = cursorInt64(&bad)
-	assert.ErrorIs(t, err, errInvalidTemplatesCursor)
+	require.ErrorIs(t, err, errInvalidTemplatesCursor)
 
 	ts := "2026-05-30T12:34:56.123456789Z"
 	parsed, err := cursorTime(&ts)
@@ -160,10 +161,10 @@ func TestCursorTypedParsers(t *testing.T) {
 
 	badTs := "nope"
 	_, err = cursorTime(&badTs)
-	assert.ErrorIs(t, err, errInvalidTemplatesCursor)
+	require.ErrorIs(t, err, errInvalidTemplatesCursor)
 
 	// Sanity: the sentinel errors are distinct.
-	assert.False(t, errors.Is(errInvalidTemplatesCursor, errTemplatesCursorSortMismatch))
+	assert.NotErrorIs(t, errInvalidTemplatesCursor, errTemplatesCursorSortMismatch)
 }
 
 func TestTemplateRowFieldsToAPI(t *testing.T) {
