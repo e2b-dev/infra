@@ -379,16 +379,17 @@ module "nomad" {
   loki_service_port        = var.loki_service_port
 
   # Otel Colelctor
-  otel_collector_resources_memory_mb    = var.otel_collector_resources_memory_mb
-  otel_collector_resources_cpu_count    = var.otel_collector_resources_cpu_count
-  otel_collector_grpc_port              = local.otel_collector_grpc_port
-  logs_proxy_port                       = { name = "logs", port = local.logs_proxy_port }
-  enable_otel_router_logs               = var.enable_otel_router_logs
-  otel_router_http_port                 = var.otel_router_http_port
-  enable_otel_router_metrics            = var.enable_otel_router_metrics
-  otel_router_grpc_port                 = var.otel_router_grpc_port
-  enable_gcp_telemetry_metrics          = var.enable_gcp_telemetry_metrics
-  enable_gcp_telemetry_external_metrics = var.enable_gcp_telemetry_external_metrics
+  otel_collector_resources_memory_mb       = var.otel_collector_resources_memory_mb
+  otel_collector_resources_cpu_count       = var.otel_collector_resources_cpu_count
+  otel_collector_grpc_port                 = local.otel_collector_grpc_port
+  logs_proxy_port                          = { name = "logs", port = local.logs_proxy_port }
+  enable_otel_router_logs                  = var.enable_otel_router_logs
+  otel_router_http_port                    = var.otel_router_http_port
+  enable_otel_router_metrics               = var.enable_otel_router_metrics
+  otel_router_grpc_port                    = var.otel_router_grpc_port
+  enable_gcp_telemetry_metrics             = var.enable_gcp_telemetry_metrics
+  enable_gcp_telemetry_external_metrics    = var.enable_gcp_telemetry_external_metrics
+  external_clickhouse_writer_map_secret_id = var.external_clickhouse_writer_map_secret_id
 
   # Dashboard API
   dashboard_api_count                          = var.dashboard_api_count

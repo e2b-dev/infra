@@ -2,6 +2,8 @@ locals {
   clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${var.clickhouse_password}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
   redis_url                    = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
   redis_cluster_url            = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
+
+  extra_clickhouse_exporters = length(data.google_secret_manager_secret_version.external_clickhouse_writer_map) > 0 ? try(jsondecode(data.google_secret_manager_secret_version.external_clickhouse_writer_map[0].secret_data), {}) : {}
 }
 
 # API
@@ -28,6 +30,11 @@ data "google_secret_manager_secret_version" "supabase_db_connection_string" {
 # Telemetry
 data "google_secret_manager_secret_version" "launch_darkly_api_key" {
   secret = var.launch_darkly_api_key_secret_name
+}
+
+data "google_secret_manager_secret_version" "external_clickhouse_writer_map" {
+  count  = var.external_clickhouse_writer_map_secret_id != "" ? 1 : 0
+  secret = var.external_clickhouse_writer_map_secret_id
 }
 
 provider "nomad" {
@@ -262,6 +269,8 @@ module "otel_collector" {
   clickhouse_password = var.clickhouse_password
   clickhouse_port     = var.clickhouse_server_port.port
   clickhouse_database = var.clickhouse_database
+
+  extra_clickhouse_exporters = local.extra_clickhouse_exporters
 }
 
 module "otel_collector_nomad_server" {

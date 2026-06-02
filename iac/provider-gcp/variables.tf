@@ -402,6 +402,12 @@ variable "enable_gcp_telemetry_external_metrics" {
   description = "Enable exporting external e2b.* metrics to Google Cloud Monitoring. Requires enable_gcp_telemetry_metrics."
 }
 
+variable "external_clickhouse_writer_map_secret_id" {
+  type        = string
+  default     = ""
+  description = "Optional fully-qualified Secret Manager secret name for the external writer-DSN map. When empty, the otel-collector runs with the local-only exporter."
+}
+
 variable "clickhouse_resources_memory_mb" {
   type    = number
   default = 8192

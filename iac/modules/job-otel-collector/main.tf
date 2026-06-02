@@ -13,6 +13,8 @@ locals {
       clickhouse_host     = var.clickhouse_host
       clickhouse_database = var.clickhouse_database
 
+      extra_clickhouse_exporters = var.extra_clickhouse_exporters
+
       enable_otel_router_metrics = var.enable_otel_router_metrics
       otel_router_grpc_port      = var.otel_router_grpc_port
 
@@ -154,4 +156,11 @@ variable "gcp_telemetry_project_id" {
   type        = string
   default     = ""
   description = "Google Cloud project ID used for native Cloud Monitoring metric export. Required when enable_gcp_telemetry_metrics is true."
+}
+
+variable "extra_clickhouse_exporters" {
+  type        = map(string)
+  default     = {}
+  sensitive   = true
+  description = "Optional additive ClickHouse exporters. Each entry becomes a clickhouse/<name> exporter on the metrics/external pipeline, in addition to the existing clickhouse exporter. When empty (default), behavior is byte-identical to today."
 }
