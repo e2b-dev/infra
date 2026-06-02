@@ -145,7 +145,7 @@ func (c *cachedSeekable) openReaderUncompressed(ctx context.Context, off, length
 
 	if !skipCacheWriteback(ctx) {
 		rc = newCaptureReader(rc, int(length), false,
-			c.uncompressedChunkWriteback(chunkPath, off, length, innerSource, trace.SpanContextFromContext(ctx)))
+			c.uncompressedChunkWriteback(chunkPath, off, length, innerSource))
 	}
 
 	return rc, innerSource, nil
@@ -173,7 +173,7 @@ func withNFSGauge(ctx context.Context, rc RangeReader) RangeReader {
 // the captured chunk to the NFS cache in a detached goroutine. Best-effort:
 // a short capture (e.g. upstream truncation) is dropped silently — a streaming
 // reader always ends in EOF, so byte count is the only reliable signal.
-func (c *cachedSeekable) uncompressedChunkWriteback(chunkPath string, off, expectedLen int64, src Source, fetchSpan trace.SpanContext) func(context.Context, []byte) {
+func (c *cachedSeekable) uncompressedChunkWriteback(chunkPath string, off, expectedLen int64, src Source) func(context.Context, []byte) {
 	return func(ctx context.Context, captured []byte) {
 		if !isCompleteRead(len(captured), int(expectedLen), nil) {
 			return

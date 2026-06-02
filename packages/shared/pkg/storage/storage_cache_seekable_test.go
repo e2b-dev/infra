@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // testCache returns a cachedSeekable with a fresh temp dir, the given chunk
@@ -634,7 +633,7 @@ func TestCacheWriteThroughReader(t *testing.T) {
 		inner := bytesRangeReader(data)
 
 		r := newCaptureReader(inner, len(data), false,
-			c.uncompressedChunkWriteback(c.makeChunkFilename(0), 0, int64(len(data)), SourceFS, trace.SpanContext{}))
+			c.uncompressedChunkWriteback(c.makeChunkFilename(0), 0, int64(len(data)), SourceFS))
 
 		got, err := io.ReadAll(r)
 		require.NoError(t, err)
@@ -658,7 +657,7 @@ func TestCacheWriteThroughReader(t *testing.T) {
 		inner := bytesRangeReader([]byte{0xAA, 0xBB})
 
 		r := newCaptureReader(inner, 5, false,
-			c.uncompressedChunkWriteback(c.makeChunkFilename(0), 0, 5, SourceFS, trace.SpanContext{}))
+			c.uncompressedChunkWriteback(c.makeChunkFilename(0), 0, 5, SourceFS))
 
 		got, err := io.ReadAll(r)
 		require.NoError(t, err)
@@ -679,7 +678,7 @@ func TestCacheWriteThroughReader(t *testing.T) {
 		inner := bytesRangeReader(data)
 
 		r := newCaptureReader(inner, len(data), false,
-			c.uncompressedChunkWriteback(c.makeChunkFilename(0), 0, int64(len(data)), SourceFS, trace.SpanContext{}))
+			c.uncompressedChunkWriteback(c.makeChunkFilename(0), 0, int64(len(data)), SourceFS))
 
 		// Read only 2 of 5 bytes, then close without reaching EOF.
 		buf := make([]byte, 2)

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // Precomputed OTEL attributes for compressed cache reads (avoids per-read allocation).
@@ -76,7 +75,7 @@ func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64
 	src := raw
 	if !skipCacheWriteback(ctx) {
 		src = newCaptureReader(raw, r.Length, true,
-			c.compressedFrameWriteback(path, offsetU, r.Length, innerSource, ct, trace.SpanContextFromContext(ctx)))
+			c.compressedFrameWriteback(path, offsetU, r.Length, innerSource, ct))
 	}
 
 	dec, err := newDecompressReader(src, ct, innerSource, c.objType)
@@ -93,7 +92,7 @@ func (c *cachedSeekable) openReaderCompressed(ctx context.Context, offsetU int64
 // persists the captured frame to the NFS cache in a detached goroutine.
 // Best-effort: a short capture is logged and skipped — the caller already
 // got valid decompressed bytes.
-func (c *cachedSeekable) compressedFrameWriteback(framePath string, offset int64, expectedSize int, src Source, codec CompressionType, fetchSpan trace.SpanContext) func(context.Context, []byte) {
+func (c *cachedSeekable) compressedFrameWriteback(framePath string, offset int64, expectedSize int, src Source, codec CompressionType) func(context.Context, []byte) {
 	return func(ctx context.Context, frame []byte) {
 		if !isCompleteRead(len(frame), expectedSize, nil) {
 			recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpOpenRangeReader,
