@@ -124,9 +124,11 @@ tf-init:
 init: tf-init
 	@ $(tf_vars) $(TF) apply -target=module.init -auto-approve -input=false -compact-warnings
 
-	# The e2b-orch node image is now built by the packer_image resource during the
-	# regular `make plan && make apply` (Terraform drives Packer via the toowoxx/packer
-	# provider). No separate `packer build` step is needed here.
+	# Install the Packer plugins (googlecompute) into the global Packer plugin cache. The
+	# e2b-orch node image itself is built by the packer_image resource during the regular
+	# `make plan && make apply` (Terraform drives Packer via the toowoxx/packer provider).
+	@ $(MAKE) -C nomad-cluster-disk-image init
+
 	@ gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
 .PHONY: state-migrate

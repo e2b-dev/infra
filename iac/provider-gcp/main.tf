@@ -50,10 +50,11 @@ provider "google-beta" {
   zone    = var.gcp_zone
 }
 
-# Use the operator's own Packer binary (resolved on PATH via data.external.packer_binary
-# in packer-image.tf) rather than the provider's embedded, BUSL-pinned pre-1.10 Packer.
+# Use the operator's Packer from PATH (pinned in .tool-versions) rather than the
+# provider's embedded, BUSL-pinned pre-1.10 Packer. `make init` installs the required
+# plugins into the global Packer plugin cache that this relies on.
 provider "packer" {
-  packer_binary = data.external.packer_binary.result.path
+  packer_binary = "packer"
 }
 
 data "google_secret_manager_secret_version" "routing_domains" {
