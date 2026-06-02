@@ -18,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/builderrors"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/cache"
 	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
@@ -47,6 +48,9 @@ type ServerStore struct {
 
 	wg           *sync.WaitGroup // wait group for running builds
 	activeBuilds atomic.Int64    // counter for active builds (for debugging)
+	drainOnce    sync.Once
+	drainDone    chan struct{}
+	buildStartMu sync.RWMutex
 
 	closers []closeable
 }
@@ -123,6 +127,7 @@ func New(
 		templateStorage:   templatePersistence,
 		buildStorage:      buildPersistence,
 		wg:                &sync.WaitGroup{},
+		drainDone:         make(chan struct{}),
 		closers:           closers,
 	}
 
@@ -130,6 +135,8 @@ func New(
 }
 
 func (s *ServerStore) Close(ctx context.Context) error {
+	s.StartDraining(ctx)
+
 	select {
 	case <-ctx.Done():
 		return errors.New("force exit, not waiting for builds to finish")
@@ -149,21 +156,68 @@ func (s *ServerStore) Close(ctx context.Context) error {
 	}
 }
 
-func (s *ServerStore) Wait(ctx context.Context) error {
+func (s *ServerStore) Wait(ctx context.Context, forced bool) error {
+	s.StartDraining(ctx)
+	logCtx := ctx
+	if forced {
+		logCtx = context.WithoutCancel(ctx)
+		s.cancelRunningBuilds(logCtx)
+	}
+
+	if err := s.waitBuildStarts(ctx); err != nil {
+		return err
+	}
+	if forced {
+		s.cancelRunningBuilds(logCtx)
+	}
+
+	s.logger.Info(logCtx, "Waiting for all build jobs to finish", zap.Int64("active_builds", s.activeBuilds.Load()))
+	if err := waitBuildGroup(ctx, s.wg); err != nil {
+		return err
+	}
+
+	if !forced && !env.IsLocal() {
+		s.logger.Info(logCtx, "Waiting for consumers to check build status")
+		time.Sleep(15 * time.Second)
+	}
+
+	s.logger.Info(logCtx, "Template build queue cleaned")
+
+	return nil
+}
+
+func waitBuildGroup(ctx context.Context, wg *sync.WaitGroup) error {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	default:
+	}
+
 	select {
 	case <-ctx.Done():
-		return errors.New("force exit, not waiting for builds to finish")
-	default:
-		s.logger.Info(ctx, "Waiting for all build jobs to finish", zap.Int64("active_builds", s.activeBuilds.Load()))
-		s.wg.Wait()
-
-		if !env.IsLocal() {
-			s.logger.Info(ctx, "Waiting for consumers to check build status")
-			time.Sleep(15 * time.Second)
-		}
-
-		s.logger.Info(ctx, "Template build queue cleaned")
-
+		return fmt.Errorf("waiting for template builds: %w", ctx.Err())
+	case <-done:
 		return nil
 	}
+}
+
+func (s *ServerStore) cancelRunningBuilds(ctx context.Context) {
+	if s.buildCache == nil {
+		return
+	}
+
+	canceled := s.buildCache.FailRunning(&templatemanager.TemplateBuildStatusReason{
+		Message: builderrors.ErrCanceled.Error(),
+	})
+	if canceled == 0 {
+		return
+	}
+
+	s.logger.Info(ctx, "canceled running template builds during forced drain", zap.Int("canceled_builds", canceled))
 }
