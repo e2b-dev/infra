@@ -13,7 +13,6 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (s *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.TemplateID) {
@@ -61,11 +60,11 @@ func (s *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.Templat
 	}
 
 	if row.BuildID != uuid.Nil {
-		cpuCount := api.CPUCount(row.BuildVcpu)
-		memoryMB := api.MemoryMB(row.BuildRamMb)
+		cpuCount := row.BuildVcpu
+		memoryMB := row.BuildRamMb
 		resp.CpuCount = &cpuCount
 		resp.MemoryMB = &memoryMB
-		resp.DiskSizeMB = sharedUtils.CastPtr(row.BuildTotalDiskSizeMb, func(v int64) api.DiskSizeMB { return api.DiskSizeMB(v) })
+		resp.DiskSizeMB = row.BuildTotalDiskSizeMb
 		resp.EnvdVersion = row.BuildEnvdVersion
 	}
 
