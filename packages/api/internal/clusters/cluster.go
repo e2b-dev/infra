@@ -241,8 +241,9 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context, expectedInfo 
 			return false
 		}
 
-		// Check machine compatibility
-		if expectedInfo.CPUModel != "" && !expectedInfo.IsCompatibleWith(machineInfo) {
+		// Check machine compatibility. Builder nodes require an exact CPU match
+		// (no forward-compatibility) so the build runs on the same CPU model.
+		if expectedInfo.CPUModel != "" && !expectedInfo.IsExactMatch(machineInfo) {
 			return false
 		}
 
