@@ -133,7 +133,6 @@ job "api" {
       # admitted as a routable backend. A short value promotes and tears down
       # the old (still GCP-routable) backends before the new node is admitted,
       # leaving the LB with zero healthy backends -> 503 failed_to_pick_backend.
-      # Lower once API traffic is routed via traefik off live Consul state.
       min_healthy_time  = "120s"
       # Time to wait for the canary to be healthy, if not it will be marked as failed
       healthy_deadline  = "10800s"
