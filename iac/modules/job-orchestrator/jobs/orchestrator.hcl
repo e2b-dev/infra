@@ -60,6 +60,11 @@ job "orchestrator-${latest_orchestrator_job_id}" {
         attempts = 0
       }
 
+      resources {
+        memory     = 1024
+        memory_max = 1024 * 1024 # high memory to avoid OOM
+      }
+
       env {
         NODE_ID     = "$${node.unique.name}"
         NODE_IP     = "$${attr.unique.network.ip-address}"
