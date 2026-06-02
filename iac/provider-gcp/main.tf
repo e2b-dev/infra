@@ -139,6 +139,19 @@ locals {
     POSTGRES_CONNECTION_STRING = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
   }, var.api_db_migrator_env_vars)
 
+  client_proxy_env_vars = merge({
+    ENVIRONMENT                  = var.environment
+    OTEL_COLLECTOR_GRPC_ENDPOINT = "localhost:${local.otel_collector_grpc_port}"
+    LOGS_COLLECTOR_ADDRESS       = "http://localhost:${local.logs_proxy_port}"
+    REDIS_POOL_SIZE              = "40"
+    REDIS_CLUSTER_URL            = local.redis_cluster_url
+    REDIS_TLS_CA_BASE64          = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+    REDIS_URL                    = local.redis_url
+    # Used by in-cluster client-proxy to call API ResumeSandbox over gRPC.
+    API_INTERNAL_GRPC_ADDRESS = "api-internal-grpc.service.consul:${var.api_internal_grpc_port}"
+    LAUNCH_DARKLY_API_KEY     = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+  }, var.client_proxy_env_vars)
+
   # Normalize additional_api_paths_handled_by_ingress to support both legacy (list of strings)
   # and new (list of objects) formats. Strings are converted to objects with paths = [string].
   normalized_api_paths_handled_by_ingress = [
@@ -352,6 +365,7 @@ module "nomad" {
 
   client_proxy_session_port = var.client_proxy_port.port
   client_proxy_health_port  = var.client_proxy_health_port.port
+  client_proxy_env_vars     = local.client_proxy_env_vars
 
   domain_name = var.domain_name
 

@@ -65,6 +65,12 @@ variable "client_proxy_repository_name" {
   type = string
 }
 
+variable "client_proxy_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
 # Redis
 variable "redis_managed" {
   type = bool
@@ -172,13 +178,15 @@ variable "api_internal_grpc_port" {
 }
 
 variable "api_env_vars" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "api_db_migrator_env_vars" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "api_memory_mb" {

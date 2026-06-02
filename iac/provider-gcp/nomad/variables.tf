@@ -66,13 +66,15 @@ variable "api_internal_grpc_port" {
 }
 
 variable "api_env_vars" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "api_db_migrator_env_vars" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "ingress_port" {
@@ -204,6 +206,12 @@ variable "client_proxy_session_port" {
 
 variable "client_proxy_health_port" {
   type = number
+}
+
+variable "client_proxy_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "domain_name" {
@@ -544,8 +552,9 @@ variable "gcs_grpc_connection_pool_size" {
 }
 
 variable "orchestrator_env_vars" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "orchestrator_enabled" {

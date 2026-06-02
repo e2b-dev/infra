@@ -160,6 +160,19 @@ locals {
   api_db_migrator_env_vars = merge({
     POSTGRES_CONNECTION_STRING = module.init.postgres_connection_string
   }, var.api_db_migrator_env_vars)
+
+  client_proxy_env_vars = merge({
+    ENVIRONMENT                  = var.environment
+    OTEL_COLLECTOR_GRPC_ENDPOINT = "localhost:${local.otel_collector_port}"
+    LOGS_COLLECTOR_ADDRESS       = "http://localhost:${local.logs_proxy_port}"
+    REDIS_POOL_SIZE              = "40"
+    REDIS_CLUSTER_URL            = local.redis_cluster_url
+    REDIS_TLS_CA_BASE64          = local.redis_tls_ca_base64
+    REDIS_URL                    = local.redis_url
+    # Used by in-cluster client-proxy to call API ResumeSandbox over gRPC.
+    API_INTERNAL_GRPC_ADDRESS = "api-internal-grpc.service.consul:${var.api_internal_grpc_port}"
+    LAUNCH_DARKLY_API_KEY     = module.init.launch_darkly_api_key
+  }, var.client_proxy_env_vars)
 }
 
 module "redis" {
@@ -280,6 +293,7 @@ module "nomad" {
 
   client_proxy_count           = var.client_proxy_count
   client_proxy_repository_name = module.init.client_proxy_repository_name
+  client_proxy_env_vars        = local.client_proxy_env_vars
 
   orchestrator_node_pool              = local.client_pool_name
   allow_sandbox_internal_cidrs        = var.allow_sandbox_internal_cidrs
