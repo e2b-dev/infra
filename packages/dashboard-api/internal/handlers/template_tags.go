@@ -192,8 +192,6 @@ func (s *APIStore) GetTemplatesTemplateIDTagsExists(c *gin.Context, templateID a
 	})
 }
 
-// tagGroupRow is the shape we need across all four sort variants. sqlc emits
-// a distinct row struct per query, so we adapt before processing.
 type tagGroupRow struct {
 	AssignmentID     uuid.UUID
 	Tag              string
