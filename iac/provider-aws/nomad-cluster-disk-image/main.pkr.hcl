@@ -24,7 +24,7 @@ source "amazon-ebs" "ubuntu" {
   // Ubuntu Server 24.04 LTS (HVM), SSD Volume Type
   source_ami_filter {
     filters = {
-      name                = "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"
+      name                = var.source_ami_filter_name
       root-device-type    = "ebs"
       virtualization-type = "hvm"
     }

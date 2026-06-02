@@ -125,8 +125,15 @@ job "api" {
       max_parallel      = 1
       # Allows to spawn new version of the service before killing the old one
       canary            = 1
-      # Time to wait for the canary to be healthy
-      min_healthy_time  = "10s"
+
+      # Time the canary must stay healthy (in Consul) before it is promoted and
+      # the old allocations are stopped. Intentionally long: API traffic is
+      # routed by the GCP LB directly to allocations via a fixed-port health
+      # check, and a canary on a freshly created MIG node takes ~60s to be
+      # admitted as a routable backend. A short value promotes and tears down
+      # the old (still GCP-routable) backends before the new node is admitted,
+      # leaving the LB with zero healthy backends -> 503 failed_to_pick_backend.
+      min_healthy_time  = "120s"
       # Time to wait for the canary to be healthy, if not it will be marked as failed
       healthy_deadline  = "10800s"
       # Time to wait for the overall update to complete. Otherwise, the deployment is marked as failed and rolled back

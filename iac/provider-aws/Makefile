@@ -105,6 +105,7 @@ apply:
 .PHONY: state-migrate
 state-migrate:
 	@ printf "Running Terraform state migrations for env: $(ENV)\n\n"
+	@ $(tf_vars) $(TF) state mv 'module.nomad.random_password.volume_token_key' 'random_password.volume_token_key' || true
 
 .PHONY: apply-init
 apply-init:

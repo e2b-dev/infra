@@ -734,34 +734,6 @@ resource "google_compute_security_policy_rule" "sandbox-throttling-ip" {
   description = "Requests to sandboxes from IP address"
 }
 
-resource "google_compute_security_policy" "disable-bots-log-collector" {
-  name = "disable-bots-log-collector"
-
-  rule {
-    action   = "allow"
-    priority = "300"
-    match {
-      expr {
-        expression = "request.path == \"/\" && request.method == \"POST\""
-      }
-    }
-
-    description = "Allow POST requests  to / (collecting logs)"
-  }
-
-  rule {
-    action      = "deny(403)"
-    priority    = "2147483647"
-    description = "Default rule, higher priority overrides it"
-    match {
-      versioned_expr = "SRC_IPS_V1"
-      config {
-        src_ip_ranges = ["*"]
-      }
-    }
-  }
-}
-
 # Cloud Router for NAT
 resource "google_compute_router" "nat_router" {
   count   = var.api_use_nat ? 1 : 0
