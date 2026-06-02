@@ -38,6 +38,7 @@ function print_usage {
   echo -e "  --api\t\tIf set, run the Nomad agent dedicated to API. Optional. Default is false."
   echo -e "  --node-labels\t\tComma-separated list of scheduling labels for this node. Optional."
   echo -e "  --orchestrator-job-version\tThe orchestrator job version to set as node metadata. Optional."
+  echo -e "  --region\t\tThe Nomad region to join. Optional. If not specified, defaults to the current instance region."
   echo
   echo "Example:"
   echo
@@ -180,7 +181,11 @@ function generate_nomad_config {
 
   instance_name=$(get_instance_name)
   instance_ip_address=$(get_instance_ip_address)
-  instance_region=$(get_instance_region)
+  if [[ -n "${nomad_region:-}" ]]; then
+    instance_region="$nomad_region"
+  else
+    instance_region=$(get_instance_region)
+  fi
   zone=$(get_instance_zone)
   job_constraint=$(get_instance_custom_metadata_value "job-constraint" || true)
 
@@ -364,6 +369,7 @@ function run {
   local client="false"
   local num_servers=""
   local all_args=()
+  local nomad_region=""
 
   while [[ $# > 0 ]]; do
     local key="$1"
@@ -399,6 +405,11 @@ function run {
       ;;
     --orchestrator-job-version)
       orchestrator_job_version="$2"
+      shift
+      ;;
+    --region)
+      assert_not_empty "$key" "$2"
+      nomad_region="$2"
       shift
       ;;
     --cluster-tag-value)

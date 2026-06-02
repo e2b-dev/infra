@@ -9,6 +9,9 @@ locals {
     FC_BUSYBOX_BUCKET_NAME            = var.fc_busybox_bucket_name
     DOCKER_CONTEXTS_BUCKET_NAME       = var.docker_contexts_bucket_name
     GCP_REGION                        = var.gcp_region
+    NOMAD_REGION                      = var.nomad_region
+    CONSUL_DATACENTER                 = var.consul_datacenter
+    CONSUL_RETRY_JOIN_ZONE_PATTERN    = var.consul_retry_join_zone_pattern
     GOOGLE_SERVICE_ACCOUNT_KEY        = var.google_service_account_key
     NOMAD_TOKEN                       = var.nomad_acl_token_secret
     CONSUL_TOKEN                      = var.consul_acl_token_secret

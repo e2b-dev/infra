@@ -81,6 +81,24 @@ variable "gcp_zone" {
   type        = string
 }
 
+variable "nomad_region" {
+  description = "Nomad region this client should join. Defaults to the VM region when empty."
+  type        = string
+  default     = ""
+}
+
+variable "consul_datacenter" {
+  description = "Consul datacenter this client should join. Defaults to the VM region when empty."
+  type        = string
+  default     = ""
+}
+
+variable "consul_retry_join_zone_pattern" {
+  description = "GCE zone pattern used by Consul auto-join. Defaults to the VM region when empty."
+  type        = string
+  default     = ""
+}
+
 variable "network_name" {
   description = "Name of the VPC network for the cluster"
   type        = string

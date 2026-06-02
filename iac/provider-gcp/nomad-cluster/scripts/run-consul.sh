@@ -48,6 +48,7 @@ function print_usage {
   echo -e "  --consul-token\t\tThe Consul ACL token to use."
   echo -e "  --cluster-tag-name\tAutomatically form a cluster with Instances that have the same value for this Compute Instance tag name. Optional."
   echo -e "  --datacenter\t\tThe name of the datacenter Consul is running in. Optional. If not specified, will default to GCP region name."
+  echo -e "  --retry-join-zone-pattern\tGCE zone pattern used for Consul retry_join. Optional. If not specified, will default to the current instance region."
   echo -e "  --config-dir\t\tThe path to the Consul config folder. Optional. Default is the absolute path of '../config', relative to this script."
   echo -e "  --data-dir\t\tThe path to the Consul data folder. Optional. Default is the absolute path of '../data', relative to this script."
   echo -e "  --systemd-stdout\t\tThe StandardOutput option of the systemd unit.  Optional.  If not configured, uses systemd's default (journal)."
@@ -187,9 +188,10 @@ function generate_consul_config {
   if [[ -z "$cluster_tag_name" ]]; then
     log_warn "The --cluster-tag-name property is empty. Will not automatically try to form a cluster based on Cluster Tag Name."
   else
+    local effective_retry_join_zone_pattern="${retry_join_zone_pattern:-$instance_region-.*}"
     retry_join_json=$(
       cat <<EOF
-"retry_join": ["provider=gce project_name=$project_id tag_value=$cluster_tag_name zone_pattern=$instance_region-.*"],
+"retry_join": ["provider=gce project_name=$project_id tag_value=$cluster_tag_name zone_pattern=$effective_retry_join_zone_pattern"],
 EOF
     )
   fi
@@ -472,6 +474,7 @@ function run {
   local user=""
   local cluster_tag_name=""
   local datacenter=""
+  local retry_join_zone_pattern=""
   local upgrade_version_tag=""
   local enable_gossip_encryption="false"
   local gossip_encryption_key=""
@@ -543,6 +546,11 @@ function run {
     --datacenter)
       assert_not_empty "$key" "$2"
       datacenter="$2"
+      shift
+      ;;
+    --retry-join-zone-pattern)
+      assert_not_empty "$key" "$2"
+      retry_join_zone_pattern="$2"
       shift
       ;;
     --autopilot-cleanup-dead-servers)

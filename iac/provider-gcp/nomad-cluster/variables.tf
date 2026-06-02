@@ -131,7 +131,15 @@ variable "client_clusters_config" {
     hugepages_percentage   = optional(number)
     network_interface_type = optional(string)
     node_labels            = optional(list(string), [])
+    region                 = optional(string)
+    zone                   = optional(string)
+    filestore_zone         = optional(string)
   }))
+
+  validation {
+    condition     = alltrue([for _, config in var.client_clusters_config : config.region == null || config.zone != null])
+    error_message = "client_clusters_config entries that set region must also set zone."
+  }
 }
 
 variable "build_cluster_name" {

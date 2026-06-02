@@ -29,6 +29,20 @@ locals {
     "scripts/run-consul.sh" = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
     "scripts/run-nomad.sh"  = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
   }
+
+  client_cluster_locations = {
+    for name, config in var.client_clusters_config : name => {
+      region         = coalesce(config.region, var.gcp_region)
+      zone           = coalesce(config.zone, var.gcp_zone)
+      filestore_zone = coalesce(config.filestore_zone, config.zone, var.gcp_zone)
+    }
+  }
+
+  secondary_filestore_locations = {
+    for region, locations in {
+      for _, location in local.client_cluster_locations : location.region => location... if var.filestore_cache_enabled && location.region != var.gcp_region
+    } : region => locations[0]
+  }
 }
 
 resource "google_secret_manager_secret" "consul_gossip_encryption_key" {
@@ -145,15 +159,32 @@ module "filestore" {
   nfs_version = var.filestore_nfs_version
 }
 
+module "regional_filestore" {
+  source = "./filestore"
+
+  for_each = local.secondary_filestore_locations
+
+  name         = "${var.prefix}shared-disk-store-${each.key}"
+  network_name = var.network_name
+  location     = each.value.filestore_zone
+
+  tier        = var.filestore_cache_tier
+  capacity_gb = var.filestore_cache_capacity_gb
+  nfs_version = var.filestore_nfs_version
+}
+
 
 module "build_cluster" {
   for_each = var.build_clusters_config
   source   = "./worker-cluster"
 
-  gcp_region                   = var.gcp_region
-  gcp_zone                     = var.gcp_zone
-  google_service_account_email = var.google_service_account_email
-  google_service_account_key   = var.google_service_account_key
+  gcp_region                     = var.gcp_region
+  gcp_zone                       = var.gcp_zone
+  nomad_region                   = var.gcp_region
+  consul_datacenter              = var.gcp_region
+  consul_retry_join_zone_pattern = "${var.gcp_region}-.*"
+  google_service_account_email   = var.google_service_account_email
+  google_service_account_key     = var.google_service_account_key
 
   cluster_size     = each.value.cluster_size
   cache_disks      = each.value.cache_disks
@@ -208,10 +239,13 @@ module "client_cluster" {
   for_each = var.client_clusters_config
   source   = "./worker-cluster"
 
-  gcp_region                   = var.gcp_region
-  gcp_zone                     = var.gcp_zone
-  google_service_account_email = var.google_service_account_email
-  google_service_account_key   = var.google_service_account_key
+  gcp_region                     = local.client_cluster_locations[each.key].region
+  gcp_zone                       = local.client_cluster_locations[each.key].zone
+  nomad_region                   = var.gcp_region
+  consul_datacenter              = var.gcp_region
+  consul_retry_join_zone_pattern = "${var.gcp_region}-.*"
+  google_service_account_email   = var.google_service_account_email
+  google_service_account_key     = var.google_service_account_key
 
   cluster_size     = each.value.cluster_size
   cache_disks      = each.value.cache_disks
@@ -244,7 +278,11 @@ module "client_cluster" {
   fc_busybox_bucket_name      = var.fc_busybox_bucket_name
 
   filestore_cache_enabled = var.filestore_cache_enabled
-  nfs_ip_addresses        = var.filestore_cache_enabled ? module.filestore[0].nfs_ip_addresses : []
+  nfs_ip_addresses = var.filestore_cache_enabled ? (
+    local.client_cluster_locations[each.key].region == var.gcp_region
+    ? module.filestore[0].nfs_ip_addresses
+    : module.regional_filestore[local.client_cluster_locations[each.key].region].nfs_ip_addresses
+  ) : []
   nfs_mount_path          = local.nfs_mount_path
   nfs_mount_subdir        = local.nfs_mount_subdir
   nfs_mount_opts          = local.nfs_mount_opts
