@@ -1,12 +1,3 @@
-resource "random_password" "volume_token_key" {
-  length  = 32
-  special = false
-
-  lifecycle {
-    ignore_changes = [length, special]
-  }
-}
-
 locals {
   clickhouse_connection_string = var.clickhouse_cluster_size > 0 ? "clickhouse://${var.clickhouse_username}:${var.clickhouse_password}@clickhouse.service.consul:${var.clickhouse_port}/${var.clickhouse_database}" : ""
 }
@@ -121,39 +112,13 @@ module "api" {
   memory_mb = var.api_memory_mb
   cpu_count = var.api_cpu_count
 
-  domain_name                    = var.domain_name
-  orchestrator_port              = var.orchestrator_port
-  otel_collector_grpc_endpoint   = "localhost:${var.otel_collector_grpc_port}"
-  logs_collector_address         = "http://localhost:${var.logs_proxy_port}"
-  port_name                      = "api"
-  port_number                    = var.api_port
-  api_internal_grpc_port         = var.api_internal_grpc_port
-  environment                    = var.environment
-  api_docker_image               = data.aws_ecr_image.api.image_uri
-  postgres_connection_string     = var.postgres_connection_string
-  auth_provider_config           = var.auth_provider_config
-  nomad_acl_token                = var.nomad_acl_token
-  admin_token                    = var.admin_token
-  redis_url                      = var.redis_url
-  redis_cluster_url              = var.redis_cluster_url
-  redis_tls_ca_base64            = var.redis_tls_ca_base64
-  clickhouse_connection_string   = local.clickhouse_connection_string
-  sandbox_access_token_hash_seed = var.sandbox_access_token_hash_seed
-  db_migrator_docker_image       = data.aws_ecr_image.db_migrator.image_uri
-  loki_url                       = "http://loki.service.consul:${var.loki_port}"
-  launch_darkly_api_key          = var.launch_darkly_api_key
-  db_max_open_connections        = var.db_max_open_connections
-  db_min_idle_connections        = var.db_min_idle_connections
-  auth_db_max_open_connections   = var.auth_db_max_open_connections
-  auth_db_min_idle_connections   = var.auth_db_min_idle_connections
-
-  job_env_vars = {
-    VOLUME_TOKEN_ISSUER           = var.domain_name
-    VOLUME_TOKEN_SIGNING_KEY      = "HMAC:${base64encode(random_password.volume_token_key.result)}"
-    VOLUME_TOKEN_SIGNING_KEY_NAME = "e2b-volume-token-key"
-    VOLUME_TOKEN_DURATION         = "1h"
-    VOLUME_TOKEN_SIGNING_METHOD   = "HS256"
-  }
+  port_name                = "api"
+  port_number              = var.api_port
+  api_internal_grpc_port   = var.api_internal_grpc_port
+  api_docker_image         = data.aws_ecr_image.api.image_uri
+  db_migrator_docker_image = data.aws_ecr_image.db_migrator.image_uri
+  job_env_vars             = var.api_env_vars
+  db_migrator_env_vars     = var.api_db_migrator_env_vars
 }
 
 data "aws_s3_object" "orchestrator" {
