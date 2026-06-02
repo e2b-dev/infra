@@ -13,34 +13,54 @@ permissions:
   contents: read
 
 jobs:
+  openapi-validation-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - id: set-matrix
+        run: |
+          if [[ "${{ inputs.run-validation }}" != "true" ]]; then
+            matrix='[{"name":"Validate OpenAPI specs (skipped)","spec":"spec/openapi.yml","skip":true}]'
+          else
+            matrix='[{"name":"Validate spec/openapi.yml","spec":"spec/openapi.yml","skip":false},{"name":"Validate spec/openapi-edge.yml","spec":"spec/openapi-edge.yml","skip":false},{"name":"Validate spec/openapi-hyperloop.yml","spec":"spec/openapi-hyperloop.yml","skip":false},{"name":"Validate spec/openapi-dashboard.yml","spec":"spec/openapi-dashboard.yml","skip":false},{"name":"Validate packages/envd/spec/envd.yaml","spec":"packages/envd/spec/envd.yaml","skip":false}]'
+          fi
+
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
   validate-openapi:
-    name: Validate OpenAPI specs
-    if: ${{ inputs.run-validation == true }}
+    needs: openapi-validation-matrix
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        spec:
-          - spec/openapi.yml
-          - spec/openapi-edge.yml
-          - spec/openapi-hyperloop.yml
-          - spec/openapi-dashboard.yml
-          - packages/envd/spec/envd.yaml
+        include: ${{ fromJSON(needs.openapi-validation-matrix.outputs.matrix) }}
       fail-fast: false
     steps:
       - name: Checkout repository
+        if: ${{ matrix.skip != true }}
         uses: actions/checkout@v5
 
       - name: Validate OpenAPI spec
+        if: ${{ matrix.skip != true }}
         run: npx --yes @redocly/cli lint ${{ matrix.spec }}
 
   validate_openapi:
-    needs: validate-openapi
+    needs:
+      - openapi-validation-matrix
+      - validate-openapi
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Aggregate OpenAPI validation result
         run: |
+          if [[ "${{ needs.openapi-validation-matrix.result }}" != "success" ]]; then
+            echo "OpenAPI validation matrix result: ${{ needs.openapi-validation-matrix.result }}"
+            exit 1
+          fi
+
           if [[ "${{ inputs.run-validation }}" != "true" ]]; then
             echo "OpenAPI validation skipped because OpenAPI specs did not change"
             exit 0
