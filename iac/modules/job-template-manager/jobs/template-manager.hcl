@@ -90,7 +90,6 @@ job "template-manager" {
       resources {
         memory     = 1024
         cpu        = 256
-        memory_max = 1024 * 1024 # high memory to avoid OOM
       }
 
       env {
