@@ -43,6 +43,25 @@ resource "google_compute_firewall" "packer_build_ssh" {
   source_ranges = ["35.235.240.0/20"] # IAP TCP forwarding range
 }
 
+# Lock the build VM down to IAP-only. A firewall allow rule is purely additive, so on a
+# network that carries a broad default-allow-ssh (e.g. GCP's auto "default" VPC, prio
+# 65534) the rule above would NOT prevent internet SSH to this privileged build host.
+# This deny sits between the IAP allow (900) and the default rules (65534): IAP SSH still
+# wins for the tunnel range, everything else is dropped before default-allow-ssh matches.
+resource "google_compute_firewall" "packer_build_deny" {
+  name    = "${var.prefix}packer-build-deny-ingress"
+  network = var.network_name
+
+  deny {
+    protocol = "all"
+  }
+
+  priority      = 950
+  direction     = "INGRESS"
+  target_tags   = [local.packer_build_tag]
+  source_ranges = ["0.0.0.0/0"]
+}
+
 resource "packer_image" "orch" {
   directory     = local.packer_dir
   manifest_path = local.packer_manifest_path
@@ -59,7 +78,10 @@ resource "packer_image" "orch" {
     files = data.packer_files.orch.files_hash
   }
 
-  depends_on = [google_compute_firewall.packer_build_ssh]
+  depends_on = [
+    google_compute_firewall.packer_build_ssh,
+    google_compute_firewall.packer_build_deny,
+  ]
 }
 
 locals {
