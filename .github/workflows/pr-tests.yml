@@ -16,9 +16,8 @@ permissions:
 
 jobs:
   run-tests:
-    name: Run unit test shards
-    if: ${{ inputs.run-tests == true }}
-    runs-on: infra-tests
+    name: Run tests for ${{ matrix.package }}
+    runs-on: ${{ inputs.run-tests && 'infra-tests' || 'ubuntu-latest' }}
     env:
       GIN_MODE: test
       # Parallel `go test ./...` binaries derive the same Ryuk session id
@@ -60,10 +59,16 @@ jobs:
             sudo: false
       fail-fast: false
     steps:
+      - name: Skip unit test shard
+        if: ${{ inputs.run-tests != true }}
+        run: echo "unit test shard skipped because test inputs did not change"
+
       - name: Checkout repository
+        if: ${{ inputs.run-tests == true }}
         uses: actions/checkout@v5
 
       - name: Setup Go
+        if: ${{ inputs.run-tests == true }}
         uses: ./.github/actions/go-setup-cache
         with:
           cache-dependency-paths: |
@@ -72,6 +77,7 @@ jobs:
             ${{ matrix.package }}/go.sum
 
       - name: Reap orphaned Testcontainers from previous runs
+        if: ${{ inputs.run-tests == true }}
         # Persistent runner + Ryuk disabled: prune leftover containers
         # from SIGKILL/timeout/OOM in prior jobs.
         # Two `docker ps` calls because different filter keys AND inside
@@ -94,7 +100,7 @@ jobs:
         run: |
           # Install bindfs for FUSE mount tests
           sudo apt-get update && sudo apt-get install -y bindfs
-        if: matrix.package == 'packages/envd'
+        if: ${{ inputs.run-tests == true && matrix.package == 'packages/envd' }}
 
       - name: Setup orchestrator tests
         run: |
@@ -117,9 +123,10 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger
 
-        if: matrix.package == 'packages/orchestrator'
+        if: ${{ inputs.run-tests == true && matrix.package == 'packages/orchestrator' }}
 
       - name: Install gotestsum
+        if: ${{ inputs.run-tests == true }}
         run: go install gotest.tools/gotestsum@v1.13.0
 
       # sudo strips PATH; pass it through so gotestsum/go resolve to the runner's
@@ -131,17 +138,17 @@ jobs:
           trap 'sudo chown "$(id -u):$(id -g)" coverage.txt junit.xml 2>/dev/null || true' EXIT
           sudo -E env "PATH=$PATH" gotestsum --junitfile=junit.xml --format=standard-verbose \
             -- -timeout 20m -coverprofile=coverage.txt -covermode=atomic ${{ matrix.test_path }}
-        if: matrix.sudo == true
+        if: ${{ inputs.run-tests == true && matrix.sudo == true }}
 
       - name: Run tests
         working-directory: ${{ matrix.package }}
         run: |
           gotestsum --junitfile=junit.xml --format=standard-verbose \
             -- -timeout 20m -coverprofile=coverage.txt -covermode=atomic ${{ matrix.test_path }}
-        if: matrix.sudo == false
+        if: ${{ inputs.run-tests == true && matrix.sudo == false }}
 
       - name: Upload coverage to Codecov
-        if: ${{ !cancelled() && env.CODECOV_TOKEN != '' &&
+        if: ${{ inputs.run-tests == true && !cancelled() && env.CODECOV_TOKEN != '' &&
           hashFiles(format('{0}/coverage.txt', matrix.package)) != '' }}
         uses: codecov/codecov-action@v6
         with:
@@ -151,7 +158,7 @@ jobs:
           disable_search: true
 
       - name: Upload test results to Codecov
-        if: ${{ !cancelled() && env.CODECOV_TOKEN != '' &&
+        if: ${{ inputs.run-tests == true && !cancelled() && env.CODECOV_TOKEN != '' &&
           hashFiles(format('{0}/junit.xml', matrix.package)) != '' }}
         uses: codecov/codecov-action@v6
         with:

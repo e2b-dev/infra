@@ -14,8 +14,7 @@ permissions:
 
 jobs:
   validate-openapi:
-    name: Validate OpenAPI specs
-    if: ${{ inputs.run-validation == true }}
+    name: Validate ${{ matrix.spec }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -27,10 +26,16 @@ jobs:
           - packages/envd/spec/envd.yaml
       fail-fast: false
     steps:
+      - name: Skip OpenAPI validation
+        if: ${{ inputs.run-validation != true }}
+        run: echo "OpenAPI validation skipped because OpenAPI specs did not change"
+
       - name: Checkout repository
+        if: ${{ inputs.run-validation == true }}
         uses: actions/checkout@v5
 
       - name: Validate OpenAPI spec
+        if: ${{ inputs.run-validation == true }}
         run: npx --yes @redocly/cli lint ${{ matrix.spec }}
 
   validate_openapi:
