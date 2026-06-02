@@ -65,6 +65,11 @@ variable "client_proxy_repository_name" {
   type = string
 }
 
+variable "client_proxy_env_vars" {
+  type    = map(string)
+  default = {}
+}
+
 # Redis
 variable "redis_managed" {
   type = bool

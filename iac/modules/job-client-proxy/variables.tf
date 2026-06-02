@@ -25,10 +25,6 @@ variable "node_pool" {
   type = string
 }
 
-variable "environment" {
-  type = string
-}
-
 variable "proxy_port" {
   type    = number
   default = 3002
@@ -39,70 +35,8 @@ variable "health_port" {
   default = 3001
 }
 
-variable "redis_url" {
-  type      = string
-  sensitive = true
-}
-
-variable "redis_cluster_url" {
-  type      = string
-  sensitive = true
-}
-
-variable "redis_tls_ca_base64" {
-  type      = string
-  sensitive = true
-}
-
-variable "redis_pool_size" {
-  type    = number
-  default = 40
-}
-
 variable "image" {
   type = string
-}
-
-variable "api_internal_grpc_address" {
-  type    = string
-  default = ""
-}
-
-variable "api_edge_grpc_address" {
-  type    = string
-  default = ""
-}
-
-variable "api_edge_grpc_oauth_client_id" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
-variable "api_edge_grpc_oauth_client_secret" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
-variable "api_edge_grpc_oauth_token_url" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
-variable "otel_collector_grpc_endpoint" {
-  type = string
-}
-
-variable "logs_collector_address" {
-  type = string
-}
-
-variable "launch_darkly_api_key" {
-  type      = string
-  default   = ""
-  sensitive = true
 }
 
 variable "exposure_type" {
@@ -113,4 +47,9 @@ variable "exposure_type" {
     condition     = contains(["public", "private", "both"], var.exposure_type)
     error_message = "Must be: public, private, or both"
   }
+}
+
+variable "job_env_vars" {
+  type    = map(string)
+  default = {}
 }

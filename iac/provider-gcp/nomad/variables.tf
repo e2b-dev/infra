@@ -206,6 +206,11 @@ variable "client_proxy_health_port" {
   type = number
 }
 
+variable "client_proxy_env_vars" {
+  type    = map(string)
+  default = {}
+}
+
 variable "domain_name" {
   type = string
 }

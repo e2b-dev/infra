@@ -152,21 +152,13 @@ module "client_proxy" {
   client_proxy_memory_mb           = var.client_proxy_resources_memory_mb
   client_proxy_update_max_parallel = var.client_proxy_update_max_parallel
 
-  node_pool   = var.api_node_pool
-  environment = var.environment
+  node_pool = var.api_node_pool
 
   proxy_port  = var.client_proxy_session_port
   health_port = var.client_proxy_health_port
 
-  redis_url                 = local.redis_url
-  redis_cluster_url         = local.redis_cluster_url
-  redis_tls_ca_base64       = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-  image                     = data.google_artifact_registry_docker_image.client_proxy_image.self_link
-  api_internal_grpc_address = "api-internal-grpc.service.consul:${var.api_internal_grpc_port}"
-
-  otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
-  logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
-  launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+  image        = data.google_artifact_registry_docker_image.client_proxy_image.self_link
+  job_env_vars = var.client_proxy_env_vars
 }
 
 # grafana otel collector url

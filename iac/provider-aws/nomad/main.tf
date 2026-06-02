@@ -87,18 +87,10 @@ module "client_proxy" {
   update_stanza      = var.api_cluster_size > 1
   client_proxy_count = var.client_proxy_count
 
-  node_pool   = var.api_node_pool
-  environment = var.environment
+  node_pool = var.api_node_pool
 
-  redis_url                 = var.redis_url
-  redis_cluster_url         = var.redis_cluster_url
-  redis_tls_ca_base64       = var.redis_tls_ca_base64
-  image                     = data.aws_ecr_image.client_proxy.image_uri
-  api_internal_grpc_address = "api-internal-grpc.service.consul:${var.api_internal_grpc_port}"
-
-  otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
-  logs_collector_address       = "http://localhost:${var.logs_proxy_port}"
-  launch_darkly_api_key        = var.launch_darkly_api_key
+  image        = data.aws_ecr_image.client_proxy.image_uri
+  job_env_vars = var.client_proxy_env_vars
 }
 
 module "api" {
