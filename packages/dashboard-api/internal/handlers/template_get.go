@@ -58,9 +58,9 @@ func (s *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.Templat
 	c.JSON(http.StatusOK, api.TemplateDetail{
 		TemplateID:    row.Env.ID,
 		BuildID:       row.BuildID.String(),
-		CpuCount:      api.CPUCount(row.BuildVcpu),
-		MemoryMB:      api.MemoryMB(row.BuildRamMb),
-		DiskSizeMB:    api.DiskSizeMB(diskSizeMB),
+		CpuCount:      row.BuildVcpu,
+		MemoryMB:      row.BuildRamMb,
+		DiskSizeMB:    diskSizeMB,
 		Public:        row.Env.Public,
 		Aliases:       row.Aliases,
 		Names:         row.Names,

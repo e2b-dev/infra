@@ -88,6 +88,7 @@ func callTemplateGetHandler(t *testing.T, ctx context.Context, testDB *testutils
 
 	recorder, ginCtx := newTemplateGetTestContext(t, ctx, teamID)
 	store := &APIStore{db: testDB.SqlcClient}
+	//nolint:contextcheck // GetTemplatesTemplateID reads ctx from ginCtx.Request.Context().
 	store.GetTemplatesTemplateID(ginCtx, templateID)
 
 	if recorder.Code != http.StatusOK {

@@ -21,6 +21,7 @@ var blockedTeamAllowlist = auth.BlockedTeamAllowlist{
 		"/teams/resolve":                               {},
 		"/templates":                                   {},
 		"/templates/defaults":                          {},
+		"/templates/:templateID/tags/count":            {},
 		"/templates/:templateID/tags/exists":           {},
 		"/templates/:templateID/tags/groups":           {},
 		"/templates/:templateID/tags/:tag/assignments": {},

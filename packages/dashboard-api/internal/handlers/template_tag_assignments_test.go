@@ -85,10 +85,9 @@ func TestGetTemplatesTemplateIDTagsTagAssignments_StableKeysetOnSameTimestamp(t 
 
 	// Three assignments with identical timestamps; tie-break must be by assignment id desc.
 	sameTime := time.Date(2026, 5, 28, 10, 0, 0, 0, time.UTC)
-	ids := make([]uuid.UUID, 0, 3)
 	for range 3 {
 		buildID := testutils.CreateTestBuild(t, ctx, testDB, templateID, "ready")
-		ids = append(ids, insertTemplateTagAssignment(t, ctx, testDB, templateID, buildID, "prod", sameTime))
+		insertTemplateTagAssignment(t, ctx, testDB, templateID, buildID, "prod", sameTime)
 	}
 
 	limit := api.TagAssignmentsLimit(2)
@@ -267,6 +266,7 @@ func callTagAssignmentsHandler(
 
 	recorder, ginCtx := newTemplateTagsTestContext(t, ctx, teamID)
 	store := &APIStore{db: testDB.SqlcClient}
+	//nolint:contextcheck // GetTemplatesTemplateIDTagsTagAssignments reads ctx from ginCtx.Request.Context().
 	store.GetTemplatesTemplateIDTagsTagAssignments(ginCtx, templateID, tag, params)
 
 	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())

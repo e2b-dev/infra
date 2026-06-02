@@ -201,6 +201,7 @@ func callTagGroupsHandler(t *testing.T, ctx context.Context, testDB *testutils.D
 
 	recorder, ginCtx := newTemplateTagsTestContext(t, ctx, teamID)
 	store := &APIStore{db: testDB.SqlcClient}
+	//nolint:contextcheck // GetTemplatesTemplateIDTagsGroups reads ctx from ginCtx.Request.Context().
 	store.GetTemplatesTemplateIDTagsGroups(ginCtx, templateID, api.GetTemplatesTemplateIDTagsGroupsParams{
 		AssignmentLimit: assignmentLimit,
 	})
@@ -218,6 +219,7 @@ func callTagExistsHandler(t *testing.T, ctx context.Context, testDB *testutils.D
 
 	recorder, ginCtx := newTemplateTagsTestContext(t, ctx, teamID)
 	store := &APIStore{db: testDB.SqlcClient}
+	//nolint:contextcheck // GetTemplatesTemplateIDTagsExists reads ctx from ginCtx.Request.Context().
 	store.GetTemplatesTemplateIDTagsExists(ginCtx, templateID, api.GetTemplatesTemplateIDTagsExistsParams{Tag: tag})
 
 	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
