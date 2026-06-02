@@ -161,8 +161,7 @@ jobs:
           disable_search: true
           report_type: test_results
 
-  unit-tests:
-    name: Unit tests
+  unit_tests:
     needs: run-tests
     if: ${{ always() }}
     runs-on: ubuntu-latest
