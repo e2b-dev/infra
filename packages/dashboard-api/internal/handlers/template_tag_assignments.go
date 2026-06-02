@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	defaultTagAssignmentsLimit = int32(50)
-	maxTagAssignmentsLimit     = int32(100)
+	defaultTagAssignmentsPageSize = int32(50)
+	maxTagAssignmentsPageSize     = int32(100)
 )
 
 func (s *APIStore) GetTemplatesTemplateIDTagsTagAssignments(c *gin.Context, templateID api.TemplateID, tag api.TagPath, params api.GetTemplatesTemplateIDTagsTagAssignmentsParams) {
@@ -43,7 +43,7 @@ func (s *APIStore) GetTemplatesTemplateIDTagsTagAssignments(c *gin.Context, temp
 	}
 	normalizedTag := normalizedTags[0]
 
-	limit := normalizeTagAssignmentsLimit(params.Limit)
+	limit := normalizeTagAssignmentsPageLimit(params.Limit)
 	cursorTime, cursorID, err := parseTagAssignmentsCursor(params.Cursor)
 	if err != nil {
 		logger.L().Warn(ctx, "invalid tag assignments cursor", zap.Error(err), logger.WithTeamID(teamID.String()), logger.WithTemplateID(templateID))
@@ -95,17 +95,17 @@ func (s *APIStore) GetTemplatesTemplateIDTagsTagAssignments(c *gin.Context, temp
 	})
 }
 
-func normalizeTagAssignmentsLimit(limit *api.TagAssignmentsLimit) int32 {
+func normalizeTagAssignmentsPageLimit(limit *api.TagAssignmentsLimit) int32 {
 	if limit == nil {
-		return defaultTagAssignmentsLimit
+		return defaultTagAssignmentsPageSize
 	}
 
 	if *limit < 1 {
 		return 1
 	}
 
-	if *limit > maxTagAssignmentsLimit {
-		return maxTagAssignmentsLimit
+	if *limit > maxTagAssignmentsPageSize {
+		return maxTagAssignmentsPageSize
 	}
 
 	return *limit

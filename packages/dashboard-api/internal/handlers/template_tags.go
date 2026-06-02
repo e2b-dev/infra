@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	defaultTagAssignmentLimit = int32(6)
-	maxTagAssignmentLimit     = int32(25)
+	defaultAssignmentsPerGroup = int32(6)
+	maxAssignmentsPerGroup     = int32(25)
 
 	defaultTagGroupsLimit = int32(25)
 	maxTagGroupsLimit     = int32(100)
@@ -87,7 +87,7 @@ func (s *APIStore) GetTemplatesTemplateIDTagsGroups(c *gin.Context, templateID a
 		return
 	}
 
-	assignmentLimit := normalizeTagAssignmentLimit(params.AssignmentLimit)
+	assignmentLimit := normalizeAssignmentsPerGroupLimit(params.AssignmentLimit)
 	tagsLimit := normalizeTagGroupsLimit(params.TagsLimit)
 
 	rows, err := s.listTemplateTagGroups(
@@ -398,17 +398,17 @@ func formatTagGroupsCursor(sort tagGroupsSort, latestAt time.Time, tag string) s
 	return fmt.Sprintf("%s|%s|%s", sort, latestAt.UTC().Format(time.RFC3339Nano), tag)
 }
 
-func normalizeTagAssignmentLimit(limit *api.TagAssignmentLimit) int32 {
+func normalizeAssignmentsPerGroupLimit(limit *api.TagAssignmentLimit) int32 {
 	if limit == nil {
-		return defaultTagAssignmentLimit
+		return defaultAssignmentsPerGroup
 	}
 
 	if *limit < 1 {
 		return 1
 	}
 
-	if *limit > maxTagAssignmentLimit {
-		return maxTagAssignmentLimit
+	if *limit > maxAssignmentsPerGroup {
+		return maxAssignmentsPerGroup
 	}
 
 	return *limit
