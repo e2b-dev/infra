@@ -35,6 +35,7 @@ jobs:
               - 'tests/**'
               - 'go.work'
               - 'go.work.sum'
+              - 'Makefile'
               - '.github/**'
               - '.tool-versions'
             lint-inputs:

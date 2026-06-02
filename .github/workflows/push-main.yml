@@ -38,14 +38,7 @@ jobs:
               - 'tests/**'
               - 'go.work'
               - 'go.work.sum'
-              - '.github/**'
-              - '.tool-versions'
-            lint-inputs:
-              - 'packages/**'
-              - 'tests/**'
-              - 'go.work'
-              - 'go.work.sum'
-              - '.golangci.yml'
+              - 'Makefile'
               - '.github/**'
               - '.tool-versions'
             generated-inputs:
