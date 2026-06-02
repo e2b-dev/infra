@@ -27,7 +27,7 @@ source "googlecompute" "orch" {
   image_licenses = ["projects/vm-options/global/licenses/enable-vmx"]
 
   # Build on the shared cluster network (auto-mode "default"); no dedicated subnet.
-  # The network tag scopes the IAP-SSH firewall rule (see ../packer-build-firewall.tf).
+  # The network tag scopes the IAP-SSH firewall rule (see ../packer-image.tf).
   network = var.network_name
   tags    = [var.network_tag]
   use_iap = true
