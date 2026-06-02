@@ -238,3 +238,9 @@ variable "clickhouse_backups_bucket_name" {
 variable "custom_environments_repository_name" {
   type = string
 }
+
+variable "image_id" {
+  description = "Explicit AMI id (from the Packer build) to boot every node pool from. Empty means fall back to the image_family_prefix lookup."
+  type        = string
+  default     = ""
+}

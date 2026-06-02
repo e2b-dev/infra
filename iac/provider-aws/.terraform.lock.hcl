@@ -130,3 +130,23 @@ provider "registry.terraform.io/hashicorp/random" {
     "zh:c94784f005708890dc6895afd53636ec00ec1e430b15d41e5aebfb1d4b39bd04",
   ]
 }
+
+provider "registry.terraform.io/toowoxx/packer" {
+  version     = "0.17.2"
+  constraints = "0.17.2"
+  hashes = [
+    "h1:3GiY3aU9mM2t1E9L634TPvw1r/2zCnvR1oWtiN/GV/o=",
+    "h1:V/nGqpORsig2YSqs7n2bv9PKTeWrFpTKHVWLlw7mJtM=",
+    "h1:yoUSUjJ8dr4mUFruJ891Zbns0X30Wvs66nu7tmUjuXM=",
+    "zh:10b8f6c49e8aab8a7c21df98658b44fd100293e389b3b4d1608fe2330c7ef092",
+    "zh:4b6942aac55b7c70efad2974b59e8c53c9a91c3e2797c41477b244622e5f6e62",
+    "zh:524cf857fa15c415aab163a0056997310ea2185388973b3933e188d26875bc43",
+    "zh:7e963f796be277dc4d6446fed08f5d24923202b1c0c92a3835d949ce3c81da13",
+    "zh:98f26abbd49d76837e4a6fd7958409473057457f560db8aaddd795fa2840fb85",
+    "zh:ac994e455c0e639ed2cb7308d88aa999d773e39be3e656ceef367a2b5a78536a",
+    "zh:bec48208e7539a5887a4a6ad6852731e494b9e4afe8e9b3f966f39d289afdfcf",
+    "zh:cd6e6d44611e93beb7975facb8542523edc3a9ab7559c5bc541cd0a3e2d0dcf8",
+    "zh:ee020bc709036d05fa5b146063609e640271b3fe8f30d948032b6051561d2508",
+    "zh:f29d7534d61e2d915e4aa0901986f6181f98e490d80ac53be3c1c9fbf49b8cc0",
+  ]
+}

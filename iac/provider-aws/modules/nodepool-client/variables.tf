@@ -151,3 +151,9 @@ variable "scripts_path" {
   description = "Path to the directory containing startup scripts. Defaults to in-module scripts."
   default     = ""
 }
+
+variable "image_id" {
+  description = "Explicit AMI id to boot from. When set, overrides the image_family_prefix lookup (used to feed the Packer-built AMI directly into the Terraform graph)."
+  type        = string
+  default     = ""
+}

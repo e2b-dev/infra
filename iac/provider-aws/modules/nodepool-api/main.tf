@@ -56,6 +56,7 @@ resource "aws_iam_instance_profile" "api" {
 }
 
 data "aws_ami" "api" {
+  count       = var.image_id != "" ? 0 : 1
   most_recent = true
   owners      = [var.aws_account_id]
 
@@ -67,7 +68,7 @@ data "aws_ami" "api" {
 
 resource "aws_launch_template" "api" {
   name          = "${var.prefix}api-node"
-  image_id      = data.aws_ami.api.id
+  image_id      = var.image_id != "" ? var.image_id : data.aws_ami.api[0].id
   instance_type = var.machine_type
   user_data     = base64encode(local.user_data)
 

@@ -215,8 +215,10 @@ module "control_server" {
   vpc_private_subnets = var.vpc_private_subnets
 
   image_family_prefix = var.control_server_image_family_prefix
-  cluster_size        = var.control_server_cluster_size
-  machine_type        = var.control_server_machine_type
+
+  image_id     = var.image_id
+  cluster_size = var.control_server_cluster_size
+  machine_type = var.control_server_machine_type
 
   nomad_acl_token              = var.nomad_acl_token_secret
   consul_acl_token             = var.consul_acl_token_secret
@@ -244,8 +246,10 @@ module "api" {
   vpc_private_subnets = var.vpc_private_subnets
 
   image_family_prefix = var.api_image_family_prefix
-  cluster_size        = var.api_cluster_size
-  machine_type        = var.api_machine_type
+
+  image_id     = var.image_id
+  cluster_size = var.api_cluster_size
+  machine_type = var.api_machine_type
 
   node_pool_name               = var.api_node_pool_name
   consul_acl_token             = var.consul_acl_token_secret
@@ -275,8 +279,10 @@ module "clickhouse" {
   security_group_ids = var.clickhouse_security_group_ids
 
   image_family_prefix = var.clickhouse_image_family_prefix
-  cluster_size        = var.clickhouse_cluster_size
-  machine_type        = var.clickhouse_machine_type
+
+  image_id     = var.image_id
+  cluster_size = var.clickhouse_cluster_size
+  machine_type = var.clickhouse_machine_type
 
   node_pool_name                    = var.clickhouse_node_pool_name
   clickhouse_az                     = var.clickhouse_az
@@ -310,8 +316,10 @@ module "build" {
   vpc_private_subnets = var.vpc_private_subnets
 
   image_family_prefix = var.build_image_family_prefix
-  cluster_size        = var.build_cluster_size
-  machine_type        = var.build_machine_type
+
+  image_id     = var.image_id
+  cluster_size = var.build_cluster_size
+  machine_type = var.build_machine_type
 
   node_pool_name                    = var.build_node_pool_name
   node_labels                       = var.build_node_labels
@@ -355,8 +363,10 @@ module "client" {
   vpc_private_subnets = var.vpc_private_subnets
 
   image_family_prefix = var.client_image_family_prefix
-  cluster_size        = var.client_cluster_size
-  machine_type        = var.client_machine_type
+
+  image_id     = var.image_id
+  cluster_size = var.client_cluster_size
+  machine_type = var.client_machine_type
 
   node_pool_name                    = var.client_node_pool_name
   node_labels                       = var.client_node_labels

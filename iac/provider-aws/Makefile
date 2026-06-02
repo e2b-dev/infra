@@ -73,6 +73,10 @@ init:
 	$(tf_vars) $(TF) init -upgrade -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
 	$(tf_vars) $(TF) apply -target=module.init -input=false -compact-warnings
 
+	# Install the Packer plugins (amazon) into the global Packer plugin cache. The
+	# e2b-orch AMI itself is built by the packer_image resource during `make plan && apply`.
+	$(MAKE) -C nomad-cluster-disk-image init
+
 .PHONY: plan
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"

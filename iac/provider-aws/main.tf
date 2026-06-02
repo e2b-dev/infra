@@ -19,6 +19,11 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.1"
     }
+
+    packer = {
+      source  = "toowoxx/packer"
+      version = "0.17.2"
+    }
   }
 
   required_version = ">= 1.0"
@@ -33,6 +38,13 @@ provider "cloudflare" {
 }
 
 provider "aws" {}
+
+# Use the operator's Packer from PATH (pinned in .tool-versions) rather than the
+# provider's embedded, BUSL-pinned pre-1.10 Packer. `make init` installs the required
+# plugins into the global Packer plugin cache that this relies on.
+provider "packer" {
+  packer_binary = "packer"
+}
 
 provider "nomad" {
   address      = "https://nomad.${var.domain_name}"
@@ -184,6 +196,10 @@ module "cluster" {
   prefix         = var.prefix
   aws_account_id = data.aws_caller_identity.current.account_id
   aws_region     = data.aws_region.current.id
+
+  # AMI freshly baked by the packer_image resource (packer-image.tf). Replaces the
+  # previous most-recent "${prefix}orch-*" AMI lookups in each node-pool module.
+  image_id = local.orch_ami_id
 
   nomad_acl_token_secret          = module.init.cluster.nomad_acl_token
   consul_acl_token_secret         = module.init.cluster.consul_acl_token

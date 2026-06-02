@@ -30,6 +30,7 @@ resource "aws_iam_role_policy_attachment" "control_server" {
 }
 
 data "aws_ami" "control_server" {
+  count       = var.image_id != "" ? 0 : 1
   most_recent = true
   owners      = [var.aws_account_id]
 
@@ -46,7 +47,7 @@ resource "aws_iam_instance_profile" "control_server" {
 
 resource "aws_launch_template" "control_server" {
   name          = "${var.prefix}control-server-node"
-  image_id      = data.aws_ami.control_server.id
+  image_id      = var.image_id != "" ? var.image_id : data.aws_ami.control_server[0].id
   instance_type = var.machine_type
   user_data     = base64encode(local.user_data)
 

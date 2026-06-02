@@ -174,4 +174,12 @@ build {
       "echo 'net.netfilter.nf_conntrack_max = 2097152' | sudo tee -a /etc/sysctl.conf",
     ]
   }
+
+  # Record the built AMI so Terraform (toowoxx/packer) can read it back and wire it into
+  # the node-pool launch templates. For the amazon-ebs builder the manifest's artifact_id
+  # is "region:ami-id" (comma-separated when copied to multiple regions).
+  post-processor "manifest" {
+    output     = "${path.root}/manifest.json"
+    strip_path = true
+  }
 }

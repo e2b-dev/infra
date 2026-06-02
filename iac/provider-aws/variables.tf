@@ -11,6 +11,12 @@ variable "prefix" {
   description = "Name prefix for all resources"
 }
 
+variable "aws_profile" {
+  type        = string
+  description = "AWS named profile for the Packer image build. Empty uses the default credential chain (env vars / instance role), matching the Terraform AWS provider."
+  default     = ""
+}
+
 variable "bucket_prefix" {
   type = string
 }
