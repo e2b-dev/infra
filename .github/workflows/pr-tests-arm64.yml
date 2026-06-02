@@ -47,26 +47,10 @@ jobs:
           CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc GOARCH=arm64 go vet ./...
         working-directory: packages/orchestrator
 
-  arm64-test-matrix:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-    steps:
-      - id: set-matrix
-        run: |
-          if [[ "${{ inputs.run-tests }}" != "true" ]]; then
-            matrix='[{"name":"Run ARM64 tests (skipped)","runner":"ubuntu-latest","package":".","flag":"arm64-skipped","test_path":"./...","sudo":false,"skip":true}]'
-          else
-            matrix='[{"name":"ARM64 tests for packages/api","runner":"infra-runner-arm","package":"packages/api","flag":"arm64-api","test_path":"./...","sudo":false,"skip":false},{"name":"ARM64 tests for packages/client-proxy","runner":"infra-runner-arm","package":"packages/client-proxy","flag":"arm64-client-proxy","test_path":"./...","sudo":false,"skip":false},{"name":"ARM64 tests for packages/db","runner":"infra-runner-arm","package":"packages/db","flag":"arm64-db","test_path":"./...","sudo":false,"skip":false},{"name":"ARM64 tests for packages/docker-reverse-proxy","runner":"infra-runner-arm","package":"packages/docker-reverse-proxy","flag":"arm64-docker-reverse-proxy","test_path":"./...","sudo":false,"skip":false},{"name":"ARM64 tests for packages/envd","runner":"infra-runner-arm","package":"packages/envd","flag":"arm64-envd","test_path":"./...","sudo":true,"skip":false},{"name":"ARM64 tests for packages/orchestrator","runner":"infra-runner-arm","package":"packages/orchestrator","flag":"arm64-orchestrator","test_path":"./...","sudo":true,"skip":false},{"name":"ARM64 tests for packages/shared","runner":"infra-runner-arm","package":"packages/shared","flag":"arm64-shared","test_path":"./pkg/...","sudo":false,"skip":false}]'
-          fi
-
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-
   arm64-unit-tests:
-    needs: arm64-test-matrix
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.runner }}
+    name: Run ARM64 test shards
+    if: ${{ inputs.run-tests == true }}
+    runs-on: infra-runner-arm
     timeout-minutes: 45
     env:
       GIN_MODE: test
@@ -78,15 +62,41 @@ jobs:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     strategy:
       matrix:
-        include: ${{ fromJSON(needs.arm64-test-matrix.outputs.matrix) }}
+        include:
+          - package: packages/api
+            flag: arm64-api
+            test_path: ./...
+            sudo: false
+          - package: packages/client-proxy
+            flag: arm64-client-proxy
+            test_path: ./...
+            sudo: false
+          - package: packages/db
+            flag: arm64-db
+            test_path: ./...
+            sudo: false
+          - package: packages/docker-reverse-proxy
+            flag: arm64-docker-reverse-proxy
+            test_path: ./...
+            sudo: false
+          - package: packages/envd
+            flag: arm64-envd
+            test_path: ./...
+            sudo: true
+          - package: packages/orchestrator
+            flag: arm64-orchestrator
+            test_path: ./...
+            sudo: true
+          - package: packages/shared
+            flag: arm64-shared
+            test_path: ./pkg/...
+            sudo: false
       fail-fast: false
     steps:
       - name: Checkout repository
-        if: ${{ matrix.skip != true }}
         uses: actions/checkout@v5
 
       - name: Setup Go
-        if: ${{ matrix.skip != true }}
         uses: ./.github/actions/go-setup-cache
         with:
           cache-dependency-paths: |
@@ -95,7 +105,6 @@ jobs:
             ${{ matrix.package }}/go.sum
 
       - name: Reap orphaned Testcontainers from previous runs
-        if: ${{ matrix.skip != true }}
         # Persistent runner + Ryuk disabled: prune leftover containers
         # from SIGKILL/timeout/OOM in prior jobs.
         # Two `docker ps` calls because different filter keys AND inside
@@ -117,7 +126,7 @@ jobs:
       - name: Setup envd tests
         run: |
           sudo apt-get update && sudo apt-get install -y bindfs
-        if: ${{ matrix.skip != true && matrix.package == 'packages/envd' }}
+        if: matrix.package == 'packages/envd'
 
       - name: Setup orchestrator tests
         run: |
@@ -142,16 +151,15 @@ jobs:
           echo 'ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"' | sudo tee /etc/udev/rules.d/97-nbd-device.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger
-        if: ${{ matrix.skip != true && matrix.package == 'packages/orchestrator' }}
+        if: matrix.package == 'packages/orchestrator'
 
       - name: Install gotestsum
-        if: ${{ matrix.skip != true }}
         run: go install gotest.tools/gotestsum@v1.13.0
 
       - name: Compile test binaries
         working-directory: ${{ matrix.package }}
         run: sudo -E `which go` test -run '^$' ${{ matrix.test_path }}
-        if: ${{ matrix.skip != true && matrix.sudo == true }}
+        if: matrix.sudo == true
 
       # sudo strips PATH; pass it through so gotestsum/go resolve to the runner's
       # toolchain (1.26.3) instead of /usr/bin/go. Trap chowns reports back to
@@ -162,22 +170,22 @@ jobs:
           trap 'sudo chown "$(id -u):$(id -g)" coverage.txt junit.xml 2>/dev/null || true' EXIT
           sudo -E env "PATH=$PATH" gotestsum --junitfile=junit.xml --format=standard-verbose \
             -- -timeout 20m -coverprofile=coverage.txt -covermode=atomic ${{ matrix.test_path }}
-        if: ${{ matrix.skip != true && matrix.sudo == true }}
+        if: matrix.sudo == true
 
       - name: Compile test binaries
         working-directory: ${{ matrix.package }}
         run: go test -run '^$' ${{ matrix.test_path }}
-        if: ${{ matrix.skip != true && matrix.sudo == false }}
+        if: matrix.sudo == false
 
       - name: Run tests
         working-directory: ${{ matrix.package }}
         run: |
           gotestsum --junitfile=junit.xml --format=standard-verbose \
             -- -timeout 20m -coverprofile=coverage.txt -covermode=atomic ${{ matrix.test_path }}
-        if: ${{ matrix.skip != true && matrix.sudo == false }}
+        if: matrix.sudo == false
 
       - name: Upload coverage to Codecov
-        if: ${{ matrix.skip != true && !cancelled() && env.CODECOV_TOKEN != '' && hashFiles(format('{0}/coverage.txt', matrix.package)) != '' }}
+        if: ${{ !cancelled() && env.CODECOV_TOKEN != '' && hashFiles(format('{0}/coverage.txt', matrix.package)) != '' }}
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -186,7 +194,7 @@ jobs:
           disable_search: true
 
       - name: Upload test results to Codecov
-        if: ${{ matrix.skip != true && !cancelled() && env.CODECOV_TOKEN != '' && hashFiles(format('{0}/junit.xml', matrix.package)) != '' }}
+        if: ${{ !cancelled() && env.CODECOV_TOKEN != '' && hashFiles(format('{0}/junit.xml', matrix.package)) != '' }}
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -198,7 +206,6 @@ jobs:
   arm64_tests:
     needs:
       - cross-compile
-      - arm64-test-matrix
       - arm64-unit-tests
     if: ${{ always() }}
     runs-on: ubuntu-latest
@@ -206,11 +213,6 @@ jobs:
     steps:
       - name: Aggregate ARM64 test result
         run: |
-          if [[ "${{ needs.arm64-test-matrix.result }}" != "success" ]]; then
-            echo "ARM64 test matrix result: ${{ needs.arm64-test-matrix.result }}"
-            exit 1
-          fi
-
           if [[ "${{ inputs.run-tests }}" != "true" ]]; then
             echo "ARM64 tests skipped because test inputs did not change"
             exit 0

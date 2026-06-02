@@ -15,26 +15,10 @@ permissions:
   contents: read
 
 jobs:
-  unit-test-matrix:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-    steps:
-      - id: set-matrix
-        run: |
-          if [[ "${{ inputs.run-tests }}" != "true" ]]; then
-            matrix='[{"name":"Run unit tests (skipped)","runner":"ubuntu-latest","package":".","flag":"unit-skipped","test_path":"./...","sudo":false,"skip":true}]'
-          else
-            matrix='[{"name":"Run tests for packages/api","runner":"infra-tests","package":"packages/api","flag":"unit-api","test_path":"./...","sudo":false,"skip":false},{"name":"Run tests for packages/client-proxy","runner":"infra-tests","package":"packages/client-proxy","flag":"unit-client-proxy","test_path":"./...","sudo":false,"skip":false},{"name":"Run tests for packages/db","runner":"infra-tests","package":"packages/db","flag":"unit-db","test_path":"./...","sudo":false,"skip":false},{"name":"Run tests for packages/docker-reverse-proxy","runner":"infra-tests","package":"packages/docker-reverse-proxy","flag":"unit-docker-reverse-proxy","test_path":"./...","sudo":false,"skip":false},{"name":"Run tests for packages/envd","runner":"infra-tests","package":"packages/envd","flag":"unit-envd","test_path":"./...","sudo":true,"skip":false},{"name":"Run tests for packages/orchestrator","runner":"infra-tests","package":"packages/orchestrator","flag":"unit-orchestrator","test_path":"./...","sudo":true,"skip":false},{"name":"Run tests for packages/shared","runner":"infra-tests","package":"packages/shared","flag":"unit-shared","test_path":"./pkg/...","sudo":false,"skip":false}]'
-          fi
-
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-
   run-tests:
-    needs: unit-test-matrix
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.runner }}
+    name: Run unit test shards
+    if: ${{ inputs.run-tests == true }}
+    runs-on: infra-tests
     env:
       GIN_MODE: test
       # Parallel `go test ./...` binaries derive the same Ryuk session id
@@ -45,15 +29,41 @@ jobs:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     strategy:
       matrix:
-        include: ${{ fromJSON(needs.unit-test-matrix.outputs.matrix) }}
+        include:
+          - package: packages/api
+            flag: unit-api
+            test_path: ./...
+            sudo: false
+          - package: packages/client-proxy
+            flag: unit-client-proxy
+            test_path: ./...
+            sudo: false
+          - package: packages/db
+            flag: unit-db
+            test_path: ./...
+            sudo: false
+          - package: packages/docker-reverse-proxy
+            flag: unit-docker-reverse-proxy
+            test_path: ./...
+            sudo: false
+          - package: packages/envd
+            flag: unit-envd
+            test_path: ./...
+            sudo: true
+          - package: packages/orchestrator
+            flag: unit-orchestrator
+            test_path: ./...
+            sudo: true
+          - package: packages/shared
+            flag: unit-shared
+            test_path: ./pkg/...
+            sudo: false
       fail-fast: false
     steps:
       - name: Checkout repository
-        if: ${{ matrix.skip != true }}
         uses: actions/checkout@v5
 
       - name: Setup Go
-        if: ${{ matrix.skip != true }}
         uses: ./.github/actions/go-setup-cache
         with:
           cache-dependency-paths: |
@@ -62,7 +72,6 @@ jobs:
             ${{ matrix.package }}/go.sum
 
       - name: Reap orphaned Testcontainers from previous runs
-        if: ${{ matrix.skip != true }}
         # Persistent runner + Ryuk disabled: prune leftover containers
         # from SIGKILL/timeout/OOM in prior jobs.
         # Two `docker ps` calls because different filter keys AND inside
@@ -85,7 +94,7 @@ jobs:
         run: |
           # Install bindfs for FUSE mount tests
           sudo apt-get update && sudo apt-get install -y bindfs
-        if: ${{ matrix.skip != true && matrix.package == 'packages/envd' }}
+        if: matrix.package == 'packages/envd'
 
       - name: Setup orchestrator tests
         run: |
@@ -108,10 +117,9 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger
 
-        if: ${{ matrix.skip != true && matrix.package == 'packages/orchestrator' }}
+        if: matrix.package == 'packages/orchestrator'
 
       - name: Install gotestsum
-        if: ${{ matrix.skip != true }}
         run: go install gotest.tools/gotestsum@v1.13.0
 
       # sudo strips PATH; pass it through so gotestsum/go resolve to the runner's
@@ -123,17 +131,17 @@ jobs:
           trap 'sudo chown "$(id -u):$(id -g)" coverage.txt junit.xml 2>/dev/null || true' EXIT
           sudo -E env "PATH=$PATH" gotestsum --junitfile=junit.xml --format=standard-verbose \
             -- -timeout 20m -coverprofile=coverage.txt -covermode=atomic ${{ matrix.test_path }}
-        if: ${{ matrix.skip != true && matrix.sudo == true }}
+        if: matrix.sudo == true
 
       - name: Run tests
         working-directory: ${{ matrix.package }}
         run: |
           gotestsum --junitfile=junit.xml --format=standard-verbose \
             -- -timeout 20m -coverprofile=coverage.txt -covermode=atomic ${{ matrix.test_path }}
-        if: ${{ matrix.skip != true && matrix.sudo == false }}
+        if: matrix.sudo == false
 
       - name: Upload coverage to Codecov
-        if: ${{ matrix.skip != true && !cancelled() && env.CODECOV_TOKEN != '' &&
+        if: ${{ !cancelled() && env.CODECOV_TOKEN != '' &&
           hashFiles(format('{0}/coverage.txt', matrix.package)) != '' }}
         uses: codecov/codecov-action@v6
         with:
@@ -143,7 +151,7 @@ jobs:
           disable_search: true
 
       - name: Upload test results to Codecov
-        if: ${{ matrix.skip != true && !cancelled() && env.CODECOV_TOKEN != '' &&
+        if: ${{ !cancelled() && env.CODECOV_TOKEN != '' &&
           hashFiles(format('{0}/junit.xml', matrix.package)) != '' }}
         uses: codecov/codecov-action@v6
         with:
@@ -154,20 +162,13 @@ jobs:
           report_type: test_results
 
   unit_tests:
-    needs:
-      - unit-test-matrix
-      - run-tests
+    needs: run-tests
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Aggregate unit test result
         run: |
-          if [[ "${{ needs.unit-test-matrix.result }}" != "success" ]]; then
-            echo "unit test matrix result: ${{ needs.unit-test-matrix.result }}"
-            exit 1
-          fi
-
           if [[ "${{ inputs.run-tests }}" != "true" ]]; then
             echo "unit tests skipped because test inputs did not change"
             exit 0
