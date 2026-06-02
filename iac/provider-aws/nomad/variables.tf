@@ -66,8 +66,9 @@ variable "client_proxy_repository_name" {
 }
 
 variable "client_proxy_env_vars" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 # Redis

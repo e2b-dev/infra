@@ -851,8 +851,9 @@ variable "api_db_migrator_env_vars" {
 }
 
 variable "client_proxy_env_vars" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "orchestrator_enabled" {

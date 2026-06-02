@@ -147,8 +147,9 @@ locals {
     REDIS_CLUSTER_URL            = local.redis_cluster_url
     REDIS_TLS_CA_BASE64          = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
     REDIS_URL                    = local.redis_url
-    API_INTERNAL_GRPC_ADDRESS    = "api-internal-grpc.service.consul:${var.api_internal_grpc_port}"
-    LAUNCH_DARKLY_API_KEY        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+    # Used by in-cluster client-proxy to call API ResumeSandbox over gRPC.
+    API_INTERNAL_GRPC_ADDRESS = "api-internal-grpc.service.consul:${var.api_internal_grpc_port}"
+    LAUNCH_DARKLY_API_KEY     = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   }, var.client_proxy_env_vars)
 
   # Normalize additional_api_paths_handled_by_ingress to support both legacy (list of strings)

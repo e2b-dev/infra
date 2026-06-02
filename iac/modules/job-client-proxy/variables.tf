@@ -50,6 +50,7 @@ variable "exposure_type" {
 }
 
 variable "job_env_vars" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }

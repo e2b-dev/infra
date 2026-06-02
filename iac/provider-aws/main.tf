@@ -169,8 +169,9 @@ locals {
     REDIS_CLUSTER_URL            = local.redis_cluster_url
     REDIS_TLS_CA_BASE64          = local.redis_tls_ca_base64
     REDIS_URL                    = local.redis_url
-    API_INTERNAL_GRPC_ADDRESS    = "api-internal-grpc.service.consul:${var.api_internal_grpc_port}"
-    LAUNCH_DARKLY_API_KEY        = module.init.launch_darkly_api_key
+    # Used by in-cluster client-proxy to call API ResumeSandbox over gRPC.
+    API_INTERNAL_GRPC_ADDRESS = "api-internal-grpc.service.consul:${var.api_internal_grpc_port}"
+    LAUNCH_DARKLY_API_KEY     = module.init.launch_darkly_api_key
   }, var.client_proxy_env_vars)
 }
 

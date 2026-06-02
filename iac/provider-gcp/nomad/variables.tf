@@ -207,8 +207,9 @@ variable "client_proxy_health_port" {
 }
 
 variable "client_proxy_env_vars" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "domain_name" {
