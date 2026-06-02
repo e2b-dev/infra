@@ -139,6 +139,14 @@ var (
 	// Only takes effect when UseMemFdFlag is also on.
 	MemfdBackgroundCopyFlag = NewBoolFlag("memfd-background-copy", false)
 
+	// MemfdPunchOnSnapshotFlag frees each guest memory range from the memfd
+	// (MADV_REMOVE) as soon as it has been copied into the snapshot cache,
+	// keeping peak (source + destination) memory ~1x instead of ~2x. Only
+	// takes effect when UseMemFdFlag is on. DESTRUCTIVE to the guest pages, so
+	// it must only run on the pause-and-discard path, never where the VM can
+	// still be resumed (rollback).
+	MemfdPunchOnSnapshotFlag = NewBoolFlag("memfd-punch-on-snapshot", false)
+
 	// MemfileDiffDedupFlag enables 4 KiB-page dedup of the memfile diff
 	// against the base memfile. bestEffort skips uncached blocks;
 	// directIO opens the dedup output with O_DIRECT.
