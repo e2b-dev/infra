@@ -534,6 +534,29 @@ exporters:
         name: "metrics_gauge"
       sum:
         name: "metrics_sum"
+%{ for name, dsn in extra_clickhouse_exporters ~}
+%{ if dsn != "" ~}
+  clickhouse/${name}:
+    endpoint: ${jsonencode(dsn)}
+    async_insert: true
+    create_schema: false
+    timeout: 10s
+    sending_queue:
+      enabled: true
+      num_consumers: 2
+      queue_size: 100
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 5m
+    metrics_tables:
+      gauge:
+        name: "metrics_gauge"
+      sum:
+        name: "metrics_sum"
+%{ endif ~}
+%{ endfor ~}
 %{ if enable_otel_router_metrics }
   otlp_grpc/otel_router:
     endpoint: 127.0.0.1:${otel_router_grpc_port}
@@ -671,6 +694,11 @@ service:
         - batch/clickhouse
       exporters:
         - clickhouse
+%{ for name, dsn in extra_clickhouse_exporters ~}
+%{ if dsn != "" ~}
+        - clickhouse/${name}
+%{ endif ~}
+%{ endfor ~}
 %{ if enable_otel_router_metrics }
     metrics/external/otel_router:
       receivers:

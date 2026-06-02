@@ -10,6 +10,15 @@ locals {
     for key, value in var.filestore_cleanup_env_vars : key => trimspace(value)
     if value != null && try(trimspace(value), "") != ""
   }
+
+  extra_clickhouse_dsns = [
+    for s in split(";", trimspace(data.google_secret_manager_secret_version.clickhouse_connection_strings.secret_data)) :
+    trimspace(s) if trimspace(s) != ""
+  ]
+
+  extra_clickhouse_exporters = {
+    for i, dsn in local.extra_clickhouse_dsns : tostring(i) => dsn
+  }
 }
 
 # API
@@ -24,6 +33,10 @@ data "google_secret_manager_secret_version" "postgres_read_replica_connection_st
 # Telemetry
 data "google_secret_manager_secret_version" "launch_darkly_api_key" {
   secret = var.launch_darkly_api_key_secret_name
+}
+
+data "google_secret_manager_secret_version" "clickhouse_connection_strings" {
+  secret = "${var.prefix}clickhouse-connection-strings"
 }
 
 provider "nomad" {
@@ -232,6 +245,8 @@ module "otel_collector" {
   clickhouse_password = var.clickhouse_password
   clickhouse_port     = var.clickhouse_server_port.port
   clickhouse_database = var.clickhouse_database
+
+  extra_clickhouse_exporters = local.extra_clickhouse_exporters
 }
 
 module "otel_collector_nomad_server" {
