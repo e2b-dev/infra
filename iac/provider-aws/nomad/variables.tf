@@ -171,6 +171,16 @@ variable "api_internal_grpc_port" {
   default = 5009
 }
 
+variable "api_env_vars" {
+  type    = map(string)
+  default = {}
+}
+
+variable "api_db_migrator_env_vars" {
+  type    = map(string)
+  default = {}
+}
+
 variable "api_memory_mb" {
   type    = number
   default = 512
@@ -187,42 +197,6 @@ variable "api_repository_name" {
 
 variable "db_migrator_repository_name" {
   type = string
-}
-
-variable "postgres_connection_string" {
-  type      = string
-  sensitive = true
-}
-
-variable "auth_provider_config" {
-  type = object({
-    jwt = optional(list(object({
-      issuer = object({
-        url                 = string
-        discoveryURL        = optional(string)
-        audiences           = list(string)
-        audienceMatchPolicy = optional(string)
-      })
-      cacheDuration = optional(string)
-    })))
-    legacy = optional(object({
-      hmac = object({
-        secrets = list(string)
-      })
-    }))
-  })
-  sensitive = true
-  default   = null
-}
-
-variable "admin_token" {
-  type      = string
-  sensitive = true
-}
-
-variable "sandbox_access_token_hash_seed" {
-  type      = string
-  sensitive = true
 }
 
 # Orchestrator
@@ -347,20 +321,4 @@ variable "launch_darkly_api_key" {
 
 variable "traefik_config_files" {
   type = map(string)
-}
-
-variable "db_max_open_connections" {
-  type = number
-}
-
-variable "db_min_idle_connections" {
-  type = number
-}
-
-variable "auth_db_max_open_connections" {
-  type = number
-}
-
-variable "auth_db_min_idle_connections" {
-  type = number
 }

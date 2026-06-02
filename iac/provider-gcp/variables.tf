@@ -840,6 +840,16 @@ variable "orchestrator_env_vars" {
   default = {}
 }
 
+variable "api_env_vars" {
+  type    = map(string)
+  default = {}
+}
+
+variable "api_db_migrator_env_vars" {
+  type    = map(string)
+  default = {}
+}
+
 variable "orchestrator_enabled" {
   type        = bool
   default     = true
