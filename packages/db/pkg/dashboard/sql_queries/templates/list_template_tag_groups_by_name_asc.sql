@@ -12,7 +12,9 @@ WITH tag_window AS (
           OR strpos(eba.tag, sqlc.arg(search)::text) > 0
       )
     GROUP BY eba.tag
-    HAVING eba.tag > sqlc.arg(cursor_tag)::text
+    HAVING
+        sqlc.narg(cursor_tag)::text IS NULL
+        OR eba.tag > sqlc.narg(cursor_tag)::text
     ORDER BY tag ASC
     LIMIT sqlc.arg(tags_limit_plus_one)::int
 ),

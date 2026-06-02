@@ -133,7 +133,7 @@ func TestGetTemplatesTemplateIDTagsGroups_GroupsMultipleTagsByLatestAssignment(t
 	assert.Equal(t, "prod", response.Tags[1].Tag)
 }
 
-func TestGetTemplatesTemplateIDTagsGroups_ForbiddenForOtherTeam(t *testing.T) {
+func TestGetTemplatesTemplateIDTagsGroups_NotFoundForOtherTeam(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
@@ -147,7 +147,8 @@ func TestGetTemplatesTemplateIDTagsGroups_ForbiddenForOtherTeam(t *testing.T) {
 
 	store.GetTemplatesTemplateIDTagsGroups(ginCtx, templateID, api.GetTemplatesTemplateIDTagsGroupsParams{})
 
-	assert.Equal(t, http.StatusForbidden, recorder.Code)
+	assert.Equal(t, http.StatusNotFound, recorder.Code,
+		"team mismatch should not leak template existence")
 }
 
 func TestGetTemplatesTemplateIDTagsExists_ReturnsTrueOnlyForReadyTag(t *testing.T) {

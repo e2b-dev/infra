@@ -27,7 +27,9 @@ WITH tag_window AS (
           OR strpos(eba.tag, $3::text) > 0
       )
     GROUP BY eba.tag
-    HAVING eba.tag > $4::text
+    HAVING
+        $4::text IS NULL
+        OR eba.tag > $4::text
     ORDER BY tag ASC
     LIMIT $5::int
 ),
@@ -67,7 +69,7 @@ type ListTemplateTagGroupsByNameAscParams struct {
 	AssignmentLimitPlusOne int32
 	TemplateID             string
 	Search                 string
-	CursorTag              string
+	CursorTag              *string
 	TagsLimitPlusOne       int32
 }
 

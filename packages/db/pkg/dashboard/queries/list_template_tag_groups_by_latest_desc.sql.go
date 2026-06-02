@@ -28,7 +28,8 @@ WITH tag_window AS (
       )
     GROUP BY eba.tag
     HAVING
-        MAX(COALESCE(eba.created_at, eb.created_at)) < $4::timestamptz
+        $4::timestamptz IS NULL
+        OR MAX(COALESCE(eba.created_at, eb.created_at)) < $4::timestamptz
         OR (
             MAX(COALESCE(eba.created_at, eb.created_at)) = $4::timestamptz
             AND eba.tag > $5::text
@@ -72,8 +73,8 @@ type ListTemplateTagGroupsByLatestDescParams struct {
 	AssignmentLimitPlusOne int32
 	TemplateID             string
 	Search                 string
-	CursorTime             time.Time
-	CursorTag              string
+	CursorTime             *time.Time
+	CursorTag              *string
 	TagsLimitPlusOne       int32
 }
 
