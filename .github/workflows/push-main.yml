@@ -31,17 +31,23 @@ jobs:
           filters: |
             iac:
               - 'iac/**'
+              - '.github/**'
+              - '.tool-versions'
             test-inputs:
               - 'packages/**'
               - 'tests/**'
               - 'go.work'
               - 'go.work.sum'
+              - '.github/**'
+              - '.tool-versions'
             lint-inputs:
               - 'packages/**'
               - 'tests/**'
               - 'go.work'
               - 'go.work.sum'
               - '.golangci.yml'
+              - '.github/**'
+              - '.tool-versions'
             generated-inputs:
               - 'packages/**'
               - 'tests/**'
@@ -56,6 +62,8 @@ jobs:
               - 'scripts/fix-tracers.sh'
               - 'scripts/fix-meters.sh'
               - 'scripts/golang-dependencies-integrity.sh'
+              - '.github/**'
+              - '.tool-versions'
 
   generated-code-check:
     needs: [detect-changes]
