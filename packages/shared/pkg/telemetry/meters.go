@@ -512,15 +512,20 @@ func NewTimerFactory(
 // FloatTimerFactory records duration as fractional milliseconds so
 // sub-millisecond operations aren't truncated to 0. Callers supply the
 // duration via Record.
+//
+// The histogram and bytes counter are registered under distinct OTEL
+// instrument names (<metricName> for the histogram, <metricName>.size for the
+// bytes counter) so Grafana's metric-metadata-driven unit detection isn't
+// ambiguous. The histogram already emits a _count series, so no separate
+// event-count instrument is needed.
 type FloatTimerFactory struct {
 	duration metric.Float64Histogram
 	bytes    metric.Int64Counter
-	count    metric.Int64Counter
 }
 
 func NewFloatTimerFactory(
 	meter metric.Meter,
-	metricName, durationDescription, bytesDescription, counterDescription string,
+	metricName, durationDescription, bytesDescription, _ string,
 ) (FloatTimerFactory, error) {
 	duration, err := meter.Float64Histogram(metricName,
 		metric.WithDescription(durationDescription),
@@ -530,7 +535,7 @@ func NewFloatTimerFactory(
 		return FloatTimerFactory{}, fmt.Errorf("failed to create duration histogram: %w", err)
 	}
 
-	bytes, err := meter.Int64Counter(metricName,
+	bytes, err := meter.Int64Counter(metricName+".size",
 		metric.WithDescription(bytesDescription),
 		metric.WithUnit("By"),
 	)
@@ -538,20 +543,12 @@ func NewFloatTimerFactory(
 		return FloatTimerFactory{}, fmt.Errorf("failed to create bytes counter: %w", err)
 	}
 
-	count, err := meter.Int64Counter(metricName,
-		metric.WithDescription(counterDescription),
-	)
-	if err != nil {
-		return FloatTimerFactory{}, fmt.Errorf("failed to create count counter: %w", err)
-	}
-
-	return FloatTimerFactory{duration, bytes, count}, nil
+	return FloatTimerFactory{duration, bytes}, nil
 }
 
 func (f *FloatTimerFactory) Record(ctx context.Context, dur time.Duration, total int64, attrs metric.MeasurementOption) {
 	f.duration.Record(ctx, float64(dur)/float64(time.Millisecond), attrs)
 	f.bytes.Add(ctx, total, attrs)
-	f.count.Add(ctx, 1, attrs)
 }
 
 func (f *TimerFactory) Begin(kv ...attribute.KeyValue) *Stopwatch {
