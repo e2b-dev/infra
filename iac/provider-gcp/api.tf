@@ -16,6 +16,10 @@ data "google_secret_manager_secret_version" "postgres_connection_string" {
 
 data "google_secret_manager_secret_version" "postgres_read_replica_connection_string" {
   secret = google_secret_manager_secret.postgres_read_replica_connection_string.id
+
+  depends_on = [
+    google_secret_manager_secret_version.postgres_read_replica_connection_string,
+  ]
 }
 
 data "google_secret_manager_secret_version" "supabase_jwt_secrets" {

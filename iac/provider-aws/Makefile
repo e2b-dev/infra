@@ -79,11 +79,13 @@ plan:
 	@ $(call tf_fmt)
 	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -input=false -compact-warnings -parallelism=20
 
+plan_only_jobs_moved_targets = -target="random_password.volume_token_key" -target="module.nomad.random_password.volume_token_key"
+
 .PHONY: plan-only-jobs
 plan-only-jobs:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	$(call tf_fmt)
-	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -input=false -compact-warnings -parallelism=20 -target=module.nomad
+	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -input=false -compact-warnings -parallelism=20 -target=module.nomad $(plan_only_jobs_moved_targets)
 
 .PHONY: plan-without-jobs
 plan-without-jobs:

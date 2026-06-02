@@ -334,7 +334,6 @@ module "nomad" {
   api_internal_grpc_port                                 = var.api_internal_grpc_port
   api_env_vars                                           = local.api_env_vars
   api_db_migrator_env_vars                               = local.api_db_migrator_env_vars
-  client_proxy_oidc_issuer_url                           = var.client_proxy_oidc_issuer_url
   auth_provider_config                                   = local.auth_provider_config
   environment                                            = var.environment
   google_service_account_key                             = module.init.google_service_account_key
@@ -344,10 +343,6 @@ module "nomad" {
   postgres_read_replica_connection_string_secret_version = google_secret_manager_secret_version.postgres_read_replica_connection_string
   redis_cluster_url_secret_version                       = module.init.redis_cluster_url_secret_version
   redis_tls_ca_base64_secret_version                     = module.init.redis_tls_ca_base64_secret_version
-  db_max_open_connections                                = var.db_max_open_connections
-  db_min_idle_connections                                = var.db_min_idle_connections
-  auth_db_max_open_connections                           = var.auth_db_max_open_connections
-  auth_db_min_idle_connections                           = var.auth_db_min_idle_connections
 
   # Click Proxy
   client_proxy_count               = var.client_proxy_count

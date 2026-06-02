@@ -75,11 +75,6 @@ variable "api_db_migrator_env_vars" {
   default = {}
 }
 
-variable "client_proxy_oidc_issuer_url" {
-  type    = string
-  default = ""
-}
-
 variable "ingress_port" {
   type        = number
   description = "External traffic port number"
@@ -132,22 +127,6 @@ variable "ory_issuer_url" {
 
 variable "ory_project_api_token_secret_name" {
   type = string
-}
-
-variable "db_max_open_connections" {
-  type = number
-}
-
-variable "db_min_idle_connections" {
-  type = number
-}
-
-variable "auth_db_max_open_connections" {
-  type = number
-}
-
-variable "auth_db_min_idle_connections" {
-  type = number
 }
 
 variable "environment" {
