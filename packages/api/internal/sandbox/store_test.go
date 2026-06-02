@@ -16,6 +16,7 @@ import (
 
 	sandboxredis "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
@@ -210,10 +211,11 @@ func createTestSandbox() Sandbox {
 		nil,   // envdAccessToken
 		nil,   // allowInternetAccess
 		"base-template",
-		nil, // domain
-		nil, // network
-		nil, // trafficAccessToken
-		nil, // volumes
+		nil,                       // domain
+		nil,                       // network
+		nil,                       // trafficAccessToken
+		nil,                       // volumes
+		machineinfo.MachineInfo{}, // buildMachineInfo
 	)
 }
 

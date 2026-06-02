@@ -16,6 +16,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -86,6 +87,12 @@ func WithCPUInfo(cpuArch, cpuFamily, cpuModel string) TestOptions {
 		node.machineInfo.CPUArchitecture = cpuArch
 		node.machineInfo.CPUFamily = cpuFamily
 		node.machineInfo.CPUModel = cpuModel
+	}
+}
+
+func WithMachineInfo(info machineinfo.MachineInfo) TestOptions {
+	return func(node *TestNode) {
+		node.machineInfo = info
 	}
 }
 

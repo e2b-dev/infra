@@ -8,6 +8,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
 
 func NewSandbox(
@@ -39,6 +40,7 @@ func NewSandbox(
 	network *types.SandboxNetworkConfig,
 	trafficAccessToken *string,
 	mounts []*types.SandboxVolumeMountConfig,
+	buildMachineInfo machineinfo.MachineInfo,
 ) Sandbox {
 	return Sandbox{
 		SandboxID:  sandboxID,
@@ -71,6 +73,7 @@ func NewSandbox(
 		BaseTemplateID:      baseTemplateID,
 		Network:             network,
 		VolumeMounts:        mounts,
+		MachineInfo:         buildMachineInfo,
 	}
 }
 
@@ -104,6 +107,8 @@ type Sandbox struct {
 	AutoResume          *types.SandboxAutoResumeConfig    `json:"autoResume,omitempty"`
 	Network             *types.SandboxNetworkConfig       `json:"network"`
 	VolumeMounts        []*types.SandboxVolumeMountConfig `json:"volumeMounts"`
+
+	MachineInfo machineinfo.MachineInfo `json:"machineInfo"`
 
 	State State `json:"state"`
 }

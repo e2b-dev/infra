@@ -104,13 +104,19 @@ func (o *Orchestrator) WaitForStateChange(ctx context.Context, teamID uuid.UUID,
 }
 
 func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) queries.UpsertSnapshotParams {
-	machineInfo := node.MachineInfo()
+	// This is a fallback,
+	// remove after migration period
+	machineInfo := sbx.MachineInfo
+	if machineInfo.CPUArchitecture == "" {
+		machineInfo = node.MachineInfo()
+	}
 
 	metadata := types.JSONBStringMap(sbx.Metadata)
 	if metadata == nil {
 		metadata = types.JSONBStringMap{}
 	}
 
+	// TODO: Is it possible to rewrite the query to use machineInfo from the BaseTemplate instead?
 	return queries.UpsertSnapshotParams{
 		// Used if there's no snapshot for this sandbox yet
 		TemplateID:     id.Generate(),

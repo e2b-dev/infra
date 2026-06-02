@@ -15,6 +15,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager")
@@ -139,6 +140,10 @@ func (n *Node) GetSandboxes(ctx context.Context) ([]sandbox.Sandbox, error) {
 				network,
 				networkTrafficAccessToken,
 				volumeMounts,
+				// The orchestrator gRPC config does not carry the build's CPU
+				// machine info, so it is left empty here. buildUpsertSnapshotParams
+				// falls back to the running node's machine info in that case.
+				machineinfo.MachineInfo{},
 			),
 		)
 	}

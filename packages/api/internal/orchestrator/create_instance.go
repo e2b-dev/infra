@@ -355,6 +355,7 @@ func (o *Orchestrator) CreateSandbox(
 		sbxData.Network,
 		trafficAccessToken,
 		nodemanager.ConvertOrchestratorMountsToDatabaseMounts(sbxData.VolumeMounts),
+		builds.ToMachineInfo(sbxData.Build),
 	)
 
 	err = o.sandboxStore.Add(ctx, sbx, &creationMeta)
