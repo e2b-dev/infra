@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -12,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (s *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.TemplateID) {
@@ -45,22 +47,9 @@ func (s *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.Templat
 		return
 	}
 
-	diskSizeMB := int64(0)
-	if row.BuildTotalDiskSizeMb != nil {
-		diskSizeMB = *row.BuildTotalDiskSizeMb
-	}
-
-	envdVersion := ""
-	if row.BuildEnvdVersion != nil {
-		envdVersion = *row.BuildEnvdVersion
-	}
-
-	c.JSON(http.StatusOK, api.TemplateDetail{
+	resp := api.TemplateDetail{
 		TemplateID:    row.Env.ID,
 		BuildID:       row.BuildID.String(),
-		CpuCount:      row.BuildVcpu,
-		MemoryMB:      row.BuildRamMb,
-		DiskSizeMB:    diskSizeMB,
 		Public:        row.Env.Public,
 		Aliases:       row.Aliases,
 		Names:         row.Names,
@@ -69,6 +58,16 @@ func (s *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.Templat
 		LastSpawnedAt: row.Env.LastSpawnedAt,
 		SpawnCount:    row.Env.SpawnCount,
 		BuildCount:    row.Env.BuildCount,
-		EnvdVersion:   envdVersion,
-	})
+	}
+
+	if row.BuildID != uuid.Nil {
+		cpuCount := api.CPUCount(row.BuildVcpu)
+		memoryMB := api.MemoryMB(row.BuildRamMb)
+		resp.CpuCount = &cpuCount
+		resp.MemoryMB = &memoryMB
+		resp.DiskSizeMB = sharedUtils.CastPtr(row.BuildTotalDiskSizeMb, func(v int64) api.DiskSizeMB { return api.DiskSizeMB(v) })
+		resp.EnvdVersion = row.BuildEnvdVersion
+	}
+
+	c.JSON(http.StatusOK, resp)
 }

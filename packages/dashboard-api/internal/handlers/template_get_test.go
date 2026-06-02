@@ -39,8 +39,10 @@ func TestGetTemplatesTemplateID_ReturnsTemplateForOwningTeam(t *testing.T) {
 	assert.True(t, resp.Public)
 	assert.Contains(t, resp.Aliases, alias)
 	assert.Contains(t, resp.Names, alias)
-	assert.EqualValues(t, 2, resp.CpuCount)
-	assert.EqualValues(t, 2048, resp.MemoryMB)
+	require.NotNil(t, resp.CpuCount)
+	assert.EqualValues(t, 2, *resp.CpuCount)
+	require.NotNil(t, resp.MemoryMB)
+	assert.EqualValues(t, 2048, *resp.MemoryMB)
 }
 
 func TestGetTemplatesTemplateID_ReturnsNotFoundWhenMissing(t *testing.T) {
@@ -80,7 +82,10 @@ func TestGetTemplatesTemplateID_ReturnsZeroBuildIDWhenNoReadyBuild(t *testing.T)
 	require.Equal(t, http.StatusOK, status)
 
 	assert.Equal(t, uuid.Nil.String(), resp.BuildID)
-	assert.Empty(t, resp.EnvdVersion)
+	assert.Nil(t, resp.CpuCount)
+	assert.Nil(t, resp.MemoryMB)
+	assert.Nil(t, resp.DiskSizeMB)
+	assert.Nil(t, resp.EnvdVersion)
 }
 
 func callTemplateGetHandler(t *testing.T, ctx context.Context, testDB *testutils.Database, teamID uuid.UUID, templateID string) (api.TemplateDetail, int) {

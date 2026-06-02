@@ -976,11 +976,20 @@ components:
           type: string
           description: Identifier of the latest ready build for the template, or the zero UUID when none.
         cpuCount:
-          $ref: "#/components/schemas/CPUCount"
+          allOf:
+            - $ref: "#/components/schemas/CPUCount"
+          nullable: true
+          description: vCPU count of the latest ready default build, or `null` when none.
         memoryMB:
-          $ref: "#/components/schemas/MemoryMB"
+          allOf:
+            - $ref: "#/components/schemas/MemoryMB"
+          nullable: true
+          description: Memory in MiB of the latest ready default build, or `null` when none.
         diskSizeMB:
-          $ref: "#/components/schemas/DiskSizeMB"
+          allOf:
+            - $ref: "#/components/schemas/DiskSizeMB"
+          nullable: true
+          description: Disk size in MiB of the latest ready default build, or `null` when none.
         public:
           type: boolean
           description: Whether the template is public or only accessible by the team.
@@ -1018,7 +1027,8 @@ components:
           description: Number of times the template was built.
         envdVersion:
           type: string
-          description: Envd version of the latest ready build, or an empty string when none.
+          nullable: true
+          description: envd version of the latest ready default build, or `null` when none.
 
     TemplateTagAssignment:
       type: object
