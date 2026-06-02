@@ -17,7 +17,6 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	dashboardqueries "github.com/e2b-dev/infra/packages/db/pkg/dashboard/queries"
-	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -95,35 +94,6 @@ func (s *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 		Data:       templates,
 		NextCursor: nextCursor,
 	})
-}
-
-func (s *APIStore) GetTemplatesTemplateID(c *gin.Context, templateID api.TemplateID) {
-	ctx := c.Request.Context()
-	telemetry.ReportEvent(ctx, "get template")
-
-	teamID := auth.MustGetTeamID(c)
-	team := auth.MustGetTeamInfo(c)
-	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamID.String()))
-
-	row, err := s.db.Dashboard.GetTeamTemplate(ctx, dashboardqueries.GetTeamTemplateParams{
-		TemplateID:      templateID,
-		TeamID:          teamID,
-		IncludeDefaults: team.ClusterID == nil,
-	})
-	if err != nil {
-		if dberrors.IsNotFoundError(err) {
-			s.sendAPIStoreError(c, http.StatusNotFound, "Template not found or you don't have access to it")
-
-			return
-		}
-
-		logger.L().Error(ctx, "Error getting template", zap.Error(err), logger.WithTeamID(teamID.String()))
-		s.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting template")
-
-		return
-	}
-
-	c.JSON(http.StatusOK, templateRowFields(row).toAPI())
 }
 
 type templatesFilter struct {

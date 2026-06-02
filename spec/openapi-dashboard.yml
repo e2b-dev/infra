@@ -121,13 +121,6 @@ components:
       description: Team slug to resolve.
       schema:
         type: string
-    templateID:
-      name: templateID
-      in: path
-      required: true
-      description: Identifier of the template.
-      schema:
-        type: string
     templates_limit:
       name: limit
       in: query
@@ -1373,34 +1366,6 @@ paths:
           $ref: "#/components/responses/401"
         "403":
           $ref: "#/components/responses/403"
-        "500":
-          $ref: "#/components/responses/500"
-
-  /templates/{templateID}:
-    get:
-      summary: Get a single team template
-      description: Returns a single template owned by the team (or a default template, unless the team is on a dedicated cluster).
-      tags: [templates]
-      security:
-        - Supabase1TokenAuth: []
-          Supabase2TeamAuth: []
-        - AuthProviderBearerAuth: []
-          AuthProviderTeamAuth: []
-      parameters:
-        - $ref: "#/components/parameters/templateID"
-      responses:
-        "200":
-          description: Successfully returned the template.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TeamTemplate"
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "404":
-          $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
 

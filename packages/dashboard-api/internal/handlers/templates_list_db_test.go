@@ -202,35 +202,3 @@ func TestGetTemplates_Filters(t *testing.T) {
 	assert.True(t, ids[matching], "search should match by alias name")
 	assert.False(t, ids[other], "search should exclude non-matching templates")
 }
-
-func TestGetTemplatesTemplateID_FoundAndNotFound(t *testing.T) {
-	t.Parallel()
-
-	testDB := testutils.SetupDatabase(t)
-	createEnvDefaultsTable(t, testDB)
-
-	teamID := testutils.CreateTestTeam(t, testDB)
-	templateID := testutils.CreateTestTemplate(t, testDB, teamID)
-
-	store := newTemplatesTestStore(testDB)
-	team := teamInfo(teamID, nil)
-
-	// Found.
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/templates/"+templateID, nil)
-	auth.SetTeamInfoForTest(t, ctx, team)
-	store.GetTemplatesTemplateID(ctx, templateID)
-	require.Equal(t, http.StatusOK, recorder.Code)
-	var found api.TeamTemplate
-	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &found))
-	assert.Equal(t, templateID, found.TemplateID)
-
-	// Not found (another team's / nonexistent template).
-	missingRecorder := httptest.NewRecorder()
-	missingCtx, _ := gin.CreateTestContext(missingRecorder)
-	missingCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/templates/does-not-exist", nil)
-	auth.SetTeamInfoForTest(t, missingCtx, team)
-	store.GetTemplatesTemplateID(missingCtx, "does-not-exist")
-	assert.Equal(t, http.StatusNotFound, missingRecorder.Code)
-}
