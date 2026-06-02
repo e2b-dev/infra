@@ -159,7 +159,6 @@ func (s *APIStore) listTemplates(
 			CursorID:        cursorID,
 			LimitPlusOne:    limitPlusOne,
 		})
-
 		if err != nil {
 			return nil, err
 		}
@@ -182,7 +181,6 @@ func (s *APIStore) listTemplates(
 			CursorID:        cursorID,
 			LimitPlusOne:    limitPlusOne,
 		})
-
 		if err != nil {
 			return nil, err
 		}
@@ -209,7 +207,6 @@ func (s *APIStore) listTemplates(
 			CursorID:        cursorID,
 			LimitPlusOne:    limitPlusOne,
 		})
-
 		if err != nil {
 			return nil, err
 		}
@@ -236,7 +233,6 @@ func (s *APIStore) listTemplates(
 			CursorID:        cursorID,
 			LimitPlusOne:    limitPlusOne,
 		})
-
 		if err != nil {
 			return nil, err
 		}
@@ -263,7 +259,6 @@ func (s *APIStore) listTemplates(
 			CursorID:        cursorID,
 			LimitPlusOne:    limitPlusOne,
 		})
-
 		if err != nil {
 			return nil, err
 		}
@@ -290,7 +285,6 @@ func (s *APIStore) listTemplates(
 			CursorID:        cursorID,
 			LimitPlusOne:    limitPlusOne,
 		})
-
 		if err != nil {
 			return nil, err
 		}
@@ -317,7 +311,6 @@ func (s *APIStore) listTemplates(
 			CursorID:        cursorID,
 			LimitPlusOne:    limitPlusOne,
 		})
-
 		if err != nil {
 			return nil, err
 		}
@@ -344,7 +337,6 @@ func (s *APIStore) listTemplates(
 			CursorID:        cursorID,
 			LimitPlusOne:    limitPlusOne,
 		})
-
 		if err != nil {
 			return nil, err
 		}
@@ -371,7 +363,6 @@ func (s *APIStore) listTemplates(
 			CursorID:        cursorID,
 			LimitPlusOne:    limitPlusOne,
 		})
-
 		if err != nil {
 			return nil, err
 		}
@@ -398,7 +389,6 @@ func (s *APIStore) listTemplates(
 			CursorID:        cursorID,
 			LimitPlusOne:    limitPlusOne,
 		})
-
 		if err != nil {
 			return nil, err
 		}
