@@ -18,17 +18,17 @@ const (
 
 var DeniedSandboxCIDRs = []string{
 	// IPv4 private/local ranges
-	"0.0.0.0/8",
-	"10.0.0.0/8",
-	"100.64.0.0/10",
-	"127.0.0.0/8",
-	"169.254.0.0/16",
-	"172.16.0.0/12",
-	"192.168.0.0/16",
+	"0.0.0.0/8",      // RFC 1122 "this network"; not a valid unicast destination.
+	"10.0.0.0/8",     // RFC 1918 private.
+	"100.64.0.0/10",  // RFC 6598 CGNAT / shared address space; used by some cloud providers for internal services.
+	"127.0.0.0/8",    // RFC 1122 loopback.
+	"169.254.0.0/16", // RFC 3927 link-local (incl. cloud metadata 169.254.169.254).
+	"172.16.0.0/12",  // RFC 1918 private.
+	"192.168.0.0/16", // RFC 1918 private.
 	// IPv6 local ranges
-	"::1/128",
-	"fc00::/7",
-	"fe80::/10",
+	"::1/128",   // RFC 4291 loopback.
+	"fc00::/7",  // RFC 4193 unique local.
+	"fe80::/10", // RFC 4291 link-local.
 }
 
 var DeniedSandboxSetData = utils.Must(set.AddressStringsToSetData(DeniedSandboxCIDRs))
