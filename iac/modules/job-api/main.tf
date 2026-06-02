@@ -1,3 +1,15 @@
+locals {
+  job_env_vars = {
+    for key, value in var.job_env_vars : key => trimspace(value)
+    if try(trimspace(value), "") != ""
+  }
+
+  db_migrator_env_vars = {
+    for key, value in var.db_migrator_env_vars : key => trimspace(value)
+    if try(trimspace(value), "") != ""
+  }
+}
+
 resource "nomad_job" "api" {
   jobspec = templatefile("${path.module}/jobs/api.hcl", {
     update_stanza      = var.update_stanza
@@ -13,7 +25,7 @@ resource "nomad_job" "api" {
     api_internal_grpc_port   = var.api_internal_grpc_port
     api_docker_image         = var.api_docker_image
     db_migrator_docker_image = var.db_migrator_docker_image
-    job_env_vars             = var.job_env_vars
-    db_migrator_env_vars     = var.db_migrator_env_vars
+    job_env_vars             = local.job_env_vars
+    db_migrator_env_vars     = local.db_migrator_env_vars
   })
 }

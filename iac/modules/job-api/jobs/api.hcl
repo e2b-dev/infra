@@ -157,9 +157,7 @@ job "api" {
         API_EDGE_GRPC_PORT             = "$${NOMAD_PORT_grpc_api}"
 
 %{ for key, value in job_env_vars ~}
-%{ if value != "" ~}
         ${key} = "${value}"
-%{ endif ~}
 %{ endfor ~}
       }
 
@@ -178,9 +176,7 @@ job "api" {
 
       env {
 %{ for key, value in db_migrator_env_vars ~}
-%{ if value != "" ~}
         ${key} = "${value}"
-%{ endif ~}
 %{ endfor ~}
       }
 
