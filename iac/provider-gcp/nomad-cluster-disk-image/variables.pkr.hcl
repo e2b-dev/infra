@@ -39,3 +39,8 @@ variable "cni_plugin_version" {
   type    = string
   default = "v1.6.2"
 }
+
+variable "source_image" {
+  type    = string
+  default = "ubuntu-2404-noble-amd64-v20260517"
+}
