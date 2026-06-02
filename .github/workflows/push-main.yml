@@ -36,6 +36,7 @@ jobs:
             test-inputs:
               - 'packages/**'
               - 'tests/**'
+              - 'spec/**'
               - 'go.work'
               - 'go.work.sum'
               - 'Makefile'
