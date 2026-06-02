@@ -19,7 +19,9 @@ locals {
 data "packer_files" "orch" {
   directory = local.packer_dir
   file_dependencies = concat(
-    [for f in fileset(local.packer_dir, "**/*") : "${local.packer_dir}/${f}"],
+    # Exclude manifest.json: the build rewrites it on every run, so including it here
+    # would change files_hash after each build and trigger a perpetual rebuild loop.
+    [for f in fileset(local.packer_dir, "**/*") : "${local.packer_dir}/${f}" if f != "manifest.json"],
     [for f in fileset(local.packer_shared_setup, "**/*") : "${local.packer_shared_setup}/${f}"],
   )
 }
