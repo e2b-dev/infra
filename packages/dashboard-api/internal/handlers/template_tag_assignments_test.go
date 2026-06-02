@@ -188,7 +188,7 @@ func TestGetTemplatesTemplateIDTagsTagAssignments_NormalizesTag(t *testing.T) {
 	assert.Equal(t, assignmentID, response.Data[0].AssignmentId)
 }
 
-func TestGetTemplatesTemplateIDTagsTagAssignments_ForbiddenForOtherTeam(t *testing.T) {
+func TestGetTemplatesTemplateIDTagsTagAssignments_NotFoundForOtherTeam(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
@@ -202,7 +202,8 @@ func TestGetTemplatesTemplateIDTagsTagAssignments_ForbiddenForOtherTeam(t *testi
 
 	store.GetTemplatesTemplateIDTagsTagAssignments(ginCtx, templateID, "prod", api.GetTemplatesTemplateIDTagsTagAssignmentsParams{})
 
-	assert.Equal(t, http.StatusForbidden, recorder.Code)
+	assert.Equal(t, http.StatusNotFound, recorder.Code,
+		"team mismatch should not leak template existence")
 }
 
 func TestGetTemplatesTemplateIDTagsTagAssignments_NotFoundForUnknownTemplate(t *testing.T) {

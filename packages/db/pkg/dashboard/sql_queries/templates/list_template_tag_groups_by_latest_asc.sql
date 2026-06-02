@@ -13,10 +13,11 @@ WITH tag_window AS (
       )
     GROUP BY eba.tag
     HAVING
-        MAX(COALESCE(eba.created_at, eb.created_at)) > sqlc.arg(cursor_time)::timestamptz
+        sqlc.narg(cursor_time)::timestamptz IS NULL
+        OR MAX(COALESCE(eba.created_at, eb.created_at)) > sqlc.narg(cursor_time)::timestamptz
         OR (
-            MAX(COALESCE(eba.created_at, eb.created_at)) = sqlc.arg(cursor_time)::timestamptz
-            AND eba.tag > sqlc.arg(cursor_tag)::text
+            MAX(COALESCE(eba.created_at, eb.created_at)) = sqlc.narg(cursor_time)::timestamptz
+            AND eba.tag > sqlc.narg(cursor_tag)::text
         )
     ORDER BY latest_assigned_at ASC, tag ASC
     LIMIT sqlc.arg(tags_limit_plus_one)::int

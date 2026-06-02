@@ -42,7 +42,7 @@ func (s *APIStore) requireTemplateAccess(c *gin.Context, templateID api.Template
 	}
 
 	if template.TeamID != teamID {
-		s.sendAPIStoreError(c, http.StatusForbidden, "You don't have access to this sandbox template")
+		s.sendAPIStoreError(c, http.StatusNotFound, "Template not found")
 
 		return false
 	}

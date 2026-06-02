@@ -313,7 +313,7 @@ func TestGetTemplatesTemplateIDTagsCount_EmptyTemplate(t *testing.T) {
 	assert.Equal(t, int64(0), response.Total)
 }
 
-func TestGetTemplatesTemplateIDTagsCount_ForbiddenForOtherTeam(t *testing.T) {
+func TestGetTemplatesTemplateIDTagsCount_NotFoundForOtherTeam(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
@@ -326,7 +326,8 @@ func TestGetTemplatesTemplateIDTagsCount_ForbiddenForOtherTeam(t *testing.T) {
 	store := &APIStore{db: testDB.SqlcClient}
 	store.GetTemplatesTemplateIDTagsCount(ginCtx, templateID)
 
-	assert.Equal(t, http.StatusForbidden, recorder.Code)
+	assert.Equal(t, http.StatusNotFound, recorder.Code,
+		"team mismatch should not leak template existence")
 }
 
 func TestParseTagGroupsCursor_FormatsAndParses(t *testing.T) {
@@ -339,8 +340,24 @@ func TestParseTagGroupsCursor_FormatsAndParses(t *testing.T) {
 
 	cursorTime, cursorTag, err := parseTagGroupsCursor(&cursor, tagGroupsSortLatestDesc)
 	require.NoError(t, err)
+	require.NotNil(t, cursorTime)
+	require.NotNil(t, cursorTag)
 	assert.True(t, cursorTime.Equal(ts))
-	assert.Equal(t, tag, cursorTag)
+	assert.Equal(t, tag, *cursorTag)
+}
+
+func TestParseTagGroupsCursor_FirstPageReturnsNilPointers(t *testing.T) {
+	t.Parallel()
+
+	for _, sort := range []tagGroupsSort{
+		tagGroupsSortLatestDesc, tagGroupsSortLatestAsc,
+		tagGroupsSortNameAsc, tagGroupsSortNameDesc,
+	} {
+		cursorTime, cursorTag, err := parseTagGroupsCursor(nil, sort)
+		require.NoError(t, err)
+		assert.Nil(t, cursorTime, sort)
+		assert.Nil(t, cursorTag, sort)
+	}
 }
 
 func callTagGroupsHandlerFull(

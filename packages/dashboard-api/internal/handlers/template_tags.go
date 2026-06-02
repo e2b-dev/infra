@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -17,7 +16,6 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	dashboardqueries "github.com/e2b-dev/infra/packages/db/pkg/dashboard/queries"
-	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -43,10 +41,6 @@ var (
 	errCursorTagOutOfCharset = errors.New("invalid cursor tag")
 )
 
-// maxTagSentinel sorts after any valid tag character ([a-z0-9._-]) but
-// remains valid UTF-8, so name_desc keyset comparisons start from the top.
-var maxTagSentinel = string(utf8.RuneError)
-
 type tagGroupsSort string
 
 const (
@@ -63,7 +57,7 @@ func (s *APIStore) GetTemplatesTemplateIDTagsGroups(c *gin.Context, templateID a
 	teamID := auth.MustGetTeamID(c)
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamID.String()), telemetry.WithTemplateID(templateID))
 
-	if !s.resolveOwnedTemplate(ctx, c, templateID, teamID) {
+	if !s.requireTemplateAccess(c, templateID, teamID) {
 		return
 	}
 
@@ -135,7 +129,7 @@ func (s *APIStore) GetTemplatesTemplateIDTagsCount(c *gin.Context, templateID ap
 	teamID := auth.MustGetTeamID(c)
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamID.String()), telemetry.WithTemplateID(templateID))
 
-	if !s.resolveOwnedTemplate(ctx, c, templateID, teamID) {
+	if !s.requireTemplateAccess(c, templateID, teamID) {
 		return
 	}
 
@@ -163,7 +157,7 @@ func (s *APIStore) GetTemplatesTemplateIDTagsExists(c *gin.Context, templateID a
 	teamID := auth.MustGetTeamID(c)
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(teamID.String()), telemetry.WithTemplateID(templateID))
 
-	if !s.resolveOwnedTemplate(ctx, c, templateID, teamID) {
+	if !s.requireTemplateAccess(c, templateID, teamID) {
 		return
 	}
 
@@ -198,39 +192,6 @@ func (s *APIStore) GetTemplatesTemplateIDTagsExists(c *gin.Context, templateID a
 	})
 }
 
-// resolveOwnedTemplate loads the template, verifies team ownership, and
-// writes the appropriate error response on failure. Returns false if the
-// caller should stop processing.
-func (s *APIStore) resolveOwnedTemplate(ctx context.Context, c *gin.Context, templateID api.TemplateID, teamID uuid.UUID) bool {
-	template, err := s.db.GetTemplateByIDWithAliases(ctx, templateID)
-	if err != nil {
-		if dberrors.IsNotFoundError(err) {
-			s.sendAPIStoreError(c, http.StatusNotFound, "Template not found")
-
-			return false
-		}
-
-		logger.L().Error(
-			ctx,
-			"error getting template",
-			zap.Error(err),
-			logger.WithTeamID(teamID.String()),
-			logger.WithTemplateID(templateID),
-		)
-		s.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting template")
-
-		return false
-	}
-
-	if template.TeamID != teamID {
-		s.sendAPIStoreError(c, http.StatusForbidden, "You don't have access to this sandbox template")
-
-		return false
-	}
-
-	return true
-}
-
 // tagGroupRow is the shape we need across all four sort variants. sqlc emits
 // a distinct row struct per query, so we adapt before processing.
 type tagGroupRow struct {
@@ -248,8 +209,8 @@ func (s *APIStore) listTemplateTagGroups(
 	sort tagGroupsSort,
 	templateID api.TemplateID,
 	search string,
-	cursorTime time.Time,
-	cursorTag string,
+	cursorTime *time.Time,
+	cursorTag *string,
 	tagsLimitPlusOne int32,
 	assignmentLimitPlusOne int32,
 ) ([]tagGroupRow, error) {
@@ -505,48 +466,33 @@ func normalizeTagGroupsSearch(value *api.TagGroupsSearch) (string, error) {
 	return cleaned, nil
 }
 
-func parseTagGroupsCursor(cursor *api.TagGroupsCursor, sort tagGroupsSort) (time.Time, string, error) {
+func parseTagGroupsCursor(cursor *api.TagGroupsCursor, sort tagGroupsSort) (*time.Time, *string, error) {
 	if cursor == nil || *cursor == "" {
-		t, tag := tagGroupsCursorSentinel(sort)
-
-		return t, tag, nil
+		return nil, nil, nil
 	}
 
 	parts := strings.SplitN(*cursor, "|", 3)
 	if len(parts) != 3 {
-		return time.Time{}, "", errInvalidCursorFormat
+		return nil, nil, errInvalidCursorFormat
 	}
 
 	if parts[0] != string(sort) {
-		return time.Time{}, "", errCursorSortMismatch
+		return nil, nil, errCursorSortMismatch
 	}
 
 	cursorTime, err := parseCursorTime(parts[1])
 	if err != nil {
-		return time.Time{}, "", fmt.Errorf("%w: %w", errInvalidCursorTime, err)
+		return nil, nil, fmt.Errorf("%w: %w", errInvalidCursorTime, err)
 	}
 
-	// Reject obviously malformed tag payloads (control chars, embedded pipes
-	// already excluded by SplitN). Allow the same charset as real tags plus
-	// the empty string (first-page sentinel may be echoed back by clients).
-	if parts[2] != "" && !tagGroupsSearchRegex.MatchString(parts[2]) {
-		return time.Time{}, "", errCursorTagOutOfCharset
+	// Reject malformed tag payloads (embedded pipes already excluded by
+	// SplitN). The empty string is rejected too — a real next-page cursor
+	// always pins a concrete tag.
+	if !tagGroupsSearchRegex.MatchString(parts[2]) || parts[2] == "" {
+		return nil, nil, errCursorTagOutOfCharset
 	}
 
-	return cursorTime, parts[2], nil
-}
+	cursorTag := parts[2]
 
-func tagGroupsCursorSentinel(sort tagGroupsSort) (time.Time, string) {
-	switch sort {
-	case tagGroupsSortLatestDesc:
-		return time.Now().UTC(), ""
-	case tagGroupsSortLatestAsc:
-		return time.Time{}, ""
-	case tagGroupsSortNameAsc:
-		return time.Time{}, ""
-	case tagGroupsSortNameDesc:
-		return time.Time{}, maxTagSentinel
-	default:
-		return time.Now().UTC(), ""
-	}
+	return &cursorTime, &cursorTag, nil
 }
