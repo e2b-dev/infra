@@ -539,7 +539,7 @@ func parseTagGroupsCursor(cursor *api.TagGroupsCursor, sort tagGroupsSort) (time
 func tagGroupsCursorSentinel(sort tagGroupsSort) (time.Time, string) {
 	switch sort {
 	case tagGroupsSortLatestDesc:
-		return time.Now().UTC().Add(time.Hour), ""
+		return time.Now().UTC(), ""
 	case tagGroupsSortLatestAsc:
 		return time.Time{}, ""
 	case tagGroupsSortNameAsc:
@@ -547,6 +547,6 @@ func tagGroupsCursorSentinel(sort tagGroupsSort) (time.Time, string) {
 	case tagGroupsSortNameDesc:
 		return time.Time{}, maxTagSentinel
 	default:
-		return time.Now().UTC().Add(time.Hour), ""
+		return time.Now().UTC(), ""
 	}
 }
