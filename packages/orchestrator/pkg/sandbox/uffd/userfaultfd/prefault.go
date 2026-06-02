@@ -49,7 +49,7 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 	}
 
 	// Prefault as a read so the page gets WP set. A concurrent on-demand
-	// fault that installs the page first returns faultInstalled via EEXIST.
+	// fault that installs the page first returns faultAlreadyPresent (EEXIST).
 	outcome, err := u.faultPage(
 		ctx,
 		addr,
@@ -65,7 +65,7 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 	}
 
 	switch outcome {
-	case faultInstalled:
+	case faultInstalled, faultAlreadyPresent:
 		u.pageTracker.SetRange(idx, idx+1, block.Dirty)
 		u.prefetchTracker.Add(offset, block.Prefetch)
 	case faultDeferred:
