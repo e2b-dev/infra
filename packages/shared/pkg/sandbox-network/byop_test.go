@@ -197,7 +197,11 @@ func TestIsIPInDeniedSandboxCIDRs_Exported(t *testing.T) {
 		ip   string
 		want bool
 	}{
+		{"0.0.0.0", true},
+		{"0.255.255.255", true},
 		{"10.0.0.5", true},
+		{"100.64.0.1", true},
+		{"100.127.255.254", true},
 		{"172.16.0.1", true},
 		{"192.168.5.5", true},
 		{"127.0.0.1", true},
@@ -205,7 +209,10 @@ func TestIsIPInDeniedSandboxCIDRs_Exported(t *testing.T) {
 		{"::1", true},
 		{"fe80::1", true},
 		{"fc00::1", true},
+		{"1.0.0.1", false},
 		{"8.8.8.8", false},
+		{"100.63.255.255", false},
+		{"100.128.0.0", false},
 		{"203.0.113.5", false},
 		{"2001:db8::1", false},
 	}
