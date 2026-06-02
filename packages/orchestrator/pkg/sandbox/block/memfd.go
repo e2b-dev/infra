@@ -69,6 +69,28 @@ func (m *Memfd) Close() error {
 	return err
 }
 
+// punchHole releases the backing pages for [off, off+length) of the memfd via
+// MADV_REMOVE, which frees the shmem/hugetlbfs backing store (like a fallocate
+// hole-punch). It lets a snapshot copy free each guest range as soon as it has
+// been read into the cache, keeping peak (source + destination) memory ~1x
+// instead of ~2x for large sandboxes.
+//
+// off and length must be huge-page aligned: hugetlbfs rejects sub-hugepage
+// ranges, and callers iterate block-aligned dirty ranges, so a misaligned range
+// is a bug rather than a runtime condition. The mapping is PROT_READ, so there
+// is deliberately no clear() fallback (unlike Cache.punchHole): writing would
+// fault and would not free anything.
+//
+// DESTRUCTIVE: this zeroes the pages for every mapping of the fd, including
+// Firecracker's. Only call when the VM is committed to teardown.
+func (m *Memfd) punchHole(off, length int64) error {
+	if off%header.HugepageSize != 0 || length%header.HugepageSize != 0 {
+		return fmt.Errorf("punch range [%d,%d) not %d-aligned", off, off+length, header.HugepageSize)
+	}
+
+	return unix.Madvise(m.mmap[off:off+length], unix.MADV_REMOVE)
+}
+
 // NewCacheFromMemfd builds a Cache populated from a memfd. The memfd is
 // consumed and closed during construction.
 func NewCacheFromMemfd(
