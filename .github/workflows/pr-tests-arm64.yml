@@ -48,7 +48,7 @@ jobs:
         working-directory: packages/orchestrator
 
   arm64-unit-tests:
-    name: ARM64 tests for ${{ matrix.package }}
+    name: Run ARM64 test shards
     if: ${{ inputs.run-tests == true }}
     runs-on: infra-runner-arm
     timeout-minutes: 45

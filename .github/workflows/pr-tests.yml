@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   run-tests:
-    name: Run tests for ${{ matrix.package }}
+    name: Run unit test shards
     if: ${{ inputs.run-tests == true }}
     runs-on: infra-tests
     env:

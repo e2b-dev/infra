@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   validate-openapi:
-    name: Validate ${{ matrix.spec }}
+    name: Validate OpenAPI specs
     if: ${{ inputs.run-validation == true }}
     runs-on: ubuntu-latest
     strategy:
