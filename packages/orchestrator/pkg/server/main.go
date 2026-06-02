@@ -38,6 +38,12 @@ const uploadedBuildsTTL = 1 * time.Hour
 // MaxStartingInstancesPerNode feature flag and resize the semaphore.
 const startingSandboxesLimitRefreshInterval = 30 * time.Second
 
+// proxyPool is the subset of proxy.SandboxProxy used by the server.
+// Defined as an interface so tests can inject a no-op implementation.
+type proxyPool interface {
+	RemoveFromPool(connectionKey string) error
+}
+
 type Server struct {
 	orchestrator.UnimplementedSandboxServiceServer
 	orchestrator.UnimplementedChunkServiceServer
@@ -45,7 +51,7 @@ type Server struct {
 	config                cfg.Config
 	sandboxFactory        *sandbox.Factory
 	info                  *service.ServiceInfo
-	proxy                 *proxy.SandboxProxy
+	proxy                 proxyPool
 	networkPool           *network.Pool
 	templateCache         *template.Cache
 	devicePool            *nbd.DevicePool

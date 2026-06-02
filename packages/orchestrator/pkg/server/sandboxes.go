@@ -114,11 +114,13 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}
 
 	// Check if we've reached the max number of starting instances on this node
+	var semaphoreAcquired bool
 	if req.GetSandbox().GetSnapshot() {
 		err := s.waitForAcquire(ctx)
 		if err != nil {
 			return nil, err
 		}
+		semaphoreAcquired = true
 	} else {
 		acquired := s.startingSandboxes.TryAcquire(1)
 		if !acquired {
@@ -126,8 +128,8 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 			return nil, status.Errorf(codes.ResourceExhausted, "too many sandboxes starting on this node, please retry")
 		}
+		semaphoreAcquired = true
 	}
-	defer s.startingSandboxes.Release(1)
 
 	template, err := s.templateCache.GetTemplate(
 		ctx,
@@ -234,7 +236,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		return nil, status.Errorf(codes.Internal, "failed to create sandbox: %s", err)
 	}
 
-	s.setupSandboxLifecycle(ctx, sbx)
+	s.setupSandboxLifecycle(ctx, sbx, semaphoreAcquired)
 
 	eventType := events.SandboxCreatedEventPair
 	if req.GetSandbox().GetSnapshot() {
@@ -642,7 +644,8 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	}
 
 	// Setup lifecycle for the resumed sandbox
-	s.setupSandboxLifecycle(ctx, resumedSbx)
+	// Note: semaphoreAcquired=true because Checkpoint acquired it at the start
+	s.setupSandboxLifecycle(ctx, resumedSbx, true)
 
 	// Embed prefetch data into the metadata so it's uploaded with the snapshot files in a single pass.
 	if prefetchErr == nil {
@@ -833,7 +836,8 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 }
 
 // setupSandboxLifecycle sets up the cleanup goroutine for a sandbox.
-func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox) {
+// If semaphoreAcquired is true, the semaphore will be released after cleanup completes.
+func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox, semaphoreAcquired bool) {
 	go func() {
 		ctx, childSpan := tracer.Start(context.WithoutCancel(ctx), "stop sandbox-lifecycle", trace.WithNewRoot())
 		defer childSpan.End()
@@ -851,6 +855,12 @@ func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox
 		closeErr := s.proxy.RemoveFromPool(sbx.LifecycleID)
 		if closeErr != nil {
 			sbxlogger.I(sbx).Warn(ctx, "errors when manually closing connections to sandbox", zap.Error(closeErr))
+		}
+
+		// Release the semaphore after cleanup completes, so it truly limits
+		// the number of concurrently running sandboxes, not just starting ones.
+		if semaphoreAcquired {
+			s.startingSandboxes.Release(1)
 		}
 
 		sbxlogger.E(sbx).Info(ctx, "Sandbox stopped")
