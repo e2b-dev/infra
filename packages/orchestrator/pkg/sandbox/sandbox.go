@@ -1153,6 +1153,12 @@ func (s *Sandbox) Pause(
 		dedupBestEffort = dedupCfg.Get("bestEffort").BoolValue()
 		dedupDirectIO = dedupCfg.Get("directIO").BoolValue()
 	}
+	// Punch each guest range out of the memfd as it is copied into the cache,
+	// freeing the source pages so peak memory stays ~1x. This is DESTRUCTIVE to
+	// the guest memory, so it is only safe once we are committed to discarding
+	// this VM — a failed copy leaves both the cache and the memfd unusable, so
+	// the snapshot must not be rolled back into a resumed sandbox once enabled.
+	punchSource := s.featureFlags.BoolFlag(ctx, featureflags.MemfdPunchOnSnapshotFlag, sandboxLDContext(s.Runtime, s.Config))
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
 		ctx,
 		buildID,
@@ -1165,6 +1171,7 @@ func (s *Sandbox) Pause(
 		dedupBase,
 		dedupBestEffort,
 		dedupDirectIO,
+		punchSource,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
@@ -1251,6 +1258,7 @@ func pauseProcessMemory(
 	originalMemfile block.ReadonlyDevice,
 	dedupBestEffort bool,
 	dedupDirectIO bool,
+	punchSource bool,
 ) (d build.Diff, h *DiffHeader, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
@@ -1260,7 +1268,7 @@ func pauseProcessMemory(
 	// ExportMemory owns memfd and closes it on all paths.
 	cache, err := fc.ExportMemory(
 		ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy,
-		originalMemfile, dedupBestEffort, dedupDirectIO, diffMetadata.Empty, metaOut,
+		originalMemfile, dedupBestEffort, dedupDirectIO, punchSource, diffMetadata.Empty, metaOut,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)

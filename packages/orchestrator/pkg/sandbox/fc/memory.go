@@ -80,6 +80,7 @@ func (p *Process) ExportMemory(
 	originalMemfile block.ReadonlyDevice,
 	dedupBestEffort bool,
 	dedupDirectIO bool,
+	punchSource bool,
 	inputEmpty *roaring.Bitmap,
 	metaOut *utils.SetOnce[*header.DiffMetadata],
 ) (_ block.DiffSource, e error) {
@@ -97,6 +98,8 @@ func (p *Process) ExportMemory(
 	inputMeta := &header.DiffMetadata{Dirty: include, Empty: inputEmpty, BlockSize: blockSize}
 	if memfd != nil {
 		if originalMemfile != nil {
+			// The dedup path is page-granular and does not support incremental
+			// punching, so punchSource is intentionally ignored here.
 			return block.NewCacheFromMemfdDeduped(ctx, originalMemfile, blockSize, cachePath, memfd, include,
 				dedupBestEffort, dedupDirectIO, inputEmpty, metaOut)
 		}
@@ -105,9 +108,9 @@ func (p *Process) ExportMemory(
 			err error
 		)
 		if bgCopy {
-			src, err = block.NewCacheFromMemfdAsync(ctx, blockSize, cachePath, memfd, include)
+			src, err = block.NewCacheFromMemfdAsync(ctx, blockSize, cachePath, memfd, include, punchSource)
 		} else {
-			src, err = block.NewCacheFromMemfd(ctx, blockSize, cachePath, memfd, include)
+			src, err = block.NewCacheFromMemfd(ctx, blockSize, cachePath, memfd, include, punchSource)
 		}
 		if err != nil {
 			return nil, err
