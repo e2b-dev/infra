@@ -220,6 +220,42 @@ components:
       description: Cursor returned by the previous list response in `assigned_at|assignment_id` format.
       schema:
         type: string
+    tag_groups_limit:
+      name: tagsLimit
+      in: query
+      required: false
+      description: Maximum number of distinct tags to return per page.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 25
+    tag_groups_cursor:
+      name: tagsCursor
+      in: query
+      required: false
+      description: Cursor returned by the previous list response in `{sort}|{latest_assigned_at}|{tag}` format (sort-tagged, RFC3339Nano).
+      schema:
+        type: string
+    tag_groups_search:
+      name: search
+      in: query
+      required: false
+      description: Case-insensitive substring filter on tag name. Allowed characters are `a-z`, `0-9`, `.`, `_`, `-`.
+      schema:
+        type: string
+        maxLength: 64
+        pattern: "^[a-z0-9._-]*$"
+    tag_groups_sort:
+      name: sort
+      in: query
+      required: false
+      description: Sort order for the returned tag groups.
+      schema:
+        type: string
+        enum: [latest_desc, latest_asc, name_asc, name_desc]
+        default: latest_desc
 
   responses:
     "400":
@@ -1039,11 +1075,26 @@ components:
       type: object
       required:
         - tags
+        - nextCursor
       properties:
         tags:
           type: array
           items:
             $ref: "#/components/schemas/TemplateTagGroup"
+        nextCursor:
+          type: string
+          nullable: true
+          description: Cursor to pass as `tagsCursor` for the next page, or `null` if there is no next page.
+
+    TemplateTagsCountResponse:
+      type: object
+      required:
+        - total
+      properties:
+        total:
+          type: integer
+          format: int64
+          description: Total distinct ready tags for the template.
 
     TemplateTagExistsResponse:
       type: object
@@ -1630,7 +1681,7 @@ paths:
   /templates/{templateID}/tags/groups:
     get:
       summary: List template tag groups
-      description: Returns ready template tag assignment groups with bounded per-tag history.
+      description: Returns ready template tag assignment groups with bounded per-tag history, paginated over tags with keyset cursor.
       tags: [templates]
       security:
         - Supabase1TokenAuth: []
@@ -1640,6 +1691,10 @@ paths:
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/tag_assignment_limit"
+        - $ref: "#/components/parameters/tag_groups_limit"
+        - $ref: "#/components/parameters/tag_groups_cursor"
+        - $ref: "#/components/parameters/tag_groups_search"
+        - $ref: "#/components/parameters/tag_groups_sort"
       responses:
         "200":
           description: Successfully returned template tag groups.
@@ -1649,6 +1704,34 @@ paths:
                 $ref: "#/components/schemas/TemplateTagGroupsResponse"
         "400":
           $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/{templateID}/tags/count:
+    get:
+      summary: Count template tags
+      description: Returns the total number of distinct ready tags for the template.
+      tags: [templates]
+      security:
+        - Supabase1TokenAuth: []
+          Supabase2TeamAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+      responses:
+        "200":
+          description: Successfully returned tag count.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateTagsCountResponse"
         "401":
           $ref: "#/components/responses/401"
         "403":
