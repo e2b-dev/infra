@@ -36,6 +36,12 @@ jobs:
               - 'tests/**'
               - 'go.work'
               - 'go.work.sum'
+            lint-inputs:
+              - 'packages/**'
+              - 'tests/**'
+              - 'go.work'
+              - 'go.work.sum'
+              - '.golangci.yml'
 
   generated-code-check:
     uses: ./.github/workflows/pr-no-generated-changes.yml
