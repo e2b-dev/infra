@@ -390,32 +390,6 @@ func templatesSearch(v *api.TemplatesSearch) string {
 	return strings.TrimSpace(*v)
 }
 
-func cursorInt64(v *string) (*int64, error) {
-	if v == nil {
-		return nil, nil
-	}
-
-	n, err := strconv.ParseInt(*v, 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", errInvalidTemplatesCursor, err)
-	}
-
-	return &n, nil
-}
-
-func cursorTime(v *string) (*time.Time, error) {
-	if v == nil {
-		return nil, nil
-	}
-
-	t, err := time.Parse(time.RFC3339Nano, *v)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", errInvalidTemplatesCursor, err)
-	}
-
-	return &t, nil
-}
-
 // templatesSortValue serializes the value of the chosen sort column for the
 // given row so it can be embedded in the next-page cursor.
 func templatesSortValue(sort templatesSort, f templateRowFields) string {
