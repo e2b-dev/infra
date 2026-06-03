@@ -117,9 +117,6 @@ locals {
   clickhouse_pool_name   = "clickhouse"
   clickhouse_jobs_prefix = "clickhouse"
 
-  # AMI name prefix must match what Packer produces: "${var.prefix}orch-<timestamp>"
-  ami_family_prefix = "${var.prefix}orch-"
-
   redis_cluster_url   = var.redis_managed ? "rediss://${module.redis[0].endpoint_address}:${local.redis_port}" : ""
   redis_tls_ca_base64 = var.redis_managed ? module.redis[0].endpoint_ca_pem_base64 : ""
   redis_url           = local.redis_cluster_url == "" ? "redis.service.consul:${local.redis_port}" : ""
@@ -265,11 +262,10 @@ module "cluster" {
   consul_dns_request_token_secret = module.init.cluster.consul_dns_request_token
   consul_gossip_encryption_key    = module.init.cluster.consul_gossip_encryption_key
 
-  control_server_cluster_size        = var.control_server_cluster_size
-  control_server_image_family_prefix = var.control_server_image_family_prefix != "" ? var.control_server_image_family_prefix : local.ami_family_prefix
-  control_server_machine_type        = var.control_server_machine_type
-  control_server_target_group_arns   = [aws_lb_target_group.nomad.arn]
-  control_server_security_group_ids  = [aws_security_group.cluster_node.id]
+  control_server_cluster_size       = var.control_server_cluster_size
+  control_server_machine_type       = var.control_server_machine_type
+  control_server_target_group_arns  = [aws_lb_target_group.nomad.arn]
+  control_server_security_group_ids = [aws_security_group.cluster_node.id]
 
   vpc_private_subnets = module.init.vpc_private_subnet_ids
   vpc_public_subnets  = module.init.vpc_public_subnet_ids
@@ -286,11 +282,10 @@ module "cluster" {
   loki_bucket_name                  = module.init.loki_bucket_name
   clickhouse_backups_bucket_name    = module.init.clickhouse_backups_bucket_name
 
-  api_node_pool_name      = local.api_pool_name
-  api_cluster_size        = var.api_cluster_size
-  api_image_family_prefix = var.api_image_family_prefix != "" ? var.api_image_family_prefix : local.ami_family_prefix
-  api_machine_type        = var.api_server_machine_type
-  api_security_group_ids  = [aws_security_group.cluster_node.id]
+  api_node_pool_name     = local.api_pool_name
+  api_cluster_size       = var.api_cluster_size
+  api_machine_type       = var.api_server_machine_type
+  api_security_group_ids = [aws_security_group.cluster_node.id]
   api_target_group_arns = [
     aws_lb_target_group.ingress.arn,
     aws_lb_target_group.ingress_grpc.arn,
@@ -298,7 +293,6 @@ module "cluster" {
 
   build_node_pool_name               = local.build_pool_name
   build_cluster_size                 = var.build_cluster_size
-  build_image_family_prefix          = local.ami_family_prefix
   build_machine_type                 = var.build_server_machine_type
   build_server_nested_virtualization = var.build_server_nested_virtualization
   build_security_group_ids           = [aws_security_group.cluster_node.id]
@@ -306,7 +300,6 @@ module "cluster" {
 
   client_node_pool_name               = local.client_pool_name
   client_cluster_size                 = var.client_cluster_size
-  client_image_family_prefix          = var.client_image_family_prefix != "" ? var.client_image_family_prefix : local.ami_family_prefix
   client_machine_type                 = var.client_server_machine_type
   client_security_group_ids           = [aws_security_group.cluster_node.id]
   client_server_nested_virtualization = var.client_server_nested_virtualization
@@ -314,7 +307,6 @@ module "cluster" {
 
   clickhouse_az                    = "${data.aws_region.current.id}a"
   clickhouse_cluster_size          = var.clickhouse_cluster_size
-  clickhouse_image_family_prefix   = var.clickhouse_image_family_prefix != "" ? var.clickhouse_image_family_prefix : local.ami_family_prefix
   clickhouse_machine_type          = var.clickhouse_server_machine_type
   clickhouse_node_pool_name        = local.clickhouse_pool_name
   clickhouse_security_group_ids    = [aws_security_group.cluster_node.id]

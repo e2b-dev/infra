@@ -85,11 +85,6 @@ variable "api_server_machine_type" {
   default = "t3.xlarge"
 }
 
-variable "api_image_family_prefix" {
-  type    = string
-  default = ""
-}
-
 variable "ingress_count" {
   type    = number
   default = 1
@@ -108,11 +103,6 @@ variable "clickhouse_cluster_size" {
 variable "clickhouse_server_machine_type" {
   type    = string
   default = "t3.xlarge"
-}
-
-variable "clickhouse_image_family_prefix" {
-  type    = string
-  default = ""
 }
 
 variable "client_cluster_size" {
@@ -136,19 +126,9 @@ variable "client_node_labels" {
   default     = []
 }
 
-variable "client_image_family_prefix" {
-  type    = string
-  default = ""
-}
-
 variable "control_server_machine_type" {
   type    = string
   default = "t3.medium"
-}
-
-variable "control_server_image_family_prefix" {
-  type    = string
-  default = ""
 }
 
 variable "orchestrator_port" {

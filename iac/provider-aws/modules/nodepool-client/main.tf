@@ -112,20 +112,9 @@ resource "aws_iam_instance_profile" "client" {
   role = aws_iam_role.client.name
 }
 
-data "aws_ami" "client" {
-  count       = var.image_id != "" ? 0 : 1
-  most_recent = true
-  owners      = [var.aws_account_id]
-
-  filter {
-    name   = "name"
-    values = ["${var.image_family_prefix}*"]
-  }
-}
-
 resource "aws_launch_template" "client" {
   name          = "${var.prefix}${var.name}-node"
-  image_id      = var.image_id != "" ? var.image_id : data.aws_ami.client[0].id
+  image_id      = var.image_id
   instance_type = var.machine_type
   user_data     = base64encode(local.user_data)
 

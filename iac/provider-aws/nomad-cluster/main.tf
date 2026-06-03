@@ -198,8 +198,7 @@ data "aws_iam_policy_document" "cluster_node_ec2_policy" {
 module "control_server" {
   source = "../modules/nodepool-control-server"
 
-  prefix         = var.prefix
-  aws_account_id = var.aws_account_id
+  prefix = var.prefix
 
   cluster_tag_name  = local.cluster_tag_name
   cluster_tag_value = local.cluster_tag_value
@@ -214,8 +213,6 @@ module "control_server" {
   target_group_arns   = var.control_server_target_group_arns
   vpc_private_subnets = var.vpc_private_subnets
 
-  image_family_prefix = var.control_server_image_family_prefix
-
   image_id     = var.image_id
   cluster_size = var.control_server_cluster_size
   machine_type = var.control_server_machine_type
@@ -229,8 +226,7 @@ module "control_server" {
 module "api" {
   source = "../modules/nodepool-api"
 
-  prefix         = var.prefix
-  aws_account_id = var.aws_account_id
+  prefix = var.prefix
 
   cluster_tag_name  = local.cluster_tag_name
   cluster_tag_value = local.cluster_tag_value
@@ -244,8 +240,6 @@ module "api" {
   security_group_ids  = var.api_security_group_ids
   target_group_arns   = var.api_target_group_arns
   vpc_private_subnets = var.vpc_private_subnets
-
-  image_family_prefix = var.api_image_family_prefix
 
   image_id     = var.image_id
   cluster_size = var.api_cluster_size
@@ -264,8 +258,7 @@ module "api" {
 module "clickhouse" {
   source = "../modules/nodepool-clickhouse"
 
-  prefix         = var.prefix
-  aws_account_id = var.aws_account_id
+  prefix = var.prefix
 
   cluster_tag_name  = local.cluster_tag_name
   cluster_tag_value = local.cluster_tag_value
@@ -277,8 +270,6 @@ module "clickhouse" {
   setup_files_hash  = local.setup_files_hash
 
   security_group_ids = var.clickhouse_security_group_ids
-
-  image_family_prefix = var.clickhouse_image_family_prefix
 
   image_id     = var.image_id
   cluster_size = var.clickhouse_cluster_size
@@ -299,9 +290,8 @@ module "clickhouse" {
 module "build" {
   source = "../modules/nodepool-client"
 
-  name           = "orch-build"
-  prefix         = var.prefix
-  aws_account_id = var.aws_account_id
+  name   = "orch-build"
+  prefix = var.prefix
 
   cluster_tag_name  = local.cluster_tag_name
   cluster_tag_value = local.cluster_tag_value
@@ -314,8 +304,6 @@ module "build" {
 
   security_group_ids  = var.build_security_group_ids
   vpc_private_subnets = var.vpc_private_subnets
-
-  image_family_prefix = var.build_image_family_prefix
 
   image_id     = var.image_id
   cluster_size = var.build_cluster_size
@@ -346,9 +334,8 @@ module "build" {
 module "client" {
   source = "../modules/nodepool-client"
 
-  name           = "orch-client"
-  prefix         = var.prefix
-  aws_account_id = var.aws_account_id
+  name   = "orch-client"
+  prefix = var.prefix
 
   cluster_tag_name  = local.cluster_tag_name
   cluster_tag_value = local.cluster_tag_value
@@ -361,8 +348,6 @@ module "client" {
 
   security_group_ids  = var.client_security_group_ids
   vpc_private_subnets = var.vpc_private_subnets
-
-  image_family_prefix = var.client_image_family_prefix
 
   image_id     = var.image_id
   cluster_size = var.client_cluster_size

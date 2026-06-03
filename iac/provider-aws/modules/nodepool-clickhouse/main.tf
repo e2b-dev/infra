@@ -45,17 +45,6 @@ resource "aws_iam_instance_profile" "clickhouse" {
   role = aws_iam_role.clickhouse.name
 }
 
-data "aws_ami" "clickhouse" {
-  count       = var.image_id != "" ? 0 : 1
-  most_recent = true
-  owners      = [var.aws_account_id]
-
-  filter {
-    name   = "name"
-    values = ["${var.image_family_prefix}*"]
-  }
-}
-
 resource "aws_ebs_volume" "clickhouse" {
   for_each = toset([for i in range(1, var.cluster_size + 1) : tostring(i)])
 
@@ -70,7 +59,7 @@ resource "aws_ebs_volume" "clickhouse" {
 
 resource "aws_launch_template" "clickhouse" {
   name          = "${var.prefix}clickhouse-node"
-  image_id      = var.image_id != "" ? var.image_id : data.aws_ami.clickhouse[0].id
+  image_id      = var.image_id
   instance_type = var.machine_type
 
   vpc_security_group_ids = var.security_group_ids
