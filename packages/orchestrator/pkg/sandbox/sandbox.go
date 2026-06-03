@@ -362,19 +362,20 @@ func (f *Factory) StartDraining(ctx context.Context) {
 	})
 }
 
-func (f *Factory) enterSandboxStart() error {
+func (f *Factory) enterSandboxStart() (func(), error) {
 	if err := f.rejectIfDraining(); err != nil {
-		return err
+		return nil, err
 	}
 
 	f.sandboxStartMu.RLock()
+	release := sync.OnceFunc(f.leaveSandboxStart)
 	if err := f.rejectIfDraining(); err != nil {
-		f.sandboxStartMu.RUnlock()
+		release()
 
-		return err
+		return nil, err
 	}
 
-	return nil
+	return release, nil
 }
 
 func (f *Factory) leaveSandboxStart() {
@@ -402,24 +403,6 @@ func (f *Factory) WaitSandboxStarts(ctx context.Context) error {
 		case <-ticker.C:
 		}
 	}
-}
-
-// TryWaitSandboxStarts returns whether no sandbox factory starts are in flight.
-func (f *Factory) TryWaitSandboxStarts(ctx context.Context) bool {
-	if f == nil {
-		return true
-	}
-
-	if !f.sandboxStartMu.TryLock() {
-		logger.L().Warn(ctx, "in-flight sandbox factory start operations still running")
-
-		return false
-	}
-
-	f.sandboxStartMu.Unlock()
-	logger.L().Info(ctx, "in-flight sandbox factory start operations finished")
-
-	return true
 }
 
 func (f *Factory) rejectIfDraining() error {
@@ -457,10 +440,11 @@ func (f *Factory) CreateSandbox(
 	ctx, span := tracer.Start(ctx, "create sandbox")
 	defer span.End()
 	defer handleSpanError(span, &e)
-	if err := f.enterSandboxStart(); err != nil {
+	releaseSandboxStart, err := f.enterSandboxStart()
+	if err != nil {
 		return nil, err
 	}
-	defer f.leaveSandboxStart()
+	defer releaseSandboxStart()
 
 	execCtx, execSpan := startExecutionSpan(ctx)
 
@@ -713,10 +697,11 @@ func (f *Factory) ResumeSandbox(
 	ctx, span := tracer.Start(ctx, "resume sandbox")
 	defer span.End()
 	defer handleSpanError(span, &e)
-	if err := f.enterSandboxStart(); err != nil {
+	releaseSandboxStart, err := f.enterSandboxStart()
+	if err != nil {
 		return nil, err
 	}
-	defer f.leaveSandboxStart()
+	defer releaseSandboxStart()
 
 	execCtx, execSpan := startExecutionSpan(ctx)
 

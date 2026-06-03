@@ -16,14 +16,16 @@ func TestFactoryStartDrainingRejectsNewStarts(t *testing.T) {
 	factory := testFactory()
 	factory.StartDraining(t.Context())
 
-	require.ErrorIs(t, factory.enterSandboxStart(), ErrFactoryDraining)
+	_, err := factory.enterSandboxStart()
+	require.ErrorIs(t, err, ErrFactoryDraining)
 }
 
 func TestFactoryWaitSandboxStartsWaitsUntilStartLeaves(t *testing.T) {
 	t.Parallel()
 
 	factory := testFactory()
-	require.NoError(t, factory.enterSandboxStart())
+	release, err := factory.enterSandboxStart()
+	require.NoError(t, err)
 
 	waitCtx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
@@ -39,7 +41,7 @@ func TestFactoryWaitSandboxStartsWaitsUntilStartLeaves(t *testing.T) {
 	case <-time.After(25 * time.Millisecond):
 	}
 
-	factory.leaveSandboxStart()
+	release()
 	require.NoError(t, <-done)
 }
 
@@ -47,23 +49,14 @@ func TestFactoryWaitSandboxStartsReturnsContextError(t *testing.T) {
 	t.Parallel()
 
 	factory := testFactory()
-	require.NoError(t, factory.enterSandboxStart())
-	defer factory.leaveSandboxStart()
+	release, err := factory.enterSandboxStart()
+	require.NoError(t, err)
+	defer release()
 
 	waitCtx, cancel := context.WithCancel(t.Context())
 	cancel()
 
 	require.ErrorIs(t, factory.WaitSandboxStarts(waitCtx), context.Canceled)
-}
-
-func TestFactoryTryWaitSandboxStartsDoesNotBlock(t *testing.T) {
-	t.Parallel()
-
-	factory := testFactory()
-	require.NoError(t, factory.enterSandboxStart())
-	defer factory.leaveSandboxStart()
-
-	require.False(t, factory.TryWaitSandboxStarts(t.Context()))
 }
 
 func testFactory() *Factory {

@@ -106,17 +106,9 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	}
 
 	logs := buildlogger.NewLogEntryLogger()
-	if err := s.enterBuildStart(ctx, "template-create"); err != nil {
+	releaseBuildStart, err := s.enterBuildStart(ctx, "template-create")
+	if err != nil {
 		return nil, err
-	}
-	buildStartReleased := false
-	releaseBuildStart := func() {
-		if buildStartReleased {
-			return
-		}
-
-		s.leaveBuildStart()
-		buildStartReleased = true
 	}
 	defer releaseBuildStart()
 
