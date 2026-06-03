@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
@@ -34,9 +33,7 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 	ctx, span := tracer.Start(ctx, "place-sandbox")
 	defer span.End()
 
-	nodesExcluded := make(map[string]struct{})  // hard failures, never retried
-	nodesExhausted := make(map[string]struct{}) // capacity-exhausted, retried as a pool
-	exhaustedRetries := 0
+	nodesExcluded := make(map[string]struct{})
 	var err error
 
 	var node *nodemanager.Node
@@ -56,40 +53,12 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 		if node != nil {
 			telemetry.ReportEvent(ctx, "Placing sandbox on the preferred node", telemetry.WithNodeID(node.ID))
 		} else {
-			skip := make(map[string]struct{}, len(nodesExcluded)+len(nodesExhausted))
-			for id := range nodesExcluded {
-				skip[id] = struct{}{}
-			}
-			for id := range nodesExhausted {
-				skip[id] = struct{}{}
+			if len(nodesExcluded) >= len(clusterNodes) {
+				return nil, errors.New("no nodes available")
 			}
 
-			if len(skip) < len(clusterNodes) {
-				node, err = algorithm.chooseNode(ctx, clusterNodes, skip, nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()}, buildMachineInfo, labelFilteringEnabled, requiredLabels, affinityScores...)
-			} else {
-				node, err = nil, errors.New("no nodes available")
-			}
+			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()}, buildMachineInfo, labelFilteringEnabled, requiredLabels, affinityScores...)
 			if err != nil {
-				// No eligible node. If some were only capacity-exhausted, retry the
-				// whole exhausted pool since capacity may free up.
-				if len(nodesExhausted) > 0 {
-					exhaustedRetries++
-					if exhaustedRetries >= maxExhaustedRetries {
-						return nil, err
-					}
-					clear(nodesExhausted)
-
-					// Wait before retrying the exhausted pool, but bail out
-					// promptly if the client has gone away.
-					select {
-					case <-ctx.Done():
-						return nil, fmt.Errorf("request timed out during %d. attempt", attempt+1)
-					case <-time.After(exhaustedRetryBackoff):
-					}
-
-					continue
-				}
-
 				return nil, err
 			}
 
@@ -133,7 +102,6 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 
 		switch statusCode {
 		case codes.ResourceExhausted:
-			nodesExhausted[failedNode.ID] = struct{}{}
 			failedNode.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
 			logger.L().Warn(ctx, "Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID))
 		default:
