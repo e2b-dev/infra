@@ -38,11 +38,7 @@ func PlaceSandbox(ctx context.Context, algorithm Algorithm, clusterNodes []*node
 
 	var node *nodemanager.Node
 	if preferredNode != nil {
-		if isNodeCPUCompatible(preferredNode, buildMachineInfo) && (!labelFilteringEnabled || isNodeLabelsCompatible(preferredNode, requiredLabels)) {
-			node = preferredNode
-		} else {
-			nodesExcluded[preferredNode.ID] = struct{}{}
-		}
+		node = preferredNode
 	}
 
 	attempt := 0

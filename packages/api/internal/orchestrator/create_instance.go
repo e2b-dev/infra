@@ -281,6 +281,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	buildMachineInfo := builds.ToMachineInfo(sbxData.Build)
 	if isResume && labelFilteringEnabled && len(team.SandboxSchedulingLabels) > 0 {
+		node = nil
 		buildMachineInfo = machineinfo.MachineInfo{}
 	}
 
