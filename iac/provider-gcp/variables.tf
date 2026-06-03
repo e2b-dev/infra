@@ -871,6 +871,12 @@ variable "template_manager_env_vars" {
   sensitive = true
 }
 
+variable "docker_reverse_proxy_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
 variable "orchestrator_enabled" {
   type        = bool
   default     = true

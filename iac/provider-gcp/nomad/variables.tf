@@ -256,8 +256,10 @@ variable "docker_reverse_proxy_port" {
   })
 }
 
-variable "docker_reverse_proxy_service_account_key" {
-  type = string
+variable "docker_reverse_proxy_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 # Orchestrator
