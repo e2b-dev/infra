@@ -6,6 +6,7 @@ resource "google_filestore_instance" "shared_disk_store" {
   name     = var.name
   tier     = var.tier
   protocol = format("NFS_V%s", replace(local.nfs_version, ".", "_"))
+  location = var.location
 
   deletion_protection_enabled = true
   deletion_protection_reason  = "If this gets removed, the orchestrator will throw tons of errors"

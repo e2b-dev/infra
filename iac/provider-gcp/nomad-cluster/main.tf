@@ -29,6 +29,14 @@ locals {
     "scripts/run-consul.sh" = substr(filesha256("${path.module}/scripts/run-consul.sh"), 0, 5)
     "scripts/run-nomad.sh"  = substr(filesha256("${path.module}/scripts/run-nomad.sh"), 0, 5)
   }
+
+  client_cluster_locations = {
+    for name, config in var.client_clusters_config : name => {
+      region         = coalesce(config.region, var.gcp_region)
+      zone           = coalesce(config.zone, var.gcp_zone)
+      filestore_zone = coalesce(config.filestore_zone, config.zone, var.gcp_zone)
+    }
+  }
 }
 
 resource "google_secret_manager_secret" "consul_gossip_encryption_key" {
@@ -145,15 +153,33 @@ module "filestore" {
   nfs_version = var.filestore_nfs_version
 }
 
+module "regional_filestore" {
+  source = "./filestore"
+
+  for_each = var.filestore_cache_enabled ? var.additional_filestores : {}
+
+  name         = "${var.prefix}shared-disk-store-${each.key}"
+  network_name = var.network_name
+  location     = each.value.location
+
+  tier        = each.value.tier
+  capacity_gb = each.value.capacity_gb
+  nfs_version = var.filestore_nfs_version
+}
+
 
 module "build_cluster" {
   for_each = var.build_clusters_config
   source   = "./worker-cluster"
 
-  gcp_region                   = var.gcp_region
-  gcp_zone                     = var.gcp_zone
-  google_service_account_email = var.google_service_account_email
-  google_service_account_key   = var.google_service_account_key
+  gcp_region                     = var.gcp_region
+  gcp_zone                       = var.gcp_zone
+  docker_registry_region         = var.gcp_region
+  nomad_region                   = var.gcp_region
+  consul_datacenter              = var.gcp_region
+  consul_retry_join_zone_pattern = "${var.gcp_region}-.*"
+  google_service_account_email   = var.google_service_account_email
+  google_service_account_key     = var.google_service_account_key
 
   cluster_size     = each.value.cluster_size
   cache_disks      = each.value.cache_disks
@@ -208,10 +234,15 @@ module "client_cluster" {
   for_each = var.client_clusters_config
   source   = "./worker-cluster"
 
-  gcp_region                   = var.gcp_region
-  gcp_zone                     = var.gcp_zone
-  google_service_account_email = var.google_service_account_email
-  google_service_account_key   = var.google_service_account_key
+  gcp_region                     = local.client_cluster_locations[each.key].region
+  gcp_zone                       = local.client_cluster_locations[each.key].zone
+  zones                          = local.client_cluster_locations[each.key].region != var.gcp_region ? each.value.zones : null
+  docker_registry_region         = var.gcp_region
+  nomad_region                   = var.gcp_region
+  consul_datacenter              = var.gcp_region
+  consul_retry_join_zone_pattern = "${var.gcp_region}-.*"
+  google_service_account_email   = var.google_service_account_email
+  google_service_account_key     = var.google_service_account_key
 
   cluster_size     = each.value.cluster_size
   cache_disks      = each.value.cache_disks
@@ -221,12 +252,13 @@ module "client_cluster" {
   autoscaler       = each.value.autoscaler
 
   // This is here for backwards compatibility
-  cluster_name              = each.key == "default" ? "${var.prefix}${var.client_cluster_name}" : "${var.prefix}${var.client_cluster_name}-${each.key}"
-  image_family              = var.client_image_family
-  network_name              = var.network_name
-  base_hugepages_percentage = coalesce((each.value.hugepages_percentage), local.client_base_hugepages_percentage)
-  network_interface_type    = each.value.network_interface_type
-  node_labels               = each.value.node_labels
+  cluster_name                     = each.key == "default" ? "${var.prefix}${var.client_cluster_name}" : "${var.prefix}${var.client_cluster_name}-${each.key}"
+  image_family                     = var.client_image_family
+  network_name                     = var.network_name
+  base_hugepages_percentage        = coalesce((each.value.hugepages_percentage), local.client_base_hugepages_percentage)
+  network_interface_type           = each.value.network_interface_type
+  node_labels                      = each.value.node_labels
+  distribution_policy_target_shape = each.value.distribution_policy_target_shape
 
   cluster_tag_name                         = var.cluster_tag_name
   node_pool                                = var.orchestrator_node_pool
@@ -244,7 +276,18 @@ module "client_cluster" {
   fc_busybox_bucket_name      = var.fc_busybox_bucket_name
 
   filestore_cache_enabled = var.filestore_cache_enabled
-  nfs_ip_addresses        = var.filestore_cache_enabled ? module.filestore[0].nfs_ip_addresses : []
+  // Use default regional, if region matched
+  // Use additional regional, if region specified in additional_filestores
+  // Otherwise, don't use a filestore cache
+  nfs_ip_addresses = var.filestore_cache_enabled ? (
+    local.client_cluster_locations[each.key].region == var.gcp_region
+    ? module.filestore[0].nfs_ip_addresses
+    : (
+      contains(keys(module.regional_filestore), local.client_cluster_locations[each.key].region)
+      ? module.regional_filestore[local.client_cluster_locations[each.key].region].nfs_ip_addresses
+      : []
+    )
+  ) : []
   nfs_mount_path          = local.nfs_mount_path
   nfs_mount_subdir        = local.nfs_mount_subdir
   nfs_mount_opts          = local.nfs_mount_opts

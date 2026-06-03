@@ -8,6 +8,12 @@ variable "network_name" {
   type        = string
 }
 
+variable "location" {
+  description = "The GCP zone or region where the Filestore instance is created. Null keeps provider defaults."
+  type        = string
+  default     = null
+}
+
 variable "tier" {
   description = "The tier of the Filestore cache"
   type        = string

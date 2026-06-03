@@ -7,6 +7,18 @@ variable "cluster_size" {
   }
 }
 
+variable "distribution_policy_target_shape" {
+  description = "Target distribution shape for the regional managed instance group."
+  type        = string
+  default     = "BALANCED"
+  nullable    = false
+
+  validation {
+    condition     = contains(["ANY", "BALANCED", "EVEN", "ANY_SINGLE_ZONE"], var.distribution_policy_target_shape)
+    error_message = "distribution_policy_target_shape must be one of ANY, BALANCED, EVEN, or ANY_SINGLE_ZONE."
+  }
+}
+
 variable "autoscaler" {
   type = object({
     size_max      = optional(number)
@@ -79,6 +91,36 @@ variable "gcp_region" {
 variable "gcp_zone" {
   description = "GCP zone where the cluster will be deployed"
   type        = string
+}
+
+variable "zones" {
+  description = "Optional zones for the regional managed instance group distribution policy."
+  type        = list(string)
+  default     = null
+}
+
+variable "docker_registry_region" {
+  description = "GCP region hosting Artifact Registry images this worker must pull. Defaults to the VM region when empty."
+  type        = string
+  default     = ""
+}
+
+variable "nomad_region" {
+  description = "Nomad region this client should join. Defaults to the VM region when empty."
+  type        = string
+  default     = ""
+}
+
+variable "consul_datacenter" {
+  description = "Consul datacenter this client should join. Defaults to the VM region when empty."
+  type        = string
+  default     = ""
+}
+
+variable "consul_retry_join_zone_pattern" {
+  description = "GCE zone pattern used by Consul auto-join. Defaults to the VM region when empty."
+  type        = string
+  default     = ""
 }
 
 variable "network_name" {

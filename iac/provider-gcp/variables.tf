@@ -514,6 +514,35 @@ variable "filestore_nfs_version" {
   default     = ""
 }
 
+variable "additional_filestores" {
+  type = map(object({
+    tier        = string
+    capacity_gb = number
+    location    = optional(string)
+  }))
+  description = <<EOT
+Additional Filestore (NFS) caches keyed by GCP region, each provisioned as its
+own instance with a custom tier and capacity. Only takes effect when
+filestore_cache_enabled is true. All instances share var.filestore_nfs_version.
+
+Client cluster mount resolution:
+  - Clusters in the primary region (var.gcp_region) use the shared primary
+    Filestore (sized by filestore_cache_tier / filestore_cache_capacity_gb).
+  - Clusters in a non-primary region with a matching entry mount that entry.
+  - Clusters in a non-primary region without a matching entry mount no NFS.
+
+Format:
+{
+  "europe-west3": {
+    "tier": "BASIC_SSD",
+    "capacity_gb": 2560,
+    "location": "europe-west3-c",
+  }
+}
+EOT
+  default     = {}
+}
+
 variable "filestore_cache_cleanup_disk_usage_target" {
   type        = number
   description = "The max disk usage target of the Filestore"
@@ -591,9 +620,14 @@ variable "client_clusters_config" {
       count     = number
     })
 
-    hugepages_percentage   = optional(number)
-    network_interface_type = optional(string)
-    node_labels            = optional(list(string), [])
+    hugepages_percentage             = optional(number)
+    network_interface_type           = optional(string)
+    node_labels                      = optional(list(string), [])
+    region                           = optional(string)
+    zone                             = optional(string)
+    zones                            = optional(list(string))
+    filestore_zone                   = optional(string)
+    distribution_policy_target_shape = optional(string, "BALANCED")
   }))
 
   description = <<EOT
@@ -623,6 +657,11 @@ Format: [
   }
 ]
 EOT
+
+  validation {
+    condition     = alltrue([for _, config in var.client_clusters_config : config.region == null || config.zone != null])
+    error_message = "client_clusters_config entries that set region must also set zone."
+  }
 }
 
 variable "build_clusters_config" {

@@ -128,10 +128,20 @@ variable "client_clusters_config" {
       size_gb   = number
       count     = number
     })
-    hugepages_percentage   = optional(number)
-    network_interface_type = optional(string)
-    node_labels            = optional(list(string), [])
+    hugepages_percentage             = optional(number)
+    network_interface_type           = optional(string)
+    node_labels                      = optional(list(string), [])
+    region                           = optional(string)
+    zone                             = optional(string)
+    zones                            = optional(list(string))
+    filestore_zone                   = optional(string)
+    distribution_policy_target_shape = optional(string, "BALANCED")
   }))
+
+  validation {
+    condition     = alltrue([for _, config in var.client_clusters_config : config.region == null || config.zone != null])
+    error_message = "client_clusters_config entries that set region must also set zone."
+  }
 }
 
 variable "build_cluster_name" {
@@ -296,6 +306,16 @@ variable "filestore_cache_capacity_gb" {
 
 variable "filestore_nfs_version" {
   type = string
+}
+
+variable "additional_filestores" {
+  type = map(object({
+    tier        = string
+    capacity_gb = number
+    location    = string
+  }))
+  description = "Additional regional Filestore (NFS) caches keyed by GCP region."
+  default     = {}
 }
 
 variable "api_node_pool" {

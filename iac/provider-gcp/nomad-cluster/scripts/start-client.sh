@@ -202,7 +202,12 @@ cat <<EOF >/root/docker/config.json
             "username": "_json_key_base64",
             "password": "${GOOGLE_SERVICE_ACCOUNT_KEY}",
             "server_address": "https://${GCP_REGION}-docker.pkg.dev"
-        }
+        }%{ if DOCKER_REGISTRY_REGION != "" && DOCKER_REGISTRY_REGION != GCP_REGION },
+        "${DOCKER_REGISTRY_REGION}-docker.pkg.dev": {
+            "username": "_json_key_base64",
+            "password": "${GOOGLE_SERVICE_ACCOUNT_KEY}",
+            "server_address": "https://${DOCKER_REGISTRY_REGION}-docker.pkg.dev"
+        }%{ endif }
     }
 }
 EOF
@@ -303,13 +308,23 @@ GCE_DNS=$(curl -s -H 'Metadata-Flavor: Google' http://metadata.google.internal/c
 # Start Consul first (in background) with GCE DNS as recursor
 # This allows Consul to handle both .consul queries AND forward internet queries
 # These variables are passed in via Terraform template interpolation
-/opt/consul/bin/run-consul.sh --client \
-    --consul-token "${CONSUL_TOKEN}" \
-    --cluster-tag-name "${CLUSTER_TAG_NAME}" \
-    --enable-gossip-encryption \
-    --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}" \
-    --dns-request-token "${CONSUL_DNS_REQUEST_TOKEN}" \
-    --recursor "$${GCE_DNS}" &
+CONSUL_ARGS=(
+    --client
+    --consul-token "${CONSUL_TOKEN}"
+    --cluster-tag-name "${CLUSTER_TAG_NAME}"
+    --enable-gossip-encryption
+    --gossip-encryption-key "${CONSUL_GOSSIP_ENCRYPTION_KEY}"
+    --dns-request-token "${CONSUL_DNS_REQUEST_TOKEN}"
+    --recursor "$${GCE_DNS}"
+)
+%{ if CONSUL_DATACENTER != "" }
+CONSUL_ARGS+=(--datacenter "${CONSUL_DATACENTER}")
+%{ endif }
+%{ if CONSUL_RETRY_JOIN_ZONE_PATTERN != "" }
+CONSUL_ARGS+=(--retry-join-zone-pattern "${CONSUL_RETRY_JOIN_ZONE_PATTERN}")
+%{ endif }
+
+/opt/consul/bin/run-consul.sh "$${CONSUL_ARGS[@]}" &
 
 # Give Consul a moment to start its DNS server on port 8600
 echo "- Waiting for Consul DNS to start on port 8600..."
@@ -385,9 +400,19 @@ for i in $(seq 1 $FETCH_MAX_ATTEMPTS); do
   sleep $FETCH_INTERVAL_SECONDS
 done
 
-/opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" --node-labels "${NODE_LABELS}" --orchestrator-job-version "$ORCHESTRATOR_VERSION" &
+NOMAD_ARGS=(--client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" --node-labels "${NODE_LABELS}")
+%{ if NOMAD_REGION != "" }
+NOMAD_ARGS+=(--region "${NOMAD_REGION}")
+%{ endif }
+
+/opt/nomad/bin/run-nomad.sh "$${NOMAD_ARGS[@]}" --orchestrator-job-version "$ORCHESTRATOR_VERSION" &
 %{ else }
-/opt/nomad/bin/run-nomad.sh --client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" --node-labels "${NODE_LABELS}" &
+NOMAD_ARGS=(--client --consul-token "${CONSUL_TOKEN}" --node-pool "${NODE_POOL}" --node-labels "${NODE_LABELS}")
+%{ if NOMAD_REGION != "" }
+NOMAD_ARGS+=(--region "${NOMAD_REGION}")
+%{ endif }
+
+/opt/nomad/bin/run-nomad.sh "$${NOMAD_ARGS[@]}" &
 %{ endif }
 
 # Add alias for ssh-ing to sbx
