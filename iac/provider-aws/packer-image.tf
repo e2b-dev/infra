@@ -48,10 +48,10 @@ resource "packer_image" "orch" {
   # (variables). The toowoxx/packer provider only re-runs `packer build` when a trigger value
   # changes; variable changes alone do not, so a version/base-image bump would otherwise leave
   # the manifest (and every node pool that reads it) pinned to the previously built image.
-  triggers = {
-    files     = data.packer_files.orch.files_hash
-    variables = sha256(jsonencode(local.packer_variables))
-  }
+  triggers = merge(
+    { files = data.packer_files.orch.files_hash },
+    local.packer_variables,
+  )
 }
 
 locals {
