@@ -10,6 +10,7 @@ import (
 	"io"
 	"math/rand"
 	"os"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -52,6 +53,7 @@ type Cache struct {
 	size      int64
 	blockSize int64
 	file      *os.File
+	mu        sync.RWMutex
 	tracker   *Tracker // Dirty: payload in file; Zero: punched, emitted as Empty in the diff
 	dirtyFile bool
 	closed    atomic.Bool
@@ -104,6 +106,9 @@ func (c *Cache) isClosed() bool {
 func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMetadata, error) {
 	ctx, childSpan := tracer.Start(ctx, "export-to-diff")
 	defer childSpan.End()
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
 	if c.isClosed() {
 		return nil, NewErrCacheClosed(c.filePath)
@@ -435,10 +440,13 @@ func (c *Cache) Dedup(
 }
 
 func (c *Cache) ReadAt(b []byte, off int64) (int, error) {
-	return c.readAt(b, off, false)
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.readAtWithoutLock(b, off, false)
 }
 
-func (c *Cache) readAt(b []byte, off int64, skipCachedCheck bool) (int, error) {
+func (c *Cache) readAtWithoutLock(b []byte, off int64, skipCachedCheck bool) (int, error) {
 	if len(b) == 0 || c.size == 0 {
 		return 0, nil
 	}
@@ -463,6 +471,9 @@ func (c *Cache) readAt(b []byte, off int64, skipCachedCheck bool) (int, error) {
 }
 
 func (c *Cache) WriteAt(b []byte, off int64) (int, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	if len(b) == 0 || c.size == 0 {
 		return 0, nil
 	}
@@ -521,6 +532,9 @@ func (c *Cache) WriteAt(b []byte, off int64) (int, error) {
 }
 
 func (c *Cache) writeRawAt(b []byte, off int64) (int, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	if len(b) == 0 || c.size == 0 {
 		return 0, nil
 	}
@@ -547,6 +561,9 @@ func (c *Cache) Close() (e error) {
 		return NewErrCacheClosed(c.filePath)
 	}
 
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if c.file != nil {
 		e = errors.Join(e, c.file.Close())
 	}
@@ -567,10 +584,16 @@ func (c *Cache) Size() (int64, error) {
 
 // Slice returns a copy of the cached bytes.
 func (c *Cache) Slice(off, length int64) ([]byte, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	return c.slice(off, length, false)
 }
 
 func (c *Cache) sliceDirect(off, length int64) ([]byte, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	return c.slice(off, length, true)
 }
 
@@ -581,7 +604,7 @@ func (c *Cache) slice(off, length int64, skipCachedCheck bool) ([]byte, error) {
 	}
 
 	out := make([]byte, end-off)
-	n, err := c.readAt(out, off, skipCachedCheck)
+	n, err := c.readAtWithoutLock(out, off, skipCachedCheck)
 	if err != nil {
 		return nil, err
 	}
@@ -630,6 +653,9 @@ func (c *Cache) punchHole(off, length int64) error {
 // WriteZeroesAt punches the range and marks all touched blocks Zero.
 // Caller must pass a block-aligned offset/length (NBD invariant).
 func (c *Cache) WriteZeroesAt(off, length int64) (int, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	if length == 0 || c.size == 0 {
 		return 0, nil
 	}
@@ -712,6 +738,13 @@ func (c *Cache) copyProcessMemory(
 	pid int,
 	rs []Range,
 ) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.isClosed() {
+		return NewErrCacheClosed(c.filePath)
+	}
+
 	// Pre-split so no single iov exceeds MAX_RW_COUNT.
 	ranges := splitOversizedRanges(rs, getAlignedMaxRwCount(c.blockSize))
 

@@ -253,9 +253,9 @@ func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, ft *stor
 		// granularity with the read size and minimize lock/notify overhead.
 		readEnd := min(totalRead+readBatch, s.chunkLen)
 		sw := c.metrics.WriteChunksTimerFactory.Begin()
+		writeOff := s.chunkOff + totalRead
 		n, readErr := io.ReadFull(reader, buf[:readEnd-totalRead])
 		if n > 0 {
-			writeOff := s.chunkOff + totalRead
 			written, writeErr := c.cache.writeRawAt(buf[:n], writeOff)
 			if writeErr != nil {
 				sw.RecordRaw(ctx, int64(n), writeFailureAttr)
@@ -267,7 +267,6 @@ func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, ft *stor
 
 				return totalRead, fmt.Errorf("short cache write at offset %d: expected %d bytes, got %d", writeOff, n, written)
 			}
-			c.cache.setIsCached(writeOff, int64(n))
 		}
 		totalRead += int64(n)
 		if readErr == nil || totalRead >= s.chunkLen {
@@ -276,8 +275,10 @@ func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, ft *stor
 			sw.RecordRaw(ctx, int64(n), writeFailureAttr)
 		}
 
-		if n > 0 {
-			s.advance(totalRead)
+		fullBlocksReady := (totalRead / blockSize) * blockSize
+		if fullBlocksReady > 0 {
+			c.cache.setIsCached(s.chunkOff, fullBlocksReady)
+			s.advance(fullBlocksReady)
 		}
 
 		if readErr != nil {
