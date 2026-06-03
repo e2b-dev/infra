@@ -100,10 +100,6 @@ variable "api_resources_memory_mb" {
   type = number
 }
 
-variable "api_secret" {
-  type = string
-}
-
 variable "environment" {
   type = string
 }
@@ -252,8 +248,10 @@ variable "docker_reverse_proxy_port" {
   })
 }
 
-variable "docker_reverse_proxy_service_account_key" {
-  type = string
+variable "docker_reverse_proxy_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 # Orchestrator
@@ -272,6 +270,12 @@ variable "fc_env_pipeline_bucket_name" {
 # Template manager
 variable "template_manager_port" {
   type = number
+}
+
+variable "template_manager_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "template_manages_clusters_size_gt_1" {

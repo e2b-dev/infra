@@ -1,5 +1,10 @@
 locals {
   clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${var.clickhouse_password}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
+
+  docker_reverse_proxy_env_vars = {
+    for key, value in var.docker_reverse_proxy_env_vars : key => trimspace(value)
+    if value != null && try(trimspace(value), "") != ""
+  }
 }
 
 # API
@@ -93,17 +98,12 @@ module "redis" {
 resource "nomad_job" "docker_reverse_proxy" {
   jobspec = templatefile("${path.module}/jobs/docker-reverse-proxy.hcl",
     {
-      node_pool                     = var.api_node_pool
-      image_name                    = data.google_artifact_registry_docker_image.docker_reverse_proxy_image.self_link
-      postgres_connection_string    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-      google_service_account_secret = var.docker_reverse_proxy_service_account_key
-      port_number                   = var.docker_reverse_proxy_port.port
-      port_name                     = var.docker_reverse_proxy_port.name
-      health_check_path             = var.docker_reverse_proxy_port.health_path
-      domain_name                   = var.domain_name
-      gcp_project_id                = var.gcp_project_id
-      gcp_region                    = var.gcp_region
-      docker_registry               = var.custom_envs_repository_name
+      node_pool         = var.api_node_pool
+      image_name        = data.google_artifact_registry_docker_image.docker_reverse_proxy_image.self_link
+      port_number       = var.docker_reverse_proxy_port.port
+      port_name         = var.docker_reverse_proxy_port.name
+      health_check_path = var.docker_reverse_proxy_port.health_path
+      job_env_vars      = local.docker_reverse_proxy_env_vars
     }
   )
 }
@@ -369,33 +369,13 @@ locals {
 module "template_manager" {
   source = "../../modules/job-template-manager"
 
-  provider_name = "gcp"
-  provider_gcp_config = {
-    service_account_key           = var.google_service_account_key
-    project_id                    = var.gcp_project_id
-    region                        = var.gcp_region
-    docker_registry               = var.custom_envs_repository_name
-    gcs_grpc_connection_pool_size = var.gcs_grpc_connection_pool_size
-  }
-
   update_stanza = var.template_manages_clusters_size_gt_1
   node_pool     = var.builder_node_pool
 
-  port             = var.template_manager_port
-  environment      = var.environment
-  consul_acl_token = var.consul_acl_token_secret
-  domain_name      = var.domain_name
+  port = var.template_manager_port
 
-  api_secret                      = var.api_secret
-  artifact_source                 = local.template_manager_artifact_source
-  template_bucket_name            = var.template_bucket_name
-  build_cache_bucket_name         = var.build_cache_bucket_name
-  otel_collector_grpc_endpoint    = "localhost:${var.otel_collector_grpc_port}"
-  logs_collector_address          = "http://localhost:${var.logs_proxy_port.port}"
-  clickhouse_connection_string    = local.clickhouse_connection_string
-  dockerhub_remote_repository_url = var.dockerhub_remote_repository_url
-  launch_darkly_api_key           = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
-  shared_chunk_cache_path         = var.shared_chunk_cache_path
+  artifact_source = local.template_manager_artifact_source
+  job_env_vars    = var.template_manager_env_vars
 
   nomad_addr  = "https://nomad.${var.domain_name}"
   nomad_token = var.nomad_acl_token_secret

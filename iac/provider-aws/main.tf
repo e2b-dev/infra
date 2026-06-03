@@ -199,6 +199,26 @@ locals {
     AWS_REGION                   = data.aws_region.current.id
     AWS_DOCKER_REPOSITORY_NAME   = module.init.custom_environments_repository_name
   }, var.orchestrator_env_vars)
+
+  template_manager_env_vars = merge({
+    CONSUL_TOKEN                 = module.init.cluster.consul_acl_token
+    ARTIFACTS_REGISTRY_PROVIDER  = "AWS_ECR"
+    STORAGE_PROVIDER             = "AWSBucket"
+    AWS_REGION                   = data.aws_region.current.id
+    AWS_DOCKER_REPOSITORY_NAME   = module.init.custom_environments_repository_name
+    API_SECRET                   = module.init.api_secret
+    ENVIRONMENT                  = var.environment
+    DOMAIN_NAME                  = var.domain_name
+    TEMPLATE_BUCKET_NAME         = module.init.fc_template_bucket_name
+    BUILD_CACHE_BUCKET_NAME      = module.init.fc_template_build_cache_bucket_name
+    OTEL_COLLECTOR_GRPC_ENDPOINT = "localhost:${local.otel_collector_port}"
+    LOGS_COLLECTOR_ADDRESS       = "http://localhost:${local.logs_proxy_port}"
+    ORCHESTRATOR_SERVICES        = "template-manager"
+    REDIS_POOL_SIZE              = "10"
+    CLICKHOUSE_CONNECTION_STRING = local.clickhouse_connection_string
+    GIN_MODE                     = "release"
+    LAUNCH_DARKLY_API_KEY        = module.init.launch_darkly_api_key
+  }, var.template_manager_env_vars)
 }
 
 module "redis" {
@@ -329,13 +349,12 @@ module "nomad" {
   build_cache_bucket_name             = module.init.fc_template_build_cache_bucket_name
   custom_environments_repository_name = module.init.custom_environments_repository_name
   orchestrator_env_vars               = local.orchestrator_env_vars
+  template_manager_env_vars           = local.template_manager_env_vars
 
   build_node_pool    = local.build_pool_name
   build_cluster_size = var.build_cluster_size
-  api_secret         = module.init.api_secret
-
-  redis_managed = var.redis_managed
-  redis_port    = local.redis_port
+  redis_managed      = var.redis_managed
+  redis_port         = local.redis_port
 
   loki_bucket_name = module.init.loki_bucket_name
   loki_port        = local.loki_port

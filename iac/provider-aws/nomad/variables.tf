@@ -238,8 +238,9 @@ variable "template_manager_port" {
   default = 5008
 }
 
-variable "api_secret" {
-  type      = string
+variable "template_manager_env_vars" {
+  type      = map(string)
+  default   = {}
   sensitive = true
 }
 
