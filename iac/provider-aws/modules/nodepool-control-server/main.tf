@@ -29,16 +29,6 @@ resource "aws_iam_role_policy_attachment" "control_server" {
   policy_arn = each.value
 }
 
-data "aws_ami" "control_server" {
-  most_recent = true
-  owners      = [var.aws_account_id]
-
-  filter {
-    name   = "name"
-    values = ["${var.image_family_prefix}*"]
-  }
-}
-
 resource "aws_iam_instance_profile" "control_server" {
   name = "${var.prefix}control-server-node"
   role = aws_iam_role.control_server.name
@@ -46,7 +36,7 @@ resource "aws_iam_instance_profile" "control_server" {
 
 resource "aws_launch_template" "control_server" {
   name          = "${var.prefix}control-server-node"
-  image_id      = data.aws_ami.control_server.id
+  image_id      = var.image_id
   instance_type = var.machine_type
   user_data     = base64encode(local.user_data)
 

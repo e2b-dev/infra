@@ -24,6 +24,10 @@ endef
 
 tf_vars := AWS_PROFILE=$(AWS_PROFILE) AWS_REGION=$(AWS_REGION) \
 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
+	$(call tfvar, AWS_PROFILE) \
+	$(call tfvar, PACKER_CONSUL_VERSION) \
+	$(call tfvar, PACKER_NOMAD_VERSION) \
+	$(call tfvar, PACKER_SOURCE_AMI_FILTER_NAME) \
 	$(call tfvar, PREFIX) \
 	$(call tfvar, DOMAIN_NAME) \
 	$(call tfvar, BUCKET_PREFIX) \
@@ -61,8 +65,8 @@ provider-login:
 switch:
 	$(tf_vars) $(TF) init -input=false -upgrade -reconfigure -backend-config="bucket=$(TERRAFORM_STATE_BUCKET)"
 
-.PHONY: init
-init:
+.PHONY: tf-init
+tf-init:
 	# Create S3 bucket for Terraform state if it doesn't exist
 	# us-east-1 requires omitting LocationConstraint; all other regions require it
 	@if [ "$(TEMPLATE_BUCKET_LOCATION)" = "us-east-1" ]; then \
@@ -71,7 +75,14 @@ init:
 		aws s3api create-bucket --bucket $(TERRAFORM_STATE_BUCKET) --region $(TEMPLATE_BUCKET_LOCATION) --profile $(AWS_PROFILE) --create-bucket-configuration LocationConstraint=$(TEMPLATE_BUCKET_LOCATION) 2>/dev/null || true; \
 	fi
 	$(tf_vars) $(TF) init -upgrade -reconfigure -backend-config="bucket=${TERRAFORM_STATE_BUCKET}"
+
+.PHONY: init
+init: tf-init
 	$(tf_vars) $(TF) apply -target=module.init -input=false -compact-warnings
+
+	# Install the Packer plugins (amazon) into the global Packer plugin cache. The
+	# e2b-orch AMI itself is built by the packer_image resource during `make plan && apply`.
+	$(MAKE) -C nomad-cluster-disk-image init
 
 .PHONY: plan
 plan:

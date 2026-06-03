@@ -11,6 +11,33 @@ variable "prefix" {
   description = "Name prefix for all resources"
 }
 
+variable "aws_profile" {
+  type        = string
+  description = "AWS named profile for the Packer image build. Empty uses the default credential chain (env vars / instance role), matching the Terraform AWS provider."
+  default     = ""
+}
+
+# Inputs to the e2b-orch node AMI build (packer-image.tf). These are the sole source of truth
+# for the defaults; the matching variables in nomad-cluster-disk-image/variables.pkr.hcl are
+# required (no defaults) and always receive their value from here via the packer_image resource.
+variable "packer_consul_version" {
+  type        = string
+  description = "Consul version installed into the e2b-orch node image."
+  default     = "1.17.3"
+}
+
+variable "packer_nomad_version" {
+  type        = string
+  description = "Nomad version installed into the e2b-orch node image."
+  default     = "1.8.4"
+}
+
+variable "packer_source_ami_filter_name" {
+  type        = string
+  description = "AMI name filter for the base image the e2b-orch node AMI is built from."
+  default     = "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"
+}
+
 variable "bucket_prefix" {
   type = string
 }
@@ -79,11 +106,6 @@ variable "api_server_machine_type" {
   default = "t3.xlarge"
 }
 
-variable "api_image_family_prefix" {
-  type    = string
-  default = ""
-}
-
 variable "ingress_count" {
   type    = number
   default = 1
@@ -102,11 +124,6 @@ variable "clickhouse_cluster_size" {
 variable "clickhouse_server_machine_type" {
   type    = string
   default = "t3.xlarge"
-}
-
-variable "clickhouse_image_family_prefix" {
-  type    = string
-  default = ""
 }
 
 variable "client_cluster_size" {
@@ -130,19 +147,9 @@ variable "client_node_labels" {
   default     = []
 }
 
-variable "client_image_family_prefix" {
-  type    = string
-  default = ""
-}
-
 variable "control_server_machine_type" {
   type    = string
   default = "t3.medium"
-}
-
-variable "control_server_image_family_prefix" {
-  type    = string
-  default = ""
 }
 
 variable "orchestrator_port" {

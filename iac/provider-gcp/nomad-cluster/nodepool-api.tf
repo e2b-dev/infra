@@ -96,10 +96,6 @@ resource "google_compute_instance_group_manager" "api_pool" {
   ]
 }
 
-data "google_compute_image" "api_source_image" {
-  family = var.api_image_family
-}
-
 resource "google_compute_instance_template" "api" {
   name_prefix = "${local.api_pool_name}-"
 
@@ -128,7 +124,7 @@ resource "google_compute_instance_template" "api" {
 
   disk {
     boot         = true
-    source_image = data.google_compute_image.api_source_image.id
+    source_image = var.orch_image_id
     disk_size_gb = 200
     disk_type    = var.api_boot_disk_type
   }

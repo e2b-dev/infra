@@ -2,10 +2,6 @@ variable "prefix" {
   type = string
 }
 
-variable "aws_account_id" {
-  type = string
-}
-
 variable "cluster_tag_name" {
   type = string
 }
@@ -34,11 +30,6 @@ variable "setup_files_hash" {
 
 variable "security_group_ids" {
   type = list(string)
-}
-
-variable "image_family_prefix" {
-  type    = string
-  default = "e2b-orch-"
 }
 
 variable "cluster_size" {
@@ -102,4 +93,9 @@ variable "scripts_path" {
   type        = string
   description = "Path to the directory containing startup scripts. Defaults to in-module scripts."
   default     = ""
+}
+
+variable "image_id" {
+  description = "AMI id to boot from (the Packer-built node AMI, fed in from the Terraform graph)."
+  type        = string
 }

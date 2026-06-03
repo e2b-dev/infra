@@ -23,6 +23,9 @@ endef
 
 tf_vars := \
 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
+	$(call tfvar, PACKER_CONSUL_VERSION) \
+	$(call tfvar, PACKER_NOMAD_VERSION) \
+	$(call tfvar, PACKER_SOURCE_IMAGE) \
 	$(call tfvar, BUILD_CLUSTERS_CONFIG) \
 	$(call tfvar, CLIENT_CLUSTERS_CONFIG) \
 	$(call tfvar, API_MACHINE_TYPE) \
@@ -100,8 +103,8 @@ tf_vars := \
 	$(call tfvar, ADDITIONAL_API_PATHS_HANDLED_BY_INGRESS) \
 	$(call tfvar, ANYWHERE_CACHE_ENABLED)
 
-.PHONY: init
-init:
+.PHONY: tf-init
+tf-init:
 	@ printf "Initializing Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ gcloud storage buckets create gs://$(TERRAFORM_STATE_BUCKET) --location $(GCP_REGION) --project $(GCP_PROJECT_ID) --default-storage-class STANDARD  --uniform-bucket-level-access > /dev/null 2>&1 || true
 
@@ -119,9 +122,16 @@ init:
 	@ rm -f $(LIFECYCLE_FILE)
 
 	@ $(TF) init -input=false -reconfigure -backend-config=bucket=$(TERRAFORM_STATE_BUCKET)
+
+.PHONY: init
+init: tf-init
 	@ $(tf_vars) $(TF) apply -target=module.init -auto-approve -input=false -compact-warnings
 
-	@ TERRAFORM_STATE_BUCKET="$(TERRAFORM_STATE_BUCKET)" $(MAKE) -C nomad-cluster-disk-image init build
+	# Install the Packer plugins (googlecompute) into the global Packer plugin cache. The
+	# e2b-orch node image itself is built by the packer_image resource during the regular
+	# `make plan && make apply` (Terraform drives Packer via the toowoxx/packer provider).
+	@ $(MAKE) -C nomad-cluster-disk-image init
+
 	@ gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
 .PHONY: state-migrate

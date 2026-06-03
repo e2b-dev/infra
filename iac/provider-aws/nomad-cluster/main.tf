@@ -198,8 +198,7 @@ data "aws_iam_policy_document" "cluster_node_ec2_policy" {
 module "control_server" {
   source = "../modules/nodepool-control-server"
 
-  prefix         = var.prefix
-  aws_account_id = var.aws_account_id
+  prefix = var.prefix
 
   cluster_tag_name  = local.cluster_tag_name
   cluster_tag_value = local.cluster_tag_value
@@ -214,9 +213,9 @@ module "control_server" {
   target_group_arns   = var.control_server_target_group_arns
   vpc_private_subnets = var.vpc_private_subnets
 
-  image_family_prefix = var.control_server_image_family_prefix
-  cluster_size        = var.control_server_cluster_size
-  machine_type        = var.control_server_machine_type
+  image_id     = var.image_id
+  cluster_size = var.control_server_cluster_size
+  machine_type = var.control_server_machine_type
 
   nomad_acl_token              = var.nomad_acl_token_secret
   consul_acl_token             = var.consul_acl_token_secret
@@ -227,8 +226,7 @@ module "control_server" {
 module "api" {
   source = "../modules/nodepool-api"
 
-  prefix         = var.prefix
-  aws_account_id = var.aws_account_id
+  prefix = var.prefix
 
   cluster_tag_name  = local.cluster_tag_name
   cluster_tag_value = local.cluster_tag_value
@@ -243,9 +241,9 @@ module "api" {
   target_group_arns   = var.api_target_group_arns
   vpc_private_subnets = var.vpc_private_subnets
 
-  image_family_prefix = var.api_image_family_prefix
-  cluster_size        = var.api_cluster_size
-  machine_type        = var.api_machine_type
+  image_id     = var.image_id
+  cluster_size = var.api_cluster_size
+  machine_type = var.api_machine_type
 
   node_pool_name               = var.api_node_pool_name
   consul_acl_token             = var.consul_acl_token_secret
@@ -260,8 +258,7 @@ module "api" {
 module "clickhouse" {
   source = "../modules/nodepool-clickhouse"
 
-  prefix         = var.prefix
-  aws_account_id = var.aws_account_id
+  prefix = var.prefix
 
   cluster_tag_name  = local.cluster_tag_name
   cluster_tag_value = local.cluster_tag_value
@@ -274,9 +271,9 @@ module "clickhouse" {
 
   security_group_ids = var.clickhouse_security_group_ids
 
-  image_family_prefix = var.clickhouse_image_family_prefix
-  cluster_size        = var.clickhouse_cluster_size
-  machine_type        = var.clickhouse_machine_type
+  image_id     = var.image_id
+  cluster_size = var.clickhouse_cluster_size
+  machine_type = var.clickhouse_machine_type
 
   node_pool_name                    = var.clickhouse_node_pool_name
   clickhouse_az                     = var.clickhouse_az
@@ -293,9 +290,8 @@ module "clickhouse" {
 module "build" {
   source = "../modules/nodepool-client"
 
-  name           = "orch-build"
-  prefix         = var.prefix
-  aws_account_id = var.aws_account_id
+  name   = "orch-build"
+  prefix = var.prefix
 
   cluster_tag_name  = local.cluster_tag_name
   cluster_tag_value = local.cluster_tag_value
@@ -309,9 +305,9 @@ module "build" {
   security_group_ids  = var.build_security_group_ids
   vpc_private_subnets = var.vpc_private_subnets
 
-  image_family_prefix = var.build_image_family_prefix
-  cluster_size        = var.build_cluster_size
-  machine_type        = var.build_machine_type
+  image_id     = var.image_id
+  cluster_size = var.build_cluster_size
+  machine_type = var.build_machine_type
 
   node_pool_name                    = var.build_node_pool_name
   node_labels                       = var.build_node_labels
@@ -338,9 +334,8 @@ module "build" {
 module "client" {
   source = "../modules/nodepool-client"
 
-  name           = "orch-client"
-  prefix         = var.prefix
-  aws_account_id = var.aws_account_id
+  name   = "orch-client"
+  prefix = var.prefix
 
   cluster_tag_name  = local.cluster_tag_name
   cluster_tag_value = local.cluster_tag_value
@@ -354,9 +349,9 @@ module "client" {
   security_group_ids  = var.client_security_group_ids
   vpc_private_subnets = var.vpc_private_subnets
 
-  image_family_prefix = var.client_image_family_prefix
-  cluster_size        = var.client_cluster_size
-  machine_type        = var.client_machine_type
+  image_id     = var.image_id
+  cluster_size = var.client_cluster_size
+  machine_type = var.client_machine_type
 
   node_pool_name                    = var.client_node_pool_name
   node_labels                       = var.client_node_labels

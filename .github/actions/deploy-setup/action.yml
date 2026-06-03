@@ -8,6 +8,10 @@ inputs:
     description: "Whether to install the gcloud CLI (needed for gsutil/docker auth)"
     required: false
     default: "false"
+  install_packer:
+    description: "Whether to install Packer + plugins (needed when apply builds the node image via the packer_image resource)"
+    required: false
+    default: "false"
   infisical_machine_identity_id:
     description: "Infisical machine identity ID for accessing secrets"
     required: true
@@ -67,6 +71,20 @@ runs:
       uses: hashicorp/setup-terraform@v3
       with:
         terraform_version: 1.7.5
+
+    # Packer is invoked from PATH by the toowoxx/packer provider during `apply` (it builds
+    # the e2b-orch node image via the packer_image resource). The googlecompute plugin must
+    # be in the global plugin cache before that runs; `make ... init` installs it.
+    - name: Setup Packer
+      if: inputs.install_packer == 'true'
+      uses: hashicorp/setup-packer@v3
+      with:
+        version: 1.13.1
+
+    - name: Install Packer plugins
+      if: inputs.install_packer == 'true'
+      run: make -C iac/provider-gcp/nomad-cluster-disk-image init
+      shell: bash
 
     - name: Cache Terraform providers
       uses: actions/cache@v5

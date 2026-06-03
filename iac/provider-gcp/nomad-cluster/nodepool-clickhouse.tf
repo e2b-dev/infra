@@ -106,10 +106,6 @@ resource "google_compute_per_instance_config" "clickhouse_instances" {
   }
 }
 
-data "google_compute_image" "clickhouse_source_image" {
-  family = var.api_image_family
-}
-
 resource "google_compute_instance_template" "clickhouse" {
   name_prefix = "${local.clickhouse_pool_name}-"
 
@@ -133,7 +129,7 @@ resource "google_compute_instance_template" "clickhouse" {
 
   disk {
     boot         = true
-    source_image = data.google_compute_image.clickhouse_source_image.id
+    source_image = var.orch_image_id
     disk_size_gb = 200
     disk_type    = var.clickhouse_boot_disk_type
   }

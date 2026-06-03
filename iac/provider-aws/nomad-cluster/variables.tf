@@ -46,10 +46,6 @@ variable "control_server_target_group_arns" {
   type = list(string)
 }
 
-variable "control_server_image_family_prefix" {
-  type = string
-}
-
 variable "control_server_cluster_size" {
   type = number
 }
@@ -63,10 +59,6 @@ variable "control_server_machine_type" {
 // ---
 
 variable "api_node_pool_name" {
-  type = string
-}
-
-variable "api_image_family_prefix" {
   type = string
 }
 
@@ -91,10 +83,6 @@ variable "api_security_group_ids" {
 // ---
 
 variable "clickhouse_node_pool_name" {
-  type = string
-}
-
-variable "clickhouse_image_family_prefix" {
   type = string
 }
 
@@ -135,10 +123,6 @@ variable "client_base_hugepages_percentage" {
   default     = 60
 }
 
-variable "client_image_family_prefix" {
-  type = string
-}
-
 variable "client_cluster_size" {
   type = number
 }
@@ -165,11 +149,6 @@ variable "client_node_labels" {
 // ---
 variable "build_node_pool_name" {
   type = string
-}
-
-variable "build_image_family_prefix" {
-  type    = string
-  default = "e2b-orch-"
 }
 
 variable "build_cluster_size" {
@@ -237,4 +216,9 @@ variable "clickhouse_backups_bucket_name" {
 
 variable "custom_environments_repository_name" {
   type = string
+}
+
+variable "image_id" {
+  description = "AMI id (from the Packer build) to boot every node pool from."
+  type        = string
 }

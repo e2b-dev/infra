@@ -21,6 +21,11 @@ source "amazon-ebs" "ubuntu" {
   subnet_id                   = var.subnet_id
   associate_public_ip_address = true
 
+  # The build runs on a public subnet with a public IP (for package egress), so restrict the
+  # builder's temporary SSH security group to the build runner's own public IP instead of the
+  # default world-open 0.0.0.0/0. Mirrors the IAP-only lockdown on the GCP build host.
+  temporary_security_group_source_public_ip = true
+
   // Ubuntu Server 24.04 LTS (HVM), SSD Volume Type
   source_ami_filter {
     filters = {
@@ -173,5 +178,13 @@ build {
       # Increase the maximum number of connections by 4x
       "echo 'net.netfilter.nf_conntrack_max = 2097152' | sudo tee -a /etc/sysctl.conf",
     ]
+  }
+
+  # Record the built AMI so Terraform (toowoxx/packer) can read it back and wire it into
+  # the node-pool launch templates. For the amazon-ebs builder the manifest's artifact_id
+  # is "region:ami-id" (comma-separated when copied to multiple regions).
+  post-processor "manifest" {
+    output     = "${path.root}/manifest.json"
+    strip_path = true
   }
 }

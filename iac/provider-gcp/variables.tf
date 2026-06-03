@@ -12,6 +12,27 @@ variable "gcp_zone" {
   type        = string
 }
 
+# Inputs to the e2b-orch node image build (packer-image.tf). These are the sole source of truth
+# for the defaults; the matching variables in nomad-cluster-disk-image/variables.pkr.hcl are
+# required (no defaults) and always receive their value from here via the packer_image resource.
+variable "packer_consul_version" {
+  type        = string
+  description = "Consul version installed into the e2b-orch node image."
+  default     = "1.17.3"
+}
+
+variable "packer_nomad_version" {
+  type        = string
+  description = "Nomad version installed into the e2b-orch node image."
+  default     = "1.8.4"
+}
+
+variable "packer_source_image" {
+  type        = string
+  description = "Base GCE image the e2b-orch node image is built from."
+  default     = "ubuntu-2404-noble-amd64-v20260517"
+}
+
 variable "server_cluster_size" {
   type = number
 }

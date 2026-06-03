@@ -72,10 +72,6 @@ resource "google_compute_instance_group_manager" "loki_pool" {
   ]
 }
 
-data "google_compute_image" "loki_source_image" {
-  family = var.api_image_family
-}
-
 resource "google_compute_instance_template" "loki" {
   name_prefix = "${local.loki_pool_name}-"
 
@@ -104,7 +100,7 @@ resource "google_compute_instance_template" "loki" {
 
   disk {
     boot         = true
-    source_image = data.google_compute_image.loki_source_image.id
+    source_image = var.orch_image_id
     disk_size_gb = 200
     disk_type    = var.loki_boot_disk_type
   }

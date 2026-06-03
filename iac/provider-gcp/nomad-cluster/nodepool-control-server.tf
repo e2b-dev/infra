@@ -85,10 +85,6 @@ resource "google_compute_region_instance_group_manager" "server_pool" {
   ]
 }
 
-data "google_compute_image" "server_source_image" {
-  family = var.server_image_family
-}
-
 resource "google_compute_instance_template" "server" {
   name_prefix = "${local.server_pool_name}-"
 
@@ -115,7 +111,7 @@ resource "google_compute_instance_template" "server" {
 
   disk {
     boot         = true
-    source_image = data.google_compute_image.server_source_image.self_link
+    source_image = var.orch_image_id
     disk_size_gb = var.server_boot_disk_size_gb
     disk_type    = var.server_boot_disk_type
   }

@@ -52,6 +52,7 @@ jobs:
         with:
           environment: ${{ inputs.environment }}
           install_gcloud: "true"
+          install_packer: "true"
           infisical_machine_identity_id: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
 
       - name: Run Terraform state migrations

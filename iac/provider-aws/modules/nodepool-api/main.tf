@@ -55,19 +55,9 @@ resource "aws_iam_instance_profile" "api" {
   role = aws_iam_role.api.name
 }
 
-data "aws_ami" "api" {
-  most_recent = true
-  owners      = [var.aws_account_id]
-
-  filter {
-    name   = "name"
-    values = ["${var.image_family_prefix}*"]
-  }
-}
-
 resource "aws_launch_template" "api" {
   name          = "${var.prefix}api-node"
-  image_id      = data.aws_ami.api.id
+  image_id      = var.image_id
   instance_type = var.machine_type
   user_data     = base64encode(local.user_data)
 

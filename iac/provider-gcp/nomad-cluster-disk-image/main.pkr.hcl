@@ -26,10 +26,11 @@ source "googlecompute" "orch" {
   # Enable nested virtualization
   image_licenses = ["projects/vm-options/global/licenses/enable-vmx"]
 
-  # Enable IAP for SSH
-  network    = var.network_name
-  subnetwork = var.subnet_name
-  use_iap    = true
+  # Build on the shared cluster network (auto-mode "default"); no dedicated subnet.
+  # The network tag scopes the IAP-SSH firewall rule (see ../packer-image.tf).
+  network = var.network_name
+  tags    = [var.network_tag]
+  use_iap = true
 }
 
 locals {
@@ -170,5 +171,13 @@ build {
       "sudo dpkg-divert --add --rename --divert /etc/systemd/resolved.conf.d/gce-resolved.conf.diverted /etc/systemd/resolved.conf.d/gce-resolved.conf || true",
       "echo 'dpkg-divert configured successfully'",
     ]
+  }
+
+  # Record the built image name so Terraform (toowoxx/packer) can read it back and
+  # wire it into the node-pool instance templates. For the googlecompute builder the
+  # manifest's artifact_id is the GCE image name.
+  post-processor "manifest" {
+    output     = "${path.root}/manifest.json"
+    strip_path = true
   }
 }

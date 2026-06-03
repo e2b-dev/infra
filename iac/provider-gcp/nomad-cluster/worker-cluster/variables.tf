@@ -64,8 +64,8 @@ variable "cluster_name" {
   type        = string
 }
 
-variable "image_family" {
-  description = "GCE image family for the instances"
+variable "image_id" {
+  description = "Self-link of the GCE image to boot the instances from"
   type        = string
 }
 
