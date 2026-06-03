@@ -81,6 +81,12 @@ variable "gcp_zone" {
   type        = string
 }
 
+variable "docker_registry_region" {
+  description = "GCP region hosting Artifact Registry images this worker must pull. Defaults to the VM region when empty."
+  type        = string
+  default     = ""
+}
+
 variable "nomad_region" {
   description = "Nomad region this client should join. Defaults to the VM region when empty."
   type        = string

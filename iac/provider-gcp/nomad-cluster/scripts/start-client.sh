@@ -202,7 +202,12 @@ cat <<EOF >/root/docker/config.json
             "username": "_json_key_base64",
             "password": "${GOOGLE_SERVICE_ACCOUNT_KEY}",
             "server_address": "https://${GCP_REGION}-docker.pkg.dev"
-        }
+        }%{ if DOCKER_REGISTRY_REGION != "" && DOCKER_REGISTRY_REGION != GCP_REGION },
+        "${DOCKER_REGISTRY_REGION}-docker.pkg.dev": {
+            "username": "_json_key_base64",
+            "password": "${GOOGLE_SERVICE_ACCOUNT_KEY}",
+            "server_address": "https://${DOCKER_REGISTRY_REGION}-docker.pkg.dev"
+        }%{ endif }
     }
 }
 EOF

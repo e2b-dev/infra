@@ -180,6 +180,7 @@ module "build_cluster" {
 
   gcp_region                     = var.gcp_region
   gcp_zone                       = var.gcp_zone
+  docker_registry_region         = var.gcp_region
   nomad_region                   = var.gcp_region
   consul_datacenter              = var.gcp_region
   consul_retry_join_zone_pattern = "${var.gcp_region}-.*"
@@ -241,6 +242,7 @@ module "client_cluster" {
 
   gcp_region                     = local.client_cluster_locations[each.key].region
   gcp_zone                       = local.client_cluster_locations[each.key].zone
+  docker_registry_region         = var.gcp_region
   nomad_region                   = var.gcp_region
   consul_datacenter              = var.gcp_region
   consul_retry_join_zone_pattern = "${var.gcp_region}-.*"
