@@ -178,6 +178,29 @@ locals {
     LAUNCH_DARKLY_API_KEY         = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   }, var.orchestrator_env_vars)
 
+  template_manager_env_vars = merge({
+    CONSUL_TOKEN                    = module.init.consul_acl_token_secret
+    GOOGLE_SERVICE_ACCOUNT_BASE64   = module.init.google_service_account_key
+    GCP_PROJECT_ID                  = var.gcp_project_id
+    GCP_REGION                      = var.gcp_region
+    GCP_DOCKER_REPOSITORY_NAME      = google_artifact_registry_repository.custom_environments_repository.name
+    GCS_GRPC_CONNECTION_POOL_SIZE   = var.gcs_grpc_connection_pool_size != 0 ? tostring(var.gcs_grpc_connection_pool_size) : ""
+    API_SECRET                      = random_password.api_secret.result
+    ENVIRONMENT                     = var.environment
+    DOMAIN_NAME                     = var.domain_name
+    TEMPLATE_BUCKET_NAME            = module.init.fc_template_bucket_name
+    BUILD_CACHE_BUCKET_NAME         = module.init.fc_build_cache_bucket_name
+    OTEL_COLLECTOR_GRPC_ENDPOINT    = "localhost:${local.otel_collector_grpc_port}"
+    LOGS_COLLECTOR_ADDRESS          = "http://localhost:${local.logs_proxy_port}"
+    ORCHESTRATOR_SERVICES           = "template-manager"
+    REDIS_POOL_SIZE                 = "10"
+    SHARED_CHUNK_CACHE_PATH         = module.cluster.shared_chunk_cache_path
+    CLICKHOUSE_CONNECTION_STRING    = local.clickhouse_connection_string
+    DOCKERHUB_REMOTE_REPOSITORY_URL = var.remote_repository_enabled ? module.remote_repository[0].dockerhub_remote_repository_url : ""
+    GIN_MODE                        = "release"
+    LAUNCH_DARKLY_API_KEY           = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+  }, var.template_manager_env_vars)
+
   # Normalize additional_api_paths_handled_by_ingress to support both legacy (list of strings)
   # and new (list of objects) formats. Strings are converted to objects with paths = [string].
   normalized_api_paths_handled_by_ingress = [
@@ -375,7 +398,6 @@ module "nomad" {
   api_db_migrator_env_vars                               = local.api_db_migrator_env_vars
   environment                                            = var.environment
   google_service_account_key                             = module.init.google_service_account_key
-  api_secret                                             = random_password.api_secret.result
   custom_envs_repository_name                            = google_artifact_registry_repository.custom_environments_repository.name
   postgres_connection_string_secret_name                 = module.init.postgres_connection_string_secret_name
   postgres_read_replica_connection_string_secret_version = google_secret_manager_secret_version.postgres_read_replica_connection_string
@@ -439,6 +461,7 @@ module "nomad" {
   build_cache_bucket_name             = module.init.fc_build_cache_bucket_name
   template_manages_clusters_size_gt_1 = local.template_manages_clusters_size_gt_1
   dockerhub_remote_repository_url     = var.remote_repository_enabled ? module.remote_repository[0].dockerhub_remote_repository_url : ""
+  template_manager_env_vars           = local.template_manager_env_vars
 
   # Redis
   redis_managed = var.redis_managed
