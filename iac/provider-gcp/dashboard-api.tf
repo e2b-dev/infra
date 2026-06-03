@@ -2,8 +2,11 @@ data "google_secret_manager_secret_version" "dashboard_api_admin_token" {
   secret = module.init.dashboard_api_admin_token_secret_name
 }
 
-data "google_secret_manager_secret_version" "ory_project_api_token" {
-  secret = module.init.ory_project_api_token_secret_name
+data "google_secret_manager_secret_version" "ory_project_api_key" {
+  count   = local.dashboard_api_deployed && module.init.ory_project_api_key_secret_exists ? 1 : 0
+  project = var.gcp_project_id
+  secret  = module.init.ory_project_api_key_secret_name
+  version = "latest"
 }
 
 data "google_secret_manager_secret_version" "supabase_db_connection_string" {
@@ -46,11 +49,17 @@ locals {
   dashboard_api_billing_server_url       = try(trimspace(data.google_secret_manager_secret_version.billing_server_url[0].secret_data), "")
   dashboard_api_billing_server_api_token = try(trimspace(data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data), "")
 
+  dashboard_api_ory_project_api_token = try(trimspace(data.google_secret_manager_secret_version.ory_project_api_key[0].secret_data), "")
+  dashboard_api_extra_env_vars = {
+    for key, value in var.dashboard_api_env_vars : key => value
+    if key != "ORY_PROJECT_API_TOKEN"
+  }
+
   dashboard_api_ory_env_vars = {
     USER_PROFILE_PROVIDER = var.user_profile_provider
     ORY_SDK_URL           = var.ory_sdk_url
     ORY_ISSUER_URL        = var.ory_issuer_url
-    ORY_PROJECT_API_TOKEN = trimspace(data.google_secret_manager_secret_version.ory_project_api_token.secret_data)
+    ORY_PROJECT_API_TOKEN = local.dashboard_api_ory_project_api_token
   }
 
   dashboard_api_env_vars = merge({
@@ -73,5 +82,5 @@ locals {
     BILLING_SERVER_API_TOKEN     = local.dashboard_api_billing_server_api_token
     OTEL_COLLECTOR_GRPC_ENDPOINT = "localhost:${local.otel_collector_grpc_port}"
     LOGS_COLLECTOR_ADDRESS       = "http://localhost:${local.logs_proxy_port}"
-  }, local.dashboard_api_ory_env_vars, var.dashboard_api_env_vars)
+  }, local.dashboard_api_ory_env_vars, local.dashboard_api_extra_env_vars)
 }
