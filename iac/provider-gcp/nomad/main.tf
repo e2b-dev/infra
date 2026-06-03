@@ -24,6 +24,12 @@ provider "nomad" {
   consul_token = var.consul_acl_token_secret
 }
 
+// Turn on memory oversubscription
+// Its already set up in Nomad server config, but from there its taked only for newly created clusters so we need to make sure its apply here to existing.
+resource "nomad_scheduler_config" "config" {
+  memory_oversubscription_enabled = true
+}
+
 data "google_secret_manager_secret_version" "redis_cluster_url" {
   secret = var.redis_cluster_url_secret_version.secret
 }
