@@ -351,13 +351,10 @@ module "nomad" {
   orchestrator_env_vars               = local.orchestrator_env_vars
   template_manager_env_vars           = local.template_manager_env_vars
 
-  build_node_pool     = local.build_pool_name
-  build_cluster_size  = var.build_cluster_size
-  redis_managed       = var.redis_managed
-  redis_port          = local.redis_port
-  redis_url           = local.redis_url
-  redis_cluster_url   = local.redis_cluster_url
-  redis_tls_ca_base64 = local.redis_tls_ca_base64
+  build_node_pool    = local.build_pool_name
+  build_cluster_size = var.build_cluster_size
+  redis_managed      = var.redis_managed
+  redis_port         = local.redis_port
 
   loki_bucket_name = module.init.loki_bucket_name
   loki_port        = local.loki_port

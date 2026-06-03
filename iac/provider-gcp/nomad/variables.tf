@@ -239,14 +239,6 @@ variable "loki_service_port" {
   })
 }
 
-variable "redis_cluster_url_secret_version" {
-  type = any
-}
-
-variable "redis_tls_ca_base64_secret_version" {
-  type = any
-}
-
 # Docker reverse proxy
 variable "docker_reverse_proxy_port" {
   type = object({
