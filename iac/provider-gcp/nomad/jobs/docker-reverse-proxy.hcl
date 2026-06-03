@@ -43,12 +43,9 @@ job "docker-reverse-proxy" {
       }
 
       env {
-        POSTGRES_CONNECTION_STRING    = "${postgres_connection_string}"
-        GOOGLE_SERVICE_ACCOUNT_BASE64 = "${google_service_account_secret}"
-        GCP_REGION                    = "${gcp_region}"
-        GCP_PROJECT_ID                = "${gcp_project_id}"
-        GCP_DOCKER_REPOSITORY_NAME    = "${docker_registry}"
-        DOMAIN_NAME                   = "${domain_name}"
+%{ for key, value in job_env_vars ~}
+        ${key} = "${value}"
+%{ endfor ~}
       }
 
       config {

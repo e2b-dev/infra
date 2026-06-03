@@ -201,6 +201,15 @@ locals {
     LAUNCH_DARKLY_API_KEY           = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   }, var.template_manager_env_vars)
 
+  docker_reverse_proxy_env_vars = merge({
+    POSTGRES_CONNECTION_STRING    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+    GOOGLE_SERVICE_ACCOUNT_BASE64 = google_service_account_key.google_service_key.private_key
+    GCP_REGION                    = var.gcp_region
+    GCP_PROJECT_ID                = var.gcp_project_id
+    GCP_DOCKER_REPOSITORY_NAME    = google_artifact_registry_repository.custom_environments_repository.name
+    DOMAIN_NAME                   = var.domain_name
+  }, var.docker_reverse_proxy_env_vars)
+
   # Normalize additional_api_paths_handled_by_ingress to support both legacy (list of strings)
   # and new (list of objects) formats. Strings are converted to objects with paths = [string].
   normalized_api_paths_handled_by_ingress = [
@@ -442,8 +451,8 @@ module "nomad" {
   dashboard_api_env_vars = local.dashboard_api_env_vars
 
   # Docker reverse proxy
-  docker_reverse_proxy_port                = var.docker_reverse_proxy_port
-  docker_reverse_proxy_service_account_key = google_service_account_key.google_service_key.private_key
+  docker_reverse_proxy_port     = var.docker_reverse_proxy_port
+  docker_reverse_proxy_env_vars = local.docker_reverse_proxy_env_vars
 
   # Orchestrator
   orchestrator_node_pool         = var.orchestrator_node_pool
