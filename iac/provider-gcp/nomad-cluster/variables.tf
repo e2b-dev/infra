@@ -133,6 +133,7 @@ variable "client_clusters_config" {
     node_labels            = optional(list(string), [])
     region                 = optional(string)
     zone                   = optional(string)
+    zones                  = optional(list(string))
     filestore_zone         = optional(string)
   }))
 

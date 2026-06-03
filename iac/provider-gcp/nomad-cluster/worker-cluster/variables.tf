@@ -81,6 +81,12 @@ variable "gcp_zone" {
   type        = string
 }
 
+variable "zones" {
+  description = "Optional zones for the regional managed instance group distribution policy."
+  type        = list(string)
+  default     = null
+}
+
 variable "docker_registry_region" {
   description = "GCP region hosting Artifact Registry images this worker must pull. Defaults to the VM region when empty."
   type        = string

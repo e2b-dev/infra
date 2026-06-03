@@ -242,6 +242,7 @@ module "client_cluster" {
 
   gcp_region                     = local.client_cluster_locations[each.key].region
   gcp_zone                       = local.client_cluster_locations[each.key].zone
+  zones                          = local.client_cluster_locations[each.key].region != var.gcp_region ? each.value.zones : null
   docker_registry_region         = var.gcp_region
   nomad_region                   = var.gcp_region
   consul_datacenter              = var.gcp_region
