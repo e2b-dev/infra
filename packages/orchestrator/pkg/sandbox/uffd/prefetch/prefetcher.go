@@ -4,8 +4,10 @@ package prefetch
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/userfaultfd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -122,6 +125,13 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 	var fetchWg sync.WaitGroup
 	var copyWg sync.WaitGroup
 
+	runStart := time.Now()
+	// Set by the copy coordinator once uffd is ready; stays nil if the
+	// context is cancelled before the copy phase ever starts. Holds a
+	// *time.Time (not UnixNano) so the monotonic reading survives and the
+	// duration below is immune to wall-clock steps.
+	var copyStart atomic.Pointer[time.Time]
+
 	// Queue all offsets to fetch in the order they were originally accessed
 	for _, idx := range indices {
 		fetchCh <- header.BlockOffset(int64(idx), blockSize)
@@ -137,16 +147,29 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 
 	// Start copy coordinator - waits for uffd ready, then spawns copy workers
 	copyWg.Go(func() {
-		p.startCopyWorkers(ctx, copyCh, maxCopyWorkers, &copiedCount, &copySkippedCount)
+		p.startCopyWorkers(ctx, copyCh, maxCopyWorkers, &copyStart, &copiedCount, &copySkippedCount)
 	})
 
 	// Wait for fetch workers to complete
 	fetchWg.Wait()
+	fetchDuration := time.Since(runStart)
 	// Close copy channel when all fetch workers are done
 	close(copyCh)
 
 	// Wait for copy workers to complete
 	copyWg.Wait()
+
+	// Export the run stats: per-stage page counts plus phase durations. The
+	// fetch and copy phases overlap; "total" spans the whole run.
+	pagesCounter.Add(ctx, int64(fetchedCount.Load()), stageFetchedAttr)
+	pagesCounter.Add(ctx, int64(fetchSkippedCount.Load()), stageFetchSkippedAttr)
+	pagesCounter.Add(ctx, int64(copiedCount.Load()), stageCopiedAttr)
+	pagesCounter.Add(ctx, int64(copySkippedCount.Load()), stageCopySkippedAttr)
+	durationHistogram.Record(ctx, fetchDuration.Milliseconds(), phaseFetchAttr)
+	if cs := copyStart.Load(); cs != nil {
+		durationHistogram.Record(ctx, time.Since(*cs).Milliseconds(), phaseCopyAttr)
+	}
+	durationHistogram.Record(ctx, time.Since(runStart).Milliseconds(), phaseTotalAttr)
 
 	p.logger.Debug(ctx, "prefetch: completed",
 		zap.Uint64("fetched", fetchedCount.Load()),
@@ -164,6 +187,7 @@ func (p *Prefetcher) startCopyWorkers(
 	ctx context.Context,
 	copyCh chan prefetchData,
 	maxCopyWorkers int,
+	copyStart *atomic.Pointer[time.Time],
 	copiedCount *atomic.Uint64,
 	copySkippedCount *atomic.Uint64,
 ) {
@@ -173,6 +197,9 @@ func (p *Prefetcher) startCopyWorkers(
 		return
 	case <-p.uffd.Ready():
 	}
+
+	now := time.Now()
+	copyStart.Store(&now)
 
 	p.logger.Debug(ctx, "prefetch: uffd ready, starting copy workers")
 
@@ -246,6 +273,13 @@ func (p *Prefetcher) copyWorker(
 			}
 
 			err := p.uffd.Prefault(ctx, d.offset, d.data)
+			if errors.Is(err, userfaultfd.ErrClosed) {
+				// The uffd is gone (sandbox teardown): every remaining queued
+				// page would hit the same path. Stop draining and count
+				// nothing, keeping stage="copied" consistent with the
+				// per-page prefault metric, which skips this path too.
+				return
+			}
 			if err != nil {
 				p.logger.Debug(ctx, "prefetch: failed to copy page",
 					zap.Int64("offset", d.offset),
