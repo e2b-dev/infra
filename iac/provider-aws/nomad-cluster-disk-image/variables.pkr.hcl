@@ -18,12 +18,10 @@ variable "prefix" {
 
 variable "consul_version" {
   type    = string
-  default = "1.17.3"
 }
 
 variable "nomad_version" {
   type    = string
-  default = "1.8.4"
 }
 
 # Keep in sync with `clickhouse_version` in iac/modules/job-clickhouse/variables.tf
