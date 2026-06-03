@@ -453,6 +453,12 @@ variable "filestore_cache_cleanup_max_retries" {
   description = "Maximum number of continuous error or miss retries before giving up"
 }
 
+variable "filestore_cleanup_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
 variable "dockerhub_remote_repository_url" {
   type = string
 }
