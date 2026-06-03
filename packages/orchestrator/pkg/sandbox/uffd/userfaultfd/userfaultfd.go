@@ -45,6 +45,10 @@ const (
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
+// ErrClosed reports that the userfaultfd was already closed (sandbox
+// teardown) and the requested operation was skipped.
+var ErrClosed = errors.New("userfaultfd is closed")
+
 func hasEvent(revents, event int16) bool {
 	return revents&event != 0
 }

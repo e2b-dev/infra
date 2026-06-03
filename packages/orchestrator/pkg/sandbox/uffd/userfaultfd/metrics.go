@@ -54,12 +54,23 @@ type faultResult uint8
 
 const (
 	faultResultInstalled faultResult = iota // page installed by this serve
-	faultResultPresent                       // page already present: resident short-circuit or lost install race (EEXIST)
-	faultResultDeferred                      // EAGAIN: must be retried later
-	faultResultDiscarded                     // ESRCH: faulting thread gone, retry pointless
-	faultResultError                         // serving failed
+	faultResultPresent                      // page already present: resident short-circuit or lost install race (EEXIST)
+	faultResultDeferred                     // EAGAIN: must be retried later
+	faultResultDiscarded                    // ESRCH: faulting thread gone, retry pointless
+	faultResultError                        // serving failed
+	faultResultSkipped                      // prefault only: tracker already Dirty/Zero — prefetch arrived too late
 	numFaultResult
 )
+
+// resultNames maps faultResult values to their metric label strings.
+var resultNames = [numFaultResult]string{
+	faultResultInstalled: "installed",
+	faultResultPresent:   "present",
+	faultResultDeferred:  "deferred",
+	faultResultDiscarded: "discarded",
+	faultResultError:     "error",
+	faultResultSkipped:   "skipped",
+}
 
 // serveAttrs holds a precomputed metric.MeasurementOption per
 // (pageClass, faultResult) combination so the per-fault hot path allocates no
@@ -73,13 +84,6 @@ func buildServeAttrs() [numPageClass][numFaultResult]metric.MeasurementOption {
 		pageClassResident: "resident",
 		pageClassUnknown:  "unknown",
 	}
-	resultNames := [numFaultResult]string{
-		faultResultInstalled: "installed",
-		faultResultPresent:   "present",
-		faultResultDeferred:  "deferred",
-		faultResultDiscarded: "discarded",
-		faultResultError:     "error",
-	}
 
 	var t [numPageClass][numFaultResult]metric.MeasurementOption
 	for c := range classNames {
@@ -89,6 +93,40 @@ func buildServeAttrs() [numPageClass][numFaultResult]metric.MeasurementOption {
 				attribute.String("result", resultNames[r]),
 			)
 		}
+	}
+
+	return t
+}
+
+// prefaultMetricName is the metric under which per-page prefault latency /
+// installed bytes / attempt count are reported (a TimerFactory triplet).
+const prefaultMetricName = "orchestrator.sandbox.uffd.prefault"
+
+// prefaultTimer records, per Prefault call, the install latency (ms
+// histogram), bytes installed into the guest by this prefault (counter) and
+// the attempt count (counter) under prefaultMetricName. Prefault data is
+// already in memory, so the latency is lock wait + UFFDIO_COPY — a host
+// contention proxy rather than a storage signal. Together with serveTimer it
+// makes memory materialization race-proof: whichever side loses the EEXIST
+// install race records result="present" with zero bytes, so
+// serve.bytes + prefault.bytes never double-counts a page.
+var prefaultTimer = utils.Must(telemetry.NewTimerFactory(
+	meter,
+	prefaultMetricName,
+	"Time to prefault a page into the guest",
+	"Bytes installed into the guest by prefaults",
+	"UFFD prefault attempts",
+))
+
+// prefaultAttrs holds a precomputed metric.MeasurementOption per faultResult.
+// Prefaults have no page_class: they only ever target not-present pages (the
+// Dirty/Zero pre-check records result="skipped" instead).
+var prefaultAttrs = buildPrefaultAttrs()
+
+func buildPrefaultAttrs() [numFaultResult]metric.MeasurementOption {
+	var t [numFaultResult]metric.MeasurementOption
+	for r := range resultNames {
+		t[r] = telemetry.PrecomputeAttrs(attribute.String("result", resultNames[r]))
 	}
 
 	return t
