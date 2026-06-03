@@ -836,18 +836,51 @@ variable "anywhere_cache_ttl" {
 }
 
 variable "orchestrator_env_vars" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "api_env_vars" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "api_db_migrator_env_vars" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "client_proxy_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "dashboard_api_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "template_manager_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "docker_reverse_proxy_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "filestore_cleanup_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "orchestrator_enabled" {

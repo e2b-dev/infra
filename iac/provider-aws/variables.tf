@@ -51,13 +51,33 @@ variable "api_internal_grpc_port" {
 }
 
 variable "api_env_vars" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "api_db_migrator_env_vars" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "client_proxy_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "orchestrator_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "template_manager_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "api_server_machine_type" {

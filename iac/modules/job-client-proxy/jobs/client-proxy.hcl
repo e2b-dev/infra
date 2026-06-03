@@ -104,34 +104,9 @@ job "client-proxy" {
         HEALTH_PORT = "$${NOMAD_PORT_health}"
         PROXY_PORT  = "$${NOMAD_PORT_proxy}"
 
-        ENVIRONMENT = "${environment}"
-
-        OTEL_COLLECTOR_GRPC_ENDPOINT = "${otel_collector_grpc_endpoint}"
-        LOGS_COLLECTOR_ADDRESS       = "${logs_collector_address}"
-
-        REDIS_POOL_SIZE          = "${redis_pool_size}"
-        REDIS_CLUSTER_URL        = "${redis_cluster_url}"
-        REDIS_TLS_CA_BASE64      = "${redis_tls_ca_base64}"
-        REDIS_URL                = "${redis_url}"
-
-        %{ if api_internal_grpc_address != "" }
-        # used by in-cluster client-proxy to call API ResumeSandbox over gRPC
-        API_INTERNAL_GRPC_ADDRESS = "${api_internal_grpc_address}"
-        %{ endif }
-
-        %{ if api_edge_grpc_address != "" }
-        # used by external client-proxy to call edge API ResumeSandbox over gRPC
-        API_EDGE_GRPC_ADDRESS             = "${api_edge_grpc_address}"
-        %{ if api_edge_grpc_oauth_client_id != "" }
-        API_EDGE_GRPC_OAUTH_CLIENT_ID     = "${api_edge_grpc_oauth_client_id}"
-        API_EDGE_GRPC_OAUTH_CLIENT_SECRET = "${api_edge_grpc_oauth_client_secret}"
-        API_EDGE_GRPC_OAUTH_TOKEN_URL     = "${api_edge_grpc_oauth_token_url}"
-        %{ endif }
-        %{ endif }
-
-        %{ if launch_darkly_api_key != "" }
-        LAUNCH_DARKLY_API_KEY         = "${launch_darkly_api_key}"
-        %{ endif }
+%{ for key, value in job_env_vars ~}
+        ${key} = "${value}"
+%{ endfor ~}
       }
 
       config {

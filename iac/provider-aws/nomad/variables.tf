@@ -65,6 +65,12 @@ variable "client_proxy_repository_name" {
   type = string
 }
 
+variable "client_proxy_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
 # Redis
 variable "redis_managed" {
   type = bool
@@ -72,23 +78,6 @@ variable "redis_managed" {
 
 variable "redis_port" {
   type = number
-}
-
-variable "redis_url" {
-  type    = string
-  default = ""
-}
-
-variable "redis_cluster_url" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
-variable "redis_tls_ca_base64" {
-  type      = string
-  default   = ""
-  sensitive = true
 }
 
 # ClickHouse
@@ -172,13 +161,15 @@ variable "api_internal_grpc_port" {
 }
 
 variable "api_env_vars" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "api_db_migrator_env_vars" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "api_memory_mb" {
@@ -214,15 +205,10 @@ variable "orchestrator_proxy_port" {
   default = 5007
 }
 
-variable "allow_sandbox_internal_cidrs" {
-  type        = string
-  description = "Comma-separated CIDRs to allow through the sandbox firewall deny list"
-  default     = ""
-}
-
-variable "envd_timeout" {
-  type    = string
-  default = "40s"
+variable "orchestrator_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "fc_env_pipeline_bucket_name" {
@@ -252,8 +238,9 @@ variable "template_manager_port" {
   default = 5008
 }
 
-variable "api_secret" {
-  type      = string
+variable "template_manager_env_vars" {
+  type      = map(string)
+  default   = {}
   sensitive = true
 }
 
