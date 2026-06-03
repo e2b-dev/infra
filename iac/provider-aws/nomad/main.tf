@@ -22,6 +22,11 @@ data "aws_ecr_image" "clickhouse_migrator" {
   image_tag       = "latest"
 }
 
+// Its already set up in Nomad server config, but from there its taked only for newly created clusters so we need to make sure its apply here to existing.
+resource "nomad_scheduler_config" "config" {
+  memory_oversubscription_enabled = true
+}
+
 module "otel_collector" {
   source = "../../modules/job-otel-collector"
 
