@@ -410,6 +410,7 @@ func (c *Cache) Dedup(
 		}
 
 		_, err := c.ReadAt(p, idx)
+
 		return err
 	}
 
@@ -471,8 +472,8 @@ func (c *Cache) readAtWithoutLock(b []byte, off int64, skipCachedCheck bool) (in
 }
 
 func (c *Cache) WriteAt(b []byte, off int64) (int, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	if len(b) == 0 || c.size == 0 {
 		return 0, nil
@@ -532,8 +533,8 @@ func (c *Cache) WriteAt(b []byte, off int64) (int, error) {
 }
 
 func (c *Cache) writeRawAt(b []byte, off int64) (int, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	if len(b) == 0 || c.size == 0 {
 		return 0, nil
@@ -588,13 +589,6 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 	defer c.mu.RUnlock()
 
 	return c.slice(off, length, false)
-}
-
-func (c *Cache) sliceDirect(off, length int64) ([]byte, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	return c.slice(off, length, true)
 }
 
 func (c *Cache) slice(off, length int64, skipCachedCheck bool) ([]byte, error) {
@@ -653,8 +647,8 @@ func (c *Cache) punchHole(off, length int64) error {
 // WriteZeroesAt punches the range and marks all touched blocks Zero.
 // Caller must pass a block-aligned offset/length (NBD invariant).
 func (c *Cache) WriteZeroesAt(off, length int64) (int, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	if length == 0 || c.size == 0 {
 		return 0, nil
@@ -738,8 +732,8 @@ func (c *Cache) copyProcessMemory(
 	pid int,
 	rs []Range,
 ) error {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	if c.isClosed() {
 		return NewErrCacheClosed(c.filePath)
