@@ -154,7 +154,7 @@ destroy:
 plan:
 	@ printf "Planning Terraform for env: `tput setaf 2``tput bold`$(ENV)`tput sgr0`\n\n"
 	@ $(call tf_fmt)
-	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings
+	@ $(tf_vars) $(TF) plan $(TF_VAR_FILE_ARG) -out=.tfplan.$(ENV) -compact-warnings -target=module.cluster -target=random_password.clickhouse_password -target=random_password.clickhouse_server_secret -target=module.nomad.random_password.clickhouse_password -target=module.nomad.random_password.clickhouse_server_secret
 
 .PHONY: terraform
 terraform:
