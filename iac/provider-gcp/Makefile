@@ -23,6 +23,8 @@ endef
 
 tf_vars := \
 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
+	$(call tfvar, CONSUL_VERSION) \
+	$(call tfvar, NOMAD_VERSION) \
 	$(call tfvar, BUILD_CLUSTERS_CONFIG) \
 	$(call tfvar, CLIENT_CLUSTERS_CONFIG) \
 	$(call tfvar, API_MACHINE_TYPE) \

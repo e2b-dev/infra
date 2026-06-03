@@ -17,6 +17,20 @@ variable "aws_profile" {
   default     = ""
 }
 
+# Versions baked into the e2b-orch node AMI by the Packer build (packer-image.tf). Keep the
+# defaults in sync with the matching variables in nomad-cluster-disk-image/variables.pkr.hcl.
+variable "consul_version" {
+  type        = string
+  description = "Consul version installed into the e2b-orch node image."
+  default     = "1.17.3"
+}
+
+variable "nomad_version" {
+  type        = string
+  description = "Nomad version installed into the e2b-orch node image."
+  default     = "1.8.4"
+}
+
 variable "bucket_prefix" {
   type = string
 }
