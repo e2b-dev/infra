@@ -217,6 +217,8 @@ func dedupCompare(
 
 	baseHeader := base.Header()
 	peeker, _ := base.(CachePeeker)
+	srcBuf := make([]byte, blockSize)
+	basePage := make([]byte, header.PageSize)
 
 	for r := range BitsetRanges(dirty, blockSize) {
 		exportedSize += r.Size
@@ -227,7 +229,6 @@ func dedupCompare(
 			}
 
 			absOff := r.Start + chunkOff
-			srcBuf := make([]byte, blockSize)
 			if err := src(absOff, srcBuf); err != nil {
 				return nil, err
 			}
@@ -260,7 +261,7 @@ func dedupCompare(
 					continue
 				}
 
-				basePage := make([]byte, header.PageSize)
+				clear(basePage)
 				if _, err := base.ReadAt(ctx, basePage, pageOff); err != nil {
 					return nil, fmt.Errorf("read base at %d: %w", pageOff, err)
 				}
@@ -361,12 +362,11 @@ func drainDirtyPages(ctx context.Context, fd int, src func(absOff int64, p []byt
 			}
 			iovs := make([][]byte, len(batch))
 			for i, r := range batch {
-				blockOff := (r.Start / blockSize) * blockSize
-				buf := make([]byte, blockSize)
-				if err := src(blockOff, buf); err != nil {
-					return fmt.Errorf("read src at %d: %w", blockOff, err)
+				buf := make([]byte, r.Size)
+				if err := src(r.Start, buf); err != nil {
+					return fmt.Errorf("read src at %d: %w", r.Start, err)
 				}
-				iovs[i] = buf[r.Start-blockOff : r.Start-blockOff+r.Size]
+				iovs[i] = buf
 			}
 			if err := pwritevAll(fd, destOff, iovs); err != nil {
 				return fmt.Errorf("pwritev dedup pages: %w", err)
@@ -404,12 +404,13 @@ func (c *Cache) Dedup(
 		}
 	}
 	src := func(absOff int64, p []byte) error {
-		idx, ok := packed[absOff]
+		blockOff := (absOff / blockSize) * blockSize
+		idx, ok := packed[blockOff]
 		if !ok {
 			return fmt.Errorf("dedup src: %d not packed", absOff)
 		}
 
-		_, err := c.ReadAt(p, idx)
+		_, err := c.ReadAt(p, idx+absOff-blockOff)
 
 		return err
 	}
