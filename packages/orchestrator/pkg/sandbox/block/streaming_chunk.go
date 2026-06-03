@@ -38,9 +38,7 @@ type Chunker struct {
 	fetchSessions []*fetchSession
 }
 
-var (
-	_ FramedReader = (*Chunker)(nil)
-)
+var _ FramedReader = (*Chunker)(nil)
 
 func NewChunker(
 	ff *featureflags.Client,
