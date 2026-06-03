@@ -122,7 +122,7 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/pressly/goose/v3 v3.26.0 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
-	github.com/quic-go/quic-go v0.59.0 // indirect
+	github.com/quic-go/quic-go v0.59.1 // indirect
 	github.com/redis/go-redis/extra/rediscmd/v9 v9.17.3 // indirect
 	github.com/redis/go-redis/extra/redisotel/v9 v9.17.3 // indirect
 	github.com/redis/go-redis/v9 v9.17.3 // indirect
