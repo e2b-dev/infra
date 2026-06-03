@@ -5,6 +5,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -28,19 +29,20 @@ func (s *Server) rejectIfDraining(ctx context.Context, operation string) error {
 	}
 }
 
-func (s *Server) enterSandboxStart(ctx context.Context, operation string) error {
+func (s *Server) enterSandboxStart(ctx context.Context, operation string) (func(), error) {
 	if err := s.rejectIfDraining(ctx, operation); err != nil {
-		return err
+		return nil, err
 	}
 
 	s.sandboxStartMu.RLock()
+	release := sync.OnceFunc(s.leaveSandboxStart)
 	if err := s.rejectIfDraining(ctx, operation); err != nil {
-		s.sandboxStartMu.RUnlock()
+		release()
 
-		return err
+		return nil, err
 	}
 
-	return nil
+	return release, nil
 }
 
 func (s *Server) leaveSandboxStart() {
@@ -71,23 +73,6 @@ func (s *Server) waitSandboxStarts(ctx context.Context) error {
 		case <-ticker.C:
 		}
 	}
-}
-
-func (s *Server) tryWaitSandboxStarts(ctx context.Context) bool {
-	if !s.sandboxStartMu.TryLock() {
-		logger.L().Warn(ctx, "in-flight sandbox start operations still running")
-
-		return false
-	}
-
-	s.sandboxStartMu.Unlock()
-	logger.L().Info(ctx, "in-flight sandbox start operations finished")
-
-	if s.sandboxFactory != nil {
-		return s.sandboxFactory.TryWaitSandboxStarts(ctx)
-	}
-
-	return true
 }
 
 func (s *Server) waitForAcquire(ctx context.Context) error {

@@ -47,14 +47,16 @@ func TestWaitBuildStartsCanceledDoesNotBlockDrainingRejection(t *testing.T) {
 
 	enterErr := make(chan error, 1)
 	go func() {
-		enterErr <- s.enterBuildStart(t.Context(), "test")
+		release, err := s.enterBuildStart(t.Context(), "test")
+		if err == nil {
+			release()
+		}
+
+		enterErr <- err
 	}()
 
 	select {
 	case err := <-enterErr:
-		if err == nil {
-			s.leaveBuildStart()
-		}
 		require.Equal(t, codes.Unavailable, status.Code(err))
 	case <-time.After(time.Second):
 		t.Fatal("enterBuildStart blocked instead of rejecting while draining")

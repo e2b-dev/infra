@@ -5,6 +5,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -38,19 +39,20 @@ func (s *ServerStore) rejectIfDraining(ctx context.Context, operation string) er
 	}
 }
 
-func (s *ServerStore) enterBuildStart(ctx context.Context, operation string) error {
+func (s *ServerStore) enterBuildStart(ctx context.Context, operation string) (func(), error) {
 	if err := s.rejectIfDraining(ctx, operation); err != nil {
-		return err
+		return nil, err
 	}
 
 	s.buildStartMu.RLock()
+	release := sync.OnceFunc(s.leaveBuildStart)
 	if err := s.rejectIfDraining(ctx, operation); err != nil {
-		s.buildStartMu.RUnlock()
+		release()
 
-		return err
+		return nil, err
 	}
 
-	return nil
+	return release, nil
 }
 
 func (s *ServerStore) leaveBuildStart() {

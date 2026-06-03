@@ -26,17 +26,9 @@ func (s *ServerStore) TemplateBuildDelete(ctx context.Context, in *templatemanag
 	))
 	defer childSpan.End()
 
-	if err := s.enterBuildStart(ctx, "template-delete"); err != nil {
+	releaseDeleteStart, err := s.enterBuildStart(ctx, "template-delete")
+	if err != nil {
 		return nil, err
-	}
-	deleteStartReleased := false
-	releaseDeleteStart := func() {
-		if deleteStartReleased {
-			return
-		}
-
-		s.leaveBuildStart()
-		deleteStartReleased = true
 	}
 	defer releaseDeleteStart()
 

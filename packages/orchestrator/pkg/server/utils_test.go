@@ -44,28 +44,20 @@ func TestWaitSandboxStartsCanceledDoesNotBlockDrainingRejection(t *testing.T) {
 
 	enterErr := make(chan error, 1)
 	go func() {
-		enterErr <- s.enterSandboxStart(t.Context(), "test")
+		release, err := s.enterSandboxStart(t.Context(), "test")
+		if err == nil {
+			release()
+		}
+
+		enterErr <- err
 	}()
 
 	select {
 	case err := <-enterErr:
-		if err == nil {
-			s.leaveSandboxStart()
-		}
 		require.Equal(t, codes.Unavailable, status.Code(err))
 	case <-time.After(time.Second):
 		t.Fatal("enterSandboxStart blocked instead of rejecting while draining")
 	}
-}
-
-func TestTryWaitSandboxStartsDoesNotBlock(t *testing.T) {
-	t.Parallel()
-
-	s := &Server{done: make(chan struct{})}
-	s.sandboxStartMu.RLock()
-	defer s.sandboxStartMu.RUnlock()
-
-	require.False(t, s.tryWaitSandboxStarts(t.Context()))
 }
 
 func TestForceStopSandboxesWaitsForInFlightStarts(t *testing.T) {
