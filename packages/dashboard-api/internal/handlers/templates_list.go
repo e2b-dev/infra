@@ -19,6 +19,7 @@ import (
 	dashboardqueries "github.com/e2b-dev/infra/packages/db/pkg/dashboard/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 func (s *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
@@ -53,10 +54,10 @@ func (s *APIStore) GetTemplates(c *gin.Context, params api.GetTemplatesParams) {
 		teamID: teamID,
 		// Default templates are E2B-wide and don't belong on a dedicated cluster.
 		includeDefaults: team.ClusterID == nil,
-		cpuCount:        templatesInt64(params.CpuCount),
-		memoryMb:        templatesInt64(params.MemoryMB),
+		cpuCount:        int64(utils.DerefOrDefault(params.CpuCount, 0)),
+		memoryMb:        int64(utils.DerefOrDefault(params.MemoryMB, 0)),
 		filterPublic:    templatesPublicFilter(params.Public),
-		search:          templatesSearch(params.Search),
+		search:          strings.TrimSpace(utils.DerefOrDefault(params.Search, "")),
 	}
 
 	rows, err := s.listTemplates(ctx, sort, filter, cursorValue, cursorID, limit+1)
@@ -372,22 +373,6 @@ func (s *APIStore) listTemplates(
 	default:
 		return nil, fmt.Errorf("unsupported sort: %q", sort)
 	}
-}
-
-func templatesInt64(v *int32) int64 {
-	if v == nil {
-		return 0
-	}
-
-	return int64(*v)
-}
-
-func templatesSearch(v *api.TemplatesSearch) string {
-	if v == nil {
-		return ""
-	}
-
-	return strings.TrimSpace(*v)
 }
 
 // templatesSortValue serializes the value of the chosen sort column for the
