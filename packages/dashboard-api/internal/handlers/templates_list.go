@@ -271,6 +271,7 @@ func (s *APIStore) listTemplates(
 		if parseErr != nil {
 			return nil, parseErr
 		}
+		ct, cid := timeCursor(cursorTs, cursorID, false)
 		rows, err := s.db.Dashboard.ListTeamTemplatesByCreatedAtAsc(ctx, dashboardqueries.ListTeamTemplatesByCreatedAtAscParams{
 			TeamID:          filter.teamID,
 			IncludeDefaults: filter.includeDefaults,
@@ -278,8 +279,8 @@ func (s *APIStore) listTemplates(
 			MemoryMb:        filter.memoryMb,
 			FilterPublic:    filter.filterPublic,
 			Search:          filter.search,
-			CursorCreatedAt: cursorTs,
-			CursorID:        cursorID,
+			CursorCreatedAt: ct,
+			CursorID:        cid,
 			LimitPlusOne:    limitPlusOne,
 		})
 		if err != nil {
@@ -297,6 +298,7 @@ func (s *APIStore) listTemplates(
 		if parseErr != nil {
 			return nil, parseErr
 		}
+		ct, cid := timeCursor(cursorTs, cursorID, true)
 		rows, err := s.db.Dashboard.ListTeamTemplatesByCreatedAtDesc(ctx, dashboardqueries.ListTeamTemplatesByCreatedAtDescParams{
 			TeamID:          filter.teamID,
 			IncludeDefaults: filter.includeDefaults,
@@ -304,8 +306,8 @@ func (s *APIStore) listTemplates(
 			MemoryMb:        filter.memoryMb,
 			FilterPublic:    filter.filterPublic,
 			Search:          filter.search,
-			CursorCreatedAt: cursorTs,
-			CursorID:        cursorID,
+			CursorCreatedAt: ct,
+			CursorID:        cid,
 			LimitPlusOne:    limitPlusOne,
 		})
 		if err != nil {
@@ -323,6 +325,7 @@ func (s *APIStore) listTemplates(
 		if parseErr != nil {
 			return nil, parseErr
 		}
+		ct, cid := timeCursor(cursorTs, cursorID, false)
 		rows, err := s.db.Dashboard.ListTeamTemplatesByUpdatedAtAsc(ctx, dashboardqueries.ListTeamTemplatesByUpdatedAtAscParams{
 			TeamID:          filter.teamID,
 			IncludeDefaults: filter.includeDefaults,
@@ -330,8 +333,8 @@ func (s *APIStore) listTemplates(
 			MemoryMb:        filter.memoryMb,
 			FilterPublic:    filter.filterPublic,
 			Search:          filter.search,
-			CursorUpdatedAt: cursorTs,
-			CursorID:        cursorID,
+			CursorUpdatedAt: ct,
+			CursorID:        cid,
 			LimitPlusOne:    limitPlusOne,
 		})
 		if err != nil {
@@ -349,6 +352,7 @@ func (s *APIStore) listTemplates(
 		if parseErr != nil {
 			return nil, parseErr
 		}
+		ct, cid := timeCursor(cursorTs, cursorID, true)
 		rows, err := s.db.Dashboard.ListTeamTemplatesByUpdatedAtDesc(ctx, dashboardqueries.ListTeamTemplatesByUpdatedAtDescParams{
 			TeamID:          filter.teamID,
 			IncludeDefaults: filter.includeDefaults,
@@ -356,8 +360,8 @@ func (s *APIStore) listTemplates(
 			MemoryMb:        filter.memoryMb,
 			FilterPublic:    filter.filterPublic,
 			Search:          filter.search,
-			CursorUpdatedAt: cursorTs,
-			CursorID:        cursorID,
+			CursorUpdatedAt: ct,
+			CursorID:        cid,
 			LimitPlusOne:    limitPlusOne,
 		})
 		if err != nil {

@@ -351,7 +351,7 @@ func (q *Queries) ListTeamTemplatesByCpuCountDesc(ctx context.Context, arg ListT
 }
 
 const listTeamTemplatesByCreatedAtAsc = `-- name: ListTeamTemplatesByCreatedAtAsc :many
-WITH ranked AS (
+WITH team_templates AS (
     SELECT
         e.id,
         e.created_at,
@@ -366,44 +366,97 @@ WITH ranked AS (
     FROM public.envs AS e
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
-        (
-            (e.team_id = $1::uuid AND e.source = 'template')
-            OR ($2::boolean AND d.env_id IS NOT NULL)
-        )
-        AND ($3::bigint = 0 OR (
+        e.team_id = $1::uuid AND e.source = 'template'
+        AND ($2::bigint = 0 OR (
             SELECT b.vcpu FROM public.env_build_assignments AS ba
             JOIN public.env_builds AS b ON b.id = ba.build_id
             WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
             ORDER BY ba.created_at DESC
             LIMIT 1
-        ) = $3::bigint)
-        AND ($4::bigint = 0 OR (
+        ) = $2::bigint)
+        AND ($3::bigint = 0 OR (
             SELECT b.ram_mb FROM public.env_build_assignments AS ba
             JOIN public.env_builds AS b ON b.id = ba.build_id
             WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
             ORDER BY ba.created_at DESC
             LIMIT 1
-        ) = $4::bigint)
-        AND ($5::smallint = -1 OR e.public = ($5::smallint = 1))
+        ) = $3::bigint)
+        AND ($4::smallint = -1 OR e.public = ($4::smallint = 1))
         AND (
-            $6::text = ''
-            OR e.id ILIKE '%' || $6::text || '%'
+            $5::text = ''
+            OR e.id ILIKE '%' || $5::text || '%'
             OR EXISTS (
                 SELECT 1 FROM public.env_aliases sa
                 WHERE sa.env_id = e.id
                   AND (
-                    sa.alias ILIKE '%' || $6::text || '%'
-                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $6::text || '%'
+                    sa.alias ILIKE '%' || $5::text || '%'
+                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $5::text || '%'
                   )
             )
         )
-        AND (
-            $7::timestamptz IS NULL
-            OR e.created_at > $7::timestamptz
-            OR (e.created_at = $7::timestamptz AND e.id > $8::text)
-        )
+        AND (e.created_at, e.id) > ($6::timestamptz, $7::text)
     ORDER BY e.created_at ASC, e.id ASC
-    LIMIT $9::int
+    LIMIT $8::int
+),
+default_templates AS (
+    SELECT
+        e.id,
+        e.created_at,
+        e.updated_at,
+        e.public,
+        e.build_count,
+        e.spawn_count,
+        e.last_spawned_at,
+        e.created_by,
+        d.env_id AS default_env_id,
+        d.description AS default_description
+    FROM public.envs AS e
+    JOIN public.env_defaults AS d ON d.env_id = e.id
+    WHERE
+        $9::boolean
+        AND ($2::bigint = 0 OR (
+            SELECT b.vcpu FROM public.env_build_assignments AS ba
+            JOIN public.env_builds AS b ON b.id = ba.build_id
+            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
+            ORDER BY ba.created_at DESC
+            LIMIT 1
+        ) = $2::bigint)
+        AND ($3::bigint = 0 OR (
+            SELECT b.ram_mb FROM public.env_build_assignments AS ba
+            JOIN public.env_builds AS b ON b.id = ba.build_id
+            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
+            ORDER BY ba.created_at DESC
+            LIMIT 1
+        ) = $3::bigint)
+        AND ($4::smallint = -1 OR e.public = ($4::smallint = 1))
+        AND (
+            $5::text = ''
+            OR e.id ILIKE '%' || $5::text || '%'
+            OR EXISTS (
+                SELECT 1 FROM public.env_aliases sa
+                WHERE sa.env_id = e.id
+                  AND (
+                    sa.alias ILIKE '%' || $5::text || '%'
+                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $5::text || '%'
+                  )
+            )
+        )
+        AND (e.created_at, e.id) > ($6::timestamptz, $7::text)
+    ORDER BY e.created_at ASC, e.id ASC
+    LIMIT $8::int
+),
+ranked AS (
+    SELECT
+        id, created_at, updated_at, public, build_count, spawn_count,
+        last_spawned_at, created_by, default_env_id, default_description
+    FROM team_templates
+    UNION
+    SELECT
+        id, created_at, updated_at, public, build_count, spawn_count,
+        last_spawned_at, created_by, default_env_id, default_description
+    FROM default_templates
+    ORDER BY created_at ASC, id ASC
+    LIMIT $8::int
 )
 SELECT
         r.id AS template_id,
@@ -446,14 +499,14 @@ ORDER BY r.created_at ASC, r.id ASC
 
 type ListTeamTemplatesByCreatedAtAscParams struct {
 	TeamID          uuid.UUID
-	IncludeDefaults bool
 	CpuCount        int64
 	MemoryMb        int64
 	FilterPublic    int16
 	Search          string
-	CursorCreatedAt *time.Time
-	CursorID        *string
+	CursorCreatedAt time.Time
+	CursorID        string
 	LimitPlusOne    int32
+	IncludeDefaults bool
 }
 
 type ListTeamTemplatesByCreatedAtAscRow struct {
@@ -480,7 +533,6 @@ type ListTeamTemplatesByCreatedAtAscRow struct {
 func (q *Queries) ListTeamTemplatesByCreatedAtAsc(ctx context.Context, arg ListTeamTemplatesByCreatedAtAscParams) ([]ListTeamTemplatesByCreatedAtAscRow, error) {
 	rows, err := q.db.Query(ctx, listTeamTemplatesByCreatedAtAsc,
 		arg.TeamID,
-		arg.IncludeDefaults,
 		arg.CpuCount,
 		arg.MemoryMb,
 		arg.FilterPublic,
@@ -488,6 +540,7 @@ func (q *Queries) ListTeamTemplatesByCreatedAtAsc(ctx context.Context, arg ListT
 		arg.CursorCreatedAt,
 		arg.CursorID,
 		arg.LimitPlusOne,
+		arg.IncludeDefaults,
 	)
 	if err != nil {
 		return nil, err
@@ -527,7 +580,7 @@ func (q *Queries) ListTeamTemplatesByCreatedAtAsc(ctx context.Context, arg ListT
 }
 
 const listTeamTemplatesByCreatedAtDesc = `-- name: ListTeamTemplatesByCreatedAtDesc :many
-WITH ranked AS (
+WITH team_templates AS (
     SELECT
         e.id,
         e.created_at,
@@ -542,44 +595,97 @@ WITH ranked AS (
     FROM public.envs AS e
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
-        (
-            (e.team_id = $1::uuid AND e.source = 'template')
-            OR ($2::boolean AND d.env_id IS NOT NULL)
-        )
-        AND ($3::bigint = 0 OR (
+        e.team_id = $1::uuid AND e.source = 'template'
+        AND ($2::bigint = 0 OR (
             SELECT b.vcpu FROM public.env_build_assignments AS ba
             JOIN public.env_builds AS b ON b.id = ba.build_id
             WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
             ORDER BY ba.created_at DESC
             LIMIT 1
-        ) = $3::bigint)
-        AND ($4::bigint = 0 OR (
+        ) = $2::bigint)
+        AND ($3::bigint = 0 OR (
             SELECT b.ram_mb FROM public.env_build_assignments AS ba
             JOIN public.env_builds AS b ON b.id = ba.build_id
             WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
             ORDER BY ba.created_at DESC
             LIMIT 1
-        ) = $4::bigint)
-        AND ($5::smallint = -1 OR e.public = ($5::smallint = 1))
+        ) = $3::bigint)
+        AND ($4::smallint = -1 OR e.public = ($4::smallint = 1))
         AND (
-            $6::text = ''
-            OR e.id ILIKE '%' || $6::text || '%'
+            $5::text = ''
+            OR e.id ILIKE '%' || $5::text || '%'
             OR EXISTS (
                 SELECT 1 FROM public.env_aliases sa
                 WHERE sa.env_id = e.id
                   AND (
-                    sa.alias ILIKE '%' || $6::text || '%'
-                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $6::text || '%'
+                    sa.alias ILIKE '%' || $5::text || '%'
+                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $5::text || '%'
                   )
             )
         )
+        AND (e.created_at, e.id) < ($6::timestamptz, $7::text)
+    ORDER BY e.created_at DESC, e.id DESC
+    LIMIT $8::int
+),
+default_templates AS (
+    SELECT
+        e.id,
+        e.created_at,
+        e.updated_at,
+        e.public,
+        e.build_count,
+        e.spawn_count,
+        e.last_spawned_at,
+        e.created_by,
+        d.env_id AS default_env_id,
+        d.description AS default_description
+    FROM public.envs AS e
+    JOIN public.env_defaults AS d ON d.env_id = e.id
+    WHERE
+        $9::boolean
+        AND ($2::bigint = 0 OR (
+            SELECT b.vcpu FROM public.env_build_assignments AS ba
+            JOIN public.env_builds AS b ON b.id = ba.build_id
+            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
+            ORDER BY ba.created_at DESC
+            LIMIT 1
+        ) = $2::bigint)
+        AND ($3::bigint = 0 OR (
+            SELECT b.ram_mb FROM public.env_build_assignments AS ba
+            JOIN public.env_builds AS b ON b.id = ba.build_id
+            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
+            ORDER BY ba.created_at DESC
+            LIMIT 1
+        ) = $3::bigint)
+        AND ($4::smallint = -1 OR e.public = ($4::smallint = 1))
         AND (
-            $7::timestamptz IS NULL
-            OR e.created_at < $7::timestamptz
-            OR (e.created_at = $7::timestamptz AND e.id > $8::text)
+            $5::text = ''
+            OR e.id ILIKE '%' || $5::text || '%'
+            OR EXISTS (
+                SELECT 1 FROM public.env_aliases sa
+                WHERE sa.env_id = e.id
+                  AND (
+                    sa.alias ILIKE '%' || $5::text || '%'
+                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $5::text || '%'
+                  )
+            )
         )
-    ORDER BY e.created_at DESC, e.id ASC
-    LIMIT $9::int
+        AND (e.created_at, e.id) < ($6::timestamptz, $7::text)
+    ORDER BY e.created_at DESC, e.id DESC
+    LIMIT $8::int
+),
+ranked AS (
+    SELECT
+        id, created_at, updated_at, public, build_count, spawn_count,
+        last_spawned_at, created_by, default_env_id, default_description
+    FROM team_templates
+    UNION
+    SELECT
+        id, created_at, updated_at, public, build_count, spawn_count,
+        last_spawned_at, created_by, default_env_id, default_description
+    FROM default_templates
+    ORDER BY created_at DESC, id DESC
+    LIMIT $8::int
 )
 SELECT
         r.id AS template_id,
@@ -617,19 +723,19 @@ LEFT JOIN LATERAL (
     ORDER BY ba.created_at DESC
     LIMIT 1
 ) eb ON TRUE
-ORDER BY r.created_at DESC, r.id ASC
+ORDER BY r.created_at DESC, r.id DESC
 `
 
 type ListTeamTemplatesByCreatedAtDescParams struct {
 	TeamID          uuid.UUID
-	IncludeDefaults bool
 	CpuCount        int64
 	MemoryMb        int64
 	FilterPublic    int16
 	Search          string
-	CursorCreatedAt *time.Time
-	CursorID        *string
+	CursorCreatedAt time.Time
+	CursorID        string
 	LimitPlusOne    int32
+	IncludeDefaults bool
 }
 
 type ListTeamTemplatesByCreatedAtDescRow struct {
@@ -656,7 +762,6 @@ type ListTeamTemplatesByCreatedAtDescRow struct {
 func (q *Queries) ListTeamTemplatesByCreatedAtDesc(ctx context.Context, arg ListTeamTemplatesByCreatedAtDescParams) ([]ListTeamTemplatesByCreatedAtDescRow, error) {
 	rows, err := q.db.Query(ctx, listTeamTemplatesByCreatedAtDesc,
 		arg.TeamID,
-		arg.IncludeDefaults,
 		arg.CpuCount,
 		arg.MemoryMb,
 		arg.FilterPublic,
@@ -664,6 +769,7 @@ func (q *Queries) ListTeamTemplatesByCreatedAtDesc(ctx context.Context, arg List
 		arg.CursorCreatedAt,
 		arg.CursorID,
 		arg.LimitPlusOne,
+		arg.IncludeDefaults,
 	)
 	if err != nil {
 		return nil, err
@@ -1179,9 +1285,14 @@ type ListTeamTemplatesByNameAscRow struct {
 // (env_defaults membership) inline when include_defaults is true. Filtering
 // (cpu/memory/visibility) and name+id search are shared across every variant;
 // sorting is split into one query per (column, direction) with a fixed ORDER BY
-// and a keyset predicate keyed on the sort column + the env id tiebreak (always
-// ascending). The cursor columns are nullable: a NULL cursor means the first
-// page.
+// and a keyset predicate. The name/cpu/memory variants use the expanded form
+// (sort_col </> cursor OR (sort_col = cursor AND id > cursor_id)) with an always-
+// ascending id tiebreak and a nullable cursor (NULL = first page). The created_at/
+// updated_at variants instead use a row-value comparison
+// ((sort_col, id) </> (cursor, cursor_id)) with a direction-consistent id tiebreak
+// (id DESC for desc, id ASC for asc) and a non-null sentinel cursor supplied by the
+// caller for the first page -- mirroring GetTeamBuildsPage -- so the comparison is
+// sargable and resumes via an index range scan (O(limit)) at any page depth.
 //
 // Each variant uses a `ranked` CTE that applies the WHERE filters, sort, and
 // LIMIT so the heavy env_aliases ARRAY_AGG (and, for non-cpu/mem sorts, the
@@ -1189,6 +1300,24 @@ type ListTeamTemplatesByNameAscRow struct {
 // keep env_builds inside the CTE because its columns are the sort key; all
 // other variants express the cpu/mem filter as a short-circuiting scalar
 // subquery so env_builds stays outside the CTE.
+//
+// The created_at/updated_at variants split the team-vs-defaults membership into
+// two independently ordered+limited CTEs (team_templates UNION default_templates)
+// rather than a single OR across the env_defaults join. The OR form forces a full
+// team scan + sort because no index can satisfy the ORDER BY across both branches;
+// the split lets the team branch use a (team_id, source, <sort_col> DESC, id DESC)
+// index for an O(limit) keyset scan, while the small defaults branch is merged in by
+// the outer ORDER BY + LIMIT. UNION (not UNION ALL) dedups envs that are both the
+// team's own template and a default (env_defaults.env_id is unique, so the two
+// branches emit identical rows for such an env). The result set is identical to the
+// pre-existing OR form; ordering matches except within exact sort-column ties, where
+// the desc variants now order id DESC for index consistency (immaterial for
+// microsecond timestamps).
+//
+// Only the created_at sort is index-backed today (idx_envs_team_source_created_at);
+// the updated_at variants share this shape but fall back to a team scan + sort
+// until idx_envs_team_source_updated_at is added (intentionally deferred to avoid
+// write amplification on the frequently-updated updated_at column).
 func (q *Queries) ListTeamTemplatesByNameAsc(ctx context.Context, arg ListTeamTemplatesByNameAscParams) ([]ListTeamTemplatesByNameAscRow, error) {
 	rows, err := q.db.Query(ctx, listTeamTemplatesByNameAsc,
 		arg.TeamID,
@@ -1421,7 +1550,7 @@ func (q *Queries) ListTeamTemplatesByNameDesc(ctx context.Context, arg ListTeamT
 }
 
 const listTeamTemplatesByUpdatedAtAsc = `-- name: ListTeamTemplatesByUpdatedAtAsc :many
-WITH ranked AS (
+WITH team_templates AS (
     SELECT
         e.id,
         e.created_at,
@@ -1436,44 +1565,97 @@ WITH ranked AS (
     FROM public.envs AS e
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
-        (
-            (e.team_id = $1::uuid AND e.source = 'template')
-            OR ($2::boolean AND d.env_id IS NOT NULL)
-        )
-        AND ($3::bigint = 0 OR (
+        e.team_id = $1::uuid AND e.source = 'template'
+        AND ($2::bigint = 0 OR (
             SELECT b.vcpu FROM public.env_build_assignments AS ba
             JOIN public.env_builds AS b ON b.id = ba.build_id
             WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
             ORDER BY ba.created_at DESC
             LIMIT 1
-        ) = $3::bigint)
-        AND ($4::bigint = 0 OR (
+        ) = $2::bigint)
+        AND ($3::bigint = 0 OR (
             SELECT b.ram_mb FROM public.env_build_assignments AS ba
             JOIN public.env_builds AS b ON b.id = ba.build_id
             WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
             ORDER BY ba.created_at DESC
             LIMIT 1
-        ) = $4::bigint)
-        AND ($5::smallint = -1 OR e.public = ($5::smallint = 1))
+        ) = $3::bigint)
+        AND ($4::smallint = -1 OR e.public = ($4::smallint = 1))
         AND (
-            $6::text = ''
-            OR e.id ILIKE '%' || $6::text || '%'
+            $5::text = ''
+            OR e.id ILIKE '%' || $5::text || '%'
             OR EXISTS (
                 SELECT 1 FROM public.env_aliases sa
                 WHERE sa.env_id = e.id
                   AND (
-                    sa.alias ILIKE '%' || $6::text || '%'
-                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $6::text || '%'
+                    sa.alias ILIKE '%' || $5::text || '%'
+                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $5::text || '%'
                   )
             )
         )
-        AND (
-            $7::timestamptz IS NULL
-            OR e.updated_at > $7::timestamptz
-            OR (e.updated_at = $7::timestamptz AND e.id > $8::text)
-        )
+        AND (e.updated_at, e.id) > ($6::timestamptz, $7::text)
     ORDER BY e.updated_at ASC, e.id ASC
-    LIMIT $9::int
+    LIMIT $8::int
+),
+default_templates AS (
+    SELECT
+        e.id,
+        e.created_at,
+        e.updated_at,
+        e.public,
+        e.build_count,
+        e.spawn_count,
+        e.last_spawned_at,
+        e.created_by,
+        d.env_id AS default_env_id,
+        d.description AS default_description
+    FROM public.envs AS e
+    JOIN public.env_defaults AS d ON d.env_id = e.id
+    WHERE
+        $9::boolean
+        AND ($2::bigint = 0 OR (
+            SELECT b.vcpu FROM public.env_build_assignments AS ba
+            JOIN public.env_builds AS b ON b.id = ba.build_id
+            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
+            ORDER BY ba.created_at DESC
+            LIMIT 1
+        ) = $2::bigint)
+        AND ($3::bigint = 0 OR (
+            SELECT b.ram_mb FROM public.env_build_assignments AS ba
+            JOIN public.env_builds AS b ON b.id = ba.build_id
+            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
+            ORDER BY ba.created_at DESC
+            LIMIT 1
+        ) = $3::bigint)
+        AND ($4::smallint = -1 OR e.public = ($4::smallint = 1))
+        AND (
+            $5::text = ''
+            OR e.id ILIKE '%' || $5::text || '%'
+            OR EXISTS (
+                SELECT 1 FROM public.env_aliases sa
+                WHERE sa.env_id = e.id
+                  AND (
+                    sa.alias ILIKE '%' || $5::text || '%'
+                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $5::text || '%'
+                  )
+            )
+        )
+        AND (e.updated_at, e.id) > ($6::timestamptz, $7::text)
+    ORDER BY e.updated_at ASC, e.id ASC
+    LIMIT $8::int
+),
+ranked AS (
+    SELECT
+        id, created_at, updated_at, public, build_count, spawn_count,
+        last_spawned_at, created_by, default_env_id, default_description
+    FROM team_templates
+    UNION
+    SELECT
+        id, created_at, updated_at, public, build_count, spawn_count,
+        last_spawned_at, created_by, default_env_id, default_description
+    FROM default_templates
+    ORDER BY updated_at ASC, id ASC
+    LIMIT $8::int
 )
 SELECT
         r.id AS template_id,
@@ -1516,14 +1698,14 @@ ORDER BY r.updated_at ASC, r.id ASC
 
 type ListTeamTemplatesByUpdatedAtAscParams struct {
 	TeamID          uuid.UUID
-	IncludeDefaults bool
 	CpuCount        int64
 	MemoryMb        int64
 	FilterPublic    int16
 	Search          string
-	CursorUpdatedAt *time.Time
-	CursorID        *string
+	CursorUpdatedAt time.Time
+	CursorID        string
 	LimitPlusOne    int32
+	IncludeDefaults bool
 }
 
 type ListTeamTemplatesByUpdatedAtAscRow struct {
@@ -1550,7 +1732,6 @@ type ListTeamTemplatesByUpdatedAtAscRow struct {
 func (q *Queries) ListTeamTemplatesByUpdatedAtAsc(ctx context.Context, arg ListTeamTemplatesByUpdatedAtAscParams) ([]ListTeamTemplatesByUpdatedAtAscRow, error) {
 	rows, err := q.db.Query(ctx, listTeamTemplatesByUpdatedAtAsc,
 		arg.TeamID,
-		arg.IncludeDefaults,
 		arg.CpuCount,
 		arg.MemoryMb,
 		arg.FilterPublic,
@@ -1558,6 +1739,7 @@ func (q *Queries) ListTeamTemplatesByUpdatedAtAsc(ctx context.Context, arg ListT
 		arg.CursorUpdatedAt,
 		arg.CursorID,
 		arg.LimitPlusOne,
+		arg.IncludeDefaults,
 	)
 	if err != nil {
 		return nil, err
@@ -1597,7 +1779,7 @@ func (q *Queries) ListTeamTemplatesByUpdatedAtAsc(ctx context.Context, arg ListT
 }
 
 const listTeamTemplatesByUpdatedAtDesc = `-- name: ListTeamTemplatesByUpdatedAtDesc :many
-WITH ranked AS (
+WITH team_templates AS (
     SELECT
         e.id,
         e.created_at,
@@ -1612,44 +1794,97 @@ WITH ranked AS (
     FROM public.envs AS e
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
-        (
-            (e.team_id = $1::uuid AND e.source = 'template')
-            OR ($2::boolean AND d.env_id IS NOT NULL)
-        )
-        AND ($3::bigint = 0 OR (
+        e.team_id = $1::uuid AND e.source = 'template'
+        AND ($2::bigint = 0 OR (
             SELECT b.vcpu FROM public.env_build_assignments AS ba
             JOIN public.env_builds AS b ON b.id = ba.build_id
             WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
             ORDER BY ba.created_at DESC
             LIMIT 1
-        ) = $3::bigint)
-        AND ($4::bigint = 0 OR (
+        ) = $2::bigint)
+        AND ($3::bigint = 0 OR (
             SELECT b.ram_mb FROM public.env_build_assignments AS ba
             JOIN public.env_builds AS b ON b.id = ba.build_id
             WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
             ORDER BY ba.created_at DESC
             LIMIT 1
-        ) = $4::bigint)
-        AND ($5::smallint = -1 OR e.public = ($5::smallint = 1))
+        ) = $3::bigint)
+        AND ($4::smallint = -1 OR e.public = ($4::smallint = 1))
         AND (
-            $6::text = ''
-            OR e.id ILIKE '%' || $6::text || '%'
+            $5::text = ''
+            OR e.id ILIKE '%' || $5::text || '%'
             OR EXISTS (
                 SELECT 1 FROM public.env_aliases sa
                 WHERE sa.env_id = e.id
                   AND (
-                    sa.alias ILIKE '%' || $6::text || '%'
-                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $6::text || '%'
+                    sa.alias ILIKE '%' || $5::text || '%'
+                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $5::text || '%'
                   )
             )
         )
+        AND (e.updated_at, e.id) < ($6::timestamptz, $7::text)
+    ORDER BY e.updated_at DESC, e.id DESC
+    LIMIT $8::int
+),
+default_templates AS (
+    SELECT
+        e.id,
+        e.created_at,
+        e.updated_at,
+        e.public,
+        e.build_count,
+        e.spawn_count,
+        e.last_spawned_at,
+        e.created_by,
+        d.env_id AS default_env_id,
+        d.description AS default_description
+    FROM public.envs AS e
+    JOIN public.env_defaults AS d ON d.env_id = e.id
+    WHERE
+        $9::boolean
+        AND ($2::bigint = 0 OR (
+            SELECT b.vcpu FROM public.env_build_assignments AS ba
+            JOIN public.env_builds AS b ON b.id = ba.build_id
+            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
+            ORDER BY ba.created_at DESC
+            LIMIT 1
+        ) = $2::bigint)
+        AND ($3::bigint = 0 OR (
+            SELECT b.ram_mb FROM public.env_build_assignments AS ba
+            JOIN public.env_builds AS b ON b.id = ba.build_id
+            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
+            ORDER BY ba.created_at DESC
+            LIMIT 1
+        ) = $3::bigint)
+        AND ($4::smallint = -1 OR e.public = ($4::smallint = 1))
         AND (
-            $7::timestamptz IS NULL
-            OR e.updated_at < $7::timestamptz
-            OR (e.updated_at = $7::timestamptz AND e.id > $8::text)
+            $5::text = ''
+            OR e.id ILIKE '%' || $5::text || '%'
+            OR EXISTS (
+                SELECT 1 FROM public.env_aliases sa
+                WHERE sa.env_id = e.id
+                  AND (
+                    sa.alias ILIKE '%' || $5::text || '%'
+                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || $5::text || '%'
+                  )
+            )
         )
-    ORDER BY e.updated_at DESC, e.id ASC
-    LIMIT $9::int
+        AND (e.updated_at, e.id) < ($6::timestamptz, $7::text)
+    ORDER BY e.updated_at DESC, e.id DESC
+    LIMIT $8::int
+),
+ranked AS (
+    SELECT
+        id, created_at, updated_at, public, build_count, spawn_count,
+        last_spawned_at, created_by, default_env_id, default_description
+    FROM team_templates
+    UNION
+    SELECT
+        id, created_at, updated_at, public, build_count, spawn_count,
+        last_spawned_at, created_by, default_env_id, default_description
+    FROM default_templates
+    ORDER BY updated_at DESC, id DESC
+    LIMIT $8::int
 )
 SELECT
         r.id AS template_id,
@@ -1687,19 +1922,19 @@ LEFT JOIN LATERAL (
     ORDER BY ba.created_at DESC
     LIMIT 1
 ) eb ON TRUE
-ORDER BY r.updated_at DESC, r.id ASC
+ORDER BY r.updated_at DESC, r.id DESC
 `
 
 type ListTeamTemplatesByUpdatedAtDescParams struct {
 	TeamID          uuid.UUID
-	IncludeDefaults bool
 	CpuCount        int64
 	MemoryMb        int64
 	FilterPublic    int16
 	Search          string
-	CursorUpdatedAt *time.Time
-	CursorID        *string
+	CursorUpdatedAt time.Time
+	CursorID        string
 	LimitPlusOne    int32
+	IncludeDefaults bool
 }
 
 type ListTeamTemplatesByUpdatedAtDescRow struct {
@@ -1726,7 +1961,6 @@ type ListTeamTemplatesByUpdatedAtDescRow struct {
 func (q *Queries) ListTeamTemplatesByUpdatedAtDesc(ctx context.Context, arg ListTeamTemplatesByUpdatedAtDescParams) ([]ListTeamTemplatesByUpdatedAtDescRow, error) {
 	rows, err := q.db.Query(ctx, listTeamTemplatesByUpdatedAtDesc,
 		arg.TeamID,
-		arg.IncludeDefaults,
 		arg.CpuCount,
 		arg.MemoryMb,
 		arg.FilterPublic,
@@ -1734,6 +1968,7 @@ func (q *Queries) ListTeamTemplatesByUpdatedAtDesc(ctx context.Context, arg List
 		arg.CursorUpdatedAt,
 		arg.CursorID,
 		arg.LimitPlusOne,
+		arg.IncludeDefaults,
 	)
 	if err != nil {
 		return nil, err

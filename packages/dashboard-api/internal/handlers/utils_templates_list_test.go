@@ -23,7 +23,7 @@ func TestParseTemplatesSort(t *testing.T) {
 		want    templatesSort
 		wantErr bool
 	}{
-		{"defaults to updated_at_desc", nil, templatesSortUpdatedAtDesc, false},
+		{"defaults to created_at_desc", nil, templatesSortCreatedAtDesc, false},
 		{"name_asc", &nameAsc, templatesSortNameAsc, false},
 		{"cpu_count_desc", &cpuDesc, templatesSortCpuCountDesc, false},
 		{"invalid", &bogus, "", true},

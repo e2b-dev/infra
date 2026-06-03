@@ -1,19 +1,3 @@
--- Paginated list of a team's templates, optionally including default templates
--- (env_defaults membership) inline when include_defaults is true. Filtering
--- (cpu/memory/visibility) and name+id search are shared across every variant;
--- sorting is split into one query per (column, direction) with a fixed ORDER BY
--- and a keyset predicate keyed on the sort column + the env id tiebreak (always
--- ascending). The cursor columns are nullable: a NULL cursor means the first
--- page.
---
--- Each variant uses a `ranked` CTE that applies the WHERE filters, sort, and
--- LIMIT so the heavy env_aliases ARRAY_AGG (and, for non-cpu/mem sorts, the
--- env_builds lookup) only run for the surviving rows. cpu/mem sort variants
--- keep env_builds inside the CTE because its columns are the sort key; all
--- other variants express the cpu/mem filter as a short-circuiting scalar
--- subquery so env_builds stays outside the CTE.
-
-
 -- name: ListTeamTemplatesByNameAsc :many
 WITH ranked AS (
     SELECT
@@ -563,7 +547,7 @@ ORDER BY COALESCE(r.ram_mb, 0) DESC, r.id ASC;
 
 
 -- name: ListTeamTemplatesByCreatedAtAsc :many
-WITH ranked AS (
+WITH team_templates AS (
     SELECT
         e.id,
         e.created_at,
@@ -578,10 +562,7 @@ WITH ranked AS (
     FROM public.envs AS e
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
-        (
-            (e.team_id = sqlc.arg(team_id)::uuid AND e.source = 'template')
-            OR (sqlc.arg(include_defaults)::boolean AND d.env_id IS NOT NULL)
-        )
+        e.team_id = sqlc.arg(team_id)::uuid AND e.source = 'template'
         AND (sqlc.arg(cpu_count)::bigint = 0 OR (
             SELECT b.vcpu FROM public.env_build_assignments AS ba
             JOIN public.env_builds AS b ON b.id = ba.build_id
@@ -609,12 +590,68 @@ WITH ranked AS (
                   )
             )
         )
-        AND (
-            sqlc.narg(cursor_created_at)::timestamptz IS NULL
-            OR e.created_at > sqlc.narg(cursor_created_at)::timestamptz
-            OR (e.created_at = sqlc.narg(cursor_created_at)::timestamptz AND e.id > sqlc.narg(cursor_id)::text)
-        )
+        AND (e.created_at, e.id) > (sqlc.arg(cursor_created_at)::timestamptz, sqlc.arg(cursor_id)::text)
     ORDER BY e.created_at ASC, e.id ASC
+    LIMIT sqlc.arg(limit_plus_one)::int
+),
+default_templates AS (
+    SELECT
+        e.id,
+        e.created_at,
+        e.updated_at,
+        e.public,
+        e.build_count,
+        e.spawn_count,
+        e.last_spawned_at,
+        e.created_by,
+        d.env_id AS default_env_id,
+        d.description AS default_description
+    FROM public.envs AS e
+    JOIN public.env_defaults AS d ON d.env_id = e.id
+    WHERE
+        sqlc.arg(include_defaults)::boolean
+        AND (sqlc.arg(cpu_count)::bigint = 0 OR (
+            SELECT b.vcpu FROM public.env_build_assignments AS ba
+            JOIN public.env_builds AS b ON b.id = ba.build_id
+            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
+            ORDER BY ba.created_at DESC
+            LIMIT 1
+        ) = sqlc.arg(cpu_count)::bigint)
+        AND (sqlc.arg(memory_mb)::bigint = 0 OR (
+            SELECT b.ram_mb FROM public.env_build_assignments AS ba
+            JOIN public.env_builds AS b ON b.id = ba.build_id
+            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
+            ORDER BY ba.created_at DESC
+            LIMIT 1
+        ) = sqlc.arg(memory_mb)::bigint)
+        AND (sqlc.arg(filter_public)::smallint = -1 OR e.public = (sqlc.arg(filter_public)::smallint = 1))
+        AND (
+            sqlc.arg(search)::text = ''
+            OR e.id ILIKE '%' || sqlc.arg(search)::text || '%'
+            OR EXISTS (
+                SELECT 1 FROM public.env_aliases sa
+                WHERE sa.env_id = e.id
+                  AND (
+                    sa.alias ILIKE '%' || sqlc.arg(search)::text || '%'
+                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || sqlc.arg(search)::text || '%'
+                  )
+            )
+        )
+        AND (e.created_at, e.id) > (sqlc.arg(cursor_created_at)::timestamptz, sqlc.arg(cursor_id)::text)
+    ORDER BY e.created_at ASC, e.id ASC
+    LIMIT sqlc.arg(limit_plus_one)::int
+),
+ranked AS (
+    SELECT
+        id, created_at, updated_at, public, build_count, spawn_count,
+        last_spawned_at, created_by, default_env_id, default_description
+    FROM team_templates
+    UNION
+    SELECT
+        id, created_at, updated_at, public, build_count, spawn_count,
+        last_spawned_at, created_by, default_env_id, default_description
+    FROM default_templates
+    ORDER BY created_at ASC, id ASC
     LIMIT sqlc.arg(limit_plus_one)::int
 )
 SELECT
@@ -657,7 +694,7 @@ ORDER BY r.created_at ASC, r.id ASC;
 
 
 -- name: ListTeamTemplatesByCreatedAtDesc :many
-WITH ranked AS (
+WITH team_templates AS (
     SELECT
         e.id,
         e.created_at,
@@ -672,10 +709,7 @@ WITH ranked AS (
     FROM public.envs AS e
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
-        (
-            (e.team_id = sqlc.arg(team_id)::uuid AND e.source = 'template')
-            OR (sqlc.arg(include_defaults)::boolean AND d.env_id IS NOT NULL)
-        )
+        e.team_id = sqlc.arg(team_id)::uuid AND e.source = 'template'
         AND (sqlc.arg(cpu_count)::bigint = 0 OR (
             SELECT b.vcpu FROM public.env_build_assignments AS ba
             JOIN public.env_builds AS b ON b.id = ba.build_id
@@ -703,12 +737,68 @@ WITH ranked AS (
                   )
             )
         )
+        AND (e.created_at, e.id) < (sqlc.arg(cursor_created_at)::timestamptz, sqlc.arg(cursor_id)::text)
+    ORDER BY e.created_at DESC, e.id DESC
+    LIMIT sqlc.arg(limit_plus_one)::int
+),
+default_templates AS (
+    SELECT
+        e.id,
+        e.created_at,
+        e.updated_at,
+        e.public,
+        e.build_count,
+        e.spawn_count,
+        e.last_spawned_at,
+        e.created_by,
+        d.env_id AS default_env_id,
+        d.description AS default_description
+    FROM public.envs AS e
+    JOIN public.env_defaults AS d ON d.env_id = e.id
+    WHERE
+        sqlc.arg(include_defaults)::boolean
+        AND (sqlc.arg(cpu_count)::bigint = 0 OR (
+            SELECT b.vcpu FROM public.env_build_assignments AS ba
+            JOIN public.env_builds AS b ON b.id = ba.build_id
+            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
+            ORDER BY ba.created_at DESC
+            LIMIT 1
+        ) = sqlc.arg(cpu_count)::bigint)
+        AND (sqlc.arg(memory_mb)::bigint = 0 OR (
+            SELECT b.ram_mb FROM public.env_build_assignments AS ba
+            JOIN public.env_builds AS b ON b.id = ba.build_id
+            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
+            ORDER BY ba.created_at DESC
+            LIMIT 1
+        ) = sqlc.arg(memory_mb)::bigint)
+        AND (sqlc.arg(filter_public)::smallint = -1 OR e.public = (sqlc.arg(filter_public)::smallint = 1))
         AND (
-            sqlc.narg(cursor_created_at)::timestamptz IS NULL
-            OR e.created_at < sqlc.narg(cursor_created_at)::timestamptz
-            OR (e.created_at = sqlc.narg(cursor_created_at)::timestamptz AND e.id > sqlc.narg(cursor_id)::text)
+            sqlc.arg(search)::text = ''
+            OR e.id ILIKE '%' || sqlc.arg(search)::text || '%'
+            OR EXISTS (
+                SELECT 1 FROM public.env_aliases sa
+                WHERE sa.env_id = e.id
+                  AND (
+                    sa.alias ILIKE '%' || sqlc.arg(search)::text || '%'
+                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || sqlc.arg(search)::text || '%'
+                  )
+            )
         )
-    ORDER BY e.created_at DESC, e.id ASC
+        AND (e.created_at, e.id) < (sqlc.arg(cursor_created_at)::timestamptz, sqlc.arg(cursor_id)::text)
+    ORDER BY e.created_at DESC, e.id DESC
+    LIMIT sqlc.arg(limit_plus_one)::int
+),
+ranked AS (
+    SELECT
+        id, created_at, updated_at, public, build_count, spawn_count,
+        last_spawned_at, created_by, default_env_id, default_description
+    FROM team_templates
+    UNION
+    SELECT
+        id, created_at, updated_at, public, build_count, spawn_count,
+        last_spawned_at, created_by, default_env_id, default_description
+    FROM default_templates
+    ORDER BY created_at DESC, id DESC
     LIMIT sqlc.arg(limit_plus_one)::int
 )
 SELECT
@@ -747,11 +837,11 @@ LEFT JOIN LATERAL (
     ORDER BY ba.created_at DESC
     LIMIT 1
 ) eb ON TRUE
-ORDER BY r.created_at DESC, r.id ASC;
+ORDER BY r.created_at DESC, r.id DESC;
 
 
 -- name: ListTeamTemplatesByUpdatedAtAsc :many
-WITH ranked AS (
+WITH team_templates AS (
     SELECT
         e.id,
         e.created_at,
@@ -766,10 +856,7 @@ WITH ranked AS (
     FROM public.envs AS e
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
-        (
-            (e.team_id = sqlc.arg(team_id)::uuid AND e.source = 'template')
-            OR (sqlc.arg(include_defaults)::boolean AND d.env_id IS NOT NULL)
-        )
+        e.team_id = sqlc.arg(team_id)::uuid AND e.source = 'template'
         AND (sqlc.arg(cpu_count)::bigint = 0 OR (
             SELECT b.vcpu FROM public.env_build_assignments AS ba
             JOIN public.env_builds AS b ON b.id = ba.build_id
@@ -797,12 +884,68 @@ WITH ranked AS (
                   )
             )
         )
-        AND (
-            sqlc.narg(cursor_updated_at)::timestamptz IS NULL
-            OR e.updated_at > sqlc.narg(cursor_updated_at)::timestamptz
-            OR (e.updated_at = sqlc.narg(cursor_updated_at)::timestamptz AND e.id > sqlc.narg(cursor_id)::text)
-        )
+        AND (e.updated_at, e.id) > (sqlc.arg(cursor_updated_at)::timestamptz, sqlc.arg(cursor_id)::text)
     ORDER BY e.updated_at ASC, e.id ASC
+    LIMIT sqlc.arg(limit_plus_one)::int
+),
+default_templates AS (
+    SELECT
+        e.id,
+        e.created_at,
+        e.updated_at,
+        e.public,
+        e.build_count,
+        e.spawn_count,
+        e.last_spawned_at,
+        e.created_by,
+        d.env_id AS default_env_id,
+        d.description AS default_description
+    FROM public.envs AS e
+    JOIN public.env_defaults AS d ON d.env_id = e.id
+    WHERE
+        sqlc.arg(include_defaults)::boolean
+        AND (sqlc.arg(cpu_count)::bigint = 0 OR (
+            SELECT b.vcpu FROM public.env_build_assignments AS ba
+            JOIN public.env_builds AS b ON b.id = ba.build_id
+            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
+            ORDER BY ba.created_at DESC
+            LIMIT 1
+        ) = sqlc.arg(cpu_count)::bigint)
+        AND (sqlc.arg(memory_mb)::bigint = 0 OR (
+            SELECT b.ram_mb FROM public.env_build_assignments AS ba
+            JOIN public.env_builds AS b ON b.id = ba.build_id
+            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
+            ORDER BY ba.created_at DESC
+            LIMIT 1
+        ) = sqlc.arg(memory_mb)::bigint)
+        AND (sqlc.arg(filter_public)::smallint = -1 OR e.public = (sqlc.arg(filter_public)::smallint = 1))
+        AND (
+            sqlc.arg(search)::text = ''
+            OR e.id ILIKE '%' || sqlc.arg(search)::text || '%'
+            OR EXISTS (
+                SELECT 1 FROM public.env_aliases sa
+                WHERE sa.env_id = e.id
+                  AND (
+                    sa.alias ILIKE '%' || sqlc.arg(search)::text || '%'
+                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || sqlc.arg(search)::text || '%'
+                  )
+            )
+        )
+        AND (e.updated_at, e.id) > (sqlc.arg(cursor_updated_at)::timestamptz, sqlc.arg(cursor_id)::text)
+    ORDER BY e.updated_at ASC, e.id ASC
+    LIMIT sqlc.arg(limit_plus_one)::int
+),
+ranked AS (
+    SELECT
+        id, created_at, updated_at, public, build_count, spawn_count,
+        last_spawned_at, created_by, default_env_id, default_description
+    FROM team_templates
+    UNION
+    SELECT
+        id, created_at, updated_at, public, build_count, spawn_count,
+        last_spawned_at, created_by, default_env_id, default_description
+    FROM default_templates
+    ORDER BY updated_at ASC, id ASC
     LIMIT sqlc.arg(limit_plus_one)::int
 )
 SELECT
@@ -845,7 +988,7 @@ ORDER BY r.updated_at ASC, r.id ASC;
 
 
 -- name: ListTeamTemplatesByUpdatedAtDesc :many
-WITH ranked AS (
+WITH team_templates AS (
     SELECT
         e.id,
         e.created_at,
@@ -860,10 +1003,7 @@ WITH ranked AS (
     FROM public.envs AS e
     LEFT JOIN public.env_defaults AS d ON d.env_id = e.id
     WHERE
-        (
-            (e.team_id = sqlc.arg(team_id)::uuid AND e.source = 'template')
-            OR (sqlc.arg(include_defaults)::boolean AND d.env_id IS NOT NULL)
-        )
+        e.team_id = sqlc.arg(team_id)::uuid AND e.source = 'template'
         AND (sqlc.arg(cpu_count)::bigint = 0 OR (
             SELECT b.vcpu FROM public.env_build_assignments AS ba
             JOIN public.env_builds AS b ON b.id = ba.build_id
@@ -891,12 +1031,68 @@ WITH ranked AS (
                   )
             )
         )
+        AND (e.updated_at, e.id) < (sqlc.arg(cursor_updated_at)::timestamptz, sqlc.arg(cursor_id)::text)
+    ORDER BY e.updated_at DESC, e.id DESC
+    LIMIT sqlc.arg(limit_plus_one)::int
+),
+default_templates AS (
+    SELECT
+        e.id,
+        e.created_at,
+        e.updated_at,
+        e.public,
+        e.build_count,
+        e.spawn_count,
+        e.last_spawned_at,
+        e.created_by,
+        d.env_id AS default_env_id,
+        d.description AS default_description
+    FROM public.envs AS e
+    JOIN public.env_defaults AS d ON d.env_id = e.id
+    WHERE
+        sqlc.arg(include_defaults)::boolean
+        AND (sqlc.arg(cpu_count)::bigint = 0 OR (
+            SELECT b.vcpu FROM public.env_build_assignments AS ba
+            JOIN public.env_builds AS b ON b.id = ba.build_id
+            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
+            ORDER BY ba.created_at DESC
+            LIMIT 1
+        ) = sqlc.arg(cpu_count)::bigint)
+        AND (sqlc.arg(memory_mb)::bigint = 0 OR (
+            SELECT b.ram_mb FROM public.env_build_assignments AS ba
+            JOIN public.env_builds AS b ON b.id = ba.build_id
+            WHERE ba.env_id = e.id AND ba.tag = 'default' AND b.status_group = 'ready'
+            ORDER BY ba.created_at DESC
+            LIMIT 1
+        ) = sqlc.arg(memory_mb)::bigint)
+        AND (sqlc.arg(filter_public)::smallint = -1 OR e.public = (sqlc.arg(filter_public)::smallint = 1))
         AND (
-            sqlc.narg(cursor_updated_at)::timestamptz IS NULL
-            OR e.updated_at < sqlc.narg(cursor_updated_at)::timestamptz
-            OR (e.updated_at = sqlc.narg(cursor_updated_at)::timestamptz AND e.id > sqlc.narg(cursor_id)::text)
+            sqlc.arg(search)::text = ''
+            OR e.id ILIKE '%' || sqlc.arg(search)::text || '%'
+            OR EXISTS (
+                SELECT 1 FROM public.env_aliases sa
+                WHERE sa.env_id = e.id
+                  AND (
+                    sa.alias ILIKE '%' || sqlc.arg(search)::text || '%'
+                    OR COALESCE(sa.namespace, '') || '/' || sa.alias ILIKE '%' || sqlc.arg(search)::text || '%'
+                  )
+            )
         )
-    ORDER BY e.updated_at DESC, e.id ASC
+        AND (e.updated_at, e.id) < (sqlc.arg(cursor_updated_at)::timestamptz, sqlc.arg(cursor_id)::text)
+    ORDER BY e.updated_at DESC, e.id DESC
+    LIMIT sqlc.arg(limit_plus_one)::int
+),
+ranked AS (
+    SELECT
+        id, created_at, updated_at, public, build_count, spawn_count,
+        last_spawned_at, created_by, default_env_id, default_description
+    FROM team_templates
+    UNION
+    SELECT
+        id, created_at, updated_at, public, build_count, spawn_count,
+        last_spawned_at, created_by, default_env_id, default_description
+    FROM default_templates
+    ORDER BY updated_at DESC, id DESC
     LIMIT sqlc.arg(limit_plus_one)::int
 )
 SELECT
@@ -935,4 +1131,4 @@ LEFT JOIN LATERAL (
     ORDER BY ba.created_at DESC
     LIMIT 1
 ) eb ON TRUE
-ORDER BY r.updated_at DESC, r.id ASC;
+ORDER BY r.updated_at DESC, r.id DESC;

@@ -191,7 +191,7 @@ components:
             updated_at_asc,
             updated_at_desc,
           ]
-        default: updated_at_desc
+        default: created_at_desc
 
   responses:
     "400":

@@ -29,7 +29,7 @@ const (
 )
 
 const (
-	defaultTemplatesSort  = templatesSortUpdatedAtDesc
+	defaultTemplatesSort  = templatesSortCreatedAtDesc
 	defaultTemplatesLimit = int32(50)
 	maxTemplatesLimit     = int32(100)
 )
@@ -140,4 +140,20 @@ func cursorTime(v *string) (*time.Time, error) {
 	}
 
 	return &t, nil
+}
+
+var (
+	maxCursorTime = time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
+	minCursorTime = time.Time{}
+)
+
+func timeCursor(ts *time.Time, id *string, desc bool) (time.Time, string) {
+	if ts != nil && id != nil {
+		return *ts, *id
+	}
+	if desc {
+		return maxCursorTime, ""
+	}
+
+	return minCursorTime, ""
 }
