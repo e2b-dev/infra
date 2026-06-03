@@ -10,6 +10,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -26,13 +27,14 @@ func NewResolvedDiffHeader(h *header.Header) *DiffHeader {
 }
 
 type Snapshot struct {
-	MemfileDiff       build.Diff
-	MemfileDiffHeader *DiffHeader
-	RootfsDiff        build.Diff
-	RootfsDiffHeader  *DiffHeader
-	Snapfile          template.File
-	Metafile          template.File
-	BuildID           uuid.UUID
+	MemfileDiff        build.Diff
+	MemfileDiffHeader  *DiffHeader
+	RootfsDiff         build.Diff
+	RootfsDiffHeader   *DiffHeader
+	Snapfile           template.File
+	Metafile           template.File
+	BuildID            uuid.UUID
+	SchedulingMetadata *orchestrator.SchedulingMetadata
 
 	// Template block sizes captured sync at Pause time. They equal
 	// MemfileDiffHeader.Metadata.BlockSize once that header resolves, but

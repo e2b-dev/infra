@@ -44,6 +44,24 @@ variable "api_internal_grpc_port" {
   default = 5009
 }
 
+variable "api_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "api_db_migrator_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "client_proxy_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
 variable "api_server_machine_type" {
   type    = string
   default = "t3.xlarge"

@@ -81,22 +81,24 @@ func main() {
 		log.Fatalf("failed to deserialize diff header: %s", err)
 	}
 
+	baseMapping := baseHeader.Mapping.Slice()
+
 	fmt.Printf("\nBASE METADATA\n")
 	fmt.Printf("Storage path       %s\n", baseSource)
 	fmt.Printf("========\n")
 
-	for _, mapping := range baseHeader.Mapping {
+	for _, mapping := range baseMapping {
 		fmt.Println(mapping.Format(baseHeader.Metadata.BlockSize))
 	}
 
 	if *visualize {
-		bottomLayers := header.Layers(baseHeader.Mapping)
+		bottomLayers := header.Layers(baseMapping)
 		delete(*bottomLayers, baseHeader.Metadata.BaseBuildId)
 
 		fmt.Println("")
 		fmt.Println(
 			header.Visualize(
-				baseHeader.Mapping,
+				baseMapping,
 				baseHeader.Metadata.Size,
 				baseHeader.Metadata.BlockSize,
 				128,
@@ -108,7 +110,7 @@ func main() {
 		)
 	}
 
-	if err := header.ValidateMappings(baseHeader.Mapping, baseHeader.Metadata.Size, baseHeader.Metadata.BlockSize); err != nil {
+	if err := header.ValidateMappings(baseMapping, baseHeader.Metadata.Size, baseHeader.Metadata.BlockSize); err != nil {
 		log.Fatalf("failed to validate base header: %s", err)
 	}
 
@@ -118,7 +120,7 @@ func main() {
 
 	onlyDiffMappings := make([]header.BuildMap, 0)
 
-	for _, mapping := range diffHeader.Mapping {
+	for _, mapping := range diffHeader.Mapping.All() {
 		if mapping.BuildId == diffHeader.Metadata.BuildId {
 			onlyDiffMappings = append(onlyDiffMappings, mapping)
 		}
@@ -142,7 +144,7 @@ func main() {
 		)
 	}
 
-	mergedHeader := header.MergeMappings(baseHeader.Mapping, onlyDiffMappings)
+	mergedHeader := header.MergeMappings(baseMapping, onlyDiffMappings)
 
 	fmt.Printf("\n\nMERGED METADATA\n")
 	fmt.Printf("========\n")
@@ -152,7 +154,7 @@ func main() {
 	}
 
 	if *visualize {
-		bottomLayers := header.Layers(baseHeader.Mapping)
+		bottomLayers := header.Layers(baseMapping)
 		delete(*bottomLayers, baseHeader.Metadata.BaseBuildId)
 
 		fmt.Println("")

@@ -22,6 +22,11 @@ const (
 	metadataVersion = 3
 	// MetadataVersionV4 is used for compressed builds (V4 headers with FrameTables).
 	MetadataVersionV4 = 4
+	// MetadataVersionV5 is V4 with a columnar, varint-encoded mapping section.
+	// Same semantics as V4 (Builds map + FrameTables); only the on-disk mapping
+	// layout differs. Far smaller and far more compressible for the large,
+	// fragmented headers produced by page-granular memfile dedup.
+	MetadataVersionV5 = 5
 )
 
 type Metadata struct {
@@ -135,8 +140,12 @@ func (d *DiffMetadata) ToDiffHeader(
 
 	diffMapping := d.toDiffMapping(ctx, buildID)
 
+	// MergeMappings/NormalizeMappings operate on []BuildMap (transient).
+	// originalHeader.Mapping is the compact cached form; materialize it once
+	// here. The intermediate slice is short-lived (released after the new
+	// compact header is built below).
 	m := MergeMappings(
-		originalHeader.Mapping,
+		originalHeader.Mapping.Slice(),
 		diffMapping,
 	)
 	telemetry.ReportEvent(ctx, "merged mappings")
@@ -164,7 +173,7 @@ func (d *DiffMetadata) ToDiffHeader(
 	}
 
 	// Dedup emits PageSize-granular mappings; validate at PageSize.
-	err = ValidateMappings(header.Mapping, header.Metadata.Size, PageSize)
+	err = header.Mapping.Validate(header.Metadata.Size, PageSize)
 	if err != nil {
 		if header.IsNormalizeFixApplied() {
 			return nil, fmt.Errorf("invalid header mappings: %w", err)

@@ -670,6 +670,40 @@ resource "google_compute_security_policy_rule" "sandbox-throttling-host" {
   }
 }
 
+resource "google_compute_security_policy_rule" "sandbox-routing-headers-log" {
+  security_policy = google_compute_security_policy.default["session"].name
+  description     = "Log sandbox routing headers"
+
+  action   = "throttle"
+  priority = "250"
+  preview  = true
+  match {
+    expr {
+      expression = "has(request.headers['e2b-sandbox-id']) && has(request.headers['e2b-sandbox-port'])"
+    }
+  }
+
+  rate_limit_options {
+    conform_action = "allow"
+    exceed_action  = "deny(429)"
+
+    enforce_on_key_configs {
+      enforce_on_key_name = "e2b-sandbox-id"
+      enforce_on_key_type = "HTTP_HEADER"
+    }
+
+    enforce_on_key_configs {
+      enforce_on_key_name = "e2b-sandbox-port"
+      enforce_on_key_type = "HTTP_HEADER"
+    }
+
+    rate_limit_threshold {
+      count        = 1000000
+      interval_sec = 60
+    }
+  }
+}
+
 resource "google_compute_security_policy_rule" "sandbox-throttling-ip" {
   security_policy = google_compute_security_policy.default["session"].name
   action          = "throttle"
@@ -698,34 +732,6 @@ resource "google_compute_security_policy_rule" "sandbox-throttling-ip" {
   }
 
   description = "Requests to sandboxes from IP address"
-}
-
-resource "google_compute_security_policy" "disable-bots-log-collector" {
-  name = "disable-bots-log-collector"
-
-  rule {
-    action   = "allow"
-    priority = "300"
-    match {
-      expr {
-        expression = "request.path == \"/\" && request.method == \"POST\""
-      }
-    }
-
-    description = "Allow POST requests  to / (collecting logs)"
-  }
-
-  rule {
-    action      = "deny(403)"
-    priority    = "2147483647"
-    description = "Default rule, higher priority overrides it"
-    match {
-      versioned_expr = "SRC_IPS_V1"
-      config {
-        src_ip_ranges = ["*"]
-      }
-    }
-  }
 }
 
 # Cloud Router for NAT

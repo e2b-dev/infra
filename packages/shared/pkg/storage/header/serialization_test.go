@@ -1,7 +1,9 @@
 package header
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
 	"testing"
 
 	"github.com/google/uuid"
@@ -9,6 +11,78 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
+
+// fragmentedHeader builds a V4 header with n alternating-build mappings so its
+// uncompressed block is large and incompressible enough to exercise the cap.
+func fragmentedHeader(t *testing.T, n int) *Header {
+	t.Helper()
+	bs := uint64(4096)
+	a, b := uuid.New(), uuid.New()
+	mappings := make([]BuildMap, n)
+	var off, sa, sb uint64
+	for i := range mappings {
+		id, so := a, sa
+		if i%2 == 1 {
+			id, so = b, sb
+		}
+		mappings[i] = BuildMap{Offset: off, Length: bs, BuildId: id, BuildStorageOffset: so}
+		off += bs
+		if i%2 == 0 {
+			sa += bs
+		} else {
+			sb += bs
+		}
+	}
+	meta := &Metadata{Version: MetadataVersionV4, BlockSize: bs, Size: off, BuildId: a, BaseBuildId: b}
+	h, err := NewHeader(meta, mappings)
+	require.NoError(t, err)
+	h.Builds = map[uuid.UUID]BuildData{a: {Size: int64(sa)}, b: {Size: int64(sb)}}
+
+	return h
+}
+
+//nolint:paralleltest // mutates the package-global cap; must not run in parallel
+func TestStoreHeader_RejectsOversizeOnWrite(t *testing.T) {
+	orig := v4MaxUncompressedHeaderSize
+	v4MaxUncompressedHeaderSize = 1024
+	t.Cleanup(func() { v4MaxUncompressedHeaderSize = orig })
+
+	// The guard returns before the storage provider is used, so a nil provider
+	// is fine for the rejection path.
+	h := fragmentedHeader(t, 100)
+	_, _, _, err := StoreHeader(t.Context(), nil, "header", h) //nolint:dogsled // only err matters
+	require.ErrorContains(t, err, "exceeds cap")
+}
+
+//nolint:paralleltest // mutates the package-global cap; must not run in parallel
+func TestDeserialize_AboveOldCapRoundTrips(t *testing.T) {
+	// A header above a lowered cap is rejected on read; raising the cap lets it
+	// round-trip. Mirrors raising the production cap so already-uploaded large
+	// headers become resumable again.
+	orig := v4MaxUncompressedHeaderSize
+	v4MaxUncompressedHeaderSize = 4096
+	t.Cleanup(func() { v4MaxUncompressedHeaderSize = orig })
+
+	h := fragmentedHeader(t, 1000) // ~40 KiB uncompressed block, over the 4 KiB cap
+	data, err := SerializeHeader(h)
+	require.NoError(t, err)
+
+	_, err = DeserializeBytes(data)
+	require.ErrorContains(t, err, "exceeds cap")
+
+	v4MaxUncompressedHeaderSize = orig
+	got, err := DeserializeBytes(data)
+	require.NoError(t, err)
+	require.Equal(t, 1000, got.Mapping.Len())
+}
+
+func mustMapping(t *testing.T, blockSize uint64, src []BuildMap) Mapping {
+	t.Helper()
+	m, err := NewMapping(blockSize, src)
+	require.NoError(t, err)
+
+	return m
+}
 
 func TestSerializeDeserialize_V3_RoundTrip(t *testing.T) {
 	t.Parallel()
@@ -35,27 +109,27 @@ func TestSerializeDeserialize_V3_RoundTrip(t *testing.T) {
 			Offset:             4096,
 			Length:             4096,
 			BuildId:            baseID,
-			BuildStorageOffset: 123,
+			BuildStorageOffset: 8192,
 		},
 	}
 
-	data, err := serializeV3(metadata, mappings)
+	data, err := serializeV3(metadata, mustMapping(t, metadata.BlockSize, mappings))
 	require.NoError(t, err)
 
 	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
 	require.Equal(t, metadata, got.Metadata)
-	require.Len(t, got.Mapping, 2)
-	require.Equal(t, uint64(0), got.Mapping[0].Offset)
-	require.Equal(t, uint64(4096), got.Mapping[0].Length)
-	require.Equal(t, buildID, got.Mapping[0].BuildId)
-	require.Equal(t, uint64(0), got.Mapping[0].BuildStorageOffset)
+	require.Equal(t, 2, got.Mapping.Len())
+	require.Equal(t, uint64(0), got.Mapping.At(0).Offset)
+	require.Equal(t, uint64(4096), got.Mapping.At(0).Length)
+	require.Equal(t, buildID, got.Mapping.At(0).BuildId)
+	require.Equal(t, uint64(0), got.Mapping.At(0).BuildStorageOffset)
 
-	require.Equal(t, uint64(4096), got.Mapping[1].Offset)
-	require.Equal(t, uint64(4096), got.Mapping[1].Length)
-	require.Equal(t, baseID, got.Mapping[1].BuildId)
-	require.Equal(t, uint64(123), got.Mapping[1].BuildStorageOffset)
+	require.Equal(t, uint64(4096), got.Mapping.At(1).Offset)
+	require.Equal(t, uint64(4096), got.Mapping.At(1).Length)
+	require.Equal(t, baseID, got.Mapping.At(1).BuildId)
+	require.Equal(t, uint64(8192), got.Mapping.At(1).BuildStorageOffset)
 
 	// V3 headers have no Builds
 	require.Nil(t, got.Builds)
@@ -81,17 +155,17 @@ func TestSerializeDeserialize_EmptyMappings_Defaults(t *testing.T) {
 		BaseBuildId: uuid.New(),
 	}
 
-	data, err := serializeV3(metadata, nil)
+	data, err := serializeV3(metadata, Mapping{})
 	require.NoError(t, err)
 
 	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
 	// NewHeader creates a default mapping when none provided
-	require.Len(t, got.Mapping, 1)
-	require.Equal(t, uint64(0), got.Mapping[0].Offset)
-	require.Equal(t, metadata.Size, got.Mapping[0].Length)
-	require.Equal(t, metadata.BuildId, got.Mapping[0].BuildId)
+	require.Equal(t, 1, got.Mapping.Len())
+	require.Equal(t, uint64(0), got.Mapping.At(0).Offset)
+	require.Equal(t, metadata.Size, got.Mapping.At(0).Length)
+	require.Equal(t, metadata.BuildId, got.Mapping.At(0).BuildId)
 }
 
 func TestDeserialize_BlockSizeZero(t *testing.T) {
@@ -106,7 +180,7 @@ func TestDeserialize_BlockSizeZero(t *testing.T) {
 		BaseBuildId: uuid.New(),
 	}
 
-	data, err := serializeV3(metadata, nil)
+	data, err := serializeV3(metadata, Mapping{})
 	require.NoError(t, err)
 
 	_, err = DeserializeBytes(data)
@@ -165,9 +239,9 @@ func TestSerializeDeserialize_V4_WithFrameTable(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, uint64(4), got.Metadata.Version)
-	require.Len(t, got.Mapping, 2)
-	require.Equal(t, buildID, got.Mapping[0].BuildId)
-	require.Equal(t, baseID, got.Mapping[1].BuildId)
+	require.Equal(t, 2, got.Mapping.Len())
+	require.Equal(t, buildID, got.Mapping.At(0).BuildId)
+	require.Equal(t, baseID, got.Mapping.At(1).BuildId)
 
 	// Builds round-trip
 	require.Len(t, got.Builds, 2)
@@ -236,8 +310,8 @@ func TestSerializeDeserialize_V4_Zstd(t *testing.T) {
 	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
-	require.Len(t, got.Mapping, 1)
-	require.Equal(t, uint64(8192), got.Mapping[0].BuildStorageOffset)
+	require.Equal(t, 1, got.Mapping.Len())
+	require.Equal(t, uint64(8192), got.Mapping.At(0).BuildStorageOffset)
 
 	require.Len(t, got.Builds, 1)
 	fd := got.Builds[buildID].FrameData
@@ -289,7 +363,7 @@ func TestSerializeDeserialize_V4_NoFrames(t *testing.T) {
 	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
-	require.Len(t, got.Mapping, 2)
+	require.Equal(t, 2, got.Mapping.Len())
 	require.Nil(t, got.Builds)
 }
 
@@ -333,7 +407,7 @@ func TestSerializeDeserialize_V4_ManyFrames(t *testing.T) {
 	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
-	require.Len(t, got.Mapping, 1)
+	require.Equal(t, 1, got.Mapping.Len())
 	require.NotNil(t, got.Builds)
 	fd := got.Builds[buildID].FrameData
 	require.NotNil(t, fd)
@@ -380,8 +454,46 @@ func TestSerializeDeserialize_V4_NoBuilds(t *testing.T) {
 	got, err := DeserializeBytes(data)
 	require.NoError(t, err)
 
-	require.Len(t, got.Mapping, 1)
+	require.Equal(t, 1, got.Mapping.Len())
 	require.Nil(t, got.Builds)
+}
+
+func TestReadV4BuildsSection_RejectsOversizedBuildCount(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	require.NoError(t, binary.Write(&buf, binary.LittleEndian, uint32(2)))
+
+	_, err := readV4BuildsSection(bytes.NewReader(buf.Bytes()))
+	require.ErrorContains(t, err, "build count 2 exceeds remaining")
+}
+
+func TestDeserializeV4_RejectsOversizedMappingCount(t *testing.T) {
+	t.Parallel()
+
+	var block bytes.Buffer
+	require.NoError(t, binary.Write(&block, binary.LittleEndian, uint32(0))) // builds
+	require.NoError(t, binary.Write(&block, binary.LittleEndian, uint32(2))) // mappings
+
+	compressed, err := compressLZ4(block.Bytes())
+	require.NoError(t, err)
+
+	metadata := &Metadata{
+		Version:     MetadataVersionV4,
+		BlockSize:   4096,
+		Size:        4096,
+		BuildId:     uuid.New(),
+		BaseBuildId: uuid.New(),
+	}
+	var meta bytes.Buffer
+	require.NoError(t, binary.Write(&meta, binary.LittleEndian, metadata))
+	data := make([]byte, metadataSize+v4FlagsLen+v4SizePrefixLen+len(compressed))
+	copy(data[:metadataSize], meta.Bytes())
+	binary.LittleEndian.PutUint32(data[metadataSize+v4FlagsLen:], uint32(block.Len()))
+	copy(data[metadataSize+v4FlagsLen+v4SizePrefixLen:], compressed)
+
+	_, err = DeserializeBytes(data)
+	require.ErrorContains(t, err, "mapping count 2 exceeds remaining")
 }
 
 func TestSerializeDeserialize_V4_MultiBuild_LocateCompressed(t *testing.T) {
@@ -444,7 +556,7 @@ func TestSerializeDeserialize_V4_MultiBuild_LocateCompressed(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, uint64(4), got.Metadata.Version)
-	require.Len(t, got.Mapping, 3)
+	require.Equal(t, 3, got.Mapping.Len())
 	require.Len(t, got.Builds, 2)
 
 	// Verify checksums round-trip.
@@ -778,7 +890,7 @@ func TestSerializeDeserialize_V4_MixedChain(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, uint64(MetadataVersionV4), got.Metadata.Version)
-	require.Len(t, got.Mapping, 5)
+	require.Equal(t, 5, got.Mapping.Len())
 	require.Len(t, got.Builds, 3)
 
 	require.Nil(t, got.GetBuildFrameData(selfID))
@@ -794,11 +906,11 @@ func TestSerializeDeserialize_V4_MixedChain(t *testing.T) {
 	_, hasV3b := got.Builds[v3bID]
 	require.False(t, hasV3b)
 
-	require.Equal(t, selfID, got.Mapping[0].BuildId)
-	require.Equal(t, midID, got.Mapping[1].BuildId)
-	require.Equal(t, olderID, got.Mapping[2].BuildId)
-	require.Equal(t, v3aID, got.Mapping[3].BuildId)
-	require.Equal(t, v3bID, got.Mapping[4].BuildId)
+	require.Equal(t, selfID, got.Mapping.At(0).BuildId)
+	require.Equal(t, midID, got.Mapping.At(1).BuildId)
+	require.Equal(t, olderID, got.Mapping.At(2).BuildId)
+	require.Equal(t, v3aID, got.Mapping.At(3).BuildId)
+	require.Equal(t, v3bID, got.Mapping.At(4).BuildId)
 }
 
 // Layered chain with a compressed self entry:
@@ -908,7 +1020,7 @@ func TestDeserialize_V3_StaysV3(t *testing.T) {
 	}
 	mappings := []BuildMap{{Offset: 0, Length: 4096, BuildId: buildID}}
 
-	data, err := serializeV3(metadata, mappings)
+	data, err := serializeV3(metadata, mustMapping(t, metadata.BlockSize, mappings))
 	require.NoError(t, err)
 
 	got, err := DeserializeBytes(data)

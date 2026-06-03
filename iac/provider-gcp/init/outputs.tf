@@ -66,6 +66,10 @@ output "posthog_api_key_secret_name" {
   value = google_secret_manager_secret_version.posthog_api_key.secret
 }
 
+output "ory_project_api_token_secret_name" {
+  value = google_secret_manager_secret_version.ory_project_api_token.secret
+}
+
 output "supabase_jwt_secret_name" {
   value = google_secret_manager_secret_version.supabase_jwt_secrets.secret
 }
@@ -84,6 +88,10 @@ output "loki_bucket_name" {
 
 output "envs_docker_context_bucket_name" {
   value = google_storage_bucket.envs_docker_context.name
+}
+
+output "argocd_apps_bucket_name" {
+  value = google_storage_bucket.argocd_apps.name
 }
 
 output "cluster_setup_bucket_name" {

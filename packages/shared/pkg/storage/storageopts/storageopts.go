@@ -2,11 +2,18 @@
 // separate so generated mocks can reference them without an import cycle.
 package storageopts
 
-import "maps"
+import (
+	"context"
+	"maps"
+)
 
 type ObjectMetadata map[string]string
 
 const ObjectMetadataTeamID = "team_id"
+
+// FrameSink fires once per compressed frame with its absolute C-space offset.
+// Best-effort; implementations should return quickly and bound their own I/O.
+type FrameSink func(ctx context.Context, cOffset int64, compressed []byte)
 
 // PutOptions holds parameters for blob/seekable writes. Compression is held
 // as `any` so that storage.CompressConfig (which has heavy storage-internal
@@ -14,8 +21,11 @@ const ObjectMetadataTeamID = "team_id"
 type PutOptions struct {
 	Metadata    ObjectMetadata
 	Compression any
+	FrameSink   FrameSink
 	Checksum    bool
 }
+
+func WithFrameSink(s FrameSink) PutOption { return func(o *PutOptions) { o.FrameSink = s } }
 
 type PutOption func(*PutOptions)
 

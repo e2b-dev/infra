@@ -166,6 +166,7 @@ func TestCompressStreamRoundTrip(t *testing.T) {
 				cfg,
 				up,
 				4,
+				nil,
 			)
 			require.NoError(t, err)
 
@@ -203,7 +204,7 @@ func TestCompressStreamContextCancel(t *testing.T) {
 	up := &memPartUploader{}
 	cfg := defaultCfg(CompressionZstd, 4, 2*megabyte)
 
-	_, _, err := compressStream(ctx, bytes.NewReader(data), cfg, up, 4)
+	_, _, err := compressStream(ctx, bytes.NewReader(data), cfg, up, 4, nil)
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.Canceled)
 }
@@ -234,7 +235,7 @@ func TestCompressStreamPartSizeMinimum(t *testing.T) {
 			cfg := defaultCfg(CompressionZstd, 4, tc.frameSize)
 			cfg.MinPartSizeMB = tc.minPartSizeMB
 
-			_, _, err := compressStream(t.Context(), bytes.NewReader(data), cfg, up, 4)
+			_, _, err := compressStream(t.Context(), bytes.NewReader(data), cfg, up, 4, nil)
 			require.NoError(t, err)
 
 			// Verify: no non-final part is under 5 MiB.
@@ -290,7 +291,7 @@ func TestCompressStreamRace(t *testing.T) {
 				cfg.EncoderConcurrency = 4 // multi-threaded zstd encoders for more contention
 			}
 
-			ft, checksum, err := compressStream(ctx, bytes.NewReader(data), cfg, up, 4)
+			ft, checksum, err := compressStream(ctx, bytes.NewReader(data), cfg, up, 4, nil)
 			if err != nil {
 				return fmt.Errorf("stream %d: compress: %w", i, err)
 			}
@@ -357,6 +358,7 @@ func BenchmarkCompress(b *testing.B) {
 					bytes.NewReader(data),
 					compCfg,
 					up, 4,
+					nil,
 				)
 				if err != nil {
 					b.Fatal(err)

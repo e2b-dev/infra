@@ -306,11 +306,13 @@ func (c *cachedSeekable) StoreFile(ctx context.Context, path string, opts ...Put
 	}()
 
 	cfg := CompressConfigFromOpts(ApplyPutOptions(opts))
+	writeThrough := c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag)
 
-	// write the file to the disk and the remote system at the same time.
-	// this opens the file twice, but the API makes it difficult to use a MultiWriter
+	if cfg.IsCompressionEnabled() && writeThrough {
+		opts = append(opts, WithFrameSink(c.frameSink(ctx)))
+	}
 
-	if !cfg.IsCompressionEnabled() && c.flags.BoolFlag(ctx, featureflags.EnableWriteThroughCacheFlag) {
+	if !cfg.IsCompressionEnabled() && writeThrough {
 		c.goCtx(ctx, func(ctx context.Context) {
 			ctx, span := c.tracer.Start(ctx, "write cache object from file system",
 				trace.WithAttributes(attribute.String("path", path)))
@@ -336,6 +338,40 @@ func (c *cachedSeekable) StoreFile(ctx context.Context, path string, opts ...Put
 	return c.inner.StoreFile(ctx, path, opts...)
 }
 
+// frameSink writes each compressed frame to a .frm file at its C-space offset,
+// the layout openReaderCompressed expects. Writes are async (goCtx) and capped
+// by MaxCacheWriterConcurrencyFlag.
+func (c *cachedSeekable) frameSink(ctx context.Context) FrameSink {
+	maxConcurrency := c.flags.IntFlag(ctx, featureflags.MaxCacheWriterConcurrencyFlag)
+	if maxConcurrency <= 0 {
+		logger.L().Warn(ctx, "max cache writer concurrency is too low, falling back to 1",
+			zap.Int("max_concurrency", maxConcurrency))
+		maxConcurrency = 1
+	}
+	sem := make(chan struct{}, maxConcurrency)
+
+	return func(ctx context.Context, cOffset int64, data []byte) {
+		// Acquire before spawning so goroutine count stays bounded; this also
+		// backpressures the upload loop in compressStream.
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			return
+		}
+
+		c.goCtx(ctx, func(ctx context.Context) {
+			defer func() { <-sem }()
+
+			framePath := makeFrameFilename(c.path, Range{Offset: cOffset, Length: len(data)})
+			if err := c.writeToCache(ctx, cOffset, framePath, data); err != nil {
+				recordCacheWriteError(ctx, cacheTypeSeekable, cacheOpWriteFromFileSystem, err)
+			}
+		})
+	}
+}
+
+// goCtx runs fn on c.wg with WithoutCancel so an in-flight cache write isn't
+// aborted when the upload's context is cancelled.
 func (c *cachedSeekable) goCtx(ctx context.Context, fn func(context.Context)) {
 	c.wg.Go(func() {
 		fn(context.WithoutCancel(ctx))

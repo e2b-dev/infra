@@ -576,7 +576,7 @@ func (o *gcpObject) storeFileCompressed(ctx context.Context, localPath string, c
 		return nil, [32]byte{}, fmt.Errorf("failed to create multipart uploader: %w", err)
 	}
 
-	return compressStream(ctx, file, cfg, uploader, maxConcurrency)
+	return compressStream(ctx, file, cfg, uploader, maxConcurrency, putOpts.FrameSink)
 }
 
 type gcpServiceToken struct {

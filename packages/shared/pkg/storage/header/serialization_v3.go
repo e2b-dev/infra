@@ -16,14 +16,14 @@ type v3SerializableBuildMap struct {
 }
 
 // serializeV3 writes [Metadata] [v3 mappings…] with no length prefix.
-func serializeV3(metadata *Metadata, mappings []BuildMap) ([]byte, error) {
+func serializeV3(metadata *Metadata, mappings Mapping) ([]byte, error) {
 	var buf bytes.Buffer
 
 	if err := binary.Write(&buf, binary.LittleEndian, metadata); err != nil {
 		return nil, fmt.Errorf("failed to write metadata: %w", err)
 	}
 
-	for _, mapping := range mappings {
+	for _, mapping := range mappings.All() {
 		v3 := &v3SerializableBuildMap{
 			Offset:             mapping.Offset,
 			Length:             mapping.Length,

@@ -32,6 +32,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/prefetch"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/scheduling"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -1185,6 +1186,18 @@ func (s *Sandbox) Pause(
 	}
 	cleanup.AddNoContext(ctx, rootfsDiff.Close)
 
+	rootfsDiffHeader := NewResolvedDiffHeader(rootfsHeader)
+	// Derive scheduling metadata synchronously so Pause never blocks on the
+	// async memfile-dedup header: the memfile chain comes from the resolved
+	// parent header plus the new build, whose exact bytes aren't known yet, so
+	// we pass the pre-dedup dirty size as an upper bound. It is block-granular
+	// (dirty blocks * diff block size) and counts pages before dedup drops the
+	// base-identical ones, so it over-estimates. The rootfs copy is synchronous
+	// today, so its new header carries the exact rootfs chain and bytes; if it
+	// ever becomes async, switch it to the parent plus a dirty proxy like memfile.
+	newMemfileBytes := memfileDiffMetadata.Dirty.GetCardinality() * uint64(memfileDiffMetadata.BlockSize)
+	schedulingMetadata := scheduling.FromHeaders(buildID, originalMemfile.Header(), rootfsHeader, newMemfileBytes)
+
 	metadataFileLink := template.NewLocalFileLink(cachePaths.CacheMetadata())
 	cleanup.AddNoContext(ctx, metadataFileLink.Close)
 
@@ -1194,14 +1207,15 @@ func (s *Sandbox) Pause(
 	}
 
 	return &Snapshot{
-		Snapfile:          snapfile,
-		Metafile:          metadataFileLink,
-		MemfileDiff:       memfileDiff,
-		MemfileDiffHeader: memfileDiffHeader,
-		RootfsDiff:        rootfsDiff,
-		RootfsDiffHeader:  NewResolvedDiffHeader(rootfsHeader),
-		MemfileBlockSize:  originalMemfile.Header().Metadata.BlockSize,
-		RootfsBlockSize:   originalRootfs.Header().Metadata.BlockSize,
+		Snapfile:           snapfile,
+		Metafile:           metadataFileLink,
+		MemfileDiff:        memfileDiff,
+		MemfileDiffHeader:  memfileDiffHeader,
+		RootfsDiff:         rootfsDiff,
+		RootfsDiffHeader:   rootfsDiffHeader,
+		SchedulingMetadata: schedulingMetadata,
+		MemfileBlockSize:   originalMemfile.Header().Metadata.BlockSize,
+		RootfsBlockSize:    originalRootfs.Header().Metadata.BlockSize,
 
 		BuildID: buildID,
 

@@ -55,11 +55,11 @@ func (u *Upload) runV4(ctx context.Context) error {
 	meta := storage.WithMetadata(u.objectMetadata)
 
 	eg.Go(func() error {
-		return storage.UploadBlob(ctx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), meta)
+		return uploadBlobWithMetrics(ctx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), uploadFileSnap, meta)
 	})
 
 	eg.Go(func() error {
-		return storage.UploadBlob(ctx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path(), meta)
+		return uploadBlobWithMetrics(ctx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path(), uploadFileMeta, meta)
 	})
 
 	return eg.Wait()
@@ -93,11 +93,15 @@ func (u *Upload) uploadFramed(
 			compressedSize = size
 		}
 
-		recordUploadCompression(ctx, uploadArtifactData, string(fileType), cfg, size, compressedSize)
+		dataFileType := uploadFileMemfile
+		if fileType == build.Rootfs {
+			dataFileType = uploadFileRootfs
+		}
+		recordUploadCompression(ctx, dataFileType, cfg, size, compressedSize)
 		selfBuild = headers.BuildData{Size: size, Checksum: checksum, FrameData: ft}
 	}
 
-	h := srcHeader.CloneForUpload(headers.MetadataVersionV4)
+	h := srcHeader.CloneForUpload(u.headerVersion)
 	h.IncompletePendingUpload = false
 	if h.Builds == nil {
 		h.Builds = make(map[uuid.UUID]headers.BuildData)
@@ -108,7 +112,11 @@ func (u *Upload) uploadFramed(
 	}
 	h.Builds[u.buildID] = selfBuild
 
-	if err := storeHeaderWithMetrics(ctx, u.store, u.paths.HeaderFile(string(fileType)), string(fileType), h); err != nil {
+	headerFileType := uploadFileMemfileHeader
+	if fileType == build.Rootfs {
+		headerFileType = uploadFileRootfsHeader
+	}
+	if err := storeHeaderWithMetrics(ctx, u.store, u.paths.HeaderFile(string(fileType)), headerFileType, h); err != nil {
 		return fmt.Errorf("store %s header: %w", fileType, err)
 	}
 
@@ -130,33 +138,29 @@ func (u *Upload) uploadFramed(
 func (u *Upload) appendAncestorBuilds(
 	ctx context.Context,
 	dst map[uuid.UUID]headers.BuildData,
-	mappings []headers.BuildMap,
+	mappings headers.Mapping,
 	fileType build.DiffType,
 ) error {
 	if u.uploads == nil {
 		return nil
 	}
 
-	seen := make(map[uuid.UUID]struct{}, len(mappings))
-	for _, m := range mappings {
-		if m.BuildId == u.buildID || m.BuildId == uuid.Nil {
+	// Mapping.Builds() is already deduplicated, so no local seen-set is needed.
+	for _, buildID := range mappings.Builds() {
+		if buildID == u.buildID || buildID == uuid.Nil {
 			continue
 		}
-		if _, dup := seen[m.BuildId]; dup {
-			continue
-		}
-		seen[m.BuildId] = struct{}{}
 
-		h, err := u.uploads.Wait(ctx, m.BuildId, fileType)
+		h, err := u.uploads.Wait(ctx, buildID, fileType)
 		if err != nil {
-			return fmt.Errorf("wait for ancestor %s/%s: %w", m.BuildId, fileType, err)
+			return fmt.Errorf("wait for ancestor %s/%s: %w", buildID, fileType, err)
 		}
 		if h == nil || dst == nil {
 			continue
 		}
 
-		if bd, ok := h.Builds[m.BuildId]; ok {
-			dst[m.BuildId] = bd
+		if bd, ok := h.Builds[buildID]; ok {
+			dst[buildID] = bd
 		}
 	}
 

@@ -167,6 +167,10 @@ var (
 	// uploads. Independent of compress-config: it changes the header format,
 	// not whether data is compressed.
 	V4HeaderForUncompressedFlag = NewBoolFlag("v4-header-for-uncompressed", false)
+
+	// HeaderV5WriteFlag makes Pause emit V5 headers. When enabled it also
+	// supersedes V4HeaderForUncompressedFlag for uncompressed uploads.
+	HeaderV5WriteFlag = NewBoolFlag("header-v5-write", false)
 )
 
 type IntFlag struct {
@@ -264,6 +268,10 @@ var (
 	MaxConcurrentSnapshotBuildQueries = NewIntFlag("max-concurrent-snapshot-build-queries", 0)
 
 	MinChunkerReadSizeKB = NewIntFlag("min-chunker-read-size-kb", 16)
+
+	// MaxParallelBuildReadSegments limits concurrent backing reads within one fragmented build read.
+	// 1 or lower keeps the existing serial path.
+	MaxParallelBuildReadSegments = NewIntFlag("max-parallel-build-read-segments", 1)
 )
 
 // ReclaimConfigFlag holds per-step caps in milliseconds for the pre-pause

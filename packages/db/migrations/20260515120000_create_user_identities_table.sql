@@ -12,8 +12,6 @@ CREATE TABLE IF NOT EXISTS public.user_identities (
 
 CREATE INDEX IF NOT EXISTS user_identities_user_id_idx ON public.user_identities (user_id);
 
--- Enable row level security
-ALTER TABLE public.user_identities ENABLE ROW LEVEL SECURITY;
 -- +goose StatementEnd
 
 -- +goose Down
