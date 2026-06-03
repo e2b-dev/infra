@@ -308,6 +308,16 @@ variable "filestore_nfs_version" {
   type = string
 }
 
+variable "additional_filestores" {
+  type = map(object({
+    tier        = string
+    capacity_gb = number
+    location    = string
+  }))
+  description = "Additional regional Filestore (NFS) caches keyed by GCP region."
+  default     = {}
+}
+
 variable "api_node_pool" {
   description = "The name of the Nomad pool."
   type        = string

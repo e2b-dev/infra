@@ -286,6 +286,7 @@ module "cluster" {
   filestore_cache_tier        = var.filestore_cache_tier
   filestore_cache_capacity_gb = var.filestore_cache_capacity_gb
   filestore_nfs_version       = var.filestore_nfs_version
+  additional_filestores       = var.additional_filestores
 
   persistent_volume_types = local.persistent_volume_types
 

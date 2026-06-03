@@ -37,12 +37,6 @@ locals {
       filestore_zone = coalesce(config.filestore_zone, config.zone, var.gcp_zone)
     }
   }
-
-  secondary_filestore_locations = {
-    for region, locations in {
-      for _, location in local.client_cluster_locations : location.region => location... if var.filestore_cache_enabled && location.region != var.gcp_region
-    } : region => locations[0]
-  }
 }
 
 resource "google_secret_manager_secret" "consul_gossip_encryption_key" {
@@ -162,14 +156,14 @@ module "filestore" {
 module "regional_filestore" {
   source = "./filestore"
 
-  for_each = local.secondary_filestore_locations
+  for_each = var.filestore_cache_enabled ? var.additional_filestores : {}
 
   name         = "${var.prefix}shared-disk-store-${each.key}"
   network_name = var.network_name
-  location     = each.value.filestore_zone
+  location     = each.value.location
 
-  tier        = var.filestore_cache_tier
-  capacity_gb = var.filestore_cache_capacity_gb
+  tier        = each.value.tier
+  capacity_gb = each.value.capacity_gb
   nfs_version = var.filestore_nfs_version
 }
 
@@ -282,10 +276,17 @@ module "client_cluster" {
   fc_busybox_bucket_name      = var.fc_busybox_bucket_name
 
   filestore_cache_enabled = var.filestore_cache_enabled
+  // Use default regional, if region matched
+  // Use additional regional, if region specified in additional_filestores
+  // Otherwise, don't use a filestore cache
   nfs_ip_addresses = var.filestore_cache_enabled ? (
     local.client_cluster_locations[each.key].region == var.gcp_region
     ? module.filestore[0].nfs_ip_addresses
-    : module.regional_filestore[local.client_cluster_locations[each.key].region].nfs_ip_addresses
+    : (
+      contains(keys(module.regional_filestore), local.client_cluster_locations[each.key].region)
+      ? module.regional_filestore[local.client_cluster_locations[each.key].region].nfs_ip_addresses
+      : []
+    )
   ) : []
   nfs_mount_path          = local.nfs_mount_path
   nfs_mount_subdir        = local.nfs_mount_subdir
