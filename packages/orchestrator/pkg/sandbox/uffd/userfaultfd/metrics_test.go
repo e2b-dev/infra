@@ -61,7 +61,7 @@ func TestServeMetric(t *testing.T) {
 	var rm metricdata.ResourceMetrics
 	require.NoError(t, reader.Collect(ctx, &rm))
 
-	counts, bytesSum := collectServe(t, rm)
+	counts, bytesSum := collectTriplet(t, rm, serveMetricName)
 
 	// new+installed: 3 faults, each one page of faulted bytes.
 	assert.Equal(t, int64(3), counts[key("new", "installed")], "new+installed fault count")
@@ -85,22 +85,85 @@ func TestServeMetric(t *testing.T) {
 	assert.Equal(t, int64(0), bytesSum[key("new", "deferred")])
 }
 
+// TestPrefaultMetric exercises the prefault recording exactly as Prefault does
+// — prefaultTimer.Begin() + RecordRaw(ctx, bytes, prefaultAttrs[result]) — and
+// asserts the orchestrator.sandbox.uffd.prefault datapoints carry the right
+// result attribute, attempt counts and installed bytes. Like TestServeMetric,
+// the full Prefault path needs a real userfaultfd (root-only, forked harness),
+// so this pins the metric definition and attrs table in-process instead. NOT
+// parallel: it swaps the package-level prefaultTimer.
+//
+//nolint:paralleltest // swaps the package-level prefaultTimer
+func TestPrefaultMetric(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+
+	prev := prefaultTimer
+	prefaultTimer = utils.Must(telemetry.NewTimerFactory(
+		mp.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/userfaultfd"),
+		prefaultMetricName,
+		"Time to prefault a page into the guest",
+		"Bytes installed into the guest by prefaults",
+		"UFFD prefault attempts",
+	))
+	t.Cleanup(func() { prefaultTimer = prev })
+
+	ctx := context.Background()
+	pageSize := int64(header.PageSize)
+
+	record := func(result faultResult, bytes int64, n int) {
+		for range n {
+			sw := prefaultTimer.Begin()
+			sw.RecordRaw(ctx, bytes, prefaultAttrs[result])
+		}
+	}
+	record(faultResultInstalled, pageSize, 3)
+	record(faultResultPresent, 0, 1)
+	record(faultResultSkipped, 0, 2)
+	record(faultResultDeferred, 0, 1)
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(ctx, &rm))
+
+	counts, bytesSum := collectTriplet(t, rm, prefaultMetricName)
+
+	// installed: 3 prefaults, one page of installed bytes each.
+	assert.Equal(t, int64(3), counts["installed"])
+	assert.Equal(t, 3*pageSize, bytesSum["installed"])
+
+	// lost install race (EEXIST): counted, bytes belong to the winning serve.
+	assert.Equal(t, int64(1), counts["present"])
+	assert.Equal(t, int64(0), bytesSum["present"])
+
+	// tracker said Dirty/Zero: prefetch arrived too late, nothing copied.
+	assert.Equal(t, int64(2), counts["skipped"])
+	assert.Equal(t, int64(0), bytesSum["skipped"])
+
+	// EAGAIN: the prefetcher does not retry.
+	assert.Equal(t, int64(1), counts["deferred"])
+	assert.Equal(t, int64(0), bytesSum["deferred"])
+}
+
 func key(pageClass, result string) string { return pageClass + "/" + result }
 
+// attrKey returns "page_class/result" for serve datapoints and just "result"
+// for prefault datapoints (which carry no page_class).
 func attrKey(t *testing.T, attrs attribute.Set) string {
 	t.Helper()
-	pc, ok := attrs.Value("page_class")
-	require.True(t, ok, "datapoint missing page_class attribute")
 	r, ok := attrs.Value("result")
 	require.True(t, ok, "datapoint missing result attribute")
+	pc, ok := attrs.Value("page_class")
+	if !ok {
+		return r.AsString()
+	}
 
 	return key(pc.AsString(), r.AsString())
 }
 
-// collectServe returns, keyed by "page_class/result", the fault count (from the
-// duration histogram) and the faulted-bytes sum (the "By"-unit counter) for the
-// serve metric.
-func collectServe(t *testing.T, rm metricdata.ResourceMetrics) (counts map[string]int64, bytesSum map[string]int64) {
+// collectTriplet returns, keyed by attrKey, the attempt count (from the
+// duration histogram) and the bytes sum (the "By"-unit counter) for the named
+// TimerFactory metric.
+func collectTriplet(t *testing.T, rm metricdata.ResourceMetrics, name string) (counts map[string]int64, bytesSum map[string]int64) {
 	t.Helper()
 
 	counts = map[string]int64{}
@@ -109,7 +172,7 @@ func collectServe(t *testing.T, rm metricdata.ResourceMetrics) (counts map[strin
 
 	for _, sm := range rm.ScopeMetrics {
 		for _, m := range sm.Metrics {
-			if m.Name != serveMetricName {
+			if m.Name != name {
 				continue
 			}
 			sawMetric = true
@@ -121,7 +184,7 @@ func collectServe(t *testing.T, rm metricdata.ResourceMetrics) (counts map[strin
 				}
 			case metricdata.Sum[int64]:
 				// The TimerFactory emits two same-named counters; the
-				// faulted-bytes one carries the "By" unit.
+				// bytes one carries the "By" unit.
 				if m.Unit != "By" {
 					continue
 				}
@@ -132,7 +195,7 @@ func collectServe(t *testing.T, rm metricdata.ResourceMetrics) (counts map[strin
 		}
 	}
 
-	require.True(t, sawMetric, "metric %q not found in collected metrics", serveMetricName)
+	require.True(t, sawMetric, "metric %q not found in collected metrics", name)
 
 	return counts, bytesSum
 }
