@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -21,7 +22,7 @@ import (
 )
 
 // Memfd wraps a memfd received from Firecracker. NewFromFd takes ownership of
-// the fd and mmaps it; Close releases both.
+// the fd and mmaps it. The memfd is RAM/hugetlb-backed, not cache-file backed.
 type Memfd struct {
 	fd   int
 	mmap []byte
@@ -44,16 +45,20 @@ func NewFromFd(fd int) (*Memfd, error) {
 	return &Memfd{fd: fd, mmap: b}, nil
 }
 
-// Slice returns a zero-copy view of [offset, offset+size). Valid until Close.
-func (m *Memfd) Slice(offset, size int64) ([]byte, error) {
-	if offset < 0 || offset+size > int64(len(m.mmap)) {
-		return nil, fmt.Errorf("range [%d, %d) out of bounds (size %d)", offset, offset+size, len(m.mmap))
+func (m *Memfd) ReadAt(p []byte, off int64) (int, error) {
+	if off < 0 || off >= int64(len(m.mmap)) {
+		return 0, io.EOF
 	}
 
-	return m.mmap[offset : offset+size], nil
+	n := copy(p, m.mmap[off:])
+	if n < len(p) {
+		return n, io.EOF
+	}
+
+	return n, nil
 }
 
-// Close releases the mmap and the fd. Single-use: every Memfd has exactly
+// Close releases the mmap and fd. Single-use: every Memfd has exactly
 // one owner (NewCacheFromMemfd consumes it during construction; the UFFD
 // handshake transfers ownership via atomic Swap), so we don't guard against
 // double-close.
@@ -106,12 +111,22 @@ func copyFromMemfd(ctx context.Context, cache *Cache, memfd *Memfd, dirty *roari
 			return err
 		}
 
-		src, err := memfd.Slice(r.Start, r.Size)
+		src := make([]byte, r.Size)
+		n, err := memfd.ReadAt(src, r.Start)
 		if err != nil {
-			return fmt.Errorf("memfd slice [%d,%d): %w", r.Start, r.Start+r.Size, err)
+			return fmt.Errorf("memfd read [%d,%d): %w", r.Start, r.Start+r.Size, err)
+		}
+		if int64(n) != r.Size {
+			return fmt.Errorf("short memfd read: expected %d bytes, got %d", r.Size, n)
 		}
 
-		copy((*cache.mmap)[cacheOff:cacheOff+r.Size], src)
+		n, err = cache.writeRawAt(src, cacheOff)
+		if err != nil {
+			return fmt.Errorf("write memfd cache [%d,%d): %w", cacheOff, cacheOff+r.Size, err)
+		}
+		if int64(n) != r.Size {
+			return fmt.Errorf("short memfd cache write: expected %d bytes, got %d", r.Size, n)
+		}
 		cache.setIsCached(cacheOff, r.Size)
 		cacheOff += r.Size
 	}
@@ -193,14 +208,6 @@ func (m *MemfdCache) ReadAt(b []byte, off int64) (int, error) {
 	return m.cache.ReadAt(b, off)
 }
 
-func (m *MemfdCache) Slice(off, length int64) ([]byte, error) {
-	if err := m.Wait(context.Background()); err != nil {
-		return nil, err
-	}
-
-	return m.cache.Slice(off, length)
-}
-
 func (m *MemfdCache) Close() error {
 	if m.cancel != nil {
 		m.cancel()
@@ -276,7 +283,17 @@ func (d *DedupedMemfdCache) runDedup(
 	ctx, span := tracer.Start(ctx, "dedup-pages")
 	defer span.End()
 
-	src := func(absOff int64) ([]byte, error) { return memfd.Slice(absOff, blockSize) }
+	src := func(absOff int64, p []byte) error {
+		n, err := memfd.ReadAt(p, absOff)
+		if err != nil {
+			return err
+		}
+		if n != len(p) {
+			return fmt.Errorf("short memfd read: expected %d bytes, got %d", len(p), n)
+		}
+
+		return nil
+	}
 
 	compareStart := time.Now()
 	plan, err := dedupCompare(ctx, src, base, dirty, blockSize, bestEffort)
@@ -333,15 +350,6 @@ func (d *DedupedMemfdCache) ReadAt(b []byte, off int64) (int, error) {
 	}
 
 	return c.ReadAt(b, off)
-}
-
-func (d *DedupedMemfdCache) Slice(off, length int64) ([]byte, error) {
-	c, err := d.Wait(context.Background())
-	if err != nil {
-		return nil, err
-	}
-
-	return c.Slice(off, length)
 }
 
 func (d *DedupedMemfdCache) Close() error {

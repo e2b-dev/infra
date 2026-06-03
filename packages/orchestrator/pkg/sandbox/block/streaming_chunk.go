@@ -40,7 +40,6 @@ type Chunker struct {
 
 var (
 	_ FramedReader = (*Chunker)(nil)
-	_ FramedSlicer = (*Chunker)(nil)
 )
 
 func NewChunker(
@@ -66,65 +65,69 @@ func NewChunker(
 }
 
 func (c *Chunker) ReadAt(ctx context.Context, b []byte, off int64, ft *storage.FrameTable) (int, error) {
-	slice, err := c.Slice(ctx, off, int64(len(b)), ft)
-	if err != nil {
-		return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", off, off+int64(len(b)), err)
-	}
-
-	return copy(b, slice), nil
-}
-
-func (c *Chunker) Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
 	attrs := chunkerAttrs
 	if ft.IsCompressed() {
 		attrs = chunkerAttrsCompressed
 	}
 	timer := c.metrics.SlicesTimerFactory.Begin()
 
-	// Fast path: already cached
-	b, err := c.cache.Slice(off, length)
+	n, err := c.cache.ReadAt(b, off)
 	if err == nil {
-		timer.RecordRaw(ctx, length, attrs.successFromCache)
+		timer.RecordRaw(ctx, int64(len(b)), attrs.successFromCache)
 
-		return b, nil
+		return n, nil
 	}
-
 	if !errors.As(err, &BytesNotAvailableError{}) {
-		timer.RecordRaw(ctx, length, attrs.failCacheRead)
+		timer.RecordRaw(ctx, int64(len(b)), attrs.failCacheRead)
 
-		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
+		return 0, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
 	}
 
+	if err := c.ensureCached(ctx, off, int64(len(b)), ft); err != nil {
+		timer.RecordRaw(ctx, int64(len(b)), attrs.failRemoteFetch)
+
+		return 0, err
+	}
+
+	n, err = c.cache.ReadAt(b, off)
+	if err != nil {
+		timer.RecordRaw(ctx, int64(len(b)), attrs.failLocalReadAgain)
+
+		return 0, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+int64(len(b)), err)
+	}
+
+	timer.RecordRaw(ctx, int64(len(b)), attrs.successFromRemote)
+
+	return n, nil
+}
+
+func (c *Chunker) Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
+	out := make([]byte, length)
+	n, err := c.ReadAt(ctx, out, off, ft)
+	if err != nil {
+		return nil, err
+	}
+
+	return out[:n], nil
+}
+
+func (c *Chunker) ensureCached(ctx context.Context, off, length int64, ft *storage.FrameTable) error {
 	// Fetch every chunk the range spans (one fetch session per chunk).
 	end := off + length
 	for cur := off; cur < end; {
 		chunkOff, chunkLen, lerr := c.locateChunk(cur, ft)
 		if lerr != nil {
-			timer.RecordRaw(ctx, length, attrs.failRemoteFetch)
-
-			return nil, fmt.Errorf("failed to locate chunk for offset %d: %w", cur, lerr)
+			return fmt.Errorf("failed to locate chunk for offset %d: %w", cur, lerr)
 		}
 		chunkEnd := chunkOff + chunkLen
 		rangeEnd := min(end, chunkEnd)
 		if err := c.fetch(ctx, cur, rangeEnd-cur, ft); err != nil {
-			timer.RecordRaw(ctx, length, attrs.failRemoteFetch)
-
-			return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", cur, rangeEnd, err)
+			return fmt.Errorf("failed to ensure data at %d-%d: %w", cur, rangeEnd, err)
 		}
 		cur = chunkEnd
 	}
 
-	// sliceDirect skips isCached — the waiter already confirmed the data is in the mmap.
-	b, cacheErr := c.cache.sliceDirect(off, length)
-	if cacheErr != nil {
-		timer.RecordRaw(ctx, length, attrs.failLocalReadAgain)
-
-		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
-	}
-
-	timer.RecordRaw(ctx, length, attrs.successFromRemote)
-
-	return b, nil
+	return nil
 }
 
 // getOrCreateSession returns a fetch session for the chunk at [off, off+length),
@@ -188,7 +191,7 @@ func (c *Chunker) fetch(ctx context.Context, off, length int64, ft *storage.Fram
 	return nil
 }
 
-// runFetch fetches data from storage into the mmap cache. Runs in a background goroutine.
+// runFetch fetches data from storage into the file cache. Runs in a background goroutine.
 func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, ft *storage.FrameTable) {
 	ctx, cancel := context.WithTimeout(ctx, c.fetchTimeout)
 	defer cancel()
@@ -208,21 +211,13 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, ft *storage.Fra
 		s.failIfRunning(errors.New("fetch exited without completing"))
 	}()
 
-	mmapSlice, releaseLock, err := c.cache.addressBytes(s.chunkOff, s.chunkLen)
-	if err != nil {
-		s.fail(err)
-
-		return
-	}
-	defer releaseLock()
-
 	attrs := chunkerAttrs
 	if ft.IsCompressed() {
 		attrs = chunkerAttrsCompressed
 	}
 	fetchTimer := c.metrics.RemoteReadsTimerFactory.Begin()
 
-	readBytes, err := c.progressiveRead(ctx, s, mmapSlice, ft)
+	readBytes, err := c.progressiveRead(ctx, s, ft)
 	if err != nil {
 		fetchTimer.RecordRaw(ctx, readBytes, attrs.remoteFailure)
 
@@ -240,7 +235,7 @@ func (c *Chunker) runFetch(ctx context.Context, s *fetchSession, ft *storage.Fra
 	s.setDone()
 }
 
-func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, mmapSlice []byte, ft *storage.FrameTable) (totalRead int64, err error) {
+func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, ft *storage.FrameTable) (totalRead int64, err error) {
 	reader, err := c.upstream.OpenRangeReader(ctx, s.chunkOff, s.chunkLen, ft)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open range reader at %d: %w", s.chunkOff, err)
@@ -253,13 +248,29 @@ func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, mmapSlic
 
 	blockSize := c.cache.BlockSize()
 	readBatch := max(blockSize, int64(c.featureFlags.IntFlag(ctx, featureflags.MinChunkerReadSizeKB))*1024)
+	buf := make([]byte, readBatch)
 
 	for totalRead < s.chunkLen {
 		// Read in batches of max(blockSize, minReadBatchSize) to align notification
 		// granularity with the read size and minimize lock/notify overhead.
 		readEnd := min(totalRead+readBatch, s.chunkLen)
 		sw := c.metrics.WriteChunksTimerFactory.Begin()
-		n, readErr := io.ReadFull(reader, mmapSlice[totalRead:readEnd])
+		n, readErr := io.ReadFull(reader, buf[:readEnd-totalRead])
+		if n > 0 {
+			writeOff := s.chunkOff + totalRead
+			written, writeErr := c.cache.writeRawAt(buf[:n], writeOff)
+			if writeErr != nil {
+				sw.RecordRaw(ctx, int64(n), writeFailureAttr)
+
+				return totalRead, fmt.Errorf("failed writing cache at offset %d after %d bytes: %w", writeOff, totalRead, writeErr)
+			}
+			if written != n {
+				sw.RecordRaw(ctx, int64(n), writeFailureAttr)
+
+				return totalRead, fmt.Errorf("short cache write at offset %d: expected %d bytes, got %d", writeOff, n, written)
+			}
+			c.cache.setIsCached(writeOff, int64(n))
+		}
 		totalRead += int64(n)
 		if readErr == nil || totalRead >= s.chunkLen {
 			sw.RecordRaw(ctx, int64(n), writeSuccessAttr)
@@ -268,8 +279,6 @@ func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, mmapSlic
 		}
 
 		if n > 0 {
-			// Dirty marking is deferred to runFetch after the full chunk is fetched.
-			// With coarse dirty granularity, marking here would expose partially-written data.
 			s.advance(totalRead)
 		}
 
@@ -325,7 +334,7 @@ func (c *Chunker) Close() error {
 }
 
 // IsCached reports whether [off, off+length) is fully present in the local
-// mmap cache (no remote fetch needed). Used by best-effort dedup.
+// file cache (no remote fetch needed). Used by best-effort dedup.
 func (c *Chunker) IsCached(_ context.Context, off, length int64) bool {
 	return c.cache.isCached(off, length)
 }
@@ -334,7 +343,7 @@ func (c *Chunker) FileSize(ctx context.Context) (int64, error) {
 	return c.cache.FileSize(ctx)
 }
 
-// writeSuccessAttr and writeFailureAttr are pre-allocated result attributes for mmap write observations.
+// writeSuccessAttr and writeFailureAttr are pre-allocated result attributes for cache write observations.
 var (
 	writeSuccessAttr = telemetry.PrecomputeAttrs(telemetry.Success)
 	writeFailureAttr = telemetry.PrecomputeAttrs(telemetry.Failure)

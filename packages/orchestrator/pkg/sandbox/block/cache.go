@@ -8,16 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"math/rand"
 	"os"
-	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/RoaringBitmap/roaring/v2"
-	"github.com/edsrzf/mmap-go"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -54,9 +51,8 @@ type Cache struct {
 	filePath  string
 	size      int64
 	blockSize int64
-	mmap      *mmap.MMap
-	mu        sync.RWMutex
-	tracker   *Tracker // Dirty: payload in mmap; Zero: punched, emitted as Empty in the diff
+	file      *os.File
+	tracker   *Tracker // Dirty: payload in file; Zero: punched, emitted as Empty in the diff
 	dirtyFile bool
 	closed    atomic.Bool
 }
@@ -67,41 +63,38 @@ func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, e
 		return nil, fmt.Errorf("error opening file: %w", err)
 	}
 
-	defer f.Close()
-
-	if size == 0 {
-		return &Cache{
-			filePath:  filePath,
-			size:      size,
-			blockSize: blockSize,
-			dirtyFile: dirtyFile,
-			tracker:   NewTracker(),
-		}, nil
-	}
-
 	// This should create a sparse file on Linux.
 	err = f.Truncate(size)
 	if err != nil {
+		_ = f.Close()
+
 		return nil, fmt.Errorf("error allocating file: %w", err)
 	}
 
-	if size > math.MaxInt {
-		return nil, fmt.Errorf("size too big: %d > %d", size, math.MaxInt)
-	}
-
-	mm, err := mmap.MapRegion(f, int(size), mmap.RDWR, 0, 0)
-	if err != nil {
-		return nil, fmt.Errorf("error mapping file: %w", err)
-	}
-
 	return &Cache{
-		mmap:      &mm,
 		filePath:  filePath,
 		size:      size,
 		blockSize: blockSize,
+		file:      f,
 		dirtyFile: dirtyFile,
 		tracker:   NewTracker(),
 	}, nil
+}
+
+func writeFullAt(f *os.File, b []byte, off int64) error {
+	for len(b) > 0 {
+		n, err := f.WriteAt(b, off)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return io.ErrShortWrite
+		}
+		off += int64(n)
+		b = b[n:]
+	}
+
+	return nil
 }
 
 func (c *Cache) isClosed() bool {
@@ -112,29 +105,19 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 	ctx, childSpan := tracer.Start(ctx, "export-to-diff")
 	defer childSpan.End()
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if c.isClosed() {
 		return nil, NewErrCacheClosed(c.filePath)
 	}
 
-	if c.mmap == nil {
+	if c.size == 0 {
 		return header.NewDiffMetadata(c.blockSize, nil, nil), nil
 	}
 
-	f, err := os.Open(c.filePath)
-	if err != nil {
-		return nil, fmt.Errorf("error opening file: %w", err)
-	}
-	defer f.Close()
+	src := int(c.file.Fd())
 
-	src := int(f.Fd())
-
-	// Explicit mmap flush is not necessary, because the kernel will handle that as part of the copy_file_range syscall.
 	// Calling sync_file_range marks the range for writeback and starts it early.
 	// This is just an optimization, so if it fails just log a warning and let copy_file_range do the actual work.
-	err = unix.SyncFileRange(src, 0, c.size, unix.SYNC_FILE_RANGE_WRITE)
+	err := unix.SyncFileRange(src, 0, c.size, unix.SYNC_FILE_RANGE_WRITE)
 	if err != nil {
 		logger.L().Warn(ctx, "error syncing file", zap.Error(err))
 	}
@@ -184,7 +167,7 @@ func (c *Cache) ExportToDiff(ctx context.Context, out *os.File) (*header.DiffMet
 				if _, err := out.Seek(writeOffset, io.SeekStart); err != nil {
 					return nil, fmt.Errorf("error seeking: %w", err)
 				}
-				sr := io.NewSectionReader(f, readOffset, int64(remaining))
+				sr := io.NewSectionReader(c.file, readOffset, int64(remaining))
 				if _, err := io.Copy(out, sr); err != nil {
 					return nil, fmt.Errorf("error copying file range. %w", err)
 				}
@@ -217,7 +200,7 @@ type dedupPlan struct {
 // cached pages of the same block when the parent header is page-granular.
 func dedupCompare(
 	ctx context.Context,
-	src func(absOff int64) ([]byte, error),
+	src func(absOff int64, p []byte) error,
 	base ReadonlyDevice,
 	dirty *roaring.Bitmap,
 	blockSize int64,
@@ -239,8 +222,8 @@ func dedupCompare(
 			}
 
 			absOff := r.Start + chunkOff
-			srcBuf, err := src(absOff)
-			if err != nil {
+			srcBuf := make([]byte, blockSize)
+			if err := src(absOff, srcBuf); err != nil {
 				return nil, err
 			}
 
@@ -272,9 +255,9 @@ func dedupCompare(
 					continue
 				}
 
-				basePage, sErr := base.Slice(ctx, pageOff, header.PageSize)
-				if sErr != nil {
-					return nil, fmt.Errorf("slice base at %d: %w", pageOff, sErr)
+				basePage := make([]byte, header.PageSize)
+				if _, err := base.ReadAt(ctx, basePage, pageOff); err != nil {
+					return nil, fmt.Errorf("read base at %d: %w", pageOff, err)
 				}
 				if bytes.Equal(srcPage, basePage) {
 					continue
@@ -291,7 +274,7 @@ func dedupCompare(
 // dedupDrain writes pageDirty pages from src to outPath packed at PageSize.
 func dedupDrain(
 	ctx context.Context,
-	src func(absOff int64) ([]byte, error),
+	src func(absOff int64, p []byte) error,
 	pageDirty *roaring.Bitmap,
 	blockSize int64,
 	outPath string,
@@ -354,7 +337,7 @@ func recordDedupAttrs(ctx context.Context, totalPages, uniquePages, emptyPages i
 // drainDirtyPages packs pageDirty pages from src into fd. Mirrors
 // Cache.copyProcessMemory: coalesce contiguous pages into ranges, carve at
 // source-block boundaries, pre-split over MAX_RW_COUNT, then drainIovs.
-func drainDirtyPages(ctx context.Context, fd int, src func(absOff int64) ([]byte, error), pageDirty *roaring.Bitmap, blockSize int64) (int64, error) {
+func drainDirtyPages(ctx context.Context, fd int, src func(absOff int64, p []byte) error, pageDirty *roaring.Bitmap, blockSize int64) (int64, error) {
 	var ranges []Range
 	for r := range BitsetRanges(pageDirty, header.PageSize) {
 		for off := r.Start; off < r.End(); {
@@ -374,9 +357,9 @@ func drainDirtyPages(ctx context.Context, fd int, src func(absOff int64) ([]byte
 			iovs := make([][]byte, len(batch))
 			for i, r := range batch {
 				blockOff := (r.Start / blockSize) * blockSize
-				buf, srcErr := src(blockOff)
-				if srcErr != nil {
-					return fmt.Errorf("slice src at %d: %w", blockOff, srcErr)
+				buf := make([]byte, blockSize)
+				if err := src(blockOff, buf); err != nil {
+					return fmt.Errorf("read src at %d: %w", blockOff, err)
 				}
 				iovs[i] = buf[r.Start-blockOff : r.Start-blockOff+r.Size]
 			}
@@ -415,13 +398,14 @@ func (c *Cache) Dedup(
 			cum += blockSize
 		}
 	}
-	src := func(absOff int64) ([]byte, error) {
+	src := func(absOff int64, p []byte) error {
 		idx, ok := packed[absOff]
 		if !ok {
-			return nil, fmt.Errorf("dedup src: %d not packed", absOff)
+			return fmt.Errorf("dedup src: %d not packed", absOff)
 		}
 
-		return c.Slice(idx, blockSize)
+		_, err := c.ReadAt(p, idx)
+		return err
 	}
 
 	compareStart := time.Now()
@@ -451,30 +435,35 @@ func (c *Cache) Dedup(
 }
 
 func (c *Cache) ReadAt(b []byte, off int64) (int, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	return c.readAt(b, off, false)
+}
 
-	if c.mmap == nil {
+func (c *Cache) readAt(b []byte, off int64, skipCachedCheck bool) (int, error) {
+	if len(b) == 0 || c.size == 0 {
 		return 0, nil
 	}
 
 	if c.isClosed() {
 		return 0, NewErrCacheClosed(c.filePath)
 	}
-
-	slice, err := c.Slice(off, int64(len(b)))
-	if err != nil {
-		return 0, fmt.Errorf("error slicing mmap: %w", err)
+	if off < 0 || off >= c.size {
+		return 0, BytesNotAvailableError{}
 	}
 
-	return copy(b, slice), nil
+	if !skipCachedCheck && !c.dirtyFile && !c.isCached(off, int64(len(b))) {
+		return 0, BytesNotAvailableError{}
+	}
+
+	n, err := c.file.ReadAt(b, off)
+	if errors.Is(err, io.EOF) && n > 0 {
+		err = nil
+	}
+
+	return n, err
 }
 
 func (c *Cache) WriteAt(b []byte, off int64) (int, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.mmap == nil {
+	if len(b) == 0 || c.size == 0 {
 		return 0, nil
 	}
 
@@ -482,25 +471,84 @@ func (c *Cache) WriteAt(b []byte, off int64) (int, error) {
 		return 0, NewErrCacheClosed(c.filePath)
 	}
 
-	return c.WriteAtWithoutLock(b, off)
+	if int64(len(b))%c.blockSize != 0 || off%c.blockSize != 0 {
+		return 0, fmt.Errorf("misaligned write: len=%d off=%d block=%d", len(b), off, c.blockSize)
+	}
+
+	end := min(off+int64(len(b)), c.size)
+	if end <= off {
+		return 0, nil
+	}
+
+	// detect-zeroes=unmap: coalesce contiguous same-state blocks into one bulk
+	// copy or punchHole call. Caller must pass a block-aligned write (NBD invariant).
+	flush := func(runStart, runEnd int64, runZero bool) error {
+		startIdx := uint32(header.BlockIdx(runStart, c.blockSize))
+		endIdx := uint32(header.BlockCeilIdx(runEnd, c.blockSize))
+		if runZero {
+			if err := c.punchHole(runStart, runEnd-runStart); err != nil {
+				return err
+			}
+			c.tracker.SetRange(startIdx, endIdx, Zero)
+		} else {
+			if err := writeFullAt(c.file, b[runStart-off:runEnd-off], runStart); err != nil {
+				return err
+			}
+			c.tracker.SetRange(startIdx, endIdx, Dirty)
+		}
+
+		return nil
+	}
+
+	runStart := off
+	runZero := header.IsZero(b[:c.blockSize])
+	for i := off + c.blockSize; i < end; i += c.blockSize {
+		z := header.IsZero(b[i-off : i-off+c.blockSize])
+		if z == runZero {
+			continue
+		}
+		if err := flush(runStart, i, runZero); err != nil {
+			return 0, err
+		}
+		runStart = i
+		runZero = z
+	}
+	if err := flush(runStart, end, runZero); err != nil {
+		return 0, err
+	}
+
+	return int(end - off), nil
+}
+
+func (c *Cache) writeRawAt(b []byte, off int64) (int, error) {
+	if len(b) == 0 || c.size == 0 {
+		return 0, nil
+	}
+
+	if c.isClosed() {
+		return 0, NewErrCacheClosed(c.filePath)
+	}
+
+	end := min(off+int64(len(b)), c.size)
+	if end <= off {
+		return 0, nil
+	}
+	b = b[:end-off]
+	if err := writeFullAt(c.file, b, off); err != nil {
+		return 0, err
+	}
+
+	return len(b), nil
 }
 
 func (c *Cache) Close() (e error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.mmap == nil {
-		return os.RemoveAll(c.filePath)
-	}
-
 	succ := c.closed.CompareAndSwap(false, true)
 	if !succ {
 		return NewErrCacheClosed(c.filePath)
 	}
 
-	err := c.mmap.Unmap()
-	if err != nil {
-		e = errors.Join(e, fmt.Errorf("error unmapping mmap: %w", err))
+	if c.file != nil {
+		e = errors.Join(e, c.file.Close())
 	}
 
 	// TODO: Move to to the scope of the caller
@@ -517,47 +565,31 @@ func (c *Cache) Size() (int64, error) {
 	return c.size, nil
 }
 
-// Slice returns a slice of the mmap.
-// When using Slice you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
+// Slice returns a copy of the cached bytes.
 func (c *Cache) Slice(off, length int64) ([]byte, error) {
-	if c.isClosed() {
-		return nil, NewErrCacheClosed(c.filePath)
-	}
-
-	if c.mmap == nil {
-		return nil, nil
-	}
-
-	if c.dirtyFile || c.isCached(off, length) {
-		end := min(off+length, c.size)
-
-		return (*c.mmap)[off:end], nil
-	}
-
-	return nil, BytesNotAvailableError{}
+	return c.slice(off, length, false)
 }
 
-// sliceDirect returns a slice of the mmap without checking isCached.
-// Used by the streaming chunker after the waiter mechanism has confirmed data availability.
 func (c *Cache) sliceDirect(off, length int64) ([]byte, error) {
-	if c.isClosed() {
-		return nil, NewErrCacheClosed(c.filePath)
-	}
+	return c.slice(off, length, true)
+}
 
-	if c.mmap == nil {
-		return nil, nil
-	}
-
-	if off < 0 || off >= c.size {
+func (c *Cache) slice(off, length int64, skipCachedCheck bool) ([]byte, error) {
+	end := min(off+length, c.size)
+	if off < 0 || off >= end {
 		return nil, BytesNotAvailableError{}
 	}
 
-	end := min(off+length, c.size)
+	out := make([]byte, end-off)
+	n, err := c.readAt(out, off, skipCachedCheck)
+	if err != nil {
+		return nil, err
+	}
 
-	return (*c.mmap)[off:end], nil
+	return out[:n], nil
 }
 
-// Zero blocks are treated as cached: the mmap region reads back as zero (punched).
+// Zero blocks are treated as cached: the file range reads back as zero (punched).
 func (c *Cache) isCached(off, length int64) bool {
 	start := uint32(header.BlockIdx(off, c.blockSize))
 	end := uint32(header.BlockCeilIdx(min(off+length, c.size), c.blockSize))
@@ -572,69 +604,33 @@ func (c *Cache) setIsCached(off, length int64) {
 	c.tracker.SetRange(start, end, Dirty)
 }
 
-// punchHole frees backing pages; clear() fallback if MADV_REMOVE is unsupported.
-func (c *Cache) punchHole(off, length int64) {
-	if err := unix.Madvise((*c.mmap)[off:off+length], unix.MADV_REMOVE); err != nil {
-		clear((*c.mmap)[off : off+length])
-	}
-}
-
-// When using WriteAtWithoutLock you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
-func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
-	if c.isClosed() {
-		return 0, NewErrCacheClosed(c.filePath)
+// punchHole frees backing pages; zero-write fallback if hole punching is unsupported.
+func (c *Cache) punchHole(off, length int64) error {
+	if length <= 0 {
+		return nil
 	}
 
-	if c.mmap == nil {
-		return 0, nil
+	if err := unix.Fallocate(int(c.file.Fd()), unix.FALLOC_FL_PUNCH_HOLE|unix.FALLOC_FL_KEEP_SIZE, off, length); err == nil {
+		return nil
 	}
 
-	if int64(len(b))%c.blockSize != 0 || off%c.blockSize != 0 {
-		return 0, fmt.Errorf("misaligned write: len=%d off=%d block=%d", len(b), off, c.blockSize)
-	}
-
-	end := min(off+int64(len(b)), c.size)
-	if end <= off {
-		return 0, nil
-	}
-
-	// detect-zeroes=unmap: coalesce contiguous same-state blocks into one bulk
-	// copy or punchHole call. Caller must pass a block-aligned write (NBD invariant).
-	flush := func(runStart, runEnd int64, runZero bool) {
-		startIdx := uint32(header.BlockIdx(runStart, c.blockSize))
-		endIdx := uint32(header.BlockCeilIdx(runEnd, c.blockSize))
-		if runZero {
-			c.punchHole(runStart, runEnd-runStart)
-			c.tracker.SetRange(startIdx, endIdx, Zero)
-		} else {
-			copy((*c.mmap)[runStart:runEnd], b[runStart-off:runEnd-off])
-			c.tracker.SetRange(startIdx, endIdx, Dirty)
+	const zeroChunkSize = 1 << 20
+	zeroes := make([]byte, min(length, zeroChunkSize))
+	for written := int64(0); written < length; {
+		n := min(int64(len(zeroes)), length-written)
+		if err := writeFullAt(c.file, zeroes[:n], off+written); err != nil {
+			return err
 		}
+		written += n
 	}
 
-	runStart := off
-	runZero := header.IsZero(b[:c.blockSize])
-	for i := off + c.blockSize; i < end; i += c.blockSize {
-		z := header.IsZero(b[i-off : i-off+c.blockSize])
-		if z == runZero {
-			continue
-		}
-		flush(runStart, i, runZero)
-		runStart = i
-		runZero = z
-	}
-	flush(runStart, end, runZero)
-
-	return int(end - off), nil
+	return nil
 }
 
 // WriteZeroesAt punches the range and marks all touched blocks Zero.
 // Caller must pass a block-aligned offset/length (NBD invariant).
 func (c *Cache) WriteZeroesAt(off, length int64) (int, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.mmap == nil {
+	if length == 0 || c.size == 0 {
 		return 0, nil
 	}
 
@@ -647,7 +643,9 @@ func (c *Cache) WriteZeroesAt(off, length int64) (int, error) {
 		return 0, nil
 	}
 
-	c.punchHole(off, end-off)
+	if err := c.punchHole(off, end-off); err != nil {
+		return 0, err
+	}
 	c.tracker.SetRange(
 		uint32(header.BlockIdx(off, c.blockSize)),
 		uint32(header.BlockCeilIdx(end, c.blockSize)),
@@ -673,49 +671,6 @@ func (c *Cache) FileSize(_ context.Context) (int64, error) {
 	}
 
 	return stat.Blocks * fsStat.Bsize, nil
-}
-
-func (c *Cache) address(off int64) (*byte, error) {
-	if c.mmap == nil {
-		return nil, nil
-	}
-
-	if off >= c.size {
-		return nil, fmt.Errorf("offset %d is out of bounds", off)
-	}
-
-	return &(*c.mmap)[off], nil
-}
-
-// addressBytes returns a slice of the mmap and a function to release the read lock which blocks the cache from being closed.
-func (c *Cache) addressBytes(off, length int64) ([]byte, func(), error) {
-	c.mu.RLock()
-
-	if c.mmap == nil {
-		c.mu.RUnlock()
-
-		return nil, func() {}, nil
-	}
-
-	if c.isClosed() {
-		c.mu.RUnlock()
-
-		return nil, func() {}, NewErrCacheClosed(c.filePath)
-	}
-
-	if off >= c.size {
-		c.mu.RUnlock()
-
-		return nil, func() {}, fmt.Errorf("offset %d is out of bounds", off)
-	}
-
-	releaseCacheCloseLock := func() {
-		c.mu.RUnlock()
-	}
-
-	end := min(off+length, c.size)
-
-	return (*c.mmap)[off:end], releaseCacheCloseLock, nil
 }
 
 func (c *Cache) BlockSize() int64 {
@@ -766,11 +721,8 @@ func (c *Cache) copyProcessMemory(
 			for i, r := range batch {
 				remote[i] = unix.RemoteIovec{Base: uintptr(r.Start), Len: int(r.Size)}
 			}
-			address, err := c.address(off)
-			if err != nil {
-				return fmt.Errorf("failed to get address: %w", err)
-			}
-			local := []unix.Iovec{{Base: address, Len: uint64(batchBytes)}}
+			buf := make([]byte, batchBytes)
+			local := []unix.Iovec{{Base: &buf[0], Len: uint64(batchBytes)}}
 
 			for {
 				select {
@@ -795,6 +747,9 @@ func (c *Cache) copyProcessMemory(
 					return fmt.Errorf("failed to read memory: expected %d bytes, got %d", batchBytes, n)
 				}
 
+				if err := writeFullAt(c.file, buf, off); err != nil {
+					return fmt.Errorf("failed to write memory cache: %w", err)
+				}
 				c.setIsCached(off, batchBytes)
 
 				return nil
