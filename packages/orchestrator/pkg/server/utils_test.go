@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 )
 
 func TestWaitSandboxStartsCanceledDoesNotBlockDrainingRejection(t *testing.T) {
@@ -53,5 +55,71 @@ func TestWaitSandboxStartsCanceledDoesNotBlockDrainingRejection(t *testing.T) {
 		require.Equal(t, codes.Unavailable, status.Code(err))
 	case <-time.After(time.Second):
 		t.Fatal("enterSandboxStart blocked instead of rejecting while draining")
+	}
+}
+
+func TestTryWaitSandboxStartsDoesNotBlock(t *testing.T) {
+	t.Parallel()
+
+	s := &Server{done: make(chan struct{})}
+	s.sandboxStartMu.RLock()
+	defer s.sandboxStartMu.RUnlock()
+
+	require.False(t, s.tryWaitSandboxStarts(t.Context()))
+}
+
+func TestForceStopSandboxesWaitsForInFlightStarts(t *testing.T) {
+	t.Parallel()
+
+	s := forceStopTestServer()
+	s.sandboxStartMu.RLock()
+	locked := true
+	defer func() {
+		if locked {
+			s.sandboxStartMu.RUnlock()
+		}
+	}()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- s.ForceStopSandboxes(t.Context())
+	}()
+
+	select {
+	case err := <-done:
+		require.Failf(t, "ForceStopSandboxes returned before start left", "err: %v", err)
+	case <-time.After(2 * sandboxStartWaitPollInterval):
+	}
+
+	s.sandboxStartMu.RUnlock()
+	locked = false
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("ForceStopSandboxes did not return after start left")
+	}
+}
+
+func TestForceStopSandboxesReturnsInFlightStartContextError(t *testing.T) {
+	t.Parallel()
+
+	s := forceStopTestServer()
+	s.sandboxStartMu.RLock()
+	defer s.sandboxStartMu.RUnlock()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	require.ErrorIs(t, s.ForceStopSandboxes(ctx), context.Canceled)
+}
+
+func forceStopTestServer() *Server {
+	return &Server{
+		done: make(chan struct{}),
+		sandboxFactory: &sandbox.Factory{
+			Sandboxes: sandbox.NewSandboxesMap(),
+		},
 	}
 }

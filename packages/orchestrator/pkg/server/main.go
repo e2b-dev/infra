@@ -76,8 +76,7 @@ type Server struct {
 	done      chan struct{}
 	closeOnce sync.Once
 
-	sandboxStartMu     sync.RWMutex
-	sandboxLifecycleWG sync.WaitGroup
+	sandboxStartMu sync.RWMutex
 }
 
 type ServiceConfig struct {
@@ -191,6 +190,9 @@ func (s *Server) StartDraining(ctx context.Context) {
 
 func (s *Server) DrainSandboxes(ctx context.Context) error {
 	s.StartDraining(ctx)
+	// The sandbox factory is shared by API sandboxes and template-build sandboxes.
+	// Drain it before waiting so the lifecycle snapshot cannot miss a new build sandbox.
+	s.sandboxFactory.StartDraining(ctx)
 	if err := s.waitSandboxStarts(ctx); err != nil {
 		return err
 	}
@@ -241,48 +243,62 @@ func (s *Server) DrainSandboxes(ctx context.Context) error {
 
 func (s *Server) ForceStopSandboxes(ctx context.Context) error {
 	s.StartDraining(ctx)
-	if err := s.waitSandboxStarts(ctx); err != nil {
-		return err
+	// The sandbox factory is shared by API sandboxes and template-build sandboxes.
+	// Drain it before waiting so no new starts can enter while shutdown proceeds.
+	s.sandboxFactory.StartDraining(ctx)
+	stopped := make(map[string]struct{})
+	var errs []error
+
+	forceStop := func(sandboxes []*sandbox.Sandbox) {
+		var wg sync.WaitGroup
+		errCh := make(chan error, len(sandboxes))
+
+		for _, sbx := range sandboxes {
+			key := fmt.Sprintf("%s/%s", sbx.Runtime.SandboxID, sbx.LifecycleID)
+			if _, ok := stopped[key]; ok {
+				continue
+			}
+			stopped[key] = struct{}{}
+
+			wg.Go(func() {
+				sbxLog := logger.L().With(
+					logger.WithSandboxID(sbx.Runtime.SandboxID),
+					logger.WithLifecycleID(sbx.LifecycleID),
+					logger.WithSandboxIP(sbx.Slot.HostIPString()),
+				)
+				sbxLog.Warn(ctx, "force stopping sandbox during orchestrator shutdown")
+
+				marked := s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
+				if !marked {
+					sbxLog.Info(ctx, "sandbox was already removed from live map before force stop")
+				}
+
+				if err := sbx.Stop(ctx); err != nil {
+					errCh <- fmt.Errorf("stop sandbox %s/%s: %w", sbx.Runtime.SandboxID, sbx.LifecycleID, err)
+					sbxLog.Error(ctx, "failed to force stop sandbox", zap.Error(err))
+				}
+
+				sbxLog.Info(ctx, "forced sandbox stop requested")
+			})
+		}
+
+		wg.Wait()
+		close(errCh)
+
+		for err := range errCh {
+			errs = append(errs, err)
+		}
 	}
 
 	sandboxes := s.sandboxFactory.Sandboxes.LifecycleItems()
 	logger.L().Warn(ctx, "starting forced sandbox shutdown", zap.Int("sandbox_count", len(sandboxes)))
-	if len(sandboxes) == 0 {
-		return s.waitSandboxLifecycles(ctx)
-	}
+	forceStop(sandboxes)
 
-	var wg sync.WaitGroup
-	errCh := make(chan error, len(sandboxes))
-
-	for _, sbx := range sandboxes {
-		wg.Go(func() {
-			sbxLog := logger.L().With(
-				logger.WithSandboxID(sbx.Runtime.SandboxID),
-				logger.WithLifecycleID(sbx.LifecycleID),
-				logger.WithSandboxIP(sbx.Slot.HostIPString()),
-			)
-			sbxLog.Warn(ctx, "force stopping sandbox during orchestrator shutdown")
-
-			marked := s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
-			if !marked {
-				sbxLog.Info(ctx, "sandbox was already removed from live map before force stop")
-			}
-
-			if err := sbx.Stop(ctx); err != nil {
-				errCh <- fmt.Errorf("stop sandbox %s/%s: %w", sbx.Runtime.SandboxID, sbx.LifecycleID, err)
-				sbxLog.Error(ctx, "failed to force stop sandbox", zap.Error(err))
-			}
-
-			sbxLog.Info(ctx, "forced sandbox stop requested")
-		})
-	}
-
-	wg.Wait()
-	close(errCh)
-
-	var errs []error
-	for err := range errCh {
+	if err := s.waitSandboxStarts(ctx); err != nil {
 		errs = append(errs, err)
+	} else {
+		newSandboxes := s.sandboxFactory.Sandboxes.LifecycleItems()
+		forceStop(newSandboxes)
 	}
 
 	if err := s.waitSandboxLifecycles(ctx); err != nil {
@@ -301,18 +317,7 @@ func (s *Server) ForceStopSandboxes(ctx context.Context) error {
 }
 
 func (s *Server) waitSandboxLifecycles(ctx context.Context) error {
-	done := make(chan struct{})
-	go func() {
-		s.sandboxLifecycleWG.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("waiting for sandbox lifecycle cleanup: %w", ctx.Err())
-	case <-done:
-		return nil
-	}
+	return s.sandboxFactory.Sandboxes.WaitLifecycles(ctx)
 }
 
 func (s *Server) refreshStartingSandboxesLimit(ctx context.Context) {

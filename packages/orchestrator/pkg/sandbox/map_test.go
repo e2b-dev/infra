@@ -3,8 +3,10 @@
 package sandbox
 
 import (
+	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -19,7 +21,7 @@ func TestMapMarkRunningTracksLifecycle(t *testing.T) {
 
 	sandboxes.MarkRunning(t.Context(), sbx)
 	require.Len(t, sandboxes.Items(), 1)
-	require.Len(t, sandboxes.LifecycleItemsByState(SandboxStateRunning), 1)
+	require.Len(t, sandboxes.LifecycleItems(), 1)
 }
 
 func TestMapLifecycleItemsRemainAfterMarkStopping(t *testing.T) {
@@ -30,13 +32,12 @@ func TestMapLifecycleItemsRemainAfterMarkStopping(t *testing.T) {
 
 	sandboxes.MarkRunning(t.Context(), sbx)
 	require.Len(t, sandboxes.Items(), 1)
-	require.Len(t, sandboxes.LifecycleItemsByState(SandboxStateRunning), 1)
+	require.Len(t, sandboxes.LifecycleItems(), 1)
 
 	marked := sandboxes.MarkStopping(t.Context(), sbx.Runtime.SandboxID, sbx.LifecycleID)
 	require.True(t, marked)
 	require.Empty(t, sandboxes.Items())
 	require.Len(t, sandboxes.LifecycleItems(), 1)
-	require.Len(t, sandboxes.LifecycleItemsByState(SandboxStateStopping), 1)
 
 	sandboxes.MarkStopped(t.Context(), sbx)
 	require.Empty(t, sandboxes.LifecycleItems())
@@ -64,28 +65,57 @@ func TestMapLifecycleItemsAllowDuplicateSandboxIDs(t *testing.T) {
 	oldSbx := testMapSandbox(t, "lifecycle-old")
 	newSbx := testMapSandbox(t, "lifecycle-new")
 
-	sandboxes.TrackLifecycle(t.Context(), oldSbx, SandboxStateStopping)
-	sandboxes.TrackLifecycle(t.Context(), newSbx, SandboxStateRunning)
+	sandboxes.MarkRunning(t.Context(), oldSbx)
+	require.True(t, sandboxes.MarkStopping(t.Context(), oldSbx.Runtime.SandboxID, oldSbx.LifecycleID))
+	sandboxes.MarkRunning(t.Context(), newSbx)
 
 	require.Len(t, sandboxes.LifecycleItems(), 2)
-	require.Len(t, sandboxes.LifecycleItemsByState(SandboxStateStopping), 1)
-	require.Len(t, sandboxes.LifecycleItemsByState(SandboxStateRunning), 1)
 }
 
-func TestMapLifecycleStateUpdateAfterRemovalDoesNotResurrect(t *testing.T) {
+func TestMapWaitLifecyclesReturnsWhenEmpty(t *testing.T) {
+	t.Parallel()
+
+	sandboxes := NewSandboxesMap()
+
+	require.NoError(t, sandboxes.WaitLifecycles(t.Context()))
+}
+
+func TestMapWaitLifecyclesWaitsUntilStopped(t *testing.T) {
 	t.Parallel()
 
 	sandboxes := NewSandboxesMap()
 	sbx := testMapSandbox(t, "lifecycle-1")
+	sandboxes.MarkRunning(t.Context(), sbx)
 
-	sandboxes.TrackLifecycle(t.Context(), sbx, SandboxStateRunning)
-	entry, ok := sandboxes.lifecycles.Get(sandboxLifecycleKey(sbx.Runtime.SandboxID, sbx.LifecycleID))
-	require.True(t, ok)
+	waitCtx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- sandboxes.WaitLifecycles(waitCtx)
+	}()
+
+	select {
+	case err := <-done:
+		require.Failf(t, "WaitLifecycles returned before lifecycle stopped", "err: %v", err)
+	case <-time.After(25 * time.Millisecond):
+	}
 
 	sandboxes.MarkStopped(t.Context(), sbx)
-	entry.setState(SandboxStateStopping)
+	require.NoError(t, <-done)
+}
 
-	require.Empty(t, sandboxes.LifecycleItems())
+func TestMapWaitLifecyclesReturnsContextError(t *testing.T) {
+	t.Parallel()
+
+	sandboxes := NewSandboxesMap()
+	sbx := testMapSandbox(t, "lifecycle-1")
+	sandboxes.MarkRunning(t.Context(), sbx)
+
+	waitCtx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	require.ErrorIs(t, sandboxes.WaitLifecycles(waitCtx), context.Canceled)
 }
 
 func TestMapConcurrentMarkStoppingAndStoppedDoesNotResurrectLifecycle(t *testing.T) {

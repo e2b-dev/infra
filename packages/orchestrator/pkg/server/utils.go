@@ -58,6 +58,9 @@ func (s *Server) waitSandboxStarts(ctx context.Context) error {
 			logger.L().Info(ctx, "in-flight sandbox start gate acquired")
 			s.sandboxStartMu.Unlock()
 			logger.L().Info(ctx, "in-flight sandbox start operations finished")
+			if s.sandboxFactory != nil {
+				return s.sandboxFactory.WaitSandboxStarts(ctx)
+			}
 
 			return nil
 		}
@@ -68,6 +71,23 @@ func (s *Server) waitSandboxStarts(ctx context.Context) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+func (s *Server) tryWaitSandboxStarts(ctx context.Context) bool {
+	if !s.sandboxStartMu.TryLock() {
+		logger.L().Warn(ctx, "in-flight sandbox start operations still running")
+
+		return false
+	}
+
+	s.sandboxStartMu.Unlock()
+	logger.L().Info(ctx, "in-flight sandbox start operations finished")
+
+	if s.sandboxFactory != nil {
+		return s.sandboxFactory.TryWaitSandboxStarts(ctx)
+	}
+
+	return true
 }
 
 func (s *Server) waitForAcquire(ctx context.Context) error {
