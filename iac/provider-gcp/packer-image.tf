@@ -72,8 +72,9 @@ resource "packer_image" "orch" {
     prefix         = var.prefix
     network_name   = var.network_name
     network_tag    = local.packer_build_tag
-    consul_version = var.consul_version
-    nomad_version  = var.nomad_version
+    consul_version = var.packer_consul_version
+    nomad_version  = var.packer_nomad_version
+    source_image   = var.packer_source_image
   }
 
   triggers = {

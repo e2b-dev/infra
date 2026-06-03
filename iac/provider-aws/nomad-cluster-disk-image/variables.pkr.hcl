@@ -9,7 +9,6 @@ variable "aws_profile" {
 
 variable "source_ami_filter_name" {
   type = string
-  default = "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"
 }
 
 variable "prefix" {
@@ -17,11 +16,11 @@ variable "prefix" {
 }
 
 variable "consul_version" {
-  type    = string
+  type = string
 }
 
 variable "nomad_version" {
-  type    = string
+  type = string
 }
 
 # Keep in sync with `clickhouse_version` in iac/modules/job-clickhouse/variables.tf

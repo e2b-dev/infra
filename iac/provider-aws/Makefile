@@ -25,8 +25,9 @@ endef
 tf_vars := AWS_PROFILE=$(AWS_PROFILE) AWS_REGION=$(AWS_REGION) \
 	TF_VAR_environment=$(TERRAFORM_ENVIRONMENT) \
 	$(call tfvar, AWS_PROFILE) \
-	$(call tfvar, CONSUL_VERSION) \
-	$(call tfvar, NOMAD_VERSION) \
+	$(call tfvar, PACKER_CONSUL_VERSION) \
+	$(call tfvar, PACKER_NOMAD_VERSION) \
+	$(call tfvar, PACKER_SOURCE_AMI_FILTER_NAME) \
 	$(call tfvar, PREFIX) \
 	$(call tfvar, DOMAIN_NAME) \
 	$(call tfvar, BUCKET_PREFIX) \

@@ -20,11 +20,11 @@ variable "prefix" {
 }
 
 variable "consul_version" {
-  type    = string
+  type = string
 }
 
 variable "nomad_version" {
-  type    = string
+  type = string
 }
 
 # Keep in sync with `clickhouse_version` in iac/modules/job-clickhouse/variables.tf
@@ -39,6 +39,5 @@ variable "cni_plugin_version" {
 }
 
 variable "source_image" {
-  type    = string
-  default = "ubuntu-2404-noble-amd64-v20260517"
+  type = string
 }

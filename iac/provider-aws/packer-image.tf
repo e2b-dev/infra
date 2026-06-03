@@ -30,13 +30,14 @@ resource "packer_image" "orch" {
   manifest_path = local.packer_manifest_path
 
   variables = {
-    prefix         = var.prefix
-    aws_region     = data.aws_region.current.id
-    aws_profile    = var.aws_profile
-    vpc_id         = module.init.vpc_id
-    subnet_id      = module.init.vpc_public_subnet_ids[0]
-    consul_version = var.consul_version
-    nomad_version  = var.nomad_version
+    prefix                 = var.prefix
+    aws_region             = data.aws_region.current.id
+    aws_profile            = var.aws_profile
+    vpc_id                 = module.init.vpc_id
+    subnet_id              = module.init.vpc_public_subnet_ids[0]
+    consul_version         = var.packer_consul_version
+    nomad_version          = var.packer_nomad_version
+    source_ami_filter_name = var.packer_source_ami_filter_name
   }
 
   triggers = {
