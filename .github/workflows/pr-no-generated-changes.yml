@@ -70,12 +70,6 @@ jobs:
       - name: Generate all code
         run: make generate  # cannot do this in parallel, as there are some race conditions
 
-      - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          install-only: true
-          version: "v${{ env.GOLANGCI_LINT }}"
-
       - name: Format code
         run: make fmt
 

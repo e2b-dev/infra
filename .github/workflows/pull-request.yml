@@ -56,7 +56,6 @@ jobs:
               - 'packages/**'
               - 'tests/**'
               - 'spec/**'
-              - 'iac/**'
               - 'go.work'
               - 'go.work.sum'
               - 'Makefile'
