@@ -382,6 +382,41 @@ module "cluster" {
   clickhouse_stateful_disk_size_gb = var.clickhouse_stateful_disk_size_gb
 }
 
+module "k8s_apps" {
+  source = "./k8s-apps"
+
+  prefix         = var.prefix
+  gcp_project_id = var.gcp_project_id
+  gcp_region     = var.gcp_region
+  gcp_zone       = var.gcp_zone
+
+  namespace               = "e2b"
+  argocd_apps_bucket_name = module.init.argocd_apps_bucket_name
+  core_repository_name    = module.init.core_repository_name
+
+  argocd_enabled = false
+
+  # API
+  api_server_count                                       = var.api_server_count
+  api_resources_cpu_count                                = var.api_resources_cpu_count
+  api_resources_memory_mb                                = var.api_resources_memory_mb
+  api_machine_count                                      = var.api_cluster_size
+  api_node_pool                                          = var.api_node_pool
+  api_port                                               = var.api_port
+  api_internal_grpc_port                                 = var.api_internal_grpc_port
+  api_env_vars                                           = local.api_env_vars
+  api_db_migrator_env_vars                               = local.api_db_migrator_env_vars
+  auth_provider_config                                   = local.auth_provider_config
+  environment                                            = var.environment
+  google_service_account_key                             = module.init.google_service_account_key
+  api_secret                                             = random_password.api_secret.result
+  custom_envs_repository_name                            = google_artifact_registry_repository.custom_environments_repository.name
+  postgres_connection_string_secret_name                 = module.init.postgres_connection_string_secret_name
+  postgres_read_replica_connection_string_secret_version = google_secret_manager_secret_version.postgres_read_replica_connection_string
+  redis_cluster_url_secret_version                       = module.init.redis_cluster_url_secret_version
+  redis_tls_ca_base64_secret_version                     = module.init.redis_tls_ca_base64_secret_version
+}
+
 module "nomad" {
   source = "./nomad"
 
