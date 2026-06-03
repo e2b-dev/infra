@@ -32,6 +32,9 @@ jobs:
         with:
           terraform_version: "${{ env.TERRAFORM }}"
 
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive
+
       - name: Validate terraform
         working-directory: ./iac/provider-gcp
         run: |
