@@ -1,13 +1,21 @@
 name: Validate OpenAPI specs
 
-on: [workflow_call]
+on:
+  workflow_call:
+    inputs:
+      run-validation:
+        type: boolean
+        description: "Whether to run OpenAPI validation"
+        required: false
+        default: true
 
 permissions:
   contents: read
 
 jobs:
   validate-openapi:
-    name: Validate ${{ matrix.spec }}
+    name: Validate OpenAPI specs
+    if: ${{ inputs.run-validation == true }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -24,3 +32,23 @@ jobs:
 
       - name: Validate OpenAPI spec
         run: npx --yes @redocly/cli lint ${{ matrix.spec }}
+
+  validate_openapi:
+    needs: validate-openapi
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Aggregate OpenAPI validation result
+        run: |
+          if [[ "${{ inputs.run-validation }}" != "true" ]]; then
+            echo "OpenAPI validation skipped because OpenAPI specs did not change"
+            exit 0
+          fi
+
+          if [[ "${{ needs.validate-openapi.result }}" != "success" ]]; then
+            echo "OpenAPI validation result: ${{ needs.validate-openapi.result }}"
+            exit 1
+          fi
+
+          echo "OpenAPI validation succeeded"

@@ -10,33 +10,101 @@ on:
       - main
 
 jobs:
+  detect-changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      changed-scopes: ${{ steps.changed-paths.outputs.changes }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 20
+          persist-credentials: false
+
+      - id: changed-paths
+        name: Detect CI-relevant changes
+        uses: dorny/paths-filter@v4
+        with:
+          base: ${{ github.ref }}
+          filters: |
+            iac:
+              - 'iac/**'
+              - '.github/**'
+              - '.tool-versions'
+            test-inputs:
+              - 'packages/**'
+              - 'tests/**'
+              - 'spec/**'
+              - 'go.work'
+              - 'go.work.sum'
+              - 'Makefile'
+              - '.github/**'
+              - '.tool-versions'
+            generated-inputs:
+              - 'packages/**'
+              - 'tests/**'
+              - 'spec/**'
+              - 'iac/**'
+              - 'go.work'
+              - 'go.work.sum'
+              - 'Makefile'
+              - '.golangci.yml'
+              - '.mockery.yaml'
+              - 'packages/**/.mockery.yaml'
+              - 'scripts/fix-tracers.sh'
+              - 'scripts/fix-meters.sh'
+              - 'scripts/golang-dependencies-integrity.sh'
+              - '.github/**'
+              - '.tool-versions'
+
   generated-code-check:
+    needs: [detect-changes]
     uses: ./.github/workflows/pr-no-generated-changes.yml
     with:
+      run-check: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'generated-inputs') }}
       commit: false
 
   unit-tests:
+    needs: [detect-changes]
     uses: ./.github/workflows/pr-tests.yml
+    with:
+      run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') }}
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+  terraform-validation:
+    needs: [detect-changes]
+    uses: ./.github/workflows/validate-iac.yml
+    with:
+      run-validation: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'iac') }}
   integration-tests:
+    needs: [detect-changes]
     uses: ./.github/workflows/integration_tests.yml
     with:
       publish: true
+      run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') }}
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   publish-test-results:
     needs:
+      - detect-changes
       - unit-tests
       - integration-tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       checks: write
     # Skip on cancellation so partial artifacts aren't published as failed tests.
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.detect-changes.result == 'success' }}
 
     steps:
+      - name: Skip publishing when tests did not run
+        if: ${{ !contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') }}
+        run: echo "test result publishing skipped because test inputs did not change"
+
       - name: Download Artifacts
+        if: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') }}
         uses: actions/download-artifact@v7
         with:
           path: artifacts
@@ -45,6 +113,7 @@ jobs:
           pattern: "!*.dockerbuild"
 
       - name: Publish Test Results
+        if: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') }}
         uses: EnricoMi/publish-unit-test-result-action@v2
         with:
           comment_mode: off
