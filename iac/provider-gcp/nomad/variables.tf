@@ -1,7 +1,3 @@
-variable "envd_timeout" {
-  type = string
-}
-
 variable "prefix" {
   type = string
 }
@@ -281,12 +277,6 @@ variable "fc_env_pipeline_bucket_name" {
   type = string
 }
 
-variable "allow_sandbox_internal_cidrs" {
-  type        = string
-  description = "Comma-separated CIDRs to allow through the sandbox firewall deny list"
-  default     = ""
-}
-
 # Template manager
 variable "template_manager_port" {
   type = number
@@ -461,10 +451,6 @@ variable "filestore_cache_cleanup_max_retries" {
 
 variable "dockerhub_remote_repository_url" {
   type = string
-}
-
-variable "persistent_volume_mounts" {
-  type = map(string)
 }
 
 variable "default_persistent_volume_type" {
