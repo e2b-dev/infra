@@ -152,6 +152,32 @@ locals {
     LAUNCH_DARKLY_API_KEY     = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
   }, var.client_proxy_env_vars)
 
+  orchestrator_env_vars = merge({
+    LOGS_COLLECTOR_ADDRESS        = "http://localhost:${local.logs_proxy_port}"
+    ENVIRONMENT                   = var.environment
+    ENVD_TIMEOUT                  = var.envd_timeout
+    TEMPLATE_BUCKET_NAME          = module.init.fc_template_bucket_name
+    OTEL_COLLECTOR_GRPC_ENDPOINT  = "localhost:${local.otel_collector_grpc_port}"
+    ALLOW_SANDBOX_INTERNAL_CIDRS  = var.allow_sandbox_internal_cidrs
+    CLICKHOUSE_CONNECTION_STRING  = local.clickhouse_connection_string
+    REDIS_POOL_SIZE               = "10"
+    REDIS_CLUSTER_URL             = local.redis_cluster_url
+    REDIS_TLS_CA_BASE64           = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+    REDIS_URL                     = local.redis_url
+    GIN_MODE                      = "release"
+    CONSUL_TOKEN                  = module.init.consul_acl_token_secret
+    DOMAIN_NAME                   = var.domain_name
+    SHARED_CHUNK_CACHE_PATH       = module.cluster.shared_chunk_cache_path
+    ORCHESTRATOR_SERVICES         = "orchestrator"
+    PROVIDER                      = "gcp"
+    ARTIFACTS_REGISTRY_PROVIDER   = "GCP_ARTIFACTS"
+    STORAGE_PROVIDER              = "GCPBucket"
+    GOOGLE_SERVICE_ACCOUNT_BASE64 = ""
+    GCS_GRPC_CONNECTION_POOL_SIZE = var.gcs_grpc_connection_pool_size != 0 ? tostring(var.gcs_grpc_connection_pool_size) : ""
+    PERSISTENT_VOLUME_MOUNTS      = join(",", [for key, value in local.persistent_volume_types : format("%s:%s", key, value["local_mount_path"])])
+    LAUNCH_DARKLY_API_KEY         = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+  }, var.orchestrator_env_vars)
+
   # Normalize additional_api_paths_handled_by_ingress to support both legacy (list of strings)
   # and new (list of objects) formats. Strings are converted to objects with paths = [string].
   normalized_api_paths_handled_by_ingress = [
@@ -399,14 +425,11 @@ module "nomad" {
 
   # Orchestrator
   orchestrator_node_pool         = var.orchestrator_node_pool
-  allow_sandbox_internal_cidrs   = var.allow_sandbox_internal_cidrs
   orchestrator_port              = var.orchestrator_port
   orchestrator_proxy_port        = var.orchestrator_proxy_port
   fc_env_pipeline_bucket_name    = module.init.fc_env_pipeline_bucket_name
-  envd_timeout                   = var.envd_timeout
-  persistent_volume_mounts       = { for key, config in local.persistent_volume_types : key => config["local_mount_path"] }
   default_persistent_volume_type = var.default_persistent_volume_type
-  orchestrator_env_vars          = var.orchestrator_env_vars
+  orchestrator_env_vars          = local.orchestrator_env_vars
   orchestrator_enabled           = var.orchestrator_enabled
 
   # Template manager

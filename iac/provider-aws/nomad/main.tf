@@ -130,12 +130,6 @@ locals {
 module "orchestrator" {
   source = "../../modules/job-orchestrator"
 
-  provider_name = "aws"
-  provider_aws_config = {
-    region                 = var.aws_region
-    docker_repository_name = var.custom_environments_repository_name
-  }
-
   node_pool  = var.orchestrator_node_pool
   port       = var.orchestrator_port
   proxy_port = var.orchestrator_proxy_port
@@ -143,21 +137,7 @@ module "orchestrator" {
   environment           = var.environment
   artifact_source       = local.orchestrator_artifact_source
   orchestrator_checksum = data.aws_s3_object.orchestrator.etag
-
-  logs_collector_address       = "http://localhost:${var.logs_proxy_port}"
-  otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
-  envd_timeout                 = var.envd_timeout
-  template_bucket_name         = var.template_bucket_name
-  allow_sandbox_internal_cidrs = var.allow_sandbox_internal_cidrs
-  clickhouse_connection_string = local.clickhouse_connection_string
-  redis_url                    = var.redis_url
-  redis_cluster_url            = var.redis_cluster_url
-  redis_tls_ca_base64          = var.redis_tls_ca_base64
-
-  consul_token            = var.consul_acl_token
-  domain_name             = var.domain_name
-  build_cache_bucket_name = var.build_cache_bucket_name
-  launch_darkly_api_key   = var.launch_darkly_api_key
+  job_env_vars          = var.orchestrator_env_vars
 }
 
 data "aws_s3_object" "template_manager" {

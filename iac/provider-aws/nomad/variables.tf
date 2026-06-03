@@ -222,15 +222,10 @@ variable "orchestrator_proxy_port" {
   default = 5007
 }
 
-variable "allow_sandbox_internal_cidrs" {
-  type        = string
-  description = "Comma-separated CIDRs to allow through the sandbox firewall deny list"
-  default     = ""
-}
-
-variable "envd_timeout" {
-  type    = string
-  default = "40s"
+variable "orchestrator_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "fc_env_pipeline_bucket_name" {

@@ -357,11 +357,6 @@ module "orchestrator" {
 
   source = "../../modules/job-orchestrator"
 
-  provider_name = "gcp"
-  provider_gcp_config = {
-    gcs_grpc_connection_pool_size = var.gcs_grpc_connection_pool_size
-  }
-
   node_pool  = var.orchestrator_node_pool
   port       = var.orchestrator_port
   proxy_port = var.orchestrator_proxy_port
@@ -369,24 +364,7 @@ module "orchestrator" {
   environment           = var.environment
   artifact_source       = local.orchestrator_artifact_source
   orchestrator_checksum = local.orchestrator_checksum
-
-  logs_collector_address       = "http://localhost:${var.logs_proxy_port.port}"
-  otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
-  envd_timeout                 = var.envd_timeout
-  template_bucket_name         = var.template_bucket_name
-  allow_sandbox_internal_cidrs = var.allow_sandbox_internal_cidrs
-  clickhouse_connection_string = local.clickhouse_connection_string
-  redis_url                    = local.redis_url
-  redis_cluster_url            = local.redis_cluster_url
-  redis_tls_ca_base64          = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-  persistent_volume_mounts     = var.persistent_volume_mounts
-
-  consul_token            = var.consul_acl_token_secret
-  domain_name             = var.domain_name
-  shared_chunk_cache_path = var.shared_chunk_cache_path
-  launch_darkly_api_key   = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
-
-  job_env_vars = var.orchestrator_env_vars
+  job_env_vars          = var.orchestrator_env_vars
 }
 
 data "google_storage_bucket_object" "template_manager" {
