@@ -108,29 +108,6 @@ variable "api_secret" {
   type = string
 }
 
-variable "dashboard_api_admin_token_secret_name" {
-  type = string
-}
-
-variable "user_profile_provider" {
-  type    = string
-  default = ""
-}
-
-variable "ory_sdk_url" {
-  type    = string
-  default = ""
-}
-
-variable "ory_issuer_url" {
-  type    = string
-  default = ""
-}
-
-variable "ory_project_api_token_secret_name" {
-  type = string
-}
-
 variable "environment" {
   type = string
 }
@@ -501,29 +478,10 @@ variable "dashboard_api_count" {
   default = 0
 }
 
-variable "supabase_db_connection_string_secret_version" {
-  type = any
-}
-
-variable "auth_provider_config" {
-  type = object({
-    jwt = optional(list(object({
-      issuer = object({
-        url                 = string
-        discoveryURL        = optional(string)
-        audiences           = list(string)
-        audienceMatchPolicy = optional(string)
-      })
-      cacheDuration = optional(string)
-    })))
-    legacy = optional(object({
-      hmac = object({
-        secrets = list(string)
-      })
-    }))
-  })
+variable "dashboard_api_env_vars" {
+  type      = map(string)
+  default   = {}
   sensitive = true
-  default   = null
 }
 
 variable "volume_token_issuer" {

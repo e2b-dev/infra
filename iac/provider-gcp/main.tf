@@ -347,7 +347,6 @@ module "nomad" {
   api_internal_grpc_port                                 = var.api_internal_grpc_port
   api_env_vars                                           = local.api_env_vars
   api_db_migrator_env_vars                               = local.api_db_migrator_env_vars
-  auth_provider_config                                   = local.auth_provider_config
   environment                                            = var.environment
   google_service_account_key                             = module.init.google_service_account_key
   api_secret                                             = random_password.api_secret.result
@@ -391,13 +390,8 @@ module "nomad" {
   enable_gcp_telemetry_external_metrics = var.enable_gcp_telemetry_external_metrics
 
   # Dashboard API
-  dashboard_api_count                          = var.dashboard_api_count
-  dashboard_api_admin_token_secret_name        = module.init.dashboard_api_admin_token_secret_name
-  supabase_db_connection_string_secret_version = module.init.supabase_db_connection_string_secret_version
-  user_profile_provider                        = var.user_profile_provider
-  ory_sdk_url                                  = var.ory_sdk_url
-  ory_issuer_url                               = var.ory_issuer_url
-  ory_project_api_token_secret_name            = module.init.ory_project_api_token_secret_name
+  dashboard_api_count    = var.dashboard_api_count
+  dashboard_api_env_vars = local.dashboard_api_env_vars
 
   # Docker reverse proxy
   docker_reverse_proxy_port                = var.docker_reverse_proxy_port

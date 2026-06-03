@@ -13,18 +13,6 @@ data "google_secret_manager_secret_version" "postgres_read_replica_connection_st
   secret = var.postgres_read_replica_connection_string_secret_version.secret
 }
 
-data "google_secret_manager_secret_version" "dashboard_api_admin_token" {
-  secret = var.dashboard_api_admin_token_secret_name
-}
-
-data "google_secret_manager_secret_version" "ory_project_api_token" {
-  secret = var.ory_project_api_token_secret_name
-}
-
-data "google_secret_manager_secret_version" "supabase_db_connection_string" {
-  secret = var.supabase_db_connection_string_secret_version.secret
-}
-
 # Telemetry
 data "google_secret_manager_secret_version" "launch_darkly_api_key" {
   secret = var.launch_darkly_api_key_secret_name
@@ -91,29 +79,10 @@ module "dashboard_api" {
   count_instances = var.dashboard_api_count
   node_pool       = var.api_node_pool
   update_stanza   = var.dashboard_api_count > 1
-  environment     = var.environment
 
   image = data.google_artifact_registry_docker_image.dashboard_api_image[0].self_link
 
-  admin_token                            = trimspace(data.google_secret_manager_secret_version.dashboard_api_admin_token.secret_data)
-  postgres_connection_string             = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-  auth_db_connection_string              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
-  auth_db_read_replica_connection_string = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
-  supabase_db_connection_string          = trimspace(data.google_secret_manager_secret_version.supabase_db_connection_string.secret_data)
-  clickhouse_connection_string           = local.clickhouse_connection_string
-  auth_provider_config                   = var.auth_provider_config
-  redis_url                              = local.redis_url
-  redis_cluster_url                      = local.redis_cluster_url
-  redis_tls_ca_base64                    = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
-  billing_server_url                     = local.dashboard_api_billing_server_url
-  billing_server_api_token               = local.dashboard_api_billing_server_api_token
-  user_profile_provider                  = var.user_profile_provider
-  ory_sdk_url                            = var.ory_sdk_url
-  ory_issuer_url                         = var.ory_issuer_url
-  ory_project_api_token                  = trimspace(data.google_secret_manager_secret_version.ory_project_api_token.secret_data)
-
-  otel_collector_grpc_port = var.otel_collector_grpc_port
-  logs_proxy_port          = var.logs_proxy_port
+  job_env_vars = var.dashboard_api_env_vars
 }
 
 module "redis" {
