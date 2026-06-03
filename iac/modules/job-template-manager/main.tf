@@ -15,7 +15,7 @@ data "external" "template_manager_count" {
 locals {
   job_env_vars = {
     for key, value in var.job_env_vars : key => trimspace(value)
-    if try(trimspace(value), "") != ""
+    if value != null && try(trimspace(value), "") != ""
   }
 }
 
