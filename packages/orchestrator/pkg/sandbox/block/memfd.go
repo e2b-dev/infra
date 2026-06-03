@@ -208,6 +208,14 @@ func (m *MemfdCache) ReadAt(b []byte, off int64) (int, error) {
 	return m.cache.ReadAt(b, off)
 }
 
+func (m *MemfdCache) Slice(off, length int64) ([]byte, error) {
+	if err := m.Wait(context.Background()); err != nil {
+		return nil, err
+	}
+
+	return m.cache.Slice(off, length)
+}
+
 func (m *MemfdCache) Close() error {
 	if m.cancel != nil {
 		m.cancel()
@@ -350,6 +358,15 @@ func (d *DedupedMemfdCache) ReadAt(b []byte, off int64) (int, error) {
 	}
 
 	return c.ReadAt(b, off)
+}
+
+func (d *DedupedMemfdCache) Slice(off, length int64) ([]byte, error) {
+	c, err := d.Wait(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
+	return c.Slice(off, length)
 }
 
 func (d *DedupedMemfdCache) Close() error {
