@@ -736,6 +736,33 @@ components:
           format: int32
           minimum: 0
 
+    SandboxTimeoutRequest:
+      type: object
+      required:
+        - timeout
+      properties:
+        timeout:
+          description: Timeout in seconds from the current time after which the sandbox should expire
+          type: integer
+          format: int32
+          minimum: 0
+
+    SandboxRefreshRequest:
+      type: object
+      properties:
+        duration:
+          description: Duration for which the sandbox should be kept alive in seconds
+          type: integer
+          maximum: 3600 # 1 hour
+          minimum: 0
+
+    SandboxSnapshotRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Optional name for the snapshot template. If a snapshot template with this name already exists, a new build will be assigned to the existing template instead of creating a new one.
+
     TeamMetric:
       description: Team metric with timestamp
       required:
@@ -1900,8 +1927,7 @@ paths:
               schema:
                 type: array
                 items:
-                  allOf:
-                    - $ref: "#/components/schemas/Team"
+                  $ref: "#/components/schemas/Team"
         "401":
           $ref: "#/components/responses/401"
         "500":
@@ -2025,8 +2051,7 @@ paths:
               schema:
                 type: array
                 items:
-                  allOf:
-                    - $ref: "#/components/schemas/ListedSandbox"
+                  $ref: "#/components/schemas/ListedSandbox"
         "401":
           $ref: "#/components/responses/401"
         "400":
@@ -2099,8 +2124,7 @@ paths:
               schema:
                 type: array
                 items:
-                  allOf:
-                    - $ref: "#/components/schemas/ListedSandbox"
+                  $ref: "#/components/schemas/ListedSandbox"
         "401":
           $ref: "#/components/responses/401"
         "400":
@@ -2450,15 +2474,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - timeout
-              properties:
-                timeout:
-                  description: Timeout in seconds from the current time after which the sandbox should expire
-                  type: integer
-                  format: int32
-                  minimum: 0
+              $ref: "#/components/schemas/SandboxTimeoutRequest"
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -2515,13 +2531,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                duration:
-                  description: Duration for which the sandbox should be kept alive in seconds
-                  type: integer
-                  maximum: 3600 # 1 hour
-                  minimum: 0
+              $ref: "#/components/schemas/SandboxRefreshRequest"
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -2549,11 +2559,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                  description: Optional name for the snapshot template. If a snapshot template with this name already exists, a new build will be assigned to the existing template instead of creating a new one.
+              $ref: "#/components/schemas/SandboxSnapshotRequest"
       responses:
         "201":
           description: Snapshot created successfully
@@ -2730,8 +2736,7 @@ paths:
               schema:
                 type: array
                 items:
-                  allOf:
-                    - $ref: "#/components/schemas/Template"
+                  $ref: "#/components/schemas/Template"
         "401":
           $ref: "#/components/responses/401"
         "500":
@@ -3201,8 +3206,7 @@ paths:
               schema:
                 type: array
                 items:
-                  allOf:
-                    - $ref: "#/components/schemas/Node"
+                  $ref: "#/components/schemas/Node"
         "401":
           $ref: "#/components/responses/401"
         "500":
