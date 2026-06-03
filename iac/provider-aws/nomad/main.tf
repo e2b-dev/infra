@@ -152,28 +152,13 @@ locals {
 module "template_manager" {
   source = "../../modules/job-template-manager"
 
-  provider_name = "aws"
-  provider_aws_config = {
-    region                 = var.aws_region
-    docker_repository_name = var.custom_environments_repository_name
-  }
-
   update_stanza = var.build_cluster_size > 1
   node_pool     = var.build_node_pool
 
-  port             = var.template_manager_port
-  environment      = var.environment
-  consul_acl_token = var.consul_acl_token
-  domain_name      = var.domain_name
+  port = var.template_manager_port
 
-  api_secret                   = var.api_secret
-  artifact_source              = local.template_manager_artifact_source
-  template_bucket_name         = var.template_bucket_name
-  build_cache_bucket_name      = var.build_cache_bucket_name
-  otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
-  logs_collector_address       = "http://localhost:${var.logs_proxy_port}"
-  clickhouse_connection_string = local.clickhouse_connection_string
-  launch_darkly_api_key        = var.launch_darkly_api_key
+  artifact_source = local.template_manager_artifact_source
+  job_env_vars    = var.template_manager_env_vars
 
   nomad_addr  = "https://nomad.${var.domain_name}"
   nomad_token = var.nomad_acl_token

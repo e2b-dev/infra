@@ -865,6 +865,12 @@ variable "dashboard_api_env_vars" {
   sensitive = true
 }
 
+variable "template_manager_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
 variable "orchestrator_enabled" {
   type        = bool
   default     = true
