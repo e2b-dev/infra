@@ -1147,8 +1147,6 @@ func (q *Queries) ListTeamTemplatesByMemoryMbDesc(ctx context.Context, arg ListT
 }
 
 const listTeamTemplatesByNameAsc = `-- name: ListTeamTemplatesByNameAsc :many
-
-
 WITH ranked AS (
     SELECT
         e.id,
@@ -1281,43 +1279,6 @@ type ListTeamTemplatesByNameAscRow struct {
 	NameSortKey        string
 }
 
-// Paginated list of a team's templates, optionally including default templates
-// (env_defaults membership) inline when include_defaults is true. Filtering
-// (cpu/memory/visibility) and name+id search are shared across every variant;
-// sorting is split into one query per (column, direction) with a fixed ORDER BY
-// and a keyset predicate. The name/cpu/memory variants use the expanded form
-// (sort_col </> cursor OR (sort_col = cursor AND id > cursor_id)) with an always-
-// ascending id tiebreak and a nullable cursor (NULL = first page). The created_at/
-// updated_at variants instead use a row-value comparison
-// ((sort_col, id) </> (cursor, cursor_id)) with a direction-consistent id tiebreak
-// (id DESC for desc, id ASC for asc) and a non-null sentinel cursor supplied by the
-// caller for the first page -- mirroring GetTeamBuildsPage -- so the comparison is
-// sargable and resumes via an index range scan (O(limit)) at any page depth.
-//
-// Each variant uses a `ranked` CTE that applies the WHERE filters, sort, and
-// LIMIT so the heavy env_aliases ARRAY_AGG (and, for non-cpu/mem sorts, the
-// env_builds lookup) only run for the surviving rows. cpu/mem sort variants
-// keep env_builds inside the CTE because its columns are the sort key; all
-// other variants express the cpu/mem filter as a short-circuiting scalar
-// subquery so env_builds stays outside the CTE.
-//
-// The created_at/updated_at variants split the team-vs-defaults membership into
-// two independently ordered+limited CTEs (team_templates UNION default_templates)
-// rather than a single OR across the env_defaults join. The OR form forces a full
-// team scan + sort because no index can satisfy the ORDER BY across both branches;
-// the split lets the team branch use a (team_id, source, <sort_col> DESC, id DESC)
-// index for an O(limit) keyset scan, while the small defaults branch is merged in by
-// the outer ORDER BY + LIMIT. UNION (not UNION ALL) dedups envs that are both the
-// team's own template and a default (env_defaults.env_id is unique, so the two
-// branches emit identical rows for such an env). The result set is identical to the
-// pre-existing OR form; ordering matches except within exact sort-column ties, where
-// the desc variants now order id DESC for index consistency (immaterial for
-// microsecond timestamps).
-//
-// Only the created_at sort is index-backed today (idx_envs_team_source_created_at);
-// the updated_at variants share this shape but fall back to a team scan + sort
-// until idx_envs_team_source_updated_at is added (intentionally deferred to avoid
-// write amplification on the frequently-updated updated_at column).
 func (q *Queries) ListTeamTemplatesByNameAsc(ctx context.Context, arg ListTeamTemplatesByNameAscParams) ([]ListTeamTemplatesByNameAscRow, error) {
 	rows, err := q.db.Query(ctx, listTeamTemplatesByNameAsc,
 		arg.TeamID,
