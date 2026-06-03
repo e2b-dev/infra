@@ -345,8 +345,8 @@ func (_c *MockDiff_Init_Call) RunAndReturn(run func(ctx context.Context) error) 
 }
 
 // ReadAt provides a mock function for the type MockDiff
-func (_mock *MockDiff) ReadAt(ctx context.Context, buffer []byte, off int64, ft *storage.FrameTable) (int, error) {
-	ret := _mock.Called(ctx, buffer, off, ft)
+func (_mock *MockDiff) ReadAt(ctx context.Context, p []byte, off int64, ft *storage.FrameTable) (int, error) {
+	ret := _mock.Called(ctx, p, off, ft)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ReadAt")
@@ -355,15 +355,15 @@ func (_mock *MockDiff) ReadAt(ctx context.Context, buffer []byte, off int64, ft 
 	var r0 int
 	var r1 error
 	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte, int64, *storage.FrameTable) (int, error)); ok {
-		return returnFunc(ctx, buffer, off, ft)
+		return returnFunc(ctx, p, off, ft)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte, int64, *storage.FrameTable) int); ok {
-		r0 = returnFunc(ctx, buffer, off, ft)
+		r0 = returnFunc(ctx, p, off, ft)
 	} else {
 		r0 = ret.Get(0).(int)
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, []byte, int64, *storage.FrameTable) error); ok {
-		r1 = returnFunc(ctx, buffer, off, ft)
+		r1 = returnFunc(ctx, p, off, ft)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -377,14 +377,14 @@ type MockDiff_ReadAt_Call struct {
 
 // ReadAt is a helper method to define mock.On call
 //   - ctx context.Context
-//   - buffer []byte
+//   - p []byte
 //   - off int64
 //   - ft *storage.FrameTable
-func (_e *MockDiff_Expecter) ReadAt(ctx interface{}, buffer interface{}, off interface{}, ft interface{}) *MockDiff_ReadAt_Call {
-	return &MockDiff_ReadAt_Call{Call: _e.mock.On("ReadAt", ctx, buffer, off, ft)}
+func (_e *MockDiff_Expecter) ReadAt(ctx interface{}, p interface{}, off interface{}, ft interface{}) *MockDiff_ReadAt_Call {
+	return &MockDiff_ReadAt_Call{Call: _e.mock.On("ReadAt", ctx, p, off, ft)}
 }
 
-func (_c *MockDiff_ReadAt_Call) Run(run func(ctx context.Context, buffer []byte, off int64, ft *storage.FrameTable)) *MockDiff_ReadAt_Call {
+func (_c *MockDiff_ReadAt_Call) Run(run func(ctx context.Context, p []byte, off int64, ft *storage.FrameTable)) *MockDiff_ReadAt_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -417,7 +417,7 @@ func (_c *MockDiff_ReadAt_Call) Return(n int, err error) *MockDiff_ReadAt_Call {
 	return _c
 }
 
-func (_c *MockDiff_ReadAt_Call) RunAndReturn(run func(ctx context.Context, buffer []byte, off int64, ft *storage.FrameTable) (int, error)) *MockDiff_ReadAt_Call {
+func (_c *MockDiff_ReadAt_Call) RunAndReturn(run func(ctx context.Context, p []byte, off int64, ft *storage.FrameTable) (int, error)) *MockDiff_ReadAt_Call {
 	_c.Call.Return(run)
 	return _c
 }

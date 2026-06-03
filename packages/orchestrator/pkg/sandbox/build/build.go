@@ -83,12 +83,6 @@ func (b *File) ReadAt(ctx context.Context, p []byte, off int64) (int, error) {
 		if errors.As(err, &closed) {
 			continue
 		}
-		// A peer transition swaps the header to the finalized one; retry against it.
-		if retry, swapErr := b.retryOnTransition(ctx, err); retry {
-			continue
-		} else if swapErr != nil {
-			return 0, swapErr
-		}
 
 		return 0, err
 	}
@@ -99,7 +93,9 @@ type readSegment struct {
 	srcOff int64
 	length int64
 	diff   Diff
-	ft     *storage.FrameTable
+	// ft uses the nil-vs-empty convention: nil = no entry (hint unknown),
+	// empty &FrameTable{} = authoritatively uncompressed, non-empty = compressed.
+	ft *storage.FrameTable
 }
 
 func (b *File) readSegments(ctx context.Context, p []byte, segments []readSegment, maxParallel int) error {
@@ -123,13 +119,54 @@ func (b *File) readSegments(ctx context.Context, p []byte, segments []readSegmen
 	return nil
 }
 
+// readSegment reads one segment, recovering from PeerTransitionedError or a
+// wrong-CT 404 by refreshing the FT from storage and retrying once.
 func (b *File) readSegment(ctx context.Context, p []byte, s readSegment) error {
-	n, err := s.diff.ReadAt(ctx, p[s.dstOff:s.dstOff+int(s.length)], s.srcOff, s.ft)
+	refresher, _ := s.diff.(FrameTableRefresher)
+	dst := p[s.dstOff : s.dstOff+int(s.length)]
+
+	n, err := s.diff.ReadAt(ctx, dst, s.srcOff, s.ft)
 	if err != nil {
-		return err
+		if refresher == nil {
+			return err
+		}
+		if err = b.specialErrorHandler(ctx, refresher, s, err); err != nil {
+			return err
+		}
+		n, err = s.diff.ReadAt(ctx, dst, s.srcOff, s.ft)
+		if err != nil {
+			return err
+		}
 	}
 	if int64(n) != s.length {
 		return io.ErrUnexpectedEOF
+	}
+
+	return nil
+}
+
+func (b *File) specialErrorHandler(ctx context.Context, refresher FrameTableRefresher, s readSegment, err error) error {
+	var transitionErr *storage.PeerTransitionedError
+	switch {
+	case errors.As(err, &transitionErr):
+		if waitErr := waitTransitionBackoff(ctx, b.fileType, transitionErr); waitErr != nil {
+			return waitErr
+		}
+	case errors.Is(err, storage.ErrObjectNotExist) && s.ft == nil:
+		// fall through to refresh
+	default:
+		return err
+	}
+
+	h, rerr := refresher.RefreshFrameTable(ctx)
+	if rerr != nil {
+		return fmt.Errorf("recover after %w: %w", err, rerr)
+	}
+	// If the just-loaded header is *this* file's own finalized header, promote
+	// it: every subsequent read picks up authoritative Builds[ancestor] hints
+	// instead of paying a separate refresh per ancestor.
+	if h != nil && h.Metadata.BuildId == b.Header().Metadata.BuildId {
+		b.SwapHeader(h)
 	}
 
 	return nil
@@ -193,9 +230,7 @@ func (b *File) cachedBuild(ctx context.Context, h *header.Header, buildID uuid.U
 		}
 	}
 
-	// CompressionType is nil-safe (nil frame table -> CompressionNone).
-	ct := h.GetBuildFrameData(buildID).CompressionType()
-	diff, err := b.getBuild(ctx, buildID, b.buildFileSize(h, buildID), ct)
+	diff, err := b.getBuild(ctx, buildID, b.buildFileSize(h, buildID), h.GetBuildFrameData(buildID).CompressionType())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get build: %w", err)
 	}
@@ -230,7 +265,7 @@ func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 					}
 					logger.L().Warn(ctx, "failed to slice build fast path", zap.Error(sErr))
 				}
-				// Errors fall through to ReadAt's retry-on-transition path.
+				// Errors fall through to ReadAt.
 			}
 		}
 	}
@@ -278,42 +313,21 @@ func (b *File) IsCached(ctx context.Context, off, length int64) bool {
 	return true
 }
 
-// retryOnTransition catches a PeerTransitionedError and swaps the header from
-// storage. Returns (true, nil) to signal the caller should continue the loop,
-// or (false, swapErr) if the swap itself failed. RetryAfter backs off repeated
-// post-transition storage 404s.
-//
-// The transition is signaled only after the source upload has finalized, so
-// the header object already exists in storage. A single LoadHeader is enough;
-// polling here would multiply GCS reads under high peer-transition rates.
-func (b *File) retryOnTransition(ctx context.Context, err error) (bool, error) {
-	var transErr *storage.PeerTransitionedError
-	if !errors.As(err, &transErr) {
-		return false, nil
-	}
+// waitTransitionBackoff honors the peer's RetryAfter hint before the caller
+// retries against base storage. Returns ctx.Err() if cancelled during sleep.
+func waitTransitionBackoff(ctx context.Context, fileType DiffType, transErr *storage.PeerTransitionedError) error {
 	if transErr.RetryAfter > 0 {
 		timer := time.NewTimer(transErr.RetryAfter)
 		defer timer.Stop()
-
 		select {
 		case <-timer.C:
 		case <-ctx.Done():
-			return false, ctx.Err()
+			return ctx.Err()
 		}
 	}
+	logger.L().Info(ctx, "peer transition detected, recovering", zap.String("file_type", string(fileType)))
 
-	logger.L().Info(ctx, "peer transition detected, swapping header",
-		zap.String("file_type", string(b.fileType)),
-	)
-
-	hdrPath := storage.Paths{BuildID: b.Header().Metadata.BuildId.String()}.HeaderFile(string(b.fileType))
-	h, loadErr := header.LoadHeader(ctx, b.persistence, hdrPath)
-	if loadErr != nil {
-		return false, fmt.Errorf("failed to swap header: %w", loadErr)
-	}
-	b.SwapHeader(h)
-
-	return true, nil
+	return nil
 }
 
 // buildFileSize returns the uncompressed file size for a build. Returns 0 for
@@ -326,7 +340,7 @@ func (b *File) buildFileSize(h *header.Header, buildID uuid.UUID) int64 {
 	return 0
 }
 
-func (b *File) getBuild(ctx context.Context, buildID uuid.UUID, uncompressedSize int64, ct storage.CompressionType) (Diff, error) {
+func (b *File) getBuild(ctx context.Context, buildID uuid.UUID, uncompressedSize int64, hintCT storage.CompressionType) (Diff, error) {
 	storageDiff, err := newStorageDiff(
 		b.store.cachePath,
 		buildID.String(),
@@ -334,7 +348,7 @@ func (b *File) getBuild(ctx context.Context, buildID uuid.UUID, uncompressedSize
 		int64(b.Header().Metadata.BlockSize),
 		b.metrics,
 		b.persistence,
-		uncompressedSize, ct,
+		uncompressedSize, hintCT,
 		b.store.flags,
 	)
 	if err != nil {

@@ -96,9 +96,9 @@ type gcpObject struct {
 }
 
 var (
-	_ Seekable        = (*gcpObject)(nil)
-	_ Blob            = (*gcpObject)(nil)
-	_ StreamingReader = (*gcpObject)(nil)
+	_ Seekable    = (*gcpObject)(nil)
+	_ Blob        = (*gcpObject)(nil)
+	_ RangeOpener = (*gcpObject)(nil)
 )
 
 func NewGCP(ctx context.Context, bucketName string, limiter *limit.Limiter) (StorageProvider, error) {

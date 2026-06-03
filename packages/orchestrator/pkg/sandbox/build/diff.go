@@ -11,6 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type DiffType string
@@ -28,13 +29,22 @@ const (
 
 type Diff interface {
 	io.Closer
-	storage.SeekableReader
+	block.FramedReader
 	block.FramedSlicer
 	CacheKey() DiffStoreKey
 	CachePath(ctx context.Context) (string, error)
+	// Size returns the logical (uncompressed, U-space) file size.
+	Size(ctx context.Context) (int64, error)
+	// FileSize returns the number of bytes resident in the local cache file
+	// on disk. Used by the DiffStore evictor.
 	FileSize(ctx context.Context) (int64, error)
 	BlockSize() int64
 	Init(ctx context.Context) error
+}
+
+type FrameTableRefresher interface {
+	FrameTable() *storage.FrameTable // nil if the authoritative FT isn't installed yet
+	RefreshFrameTable(ctx context.Context) (*header.Header, error)
 }
 
 type NoDiff struct{}

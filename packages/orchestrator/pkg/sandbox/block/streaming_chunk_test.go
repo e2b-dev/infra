@@ -66,9 +66,9 @@ type testControl struct {
 	onOpen   func()        // optional callback on OpenRangeReader
 }
 
-func newTestChunker(t *testing.T, file storage.Seekable, size int64) *Chunker {
+func newTestChunker(t *testing.T, size int64) *Chunker {
 	t.Helper()
-	c, err := NewChunker(&featureflags.Client{}, size, testBlockSize, file, t.TempDir()+"/cache", newTestMetrics(t))
+	c, err := NewChunker(&featureflags.Client{}, size, testBlockSize, t.TempDir()+"/cache", newTestMetrics(t))
 	require.NoError(t, err)
 
 	return c
@@ -151,25 +151,25 @@ func makeCompressedTestData(tb testing.TB, data []byte) (*storage.FrameTable, *f
 
 type chunkerTestCase struct {
 	name       string
-	newChunker func(t *testing.T, data []byte) (*Chunker, *storage.FrameTable)
+	newChunker func(t *testing.T, data []byte) (*Chunker, storage.RangeOpener, *storage.FrameTable)
 }
 
 var allChunkerTestCases = []chunkerTestCase{
 	{
 		name: "Compressed",
-		newChunker: func(t *testing.T, data []byte) (*Chunker, *storage.FrameTable) {
+		newChunker: func(t *testing.T, data []byte) (*Chunker, storage.RangeOpener, *storage.FrameTable) {
 			t.Helper()
 			ft, getter := makeCompressedTestData(t, data)
 
-			return newTestChunker(t, getter, int64(len(data))), ft
+			return newTestChunker(t, int64(len(data))), getter, ft
 		},
 	},
 	{
 		name: "Uncompressed",
-		newChunker: func(t *testing.T, data []byte) (*Chunker, *storage.FrameTable) {
+		newChunker: func(t *testing.T, data []byte) (*Chunker, storage.RangeOpener, *storage.FrameTable) {
 			t.Helper()
 
-			return newTestChunker(t, &fakeSeekable{data: data}, int64(len(data))), nil
+			return newTestChunker(t, int64(len(data))), &fakeSeekable{data: data}, nil
 		},
 	},
 }
@@ -182,10 +182,10 @@ func TestChunker_BasicSlice(t *testing.T) {
 			t.Parallel()
 
 			data := makeTestData(testFileSize)
-			chunker, ft := tc.newChunker(t, data)
+			chunker, file, ft := tc.newChunker(t, data)
 			defer chunker.Close()
 
-			slice, err := chunker.Slice(t.Context(), 0, testBlockSize, ft)
+			slice, err := chunker.Slice(t.Context(), 0, testBlockSize, file, ft)
 			require.NoError(t, err)
 			require.Equal(t, data[:testBlockSize], slice)
 		})
@@ -201,11 +201,11 @@ func TestChunker_CacheHit(t *testing.T) {
 
 	// Uncompressed only — we need direct access to the fakeSeekable to count fetches.
 	file := &fakeSeekable{data: data}
-	chunker := newTestChunker(t, file, int64(len(data)))
+	chunker := newTestChunker(t, int64(len(data)))
 	defer chunker.Close()
 
 	// First read triggers a fetch.
-	slice1, err := chunker.Slice(t.Context(), 0, testBlockSize, nil)
+	slice1, err := chunker.Slice(t.Context(), 0, testBlockSize, file, nil)
 	require.NoError(t, err)
 	require.Equal(t, data[:testBlockSize], slice1)
 
@@ -213,7 +213,7 @@ func TestChunker_CacheHit(t *testing.T) {
 	require.Positive(t, firstFetches)
 
 	// Second read of the same block — should hit cache.
-	slice2, err := chunker.Slice(t.Context(), 0, testBlockSize, nil)
+	slice2, err := chunker.Slice(t.Context(), 0, testBlockSize, file, nil)
 	require.NoError(t, err)
 	require.Equal(t, data[:testBlockSize], slice2)
 	require.Equal(t, firstFetches, file.fetchCount.Load(), "expected no additional upstream fetch")
@@ -230,17 +230,17 @@ func TestChunker_FullChunkCachedAfterPartialRequest(t *testing.T) {
 			t.Parallel()
 
 			data := makeTestData(testFileSize)
-			chunker, ft := tc.newChunker(t, data)
+			chunker, file, ft := tc.newChunker(t, data)
 			defer chunker.Close()
 
-			_, err := chunker.Slice(t.Context(), 0, testBlockSize, ft)
+			_, err := chunker.Slice(t.Context(), 0, testBlockSize, file, ft)
 			require.NoError(t, err)
 
 			// The second Slice joins the in-flight session (or hits
 			// cache if the fetch already completed). Either way it blocks
 			// until the data is available — no polling needed.
 			lastOff := int64(testFileSize) - testBlockSize
-			slice, err := chunker.Slice(t.Context(), lastOff, testBlockSize, ft)
+			slice, err := chunker.Slice(t.Context(), lastOff, testBlockSize, file, ft)
 			require.NoError(t, err)
 			require.Equal(t, data[lastOff:lastOff+testBlockSize], slice)
 		})
@@ -342,14 +342,15 @@ func TestChunker_ErrorKeepsPartialData(t *testing.T) {
 
 	data := makeTestData(testFileSize)
 
-	chunker := newTestChunker(t, &fakeSeekable{data: data, failAfter: int64(testFileSize / 2)}, int64(len(data)))
+	file := &fakeSeekable{data: data, failAfter: int64(testFileSize / 2)}
+	chunker := newTestChunker(t, int64(len(data)))
 	defer chunker.Close()
 
 	lastOff := int64(testFileSize) - testBlockSize
-	_, err := chunker.Slice(t.Context(), lastOff, testBlockSize, nil)
+	_, err := chunker.Slice(t.Context(), lastOff, testBlockSize, file, nil)
 	require.Error(t, err)
 
-	slice, err := chunker.Slice(t.Context(), 0, testBlockSize, nil)
+	slice, err := chunker.Slice(t.Context(), 0, testBlockSize, file, nil)
 	require.NoError(t, err)
 	require.Equal(t, data[:testBlockSize], slice)
 }
@@ -399,13 +400,13 @@ func TestChunker_LastBlockPartial(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			chunker, ft := tc.newChunker(t, data)
+			chunker, file, ft := tc.newChunker(t, data)
 			defer chunker.Close()
 
 			lastBlockOff := (int64(size) / testBlockSize) * testBlockSize
 			remaining := int64(size) - lastBlockOff
 
-			slice, err := chunker.Slice(t.Context(), lastBlockOff, remaining, ft)
+			slice, err := chunker.Slice(t.Context(), lastBlockOff, remaining, file, ft)
 			require.NoError(t, err)
 			require.Equal(t, data[lastBlockOff:], slice)
 		})
@@ -469,16 +470,17 @@ func TestChunker_PanicRecovery(t *testing.T) {
 	data := makeTestData(testFileSize)
 	panicAt := int64(testFileSize / 2)
 
-	chunker := newTestChunker(t, &panicSeekable{data: data, panicAfter: panicAt}, int64(len(data)))
+	file := &panicSeekable{data: data, panicAfter: panicAt}
+	chunker := newTestChunker(t, int64(len(data)))
 	defer chunker.Close()
 
 	// Request data past the panic point — should get an error, not hang or crash
 	lastOff := int64(testFileSize) - testBlockSize
-	_, err := chunker.Slice(t.Context(), lastOff, testBlockSize, nil)
+	_, err := chunker.Slice(t.Context(), lastOff, testBlockSize, file, nil)
 	require.Error(t, err)
 
 	// Data before the panic point should still be cached
-	slice, err := chunker.Slice(t.Context(), 0, testBlockSize, nil)
+	slice, err := chunker.Slice(t.Context(), 0, testBlockSize, file, nil)
 	require.NoError(t, err)
 	require.Equal(t, data[:testBlockSize], slice)
 }
@@ -491,7 +493,7 @@ func TestChunker_ConcurrentStress(t *testing.T) {
 			t.Parallel()
 
 			data := makeTestData(testFileSize)
-			chunker, ft := tc.newChunker(t, data)
+			chunker, file, ft := tc.newChunker(t, data)
 			defer chunker.Close()
 
 			const numGoroutines = 50
@@ -504,7 +506,7 @@ func TestChunker_ConcurrentStress(t *testing.T) {
 				eg.Go(func() error {
 					for j := range opsPerGoroutine {
 						off := int64(((i*opsPerGoroutine)+j)%(len(data)/int(readLen))) * readLen
-						slice, err := chunker.Slice(t.Context(), off, readLen, ft)
+						slice, err := chunker.Slice(t.Context(), off, readLen, file, ft)
 						if err != nil {
 							return fmt.Errorf("goroutine %d op %d: %w", i, j, err)
 						}
@@ -522,11 +524,19 @@ func TestChunker_ConcurrentStress(t *testing.T) {
 	}
 }
 
-// controlledChunker wraps a Chunker with channel-based flow control for tests.
-// advance gates reads; opened/consumed/closed signal fetch lifecycle events.
+// controlledChunker bundles a Chunker, its upstream, and the channels
+// gating reads through that upstream.
 type controlledChunker struct {
 	*Chunker
 	*testControl
+
+	file *fakeSeekable
+}
+
+// Slice forwards to the embedded Chunker with the bundled upstream — saves
+// each test from passing cc.file by hand.
+func (cc *controlledChunker) Slice(ctx context.Context, off, length int64, ft *storage.FrameTable) ([]byte, error) {
+	return cc.Chunker.Slice(ctx, off, length, cc.file, ft)
 }
 
 func newControlledChunker(t *testing.T, data []byte) *controlledChunker {
@@ -538,12 +548,12 @@ func newControlledChunker(t *testing.T, data []byte) *controlledChunker {
 		opened:   make(chan struct{}, 10),
 		closed:   make(chan struct{}, 10),
 	}
-
 	file := &fakeSeekable{data: data, ctrl: ctrl}
 
 	return &controlledChunker{
-		Chunker:     newTestChunker(t, file, int64(len(data))),
+		Chunker:     newTestChunker(t, int64(len(data))),
 		testControl: ctrl,
+		file:        file,
 	}
 }
 
