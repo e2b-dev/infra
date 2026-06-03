@@ -334,11 +334,8 @@ module "nomad" {
   build_cluster_size = var.build_cluster_size
   api_secret         = module.init.api_secret
 
-  redis_managed       = var.redis_managed
-  redis_port          = local.redis_port
-  redis_url           = local.redis_url
-  redis_cluster_url   = local.redis_cluster_url
-  redis_tls_ca_base64 = local.redis_tls_ca_base64
+  redis_managed = var.redis_managed
+  redis_port    = local.redis_port
 
   loki_bucket_name = module.init.loki_bucket_name
   loki_port        = local.loki_port
