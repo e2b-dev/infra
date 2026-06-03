@@ -47,7 +47,7 @@ func (s *Server) leaveSandboxStart() {
 	s.sandboxStartMu.RUnlock()
 }
 
-func (s *Server) waitSandboxStarts(ctx context.Context) error {
+func (s *Server) waitServerSandboxStarts(ctx context.Context) error {
 	logger.L().Info(ctx, "waiting for in-flight sandbox start operations to finish")
 
 	ticker := time.NewTicker(sandboxStartWaitPollInterval)
@@ -68,6 +68,35 @@ func (s *Server) waitSandboxStarts(ctx context.Context) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+func (s *Server) waitSandboxStarts(ctx context.Context) error {
+	if err := s.waitServerSandboxStarts(ctx); err != nil {
+		return err
+	}
+
+	if s.sandboxFactory != nil {
+		return s.sandboxFactory.WaitSandboxStarts(ctx)
+	}
+
+	return nil
+}
+
+func (s *Server) tryWaitSandboxStarts(ctx context.Context) bool {
+	if !s.sandboxStartMu.TryLock() {
+		logger.L().Warn(ctx, "in-flight sandbox start operations still running")
+
+		return false
+	}
+
+	s.sandboxStartMu.Unlock()
+	logger.L().Info(ctx, "in-flight sandbox start operations finished")
+
+	if s.sandboxFactory != nil {
+		return s.sandboxFactory.TryWaitSandboxStarts(ctx)
+	}
+
+	return true
 }
 
 func (s *Server) waitForAcquire(ctx context.Context) error {

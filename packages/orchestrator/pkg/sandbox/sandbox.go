@@ -61,12 +61,17 @@ const (
 	StartTypeResume = "resume" // resume from a snapshot (the common runtime path)
 )
 
+// ErrFactoryDraining is returned when a sandbox start is attempted after the factory entered drain mode.
+var ErrFactoryDraining = errors.New("sandbox factory is draining")
+
 var SandboxHttpTransport = otelhttp.NewTransport(
 	&http.Transport{
 		DisableKeepAlives: true,
 		ForceAttemptHTTP2: false,
 	},
 )
+
+const factoryStartWaitPollInterval = 50 * time.Millisecond
 
 // Http client that should be used for requests to sandboxes.
 var sandboxHttpClient = http.Client{
@@ -312,6 +317,10 @@ type Factory struct {
 	hostStatsDelivery hoststats.Delivery
 	cgroupManager     cgroup.Manager
 	egressProxy       network.EgressProxy
+
+	drainOnce      sync.Once
+	drainDone      chan struct{}
+	sandboxStartMu sync.RWMutex
 }
 
 func NewFactory(
@@ -333,6 +342,96 @@ func NewFactory(
 		hostStatsDelivery: hostStatsDelivery,
 		cgroupManager:     cgroupManager,
 		egressProxy:       egressProxy,
+		drainDone:         make(chan struct{}),
+	}
+}
+
+func (f *Factory) StartDraining(ctx context.Context) {
+	if f == nil || f.drainDone == nil {
+		return
+	}
+
+	f.drainOnce.Do(func() {
+		trackedSandboxes := 0
+		if f.Sandboxes != nil {
+			trackedSandboxes = len(f.Sandboxes.LifecycleItems())
+		}
+
+		logger.L().Info(ctx, "sandbox factory entering drain mode", zap.Int("tracked_sandboxes", trackedSandboxes))
+		close(f.drainDone)
+	})
+}
+
+func (f *Factory) enterSandboxStart() error {
+	if err := f.rejectIfDraining(); err != nil {
+		return err
+	}
+
+	f.sandboxStartMu.RLock()
+	if err := f.rejectIfDraining(); err != nil {
+		f.sandboxStartMu.RUnlock()
+
+		return err
+	}
+
+	return nil
+}
+
+func (f *Factory) leaveSandboxStart() {
+	f.sandboxStartMu.RUnlock()
+}
+
+func (f *Factory) WaitSandboxStarts(ctx context.Context) error {
+	logger.L().Info(ctx, "waiting for in-flight sandbox factory start operations to finish")
+
+	ticker := time.NewTicker(factoryStartWaitPollInterval)
+	defer ticker.Stop()
+
+	for {
+		if f.sandboxStartMu.TryLock() {
+			logger.L().Info(ctx, "in-flight sandbox factory start gate acquired")
+			f.sandboxStartMu.Unlock()
+			logger.L().Info(ctx, "in-flight sandbox factory start operations finished")
+
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("waiting for in-flight sandbox factory start operations: %w", ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+// TryWaitSandboxStarts returns whether no sandbox factory starts are in flight.
+func (f *Factory) TryWaitSandboxStarts(ctx context.Context) bool {
+	if f == nil {
+		return true
+	}
+
+	if !f.sandboxStartMu.TryLock() {
+		logger.L().Warn(ctx, "in-flight sandbox factory start operations still running")
+
+		return false
+	}
+
+	f.sandboxStartMu.Unlock()
+	logger.L().Info(ctx, "in-flight sandbox factory start operations finished")
+
+	return true
+}
+
+func (f *Factory) rejectIfDraining() error {
+	if f == nil || f.drainDone == nil {
+		return nil
+	}
+
+	select {
+	case <-f.drainDone:
+		return ErrFactoryDraining
+	default:
+		return nil
 	}
 }
 
@@ -358,6 +457,10 @@ func (f *Factory) CreateSandbox(
 	ctx, span := tracer.Start(ctx, "create sandbox")
 	defer span.End()
 	defer handleSpanError(span, &e)
+	if err := f.enterSandboxStart(); err != nil {
+		return nil, err
+	}
+	defer f.leaveSandboxStart()
 
 	execCtx, execSpan := startExecutionSpan(ctx)
 
@@ -610,6 +713,10 @@ func (f *Factory) ResumeSandbox(
 	ctx, span := tracer.Start(ctx, "resume sandbox")
 	defer span.End()
 	defer handleSpanError(span, &e)
+	if err := f.enterSandboxStart(); err != nil {
+		return nil, err
+	}
+	defer f.leaveSandboxStart()
 
 	execCtx, execSpan := startExecutionSpan(ctx)
 

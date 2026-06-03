@@ -920,7 +920,7 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 
 // setupSandboxLifecycle sets up the cleanup goroutine for a sandbox.
 func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox) {
-	s.sandboxLifecycleWG.Go(func() {
+	go func() {
 		ctx, childSpan := tracer.Start(context.WithoutCancel(ctx), "stop sandbox-lifecycle", trace.WithNewRoot())
 		defer childSpan.End()
 
@@ -940,7 +940,7 @@ func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox
 		}
 
 		sbxlogger.E(sbx).Info(ctx, "Sandbox stopped")
-	})
+	}()
 }
 
 // stopSandboxAsync stops the sandbox in a background goroutine.

@@ -4,6 +4,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -12,8 +13,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 )
+
+var errFactoryStartEntered = errors.New("factory start entered")
 
 func TestWaitSandboxStartsCanceledDoesNotBlockDrainingRejection(t *testing.T) {
 	t.Parallel()
@@ -58,6 +62,16 @@ func TestWaitSandboxStartsCanceledDoesNotBlockDrainingRejection(t *testing.T) {
 		t.Fatal("enterSandboxStart blocked instead of rejecting while draining")
 	}
 }
+func TestTryWaitSandboxStartsDoesNotBlock(t *testing.T) {
+	t.Parallel()
+
+	s := &Server{done: make(chan struct{})}
+	s.sandboxStartMu.RLock()
+	defer s.sandboxStartMu.RUnlock()
+
+	require.False(t, s.tryWaitSandboxStarts(t.Context()))
+}
+
 func TestForceStopSandboxesWaitsForInFlightStarts(t *testing.T) {
 	t.Parallel()
 
@@ -105,6 +119,112 @@ func TestForceStopSandboxesReturnsInFlightStartContextError(t *testing.T) {
 	require.ErrorIs(t, s.ForceStopSandboxes(ctx), context.Canceled)
 }
 
+func TestForceStopSandboxesUntilStartsFinishStopsLifecycleAfterWaitError(t *testing.T) {
+	t.Parallel()
+
+	lateSandbox := &sandbox.Sandbox{}
+	var mu sync.Mutex
+	tracked := []*sandbox.Sandbox{}
+	stopped := 0
+
+	firstForceStop := make(chan struct{})
+	var firstForceStopOnce sync.Once
+	releaseWait := make(chan struct{})
+
+	lifecycleItems := func() []*sandbox.Sandbox {
+		mu.Lock()
+		defer mu.Unlock()
+
+		return append([]*sandbox.Sandbox(nil), tracked...)
+	}
+
+	forceStop := func(items []*sandbox.Sandbox) error {
+		firstForceStopOnce.Do(func() { close(firstForceStop) })
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		stopped += len(items)
+		if len(items) > 0 {
+			tracked = nil
+		}
+
+		return nil
+	}
+
+	waitSandboxStarts := func(context.Context) error {
+		<-releaseWait
+
+		return context.Canceled
+	}
+
+	done := make(chan []error, 1)
+	go func() {
+		done <- forceStopSandboxesUntilStartsFinish(t.Context(), lifecycleItems, forceStop, waitSandboxStarts)
+	}()
+
+	select {
+	case <-firstForceStop:
+	case <-time.After(time.Second):
+		t.Fatal("force stop did not take initial lifecycle snapshot")
+	}
+
+	mu.Lock()
+	tracked = []*sandbox.Sandbox{lateSandbox}
+	mu.Unlock()
+	close(releaseWait)
+
+	select {
+	case errs := <-done:
+		require.ErrorIs(t, errors.Join(errs...), context.Canceled)
+		require.Equal(t, 1, stopped)
+	case <-time.After(time.Second):
+		t.Fatal("force stop did not finish after start wait error")
+	}
+}
+
+func TestDrainSandboxesDrainsFactoryAfterServerStartsFinish(t *testing.T) {
+	t.Parallel()
+
+	s := drainOrderTestServer()
+	s.sandboxStartMu.RLock()
+	locked := true
+	defer func() {
+		if locked {
+			s.sandboxStartMu.RUnlock()
+		}
+	}()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- s.DrainSandboxes(t.Context())
+	}()
+
+	select {
+	case <-s.done:
+	case <-time.After(time.Second):
+		t.Fatal("DrainSandboxes did not start draining")
+	}
+
+	time.Sleep(2 * sandboxStartWaitPollInterval)
+	err := resumeSandboxStartErr(t.Context(), s.sandboxFactory)
+	require.ErrorIs(t, err, errFactoryStartEntered)
+	require.NotErrorIs(t, err, sandbox.ErrFactoryDraining)
+
+	s.sandboxStartMu.RUnlock()
+	locked = false
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("DrainSandboxes did not return after server starts finished")
+	}
+
+	err = resumeSandboxStartErr(t.Context(), s.sandboxFactory)
+	require.ErrorIs(t, err, sandbox.ErrFactoryDraining)
+}
+
 func TestWaitForceStopSandboxesReturnsContextError(t *testing.T) {
 	t.Parallel()
 
@@ -125,4 +245,23 @@ func forceStopTestServer() *Server {
 			Sandboxes: sandbox.NewSandboxesMap(),
 		},
 	}
+}
+
+func drainOrderTestServer() *Server {
+	return &Server{
+		done:           make(chan struct{}),
+		sandboxFactory: sandbox.NewFactory(cfg.BuilderConfig{}, nil, nil, nil, nil, nil, nil, sandbox.NewSandboxesMap()),
+	}
+}
+
+func resumeSandboxStartErr(ctx context.Context, factory *sandbox.Factory) (err error) {
+	defer func() {
+		if recover() != nil {
+			err = errFactoryStartEntered
+		}
+	}()
+
+	_, err = factory.ResumeSandbox(ctx, nil, nil, sandbox.RuntimeMetadata{}, time.Time{}, time.Time{}, nil)
+
+	return err
 }
