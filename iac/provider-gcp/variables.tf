@@ -591,13 +591,14 @@ variable "client_clusters_config" {
       count     = number
     })
 
-    hugepages_percentage   = optional(number)
-    network_interface_type = optional(string)
-    node_labels            = optional(list(string), [])
-    region                 = optional(string)
-    zone                   = optional(string)
-    zones                  = optional(list(string))
-    filestore_zone         = optional(string)
+    hugepages_percentage             = optional(number)
+    network_interface_type           = optional(string)
+    node_labels                      = optional(list(string), [])
+    region                           = optional(string)
+    zone                             = optional(string)
+    zones                            = optional(list(string))
+    filestore_zone                   = optional(string)
+    distribution_policy_target_shape = optional(string, "BALANCED")
   }))
 
   description = <<EOT

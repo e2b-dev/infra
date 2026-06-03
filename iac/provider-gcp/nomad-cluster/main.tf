@@ -258,12 +258,13 @@ module "client_cluster" {
   autoscaler       = each.value.autoscaler
 
   // This is here for backwards compatibility
-  cluster_name              = each.key == "default" ? "${var.prefix}${var.client_cluster_name}" : "${var.prefix}${var.client_cluster_name}-${each.key}"
-  image_family              = var.client_image_family
-  network_name              = var.network_name
-  base_hugepages_percentage = coalesce((each.value.hugepages_percentage), local.client_base_hugepages_percentage)
-  network_interface_type    = each.value.network_interface_type
-  node_labels               = each.value.node_labels
+  cluster_name                     = each.key == "default" ? "${var.prefix}${var.client_cluster_name}" : "${var.prefix}${var.client_cluster_name}-${each.key}"
+  image_family                     = var.client_image_family
+  network_name                     = var.network_name
+  base_hugepages_percentage        = coalesce((each.value.hugepages_percentage), local.client_base_hugepages_percentage)
+  network_interface_type           = each.value.network_interface_type
+  node_labels                      = each.value.node_labels
+  distribution_policy_target_shape = each.value.distribution_policy_target_shape
 
   cluster_tag_name                         = var.cluster_tag_name
   node_pool                                = var.orchestrator_node_pool

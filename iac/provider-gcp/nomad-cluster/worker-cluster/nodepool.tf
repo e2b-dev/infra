@@ -124,7 +124,7 @@ resource "google_compute_region_instance_group_manager" "pool" {
     initial_delay_sec = 600
   }
 
-  distribution_policy_target_shape = "BALANCED"
+  distribution_policy_target_shape = var.distribution_policy_target_shape
   distribution_policy_zones        = var.zones
 
   # Server is a stateful cluster, so the update strategy used to roll out a new GCE Instance Template must be

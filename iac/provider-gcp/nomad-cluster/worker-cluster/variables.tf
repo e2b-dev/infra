@@ -7,6 +7,18 @@ variable "cluster_size" {
   }
 }
 
+variable "distribution_policy_target_shape" {
+  description = "Target distribution shape for the regional managed instance group."
+  type        = string
+  default     = "BALANCED"
+  nullable    = false
+
+  validation {
+    condition     = contains(["ANY", "BALANCED", "EVEN", "ANY_SINGLE_ZONE"], var.distribution_policy_target_shape)
+    error_message = "distribution_policy_target_shape must be one of ANY, BALANCED, EVEN, or ANY_SINGLE_ZONE."
+  }
+}
+
 variable "autoscaler" {
   type = object({
     size_max      = optional(number)
