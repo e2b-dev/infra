@@ -7,6 +7,11 @@ locals {
     for key, value in var.docker_reverse_proxy_env_vars : key => trimspace(value)
     if value != null && try(trimspace(value), "") != ""
   }
+
+  filestore_cleanup_env_vars = {
+    for key, value in var.filestore_cleanup_env_vars : key => trimspace(value)
+    if value != null && try(trimspace(value), "") != ""
+  }
 }
 
 # API
@@ -529,6 +534,6 @@ resource "nomad_job" "clean_nfs_cache" {
     max_concurrent_delete        = var.filestore_cache_cleanup_max_concurrent_delete
     max_retries                  = var.filestore_cache_cleanup_max_retries
     otel_collector_grpc_endpoint = "localhost:${var.otel_collector_grpc_port}"
-    launch_darkly_api_key        = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+    job_env_vars                 = local.filestore_cleanup_env_vars
   })
 }

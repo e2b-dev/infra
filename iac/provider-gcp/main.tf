@@ -210,6 +210,10 @@ locals {
     DOMAIN_NAME                   = var.domain_name
   }, var.docker_reverse_proxy_env_vars)
 
+  filestore_cleanup_env_vars = merge({
+    LAUNCH_DARKLY_API_KEY = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+  }, var.filestore_cleanup_env_vars)
+
   # Normalize additional_api_paths_handled_by_ingress to support both legacy (list of strings)
   # and new (list of objects) formats. Strings are converted to objects with paths = [string].
   normalized_api_paths_handled_by_ingress = [
@@ -488,6 +492,7 @@ module "nomad" {
   filestore_cache_cleanup_max_concurrent_scan   = var.filestore_cache_cleanup_max_concurrent_scan
   filestore_cache_cleanup_max_concurrent_delete = var.filestore_cache_cleanup_max_concurrent_delete
   filestore_cache_cleanup_max_retries           = var.filestore_cache_cleanup_max_retries
+  filestore_cleanup_env_vars                    = local.filestore_cleanup_env_vars
 
   volume_token_issuer           = local.volume_token_issuer
   volume_token_signing_key      = local.volume_token_signing_key
