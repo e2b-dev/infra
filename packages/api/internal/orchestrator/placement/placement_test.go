@@ -103,6 +103,35 @@ func TestPlaceSandbox_WithPreferredNode(t *testing.T) {
 	algorithm.AssertNotCalled(t, "chooseNode")
 }
 
+func TestPlaceSandbox_SkipsPreferredNodeWithMismatchedLabels(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	originNode := nodemanager.NewTestNode("origin", api.NodeStatusReady, 3, 4)
+	targetNode := nodemanager.NewTestNode("target", api.NodeStatusReady, 5, 4, nodemanager.WithLabels([]string{"r-us-central1"}))
+	nodes := []*nodemanager.Node{originNode, targetNode}
+
+	sbxRequest := &orchestrator.SandboxCreateRequest{
+		Sandbox: &orchestrator.SandboxConfig{
+			SandboxId: "test-sandbox",
+			Vcpu:      2,
+			RamMb:     1024,
+		},
+	}
+
+	algorithm := &mockAlgorithm{}
+	algorithm.On("chooseNode", mock.Anything, nodes, mock.MatchedBy(func(excluded map[string]struct{}) bool {
+		_, ok := excluded[originNode.ID]
+		return ok
+	}), mock.Anything, mock.Anything, true, []string{"r-us-central1"}).
+		Return(targetNode, nil).Once()
+
+	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, originNode, sbxRequest, machineinfo.MachineInfo{}, true, []string{"r-us-central1"})
+	require.NoError(t, err)
+	assert.Equal(t, targetNode, resultNode)
+	algorithm.AssertExpectations(t)
+}
+
 func TestPlaceSandbox_ContextTimeout(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Millisecond)

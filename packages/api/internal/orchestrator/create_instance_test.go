@@ -181,3 +181,61 @@ func TestCreateSandbox_StaleDataAfterConcurrentPause(t *testing.T) {
 			"CreateSandbox must use the latest metadata, not stale pre-lock values")
 	})
 }
+
+func TestCreateSandbox_ResumeUsesSchedulingLabelsOverOriginNode(t *testing.T) {
+	t.Parallel()
+
+	o, originNode := newCreateSandboxTestOrchestrator(t)
+
+	td := ldtestdata.DataSource()
+	td.Update(td.Flag(featureflags.SandboxLabelBasedSchedulingFlag.Key()).VariationForAll(true))
+	ffClient, err := featureflags.NewClientWithDatasource(td)
+	require.NoError(t, err)
+	o.featureFlagsClient = ffClient
+
+	targetNode := nodemanager.NewTestNode(
+		"regional-node",
+		api.NodeStatusReady,
+		0,
+		8,
+		nodemanager.WithLabels([]string{"r-us-central1"}),
+		nodemanager.WithCPUInfo("x86_64", "6", "207"),
+	)
+	targetNode.ClusterID = uuid.Nil
+	o.registerNode(targetNode)
+
+	build := testBuild()
+	build.CpuArchitecture = utPtr("x86_64")
+	build.CpuFamily = utPtr("6")
+	build.CpuModel = utPtr("106")
+
+	team := testTeam()
+	team.Team.SandboxSchedulingLabels = []string{"r-us-central1"}
+
+	now := time.Now()
+	sbx, apiErr := o.CreateSandbox(
+		t.Context(),
+		"sbx-resume-label-"+uuid.New().String()[:8],
+		uuid.New().String(),
+		team,
+		func(_ context.Context) (SandboxMetadata, *api.APIError) {
+			return SandboxMetadata{
+				TemplateID:     "tpl-v1",
+				BaseTemplateID: "base-tpl",
+				Build:          build,
+				NodeID:         &originNode.ID,
+			}, nil
+		},
+		now,
+		now.Add(time.Hour),
+		time.Hour,
+		true,
+		sandbox.CreationMetadata{IsResume: true},
+	)
+	require.Nil(t, apiErr)
+	assert.Equal(t, targetNode.ID, sbx.NodeID)
+}
+
+func utPtr[T any](v T) *T {
+	return &v
+}
