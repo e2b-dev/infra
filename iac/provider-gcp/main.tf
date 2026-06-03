@@ -379,8 +379,6 @@ module "nomad" {
   custom_envs_repository_name                            = google_artifact_registry_repository.custom_environments_repository.name
   postgres_connection_string_secret_name                 = module.init.postgres_connection_string_secret_name
   postgres_read_replica_connection_string_secret_version = google_secret_manager_secret_version.postgres_read_replica_connection_string
-  redis_cluster_url_secret_version                       = module.init.redis_cluster_url_secret_version
-  redis_tls_ca_base64_secret_version                     = module.init.redis_tls_ca_base64_secret_version
 
   # Click Proxy
   client_proxy_count               = var.client_proxy_count

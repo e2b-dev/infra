@@ -80,23 +80,6 @@ variable "redis_port" {
   type = number
 }
 
-variable "redis_url" {
-  type    = string
-  default = ""
-}
-
-variable "redis_cluster_url" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
-variable "redis_tls_ca_base64" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
 # ClickHouse
 variable "clickhouse_cluster_size" {
   type = number

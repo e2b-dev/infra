@@ -1,7 +1,5 @@
 locals {
   clickhouse_connection_string = var.clickhouse_server_count > 0 ? "clickhouse://${var.clickhouse_username}:${var.clickhouse_password}@clickhouse.service.consul:${var.clickhouse_server_port.port}/${var.clickhouse_database}" : ""
-  redis_url                    = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
-  redis_cluster_url            = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
 }
 
 # API
@@ -28,14 +26,6 @@ provider "nomad" {
 // Its already set up in Nomad server config, but from there its taked only for newly created clusters so we need to make sure its apply here to existing.
 resource "nomad_scheduler_config" "config" {
   memory_oversubscription_enabled = true
-}
-
-data "google_secret_manager_secret_version" "redis_cluster_url" {
-  secret = var.redis_cluster_url_secret_version.secret
-}
-
-data "google_secret_manager_secret_version" "redis_tls_ca_base64" {
-  secret = var.redis_tls_ca_base64_secret_version.secret
 }
 
 module "ingress" {
