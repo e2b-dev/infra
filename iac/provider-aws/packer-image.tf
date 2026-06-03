@@ -25,11 +25,8 @@ data "packer_files" "orch" {
   )
 }
 
-resource "packer_image" "orch" {
-  directory     = local.packer_dir
-  manifest_path = local.packer_manifest_path
-
-  variables = {
+locals {
+  packer_variables = {
     prefix                 = var.prefix
     aws_region             = data.aws_region.current.id
     aws_profile            = var.aws_profile
@@ -39,9 +36,21 @@ resource "packer_image" "orch" {
     nomad_version          = var.packer_nomad_version
     source_ami_filter_name = var.packer_source_ami_filter_name
   }
+}
 
+resource "packer_image" "orch" {
+  directory     = local.packer_dir
+  manifest_path = local.packer_manifest_path
+
+  variables = local.packer_variables
+
+  # Rebuild when the template/scripts change (files) OR when any build variable changes
+  # (variables). The toowoxx/packer provider only re-runs `packer build` when a trigger value
+  # changes; variable changes alone do not, so a version/base-image bump would otherwise leave
+  # the manifest (and every node pool that reads it) pinned to the previously built image.
   triggers = {
-    files = data.packer_files.orch.files_hash
+    files     = data.packer_files.orch.files_hash
+    variables = sha256(jsonencode(local.packer_variables))
   }
 }
 

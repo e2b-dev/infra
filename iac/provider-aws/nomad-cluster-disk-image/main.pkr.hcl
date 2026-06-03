@@ -21,6 +21,11 @@ source "amazon-ebs" "ubuntu" {
   subnet_id                   = var.subnet_id
   associate_public_ip_address = true
 
+  # The build runs on a public subnet with a public IP (for package egress), so restrict the
+  # builder's temporary SSH security group to the build runner's own public IP instead of the
+  # default world-open 0.0.0.0/0. Mirrors the IAP-only lockdown on the GCP build host.
+  temporary_security_group_source_public_ip = true
+
   // Ubuntu Server 24.04 LTS (HVM), SSD Volume Type
   source_ami_filter {
     filters = {

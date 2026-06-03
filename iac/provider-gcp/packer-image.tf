@@ -62,11 +62,8 @@ resource "google_compute_firewall" "packer_build_deny" {
   source_ranges = ["0.0.0.0/0"]
 }
 
-resource "packer_image" "orch" {
-  directory     = local.packer_dir
-  manifest_path = local.packer_manifest_path
-
-  variables = {
+locals {
+  packer_variables = {
     gcp_project_id = var.gcp_project_id
     gcp_zone       = var.gcp_zone
     prefix         = var.prefix
@@ -76,9 +73,21 @@ resource "packer_image" "orch" {
     nomad_version  = var.packer_nomad_version
     source_image   = var.packer_source_image
   }
+}
 
+resource "packer_image" "orch" {
+  directory     = local.packer_dir
+  manifest_path = local.packer_manifest_path
+
+  variables = local.packer_variables
+
+  # Rebuild when the template/scripts change (files) OR when any build variable changes
+  # (variables). The toowoxx/packer provider only re-runs `packer build` when a trigger value
+  # changes; variable changes alone do not, so a version/base-image bump would otherwise leave
+  # the manifest (and every node pool that reads it) pinned to the previously built image.
   triggers = {
-    files = data.packer_files.orch.files_hash
+    files     = data.packer_files.orch.files_hash
+    variables = sha256(jsonencode(local.packer_variables))
   }
 
   depends_on = [
