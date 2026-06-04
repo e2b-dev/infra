@@ -51,9 +51,21 @@ func TestValidateMetadata(t *testing.T) {
 			wantErr:  "non-printable-ASCII",
 		},
 		{
-			name:     "oversized value rejected",
-			metadata: map[string]string{"k": strings.Repeat("v", MaxMetadataValueLen+1)},
-			wantErr:  "value for key",
+			name:     "large single value within budget ok",
+			metadata: map[string]string{"k": strings.Repeat("v", 2048)},
+		},
+		{
+			name:     "oversized total rejected",
+			metadata: map[string]string{"k": strings.Repeat("v", MaxMetadataTotalLen)},
+			wantErr:  "total metadata size",
+		},
+		{
+			name: "total across multiple keys rejected",
+			metadata: map[string]string{
+				"a": strings.Repeat("v", MaxMetadataTotalLen/2),
+				"b": strings.Repeat("v", MaxMetadataTotalLen/2),
+			},
+			wantErr: "total metadata size",
 		},
 	}
 
