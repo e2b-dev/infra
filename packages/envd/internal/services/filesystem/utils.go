@@ -1,7 +1,6 @@
 package filesystem
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"os/user"
@@ -74,12 +73,10 @@ func entryInfo(path string) (*rpc.EntryInfo, error) {
 func eventEntryInfo(logger *zerolog.Logger, path string) *rpc.EntryInfo {
 	entry, err := entryInfo(path)
 	if err != nil {
-		var connectErr *connect.Error
-		if errors.As(err, &connectErr) && connectErr.Code() == connect.CodeNotFound {
-			return nil
+		// A missing entry is expected for remove and rename-away events, so it is not logged.
+		if connect.CodeOf(err) != connect.CodeNotFound {
+			logger.Warn().Err(err).Str("path", path).Msg("failed to get entry info for filesystem event")
 		}
-
-		logger.Warn().Err(err).Str("path", path).Msg("failed to get entry info for filesystem event")
 
 		return nil
 	}
