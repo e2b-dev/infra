@@ -45,6 +45,11 @@ type Uffd struct {
 	memfd      atomic.Pointer[block.Memfd]
 	handler    utils.SetOnce[*userfaultfd.Userfaultfd]
 	fdExit     utils.SetOnce[*fdexit.FdExit]
+	mu         sync.Mutex
+	onFailure  func(context.Context, string, error) // callback when handle fails
+	failedErr  error
+	failedSbx  string
+	failedCtx  context.Context
 }
 
 var _ MemoryBackend = (*Uffd)(nil)
@@ -57,7 +62,28 @@ func New(memfile block.ReadonlyDevice, socketPath string) *Uffd {
 		memfile:    memfile,
 		handler:    *utils.NewSetOnce[*userfaultfd.Userfaultfd](),
 		fdExit:     *utils.NewSetOnce[*fdexit.FdExit](),
+		onFailure:  nil,
 	}
+}
+
+// SetOnFailure sets a callback to be invoked when handle fails.
+// The callback receives the context, sandbox ID, and error.
+// If a failure has already occurred before this is called, the callback is
+// invoked immediately in a new goroutine with the stored failure details.
+func (u *Uffd) SetOnFailure(fn func(context.Context, string, error)) {
+	u.mu.Lock()
+	u.onFailure = fn
+	if u.failedErr != nil && fn != nil {
+		go fn(u.failedCtx, u.failedSbx, u.failedErr)
+	}
+	u.mu.Unlock()
+}
+
+// GetOnFailure returns the currently set failure callback (for testing).
+func (u *Uffd) GetOnFailure() func(context.Context, string, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.onFailure
 }
 
 func (u *Uffd) Prefault(ctx context.Context, offset int64, data []byte) error {
@@ -97,13 +123,25 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 		ctx, span := tracer.Start(ctx, "serve uffd")
 		defer span.End()
 
-		// TODO: If the handle function fails, we should kill the sandbox
 		handleErr := u.handle(ctx, sandboxId, fdExit)
 
 		// If handle failed before setting the handler value, set an error to unblock
 		// any waiters (e.g., prefetcher goroutines waiting on Prefault).
 		if handleErr != nil {
 			u.handler.SetError(handleErr)
+			logger.L().Error(ctx, "uffd handle failed",
+				logger.WithSandboxID(sandboxId),
+				zap.Error(handleErr))
+			// Persist failure state and invoke callback under lock.
+			// Storing the state ensures late-registered callbacks still receive the event.
+			u.mu.Lock()
+			u.failedErr = handleErr
+			u.failedSbx = sandboxId
+			u.failedCtx = ctx
+			if u.onFailure != nil {
+				go u.onFailure(ctx, sandboxId, handleErr)
+			}
+			u.mu.Unlock()
 		}
 
 		closeErr := u.lis.Close()
