@@ -63,8 +63,8 @@ func TestWatcherIncludeEntryInfo(t *testing.T) {
 			ctx := authn.SetInfo(t.Context(), u)
 
 			created, err := svc.CreateWatcher(ctx, connect.NewRequest(&filesystem.CreateWatcherRequest{
-				Path:             root,
-				IncludeEntryinfo: tt.includeEntryInfo,
+				Path:         root,
+				IncludeEntry: tt.includeEntryInfo,
 			}))
 			require.NoError(t, err)
 			watcherID := created.Msg.GetWatcherId()
@@ -113,8 +113,8 @@ func TestWatcherIncludeEntryInfo_RemovedEntry(t *testing.T) {
 	ctx := authn.SetInfo(t.Context(), u)
 
 	created, err := svc.CreateWatcher(ctx, connect.NewRequest(&filesystem.CreateWatcherRequest{
-		Path:             root,
-		IncludeEntryinfo: true,
+		Path:         root,
+		IncludeEntry: true,
 	}))
 	require.NoError(t, err)
 	watcherID := created.Msg.GetWatcherId()
@@ -129,7 +129,7 @@ func TestWatcherIncludeEntryInfo_RemovedEntry(t *testing.T) {
 	events := collectEvents(t, ctx, svc, watcherID)
 	require.NotEmpty(t, events, "expected at least one filesystem event")
 
-	// The entry no longer exists, so even with include_entryinfo the entry must be nil.
+	// The entry no longer exists, so even with include_entry the entry must be nil.
 	for _, e := range events {
 		assert.Equal(t, "file.txt", e.GetName())
 		assert.Nil(t, e.GetEntry(), "removed entry should not carry entry info, got event %s", e.GetType())

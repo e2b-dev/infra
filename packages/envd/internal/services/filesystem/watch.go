@@ -134,7 +134,7 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 					Type: op,
 				}
 
-				if req.Msg.GetIncludeEntryinfo() {
+				if req.Msg.GetIncludeEntry() {
 					entry, entryErr := eventEntryInfo(e.Name)
 					if entryErr != nil {
 						return entryErr

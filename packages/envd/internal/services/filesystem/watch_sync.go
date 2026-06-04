@@ -169,7 +169,7 @@ func (s Service) CreateWatcher(ctx context.Context, req *connect.Request[rpc.Cre
 
 	watcherId := "w" + id.Generate()
 
-	w, err := CreateFileWatcher(ctx, watchPath, req.Msg.GetRecursive(), req.Msg.GetIncludeEntryinfo())
+	w, err := CreateFileWatcher(ctx, watchPath, req.Msg.GetRecursive(), req.Msg.GetIncludeEntry())
 	if err != nil {
 		return nil, err
 	}
