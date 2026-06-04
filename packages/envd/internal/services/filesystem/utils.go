@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/rs/zerolog"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
@@ -67,20 +68,23 @@ func entryInfo(path string) (*rpc.EntryInfo, error) {
 }
 
 // eventEntryInfo returns the EntryInfo for the path that triggered a filesystem event.
-// It returns a nil entry (without an error) when the entry no longer exists at the path,
-// which is expected for remove and rename-away events.
-func eventEntryInfo(path string) (*rpc.EntryInfo, error) {
+// Entry info is best-effort: a nil entry is returned (and the watch keeps running) when
+// it cannot be retrieved. A missing entry is expected for remove and rename-away events,
+// so it is not logged; any other failure is logged at warn level.
+func eventEntryInfo(logger *zerolog.Logger, path string) *rpc.EntryInfo {
 	entry, err := entryInfo(path)
 	if err != nil {
 		var connectErr *connect.Error
 		if errors.As(err, &connectErr) && connectErr.Code() == connect.CodeNotFound {
-			return nil, nil
+			return nil
 		}
 
-		return nil, err
+		logger.Warn().Err(err).Str("path", path).Msg("failed to get entry info for filesystem event")
+
+		return nil
 	}
 
-	return entry, nil
+	return entry
 }
 
 func toTimestamp(time time.Time) *timestamppb.Timestamp {

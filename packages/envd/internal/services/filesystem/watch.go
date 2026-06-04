@@ -135,12 +135,7 @@ func (s Service) watchHandler(ctx context.Context, req *connect.Request[rpc.Watc
 				}
 
 				if req.Msg.GetIncludeEntry() {
-					entry, entryErr := eventEntryInfo(e.Name)
-					if entryErr != nil {
-						return entryErr
-					}
-
-					filesystemEvent.Entry = entry
+					filesystemEvent.Entry = eventEntryInfo(s.logger, e.Name)
 				}
 
 				event := &rpc.WatchDirResponse{

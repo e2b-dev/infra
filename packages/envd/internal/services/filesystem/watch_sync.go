@@ -10,6 +10,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/e2b-dev/fsnotify"
+	"github.com/rs/zerolog"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/filesystem"
@@ -26,7 +27,7 @@ type FileWatcher struct {
 	Lock sync.Mutex
 }
 
-func CreateFileWatcher(ctx context.Context, watchPath string, recursive bool, includeEntryInfo bool) (*FileWatcher, error) {
+func CreateFileWatcher(ctx context.Context, logger *zerolog.Logger, watchPath string, recursive bool, includeEntryInfo bool) (*FileWatcher, error) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating watcher: %w", err))
@@ -108,14 +109,7 @@ func CreateFileWatcher(ctx context.Context, watchPath string, recursive bool, in
 					}
 
 					if includeEntryInfo {
-						entry, entryErr := eventEntryInfo(e.Name)
-						if entryErr != nil {
-							fw.Error = entryErr
-
-							return
-						}
-
-						filesystemEvent.Entry = entry
+						filesystemEvent.Entry = eventEntryInfo(logger, e.Name)
 					}
 
 					fw.Lock.Lock()
@@ -169,7 +163,7 @@ func (s Service) CreateWatcher(ctx context.Context, req *connect.Request[rpc.Cre
 
 	watcherId := "w" + id.Generate()
 
-	w, err := CreateFileWatcher(ctx, watchPath, req.Msg.GetRecursive(), req.Msg.GetIncludeEntry())
+	w, err := CreateFileWatcher(ctx, s.logger, watchPath, req.Msg.GetRecursive(), req.Msg.GetIncludeEntry())
 	if err != nil {
 		return nil, err
 	}
