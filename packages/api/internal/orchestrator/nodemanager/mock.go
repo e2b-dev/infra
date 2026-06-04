@@ -89,6 +89,12 @@ func WithCPUInfo(cpuArch, cpuFamily, cpuModel string) TestOptions {
 	}
 }
 
+func WithCPUFlags(flags ...string) TestOptions {
+	return func(node *TestNode) {
+		node.machineInfo.CPUFlags = flags
+	}
+}
+
 func WithLabels(labels []string) TestOptions {
 	return func(node *TestNode) {
 		labelsSet := make(map[string]struct{}, len(labels))

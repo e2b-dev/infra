@@ -20,12 +20,34 @@ type MachineInfo struct {
 }
 
 // IsCompatibleWith reports whether a guest built or snapshotted on m's CPU can
-// run on a node with the other CPU. CPUs sharing an architecture and family are
-// backward compatible across microarchitecture generations (e.g. a template
-// built on an older Intel generation runs on a newer one), so CPUModel is
-// intentionally ignored. This lets workloads from n2 nodes be restored on n4.
+// run on a node with the other CPU. Compatibility is decided by the instruction
+// set, not the CPU family/model: the node (other) must support every CPU flag the
+// guest was built with, otherwise an instruction the guest uses (e.g. AVX-512)
+// may be missing and fault at runtime.
+//
+// CPUFamily/CPUModel are deliberately not compared. The raw CPU family number is
+// the same ("6") for every modern Intel generation, so it can't distinguish n1
+// from n2 from n4, and exact-model matching is too strict. The flag superset
+// captures real compatibility: it allows restoring an older-generation build on a
+// newer node (e.g. n2 -> n4, whose flags are a superset) while rejecting a move
+// to a node with a smaller instruction set (e.g. n2 -> an older n1).
 func (m MachineInfo) IsCompatibleWith(other MachineInfo) bool {
-	return m.CPUArchitecture == other.CPUArchitecture && m.CPUFamily == other.CPUFamily
+	if m.CPUArchitecture != other.CPUArchitecture {
+		return false
+	}
+
+	nodeFlags := make(map[string]struct{}, len(other.CPUFlags))
+	for _, f := range other.CPUFlags {
+		nodeFlags[f] = struct{}{}
+	}
+
+	for _, f := range m.CPUFlags {
+		if _, ok := nodeFlags[f]; !ok {
+			return false
+		}
+	}
+
+	return true
 }
 
 func FromGRPCInfo(info *infogrpc.MachineInfo) MachineInfo {
