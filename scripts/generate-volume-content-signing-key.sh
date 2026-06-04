@@ -26,12 +26,12 @@ public_b64="$(printf '%s\n' "$public_pem" | base64 -w0)"
 
 unix_now="$(date +%s)"
 
-echo "Set these on the API service so it signs with the new key:"
+echo "Step 1: set this on the belt volume-content service so it verifies the new key:"
+echo
+echo "JWT_VERIFICATION_KEYS=${unix_now}:ED25519:${public_b64}"
+echo
+echo "Step 2: set these on the API service so it signs with the new key:"
 echo
 echo "VOLUME_TOKEN_SIGNING_METHOD=EdDSA"
 echo "VOLUME_TOKEN_SIGNING_KEY_NAME=${unix_now}"
 echo "VOLUME_TOKEN_SIGNING_KEY=ED25519:${private_b64}"
-echo
-echo "Set this on the belt volume-content service so it verifies the new key:"
-echo
-echo "JWT_VERIFICATION_KEYS=${unix_now}:ED25519:${public_b64}"
