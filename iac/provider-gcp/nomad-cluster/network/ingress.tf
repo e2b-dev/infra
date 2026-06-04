@@ -51,6 +51,10 @@ resource "google_compute_backend_service" "ingress" {
 
   security_policy = google_compute_security_policy.ingress.id
 
+  log_config {
+    enable = var.environment != "dev"
+  }
+
   backend {
     group = var.api_instance_group
   }

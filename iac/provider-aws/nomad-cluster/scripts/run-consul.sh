@@ -134,14 +134,11 @@ function get_instance_dynamic_metadata {
   curl --silent --show-error --location --fail "${token_header[@]}" "$EC2_DYNAMIC_METADATA_URL"
 }
 
-# Get the value of the given tag from EC2 instance tags
+# Get the value of the given tag from EC2 instance metadata (requires instance_metadata_tags = "enabled" on the launch template)
 function get_instance_tag_value {
   local -r key="$1"
-  local instance_id=$(get_instance_metadata_value "instance-id")
-  local region=$(get_instance_region)
-
-  log_info "Looking up EC2 tag value for key \"$key\""
-  aws ec2 describe-tags --region "$region" --filters "Name=resource-id,Values=$instance_id" "Name=key,Values=$key" --query 'Tags[0].Value' --output text 2>/dev/null || echo ""
+  log_info "Looking up EC2 tag value for key \"$key\" via IMDS"
+  get_instance_metadata_value "tags/instance/$key"
 }
 
 # Get the AWS Region in which this EC2 Instance currently resides

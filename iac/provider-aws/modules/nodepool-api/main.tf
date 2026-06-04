@@ -74,7 +74,8 @@ resource "aws_launch_template" "api" {
   vpc_security_group_ids = var.security_group_ids
 
   metadata_options {
-    http_tokens = "required"
+    http_tokens            = "required"
+    instance_metadata_tags = "enabled"
   }
 
   iam_instance_profile {

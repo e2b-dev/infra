@@ -75,7 +75,8 @@ resource "aws_launch_template" "clickhouse" {
   vpc_security_group_ids = var.security_group_ids
 
   metadata_options {
-    http_tokens = "required"
+    http_tokens            = "required"
+    instance_metadata_tags = "enabled"
   }
 
   iam_instance_profile {
@@ -116,7 +117,8 @@ resource "aws_instance" "clickhouse" {
   subnet_id         = var.clickhouse_subnet_id
 
   metadata_options {
-    http_tokens = "required"
+    http_tokens            = "required"
+    instance_metadata_tags = "enabled"
   }
 
   user_data = base64encode(templatefile("${local.scripts_path}/start-clickhouse.sh", {
