@@ -75,24 +75,19 @@ type EnvBuild struct {
 }
 
 type Snapshot struct {
-	CreatedAt                 pgtype.Timestamptz
-	EnvID                     string
-	SandboxID                 string
-	ID                        uuid.UUID
-	Metadata                  types.JSONBStringMap
-	BaseEnvID                 string
-	SandboxStartedAt          pgtype.Timestamptz
-	EnvSecure                 bool
-	OriginNodeID              string
-	AllowInternetAccess       *bool
-	AutoPause                 bool
-	TeamID                    uuid.UUID
-	Config                    *types.PausedSandboxConfig
-	OriginNodeCpuArchitecture *string
-	OriginNodeCpuFamily       *string
-	OriginNodeCpuModel        *string
-	OriginNodeCpuModelName    *string
-	OriginNodeCpuFlags        []string
+	CreatedAt           pgtype.Timestamptz
+	EnvID               string
+	SandboxID           string
+	ID                  uuid.UUID
+	Metadata            types.JSONBStringMap
+	BaseEnvID           string
+	SandboxStartedAt    pgtype.Timestamptz
+	EnvSecure           bool
+	OriginNodeID        string
+	AllowInternetAccess *bool
+	AutoPause           bool
+	TeamID              uuid.UUID
+	Config              *types.PausedSandboxConfig
 }
 
 type UsersTeam struct {

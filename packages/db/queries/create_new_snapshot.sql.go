@@ -37,15 +37,7 @@ snapshot as (
        origin_node_id,
        auto_pause,
        config,
-       created_at,
-       -- CPU info of the node the pause ran on, kept for debugging only (NOT used
-       -- for placement; placement uses the env_builds CPU columns pinned to the
-       -- source build).
-       origin_node_cpu_architecture,
-       origin_node_cpu_family,
-       origin_node_cpu_model,
-       origin_node_cpu_model_name,
-       origin_node_cpu_flags
+       created_at
     )
     VALUES (
             $3,
@@ -60,12 +52,7 @@ snapshot as (
             $9,
             $10,
             $11,
-            now(),
-            $12,
-            $13,
-            $14,
-            $15,
-            $16
+            now()
    )
     ON CONFLICT (sandbox_id) DO UPDATE SET
         metadata = excluded.metadata,
@@ -73,12 +60,7 @@ snapshot as (
         allow_internet_access = COALESCE(excluded.allow_internet_access, snapshots.allow_internet_access),
         origin_node_id = excluded.origin_node_id,
         auto_pause = excluded.auto_pause,
-        config = excluded.config,
-        origin_node_cpu_architecture = excluded.origin_node_cpu_architecture,
-        origin_node_cpu_family = excluded.origin_node_cpu_family,
-        origin_node_cpu_model = excluded.origin_node_cpu_model,
-        origin_node_cpu_model_name = excluded.origin_node_cpu_model_name,
-        origin_node_cpu_flags = excluded.origin_node_cpu_flags
+        config = excluded.config
     RETURNING env_id as template_id
 ),
 
@@ -101,21 +83,21 @@ new_build as (
         cpu_flags
     )
     VALUES (
+        $12,
+        $13,
+        $14,
+        $15,
+        $16,
         $17,
         $18,
-        $19,
-        $20,
-        $21,
-        $22,
-        $23,
         $9,
-        $24,
+        $19,
         now(),
-        (SELECT eb.cpu_architecture FROM "public"."env_builds" eb WHERE eb.id = $25),
-        (SELECT eb.cpu_family FROM "public"."env_builds" eb WHERE eb.id = $25),
-        (SELECT eb.cpu_model FROM "public"."env_builds" eb WHERE eb.id = $25),
-        (SELECT eb.cpu_model_name FROM "public"."env_builds" eb WHERE eb.id = $25),
-        (SELECT eb.cpu_flags FROM "public"."env_builds" eb WHERE eb.id = $25)
+        (SELECT eb.cpu_architecture FROM "public"."env_builds" eb WHERE eb.id = $20),
+        (SELECT eb.cpu_family FROM "public"."env_builds" eb WHERE eb.id = $20),
+        (SELECT eb.cpu_model FROM "public"."env_builds" eb WHERE eb.id = $20),
+        (SELECT eb.cpu_model_name FROM "public"."env_builds" eb WHERE eb.id = $20),
+        (SELECT eb.cpu_flags FROM "public"."env_builds" eb WHERE eb.id = $20)
     )
     RETURNING id as build_id
 ),
@@ -134,31 +116,26 @@ SELECT build_id, template_id FROM build_assignment
 `
 
 type UpsertSnapshotParams struct {
-	TemplateID                string
-	TeamID                    uuid.UUID
-	SandboxID                 string
-	BaseTemplateID            string
-	Metadata                  types.JSONBStringMap
-	StartedAt                 pgtype.Timestamptz
-	Secure                    bool
-	AllowInternetAccess       *bool
-	OriginNodeID              string
-	AutoPause                 bool
-	Config                    *types.PausedSandboxConfig
-	OriginNodeCpuArchitecture *string
-	OriginNodeCpuFamily       *string
-	OriginNodeCpuModel        *string
-	OriginNodeCpuModelName    *string
-	OriginNodeCpuFlags        []string
-	Vcpu                      int64
-	RamMb                     int64
-	FreeDiskSizeMb            int64
-	KernelVersion             string
-	FirecrackerVersion        string
-	EnvdVersion               *string
-	Status                    types.BuildStatus
-	TotalDiskSizeMb           *int64
-	SourceBuildID             uuid.UUID
+	TemplateID          string
+	TeamID              uuid.UUID
+	SandboxID           string
+	BaseTemplateID      string
+	Metadata            types.JSONBStringMap
+	StartedAt           pgtype.Timestamptz
+	Secure              bool
+	AllowInternetAccess *bool
+	OriginNodeID        string
+	AutoPause           bool
+	Config              *types.PausedSandboxConfig
+	Vcpu                int64
+	RamMb               int64
+	FreeDiskSizeMb      int64
+	KernelVersion       string
+	FirecrackerVersion  string
+	EnvdVersion         *string
+	Status              types.BuildStatus
+	TotalDiskSizeMb     *int64
+	SourceBuildID       uuid.UUID
 }
 
 type UpsertSnapshotRow struct {
@@ -185,11 +162,6 @@ func (q *Queries) UpsertSnapshot(ctx context.Context, arg UpsertSnapshotParams) 
 		arg.OriginNodeID,
 		arg.AutoPause,
 		arg.Config,
-		arg.OriginNodeCpuArchitecture,
-		arg.OriginNodeCpuFamily,
-		arg.OriginNodeCpuModel,
-		arg.OriginNodeCpuModelName,
-		arg.OriginNodeCpuFlags,
 		arg.Vcpu,
 		arg.RamMb,
 		arg.FreeDiskSizeMb,
