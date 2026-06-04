@@ -21,8 +21,8 @@ set -euo pipefail
 private_pem="$(openssl genpkey -algorithm ed25519)"
 public_pem="$(printf '%s\n' "$private_pem" | openssl pkey -pubout)"
 
-private_b64="$(printf '%s\n' "$private_pem" | base64 -w0)"
-public_b64="$(printf '%s\n' "$public_pem" | base64 -w0)"
+private_b64="$(printf '%s\n' "$private_pem" | openssl base64 -A)"
+public_b64="$(printf '%s\n' "$public_pem" | openssl base64 -A)"
 
 unix_now="$(date +%s)"
 
