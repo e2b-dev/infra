@@ -42,14 +42,17 @@ func TestIsNodeCPUCompatible_ArchitectureMismatch(t *testing.T) {
 	assert.False(t, result, "Node should be incompatible with different architecture")
 }
 
-func TestIsNodeCPUCompatible_FamilyMismatch(t *testing.T) {
+func TestIsNodeCPUCompatible_NodeMissingFlag(t *testing.T) {
 	t.Parallel()
-	// Same architecture but different family
-	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4, nodemanager.WithCPUInfo("x86_64", "AMD", "23"))
-	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "Intel", CPUModel: "6"}
+	// Node lacks a CPU flag the build requires (e.g. an n2 build using AVX-512
+	// placed on an older n1 node without it): incompatible.
+	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4,
+		nodemanager.WithCPUInfo("x86_64", "Intel", "79"),
+		nodemanager.WithCPUFlags("sse2", "avx", "avx2"))
+	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFlags: []string{"sse2", "avx", "avx2", "avx512f"}}
 
 	result := isNodeCPUCompatible(node, buildCPU)
-	assert.False(t, result, "Node should be incompatible when CPU family differs")
+	assert.False(t, result, "Node missing a required CPU flag should be incompatible")
 }
 
 func TestIsNodeCPUCompatible_NodeHasNoCPUInfo(t *testing.T) {
@@ -72,24 +75,45 @@ func TestIsNodeCPUCompatible_BothEmpty(t *testing.T) {
 	assert.True(t, result, "Node should be compatible when neither has CPU requirements")
 }
 
-func TestIsNodeCPUCompatible_ModelMismatch(t *testing.T) {
+func TestIsNodeCPUCompatible_ModelDiffers_StillCompatible(t *testing.T) {
 	t.Parallel()
-	// Same architecture and family but different CPU model
-	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4, nodemanager.WithCPUInfo("x86_64", "Intel", "6"))
-	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "Intel", CPUModel: "7"}
+	// Different CPU model but the node provides every flag the build needs:
+	// compatible, because compatibility is decided by the instruction set.
+	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4,
+		nodemanager.WithCPUInfo("x86_64", "Intel", "6"),
+		nodemanager.WithCPUFlags("sse2", "avx", "avx2"))
+	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFlags: []string{"sse2", "avx"}}
 
 	result := isNodeCPUCompatible(node, buildCPU)
-	assert.False(t, result, "Node should be incompatible when CPU model differs")
+	assert.True(t, result, "Node should be compatible when it provides all required CPU flags")
 }
 
-func TestIsNodeCPUCompatible_ModelMatch_DifferentGenerations(t *testing.T) {
+func TestIsNodeCPUCompatible_DifferentGenerations_StillCompatible(t *testing.T) {
 	t.Parallel()
-	// Test that different Intel generations (model numbers) are incompatible
-	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4, nodemanager.WithCPUInfo("x86_64", "Intel", "85")) // Skylake
-	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "Intel", CPUModel: "143"}                   // Alder Lake
+	// n2 (Cascade Lake) build restored on an n4 (Emerald Rapids) node: the newer
+	// generation's flags are a superset, so it's compatible.
+	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4,
+		nodemanager.WithCPUInfo("x86_64", "Intel", "207"), // n4 Emerald Rapids
+		nodemanager.WithCPUFlags("sse2", "avx", "avx2", "avx512f", "avx512_bf16"))
+	buildCPU := machineinfo.MachineInfo{ // n2 Cascade Lake
+		CPUArchitecture: "x86_64",
+		CPUFlags:        []string{"sse2", "avx", "avx2", "avx512f"},
+	}
 
 	result := isNodeCPUCompatible(node, buildCPU)
-	assert.False(t, result, "Node should be incompatible when CPU models represent different processor generations")
+	assert.True(t, result, "An older-generation build should run on a newer node whose flags are a superset")
+}
+
+func TestIsNodeCPUCompatible_NoBuildFlags_FamilyMismatch(t *testing.T) {
+	t.Parallel()
+	// Older build with no recorded flags must fall back to family/model and be
+	// rejected on a node of a different generation, not pass on arch alone.
+	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4,
+		nodemanager.WithCPUInfo("x86_64", "Intel", "207"))
+	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "Intel", CPUModel: "85"}
+
+	result := isNodeCPUCompatible(node, buildCPU)
+	assert.False(t, result, "Build without flags should fall back to family/model and reject a different model")
 }
 
 func TestIsNodeCPUCompatible_AllFieldsMatch(t *testing.T) {

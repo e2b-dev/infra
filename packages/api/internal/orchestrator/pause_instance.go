@@ -136,12 +136,15 @@ func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) quer
 			AutoResume:   sbx.AutoResume,
 			VolumeMounts: sbx.VolumeMounts,
 		},
-		OriginNodeID:    node.ID,
-		Status:          types.BuildStatusSnapshotting,
-		CpuArchitecture: new(machineInfo.CPUArchitecture),
-		CpuFamily:       new(machineInfo.CPUFamily),
-		CpuModel:        new(machineInfo.CPUModel),
-		CpuModelName:    new(machineInfo.CPUModelName),
+		OriginNodeID: node.ID,
+		Status:       types.BuildStatusSnapshotting,
+		// Keep the snapshot's CPU info pinned to the source build; the executing
+		// node's info is only a fallback if the source build is gone.
+		SourceBuildID:   sbx.BuildID,
+		CpuArchitecture: &machineInfo.CPUArchitecture,
+		CpuFamily:       &machineInfo.CPUFamily,
+		CpuModel:        &machineInfo.CPUModel,
+		CpuModelName:    &machineInfo.CPUModelName,
 		CpuFlags:        machineInfo.CPUFlags,
 	}
 }

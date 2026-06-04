@@ -64,6 +64,12 @@ snapshot as (
     RETURNING env_id as template_id
 ),
 
+source_build as (
+    SELECT eb.cpu_architecture, eb.cpu_family, eb.cpu_model, eb.cpu_model_name, eb.cpu_flags
+    FROM "public"."env_builds" eb
+    WHERE eb.id = $12
+),
+
 new_build as (
     INSERT INTO "public"."env_builds" (
         vcpu,
@@ -81,23 +87,25 @@ new_build as (
         cpu_model,
         cpu_model_name,
         cpu_flags
-    ) VALUES (
-        $12,
+    )
+    VALUES (
         $13,
         $14,
         $15,
         $16,
         $17,
         $18,
-        $9,
         $19,
-        now(),
+        $9,
         $20,
-        $21,
-        $22,
-        $23,
-        $24
-    ) RETURNING id as build_id
+        now(),
+        COALESCE((SELECT cpu_architecture FROM source_build), $21),
+        COALESCE((SELECT cpu_family FROM source_build), $22),
+        COALESCE((SELECT cpu_model FROM source_build), $23),
+        COALESCE((SELECT cpu_model_name FROM source_build), $24),
+        COALESCE((SELECT cpu_flags FROM source_build), $25)
+    )
+    RETURNING id as build_id
 ),
 
 build_assignment as (
@@ -125,6 +133,7 @@ type UpsertSnapshotParams struct {
 	OriginNodeID        string
 	AutoPause           bool
 	Config              *types.PausedSandboxConfig
+	SourceBuildID       uuid.UUID
 	Vcpu                int64
 	RamMb               int64
 	FreeDiskSizeMb      int64
@@ -133,11 +142,11 @@ type UpsertSnapshotParams struct {
 	EnvdVersion         *string
 	Status              types.BuildStatus
 	TotalDiskSizeMb     *int64
-	CpuArchitecture     *string
-	CpuFamily           *string
-	CpuModel            *string
-	CpuModelName        *string
-	CpuFlags            []string
+	CpuArchitecture     interface{}
+	CpuFamily           interface{}
+	CpuModel            interface{}
+	CpuModelName        interface{}
+	CpuFlags            interface{}
 }
 
 type UpsertSnapshotRow struct {
@@ -146,6 +155,8 @@ type UpsertSnapshotRow struct {
 }
 
 // Create a new snapshot or update an existing one
+// CPU info of the source build, used to keep a snapshot's CPU compatibility
+// pinned to the original build instead of the node a pause happened to run on.
 // Create a new build for the snapshot
 // Create the build assignment edge (explicit, not relying on trigger)
 func (q *Queries) UpsertSnapshot(ctx context.Context, arg UpsertSnapshotParams) (UpsertSnapshotRow, error) {
@@ -161,6 +172,7 @@ func (q *Queries) UpsertSnapshot(ctx context.Context, arg UpsertSnapshotParams) 
 		arg.OriginNodeID,
 		arg.AutoPause,
 		arg.Config,
+		arg.SourceBuildID,
 		arg.Vcpu,
 		arg.RamMb,
 		arg.FreeDiskSizeMb,
