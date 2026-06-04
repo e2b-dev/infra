@@ -523,7 +523,8 @@ type EntryInfo struct {
 	// If the entry is a symlink, this field contains the target of the symlink.
 	SymlinkTarget *string `protobuf:"bytes,10,opt,name=symlink_target,json=symlinkTarget,proto3,oneof" json:"symlink_target,omitempty"`
 	// User-defined metadata stored as extended attributes (xattrs) on the file.
-	// Keys live in the `user.` xattr namespace; the prefix is stripped here.
+	// Keys live under the `user.e2b.` xattr namespace; the prefix is stripped here.
+	// Plain `user.*` xattrs written by other tooling are not reflected.
 	Metadata map[string]string `protobuf:"bytes,11,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
 }
 
