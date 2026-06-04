@@ -74,16 +74,29 @@ func TestIsNodeCPUCompatible_BothEmpty(t *testing.T) {
 	assert.True(t, result, "Node should be compatible when neither has CPU requirements")
 }
 
-func TestIsNodeCPUCompatible_DifferentGenerations_StillCompatible(t *testing.T) {
+func TestIsNodeCPUCompatible_OlderBuildOnNewerNode_Compatible(t *testing.T) {
 	t.Parallel()
 	// n2 (Cascade Lake, model 85) build restored on an n4 (Emerald Rapids, model
-	// 207) node: allowed via the hardcoded compatible model groups.
+	// 207) node: allowed because the newer CPU is a superset of the older one.
 	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4,
 		nodemanager.WithCPUInfo("x86_64", "6", "207"))
 	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: "85"}
 
 	result := isNodeCPUCompatible(node, buildCPU)
 	assert.True(t, result, "An n2 build should be allowed to run on an n4 node")
+}
+
+func TestIsNodeCPUCompatible_NewerBuildOnOlderNode_Incompatible(t *testing.T) {
+	t.Parallel()
+	// n4 (Emerald Rapids, model 207) build restored on an n2 (Cascade Lake, model
+	// 85) node: rejected because the older CPU may lack instructions the n4 build
+	// relies on. Compatibility is directional (older build -> newer node only).
+	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4,
+		nodemanager.WithCPUInfo("x86_64", "6", "85"))
+	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: "207"}
+
+	result := isNodeCPUCompatible(node, buildCPU)
+	assert.False(t, result, "An n4 build should not be allowed to run on an n2 node")
 }
 
 func TestIsNodeCPUCompatible_FamilyMismatch(t *testing.T) {

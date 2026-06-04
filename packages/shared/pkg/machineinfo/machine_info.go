@@ -19,43 +19,48 @@ type MachineInfo struct {
 	CPUFlags        []string `json:"cpu_flags"`
 }
 
-// compatibleModelGroups lists CPU models (same architecture and family) that are
-// instruction-set compatible for running a guest across machine generations.
-// Per-node CPU flag sets are not reliably reported across generations, so the
-// cross-model compatibility is hardcoded here.
-var compatibleModelGroups = [][]string{
-	{"85", "207"}, // Intel: n2 (Cascade Lake) <-> n4 (Emerald Rapids)
+// compatibleNodeModels maps a build's CPU model (same architecture and family)
+// to the set of newer node CPU models that a paused sandbox can be resumed on.
+// Compatibility across generations is asymmetric.
+//
+// The key is the build model; the value is the set of node models that build may
+// run on. The same model is always compatible and need not be listed.
+var compatibleNodeModels = map[string]map[string]struct{}{
+	// Intel: an n2 (Cascade Lake, model 85) build may run on an n4
+	// (Emerald Rapids, model 207) node, but not the reverse.
+	"85": {"207": {}},
 }
 
-// IsCompatibleWith reports whether a guest built on m's CPU can run on a node
-// with the other CPU. The same architecture+family+model is always compatible;
-// cross-model compatibility is restricted to the hardcoded compatibleModelGroups
-// (e.g. an n2 build restoring on an n4 node).
-func (m MachineInfo) IsCompatibleWith(other MachineInfo) bool {
-	if m.CPUArchitecture != other.CPUArchitecture || m.CPUFamily != other.CPUFamily {
+// IsCompatibleWith reports whether a sandbox whose build ran on this CPU (the
+// receiver is the build CPU) can run on a node with nodeCPU. The same
+// architecture+family+model is always compatible. Cross-model compatibility is
+// asymmetric and restricted to the hardcoded compatibleNodeModels: a build on an
+// older model can run on the newer node models listed for it, but not the other
+// way around (e.g. an n2 build may restore on an n4 node, but an n4 build may not
+// restore on an n2 node).
+func (m MachineInfo) IsCompatibleWith(nodeCPU MachineInfo) bool {
+	buildCPU := m
+
+	if buildCPU.CPUArchitecture != nodeCPU.CPUArchitecture || buildCPU.CPUFamily != nodeCPU.CPUFamily {
 		return false
 	}
 
-	if m.CPUModel == other.CPUModel {
+	if buildCPU.CPUModel == nodeCPU.CPUModel {
 		return true
 	}
 
-	for _, group := range compatibleModelGroups {
-		var hasGuest, hasNode bool
-		for _, model := range group {
-			if model == m.CPUModel {
-				hasGuest = true
-			}
-			if model == other.CPUModel {
-				hasNode = true
-			}
-		}
-		if hasGuest && hasNode {
-			return true
-		}
-	}
+	_, ok := compatibleNodeModels[buildCPU.CPUModel][nodeCPU.CPUModel]
 
-	return false
+	return ok
+}
+
+// IsExactMatch reports whether m and other describe the same CPU
+// (architecture, family, and model). Unlike IsCompatibleWith it does not allow
+// cross-generation compatibility; it requires an identical CPU model.
+func (m MachineInfo) IsExactMatch(other MachineInfo) bool {
+	return m.CPUArchitecture == other.CPUArchitecture &&
+		m.CPUFamily == other.CPUFamily &&
+		m.CPUModel == other.CPUModel
 }
 
 func FromGRPCInfo(info *infogrpc.MachineInfo) MachineInfo {
