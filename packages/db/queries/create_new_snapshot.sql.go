@@ -81,7 +81,10 @@ new_build as (
         cpu_model,
         cpu_model_name,
         cpu_flags
-    ) VALUES (
+    )
+    -- Preserve the source build's CPU info so a pause doesn't overwrite the
+    -- snapshot's CPU compatibility with the (possibly different) node it ran on.
+    SELECT
         $12,
         $13,
         $14,
@@ -92,12 +95,14 @@ new_build as (
         $9,
         $19,
         now(),
-        $20,
-        $21,
-        $22,
-        $23,
-        $24
-    ) RETURNING id as build_id
+        src.cpu_architecture,
+        src.cpu_family,
+        src.cpu_model,
+        src.cpu_model_name,
+        src.cpu_flags
+    FROM "public"."env_builds" src
+    WHERE src.id = $20
+    RETURNING id as build_id
 ),
 
 build_assignment as (
@@ -133,11 +138,7 @@ type UpsertSnapshotParams struct {
 	EnvdVersion         *string
 	Status              types.BuildStatus
 	TotalDiskSizeMb     *int64
-	CpuArchitecture     *string
-	CpuFamily           *string
-	CpuModel            *string
-	CpuModelName        *string
-	CpuFlags            []string
+	SourceBuildID       uuid.UUID
 }
 
 type UpsertSnapshotRow struct {
@@ -169,11 +170,7 @@ func (q *Queries) UpsertSnapshot(ctx context.Context, arg UpsertSnapshotParams) 
 		arg.EnvdVersion,
 		arg.Status,
 		arg.TotalDiskSizeMb,
-		arg.CpuArchitecture,
-		arg.CpuFamily,
-		arg.CpuModel,
-		arg.CpuModelName,
-		arg.CpuFlags,
+		arg.SourceBuildID,
 	)
 	var i UpsertSnapshotRow
 	err := row.Scan(&i.BuildID, &i.TemplateID)

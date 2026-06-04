@@ -104,8 +104,6 @@ func (o *Orchestrator) WaitForStateChange(ctx context.Context, teamID uuid.UUID,
 }
 
 func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) queries.UpsertSnapshotParams {
-	machineInfo := node.MachineInfo()
-
 	metadata := types.JSONBStringMap(sbx.Metadata)
 	if metadata == nil {
 		metadata = types.JSONBStringMap{}
@@ -136,17 +134,13 @@ func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) quer
 			AutoResume:   sbx.AutoResume,
 			VolumeMounts: sbx.VolumeMounts,
 		},
-		OriginNodeID:    node.ID,
-		Status:          types.BuildStatusSnapshotting,
-		CpuArchitecture: new(machineInfo.CPUArchitecture),
-		CpuFamily:       new(machineInfo.CPUFamily),
-		// Pausing captures memory state only; it doesn't change the guest's CPU
-		// compatibility. Don't pin the snapshot to the executing node's CPU
-		// generation (model/flags) so a sandbox paused on e.g. an n4 node can be
-		// resumed on any architecture+family-compatible node (e.g. n2).
-		CpuModel:     nil,
-		CpuModelName: nil,
-		CpuFlags:     nil,
+		OriginNodeID: node.ID,
+		Status:       types.BuildStatusSnapshotting,
+		// Preserve the source build's CPU info instead of the executing node's.
+		// Pausing only captures memory state and doesn't change the guest's CPU
+		// compatibility, so a sandbox paused on e.g. an n4 node keeps its original
+		// (n2) CPU info and stays resumable on any compatible node.
+		SourceBuildID: sbx.BuildID,
 	}
 }
 

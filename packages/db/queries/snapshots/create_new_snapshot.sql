@@ -68,7 +68,10 @@ new_build as (
         cpu_model,
         cpu_model_name,
         cpu_flags
-    ) VALUES (
+    )
+    -- Preserve the source build's CPU info so a pause doesn't overwrite the
+    -- snapshot's CPU compatibility with the (possibly different) node it ran on.
+    SELECT
         @vcpu,
         @ram_mb,
         @free_disk_size_mb,
@@ -79,12 +82,14 @@ new_build as (
         @origin_node_id,
         @total_disk_size_mb,
         now(),
-        @cpu_architecture,
-        @cpu_family,
-        @cpu_model,
-        @cpu_model_name,
-        @cpu_flags
-    ) RETURNING id as build_id
+        src.cpu_architecture,
+        src.cpu_family,
+        src.cpu_model,
+        src.cpu_model_name,
+        src.cpu_flags
+    FROM "public"."env_builds" src
+    WHERE src.id = @source_build_id
+    RETURNING id as build_id
 ),
 
 -- Create the build assignment edge (explicit, not relying on trigger)
