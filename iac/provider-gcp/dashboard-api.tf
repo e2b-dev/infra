@@ -50,10 +50,6 @@ locals {
   dashboard_api_billing_server_api_token = try(trimspace(data.google_secret_manager_secret_version.billing_server_api_token[0].secret_data), "")
 
   dashboard_api_ory_project_api_token = try(trimspace(data.google_secret_manager_secret_version.ory_project_api_key[0].secret_data), "")
-  dashboard_api_extra_env_vars = {
-    for key, value in var.dashboard_api_env_vars : key => value
-    if key != "ORY_PROJECT_API_TOKEN"
-  }
 
   dashboard_api_ory_env_vars = {
     USER_PROFILE_PROVIDER = var.user_profile_provider
@@ -82,5 +78,5 @@ locals {
     BILLING_SERVER_API_TOKEN     = local.dashboard_api_billing_server_api_token
     OTEL_COLLECTOR_GRPC_ENDPOINT = "localhost:${local.otel_collector_grpc_port}"
     LOGS_COLLECTOR_ADDRESS       = "http://localhost:${local.logs_proxy_port}"
-  }, local.dashboard_api_ory_env_vars, local.dashboard_api_extra_env_vars)
+  }, local.dashboard_api_ory_env_vars, var.dashboard_api_env_vars)
 }
