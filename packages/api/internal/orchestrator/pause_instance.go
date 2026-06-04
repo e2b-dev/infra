@@ -109,6 +109,11 @@ func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) quer
 		metadata = types.JSONBStringMap{}
 	}
 
+	// CPU info of the node the pause ran on. Recorded for debugging only; it does
+	// not affect placement (the snapshot's CPU compatibility is pinned to the
+	// source build via SourceBuildID below).
+	pauseNode := node.MachineInfo()
+
 	return queries.UpsertSnapshotParams{
 		// Used if there's no snapshot for this sandbox yet
 		TemplateID:     id.Generate(),
@@ -139,6 +144,12 @@ func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) quer
 		// Pin the snapshot's CPU info to the source build instead of the executing
 		// node, so a pause/resume across CPU generations stays compatible.
 		SourceBuildID: sbx.BuildID,
+		// Debugging-only record of the node the pause ran on.
+		OriginNodeCpuArchitecture: &pauseNode.CPUArchitecture,
+		OriginNodeCpuFamily:       &pauseNode.CPUFamily,
+		OriginNodeCpuModel:        &pauseNode.CPUModel,
+		OriginNodeCpuModelName:    &pauseNode.CPUModelName,
+		OriginNodeCpuFlags:        pauseNode.CPUFlags,
 	}
 }
 

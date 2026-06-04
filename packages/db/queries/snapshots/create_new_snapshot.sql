@@ -23,7 +23,15 @@ snapshot as (
        origin_node_id,
        auto_pause,
        config,
-       created_at
+       created_at,
+       -- CPU info of the node the pause ran on, kept for debugging only (NOT used
+       -- for placement; placement uses the env_builds CPU columns pinned to the
+       -- source build).
+       origin_node_cpu_architecture,
+       origin_node_cpu_family,
+       origin_node_cpu_model,
+       origin_node_cpu_model_name,
+       origin_node_cpu_flags
     )
     VALUES (
             @sandbox_id,
@@ -38,7 +46,12 @@ snapshot as (
             @origin_node_id,
             @auto_pause,
             @config,
-            now()
+            now(),
+            @origin_node_cpu_architecture,
+            @origin_node_cpu_family,
+            @origin_node_cpu_model,
+            @origin_node_cpu_model_name,
+            @origin_node_cpu_flags
    )
     ON CONFLICT (sandbox_id) DO UPDATE SET
         metadata = excluded.metadata,
@@ -46,7 +59,12 @@ snapshot as (
         allow_internet_access = COALESCE(excluded.allow_internet_access, snapshots.allow_internet_access),
         origin_node_id = excluded.origin_node_id,
         auto_pause = excluded.auto_pause,
-        config = excluded.config
+        config = excluded.config,
+        origin_node_cpu_architecture = excluded.origin_node_cpu_architecture,
+        origin_node_cpu_family = excluded.origin_node_cpu_family,
+        origin_node_cpu_model = excluded.origin_node_cpu_model,
+        origin_node_cpu_model_name = excluded.origin_node_cpu_model_name,
+        origin_node_cpu_flags = excluded.origin_node_cpu_flags
     RETURNING env_id as template_id
 ),
 

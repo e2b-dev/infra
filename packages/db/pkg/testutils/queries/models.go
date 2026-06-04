@@ -140,19 +140,24 @@ type EnvBuildAssignment struct {
 }
 
 type Snapshot struct {
-	CreatedAt           pgtype.Timestamptz
-	EnvID               string
-	SandboxID           string
-	ID                  uuid.UUID
-	Metadata            []byte
-	BaseEnvID           string
-	SandboxStartedAt    pgtype.Timestamptz
-	EnvSecure           bool
-	OriginNodeID        string
-	AllowInternetAccess pgtype.Bool
-	AutoPause           bool
-	TeamID              uuid.UUID
-	Config              []byte
+	CreatedAt                 pgtype.Timestamptz
+	EnvID                     string
+	SandboxID                 string
+	ID                        uuid.UUID
+	Metadata                  []byte
+	BaseEnvID                 string
+	SandboxStartedAt          pgtype.Timestamptz
+	EnvSecure                 bool
+	OriginNodeID              string
+	AllowInternetAccess       pgtype.Bool
+	AutoPause                 bool
+	TeamID                    uuid.UUID
+	Config                    []byte
+	OriginNodeCpuArchitecture pgtype.Text
+	OriginNodeCpuFamily       pgtype.Text
+	OriginNodeCpuModel        pgtype.Text
+	OriginNodeCpuModelName    pgtype.Text
+	OriginNodeCpuFlags        []string
 }
 
 type SnapshotTemplate struct {
