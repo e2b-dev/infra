@@ -157,7 +157,8 @@ resource "google_compute_instance_template" "template" {
 
   instance_description = null
   machine_type         = var.machine_type
-  min_cpu_platform     = var.min_cpu_platform
+  # N4 and other newer families reject min_cpu_platform; omit it when empty.
+  min_cpu_platform = var.min_cpu_platform != "" ? var.min_cpu_platform : null
 
   labels = merge(
     var.labels,
