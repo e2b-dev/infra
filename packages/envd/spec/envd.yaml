@@ -160,7 +160,9 @@ paths:
         and are rejected with HTTP 400 otherwise. Keys are capped at 246
         bytes (the Linux VFS xattr-name limit minus the namespace prefix);
         values are capped at 1024 bytes. Multiple files in a single
-        multipart upload receive the same metadata.
+        multipart upload receive the same metadata. If the same
+        `X-Metadata-<key>` header is sent more than once, only the first
+        value is used.
       tags: [files]
       security:
         - AccessTokenAuth: []

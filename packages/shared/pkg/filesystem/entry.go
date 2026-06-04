@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // statTimes holds platform-independent file timestamps and ownership info
@@ -75,7 +77,14 @@ func GetEntryInfo(path string, fileInfo os.FileInfo) EntryInfo {
 		entry.ModifiedTime = fileInfo.ModTime()
 	}
 
-	entry.Metadata, _ = ReadMetadata(path)
+	metadata, err := ReadMetadata(path)
+	if err != nil {
+		// Metadata is best-effort: a read failure shouldn't fail the whole
+		// entry lookup (Size/Mode/times are still valid), but log it so the
+		// silent drop is observable.
+		zap.L().Warn("failed to read file metadata xattrs", zap.String("path", path), zap.Error(err)) //nolint:forbidigo // zap.L is the global logger
+	}
+	entry.Metadata = metadata
 
 	return entry
 }

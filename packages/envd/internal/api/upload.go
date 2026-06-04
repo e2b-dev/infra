@@ -27,7 +27,7 @@ var ErrNoDiskSpace = errors.New("not enough disk space available")
 
 // metadataHeaderPrefix is the request-header prefix used to attach
 // user-defined metadata to file uploads. Each `<metadataHeaderPrefix><key>:
-// <value>` header becomes a `user.<key>` xattr on the uploaded file.
+// <value>` header becomes a `user.e2b.<key>` xattr on the uploaded file.
 const metadataHeaderPrefix = "X-Metadata-"
 
 // extractMetadataHeaders returns all `X-Metadata-*` headers from h, with the
@@ -225,7 +225,11 @@ func (a *API) handlePart(r *http.Request, part *multipart.Part, paths UploadSucc
 		Name: filepath.Base(filePath),
 		Type: File,
 	}
-	if persisted, _ := filesystem.ReadMetadata(filePath); len(persisted) > 0 {
+	persisted, err := filesystem.ReadMetadata(filePath)
+	if err != nil {
+		logger.Warn().Str("path", filePath).Err(err).Msg("failed to read back file metadata for upload response")
+	}
+	if len(persisted) > 0 {
 		entry.Metadata = &persisted
 	}
 
@@ -410,7 +414,11 @@ func (a *API) handleRawUpload(r *http.Request, u *user.User, uid, gid int, metad
 		Name: filepath.Base(filePath),
 		Type: File,
 	}
-	if persisted, _ := filesystem.ReadMetadata(filePath); len(persisted) > 0 {
+	persisted, err := filesystem.ReadMetadata(filePath)
+	if err != nil {
+		logger.Warn().Str("path", filePath).Err(err).Msg("failed to read back file metadata for upload response")
+	}
+	if len(persisted) > 0 {
 		entry.Metadata = &persisted
 	}
 
