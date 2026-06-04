@@ -25,9 +25,11 @@ type Upload struct {
 	store          storage.StorageProvider
 	mem            storage.CompressConfig
 	root           storage.CompressConfig
+	useCase        string
 	objectMetadata storage.ObjectMetadata
 	future         *utils.ErrorOnce
 	useV4          bool
+	headerVersion  uint64
 }
 
 func NewUpload(
@@ -40,13 +42,21 @@ func NewUpload(
 	useCase string,
 	objectMetadata storage.ObjectMetadata,
 ) (*Upload, error) {
-	mem, memV4, err := resolveCompressConfig(ctx, cfg, ff, storage.MemfileName, snap.MemfileDiffHeader.Metadata.BlockSize, useCase)
+	mem, memV4, err := resolveCompressConfig(ctx, cfg, ff, storage.MemfileName, snap.MemfileBlockSize, useCase)
 	if err != nil {
 		return nil, fmt.Errorf("resolve memfile compress config: %w", err)
 	}
-	root, rootV4, err := resolveCompressConfig(ctx, cfg, ff, storage.RootfsName, snap.RootfsDiffHeader.Metadata.BlockSize, useCase)
+	root, rootV4, err := resolveCompressConfig(ctx, cfg, ff, storage.RootfsName, snap.RootfsBlockSize, useCase)
 	if err != nil {
 		return nil, fmt.Errorf("resolve rootfs compress config: %w", err)
+	}
+
+	if useCase != "" {
+		ctx = featureflags.AddToContext(ctx, featureflags.CompressUseCaseContext(useCase))
+	}
+	headerVersion := uint64(headers.MetadataVersionV4)
+	if ff != nil && ff.BoolFlag(ctx, featureflags.HeaderV5WriteFlag) {
+		headerVersion = headers.MetadataVersionV5
 	}
 
 	u := &Upload{
@@ -57,8 +67,10 @@ func NewUpload(
 		store:          store,
 		mem:            mem,
 		root:           root,
+		useCase:        useCase,
 		objectMetadata: objectMetadata,
-		useV4:          memV4 || rootV4,
+		useV4:          memV4 || rootV4 || headerVersion == headers.MetadataVersionV5,
+		headerVersion:  headerVersion,
 	}
 
 	if uploads != nil {
@@ -73,6 +85,9 @@ func NewUpload(
 }
 
 func (u *Upload) Run(ctx context.Context) error {
+	// Attach the upload use case so flag reads can target it (e.g. write-through only for builds).
+	ctx = featureflags.AddToContext(ctx, featureflags.CompressUseCaseContext(u.useCase))
+
 	if !u.mem.IsCompressionEnabled() && !u.root.IsCompressionEnabled() && !u.useV4 {
 		return u.runV3(ctx)
 	}

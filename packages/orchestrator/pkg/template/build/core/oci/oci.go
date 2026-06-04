@@ -372,6 +372,13 @@ func copyFiles(ctx context.Context, src, dest string) error {
 	// --whole-file: Copy files without using the delta algorithm, which is faster for local copies
 	// --inplace: Update destination files in place, no need to create temporary files
 	cmd := exec.CommandContext(ctx, "rsync", "-aH", "--whole-file", "--inplace", src+"/", dest)
+	// Pin rsync's working directory to root. When template-manager is exec'd
+	// via `nsenter -t 1 -m -u -i -n -w/` into PID 1's namespaces, a child
+	// process's inherited CWD can land on a directory that has been unmounted
+	// in another mount namespace, causing rsync's receiver to abort at
+	// startup with `getcwd(): No such file or directory (2)`. `/` is always
+	// present in the host mount namespace, so anchoring there is safe.
+	cmd.Dir = "/"
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("while copying files from %s to %s: %w: %s", src, dest, err, string(out))
 	}

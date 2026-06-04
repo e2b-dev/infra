@@ -34,3 +34,12 @@ moved {
   to   = module.init.google_secret_manager_secret_version.supabase_jwt_secrets
 }
 
+moved {
+  from = module.nomad.random_password.clickhouse_password
+  to   = random_password.clickhouse_password
+}
+
+moved {
+  from = module.nomad.random_password.clickhouse_server_secret
+  to   = random_password.clickhouse_server_secret
+}

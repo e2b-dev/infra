@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.5.0, < 1.6.0"
+  required_version = ">=1.5.0"
 
   backend "gcs" {
     prefix = "terraform/orchestration/state"
@@ -51,6 +51,168 @@ data "google_secret_manager_secret_version" "routing_domains" {
 
 locals {
   additional_domains = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
+
+  clickhouse_username          = "e2b"
+  clickhouse_connection_string = var.clickhouse_cluster_size > 0 ? "clickhouse://${local.clickhouse_username}:${random_password.clickhouse_password.result}@clickhouse.service.consul:${var.clickhouse_server_service_port.port}/${var.clickhouse_database_name}" : ""
+  redis_url                    = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data) == "" ? "redis.service.consul:${var.redis_port.port}" : ""
+  redis_cluster_url            = trimspace(data.google_secret_manager_secret_version.redis_cluster_url.secret_data)
+  loki_url                     = "http://loki.service.consul:${var.loki_service_port.port}"
+  logs_proxy_port              = 30006
+  otel_collector_grpc_port     = 4317
+
+  # Filter out empty / too-short HMAC secrets so that placeholder values left in
+  # Secret Manager on a fresh deploy don't get fed to legacy.NewVerifier, which
+  # rejects secrets shorter than 16 bytes and would fatal the api/dashboard-api
+  # jobs at startup.
+  default_legacy_hmac_secrets = [
+    for s in split(",", trimspace(data.google_secret_manager_secret_version.supabase_jwt_secrets.secret_data)) : s
+    if length(s) >= 16
+  ]
+  default_auth_provider_config = length(local.default_legacy_hmac_secrets) > 0 ? {
+    jwt = []
+    legacy = {
+      hmac = {
+        secrets = local.default_legacy_hmac_secrets
+      }
+    }
+    } : {
+    jwt    = []
+    legacy = null
+  }
+  # jsonencode/jsondecode strips Terraform's static type info from
+  # var.auth_provider_config so that the conditional below does not fail with
+  # "Inconsistent conditional result types" when the typed object literal in
+  # `default_auth_provider_config` (a tuple of objects) is compared with the
+  # variable's declared object type (a list of objects).
+  auth_provider_config = var.auth_provider_config != null ? jsondecode(jsonencode(var.auth_provider_config)) : local.default_auth_provider_config
+
+  # The Nomad jobspec template renders each entry as `${key} = "${value}"`,
+  # so values that themselves contain `"` characters (like a JSON blob)
+  # must have those quotes pre-escaped to produce valid HCL.
+  api_env_vars = merge({
+    ENVIRONMENT                    = var.environment
+    GIN_MODE                       = "release"
+    DOMAIN_NAME                    = var.domain_name
+    NOMAD_TOKEN                    = module.init.nomad_acl_token_secret
+    ORCHESTRATOR_PORT              = tostring(var.orchestrator_port)
+    API_INTERNAL_GRPC_PORT         = tostring(var.api_internal_grpc_port)
+    ADMIN_TOKEN                    = trimspace(data.google_secret_manager_secret_version.api_admin_token.secret_data)
+    SANDBOX_ACCESS_TOKEN_HASH_SEED = random_password.sandbox_access_token_hash_seed.result
+    AUTH_PROVIDER_CONFIG           = replace(jsonencode(local.auth_provider_config), "\"", "\\\"")
+
+    POSTGRES_CONNECTION_STRING             = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+    DB_MAX_OPEN_CONNECTIONS                = tostring(var.db_max_open_connections)
+    DB_MIN_IDLE_CONNECTIONS                = tostring(var.db_min_idle_connections)
+    AUTH_DB_CONNECTION_STRING              = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+    AUTH_DB_READ_REPLICA_CONNECTION_STRING = trimspace(data.google_secret_manager_secret_version.postgres_read_replica_connection_string.secret_data)
+    AUTH_DB_MAX_OPEN_CONNECTIONS           = tostring(var.auth_db_max_open_connections)
+    AUTH_DB_MIN_IDLE_CONNECTIONS           = tostring(var.auth_db_min_idle_connections)
+
+    LOKI_URL                     = local.loki_url
+    CLICKHOUSE_CONNECTION_STRING = local.clickhouse_connection_string
+
+    POSTHOG_API_KEY               = trimspace(data.google_secret_manager_secret_version.posthog_api_key.secret_data)
+    ANALYTICS_COLLECTOR_HOST      = trimspace(data.google_secret_manager_secret_version.analytics_collector_host.secret_data)
+    ANALYTICS_COLLECTOR_API_TOKEN = trimspace(data.google_secret_manager_secret_version.analytics_collector_api_token.secret_data)
+    LOGS_COLLECTOR_ADDRESS        = "http://localhost:${local.logs_proxy_port}"
+    OTEL_COLLECTOR_GRPC_ENDPOINT  = "localhost:${local.otel_collector_grpc_port}"
+
+    REDIS_POOL_SIZE     = "160"
+    REDIS_CLUSTER_URL   = local.redis_cluster_url
+    REDIS_TLS_CA_BASE64 = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+    REDIS_URL           = local.redis_url
+
+    LAUNCH_DARKLY_API_KEY = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+    # This is here just because it is required in some part of our code which is transitively imported
+    TEMPLATE_BUCKET_NAME           = "skip"
+    DEFAULT_PERSISTENT_VOLUME_TYPE = var.default_persistent_volume_type
+
+    VOLUME_TOKEN_ISSUER           = local.volume_token_issuer
+    VOLUME_TOKEN_SIGNING_KEY      = local.volume_token_signing_key
+    VOLUME_TOKEN_SIGNING_KEY_NAME = local.volume_token_signature_name
+    VOLUME_TOKEN_DURATION         = var.volume_token_valid_for
+    VOLUME_TOKEN_SIGNING_METHOD   = local.volume_token_signature_method
+    CLIENT_PROXY_OIDC_ISSUER_URL  = var.client_proxy_oidc_issuer_url
+  }, var.api_env_vars)
+
+  api_db_migrator_env_vars = merge({
+    POSTGRES_CONNECTION_STRING = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+  }, var.api_db_migrator_env_vars)
+
+  client_proxy_env_vars = merge({
+    ENVIRONMENT                  = var.environment
+    OTEL_COLLECTOR_GRPC_ENDPOINT = "localhost:${local.otel_collector_grpc_port}"
+    LOGS_COLLECTOR_ADDRESS       = "http://localhost:${local.logs_proxy_port}"
+    REDIS_POOL_SIZE              = "40"
+    REDIS_CLUSTER_URL            = local.redis_cluster_url
+    REDIS_TLS_CA_BASE64          = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+    REDIS_URL                    = local.redis_url
+    # Used by in-cluster client-proxy to call API ResumeSandbox over gRPC.
+    API_INTERNAL_GRPC_ADDRESS = "api-internal-grpc.service.consul:${var.api_internal_grpc_port}"
+    LAUNCH_DARKLY_API_KEY     = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+  }, var.client_proxy_env_vars)
+
+  orchestrator_env_vars = merge({
+    LOGS_COLLECTOR_ADDRESS        = "http://localhost:${local.logs_proxy_port}"
+    ENVIRONMENT                   = var.environment
+    ENVD_TIMEOUT                  = var.envd_timeout
+    TEMPLATE_BUCKET_NAME          = module.init.fc_template_bucket_name
+    OTEL_COLLECTOR_GRPC_ENDPOINT  = "localhost:${local.otel_collector_grpc_port}"
+    ALLOW_SANDBOX_INTERNAL_CIDRS  = var.allow_sandbox_internal_cidrs
+    CLICKHOUSE_CONNECTION_STRING  = local.clickhouse_connection_string
+    REDIS_POOL_SIZE               = "10"
+    REDIS_CLUSTER_URL             = local.redis_cluster_url
+    REDIS_TLS_CA_BASE64           = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+    REDIS_URL                     = local.redis_url
+    GIN_MODE                      = "release"
+    CONSUL_TOKEN                  = module.init.consul_acl_token_secret
+    DOMAIN_NAME                   = var.domain_name
+    SHARED_CHUNK_CACHE_PATH       = module.cluster.shared_chunk_cache_path
+    ORCHESTRATOR_SERVICES         = "orchestrator"
+    PROVIDER                      = "gcp"
+    ARTIFACTS_REGISTRY_PROVIDER   = "GCP_ARTIFACTS"
+    STORAGE_PROVIDER              = "GCPBucket"
+    GOOGLE_SERVICE_ACCOUNT_BASE64 = ""
+    GCS_GRPC_CONNECTION_POOL_SIZE = var.gcs_grpc_connection_pool_size != 0 ? tostring(var.gcs_grpc_connection_pool_size) : ""
+    PERSISTENT_VOLUME_MOUNTS      = join(",", [for key, value in local.persistent_volume_types : format("%s:%s", key, value["local_mount_path"])])
+    LAUNCH_DARKLY_API_KEY         = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+  }, var.orchestrator_env_vars)
+
+  template_manager_env_vars = merge({
+    CONSUL_TOKEN                    = module.init.consul_acl_token_secret
+    GOOGLE_SERVICE_ACCOUNT_BASE64   = module.init.google_service_account_key
+    GCP_PROJECT_ID                  = var.gcp_project_id
+    GCP_REGION                      = var.gcp_region
+    GCP_DOCKER_REPOSITORY_NAME      = google_artifact_registry_repository.custom_environments_repository.name
+    GCS_GRPC_CONNECTION_POOL_SIZE   = var.gcs_grpc_connection_pool_size != 0 ? tostring(var.gcs_grpc_connection_pool_size) : ""
+    API_SECRET                      = random_password.api_secret.result
+    ENVIRONMENT                     = var.environment
+    DOMAIN_NAME                     = var.domain_name
+    TEMPLATE_BUCKET_NAME            = module.init.fc_template_bucket_name
+    BUILD_CACHE_BUCKET_NAME         = module.init.fc_build_cache_bucket_name
+    OTEL_COLLECTOR_GRPC_ENDPOINT    = "localhost:${local.otel_collector_grpc_port}"
+    LOGS_COLLECTOR_ADDRESS          = "http://localhost:${local.logs_proxy_port}"
+    ORCHESTRATOR_SERVICES           = "template-manager"
+    REDIS_POOL_SIZE                 = "10"
+    SHARED_CHUNK_CACHE_PATH         = module.cluster.shared_chunk_cache_path
+    CLICKHOUSE_CONNECTION_STRING    = local.clickhouse_connection_string
+    DOCKERHUB_REMOTE_REPOSITORY_URL = var.remote_repository_enabled ? module.remote_repository[0].dockerhub_remote_repository_url : ""
+    GIN_MODE                        = "release"
+    LAUNCH_DARKLY_API_KEY           = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+  }, var.template_manager_env_vars)
+
+  docker_reverse_proxy_env_vars = merge({
+    POSTGRES_CONNECTION_STRING    = data.google_secret_manager_secret_version.postgres_connection_string.secret_data
+    GOOGLE_SERVICE_ACCOUNT_BASE64 = google_service_account_key.google_service_key.private_key
+    GCP_REGION                    = var.gcp_region
+    GCP_PROJECT_ID                = var.gcp_project_id
+    GCP_DOCKER_REPOSITORY_NAME    = google_artifact_registry_repository.custom_environments_repository.name
+    DOMAIN_NAME                   = var.domain_name
+  }, var.docker_reverse_proxy_env_vars)
+
+  filestore_cleanup_env_vars = merge({
+    LAUNCH_DARKLY_API_KEY = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
+  }, var.filestore_cleanup_env_vars)
 
   # Normalize additional_api_paths_handled_by_ingress to support both legacy (list of strings)
   # and new (list of objects) formats. Strings are converted to objects with paths = [string].
@@ -204,6 +366,41 @@ module "cluster" {
   clickhouse_stateful_disk_size_gb = var.clickhouse_stateful_disk_size_gb
 }
 
+module "k8s_apps" {
+  source = "./k8s-apps"
+
+  prefix         = var.prefix
+  gcp_project_id = var.gcp_project_id
+  gcp_region     = var.gcp_region
+  gcp_zone       = var.gcp_zone
+
+  namespace               = "e2b"
+  argocd_apps_bucket_name = module.init.argocd_apps_bucket_name
+  core_repository_name    = module.init.core_repository_name
+
+  argocd_enabled = false
+
+  # API
+  api_server_count                                       = var.api_server_count
+  api_resources_cpu_count                                = var.api_resources_cpu_count
+  api_resources_memory_mb                                = var.api_resources_memory_mb
+  api_machine_count                                      = var.api_cluster_size
+  api_node_pool                                          = var.api_node_pool
+  api_port                                               = var.api_port
+  api_internal_grpc_port                                 = var.api_internal_grpc_port
+  api_env_vars                                           = local.api_env_vars
+  api_db_migrator_env_vars                               = local.api_db_migrator_env_vars
+  auth_provider_config                                   = local.auth_provider_config
+  environment                                            = var.environment
+  google_service_account_key                             = module.init.google_service_account_key
+  api_secret                                             = random_password.api_secret.result
+  custom_envs_repository_name                            = google_artifact_registry_repository.custom_environments_repository.name
+  postgres_connection_string_secret_name                 = module.init.postgres_connection_string_secret_name
+  postgres_read_replica_connection_string_secret_version = google_secret_manager_secret_version.postgres_read_replica_connection_string
+  redis_cluster_url_secret_version                       = module.init.redis_cluster_url_secret_version
+  redis_tls_ca_base64_secret_version                     = module.init.redis_tls_ca_base64_secret_version
+}
+
 module "nomad" {
   source = "./nomad"
 
@@ -220,7 +417,10 @@ module "nomad" {
   # Clickhouse
   clickhouse_resources_cpu_count   = var.clickhouse_resources_cpu_count
   clickhouse_resources_memory_mb   = var.clickhouse_resources_memory_mb
+  clickhouse_username              = local.clickhouse_username
   clickhouse_database              = var.clickhouse_database_name
+  clickhouse_password              = random_password.clickhouse_password.result
+  clickhouse_server_secret         = random_password.clickhouse_server_secret.result
   clickhouse_backups_bucket_name   = module.init.clickhouse_backups_bucket_name
   clickhouse_server_count          = var.clickhouse_cluster_size
   clickhouse_server_port           = var.clickhouse_server_service_port
@@ -242,26 +442,13 @@ module "nomad" {
   api_node_pool                                          = var.api_node_pool
   api_port                                               = var.api_port
   api_internal_grpc_port                                 = var.api_internal_grpc_port
-  client_proxy_oidc_issuer_url                           = var.client_proxy_oidc_issuer_url
+  api_env_vars                                           = local.api_env_vars
+  api_db_migrator_env_vars                               = local.api_db_migrator_env_vars
   environment                                            = var.environment
   google_service_account_key                             = module.init.google_service_account_key
-  api_secret                                             = random_password.api_secret.result
   custom_envs_repository_name                            = google_artifact_registry_repository.custom_environments_repository.name
   postgres_connection_string_secret_name                 = module.init.postgres_connection_string_secret_name
   postgres_read_replica_connection_string_secret_version = google_secret_manager_secret_version.postgres_read_replica_connection_string
-  supabase_jwt_secrets_secret_name                       = module.init.supabase_jwt_secret_name
-  posthog_api_key_secret_name                            = module.init.posthog_api_key_secret_name
-  analytics_collector_host_secret_name                   = module.init.analytics_collector_host_secret_name
-  analytics_collector_api_token_secret_name              = module.init.analytics_collector_api_token_secret_name
-  api_admin_token_secret_name                            = module.init.api_admin_token_secret_name
-  redis_cluster_url_secret_version                       = module.init.redis_cluster_url_secret_version
-  redis_tls_ca_base64_secret_version                     = module.init.redis_tls_ca_base64_secret_version
-  sandbox_access_token_hash_seed                         = random_password.sandbox_access_token_hash_seed.result
-  sandbox_storage_backend                                = var.sandbox_storage_backend
-  db_max_open_connections                                = var.db_max_open_connections
-  db_min_idle_connections                                = var.db_min_idle_connections
-  auth_db_max_open_connections                           = var.auth_db_max_open_connections
-  auth_db_min_idle_connections                           = var.auth_db_min_idle_connections
 
   # Click Proxy
   client_proxy_count               = var.client_proxy_count
@@ -271,6 +458,7 @@ module "nomad" {
 
   client_proxy_session_port = var.client_proxy_port.port
   client_proxy_health_port  = var.client_proxy_health_port.port
+  client_proxy_env_vars     = local.client_proxy_env_vars
 
   domain_name = var.domain_name
 
@@ -286,6 +474,8 @@ module "nomad" {
   # Otel Colelctor
   otel_collector_resources_memory_mb    = var.otel_collector_resources_memory_mb
   otel_collector_resources_cpu_count    = var.otel_collector_resources_cpu_count
+  otel_collector_grpc_port              = local.otel_collector_grpc_port
+  logs_proxy_port                       = { name = "logs", port = local.logs_proxy_port }
   enable_otel_router_logs               = var.enable_otel_router_logs
   otel_router_http_port                 = var.otel_router_http_port
   enable_otel_router_metrics            = var.enable_otel_router_metrics
@@ -294,27 +484,20 @@ module "nomad" {
   enable_gcp_telemetry_external_metrics = var.enable_gcp_telemetry_external_metrics
 
   # Dashboard API
-  dashboard_api_count                          = var.dashboard_api_count
-  dashboard_api_admin_token_secret_name        = module.init.dashboard_api_admin_token_secret_name
-  supabase_db_connection_string_secret_version = module.init.supabase_db_connection_string_secret_version
-  enable_auth_user_sync_background_worker      = var.enable_auth_user_sync_background_worker
-  enable_billing_http_team_provision_sink      = var.enable_billing_http_team_provision_sink
+  dashboard_api_count    = var.dashboard_api_count
+  dashboard_api_env_vars = local.dashboard_api_env_vars
 
   # Docker reverse proxy
-  docker_reverse_proxy_port                = var.docker_reverse_proxy_port
-  docker_reverse_proxy_service_account_key = google_service_account_key.google_service_key.private_key
+  docker_reverse_proxy_port     = var.docker_reverse_proxy_port
+  docker_reverse_proxy_env_vars = local.docker_reverse_proxy_env_vars
 
   # Orchestrator
   orchestrator_node_pool         = var.orchestrator_node_pool
-  allow_sandbox_internet         = var.allow_sandbox_internet
-  allow_sandbox_internal_cidrs   = var.allow_sandbox_internal_cidrs
   orchestrator_port              = var.orchestrator_port
   orchestrator_proxy_port        = var.orchestrator_proxy_port
   fc_env_pipeline_bucket_name    = module.init.fc_env_pipeline_bucket_name
-  envd_timeout                   = var.envd_timeout
-  persistent_volume_mounts       = { for key, config in local.persistent_volume_types : key => config["local_mount_path"] }
   default_persistent_volume_type = var.default_persistent_volume_type
-  orchestrator_env_vars          = var.orchestrator_env_vars
+  orchestrator_env_vars          = local.orchestrator_env_vars
   orchestrator_enabled           = var.orchestrator_enabled
 
   # Template manager
@@ -324,6 +507,7 @@ module "nomad" {
   build_cache_bucket_name             = module.init.fc_build_cache_bucket_name
   template_manages_clusters_size_gt_1 = local.template_manages_clusters_size_gt_1
   dockerhub_remote_repository_url     = var.remote_repository_enabled ? module.remote_repository[0].dockerhub_remote_repository_url : ""
+  template_manager_env_vars           = local.template_manager_env_vars
 
   # Redis
   redis_managed = var.redis_managed
@@ -341,6 +525,7 @@ module "nomad" {
   filestore_cache_cleanup_max_concurrent_scan   = var.filestore_cache_cleanup_max_concurrent_scan
   filestore_cache_cleanup_max_concurrent_delete = var.filestore_cache_cleanup_max_concurrent_delete
   filestore_cache_cleanup_max_retries           = var.filestore_cache_cleanup_max_retries
+  filestore_cleanup_env_vars                    = local.filestore_cleanup_env_vars
 
   volume_token_issuer           = local.volume_token_issuer
   volume_token_signing_key      = local.volume_token_signing_key

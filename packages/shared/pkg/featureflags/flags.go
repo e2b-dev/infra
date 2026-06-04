@@ -108,6 +108,13 @@ func OverrideBoolFlag(flag BoolFlag, value bool) {
 	launchDarklyOfflineStore.Update(builder)
 }
 
+// OverrideJSONFlag forces a JSON flag to a specific value in the offline store.
+// Only takes effect when LAUNCH_DARKLY_API_KEY is not set (i.e. dev/CLI tools).
+func OverrideJSONFlag(flag JSONFlag, value ldvalue.Value) {
+	builder := launchDarklyOfflineStore.Flag(flag.name).ValueForAll(value)
+	launchDarklyOfflineStore.Update(builder)
+}
+
 var (
 	MetricsWriteFlag                    = NewBoolFlag("sandbox-metrics-write", true)
 	MetricsReadFlag                     = NewBoolFlag("sandbox-metrics-read", true)
@@ -132,6 +139,15 @@ var (
 	// Only takes effect when UseMemFdFlag is also on.
 	MemfdBackgroundCopyFlag = NewBoolFlag("memfd-background-copy", false)
 
+	// MemfileDiffDedupFlag enables 4 KiB-page dedup of the memfile diff
+	// against the base memfile. bestEffort skips uncached blocks;
+	// directIO opens the dedup output with O_DIRECT.
+	MemfileDiffDedupFlag = NewJSONFlag("memfile-diff-dedup", ldvalue.FromJSONMarshal(map[string]any{
+		"enabled":    false,
+		"bestEffort": false,
+		"directIO":   false,
+	}))
+
 	// PeerToPeerChunkTransferFlag enables peer-to-peer chunk routing.
 	PeerToPeerChunkTransferFlag = NewBoolFlag("peer-to-peer-chunk-transfer", false)
 	// PeerToPeerAsyncCheckpointFlag makes Checkpoint upload fire-and-forget instead
@@ -143,6 +159,7 @@ var (
 	SandboxLabelBasedSchedulingFlag  = NewBoolFlag("sandbox-label-based-scheduling", false)
 	OptimisticResourceAccountingFlag = NewBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
 	FreePageReportingFlag            = NewBoolFlag("free-page-reporting", false)
+	FreezeUserCgroupFlag             = NewBoolFlag("freeze-user-cgroup", env.IsDevelopment())
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
 
@@ -150,6 +167,10 @@ var (
 	// uploads. Independent of compress-config: it changes the header format,
 	// not whether data is compressed.
 	V4HeaderForUncompressedFlag = NewBoolFlag("v4-header-for-uncompressed", false)
+
+	// HeaderV5WriteFlag makes Pause emit V5 headers. When enabled it also
+	// supersedes V4HeaderForUncompressedFlag for uncompressed uploads.
+	HeaderV5WriteFlag = NewBoolFlag("header-v5-write", false)
 )
 
 type IntFlag struct {
@@ -247,6 +268,10 @@ var (
 	MaxConcurrentSnapshotBuildQueries = NewIntFlag("max-concurrent-snapshot-build-queries", 0)
 
 	MinChunkerReadSizeKB = NewIntFlag("min-chunker-read-size-kb", 16)
+
+	// MaxParallelBuildReadSegments limits concurrent backing reads within one fragmented build read.
+	// 1 or lower keeps the existing serial path.
+	MaxParallelBuildReadSegments = NewIntFlag("max-parallel-build-read-segments", 1)
 )
 
 // ReclaimConfigFlag holds per-step caps in milliseconds for the pre-pause
@@ -336,7 +361,7 @@ const (
 const (
 	DefaultFirecackerV1_10Version = "v1.10.1_30cbb07"
 	DefaultFirecackerV1_12Version = "v1.12.1_210cbac"
-	DefaultFirecackerV1_14Version = "v1.14.1_458ca91"
+	DefaultFirecackerV1_14Version = "v1.14.1_bd85e43"
 	DefaultFirecrackerVersion     = DefaultFirecackerV1_12Version
 )
 

@@ -155,7 +155,12 @@ func (e *Evictor) evictSandbox(ctx context.Context, sbx sandbox.Sandbox) {
 		pause.LogInitiated(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout)
 	}
 
-	if err := e.removeSandbox(context.WithoutCancel(ctx), sbx.TeamID, sbx.SandboxID, sandbox.RemoveOpts{Action: action, Eviction: true}); err != nil {
+	opts := sandbox.RemoveOpts{Action: action, Eviction: true}
+	if action == sandbox.StateActionKill {
+		opts.Reason = sandbox.KillReasonTimeout
+	}
+
+	if err := e.removeSandbox(context.WithoutCancel(ctx), sbx.TeamID, sbx.SandboxID, opts); err != nil {
 		if action == sandbox.StateActionPause {
 			switch {
 			case isNotEvictableError(err):
@@ -170,6 +175,7 @@ func (e *Evictor) evictSandbox(ctx context.Context, sbx sandbox.Sandbox) {
 				zap.Error(err),
 				logger.WithSandboxID(sbx.SandboxID),
 				logger.WithTeamID(sbx.TeamID.String()),
+				zap.String("kill_reason", sandbox.KillReasonTimeout.String()),
 			)
 		}
 
@@ -179,7 +185,10 @@ func (e *Evictor) evictSandbox(ctx context.Context, sbx sandbox.Sandbox) {
 	}
 
 	if action != sandbox.StateActionPause {
-		logger.L().Debug(ctx, "Sandbox evicted", logger.WithSandboxID(sbx.SandboxID))
+		logger.L().Debug(ctx, "Sandbox evicted",
+			logger.WithSandboxID(sbx.SandboxID),
+			zap.String("kill_reason", sandbox.KillReasonTimeout.String()),
+		)
 	}
 }
 

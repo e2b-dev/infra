@@ -189,8 +189,8 @@ func (c *Cache) GetTemplate(
 	storageTemplate, err := newTemplateFromStorage(
 		c.config.BuilderConfig,
 		buildID,
-		nil,
-		nil,
+		resolvedHeader(nil),
+		resolvedHeader(nil),
 		persistence,
 		c.blockMetrics,
 		nil,
@@ -208,11 +208,18 @@ func (c *Cache) GetTemplate(
 	return c.getTemplateWithFetch(ctx, storageTemplate, maxLen), nil
 }
 
+func resolvedHeader(h *header.Header) *utils.SetOnce[*header.Header] {
+	s := utils.NewSetOnce[*header.Header]()
+	_ = s.SetValue(h)
+
+	return s
+}
+
 func (c *Cache) AddSnapshot(
 	ctx context.Context,
 	buildId string,
-	memfileHeader *header.Header,
-	rootfsHeader *header.Header,
+	memfileHeader *utils.SetOnce[*header.Header],
+	rootfsHeader *utils.SetOnce[*header.Header],
 	localSnapfile File,
 	localMetafile File,
 	memfileDiff build.Diff,

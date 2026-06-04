@@ -150,6 +150,15 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 			config.K8sNamespace,
 			config.K8sTemplateManagerPodLabelSelector,
 		)
+	case cfg.ServiceDiscoveryProviderLocal:
+		localND, localErr := orchdiscovery.NewLocal(config.LocalOrchestratorAddress)
+		if localErr != nil {
+			logger.L().Fatal(ctx, "Initializing local orchestrator discovery", zap.Error(localErr))
+		}
+		nodeDiscovery = localND
+		// No template builders in local dev — return an empty list so the
+		// clusters pool initializes cleanly.
+		templateBuilderDiscovery = clustersdiscovery.NewStaticDiscovery(nil)
 	default: // ServiceDiscoveryProviderNomad
 		nomadClient, nomadErr := nomadapi.NewClient(&nomadapi.Config{
 			Address:  config.NomadAddress,

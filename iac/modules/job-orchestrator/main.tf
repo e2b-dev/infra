@@ -1,38 +1,17 @@
 locals {
+  job_env_vars = {
+    for key, value in var.job_env_vars : key => trimspace(value)
+    if value != null && try(trimspace(value), "") != ""
+  }
+
   orchestrator_vars = {
     node_pool  = var.node_pool
     port       = var.port
     proxy_port = var.proxy_port
 
-    environment                  = var.environment
-    logs_collector_address       = var.logs_collector_address
-    otel_collector_grpc_endpoint = var.otel_collector_grpc_endpoint
-    envd_timeout                 = var.envd_timeout
-    template_bucket_name         = var.template_bucket_name
-    allow_sandbox_internet       = var.allow_sandbox_internet
-    allow_sandbox_internal_cidrs = var.allow_sandbox_internal_cidrs
-    clickhouse_connection_string = var.clickhouse_connection_string
-    redis_url                    = var.redis_url
-    redis_cluster_url            = var.redis_cluster_url
-    redis_tls_ca_base64          = var.redis_tls_ca_base64
-    redis_pool_size              = var.redis_pool_size
-
-    consul_token             = var.consul_token
-    domain_name              = var.domain_name
-    shared_chunk_cache_path  = var.shared_chunk_cache_path
-    launch_darkly_api_key    = trimspace(var.launch_darkly_api_key)
-    orchestrator_services    = var.orchestrator_services
-    build_cache_bucket_name  = var.build_cache_bucket_name
-    persistent_volume_mounts = join(",", [for key, value in var.persistent_volume_mounts : format("%s:%s", key, value)])
-
-    provider            = var.provider_name
-    provider_aws_config = var.provider_aws_config
-    provider_gcp_config = var.provider_gcp_config
-
     artifact_source = var.artifact_source
 
-    use_local_namespace_storage = var.use_local_namespace_storage
-    job_env_vars                = var.job_env_vars
+    job_env_vars = local.job_env_vars
   }
 
   # Render with placeholder to detect changes in job definition

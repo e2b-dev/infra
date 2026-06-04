@@ -62,6 +62,16 @@ func (s *APIStore) GetTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 			Email:     profile.Email,
 			IsDefault: row.IsDefault,
 			AddedBy:   row.AddedBy,
+			Providers: profile.Providers,
+		}
+		if member.Providers == nil {
+			member.Providers = []string{}
+		}
+		if profile.Name != "" {
+			member.Name = new(profile.Name)
+		}
+		if profile.ProfilePictureURL != "" {
+			member.ProfilePictureUrl = new(profile.ProfilePictureURL)
 		}
 
 		if row.CreatedAt.Valid {
@@ -118,16 +128,9 @@ func (s *APIStore) PostTeamsTeamIDMembers(c *gin.Context, teamID api.TeamID) {
 	}
 
 	user := profiles[0]
-	_, err = s.db.GetPublicUserID(ctx, user.UserID)
-	if err != nil {
-		if dberrors.IsNotFoundError(err) {
-			s.sendAPIStoreError(c, http.StatusNotFound, "User with this email does not exist. Please ask them to sign up first.")
-
-			return
-		}
-
-		logger.L().Error(ctx, "failed to look up public user", zap.Error(err), logger.WithUserID(user.UserID.String()))
-		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to look up user")
+	if err := s.authDB.Write.UpsertPublicUser(ctx, user.UserID); err != nil {
+		logger.L().Error(ctx, "failed to create public user anchor", zap.Error(err), logger.WithUserID(user.UserID.String()))
+		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to add team member")
 
 		return
 	}

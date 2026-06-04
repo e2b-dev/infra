@@ -62,23 +62,25 @@ func (c ProviderConfig) validate() error {
 }
 
 // strategy is the interface satisfied by per-provider JWT verifiers used by
-// verifier.
+// Verifier.
 type strategy interface {
 	Verify(ctx context.Context, tokenString string) (uuid.UUID, jwt.MapClaims, error)
 }
 
-type verifier struct {
+// Verifier aggregates one or more JWT verification strategies (OIDC issuers
+// plus an optional legacy HMAC source) and returns the first that succeeds.
+type Verifier struct {
 	strategies []strategy
 }
 
-// newVerifier constructs a *verifier from the given ProviderConfig.
+// NewVerifier constructs a *Verifier from the given ProviderConfig.
 //
 // When the provided config has no JWT issuers and no legacy entry (i.e. the
-// AUTH_PROVIDER_CONFIG env var is unset or empty), newVerifier returns
+// AUTH_PROVIDER_CONFIG env var is unset or empty), NewVerifier returns
 // (nil, nil). This is a valid configuration: the caller can pass the nil
-// verifier to authService, and any token verification attempt will be denied
-// at runtime by verifier.Verify / Service.ValidateAuthProviderToken.
-func newVerifier(ctx context.Context, config ProviderConfig, oidcHTTPClient *http.Client, identities oidc.IdentityLookup) (*verifier, error) {
+// Verifier to authService, and any token verification attempt will be denied
+// at runtime by Verifier.Verify / Service.ValidateAuthProviderToken.
+func NewVerifier(ctx context.Context, config ProviderConfig, oidcHTTPClient *http.Client, identities oidc.IdentityLookup) (*Verifier, error) {
 	normalized := config.normalize()
 	if err := normalized.validate(); err != nil {
 		return nil, err
@@ -117,12 +119,14 @@ func newVerifier(ctx context.Context, config ProviderConfig, oidcHTTPClient *htt
 		return nil, errors.New("auth provider verifier has no configured signing verifier")
 	}
 
-	return &verifier{
+	return &Verifier{
 		strategies: strategies,
 	}, nil
 }
 
-func (v *verifier) Verify(ctx context.Context, tokenString string) (uuid.UUID, jwt.MapClaims, error) {
+// Verify iterates over the configured strategies and returns the first that
+// successfully verifies the token and resolves a non-nil internal user UUID.
+func (v *Verifier) Verify(ctx context.Context, tokenString string) (uuid.UUID, jwt.MapClaims, error) {
 	if v == nil {
 		return uuid.Nil, nil, errors.New("auth provider verifier is not configured")
 	}

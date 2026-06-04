@@ -14,7 +14,7 @@ source "googlecompute" "orch" {
   # TODO: Overwrite the image instead of creating timestamped images every time we build its
   image_name    = "${var.prefix}orch-${formatdate("YYYY-MM-DD-hh-mm-ss", timestamp())}"
   project_id    = var.gcp_project_id
-  source_image  = "ubuntu-2404-noble-amd64-v20260402"
+  source_image  = var.source_image
   ssh_username  = "ubuntu"
   zone          = var.gcp_zone
   disk_size     = 10
@@ -97,12 +97,6 @@ build {
 
   provisioner "shell" {
     inline = [
-      "sudo snap install go --classic"
-    ]
-  }
-
-  provisioner "shell" {
-    inline = [
       "sudo systemctl start docker",
       "sudo usermod -aG docker $USER",
     ]
@@ -124,11 +118,6 @@ build {
   provisioner "shell" {
     script          = "${local.shared_setup_dir}/install-nomad.sh"
     execute_command = "chmod +x {{ .Path }}; {{ .Vars }} {{ .Path }} --version ${var.nomad_version}"
-  }
-
-  provisioner "shell" {
-    script          = "${local.shared_setup_dir}/install-vault.sh"
-    execute_command = "chmod +x {{ .Path }}; {{ .Vars }} {{ .Path }} --version ${var.vault_version}"
   }
 
   # Install the ClickHouse client at the same version as the server so it's

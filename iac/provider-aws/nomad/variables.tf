@@ -65,6 +65,12 @@ variable "client_proxy_repository_name" {
   type = string
 }
 
+variable "client_proxy_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
 # Redis
 variable "redis_managed" {
   type = bool
@@ -72,23 +78,6 @@ variable "redis_managed" {
 
 variable "redis_port" {
   type = number
-}
-
-variable "redis_url" {
-  type    = string
-  default = ""
-}
-
-variable "redis_cluster_url" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
-variable "redis_tls_ca_base64" {
-  type      = string
-  default   = ""
-  sensitive = true
 }
 
 # ClickHouse
@@ -171,6 +160,18 @@ variable "api_internal_grpc_port" {
   default = 5009
 }
 
+variable "api_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "api_db_migrator_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
 variable "api_memory_mb" {
   type    = number
   default = 512
@@ -189,42 +190,6 @@ variable "db_migrator_repository_name" {
   type = string
 }
 
-variable "postgres_connection_string" {
-  type      = string
-  sensitive = true
-}
-
-variable "auth_provider_config" {
-  type = object({
-    jwt = optional(list(object({
-      issuer = object({
-        url                 = string
-        discoveryURL        = optional(string)
-        audiences           = list(string)
-        audienceMatchPolicy = optional(string)
-      })
-      cacheDuration = optional(string)
-    })))
-    legacy = optional(object({
-      hmac = object({
-        secrets = list(string)
-      })
-    }))
-  })
-  sensitive = true
-  default   = null
-}
-
-variable "admin_token" {
-  type      = string
-  sensitive = true
-}
-
-variable "sandbox_access_token_hash_seed" {
-  type      = string
-  sensitive = true
-}
-
 # Orchestrator
 variable "orchestrator_node_pool" {
   type = string
@@ -240,20 +205,10 @@ variable "orchestrator_proxy_port" {
   default = 5007
 }
 
-variable "allow_sandbox_internet" {
-  type    = bool
-  default = true
-}
-
-variable "allow_sandbox_internal_cidrs" {
-  type        = string
-  description = "Comma-separated CIDRs to allow through the sandbox firewall deny list"
-  default     = ""
-}
-
-variable "envd_timeout" {
-  type    = string
-  default = "40s"
+variable "orchestrator_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "fc_env_pipeline_bucket_name" {
@@ -283,8 +238,9 @@ variable "template_manager_port" {
   default = 5008
 }
 
-variable "api_secret" {
-  type      = string
+variable "template_manager_env_vars" {
+  type      = map(string)
+  default   = {}
   sensitive = true
 }
 
@@ -352,20 +308,4 @@ variable "launch_darkly_api_key" {
 
 variable "traefik_config_files" {
   type = map(string)
-}
-
-variable "db_max_open_connections" {
-  type = number
-}
-
-variable "db_min_idle_connections" {
-  type = number
-}
-
-variable "auth_db_max_open_connections" {
-  type = number
-}
-
-variable "auth_db_min_idle_connections" {
-  type = number
 }

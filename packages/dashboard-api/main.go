@@ -18,21 +18,19 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	middleware "github.com/oapi-codegen/gin-middleware"
-	"github.com/riverqueue/river"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"golang.org/x/sync/errgroup"
 
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
-	"github.com/e2b-dev/infra/packages/dashboard-api/internal/backgroundworker"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/handlers"
+	dashboardmiddleware "github.com/e2b-dev/infra/packages/dashboard-api/internal/middleware"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
@@ -199,7 +197,6 @@ func run() int {
 
 	teamProvisionSink, err := internalteamprovision.NewProvisionSink(
 		ctx,
-		config.EnableBillingHTTPTeamProvisionSink,
 		config.BillingServerURL,
 		config.BillingServerAPIToken,
 		supabaseDB,
@@ -210,7 +207,14 @@ func run() int {
 		return 1
 	}
 
-	apiStore := handlers.NewAPIStore(config, db, authDB, supabaseDB, clickhouseClient, authService, teamProvisionSink)
+	userProfiles, err := buildUserProfileProvider(config, supabaseDB, authDB, authClient)
+	if err != nil {
+		l.Error(ctx, "Initializing user profile provider", zap.Error(err))
+
+		return 1
+	}
+
+	apiStore := handlers.NewAPIStore(config, db, authDB, supabaseDB, clickhouseClient, authService, teamProvisionSink, userProfiles)
 
 	swagger, err := api.GetSwagger()
 	if err != nil {
@@ -236,24 +240,8 @@ func run() int {
 	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer sigCancel()
 
-	var riverClient *river.Client[pgx.Tx]
-	if config.EnableAuthUserSyncBackgroundWorker {
-		riverClient, err = backgroundworker.StartAuthUserSyncWorker(
-			ctx,
-			signalCtx,
-			supabaseDB,
-			authDB,
-			l,
-		)
-		if err != nil {
-			l.Error(ctx, "failed to start auth user sync worker", zap.Error(err))
-
-			return 1
-		}
-	}
-
 	l.Info(ctx, "HTTP service starting", zap.Int("port", config.Port))
-	runErr := waitForServiceStop(signalCtx, startHTTPServer(s), riverStoppedChan(riverClient))
+	runErr := waitForServiceStop(signalCtx, startHTTPServer(s))
 	if runErr != nil {
 		l.Error(ctx, "dashboard-api runtime error", zap.Error(runErr))
 	} else {
@@ -263,7 +251,7 @@ func run() int {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 	defer shutdownCancel()
 
-	if err := shutdownService(shutdownCtx, s, riverClient); err != nil {
+	if err := shutdownService(shutdownCtx, s); err != nil {
 		l.Error(ctx, "dashboard-api shutdown error", zap.Error(err))
 
 		return 1
@@ -359,6 +347,8 @@ func newHTTPServer(
 			}),
 	)
 
+	r.Use(dashboardmiddleware.EnforceBlockedTeam())
+
 	api.RegisterHandlers(r, apiStore)
 
 	s := &http.Server{
@@ -391,7 +381,7 @@ func startHTTPServer(s *http.Server) <-chan error {
 	return errCh
 }
 
-func waitForServiceStop(signalCtx context.Context, httpErrCh <-chan error, riverStoppedCh <-chan struct{}) error {
+func waitForServiceStop(signalCtx context.Context, httpErrCh <-chan error) error {
 	select {
 	case <-signalCtx.Done():
 		return nil
@@ -401,39 +391,37 @@ func waitForServiceStop(signalCtx context.Context, httpErrCh <-chan error, river
 		}
 
 		return fmt.Errorf("http service error: %w", err)
-	case <-riverStoppedCh:
-		return errors.New("auth user sync worker stopped unexpectedly")
 	}
 }
 
-func riverStoppedChan(riverClient *river.Client[pgx.Tx]) <-chan struct{} {
-	if riverClient == nil {
-		return nil
+func shutdownService(ctx context.Context, s *http.Server) error {
+	if err := s.Shutdown(ctx); err != nil {
+		return fmt.Errorf("shutdown HTTP server: %w", err)
 	}
 
-	return riverClient.Stopped()
+	return nil
 }
 
-func shutdownService(ctx context.Context, s *http.Server, riverClient *river.Client[pgx.Tx]) error {
-	var g errgroup.Group
+func buildUserProfileProvider(config cfg.Config, supabaseDB *supabasedb.Client, authDB *authdb.Client, httpClient *http.Client) (userprofile.Provider, error) {
+	supaProvider := userprofile.NewSupabaseProvider(supabaseDB)
 
-	g.Go(func() error {
-		if err := s.Shutdown(ctx); err != nil {
-			return fmt.Errorf("shutdown HTTP server: %w", err)
-		}
-
-		return nil
-	})
-
-	if riverClient != nil {
-		g.Go(func() error {
-			if err := riverClient.Stop(ctx); err != nil {
-				return fmt.Errorf("shutdown River client: %w", err)
-			}
-
-			return nil
+	var oryProvider userprofile.Provider
+	if config.UserProfileProvider.RequiresOry() {
+		// identity rows are written on the primary inside the bootstrap tx;
+		// reading them from the read replica races replication lag, so resolve
+		// (issuer, subject) <-> user_id mappings on the primary.
+		provider, err := userprofile.NewOryProvider(userprofile.OryConfig{
+			HTTPClient: httpClient,
+			SDKURL:     config.OrySDKURL,
+			Token:      config.OryProjectAPIToken,
+			Issuer:     config.OryIssuerURL,
+			Resolver:   authDB.Write,
 		})
+		if err != nil {
+			return nil, fmt.Errorf("build ory user profile provider: %w", err)
+		}
+		oryProvider = provider
 	}
 
-	return g.Wait()
+	return userprofile.NewProvider(config.UserProfileProvider, supaProvider, oryProvider)
 }

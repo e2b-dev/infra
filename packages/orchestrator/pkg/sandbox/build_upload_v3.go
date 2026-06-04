@@ -5,6 +5,7 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"golang.org/x/sync/errgroup"
 
@@ -27,19 +28,27 @@ func (u *Upload) runV3(ctx context.Context) error {
 	eg, egCtx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
-		if u.snap.MemfileDiffHeader == nil {
+		h, err := u.snap.MemfileDiffHeader.WaitWithContext(egCtx)
+		if err != nil {
+			return fmt.Errorf("wait memfile diff header: %w", err)
+		}
+		if h == nil {
 			return nil
 		}
 
-		return headers.StoreHeader(egCtx, u.store, u.paths.MemfileHeader(), finalizeV3(u.snap.MemfileDiffHeader))
+		return storeHeaderWithMetrics(egCtx, u.store, u.paths.MemfileHeader(), uploadFileMemfileHeader, finalizeV3(h))
 	})
 
 	eg.Go(func() error {
-		if u.snap.RootfsDiffHeader == nil {
+		h, err := u.snap.RootfsDiffHeader.WaitWithContext(egCtx)
+		if err != nil {
+			return fmt.Errorf("wait rootfs diff header: %w", err)
+		}
+		if h == nil {
 			return nil
 		}
 
-		return headers.StoreHeader(egCtx, u.store, u.paths.RootfsHeader(), finalizeV3(u.snap.RootfsDiffHeader))
+		return storeHeaderWithMetrics(egCtx, u.store, u.paths.RootfsHeader(), uploadFileRootfsHeader, finalizeV3(h))
 	})
 
 	meta := storage.WithMetadata(u.objectMetadata)
@@ -49,9 +58,17 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		_, _, err := storage.UploadFramed(egCtx, u.store, u.paths.Memfile(), storage.MemfileObjectType, memfilePath, meta)
+		info, err := os.Stat(memfilePath)
+		if err != nil {
+			return fmt.Errorf("memfile stat: %w", err)
+		}
+		_, _, err = storage.UploadFramed(egCtx, u.store, u.paths.Memfile(), storage.MemfileObjectType, memfilePath, meta)
+		if err != nil {
+			return err
+		}
+		recordUploadCompression(egCtx, uploadFileMemfile, storage.CompressConfig{}, info.Size(), info.Size())
 
-		return err
+		return nil
 	})
 
 	eg.Go(func() error {
@@ -59,40 +76,59 @@ func (u *Upload) runV3(ctx context.Context) error {
 			return nil
 		}
 
-		_, _, err := storage.UploadFramed(egCtx, u.store, u.paths.Rootfs(), storage.RootFSObjectType, rootfsPath, meta)
+		info, err := os.Stat(rootfsPath)
+		if err != nil {
+			return fmt.Errorf("rootfs stat: %w", err)
+		}
+		_, _, err = storage.UploadFramed(egCtx, u.store, u.paths.Rootfs(), storage.RootFSObjectType, rootfsPath, meta)
+		if err != nil {
+			return err
+		}
+		recordUploadCompression(egCtx, uploadFileRootfs, storage.CompressConfig{}, info.Size(), info.Size())
 
-		return err
+		return nil
 	})
 
 	eg.Go(func() error {
-		return storage.UploadBlob(egCtx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), meta)
+		return uploadBlobWithMetrics(egCtx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), uploadFileSnap, meta)
 	})
 
 	eg.Go(func() error {
-		return storage.UploadBlob(egCtx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path(), meta)
+		return uploadBlobWithMetrics(egCtx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path(), uploadFileMeta, meta)
 	})
 
 	if err := eg.Wait(); err != nil {
 		return err
 	}
 
-	if u.snap.MemfileDiffHeader != nil {
-		if err := u.appendAncestorBuilds(ctx, nil, u.snap.MemfileDiffHeader.Mapping, build.Memfile); err != nil {
+	// Body uploads done; headers must be ready by now (the per-file Goroutines
+	// above already Wait-ed). Wait() is a fast lookup here.
+	memfileDiffHeader, err := u.snap.MemfileDiffHeader.WaitWithContext(ctx)
+	if err != nil {
+		return fmt.Errorf("wait memfile diff header: %w", err)
+	}
+	rootfsDiffHeader, err := u.snap.RootfsDiffHeader.WaitWithContext(ctx)
+	if err != nil {
+		return fmt.Errorf("wait rootfs diff header: %w", err)
+	}
+
+	if memfileDiffHeader != nil {
+		if err := u.appendAncestorBuilds(ctx, nil, memfileDiffHeader.Mapping, build.Memfile); err != nil {
 			return err
 		}
 	}
-	if h := finalizeV3(u.snap.MemfileDiffHeader); h != nil {
+	if h := finalizeV3(memfileDiffHeader); h != nil {
 		if err := u.publish(ctx, build.Memfile, h); err != nil {
 			return err
 		}
 	}
 
-	if u.snap.RootfsDiffHeader != nil {
-		if err := u.appendAncestorBuilds(ctx, nil, u.snap.RootfsDiffHeader.Mapping, build.Rootfs); err != nil {
+	if rootfsDiffHeader != nil {
+		if err := u.appendAncestorBuilds(ctx, nil, rootfsDiffHeader.Mapping, build.Rootfs); err != nil {
 			return err
 		}
 	}
-	if h := finalizeV3(u.snap.RootfsDiffHeader); h != nil {
+	if h := finalizeV3(rootfsDiffHeader); h != nil {
 		if err := u.publish(ctx, build.Rootfs, h); err != nil {
 			return err
 		}

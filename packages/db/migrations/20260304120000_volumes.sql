@@ -17,7 +17,6 @@ CREATE TABLE IF NOT EXISTS volumes (
 -- +goose StatementEnd
 
 -- +goose StatementBegin
-ALTER TABLE "public"."volumes" ENABLE ROW LEVEL SECURITY;
 -- +goose StatementEnd
 
 -- +goose Down

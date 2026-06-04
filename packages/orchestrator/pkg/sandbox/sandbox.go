@@ -32,6 +32,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/prefetch"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/scheduling"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -447,10 +448,14 @@ func (f *Factory) CreateSandbox(
 
 	telemetry.ReportEvent(ctx, "created fc client")
 
+	fcPageSize := int64(header.PageSize)
+	if config.HugePages {
+		fcPageSize = int64(header.HugepageSize)
+	}
 	resources := &Resources{
 		Slot:   ips,
 		rootfs: rootfsProvider,
-		memory: uffd.NewNoopMemory(memfileSize, memfile.BlockSize()),
+		memory: uffd.NewNoopMemory(memfileSize, fcPageSize),
 	}
 
 	metadata := &Metadata{
@@ -1085,6 +1090,15 @@ func (s *Sandbox) Pause(
 	// compact_memory) on the live VM via envd. Per-step caps are LD-flag-driven;
 	// all default to 0 which disables the chain entirely. Non-fatal.
 	s.bestEffortReclaim(ctx)
+	// reclaim freezes user cgroups; if pause/snapshot fails the sandbox stays
+	// live, so unfreeze on error to avoid a permanently frozen live VM.
+	// Only runs via cleanup.Run on the error path; success leaves the frozen
+	// state intact so it persists into the snapshot.
+	cleanup.Add(ctx, func(ctx context.Context) error {
+		s.bestEffortUnfreeze(ctx)
+
+		return nil
+	})
 
 	// Drain free-page-hinting before pause so the snapshot doesn't capture
 	// pages the guest already considers free. Timeout per use case; 0 disables.
@@ -1128,9 +1142,17 @@ func (s *Sandbox) Pause(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memfile metadata: %w", err)
 	}
-	recordSnapshotDiff(ctx, "memfile", memfileDiffMetadata, originalMemfile.Header(), useCase)
+	recordSnapshotDiff(ctx, "memfile", memfileDiffMetadata, originalMemfile.Header())
 
 	// Start POSTPROCESSING
+	var dedupBase block.ReadonlyDevice
+	var dedupBestEffort, dedupDirectIO bool
+	dedupCfg := s.featureFlags.JSONFlag(ctx, featureflags.MemfileDiffDedupFlag, sandboxLDContext(s.Runtime, s.Config)).AsValueMap()
+	if dedupCfg.Get("enabled").BoolValue() {
+		dedupBase = originalMemfile
+		dedupBestEffort = dedupCfg.Get("bestEffort").BoolValue()
+		dedupDirectIO = dedupCfg.Get("directIO").BoolValue()
+	}
 	memfileDiff, memfileDiffHeader, err := pauseProcessMemory(
 		ctx,
 		buildID,
@@ -1140,13 +1162,16 @@ func (s *Sandbox) Pause(
 		s.process,
 		s.memory.Memfd(ctx),
 		s.featureFlags.BoolFlag(ctx, featureflags.MemfdBackgroundCopyFlag, sandboxLDContext(s.Runtime, s.Config)),
+		dedupBase,
+		dedupBestEffort,
+		dedupDirectIO,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
 	cleanup.AddNoContext(ctx, memfileDiff.Close)
 
-	rootfsDiff, rootfsDiffHeader, err := pauseProcessRootfs(
+	rootfsDiff, rootfsHeader, err := pauseProcessRootfs(
 		ctx,
 		buildID,
 		originalRootfs.Header(),
@@ -1155,12 +1180,23 @@ func (s *Sandbox) Pause(
 			closeHook: s.Close,
 		},
 		s.config.DefaultCacheDir,
-		useCase,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error while post processing: %w", err)
 	}
 	cleanup.AddNoContext(ctx, rootfsDiff.Close)
+
+	rootfsDiffHeader := NewResolvedDiffHeader(rootfsHeader)
+	// Derive scheduling metadata synchronously so Pause never blocks on the
+	// async memfile-dedup header: the memfile chain comes from the resolved
+	// parent header plus the new build, whose exact bytes aren't known yet, so
+	// we pass the pre-dedup dirty size as an upper bound. It is block-granular
+	// (dirty blocks * diff block size) and counts pages before dedup drops the
+	// base-identical ones, so it over-estimates. The rootfs copy is synchronous
+	// today, so its new header carries the exact rootfs chain and bytes; if it
+	// ever becomes async, switch it to the parent plus a dirty proxy like memfile.
+	newMemfileBytes := memfileDiffMetadata.Dirty.GetCardinality() * uint64(memfileDiffMetadata.BlockSize)
+	schedulingMetadata := scheduling.FromHeaders(buildID, originalMemfile.Header(), rootfsHeader, newMemfileBytes)
 
 	metadataFileLink := template.NewLocalFileLink(cachePaths.CacheMetadata())
 	cleanup.AddNoContext(ctx, metadataFileLink.Close)
@@ -1171,12 +1207,15 @@ func (s *Sandbox) Pause(
 	}
 
 	return &Snapshot{
-		Snapfile:          snapfile,
-		Metafile:          metadataFileLink,
-		MemfileDiff:       memfileDiff,
-		MemfileDiffHeader: memfileDiffHeader,
-		RootfsDiff:        rootfsDiff,
-		RootfsDiffHeader:  rootfsDiffHeader,
+		Snapfile:           snapfile,
+		Metafile:           metadataFileLink,
+		MemfileDiff:        memfileDiff,
+		MemfileDiffHeader:  memfileDiffHeader,
+		RootfsDiff:         rootfsDiff,
+		RootfsDiffHeader:   rootfsDiffHeader,
+		SchedulingMetadata: schedulingMetadata,
+		MemfileBlockSize:   originalMemfile.Header().Metadata.BlockSize,
+		RootfsBlockSize:    originalRootfs.Header().Metadata.BlockSize,
 
 		BuildID: buildID,
 
@@ -1209,20 +1248,22 @@ func pauseProcessMemory(
 	fc *fc.Process,
 	memfd *block.Memfd,
 	bgCopy bool,
-) (d build.Diff, h *header.Header, e error) {
+	originalMemfile block.ReadonlyDevice,
+	dedupBestEffort bool,
+	dedupDirectIO bool,
+) (d build.Diff, h *DiffHeader, e error) {
 	ctx, span := tracer.Start(ctx, "process-memory")
 	defer span.End()
 
-	// ExportMemory owns memfd and closes it on all paths.
 	memfileDiffPath := build.GenerateDiffCachePath(cacheDir, buildID.String(), build.Memfile)
-	cache, err := fc.ExportMemory(ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy)
+	metaOut := utils.NewSetOnce[*header.DiffMetadata]()
+	// ExportMemory owns memfd and closes it on all paths.
+	cache, err := fc.ExportMemory(
+		ctx, diffMetadata.Dirty, memfileDiffPath, diffMetadata.BlockSize, memfd, bgCopy,
+		originalMemfile, dedupBestEffort, dedupDirectIO, diffMetadata.Empty, metaOut,
+	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to export memory: %w", err)
-	}
-
-	header, err := diffMetadata.ToDiffHeader(ctx, originalHeader, buildID)
-	if err != nil {
-		return nil, nil, errors.Join(fmt.Errorf("failed to create memfile header: %w", err), cache.Close())
 	}
 
 	diff, err := build.NewLocalDiffFromCache(
@@ -1233,7 +1274,33 @@ func pauseProcessMemory(
 		return nil, nil, fmt.Errorf("failed to create local diff from cache: %w", errors.Join(err, cache.Close()))
 	}
 
-	return diff, header, nil
+	// Build the diff header on a goroutine so Pause returns without waiting
+	// on memfd-dedup compare. ExportMemory resolves metaOut sync for every
+	// other path, so Wait there is non-blocking; the goroutine is harmless.
+	headerOut := utils.NewSetOnce[*header.Header]()
+	go func() {
+		setHeader := func(h *header.Header, err error) {
+			if setErr := headerOut.SetResult(h, err); setErr != nil {
+				logger.L().Warn(ctx, "set memfile diff header", zap.Error(setErr))
+			}
+		}
+		meta, err := metaOut.Wait()
+		if err != nil {
+			setHeader(nil, err)
+
+			return
+		}
+		// post == nil signals "no dedup ran" to the metric so it records
+		// kind="none" with zero savings.
+		post := meta
+		if originalMemfile == nil {
+			post = nil
+		}
+		recordSnapshotDedup(ctx, "memfile", diffMetadata, post, dedupBestEffort)
+		setHeader(meta.ToDiffHeader(ctx, originalHeader, buildID))
+	}()
+
+	return diff, headerOut, nil
 }
 
 func pauseProcessRootfs(
@@ -1242,7 +1309,6 @@ func pauseProcessRootfs(
 	originalHeader *header.Header,
 	diffCreator DiffCreator,
 	cacheDir string,
-	useCase SnapshotUseCase,
 ) (d build.Diff, h *header.Header, e error) {
 	ctx, span := tracer.Start(ctx, "process-rootfs")
 	defer span.End()
@@ -1259,7 +1325,7 @@ func pauseProcessRootfs(
 		return nil, nil, fmt.Errorf("error creating diff: %w", err)
 	}
 	telemetry.ReportEvent(ctx, "exported rootfs")
-	recordSnapshotDiff(ctx, "rootfs", rootfsDiffMetadata, originalHeader, useCase)
+	recordSnapshotDiff(ctx, "rootfs", rootfsDiffMetadata, originalHeader)
 
 	rootfsDiff, err := rootfsDiffFile.CloseToDiff(int64(originalHeader.Metadata.BlockSize))
 	if err != nil {

@@ -24,6 +24,7 @@ job "dashboard-api" {
       tags = [
 
         "traefik.enable=true",
+        "traefik.http.routers.dashboard-api.entrypoints=web",
 
         "traefik.http.routers.dashboard-api.rule=HostRegexp(`${subdomain}.{domain:.+}`)",
         "traefik.http.routers.dashboard-api.ruleSyntax=v2",
@@ -74,9 +75,9 @@ job "dashboard-api" {
         NODE_ID = "$${node.unique.id}"
         PORT    = "$${NOMAD_PORT_api}"
 
-        %{ for key, value in env ~}
+%{ for key, value in job_env_vars ~}
         ${key} = "${value}"
-        %{ endfor ~}
+%{ endfor ~}
       }
 
       config {

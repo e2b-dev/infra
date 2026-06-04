@@ -10,39 +10,43 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/require"
 
+	testqueries "github.com/e2b-dev/infra/packages/db/pkg/testutils/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 )
 
-// CreateTestTeam creates a test team in the database using raw SQL
+// CreateTestTeam creates a test team in the database.
+// Uses the default tier 'base_v1' that is created in migrations.
 func CreateTestTeam(t *testing.T, db *Database) uuid.UUID {
 	t.Helper()
 	teamID := uuid.New()
 	// Generate a unique slug from the team ID (first 8 chars)
 	slug := "test-team-" + teamID.String()[:8]
 
-	// Insert a team directly into the database using raw SQL
-	// Using the default tier 'base_v1' that is created in migrations
-	err := db.AuthDb.TestsRawSQL(t.Context(),
-		"INSERT INTO public.teams (id, name, tier, email, slug) VALUES ($1, $2, $3, $4, $5)",
-		teamID, "Test Team "+teamID.String(), "base_v1", "test-"+teamID.String()+"@example.com", slug,
-	)
+	err := db.TestQueries.InsertTestTeam(t.Context(), testqueries.InsertTestTeamParams{
+		ID:    teamID,
+		Name:  "Test Team " + teamID.String(),
+		Tier:  "base_v1",
+		Email: "test-" + teamID.String() + "@example.com",
+		Slug:  slug,
+	})
 	require.NoError(t, err, "Failed to create test team")
 
 	return teamID
 }
 
-// CreateTestTemplate creates a base env in the database (required by foreign key constraint)
+// CreateTestTemplate creates a base env (template) row in the database
+// (required by foreign key constraints in subsequent test inserts).
 func CreateTestTemplate(t *testing.T, db *Database, teamID uuid.UUID) string {
 	t.Helper()
 	envID := "base-env-" + uuid.New().String()
 
-	// Insert a base env directly into the database
-	// After the env_builds migration, envs table only has: id, team_id, public, updated_at, build_count, spawn_count, last_spawned_at
-	err := db.SqlcClient.TestsRawSQL(t.Context(),
-		"INSERT INTO public.envs (id, team_id, public, updated_at, source) VALUES ($1, $2, $3, NOW(), 'template')",
-		envID, teamID, true,
-	)
+	err := db.TestQueries.InsertTestEnv(t.Context(), testqueries.InsertTestEnvParams{
+		ID:     envID,
+		TeamID: teamID,
+		Public: true,
+		Source: "template",
+	})
 	require.NoError(t, err, "Failed to create test base env")
 
 	return envID

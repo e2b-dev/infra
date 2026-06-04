@@ -24,7 +24,7 @@ source "amazon-ebs" "ubuntu" {
   // Ubuntu Server 24.04 LTS (HVM), SSD Volume Type
   source_ami_filter {
     filters = {
-      name                = "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"
+      name                = var.source_ami_filter_name
       root-device-type    = "ebs"
       virtualization-type = "hvm"
     }
@@ -98,12 +98,6 @@ build {
 
   provisioner "shell" {
     inline = [
-      "sudo snap install go --classic"
-    ]
-  }
-
-  provisioner "shell" {
-    inline = [
       "sudo systemctl start docker",
       "sudo usermod -aG docker $USER",
     ]
@@ -125,11 +119,6 @@ build {
   provisioner "shell" {
     script          = "${local.shared_setup_dir}/install-nomad.sh"
     execute_command = "chmod +x {{ .Path }}; {{ .Vars }} {{ .Path }} --version ${var.nomad_version}"
-  }
-
-  provisioner "shell" {
-    script          = "${local.shared_setup_dir}/install-vault.sh"
-    execute_command = "chmod +x {{ .Path }}; {{ .Vars }} {{ .Path }} --version ${var.vault_version}"
   }
 
   # Install the ClickHouse client at the same version as the server so it's

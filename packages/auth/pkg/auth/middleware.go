@@ -67,12 +67,13 @@ func (a *commonAuthenticator[T]) getHeaderKeysFromRequest(req *http.Request) (st
 func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.Context, input *openapi3filter.AuthenticationInput) error {
 	key, err := a.getHeaderKeysFromRequest(input.RequestValidationInput.Request)
 	if err != nil {
-		telemetry.ReportError(ctx,
-			"authorization header is missing",
-			err,
-			attribute.String("error.message", a.errorMessage),
+		telemetry.ReportEvent(ctx, "auth scheme skipped",
+			attribute.String("auth.scheme", a.schemeName),
+			attribute.String("auth.reason", err.Error()),
 		)
 
+		// stamp 401 so the ErrorHandler's max(writer, 400) resolves to 401
+		// when every security group fails. without this, auth failures become 400s.
 		ginCtx.Status(http.StatusUnauthorized)
 
 		return err

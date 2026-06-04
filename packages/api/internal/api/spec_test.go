@@ -120,7 +120,7 @@ func TestAuthProviderTeamAuthHeaderRoutes(t *testing.T) {
 
 	// Pick a route protected by AuthProviderTeamAuth. /api-keys requires it.
 	makeReq := func(headers map[string]string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(http.MethodGet, "/api-keys", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api-keys", nil)
 		for k, v := range headers {
 			req.Header.Set(k, v)
 		}

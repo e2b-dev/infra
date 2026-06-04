@@ -2,11 +2,14 @@ package cfg
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/caarlos0/env/v11"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/userprofile"
 )
 
 type Config struct {
@@ -24,10 +27,13 @@ type Config struct {
 	RedisClusterURL  string `env:"REDIS_CLUSTER_URL"`
 	RedisTLSCABase64 string `env:"REDIS_TLS_CA_BASE64"`
 
-	EnableAuthUserSyncBackgroundWorker bool   `env:"ENABLE_AUTH_USER_SYNC_BACKGROUND_WORKER" envDefault:"false"`
-	EnableBillingHTTPTeamProvisionSink bool   `env:"ENABLE_BILLING_HTTP_TEAM_PROVISION_SINK" envDefault:"false"`
-	BillingServerURL                   string `env:"BILLING_SERVER_URL"`
-	BillingServerAPIToken              string `env:"BILLING_SERVER_API_TOKEN"`
+	BillingServerURL      string `env:"BILLING_SERVER_URL"`
+	BillingServerAPIToken string `env:"BILLING_SERVER_API_TOKEN"`
+
+	UserProfileProvider userprofile.Mode `env:"USER_PROFILE_PROVIDER"       envDefault:"supabase"`
+	OrySDKURL           string           `env:"ORY_SDK_URL"`
+	OryProjectAPIToken  string           `env:"ORY_PROJECT_API_TOKEN,unset"`
+	OryIssuerURL        string           `env:"ORY_ISSUER_URL"`
 }
 
 func Parse() (Config, error) {
@@ -36,6 +42,9 @@ func Parse() (Config, error) {
 		FuncMap: map[reflect.Type]env.ParserFunc{
 			reflect.TypeFor[auth.ProviderConfig](): func(v string) (any, error) {
 				return auth.ParseProviderConfig(v)
+			},
+			reflect.TypeFor[userprofile.Mode](): func(v string) (any, error) {
+				return userprofile.ParseMode(v)
 			},
 		},
 	})
@@ -52,5 +61,44 @@ func Parse() (Config, error) {
 		err = errors.New("at least one of REDIS_URL or REDIS_CLUSTER_URL must be set")
 	}
 
+	if err == nil {
+		err = validateUserProfileProvider(&config)
+	}
+
 	return config, err
+}
+
+// ORY_ISSUER_URL must match the auth-provider's JWT issuer: the Ory profile
+// provider filters public.user_identities by oidc_iss, so a mismatch against
+// the iss claim stored at bootstrap silently strands every user.
+func validateUserProfileProvider(config *Config) error {
+	if !config.UserProfileProvider.RequiresOry() {
+		return nil
+	}
+
+	if config.OrySDKURL == "" {
+		return errors.New("ORY_SDK_URL is required when USER_PROFILE_PROVIDER uses ory")
+	}
+	if config.OryProjectAPIToken == "" {
+		return errors.New("ORY_PROJECT_API_TOKEN is required when USER_PROFILE_PROVIDER uses ory")
+	}
+
+	if config.OryIssuerURL == "" && len(config.AuthProvider.JWT) == 1 {
+		config.OryIssuerURL = strings.TrimSpace(config.AuthProvider.JWT[0].Issuer.URL)
+	}
+	if config.OryIssuerURL == "" {
+		return errors.New("ORY_ISSUER_URL is required when USER_PROFILE_PROVIDER uses ory")
+	}
+
+	if len(config.AuthProvider.JWT) > 0 {
+		for _, jwt := range config.AuthProvider.JWT {
+			if strings.TrimSpace(jwt.Issuer.URL) == config.OryIssuerURL {
+				return nil
+			}
+		}
+
+		return fmt.Errorf("ORY_ISSUER_URL %q does not match any AUTH_PROVIDER_CONFIG.jwt[].issuer.url; identities stored at bootstrap would be invisible to the Ory profile provider", config.OryIssuerURL)
+	}
+
+	return nil
 }

@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	sharedfs "github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
-	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 	"github.com/e2b-dev/infra/tests/integration/internal/api"
 	"github.com/e2b-dev/infra/tests/integration/internal/envd"
 	"github.com/e2b-dev/infra/tests/integration/internal/setup"
@@ -124,7 +123,7 @@ func TestVolumeRoundTrip(t *testing.T) {
 		envdClient := setup.GetEnvdClient(t, ctx)
 		readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
 			ctx,
-			&envd.GetFilesParams{Path: &filePath, Username: sharedutils.ToPtr("user")},
+			&envd.GetFilesParams{Path: &filePath, Username: new("user")},
 			setup.WithSandbox(t, sbx.SandboxID),
 		)
 		require.NoError(t, readErr)
@@ -180,7 +179,7 @@ func TestVolumeRoundTrip(t *testing.T) {
 		envdClient := setup.GetEnvdClient(t, ctx)
 		readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
 			ctx,
-			&envd.GetFilesParams{Path: &filePath, Username: sharedutils.ToPtr("user")},
+			&envd.GetFilesParams{Path: &filePath, Username: new("user")},
 			setup.WithSandbox(t, sbx2.SandboxID),
 		)
 		require.NoError(t, readErr)
@@ -201,7 +200,7 @@ func TestVolumeRoundTrip(t *testing.T) {
 		// verify it's gone
 		readRes, readErr := envdClient.HTTPClient.GetFilesWithResponse(
 			ctx,
-			&envd.GetFilesParams{Path: &filePath, Username: sharedutils.ToPtr("user")},
+			&envd.GetFilesParams{Path: &filePath, Username: new("user")},
 			setup.WithSandbox(t, sbx2.SandboxID),
 		)
 		require.NoError(t, readErr)

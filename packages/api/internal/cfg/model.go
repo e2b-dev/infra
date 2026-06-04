@@ -16,15 +16,14 @@ import (
 )
 
 const (
-	// SandboxStorageBackendMemory will use memory backend as a primary storage for sandbox data.
-	// It will also keep redis populated to allow for seamless migration to redis.
-	SandboxStorageBackendMemory = "memory"
-	SandboxStorageBackendRedis  = "redis"
-
 	// ServiceDiscoveryProviderNomad queries Nomad's HTTP API (the original / Nomad-based deploy).
 	ServiceDiscoveryProviderNomad = "nomad"
 	// ServiceDiscoveryProviderKubernetes queries the in-cluster K8s API (the K8s deploy).
 	ServiceDiscoveryProviderKubernetes = "kubernetes"
+	// ServiceDiscoveryProviderLocal returns a single statically configured
+	// orchestrator address. Used to develop the API against the darwin dummy
+	// orchestrator on macOS, where neither Nomad nor Kubernetes is available.
+	ServiceDiscoveryProviderLocal = "local"
 )
 
 type Config struct {
@@ -47,6 +46,12 @@ type Config struct {
 
 	NomadAddress string `env:"NOMAD_ADDRESS" envDefault:"http://localhost:4646"`
 	NomadToken   string `env:"NOMAD_TOKEN"`
+
+	// LocalOrchestratorAddress is the "host:port" address of a statically
+	// configured orchestrator instance. Required when
+	// ServiceDiscoveryProvider=local. Used for local dev against the darwin
+	// dummy orchestrator.
+	LocalOrchestratorAddress string `env:"LOCAL_ORCHESTRATOR_ADDRESS" envDefault:"127.0.0.1:5008"`
 
 	// Used when ServiceDiscoveryProvider=kubernetes.
 	K8sNamespace                       string `env:"K8S_NAMESPACE"                           envDefault:"default"`
@@ -81,10 +86,6 @@ type Config struct {
 	AuthProvider auth.ProviderConfig `env:"AUTH_PROVIDER_CONFIG"`
 
 	DefaultPersistentVolumeType string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`
-
-	// SandboxStorageBackend selects the sandbox storage implementation.
-	// "redis" uses Redis directly; "populate_redis" uses in-memory with Redis shadow writes.
-	SandboxStorageBackend string `env:"SANDBOX_STORAGE_BACKEND" envDefault:"memory"`
 
 	DomainName string `env:"DOMAIN_NAME" envDefault:""`
 }
@@ -155,11 +156,7 @@ func Parse() (Config, error) {
 		config.AuthDBConnectionString = config.PostgresConnectionString
 	}
 
-	if !slices.Contains([]string{SandboxStorageBackendMemory, SandboxStorageBackendRedis}, config.SandboxStorageBackend) {
-		return config, fmt.Errorf("invalid sandbox storage backend: %s", config.SandboxStorageBackend)
-	}
-
-	if !slices.Contains([]string{ServiceDiscoveryProviderNomad, ServiceDiscoveryProviderKubernetes}, config.ServiceDiscoveryProvider) {
+	if !slices.Contains([]string{ServiceDiscoveryProviderNomad, ServiceDiscoveryProviderKubernetes, ServiceDiscoveryProviderLocal}, config.ServiceDiscoveryProvider) {
 		return config, fmt.Errorf("invalid service discovery provider: %s", config.ServiceDiscoveryProvider)
 	}
 

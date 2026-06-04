@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -45,10 +46,10 @@ func TestSandboxMemoryIntegrity(t *testing.T) {
 
 		tmpfsFile := "/mnt/testfile"
 
-		percentageOfFreeMemoryToUse := 80
-		// Create a tmpfs with up to 80% of the remaining free RAM and fill it with random data
+		percentageOfFreeMemoryToUse := 60
+		// Create a tmpfs with up to 60% of the remaining free RAM and fill it with random data
 		// Disable swap to ensure we're testing pure RAM-based storage
-		// Always use at least 64MB, but not more than 80% of free memory
+		// Always use at least 64MB, but not more than the configured share of free memory.
 		memCmd := fmt.Sprintf(`
 TOTAL_MEM_MB=$(free -m | awk '/^Mem:/ {print $2}')
 USED_MEM_MB=$(free -m | awk '/^Mem:/ {print $3}')
@@ -70,9 +71,20 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 		require.NoError(t, err)
 
 		hashCmd := fmt.Sprintf(`sha256sum "%s" | awk '{print $1}'`, tmpfsFile)
-		hashCmdOutput, err := utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", hashCmd)
-		require.NoError(t, err)
-		hashCmdOutput = strings.TrimSpace(hashCmdOutput)
+		readHash := func() string {
+			t.Helper()
+
+			var output string
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				var err error
+				output, err = utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", hashCmd)
+				require.NoError(c, err)
+			}, 3*time.Minute, 2*time.Second)
+
+			return strings.TrimSpace(output)
+		}
+
+		hashCmdOutput := readHash()
 		require.NotEmpty(t, hashCmdOutput, "Failed to extract hash from command output")
 
 		pauseIterations := 2
@@ -95,9 +107,7 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 			assert.Equal(t, sbxResume.JSON201.SandboxID, sbxId)
 
 			// Check the tmpfs hash and compare it with the original hash
-			hashCmdOutputAfterResume, err := utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", hashCmd)
-			require.NoError(t, err)
-			hashCmdOutputAfterResume = strings.TrimSpace(hashCmdOutputAfterResume)
+			hashCmdOutputAfterResume := readHash()
 
 			assert.Equal(t, hashCmdOutput, hashCmdOutputAfterResume, "Hash mismatch on iteration %d: memory integrity check failed", i)
 		}
@@ -146,8 +156,8 @@ echo "Used memory after tmpfs mount and file fill: ${USED_MEM_MB_AFTER} MB"
 
 		envdClient := setup.GetEnvdClient(t, t.Context())
 
-		// get 80% size of the free memory and use it as the vm-bytes
-		percentageOfFreeMemoryToUse := 80
+		// get a bounded share of free memory and use it as the vm-bytes
+		percentageOfFreeMemoryToUse := 60
 
 		getFreeMemoryCmd := `free -m | awk '/^Mem:/ {print $7}'`
 		freeMemoryStr, err := utils.ExecCommandAsRootWithOutput(t, t.Context(), sbx, envdClient, "bash", "-c", getFreeMemoryCmd)

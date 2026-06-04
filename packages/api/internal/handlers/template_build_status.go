@@ -140,7 +140,7 @@ func (a *APIStore) GetTemplatesTemplateIDBuildsBuildIDStatus(c *gin.Context, tem
 	result.LogEntries = logEntries
 
 	if result.Reason != nil && result.Reason.Step != nil {
-		result.Reason.LogEntries = sharedUtils.ToPtr(filterStepLogs(logEntries, *result.Reason.Step, api.LogLevelWarn))
+		result.Reason.LogEntries = new(filterStepLogs(logEntries, *result.Reason.Step, api.LogLevelWarn))
 	}
 
 	c.JSON(http.StatusOK, result)

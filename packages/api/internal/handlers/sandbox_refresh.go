@@ -31,18 +31,11 @@ func (a *APIStore) PostSandboxesSandboxIDRefreshes(
 
 	telemetry.SetAttributes(ctx, telemetry.WithSandboxID(sandboxID))
 
-	team := auth.MustGetTeamInfo(c)
-	teamID := team.Team.ID
-
-	if err := auth.CheckTeamBlocked(team); err != nil {
-		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
-
-		return
-	}
+	teamID := auth.MustGetTeamID(c)
 
 	var duration time.Duration
 
-	body, err := ginutils.ParseBody[api.PostSandboxesSandboxIDRefreshesJSONBody](ctx, c)
+	body, err := ginutils.ParseBody[api.SandboxRefreshRequest](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 

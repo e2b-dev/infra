@@ -30,19 +30,11 @@ func (a *APIStore) PostSandboxesSandboxIDTimeout(
 
 	telemetry.SetAttributes(ctx, telemetry.WithSandboxID(sandboxID))
 
-	teamInfo := auth.MustGetTeamInfo(c)
-
-	if err := auth.CheckTeamBlocked(teamInfo); err != nil {
-		a.sendAPIStoreError(c, http.StatusForbidden, err.Error())
-
-		return
-	}
-
-	teamID := teamInfo.Team.ID
+	teamID := auth.MustGetTeamID(c)
 
 	var duration time.Duration
 
-	body, err := ginutils.ParseBody[api.PostSandboxesSandboxIDTimeoutJSONBody](ctx, c)
+	body, err := ginutils.ParseBody[api.SandboxTimeoutRequest](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 

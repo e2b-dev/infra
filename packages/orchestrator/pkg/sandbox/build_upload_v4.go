@@ -28,26 +28,38 @@ func (u *Upload) runV4(ctx context.Context) error {
 
 	eg, ctx := errgroup.WithContext(ctx)
 
-	if u.snap.MemfileDiffHeader != nil {
-		eg.Go(func() error {
-			return u.uploadFramed(ctx, build.Memfile, memSrc, u.snap.MemfileDiffHeader, u.mem)
-		})
-	}
+	eg.Go(func() error {
+		h, err := u.snap.MemfileDiffHeader.WaitWithContext(ctx)
+		if err != nil {
+			return fmt.Errorf("wait memfile diff header: %w", err)
+		}
+		if h == nil {
+			return nil
+		}
 
-	if u.snap.RootfsDiffHeader != nil {
-		eg.Go(func() error {
-			return u.uploadFramed(ctx, build.Rootfs, rootfsSrc, u.snap.RootfsDiffHeader, u.root)
-		})
-	}
+		return u.uploadFramed(ctx, build.Memfile, memSrc, h, u.mem)
+	})
+
+	eg.Go(func() error {
+		h, err := u.snap.RootfsDiffHeader.WaitWithContext(ctx)
+		if err != nil {
+			return fmt.Errorf("wait rootfs diff header: %w", err)
+		}
+		if h == nil {
+			return nil
+		}
+
+		return u.uploadFramed(ctx, build.Rootfs, rootfsSrc, h, u.root)
+	})
 
 	meta := storage.WithMetadata(u.objectMetadata)
 
 	eg.Go(func() error {
-		return storage.UploadBlob(ctx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), meta)
+		return uploadBlobWithMetrics(ctx, u.store, u.paths.Snapfile(), storage.SnapfileObjectType, u.snap.Snapfile.Path(), uploadFileSnap, meta)
 	})
 
 	eg.Go(func() error {
-		return storage.UploadBlob(ctx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path(), meta)
+		return uploadBlobWithMetrics(ctx, u.store, u.paths.Metadata(), storage.MetadataObjectType, u.snap.Metafile.Path(), uploadFileMeta, meta)
 	})
 
 	return eg.Wait()
@@ -71,18 +83,25 @@ func (u *Upload) uploadFramed(
 		// Compressed: frame-table byte count, since sparse memfile diffs stream
 		// fewer bytes than they occupy on disk. Uncompressed has no table.
 		size := ft.UncompressedSize()
+		compressedSize := ft.CompressedSize()
 		if !ft.IsCompressed() {
 			info, statErr := os.Stat(srcPath)
 			if statErr != nil {
 				return fmt.Errorf("%s stat: %w", fileType, statErr)
 			}
 			size = info.Size()
+			compressedSize = size
 		}
 
+		dataFileType := uploadFileMemfile
+		if fileType == build.Rootfs {
+			dataFileType = uploadFileRootfs
+		}
+		recordUploadCompression(ctx, dataFileType, cfg, size, compressedSize)
 		selfBuild = headers.BuildData{Size: size, Checksum: checksum, FrameData: ft}
 	}
 
-	h := srcHeader.CloneForUpload(headers.MetadataVersionV4)
+	h := srcHeader.CloneForUpload(u.headerVersion)
 	h.IncompletePendingUpload = false
 	if h.Builds == nil {
 		h.Builds = make(map[uuid.UUID]headers.BuildData)
@@ -93,7 +112,11 @@ func (u *Upload) uploadFramed(
 	}
 	h.Builds[u.buildID] = selfBuild
 
-	if err := headers.StoreHeader(ctx, u.store, u.paths.HeaderFile(string(fileType)), h); err != nil {
+	headerFileType := uploadFileMemfileHeader
+	if fileType == build.Rootfs {
+		headerFileType = uploadFileRootfsHeader
+	}
+	if err := storeHeaderWithMetrics(ctx, u.store, u.paths.HeaderFile(string(fileType)), headerFileType, h); err != nil {
 		return fmt.Errorf("store %s header: %w", fileType, err)
 	}
 
@@ -115,33 +138,29 @@ func (u *Upload) uploadFramed(
 func (u *Upload) appendAncestorBuilds(
 	ctx context.Context,
 	dst map[uuid.UUID]headers.BuildData,
-	mappings []headers.BuildMap,
+	mappings headers.Mapping,
 	fileType build.DiffType,
 ) error {
 	if u.uploads == nil {
 		return nil
 	}
 
-	seen := make(map[uuid.UUID]struct{}, len(mappings))
-	for _, m := range mappings {
-		if m.BuildId == u.buildID || m.BuildId == uuid.Nil {
+	// Mapping.Builds() is already deduplicated, so no local seen-set is needed.
+	for _, buildID := range mappings.Builds() {
+		if buildID == u.buildID || buildID == uuid.Nil {
 			continue
 		}
-		if _, dup := seen[m.BuildId]; dup {
-			continue
-		}
-		seen[m.BuildId] = struct{}{}
 
-		h, err := u.uploads.Wait(ctx, m.BuildId, fileType)
+		h, err := u.uploads.Wait(ctx, buildID, fileType)
 		if err != nil {
-			return fmt.Errorf("wait for ancestor %s/%s: %w", m.BuildId, fileType, err)
+			return fmt.Errorf("wait for ancestor %s/%s: %w", buildID, fileType, err)
 		}
 		if h == nil || dst == nil {
 			continue
 		}
 
-		if bd, ok := h.Builds[m.BuildId]; ok {
-			dst[m.BuildId] = bd
+		if bd, ok := h.Builds[buildID]; ok {
+			dst[buildID] = bd
 		}
 	}
 

@@ -62,6 +62,11 @@ func (m *memPartUploader) Assemble() []byte {
 	return buf.Bytes()
 }
 
+// inputBufPool is shared across all uploads so frame-sized buffers (almost
+// always DefaultCompressFrameSize) are reused between streams instead of being
+// reallocated per call. See buffer_pool.go for the buffer lifecycle.
+var inputBufPool = newBufferPool()
+
 type frame struct {
 	uncompressedSize int
 	compressed       []byte
@@ -83,11 +88,13 @@ func newPart(index int, parentCtx context.Context, workers int) (*part, context.
 	return p, ctx
 }
 
-func (p *part) addFrame(ctx context.Context, uncompressedData []byte, pool *sync.Pool) {
-	frameInPart := &frame{uncompressedSize: len(uncompressedData)}
+func (p *part) addFrame(ctx context.Context, buf inputBuf, n int, pool *sync.Pool) {
+	frameInPart := &frame{uncompressedSize: n}
 	p.frames = append(p.frames, frameInPart)
+	uncompressedData := buf.Bytes()[:n]
 
 	p.compress.Go(func() error {
+		defer buf.Free()
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -104,7 +111,7 @@ func (p *part) addFrame(ctx context.Context, uncompressedData []byte, pool *sync
 	})
 }
 
-func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploader partUploader, maxUploadConcurrency int) (*FrameTable, [32]byte, error) {
+func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploader partUploader, maxUploadConcurrency int, sink FrameSink) (*FrameTable, [32]byte, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -132,6 +139,7 @@ func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploa
 
 	// Upload loop.
 	var frameSizes []FrameSize
+	var cOffset int64
 	var loopErr error
 	for p := range q {
 		if err := p.compress.Wait(); err != nil {
@@ -145,6 +153,10 @@ func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploa
 		for _, f := range p.frames {
 			frameSizes = append(frameSizes, FrameSize{U: int32(f.uncompressedSize), C: int32(len(f.compressed))})
 			compressed = append(compressed, f.compressed)
+			if sink != nil {
+				sink(ctx, cOffset, f.compressed)
+			}
+			cOffset += int64(len(f.compressed))
 		}
 
 		pi := p.index
@@ -188,17 +200,22 @@ func readLoop(ctx context.Context, in io.Reader, cfg CompressConfig, hasher io.W
 			return err
 		}
 
-		buf := make([]byte, frameSize)
-		n, err := io.ReadFull(in, buf)
+		buf := inputBufPool.Get(frameSize)
+		data := buf.Bytes()
+		n, err := io.ReadFull(in, data)
 
 		eof := errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 		if err != nil && !eof {
+			buf.Free()
+
 			return fmt.Errorf("read frame: %w", err)
 		}
 
 		if n > 0 {
-			hasher.Write(buf[:n])
-			p.addFrame(compressCtx, buf[:n], compressors)
+			hasher.Write(data[:n])
+			p.addFrame(compressCtx, buf, n, compressors)
+		} else {
+			buf.Free()
 		}
 
 		if eof {

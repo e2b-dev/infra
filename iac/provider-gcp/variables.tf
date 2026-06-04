@@ -222,6 +222,45 @@ variable "client_proxy_oidc_issuer_url" {
   default = ""
 }
 
+variable "auth_provider_config" {
+  type = object({
+    jwt = optional(list(object({
+      issuer = object({
+        url                 = string
+        discoveryURL        = optional(string)
+        audiences           = list(string)
+        audienceMatchPolicy = optional(string)
+      })
+      cacheDuration = optional(string)
+    })))
+    legacy = optional(object({
+      hmac = object({
+        secrets = list(string)
+      })
+    }))
+  })
+  sensitive = true
+  default   = null
+}
+
+variable "user_profile_provider" {
+  type        = string
+  default     = ""
+  description = "Source for dashboard-api user profile lookups. One of: supabase, ory, supabase-ory-fallback. Empty leaves the binary default (supabase)."
+}
+
+variable "ory_sdk_url" {
+  type        = string
+  default     = ""
+  description = "Ory Network admin SDK URL (e.g. https://<slug>.projects.oryapis.com). Required when user_profile_provider uses ory."
+}
+
+variable "ory_issuer_url" {
+  type        = string
+  default     = ""
+  description = "Ory OIDC issuer URL used to namespace public.user_identities. Must match one of auth_provider_config.jwt[*].issuer.url; defaults to the single configured JWT issuer if unset."
+}
+
 variable "ingress_port" {
   type = object({
     name        = string
@@ -252,16 +291,6 @@ variable "dashboard_api_count" {
   type    = number
   default = 0
 }
-
-variable "enable_auth_user_sync_background_worker" {
-  type    = bool
-  default = false
-}
-
-variable "enable_billing_http_team_provision_sink" {
-  type    = bool
-  default = false
-}
 variable "docker_reverse_proxy_port" {
   type = object({
     name        = string
@@ -289,11 +318,6 @@ variable "redis_port" {
 variable "nomad_port" {
   type    = number
   default = 4646
-}
-
-variable "allow_sandbox_internet" {
-  type    = bool
-  default = true
 }
 
 variable "allow_sandbox_internal_cidrs" {
@@ -704,12 +728,6 @@ variable "loki_boot_disk_type" {
   default     = "pd-ssd"
 }
 
-variable "sandbox_storage_backend" {
-  description = "The sandbox storage backend to use. Valid values: 'memory', 'redis'."
-  type        = string
-  default     = ""
-}
-
 variable "db_max_open_connections" {
   type    = number
   default = 40
@@ -818,8 +836,51 @@ variable "anywhere_cache_ttl" {
 }
 
 variable "orchestrator_env_vars" {
-  type    = map(string)
-  default = {}
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "api_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "api_db_migrator_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "client_proxy_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "dashboard_api_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "template_manager_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "docker_reverse_proxy_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
+}
+
+variable "filestore_cleanup_env_vars" {
+  type      = map(string)
+  default   = {}
+  sensitive = true
 }
 
 variable "orchestrator_enabled" {

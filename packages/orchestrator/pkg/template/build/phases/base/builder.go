@@ -36,7 +36,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -347,7 +346,7 @@ func (bb *BaseBuilder) Layer(
 
 		// This is a compatibility for v1 template builds
 		if bb.IsV1Build {
-			cmdMeta.WorkDir = utils.ToPtr("/home/user")
+			cmdMeta.WorkDir = new("/home/user")
 		}
 
 		meta := metadata.Template{

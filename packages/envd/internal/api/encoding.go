@@ -1,12 +1,12 @@
 package api
 
 import (
+	"cmp"
 	"compress/gzip"
 	"fmt"
 	"io"
 	"net/http"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -159,8 +159,8 @@ func parseAcceptEncoding(r *http.Request) (string, error) {
 	encodings, identityRejected := parseAcceptEncodingHeader(header)
 
 	// Sort by quality value (highest first)
-	sort.Slice(encodings, func(i, j int) bool {
-		return encodings[i].quality > encodings[j].quality
+	slices.SortFunc(encodings, func(a, b encodingWithQuality) int {
+		return cmp.Compare(b.quality, a.quality)
 	})
 
 	// Find the best supported encoding

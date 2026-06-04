@@ -128,7 +128,7 @@ func (bb *BaseBuilder) provisionSandbox(
 		rootfsPath,
 		fc.ProcessOptions{
 			// Set the IO Engine explicitly to the default value
-			IoEngine: utils.ToPtr(layer.DefaultIoEngine),
+			IoEngine: new(layer.DefaultIoEngine),
 
 			InitScriptPath: rootfs.BusyBoxInitPath,
 			// Always show kernel logs during the provisioning phase,

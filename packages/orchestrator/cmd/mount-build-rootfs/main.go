@@ -17,6 +17,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/cmd/internal/cmdutil"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -118,7 +119,7 @@ func runEmpty(ctx, nbdContext context.Context, featureFlags *featureflags.Client
 	overlay := block.NewOverlay(emptyDevice, cache)
 	defer overlay.Close()
 
-	devicePath, deviceCleanup, err := testutils.GetNBDDevice(nbdContext, testutils.NewLoggerOverlay(overlay), featureFlags)
+	devicePath, deviceCleanup, err := nbd.GetNBDDevice(nbdContext, testutils.NewLoggerOverlay(overlay), featureFlags)
 	defer deviceCleanup.Run(ctx, 30*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to get nbd device: %w", err)
@@ -159,7 +160,7 @@ func run(ctx, nbdContext context.Context, featureFlags *featureflags.Client, bui
 	overlay := block.NewOverlay(rootfs, cache)
 	defer overlay.Close()
 
-	devicePath, deviceCleanup, err := testutils.GetNBDDevice(nbdContext, overlay, featureFlags)
+	devicePath, deviceCleanup, err := nbd.GetNBDDevice(nbdContext, overlay, featureFlags)
 	defer deviceCleanup.Run(ctx, 30*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to get nbd device: %w", err)
@@ -175,7 +176,7 @@ func run(ctx, nbdContext context.Context, featureFlags *featureflags.Client, bui
 
 		fmt.Fprintf(os.Stdout, "creating mount path directory: %s\n", mountPath)
 
-		mountCleanup, err := testutils.MountNBDDevice(devicePath, mountPath)
+		mountCleanup, err := nbd.MountNBDDevice(devicePath, mountPath)
 		defer mountCleanup.Run(ctx, 30*time.Second)
 		if err != nil {
 			return fmt.Errorf("failed to mount device to mount path: %w", err)
