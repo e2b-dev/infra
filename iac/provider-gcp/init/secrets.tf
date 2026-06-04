@@ -265,6 +265,8 @@ locals {
 data "google_secret_manager_secrets" "ory_project_api_key" {
   project = var.gcp_project_id
   filter  = "name:${local.ory_project_api_key_secret_id}"
+
+  depends_on = [time_sleep.secrets_api_wait_60_seconds]
 }
 
 locals {
