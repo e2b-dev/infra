@@ -26,7 +26,7 @@ type FileWatcher struct {
 	Lock sync.Mutex
 }
 
-func CreateFileWatcher(ctx context.Context, watchPath string, recursive bool) (*FileWatcher, error) {
+func CreateFileWatcher(ctx context.Context, watchPath string, recursive bool, includeEntryInfo bool) (*FileWatcher, error) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating watcher: %w", err))
@@ -102,11 +102,24 @@ func CreateFileWatcher(ctx context.Context, watchPath string, recursive bool) (*
 						return
 					}
 
-					fw.Lock.Lock()
-					fw.Events = append(fw.Events, &rpc.FilesystemEvent{
+					filesystemEvent := &rpc.FilesystemEvent{
 						Name: name,
 						Type: op,
-					})
+					}
+
+					if includeEntryInfo {
+						entry, entryErr := eventEntryInfo(e.Name)
+						if entryErr != nil {
+							fw.Error = entryErr
+
+							return
+						}
+
+						filesystemEvent.Entry = entry
+					}
+
+					fw.Lock.Lock()
+					fw.Events = append(fw.Events, filesystemEvent)
 					fw.Lock.Unlock()
 				}
 			}
@@ -156,7 +169,7 @@ func (s Service) CreateWatcher(ctx context.Context, req *connect.Request[rpc.Cre
 
 	watcherId := "w" + id.Generate()
 
-	w, err := CreateFileWatcher(ctx, watchPath, req.Msg.GetRecursive())
+	w, err := CreateFileWatcher(ctx, watchPath, req.Msg.GetRecursive(), req.Msg.GetIncludeEntryinfo())
 	if err != nil {
 		return nil, err
 	}

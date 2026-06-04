@@ -1,6 +1,7 @@
 package filesystem
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/user"
@@ -63,6 +64,23 @@ func entryInfo(path string) (*rpc.EntryInfo, error) {
 		ModifiedTime:  toTimestamp(info.ModifiedTime),
 		SymlinkTarget: info.SymlinkTarget,
 	}, nil
+}
+
+// eventEntryInfo returns the EntryInfo for the path that triggered a filesystem event.
+// It returns a nil entry (without an error) when the entry no longer exists at the path,
+// which is expected for remove and rename-away events.
+func eventEntryInfo(path string) (*rpc.EntryInfo, error) {
+	entry, err := entryInfo(path)
+	if err != nil {
+		var connectErr *connect.Error
+		if errors.As(err, &connectErr) && connectErr.Code() == connect.CodeNotFound {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return entry, nil
 }
 
 func toTimestamp(time time.Time) *timestamppb.Timestamp {

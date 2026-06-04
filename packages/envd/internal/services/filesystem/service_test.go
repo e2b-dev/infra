@@ -7,6 +7,7 @@ import (
 
 func mockService() Service {
 	return Service{
+		watchers: utils.NewMap[string, *FileWatcher](),
 		defaults: &execcontext.Defaults{
 			EnvVars: utils.NewEnvVars(),
 		},
