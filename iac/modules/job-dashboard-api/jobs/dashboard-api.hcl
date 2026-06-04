@@ -75,9 +75,9 @@ job "dashboard-api" {
         NODE_ID = "$${node.unique.id}"
         PORT    = "$${NOMAD_PORT_api}"
 
-        %{ for key, value in env ~}
+%{ for key, value in job_env_vars ~}
         ${key} = "${value}"
-        %{ endfor ~}
+%{ endfor ~}
       }
 
       config {
