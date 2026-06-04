@@ -9,9 +9,12 @@ import (
 func TestIsCompatibleWith(t *testing.T) {
 	t.Parallel()
 
+	// olderModel/newerModel correspond to the asymmetric pair registered in
+	// compatibleNodeModels (older build may resume on a newer node, not vice versa).
 	const (
-		n2Model = "85"  // Intel Cascade Lake
-		n4Model = "207" // Intel Emerald Rapids
+		olderModel    = IceLakeModel       // Intel Ice Lake (older)
+		newerModel    = EmeraldRapidsModel // Intel Emerald Rapids (newer)
+		unlistedModel = "79"               // not part of any compatible generation
 	)
 
 	tests := []struct {
@@ -22,38 +25,38 @@ func TestIsCompatibleWith(t *testing.T) {
 	}{
 		{
 			name:  "exact match",
-			build: MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: n2Model},
-			node:  MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: n2Model},
+			build: MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: olderModel},
+			node:  MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: olderModel},
 			want:  true,
 		},
 		{
 			name:  "architecture mismatch",
-			build: MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: n2Model},
-			node:  MachineInfo{CPUArchitecture: "aarch64", CPUFamily: "6", CPUModel: n2Model},
+			build: MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: olderModel},
+			node:  MachineInfo{CPUArchitecture: "aarch64", CPUFamily: "6", CPUModel: olderModel},
 			want:  false,
 		},
 		{
 			name:  "family mismatch",
-			build: MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: n2Model},
-			node:  MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "23", CPUModel: n2Model},
+			build: MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: olderModel},
+			node:  MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "23", CPUModel: olderModel},
 			want:  false,
 		},
 		{
-			name:  "older build on newer node is compatible (n2 -> n4)",
-			build: MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: n2Model},
-			node:  MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: n4Model},
+			name:  "older build on newer node is compatible",
+			build: MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: olderModel},
+			node:  MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: newerModel},
 			want:  true,
 		},
 		{
-			name:  "newer build on older node is incompatible (n4 -> n2)",
-			build: MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: n4Model},
-			node:  MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: n2Model},
+			name:  "newer build on older node is incompatible",
+			build: MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: newerModel},
+			node:  MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: olderModel},
 			want:  false,
 		},
 		{
 			name:  "unlisted model mismatch",
-			build: MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: n2Model},
-			node:  MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: "79"},
+			build: MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: olderModel},
+			node:  MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: unlistedModel},
 			want:  false,
 		},
 	}
@@ -71,8 +74,8 @@ func TestIsExactMatch(t *testing.T) {
 	t.Parallel()
 
 	const (
-		n2Model = "85"  // Intel Cascade Lake
-		n4Model = "207" // Intel Emerald Rapids
+		olderModel = IceLakeModel       // Intel Ice Lake (older)
+		newerModel = EmeraldRapidsModel // Intel Emerald Rapids (newer)
 	)
 
 	tests := []struct {
@@ -83,26 +86,26 @@ func TestIsExactMatch(t *testing.T) {
 	}{
 		{
 			name: "exact match",
-			a:    MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: n2Model},
-			b:    MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: n2Model},
+			a:    MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: olderModel},
+			b:    MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: olderModel},
 			want: true,
 		},
 		{
-			name: "cross-generation is not an exact match (n2 vs n4)",
-			a:    MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: n2Model},
-			b:    MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: n4Model},
+			name: "cross-generation is not an exact match",
+			a:    MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: olderModel},
+			b:    MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: newerModel},
 			want: false,
 		},
 		{
 			name: "architecture mismatch",
-			a:    MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: n2Model},
-			b:    MachineInfo{CPUArchitecture: "aarch64", CPUFamily: "6", CPUModel: n2Model},
+			a:    MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: olderModel},
+			b:    MachineInfo{CPUArchitecture: "aarch64", CPUFamily: "6", CPUModel: olderModel},
 			want: false,
 		},
 		{
 			name: "family mismatch",
-			a:    MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: n2Model},
-			b:    MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "23", CPUModel: n2Model},
+			a:    MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: olderModel},
+			b:    MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "23", CPUModel: olderModel},
 			want: false,
 		},
 	}

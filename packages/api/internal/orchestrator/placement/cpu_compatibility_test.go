@@ -44,8 +44,8 @@ func TestIsNodeCPUCompatible_ArchitectureMismatch(t *testing.T) {
 
 func TestIsNodeCPUCompatible_UnlistedModelMismatch(t *testing.T) {
 	t.Parallel()
-	// An n2 build (model 85) on an older n1 node (model 79) that isn't in the
-	// compatible model groups: incompatible.
+	// A build whose model is not paired with the node's model in the compatible
+	// model map: incompatible.
 	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4,
 		nodemanager.WithCPUInfo("x86_64", "6", "79"))
 	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: "85"}
@@ -76,27 +76,27 @@ func TestIsNodeCPUCompatible_BothEmpty(t *testing.T) {
 
 func TestIsNodeCPUCompatible_OlderBuildOnNewerNode_Compatible(t *testing.T) {
 	t.Parallel()
-	// n2 (Cascade Lake, model 85) build restored on an n4 (Emerald Rapids, model
-	// 207) node: allowed because the newer CPU is a superset of the older one.
+	// An Ice Lake build restored on a newer Emerald Rapids node: allowed because
+	// the newer CPU is a superset of the older one.
 	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4,
-		nodemanager.WithCPUInfo("x86_64", "6", "207"))
-	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: "85"}
+		nodemanager.WithCPUInfo("x86_64", "6", machineinfo.EmeraldRapidsModel))
+	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: machineinfo.IceLakeModel}
 
 	result := isNodeCPUCompatible(node, buildCPU)
-	assert.True(t, result, "An n2 build should be allowed to run on an n4 node")
+	assert.True(t, result, "An older build should be allowed to run on a newer node")
 }
 
 func TestIsNodeCPUCompatible_NewerBuildOnOlderNode_Incompatible(t *testing.T) {
 	t.Parallel()
-	// n4 (Emerald Rapids, model 207) build restored on an n2 (Cascade Lake, model
-	// 85) node: rejected because the older CPU may lack instructions the n4 build
-	// relies on. Compatibility is directional (older build -> newer node only).
+	// An Emerald Rapids build restored on an older Ice Lake node: rejected because
+	// the older CPU may lack instructions the newer build relies on. Compatibility
+	// is directional (older build -> newer node only).
 	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4,
-		nodemanager.WithCPUInfo("x86_64", "6", "85"))
-	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: "207"}
+		nodemanager.WithCPUInfo("x86_64", "6", machineinfo.IceLakeModel))
+	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "6", CPUModel: machineinfo.EmeraldRapidsModel}
 
 	result := isNodeCPUCompatible(node, buildCPU)
-	assert.False(t, result, "An n4 build should not be allowed to run on an n2 node")
+	assert.False(t, result, "A newer build should not be allowed to run on an older node")
 }
 
 func TestIsNodeCPUCompatible_FamilyMismatch(t *testing.T) {

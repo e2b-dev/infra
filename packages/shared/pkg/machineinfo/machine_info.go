@@ -19,6 +19,11 @@ type MachineInfo struct {
 	CPUFlags        []string `json:"cpu_flags"`
 }
 
+const (
+	IceLakeModel       = "106"
+	EmeraldRapidsModel = "207"
+)
+
 // compatibleNodeModels maps a build's CPU model (same architecture and family)
 // to the set of newer node CPU models that a paused sandbox can be resumed on.
 // Compatibility across generations is asymmetric.
@@ -26,9 +31,9 @@ type MachineInfo struct {
 // The key is the build model; the value is the set of node models that build may
 // run on. The same model is always compatible and need not be listed.
 var compatibleNodeModels = map[string]map[string]struct{}{
-	// Intel: an n2 (Cascade Lake, model 85) build may run on an n4
+	// Intel: an n2 (Ice Lake, model 106) build may run on an n4
 	// (Emerald Rapids, model 207) node, but not the reverse.
-	"85": {"207": {}},
+	IceLakeModel: {EmeraldRapidsModel: {}},
 }
 
 // IsCompatibleWith reports whether a sandbox whose build ran on this CPU (the
