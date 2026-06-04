@@ -19,8 +19,13 @@ type MachineInfo struct {
 	CPUFlags        []string `json:"cpu_flags"`
 }
 
+// IsCompatibleWith reports whether a guest built or snapshotted on m's CPU can
+// run on a node with the other CPU. CPUs sharing an architecture and family are
+// backward compatible across microarchitecture generations (e.g. a template
+// built on an older Intel generation runs on a newer one), so CPUModel is
+// intentionally ignored. This lets workloads from n2 nodes be restored on n4.
 func (m MachineInfo) IsCompatibleWith(other MachineInfo) bool {
-	return m.CPUArchitecture == other.CPUArchitecture && m.CPUFamily == other.CPUFamily && m.CPUModel == other.CPUModel
+	return m.CPUArchitecture == other.CPUArchitecture && m.CPUFamily == other.CPUFamily
 }
 
 func FromGRPCInfo(info *infogrpc.MachineInfo) MachineInfo {

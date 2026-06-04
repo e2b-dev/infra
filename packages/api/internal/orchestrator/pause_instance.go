@@ -140,9 +140,13 @@ func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) quer
 		Status:          types.BuildStatusSnapshotting,
 		CpuArchitecture: new(machineInfo.CPUArchitecture),
 		CpuFamily:       new(machineInfo.CPUFamily),
-		CpuModel:        new(machineInfo.CPUModel),
-		CpuModelName:    new(machineInfo.CPUModelName),
-		CpuFlags:        machineInfo.CPUFlags,
+		// Pausing captures memory state only; it doesn't change the guest's CPU
+		// compatibility. Don't pin the snapshot to the executing node's CPU
+		// generation (model/flags) so a sandbox paused on e.g. an n4 node can be
+		// resumed on any architecture+family-compatible node (e.g. n2).
+		CpuModel:     nil,
+		CpuModelName: nil,
+		CpuFlags:     nil,
 	}
 }
 

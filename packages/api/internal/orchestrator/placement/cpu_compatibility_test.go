@@ -72,24 +72,26 @@ func TestIsNodeCPUCompatible_BothEmpty(t *testing.T) {
 	assert.True(t, result, "Node should be compatible when neither has CPU requirements")
 }
 
-func TestIsNodeCPUCompatible_ModelMismatch(t *testing.T) {
+func TestIsNodeCPUCompatible_ModelDiffers_StillCompatible(t *testing.T) {
 	t.Parallel()
-	// Same architecture and family but different CPU model
+	// Same architecture and family but different CPU model: compatible because
+	// CPU model (microarchitecture generation) is ignored for compatibility.
 	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4, nodemanager.WithCPUInfo("x86_64", "Intel", "6"))
 	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "Intel", CPUModel: "7"}
 
 	result := isNodeCPUCompatible(node, buildCPU)
-	assert.False(t, result, "Node should be incompatible when CPU model differs")
+	assert.True(t, result, "Node should be compatible when only the CPU model differs")
 }
 
-func TestIsNodeCPUCompatible_ModelMatch_DifferentGenerations(t *testing.T) {
+func TestIsNodeCPUCompatible_DifferentGenerations_StillCompatible(t *testing.T) {
 	t.Parallel()
-	// Test that different Intel generations (model numbers) are incompatible
-	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4, nodemanager.WithCPUInfo("x86_64", "Intel", "85")) // Skylake
-	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "Intel", CPUModel: "143"}                   // Alder Lake
+	// Different Intel generations (e.g. n2 Skylake -> n4 Emerald Rapids) are
+	// compatible because newer generations are backward compatible.
+	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 2, 4, nodemanager.WithCPUInfo("x86_64", "Intel", "207")) // n4 Emerald Rapids
+	buildCPU := machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFamily: "Intel", CPUModel: "85"}                     // n2 Skylake
 
 	result := isNodeCPUCompatible(node, buildCPU)
-	assert.False(t, result, "Node should be incompatible when CPU models represent different processor generations")
+	assert.True(t, result, "A build from an older generation should be compatible with a newer one in the same family")
 }
 
 func TestIsNodeCPUCompatible_AllFieldsMatch(t *testing.T) {
