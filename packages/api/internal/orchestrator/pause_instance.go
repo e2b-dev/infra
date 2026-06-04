@@ -104,8 +104,6 @@ func (o *Orchestrator) WaitForStateChange(ctx context.Context, teamID uuid.UUID,
 }
 
 func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) queries.UpsertSnapshotParams {
-	machineInfo := node.MachineInfo()
-
 	metadata := types.JSONBStringMap(sbx.Metadata)
 	if metadata == nil {
 		metadata = types.JSONBStringMap{}
@@ -138,14 +136,9 @@ func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) quer
 		},
 		OriginNodeID: node.ID,
 		Status:       types.BuildStatusSnapshotting,
-		// Keep the snapshot's CPU info pinned to the source build; the executing
-		// node's info is only a fallback if the source build is gone.
-		SourceBuildID:   sbx.BuildID,
-		CpuArchitecture: &machineInfo.CPUArchitecture,
-		CpuFamily:       &machineInfo.CPUFamily,
-		CpuModel:        &machineInfo.CPUModel,
-		CpuModelName:    &machineInfo.CPUModelName,
-		CpuFlags:        machineInfo.CPUFlags,
+		// Pin the snapshot's CPU info to the source build instead of the executing
+		// node, so a pause/resume across CPU generations stays compatible.
+		SourceBuildID: sbx.BuildID,
 	}
 }
 
