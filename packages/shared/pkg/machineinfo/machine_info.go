@@ -19,32 +19,43 @@ type MachineInfo struct {
 	CPUFlags        []string `json:"cpu_flags"`
 }
 
+// compatibleModelGroups lists CPU models (same architecture and family) that are
+// instruction-set compatible for running a guest across machine generations.
+// Per-node CPU flag sets are not reliably reported across generations, so the
+// cross-model compatibility is hardcoded here.
+var compatibleModelGroups = [][]string{
+	{"85", "207"}, // Intel: n2 (Cascade Lake) <-> n4 (Emerald Rapids)
+}
+
 // IsCompatibleWith reports whether a guest built on m's CPU can run on a node
-// with the other CPU. The node must support every CPU flag the guest was built
-// with, which allows restoring across generations (e.g. n2 -> n4) while rejecting
-// a node with a smaller instruction set. When the guest has no recorded flags
-// (older builds), it falls back to the stricter family/model match.
+// with the other CPU. The same architecture+family+model is always compatible;
+// cross-model compatibility is restricted to the hardcoded compatibleModelGroups
+// (e.g. an n2 build restoring on an n4 node).
 func (m MachineInfo) IsCompatibleWith(other MachineInfo) bool {
-	if m.CPUArchitecture != other.CPUArchitecture {
+	if m.CPUArchitecture != other.CPUArchitecture || m.CPUFamily != other.CPUFamily {
 		return false
 	}
 
-	if len(m.CPUFlags) == 0 {
-		return m.CPUFamily == other.CPUFamily && m.CPUModel == other.CPUModel
+	if m.CPUModel == other.CPUModel {
+		return true
 	}
 
-	nodeFlags := make(map[string]struct{}, len(other.CPUFlags))
-	for _, f := range other.CPUFlags {
-		nodeFlags[f] = struct{}{}
-	}
-
-	for _, f := range m.CPUFlags {
-		if _, ok := nodeFlags[f]; !ok {
-			return false
+	for _, group := range compatibleModelGroups {
+		var hasGuest, hasNode bool
+		for _, model := range group {
+			if model == m.CPUModel {
+				hasGuest = true
+			}
+			if model == other.CPUModel {
+				hasNode = true
+			}
+		}
+		if hasGuest && hasNode {
+			return true
 		}
 	}
 
-	return true
+	return false
 }
 
 func FromGRPCInfo(info *infogrpc.MachineInfo) MachineInfo {

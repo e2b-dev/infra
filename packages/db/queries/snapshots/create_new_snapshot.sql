@@ -52,7 +52,8 @@ snapshot as (
 
 -- Create a new build for the snapshot, copying CPU info from the source build so
 -- a pause keeps the snapshot's CPU compatibility pinned to the original build
--- (NULL flags preserved) instead of the node the pause happened to run on.
+-- instead of the node the pause happened to run on. Scalar subqueries are used so
+-- the row is always inserted (CPU info is NULL if the source build is missing).
 new_build as (
     INSERT INTO "public"."env_builds" (
         vcpu,
@@ -71,7 +72,7 @@ new_build as (
         cpu_model_name,
         cpu_flags
     )
-    SELECT
+    VALUES (
         @vcpu,
         @ram_mb,
         @free_disk_size_mb,
@@ -82,13 +83,12 @@ new_build as (
         @origin_node_id,
         @total_disk_size_mb,
         now(),
-        src.cpu_architecture,
-        src.cpu_family,
-        src.cpu_model,
-        src.cpu_model_name,
-        src.cpu_flags
-    FROM "public"."env_builds" src
-    WHERE src.id = @source_build_id
+        (SELECT eb.cpu_architecture FROM "public"."env_builds" eb WHERE eb.id = @source_build_id),
+        (SELECT eb.cpu_family FROM "public"."env_builds" eb WHERE eb.id = @source_build_id),
+        (SELECT eb.cpu_model FROM "public"."env_builds" eb WHERE eb.id = @source_build_id),
+        (SELECT eb.cpu_model_name FROM "public"."env_builds" eb WHERE eb.id = @source_build_id),
+        (SELECT eb.cpu_flags FROM "public"."env_builds" eb WHERE eb.id = @source_build_id)
+    )
     RETURNING id as build_id
 ),
 

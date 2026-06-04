@@ -82,7 +82,7 @@ new_build as (
         cpu_model_name,
         cpu_flags
     )
-    SELECT
+    VALUES (
         $12,
         $13,
         $14,
@@ -93,13 +93,12 @@ new_build as (
         $9,
         $19,
         now(),
-        src.cpu_architecture,
-        src.cpu_family,
-        src.cpu_model,
-        src.cpu_model_name,
-        src.cpu_flags
-    FROM "public"."env_builds" src
-    WHERE src.id = $20
+        (SELECT eb.cpu_architecture FROM "public"."env_builds" eb WHERE eb.id = $20),
+        (SELECT eb.cpu_family FROM "public"."env_builds" eb WHERE eb.id = $20),
+        (SELECT eb.cpu_model FROM "public"."env_builds" eb WHERE eb.id = $20),
+        (SELECT eb.cpu_model_name FROM "public"."env_builds" eb WHERE eb.id = $20),
+        (SELECT eb.cpu_flags FROM "public"."env_builds" eb WHERE eb.id = $20)
+    )
     RETURNING id as build_id
 ),
 
@@ -147,7 +146,8 @@ type UpsertSnapshotRow struct {
 // Create a new snapshot or update an existing one
 // Create a new build for the snapshot, copying CPU info from the source build so
 // a pause keeps the snapshot's CPU compatibility pinned to the original build
-// (NULL flags preserved) instead of the node the pause happened to run on.
+// instead of the node the pause happened to run on. Scalar subqueries are used so
+// the row is always inserted (CPU info is NULL if the source build is missing).
 // Create the build assignment edge (explicit, not relying on trigger)
 func (q *Queries) UpsertSnapshot(ctx context.Context, arg UpsertSnapshotParams) (UpsertSnapshotRow, error) {
 	row := q.db.QueryRow(ctx, upsertSnapshot,

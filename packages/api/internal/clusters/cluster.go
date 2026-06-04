@@ -242,7 +242,7 @@ func (c *Cluster) GetAvailableTemplateBuilder(ctx context.Context, expectedInfo 
 		}
 
 		// Check machine compatibility
-		if expectedInfo.CPUModel != "" && !expectedInfo.IsCompatibleWith(machineInfo) {
+		if expectedInfo.CPUArchitecture != "" && !expectedInfo.IsCompatibleWith(machineInfo) {
 			return false
 		}
 
