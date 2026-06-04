@@ -1,14 +1,11 @@
-//go:build linux
-
 package filesystem
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"golang.org/x/sys/unix"
+	"github.com/pkg/xattr"
 )
 
 func TestWriteAndReadMetadata(t *testing.T) {
@@ -21,7 +18,7 @@ func TestWriteAndReadMetadata(t *testing.T) {
 
 	want := map[string]string{"author": "mish", "purpose": "upload"}
 	if err := WriteMetadata(path, want); err != nil {
-		if errors.Is(err, unix.ENOTSUP) || errors.Is(err, unix.EOPNOTSUPP) {
+		if IsXattrUnsupported(err) {
 			t.Skipf("filesystem does not support xattrs: %v", err)
 		}
 		t.Fatalf("WriteMetadata: %v", err)
@@ -49,11 +46,11 @@ func TestReadMetadataEmptyValue(t *testing.T) {
 		t.Fatalf("write file: %v", err)
 	}
 
-	if err := unix.Setxattr(path, MetadataXattrPrefix+"empty", []byte{}, 0); err != nil {
-		if errors.Is(err, unix.ENOTSUP) || errors.Is(err, unix.EOPNOTSUPP) {
+	if err := xattr.Set(path, MetadataXattrPrefix+"empty", []byte{}); err != nil {
+		if IsXattrUnsupported(err) {
 			t.Skipf("filesystem does not support xattrs: %v", err)
 		}
-		t.Fatalf("Setxattr: %v", err)
+		t.Fatalf("Set: %v", err)
 	}
 
 	got, err := ReadMetadata(path)
@@ -77,11 +74,11 @@ func TestReadMetadataIgnoresNonUserPrefix(t *testing.T) {
 		t.Fatalf("write file: %v", err)
 	}
 
-	if err := unix.Setxattr(path, MetadataXattrPrefix+"keep", []byte("yes"), 0); err != nil {
-		if errors.Is(err, unix.ENOTSUP) || errors.Is(err, unix.EOPNOTSUPP) {
+	if err := xattr.Set(path, MetadataXattrPrefix+"keep", []byte("yes")); err != nil {
+		if IsXattrUnsupported(err) {
 			t.Skipf("filesystem does not support xattrs: %v", err)
 		}
-		t.Fatalf("Setxattr: %v", err)
+		t.Fatalf("Set: %v", err)
 	}
 
 	got, err := ReadMetadata(path)
@@ -107,11 +104,11 @@ func TestReadMetadataIgnoresForeignUserXattrs(t *testing.T) {
 		t.Fatalf("write file: %v", err)
 	}
 
-	if err := unix.Setxattr(path, "user.foreign", []byte("ignored"), 0); err != nil {
-		if errors.Is(err, unix.ENOTSUP) || errors.Is(err, unix.EOPNOTSUPP) {
+	if err := xattr.Set(path, "user.foreign", []byte("ignored")); err != nil {
+		if IsXattrUnsupported(err) {
 			t.Skipf("filesystem does not support xattrs: %v", err)
 		}
-		t.Fatalf("Setxattr: %v", err)
+		t.Fatalf("Set: %v", err)
 	}
 
 	got, err := ReadMetadata(path)
@@ -136,15 +133,15 @@ func TestWriteMetadataReplacesFullSet(t *testing.T) {
 	}
 
 	if err := WriteMetadata(path, map[string]string{"author": "mish", "purpose": "upload"}); err != nil {
-		if errors.Is(err, unix.ENOTSUP) || errors.Is(err, unix.EOPNOTSUPP) {
+		if IsXattrUnsupported(err) {
 			t.Skipf("filesystem does not support xattrs: %v", err)
 		}
 		t.Fatalf("WriteMetadata: %v", err)
 	}
 
 	// Foreign user.* xattr must survive every WriteMetadata call.
-	if err := unix.Setxattr(path, "user.foreign", []byte("keep"), 0); err != nil {
-		t.Fatalf("Setxattr foreign: %v", err)
+	if err := xattr.Set(path, "user.foreign", []byte("keep")); err != nil {
+		t.Fatalf("Set foreign: %v", err)
 	}
 
 	// Non-empty call replaces the full set: "purpose" is dropped because
@@ -173,7 +170,7 @@ func TestWriteMetadataReplacesFullSet(t *testing.T) {
 	}
 
 	// Foreign xattr untouched throughout.
-	if _, err := unix.Getxattr(path, "user.foreign", nil); err != nil {
+	if _, err := xattr.Get(path, "user.foreign"); err != nil {
 		t.Errorf("foreign xattr was removed: %v", err)
 	}
 }

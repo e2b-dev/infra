@@ -138,7 +138,7 @@ func processFile(r *http.Request, path string, part io.Reader, uid, gid int, met
 	// xattrs from a prior upload).
 	if err := filesystem.WriteMetadata(path, metadata); err != nil {
 		switch {
-		case errors.Is(err, syscall.ENOTSUP) || errors.Is(err, syscall.EOPNOTSUPP):
+		case filesystem.IsXattrUnsupported(err):
 			// Filesystem doesn't support xattrs. ext4 (the sandbox rootfs)
 			// always supports them; this branch only triggers for virtual
 			// filesystems such as /sys and /proc that the upload API also

@@ -3,6 +3,10 @@ package filesystem
 import (
 	"errors"
 	"fmt"
+	"strings"
+	"syscall"
+
+	"github.com/pkg/xattr"
 )
 
 // MetadataXattrPrefix is the xattr namespace used to store user-defined
@@ -61,4 +65,91 @@ func validatePrintableASCII(label, s string) error {
 	}
 
 	return nil
+}
+
+// ReadMetadata returns user-defined metadata stored in xattrs under the
+// MetadataXattrPrefix namespace. Returns nil (not an error) when the
+// filesystem does not support xattrs or the file has no metadata set.
+func ReadMetadata(path string) (map[string]string, error) {
+	names, err := xattr.List(path)
+	if err != nil {
+		if IsXattrUnsupported(err) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	var metadata map[string]string
+	for _, name := range names {
+		if !strings.HasPrefix(name, MetadataXattrPrefix) {
+			continue
+		}
+
+		value, err := xattr.Get(path, name)
+		if err != nil {
+			if errors.Is(err, xattr.ENOATTR) {
+				continue
+			}
+
+			return nil, err
+		}
+
+		if metadata == nil {
+			metadata = make(map[string]string)
+		}
+		metadata[strings.TrimPrefix(name, MetadataXattrPrefix)] = string(value)
+	}
+
+	return metadata, nil
+}
+
+// WriteMetadata replaces the file's user-defined metadata with the given
+// key/value pairs. Any existing xattrs under MetadataXattrPrefix that are
+// absent from metadata are removed, and the supplied keys are written via
+// xattr.Set. Passing a nil/empty map therefore clears all metadata, so that
+// overwriting a file (which preserves xattrs across O_TRUNC) does not leak
+// stale metadata from a previous upload.
+//
+// Safe to call before or after chown — `user.*` xattrs are preserved across
+// ownership changes, and envd runs as root inside the VM so the kernel
+// write-permission check is satisfied regardless of file ownership.
+func WriteMetadata(path string, metadata map[string]string) error {
+	if err := ValidateMetadata(metadata); err != nil {
+		return err
+	}
+
+	existing, err := xattr.List(path)
+	if err != nil {
+		return err
+	}
+
+	for _, name := range existing {
+		if !strings.HasPrefix(name, MetadataXattrPrefix) {
+			continue
+		}
+		key := strings.TrimPrefix(name, MetadataXattrPrefix)
+		if _, keep := metadata[key]; keep {
+			continue
+		}
+		if err := xattr.Remove(path, name); err != nil && !errors.Is(err, xattr.ENOATTR) {
+			return err
+		}
+	}
+
+	for k, v := range metadata {
+		if err := xattr.Set(path, MetadataXattrPrefix+k, []byte(v)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// IsXattrUnsupported reports whether err indicates the filesystem does not
+// support extended attributes (e.g. virtual filesystems such as /proc and
+// /sys). Callers that persist metadata best-effort can use this to log and
+// continue instead of failing the request.
+func IsXattrUnsupported(err error) bool {
+	return errors.Is(err, syscall.ENOTSUP) || errors.Is(err, syscall.EOPNOTSUPP)
 }
