@@ -17,7 +17,7 @@ const listTemplateTagGroupsByNameAsc = `-- name: ListTemplateTagGroupsByNameAsc 
 WITH tag_window AS (
     SELECT
         eba.tag,
-        MAX(COALESCE(eba.created_at, eb.created_at))::timestamptz AS latest_assigned_at
+        MAX(eba.created_at)::timestamptz AS latest_assigned_at
     FROM public.env_build_assignments eba
     JOIN public.env_builds eb ON eb.id = eba.build_id
     WHERE eba.env_id = $2::text
@@ -38,13 +38,13 @@ ranked AS (
         eba.id                                   AS assignment_id,
         eba.tag,
         eba.build_id,
-        COALESCE(eba.created_at, eb.created_at) AS assigned_at,
+        eba.created_at                           AS assigned_at,
         eb.created_at                            AS build_created_at,
         eb.finished_at                           AS build_finished_at,
         tw.latest_assigned_at,
         ROW_NUMBER() OVER (
             PARTITION BY eba.tag
-            ORDER BY COALESCE(eba.created_at, eb.created_at) DESC, eba.id DESC
+            ORDER BY eba.created_at DESC, eba.id DESC
         ) AS assignment_rank
     FROM public.env_build_assignments eba
     JOIN public.env_builds eb ON eb.id = eba.build_id
