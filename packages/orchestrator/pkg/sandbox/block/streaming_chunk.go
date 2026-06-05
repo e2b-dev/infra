@@ -258,8 +258,14 @@ func (c *Chunker) progressiveRead(ctx context.Context, s *fetchSession, mmapSlic
 		// Read in batches of max(blockSize, minReadBatchSize) to align notification
 		// granularity with the read size and minimize lock/notify overhead.
 		readEnd := min(totalRead+readBatch, s.chunkLen)
+		sw := c.metrics.WriteChunksTimerFactory.Begin()
 		n, readErr := io.ReadFull(reader, mmapSlice[totalRead:readEnd])
 		totalRead += int64(n)
+		if readErr == nil || totalRead >= s.chunkLen {
+			sw.RecordRaw(ctx, int64(n), writeSuccessAttr)
+		} else {
+			sw.RecordRaw(ctx, int64(n), writeFailureAttr)
+		}
 
 		if n > 0 {
 			// Dirty marking is deferred to runFetch after the full chunk is fetched.
@@ -327,6 +333,12 @@ func (c *Chunker) IsCached(_ context.Context, off, length int64) bool {
 func (c *Chunker) FileSize(ctx context.Context) (int64, error) {
 	return c.cache.FileSize(ctx)
 }
+
+// writeSuccessAttr and writeFailureAttr are pre-allocated result attributes for mmap write observations.
+var (
+	writeSuccessAttr = telemetry.PrecomputeAttrs(telemetry.Success)
+	writeFailureAttr = telemetry.PrecomputeAttrs(telemetry.Failure)
+)
 
 const (
 	compressedAttr = "compressed"

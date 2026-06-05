@@ -1,0 +1,159 @@
+package handlers
+
+import (
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
+)
+
+// templatesSort is the combined sort column + direction. Its values match the
+// API `sort` enum and the suffix of the corresponding ListTeamTemplatesBy*
+// query, so the handler can select the right query by switching on it.
+type templatesSort string
+
+const (
+	templatesSortNameAsc       templatesSort = "name_asc"
+	templatesSortNameDesc      templatesSort = "name_desc"
+	templatesSortCpuCountAsc   templatesSort = "cpu_count_asc"
+	templatesSortCpuCountDesc  templatesSort = "cpu_count_desc"
+	templatesSortMemoryMbAsc   templatesSort = "memory_mb_asc"
+	templatesSortMemoryMbDesc  templatesSort = "memory_mb_desc"
+	templatesSortCreatedAtAsc  templatesSort = "created_at_asc"
+	templatesSortCreatedAtDesc templatesSort = "created_at_desc"
+	templatesSortUpdatedAtAsc  templatesSort = "updated_at_asc"
+	templatesSortUpdatedAtDesc templatesSort = "updated_at_desc"
+)
+
+const (
+	defaultTemplatesSort  = templatesSortCreatedAtDesc
+	defaultTemplatesLimit = int32(50)
+	maxTemplatesLimit     = int32(100)
+)
+
+var (
+	errInvalidTemplatesCursor      = errors.New("invalid cursor")
+	errTemplatesCursorSortMismatch = errors.New("cursor sort mismatch")
+)
+
+func parseTemplatesSort(value *api.GetTemplatesParamsSort) (templatesSort, error) {
+	if value == nil {
+		return defaultTemplatesSort, nil
+	}
+
+	switch templatesSort(*value) {
+	case templatesSortNameAsc, templatesSortNameDesc,
+		templatesSortCpuCountAsc, templatesSortCpuCountDesc,
+		templatesSortMemoryMbAsc, templatesSortMemoryMbDesc,
+		templatesSortCreatedAtAsc, templatesSortCreatedAtDesc,
+		templatesSortUpdatedAtAsc, templatesSortUpdatedAtDesc:
+		return templatesSort(*value), nil
+	default:
+		return "", fmt.Errorf("invalid sort: %q", *value)
+	}
+}
+
+func normalizeTemplatesLimit(limit *api.TemplatesLimit) int32 {
+	if limit == nil {
+		return defaultTemplatesLimit
+	}
+	if *limit < 1 {
+		return 1
+	}
+	if *limit > maxTemplatesLimit {
+		return maxTemplatesLimit
+	}
+
+	return *limit
+}
+
+// templatesPublicFilter encodes the optional visibility filter for the query:
+// -1 means "no filter", 1 means public-only, 0 means internal-only.
+func templatesPublicFilter(public *api.TemplatesPublic) int16 {
+	if public == nil {
+		return -1
+	}
+	if *public {
+		return 1
+	}
+
+	return 0
+}
+
+// parseTemplatesCursor parses a `{sort}|{value}|{id}` cursor and verifies that
+// it was issued for the same sort as the current request. It returns nil
+// value/id for an empty cursor (the first page). The value segment stays a
+// string here; it is parsed into the typed query parameter when the sort-
+// specific query is selected.
+func parseTemplatesCursor(cursor *api.TemplatesCursor, sort templatesSort) (*string, *string, error) {
+	if cursor == nil || *cursor == "" {
+		return nil, nil, nil
+	}
+
+	parts := strings.SplitN(*cursor, "|", 3)
+	if len(parts) != 3 {
+		return nil, nil, errInvalidTemplatesCursor
+	}
+
+	if parts[0] != string(sort) {
+		return nil, nil, errTemplatesCursorSortMismatch
+	}
+
+	// A real next-page cursor always pins a concrete template id.
+	if parts[2] == "" {
+		return nil, nil, errInvalidTemplatesCursor
+	}
+
+	value, id := parts[1], parts[2]
+
+	return &value, &id, nil
+}
+
+func formatTemplatesCursor(sort templatesSort, value, id string) string {
+	return fmt.Sprintf("%s|%s|%s", sort, value, id)
+}
+
+func cursorInt64(v *string) (*int64, error) {
+	if v == nil {
+		return nil, nil
+	}
+
+	n, err := strconv.ParseInt(*v, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errInvalidTemplatesCursor, err)
+	}
+
+	return &n, nil
+}
+
+func cursorTime(v *string) (*time.Time, error) {
+	if v == nil {
+		return nil, nil
+	}
+
+	t, err := time.Parse(time.RFC3339Nano, *v)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errInvalidTemplatesCursor, err)
+	}
+
+	return &t, nil
+}
+
+var (
+	maxCursorTime = time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
+	minCursorTime = time.Time{}
+)
+
+func timeCursor(ts *time.Time, id *string, desc bool) (time.Time, string) {
+	if ts != nil && id != nil {
+		return *ts, *id
+	}
+	if desc {
+		return maxCursorTime, ""
+	}
+
+	return minCursorTime, ""
+}

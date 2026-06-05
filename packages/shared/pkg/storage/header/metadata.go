@@ -22,6 +22,11 @@ const (
 	metadataVersion = 3
 	// MetadataVersionV4 is used for compressed builds (V4 headers with FrameTables).
 	MetadataVersionV4 = 4
+	// MetadataVersionV5 is V4 with a columnar, varint-encoded mapping section.
+	// Same semantics as V4 (Builds map + FrameTables); only the on-disk mapping
+	// layout differs. Far smaller and far more compressible for the large,
+	// fragmented headers produced by page-granular memfile dedup.
+	MetadataVersionV5 = 5
 )
 
 type Metadata struct {

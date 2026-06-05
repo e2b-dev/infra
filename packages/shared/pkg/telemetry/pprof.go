@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
+	"os"
+	"strconv"
 	"strings"
 )
 
@@ -29,10 +31,26 @@ func init() {
 // DefaultPprofPort is the default port that we should use to mount pprof endpoint.
 const DefaultPprofPort = 6060
 
+// pprofPortEnv overrides DefaultPprofPort so concurrent local instances don't
+// collide on the hardcoded port.
+const pprofPortEnv = "PPROF_PORT"
+
+// PprofPort returns the port the pprof server should bind to: the value of
+// PPROF_PORT when set to a valid port, otherwise DefaultPprofPort.
+func PprofPort() int {
+	if raw, ok := os.LookupEnv(pprofPortEnv); ok {
+		if port, err := strconv.Atoi(raw); err == nil && port > 0 && port <= 65535 {
+			return port
+		}
+	}
+
+	return DefaultPprofPort
+}
+
 func NewPprofServer() *http.Server {
 	return &http.Server{
 		// We mount only to the localhost to prevent accidental exposure.
-		Addr:    fmt.Sprintf("127.0.0.1:%d", DefaultPprofPort),
+		Addr:    fmt.Sprintf("127.0.0.1:%d", PprofPort()),
 		Handler: NewPprofMux(),
 	}
 }

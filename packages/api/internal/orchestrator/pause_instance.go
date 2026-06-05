@@ -9,6 +9,7 @@ import (
 	"github.com/gogo/status"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
@@ -17,6 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -36,6 +38,21 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 
 		return err
 	}
+
+	// The snapshot's CPU info is pinned to the source build (see
+	// buildUpsertSnapshotParams), so the node the pause physically ran on is not
+	// persisted. Log it for debugging cross-generation pools.
+	originNodeCPU := node.MachineInfo()
+	logger.L().Info(ctx, "Snapshotting sandbox",
+		logger.WithSandboxID(sbx.SandboxID),
+		zap.String("origin_node_id", node.ID),
+		zap.String("origin_node_cpu_architecture", originNodeCPU.CPUArchitecture),
+		zap.String("origin_node_cpu_family", originNodeCPU.CPUFamily),
+		zap.String("origin_node_cpu_model", originNodeCPU.CPUModel),
+		zap.String("origin_node_cpu_model_name", originNodeCPU.CPUModelName),
+		zap.Strings("origin_node_cpu_flags", originNodeCPU.CPUFlags),
+		zap.String("source_build_id", sbx.BuildID.String()),
+	)
 
 	err = snapshotInstance(ctx, node, sbx, result.TemplateID, result.BuildID.String())
 	if errors.Is(err, PauseQueueExhaustedError{}) {
@@ -104,8 +121,6 @@ func (o *Orchestrator) WaitForStateChange(ctx context.Context, teamID uuid.UUID,
 }
 
 func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) queries.UpsertSnapshotParams {
-	machineInfo := node.MachineInfo()
-
 	metadata := types.JSONBStringMap(sbx.Metadata)
 	if metadata == nil {
 		metadata = types.JSONBStringMap{}
@@ -136,13 +151,11 @@ func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node) quer
 			AutoResume:   sbx.AutoResume,
 			VolumeMounts: sbx.VolumeMounts,
 		},
-		OriginNodeID:    node.ID,
-		Status:          types.BuildStatusSnapshotting,
-		CpuArchitecture: new(machineInfo.CPUArchitecture),
-		CpuFamily:       new(machineInfo.CPUFamily),
-		CpuModel:        new(machineInfo.CPUModel),
-		CpuModelName:    new(machineInfo.CPUModelName),
-		CpuFlags:        machineInfo.CPUFlags,
+		OriginNodeID: node.ID,
+		Status:       types.BuildStatusSnapshotting,
+		// Pin the snapshot's CPU info to the source build instead of the executing
+		// node, so a pause/resume across CPU generations stays compatible.
+		SourceBuildID: sbx.BuildID,
 	}
 }
 

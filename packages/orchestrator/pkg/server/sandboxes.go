@@ -220,6 +220,15 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 	s.setupSandboxLifecycle(ctx, sbx)
 
+	// Read scheduling metadata after the sandbox resumed so the template's
+	// memfile/rootfs devices (and their headers) are resolved.
+	var schedulingMetadata *orchestrator.SchedulingMetadata
+	if provider, ok := template.(interface {
+		SchedulingMetadata(ctx context.Context) *orchestrator.SchedulingMetadata
+	}); ok {
+		schedulingMetadata = provider.SchedulingMetadata(ctx)
+	}
+
 	eventType := events.SandboxCreatedEventPair
 	if req.GetSandbox().GetSnapshot() {
 		eventType = events.SandboxResumedEventPair
@@ -245,7 +254,8 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	)
 
 	return &orchestrator.SandboxCreateResponse{
-		ClientId: s.info.ClientId,
+		ClientId:           s.info.ClientId,
+		SchedulingMetadata: schedulingMetadata,
 	}, nil
 }
 
@@ -512,7 +522,7 @@ func recordSandboxKill(ctx context.Context, counter metric.Int64Counter, killRea
 	counter.Add(ctx, 1, metric.WithAttributes(attribute.String("kill_reason", killReason)))
 }
 
-func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*emptypb.Empty, error) {
+func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (*orchestrator.SandboxPauseResponse, error) {
 	ctx, childSpan := tracer.Start(ctx, "sandbox-pause")
 	defer childSpan.End()
 
@@ -590,7 +600,9 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		},
 	)
 
-	return &emptypb.Empty{}, nil
+	return &orchestrator.SandboxPauseResponse{
+		SchedulingMetadata: res.schedulingMetadata,
+	}, nil
 }
 
 func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpointRequest) (*orchestrator.SandboxCheckpointResponse, error) {
@@ -741,7 +753,9 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 
 	telemetry.ReportEvent(ctx, "Checkpoint completed")
 
-	return &orchestrator.SandboxCheckpointResponse{}, nil
+	return &orchestrator.SandboxCheckpointResponse{
+		SchedulingMetadata: res.schedulingMetadata,
+	}, nil
 }
 
 // Extracts common data needed for sandbox events
@@ -778,9 +792,10 @@ func (s *Server) getSandboxExecutionData(sbx *sandbox.Sandbox) map[string]any {
 // snapshotResult holds the data produced by snapshotAndCacheSandbox that
 // callers need to start the background remote storage upload.
 type snapshotResult struct {
-	meta           metadata.Template
-	upload         *sandbox.Upload
-	completeUpload func(ctx context.Context, uploadErr error)
+	meta               metadata.Template
+	schedulingMetadata *orchestrator.SchedulingMetadata
+	upload             *sandbox.Upload
+	completeUpload     func(ctx context.Context, uploadErr error)
 }
 
 // snapshotAndCacheSandbox creates a snapshot of a sandbox and adds it to the
@@ -859,9 +874,10 @@ func (s *Server) snapshotAndCacheSandbox(
 	}
 
 	return &snapshotResult{
-		meta:           meta,
-		upload:         upload,
-		completeUpload: completeUpload,
+		meta:               meta,
+		schedulingMetadata: snapshot.SchedulingMetadata,
+		upload:             upload,
+		completeUpload:     completeUpload,
 	}, nil
 }
 

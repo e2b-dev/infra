@@ -1,7 +1,9 @@
 package header
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
 	"testing"
 
 	"github.com/google/uuid"
@@ -454,6 +456,44 @@ func TestSerializeDeserialize_V4_NoBuilds(t *testing.T) {
 
 	require.Equal(t, 1, got.Mapping.Len())
 	require.Nil(t, got.Builds)
+}
+
+func TestReadV4BuildsSection_RejectsOversizedBuildCount(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	require.NoError(t, binary.Write(&buf, binary.LittleEndian, uint32(2)))
+
+	_, err := readV4BuildsSection(bytes.NewReader(buf.Bytes()))
+	require.ErrorContains(t, err, "build count 2 exceeds remaining")
+}
+
+func TestDeserializeV4_RejectsOversizedMappingCount(t *testing.T) {
+	t.Parallel()
+
+	var block bytes.Buffer
+	require.NoError(t, binary.Write(&block, binary.LittleEndian, uint32(0))) // builds
+	require.NoError(t, binary.Write(&block, binary.LittleEndian, uint32(2))) // mappings
+
+	compressed, err := compressLZ4(block.Bytes())
+	require.NoError(t, err)
+
+	metadata := &Metadata{
+		Version:     MetadataVersionV4,
+		BlockSize:   4096,
+		Size:        4096,
+		BuildId:     uuid.New(),
+		BaseBuildId: uuid.New(),
+	}
+	var meta bytes.Buffer
+	require.NoError(t, binary.Write(&meta, binary.LittleEndian, metadata))
+	data := make([]byte, metadataSize+v4FlagsLen+v4SizePrefixLen+len(compressed))
+	copy(data[:metadataSize], meta.Bytes())
+	binary.LittleEndian.PutUint32(data[metadataSize+v4FlagsLen:], uint32(block.Len()))
+	copy(data[metadataSize+v4FlagsLen+v4SizePrefixLen:], compressed)
+
+	_, err = DeserializeBytes(data)
+	require.ErrorContains(t, err, "mapping count 2 exceeds remaining")
 }
 
 func TestSerializeDeserialize_V4_MultiBuild_LocateCompressed(t *testing.T) {

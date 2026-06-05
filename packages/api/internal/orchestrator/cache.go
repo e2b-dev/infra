@@ -94,10 +94,17 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 			// cluster and local nodes needs to by synced differently,
 			// because each of them is taken from different source pool
 			var err error
-			if n.IsNomadManaged() {
-				err = o.syncNode(ctx, n, nomadNodes, store)
-			} else {
+			switch {
+			case !n.IsNomadManaged():
 				err = o.syncClusterNode(ctx, n, store)
+			case skipSyncingWithNomad:
+				// In local mode there is no Nomad discovery list to validate
+				// membership against, so sync the statically-connected node
+				// directly instead of evicting it every cycle. node.Sync still
+				// marks the node unhealthy if the orchestrator is unreachable.
+				n.Sync(ctx, store)
+			default:
+				err = o.syncNode(ctx, n, nomadNodes, store)
 			}
 			if err != nil {
 				logger.L().Error(ctx, "Error syncing node", zap.Error(err))

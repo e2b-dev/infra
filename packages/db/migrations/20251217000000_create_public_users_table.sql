@@ -10,36 +10,14 @@ CREATE TABLE IF NOT EXISTS public.users (
     UNIQUE (email)
 );
 
--- Enable row level security
-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-
 -- Grant INSERT permission to trigger_user
 GRANT INSERT ON public.users TO trigger_user;
-CREATE POLICY "Allow to create a new user"
-    ON public.users
-    AS PERMISSIVE
-    FOR INSERT
-    TO trigger_user
-    WITH CHECK (TRUE);
 
 -- Grant UPDATE permission to trigger_user
 -- We need to grant SELECT permission to trigger_user as well, so it can filter by id
 GRANT SELECT (id) ON public.users TO trigger_user;
-CREATE POLICY "Allow to select a user"
-    ON public.users
-    AS PERMISSIVE
-    FOR SELECT
-    TO trigger_user
-    USING (true);
 
 GRANT UPDATE ON public.users TO trigger_user;
-CREATE POLICY "Allow to update a user"
-    ON public.users
-    AS PERMISSIVE
-    FOR UPDATE
-    TO trigger_user
-    USING (true)
-    WITH CHECK (true);
 
 -- Create trigger function to update data from auth.users to public.users
 CREATE OR REPLACE FUNCTION public.sync_insert_auth_users_to_public_users_trigger() RETURNS TRIGGER

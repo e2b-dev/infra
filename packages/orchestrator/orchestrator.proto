@@ -105,6 +105,7 @@ message SandboxCreateRequest {
 
 message SandboxCreateResponse {
   string client_id = 1;
+  SchedulingMetadata scheduling_metadata = 2;
 }
 
 message SandboxUpdateRequest {
@@ -126,12 +127,36 @@ message SandboxPauseRequest {
   string build_id = 3;
 }
 
+message SchedulingMetadata {
+  // base_build_id is the root layer (shared across the template's sandboxes);
+  // build_id is the final/current layer. Both also appear in the lists below.
+  string base_build_id = 1;
+  string build_id = 2;
+  // Deduplicated build IDs whose data each artifact references (all ancestor
+  // layers plus the build itself). Sorted; order is not significant. When a
+  // list exceeds the cap, the lightest layers are dropped first and the count
+  // of dropped layers is reported.
+  repeated string memfile_build_ids = 3;
+  repeated string rootfs_build_ids = 4;
+  uint32 memfile_dropped_builds = 5;
+  uint32 rootfs_dropped_builds = 6;
+  // Referenced bytes per build, aligned with the *_build_ids lists. On save the
+  // new memfile layer's bytes are a pre-dedup, block-granular upper bound.
+  repeated uint64 memfile_build_bytes = 7;
+  repeated uint64 rootfs_build_bytes = 8;
+}
+
+message SandboxPauseResponse {
+  SchedulingMetadata scheduling_metadata = 1;
+}
+
 message SandboxCheckpointRequest {
   string sandbox_id = 1;
   string build_id = 3;
 }
 
 message SandboxCheckpointResponse {
+  SchedulingMetadata scheduling_metadata = 1;
 }
 
 message RunningSandbox {
@@ -160,7 +185,7 @@ service SandboxService {
   rpc Update(SandboxUpdateRequest) returns (google.protobuf.Empty);
   rpc List(google.protobuf.Empty) returns (SandboxListResponse);
   rpc Delete(SandboxDeleteRequest) returns (google.protobuf.Empty);
-  rpc Pause(SandboxPauseRequest) returns (google.protobuf.Empty);
+  rpc Pause(SandboxPauseRequest) returns (SandboxPauseResponse);
   rpc Checkpoint(SandboxCheckpointRequest) returns (SandboxCheckpointResponse);
 
   rpc ListCachedBuilds(google.protobuf.Empty) returns (SandboxListCachedBuildsResponse);
