@@ -45,11 +45,13 @@ func TestServeMetric(t *testing.T) {
 	ctx := context.Background()
 	pageSize := int64(header.PageSize)
 
-	// Record a mix of faults the way the worker would.
+	// Record a mix of faults the way the worker would. All under one
+	// generation bucket — the per-bucket split is pinned separately by
+	// TestServeMetric_GenerationBucket.
 	record := func(class pageClass, result faultResult, bytes int64, n int) {
 		for range n {
 			sw := serveTimer.Begin()
-			sw.RecordRaw(ctx, bytes, serveAttrs[class][result])
+			sw.RecordRaw(ctx, bytes, serveAttrs[genBucket1To10][class][result])
 		}
 	}
 	record(pageClassNew, faultResultInstalled, pageSize, 3)
@@ -114,7 +116,7 @@ func TestPrefaultMetric(t *testing.T) {
 	record := func(result faultResult, bytes int64, n int) {
 		for range n {
 			sw := prefaultTimer.Begin()
-			sw.RecordRaw(ctx, bytes, prefaultAttrs[result])
+			sw.RecordRaw(ctx, bytes, prefaultAttrs[genBucket0][result])
 		}
 	}
 	record(faultResultInstalled, pageSize, 3)
@@ -177,9 +179,13 @@ func TestServeStats(t *testing.T) {
 func key(pageClass, result string) string { return pageClass + "/" + result }
 
 // attrKey returns "page_class/result" for serve datapoints and just "result"
-// for prefault datapoints (which carry no page_class).
+// for prefault datapoints (which carry no page_class). Both kinds must carry
+// a generation_bucket attribute; its value is asserted separately by
+// TestServeMetric_GenerationBucket, not folded into the key.
 func attrKey(t *testing.T, attrs attribute.Set) string {
 	t.Helper()
+	_, ok := attrs.Value("generation_bucket")
+	require.True(t, ok, "datapoint missing generation_bucket attribute")
 	r, ok := attrs.Value("result")
 	require.True(t, ok, "datapoint missing result attribute")
 	pc, ok := attrs.Value("page_class")

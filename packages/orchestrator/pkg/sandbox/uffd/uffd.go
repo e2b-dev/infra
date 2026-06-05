@@ -169,10 +169,18 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 
 	m := memory.NewMapping(regions)
 
+	// The memfile header's generation (pause/resume cycle count) tags this
+	// sandbox's fault metrics so latency can be cut by snapshot chain depth.
+	var generation uint64
+	if h := u.memfile.Header(); h != nil && h.Metadata != nil {
+		generation = h.Metadata.Generation
+	}
+
 	uffd, err := userfaultfd.NewUserfaultfdFromFd(
 		uintptr(fds[0]),
 		u.memfile,
 		m,
+		generation,
 		logger.L().With(logger.WithSandboxID(sandboxId)),
 	)
 	if err != nil {
