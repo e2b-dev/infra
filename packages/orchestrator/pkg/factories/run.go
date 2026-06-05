@@ -413,10 +413,11 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}})
 
 	sbxEventsDeliveryTargets := make([]event.Delivery[event.SandboxEvent], 0)
+	hostStatsTargets := make([]clickhousehoststats.Delivery, 0, 1+len(config.ClickhouseConnectionStrings))
 
-	hostStatsDelivery := clickhousehoststats.NewNoopDelivery()
-
-	// Clickhouse sandbox events and host stats delivery
+	// Legacy singular ClickHouse delivery path. Fatal on init error and uses
+	// the unsuffixed default batcher names to preserve pre-multi-endpoint
+	// behavior and existing dashboards/alerts.
 	if config.ClickhouseConnectionString != "" {
 		clickhouseConn, err := clickhouse.NewDriver(config.ClickhouseConnectionString)
 		if err != nil {
@@ -426,22 +427,120 @@ func run(config cfg.Config, opts Options) (success bool) {
 			return clickhouseConn.Close()
 		}})
 
-		sbxEventsDeliveryClickhouse, err := clickhouseevents.NewDefaultClickhouseSandboxEventsDelivery(ctx, clickhouseConn, featureFlags)
+		sbxEventsDeliveryClickhouse, err := clickhouseevents.NewDefaultClickhouseSandboxEventsDelivery(
+			ctx,
+			clickhouseConn,
+			featureFlags,
+			clickhouseevents.DefaultBatcherName,
+		)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to create clickhouse events delivery", zap.Error(err))
 		}
-
 		sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryClickhouse)
-		closers = append(closers, closer{"sandbox events delivery for clickhouse", sbxEventsDeliveryClickhouse.Close})
 
-		hostStatsDeliveryClickhouse, err := clickhousehoststats.NewDefaultClickhouseHostStatsDelivery(ctx, clickhouseConn, featureFlags)
+		hostStatsDeliveryClickhouse, err := clickhousehoststats.NewDefaultClickhouseHostStatsDelivery(
+			ctx,
+			clickhouseConn,
+			featureFlags,
+			clickhousehoststats.DefaultBatcherName,
+		)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to create clickhouse host stats delivery", zap.Error(err))
 		}
-
-		hostStatsDelivery = hostStatsDeliveryClickhouse
-		closers = append(closers, closer{"sandbox host stats delivery", hostStatsDeliveryClickhouse.Close})
+		hostStatsTargets = append(hostStatsTargets, hostStatsDeliveryClickhouse)
 	}
+
+	// Additional ClickHouse delivery endpoints are best-effort. One driver +
+	// delivery pair per endpoint keeps connection pools, batcher queues, and
+	// OTel metrics isolated so a slow/failing endpoint cannot stall the others.
+	additionalEndpoints, droppedDuplicates := config.AdditionalClickhouseEndpoints()
+	for _, d := range droppedDuplicates {
+		endpoint, err := clickhouse.EndpointFromDSN(d)
+		if err != nil {
+			logger.L().Info(ctx, "dropped duplicate unparseable ClickHouse endpoint", zap.Error(err))
+
+			continue
+		}
+		logger.L().Info(ctx, "dropped duplicate ClickHouse endpoint", zap.String("endpoint", endpoint))
+	}
+	if len(additionalEndpoints) > 0 {
+		logger.L().Info(ctx, "resolved additional ClickHouse delivery endpoints",
+			zap.Int("count", len(additionalEndpoints)),
+		)
+
+		logClose := func(what, label string, fn func() error) {
+			if err := fn(); err != nil {
+				logger.L().Error(ctx, "failed to close "+what,
+					zap.String("endpoint", label), zap.Error(err))
+			}
+		}
+
+		for _, dsn := range additionalEndpoints {
+			label, err := clickhouse.EndpointFromDSN(dsn)
+			if err != nil {
+				logger.L().Error(ctx, "failed to parse clickhouse DSN, skipping endpoint", zap.Error(err))
+
+				continue
+			}
+
+			clickhouseConn, err := clickhouse.NewDriver(dsn)
+			if err != nil {
+				logger.L().Error(ctx, "failed to create clickhouse driver, skipping endpoint",
+					zap.String("endpoint", label),
+					zap.Error(err),
+				)
+
+				continue
+			}
+
+			sbxEventsDeliveryClickhouse, err := clickhouseevents.NewDefaultClickhouseSandboxEventsDelivery(
+				ctx,
+				clickhouseConn,
+				featureFlags,
+				clickhouseevents.DefaultBatcherName+":"+label,
+			)
+			if err != nil {
+				logger.L().Error(ctx, "failed to create clickhouse events delivery, skipping endpoint",
+					zap.String("endpoint", label),
+					zap.Error(err),
+				)
+				logClose("clickhouse connection after events delivery failure", label, clickhouseConn.Close)
+
+				continue
+			}
+
+			hostStatsDeliveryClickhouse, err := clickhousehoststats.NewDefaultClickhouseHostStatsDelivery(
+				ctx,
+				clickhouseConn,
+				featureFlags,
+				clickhousehoststats.DefaultBatcherName+":"+label,
+			)
+			if err != nil {
+				logger.L().Error(ctx, "failed to create clickhouse host stats delivery, skipping endpoint",
+					zap.String("endpoint", label),
+					zap.Error(err),
+				)
+				// Events delivery before its underlying driver — it holds a goroutine writing to it.
+				logClose(
+					"clickhouse events delivery after host stats delivery failure",
+					label,
+					func() error { return sbxEventsDeliveryClickhouse.Close(ctx) },
+				)
+				logClose("clickhouse connection after host stats delivery failure", label, clickhouseConn.Close)
+
+				continue
+			}
+
+			sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryClickhouse)
+			closers = append(closers, closer{"clickhouse connection " + label, func(context.Context) error {
+				return clickhouseConn.Close()
+			}})
+
+			hostStatsTargets = append(hostStatsTargets, hostStatsDeliveryClickhouse)
+		}
+	}
+
+	hostStatsDelivery := clickhousehoststats.NewMultiDelivery(hostStatsTargets...)
 
 	// cgroup manager for resource accounting
 	cgroupManager, err := cgroup.NewManager()
@@ -459,8 +558,12 @@ func run(config cfg.Config, opts Options) (success bool) {
 	if redisClient != nil {
 		sbxEventsDeliveryRedis := event.NewRedisStreamsDelivery[event.SandboxEvent](redisClient, event.SandboxEventsStreamName)
 		sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryRedis)
-		closers = append(closers, closer{"sandbox events delivery for redis", sbxEventsDeliveryRedis.Close})
 	}
+
+	// Wrapper closers run before per-driver closers (deliveries write through the drivers).
+	eventsService := events.NewEventsService(sbxEventsDeliveryTargets)
+	closers = append(closers, closer{"sandbox host stats deliveries (all)", hostStatsDelivery.Close})
+	closers = append(closers, closer{"sandbox events deliveries (all)", eventsService.Close})
 
 	// sandbox observer
 	sandboxObserver, err := metrics.NewSandboxObserver(ctx, nodeID, serviceName, commitSHA, version, serviceInstanceID, sandboxes)
@@ -568,7 +671,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		Proxy:            sandboxProxy,
 		Persistence:      persistence,
 		FeatureFlags:     featureFlags,
-		SbxEventsService: events.NewEventsService(sbxEventsDeliveryTargets),
+		SbxEventsService: eventsService,
 		PeerRegistry:     peerRegistry,
 		Uploads:          uploads,
 	})
