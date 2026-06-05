@@ -122,6 +122,8 @@ func NewStorage(
 		}
 	}
 
+	recordHeaderShape(ctx, fileType, h)
+
 	b := build.NewFile(h, store, fileType, persistence, metrics)
 
 	return &Storage{
