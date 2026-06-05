@@ -156,9 +156,10 @@ func buildSandboxLogsQuery(teamID string, sandboxID string, level *logs.LogLevel
 
 	query += " | json"
 	if cidValue != "" {
-		// cid is a structured field emitted on every command output line; exact match
-		// scopes the result to a single command's output.
-		query += fmt.Sprintf(" | cid = `%s`", sanitizeLokiLabel(cidValue))
+		// cid is a structured field stamped on every line a command emits. Scope to a
+		// single command and to its output only (process_start/process_end lifecycle
+		// lines share the cid but are not command output).
+		query += fmt.Sprintf(" | cid = `%s` | event_type = `process_output`", sanitizeLokiLabel(cidValue))
 	}
 	if level != nil {
 		query += fmt.Sprintf(" | level =~ `%s`", minLevelRegexFilter(*level))

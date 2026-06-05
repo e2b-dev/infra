@@ -80,7 +80,7 @@ func TestBuildSandboxLogsQueryWithCid(t *testing.T) {
 
 	assert.Equal(
 		t,
-		"{teamID=`team-id`, sandboxID=`sandbox-id`, category!=\"metrics\"} | json | cid = `abc123`",
+		"{teamID=`team-id`, sandboxID=`sandbox-id`, category!=\"metrics\"} | json | cid = `abc123` | event_type = `process_output`",
 		query,
 	)
 }
