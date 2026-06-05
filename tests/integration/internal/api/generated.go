@@ -21,6 +21,7 @@ import (
 
 const (
 	AccessTokenAuthScopes        accessTokenAuthContextKey        = "AccessTokenAuth.Scopes"
+	AdminTeamAuthScopes          adminTeamAuthContextKey          = "AdminTeamAuth.Scopes"
 	AdminTokenAuthScopes         adminTokenAuthContextKey         = "AdminTokenAuth.Scopes"
 	ApiKeyAuthScopes             apiKeyAuthContextKey             = "ApiKeyAuth.Scopes"
 	AuthProviderBearerAuthScopes authProviderBearerAuthContextKey = "AuthProviderBearerAuth.Scopes"
@@ -1456,6 +1457,9 @@ type N500 = Error
 
 // accessTokenAuthContextKey is the context key for AccessTokenAuth security scheme
 type accessTokenAuthContextKey string
+
+// adminTeamAuthContextKey is the context key for AdminTeamAuth security scheme
+type adminTeamAuthContextKey string
 
 // adminTokenAuthContextKey is the context key for AdminTokenAuth security scheme
 type adminTokenAuthContextKey string

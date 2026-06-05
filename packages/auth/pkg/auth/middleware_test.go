@@ -6,12 +6,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/e2b-dev/infra/packages/auth/pkg/types"
-	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 )
 
 func TestAdminValidationFunction(t *testing.T) {
