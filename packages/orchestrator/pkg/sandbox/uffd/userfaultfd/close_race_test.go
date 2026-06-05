@@ -89,7 +89,8 @@ func TestPrefaultConcurrentWithClose(t *testing.T) {
 
 		prefaultErrs := make(chan error, 1)
 		go func() {
-			prefaultErrs <- u.Prefault(ctx, 0, pageData)
+			_, err := u.Prefault(ctx, 0, pageData)
+			prefaultErrs <- err
 		}()
 
 		// Wait for Prefault to park at the pre-RLock hook.

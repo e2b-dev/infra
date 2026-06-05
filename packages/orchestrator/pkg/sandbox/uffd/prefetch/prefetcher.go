@@ -272,7 +272,7 @@ func (p *Prefetcher) copyWorker(
 				return
 			}
 
-			err := p.uffd.Prefault(ctx, d.offset, d.data)
+			installed, err := p.uffd.Prefault(ctx, d.offset, d.data)
 			if errors.Is(err, userfaultfd.ErrClosed) {
 				// The uffd is gone (sandbox teardown): every remaining queued
 				// page would hit the same path. Stop draining and count
@@ -290,7 +290,15 @@ func (p *Prefetcher) copyWorker(
 				continue
 			}
 
-			copiedCount.Add(1)
+			// A nil error doesn't mean this prefault copied the page: it may
+			// have been skipped (already resident), lost the install race to
+			// a demand fault, or deferred on EAGAIN. Count those as skipped so
+			// stage="copied" matches prefault{result="installed"} exactly.
+			if installed {
+				copiedCount.Add(1)
+			} else {
+				skippedCount.Add(1)
+			}
 		}
 	}
 }

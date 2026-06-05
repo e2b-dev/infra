@@ -15,10 +15,13 @@ var meter = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandb
 
 // pagesCounter counts pages processed by prefetch runs, by stage:
 // fetched / fetch_skipped (fetch phase: cache population from the source) and
-// copied / copy_skipped (copy phase: Prefault into the guest). Recorded once
-// per run at completion, matching the "prefetch: completed" log line.
-// Per-page copy detail (latency, install outcome) lives in
-// orchestrator.sandbox.uffd.prefault.
+// copied / copy_skipped (copy phase: Prefault into the guest). copied counts
+// only pages this run actually installed — equal to
+// prefault{result="installed"} by construction; prefaults that found the page
+// already resident, lost the install race, or hit EAGAIN land in
+// copy_skipped. Recorded once per run at completion, matching the
+// "prefetch: completed" log line. Per-page copy detail (latency, install
+// outcome) lives in orchestrator.sandbox.uffd.prefault.
 var pagesCounter = utils.Must(meter.Int64Counter(
 	"orchestrator.sandbox.uffd.prefetch.pages",
 	metric.WithDescription("Pages processed by prefetch runs, by stage"),

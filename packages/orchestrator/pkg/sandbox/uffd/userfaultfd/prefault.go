@@ -13,7 +13,14 @@ import (
 // Prefault proactively copies a page to guest memory at the given offset
 // to speed up sandbox starts. EEXIST (already mapped) is handled gracefully;
 // a Prefault against an already-closed userfaultfd returns ErrClosed.
-func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) error {
+//
+// installed reports whether THIS call copied the page into the guest. It is
+// false on every nil-error path that didn't copy — tracker said the page is
+// already resident (skipped), a demand fault won the install race (present),
+// or the copy hit EAGAIN and the prefetcher won't retry (deferred) — so
+// callers can keep "copied" accounting consistent with the per-page prefault
+// metric's result label.
+func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) (installed bool, e error) {
 	// Record install latency / installed bytes / attempt count once per
 	// prefault, tagged by outcome. Begun before the RLock so the latency
 	// includes lock wait; with the data already in memory the remainder is
@@ -48,7 +55,7 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 	if u.closed {
 		record = false
 
-		return ErrClosed
+		return false, ErrClosed
 	}
 
 	ctx, span := tracer.Start(ctx, "prefault page")
@@ -58,13 +65,13 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 	if err != nil {
 		result = faultResultError
 
-		return fmt.Errorf("failed to get host virtual address: %w", err)
+		return false, fmt.Errorf("failed to get host virtual address: %w", err)
 	}
 
 	if len(data) != int(u.pageSize) {
 		result = faultResultError
 
-		return fmt.Errorf("data length (%d) does not match pagesize (%d)", len(data), u.pageSize)
+		return false, fmt.Errorf("data length (%d) does not match pagesize (%d)", len(data), u.pageSize)
 	}
 
 	idx := uint32(header.BlockIdx(offset, int64(u.pageSize)))
@@ -74,7 +81,7 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		// got there first, so this prefetch arrived too late.
 		result = faultResultSkipped
 
-		return nil
+		return false, nil
 	}
 
 	// Prefault as a read so the page gets WP set. A concurrent on-demand
@@ -91,7 +98,7 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		result = faultResultError
 		span.RecordError(err)
 
-		return fmt.Errorf("failed to fault page: %w", err)
+		return false, fmt.Errorf("failed to fault page: %w", err)
 	}
 
 	switch outcome {
@@ -99,6 +106,7 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 		if outcome == faultInstalled {
 			// Page copied by this prefault → count its bytes; on a lost
 			// install race (EEXIST) the winning demand serve counted them.
+			installed = true
 			installedBytes = int64(u.pageSize)
 		} else {
 			result = faultResultPresent
@@ -115,10 +123,10 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) e
 	default:
 		result = faultResultError
 
-		return fmt.Errorf("unexpected faultOutcome: %#v", outcome)
+		return false, fmt.Errorf("unexpected faultOutcome: %#v", outcome)
 	}
 
-	return nil
+	return installed, nil
 }
 
 // directDataSource wraps a single page's bytes; off is ignored because the
