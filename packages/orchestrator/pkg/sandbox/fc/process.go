@@ -10,17 +10,18 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
-	"github.com/shirou/gopsutil/v4/process"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapio"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
@@ -122,6 +123,10 @@ type Process struct {
 	Versions Config
 
 	cmd *exec.Cmd
+	// pidFD pins the Firecracker process identity while Stop still needs to use
+	// the numeric PID as the process group ID.
+	pidFD          int
+	pidFDCloseOnce sync.Once
 
 	config                cfg.BuilderConfig
 	firecrackerSocketPath string
@@ -187,14 +192,11 @@ func NewProcess(
 		startScript.Value,
 	)
 
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setsid: true, // Create a new session
-	}
-
-	return &Process{
+	p := &Process{
 		Versions:              versions,
 		Exit:                  utils.NewErrorOnce(),
 		cmd:                   cmd,
+		pidFD:                 -1,
 		firecrackerSocketPath: files.SandboxFirecrackerSocketPath(),
 		metricsPath:           files.SandboxMetricsFifoPath(),
 		config:                config,
@@ -205,7 +207,14 @@ func NewProcess(
 
 		kernelPath: startScript.KernelPath,
 		rootfsPath: startScript.RootfsPath,
-	}, nil
+	}
+
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setsid: true, // Create a new session
+		PidFD:  &p.pidFD,
+	}
+
+	return p, nil
 }
 
 func (p *Process) configure(
@@ -253,6 +262,13 @@ func (p *Process) configure(
 		_ = os.Remove(p.metricsPath)
 
 		return fmt.Errorf("error starting fc process: %w", err)
+	}
+	if p.pidFD < 0 {
+		_ = signalProcessGroup(p.cmd.Process.Pid, syscall.SIGKILL)
+		waitErr := p.cmd.Wait()
+		p.Exit.SetError(nil)
+
+		return errors.Join(errors.New("fc process started without pidfd"), waitErr)
 	}
 
 	startCtx, cancelStart := context.WithCancelCause(ctx)
@@ -638,22 +654,15 @@ func (p *Process) Pid() (int, error) {
 	return p.cmd.Process.Pid, nil
 }
 
-// getProcessStatus returns the process status using gopsutil.
-// Return values: R (running), S (sleep), T (stop), I (idle),
-// Z (zombie), W (wait), L (lock), D (disk sleep / uninterruptible).
-func getProcessStatus(pid int) ([]string, error) {
-	proc, err := process.NewProcess(int32(pid))
-	if err != nil {
-		return nil, fmt.Errorf("process %d not found: %w", pid, err)
-	}
-
-	return proc.Status()
-}
-
 func (p *Process) Stop(ctx context.Context) error {
 	if p.cmd.Process == nil {
 		return errors.New("fc process not started")
 	}
+	defer func() {
+		if closeErr := p.closePidFD(); closeErr != nil {
+			logger.L().Warn(ctx, "failed to close fc pidfd", zap.Error(closeErr), logger.WithSandboxID(p.files.SandboxID))
+		}
+	}()
 
 	// Always remove the metrics FIFO, even if the process already exited,
 	// to avoid leaving orphaned files behind.
@@ -661,7 +670,18 @@ func (p *Process) Stop(ctx context.Context) error {
 		logger.L().Warn(ctx, "failed to remove fc metrics FIFO", zap.Error(removeErr), logger.WithSandboxID(p.files.SandboxID))
 	}
 
-	// Check if process has already exited.
+	pid := p.cmd.Process.Pid
+	if p.pidFD < 0 {
+		select {
+		case <-p.Exit.Done():
+			return nil
+		default:
+			return errors.New("fc process pidfd is not available")
+		}
+	}
+
+	// Check if the Firecracker leader has already exited. Descendant cleanup is
+	// handled by the sandbox cgroup so Stop never signals a numeric process group.
 	select {
 	case <-p.Exit.Done():
 		logger.L().Info(ctx, "fc process already exited", logger.WithSandboxID(p.files.SandboxID))
@@ -673,7 +693,7 @@ func (p *Process) Stop(ctx context.Context) error {
 	// this function should never fail b/c a previous context was canceled.
 	ctx = context.WithoutCancel(ctx)
 
-	err := p.cmd.Process.Signal(syscall.SIGTERM)
+	err := signalPidFD(p.pidFD, unix.SIGTERM)
 	if err != nil {
 		if errors.Is(err, os.ErrProcessDone) {
 			logger.L().Info(ctx, "fc process already exited", logger.WithSandboxID(p.files.SandboxID))
@@ -684,38 +704,105 @@ func (p *Process) Stop(ctx context.Context) error {
 		logger.L().Warn(ctx, "failed to send SIGTERM to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
 	}
 
-	go func() {
-		select {
-		// Wait 10 sec for the FC process to exit, if it doesn't, send SIGKILL.
-		case <-time.After(10 * time.Second):
-			// Check process status right before Kill — the pre-SIGTERM status
-			// captured above is 10s stale and no longer useful here.
-			status, stateErr := getProcessStatus(p.cmd.Process.Pid)
-			if errors.Is(stateErr, process.ErrorProcessNotRunning) {
-				// Process already exited, no need to send SIGKILL.
-				return
-			} else if stateErr != nil {
-				logger.L().Warn(ctx, "failed to get fc process status before SIGKILL", zap.Error(stateErr), logger.WithSandboxID(p.files.SandboxID))
-			}
+	termDeadline := time.NewTimer(10 * time.Second)
+	defer termDeadline.Stop()
+	poll := time.NewTicker(50 * time.Millisecond)
+	defer poll.Stop()
 
-			err := p.cmd.Process.Kill()
-			if err == nil {
+	for {
+		select {
+		case <-p.Exit.Done():
+			return nil
+		case <-termDeadline.C:
+			killErr := signalPidFD(p.pidFD, unix.SIGKILL)
+			if killErr == nil {
 				logger.L().Info(ctx, "sent SIGKILL to fc process because it was not responding to SIGTERM for 10 seconds",
-					zap.Strings("status", status),
 					logger.WithSandboxID(p.files.SandboxID),
 				)
 			}
-			if err != nil && !errors.Is(err, os.ErrProcessDone) {
-				logger.L().Warn(ctx, "failed to send SIGKILL to fc process", zap.Error(err), logger.WithSandboxID(p.files.SandboxID))
+			if errors.Is(killErr, os.ErrProcessDone) {
+				logger.L().Info(ctx, "fc process already exited", logger.WithSandboxID(p.files.SandboxID))
+
+				return nil
+			}
+			if killErr != nil && !errors.Is(killErr, os.ErrProcessDone) {
+				logger.L().Warn(ctx, "failed to send SIGKILL to fc process", zap.Error(killErr), logger.WithSandboxID(p.files.SandboxID))
 			}
 
-		// If the FC process exited, we can return.
-		case <-p.Exit.Done():
-			return
+			killDeadline := time.NewTimer(time.Second)
+			for {
+				select {
+				case <-p.Exit.Done():
+					killDeadline.Stop()
+
+					return nil
+				case <-killDeadline.C:
+					return fmt.Errorf("fc process %d still exists after SIGKILL", pid)
+				case <-poll.C:
+				}
+			}
+		case <-poll.C:
 		}
-	}()
+	}
+}
+
+func signalPidFD(pidFD int, signal unix.Signal) error {
+	if pidFD < 0 {
+		return os.ErrProcessDone
+	}
+
+	if err := unix.PidfdSendSignal(pidFD, signal, nil, 0); err != nil {
+		if errors.Is(err, unix.ESRCH) {
+			return os.ErrProcessDone
+		}
+
+		return err
+	}
 
 	return nil
+}
+
+func signalProcessGroup(pid int, signal syscall.Signal) error {
+	if pid <= 0 {
+		return os.ErrProcessDone
+	}
+
+	// Firecracker is launched with Setsid, so the process PID is also the process
+	// group ID. Signal the group so unshare/bash/ip descendants cannot keep the VM
+	// mount namespace or Firecracker process alive after shutdown.
+	if err := syscall.Kill(-pid, signal); err != nil {
+		if errors.Is(err, syscall.ESRCH) {
+			return os.ErrProcessDone
+		}
+
+		return err
+	}
+
+	return nil
+}
+
+func (p *Process) closePidFD() error {
+	var closeErr error
+	p.pidFDCloseOnce.Do(func() {
+		if p.pidFD < 0 {
+			return
+		}
+
+		closeErr = syscall.Close(p.pidFD)
+		p.pidFD = -1
+	})
+
+	return closeErr
+}
+
+func processGroupExists(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+
+	err := syscall.Kill(-pid, 0)
+
+	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
 func (p *Process) Pause(ctx context.Context) error {

@@ -262,6 +262,56 @@ func TestCgroupHandleGetStatsNonExistent(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to read cpu.stat")
 }
 
+func TestCgroupHandleKillNoProcesses(t *testing.T) {
+	t.Parallel()
+
+	cgroupPath := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(cgroupPath, "cgroup.procs"), nil, 0o644))
+
+	handle := &CgroupHandle{
+		cgroupName: "test-empty-kill",
+		path:       cgroupPath,
+	}
+
+	require.NoError(t, handle.Kill(t.Context()))
+}
+
+func TestCgroupHandleKillTerminatesProcesses(t *testing.T) {
+	t.Parallel()
+
+	if os.Geteuid() != 0 {
+		t.Skip("test requires root privileges")
+	}
+
+	ctx := t.Context()
+	mgr, err := NewManager()
+	require.NoError(t, err)
+
+	err = mgr.Initialize(ctx)
+	require.NoError(t, err)
+
+	handle, err := mgr.Create(ctx, "test-cgroup-kill")
+	require.NoError(t, err)
+	defer handle.Remove(ctx)
+	defer handle.ReleaseCgroupFD()
+
+	cmd := exec.CommandContext(ctx, "sleep", "60")
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		UseCgroupFD: true,
+		CgroupFD:    handle.GetFD(),
+	}
+
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	})
+
+	require.NoError(t, handle.ReleaseCgroupFD())
+	require.NoError(t, handle.Kill(ctx))
+	require.Error(t, cmd.Wait())
+}
+
 func TestCgroupHandleRemoveNonExistent(t *testing.T) {
 	t.Parallel()
 

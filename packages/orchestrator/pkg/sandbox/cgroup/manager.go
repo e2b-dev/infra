@@ -26,6 +26,8 @@ const (
 	// NoCgroupFD is a sentinel value indicating that no cgroup file descriptor
 	// is available (e.g. cgroup accounting is disabled or the FD has been released).
 	NoCgroupFD = -1
+
+	cgroupKillTimeout = 2 * time.Second
 )
 
 // Stats contains resource usage statistics from a cgroup
@@ -103,6 +105,57 @@ func (h *CgroupHandle) GetStats(ctx context.Context) (*Stats, error) {
 	return h.manager.getStatsForPath(ctx, h.path, h.memoryPeakFile)
 }
 
+// Kill terminates all processes currently in this cgroup.
+// Safe to call multiple times. Returns nil if the cgroup is already empty or gone.
+func (h *CgroupHandle) Kill(ctx context.Context) error {
+	if h == nil || h.noop || h.removed {
+		return nil
+	}
+
+	return h.kill(ctx)
+}
+
+func (h *CgroupHandle) kill(ctx context.Context) error {
+	if h == nil || h.noop {
+		return nil
+	}
+
+	hasProcesses, err := h.hasProcesses()
+	if err != nil {
+		return err
+	}
+	if !hasProcesses {
+		return nil
+	}
+
+	if err := os.WriteFile(filepath.Join(h.path, "cgroup.kill"), []byte("1"), 0); err != nil {
+		return fmt.Errorf("failed to write cgroup.kill: %w", err)
+	}
+
+	deadline := time.NewTimer(cgroupKillTimeout)
+	defer deadline.Stop()
+	poll := time.NewTicker(50 * time.Millisecond)
+	defer poll.Stop()
+
+	for {
+		hasProcesses, err := h.hasProcesses()
+		if err != nil {
+			return err
+		}
+		if !hasProcesses {
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-deadline.C:
+			return fmt.Errorf("cgroup %s still has processes after cgroup.kill", h.cgroupName)
+		case <-poll.C:
+		}
+	}
+}
+
 // Remove closes all open FDs and deletes the cgroup directory.
 // The handle should not be used after calling Remove.
 // Safe to call multiple times. Returns error if removal fails
@@ -144,8 +197,8 @@ func (h *CgroupHandle) Remove(ctx context.Context) error {
 		zap.String("path", h.path),
 		zap.Error(rmErr))
 
-	if err := os.WriteFile(filepath.Join(h.path, "cgroup.kill"), []byte("1"), 0); err != nil && !os.IsNotExist(err) {
-		logger.L().Warn(ctx, "failed to write cgroup.kill",
+	if err := h.kill(ctx); err != nil {
+		logger.L().Warn(ctx, "failed to kill cgroup processes",
 			zap.String("cgroup_name", h.cgroupName),
 			zap.String("path", h.path),
 			zap.Error(err))
@@ -190,6 +243,18 @@ func (h *CgroupHandle) CgroupName() string {
 	}
 
 	return h.cgroupName
+}
+
+func (h *CgroupHandle) hasProcesses() (bool, error) {
+	data, err := os.ReadFile(filepath.Join(h.path, "cgroup.procs"))
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to read cgroup.procs: %w", err)
+	}
+
+	return strings.TrimSpace(string(data)) != "", nil
 }
 
 // Manager handles initialization and creation of cgroups
