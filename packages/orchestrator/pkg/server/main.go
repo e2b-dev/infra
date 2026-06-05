@@ -61,6 +61,8 @@ type Server struct {
 
 	done      chan struct{}
 	closeOnce sync.Once
+
+	sandboxStartMu sync.RWMutex
 }
 
 type ServiceConfig struct {
