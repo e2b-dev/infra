@@ -132,7 +132,7 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		var initRequest PostInitJSONBody
+		var initRequest Init
 		if len(body) > 0 {
 			err = json.Unmarshal(body, &initRequest)
 			if err != nil {
@@ -188,7 +188,7 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJSONBody) error {
+func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data Init) error {
 	if data.Timestamp != nil {
 		// Check if current time differs significantly from the received timestamp
 		if shouldSetSystemTime(time.Now(), *data.Timestamp) {
