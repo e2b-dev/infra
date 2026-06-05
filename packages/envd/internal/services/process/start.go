@@ -178,6 +178,7 @@ func (s *Service) handleStart(ctx context.Context, req *connect.Request[rpc.Star
 	start <- rpc.ProcessEvent_Start{
 		Start: &rpc.ProcessEvent_StartEvent{
 			Pid: pid,
+			Cid: proc.Cid,
 		},
 	}
 

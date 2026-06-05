@@ -115,7 +115,7 @@ func (l *LocalClusterResourceProvider) GetSandboxesMetrics(ctx context.Context, 
 	return metrics, nil
 }
 
-func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, qStart *int64, qEnd *int64, qLimit *int32, qDirection *api.LogsDirection, level *logs.LogLevel, search *string) (api.SandboxLogs, *api.APIError) {
+func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, qStart *int64, qEnd *int64, qLimit *int32, qDirection *api.LogsDirection, level *logs.LogLevel, search *string, cid *string) (api.SandboxLogs, *api.APIError) {
 	start, end := time.Now().Add(-logsOldestLimit), time.Now()
 	if qStart != nil {
 		start = time.UnixMilli(*qStart)
@@ -130,7 +130,7 @@ func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamI
 		limit = int(*qLimit)
 	}
 
-	raw, err := l.queryLogsProvider.QuerySandboxLogs(ctx, teamID, sandboxID, start, end, limit, apiLogDirectionToLokiProtoDirection(qDirection), level, search)
+	raw, err := l.queryLogsProvider.QuerySandboxLogs(ctx, teamID, sandboxID, start, end, limit, apiLogDirectionToLokiProtoDirection(qDirection), level, search, cid)
 	if err != nil {
 		return api.SandboxLogs{}, &api.APIError{
 			Err:       fmt.Errorf("error when fetching sandbox logs: %w", err),

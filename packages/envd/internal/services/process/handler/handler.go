@@ -18,6 +18,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/creack/pty"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
@@ -46,6 +47,11 @@ type Handler struct {
 	Config *rpc.ProcessConfig
 
 	logger *zerolog.Logger
+
+	// Cid is a unique per-execution command ID assigned by envd. It is returned
+	// to the client in the StartEvent and stamped on every output log line so a
+	// command's output can be retrieved later (unlike pid, it is never reused).
+	Cid string
 
 	Tag *string
 	cmd *exec.Cmd
@@ -177,16 +183,22 @@ func New(
 	// Cancellation of the process via timeout will propagate and cancel this context too.
 	outCtx, outCancel := context.WithCancel(ctx)
 
+	// Assign a unique command ID and bind it onto the logger so that every line
+	// the handler emits (process_start/process_end/process_output) carries the cid.
+	cid := uuid.NewString()
+	cmdLogger := logger.With().Str("cid", cid).Logger()
+
 	h := &Handler{
 		Config:    req.GetProcess(),
 		cmd:       cmd,
+		Cid:       cid,
 		Tag:       req.Tag,
 		DataEvent: outMultiplex,
 		cancel:    cancel,
 		outCtx:    outCtx,
 		outCancel: outCancel,
 		EndEvent:  NewMultiplexedChannel[rpc.ProcessEvent_End](0),
-		logger:    logger,
+		logger:    &cmdLogger,
 	}
 
 	if req.GetPty() != nil {
@@ -236,6 +248,10 @@ func New(
 
 		h.tty = tty
 	} else {
+		// Persist stdout/stderr as log lines so the command's output can be retrieved
+		// later via its cid. The budget is shared so the cap is per-command.
+		outputBudget := newCommandLogBudget()
+
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error creating stdout pipe for command '%s': %w", userCmd, err))
@@ -243,12 +259,17 @@ func New(
 
 		outWg.Go(func() {
 			readBuf := make([]byte, stdChunkSize)
+			outLog := newOutputLogger(&cmdLogger, outputBudget, "stdout")
+			defer outLog.flush()
 
 			for {
 				n, readErr := stdout.Read(readBuf)
 
 				if n > 0 {
 					h.stdoutBytes.Add(int64(n))
+
+					// Always log the output, even when no client is subscribed.
+					outLog.write(readBuf[:n])
 
 					if outMultiplex.HasSubscribers() {
 						data := slices.Clone(readBuf[:n])
@@ -282,12 +303,17 @@ func New(
 
 		outWg.Go(func() {
 			readBuf := make([]byte, stdChunkSize)
+			outLog := newOutputLogger(&cmdLogger, outputBudget, "stderr")
+			defer outLog.flush()
 
 			for {
 				n, readErr := stderr.Read(readBuf)
 
 				if n > 0 {
 					h.stderrBytes.Add(int64(n))
+
+					// Always log the output, even when no client is subscribed.
+					outLog.write(readBuf[:n])
 
 					if outMultiplex.HasSubscribers() {
 						data := slices.Clone(readBuf[:n])

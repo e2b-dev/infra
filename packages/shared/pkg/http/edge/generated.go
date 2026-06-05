@@ -321,6 +321,9 @@ type V1SandboxLogsParams struct {
 
 	// Search Case-sensitive substring match on log message content
 	Search *string `form:"search,omitempty" json:"search,omitempty"`
+
+	// Cid Restrict the logs to the output of a single command identified by its envd-assigned command ID
+	Cid *string `form:"cid,omitempty" json:"cid,omitempty"`
 }
 
 // V1SandboxLogsParamsDirection defines parameters for V1SandboxLogs.
@@ -819,6 +822,18 @@ func NewV1SandboxLogsRequest(server string, sandboxID string, params *V1SandboxL
 		if params.Search != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "search", *params.Search, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cid != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cid", *params.Cid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
