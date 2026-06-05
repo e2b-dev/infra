@@ -223,6 +223,20 @@ func NewAdminTokenAuthenticator(adminToken string) Authenticator {
 	}
 }
 
+// NewAdminTeamAuthenticator creates an authenticator for AdminTeamAuth (X-Team-ID header).
+// It is intended to be paired with AdminTokenAuth on routes that need team context.
+func NewAdminTeamAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *APIError)) Authenticator {
+	return &commonAuthenticator[*types.Team]{
+		schemeName: "AdminTeamAuth",
+		header: headerKey{
+			name: HeaderTeamID,
+		},
+		validationFunc: validationFunc,
+		setContextFunc: setTeamInfo,
+		errorMessage:   "Invalid admin token teamID.",
+	}
+}
+
 // CreateAuthenticationFunc creates an OpenAPI authentication function from a list of authenticators.
 func CreateAuthenticationFunc(
 	authenticators []Authenticator,

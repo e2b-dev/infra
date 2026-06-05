@@ -34,6 +34,7 @@ func TestSpecSecuritySchemeHeaderNames(t *testing.T) {
 		{"Supabase2TeamAuth", auth.HeaderSupabaseTeam},
 		{"AuthProviderTeamAuth", auth.HeaderTeamID},
 		{"AdminTokenAuth", auth.HeaderAdminToken},
+		{"AdminTeamAuth", auth.HeaderTeamID},
 	}
 
 	for _, tc := range cases {
@@ -78,6 +79,7 @@ func TestAuthProviderTeamAuthHeaderRoutes(t *testing.T) {
 		"AuthProviderBearerAuth": auth.HeaderAuthorization,
 		"AuthProviderTeamAuth":   auth.HeaderTeamID,
 		"AdminTokenAuth":         auth.HeaderAdminToken,
+		"AdminTeamAuth":          auth.HeaderTeamID,
 	}
 
 	authFn := func(_ context.Context, input *openapi3filter.AuthenticationInput) error {

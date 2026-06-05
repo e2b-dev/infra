@@ -198,6 +198,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 			auth.NewSupabaseTeamAuthenticator(apiStore.GetTeamFromSupabaseToken),
 			auth.NewAuthProviderTeamAuthenticator(apiStore.GetTeamFromAuthProviderToken),
 			auth.NewAdminTokenAuthenticator(config.AdminToken),
+			auth.NewAdminTeamAuthenticator(apiStore.GetTeamFromAdminToken),
 		},
 		metricsMiddleware.SetProcessingStartTime,
 	)
