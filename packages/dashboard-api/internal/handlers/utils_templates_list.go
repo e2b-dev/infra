@@ -3,7 +3,6 @@ package handlers
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -115,37 +114,6 @@ func parseTemplatesCursor(cursor *api.TemplatesCursor, sort templatesSort) (*str
 func formatTemplatesCursor(sort templatesSort, value, id string) string {
 	return fmt.Sprintf("%s|%s|%s", sort, value, id)
 }
-
-func cursorInt64(v *string) (*int64, error) {
-	if v == nil {
-		return nil, nil
-	}
-
-	n, err := strconv.ParseInt(*v, 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", errInvalidTemplatesCursor, err)
-	}
-
-	return &n, nil
-}
-
-func cursorTime(v *string) (*time.Time, error) {
-	if v == nil {
-		return nil, nil
-	}
-
-	t, err := time.Parse(time.RFC3339Nano, *v)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", errInvalidTemplatesCursor, err)
-	}
-
-	return &t, nil
-}
-
-var (
-	maxCursorTime = time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
-	minCursorTime = time.Time{}
-)
 
 func timeCursor(ts *time.Time, id *string, desc bool) (time.Time, string) {
 	if ts != nil && id != nil {

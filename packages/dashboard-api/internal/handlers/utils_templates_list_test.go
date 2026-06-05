@@ -152,7 +152,7 @@ func TestCursorTypedParsers(t *testing.T) {
 
 	bad := "not-a-number"
 	_, err = cursorInt64(&bad)
-	require.ErrorIs(t, err, errInvalidTemplatesCursor)
+	require.ErrorIs(t, err, errInvalidCursor)
 
 	ts := "2026-05-30T12:34:56.123456789Z"
 	parsed, err := cursorTime(&ts)
@@ -161,7 +161,7 @@ func TestCursorTypedParsers(t *testing.T) {
 
 	badTs := "nope"
 	_, err = cursorTime(&badTs)
-	require.ErrorIs(t, err, errInvalidTemplatesCursor)
+	require.ErrorIs(t, err, errInvalidCursor)
 
 	// Sanity: the sentinel errors are distinct.
 	assert.NotErrorIs(t, errInvalidTemplatesCursor, errTemplatesCursorSortMismatch)

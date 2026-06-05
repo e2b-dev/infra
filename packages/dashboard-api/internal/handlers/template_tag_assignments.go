@@ -1,14 +1,11 @@
 package handlers
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -17,11 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
-)
-
-const (
-	defaultTagAssignmentsPageSize = int32(50)
-	maxTagAssignmentsPageSize     = int32(100)
 )
 
 func (s *APIStore) GetTemplatesTemplateIDTagsTagAssignments(c *gin.Context, templateID api.TemplateID, tag api.TagPath, params api.GetTemplatesTemplateIDTagsTagAssignmentsParams) {
@@ -93,44 +85,4 @@ func (s *APIStore) GetTemplatesTemplateIDTagsTagAssignments(c *gin.Context, temp
 		Data:       assignments,
 		NextCursor: nextCursor,
 	})
-}
-
-func normalizeTagAssignmentsPageLimit(limit *api.TagAssignmentsLimit) int32 {
-	if limit == nil {
-		return defaultTagAssignmentsPageSize
-	}
-
-	if *limit < 1 {
-		return 1
-	}
-
-	if *limit > maxTagAssignmentsPageSize {
-		return maxTagAssignmentsPageSize
-	}
-
-	return *limit
-}
-
-func parseTagAssignmentsCursor(cursor *api.TagAssignmentsCursor) (time.Time, uuid.UUID, error) {
-	defaultID := uuid.MustParse(maxCursorID)
-	if cursor == nil || *cursor == "" {
-		return time.Now().UTC(), defaultID, nil
-	}
-
-	parts := strings.SplitN(*cursor, "|", 2)
-	if len(parts) != 2 {
-		return time.Time{}, uuid.Nil, errors.New("invalid cursor format")
-	}
-
-	cursorTime, err := parseCursorTime(parts[0])
-	if err != nil {
-		return time.Time{}, uuid.Nil, err
-	}
-
-	cursorID, err := uuid.Parse(parts[1])
-	if err != nil {
-		return time.Time{}, uuid.Nil, err
-	}
-
-	return cursorTime, cursorID, nil
 }
